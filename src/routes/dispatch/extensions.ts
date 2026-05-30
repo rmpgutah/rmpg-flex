@@ -39,6 +39,30 @@ function haversineMeters(lat1: number, lng1: number, lat2: number, lng2: number)
 }
 const AVG_URBAN_SPEED_MPH = 25;
 
+// ─── GPS freshness ────────────────────────────────────────
+// A unit's last fix can be minutes old (lost signal, parked in a garage,
+// app backgrounded). Recommending or auto-dispatching a unit whose
+// position is stale sends responders to a guess. We compute the age of
+// units.gps_updated_at and prefer FRESH units; stale ones are flagged so
+// the dispatcher (and the AI) never treat an old fix as current.
+const GPS_FRESH_WINDOW_S = 180; // 3 min — default "fresh" cutoff
+
+/** Parse a D1 timestamp ('YYYY-MM-DD HH:MM:SS' UTC, or ISO) to epoch ms. */
+function parseUtcMs(ts: string): number {
+  let s = ts.trim();
+  if (s.includes(' ') && !s.includes('T')) s = s.replace(' ', 'T');
+  if (!/[zZ]|[+-]\d\d:?\d\d$/.test(s)) s += 'Z'; // stored value is UTC
+  return Date.parse(s);
+}
+
+/** Age of a GPS fix in seconds; null when never reported / unparseable. */
+function gpsAgeSeconds(ts: string | null | undefined, nowMs: number): number | null {
+  if (!ts) return null;
+  const ms = parseUtcMs(ts);
+  if (!Number.isFinite(ms)) return null;
+  return Math.max(0, Math.round((nowMs - ms) / 1000));
+}
+
 // =====================================================================
 // DEV-1: Closest-unit recommendation (DI-2)
 // GET /api/dispatch/calls/:id/recommended-units?limit=N
@@ -59,18 +83,20 @@ recommendedUnits.get('/:id/recommended-units', requireRole(...READ_ROLES), async
     }
 
     const limit = Math.min(25, Math.max(1, parseInt(c.req.query('limit') || '5', 10)));
+    // Caller may widen/narrow the "fresh" window (seconds); default 3 min.
+    const freshWindow = Math.min(3600, Math.max(15,
+      parseInt(c.req.query('freshWindow') || String(GPS_FRESH_WINDOW_S), 10)));
 
-    // Pull available units with GPS. Lean schema stores lat/lng directly on
-    // units (no separate gps_locations table on lean D1 — confirmed via
-    // sqlite_master inspection). Filter to available + dispatched-but-near
+    // Pull available units with GPS + last-fix timestamp. Lean schema stores
+    // lat/lng directly on units. Filter to available + dispatched-but-near
     // statuses so the dispatcher sees who could be repurposed.
     const units = await query<{
       id: number; call_sign: string; status: string; officer_id: number | null;
       latitude: number | null; longitude: number | null; current_call_id: number | null;
-      officer_name: string | null; badge_number: string | null;
+      officer_name: string | null; badge_number: string | null; gps_updated_at: string | null;
     }>(db, `
       SELECT u.id, u.call_sign, u.status, u.officer_id,
-             u.latitude, u.longitude, u.current_call_id,
+             u.latitude, u.longitude, u.current_call_id, u.gps_updated_at,
              usr.full_name AS officer_name, usr.badge_number
       FROM units u
       LEFT JOIN users usr ON usr.id = u.officer_id
@@ -78,9 +104,12 @@ recommendedUnits.get('/:id/recommended-units', requireRole(...READ_ROLES), async
         AND u.latitude IS NOT NULL AND u.longitude IS NOT NULL
     `);
 
+    const now = Date.now();
     const ranked = units.map((u) => {
       const distM = haversineMeters(call.latitude!, call.longitude!, u.latitude!, u.longitude!);
       const distMi = distM / 1609.34;
+      const ageS = gpsAgeSeconds(u.gps_updated_at, now);
+      const stale = ageS == null || ageS > freshWindow;
       return {
         unit_id: u.id,
         callSign: u.call_sign,
@@ -91,8 +120,18 @@ recommendedUnits.get('/:id/recommended-units', requireRole(...READ_ROLES), async
         distanceMeters: Math.round(distM),
         distanceMiles: Math.round(distMi * 10) / 10,
         etaMinutes: Math.round((distMi / AVG_URBAN_SPEED_MPH) * 60 * 10) / 10,
+        gpsAgeSeconds: ageS,
+        gpsStale: stale,
       };
-    }).sort((a, b) => a.distanceMeters - b.distanceMeters).slice(0, limit);
+    })
+      // Fresh units first (a 0.5 mi unit with a 20-min-old fix is NOT closer
+      // than a 2 mi unit reporting live), then by distance within each group.
+      .sort((a, b) => (a.gpsStale === b.gpsStale)
+        ? a.distanceMeters - b.distanceMeters
+        : (a.gpsStale ? 1 : -1))
+      .slice(0, limit);
+
+    const freshCount = ranked.filter((r) => !r.gpsStale).length;
 
     return c.json({
       callId: id,
@@ -100,7 +139,10 @@ recommendedUnits.get('/:id/recommended-units', requireRole(...READ_ROLES), async
       callPriority: call.priority,
       callLat: call.latitude,
       callLng: call.longitude,
+      freshWindowSeconds: freshWindow,
+      freshCount,
       recommended: ranked,
+      ...(freshCount === 0 ? { reason: 'NO_FRESH_UNITS' } : {}),
     });
   } catch (err) {
     console.error('[dispatch] recommended-units error', err);
@@ -783,8 +825,8 @@ autoAssign.post('/:id/auto-assign', requireRole(...WRITE_ROLES), async (c) => {
       return c.json({ error: 'Call has no GPS coordinates — cannot auto-assign', code: 'CALL_HAS_NO_GPS' }, 400);
     }
 
-    const units = await query<{ id: number; call_sign: string; latitude: number; longitude: number }>(db, `
-      SELECT id, call_sign, latitude, longitude
+    const units = await query<{ id: number; call_sign: string; latitude: number; longitude: number; gps_updated_at: string | null }>(db, `
+      SELECT id, call_sign, latitude, longitude, gps_updated_at
       FROM units
       WHERE status = 'available' AND latitude IS NOT NULL AND longitude IS NOT NULL
     `);
@@ -792,13 +834,25 @@ autoAssign.post('/:id/auto-assign', requireRole(...WRITE_ROLES), async (c) => {
       return c.json({ error: 'No available units with GPS positions', code: 'NO_AVAILABLE_UNITS_WITH_GPS' }, 404);
     }
 
-    let nearest = units[0];
+    // Prefer units reporting a FRESH fix — dispatching to a stale position
+    // sends the responder to where the unit *was*, not where it is. Fall back
+    // to stale units only if nobody is reporting live (flagged in the result).
+    const nowMs = Date.now();
+    const fresh = units.filter((u) => {
+      const age = gpsAgeSeconds(u.gps_updated_at, nowMs);
+      return age != null && age <= GPS_FRESH_WINDOW_S;
+    });
+    const pool = fresh.length > 0 ? fresh : units;
+    const usedStaleFallback = fresh.length === 0;
+
+    let nearest = pool[0];
     let minMeters = Infinity;
-    for (const u of units) {
+    for (const u of pool) {
       const d = haversineMeters(call.latitude, call.longitude, u.latitude, u.longitude);
       if (d < minMeters) { minMeters = d; nearest = u; }
     }
     const minMiles = minMeters / 1609.34;
+    const nearestGpsAge = gpsAgeSeconds(nearest.gps_updated_at, nowMs);
 
     const currentUnits = safeJson<number[]>(call.assigned_unit_ids, []);
     if (!currentUnits.includes(Number(nearest.id))) currentUnits.push(Number(nearest.id));
@@ -832,6 +886,8 @@ autoAssign.post('/:id/auto-assign', requireRole(...WRITE_ROLES), async (c) => {
       ...(updated || {}),
       auto_assigned_unit: nearest.call_sign,
       distance_miles: Math.round(minMiles * 100) / 100,
+      gps_age_seconds: nearestGpsAge,
+      gps_stale: usedStaleFallback,
     });
   } catch (err) {
     console.error('[dispatch] auto-assign error', err);

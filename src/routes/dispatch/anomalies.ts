@@ -154,6 +154,32 @@ export async function detectDispatchAnomalies(db: D1Database): Promise<{ raised:
     });
   }
 
+  // Rule 3 — responding unit with a STALE GPS fix (GPS-fed officer safety).
+  // A unit actively assigned to a call but whose last position is >10 min old
+  // (or never reported) can't be located by dispatch — surface it so someone
+  // confirms the officer. Ties live GPS freshness into the dispatch alert feed.
+  const staleResponders = await query<{ id: number; call_sign: string; call_number: string | null; gps_updated_at: string | null; beat_id: number | null }>(
+    db,
+    `SELECT u.id, u.call_sign, c.call_number, u.gps_updated_at, c.beat_id
+       FROM units u
+       JOIN calls_for_service c ON c.id = u.current_call_id
+      WHERE u.current_call_id IS NOT NULL
+        AND u.status IN ('dispatched', 'enroute', 'en_route', 'onscene')
+        AND (u.gps_updated_at IS NULL OR u.gps_updated_at <= datetime('now', '-10 minutes'))
+      LIMIT 100`,
+  );
+  for (const u of staleResponders) {
+    const lastFix = u.gps_updated_at ? `last fix ${u.gps_updated_at} UTC` : 'no GPS ever reported';
+    candidates.push({
+      dedup_key: `gps_stale_unit:${u.id}`,
+      alert_type: 'gps_stale_unit',
+      severity: 'high',
+      title: `Unit ${u.call_sign} GPS stale while responding`,
+      details: `Unit ${u.call_sign} is assigned to call ${u.call_number ?? '?'} but its GPS is stale (${lastFix}). Dispatch cannot confirm the unit's location — verify officer status.`,
+      zone_beat: u.beat_id != null ? String(u.beat_id) : null,
+    });
+  }
+
   for (const a of candidates) await upsertActiveAlert(db, a);
 
   // Auto-resolve: acknowledge active alerts of these types whose
@@ -163,7 +189,7 @@ export async function detectDispatchAnomalies(db: D1Database): Promise<{ raised:
     db,
     `SELECT id, dedup_key FROM anomaly_alerts
       WHERE acknowledged_at IS NULL
-        AND alert_type IN ('unassigned_call', 'overdue_onscene')`,
+        AND alert_type IN ('unassigned_call', 'overdue_onscene', 'gps_stale_unit')`,
   );
   let resolved = 0;
   for (const row of active) {

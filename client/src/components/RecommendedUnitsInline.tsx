@@ -6,9 +6,10 @@
 // Click a row to one-click attach the unit to the call.
 // ============================================================
 
-import { useEffect, useState, useCallback } from 'react';
-import { Navigation, Clock, MapPin, RefreshCw, Loader2 } from 'lucide-react';
+import { useEffect, useState, useCallback, useRef } from 'react';
+import { Navigation, Clock, MapPin, RefreshCw, Loader2, Satellite } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
+import { useWebSocket } from '../context/WebSocketContext';
 
 export interface RecommendedUnit {
   callSign: string;
@@ -20,14 +21,28 @@ export interface RecommendedUnit {
   officerName: string | null;
   badgeNumber: string | null;
   currentCallId: string | null;
+  /** Age of the unit's last GPS fix in seconds (null = never reported). */
+  gpsAgeSeconds?: number | null;
+  /** True when the fix is older than the server's freshness window. */
+  gpsStale?: boolean;
 }
 
 interface RecommendResponse {
   callId: number;
   callNumber: string;
   callPriority?: string;
+  freshWindowSeconds?: number;
+  freshCount?: number;
   recommended: RecommendedUnit[];
   reason?: string;
+}
+
+/** Compact GPS-age label, e.g. "8s", "3m", "no GPS". */
+function gpsAgeLabel(s: number | null | undefined): string {
+  if (s == null) return 'no GPS';
+  if (s < 60) return `${s}s`;
+  if (s < 3600) return `${Math.round(s / 60)}m`;
+  return `${Math.round(s / 3600)}h`;
 }
 
 interface Props {
@@ -63,6 +78,7 @@ export default function RecommendedUnitsInline({
   const [data, setData] = useState<RecommendResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const { subscribe } = useWebSocket();
 
   const fetchRecommendations = useCallback(async () => {
     // Reject empty / undefined / string-"undefined" call IDs. A bug elsewhere
@@ -89,6 +105,23 @@ export default function RecommendedUnitsInline({
     const t = setInterval(fetchRecommendations, refreshIntervalMs);
     return () => clearInterval(t);
   }, [fetchRecommendations, refreshIntervalMs]);
+
+  // Real-time refresh: when units broadcast new GPS positions, re-rank — but
+  // debounce so a burst of position updates triggers a single refetch (the
+  // server re-computes fresh-GPS distances; we don't want it per-tick).
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    const unsub = subscribe('unit_update', (msg: any) => {
+      const action = (msg?.data || msg)?.action;
+      if (action !== 'unit_position_update') return;
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      debounceRef.current = setTimeout(fetchRecommendations, 4000);
+    });
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      unsub();
+    };
+  }, [subscribe, fetchRecommendations]);
 
   if (!callId) return null;
 
@@ -161,6 +194,14 @@ export default function RecommendedUnitsInline({
               <span className="text-[9px] text-rmpg-300 flex items-center gap-0.5">
                 <Clock className="w-2.5 h-2.5" />
                 {u.etaMinutes < 1 ? '<1' : Math.round(u.etaMinutes)}m
+              </span>
+              <span
+                className="text-[9px] flex items-center gap-0.5"
+                style={{ color: u.gpsStale ? '#f59e0b' : '#22c55e' }}
+                title={u.gpsStale ? 'GPS fix is stale — position uncertain' : 'Live GPS fix'}
+              >
+                <Satellite className="w-2.5 h-2.5" />
+                {gpsAgeLabel(u.gpsAgeSeconds)}
               </span>
               {u.officerName && (
                 <span className="text-[9px] text-rmpg-400 truncate flex-1">
