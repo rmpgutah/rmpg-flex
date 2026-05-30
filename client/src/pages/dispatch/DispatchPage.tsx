@@ -1927,7 +1927,7 @@ export default function DispatchPage() {
             <div className="absolute inset-0 rounded-sm" style={{ boxShadow: '0 0 16px 3px rgba(212,160,23,0.25)' }} />
           </div>
           <div className="flex flex-col items-center gap-1">
-            <span className="text-[10px] font-mono uppercase tracking-[0.15em] text-[#6b7280] animate-pulse">Loading Dispatch Console</span>
+            <span className="text-[10px] font-mono uppercase tracking-[0.15em] text-[#888888] animate-pulse">Loading Dispatch Console</span>
             <span className="text-[8px] font-mono text-[#545454]">Connecting to dispatch services...</span>
           </div>
         </div>
@@ -2080,7 +2080,7 @@ export default function DispatchPage() {
                 const flags: Array<{ label: string; color: string }> = [];
                 if (selectedCall.weapons_involved && selectedCall.weapons_involved !== 'None') flags.push({ label: 'ARMED', color: '#fca5a5' });
                 if ((selectedCall as any).domestic_violence) flags.push({ label: 'DV', color: '#fde047' });
-                if ((selectedCall as any).mental_health_crisis) flags.push({ label: 'MH', color: '#c4b5fd' });
+                if ((selectedCall as any).mental_health_crisis) flags.push({ label: 'MH', color: '#c084fc' });
                 if ((selectedCall as any).officer_safety_caution) flags.push({ label: 'SAFETY', color: '#ef4444' });
                 if ((selectedCall as any).vehicle_pursuit || (selectedCall as any).foot_pursuit) flags.push({ label: 'PURSUIT', color: '#fb923c' });
                 if (flags.length === 0) return null;
@@ -2143,7 +2143,7 @@ export default function DispatchPage() {
                     <button type="button"
                       onClick={() => handleStatusChange(selectedCall.id, 'cancelled')}
                       className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
-                      style={{ minHeight: 48, minWidth: 80, background: '#dc262620', border: '1px solid #dc262650', color: '#ef7a7a', touchAction: 'manipulation' }}
+                      style={{ minHeight: 48, minWidth: 80, background: '#ef444420', border: '1px solid #ef444450', color: '#f87171', touchAction: 'manipulation' }}
                     >
                       <XCircle style={{ width: 16, height: 16 }} /> Cancel
                     </button>
@@ -2500,7 +2500,7 @@ export default function DispatchPage() {
                                 className="text-[10px] font-bold font-mono px-1.5 py-0.5 rounded-[2px] uppercase"
                                 style={{
                                   background: serveLink.status === 'served' ? '#22c55e20'
-                                    : serveLink.status === 'failed' ? '#dc262620'
+                                    : serveLink.status === 'failed' ? '#ef444420'
                                     : serveLink.status === 'in_progress' ? '#eab30820'
                                     : '#f59e0b20',
                                   color: serveLink.status === 'served' ? '#4ade80'
@@ -2509,7 +2509,7 @@ export default function DispatchPage() {
                                     : '#fbbf24',
                                   border: `1px solid ${
                                     serveLink.status === 'served' ? '#22c55e40'
-                                    : serveLink.status === 'failed' ? '#dc262640'
+                                    : serveLink.status === 'failed' ? '#ef444440'
                                     : serveLink.status === 'in_progress' ? '#eab30840'
                                     : '#f59e0b40'
                                   }`,
@@ -2541,9 +2541,9 @@ export default function DispatchPage() {
                           <button type="button"
                             className="w-full py-2 px-3 text-xs font-semibold rounded-[2px] flex items-center justify-center gap-2 transition-colors"
                             style={{
-                              background: sendingToServe ? '#444444' : '#7c3aed20',
-                              border: '1px solid #7c3aed50',
-                              color: sendingToServe ? '#999999' : '#a78bfa',
+                              background: sendingToServe ? '#444444' : '#a855f720',
+                              border: '1px solid #a855f750',
+                              color: sendingToServe ? '#999999' : '#c084fc',
                             }}
                             disabled={sendingToServe}
                             onClick={async () => {
@@ -2628,8 +2628,8 @@ export default function DispatchPage() {
                               { key: 'weekend', label: 'Weekend', met: windows.weekend },
                             ] as const).map(({ key, label, met }) => (
                               <div key={key} className="flex items-center gap-1.5 text-[10px] py-0.5 px-1.5 rounded-sm" style={{
-                                background: met ? '#22c55e10' : '#dc262610',
-                                border: `1px solid ${met ? '#22c55e30' : '#dc262630'}`,
+                                background: met ? '#22c55e10' : '#ef444410',
+                                border: `1px solid ${met ? '#22c55e30' : '#ef444430'}`,
                               }}>
                                 <span style={{ color: met ? '#4ade80' : '#ef4444' }}>{met ? '✓' : '✗'}</span>
                                 <span style={{ color: met ? '#86efac' : '#fca5a5' }}>{label}</span>
@@ -2653,7 +2653,7 @@ export default function DispatchPage() {
                       const hoursLeft = Math.max(0, 72 - elapsed / 3600000);
                       if (elapsed >= 72 * 3600000) {
                         return (
-                          <div className="mt-2 p-2 rounded-sm text-center text-xs font-bold animate-pulse" style={{ background: '#dc262630', border: '1px solid #dc262650', color: '#f87171' }}>
+                          <div className="mt-2 p-2 rounded-sm text-center text-xs font-bold animate-pulse" style={{ background: '#ef444430', border: '1px solid #ef444450', color: '#f87171' }}>
                             72-HOUR DEADLINE PASSED — RE-DISPATCH REQUIRED
                           </div>
                         );
@@ -2739,8 +2739,8 @@ export default function DispatchPage() {
           aria-label="Quick PSO"
           style={{
             right: '80px',
-            background: 'linear-gradient(180deg, #7c3aed 0%, #6b21a8 100%)',
-            borderColor: '#7c3aed',
+            background: 'linear-gradient(180deg, #a855f7 0%, #6b21a8 100%)',
+            borderColor: '#a855f7',
           }}
         >
           <Shield style={{ width: 20, height: 20 }} />
@@ -2827,7 +2827,7 @@ export default function DispatchPage() {
             {searchQuery && (
               <button type="button"
                 onClick={() => setSearchQuery('')}
-                className="absolute right-1.5 w-4 h-4 flex items-center justify-center text-[#6b7280] hover:text-white transition-colors"
+                className="absolute right-1.5 w-4 h-4 flex items-center justify-center text-[#888888] hover:text-white transition-colors"
                 title="Clear search"
               >
                 <X style={{ width: 10, height: 10 }} />
@@ -2905,8 +2905,8 @@ export default function DispatchPage() {
             className="toolbar-btn"
             title="Quick PSO Client Request (P)"
             style={{
-              background: 'linear-gradient(180deg, #7c3aed 0%, #6b21a8 100%)',
-              borderColor: '#7c3aed',
+              background: 'linear-gradient(180deg, #a855f7 0%, #6b21a8 100%)',
+              borderColor: '#a855f7',
               borderBottomColor: '#212121',
               borderRightColor: '#212121',
               color: '#ffffff',
@@ -2968,11 +2968,11 @@ export default function DispatchPage() {
                   return null;
                 })()}
                 {/* Feature 4: Unit availability counter — extended breakdown */}
-                <span className="flex items-center gap-2 text-[#6b7280]" title={`${unitAvailability.available} available · ${unitAvailability.enroute} enroute/dispatched · ${unitAvailability.onscene} on-scene · ${unitAvailability.oos} out-of-service`}>
+                <span className="flex items-center gap-2 text-[#888888]" title={`${unitAvailability.available} available · ${unitAvailability.enroute} enroute/dispatched · ${unitAvailability.onscene} on-scene · ${unitAvailability.oos} out-of-service`}>
                   <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: unitAvailability.available > 0 ? '#22c55e' : '#ef4444', boxShadow: `0 0 4px ${unitAvailability.available > 0 ? '#22c55e80' : '#ef444480'}` }} />
                   <span style={{ color: unitAvailability.available > 0 ? '#4ade80' : '#f87171' }}><strong>{unitAvailability.available}</strong> AVAIL</span>
                   {unitAvailability.enroute > 0 && <span className="text-amber-400"><strong>{unitAvailability.enroute}</strong> ENR</span>}
-                  {unitAvailability.onscene > 0 && <span className="text-blue-300"><strong>{unitAvailability.onscene}</strong> OS</span>}
+                  {unitAvailability.onscene > 0 && <span className="text-purple-400"><strong>{unitAvailability.onscene}</strong> OS</span>}
                   {unitAvailability.oos > 0 && <span className="text-rmpg-500"><strong>{unitAvailability.oos}</strong> OOS</span>}
                 </span>
                 {/* Sort mode toggle — cycle priority → time → status */}
@@ -3135,7 +3135,7 @@ export default function DispatchPage() {
         {/* Call List */}
         <div className="flex-1 overflow-y-auto p-2 space-y-1" style={{ scrollbarGutter: 'stable', scrollSnapType: 'y proximity', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' } as React.CSSProperties}>
           {filteredCalls.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 text-[#6b7280]">
+            <div className="flex flex-col items-center justify-center py-16 text-[#888888]">
               <div className="p-3.5 rounded-sm mb-3" style={{ background: '#0c0c0c50', border: '1px solid #2b2b2b30' }}>
                 <Phone className="w-7 h-7" style={{ opacity: 0.35 }} />
               </div>
@@ -3476,7 +3476,7 @@ export default function DispatchPage() {
                     {selectedCall.incident_type === 'pso_client_request' && !serveLink && (
                       <button type="button"
                         className="toolbar-btn"
-                        style={{ background: '#7c3aed20', borderColor: '#7c3aed50', color: '#a78bfa' }}
+                        style={{ background: '#a855f720', borderColor: '#a855f750', color: '#c084fc' }}
                         disabled={sendingToServe}
                         onClick={async () => {
                           setSendingToServe(true);
@@ -3535,7 +3535,7 @@ export default function DispatchPage() {
                         <button type="button" onClick={() => handleHoldCall(selectedCall.id)} className="toolbar-btn" style={{ color: '#f59e0b' }}>
                           ⏸ Hold
                         </button>
-                        <button type="button" onClick={() => handleStatusChange(selectedCall.id, 'cancelled')} className="toolbar-btn" style={{ color: '#ef7a7a' }}>
+                        <button type="button" onClick={() => handleStatusChange(selectedCall.id, 'cancelled')} className="toolbar-btn" style={{ color: '#f87171' }}>
                           <XCircle style={{ width: 10, height: 10 }} /> Cancel
                         </button>
                       </>
@@ -3660,7 +3660,7 @@ export default function DispatchPage() {
                       <div className="flex items-center gap-1 ml-auto">
                         <AlertTriangle style={{ width: 10, height: 10 }} className="text-red-400" />
                         {flags.map(f => (
-                          <span key={f} className="text-[8px] font-bold font-mono px-1 py-0" style={{ color: f === 'ARMED' || f === 'FELONY' ? '#fca5a5' : f === 'DV' ? '#fde047' : f === 'MH' ? '#c4b5fd' : f === 'PURSUIT' ? '#fb923c' : f === 'SAFETY' ? '#ef4444' : '#aaaaaa', background: 'rgba(220,38,38,0.1)', border: '1px solid rgba(220,38,38,0.25)' }}>
+                          <span key={f} className="text-[8px] font-bold font-mono px-1 py-0" style={{ color: f === 'ARMED' || f === 'FELONY' ? '#fca5a5' : f === 'DV' ? '#fde047' : f === 'MH' ? '#c084fc' : f === 'PURSUIT' ? '#fb923c' : f === 'SAFETY' ? '#ef4444' : '#aaaaaa', background: 'rgba(220,38,38,0.1)', border: '1px solid rgba(220,38,38,0.25)' }}>
                             {f}
                           </span>
                         ))}
@@ -4156,7 +4156,7 @@ export default function DispatchPage() {
                             <Navigation style={{ width: 9, height: 9 }} /> ETA
                           </span>
                           <span className="text-[11px] font-mono font-bold text-white tabular-nums">{routeInfo.eta}</span>
-                          <span className="text-[9px] font-mono text-[#6b7280] tabular-nums">{routeInfo.distance}</span>
+                          <span className="text-[9px] font-mono text-[#888888] tabular-nums">{routeInfo.distance}</span>
                           <span className="text-[8px] font-mono text-[#545454] ml-auto">{routeInfo.unitCallSign}</span>
                         </div>
                       )}
@@ -4598,7 +4598,7 @@ export default function DispatchPage() {
                         const hoursLeft = Math.max(0, 72 - elapsed / (3600000));
                         if (elapsed >= 72 * 3600000) {
                           return (
-                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-sm animate-pulse" style={{ background: '#dc262640', border: '1px solid #dc262660', color: '#f87171' }}>
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-sm animate-pulse" style={{ background: '#ef444440', border: '1px solid #ef444460', color: '#f87171' }}>
                               72HR OVERDUE — RE-DISPATCH REQUIRED
                             </span>
                           );
@@ -4727,7 +4727,7 @@ export default function DispatchPage() {
                             </span>
                           )}
                           {selectedCall.contract_id && (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded-sm" style={{ background: '#8b5cf615', border: '1px solid #8b5cf635', color: '#c4b5fd' }}>
+                            <span className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded-sm" style={{ background: '#a855f715', border: '1px solid #a855f735', color: '#c084fc' }}>
                               Contract: {selectedCall.contract_id}
                             </span>
                           )}
@@ -4790,8 +4790,8 @@ export default function DispatchPage() {
                               { key: 'weekend', label: 'Weekend', met: windows.weekend },
                             ] as const).map(({ key, label, met }) => (
                               <span key={key} className="inline-flex items-center gap-1 text-[9px] py-0.5 px-2 rounded-sm font-mono" style={{
-                                background: met ? '#22c55e10' : '#dc262610',
-                                border: `1px solid ${met ? '#22c55e30' : '#dc262630'}`,
+                                background: met ? '#22c55e10' : '#ef444410',
+                                border: `1px solid ${met ? '#22c55e30' : '#ef444430'}`,
                                 color: met ? '#86efac' : '#fca5a5',
                               }}>
                                 <span style={{ color: met ? '#4ade80' : '#ef4444', fontSize: '8px' }}>{met ? '●' : '○'}</span>
@@ -5190,7 +5190,7 @@ export default function DispatchPage() {
                         <div key={entry.id} className="group flex items-start gap-2 text-xs hover:bg-[#18181820] px-1.5 py-1 transition-colors relative" style={{ borderLeft: '2px solid #2b2b2b' }}>
                           {/* Step connector dot */}
                           <div className="absolute -left-[5px] top-[7px] w-2 h-2 rounded-full flex-shrink-0" style={{ background: actionColor, border: '2px solid #0c0c0c' }} />
-                          <span className="text-[#6b7280] font-mono whitespace-nowrap pl-1.5 tabular-nums" style={{ fontSize: '9px', minWidth: '60px' }} title={entry.created_at ? timeAgo(entry.created_at) : ''}>
+                          <span className="text-[#888888] font-mono whitespace-nowrap pl-1.5 tabular-nums" style={{ fontSize: '9px', minWidth: '60px' }} title={entry.created_at ? timeAgo(entry.created_at) : ''}>
                             {entry.created_at ? `${formatTime(entry.created_at)} (${timeAgo(entry.created_at)})` : '--'}
                           </span>
                           {editingTimelineId === String(entry.id) ? (
@@ -5211,10 +5211,10 @@ export default function DispatchPage() {
                             <>
                               <span className="text-[#e5e7eb] flex-1">{formatActivityDetails(entry.details || entry.description || '')}</span>
                               <div className="opacity-0 group-hover:opacity-100 flex items-center gap-0.5 transition-opacity">
-                                <button type="button" onClick={() => { setEditingTimelineId(String(entry.id)); setEditTimelineText(entry.details || entry.description || ''); }} className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center hover:text-[#4a9ede] text-[#6b7280] transition-colors" title="Edit">
+                                <button type="button" onClick={() => { setEditingTimelineId(String(entry.id)); setEditTimelineText(entry.details || entry.description || ''); }} className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center hover:text-[#d4a017] text-[#888888] transition-colors" title="Edit">
                                   <Edit3 style={{ width: 9, height: 9 }} />
                                 </button>
-                                <button type="button" onClick={() => handleDeleteTimeline(String(entry.id))} className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center hover:text-red-400 text-[#6b7280] transition-colors" title="Delete">
+                                <button type="button" onClick={() => handleDeleteTimeline(String(entry.id))} className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center hover:text-red-400 text-[#888888] transition-colors" title="Delete">
                                   <Trash2 style={{ width: 9, height: 9 }} />
                                 </button>
                               </div>
@@ -5252,7 +5252,7 @@ export default function DispatchPage() {
                     ) : (
                       (Array.isArray(selectedCall.notes) ? selectedCall.notes : []).map((note) => (
                       <div key={note.id} className="group flex items-start gap-2 text-xs px-2 py-1.5 rounded-sm transition-colors hover:bg-[#18181820]" style={{ borderLeft: '2px solid #88888840' }}>
-                        <span className="text-[#6b7280] font-mono whitespace-nowrap tabular-nums" style={{ fontSize: '9px', minWidth: '54px' }}>{formatTime(note.timestamp)}</span>
+                        <span className="text-[#888888] font-mono whitespace-nowrap tabular-nums" style={{ fontSize: '9px', minWidth: '54px' }}>{formatTime(note.timestamp)}</span>
                         <span className="text-[#d4a017] font-bold whitespace-nowrap text-[10px]">{note.author || 'System'}</span>
                         {editingNoteId === note.id ? (
                           <div className="flex-1 min-w-0 flex flex-col gap-1">
@@ -5267,8 +5267,8 @@ export default function DispatchPage() {
                             <span className="text-[#e5e7eb] leading-relaxed flex-1 min-w-0">{renderFormattedText(note.text || '')}{note.edited_at && <span className="text-[#545454] text-[8px] ml-1">(edited)</span>}</span>
                             {isAdminOrManager && (
                               <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-0.5 shrink-0">
-                                <button type="button" aria-label="Edit note" className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center text-[#6b7280] hover:text-[#a0a0a0] transition-colors" title="Edit note" onClick={() => { setEditingNoteId(note.id); setEditingNoteText(note.text || ''); }}><Pencil className="w-3 h-3" /></button>
-                                <button type="button" aria-label="Delete note" className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center text-[#6b7280] hover:text-[#ef4444] transition-colors" title="Delete note" onClick={() => handleDeleteNote(note.id)}><Trash2 className="w-3 h-3" /></button>
+                                <button type="button" aria-label="Edit note" className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center text-[#888888] hover:text-[#a0a0a0] transition-colors" title="Edit note" onClick={() => { setEditingNoteId(note.id); setEditingNoteText(note.text || ''); }}><Pencil className="w-3 h-3" /></button>
+                                <button type="button" aria-label="Delete note" className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center text-[#888888] hover:text-[#ef4444] transition-colors" title="Delete note" onClick={() => handleDeleteNote(note.id)}><Trash2 className="w-3 h-3" /></button>
                               </div>
                             )}
                           </>
@@ -5322,7 +5322,7 @@ export default function DispatchPage() {
                           onClick={handleBroadcastNote}
                           className="toolbar-btn self-end"
                           disabled={!broadcastNoteText.trim()}
-                          style={{ background: '#7c3aed20', borderColor: '#7c3aed50', color: '#a78bfa', padding: '2px 8px', fontSize: '9px' }}
+                          style={{ background: '#a855f720', borderColor: '#a855f750', color: '#c084fc', padding: '2px 8px', fontSize: '9px' }}
                           title="Send note to all assigned unit officers"
                         >
                           <Radio style={{ width: 9, height: 9 }} /> Broadcast
@@ -5420,7 +5420,7 @@ export default function DispatchPage() {
 
             </>
           ) : (
-            <div className="flex-1 flex items-center justify-center text-[#6b7280]">
+            <div className="flex-1 flex items-center justify-center text-[#888888]">
               <div className="text-center">
                 <div className="mx-auto mb-4 w-14 h-14 flex items-center justify-center rounded-sm" style={{ background: '#0c0c0c60', border: '1px solid #2b2b2b40' }}>
                   <Radio className="w-7 h-7" style={{ opacity: 0.3 }} />
@@ -5429,15 +5429,15 @@ export default function DispatchPage() {
                 <p className="text-[10px] text-[#545454] max-w-[220px] mx-auto leading-relaxed">Click a call card or use arrow keys to navigate</p>
                 <div className="flex items-center justify-center gap-4 mt-4 text-[9px] font-mono text-[#545454]">
                   <div className="flex items-center gap-1.5">
-                    <kbd className="px-1.5 py-0.5 border border-[#2b2b2b] rounded-sm bg-[#0c0c0c40] text-[#6b7280]">N</kbd>
+                    <kbd className="px-1.5 py-0.5 border border-[#2b2b2b] rounded-sm bg-[#0c0c0c40] text-[#888888]">N</kbd>
                     <span>New Call</span>
                   </div>
                   <div className="flex items-center gap-1.5">
-                    <kbd className="px-1.5 py-0.5 border border-[#2b2b2b] rounded-sm bg-[#0c0c0c40] text-[#6b7280]">P</kbd>
+                    <kbd className="px-1.5 py-0.5 border border-[#2b2b2b] rounded-sm bg-[#0c0c0c40] text-[#888888]">P</kbd>
                     <span>Quick PSO</span>
                   </div>
                   <div className="flex items-center gap-1.5">
-                    <kbd className="px-1.5 py-0.5 border border-[#2b2b2b] rounded-sm bg-[#0c0c0c40] text-[#6b7280]">R</kbd>
+                    <kbd className="px-1.5 py-0.5 border border-[#2b2b2b] rounded-sm bg-[#0c0c0c40] text-[#888888]">R</kbd>
                     <span>Refresh</span>
                   </div>
                 </div>
@@ -5587,7 +5587,7 @@ export default function DispatchPage() {
               {(['P1', 'P2', 'P3', 'P4'] as const).map(pri => (
                 <button key={pri} type="button" onClick={() => { handlePriorityChange(contextMenu.call.id, pri); setContextMenu(null); }}
                   className={`text-[9px] font-bold px-1.5 py-0.5 rounded-sm ${contextMenu.call.priority === pri ? 'ring-1 ring-white' : 'opacity-60 hover:opacity-100'}`}
-                  style={{ background: pri === 'P1' ? '#dc2626' : pri === 'P2' ? '#d97706' : pri === 'P3' ? '#888888' : '#555555', color: '#fff' }}>
+                  style={{ background: pri === 'P1' ? '#ef4444' : pri === 'P2' ? '#d97706' : pri === 'P3' ? '#888888' : '#555555', color: '#fff' }}>
                   {pri}
                 </button>
               ))}
@@ -6310,7 +6310,7 @@ export default function DispatchPage() {
             <span style={{ color: '#86efac' }}>AVAIL: {units.filter(u => u.status === 'available').length}</span>
           </span>
           <span style={{ color: '#aaaaaa' }}>DISP: {units.filter(u => u.status === 'dispatched').length}</span>
-          <span style={{ color: '#a78bfa' }}>ENR: {units.filter(u => u.status === 'enroute').length}</span>
+          <span style={{ color: '#c084fc' }}>ENR: {units.filter(u => u.status === 'enroute').length}</span>
           <span style={{ color: '#c084fc' }}>ONS: {units.filter(u => u.status === 'onscene').length}</span>
           <span style={{ color: '#666666' }}>OFF: {units.filter(u => u.status === 'off_duty').length}</span>
           <span style={{ color: '#666666' }}>|</span>
