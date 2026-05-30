@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import type { D1Database } from '@cloudflare/workers-types';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { normalizeDob } from '../utils/normalizeDob';
@@ -197,6 +198,216 @@ records.get('/reports/approval-queue', async (c) => {
   } catch (err) {
     console.error('GET /records/reports/approval-queue error:', err);
     return c.json([], 200);
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/*  Record links (cross-entity linkage)                                */
+/* ------------------------------------------------------------------ */
+//
+// Ported from the legacy `rmpg-flex` Worker so the manual "Link Record"
+// flow (client/src/components/LinkRecordModal.tsx +
+// LinkedRecordsSection.tsx) actually persists. On the legacy backend the
+// feature wrote zero rows for production's entire life (record_links
+// stayed empty, no record_linked audit entries) — see the linkage-drop
+// investigation. Routing /api/records/links to this rewrite handler via
+// the proxy makes created_by come from the DB-verified `user.id`, which
+// the legacy handler's NaN-prone `user.userId` bind could not guarantee.
+//
+// Live schema (verified): record_links(id, source_type, source_id TEXT,
+// target_type, target_id TEXT, relationship DEFAULT 'associated', notes,
+// created_by, created_at, UNIQUE(source_type, source_id, target_type,
+// target_id)). source_id/target_id are TEXT — bind ids as strings so the
+// comparison matches regardless of the numeric value the client sends.
+
+/** Resolve a human-readable label for a linked record. Best-effort: any
+ *  failure degrades to "<type> #<id>" rather than throwing the request. */
+async function getRecordLabel(
+  db: D1Database,
+  type: string,
+  id: string | number,
+): Promise<string> {
+  try {
+    switch (type) {
+      case 'person': {
+        const p = await queryFirst<{ first_name: string; last_name: string }>(
+          db, 'SELECT first_name, last_name FROM persons WHERE id = ?', id);
+        return p ? `${p.first_name} ${p.last_name}`.trim() : `Person #${id}`;
+      }
+      case 'vehicle': {
+        const v = await queryFirst<{ make: string; model: string; plate_number: string }>(
+          db, 'SELECT make, model, plate_number FROM vehicles_records WHERE id = ?', id);
+        return v
+          ? `${v.make || ''} ${v.model || ''} ${v.plate_number ? `(${v.plate_number})` : ''}`.trim() || `Vehicle #${id}`
+          : `Vehicle #${id}`;
+      }
+      case 'property': {
+        const pr = await queryFirst<{ name: string }>(
+          db, 'SELECT name FROM properties WHERE id = ?', id);
+        return pr?.name || `Property #${id}`;
+      }
+      case 'evidence': {
+        const e = await queryFirst<{ evidence_number: string; description: string }>(
+          db, 'SELECT evidence_number, description FROM evidence WHERE id = ?', id);
+        return e ? `${e.evidence_number || ''} ${e.description || ''}`.trim() || `Evidence #${id}` : `Evidence #${id}`;
+      }
+      default:
+        return `${type} #${id}`;
+    }
+  } catch {
+    return `${type} #${id}`;
+  }
+}
+
+interface RecordLinkRow {
+  id: number;
+  source_type: string;
+  source_id: string;
+  target_type: string;
+  target_id: string;
+  relationship: string;
+  notes: string | null;
+  created_by: number | null;
+  created_at: string;
+  created_by_name?: string | null;
+}
+
+// GET /records/links?type=<entity>&id=<id> — links where the entity is
+// either source OR target. Each row is enriched with the *other* side
+// (linked_type / linked_id / linked_label) so the panel renders without
+// a second round-trip.
+records.get('/links', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const type = c.req.query('type');
+    const id = c.req.query('id');
+    if (!type || !id) {
+      return c.json({ error: 'type and id query parameters are required' }, 400);
+    }
+    const links = await query<RecordLinkRow>(db, `
+      SELECT rl.*, u.full_name AS created_by_name
+      FROM record_links rl
+      LEFT JOIN users u ON rl.created_by = u.id
+      WHERE (rl.source_type = ? AND rl.source_id = ?)
+         OR (rl.target_type = ? AND rl.target_id = ?)
+      ORDER BY rl.created_at DESC
+      LIMIT 1000
+    `, type, id, type, id);
+
+    const enriched = await Promise.all(links.map(async (link) => {
+      const isSource = link.source_type === type && String(link.source_id) === String(id);
+      const linkedType = isSource ? link.target_type : link.source_type;
+      const linkedId = isSource ? link.target_id : link.source_id;
+      return {
+        ...link,
+        linked_type: linkedType,
+        linked_id: linkedId,
+        linked_label: await getRecordLabel(db, linkedType, linkedId),
+      };
+    }));
+    return c.json(enriched);
+  } catch (err) {
+    console.error('GET /records/links failed:', err);
+    return c.json({ error: 'Failed to get record links', detail: (err as Error)?.message }, 500);
+  }
+});
+
+// POST /records/links — create a cross-entity link.
+records.post('/links', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const user = c.get('user');
+    const body = await c.req.json<Record<string, unknown>>();
+    const source_type = body.source_type as string | undefined;
+    const target_type = body.target_type as string | undefined;
+    // ids are TEXT in the table; coerce to string so an integer id sent by
+    // the client stores identically to how GET (?id=2) later queries it.
+    const source_id = body.source_id != null ? String(body.source_id) : undefined;
+    const target_id = body.target_id != null ? String(body.target_id) : undefined;
+    const relationship = (body.relationship as string) || 'associated';
+    const notes = (body.notes as string) || null;
+
+    if (!source_type || !source_id || !target_type || !target_id) {
+      return c.json({ error: 'source_type, source_id, target_type, and target_id are required' }, 400);
+    }
+    if (source_type === target_type && source_id === target_id) {
+      return c.json({ error: 'Cannot link a record to itself' }, 400);
+    }
+
+    let result;
+    try {
+      result = await execute(db, `
+        INSERT INTO record_links (source_type, source_id, target_type, target_id, relationship, notes, created_by, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+      `, source_type, source_id, target_type, target_id, relationship, notes, user.id);
+    } catch (err) {
+      // UNIQUE(source_type, source_id, target_type, target_id) — the exact
+      // link already exists. Surface 409 so the client can message it
+      // distinctly instead of a generic failure.
+      if ((err as Error)?.message?.includes('UNIQUE constraint failed')) {
+        return c.json({ error: 'This link already exists' }, 409);
+      }
+      throw err;
+    }
+
+    const linkId = Number(result.meta?.last_row_id || 0);
+
+    // Audit trail (best-effort — a logging failure must not roll back the
+    // link the user just created). UTC timestamp per the storage standard.
+    try {
+      const sourceLabel = await getRecordLabel(db, source_type, source_id);
+      const targetLabel = await getRecordLabel(db, target_type, target_id);
+      await execute(db, `
+        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+      `, user.id, 'record_linked', 'record_link', linkId,
+        `Linked ${source_type} "${sourceLabel}" to ${target_type} "${targetLabel}"`,
+        c.req.header('CF-Connecting-IP') || c.req.header('x-forwarded-for') || 'unknown');
+    } catch (err) {
+      console.error('record_linked audit log failed (non-fatal):', err);
+    }
+
+    const created = await queryFirst<RecordLinkRow>(db, `
+      SELECT rl.*, u.full_name AS created_by_name
+      FROM record_links rl
+      LEFT JOIN users u ON rl.created_by = u.id
+      WHERE rl.id = ?
+    `, linkId);
+    return c.json(created, 201);
+  } catch (err) {
+    console.error('POST /records/links failed:', err);
+    return c.json({ error: 'Failed to create record link', detail: (err as Error)?.message }, 500);
+  }
+});
+
+// DELETE /records/links/:id — remove a link.
+records.delete('/links/:id', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const user = c.get('user');
+    const id = Number(c.req.param('id'));
+    if (!Number.isFinite(id)) return c.json({ error: 'Invalid link id' }, 400);
+
+    const link = await queryFirst<RecordLinkRow>(db, 'SELECT * FROM record_links WHERE id = ?', id);
+    if (!link) return c.json({ error: 'Link not found' }, 404);
+
+    await execute(db, 'DELETE FROM record_links WHERE id = ?', id);
+
+    try {
+      await execute(db, `
+        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
+      `, user.id, 'record_unlinked', 'record_link', id,
+        `Removed link between ${link.source_type} #${link.source_id} and ${link.target_type} #${link.target_id}`,
+        c.req.header('CF-Connecting-IP') || c.req.header('x-forwarded-for') || 'unknown');
+    } catch (err) {
+      console.error('record_unlinked audit log failed (non-fatal):', err);
+    }
+
+    return c.json({ success: true });
+  } catch (err) {
+    console.error('DELETE /records/links failed:', err);
+    return c.json({ error: 'Failed to delete record link', detail: (err as Error)?.message }, 500);
   }
 });
 

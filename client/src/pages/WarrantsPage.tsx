@@ -1064,8 +1064,20 @@ export default function WarrantsPage() {
   const fetchAutoPollStatus = useCallback(async () => {
     setAutoPollLoading(true);
     try {
-      const res = await apiFetch<AutoPollStatus>('/warrants/utah-search/auto-poll-status');
-      setAutoPollStatus(res);
+      const res = await apiFetch<Partial<AutoPollStatus>>('/warrants/utah-search/auto-poll-status');
+      // Normalize at the data boundary: the API contract has drifted (the CF
+      // port of /auto-poll-status can return a slim status object missing the
+      // watch-tab arrays). TS types don't validate runtime shape, so coerce to
+      // a complete AutoPollStatus here — this single guard protects every
+      // reader in the watch tab from `undefined.length` crashes.
+      setAutoPollStatus({
+        syncStatus: res?.syncStatus ?? { lastSync: null, warrantCount: 0, status: 'unknown', lastError: null },
+        blocked: res?.blocked ?? false,
+        runs: res?.runs ?? [],
+        flaggedPersons: res?.flaggedPersons ?? [],
+        recentHits: res?.recentHits ?? [],
+        totalPersons: res?.totalPersons ?? 0,
+      });
     } catch { /* error handled */ }
     finally { setAutoPollLoading(false); }
   }, []);
