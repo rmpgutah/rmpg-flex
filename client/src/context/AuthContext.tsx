@@ -228,12 +228,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           return;
         }
 
+        // The live /api/auth/refresh is served by the legacy worker, which
+        // looks up `sessions WHERE session_id = ? AND refresh_token_hash = ?`.
+        // Omitting sessionId makes that WHERE clause match zero rows → 401 on
+        // every refresh → forced re-login every ~15 min mid-shift. Send it.
+        // (refresh_token spelling kept for the /src/ worker should it ever serve this.)
+        const sessionId = localStorage.getItem(SESSION_ID_KEY);
         const res = await fetchWithTimeout('/api/auth/refresh', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-          // Send both spellings so the request works against either the legacy
-          // worker (reads `refreshToken`) or the /src/ worker (reads `refresh_token`).
-          body: JSON.stringify({ refreshToken, refresh_token: refreshToken }),
+          body: JSON.stringify({ refreshToken, refresh_token: refreshToken, sessionId }),
         });
 
         if (res.ok) {
@@ -342,11 +346,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           // Token expired — try refresh
           const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
           if (refreshToken) {
+            // legacy refresh requires sessionId in the WHERE clause (see the
+            // scheduled-refresh path above) — without it this 401s on boot
+            // and logs the user straight back out.
+            const sessionId = localStorage.getItem(SESSION_ID_KEY);
             const refreshRes = await fetchWithTimeout('/api/auth/refresh', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-              // Both spellings — legacy worker reads `refreshToken`, /src/ reads `refresh_token`.
-              body: JSON.stringify({ refreshToken, refresh_token: refreshToken }),
+              body: JSON.stringify({ refreshToken, refresh_token: refreshToken, sessionId }),
             });
 
             if (gen !== generationRef.current) return; // stale

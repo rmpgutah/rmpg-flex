@@ -275,17 +275,26 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
   // becomes the next maneuver as the unit drives — so we speak whenever that
   // instruction CHANGES (the moment it becomes current). Throttled to one
   // utterance per distinct instruction so we don't repeat on every re-render.
+  //
+  // AUDIBLE nav is gated to the EN-ROUTE phase only: it starts speaking when
+  // the call goes 'enroute' and stops once the unit is 'onscene' (and never
+  // speaks while pending/dispatched/cleared). The route line + on-screen
+  // maneuver banner still render at any status — this gate is voice-only, so
+  // simply opening the dispatch screen no longer triggers spoken directions.
+  // Resetting the throttle ref outside en-route means the first instruction is
+  // announced the instant status flips to 'enroute'.
   const lastSpokenRef = useRef<string>('');
   useEffect(() => {
+    const isEnRoute = call?.status === 'enroute';
     const current = activeRoute?.steps?.[0]?.instruction?.trim();
-    if (!current) { lastSpokenRef.current = ''; return; }
+    if (!isEnRoute || !current) { lastSpokenRef.current = ''; return; }
     if (current === lastSpokenRef.current) return;
     lastSpokenRef.current = current;
     // distanceText gives the lead-in ("In 0.3 mi, turn left …") for natural cadence.
     const dist = activeRoute?.steps?.[0]?.distanceText;
     const phrase = dist ? `In ${dist}, ${current}` : current;
     void speak(phrase, 'moderate', 'conversational');
-  }, [activeRoute?.steps]);
+  }, [activeRoute?.steps, call?.status]);
 
   // Cleanup: remove persistent markers + unregister map instance on unmount
   useEffect(() => {
