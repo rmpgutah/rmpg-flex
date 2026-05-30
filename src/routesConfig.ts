@@ -88,6 +88,7 @@ import ocr from './routes/ocr';
 import skiptracer from './routes/skiptracer';
 import shiftPlans from './routes/shiftPlans';
 import court from './routes/court';
+import dlRecords from './routes/dlRecords';
 import serve from './routes/serve';
 import settings from './routes/settings';
 import reports from './routes/reports';
@@ -232,6 +233,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Connection-graph analyst tool: /search, /graph, /path, /investigations CRUD. Node types incl. call (CFS) + report (supplemental_reports). Backed by connection_investigations (live D1, migration 0043).' },
   { prefix: '/api/court', router: court, auth: 'required',
     note: 'Court events + subpoenas (single-table); reminder fan-out deferred' },
+  { prefix: '/api/dl-records', router: dlRecords, auth: 'required',
+    note: 'Local DL store CRUD over dl_records + dl_addresses. /verify + /ocr-scan (external APIs) stay on legacy — proxy routes only the bare path + numeric :id here.' },
   { prefix: '/api/field-interviews', router: fieldInterviews, auth: 'required' },
   { prefix: '/api/fleet', router: fleet, auth: 'required',
     note: 'List/analytics/detail + create/update/soft-delete. Other fleet sub-paths (fuel/maintenance/inspections/personnel-notes/archive/assign) still live on legacy.' },
