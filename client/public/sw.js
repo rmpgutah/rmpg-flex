@@ -94,7 +94,8 @@
 // v633: police-format disposition in the call detail panel — "RTF — Report
 //       Taken" (code + label) via new formatDispositionCode(), instead of the
 //       label alone. Shared humanizeDisposition left untouched.
-const CACHE_NAME = 'rmpg-flex-v633';
+// v634: copy-to-clipboard button on the call detail-panel Location field.
+const CACHE_NAME = 'rmpg-flex-v634';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

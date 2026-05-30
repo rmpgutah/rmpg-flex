@@ -2261,7 +2261,20 @@ export default function DispatchPage() {
               {/* Key info fields */}
               <div className="space-y-2">
                 <div className="panel-inset p-3">
-                  <div className="field-label mb-1">Location</div>
+                  <div className="field-label mb-1 flex items-center justify-between">
+                    <span>Location</span>
+                    {selectedCall.location && (
+                      <button
+                        type="button"
+                        title="Copy address"
+                        aria-label="Copy address"
+                        onClick={(e) => { e.stopPropagation(); navigator.clipboard?.writeText(selectedCall.location || ''); addToast('Address copied', 'success'); }}
+                        className="text-rmpg-500 hover:text-brand-gold-500 transition-colors"
+                      >
+                        <Copy className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
                   <div className="text-sm text-rmpg-200">{selectedCall.location || 'Not specified'}</div>
                   {selectedCall.cross_street && (
                     <div className="text-xs text-rmpg-400 mt-0.5">Near: {selectedCall.cross_street}</div>
