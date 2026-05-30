@@ -126,7 +126,7 @@ export async function gatherAwareness(db: D1Database, channelId: number, speaker
 
 // ─── CAD lookups ────────────────────────────────────────────
 
-export type LookupType = 'plate' | 'person' | 'warrant';
+export type LookupType = 'plate' | 'person' | 'warrant' | 'premise' | 'vin';
 export interface LookupRequest { type: LookupType; query: string }
 
 const norm = (s: string) => s.trim().toUpperCase().replace(/[^A-Z0-9 ]/g, '').trim();
@@ -141,11 +141,95 @@ export async function runLookup(db: D1Database, req: LookupRequest): Promise<str
     if (req.type === 'plate') return await lookupPlate(db, req.query);
     if (req.type === 'person') return await lookupPerson(db, req.query);
     if (req.type === 'warrant') return await lookupWarrant(db, req.query);
+    if (req.type === 'premise') return await lookupPremiseText(db, req.query);
+    if (req.type === 'vin') return await lookupVin(db, req.query);
     return null;
   } catch (err) {
     console.error('[awareness] lookup failed:', (err as Error)?.message);
     return null;
   }
+}
+
+// ─── Premise hazards (officer-safety, proactive + on request) ───
+interface PremiseHazardRow {
+  alert_type: string | null; alert_level: string | null; title: string;
+  description: string | null; flags: string | null;
+}
+
+/** Active, unexpired premise alerts whose address fuzzy-matches the query. */
+async function premiseRows(db: D1Database, address: string): Promise<PremiseHazardRow[]> {
+  const a = address.trim();
+  if (a.length < 3) return [];
+  // Match on a normalized leading street token so "200 S Main St" hits a
+  // "200 S Main" alert. We compare on the first ~12 chars of the address.
+  const key = `%${a.slice(0, 24).replace(/\s+/g, '%')}%`;
+  return query<PremiseHazardRow>(
+    db,
+    `SELECT alert_type, alert_level, title, description, flags
+     FROM premise_alerts
+     WHERE active = 1
+       AND (expires_at IS NULL OR datetime(expires_at) > datetime('now'))
+       AND address LIKE ?
+     ORDER BY CASE LOWER(COALESCE(alert_level,'')) WHEN 'critical' THEN 0 WHEN 'high' THEN 1 WHEN 'warning' THEN 2 ELSE 3 END
+     LIMIT 3`,
+    key,
+  ).catch(() => []);
+}
+
+function formatPremise(rows: PremiseHazardRow[]): string {
+  return rows.map((r) => {
+    const lvl = r.alert_level && /crit|high/i.test(r.alert_level) ? `${r.alert_level.toUpperCase()} ` : '';
+    let flags = '';
+    try {
+      const f = r.flags ? JSON.parse(r.flags) : [];
+      if (Array.isArray(f) && f.length) flags = ` [${f.join(', ')}]`;
+    } catch { /* flags not JSON — ignore */ }
+    return `${lvl}${r.title}${r.description ? ` — ${r.description}` : ''}${flags}`;
+  }).join('; ');
+}
+
+/** Request-driven premise lookup (a unit asked "any alerts at <address>"). */
+async function lookupPremiseText(db: D1Database, raw: string): Promise<string> {
+  const rows = await premiseRows(db, raw);
+  if (!rows.length) return `No premise alerts on file for ${raw.trim()}.`;
+  return `Premise alert${rows.length > 1 ? 's' : ''} at ${raw.trim()}: ${formatPremise(rows)}. Use caution.`;
+}
+
+/**
+ * PROACTIVE officer-safety check — run unprompted when a unit goes "out at" a
+ * location. Returns a SHORT spoken warning to prepend to the reply, or null
+ * when the address is clean. Never throws (rides the relay tail).
+ */
+export async function checkPremiseHazards(db: D1Database, address: string | null | undefined): Promise<string | null> {
+  if (!address) return null;
+  const rows = await premiseRows(db, address).catch(() => []);
+  if (!rows.length) return null;
+  return `Be advised — ${formatPremise(rows)}. Use caution.`;
+}
+
+async function lookupVin(db: D1Database, raw: string): Promise<string> {
+  const vin = norm(raw).replace(/\s+/g, '');
+  if (vin.length < 6) return `Need a fuller VIN to run — say again at least the last 6.`;
+  // Match a full VIN or a partial (last-N) — officers often read partials.
+  const v = await queryFirst<{
+    vin: string | null; plate_number: string | null; make: string | null; model: string | null;
+    year: number | null; color: string | null; is_stolen: number | null; registered_owner: string | null;
+  }>(
+    db,
+    `SELECT vin, plate_number, make, model, year, color, is_stolen, registered_owner
+     FROM vehicles_records
+     WHERE UPPER(REPLACE(vin,' ','')) = ? OR UPPER(REPLACE(vin,' ','')) LIKE ?
+     ORDER BY datetime(COALESCE(updated_at, created_at)) DESC LIMIT 1`,
+    vin, `%${vin}`,
+  );
+  if (!v) return `No vehicle on file for VIN ending ${vin.slice(-6)}.`;
+  const desc = [v.year, v.color, v.make, v.model].filter(Boolean).join(' ') || 'vehicle';
+  const parts = [
+    `VIN ${v.vin || ''} comes back ${desc}${v.plate_number ? `, plate ${v.plate_number}` : ''}.`,
+    v.registered_owner ? `Registered owner ${v.registered_owner}.` : null,
+    v.is_stolen ? 'FLAGGED STOLEN — confirm and use caution.' : 'Not flagged stolen.',
+  ].filter(Boolean);
+  return parts.join(' ');
 }
 
 async function lookupPlate(db: D1Database, raw: string): Promise<string> {
@@ -255,11 +339,11 @@ async function lookupWarrant(db: D1Database, raw: string): Promise<string> {
 //                     the dispatcher just acknowledges verbally instead.
 // ============================================================
 
-export type ActionType = 'set_unit_status' | 'create_call';
+export type ActionType = 'set_unit_status' | 'create_call' | 'clear_call' | 'dispatch_backup';
 
 export interface ActionRequest {
   type: ActionType;
-  /** Unit call-sign the action concerns (set_unit_status). */
+  /** Unit call-sign the action concerns (set_unit_status / clear_call / dispatch_backup). */
   unit?: string;
   /** Radio status word/10-code the unit reported (set_unit_status). */
   status?: string;
@@ -271,6 +355,10 @@ export interface ActionRequest {
   location_address?: string;
   description?: string;
   caller_name?: string;
+  /** Call number to clear/close, or to attach backup to (clear_call / dispatch_backup). */
+  call_number?: string;
+  /** Disposition/outcome when clearing a call (clear_call). */
+  disposition?: string;
 }
 
 export interface ActionResult {
@@ -337,6 +425,19 @@ export function evaluateActionPolicy(req: ActionRequest): { allow: boolean; reas
     }
     return { allow: true };
   }
+  if (req.type === 'clear_call') {
+    if (!req.call_number || !req.call_number.trim()) {
+      return { allow: false, reason: 'no call number given' };
+    }
+    return { allow: true };
+  }
+  if (req.type === 'dispatch_backup') {
+    // Need SOMETHING to attach backup to — the requesting unit or a call.
+    if (!req.unit && !req.call_number) {
+      return { allow: false, reason: 'no unit or call to back up' };
+    }
+    return { allow: true };
+  }
   return { allow: false, reason: 'unknown action' };
 }
 
@@ -355,6 +456,8 @@ export async function runAction(env: Bindings, db: D1Database, req: ActionReques
   try {
     if (req.type === 'set_unit_status') return await setUnitStatus(db, req);
     if (req.type === 'create_call') return await createCall(env, db, req);
+    if (req.type === 'clear_call') return await clearCall(db, req);
+    if (req.type === 'dispatch_backup') return await dispatchBackup(db, req);
     return null;
   } catch (err) {
     console.error('[awareness] action failed:', (err as Error)?.message);
@@ -452,5 +555,95 @@ async function createCall(env: Bindings, db: D1Database, req: ActionRequest): Pr
   return {
     spoken: `Copy, I've created ${callNumber}, ${priority}, ${incidentType} at ${address}${beat}.`,
     summary: `call_created:${callNumber}`,
+  };
+}
+
+// ── Clear / close a call (10-8 from scene, disposition) ──
+const CLOSED_STATES = new Set(['cleared', 'closed', 'archived', 'cancelled', 'canceled']);
+async function clearCall(db: D1Database, req: ActionRequest): Promise<ActionResult | null> {
+  const cn = (req.call_number || '').trim();
+  if (!cn) return null;
+  const call = await queryFirst<{ id: number; call_number: string; status: string | null }>(
+    db, 'SELECT id, call_number, status FROM calls_for_service WHERE UPPER(call_number) = UPPER(?) LIMIT 1', cn,
+  );
+  if (!call) return null; // never invent a call — defer to a verbal "say again"
+  if (call.status && CLOSED_STATES.has(call.status)) {
+    return { spoken: `${call.call_number} is already cleared.`, summary: `call_clear_noop:${call.call_number}` };
+  }
+  const disp = req.disposition?.trim() || null;
+  await execute(
+    db,
+    `UPDATE calls_for_service
+       SET previous_status = status, status = 'cleared',
+           cleared_at = datetime('now'), status_changed_at = datetime('now'),
+           updated_at = datetime('now'), disposition = COALESCE(?, disposition)
+     WHERE id = ?`,
+    disp, call.id,
+  );
+  return {
+    spoken: `Copy, ${call.call_number} cleared${disp ? `, disposition ${disp}` : ''}.`,
+    summary: `call_cleared:${call.call_number}`,
+  };
+}
+
+// ── Dispatch the nearest available unit as backup (10-78) ──
+async function dispatchBackup(db: D1Database, req: ActionRequest): Promise<ActionResult | null> {
+  const reqUnit = (req.unit || '').trim();
+  let callId: number | null = null;
+  let callNumber: string | null = null;
+  let requestingBeat: string | null = null;
+
+  if (req.call_number?.trim()) {
+    const c = await queryFirst<{ id: number; call_number: string | null }>(
+      db, 'SELECT id, call_number FROM calls_for_service WHERE UPPER(call_number) = UPPER(?) LIMIT 1', req.call_number.trim(),
+    );
+    if (c) { callId = c.id; callNumber = c.call_number; }
+  }
+  if (reqUnit) {
+    const u = await queryFirst<{ current_call_id: number | null; assigned_beat: string | null }>(
+      db, 'SELECT current_call_id, assigned_beat FROM units WHERE UPPER(call_sign) = UPPER(?) LIMIT 1', reqUnit,
+    );
+    if (u) {
+      requestingBeat = u.assigned_beat;
+      if (callId == null && u.current_call_id != null) callId = u.current_call_id;
+    }
+  }
+
+  // Closest available responder — prefer the requesting unit's beat, never the
+  // requester itself. (Drive-time ranking is a client/Matrix concern; on the
+  // server we use beat affinity as a cheap proxy.)
+  const candidate = await queryFirst<{ call_sign: string }>(
+    db,
+    `SELECT call_sign FROM units
+     WHERE status = 'available' AND call_sign IS NOT NULL AND UPPER(call_sign) <> UPPER(?)
+     ORDER BY CASE WHEN assigned_beat = ? THEN 0 ELSE 1 END, call_sign
+     LIMIT 1`,
+    reqUnit || ' ', requestingBeat ?? ' ',
+  );
+  if (!candidate) {
+    return { spoken: 'No units available for backup right now — stand by.', summary: 'backup_none' };
+  }
+  if (callId != null) {
+    await execute(
+      db,
+      `UPDATE units SET status = 'dispatched', current_call_id = ?, last_status_change = datetime('now'), updated_at = datetime('now') WHERE UPPER(call_sign) = UPPER(?)`,
+      callId, candidate.call_sign,
+    );
+    if (!callNumber) {
+      const c = await queryFirst<{ call_number: string | null }>(db, 'SELECT call_number FROM calls_for_service WHERE id = ?', callId);
+      callNumber = c?.call_number ?? null;
+    }
+  } else {
+    await execute(
+      db,
+      `UPDATE units SET status = 'dispatched', last_status_change = datetime('now'), updated_at = datetime('now') WHERE UPPER(call_sign) = UPPER(?)`,
+      candidate.call_sign,
+    );
+  }
+  const assist = reqUnit ? ` to assist ${reqUnit}` : '';
+  const onCall = callNumber ? ` on ${callNumber}` : '';
+  return {
+    spoken: `${candidate.call_sign}, respond for backup${assist}${onCall}.`,
+    summary: `backup_dispatched:${candidate.call_sign}`,
   };
 }

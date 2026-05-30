@@ -42,7 +42,7 @@ import {
   bytesToBase64,
   type DispatcherTurn,
 } from '../utils/aiDispatcher';
-import { gatherAwareness, runLookup, runAction } from '../utils/dispatcherAwareness';
+import { gatherAwareness, runLookup, runAction, checkPremiseHazards } from '../utils/dispatcherAwareness';
 import { getRadioSettings, type RadioSettings } from '../utils/radioSettings';
 import type { DispatcherOptions } from '../utils/aiDispatcher';
 
@@ -466,6 +466,52 @@ export class VoiceHubDO {
       }
     }
 
+    // 3c. PROACTIVE OFFICER SAFETY — when a unit logs out at a location (or a
+    // new call is created), check premise_alerts for known hazards at that
+    // address and PREPEND an unprompted warning ("be advised — prior weapons
+    // call…"). The officer may not know to ask; dispatch warns anyway.
+    if (settings.safety_alerts_enabled && actionIntent && !actionIntent.startsWith('action_refused')) {
+      const loc = decision?.action?.location || decision?.action?.location_address || null;
+      if (loc) {
+        const warn = await checkPremiseHazards(db, loc).catch(() => null);
+        if (warn) replyText = `${warn} ${replyText}`.trim();
+      }
+    }
+
+    // 3d. OFFICER VOICE STRESS / DURESS CHECK (operator-tunable safety knob).
+    // The model rates stress/duress on every transmission; a configured duress
+    // code phrase is a deterministic override. On escalation we ALWAYS fire a
+    // silent console alert (dispatch_safety_alert). For an OVERT emergency we
+    // also answer urgently on-air; for a COVERT duress-code hit we keep the
+    // spoken reply normal so a nearby suspect isn't tipped off.
+    let safetyTag = '';
+    if (settings.stress_monitoring_enabled) {
+      const safety = decision?.safety;
+      const code = settings.duress_code.trim().toLowerCase();
+      const codeHit = code.length > 0 && transcript.toLowerCase().includes(code);
+      const duress = !!safety?.duress || codeHit;
+      const high = safety?.stress === 'high' || duress;
+      const covert = codeHit && !safety?.duress; // signaled by code word, not overtly
+      if (duress) safetyTag = 'safety:duress';
+      else if (high) safetyTag = 'safety:high';
+      else if (safety?.stress === 'elevated') safetyTag = 'safety:elevated';
+
+      if (duress || high) {
+        if (!covert && !/\b(copy|hold|en\s?route|rolling|help|stand by|on the way)\b/i.test(replyText)) {
+          replyText = `${speaker?.unit_label || 'Unit'}, dispatch copies — help is rolling, all units hold your traffic. ${replyText}`.trim();
+        }
+        this.broadcast({
+          type: 'dispatch_safety_alert',
+          channel_id: this.refId,
+          source_tx_id: sourceTxId,
+          unit: speaker?.unit_label ?? null,
+          level: duress ? 'duress' : 'high',
+          covert,
+          reason: safety?.reason ?? (codeHit ? 'duress code spoken' : 'high stress in transmission'),
+        });
+      }
+    }
+
     // 3b. GUARANTEE: a unit who addressed dispatch directly is never met with
     // silence. If the model produced nothing usable, fall back to a
     // deterministic acknowledgment. Undirected chatter the model declined to
@@ -489,7 +535,7 @@ export class VoiceHubDO {
       `INSERT INTO radio_transmissions (channel_id, user_id, unit_label, transmitted_at, duration_seconds, transcript, tags)
        VALUES (?, NULL, ?, datetime('now'), ?, ?, ?)`,
       this.refId, settings.ai_dispatch_callsign || DISPATCH_CALLSIGN, durationSec, replyText,
-      `ai:${intent}${actionIntent ? `;${actionIntent}` : ''}`,
+      `ai:${intent}${actionIntent ? `;${actionIntent}` : ''}${safetyTag ? `;${safetyTag}` : ''}`,
     );
     const dispId = Number(res.meta.last_row_id);
     await this.env.UPLOADS.put(`radio-audio/${dispId}.webm`, audioBytes, {

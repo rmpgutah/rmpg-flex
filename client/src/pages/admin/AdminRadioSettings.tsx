@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Loader2, Save, RotateCcw, Bot, Mic, SlidersHorizontal, Radio as RadioIcon, Volume2 } from 'lucide-react';
+import { Loader2, Save, RotateCcw, Bot, Mic, SlidersHorizontal, Radio as RadioIcon, Volume2, ShieldAlert } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { asArray } from '../../utils/asArray';
 
@@ -23,6 +23,9 @@ interface RadioSettings {
   auto_record: boolean;
   auto_transcribe: boolean;
   recording_retention_days: number;
+  safety_alerts_enabled: boolean;
+  stress_monitoring_enabled: boolean;
+  duress_code: string;
   default_channel_id: number | null;
   default_operator_tab: string;
   notif_enabled_default: boolean;
@@ -261,6 +264,17 @@ export default function AdminRadioSettings() {
           <input aria-label="Recording retention days" type="number" min={0} max={3650} className={`${inputCls} w-24 font-mono`} value={settings.recording_retention_days} onChange={(e) => set('recording_retention_days', parseInt(e.target.value, 10) || 0)} />
         </div>
         <div className="text-[10px] text-gray-600 -mt-1">Old recordings + audio are purged on the 4-hourly cron.</div>
+      </GroupCard>
+
+      {/* ── Officer safety ── */}
+      <GroupCard icon={<ShieldAlert size={14} className="text-[#d4a017]" />} title="Officer Safety">
+        <Toggle label="Premise hazard alerts" hint="When a unit goes 'out at' a location, auto-warn of known premise hazards." checked={settings.safety_alerts_enabled} onChange={(v) => set('safety_alerts_enabled', v)} />
+        <Toggle label="Voice stress / duress monitoring" hint="The AI rates stress on each transmission and escalates emergencies + flags the console." checked={settings.stress_monitoring_enabled} onChange={(v) => set('stress_monitoring_enabled', v)} />
+        <div className="flex items-center justify-between gap-3 py-1">
+          <div className="text-[11px] text-gray-300">Duress code phrase <span className="text-gray-600">(optional)</span></div>
+          <input aria-label="Duress code phrase" type="text" maxLength={64} placeholder="e.g. signal one hundred" className={`${inputCls} w-56`} value={settings.duress_code} onChange={(e) => set('duress_code', e.target.value)} />
+        </div>
+        <div className="text-[10px] text-gray-600 -mt-1">If a unit speaks this phrase, dispatch silently flags a duress alert on the console without announcing it on-air.</div>
       </GroupCard>
 
       {/* ── Channel defaults & operator UX ── */}
