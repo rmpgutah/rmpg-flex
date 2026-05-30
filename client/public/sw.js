@@ -77,7 +77,9 @@
 //       Spillman sector code ("SL1") instead of the raw numeric sector_id,
 //       prefix the beat code to its name, and add the Area line. The codes
 //       were already on the wire from /districts; the client had discarded them.
-const CACHE_NAME = 'rmpg-flex-v627';
+// v628: surface zone › beat names on the queue CallCard (under the address) —
+//       the dispatch code was badged but the human geography wasn't shown.
+const CACHE_NAME = 'rmpg-flex-v628';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

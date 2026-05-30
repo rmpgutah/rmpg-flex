@@ -429,6 +429,19 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
               {call.client_name || (call as any).pso_requestor_name}
             </div>
           )}
+          {/* Police-format geography: zone › beat names (the dispatch CODE is
+              already badged at top, so surface the human zone/beat context the
+              code alone doesn't convey). Zero extra requests — these fields ride
+              on the call record via LIST_VIEW_COLUMNS. */}
+          {(call.zone_name || call.beat_name || call.beat_id) && (() => {
+            const beatLabel = [call.beat_id, call.beat_name].filter(Boolean).join(' ');
+            const parts = [call.zone_name, beatLabel].filter(Boolean);
+            return parts.length ? (
+              <div className="text-[9px] text-rmpg-500 truncate" title={parts.join(' › ')}>
+                {parts.join(' › ')}
+              </div>
+            ) : null;
+          })()}
         </div>
       </div>
 
