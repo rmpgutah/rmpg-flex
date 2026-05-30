@@ -12,6 +12,8 @@ import LinkedRecordsSection from '../../components/LinkedRecordsSection';
 import CollapsibleSection from '../../components/CollapsibleSection';
 import RecordField from '../../components/records/RecordField';
 import FieldGrid from '../../components/records/FieldGrid';
+import RecordBadge from '../../components/records/RecordBadge';
+import RecordHero from '../../components/records/RecordHero';
 import type { RecordEntityType } from '../../types';
 
 // ── Types ──────────────────────────────────────
@@ -319,19 +321,29 @@ export function BusinessTabDetail({ state }: { state: BusinessTabState }) {
 
   const b = selectedBusiness;
   return (
-    <div className="h-full overflow-auto p-4 space-y-3">
-      {/* Header */}
-      <div className="flex items-center gap-3 mb-3">
-        <div className="w-12 h-12 rounded-sm flex items-center justify-center text-lg font-bold bg-purple-900/30 text-purple-400 border border-purple-700/50">
-          {(b.name || '')[0]?.toUpperCase()}
-        </div>
-        <div>
-          <h2 className="text-lg font-bold text-white">{b.name}</h2>
-          {b.dba_name && <p className="text-[10px] text-amber-400">DBA: {b.dba_name}</p>}
-          <p className="text-[10px] text-rmpg-400">{b.business_type?.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())} · {b.industry || 'N/A'}</p>
-        </div>
+    <div className="h-full flex flex-col overflow-hidden">
+      {/* Hero identity band */}
+      <div className="border-b border-rmpg-600 bg-surface-sunken flex-shrink-0">
+        <RecordHero
+          name={b.name || 'BUSINESS'}
+          subtitle={
+            <span className="flex flex-col gap-0.5">
+              {b.dba_name && <span className="text-amber-400">DBA: {b.dba_name}</span>}
+              <span>{b.business_type?.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())} · {b.industry || 'N/A'}</span>
+            </span>
+          }
+          flags={b.flags}
+          tone="gold"
+        >
+          {b.status && (
+            <RecordBadge tone={b.status === 'active' ? 'green' : 'gray'} glow={false}>
+              {b.status.toUpperCase()}
+            </RecordBadge>
+          )}
+        </RecordHero>
       </div>
 
+      <div className="flex-1 overflow-auto p-4 space-y-3">
       <CollapsibleSection title="Business Information" icon={Briefcase} defaultOpen>
         <FieldGrid cols={2}>
           <RecordField label="EIN" value={b.ein} mono copyable showEmpty />
@@ -373,6 +385,7 @@ export function BusinessTabDetail({ state }: { state: BusinessTabState }) {
 
       <div className="panel-beveled p-3 bg-surface-base">
         <FileAttachments entityType="business" entityId={b.id} />
+      </div>
       </div>
     </div>
   );

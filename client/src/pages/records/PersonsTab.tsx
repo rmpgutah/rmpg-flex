@@ -40,6 +40,9 @@ import CollapsibleSection from '../../components/CollapsibleSection';
 import RecordField from '../../components/records/RecordField';
 import FieldGrid from '../../components/records/FieldGrid';
 import RecordBadge from '../../components/records/RecordBadge';
+import RecordHero from '../../components/records/RecordHero';
+import RecordAvatar from '../../components/records/RecordAvatar';
+import { recordPosture } from '../../components/records/recordVisuals';
 import type { Person, RecordAlert, RecordEntityType } from '../../types';
 import type { PersonFormData } from '../../components/PersonFormModal';
 import WarrantBadge from '../../components/WarrantBadge';
@@ -206,15 +209,28 @@ const FLAG_COLORS: Record<string, string> = {
 
 // ── Helpers ──────────────────────────────────────
 
-// Name-hash avatar colors for initials circles
-const AVATAR_COLORS = [
-  '#dc2626', '#d97706', '#059669', '#888888', '#7c3aed',
-  '#db2777', '#22c55e', '#65a30d', '#ea580c', '#888888',
-];
-function getAvatarColor(name: string): string {
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) hash = ((hash << 5) - hash + name.charCodeAt(i)) | 0;
-  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+// Avatar rendering (name-hash colors + initials) now lives in the shared
+// RecordAvatar component; the list + hero both use it.
+
+// Some fields are stored verbatim and carry sentinel "no value" strings —
+// gang_affiliation is frequently the literal "None", which is truthy and was
+// firing a false GANG affiliation alert + badge. Treat these as absent.
+const ABSENT_SENTINELS = ['none', '0', 'n/a', 'na', ''];
+function hasValue(v?: string | null): boolean {
+  return !!v && !ABSENT_SENTINELS.includes(v.trim().toLowerCase());
+}
+
+// Single source of truth for a person's posture-relevant flags. Shared by the
+// list avatar ring, the detail hero, and the alert computation so all three
+// agree on severity (and all get the gang-"None" guard for free).
+function personPostureFlags(p: Person): Array<string | null | undefined> {
+  return [
+    ...p.flags.map((f) => (typeof f === 'object' ? f.type : f)),
+    p.watchlist_match ? 'watchlist' : null,
+    p.is_sex_offender ? 'sex offender' : null,
+    hasValue(p.gang_affiliation) ? 'gang' : null,
+    hasValue(p.probation_parole) ? p.probation_parole : null,
+  ];
 }
 
 // Thin wrapper over the shared RecordField primitive so every existing
@@ -350,7 +366,7 @@ export function usePersonsTab(props: PersonsTabProps): PersonsTabState {
     if (selectedPerson.is_sex_offender) {
       alerts.push({ type: 'flag', priority: 'critical', title: 'SEX OFFENDER', description: 'Registered sex offender — exercise caution' });
     }
-    if (selectedPerson.gang_affiliation) {
+    if (hasValue(selectedPerson.gang_affiliation)) {
       alerts.push({ type: 'flag', priority: 'high', title: 'GANG AFFILIATION', description: `Affiliated with: ${selectedPerson.gang_affiliation}` });
     }
     if (selectedPerson.watchlist_match) {
@@ -654,19 +670,21 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
             aria-selected={selectedPerson?.id === person.id}
           >
             <div className="flex items-center gap-3">
-              {person.id_image_url ? (
-                <img src={authedImageUrl((person as any).photo || person.photo_url || person.id_image_url)} alt="" className="flex-shrink-0 w-9 h-9 rounded-sm object-cover border border-rmpg-600" />
-              ) : (person as any).photo || person.photo_url ? (
-                <img src={authedImageUrl((person as any).photo || person.photo_url)} alt="" className="flex-shrink-0 w-9 h-9 rounded-sm object-cover border border-rmpg-600" />
-              ) : (
-                <div
-                  className="flex-shrink-0 w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold text-white select-none"
-                  style={{ background: getAvatarColor(`${person.first_name}${person.last_name}`), border: '2px solid rgba(255,255,255,0.15)' }}
-                  aria-hidden="true"
-                >
-                  {(person.first_name || '')[0]?.toUpperCase()}{(person.last_name || '')[0]?.toUpperCase()}
-                </div>
-              )}
+              {(() => {
+                // Threat-aware list avatar: posture ring (red/orange/amber) so
+                // danger reads from the list before a record is even opened.
+                const posture = recordPosture(personPostureFlags(person));
+                const photo = (person as any).photo || person.photo_url || person.id_image_url;
+                return (
+                  <RecordAvatar
+                    name={`${person.first_name || ''} ${person.last_name || ''}`}
+                    photoUrl={photo ? authedImageUrl(photo) : undefined}
+                    tone={posture.level === 'clear' ? undefined : posture.tone}
+                    pulse={posture.pulse}
+                    size={36}
+                  />
+                );
+              })()}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-semibold text-white truncate">
@@ -849,35 +867,84 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
 
   if (!selectedPerson) return null;
 
+  // Hero identity line — "LAST, FIRST M."
+  const heroName = [
+    selectedPerson.last_name,
+    [selectedPerson.first_name, selectedPerson.middle_name ? `${selectedPerson.middle_name[0]}.` : '']
+      .filter(Boolean)
+      .join(' '),
+  ]
+    .filter(Boolean)
+    .join(', ') || 'UNKNOWN SUBJECT';
+
+  // Posture inputs (shared with the list ring + alerts). Veteran is excluded —
+  // it's informational, not a threat, and would classify as a generic caution.
+  const posturalFlags = personPostureFlags(selectedPerson);
+
+  const hasSpecialFlags =
+    selectedPerson.flags.length > 0 ||
+    selectedPerson.is_sex_offender ||
+    selectedPerson.is_veteran ||
+    hasValue(selectedPerson.gang_affiliation) ||
+    !!selectedPerson.watchlist_match ||
+    hasValue(selectedPerson.probation_parole);
+
+  const heroPhoto =
+    selectedPerson.photo_url ? authedImageUrl(selectedPerson.photo_url) : undefined;
+
+  const heroSubtitle = (
+    <span className="flex items-center gap-3">
+      {selectedPerson.date_of_birth && (
+        <span>
+          DOB: {safeDateDisplay(selectedPerson.date_of_birth)}
+          {(() => {
+            const b = parseTimestamp(selectedPerson.date_of_birth);
+            if (isNaN(b.getTime())) return '';
+            const today = new Date();
+            let age = today.getFullYear() - b.getFullYear();
+            if (today.getMonth() < b.getMonth() || (today.getMonth() === b.getMonth() && today.getDate() < b.getDate())) age--;
+            return age >= 0 ? ` (${age})` : '';
+          })()}
+        </span>
+      )}
+      {selectedPerson.gender && <span>{humanizeGender(selectedPerson.gender)}</span>}
+      {selectedPerson.race && <span>{humanizeRace(selectedPerson.race)}</span>}
+    </span>
+  );
+
   return (
     <div className="h-full flex flex-col overflow-hidden">
-      {/* Alert Banner + Flags (below PanelTitleBar, which RecordsPage provides) */}
-      <div className="px-4 pt-3 pb-2 border-b border-rmpg-600 bg-surface-sunken flex-shrink-0">
-        <AlertBanner alerts={personAlerts} />
-        {/* Special Flags */}
-        {(selectedPerson.flags.length > 0 || selectedPerson.is_sex_offender || selectedPerson.is_veteran || selectedPerson.gang_affiliation || selectedPerson.watchlist_match || (selectedPerson.probation_parole && selectedPerson.probation_parole !== 'None')) && (
-          <div className="flex flex-wrap gap-1.5 mt-1">
-            {selectedPerson.flags.map((flag, i) => {
-              const label = typeof flag === 'object' ? (flag.type || 'FLAG') : flag;
-              return (
-                <RecordBadge key={`${label}-${i}`} flag={label} title={humanizeFlag(label)}>
-                  {label}
-                </RecordBadge>
-              );
-            })}
-            {selectedPerson.watchlist_match && <RecordBadge tone="red" pulse icon={AlertTriangle}>OFAC WATCHLIST MATCH</RecordBadge>}
-            {selectedPerson.is_sex_offender && <RecordBadge tone="red">SEX OFFENDER</RecordBadge>}
-            {selectedPerson.is_veteran && <RecordBadge tone="blue" glow={false}>VETERAN</RecordBadge>}
-            {selectedPerson.gang_affiliation && <RecordBadge tone="orange">GANG: {selectedPerson.gang_affiliation}</RecordBadge>}
-            {selectedPerson.probation_parole && selectedPerson.probation_parole !== 'None' && <RecordBadge tone="orange">{selectedPerson.probation_parole.toUpperCase()}</RecordBadge>}
+      {/* Hero identity band + Alert Banner (below PanelTitleBar, which RecordsPage provides) */}
+      <div className="border-b border-rmpg-600 bg-surface-sunken flex-shrink-0">
+        <RecordHero
+          name={heroName}
+          subtitle={heroSubtitle}
+          photoUrl={heroPhoto}
+          flags={posturalFlags}
+        >
+          {hasSpecialFlags && (
+            <>
+              {selectedPerson.flags.map((flag, i) => {
+                const label = typeof flag === 'object' ? (flag.type || 'FLAG') : flag;
+                return (
+                  <RecordBadge key={`${label}-${i}`} flag={label} title={humanizeFlag(label)}>
+                    {label}
+                  </RecordBadge>
+                );
+              })}
+              {selectedPerson.watchlist_match && <RecordBadge tone="red" pulse icon={AlertTriangle}>OFAC WATCHLIST MATCH</RecordBadge>}
+              {selectedPerson.is_sex_offender && <RecordBadge tone="red">SEX OFFENDER</RecordBadge>}
+              {selectedPerson.is_veteran && <RecordBadge tone="blue" glow={false}>VETERAN</RecordBadge>}
+              {hasValue(selectedPerson.gang_affiliation) && <RecordBadge tone="orange">GANG: {selectedPerson.gang_affiliation}</RecordBadge>}
+              {hasValue(selectedPerson.probation_parole) && <RecordBadge tone="orange">{selectedPerson.probation_parole!.toUpperCase()}</RecordBadge>}
+            </>
+          )}
+        </RecordHero>
+        {personAlerts.length > 0 && (
+          <div className="px-4 pb-2">
+            <AlertBanner alerts={personAlerts} />
           </div>
         )}
-        {/* Compact person ID line */}
-        <div className="flex items-center gap-3 mt-1 text-[10px] text-rmpg-400">
-          {selectedPerson.date_of_birth && <span>DOB: {safeDateDisplay(selectedPerson.date_of_birth)}{(() => { const b = parseTimestamp(selectedPerson.date_of_birth); if (isNaN(b.getTime())) return ''; const today = new Date(); let age = today.getFullYear() - b.getFullYear(); if (today.getMonth() < b.getMonth() || (today.getMonth() === b.getMonth() && today.getDate() < b.getDate())) age--; return age >= 0 ? ` (${age})` : ''; })()}</span>}
-          {selectedPerson.gender && <span>{humanizeGender(selectedPerson.gender)}</span>}
-          {selectedPerson.race && <span>{humanizeRace(selectedPerson.race)}</span>}
-        </div>
       </div>
 
       {/* Scrollable Detail Sections */}

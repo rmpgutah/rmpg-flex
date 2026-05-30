@@ -16,7 +16,23 @@ import CollapsibleSection from '../../components/CollapsibleSection';
 import RecordField from '../../components/records/RecordField';
 import FieldGrid from '../../components/records/FieldGrid';
 import RecordBadge from '../../components/records/RecordBadge';
+import RecordHero from '../../components/records/RecordHero';
+import { recordPosture, toneStyle } from '../../components/records/recordVisuals';
 import type { Vehicle, RecordAlert, RecordEntityType } from '../../types';
+
+// Active-stolen check shared by the list badge + posture ring so they agree.
+function isActiveStolen(v: Vehicle): boolean {
+  const s = (v.stolen_status || '').toLowerCase();
+  return !!s && !['none', 'recovered', 'cleared', ''].includes(s);
+}
+// Posture-relevant flags for a vehicle (list ring + detail hero).
+function vehiclePostureFlags(v: Vehicle): Array<string | null | undefined> {
+  return [
+    ...v.flags.map((f) => (typeof f === 'object' ? f.type : f)),
+    v.hazmat ? 'hazmat' : null,
+    isActiveStolen(v) ? 'stolen' : null,
+  ];
+}
 import type { VehicleFormData } from '../../components/VehicleFormModal';
 import {
   titleCase, formatPhoneDisplay, formatAddressDisplay, humanizeType,
@@ -584,13 +600,22 @@ export function VehiclesTabList({ state }: { state: VehiclesTabState }) {
             aria-selected={selectedVehicle?.id === v.id}
           >
             <div className="flex items-center gap-3">
-              <div className={`flex-shrink-0 w-9 h-9 rounded-sm flex items-center justify-center text-[10px] font-bold font-mono border ${
-                v.stolen_status && v.stolen_status !== 'None' && v.stolen_status !== 'Recovered'
-                  ? 'bg-red-900/40 text-red-400 border-red-700/50'
-                  : 'bg-rmpg-700 text-rmpg-300 border-rmpg-600'
-              }`}>
-                {v.license_plate.slice(0, 4) || '----'}
-              </div>
+              {(() => {
+                // Plate-prefix tile, now ringed/glowing by threat posture so a
+                // stolen/hazmat vehicle reads from the list at a glance.
+                const posture = recordPosture(vehiclePostureFlags(v));
+                const ringed = posture.level !== 'clear';
+                return (
+                  <div
+                    className={`flex-shrink-0 w-9 h-9 rounded-[2px] flex items-center justify-center text-[10px] font-bold font-mono ${posture.pulse ? 'animate-led-pulse' : ''}`}
+                    style={ringed
+                      ? toneStyle(posture.tone, true)
+                      : { background: '#1f1f1f', color: '#cfcfcf', border: '1px solid #3a3a3a' }}
+                  >
+                    {v.license_plate.slice(0, 4) || '----'}
+                  </div>
+                );
+              })()}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-bold text-white font-mono">{v.license_plate}</span>
@@ -709,18 +734,34 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
 
   if (!selectedVehicle) return null;
 
+  const vehiclePosturalFlags = vehiclePostureFlags(selectedVehicle);
+  const vehicleSubtitle = (
+    <span className="flex items-center gap-3 flex-wrap">
+      <span>{selectedVehicle.year || '-'} {selectedVehicle.make} {selectedVehicle.model}</span>
+      <span>{selectedVehicle.color}{selectedVehicle.secondary_color ? ` / ${selectedVehicle.secondary_color}` : ''}</span>
+      {selectedVehicle.body_style && <span>{selectedVehicle.body_style}</span>}
+      {selectedVehicle.plate_state && <span>({selectedVehicle.plate_state})</span>}
+    </span>
+  );
+
   return (
     <div className="h-full flex flex-col overflow-hidden">
-      {/* Alert Banner + Status badges */}
-      <div className="px-4 pt-3 pb-2 border-b border-rmpg-600 bg-surface-sunken flex-shrink-0">
-        <AlertBanner alerts={vehicleAlerts} />
-        {/* Vehicle sub-header */}
-        <div className="flex items-center gap-3 text-[10px] text-rmpg-400">
-          <span>{selectedVehicle.year || '-'} {selectedVehicle.make} {selectedVehicle.model}</span>
-          <span>{selectedVehicle.color}{selectedVehicle.secondary_color ? ` / ${selectedVehicle.secondary_color}` : ''}</span>
-          {selectedVehicle.body_style && <span>{selectedVehicle.body_style}</span>}
-          <span>({selectedVehicle.plate_state})</span>
-        </div>
+      {/* Hero identity band + alerts/actions */}
+      <div className="border-b border-rmpg-600 bg-surface-sunken flex-shrink-0">
+        <RecordHero
+          name={selectedVehicle.license_plate || 'NO PLATE'}
+          subtitle={vehicleSubtitle}
+          flags={vehiclePosturalFlags}
+          tone="gold"
+        >
+          {selectedVehicle.flags.map((flag, i) => {
+            const label = typeof flag === 'object' ? (flag.type || 'FLAG') : flag;
+            return <RecordBadge key={`${label}-${i}`} flag={label}>{label}</RecordBadge>;
+          })}
+          {selectedVehicle.hazmat && <RecordBadge tone="red" pulse>HAZMAT</RecordBadge>}
+        </RecordHero>
+        <div className="px-4 pb-2">
+        {vehicleAlerts.length > 0 && <AlertBanner alerts={vehicleAlerts} />}
         {/* Feature 41+44 Action Buttons */}
         <div className="flex gap-1 mt-1">
           <button type="button" onClick={() => handleLoadHistory(selectedVehicle.id)} className="text-[9px] px-2 py-0.5 bg-gray-900/30 border border-gray-700/50 text-gray-400 hover:bg-gray-900/50">
@@ -749,17 +790,7 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
             {vehicleHistory.tows?.length > 0 && <div className="text-rmpg-400">{vehicleHistory.tows.length} tows</div>}
           </div>
         )}
-        {/* Flags */}
-        {selectedVehicle.flags.length > 0 && (
-          <div className="flex flex-wrap gap-2 mt-1">
-            {selectedVehicle.flags.map((flag, i) => {
-              const label = typeof flag === 'object' ? (flag.type || 'FLAG') : flag;
-              return (
-                <RecordBadge key={`${label}-${i}`} flag={label}>{label}</RecordBadge>
-              );
-            })}
-          </div>
-        )}
+        </div>
       </div>
 
       {/* Scrollable Detail Sections */}

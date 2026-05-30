@@ -32,6 +32,8 @@ import LinkedRecordsSection from '../../components/LinkedRecordsSection';
 import CollapsibleSection from '../../components/CollapsibleSection';
 import RecordField from '../../components/records/RecordField';
 import FieldGrid from '../../components/records/FieldGrid';
+import RecordBadge from '../../components/records/RecordBadge';
+import RecordHero from '../../components/records/RecordHero';
 import PrintRecordButton from '../../components/PrintRecordButton';
 import type { CustodyEntry, RecordEntityType } from '../../types';
 
@@ -498,10 +500,16 @@ export function EvidenceTabDetail({ state }: { state: EvidenceTabState }) {
 
   if (!selectedEvidence) return null;
 
+  const retentionOverdue = !!(
+    selectedEvidence.retention_until &&
+    parseTimestamp(selectedEvidence.retention_until) < new Date() &&
+    !selectedEvidence.disposition
+  );
+
   return (
     <div className="h-full flex flex-col overflow-hidden">
       {/* Feature 38: Retention overdue badge */}
-      {selectedEvidence.retention_until && parseTimestamp(selectedEvidence.retention_until) < new Date() && !selectedEvidence.disposition && (
+      {retentionOverdue && (
         <div className="px-4 py-2 bg-red-950/30 border-b border-red-800/40 flex items-center gap-2 text-[11px] text-red-400 font-bold flex-shrink-0">
           <AlertTriangle className="w-4 h-4 flex-shrink-0 animate-pulse" />
           RETENTION OVERDUE — Past retention date ({safeDateStr(selectedEvidence.retention_until)})
@@ -509,54 +517,38 @@ export function EvidenceTabDetail({ state }: { state: EvidenceTabState }) {
         </div>
       )}
 
-      {/* Status header */}
-      <div className="px-4 pt-3 pb-2 border-b border-rmpg-600 bg-surface-sunken flex-shrink-0">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3 text-[10px] text-rmpg-400 flex-1 min-w-0">
-            <span className="px-1.5 py-0.5 font-bold bg-purple-900/40 text-purple-300 border border-purple-600/40 uppercase">
-              {(selectedEvidence.evidence_type || 'physical').replace(/_/g, ' ')}
+      {/* Hero identity band + print action */}
+      <div className="border-b border-rmpg-600 bg-surface-sunken flex-shrink-0">
+        <RecordHero
+          name={selectedEvidence.evidence_number || 'EVIDENCE'}
+          subtitle={
+            <span className="flex items-center gap-2 flex-wrap">
+              <span className="uppercase font-semibold text-purple-300">{(selectedEvidence.evidence_type || 'physical').replace(/_/g, ' ')}</span>
+              {selectedEvidence.category && <span>· {selectedEvidence.category}</span>}
+              {selectedEvidence.incident_number && (
+                <span className="flex items-center gap-1"><Link2 className="w-3 h-3" />Incident <span className="font-mono text-white">{selectedEvidence.incident_number}</span></span>
+              )}
             </span>
-            {selectedEvidence.category && (
-              <span className="px-1.5 py-0.5 font-bold bg-rmpg-700 text-rmpg-300 border border-rmpg-600">
-                {selectedEvidence.category}
-              </span>
-            )}
-            {selectedEvidence.incident_number && (
-              <span className="flex items-center gap-1">
-                <Link2 className="w-3 h-3" />
-                Incident: <span className="font-mono text-white">{selectedEvidence.incident_number}</span>
-              </span>
-            )}
-          </div>
-          {/* Print / Preview / Sign & Export — generates the v1 evidence PDF
-              (already implemented in recordPdfGenerator.ts as a `RecordPdfType`).
-              Wires entityType so attachment images auto-fetch into the PDF. */}
-          <div className="flex items-center gap-1 flex-shrink-0 print:hidden">
-            <PrintRecordButton
-              recordType="evidence"
-              recordData={selectedEvidence}
-              identifier={selectedEvidence.evidence_number}
-              entityType="evidence"
-              entityId={selectedEvidence.id}
-              iconOnly
-            />
-          </div>
-        </div>
-        {/* Status badges */}
-        <div className="flex gap-2 mt-1.5">
-          {selectedEvidence.lab_submitted && (
-            <span className="px-2 py-0.5 text-[10px] font-bold bg-purple-900/50 text-purple-400 border border-purple-700/50 flex items-center gap-1">
-              <FlaskConical className="w-3 h-3" /> LAB SUBMITTED
-            </span>
-          )}
-          {selectedEvidence.disposal_method && (
-            <span className="px-2 py-0.5 text-[10px] font-bold bg-red-900/50 text-red-400 border border-red-700/50">
-              DISPOSED: {selectedEvidence.disposal_method}
-            </span>
-          )}
-          {selectedEvidence.photo_taken && (
-            <span className="px-2 py-0.5 text-[10px] font-bold bg-gray-900/50 text-gray-400 border border-gray-700/50">PHOTO ON FILE</span>
-          )}
+          }
+          flags={[retentionOverdue ? 'evidence hold' : null]}
+          tone="gold"
+        >
+          {selectedEvidence.lab_submitted && <RecordBadge tone="purple" icon={FlaskConical}>LAB SUBMITTED</RecordBadge>}
+          {selectedEvidence.disposal_method && <RecordBadge tone="red">DISPOSED: {selectedEvidence.disposal_method}</RecordBadge>}
+          {selectedEvidence.photo_taken && <RecordBadge tone="gray" glow={false}>PHOTO ON FILE</RecordBadge>}
+        </RecordHero>
+        {/* Print / Preview / Sign & Export — generates the v1 evidence PDF
+            (already implemented in recordPdfGenerator.ts as a `RecordPdfType`).
+            Wires entityType so attachment images auto-fetch into the PDF. */}
+        <div className="px-4 pb-2 flex items-center justify-end gap-1 print:hidden">
+          <PrintRecordButton
+            recordType="evidence"
+            recordData={selectedEvidence}
+            identifier={selectedEvidence.evidence_number}
+            entityType="evidence"
+            entityId={selectedEvidence.id}
+            iconOnly
+          />
         </div>
       </div>
 

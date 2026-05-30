@@ -115,3 +115,90 @@ export function classifyFlag(rawFlag: string): FlagVisual {
   if (has(CAUTION_TERMS))  return { tone: 'amber', pulse: false };
   return { tone: 'amber', pulse: false }; // generic flag — visible, not loud
 }
+
+// ── RECORD POSTURE (multi-flag aggregation) ─────────────────
+// A record usually carries SEVERAL flags of mixed severity. classifyFlag()
+// scores them one at a time; recordPosture() rolls the whole set up into a
+// single dominant treatment so the hero header / threat bar can show the
+// one most-important signal at a glance — before the operator reads any
+// individual badge. One loud signal beats ten medium ones (the tactical-CAD
+// theme prizes restraint).
+
+export type PostureLevel = 'critical' | 'high' | 'caution' | 'clear';
+
+export interface RecordPosture {
+  level: PostureLevel;
+  /** Dominant tone, taken from the worst flag that matched. */
+  tone: BadgeTone;
+  /** Pulse the threat bar for must-not-miss records. */
+  pulse: boolean;
+  /** Short all-caps label for the hero strip. */
+  label: string;
+}
+
+// Each tone maps to a posture level + a numeric rank. When a record's flags
+// disagree, the HIGHEST rank wins. This ordering is an OPERATIONAL judgment
+// call (same spirit as classifyFlag's buckets) — Christopher, this is the
+// knob to tune if RMPG's SOP weights, say, medical crises above felonies.
+const POSTURE_BY_TONE: Record<BadgeTone, { level: PostureLevel; rank: number }> = {
+  red:    { level: 'critical', rank: 5 }, // armed / wanted / officer-safety
+  orange: { level: 'high',     rank: 4 }, // felony / supervision / pursuit
+  // Behavioral (purple) + medical/self-harm (pink) sit in the CAUTION tier per
+  // RMPG SOP — a mental-health crisis must be visible (its pink/purple color
+  // still carries through) but is NOT framed as "HIGH RISK". pink outranks
+  // purple/amber so its color wins when it's the worst flag on the record.
+  pink:   { level: 'caution',  rank: 3 }, // medical / self-harm
+  purple: { level: 'caution',  rank: 2 }, // behavioral / mental-health
+  amber:  { level: 'caution',  rank: 2 }, // generic caution flag
+  gold:   { level: 'caution',  rank: 1 }, // notable-but-mild
+  teal:   { level: 'clear',    rank: 0 },
+  green:  { level: 'clear',    rank: 0 }, // cleared / verified / positive
+  blue:   { level: 'clear',    rank: 0 }, // informational
+  gray:   { level: 'clear',    rank: 0 },
+};
+
+const POSTURE_LABEL: Record<PostureLevel, string> = {
+  critical: 'OFFICER SAFETY',
+  high:     'HIGH RISK',
+  caution:  'CAUTION',
+  clear:    'NO ACTIVE ALERTS',
+};
+
+/**
+ * Aggregate every flag on a record into one overall posture.
+ * Strategy: MAX-SEVERITY wins (the worst flag defines the record). Null /
+ * empty entries are ignored, so callers can splat in optional synthetic
+ * flags (is_sex_offender, watchlist_match, …) without pre-filtering.
+ *
+ * DECISION POINT — alternatives if max-severity proves too blunt:
+ *   • weighted: sum ranks so three "caution" flags escalate to "high"
+ *   • count-gated: require ≥2 critical flags before pulsing
+ * Swap the reduce below to change the policy; the rest of the UI is agnostic.
+ */
+export function recordPosture(flags: Array<string | null | undefined>): RecordPosture {
+  let bestRank = -1;
+  let bestTone: BadgeTone = 'gray';
+  let bestLevel: PostureLevel = 'clear';
+
+  for (const raw of flags) {
+    if (!raw) continue;
+    const { tone } = classifyFlag(raw);
+    const meta = POSTURE_BY_TONE[tone] ?? POSTURE_BY_TONE.gray;
+    if (meta.rank > bestRank) {
+      bestRank = meta.rank;
+      bestTone = tone;
+      bestLevel = meta.level;
+    }
+  }
+
+  // No flags at all → neutral "clear" with a quiet gray treatment.
+  if (bestRank < 0) {
+    return { level: 'clear', tone: 'gray', pulse: false, label: 'NO ACTIVE ALERTS' };
+  }
+  return {
+    level: bestLevel,
+    tone: bestTone,
+    pulse: bestLevel === 'critical',
+    label: POSTURE_LABEL[bestLevel],
+  };
+}
