@@ -42,7 +42,7 @@ import {
   bytesToBase64,
   type DispatcherTurn,
 } from '../utils/aiDispatcher';
-import { gatherAwareness, runLookup, runAction } from '../utils/dispatcherAwareness';
+import { gatherAwareness, runLookup, runAction, type RecordRef } from '../utils/dispatcherAwareness';
 import { getRadioSettings, type RadioSettings } from '../utils/radioSettings';
 import type { DispatcherOptions } from '../utils/aiDispatcher';
 
@@ -437,9 +437,26 @@ export class VoiceHubDO {
     // dispatcher read the result back instead of the holding "stand by".
     let replyText = decision?.reply ?? '';
     let actionIntent: string | null = null;
+    // A record pointer the lookup hit (plate/person), broadcast so the operator
+    // console can auto-open the file beside the live feed. Gated by the
+    // ai_auto_open_records setting; null otherwise.
+    let recordRef: RecordRef | null = null;
     if (decision?.lookup) {
-      const result = await runLookup(db, decision.lookup).catch(() => null);
-      if (result) replyText = await phraseLookupReply(this.env.AI, turn, decision.lookup, result, opts);
+      const result = await runLookup(
+        this.env as unknown as Bindings, db, decision.lookup,
+        { speaker: speaker?.unit_label ?? null },
+      ).catch(() => null);
+      if (result) {
+        // unit_location / eta already speak a complete radio line — read them
+        // back verbatim. The record checks get re-phrased through the persona
+        // for radio brevity.
+        if (decision.lookup.type === 'unit_location' || decision.lookup.type === 'eta') {
+          replyText = result.text;
+        } else {
+          replyText = await phraseLookupReply(this.env.AI, turn, decision.lookup, result.text, opts);
+        }
+        if (result.record && settings.ai_auto_open_records) recordRef = result.record;
+      }
     }
 
     // 3a-bis. If the unit asked for a CAD WRITE (data entry) — log a status
@@ -516,6 +533,9 @@ export class VoiceHubDO {
       transmission: row,
       audio: bytesToBase64(audioBytes),
       intent,
+      // Present only when a lookup hit a record AND auto-open is enabled — the
+      // operator console opens this file in its side panel.
+      record: recordRef ?? undefined,
     });
   }
 }

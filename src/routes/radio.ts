@@ -451,11 +451,19 @@ rt.post('/dispatcher/ocr', async (c) => {
 
   let reply = decision.reply;
   let performed: string | null = null;
+  let record: import('../utils/dispatcherAwareness').RecordRef | null = null;
 
   if (decision.lookup) {
-    const result = await runLookup(db, decision.lookup).catch(() => null);
+    const result = await runLookup(
+      c.env as unknown as Bindings, db, decision.lookup, { speaker: unit },
+    ).catch(() => null);
     if (result) {
-      reply = await phraseLookupReply(c.env.AI, turn, decision.lookup, result);
+      // unit_location / eta already speak a complete line; record checks get
+      // re-phrased through the persona (mirrors VoiceHubDO.runDispatcher).
+      reply = (decision.lookup.type === 'unit_location' || decision.lookup.type === 'eta')
+        ? result.text
+        : await phraseLookupReply(c.env.AI, turn, decision.lookup, result.text);
+      record = result.record ?? null;
       performed = `lookup:${decision.lookup.type}`;
     }
   }
@@ -487,6 +495,7 @@ rt.post('/dispatcher/ocr', async (c) => {
     intent: decision.intent,
     lookup: decision.lookup ?? null,
     action: decision.action ?? null,
+    record,
     performed,
     audio,
   });

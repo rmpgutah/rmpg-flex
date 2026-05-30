@@ -13,6 +13,11 @@ export type Bindings = {
   JWT_SECRET: string;
   CORS_ORIGINS?: string;
   PRIMARY_DOMAIN?: string;
+  // Mapbox access token (secret, optional). When set, the Worker can call
+  // the Mapbox Directions API for true drive-time ETAs (see src/utils/eta.ts);
+  // the geocode route also hands it to the client. Absent → ETA falls back to
+  // a straight-line estimate and the client geocoder falls back to Nominatim.
+  MAPBOX_ACCESS_TOKEN?: string;
   // WelfareWatchDO namespace — DI-4 automated escalation timer
   WELFARE_WATCH: DurableObjectNamespace;
   // VoiceHubDO namespace — one instance per radio channel / panic

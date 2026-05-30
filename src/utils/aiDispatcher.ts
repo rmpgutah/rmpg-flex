@@ -143,7 +143,8 @@ You hear EVERY transmission on the channel and you acknowledge or respond to eac
 - A unit "out" / "out at <place>" → log the location and acknowledge ("copy, show you out at <place>, time is <the Current time given below, in Mountain Time>"). NEVER invent or guess a time — only ever state the Current time provided to you (it is already Mountain Time).
 - A request for backup / "10-78" / "start me another unit" → acknowledge and dispatch the nearest available on-duty unit by call-sign from the board.
 - An emergency / "shots fired" / "officer down" / "10-33" / "code 3" → respond with urgency, acknowledge, advise units to hold traffic, and that help is en route.
-- A record check the unit requests — a license PLATE, a PERSON by name, or a WARRANT check — you CAN run it. Set the "lookup" field (type + the plate/name to search) and make "reply" a brief "stand by"; the result will be read back automatically.
+- A record check the unit requests — a license PLATE, a PERSON by name, or a WARRANT check — you CAN run it. Set the "lookup" field (type + the plate/name to search) and make "reply" a brief "stand by"; the result will be read back automatically, and the matching record file opens on the dispatcher's console.
+- A LOCATION or ETA question about the asking unit ITSELF — "where am I?", "what's my twenty?", "10-20", "what's my ETA?", "how far am I out?", "time to the scene?" — you CAN answer from the unit's live GPS. Set "lookup" type "unit_location" (where they are) or "eta" (drive time to their assigned call); leave "query" empty (the unit is identified by who's transmitting) and make "reply" a brief "stand by". The computed answer is read back automatically — do NOT guess a location, beat, distance, or time yourself.
 - A CAD WRITE the unit requests — you CAN do data entry. Two writes are supported, set the "action" field:
     • A unit reporting a STATUS change — "10-8 / in service", "10-7 / out of service", "show me out / out at <place> / on scene / arrived", "en route", "tied up" — set action {type:"set_unit_status", unit:"<their call-sign>", status:"<what they said, e.g. 'out at' or '10-8'>", location:"<place if they gave one>"}. Make "reply" the acknowledgement.
     • A request to START / CREATE a call ("start a call", "create a call", "log a call", "I've got a <thing> at <place>") — set action {type:"create_call", incident_type:"<short type, e.g. 'suspicious vehicle'>", priority:"<P1 emergency | P2 urgent | P3 routine | P4 non-urgent>", location_address:"<address/place>", description:"<details>", caller_name:"<if given>"}. Make "reply" a brief acknowledgement; the real confirmation (with the call number) is read back automatically.
@@ -156,8 +157,8 @@ Common 10-codes: 10-4 acknowledged, 10-8 in service, 10-7 out of service, 10-20 
 Never invent unit numbers, names, plates, warrants, or facts you were not given in the snapshot or a lookup result. If you don't have a detail, ask for it briefly.`;
 
 const FORMAT_INSTRUCTION = `Respond with ONLY a JSON object, no prose around it:
-{"intent":"<one of: status_update | out_at_location | backup_request | emergency | lookup_request | data_entry | en_route | arrived | code4 | chatter | unclear>","reply":"<exactly what dispatch says over the radio — one or two short sentences>","lookup":{"type":"plate|person|warrant","query":"<plate or name to run>"},"action":{"type":"set_unit_status|create_call","unit":"<call-sign>","status":"<radio status word/code>","location":"<place>","incident_type":"<type>","priority":"<P1|P2|P3|P4>","location_address":"<address>","description":"<details>","caller_name":"<name>"}}
-Include "lookup" ONLY for a plate/person/warrant check (intent lookup_request, reply "stand by"). Include "action" ONLY when the unit asked you to log a status or start a call (intent data_entry); use type set_unit_status with only unit/status/location, or type create_call with only incident_type/priority/location_address/description/caller_name. Omit "lookup" and "action" entirely otherwise.
+{"intent":"<one of: status_update | out_at_location | backup_request | emergency | lookup_request | location_request | eta_request | data_entry | en_route | arrived | code4 | chatter | unclear>","reply":"<exactly what dispatch says over the radio — one or two short sentences>","lookup":{"type":"plate|person|warrant|unit_location|eta","query":"<plate or name to run; empty for unit_location/eta>"},"action":{"type":"set_unit_status|create_call","unit":"<call-sign>","status":"<radio status word/code>","location":"<place>","incident_type":"<type>","priority":"<P1|P2|P3|P4>","location_address":"<address>","description":"<details>","caller_name":"<name>"}}
+Include "lookup" for a plate/person/warrant check (intent lookup_request, reply "stand by"), OR for a unit_location/eta question about the asking unit (intent location_request/eta_request, reply "stand by", query empty). Include "action" ONLY when the unit asked you to log a status or start a call (intent data_entry); use type set_unit_status with only unit/status/location, or type create_call with only incident_type/priority/location_address/description/caller_name. Omit "lookup" and "action" entirely otherwise.
 If the transmission is unintelligible, set intent to "unclear" and reply asking the unit to repeat their last.`;
 
 // ─── Transcription ──────────────────────────────────────────
@@ -282,14 +283,19 @@ function buildUserPrompt(turn: DispatcherTurn): string {
   return lines.join('\n');
 }
 
-const LOOKUP_TYPES = ['plate', 'person', 'warrant'] as const;
+const LOOKUP_TYPES = ['plate', 'person', 'warrant', 'unit_location', 'eta'] as const;
+
+// unit_location ("where am I") and eta ("what's my ETA") need no query — the
+// transmitting unit is the subject, resolved from the speaker by runLookup.
+const UNIT_CENTRIC_LOOKUPS = new Set(['unit_location', 'eta']);
 
 function parseLookup(value: unknown): LookupRequest | undefined {
   if (!value || typeof value !== 'object') return undefined;
   const obj = value as Record<string, unknown>;
   const type = typeof obj.type === 'string' ? obj.type.toLowerCase() : '';
   const q = typeof obj.query === 'string' ? obj.query.trim() : '';
-  if (!q || !(LOOKUP_TYPES as readonly string[]).includes(type)) return undefined;
+  if (!(LOOKUP_TYPES as readonly string[]).includes(type)) return undefined;
+  if (!q && !UNIT_CENTRIC_LOOKUPS.has(type)) return undefined;
   return { type: type as LookupRequest['type'], query: q };
 }
 

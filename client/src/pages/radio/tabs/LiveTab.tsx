@@ -4,12 +4,12 @@
 // useVoiceChannel → VoiceHubDO. Recorded clips replay from R2.
 import type React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Search, Filter, Star, Volume2, Mic, Radio as RadioIcon, Play, Pause } from 'lucide-react';
+import { Search, Filter, Star, Volume2, Mic, Radio as RadioIcon, Play, Pause, X, Loader2, User, Car, ExternalLink } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { matchesSearch, COMPARE_DATE, ls, playBeep, isInQuietHours } from '../helpers';
 import { DATE_RANGES, DURATION_FILTERS } from '../constants';
 import { FilterChip, SectionHeader, EmptyConsole, Waveform, Sep } from '../components';
-import { useVoiceChannel } from '../useVoiceChannel';
+import { useVoiceChannel, type DispatchRecordRef } from '../useVoiceChannel';
 import { RadioHazePlayer } from '../../../utils/radioProcessor';
 import type { RadioChannel, RadioTransmission } from '../types';
 
@@ -26,6 +26,9 @@ export default function LiveTab({ selectedChannelId, onSelectChannel }: Props) {
   const [minDur, setMinDur] = useState('0');
   const [showFilters, setShowFilters] = useState(false);
   const [favsOnly, setFavsOnly] = useState(false);
+  // Record file the AI dispatcher auto-opened (plate/person check) — shown in
+  // the side panel beside the live feed. Null = panel closed.
+  const [openRecord, setOpenRecord] = useState<DispatchRecordRef | null>(null);
 
   // Highest transmission id seen so far. `null` until the first poll
   // lands so we never beep for the backlog that's already on screen
@@ -107,13 +110,20 @@ export default function LiveTab({ selectedChannelId, onSelectChannel }: Props) {
   // Live voice for the selected channel. A new recorded transmission
   // is prepended immediately (radio_recorded) so the operator doesn't
   // wait for the next 5s poll.
-  const voice = useVoiceChannel(selectedChannelId, (txn: RadioTransmission) => {
-    if (!txn) return;
-    setTx((prev) => [txn, ...prev.filter((t) => t.id !== txn.id)]);
-  });
+  const voice = useVoiceChannel(
+    selectedChannelId,
+    (txn: RadioTransmission) => {
+      if (!txn) return;
+      setTx((prev) => [txn, ...prev.filter((t) => t.id !== txn.id)]);
+    },
+    // AI dispatcher ran a plate/person check — pop the record into the side
+    // panel so the operator sees the file the moment dispatch reads it back.
+    (ref) => setOpenRecord(ref),
+  );
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full flex min-h-0">
+      <div className="flex-1 min-w-0 flex flex-col">
       <SectionHeader
         icon={<Volume2 className="w-3 h-3" style={{ color: 'var(--rt-accent)' }} />}
         label={currentChannel ? `LIVE — ${currentChannel.name.toUpperCase()}` : 'LIVE — NO CHANNEL'}
@@ -175,6 +185,131 @@ export default function LiveTab({ selectedChannelId, onSelectChannel }: Props) {
             </ul>
           )}
       </div>
+      </div>
+      {openRecord && <RecordSidePanel record={openRecord} onClose={() => setOpenRecord(null)} />}
+    </div>
+  );
+}
+
+// RecordSidePanel — compact read-only record card the AI dispatcher auto-opens
+// when it runs a plate/person check. Fetches the SAME endpoints the detached
+// record window uses; a header link pops the full file out in a new tab. Keyed
+// on kind+id by the parent so a fresh lookup re-fetches in place.
+function RecordSidePanel({ record, onClose }: { record: DispatchRecordRef; onClose: () => void }) {
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    setLoading(true); setError(null); setData(null);
+    const endpoint = record.kind === 'person'
+      ? `/records/persons/${record.id}`
+      : `/records/vehicles/${record.id}`;
+    apiFetch<any>(endpoint)
+      .then((d) => { if (alive) setData(d); })
+      .catch((e) => { if (alive) setError(e?.message || 'Failed to load record'); })
+      .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
+  }, [record.kind, record.id]);
+
+  const title = record.kind === 'person'
+    ? (data ? `${data.last_name || ''}, ${data.first_name || ''}`.replace(/^, |, $/g, '') || 'Person' : 'Person')
+    : (data?.plate_number || 'Vehicle');
+
+  return (
+    <aside
+      className="w-72 shrink-0 flex flex-col min-h-0"
+      style={{ borderLeft: '1px solid var(--rt-border)', background: 'var(--rt-panel)' }}
+    >
+      <div className="flex items-center gap-2 px-3 py-2" style={{ borderBottom: '1px solid var(--rt-border)' }}>
+        {record.kind === 'person'
+          ? <User className="w-3.5 h-3.5" style={{ color: 'var(--rt-accent)' }} />
+          : <Car className="w-3.5 h-3.5" style={{ color: 'var(--rt-accent)' }} />}
+        <span className="text-[10px] font-bold uppercase tracking-wider flex-1 truncate" style={{ color: 'var(--rt-text)' }}>
+          {title}
+        </span>
+        <a
+          href={`/detached/record/${record.kind}/${record.id}`}
+          target="_blank" rel="noopener noreferrer"
+          aria-label="Open full record in new window"
+          className="hover:opacity-80" style={{ color: 'var(--rt-muted)' }}
+        >
+          <ExternalLink className="w-3.5 h-3.5" />
+        </a>
+        <button type="button" onClick={onClose} aria-label="Close record panel" className="hover:opacity-80" style={{ color: 'var(--rt-muted)' }}>
+          <X className="w-3.5 h-3.5" />
+        </button>
+      </div>
+      <div className="flex-1 overflow-auto p-3 text-[10px] font-mono" style={{ color: 'var(--rt-text)' }}>
+        {loading && (
+          <div className="flex items-center justify-center py-8">
+            <Loader2 className="w-5 h-5 animate-spin" style={{ color: 'var(--rt-muted)' }} role="status" aria-label="Loading record" />
+          </div>
+        )}
+        {error && <p style={{ color: '#f87171' }}>{error}</p>}
+        {data && record.kind === 'person' && <PersonFields p={data} />}
+        {data && record.kind === 'vehicle' && <VehicleFields v={data} />}
+      </div>
+    </aside>
+  );
+}
+
+function Field({ label, value }: { label: string; value: React.ReactNode }) {
+  if (value == null || value === '') return null;
+  return (
+    <div className="flex gap-2 py-0.5">
+      <span className="shrink-0" style={{ color: 'var(--rt-muted)', minWidth: 64 }}>{label}</span>
+      <span className="flex-1 break-words" style={{ color: 'var(--rt-text)' }}>{value}</span>
+    </div>
+  );
+}
+
+function PersonFields({ p }: { p: any }) {
+  let flags: any[] = [];
+  try { flags = JSON.parse(p.flags || '[]'); } catch { /* ignore */ }
+  return (
+    <div className="space-y-0.5">
+      <Field label="Name" value={[p.first_name, p.middle_name, p.last_name].filter(Boolean).join(' ')} />
+      <Field label="DOB" value={p.dob} />
+      <Field label="Sex" value={p.gender} />
+      <Field label="Race" value={p.race} />
+      <Field label="Ht/Wt" value={[p.height, p.weight].filter(Boolean).join(' / ')} />
+      <Field label="Address" value={p.address} />
+      <Field label="Phone" value={p.phone} />
+      {flags.length > 0 && (
+        <div className="flex flex-wrap gap-1 pt-1.5">
+          {flags.map((f, i) => {
+            const t = typeof f === 'object' && f ? (f.type || JSON.stringify(f)) : String(f);
+            return (
+              <span key={`${t}-${i}`} className="px-1.5 py-0.5 text-[9px] uppercase font-bold"
+                style={{ background: 'rgba(248,113,113,0.15)', color: '#f87171', border: '1px solid rgba(248,113,113,0.3)' }}>
+                {t}
+              </span>
+            );
+          })}
+        </div>
+      )}
+      {(p.incidents?.length ?? 0) > 0 && (
+        <Field label="History" value={`${p.incidents.length} incident${p.incidents.length === 1 ? '' : 's'} on file`} />
+      )}
+    </div>
+  );
+}
+
+function VehicleFields({ v }: { v: any }) {
+  return (
+    <div className="space-y-0.5">
+      <Field label="Plate" value={[v.plate_number, v.state].filter(Boolean).join('  ')} />
+      <Field label="Vehicle" value={[v.year, v.color, v.make, v.model].filter(Boolean).join(' ')} />
+      <Field label="VIN" value={v.vin} />
+      <Field label="Style" value={v.style} />
+      <Field label="Owner" value={[v.owner_first_name, v.owner_last_name].filter(Boolean).join(' ') || v.registered_owner} />
+      <Field label="Owner ph" value={v.owner_phone} />
+      <Field label="Status" value={(v.is_stolen || /stolen|active/i.test(String(v.stolen_status || ''))) ? 'FLAGGED STOLEN' : null} />
+      {(v.incidents?.length ?? 0) > 0 && (
+        <Field label="History" value={`${v.incidents.length} incident${v.incidents.length === 1 ? '' : 's'} on file`} />
+      )}
     </div>
   );
 }

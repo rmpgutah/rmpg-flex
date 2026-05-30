@@ -23,8 +23,9 @@
 import type { D1Database } from '@cloudflare/workers-types';
 import type { Bindings } from '../types';
 import { query, queryFirst, execute } from './db';
-import { geocodeAddress } from '../routes/geocode';
+import { geocodeAddress, reverseGeocodeAddress } from '../routes/geocode';
 import { resolveDistrict } from './districtResolver';
+import { estimateEta } from './eta';
 
 // Statuses that mean a call is no longer on the active board.
 const CLOSED_CALL_STATUSES = ['closed', 'cleared', 'archived', 'cancelled', 'canceled'];
@@ -126,21 +127,55 @@ export async function gatherAwareness(db: D1Database, channelId: number, speaker
 
 // ─── CAD lookups ────────────────────────────────────────────
 
-export type LookupType = 'plate' | 'person' | 'warrant';
+export type LookupType = 'plate' | 'person' | 'warrant' | 'unit_location' | 'eta';
 export interface LookupRequest { type: LookupType; query: string }
+
+/**
+ * A pointer to the underlying record a lookup hit, so the operator console can
+ * auto-open the matching file (see VoiceHubDO → dispatch_speak.record). `kind`
+ * maps to the client's /detached/record/:type/:id route + a side-panel fetch;
+ * `id` is the table primary key. Only emitted for record checks the operator
+ * can open (vehicle, person) — location/eta/warrant stay radio-readback only.
+ */
+export interface RecordRef { kind: 'vehicle' | 'person'; id: number }
+
+/**
+ * Result of a lookup: the terse line the dispatcher reads back, plus an
+ * optional record pointer for the auto-open side panel.
+ */
+export interface LookupResult { text: string; record?: RecordRef }
 
 const norm = (s: string) => s.trim().toUpperCase().replace(/[^A-Z0-9 ]/g, '').trim();
 
 /**
- * Run the record check a unit requested. Returns a terse facts string for
- * the model to read back over the radio, or a clear "no record" line.
- * Returns null only on a hard failure (so the caller can fall back).
+ * Context a lookup may need beyond its own query — chiefly WHO is asking, so
+ * "where am I" / "what's my ETA" can resolve to the transmitting unit.
  */
-export async function runLookup(db: D1Database, req: LookupRequest): Promise<string | null> {
+export interface LookupContext { speaker?: string | null }
+
+/**
+ * Run the record check a unit requested. Returns a LookupResult (a terse facts
+ * string for the model to read back + an optional record pointer), or a clear
+ * "no record" line. Returns null only on a hard failure (so the caller can
+ * fall back). `env` is needed for the location/ETA lookups (geofence + Mapbox);
+ * the plain DB checks ignore it.
+ */
+export async function runLookup(
+  env: Bindings,
+  db: D1Database,
+  req: LookupRequest,
+  ctx: LookupContext = {},
+): Promise<LookupResult | null> {
   try {
     if (req.type === 'plate') return await lookupPlate(db, req.query);
     if (req.type === 'person') return await lookupPerson(db, req.query);
     if (req.type === 'warrant') return await lookupWarrant(db, req.query);
+    // "where am I" / "what's my ETA" key off the transmitting unit, not the
+    // spoken query — the model may pass the call-sign through `query`, but the
+    // speaker the relay already knows is authoritative.
+    const unit = (ctx.speaker || req.query || '').trim();
+    if (req.type === 'unit_location') return await lookupUnitLocation(env, db, unit);
+    if (req.type === 'eta') return await lookupEta(env, db, unit);
     return null;
   } catch (err) {
     console.error('[awareness] lookup failed:', (err as Error)?.message);
@@ -148,23 +183,23 @@ export async function runLookup(db: D1Database, req: LookupRequest): Promise<str
   }
 }
 
-async function lookupPlate(db: D1Database, raw: string): Promise<string> {
+async function lookupPlate(db: D1Database, raw: string): Promise<LookupResult> {
   const plate = norm(raw).replace(/\s+/g, '');
   const v = await queryFirst<{
-    plate_number: string; registration_state: string | null; state: string | null;
+    id: number; plate_number: string; registration_state: string | null; state: string | null;
     make: string | null; model: string | null; year: number | null; color: string | null;
     is_stolen: number | null; stolen_status: string | null; owner_name: string | null;
     registered_owner: string | null; insurance_status: string | null; flags: string | null;
   }>(
     db,
-    `SELECT plate_number, registration_state, state, make, model, year, color,
+    `SELECT id, plate_number, registration_state, state, make, model, year, color,
             is_stolen, stolen_status, owner_name, registered_owner, insurance_status, flags
      FROM vehicles_records
      WHERE REPLACE(REPLACE(UPPER(plate_number),' ',''),'-','') = ?
      ORDER BY datetime(COALESCE(updated_at, created_at)) DESC LIMIT 1`,
     plate,
   );
-  if (!v) return `No record on file for plate ${norm(raw)}.`;
+  if (!v) return { text: `No record on file for plate ${norm(raw)}.` };
   const desc = [v.year, v.color, v.make, v.model].filter(Boolean).join(' ') || 'vehicle';
   const owner = v.registered_owner || v.owner_name;
   const stolen = v.is_stolen || (v.stolen_status && /stolen|yes|active/i.test(v.stolen_status));
@@ -175,10 +210,10 @@ async function lookupPlate(db: D1Database, raw: string): Promise<string> {
     v.insurance_status ? `Insurance ${v.insurance_status}.` : null,
     v.flags ? `Flags: ${v.flags}.` : null,
   ].filter(Boolean);
-  return parts.join(' ');
+  return { text: parts.join(' '), record: { kind: 'vehicle', id: v.id } };
 }
 
-async function lookupPerson(db: D1Database, raw: string): Promise<string> {
+async function lookupPerson(db: D1Database, raw: string): Promise<LookupResult> {
   const q = `%${raw.trim().replace(/\s+/g, '%')}%`;
   const p = await queryFirst<{
     id: number; first_name: string | null; last_name: string | null; dob: string | null;
@@ -192,7 +227,7 @@ async function lookupPerson(db: D1Database, raw: string): Promise<string> {
      ORDER BY datetime(COALESCE(updated_at, created_at)) DESC LIMIT 1`,
     q, q, q,
   );
-  if (!p) return `No person record matching "${raw.trim()}".`;
+  if (!p) return { text: `No person record matching "${raw.trim()}".` };
   const name = [p.first_name, p.last_name].filter(Boolean).join(' ') || raw.trim();
   // Outstanding warrants for this person (by id or by name).
   const warrants = await query<{ warrant_number: string | null; offense: string | null; status: string | null }>(
@@ -214,10 +249,10 @@ async function lookupPerson(db: D1Database, raw: string): Promise<string> {
     p.gang_affiliation ? `Gang affiliation noted: ${p.gang_affiliation}.` : null,
     cautions ? `Caution: ${cautions}.` : null,
   ].filter(Boolean);
-  return parts.join(' ');
+  return { text: parts.join(' '), record: { kind: 'person', id: p.id } };
 }
 
-async function lookupWarrant(db: D1Database, raw: string): Promise<string> {
+async function lookupWarrant(db: D1Database, raw: string): Promise<LookupResult> {
   const q = `%${raw.trim().replace(/\s+/g, '%')}%`;
   const rows = await query<{
     warrant_number: string | null; subject_name: string | null; subject_first_name: string | null;
@@ -234,11 +269,97 @@ async function lookupWarrant(db: D1Database, raw: string): Promise<string> {
      ORDER BY datetime(COALESCE(updated_at, created_at)) DESC LIMIT 3`,
     q, q, q,
   );
-  if (!rows.length) return `No warrant on file matching "${raw.trim()}".`;
-  return rows.map((w) => {
+  if (!rows.length) return { text: `No warrant on file matching "${raw.trim()}".` };
+  const text = rows.map((w) => {
     const subj = w.subject_name || [w.subject_first_name, w.subject_last_name].filter(Boolean).join(' ') || 'subject';
     return `${w.warrant_number || 'Warrant'} on ${subj}${w.offense ? ` — ${w.offense}` : ''}${w.bond_amount ? `, bond ${w.bond_amount}` : ''} [${w.status || 'status unknown'}${w.issuing_agency ? `, ${w.issuing_agency}` : ''}].`;
   }).join(' ');
+  return { text };
+}
+
+// ─── "Where am I" + "What's my ETA" (unit-centric lookups) ──
+// Both key off the transmitting unit. They speak a complete radio line (the
+// caller does NOT re-phrase them through the LLM), so the spoken text below IS
+// what goes over the air.
+
+interface BreadcrumbRow {
+  latitude: number; longitude: number; recorded_at: string | null;
+  heading: number | null; speed: number | null;
+}
+
+// Latest GPS fix for a unit within the window. The breadcrumb table carries a
+// denormalized call_sign, so we match on it directly (no units join needed).
+// 30 min is generous on purpose — a unit that asks "where am I" may have been
+// parked a while; a stale-but-real fix beats "no location".
+async function latestFix(db: D1Database, callSign: string): Promise<BreadcrumbRow | null> {
+  if (!callSign) return null;
+  return queryFirst<BreadcrumbRow>(
+    db,
+    `SELECT latitude, longitude, recorded_at, heading, speed
+     FROM gps_breadcrumbs
+     WHERE UPPER(call_sign) = UPPER(?)
+       AND recorded_at > datetime('now', '-30 minutes')
+     ORDER BY datetime(recorded_at) DESC LIMIT 1`,
+    callSign,
+  ).catch(() => null);
+}
+
+async function lookupUnitLocation(env: Bindings, db: D1Database, callSign: string): Promise<LookupResult> {
+  const who = callSign || 'Unit';
+  const fix = await latestFix(db, callSign);
+  if (!fix || !Number.isFinite(fix.latitude) || !Number.isFinite(fix.longitude)) {
+    return { text: `${who}, dispatch has no recent GPS fix on you — confirm your location.` };
+  }
+  // Beat/zone always resolves in-area (R2 geofence); the street is a best-effort
+  // bonus from reverse-geocode.
+  const [district, street] = await Promise.all([
+    resolveDistrict(env, { lat: fix.latitude, lng: fix.longitude }).catch(() => null),
+    reverseGeocodeAddress(env, fix.latitude, fix.longitude).catch(() => null),
+  ]);
+  const place = street
+    || (district?.beat_name ? `${district.beat_name}` : null)
+    || `${fix.latitude.toFixed(4)}, ${fix.longitude.toFixed(4)}`;
+  const beat = district?.zone_beat || district?.beat_name;
+  const parts = [
+    `${who}, you're showing at ${place}`,
+    beat ? `, ${beat}` : '',
+    '.',
+  ];
+  return { text: parts.join('') };
+}
+
+async function lookupEta(env: Bindings, db: D1Database, callSign: string): Promise<LookupResult> {
+  const who = callSign || 'Unit';
+  const fix = await latestFix(db, callSign);
+  if (!fix || !Number.isFinite(fix.latitude) || !Number.isFinite(fix.longitude)) {
+    return { text: `${who}, dispatch can't compute an ETA — no recent GPS fix on you.` };
+  }
+  // Destination = the unit's currently assigned call (units.current_call_id).
+  const dest = await queryFirst<{
+    call_number: string | null; location_address: string | null;
+    latitude: number | null; longitude: number | null;
+  }>(
+    db,
+    `SELECT c.call_number, c.location_address, c.latitude, c.longitude
+     FROM units u JOIN calls_for_service c ON c.id = u.current_call_id
+     WHERE UPPER(u.call_sign) = UPPER(?) LIMIT 1`,
+    callSign,
+  ).catch(() => null);
+  if (!dest || dest.latitude == null || dest.longitude == null) {
+    return { text: `${who}, no active assignment with a mapped location to route to.` };
+  }
+  const eta = await estimateEta(
+    env,
+    { lat: fix.latitude, lng: fix.longitude },
+    { lat: dest.latitude, lng: dest.longitude },
+  );
+  // "about" when the number is a straight-line estimate; a routed Mapbox time
+  // is stated plainly. Honest phrasing per the eta.ts contract.
+  const hedge = eta.source === 'mapbox' ? '' : 'about ';
+  const where = dest.call_number || dest.location_address || 'your call';
+  return {
+    text: `${who}, you're ${hedge}${eta.minutes} minute${eta.minutes === 1 ? '' : 's'} out from ${where}, ${eta.miles} miles.`,
+  };
 }
 
 // ============================================================

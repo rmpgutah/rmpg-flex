@@ -20,6 +20,7 @@ interface RadioSettings {
   ai_persona: string;
   ai_temperature: number;
   ai_max_reply_chars: number;
+  ai_auto_open_records: boolean;
   auto_record: boolean;
   auto_transcribe: boolean;
   recording_retention_days: number;
@@ -239,6 +240,7 @@ export default function AdminRadioSettings() {
           <div className="text-[11px] text-gray-300">Max reply length (chars)</div>
           <input aria-label="Max reply length" type="number" min={40} max={1200} className={`${inputCls} w-24 font-mono`} value={settings.ai_max_reply_chars} onChange={(e) => set('ai_max_reply_chars', parseInt(e.target.value, 10) || 0)} />
         </div>
+        <Toggle label="Auto-open record files" hint="When a unit asks dispatch to run a plate or person, pop the matching record into the console's side panel. Dispatch reads it back on the radio either way." checked={settings.ai_auto_open_records} onChange={(v) => set('ai_auto_open_records', v)} />
         <div className="pt-1">
           <label className="block text-[11px] text-gray-300 mb-1">Persona / extra directives</label>
           <textarea

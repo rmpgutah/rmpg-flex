@@ -35,6 +35,12 @@ export interface RadioSettings {
   ai_temperature: number;
   /** Hard cap on spoken reply length (characters). */
   ai_max_reply_chars: number;
+  /**
+   * When a unit asks dispatch to run a plate/person, auto-open the matching
+   * record file in the operator console's side panel. Dispatch still reads the
+   * result back on the radio regardless of this setting.
+   */
+  ai_auto_open_records: boolean;
 
   // ── Recording & Transcription ──
   /** Store R2 audio for incoming transmissions (false = log row only). */
@@ -74,6 +80,7 @@ export const RADIO_SETTING_DEFAULTS: RadioSettings = {
   ai_persona: '',
   ai_temperature: 0.3,
   ai_max_reply_chars: 400,
+  ai_auto_open_records: true,
 
   auto_record: true,
   auto_transcribe: true,
@@ -160,6 +167,7 @@ function coerce(key: keyof RadioSettings, raw: string): unknown {
   const def = RADIO_SETTING_DEFAULTS[key];
   switch (key) {
     case 'ai_dispatcher_enabled':
+    case 'ai_auto_open_records':
     case 'auto_record':
     case 'auto_transcribe':
     case 'notif_enabled_default':
