@@ -3,7 +3,7 @@ import RichTextArea from '../../components/RichTextArea';
 import { formatPhoneInput } from '../../utils/formatters';
 import {
   Search, MapPin, Phone, Mail, Globe, Trash2, Pencil, X, Users, Briefcase,
-  ArrowUpDown, Filter, Shield,
+  ArrowUpDown, Filter, Shield, FileText,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { useAuth } from '../../context/AuthContext';
@@ -14,6 +14,8 @@ import RecordField from '../../components/records/RecordField';
 import FieldGrid from '../../components/records/FieldGrid';
 import RecordBadge from '../../components/records/RecordBadge';
 import RecordHero from '../../components/records/RecordHero';
+import FormSection from '../../components/records/FormSection';
+import FormField from '../../components/records/FormField';
 import type { RecordEntityType } from '../../types';
 
 // ── Types ──────────────────────────────────────
@@ -425,42 +427,52 @@ function BusinessForm({ initial, onSubmit, onCancel, submitting }: {
   const set = (key: string, value: string) => setForm(prev => ({ ...prev, [key]: value }));
 
   return (
-    <div className="space-y-3">
-      <div className="grid grid-cols-2 gap-2">
-        <div><label className="text-[10px] text-rmpg-400 uppercase block mb-1">Business Name *</label><input className="input-dark text-xs w-full" value={form.name} onChange={e => set('name', e.target.value)} /></div>
-        <div><label className="text-[10px] text-rmpg-400 uppercase block mb-1">DBA Name</label><input className="input-dark text-xs w-full" value={form.dba_name} onChange={e => set('dba_name', e.target.value)} /></div>
-      </div>
-      <div className="grid grid-cols-3 gap-2">
-        <div><label className="text-[10px] text-rmpg-400 uppercase block mb-1">Business Type</label><input className="input-dark text-xs w-full" value={form.business_type} onChange={e => set('business_type', e.target.value)} placeholder="LLC, Corp, Sole Prop..." /></div>
-        <div><label className="text-[10px] text-rmpg-400 uppercase block mb-1">EIN</label><input className="input-dark text-xs w-full" value={form.ein} onChange={e => set('ein', e.target.value)} placeholder="XX-XXXXXXX" /></div>
-        <div><label className="text-[10px] text-rmpg-400 uppercase block mb-1">License #</label><input className="input-dark text-xs w-full" value={form.license_number} onChange={e => set('license_number', e.target.value)} /></div>
-      </div>
-      <div><label className="text-[10px] text-rmpg-400 uppercase block mb-1">Address</label><input className="input-dark text-xs w-full" value={form.address} onChange={e => set('address', e.target.value)} /></div>
-      <div className="grid grid-cols-3 gap-2">
-        <div><label className="text-[10px] text-rmpg-400 uppercase block mb-1">City</label><input className="input-dark text-xs w-full" value={form.city} onChange={e => set('city', e.target.value)} /></div>
-        <div><label className="text-[10px] text-rmpg-400 uppercase block mb-1">State</label><input className="input-dark text-xs w-full" value={form.state} onChange={e => set('state', e.target.value)} /></div>
-        <div><label className="text-[10px] text-rmpg-400 uppercase block mb-1">ZIP</label><input className="input-dark text-xs w-full" value={form.zip} onChange={e => set('zip', e.target.value)} /></div>
-      </div>
-      <div className="grid grid-cols-3 gap-2">
-        <div><label className="text-[10px] text-rmpg-400 uppercase block mb-1">Phone</label><input type="tel" className="input-dark text-xs w-full" value={form.phone} onChange={e => set('phone', formatPhoneInput(e.target.value))} placeholder="(801) 555-1234" /></div>
-        <div><label className="text-[10px] text-rmpg-400 uppercase block mb-1">Email</label><input className="input-dark text-xs w-full" value={form.email} onChange={e => set('email', e.target.value)} /></div>
-        <div><label className="text-[10px] text-rmpg-400 uppercase block mb-1">Website</label><input className="input-dark text-xs w-full" value={form.website} onChange={e => set('website', e.target.value)} /></div>
-      </div>
-      <div className="grid grid-cols-2 gap-2">
-        <div><label className="text-[10px] text-rmpg-400 uppercase block mb-1">Owner Name</label><input className="input-dark text-xs w-full" value={form.owner_name} onChange={e => set('owner_name', e.target.value)} /></div>
-        <div><label className="text-[10px] text-rmpg-400 uppercase block mb-1">Owner Phone</label><input type="tel" className="input-dark text-xs w-full" value={form.owner_phone} onChange={e => set('owner_phone', formatPhoneInput(e.target.value))} placeholder="(801) 555-1234" /></div>
-      </div>
-      <div className="grid grid-cols-3 gap-2">
-        <div><label className="text-[10px] text-rmpg-400 uppercase block mb-1">Contact Name</label><input className="input-dark text-xs w-full" value={form.contact_name} onChange={e => set('contact_name', e.target.value)} /></div>
-        <div><label className="text-[10px] text-rmpg-400 uppercase block mb-1">Contact Phone</label><input type="tel" className="input-dark text-xs w-full" value={form.contact_phone} onChange={e => set('contact_phone', formatPhoneInput(e.target.value))} placeholder="(801) 555-1234" /></div>
-        <div><label className="text-[10px] text-rmpg-400 uppercase block mb-1">Contact Email</label><input className="input-dark text-xs w-full" value={form.contact_email} onChange={e => set('contact_email', e.target.value)} /></div>
-      </div>
-      <div className="grid grid-cols-2 gap-2">
-        <div><label className="text-[10px] text-rmpg-400 uppercase block mb-1">Industry</label><input className="input-dark text-xs w-full" value={form.industry} onChange={e => set('industry', e.target.value)} /></div>
-        <div><label className="text-[10px] text-rmpg-400 uppercase block mb-1">Employees</label><input className="input-dark text-xs w-full" value={form.employee_count} onChange={e => set('employee_count', e.target.value)} /></div>
-      </div>
-      <div><label className="text-[10px] text-rmpg-400 uppercase block mb-1">Notes</label><RichTextArea className="input-dark text-xs w-full min-h-[48px]" rows={2} value={form.notes} onChange={e => set('notes', e.target.value)} /></div>
-      <div className="flex justify-end gap-2 pt-2">
+    <div className="space-y-2.5">
+      <FormSection title="Business Information" icon={Briefcase}>
+        <div className="grid grid-cols-2 gap-2.5">
+          <FormField label="Business Name" required><input className="input-dark text-xs w-full" value={form.name} onChange={e => set('name', e.target.value)} /></FormField>
+          <FormField label="DBA Name"><input className="input-dark text-xs w-full" value={form.dba_name} onChange={e => set('dba_name', e.target.value)} /></FormField>
+          <FormField label="Business Type"><input className="input-dark text-xs w-full" value={form.business_type} onChange={e => set('business_type', e.target.value)} placeholder="LLC, Corp, Sole Prop..." /></FormField>
+          <FormField label="EIN"><input className="input-dark text-xs w-full" value={form.ein} onChange={e => set('ein', e.target.value)} placeholder="XX-XXXXXXX" /></FormField>
+          <FormField label="License #" className="col-span-2"><input className="input-dark text-xs w-full" value={form.license_number} onChange={e => set('license_number', e.target.value)} /></FormField>
+        </div>
+      </FormSection>
+
+      <FormSection title="Contact & Address" icon={Phone}>
+        <div className="grid grid-cols-6 gap-2.5">
+          <FormField label="Address" className="col-span-6"><input className="input-dark text-xs w-full" value={form.address} onChange={e => set('address', e.target.value)} /></FormField>
+          <FormField label="City" className="col-span-3"><input className="input-dark text-xs w-full" value={form.city} onChange={e => set('city', e.target.value)} /></FormField>
+          <FormField label="State" className="col-span-1"><input className="input-dark text-xs w-full" value={form.state} onChange={e => set('state', e.target.value)} /></FormField>
+          <FormField label="ZIP" className="col-span-2"><input className="input-dark text-xs w-full" value={form.zip} onChange={e => set('zip', e.target.value)} /></FormField>
+          <FormField label="Phone" className="col-span-2"><input type="tel" className="input-dark text-xs w-full" value={form.phone} onChange={e => set('phone', formatPhoneInput(e.target.value))} placeholder="(801) 555-1234" /></FormField>
+          <FormField label="Email" className="col-span-2"><input className="input-dark text-xs w-full" value={form.email} onChange={e => set('email', e.target.value)} /></FormField>
+          <FormField label="Website" className="col-span-2"><input className="input-dark text-xs w-full" value={form.website} onChange={e => set('website', e.target.value)} /></FormField>
+        </div>
+      </FormSection>
+
+      <FormSection title="Owner & Key Contact" icon={Users}>
+        <div className="grid grid-cols-2 gap-2.5">
+          <FormField label="Owner Name"><input className="input-dark text-xs w-full" value={form.owner_name} onChange={e => set('owner_name', e.target.value)} /></FormField>
+          <FormField label="Owner Phone"><input type="tel" className="input-dark text-xs w-full" value={form.owner_phone} onChange={e => set('owner_phone', formatPhoneInput(e.target.value))} placeholder="(801) 555-1234" /></FormField>
+          <FormField label="Contact Name"><input className="input-dark text-xs w-full" value={form.contact_name} onChange={e => set('contact_name', e.target.value)} /></FormField>
+          <FormField label="Contact Phone"><input type="tel" className="input-dark text-xs w-full" value={form.contact_phone} onChange={e => set('contact_phone', formatPhoneInput(e.target.value))} placeholder="(801) 555-1234" /></FormField>
+          <FormField label="Contact Email" className="col-span-2"><input className="input-dark text-xs w-full" value={form.contact_email} onChange={e => set('contact_email', e.target.value)} /></FormField>
+        </div>
+      </FormSection>
+
+      <FormSection title="Operations" icon={Briefcase}>
+        <div className="grid grid-cols-3 gap-2.5">
+          <FormField label="Industry"><input className="input-dark text-xs w-full" value={form.industry} onChange={e => set('industry', e.target.value)} /></FormField>
+          <FormField label="Employees"><input className="input-dark text-xs w-full" value={form.employee_count} onChange={e => set('employee_count', e.target.value)} /></FormField>
+          <FormField label="Annual Revenue"><input className="input-dark text-xs w-full" value={form.annual_revenue} onChange={e => set('annual_revenue', e.target.value)} placeholder="$" /></FormField>
+        </div>
+      </FormSection>
+
+      <FormSection title="Notes" icon={FileText}>
+        <RichTextArea className="input-dark text-xs w-full min-h-[48px]" rows={2} value={form.notes} onChange={e => set('notes', e.target.value)} />
+      </FormSection>
+
+      <div className="flex justify-end gap-2 pt-1">
         <button type="button" onClick={onCancel} className="toolbar-btn">Cancel</button>
         <button type="button" onClick={() => onSubmit(form)} disabled={!form.name || submitting} className="toolbar-btn toolbar-btn-primary">
           {submitting ? 'Saving...' : initial ? 'Update' : 'Create'}
