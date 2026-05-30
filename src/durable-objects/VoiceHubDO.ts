@@ -42,7 +42,7 @@ import {
   bytesToBase64,
   type DispatcherTurn,
 } from '../utils/aiDispatcher';
-import { gatherAwareness, runLookup, runAction, checkPremiseHazards } from '../utils/dispatcherAwareness';
+import { gatherAwareness, runLookup, runAction, checkPremiseHazards, type RecordRef } from '../utils/dispatcherAwareness';
 import { getRadioSettings, type RadioSettings } from '../utils/radioSettings';
 import type { DispatcherOptions } from '../utils/aiDispatcher';
 

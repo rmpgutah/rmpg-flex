@@ -172,7 +172,8 @@ You hear EVERY transmission on the channel and you acknowledge or respond to eac
 - A unit "out" / "out at <place>" → log the location and acknowledge ("copy, show you out at <place>, time is <the Current time given below, in Mountain Time>"). NEVER invent or guess a time — only ever state the Current time provided to you (it is already Mountain Time).
 - A request for backup / "10-78" / "start me another unit" → acknowledge and dispatch the nearest available on-duty unit by call-sign from the board.
 - An emergency / "shots fired" / "officer down" / "10-33" / "code 3" → respond with urgency, acknowledge, advise units to hold traffic, and that help is en route.
-- A record check the unit requests — you CAN run it. Set the "lookup" field and make "reply" a brief "stand by"; the result is read back automatically. Supported lookup types: PLATE, PERSON (by name), WARRANT, PREMISE (alerts/hazards at an address), VIN (vehicle by VIN). For premise use {type:"premise", query:"<address>"}; for VIN {type:"vin", query:"<vin or last digits>"}.
+- A record check the unit requests — you CAN run it. Set the "lookup" field and make "reply" a brief "stand by"; the result is read back automatically, and for a PLATE or PERSON hit the matching record file opens on the dispatcher's console (and on the requesting unit's own device). Supported lookup types: PLATE, PERSON (by name), WARRANT, PREMISE (alerts/hazards at an address), VIN (vehicle by VIN). For premise use {type:"premise", query:"<address>"}; for VIN {type:"vin", query:"<vin or last digits>"}.
+- A LOCATION or ETA question about the asking unit ITSELF — "where am I?", "what's my twenty?", "10-20", "what's my ETA?", "how far am I out?", "time to the scene?" — you CAN answer from the unit's live GPS. Set "lookup" type "unit_location" (where they are) or "eta" (drive time to their assigned call); leave "query" empty (the unit is identified by who's transmitting) and make "reply" a brief "stand by". The computed answer is read back automatically — do NOT guess a location, beat, distance, or time yourself.
 - A CAD WRITE the unit requests — you CAN do data entry. Set the "action" field:
     • STATUS change — "10-8 / in service", "10-7 / out of service", "show me out / out at <place> / on scene / arrived", "en route", "tied up" — action {type:"set_unit_status", unit:"<call-sign>", status:"<what they said>", location:"<place if given>"}.
     • START / CREATE a call — action {type:"create_call", incident_type:"<short type>", priority:"<P1|P2|P3|P4>", location_address:"<address>", description:"<details>", caller_name:"<if given>"}; the call number is read back automatically.
@@ -189,8 +190,8 @@ Common 10-codes: 10-4 acknowledged, 10-8 in service, 10-7 out of service, 10-20 
 Never invent unit numbers, names, plates, warrants, call numbers, or facts you were not given in the snapshot or a lookup result. If you don't have a detail, ask for it briefly.`;
 
 const FORMAT_INSTRUCTION = `Respond with ONLY a JSON object, no prose around it:
-{"intent":"<status_update|out_at_location|backup_request|emergency|lookup_request|data_entry|en_route|arrived|code4|chatter|unclear>","reply":"<exactly what dispatch says over the radio — one or two short sentences>","safety":{"stress":"normal|elevated|high","duress":false},"lookup":{"type":"plate|person|warrant|premise|vin","query":"<value>"},"action":{"type":"set_unit_status|create_call|clear_call|dispatch_backup","unit":"<call-sign>","status":"<status>","location":"<place>","incident_type":"<type>","priority":"<P1|P2|P3|P4>","location_address":"<address>","description":"<details>","caller_name":"<name>","call_number":"<call #>","disposition":"<outcome>"}}
-ALWAYS include "safety". Include "lookup" ONLY for a record check. Include "action" ONLY for a status/call write; send only the fields that action type needs. Omit "lookup"/"action" otherwise.
+{"intent":"<status_update|out_at_location|backup_request|emergency|lookup_request|location_request|eta_request|data_entry|en_route|arrived|code4|chatter|unclear>","reply":"<exactly what dispatch says over the radio — one or two short sentences>","safety":{"stress":"normal|elevated|high","duress":false},"lookup":{"type":"plate|person|warrant|premise|vin|unit_location|eta","query":"<value; empty for unit_location/eta>"},"action":{"type":"set_unit_status|create_call|clear_call|dispatch_backup","unit":"<call-sign>","status":"<status>","location":"<place>","incident_type":"<type>","priority":"<P1|P2|P3|P4>","location_address":"<address>","description":"<details>","caller_name":"<name>","call_number":"<call #>","disposition":"<outcome>"}}
+ALWAYS include "safety". Include "lookup" for a record check (plate/person/warrant/premise/vin), OR for a unit_location/eta question about the asking unit (query empty). Include "action" ONLY for a status/call write; send only the fields that action type needs. Omit "lookup"/"action" otherwise.
 If the transmission is unintelligible, set intent to "unclear" and reply asking the unit to repeat their last.`;
 
 // ─── Transcription ──────────────────────────────────────────
@@ -315,7 +316,11 @@ function buildUserPrompt(turn: DispatcherTurn): string {
   return lines.join('\n');
 }
 
-const LOOKUP_TYPES = ['plate', 'person', 'warrant', 'premise', 'vin'] as const;
+const LOOKUP_TYPES = ['plate', 'person', 'warrant', 'premise', 'vin', 'unit_location', 'eta'] as const;
+
+// unit_location ("where am I") and eta ("what's my ETA") need no query — the
+// transmitting unit is the subject, resolved from the speaker by runLookup.
+const UNIT_CENTRIC_LOOKUPS = new Set(['unit_location', 'eta']);
 
 function parseLookup(value: unknown): LookupRequest | undefined {
   if (!value || typeof value !== 'object') return undefined;
