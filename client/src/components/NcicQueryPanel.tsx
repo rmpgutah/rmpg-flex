@@ -49,7 +49,7 @@ const QUICK_QUERIES = [
 interface NcicQueryPanelProps {
   isOpen: boolean;
   onClose: () => void;
-  initialQuery?: { type: 'person' | 'vehicle' | 'warrant'; query: string } | null;
+  initialQuery?: { type: 'person' | 'vehicle' | 'warrant' | 'xref' | 'phone' | 'address' | 'dl' | 'ofac'; query: string } | null;
   embedded?: boolean;
 }
 
@@ -116,7 +116,7 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
   // Process initial query from command line
   useEffect(() => {
     if (initialQuery && isOpen) {
-      const cmdMap: Record<string, string> = { person: 'QH', vehicle: 'QV', warrant: 'QW', dl: 'QD', ofac: 'QO' };
+      const cmdMap: Record<string, string> = { person: 'QH', vehicle: 'QV', warrant: 'QW', dl: 'QD', ofac: 'QO', xref: 'QX', phone: 'QT', address: 'QA' };
       const cmd = `${cmdMap[initialQuery.type] || 'QH'} ${initialQuery.query}`;
       runQuery(cmd);
     }
