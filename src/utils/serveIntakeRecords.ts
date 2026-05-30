@@ -26,8 +26,10 @@
 //   • properties: normalized address only
 // ============================================================
 
-import type { D1Database } from '@cloudflare/workers-types';
+import type { D1Database, KVNamespace } from '@cloudflare/workers-types';
 import { execute, query, queryFirst } from './db';
+import { geocodeAddress } from '../routes/geocode';
+import { buildPsoBriefing } from './serveIntakeBriefing';
 import type { ExtractedField, QueueRow, ServePriority } from './serveIntakeExtract';
 
 // ── Sentinel client for intake-generated properties ──────────
@@ -248,7 +250,14 @@ export interface ServiceCallInput {
   caller_phone: string | null;
   location_address: string;
   property_id: number | null;
+  latitude: number | null;
+  longitude: number | null;
   description: string | null;
+  // PSO pre-arrival briefing (all columns verified on live D1 2026-05-29):
+  notes: string | null;                  // JSON array of note objects (Notes tab feed)
+  scene_safety: string | null;           // Info-tab Scene section
+  officer_safety_caution: 0 | 1;         // red caution badge / Flags tab
+  domestic_violence: 0 | 1;              // Flags tab (protective orders)
   dispatcher_id: number | null;
 }
 
@@ -265,16 +274,23 @@ export async function createServiceCall(db: D1Database, c: ServiceCallInput): Pr
   // properties.is_active fix. 'intake' is the existing canonical value used by
   // other intake flows (ServeManager pollers etc.) so it groups cleanly in
   // dispatch-source analytics.
+  // latitude/longitude are EXISTING columns (dispatch/calls.ts writes them);
+  // we're not adding to the 100-col table, just populating two more so the
+  // intake call pins on the dispatch map exactly like a dispatcher-created one.
   const result = await execute(
     db,
     `INSERT INTO calls_for_service (
       call_number, incident_type, priority, status,
       caller_name, caller_phone, location_address, property_id,
-      description, source, dispatcher_id
-    ) VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, ?, 'intake', ?)`,
+      latitude, longitude, description,
+      notes, scene_safety, officer_safety_caution, domestic_violence,
+      source, dispatcher_id
+    ) VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'intake', ?)`,
     c.call_number, c.incident_type, c.priority,
     c.caller_name, c.caller_phone, c.location_address, c.property_id,
-    c.description, c.dispatcher_id,
+    c.latitude, c.longitude, c.description,
+    c.notes, c.scene_safety, c.officer_safety_caution, c.domestic_violence,
+    c.dispatcher_id,
   );
   return { id: Number(result.meta.last_row_id) };
 }
@@ -332,6 +348,10 @@ export interface CommitInput {
   queueRow: QueueRow;
   userId: number | null;
   documentSummary: string;             // free-text inserted into call.description
+  docCount: number;                    // number of uploaded docs (for the briefing note)
+  // KV is needed for the geocode cache. Best-effort: a null/failed
+  // geocode never blocks the commit — coords just stay null.
+  env: { KV: KVNamespace };
 }
 
 export async function commitIntake(db: D1Database, input: CommitInput): Promise<CommitResult> {
@@ -362,6 +382,17 @@ export async function commitIntake(db: D1Database, input: CommitInput): Promise<
   const cityStateSuffix = cityAlreadyInAddr || stateAlreadyInAddr
     ? '' : [city, stateZip].filter(Boolean).join(', ');
   const fullLocation = [addr, cityStateSuffix].filter(Boolean).join(', ');
+
+  // ── Geocode once, reuse for property + call + queue ──────────
+  // Mirrors dispatch/calls.ts so an intake-created CFS pins on the map
+  // and the route planner can sequence it. Best-effort: geocodeAddress
+  // returns null on any miss/error (Nominatim down, address too sparse)
+  // and we simply store null coords — the records still link correctly,
+  // they just won't have a map pin until someone geocodes them later.
+  let coords: { lat: number; lng: number } | null = null;
+  if (fullLocation || addr) {
+    coords = await geocodeAddress(input.env, fullLocation || addr).catch(() => null);
+  }
 
   // ── 1. Business row (corporate recipients only) ────────────
   let business: RecordRef = { id: 0, created: false };
@@ -416,6 +447,8 @@ export async function commitIntake(db: D1Database, input: CommitInput): Promise<
       name: businessName || queueRow.recipient_name || addr,
       address: fullLocation || addr,
       city, state: queueRow.recipient_state, zip: queueRow.recipient_zip,
+      latitude: coords?.lat ?? null,
+      longitude: coords?.lng ?? null,
       property_type: isBusiness ? 'business_service' : 'residential_service',
     });
   }
@@ -427,7 +460,23 @@ export async function commitIntake(db: D1Database, input: CommitInput): Promise<
     const cn = await nextCallNumber(db);
     const caller_name = queueRow.client_name || queueRow.attorney_name;
     const caller_phone = get('attorney_phone') || null;
-    const description = input.documentSummary;
+
+    // ── PSO pre-arrival briefing ──────────────────────────────
+    // Turn the extracted facts into the officer-facing notations the
+    // PSO reads on the call before arrival: a structured INTAKE note,
+    // an OFFICER SAFETY note + scene_safety/caution flags (per the
+    // operator's document-type policy), and a ⚠ prefix on the call
+    // description so the queue row reads hot at a glance.
+    const briefing = buildPsoBriefing({
+      fields,
+      queueRow,
+      isBusiness,
+      agentName: agentFullName,
+      fullLocation: fullLocation || addr,
+      docCount: input.docCount,
+    }, new Date().toISOString());
+    const description = briefing.descriptionPrefix + input.documentSummary;
+
     try {
       const call = await createServiceCall(db, {
         call_number: cn,
@@ -437,7 +486,13 @@ export async function commitIntake(db: D1Database, input: CommitInput): Promise<
         caller_phone,
         location_address: fullLocation || addr,
         property_id: property.id || null,
+        latitude: coords?.lat ?? null,
+        longitude: coords?.lng ?? null,
         description,
+        notes: briefing.notes.length ? JSON.stringify(briefing.notes) : null,
+        scene_safety: briefing.sceneSafety || null,
+        officer_safety_caution: briefing.officerSafetyCaution,
+        domestic_violence: briefing.domesticViolence,
         dispatcher_id: userId,
       });
       callId = call.id;
@@ -458,15 +513,17 @@ export async function commitIntake(db: D1Database, input: CommitInput): Promise<
       `INSERT INTO serve_queue (
         call_id, officer_id, recipient_name, recipient_person_id,
         recipient_address, recipient_city, recipient_state, recipient_zip,
+        recipient_lat, recipient_lng,
         property_id,
         document_type, case_number, court_name, jurisdiction,
         client_name, attorney_name, priority, deadline,
         service_instructions, notes, status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
       callId, userId,
       queueRow.recipient_name, person.id || null,
       queueRow.recipient_address, queueRow.recipient_city,
       queueRow.recipient_state, queueRow.recipient_zip,
+      coords?.lat ?? null, coords?.lng ?? null,
       property.id || null,
       queueRow.document_type, queueRow.case_number,
       queueRow.court_name, queueRow.jurisdiction,

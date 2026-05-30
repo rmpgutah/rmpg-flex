@@ -45,6 +45,13 @@ export function mapDbCall(row: any): CallForService {
     longitude: row.longitude ?? null,
     property_id: row.property_id ? String(row.property_id) : undefined,
     property_name: row.property_name || undefined,
+    // Premise intel joined from the linked property (GET /dispatch/calls/:id).
+    // Surfaced to the PSO in the Info tab so post-orders / hazard warnings on
+    // the address are visible before arrival.
+    property_address: row.property_address || undefined,
+    gate_code: row.gate_code || undefined,
+    post_orders: row.post_orders || undefined,
+    hazard_notes: row.hazard_notes || undefined,
     client_id: row.client_id ? String(row.client_id) : undefined,
     client_name: row.client_name || undefined,
     description: row.description || '',

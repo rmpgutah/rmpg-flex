@@ -355,21 +355,119 @@ export function normalizePriority(raw: string): ServePriority {
 // Accepts ISO (YYYY-MM-DD) and common US (M/D/YYYY) forms, normalizing
 // to ISO. Returns null for anything that isn't a concrete date.
 export function normalizeDeadline(raw: string): string | null {
+  return toIsoDate(raw);
+}
+
+// ── Field-level normalizers (deterministic post-extraction pass) ──
+// The LLM is *asked* to emit digits-only phones and ISO dates, but it
+// complies only ~80% of the time. These enforce the invariants in code
+// so the wrong shape never reaches a typed/CHECK-constrained column
+// (state is CHAR(2) on persons/properties, deadline drives an ISO date
+// comparison, phone feeds the dedupe key in findOrCreatePerson).
+
+// ISO-or-US calendar date → ISO YYYY-MM-DD, else null. Shared by the
+// deadline check and every other date field (DOB, filing/hearing dates).
+export function toIsoDate(raw: string): string | null {
   const s = (raw || '').trim();
   if (!s) return null;
   // ISO: 2026-05-22 (optionally with time) — take the date part.
-  const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
-  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
-  // US: 5/22/2026 or 05/22/26
-  const us = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+  const iso = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if (iso) return `${iso[1]}-${iso[2].padStart(2, '0')}-${iso[3].padStart(2, '0')}`;
+  // US: 5/22/2026, 05/22/26, or dash form 5-22-2026.
+  const us = s.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})$/);
   if (us) {
     const mm = us[1].padStart(2, '0');
     const dd = us[2].padStart(2, '0');
     const yyyy = us[3].length === 2 ? `20${us[3]}` : us[3];
+    // Reject impossible month/day so OCR noise ("13/45/2026") doesn't
+    // become a silently-wrong date that still parses lexically.
+    if (Number(mm) > 12 || Number(dd) > 31) return null;
     return `${yyyy}-${mm}-${dd}`;
   }
   // Anything else ("21 days", "upon service", free text) → not a date.
   return null;
+}
+
+// Full state name OR 2-letter code → uppercase 2-letter. Unknown input
+// is returned uppercased+trimmed (we'd rather keep a 3-letter oddity
+// than blank a column), but a 2-char column will reject >2 chars, so the
+// commit caps to 2 for the persons/properties writes.
+const US_STATES: Record<string, string> = {
+  alabama: 'AL', alaska: 'AK', arizona: 'AZ', arkansas: 'AR', california: 'CA',
+  colorado: 'CO', connecticut: 'CT', delaware: 'DE', florida: 'FL', georgia: 'GA',
+  hawaii: 'HI', idaho: 'ID', illinois: 'IL', indiana: 'IN', iowa: 'IA',
+  kansas: 'KS', kentucky: 'KY', louisiana: 'LA', maine: 'ME', maryland: 'MD',
+  massachusetts: 'MA', michigan: 'MI', minnesota: 'MN', mississippi: 'MS',
+  missouri: 'MO', montana: 'MT', nebraska: 'NE', nevada: 'NV',
+  'new hampshire': 'NH', 'new jersey': 'NJ', 'new mexico': 'NM', 'new york': 'NY',
+  'north carolina': 'NC', 'north dakota': 'ND', ohio: 'OH', oklahoma: 'OK',
+  oregon: 'OR', pennsylvania: 'PA', 'rhode island': 'RI', 'south carolina': 'SC',
+  'south dakota': 'SD', tennessee: 'TN', texas: 'TX', utah: 'UT', vermont: 'VT',
+  virginia: 'VA', washington: 'WA', 'west virginia': 'WV', wisconsin: 'WI',
+  wyoming: 'WY', 'district of columbia': 'DC',
+};
+
+export function normalizeState(raw: string): string {
+  const s = (raw || '').trim();
+  if (!s) return '';
+  const lower = s.toLowerCase().replace(/\./g, '');
+  if (US_STATES[lower]) return US_STATES[lower];
+  if (/^[a-z]{2}$/i.test(s)) return s.toUpperCase();
+  return s.toUpperCase();
+}
+
+// Digits only; drop a leading US country code so 11-digit "1XXXXXXXXXX"
+// stores the same 10 digits as a bare local number (keeps the person
+// dedupe key stable across documents that format phones differently).
+export function normalizePhone(raw: string): string {
+  const digits = (raw || '').replace(/\D/g, '');
+  if (digits.length === 11 && digits.startsWith('1')) return digits.slice(1);
+  return digits;
+}
+
+// First 5 digits as the ZIP, optionally "+4". Strips OCR'd letters and
+// stray punctuation ("UT 84102-1234" pasted into the zip field → 84102-1234).
+export function normalizeZip(raw: string): string {
+  const m = (raw || '').match(/(\d{5})(?:[-\s]?(\d{4}))?/);
+  if (!m) return '';
+  return m[2] ? `${m[1]}-${m[2]}` : m[1];
+}
+
+// Which target fields get which normalizer. Centralized so adding a new
+// date/phone field is a one-line change, not a scattered edit.
+const PHONE_FIELDS = new Set<TargetField>(['recipient_phone', 'attorney_phone']);
+const STATE_FIELDS = new Set<TargetField>(['recipient_state']);
+const ZIP_FIELDS = new Set<TargetField>(['recipient_zip']);
+const DATE_FIELDS = new Set<TargetField>([
+  'recipient_dob', 'filing_date', 'service_deadline', 'hearing_date',
+]);
+
+// Apply the deterministic normalizers across a merged field map. Returns
+// a NEW map (doesn't mutate the input) with confidence preserved. A date
+// field that fails to parse is blanked (confidence→0) rather than left as
+// free text, so a garbage DOB never lands in persons.dob.
+export function normalizeFields(
+  fields: Record<string, ExtractedField>,
+): Record<string, ExtractedField> {
+  const out: Record<string, ExtractedField> = {};
+  for (const [k, v] of Object.entries(fields)) {
+    const key = k as TargetField;
+    const value = (v?.value || '').trim();
+    let next = value;
+    let conf = v?.confidence ?? 0;
+    if (value) {
+      if (PHONE_FIELDS.has(key)) next = normalizePhone(value);
+      else if (STATE_FIELDS.has(key)) next = normalizeState(value);
+      else if (ZIP_FIELDS.has(key)) next = normalizeZip(value);
+      else if (DATE_FIELDS.has(key)) {
+        const iso = toIsoDate(value);
+        if (iso) next = iso;
+        else { next = ''; conf = 0; }   // unparseable date → drop, don't guess
+      }
+    }
+    out[k] = { value: next, confidence: conf };
+  }
+  return out;
 }
 
 export interface QueueRow {

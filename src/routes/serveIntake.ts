@@ -43,6 +43,7 @@ import {
   extractFromImage,
   extractTextFromPdf,
   fieldsToQueueRow,
+  normalizeFields,
   type ExtractionResult,
   type ExtractedField,
 } from '../utils/serveIntakeExtract';
@@ -360,6 +361,51 @@ si.post('/upload', async (c) => {
     }
     if (c2.ex.error && !combinedError) combinedError = c2.ex.error;
   }
+
+  // ── Name-coherence guard ──────────────────────────────────────
+  // The per-field merge above picks the highest-confidence value for
+  // EACH field independently — which can stitch recipient_first_name
+  // from the field sheet onto recipient_last_name from the docket and
+  // invent a person who appears in neither doc. Identity must stay
+  // internally consistent, so we take the WHOLE name group from the one
+  // document with the strongest recipient signal rather than cherry-
+  // picking per field. (Other fields — court, case#, attorney — are
+  // independent facts and the per-field merge is correct for them.)
+  const IDENTITY_GROUP = [
+    'recipient_type', 'recipient_first_name', 'recipient_middle_name',
+    'recipient_last_name', 'recipient_business_name', 'recipient_dob',
+  ] as const;
+  const recipientScore = (ex: ExtractionResult): number => {
+    const f = ex.fields;
+    // Weight the name-defining fields; a doc that only mentions a DOB
+    // shouldn't outrank one that has the actual first+last name.
+    return (f.recipient_first_name?.value ? f.recipient_first_name.confidence : 0)
+      + (f.recipient_last_name?.value ? f.recipient_last_name.confidence : 0)
+      + (f.recipient_business_name?.value ? f.recipient_business_name.confidence : 0);
+  };
+  let bestDoc: ExtractionResult | null = null;
+  let bestScore = 0;
+  for (const c2 of collected) {
+    const s = recipientScore(c2.ex);
+    if (s > bestScore) { bestScore = s; bestDoc = c2.ex; }
+  }
+  if (bestDoc) {
+    for (const k of IDENTITY_GROUP) {
+      const v = bestDoc.fields[k];
+      // Only override with a non-empty value — a blank field on the
+      // winning doc shouldn't wipe a value another doc legitimately
+      // supplied (e.g. winner has the name, a second doc has the DOB).
+      if (v && v.value) mergedFields[k] = v;
+    }
+  }
+
+  // ── Deterministic field normalization ─────────────────────────
+  // Enforce the shapes the prompt only *requests*: digits-only phones,
+  // 2-letter states, 5(+4) ZIPs, ISO dates. Runs on the merged set so
+  // every downstream consumer (queue row, person/property writes, the
+  // success card) sees clean values.
+  const normalizedFields = normalizeFields(mergedFields);
+
   // Expose under the same name the rest of the handler already reads.
   const combined = { error: combinedError } as { error: string | null };
 
@@ -412,8 +458,8 @@ si.post('/upload', async (c) => {
 
   // ── Commit the merged extraction into the full RMS record set:
   //    business / person / property / call / serve_queue + links.
-  const row = fieldsToQueueRow(mergedFields);
-  const docSummary = buildCallDescription(row, mergedFields, documents.length);
+  const row = fieldsToQueueRow(normalizedFields);
+  const docSummary = buildCallDescription(row, normalizedFields, documents.length);
   let commit: CommitResult = {
     serve_queue_id: null, person_id: null, agent_person_id: null,
     business_id: null, property_id: null, call_id: null, call_number: null,
@@ -421,10 +467,12 @@ si.post('/upload', async (c) => {
   };
   if (row.recipient_name || row.recipient_address) {
     commit = await commitIntake(db, {
-      fields: mergedFields,
+      fields: normalizedFields,
       queueRow: row,
       userId: user.id,
       documentSummary: docSummary,
+      docCount: documents.length,
+      env: c.env,
     });
     // Back-link the document rows to the new queue entry.
     if (commit.serve_queue_id) {
@@ -467,7 +515,7 @@ si.post('/upload', async (c) => {
     // Legacy IntakeResult shape so the existing success card on
     // ServeIntakePage renders without any client-side branching on
     // which endpoint was hit.
-    extracted: buildExtractedBlock(mergedFields),
+    extracted: buildExtractedBlock(normalizedFields),
     confidence: bestConfidence,
     documentType: bestDocType,
     // Server-side advanced fields (the /intake legacy path can't
@@ -477,7 +525,7 @@ si.post('/upload', async (c) => {
     merged: {
       documentType: bestDocType,
       confidence: bestConfidence,
-      fields: mergedFields,
+      fields: normalizedFields,
       allDates: [...allDates],
       queue_row: row,
     },
@@ -556,7 +604,10 @@ si.post('/intake', async (c) => {
 
   const combined = docs.map((d) => `--- ${d.type || 'document'} ---\n${d.text || ''}`).join('\n\n');
   const extraction = await extractFromText(c.env.AI, combined);
-  const row = fieldsToQueueRow(extraction.fields);
+  // Same deterministic normalization the /upload path applies, so the
+  // legacy single-call route produces equally clean field shapes.
+  const normalized = normalizeFields(extraction.fields);
+  const row = fieldsToQueueRow(normalized);
 
   let commit: CommitResult = {
     serve_queue_id: null, person_id: null, agent_person_id: null,
@@ -566,10 +617,12 @@ si.post('/intake', async (c) => {
   if (row.recipient_name || row.recipient_address) {
     const db = getDb(c.env);
     commit = await commitIntake(db, {
-      fields: extraction.fields,
+      fields: normalized,
       queueRow: row,
       userId: user.id,
-      documentSummary: buildCallDescription(row, extraction.fields, docs.length),
+      documentSummary: buildCallDescription(row, normalized, docs.length),
+      docCount: docs.length,
+      env: c.env,
     });
   }
 
@@ -592,7 +645,7 @@ si.post('/intake', async (c) => {
     longitude: null,
     weather: null,
     lighting: null,
-    extracted: buildExtractedBlock(extraction.fields),
+    extracted: buildExtractedBlock(normalized),
     confidence: extraction.confidence,
     documentType: extraction.documentType,
     model: extraction.model,

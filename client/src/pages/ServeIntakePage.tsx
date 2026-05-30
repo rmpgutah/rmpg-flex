@@ -22,7 +22,27 @@ interface UploadedFile {
   // pdfjs text extraction stays as a fast preview; the server re-runs
   // its own extraction on submit for accuracy.
   file?: File;
+  // Set when this entry is a rasterized page synthesized from a scanned
+  // (no text layer) PDF. The original PDF has no extractable text, so we
+  // render its pages to images here and let the server's Vision OCR read
+  // them. Carries the source PDF's filename for the UI to group under.
+  derivedFrom?: string;
 }
+
+// A PDF whose pdfjs text layer yields fewer than this many characters is
+// treated as a scan (image-only) and rasterized to images for Vision OCR.
+// Matches the server's MIN_CLIENT_TEXT_CHARS so the two ends agree on what
+// "born-digital" means.
+const SCANNED_PDF_TEXT_THRESHOLD = 200;
+// Pages to rasterize from a scanned PDF. Recipient/service data on civil
+// papers lives in the first few pages (cover sheet, summons face, field
+// sheet); rendering every page of a 40-page docket would blow the 12-file
+// upload cap and the Vision latency budget for no extraction gain.
+const MAX_RASTER_PAGES = 4;
+// Render scale — 2x device pixels keeps small print legible to the OCR
+// model while JPEG q0.82 holds a letter page well under the 4 MB Vision cap.
+const RASTER_SCALE = 2;
+const RASTER_JPEG_QUALITY = 0.82;
 
 interface IntakeResult {
   success: boolean;
@@ -127,6 +147,40 @@ export default function ServeIntakePage() {
     }
   }, []);
 
+  // Render the first MAX_RASTER_PAGES pages of a scanned (no text layer)
+  // PDF to JPEG image Files. These get uploaded alongside the originals so
+  // the server's Workers AI Vision path can OCR them — the container
+  // Tesseract path is NOT rolled out in prod, so without this a scanned
+  // PDF extracts nothing at all. Best-effort: any failure returns [] and
+  // the original PDF is still uploaded (server falls back to its own path).
+  const rasterizePdf = useCallback(async (file: File): Promise<File[]> => {
+    const out: File[] = [];
+    try {
+      const arrayBuffer = await file.arrayBuffer();
+      const pdf = await getDocument({ data: arrayBuffer, verbosity: 0 }).promise;
+      const pageCount = Math.min(pdf.numPages, MAX_RASTER_PAGES);
+      const base = file.name.replace(/\.pdf$/i, '');
+      for (let i = 1; i <= pageCount; i++) {
+        const page = await pdf.getPage(i);
+        const viewport = page.getViewport({ scale: RASTER_SCALE });
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.floor(viewport.width);
+        canvas.height = Math.floor(viewport.height);
+        const ctx = canvas.getContext('2d');
+        if (!ctx) continue;
+        await page.render({ canvas, canvasContext: ctx, viewport } as any).promise;
+        const blob = await new Promise<Blob | null>((res) =>
+          canvas.toBlob(res, 'image/jpeg', RASTER_JPEG_QUALITY));
+        // Free the canvas backing store before the next (potentially large) page.
+        canvas.width = 0; canvas.height = 0;
+        if (blob) out.push(new File([blob], `${base}-scan-p${i}.jpg`, { type: 'image/jpeg' }));
+      }
+    } catch {
+      /* best-effort — empty list means "no rasterized pages added" */
+    }
+    return out;
+  }, []);
+
   const ocrScanImage = useCallback(async (file: File): Promise<OcrScanResult | null> => {
     try {
       const formData = new FormData();
@@ -168,6 +222,24 @@ export default function ServeIntakePage() {
           : name.includes('restraining') || name.includes('protective') ? 'restraining_order'
           : name.includes('id') || name.includes('passport') || name.includes('license') ? 'identification'
           : 'info_page';
+
+        // Scanned PDF (no usable text layer): rasterize its pages to images
+        // so the server's Vision OCR can read them. The original PDF is still
+        // uploaded too (audit trail + server fallback), but these images are
+        // what actually carry the recipient/service data through extraction.
+        if (text.trim().length < SCANNED_PDF_TEXT_THRESHOLD) {
+          const pages = await rasterizePdf(file);
+          for (let p = 0; p < pages.length; p++) {
+            newFiles.push({
+              name: pages[p].name,
+              type,
+              text: '',
+              status: 'extracted',     // server Vision will do the real extraction
+              file: pages[p],
+              derivedFrom: file.name,
+            });
+          }
+        }
       } else if (isImage) {
         const scan = await ocrScanImage(file);
         if (scan?.success) {
@@ -330,8 +402,20 @@ export default function ServeIntakePage() {
           </p>
           {files.map((f, i) => (
             <div key={i} className="flex items-center gap-2 px-3 py-2 panel-beveled bg-surface-raised text-xs">
-              <FileText className="w-4 h-4 text-rmpg-400 flex-shrink-0" />
+              {f.derivedFrom ? (
+                <Camera className="w-4 h-4 text-cyan-400 flex-shrink-0" />
+              ) : (
+                <FileText className="w-4 h-4 text-rmpg-400 flex-shrink-0" />
+              )}
               <span className="text-white font-medium truncate flex-1">{f.name}</span>
+              {f.derivedFrom && (
+                <span
+                  className="text-[8px] font-bold uppercase px-1 py-0.5 rounded-sm border bg-cyan-900/40 text-cyan-300 border-cyan-700/40 whitespace-nowrap"
+                  title={`Rasterized page from scanned PDF "${f.derivedFrom}" — read by Vision OCR on submit`}
+                >
+                  Scan OCR
+                </span>
+              )}
               <select
                 value={f.type}
                 onChange={e => changeFileType(i, e.target.value)}
