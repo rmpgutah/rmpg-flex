@@ -111,7 +111,9 @@
 //       impact, listed here for the deploy log).
 // v640: GEO-sort section dividers — when the queue is sorted by district, render
 //       a sticky "SECTION · Name" header before each new section's calls.
-const CACHE_NAME = 'rmpg-flex-v640';
+// v641: keyboard-shortcut cheat sheet overlay (toggle with "?") documenting the
+//       Spillman-style F-key + letter + nav shortcuts.
+const CACHE_NAME = 'rmpg-flex-v641';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
