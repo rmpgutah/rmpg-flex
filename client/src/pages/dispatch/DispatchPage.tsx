@@ -5024,7 +5024,7 @@ export default function DispatchPage() {
                 )}
 
                 {/* ── VISIT HISTORY TIMELINE — PSO calls, Info tab ─── */}
-                {detailTab === 'info' && !isEditing && selectedCall.incident_type === 'pso_client_request' && selectedCall.visit_history && selectedCall.visit_history.length > 0 && (
+                {detailTab === 'info' && !isEditing && ['pso_client_request', 'process_service'].includes(String(selectedCall.incident_type)) && selectedCall.visit_history && selectedCall.visit_history.length > 0 && (
                   <div className="border-t border-[#2b2b2b] pt-3 mb-3">
                     <label className="field-label !flex items-center gap-1.5 mb-2" style={{ color: '#d4a017', fontSize: '9px', letterSpacing: '0.05em' }}>
                       <Clock className="w-3 h-3" /> Visit History

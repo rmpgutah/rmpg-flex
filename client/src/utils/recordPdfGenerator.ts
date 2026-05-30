@@ -1158,6 +1158,30 @@ function fmtDateTime(ts?: string | null): string {
   } catch { return ts; }
 }
 
+// Date-only (Mountain). Used by the Visit History table's single DATE column.
+function fmtDateOnly(ts?: string | null): string {
+  if (!ts) return '';
+  try {
+    const d = parseTimestamp(ts);
+    if (isNaN(d.getTime())) return ts;
+    const { mm, dd, yyyy } = toMountain(d);
+    return `${mm}/${dd}/${yyyy}`;
+  } catch { return ts; }
+}
+
+// Time-of-day only (Mountain). The Visit History table shows just HH:MM:SS per
+// phase column — the date lives in its own column, so we no longer repeat the
+// full date on every phase (old layout printed it five times per visit).
+function fmtClock(ts?: string | null): string {
+  if (!ts) return '';
+  try {
+    const d = parseTimestamp(ts);
+    if (isNaN(d.getTime())) return ts;
+    const { hh, min, sec } = toMountain(d);
+    return `${hh}:${min}:${sec}`;
+  } catch { return ts; }
+}
+
 // `fmtTimestamp` was a duplicate of `fmtDateTime` (same output format,
 // same Mountain-Time normalization, same null-safe wrapper). Kept as a
 // thin alias so call sites that still reference it don't break — new
@@ -1978,95 +2002,69 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
   // PSO Client Request Details — already rendered after Caller Information above
 
   // Visit History Timeline (PSO calls with return visits)
-  if (data.incident_type === 'pso_client_request' && data.visit_history && data.visit_history.length > 0) {
+  // Both pso_client_request AND process_service calls accrue visit history on
+  // re-dispatch (server attaches it for both — see src/routes/dispatch/calls.ts).
+  if (['pso_client_request', 'process_service'].includes(String(data.incident_type)) && data.visit_history && data.visit_history.length > 0) {
     y = checkPageBreak(doc, y, 25, prio);
     const sec = openAutoSection(doc, `Visit History -- ${data.visit_history.length} Prior ${data.visit_history.length === 1 ? 'Visit' : 'Visits'}`, y);
-    y = sec.contentY;
+    y = sec.sectionY + SPACING.SECTION_HEADER_H;
 
-    for (let vi = 0; vi < data.visit_history.length; vi++) {
-      const visit = data.visit_history[vi];
-      y = checkPageBreak(doc, y, 12, prio);
-      if (vi > 0) {
-        doc.setDrawColor(...COLOR.BORDER_TABLE);
-        doc.setLineWidth(BORDER.TABLE_ROW);
-        doc.line(lx, y, lx + ffw, y);
-        y += 0.3;
+    // Spreadsheet-style grid (one row per prior visit) routed through the
+    // shared addTableWithShading helper — same look as LINKED PERSONS, with
+    // zebra rows, column dividers, and an automatic header re-draw +
+    // "VISIT HISTORY -- CONTINUED" sub-bar on page breaks. Replaces the old
+    // hand-drawn multi-line text block (cramped spacing + the full date
+    // repeated on every phase). A dedicated DATE column lets each phase show
+    // time-only (HH:MM:SS), so the date prints once per visit.
+    const vColFr = [0.08, 0.11, 0.085, 0.085, 0.085, 0.085, 0.085, 0.13, 0.165];
+    const vColPos: number[] = [];
+    { let cx = lx; for (const fr of vColFr) { vColPos.push(cx); cx += fr * ffw; } }
+    const vHeaders = ['VISIT', 'DATE', 'DISP', 'EN RT', 'ON SC', 'CLR', 'CLS', 'MILES', 'DISPOSITION']
+      .map((label, i) => ({ label, x: vColPos[i] }));
+
+    const vRows = data.visit_history.map((visit) => {
+      // Status rides in the VISIT cell ("#1 ARCHIVED") — word-wraps to its own
+      // line in the narrow column, keeping it without burning a full column.
+      const visitCell = `#${visit.visit_number}${visit.status ? ' ' + String(visit.status).toUpperCase() : ''}`;
+
+      // MILES: total, with the odometer range folded in when both ends are
+      // known (word-wraps to a second line within the cell).
+      let milesCell = '—';
+      const sMi = visit.starting_mileage, eMi = visit.ending_mileage;
+      if (sMi != null && eMi != null) {
+        milesCell = `${(eMi - sMi).toFixed(1)} (${sMi.toLocaleString()}-${eMi.toLocaleString()})`;
+      } else if (eMi != null) {
+        milesCell = `End ${eMi.toLocaleString()}`;
+      } else if (sMi != null) {
+        milesCell = `Start ${sMi.toLocaleString()}`;
       }
 
-      // Visit header line
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(FONT.SIZE_FIELD_VALUE);
-      doc.setTextColor(...COLOR.TEXT_PRIMARY);
-      doc.text(`Visit #${visit.visit_number}`, lx, y);
-
-      // Status badge
-      const statusText = sanitizePdfText(` -- ${(visit.status || 'unknown').toUpperCase()}`);
-      const visitLabelW = doc.getTextWidth(`Visit #${visit.visit_number}`);
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(FONT.SIZE_TABLE_HEADER);
-      doc.setTextColor(...COLOR.TEXT_PRIMARY);
-      doc.text(statusText, lx + visitLabelW, y);
-
-      // Units on the right
+      // DISPOSITION cell carries responding units / vehicle when present.
       let unitsList: string[] = [];
       try { unitsList = JSON.parse(visit.assigned_units || '[]'); } catch { /* ignore */ }
-      if (unitsList.length > 0) {
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(FONT.SIZE_TABLE_HEADER);
-        doc.setTextColor(...COLOR.TEXT_TERTIARY);
-        const unitsText = sanitizePdfText(`Units: ${unitsList.join(', ')}`);
-        const unitsW = doc.getTextWidth(unitsText);
-        doc.text(unitsText, lx + ffw - unitsW, y);
-      }
-      // SPACING.SM (0.5) is a "small gap" token — too small to advance a
-      // full text line. Use FIELD_ROW_ADVANCE (2.8) between visit-history
-      // rows so timestamps / mileage / disposition don't render on top of
-      // each other (regression observed in PSO call PDFs 2026-05-02).
-      y += SPACING.FIELD_ROW_ADVANCE;
+      const dispExtras: string[] = [];
+      if (unitsList.length > 0) dispExtras.push(unitsList.join(', '));
+      if (visit.responding_vehicle_id) dispExtras.push(`Veh ${visit.responding_vehicle_id}`);
+      const dispCell = [visit.disposition || '—', ...dispExtras].join(' / ');
 
-      // Timestamps row
-      const timeFields: string[] = [];
-      if (visit.dispatched_at) timeFields.push(`Disp: ${fmtDateTime(visit.dispatched_at)}`);
-      if (visit.enroute_at) timeFields.push(`EnRt: ${fmtDateTime(visit.enroute_at)}`);
-      if (visit.onscene_at) timeFields.push(`OnSc: ${fmtDateTime(visit.onscene_at)}`);
-      if (visit.cleared_at) timeFields.push(`Clr: ${fmtDateTime(visit.cleared_at)}`);
-      if (visit.closed_at) timeFields.push(`Cls: ${fmtDateTime(visit.closed_at)}`);
+      // Single DATE column = the visit's dispatched date (falls back to the
+      // first available phase / record timestamp).
+      const visitDate = fmtDateOnly(visit.dispatched_at || visit.onscene_at || visit.cleared_at || visit.created_at);
 
-      if (timeFields.length > 0) {
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(FONT.SIZE_TABLE_HEADER);
-        doc.setTextColor(...COLOR.TEXT_TERTIARY);
-        doc.text(sanitizePdfText(timeFields.join('    ')), lx + SPACING.MD, y);
-        y += SPACING.FIELD_ROW_ADVANCE;
-      }
+      return [
+        visitCell,
+        visitDate,
+        fmtClock(visit.dispatched_at),
+        fmtClock(visit.enroute_at),
+        fmtClock(visit.onscene_at),
+        fmtClock(visit.cleared_at),
+        fmtClock(visit.closed_at),
+        milesCell,
+        dispCell,
+      ];
+    });
 
-      // Mileage row (if present)
-      const mileageFields: string[] = [];
-      if (visit.responding_vehicle_id) mileageFields.push(`Vehicle: ${visit.responding_vehicle_id}`);
-      if (visit.starting_mileage != null) mileageFields.push(`Start: ${visit.starting_mileage.toLocaleString()} mi`);
-      if (visit.ending_mileage != null) mileageFields.push(`End: ${visit.ending_mileage.toLocaleString()} mi`);
-      if (visit.starting_mileage != null && visit.ending_mileage != null) {
-        mileageFields.push(`Total: ${(visit.ending_mileage - visit.starting_mileage).toFixed(1)} mi`);
-      }
-
-      if (mileageFields.length > 0) {
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(FONT.SIZE_TABLE_HEADER);
-        doc.setTextColor(...COLOR.TEXT_TERTIARY);
-        doc.text(sanitizePdfText(mileageFields.join('    ')), lx + SPACING.MD, y);
-        y += SPACING.FIELD_ROW_ADVANCE;
-      }
-
-      // Disposition
-      if (visit.disposition) {
-        doc.setFont('helvetica', 'italic');
-        doc.setFontSize(FONT.SIZE_TABLE_HEADER);
-        doc.setTextColor(...COLOR.TEXT_PRIMARY);
-        doc.text(sanitizePdfText(`Disposition: ${visit.disposition}`), lx + SPACING.MD, y);
-        y += SPACING.FIELD_ROW_ADVANCE;
-      }
-    }
-    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+    y = addTableWithShading(doc, vHeaders, vRows, y, vColPos, { sectionTitle: 'VISIT HISTORY' });
   }
 
   // Assigned Units — already rendered above (after Scene Conditions)
