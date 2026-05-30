@@ -59,6 +59,36 @@ admin.get('/config', async (c) => {
       { code: 'Resolved',         description: 'Resolved on Scene' },
       { code: 'Transported',      description: 'Subject Transported' },
       { code: 'False Alarm',      description: 'False Alarm' },
+      { code: 'Verbal Warning',   description: 'Verbal Warning Issued' },
+      { code: 'Field Interview',  description: 'Field Interview (FI) Conducted' },
+      { code: 'Counseled',        description: 'Subject Counseled' },
+      { code: 'Documentation Only', description: 'Documentation Only' },
+      { code: 'UTL',              description: 'Unable to Locate' },
+      { code: 'Assist Rendered',  description: 'Assist Rendered' },
+      { code: 'Negative Contact', description: 'Negative Contact' },
+      { code: 'Patrol Completed', description: 'Patrol Completed' },
+      { code: 'Premise Secured',  description: 'Premise Secured' },
+      { code: 'Owner Notified',   description: 'Owner/Keyholder Notified' },
+      { code: 'Vehicle Towed',    description: 'Vehicle Towed' },
+      { code: 'Standby Complete', description: 'Standby Complete' },
+      // Process Service outcomes (paper service — pso_client_request / process_service calls).
+      // Namespaced with a 'PS ' code prefix so they group together and never
+      // collide with the law-enforcement codes above. Per-attempt diligence
+      // tracking still lives in the dedicated serve subsystem (serve_attempts);
+      // these are the call-level closeout codes.
+      { code: 'PS Served',            description: 'Process Served — Personal' },
+      { code: 'PS Sub-Served',        description: 'Process Served — Substitute' },
+      { code: 'PS Posted',            description: 'Process Served — Posted & Mailed' },
+      { code: 'PS Corporate',         description: 'Process Served — Corporate/Registered Agent' },
+      { code: 'PS Mailed',            description: 'Process Served — By Mail' },
+      { code: 'PS Non-Service',       description: 'Process — Unable to Serve' },
+      { code: 'PS Evasive',           description: 'Process — Evasive / Avoiding Service' },
+      { code: 'PS Vacant',            description: 'Process — Vacant / Unoccupied' },
+      { code: 'PS No Access',         description: 'Process — Gated / No Access' },
+      { code: 'PS Unknown',           description: 'Process — Recipient Unknown at Address' },
+      { code: 'PS Out of Jurisdiction', description: 'Process — Out of Jurisdiction' },
+      { code: 'PS Recalled',          description: 'Process — Recalled by Client' },
+      { code: 'PS Non Est',           description: 'Process — Returned Non-Est (Return of Service Filed)' },
       { code: 'Cancelled',        description: 'Call Cancelled' },
     ];
     const overrideCodes = new Set(customDispositions.map((d) => d.code));

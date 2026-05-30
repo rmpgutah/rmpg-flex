@@ -7,6 +7,7 @@ export type IncidentType =
   // Security
   | 'alarm_response' | 'access_control' | 'patrol_check' | 'lock_unlock'
   | 'property_damage' | 'lost_found'
+  | 'fire_watch' | 'house_check' | 'business_check' | 'gate_duty' | 'open_door'
   // Criminal
   | 'theft' | 'burglary' | 'robbery' | 'assault' | 'battery'
   | 'vandalism' | 'criminal_mischief' | 'drug_activity' | 'weapons_offense' | 'fraud_forgery'
@@ -14,10 +15,12 @@ export type IncidentType =
   | 'extortion' | 'criminal_trespass' | 'disorderly_conduct' | 'public_intoxication'
   | 'indecent_exposure' | 'shoplifting' | 'auto_theft' | 'receiving_stolen'
   | 'poss_stolen_vehicle' | 'criminal_threat' | 'illegal_dumping' | 'prostitution'
+  | 'wanted_person'
   // Disorder
   | 'trespass' | 'disturbance' | 'noise_complaint' | 'loitering'
   | 'panhandling' | 'domestic_dispute'
   | 'prowler' | 'harassment' | 'curfew_violation' | 'illegal_camping'
+  | 'fight' | 'intoxicated_person'
   // Traffic
   | 'traffic_accident' | 'hit_and_run' | 'dui_dwi' | 'parking_violation'
   | 'traffic_hazard' | 'abandoned_vehicle'
@@ -26,17 +29,19 @@ export type IncidentType =
   // Medical/Fire
   | 'medical_emergency' | 'overdose' | 'mental_health_crisis'
   | 'fire' | 'fire_alarm' | 'hazmat'
+  | 'suicidal_subject'
   // Service
   | 'officer_assist' | 'escort' | 'welfare_check' | 'citizen_assist' | 'civil_standby'
   | 'animal_complaint' | 'utility_problem' | 'pso_client_request'
   | 'death_investigation' | 'juvenile_runaway' | 'missing_person' | 'found_person'
   | 'repo_notice' | 'civil_dispute'
+  | 'motorist_assist' | 'vehicle_lockout' | 'jump_start' | 'vehicle_tow' | 'hangup_911'
   // Admin
   | 'daily_activity' | 'special_event' | 'training_exercise' | 'equipment_issue'
   // Use of Force
   | 'use_of_force'
-  // Legacy
-  | 'suspicious_activity' | 'other';
+  // Legacy / Uncategorized
+  | 'suspicious_activity' | 'suspicious_person' | 'suspicious_vehicle' | 'other';
 
 // ── Case Number Type Codes ──────────────────────────────────
 
@@ -48,6 +53,11 @@ export const INCIDENT_TYPE_CODES: Record<string, string> = {
   lock_unlock: 'LCK',
   property_damage: 'PDM',
   lost_found: 'LFP',
+  fire_watch: 'FWT',
+  house_check: 'HSC',
+  business_check: 'BSC',
+  gate_duty: 'GAT',
+  open_door: 'OPD',
   // Criminal
   theft: 'THF',
   burglary: 'BRG',
@@ -76,6 +86,7 @@ export const INCIDENT_TYPE_CODES: Record<string, string> = {
   criminal_threat: 'CTH',
   illegal_dumping: 'ILD',
   prostitution: 'PRS',
+  wanted_person: 'WNT',
   // Disorder
   trespass: 'TRS',
   disturbance: 'DST',
@@ -87,6 +98,8 @@ export const INCIDENT_TYPE_CODES: Record<string, string> = {
   harassment: 'HRS',
   curfew_violation: 'CRF',
   illegal_camping: 'ILC',
+  fight: 'FGT',
+  intoxicated_person: 'INT',
   // Traffic
   traffic_accident: 'TAC',
   hit_and_run: 'HNR',
@@ -107,6 +120,7 @@ export const INCIDENT_TYPE_CODES: Record<string, string> = {
   fire: 'FIR',
   fire_alarm: 'FAR',
   hazmat: 'HAZ',
+  suicidal_subject: 'SUI',
   // Service
   officer_assist: 'OFA',
   escort: 'ESC',
@@ -122,6 +136,11 @@ export const INCIDENT_TYPE_CODES: Record<string, string> = {
   found_person: 'FDP',
   repo_notice: 'REP',
   civil_dispute: 'CVD',
+  motorist_assist: 'MTA',
+  vehicle_lockout: 'VLO',
+  jump_start: 'JMP',
+  vehicle_tow: 'VTW',
+  hangup_911: 'HUP',
   // Admin
   daily_activity: 'DAR',
   special_event: 'SPE',
@@ -129,8 +148,10 @@ export const INCIDENT_TYPE_CODES: Record<string, string> = {
   equipment_issue: 'EQP',
   // Use of Force
   use_of_force: 'UOF',
-  // Legacy
+  // Legacy / Uncategorized
   suspicious_activity: 'SUS',
+  suspicious_person: 'SUP',
+  suspicious_vehicle: 'SUV',
   other: 'OTH',
 };
 
@@ -155,6 +176,11 @@ export const INCIDENT_TYPE_CATEGORIES: Record<IncidentCategory, { value: Inciden
     { value: 'lock_unlock', label: 'Lock/Unlock' },
     { value: 'property_damage', label: 'Property Damage' },
     { value: 'lost_found', label: 'Lost/Found Property' },
+    { value: 'fire_watch', label: 'Fire Watch' },
+    { value: 'house_check', label: 'Vacation/House Check' },
+    { value: 'business_check', label: 'Business Check' },
+    { value: 'gate_duty', label: 'Gate Duty' },
+    { value: 'open_door', label: 'Open Door/Window' },
   ],
   'Criminal': [
     { value: 'theft', label: 'Theft' },
@@ -184,6 +210,7 @@ export const INCIDENT_TYPE_CATEGORIES: Record<IncidentCategory, { value: Inciden
     { value: 'criminal_threat', label: 'Criminal Threat' },
     { value: 'illegal_dumping', label: 'Illegal Dumping' },
     { value: 'prostitution', label: 'Prostitution' },
+    { value: 'wanted_person', label: 'Wanted Person' },
   ],
   'Disorder': [
     { value: 'trespass', label: 'Trespass' },
@@ -196,6 +223,8 @@ export const INCIDENT_TYPE_CATEGORIES: Record<IncidentCategory, { value: Inciden
     { value: 'harassment', label: 'Harassment' },
     { value: 'curfew_violation', label: 'Curfew Violation' },
     { value: 'illegal_camping', label: 'Illegal Camping' },
+    { value: 'fight', label: 'Fight In Progress' },
+    { value: 'intoxicated_person', label: 'Intoxicated Person' },
   ],
   'Traffic': [
     { value: 'traffic_accident', label: 'Traffic Accident' },
@@ -218,6 +247,7 @@ export const INCIDENT_TYPE_CATEGORIES: Record<IncidentCategory, { value: Inciden
     { value: 'fire', label: 'Fire' },
     { value: 'fire_alarm', label: 'Fire Alarm' },
     { value: 'hazmat', label: 'Hazmat' },
+    { value: 'suicidal_subject', label: 'Suicidal Subject' },
   ],
   'Service': [
     { value: 'officer_assist', label: 'Officer Assist — Panic Alarm' },
@@ -234,6 +264,11 @@ export const INCIDENT_TYPE_CATEGORIES: Record<IncidentCategory, { value: Inciden
     { value: 'found_person', label: 'Found Person' },
     { value: 'repo_notice', label: 'Repo Notice' },
     { value: 'civil_dispute', label: 'Civil Dispute' },
+    { value: 'motorist_assist', label: 'Motorist Assist' },
+    { value: 'vehicle_lockout', label: 'Vehicle Lockout' },
+    { value: 'jump_start', label: 'Jump Start' },
+    { value: 'vehicle_tow', label: 'Vehicle Tow Request' },
+    { value: 'hangup_911', label: '911 Hangup' },
   ],
   'Admin': [
     { value: 'daily_activity', label: 'Daily Activity Report' },
@@ -246,6 +281,8 @@ export const INCIDENT_TYPE_CATEGORIES: Record<IncidentCategory, { value: Inciden
   ],
   'Other': [
     { value: 'suspicious_activity', label: 'Suspicious Activity' },
+    { value: 'suspicious_person', label: 'Suspicious Person' },
+    { value: 'suspicious_vehicle', label: 'Suspicious Vehicle' },
     { value: 'other', label: 'Other' },
   ],
 };
@@ -355,7 +392,15 @@ export function getDefaultReportType(incidentType: string): PdfReportType {
     case 'medical_emergency':
     case 'overdose':
     case 'mental_health_crisis':
+    case 'suicidal_subject':
       return 'medical';
+    // TODO(report-mapping): decide whether any of the other new types should
+    // default to a specific PDF template instead of the generic incident
+    // report. Candidates worth considering:
+    //   - 'fight'         → 'use_of_force' if officer intervention is expected?
+    //   - 'vehicle_tow'   → keep 'incident', or a dedicated tow/impound form?
+    //   - 'wanted_person' → 'arrest' if a custody outcome is likely?
+    // Left at the 'incident' default below until you confirm the policy.
     case 'daily_activity':
       return 'daily_activity';
     case 'assault':
