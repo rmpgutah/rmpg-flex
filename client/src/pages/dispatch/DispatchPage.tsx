@@ -4267,13 +4267,21 @@ export default function DispatchPage() {
                         {selectedCall.location_floor && <span className="text-rmpg-200"><span className="text-rmpg-400">Floor:</span> {selectedCall.location_floor}</span>}
                         {selectedCall.location_room && <span className="text-rmpg-200"><span className="text-rmpg-400">Rm:</span> {selectedCall.location_room}</span>}
                         {selectedCall.dispatch_code && (
-                          <span className="text-[10px] font-bold font-mono text-amber-300 bg-amber-900/30 border border-amber-700/40 px-2 py-0.5 rounded-sm tracking-wider tabular-nums" style={{ textShadow: '0 0 6px rgba(251,191,36,0.15)' }}>
+                          <span
+                            role="button"
+                            tabIndex={0}
+                            title="Spillman dispatch code — click to copy"
+                            onClick={() => { try { navigator.clipboard?.writeText(selectedCall.dispatch_code || ''); } catch { /* clipboard unavailable */ } }}
+                            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); try { navigator.clipboard?.writeText(selectedCall.dispatch_code || ''); } catch { /* clipboard unavailable */ } } }}
+                            className="cursor-pointer hover:bg-amber-900/50 text-[10px] font-bold font-mono text-amber-300 bg-amber-900/30 border border-amber-700/40 px-2 py-0.5 rounded-sm tracking-wider tabular-nums"
+                            style={{ textShadow: '0 0 6px rgba(251,191,36,0.15)' }}
+                          >
                             {selectedCall.dispatch_code}
                           </span>
                         )}
                         {selectedCall.sector_id && (() => {
                           const area = getArea(selectedCall.sector_id);
-                          return area ? <span className="text-rmpg-200"><span className="text-rmpg-400">Area:</span> {[area.code, area.name].filter(Boolean).join(' — ')}</span> : null;
+                          return area ? <span className="text-rmpg-200" title="Dispatch Area — top of the geography hierarchy"><span className="text-rmpg-400">Area:</span> {[area.code, area.name].filter(Boolean).join(' — ')}</span> : null;
                         })()}
                         {selectedCall.sector_id && (() => {
                           // Police format: show the Spillman sector code ("SL1"), not the
@@ -4281,9 +4289,9 @@ export default function DispatchPage() {
                           // if the districts lookup hasn't loaded / has no code.
                           const code = getSectionCode(selectedCall.sector_id) || selectedCall.sector_id;
                           const name = sectionLabels.get(selectedCall.sector_id) || '';
-                          return <span className="text-rmpg-200"><span className="text-rmpg-400">Sec:</span> {[code, name].filter(Boolean).join(' — ')}</span>;
+                          return <span className="text-rmpg-200" title="Spillman sector code"><span className="text-rmpg-400">Sec:</span> {[code, name].filter(Boolean).join(' — ')}</span>;
                         })()}
-                        {selectedCall.zone_id && <span className="text-rmpg-200"><span className="text-rmpg-400">Zone:</span> {[zoneLeaf(selectedCall.zone_id), zoneLabels.get(selectedCall.zone_id) || ''].filter(Boolean).join(' — ')}</span>}
+                        {selectedCall.zone_id && <span className="text-rmpg-200" title="Zone (within sector)"><span className="text-rmpg-400">Zone:</span> {[zoneLeaf(selectedCall.zone_id), zoneLabels.get(selectedCall.zone_id) || ''].filter(Boolean).join(' — ')}</span>}
                         {selectedCall.beat_id && (() => {
                           // Show the leaf beat code (e.g. "C", not "SL1-HER/C") prefixed
                           // to its name. getBeatLabel falls back to the raw code, so guard
@@ -4291,7 +4299,7 @@ export default function DispatchPage() {
                           const code = beatLeaf(selectedCall.beat_id);
                           const label = getBeatLabel(selectedCall.zone_id || '', selectedCall.beat_id);
                           const text = label && label !== selectedCall.beat_id ? `${code} — ${label}` : code;
-                          return <span className="text-rmpg-200"><span className="text-rmpg-400">Beat:</span> {text}</span>;
+                          return <span className="text-rmpg-200" title="Beat (within zone)"><span className="text-rmpg-400">Beat:</span> {text}</span>;
                         })()}
                         {selectedCall.latitude != null && selectedCall.longitude != null && (
                           <span className="text-rmpg-400 font-mono text-[9px] tabular-nums select-all">

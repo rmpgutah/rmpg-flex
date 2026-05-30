@@ -82,7 +82,9 @@
 // v629: use the existing zoneLeaf/beatLeaf parsers in the live geography output
 //       (detail panel + card) so Zone/Beat render as clean leaves ("HER", "C")
 //       instead of the redundant composite codes ("SL1-HER", "SL1-HER/C").
-const CACHE_NAME = 'rmpg-flex-v629';
+// v630: click-to-copy the Spillman dispatch code + explanatory tooltips on the
+//       Area/Sec/Zone/Beat fields in the call detail panel.
+const CACHE_NAME = 'rmpg-flex-v630';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
