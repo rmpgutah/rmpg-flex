@@ -134,6 +134,18 @@ records.get('/ncic-query', async (c) => {
           ORDER BY last_name, first_name LIMIT 5
         `, like, like, like, like);
 
+        // Normalize live column-name drift to the field names the NCIC client
+        // terminal formatter reads. Live `persons` stores dob/gender/dl_number
+        // (verified via PersonsTab's row mapping), but the formatter reads
+        // date_of_birth/sex/drivers_license — without this the terminal showed
+        // blank SEX/DOB and a missing OLN/ line on an otherwise-good record.
+        // JS-level (post-SELECT *) so a column that doesn't exist can't throw.
+        for (const p of persons) {
+          if (p.date_of_birth == null && p.dob != null) p.date_of_birth = p.dob;
+          if (p.sex == null && p.gender != null) p.sex = p.gender;
+          if (p.drivers_license == null && p.dl_number != null) p.drivers_license = p.dl_number;
+        }
+
         const results = [];
         for (const p of persons) {
           const criminalHistory = await soft(() => query<Record<string, any>>(db,
