@@ -114,7 +114,8 @@
 // v641: keyboard-shortcut cheat sheet overlay (toggle with "?") documenting the
 //       Spillman-style F-key + letter + nav shortcuts.
 // v642: busiest-district chip in the dispatch stats strip — active-call load
-//       per section (busiest first), full breakdown on hover.
+//       per section (busiest first), full breakdown on hover. Click to filter
+//       the queue to that district (wires into the district-aware search).
 const CACHE_NAME = 'rmpg-flex-v642';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
