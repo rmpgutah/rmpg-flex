@@ -882,6 +882,13 @@ const API_ROUTES: RouteRule[] = [
   // /src/routes/radio.ts existing on main.
   { kind: 'prefix', value: '/api/radio' },
 
+  // ── Dispatch AI (Workers AI) ──
+  // /api/ai/{suggest-units,analyze,config,status,health,...} now have real
+  // GPS-aware handlers on the new Worker (src/routes/ai.ts + utils/dispatchAi.ts
+  // using env.AI). Without this rule they fall through to env.LEGACY (AI was
+  // never configured there) and return "unconfigured".
+  { kind: 'prefix', value: '/api/ai' },
+
   // ── Settings sync (per-user + org defaults) ──
   // GET/PUT /api/settings* live ONLY on the new Worker (src/routes/settings.ts,
   // tables from migration 0045). Without this rule the path falls through to
