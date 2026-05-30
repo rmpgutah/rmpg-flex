@@ -26,6 +26,16 @@ import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { broadcastAll } from './ws';
+import {
+  ocrImage,
+  decideDispatcherReply,
+  phraseLookupReply,
+  synthesizeDispatcherVoice,
+  bytesToBase64,
+  type DispatcherTurn,
+} from '../utils/aiDispatcher';
+import { gatherAwareness, runLookup, runAction } from '../utils/dispatcherAwareness';
+import type { Bindings } from '../types';
 
 const rt = new Hono<Env>();
 
@@ -371,6 +381,112 @@ rt.get('/stats', async (c) => {
       week: totals?.week ?? 0,
       all: totals?.all ?? 0,
     },
+  });
+});
+
+// ============================================================
+// POST /dispatcher/ocr — image → dispatcher (OCR + data entry)
+// ============================================================
+// The radio relay carries audio only, so a unit who wants the dispatcher to
+// READ an image (a driver's license, a plate, a registration, a document)
+// sends it here. The dispatcher OCRs it, then runs the SAME brain the radio
+// uses — so it can read the document back, run a wants/plate check off it,
+// or file a call from it (data entry), exactly like a spoken transmission.
+//
+// multipart/form-data:
+//   image        (File, required) — the photo/scan
+//   transcript   (string, opt)    — what the unit also said ("run this guy")
+//   unit         (string, opt)    — the unit's call-sign (for grounding)
+//   channel_id   (number, opt)    — channel for the awareness snapshot
+//   speak        ("1", opt)       — also synthesize the reply audio (base64)
+//
+// Returns the OCR text, the dispatcher's spoken reply, the routed intent,
+// and any lookup/action it performed. Best-effort throughout — a model miss
+// degrades to a clear message, never a 500.
+rt.post('/dispatcher/ocr', async (c) => {
+  const form = await c.req.formData().catch(() => null);
+  // Duck-type the upload (matches serveIntake.ts) — the Workers types here
+  // surface FormDataEntryValue as string, so cast and check for arrayBuffer.
+  const file = (form?.get('image') ?? null) as File | null;
+  if (!file || typeof file.arrayBuffer !== 'function' || file.size === 0) {
+    return c.json({ error: 'multipart field "image" (a file) is required' }, 400);
+  }
+  const image = new Uint8Array(await file.arrayBuffer());
+
+  // 1. OCR — read the text off the image.
+  const ocrText = await ocrImage(c.env.AI, image);
+  if (!ocrText) {
+    return c.json({ success: false, error: 'No legible text found in the image.' }, 200);
+  }
+
+  const db = getDb(c.env);
+  const unit = (form?.get('unit') as string | null)?.trim() || null;
+  const transcript = (form?.get('transcript') as string | null)?.trim()
+    || 'Dispatch, I am sending you an image — read it and advise.';
+  const channelIdRaw = form?.get('channel_id');
+  const channelId = channelIdRaw ? Number(channelIdRaw) : 0;
+
+  // 2. Ground the turn in the live board, exactly like the radio path.
+  const awareness = await gatherAwareness(db, channelId, unit)
+    .catch(() => 'No active CAD activity on the board.');
+  const channel = channelId
+    ? await queryFirst<{ name: string }>(db, 'SELECT name FROM radio_channels WHERE id = ?', channelId).catch(() => null)
+    : null;
+  const turn: DispatcherTurn = {
+    transcript,
+    speaker: unit,
+    channelName: channel?.name ?? null,
+    recent: [],
+    awareness,
+    ocrText,
+  };
+
+  // 3. Reason — the brain may answer, run a lookup, or file a write.
+  const decision = await decideDispatcherReply(c.env.AI, turn);
+  if (!decision) {
+    return c.json({ success: true, ocrText, reply: '', intent: 'unclear', note: 'Dispatcher had no reply.' });
+  }
+
+  let reply = decision.reply;
+  let performed: string | null = null;
+
+  if (decision.lookup) {
+    const result = await runLookup(db, decision.lookup).catch(() => null);
+    if (result) {
+      reply = await phraseLookupReply(c.env.AI, turn, decision.lookup, result);
+      performed = `lookup:${decision.lookup.type}`;
+    }
+  }
+  if (decision.action) {
+    const written = await runAction(c.env as unknown as Bindings, db, decision.action).catch(() => null);
+    if (written) {
+      reply = written.spoken;
+      performed = written.summary;
+    } else {
+      // Honesty: a refused/failed write must not read back as success.
+      reply = decision.action.type === 'set_unit_status'
+        ? 'Unable to log that status — an unrecognized call-sign or unclear status.'
+        : 'Unable to start that call — a location and nature of the call are required.';
+      performed = `action_refused:${decision.action.type}`;
+    }
+  }
+
+  // 4. Optionally synthesize the spoken reply (Aura-2 → MP3 base64).
+  let audio: string | null = null;
+  if ((form?.get('speak') as string | null) === '1' && reply.trim()) {
+    const bytes = await synthesizeDispatcherVoice(c.env.AI, reply).catch(() => null);
+    if (bytes) audio = bytesToBase64(bytes);
+  }
+
+  return c.json({
+    success: true,
+    ocrText,
+    reply,
+    intent: decision.intent,
+    lookup: decision.lookup ?? null,
+    action: decision.action ?? null,
+    performed,
+    audio,
   });
 });
 

@@ -29,6 +29,7 @@
 // ============================================================
 
 import { jwtVerify } from 'jose';
+import type { Bindings } from '../types';
 import { getDb, queryFirst, query, execute } from '../utils/db';
 import {
   transcribeTransmission,
@@ -41,16 +42,20 @@ import {
   bytesToBase64,
   type DispatcherTurn,
 } from '../utils/aiDispatcher';
-import { gatherAwareness, runLookup } from '../utils/dispatcherAwareness';
+import { gatherAwareness, runLookup, runAction } from '../utils/dispatcherAwareness';
 
 interface VoiceEnv {
   DB: D1Database;
   UPLOADS: R2Bucket;
   KV: KVNamespace;
+  // R2 geofence (beat.geojson) — used when the dispatcher CREATES a call
+  // from the radio and backfills sector/zone/beat. DOs share the Worker's
+  // bindings at runtime; declared here so runAction's enrichment is typed.
+  MAP_DATA: R2Bucket;
   JWT_SECRET: string;
   // Workers AI — powers the AI dispatcher (Whisper transcription,
-  // Llama 3.3 intent routing, melotts reply synthesis). See
-  // src/utils/aiDispatcher.ts.
+  // Llama 4 Scout reasoning + data-entry + OCR, Aura-2 reply synthesis).
+  // See src/utils/aiDispatcher.ts.
   AI: Ai;
 }
 
@@ -396,9 +401,34 @@ export class VoiceHubDO {
     // 3a. If the unit asked for a record check, run it for real and let the
     // dispatcher read the result back instead of the holding "stand by".
     let replyText = decision?.reply ?? '';
+    let actionIntent: string | null = null;
     if (decision?.lookup) {
       const result = await runLookup(db, decision.lookup).catch(() => null);
       if (result) replyText = await phraseLookupReply(this.env.AI, turn, decision.lookup, result);
+    }
+
+    // 3a-bis. If the unit asked for a CAD WRITE (data entry) — log a status
+    // or start a call — execute it for real and read back the confirmation
+    // (which carries the new call number / canonical status) instead of the
+    // holding ack. A refused/failed write falls through to the verbal ack.
+    if (decision?.action) {
+      const written = await runAction(
+        this.env as unknown as Bindings, db, decision.action,
+      ).catch(() => null);
+      if (written) {
+        replyText = written.spoken;
+        actionIntent = written.summary;
+      } else {
+        // HONESTY GUARANTEE: the model asked for a write but it was refused
+        // (unknown call-sign / missing location) or failed. Do NOT speak the
+        // model's optimistic "copy, show you out" — that would acknowledge a
+        // change that never persisted ("saves then vanishes"). Replace it with
+        // an honest correction so the unit knows to identify / repeat.
+        replyText = decision.action.type === 'set_unit_status'
+          ? `${speaker?.unit_label || 'Unit calling'}, dispatch did not catch your call-sign — say again your unit and status.`
+          : `${speaker?.unit_label || 'Unit calling'}, unable to start that call — say again the location and the nature.`;
+        actionIntent = `action_refused:${decision.action.type}`;
+      }
     }
 
     // 3b. GUARANTEE: a unit who addressed dispatch directly is never met with
@@ -423,7 +453,8 @@ export class VoiceHubDO {
       db,
       `INSERT INTO radio_transmissions (channel_id, user_id, unit_label, transmitted_at, duration_seconds, transcript, tags)
        VALUES (?, NULL, ?, datetime('now'), ?, ?, ?)`,
-      this.refId, DISPATCH_CALLSIGN, durationSec, replyText, `ai:${intent}`,
+      this.refId, DISPATCH_CALLSIGN, durationSec, replyText,
+      `ai:${intent}${actionIntent ? `;${actionIntent}` : ''}`,
     );
     const dispId = Number(res.meta.last_row_id);
     await this.env.UPLOADS.put(`radio-audio/${dispId}.webm`, audioBytes, {

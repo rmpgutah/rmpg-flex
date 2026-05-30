@@ -21,7 +21,10 @@
 // ============================================================
 
 import type { D1Database } from '@cloudflare/workers-types';
-import { query, queryFirst } from './db';
+import type { Bindings } from '../types';
+import { query, queryFirst, execute } from './db';
+import { geocodeAddress } from '../routes/geocode';
+import { resolveDistrict } from './districtResolver';
 
 // Statuses that mean a call is no longer on the active board.
 const CLOSED_CALL_STATUSES = ['closed', 'cleared', 'archived', 'cancelled', 'canceled'];
@@ -236,4 +239,218 @@ async function lookupWarrant(db: D1Database, raw: string): Promise<string> {
     const subj = w.subject_name || [w.subject_first_name, w.subject_last_name].filter(Boolean).join(' ') || 'subject';
     return `${w.warrant_number || 'Warrant'} on ${subj}${w.offense ? ` — ${w.offense}` : ''}${w.bond_amount ? `, bond ${w.bond_amount}` : ''} [${w.status || 'status unknown'}${w.issuing_agency ? `, ${w.issuing_agency}` : ''}].`;
   }).join(' ');
+}
+
+// ============================================================
+// CAD WRITES — spoken data entry
+// ============================================================
+// The read-side (runLookup) lets the dispatcher answer "run this plate".
+// runAction is its mirror: it lets the dispatcher WRITE to the CAD when a
+// unit says "show me out at 200 South" or "start a call, suspicious
+// vehicle at 5th and Main". Every write is:
+//   • schema-true   — column names + CHECK enums verified against the LIVE
+//                     schema (785de7ae) on 2026-05-29, never /migrations/.
+//   • policy-gated  — evaluateActionPolicy() (the operator knob) can refuse.
+//   • best-effort   — a failure returns null so the relay tail never throws;
+//                     the dispatcher just acknowledges verbally instead.
+// ============================================================
+
+export type ActionType = 'set_unit_status' | 'create_call';
+
+export interface ActionRequest {
+  type: ActionType;
+  /** Unit call-sign the action concerns (set_unit_status). */
+  unit?: string;
+  /** Radio status word/10-code the unit reported (set_unit_status). */
+  status?: string;
+  /** Free-text location to attach to a status change ("out at 200 South"). */
+  location?: string;
+  /** New-call fields (create_call). */
+  incident_type?: string;
+  priority?: string;
+  location_address?: string;
+  description?: string;
+  caller_name?: string;
+}
+
+export interface ActionResult {
+  /** Terse line the dispatcher reads back confirming what was written. */
+  spoken: string;
+  /** Machine summary for the TX tag / logs (e.g. "call_created:CFS26-0042"). */
+  summary: string;
+}
+
+// Canonical unit statuses (must match the units.status CHECK exactly).
+type UnitStatus = 'available' | 'dispatched' | 'enroute' | 'onscene' | 'busy' | 'off_duty' | 'out_of_service';
+
+// Map the words/10-codes a unit actually says on the radio onto the strict
+// units.status enum. Anything unrecognized is rejected (no silent default —
+// a wrong status write is worse than asking the unit to repeat).
+function mapUnitStatus(raw: string | undefined): UnitStatus | null {
+  const s = (raw || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (!s) return null;
+  if (/(^|[^0-9])108$|inservice|^clear$|^available$|^code4$|^10?4$/.test(s)) return 'available';
+  if (/107$|outofservice|^oos$/.test(s)) return 'out_of_service';
+  if (/1076$|1051$|enroute|responding|onmyway/.test(s)) return 'enroute';
+  if (/1023$|1097$|onscene|arrived|^out$|outat/.test(s)) return 'onscene';
+  if (/busy|tiedup|1078$|backup/.test(s)) return 'busy';
+  if (/offduty|endofshift|1042$/.test(s)) return 'off_duty';
+  return null;
+}
+
+// calls_for_service.priority CHECK is exactly ('P1','P2','P3','P4').
+function mapPriority(raw: string | undefined): 'P1' | 'P2' | 'P3' | 'P4' {
+  const s = (raw || '').toUpperCase();
+  if (/\b(P?1|EMERGENC|PRIORITY ?1|CODE ?3)\b/.test(s)) return 'P1';
+  if (/\b(P?2|URGENT|PRIORITY ?2)\b/.test(s)) return 'P2';
+  if (/\b(P?4|NON.?URGENT|ROUTINE|COLD)\b/.test(s)) return 'P4';
+  return 'P3'; // sensible default for an un-triaged radio report
+}
+
+// ─── OPERATOR POLICY KNOB (TUNE ME) ─────────────────────────
+// Letting an AI write to a LIVE police CAD off radio audio is a real
+// security/UX trade-off, and it's the operator's call — the same way
+// DISPATCH_POLICY (in aiDispatcher.ts) is the operator-owned persona knob.
+// This gate runs BEFORE any write. Return { allow:false, reason } to refuse
+// (the dispatcher then asks the unit to confirm instead of writing).
+//
+// The default is deliberately conservative. Tune it to RMPG's risk
+// tolerance — e.g. require a confirmed call-sign before a status change, or
+// hold P1 call creation for a human.
+export function evaluateActionPolicy(req: ActionRequest): { allow: boolean; reason?: string } {
+  if (req.type === 'set_unit_status') {
+    if (!req.unit || !mapUnitStatus(req.status)) {
+      return { allow: false, reason: 'unclear unit or status' };
+    }
+    // NOTE: the "known call-sign" half of this policy needs the DB, so it is
+    // enforced in setUnitStatus() (which refuses an unmatched call-sign).
+    // This sync gate only screens the shape; the DB check is the real guard.
+    return { allow: true };
+  }
+  if (req.type === 'create_call') {
+    // Never mint a call without a place to send units.
+    if (!req.location_address || req.location_address.trim().length < 3) {
+      return { allow: false, reason: 'no location given' };
+    }
+    if (!req.incident_type || !req.incident_type.trim()) {
+      return { allow: false, reason: 'no incident type given' };
+    }
+    return { allow: true };
+  }
+  return { allow: false, reason: 'unknown action' };
+}
+
+/**
+ * Execute the CAD write a unit requested over the radio. Returns an
+ * ActionResult (spoken confirmation + machine summary) on success, or null
+ * on a hard failure / policy refusal so the caller falls back to a plain
+ * verbal acknowledgement. Never throws into the relay tail.
+ */
+export async function runAction(env: Bindings, db: D1Database, req: ActionRequest): Promise<ActionResult | null> {
+  const gate = evaluateActionPolicy(req);
+  if (!gate.allow) {
+    console.warn('[awareness] action refused:', gate.reason, JSON.stringify(req));
+    return null;
+  }
+  try {
+    if (req.type === 'set_unit_status') return await setUnitStatus(db, req);
+    if (req.type === 'create_call') return await createCall(env, db, req);
+    return null;
+  } catch (err) {
+    console.error('[awareness] action failed:', (err as Error)?.message);
+    return null;
+  }
+}
+
+async function setUnitStatus(db: D1Database, req: ActionRequest): Promise<ActionResult | null> {
+  const status = mapUnitStatus(req.status);
+  const callSign = (req.unit || '').trim();
+  if (!status || !callSign) return null;
+  // OPERATOR POLICY (chosen 2026-05-29): require a KNOWN call-sign. We never
+  // create or update a phantom unit — if the call-sign isn't in `units`, the
+  // write is refused and the dispatcher asks the unit to identify instead.
+  const unit = await queryFirst<{ id: number; call_sign: string }>(
+    db, 'SELECT id, call_sign FROM units WHERE UPPER(call_sign) = UPPER(?) LIMIT 1', callSign,
+  );
+  if (!unit) {
+    console.warn(`[awareness] status write refused — unknown call-sign "${callSign}"`);
+    return null;
+  }
+  await execute(
+    db,
+    `UPDATE units SET status = ?, last_status_change = datetime('now'), updated_at = datetime('now') WHERE id = ?`,
+    status, unit.id,
+  );
+  const where = req.location ? ` at ${req.location.trim()}` : '';
+  return {
+    spoken: `${unit.call_sign}, copy, show you ${spokenStatus(status)}${where}.`,
+    summary: `unit_status:${unit.call_sign}=${status}`,
+  };
+}
+
+// Render the canonical status as a dispatcher would say it on the air.
+function spokenStatus(s: UnitStatus): string {
+  switch (s) {
+    case 'available': return 'in service';
+    case 'out_of_service': return 'out of service';
+    case 'enroute': return 'en route';
+    case 'onscene': return 'out on scene';
+    case 'busy': return 'tied up';
+    case 'off_duty': return 'off duty';
+    default: return s;
+  }
+}
+
+async function createCall(env: Bindings, db: D1Database, req: ActionRequest): Promise<ActionResult | null> {
+  const incidentType = (req.incident_type || '').trim();
+  const address = (req.location_address || '').trim();
+  if (!incidentType || address.length < 3) return null;
+  const priority = mapPriority(req.priority);
+
+  // Mint a call number in the same CFS{YY}-{NNNNN} format as the HTTP
+  // create handler so radio-born calls share one sequence with the board.
+  const year = new Date().getFullYear().toString().slice(-2);
+  const prefix = `CFS${year}-`;
+  const [{ max }] = await query<{ max: string | null }>(
+    db, 'SELECT MAX(call_number) as max FROM calls_for_service WHERE call_number LIKE ?', `${prefix}%`,
+  );
+  const seq = max ? String(parseInt(max.slice(prefix.length), 10) + 1).padStart(5, '0') : '00001';
+  const callNumber = `${prefix}${seq}`;
+
+  // Geocode + district backfill so the call plots on the map and closest-unit
+  // ranking works — same enrichment the HTTP path does. All best-effort.
+  let lat: number | null = null, lng: number | null = null;
+  const coords = await geocodeAddress(env, address).catch(() => null);
+  if (coords) { lat = coords.lat; lng = coords.lng; }
+  let district: Awaited<ReturnType<typeof resolveDistrict>> = null;
+  if (lat != null && lng != null) {
+    district = await resolveDistrict(env, { lat, lng }).catch(() => null);
+  }
+
+  const res = await execute(
+    db,
+    `INSERT INTO calls_for_service
+       (call_number, incident_type, priority, status, location_address, source,
+        description, caller_name, latitude, longitude,
+        sector_id, sector_name, zone_id, zone_name, beat_id, beat_name, dispatch_code,
+        created_at, updated_at)
+     VALUES (?, ?, ?, 'pending', ?, 'radio', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+    callNumber,
+    incidentType.toLowerCase().replace(/\s+/g, '_'),
+    priority,
+    address,
+    req.description?.trim() || null,
+    req.caller_name?.trim() || null,
+    lat, lng,
+    district?.sector_id ?? null, district?.sector_name ?? null,
+    district?.zone_id ?? null, district?.zone_name ?? null,
+    district?.beat_id ?? null, district?.beat_name ?? null,
+    district?.dispatch_code ?? null,
+  );
+  if (!res.meta.last_row_id) return null;
+  const beat = district?.beat_name ? ` in ${district.beat_name}` : '';
+  return {
+    spoken: `Copy, I've created ${callNumber}, ${priority}, ${incidentType} at ${address}${beat}.`,
+    summary: `call_created:${callNumber}`,
+  };
 }
