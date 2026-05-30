@@ -167,29 +167,58 @@ function parseLookup(value: unknown): LookupRequest | undefined {
   return { type: type as LookupRequest['type'], query: q };
 }
 
-// Tolerant extraction — Llama usually returns clean JSON but can wrap it
-// in stray prose or code fences. Grab the first {...} and parse that.
+// Build a decision from an already-structured object. Workers AI's
+// llama-3.3 returns `response` as a PARSED OBJECT when the output is JSON
+// (not a string), so this is the COMMON path, not a fallback.
+function decisionFromObject(obj: Record<string, unknown>): DispatcherDecision | null {
+  const reply = (typeof obj.reply === 'string' ? obj.reply : '').trim();
+  const lookup = parseLookup(obj.lookup);
+  // A lookup with only a "stand by" reply is still actionable.
+  if (reply || lookup) {
+    return {
+      intent: (typeof obj.intent === 'string' ? obj.intent : 'general').trim() || 'general',
+      reply: reply || 'Stand by.',
+      lookup,
+    };
+  }
+  return null;
+}
+
+// Tolerant extraction for the STRING form — Llama can wrap JSON in stray
+// prose or code fences. Grab the first {...}; else treat the whole thing as
+// the spoken reply.
 function parseDecision(raw: string): DispatcherDecision | null {
   const start = raw.indexOf('{');
   const end = raw.lastIndexOf('}');
   if (start !== -1 && end > start) {
     try {
-      const obj = JSON.parse(raw.slice(start, end + 1)) as Record<string, unknown>;
-      const reply = (typeof obj.reply === 'string' ? obj.reply : '').trim();
-      const lookup = parseLookup(obj.lookup);
-      // A lookup with only a "stand by" reply is still actionable.
-      if (reply || lookup) {
-        return {
-          intent: (typeof obj.intent === 'string' ? obj.intent : 'general').trim() || 'general',
-          reply: reply || 'Stand by.',
-          lookup,
-        };
-      }
+      const d = decisionFromObject(JSON.parse(raw.slice(start, end + 1)) as Record<string, unknown>);
+      if (d) return d;
     } catch { /* fall through */ }
   }
-  // No parseable JSON — treat the whole thing as the spoken reply.
   const reply = raw.replace(/```/g, '').trim();
   return reply ? { intent: 'general', reply } : null;
+}
+
+// Coerce Workers AI's `response` — which is an OBJECT when the model emits
+// JSON, or a string otherwise — into a decision. THE fix for the "AI
+// dispatcher silent" bug: response was an object, and the old code called
+// .trim() on it, which threw and was swallowed → null → no reply.
+function coerceDecision(response: unknown): DispatcherDecision | null {
+  if (response && typeof response === 'object' && !Array.isArray(response)) {
+    return decisionFromObject(response as Record<string, unknown>);
+  }
+  return parseDecision(String(response ?? ''));
+}
+
+// Coerce `response` to a plain spoken string (for the lookup read-back pass).
+function coerceReplyText(response: unknown): string {
+  if (typeof response === 'string') return response;
+  if (response && typeof response === 'object') {
+    const r = (response as Record<string, unknown>).reply;
+    return typeof r === 'string' ? r : '';
+  }
+  return '';
 }
 
 /**
@@ -198,7 +227,7 @@ function parseDecision(raw: string): DispatcherDecision | null {
  */
 export async function decideDispatcherReply(ai: Ai, turn: DispatcherTurn): Promise<DispatcherDecision | null> {
   if (!turn.transcript.trim()) return null;
-  let raw: string;
+  let response: unknown;
   try {
     const res = (await ai.run(LLM_MODEL, {
       messages: [
@@ -207,13 +236,13 @@ export async function decideDispatcherReply(ai: Ai, turn: DispatcherTurn): Promi
       ],
       max_tokens: 220,
       temperature: 0.3,
-    } as never)) as { response?: string };
-    raw = (res?.response || '').trim();
+    } as never)) as { response?: unknown };
+    response = res?.response;
   } catch (err) {
     console.error('[aiDispatcher] LLM failed:', (err as Error)?.message);
     return null;
   }
-  const decision = parseDecision(raw);
+  const decision = coerceDecision(response);
   if (!decision) return null;
   if (decision.reply.length > MAX_REPLY_CHARS) {
     decision.reply = decision.reply.slice(0, MAX_REPLY_CHARS).trimEnd();
@@ -247,8 +276,8 @@ export async function phraseLookupReply(
       ],
       max_tokens: 160,
       temperature: 0.2,
-    } as never)) as { response?: string };
-    let reply = (res?.response || '').replace(/```/g, '').trim();
+    } as never)) as { response?: unknown };
+    let reply = coerceReplyText(res?.response).replace(/```/g, '').trim();
     // If the model wrapped it in JSON anyway, recover the reply field.
     if (reply.startsWith('{')) reply = parseDecision(reply)?.reply ?? '';
     if (!reply) return resultText;
