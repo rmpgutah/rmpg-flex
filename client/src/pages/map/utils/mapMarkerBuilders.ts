@@ -7,9 +7,103 @@ import type { UnitStatus } from '../../../types';
 import { UNIT_STATUS_COLORS, UNIT_STATUS_LABELS, PRIORITY_COLORS, getIncidentCategory } from './mapConstants';
 import { parseTimestamp } from '../../../utils/dateUtils';
 
+// ── Directional Heading Arrow (shared, speed-aware SVG) ───────
+// A crisp "navigation cursor" that points along the unit's heading.
+// Replaces the old flat CSS-border triangle: it has a stroked silhouette
+// for definition on any basemap, a tip-bright highlight, a speed-reactive
+// glow + motion trail, and it hides itself when the unit is effectively
+// stationary (so a parked car never broadcasts a stale heading).
+
+interface DirectionArrowOpts {
+  /** Ground speed in m/s (from GPS). null/undefined → "unknown but moving". */
+  speed?: number | null;
+  /** Overall size multiplier (the self-marker uses a larger scale). */
+  scale?: number;
+  /** Vertical offset (px) of the arrow above the marker anchor. */
+  offsetTop?: number;
+  /** transform-origin Y (px) — the pivot the arrow rotates around. */
+  pivotY?: number;
+}
+
+/** Speed (m/s) below which we treat the unit as parked and draw no arrow. */
+const STATIONARY_SPEED_MS = 0.6; // ≈1.3 mph — filters GPS jitter at rest
+/** Speed (m/s) that maps to full visual intensity (~45 mph). */
+const FULL_INTENSITY_SPEED_MS = 20;
+
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+function svgPath(d: string, attrs: Record<string, string>): SVGPathElement {
+  const p = document.createElementNS(SVG_NS, 'path');
+  p.setAttribute('d', d);
+  for (const [k, v] of Object.entries(attrs)) p.setAttribute(k, v);
+  return p;
+}
+
+export function buildDirectionArrow(
+  color: string,
+  heading: number,
+  opts: DirectionArrowOpts = {},
+): HTMLElement | null {
+  if (!isFinite(heading)) return null;
+  const { speed = null, scale = 1, offsetTop = 14, pivotY } = opts;
+
+  // Parked guard: only when we actually have a speed reading. A null speed
+  // (heading-only GPS source) still draws — we just can't prove it's stopped.
+  if (speed != null && isFinite(speed) && speed < STATIONARY_SPEED_MS) return null;
+
+  // t ∈ [0,1] drives size, glow and trail. Unknown speed → mid intensity.
+  const t = speed != null && isFinite(speed)
+    ? Math.min(Math.max(speed, 0) / FULL_INTENSITY_SPEED_MS, 1)
+    : 0.45;
+
+  const size = (16 + t * 8) * scale;               // 16–24px (×scale)
+  const glow = 2.5 + t * 5;                          // 2.5–7.5px blur halo
+  const tailOpacity = Math.max(0, t - 0.3) * 0.85;   // trail fades in past ~6 m/s
+  const stroke = color === '#ffffff' ? 'rgba(0,0,0,0.55)' : 'rgba(255,255,255,0.92)';
+  const pivot = pivotY != null ? pivotY : size * 0.62 + offsetTop;
+
+  const holder = document.createElement('div');
+  holder.style.cssText =
+    `position:absolute;top:-${offsetTop}px;left:50%;width:${size}px;height:${size}px;margin-left:${-size / 2}px;` +
+    `transform:rotate(${heading}deg);transform-origin:center ${pivot}px;` +
+    `transition:transform 0.45s cubic-bezier(0.4,0,0.2,1);will-change:transform;z-index:2;pointer-events:none;` +
+    `filter:drop-shadow(0 0 ${glow}px ${color}cc);`;
+
+  // viewBox 0 0 24 24, arrow points up (north). Concave-back nav cursor gives
+  // a sharp, unmistakable direction read. Built via DOM (no innerHTML).
+  const svg = document.createElementNS(SVG_NS, 'svg');
+  svg.setAttribute('width', String(size));
+  svg.setAttribute('height', String(size));
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.style.cssText = 'display:block;overflow:visible;';
+
+  if (tailOpacity > 0.01) {
+    // Faint elongated echo behind the arrow — a motion trail at speed.
+    svg.appendChild(svgPath('M12 6 L16.5 21 L12 18 L7.5 21 Z', {
+      fill: color,
+      opacity: tailOpacity.toFixed(2),
+      transform: 'translate(0 6) scale(1 1.6)',
+    }));
+  }
+  // Main silhouette with a stroke so it reads on light or dark basemaps.
+  svg.appendChild(svgPath('M12 1.5 L21 22 L12 16.8 L3 22 Z', {
+    fill: color,
+    stroke,
+    'stroke-width': '1.4',
+    'stroke-linejoin': 'round',
+  }));
+  // Tip highlight — a "lit edge" near the leading point for a 3D feel.
+  svg.appendChild(svgPath('M12 1.5 L15.5 14 L12 12.4 L8.5 14 Z', {
+    fill: 'rgba(255,255,255,0.35)',
+  }));
+
+  holder.appendChild(svg);
+  return holder;
+}
+
 // ── HTML Marker Content Builders ──────────────────────────────
 
-export function buildUnitMarkerContent(callSign: string, status: UnitStatus, _gpsSource?: string, heading?: number | null): HTMLElement {
+export function buildUnitMarkerContent(callSign: string, status: UnitStatus, _gpsSource?: string, heading?: number | null, speed?: number | null): HTMLElement {
   const color = UNIT_STATUS_COLORS[status];
   const label = UNIT_STATUS_LABELS[status];
 
@@ -21,14 +115,9 @@ export function buildUnitMarkerContent(callSign: string, status: UnitStatus, _gp
   wrapper.addEventListener('mouseenter', () => { wrapper.style.transform = 'scale(1.08)'; });
   wrapper.addEventListener('mouseleave', () => { wrapper.style.transform = 'scale(1)'; });
 
-  if (heading != null && isFinite(heading)) {
-    const arrow = document.createElement('div');
-    arrow.style.cssText =
-      `width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-bottom:10px solid ${color};` +
-      `transform:rotate(${heading}deg);transform-origin:center 12px;` +
-      `position:absolute;top:-12px;left:50%;margin-left:-4px;` +
-      `filter:drop-shadow(0 0 3px ${color}80);transition:transform 0.5s ease;z-index:1;opacity:0.9;`;
-    wrapper.appendChild(arrow);
+  if (heading != null) {
+    const arrow = buildDirectionArrow(color, heading, { speed, scale: 1, offsetTop: 13 });
+    if (arrow) wrapper.appendChild(arrow);
   }
 
   const tag = document.createElement('div');
@@ -273,7 +362,7 @@ export function buildIncidentReportMarkerContent(status: string): HTMLElement {
 
 // ── Self-Position Marker (pulsing "you are here") ────────────
 
-export function buildSelfPositionMarker(accuracy: number | null, heading: number | null): HTMLElement {
+export function buildSelfPositionMarker(accuracy: number | null, heading: number | null, speed?: number | null): HTMLElement {
   const el = document.createElement('div');
   el.style.cssText = 'position:relative;display:flex;align-items:center;justify-content:center;cursor:default;';
   const acc = accuracy != null ? Math.min(Math.max(accuracy, 4), 40) : 12;
@@ -287,9 +376,10 @@ export function buildSelfPositionMarker(accuracy: number | null, heading: number
   el.appendChild(dot);
 
   if (heading != null) {
-    const arrow = document.createElement('div');
-    arrow.style.cssText = `position:absolute;top:-10px;width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-bottom:12px solid #888888;transform:rotate(${heading}deg);transform-origin:center 17px;filter:drop-shadow(0 0 3px rgba(136, 136, 136,0.6));z-index:2;transition:transform 0.3s ease;will-change:transform;`;
-    el.appendChild(arrow);
+    // Same crisp nav arrow as units, in the self-marker gray, slightly larger
+    // and pivoting around the accuracy ring's center.
+    const arrow = buildDirectionArrow('#888888', heading, { speed, scale: 1.15, offsetTop: 11, pivotY: 17 });
+    if (arrow) el.appendChild(arrow);
   }
 
   return el;
@@ -411,6 +501,10 @@ export class MapboxOverlayMarkerImpl {
   remove() { this.marker.remove(); }
 
   getLngLat() { return this.marker.getLngLat(); }
+
+  /** Move the marker in place (so GPS updates glide the pin instead of
+   *  destroying + recreating it, which made pins flicker / "fly around"). */
+  setLngLat(lng: number, lat: number) { this.marker.setLngLat([lng, lat]); }
 
   addTo(map: MapboxMap) { this.marker.addTo(map); }
 

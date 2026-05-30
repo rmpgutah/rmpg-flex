@@ -66,6 +66,7 @@ import {
 } from '../../utils/voiceAlerts';
 import { useAuth } from '../../context/AuthContext';
 import { useDistrictOptions } from '../../hooks/useDistrictLookup';
+import { useAddressAutofill } from '../../hooks/useAddressAutofill';
 import { useUserPreferences } from '../../context/UserPreferencesContext';
 import QuickPsoModal from '../../components/QuickPsoModal';
 import {
@@ -255,6 +256,7 @@ export default function DispatchPage() {
   const isMobile = useIsMobile();
   const { prefs: userPrefs, reload: reloadPrefs } = useUserPreferences();
   const { districts, sections, sectionLabels, zoneLabels, zonesForSection, beatsForZone, getBeatLabel } = useDistrictOptions();
+  const { resolve: resolveAddress } = useAddressAutofill();
   const [calls, setCalls] = useState<CallForService[]>([]);
   const recentlyCreatedIdsRef = useRef<Set<string | number>>(new Set()); // synchronous dedup for POST + WS race
   const [units, setUnits] = useState<Unit[]>([]);
@@ -3731,7 +3733,32 @@ export default function DispatchPage() {
                     <div>
                       <label className="field-label">Location:</label>
                       {isEditing ? (
-                        <input type="text" className="input-dark text-xs mt-0.5" value={editData.location} onChange={(e) => updateEditField('location', e.target.value)} />
+                        <AddressAutocomplete
+                          className="input-dark text-xs mt-0.5"
+                          placeholder="123 Main St, Salt Lake City, UT"
+                          value={editData.location}
+                          onChange={(val) => updateEditField('location', val)}
+                          onSelect={async (addr: ParsedAddress) => {
+                            updateEditField('location', addr.formatted);
+                            if (addr.latitude != null) {
+                              // Location changed → recompute and OVERWRITE every
+                              // derived geo field (coords, district, cross street).
+                              // Fall back to the prior value when a lookup misses
+                              // so a Mapbox hiccup never blanks good data.
+                              const details = await resolveAddress(addr);
+                              setEditData(prev => ({
+                                ...prev,
+                                latitude: details.latitude,
+                                longitude: details.longitude,
+                                sector_id: details.sector_id || prev.sector_id,
+                                zone_id: details.zone_id || prev.zone_id,
+                                beat_id: details.beat_id || prev.beat_id,
+                                dispatch_code: details.dispatch_code || prev.dispatch_code,
+                                cross_street: details.cross_street || prev.cross_street,
+                              }));
+                            }
+                          }}
+                        />
                       ) : (
                         <div className="flex items-center gap-1.5">
                           <MapPin className="w-3.5 h-3.5 text-rmpg-300" />

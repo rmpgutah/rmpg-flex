@@ -17,7 +17,8 @@ import SafetyScreening from './SafetyScreening';
 import DuplicateCallWarning from './DuplicateCallWarning';
 import BoloAlertBanner from './BoloAlertBanner';
 import RunCardPreview, { type RunCard } from './RunCardPreview';
-import { useDistrictIdentify, useDistrictOptions } from '../hooks/useDistrictLookup';
+import { useDistrictOptions } from '../hooks/useDistrictLookup';
+import { useAddressAutofill } from '../hooks/useAddressAutofill';
 import { apiFetch } from '../hooks/useApi';
 import Dropdown from './ui/Dropdown';
 
@@ -179,7 +180,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
   const [hasDraft, setHasDraft] = useState(false);
   const titleId = useId();
   const dialogRef = useRef<HTMLDivElement>(null);
-  const { identify: identifyDistrict } = useDistrictIdentify();
+  const { resolve: resolveAddress } = useAddressAutofill();
   const { sections, sectionLabels, zoneLabels, zonesForSection, beatsForZone, getBeatLabel } = useDistrictOptions();
 
   // Person/vehicle record search for linking
@@ -733,16 +734,17 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
                 update('location', addr.formatted);
                 if (addr.latitude != null) {
                   setFormData((prev) => ({ ...prev, latitude: addr.latitude as any, longitude: addr.longitude as any }));
-                  // Auto-fill section/zone/beat from 3Tier district lookup
-                  const district = await identifyDistrict(addr.latitude!, addr.longitude!);
-                  if (district) {
-                    setFormData((prev) => ({
-                      ...prev,
-                      sector_id: district.sector_id || prev.sector_id,
-                      zone_id: district.zone_id || prev.zone_id,
-                      beat_id: district.beat_id || prev.beat_id,
-                    }));
-                  }
+                  // Auto-fill ALL geolocation detail from the coordinates:
+                  // section/zone/beat + nearest cross street (shared cascade).
+                  const details = await resolveAddress(addr);
+                  setFormData((prev) => ({
+                    ...prev,
+                    sector_id: details.sector_id || prev.sector_id,
+                    zone_id: details.zone_id || prev.zone_id,
+                    beat_id: details.beat_id || prev.beat_id,
+                    // Create path: never clobber a cross street the dispatcher typed.
+                    cross_street: prev.cross_street || details.cross_street,
+                  }));
                 }
               }}
               required
