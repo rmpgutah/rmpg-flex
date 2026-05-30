@@ -4,7 +4,7 @@ import {
   Plus, Send, Navigation, MapPin, Clock, Phone, User, MessageSquare, Radio, Eye,
   CheckCircle, XCircle, AlertTriangle, Loader2, FileText, ChevronDown, Link,
   Archive, RotateCcw, Edit3, Trash2, Save, X, PlusCircle, Shield, Thermometer,
-  Undo2, Pencil, Search, Building2, Terminal, Briefcase, Copy, Printer,
+  Undo2, Pencil, Search, Building2, Terminal, Briefcase, Copy, Printer, Layers,
 } from 'lucide-react';
 import type { CallForService, Unit, CallStatus, CallNote, UnitStatus } from '../../types';
 import { callPosture } from '../../utils/callThreat';
@@ -86,7 +86,7 @@ import FileAttachments from '../../components/FileAttachments';
 import { safeDateTimeStr, parseTimestamp, toDatetimeLocalValue, mtDatetimeLocalToUtc } from '../../utils/dateUtils';
 import {
   humanizePriority, formatDispositionCode, getStatusTooltip, formatPhoneDisplay,
-  formatAddressDisplay, timeAgo,
+  formatAddressDisplay, timeAgo, humanizeStatus,
 } from '../../utils/statusLabels';
 
 // Label maps for human-readable display of stored values
@@ -1814,6 +1814,19 @@ export default function DispatchPage() {
     return counts;
   }, [calls]);
 
+  // Other active calls at the SAME address as the selected call — surfaces the
+  // stack the queue card already counts, so a dispatcher seeing one call knows
+  // about the others at that location (officer-safety + dedupe).
+  const stackedCallsForSelected = useMemo(() => {
+    if (!selectedCall?.location) return [];
+    const loc = selectedCall.location.toLowerCase().trim();
+    return calls.filter(c =>
+      c.id !== selectedCall.id &&
+      ['pending', 'dispatched', 'enroute', 'onscene', 'on_hold'].includes(c.status) &&
+      (c.location || '').toLowerCase().trim() === loc
+    );
+  }, [calls, selectedCall?.id, selectedCall?.location]);
+
   // Toggle pinned-to-top flag on a call
   const handleTogglePin = useCallback(async (callId: string, currentlyPinned: boolean) => {
     const next = !currentlyPinned;
@@ -2280,6 +2293,29 @@ export default function DispatchPage() {
                   <div className="text-sm text-rmpg-200">{selectedCall.location || 'Not specified'}</div>
                   {selectedCall.cross_street && (
                     <div className="text-xs text-rmpg-400 mt-0.5">Near: {selectedCall.cross_street}</div>
+                  )}
+                  {/* Other active calls at this same address — click to jump. */}
+                  {stackedCallsForSelected.length > 0 && (
+                    <div className="mt-2 pt-2 border-t border-rmpg-700/30">
+                      <div className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-wide text-amber-400 mb-1">
+                        <Layers className="w-3 h-3" />
+                        {stackedCallsForSelected.length} other call{stackedCallsForSelected.length !== 1 ? 's' : ''} at this location
+                      </div>
+                      <div className="flex flex-wrap gap-1">
+                        {stackedCallsForSelected.map(c => (
+                          <button
+                            key={c.id}
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); setSelectedCall(c); }}
+                            title={`${formatIncidentType(c.incident_type)} — ${humanizeStatus(c.status, 'call')}`}
+                            className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-mono border border-rmpg-700/50 hover:border-amber-600/60 hover:bg-amber-900/20 transition-colors"
+                          >
+                            <span className="font-bold text-green-400">{c.call_number}</span>
+                            <StatusBadge status={c.priority} type="priority" size="sm" />
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   )}
                 </div>
 
