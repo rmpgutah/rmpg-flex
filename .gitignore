@@ -69,3 +69,6 @@ data/
 # ─── Local notes (never publish) ────────────────────────────
 *.notes.md
 CLAUDE-private.md
+
+# Generated Dispatch Guide PDF (jsPDF doc.save under vitest/jsdom dirties the tree)
+client/RMPG-Dispatch-Guide-*.pdf
