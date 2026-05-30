@@ -12,14 +12,20 @@ export interface DistrictInfo {
   zone_id: string;
   beat_id: string;
   dispatch_code?: string;
+  sector_code?: string;
   sector_name?: string;
   zone_name?: string;
   beat_name?: string;
   beat_descriptor?: string;
+  area_code?: string;
+  area_name?: string;
 }
 
 export interface DistrictOption {
   sector_id: string;
+  // Spillman sector code (e.g. "SL1") — the police-format label for the sector.
+  // Distinct from sector_id, which is the numeric dispatch_sectors.id row key.
+  sector_code: string;
   zone_id: string;
   beat_id: string;
   dispatch_code: string;
@@ -27,6 +33,8 @@ export interface DistrictOption {
   zone_name: string;
   beat_name: string;
   beat_descriptor: string;
+  area_code: string;
+  area_name: string;
 }
 
 /**
@@ -76,6 +84,37 @@ export function useDistrictOptions() {
     return m;
   }, [districts]);
 
+  // Spillman sector code keyed by the numeric sector_id, so the UI can render
+  // the police-format code ("SL1") wherever it only has the raw sector_id row key.
+  const sectionCodes = useMemo(() => {
+    const m = new Map<string, string>();
+    for (const d of districts) m.set(d.sector_id, d.sector_code);
+    return m;
+  }, [districts]);
+
+  // Area (the top of the geography hierarchy) keyed by sector_id, since a call
+  // record carries sector_id but no area_id. { code, name } e.g. {SL, Salt Lake}.
+  const sectionAreas = useMemo(() => {
+    const m = new Map<string, { code: string; name: string }>();
+    for (const d of districts) m.set(d.sector_id, { code: d.area_code, name: d.area_name });
+    return m;
+  }, [districts]);
+
+  // Resolve the Spillman sector code from a numeric sector_id; falls back to the
+  // raw id so the field is never blank (but the caller can detect the miss).
+  const getSectionCode = useCallback(
+    (sectorId: string | number | null | undefined) =>
+      sectorId == null ? '' : (sectionCodes.get(sectorId as string) || ''),
+    [sectionCodes],
+  );
+
+  // Resolve the Area for a numeric sector_id, or null when unknown.
+  const getArea = useCallback(
+    (sectorId: string | number | null | undefined) =>
+      sectorId == null ? null : (sectionAreas.get(sectorId as string) || null),
+    [sectionAreas],
+  );
+
   const zoneLabels = useMemo(() => {
     const m = new Map<string, string>();
     for (const d of districts) m.set(d.zone_id, d.zone_name);
@@ -96,7 +135,7 @@ export function useDistrictOptions() {
     return beatLabels.get(`${zoneId}:${beatId}`) || beatId;
   }, [beatLabels]);
 
-  return { districts, sections, zones, beats, sectionLabels, zoneLabels, beatLabels, zonesForSection, beatsForZone, getBeatLabel, loading, error, retry: loadDistricts };
+  return { districts, sections, zones, beats, sectionLabels, sectionCodes, sectionAreas, getSectionCode, getArea, zoneLabels, beatLabels, zonesForSection, beatsForZone, getBeatLabel, loading, error, retry: loadDistricts };
 }
 
 /**
@@ -124,10 +163,13 @@ export function useDistrictIdentify() {
           zone_id: result.zone_id,
           beat_id: result.beat_id,
           dispatch_code: result.dispatch_code,
+          sector_code: result.sector_code,
           sector_name: result.sector_name,
           zone_name: result.zone_name,
           beat_name: result.beat_name,
           beat_descriptor: result.beat_descriptor,
+          area_code: result.area_code,
+          area_name: result.area_name,
         };
       }
       return null;

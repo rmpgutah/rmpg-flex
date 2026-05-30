@@ -73,7 +73,40 @@
 //       as unit OBJECTS, but the code did assigned_units.includes(String(id))
 //       (always false) so the unit marker, route line, and turn-by-turn
 //       directions never appeared. Normalize to an id Set.
-const CACHE_NAME = 'rmpg-flex-v632';
+// v627: police-format geography output on the call detail panel — render the
+//       Spillman sector code ("SL1") instead of the raw numeric sector_id,
+//       prefix the beat code to its name, and add the Area line. The codes
+//       were already on the wire from /districts; the client had discarded them.
+// v628: surface zone › beat names on the queue CallCard (under the address) —
+//       the dispatch code was badged but the human geography wasn't shown.
+// v629: use the existing zoneLeaf/beatLeaf parsers in the live geography output
+//       (detail panel + card) so Zone/Beat render as clean leaves ("HER", "C")
+//       instead of the redundant composite codes ("SL1-HER", "SL1-HER/C").
+// v630: click-to-copy the Spillman dispatch code + explanatory tooltips on the
+//       Area/Sec/Zone/Beat fields in the call detail panel.
+// v631: prepend the Spillman section code to the queue card geography line,
+//       derived from the composite zone_id via new sectionPrefix() parser
+//       (zero extra lookups). sector_name fallback for non-composite codes.
+// v632: geography filter + sort. Search box now matches district fields
+//       (Spillman code, zone/beat, place names). New GEO sort mode groups the
+//       queue by section › zone › beat. Sort mode now persists via localStorage
+//       (the /user/preferences backend is stubbed) — fixes the dead SORT toggle.
+// v633: police-format disposition in the call detail panel — "RTF — Report
+//       Taken" (code + label) via new formatDispositionCode(), instead of the
+//       label alone. Shared humanizeDisposition left untouched.
+// v634: copy-to-clipboard button on the call detail-panel Location field.
+// v635: unit status board now shows time-in-status (dwell) next to the status
+//       badge, color-escalating per status so dispatchers catch units stuck
+//       en route / with long scene times.
+// v636: call timeline now shows the elapsed delta between each populated stage
+//       (Created→Dispatched→Enroute→On Scene→Cleared→Closed) — the full
+//       response-time breakdown, not just dispatched→onscene.
+// v637: hint district search in the queue search placeholder; show the card
+//       geography line even when only a section is assigned (no zone/beat yet).
+// v638: merge origin/main (16 commits) into the dispatch geography/police-format
+//       batch; bump above both lineages (mine v637, main v632) for a clean
+//       cache invalidation on the combined deploy.
+const CACHE_NAME = 'rmpg-flex-v638';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

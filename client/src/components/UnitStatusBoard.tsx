@@ -13,6 +13,26 @@ function getGpsStaleStatus(unit: Unit): 'ok' | 'stale' | 'lost' {
   return 'ok';
 }
 
+// Time-in-status: how long a unit has held its current status. Dispatchers
+// watch this to catch units stuck en route / dispatched without arriving.
+// Recomputed on each board render (same cadence as the GPS-age indicator above);
+// only shown for active statuses where dwell time is operationally meaningful.
+const STATUS_DWELL_THRESHOLDS: Partial<Record<UnitStatus, { amber: number; red: number }>> = {
+  dispatched: { amber: 5, red: 10 },   // should be moving / en route quickly
+  enroute: { amber: 10, red: 20 },     // long transit → check on the unit
+  onscene: { amber: 30, red: 60 },     // extended scene time → welfare/relief
+  busy: { amber: 20, red: 45 },
+};
+
+function statusDwell(unit: Unit): { mins: number; color: string } | null {
+  if (!unit.last_status_change || unit.status === 'off_duty' || unit.status === 'available') return null;
+  const mins = Math.floor((Date.now() - parseTimestamp(unit.last_status_change).getTime()) / 60000);
+  if (mins < 1) return null;
+  const t = STATUS_DWELL_THRESHOLDS[unit.status];
+  const color = t ? (mins >= t.red ? '#ef4444' : mins >= t.amber ? '#f59e0b' : '#888888') : '#888888';
+  return { mins, color };
+}
+
 interface UnitStatusBoardProps {
   units: Unit[];
   onUnitClick?: (unit: Unit) => void;
@@ -145,7 +165,21 @@ export default React.memo(function UnitStatusBoard({
               {/* 29: Italic styling on unassigned officer for distinction */}
               <td className="text-rmpg-200">{unit.officer_name || <span className="text-rmpg-500 italic">Unassigned</span>}</td>
               <td>
-                <StatusBadge status={unit.status} type="unit_status" size="sm" />
+                <div className="flex items-center gap-1.5">
+                  <StatusBadge status={unit.status} type="unit_status" size="sm" />
+                  {(() => {
+                    const dwell = statusDwell(unit);
+                    return dwell ? (
+                      <span
+                        className="text-[9px] font-mono tabular-nums"
+                        style={{ color: dwell.color }}
+                        title={`In ${unit.status} for ${dwell.mins} min`}
+                      >
+                        {dwell.mins}m
+                      </span>
+                    ) : null;
+                  })()}
+                </div>
               </td>
               <td className="text-rmpg-300 text-xs font-mono">
                 {unit.current_call_number || <span className="text-rmpg-500 italic text-[10px]">Unassigned</span>}

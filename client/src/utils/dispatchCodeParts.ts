@@ -23,6 +23,18 @@ export function zoneLeaf(zoneCode: string | null | undefined): string {
   return idx >= 0 ? zoneCode.slice(idx + 1) : zoneCode;
 }
 
+/**
+ * Extract the embedded Spillman section prefix from a composite zone_code
+ * ("SL1-HER" → "SL1"). The complement of zoneLeaf. Returns '' when the code
+ * carries no embedded section (no separating dash), so callers can derive the
+ * section for display without a separate lookup.
+ */
+export function sectionPrefix(zoneCode: string | null | undefined): string {
+  if (!zoneCode) return '';
+  const idx = zoneCode.indexOf('-');
+  return idx > 0 ? zoneCode.slice(0, idx) : '';
+}
+
 /** Strip everything up to and including the last "/" from a beat_code. */
 export function beatLeaf(beatCode: string | null | undefined): string {
   if (!beatCode) return '';

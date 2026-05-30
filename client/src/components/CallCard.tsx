@@ -7,6 +7,7 @@ import WarningTags from './WarningTags';
 import type { WarningTag } from './WarningTags';
 import { getTimerState, isActiveStatus } from '../utils/dispatchTimers';
 import { humanizePriority, getStatusTooltip, formatAddressDisplay } from '../utils/statusLabels';
+import { beatLeaf, sectionPrefix } from '../utils/dispatchCodeParts';
 // Parse server timestamps as UTC (naive strings) — raw new Date() reads
 // them as browser-local and skews every elapsed/age calc by the offset.
 import { parseTimestamp } from '../utils/dateUtils';
@@ -449,6 +450,28 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
               {call.client_name || (call as any).pso_requestor_name}
             </div>
           )}
+          {/* Police-format geography: zone › beat names (the dispatch CODE is
+              already badged at top, so surface the human zone/beat context the
+              code alone doesn't convey). Zero extra requests — these fields ride
+              on the call record via LIST_VIEW_COLUMNS. */}
+          {(call.zone_name || call.beat_name || call.beat_id || call.zone_id || call.sector_name) && (() => {
+            // beatLeaf strips the redundant "SL1-HER/" parent context → just "C".
+            const beatLabel = [beatLeaf(call.beat_id), call.beat_name].filter(Boolean).join(' ');
+            const parts = [call.zone_name, beatLabel].filter(Boolean);
+            // Section code rides inside the composite zone_id ("SL1-HER" → "SL1"),
+            // so we surface it with zero extra lookups. sector_name is the fallback
+            // when the zone code isn't a composite.
+            const section = sectionPrefix(call.zone_id) || call.sector_name || '';
+            const geo = parts.join(' › ');
+            // Show even when only a section is assigned (no zone/beat yet).
+            if (!section && !geo) return null;
+            return (
+              <div className="text-[9px] text-rmpg-500 truncate" title={[section, geo].filter(Boolean).join(' · ')}>
+                {section && <span className="font-mono text-amber-300/70">{section}</span>}
+                {section && geo && ' · '}{geo}
+              </div>
+            );
+          })()}
         </div>
       </div>
 

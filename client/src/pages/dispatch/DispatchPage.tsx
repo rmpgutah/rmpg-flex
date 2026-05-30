@@ -14,6 +14,7 @@ import DuplicateCandidatesModal, { DuplicateCandidate } from '../../components/D
 import UnitStatusBoard from '../../components/UnitStatusBoard';
 import DispositionPrompt from '../../components/DispositionPrompt';
 import { dispositionGroupsForIncident, DEFAULT_DISPOSITION_CODES } from '../../constants/dispositionCodes';
+import { zoneLeaf, beatLeaf } from '../../utils/dispatchCodeParts';
 import DispatchMiniMap from '../../components/DispatchMiniMap';
 import BoloAlertBanner from '../../components/BoloAlertBanner';
 import StatusBadge from '../../components/StatusBadge';
@@ -84,7 +85,7 @@ import NarrativeAssist from '../../components/dispatch/NarrativeAssist';
 import FileAttachments from '../../components/FileAttachments';
 import { safeDateTimeStr, parseTimestamp, toDatetimeLocalValue, mtDatetimeLocalToUtc } from '../../utils/dateUtils';
 import {
-  humanizePriority, humanizeDisposition, getStatusTooltip, formatPhoneDisplay,
+  humanizePriority, formatDispositionCode, getStatusTooltip, formatPhoneDisplay,
   formatAddressDisplay, timeAgo,
 } from '../../utils/statusLabels';
 
@@ -259,7 +260,7 @@ export default function DispatchPage() {
   const { subscribe } = useWebSocket();
   const isMobile = useIsMobile();
   const { prefs: userPrefs, reload: reloadPrefs } = useUserPreferences();
-  const { districts, sections, sectionLabels, zoneLabels, zonesForSection, beatsForZone, getBeatLabel } = useDistrictOptions();
+  const { districts, sections, sectionLabels, getSectionCode, getArea, zoneLabels, zonesForSection, beatsForZone, getBeatLabel } = useDistrictOptions();
   const { resolve: resolveAddress } = useAddressAutofill();
   const [calls, setCalls] = useState<CallForService[]>([]);
   const recentlyCreatedIdsRef = useRef<Set<string | number>>(new Set()); // synchronous dedup for POST + WS race
@@ -323,6 +324,12 @@ export default function DispatchPage() {
   // AI Dispatch analysis state
   const [aiAnalyses, setAiAnalyses] = useState<Record<string, any>>({});
   const [showAiSidebar, setShowAiSidebar] = useState(false);
+
+  // Queue sort mode. The /user/preferences backend is currently a stub that
+  // doesn't persist dispatch_sort, so we keep the selection in localStorage
+  // (best-effort PUT to the API too, for when it becomes real). This makes the
+  // SORT toggle actually stick across reloads — it previously reverted every time.
+  const [localSort, setLocalSort] = useState<string>(() => localStorage.getItem('rmpg_dispatch_sort') || '');
 
   // ── Feature 1: Call priority sound alerts ──
   const [soundAlertsMuted, setSoundAlertsMuted] = useState(() => localStorage.getItem('rmpg_sound_alerts_muted') === 'true');
@@ -1136,7 +1143,16 @@ export default function DispatchPage() {
       (call.location || '').toLowerCase().includes(q) ||
       (call.incident_type || '').toLowerCase().includes(q) ||
       (call.description || '').toLowerCase().includes(q) ||
-      (call.caller_name || '').toLowerCase().includes(q)
+      (call.caller_name || '').toLowerCase().includes(q) ||
+      // Geography: let dispatchers filter the queue to a district by typing a
+      // Spillman code ("SL1", "SL1-HER/C") or a place name ("Herriman").
+      (call.dispatch_code || '').toLowerCase().includes(q) ||
+      (call.zone_beat || '').toLowerCase().includes(q) ||
+      (call.sector_name || '').toLowerCase().includes(q) ||
+      (call.zone_id || '').toLowerCase().includes(q) ||
+      (call.zone_name || '').toLowerCase().includes(q) ||
+      (call.beat_id || '').toLowerCase().includes(q) ||
+      (call.beat_name || '').toLowerCase().includes(q)
     );
   }).filter((call) => {
     // Show cleared calls in 'all' tab if user preference is enabled
@@ -1153,7 +1169,7 @@ export default function DispatchPage() {
     const bPin = b.pinned ? 1 : 0;
     if (aPin !== bPin) return bPin - aPin;
     // User-selectable sort for active tabs
-    const sortMode = userPrefs?.dispatch_sort || 'priority';
+    const sortMode = userPrefs?.dispatch_sort || localSort || 'priority';
     if (sortMode === 'time') {
       return parseTimestamp(b.created_at).getTime() - parseTimestamp(a.created_at).getTime();
     }
@@ -1163,12 +1179,24 @@ export default function DispatchPage() {
       if (sDiff !== 0) return sDiff;
       return parseTimestamp(b.created_at).getTime() - parseTimestamp(a.created_at).getTime();
     }
+    if (sortMode === 'geo') {
+      // Group the queue by district: section → zone → beat (natural/numeric
+      // order), so a dispatcher can work calls geographically. Calls with no
+      // geography sink to the bottom; priority then breaks ties within a beat.
+      const geoKey = (c: typeof a) => [c.sector_name || '￿', c.zone_id || '￿', c.beat_id || '￿'].join('|');
+      const gDiff = geoKey(a).localeCompare(geoKey(b), undefined, { numeric: true });
+      if (gDiff !== 0) return gDiff;
+      const pOrderGeo: Record<string, number> = { P1: 0, P2: 1, P3: 2, P4: 3 };
+      const pDiffGeo = (pOrderGeo[a.priority] ?? 3) - (pOrderGeo[b.priority] ?? 3);
+      if (pDiffGeo !== 0) return pDiffGeo;
+      return parseTimestamp(b.created_at).getTime() - parseTimestamp(a.created_at).getTime();
+    }
     // Default: priority then newest first
     const pOrder: Record<string, number> = { P1: 0, P2: 1, P3: 2, P4: 3 };
     const pDiff = (pOrder[a.priority] ?? 3) - (pOrder[b.priority] ?? 3);
     if (pDiff !== 0) return pDiff;
     return parseTimestamp(b.created_at).getTime() - parseTimestamp(a.created_at).getTime();
-  }), [calls, archivedCalls, filterTab, searchQuery, userPrefs?.dispatch_sort, userPrefs?.dispatch_show_cleared, user?.id]);
+  }), [calls, archivedCalls, filterTab, searchQuery, userPrefs?.dispatch_sort, localSort, userPrefs?.dispatch_show_cleared, user?.id]);
 
   // Keyboard shortcuts for dispatch power users — Spillman Flex F-key style
   useEffect(() => {
@@ -2235,7 +2263,20 @@ export default function DispatchPage() {
               {/* Key info fields */}
               <div className="space-y-2">
                 <div className="panel-inset p-3">
-                  <div className="field-label mb-1">Location</div>
+                  <div className="field-label mb-1 flex items-center justify-between">
+                    <span>Location</span>
+                    {selectedCall.location && (
+                      <button
+                        type="button"
+                        title="Copy address"
+                        aria-label="Copy address"
+                        onClick={(e) => { e.stopPropagation(); navigator.clipboard?.writeText(selectedCall.location || ''); addToast('Address copied', 'success'); }}
+                        className="text-rmpg-500 hover:text-brand-gold-500 transition-colors"
+                      >
+                        <Copy className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
                   <div className="text-sm text-rmpg-200">{selectedCall.location || 'Not specified'}</div>
                   {selectedCall.cross_street && (
                     <div className="text-xs text-rmpg-400 mt-0.5">Near: {selectedCall.cross_street}</div>
@@ -2333,12 +2374,33 @@ export default function DispatchPage() {
                             )}
                           </div>
                         ) : (
-                          <span
-                            className={`font-mono text-rmpg-200 tabular-nums ${isAdminOrManager ? 'cursor-pointer hover:text-[#d4a017] group-hover:underline transition-colors' : ''}`}
-                            onClick={() => isAdminOrManager && setEditingTimestamp(ts.field)}
-                            title={isAdminOrManager ? 'Click to edit timestamp' : undefined}
-                          >
-                            {ts.value ? formatTime(ts.value) : <span className="text-rmpg-600 italic">—</span>}
+                          <span className="flex items-center gap-1.5">
+                            <span
+                              className={`font-mono text-rmpg-200 tabular-nums ${isAdminOrManager ? 'cursor-pointer hover:text-[#d4a017] group-hover:underline transition-colors' : ''}`}
+                              onClick={() => isAdminOrManager && setEditingTimestamp(ts.field)}
+                              title={isAdminOrManager ? 'Click to edit timestamp' : undefined}
+                            >
+                              {ts.value ? formatTime(ts.value) : <span className="text-rmpg-600 italic">—</span>}
+                            </span>
+                            {/* Elapsed since the previous populated stage — the response
+                                breakdown (Created→Dispatched→Enroute→On Scene→…). */}
+                            {ts.value && (() => {
+                              const prevChain: Record<string, string[]> = {
+                                dispatched_at: ['created_at'],
+                                enroute_at: ['dispatched_at', 'created_at'],
+                                onscene_at: ['enroute_at', 'dispatched_at', 'created_at'],
+                                cleared_at: ['onscene_at', 'enroute_at', 'dispatched_at', 'created_at'],
+                                closed_at: ['cleared_at', 'onscene_at', 'enroute_at', 'dispatched_at', 'created_at'],
+                              };
+                              const chain = prevChain[ts.field];
+                              const prevField = chain?.find(f => (selectedCall as any)[f]);
+                              if (!prevField) return null;
+                              const d = parseTimestamp(ts.value).getTime() - parseTimestamp((selectedCall as any)[prevField]).getTime();
+                              if (!isFinite(d) || d <= 0) return null;
+                              const m = Math.floor(d / 60000);
+                              const s = Math.floor((d % 60000) / 1000);
+                              return <span className="text-rmpg-500 font-mono text-[9px] tabular-nums" title={`+${m}m ${s}s since ${prevField.replace(/_at$/, '').replace(/_/g, ' ')}`}>(+{m > 0 ? `${m}m ` : ''}{s}s)</span>;
+                            })()}
                           </span>
                         )}
                       </div>
@@ -2454,7 +2516,7 @@ export default function DispatchPage() {
                       {selectedCall.pso_requestor_phone && <div><span className="text-rmpg-400">Phone:</span> {formatPhoneDisplay(selectedCall.pso_requestor_phone)}</div>}
                       {selectedCall.pso_billing_code && <div><span className="text-rmpg-400">Billing:</span> {selectedCall.pso_billing_code}</div>}
                       {selectedCall.pso_authorization && <div><span className="text-rmpg-400">Auth:</span> {selectedCall.pso_authorization}</div>}
-                      {selectedCall.disposition && <div><span className="text-rmpg-400">Disposition:</span> {humanizeDisposition(selectedCall.disposition)}</div>}
+                      {selectedCall.disposition && <div><span className="text-rmpg-400">Disposition:</span> {formatDispositionCode(selectedCall.disposition)}</div>}
                     </div>
 
                     {/* Serve Queue Integration — Gold Status Panel */}
@@ -2821,7 +2883,7 @@ export default function DispatchPage() {
             <Search className="absolute left-2 w-3 h-3 text-[#545454] pointer-events-none" />
             <input
               type="text"
-              placeholder="Search calls..."
+              placeholder="Search calls, address, district (SL1, Herriman)…"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="input-dark text-xs w-full pl-6 pr-6"
@@ -2979,21 +3041,24 @@ export default function DispatchPage() {
                 </span>
                 {/* Sort mode toggle — cycle priority → time → status */}
                 {(() => {
-                  const current = (userPrefs?.dispatch_sort || 'priority') as 'priority' | 'time' | 'status';
-                  const next: Record<string, 'priority' | 'time' | 'status'> = { priority: 'time', time: 'status', status: 'priority' };
-                  const labels: Record<string, string> = { priority: 'PRI', time: 'NEW', status: 'STA' };
+                  const current = (userPrefs?.dispatch_sort || localSort || 'priority') as 'priority' | 'time' | 'status' | 'geo';
+                  const next: Record<string, 'priority' | 'time' | 'status' | 'geo'> = { priority: 'time', time: 'status', status: 'geo', geo: 'priority' };
+                  const labels: Record<string, string> = { priority: 'PRI', time: 'NEW', status: 'STA', geo: 'GEO' };
+                  const titles: Record<string, string> = { priority: 'priority', time: 'newest', status: 'status', geo: 'district (section › zone › beat)' };
                   return (
                     <button
                       type="button"
-                      title={`Sort: ${current.toUpperCase()} (click to cycle)`}
-                      onClick={async () => {
-                        try {
-                          await apiFetch('/user/preferences', {
-                            method: 'PUT',
-                            body: JSON.stringify({ dispatch_sort: next[current] }),
-                          });
-                          reloadPrefs();
-                        } catch { addToast('Failed to update sort', 'error'); }
+                      title={`Sort: ${titles[current]} (click to cycle)`}
+                      onClick={() => {
+                        const target = next[current];
+                        // Persist locally (backend pref is stubbed) so it survives reloads.
+                        setLocalSort(target);
+                        localStorage.setItem('rmpg_dispatch_sort', target);
+                        // Best-effort server persist for when /user/preferences is real.
+                        apiFetch('/user/preferences', {
+                          method: 'PUT',
+                          body: JSON.stringify({ dispatch_sort: target }),
+                        }).then(() => reloadPrefs()).catch(() => { /* stubbed today; local state already applied */ });
                       }}
                       className="flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold border border-rmpg-700/50 hover:brightness-125 transition-all"
                       style={{ background: '#0d0d0d', color: '#d4a017' }}
@@ -4223,7 +4288,11 @@ export default function DispatchPage() {
                                 setEditData(prev => ({ ...prev, sector_id: val, zone_id: '', beat_id: '', dispatch_code: '' }));
                               }}>
                                 <option value="">— Select —</option>
-                                {sections.map(s => <option key={s} value={s}>{sectionLabels.get(s) || s}</option>)}
+                                {sections.map(s => {
+                                  const code = getSectionCode(s);
+                                  const name = sectionLabels.get(s) || s;
+                                  return <option key={s} value={s}>{code ? `${code} — ${name}` : name}</option>;
+                                })}
                               </select>
                             </div>
                             <div>
@@ -4264,13 +4333,40 @@ export default function DispatchPage() {
                         {selectedCall.location_floor && <span className="text-rmpg-200"><span className="text-rmpg-400">Floor:</span> {selectedCall.location_floor}</span>}
                         {selectedCall.location_room && <span className="text-rmpg-200"><span className="text-rmpg-400">Rm:</span> {selectedCall.location_room}</span>}
                         {selectedCall.dispatch_code && (
-                          <span className="text-[10px] font-bold font-mono text-amber-300 bg-amber-900/30 border border-amber-700/40 px-2 py-0.5 rounded-sm tracking-wider tabular-nums" style={{ textShadow: '0 0 6px rgba(251,191,36,0.15)' }}>
+                          <span
+                            role="button"
+                            tabIndex={0}
+                            title="Spillman dispatch code — click to copy"
+                            onClick={() => { try { navigator.clipboard?.writeText(selectedCall.dispatch_code || ''); } catch { /* clipboard unavailable */ } }}
+                            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); try { navigator.clipboard?.writeText(selectedCall.dispatch_code || ''); } catch { /* clipboard unavailable */ } } }}
+                            className="cursor-pointer hover:bg-amber-900/50 text-[10px] font-bold font-mono text-amber-300 bg-amber-900/30 border border-amber-700/40 px-2 py-0.5 rounded-sm tracking-wider tabular-nums"
+                            style={{ textShadow: '0 0 6px rgba(251,191,36,0.15)' }}
+                          >
                             {selectedCall.dispatch_code}
                           </span>
                         )}
-                        {selectedCall.sector_id && <span className="text-rmpg-200"><span className="text-rmpg-400">Sec:</span> {selectedCall.sector_id} — {sectionLabels.get(selectedCall.sector_id) || ''}</span>}
-                        {selectedCall.zone_id && <span className="text-rmpg-200"><span className="text-rmpg-400">Zone:</span> {selectedCall.zone_id} — {zoneLabels.get(selectedCall.zone_id) || ''}</span>}
-                        {selectedCall.beat_id && <span className="text-rmpg-200"><span className="text-rmpg-400">Beat:</span> {getBeatLabel(selectedCall.zone_id || '', selectedCall.beat_id)}</span>}
+                        {selectedCall.sector_id && (() => {
+                          const area = getArea(selectedCall.sector_id);
+                          return area ? <span className="text-rmpg-200" title="Dispatch Area — top of the geography hierarchy"><span className="text-rmpg-400">Area:</span> {[area.code, area.name].filter(Boolean).join(' — ')}</span> : null;
+                        })()}
+                        {selectedCall.sector_id && (() => {
+                          // Police format: show the Spillman sector code ("SL1"), not the
+                          // numeric dispatch_sectors.id row key. Fall back to the id only
+                          // if the districts lookup hasn't loaded / has no code.
+                          const code = getSectionCode(selectedCall.sector_id) || selectedCall.sector_id;
+                          const name = sectionLabels.get(selectedCall.sector_id) || '';
+                          return <span className="text-rmpg-200" title="Spillman sector code"><span className="text-rmpg-400">Sec:</span> {[code, name].filter(Boolean).join(' — ')}</span>;
+                        })()}
+                        {selectedCall.zone_id && <span className="text-rmpg-200" title="Zone (within sector)"><span className="text-rmpg-400">Zone:</span> {[zoneLeaf(selectedCall.zone_id), zoneLabels.get(selectedCall.zone_id) || ''].filter(Boolean).join(' — ')}</span>}
+                        {selectedCall.beat_id && (() => {
+                          // Show the leaf beat code (e.g. "C", not "SL1-HER/C") prefixed
+                          // to its name. getBeatLabel falls back to the raw code, so guard
+                          // against an "C — C" echo. Lookups stay keyed by the full code.
+                          const code = beatLeaf(selectedCall.beat_id);
+                          const label = getBeatLabel(selectedCall.zone_id || '', selectedCall.beat_id);
+                          const text = label && label !== selectedCall.beat_id ? `${code} — ${label}` : code;
+                          return <span className="text-rmpg-200" title="Beat (within zone)"><span className="text-rmpg-400">Beat:</span> {text}</span>;
+                        })()}
                         {selectedCall.latitude != null && selectedCall.longitude != null && (
                           <span className="text-rmpg-400 font-mono text-[9px] tabular-nums select-all">
                             GPS: {Number(selectedCall.latitude).toFixed(5)}, {Number(selectedCall.longitude).toFixed(5)}

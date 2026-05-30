@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   beatLeaf,
+  sectionPrefix,
   sectionZoneBeatCombined,
   zoneLeaf,
 } from '../dispatchCodeParts';
@@ -41,6 +42,30 @@ describe('beatLeaf', () => {
     expect(beatLeaf(null)).toBe('');
     expect(beatLeaf(undefined)).toBe('');
     expect(beatLeaf('')).toBe('');
+  });
+});
+
+describe('sectionPrefix', () => {
+  it('extracts the section prefix from a chart zone code', () => {
+    expect(sectionPrefix('SL1-HER')).toBe('SL1');
+    expect(sectionPrefix('UT2-PRO')).toBe('UT2');
+    expect(sectionPrefix('DV1-NSL')).toBe('DV1');
+  });
+  it('takes only up to the first dash for compound city codes', () => {
+    expect(sectionPrefix('SL1-NORTH-SLC')).toBe('SL1');
+  });
+  it('returns empty when there is no embedded section', () => {
+    expect(sectionPrefix('SLC')).toBe('');
+    expect(sectionPrefix('-LEADING')).toBe('');
+  });
+  it('handles nullish input', () => {
+    expect(sectionPrefix(null)).toBe('');
+    expect(sectionPrefix(undefined)).toBe('');
+    expect(sectionPrefix('')).toBe('');
+  });
+  it('is the complement of zoneLeaf', () => {
+    const z = 'SL1-HER';
+    expect(`${sectionPrefix(z)}-${zoneLeaf(z)}`).toBe(z);
   });
 });
 
