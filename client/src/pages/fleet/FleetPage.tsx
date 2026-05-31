@@ -531,7 +531,9 @@ export default function FleetPage() {
       const officerName = personnelData?.officer?.full_name;
       await apiFetch(`/fleet/${selectedId}/personnel-notes`, {
         method: 'POST',
-        body: JSON.stringify({ note, officer_id: officerId || null, officer_name: officerName || null }),
+        // Handler INSERTs `content`; send both so the note text persists
+        // (live fleet_personnel_notes has both `content` and `note` columns).
+        body: JSON.stringify({ content: note, note, officer_id: officerId || null, officer_name: officerName || null }),
       });
       addToast('Note added', 'success');
       fetchPersonnel(selectedId);

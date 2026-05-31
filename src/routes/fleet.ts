@@ -28,6 +28,17 @@ const WRITABLE_COLS: readonly string[] = [
 
 const VALID_STATUSES = new Set(['in_service', 'out_of_service', 'maintenance', 'retired', 'archived']);
 
+// D1 `.bind()` only accepts null | number | string | boolean | ArrayBuffer.
+// Columns like `equipment` arrive from the client as JS arrays (multi-select);
+// binding one directly throws `D1_TYPE_ERROR: Type 'object' not supported`.
+// We JSON-serialize any array/object so it lands as a string — the client's
+// `parseEquipment()` reads it back via JSON.parse. Empty string → null.
+function coerceBindValue(raw: unknown): unknown {
+  if (raw === '') return null;
+  if (raw !== null && typeof raw === 'object') return JSON.stringify(raw);
+  return raw;
+}
+
 // ─────────────────────────────────────────────────────────
 // GET /  — paginated list with filters
 // ─────────────────────────────────────────────────────────
@@ -493,8 +504,7 @@ fleet.post('/', async (c) => {
       if (key === 'vehicle_number') continue;
       if (Object.prototype.hasOwnProperty.call(body, key)) {
         cols.push(key);
-        const raw = body[key];
-        vals.push(raw === '' ? null : raw);
+        vals.push(coerceBindValue(body[key]));
       }
     }
 
@@ -551,8 +561,7 @@ fleet.put('/:id', async (c) => {
     for (const key of WRITABLE_COLS) {
       if (Object.prototype.hasOwnProperty.call(body, key)) {
         setCols.push(`${key} = ?`);
-        const raw = body[key];
-        bindings.push(raw === '' ? null : raw);
+        bindings.push(coerceBindValue(body[key]));
       }
     }
     if (setCols.length === 0) {
@@ -885,9 +894,22 @@ fleet.post('/:id/personnel-notes', async (c) => {
     if (!Number.isInteger(vehicleId) || vehicleId <= 0) return c.json({ error: 'Invalid vehicle id' }, 400);
     const db = getDb(c.env);
     const body = await c.req.json<Record<string, unknown>>();
-    if (!body.content) return c.json({ error: 'content required' }, 400);
-    const userId = (c.get('user') as { id: number } | undefined)?.id;
-    const result = await execute(db, 'INSERT INTO fleet_personnel_notes (vehicle_id, user_id, content) VALUES (?,?,?)', vehicleId, userId ?? null, body.content);
+    // Client may send `content` (rewrite shape) or `note` (legacy shape).
+    const text = (body.content ?? body.note) as string | undefined;
+    if (!text) return c.json({ error: 'note content required' }, 400);
+    const user = c.get('user') as { id: number; full_name?: string } | undefined;
+    const userId = user?.id;
+    // Live fleet_personnel_notes has NOT NULL on note + created_by (legacy
+    // schema) AND nullable content/user_id (rewrite cols). Write all of them
+    // so the INSERT satisfies every constraint regardless of which shape the
+    // reader expects. created_by falls back to officer_id then 0 (system).
+    const createdBy = userId ?? (body.officer_id as number | undefined) ?? 0;
+    const officerName = (body.officer_name as string | undefined) ?? user?.full_name ?? null;
+    const result = await execute(
+      db,
+      'INSERT INTO fleet_personnel_notes (vehicle_id, user_id, content, note, created_by, created_by_name, officer_id, officer_name) VALUES (?,?,?,?,?,?,?,?)',
+      vehicleId, userId ?? null, text, text, createdBy, officerName, (body.officer_id as number | undefined) ?? null, officerName,
+    );
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_personnel_notes WHERE id = ?', result.meta.last_row_id);
     return c.json(created, 201);
   } catch (err) { console.error('POST /fleet/:id/personnel-notes failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
@@ -1721,15 +1743,79 @@ fleet.get('/fuel/analytics/by-card', async (c) => {
   } catch (err) { console.error('GET /fleet/fuel/analytics/by-card failed:', err); return c.json({ data: [] }); }
 });
 
+// POST /fuel/import/preview — parse an uploaded CSV into reviewable rows.
+// Accepts multipart/form-data (file=...) OR raw text/csv body. Maps common
+// column-header aliases to the canonical PreviewRow shape the client edits.
+// No DB writes — review happens client-side, then /commit persists.
+fleet.post('/fuel/import/preview', async (c) => {
+  try {
+    let csv = '';
+    const ctype = c.req.header('content-type') || '';
+    if (ctype.includes('multipart/form-data')) {
+      const form = await c.req.formData();
+      const file = form.get('file');
+      csv = typeof file === 'string' ? file : file ? await (file as File).text() : '';
+    } else {
+      csv = await c.req.text();
+    }
+    if (!csv.trim()) return c.json({ error: 'Empty file' }, 400);
+
+    const lines = csv.split(/\r?\n/).filter((l) => l.trim());
+    if (lines.length < 2) return c.json({ rows: [] });
+    const splitCsv = (line: string) =>
+      line.match(/("([^"]|"")*"|[^,]*)(,|$)/g)?.slice(0, -1).map((cell) =>
+        cell.replace(/,$/, '').replace(/^"|"$/g, '').replace(/""/g, '"').trim()) ?? [];
+    const headers = splitCsv(lines[0]).map((h) => h.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, ''));
+    const idx = (...names: string[]) => headers.findIndex((h) => names.includes(h));
+    const col = {
+      vehicle: idx('vehicle', 'vehicle_number', 'unit', 'unit_number', 'vehicle_id'),
+      date: idx('date', 'fuel_date', 'transaction_date', 'trans_date'),
+      gallons: idx('gallons', 'qty', 'quantity', 'units', 'volume'),
+      cpg: idx('cost_per_gallon', 'ppg', 'price_per_gallon', 'unit_price'),
+      total: idx('total', 'total_cost', 'amount', 'cost'),
+      odo: idx('odometer', 'odometer_reading', 'mileage', 'miles'),
+      station: idx('station', 'merchant', 'site', 'location'),
+    };
+    const num = (v: string | undefined) => { if (!v) return null; const n = parseFloat(v.replace(/[$,]/g, '')); return Number.isFinite(n) ? n : null; };
+    const at = (cells: string[], i: number) => (i >= 0 ? cells[i] : undefined);
+
+    const rows = lines.slice(1).map((line, i) => {
+      const cells = splitCsv(line);
+      return {
+        row_index: i,
+        raw: line,
+        vehicle_number: at(cells, col.vehicle) ?? null,
+        vehicle_id: null as number | null,    // resolved client-side via the vehicle picker
+        fuel_date: at(cells, col.date) ?? null,
+        gallons: num(at(cells, col.gallons)),
+        cost_per_gallon: num(at(cells, col.cpg)),
+        total_cost: num(at(cells, col.total)),
+        odometer_reading: num(at(cells, col.odo)),
+        station: at(cells, col.station) ?? null,
+      };
+    });
+    return c.json({ rows, headers });
+  } catch (err) {
+    console.error('POST /fleet/fuel/import/preview failed:', err);
+    return c.json({ error: 'Failed to parse CSV', detail: (err as Error)?.message }, 500);
+  }
+});
+
 fleet.post('/fuel/import/commit', async (c) => {
   try {
     const db = getDb(c.env);
-    const body = await c.req.json<{ entries?: Array<Record<string, unknown>> }>();
-    const entries = body.entries || [];
+    // Client (FuelImportModal) sends { rows: [...] }; accept legacy `entries` too.
+    const body = await c.req.json<{ rows?: Array<Record<string, unknown>>; entries?: Array<Record<string, unknown>> }>();
+    const rows = body.rows || body.entries || [];
     let inserted = 0; const errors: any[] = [];
-    for (const e of entries) {
+    for (const e of rows) {
       try {
-        await execute(db, 'INSERT INTO fleet_fuel_log (vehicle_id, fuel_date, gallons, total_cost, odometer, notes) VALUES (?,?,?,?,?,?)', e.vehicle_id, e.fuel_date, e.gallons, e.total_cost, e.odometer, e.notes ?? null);
+        const odometer = e.odometer ?? e.odometer_reading ?? null;
+        await execute(
+          db,
+          'INSERT INTO fleet_fuel_log (vehicle_id, fuel_date, gallons, total_cost, cost_per_gallon, station, odometer, notes) VALUES (?,?,?,?,?,?,?,?)',
+          e.vehicle_id, e.fuel_date, e.gallons, e.total_cost ?? null, e.cost_per_gallon ?? null, e.station ?? null, odometer, e.notes ?? null,
+        );
         inserted++;
       } catch (e2) { errors.push({ entry: e, error: (e2 as Error).message }); }
     }
