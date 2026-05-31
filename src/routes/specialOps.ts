@@ -5,12 +5,15 @@ import { getDb, query, queryFirst, execute } from '../utils/db';
 const specialOps = new Hono<Env>();
 
 specialOps.get('/callouts', async (c) => {
+  try {
   const db = getDb(c.env);
   const rows = await query(db, 'SELECT * FROM special_ops_callouts ORDER BY date DESC LIMIT 100');
   return c.json(rows || []);
+  } catch (err) { return c.json({ error: 'Failed' }, 500); }
 });
 
 specialOps.post('/callouts', async (c) => {
+  try {
   const db = getDb(c.env);
   const body = await c.req.json();
   const result = await execute(db,
@@ -18,9 +21,11 @@ specialOps.post('/callouts', async (c) => {
     body.date || new Date().toISOString(), body.call_type, body.location || null, body.resolution || null, body.duration_minutes || null, body.team_size || null, body.notes || null
   );
   return c.json({ success: true, id: result.meta.last_row_id });
+  } catch (err) { return c.json({ error: 'Failed' }, 500); }
 });
 
 specialOps.put('/callouts/:id', async (c) => {
+  try {
   const db = getDb(c.env);
   const id = c.req.param('id');
   const body = await c.req.json();
@@ -29,22 +34,28 @@ specialOps.put('/callouts/:id', async (c) => {
     body.date, body.call_type, body.location || null, body.resolution || null, body.duration_minutes || null, body.team_size || null, body.notes || null, id
   );
   return c.json({ success: true });
+  } catch (err) { return c.json({ error: 'Failed' }, 500); }
 });
 
 specialOps.delete('/callouts/:id', async (c) => {
+  try {
   const db = getDb(c.env);
   const id = c.req.param('id');
   await execute(db, 'DELETE FROM special_ops_callouts WHERE id=?', id);
   return c.json({ success: true });
+  } catch (err) { return c.json({ error: 'Failed' }, 500); }
 });
 
 specialOps.get('/equipment', async (c) => {
+  try {
   const db = getDb(c.env);
   const rows = await query(db, 'SELECT * FROM special_ops_equipment ORDER BY equipment_type');
   return c.json(rows || []);
+  } catch (err) { return c.json({ error: 'Failed' }, 500); }
 });
 
 specialOps.post('/equipment', async (c) => {
+  try {
   const db = getDb(c.env);
   const body = await c.req.json();
   const result = await execute(db,
@@ -52,9 +63,11 @@ specialOps.post('/equipment', async (c) => {
     body.equipment_type, body.serial_number || null, body.condition || 'ready', body.assigned_to || null, body.notes || null
   );
   return c.json({ success: true, id: result.meta.last_row_id });
+  } catch (err) { return c.json({ error: 'Failed' }, 500); }
 });
 
 specialOps.put('/equipment/:id', async (c) => {
+  try {
   const db = getDb(c.env);
   const id = c.req.param('id');
   const body = await c.req.json();
@@ -63,21 +76,26 @@ specialOps.put('/equipment/:id', async (c) => {
     body.equipment_type, body.serial_number || null, body.condition || 'ready', body.assigned_to || null, body.notes || null, id
   );
   return c.json({ success: true });
+  } catch (err) { return c.json({ error: 'Failed' }, 500); }
 });
 
 specialOps.delete('/equipment/:id', async (c) => {
+  try {
   const db = getDb(c.env);
   const id = c.req.param('id');
   await execute(db, 'DELETE FROM special_ops_equipment WHERE id=?', id);
   return c.json({ success: true });
+  } catch (err) { return c.json({ error: 'Failed' }, 500); }
 });
 
 specialOps.get('/stats', async (c) => {
+  try {
   const db = getDb(c.env);
   const total = await queryFirst<{cnt:number}>(db, 'SELECT COUNT(*) as cnt FROM special_ops_callouts');
   const equipment = await queryFirst<{cnt:number}>(db, 'SELECT COUNT(*) as cnt FROM special_ops_equipment');
   const ready = await queryFirst<{cnt:number}>(db, "SELECT COUNT(*) as cnt FROM special_ops_equipment WHERE condition='ready'");
   return c.json({ totalCallouts: total?.cnt || 0, totalEquipment: equipment?.cnt || 0, readyEquipment: ready?.cnt || 0 });
+  } catch (err) { return c.json({ error: 'Failed' }, 500); }
 });
 
 export default specialOps;
