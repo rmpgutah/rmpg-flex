@@ -38,8 +38,10 @@ function CodeRow({ code, onApply, isFavorite, onToggleFav }: {
 }) {
   const priDot = code.priority === 'P1' ? 'bg-red-500' : code.priority === 'P2' ? 'bg-amber-500' : code.priority === 'P4' ? 'bg-green-500' : 'bg-gray-500';
   return (
-    <div
-      className="w-full flex items-center gap-1.5 px-3 py-1 text-[9px] hover:bg-[#ffffff08] transition-colors border-b border-[#1a1a1a]/50"
+    <button
+      type="button"
+      onClick={() => onApply(code.code)}
+      className="w-full flex items-center gap-1.5 px-3 py-1 text-[9px] text-left hover:bg-[#ffffff08] transition-colors border-b border-[#1a1a1a]/50"
       title={`${code.code} — ${code.description}\nCategory: ${code.category} · Priority: ${code.priority}${code.notes ? `\nNotes: ${code.notes}` : ''}`}
     >
       <button
@@ -47,13 +49,14 @@ function CodeRow({ code, onApply, isFavorite, onToggleFav }: {
         onClick={e => { e.stopPropagation(); onToggleFav(code.id); }}
         className="p-0.5 rounded hover:bg-[#ffffff15] transition-colors shrink-0"
         title={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+        aria-label={isFavorite ? `Remove ${code.code} from favorites` : `Add ${code.code} to favorites`}
       >
         <Star className={`w-2.5 h-2.5 ${isFavorite ? 'fill-yellow-400 text-yellow-400' : 'text-rmpg-600 hover:text-rmpg-400'}`} />
       </button>
       <div className={`flex-shrink-0 w-1 h-1 rounded-full ${priDot}`} />
       <span className="font-bold text-white shrink-0">{code.code}</span>
       <span className="text-rmpg-400 truncate flex-1 min-w-0">{code.description}</span>
-      <div className="flex items-center gap-0.5 shrink-0">
+      <div className="flex items-center gap-0.5 shrink-0 ml-auto">
         {code.requires_backup ? <Shield className="w-2.5 h-2.5 text-amber-400" /> : null}
         {code.officer_safety ? <AlertTriangle className="w-2.5 h-2.5 text-red-400" /> : null}
         {code.ems_needed ? <Truck className="w-2.5 h-2.5 text-green-400" /> : null}
@@ -63,11 +66,12 @@ function CodeRow({ code, onApply, isFavorite, onToggleFav }: {
           onClick={e => { e.stopPropagation(); onApply(code.code); }}
           className="p-0.5 rounded hover:bg-brand-500/20 text-rmpg-500 hover:text-brand-400 transition-colors"
           title="Apply code to selected call"
+          aria-label={`Apply ${code.code} to call`}
         >
           <Check className="w-2.5 h-2.5" />
         </button>
       </div>
-    </div>
+    </button>
   );
 }
 
@@ -162,10 +166,10 @@ export default function DispatchCodeQuickPanel({ onApplyCode, onDismiss }: Dispa
       <div className="flex-1 overflow-y-auto">
         {loading ? (
           <div className="flex items-center justify-center py-8 text-[10px] text-rmpg-500">Loading codes…</div>
-        ) : grouped.length === 0 && (!searchQuery || favoriteCodes.length === 0) ? (
+        ) : grouped.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-8 text-[#545454]">
             <Hash className="w-6 h-6 mb-2 opacity-30" />
-            <p className="text-[10px]">No codes match</p>
+            <p className="text-[10px]">{searchQuery ? 'No codes match your search' : 'No codes found'}</p>
           </div>
         ) : (
           <>

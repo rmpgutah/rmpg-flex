@@ -266,6 +266,7 @@ export default function DispatchPage() {
   const { resolve: resolveAddress } = useAddressAutofill();
   const dispatchCodes = useDispatchCodes();
   const signalLookup = useMemo(() => dispatchCodes.lookup, [dispatchCodes.lookup]);
+  const knownSignalCodes = useMemo(() => new Set(dispatchCodes.codes.map(c => c.code)), [dispatchCodes.codes]);
   const [calls, setCalls] = useState<CallForService[]>([]);
   const recentlyCreatedIdsRef = useRef<Set<string | number>>(new Set()); // synchronous dedup for POST + WS race
   const [units, setUnits] = useState<Unit[]>([]);
@@ -387,11 +388,13 @@ export default function DispatchPage() {
       const updated: CallForService = { ...selectedCall!, incident_type: (code as unknown) as IncidentType };
       setSelectedCall(updated);
       setCalls(prev => prev.map(c => c.id === selectedCall.id ? updated : c));
-      addToast(`Code ${code} applied`, 'success');
+      const desc = signalLookup(code);
+      const label = desc ? `${code} (${desc.description})` : code;
+      addToast(`Signal set to ${label}`, 'success');
     } catch {
       addToast('Failed to apply code', 'error');
     }
-  }, [selectedCall, addToast]);
+  }, [selectedCall, addToast, signalLookup]);
 
   // Clean up search timers and abort controllers on unmount
   useEffect(() => {
@@ -1192,8 +1195,8 @@ export default function DispatchPage() {
     if (typeFilter && call.incident_type !== typeFilter) return false;
     return true;
   }).filter((call) => {
-    if (signalFilter === 'signaled' && !call.dispatch_code) return false;
-    if (signalFilter === 'unsignaled' && call.dispatch_code) return false;
+    if (signalFilter === 'signaled' && !knownSignalCodes.has(call.incident_type)) return false;
+    if (signalFilter === 'unsignaled' && knownSignalCodes.has(call.incident_type)) return false;
     return true;
   }).filter((call) => {
     // Show cleared calls in 'all' tab if user preference is enabled
@@ -1236,7 +1239,7 @@ export default function DispatchPage() {
     const pDiff = (pOrder[a.priority] ?? 3) - (pOrder[b.priority] ?? 3);
     if (pDiff !== 0) return pDiff;
     return parseTimestamp(b.created_at).getTime() - parseTimestamp(a.created_at).getTime();
-  }), [calls, archivedCalls, filterTab, searchQuery, priorityFilter, typeFilter, userPrefs?.dispatch_sort, localSort, userPrefs?.dispatch_show_cleared, user?.id]);
+  }), [calls, archivedCalls, filterTab, searchQuery, priorityFilter, typeFilter, signalFilter, knownSignalCodes, userPrefs?.dispatch_sort, localSort, userPrefs?.dispatch_show_cleared, user?.id]);
 
   // Shortcut cheat-sheet overlay (toggled with "?").
   const [showShortcutHelp, setShowShortcutHelp] = useState(false);
@@ -3298,8 +3301,8 @@ export default function DispatchPage() {
                 {(['signaled', 'unsignaled'] as const).map(mode => {
                   const active = signalFilter === mode;
                   const count = mode === 'signaled'
-                    ? calls.filter(c => c.dispatch_code && !['cleared', 'closed', 'archived', 'cancelled'].includes(c.status)).length
-                    : calls.filter(c => !c.dispatch_code && !['cleared', 'closed', 'archived', 'cancelled'].includes(c.status)).length;
+                    ? calls.filter(c => knownSignalCodes.has(c.incident_type) && !['cleared', 'closed', 'archived', 'cancelled'].includes(c.status)).length
+                    : calls.filter(c => !knownSignalCodes.has(c.incident_type) && !['cleared', 'closed', 'archived', 'cancelled'].includes(c.status)).length;
                   return (
                     <button
                       key={mode}
@@ -3449,7 +3452,7 @@ export default function DispatchPage() {
                     onQuickNote={handleQuickNote}
                     hasActiveWarrant={!!(call as any).has_active_warrant}
                     onTogglePin={handleTogglePin}
-                    signalInfo={call.dispatch_code ? signalLookup(call.dispatch_code) : null}
+                    signalInfo={signalLookup(call.incident_type || '') || null}
                   />
                 </React.Fragment>
               );
@@ -4570,38 +4573,19 @@ export default function DispatchPage() {
                         {selectedCall.location_building && <span className="text-rmpg-200"><span className="text-rmpg-400">Bldg:</span> {selectedCall.location_building}</span>}
                         {selectedCall.location_floor && <span className="text-rmpg-200"><span className="text-rmpg-400">Floor:</span> {selectedCall.location_floor}</span>}
                         {selectedCall.location_room && <span className="text-rmpg-200"><span className="text-rmpg-400">Rm:</span> {selectedCall.location_room}</span>}
-                        {selectedCall.dispatch_code && (() => {
-                          const dc = signalLookup(selectedCall.dispatch_code);
-                          const pri = dc?.priority || 'P3';
-                          const priColors: Record<string, { text: string; bg: string; border: string }> = {
-                            P1: { text: '#fca5a5', bg: 'rgba(220,38,38,0.25)', border: 'rgba(220,38,38,0.4)' },
-                            P2: { text: '#fde68a', bg: 'rgba(245,158,11,0.25)', border: 'rgba(245,158,11,0.4)' },
-                            P3: { text: '#9ca3af', bg: 'rgba(107,114,128,0.2)', border: 'rgba(107,114,128,0.35)' },
-                            P4: { text: '#888888', bg: 'rgba(100,100,100,0.2)', border: 'rgba(100,100,100,0.35)' },
-                          };
-                          const c = priColors[pri] || priColors.P3;
-                          const safetyFlags: string[] = [];
-                          if (dc?.requires_backup) safetyFlags.push('⚠ Backup');
-                          if (dc?.officer_safety) safetyFlags.push('⚡ Safety');
-                          if (dc?.ems_needed) safetyFlags.push('🚑 EMS');
-                          if (dc?.fire_needed) safetyFlags.push('🔥 Fire');
-                          const tooltip = dc
-                            ? `Signal ${selectedCall.dispatch_code} — ${dc.description}\nCategory: ${dc.category}${safetyFlags.length ? '\n' + safetyFlags.join(' · ') : ''}`
-                            : 'Spillman dispatch code — click to copy';
-                          return (
-                            <span
-                              role="button"
-                              tabIndex={0}
-                              title={tooltip}
-                              onClick={() => { try { navigator.clipboard?.writeText(selectedCall.dispatch_code || ''); } catch { /* clipboard unavailable */ } }}
-                              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); try { navigator.clipboard?.writeText(selectedCall.dispatch_code || ''); } catch { /* clipboard unavailable */ } } }}
-                              className="cursor-pointer hover:brightness-110 text-[10px] font-bold font-mono px-2 py-0.5 rounded-sm tracking-wider tabular-nums"
-                              style={{ color: c.text, background: c.bg, border: `1px solid ${c.border}`, textShadow: pri === 'P1' ? '0 0 6px rgba(220,38,38,0.2)' : pri === 'P2' ? '0 0 6px rgba(245,158,11,0.15)' : undefined }}
-                            >
-                              {selectedCall.dispatch_code}
-                            </span>
-                          );
-                        })()}
+                        {selectedCall.dispatch_code && (
+                          <span
+                            role="button"
+                            tabIndex={0}
+                            title="Dispatch zone code — click to copy"
+                            onClick={() => { try { navigator.clipboard?.writeText(selectedCall.dispatch_code || ''); } catch { /* clipboard unavailable */ } }}
+                            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); try { navigator.clipboard?.writeText(selectedCall.dispatch_code || ''); } catch { /* clipboard unavailable */ } } }}
+                            className="cursor-pointer hover:brightness-110 text-[10px] font-bold font-mono text-amber-300 bg-amber-900/30 border border-amber-700/40 px-2 py-0.5 rounded-sm tracking-wider tabular-nums"
+                            style={{ textShadow: '0 0 6px rgba(251,191,36,0.15)' }}
+                          >
+                            {selectedCall.dispatch_code}
+                          </span>
+                        )}
                         {selectedCall.sector_id && (() => {
                           const area = getArea(selectedCall.sector_id);
                           return area ? <span className="text-rmpg-200" title="Dispatch Area — top of the geography hierarchy"><span className="text-rmpg-400">Area:</span> {[area.code, area.name].filter(Boolean).join(' — ')}</span> : null;

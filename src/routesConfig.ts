@@ -55,8 +55,19 @@ import auth from './routes/auth';
 import health from './routes/health';
 import mapData from './routes/mapData';
 import admin from './routes/admin';
+import affairs from './routes/affairs';
 import ai from './routes/ai';
+import alerts from './routes/notifications';
+import assets from './routes/assets';
+import billing from './routes/billing';
+import community from './routes/community';
+import interagency from './routes/interagency';
+import jail from './routes/jail';
 import offline from './routes/offline';
+import qa from './routes/qa';
+import risk from './routes/risk';
+import tasks from './routes/tasks';
+import training from './routes/training';
 import personnel from './routes/personnel';
 import presence from './routes/presence';
 import records from './routes/records';
@@ -230,8 +241,6 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // all conflicted on this exact slot — that's how this rule got
   // codified. None of the prefixes here have ordering invariants
   // with each other (no shared trie roots), so alphabetical is safe.
-  { prefix: '/api/arrests', router: arrests, auth: 'required',
-    note: 'Manual booking subset only; JailBase poller endpoints in a Phase 2 PR' },
   { prefix: '/api/cases', router: cases, auth: 'required',
     note: 'MVP core; entity-junction tables in a follow-up PR' },
   { prefix: '/api/citations', router: citations, auth: 'required' },
@@ -267,7 +276,31 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/skiptracer', router: skiptracer, auth: 'required',
     note: 'Read-only over skiptracer_dossiers + microbilt_searches; legacy still owns POST /search' },
   { prefix: '/api/trespass-orders', router: trespassOrders, auth: 'required' },
+  { prefix: '/api/affairs', router: affairs, auth: 'required',
+    note: 'Internal Affairs module: complaints, investigations, early intervention flags' },
+  { prefix: '/api/alerts', router: alerts, auth: 'required',
+    note: 'Mass notification / Rave Alert parity: templates, batches, recipients' },
+  { prefix: '/api/arrests', router: arrests, auth: 'required',
+    note: 'Manual booking subset only; JailBase poller endpoints in a Phase 2 PR' },
+  { prefix: '/api/assets', router: assets, auth: 'required',
+    note: 'Asset/inventory management: equipment, checkouts, weapons, ammo, K9 records' },
   { prefix: '/api/audit', router: audit, auth: 'required' },
+  { prefix: '/api/billing', router: billing, auth: 'required',
+    note: 'Financial/billing module: contracts, invoices, line items, payments, expenses' },
+  { prefix: '/api/community', router: community, auth: 'required',
+    note: 'Community engagement: events, tips, watch groups, alerts' },
+  { prefix: '/api/interagency', router: interagency, auth: 'required',
+    note: 'Multi-jurisdiction data sharing: partners, agreements, exchange logs' },
+  { prefix: '/api/jail', router: jail, auth: 'required',
+    note: 'Jail management: inmates, charges, visitors, property, medical, disciplinary, transports' },
+  { prefix: '/api/qa', router: qa, auth: 'required',
+    note: 'Quality Assurance: reviews, criteria, scores, satisfaction surveys' },
+  { prefix: '/api/risk', router: risk, auth: 'required',
+    note: 'Risk management: assessments, safety inspections, insurance claims' },
+  { prefix: '/api/tasks', router: tasks, auth: 'required',
+    note: 'Task/work management: assignments, comments, linked-entity tasks' },
+  { prefix: '/api/training', router: training, auth: 'required',
+    note: 'Training management: courses, enrollments, certifications, firearms qualifications' },
 
   // ── Documents ──────────────────────────────────────────────
   { prefix: '/api/documents', router: documentFolders, auth: 'required' },

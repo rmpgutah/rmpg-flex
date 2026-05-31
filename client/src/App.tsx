@@ -99,6 +99,17 @@ const NationalWarrantSearchPage = lazyRetry(() => import('./pages/NationalWarran
 const SettingsPage = lazyRetry(() => import('./pages/SettingsPage'));
 const DashcamPage = lazyRetry(() => import('./pages/DashcamPage'));
 const RadioPage = lazyRetry(() => import('./pages/radio'));
+const JailPage = lazyRetry(() => import('./pages/JailPage'));
+const AffairsPage = lazyRetry(() => import('./pages/AffairsPage'));
+const AssetsPage = lazyRetry(() => import('./pages/AssetsPage'));
+const CommunityPage = lazyRetry(() => import('./pages/CommunityPage'));
+const TasksPage = lazyRetry(() => import('./pages/TasksPage'));
+const AlertsPage = lazyRetry(() => import('./pages/AlertsPage'));
+const TrainingManagementPage = lazyRetry(() => import('./pages/TrainingManagementPage'));
+const QAPage = lazyRetry(() => import('./pages/QAPage'));
+const BillingPage = lazyRetry(() => import('./pages/BillingPage'));
+const RiskPage = lazyRetry(() => import('./pages/RiskPage'));
+const InteragencyPage = lazyRetry(() => import('./pages/InteragencyPage'));
 const IncidentDetailWindow = lazyRetry(() => import('./pages/detached/IncidentDetailWindow'));
 const RecordDetailWindow = lazyRetry(() => import('./pages/detached/RecordDetailWindow'));
 
@@ -173,6 +184,31 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
+  }
+
+  return <>{children}</>;
+}
+
+/** Role-based guard — restricts to admin + manager roles */
+function AdminRoute({ children }: { children: React.ReactNode }) {
+  const { user, isLoading } = useAuth();
+
+  if (isLoading) {
+    return <LoadingSplash message="Loading RMPG Flex" />;
+  }
+
+  if (!user || (user.role !== 'admin' && user.role !== 'manager')) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 px-4 text-center" role="alert">
+        <div className="w-12 h-12 flex items-center justify-center mb-3"
+          style={{ background: 'rgba(220,38,38,0.1)', border: '1px solid rgba(220,38,38,0.2)' }}>
+          <span style={{ color: '#ef4444', fontSize: 20, fontWeight: 800 }}>!</span>
+        </div>
+        <h3 className="text-[10px] font-bold uppercase tracking-wider text-[#fca5a5] mb-1.5">Access Denied</h3>
+        <p className="text-[10px] text-[#888] max-w-xs mb-4">You do not have permission to view this page.</p>
+        <a href="/" className="btn-gold">Return to Dashboard</a>
+      </div>
+    );
   }
 
   return <>{children}</>;
@@ -317,7 +353,7 @@ function AppRoutes() {
             }
           >
             <Route path="/" element={window.location.hostname === 'crm.rmpgutah.us' ? <Navigate to="/crm" replace /> : <DashboardPage />} />
-            <Route path="/dispatch" element={<DispatchPage />} />
+            <Route path="/dispatch" element={<RouteErrorBoundary><DispatchPage /></RouteErrorBoundary>} />
             <Route path="/map" element={<RouteErrorBoundary><MapPage /></RouteErrorBoundary>} />
             <Route path="/geography" element={<RouteErrorBoundary><GeographyPage /></RouteErrorBoundary>} />
             <Route path="/incidents" element={<RouteErrorBoundary><IncidentsPage /></RouteErrorBoundary>} />
@@ -350,7 +386,7 @@ function AppRoutes() {
             <Route path="/sex-offender-registry" element={<RouteErrorBoundary><SexOffenderRegistryPage /></RouteErrorBoundary>} />
             <Route path="/ncic" element={<RouteErrorBoundary><NcicPage /></RouteErrorBoundary>} />
             <Route path="/dl-search" element={<RouteErrorBoundary><DlSearchPage /></RouteErrorBoundary>} />
-            <Route path="/audit" element={<RouteErrorBoundary><AuditLogPage /></RouteErrorBoundary>} />
+            <Route path="/audit" element={<AdminRoute><RouteErrorBoundary><AuditLogPage /></RouteErrorBoundary></AdminRoute>} />
             <Route path="/training" element={<RouteErrorBoundary><TrainingPage /></RouteErrorBoundary>} />
             <Route path="/training-docs" element={<RouteErrorBoundary><TrainingDocsPage /></RouteErrorBoundary>} />
             <Route path="/forensics" element={<RouteErrorBoundary><ForensicsPage /></RouteErrorBoundary>} />
@@ -364,7 +400,7 @@ function AppRoutes() {
             <Route path="/serve-intake" element={<RouteErrorBoundary><ServeIntakePage /></RouteErrorBoundary>} />
             <Route path="/web-research" element={<RouteErrorBoundary><WebResearchPage /></RouteErrorBoundary>} />
             <Route path="/hr" element={<RouteErrorBoundary><HRPage /></RouteErrorBoundary>} />
-            <Route path="/admin" element={<RouteErrorBoundary><AdminPage /></RouteErrorBoundary>} />
+            <Route path="/admin" element={<AdminRoute><RouteErrorBoundary><AdminPage /></RouteErrorBoundary></AdminRoute>} />
             <Route path="/dashcams" element={<RouteErrorBoundary><DashcamPage /></RouteErrorBoundary>} />
             <Route path="/use-of-force" element={<RouteErrorBoundary><UseOfForcePage /></RouteErrorBoundary>} />
             <Route path="/security-dashboard" element={<RouteErrorBoundary><SecurityDashboardPage /></RouteErrorBoundary>} />
@@ -377,6 +413,17 @@ function AppRoutes() {
             <Route path="/iped" element={<RouteErrorBoundary><IpedPage /></RouteErrorBoundary>} />
             <Route path="/national-warrant-search" element={<RouteErrorBoundary><NationalWarrantSearchPage /></RouteErrorBoundary>} />
             <Route path="/settings" element={<RouteErrorBoundary><SettingsPage /></RouteErrorBoundary>} />
+            <Route path="/jail" element={<RouteErrorBoundary><JailPage /></RouteErrorBoundary>} />
+            <Route path="/affairs" element={<RouteErrorBoundary><AffairsPage /></RouteErrorBoundary>} />
+            <Route path="/assets" element={<RouteErrorBoundary><AssetsPage /></RouteErrorBoundary>} />
+            <Route path="/community" element={<RouteErrorBoundary><CommunityPage /></RouteErrorBoundary>} />
+            <Route path="/tasks" element={<RouteErrorBoundary><TasksPage /></RouteErrorBoundary>} />
+            <Route path="/alerts" element={<RouteErrorBoundary><AlertsPage /></RouteErrorBoundary>} />
+            <Route path="/training-mgmt" element={<RouteErrorBoundary><TrainingManagementPage /></RouteErrorBoundary>} />
+            <Route path="/qa" element={<RouteErrorBoundary><QAPage /></RouteErrorBoundary>} />
+            <Route path="/billing" element={<RouteErrorBoundary><BillingPage /></RouteErrorBoundary>} />
+            <Route path="/risk" element={<RouteErrorBoundary><RiskPage /></RouteErrorBoundary>} />
+            <Route path="/interagency" element={<RouteErrorBoundary><InteragencyPage /></RouteErrorBoundary>} />
             {/* 404 within layout */}
             <Route path="*" element={<NotFoundPage />} />
           </Route>
