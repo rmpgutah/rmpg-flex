@@ -51,7 +51,16 @@ export function useDistrictOptions() {
     setError(null);
     let cancelled = false;
     apiFetch<DistrictOption[]>('/dispatch/geography/districts')
-      .then((data) => { if (!cancelled && data) setDistricts(data); })
+      // Normalize sector_id to a string at ingest. The API returns it as a
+      // numeric dispatch_sectors.id, but DistrictOption types it as string and
+      // consumers mix number/string — the mismatch caused real crashes (map
+      // #807, dispatch panel). Coercing here once makes every derived map/list
+      // string-keyed; the comparison helpers below also coerce their inputs, so
+      // a consumer may pass either type. (zone_id/beat_id are already strings.)
+      .then((data) => {
+        if (cancelled || !data) return;
+        setDistricts(data.map(d => ({ ...d, sector_id: d.sector_id == null ? d.sector_id : String(d.sector_id) })));
+      })
       .catch((err) => { console.warn('[useDistrictOptions] Failed to load districts:', err); if (!cancelled) setError('Failed to load districts'); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
@@ -67,9 +76,10 @@ export function useDistrictOptions() {
   const beats = useMemo(() => Array.from(new Set(districts.map(d => d.beat_id))).sort(), [districts]);
 
   // Cascading helpers: zones scoped to section, beats scoped to zone
-  const zonesForSection = useCallback((sectionId: string) => {
+  const zonesForSection = useCallback((sectionId: string | number) => {
     if (!sectionId) return zones;
-    return Array.from(new Set(districts.filter(d => d.sector_id === sectionId).map(d => d.zone_id))).sort();
+    const sid = String(sectionId);
+    return Array.from(new Set(districts.filter(d => d.sector_id === sid).map(d => d.zone_id))).sort();
   }, [districts, zones]);
 
   const beatsForZone = useCallback((zoneId: string) => {
@@ -80,16 +90,19 @@ export function useDistrictOptions() {
   // Beats scoped to a whole section (across its zones) — used when a Section is
   // chosen but no Zone yet, so the Beat picker shows a short relevant list
   // instead of all ~719 beats. Returns [] when no section (forces picking one).
-  const beatsForSection = useCallback((sectionId: string) => {
+  const beatsForSection = useCallback((sectionId: string | number) => {
     if (!sectionId) return [] as string[];
-    return Array.from(new Set(districts.filter(d => d.sector_id === sectionId).map(d => d.beat_id))).sort();
+    const sid = String(sectionId);
+    return Array.from(new Set(districts.filter(d => d.sector_id === sid).map(d => d.beat_id))).sort();
   }, [districts]);
 
   // Resolve the full district row for a (section, beat) pair when the zone isn't
   // known yet — lets the Beat picker backfill zone + dispatch_code on select.
   const districtForSectionBeat = useCallback(
-    (sectionId: string, beatId: string) =>
-      districts.find(d => d.sector_id === sectionId && d.beat_id === beatId) || null,
+    (sectionId: string | number, beatId: string) => {
+      const sid = String(sectionId);
+      return districts.find(d => d.sector_id === sid && d.beat_id === beatId) || null;
+    },
     [districts],
   );
 
@@ -120,14 +133,14 @@ export function useDistrictOptions() {
   // raw id so the field is never blank (but the caller can detect the miss).
   const getSectionCode = useCallback(
     (sectorId: string | number | null | undefined) =>
-      sectorId == null ? '' : (sectionCodes.get(sectorId as string) || ''),
+      sectorId == null ? '' : (sectionCodes.get(String(sectorId)) || ''),
     [sectionCodes],
   );
 
-  // Resolve the Area for a numeric sector_id, or null when unknown.
+  // Resolve the Area for a sector_id (number or string), or null when unknown.
   const getArea = useCallback(
     (sectorId: string | number | null | undefined) =>
-      sectorId == null ? null : (sectionAreas.get(sectorId as string) || null),
+      sectorId == null ? null : (sectionAreas.get(String(sectorId)) || null),
     [sectionAreas],
   );
 
