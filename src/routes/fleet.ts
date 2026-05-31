@@ -1814,11 +1814,76 @@ fleet.get('/driver-performance', async (c) => {
   } catch (err) { console.error('GET /fleet/driver-performance failed:', err); return c.json({ drivers: [] }); }
 });
 
+// GET /health-scores — per-vehicle health with a five-factor breakdown.
+// FleetAnalyticsTab renders each vehicle as a ring (overall) + 5 factor bars
+// (age / mileage / service / inspection / cost), so each row MUST carry
+// vehicle_id, factors:{age,mileage,service,inspection,cost}, and status_label.
+// (Previously returned mileage-only score + no factors → the tab crashed on
+// `v.factors[f]` once the route started actually resolving. See the digit
+// route-constraint fix.)
 fleet.get('/health-scores', async (c) => {
   try {
     const db = getDb(c.env);
-    const rows = await query<Record<string, unknown>>(db, `SELECT v.id, v.vehicle_number, v.make, v.model, v.year, v.current_mileage, CASE WHEN v.current_mileage > 150000 THEN 30 WHEN v.current_mileage > 100000 THEN 50 WHEN v.current_mileage > 60000 THEN 70 ELSE 90 END as health_score FROM fleet_vehicles v WHERE v.archived_at IS NULL ORDER BY health_score`);
-    return c.json({ health_scores: rows });
+    const year = new Date().getFullYear();
+    // One row per active vehicle with the raw inputs each factor needs.
+    const rows = await query<{
+      id: number; vehicle_number: string; make: string; model: string; year: number;
+      current_mileage: number | null; days_since_service: number | null;
+      last_inspection_pass: number | null; total_cost: number | null; total_miles: number | null;
+    }>(db, `
+      SELECT v.id, v.vehicle_number, v.make, v.model, v.year, v.current_mileage,
+        (julianday('now') - julianday(MAX(m.performed_at))) AS days_since_service,
+        (SELECT CASE WHEN i.overall_result = 'pass' THEN 1 ELSE 0 END
+           FROM fleet_inspections i WHERE i.vehicle_id = v.id
+           ORDER BY i.inspection_date DESC LIMIT 1) AS last_inspection_pass,
+        COALESCE((SELECT SUM(cost) FROM fleet_maintenance WHERE vehicle_id = v.id), 0)
+          + COALESCE((SELECT SUM(total_cost) FROM fleet_fuel_log WHERE vehicle_id = v.id), 0) AS total_cost,
+        (SELECT MAX(odometer) - MIN(odometer) FROM fleet_fuel_log WHERE vehicle_id = v.id) AS total_miles
+      FROM fleet_vehicles v
+      LEFT JOIN fleet_maintenance m ON m.vehicle_id = v.id
+      WHERE v.archived_at IS NULL
+      GROUP BY v.id
+    `);
+
+    const clamp = (n: number) => Math.max(0, Math.min(100, Math.round(n)));
+    const health_scores = rows.map((r) => {
+      // Each factor is 0–100, higher = healthier.
+      const age = r.year ? clamp(100 - (year - r.year) * 8) : 70;                       // ~8 pts/yr
+      const mileage = r.current_mileage == null ? 70
+        : clamp(100 - (r.current_mileage / 150000) * 100);                              // 0 at 150k mi
+      const service = r.days_since_service == null ? 70
+        : clamp(100 - (r.days_since_service / 180) * 100);                              // 0 at ~6 mo
+      const inspection = r.last_inspection_pass == null ? 70 : (r.last_inspection_pass ? 100 : 20);
+      const cpm = (r.total_miles && r.total_miles > 0) ? (r.total_cost ?? 0) / r.total_miles : null;
+      const cost = cpm == null ? 70 : clamp(100 - (cpm / 1.5) * 100);                   // 0 at $1.50/mi
+
+      const factors = { age, mileage, service, inspection, cost };
+
+      // Cost/lifecycle weighting (operator-chosen 2026-05-31): the score is a
+      // REPLACEMENT-PLANNING signal. Mileage (0.30) + cost (0.25) dominate so
+      // expensive-to-run, near-end-of-life vehicles sink to the bottom of the
+      // ranking and surface for the capital-replacement conversation; age is
+      // moderate; service/inspection (immediate-fix signals) weigh least.
+      // Weights sum to 1.0.
+      const W = { mileage: 0.30, cost: 0.25, age: 0.20, service: 0.15, inspection: 0.10 };
+      const health_score = clamp(
+        age * W.age + mileage * W.mileage + service * W.service +
+        inspection * W.inspection + cost * W.cost,
+      );
+
+      const status_label =
+        health_score >= 80 ? 'Excellent' :
+        health_score >= 60 ? 'Good' :
+        health_score >= 40 ? 'Fair' :
+        health_score >= 20 ? 'Poor' : 'Critical';
+
+      return {
+        vehicle_id: r.id, vehicle_number: r.vehicle_number, make: r.make, model: r.model,
+        year: r.year, health_score, factors, status_label,
+      };
+    }).sort((a, b) => a.health_score - b.health_score);
+
+    return c.json({ health_scores });
   } catch (err) { console.error('GET /fleet/health-scores failed:', err); return c.json({ health_scores: [] }); }
 });
 
