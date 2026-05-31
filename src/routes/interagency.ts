@@ -25,6 +25,8 @@ function requireRole(c: { get: (k: 'user') => { role: string } | undefined }, ..
 interagency.get('/partners', async (c) => {
   try {
     const db = getDb(c.env);
+    const tableCheck = await queryFirst<{ n: number }>(db, "SELECT COUNT(*) as n FROM sqlite_master WHERE type='table' AND name='interagency_partners'");
+    if (!tableCheck?.n) return c.json({ data: [] });
     const q = c.req.query.bind(c.req);
     const conditions: string[] = ['1=1']; const params: unknown[] = [];
     if (q('status')) { conditions.push('status = ?'); params.push(q('status')); }
@@ -195,6 +197,8 @@ interagency.post('/exchanges', async (c) => {
 interagency.get('/stats', async (c) => {
   try {
     const db = getDb(c.env);
+    const partnerTable = await queryFirst<{ n: number }>(db, "SELECT COUNT(*) as n FROM sqlite_master WHERE type='table' AND name='interagency_partners'");
+    if (!partnerTable?.n) return c.json({ total_partners: 0, active_partners: 0, total_agreements: 0, active_agreements: 0, recent_exchanges: 0 });
     const partners = (await queryFirst<{ count: number }>(db, 'SELECT COUNT(*) as count FROM interagency_partners'))?.count ?? 0;
     const activeAgreements = (await queryFirst<{ count: number }>(db, "SELECT COUNT(*) as count FROM data_share_agreements WHERE status = 'active'"))?.count ?? 0;
     const totalExchanges = (await queryFirst<{ count: number }>(db, 'SELECT COUNT(*) as count FROM data_exchange_logs'))?.count ?? 0;
