@@ -6816,3 +6816,751 @@ label.field-required::after {
 /* ═══════════════════════════════════════════════════════════════
    End of Spillman Flex 100 Additional Patterns
    ═══════════════════════════════════════════════════════════════ */
+
+/* ═══════════════════════════════════════════════════════════════
+   Spillman Flex — 100 Police Report + Module UI Patterns
+   Agency Documents · Report Formatting · Module Launcher
+   Law Enforcement Data · Command/Control · Evidence/Records
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── 1. POLICE REPORT FORMATTING ───────────────────────────── */
+/* 151. Agency report header (seal left, title center, case# right) */
+.report-header { display: flex; align-items: center; padding: 8px 12px; background: #0a0a0a; border-bottom: 2px solid #d4a017; }
+.report-header .report-seal { width: 40px; height: 40px; flex-shrink: 0; opacity: 0.8; }
+.report-header .report-title-block { flex: 1; text-align: center; }
+.report-header .report-title { font-size: 13px; font-weight: 800; color: #d4a017; text-transform: uppercase; letter-spacing: 0.06em; }
+.report-header .report-subtitle { font-size: 9px; color: #888; letter-spacing: 0.08em; }
+.report-header .report-case-number { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11px; font-weight: 700; color: #fff; text-align: right; }
+
+/* 152. Form number footer bar (FORM-001 Rev. 2025) */
+.form-footer-bar { display: flex; align-items: center; justify-content: space-between; padding: 4px 12px; background: #050505; border-top: 1px solid #1a1a1a; font-size: 8px; color: #555; letter-spacing: 0.06em; }
+.form-footer-bar .form-number { font-weight: 700; color: #888; }
+.form-footer-bar .form-revision { font-family: ui-monospace, SFMono-Regular, monospace; }
+
+/* 153. Classification banner (CJIS security level) */
+.classification-banner { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 2px 0; font-size: 8px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.12em; border: 1px solid; }
+.classification-banner.le-sensitive { color: #d4a017; background: rgba(212,160,23,0.08); border-color: rgba(212,160,23,0.3); }
+.classification-banner.cjis { color: #fca5a5; background: rgba(220,38,38,0.06); border-color: rgba(220,38,38,0.2); }
+.classification-banner.confidential { color: #fcd34d; background: rgba(245,158,11,0.06); border-color: rgba(245,158,11,0.2); }
+
+/* 154. Narrative continuation page header */
+.narrative-cont-header { display: flex; align-items: center; justify-content: space-between; padding: 4px 10px; background: #080808; border-bottom: 1px solid #1a1a1a; }
+.narrative-cont-header .cont-case { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 10px; color: #d4a017; font-weight: 700; }
+.narrative-cont-header .cont-label { font-size: 9px; font-weight: 700; color: #888; text-transform: uppercase; letter-spacing: 0.06em; }
+.narrative-cont-header .cont-page { font-size: 9px; color: #666; font-family: ui-monospace, SFMono-Regular, monospace; }
+
+/* 155. Bates numbering stamp */
+.bates-stamp { position: absolute; bottom: 8px; right: 0; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 7px; color: #d4a017; letter-spacing: 0.08em; transform: rotate(0deg); padding: 1px 4px; background: rgba(0,0,0,0.6); }
+
+/* 156. Signature block (printed name, signature line, date, badge) */
+.signature-block { display: flex; gap: 20px; padding: 12px 0; border-top: 1px solid #333; margin-top: 12px; }
+.signature-slot { flex: 1; }
+.signature-slot .sig-line { border-bottom: 1px solid #d4a017; height: 28px; margin-bottom: 3px; }
+.signature-slot .sig-label { font-size: 8px; font-weight: 700; text-transform: uppercase; color: #888; letter-spacing: 0.06em; }
+.signature-slot .sig-name { font-size: 10px; font-weight: 700; color: #fff; text-transform: uppercase; }
+.signature-slot .sig-badge { font-size: 8px; color: #666; font-family: ui-monospace, SFMono-Regular, monospace; }
+
+/* 157. Notary jurat block */
+.notary-jurat { padding: 8px 10px; border: 1px solid #2a2a2a; margin: 10px 0; font-size: 9px; color: #aaa; line-height: 1.5; }
+.notary-jurat .jurat-title { font-size: 10px; font-weight: 700; color: #d4a017; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; }
+.notary-jurat .jurat-seal { width: 60px; height: 60px; border: 2px dashed #555; margin-top: 8px; display: flex; align-items: center; justify-content: center; font-size: 8px; color: #666; text-align: center; }
+
+/* 158. Miranda warning card */
+.miranda-card { padding: 10px 12px; background: #0a0a0a; border: 2px solid #d4a017; }
+.miranda-card .miranda-title { font-size: 11px; font-weight: 800; color: #d4a017; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px; text-align: center; }
+.miranda-card .miranda-rights { font-size: 10px; color: #ccc; line-height: 1.6; margin-bottom: 10px; }
+.miranda-card .miranda-question { font-size: 10px; font-weight: 700; color: #fff; margin-bottom: 8px; }
+.miranda-card .miranda-waiver { font-size: 9px; color: #888; font-style: italic; }
+
+/* 159. Photo lineup form grid */
+.photo-lineup-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding: 8px; }
+.photo-lineup-slot { aspect-ratio: 3/4; background: #111; border: 1px solid #2a2a2a; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.photo-lineup-slot .slot-number { font-size: 24px; font-weight: 800; color: #333; }
+.photo-lineup-slot .slot-label { font-size: 8px; color: #555; margin-top: 4px; }
+.photo-lineup-instructions { padding: 6px 8px; font-size: 9px; color: #aaa; text-align: center; border: 1px solid #2a2a2a; margin-top: 8px; }
+
+/* 160. Witness statement form */
+.witness-statement { padding: 10px; }
+.witness-statement .witness-header { font-size: 10px; font-weight: 700; color: #d4a017; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; }
+.witness-statement .witness-info { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; font-size: 10px; color: #aaa; margin-bottom: 8px; }
+.witness-statement .witness-narrative { min-height: 120px; background: #080808; border: 1px solid #1a1a1a; padding: 8px; font-size: 10px; color: #ccc; line-height: 1.6; }
+
+/* 161. Consent to search form */
+.consent-search-form { padding: 10px; border: 2px solid #d4a017; }
+.consent-search-form .consent-title { font-size: 11px; font-weight: 800; color: #d4a017; text-transform: uppercase; letter-spacing: 0.06em; text-align: center; margin-bottom: 10px; }
+.consent-search-form .consent-body { font-size: 10px; color: #ccc; line-height: 1.6; margin-bottom: 10px; }
+.consent-search-form .consent-checkboxes { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
+
+/* 162. Evidence chain of custody table */
+.chain-custody-table { width: 100%; border-collapse: collapse; font-size: 9px; }
+.chain-custody-table th { background: #080808; color: #d4a017; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; padding: 3px 6px; border: 1px solid #1a1a1a; font-size: 8px; }
+.chain-custody-table td { padding: 3px 6px; border: 1px solid #111; color: #aaa; }
+.chain-custody-table .chain-from { color: #fff; font-weight: 600; }
+.chain-custody-table .chain-to { color: #d4a017; font-weight: 600; }
+
+/* 163. Property room location grid */
+.property-location-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px; font-size: 9px; }
+.property-loc-slot { padding: 6px 4px; background: #0a0a0a; border: 1px solid #1a1a1a; text-align: center; }
+.property-loc-slot .loc-id { font-family: ui-monospace, SFMono-Regular, monospace; font-weight: 700; color: #d4a017; display: block; }
+.property-loc-slot .loc-status { font-size: 7px; font-weight: 700; text-transform: uppercase; display: block; margin-top: 2px; }
+.property-loc-slot.occupied .loc-status { color: #ef4444; }
+.property-loc-slot.available .loc-status { color: #22c55e; }
+
+/* 164. Officer safety / caution field */
+.officer-safety-alert { display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: rgba(220,38,38,0.08); border: 1px solid rgba(220,38,38,0.3); border-left: 3px solid #dc2626; }
+.officer-safety-alert .os-icon { width: 16px; height: 16px; color: #ef4444; flex-shrink: 0; }
+.officer-safety-alert .os-text { font-size: 10px; font-weight: 700; color: #fca5a5; text-transform: uppercase; letter-spacing: 0.04em; }
+.officer-safety-alert .os-detail { font-size: 9px; color: #fca5a5; opacity: 0.8; }
+
+/* 165. Premise hazard notes panel */
+.premise-hazards { padding: 6px 10px; background: rgba(245,158,11,0.06); border: 1px solid rgba(245,158,11,0.2); border-left: 3px solid #f59e0b; }
+.premise-hazards .hazard-title { font-size: 9px; font-weight: 700; text-transform: uppercase; color: #fbbf24; letter-spacing: 0.06em; margin-bottom: 2px; }
+.premise-hazards .hazard-item { font-size: 9px; color: #fcd34d; padding: 1px 0; display: flex; align-items: center; gap: 4px; }
+
+/* 166. Cross-reference / linked records panel */
+.cross-ref-panel { padding: 4px 8px; font-size: 10px; }
+.cross-ref-item { display: flex; align-items: center; gap: 8px; padding: 3px 0; border-bottom: 1px solid #111; cursor: pointer; transition: all 0.12s; }
+.cross-ref-item:hover { color: #d4a017; }
+.cross-ref-item .xref-type { font-size: 8px; font-weight: 700; text-transform: uppercase; color: #d4a017; letter-spacing: 0.06em; min-width: 70px; }
+.cross-ref-item .xref-number { font-family: ui-monospace, SFMono-Regular, monospace; color: #888; font-size: 9px; }
+.cross-ref-item .xref-title { color: #aaa; flex: 1; }
+.cross-ref-item .xref-date { font-size: 8px; color: #666; font-family: ui-monospace, SFMono-Regular, monospace; }
+
+/* 167. Caller information card */
+.caller-info-card { padding: 6px 10px; background: #0a0a0a; border: 1px solid #1a1a1a; font-size: 10px; }
+.caller-info-card .caller-name { font-weight: 700; color: #fff; font-size: 11px; }
+.caller-info-card .caller-phone { font-family: ui-monospace, SFMono-Regular, monospace; color: #d4a017; }
+.caller-info-card .caller-relationship { font-size: 9px; color: #888; }
+
+/* 168. Dispatch timeline / event chronology */
+.dispatch-timeline { position: relative; padding-left: 12px; }
+.dispatch-timeline::before { content: ''; position: absolute; left: 4px; top: 4px; bottom: 4px; width: 1px; background: #2a2a2a; }
+.timeline-event { position: relative; padding: 3px 0 3px 16px; font-size: 10px; color: #aaa; }
+.timeline-event::before { content: ''; position: absolute; left: -9px; top: 6px; width: 7px; height: 7px; background: #555; border: 1px solid #1a1a1a; }
+.timeline-event .event-time { font-family: ui-monospace, SFMono-Regular, monospace; color: #d4a017; font-size: 9px; font-weight: 700; margin-right: 8px; }
+.timeline-event .event-desc { color: #aaa; }
+
+/* 169. Suppplemental report page indicator */
+.supplemental-page { position: relative; }
+.supplemental-page .supp-banner { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 3px 0; background: rgba(212,160,23,0.06); border: 1px dashed rgba(212,160,23,0.2); margin-bottom: 8px; font-size: 9px; font-weight: 700; color: #d4a017; text-transform: uppercase; letter-spacing: 0.06em; }
+
+/* 170. Use of force continuum diagram */
+.force-continuum { display: flex; flex-direction: column; gap: 4px; padding: 8px; }
+.force-level { display: flex; align-items: center; gap: 8px; padding: 4px 8px; font-size: 9px; color: #aaa; background: #0a0a0a; border-left: 3px solid #555; }
+.force-level.officer-presence { border-left-color: #22c55e; }
+.force-level.verbal-direction { border-left-color: #86efac; }
+.force-level.soft-control { border-left-color: #fbbf24; }
+.force-level.hard-control { border-left-color: #f59e0b; }
+.force-level.less-lethal { border-left-color: #ef4444; }
+.force-level.lethal { border-left-color: #dc2626; background: rgba(220,38,38,0.08); }
+.force-level .level-icon { width: 14px; height: 14px; flex-shrink: 0; }
+
+/* ── 2. SPILLMAN MODULE LAUNCHER UI ────────────────────────── */
+/* 171. Module launcher tile grid */
+.module-launcher-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 4px; padding: 8px; }
+.module-tile { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 12px 8px; background: #0a0a0a; border: 1px solid #1a1a1a; cursor: pointer; transition: all 0.15s; text-align: center; }
+.module-tile:hover { background: #111; border-color: #d4a017; transform: translateY(-1px); box-shadow: 0 2px 8px rgba(0,0,0,0.4); }
+.module-tile .module-icon { width: 28px; height: 28px; color: #d4a017; opacity: 0.7; }
+.module-tile:hover .module-icon { opacity: 1; }
+.module-tile .module-label { font-size: 9px; font-weight: 700; text-transform: uppercase; color: #888; letter-spacing: 0.05em; }
+.module-tile:hover .module-label { color: #d4a017; }
+
+/* 172. "Go To" record number quick-nav field */
+.goto-field { display: flex; align-items: center; gap: 6px; }
+.goto-field .goto-label { font-size: 9px; font-weight: 700; text-transform: uppercase; color: #d4a017; letter-spacing: 0.06em; }
+.goto-field input { width: 140px; padding: 3px 6px; font-size: 11px; font-family: ui-monospace, SFMono-Regular, monospace; background: #080808; border: 1px solid #2a2a2a; color: #d4a017; }
+.goto-field input:focus { border-color: #d4a017; }
+.goto-field .goto-btn { padding: 3px 8px; font-size: 9px; font-weight: 700; text-transform: uppercase; color: #0a0a0a; background: #d4a017; border: 1px solid #d4a017; cursor: pointer; }
+
+/* 173. Record type selector ribbon */
+.record-type-ribbon { display: flex; gap: 2px; overflow-x: auto; padding: 2px 4px; background: #060606; border-bottom: 1px solid #1a1a1a; }
+.record-type-btn { padding: 3px 10px; font-size: 9px; font-weight: 700; text-transform: uppercase; color: #666; background: transparent; border: 1px solid transparent; cursor: pointer; transition: all 0.12s; white-space: nowrap; letter-spacing: 0.04em; }
+.record-type-btn:hover { color: #d4a017; background: rgba(212,160,23,0.04); }
+.record-type-btn.active { color: #d4a017; background: rgba(212,160,23,0.08); border-color: rgba(212,160,23,0.2); border-bottom: 2px solid #d4a017; }
+
+/* 174. NCIC inquiry results panel */
+.ncic-results-panel { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 10px; }
+.ncic-hit-banner { display: flex; align-items: center; gap: 6px; padding: 4px 8px; background: rgba(220,38,38,0.1); border: 1px solid rgba(220,38,38,0.3); color: #fca5a5; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px; }
+.ncic-hit-banner .hit-icon { width: 12px; height: 12px; animation: led-blink 1s ease-in-out infinite; }
+.ncic-query-time { font-size: 8px; color: #888; margin: 4px 8px; }
+.ncic-record-line { padding: 2px 8px; border-bottom: 1px solid #111; display: flex; gap: 8px; }
+.ncic-record-line .ncic-field { font-size: 8px; color: #666; text-transform: uppercase; font-weight: 600; min-width: 60px; }
+.ncic-record-line .ncic-value { color: #aaa; }
+
+/* 175. Hot file / BOLO match indicator */
+.hotfile-indicator { display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; background: rgba(220,38,38,0.15); border: 1px solid rgba(220,38,38,0.4); font-size: 9px; font-weight: 800; text-transform: uppercase; color: #fca5a5; letter-spacing: 0.06em; animation: attention-pulse 2s ease-in-out infinite; }
+.hotfile-indicator.wanted { color: #fca5a5; border-color: rgba(220,38,38,0.5); }
+.hotfile-indicator.missing { color: #fbbf24; border-color: rgba(245,158,11,0.5); background: rgba(245,158,11,0.12); }
+.hotfile-indicator.prot-order { color: #d4a017; border-color: rgba(212,160,23,0.5); background: rgba(212,160,23,0.08); }
+
+/* 176. Watch list / notification panel */
+.watch-list-panel { padding: 4px; }
+.watch-list-item { display: flex; align-items: center; gap: 8px; padding: 4px 8px; font-size: 10px; color: #aaa; border-bottom: 1px solid #111; cursor: pointer; transition: all 0.12s; }
+.watch-list-item:hover { background: rgba(255,255,255,0.02); }
+.watch-list-item .watch-priority { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.watch-list-item .watch-priority.high { background: #ef4444; box-shadow: 0 0 4px rgba(239,68,68,0.5); }
+.watch-list-item .watch-priority.medium { background: #f59e0b; }
+.watch-list-item .watch-priority.low { background: #888; }
+.watch-list-item .watch-due { font-size: 8px; color: #f59e0b; margin-left: auto; font-family: ui-monospace, SFMono-Regular, monospace; }
+
+/* 177. Master name index phonetic codes */
+.mni-phonetic { display: flex; align-items: center; gap: 4px; }
+.mni-phonetic .soundex-code { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 9px; font-weight: 700; color: #d4a017; background: rgba(212,160,23,0.08); padding: 1px 4px; border: 1px solid rgba(212,160,23,0.2); }
+
+/* 178. UCR/NIBRS offense code selector */
+.offense-code-selector { display: flex; gap: 4px; }
+.offense-code-badge { padding: 2px 6px; font-size: 8px; font-weight: 700; font-family: ui-monospace, SFMono-Regular, monospace; color: #d4a017; background: rgba(212,160,23,0.06); border: 1px solid rgba(212,160,23,0.15); letter-spacing: 0.03em; }
+.offense-code-badge .code { font-size: 10px; color: #fff; }
+
+/* 179. Charge code browser panel */
+.charge-browser { max-height: 400px; overflow-y: auto; }
+.charge-row { display: flex; align-items: center; gap: 8px; padding: 3px 8px; font-size: 10px; color: #aaa; border-bottom: 1px solid #111; cursor: pointer; transition: all 0.12s; }
+.charge-row:hover { background: #111; color: #d4a017; }
+.charge-row .charge-code { font-family: ui-monospace, SFMono-Regular, monospace; font-weight: 700; color: #d4a017; min-width: 80px; }
+.charge-row .charge-degree { font-size: 8px; font-weight: 700; text-transform: uppercase; color: #888; min-width: 50px; }
+.charge-row .charge-desc { flex: 1; }
+
+/* 180. Statute lookup result */
+.statute-lookup-result { padding: 6px 10px; background: #0a0a0a; border: 1px solid #1a1a1a; border-left: 3px solid #d4a017; }
+.statute-lookup-result .statute-code { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 12px; font-weight: 700; color: #d4a017; }
+.statute-lookup-result .statute-title { font-size: 10px; font-weight: 700; color: #fff; margin: 2px 0; }
+.statute-lookup-result .statute-text { font-size: 10px; color: #aaa; line-height: 1.5; }
+.statute-lookup-result .statute-penalty { font-size: 9px; color: #888; margin-top: 4px; font-style: italic; }
+
+/* ── 2. SPILLMAN MODULE UI (continued) ──────────────────────── */
+/* 181. Premise history activity log */
+.premise-history-log { font-family: ui-monospace, SFMono-Regular, monospace; }
+.premise-history-entry { display: grid; grid-template-columns: 50px 70px 1fr; gap: 8px; padding: 2px 8px; font-size: 9px; color: #888; border-bottom: 1px solid #111; }
+.premise-history-entry .ph-date { color: #d4a017; }
+.premise-history-entry .ph-type { color: #aaa; font-weight: 600; text-transform: uppercase; font-size: 8px; }
+.premise-history-entry .ph-detail { color: #888; }
+
+/* 182. Officer daily activity log */
+.officer-activity-log { font-size: 10px; }
+.activity-log-entry { display: grid; grid-template-columns: 45px 1fr 60px; gap: 6px; padding: 2px 8px; border-bottom: 1px solid #111; color: #aaa; font-family: ui-monospace, SFMono-Regular, monospace; }
+.activity-log-entry .al-time { color: #d4a017; font-size: 9px; }
+.activity-log-entry .al-action { color: #aaa; }
+.activity-log-entry .al-status { text-align: right; color: #888; font-size: 9px; font-weight: 700; }
+
+/* 183. Unit roster grid */
+.unit-roster-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 2px; }
+.unit-roster-card { padding: 4px 8px; background: #0a0a0a; border: 1px solid #1a1a1a; font-size: 9px; }
+.unit-roster-card .ur-callsign { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11px; font-weight: 700; color: #d4a017; }
+.unit-roster-card .ur-officer { color: #aaa; font-size: 9px; }
+.unit-roster-card .ur-status { font-size: 7px; font-weight: 700; text-transform: uppercase; margin-top: 2px; }
+
+/* 184. Beat assignment matrix */
+.beat-assignment-matrix { display: grid; gap: 2px; }
+.beat-matrix-row { display: grid; grid-template-columns: 60px repeat(7, 1fr); gap: 2px; }
+.beat-cell { padding: 4px; background: #0a0a0a; border: 1px solid #1a1a1a; text-align: center; font-size: 8px; color: #888; }
+.beat-cell.header { background: #080808; color: #d4a017; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
+.beat-cell.assigned { background: rgba(212,160,23,0.06); color: #d4a017; border-color: rgba(212,160,23,0.2); }
+.beat-cell .beat-officer { font-size: 7px; display: block; color: #aaa; margin-top: 1px; }
+
+/* 185. Shift rotation calendar */
+.shift-calendar { display: grid; grid-template-columns: repeat(7, 1fr); gap: 1px; }
+.shift-cal-day { padding: 4px; background: #0a0a0a; border: 1px solid #1a1a1a; text-align: center; }
+.shift-cal-day .cal-date { font-size: 8px; color: #888; }
+.shift-cal-day .cal-shift { font-size: 8px; font-weight: 700; text-transform: uppercase; margin-top: 2px; }
+.shift-cal-day .cal-shift.day { color: #fbbf24; }
+.shift-cal-day .cal-shift.swing { color: #f59e0b; }
+.shift-cal-day .cal-shift.grave { color: #d4a017; }
+.shift-cal-day .cal-officer { font-size: 7px; color: #aaa; margin-top: 1px; display: block; }
+
+/* 186. Overtime request card */
+.ot-request-card { padding: 6px 10px; background: #0a0a0a; border: 1px solid #1a1a1a; font-size: 10px; }
+.ot-request-card .ot-status { display: inline-block; padding: 1px 6px; font-size: 8px; font-weight: 700; text-transform: uppercase; margin-bottom: 4px; }
+.ot-request-card .ot-status.pending { color: #fbbf24; background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.3); }
+.ot-request-card .ot-status.approved { color: #86efac; background: rgba(34,197,94,0.08); border: 1px solid rgba(34,197,94,0.2); }
+.ot-request-card .ot-hours { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 12px; font-weight: 700; color: #d4a017; }
+
+/* 187. Training certification grid */
+.cert-grid { display: grid; grid-template-columns: 1fr 60px 70px; gap: 4px; font-size: 9px; }
+.cert-grid .cert-header { font-size: 7px; font-weight: 700; text-transform: uppercase; color: #d4a017; letter-spacing: 0.08em; padding: 3px 6px; background: #080808; border-bottom: 1px solid #1a1a1a; }
+.cert-grid .cert-item { padding: 3px 6px; color: #aaa; border-bottom: 1px solid #111; }
+.cert-grid .cert-item .cert-date { font-family: ui-monospace, SFMono-Regular, monospace; color: #888; }
+.cert-grid .cert-item.expiring .cert-date { color: #f59e0b; }
+.cert-grid .cert-item.expired .cert-date { color: #ef4444; }
+
+/* 188. Firearm qualification card */
+.firearm-qual-card { padding: 8px 10px; background: #0a0a0a; border: 1px solid #1a1a1a; border-top: 2px solid #d4a017; }
+.firearm-qual-card .fq-officer { font-size: 11px; font-weight: 700; color: #fff; text-transform: uppercase; }
+.firearm-qual-card .fq-date { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 10px; color: #d4a017; margin-bottom: 4px; }
+.firearm-qual-card .fq-score { font-size: 16px; font-weight: 800; color: #22c55e; font-family: ui-monospace, SFMono-Regular, monospace; }
+.firearm-qual-card .fq-score.fail { color: #ef4444; }
+
+/* 189. Taser deployment log entry */
+.taser-log-entry { display: grid; grid-template-columns: 45px 1fr 50px 60px; gap: 6px; padding: 3px 8px; font-size: 9px; color: #aaa; border-bottom: 1px solid #111; font-family: ui-monospace, SFMono-Regular, monospace; }
+.taser-log-entry .tl-date { color: #d4a017; font-size: 9px; }
+.taser-log-entry .tl-duration { color: #f59e0b; font-weight: 700; }
+.taser-log-entry .tl-cycles { color: #fff; font-weight: 700; }
+
+/* 190. Vehicle inventory / impound form */
+.vehicle-inventory-form { padding: 10px; }
+.veh-inv-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px 12px; font-size: 10px; }
+.veh-inv-grid .vi-label { color: #888; font-size: 8px; text-transform: uppercase; font-weight: 700; letter-spacing: 0.05em; }
+.veh-inv-grid .vi-value { color: #aaa; }
+.veh-inv-items { margin-top: 8px; }
+.veh-inv-item { display: flex; align-items: center; gap: 8px; padding: 2px 0; font-size: 9px; color: #aaa; border-bottom: 1px solid #111; }
+.veh-inv-item .vi-check { width: 14px; height: 14px; border: 1px solid #2a2a2a; }
+
+/* ── 3. LAW ENFORCEMENT DATA DISPLAY ───────────────────────── */
+/* 191. Gang intelligence card */
+.gang-intel-card { padding: 8px 10px; background: #0a0a0a; border: 1px solid #1a1a1a; border-left: 3px solid #a855f7; }
+.gang-intel-card .gi-name { font-size: 11px; font-weight: 700; color: #fff; text-transform: uppercase; }
+.gang-intel-card .gi-moniker { font-size: 9px; color: #a855f7; font-style: italic; margin-bottom: 4px; }
+.gang-intel-card .gi-affiliation { font-size: 10px; font-weight: 700; color: #d4a017; }
+.gang-intel-card .gi-notes { font-size: 9px; color: #888; margin-top: 4px; }
+
+/* 192. Confidential informant file header */
+.ci-file-header { display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: rgba(212,160,23,0.06); border: 1px solid rgba(212,160,23,0.2); }
+.ci-file-header .ci-number { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11px; font-weight: 700; color: #d4a017; }
+.ci-file-header .ci-status { font-size: 9px; font-weight: 700; text-transform: uppercase; }
+.ci-file-header .ci-status.active { color: #22c55e; }
+.ci-file-header .ci-status.inactive { color: #888; }
+
+/* 193. Surveillance log format */
+.surveillance-log { font-family: ui-monospace, SFMono-Regular, monospace; }
+.surv-log-entry { display: grid; grid-template-columns: 45px 1fr; gap: 8px; padding: 3px 8px; font-size: 9px; border-bottom: 1px solid #111; }
+.surv-log-entry .sl-time { color: #d4a017; font-weight: 700; }
+.surv-log-entry .sl-entry { color: #aaa; line-height: 1.4; }
+
+/* 194. DUI arrest processing checklist */
+.dui-checklist { padding: 6px 10px; }
+.dui-checklist .dui-step { display: flex; align-items: center; gap: 8px; padding: 3px 0; font-size: 10px; color: #aaa; border-bottom: 1px solid #111; }
+.dui-checklist .dui-step .dui-check { width: 14px; height: 14px; border: 1px solid #2a2a2a; flex-shrink: 0; display: flex; align-items: center; justify-content: center; font-size: 8px; }
+.dui-checklist .dui-step.done .dui-check { background: rgba(34,197,94,0.2); border-color: #22c55e; color: #22c55e; }
+.dui-checklist .dui-step .dui-time { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 9px; color: #888; margin-left: auto; }
+
+/* 195. Domestic violence report indicators */
+.dv-indicator { display: inline-flex; align-items: center; gap: 4px; padding: 2px 6px; background: rgba(168,85,247,0.1); border: 1px solid rgba(168,85,247,0.3); font-size: 8px; font-weight: 700; text-transform: uppercase; color: #c084fc; letter-spacing: 0.05em; }
+.dv-strangulation { color: #ef4444; border-color: rgba(239,68,68,0.4); background: rgba(239,68,68,0.08); }
+
+/* 196. Juvenile contact report formatting */
+.juvenile-contact { padding: 8px; }
+.juvenile-contact .jc-banner { padding: 4px 8px; background: rgba(212,160,23,0.06); border: 1px solid rgba(212,160,23,0.2); font-size: 9px; font-weight: 700; text-transform: uppercase; color: #fbbf24; letter-spacing: 0.05em; margin-bottom: 8px; text-align: center; }
+.juvenile-contact .jc-parent { font-size: 10px; color: #aaa; margin-top: 6px; }
+
+/* 197. Missing person flyer layout */
+.missing-person-flyer { padding: 12px; text-align: center; }
+.missing-flyer-header { font-size: 16px; font-weight: 900; color: #ef4444; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 10px; }
+.missing-flyer-photo { width: 120px; height: 150px; background: #111; border: 2px solid #2a2a2a; margin: 0 auto 10px; display: flex; align-items: center; justify-content: center; color: #555; font-size: 10px; }
+.missing-flyer-info { font-size: 11px; color: #ccc; line-height: 1.6; }
+.missing-flyer-contact { font-size: 10px; font-weight: 700; color: #d4a017; margin-top: 8px; }
+
+/* 198. Wanted person poster */
+.wanted-poster { padding: 12px; border: 2px solid #dc2626; }
+.wanted-poster .wanted-title { font-size: 18px; font-weight: 900; color: #dc2626; text-align: center; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
+.wanted-poster .wanted-name { font-size: 14px; font-weight: 800; color: #fff; text-align: center; text-transform: uppercase; margin-bottom: 4px; }
+.wanted-poster .wanted-charges { font-size: 10px; color: #fca5a5; text-align: center; margin-bottom: 8px; }
+.wanted-poster .wanted-reward { font-size: 12px; font-weight: 800; color: #d4a017; text-align: center; }
+
+/* 199. Crash report diagram area */
+.crash-diagram-area { min-height: 200px; background: #080808; border: 1px solid #1a1a1a; position: relative; }
+.crash-diagram-grid { position: absolute; inset: 0; background-image: linear-gradient(#111 1px, transparent 1px), linear-gradient(90deg, #111 1px, transparent 1px); background-size: 20px 20px; }
+.crash-diagram-labels { display: flex; justify-content: space-between; padding: 4px; font-size: 8px; color: #555; }
+
+/* 200. Pursuit termination report summary */
+.pursuit-summary { padding: 8px 10px; border: 2px solid #dc2626; }
+.pursuit-summary .pursuit-banner { font-size: 11px; font-weight: 800; color: #fca5a5; text-transform: uppercase; letter-spacing: 0.06em; text-align: center; margin-bottom: 8px; }
+.pursuit-summary .pursuit-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; text-align: center; }
+.pursuit-summary .pursuit-stat .ps-value { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 16px; font-weight: 800; color: #d4a017; }
+.pursuit-summary .pursuit-stat .ps-label { font-size: 8px; color: #888; text-transform: uppercase; font-weight: 700; }
+
+/* ── 4. POLICE REPORT FORMATTING (continued) ───────────────── */
+/* 201. Arrest report booking section */
+.booking-section { padding: 8px; }
+.booking-section .booking-header { font-size: 10px; font-weight: 700; color: #d4a017; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; }
+.booking-fields { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px 12px; }
+.booking-fields .bf-label { font-size: 8px; color: #888; text-transform: uppercase; font-weight: 700; }
+.booking-fields .bf-value { font-size: 10px; color: #aaa; font-family: ui-monospace, SFMono-Regular, monospace; }
+
+/* 202. Field interview card (FI card) Spillman format */
+.fi-spillman-card { padding: 8px; background: #0a0a0a; border: 1px solid #1a1a1a; margin-bottom: 4px; max-width: 350px; }
+.fi-spillman-card .fi-number { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 10px; font-weight: 700; color: #d4a017; }
+.fi-spillman-card .fi-names { font-size: 10px; color: #fff; margin: 3px 0; }
+.fi-spillman-card .fi-loc { font-size: 9px; color: #888; }
+.fi-spillman-card .fi-codes { display: flex; gap: 4px; margin-top: 4px; flex-wrap: wrap; }
+.fi-spillman-card .fi-code { font-size: 7px; font-weight: 700; color: #666; background: #111; padding: 1px 4px; border: 1px solid #1a1a1a; }
+
+/* 203. Incident report disposition section */
+.disposition-section { padding: 8px 10px; border: 1px solid #1a1a1a; }
+.disposition-section .disp-header { font-size: 10px; font-weight: 700; color: #d4a017; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; }
+.disposition-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; font-size: 10px; }
+.disposition-grid .disp-label { color: #888; font-size: 8px; text-transform: uppercase; font-weight: 700; }
+.disposition-grid .disp-value { color: #aaa; }
+.disposition-grid .disp-value.unfounded { color: #22c55e; font-weight: 700; }
+.disposition-grid .disp-value.exceptionally-cleared { color: #f59e0b; font-weight: 700; }
+.disposition-grid .disp-value.cleared-arrest { color: #ef4444; font-weight: 700; }
+
+/* 204. Officer certification block */
+.officer-cert-block { padding: 10px; border: 1px solid #2a2a2a; margin: 10px 0; }
+.officer-cert-block .cert-text { font-size: 9px; color: #888; line-height: 1.5; font-style: italic; margin-bottom: 12px; }
+.officer-cert-block .cert-signature { border-bottom: 1px solid #d4a017; height: 24px; margin-bottom: 3px; }
+.officer-cert-block .cert-name { font-size: 10px; font-weight: 700; color: #fff; text-transform: uppercase; }
+
+/* 205. Probable cause affidavit section */
+.pc-affidavit { padding: 10px; }
+.pc-affidavit .pc-header { font-size: 11px; font-weight: 800; color: #d4a017; text-transform: uppercase; letter-spacing: 0.06em; text-align: center; margin-bottom: 8px; }
+.pc-affidavit .pc-jurisdiction { font-size: 10px; color: #aaa; text-align: center; margin-bottom: 10px; }
+.pc-affidavit .pc-facts { font-size: 10px; color: #ccc; line-height: 1.7; }
+.pc-affidavit .pc-facts .pc-numbered { color: #d4a017; font-weight: 700; margin-right: 4px; }
+
+/* 206. Traffic citation Utah-specific format */
+.utah-citation { padding: 8px; border: 1px solid #1a1a1a; }
+.utah-citation .uc-header { text-align: center; margin-bottom: 8px; }
+.utah-citation .uc-court { font-size: 10px; font-weight: 700; color: #d4a017; text-transform: uppercase; letter-spacing: 0.04em; }
+.utah-citation .uc-number { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 12px; font-weight: 800; color: #fff; }
+.utah-citation .uc-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 3px 12px; font-size: 9px; }
+.utah-citation .uc-label { color: #888; font-size: 7px; text-transform: uppercase; font-weight: 700; }
+.utah-citation .uc-value { color: #aaa; }
+.utah-citation .uc-fine { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11px; font-weight: 700; color: #fff; text-align: right; margin-top: 4px; }
+
+/* 207. Search warrant return form */
+.warrant-return { padding: 10px; border: 2px solid #d4a017; }
+.warrant-return .wr-header { font-size: 12px; font-weight: 800; color: #d4a017; text-transform: uppercase; letter-spacing: 0.06em; text-align: center; margin-bottom: 10px; }
+.warrant-return .wr-inventory { margin: 10px 0; }
+.warrant-return .wr-item { display: flex; gap: 8px; padding: 3px 0; font-size: 10px; color: #aaa; border-bottom: 1px solid #111; }
+.warrant-return .wr-item .wr-qty { font-family: ui-monospace, SFMono-Regular, monospace; font-weight: 700; color: #d4a017; min-width: 30px; }
+
+/* 208. Tow slip / vehicle release form */
+.tow-slip { padding: 10px; border: 1px solid #1a1a1a; }
+.tow-slip .ts-header { font-size: 11px; font-weight: 800; color: #d4a017; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px; }
+.tow-slip .ts-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 3px 12px; font-size: 10px; }
+.tow-slip .ts-label { color: #888; font-size: 8px; text-transform: uppercase; font-weight: 700; }
+.tow-slip .ts-value { color: #aaa; }
+.tow-slip .ts-vehicle { font-size: 11px; font-weight: 700; color: #fff; margin: 6px 0; }
+.tow-slip .ts-plate { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 12px; font-weight: 800; color: #d4a017; }
+
+/* 209. Protective order service return */
+.protective-order-return { padding: 8px 10px; border: 1px solid #1a1a1a; border-left: 3px solid #a855f7; }
+.protective-order-return .por-header { font-size: 10px; font-weight: 700; color: #c084fc; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; }
+.protective-order-return .por-parties { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px; }
+.protective-order-return .por-party { font-size: 10px; }
+.protective-order-return .por-party .por-role { font-size: 8px; font-weight: 700; text-transform: uppercase; color: #888; }
+.protective-order-return .por-party .por-name { color: #fff; font-weight: 700; }
+
+/* 210. Pawn shop / secondhand ticket */
+.pawn-ticket { padding: 8px; background: #0a0a0a; border: 1px solid #1a1a1a; }
+.pawn-ticket .pt-header { font-size: 10px; font-weight: 700; color: #d4a017; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; }
+.pawn-ticket .pt-items { margin: 6px 0; }
+.pawn-ticket .pt-item { display: flex; gap: 8px; padding: 2px 0; font-size: 9px; color: #aaa; border-bottom: 1px solid #111; }
+.pawn-ticket .pt-item .pt-desc { flex: 1; }
+.pawn-ticket .pt-item .pt-serial { font-family: ui-monospace, SFMono-Regular, monospace; color: #d4a017; font-size: 8px; }
+
+/* ── 5. COMMAND & CONTROL PATTERNS ─────────────────────────── */
+/* 211. Command center overview dashboard grid */
+.command-dashboard-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 4px; }
+.command-stat-card { padding: 10px; background: #0a0a0a; border: 1px solid #1a1a1a; border-top: 2px solid #d4a017; }
+.command-stat-card .csc-value { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 28px; font-weight: 800; color: #d4a017; text-align: center; }
+.command-stat-card .csc-label { font-size: 8px; font-weight: 700; text-transform: uppercase; color: #888; text-align: center; letter-spacing: 0.08em; margin-top: 4px; }
+.command-stat-card .csc-trend { font-size: 8px; font-weight: 700; text-align: center; margin-top: 2px; }
+.command-stat-card .csc-trend.up { color: #22c55e; }
+.command-stat-card .csc-trend.down { color: #ef4444; }
+
+/* 212. Active incident map sidebar */
+.active-incident-sidebar { font-size: 10px; }
+.active-incident-item { display: flex; align-items: center; gap: 8px; padding: 4px 8px; border-bottom: 1px solid #111; cursor: pointer; transition: all 0.12s; }
+.active-incident-item:hover { background: rgba(255,255,255,0.02); }
+.active-incident-item .ai-priority { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 8px; font-weight: 800; min-width: 18px; text-align: center; }
+.active-incident-item .ai-priority.P1 { color: #ef4444; }
+.active-incident-item .ai-priority.P2 { color: #f59e0b; }
+.active-incident-item .ai-type { font-size: 8px; font-weight: 700; text-transform: uppercase; color: #d4a017; min-width: 40px; }
+.active-incident-item .ai-location { flex: 1; color: #aaa; font-size: 9px; }
+.active-incident-item .ai-time { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 8px; color: #888; }
+
+/* 213. Shift briefing summary card */
+.shift-briefing-card { padding: 8px 10px; background: #0a0a0a; border: 1px solid #1a1a1a; }
+.shift-briefing-card .sb-shift { font-size: 10px; font-weight: 700; color: #d4a017; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; }
+.shift-briefing-card .sb-section { margin-bottom: 6px; }
+.shift-briefing-card .sb-section-title { font-size: 8px; font-weight: 700; text-transform: uppercase; color: #888; letter-spacing: 0.06em; margin-bottom: 2px; }
+.shift-briefing-card .sb-item { font-size: 9px; color: #aaa; padding: 1px 0; padding-left: 8px; border-left: 2px solid #2a2a2a; margin-bottom: 2px; }
+
+/* 214. Resource allocation panel */
+.resource-allocation-panel { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 4px; }
+.resource-card { padding: 6px 8px; background: #0a0a0a; border: 1px solid #1a1a1a; }
+.resource-card .rc-zone { font-size: 9px; font-weight: 700; color: #d4a017; text-transform: uppercase; letter-spacing: 0.04em; }
+.resource-card .rc-count { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 18px; font-weight: 800; color: #fff; }
+.resource-card .rc-units { font-size: 8px; color: #888; }
+.resource-card .rc-units .rc-unit { display: inline-block; padding: 1px 4px; margin: 1px; background: #111; border: 1px solid #2a2a2a; font-family: ui-monospace, SFMono-Regular, monospace; }
+
+/* 215. Event chronology / timeline for command post */
+.command-timeline { position: relative; padding-left: 40px; }
+.command-timeline::before { content: ''; position: absolute; left: 18px; top: 0; bottom: 0; width: 2px; background: #2a2a2a; }
+.command-event { position: relative; padding: 4px 0 4px 8px; margin-bottom: 4px; }
+.command-event::before { content: ''; position: absolute; left: -25px; top: 7px; width: 10px; height: 10px; background: #555; border: 2px solid #1a1a1a; border-radius: 50%; }
+.command-event.critical::before { background: #ef4444; border-color: #dc2626; box-shadow: 0 0 6px rgba(239,68,68,0.4); }
+.command-event .ce-time { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 9px; font-weight: 700; color: #d4a017; }
+.command-event .ce-action { font-size: 10px; color: #aaa; }
+
+/* 216. Mutual aid request card */
+.mutual-aid-card { padding: 8px 10px; border: 1px solid #1a1a1a; border-left: 3px solid #3b82f6; }
+.mutual-aid-card .ma-agency { font-size: 11px; font-weight: 700; color: #fff; }
+.mutual-aid-card .ma-resources { font-size: 10px; color: #aaa; margin: 4px 0; }
+.mutual-aid-card .ma-eta { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 10px; font-weight: 700; color: #d4a017; }
+.mutual-aid-card .ma-status { font-size: 9px; font-weight: 700; text-transform: uppercase; }
+.mutual-aid-card .ma-status.requested { color: #f59e0b; }
+.mutual-aid-card .ma-status.enroute { color: #3b82f6; }
+.mutual-aid-card .ma-status.onscene { color: #22c55e; }
+
+/* 217. Incident command system (ICS) org chart */
+.ics-org-chart { text-align: center; }
+.ics-box { display: inline-block; padding: 6px 12px; background: #0a0a0a; border: 1px solid #d4a017; font-size: 9px; font-weight: 700; color: #d4a017; text-transform: uppercase; letter-spacing: 0.05em; margin: 4px; }
+.ics-box .ics-name { display: block; font-size: 8px; color: #aaa; text-transform: none; font-weight: 400; margin-top: 2px; }
+.ics-connector { height: 16px; border-left: 1px solid #555; margin: 0 auto; width: 1px; }
+
+/* 218. Emergency operations center (EOC) status board */
+.eoc-status-board { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 4px; }
+.eoc-status-card { padding: 6px 10px; background: #0a0a0a; border: 1px solid #1a1a1a; }
+.eoc-status-card .es-section { font-size: 9px; font-weight: 700; color: #d4a017; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 4px; }
+.eoc-status-card .es-lead { font-size: 9px; color: #aaa; }
+.eoc-status-card .es-status { display: inline-block; padding: 1px 6px; font-size: 7px; font-weight: 700; text-transform: uppercase; margin-top: 4px; }
+.eoc-status-card .es-status.activated { color: #22c55e; background: rgba(34,197,94,0.08); border: 1px solid rgba(34,197,94,0.3); }
+.eoc-status-card .es-status.standby { color: #f59e0b; background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.3); }
+
+/* 219. Critical infrastructure protection status */
+.cip-status-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 4px; }
+.cip-site-card { padding: 6px 8px; background: #0a0a0a; border: 1px solid #1a1a1a; text-align: center; }
+.cip-site-card .cip-name { font-size: 9px; font-weight: 700; color: #aaa; text-transform: uppercase; letter-spacing: 0.04em; }
+.cip-site-card .cip-threat { font-size: 8px; font-weight: 700; margin-top: 3px; }
+.cip-site-card .cip-threat.green { color: #22c55e; }
+.cip-site-card .cip-threat.yellow { color: #f59e0b; }
+.cip-site-card .cip-threat.orange { color: #f97316; }
+.cip-site-card .cip-threat.red { color: #ef4444; }
+
+/* 220. After-action review summary */
+.aar-summary { padding: 10px; }
+.aar-summary .aar-header { font-size: 11px; font-weight: 800; color: #d4a017; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px; }
+.aar-summary .aar-section { margin-bottom: 8px; }
+.aar-summary .aar-section-title { font-size: 9px; font-weight: 700; text-transform: uppercase; color: #888; letter-spacing: 0.06em; padding-bottom: 2px; border-bottom: 1px solid #1a1a1a; margin-bottom: 4px; }
+.aar-summary .aar-finding { font-size: 10px; color: #aaa; padding: 2px 0; padding-left: 12px; }
+.aar-summary .aar-finding::before { content: '\25CF'; color: #d4a017; margin-right: 6px; }
+.aar-summary .aar-recommendation { font-size: 10px; color: #22c55e; padding: 2px 0; padding-left: 12px; font-style: italic; }
+
+/* ── 6. EVIDENCE & PROPERTY ────────────────────────────────── */
+/* 221. Evidence submission form */
+.evidence-submission-form { padding: 10px; }
+.evidence-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; }
+.evidence-form-grid .ef-label { font-size: 8px; color: #888; text-transform: uppercase; font-weight: 700; letter-spacing: 0.05em; }
+.evidence-form-grid .ef-value { font-size: 10px; color: #aaa; }
+.evidence-form-grid .ef-value input { width: 100%; padding: 3px 6px; background: #080808; border: 1px solid #1a1a1a; color: #ccc; font-size: 10px; }
+
+/* 222. Evidence barcode label */
+.evidence-barcode-label { display: inline-block; padding: 4px 8px; background: #fff; border: 1px solid #ccc; font-family: 'Courier New', monospace; }
+.evidence-barcode-label .ebl-number { font-size: 12px; font-weight: 700; color: #111; }
+.evidence-barcode-label .ebl-barcode { height: 30px; background: repeating-linear-gradient(90deg, #000, #000 1px, #fff 1px, #fff 2px); margin: 3px 0; }
+.evidence-barcode-label .ebl-case { font-size: 8px; color: #555; text-transform: uppercase; }
+
+/* 223. Evidence disposition log */
+.evidence-disposition-log { font-size: 9px; }
+.evidence-disp-entry { display: grid; grid-template-columns: 45px 1fr 60px 70px; gap: 6px; padding: 3px 8px; border-bottom: 1px solid #111; color: #aaa; }
+.evidence-disp-entry .ed-date { font-family: ui-monospace, SFMono-Regular, monospace; color: #d4a017; }
+.evidence-disp-entry .ed-action { color: #aaa; }
+.evidence-disp-entry .ed-auth { font-size: 8px; color: #888; text-align: right; }
+
+/* 224. Evidence storage location map */
+.storage-location-map { display: grid; grid-template-columns: repeat(5, 1fr); gap: 1px; }
+.storage-loc { padding: 4px; background: #0a0a0a; border: 1px solid #1a1a1a; text-align: center; font-size: 8px; }
+.storage-loc .sl-aisle { color: #d4a017; font-weight: 700; }
+.storage-loc .sl-shelf { color: #aaa; }
+.storage-loc.occupied { background: rgba(212,160,23,0.06); }
+.storage-loc.selected { border-color: #d4a017; box-shadow: 0 0 4px rgba(212,160,23,0.3); }
+
+/* 225. Drug analysis / lab result card */
+.lab-result-card { padding: 8px 10px; background: #0a0a0a; border: 1px solid #1a1a1a; border-left: 3px solid #a855f7; }
+.lab-result-card .lr-case { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 10px; font-weight: 700; color: #d4a017; }
+.lab-result-card .lr-substance { font-size: 11px; font-weight: 700; color: #fff; margin: 3px 0; }
+.lab-result-card .lr-weight { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 10px; color: #aaa; }
+.lab-result-card .lr-result { font-size: 9px; font-weight: 700; text-transform: uppercase; margin-top: 4px; }
+.lab-result-card .lr-result.positive { color: #22c55e; }
+
+/* 226. Forensic analysis request form */
+.forensic-request { padding: 10px; }
+.forensic-request .fr-header { font-size: 10px; font-weight: 700; color: #d4a017; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; }
+.forensic-request .fr-type { display: flex; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+.forensic-request .fr-type-btn { padding: 3px 8px; font-size: 9px; font-weight: 700; text-transform: uppercase; color: #888; background: #111; border: 1px solid #2a2a2a; cursor: pointer; }
+.forensic-request .fr-type-btn.selected { color: #0a0a0a; background: #d4a017; border-color: #d4a017; }
+
+/* 227. Property room audit report */
+.property-audit-report { font-size: 10px; }
+.audit-summary-bar { display: flex; gap: 16px; padding: 8px; background: #080808; border: 1px solid #1a1a1a; margin-bottom: 8px; }
+.audit-summary-bar .as-stat { text-align: center; }
+.audit-summary-bar .as-value { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 16px; font-weight: 800; color: #d4a017; }
+.audit-summary-bar .as-label { font-size: 7px; text-transform: uppercase; color: #888; font-weight: 700; }
+.audit-discrepancy { display: flex; align-items: center; gap: 8px; padding: 4px 8px; border-bottom: 1px solid #111; }
+.audit-discrepancy .ad-item { font-family: ui-monospace, SFMono-Regular, monospace; color: #d4a017; font-weight: 700; }
+.audit-discrepancy .ad-issue { color: #ef4444; font-size: 9px; }
+
+/* 228. Digital evidence hash verification */
+.digital-evidence-card { padding: 8px 10px; background: #0a0a0a; border: 1px solid #1a1a1a; }
+.digital-evidence-card .de-file { font-size: 10px; font-weight: 700; color: #fff; }
+.digital-evidence-card .de-hash { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 8px; color: #d4a017; word-break: break-all; margin: 3px 0; }
+.digital-evidence-card .de-verified { font-size: 8px; font-weight: 700; }
+.digital-evidence-card .de-verified.ok { color: #22c55e; }
+.digital-evidence-card .de-verified.fail { color: #ef4444; }
+
+/* 229. Body camera footage metadata card */
+.bodycam-meta-card { padding: 6px 10px; background: #0a0a0a; border: 1px solid #1a1a1a; }
+.bodycam-meta-card .bc-officer { font-size: 10px; font-weight: 700; color: #fff; text-transform: uppercase; }
+.bodycam-meta-card .bc-duration { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 10px; color: #d4a017; }
+.bodycam-meta-card .bc-bookmarks { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 4px; }
+.bodycam-meta-card .bc-bookmark { padding: 1px 6px; font-size: 8px; font-weight: 700; color: #fbbf24; background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.2); cursor: pointer; }
+
+/* 230. Evidence purge / destruction authorization */
+.evidence-purge-auth { padding: 10px; border: 2px solid #dc2626; }
+.evidence-purge-auth .epa-header { font-size: 11px; font-weight: 800; color: #fca5a5; text-transform: uppercase; letter-spacing: 0.06em; text-align: center; margin-bottom: 8px; }
+.evidence-purge-auth .epa-items { max-height: 200px; overflow-y: auto; }
+.evidence-purge-auth .epa-item { display: flex; align-items: center; gap: 8px; padding: 3px 8px; font-size: 10px; color: #aaa; border-bottom: 1px solid #111; }
+.evidence-purge-auth .epa-item .epa-check { width: 14px; height: 14px; border: 1px solid #dc2626; }
+
+/* ── 7. JAIL / CORRECTIONS ─────────────────────────────────── */
+/* 231. Inmate booking photo panel */
+.booking-photo-panel { display: flex; gap: 8px; align-items: flex-start; padding: 8px; }
+.booking-photo-panel .bp-photo { width: 100px; height: 130px; background: #111; border: 1px solid #2a2a2a; display: flex; align-items: center; justify-content: center; font-size: 9px; color: #555; }
+.booking-photo-panel .bp-info { flex: 1; font-size: 10px; }
+.booking-photo-panel .bp-name { font-size: 12px; font-weight: 700; color: #d4a017; text-transform: uppercase; }
+.booking-photo-panel .bp-number { font-family: ui-monospace, SFMono-Regular, monospace; color: #888; }
+
+/* 232. Inmate housing location card */
+.inmate-housing-card { padding: 6px 10px; background: #0a0a0a; border: 1px solid #1a1a1a; }
+.inmate-housing-card .ih-name { font-size: 10px; font-weight: 700; color: #fff; text-transform: uppercase; }
+.inmate-housing-card .ih-location { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11px; font-weight: 800; color: #d4a017; }
+.inmate-housing-card .ih-housing { font-size: 9px; color: #aaa; }
+
+/* 233. Jail cell status board */
+.cell-status-board { display: grid; grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); gap: 2px; }
+.cell-status-card { padding: 4px; background: #0a0a0a; border: 1px solid #1a1a1a; text-align: center; font-size: 9px; }
+.cell-status-card .cs-cell { font-family: ui-monospace, SFMono-Regular, monospace; font-weight: 700; color: #d4a017; }
+.cell-status-card .cs-count { font-size: 8px; color: #888; }
+.cell-status-card.occupied { border-color: rgba(212,160,23,0.3); background: rgba(212,160,23,0.04); }
+.cell-status-card.full { border-color: rgba(239,68,68,0.3); background: rgba(239,68,68,0.04); }
+.cell-status-cell .cs-status { font-size: 7px; font-weight: 700; text-transform: uppercase; margin-top: 1px; display: block; }
+
+/* 234. Inmate property receipt */
+.inmate-property-receipt { padding: 10px; }
+.inmate-property-receipt .ipr-header { font-size: 10px; font-weight: 700; color: #d4a017; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; }
+.inmate-property-receipt .ipr-items { margin: 8px 0; }
+.inmate-property-receipt .ipr-item { display: flex; justify-content: space-between; padding: 2px 0; font-size: 9px; color: #aaa; border-bottom: 1px solid #111; }
+.inmate-property-receipt .ipr-item .ipr-qty { font-family: ui-monospace, SFMono-Regular, monospace; color: #d4a017; }
+
+/* 235. Inmate medical screening form */
+.inmate-medical-screen { padding: 10px; }
+.inmate-medical-screen .ims-header { font-size: 10px; font-weight: 700; color: #d4a017; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; }
+.inmate-medical-screen .ims-questions { display: flex; flex-direction: column; gap: 4px; }
+.inmate-medical-screen .ims-question { font-size: 9px; color: #aaa; display: flex; align-items: center; gap: 8px; }
+.inmate-medical-screen .ims-question .ims-answer { font-weight: 700; color: #fff; min-width: 30px; }
+
+/* 236. Bail bond form */
+.bail-bond-form { padding: 10px; border: 1px solid #1a1a1a; }
+.bail-bond-form .bbf-header { font-size: 10px; font-weight: 700; color: #d4a017; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; }
+.bail-bond-form .bbf-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 12px; font-size: 10px; }
+.bail-bond-form .bbf-label { color: #888; font-size: 8px; text-transform: uppercase; font-weight: 700; }
+.bail-bond-form .bbf-value { color: #aaa; }
+.bail-bond-form .bbf-amount { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 14px; font-weight: 800; color: #d4a017; text-align: center; margin: 8px 0; }
+
+/* 237. Release / discharge authorization */
+.release-authorization { padding: 10px; border: 2px solid #22c55e; }
+.release-authorization .ra-header { font-size: 11px; font-weight: 800; color: #86efac; text-transform: uppercase; letter-spacing: 0.06em; text-align: center; margin-bottom: 8px; }
+.release-authorization .ra-inmate { font-size: 11px; font-weight: 700; color: #fff; text-align: center; margin-bottom: 4px; }
+.release-authorization .ra-conditions { font-size: 10px; color: #aaa; margin: 8px 0; }
+
+/* 238. Court appearance / transport order */
+.court-transport-order { padding: 8px 10px; background: #0a0a0a; border: 1px solid #1a1a1a; }
+.court-transport-order .cto-header { font-size: 10px; font-weight: 700; color: #d4a017; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; }
+.court-transport-order .cto-inmate { font-size: 11px; font-weight: 700; color: #fff; }
+.court-transport-order .cto-court { font-size: 10px; color: #aaa; margin: 3px 0; }
+.court-transport-order .cto-time { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 10px; font-weight: 700; color: #d4a017; }
+
+/* 239. Visitor log entry */
+.visitor-log-entry { display: grid; grid-template-columns: 45px 1fr 1fr 50px; gap: 8px; padding: 3px 8px; font-size: 9px; color: #aaa; border-bottom: 1px solid #111; font-family: ui-monospace, SFMono-Regular, monospace; }
+.visitor-log-entry .vl-time { color: #d4a017; }
+.visitor-log-entry .vl-visitor { color: #fff; font-weight: 600; }
+.visitor-log-entry .vl-inmate { color: #aaa; }
+.visitor-log-entry .vl-duration { color: #888; text-align: right; }
+
+/* 240. Incident report within facility */
+.facility-incident-report { padding: 10px; }
+.facility-incident-report .fir-header { font-size: 10px; font-weight: 700; color: #d4a017; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; }
+.facility-incident-report .fir-location { font-size: 10px; font-weight: 700; color: #fff; margin-bottom: 6px; }
+.facility-incident-report .fir-involved { margin-bottom: 8px; }
+.facility-incident-report .fir-person { font-size: 9px; color: #aaa; padding: 2px 0; }
+.facility-incident-report .fir-person .fir-role { font-size: 7px; font-weight: 700; text-transform: uppercase; color: #888; }
+
+/* ── 8. FINAL POLISH — PRINTS & EXPORTS ────────────────────── */
+/* 241. Multi-page report cover sheet */
+.report-cover-sheet { padding: 20px; text-align: center; border: 2px solid #d4a017; }
+.report-cover-sheet .rcs-agency { font-size: 9px; font-weight: 700; text-transform: uppercase; color: #888; letter-spacing: 0.1em; margin-bottom: 16px; }
+.report-cover-sheet .rcs-title { font-size: 16px; font-weight: 900; color: #d4a017; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px; }
+.report-cover-sheet .rcs-case { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 14px; font-weight: 800; color: #fff; margin-bottom: 12px; }
+.report-cover-sheet .rcs-date { font-size: 10px; color: #888; font-family: ui-monospace, SFMono-Regular, monospace; }
+.report-cover-sheet .rcs-officer { font-size: 11px; font-weight: 700; color: #aaa; text-transform: uppercase; margin-top: 16px; }
+
+/* 242. Index / table of contents for multi-document packet */
+.report-toc { padding: 10px; }
+.report-toc .toc-title { font-size: 11px; font-weight: 800; color: #d4a017; text-transform: uppercase; letter-spacing: 0.06em; text-align: center; margin-bottom: 10px; }
+.report-toc .toc-item { display: flex; align-items: baseline; gap: 8px; padding: 3px 0; font-size: 10px; color: #aaa; border-bottom: 1px dotted #1a1a1a; }
+.report-toc .toc-item .toc-num { font-family: ui-monospace, SFMono-Regular, monospace; color: #d4a017; font-weight: 700; min-width: 24px; }
+.report-toc .toc-item .toc-title-text { flex: 1; }
+.report-toc .toc-item .toc-page { font-family: ui-monospace, SFMono-Regular, monospace; color: #888; }
+
+/* 243. Exhibit list / evidence index */
+.exhibit-list { font-size: 9px; }
+.exhibit-list .el-header { font-size: 8px; font-weight: 700; text-transform: uppercase; color: #d4a017; letter-spacing: 0.06em; padding: 4px 6px; background: #080808; border-bottom: 1px solid #1a1a1a; display: grid; grid-template-columns: 30px 1fr 80px 50px; gap: 8px; }
+.exhibit-list .el-item { display: grid; grid-template-columns: 30px 1fr 80px 50px; gap: 8px; padding: 3px 6px; color: #aaa; border-bottom: 1px solid #111; }
+.exhibit-list .el-item .el-letter { font-weight: 700; color: #d4a017; }
+.exhibit-list .el-item .el-date { font-family: ui-monospace, SFMono-Regular, monospace; color: #888; }
+
+/* 244. Redaction log (for discovery compliance) */
+.redaction-log { font-size: 9px; }
+.redaction-log .rl-header { font-size: 8px; font-weight: 700; text-transform: uppercase; color: #d4a017; letter-spacing: 0.06em; padding: 3px 8px; background: #080808; border-bottom: 1px solid #1a1a1a; }
+.redaction-log .rl-entry { display: grid; grid-template-columns: 30px 80px 1fr 100px; gap: 8px; padding: 3px 8px; color: #aaa; border-bottom: 1px solid #111; }
+.redaction-log .rl-entry .rl-page { font-family: ui-monospace, SFMono-Regular, monospace; color: #d4a017; }
+.redaction-log .rl-entry .rl-reason { color: #888; font-size: 8px; }
+
+/* 245. Document transmittal / fax cover */
+.transmittal-sheet { padding: 10px; border: 1px solid #1a1a1a; }
+.transmittal-sheet .tr-header { font-size: 11px; font-weight: 800; text-align: center; color: #d4a017; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 10px; }
+.transmittal-sheet .tr-grid { display: grid; grid-template-columns: 100px 1fr; gap: 3px 12px; font-size: 10px; }
+.transmittal-sheet .tr-label { color: #888; font-size: 8px; font-weight: 700; text-transform: uppercase; }
+.transmittal-sheet .tr-value { color: #aaa; }
+.transmittal-sheet .tr-pages { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11px; font-weight: 700; color: #d4a017; text-align: center; margin: 8px 0; }
+
+/* 246. Certification of authenticity */
+.certification-of-authenticity { padding: 10px; border: 2px solid #d4a017; }
+.certification-of-authenticity .coa-header { font-size: 10px; font-weight: 800; color: #d4a017; text-transform: uppercase; letter-spacing: 0.06em; text-align: center; margin-bottom: 10px; }
+.certification-of-authenticity .coa-body { font-size: 10px; color: #ccc; line-height: 1.6; margin-bottom: 12px; }
+.certification-of-authenticity .coa-signature { border-bottom: 1px solid #d4a017; height: 24px; }
+
+/* 247. Discovery compliance certificate */
+.discovery-cert { padding: 10px; }
+.discovery-cert .dc-header { font-size: 10px; font-weight: 800; color: #d4a017; text-transform: uppercase; letter-spacing: 0.06em; text-align: center; margin-bottom: 8px; }
+.discovery-cert .dc-case { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 11px; font-weight: 700; color: #fff; text-align: center; margin-bottom: 10px; }
+.discovery-cert .dc-checklist { margin: 8px 0; }
+.discovery-cert .dc-item { display: flex; align-items: center; gap: 8px; padding: 3px 0; font-size: 10px; color: #aaa; }
+.discovery-cert .dc-item .dc-check { width: 14px; height: 14px; border: 1px solid #2a2a2a; flex-shrink: 0; }
+
+/* 248. Narrative statement continuation line numbering */
+.narrative-numbered { counter-reset: line; font-family: ui-monospace, SFMono-Regular, monospace; font-size: 10px; color: #aaa; line-height: 1.6; }
+.narrative-numbered .nn-line { counter-increment: line; display: flex; gap: 8px; }
+.narrative-numbered .nn-line::before { content: counter(line); color: #555; font-size: 8px; min-width: 18px; text-align: right; }
+
+/* 249. Officer daily activity summary print format */
+.dar-print-format { padding: 12px; }
+.dar-print-format .dpf-officer { font-size: 11px; font-weight: 700; color: #d4a017; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px; }
+.dar-print-format .dpf-shift { font-size: 10px; color: #888; margin-bottom: 10px; }
+.dar-print-format .dpf-entries { margin: 8px 0; }
+.dar-print-format .dpf-entry { display: grid; grid-template-columns: 45px 70px 1fr; gap: 8px; padding: 3px 0; font-size: 9px; color: #aaa; border-bottom: 1px solid #111; }
+.dar-print-format .dpf-entry .dpf-time { color: #d4a017; font-family: ui-monospace, SFMono-Regular, monospace; }
+.dar-print-format .dpf-entry .dpf-code { font-weight: 700; color: #888; text-transform: uppercase; }
+.dar-print-format .dpf-totals { margin-top: 8px; padding-top: 6px; border-top: 2px solid #d4a017; text-align: right; font-size: 10px; color: #d4a017; }
+
+/* 250. Complete case packet assembly order strip */
+.case-packet-order { padding: 8px; }
+.case-packet-order .cpo-title { font-size: 9px; font-weight: 700; text-transform: uppercase; color: #d4a017; letter-spacing: 0.06em; margin-bottom: 6px; }
+.case-packet-order .cpo-item { display: flex; align-items: center; gap: 8px; padding: 3px 8px; font-size: 9px; color: #aaa; }
+.case-packet-order .cpo-item .cpo-num { font-family: ui-monospace, SFMono-Regular, monospace; color: #d4a017; font-weight: 700; font-size: 10px; min-width: 20px; }
+.case-packet-order .cpo-item .cpo-check { width: 12px; height: 12px; border: 1px solid #d4a017; margin-left: auto; }
+
+/* ═══════════════════════════════════════════════════════════════
+   End of Spillman Flex 100 Police Report + Module UI Patterns
+   ═══════════════════════════════════════════════════════════════ */
