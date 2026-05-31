@@ -247,17 +247,17 @@ const STUBS: StubRule[] = [
   // Categorized by page to make removal triage obvious — when a real
   // handler lands for a subsystem, drop ALL its stubs together.
   //
-  // ── Fleet sub-tabs that aren't ported yet ─────────────────────────────
-  // Bare /api/fleet, /api/fleet/:id, /api/fleet/map, /api/fleet/analytics,
-  // and /api/fleet/dashcam-videos[/:id[/neighbors]] are now real handlers
-  // in src/routes/fleet.ts. The list below is sub-paths the rewrite still
-  // doesn't implement; they 404 from the rewrite without a stub.
-  {
-    match: /^\/api\/fleet\/(fuel-cards|fuel|fuel\/.*|recalls|health-scores|maintenance-schedule|driver-performance|service-alerts|cost-trends|vehicle-lifecycle|fleet-cost-analytics|inspection-stats|notifications|overdue-inspections|dash-cameras|pretrip)(\/.*)?$/,
-    methods: ['GET', 'POST', 'PUT', 'DELETE'],
-    body: { data: [], total: 0 },
-    reason: 'fleet sub-tab handler not ported; tab renders empty until implemented',
-  },
+  // (removed 2026-05-31) Fleet sub-tab stub for fuel-cards/fuel/recalls/
+  // health-scores/maintenance-schedule/driver-performance/service-alerts/
+  // cost-trends/vehicle-lifecycle/fleet-cost-analytics/inspection-stats/
+  // notifications/overdue-inspections/dash-cameras/pretrip. Every one of
+  // these now has a real handler in src/routes/fleet.ts AND a backing table
+  // on live D1 (migration 0057 aligned the schema to the handlers — fleet
+  // tables went 10 → 72). The stub was intercepting GET *and* POST/PUT/DELETE,
+  // so it faked `{data:[],total:0}` success on every fuel-log edit/delete,
+  // fuel-card CRUD, and recall CRUD — the "saves then vanishes" bug. All
+  // fleet paths now fall through to the `/api/fleet` API_ROUTES rule → env.API.
+  // (See feedback-proxy-stub-shadows-handler.)
   // Howen handlers now live in src/routes/howen.ts (devices, events, status,
   // devices/:id). Stub removed; requests reach the rewrite via the API_ROUTES
   // rule below.

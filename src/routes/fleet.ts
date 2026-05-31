@@ -652,7 +652,9 @@ fleet.post('/:id/fuel', async (c) => {
     if (!vehicle) return c.json({ error: 'Vehicle not found' }, 404);
     const body = await c.req.json<Record<string, unknown>>();
     if (!body.fuel_date) return c.json({ error: 'fuel_date required' }, 400);
-    const result = await execute(db, `INSERT INTO fleet_fuel_log (vehicle_id, fuel_date, gallons, total_cost, odometer, notes) VALUES (?, ?, ?, ?, ?, ?)`, vehicleId, body.fuel_date, body.gallons ?? null, body.total_cost ?? null, body.odometer ?? null, body.notes ?? null);
+    // Client (FuelLogModal) sends odometer_reading; the column is `odometer`.
+    const odometer = body.odometer ?? body.odometer_reading ?? null;
+    const result = await execute(db, `INSERT INTO fleet_fuel_log (vehicle_id, fuel_date, gallons, total_cost, cost_per_gallon, fuel_type, station, odometer, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, vehicleId, body.fuel_date, body.gallons ?? null, body.total_cost ?? null, body.cost_per_gallon ?? null, body.fuel_type ?? null, body.station ?? null, odometer, body.notes ?? null);
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_fuel_log WHERE id = ?', result.meta.last_row_id);
     return c.json(created, 201);
   } catch (err) { console.error('POST /fleet/:id/fuel failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
@@ -667,8 +669,12 @@ fleet.put('/fuel/:id', async (c) => {
     const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM fleet_fuel_log WHERE id = ?', fuelId);
     if (!existing) return c.json({ error: 'Fuel log not found' }, 404);
     const body = await c.req.json<Record<string, unknown>>();
+    // Client sends odometer_reading; normalize to the `odometer` column.
+    if (Object.prototype.hasOwnProperty.call(body, 'odometer_reading') && !Object.prototype.hasOwnProperty.call(body, 'odometer')) {
+      body.odometer = body.odometer_reading;
+    }
     const setCols: string[] = []; const bindings: unknown[] = [];
-    for (const key of ['fuel_date', 'gallons', 'total_cost', 'odometer', 'notes']) {
+    for (const key of ['fuel_date', 'gallons', 'total_cost', 'cost_per_gallon', 'fuel_type', 'station', 'odometer', 'notes']) {
       if (Object.prototype.hasOwnProperty.call(body, key)) { setCols.push(`${key} = ?`); bindings.push(body[key] === '' ? null : body[key]); }
     }
     if (setCols.length === 0) return c.json({ error: 'No fields to update' }, 400);

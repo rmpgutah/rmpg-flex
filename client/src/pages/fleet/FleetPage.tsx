@@ -644,7 +644,7 @@ export default function FleetPage() {
   const openEditFuel = (log: FleetFuelLog) => {
     setFuelForm({
       fuel_date: toDatetimeLocal(log.fuel_date),
-      gallons: String(log.gallons),
+      gallons: log.gallons != null ? String(log.gallons) : '',
       cost_per_gallon: log.cost_per_gallon != null ? String(log.cost_per_gallon) : '',
       total_cost: log.total_cost != null ? String(log.total_cost) : '',
       odometer_reading: log.odometer_reading != null ? String(log.odometer_reading) : '',
@@ -658,8 +658,8 @@ export default function FleetPage() {
 
   const openEditMaintenance = (record: FleetMaintenance) => {
     setMaintForm({
-      type: record.type,
-      description: record.description,
+      type: record.type || '',
+      description: record.description || '',
       mileage_at_service: record.mileage_at_service != null ? String(record.mileage_at_service) : '',
       cost: record.cost != null ? String(record.cost) : '',
       vendor: record.vendor || '',
