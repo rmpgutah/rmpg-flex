@@ -16,9 +16,10 @@ recruitment.post('/candidates', async (c) => {
   try {
   const db = getDb(c.env);
   const body = await c.req.json();
+    if (!body || Object.keys(body).length === 0) return c.json({ error: "Request body required" }, 400);
   const result = await execute(db,
     'INSERT INTO recruitment_candidates (candidate_name, email, phone, position, stage, applied_date, notes) VALUES (?, ?, ?, ?, ?, ?, ?)',
-    body.candidate_name, body.email || null, body.phone || null, body.position || null, body.stage || 'applied', body.applied_date || new Date().toISOString().slice(0, 10), body.notes || null
+    (body.candidate_name || (() => { throw new Error("candidate_name required"); })()), body.email || null, body.phone || null, body.position || null, body.stage || 'applied', body.applied_date || new Date().toISOString().slice(0, 10), body.notes || null
   );
   return c.json({ success: true, id: result.meta.last_row_id });
   } catch (err) { return c.json({ error: 'Failed' }, 500); }
@@ -29,9 +30,10 @@ recruitment.put('/candidates/:id', async (c) => {
   const db = getDb(c.env);
   const id = c.req.param('id');
   const body = await c.req.json();
+    if (!body || Object.keys(body).length === 0) return c.json({ error: "Request body required" }, 400);
   await execute(db,
     'UPDATE recruitment_candidates SET candidate_name=?, email=?, phone=?, position=?, stage=?, applied_date=?, notes=?, updated_at=datetime(\'now\',\'localtime\') WHERE id=?',
-    body.candidate_name, body.email || null, body.phone || null, body.position || null, body.stage || 'applied', body.applied_date, body.notes || null, id
+    (body.candidate_name || (() => { throw new Error("candidate_name required"); })()), body.email || null, body.phone || null, body.position || null, body.stage || 'applied', body.applied_date, body.notes || null, id
   );
   return c.json({ success: true });
   } catch (err) { return c.json({ error: 'Failed' }, 500); }

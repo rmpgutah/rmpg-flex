@@ -10,12 +10,14 @@ narcotics.get('/cases', async (c) => {
 });
 
 narcotics.post('/cases', async (c) => {
-  try { const db = getDb(c.env); const body = await c.req.json(); const result = await execute(db, 'INSERT INTO narcotics_cases (case_number, case_type, subject_name, location, substance, quantity, street_value, status, priority, officer_id, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', body.case_number, body.case_type || 'investigation', body.subject_name || null, body.location || null, body.substance || null, body.quantity || null, body.street_value || 0, body.status || 'open', body.priority || 'normal', body.officer_id || null, body.notes || null); return c.json({ success: true, id: result.meta.last_row_id }); }
+  try { const db = getDb(c.env); const body = await c.req.json();
+    if (!body || Object.keys(body).length === 0) return c.json({ error: "Request body required" }, 400); const result = await execute(db, 'INSERT INTO narcotics_cases (case_number, case_type, subject_name, location, substance, quantity, street_value, status, priority, officer_id, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', (body.case_number || (() => { throw new Error("case_number required"); })()), body.case_type || 'investigation', body.subject_name || null, body.location || null, body.substance || null, body.quantity || null, body.street_value || 0, body.status || 'open', body.priority || 'normal', body.officer_id || null, body.notes || null); return c.json({ success: true, id: result.meta.last_row_id }); }
   catch (err) { return c.json({ error: 'Failed to create narcotics case', detail: (err as Error)?.message }, 500); }
 });
 
 narcotics.put('/cases/:id', async (c) => {
-  try { const db = getDb(c.env); const id = c.req.param('id'); const body = await c.req.json(); await execute(db, 'UPDATE narcotics_cases SET case_number=?, case_type=?, subject_name=?, location=?, substance=?, quantity=?, street_value=?, status=?, priority=?, officer_id=?, notes=?, updated_at=datetime(\'now\',\'localtime\') WHERE id=?', body.case_number, body.case_type || 'investigation', body.subject_name || null, body.location || null, body.substance || null, body.quantity || null, body.street_value || 0, body.status || 'open', body.priority || 'normal', body.officer_id || null, body.notes || null, id); return c.json({ success: true }); }
+  try { const db = getDb(c.env); const id = c.req.param('id'); const body = await c.req.json();
+    if (!body || Object.keys(body).length === 0) return c.json({ error: "Request body required" }, 400); await execute(db, 'UPDATE narcotics_cases SET case_number=?, case_type=?, subject_name=?, location=?, substance=?, quantity=?, street_value=?, status=?, priority=?, officer_id=?, notes=?, updated_at=datetime(\'now\',\'localtime\') WHERE id=?', (body.case_number || (() => { throw new Error("case_number required"); })()), body.case_type || 'investigation', body.subject_name || null, body.location || null, body.substance || null, body.quantity || null, body.street_value || 0, body.status || 'open', body.priority || 'normal', body.officer_id || null, body.notes || null, id); return c.json({ success: true }); }
   catch (err) { return c.json({ error: 'Failed to update narcotics case', detail: (err as Error)?.message }, 500); }
 });
 

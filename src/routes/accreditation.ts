@@ -16,9 +16,10 @@ accreditation.post('/standards', async (c) => {
   try {
     const db = getDb(c.env);
     const body = await c.req.json();
+    if (!body || Object.keys(body).length === 0) return c.json({ error: "Request body required" }, 400);
     const result = await execute(db,
       'INSERT INTO accreditation_standards (standard_number, standard_name, category, description, compliance_status, last_reviewed, next_review, proof_url, assigned_to, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      body.standard_number, body.standard_name, body.category || null, body.description || null, body.compliance_status || 'pending', body.last_reviewed || null, body.next_review || null, body.proof_url || null, body.assigned_to || null, body.notes || null
+      (body.standard_number || (() => { throw new Error("standard_number required"); })()), (body.standard_name || (() => { throw new Error("standard_name required"); })()), body.category || null, body.description || null, body.compliance_status || 'pending', body.last_reviewed || null, body.next_review || null, body.proof_url || null, body.assigned_to || null, body.notes || null
     );
     return c.json({ success: true, id: result.meta.last_row_id });
   } catch (err) { return c.json({ error: 'Failed to create standard', detail: (err as Error)?.message }, 500); }
@@ -29,9 +30,10 @@ accreditation.put('/standards/:id', async (c) => {
     const db = getDb(c.env);
     const id = c.req.param('id');
     const body = await c.req.json();
+    if (!body || Object.keys(body).length === 0) return c.json({ error: "Request body required" }, 400);
     await execute(db,
       'UPDATE accreditation_standards SET standard_number=?, standard_name=?, category=?, description=?, compliance_status=?, last_reviewed=?, next_review=?, proof_url=?, assigned_to=?, notes=?, updated_at=datetime(\'now\',\'localtime\') WHERE id=?',
-      body.standard_number, body.standard_name, body.category || null, body.description || null, body.compliance_status || 'pending', body.last_reviewed || null, body.next_review || null, body.proof_url || null, body.assigned_to || null, body.notes || null, id
+      (body.standard_number || (() => { throw new Error("standard_number required"); })()), (body.standard_name || (() => { throw new Error("standard_name required"); })()), body.category || null, body.description || null, body.compliance_status || 'pending', body.last_reviewed || null, body.next_review || null, body.proof_url || null, body.assigned_to || null, body.notes || null, id
     );
     return c.json({ success: true });
   } catch (err) { return c.json({ error: 'Failed to update standard', detail: (err as Error)?.message }, 500); }

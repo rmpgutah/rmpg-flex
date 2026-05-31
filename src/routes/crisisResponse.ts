@@ -10,12 +10,14 @@ crisis.get('/incidents', async (c) => {
 });
 
 crisis.post('/incidents', async (c) => {
-  try { const db = getDb(c.env); const body = await c.req.json(); const result = await execute(db, 'INSERT INTO crisis_response_incidents (incident_number, incident_type, location, subject_name, disposition, cit_team_used, resolved_on_scene, diverted, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', body.incident_number, body.incident_type || 'other', body.location || null, body.subject_name || null, body.disposition || null, body.cit_team_used || 0, body.resolved_on_scene || 0, body.diverted || 0, body.notes || null); return c.json({ success: true, id: result.meta.last_row_id }); }
+  try { const db = getDb(c.env); const body = await c.req.json();
+    if (!body || Object.keys(body).length === 0) return c.json({ error: "Request body required" }, 400); const result = await execute(db, 'INSERT INTO crisis_response_incidents (incident_number, incident_type, location, subject_name, disposition, cit_team_used, resolved_on_scene, diverted, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)', (body.incident_number || (() => { throw new Error("incident_number required"); })()), body.incident_type || 'other', body.location || null, body.subject_name || null, body.disposition || null, body.cit_team_used || 0, body.resolved_on_scene || 0, body.diverted || 0, body.notes || null); return c.json({ success: true, id: result.meta.last_row_id }); }
   catch (err) { return c.json({ error: 'Failed to create crisis incident', detail: (err as Error)?.message }, 500); }
 });
 
 crisis.put('/incidents/:id', async (c) => {
-  try { const db = getDb(c.env); const id = c.req.param('id'); const body = await c.req.json(); await execute(db, 'UPDATE crisis_response_incidents SET incident_number=?, incident_type=?, location=?, subject_name=?, disposition=?, cit_team_used=?, resolved_on_scene=?, diverted=?, notes=?, updated_at=datetime(\'now\',\'localtime\') WHERE id=?', body.incident_number, body.incident_type || 'other', body.location || null, body.subject_name || null, body.disposition || null, body.cit_team_used || 0, body.resolved_on_scene || 0, body.diverted || 0, body.notes || null, id); return c.json({ success: true }); }
+  try { const db = getDb(c.env); const id = c.req.param('id'); const body = await c.req.json();
+    if (!body || Object.keys(body).length === 0) return c.json({ error: "Request body required" }, 400); await execute(db, 'UPDATE crisis_response_incidents SET incident_number=?, incident_type=?, location=?, subject_name=?, disposition=?, cit_team_used=?, resolved_on_scene=?, diverted=?, notes=?, updated_at=datetime(\'now\',\'localtime\') WHERE id=?', (body.incident_number || (() => { throw new Error("incident_number required"); })()), body.incident_type || 'other', body.location || null, body.subject_name || null, body.disposition || null, body.cit_team_used || 0, body.resolved_on_scene || 0, body.diverted || 0, body.notes || null, id); return c.json({ success: true }); }
   catch (err) { return c.json({ error: 'Failed to update crisis incident', detail: (err as Error)?.message }, 500); }
 });
 

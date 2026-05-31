@@ -16,9 +16,10 @@ gangIntel.post('/', async (c) => {
   try {
   const db = getDb(c.env);
   const body = await c.req.json();
+    if (!body || Object.keys(body).length === 0) return c.json({ error: "Request body required" }, 400);
   const result = await execute(db,
     'INSERT INTO gang_intel_members (name, moniker, gang_name, status, threat_level, notes) VALUES (?, ?, ?, ?, ?, ?)',
-    body.name, body.moniker || null, body.gang_name || null, body.status || 'active', body.threat_level || 'low', body.notes || null
+    (body.name || (() => { throw new Error("name required"); })()), body.moniker || null, body.gang_name || null, body.status || 'active', body.threat_level || 'low', body.notes || null
   );
   return c.json({ success: true, id: result.meta.last_row_id });
   } catch (err) { return c.json({ error: 'Failed' }, 500); }
@@ -29,9 +30,10 @@ gangIntel.put('/:id', async (c) => {
   const db = getDb(c.env);
   const id = c.req.param('id');
   const body = await c.req.json();
+    if (!body || Object.keys(body).length === 0) return c.json({ error: "Request body required" }, 400);
   await execute(db,
     'UPDATE gang_intel_members SET name=?, moniker=?, gang_name=?, status=?, threat_level=?, notes=?, updated_at=datetime(\'now\',\'localtime\') WHERE id=?',
-    body.name, body.moniker || null, body.gang_name || null, body.status || 'active', body.threat_level || 'low', body.notes || null, id
+    (body.name || (() => { throw new Error("name required"); })()), body.moniker || null, body.gang_name || null, body.status || 'active', body.threat_level || 'low', body.notes || null, id
   );
   return c.json({ success: true });
   } catch (err) { return c.json({ error: 'Failed' }, 500); }
@@ -58,9 +60,10 @@ gangIntel.post('/gangs', async (c) => {
   try {
   const db = getDb(c.env);
   const body = await c.req.json();
+    if (!body || Object.keys(body).length === 0) return c.json({ error: "Request body required" }, 400);
   const result = await execute(db,
     'INSERT INTO gang_intel_gangs (name, colors, member_count, threat_level, territory, notes) VALUES (?, ?, ?, ?, ?, ?)',
-    body.name, body.colors || null, body.member_count || 0, body.threat_level || 'low', body.territory || null, body.notes || null
+    (body.name || (() => { throw new Error("name required"); })()), body.colors || null, body.member_count || 0, body.threat_level || 'low', body.territory || null, body.notes || null
   );
   return c.json({ success: true, id: result.meta.last_row_id });
   } catch (err) { return c.json({ error: 'Failed' }, 500); }
@@ -71,9 +74,10 @@ gangIntel.put('/gangs/:id', async (c) => {
   const db = getDb(c.env);
   const id = c.req.param('id');
   const body = await c.req.json();
+    if (!body || Object.keys(body).length === 0) return c.json({ error: "Request body required" }, 400);
   await execute(db,
     'UPDATE gang_intel_gangs SET name=?, colors=?, member_count=?, threat_level=?, territory=?, notes=?, updated_at=datetime(\'now\',\'localtime\') WHERE id=?',
-    body.name, body.colors || null, body.member_count || 0, body.threat_level || 'low', body.territory || null, body.notes || null, id
+    (body.name || (() => { throw new Error("name required"); })()), body.colors || null, body.member_count || 0, body.threat_level || 'low', body.territory || null, body.notes || null, id
   );
   return c.json({ success: true });
   } catch (err) { return c.json({ error: 'Failed' }, 500); }

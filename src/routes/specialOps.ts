@@ -16,6 +16,7 @@ specialOps.post('/callouts', async (c) => {
   try {
   const db = getDb(c.env);
   const body = await c.req.json();
+    if (!body || Object.keys(body).length === 0) return c.json({ error: "Request body required" }, 400);
   const result = await execute(db,
     'INSERT INTO special_ops_callouts (date, call_type, location, resolution, duration_minutes, team_size, notes) VALUES (?, ?, ?, ?, ?, ?, ?)',
     body.date || new Date().toISOString(), body.call_type, body.location || null, body.resolution || null, body.duration_minutes || null, body.team_size || null, body.notes || null
@@ -29,6 +30,7 @@ specialOps.put('/callouts/:id', async (c) => {
   const db = getDb(c.env);
   const id = c.req.param('id');
   const body = await c.req.json();
+    if (!body || Object.keys(body).length === 0) return c.json({ error: "Request body required" }, 400);
   await execute(db,
     'UPDATE special_ops_callouts SET date=?, call_type=?, location=?, resolution=?, duration_minutes=?, team_size=?, notes=? WHERE id=?',
     body.date, body.call_type, body.location || null, body.resolution || null, body.duration_minutes || null, body.team_size || null, body.notes || null, id
@@ -58,6 +60,7 @@ specialOps.post('/equipment', async (c) => {
   try {
   const db = getDb(c.env);
   const body = await c.req.json();
+    if (!body || Object.keys(body).length === 0) return c.json({ error: "Request body required" }, 400);
   const result = await execute(db,
     'INSERT INTO special_ops_equipment (equipment_type, serial_number, condition, assigned_to, notes) VALUES (?, ?, ?, ?, ?)',
     body.equipment_type, body.serial_number || null, body.condition || 'ready', body.assigned_to || null, body.notes || null
@@ -71,6 +74,7 @@ specialOps.put('/equipment/:id', async (c) => {
   const db = getDb(c.env);
   const id = c.req.param('id');
   const body = await c.req.json();
+    if (!body || Object.keys(body).length === 0) return c.json({ error: "Request body required" }, 400);
   await execute(db,
     'UPDATE special_ops_equipment SET equipment_type=?, serial_number=?, condition=?, assigned_to=?, notes=?, updated_at=datetime(\'now\',\'localtime\') WHERE id=?',
     body.equipment_type, body.serial_number || null, body.condition || 'ready', body.assigned_to || null, body.notes || null, id
