@@ -19,7 +19,9 @@ import FloatingSaveBar from '../../components/FloatingSaveBar';
 import UnsavedChangesGuard from '../../components/UnsavedChangesGuard';
 import { nowLocalISO, toDatetimeLocal } from './utils/fleetFormatters';
 import GaugeRing from './components/GaugeRing';
-import FleetDetailPanel, { type DetailTab } from './FleetDetailPanel';
+import FleetDetailPanel, { type DetailTab, type CostSubTab } from './FleetDetailPanel';
+import FleetCostFormModal, { type CostCategory, type CostFormState, EMPTY_COST_FORM } from './modals/FleetCostFormModal';
+import type { FleetLoan, FleetInsurancePolicy, FleetAccessory, FleetUtilityCost, FleetCostSummary } from '../../types';
 import FleetAnalyticsTab from './tabs/FleetAnalyticsTab';
 import VehicleFormModal, { type VehicleFormState, EMPTY_VEHICLE_FORM } from './modals/VehicleFormModal';
 import MaintenanceFormModal, { type MaintenanceFormState, EMPTY_MAINT_FORM } from './modals/MaintenanceFormModal';
@@ -89,7 +91,7 @@ export default function FleetPage() {
   const [searchQuery, setSearchQuery] = useState('');
 
   // Tab & modal state
-  const [activeTab, setActiveTab] = usePersistedTab('rmpg_fleet_tab', 'overview' as DetailTab, ['overview', 'fuel', 'inspections', 'assignments', 'personnel', 'tires', 'damage', 'recalls', 'analytics'] as const);
+  const [activeTab, setActiveTab] = usePersistedTab('rmpg_fleet_tab', 'overview' as DetailTab, ['overview', 'fuel', 'costs', 'inspections', 'assignments', 'personnel', 'tires', 'damage', 'recalls', 'analytics'] as const);
   const [modal, setModal] = useState<ModalMode>('none');
   const v = useFormDraft<VehicleFormState>({
     storageKey: 'rmpg_fleet_vehicle_form',
@@ -152,6 +154,21 @@ export default function FleetPage() {
 
   // ── Feature 16/19/20: Pre-trip, vehicle swaps, cost-per-mile ──
   const [costPerMile, setCostPerMile] = useState<any>(null);
+
+  // ── Cost-of-ownership state (Costs tab) ──────────────────────
+  const [loans, setLoans] = useState<FleetLoan[]>([]);
+  const [insurancePolicies, setInsurancePolicies] = useState<FleetInsurancePolicy[]>([]);
+  const [accessories, setAccessories] = useState<FleetAccessory[]>([]);
+  const [utilities, setUtilities] = useState<FleetUtilityCost[]>([]);
+  const [costSubTab, setCostSubTab] = useState<CostSubTab>('loan');
+  const [costModalOpen, setCostModalOpen] = useState(false);
+  const [costCategory, setCostCategory] = useState<CostCategory>('loan');
+  const [costMode, setCostMode] = useState<'create' | 'edit'>('create');
+  const [costInitial, setCostInitial] = useState<CostFormState | null>(null);
+  const [editingCostId, setEditingCostId] = useState<string | number | null>(null);
+  const [savingCost, setSavingCost] = useState(false);
+  const [deletingCost, setDeletingCost] = useState<{ category: CostCategory; record: any } | null>(null);
+  const [costSummary, setCostSummary] = useState<FleetCostSummary | null>(null);
   const [pretripHistory, setPretripHistory] = useState<any[]>([]);
   const [showPretripModal, setShowPretripModal] = useState(false);
   const [pretripForm, setPretripForm] = useState({
@@ -446,6 +463,10 @@ export default function FleetPage() {
         fuel_type: fuelForm.fuel_type,
         station: fuelForm.station.trim() || null,
         notes: fuelForm.notes.trim() || null,
+        is_full_tank: fuelForm.is_full_tank ? 1 : 0,
+        payment_method: fuelForm.payment_method.trim() || null,
+        driver_name: fuelForm.driver_name.trim() || null,
+        location: fuelForm.location.trim() || null,
       };
       if (modal === 'edit_fuel' && editingFuelId) {
         await apiFetch(`/fleet/fuel/${editingFuelId}`, { method: 'PUT', body: JSON.stringify(payload) });
@@ -643,6 +664,149 @@ export default function FleetPage() {
   };
 
   // ── Edit openers (pre-populate form with existing record data) ──
+  // ── Cost-of-ownership (Costs tab) data + handlers ────────────
+  // Endpoint suffix per category. Insurance pre-existed; loans/accessories/
+  // utilities were added this pass. GET returns a bare array per category.
+  const COST_PATH: Record<CostCategory, string> = {
+    loan: 'loans', insurance: 'insurance', accessory: 'accessories', utility: 'utilities',
+  };
+
+  // Recompute the cost-of-ownership summary client-side from the four lists
+  // plus the fuel/maintenance totals we already have, so the TCO header
+  // reflects live edits without a dedicated summary endpoint.
+  const recomputeCostSummary = useCallback((
+    ln: FleetLoan[], ins: FleetInsurancePolicy[], acc: FleetAccessory[], util: FleetUtilityCost[],
+  ) => {
+    const num = (v: unknown): number => {
+      if (typeof v === 'number') return Number.isFinite(v) ? v : 0;
+      if (typeof v === 'string') { const p = parseFloat(v); return Number.isFinite(p) ? p : 0; }
+      return 0;
+    };
+    // Normalize a recurring cost to a monthly figure for the commitment stats.
+    const perMonth = (amount: number, freq: unknown): number => {
+      switch (String(freq)) {
+        case 'annual': return amount / 12;
+        case 'semi_annual': return amount / 6;
+        case 'quarterly': return amount / 3;
+        case 'one_time': return 0;
+        default: return amount; // monthly
+      }
+    };
+    const fuelTotal = num(fuelSummary?.total_cost);
+    const maintTotal = maintenance.reduce((s, m) => s + num((m as any).cost), 0);
+    const loanTotal = ln.reduce((s, l) => s + num((l as any).original_amount), 0);
+    const insTotal = ins.reduce((s, p) => s + num((p as any).premium ?? (p as any).premium_amount), 0);
+    const accTotal = acc.reduce((s, a) => s + num((a as any).cost), 0);
+    const utilTotal = util.reduce((s, u) => s + num((u as any).cost_amount), 0);
+    const monthlyLoan = ln.filter((l) => String((l as any).status ?? 'active') === 'active').reduce((s, l) => s + num((l as any).monthly_payment), 0);
+    const monthlyIns = ins.reduce((s, p) => s + perMonth(num((p as any).premium ?? (p as any).premium_amount), (p as any).premium_frequency), 0);
+    const totalMiles = num(costPerMile?.total_miles);
+    const lifetime = fuelTotal + maintTotal + loanTotal + insTotal + accTotal + utilTotal;
+    setCostSummary({
+      total_lifetime: Math.round(lifetime * 100) / 100,
+      cost_per_mile: totalMiles > 0 ? Math.round((lifetime / totalMiles) * 1000) / 1000 : null,
+      monthly_commitment: { loan: Math.round(monthlyLoan * 100) / 100, insurance: Math.round(monthlyIns * 100) / 100 },
+      categories: {
+        fuel: Math.round(fuelTotal * 100) / 100,
+        maintenance: Math.round(maintTotal * 100) / 100,
+        loans: Math.round(loanTotal * 100) / 100,
+        insurance: Math.round(insTotal * 100) / 100,
+        accessories: Math.round(accTotal * 100) / 100,
+        utilities: Math.round(utilTotal * 100) / 100,
+      },
+    } as FleetCostSummary);
+  }, [fuelSummary, maintenance, costPerMile]);
+
+  const fetchCosts = useCallback(async (id: string | number) => {
+    try {
+      const [ln, ins, acc, util] = await Promise.all([
+        apiFetch<FleetLoan[]>(`/fleet/${id}/loans`).catch(() => []),
+        apiFetch<FleetInsurancePolicy[]>(`/fleet/${id}/insurance`).catch(() => []),
+        apiFetch<FleetAccessory[]>(`/fleet/${id}/accessories`).catch(() => []),
+        apiFetch<FleetUtilityCost[]>(`/fleet/${id}/utilities`).catch(() => []),
+      ]);
+      const lnA = Array.isArray(ln) ? ln : [];
+      const insA = Array.isArray(ins) ? ins : [];
+      const accA = Array.isArray(acc) ? acc : [];
+      const utilA = Array.isArray(util) ? util : [];
+      setLoans(lnA); setInsurancePolicies(insA); setAccessories(accA); setUtilities(utilA);
+      recomputeCostSummary(lnA, insA, accA, utilA);
+      // Cost-per-mile feeds the TCO/mile stat; fetch if not already loaded.
+      if (!costPerMile) fetchCostPerMile(id);
+    } catch (err) {
+      console.error('Failed to fetch cost data:', err);
+    }
+  }, [recomputeCostSummary, costPerMile]);
+
+  // Map a saved DB record back into the modal's CostFormState for editing.
+  const costRecordToForm = (category: CostCategory, r: any): CostFormState => {
+    const s = (v: unknown) => (v == null ? '' : String(v));
+    const base = { ...EMPTY_COST_FORM, notes: s(r.notes) };
+    switch (category) {
+      case 'loan': return { ...base,
+        lender: s(r.lender), original_amount: s(r.original_amount), current_balance: s(r.current_balance),
+        monthly_payment: s(r.monthly_payment), interest_rate: s(r.interest_rate), term_months: s(r.term_months),
+        start_date: s(r.start_date), payoff_date: s(r.payoff_date), loan_status: (r.status || 'active') };
+      case 'insurance': return { ...base,
+        carrier: s(r.carrier), policy_number: s(r.policy_number), coverage_type: s(r.coverage_type),
+        premium_amount: s(r.premium ?? r.premium_amount), premium_frequency: (r.premium_frequency || 'monthly'),
+        effective_from: s(r.effective_date ?? r.effective_from), expires_at: s(r.expiry_date ?? r.expires_at),
+        deductible: s(r.deductible), liability_limit: s(r.liability_limit ?? r.coverage_amount),
+        insurance_status: (r.status || 'active') };
+      case 'accessory': return { ...base,
+        name: s(r.name), accessory_category: s(r.category), installed_date: s(r.installed_date),
+        removed_date: s(r.removed_date), cost: s(r.cost), vendor: s(r.vendor),
+        warranty_until: s(r.warranty_expiry ?? r.warranty_until), serial_number: s(r.serial_number),
+        accessory_status: (r.status || 'installed') };
+      case 'utility': return { ...base,
+        utility_category: s(r.category), provider: s(r.provider), cost_amount: s(r.cost_amount),
+        cost_frequency: (r.cost_frequency || 'monthly'), period_start: s(r.period_start), period_end: s(r.period_end) };
+    }
+  };
+
+  const handleAddCost = (category: CostCategory) => {
+    setCostCategory(category); setCostMode('create'); setCostInitial(null);
+    setEditingCostId(null); setCostModalOpen(true);
+  };
+  const handleEditCost = (category: CostCategory, record: any) => {
+    setCostCategory(category); setCostMode('edit'); setCostInitial(costRecordToForm(category, record));
+    setEditingCostId(record.id); setCostModalOpen(true);
+  };
+  const handleDeleteCost = (category: CostCategory, record: any) => {
+    setDeletingCost({ category, record });
+  };
+  const confirmDeleteCost = async () => {
+    if (!deletingCost || selectedId == null) return;
+    const { category, record } = deletingCost;
+    try {
+      await apiFetch(`/fleet/${COST_PATH[category]}/${record.id}`, { method: 'DELETE' });
+      addToast('Entry deleted', 'success');
+      setDeletingCost(null);
+      fetchCosts(selectedId);
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to delete entry', 'error');
+    }
+  };
+  const handleSaveCost = async (payload: Record<string, any>) => {
+    if (selectedId == null) return;
+    setSavingCost(true);
+    try {
+      if (costMode === 'edit' && editingCostId != null) {
+        await apiFetch(`/fleet/${COST_PATH[costCategory]}/${editingCostId}`, { method: 'PUT', body: JSON.stringify(payload) });
+        addToast('Entry updated', 'success');
+      } else {
+        await apiFetch(`/fleet/${selectedId}/${COST_PATH[costCategory]}`, { method: 'POST', body: JSON.stringify(payload) });
+        addToast('Entry added', 'success');
+      }
+      setCostModalOpen(false);
+      setEditingCostId(null);
+      fetchCosts(selectedId);
+    } catch (err) {
+      // Re-throw so the modal surfaces the error inline (its submit() catches).
+      throw err instanceof Error ? err : new Error('Save failed');
+    } finally { setSavingCost(false); }
+  };
+
   const openEditFuel = (log: FleetFuelLog) => {
     setFuelForm({
       fuel_date: toDatetimeLocal(log.fuel_date),
@@ -1096,6 +1260,16 @@ export default function FleetPage() {
               personnelLoading={personnelLoading}
               activeTab={activeTab}
               onTabChange={setActiveTab}
+              loans={loans}
+              insurancePolicies={insurancePolicies}
+              accessories={accessories}
+              utilities={utilities}
+              costSummary={costSummary}
+              costSubTab={costSubTab}
+              onCostSubTabChange={setCostSubTab}
+              onAddCost={handleAddCost}
+              onEditCost={handleEditCost}
+              onDeleteCost={handleDeleteCost}
               onEditVehicle={openEditVehicle}
               onLogMaintenance={openLogMaintenance}
               onLogFuel={openLogFuel}

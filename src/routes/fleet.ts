@@ -630,6 +630,89 @@ fleet.delete('/:id', async (c) => {
 // SUB-RESOURCE: FUEL LOGS (Feature 10-19)
 // ═══════════════════════════════════════════════════════════════
 
+// ── Fuel efficiency computation ──────────────────────────────────
+// Derives per-log distance/MPG/cost-per-mile from consecutive odometer
+// readings and rolls them into a fleet-fuel summary. Pure function so it
+// can be unit-tested and reused by the report endpoints. `logs` arrive in
+// DESC order (newest first); we sort a copy ASC by odometer to chain spans,
+// then merge the computed fields back by id so the response keeps DESC order.
+function computeFuelAnalytics(logs: Record<string, unknown>[]): {
+  logs: Record<string, unknown>[];
+  summary: Record<string, unknown>;
+} {
+  const num = (v: unknown): number | null => {
+    if (v == null) return null;
+    const n = typeof v === 'number' ? v : parseFloat(String(v));
+    return Number.isFinite(n) ? n : null;
+  };
+  // Chronological order: prefer odometer, fall back to fuel_date then id.
+  const asc = [...logs].sort((a, b) => {
+    const oa = num(a.odometer), ob = num(b.odometer);
+    if (oa != null && ob != null && oa !== ob) return oa - ob;
+    const da = String(a.fuel_date ?? ''), dbb = String(b.fuel_date ?? '');
+    if (da !== dbb) return da < dbb ? -1 : 1;
+    return (num(a.id) ?? 0) - (num(b.id) ?? 0);
+  });
+
+  const computed = new Map<unknown, { calc_distance: number | null; mpg: number | null; cost_per_mile: number | null }>();
+  let prevOdo: number | null = null;
+  const mpgValues: number[] = [];
+  for (const log of asc) {
+    const odo = num(log.odometer);
+    const gallons = num(log.gallons);
+    const totalCost = num(log.total_cost);
+    const isFull = num(log.is_full_tank);
+    let calc_distance: number | null = null;
+    let mpg: number | null = null;
+    let cost_per_mile: number | null = null;
+    if (odo != null && prevOdo != null && odo > prevOdo) {
+      calc_distance = Math.round((odo - prevOdo) * 10) / 10;
+      if (gallons != null && gallons > 0 && isFull !== 0) {
+        mpg = Math.round((calc_distance / gallons) * 10) / 10;
+        if (mpg > 0 && mpg < 200) mpgValues.push(mpg);
+      }
+      if (totalCost != null && calc_distance > 0) {
+        cost_per_mile = Math.round((totalCost / calc_distance) * 1000) / 1000;
+      }
+    }
+    computed.set(log.id, { calc_distance, mpg, cost_per_mile });
+    if (odo != null) prevOdo = odo;
+  }
+
+  const outLogs = logs.map((l) => ({ ...l, ...(computed.get(l.id) ?? {}) }));
+
+  // Aggregate summary.
+  const totalGallons = logs.reduce((s, l) => s + (num(l.gallons) ?? 0), 0);
+  const totalCost = logs.reduce((s, l) => s + (num(l.total_cost) ?? 0), 0);
+  const odos = logs.map((l) => num(l.odometer)).filter((n): n is number => n != null);
+  const totalDistance = odos.length >= 2 ? Math.max(...odos) - Math.min(...odos) : null;
+  const dates = logs.map((l) => String(l.fuel_date ?? '')).filter(Boolean).sort();
+  let daySpan: number | null = null;
+  if (dates.length >= 2) {
+    const first = new Date(dates[0].replace(' ', 'T'));
+    const last = new Date(dates[dates.length - 1].replace(' ', 'T'));
+    if (!isNaN(first.getTime()) && !isNaN(last.getTime())) {
+      daySpan = Math.max(1, Math.round((last.getTime() - first.getTime()) / 86400000));
+    }
+  }
+  const avgMpg = mpgValues.length ? Math.round((mpgValues.reduce((s, v) => s + v, 0) / mpgValues.length) * 10) / 10 : null;
+  const fullTankCount = logs.filter((l) => num(l.is_full_tank) !== 0).length;
+  const summary: Record<string, unknown> = {
+    total_gallons: Math.round(totalGallons * 1000) / 1000,
+    total_cost: Math.round(totalCost * 100) / 100,
+    log_count: logs.length,
+    full_tank_count: fullTankCount,
+    avg_cost_per_gallon: totalGallons > 0 ? Math.round((totalCost / totalGallons) * 1000) / 1000 : 0,
+    avg_mpg: avgMpg,
+    best_mpg: mpgValues.length ? Math.max(...mpgValues) : null,
+    worst_mpg: mpgValues.length ? Math.min(...mpgValues) : null,
+    total_distance: totalDistance != null ? Math.round(totalDistance * 10) / 10 : null,
+    cost_per_mile: totalDistance && totalDistance > 0 ? Math.round((totalCost / totalDistance) * 1000) / 1000 : null,
+    fuel_cost_per_day: daySpan != null ? Math.round((totalCost / daySpan) * 100) / 100 : null,
+  };
+  return { logs: outLogs, summary };
+}
+
 // GET /:id/fuel — fuel log list with pagination + summary (Feature 10)
 fleet.get('/:id/fuel', async (c) => {
   try {
@@ -646,8 +729,16 @@ fleet.get('/:id/fuel', async (c) => {
     const whereSql = where.join(' AND ');
     const total = (await queryFirst<{ n: number }>(db, `SELECT COUNT(*) as n FROM fleet_fuel_log f WHERE ${whereSql}`, ...params))?.n ?? 0;
     const logs = await query<Record<string, unknown>>(db, `SELECT * FROM fleet_fuel_log f WHERE ${whereSql} ORDER BY f.fuel_date DESC, f.id DESC LIMIT ? OFFSET ?`, ...params, limit, offset);
-    const summary = await queryFirst<Record<string, unknown>>(db, `SELECT COALESCE(SUM(gallons),0) as total_gallons, COALESCE(SUM(total_cost),0) as total_cost, COUNT(*) as log_count, COALESCE(ROUND(AVG(NULLIF(total_cost/gallons,0)),2),0) as avg_cost_per_gallon FROM fleet_fuel_log WHERE vehicle_id = ?`, vehicleId);
-    return c.json({ data: logs, pagination: { page, per_page: limit, total, totalPages: Math.ceil(total / limit) }, summary });
+    // Compute per-log efficiency + an enriched summary in the Worker. MPG can
+    // only be derived from the *distance between consecutive odometer
+    // readings*, so a single fill (or fills without odometer) yields null —
+    // that's the reason the PDF/summary showed "-" for every efficiency
+    // metric. We sort ascending by odometer (falling back to date), diff
+    // consecutive readings, and attribute the span's gallons to that span.
+    // Partial fills (is_full_tank=0) don't reset the tank, so their MPG is
+    // unreliable — we still record distance but skip them in MPG aggregates.
+    const enriched = computeFuelAnalytics(logs);
+    return c.json({ data: enriched.logs, pagination: { page, per_page: limit, total, totalPages: Math.ceil(total / limit) }, summary: enriched.summary });
   } catch (err) { console.error('GET /fleet/:id/fuel failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
 });
 
@@ -663,7 +754,11 @@ fleet.post('/:id/fuel', async (c) => {
     if (!body.fuel_date) return c.json({ error: 'fuel_date required' }, 400);
     // Client (FuelLogModal) sends odometer_reading; the column is `odometer`.
     const odometer = body.odometer ?? body.odometer_reading ?? null;
-    const result = await execute(db, `INSERT INTO fleet_fuel_log (vehicle_id, fuel_date, gallons, total_cost, cost_per_gallon, fuel_type, station, odometer, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`, vehicleId, body.fuel_date, body.gallons ?? null, body.total_cost ?? null, body.cost_per_gallon ?? null, body.fuel_type ?? null, body.station ?? null, odometer, body.notes ?? null);
+    // is_full_tank governs whether this fill resets the tank for MPG math —
+    // defaults to full (1) when the client omits it (back-compat with the
+    // pre-enhancement modal that had no toggle).
+    const isFullTank = body.is_full_tank == null ? 1 : (body.is_full_tank ? 1 : 0);
+    const result = await execute(db, `INSERT INTO fleet_fuel_log (vehicle_id, fuel_date, gallons, total_cost, cost_per_gallon, fuel_type, station, odometer, notes, is_full_tank, payment_method, driver_name, location) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, vehicleId, body.fuel_date, body.gallons ?? null, body.total_cost ?? null, body.cost_per_gallon ?? null, body.fuel_type ?? null, body.station ?? null, odometer, body.notes ?? null, isFullTank, body.payment_method ?? null, body.driver_name ?? null, body.location ?? null);
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_fuel_log WHERE id = ?', result.meta.last_row_id);
     return c.json(created, 201);
   } catch (err) { console.error('POST /fleet/:id/fuel failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
@@ -683,8 +778,13 @@ fleet.put('/fuel/:id', async (c) => {
       body.odometer = body.odometer_reading;
     }
     const setCols: string[] = []; const bindings: unknown[] = [];
-    for (const key of ['fuel_date', 'gallons', 'total_cost', 'cost_per_gallon', 'fuel_type', 'station', 'odometer', 'notes']) {
-      if (Object.prototype.hasOwnProperty.call(body, key)) { setCols.push(`${key} = ?`); bindings.push(body[key] === '' ? null : body[key]); }
+    for (const key of ['fuel_date', 'gallons', 'total_cost', 'cost_per_gallon', 'fuel_type', 'station', 'odometer', 'notes', 'is_full_tank', 'payment_method', 'driver_name', 'location']) {
+      if (Object.prototype.hasOwnProperty.call(body, key)) {
+        setCols.push(`${key} = ?`);
+        // is_full_tank is an INTEGER flag — coerce truthy/empty into 0/1.
+        if (key === 'is_full_tank') bindings.push(body[key] == null || body[key] === '' ? 1 : (body[key] ? 1 : 0));
+        else bindings.push(body[key] === '' ? null : body[key]);
+      }
     }
     if (setCols.length === 0) return c.json({ error: 'No fields to update' }, 400);
     bindings.push(fuelId);
@@ -983,12 +1083,39 @@ fleet.get('/:id/insurance', async (c) => {
   } catch (err) { console.error('GET /fleet/:id/insurance failed:', err); return c.json([]); }
 });
 
+// The FleetCostFormModal posts modal-native field names (premium_amount,
+// effective_from, expires_at) that differ from the live columns (premium,
+// effective_date, expiry_date). Normalize both directions so either the
+// legacy InsuranceModal or the new cost modal persists correctly — skipping
+// this is the classic "saves then vanishes" drop. New cols premium_frequency,
+// deductible, liability_limit, status were added to live D1 this pass.
+function normalizeInsuranceBody(body: Record<string, unknown>): Record<string, unknown> {
+  const pick = (...keys: string[]) => { for (const k of keys) if (body[k] !== undefined) return body[k]; return undefined; };
+  const out: Record<string, unknown> = {
+    carrier: pick('carrier'),
+    policy_number: pick('policy_number'),
+    coverage_type: pick('coverage_type'),
+    coverage_amount: pick('coverage_amount', 'liability_limit'),
+    premium: pick('premium', 'premium_amount'),
+    effective_date: pick('effective_date', 'effective_from'),
+    expiry_date: pick('expiry_date', 'expires_at'),
+    premium_frequency: pick('premium_frequency'),
+    deductible: pick('deductible'),
+    liability_limit: pick('liability_limit'),
+    status: pick('status'),
+    notes: pick('notes'),
+  };
+  // Drop undefined so PUT only updates provided fields.
+  for (const k of Object.keys(out)) if (out[k] === undefined) delete out[k];
+  return out;
+}
+
 fleet.post('/:id/insurance', async (c) => {
   try {
     const vehicleId = Number(c.req.param('id'));
     const db = getDb(c.env);
-    const body = await c.req.json<Record<string, unknown>>();
-    const result = await execute(db, `INSERT INTO fleet_insurance (vehicle_id, carrier, policy_number, coverage_type, coverage_amount, premium, effective_date, expiry_date, notes) VALUES (?,?,?,?,?,?,?,?,?)`, vehicleId, body.carrier, body.policy_number, body.coverage_type, body.coverage_amount, body.premium, body.effective_date, body.expiry_date, body.notes ?? null);
+    const b = normalizeInsuranceBody(await c.req.json<Record<string, unknown>>());
+    const result = await execute(db, `INSERT INTO fleet_insurance (vehicle_id, carrier, policy_number, coverage_type, coverage_amount, premium, effective_date, expiry_date, premium_frequency, deductible, liability_limit, status, notes) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`, vehicleId, b.carrier ?? null, b.policy_number ?? null, b.coverage_type ?? null, b.coverage_amount ?? null, b.premium ?? null, b.effective_date ?? null, b.expiry_date ?? null, b.premium_frequency ?? 'monthly', b.deductible ?? null, b.liability_limit ?? null, b.status ?? 'active', b.notes ?? null);
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_insurance WHERE id = ?', result.meta.last_row_id);
     return c.json(created, 201);
   } catch (err) { console.error('POST /fleet/:id/insurance failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
@@ -998,10 +1125,9 @@ fleet.put('/insurance/:id', async (c) => {
   try {
     const id = Number(c.req.param('id'));
     const db = getDb(c.env);
-    const body = await c.req.json<Record<string, unknown>>();
-    const cols = ['carrier', 'policy_number', 'coverage_type', 'coverage_amount', 'premium', 'effective_date', 'expiry_date', 'notes'];
+    const b = normalizeInsuranceBody(await c.req.json<Record<string, unknown>>());
     const setCols: string[] = []; const bindings: unknown[] = [];
-    for (const key of cols) { if (Object.prototype.hasOwnProperty.call(body, key)) { setCols.push(`${key} = ?`); bindings.push(body[key] === '' ? null : body[key]); } }
+    for (const key of Object.keys(b)) { setCols.push(`${key} = ?`); bindings.push(b[key] === '' ? null : b[key]); }
     if (setCols.length === 0) return c.json({ error: 'No fields to update' }, 400);
     bindings.push(id);
     await execute(db, `UPDATE fleet_insurance SET ${setCols.join(', ')} WHERE id = ?`, ...bindings);
@@ -1055,6 +1181,155 @@ fleet.put('/registration/:id', async (c) => {
 fleet.delete('/registration/:id', async (c) => {
   try { const id = Number(c.req.param('id')); await execute(getDb(c.env), 'DELETE FROM fleet_registration WHERE id = ?', id); return c.json({ success: true }); }
   catch (err) { console.error('DELETE /fleet/registration/:id failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+});
+
+// ═══════════════════════════════════════════════════════════════
+// COST-OF-OWNERSHIP CRUD — Loan / Accessory / Utility
+//
+// Powers the wired Fleet "Costs" tab (FleetCostsTab + FleetCostFormModal).
+// Insurance already had handlers above; these three complete the set.
+// fleet_loans + fleet_utility_costs were created on live D1 this pass;
+// fleet_accessories pre-existed (note its column is `warranty_expiry`, but
+// the modal sends `warranty_until` — mapped below to avoid a silent drop).
+// All wrapped in try/catch returning [] / 500 so a missing column never
+// takes down the tab.
+// ═══════════════════════════════════════════════════════════════
+
+// — Loans —
+fleet.get('/:id/loans', async (c) => {
+  try {
+    const vehicleId = Number(c.req.param('id'));
+    const rows = await query<Record<string, unknown>>(getDb(c.env), 'SELECT * FROM fleet_loans WHERE vehicle_id = ? ORDER BY start_date DESC, id DESC', vehicleId);
+    return c.json(rows);
+  } catch (err) { console.error('GET /fleet/:id/loans failed:', err); return c.json([]); }
+});
+
+fleet.post('/:id/loans', async (c) => {
+  try {
+    const vehicleId = Number(c.req.param('id'));
+    const db = getDb(c.env);
+    const b = await c.req.json<Record<string, unknown>>();
+    const result = await execute(db, `INSERT INTO fleet_loans (vehicle_id, lender, original_amount, current_balance, monthly_payment, interest_rate, term_months, start_date, payoff_date, status, notes) VALUES (?,?,?,?,?,?,?,?,?,?,?)`, vehicleId, b.lender ?? null, b.original_amount ?? null, b.current_balance ?? null, b.monthly_payment ?? null, b.interest_rate ?? null, b.term_months ?? null, b.start_date ?? null, b.payoff_date ?? null, b.status ?? 'active', b.notes ?? null);
+    const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_loans WHERE id = ?', result.meta.last_row_id);
+    return c.json(created, 201);
+  } catch (err) { console.error('POST /fleet/:id/loans failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+});
+
+fleet.put('/loans/:id', async (c) => {
+  try {
+    const id = Number(c.req.param('id'));
+    const db = getDb(c.env);
+    const b = await c.req.json<Record<string, unknown>>();
+    const cols = ['lender', 'original_amount', 'current_balance', 'monthly_payment', 'interest_rate', 'term_months', 'start_date', 'payoff_date', 'status', 'notes'];
+    const setCols: string[] = []; const bindings: unknown[] = [];
+    for (const key of cols) { if (Object.prototype.hasOwnProperty.call(b, key)) { setCols.push(`${key} = ?`); bindings.push(b[key] === '' ? null : b[key]); } }
+    if (setCols.length === 0) return c.json({ error: 'No fields to update' }, 400);
+    bindings.push(id);
+    await execute(db, `UPDATE fleet_loans SET ${setCols.join(', ')} WHERE id = ?`, ...bindings);
+    return c.json({ success: true });
+  } catch (err) { console.error('PUT /fleet/loans/:id failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+});
+
+fleet.delete('/loans/:id', async (c) => {
+  try { const id = Number(c.req.param('id')); await execute(getDb(c.env), 'DELETE FROM fleet_loans WHERE id = ?', id); return c.json({ success: true }); }
+  catch (err) { console.error('DELETE /fleet/loans/:id failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+});
+
+// — Accessories — (modal `warranty_until` → column `warranty_expiry`)
+function normalizeAccessoryBody(body: Record<string, unknown>): Record<string, unknown> {
+  const pick = (...keys: string[]) => { for (const k of keys) if (body[k] !== undefined) return body[k]; return undefined; };
+  const out: Record<string, unknown> = {
+    name: pick('name'),
+    category: pick('category'),
+    installed_date: pick('installed_date'),
+    removed_date: pick('removed_date'),
+    cost: pick('cost'),
+    vendor: pick('vendor'),
+    warranty_expiry: pick('warranty_expiry', 'warranty_until'),
+    serial_number: pick('serial_number'),
+    status: pick('status'),
+    notes: pick('notes'),
+  };
+  for (const k of Object.keys(out)) if (out[k] === undefined) delete out[k];
+  return out;
+}
+
+fleet.get('/:id/accessories', async (c) => {
+  try {
+    const vehicleId = Number(c.req.param('id'));
+    const rows = await query<Record<string, unknown>>(getDb(c.env), 'SELECT * FROM fleet_accessories WHERE vehicle_id = ? ORDER BY installed_date DESC, id DESC', vehicleId);
+    return c.json(rows);
+  } catch (err) { console.error('GET /fleet/:id/accessories failed:', err); return c.json([]); }
+});
+
+fleet.post('/:id/accessories', async (c) => {
+  try {
+    const vehicleId = Number(c.req.param('id'));
+    const db = getDb(c.env);
+    const b = normalizeAccessoryBody(await c.req.json<Record<string, unknown>>());
+    const result = await execute(db, `INSERT INTO fleet_accessories (vehicle_id, name, category, installed_date, removed_date, cost, vendor, warranty_expiry, serial_number, status, notes) VALUES (?,?,?,?,?,?,?,?,?,?,?)`, vehicleId, b.name ?? null, b.category ?? null, b.installed_date ?? null, b.removed_date ?? null, b.cost ?? null, b.vendor ?? null, b.warranty_expiry ?? null, b.serial_number ?? null, b.status ?? 'installed', b.notes ?? null);
+    const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_accessories WHERE id = ?', result.meta.last_row_id);
+    return c.json(created, 201);
+  } catch (err) { console.error('POST /fleet/:id/accessories failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+});
+
+fleet.put('/accessories/:id', async (c) => {
+  try {
+    const id = Number(c.req.param('id'));
+    const db = getDb(c.env);
+    const b = normalizeAccessoryBody(await c.req.json<Record<string, unknown>>());
+    const setCols: string[] = []; const bindings: unknown[] = [];
+    for (const key of Object.keys(b)) { setCols.push(`${key} = ?`); bindings.push(b[key] === '' ? null : b[key]); }
+    if (setCols.length === 0) return c.json({ error: 'No fields to update' }, 400);
+    bindings.push(id);
+    await execute(db, `UPDATE fleet_accessories SET ${setCols.join(', ')} WHERE id = ?`, ...bindings);
+    return c.json({ success: true });
+  } catch (err) { console.error('PUT /fleet/accessories/:id failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+});
+
+fleet.delete('/accessories/:id', async (c) => {
+  try { const id = Number(c.req.param('id')); await execute(getDb(c.env), 'DELETE FROM fleet_accessories WHERE id = ?', id); return c.json({ success: true }); }
+  catch (err) { console.error('DELETE /fleet/accessories/:id failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+});
+
+// — Utility costs —
+fleet.get('/:id/utilities', async (c) => {
+  try {
+    const vehicleId = Number(c.req.param('id'));
+    const rows = await query<Record<string, unknown>>(getDb(c.env), 'SELECT * FROM fleet_utility_costs WHERE vehicle_id = ? ORDER BY period_start DESC, id DESC', vehicleId);
+    return c.json(rows);
+  } catch (err) { console.error('GET /fleet/:id/utilities failed:', err); return c.json([]); }
+});
+
+fleet.post('/:id/utilities', async (c) => {
+  try {
+    const vehicleId = Number(c.req.param('id'));
+    const db = getDb(c.env);
+    const b = await c.req.json<Record<string, unknown>>();
+    const result = await execute(db, `INSERT INTO fleet_utility_costs (vehicle_id, category, provider, cost_amount, cost_frequency, period_start, period_end, notes) VALUES (?,?,?,?,?,?,?,?)`, vehicleId, b.category ?? null, b.provider ?? null, b.cost_amount ?? null, b.cost_frequency ?? 'monthly', b.period_start ?? null, b.period_end ?? null, b.notes ?? null);
+    const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_utility_costs WHERE id = ?', result.meta.last_row_id);
+    return c.json(created, 201);
+  } catch (err) { console.error('POST /fleet/:id/utilities failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+});
+
+fleet.put('/utilities/:id', async (c) => {
+  try {
+    const id = Number(c.req.param('id'));
+    const db = getDb(c.env);
+    const b = await c.req.json<Record<string, unknown>>();
+    const cols = ['category', 'provider', 'cost_amount', 'cost_frequency', 'period_start', 'period_end', 'notes'];
+    const setCols: string[] = []; const bindings: unknown[] = [];
+    for (const key of cols) { if (Object.prototype.hasOwnProperty.call(b, key)) { setCols.push(`${key} = ?`); bindings.push(b[key] === '' ? null : b[key]); } }
+    if (setCols.length === 0) return c.json({ error: 'No fields to update' }, 400);
+    bindings.push(id);
+    await execute(db, `UPDATE fleet_utility_costs SET ${setCols.join(', ')} WHERE id = ?`, ...bindings);
+    return c.json({ success: true });
+  } catch (err) { console.error('PUT /fleet/utilities/:id failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+});
+
+fleet.delete('/utilities/:id', async (c) => {
+  try { const id = Number(c.req.param('id')); await execute(getDb(c.env), 'DELETE FROM fleet_utility_costs WHERE id = ?', id); return c.json({ success: true }); }
+  catch (err) { console.error('DELETE /fleet/utilities/:id failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
 });
 
 // ═══════════════════════════════════════════════════════════════

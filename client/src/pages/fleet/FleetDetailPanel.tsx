@@ -4,6 +4,7 @@ import { parseTimestamp } from '../../utils/dateUtils';
 import {
   Car, Fuel, ClipboardCheck, Radio, BarChart3, Settings, Wrench, X, Clock, Users,
   Archive, RotateCcw, Trash2, Printer, ChevronDown, Circle, AlertTriangle, AlertOctagon,
+  DollarSign,
 } from 'lucide-react';
 import type {
   FleetVehicle, FleetMaintenance, FleetFuelLog, FleetFuelSummary,
@@ -19,12 +20,16 @@ import FleetAnalyticsTab from './tabs/FleetAnalyticsTab';
 import FleetTiresTab from './tabs/FleetTiresTab';
 import FleetDamageTab from './tabs/FleetDamageTab';
 import FleetRecallsTab from './tabs/FleetRecallsTab';
+import FleetCostsTab from './tabs/FleetCostsTab';
+import type { CostCategory } from './modals/FleetCostFormModal';
+import type { FleetLoan, FleetInsurancePolicy, FleetAccessory, FleetUtilityCost, FleetCostSummary } from '../../types';
 import { formatMilitary } from './utils/fleetFormatters';
 import { generateFleetFuelReport } from './utils/fleetFuelReport';
 import { generateFlaggedAuditPdf } from './utils/flaggedAuditPdf';
 import PrintRecordButton from '../../components/PrintRecordButton';
 
-export type DetailTab = 'overview' | 'fuel' | 'inspections' | 'assignments' | 'personnel' | 'analytics' | 'tires' | 'damage' | 'recalls';
+export type DetailTab = 'overview' | 'fuel' | 'costs' | 'inspections' | 'assignments' | 'personnel' | 'analytics' | 'tires' | 'damage' | 'recalls';
+export type CostSubTab = 'loan' | 'insurance' | 'accessory' | 'utility';
 
 const STATUS_LED: Record<FleetVehicleStatus, string> = {
   in_service: 'led-dot led-green', maintenance: 'led-dot led-amber',
@@ -54,6 +59,7 @@ function getExpiryStatus(dateStr?: string): 'ok' | 'expiring' | 'expired' | 'non
 const TABS: { key: DetailTab; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { key: 'overview', label: 'Overview', icon: Car },
   { key: 'fuel', label: 'Fuel', icon: Fuel },
+  { key: 'costs', label: 'Costs', icon: DollarSign },
   { key: 'inspections', label: 'Inspections', icon: ClipboardCheck },
   { key: 'assignments', label: 'Assignments', icon: Radio },
   { key: 'personnel', label: 'Personnel', icon: Users },
@@ -82,6 +88,17 @@ interface Props {
   onNewInspection: () => void;
   onEditFuel?: (log: FleetFuelLog) => void;
   onDeleteFuel?: (log: FleetFuelLog) => void;
+  // Cost-of-ownership tab (Loan / Insurance / Accessory / Utility)
+  loans: FleetLoan[];
+  insurancePolicies: FleetInsurancePolicy[];
+  accessories: FleetAccessory[];
+  utilities: FleetUtilityCost[];
+  costSummary: FleetCostSummary | null;
+  costSubTab: CostSubTab;
+  onCostSubTabChange: (t: CostSubTab) => void;
+  onAddCost: (category: CostCategory) => void;
+  onEditCost: (category: CostCategory, record: any) => void;
+  onDeleteCost: (category: CostCategory, record: any) => void;
   onEditMaintenance?: (record: FleetMaintenance) => void;
   onDeleteMaintenance?: (record: FleetMaintenance) => void;
   onEditInspection?: (inspection: FleetInspection) => void;
@@ -195,7 +212,9 @@ export default function FleetDetailPanel({
   analytics, analyticsLoading, personnelData, personnelLoading,
   activeTab, onTabChange,
   onEditVehicle, onLogMaintenance, onLogFuel, onNewInspection,
-  onEditFuel, onDeleteFuel, onEditMaintenance, onDeleteMaintenance, onEditInspection, onDeleteInspection,
+  onEditFuel, onDeleteFuel,
+  loans, insurancePolicies, accessories, utilities, costSummary, costSubTab, onCostSubTabChange, onAddCost, onEditCost, onDeleteCost,
+  onEditMaintenance, onDeleteMaintenance, onEditInspection, onDeleteInspection,
   onAssignVehicle, onUnassignVehicle, onAddPersonnelNote, onDeletePersonnelNote, onRefreshPersonnel,
   onArchiveVehicle, onUnarchiveVehicle, onDeleteVehicle, isArchived,
   onClose,
@@ -367,6 +386,20 @@ export default function FleetDetailPanel({
                 to:   fuelLogs[0]?.fuel_date,
               },
             })}
+          />
+        )}
+        {activeTab === 'costs' && (
+          <FleetCostsTab
+            loans={loans}
+            insurance={insurancePolicies}
+            accessories={accessories}
+            utilities={utilities}
+            summary={costSummary}
+            subTab={costSubTab}
+            onSubTabChange={onCostSubTabChange}
+            onAdd={onAddCost}
+            onEdit={onEditCost}
+            onDelete={onDeleteCost}
           />
         )}
         {activeTab === 'inspections' && <FleetInspectionsTab inspections={inspections} onNewInspection={onNewInspection} onEditInspection={onEditInspection} onDeleteInspection={onDeleteInspection} />}
