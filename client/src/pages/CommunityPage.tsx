@@ -3,7 +3,7 @@ import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
 import DataTable from '../components/DataTable';
 import StatsCard from '../components/StatsCard';
-import { Users } from 'lucide-react';
+import { Users, Calendar, MessageSquare, Bell } from 'lucide-react';
 
 export default function CommunityPage() {
   const [events, setEvents] = useState<Record<string, unknown>[]>([]);
@@ -23,10 +23,10 @@ export default function CommunityPage() {
     <div className="p-4 space-y-4">
       <PanelTitleBar title="COMMUNITY ENGAGEMENT" icon={Users} />
       <div className="grid grid-cols-4 gap-3">
-        <StatsCard label="Events" value={stats.events} />
-        <StatsCard label="Public Tips" value={stats.tips} />
-        <StatsCard label="Watch Groups" value={stats.watch_groups} />
-        <StatsCard label="Alerts Sent" value={stats.alerts} />
+        <StatsCard icon={Calendar} label="Events" value={stats.events} />
+        <StatsCard icon={MessageSquare} label="Public Tips" value={stats.tips} />
+        <StatsCard icon={Users} label="Watch Groups" value={stats.watch_groups} />
+        <StatsCard icon={Bell} label="Alerts Sent" value={stats.alerts} />
       </div>
       <DataTable
         columns={[
@@ -36,8 +36,8 @@ export default function CommunityPage() {
           { key: 'start_date', label: 'Date' },
           { key: 'status', label: 'Status' },
         ]}
-        rows={events}
-        emptyText="No community events found"
+        data={events}
+        emptyMessage="No community events found"
       />
     </div>
   );

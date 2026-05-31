@@ -3,7 +3,7 @@ import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
 import DataTable from '../components/DataTable';
 import StatsCard from '../components/StatsCard';
-import { Building2 } from 'lucide-react';
+import { Building2, Users, DoorOpen, ClipboardList } from 'lucide-react';
 
 interface Inmate {
   id: number; booking_number: string; last_name: string; first_name: string;
@@ -28,9 +28,9 @@ export default function JailPage() {
     <div className="p-4 space-y-4">
       <PanelTitleBar title="JAIL MANAGEMENT" icon={Building2} />
       <div className="grid grid-cols-3 gap-3">
-        <StatsCard label="Total Inmates" value={stats.total} />
-        <StatsCard label="Currently Housed" value={stats.housed} />
-        <StatsCard label="Booked (Intake)" value={stats.booked} />
+        <StatsCard icon={Users} label="Total Inmates" value={stats.total} />
+        <StatsCard icon={DoorOpen} label="Currently Housed" value={stats.housed} />
+        <StatsCard icon={ClipboardList} label="Booked (Intake)" value={stats.booked} />
       </div>
       <DataTable
         columns={[
@@ -41,8 +41,8 @@ export default function JailPage() {
           { key: 'housing_unit', label: 'Housing' },
           { key: 'booking_date', label: 'Booking Date' },
         ]}
-        rows={inmates}
-        emptyText="No inmates in custody"
+        data={inmates}
+        emptyMessage="No inmates in custody"
       />
     </div>
   );

@@ -3,7 +3,7 @@ import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
 import DataTable from '../components/DataTable';
 import StatsCard from '../components/StatsCard';
-import { ShieldAlert } from 'lucide-react';
+import { ShieldAlert, FileText, Clock, Flag } from 'lucide-react';
 
 interface Complaint {
   id: number; complaint_number: string; complainant_name: string;
@@ -28,9 +28,9 @@ export default function AffairsPage() {
     <div className="p-4 space-y-4">
       <PanelTitleBar title="INTERNAL AFFAIRS" icon={ShieldAlert} />
       <div className="grid grid-cols-3 gap-3">
-        <StatsCard label="Total Complaints" value={stats.total_complaints} />
-        <StatsCard label="Open Complaints" value={stats.open_complaints} />
-        <StatsCard label="Active Flags" value={stats.unresolved_flags} />
+        <StatsCard icon={FileText} label="Total Complaints" value={stats.total_complaints} />
+        <StatsCard icon={Clock} label="Open Complaints" value={stats.open_complaints} />
+        <StatsCard icon={Flag} label="Active Flags" value={stats.unresolved_flags} />
       </div>
       <DataTable
         columns={[
@@ -41,8 +41,8 @@ export default function AffairsPage() {
           { key: 'status', label: 'Status' },
           { key: 'created_at', label: 'Filed' },
         ]}
-        rows={complaints}
-        emptyText="No complaints found"
+        data={complaints}
+        emptyMessage="No complaints found"
       />
     </div>
   );

@@ -3,7 +3,7 @@ import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
 import DataTable from '../components/DataTable';
 import StatsCard from '../components/StatsCard';
-import { Share2 } from 'lucide-react';
+import { Share2, Building2, FileText, ArrowRightLeft } from 'lucide-react';
 
 export default function InteragencyPage() {
   const [partners, setPartners] = useState<Record<string, unknown>[]>([]);
@@ -23,9 +23,9 @@ export default function InteragencyPage() {
     <div className="p-4 space-y-4">
       <PanelTitleBar title="INTERAGENCY DATA SHARING" icon={Share2} />
       <div className="grid grid-cols-3 gap-3">
-        <StatsCard label="Partner Agencies" value={stats.partners} />
-        <StatsCard label="Active Agreements" value={stats.active_agreements} />
-        <StatsCard label="Data Exchanges" value={stats.total_exchanges} />
+        <StatsCard icon={Building2} label="Partner Agencies" value={stats.partners} />
+        <StatsCard icon={FileText} label="Active Agreements" value={stats.active_agreements} />
+        <StatsCard icon={ArrowRightLeft} label="Data Exchanges" value={stats.total_exchanges} />
       </div>
       <DataTable
         columns={[
@@ -35,8 +35,8 @@ export default function InteragencyPage() {
           { key: 'data_share_level', label: 'Share Level' },
           { key: 'status', label: 'Status' },
         ]}
-        rows={partners}
-        emptyText="No interagency partners found"
+        data={partners}
+        emptyMessage="No interagency partners found"
       />
     </div>
   );

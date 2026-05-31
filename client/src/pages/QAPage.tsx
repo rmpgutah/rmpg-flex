@@ -3,7 +3,7 @@ import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
 import DataTable from '../components/DataTable';
 import StatsCard from '../components/StatsCard';
-import { CheckCircle } from 'lucide-react';
+import { CheckCircle, Star, ThumbsUp, Users } from 'lucide-react';
 
 export default function QAPage() {
   const [reviews, setReviews] = useState<Record<string, unknown>[]>([]);
@@ -23,10 +23,10 @@ export default function QAPage() {
     <div className="p-4 space-y-4">
       <PanelTitleBar title="QUALITY ASSURANCE" icon={CheckCircle} />
       <div className="grid grid-cols-4 gap-3">
-        <StatsCard label="Total Reviews" value={stats.total_reviews} />
-        <StatsCard label="Avg Score" value={`${stats.avg_review_score}%`} />
-        <StatsCard label="Avg Rating" value={`${stats.avg_survey_rating}/5`} />
-        <StatsCard label="Surveys" value={stats.total_surveys} />
+        <StatsCard icon={CheckCircle} label="Total Reviews" value={stats.total_reviews} />
+        <StatsCard icon={Star} label="Avg Score" value={`${stats.avg_review_score}%`} />
+        <StatsCard icon={ThumbsUp} label="Avg Rating" value={`${stats.avg_survey_rating}/5`} />
+        <StatsCard icon={Users} label="Surveys" value={stats.total_surveys} />
       </div>
       <DataTable
         columns={[
@@ -37,8 +37,8 @@ export default function QAPage() {
           { key: 'status', label: 'Status' },
           { key: 'created_at', label: 'Created' },
         ]}
-        rows={reviews}
-        emptyText="No QA reviews found"
+        data={reviews}
+        emptyMessage="No QA reviews found"
       />
     </div>
   );

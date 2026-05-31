@@ -3,7 +3,7 @@ import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
 import DataTable from '../components/DataTable';
 import StatsCard from '../components/StatsCard';
-import { Package } from 'lucide-react';
+import { Package, Wrench, Crosshair, Dog } from 'lucide-react';
 
 export default function AssetsPage() {
   const [assets, setAssets] = useState<Record<string, unknown>[]>([]);
@@ -23,26 +23,21 @@ export default function AssetsPage() {
     <div className="p-4 space-y-4">
       <PanelTitleBar title="ASSET MANAGEMENT" icon={Package} />
       <div className="grid grid-cols-4 gap-3">
-        <StatsCard label="Total Assets" value={stats.totalAssets} />
-        <StatsCard label="Issued" value={stats.issuedAssets} />
-        <StatsCard label="Weapons" value={stats.totalWeapons} />
-        <StatsCard label="K9 Units" value={stats.activeK9} />
+        <StatsCard icon={Package} label="Total Assets" value={stats.totalAssets} />
+        <StatsCard icon={Wrench} label="Issued" value={stats.issuedAssets} />
+        <StatsCard icon={Crosshair} label="Weapons" value={stats.totalWeapons} />
+        <StatsCard icon={Dog} label="K9 Units" value={stats.activeK9} />
       </div>
-      <div className="grid grid-cols-3 gap-4">
-        <div>
-          <h3 className="text-[12px] font-semibold text-[#888888] mb-2 uppercase tracking-wide">Equipment</h3>
-          <DataTable
-            columns={[
-              { key: 'asset_tag', label: 'Tag' },
-              { key: 'asset_type', label: 'Type' },
-              { key: 'make', label: 'Make' },
-              { key: 'status', label: 'Status' },
-            ]}
-            rows={assets.slice(0, 20)}
-            emptyText="No assets registered"
-          />
-        </div>
-      </div>
+      <DataTable
+        columns={[
+          { key: 'asset_tag', label: 'Tag' },
+          { key: 'asset_type', label: 'Type' },
+          { key: 'make', label: 'Make' },
+          { key: 'status', label: 'Status' },
+        ]}
+        data={assets}
+        emptyMessage="No assets registered"
+      />
     </div>
   );
 }

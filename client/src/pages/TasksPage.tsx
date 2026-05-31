@@ -3,7 +3,7 @@ import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
 import DataTable from '../components/DataTable';
 import StatsCard from '../components/StatsCard';
-import { ClipboardList } from 'lucide-react';
+import { ClipboardList, Clock, AlertTriangle } from 'lucide-react';
 
 interface Task {
   id: number; task_title: string; priority: string; status: string;
@@ -28,9 +28,9 @@ export default function TasksPage() {
     <div className="p-4 space-y-4">
       <PanelTitleBar title="TASK MANAGEMENT" icon={ClipboardList} />
       <div className="grid grid-cols-3 gap-3">
-        <StatsCard label="Total Tasks" value={stats.total} />
-        <StatsCard label="Pending" value={stats.pending} />
-        <StatsCard label="Overdue" value={stats.overdue} />
+        <StatsCard icon={ClipboardList} label="Total Tasks" value={stats.total} />
+        <StatsCard icon={Clock} label="Pending" value={stats.pending} />
+        <StatsCard icon={AlertTriangle} label="Overdue" value={stats.overdue} />
       </div>
       <DataTable
         columns={[
@@ -40,8 +40,8 @@ export default function TasksPage() {
           { key: 'assigned_to_name', label: 'Assigned To' },
           { key: 'due_date', label: 'Due Date' },
         ]}
-        rows={tasks}
-        emptyText="No tasks found"
+        data={tasks}
+        emptyMessage="No tasks found"
       />
     </div>
   );

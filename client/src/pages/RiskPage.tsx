@@ -3,7 +3,7 @@ import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
 import DataTable from '../components/DataTable';
 import StatsCard from '../components/StatsCard';
-import { Shield } from 'lucide-react';
+import { Shield, AlertTriangle, ClipboardCheck, FileText } from 'lucide-react';
 
 export default function RiskPage() {
   const [assessments, setAssessments] = useState<Record<string, unknown>[]>([]);
@@ -23,9 +23,9 @@ export default function RiskPage() {
     <div className="p-4 space-y-4">
       <PanelTitleBar title="RISK MANAGEMENT" icon={Shield} />
       <div className="grid grid-cols-3 gap-3">
-        <StatsCard label="Active Assessments" value={stats.active_assessments} />
-        <StatsCard label="Pending Inspections" value={stats.pending_inspections} />
-        <StatsCard label="Open Claims" value={stats.open_claims} />
+        <StatsCard icon={AlertTriangle} label="Active Assessments" value={stats.active_assessments} />
+        <StatsCard icon={ClipboardCheck} label="Pending Inspections" value={stats.pending_inspections} />
+        <StatsCard icon={FileText} label="Open Claims" value={stats.open_claims} />
       </div>
       <DataTable
         columns={[
@@ -36,8 +36,8 @@ export default function RiskPage() {
           { key: 'assessed_date', label: 'Date' },
           { key: 'status', label: 'Status' },
         ]}
-        rows={assessments}
-        emptyText="No risk assessments found"
+        data={assessments}
+        emptyMessage="No risk assessments found"
       />
     </div>
   );

@@ -3,7 +3,7 @@ import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
 import DataTable from '../components/DataTable';
 import StatsCard from '../components/StatsCard';
-import { GraduationCap } from 'lucide-react';
+import { GraduationCap, BookOpen, Award, Clock } from 'lucide-react';
 
 export default function TrainingManagementPage() {
   const [courses, setCourses] = useState<Record<string, unknown>[]>([]);
@@ -23,10 +23,10 @@ export default function TrainingManagementPage() {
     <div className="p-4 space-y-4">
       <PanelTitleBar title="TRAINING MANAGEMENT" icon={GraduationCap} />
       <div className="grid grid-cols-4 gap-3">
-        <StatsCard label="Courses" value={stats.courses} />
-        <StatsCard label="Enrollments" value={stats.enrollments} />
-        <StatsCard label="Active Certs" value={stats.active_certs} />
-        <StatsCard label="Expiring" value={stats.expiring_certs} />
+        <StatsCard icon={BookOpen} label="Courses" value={stats.courses} />
+        <StatsCard icon={GraduationCap} label="Enrollments" value={stats.enrollments} />
+        <StatsCard icon={Award} label="Active Certs" value={stats.active_certs} />
+        <StatsCard icon={Clock} label="Expiring" value={stats.expiring_certs} />
       </div>
       <DataTable
         columns={[
@@ -36,8 +36,8 @@ export default function TrainingManagementPage() {
           { key: 'duration_hours', label: 'Hours' },
           { key: 'instructor_name', label: 'Instructor' },
         ]}
-        rows={courses}
-        emptyText="No training courses found"
+        data={courses}
+        emptyMessage="No training courses found"
       />
     </div>
   );

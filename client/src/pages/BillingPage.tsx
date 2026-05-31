@@ -3,7 +3,7 @@ import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
 import DataTable from '../components/DataTable';
 import StatsCard from '../components/StatsCard';
-import { DollarSign } from 'lucide-react';
+import { DollarSign, FileText, Clock, Receipt } from 'lucide-react';
 
 export default function BillingPage() {
   const [invoices, setInvoices] = useState<Record<string, unknown>[]>([]);
@@ -23,10 +23,10 @@ export default function BillingPage() {
     <div className="p-4 space-y-4">
       <PanelTitleBar title="BILLING & FINANCIAL" icon={DollarSign} />
       <div className="grid grid-cols-4 gap-3">
-        <StatsCard label="Active Contracts" value={stats.active_contracts} />
-        <StatsCard label="Outstanding" value={stats.outstanding_invoices} />
-        <StatsCard label="Total Owed" value={`$${(stats.total_outstanding_amount || 0).toLocaleString()}`} />
-        <StatsCard label="Pending Expenses" value={stats.pending_expenses} />
+        <StatsCard icon={FileText} label="Active Contracts" value={stats.active_contracts} />
+        <StatsCard icon={Clock} label="Outstanding" value={stats.outstanding_invoices} />
+        <StatsCard icon={DollarSign} label="Total Owed" value={`$${(stats.total_outstanding_amount || 0).toLocaleString()}`} />
+        <StatsCard icon={Receipt} label="Pending Expenses" value={stats.pending_expenses} />
       </div>
       <DataTable
         columns={[
@@ -37,8 +37,8 @@ export default function BillingPage() {
           { key: 'status', label: 'Status' },
           { key: 'issue_date', label: 'Issued' },
         ]}
-        rows={invoices}
-        emptyText="No invoices found"
+        data={invoices}
+        emptyMessage="No invoices found"
       />
     </div>
   );

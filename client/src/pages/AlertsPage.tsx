@@ -3,7 +3,7 @@ import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
 import DataTable from '../components/DataTable';
 import StatsCard from '../components/StatsCard';
-import { Megaphone } from 'lucide-react';
+import { Megaphone, FileText, Send, CheckCircle } from 'lucide-react';
 
 export default function AlertsPage() {
   const [templates, setTemplates] = useState<Record<string, unknown>[]>([]);
@@ -23,9 +23,9 @@ export default function AlertsPage() {
     <div className="p-4 space-y-4">
       <PanelTitleBar title="MASS NOTIFICATION" icon={Megaphone} />
       <div className="grid grid-cols-3 gap-3">
-        <StatsCard label="Templates" value={stats.templates} />
-        <StatsCard label="Batches" value={stats.batches} />
-        <StatsCard label="Sent" value={stats.sent_batches} />
+        <StatsCard icon={FileText} label="Templates" value={stats.templates} />
+        <StatsCard icon={Send} label="Batches" value={stats.batches} />
+        <StatsCard icon={CheckCircle} label="Sent" value={stats.sent_batches} />
       </div>
       <DataTable
         columns={[
@@ -35,8 +35,8 @@ export default function AlertsPage() {
           { key: 'category', label: 'Category' },
           { key: 'created_at', label: 'Created' },
         ]}
-        rows={templates}
-        emptyText="No notification templates"
+        data={templates}
+        emptyMessage="No notification templates"
       />
     </div>
   );
