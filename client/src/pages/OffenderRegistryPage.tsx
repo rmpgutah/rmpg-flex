@@ -399,7 +399,7 @@ export default function OffenderRegistryPage() {
         </div>
       )}
       {/* ── Left Panel ── */}
-      <div className={`flex flex-col ${isMobile ? 'h-1/2' : 'w-[400px]'} border-r border-rmpg-700`}>
+      <div className={`flex flex-col min-h-0 ${isMobile ? 'h-1/2' : 'w-[400px]'} border-r border-rmpg-700`}>
         <PanelTitleBar title="Known Offender Registry" icon={UserX}>
           <ExportButton exportUrl="/api/offender-registry/export/csv" exportFilename="offender_alerts_export.csv" />
           <button type="button" onClick={() => { clearAllErrors(); setFormData({ ...EMPTY_FORM }); setSelectedPerson(null); setPersonSearch(''); setFormOpen(true); snapshotForm(); }} className="toolbar-btn toolbar-btn-primary print:hidden">

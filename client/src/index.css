@@ -161,7 +161,12 @@
 .flex-1.overflow-y-auto,
 .flex-1.overflow-x-auto,
 .flex-1.overflow-hidden,
-.flex-1.overflow-scroll {
+.flex-1.overflow-scroll,
+/* A flex-1 column wrapper is meant to flex/shrink within its parent; without
+   min-height:0 its auto floor lets a tall child push it past the viewport so
+   the inner scroll pane never activates. Covers two-pane "list + detail"
+   layouts whose intermediate wrapper carries no overflow-* class of its own. */
+.flex-1.flex.flex-col {
   min-height: 0;
 }
 

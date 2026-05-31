@@ -451,7 +451,7 @@ export default function CourtTrackerPage() {
   return (
     <div className={`h-full flex ${isMobile ? 'flex-col' : ''}`}>
       {/* Left Panel */}
-      <div className={`flex flex-col ${isMobile ? 'h-1/2' : 'w-[400px]'} border-r border-rmpg-700`}>
+      <div className={`flex flex-col min-h-0 ${isMobile ? 'h-1/2' : 'w-[400px]'} border-r border-rmpg-700`}>
         <PanelTitleBar title="Court / Legal Tracker" icon={Gavel}>
           <button type="button" onClick={() => setCitationSearchOpen(true)} className="toolbar-btn text-[10px]">
             <FileText style={{ width: 11, height: 11 }} /> From Citation

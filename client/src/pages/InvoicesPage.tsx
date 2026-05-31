@@ -1170,7 +1170,7 @@ export default function InvoicesPage() {
       {/* Main content area */}
       <div className="flex-1 flex overflow-hidden">
         {/* Left: invoice list */}
-        <div className="flex flex-col w-[55%] border-r border-[#2b2b2b] overflow-hidden">
+        <div className="flex flex-col min-h-0 w-[55%] border-r border-[#2b2b2b] overflow-hidden">
           <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
             {loading ? (
               <div className="flex items-center justify-center gap-2 h-32"><Loader2 size={20} className="animate-spin text-brand-400" /><span className="text-xs text-rmpg-400">Loading invoices...</span></div>

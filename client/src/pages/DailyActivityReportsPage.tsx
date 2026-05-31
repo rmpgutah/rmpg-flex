@@ -212,7 +212,7 @@ export default function DailyActivityReportsPage() {
         </div>
       )}
       {/* ── Left Panel ── */}
-      <div className={`flex flex-col ${isMobile ? 'h-1/2' : 'w-[380px]'} border-r border-rmpg-700`}>
+      <div className={`flex flex-col min-h-0 ${isMobile ? 'h-1/2' : 'w-[380px]'} border-r border-rmpg-700`}>
         <PanelTitleBar title="Daily Activity Reports" icon={ClipboardCheck}>
           <ExportButton exportUrl="/api/dar/export/csv" exportFilename="daily_activity_reports_export.csv" />
           <IconButton onClick={() => fetchDars({ silent: true })} className="toolbar-btn print:hidden" title="Refresh (R)" aria-label="Refresh">

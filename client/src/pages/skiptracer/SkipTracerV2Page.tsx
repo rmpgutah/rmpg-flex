@@ -834,7 +834,7 @@ export default function SkipTracerV2Page() {
 
   // ─── Search Panel (left side for search tab) ──────────────
   const searchPanel = (
-    <div className={`flex flex-col ${isMobile ? 'w-full' : 'w-[380px] min-w-[380px]'} border-r border-[#1a1a1a] bg-[#141414]`}>
+    <div className={`flex flex-col min-h-0 ${isMobile ? 'w-full' : 'w-[380px] min-w-[380px]'} border-r border-[#1a1a1a] bg-[#141414]`}>
       <PanelTitleBar title="MicroBilt" icon={Search} statusLed="blue" ledPulse={loading}>
         {result && (
           <span className="text-[9px] font-mono text-[#556677]">

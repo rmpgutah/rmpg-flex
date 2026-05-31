@@ -203,7 +203,7 @@ export default function FleetDetailPanel({
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin'; // Admin God Mode
   return (
-    <div className="flex-1 flex flex-col overflow-hidden">
+    <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
       {/* Detail header */}
       <div className="flex-shrink-0 px-4 py-3 border-b border-rmpg-700 flex items-start justify-between bg-surface-sunken transition-colors duration-200">
         <div>
