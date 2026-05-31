@@ -732,7 +732,7 @@ export default function FleetPage() {
       setLoans(lnA); setInsurancePolicies(insA); setAccessories(accA); setUtilities(utilA);
       recomputeCostSummary(lnA, insA, accA, utilA);
       // Cost-per-mile feeds the TCO/mile stat; fetch if not already loaded.
-      if (!costPerMile) fetchCostPerMile(id);
+      if (!costPerMile) loadCostPerMile(id);
     } catch (err) {
       console.error('Failed to fetch cost data:', err);
     }
@@ -813,10 +813,17 @@ export default function FleetPage() {
       gallons: log.gallons != null ? String(log.gallons) : '',
       cost_per_gallon: log.cost_per_gallon != null ? String(log.cost_per_gallon) : '',
       total_cost: log.total_cost != null ? String(log.total_cost) : '',
-      odometer_reading: log.odometer_reading != null ? String(log.odometer_reading) : '',
+      odometer_reading: (log as any).odometer != null ? String((log as any).odometer)
+        : (log.odometer_reading != null ? String(log.odometer_reading) : ''),
       fuel_type: log.fuel_type,
       station: log.station || '',
       notes: log.notes || '',
+      // Enhanced fields — legacy rows predate these; default full tank so
+      // their MPG still counts, blanks for the rest.
+      is_full_tank: (log as any).is_full_tank == null ? true : !!(log as any).is_full_tank,
+      payment_method: (log as any).payment_method || '',
+      driver_name: (log as any).driver_name || '',
+      location: (log as any).location || '',
     });
     setEditingFuelId(log.id);
     setModal('edit_fuel');
