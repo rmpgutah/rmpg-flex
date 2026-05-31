@@ -89,7 +89,7 @@ export default function AssetsPage() {
                   <input className="input-dark mt-1" value={formData.asset_tag || ''} onChange={e => setFormData({...formData, asset_tag: e.target.value})} autoFocus /></div>
                 <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Type</label>
                   <select className="select-dark mt-1" value={formData.asset_type || 'other'} onChange={e => setFormData({...formData, asset_type: e.target.value})}>
-                    {['weapon','body_camera','radio','taserr','computer','vehicle_accessory','uniform','ppe','k9_equipment','other'].map(t=><option key={t} value={t}>{t}</option>)}
+                    {['weapon','body_camera','radio','taser','computer','vehicle_accessory','uniform','ppe','k9_equipment','other'].map(t=><option key={t} value={t}>{t}</option>)}
                   </select></div>
               </div>
               <div className="grid grid-cols-2 gap-3">

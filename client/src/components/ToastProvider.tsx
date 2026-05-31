@@ -70,7 +70,7 @@ interface ToastItemProps {
   onDismiss: (id: string) => void;
 }
 
-const ToastItem: React.FC<ToastItemProps> = ({ toast, onDismiss }) => {
+const ToastItem = ({ toast, onDismiss }: ToastItemProps) => {
   const [progress, setProgress] = useState(100);
   const [isExiting, setIsExiting] = useState(false);
   const dismissTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -143,10 +143,7 @@ const ToastItem: React.FC<ToastItemProps> = ({ toast, onDismiss }) => {
   );
 };
 
-const ToastContainer: React.FC<{ toasts: Toast[]; onDismiss: (id: string) => void }> = ({
-  toasts,
-  onDismiss,
-}) => {
+const ToastContainer = ({ toasts, onDismiss }: { toasts: Toast[]; onDismiss: (id: string) => void }) => {
   return createPortal(
     <div className="fixed top-[130px] right-4 z-[9999] flex flex-col gap-2 pointer-events-none">
       <style>{`

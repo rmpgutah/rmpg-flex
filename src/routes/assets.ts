@@ -25,6 +25,8 @@ function requireRole(c: { get: (k: 'user') => { role: string } | undefined }, ..
 assets.get('/inventory', async (c) => {
   try {
     const db = getDb(c.env);
+    const tableCheck = await queryFirst<{ n: number }>(db, "SELECT COUNT(*) as n FROM sqlite_master WHERE type='table' AND name='asset_inventory'");
+    if (!tableCheck?.n) return c.json({ data: [], pagination: { page: 1, per_page: 50, total: 0, totalPages: 0 } });
     const q = c.req.query.bind(c.req);
     const conditions: string[] = ['1=1'];
     const params: unknown[] = [];
@@ -86,6 +88,21 @@ assets.put('/inventory/:id', async (c) => {
     return c.json({ data: updated });
   } catch (err) {
     return c.json({ error: 'Failed to update asset' }, 500);
+  }
+});
+
+assets.delete('/inventory/:id', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id'), 10);
+    if (isNaN(id)) return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
+    const result = await execute(db, 'DELETE FROM asset_inventory WHERE id = ?', id);
+    if (result.meta.changes === 0) return c.json({ error: 'Asset not found', code: 'NOT_FOUND' }, 404);
+    return c.json({ success: true });
+  } catch (err) {
+    return c.json({ error: 'Failed to delete asset', code: 'DELETE_ERROR' }, 500);
   }
 });
 
@@ -288,6 +305,8 @@ assets.post('/k9', async (c) => {
 assets.get('/stats', async (c) => {
   try {
     const db = getDb(c.env);
+    const assetTable = await queryFirst<{ n: number }>(db, "SELECT COUNT(*) as n FROM sqlite_master WHERE type='table' AND name='asset_inventory'");
+    if (!assetTable?.n) return c.json({ total_assets: 0, assigned_assets: 0, available_assets: 0, total_weapons: 0, total_ammo: 0, active_k9: 0 });
     const totalAssets = (await queryFirst<{ count: number }>(db, 'SELECT COUNT(*) as count FROM asset_inventory'))?.count ?? 0;
     const issuedAssets = (await queryFirst<{ count: number }>(db, "SELECT COUNT(*) as count FROM asset_inventory WHERE status = 'issued'"))?.count ?? 0;
     const totalWeapons = (await queryFirst<{ count: number }>(db, 'SELECT COUNT(*) as count FROM weapon_inventory'))?.count ?? 0;

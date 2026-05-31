@@ -1514,13 +1514,12 @@ export default function MapPage() {
     const map = mapInstanceRef.current;
     if (!map || !mapLoaded) return;
 
-    // Skip heatmap rendering when no data or heatmap is off
-    if (!showHeatmap || heatmapData.length === 0) {
-      if (map.getLayer('rmpg-heatmap-layer')) map.removeLayer('rmpg-heatmap-layer');
-      if (map.getSource('rmpg-heatmap')) map.removeSource('rmpg-heatmap');
-      heatmapLayerRef.current = null;
-      return;
-    }
+    // Remove existing heatmap source and layer
+    if (map.getLayer('rmpg-heatmap-layer')) map.removeLayer('rmpg-heatmap-layer');
+    if (map.getSource('rmpg-heatmap')) map.removeSource('rmpg-heatmap');
+
+    // Skip heatmap rendering when no data
+    if (!showHeatmap || heatmapData.length === 0) return;
 
     // Build weighted GeoJSON data points for heatmap
     const weightedFeatures = heatmapData
@@ -1598,7 +1597,13 @@ export default function MapPage() {
     } catch (err) {
       console.warn('[MapPage] Error creating heatmap layer:', err);
     }
-  }, [showHeatmap, heatmapData, heatmapMode, mapLoaded, mapStyle]);
+
+    return () => {
+      if (map.getLayer('rmpg-heatmap-layer')) map.removeLayer('rmpg-heatmap-layer');
+      if (map.getSource('rmpg-heatmap')) map.removeSource('rmpg-heatmap');
+      heatmapLayerRef.current = null;
+    };
+  }, [showHeatmap, heatmapData, heatmapMode, mapLoaded]);
 
   // ============================================================
   // Unit-to-Call Tracking Lines

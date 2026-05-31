@@ -316,7 +316,7 @@ export default function VehicleFormModal({
           {/* Plate / State */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <FormField label="Plate Number">
-              <input name="plate_number" type="text" className="input-dark mt-1" value={form.plate_number} onChange={handleChange} />
+              <input name="plate_number" type="text" required className="input-dark mt-1" value={form.plate_number} onChange={handleChange} />
             </FormField>
             <FormField label="State">
               <select name="state" className="select-dark mt-1" value={form.state} onChange={handleChange}>
@@ -334,7 +334,7 @@ export default function VehicleFormModal({
               </select>
             </FormField>
             <FormField label="Model">
-              <input name="model" type="text" className="input-dark mt-1" value={form.model} onChange={handleChange} />
+              <input name="model" type="text" required className="input-dark mt-1" value={form.model} onChange={handleChange} />
             </FormField>
             <FormField label="Year">
               <input name="year" type="number" min="1900" max="2030" className="input-dark mt-1" placeholder="e.g. 2024" value={form.year} onChange={handleChange} />
@@ -374,7 +374,7 @@ export default function VehicleFormModal({
 
           {/* VIN */}
           <FormField label="VIN">
-            <input name="vin" type="text" maxLength={17} className="input-dark mt-1 font-mono uppercase" placeholder="17-character VIN" value={form.vin} onChange={handleChange} pattern="[A-HJ-NPR-Za-hj-npr-z0-9]{17}" title="VIN must be 17 alphanumeric characters (no I, O, or Q)" />
+            <input name="vin" type="text" required maxLength={17} className="input-dark mt-1 font-mono uppercase" placeholder="17-character VIN" value={form.vin} onChange={handleChange} pattern="[A-HJ-NPR-Za-hj-npr-z0-9]{17}" title="VIN must be 17 alphanumeric characters (no I, O, or Q)" />
           </FormField>
         </>
       )}
