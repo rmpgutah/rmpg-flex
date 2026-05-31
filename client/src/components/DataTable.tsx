@@ -76,7 +76,7 @@ function SortIndicator({ active, dir }: { active: boolean; dir?: 'asc' | 'desc' 
 }
 
 // ── Main Component ────────────────────────────────────────────
-export default function DataTable<T>({
+function DataTable<T>({
   columns,
   data,
   loading = false,
@@ -209,3 +209,5 @@ export default function DataTable<T>({
     </div>
   );
 }
+
+export default React.memo(DataTable) as typeof DataTable;

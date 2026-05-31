@@ -13,7 +13,7 @@ import { apiFetch } from './useApi';
 export interface Certification { id: string; officerId: string; name: string; issuingAuthority: string; issuedDate: string; expirationDate: string; status: 'active'|'expiring'|'expired'; renewalRequired: boolean; renewalHours: number; }
 export function useCertificationTracking(officerId?: string) {
   const [certs, setCerts] = useState<Certification[]>([]); const [loading, setLoading] = useState(false);
-  const load = useCallback(async () => { setLoading(true); try { const q = officerId ? `?officerId=${officerId}` : ''; const r = await apiFetch<Certification[]>(`/personnel/certifications${q}`); if (r) setCerts(r); } catch {} setLoading(false); }, [officerId]);
+  const load = useCallback(async () => { setLoading(true); try { const q = officerId ? `?officerId=${officerId}` : ''; const r = await apiFetch<Certification[]>(`/personnel/certifications${q}`); if (r) setCerts(r); } catch (err) { console.warn('[useCertificationTracking] load failed:', err); } setLoading(false); }, [officerId]);
   const expiring = useMemo(() => certs.filter(c => c.status === 'expiring'), [certs]);
   const expired = useMemo(() => certs.filter(c => c.status === 'expired'), [certs]);
   return { certs, loading, load, expiring, expired };

@@ -1,45 +1,35 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
 import DataTable from '../components/DataTable';
 import StatsCard from '../components/StatsCard';
-import { DollarSign, FileText, Clock, Receipt } from 'lucide-react';
+import { DollarSign, FileText, Clock, CheckCircle, AlertTriangle, RefreshCw } from 'lucide-react';
 
 export default function BillingPage() {
   const [invoices, setInvoices] = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState({ active_contracts: 0, outstanding_invoices: 0, total_outstanding_amount: 0, pending_expenses: 0 });
+  const [error, setError] = useState<string | null>(null);
+  const [stats, setStats] = useState({ totalInvoices: 0, unpaid: 0, revenueThisMonth: 0 });
 
-  useEffect(() => {
+  const load = useCallback(() => {
+    setLoading(true); setError(null);
     Promise.all([
       apiFetch<{ data: Record<string, unknown>[] }>('/billing/invoices').then(r => setInvoices(r.data || [])),
-      apiFetch<{ active_contracts: number; outstanding_invoices: number; total_outstanding_amount: number; pending_expenses: number }>('/billing/stats').then(r => setStats(r)),
-    ]).catch(console.error).finally(() => setLoading(false));
+      apiFetch<{ totalInvoices: number; unpaid: number; revenueThisMonth: number }>('/billing/stats').then(r => setStats(r)),
+    ]).catch(() => setError('Failed to load billing data.')).finally(() => setLoading(false));
   }, []);
 
-  if (loading) return <div className="p-6 text-[#888888]">Loading billing records...</div>;
+  useEffect(() => { load(); }, [load]);
+
+  if (error) return <div className="flex flex-col items-center justify-center py-20 px-4 text-center"><AlertTriangle size={28} color="#ef4444" style={{ opacity: 0.5, marginBottom: 12 }} /><p className="text-[10px] text-[#fca5a5] mb-3">{error}</p><button onClick={load} className="btn-gold flex items-center gap-1.5"><RefreshCw size={12} />Retry</button></div>;
 
   return (
     <div className="p-4 space-y-4">
-      <PanelTitleBar title="BILLING & FINANCIAL" icon={DollarSign} />
-      <div className="grid grid-cols-4 gap-3">
-        <StatsCard icon={FileText} label="Active Contracts" value={stats.active_contracts} />
-        <StatsCard icon={Clock} label="Outstanding" value={stats.outstanding_invoices} />
-        <StatsCard icon={DollarSign} label="Total Owed" value={`$${(stats.total_outstanding_amount || 0).toLocaleString()}`} />
-        <StatsCard icon={Receipt} label="Pending Expenses" value={stats.pending_expenses} />
-      </div>
-      <DataTable
-        columns={[
-          { key: 'invoice_number', label: 'Invoice #' },
-          { key: 'client_name', label: 'Client' },
-          { key: 'total_amount', label: 'Total' },
-          { key: 'paid_amount', label: 'Paid' },
-          { key: 'status', label: 'Status' },
-          { key: 'issue_date', label: 'Issued' },
-        ]}
-        data={invoices}
-        emptyMessage="No invoices found"
-      />
+      <PanelTitleBar title="BILLING" icon={DollarSign} />
+      {loading ? <div className="space-y-3"><div className="grid grid-cols-3 gap-3">{Array(3).fill(0).map((_,i)=><div key={i} className="h-16 bg-[#0a0a0a] border border-[#1a1a1a] skeleton-block" />)}</div><div className="h-48 bg-[#0a0a0a] border border-[#1a1a1a] skeleton-block" /></div> : <>
+        <div className="grid grid-cols-3 gap-3"><StatsCard icon={FileText} label="Invoices" value={stats.totalInvoices} /><StatsCard icon={Clock} label="Unpaid" value={stats.unpaid} /><StatsCard icon={CheckCircle} label="Revenue (MTD)" value={`$${(stats.revenueThisMonth || 0).toLocaleString()}`} /></div>
+        <DataTable columns={[{ key: 'invoice_number', label: 'Invoice #' },{ key: 'client_name', label: 'Client' },{ key: 'amount', label: 'Amount' },{ key: 'status', label: 'Status' },{ key: 'due_date', label: 'Due' }]} data={invoices} emptyMessage="No invoices" />
+      </>}
     </div>
   );
 }

@@ -13,7 +13,7 @@ import { apiFetch } from './useApi';
 export interface IAComplaint { id: string; complainantName: string; complainantContact: string; complaintType: 'excessive_force'|'discourtesy'|'harassment'|'improper_procedure'|'misconduct'|'ethics'|'discrimination'|'other'; officerInvolved: string; dateOfIncident: string; location: string; description: string; witnesses: string[]; evidence: string[]; status: 'submitted'|'screening'|'investigation'|'review'|'sustained'|'not_sustained'|'exonerated'|'unfounded'|'closed'; priority: 'routine'|'priority'|'critical'; assignedTo: string|null; }
 export function useIAComplaints() {
   const [complaints, setComplaints] = useState<IAComplaint[]>([]); const [loading, setLoading] = useState(false);
-  const load = useCallback(async () => { setLoading(true); try { const r = await apiFetch<IAComplaint[]>('/admin/ia/complaints'); if (r) setComplaints(r); } catch {} setLoading(false); }, []);
+  const load = useCallback(async () => { setLoading(true); try { const r = await apiFetch<IAComplaint[]>('/admin/ia/complaints'); if (r) setComplaints(r); } catch (err) { console.warn('[useIAComplaints] load failed:', err); } setLoading(false); }, []);
   const open = useMemo(() => complaints.filter(c => !['sustained','not_sustained','exonerated','unfounded','closed'].includes(c.status)), [complaints]);
   const critical = useMemo(() => complaints.filter(c => c.priority === 'critical' && !['sustained','not_sustained','exonerated','unfounded','closed'].includes(c.status)), [complaints]);
   return { complaints, loading, load, open, critical };

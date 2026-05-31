@@ -1,44 +1,57 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
 import DataTable from '../components/DataTable';
 import StatsCard from '../components/StatsCard';
-import { Users, Calendar, MessageSquare, Bell } from 'lucide-react';
+import { Heart, Calendar, Users, TrendingUp, AlertTriangle, RefreshCw } from 'lucide-react';
 
 export default function CommunityPage() {
   const [events, setEvents] = useState<Record<string, unknown>[]>([]);
   const [loading, setLoading] = useState(true);
-  const [stats, setStats] = useState({ events: 0, tips: 0, watch_groups: 0, alerts: 0 });
+  const [error, setError] = useState<string | null>(null);
+  const [stats, setStats] = useState({ totalEvents: 0, attendees: 0, upcomingEvents: 0 });
 
-  useEffect(() => {
+  const load = useCallback(() => {
+    setLoading(true);
+    setError(null);
     Promise.all([
       apiFetch<{ data: Record<string, unknown>[] }>('/community/events').then(r => setEvents(r.data || [])),
-      apiFetch<{ events: number; tips: number; watch_groups: number; alerts: number }>('/community/stats').then(r => setStats(r)),
-    ]).catch(console.error).finally(() => setLoading(false));
+      apiFetch<{ totalEvents: number; attendees: number; upcomingEvents: number }>('/community/stats').then(r => setStats(r)),
+    ]).catch(_err => setError('Failed to load community data.')).finally(() => setLoading(false));
   }, []);
 
-  if (loading) return <div className="p-6 text-[#888888]">Loading community records...</div>;
+  useEffect(() => { load(); }, [load]);
+
+  if (error) return (
+    <div className="flex flex-col items-center justify-center py-20 px-4 text-center">
+      <AlertTriangle size={28} color="#ef4444" style={{ opacity: 0.5, marginBottom: 12 }} />
+      <p className="text-[10px] text-[#fca5a5] mb-3">{error}</p>
+      <button onClick={load} className="btn-gold flex items-center gap-1.5"><RefreshCw size={12} />Retry</button>
+    </div>
+  );
 
   return (
     <div className="p-4 space-y-4">
-      <PanelTitleBar title="COMMUNITY ENGAGEMENT" icon={Users} />
-      <div className="grid grid-cols-4 gap-3">
-        <StatsCard icon={Calendar} label="Events" value={stats.events} />
-        <StatsCard icon={MessageSquare} label="Public Tips" value={stats.tips} />
-        <StatsCard icon={Users} label="Watch Groups" value={stats.watch_groups} />
-        <StatsCard icon={Bell} label="Alerts Sent" value={stats.alerts} />
-      </div>
-      <DataTable
-        columns={[
-          { key: 'event_name', label: 'Event' },
-          { key: 'event_type', label: 'Type' },
-          { key: 'location', label: 'Location' },
-          { key: 'start_date', label: 'Date' },
-          { key: 'status', label: 'Status' },
-        ]}
-        data={events}
-        emptyMessage="No community events found"
-      />
+      <PanelTitleBar title="COMMUNITY RELATIONS" icon={Heart} />
+      {loading ? (
+        <div className="space-y-3">
+          <div className="grid grid-cols-3 gap-3">{Array(3).fill(0).map((_,i)=><div key={i} className="h-16 bg-[#0a0a0a] border border-[#1a1a1a] skeleton-block" />)}</div>
+          <div className="h-48 bg-[#0a0a0a] border border-[#1a1a1a] skeleton-block" />
+        </div>
+      ) : (
+        <>
+          <div className="grid grid-cols-3 gap-3">
+            <StatsCard icon={Calendar} label="Total Events" value={stats.totalEvents} />
+            <StatsCard icon={Users} label="Attendees" value={stats.attendees} />
+            <StatsCard icon={TrendingUp} label="Upcoming" value={stats.upcomingEvents} />
+          </div>
+          <DataTable
+            columns={[{ key: 'event_name', label: 'Event' },{ key: 'event_type', label: 'Type' },{ key: 'date', label: 'Date' },{ key: 'location', label: 'Location' },{ key: 'attendees', label: 'Attendees' }]}
+            data={events}
+            emptyMessage="No community events"
+          />
+        </>
+      )}
     </div>
   );
 }

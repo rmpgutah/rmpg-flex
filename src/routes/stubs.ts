@@ -3,9 +3,7 @@ import type { Env } from '../types';
 
 const stubs = new Hono<Env>();
 
-// User preferences — D1-backed (user_preferences table, migrations/0001 + 0046).
-// Defaults mirror the table DDL and the client's UserPreferencesContext DEFAULTS,
-// so a user with no row still gets a complete, correctly-shaped object.
+// ── User Preferences — D1-backed (mounted at /api/user) ──
 const PREF_DEFAULTS = {
   notify_dispatch_email: 1, notify_dispatch_inapp: 1,
   notify_bolo_email: 1, notify_bolo_inapp: 1,
@@ -17,8 +15,6 @@ const PREF_DEFAULTS = {
   dispatch_show_cleared: 0, theme_preference: 'dark',
 } as const;
 
-// Only these columns may be written via PUT (guards against arbitrary/unsafe
-// column names — the SET clause is built from this validated set, not raw input).
 const PREF_COLUMNS = new Set<string>(Object.keys(PREF_DEFAULTS));
 
 stubs.get('/preferences', async (c) => {
@@ -36,7 +32,6 @@ stubs.put('/preferences', async (c) => {
   try { body = await c.req.json(); } catch { /* tolerate empty body */ }
   const keys = Object.keys(body).filter((k) => PREF_COLUMNS.has(k));
   if (keys.length === 0) return c.json({ success: true, updated: 0 });
-  // Ensure a row exists, then update only the whitelisted keys.
   await c.env.DB.prepare('INSERT OR IGNORE INTO user_preferences (user_id) VALUES (?)')
     .bind(userId).run();
   const setClause = keys.map((k) => `${k} = ?`).join(', ');
@@ -49,33 +44,15 @@ stubs.put('/preferences', async (c) => {
   return c.json({ success: true, preferences: row ? { ...PREF_DEFAULTS, ...row } : PREF_DEFAULTS });
 });
 
-// Notifications
+// ── Notifications (mounted at /api/notifications) ──
 stubs.get('/unread-count', (c) => c.json({ count: 0 }));
-stubs.get('/', (c) => c.json([]));
+stubs.get('/notifications', (c) => c.json([]));
 
-// Reports
-stubs.get('/dashboard', (c) => c.json({ active_calls: 0, available_units: 0, today_calls: 0, clearance_rate: 0 }));
-stubs.get('/patrol-coverage', (c) => c.json({ coverage: [] }));
-stubs.get('/clearance-rate', (c) => c.json({ rate: 0 }));
-stubs.get('/overdue-reports', (c) => c.json({ count: 0 }));
-stubs.get('/shift-comparison', (c) => c.json({ shifts: [] }));
-stubs.get('/officer-activity', (c) => c.json([]));
-stubs.get('/upcoming-court', (c) => c.json([]));
-stubs.get('/evidence-pending', (c) => c.json({ count: 0 }));
-// /response-times moved to src/routes/reports.ts (still returns [] until
-// dispatch status-timestamp math is ported). Kept here too would cause a
-// double-registration warning under the /api/reports mount.
-
-// Communication
+// ── Communication (mounted at /api/comms) ──
 stubs.get('/activity-feed', (c) => c.json([]));
 stubs.get('/bolos/active', (c) => c.json([]));
 
 // GET /api/comms/bolos/check?address=&subject=&vehicle= — active-BOLO match.
-// Powers BoloAlertBanner on the New Call / dispatch-edit forms. Ported from
-// the legacy comms router (was never carried into the rewrite, so it 404'd —
-// the banner silently never fired). Keyword-matches the caller's free text
-// against active BOLO descriptions. Defensive: any failure returns an empty
-// match set rather than 500, so a transient DB error can't break call entry.
 stubs.get('/bolos/check', async (c) => {
   try {
     const address = c.req.query('address') || '';
@@ -83,7 +60,6 @@ stubs.get('/bolos/check', async (c) => {
     const vehicle = c.req.query('vehicle') || '';
     if (!address && !subject && !vehicle) return c.json({ matches: [], count: 0 });
 
-    // 3+ char keywords, capped at 5 per field to bound the query size.
     const keywords = (text: string) =>
       text.toUpperCase().split(/[\s,;]+/).filter((w) => w.length >= 3).slice(0, 5);
 
@@ -121,21 +97,16 @@ stubs.get('/bolos/check', async (c) => {
   }
 });
 
-// Warrants
-stubs.get('/', (c) => c.json([]));
-stubs.get('/scrapers', (c) => c.json({ scrapers: [], last_run: null }));
-stubs.get('/scrapers/health', (c) => c.json({ status: 'ok' }));
+// ── Weather (mounted at /api/weather) — uses /current to avoid GET / collision ──
+stubs.get('/current', (c) => c.json({ temperature: 72, conditions: 'Clear', icon: 'clear-day' }));
 
-// Weather
-stubs.get('/', (c) => c.json({ temperature: 72, conditions: 'Clear', icon: 'clear-day' }));
-
-// Email
+// ── Email (mounted at /api/email) — uses /unread-count (no collision) ──
 stubs.get('/unread-count', (c) => c.json({ count: 0 }));
 
-// Integrations
+// ── Integrations (mounted at /api/integrations) ──
 stubs.get('/google-maps/client-key', (c) => c.json({}));
 
-// Dispatch stubs
+// ── Dispatch stubs (mounted at /api/dispatch/stats + /api/dispatch/shift-handoff) ──
 stubs.get('/stats', (c) => c.json({ total_calls: 0, active_calls: 0, units_online: 0 }));
 stubs.get('/shift-handoff', (c) => c.json({ handoff: null }));
 stubs.put('/shift-handoff', async (c) => {

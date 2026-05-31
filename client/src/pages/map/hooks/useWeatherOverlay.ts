@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 
-const API_URL = '/api/weather';
+const API_URL = '/api/weather/current';
 
 const CACHE_TTL = 15 * 60 * 1000;
 
