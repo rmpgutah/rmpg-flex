@@ -340,31 +340,34 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
             );
             return null;
           })()}
-          {call.dispatch_code && !(call.incident_type === 'pso_client_request' && call.pso_attempt_number) && (() => {
+          {call.dispatch_code && !(call.incident_type === 'pso_client_request' && call.pso_attempt_number) && (
+            <span className="text-[10px] font-bold font-mono text-amber-300 bg-amber-900/30 border border-amber-700/40 px-1 py-0" title={`Dispatch zone: ${call.dispatch_code}`}>
+              {call.dispatch_code}
+            </span>
+          )}
+          {signalInfo && (() => {
             const sp = signalInfo;
-            const pri = sp?.priority || 'P3';
+            const pri = sp.priority || 'P3';
             const priColors: Record<string, { text: string; bg: string; border: string }> = {
-              P1: { text: '#fca5a5', bg: 'rgba(220,38,38,0.25)', border: 'rgba(220,38,38,0.4)' },
+              P1: { text: '#fca5a5', bg: 'rgba(220,38,38,0.3)', border: 'rgba(220,38,38,0.5)' },
               P2: { text: '#fde68a', bg: 'rgba(245,158,11,0.25)', border: 'rgba(245,158,11,0.4)' },
               P3: { text: '#9ca3af', bg: 'rgba(107,114,128,0.2)', border: 'rgba(107,114,128,0.35)' },
               P4: { text: '#888888', bg: 'rgba(100,100,100,0.2)', border: 'rgba(100,100,100,0.35)' },
             };
             const c = priColors[pri] || priColors.P3;
             const flags: string[] = [];
-            if (sp?.requires_backup) flags.push('⚠ Requires backup');
-            if (sp?.officer_safety) flags.push('⚡ Officer safety');
-            if (sp?.ems_needed) flags.push('🚑 EMS');
-            if (sp?.fire_needed) flags.push('🔥 Fire');
-            const tooltip = sp
-              ? `Signal ${call.dispatch_code} — ${sp.description}\nCategory: ${sp.category}${flags.length ? '\n' + flags.join('\n') : ''}`
-              : call.dispatch_code;
+            if (sp.requires_backup) flags.push('Backup required');
+            if (sp.officer_safety) flags.push('Officer safety risk');
+            if (sp.ems_needed) flags.push('EMS needed');
+            if (sp.fire_needed) flags.push('Fire response needed');
+            const tooltip = `Signal ${sp.code} — ${sp.description}\nCategory: ${sp.category} · Priority: ${sp.priority}${flags.length ? '\n' + flags.join('\n') : ''}`;
             return (
               <span
-                className="text-[10px] font-bold font-mono px-1 py-0 cursor-default"
-                style={{ color: c.text, background: c.bg, border: `1px solid ${c.border}` }}
+                className="text-[10px] font-bold font-mono px-1 py-0 cursor-default border"
+                style={{ color: c.text, background: c.bg, borderColor: c.border }}
                 title={tooltip}
               >
-                {call.dispatch_code}
+                {sp.code}
               </span>
             );
           })()}

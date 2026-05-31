@@ -89,7 +89,7 @@ interface EventListResponse {
 
 const SOURCE_BADGE: Record<string, string> = {
   clearpathgps: 'bg-green-900/40 text-green-300 border-green-700/40',
-  traccar:      'bg-cyan-900/40  text-cyan-300  border-cyan-700/40',
+  traccar:      'bg-rmpg-900/40  text-rmpg-300  border-rmpg-700/40',
   freematics:   'bg-purple-900/40 text-purple-300 border-purple-700/40',
   flex_ai:      'bg-amber-900/40 text-amber-300 border-amber-700/40',
   manual:       'bg-rmpg-700/40 text-rmpg-300 border-rmpg-600/40',

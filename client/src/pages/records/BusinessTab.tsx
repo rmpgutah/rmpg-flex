@@ -285,7 +285,7 @@ export function BusinessTabList({ state }: { state: BusinessTabState }) {
               </div>
               <div className="flex items-center gap-1">
                 {b.phone && <a href={`tel:${b.phone}`} onClick={e => e.stopPropagation()} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-green-400"><Phone className="w-3 h-3" /></a>}
-                {b.email && <a href={`mailto:${b.email}`} onClick={e => e.stopPropagation()} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-blue-400"><Mail className="w-3 h-3" /></a>}
+                {b.email && <a href={`mailto:${b.email}`} onClick={e => e.stopPropagation()} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-rmpg-400"><Mail className="w-3 h-3" /></a>}
                 {b.website && <a href={b.website.startsWith('http') ? b.website : `https://${b.website}`} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-brand-400"><Globe className="w-3 h-3" /></a>}
                 {isAdmin && <button type="button" onClick={e => { e.stopPropagation(); openEdit(b); }} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-brand-400"><Pencil className="w-3 h-3" /></button>}
                 {isAdmin && <button type="button" onClick={e => { e.stopPropagation(); setDeleteTarget({ type: 'business', id: b.id, label: b.name }); }} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-red-400"><Trash2 className="w-3 h-3" /></button>}
