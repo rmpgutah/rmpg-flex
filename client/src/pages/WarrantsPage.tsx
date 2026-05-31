@@ -37,6 +37,7 @@ import {
   stateFromSource,
 } from '../utils/warrantListHelpers';
 import { buildWarrantPacketPdf } from '../utils/warrantPacket';
+import { displayUserName } from '../utils/userDisplay';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import ScrapersTab from './warrants/ScrapersTab';
 
@@ -620,17 +621,7 @@ export default function WarrantsPage() {
       const res = await apiFetch<any>(`/warrants/${id}`);
       const raw = (res && typeof res === 'object' && 'data' in res ? res.data : res) || {};
 
-      // User display name fallback ladder — User.full_name is OPTIONAL on
-      // the interface (and unpopulated on a meaningful fraction of seeded
-      // user rows on live D1). Without the ladder, the audit footer
-      // collapsed to "Printed by: Unknown" even when the operator was
-      // clearly logged in (Karl Turley warrant printed 2026-05-30).
-      const printedByName = user
-        ? (user.full_name
-            || [user.first_name, user.last_name].filter(Boolean).join(' ').trim()
-            || user.username
-            || undefined)
-        : undefined;
+      const printedByName = displayUserName(user);
 
       const data: any = {
         ...raw,
@@ -2860,7 +2851,53 @@ export default function WarrantsPage() {
                         const branding = await fetchPdfBranding();
                         setActiveBranding(branding);
                         await loadPdfAssets();
-                        const subjects: BoloSubject[] = autoPollStatus.flaggedPersons.map(p => ({
+
+                        // Per-person augmentation: the auto-poll status endpoint
+                        // joins warrants by subject_person_id, but manually-entered
+                        // warrants frequently have NULL subject_person_id (the
+                        // ArrestFormModal links by name lookup, not FK) - Karl
+                        // Turley's BATTERY warrant is the canonical reproducer.
+                        // Fall back to a search-all-by-name query and merge any
+                        // additional active warrants we find. Dedup by warrant id.
+                        const augmented = await Promise.all(
+                          autoPollStatus.flaggedPersons.map(async (p) => {
+                            try {
+                              const res = await apiFetch<UnifiedSearchResults>('/warrants/search-all', {
+                                method: 'POST',
+                                body: JSON.stringify({
+                                  firstName: p.first_name,
+                                  lastName: p.last_name,
+                                  status: 'active',
+                                }),
+                              });
+                              const byName = (res?.local ?? []) as Array<Warrant & Record<string, any>>;
+                              const seen = new Set<number>(p.warrants.map(w => w.id));
+                              const merged = [...p.warrants];
+                              for (const w of byName) {
+                                if (typeof w.id === 'number' && !seen.has(w.id)) {
+                                  merged.push({
+                                    id: w.id,
+                                    warrant_number: String(w.warrant_number ?? ''),
+                                    type: String(w.type ?? 'arrest'),
+                                    status: String(w.status ?? 'active'),
+                                    charge_description: String(w.charge_description ?? ''),
+                                    offense_level: (w.offense_level ?? null) as string | null,
+                                    bail_amount: (w.bail_amount ?? null) as number | null,
+                                    issuing_court: (w.issuing_court ?? null) as string | null,
+                                    source: (w.source ?? null) as string | null,
+                                    created_at: String(w.created_at ?? ''),
+                                  });
+                                  seen.add(w.id);
+                                }
+                              }
+                              return { ...p, warrants: merged };
+                            } catch {
+                              return p;
+                            }
+                          })
+                           );
+
+                     const subjects: BoloSubject[] = augmented.map(p => ({
                           first_name: p.first_name,
                           last_name: p.last_name,
                           dob: p.dob,
@@ -2881,12 +2918,23 @@ export default function WarrantsPage() {
                             bail_amount: w.bail_amount,
                           })),
                         }));
-                        const pdf = generateBoloPdf(subjects);
+                        const pdf = generateBoloPdf(subjects, {
+                          printedBy: displayUserName(user),
+                          printedByBadge: user?.badge_number,
+                        });
                         const blob = pdf.output('blob');
                         const url = URL.createObjectURL(new Blob([blob], { type: 'application/pdf' }));
                         const a = document.createElement('a');
                         a.href = url;
-                        a.download = `BOLO_Packet_${new Date().toISOString().slice(0, 10)}.pdf`;
+                        // Single-subject packets get an operator-greppable
+                        // filename (BOLO_TURLEY_2026-05-30.pdf); multi-subject
+                        // packets stay generic.
+                        const date = new Date().toISOString().slice(0, 10);
+                        const safe = (s: string) => s.replace(/[^\w\-]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
+                        const filename = subjects.length === 1 && subjects[0].last_name
+                          ? `BOLO_${safe(subjects[0].last_name.toUpperCase())}_${date}.pdf`
+                          : `BOLO_Packet_${date}.pdf`;
+                        a.download = filename;
                         document.body.appendChild(a);
                         a.click();
                         document.body.removeChild(a);
