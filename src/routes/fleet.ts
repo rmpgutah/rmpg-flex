@@ -594,4 +594,22 @@ fleet.delete('/:id', async (c) => {
   }
 });
 
+// ─── Fleet sub-path stubs ─────────────────────────────────
+// Client FleetPage + FleetOverviewTab call these sub-paths for every
+// vehicle detail load. They aren't backed by Worker handlers yet (the
+// tables live on legacy D1 and may or may not exist). Returning 404
+// cascades into an ErrorBoundary crash because some callers don't
+// guard against !res.ok on non-critical fetches. Returning 200 with
+// empty/null-safe shapes lets the client degrade gracefully.
+
+fleet.get('/:id/fuel-efficiency', (c) => c.json({}));
+fleet.get('/:id/mileage-history', (c) => c.json([]));
+fleet.get('/:id/maintenance-costs', (c) => c.json({}));
+fleet.get('/:id/fuel', (c) => c.json({ data: [], summary: {} }));
+fleet.get('/:id/inspections', (c) => c.json({ data: [] }));
+fleet.get('/:id/assignments', (c) => c.json({ data: [] }));
+fleet.get('/:id/personnel', (c) => c.json({}));
+fleet.get('/:id/tires', (c) => c.json([]));
+fleet.get('/:id/damage-reports', (c) => c.json([]));
+
 export default fleet;
