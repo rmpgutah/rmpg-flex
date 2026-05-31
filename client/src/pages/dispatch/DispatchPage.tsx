@@ -4415,7 +4415,7 @@ export default function DispatchPage() {
                                 // already chosen, match within it; otherwise resolve
                                 // by (section, beat) and BACKFILL the zone too.
                                 const match = editData.zone_id
-                                  ? districts.find(d => d.sector_id === editData.sector_id && d.zone_id === editData.zone_id && d.beat_id === beatVal)
+                                  ? districts.find(d => d.sector_id === String(editData.sector_id) && d.zone_id === editData.zone_id && d.beat_id === beatVal)
                                   : districtForSectionBeat(editData.sector_id, beatVal);
                                 setEditData(prev => ({
                                   ...prev,
@@ -4474,7 +4474,7 @@ export default function DispatchPage() {
                           // numeric dispatch_sectors.id row key. Fall back to the id only
                           // if the districts lookup hasn't loaded / has no code.
                           const code = getSectionCode(selectedCall.sector_id) || selectedCall.sector_id;
-                          const name = sectionLabels.get(selectedCall.sector_id) || '';
+                          const name = sectionLabels.get(String(selectedCall.sector_id)) || '';
                           return <span className="text-rmpg-200" title="Spillman sector code"><span className="text-rmpg-400">Sec:</span> {[code, name].filter(Boolean).join(' — ')}</span>;
                         })()}
                         {selectedCall.zone_id && <span className="text-rmpg-200" title="Zone (within sector)"><span className="text-rmpg-400">Zone:</span> {[zoneLeaf(selectedCall.zone_id), zoneLabels.get(selectedCall.zone_id) || ''].filter(Boolean).join(' — ')}</span>}
