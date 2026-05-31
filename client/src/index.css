@@ -195,6 +195,54 @@
   scrollbar-color: var(--border-strong) var(--surface-base);
 }
 
+/* --- Mapbox GL controls: Spillman pure-black/gold theme ─────────────
+   Mapbox's stock NavigationControl/GeolocateControl ship white buttons
+   with a BLUE active/focus state and blue SVG glyphs — a hard violation
+   of the zero-blue rule. These overrides repaint every control surface to
+   the #141414/#2e2e2e/#d4a017 palette with 2px radius. Applies globally so
+   any map (MapPage, ServePage, mini-maps) inherits it. */
+.mapboxgl-ctrl-group {
+  background: #141414 !important;
+  border: 1px solid #2e2e2e !important;
+  border-radius: 2px !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5) !important;
+}
+.mapboxgl-ctrl-group button + button {
+  border-top: 1px solid #2e2e2e !important;
+}
+.mapboxgl-ctrl button {
+  background-color: #141414 !important;
+}
+.mapboxgl-ctrl button:hover {
+  background-color: #1f1f1f !important;
+}
+.mapboxgl-ctrl button:focus,
+.mapboxgl-ctrl button:focus:not(:focus-visible) {
+  box-shadow: 0 0 0 2px rgba(212, 160, 23, 0.5) !important;
+  outline: none !important;
+}
+/* Recolor the control glyphs (zoom +/-, compass, geolocate) to gold. The
+   stock SVGs are embedded via background-image; a gold tint approximates
+   the brand without shipping custom SVGs. */
+.mapboxgl-ctrl button .mapboxgl-ctrl-icon {
+  filter: invert(72%) sepia(38%) saturate(900%) hue-rotate(2deg) brightness(92%) contrast(90%) !important;
+}
+/* Geolocate "active/lock" states default to Mapbox blue — force gold. */
+.mapboxgl-ctrl-geolocate-active .mapboxgl-ctrl-icon,
+.mapboxgl-ctrl-geolocate-active-error .mapboxgl-ctrl-icon {
+  filter: invert(72%) sepia(38%) saturate(900%) hue-rotate(2deg) brightness(92%) contrast(90%) !important;
+}
+/* Attribution + scale (when shown) read dark, not the default white pill. */
+.mapboxgl-ctrl-attrib,
+.mapboxgl-ctrl-scale {
+  background: rgba(10, 10, 10, 0.8) !important;
+  color: #888888 !important;
+  border: 1px solid #1a1a1a !important;
+}
+.mapboxgl-ctrl-attrib a {
+  color: #888888 !important;
+}
+
 /* --- Emergency Pulse Animation --- */
 @keyframes emergency-pulse {
   0%, 100% {
@@ -3318,19 +3366,17 @@ body.fx-noise::after {
     break-inside: avoid;
   }
 
-  /* --- Google Maps: Show for printed reports (light style applied via JS) --- */
-  div[class*="gm-style"],
-  div[style*="maps.googleapis.com"] {
+  /* --- Mapbox: show map tiles + dark popups in printed reports --- */
+  .mapboxgl-canvas,
+  .mapboxgl-map {
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }
 
-  /* Hide Google Maps chrome during print (zoom controls, etc.) */
-  .gm-control-active,
-  .gmnoprint,
-  .gm-bundled-control,
-  .gm-svpc,
-  .gm-fullscreen-control {
+  /* Hide Mapbox interactive chrome during print (controls, attribution) */
+  .mapboxgl-ctrl,
+  .mapboxgl-ctrl-group,
+  .mapboxgl-control-container {
     display: none !important;
   }
 
