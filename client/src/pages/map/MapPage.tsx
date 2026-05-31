@@ -1514,7 +1514,7 @@ export default function MapPage() {
     const map = mapInstanceRef.current;
     if (!map || !mapLoaded) return;
 
-    // Skip heatmap rendering when no data or heatmap is off
+    // Clean up heatmap when toggled off
     if (!showHeatmap || heatmapData.length === 0) {
       if (map.getLayer('rmpg-heatmap-layer')) map.removeLayer('rmpg-heatmap-layer');
       if (map.getSource('rmpg-heatmap')) map.removeSource('rmpg-heatmap');
@@ -1598,6 +1598,12 @@ export default function MapPage() {
     } catch (err) {
       console.warn('[MapPage] Error creating heatmap layer:', err);
     }
+
+    return () => {
+      if (map.getLayer('rmpg-heatmap-layer')) map.removeLayer('rmpg-heatmap-layer');
+      if (map.getSource('rmpg-heatmap')) map.removeSource('rmpg-heatmap');
+      heatmapLayerRef.current = null;
+    };
   }, [showHeatmap, heatmapData, heatmapMode, mapLoaded, mapStyle]);
 
   // ============================================================

@@ -38,6 +38,8 @@ async function generateReviewNumber(db: ReturnType<typeof getDb>): Promise<strin
 qa.get('/reviews', async (c) => {
   try {
     const db = getDb(c.env);
+    const tableCheck = await queryFirst<{ n: number }>(db, "SELECT COUNT(*) as n FROM sqlite_master WHERE type='table' AND name='qa_reviews'");
+    if (!tableCheck?.n) return c.json({ data: [], pagination: { page: 1, per_page: 50, total: 0, totalPages: 0 } });
     const q = c.req.query.bind(c.req);
     const conditions: string[] = ['1=1']; const params: unknown[] = [];
     if (q('status')) { conditions.push('r.status = ?'); params.push(q('status')); }
@@ -100,6 +102,22 @@ qa.put('/reviews/:id', async (c) => {
     return c.json({ data: updated });
   } catch (err) {
     return c.json({ error: 'Failed to update review' }, 500);
+  }
+});
+
+qa.delete('/reviews/:id', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id'), 10);
+    if (isNaN(id)) return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
+    await execute(db, 'DELETE FROM qa_scores WHERE review_id = ?', id);
+    const result = await execute(db, 'DELETE FROM qa_reviews WHERE id = ?', id);
+    if (result.meta.changes === 0) return c.json({ error: 'Review not found', code: 'NOT_FOUND' }, 404);
+    return c.json({ success: true });
+  } catch (err) {
+    return c.json({ error: 'Failed to delete review', code: 'DELETE_ERROR' }, 500);
   }
 });
 
@@ -224,6 +242,8 @@ qa.post('/surveys', async (c) => {
 qa.get('/stats', async (c) => {
   try {
     const db = getDb(c.env);
+    const reviewTable = await queryFirst<{ n: number }>(db, "SELECT COUNT(*) as n FROM sqlite_master WHERE type='table' AND name='qa_reviews'");
+    if (!reviewTable?.n) return c.json({ total_reviews: 0, completed_reviews: 0, avg_score: 0, pass_rate: 0, by_category: [], recent_scores: [] });
     const totalReviews = (await queryFirst<{ count: number }>(db, 'SELECT COUNT(*) as count FROM qa_reviews'))?.count ?? 0;
     const avgScore = (await queryFirst<{ avg: number }>(db, 'SELECT ROUND(AVG(score),1) as avg FROM qa_reviews WHERE score IS NOT NULL'))?.avg ?? 0;
     const avgRating = (await queryFirst<{ avg: number }>(db, 'SELECT ROUND(AVG(rating),1) as avg FROM customer_satisfaction_surveys'))?.avg ?? 0;

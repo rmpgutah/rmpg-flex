@@ -856,7 +856,7 @@ export default function FleetPage() {
               <DollarSign className="w-3.5 h-3.5 text-gray-400" />
               <span className="text-rmpg-400">Costs:</span>
               <span className="font-bold text-gray-400">
-                {fleetAnalytics ? `$${(((fleetAnalytics.fleet_summary.total_maintenance_cost || 0) + (fleetAnalytics.fleet_summary.total_fuel_cost || 0)) / 1000).toFixed(1)}k` : '--'}
+                {fleetAnalytics?.fleet_summary ? `$${(((fleetAnalytics.fleet_summary.total_maintenance_cost || 0) + (fleetAnalytics.fleet_summary.total_fuel_cost || 0)) / 1000).toFixed(1)}k` : '--'}
               </span>
             </div>
             <div className="flex items-center gap-1.5" title="Inspections Failing">

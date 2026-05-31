@@ -28,7 +28,7 @@ interface PanelTitleBarProps {
   iconOnly?: boolean;
 }
 
-export default function PanelTitleBar({
+function PanelTitleBar({
   title,
   icon: Icon,
   children,
@@ -108,3 +108,5 @@ export default function PanelTitleBar({
     </div>
   );
 }
+
+export default React.memo(PanelTitleBar);

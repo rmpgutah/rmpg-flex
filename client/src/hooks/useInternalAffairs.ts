@@ -102,7 +102,7 @@ export function calculateDisparityIndex(stopsByGroup: Record<string,number>, pop
 export interface IAStats { totalComplaints: number; sustained: number; notSustained: number; exonerated: number; unfounded: number; avgInvestigationDays: number; byType: Array<{type:string;count:number;sustainedRate:number}>; byOfficer: Array<{officerName:string;count:number;repeatOffender:boolean}>; trend: 'increasing'|'stable'|'decreasing'; }
 export function useIAStats() {
   const [stats, setStats] = useState<IAStats|null>(null); const [loading, setLoading] = useState(false);
-  const load = useCallback(async () => { setLoading(true); try { const r = await apiFetch<IAStats>('/admin/ia/stats'); if (r) setStats(r); } catch {} setLoading(false); }, []);
+  const load = useCallback(async () => { setLoading(true); try { const r = await apiFetch<IAStats>('/admin/ia/stats'); if (r) setStats(r); } catch (err) { console.warn("[useIAStats/usePolicyCompliance] load failed:", err); } setLoading(false); }, []);
   return { stats, loading, load };
 }
 
@@ -110,7 +110,7 @@ export function useIAStats() {
 export interface PolicyAcknowledgement { policyId: string; policyTitle: string; version: string; effectiveDate: string; acknowledgedBy: string; acknowledgedAt: string|null; dueDate: string; status: 'acknowledged'|'pending'|'overdue'; }
 export function usePolicyCompliance() {
   const [policies, setPolicies] = useState<PolicyAcknowledgement[]>([]); const [loading, setLoading] = useState(false);
-  const load = useCallback(async () => { setLoading(true); try { const r = await apiFetch<PolicyAcknowledgement[]>('/admin/policies/acknowledgements'); if (r) setPolicies(r); } catch {} setLoading(false); }, []);
+  const load = useCallback(async () => { setLoading(true); try { const r = await apiFetch<PolicyAcknowledgement[]>('/admin/policies/acknowledgements'); if (r) setPolicies(r); } catch (err) { console.warn("[useIAStats/usePolicyCompliance] load failed:", err); } setLoading(false); }, []);
   const overdue = useMemo(() => policies.filter(p => p.status === 'overdue'), [policies]);
   const complianceRate = useMemo(() => policies.length > 0 ? Math.round(policies.filter(p => p.status === 'acknowledged').length / policies.length * 100) : 100, [policies]);
   return { policies, loading, load, overdue, complianceRate };

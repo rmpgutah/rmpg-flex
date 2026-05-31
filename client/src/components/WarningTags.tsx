@@ -51,7 +51,7 @@ const TYPE_ICONS: Record<string, React.FC<{ className?: string; style?: React.CS
   PTS: Eye,
 };
 
-export default function WarningTags({ warnings, compact = false }: WarningTagsProps) {
+function WarningTags({ warnings, compact = false }: WarningTagsProps) {
   if (!warnings || warnings.length === 0) return null;
 
   // Sort: critical first, then high, then medium
@@ -111,3 +111,5 @@ export default function WarningTags({ warnings, compact = false }: WarningTagsPr
     </div>
   );
 }
+
+export default React.memo(WarningTags);

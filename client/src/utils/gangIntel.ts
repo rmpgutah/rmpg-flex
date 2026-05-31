@@ -30,7 +30,7 @@ export function evaluateGangThreat(gang:Gang, violentIncidents:number, drugActiv
 export interface GraffitiRecord { id:string; date:string; location:string; gangId:string|null; gangName:string|null; tags:string[]; symbols:string[]; message:string; photographed:boolean; removed:boolean; removalDate:string|null; officerId:string; }
 export function matchGraffitiToGang(record:GraffitiRecord, knownGangs:Array<{id:string;name:string;symbols:string[];tags:string[]}>): {match:Gang|null;confidence:number} {
   for (const gang of knownGangs) { const tagMatch = record.tags.filter(t => gang.tags.some(gt => gt.toLowerCase().includes(t.toLowerCase())||t.toLowerCase().includes(gt.toLowerCase()))); const symMatch = record.symbols.filter(s => gang.symbols.some(gs => gs.toLowerCase().includes(s.toLowerCase())));
-    if (tagMatch.length>0||symMatch.length>0) return {match:gang,confidence:Math.min(100,(tagMatch.length+symMatch.length)*30)};
+    if (tagMatch.length>0||symMatch.length>0) return {match:gang as unknown as Gang,confidence:Math.min(100,(tagMatch.length+symMatch.length)*30)};
   }
   return {match:null,confidence:0};
 }

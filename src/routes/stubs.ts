@@ -97,6 +97,43 @@ stubs.get('/bolos/check', async (c) => {
   }
 });
 
+// ── Comms stats (mounted at /api/comms) — D1-backed aggregates ──
+stubs.get('/bolos/stats', async (c) => {
+  try {
+    const db = c.env.DB;
+    const [{ totalActive }] = (await db.prepare("SELECT COUNT(*) as totalActive FROM bolos WHERE status = 'active'").all()).results as any[];
+    const [{ expiringSoon }] = (await db.prepare("SELECT COUNT(*) as expiringSoon FROM bolos WHERE status = 'active' AND expires_at IS NOT NULL AND expires_at <= datetime('now', '+24 hours')").all()).results as any[];
+    const byCategory = (await db.prepare("SELECT type as category, COUNT(*) as count, SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as active_count FROM bolos GROUP BY type ORDER BY type").all()).results as any[];
+    const byPriority = (await db.prepare("SELECT priority, COUNT(*) as count FROM bolos WHERE status = 'active' GROUP BY priority ORDER BY priority").all()).results as any[];
+    const avgLifespan = (await db.prepare("SELECT ROUND(AVG((julianday(expires_at) - julianday(created_at)) * 24), 1) as hours FROM bolos WHERE status IN ('expired','cancelled') AND expires_at IS NOT NULL").first()) as any;
+    return c.json({
+      byCategory: byCategory || [],
+      byPriority: byPriority || [],
+      totalActive: totalActive ?? 0,
+      expiringSoon: expiringSoon ?? 0,
+      avgLifespanHours: avgLifespan?.hours ?? null,
+    });
+  } catch (err) {
+    console.error('GET /comms/bolos/stats failed:', err);
+    return c.json({ byCategory: [], byPriority: [], totalActive: 0, expiringSoon: 0, avgLifespanHours: null });
+  }
+});
+
+stubs.get('/messages/priority-stats', async (c) => {
+  try {
+    const db = c.env.DB;
+    const byPriority = (await db.prepare("SELECT priority, COUNT(*) as total, SUM(CASE WHEN read_at IS NOT NULL THEN 1 ELSE 0 END) as read_count, ROUND(AVG(CASE WHEN read_at IS NOT NULL THEN (julianday(read_at) - julianday(created_at)) * 24 * 60 END), 1) as avg_read_time_minutes FROM messages GROUP BY priority ORDER BY CASE priority WHEN 'emergency' THEN 0 WHEN 'urgent' THEN 1 ELSE 2 END").all()).results as any[];
+    const byChannel = (await db.prepare("SELECT channel, COUNT(*) as count FROM messages GROUP BY channel ORDER BY channel").all()).results as any[];
+    return c.json({
+      byPriority: byPriority || [],
+      byChannel: byChannel || [],
+    });
+  } catch (err) {
+    console.error('GET /comms/messages/priority-stats failed:', err);
+    return c.json({ byPriority: [], byChannel: [] });
+  }
+});
+
 // ── Weather (mounted at /api/weather) — uses /current to avoid GET / collision ──
 stubs.get('/current', (c) => c.json({ temperature: 72, conditions: 'Clear', icon: 'clear-day' }));
 
