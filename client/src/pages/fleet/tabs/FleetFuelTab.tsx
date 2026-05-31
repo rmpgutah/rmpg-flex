@@ -121,7 +121,7 @@ export default function FleetFuelTab({
         <div className="panel-beveled p-2.5 text-center bg-surface-sunken">
           <Fuel className="w-3.5 h-3.5 mx-auto text-gray-400 mb-1" />
           <div className="text-sm font-bold font-mono tabular-nums text-gray-400">
-            {summary ? summary.total_gallons.toFixed(3) : '-'}
+            {summary?.total_gallons != null ? summary.total_gallons.toFixed(3) : '-'}
           </div>
           <div className="text-[7px] text-rmpg-500 uppercase">Total Gallons</div>
         </div>
@@ -142,7 +142,7 @@ export default function FleetFuelTab({
         <div className="panel-beveled p-2.5 text-center bg-surface-sunken">
           <DollarSign className="w-3.5 h-3.5 mx-auto text-amber-400 mb-1" />
           <div className="text-sm font-bold font-mono tabular-nums text-amber-400">
-            ${summary ? summary.avg_cost_per_gallon.toFixed(3) : '-'}
+            ${summary?.avg_cost_per_gallon != null ? summary.avg_cost_per_gallon.toFixed(3) : '-'}
           </div>
           <div className="text-[7px] text-rmpg-500 uppercase">Avg $/Gal</div>
         </div>
@@ -240,7 +240,7 @@ export default function FleetFuelTab({
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-[10px] text-rmpg-200 font-mono font-bold">
-                      {log.gallons.toFixed(3)} gal
+                      {log.gallons != null ? log.gallons.toFixed(3) : '-'} gal
                     </span>
                     <span className={`px-1 py-0.5 text-[8px] font-bold uppercase border ${badge.bg} ${badge.text} ${badge.border}`}>
                       {log.fuel_type}

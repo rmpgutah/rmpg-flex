@@ -124,7 +124,7 @@ export default function FuelAnalyticsPage() {
           <Stat icon={Fuel} color="text-gray-400" label="Gallons" value={fmtNumber(overview.totals.total_gallons, 1)} />
           <Stat icon={DollarSign} color="text-green-400" label="Total Cost" value={fmtCurrency(overview.totals.total_cost)} />
           <Stat icon={DollarSign} color="text-amber-400" label="Avg $/Gal" value={overview.totals.avg_cpg != null ? `$${overview.totals.avg_cpg.toFixed(3)}` : '—'} />
-          <Stat icon={AlertTriangle} color="text-amber-400" label="Flag Rate" value={`${overview.totals.flag_rate.toFixed(1)}%`} />
+          <Stat icon={AlertTriangle} color="text-amber-400" label="Flag Rate" value={overview.totals.flag_rate != null ? `${overview.totals.flag_rate.toFixed(1)}%` : '—'} />
         </div>
       )}
 
@@ -158,10 +158,10 @@ export default function FuelAnalyticsPage() {
                   <tr key={v.id} className="border-t border-rmpg-800">
                     <td className="px-2 py-1 text-rmpg-200">#{v.vehicle_number} {[v.year, v.make, v.model].filter(Boolean).join(' ')}</td>
                     <td className="px-2 py-1 text-right tabular-nums">{v.fill_count}</td>
-                    <td className="px-2 py-1 text-right tabular-nums">{v.total_gallons.toFixed(1)}</td>
+                    <td className="px-2 py-1 text-right tabular-nums">{v.total_gallons != null ? v.total_gallons.toFixed(1) : '—'}</td>
                     <td className="px-2 py-1 text-right tabular-nums text-green-400">{fmtCurrency(v.total_cost)}</td>
                     <td className="px-2 py-1 text-right tabular-nums text-brand-400">{v.avg_mpg != null ? v.avg_mpg.toFixed(1) : '—'}</td>
-                    <td className={`px-2 py-1 text-right tabular-nums ${v.flag_rate > 10 ? 'text-amber-400' : 'text-rmpg-500'}`}>{v.flag_rate.toFixed(1)}%</td>
+                    <td className={`px-2 py-1 text-right tabular-nums ${v.flag_rate > 10 ? 'text-amber-400' : 'text-rmpg-500'}`}>{v.flag_rate != null ? `${v.flag_rate.toFixed(1)}%` : '—'}</td>
                   </tr>
                 ))}
                 {(overview?.vehicles || []).filter(v => v.fill_count > 0).length === 0 && (
@@ -225,10 +225,10 @@ export default function FuelAnalyticsPage() {
                       {o.officer_id == null && <span className="ml-1 text-[8px] text-rmpg-600">(no driver recorded)</span>}
                     </td>
                     <td className="px-2 py-1 text-right tabular-nums">{o.fill_count}</td>
-                    <td className="px-2 py-1 text-right tabular-nums">{o.total_gallons.toFixed(1)}</td>
+                    <td className="px-2 py-1 text-right tabular-nums">{o.total_gallons != null ? o.total_gallons.toFixed(1) : '—'}</td>
                     <td className="px-2 py-1 text-right tabular-nums text-green-400">{fmtCurrency(o.total_cost)}</td>
                     <td className="px-2 py-1 text-right tabular-nums text-brand-400">{o.avg_mpg != null ? o.avg_mpg.toFixed(1) : '—'}</td>
-                    <td className={`px-2 py-1 text-right tabular-nums ${o.flag_rate > 10 ? 'text-amber-400' : 'text-rmpg-500'}`}>{o.flag_rate.toFixed(1)}%</td>
+                    <td className={`px-2 py-1 text-right tabular-nums ${o.flag_rate > 10 ? 'text-amber-400' : 'text-rmpg-500'}`}>{o.flag_rate != null ? `${o.flag_rate.toFixed(1)}%` : '—'}</td>
                   </tr>
                 ))}
                 {byOfficer.length === 0 && (
