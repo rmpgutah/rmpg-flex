@@ -1734,15 +1734,79 @@ fleet.get('/fuel/analytics/by-card', async (c) => {
   } catch (err) { console.error('GET /fleet/fuel/analytics/by-card failed:', err); return c.json({ data: [] }); }
 });
 
+// POST /fuel/import/preview — parse an uploaded CSV into reviewable rows.
+// Accepts multipart/form-data (file=...) OR raw text/csv body. Maps common
+// column-header aliases to the canonical PreviewRow shape the client edits.
+// No DB writes — review happens client-side, then /commit persists.
+fleet.post('/fuel/import/preview', async (c) => {
+  try {
+    let csv = '';
+    const ctype = c.req.header('content-type') || '';
+    if (ctype.includes('multipart/form-data')) {
+      const form = await c.req.formData();
+      const file = form.get('file');
+      csv = typeof file === 'string' ? file : file ? await (file as File).text() : '';
+    } else {
+      csv = await c.req.text();
+    }
+    if (!csv.trim()) return c.json({ error: 'Empty file' }, 400);
+
+    const lines = csv.split(/\r?\n/).filter((l) => l.trim());
+    if (lines.length < 2) return c.json({ rows: [] });
+    const splitCsv = (line: string) =>
+      line.match(/("([^"]|"")*"|[^,]*)(,|$)/g)?.slice(0, -1).map((cell) =>
+        cell.replace(/,$/, '').replace(/^"|"$/g, '').replace(/""/g, '"').trim()) ?? [];
+    const headers = splitCsv(lines[0]).map((h) => h.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, ''));
+    const idx = (...names: string[]) => headers.findIndex((h) => names.includes(h));
+    const col = {
+      vehicle: idx('vehicle', 'vehicle_number', 'unit', 'unit_number', 'vehicle_id'),
+      date: idx('date', 'fuel_date', 'transaction_date', 'trans_date'),
+      gallons: idx('gallons', 'qty', 'quantity', 'units', 'volume'),
+      cpg: idx('cost_per_gallon', 'ppg', 'price_per_gallon', 'unit_price'),
+      total: idx('total', 'total_cost', 'amount', 'cost'),
+      odo: idx('odometer', 'odometer_reading', 'mileage', 'miles'),
+      station: idx('station', 'merchant', 'site', 'location'),
+    };
+    const num = (v: string | undefined) => { if (!v) return null; const n = parseFloat(v.replace(/[$,]/g, '')); return Number.isFinite(n) ? n : null; };
+    const at = (cells: string[], i: number) => (i >= 0 ? cells[i] : undefined);
+
+    const rows = lines.slice(1).map((line, i) => {
+      const cells = splitCsv(line);
+      return {
+        row_index: i,
+        raw: line,
+        vehicle_number: at(cells, col.vehicle) ?? null,
+        vehicle_id: null as number | null,    // resolved client-side via the vehicle picker
+        fuel_date: at(cells, col.date) ?? null,
+        gallons: num(at(cells, col.gallons)),
+        cost_per_gallon: num(at(cells, col.cpg)),
+        total_cost: num(at(cells, col.total)),
+        odometer_reading: num(at(cells, col.odo)),
+        station: at(cells, col.station) ?? null,
+      };
+    });
+    return c.json({ rows, headers });
+  } catch (err) {
+    console.error('POST /fleet/fuel/import/preview failed:', err);
+    return c.json({ error: 'Failed to parse CSV', detail: (err as Error)?.message }, 500);
+  }
+});
+
 fleet.post('/fuel/import/commit', async (c) => {
   try {
     const db = getDb(c.env);
-    const body = await c.req.json<{ entries?: Array<Record<string, unknown>> }>();
-    const entries = body.entries || [];
+    // Client (FuelImportModal) sends { rows: [...] }; accept legacy `entries` too.
+    const body = await c.req.json<{ rows?: Array<Record<string, unknown>>; entries?: Array<Record<string, unknown>> }>();
+    const rows = body.rows || body.entries || [];
     let inserted = 0; const errors: any[] = [];
-    for (const e of entries) {
+    for (const e of rows) {
       try {
-        await execute(db, 'INSERT INTO fleet_fuel_log (vehicle_id, fuel_date, gallons, total_cost, odometer, notes) VALUES (?,?,?,?,?,?)', e.vehicle_id, e.fuel_date, e.gallons, e.total_cost, e.odometer, e.notes ?? null);
+        const odometer = e.odometer ?? e.odometer_reading ?? null;
+        await execute(
+          db,
+          'INSERT INTO fleet_fuel_log (vehicle_id, fuel_date, gallons, total_cost, cost_per_gallon, station, odometer, notes) VALUES (?,?,?,?,?,?,?,?)',
+          e.vehicle_id, e.fuel_date, e.gallons, e.total_cost ?? null, e.cost_per_gallon ?? null, e.station ?? null, odometer, e.notes ?? null,
+        );
         inserted++;
       } catch (e2) { errors.push({ entry: e, error: (e2 as Error).message }); }
     }
