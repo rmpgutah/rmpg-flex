@@ -24,7 +24,7 @@ interface StatusBarProps {
   gpsLastSent?: string | null;
 }
 
-export default function StatusBar({
+function StatusBar({
   isConnected,
   user,
   activeCallCount,
@@ -138,3 +138,5 @@ export default function StatusBar({
     </div>
   );
 }
+
+export default React.memo(StatusBar);

@@ -3837,7 +3837,7 @@ body.fx-noise::after {
   background: rgba(239, 68, 68, 0.15);
   border-bottom: 1px solid rgba(239, 68, 68, 0.3);
   font-size: 10px;
-  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-family: var(--font-mono);
   color: #fca5a5;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -6387,7 +6387,7 @@ kbd.keycap {
   font-size: 18px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   color: #ffffff;
   line-height: 1;
 }
@@ -8011,7 +8011,7 @@ th.col-header-actions:hover .col-menu-trigger { opacity: 1; }
   background: var(--surface-base);
   border: 1px solid #333333;
   padding: 1px 5px;
-  font-family: 'Consolas', monospace;
+  font-family: var(--font-mono);
 }
 
 /* 116. Tag input chip */
@@ -8113,7 +8113,7 @@ th.col-header-actions:hover .col-menu-trigger { opacity: 1; }
   background: var(--surface-sunken);
   border: 1px solid var(--border-strong);
   color: #e0e0e0;
-  font-family: 'Consolas', monospace;
+  font-family: var(--font-mono);
 }
 .date-range-picker input[type="date"]:focus {
   border-color: var(--brand-gold);
@@ -8139,7 +8139,7 @@ th.col-header-actions:hover .col-menu-trigger { opacity: 1; }
   color: #e0e0e0;
   padding: 5px 10px;
   font-size: 11px;
-  font-family: 'Consolas', monospace;
+  font-family: var(--font-mono);
 }
 .clipboard-input input:focus { outline: none; }
 .clipboard-input .copy-btn {
@@ -8387,7 +8387,7 @@ th.col-header-actions:hover .col-menu-trigger { opacity: 1; }
   font-size: 22px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   color: #ffffff;
 }
 .stat-compare .stat-change {
@@ -8525,7 +8525,7 @@ th.col-header-actions:hover .col-menu-trigger { opacity: 1; }
   font-size: 28px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
   color: #ffffff;
   line-height: 1;
 }
@@ -8572,7 +8572,7 @@ th.col-header-actions:hover .col-menu-trigger { opacity: 1; }
 /* 139. Animated number counter */
 .number-counter {
   font-variant-numeric: tabular-nums;
-  font-family: ui-monospace, monospace;
+  font-family: var(--font-mono);
 }
 
 /* 140. Data table mini sparkline column */
@@ -8759,7 +8759,7 @@ td.sparkline-cell {
   padding: 0 3px;
   font-size: 8px;
   font-weight: 700;
-  font-family: 'Consolas', monospace;
+  font-family: var(--font-mono);
   color: #888888;
   background: var(--surface-sunken);
   border: 1px solid #333333;
@@ -8878,7 +8878,7 @@ td.sparkline-cell {
 
 /* 154. Coordinate display */
 .coordinate-display {
-  font-family: 'Consolas', monospace;
+  font-family: var(--font-mono);
   font-size: 10px;
   color: #888888;
   padding: 2px 6px;
@@ -8947,7 +8947,7 @@ td.sparkline-cell {
   gap: 0;
   font-size: 8px;
   color: #888888;
-  font-family: 'Consolas', monospace;
+  font-family: var(--font-mono);
 }
 .scale-bar .scale-line {
   height: 4px;
@@ -8970,7 +8970,7 @@ td.sparkline-cell {
   color: #000000;
   font-size: 10px;
   font-weight: 700;
-  font-family: 'Consolas', monospace;
+  font-family: var(--font-mono);
   cursor: pointer;
 }
 
@@ -9052,7 +9052,7 @@ td.sparkline-cell {
   padding: 4px 10px;
   background: var(--surface-base);
   border: 1px solid var(--border-default);
-  font-family: 'Consolas', monospace;
+  font-family: var(--font-mono);
   font-size: 10px;
 }
 .radio-channel-display .channel-name {
@@ -9171,7 +9171,7 @@ td.sparkline-cell {
 
 /* 170. Dispatch call log */
 .dispatch-log {
-  font-family: 'Courier New', monospace;
+  font-family: var(--font-mono);
   font-size: 10px;
   line-height: 1.4;
   color: #aaaaaa;
@@ -9272,7 +9272,7 @@ td.sparkline-cell {
 .number-align-right {
   text-align: right;
   font-variant-numeric: tabular-nums;
-  font-family: 'Consolas', monospace;
+  font-family: var(--font-mono);
 }
 
 /* ── GROUP 19: PRINT & EXPORT ENHANCEMENTS (181–190) ────────────────────── */
@@ -9509,7 +9509,7 @@ td.sparkline-cell {
 
 /* 195. Clock display */
 .clock-display {
-  font-family: 'Consolas', monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
   color: #888888;

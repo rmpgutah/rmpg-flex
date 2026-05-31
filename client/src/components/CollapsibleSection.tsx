@@ -27,7 +27,7 @@ interface CollapsibleSectionProps {
 
 const GOLD = '#d4a017';
 
-export default function CollapsibleSection({
+function CollapsibleSection({
   title,
   icon: Icon,
   count,
@@ -127,3 +127,5 @@ export default function CollapsibleSection({
     </div>
   );
 }
+
+export default React.memo(CollapsibleSection);
