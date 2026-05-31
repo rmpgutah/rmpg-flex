@@ -303,7 +303,8 @@ function speakPhrase(phrase: VoicePhrase): Promise<void> {
     } catch {
       // Edge TTS unavailable — fall back to browser SpeechSynthesis as last resort
       if (isSpeechAvailable()) {
-        const utterance = new SpeechSynthesisUtterance(phrase.text);
+        const { normalizeForSpeech } = await import('./speechNormalizer');
+        const utterance = new SpeechSynthesisUtterance(normalizeForSpeech(phrase.text));
         const voice = selectFemaleVoice();
         if (voice) utterance.voice = voice;
         utterance.rate = SPEECH_RATE;
@@ -373,6 +374,10 @@ const NATO_ALPHABET: Record<string, string> = {
  * Convert alphanumeric text to NATO phonetic alphabet.
  * Letters become their NATO word; digits stay as-is.
  * Example: "ABC1234" → "Alpha Bravo Charlie 1 2 3 4"
+ *
+ * DEPRECATED: normalizeForSpeech() in speechNormalizer.ts handles this
+ * centrally. The edgeTTS speak() pipeline applies normalization to all
+ * speech output automatically.
  */
 export function toPhonetic(text: string): string {
   return text.toUpperCase().split('').map(ch => {
@@ -386,6 +391,10 @@ export function toPhonetic(text: string): string {
  * Format a license plate using NATO phonetic alphabet.
  * Strips non-alphanumeric characters, then converts each character.
  * Example: "ABC-1234" → "Alpha Bravo Charlie 1 2 3 4"
+ *
+ * DEPRECATED: normalizeForSpeech() in speechNormalizer.ts handles this
+ * centrally. The edgeTTS speak() pipeline applies normalization to all
+ * speech output automatically.
  */
 function formatPlatePhonetic(plate: string): string {
   return plate.replace(/[^A-Z0-9]/gi, '').split('').map(ch => {

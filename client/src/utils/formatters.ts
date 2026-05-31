@@ -233,6 +233,9 @@ export function toTitleCase(str: string): string {
  * spoken aloud ("P. S. O.", not the word "Pso"). This is the single source
  * of truth — extend it here and every acronym-aware formatter below picks
  * it up, so labels stay proper for current AND future enum values.
+ *
+ * DEPRECATED for speech: use normalizeForSpeech() from speechNormalizer.ts
+ * for TTS output. This set remains for visual display labels only.
  */
 export const ACRONYMS = new Set([
   'pso', 'cfs', 'dv', 'ems', 'leo', 'ncic', 'bolo', 'atl', 'mdt',
@@ -271,6 +274,12 @@ export function toDisplayLabel(str: string): string {
  * "pso_client_request" → "P. S. O. Client Request"
  * "dv_in_progress"     → "D. V. In Progress"
  * Use this anywhere a label is handed to speech synthesis.
+ *
+ * DEPRECATED for TTS: normalizeForSpeech() from speechNormalizer.ts now
+ * handles all speech normalization centrally. This function is retained
+ * for voiceAlerts.ts backward compatibility but the edgeTTS speak() path
+ * will apply a second pass of normalization via normalizeForSpeech()
+ * which is harmless (idempotent for already-expanded text).
  */
 export function toSpokenLabel(str: string): string {
   if (!str) return '';

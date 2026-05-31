@@ -551,26 +551,186 @@ const STREET_ABBR: Record<string, string> = {
 // Acronyms a dispatcher SPELLS OUT on the air ("PSO Client Request" is said
 // "P. S. O. Client Request", never the word "Pso"). Curated to unambiguous
 // letter-spoken codes — BOLO is deliberately absent (it's said as a word).
-const SPOKEN_ACRONYMS = new Set(['PSO', 'CFS', 'DV', 'DUI', 'DWI', 'NCIC', 'EMS', 'ATL']);
+const SPOKEN_ACRONYMS = new Set(['PSO', 'CFS', 'DV', 'DUI', 'DWI', 'NCIC', 'EMS', 'ATL',
+  'LEO', 'ID', 'HOA', 'LLC', 'ETA', 'RMPG', 'GPS', 'SGT', 'LT', 'CPT', 'SRO',
+  'DMV', 'CAD', 'RMS', 'PD', 'SO', 'SLC', 'LE', 'SOP',
+]);
+
+const TEN_CODES: Record<string, string> = {
+  '10-0': 'ten zero',
+  '10-1': 'ten one',
+  '10-2': 'ten two',
+  '10-3': 'ten three',
+  '10-4': 'ten four',
+  '10-5': 'ten five',
+  '10-6': 'ten six',
+  '10-7': 'ten seven',
+  '10-8': 'ten eight',
+  '10-9': 'ten nine',
+  '10-10': 'ten ten',
+  '10-11': 'ten eleven',
+  '10-12': 'ten twelve',
+  '10-13': 'ten thirteen',
+  '10-14': 'ten fourteen',
+  '10-15': 'ten fifteen',
+  '10-16': 'ten sixteen',
+  '10-17': 'ten seventeen',
+  '10-18': 'ten eighteen',
+  '10-19': 'ten nineteen',
+  '10-20': 'ten twenty',
+  '10-21': 'ten twenty-one',
+  '10-22': 'ten twenty-two',
+  '10-23': 'ten twenty-three',
+  '10-24': 'ten twenty-four',
+  '10-25': 'ten twenty-five',
+  '10-28': 'ten twenty-eight',
+  '10-29': 'ten twenty-nine',
+  '10-30': 'ten thirty',
+  '10-31': 'ten thirty-one',
+  '10-32': 'ten thirty-two',
+  '10-33': 'ten thirty-three',
+  '10-34': 'ten thirty-four',
+  '10-35': 'ten thirty-five',
+  '10-36': 'ten thirty-six',
+  '10-37': 'ten thirty-seven',
+  '10-38': 'ten thirty-eight',
+  '10-39': 'ten thirty-nine',
+  '10-40': 'ten forty',
+  '10-41': 'ten forty-one',
+  '10-42': 'ten forty-two',
+  '10-43': 'ten forty-three',
+  '10-44': 'ten forty-four',
+  '10-45': 'ten forty-five',
+  '10-46': 'ten forty-six',
+  '10-47': 'ten forty-seven',
+  '10-48': 'ten forty-eight',
+  '10-49': 'ten forty-nine',
+  '10-50': 'ten fifty',
+  '10-51': 'ten fifty-one',
+  '10-52': 'ten fifty-two',
+  '10-53': 'ten fifty-three',
+  '10-54': 'ten fifty-four',
+  '10-55': 'ten fifty-five',
+  '10-56': 'ten fifty-six',
+  '10-57': 'ten fifty-seven',
+  '10-58': 'ten fifty-eight',
+  '10-59': 'ten fifty-nine',
+  '10-60': 'ten sixty',
+  '10-61': 'ten sixty-one',
+  '10-62': 'ten sixty-two',
+  '10-63': 'ten sixty-three',
+  '10-64': 'ten sixty-four',
+  '10-65': 'ten sixty-five',
+  '10-66': 'ten sixty-six',
+  '10-67': 'ten sixty-seven',
+  '10-68': 'ten sixty-eight',
+  '10-69': 'ten sixty-nine',
+  '10-70': 'ten seventy',
+  '10-71': 'ten seventy-one',
+  '10-72': 'ten seventy-two',
+  '10-73': 'ten seventy-three',
+  '10-74': 'ten seventy-four',
+  '10-75': 'ten seventy-five',
+  '10-76': 'ten seventy-six',
+  '10-77': 'ten seventy-seven',
+  '10-78': 'ten seventy-eight',
+  '10-79': 'ten seventy-nine',
+  '10-80': 'ten eighty',
+  '10-81': 'ten eighty-one',
+  '10-82': 'ten eighty-two',
+  '10-83': 'ten eighty-three',
+  '10-84': 'ten eighty-four',
+  '10-85': 'ten eighty-five',
+  '10-86': 'ten eighty-six',
+  '10-87': 'ten eighty-seven',
+  '10-88': 'ten eighty-eight',
+  '10-89': 'ten eighty-nine',
+  '10-90': 'ten ninety',
+  '10-91': 'ten ninety-one',
+  '10-92': 'ten ninety-two',
+  '10-93': 'ten ninety-three',
+  '10-94': 'ten ninety-four',
+  '10-95': 'ten ninety-five',
+  '10-96': 'ten ninety-six',
+  '10-97': 'ten ninety-seven',
+  '10-98': 'ten ninety-eight',
+  '10-99': 'ten ninety-nine',
+  '10-100': 'ten hundred',
+};
+
+const PRIORITY_MAP: Record<string, string> = {
+  'P1': 'Priority One',
+  'P2': 'Priority Two',
+  'P3': 'Priority Three',
+  'P4': 'Priority Four',
+};
+
+const DIRECTIONS: Record<string, string> = {
+  'NB': 'northbound',
+  'SB': 'southbound',
+  'EB': 'eastbound',
+  'WB': 'westbound',
+};
+
+// Common words never expanded as acronyms
+const COMMON_WORDS = new Set([
+  'THE', 'AND', 'FOR', 'ARE', 'BUT', 'NOT', 'YOU', 'ALL', 'CAN',
+  'HAD', 'HER', 'HIS', 'ITS', 'MAY', 'WAS', 'WILL', 'WITH',
+  'ABOUT', 'AFTER', 'BEEN', 'BEFORE', 'BETWEEN', 'COULD', 'DOES',
+  'EACH', 'FROM', 'HAVE', 'INTO', 'MORE', 'MOST', 'MUCH', 'MUST',
+  'NEAR', 'ONLY', 'OVER', 'SAME', 'SOME', 'SUCH', 'THAN', 'THAT',
+  'THEM', 'THEN', 'THERE', 'THESE', 'THIS', 'THOSE', 'TIME',
+  'UNDER', 'UPON', 'VERY', 'WERE', 'WHAT', 'WHEN', 'WHERE',
+  'WHICH', 'WHILE', 'WOULD', 'YEAR', 'YOUR',
+  'BLACK', 'WHITE', 'BROWN', 'BLUE', 'GRAY', 'GREY', 'GREEN',
+  'RED', 'YELLOW', 'ORANGE', 'PURPLE', 'PINK', 'TAN', 'GOLD',
+  'SILVER', 'MAROON', 'NAVY',
+  'SALT', 'LAKE', 'CITY', 'UTAH', 'COUNTY',
+  'ACTIVE', 'CLOSED', 'SEARCH', 'RECORDS', 'OFFICER',
+]);
 
 export function humanizeForSpeech(text: string): string {
   let s = text;
-  // 10-codes → "ten ...": "10-4" → "ten 4" (TTS then says "ten four"),
-  // "10-78" → "ten 78" ("ten seventy-eight"). Avoids "ten dash four".
-  s = s.replace(/\b10-(\d{1,3})\b/g, 'ten $1');
-  // "code-4" / "code4" → "code 4" so it isn't run together.
+
+  // 1. Expand 10-codes
+  s = s.replace(/\b10-\d{1,3}\b/g, (match) => {
+    return TEN_CODES[match.toUpperCase()] || match;
+  });
+
+  // 2. "code-4" / "code4" → "code 4" so it isn't run together.
   s = s.replace(/\bcode[-\s]?(\d{1,2})\b/gi, 'code $1');
-  // Spell known UPPERCASE acronyms letter-by-letter ("PSO" → "P. S. O.") so
-  // Aura-2 announces the letters. Runs BEFORE the street-abbr pass so the
-  // resulting single letters aren't re-matched.
-  s = s.replace(/\b[A-Z]{2,5}\b/g, (m) =>
-    SPOKEN_ACRONYMS.has(m) ? m.split('').join('. ') + '.' : m,
-  );
-  // Expand street-type abbreviations (word-boundary, optional trailing dot).
+
+  // 3. Expand priority codes: "P1" → "Priority One"
+  s = s.replace(/\bP[1-4]\b/gi, (match) => {
+    return PRIORITY_MAP[match.toUpperCase()] || match;
+  });
+
+  // 4. Spell known UPPERCASE acronyms letter-by-letter
+  s = s.replace(/\b[A-Z]{2,5}\b/g, (m) => {
+    if (COMMON_WORDS.has(m)) return m;
+    return SPOKEN_ACRONYMS.has(m) ? m.split('').join('. ') + '.' : m;
+  });
+
+  // 5. Expand street-type abbreviations (word-boundary, optional trailing dot).
   s = s.replace(/\b([A-Za-z]{2,5})\.?\b/g, (m, w) => {
     const full = STREET_ABBR[String(w).toLowerCase()];
     return full ? full : m;
   });
+
+  // 6. NB/SB/EB/WB directionals
+  s = s.replace(/\b(NB|SB|EB|WB)\b/gi, (match) => {
+    return DIRECTIONS[match.toUpperCase()] || match;
+  });
+
+  // 7. Normalize time formats: "HHMM" → "HH MM hours"
+  s = s.replace(/\b([01]\d|2[0-3])([0-5]\d)\b(?!\s*hours)/g, (_, hour, min) => {
+    return `${hour} ${min} hours`;
+  });
+
+  // 8. "enroute" → "en route", "onscene" → "on scene"
+  s = s.replace(/\benroute\b/gi, 'en route');
+  s = s.replace(/\bonscene\b/gi, 'on scene');
+
   return s;
 }
 
