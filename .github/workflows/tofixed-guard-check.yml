@@ -1,0 +1,27 @@
+name: toFixed Guard Check
+
+on:
+  pull_request:
+    paths:
+      - 'client/src/**'
+      - 'scripts/check-tofixed-guards.js'
+      - '.github/workflows/tofixed-guard-check.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'client/src/**'
+      - 'scripts/check-tofixed-guards.js'
+      - '.github/workflows/tofixed-guard-check.yml'
+  workflow_dispatch:
+
+jobs:
+  tofixed-guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - name: Run toFixed false-guard check
+        run: node scripts/check-tofixed-guards.js
