@@ -191,7 +191,7 @@ export default function PersonnelAnalyticsDashboard({ officers, credentials, tim
               {roleData.map(d => (
                 <div key={d.name} className="flex items-center gap-2 text-xs">
                   <span className="w-2.5 h-2.5 rounded-sm flex-shrink-0" style={{ background: ROLE_HEX[d.name] || '#666666' }} />
-                  <span className="text-rmpg-200 capitalize flex-1">{d.name.replace('_', ' ')}</span>
+                  <span className="text-rmpg-200 capitalize flex-1">{d.name.replace(/_/g, ' ')}</span>
                   <span className="font-mono text-white">{d.value}</span>
                 </div>
               ))}

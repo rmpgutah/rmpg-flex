@@ -16,6 +16,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import { useAuth } from '../context/AuthContext';
 import { initMapbox, getMapboxInstance, mapboxgl, MAPBOX_STYLE_DARK } from '../utils/mapboxLoader';
 import { getMapboxAccessToken } from '../utils/mapboxApiKey';
+import { toDisplayLabel } from '../utils/formatters';
 import ServeJobCard from '../components/serve/ServeJobCard';
 import ServeAttemptModal from '../components/serve/ServeAttemptModal';
 import ServeRoutePlanner from '../components/serve/ServeRoutePlanner';
@@ -806,7 +807,7 @@ export default function ServePage() {
                   </div>
                   <p className="text-sm text-rmpg-400 font-medium">
                     {statusFilter !== 'all'
-                      ? `No ${statusFilter.replace('_', ' ')} jobs for this date.`
+                      ? `No ${statusFilter.replace(/_/g, ' ')} jobs for this date.`
                       : 'No jobs for today. Sync from ServeManager or add manually.'
                     }
                   </p>
@@ -946,7 +947,7 @@ export default function ServePage() {
                             color: isCompleted ? '#4ade80' : isFailed ? '#f87171' : job.status === 'in_progress' ? '#facc15' : '#aaaaaa',
                             border: `1px solid ${isCompleted ? '#22c55e30' : isFailed ? '#ef444430' : job.status === 'in_progress' ? '#eab30830' : '#88888830'}`,
                           }}>
-                            {job.status.replace('_', ' ')}
+                            {toDisplayLabel(job.status)}
                           </span>
                         </div>
                       );

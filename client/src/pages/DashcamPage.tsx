@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { apiFetch } from '../hooks/useApi';
+import { formatEnumValue } from '../utils/formatters';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { Camera, MapPin, AlertTriangle, Radio, RefreshCw, Activity, Power, PowerOff, Search, Monitor, Smartphone } from 'lucide-react';
 import IconButton from '../components/IconButton';
@@ -289,7 +290,7 @@ export default function DashcamPage() {
                         </td>
                         <td className="px-3 py-1.5">
                           {EVENT_ICONS[e.event_type] && <span className="mr-1">{EVENT_ICONS[e.event_type]}</span>}
-                          {e.event_type}
+                          {formatEnumValue(e.event_type)}
                         </td>
                         <td className={`px-3 py-1.5 ${SEVERITY_COLORS[e.severity] || 'text-text-muted'}`}>
                           {e.severity}
@@ -384,7 +385,7 @@ export default function DashcamPage() {
                   {(deviceDetail.recent_events || []).slice(0, 5).map((ev: any) => (
                     <div key={ev.id} className="flex items-center gap-2 py-0.5 border-b border-[#111] last:border-0">
                       <span className={`w-1.5 h-1.5 rounded-full ${ev.severity === 'critical' ? 'bg-red-400' : ev.severity === 'warning' ? 'bg-amber-400' : 'bg-gray-400'}`} />
-                      <span className="text-text-muted w-16">{ev.event_type}</span>
+                      <span className="text-text-muted w-16">{formatEnumValue(ev.event_type)}</span>
                       <span className="text-text-muted text-[10px]">{ev.event_at}</span>
                     </div>
                   ))}

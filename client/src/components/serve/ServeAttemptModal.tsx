@@ -656,12 +656,12 @@ export default function ServeAttemptModal({
                   </div>
                   <div className="flex justify-between">
                     <span className="text-rmpg-400">Type</span>
-                    <span className="text-rmpg-100 capitalize">{attemptType?.replace('_', ' ')}</span>
+                    <span className="text-rmpg-100 capitalize">{attemptType?.replace(/_/g, ' ')}</span>
                   </div>
                   {attemptType === 'failed' && failedReason && (
                     <div className="flex justify-between">
                       <span className="text-rmpg-400">Reason</span>
-                      <span className="text-rmpg-100 capitalize">{failedReason.replace('_', ' ')}</span>
+                      <span className="text-rmpg-100 capitalize">{failedReason.replace(/_/g, ' ')}</span>
                     </div>
                   )}
                   {gps.latitude != null && (
