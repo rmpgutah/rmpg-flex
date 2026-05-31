@@ -535,8 +535,8 @@ export function addReportHeader(
   // Detect if header background is light or dark to choose text colors
   const bgLuminance = (headerBg[0] * 0.299 + headerBg[1] * 0.587 + headerBg[2] * 0.114);
   const isLightBg = bgLuminance > 140;
-  const headerTextColor: [number, number, number] = isLightBg ? [30, 30, 35] : [255, 255, 255];
-  const headerMetaColor: [number, number, number] = isLightBg ? [100, 100, 110] : [150, 150, 150];
+  const headerTextColor: [number, number, number] = isLightBg ? [30, 30, 30] : [255, 255, 255]; // neutralized 2026-05-30
+  const headerMetaColor: [number, number, number] = isLightBg ? [100, 100, 100] : [150, 150, 150]; // neutralized 2026-05-30
   const subheaderColor: [number, number, number] = isLightBg ? primaryRgb : [accentRgb[0], accentRgb[1], accentRgb[2]];
 
   // ── Header background bar (no top outline — clean edge) ─

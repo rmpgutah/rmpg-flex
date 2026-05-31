@@ -2205,7 +2205,7 @@ function drawUnitStatusDiagram(ctx: GuideContext): void {
     { label: 'DISPATCHED',   dx:  170, dy:  -70, color: '#555555' },
     { label: 'ENROUTE',      dx:  170, dy:    0, color: '#555555' },
     { label: 'ON SCENE',     dx:  170, dy:   70, color: '#666666' },
-    { label: 'BUSY',         dx: -170, dy:  -70, color: '#d97706' },
+    { label: 'BUSY',         dx: -170, dy:  -70, color: '#666666' },
     { label: 'OUT OF SVC',   dx: -170, dy:   70, color: '#888888' },
   ];
   const nodes: Record<string, ReturnType<typeof dBox>> = { AVAILABLE: hub };
@@ -2278,9 +2278,9 @@ function drawPriorityPyramidDiagram(ctx: GuideContext): void {
 
   const levels: Array<{ p: string; label: string; color: string; widthPct: number; freq: string; response: string }> = [
     { p: 'P1', label: 'Life / safety emergency',    color: '#666666', widthPct: 0.20, freq: '~2% of calls',  response: 'lights + siren'   },
-    { p: 'P2', label: 'Crime in progress / urgent', color: '#d97706', widthPct: 0.40, freq: '~15% of calls', response: 'prompt, no L&S'   },
-    { p: 'P3', label: 'Routine',                    color: '#ca8a04', widthPct: 0.65, freq: '~55% of calls', response: 'closest unit'     },
-    { p: 'P4', label: 'Cold / report only',         color: '#6b7280', widthPct: 0.85, freq: '~28% of calls', response: 'phone / deferred' },
+    { p: 'P2', label: 'Crime in progress / urgent', color: '#666666', widthPct: 0.40, freq: '~15% of calls', response: 'prompt, no L&S'   },
+    { p: 'P3', label: 'Routine',                    color: '#777777', widthPct: 0.65, freq: '~55% of calls', response: 'closest unit'     },
+    { p: 'P4', label: 'Cold / report only',         color: '#777777', widthPct: 0.85, freq: '~28% of calls', response: 'phone / deferred' },
   ];
 
   // Column anchors
@@ -2445,7 +2445,7 @@ function drawBrainPipelineDiagram(ctx: GuideContext): void {
     const bx = x + 12 + i * (boxW + gap);
     const isRule = stages[i] === 'Rule Engine';
     boxes.push(dBox(d, bx, cy, boxW, boxH, stages[i], {
-      fill: isRule ? '#1f1a00' : '#141414',
+      fill: isRule ? '#2a2a2a' : '#141414',
       stroke: isRule ? COLOR.ACCENT : '#2e2e2e',
       textColor: '#e5e5e5',
       fontSize: 7,
@@ -2459,14 +2459,14 @@ function drawBrainPipelineDiagram(ctx: GuideContext): void {
   // Sideband: WebSocket event stream feeding Rule Engine
   const sideY = cy + 80;
   const sideBox = dBox(d, x + w / 2 - 90, sideY, 180, 28, 'WebSocket: call/unit/premise events', {
-    fill: '#0d1a2b', stroke: '#2b4b6b', textColor: '#93c5fd', fontSize: 8, bold: true,
+    fill: '#2a2a2a', stroke: '#555555', textColor: '#888888', fontSize: 8, bold: true,
   });
   // Arrow from sideband up to Rule Engine
   const ruleBox = boxes[3];
   dArrow(d,
     sideBox.x + sideBox.w / 2, sideBox.y,
     ruleBox.x + ruleBox.w / 2, ruleBox.y + ruleBox.h,
-    undefined, '#93c5fd',
+    undefined, '#888888',
   );
 
   // Labels
@@ -2500,7 +2500,7 @@ function drawWebSocketArchDiagram(ctx: GuideContext): void {
   const cx = x + w / 2;
   const cy = y + h / 2 - 10;
   const server = dBox(d, cx - 70, cy - 22, 140, 44, 'RMPG FLEX SERVER\nws://rmpgutah.us', {
-    fill: '#1f1a00', stroke: COLOR.ACCENT, textColor: COLOR.ACCENT, fontSize: 9, bold: true,
+    fill: '#2a2a2a', stroke: COLOR.ACCENT, textColor: COLOR.ACCENT, fontSize: 9, bold: true,
   });
 
   // Database below server
@@ -2566,7 +2566,7 @@ function drawSkipTracerFanoutDiagram(ctx: GuideContext): void {
   const cx = x + w / 2;
   const cy = y + h / 2 - 4;
   dBox(d, cx - 50, cy - 16, 100, 32, 'SKIP TRACER', {
-    fill: '#1f1a00', stroke: COLOR.ACCENT, textColor: COLOR.ACCENT, fontSize: 10, bold: true,
+    fill: '#2a2a2a', stroke: COLOR.ACCENT, textColor: COLOR.ACCENT, fontSize: 10, bold: true,
   });
 
   type Src = { label: string; cat: 'fed' | 'state' | 'local' | 'oss' };
@@ -2602,8 +2602,8 @@ function drawSkipTracerFanoutDiagram(ctx: GuideContext): void {
 
   const catColors: Record<string, { fill: string; stroke: string; text: string }> = {
     fed:   { fill: '#333333', stroke: '#666666', text: '#aaaaaa' },
-    state: { fill: '#0a1a2b', stroke: '#2563eb', text: '#93c5fd' },
-    local: { fill: '#333333', stroke: '#777777', text: '#86efac' },
+    state: { fill: '#2a2a2a', stroke: '#555555', text: '#888888' },
+    local: { fill: '#333333', stroke: '#777777', text: '#999999' },
     oss:   { fill: '#141414', stroke: '#666666', text: '#cccccc' },
   };
 
@@ -2945,13 +2945,13 @@ function drawMapLayerStackDiagram(ctx: GuideContext): void {
   dFrame(d, x, y, w, h);
 
   const layers: Array<{ label: string; detail: string; color: string }> = [
-    { label: 'Base tiles',         detail: 'Google Maps dark / CartoDB fallback', color: '#374151' },
-    { label: 'Beat polygons',      detail: '719 features colored by sector',      color: '#60a5fa' },
-    { label: 'Geofences',          detail: 'Active perimeters + evidence zones', color: '#a78bfa' },
-    { label: 'Premise alerts',     detail: 'Persistent address warnings',         color: '#f59e0b' },
+    { label: 'Base tiles',         detail: 'Google Maps dark / CartoDB fallback', color: '#666666' },
+    { label: 'Beat polygons',      detail: '719 features colored by sector',      color: '#888888' },
+    { label: 'Geofences',          detail: 'Active perimeters + evidence zones', color: '#888888' },
+    { label: 'Premise alerts',     detail: 'Persistent address warnings',         color: '#777777' },
     { label: 'Active calls',       detail: 'Incident-type pins, priority color',  color: '#555555' },
     { label: 'Units (GPS)',        detail: 'Dots colored by status, 5s updates',  color: '#888888' },
-    { label: 'Breadcrumbs',        detail: 'Last-N-min trail (on demand)',        color: '#93c5fd' },
+    { label: 'Breadcrumbs',        detail: 'Last-N-min trail (on demand)',        color: '#888888' },
     { label: 'Interaction layer',  detail: 'Hover, click, drag-to-dispatch',      color: '#ffffff' },
   ];
 
@@ -3028,7 +3028,7 @@ function drawServeLifecycleDiagram(ctx: GuideContext): void {
     const s = stages[i];
     const isOutcome = s.label === 'OUTCOME';
     boxes.push(dBox(d, bx, cy, boxW, boxH, `${s.label}\n${s.detail}`, {
-      fill: isOutcome ? '#1f1a00' : '#141414',
+      fill: isOutcome ? '#2a2a2a' : '#141414',
       stroke: isOutcome ? COLOR.ACCENT : '#2e2e2e',
       textColor: '#e5e5e5',
       fontSize: 7,
@@ -3060,7 +3060,7 @@ function drawServeLifecycleDiagram(ctx: GuideContext): void {
   const retryX  = servedX + childW + childGap;
 
   const served = dBox(d, servedX, branchY, childW, 32, 'CLOSED — SERVED\nFinal disposition', {
-    fill: '#333333', stroke: '#777777', textColor: '#86efac', fontSize: 7, bold: true,
+    fill: '#333333', stroke: '#777777', textColor: '#999999', fontSize: 7, bold: true,
   });
   const retry = dBox(d, retryX, branchY, childW, 32, 'RE-ATTEMPT\nup to contract limit', {
     fill: '#333333', stroke: '#666666', textColor: '#aaaaaa', fontSize: 7, bold: true,
@@ -3101,8 +3101,8 @@ function drawCompoundSearchMatrixDiagram(ctx: GuideContext): void {
   const fields: Array<{ label: string; example: string; color: string }> = [
     { label: 'NAME',       example: 'SMITH*\n(wildcard)',           color: '#555555' },
     { label: 'DOB',        example: '1985-01-01\n..1990-12-31',     color: '#555555' },
-    { label: 'PHYSICAL',   example: '72-76 in\nmale, brown',        color: '#60a5fa' },
-    { label: 'ADDRESS',    example: '500m radius\nof lat/lng',      color: '#60a5fa' },
+    { label: 'PHYSICAL',   example: '72-76 in\nmale, brown',        color: '#888888' },
+    { label: 'ADDRESS',    example: '500m radius\nof lat/lng',      color: '#888888' },
     { label: 'PLATE',      example: 'AB*\nUT 2018+',                color: '#888888' },
     { label: 'VEHICLE',    example: 'Black pickup\nChevy, older',   color: '#888888' },
     { label: 'FLAGS',      example: 'WEAPON or\nOFC_SAFETY',        color: '#666666' },
@@ -3159,16 +3159,16 @@ function drawArchDataFlowDiagram(ctx: GuideContext): void {
   const tierY = y + 40;
   const tierH = 60;
   const browser = dBox(d, x + 12, tierY, 96, tierH, 'BROWSER\nReact SPA\nVite bundle', {
-    fill: '#0d1a2b', stroke: '#2563eb', textColor: '#93c5fd', fontSize: 8, bold: true,
+    fill: '#2a2a2a', stroke: '#555555', textColor: '#888888', fontSize: 8, bold: true,
   });
   const nginx = dBox(d, x + 130, tierY, 90, tierH, 'NGINX\nSSL terminator\nStatic + proxy', {
     fill: '#1a1a1a', stroke: '#666666', textColor: '#cccccc', fontSize: 8, bold: true,
   });
   const express = dBox(d, x + 240, tierY, 100, tierH, 'EXPRESS 5\ntsx runtime\nREST + WS', {
-    fill: '#1f1a00', stroke: COLOR.ACCENT, textColor: COLOR.ACCENT, fontSize: 8, bold: true,
+    fill: '#2a2a2a', stroke: COLOR.ACCENT, textColor: COLOR.ACCENT, fontSize: 8, bold: true,
   });
   const sqlite = dBox(d, x + 360, tierY, 90, tierH, 'SQLITE\nbetter-sqlite3\naudit log', {
-    fill: '#333333', stroke: '#777777', textColor: '#86efac', fontSize: 8, bold: true,
+    fill: '#333333', stroke: '#777777', textColor: '#999999', fontSize: 8, bold: true,
   });
 
   // Flow arrows (HTTPS 443, proxy 3001, file I/O)
@@ -3184,7 +3184,7 @@ function drawArchDataFlowDiagram(ctx: GuideContext): void {
   const sidebands = [
     { from: nginx,   label: "Let's Encrypt\ncerts (symlinks)", color: '#888888' },
     { from: express, label: 'systemd unit\nrmpg-flex.service', color: '#888888' },
-    { from: express, label: 'WebSocket (ws)\nbroadcastDispatchUpdate', color: '#60a5fa' },
+    { from: express, label: 'WebSocket (ws)\nbroadcastDispatchUpdate', color: '#888888' },
     { from: sqlite,  label: 'server/data/\nexcluded from deploy', color: '#888888' },
   ];
   for (const sb of sidebands) {
@@ -3240,7 +3240,7 @@ function drawOfficerDownFlowchart(ctx: GuideContext): void {
   // Decision diamond — is GPS current?
   const decisionY = y + 150;
   const diamond = (cx: number, cy: number, label: string) => {
-    d.setFillColor('#1a1a00');
+    d.setFillColor('#2a2a2a');
     d.setDrawColor(COLOR.ACCENT);
     d.setLineWidth(1);
     const size = 40;
@@ -3259,7 +3259,7 @@ function drawOfficerDownFlowchart(ctx: GuideContext): void {
 
   // Yes branch (left)
   const yesBox = dBox(d, x + 40, decisionY + 80, 150, 30, 'Use GPS location\nDispatch 3 nearest', {
-    fill: '#333333', stroke: '#777777', textColor: '#86efac', fontSize: 8, bold: true,
+    fill: '#333333', stroke: '#777777', textColor: '#999999', fontSize: 8, bold: true,
   });
   dArrow(d, centerX - 50, decisionY + 40, yesBox.x + yesBox.w, yesBox.y + 10, 'YES');
 
@@ -3385,11 +3385,11 @@ function drawConsoleAnatomyDiagram(ctx: GuideContext): void {
   const mapX = x + leftW + 2;
   const mapW = w - leftW - 2;
   const mapH = cpH * 0.6;
-  d.setFillColor('#111827');
+  d.setFillColor('#333333');
   d.setDrawColor('#2e2e2e');
   d.rect(mapX, cpY, mapW, mapH, 'FD');
   // Fake beat lines
-  d.setDrawColor('#374151');
+  d.setDrawColor('#666666');
   d.setLineWidth(0.4);
   for (let i = 1; i < 6; i++) d.line(mapX + (mapW / 6) * i, cpY, mapX + (mapW / 6) * i, cpY + mapH);
   for (let j = 1; j < 4; j++) d.line(mapX, cpY + (mapH / 4) * j, mapX + mapW, cpY + (mapH / 4) * j);
@@ -4481,10 +4481,10 @@ function quickReferenceCard(ctx: GuideContext): void {
 
   const pWidth = (PAGE.W - PAGE.MARGIN * 2) / 4;
   const priorities: Array<[string, string, [number, number, number]]> = [
-    ['P1', 'Life/safety — lights + siren',   [185, 28, 28]],
-    ['P2', 'In-progress — respond promptly', [217, 119, 6]],
-    ['P3', 'Routine',                        [202, 138, 4]],
-    ['P4', 'Cold / report only',             [107, 114, 128]],
+    ['P1', 'Life/safety — lights + siren',   [55, 55, 55]],
+    ['P2', 'In-progress — respond promptly', [75, 75, 75]],
+    ['P3', 'Routine',                        [100, 100, 100]],
+    ['P4', 'Cold / report only',             [115, 115, 115]],
   ];
   bottomY += 16;
   for (let i = 0; i < priorities.length; i++) {
