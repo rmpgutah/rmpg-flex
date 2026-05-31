@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { apiFetch, authedImageUrl } from '../../hooks/useApi';
 import { asArray } from '../../utils/asArray';
+import { formatEnumValue } from '../../utils/formatters';
 
 interface Props {
   LoadingSpinner: React.FC;
@@ -331,7 +332,7 @@ export default function AdminEvidenceTab({ LoadingSpinner, error, setError }: Pr
                   <tr key={e.id} className="border-b border-[#1a1a1a]">
                     <td className="py-1.5 px-2 font-mono text-rmpg-300">{e.event_timestamp}</td>
                     <td className="py-1.5 px-2 font-mono text-[#d4a017]">{e.call_sign ?? '—'}</td>
-                    <td className="py-1.5 px-2 font-mono">{e.event_type}</td>
+                    <td className="py-1.5 px-2 font-mono">{formatEnumValue(e.event_type)}</td>
                     <td className="py-1.5 px-2 font-mono">{e.severity}</td>
                     <td className="py-1.5 px-2 text-right">
                       <div className="inline-flex gap-1">

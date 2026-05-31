@@ -605,7 +605,7 @@ export default function CourtTrackerPage() {
                   {(stats.byType || []).map((r: any) => (
                     <div key={r.event_type} className="flex items-center justify-between py-1 border-b border-rmpg-800 last:border-0">
                       <span className={`text-[10px] px-1.5 py-0.5 border ${EVENT_TYPE_COLORS[r.event_type] || ''}`}>
-                        {r.event_type}
+                        {formatEnumValue(r.event_type)}
                       </span>
                       <span className="text-[10px] font-bold text-white">{r.count}</span>
                     </div>

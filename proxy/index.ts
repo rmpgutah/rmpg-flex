@@ -791,6 +791,12 @@ const API_ROUTES: RouteRule[] = [
   // at /api/audit; this rule routes the prefix to env.API.
   { kind: 'prefix', value: '/api/audit' },
   // Admin extras the legacy worker doesn't implement
+  // Console/System Settings — entire CRUD lives in src/routes/adminSettings.ts
+  // (mounted at /api/admin/settings in routesConfig.ts) backed by the
+  // system_settings table on live D1 (seeded via migrations 0049/0050).
+  // Legacy never had this surface, so requests were falling through and
+  // 500ing on the AdminSettingsTab "Failed to load settings" screen.
+  { kind: 'prefix', value: '/api/admin/settings' },
   { kind: 'prefix', value: '/api/admin/retention' },
   { kind: 'prefix', value: '/api/admin/departments' },
   { kind: 'prefix', value: '/api/admin/notification-rules' },
