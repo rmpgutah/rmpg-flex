@@ -134,7 +134,7 @@ export default function FormModal({
             </button>
           </div>
         </div>
-        <form onSubmit={onSubmit} noValidate className="p-4 sm:p-6 space-y-4 overflow-y-auto" style={{ overscrollBehavior: 'contain', maxHeight: 'calc(100dvh - 120px)' }}>
+        <form onSubmit={onSubmit} className="p-4 sm:p-6 space-y-4 overflow-y-auto" style={{ overscrollBehavior: 'contain', maxHeight: 'calc(100dvh - 120px)' }}>
           {draftRestored && onDiscardDraft && (
             <div className="flex items-center justify-between px-3 py-2 rounded-sm border border-amber-500/30" style={{ background: '#1a1500' }}>
               <div className="flex items-center gap-2">

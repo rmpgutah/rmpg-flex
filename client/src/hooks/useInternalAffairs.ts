@@ -45,7 +45,7 @@ export function generateOfficerNotification(complaintId: string, officerId: stri
 export interface DisciplinaryAction { id: string; complaintId: string; officerId: string; actionType: 'verbal_counseling'|'written_reprimand'|'suspension'|'demotion'|'termination'|'training_referral'; issuedDate: string; effectiveDate: string; duration: number|null; appealDeadline: string; appealFiled: boolean; appealStatus: string|null; }
 export function useDisciplinaryTracking() {
   const [actions, setActions] = useState<DisciplinaryAction[]>([]); const [loading, setLoading] = useState(false);
-  const load = useCallback(async () => { setLoading(true); try { const r = await apiFetch<DisciplinaryAction[]>('/admin/ia/disciplinary'); if (r) setActions(r); } catch {} setLoading(false); }, []);
+  const load = useCallback(async () => { setLoading(true); try { const r = await apiFetch<DisciplinaryAction[]>('/admin/ia/disciplinary'); if (r) setActions(r); } catch (err) { console.warn('[useDisciplinaryTracking] load failed:', err); } setLoading(false); }, []);
   const active = useMemo(() => actions.filter(a => new Date(a.effectiveDate) <= new Date() && (!a.duration || new Date(a.effectiveDate).getTime() + a.duration*86400000 > Date.now())), [actions]);
   const underAppeal = useMemo(() => actions.filter(a => a.appealFiled && a.appealStatus !== 'resolved'), [actions]);
   return { actions, loading, load, active, underAppeal };

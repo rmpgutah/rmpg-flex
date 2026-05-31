@@ -34,7 +34,7 @@ export default function DashcamPage() {
     try {
       const data = await apiFetch<any>('/howen/status');
       setStatus(data);
-    } catch { }
+    } catch (err) { console.warn('[DashcamPage] fetchStatus failed:', err); }
   }, []);
 
   const fetchDevices = useCallback(async (p: number, s: string) => {
@@ -54,7 +54,7 @@ export default function DashcamPage() {
     try {
       const data = await apiFetch<any>('/howen/events?limit=20');
       setEvents(data.events || []);
-    } catch { }
+    } catch (err) { console.warn('[DashcamPage] fetchEvents failed:', err); }
   }, []);
 
   useEffect(() => {
