@@ -700,6 +700,15 @@ function resolveSectionAccentColor(title: string): readonly [number, number, num
 export function openAutoSection(doc: jsPDF, title: string, y: number): { contentY: number; sectionY: number; sectionPage: number } {
   const cw = getContentWidth(doc);
 
+  // Keep the header and its first content row on the same page. Reserve
+  // the header bar + content pad + one field row (~14mm) so a section
+  // opened near the page bottom moves WHOLE to the next page rather than
+  // stranding an orphan header (and, because record rows reuse one `y`
+  // across 3–4 side-by-side fields, cascading each field onto its own
+  // near-blank page — the PS-202 bug fixed 2026-05-30).
+  const FIRST_ROW_RESERVE = SPACING.SECTION_HEADER_H + SPACING.SECTION_CONTENT_PAD + 14;
+  y = checkPageBreak(doc, y, FIRST_ROW_RESERVE);
+
   // Ensure full opacity (safety reset after watermark GState)
   // @ts-expect-error jsPDF GState
   doc.setGState(new doc.GState({ opacity: 1.0 }));
@@ -793,16 +802,6 @@ export function addFieldPair(doc: jsPDF, label: string, value: string, x: number
   const isLongText = (value || '').length > 200 || width > 160;
   const maxLines = maxLinesOverride ?? (isLongText ? 20 : 8);
 
-  // Floating label above the box. When field-numbering is enabled,
-  // applyFieldNumber prepends a sequential "N." prefix so the form
-  // reads like a real police-form box grid ("1. CALL NUMBER",
-  // "2. INCIDENT TYPE", …). Counter increments per visible field
-  // call so 3-column rows naturally get sequential numbers.
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(FONT.SIZE_FIELD_LABEL);
-  doc.setTextColor(...COLOR.TEXT_SECONDARY);
-  doc.text(applyFieldNumber(label).toUpperCase(), x + innerPad, y + 2);
-
   const sanitized = sanitizePdfText(value);
   const isEmpty = !sanitized || sanitized.trim() === '';
   const useReadableText = !isEmpty && isNarrativeLikePdfText(sanitized, width);
@@ -828,14 +827,31 @@ export function addFieldPair(doc: jsPDF, label: string, value: string, x: number
     ? lines.length * lineStep + 0.8
     : baseBoxH;
 
-  // Page break if field won't fit on current page
+  // Page break if field won't fit on current page. This MUST run before
+  // the label is drawn — otherwise a label placed at the old `y` is
+  // stranded at the page bottom while the value jumps to the next page
+  // (the orphaned-field bug that left 3 near-blank pages on PS-202
+  // record PDFs, caught 2026-05-30). Measure first, break, then paint.
   const totalFieldH = labelH + boxH + 1;
   y = checkPageBreak(doc, y, totalFieldH);
+
+  // Floating label above the box (now at the corrected, post-break y).
+  // When field-numbering is enabled, applyFieldNumber prepends a
+  // sequential "N." prefix so the form reads like a real police-form box
+  // grid ("1. CALL NUMBER", "2. INCIDENT TYPE", …). Counter increments
+  // per visible field call so 3-column rows get sequential numbers.
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(FONT.SIZE_FIELD_LABEL);
+  doc.setTextColor(...COLOR.TEXT_SECONDARY);
+  doc.text(applyFieldNumber(label).toUpperCase(), x + innerPad, y + 2);
 
   // Value area — border drawn by section container, not individual fields
   const boxY = y + labelH;
 
-  // Value text — vertically centered in box
+  // Value text — vertically centered in box. Re-assert the value font
+  // (the label above just switched to bold helvetica).
+  doc.setFont(PDF_VALUE_FONT, 'normal');
+  doc.setFontSize(FONT.SIZE_FIELD_VALUE);
   const valColor = isEmpty ? COLOR.TEXT_TERTIARY : COLOR.TEXT_PRIMARY;
   doc.setTextColor(valColor[0], valColor[1], valColor[2]);
 

@@ -120,7 +120,7 @@
 //       scope beats to that section (not all ~719) with zone-disambiguated
 //       names, backfill zone + dispatch_code on select, disable until a section
 //       is picked. Previously dumped every beat as a raw code.
-const CACHE_NAME = 'rmpg-flex-v644';
+const CACHE_NAME = 'rmpg-flex-v645';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
