@@ -42,7 +42,7 @@ export default function FleetRecallsTab({ vehicleId }: { vehicleId?: number | st
     setLoading(true);
     try {
       const params = vehicleId ? `?vehicle_id=${vehicleId}` : '';
-      try { const data = await apiFetch<any[]>(`/fleet/recalls${params}`); setRecalls(data); } catch { addToast('Failed to load recalls', 'error'); }
+      try { const data = await apiFetch<any[]>(`/fleet/recalls${params}`); setRecalls(data); } catch (e) { addToast(e instanceof Error ? e.message : 'Failed to load recalls', 'error'); }
     } finally { setLoading(false); }
   };
 
@@ -59,14 +59,30 @@ export default function FleetRecallsTab({ vehicleId }: { vehicleId?: number | st
   const handleSubmit = async () => {
     if (!form.recall_number.trim()) { addToast('Recall number is required', 'error'); return; }
     if (!form.description.trim()) { addToast('Description is required', 'error'); return; }
+    const vid = Number(form.vehicle_id);
+    if (!Number.isInteger(vid) || vid <= 0) { addToast('A valid vehicle is required for a recall', 'error'); return; }
+    if (submitting) return;
     setSubmitting(true);
-    try { await apiFetch('/fleet/recalls', { method: 'POST', body: JSON.stringify({ ...form, vehicle_id: Number(form.vehicle_id) }) }); addToast('Recall created', 'success'); setShowForm(false); load(); } catch { addToast('Failed to create recall', 'error'); } finally { setSubmitting(false); }
+    try {
+      // Map UI fields to the handler's columns (nhtsa_number / issue_date / notes).
+      await apiFetch('/fleet/recalls', { method: 'POST', body: JSON.stringify({
+        vehicle_id: vid,
+        nhtsa_number: form.recall_number.trim(),
+        description: form.description.trim(),
+        severity: form.severity,
+        issue_date: localToday(),
+        notes: [form.manufacturer && `Mfr: ${form.manufacturer}`, form.remedy && `Remedy: ${form.remedy}`].filter(Boolean).join(' — ') || null,
+      }) });
+      addToast('Recall created', 'success'); setShowForm(false);
+      setForm({ vehicle_id: vehicleId || '', recall_number: '', manufacturer: '', description: '', severity: 'standard', remedy: '' });
+      load();
+    } catch (e) { addToast(e instanceof Error ? e.message : 'Failed to create recall', 'error'); } finally { setSubmitting(false); }
   };
 
   const updateStatus = async (id: number, status: string) => {
     const body: any = { status };
-    if (status === 'completed') body.completed_date = localToday();
-    try { await apiFetch<any[]>(`/fleet/recalls/${id}`, { method: 'PUT', body: JSON.stringify(body) }); addToast('Recall updated', 'success'); load(); } catch { addToast('Failed to update recall', 'error'); }
+    if (status === 'completed') body.remedy_date = localToday();
+    try { await apiFetch<any[]>(`/fleet/recalls/${id}`, { method: 'PUT', body: JSON.stringify(body) }); addToast('Recall updated', 'success'); load(); } catch (e) { addToast(e instanceof Error ? e.message : 'Failed to update recall', 'error'); }
   };
 
   const openCount = recalls.filter(r => r.status === 'open').length;
@@ -111,12 +127,12 @@ export default function FleetRecallsTab({ vehicleId }: { vehicleId?: number | st
                 <div>
                   <div className="flex items-center gap-2 mb-1">
                     <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-mono font-bold uppercase rounded-sm ${STATUS_COLORS[r.status] || ''}`}>{r.status.replace(/_/g, ' ')}</span>
-                    <span className="text-[10px] text-white font-bold font-mono">{r.recall_number}</span>
+                    <span className="text-[10px] text-white font-bold font-mono">{r.recall_number || (r as any).nhtsa_number}</span>
                     {!vehicleId && <span className="text-[10px] text-rmpg-300">{r.vehicle_number} ({r.year} {r.make} {r.model})</span>}
                   </div>
                   <p className="text-[10px] text-rmpg-200">{r.description}</p>
                   {r.remedy && <p className="text-[10px] text-rmpg-400 mt-1">Remedy: {r.remedy}</p>}
-                  {r.completed_date && <p className="text-[10px] text-green-400">Completed: {parseTimestamp(r.completed_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</p>}
+                  {(r.completed_date || (r as any).remedy_date) && <p className="text-[10px] text-green-400">Completed: {parseTimestamp(r.completed_date || (r as any).remedy_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</p>}
                 </div>
                 {r.status !== 'completed' && r.status !== 'not_applicable' && (
                   <div className="flex gap-1">
