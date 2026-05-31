@@ -7,13 +7,13 @@ const specialOps = new Hono<Env>();
 specialOps.get('/callouts', async (c) => {
   const db = getDb(c.env);
   const rows = await query(db, 'SELECT * FROM special_ops_callouts ORDER BY date DESC LIMIT 100');
-  return c.json(rows.results || []);
+  return c.json(rows || []);
 });
 
 specialOps.get('/equipment', async (c) => {
   const db = getDb(c.env);
   const rows = await query(db, 'SELECT * FROM special_ops_equipment ORDER BY equipment_type');
-  return c.json(rows.results || []);
+  return c.json(rows || []);
 });
 
 specialOps.get('/stats', async (c) => {

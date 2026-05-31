@@ -63,7 +63,7 @@ export function rankSuspects(suspects:Array<{id:string;name:string;proximityToSc
     if (s.priorSimilarOffense) { score+=15; factors.push({factor:'Prior similar offense',weight:15}); }
     if (s.criminalHistory) { score+=10; factors.push({factor:'Criminal history',weight:10}); }
     if (s.gangAffiliation) { score+=5; factors.push({factor:'Gang affiliation',weight:5}); }
-    const risk = score>=50?'high':score>=25?'medium':'low';
+    const risk: 'high'|'medium'|'low' = score>=50?'high':score>=25?'medium':'low';
     return { suspectId:s.id, suspectName:s.name, matchScore:score, factors, recommendedAction:risk==='high'?'Prioritize for investigation and lineup':risk==='medium'?'Follow up for interview':'Maintain in suspect pool', riskLevel:risk };
   }).sort((a,b)=>b.matchScore-a.matchScore);
 }
