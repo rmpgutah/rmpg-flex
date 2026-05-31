@@ -9,6 +9,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { Navigation, Clock, MapPin, RefreshCw, Loader2, Satellite } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
+import { toDisplayLabel } from '../utils/formatters';
 import { useWebSocket } from '../context/WebSocketContext';
 
 export interface RecommendedUnit {
@@ -212,7 +213,7 @@ export default function RecommendedUnitsInline({
                 className="text-[8px] font-bold uppercase tracking-wider px-1 py-0.5"
                 style={{ background: statusColor(u.status), color: '#0a0a0a', borderRadius: 2 }}
               >
-                {u.status.replace('_', ' ')}
+                {toDisplayLabel(u.status)}
               </span>
             </button>
           ))}

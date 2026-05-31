@@ -1,6 +1,7 @@
 import { Fuel, DollarSign, Gauge, Plus, MapPin, Calendar, Pencil, Trash2, TrendingUp, TrendingDown, Route, FileText, AlertTriangle, User, CreditCard } from 'lucide-react';
 import type { FleetFuelLog, FleetFuelSummary, FuelType } from '../../../types';
 import { formatMilitary } from '../utils/fleetFormatters';
+import { toDisplayLabel } from '../../../utils/formatters';
 
 const FUEL_TYPE_BADGE: Record<FuelType, { bg: string; text: string; border: string }> = {
   regular: { bg: 'bg-rmpg-800', text: 'text-rmpg-300', border: 'border-rmpg-600' },
@@ -378,7 +379,7 @@ export default function FleetFuelTab({
                       <span className="flex items-center gap-0.5"><User className="w-2.5 h-2.5" />{log.driver_name}</span>
                     )}
                     {log.payment_method && (
-                      <span className="flex items-center gap-0.5"><CreditCard className="w-2.5 h-2.5" />{log.payment_method}</span>
+                      <span className="flex items-center gap-0.5"><CreditCard className="w-2.5 h-2.5" />{toDisplayLabel(log.payment_method)}</span>
                     )}
                     {log.location && (
                       <span className="flex items-center gap-0.5"><MapPin className="w-2.5 h-2.5" />{log.location}</span>

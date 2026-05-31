@@ -203,7 +203,7 @@ export default React.memo(function ServeJobCard({
 
           {/* Status label */}
           <span className="text-[9px] font-mono text-rmpg-400 ml-auto">
-            {job.status.replace('_', ' ').toUpperCase()}
+            {job.status.replace(/_/g, ' ').toUpperCase()}
           </span>
         </div>
       </div>
@@ -319,7 +319,7 @@ export default React.memo(function ServeJobCard({
                       {safeDateStr(attempt.attempt_at)}
                     </span>
                     <span className="text-[10px] font-mono text-amber-300 flex-shrink-0 w-14">
-                      {attempt.attempt_type}
+                      {formatEnumValue(attempt.attempt_type)}
                     </span>
                     <span className={`text-[10px] font-mono flex-shrink-0 ${
                       attempt.result === 'served' ? 'text-green-400' : 'text-red-400'

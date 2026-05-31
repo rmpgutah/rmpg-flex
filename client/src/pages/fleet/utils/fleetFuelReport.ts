@@ -18,6 +18,7 @@
 import jsPDF from 'jspdf';
 import type { FleetVehicle, FleetFuelLog, FleetFuelSummary } from '../../../types';
 import { parseTimestamp } from '../../../utils/dateUtils';
+import { toDisplayLabel } from '../../../utils/formatters';
 
 interface Args {
   vehicle: FleetVehicle;
@@ -201,7 +202,7 @@ export function generateFleetFuelReport({ vehicle, fuelLogs, summary, periodLabe
 
   // Payment-method breakdown (only if any row carries one)
   const payRows = [...groupBy((l) => ((l as { payment_method?: string }).payment_method || '').toString())]
-    .map(([label, a]) => ({ label, ...a }))
+    .map(([label, a]) => ({ label: label === '(unspecified)' ? label : toDisplayLabel(label), ...a }))
     .sort((a, b) => b.cost - a.cost);
   if (payRows.some((r) => r.label !== '(unspecified)')) {
     drawBreakdown('PAYMENT METHOD BREAKDOWN', payRows, { showGallons: false });
