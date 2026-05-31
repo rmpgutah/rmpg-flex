@@ -31,7 +31,7 @@ import {
   PDF_VALUE_FONT,
   getContentWidth, getFullFieldWidth,
   getLeftX, getRightColumnX, getHalfFieldWidth,
-  getProportionalColumns,
+  getProportionalColumns, getCapHeight,
 } from './pdfTokens';
 import { drawNibrsHeader } from './pdfFormHelpers';
 
@@ -127,14 +127,16 @@ function addNotarySection(doc: jsPDF, y: number): number {
   doc.setLineWidth(BORDER.SECTION_OUTER);
   doc.rect(LAYOUT.PAGE_MARGIN, y, cw, boxH);
 
-  // Header bar
+  // Flat header: black title + thin rule below.
   const barH = SPACING.SECTION_HEADER_H;
-  doc.setFillColor(...COLOR.BG_SECTION_HDR);
-  doc.rect(LAYOUT.PAGE_MARGIN, y, cw, barH, 'F');
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_SECTION_TITLE);
-  doc.setTextColor(...COLOR.TEXT_INVERTED);
-  doc.text('NOTARY PUBLIC', LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, y + barH / 2 + FONT.SIZE_SECTION_TITLE * 0.14);
+  doc.setTextColor(...COLOR.TEXT_PRIMARY);
+  doc.text('NOTARY PUBLIC', LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET, y + getCapHeight(FONT.SIZE_SECTION_TITLE) + 0.6);
+  const notRuleY = y + barH - 0.6;
+  doc.setDrawColor(...COLOR.TEXT_PRIMARY);
+  doc.setLineWidth(BORDER.SECTION_OUTER);
+  doc.line(LAYOUT.PAGE_MARGIN, notRuleY, LAYOUT.PAGE_MARGIN + cw, notRuleY);
 
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
   let ny = y + barH + SPACING.LG + 2;

@@ -462,7 +462,7 @@ export default function FleetPersonnelTab({
                     )}
                     <span className="text-[8px] text-rmpg-600 font-mono ml-auto">{formatMilitary(n.created_at)}</span>
                   </div>
-                  <p className="text-[10px] text-rmpg-300 mt-0.5">{n.note}</p>
+                  <p className="text-[10px] text-rmpg-300 mt-0.5">{n.note || (n as any).content}</p>
                 </div>
                 <button type="button"
                   className="flex-shrink-0 p-1 text-rmpg-600 hover:text-red-400 transition-colors"
