@@ -127,7 +127,12 @@
 //       + coerce inputs in its lookup helpers, so number/string mismatches stop
 //       causing crashes (map #807, dispatch panel). Retires that class of bug at
 //       the shared chokepoint instead of per-call-site.
-const CACHE_NAME = 'rmpg-flex-v651';
+// v652: condensed record-PDF vertical spacing — tighter field rows
+//       (labelH/baseBoxH/row gap), section gaps (SECTION_GAP/CONTENT_PAD/
+//       FIELD_ROW_*), and table rows (minRowH/cellLineH/headerRowH) in
+//       pdfTokens.ts + pdfGenerator.ts so PS-202 and all record forms pack
+//       more onto each page without overlap.
+const CACHE_NAME = 'rmpg-flex-v652';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
