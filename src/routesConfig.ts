@@ -110,6 +110,7 @@ import court from './routes/court';
 import dlRecords from './routes/dlRecords';
 import serve from './routes/serve';
 import settings from './routes/settings';
+import adminSettings from './routes/adminSettings';
 import recruitment from './routes/recruitment';
 import reports from './routes/reports';
 import specialOps from './routes/specialOps';
@@ -217,6 +218,7 @@ export const ROUTE_REGISTRY: RouteMount[] = [
 
   // ── Admin / personnel / presence ───────────────────────────
   { prefix: '/api/admin', router: admin, auth: 'required' },
+  { prefix: '/api/admin/settings', router: adminSettings, auth: 'required' },
   { prefix: '/api/ai', router: ai, auth: 'required',
     note: 'AI dashboard stubs (config/stats/status/health/activity). Real provider wiring is Phase 2.' },
   { prefix: '/api/voice', router: voiceRoute, auth: 'required',
