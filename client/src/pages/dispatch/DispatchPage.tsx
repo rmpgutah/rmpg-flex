@@ -4,7 +4,7 @@ import {
   Plus, Send, Navigation, MapPin, Clock, Phone, User, MessageSquare, Radio, Eye,
   CheckCircle, XCircle, AlertTriangle, Loader2, FileText, ChevronDown, Link,
   Archive, RotateCcw, Edit3, Trash2, Save, X, PlusCircle, Shield, Thermometer,
-  Undo2, Pencil, Search, Building2, Terminal, Briefcase, Copy, Printer, Layers,
+  Undo2, Pencil, Search, Building2, Terminal, Briefcase, Copy, Printer, Layers, Hash,
 } from 'lucide-react';
 import type { CallForService, Unit, CallStatus, CallNote, UnitStatus } from '../../types';
 import { callPosture } from '../../utils/callThreat';
@@ -28,7 +28,7 @@ import { apiFetch } from '../../hooks/useApi';
 import { useLiveSync } from '../../hooks/useLiveSync';
 import { usePersistedTab } from '../../hooks/usePersistedState';
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
-import { formatIncidentType, INCIDENT_TYPE_CATEGORIES } from '../../utils/caseNumbers';
+import { formatIncidentType, INCIDENT_TYPE_CATEGORIES, type IncidentType } from '../../utils/caseNumbers';
 import { formatPhoneInput } from '../../utils/formatters';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import RmpgLogo from '../../components/RmpgLogo';
@@ -81,6 +81,8 @@ import {
 import PersonFormModal, { type PersonFormData } from '../../components/PersonFormModal';
 import VehicleFormModal, { type VehicleFormData } from '../../components/VehicleFormModal';
 import AIDispatchSidebar from '../../components/dispatch/AIDispatchSidebar';
+import DispatchCodeQuickPanel from '../../components/dispatch/DispatchCodeQuickPanel';
+import { useDispatchCodes } from '../../hooks/useDispatchCodes';
 import NarrativeAssist from '../../components/dispatch/NarrativeAssist';
 import FileAttachments from '../../components/FileAttachments';
 import { safeDateTimeStr, parseTimestamp, toDatetimeLocalValue, mtDatetimeLocalToUtc } from '../../utils/dateUtils';
@@ -262,6 +264,9 @@ export default function DispatchPage() {
   const { prefs: userPrefs, reload: reloadPrefs } = useUserPreferences();
   const { districts, sections, sectionLabels, getSectionCode, getArea, zoneLabels, zonesForSection, beatsForZone, beatsForSection, districtForSectionBeat, getBeatLabel } = useDistrictOptions();
   const { resolve: resolveAddress } = useAddressAutofill();
+  const dispatchCodes = useDispatchCodes();
+  const signalLookup = useMemo(() => dispatchCodes.lookup, [dispatchCodes.lookup]);
+  const knownSignalCodes = useMemo(() => new Set(dispatchCodes.codes.map(c => c.code)), [dispatchCodes.codes]);
   const [calls, setCalls] = useState<CallForService[]>([]);
   const recentlyCreatedIdsRef = useRef<Set<string | number>>(new Set()); // synchronous dedup for POST + WS race
   const [units, setUnits] = useState<Unit[]>([]);
@@ -273,6 +278,9 @@ export default function DispatchPage() {
   // (bottom bar, below). It owns its own 1s interval so the per-second tick no
   // longer re-renders this entire 6,300-line page — only the clock span.
   const [searchQuery, setSearchQuery] = useState('');
+  const [priorityFilter, setPriorityFilter] = useState<string | null>(null);
+  const [typeFilter, setTypeFilter] = useState<string | null>(null);
+  const [signalFilter, setSignalFilter] = useState<'signaled' | 'unsignaled' | null>(null);
   const noteTextareaRef = useRef<HTMLTextAreaElement>(null);
   const [onSceneElapsed, setOnSceneElapsed] = useState('');
   const [isLoading, setIsLoading] = useState(true);
@@ -324,6 +332,7 @@ export default function DispatchPage() {
   // AI Dispatch analysis state
   const [aiAnalyses, setAiAnalyses] = useState<Record<string, any>>({});
   const [showAiSidebar, setShowAiSidebar] = useState(false);
+  const [showCodePanel, setShowCodePanel] = useState(false);
 
   // Queue sort mode. The /user/preferences backend is currently a stub that
   // doesn't persist dispatch_sort, so we keep the selection in localStorage
@@ -365,6 +374,27 @@ export default function DispatchPage() {
     } catch { addToast('Failed to save handoff notes', 'error'); }
     finally { setSavingHandoff(false); }
   }, [handoffNotes, addToast]);
+
+  const handleApplyCode = useCallback(async (code: string) => {
+    if (!selectedCall) {
+      addToast('Select a call first to apply code', 'warning');
+      return;
+    }
+    try {
+      await apiFetch(`/dispatch/calls/${selectedCall.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ incident_type: code }),
+      });
+      const updated: CallForService = { ...selectedCall!, incident_type: (code as unknown) as IncidentType };
+      setSelectedCall(updated);
+      setCalls(prev => prev.map(c => c.id === selectedCall.id ? updated : c));
+      const desc = signalLookup(code);
+      const label = desc ? `${code} (${desc.description})` : code;
+      addToast(`Signal set to ${label}`, 'success');
+    } catch {
+      addToast('Failed to apply code', 'error');
+    }
+  }, [selectedCall, addToast, signalLookup]);
 
   // Clean up search timers and abort controllers on unmount
   useEffect(() => {
@@ -1159,6 +1189,16 @@ export default function DispatchPage() {
       (call.beat_name || '').toLowerCase().includes(q)
     );
   }).filter((call) => {
+    if (priorityFilter && call.priority !== priorityFilter) return false;
+    return true;
+  }).filter((call) => {
+    if (typeFilter && call.incident_type !== typeFilter) return false;
+    return true;
+  }).filter((call) => {
+    if (signalFilter === 'signaled' && !knownSignalCodes.has(call.incident_type)) return false;
+    if (signalFilter === 'unsignaled' && knownSignalCodes.has(call.incident_type)) return false;
+    return true;
+  }).filter((call) => {
     // Show cleared calls in 'all' tab if user preference is enabled
     if (filterTab === 'all' && userPrefs?.dispatch_show_cleared) return true;
     if (filterTab === 'all' && ['cleared', 'closed', 'cancelled'].includes(call.status)) return false;
@@ -1199,7 +1239,7 @@ export default function DispatchPage() {
     const pDiff = (pOrder[a.priority] ?? 3) - (pOrder[b.priority] ?? 3);
     if (pDiff !== 0) return pDiff;
     return parseTimestamp(b.created_at).getTime() - parseTimestamp(a.created_at).getTime();
-  }), [calls, archivedCalls, filterTab, searchQuery, userPrefs?.dispatch_sort, localSort, userPrefs?.dispatch_show_cleared, user?.id]);
+  }), [calls, archivedCalls, filterTab, searchQuery, priorityFilter, typeFilter, signalFilter, knownSignalCodes, userPrefs?.dispatch_sort, localSort, userPrefs?.dispatch_show_cleared, user?.id]);
 
   // Shortcut cheat-sheet overlay (toggled with "?").
   const [showShortcutHelp, setShowShortcutHelp] = useState(false);
@@ -2928,6 +2968,15 @@ export default function DispatchPage() {
             <Briefcase style={{ width: 10, height: 10 }} />
             Handoff
           </button>
+          {/* Dispatch Code Quick Panel toggle */}
+          <button type="button"
+            onClick={() => setShowCodePanel(prev => !prev)}
+            className={`toolbar-btn ${showCodePanel ? 'text-brand-400 border-brand-700/40 bg-brand-900/20' : ''}`}
+            title={showCodePanel ? 'Close code browser' : 'Open code browser'}
+          >
+            <Hash style={{ width: 10, height: 10 }} />
+            Codes
+          </button>
           <ExportButton exportUrl="/dispatch/calls/export?format=csv" exportFilename="dispatch_calls_export.csv" />
           <PrintButton />
           {tabCounts.cleared > 0 && (
@@ -3043,6 +3092,7 @@ export default function DispatchPage() {
           </button>
         </PanelTitleBar>
         <TabBar
+          spillman
           tabs={[
             { id: 'all', label: 'All', count: tabCounts.all },
             { id: 'mine', label: 'Mine', count: tabCounts.mine },
@@ -3223,21 +3273,46 @@ export default function DispatchPage() {
                   OLDEST WAIT: <strong>{oldestPending}m</strong>
                 </span>
               )}
-              {/* Priority quick filters */}
+              {/* Priority quick filters — clickable to toggle filter */}
               <div className="ml-auto flex items-center gap-0.5">
                 <span className="text-[8px] text-rmpg-600 mr-1">PRIORITY</span>
                 {(['P1', 'P2', 'P3', 'P4'] as const).map(p => {
                   const count = calls.filter(c => c.priority === p && !['cleared', 'closed', 'archived', 'cancelled'].includes(c.status)).length;
+                  const active = priorityFilter === p;
                   const colors: Record<string, string> = {
-                    P1: 'bg-red-900/40 text-red-400 border-red-700/50',
-                    P2: 'bg-amber-900/40 text-amber-400 border-amber-700/50',
-                    P3: 'bg-gray-900/40 text-gray-400 border-gray-700/50',
-                    P4: 'bg-green-900/40 text-green-400 border-green-700/50',
+                    P1: `bg-red-900/${active ? '60' : '40'} text-red-400 border-red-700/${active ? '60' : '50'}`,
+                    P2: `bg-amber-900/${active ? '60' : '40'} text-amber-400 border-amber-700/${active ? '60' : '50'}`,
+                    P3: `bg-gray-900/${active ? '60' : '40'} text-gray-400 border-gray-700/${active ? '60' : '50'}`,
+                    P4: `bg-green-900/${active ? '60' : '40'} text-green-400 border-green-700/${active ? '60' : '50'}`,
                   };
                   return (
-                    <span key={p} className={`px-1.5 py-0.5 text-[8px] font-bold border ${colors[p]} ${count > 0 ? '' : 'opacity-30'}`}>
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => setPriorityFilter(active ? null : p)}
+                      className={`px-1.5 py-0.5 text-[8px] font-bold border cursor-pointer hover:brightness-125 transition-all ${colors[p]} ${count > 0 ? '' : 'opacity-30'}`}
+                      title={`${active ? 'Clear' : 'Filter to'} ${p} calls`}
+                    >
                       {p}:{count}
-                    </span>
+                    </button>
+                  );
+                })}
+                {/* Signal filter toggle */}
+                {(['signaled', 'unsignaled'] as const).map(mode => {
+                  const active = signalFilter === mode;
+                  const count = mode === 'signaled'
+                    ? calls.filter(c => knownSignalCodes.has(c.incident_type) && !['cleared', 'closed', 'archived', 'cancelled'].includes(c.status)).length
+                    : calls.filter(c => !knownSignalCodes.has(c.incident_type) && !['cleared', 'closed', 'archived', 'cancelled'].includes(c.status)).length;
+                  return (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => setSignalFilter(active ? null : mode)}
+                      className={`px-1.5 py-0.5 text-[8px] font-bold border cursor-pointer hover:brightness-125 transition-all ${active ? 'bg-purple-900/60 text-purple-300 border-purple-700/60' : 'bg-purple-900/30 text-purple-400/70 border-purple-700/40'} ${count > 0 ? '' : 'opacity-30'}`}
+                      title={active ? 'Clear signal filter' : `Show only ${mode === 'signaled' ? 'calls with a signal code' : 'calls missing a signal code'}`}
+                    >
+                      {mode === 'signaled' ? '✓' : '✗'}SIG:{count}
+                    </button>
                   );
                 })}
               </div>
@@ -3245,22 +3320,29 @@ export default function DispatchPage() {
           );
         })()}
 
-        {/* Feature 9: Call Type Statistics Bar */}
+        {/* Feature 9: Call Type Statistics Bar — clickable to toggle filter */}
         {callTypeStats.length > 0 && (
           <div className="px-3 py-1 border-b border-[#2b2b2b] flex items-center gap-2 flex-shrink-0" style={{ background: '#0c0c0c80' }}>
             {callTypeStats.map(({ type, count }) => {
               const total = callTypeStats.reduce((sum, s) => sum + s.count, 0);
               const pct = total > 0 ? (count / total * 100) : 0;
+              const active = typeFilter === type;
               return (
-                <div key={type} className="flex items-center gap-0.5" title={`${formatIncidentType(type)}: ${count}`}>
+                <button
+                  key={type}
+                  type="button"
+                  onClick={() => setTypeFilter(active ? null : type)}
+                  className={`flex items-center gap-0.5 cursor-pointer hover:brightness-125 transition-all ${active ? 'px-1 py-0.5 rounded-sm bg-brand-900/30 border border-brand-700/50' : ''}`}
+                  title={`${formatIncidentType(type)}: ${count} — ${active ? 'Clear filter' : 'Filter to this type'}`}
+                >
                   <div
                     className="h-2 rounded-sm bg-brand-500"
-                    style={{ width: `${Math.max(pct * 0.8, 4)}px`, minWidth: 4, opacity: 0.7 + pct * 0.003 }}
+                    style={{ width: `${Math.max(pct * 0.8, 4)}px`, minWidth: 4, opacity: active ? 1 : 0.7 + pct * 0.003 }}
                   />
-                  <span className="text-[7px] font-mono text-rmpg-400 truncate max-w-[80px] tabular-nums" title={formatIncidentType(type)}>
+                  <span className={`text-[7px] font-mono tabular-nums truncate max-w-[80px] ${active ? 'text-brand-300' : 'text-rmpg-400'}`} title={formatIncidentType(type)}>
                     {formatIncidentType(type).slice(0, 12)} {count}
                   </span>
-                </div>
+                </button>
               );
             })}
           </div>
@@ -3278,6 +3360,40 @@ export default function DispatchPage() {
           </div>
         )}
 
+        {/* Active filter tags */}
+        {(priorityFilter || typeFilter || signalFilter) && (
+          <div className="px-3 py-1 border-b border-[#2b2b2b] flex items-center gap-1.5 flex-shrink-0" style={{ background: '#0a0a0a' }}>
+            <span className="text-[8px] text-rmpg-500 font-semibold uppercase tracking-wider mr-0.5">Filters:</span>
+            {priorityFilter && (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold border rounded-sm"
+                style={{ background: priorityFilter === 'P1' ? 'rgba(239,68,68,0.25)' : priorityFilter === 'P2' ? 'rgba(217,119,6,0.25)' : priorityFilter === 'P3' ? 'rgba(107,114,128,0.25)' : 'rgba(34,197,94,0.25)', borderColor: priorityFilter === 'P1' ? '#ef444480' : priorityFilter === 'P2' ? '#d9770680' : priorityFilter === 'P3' ? '#6b728080' : '#22c55e80', color: priorityFilter === 'P1' ? '#ef4444' : priorityFilter === 'P2' ? '#d97706' : priorityFilter === 'P3' ? '#9ca3af' : '#22c55e' }}
+              >
+                Priority: {priorityFilter}
+                <button type="button" onClick={() => setPriorityFilter(null)} className="ml-0.5 hover:text-white transition-colors">&times;</button>
+              </span>
+            )}
+            {typeFilter && (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold border rounded-sm text-brand-300 border-brand-700/50 bg-brand-900/20">
+                Type: {formatIncidentType(typeFilter)}
+                <button type="button" onClick={() => setTypeFilter(null)} className="ml-0.5 hover:text-white transition-colors">&times;</button>
+              </span>
+            )}
+            {signalFilter && (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold border rounded-sm text-purple-300 border-purple-700/50 bg-purple-900/20">
+                Signal: {signalFilter === 'signaled' ? 'Has code' : 'No code'}
+                <button type="button" onClick={() => setSignalFilter(null)} className="ml-0.5 hover:text-white transition-colors">&times;</button>
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={() => { setPriorityFilter(null); setTypeFilter(null); setSignalFilter(null); }}
+              className="ml-auto text-[8px] text-rmpg-500 hover:text-rmpg-300 transition-colors underline"
+            >
+              Clear All
+            </button>
+          </div>
+        )}
+
         {/* Call List */}
         <div className="flex-1 overflow-y-auto p-2 space-y-1" style={{ scrollbarGutter: 'stable', scrollSnapType: 'y proximity', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' } as React.CSSProperties}>
           {filteredCalls.length === 0 ? (
@@ -3285,9 +3401,13 @@ export default function DispatchPage() {
               <div className="p-3.5 rounded-sm mb-3" style={{ background: '#0c0c0c50', border: '1px solid #2b2b2b30' }}>
                 <Phone className="w-7 h-7" style={{ opacity: 0.35 }} />
               </div>
-              <p className="text-[11px] font-semibold uppercase tracking-wider mb-1.5">No calls in this category</p>
-              <p className="text-[10px] text-[#545454] max-w-[200px] text-center leading-relaxed">
-                {filterTab === 'pending' ? 'All pending calls have been dispatched' :
+              <p className="text-[11px] font-semibold uppercase tracking-wider mb-1.5">
+                {(priorityFilter || typeFilter || signalFilter) ? 'No calls match active filters' : 'No calls in this category'}
+              </p>
+              <p className="text-[10px] text-[#545454] max-w-[240px] text-center leading-relaxed">
+                {(priorityFilter || typeFilter || signalFilter) ? (
+                  <button type="button" onClick={() => { setPriorityFilter(null); setTypeFilter(null); setSignalFilter(null); }} className="underline hover:text-rmpg-300 transition-colors">Clear filters</button>
+                ) : filterTab === 'pending' ? 'All pending calls have been dispatched' :
                  filterTab === 'active' ? 'No units are currently on active calls' :
                  filterTab === 'cleared' ? 'No cleared calls to review' :
                  filterTab === 'archived' ? 'No archived calls found' :
@@ -3332,6 +3452,7 @@ export default function DispatchPage() {
                     onQuickNote={handleQuickNote}
                     hasActiveWarrant={!!(call as any).has_active_warrant}
                     onTogglePin={handleTogglePin}
+                    signalInfo={signalLookup(call.incident_type || '') || null}
                   />
                 </React.Fragment>
               );
@@ -4415,7 +4536,7 @@ export default function DispatchPage() {
                                 // already chosen, match within it; otherwise resolve
                                 // by (section, beat) and BACKFILL the zone too.
                                 const match = editData.zone_id
-                                  ? districts.find(d => d.sector_id === editData.sector_id && d.zone_id === editData.zone_id && d.beat_id === beatVal)
+                                  ? districts.find(d => d.sector_id === String(editData.sector_id) && d.zone_id === editData.zone_id && d.beat_id === beatVal)
                                   : districtForSectionBeat(editData.sector_id, beatVal);
                                 setEditData(prev => ({
                                   ...prev,
@@ -4456,10 +4577,10 @@ export default function DispatchPage() {
                           <span
                             role="button"
                             tabIndex={0}
-                            title="Spillman dispatch code — click to copy"
+                            title="Dispatch zone code — click to copy"
                             onClick={() => { try { navigator.clipboard?.writeText(selectedCall.dispatch_code || ''); } catch { /* clipboard unavailable */ } }}
                             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); try { navigator.clipboard?.writeText(selectedCall.dispatch_code || ''); } catch { /* clipboard unavailable */ } } }}
-                            className="cursor-pointer hover:bg-amber-900/50 text-[10px] font-bold font-mono text-amber-300 bg-amber-900/30 border border-amber-700/40 px-2 py-0.5 rounded-sm tracking-wider tabular-nums"
+                            className="cursor-pointer hover:brightness-110 text-[10px] font-bold font-mono text-amber-300 bg-amber-900/30 border border-amber-700/40 px-2 py-0.5 rounded-sm tracking-wider tabular-nums"
                             style={{ textShadow: '0 0 6px rgba(251,191,36,0.15)' }}
                           >
                             {selectedCall.dispatch_code}
@@ -4474,7 +4595,7 @@ export default function DispatchPage() {
                           // numeric dispatch_sectors.id row key. Fall back to the id only
                           // if the districts lookup hasn't loaded / has no code.
                           const code = getSectionCode(selectedCall.sector_id) || selectedCall.sector_id;
-                          const name = sectionLabels.get(selectedCall.sector_id) || '';
+                          const name = sectionLabels.get(String(selectedCall.sector_id)) || '';
                           return <span className="text-rmpg-200" title="Spillman sector code"><span className="text-rmpg-400">Sec:</span> {[code, name].filter(Boolean).join(' — ')}</span>;
                         })()}
                         {selectedCall.zone_id && <span className="text-rmpg-200" title="Zone (within sector)"><span className="text-rmpg-400">Zone:</span> {[zoneLeaf(selectedCall.zone_id), zoneLabels.get(selectedCall.zone_id) || ''].filter(Boolean).join(' — ')}</span>}
@@ -5708,6 +5829,14 @@ export default function DispatchPage() {
                 } catch { addToast(`Failed to set flag`, 'error'); }
               }}
               onDismiss={() => setShowAiSidebar(false)}
+            />
+          )}
+
+          {/* Dispatch Code Quick Panel (conditionally shown between detail and map) */}
+          {showCodePanel && (
+            <DispatchCodeQuickPanel
+              onApplyCode={handleApplyCode}
+              onDismiss={() => setShowCodePanel(false)}
             />
           )}
 

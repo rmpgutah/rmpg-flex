@@ -162,7 +162,7 @@ export default function AdminDashboardTab({ LoadingSpinner, onNavigate }: AdminD
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
           <StatCard icon={Users} label="Total Users" value={data.totalUsers} color="text-gray-400" onClick={() => onNavigate('users')} />
           <StatCard icon={CheckCircle} label="Active Users" value={data.activeUsers} color="text-green-400" onClick={() => onNavigate('users')} />
-          <StatCard icon={Wifi} label="Active Sessions" value={data.activeSessions} color="text-blue-400" onClick={() => onNavigate('sessions')} />
+          <StatCard icon={Wifi} label="Active Sessions" value={data.activeSessions} color="text-rmpg-400" onClick={() => onNavigate('sessions')} />
           <StatCard icon={AlertTriangle} label="Locked Accounts" value={data.lockedAccounts} color={data.lockedAccounts > 0 ? 'text-red-400' : 'text-gray-400'} onClick={() => onNavigate('users')} />
         </div>
       </div>

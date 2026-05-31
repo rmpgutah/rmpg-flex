@@ -32,7 +32,7 @@ const NODE_COLORS: Record<string, string> = {
   vehicle: '#10b981',
   property: '#8b5cf6',
   evidence: '#ef4444',
-  case: '#3b82f6',
+  case: '#d4a017',
   warrant: '#dc2626',
   citation: '#fbbf24',
   arrest: '#ef4444',

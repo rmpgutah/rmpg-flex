@@ -531,7 +531,9 @@ export default function FleetPage() {
       const officerName = personnelData?.officer?.full_name;
       await apiFetch(`/fleet/${selectedId}/personnel-notes`, {
         method: 'POST',
-        body: JSON.stringify({ note, officer_id: officerId || null, officer_name: officerName || null }),
+        // Handler INSERTs `content`; send both so the note text persists
+        // (live fleet_personnel_notes has both `content` and `note` columns).
+        body: JSON.stringify({ content: note, note, officer_id: officerId || null, officer_name: officerName || null }),
       });
       addToast('Note added', 'success');
       fetchPersonnel(selectedId);
@@ -644,7 +646,7 @@ export default function FleetPage() {
   const openEditFuel = (log: FleetFuelLog) => {
     setFuelForm({
       fuel_date: toDatetimeLocal(log.fuel_date),
-      gallons: String(log.gallons),
+      gallons: log.gallons != null ? String(log.gallons) : '',
       cost_per_gallon: log.cost_per_gallon != null ? String(log.cost_per_gallon) : '',
       total_cost: log.total_cost != null ? String(log.total_cost) : '',
       odometer_reading: log.odometer_reading != null ? String(log.odometer_reading) : '',
@@ -658,8 +660,8 @@ export default function FleetPage() {
 
   const openEditMaintenance = (record: FleetMaintenance) => {
     setMaintForm({
-      type: record.type,
-      description: record.description,
+      type: record.type || '',
+      description: record.description || '',
       mileage_at_service: record.mileage_at_service != null ? String(record.mileage_at_service) : '',
       cost: record.cost != null ? String(record.cost) : '',
       vendor: record.vendor || '',
@@ -856,7 +858,7 @@ export default function FleetPage() {
               <DollarSign className="w-3.5 h-3.5 text-gray-400" />
               <span className="text-rmpg-400">Costs:</span>
               <span className="font-bold text-gray-400">
-                {fleetAnalytics ? `$${(((fleetAnalytics.fleet_summary.total_maintenance_cost || 0) + (fleetAnalytics.fleet_summary.total_fuel_cost || 0)) / 1000).toFixed(1)}k` : '--'}
+                {fleetAnalytics?.fleet_summary ? `$${(((fleetAnalytics.fleet_summary.total_maintenance_cost || 0) + (fleetAnalytics.fleet_summary.total_fuel_cost || 0)) / 1000).toFixed(1)}k` : '--'}
               </span>
             </div>
             <div className="flex items-center gap-1.5" title="Inspections Failing">

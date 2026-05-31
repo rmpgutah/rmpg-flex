@@ -423,7 +423,7 @@ function drawDistrictBar(
   const valueColor: [number, number, number] = [
     COLOR.TEXT_INVERTED[0], COLOR.TEXT_INVERTED[1], COLOR.TEXT_INVERTED[2],
   ];
-  const sepColor: [number, number, number] = [80, 80, 85];
+  const sepColor: [number, number, number] = [80, 80, 80]; // neutralized 2026-05-30
 
   for (let i = 0; i < distFields.length; i++) {
     const f = distFields[i];
@@ -1706,7 +1706,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
         const it = items[i];
         // Status dot
         if (it.on) {
-          doc.setFillColor(60, 120, 70);
+          doc.setFillColor(80, 80, 80); // neutralized 2026-05-30
         } else {
           doc.setFillColor(180, 180, 180);
         }
@@ -1726,14 +1726,13 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
 
   y = drawDistrictBar(doc, y, data as any);
 
-  // Classification
-  // Section/Zone/Beat is intentionally omitted — the district bar at
-  // the top of page 1 already shows it (and Incident Location was also
-  // displaying it, producing a visible triple-render of the same data).
-  // Case Number is normalized: legacy free-text values like "Not Field"
-  // / "Not Filed" / "N/A" are coerced to empty so the field falls back
-  // to the standard placeholder rendering rather than surfacing typos.
+  // Classification — includes Section / Zone / Beat / Code per Spillman convention
+  // The district bar above gives a compact at-a-glance display; these labeled fields
+  // provide the detailed audit-ready record.
   { const sec = openAutoSection(doc, 'Classification', y); y = sec.contentY;
+    const zone = zoneLeaf(data.zone_id) || data.zone_name || '';
+    const beat = beatLeaf(data.beat_id) || data.beat_name || '';
+    const combined = sectionZoneBeatCombined(data.sector_id, data.zone_id, data.beat_id) || data.zone_beat || '';
     y = addThreeColumnFields(doc, [
       { label: 'Call Number', value: data.call_number },
       { label: 'Incident Type', value: formatEnumValue(data.incident_type) },
@@ -1741,6 +1740,10 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       { label: 'Status', value: displayStatus(data.status || '') },
       { label: 'Source', value: formatEnumValue(data.source) },
       { label: 'Disposition', value: formatEnumValue(data.disposition) },
+      { label: 'Section', value: data.sector_name || data.sector_id || '' },
+      { label: 'Zone', value: zone },
+      { label: 'Beat', value: beat },
+      { label: 'Dispatch Code', value: data.dispatch_code || '' },
       { label: 'Case Number', value: normalizeCaseNumber(data.case_number) },
       { label: 'Incident Number', value: data.incident_number || '' },
     ], y);
@@ -2611,10 +2614,10 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
         || upper === '' || upper === 'SYSTEM';
       const entryType = isSystemTag ? (authorRaw.toUpperCase() || 'SYSTEM') : 'OFFICER NOTE';
       const officerSuffix = isSystemTag ? '' : authorRaw.toUpperCase();
-      const tagBg: [number, number, number] = upper === 'DISPATCH' ? [50, 75, 110]
-        : upper === 'SERVE INTAKE' || upper === 'INTAKE' ? [120, 90, 20]
-        : upper === 'NCIC' || upper === 'ALERT' ? [180, 25, 25]
-        : !isSystemTag ? [60, 80, 60]
+      const tagBg: [number, number, number] = upper === 'DISPATCH' ? [60, 60, 60]   // neutralized 2026-05-30
+        : upper === 'SERVE INTAKE' || upper === 'INTAKE' ? [75, 75, 75]
+        : upper === 'NCIC' || upper === 'ALERT' ? [45, 45, 45]
+        : !isSystemTag ? [90, 90, 90]
         : [70, 70, 70];
 
       // Initial entry header strip (top of this note).
@@ -3775,10 +3778,10 @@ export async function renderWarrantIntoDoc(doc: jsPDF, data: WarrantPdfData): Pr
   // bar landed near y=28. The chip now reserves its own vertical
   // band and pushes Y down before any section is drawn.
   const bucket = data.priority_score == null ? null :
-    data.priority_score >= 90 ? { label: 'CRITICAL', color: [220, 38, 38] as [number,number,number] } :
-    data.priority_score >= 70 ? { label: 'HIGH',     color: [245, 158, 11] as [number,number,number] } :
-    data.priority_score >= 40 ? { label: 'MEDIUM',   color: [100, 116, 139] as [number,number,number] } :
-    { label: 'LOW', color: [156, 163, 175] as [number,number,number] };
+    data.priority_score >= 90 ? { label: 'CRITICAL', color: [50, 50, 50] as [number,number,number] } :   // neutralized 2026-05-30
+    data.priority_score >= 70 ? { label: 'HIGH',     color: [75, 75, 75] as [number,number,number] } :
+    data.priority_score >= 40 ? { label: 'MEDIUM',   color: [100, 100, 100] as [number,number,number] } :
+    { label: 'LOW', color: [130, 130, 130] as [number,number,number] };
   if (bucket) {
     const pageW = doc.internal.pageSize.getWidth();
     const chipW = 50;
@@ -5975,20 +5978,26 @@ export async function generateRecordPdfBlobUrl<T extends RecordPdfType>(
 export interface BoloSubject {
   first_name: string;
   last_name: string;
-  dob?: string;
-  gender?: string;
-  race?: string;
-  height?: string;
-  weight?: string;
-  hair_color?: string;
-  eye_color?: string;
-  address?: string;
+  dob?: string | null;
+  gender?: string | null;
+  race?: string | null;
+  height?: string | null;
+  weight?: string | null;
+  hair_color?: string | null;
+  eye_color?: string | null;
+  address?: string | null;
   photo_url?: string | null;
   warrants: { warrant_number: string; type: string; charge_description: string; offense_level: string | null; issuing_court: string | null; bail_amount: number | null }[];
 }
 
+export interface BoloPdfOptions extends RecordPdfOptions {
+  /** Operator who printed the packet - rendered on the BOLO header. */
+  printedBy?: string;
+  printedByBadge?: string;
+}
+
 /** Generate a multi-page BOLO (Be On The Lookout) packet PDF */
-export function generateBoloPdf(subjects: BoloSubject[], options: RecordPdfOptions = {}): jsPDF {
+export function generateBoloPdf(subjects: BoloSubject[], options: BoloPdfOptions = {}): jsPDF {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
   applyPrintTarget(doc, options.printTarget ?? 'office');
   const pageW = doc.internal.pageSize.getWidth();
@@ -6032,6 +6041,16 @@ export function generateBoloPdf(subjects: BoloSubject[], options: RecordPdfOptio
   doc.setFontSize(8);
   doc.setTextColor(...COLOR.TEXT_SECONDARY);
   doc.text(`${sorted.length} SUBJECT${sorted.length !== 1 ? 'S' : ''} WITH ACTIVE WARRANTS`, margin, y);
+
+  // "Printed by" attribution on the right - the audit trail an officer
+  // recovering the packet from their downloads folder needs to know who
+  // pulled this and when. Sentinel-safe via pdfField.
+  const printedBy = pdfField(options.printedBy, '');
+  if (printedBy) {
+    const badge = pdfField(options.printedByBadge, '');
+    const label = badge ? `PRINTED BY: ${printedBy} #${badge}` : `PRINTED BY: ${printedBy}`;
+    doc.text(label, margin + contentW, y, { align: 'right' });
+  }
   y += 5;
 
   for (let i = 0; i < sorted.length; i++) {
@@ -6064,22 +6083,30 @@ export function generateBoloPdf(subjects: BoloSubject[], options: RecordPdfOptio
     if (topSev.label) {
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(7);
-      const sevColor: [number, number, number] = topSev.label === 'felony' ? [220, 50, 50] : topSev.label === 'misdemeanor' ? [220, 160, 40] : [120, 120, 120];
+      const sevColor: [number, number, number] = topSev.label === 'felony' ? [50, 50, 50] : topSev.label === 'misdemeanor' ? [80, 80, 80] : [120, 120, 120]; // neutralized 2026-05-30
       doc.setTextColor(...sevColor);
       doc.text(topSev.label.toUpperCase(), margin + contentW - 2, y + 5, { align: 'right' });
     }
 
     y += 9;
 
-    // Physical description row
+    // Physical description row - every part runs through pdfField so
+    // sentinel strings ("N/A", "None", "null") in the persons table don't
+    // leak onto the BOLO header as garbage.
     const descParts: string[] = [];
-    if (subj.dob) descParts.push(`DOB: ${fmtDate(subj.dob)}`);
-    if (subj.gender) descParts.push(`${subj.gender}`);
-    if (subj.race) descParts.push(`${subj.race}`);
-    if (subj.height) descParts.push(`Ht: ${subj.height}`);
-    if (subj.weight) descParts.push(`Wt: ${subj.weight}`);
-    if (subj.hair_color) descParts.push(`Hair: ${subj.hair_color}`);
-    if (subj.eye_color) descParts.push(`Eyes: ${subj.eye_color}`);
+    const dobClean = pdfField(subj.dob, '');
+    if (dobClean) descParts.push(`DOB: ${fmtDate(dobClean)}`);
+    const pushField = (label: string | null, val: unknown, prefix?: string) => {
+      const clean = pdfField(val, '');
+      if (clean) descParts.push(prefix ? `${prefix}: ${clean}` : clean);
+      void label;
+    };
+    pushField(null, subj.gender);
+    pushField(null, subj.race);
+    pushField(null, subj.height, 'Ht');
+    pushField(null, subj.weight, 'Wt');
+    pushField(null, subj.hair_color, 'Hair');
+    pushField(null, subj.eye_color, 'Eyes');
 
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(7.5);
@@ -6087,11 +6114,12 @@ export function generateBoloPdf(subjects: BoloSubject[], options: RecordPdfOptio
     doc.text(descParts.join('  |  '), margin + 2, y + 3);
     y += 5;
 
-    if (subj.address) {
+    const addressClean = pdfField(subj.address, '');
+    if (addressClean) {
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(7);
       doc.setTextColor(...COLOR.TEXT_SECONDARY);
-      doc.text(`Address: ${subj.address}`, margin + 2, y + 3);
+      doc.text(`Address: ${addressClean}`, margin + 2, y + 3);
       y += 5;
     }
 
@@ -6117,7 +6145,7 @@ export function generateBoloPdf(subjects: BoloSubject[], options: RecordPdfOptio
       doc.setFontSize(6.5);
       doc.setTextColor(...COLOR.TEXT_SECONDARY);
       // Table header
-      doc.setFillColor(30, 40, 55);
+      doc.setFillColor(55, 55, 55); // neutralized 2026-05-30
       doc.rect(margin + 2, y, contentW - 4, 5, 'F');
       doc.text('WARRANT #', margin + 4, y + 3.5);
       doc.text('TYPE', margin + 40, y + 3.5);
@@ -6138,12 +6166,16 @@ export function generateBoloPdf(subjects: BoloSubject[], options: RecordPdfOptio
           doc.setGState(new doc.GState({ opacity: 1.0 }));
           y = topMarginY(doc) + 5;
         }
-        doc.text(w.warrant_number || '', margin + 4, y + 3);
-        doc.text(formatEnumValue(w.type), margin + 40, y + 3);
-        // Truncate charge if too long
-        const charge = (w.charge_description || '').substring(0, 50);
-        doc.text(charge, margin + 60, y + 3);
-        doc.text((w.issuing_court || '').substring(0, 25), margin + 130, y + 3);
+        // pdfField scrubs "N/A" / "None" / "null" sentinel rows the live
+        // warrants table is full of; parseCharges unwraps the JSON-array
+        // form that ArrestFormModal writes (`["BATTERY"]`) so the BOLO
+        // shows "BATTERY" instead of the literal bracket-quoted string.
+        doc.text(pdfField(w.warrant_number), margin + 4, y + 3);
+        doc.text(pdfField(formatEnumValue(w.type)), margin + 40, y + 3);
+        const chargeList = parseCharges(w.charge_description);
+        const chargeText = chargeList.length ? chargeList.join('; ') : pdfField(w.charge_description);
+        doc.text(chargeText.substring(0, 50), margin + 60, y + 3);
+        doc.text(pdfField(w.issuing_court).substring(0, 25), margin + 130, y + 3);
         doc.text(fmtCurrency(w.bail_amount), margin + contentW - 8, y + 3, { align: 'right' });
         y += 5;
       }
@@ -6282,7 +6314,7 @@ export function generateWarrantSummaryPdf(data: WarrantSummaryData, options: Rec
     ty += 5;
 
     // Header row
-    doc.setFillColor(30, 40, 55);
+    doc.setFillColor(55, 55, 55); // neutralized 2026-05-30
     doc.rect(x, ty, w, 5, 'F');
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(6.5);
@@ -6333,7 +6365,7 @@ export function generateWarrantSummaryPdf(data: WarrantSummaryData, options: Rec
     doc.text('TOP ISSUING COURTS', margin, y + 3);
     y += 5;
 
-    doc.setFillColor(30, 40, 55);
+    doc.setFillColor(55, 55, 55); // neutralized 2026-05-30
     doc.rect(margin, y, contentW, 5, 'F');
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(6.5);

@@ -77,12 +77,12 @@ export function addQuickReferenceBanner(
   let pillLeftEdge = margin + cw;  // sentinel: no pill → use full width
   if (cfg.pill && cfg.pill.label) {
     const pillBg: [number, number, number] = cfg.pill.tone === 'high'
-      ? [180, 25, 25]
+      ? [60, 60, 60]   // neutralized 2026-05-30 (was red)
       : cfg.pill.tone === 'elevated'
-        ? [200, 130, 20]
+        ? [80, 80, 80]  // neutralized (was orange)
         : cfg.pill.tone === 'inactive'
           ? [110, 110, 110]
-          : [60, 120, 70];
+          : [100, 100, 100]; // neutralized (was green)
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(7);
     const labelW = doc.getTextWidth(cfg.pill.label) + 4;
@@ -165,7 +165,7 @@ export function addCrossRefBadgeBar(
   for (let i = 0; i < visible.length; i++) {
     const b = visible[i];
     const chipColor: [number, number, number] = b.tone === 'risk'
-      ? [180, 25, 25]
+      ? [60, 60, 60]  // neutralized 2026-05-30 (was red)
       : [COLOR.BG_SECTION_HDR[0], COLOR.BG_SECTION_HDR[1], COLOR.BG_SECTION_HDR[2]];
 
     // Count chip — small filled rectangle with white number
@@ -219,10 +219,12 @@ export function addSeverityMeter(
 
   // Threshold-driven color
   let fill: [number, number, number];
+  // Neutralized 2026-05-30: severity meter uses luminance gradient
+  // (darkest = most severe) instead of red/amber/green
   if (cfg.invert) {
-    fill = v >= 67 ? [60, 120, 70] : v >= 34 ? [200, 130, 20] : [180, 25, 25];
+    fill = v >= 67 ? [100, 100, 100] : v >= 34 ? [75, 75, 75] : [50, 50, 50];
   } else {
-    fill = v >= 67 ? [180, 25, 25] : v >= 34 ? [200, 130, 20] : [60, 120, 70];
+    fill = v >= 67 ? [50, 50, 50] : v >= 34 ? [75, 75, 75] : [100, 100, 100];
   }
 
   // Label + numeric value above the bar
@@ -264,16 +266,18 @@ export function addSeverityMeter(
  *  far too light to print). Keep the hue families aligned with
  *  recordVisuals.BADGE_TONES so screen↔print stay visually coherent. */
 export const POSTURE_PRINT_RGB: Record<BadgeTone, [number, number, number]> = {
-  red:    [176, 28, 28],   // critical — armed / wanted / officer-safety
-  orange: [196, 104, 16],  // high — felony / supervision / pursuit
-  amber:  [183, 121, 12],  // caution — generic flag
-  gold:   [150, 110, 16],  // notable-but-mild
-  purple: [122, 70, 180],  // behavioral / mental-health
-  pink:   [188, 50, 120],  // medical / self-harm
-  blue:   [96, 104, 118],  // informational (neutral per zero-blue rule)
-  teal:   [22, 130, 120],  // status-good-but-watch
-  green:  [42, 120, 60],   // cleared / verified / positive
-  gray:   [120, 120, 120], // neutral default
+  // Neutralized 2026-05-30: all hue-based tones replaced with luminance-graded
+  // grays. Semantic weight is carried by label text alone.
+  red:    [50, 50, 50],
+  orange: [65, 65, 65],
+  amber:  [80, 80, 80],
+  gold:   [95, 95, 95],
+  purple: [70, 70, 70],
+  pink:   [85, 85, 85],
+  blue:   [100, 100, 100],
+  teal:   [110, 110, 110],
+  green:  [120, 120, 120],
+  gray:   [120, 120, 120],
 };
 
 export interface ThreatPostureBandConfig {
@@ -333,10 +337,10 @@ export function drawThreatPostureBand(
   doc.setLineWidth(0.3);
   doc.rect(margin, startY, cw, bandH);
 
-  // Text colors flip for the solid treatment.
-  const miniColor: readonly [number, number, number] = solid ? [235, 225, 225] : COLOR.TEXT_TERTIARY;
+  // Text colors flip for the solid treatment — neutralized 2026-05-30
+  const miniColor: readonly [number, number, number] = solid ? [230, 230, 230] : COLOR.TEXT_TERTIARY;
   const labelColor: readonly [number, number, number] = solid ? COLOR.TEXT_INVERTED : rgb;
-  const ctxColor: readonly [number, number, number] = solid ? [240, 235, 235] : COLOR.TEXT_SECONDARY;
+  const ctxColor: readonly [number, number, number] = solid ? [238, 238, 238] : COLOR.TEXT_SECONDARY;
 
   // ── Left block: mini-label + big posture word + context line ──
   const tx = margin + accentW + 2.5;

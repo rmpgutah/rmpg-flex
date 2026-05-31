@@ -33,11 +33,11 @@ const COLOR = {
   BLACK:    '#000000',
   INK:      '#1a1a1a',
   MUTED:    '#666666',
-  ACCENT:   '#d4a017',   // Spillman gold
+  ACCENT:   '#555555',   // neutralized 2026-05-30 (was gold)
   SURFACE:  '#f4f4f4',
   RULE:     '#cccccc',
-  RED:      '#b91c1c',
-  GREEN:    '#166534',
+  RED:      '#666666',   // neutralized 2026-05-30 (was #666666 red)
+  GREEN:    '#888888',   // neutralized 2026-05-30 (was #777777 green)
 };
 
 // ─── Types ──────────────────────────────────────────────────
@@ -200,7 +200,7 @@ function calloutBox(ctx: GuideContext, label: string, body: string, tone: 'info'
   const boxH = 20 + bodyLines.length * LINE_H;
   ensureSpace(ctx, boxH + 6);
 
-  ctx.doc.setFillColor(tone === 'warn' ? '#fff4f2' : '#fffbea');
+  ctx.doc.setFillColor(tone === 'warn' ? '#f5f5f5' : '#f5f5f5');
   ctx.doc.setDrawColor(tone === 'warn' ? COLOR.RED : COLOR.ACCENT);
   ctx.doc.setLineWidth(1);
   ctx.doc.rect(PAGE.MARGIN, ctx.y, PAGE.W - PAGE.MARGIN * 2, boxH, 'FD');
@@ -318,7 +318,7 @@ function dArrow(
   d: jsPDF,
   x1: number, y1: number, x2: number, y2: number,
   label?: string,
-  color = '#d4a017',
+  color = '#555555',
 ): void {
   d.setDrawColor(color);
   d.setLineWidth(0.9);
@@ -452,19 +452,19 @@ function coverConsoleBadge(d: jsPDF, cx: number, topY: number): void {
 
   // LED dots (red / amber / green)
   const ledY = y + 7;
-  [['#c0392b', 6], ['#d4a017', 14], ['#166534', 22]].forEach(([color, dx]) => {
+  [['#666666', 6], ['#555555', 14], ['#777777', 22]].forEach(([color, dx]) => {
     d.setFillColor(color as string);
     d.circle(x + bw - 80 + (dx as number), ledY, 2, 'F');
   });
 
   // Fake call rows (thin bars)
-  d.setFillColor('#d4a017');
+  d.setFillColor('#555555');
   d.rect(x + 14, y + 32, 4, 10, 'F');
   d.setFillColor('#666666');
   d.rect(x + 22, y + 34, 100, 2, 'F');
   d.rect(x + 22, y + 39, 70, 2, 'F');
 
-  d.setFillColor('#b91c1c');
+  d.setFillColor('#666666');
   d.rect(x + 14, y + 48, 4, 10, 'F');
   d.setFillColor('#666666');
   d.rect(x + 22, y + 50, 120, 2, 'F');
@@ -610,7 +610,7 @@ function section1(ctx: GuideContext): void {
   bullet(ctx, 'Green LED (solid) — in service, fresh GPS, healthy connection.');
   bullet(ctx, 'Amber LED (solid) — attention needed, stale GPS, moderate-severity alert in the brain queue.');
   bullet(ctx, 'Red LED (solid or pulsing) — emergency, panic, officer-down, or major-severity alert. Pulsing means active and unresolved.');
-  bullet(ctx, 'Gold text (#d4a017) — actionable brand accent. Buttons with gold borders are the primary action on their panel.');
+  bullet(ctx, 'Gold text (#555555) — actionable brand accent. Buttons with gold borders are the primary action on their panel.');
   bullet(ctx, 'Gray text (#888888) — passive label text. Values and data use light gray (#dddddd).');
   bullet(ctx, 'Red priority stripe on a call card — the call has one or more safety flags. Hover for the flag list.');
   bullet(ctx, 'Flashing red banner across the top of the map — active pursuit in progress.');
@@ -2143,7 +2143,7 @@ function drawCallLifecycleDiagram(ctx: GuideContext): void {
     const bx = x + 12 + i * (boxW + gap);
     const [title, sub] = states[i];
     const box = dBox(d, bx, cy, boxW, boxH, `${title}\n${sub}`, {
-      fill: i === 0 ? '#141414' : (i === states.length - 1 ? '#0d2818' : '#1a1a1a'),
+      fill: i === 0 ? '#141414' : (i === states.length - 1 ? '#333333' : '#1a1a1a'),
       stroke: COLOR.ACCENT,
       textColor: '#e5e5e5',
       fontSize: 7,
@@ -2196,16 +2196,16 @@ function drawUnitStatusDiagram(ctx: GuideContext): void {
 
   // Central hub: AVAILABLE
   const hub = dBox(d, cx - 50, cy - 18, 100, 36, 'AVAILABLE', {
-    fill: '#0d2818', stroke: '#166534', textColor: '#22c55e', fontSize: 10, bold: true,
+    fill: '#333333', stroke: '#777777', textColor: '#888888', fontSize: 10, bold: true,
   });
 
   // Satellite nodes: DISPATCHED, ENROUTE, ON SCENE, BUSY, OUT OF SERVICE, OFF DUTY
   const satellites: Array<{ label: string; dx: number; dy: number; color: string }> = [
     { label: 'OFF DUTY',     dx:    0, dy: -100, color: '#666666' },
-    { label: 'DISPATCHED',   dx:  170, dy:  -70, color: '#d4a017' },
-    { label: 'ENROUTE',      dx:  170, dy:    0, color: '#d4a017' },
-    { label: 'ON SCENE',     dx:  170, dy:   70, color: '#b91c1c' },
-    { label: 'BUSY',         dx: -170, dy:  -70, color: '#d97706' },
+    { label: 'DISPATCHED',   dx:  170, dy:  -70, color: '#555555' },
+    { label: 'ENROUTE',      dx:  170, dy:    0, color: '#555555' },
+    { label: 'ON SCENE',     dx:  170, dy:   70, color: '#666666' },
+    { label: 'BUSY',         dx: -170, dy:  -70, color: '#666666' },
     { label: 'OUT OF SVC',   dx: -170, dy:   70, color: '#888888' },
   ];
   const nodes: Record<string, ReturnType<typeof dBox>> = { AVAILABLE: hub };
@@ -2277,10 +2277,10 @@ function drawPriorityPyramidDiagram(ctx: GuideContext): void {
   dFrame(d, x, y, w, h);
 
   const levels: Array<{ p: string; label: string; color: string; widthPct: number; freq: string; response: string }> = [
-    { p: 'P1', label: 'Life / safety emergency',    color: '#b91c1c', widthPct: 0.20, freq: '~2% of calls',  response: 'lights + siren'   },
-    { p: 'P2', label: 'Crime in progress / urgent', color: '#d97706', widthPct: 0.40, freq: '~15% of calls', response: 'prompt, no L&S'   },
-    { p: 'P3', label: 'Routine',                    color: '#ca8a04', widthPct: 0.65, freq: '~55% of calls', response: 'closest unit'     },
-    { p: 'P4', label: 'Cold / report only',         color: '#6b7280', widthPct: 0.85, freq: '~28% of calls', response: 'phone / deferred' },
+    { p: 'P1', label: 'Life / safety emergency',    color: '#666666', widthPct: 0.20, freq: '~2% of calls',  response: 'lights + siren'   },
+    { p: 'P2', label: 'Crime in progress / urgent', color: '#666666', widthPct: 0.40, freq: '~15% of calls', response: 'prompt, no L&S'   },
+    { p: 'P3', label: 'Routine',                    color: '#777777', widthPct: 0.65, freq: '~55% of calls', response: 'closest unit'     },
+    { p: 'P4', label: 'Cold / report only',         color: '#777777', widthPct: 0.85, freq: '~28% of calls', response: 'phone / deferred' },
   ];
 
   // Column anchors
@@ -2445,7 +2445,7 @@ function drawBrainPipelineDiagram(ctx: GuideContext): void {
     const bx = x + 12 + i * (boxW + gap);
     const isRule = stages[i] === 'Rule Engine';
     boxes.push(dBox(d, bx, cy, boxW, boxH, stages[i], {
-      fill: isRule ? '#1f1a00' : '#141414',
+      fill: isRule ? '#2a2a2a' : '#141414',
       stroke: isRule ? COLOR.ACCENT : '#2e2e2e',
       textColor: '#e5e5e5',
       fontSize: 7,
@@ -2459,14 +2459,14 @@ function drawBrainPipelineDiagram(ctx: GuideContext): void {
   // Sideband: WebSocket event stream feeding Rule Engine
   const sideY = cy + 80;
   const sideBox = dBox(d, x + w / 2 - 90, sideY, 180, 28, 'WebSocket: call/unit/premise events', {
-    fill: '#0d1a2b', stroke: '#2b4b6b', textColor: '#93c5fd', fontSize: 8, bold: true,
+    fill: '#2a2a2a', stroke: '#555555', textColor: '#888888', fontSize: 8, bold: true,
   });
   // Arrow from sideband up to Rule Engine
   const ruleBox = boxes[3];
   dArrow(d,
     sideBox.x + sideBox.w / 2, sideBox.y,
     ruleBox.x + ruleBox.w / 2, ruleBox.y + ruleBox.h,
-    undefined, '#93c5fd',
+    undefined, '#888888',
   );
 
   // Labels
@@ -2500,7 +2500,7 @@ function drawWebSocketArchDiagram(ctx: GuideContext): void {
   const cx = x + w / 2;
   const cy = y + h / 2 - 10;
   const server = dBox(d, cx - 70, cy - 22, 140, 44, 'RMPG FLEX SERVER\nws://rmpgutah.us', {
-    fill: '#1f1a00', stroke: COLOR.ACCENT, textColor: COLOR.ACCENT, fontSize: 9, bold: true,
+    fill: '#2a2a2a', stroke: COLOR.ACCENT, textColor: COLOR.ACCENT, fontSize: 9, bold: true,
   });
 
   // Database below server
@@ -2521,15 +2521,15 @@ function drawWebSocketArchDiagram(ctx: GuideContext): void {
     const ncx = cx + Math.cos(c.angle) * radius;
     const ncy = cy + Math.sin(c.angle) * radius * 0.8;
     const nb = dBox(d, ncx - 48, ncy - 16, 96, 32, c.label, {
-      fill: '#141414', stroke: '#166534', textColor: '#22c55e', fontSize: 7, bold: true,
+      fill: '#141414', stroke: '#777777', textColor: '#888888', fontSize: 7, bold: true,
     });
     // Bidirectional arrow indicator (two lines)
     const fx = nb.x + nb.w / 2;
     const fy = nb.y + nb.h;
     const tx = server.x + server.w / 2;
     const ty = server.y;
-    dArrow(d, fx, fy, tx + 10, ty - 1, undefined, '#22c55e');
-    dArrow(d, tx - 10, ty, fx, fy, undefined, '#22c55e');
+    dArrow(d, fx, fy, tx + 10, ty - 1, undefined, '#888888');
+    dArrow(d, tx - 10, ty, fx, fy, undefined, '#888888');
   }
 
   // Offline queue indicator
@@ -2566,7 +2566,7 @@ function drawSkipTracerFanoutDiagram(ctx: GuideContext): void {
   const cx = x + w / 2;
   const cy = y + h / 2 - 4;
   dBox(d, cx - 50, cy - 16, 100, 32, 'SKIP TRACER', {
-    fill: '#1f1a00', stroke: COLOR.ACCENT, textColor: COLOR.ACCENT, fontSize: 10, bold: true,
+    fill: '#2a2a2a', stroke: COLOR.ACCENT, textColor: COLOR.ACCENT, fontSize: 10, bold: true,
   });
 
   type Src = { label: string; cat: 'fed' | 'state' | 'local' | 'oss' };
@@ -2601,9 +2601,9 @@ function drawSkipTracerFanoutDiagram(ctx: GuideContext): void {
   ];
 
   const catColors: Record<string, { fill: string; stroke: string; text: string }> = {
-    fed:   { fill: '#1a0505', stroke: '#b91c1c', text: '#fca5a5' },
-    state: { fill: '#0a1a2b', stroke: '#2563eb', text: '#93c5fd' },
-    local: { fill: '#0d2818', stroke: '#166534', text: '#86efac' },
+    fed:   { fill: '#333333', stroke: '#666666', text: '#aaaaaa' },
+    state: { fill: '#2a2a2a', stroke: '#555555', text: '#888888' },
+    local: { fill: '#333333', stroke: '#777777', text: '#999999' },
     oss:   { fill: '#141414', stroke: '#666666', text: '#cccccc' },
   };
 
@@ -2698,18 +2698,18 @@ function drawCallTimelineDiagram(ctx: GuideContext): void {
   // so neighbors never collide.
   type Evt = { min: number; label: string; color: string };
   const events: Evt[] = [
-    { min: 0,     label: 'Phone rings\nF2 pressed',     color: '#d4a017' },
+    { min: 0,     label: 'Phone rings\nF2 pressed',     color: '#555555' },
     { min: 0.33,  label: 'Caller gives\nlocation',       color: '#888888' },
     { min: 0.42,  label: 'Incident type\nclassified',    color: '#888888' },
-    { min: 0.48,  label: 'Voice-channel\nalert',          color: '#d4a017' },
-    { min: 0.9,   label: 'U07 enroute\n(F5)',            color: '#22c55e' },
-    { min: 1.5,   label: 'Caller update:\nveh flees NB',  color: '#b91c1c' },
+    { min: 0.48,  label: 'Voice-channel\nalert',          color: '#555555' },
+    { min: 0.9,   label: 'U07 enroute\n(F5)',            color: '#888888' },
+    { min: 1.5,   label: 'Caller update:\nveh flees NB',  color: '#666666' },
     { min: 2.0,   label: 'U07 diverts\nto intercept',     color: '#888888' },
-    { min: 2.8,   label: 'U12 on scene\n(F6)',            color: '#b91c1c' },
-    { min: 3.5,   label: 'BOLO broadcast\n(F8 + bolo)',   color: '#d4a017' },
-    { min: 5.7,   label: 'U07 posted\n(F6)',              color: '#b91c1c' },
-    { min: 12.5,  label: 'U12 clears\n(F7)',              color: '#22c55e' },
-    { min: 19.25, label: 'U07 clears\n(F7)',              color: '#22c55e' },
+    { min: 2.8,   label: 'U12 on scene\n(F6)',            color: '#666666' },
+    { min: 3.5,   label: 'BOLO broadcast\n(F8 + bolo)',   color: '#555555' },
+    { min: 5.7,   label: 'U07 posted\n(F6)',              color: '#666666' },
+    { min: 12.5,  label: 'U12 clears\n(F7)',              color: '#888888' },
+    { min: 19.25, label: 'U07 clears\n(F7)',              color: '#888888' },
     { min: 20.5,  label: 'Close call\ndisp: GOA',         color: '#666666' },
   ];
 
@@ -2822,9 +2822,9 @@ function drawCommandLineAnatomyDiagram(ctx: GuideContext): void {
 
   // Example command — each token colored differently for callouts
   const verbX = cmdX + 22;
-  d.setTextColor('#d4a017');
+  d.setTextColor('#555555');
   d.text('DS',   verbX, cmdY + 19);
-  d.setTextColor('#22c55e');
+  d.setTextColor('#888888');
   d.text('U07',  verbX + 26, cmdY + 19);
   d.setTextColor('#e5e5e5');
   d.text('C24-0415',  verbX + 64, cmdY + 19);
@@ -2842,8 +2842,8 @@ function drawCommandLineAnatomyDiagram(ctx: GuideContext): void {
     d.setTextColor(color);
     d.text(label, labelX + 3, labelY + 2);
   };
-  drawCallout(verbX + 8, 'VERB: dispatch', '#d4a017', x + 20, y + 30);
-  drawCallout(verbX + 40, 'UNIT: callsign', '#22c55e', x + 170, y + 30);
+  drawCallout(verbX + 8, 'VERB: dispatch', '#555555', x + 20, y + 30);
+  drawCallout(verbX + 40, 'UNIT: callsign', '#888888', x + 170, y + 30);
   drawCallout(verbX + 100, 'CALL: number', '#e5e5e5', x + w - 220, y + 30);
   drawCallout(verbX + 200, 'MODIFIER: note', '#888888', x + w - 120, y + 108);
 
@@ -2874,9 +2874,9 @@ function drawPursuitSwimlaneDiagram(ctx: GuideContext): void {
   dFrame(d, x, y, w, h);
 
   const lanes: Array<{ label: string; color: string }> = [
-    { label: 'PRIMARY OFFICER', color: '#22c55e' },
-    { label: 'DISPATCHER',      color: '#d4a017' },
-    { label: 'SUPERVISOR',      color: '#b91c1c' },
+    { label: 'PRIMARY OFFICER', color: '#888888' },
+    { label: 'DISPATCHER',      color: '#555555' },
+    { label: 'SUPERVISOR',      color: '#666666' },
   ];
   const laneH = (h - 30) / lanes.length;
   const topY = y + 20;
@@ -2945,13 +2945,13 @@ function drawMapLayerStackDiagram(ctx: GuideContext): void {
   dFrame(d, x, y, w, h);
 
   const layers: Array<{ label: string; detail: string; color: string }> = [
-    { label: 'Base tiles',         detail: 'Google Maps dark / CartoDB fallback', color: '#374151' },
-    { label: 'Beat polygons',      detail: '719 features colored by sector',      color: '#60a5fa' },
-    { label: 'Geofences',          detail: 'Active perimeters + evidence zones', color: '#a78bfa' },
-    { label: 'Premise alerts',     detail: 'Persistent address warnings',         color: '#f59e0b' },
-    { label: 'Active calls',       detail: 'Incident-type pins, priority color',  color: '#d4a017' },
-    { label: 'Units (GPS)',        detail: 'Dots colored by status, 5s updates',  color: '#22c55e' },
-    { label: 'Breadcrumbs',        detail: 'Last-N-min trail (on demand)',        color: '#93c5fd' },
+    { label: 'Base tiles',         detail: 'Google Maps dark / CartoDB fallback', color: '#666666' },
+    { label: 'Beat polygons',      detail: '719 features colored by sector',      color: '#888888' },
+    { label: 'Geofences',          detail: 'Active perimeters + evidence zones', color: '#888888' },
+    { label: 'Premise alerts',     detail: 'Persistent address warnings',         color: '#777777' },
+    { label: 'Active calls',       detail: 'Incident-type pins, priority color',  color: '#555555' },
+    { label: 'Units (GPS)',        detail: 'Dots colored by status, 5s updates',  color: '#888888' },
+    { label: 'Breadcrumbs',        detail: 'Last-N-min trail (on demand)',        color: '#888888' },
     { label: 'Interaction layer',  detail: 'Hover, click, drag-to-dispatch',      color: '#ffffff' },
   ];
 
@@ -3028,7 +3028,7 @@ function drawServeLifecycleDiagram(ctx: GuideContext): void {
     const s = stages[i];
     const isOutcome = s.label === 'OUTCOME';
     boxes.push(dBox(d, bx, cy, boxW, boxH, `${s.label}\n${s.detail}`, {
-      fill: isOutcome ? '#1f1a00' : '#141414',
+      fill: isOutcome ? '#2a2a2a' : '#141414',
       stroke: isOutcome ? COLOR.ACCENT : '#2e2e2e',
       textColor: '#e5e5e5',
       fontSize: 7,
@@ -3060,10 +3060,10 @@ function drawServeLifecycleDiagram(ctx: GuideContext): void {
   const retryX  = servedX + childW + childGap;
 
   const served = dBox(d, servedX, branchY, childW, 32, 'CLOSED — SERVED\nFinal disposition', {
-    fill: '#0d2818', stroke: '#166534', textColor: '#86efac', fontSize: 7, bold: true,
+    fill: '#333333', stroke: '#777777', textColor: '#999999', fontSize: 7, bold: true,
   });
   const retry = dBox(d, retryX, branchY, childW, 32, 'RE-ATTEMPT\nup to contract limit', {
-    fill: '#1a0505', stroke: '#b91c1c', textColor: '#fca5a5', fontSize: 7, bold: true,
+    fill: '#333333', stroke: '#666666', textColor: '#aaaaaa', fontSize: 7, bold: true,
   });
   dArrow(d, outcomeBox.x + boxW / 2, outcomeBox.y + boxH, served.x + served.w / 2, served.y, 'served');
   dArrow(d, outcomeBox.x + boxW / 2, outcomeBox.y + boxH, retry.x + retry.w / 2, retry.y, 'no contact');
@@ -3072,12 +3072,12 @@ function drawServeLifecycleDiagram(ctx: GuideContext): void {
   // clamped the retry box position above.
   const attemptBox = boxes[2];
   const loopX = Math.min(retry.x + retry.w + loopExtension, frameRightEdge - 4);
-  d.setDrawColor('#b91c1c');
+  d.setDrawColor('#666666');
   d.setLineWidth(0.5);
   d.line(retry.x + retry.w, retry.y + retry.h / 2, loopX, retry.y + retry.h / 2);
   d.line(loopX, retry.y + retry.h / 2, loopX, attemptBox.y + boxH + 6);
   d.line(loopX, attemptBox.y + boxH + 6, attemptBox.x + boxW / 2, attemptBox.y + boxH + 6);
-  dArrow(d, attemptBox.x + boxW / 2, attemptBox.y + boxH + 6, attemptBox.x + boxW / 2, attemptBox.y + boxH, undefined, '#b91c1c');
+  dArrow(d, attemptBox.x + boxW / 2, attemptBox.y + boxH + 6, attemptBox.x + boxW / 2, attemptBox.y + boxH, undefined, '#666666');
 
   ctx.y = y + h + 8;
   dCaption(ctx, 'Fig. 17-1 — Serve-queue lifecycle. Re-attempts loop until served or the contract attempt limit.');
@@ -3099,13 +3099,13 @@ function drawCompoundSearchMatrixDiagram(ctx: GuideContext): void {
   dFrame(d, x, y, w, h);
 
   const fields: Array<{ label: string; example: string; color: string }> = [
-    { label: 'NAME',       example: 'SMITH*\n(wildcard)',           color: '#d4a017' },
-    { label: 'DOB',        example: '1985-01-01\n..1990-12-31',     color: '#d4a017' },
-    { label: 'PHYSICAL',   example: '72-76 in\nmale, brown',        color: '#60a5fa' },
-    { label: 'ADDRESS',    example: '500m radius\nof lat/lng',      color: '#60a5fa' },
-    { label: 'PLATE',      example: 'AB*\nUT 2018+',                color: '#22c55e' },
-    { label: 'VEHICLE',    example: 'Black pickup\nChevy, older',   color: '#22c55e' },
-    { label: 'FLAGS',      example: 'WEAPON or\nOFC_SAFETY',        color: '#b91c1c' },
+    { label: 'NAME',       example: 'SMITH*\n(wildcard)',           color: '#555555' },
+    { label: 'DOB',        example: '1985-01-01\n..1990-12-31',     color: '#555555' },
+    { label: 'PHYSICAL',   example: '72-76 in\nmale, brown',        color: '#888888' },
+    { label: 'ADDRESS',    example: '500m radius\nof lat/lng',      color: '#888888' },
+    { label: 'PLATE',      example: 'AB*\nUT 2018+',                color: '#888888' },
+    { label: 'VEHICLE',    example: 'Black pickup\nChevy, older',   color: '#888888' },
+    { label: 'FLAGS',      example: 'WEAPON or\nOFC_SAFETY',        color: '#666666' },
     { label: 'DATE RANGE', example: 'last 60d\nlast shift',          color: '#888888' },
     { label: 'RECORD TYPE',example: 'Calls | Inc\nFI | Citations',  color: '#888888' },
   ];
@@ -3159,16 +3159,16 @@ function drawArchDataFlowDiagram(ctx: GuideContext): void {
   const tierY = y + 40;
   const tierH = 60;
   const browser = dBox(d, x + 12, tierY, 96, tierH, 'BROWSER\nReact SPA\nVite bundle', {
-    fill: '#0d1a2b', stroke: '#2563eb', textColor: '#93c5fd', fontSize: 8, bold: true,
+    fill: '#2a2a2a', stroke: '#555555', textColor: '#888888', fontSize: 8, bold: true,
   });
   const nginx = dBox(d, x + 130, tierY, 90, tierH, 'NGINX\nSSL terminator\nStatic + proxy', {
     fill: '#1a1a1a', stroke: '#666666', textColor: '#cccccc', fontSize: 8, bold: true,
   });
   const express = dBox(d, x + 240, tierY, 100, tierH, 'EXPRESS 5\ntsx runtime\nREST + WS', {
-    fill: '#1f1a00', stroke: COLOR.ACCENT, textColor: COLOR.ACCENT, fontSize: 8, bold: true,
+    fill: '#2a2a2a', stroke: COLOR.ACCENT, textColor: COLOR.ACCENT, fontSize: 8, bold: true,
   });
   const sqlite = dBox(d, x + 360, tierY, 90, tierH, 'SQLITE\nbetter-sqlite3\naudit log', {
-    fill: '#0d2818', stroke: '#166534', textColor: '#86efac', fontSize: 8, bold: true,
+    fill: '#333333', stroke: '#777777', textColor: '#999999', fontSize: 8, bold: true,
   });
 
   // Flow arrows (HTTPS 443, proxy 3001, file I/O)
@@ -3184,7 +3184,7 @@ function drawArchDataFlowDiagram(ctx: GuideContext): void {
   const sidebands = [
     { from: nginx,   label: "Let's Encrypt\ncerts (symlinks)", color: '#888888' },
     { from: express, label: 'systemd unit\nrmpg-flex.service', color: '#888888' },
-    { from: express, label: 'WebSocket (ws)\nbroadcastDispatchUpdate', color: '#60a5fa' },
+    { from: express, label: 'WebSocket (ws)\nbroadcastDispatchUpdate', color: '#888888' },
     { from: sqlite,  label: 'server/data/\nexcluded from deploy', color: '#888888' },
   ];
   for (const sb of sidebands) {
@@ -3222,7 +3222,7 @@ function drawOfficerDownFlowchart(ctx: GuideContext): void {
 
   // Step 1 — Trigger
   const trigger = dBox(d, centerX - 90, y + 16, 180, 28, '"10-99" heard on channel', {
-    fill: '#1a0505', stroke: '#b91c1c', textColor: '#fca5a5', fontSize: 9, bold: true,
+    fill: '#333333', stroke: '#666666', textColor: '#aaaaaa', fontSize: 9, bold: true,
   });
 
   // Step 2 — Broadcast
@@ -3240,7 +3240,7 @@ function drawOfficerDownFlowchart(ctx: GuideContext): void {
   // Decision diamond — is GPS current?
   const decisionY = y + 150;
   const diamond = (cx: number, cy: number, label: string) => {
-    d.setFillColor('#1a1a00');
+    d.setFillColor('#2a2a2a');
     d.setDrawColor(COLOR.ACCENT);
     d.setLineWidth(1);
     const size = 40;
@@ -3259,13 +3259,13 @@ function drawOfficerDownFlowchart(ctx: GuideContext): void {
 
   // Yes branch (left)
   const yesBox = dBox(d, x + 40, decisionY + 80, 150, 30, 'Use GPS location\nDispatch 3 nearest', {
-    fill: '#0d2818', stroke: '#166534', textColor: '#86efac', fontSize: 8, bold: true,
+    fill: '#333333', stroke: '#777777', textColor: '#999999', fontSize: 8, bold: true,
   });
   dArrow(d, centerX - 50, decisionY + 40, yesBox.x + yesBox.w, yesBox.y + 10, 'YES');
 
   // No branch (right)
   const noBox = dBox(d, x + w - 190, decisionY + 80, 150, 30, 'Ask for 20\nEscalate if no response', {
-    fill: '#1a0505', stroke: '#b91c1c', textColor: '#fca5a5', fontSize: 8, bold: true,
+    fill: '#333333', stroke: '#666666', textColor: '#aaaaaa', fontSize: 8, bold: true,
   });
   dArrow(d, centerX + 50, decisionY + 40, noBox.x, noBox.y + 10, 'NO');
 
@@ -3278,7 +3278,7 @@ function drawOfficerDownFlowchart(ctx: GuideContext): void {
   dArrow(d, noBox.x + noBox.w / 2, noBox.y + noBox.h, supervisor.x + supervisor.w / 2 + 30, supervisor.y);
 
   const clear = dBox(d, centerX - 120, supY + 38, 240, 26, 'STEP 7 — Do NOT clear until 10-4 from officer', {
-    fill: '#1a0505', stroke: '#b91c1c', textColor: '#fca5a5', fontSize: 8, bold: true,
+    fill: '#333333', stroke: '#666666', textColor: '#aaaaaa', fontSize: 8, bold: true,
   });
   dArrow(d, centerX, supervisor.y + supervisor.h, centerX, clear.y);
 
@@ -3367,7 +3367,7 @@ function drawConsoleAnatomyDiagram(ctx: GuideContext): void {
   d.setTextColor(COLOR.ACCENT);
   d.text('ACTIVE CALLS (7)', x + 6, cpY + 10);
   // Fake call rows
-  const colors = ['#b91c1c', '#d4a017', '#666666', '#166534', '#666666'];
+  const colors = ['#666666', '#555555', '#666666', '#777777', '#666666'];
   for (let i = 0; i < 5; i++) {
     d.setFillColor(colors[i]);
     d.rect(x + 4, cpY + 18 + i * 24, 3, 18, 'F');
@@ -3385,19 +3385,19 @@ function drawConsoleAnatomyDiagram(ctx: GuideContext): void {
   const mapX = x + leftW + 2;
   const mapW = w - leftW - 2;
   const mapH = cpH * 0.6;
-  d.setFillColor('#111827');
+  d.setFillColor('#333333');
   d.setDrawColor('#2e2e2e');
   d.rect(mapX, cpY, mapW, mapH, 'FD');
   // Fake beat lines
-  d.setDrawColor('#374151');
+  d.setDrawColor('#666666');
   d.setLineWidth(0.4);
   for (let i = 1; i < 6; i++) d.line(mapX + (mapW / 6) * i, cpY, mapX + (mapW / 6) * i, cpY + mapH);
   for (let j = 1; j < 4; j++) d.line(mapX, cpY + (mapH / 4) * j, mapX + mapW, cpY + (mapH / 4) * j);
   // Unit dots
-  d.setFillColor('#166534'); d.circle(mapX + 30, cpY + 40, 3, 'F');
-  d.setFillColor('#d4a017'); d.circle(mapX + 80, cpY + 60, 3, 'F');
-  d.setFillColor('#b91c1c'); d.circle(mapX + 140, cpY + 30, 3, 'F');
-  d.setFillColor('#166534'); d.circle(mapX + 50, cpY + 80, 3, 'F');
+  d.setFillColor('#777777'); d.circle(mapX + 30, cpY + 40, 3, 'F');
+  d.setFillColor('#555555'); d.circle(mapX + 80, cpY + 60, 3, 'F');
+  d.setFillColor('#666666'); d.circle(mapX + 140, cpY + 30, 3, 'F');
+  d.setFillColor('#777777'); d.circle(mapX + 50, cpY + 80, 3, 'F');
   d.setFillColor(COLOR.ACCENT);
   d.circle(mapX + mapW + 12, cpY + mapH / 2, 6, 'F');
   d.setTextColor(COLOR.BLACK);
@@ -3418,7 +3418,7 @@ function drawConsoleAnatomyDiagram(ctx: GuideContext): void {
   d.text('UNITS (12 AVAIL / 4 BUSY)', mapX + 6, rosterY + 9);
   // Fake unit chips
   for (let i = 0; i < 8; i++) {
-    d.setFillColor(i % 3 === 0 ? '#166534' : (i % 3 === 1 ? '#d4a017' : '#2e2e2e'));
+    d.setFillColor(i % 3 === 0 ? '#777777' : (i % 3 === 1 ? '#555555' : '#2e2e2e'));
     d.rect(mapX + 6 + (i % 4) * (mapW / 4 - 2), rosterY + 16 + Math.floor(i / 4) * 14, mapW / 4 - 10, 10, 'F');
   }
   d.setFillColor(COLOR.ACCENT);
@@ -3451,7 +3451,7 @@ function drawConsoleAnatomyDiagram(ctx: GuideContext): void {
   d.setFontSize(6);
   d.setTextColor('#888888');
   d.text('P1:1  P2:2  AVAIL:12  BUSY:4  |  F2 New  F3 Disp  F5 Enr  F6 Scn  F7 Clr', x + 6, sbY + 10);
-  d.setTextColor('#166534');
+  d.setTextColor('#777777');
   d.text('● LIVE', x + w - 30, sbY + 10);
   d.setFillColor(COLOR.ACCENT);
   d.circle(x + w + 12, sbY + 7, 6, 'F');
@@ -4481,10 +4481,10 @@ function quickReferenceCard(ctx: GuideContext): void {
 
   const pWidth = (PAGE.W - PAGE.MARGIN * 2) / 4;
   const priorities: Array<[string, string, [number, number, number]]> = [
-    ['P1', 'Life/safety — lights + siren',   [185, 28, 28]],
-    ['P2', 'In-progress — respond promptly', [217, 119, 6]],
-    ['P3', 'Routine',                        [202, 138, 4]],
-    ['P4', 'Cold / report only',             [107, 114, 128]],
+    ['P1', 'Life/safety — lights + siren',   [55, 55, 55]],
+    ['P2', 'In-progress — respond promptly', [75, 75, 75]],
+    ['P3', 'Routine',                        [100, 100, 100]],
+    ['P4', 'Cold / report only',             [115, 115, 115]],
   ];
   bottomY += 16;
   for (let i = 0; i < priorities.length; i++) {

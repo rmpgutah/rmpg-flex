@@ -7,6 +7,7 @@ import PanelTitleBar from '../components/PanelTitleBar';
 import { apiFetch } from '../hooks/useApi';
 import { svgElementToPngDataUrl, downloadDataUrl } from '../utils/graphToPng';
 import { exportGraphToPdf } from '../utils/graphToPdf';
+import { useToast } from '../components/ToastProvider';
 
 import RichTextArea from '../components/RichTextArea';
 interface SearchResult { id: number; type: string; label: string; }
@@ -44,7 +45,7 @@ const NODE_COLORS: Record<string, string> = {
   vehicle: '#10b981',
   property: '#8b5cf6',
   evidence: '#ef4444',
-  case: '#3b82f6',
+  case: '#d4a017',
   incident: '#f59e0b',
   warrant: '#dc2626',
   citation: '#fbbf24',
@@ -69,6 +70,7 @@ const DEBOUNCE_MS = 250;
 const MIN_QUERY_LEN = 2;
 
 export default function ConnectionsPage() {
+  const { addToast } = useToast();
   const [searchQuery, setSearchQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [searching, setSearching] = useState(false);
@@ -277,7 +279,7 @@ export default function ConnectionsPage() {
         setPathEdges(new Set(data.edges.map(e => `${e.source}|${e.target}`)));
       } catch (err) {
         console.error('Path fetch error:', err);
-        alert('No path found between those nodes (within 6 hops).');
+        addToast('No path found between those nodes (within 6 hops).', 'info');
       }
       setPathFrom(null);
       return;
@@ -342,7 +344,7 @@ export default function ConnectionsPage() {
       setSelectedNodeId(null);
     } catch (err) {
       console.error('load investigation err:', err);
-      alert('Failed to load investigation — the saved data may be corrupted. See console for details.');
+      addToast('Failed to load investigation — the saved data may be corrupted. See console for details.', 'error');
     }
   }
 
@@ -355,7 +357,7 @@ export default function ConnectionsPage() {
       downloadDataUrl(dataUrl, name);
     } catch (err) {
       console.error('PNG export failed:', err);
-      alert('PNG export failed — see console for details.');
+      addToast('PNG export failed — see console for details.', 'error');
     }
   }
 
@@ -390,7 +392,7 @@ export default function ConnectionsPage() {
       }
     } catch (err) {
       console.error('PDF export failed:', err);
-      alert('PDF export failed — see console for details.');
+      addToast('PDF export failed — see console for details.', 'error');
     }
   }
 

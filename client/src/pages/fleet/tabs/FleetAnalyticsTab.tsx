@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { parseTimestamp } from '../../../utils/dateUtils';
+import { formatCostAbbrev } from '../../../utils/formatters';
 import type { FleetAnalytics, FleetServiceAlert } from '../../../types';
 
 const CHART_TOOLTIP_STYLE = {
@@ -329,12 +330,15 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
   }
 
   const {
-    maintenance_cost_trend, mileage_distribution, status_breakdown,
-    fuel_economy_trend, fleet_summary, cost_per_mile_ranking,
-    service_compliance, inspection_pass_rate, utilization,
-    daily_usage, maintenance_forecast, oldest_vehicle_year, avg_daily_miles,
-    top_issues,
-  } = analytics;
+    maintenance_cost_trend = [], mileage_distribution = [], status_breakdown = [],
+    fuel_economy_trend = [], fleet_summary = { total_vehicles: 0, avg_mileage: 0, avg_mpg: null, total_maintenance_cost: 0, total_fuel_cost: 0, vehicles_needing_service: 0, inspections_failing: 0 },
+    cost_per_mile_ranking = [],
+    service_compliance = { compliant: 0, overdue: 0, rate: 100 },
+    inspection_pass_rate = { total: 0, passed: 0, failed: 0, rate: 100 },
+    utilization = { assigned: 0, unassigned: 0, rate: 0 },
+    daily_usage = [], maintenance_forecast = [], oldest_vehicle_year = null, avg_daily_miles = null,
+    top_issues = [],
+  } = analytics || {};
 
   const totalCosts = (fleet_summary.total_maintenance_cost || 0) + (fleet_summary.total_fuel_cost || 0);
   const complianceRate = service_compliance?.rate ?? 100;
@@ -380,11 +384,11 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
             <InfoTooltip text={KPI_TOOLTIPS.total_fleet_costs} />
           </div>
           <div className="text-xl font-bold font-mono text-white tabular-nums">
-            ${totalCosts >= 1000 ? `${(totalCosts / 1000).toFixed(1)}k` : totalCosts.toFixed(0)}
+            {formatCostAbbrev(totalCosts)}
           </div>
           <div className="flex gap-3 mt-1 text-[8px] text-rmpg-400 font-mono tabular-nums">
-            <span>Maint: ${(fleet_summary.total_maintenance_cost / 1000).toFixed(1)}k</span>
-            <span>Fuel: ${(fleet_summary.total_fuel_cost / 1000).toFixed(1)}k</span>
+            <span>Maint: ${((fleet_summary.total_maintenance_cost || 0) / 1000).toFixed(1)}k</span>
+            <span>Fuel: ${((fleet_summary.total_fuel_cost || 0) / 1000).toFixed(1)}k</span>
           </div>
         </div>
 
@@ -504,7 +508,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                         {v.cost_per_mile != null ? `$${v.cost_per_mile.toFixed(2)}` : '--'}
                       </td>
                       <td className="py-1 text-right font-mono tabular-nums text-gray-400">
-                        ${v.total_cost >= 1000 ? `${(v.total_cost / 1000).toFixed(1)}k` : v.total_cost.toFixed(0)}
+                        {formatCostAbbrev(v.total_cost)}
                       </td>
                     </tr>
                   ))}
@@ -855,7 +859,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                     <div className="flex items-center justify-between text-[9px]">
                       <span className="text-rmpg-300">{MAINTENANCE_TYPE_LABELS[issue.type] || issue.type}</span>
                       <span className="font-mono tabular-nums text-rmpg-400">
-                        {issue.count}x &middot; ${issue.total_cost >= 1000 ? `${(issue.total_cost / 1000).toFixed(1)}k` : (issue.total_cost || 0).toFixed(0)}
+                        {issue.count}x &middot; {formatCostAbbrev(issue.total_cost)}
                       </span>
                     </div>
                     <div className="h-2 bg-[#0c0c0c] rounded-[1px] overflow-hidden">
@@ -912,7 +916,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                           {v.current_mileage > 0 ? `${(v.current_mileage / 1000).toFixed(0)}k` : '--'}
                         </td>
                         <td className="py-1 pr-1 text-right font-mono tabular-nums text-gray-400">
-                          ${v.cost_per_year >= 1000 ? `${(v.cost_per_year / 1000).toFixed(1)}k` : v.cost_per_year}
+                          {formatCostAbbrev(v.cost_per_year)}
                         </td>
                         <td className={`py-1 text-right font-mono font-bold tabular-nums ${lifeColor}`}>
                           {v.estimated_remaining_life_years != null ? `${v.estimated_remaining_life_years}y` : '--'}
@@ -1015,7 +1019,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                         const best = getBestValue('total_cost', true);
                         return (
                           <td key={v.id} className={`py-1.5 px-2 text-right font-mono tabular-nums ${v.total_cost === best ? 'text-green-400 font-bold' : 'text-rmpg-300'}`}>
-                            ${v.total_cost >= 1000 ? `${(v.total_cost / 1000).toFixed(1)}k` : v.total_cost.toFixed(0)}
+                            {formatCostAbbrev(v.total_cost)}
                           </td>
                         );
                       })}
@@ -1362,11 +1366,11 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
               <div className="text-[7px] text-rmpg-500 uppercase">Avg $/Mile</div>
             </div>
             <div className="text-center p-1.5 bg-surface-sunken rounded">
-              <div className="text-sm font-bold font-mono text-gray-400">${(costAnalytics.fleet_total_cost / 1000).toFixed(1)}k</div>
+              <div className="text-sm font-bold font-mono text-gray-400">${((costAnalytics.fleet_total_cost || 0) / 1000).toFixed(1)}k</div>
               <div className="text-[7px] text-rmpg-500 uppercase">Total Cost</div>
             </div>
             <div className="text-center p-1.5 bg-surface-sunken rounded">
-              <div className="text-sm font-bold font-mono text-brand-400">{(costAnalytics.fleet_total_miles / 1000).toFixed(0)}k</div>
+              <div className="text-sm font-bold font-mono text-brand-400">{((costAnalytics.fleet_total_miles || 0) / 1000).toFixed(0)}k</div>
               <div className="text-[7px] text-rmpg-500 uppercase">Total Miles</div>
             </div>
           </div>

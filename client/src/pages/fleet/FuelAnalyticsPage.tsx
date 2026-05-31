@@ -19,13 +19,18 @@ import {
   Fuel, DollarSign, Gauge, AlertTriangle, TrendingUp, TrendingDown,
   Users, CreditCard, MapPin, BarChart3, ArrowLeft, RefreshCw, FileText,
 } from 'lucide-react';
+import { Upload, Wallet } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import PanelTitleBar from '../../components/PanelTitleBar';
 import { apiFetch } from '../../hooks/useApi';
+import { useToast } from '../../components/ToastProvider';
 import type {
   FuelAnalyticsOverview, FuelAnalyticsByOfficer, FuelAnalyticsByCard,
+  FleetVehicle, FuelBudgetPeriod,
 } from '../../types';
 import { generateFleetFuelAnalyticsPdf } from './utils/fleetFuelAnalyticsPdf';
+import FuelImportModal from './modals/FuelImportModal';
+import FuelBudgetModal from './modals/FuelBudgetModal';
 
 const DEFAULT_WINDOW_DAYS = 90;
 const WINDOW_OPTIONS: { value: number; label: string }[] = [
@@ -45,12 +50,56 @@ function fmtNumber(n: number | null | undefined, digits = 0): string {
 }
 
 export default function FuelAnalyticsPage() {
+  const { addToast } = useToast();
   const [windowDays, setWindowDays] = useState(DEFAULT_WINDOW_DAYS);
   const [overview, setOverview] = useState<FuelAnalyticsOverview | null>(null);
   const [byOfficer, setByOfficer] = useState<FuelAnalyticsByOfficer[]>([]);
   const [byCard, setByCard] = useState<FuelAnalyticsByCard[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
+  // Bulk fuel CSV import + fleet-wide fuel budget — both back real handlers
+  // (POST /fleet/fuel/import/{preview,commit} and /fleet/budgets). Vehicles
+  // are loaded lazily so the import modal can resolve unit numbers → ids.
+  const [vehicles, setVehicles] = useState<FleetVehicle[]>([]);
+  const [showImport, setShowImport] = useState(false);
+  const [showBudget, setShowBudget] = useState(false);
+  const [savingBudget, setSavingBudget] = useState(false);
+
+  useEffect(() => {
+    apiFetch<{ data: FleetVehicle[] }>('/fleet?per_page=500')
+      .then((r) => setVehicles(r.data || []))
+      .catch(() => { /* vehicle picker degrades to manual entry */ });
+  }, []);
+
+  const handleSaveBudget = async (payload: {
+    vehicle_id: number | null; period_type: FuelBudgetPeriod; budget_amount: number;
+    alert_threshold_pct: number; effective_from: string; effective_to: string | null; notes: string | null;
+  }) => {
+    setSavingBudget(true);
+    try {
+      // The budgets handler keys on fiscal_year + category + allocated_amount;
+      // map the modal's period/amount shape onto it (category 'fuel').
+      await apiFetch('/fleet/budgets', { method: 'POST', body: JSON.stringify({
+        fiscal_year: payload.effective_from.slice(0, 4),
+        category: 'fuel',
+        allocated_amount: payload.budget_amount,
+        spent_amount: 0,
+        notes: [
+          `period:${payload.period_type}`,
+          `alert:${payload.alert_threshold_pct}%`,
+          payload.vehicle_id ? `vehicle:${payload.vehicle_id}` : 'fleet-wide',
+          payload.effective_to ? `through:${payload.effective_to}` : null,
+          payload.notes,
+        ].filter(Boolean).join(' | ') || null,
+      }) });
+      addToast('Fuel budget saved', 'success');
+      setShowBudget(false);
+      load(windowDays);
+    } catch (e) {
+      addToast(e instanceof Error ? e.message : 'Failed to save budget', 'error');
+    } finally { setSavingBudget(false); }
+  };
 
   const load = async (days: number) => {
     setLoading(true);
@@ -97,6 +146,14 @@ export default function FuelAnalyticsPage() {
           <button type="button" className="toolbar-btn text-[10px]" onClick={() => load(windowDays)} disabled={loading}>
             <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} /> Refresh
           </button>
+          <button type="button" className="toolbar-btn text-[10px]" onClick={() => setShowImport(true)}
+            title="Import fuel transactions from a CSV (e.g. a fuel-card export)">
+            <Upload className="w-3 h-3" /> Import CSV
+          </button>
+          <button type="button" className="toolbar-btn text-[10px]" onClick={() => setShowBudget(true)}
+            title="Set a fleet-wide fuel budget">
+            <Wallet className="w-3 h-3" /> New Budget
+          </button>
           {/* Mirror of this dashboard, formatted for print/board review.
               Disabled until the three datasets have all loaded so the
               PDF doesn't ship with empty sections. */}
@@ -124,7 +181,7 @@ export default function FuelAnalyticsPage() {
           <Stat icon={Fuel} color="text-gray-400" label="Gallons" value={fmtNumber(overview.totals.total_gallons, 1)} />
           <Stat icon={DollarSign} color="text-green-400" label="Total Cost" value={fmtCurrency(overview.totals.total_cost)} />
           <Stat icon={DollarSign} color="text-amber-400" label="Avg $/Gal" value={overview.totals.avg_cpg != null ? `$${overview.totals.avg_cpg.toFixed(3)}` : '—'} />
-          <Stat icon={AlertTriangle} color="text-amber-400" label="Flag Rate" value={`${overview.totals.flag_rate.toFixed(1)}%`} />
+          <Stat icon={AlertTriangle} color="text-amber-400" label="Flag Rate" value={overview.totals.flag_rate != null ? `${overview.totals.flag_rate.toFixed(1)}%` : '—'} />
         </div>
       )}
 
@@ -158,10 +215,10 @@ export default function FuelAnalyticsPage() {
                   <tr key={v.id} className="border-t border-rmpg-800">
                     <td className="px-2 py-1 text-rmpg-200">#{v.vehicle_number} {[v.year, v.make, v.model].filter(Boolean).join(' ')}</td>
                     <td className="px-2 py-1 text-right tabular-nums">{v.fill_count}</td>
-                    <td className="px-2 py-1 text-right tabular-nums">{v.total_gallons.toFixed(1)}</td>
+                    <td className="px-2 py-1 text-right tabular-nums">{v.total_gallons != null ? v.total_gallons.toFixed(1) : '—'}</td>
                     <td className="px-2 py-1 text-right tabular-nums text-green-400">{fmtCurrency(v.total_cost)}</td>
                     <td className="px-2 py-1 text-right tabular-nums text-brand-400">{v.avg_mpg != null ? v.avg_mpg.toFixed(1) : '—'}</td>
-                    <td className={`px-2 py-1 text-right tabular-nums ${v.flag_rate > 10 ? 'text-amber-400' : 'text-rmpg-500'}`}>{v.flag_rate.toFixed(1)}%</td>
+                    <td className={`px-2 py-1 text-right tabular-nums ${v.flag_rate > 10 ? 'text-amber-400' : 'text-rmpg-500'}`}>{v.flag_rate != null ? `${v.flag_rate.toFixed(1)}%` : '—'}</td>
                   </tr>
                 ))}
                 {(overview?.vehicles || []).filter(v => v.fill_count > 0).length === 0 && (
@@ -225,10 +282,10 @@ export default function FuelAnalyticsPage() {
                       {o.officer_id == null && <span className="ml-1 text-[8px] text-rmpg-600">(no driver recorded)</span>}
                     </td>
                     <td className="px-2 py-1 text-right tabular-nums">{o.fill_count}</td>
-                    <td className="px-2 py-1 text-right tabular-nums">{o.total_gallons.toFixed(1)}</td>
+                    <td className="px-2 py-1 text-right tabular-nums">{o.total_gallons != null ? o.total_gallons.toFixed(1) : '—'}</td>
                     <td className="px-2 py-1 text-right tabular-nums text-green-400">{fmtCurrency(o.total_cost)}</td>
                     <td className="px-2 py-1 text-right tabular-nums text-brand-400">{o.avg_mpg != null ? o.avg_mpg.toFixed(1) : '—'}</td>
-                    <td className={`px-2 py-1 text-right tabular-nums ${o.flag_rate > 10 ? 'text-amber-400' : 'text-rmpg-500'}`}>{o.flag_rate.toFixed(1)}%</td>
+                    <td className={`px-2 py-1 text-right tabular-nums ${o.flag_rate > 10 ? 'text-amber-400' : 'text-rmpg-500'}`}>{o.flag_rate != null ? `${o.flag_rate.toFixed(1)}%` : '—'}</td>
                   </tr>
                 ))}
                 {byOfficer.length === 0 && (
@@ -302,6 +359,20 @@ export default function FuelAnalyticsPage() {
           </div>
         )}
       </div>
+
+      <FuelImportModal
+        isOpen={showImport}
+        onClose={() => setShowImport(false)}
+        onImported={() => { addToast('Fuel transactions imported', 'success'); load(windowDays); }}
+        vehicles={vehicles}
+      />
+      <FuelBudgetModal
+        isOpen={showBudget}
+        mode="create"
+        onSave={handleSaveBudget}
+        onClose={() => setShowBudget(false)}
+        saving={savingBudget}
+      />
     </div>
   );
 }

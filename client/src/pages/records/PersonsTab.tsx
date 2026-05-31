@@ -743,7 +743,7 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
                   )}
                   {person.email && (
                     <a href={`mailto:${person.email}`} onClick={e => e.stopPropagation()}
-                      className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-blue-400 transition-colors" title={`Email ${person.email}`}>
+                      className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-rmpg-400 transition-colors" title={`Email ${person.email}`}>
                       <Mail className="w-3 h-3" />
                     </a>
                   )}

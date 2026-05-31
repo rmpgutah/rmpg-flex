@@ -31,6 +31,10 @@ export interface DataTableProps<T> {
   showRowNumbers?: boolean;
   /** Accessible label for the table */
   ariaLabel?: string;
+  /** Spillman Flex dense grid mode — compact rows, gold headers, alternating stripes */
+  spillman?: boolean;
+  /** Condensed mode — even tighter padding for data-dense displays */
+  condensed?: boolean;
 }
 
 // ── Skeleton loader rows ──────────────────────────────────────
@@ -72,7 +76,7 @@ function SortIndicator({ active, dir }: { active: boolean; dir?: 'asc' | 'desc' 
 }
 
 // ── Main Component ────────────────────────────────────────────
-export default function DataTable<T>({
+function DataTable<T>({
   columns,
   data,
   loading = false,
@@ -88,6 +92,8 @@ export default function DataTable<T>({
   selectedKey,
   showRowNumbers = false,
   ariaLabel,
+  spillman = false,
+  condensed = false,
 }: DataTableProps<T>) {
   const getKey = (row: T, index: number): string | number => {
     if (rowKey) return rowKey(row);
@@ -98,17 +104,28 @@ export default function DataTable<T>({
   const alignClass = (align?: string) =>
     align === 'center' ? 'text-center' : align === 'right' ? 'text-right' : 'text-left';
 
+  const tableClass = spillman ? 'spillman-grid' : 'w-full text-xs sm:text-xs';
+
+  const cellPadding = condensed ? 'px-2 py-1.5' : spillman ? 'px-2.5 py-2' : 'px-3 py-3 sm:py-2.5';
+  const headerPadding = condensed ? 'px-2 py-1.5' : spillman ? 'px-2.5 py-1.5' : 'px-3 py-2.5 sm:py-2';
+  const headerText = spillman ? 'text-[9px]' : 'text-[11px] sm:text-[10px]';
+  const bodyText = spillman ? 'text-[11px]' : condensed ? 'text-[11px]' : 'text-sm sm:text-xs';
+
   return (
-    <div className={`overflow-auto border border-rmpg-700/50 bg-surface-base scrollbar-dark ${className}`} role="region" aria-label={ariaLabel ? `${ariaLabel} region` : undefined} style={{ borderRadius: '2px' }}>
-      <table className="w-full text-xs sm:text-xs" aria-label={ariaLabel}>
-        {/* 2: Sticky header with z-index so it stays on top during scroll */}
-        <thead className="sticky top-0 z-10">
+    <div
+      className={`overflow-auto ${spillman ? '' : 'border border-rmpg-700/50'} bg-surface-base scrollbar-dark ${className}`}
+      role="region"
+      aria-label={ariaLabel ? `${ariaLabel} region` : undefined}
+      style={{ borderRadius: '2px' }}
+    >
+      <table className={tableClass} aria-label={ariaLabel}>
+        <thead className={spillman ? '' : 'sticky top-0 z-10'}>
           <tr
-            className="border-b border-rmpg-600"
-            style={{ background: 'linear-gradient(180deg, #181818 0%, #141414 100%)' }}
+            className={spillman ? '' : 'border-b border-rmpg-600'}
+            style={spillman ? undefined : { background: 'linear-gradient(180deg, #181818 0%, #141414 100%)' }}
           >
             {showRowNumbers && (
-              <th className="px-2 py-2.5 sm:py-2 text-[10px] sm:text-[10px] font-bold uppercase tracking-wider text-rmpg-400 text-center w-8" scope="col">#</th>
+              <th className={`${headerPadding} text-[10px] font-bold uppercase tracking-wider text-rmpg-400 text-center w-8`} scope="col">#</th>
             )}
             {columns.map((col) => {
               const isSortable = col.sortable && onSort;
@@ -116,8 +133,8 @@ export default function DataTable<T>({
               return (
                 <th
                   key={col.key}
-                  className={`group px-3 py-2.5 sm:py-2 text-[11px] sm:text-[10px] font-bold uppercase tracking-wider text-rmpg-400 whitespace-nowrap ${alignClass(col.align)} ${
-                    isSortable ? 'cursor-pointer select-none hover:text-rmpg-200 hover:bg-white/[0.02] transition-colors' : ''
+                  className={`group ${headerPadding} ${headerText} font-bold uppercase tracking-wider ${spillman ? 'text-[#d4a017]' : 'text-rmpg-400'} whitespace-nowrap ${alignClass(col.align)} ${
+                    isSortable ? `cursor-pointer select-none transition-colors ${spillman ? 'hover:bg-white/[0.03]' : 'hover:text-rmpg-200 hover:bg-white/[0.02]'}` : ''
                   }`}
                   style={col.width ? { width: col.width } : undefined}
                   onClick={isSortable ? () => onSort!(col.key) : undefined}
@@ -156,28 +173,26 @@ export default function DataTable<T>({
                 <tr
                   key={key}
                   onClick={onRowClick ? () => onRowClick(row) : undefined}
-                  className={`group/row border-b border-rmpg-700/30 transition-colors duration-100 ${
+                  className={`${spillman ? '' : 'group/row border-b border-rmpg-700/30 transition-colors duration-100'} ${
                     isSelected
-                      ? 'bg-brand-900/30 ring-1 ring-inset ring-brand-600/40'
+                      ? spillman ? 'selected' : 'bg-brand-900/30 ring-1 ring-inset ring-brand-600/40'
                       : idx % 2 === 0
-                        ? 'bg-transparent'
-                        : 'bg-rmpg-800/20'
+                        ? spillman ? '' : 'bg-transparent'
+                        : spillman ? '' : 'bg-rmpg-800/20'
                   } ${
                     onRowClick
-                      ? 'cursor-pointer hover:bg-brand-900/15 active:bg-brand-900/25'
+                      ? 'cursor-pointer'
                       : ''
                   }`}
                   aria-selected={isSelected || undefined}
                 >
-                  {/* 6: Row number column with monospaced font and muted color */}
                   {showRowNumbers && (
-                    <td className="px-2 py-3 sm:py-2 text-rmpg-500 text-center tabular-nums font-mono text-[10px]">{idx + 1}</td>
+                    <td className={`${cellPadding} text-rmpg-500 text-center tabular-nums font-mono text-[10px]`}>{idx + 1}</td>
                   )}
-                  {/* 7: Cell vertical padding increased for readability; 8: Whitespace nowrap on narrow cells */}
                   {columns.map((col) => (
                     <td
                       key={col.key}
-                      className={`px-3 py-3 sm:py-2.5 text-rmpg-200 text-sm sm:text-xs ${alignClass(col.align)}`}
+                      className={`${cellPadding} text-rmpg-200 ${bodyText} ${alignClass(col.align)}`}
                       style={col.width ? { width: col.width } : undefined}
                     >
                       {col.render
@@ -194,3 +209,5 @@ export default function DataTable<T>({
     </div>
   );
 }
+
+export default React.memo(DataTable) as typeof DataTable;

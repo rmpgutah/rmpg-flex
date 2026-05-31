@@ -281,7 +281,7 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
               <History className="w-3.5 h-3.5 text-amber-400" />
               <span className="text-xs font-bold text-[#d4a017] uppercase tracking-widest">GPS History</span>
             </div>
-            <button type="button" onClick={onToggle} className="text-rmpg-400 hover:text-white"><X className="w-3.5 h-3.5" /></button>
+            <button type="button" onClick={onToggle} className="text-rmpg-400 hover:text-white" aria-label="Close panel"><X className="w-3.5 h-3.5" /></button>
           </div>
 
           {/* Unit selector + date range */}

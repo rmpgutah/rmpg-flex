@@ -119,11 +119,12 @@ export function drawFormCell(
     const cbSize = 3.0;
     const cbX = x + pad;
     const cbY = valueAreaTop + (valueAreaH - cbSize) / 2;
-    doc.setDrawColor(80, 80, 85);
+    doc.setDrawColor(80, 80, 80); // neutralized 2026-05-30
     doc.setLineWidth(0.3);
     doc.rect(cbX, cbY, cbSize, cbSize);
-    if (cell.checked) {
-      doc.setFillColor(230, 245, 230);
+
+    if (cell.value && cell.value !== '' && cell.value !== '0') {
+      doc.setFillColor(235, 235, 235); // neutralized 2026-05-30
       doc.rect(cbX + 0.15, cbY + 0.15, cbSize - 0.3, cbSize - 0.3, 'F');
       doc.setDrawColor(20, 20, 20);
       doc.setLineWidth(0.7);
@@ -981,7 +982,7 @@ export function drawCautionFlagStrip(
   // Yellow warning triangle on left
   const triX = margin + 2.5;
   const triY = y + h / 2;
-  doc.setFillColor(255, 210, 40);
+  doc.setFillColor(180, 180, 180); // neutralized 2026-05-30 (was yellow)
   doc.setDrawColor(0, 0, 0);
   doc.setLineWidth(0.3);
   // Equilateral triangle pointing up
@@ -1151,7 +1152,7 @@ export function drawDispatchTimelineStrip(
   doc.setFillColor(...COLOR.BG_TABLE_HDR);
   doc.rect(margin, y, w, headerH, 'F');
 
-  const ACTIVE_AMBER: [number, number, number] = [183, 121, 12];
+  const ACTIVE_AMBER: [number, number, number] = [100, 100, 100]; // neutralized 2026-05-30 (was amber)
   for (let i = 0; i < events.length; i++) {
     const ev = events[i];
     const cellX = margin + i * cellW;
@@ -1234,7 +1235,7 @@ export function drawDispatchTimelineStrip(
       if (isActive && !ev.time) {
         doc.setFillColor(ACTIVE_AMBER[0], ACTIVE_AMBER[1], ACTIVE_AMBER[2]);
       } else {
-        doc.setFillColor(60, 180, 80);
+        doc.setFillColor(80, 80, 80); // neutralized 2026-05-30 (was green)
       }
       doc.circle(ledX, ledY, 0.5, 'F');
     }
@@ -1491,7 +1492,7 @@ function drawSignatureSlot(
   h: number,
 ): void {
   // Role label strip at top
-  doc.setFillColor(245, 245, 248);
+  doc.setFillColor(246, 246, 246); // neutralized 2026-05-30
   doc.rect(x, y, w, 3, 'F');
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_BADGE_LABEL);
@@ -1903,7 +1904,7 @@ export function drawMugshotFrame(
   // Bottom metadata caption (arrest date / booking #)
   const botY = y + capH + h;
   const metaH = 6;
-  doc.setFillColor(245, 245, 248);
+  doc.setFillColor(246, 246, 246); // neutralized 2026-05-30
   doc.rect(x, botY, w, metaH, 'F');
   doc.setDrawColor(...COLOR.MUGSHOT_RULE);
   doc.setLineWidth(BORDER.MUGSHOT_FRAME);
@@ -2092,7 +2093,7 @@ export function drawEnhancedNibrsHeader(
   // ── Metadata strip (form# | revision | distribution | report date) ──
   if (config.formNumber || config.reportDate || config.distribution) {
     const metaH = 5;
-    doc.setFillColor(245, 245, 248);
+    doc.setFillColor(246, 246, 246); // neutralized 2026-05-30
     doc.rect(margin, y, contentW, metaH, 'F');
     doc.setDrawColor(...COLOR.BORDER_SECTION);
     doc.setLineWidth(0.3);
@@ -2277,11 +2278,12 @@ export function drawDistributionFooter(
 export type WatermarkVariant = 'DRAFT' | 'COPY' | 'SEALED' | 'VOIDED' | 'UNOFFICIAL' | 'CONFIDENTIAL';
 
 const WATERMARK_STYLES: Record<WatermarkVariant, { color: RGBColor; opacity: number; angle: number; sub?: string }> = {
+  // Neutralized 2026-05-30: all watermark colors are neutral grays
   DRAFT:        { color: [120, 120, 120], opacity: 0.08, angle: 45 },
-  COPY:         { color: [70, 100, 140],  opacity: 0.07, angle: 45 },
-  SEALED:       { color: [180, 20, 20],   opacity: 0.10, angle: 45, sub: 'BY ORDER OF COURT' },
-  VOIDED:       { color: [180, 20, 20],   opacity: 0.18, angle: -20 },
-  UNOFFICIAL:   { color: [150, 80, 20],   opacity: 0.08, angle: 45 },
+  COPY:         { color: [100, 100, 100], opacity: 0.07, angle: 45 },
+  SEALED:       { color: [60, 60, 60],    opacity: 0.10, angle: 45, sub: 'BY ORDER OF COURT' },
+  VOIDED:       { color: [60, 60, 60],    opacity: 0.18, angle: -20 },
+  UNOFFICIAL:   { color: [90, 90, 90],    opacity: 0.08, angle: 45 },
   CONFIDENTIAL: { color: [80, 80, 80],    opacity: 0.07, angle: 45 },
 };
 

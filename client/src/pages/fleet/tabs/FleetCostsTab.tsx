@@ -11,6 +11,19 @@
 // fields, an Edit button (when handler wired), and a Delete (archive)
 // button (admin/manager only — the parent decides whether to wire the
 // callback). Empty states call out the action you can take.
+//
+// ⚠️ STATUS (2026-05-31): NOT YET RENDERED by any parent — and deliberately
+// so. Of the four categories only `insurance` has backend CRUD in
+// src/routes/fleet.ts (GET/POST/PUT/DELETE /[:id/]insurance over
+// fleet_insurance). `loan`, `accessory`, and `utility` have NO handlers and
+// NO backing tables on live D1 (fleet_loans / fleet_utility_costs don't
+// exist). Wiring this tab now would recreate the "saves then vanishes" bug
+// for 3 of 4 categories. To finish: add registerCostCategoryRoutes()-style
+// handlers + migrations for fleet_loans / fleet_accessories(write) /
+// fleet_utility_costs, THEN add a 'costs' entry to FleetDetailPanel TABS and
+// pass loans/insurance/accessories/utilities/summary + onAdd/onEdit/onDelete.
+// (The fuel Budget + CSV Import siblings WERE wired this pass — they had
+// real handlers. See FuelAnalyticsPage.)
 // ═══════════════════════════════════════════════════════════════
 
 import React from 'react';

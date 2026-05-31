@@ -54,9 +54,12 @@ UPDATE warrants
    SET expires_at = NULL
  WHERE expires_at IN ('', 'N/A', 'n/a', 'N/a', 'None', 'NONE', 'none', 'null', 'NULL', 'undefined');
 
-UPDATE warrants
-   SET served_location = NULL
- WHERE served_location IN ('', 'N/A', 'n/a', 'N/a', 'None', 'NONE', 'none', 'null', 'NULL', 'undefined');
+-- NOTE: the served_location UPDATE was removed — that column does not exist on
+-- the live warrants table (it uses served_at / served_by / service_date). The
+-- ADD-COLUMN was never applied to live, so this UPDATE errored with
+-- "no such column: served_location" and blocked every deploy (the migration
+-- guardrail halts on any failure). The remaining sentinel cleanups all target
+-- columns that DO exist on live (verified via pragma_table_info).
 
 UPDATE warrants
    SET notes = NULL

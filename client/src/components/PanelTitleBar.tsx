@@ -1,9 +1,11 @@
 // ============================================================
 // RMPG Flex — Panel Title Bar (Spillman Flex Window Chrome)
-// Desktop-window-style title bar for panels and sections
+// Desktop-window-style title bar for panels and sections.
+// Features: title icon, status LED, window chrome buttons
+// (minimize/maximize/close), inline action slots.
 // ============================================================
 
-import React from 'react';
+import React, { useState, useCallback } from 'react';
 
 interface PanelTitleBarProps {
   title: string;
@@ -14,9 +16,19 @@ interface PanelTitleBarProps {
   id?: string;
   statusLed?: string;
   ledPulse?: boolean;
+  /** Show window chrome minimize/maximize/close dots (Spillman Flex style) */
+  windowChrome?: boolean;
+  /** Callback when the close button is clicked */
+  onClose?: () => void;
+  /** Callback when the minimize button is clicked */
+  onMinimize?: () => void;
+  /** Callback when the maximize button is clicked */
+  onMaximize?: () => void;
+  /** Hide title text (icon-only mode) */
+  iconOnly?: boolean;
 }
 
-export default function PanelTitleBar({
+function PanelTitleBar({
   title,
   icon: Icon,
   children,
@@ -25,19 +37,70 @@ export default function PanelTitleBar({
   id,
   statusLed,
   ledPulse,
+  windowChrome = false,
+  onClose,
+  onMinimize,
+  onMaximize,
+  iconOnly = false,
 }: PanelTitleBarProps) {
+  const [hovered, setHovered] = useState<string | null>(null);
+
+  const handleChromeAction = useCallback((action?: () => void) => {
+    if (action) action();
+  }, []);
+
   return (
-    /* 35: role="heading" for accessibility on panel title bars */
-    <div className={`panel-title-bar ${className}`} role="heading" aria-level={3}>
-      {/* 36: aria-hidden on decorative title icon */}
+    <div
+      className={`panel-title-bar ${className}`}
+      role="heading"
+      aria-level={3}
+      onMouseEnter={() => setHovered('chrome')}
+      onMouseLeave={() => setHovered(null)}
+    >
+      {/* Window chrome buttons (left side, Spillman Flex style) */}
+      {windowChrome && (
+        <div className="flex items-center gap-1 mr-1.5">
+          <button
+            type="button"
+            className={`window-chrome-btn window-chrome-close ${onClose ? '' : 'opacity-40 cursor-default'}`}
+            onClick={() => handleChromeAction(onClose)}
+            aria-label={onClose ? `Close ${title} panel` : undefined}
+            tabIndex={onClose ? 0 : -1}
+          />
+          <button
+            type="button"
+            className={`window-chrome-btn window-chrome-minimize ${onMinimize ? '' : 'opacity-40 cursor-default'}`}
+            onClick={() => handleChromeAction(onMinimize)}
+            aria-label={onMinimize ? `Minimize ${title} panel` : undefined}
+            tabIndex={onMinimize ? 0 : -1}
+          />
+          <button
+            type="button"
+            className={`window-chrome-btn window-chrome-maximize ${onMaximize ? '' : 'opacity-40 cursor-default'}`}
+            onClick={() => handleChromeAction(onMaximize)}
+            aria-label={onMaximize ? `Maximize ${title} panel` : undefined}
+            tabIndex={onMaximize ? 0 : -1}
+          />
+        </div>
+      )}
+
+      {/* Title icon */}
       {Icon && <Icon className="title-icon" aria-hidden="true" />}
-      {/* 37: Status LED indicator support when statusLed prop is provided */}
+
+      {/* Status LED indicator */}
       {statusLed && (
         <span className={`led-dot ${statusLed} ${ledPulse ? 'animate-led-blink' : ''}`} aria-hidden="true" />
       )}
-      <span id={id} className={`select-none whitespace-nowrap shrink-0 ${titleClassName}`}>{title}</span>
+
+      {/* Title text (hidden in iconOnly mode) */}
+      {!iconOnly && (
+        <span id={id} className={`select-none whitespace-nowrap shrink-0 ${titleClassName}`}>
+          {title}
+        </span>
+      )}
+
+      {/* Right-aligned action slot */}
       {children && (
-        /* 38: Prevent children wrap from squishing title text */
         <div className="ml-auto flex items-center gap-1.5 min-w-0 overflow-x-auto scrollbar-dark whitespace-nowrap">
           {children}
         </div>
@@ -45,3 +108,5 @@ export default function PanelTitleBar({
     </div>
   );
 }
+
+export default React.memo(PanelTitleBar);

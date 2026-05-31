@@ -150,7 +150,7 @@ export default function CustomStampsGallery({ open, onClose, onPick }: Props) {
           {PRESETS.map(label => (
             <button key={label} type="button"
               onClick={() => { onPick({ kind: 'preset', label }); onClose(); }}
-              className="bg-[#0d0d0d] hover:bg-[#1a1a1a] border-2 border-[#c62828]/70 hover:border-[#c62828] rounded-sm py-2 px-3 text-[#c62828] font-bold text-sm tracking-wider">
+              className="bg-[#0d0d0d] hover:bg-[#1a1a1a] border-2 border-[#555555]/70 hover:border-[#555555] rounded-sm py-2 px-3 text-[#555555] font-bold text-sm tracking-wider">
               {label}
             </button>
           ))}

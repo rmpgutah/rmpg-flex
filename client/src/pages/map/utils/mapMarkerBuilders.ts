@@ -117,7 +117,10 @@ export function buildUnitMarkerContent(callSign: string, status: UnitStatus, _gp
 
   if (heading != null) {
     const arrow = buildDirectionArrow(color, heading, { speed, scale: 1, offsetTop: 13 });
-    if (arrow) wrapper.appendChild(arrow);
+    if (arrow) {
+      arrow.setAttribute('data-unit-arrow', '');
+      wrapper.appendChild(arrow);
+    }
   }
 
   const tag = document.createElement('div');
@@ -128,6 +131,7 @@ export function buildUnitMarkerContent(callSign: string, status: UnitStatus, _gp
     `box-shadow:inset 0 1px 0 rgba(255,255,255,0.15), 0 0 8px ${color}40;filter:saturate(1.1);`;
 
   const csSpan = document.createElement('span');
+  csSpan.setAttribute('data-unit-label', '');
   csSpan.textContent = callSign;
   const sepSpan = document.createElement('span');
   sepSpan.style.cssText = 'opacity:0.5;font-size:7px;';
@@ -139,12 +143,28 @@ export function buildUnitMarkerContent(callSign: string, status: UnitStatus, _gp
   tag.appendChild(sepSpan);
   tag.appendChild(stSpan);
 
+  const statusDot = document.createElement('span');
+  statusDot.setAttribute('data-unit-status', '');
+  statusDot.style.cssText = `position:absolute;top:-4px;right:-4px;width:7px;height:7px;border-radius:50%;background:${color};border:1px solid rgba(255,255,255,0.8);`;
+  tag.appendChild(statusDot);
+
+  const srcBadge = document.createElement('span');
+  srcBadge.setAttribute('data-unit-source', '');
+  srcBadge.style.cssText = _gpsSource === 'clearpathgps' ? 'position:absolute;bottom:-7px;right:-2px;font-size:6px;font-weight:900;font-family:monospace;color:#22c55e;text-shadow:0 0 4px #22c55e80;letter-spacing:0.5px;' : 'display:none;';
+  srcBadge.textContent = _gpsSource === 'clearpathgps' ? 'C' : '';
+  tag.appendChild(srcBadge);
+
   const caret = document.createElement('div');
   caret.style.cssText =
     `width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:7px solid ${color};transition:border-color 0.2s ease;`;
 
+  const speedEl = document.createElement('span');
+  speedEl.setAttribute('data-unit-speed', '');
+  speedEl.style.cssText = 'display:block;text-align:center;font-size:7px;font-weight:900;font-family:monospace;color:#888888;margin-top:1px;text-shadow:0 1px 2px rgba(0,0,0,0.8);letter-spacing:0.3px;';
+
   wrapper.appendChild(tag);
   wrapper.appendChild(caret);
+  wrapper.appendChild(speedEl);
   return wrapper;
 }
 
@@ -368,6 +388,7 @@ export function buildSelfPositionMarker(accuracy: number | null, heading: number
   const acc = accuracy != null ? Math.min(Math.max(accuracy, 4), 40) : 12;
 
   const ring = document.createElement('div');
+  ring.setAttribute('data-gps-ring', '');
   ring.style.cssText = `width:${acc}px;height:${acc}px;border-radius:50%;background:radial-gradient(circle, rgba(136, 136, 136,0.2), rgba(136, 136, 136,0.05));border:2px solid rgba(136, 136, 136,0.4);position:absolute;animation:pulse-gps 2s ease-in-out infinite;will-change:transform;`;
   el.appendChild(ring);
 
@@ -375,11 +396,17 @@ export function buildSelfPositionMarker(accuracy: number | null, heading: number
   dot.style.cssText = 'width:14px;height:14px;border-radius:50%;background:radial-gradient(circle at 35% 30%, #bfbfbf, #3a3a3a);border:3px solid #fff;box-shadow:0 0 10px rgba(136, 136, 136,0.8),0 0 20px rgba(136, 136, 136,0.3),0 0 30px rgba(136, 136, 136,0.2);z-index:1;';
   el.appendChild(dot);
 
+  const speedSpan = document.createElement('span');
+  speedSpan.setAttribute('data-gps-speed', '');
+  speedSpan.style.cssText = 'position:absolute;top:18px;left:50%;transform:translateX(-50%);font-size:8px;font-weight:900;font-family:monospace;color:#888888;z-index:2;text-shadow:0 1px 2px rgba(0,0,0,0.8);pointer-events:none;';
+  el.appendChild(speedSpan);
+
   if (heading != null) {
-    // Same crisp nav arrow as units, in the self-marker gray, slightly larger
-    // and pivoting around the accuracy ring's center.
     const arrow = buildDirectionArrow('#888888', heading, { speed, scale: 1.15, offsetTop: 11, pivotY: 17 });
-    if (arrow) el.appendChild(arrow);
+    if (arrow) {
+      arrow.setAttribute('data-gps-arrow', '');
+      el.appendChild(arrow);
+    }
   }
 
   return el;

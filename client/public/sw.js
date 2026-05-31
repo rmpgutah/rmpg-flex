@@ -120,7 +120,14 @@
 //       scope beats to that section (not all ~719) with zone-disambiguated
 //       names, backfill zone + dispatch_code on select, disable until a section
 //       is picked. Previously dumped every beat as a raw code.
-const CACHE_NAME = 'rmpg-flex-v646';
+// v646: check for SW updates on tab focus/visibility (not just the 15-min
+//       poll), so a freshly-deployed bundle surfaces the moment an operator
+//       returns to the console instead of staying invisible for up to 15 min.
+// v647: normalize sector_id to string at the useDistrictLookup ingest boundary
+//       + coerce inputs in its lookup helpers, so number/string mismatches stop
+//       causing crashes (map #807, dispatch panel). Retires that class of bug at
+//       the shared chokepoint instead of per-call-site.
+const CACHE_NAME = 'rmpg-flex-v654';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

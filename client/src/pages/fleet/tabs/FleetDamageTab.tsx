@@ -61,7 +61,7 @@ export default function FleetDamageTab({ vehicleId }: { vehicleId: number | stri
     setLoading(true);
     try {
       const data = await apiFetch<DamageReport[]>(`/fleet/${vehicleId}/damage-reports`); setReports(data);
-    } catch { addToast('Failed to load damage reports', 'error'); } finally { setLoading(false); }
+    } catch (e) { addToast(e instanceof Error ? e.message : 'Failed to load damage reports', 'error'); } finally { setLoading(false); }
   };
 
   useEffect(() => { load(); }, [vehicleId]);
@@ -82,17 +82,28 @@ export default function FleetDamageTab({ vehicleId }: { vehicleId: number | stri
   const handleSubmit = async () => {
     if (!form.damage_type.trim()) { addToast('Damage type is required', 'error'); return; }
     if (!form.description.trim()) { addToast('Description is required', 'error'); return; }
+    if (submitting) return;
     setSubmitting(true);
     try { await apiFetch(`/fleet/${vehicleId}/damage-reports`, {
-      method: 'POST', body: JSON.stringify({ ...form, repair_estimate: form.repair_estimate ? Number(form.repair_estimate) : null }),
-    }); addToast('Damage reported', 'success'); clearDraft(); setShowForm(false); load(); } catch { addToast('Failed to report damage', 'error'); } finally { setSubmitting(false); }
+      // Map UI fields to handler columns (location / repair_cost).
+      method: 'POST', body: JSON.stringify({
+        damage_date: form.damage_date,
+        damage_type: form.damage_type,
+        location: form.location_on_vehicle || null,
+        severity: form.severity,
+        description: form.description,
+        repair_cost: form.repair_estimate ? Number(form.repair_estimate) : null,
+      }),
+    }); addToast('Damage reported', 'success'); clearDraft(); setShowForm(false); load(); } catch (e) { addToast(e instanceof Error ? e.message : 'Failed to report damage', 'error'); } finally { setSubmitting(false); }
   };
 
   const updateRepairStatus = async (id: number, repair_status: string) => {
-    try { await apiFetch(`/fleet/damage-reports/${id}`, { method: 'PUT', body: JSON.stringify({ repair_status }) }); addToast('Status updated', 'success'); load(); } catch { addToast('Failed to update status', 'error'); }
+    try { await apiFetch(`/fleet/damage-reports/${id}`, { method: 'PUT', body: JSON.stringify({ repair_status }) }); addToast('Status updated', 'success'); load(); } catch (e) { addToast(e instanceof Error ? e.message : 'Failed to update status', 'error'); }
   };
 
-  const totalEstimate = reports.reduce((s, r) => s + (r.repair_estimate || 0), 0);
+  // DB stores `repair_cost` + `location`; tolerate the older `repair_estimate`/
+  // `location_on_vehicle` shape too so existing rows still render.
+  const totalEstimate = reports.reduce((s, r) => s + (r.repair_cost || r.repair_estimate || 0), 0);
   const totalCost = reports.reduce((s, r) => s + (r.repair_cost || 0), 0);
 
   // Set document title
@@ -152,14 +163,13 @@ export default function FleetDamageTab({ vehicleId }: { vehicleId: number | stri
               <div className="flex items-center gap-2 mb-1">
                 <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-bold uppercase ${SEVERITY_COLORS[r.severity] || ''}`}>{r.severity}</span>
                 <span className="text-[10px] text-white font-bold">{r.damage_type}</span>
-                {r.location_on_vehicle && <span className="text-[10px] text-rmpg-400">({r.location_on_vehicle})</span>}
+                {(r.location_on_vehicle || (r as any).location) && <span className="text-[10px] text-rmpg-400">({r.location_on_vehicle || (r as any).location})</span>}
               </div>
               <p className="text-[10px] text-rmpg-300">{r.description}</p>
               <div className="flex items-center gap-3 mt-1 text-[10px] text-rmpg-400">
                 <span>{r.damage_date ? parseTimestamp(r.damage_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : ''}</span>
                 <span>By: {r.reported_by_name}</span>
-                {r.repair_estimate && <span>Est: ${r.repair_estimate}</span>}
-                {r.repair_cost && <span>Cost: ${r.repair_cost}</span>}
+                {(r.repair_cost || r.repair_estimate) && <span>Est: ${r.repair_cost || r.repair_estimate}</span>}
                 {r.insurance_claim_number && <span>Claim: {r.insurance_claim_number}</span>}
               </div>
             </div>

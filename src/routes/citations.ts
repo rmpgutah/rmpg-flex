@@ -18,6 +18,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
+import { geocodeAddress } from './geocode';
 
 const citations = new Hono<Env>();
 
@@ -287,6 +288,18 @@ citations.post('/', async (c) => {
       vals.push(v ?? null);
     }
 
+    // Backfill geocoded coordinates when location is present but coords
+    // are missing (e.g. user typed an address manually rather than using
+    // the autocomplete). The enforcement heatmap clusters citations by
+    // coords, so NULL lat/lng makes the citation invisible on the map.
+    if (b.location && b.latitude === undefined && b.longitude === undefined) {
+      const coords = await geocodeAddress(c.env, String(b.location)).catch(() => null);
+      if (coords) {
+        cols.push('latitude', 'longitude');
+        vals.push(coords.lat, coords.lng);
+      }
+    }
+
     const result = await execute(
       db,
       `INSERT INTO citations (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`,
@@ -347,6 +360,16 @@ citations.put('/:id', async (c) => {
       if (k === 'status' && (typeof v !== 'string' || !VALID_STATUSES.has(v))) continue;
       sets.push(`${k} = ?`);
       vals.push(v ?? null);
+    }
+
+    // Backfill geocode when location is updated but coords are not
+    if ('location' in b && typeof b.location === 'string' && b.location.trim().length >= 3
+        && b.latitude === undefined && b.longitude === undefined) {
+      const coords = await geocodeAddress(c.env, b.location).catch(() => null);
+      if (coords) {
+        sets.push('latitude = ?', 'longitude = ?');
+        vals.push(coords.lat, coords.lng);
+      }
     }
 
     // Voiding bookkeeping — if status transitions to 'voided', capture

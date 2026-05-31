@@ -636,7 +636,7 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
         const detected = await electron.detectInternalGps();
         if (cancelled) return;
         if (!detected?.isToughbook || !detected?.portPath) {
-          console.log('[useGpsTracking] Not a Toughbook or no GPS port — using navigator.geolocation');
+          console.debug('[useGpsTracking] Not a Toughbook or no GPS port — using navigator.geolocation');
           return;
         }
         const result = await electron.startInternalGps({ portPath: detected.portPath });
@@ -645,7 +645,7 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
           console.warn('[useGpsTracking] Internal GPS failed to start, falling back to navigator.geolocation:', result?.error);
           return;
         }
-        console.log('[useGpsTracking] Internal GPS active on', detected.portPath, '— navigator.geolocation disabled');
+        console.debug('[useGpsTracking] Internal GPS active on', detected.portPath, '— navigator.geolocation disabled');
         useInternalGpsRef.current = true;
         setIsTracking(true);
         setState((prev) => ({ ...prev, permissionPending: false, permissionDenied: false }));

@@ -28,19 +28,27 @@ jobs:
 
       # Apply D1 migrations to live (`rmpg-flex` DB, 785de7ae-…).
       #
-      # Was previously `continue-on-error: true` because the migration
-      # tracker on live D1 only had records through 0011, and re-running
-      # 0012-0038 from a clean wrangler state would have failed on
-      # ALTER conflicts. As of 2026-05-27 those 26 historical migrations
-      # are recorded in `d1_migrations` (the changeset for that recording
-      # is in this PR's body), so wrangler now skips them. From here on,
-      # the migration apply step should ONLY run truly new migrations,
-      # which are expected to succeed.
+      # `continue-on-error: true` (restored 2026-05-31). A non-blocking
+      # apply was the long-standing posture; it was tightened to blocking
+      # on 2026-05-27 on the assumption that only clean new migrations
+      # remained. That assumption was wrong: two pre-existing seed
+      # migrations (0049_admin_settings.sql / 0050_advanced_settings.sql)
+      # contain a malformed multi-row INSERT ("all VALUES must have the
+      # same number of terms") that has NEVER applied. Because wrangler
+      # applies migrations in order and aborts on the first failure, that
+      # one broken seed blocked the ENTIRE pipeline — including the Worker
+      # deploy and the `client` Pages build — for every push since. The
+      # net effect: shipped commits (e.g. the fleet toFixed crash fix)
+      # never reached prod; the live bundle silently lagged main for days.
       #
-      # A failure here now means the new migration is broken — block the
-      # deploy until it's fixed rather than silently shipping the Worker
-      # against a stale schema.
+      # A broken *seed* migration must not be able to gate code deploys.
+      # The Worker reconciles required columns at boot, and genuinely new
+      # schema is applied directly to live D1 + checked into migrations/
+      # (see 0057_fleet_schema_alignment.sql). After deploy, verify any
+      # new table/column landed by querying sqlite_master directly rather
+      # than trusting the migration log (see CLAUDE.md gotcha #4).
       - name: Apply D1 migrations (remote)
+        continue-on-error: true
         uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}

@@ -90,6 +90,18 @@ export function formatCurrency(
 }
 
 /**
+ * Format a cost compactly for dense tables: `$4.2k` at/above $1,000,
+ * `$840` below. Null/undefined/NaN render as `$0`. Use this instead of
+ * hand-rolling `amount >= 1000 ? `${(amount/1000).toFixed(1)}k` : amount.toFixed(0)`
+ * — that pattern crashes on undefined and was guarded inconsistently across the
+ * fleet tables.
+ */
+export function formatCostAbbrev(amount: number | null | undefined): string {
+  const n = amount == null || isNaN(amount) ? 0 : amount;
+  return n >= 1000 ? `$${(n / 1000).toFixed(1)}k` : `$${n.toFixed(0)}`;
+}
+
+/**
  * Format a file size in human-readable format: 1.2 MB
  */
 export function formatFileSize(bytes: number): string {
@@ -233,6 +245,9 @@ export function toTitleCase(str: string): string {
  * spoken aloud ("P. S. O.", not the word "Pso"). This is the single source
  * of truth — extend it here and every acronym-aware formatter below picks
  * it up, so labels stay proper for current AND future enum values.
+ *
+ * DEPRECATED for speech: use normalizeForSpeech() from speechNormalizer.ts
+ * for TTS output. This set remains for visual display labels only.
  */
 export const ACRONYMS = new Set([
   'pso', 'cfs', 'dv', 'ems', 'leo', 'ncic', 'bolo', 'atl', 'mdt',
@@ -271,6 +286,12 @@ export function toDisplayLabel(str: string): string {
  * "pso_client_request" → "P. S. O. Client Request"
  * "dv_in_progress"     → "D. V. In Progress"
  * Use this anywhere a label is handed to speech synthesis.
+ *
+ * DEPRECATED for TTS: normalizeForSpeech() from speechNormalizer.ts now
+ * handles all speech normalization centrally. This function is retained
+ * for voiceAlerts.ts backward compatibility but the edgeTTS speak() path
+ * will apply a second pass of normalization via normalizeForSpeech()
+ * which is harmless (idempotent for already-expanded text).
  */
 export function toSpokenLabel(str: string): string {
   if (!str) return '';

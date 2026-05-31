@@ -1,3 +1,4 @@
+import React from "react";
 // ============================================================
 // RMPG Flex — Disposition Prompt
 // Compact inline panel that requires a disposition code before
@@ -71,7 +72,7 @@ const FALLBACK_DISPOSITIONS: DispositionCode[] = [
   { code: 'Cancelled',        description: 'Call Cancelled' },
 ];
 
-export default function DispositionPrompt({
+function DispositionPrompt({
   callNumber,
   dispositionCodes,
   onConfirm,
@@ -163,3 +164,5 @@ export default function DispositionPrompt({
     </div>
   );
 }
+
+export default React.memo(DispositionPrompt);

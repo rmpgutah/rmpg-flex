@@ -43,7 +43,7 @@ export default function FleetFuelCardsTab() {
       ]);
       setCards(cardsData);
       setVehicles(vehData.data || []);
-    } finally { setLoading(false); }
+    } catch (e) { addToast(e instanceof Error ? e.message : 'Failed to load fuel cards', 'error'); } finally { setLoading(false); }
   };
 
   useEffect(() => { load(); }, []);
@@ -58,15 +58,31 @@ export default function FleetFuelCardsTab() {
 
   const handleSubmit = async () => {
     if (!form.card_number.trim()) { addToast('Card number is required', 'error'); return; }
+    if (submitting) return;
     setSubmitting(true);
     try { await apiFetch('/fleet/fuel-cards', {
       method: 'POST',
-      body: JSON.stringify({ ...form, vehicle_id: form.vehicle_id ? Number(form.vehicle_id) : null, monthly_limit: form.monthly_limit ? Number(form.monthly_limit) : null }),
-    }); addToast('Fuel card added', 'success'); setShowForm(false); setForm({ card_number: '', vehicle_id: '', provider: '', monthly_limit: '', pin_last4: '', expiry_date: '', notes: '' }); load(); } catch { addToast('Failed to add card', 'error'); } finally { setSubmitting(false); }
+      // Map UI fields to handler columns (assigned_vehicle_id / credit_limit / pin / expiration_date).
+      body: JSON.stringify({
+        card_number: form.card_number.trim(),
+        provider: form.provider || null,
+        assigned_vehicle_id: form.vehicle_id ? Number(form.vehicle_id) : null,
+        credit_limit: form.monthly_limit ? Number(form.monthly_limit) : null,
+        pin: form.pin_last4 || null,
+        expiration_date: form.expiry_date || null,
+        notes: form.notes || null,
+      }),
+    }); addToast('Fuel card added', 'success'); setShowForm(false); setForm({ card_number: '', vehicle_id: '', provider: '', monthly_limit: '', pin_last4: '', expiry_date: '', notes: '' }); load(); } catch (e) { addToast(e instanceof Error ? e.message : 'Failed to add card', 'error'); } finally { setSubmitting(false); }
   };
 
   const updateCard = async (id: number, data: any) => {
-    try { await apiFetch(`/fleet/fuel-cards/${id}`, { method: 'PUT', body: JSON.stringify(data) }); addToast('Card updated', 'success'); load(); } catch { addToast('Failed to update card', 'error'); }
+    // Normalize the same UI→column aliases on edit.
+    const mapped: any = { ...data };
+    if ('vehicle_id' in mapped) { mapped.assigned_vehicle_id = mapped.vehicle_id ? Number(mapped.vehicle_id) : null; delete mapped.vehicle_id; }
+    if ('monthly_limit' in mapped) { mapped.credit_limit = mapped.monthly_limit ? Number(mapped.monthly_limit) : null; delete mapped.monthly_limit; }
+    if ('pin_last4' in mapped) { mapped.pin = mapped.pin_last4 || null; delete mapped.pin_last4; }
+    if ('expiry_date' in mapped) { mapped.expiration_date = mapped.expiry_date || null; delete mapped.expiry_date; }
+    try { await apiFetch(`/fleet/fuel-cards/${id}`, { method: 'PUT', body: JSON.stringify(mapped) }); addToast('Card updated', 'success'); load(); } catch (e) { addToast(e instanceof Error ? e.message : 'Failed to update card', 'error'); }
   };
 
   return (

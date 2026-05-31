@@ -306,7 +306,7 @@ export default function DashCamDetailPage() {
   // ── Data Fetching ────────────────────────────
 
   const fetchVideo = useCallback(async () => {
-    if (!id) return;
+    if (!id) { setError('Invalid camera ID'); setLoading(false); return; }
     setLoading(true);
     setError(null);
     try {

@@ -130,7 +130,7 @@ export default function RunCardPreview({ incidentType, onCardLoaded }: Props) {
         )}
         {card.ems_requested && (
           <span className="text-[9px] font-bold uppercase tracking-wider flex items-center gap-1 px-1.5 py-0.5"
-            style={{ background: 'rgba(59,130,246,0.20)', color: '#60a5fa', borderRadius: 2 }}>
+            style={{ background: 'rgba(212,160,23,0.15)', color: '#d4a017', borderRadius: 2 }}>
             <Ambulance className="w-3 h-3" /> EMS
           </span>
         )}

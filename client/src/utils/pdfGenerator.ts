@@ -127,8 +127,8 @@ export const DEFAULT_PDF_BRANDING: PdfBranding = {
   report_header_text: 'ROCKY MOUNTAIN PROTECTIVE GROUP',
   report_subheader_text: 'PRIVATE SECURITY & LAW ENFORCEMENT',
   primary_color: '#888888',
-  accent_color: '#d4a017',
-  header_bg_color: '#232832',
+  accent_color: '#555555', // neutralized 2026-05-30 (was gold #d4a017)
+  header_bg_color: '#333333', // neutralized 2026-05-30 (was dark blue #232832)
   // section_accent_color is intentionally LEFT UNSET so the
   // thematic per-section palette in resolveSectionAccentColor
   // becomes the default (burgundy for hazards, green for resolution,
@@ -183,11 +183,12 @@ export const CLASSIFICATION_BAR_HEIGHT = LAYOUT.CLASSIF_BAR_H;
 
 // Priority color mapping
 export const PRIORITY_COLORS: Record<string, { bg: [number, number, number]; text: [number, number, number]; label: string }> = {
-  critical: { bg: [220, 38, 38], text: [255, 255, 255], label: 'PRIORITY: CRITICAL' },
-  high: { bg: [220, 80, 20], text: [255, 255, 255], label: 'PRIORITY: HIGH' },
-  medium: { bg: [212, 160, 23], text: [0, 0, 0], label: 'PRIORITY: MEDIUM' },
-  low: { bg: [60, 130, 80], text: [255, 255, 255], label: 'PRIORITY: LOW' },
-  routine: { bg: [80, 120, 180], text: [255, 255, 255], label: 'PRIORITY: ROUTINE' },
+  // Neutralized 2026-05-30: luminance gradient replaces red/orange/gold/green/blue
+  critical: { bg: [45, 45, 45], text: [255, 255, 255], label: 'PRIORITY: CRITICAL' },
+  high:      { bg: [70, 70, 70], text: [255, 255, 255], label: 'PRIORITY: HIGH' },
+  medium:    { bg: [100, 100, 100], text: [255, 255, 255], label: 'PRIORITY: MEDIUM' },
+  low:       { bg: [130, 130, 130], text: [255, 255, 255], label: 'PRIORITY: LOW' },
+  routine:   { bg: [160, 160, 160], text: [0, 0, 0],       label: 'PRIORITY: ROUTINE' },
 };
 
 // Generation timestamp captured once per report
@@ -467,7 +468,7 @@ export function addDraftWatermark(doc: jsPDF) {
   // @ts-expect-error jsPDF GState
   doc.setGState(new doc.GState({ opacity: 0.12 }));
   doc.setFont(PDF_VALUE_FONT, 'bold');
-  doc.setTextColor(220, 38, 38); // Red
+  doc.setTextColor(120, 120, 120); // neutralized 2026-05-30 (was red)
 
   const cx = pageWidth / 2;
   const cy = pageHeight / 2;
@@ -475,7 +476,7 @@ export function addDraftWatermark(doc: jsPDF) {
   doc.text('DRAFT', cx, cy, { align: 'center', angle: 45 });
 
   // Add border warning
-  doc.setDrawColor(220, 38, 38);
+  doc.setDrawColor(120, 120, 120); // neutralized 2026-05-30 (was red)
   doc.setLineWidth(BORDER.BANNER);
   doc.rect(10, 10, pageWidth - 20, pageHeight - 20);
 
@@ -534,8 +535,8 @@ export function addReportHeader(
   // Detect if header background is light or dark to choose text colors
   const bgLuminance = (headerBg[0] * 0.299 + headerBg[1] * 0.587 + headerBg[2] * 0.114);
   const isLightBg = bgLuminance > 140;
-  const headerTextColor: [number, number, number] = isLightBg ? [30, 30, 35] : [255, 255, 255];
-  const headerMetaColor: [number, number, number] = isLightBg ? [100, 100, 110] : [150, 150, 150];
+  const headerTextColor: [number, number, number] = isLightBg ? [30, 30, 30] : [255, 255, 255]; // neutralized 2026-05-30
+  const headerMetaColor: [number, number, number] = isLightBg ? [100, 100, 100] : [150, 150, 150]; // neutralized 2026-05-30
   const subheaderColor: [number, number, number] = isLightBg ? primaryRgb : [accentRgb[0], accentRgb[1], accentRgb[2]];
 
   // ── Header background bar (no top outline — clean edge) ─
@@ -703,9 +704,7 @@ export function openAutoSection(doc: jsPDF, title: string, y: number): { content
   // Keep the header and its first content row on the same page. Reserve
   // the header bar + content pad + one field row (~14mm) so a section
   // opened near the page bottom moves WHOLE to the next page rather than
-  // stranding an orphan header (and, because record rows reuse one `y`
-  // across 3–4 side-by-side fields, cascading each field onto its own
-  // near-blank page — the PS-202 bug fixed 2026-05-30).
+  // stranding an orphan header.
   const FIRST_ROW_RESERVE = SPACING.SECTION_HEADER_H + SPACING.SECTION_CONTENT_PAD + 14;
   y = checkPageBreak(doc, y, FIRST_ROW_RESERVE);
 
@@ -713,34 +712,26 @@ export function openAutoSection(doc: jsPDF, title: string, y: number): { content
   // @ts-expect-error jsPDF GState
   doc.setGState(new doc.GState({ opacity: 1.0 }));
 
-  // Flat Spillman/Motorola-style section header (2026-05-30 redesign):
-  // plain bold UPPERCASE black title at the left margin with a thin
-  // full-width rule directly below — NO left-accent strip and NO dark
-  // fill bar. This matches the v2 engine's drawSectionHeader() so every
-  // PDF the app produces (v1 reports + v2 forms) reads identically and
-  // photocopies cleanly. The per-section accent-color palette and the
-  // light/dark bar styles were removed in this pass.
+  // Spillman Flex / LexisNexis convention:
+  // Solid black header band across the full content width, white UPPERCASE
+  // bold text. No accent strip, no tint — pure black-and-white police form.
+  const sectionY = y;
+  const sectionPage = doc.getNumberOfPages();
+  const barH = SPACING.SECTION_HEADER_H;
+
+  doc.setFillColor(0, 0, 0);
+  doc.rect(LAYOUT.PAGE_MARGIN, y, cw, barH, 'F');
+
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_SECTION_TITLE);
+  doc.setTextColor(255, 255, 255);
+  const capH = FONT.SIZE_SECTION_TITLE * 0.35;
+  const textY = y + (barH + capH) / 2;
+  doc.text(sanitizePdfText(title.toUpperCase()), LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, textY);
+
+  // Reset text to black for content
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
-
-  // Title sits near the top of the reserved header band so the rule
-  // below has room before the first content row.
-  const capH = getCapHeight(FONT.SIZE_SECTION_TITLE);
-  const sectionTextY = y + capH + 0.6;
-  doc.text(sanitizePdfText(title.toUpperCase()), LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET, sectionTextY);
-
-  // Thin full-width rule just below the title baseline.
-  const ruleY = y + SPACING.SECTION_HEADER_H - 0.6;
-  doc.setDrawColor(...COLOR.TEXT_PRIMARY);
-  doc.setLineWidth(BORDER.SECTION_OUTER);
-  doc.line(LAYOUT.PAGE_MARGIN, ruleY, LAYOUT.PAGE_MARGIN + cw, ruleY);
-
-  // Reset font for content below
-  doc.setFont(PDF_VALUE_FONT, 'normal');
-
-  // Content starts after header bar + content padding (not tight against bar)
-  return { contentY: y + SPACING.SECTION_HEADER_H + SPACING.SECTION_CONTENT_PAD, sectionY: y, sectionPage: doc.getNumberOfPages() };
+  return { contentY: y + barH + SPACING.SECTION_CONTENT_PAD, sectionY, sectionPage };
 }
 
 /**
@@ -884,13 +875,13 @@ export function addCheckboxField(doc: jsPDF, label: string, checked: boolean, x:
   const boxY = y - 1.8;
 
   // Outer border (always drawn for checkbox shape)
-  doc.setDrawColor(80, 80, 85);
+  doc.setDrawColor(80, 80, 80); // neutralized 2026-05-30
   doc.setLineWidth(0.3);
   doc.rect(x, boxY, boxSize, boxSize);
 
   if (checked) {
     // Light fill + bold dark checkmark
-    doc.setFillColor(230, 245, 230);
+    doc.setFillColor(235, 235, 235); // neutralized 2026-05-30
     doc.rect(x + 0.15, boxY + 0.15, boxSize - 0.3, boxSize - 0.3, 'F');
     doc.setDrawColor(20, 20, 20);
     doc.setLineWidth(0.7);
@@ -949,63 +940,65 @@ export function addFlagBadges(
   const fontSize = 6;
   const cornerR = 1.2;      // Rounded corner radius
 
-  // Flag → color mapping (red for danger, amber for warnings, gray for info)
+  // Flag → color mapping — neutralized 2026-05-30: all hue-based urgency
+  // distinctions (red → danger, amber → warning, green → ok) replaced with
+  // luminance-graded grays. The flag label text carries the semantic meaning.
   const flagColors: Record<string, [number, number, number]> = {
-    'PRIORITY 1': [180, 20, 20],
-    'ACTIVE WARRANT': [180, 20, 20],
-    'ARMED & DANGEROUS': [180, 20, 20],
-    'VIOLENT': [180, 20, 20],
-    'FLIGHT RISK': [180, 20, 20],
-    'STOLEN': [180, 20, 20],
-    'WARRANT': [180, 20, 20],
-    'SEX OFFENDER': [180, 20, 20],
-    'GANG MEMBER': [180, 20, 20],
-    'WEAPONS': [180, 20, 20],
-    'EXPIRED': [180, 20, 20],
-    'USE OF FORCE': [180, 20, 20],
-    'SERVICE OVERDUE': [180, 20, 20],
-    'REGISTRATION EXPIRED': [180, 20, 20],
-    'INSURANCE EXPIRED': [180, 20, 20],
-    'BOLO': [200, 80, 10],
-    'CAUTION': [200, 80, 10],
-    'SUICIDAL': [200, 80, 10],
-    'MENTAL HEALTH': [200, 80, 10],
-    'DOMESTIC VIOLENCE': [200, 80, 10],
-    'INJURIES': [200, 80, 10],
-    'JUVENILE': [200, 80, 10],
-    'DRUG USER': [200, 80, 10],
-    'OFFICER SAFETY': [200, 80, 10],
-    'EMS REQUESTED': [200, 80, 10],
-    'FIRE REQUESTED': [200, 80, 10],
-    'ACCIDENT': [200, 80, 10],
-    'EXPIRING SOON': [200, 80, 10],
-    'SERVICE DUE': [200, 80, 10],
-    'REGISTRATION EXPIRING': [200, 80, 10],
-    'LICENSE EXPIRED': [200, 80, 10],
-    'LICENSE EXPIRING': [200, 80, 10],
-    'INACTIVE SITE': [200, 80, 10],
-    'K9 REQUESTED': [70, 75, 88],
-    'LE NOTIFIED': [70, 75, 88],
-    'PROCESS SERVICE': [70, 75, 88],
-    'DISPATCH LINK': [70, 75, 88],
-    'CLIENT CONTRACT': [70, 75, 88],
-    'LAB SUBMITTED': [70, 75, 88],
-    'CHAIN OF CUSTODY': [70, 75, 88],
-    'MAINTENANCE': [70, 75, 88],
-    'FUEL LOGS': [70, 75, 88],
-    'MILEAGE SUMMARY': [70, 75, 88],
-    'CONTROLLED ACCESS': [70, 75, 88],
-    'COURT DATE': [70, 75, 88],
-    'FINE ASSESSED': [70, 75, 88],
-    'PHOTO TAKEN': [70, 75, 88],
-    'DISPOSED': [70, 75, 88],
-    'VERIFIED': [70, 75, 88],
-    'SEPARATED': [70, 75, 88],
-    'ACTIVE SITE': [60, 130, 80],
-    'SERVED': [60, 130, 80],
-    'RESTRICTED': [120, 80, 160],
+    'PRIORITY 1': [50, 50, 50],
+    'ACTIVE WARRANT': [50, 50, 50],
+    'ARMED & DANGEROUS': [50, 50, 50],
+    'VIOLENT': [50, 50, 50],
+    'FLIGHT RISK': [50, 50, 50],
+    'STOLEN': [50, 50, 50],
+    'WARRANT': [50, 50, 50],
+    'SEX OFFENDER': [50, 50, 50],
+    'GANG MEMBER': [50, 50, 50],
+    'WEAPONS': [50, 50, 50],
+    'EXPIRED': [50, 50, 50],
+    'USE OF FORCE': [50, 50, 50],
+    'SERVICE OVERDUE': [50, 50, 50],
+    'REGISTRATION EXPIRED': [50, 50, 50],
+    'INSURANCE EXPIRED': [50, 50, 50],
+    'BOLO': [75, 75, 75],
+    'CAUTION': [75, 75, 75],
+    'SUICIDAL': [75, 75, 75],
+    'MENTAL HEALTH': [75, 75, 75],
+    'DOMESTIC VIOLENCE': [75, 75, 75],
+    'INJURIES': [75, 75, 75],
+    'JUVENILE': [75, 75, 75],
+    'DRUG USER': [75, 75, 75],
+    'OFFICER SAFETY': [75, 75, 75],
+    'EMS REQUESTED': [75, 75, 75],
+    'FIRE REQUESTED': [75, 75, 75],
+    'ACCIDENT': [75, 75, 75],
+    'EXPIRING SOON': [75, 75, 75],
+    'SERVICE DUE': [75, 75, 75],
+    'REGISTRATION EXPIRING': [75, 75, 75],
+    'LICENSE EXPIRED': [75, 75, 75],
+    'LICENSE EXPIRING': [75, 75, 75],
+    'INACTIVE SITE': [100, 100, 100],
+    'K9 REQUESTED': [100, 100, 100],
+    'LE NOTIFIED': [100, 100, 100],
+    'PROCESS SERVICE': [100, 100, 100],
+    'DISPATCH LINK': [100, 100, 100],
+    'CLIENT CONTRACT': [100, 100, 100],
+    'LAB SUBMITTED': [100, 100, 100],
+    'CHAIN OF CUSTODY': [100, 100, 100],
+    'MAINTENANCE': [100, 100, 100],
+    'FUEL LOGS': [100, 100, 100],
+    'MILEAGE SUMMARY': [100, 100, 100],
+    'CONTROLLED ACCESS': [100, 100, 100],
+    'COURT DATE': [100, 100, 100],
+    'FINE ASSESSED': [100, 100, 100],
+    'PHOTO TAKEN': [100, 100, 100],
+    'DISPOSED': [100, 100, 100],
+    'VERIFIED': [100, 100, 100],
+    'SEPARATED': [100, 100, 100],
+    'ACTIVE SITE': [120, 120, 120],
+    'SERVED': [120, 120, 120],
+    'RESTRICTED': [90, 90, 90],
   };
-  const defaultColor: [number, number, number] = [70, 75, 88]; // Slate for unrecognized
+  const defaultColor: [number, number, number] = [85, 85, 85]; // neutralized 2026-05-30
 
   doc.setFont(PDF_VALUE_FONT, 'bold');
   doc.setFontSize(fontSize);
@@ -1038,19 +1031,22 @@ export function addFlagBadges(
     // "UNINSURED", "TRESPASS WARNING") still renders in a meaningful
     // severity color instead of dropping to flat slate. Keeps the report
     // chips consistent with the records UI badges.
+    // Neutralized 2026-05-30: severity fallback uses luminance-graded grays
+    // instead of red/orange/pink/blue/amber/green. The regex patterns remain
+    // for backward compatibility but all resolve to neutral values.
     if (!matched) {
       const RED    = /ARMED|WEAPON|VIOLENT|WARRANT|WANTED|WATCHLIST|OFAC|ESCAPE|STOLEN|HAZMAT|HAZARD|OFFICER SAFETY/;
       const ORANGE = /FELONY|OFFENDER|PURSUIT|GANG|PAROLE|PROBATION|SUPERVISION|IMPOUND|UNINSURED|NO INSURANCE|SUSPENDED/;
-      const PINK   = /SUICID|SELF.?HARM|BIOHAZARD|OVERDOSE|MEDICAL/;   // self-harm / medical
-      const BLUE   = /MENTAL|PSYCH|CRISIS|5150/;                       // behavioral
+      const PINK   = /SUICID|SELF.?HARM|BIOHAZARD|OVERDOSE|MEDICAL/;
+      const BLUE   = /MENTAL|PSYCH|CRISIS|5150/;
       const AMBER  = /TRESPASS|BOLO|PARKING|NO CONTACT|RESTRAIN|EXPIR|HOLD|EVIDENCE/;
       const GREEN  = /CLEARED|VERIFIED|COOPERATIVE|RELEASED|RETURNED|SERVED/;
-      if (RED.test(upperFlag))         bg = [180, 20, 20];
-      else if (PINK.test(upperFlag))   bg = [190, 40, 110];
-      else if (BLUE.test(upperFlag))   bg = [40, 90, 170];   // behavioral (FLAG_MENTAL)
-      else if (ORANGE.test(upperFlag)) bg = [200, 80, 10];
-      else if (GREEN.test(upperFlag))  bg = [60, 130, 80];
-      else if (AMBER.test(upperFlag))  bg = [200, 80, 10];
+      if (RED.test(upperFlag))         bg = [50, 50, 50];
+      else if (PINK.test(upperFlag))   bg = [65, 65, 65];
+      else if (BLUE.test(upperFlag))   bg = [80, 80, 80];
+      else if (ORANGE.test(upperFlag)) bg = [65, 65, 65];
+      else if (GREEN.test(upperFlag))  bg = [100, 100, 100];
+      else if (AMBER.test(upperFlag))  bg = [80, 80, 80];
     }
 
     // Draw pill background
@@ -1104,8 +1100,8 @@ export function addCautionBlock(
   // Orange left accent bar
   doc.setFillColor(...COLOR.CAUTION_ACCENT);
   doc.rect(x, y, 2, boxH, 'F');
-  // Border
-  doc.setDrawColor(200, 160, 80);
+  // Border — neutralized 2026-05-30 (was amber)
+  doc.setDrawColor(120, 120, 120);
   doc.setLineWidth(0.3);
   doc.rect(x, y, width, boxH);
 
@@ -1118,7 +1114,7 @@ export function addCautionBlock(
   // Text content
   doc.setFont(PDF_VALUE_FONT, 'normal');
   doc.setFontSize(FONT.SIZE_FIELD_VALUE);
-  doc.setTextColor(80, 40, 0);
+  doc.setTextColor(80, 80, 80); // neutralized 2026-05-30 (was brown)
   let textY = y + 6;
   for (const line of lines) {
     doc.text(line, x + innerPad + 2, textY);
@@ -1826,33 +1822,20 @@ export function addNarrativeSection(
   }
   const estimatedH = totalLines * lineH + Math.max(0, paraCount - 1) * paragraphGap + SPACING.SM + 2;
 
-  // Draw background tint sized to actual content (subtle light gray) — first page only
-  const cw = getContentWidth(doc);
-  const pageH = doc.internal.pageSize.getHeight();
-  const maxTintH = Math.min(estimatedH, pageH - y - LAYOUT.FOOTER_HEIGHT - 4);
-  doc.setFillColor(...COLOR.BG_SECTION_TINT);
-  doc.rect(LAYOUT.PAGE_MARGIN, y - 1, cw, maxTintH, 'F');
-
-  // Page break callback: draw section continuation sub-header + fresh tint
+  // Page break callback: draw section continuation sub-header
   const contTitle = title.toUpperCase() + ' -- CONTINUED';
   const narrativePageBreak = (newY: number): number => {
-    // Flat section continuation sub-header: black title + thin rule below.
+    // Draw section continuation sub-header — Spillman black band + white text
     const cw = getContentWidth(doc);
+    doc.setFillColor(0, 0, 0);
+    doc.rect(LAYOUT.PAGE_MARGIN, newY, cw, SPACING.SECTION_HEADER_H, 'F');
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(FONT.SIZE_SECTION_TITLE);
-    doc.setTextColor(...COLOR.TEXT_PRIMARY);
-    const textYpos = newY + getCapHeight(FONT.SIZE_SECTION_TITLE) + 0.6;
-    doc.text(contTitle, LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET, textYpos);
-    const subRuleY = newY + SPACING.SECTION_HEADER_H - 0.6;
-    doc.setDrawColor(...COLOR.TEXT_PRIMARY);
-    doc.setLineWidth(BORDER.SECTION_OUTER);
-    doc.line(LAYOUT.PAGE_MARGIN, subRuleY, LAYOUT.PAGE_MARGIN + cw, subRuleY);
+    doc.setTextColor(255, 255, 255);
+    const secCapH = FONT.SIZE_SECTION_TITLE * 0.35;
+    const textYpos = newY + (SPACING.SECTION_HEADER_H + secCapH) / 2;
+    doc.text(contTitle, LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, textYpos);
     const contentStartY = newY + SPACING.SECTION_HEADER_H + SPACING.SECTION_CONTENT_PAD + 2;
-    // Draw fresh background tint for remaining text on this page
-    const cw2 = getContentWidth(doc);
-    const remainH = pageH - contentStartY - LAYOUT.FOOTER_HEIGHT - 4;
-    doc.setFillColor(...COLOR.BG_SECTION_TINT);
-    doc.rect(LAYOUT.PAGE_MARGIN, contentStartY - 1, cw2, remainH, 'F');
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
     doc.setFont(PDF_VALUE_FONT, 'normal');
     doc.setFontSize(fontSize);
@@ -2053,24 +2036,21 @@ export function checkPageBreak(doc: jsPDF, y: number, needed: number, priority?:
     // Continuation header sits 1mm above HEADER_TOP in office mode.
     // Mobile mode pushes it past the PJ-700 6mm leading-edge dead zone.
     const contY = 4 + (((doc as any).__printTarget === 'mobile') ? LAYOUT.MOBILE_PRINTER_TOP_OFFSET : 0);
-    const contH = SPACING.SECTION_HEADER_H; // Compact continuation header
-    // Style flips with the active section style — light mode (Person PDF
-    // 2026-05-04) renders gold accent + cream tint + dark text so it
-    // matches the page-1 company header. Dark mode keeps the legacy
-    // charcoal continuation bar.
-    // Flat global continuation header: black title + thin full-width
-    // rule below, in both light and dark section styles.
-    const contTextY = contY + getCapHeight(FONT.SIZE_FIELD_LABEL) + 0.6;
-    const contTextColor: [number, number, number] = [
-      COLOR.TEXT_PRIMARY[0], COLOR.TEXT_PRIMARY[1], COLOR.TEXT_PRIMARY[2],
-    ];
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(FONT.SIZE_FIELD_LABEL);
-    doc.setTextColor(...contTextColor);
-    const contInset = SPACING.CONTENT_INSET;
-    doc.text(sanitizePdfText(`${activeBranding.report_header_text} -- CONTINUED`), LAYOUT.PAGE_MARGIN + contInset, contTextY);
+    const contH = SPACING.SECTION_HEADER_H;
 
-    // Form number + case number on right (also vertically centered)
+    // Spillman black-band continuation header — solid black bar, white text
+    doc.setFillColor(0, 0, 0);
+    doc.rect(LAYOUT.PAGE_MARGIN, contY, cw, contH, 'F');
+
+    // Text centered in the black bar
+    const contCapH = FONT.SIZE_SECTION_TITLE * 0.35;
+    const contTextY = contY + (contH + contCapH) / 2;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(FONT.SIZE_SECTION_TITLE);
+    doc.setTextColor(255, 255, 255);
+    doc.text(sanitizePdfText(`${activeBranding.report_header_text} -- CONTINUED`), LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, contTextY);
+
+    // Form number + case number on right
     const rightParts: string[] = [];
     const formNum = FORM_NUMBERS[activeFormKey] || '';
     if (formNum) rightParts.push(formNum);
@@ -2087,14 +2067,8 @@ export function checkPageBreak(doc: jsPDF, y: number, needed: number, priority?:
 
     doc.setFont(PDF_VALUE_FONT, 'normal');
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
-    doc.setDrawColor(...COLOR.TEXT_PRIMARY);
 
-    // Content starts below continuation header. The extra 2.5mm past
-    // SECTION_GAP accounts for text baseline offset — jsPDF draws text with
-    // the BASELINE at the given Y, so without this buffer the first line's
-    // ascenders overlap the header bar's bottom edge (caught on FORM PS-201
-    // page 3, where 6pt timestamp rows sat right under the continuation
-    // bar). Any first-line baseline fits cleanly inside this gap.
+    // Content starts below continuation header.
     return contY + contH + SPACING.SECTION_GAP + 2.5;
   }
   return y;

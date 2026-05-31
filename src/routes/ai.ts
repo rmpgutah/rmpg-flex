@@ -18,7 +18,7 @@ import type { Env } from '../types';
 import { getDb, query, queryFirst } from '../utils/db';
 import { requireRole } from '../middleware/auth';
 import {
-  rankUnitsForCall, suggestUnits, analyzeCall,
+  rankUnitsForCall, suggestUnits, analyzeCall, narrativeAssist, smartSearch,
   GPS_FRESH_WINDOW_S, type RawUnit, type CallContext,
 } from '../utils/dispatchAi';
 
@@ -31,7 +31,8 @@ ai.get('/config', (c) => c.json({
   autoFallback: true,
   features: {
     callAnalysis: true,
-    narrativeAssist: false,
+    narrativeAssist: true,
+    smartSearch: true,
     unitSuggestions: true,
     safetyBriefings: true,
     dataCleanup: false,
@@ -156,6 +157,60 @@ ai.post('/analyze', requireRole(...READ_ROLES), async (c) => {
   } catch (err) {
     console.error('[ai] analyze error', err);
     return c.json({ error: 'Failed to analyze call', code: 'ANALYZE_ERR' }, 500);
+  }
+});
+
+// ─── POST /ai/narrative ─────────────────────────────────────
+// Body: { notes, incident_type?, location_address? }
+// Returns a plain-text narrative paragraph drafted from the caller's
+// notes + context. Powers the NarrativeAssist client component.
+ai.post('/narrative', requireRole(...READ_ROLES), async (c) => {
+  try {
+    const body = await c.req.json().catch(() => ({} as any));
+    if (!body.notes || typeof body.notes !== 'string' || body.notes.trim().length < 10) {
+      return c.json({ error: 'At least 10 characters of notes required', code: 'NARR_SHORT' }, 400);
+    }
+    const result = await narrativeAssist(
+      c.env.AI,
+      body.notes,
+      body.incident_type,
+      body.location_address,
+    );
+    return c.json({
+      narrative: result.narrative,
+      provider: result.provider,
+      fallback: result.fallback,
+    });
+  } catch (err) {
+    console.error('[ai] narrative error', err);
+    return c.json({ error: 'Failed to generate narrative', code: 'NARR_ERR' }, 500);
+  }
+});
+
+// ─── POST /ai/smart-search ───────────────────────────────────
+// Body: { query, searchType }
+// Parses a natural-language search string into structured DB-column
+// filters. Powers the AISearchButton client component.
+ai.post('/smart-search', requireRole(...READ_ROLES), async (c) => {
+  try {
+    const body = await c.req.json().catch(() => ({} as any));
+    if (!body.query || typeof body.query !== 'string' || !body.query.trim()) {
+      return c.json({ error: 'Search query required', code: 'SEARCH_NO_QUERY' }, 400);
+    }
+    const searchType = String(body.searchType || 'persons');
+    if (!['persons', 'vehicles', 'incidents'].includes(searchType)) {
+      return c.json({ error: 'searchType must be persons, vehicles, or incidents', code: 'SEARCH_BAD_TYPE' }, 400);
+    }
+    const result = await smartSearch(c.env.AI, body.query, searchType);
+    return c.json({
+      available: !result.fallback,
+      filters: result.filters,
+      provider: result.provider,
+      fallback: result.fallback,
+    });
+  } catch (err) {
+    console.error('[ai] smart-search error', err);
+    return c.json({ error: 'Failed to parse search query', code: 'SEARCH_ERR' }, 500);
   }
 });
 

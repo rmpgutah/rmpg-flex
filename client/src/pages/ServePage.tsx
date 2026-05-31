@@ -207,7 +207,7 @@ export default function ServePage() {
             try {
               const call = await apiFetch(`/dispatch/calls/${j.call_id}`);
               if (call) callMap[j.id] = call;
-            } catch {}
+            } catch (err) { console.warn("[ServePage] operation failed:", err); }
           })
         );
         setLinkedCalls(callMap);

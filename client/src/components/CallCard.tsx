@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Clock, MapPin, Users, AlertTriangle, Phone, Radio, UserCheck, Globe, Layers, MessageSquare, ShieldAlert, Star } from 'lucide-react';
 import type { CallForService } from '../types';
+import type { DispatchCode } from '../hooks/useDispatchCodes';
 import StatusBadge from './StatusBadge';
 import { formatIncidentType } from '../utils/caseNumbers';
 import WarningTags from './WarningTags';
@@ -78,11 +79,13 @@ interface CallCardProps {
   hasActiveWarrant?: boolean;
   /** Toggle pinned-to-top flag */
   onTogglePin?: (callId: string, currentlyPinned: boolean) => void;
+  /** Resolved signal-code info for priority-colored badge */
+  signalInfo?: DispatchCode | null | undefined;
 }
 
 const NON_DROPPABLE_STATUSES = ['cleared', 'closed', 'cancelled', 'archived'];
 
-export default React.memo(function CallCard({ call, isSelected = false, onClick, onUnitDrop, onStatusChange, onContextMenu, warnings, stackCount, onQuickNote, hasActiveWarrant, onTogglePin }: CallCardProps) {
+export default React.memo(function CallCard({ call, isSelected = false, onClick, onUnitDrop, onStatusChange, onContextMenu, warnings, stackCount, onQuickNote, hasActiveWarrant, onTogglePin, signalInfo }: CallCardProps) {
   const isEmergency = call.priority === 'P1';
   // Officer-safety threat posture from the call's own intrinsic flags (linked
   // records aren't loaded per-queue-card). Drives a triage strip across the
@@ -338,10 +341,36 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
             return null;
           })()}
           {call.dispatch_code && !(call.incident_type === 'pso_client_request' && call.pso_attempt_number) && (
-            <span className="text-[10px] font-bold font-mono text-amber-300 bg-amber-900/30 border border-amber-700/40 px-1 py-0">
+            <span className="text-[10px] font-bold font-mono text-amber-300 bg-amber-900/30 border border-amber-700/40 px-1 py-0" title={`Dispatch zone: ${call.dispatch_code}`}>
               {call.dispatch_code}
             </span>
           )}
+          {signalInfo && (() => {
+            const sp = signalInfo;
+            const pri = sp.priority || 'P3';
+            const priColors: Record<string, { text: string; bg: string; border: string }> = {
+              P1: { text: '#fca5a5', bg: 'rgba(220,38,38,0.3)', border: 'rgba(220,38,38,0.5)' },
+              P2: { text: '#fde68a', bg: 'rgba(245,158,11,0.25)', border: 'rgba(245,158,11,0.4)' },
+              P3: { text: '#9ca3af', bg: 'rgba(107,114,128,0.2)', border: 'rgba(107,114,128,0.35)' },
+              P4: { text: '#888888', bg: 'rgba(100,100,100,0.2)', border: 'rgba(100,100,100,0.35)' },
+            };
+            const c = priColors[pri] || priColors.P3;
+            const flags: string[] = [];
+            if (sp.requires_backup) flags.push('Backup required');
+            if (sp.officer_safety) flags.push('Officer safety risk');
+            if (sp.ems_needed) flags.push('EMS needed');
+            if (sp.fire_needed) flags.push('Fire response needed');
+            const tooltip = `Signal ${sp.code} — ${sp.description}\nCategory: ${sp.category} · Priority: ${sp.priority}${flags.length ? '\n' + flags.join('\n') : ''}`;
+            return (
+              <span
+                className="text-[10px] font-bold font-mono px-1 py-0 cursor-default border"
+                style={{ color: c.text, background: c.bg, borderColor: c.border }}
+                title={tooltip}
+              >
+                {sp.code}
+              </span>
+            );
+          })()}
         </div>
         <div className="flex items-center gap-1.5">
           <StatusBadge status={call.priority} type="priority" size="sm" title={humanizePriority(call.priority)} />

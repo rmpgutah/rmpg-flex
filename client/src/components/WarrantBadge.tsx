@@ -1,10 +1,11 @@
+import React from "react";
 interface WarrantBadgeProps {
   flags: string | any[];
   size?: 'sm' | 'md';
   onClick?: () => void;
 }
 
-export default function WarrantBadge({ flags, size = 'sm', onClick }: WarrantBadgeProps) {
+function WarrantBadge({ flags, size = 'sm', onClick }: WarrantBadgeProps) {
   let parsed: any[] = [];
   try {
     parsed = typeof flags === 'string' ? JSON.parse(flags || '[]') : (flags || []);
@@ -35,3 +36,5 @@ export default function WarrantBadge({ flags, size = 'sm', onClick }: WarrantBad
     </span>
   );
 }
+
+export default React.memo(WarrantBadge);

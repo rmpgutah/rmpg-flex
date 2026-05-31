@@ -48,9 +48,9 @@ export const COLOR = {
   // the headers stay strong/dark but are true gray. Zebra + tint backgrounds
   // also de-blued ([242,242,246]→[243,243,243], [248,248,252]→[249,249,249]).
   BG_ZEBRA:        [243, 243, 243]  as const,  // Even-row table shading
-  BG_SECTION_HDR:  [46, 46, 46]     as const,  // Header + subheader bar (neutral charcoal)
-  BG_TABLE_HDR:    [58, 58, 58]     as const,  // Table column header (neutral charcoal)
-  BG_SECTION_TINT: [249, 249, 249]  as const,  // Field-body tint (kept near-white for readability)
+  BG_SECTION_HDR: [0, 0, 0]       as const,  // Section header fill — solid black (Spillman convention, 2026-05-30)
+  BG_TABLE_HDR:    [0, 0, 0]       as const,  // Table column header — solid black band (Spillman convention, 2026-05-30)
+  BG_SECTION_TINT: [255, 255, 255]  as const,  // Pure white — no background tint (removed 2026-05-30)
   BG_TABLE_HDR_LIGHT: [224, 224, 224] as const, // Nested table header (light gray)
   TEXT_TABLE_HDR_LIGHT: [54, 54, 54]  as const,  // Dark gray text on light hdr
 
@@ -61,49 +61,57 @@ export const COLOR = {
   // quick-reference banner left rule, district bar accent, notes entry
   // left rule, horizontal section dividers) automatically becomes
   // grayscale via this single point of change.
-  ACCENT_GOLD:     [60, 60, 60]     as const,  // dark charcoal accent
+  ACCENT_GOLD:     [0, 0, 0]       as const,  // Pure black accent (Spillman convention, 2026-05-30)
 
-  // Financial
-  AMOUNT_CREDIT:   [0, 120, 60]     as const,
-  AMOUNT_DEBIT:    [180, 0, 0]      as const,
+  // Financial — neutralized 2026-05-30: credit green and debit red converted to
+  // neutral grays so financial indicators carry zero color splash. Distinct
+  // luminance levels preserve the semantic difference without hue.
+  AMOUNT_CREDIT:   [60, 60, 60]     as const,
+  AMOUNT_DEBIT:    [90, 90, 90]     as const,
 
   // Watermark
   WATERMARK:       [120, 120, 120]  as const,
 
-  // Caution / Warning
-  CAUTION_BG:      [255, 248, 230]  as const,  // Amber background
-  CAUTION_ACCENT:  [200, 80, 10]    as const,  // Amber accent bar
-  CAUTION_TEXT:    [180, 60, 0]     as const,  // Warning text
-  FLAG_ARMED:      [180, 20, 20]    as const,  // ARMED & DANGEROUS
-  FLAG_WARRANT:    [200, 60, 0]     as const,  // Active warrant
-  FLAG_GANG:       [120, 40, 140]   as const,  // Gang affiliation
-  FLAG_MENTAL:     [40, 90, 170]    as const,  // Mental health
-  FLAG_MEDICAL:    [0, 130, 80]     as const,  // Medical condition
-  FLAG_DEFAULT:    [84, 84, 84]     as const,  // Generic flag (de-blued 2026-05-30)
+  // Caution / Warning — neutralized 2026-05-30: all caution highlights and
+  // subject-safety flags are now luminance-distinguished grays. The semantic
+  // weight (armed vs medical vs gang) is conveyed by the label text alone,
+  // not by red/orange/purple/blue/green hues.
+  CAUTION_BG:      [243, 243, 243]  as const,  // Neutral light gray (was amber)
+  CAUTION_ACCENT:  [90, 90, 90]     as const,  // Neutral mid-gray (was amber accent)
+  CAUTION_TEXT:    [60, 60, 60]     as const,  // Dark gray warning text (was amber)
+  FLAG_ARMED:      [55, 55, 55]     as const,  // Dark charcoal (was red)
+  FLAG_WARRANT:    [75, 75, 75]     as const,  // Medium-dark (was orange)
+  FLAG_GANG:       [90, 90, 90]     as const,  // Mid-gray (was purple)
+  FLAG_MENTAL:     [105, 105, 105]  as const,  // Medium gray (was blue)
+  FLAG_MEDICAL:    [120, 120, 120]  as const,  // Lighter gray (was green)
+  FLAG_DEFAULT:    [84, 84, 84]     as const,  // Generic flag (unchanged)
 
   // NIBRS Grid Form — sidebar tabs + dense cells
-  BG_SIDEBAR_TAB:      [27, 27, 27]     as const,  // Dark sidebar tab background (de-blued 2026-05-30)
+  BG_SIDEBAR_TAB:      [0, 0, 0]        as const,  // Black sidebar tab (Spillman convention, 2026-05-30)
   BG_FORM_CELL_LABEL:  [241, 241, 241]  as const,  // Light gray label strip inside cell (de-blued 2026-05-30)
   BORDER_FORM_GRID:    [60, 60, 60]     as const,  // Dark grid lines (shared borders)
 
   // Police-form furniture (added 2026-04-17 for enhanced LE styling)
   RULE_GOLD:           [80, 80, 80]     as const,  // Dark gray accent rule (was gold; grayscale 2026-05-04)
   RULE_STRONG:         [30, 30, 30]     as const,  // Heavy black rule for top/bottom
-  BATES_STAMP:         [90, 50, 50]     as const,  // Muted burgundy for Bates sequence
+  BATES_STAMP:         [70, 70, 70]     as const,  // Neutral gray (was burgundy; neutralized 2026-05-30)
   BARCODE_BAR:         [0, 0, 0]        as const,  // Code 39 black bars
   BARCODE_BG:          [255, 255, 255]  as const,  // Code 39 white space
   BARCODE_STRIP_BG:    [250, 250, 250]  as const,  // Light strip background for scan row
-  BARCODE_STRIP_RULE:  [180, 180, 185]  as const,
-  CERT_BG:             [248, 246, 238]  as const,  // Ivory certification paragraph bg
-  CERT_RULE:           [160, 140, 90]   as const,  // Olive rule around cert block
+  BARCODE_STRIP_RULE:  [182, 182, 182]  as const,  // Neutralized 2026-05-30 (was carrying a blue cast)
+  CERT_BG:             [248, 248, 248]  as const,  // Light gray cert bg (was ivory; neutralized 2026-05-30)
+  CERT_RULE:           [130, 130, 130]  as const,  // Neutral gray cert rule (was olive; neutralized 2026-05-30)
   MUGSHOT_RULE:        [60, 60, 60]     as const,  // Dark frame around arrest photo
 
   // Priority bar palette (separate from PRIORITY_COLORS in pdfGenerator.ts —
   // these are the tokenized fills used by drawPriorityBar helper)
-  PRIO_1_BG:           [185, 25, 25]    as const,  // Emergency / Code 3
-  PRIO_2_BG:           [210, 110, 20]   as const,  // Urgent
-  PRIO_3_BG:           [200, 160, 30]   as const,  // Routine
-  PRIO_4_BG:           [60, 120, 70]    as const,  // Non-emergency
+  // Priority bar palette — neutralized 2026-05-30: red/orange/yellow/green
+  // hues replaced by a luminance gradient (darkest → lightest) so the urgency
+  // level is still visually distinguishable on grayscale printouts.
+  PRIO_1_BG:           [50, 50, 50]     as const,  // Darkest (was red)
+  PRIO_2_BG:           [75, 75, 75]     as const,  // Medium-dark (was orange)
+  PRIO_3_BG:           [100, 100, 100]  as const,  // Medium (was yellow)
+  PRIO_4_BG:           [125, 125, 125]  as const,  // Lightest (was green)
   PRIO_FG:             [255, 255, 255]  as const,
 } as const;
 
@@ -120,12 +128,16 @@ export const CLASSIFICATION: Record<
   'LES' | 'CUI' | 'FOUO' | 'UNCLAS' | 'CONFIDENTIAL' | 'SEALED' | 'DRAFT',
   ClassificationSpec
 > = {
-  LES:          { bg: [180, 30, 30],  fg: [255, 255, 255], label: 'LAW ENFORCEMENT SENSITIVE // CJIS' },
-  CUI:          { bg: [80, 50, 130],  fg: [255, 255, 255], label: 'CONTROLLED UNCLASSIFIED INFORMATION // LE' },
-  FOUO:         { bg: [200, 130, 20], fg: [0, 0, 0],       label: 'FOR OFFICIAL USE ONLY' },
-  UNCLAS:       { bg: [0, 110, 60],   fg: [255, 255, 255], label: 'UNCLASSIFIED' },
-  CONFIDENTIAL: { bg: [120, 0, 0],    fg: [255, 255, 255], label: 'CONFIDENTIAL // NOFORN' },
-  SEALED:       { bg: [30, 30, 30],   fg: [255, 215, 0],   label: 'SEALED BY COURT ORDER -- DO NOT DISSEMINATE' },
+  // Classification banner colors — neutralized 2026-05-30: all hue-based
+  // distinctions (LES red, CUI purple, FOUO amber, UNCLAS green, CONFIDENTIAL
+  // dark red, SEALED gold text) replaced with luminance-graded grays. CJIS
+  // markings remain visually distinguishable via bar shade + label text.
+  LES:          { bg: [50, 50, 50],   fg: [255, 255, 255], label: 'LAW ENFORCEMENT SENSITIVE // CJIS' },
+  CUI:          { bg: [65, 65, 65],   fg: [255, 255, 255], label: 'CONTROLLED UNCLASSIFIED INFORMATION // LE' },
+  FOUO:         { bg: [80, 80, 80],   fg: [255, 255, 255], label: 'FOR OFFICIAL USE ONLY' },
+  UNCLAS:       { bg: [100, 100, 100], fg: [255, 255, 255], label: 'UNCLASSIFIED' },
+  CONFIDENTIAL: { bg: [40, 40, 40],   fg: [255, 255, 255], label: 'CONFIDENTIAL // NOFORN' },
+  SEALED:       { bg: [30, 30, 30],   fg: [200, 200, 200], label: 'SEALED BY COURT ORDER -- DO NOT DISSEMINATE' },
   DRAFT:        { bg: [110, 110, 110], fg: [255, 255, 255], label: 'DRAFT -- UNOFFICIAL -- NOT FOR DISTRIBUTION' },
 } as const;
 
@@ -155,7 +167,7 @@ export const PDF_VALUE_FONT: 'helvetica' | 'courier' | 'times' = 'helvetica';
 
 export const FONT = {
   SIZE_HEADER_TITLE:      13,    // Agency name in header bar
-  SIZE_SECTION_TITLE:     7,     // Section header bar text (all-caps, Helvetica Bold 7pt)
+  SIZE_SECTION_TITLE:     9,     // Section header text (all-caps, Helvetica Bold 9pt — bumped 2026-05-30 for Spillman/LexisNexis readability)
   SIZE_FIELD_VALUE:       8,     // Courier values (compact without box borders)
   SIZE_FIELD_LABEL:       5,     // Helvetica Bold labels above field boxes
   SIZE_TABLE_HEADER:      6.5,   // Helvetica column headers

@@ -49,6 +49,12 @@ import {
   Mail,
   GraduationCap,
   Microscope,
+  Building2,
+  ShieldAlert,
+  Megaphone,
+  CheckCircle,
+  DollarSign,
+  Share2,
 } from 'lucide-react';
 import { Navigation2, Sun, Moon } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -138,6 +144,27 @@ const PAGE_TITLES: Record<string, string> = {
   '/iped': 'IPED Forensics',
   '/national-warrant-search': 'National Warrant Search',
   '/downloads': 'Downloads',
+  '/geography': 'Dispatch Geography',
+  '/connections': 'Connections',
+  '/skip-tracer': 'Skip Tracer',
+  '/arrest-records': 'Arrest Records',
+  '/serve-intake': 'Service Intake',
+  '/web-research': 'Web Research',
+  '/settings': 'Settings',
+  '/jail': 'Jail Management',
+  '/affairs': 'Internal Affairs',
+  '/assets': 'Asset Management',
+  '/community': 'Community Relations',
+  '/tasks': 'Task Management',
+  '/alerts': 'Alert Center',
+  '/training-mgmt': 'Training Admin',
+  '/qa': 'Quality Assurance',
+  '/billing': 'Billing',
+  '/risk': 'Risk Management',
+  '/interagency': 'Interagency',
+  '/body-cameras': 'Body Cameras',
+  '/dash-cameras': 'Dash Cameras',
+  '/microbilt': 'MicroBilt',
 };
 
 // Nav items — items with `children` render a dropdown menu in the toolbar
@@ -206,6 +233,28 @@ const TOOLBAR_NAV: NavItem[] = [
   { path: '/crm', icon: Briefcase, label: 'Overwatch', group: 'analysis' },
   { path: '/training', icon: GraduationCap, label: 'Training', group: 'analysis' },
   { path: '/forensics', icon: Network, label: 'Connections', group: 'analysis', adminOnly: true },
+  { path: '/jail', icon: Building2, label: 'Jail/IA', group: 'support', children: [
+    { path: '/jail', icon: Building2, label: 'Jail Management' },
+    { path: '/affairs', icon: ShieldAlert, label: 'Internal Affairs' },
+    { path: '/assets', icon: Package, label: 'Asset Management' },
+  ]},
+  { path: '/billing', icon: DollarSign, label: 'Services', group: 'support', children: [
+    { path: '/billing', icon: DollarSign, label: 'Billing' },
+    { path: '/community', icon: Users, label: 'Community' },
+    { path: '/tasks', icon: ClipboardList, label: 'Task Management' },
+    { path: '/alerts', icon: Megaphone, label: 'Notifications' },
+    { path: '/qa', icon: CheckCircle, label: 'QA' },
+    { path: '/risk', icon: Shield, label: 'Risk Management' },
+    { path: '/interagency', icon: Share2, label: 'Interagency' },
+    { path: '/gang-intel', icon: Shield, label: 'Gang Intel' },
+    { path: '/narcotics', icon: Shield, label: 'Narcotics' },
+    { path: '/special-ops', icon: Shield, label: 'Special Ops' },
+    { path: '/crisis-response', icon: Shield, label: 'Crisis Response' },
+    { path: '/victim-services', icon: Shield, label: 'Victim Services' },
+    { path: '/alarms', icon: Shield, label: 'Alarm Management' },
+    { path: '/accreditation', icon: Shield, label: 'Accreditation' },
+    { path: '/recruitment', icon: Shield, label: 'Recruitment' },
+  ]},
   { path: '/audit', icon: ScrollText, label: 'Audit', group: 'system', shortcut: 'F11', adminOnly: true },
   { path: '/admin', icon: Settings, label: 'Admin', group: 'system', shortcut: 'F12', adminOnly: true },
 ];
@@ -1238,7 +1287,7 @@ export default function Layout() {
           type="button"
           onClick={handleNavBack}
           disabled={!canGoBack}
-          className="toolbar-btn transition-colors duration-150 active:scale-[0.97] focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none"
+          className="toolbar-btn"
           title="Back (Alt+←)"
           aria-label="Navigate back"
           style={{ height: 36, width: 30, padding: '2px 4px', opacity: canGoBack ? 1 : 0.3 }}
@@ -1249,7 +1298,7 @@ export default function Layout() {
           type="button"
           onClick={handleNavForward}
           disabled={!canGoForward}
-          className="toolbar-btn transition-colors duration-150 active:scale-[0.97] focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none"
+          className="toolbar-btn"
           title="Forward (Alt+→)"
           aria-label="Navigate forward"
           style={{ height: 36, width: 30, padding: '2px 4px', opacity: canGoForward ? 1 : 0.3 }}
@@ -1290,7 +1339,7 @@ export default function Layout() {
                       window.open(url, '_blank', 'noopener,noreferrer');
                     }}
                     onMouseEnter={() => { if (openDropdown) setOpenDropdown(null); }}
-                    className="toolbar-btn transition-colors duration-150 active:scale-[0.97] focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none"
+                    className="toolbar-nav-btn"
                     title={`Open ${item.label}${item.shortcut ? ` (${item.shortcut})` : ''}`}
                     aria-label={`Open ${item.label} in new window`}
                     style={{ height: 44, padding: '2px 6px' }}
@@ -1325,29 +1374,11 @@ export default function Layout() {
                         }
                       }
                     }}
-                    className="flex flex-col items-center justify-center transition-all duration-150 focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none active:scale-[0.97]"
+                    className={`toolbar-nav-btn flex-col items-center justify-center ${isActive || isDropdownOpen ? 'active' : ''}`}
                     style={{
                       width: 52,
                       height: 42,
                       padding: '2px 4px',
-                      background: isActive
-                        ? 'linear-gradient(180deg, rgba(42,42,42,0.75) 0%, rgba(30,30,30,0.75) 100%)'
-                        : isDropdownOpen
-                          ? 'rgba(255,255,255,0.05)'
-                          : 'transparent',
-                      borderBottom: isActive ? '2px solid #d4a017' : '2px solid transparent',
-                      color: isActive ? '#ffffff' : '#888888',
-                      cursor: 'pointer',
-                    }}
-                    onMouseEnter={(e) => {
-                      if (!isActive && !isDropdownOpen) {
-                        (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.04)';
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (!isActive && !isDropdownOpen) {
-                        (e.currentTarget as HTMLElement).style.background = 'transparent';
-                      }
                     }}
                     title={`${item.label}${item.shortcut ? ` (${item.shortcut})` : ''}`}
                     aria-label={`${item.label}${hasChildren ? ' menu' : ''}`}
@@ -1417,15 +1448,12 @@ export default function Layout() {
                   {/* 10: Toolbar dropdown with stronger shadow + left-edge align fix */}
                   {hasChildren && isDropdownOpen && (
                     <div
-                      className="absolute top-full left-0 z-50 py-1 animate-dropdown-appear"
+                      className="menu-dropdown absolute top-full left-0 z-50 animate-dropdown-appear"
                       role="menu"
                       aria-label={`${item.label} submenu`}
                       style={{
                         minWidth: 210,
-                        background: '#141414',
-                        border: '1px solid #2a2a2a',
                         borderTop: '2px solid #888888',
-                        boxShadow: '0 12px 32px rgba(0,0,0,0.55), 0 4px 12px rgba(0,0,0,0.3)',
                       }}
                     >
                       {item.children!.filter(child => {
@@ -1447,23 +1475,11 @@ export default function Layout() {
                                 navigate(child.path);
                               }
                             }}
-                            className="flex items-center gap-2.5 w-full px-3 py-1.5 text-left transition-colors duration-150 hover:bg-white/[0.06] focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[#888888] focus-visible:outline-none"
+                            className={`menu-item w-full ${childActive ? 'active' : ''}`}
                             role="menuitem"
                             style={{
-                              color: childActive ? '#ffffff' : '#aaaaaa',
-                              background: childActive ? 'rgba(42,42,42,0.60)' : 'transparent',
-                            }}
-                            onMouseEnter={(e) => {
-                              if (!childActive) {
-                                (e.currentTarget as HTMLElement).style.background = 'linear-gradient(180deg, rgba(42,42,42,0.70) 0%, rgba(30,30,30,0.55) 100%)';
-                                (e.currentTarget as HTMLElement).style.color = '#ffffff';
-                              }
-                            }}
-                            onMouseLeave={(e) => {
-                              if (!childActive) {
-                                (e.currentTarget as HTMLElement).style.background = 'transparent';
-                                (e.currentTarget as HTMLElement).style.color = '#aaaaaa';
-                              }
+                              color: childActive ? '#ffffff' : undefined,
+                              background: childActive ? 'rgba(42,42,42,0.60)' : undefined,
                             }}
                           >
                             {/* 11: Slightly larger child icon + semibold label for active items */}

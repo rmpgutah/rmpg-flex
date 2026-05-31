@@ -53,7 +53,7 @@ links.get('/calls/:id/persons', async (c) => {
     `SELECT cp.id, cp.call_id, cp.person_id, cp.role, cp.notes, cp.added_at,
             p.first_name, p.last_name, p.dob, p.gender, p.race,
             p.phone, p.address, p.caution_flags, p.is_sex_offender,
-            p.gang_affiliation, p.probation_parole
+            p.gang_affiliation, p.probation_parole, p.flags
      FROM call_persons cp
      JOIN persons p ON cp.person_id = p.id
      WHERE cp.call_id = ?

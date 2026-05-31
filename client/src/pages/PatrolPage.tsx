@@ -635,7 +635,12 @@ const PatrolPage: React.FC = () => {
   return (
     <div className="flex flex-col h-full animate-fade-in">
       {/* Portal Header */}
-      {!isMobile && (
+      {isMobile ? (
+        <div className="flex items-center gap-2 px-3 py-2 bg-[#080808] border-b border-[#1a1a1a]">
+          <RmpgLogo height={24} />
+          <span className="text-[10px] font-bold uppercase tracking-wider text-[#888]">Patrol Operations</span>
+        </div>
+      ) : (
         <div className="panel-beveled bg-surface-base overflow-hidden">
           <div className="flex items-center gap-4 px-4 py-2.5 relative">
             <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #1a1a1a, #888888 30%, #888888 70%, #1a1a1a)' }} />
@@ -648,7 +653,18 @@ const PatrolPage: React.FC = () => {
         </div>
       )}
 
-      {!isMobile && <PanelTitleBar title="PATROL MANAGEMENT" icon={MapPin}>
+      {isMobile ? (
+        <div className="flex items-center gap-2 px-3 py-1.5 bg-[#060606] border-b border-[#1a1a1a]">
+          <span className="text-[9px] font-bold uppercase tracking-wider text-[#d4a017]">PATROL MANAGEMENT</span>
+          <div className="flex gap-1 ml-auto">
+            {activeTab === 'checkpoints' && (
+              <button type="button" onClick={handleCreateCheckpoint} className="btn-gold btn-xs" aria-label="Create checkpoint"><Plus className="w-3 h-3" /></button>
+            )}
+            <button type="button" onClick={loadCompliance} className="btn-secondary btn-xs" aria-label="Refresh compliance"><RefreshCw className="w-3 h-3" /></button>
+          </div>
+        </div>
+      ) : (
+      <PanelTitleBar title="PATROL MANAGEMENT" icon={MapPin}>
         <PrintButton />
         {activeTab === 'scans' && (
           <ExportButton exportUrl="/patrol/scans/export?format=csv" exportFilename="patrol_scans_export.csv" />
@@ -663,10 +679,11 @@ const PatrolPage: React.FC = () => {
             <RefreshCw className="w-3.5 h-3.5" /> Refresh
           </button>
         )}
-      </PanelTitleBar>}
+      </PanelTitleBar>)}
 
       {/* Tabs */}
       <TabBar
+        spillman
         tabs={patrolTabs}
         activeTab={activeTab}
         onTabChange={(id) => setActiveTab(id as 'checkpoints' | 'scans' | 'compliance' | 'map')}

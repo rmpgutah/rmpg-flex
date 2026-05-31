@@ -59,6 +59,302 @@ records.get('/persons/search', async (c) => {
   } catch (err) { return c.json({ error: 'Failed' }, 500); }
 });
 
+// ── Persons extra endpoints (must be before /:id to avoid param capture) ──
+
+// GET /records/persons/export — CSV export of all persons.
+records.get('/persons/export', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const { archived } = c.req.query();
+    let sql = 'SELECT * FROM persons';
+    if (archived !== 'true') {
+      sql += " WHERE (flags IS NULL OR flags = '[]' OR NOT EXISTS (SELECT 1 FROM json_each(flags) WHERE json_each.value->>'$.type' = 'archived'))";
+    }
+    sql += ' ORDER BY last_name, first_name LIMIT 50000';
+    const rows = await query<Record<string, unknown>>(db, sql);
+    if (rows.length === 0) return c.json([]);
+    const keys = ['first_name','last_name','dob','gender','race','height','weight','hair_color','eye_color','address','phone','email'];
+    const csv = [keys.join(','), ...rows.map((r: any) => keys.map((k: string) => `"${String(r[k] ?? '').replace(/"/g, '""')}"`).join(','))].join('\n');
+    return c.newResponse(csv, 200, { 'Content-Type': 'text/csv', 'Content-Disposition': 'attachment; filename=persons_export.csv' });
+  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+});
+
+// POST /records/persons/check-duplicates — find potential duplicate persons.
+records.post('/persons/check-duplicates', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const { first_name, last_name, dob } = await c.req.json<{ first_name?: string; last_name?: string; dob?: string }>();
+    if (!first_name || !last_name) return c.json({ matches: [] });
+    const matches = await query<Record<string, unknown>>(db,
+      'SELECT id, first_name, last_name, dob, gender, race, address, phone FROM persons WHERE last_name = ? AND first_name = ?',
+      last_name.trim(), first_name.trim());
+    if (matches.length === 0 && dob) {
+      const dobMatches = await query<Record<string, unknown>>(db,
+        'SELECT id, first_name, last_name, dob, gender, race, address, phone FROM persons WHERE last_name = ? AND dob = ?',
+        last_name.trim(), dob);
+      return c.json({ matches: dobMatches });
+    }
+    return c.json({ matches });
+  } catch (err) { return c.json({ matches: [] }); }
+});
+
+// GET /records/persons/duplicates — find potential duplicate pairs.
+records.get('/persons/duplicates', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(db, `
+      SELECT a.id as id_a, a.first_name as first_name_a, a.last_name as last_name_a, a.dob as dob_a,
+             b.id as id_b, b.first_name as first_name_b, b.last_name as last_name_b, b.dob as dob_b
+      FROM persons a JOIN persons b ON a.last_name = b.last_name AND a.first_name = b.first_name AND a.id < b.id
+      ORDER BY a.last_name, a.first_name LIMIT 200`);
+    return c.json(rows);
+  } catch (err) { return c.json([]); }
+});
+
+// POST /records/persons/merge — merge duplicate person records.
+records.post('/persons/merge', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const { keep_id, merge_id } = await c.req.json<{ keep_id?: number; merge_id?: number }>();
+    if (!keep_id || !merge_id || keep_id === merge_id) return c.json({ error: 'keep_id and merge_id required and must differ' }, 400);
+    const [keep, merge] = await Promise.all([
+      queryFirst<Record<string, unknown>>(db, 'SELECT * FROM persons WHERE id = ?', keep_id),
+      queryFirst<Record<string, unknown>>(db, 'SELECT * FROM persons WHERE id = ?', merge_id),
+    ]);
+    if (!keep || !merge) return c.json({ error: 'One or both persons not found' }, 404);
+    // Update FK references from merge_id to keep_id
+    for (const t of ['vehicles_records', 'incident_persons', 'call_persons', 'warrants', 'criminal_history']) {
+      try { await execute(db, `UPDATE ${t} SET person_id = ? WHERE person_id = ?`, keep_id, merge_id); } catch { /* table may not exist */ }
+    }
+    await execute(db, 'DELETE FROM persons WHERE id = ?', merge_id);
+    return c.json({ success: true, keep_id });
+  } catch (err) { return c.json({ error: 'Merge failed', detail: (err as Error)?.message }, 500); }
+});
+
+// GET /records/persons/alias-search — search by potential alias (name match).
+records.get('/persons/alias-search', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const q = c.req.query('q');
+    if (!q || q.length < 2) return c.json([]);
+    const like = `%${q}%`;
+    const rows = await query<Record<string, unknown>>(db,
+      'SELECT id, first_name, last_name, dob, gender FROM persons WHERE first_name LIKE ? OR last_name LIKE ? ORDER BY last_name, first_name LIMIT 50',
+      like, like);
+    return c.json(rows);
+  } catch (err) { return c.json([]); }
+});
+
+// GET /records/persons/:id — fetch a single person by ID (full detail).
+// Called by PersonsTab on selection, DispatchRecordPanel, RecordDetailWindow,
+// and PrintRecordButton for cross-reference. Returns the full row so the
+// client can render address, phone, flags, etc. without a second query.
+records.get('/persons/:id', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = c.req.param('id');
+    const person = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM persons WHERE id = ?', id);
+    if (!person) return c.json({ error: 'Person not found' }, 404);
+    return c.json(person);
+  } catch (err) {
+    console.error('GET /records/persons/:id failed:', err);
+    return c.json({ error: 'Failed to get person', detail: (err as Error)?.message }, 500);
+  }
+});
+
+// PUT /records/persons/:id — update a person. Accepts the same fields as
+// POST /persons. Returns the updated row on success.
+records.put('/persons/:id', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = c.req.param('id');
+    const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM persons WHERE id = ?', id);
+    if (!existing) return c.json({ error: 'Person not found' }, 404);
+
+    const body = await c.req.json<Record<string, unknown>>();
+    const cols: string[] = [];
+    const params: unknown[] = [];
+
+    const writable = new Set([
+      'first_name', 'last_name', 'dob', 'gender', 'race', 'height', 'weight',
+      'hair_color', 'eye_color', 'scars_marks_tattoos', 'address', 'phone',
+      'email', 'photo_url', 'flags', 'notes',
+    ]);
+
+    for (const [key, val] of Object.entries(body)) {
+      if (writable.has(key)) {
+        cols.push(`${key} = ?`);
+        params.push(val ?? null);
+      }
+    }
+
+    if (cols.length === 0) return c.json({ message: 'No changes' });
+
+    const result = await execute(db, `UPDATE persons SET ${cols.join(', ')} WHERE id = ?`, ...params, id);
+    const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM persons WHERE id = ?', id);
+    return c.json(updated);
+  } catch (err) {
+    console.error('PUT /records/persons/:id failed:', err);
+    return c.json({ error: 'Failed to update person', detail: (err as Error)?.message }, 500);
+  }
+});
+
+// DELETE /records/persons/:id — hard-delete a person.
+// The client also supports archiving (POST /.../archive) as a softer
+// alternative; this path is the explicit "delete" button in the UI.
+records.delete('/persons/:id', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = c.req.param('id');
+    const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM persons WHERE id = ?', id);
+    if (!existing) return c.json({ error: 'Person not found' }, 404);
+    await execute(db, 'DELETE FROM persons WHERE id = ?', id);
+    return c.json({ success: true });
+  } catch (err) {
+    console.error('DELETE /records/persons/:id failed:', err);
+    return c.json({ error: 'Failed to delete person', detail: (err as Error)?.message }, 500);
+  }
+});
+
+// POST /records/persons/:id/archive — soft-delete by marking the person's
+// flags JSON with an archived entry. The persons table has no dedicated
+// archived_at column (near the D1 100-col cap), so we overload the existing
+// flags TEXT field (a JSON array) by appending {"type":"archived"}.
+// The search handler /persons/search does NOT filter by default — archived
+// persons still appear in search results but the client's list view
+// filters them client-side via showArchived state.
+records.post('/persons/:id/archive', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = c.req.param('id');
+    const person = await queryFirst<{ id: number; flags: string }>(db, 'SELECT id, flags FROM persons WHERE id = ?', id);
+    if (!person) return c.json({ error: 'Person not found' }, 404);
+
+    const flags = (() => {
+      try { const p = JSON.parse(person.flags || '[]'); return Array.isArray(p) ? p : []; } catch { return []; }
+    })();
+    const isArchived = flags.some((f: any) => typeof f === 'object' && f.type === 'archived');
+    if (isArchived) return c.json({ message: 'Already archived' });
+
+    flags.push({ type: 'archived', at: new Date().toISOString() });
+    await execute(db, 'UPDATE persons SET flags = ? WHERE id = ?', JSON.stringify(flags), id);
+    return c.json({ success: true, archived: true });
+  } catch (err) {
+    console.error('POST /records/persons/:id/archive failed:', err);
+    return c.json({ error: 'Failed to archive person', detail: (err as Error)?.message }, 500);
+  }
+});
+
+// POST /records/persons/:id/unarchive — reverse the archive flag.
+records.post('/persons/:id/unarchive', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = c.req.param('id');
+    const person = await queryFirst<{ id: number; flags: string }>(db, 'SELECT id, flags FROM persons WHERE id = ?', id);
+    if (!person) return c.json({ error: 'Person not found' }, 404);
+
+    const flags = (() => {
+      try { const p = JSON.parse(person.flags || '[]'); return Array.isArray(p) ? p : []; } catch { return []; }
+    })();
+    const filtered = flags.filter((f: any) => !(typeof f === 'object' && f.type === 'archived'));
+    if (filtered.length === flags.length) return c.json({ message: 'Not archived' });
+
+    await execute(db, 'UPDATE persons SET flags = ? WHERE id = ?', JSON.stringify(filtered), id);
+    return c.json({ success: true, archived: false });
+  } catch (err) {
+    console.error('POST /records/persons/:id/unarchive failed:', err);
+    return c.json({ error: 'Failed to unarchive person', detail: (err as Error)?.message }, 500);
+  }
+});
+
+// ── Persons sub-resource endpoints ──
+
+// GET /records/persons/:id/system-history — warrants, incidents, calls, citations for a person.
+records.get('/persons/:id/system-history', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = c.req.param('id');
+    const [warrants, incidents, calls, citations] = await Promise.all([
+      query<Record<string, unknown>>(db, `SELECT id, warrant_number, type, charge AS description, status, bond_amount, jurisdiction, issuing_agency, issued_at, expires_at FROM warrants WHERE person_id = ? ORDER BY created_at DESC LIMIT 50`, id),
+      query<Record<string, unknown>>(db, 'SELECT i.id, i.incident_number, i.incident_type, i.status, i.created_at, i.location_address FROM incidents i JOIN incident_persons ip ON i.id = ip.incident_id WHERE ip.person_id = ? ORDER BY i.created_at DESC LIMIT 50', id),
+      query<Record<string, unknown>>(db, 'SELECT c.id, c.call_number, c.incident_type, c.status, c.created_at, c.location_address FROM calls_for_service c JOIN call_persons cp ON c.id = cp.call_id WHERE cp.person_id = ? ORDER BY c.created_at DESC LIMIT 50', id),
+      query<Record<string, unknown>>(db, 'SELECT id, citation_number, type, violation_description, status, fine_amount, violation_date, court_date FROM citations WHERE person_id = ? ORDER BY created_at DESC LIMIT 50', id),
+    ]);
+    const activeWarrants = warrants.filter((w: any) => w.status === 'active');
+    const activeCitations = citations.filter((c: any) => c.status === 'issued' || c.status === 'contested');
+    const boloActive = false;
+    return c.json({
+      warrants,
+      incidents,
+      calls,
+      citations,
+      bolo_active: boloActive,
+      summary: {
+        total_warrants: warrants.length,
+        active_warrants: activeWarrants.length,
+        total_incidents: incidents.length,
+        total_calls: calls.length,
+        total_citations: citations.length,
+        active_citations: activeCitations.length,
+      },
+    });
+  } catch (err) {
+    console.error('GET /records/persons/:id/system-history failed:', err);
+    return c.json({ warrants: [], incidents: [], calls: [], citations: [], bolo_active: false, summary: { total_warrants: 0, active_warrants: 0, total_incidents: 0, total_calls: 0, total_citations: 0, active_citations: 0 } });
+  }
+});
+
+// GET /records/persons/:id/criminal-history
+records.get('/persons/:id/criminal-history', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = c.req.param('id');
+    const rows = await query<Record<string, unknown>>(db, 'SELECT * FROM criminal_history WHERE person_id = ? ORDER BY created_at DESC LIMIT 200', id);
+    return c.json(rows);
+  } catch (err) { return c.json([]); }
+});
+
+// POST /records/persons/:id/criminal-history
+records.post('/persons/:id/criminal-history', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = c.req.param('id');
+    const body = await c.req.json<Record<string, unknown>>();
+    const user = c.get('user') as { id: number } | undefined;
+    if (!body.offense) return c.json({ error: 'offense required' }, 400);
+    const result = await execute(db,
+      `INSERT INTO criminal_history (person_id, record_type, offense, offense_level, statute, case_number, agency, jurisdiction, offense_date, disposition, disposition_date, sentence, source, notes, created_by, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+      id, body.record_type || 'arrest', body.offense, body.offense_level || null,
+      body.statute || null, body.case_number || null, body.agency || null,
+      body.jurisdiction || null, body.offense_date || null, body.disposition || null,
+      body.disposition_date || null, body.sentence || null, body.source || null,
+      body.notes || null, user?.id ?? null);
+    const created = await queryFirst(db, 'SELECT * FROM criminal_history WHERE id = ?', Number(result.meta.last_row_id));
+    return c.json(created, 201);
+  } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+});
+
+// GET /records/persons/:id/incidents — incidents involving this person.
+records.get('/persons/:id/incidents', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = c.req.param('id');
+    const rows = await query<Record<string, unknown>>(db, 'SELECT i.id, i.incident_number, i.incident_type, i.status, i.created_at, i.location_address FROM incidents i JOIN incident_persons ip ON i.id = ip.incident_id WHERE ip.person_id = ? ORDER BY i.created_at DESC LIMIT 200', id);
+    return c.json(rows);
+  } catch (err) { return c.json([]); }
+});
+
+// GET /records/persons/:id/clients — client relationships for this person.
+records.get('/persons/:id/clients', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = c.req.param('id');
+    const rows = await query<Record<string, unknown>>(db, 'SELECT cpl.*, cl.name as client_name FROM client_person_links cpl LEFT JOIN clients cl ON cpl.client_id = cl.id WHERE cpl.person_id = ? ORDER BY cpl.created_at DESC LIMIT 100', id);
+    return c.json(rows);
+  } catch (err) { return c.json([]); }
+});
+
 // POST /records/vehicles
 records.post('/vehicles', async (c) => {
   try {
@@ -89,6 +385,346 @@ records.get('/vehicles/search', async (c) => {
     `, `%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`);
     return c.json(rows);
   } catch (err) { return c.json({ error: 'Failed' }, 500); }
+});
+
+// GET /records/vehicles/:id — fetch a single vehicle by ID.
+records.get('/vehicles/:id', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = c.req.param('id');
+    const vehicle = await queryFirst<Record<string, unknown>>(db, 'SELECT v.*, p.first_name, p.last_name FROM vehicles_records v LEFT JOIN persons p ON v.owner_person_id = p.id WHERE v.id = ?', id);
+    if (!vehicle) return c.json({ error: 'Vehicle not found' }, 404);
+    return c.json(vehicle);
+  } catch (err) { return c.json({ error: 'Failed to get vehicle', detail: (err as Error)?.message }, 500); }
+});
+
+// PUT /records/vehicles/:id — update a vehicle.
+records.put('/vehicles/:id', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = c.req.param('id');
+    const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM vehicles_records WHERE id = ?', id);
+    if (!existing) return c.json({ error: 'Vehicle not found' }, 404);
+    const body = await c.req.json<Record<string, unknown>>();
+    const cols: string[] = [];
+    const params: unknown[] = [];
+    const writable = new Set(['plate_number', 'state', 'make', 'model', 'year', 'color', 'vin', 'owner_person_id', 'flags', 'notes']);
+    for (const [key, val] of Object.entries(body)) { if (writable.has(key)) { cols.push(`${key} = ?`); params.push(val ?? null); } }
+    if (cols.length === 0) return c.json({ message: 'No changes' });
+    await execute(db, `UPDATE vehicles_records SET ${cols.join(', ')} WHERE id = ?`, ...params, id);
+    const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT v.*, p.first_name, p.last_name FROM vehicles_records v LEFT JOIN persons p ON v.owner_person_id = p.id WHERE v.id = ?', id);
+    return c.json(updated);
+  } catch (err) { return c.json({ error: 'Failed to update vehicle', detail: (err as Error)?.message }, 500); }
+});
+
+// DELETE /records/vehicles/:id
+records.delete('/vehicles/:id', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = c.req.param('id');
+    const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM vehicles_records WHERE id = ?', id);
+    if (!existing) return c.json({ error: 'Vehicle not found' }, 404);
+    await execute(db, 'DELETE FROM vehicles_records WHERE id = ?', id);
+    return c.json({ success: true });
+  } catch (err) { return c.json({ error: 'Failed to delete vehicle', detail: (err as Error)?.message }, 500); }
+});
+
+// POST /records/vehicles/:id/archive — mark vehicle as archived in flags JSON.
+records.post('/vehicles/:id/archive', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = c.req.param('id');
+    const row = await queryFirst<{ id: number; flags: string }>(db, 'SELECT id, flags FROM vehicles_records WHERE id = ?', id);
+    if (!row) return c.json({ error: 'Vehicle not found' }, 404);
+    const flags = (() => { try { const p = JSON.parse(row.flags || '[]'); return Array.isArray(p) ? p : []; } catch { return []; } })();
+    if (flags.some((f: any) => typeof f === 'object' && f.type === 'archived')) return c.json({ message: 'Already archived' });
+    flags.push({ type: 'archived', at: new Date().toISOString() });
+    await execute(db, 'UPDATE vehicles_records SET flags = ? WHERE id = ?', JSON.stringify(flags), id);
+    return c.json({ success: true, archived: true });
+  } catch (err) { return c.json({ error: 'Failed to archive vehicle', detail: (err as Error)?.message }, 500); }
+});
+
+// POST /records/vehicles/:id/unarchive
+records.post('/vehicles/:id/unarchive', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = c.req.param('id');
+    const row = await queryFirst<{ id: number; flags: string }>(db, 'SELECT id, flags FROM vehicles_records WHERE id = ?', id);
+    if (!row) return c.json({ error: 'Vehicle not found' }, 404);
+    const flags = (() => { try { const p = JSON.parse(row.flags || '[]'); return Array.isArray(p) ? p : []; } catch { return []; } })();
+    const filtered = flags.filter((f: any) => !(typeof f === 'object' && f.type === 'archived'));
+    if (filtered.length === flags.length) return c.json({ message: 'Not archived' });
+    await execute(db, 'UPDATE vehicles_records SET flags = ? WHERE id = ?', JSON.stringify(filtered), id);
+    return c.json({ success: true, archived: false });
+  } catch (err) { return c.json({ error: 'Failed to unarchive vehicle', detail: (err as Error)?.message }, 500); }
+});
+
+// GET /records/vehicles/:id/incidents — incidents involving this vehicle.
+records.get('/vehicles/:id/incidents', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = c.req.param('id');
+    const rows = await query<Record<string, unknown>>(db, 'SELECT i.id, i.incident_number, i.incident_type, i.status, i.created_at FROM incidents i JOIN incident_vehicles iv ON i.id = iv.incident_id WHERE iv.vehicle_id = ? ORDER BY i.created_at DESC LIMIT 100', id);
+    return c.json(rows);
+  } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+});
+
+// GET /records/vehicles/:id/history — calls/field interviews this vehicle was involved in.
+records.get('/vehicles/:id/history', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = c.req.param('id');
+    const rows = await query<Record<string, unknown>>(db, `
+      SELECT 'call' as source, c.id, c.call_number, c.incident_type, c.status, c.created_at, c.location_address FROM calls_for_service c JOIN call_vehicles cv ON c.id = cv.call_id WHERE cv.vehicle_id = ?
+      UNION ALL
+      SELECT 'fi' as source, fi.id, NULL as call_number, fi.contact_reason as incident_type, fi.status, fi.created_at, fi.location FROM field_interviews fi JOIN fi_vehicles fv ON fi.id = fv.fi_id WHERE fv.vehicle_id = ?
+      ORDER BY created_at DESC LIMIT 100`,
+      id, id);
+    return c.json(rows);
+  } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+});
+
+// GET /records/vehicles/export
+records.get('/vehicles/export', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(db, 'SELECT v.*, p.first_name, p.last_name FROM vehicles_records v LEFT JOIN persons p ON v.owner_person_id = p.id ORDER BY v.plate_number LIMIT 50000');
+    const csv = ['plate_number,state,make,model,year,color,vin,owner_first_name,owner_last_name,notes', ...rows.map((r: any) => [r.plate_number, r.state, r.make, r.model, r.year, r.color, r.vin, r.first_name, r.last_name, r.notes].map((v: any) => `"${String(v ?? '').replace(/"/g, '""')}"`).join(','))].join('\n');
+    return c.newResponse(csv, 200, { 'Content-Type': 'text/csv', 'Content-Disposition': 'attachment; filename=vehicles_export.csv' });
+  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+});
+
+// GET /records/vehicles/plate-lookup — quick plate check.
+records.get('/vehicles/plate-lookup', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const plate = c.req.query('plate');
+    if (!plate || plate.length < 2) return c.json(null);
+    const row = await queryFirst<Record<string, unknown>>(db, 'SELECT v.*, p.first_name, p.last_name FROM vehicles_records v LEFT JOIN persons p ON v.owner_person_id = p.id WHERE v.plate_number = ? LIMIT 1', plate.toUpperCase());
+    return c.json(row || null);
+  } catch (err) { return c.json(null); }
+});
+
+// GET /records/vehicles/bolo-check — active BOLOs matching this vehicle.
+records.get('/vehicles/bolo-check', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const plate = c.req.query('plate');
+    if (!plate || plate.length < 2) return c.json({ matches: [], count: 0 });
+    const like = `%${plate.toUpperCase()}%`;
+    const rows = await query<Record<string, unknown>>(db,
+      "SELECT id, bolo_number, title, description, priority, created_at FROM bolos WHERE status = 'active' AND (UPPER(vehicle_description) LIKE ? OR UPPER(description) LIKE ?) ORDER BY priority ASC, created_at DESC LIMIT 10",
+      like, like);
+    return c.json({ matches: rows, count: rows.length });
+  } catch (err) { return c.json({ matches: [], count: 0 }); }
+});
+
+// POST /records/vehicles/stolen-check — placeholder for NCIC stolen vehicle check.
+records.post('/vehicles/stolen-check', async (c) => {
+  try {
+    const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
+    const plate = typeof body.plate === 'string' ? body.plate : null;
+    const vin = typeof body.vin === 'string' ? body.vin : null;
+    const state = typeof body.state === 'string' ? body.state : null;
+    return c.json({ checked: true, stolen: false, source: 'local', plate, vin, state });
+  } catch (err) { return c.json({ checked: true, stolen: false, source: 'local' }); }
+});
+
+// GET /records/vehicles/alerts/expired-registration — check registration expiry.
+records.get('/vehicles/alerts/expired-registration', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const plate = c.req.query('plate');
+    if (!plate || plate.length < 2) return c.json({ expired: false });
+    const row = await queryFirst<Record<string, unknown>>(db, "SELECT id, plate_number, vin FROM vehicles_records WHERE plate_number = ?", plate.toUpperCase());
+    return c.json({ expired: false, vehicle: row || null });
+  } catch (err) { return c.json({ expired: false }); }
+});
+
+// ── Businesses (stored in the properties table, filtered by business_type) ──
+
+// GET /records/businesses — list businesses (properties with business_type set).
+records.get('/businesses', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const q = c.req.query('archived');
+    const archived = q === 'true';
+    const rows = await query<Record<string, unknown>>(db, `SELECT * FROM properties WHERE business_type IS NOT NULL AND business_type != ''${archived ? " AND archived_at IS NOT NULL" : " AND archived_at IS NULL"} ORDER BY name LIMIT 500`);
+    return c.json(rows);
+  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+});
+
+// POST /records/businesses — create a business (property with business_type).
+records.post('/businesses', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const body = await c.req.json<Record<string, unknown>>();
+    if (!body.name || !body.business_type) return c.json({ error: 'name and business_type required' }, 400);
+    const result = await execute(db,
+      `INSERT INTO properties (client_id, name, address, business_type, latitude, longitude, phone, email, notes, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+      body.client_id || 1, body.name, body.address || '', body.business_type, body.latitude || null, body.longitude || null, body.phone || null, body.email || null, body.notes || null);
+    const created = await queryFirst(db, 'SELECT * FROM properties WHERE id = ?', Number(result.meta.last_row_id));
+    return c.json(created, 201);
+  } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+});
+
+// PUT /records/businesses/:id — update a business.
+records.put('/businesses/:id', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = c.req.param('id');
+    const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM properties WHERE id = ? AND business_type IS NOT NULL AND business_type != ?', id, '');
+    if (!existing) return c.json({ error: 'Business not found' }, 404);
+    const body = await c.req.json<Record<string, unknown>>();
+    const writable = new Set(['name', 'address', 'business_type', 'latitude', 'longitude', 'phone', 'email', 'notes', 'client_id', 'city', 'state', 'zip']);
+    const cols: string[] = []; const params: unknown[] = [];
+    for (const [key, val] of Object.entries(body)) { if (writable.has(key)) { cols.push(`${key} = ?`); params.push(val ?? null); } }
+    if (cols.length === 0) return c.json({ message: 'No changes' });
+    await execute(db, `UPDATE properties SET ${cols.join(', ')} WHERE id = ?`, ...params, id);
+    const updated = await queryFirst(db, 'SELECT * FROM properties WHERE id = ?', id);
+    return c.json(updated);
+  } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+});
+
+// ── Evidence ─────────────────────────────────────────────────
+
+// GET /records/evidence — list/search evidence.
+records.get('/evidence', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const q = c.req.query('q');
+    const status = c.req.query('status');
+    let sql = 'SELECT e.*, u.full_name as collected_by_name FROM evidence e LEFT JOIN users u ON e.collected_by = u.id WHERE 1=1';
+    const params: unknown[] = [];
+    if (q) { sql += ' AND (e.evidence_number LIKE ? OR e.description LIKE ?)'; const s = `%${q}%`; params.push(s, s); }
+    if (status) { sql += ' AND e.status = ?'; params.push(status); }
+    sql += ' ORDER BY e.created_at DESC LIMIT 500';
+    const rows = await query<Record<string, unknown>>(db, sql, ...params);
+    return c.json(rows);
+  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+});
+
+// GET /records/evidence/stats
+records.get('/evidence/stats', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const row = await queryFirst<Record<string, unknown>>(db, "SELECT COUNT(*) as total, SUM(CASE WHEN status = 'collected' THEN 1 ELSE 0 END) as collected, SUM(CASE WHEN status = 'stored' THEN 1 ELSE 0 END) as stored, SUM(CASE WHEN status IN ('transferred','destroyed','returned') THEN 1 ELSE 0 END) as closed FROM evidence");
+    return c.json(row || { total: 0, collected: 0, stored: 0, closed: 0 });
+  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+});
+
+// GET /records/evidence/locations
+records.get('/evidence/locations', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(db, "SELECT storage_location, COUNT(*) as count FROM evidence WHERE storage_location IS NOT NULL AND storage_location != '' GROUP BY storage_location ORDER BY count DESC");
+    return c.json(rows);
+  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+});
+
+// GET /records/evidence/aging-report
+records.get('/evidence/aging-report', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(db, "SELECT e.*, u.full_name as collected_by_name, julianday('now') - julianday(e.created_at) as age_days FROM evidence e LEFT JOIN users u ON e.collected_by = u.id WHERE e.status IN ('collected', 'stored') ORDER BY e.created_at ASC LIMIT 200");
+    return c.json(rows);
+  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+});
+
+// GET /records/evidence/export
+records.get('/evidence/export', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(db, 'SELECT e.*, u.full_name as collected_by_name FROM evidence e LEFT JOIN users u ON e.collected_by = u.id ORDER BY e.created_at DESC LIMIT 50000');
+    if (rows.length === 0) return c.json([]);
+    const keys = Object.keys(rows[0] as object);
+    const csv = [keys.join(','), ...rows.map((r: any) => keys.map((k: string) => `"${String(r[k] ?? '').replace(/"/g, '""')}"`).join(','))].join('\n');
+    return c.newResponse(csv, 200, { 'Content-Type': 'text/csv', 'Content-Disposition': 'attachment; filename=evidence_export.csv' });
+  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+});
+
+// GET /records/evidence/:id
+records.get('/evidence/:id', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = c.req.param('id');
+    const row = await queryFirst<Record<string, unknown>>(db, 'SELECT e.*, u.full_name as collected_by_name FROM evidence e LEFT JOIN users u ON e.collected_by = u.id WHERE e.id = ?', id);
+    if (!row) return c.json({ error: 'Evidence not found' }, 404);
+    return c.json(row);
+  } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+});
+
+// POST /records/evidence — create evidence.
+records.post('/evidence', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const body = await c.req.json<Record<string, unknown>>();
+    if (!body.type || !body.description) return c.json({ error: 'type and description required' }, 400);
+    const user = c.get('user') as { id: number } | undefined;
+    const collected_by = body.collected_by ?? user?.id ?? null;
+    const result = await execute(db,
+      'INSERT INTO evidence (evidence_number, incident_id, case_id, type, description, location_found, collected_by, storage_location, chain_of_custody, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime(\'now\'))',
+      body.evidence_number || `E${Date.now()}`, body.incident_id || null, body.case_id || null,
+      body.type, body.description, body.location_found || null, collected_by,
+      body.storage_location || null, body.chain_of_custody || '[]', body.status || 'collected');
+    const created = await queryFirst(db, 'SELECT e.*, u.full_name as collected_by_name FROM evidence e LEFT JOIN users u ON e.collected_by = u.id WHERE e.id = ?', Number(result.meta.last_row_id));
+    return c.json(created, 201);
+  } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+});
+
+// PUT /records/evidence/:id
+records.put('/evidence/:id', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = c.req.param('id');
+    const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM evidence WHERE id = ?', id);
+    if (!existing) return c.json({ error: 'Evidence not found' }, 404);
+    const body = await c.req.json<Record<string, unknown>>();
+    const writable = new Set(['evidence_number', 'incident_id', 'case_id', 'type', 'description', 'location_found', 'collected_by', 'storage_location', 'chain_of_custody', 'status']);
+    const cols: string[] = []; const params: unknown[] = [];
+    for (const [key, val] of Object.entries(body)) { if (writable.has(key)) { cols.push(`${key} = ?`); params.push(val ?? null); } }
+    if (cols.length === 0) return c.json({ message: 'No changes' });
+    await execute(db, `UPDATE evidence SET ${cols.join(', ')} WHERE id = ?`, ...params, id);
+    const updated = await queryFirst(db, 'SELECT e.*, u.full_name as collected_by_name FROM evidence e LEFT JOIN users u ON e.collected_by = u.id WHERE e.id = ?', id);
+    return c.json(updated);
+  } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+});
+
+// DELETE /records/evidence/:id
+records.delete('/evidence/:id', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = c.req.param('id');
+    const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM evidence WHERE id = ?', id);
+    if (!existing) return c.json({ error: 'Evidence not found' }, 404);
+    await execute(db, 'DELETE FROM evidence WHERE id = ?', id);
+    return c.json({ success: true });
+  } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+});
+
+// POST /records/evidence/:id/archive — not applicable (evidence uses status transitions).
+records.post('/evidence/:id/archive', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = c.req.param('id');
+    const existing = await queryFirst<{ id: number; status: string }>(db, "SELECT id, status FROM evidence WHERE id = ? AND status NOT IN ('destroyed', 'returned')", id);
+    if (!existing) return c.json({ error: 'Evidence not found or already finalized' }, 404);
+    await execute(db, "UPDATE evidence SET status = 'destroyed' WHERE id = ?", id);
+    return c.json({ success: true, archived: true, status: 'destroyed' });
+  } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+});
+
+// POST /records/evidence/:id/unarchive
+records.post('/evidence/:id/unarchive', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = c.req.param('id');
+    const existing = await queryFirst<{ id: number; status: string }>(db, "SELECT id, status FROM evidence WHERE id = ? AND status = 'destroyed'", id);
+    if (!existing) return c.json({ error: 'Evidence not found or not archived' }, 404);
+    await execute(db, "UPDATE evidence SET status = 'stored' WHERE id = ?", id);
+    return c.json({ success: true, archived: false, status: 'stored' });
+  } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
 });
 
 // GET /records/ncic-query?type=person|vehicle|warrant|phone|address&query=...
@@ -387,11 +1023,13 @@ interface RecordLinkRow {
 // either source OR target. Each row is enriched with the *other* side
 // (linked_type / linked_id / linked_label) so the panel renders without
 // a second round-trip.
+// Accepts both `type`/`id` and `source_type`/`source_id` param naming
+// conventions (the client's PrintRecordButton uses the latter).
 records.get('/links', async (c) => {
   try {
     const db = getDb(c.env);
-    const type = c.req.query('type');
-    const id = c.req.query('id');
+    const type = c.req.query('type') || c.req.query('source_type');
+    const id = c.req.query('id') || c.req.query('source_id');
     if (!type || !id) {
       return c.json({ error: 'type and id query parameters are required' }, 400);
     }

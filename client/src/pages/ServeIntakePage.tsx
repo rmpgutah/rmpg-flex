@@ -89,12 +89,12 @@ const DOCUMENT_TYPES = [
   { value: 'field_sheet', label: 'Field Sheet', color: 'bg-amber-900/40 text-amber-400 border-amber-700/40' },
   { value: 'info_page', label: 'Information Page', color: 'bg-green-900/40 text-green-400 border-green-700/40' },
   { value: 'affidavit', label: 'Affidavit of Service', color: 'bg-purple-900/40 text-purple-400 border-purple-700/40' },
-  { value: 'summons', label: 'Summons', color: 'bg-blue-900/40 text-blue-400 border-blue-700/40' },
+  { value: 'summons', label: 'Summons', color: 'bg-rmpg-900/40 text-rmpg-400 border-rmpg-700/40' },
   { value: 'complaint', label: 'Complaint', color: 'bg-orange-900/40 text-orange-400 border-orange-700/40' },
   { value: 'subpoena', label: 'Subpoena', color: 'bg-pink-900/40 text-pink-400 border-pink-700/40' },
   { value: 'eviction', label: 'Eviction/UD', color: 'bg-yellow-900/40 text-yellow-400 border-yellow-700/40' },
   { value: 'restraining_order', label: 'Restraining Order', color: 'bg-rose-900/40 text-rose-400 border-rose-700/40' },
-  { value: 'identification', label: 'ID/Passport', color: 'bg-cyan-900/40 text-cyan-400 border-cyan-700/40' },
+  { value: 'identification', label: 'ID/Passport', color: 'bg-rmpg-900/40 text-rmpg-400 border-rmpg-700/40' },
   { value: 'correspondence', label: 'Correspondence', color: 'bg-slate-900/40 text-slate-400 border-slate-700/40' },
   { value: 'other', label: 'Other', color: 'bg-neutral-900/40 text-neutral-400 border-neutral-700/40' },
 ];
@@ -194,7 +194,7 @@ export default function ServeIntakePage() {
       if (resp.ok) {
         return await resp.json();
       }
-    } catch { }
+    } catch (err) { console.warn("[ServeIntakePage] operation failed:", err); }
     return null;
   }, []);
 
@@ -403,14 +403,14 @@ export default function ServeIntakePage() {
           {files.map((f, i) => (
             <div key={i} className="flex items-center gap-2 px-3 py-2 panel-beveled bg-surface-raised text-xs">
               {f.derivedFrom ? (
-                <Camera className="w-4 h-4 text-cyan-400 flex-shrink-0" />
+                <Camera className="w-4 h-4 text-rmpg-400 flex-shrink-0" />
               ) : (
                 <FileText className="w-4 h-4 text-rmpg-400 flex-shrink-0" />
               )}
               <span className="text-white font-medium truncate flex-1">{f.name}</span>
               {f.derivedFrom && (
                 <span
-                  className="text-[8px] font-bold uppercase px-1 py-0.5 rounded-sm border bg-cyan-900/40 text-cyan-300 border-cyan-700/40 whitespace-nowrap"
+                  className="text-[8px] font-bold uppercase px-1 py-0.5 rounded-sm border bg-rmpg-900/40 text-rmpg-300 border-rmpg-700/40 whitespace-nowrap"
                   title={`Rasterized page from scanned PDF "${f.derivedFrom}" — read by Vision OCR on submit`}
                 >
                   Scan OCR

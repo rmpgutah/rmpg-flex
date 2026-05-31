@@ -17,6 +17,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
+import { geocodeAddress } from './geocode';
 
 const fi = new Hono<Env>();
 
@@ -343,6 +344,20 @@ fi.post('/', async (c) => {
       }
     }
 
+    // Backfill geocoded coordinates when a location/address is provided
+    // but latitude/longitude are not. Geocoded coords let field interviews
+    // plot on the Map UI and feed proximity-based queries.
+    if (body.latitude === undefined && body.longitude === undefined) {
+      const rawLocation = body.location ?? body.location_address ?? '';
+      if (typeof rawLocation === 'string' && rawLocation.trim().length >= 3) {
+        const coords = await geocodeAddress(c.env, rawLocation).catch(() => null);
+        if (coords) {
+          cols.push('latitude', 'longitude');
+          vals.push(coords.lat, coords.lng);
+        }
+      }
+    }
+
     const result = await execute(
       db,
       `INSERT INTO field_interviews (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`,
@@ -399,6 +414,18 @@ fi.put('/:id', async (c) => {
         setClauses.push(`${dbCol} = ?`);
         vals.push(body[bodyKey] ?? null);
         seen.add(dbCol);
+      }
+    }
+
+    // Backfill geocode when location changes but coords are not sent
+    if (body.latitude === undefined && body.longitude === undefined) {
+      const rawLocation = body.location ?? body.location_address ?? '';
+      if (typeof rawLocation === 'string' && rawLocation.trim().length >= 3) {
+        const coords = await geocodeAddress(c.env, rawLocation).catch(() => null);
+        if (coords) {
+          setClauses.push('latitude = ?', 'longitude = ?');
+          vals.push(coords.lat, coords.lng);
+        }
       }
     }
     if (setClauses.length === 0) return c.json({ error: 'No fields to update', code: 'NO_FIELDS' }, 400);
