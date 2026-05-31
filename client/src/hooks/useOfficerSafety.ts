@@ -64,7 +64,7 @@ export function useWelfareCheck() {
       // Auto-escalate if threshold exceeded
       setState(prev => {
         if (prev.escalated && config.escalateAfterMissed) {
-          apiFetch('/dispatch/welfare/escalate', { method: 'POST', body: { unitId: prev.unitId, callId: prev.callId } }).catch(() => {});
+          apiFetch('/dispatch/welfare/escalate', { method: 'POST', body: JSON.stringify({ unitId: prev.unitId, callId: prev.callId }) }).catch(() => {});
         }
         return prev;
       });

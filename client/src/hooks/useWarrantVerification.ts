@@ -37,7 +37,7 @@ export function useWarrantVerification() {
     try {
       const result = await apiFetch<WarrantVerification>(`/warrants/${warrantId}/verify`, {
         method: 'POST',
-        body: { confirmationMethod: method },
+        body: JSON.stringify({ confirmationMethod: method }),
       });
       if (result) {
         setVerifications(prev => new Map(prev).set(warrantId, result));
@@ -79,7 +79,7 @@ export function useWarrantHitTracking() {
     try {
       const result = await apiFetch<WarrantHit>('/warrants/hits', {
         method: 'POST',
-        body: { warrantId, subjectName, hitSource, charges, issuingAgency, extraditable },
+        body: JSON.stringify({ warrantId, subjectName, hitSource, charges, issuingAgency, extraditable }),
       });
       if (result) setHits(prev => [...prev, result]);
       return result;
@@ -116,7 +116,7 @@ export function useWarrantServiceLogging(warrantId: string) {
     try {
       const result = await apiFetch<ServiceAttempt>(`/warrants/${warrantId}/attempts`, {
         method: 'POST',
-        body: { method, outcome, location, notes, followUpNeeded },
+        body: JSON.stringify({ method, outcome, location, notes, followUpNeeded }),
       });
       if (result) setAttempts(prev => [...prev, result]);
       return result;
@@ -154,7 +154,7 @@ export function useWarrantRecall() {
     try {
       const result = await apiFetch<WarrantRecall>(`/warrants/${warrantId}/recall`, {
         method: 'POST',
-        body: { reason, reasonDetail: detail },
+        body: JSON.stringify({ reason, reasonDetail: detail }),
       });
       return result;
     } catch { return null; }
@@ -200,7 +200,7 @@ export function useBondTracking() {
     try {
       const result = await apiFetch<BondTracking>(`/warrants/${warrantId}/bond`, {
         method: 'PUT',
-        body: updates,
+        body: JSON.stringify(updates),
       });
       if (result) setBonds(prev => [...prev.filter(b => b.warrantId !== warrantId), result]);
       return result;
@@ -273,7 +273,7 @@ export function useMultiJurisdictionWarrantCheck() {
     try {
       const result = await apiFetch<MultiJurisdictionResult[]>('/warrants/multi-jurisdiction', {
         method: 'POST',
-        body: { firstName, lastName, dob, jurisdictions },
+        body: JSON.stringify({ firstName, lastName, dob, jurisdictions }),
       });
       if (result) setResults(result);
       return result;

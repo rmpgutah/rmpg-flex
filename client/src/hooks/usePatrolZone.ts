@@ -214,7 +214,7 @@ export function useDirectedPatrol() {
 
   const assign = useCallback(async (patrolId: string, officerId: string) => {
     const result = await apiFetch<DirectedPatrol>(`/dispatch/geography/directed-patrols/${patrolId}/assign`, {
-      method: 'POST', body: { officerId },
+      method: 'POST', body: JSON.stringify({ officerId }),
     });
     if (result) setPatrols(prev => prev.map(p => p.id === patrolId ? result : p));
     return result;
