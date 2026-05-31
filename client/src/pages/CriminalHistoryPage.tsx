@@ -62,8 +62,17 @@ export default function CriminalHistoryPage() {
     setFetchError('');
     try {
       const params = new URLSearchParams({ [searchType]: searchQuery.trim() });
-      const data = await apiFetch<any[]>(`/records/persons?${params}`);
-      setPersons(data || []);
+      const data = await apiFetch<any>(`/records/persons?${params}`);
+      // `/records/persons` has no rewrite handler and falls through to legacy,
+      // which may return a bare array OR an envelope ({ data | results | persons: [...] }).
+      // Normalize to an array so `persons.map` can never throw "D.map is not a function".
+      const list = Array.isArray(data)
+        ? data
+        : Array.isArray(data?.data) ? data.data
+        : Array.isArray(data?.results) ? data.results
+        : Array.isArray(data?.persons) ? data.persons
+        : [];
+      setPersons(list);
       setSelectedPerson(null);
       setHistory([]);
     } catch (err: any) {
@@ -253,7 +262,7 @@ export default function CriminalHistoryPage() {
               </div>
             </div>
           )}
-          {persons.map(p => (
+          {(Array.isArray(persons) ? persons : []).map(p => (
             <button type="button"
               key={p.id}
               onClick={() => selectPerson(p)}
