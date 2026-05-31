@@ -72,3 +72,6 @@ CLAUDE-private.md
 
 # Generated Dispatch Guide PDF (jsPDF doc.save under vitest/jsdom dirties the tree)
 client/RMPG-Dispatch-Guide-*.pdf
+# Dispatch-guide screenshot working dirs (sources for dispatchGuideShots.ts)
+client/.guide-shots/
+.shots/

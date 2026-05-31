@@ -55,7 +55,12 @@ export function useMapEnforcementClusters(
       })
       .catch((err) => {
         if (!cancelled) {
-          console.warn('[useMapEnforcementClusters] Enforcement data fetch failed:', err);
+          // /api/dispatch/heatmap/enforcement is not yet implemented in the
+          // current deployment (404). This is an OPTIONAL overlay — degrade
+          // to an empty layer quietly (debug, not warn) so it doesn't spam the
+          // console on every map load. Promote back to warn once the endpoint
+          // lands server-side.
+          console.debug('[useMapEnforcementClusters] enforcement overlay unavailable:', err?.message || err);
           setClusters([]);
           setLoading(false);
         }

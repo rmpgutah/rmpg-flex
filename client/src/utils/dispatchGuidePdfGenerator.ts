@@ -14,6 +14,7 @@
 
 import jsPDF from 'jspdf';
 import { applyPrintTarget, type PrintTarget } from './pdfTokens';
+import { SHOTS, type GuideShot } from './dispatchGuideShots';
 
 /** Brother PJ-700/800 6mm leading-edge dead zone, expressed in points
  *  (this generator works in pt, not mm). 6mm × 72/25.4 ≈ 17pt. */
@@ -367,6 +368,53 @@ function dFrame(
   d.setDrawColor(COLOR.ACCENT);
   d.setLineWidth(1);
   d.rect(x, y, w, h, 'FD');
+}
+
+/**
+ * Embed a REAL system screenshot as a framed, captioned figure — the
+ * authentic-imagery replacement for the hand-drawn UI-mockup diagrams.
+ * The capture is letterboxed to the content width inside a gold-bordered
+ * frame (matching dFrame) with a "FIG. — caption" line below (matching
+ * dCaption), and is page-break aware via ensureSpace.
+ *
+ * Graceful degradation is the whole point: if the screenshot asset is
+ * absent (not yet captured, or stripped from a build), `fallback` runs
+ * instead — for the four replaced diagrams that's the original vector
+ * drawing, so the guide NEVER renders a blank hole. Pass `shot` by slug;
+ * resolution against the SHOTS map happens here so call sites stay terse.
+ */
+function addFigure(
+  ctx: GuideContext,
+  shotKey: string,
+  caption: string,
+  opts: { maxW?: number; fallback?: (ctx: GuideContext) => void } = {},
+): void {
+  const shot: GuideShot | undefined = SHOTS[shotKey];
+  if (!shot || !shot.data) {
+    if (opts.fallback) opts.fallback(ctx);
+    return;
+  }
+  const d = ctx.doc;
+  const pad = 6;
+  const frameW = opts.maxW ?? (PAGE.W - PAGE.MARGIN * 2);
+  const imgW = frameW - pad * 2;
+  const imgH = imgW * shot.aspect;
+  const frameH = imgH + pad * 2;
+  const capGap = 6;
+  const capH = 16;
+  // A tall capture that can't share a page starts a fresh one. The frame
+  // height is capped so an unexpectedly tall asset never exceeds the page.
+  ensureSpace(ctx, frameH + capGap + capH);
+  const x = PAGE.MARGIN;
+  const y = ctx.y;
+  d.setFillColor('#0a0a0a');
+  d.setDrawColor(COLOR.ACCENT);
+  d.setLineWidth(1);
+  d.rect(x, y, frameW, frameH, 'FD');
+  // 'FAST' compression keeps the embedded JPEG bytes as-is (no re-encode).
+  d.addImage(shot.data, shot.format, x + pad, y + pad, imgW, imgH, undefined, 'FAST');
+  ctx.y = y + frameH + capGap;
+  dCaption(ctx, caption);
 }
 
 // ─── Content blocks ─────────────────────────────────────────
@@ -1013,7 +1061,7 @@ function section5(ctx: GuideContext): void {
     'Memorizing the F-key row is the single highest-value training investment you can make. A dispatcher who knows F2-F7 by muscle memory will triage calls noticeably faster than one who hunts through menus. Print the quick-reference card at the end of this guide and tape it to the side of your monitor until the keys become automatic.',
   );
 
-  drawFKeyboardDiagram(ctx);
+  addFigure(ctx, 'fkeys', 'FIG. 5-1 — The live console icon toolbar. Each tool is labeled with its F-key (F1 Dashboard ... F11 Overwatch); the same bindings work from any screen.', { fallback: drawFKeyboardDiagram });
 
   h2(ctx, 'Primary F-Keys');
   table(ctx,
@@ -1104,7 +1152,7 @@ function section6(ctx: GuideContext): void {
     'Commands are case-insensitive — "nc domestic 123 main" works identically to "NC DOMESTIC 123 MAIN". Arguments are space-separated; quote values that contain spaces ("NC \\"open container\\" 123 main"). Press Tab to cycle autocomplete suggestions, Up/Down arrows to recall recent commands.',
   );
 
-  drawCommandLineAnatomyDiagram(ctx);
+  addFigure(ctx, 'commandLine', 'FIG. 6-1 — The CAD command line on the live dispatch console, with a verb-subject-argument command entered.', { fallback: drawCommandLineAnatomyDiagram });
 
   h2(ctx, 'Call Management Commands');
   table(ctx,
@@ -1797,6 +1845,11 @@ function section12(ctx: GuideContext): void {
   paragraph(ctx,
     'The map is the spatial complement to the call list and unit roster. During a pursuit, tactical operation, or area search, the map becomes your primary situational-awareness surface.',
   );
+
+  // Real capture of the live map with the beat-polygon + heat layers on. The
+  // conceptual layer-stack diagram below complements it by showing the z-order
+  // the screenshot can't convey.
+  addFigure(ctx, 'map', 'FIG. 12-1 — The live map: unit D19, beat-polygon overlay, and the 30-day incident heat layer over the Salt Lake valley.');
 
   drawMapLayerStackDiagram(ctx);
 
@@ -3423,7 +3476,7 @@ function section20(ctx: GuideContext): void {
     'This section walks the console from top to bottom, region by region, so you know the name and purpose of every element a supervisor or trainer might point at. The numbered regions in the figure below correspond to the eight subsections that follow. Nothing here is operational — this is orientation.',
   );
 
-  drawConsoleAnatomyDiagram(ctx);
+  addFigure(ctx, 'console', 'FIG. 20-1 — The live RMPG Flex dispatch console. Regions: (1) brand bar, (2) menu bar, (3) F-key toolbar, (4) active-call stack, (5) live map, (6) unit roster, (7) command line, (8) status bar.', { fallback: drawConsoleAnatomyDiagram });
 
   h2(ctx, 'Region 1 — Brand Bar');
   paragraph(ctx,
@@ -3488,7 +3541,7 @@ function section21(ctx: GuideContext): void {
     'This section walks a complete, realistic call from the moment the phone rings to the moment everyone clears. Every keystroke, every radio exchange, every console state change is shown. Read it once to build a mental model of "what a whole call looks like," then use it as a benchmark when you run your own calls.',
   );
 
-  drawCallTimelineDiagram(ctx);
+  addFigure(ctx, 'callTimeline', 'FIG. 21-1 — A real Call-for-Service record: the dispatch timeline + activity log for a worked call.', { fallback: drawCallTimelineDiagram });
 
   h2(ctx, 'The Scenario');
   paragraph(ctx,
@@ -4591,7 +4644,13 @@ function buildSectionSpecs(): SectionSpec[] {
  * Filename includes today's date so dispatchers can see at a glance which
  * version they have on the console.
  */
-export async function generateDispatchGuidePdf(options: DispatchGuidePdfOptions = {}): Promise<void> {
+/**
+ * Build the guide and return the jsPDF instance WITHOUT triggering a download.
+ * Split out from generateDispatchGuidePdf so the document can be rendered
+ * headlessly (tests, CI artifact generation) via doc.output(...) — the save()
+ * path only works in a real browser. The public entry point below wraps this.
+ */
+export async function buildDispatchGuideDoc(options: DispatchGuidePdfOptions = {}): Promise<jsPDF> {
   const liveCodes = await fetchLiveCodes();
 
   const doc = new jsPDF({ format: 'letter', unit: 'pt' });
@@ -4644,6 +4703,11 @@ export async function generateDispatchGuidePdf(options: DispatchGuidePdfOptions 
     pageFooter({ ...ctx, y: 0, page: p }, total);
   }
 
+  return doc;
+}
+
+export async function generateDispatchGuidePdf(options: DispatchGuidePdfOptions = {}): Promise<void> {
+  const doc = await buildDispatchGuideDoc(options);
   const stamp = new Date().toISOString().slice(0, 10);
   const targetSuffix = options.printTarget === 'mobile' ? '_mobile' : '';
   doc.save(`RMPG-Dispatch-Guide-${stamp}${targetSuffix}.pdf`);
