@@ -1,0 +1,25 @@
+// ============================================================
+// RMPG Flex — Digital Forensics (Spillman Flex Standard)
+// 10 digital forensic features
+// ============================================================
+
+/* 1: Device Imaging */ export interface ForensicImage { id:string; caseNumber:string; deviceType:string; make:string; model:string; serialNumber:string; storageCapacity:number; imageType:'dd'|'e01'|'aff4'; hashAlgorithm:string; hashValue:string; createdBy:string; createdAt:string; }
+export function verifyImageIntegrity(image:ForensicImage, expectedHash:string): {verified:boolean;tampered:boolean} { return{verified:image.hashValue===expectedHash,tampered:image.hashValue!==expectedHash}; }
+/* 2: Timeline Analysis */ export interface DigitalTimeline { deviceId:string; events:Array<{timestamp:string;eventType:string;source:string;description:string;artifact:string}>; }
+export function buildTimeline(events:Array<{ts:string;type:string;src:string;desc:string;artifact:string}>): DigitalTimeline { return{deviceId:'',events:events.sort((a,b)=>new Date(a.ts).getTime()-new Date(b.ts).getTime())}; }
+/* 3: File Carving */ export interface CarvedFile { id:string; imageId:string; fileName:string; fileType:string; offset:number; size:number; hashValue:string; recovered:boolean; }
+export function trackCarvedFiles(files:CarvedFile[]): {total:number;recovered:number;byType:Record<string,number>} { const bt:Record<string,number>={};for(const f of files)bt[f.fileType]=(bt[f.fileType]||0)+1; return{total:files.length,recovered:files.filter(f=>f.recovered).length,byType:bt}; }
+/* 4: Hash Set Comparison */ export interface HashComparison { hashValue:string; knownFile:string|null; category:'known_good'|'known_bad'|'notable'|'unknown'; sourceHashSet:string; }
+export function classifyFileHash(hash:string,knownGoods:string[],knownBads:string[]): {category:string;matched:boolean} { if(knownBads.includes(hash))return{category:'known_bad',matched:true}; if(knownGoods.includes(hash))return{category:'known_good',matched:true}; return{category:'unknown',matched:false}; }
+/* 5: Metadata Extraction */ export interface FileMetadata { fileName:string; fileSize:number; createdDate:string; modifiedDate:string; accessedDate:string; author:string|null; gpsLat:number|null; gpsLng:number|null; cameraModel:string|null; }
+export function extractMetadata(file:FileMetadata): {hasLocation:boolean;timelineRelevant:boolean;exifData:Record<string,any>} { return{hasLocation:!!(file.gpsLat&&file.gpsLng),timelineRelevant:!!file.createdDate,exifData:{}}; }
+/* 6: Password Recovery */ export interface PasswordAttempt { hashId:string; hashType:string; attemptCount:number; found:boolean; password:string|null; durationHours:number; method:string; }
+export function estimateCrackTime(hashType:string,complexity:string): {estimatedHours:number;feasible:boolean} { return{estimatedHours:complexity==='simple'?1:complexity==='medium'?72:complexity==='complex'?8760:99999,feasible:complexity!=='complex'}; }
+/* 7: Cloud Extraction */ export interface CloudExtraction { caseNumber:string; provider:string; accountId:string; extractionType:'warrant'|'consent'|'exigent'; requestedDate:string; receivedDate:string|null; dataSize:number; }
+export function trackCloudWarrant(provider:string,caseNumber:string): CloudExtraction { return{caseNumber,provider,accountId:'',extractionType:'warrant',requestedDate:new Date().toISOString().slice(0,10),receivedDate:null,dataSize:0}; }
+/* 8: Mobile Forensics */ export interface MobileExtraction { deviceId:string; extractionType:'logical'|'filesystem'|'physical'; calls:number; messages:number; contacts:number; photos:number; locations:number; apps:number; }
+export function analyzeMobileExtraction(extract:MobileExtraction): {totalArtifacts:number;communicationVolume:number;hasLocationData:boolean} { return{totalArtifacts:extract.calls+extract.messages+extract.contacts+extract.photos+extract.locations+extract.apps,communicationVolume:extract.calls+extract.messages,hasLocationData:extract.locations>0}; }
+/* 9: Forensic Report */ export interface ForensicReport { caseNumber:string; examiner:string; date:string; devices:number; findings:string[]; artifacts:number; conclusions:string; }
+export function generateForensicReport(caseNumber:string,examiner:string,findings:string[]): ForensicReport { return{caseNumber,examiner,date:new Date().toISOString().slice(0,10),devices:0,findings,artifacts:0,conclusions:findings.join('; ')}; }
+/* 10: Lab Case Management */ export interface ForensicLabCase { id:string; caseNumber:string; submittedBy:string; submissionDate:string; priority:'routine'|'expedited'|'stat'; assignedExaminer:string|null; status:string; completionDate:string|null; }
+export function prioritizeLabCase(forensicCase:ForensicLabCase): {priorityScore:number;estimatedCompletion:string} { const score=forensicCase.priority==='stat'?10:forensicCase.priority==='expedited'?5:1; const days=forensicCase.priority==='stat'?3:forensicCase.priority==='expedited'?14:45; const d=new Date();d.setDate(d.getDate()+days); return{priorityScore:score,estimatedCompletion:d.toISOString().slice(0,10)}; }
