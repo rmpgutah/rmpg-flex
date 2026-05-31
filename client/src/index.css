@@ -56,6 +56,25 @@
   /* Panel bevel highlight + title bar gradient — theme-aware. */
   --bevel-highlight: #3a3a3a;
   --titlebar-gradient: linear-gradient(180deg, #0b0b0b 0%, #060606 50%, #0b0b0b 100%);
+  /* Spillman Flex window chrome — 3D button bevel colors for panel title bars */
+  --window-chrome-close: #ef4444;
+  --window-chrome-minimize: #d4a017;
+  --window-chrome-maximize: #22c55e;
+  --window-chrome-dim: #333333;
+  /* Toolbar nav — colors for the F-key navigation bar */
+  --toolbar-nav-bg: #050505;
+  --toolbar-nav-hover: #141414;
+  --toolbar-nav-active: #1a1a1a;
+  --toolbar-nav-text: #888888;
+  --toolbar-nav-text-hover: #e0e0e0;
+  --toolbar-nav-text-active: #d4a017;
+  --toolbar-nav-border: #222222;
+  /* Spillman Flex console grid — alternating row colors */
+  --grid-row-odd: transparent;
+  --grid-row-even: #0a0a0a;
+  --grid-row-selected: rgba(212, 160, 23, 0.12);
+  --grid-row-selected-border: #d4a017;
+  --grid-header-text: #d4a017;
 }
 
 /* --- Global Base Overrides --- */
@@ -874,8 +893,8 @@ body.fx-noise::after {
   }
 
   .table-dark thead th {
-    @apply px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider;
-    color: var(--text-secondary);
+    @apply px-2 py-[3px] text-[9px] font-bold uppercase tracking-wider;
+    color: #d4a017;
     border-right: 1px solid rgba(43, 49, 58, 0.6);
   }
 
@@ -897,9 +916,9 @@ body.fx-noise::after {
   }
 
   .table-dark tbody td {
-    @apply px-3 py-1.5;
+    @apply px-2 py-[2px];
     color: #d2d7dd;
-    font-size: 11px;
+    font-size: 10px;
   }
 
   /* Priority row highlighting */
@@ -1317,6 +1336,37 @@ body.fx-noise::after {
     filter: drop-shadow(0 0 3px rgba(212, 160, 23, 0.3));
   }
 
+  /* Spillman Flex window chrome buttons — minimize/maximize/close dots */
+  .window-chrome-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 12px;
+    height: 12px;
+    border: 1px solid transparent;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: filter 0.1s, border-color 0.1s;
+  }
+  .window-chrome-btn:hover {
+    filter: brightness(1.4);
+  }
+  .window-chrome-btn:active {
+    filter: brightness(0.8);
+  }
+  .window-chrome-close {
+    background: var(--window-chrome-close);
+    border-color: rgba(239, 68, 68, 0.6);
+  }
+  .window-chrome-minimize {
+    background: var(--window-chrome-minimize);
+    border-color: rgba(212, 160, 23, 0.6);
+  }
+  .window-chrome-maximize {
+    background: var(--window-chrome-maximize);
+    border-color: rgba(34, 197, 94, 0.6);
+  }
+
   /* --- Tab Bar (Spillman Flex Tabs) --- */
   .tab-bar {
     display: flex;
@@ -1356,6 +1406,56 @@ body.fx-noise::after {
     background: var(--surface-raised);
     border-color: #222222;
     border-bottom: 2px solid var(--surface-raised);
+  }
+
+  /* --- Spillman Flex Tabs (thick, uppercase, gold active) --- */
+  .spillman-tab-bar {
+    display: flex;
+    gap: 0;
+    background: var(--surface-base);
+    border-bottom: 1px solid #333333;
+    padding: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .spillman-tab {
+    padding: 5px 14px;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #666666;
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    transition: color 0.1s, background 0.1s, border-color 0.1s;
+    position: relative;
+    white-space: nowrap;
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+  }
+  .spillman-tab:hover {
+    color: #cccccc;
+    background: rgba(136, 136, 136, 0.06);
+  }
+  .spillman-tab.active {
+    color: #d4a017;
+    background: rgba(212, 160, 23, 0.06);
+    border-bottom-color: #d4a017;
+  }
+  .spillman-tab.active::after {
+    content: '';
+    position: absolute;
+    bottom: -1px;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: #d4a017;
+    box-shadow: 0 0 6px rgba(212, 160, 23, 0.4);
   }
 
   /* --- Toolbar Buttons (Spillman Flex) --- */
@@ -1458,6 +1558,111 @@ body.fx-noise::after {
     align-self: center;
   }
 
+  /* --- Toolbar Nav (F-key navigation bar) --- */
+  .toolbar-nav-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--toolbar-nav-text);
+    background: transparent;
+    border: 1px solid transparent;
+    border-bottom: 2px solid transparent;
+    cursor: pointer;
+    transition: background 0.1s, color 0.1s, border-color 0.1s;
+    white-space: nowrap;
+    flex-shrink: 0;
+    position: relative;
+  }
+  .toolbar-nav-btn:hover {
+    background: var(--toolbar-nav-hover);
+    color: var(--toolbar-nav-text-hover);
+  }
+  .toolbar-nav-btn.active {
+    background: var(--toolbar-nav-active);
+    color: var(--toolbar-nav-text-active);
+    border-bottom-color: #d4a017;
+  }
+  .toolbar-nav-btn.flex-col {
+    display: inline-flex;
+    flex-direction: column;
+    gap: 1px;
+    justify-content: center;
+  }
+  .toolbar-nav-btn .nav-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 14px;
+    height: 14px;
+    padding: 0 3px;
+    font-size: 8px;
+    font-weight: 700;
+    color: #ffffff;
+    background: #dc2626;
+    margin-left: 2px;
+  }
+  .toolbar-nav-btn .nav-fkey {
+    font-size: 7px;
+    color: #555555;
+    font-weight: 400;
+    margin-left: 1px;
+  }
+
+  /* --- Spillman Flex Console Grid (condensed data table) --- */
+  .spillman-grid {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+  }
+  .spillman-grid thead th {
+    background: var(--grid-header-bg);
+    color: var(--grid-header-text);
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding: 4px 8px;
+    border-bottom: 2px solid var(--border-strong);
+    text-align: left;
+    white-space: nowrap;
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    user-select: none;
+  }
+  .spillman-grid thead th.sortable {
+    cursor: pointer;
+  }
+  .spillman-grid thead th.sortable:hover {
+    background: rgba(255, 255, 255, 0.03);
+  }
+  .spillman-grid tbody tr {
+    border-bottom: 1px solid var(--border-subtle);
+    transition: background 0.08s;
+  }
+  .spillman-grid tbody tr:nth-child(even) {
+    background: var(--grid-row-even);
+  }
+  .spillman-grid tbody tr:hover {
+    background: rgba(136, 136, 136, 0.1);
+  }
+  .spillman-grid tbody tr.selected {
+    background: var(--grid-row-selected);
+    box-shadow: inset 3px 0 0 var(--grid-row-selected-border);
+  }
+  .spillman-grid tbody td {
+    padding: 3px 8px;
+    color: var(--text-primary);
+    vertical-align: middle;
+    font-size: 11px;
+  }
+
   /* --- Menu Bar Buttons (Spillman Flex top menu) --- */
   /* 52: Menu bar button with smoother font weight transition */
   .menu-bar-btn {
@@ -1539,6 +1744,9 @@ body.fx-noise::after {
   }
   .menu-item:hover .menu-item-arrow {
     color: #ffffff;
+  }
+  .menu-item.active {
+    color: #ffffff !important;
   }
   .menu-item-disabled {
     color: #505050 !important;

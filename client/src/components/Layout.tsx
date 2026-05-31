@@ -1238,7 +1238,7 @@ export default function Layout() {
           type="button"
           onClick={handleNavBack}
           disabled={!canGoBack}
-          className="toolbar-btn transition-colors duration-150 active:scale-[0.97] focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none"
+          className="toolbar-btn"
           title="Back (Alt+←)"
           aria-label="Navigate back"
           style={{ height: 36, width: 30, padding: '2px 4px', opacity: canGoBack ? 1 : 0.3 }}
@@ -1249,7 +1249,7 @@ export default function Layout() {
           type="button"
           onClick={handleNavForward}
           disabled={!canGoForward}
-          className="toolbar-btn transition-colors duration-150 active:scale-[0.97] focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none"
+          className="toolbar-btn"
           title="Forward (Alt+→)"
           aria-label="Navigate forward"
           style={{ height: 36, width: 30, padding: '2px 4px', opacity: canGoForward ? 1 : 0.3 }}
@@ -1290,7 +1290,7 @@ export default function Layout() {
                       window.open(url, '_blank', 'noopener,noreferrer');
                     }}
                     onMouseEnter={() => { if (openDropdown) setOpenDropdown(null); }}
-                    className="toolbar-btn transition-colors duration-150 active:scale-[0.97] focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none"
+                    className="toolbar-nav-btn"
                     title={`Open ${item.label}${item.shortcut ? ` (${item.shortcut})` : ''}`}
                     aria-label={`Open ${item.label} in new window`}
                     style={{ height: 44, padding: '2px 6px' }}
@@ -1325,29 +1325,11 @@ export default function Layout() {
                         }
                       }
                     }}
-                    className="flex flex-col items-center justify-center transition-all duration-150 focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none active:scale-[0.97]"
+                    className={`toolbar-nav-btn flex-col items-center justify-center ${isActive || isDropdownOpen ? 'active' : ''}`}
                     style={{
                       width: 52,
                       height: 42,
                       padding: '2px 4px',
-                      background: isActive
-                        ? 'linear-gradient(180deg, rgba(42,42,42,0.75) 0%, rgba(30,30,30,0.75) 100%)'
-                        : isDropdownOpen
-                          ? 'rgba(255,255,255,0.05)'
-                          : 'transparent',
-                      borderBottom: isActive ? '2px solid #d4a017' : '2px solid transparent',
-                      color: isActive ? '#ffffff' : '#888888',
-                      cursor: 'pointer',
-                    }}
-                    onMouseEnter={(e) => {
-                      if (!isActive && !isDropdownOpen) {
-                        (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.04)';
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (!isActive && !isDropdownOpen) {
-                        (e.currentTarget as HTMLElement).style.background = 'transparent';
-                      }
                     }}
                     title={`${item.label}${item.shortcut ? ` (${item.shortcut})` : ''}`}
                     aria-label={`${item.label}${hasChildren ? ' menu' : ''}`}
@@ -1417,15 +1399,12 @@ export default function Layout() {
                   {/* 10: Toolbar dropdown with stronger shadow + left-edge align fix */}
                   {hasChildren && isDropdownOpen && (
                     <div
-                      className="absolute top-full left-0 z-50 py-1 animate-dropdown-appear"
+                      className="menu-dropdown absolute top-full left-0 z-50 animate-dropdown-appear"
                       role="menu"
                       aria-label={`${item.label} submenu`}
                       style={{
                         minWidth: 210,
-                        background: '#141414',
-                        border: '1px solid #2a2a2a',
                         borderTop: '2px solid #888888',
-                        boxShadow: '0 12px 32px rgba(0,0,0,0.55), 0 4px 12px rgba(0,0,0,0.3)',
                       }}
                     >
                       {item.children!.filter(child => {
@@ -1447,23 +1426,11 @@ export default function Layout() {
                                 navigate(child.path);
                               }
                             }}
-                            className="flex items-center gap-2.5 w-full px-3 py-1.5 text-left transition-colors duration-150 hover:bg-white/[0.06] focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[#888888] focus-visible:outline-none"
+                            className={`menu-item w-full ${childActive ? 'active' : ''}`}
                             role="menuitem"
                             style={{
-                              color: childActive ? '#ffffff' : '#aaaaaa',
-                              background: childActive ? 'rgba(42,42,42,0.60)' : 'transparent',
-                            }}
-                            onMouseEnter={(e) => {
-                              if (!childActive) {
-                                (e.currentTarget as HTMLElement).style.background = 'linear-gradient(180deg, rgba(42,42,42,0.70) 0%, rgba(30,30,30,0.55) 100%)';
-                                (e.currentTarget as HTMLElement).style.color = '#ffffff';
-                              }
-                            }}
-                            onMouseLeave={(e) => {
-                              if (!childActive) {
-                                (e.currentTarget as HTMLElement).style.background = 'transparent';
-                                (e.currentTarget as HTMLElement).style.color = '#aaaaaa';
-                              }
+                              color: childActive ? '#ffffff' : undefined,
+                              background: childActive ? 'rgba(42,42,42,0.60)' : undefined,
                             }}
                           >
                             {/* 11: Slightly larger child icon + semibold label for active items */}

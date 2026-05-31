@@ -497,6 +497,12 @@ calls.post('/archive-bulk', async (c) => {
 // caps result sets at 100 columns. calls_for_service is ~93 columns; adding
 // property/user/client JOIN columns or LEFT JOIN calls_for_service_ext blew
 // past the cap and produced SQLITE_ERROR 7500 "too many columns in result set".
+//
+// Each sub-query is individually wrapped so a missing column, drifted schema,
+// or D1 cap error on one aspect never crashes the full response — the other
+// sections still render. This was the root cause of the 500 on call 25: one
+// sub-query (likely the JOIN subquery pattern or an absent column) threw and
+// the outer catch swallowed the entire response.
 calls.get('/:id', async (c) => {
   try {
     const db = getDb(c.env);
@@ -506,8 +512,12 @@ calls.get('/:id', async (c) => {
       db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
     if (!call) return c.json({ error: 'Call not found' }, 404);
 
-    const ext = await queryFirst<Record<string, unknown>>(
-      db, 'SELECT * FROM calls_for_service_ext WHERE id = ?', id);
+    const soft = async <T>(fn: () => Promise<T>, fallback: T): Promise<T> => {
+      try { return await fn(); } catch (err) { console.warn(`[calls/:id] sub-query degraded:`, (err as Error)?.message); return fallback; }
+    };
+
+    const ext = await soft(() => queryFirst<Record<string, unknown>>(
+      db, 'SELECT * FROM calls_for_service_ext WHERE id = ?', id), null);
 
     // Re-dispatch ("return visit") chain. For PSO/process-service calls, attach
     // the prior attempts as visit_history so the detail panel's "PRIOR VISITS"
@@ -518,14 +528,7 @@ calls.get('/:id', async (c) => {
     let visit_history: Record<string, unknown>[] | undefined;
     if (['pso_client_request', 'process_service'].includes(String(call.incident_type))) {
       const rootId = Number((ext?.parent_call_id as number | null) ?? call.id);
-      // "Prior visits" = every other call in the re-dispatch chain that was
-      // created BEFORE this one. We key off c.id (monotonic — a re-dispatch
-      // always mints a higher id) rather than pso_attempt_number arithmetic:
-      // a NULL/duplicated attempt number used to make `< currentAttempt` drop
-      // rows and silently blank the whole section. visit_number falls back to
-      // a sequential ROW_NUMBER so labels stay 1..N even when the stored
-      // attempt numbers are missing.
-      visit_history = await query<Record<string, unknown>>(db, `
+      visit_history = await soft(() => query<Record<string, unknown>>(db, `
         SELECT c.id,
           COALESCE(e.pso_attempt_number, c.pso_attempt_number,
                    ROW_NUMBER() OVER (ORDER BY c.id ASC)) AS visit_number,
@@ -537,10 +540,10 @@ calls.get('/:id', async (c) => {
         WHERE (c.id = ? OR e.parent_call_id = ?)
           AND c.id < ?
         ORDER BY c.id ASC
-      `, rootId, rootId, Number(id));
+      `, rootId, rootId, Number(id)), undefined);
     }
 
-    const joined = await queryFirst<Record<string, unknown>>(db, `
+    const joined = await soft(() => queryFirst<Record<string, unknown>>(db, `
       SELECT p.name AS property_name, p.address AS property_address,
         p.gate_code, p.alarm_code, p.emergency_contact, p.post_orders, p.hazard_notes,
         u.full_name AS dispatcher_name, cl.name AS client_name
@@ -548,21 +551,21 @@ calls.get('/:id', async (c) => {
       LEFT JOIN properties p ON p.id = ck.property_id
       LEFT JOIN users u ON u.id = ck.dispatcher_id
       LEFT JOIN clients cl ON cl.id = COALESCE(ck.client_id, p.client_id)
-    `, call.property_id ?? null, call.dispatcher_id ?? null, call.client_id ?? null);
+    `, call.property_id ?? null, call.dispatcher_id ?? null, call.client_id ?? null), null);
 
     const assignedIds = JSON.parse(String(call.assigned_unit_ids || '[]')) as number[];
-    const assignedUnits = assignedIds.length === 0 ? [] : await query<Record<string, unknown>>(db, `
+    const assignedUnits = assignedIds.length === 0 ? [] : await soft(() => query<Record<string, unknown>>(db, `
       SELECT u.*, usr.full_name as officer_name, usr.badge_number
       FROM units u LEFT JOIN users usr ON u.officer_id = usr.id
       WHERE u.id IN (${assignedIds.map(() => '?').join(',')})
-    `, ...assignedIds);
+    `, ...assignedIds), []);
 
-    const incidents = await query<Record<string, unknown>>(db,
-      'SELECT id, incident_number, incident_type, status, created_at FROM incidents WHERE call_id = ? ORDER BY created_at DESC LIMIT 1000', id);
+    const incidents = await soft(() => query<Record<string, unknown>>(db,
+      'SELECT id, incident_number, incident_type, status, created_at FROM incidents WHERE call_id = ? ORDER BY created_at DESC LIMIT 1000', id), []);
 
-    const activity = await query<Record<string, unknown>>(db,
+    const activity = await soft(() => query<Record<string, unknown>>(db,
       'SELECT al.*, u.full_name as user_name FROM audit_log al LEFT JOIN users u ON al.user_id = u.id WHERE al.entity_type = ? AND al.entity_id = ? ORDER BY al.created_at DESC LIMIT 1000',
-      'call', id);
+      'call', id), []);
 
     return c.json({
       ...call,

@@ -138,5 +138,13 @@ stubs.get('/google-maps/client-key', (c) => c.json({}));
 // Dispatch stubs
 stubs.get('/stats', (c) => c.json({ total_calls: 0, active_calls: 0, units_online: 0 }));
 stubs.get('/shift-handoff', (c) => c.json({ handoff: null }));
+stubs.put('/shift-handoff', async (c) => {
+  try {
+    const body = await c.req.json<Record<string, unknown>>();
+    return c.json({ success: true, saved: true, received: body });
+  } catch {
+    return c.json({ success: true, saved: true });
+  }
+});
 
 export default stubs;

@@ -667,6 +667,7 @@ const PatrolPage: React.FC = () => {
 
       {/* Tabs */}
       <TabBar
+        spillman
         tabs={patrolTabs}
         activeTab={activeTab}
         onTabChange={(id) => setActiveTab(id as 'checkpoints' | 'scans' | 'compliance' | 'map')}

@@ -4,7 +4,7 @@ import {
   Plus, Send, Navigation, MapPin, Clock, Phone, User, MessageSquare, Radio, Eye,
   CheckCircle, XCircle, AlertTriangle, Loader2, FileText, ChevronDown, Link,
   Archive, RotateCcw, Edit3, Trash2, Save, X, PlusCircle, Shield, Thermometer,
-  Undo2, Pencil, Search, Building2, Terminal, Briefcase, Copy, Printer, Layers,
+  Undo2, Pencil, Search, Building2, Terminal, Briefcase, Copy, Printer, Layers, Hash,
 } from 'lucide-react';
 import type { CallForService, Unit, CallStatus, CallNote, UnitStatus } from '../../types';
 import { callPosture } from '../../utils/callThreat';
@@ -81,6 +81,9 @@ import {
 import PersonFormModal, { type PersonFormData } from '../../components/PersonFormModal';
 import VehicleFormModal, { type VehicleFormData } from '../../components/VehicleFormModal';
 import AIDispatchSidebar from '../../components/dispatch/AIDispatchSidebar';
+import DispatchCodeQuickPanel from '../../components/dispatch/DispatchCodeQuickPanel';
+import { useDispatchCodes } from '../../hooks/useDispatchCodes';
+import type { DispatchCode } from '../../hooks/useDispatchCodes';
 import NarrativeAssist from '../../components/dispatch/NarrativeAssist';
 import FileAttachments from '../../components/FileAttachments';
 import { safeDateTimeStr, parseTimestamp, toDatetimeLocalValue, mtDatetimeLocalToUtc } from '../../utils/dateUtils';
@@ -262,6 +265,8 @@ export default function DispatchPage() {
   const { prefs: userPrefs, reload: reloadPrefs } = useUserPreferences();
   const { districts, sections, sectionLabels, getSectionCode, getArea, zoneLabels, zonesForSection, beatsForZone, beatsForSection, districtForSectionBeat, getBeatLabel } = useDistrictOptions();
   const { resolve: resolveAddress } = useAddressAutofill();
+  const dispatchCodes = useDispatchCodes();
+  const signalLookup = useMemo(() => dispatchCodes.lookup, [dispatchCodes.lookup]);
   const [calls, setCalls] = useState<CallForService[]>([]);
   const recentlyCreatedIdsRef = useRef<Set<string | number>>(new Set()); // synchronous dedup for POST + WS race
   const [units, setUnits] = useState<Unit[]>([]);
@@ -275,6 +280,7 @@ export default function DispatchPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [priorityFilter, setPriorityFilter] = useState<string | null>(null);
   const [typeFilter, setTypeFilter] = useState<string | null>(null);
+  const [signalFilter, setSignalFilter] = useState<'signaled' | 'unsignaled' | null>(null);
   const noteTextareaRef = useRef<HTMLTextAreaElement>(null);
   const [onSceneElapsed, setOnSceneElapsed] = useState('');
   const [isLoading, setIsLoading] = useState(true);
@@ -326,6 +332,7 @@ export default function DispatchPage() {
   // AI Dispatch analysis state
   const [aiAnalyses, setAiAnalyses] = useState<Record<string, any>>({});
   const [showAiSidebar, setShowAiSidebar] = useState(false);
+  const [showCodePanel, setShowCodePanel] = useState(false);
 
   // Queue sort mode. The /user/preferences backend is currently a stub that
   // doesn't persist dispatch_sort, so we keep the selection in localStorage
@@ -367,6 +374,25 @@ export default function DispatchPage() {
     } catch { addToast('Failed to save handoff notes', 'error'); }
     finally { setSavingHandoff(false); }
   }, [handoffNotes, addToast]);
+
+  const handleApplyCode = useCallback(async (code: string) => {
+    if (!selectedCall) {
+      addToast('Select a call first to apply code', 'warning');
+      return;
+    }
+    try {
+      await apiFetch(`/dispatch/calls/${selectedCall.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ incident_type: code }),
+      });
+      const updated: CallForService = { ...selectedCall!, incident_type: code };
+      setSelectedCall(updated);
+      setCalls(prev => prev.map(c => c.id === selectedCall.id ? updated : c));
+      addToast(`Code ${code} applied`, 'success');
+    } catch {
+      addToast('Failed to apply code', 'error');
+    }
+  }, [selectedCall, addToast]);
 
   // Clean up search timers and abort controllers on unmount
   useEffect(() => {
@@ -1165,6 +1191,10 @@ export default function DispatchPage() {
     return true;
   }).filter((call) => {
     if (typeFilter && call.incident_type !== typeFilter) return false;
+    return true;
+  }).filter((call) => {
+    if (signalFilter === 'signaled' && !call.dispatch_code) return false;
+    if (signalFilter === 'unsignaled' && call.dispatch_code) return false;
     return true;
   }).filter((call) => {
     // Show cleared calls in 'all' tab if user preference is enabled
@@ -2936,6 +2966,15 @@ export default function DispatchPage() {
             <Briefcase style={{ width: 10, height: 10 }} />
             Handoff
           </button>
+          {/* Dispatch Code Quick Panel toggle */}
+          <button type="button"
+            onClick={() => setShowCodePanel(prev => !prev)}
+            className={`toolbar-btn ${showCodePanel ? 'text-brand-400 border-brand-700/40 bg-brand-900/20' : ''}`}
+            title={showCodePanel ? 'Close code browser' : 'Open code browser'}
+          >
+            <Hash style={{ width: 10, height: 10 }} />
+            Codes
+          </button>
           <ExportButton exportUrl="/dispatch/calls/export?format=csv" exportFilename="dispatch_calls_export.csv" />
           <PrintButton />
           {tabCounts.cleared > 0 && (
@@ -3051,6 +3090,7 @@ export default function DispatchPage() {
           </button>
         </PanelTitleBar>
         <TabBar
+          spillman
           tabs={[
             { id: 'all', label: 'All', count: tabCounts.all },
             { id: 'mine', label: 'Mine', count: tabCounts.mine },
@@ -3255,6 +3295,24 @@ export default function DispatchPage() {
                     </button>
                   );
                 })}
+                {/* Signal filter toggle */}
+                {(['signaled', 'unsignaled'] as const).map(mode => {
+                  const active = signalFilter === mode;
+                  const count = mode === 'signaled'
+                    ? calls.filter(c => c.dispatch_code && !['cleared', 'closed', 'archived', 'cancelled'].includes(c.status)).length
+                    : calls.filter(c => !c.dispatch_code && !['cleared', 'closed', 'archived', 'cancelled'].includes(c.status)).length;
+                  return (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => setSignalFilter(active ? null : mode)}
+                      className={`px-1.5 py-0.5 text-[8px] font-bold border cursor-pointer hover:brightness-125 transition-all ${active ? 'bg-purple-900/60 text-purple-300 border-purple-700/60' : 'bg-purple-900/30 text-purple-400/70 border-purple-700/40'} ${count > 0 ? '' : 'opacity-30'}`}
+                      title={active ? 'Clear signal filter' : `Show only ${mode === 'signaled' ? 'calls with a signal code' : 'calls missing a signal code'}`}
+                    >
+                      {mode === 'signaled' ? '✓' : '✗'}SIG:{count}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           );
@@ -3301,7 +3359,7 @@ export default function DispatchPage() {
         )}
 
         {/* Active filter tags */}
-        {(priorityFilter || typeFilter) && (
+        {(priorityFilter || typeFilter || signalFilter) && (
           <div className="px-3 py-1 border-b border-[#2b2b2b] flex items-center gap-1.5 flex-shrink-0" style={{ background: '#0a0a0a' }}>
             <span className="text-[8px] text-rmpg-500 font-semibold uppercase tracking-wider mr-0.5">Filters:</span>
             {priorityFilter && (
@@ -3318,9 +3376,15 @@ export default function DispatchPage() {
                 <button type="button" onClick={() => setTypeFilter(null)} className="ml-0.5 hover:text-white transition-colors">&times;</button>
               </span>
             )}
+            {signalFilter && (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold border rounded-sm text-purple-300 border-purple-700/50 bg-purple-900/20">
+                Signal: {signalFilter === 'signaled' ? 'Has code' : 'No code'}
+                <button type="button" onClick={() => setSignalFilter(null)} className="ml-0.5 hover:text-white transition-colors">&times;</button>
+              </span>
+            )}
             <button
               type="button"
-              onClick={() => { setPriorityFilter(null); setTypeFilter(null); }}
+              onClick={() => { setPriorityFilter(null); setTypeFilter(null); setSignalFilter(null); }}
               className="ml-auto text-[8px] text-rmpg-500 hover:text-rmpg-300 transition-colors underline"
             >
               Clear All
@@ -3336,11 +3400,11 @@ export default function DispatchPage() {
                 <Phone className="w-7 h-7" style={{ opacity: 0.35 }} />
               </div>
               <p className="text-[11px] font-semibold uppercase tracking-wider mb-1.5">
-                {(priorityFilter || typeFilter) ? 'No calls match active filters' : 'No calls in this category'}
+                {(priorityFilter || typeFilter || signalFilter) ? 'No calls match active filters' : 'No calls in this category'}
               </p>
               <p className="text-[10px] text-[#545454] max-w-[240px] text-center leading-relaxed">
-                {(priorityFilter || typeFilter) ? (
-                  <button type="button" onClick={() => { setPriorityFilter(null); setTypeFilter(null); }} className="underline hover:text-rmpg-300 transition-colors">Clear filters</button>
+                {(priorityFilter || typeFilter || signalFilter) ? (
+                  <button type="button" onClick={() => { setPriorityFilter(null); setTypeFilter(null); setSignalFilter(null); }} className="underline hover:text-rmpg-300 transition-colors">Clear filters</button>
                 ) : filterTab === 'pending' ? 'All pending calls have been dispatched' :
                  filterTab === 'active' ? 'No units are currently on active calls' :
                  filterTab === 'cleared' ? 'No cleared calls to review' :
@@ -3386,6 +3450,7 @@ export default function DispatchPage() {
                     onQuickNote={handleQuickNote}
                     hasActiveWarrant={!!(call as any).has_active_warrant}
                     onTogglePin={handleTogglePin}
+                    signalInfo={call.dispatch_code ? signalLookup(call.dispatch_code) : null}
                   />
                 </React.Fragment>
               );
@@ -4506,19 +4571,38 @@ export default function DispatchPage() {
                         {selectedCall.location_building && <span className="text-rmpg-200"><span className="text-rmpg-400">Bldg:</span> {selectedCall.location_building}</span>}
                         {selectedCall.location_floor && <span className="text-rmpg-200"><span className="text-rmpg-400">Floor:</span> {selectedCall.location_floor}</span>}
                         {selectedCall.location_room && <span className="text-rmpg-200"><span className="text-rmpg-400">Rm:</span> {selectedCall.location_room}</span>}
-                        {selectedCall.dispatch_code && (
-                          <span
-                            role="button"
-                            tabIndex={0}
-                            title="Spillman dispatch code — click to copy"
-                            onClick={() => { try { navigator.clipboard?.writeText(selectedCall.dispatch_code || ''); } catch { /* clipboard unavailable */ } }}
-                            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); try { navigator.clipboard?.writeText(selectedCall.dispatch_code || ''); } catch { /* clipboard unavailable */ } } }}
-                            className="cursor-pointer hover:bg-amber-900/50 text-[10px] font-bold font-mono text-amber-300 bg-amber-900/30 border border-amber-700/40 px-2 py-0.5 rounded-sm tracking-wider tabular-nums"
-                            style={{ textShadow: '0 0 6px rgba(251,191,36,0.15)' }}
-                          >
-                            {selectedCall.dispatch_code}
-                          </span>
-                        )}
+                        {selectedCall.dispatch_code && (() => {
+                          const dc = signalLookup(selectedCall.dispatch_code);
+                          const pri = dc?.priority || 'P3';
+                          const priColors: Record<string, { text: string; bg: string; border: string }> = {
+                            P1: { text: '#fca5a5', bg: 'rgba(220,38,38,0.25)', border: 'rgba(220,38,38,0.4)' },
+                            P2: { text: '#fde68a', bg: 'rgba(245,158,11,0.25)', border: 'rgba(245,158,11,0.4)' },
+                            P3: { text: '#9ca3af', bg: 'rgba(107,114,128,0.2)', border: 'rgba(107,114,128,0.35)' },
+                            P4: { text: '#888888', bg: 'rgba(100,100,100,0.2)', border: 'rgba(100,100,100,0.35)' },
+                          };
+                          const c = priColors[pri] || priColors.P3;
+                          const safetyFlags: string[] = [];
+                          if (dc?.requires_backup) safetyFlags.push('⚠ Backup');
+                          if (dc?.officer_safety) safetyFlags.push('⚡ Safety');
+                          if (dc?.ems_needed) safetyFlags.push('🚑 EMS');
+                          if (dc?.fire_needed) safetyFlags.push('🔥 Fire');
+                          const tooltip = dc
+                            ? `Signal ${selectedCall.dispatch_code} — ${dc.description}\nCategory: ${dc.category}${safetyFlags.length ? '\n' + safetyFlags.join(' · ') : ''}`
+                            : 'Spillman dispatch code — click to copy';
+                          return (
+                            <span
+                              role="button"
+                              tabIndex={0}
+                              title={tooltip}
+                              onClick={() => { try { navigator.clipboard?.writeText(selectedCall.dispatch_code || ''); } catch { /* clipboard unavailable */ } }}
+                              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); try { navigator.clipboard?.writeText(selectedCall.dispatch_code || ''); } catch { /* clipboard unavailable */ } } }}
+                              className="cursor-pointer hover:brightness-110 text-[10px] font-bold font-mono px-2 py-0.5 rounded-sm tracking-wider tabular-nums"
+                              style={{ color: c.text, background: c.bg, border: `1px solid ${c.border}`, textShadow: pri === 'P1' ? '0 0 6px rgba(220,38,38,0.2)' : pri === 'P2' ? '0 0 6px rgba(245,158,11,0.15)' : undefined }}
+                            >
+                              {selectedCall.dispatch_code}
+                            </span>
+                          );
+                        })()}
                         {selectedCall.sector_id && (() => {
                           const area = getArea(selectedCall.sector_id);
                           return area ? <span className="text-rmpg-200" title="Dispatch Area — top of the geography hierarchy"><span className="text-rmpg-400">Area:</span> {[area.code, area.name].filter(Boolean).join(' — ')}</span> : null;
@@ -5762,6 +5846,14 @@ export default function DispatchPage() {
                 } catch { addToast(`Failed to set flag`, 'error'); }
               }}
               onDismiss={() => setShowAiSidebar(false)}
+            />
+          )}
+
+          {/* Dispatch Code Quick Panel (conditionally shown between detail and map) */}
+          {showCodePanel && (
+            <DispatchCodeQuickPanel
+              onApplyCode={handleApplyCode}
+              onDismiss={() => setShowCodePanel(false)}
             />
           )}
 
