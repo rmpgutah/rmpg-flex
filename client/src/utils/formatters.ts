@@ -90,6 +90,18 @@ export function formatCurrency(
 }
 
 /**
+ * Format a cost compactly for dense tables: `$4.2k` at/above $1,000,
+ * `$840` below. Null/undefined/NaN render as `$0`. Use this instead of
+ * hand-rolling `amount >= 1000 ? `${(amount/1000).toFixed(1)}k` : amount.toFixed(0)`
+ * — that pattern crashes on undefined and was guarded inconsistently across the
+ * fleet tables.
+ */
+export function formatCostAbbrev(amount: number | null | undefined): string {
+  const n = amount == null || isNaN(amount) ? 0 : amount;
+  return n >= 1000 ? `$${(n / 1000).toFixed(1)}k` : `$${n.toFixed(0)}`;
+}
+
+/**
  * Format a file size in human-readable format: 1.2 MB
  */
 export function formatFileSize(bytes: number): string {
