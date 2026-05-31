@@ -49,6 +49,12 @@ import {
   Mail,
   GraduationCap,
   Microscope,
+  Building2,
+  ShieldAlert,
+  Megaphone,
+  CheckCircle,
+  DollarSign,
+  Share2,
 } from 'lucide-react';
 import { Navigation2, Sun, Moon } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -227,6 +233,16 @@ const TOOLBAR_NAV: NavItem[] = [
   { path: '/crm', icon: Briefcase, label: 'Overwatch', group: 'analysis' },
   { path: '/training', icon: GraduationCap, label: 'Training', group: 'analysis' },
   { path: '/forensics', icon: Network, label: 'Connections', group: 'analysis', adminOnly: true },
+  { path: '/jail', icon: Building2, label: 'Jail', group: 'support' },
+  { path: '/affairs', icon: ShieldAlert, label: 'IA', group: 'support' },
+  { path: '/assets', icon: Package, label: 'Assets', group: 'support' },
+  { path: '/billing', icon: DollarSign, label: 'Billing', group: 'support' },
+  { path: '/community', icon: Users, label: 'Community', group: 'support' },
+  { path: '/tasks', icon: ClipboardList, label: 'Tasks', group: 'support' },
+  { path: '/alerts', icon: Megaphone, label: 'Alerts', group: 'support' },
+  { path: '/qa', icon: CheckCircle, label: 'QA', group: 'support' },
+  { path: '/risk', icon: Shield, label: 'Risk', group: 'support' },
+  { path: '/interagency', icon: Share2, label: 'Interagency', group: 'support' },
   { path: '/audit', icon: ScrollText, label: 'Audit', group: 'system', shortcut: 'F11', adminOnly: true },
   { path: '/admin', icon: Settings, label: 'Admin', group: 'system', shortcut: 'F12', adminOnly: true },
 ];
