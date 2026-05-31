@@ -273,6 +273,8 @@ export default function DispatchPage() {
   // (bottom bar, below). It owns its own 1s interval so the per-second tick no
   // longer re-renders this entire 6,300-line page — only the clock span.
   const [searchQuery, setSearchQuery] = useState('');
+  const [priorityFilter, setPriorityFilter] = useState<string | null>(null);
+  const [typeFilter, setTypeFilter] = useState<string | null>(null);
   const noteTextareaRef = useRef<HTMLTextAreaElement>(null);
   const [onSceneElapsed, setOnSceneElapsed] = useState('');
   const [isLoading, setIsLoading] = useState(true);
@@ -1159,6 +1161,12 @@ export default function DispatchPage() {
       (call.beat_name || '').toLowerCase().includes(q)
     );
   }).filter((call) => {
+    if (priorityFilter && call.priority !== priorityFilter) return false;
+    return true;
+  }).filter((call) => {
+    if (typeFilter && call.incident_type !== typeFilter) return false;
+    return true;
+  }).filter((call) => {
     // Show cleared calls in 'all' tab if user preference is enabled
     if (filterTab === 'all' && userPrefs?.dispatch_show_cleared) return true;
     if (filterTab === 'all' && ['cleared', 'closed', 'cancelled'].includes(call.status)) return false;
@@ -1199,7 +1207,7 @@ export default function DispatchPage() {
     const pDiff = (pOrder[a.priority] ?? 3) - (pOrder[b.priority] ?? 3);
     if (pDiff !== 0) return pDiff;
     return parseTimestamp(b.created_at).getTime() - parseTimestamp(a.created_at).getTime();
-  }), [calls, archivedCalls, filterTab, searchQuery, userPrefs?.dispatch_sort, localSort, userPrefs?.dispatch_show_cleared, user?.id]);
+  }), [calls, archivedCalls, filterTab, searchQuery, priorityFilter, typeFilter, userPrefs?.dispatch_sort, localSort, userPrefs?.dispatch_show_cleared, user?.id]);
 
   // Shortcut cheat-sheet overlay (toggled with "?").
   const [showShortcutHelp, setShowShortcutHelp] = useState(false);
@@ -3223,21 +3231,28 @@ export default function DispatchPage() {
                   OLDEST WAIT: <strong>{oldestPending}m</strong>
                 </span>
               )}
-              {/* Priority quick filters */}
+              {/* Priority quick filters — clickable to toggle filter */}
               <div className="ml-auto flex items-center gap-0.5">
                 <span className="text-[8px] text-rmpg-600 mr-1">PRIORITY</span>
                 {(['P1', 'P2', 'P3', 'P4'] as const).map(p => {
                   const count = calls.filter(c => c.priority === p && !['cleared', 'closed', 'archived', 'cancelled'].includes(c.status)).length;
+                  const active = priorityFilter === p;
                   const colors: Record<string, string> = {
-                    P1: 'bg-red-900/40 text-red-400 border-red-700/50',
-                    P2: 'bg-amber-900/40 text-amber-400 border-amber-700/50',
-                    P3: 'bg-gray-900/40 text-gray-400 border-gray-700/50',
-                    P4: 'bg-green-900/40 text-green-400 border-green-700/50',
+                    P1: `bg-red-900/${active ? '60' : '40'} text-red-400 border-red-700/${active ? '60' : '50'}`,
+                    P2: `bg-amber-900/${active ? '60' : '40'} text-amber-400 border-amber-700/${active ? '60' : '50'}`,
+                    P3: `bg-gray-900/${active ? '60' : '40'} text-gray-400 border-gray-700/${active ? '60' : '50'}`,
+                    P4: `bg-green-900/${active ? '60' : '40'} text-green-400 border-green-700/${active ? '60' : '50'}`,
                   };
                   return (
-                    <span key={p} className={`px-1.5 py-0.5 text-[8px] font-bold border ${colors[p]} ${count > 0 ? '' : 'opacity-30'}`}>
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => setPriorityFilter(active ? null : p)}
+                      className={`px-1.5 py-0.5 text-[8px] font-bold border cursor-pointer hover:brightness-125 transition-all ${colors[p]} ${count > 0 ? '' : 'opacity-30'}`}
+                      title={`${active ? 'Clear' : 'Filter to'} ${p} calls`}
+                    >
                       {p}:{count}
-                    </span>
+                    </button>
                   );
                 })}
               </div>
@@ -3245,22 +3260,29 @@ export default function DispatchPage() {
           );
         })()}
 
-        {/* Feature 9: Call Type Statistics Bar */}
+        {/* Feature 9: Call Type Statistics Bar — clickable to toggle filter */}
         {callTypeStats.length > 0 && (
           <div className="px-3 py-1 border-b border-[#2b2b2b] flex items-center gap-2 flex-shrink-0" style={{ background: '#0c0c0c80' }}>
             {callTypeStats.map(({ type, count }) => {
               const total = callTypeStats.reduce((sum, s) => sum + s.count, 0);
               const pct = total > 0 ? (count / total * 100) : 0;
+              const active = typeFilter === type;
               return (
-                <div key={type} className="flex items-center gap-0.5" title={`${formatIncidentType(type)}: ${count}`}>
+                <button
+                  key={type}
+                  type="button"
+                  onClick={() => setTypeFilter(active ? null : type)}
+                  className={`flex items-center gap-0.5 cursor-pointer hover:brightness-125 transition-all ${active ? 'px-1 py-0.5 rounded-sm bg-brand-900/30 border border-brand-700/50' : ''}`}
+                  title={`${formatIncidentType(type)}: ${count} — ${active ? 'Clear filter' : 'Filter to this type'}`}
+                >
                   <div
                     className="h-2 rounded-sm bg-brand-500"
-                    style={{ width: `${Math.max(pct * 0.8, 4)}px`, minWidth: 4, opacity: 0.7 + pct * 0.003 }}
+                    style={{ width: `${Math.max(pct * 0.8, 4)}px`, minWidth: 4, opacity: active ? 1 : 0.7 + pct * 0.003 }}
                   />
-                  <span className="text-[7px] font-mono text-rmpg-400 truncate max-w-[80px] tabular-nums" title={formatIncidentType(type)}>
+                  <span className={`text-[7px] font-mono tabular-nums truncate max-w-[80px] ${active ? 'text-brand-300' : 'text-rmpg-400'}`} title={formatIncidentType(type)}>
                     {formatIncidentType(type).slice(0, 12)} {count}
                   </span>
-                </div>
+                </button>
               );
             })}
           </div>
@@ -3278,6 +3300,34 @@ export default function DispatchPage() {
           </div>
         )}
 
+        {/* Active filter tags */}
+        {(priorityFilter || typeFilter) && (
+          <div className="px-3 py-1 border-b border-[#2b2b2b] flex items-center gap-1.5 flex-shrink-0" style={{ background: '#0a0a0a' }}>
+            <span className="text-[8px] text-rmpg-500 font-semibold uppercase tracking-wider mr-0.5">Filters:</span>
+            {priorityFilter && (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold border rounded-sm"
+                style={{ background: priorityFilter === 'P1' ? 'rgba(239,68,68,0.25)' : priorityFilter === 'P2' ? 'rgba(217,119,6,0.25)' : priorityFilter === 'P3' ? 'rgba(107,114,128,0.25)' : 'rgba(34,197,94,0.25)', borderColor: priorityFilter === 'P1' ? '#ef444480' : priorityFilter === 'P2' ? '#d9770680' : priorityFilter === 'P3' ? '#6b728080' : '#22c55e80', color: priorityFilter === 'P1' ? '#ef4444' : priorityFilter === 'P2' ? '#d97706' : priorityFilter === 'P3' ? '#9ca3af' : '#22c55e' }}
+              >
+                Priority: {priorityFilter}
+                <button type="button" onClick={() => setPriorityFilter(null)} className="ml-0.5 hover:text-white transition-colors">&times;</button>
+              </span>
+            )}
+            {typeFilter && (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold border rounded-sm text-brand-300 border-brand-700/50 bg-brand-900/20">
+                Type: {formatIncidentType(typeFilter)}
+                <button type="button" onClick={() => setTypeFilter(null)} className="ml-0.5 hover:text-white transition-colors">&times;</button>
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={() => { setPriorityFilter(null); setTypeFilter(null); }}
+              className="ml-auto text-[8px] text-rmpg-500 hover:text-rmpg-300 transition-colors underline"
+            >
+              Clear All
+            </button>
+          </div>
+        )}
+
         {/* Call List */}
         <div className="flex-1 overflow-y-auto p-2 space-y-1" style={{ scrollbarGutter: 'stable', scrollSnapType: 'y proximity', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' } as React.CSSProperties}>
           {filteredCalls.length === 0 ? (
@@ -3285,9 +3335,13 @@ export default function DispatchPage() {
               <div className="p-3.5 rounded-sm mb-3" style={{ background: '#0c0c0c50', border: '1px solid #2b2b2b30' }}>
                 <Phone className="w-7 h-7" style={{ opacity: 0.35 }} />
               </div>
-              <p className="text-[11px] font-semibold uppercase tracking-wider mb-1.5">No calls in this category</p>
-              <p className="text-[10px] text-[#545454] max-w-[200px] text-center leading-relaxed">
-                {filterTab === 'pending' ? 'All pending calls have been dispatched' :
+              <p className="text-[11px] font-semibold uppercase tracking-wider mb-1.5">
+                {(priorityFilter || typeFilter) ? 'No calls match active filters' : 'No calls in this category'}
+              </p>
+              <p className="text-[10px] text-[#545454] max-w-[240px] text-center leading-relaxed">
+                {(priorityFilter || typeFilter) ? (
+                  <button type="button" onClick={() => { setPriorityFilter(null); setTypeFilter(null); }} className="underline hover:text-rmpg-300 transition-colors">Clear filters</button>
+                ) : filterTab === 'pending' ? 'All pending calls have been dispatched' :
                  filterTab === 'active' ? 'No units are currently on active calls' :
                  filterTab === 'cleared' ? 'No cleared calls to review' :
                  filterTab === 'archived' ? 'No archived calls found' :

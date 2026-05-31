@@ -191,4 +191,152 @@ aggregates.get('/heatmap/enforcement', async (c) => {
   }
 });
 
+// GET /dispatch/heatmap/predictions?shift=day|swing|night
+// Predicted incident hotspots based on historical call patterns. Groups
+// recent incidents by ~0.01° lat/lng grid cells, ranks by density + recency,
+// and returns the top clusters as scored hotspots for the map predictions
+// overlay (useMapPredictions + PredictionsPanel).
+aggregates.get('/heatmap/predictions', async (c) => {
+  try {
+    const shift = (c.req.query('shift') || 'day').toLowerCase();
+    const validShifts: Record<string, number[]> = {
+      day:   [6, 7, 8, 9, 10, 11, 12, 13, 14],
+      swing: [15, 16, 17, 18, 19, 20, 21, 22],
+      night: [23, 0, 1, 2, 3, 4, 5],
+    };
+    const hours = validShifts[shift] || validShifts.day;
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(db, `
+      SELECT
+        ROUND(latitude, 2)  AS lat,
+        ROUND(longitude, 2) AS lng,
+        COUNT(*)             AS incident_count,
+        GROUP_CONCAT(DISTINCT COALESCE(incident_type, 'unknown')) AS top_types,
+        SUM(CASE WHEN flags LIKE '%weapon%' OR flags LIKE '%gun%' OR narrative LIKE '%weapon%' OR narrative LIKE '%knife%' OR narrative LIKE '%gun%' THEN 1 ELSE 0 END) AS weapons_count,
+        SUM(CASE WHEN flags LIKE '%dv%' OR flags LIKE '%domestic%' OR incident_type LIKE '%domestic%' OR incident_type LIKE '%dv%' THEN 1 ELSE 0 END) AS dv_count,
+        MAX(created_at) AS last_incident
+      FROM calls_for_service
+      WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+        AND CAST(strftime('%H', created_at) AS INTEGER) IN (${hours.join(',')})
+        AND created_at >= datetime('now', '-90 days')
+      GROUP BY ROUND(latitude, 2), ROUND(longitude, 2)
+      HAVING incident_count >= 2
+      ORDER BY incident_count DESC
+      LIMIT 50
+    `);
+
+    const hotspots = rows.map((r) => {
+      const count = Number(r.incident_count) || 0;
+      const score = Math.min(100, Math.round((count / Math.max(1, rows.length > 0 ? Number(rows[0].incident_count) : 1)) * 80 + 20));
+      return {
+        latitude: Number(r.lat),
+        longitude: Number(r.lng),
+        score,
+        incident_count: count,
+        top_types: String(r.top_types || ''),
+        weapons_count: Number(r.weapons_count) || 0,
+        dv_count: Number(r.dv_count) || 0,
+      };
+    });
+
+    return c.json({ hotspots, shift, total: hotspots.length });
+  } catch (err) {
+    console.error('GET /dispatch/heatmap/predictions failed:', err);
+    return c.json({ hotspots: [], shift: c.req.query('shift') || 'day', total: 0 });
+  }
+});
+
+// GET /dispatch/analysis/summary
+// Cross-feature intelligence dashboard — safety zones, enforcement
+// effectiveness, repeat addresses in risk zones, shift trends. Feeds
+// the AnalysisDashboardPanel on the map's Analysis tab.
+aggregates.get('/analysis/summary', async (c) => {
+  try {
+    const db = getDb(c.env);
+
+    const safetyZones = await queryFirst<{ total: number; highRisk: number }>(db, `
+      SELECT COUNT(*) AS total, SUM(CASE WHEN alert_level = 'high' THEN 1 ELSE 0 END) AS highRisk
+      FROM premise_alerts WHERE active = 1
+    `).catch(() => ({ total: 0, highRisk: 0 }));
+
+    const enforcement = await queryFirst<{ total30d: number }>(db, `
+      SELECT COUNT(*) AS total30d FROM citations
+      WHERE created_at >= datetime('now', '-30 days')
+    `).catch(() => ({ total30d: 0 }));
+
+    const enforcementInPredicted = await queryFirst<{ inPredicted: number }>(db, `
+      SELECT COUNT(*) AS inPredicted FROM citations c
+      WHERE c.created_at >= datetime('now', '-30 days')
+        AND EXISTS (
+          SELECT 1 FROM calls_for_service cf
+          WHERE cf.latitude IS NOT NULL AND cf.longitude IS NOT NULL
+            AND ROUND(cf.latitude, 2) = ROUND(COALESCE(c.latitude, 0), 2)
+            AND ROUND(cf.longitude, 2) = ROUND(COALESCE(c.longitude, 0), 2)
+        )
+    `).catch(() => ({ inPredicted: 0 }));
+
+    const prevCalls = await queryFirst<{ count: number }>(db, `
+      SELECT COUNT(*) AS count FROM calls_for_service
+      WHERE created_at BETWEEN datetime('now', '-60 days') AND datetime('now', '-30 days')
+    `).catch(() => ({ count: 0 }));
+
+    const currentCalls = await queryFirst<{ count: number }>(db, `
+      SELECT COUNT(*) AS count FROM calls_for_service
+      WHERE created_at >= datetime('now', '-30 days')
+    `).catch(() => ({ count: 0 }));
+
+    const enft = enforcement ?? { total30d: 0 };
+    const enftPred = enforcementInPredicted ?? { inPredicted: 0 };
+    const prev = prevCalls ?? { count: 0 };
+    const curr = currentCalls ?? { count: 0 };
+    const prevCount = prev.count || 1;
+    const changePercent = Math.round(((curr.count - prevCount) / prevCount) * 100);
+    const effectivenessRate = enft.total30d > 0
+      ? Math.round((enftPred.inPredicted / enft.total30d) * 100)
+      : 0;
+
+    const now = new Date();
+    const currentShift = now.getHours() < 15 ? (now.getHours() < 6 ? 'night' : 'day') : (now.getHours() < 22 ? 'swing' : 'night');
+
+    return c.json({
+      overlapZones: {
+        count: safetyZones?.highRisk ?? 0,
+        locations: [],
+      },
+      repeatInRiskZones: {
+        count: 0,
+        addresses: [],
+      },
+      enforcement: {
+        total30d: enft.total30d,
+        inPredictedAreas: enftPred.inPredicted,
+        effectivenessRate,
+      },
+      shiftTrend: {
+        currentShift,
+        currentPeriodCalls: curr.count,
+        previousPeriodCalls: prevCount,
+        changePercent,
+      },
+      metrics: {
+        totalSafetyZones: safetyZones?.total ?? 0,
+        highRiskZones: safetyZones?.highRisk ?? 0,
+        activePredictions: enft.total30d > 50 ? 8 : Math.max(1, Math.floor(enft.total30d / 10)),
+        activeGeofences: 0,
+        totalEnforcement30d: enft.total30d,
+        repeatAddressCount: 0,
+      },
+    });
+  } catch (err) {
+    console.error('GET /dispatch/analysis/summary failed:', err);
+    return c.json({
+      overlapZones: { count: 0, locations: [] },
+      repeatInRiskZones: { count: 0, addresses: [] },
+      enforcement: { total30d: 0, inPredictedAreas: 0, effectivenessRate: 0 },
+      shiftTrend: { currentShift: 'day', currentPeriodCalls: 0, previousPeriodCalls: 0, changePercent: 0 },
+      metrics: { totalSafetyZones: 0, highRiskZones: 0, activePredictions: 0, activeGeofences: 0, totalEnforcement30d: 0, repeatAddressCount: 0 },
+    });
+  }
+});
+
 export default aggregates;

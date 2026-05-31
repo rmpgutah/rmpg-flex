@@ -187,6 +187,93 @@ export async function suggestUnits(
   return { suggestions: deterministicReasons(candidates), provider: 'deterministic', fallback: true };
 }
 
+// ─── narrativeAssist ────────────────────────────────────────
+
+const NARRATIVE_SYSTEM =
+  'You are a veteran police report writer. Given incident notes, incident type, ' +
+  'and location, produce a concise, objective, plain-language incident narrative ' +
+  'suitable for an official police report. Use professional tone, avoid speculation, ' +
+  'include relevant details but omit subjective judgments. Output ONLY a plain-text ' +
+  'narrative paragraph. No JSON, no formatting, no preamble.';
+
+export async function narrativeAssist(
+  ai: Ai,
+  notes: string,
+  incidentType?: string,
+  locationAddress?: string,
+): Promise<{ narrative: string; provider: string; fallback: boolean }> {
+  const user =
+    `Incident type: ${incidentType ?? 'N/A'}\n` +
+    `Location: ${locationAddress ?? 'N/A'}\n` +
+    `Notes: ${notes.slice(0, 2000)}`;
+
+  try {
+    const res = (await ai.run(LLM_MODEL, {
+      messages: [
+        { role: 'system', content: NARRATIVE_SYSTEM },
+        { role: 'user', content: user },
+      ],
+      max_tokens: 600,
+      temperature: 0.3,
+    } as never)) as { response?: string };
+    const narrative = (res?.response || '').trim().slice(0, 3000);
+    if (narrative.length >= 20) {
+      return { narrative, provider: 'workers-ai', fallback: false };
+    }
+  } catch (err) {
+    console.error('[dispatchAi] narrativeAssist LLM failed:', (err as Error)?.message);
+  }
+
+  return {
+    narrative: `Officer notes: ${notes.slice(0, 1000)}`,
+    provider: 'deterministic',
+    fallback: true,
+  };
+}
+
+// ─── smartSearch ────────────────────────────────────────────
+
+const SEARCH_SYSTEM =
+  'You are a police records search assistant. Given a natural language query, ' +
+  'extract structured search filters for the given search type. ' +
+  'Respond with ONLY JSON: {"filters":{"key":"value",...}}.\n\n' +
+  'For persons: first_name, last_name, dob, address, city, state, zip, phone, ' +
+  'dl_number, gender, race, height, weight, hair_color, eye_color.\n' +
+  'For vehicles: plate_number, state, make, model, year, color, vin.\n' +
+  'For incidents: incident_number, incident_type, location_address, priority, status, ' +
+  'narrative_keyword, officer_id, date_from, date_to.\n\n' +
+  'Only include keys that can be confidently inferred from the query. ' +
+  'Leave unknown values as empty strings. Do not make up data.';
+
+export async function smartSearch(
+  ai: Ai,
+  query: string,
+  searchType: string,
+): Promise<{ filters: Record<string, string>; provider: string; fallback: boolean }> {
+  try {
+    const res = (await ai.run(LLM_MODEL, {
+      messages: [
+        { role: 'system', content: SEARCH_SYSTEM },
+        { role: 'user', content: `Search type: ${searchType}\nQuery: ${query.slice(0, 500)}` },
+      ],
+      max_tokens: 300,
+      temperature: 0.1,
+    } as never)) as { response?: string };
+    const p = extractJson(res?.response || '');
+    if (p && typeof p.filters === 'object' && p.filters !== null) {
+      const filters: Record<string, string> = {};
+      for (const [k, v] of Object.entries(p.filters)) {
+        filters[k] = String(v ?? '');
+      }
+      return { filters, provider: 'workers-ai', fallback: false };
+    }
+  } catch (err) {
+    console.error('[dispatchAi] smartSearch LLM failed:', (err as Error)?.message);
+  }
+
+  return { filters: {}, provider: 'deterministic', fallback: true };
+}
+
 // ─── analyzeCall ────────────────────────────────────────────
 
 const ANALYZE_SYSTEM =
