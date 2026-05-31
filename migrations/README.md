@@ -12,7 +12,7 @@ wrangler d1 migrations apply rmpg-flex --remote
 
 Wrangler applies files in **lexicographic order** by filename, tracked in the `d1_migrations` table by exact filename. The four-digit prefix is conventional, not enforced — but our convention is to use it strictly.
 
-Current high-water: **`0046_warrants_null_out_sentinels.sql`**. Next free integer: `0047`.
+Current high-water: **`0051_fleet_100_more_upgrades.sql`**. Next free integer: `0052`.
 
 ## Known irregularities (history)
 
@@ -28,7 +28,7 @@ These exist for historical reasons and should NOT be "fixed" by renumbering — 
 
 ## Adding a new migration
 
-1. Use the next free integer (currently `0047`).
+1. Use the next free integer (currently `0050`).
 2. Single file per migration, snake_case description: `0039_describe_change.sql`.
 3. Write all DDL idempotently — `CREATE TABLE IF NOT EXISTS`, `INSERT OR IGNORE`. D1 doesn't support `IF NOT EXISTS` on `ADD COLUMN` — either accept the failure on re-apply or check first.
 4. **Watch the column cap.** `calls_for_service` (100 cols) and `persons` (94 cols) are at or near D1's 100-column SELECT cap. Any `ALTER TABLE` against them will be rejected by CI (`.github/workflows/column-cap-check.yml`). New columns go to `<table>_ext` overflow tables — see `calls_for_service_ext` for the established pattern.

@@ -110,9 +110,11 @@ import court from './routes/court';
 import dlRecords from './routes/dlRecords';
 import serve from './routes/serve';
 import settings from './routes/settings';
+import adminSettings from './routes/adminSettings';
 import recruitment from './routes/recruitment';
 import reports from './routes/reports';
 import specialOps from './routes/specialOps';
+import victimServices from './routes/victimServices';
 import stubs from './routes/stubs';
 // Dispatch domain
 import dispatchCalls from './routes/dispatch/calls';
@@ -216,6 +218,7 @@ export const ROUTE_REGISTRY: RouteMount[] = [
 
   // ── Admin / personnel / presence ───────────────────────────
   { prefix: '/api/admin', router: admin, auth: 'required' },
+  { prefix: '/api/admin/settings', router: adminSettings, auth: 'required' },
   { prefix: '/api/ai', router: ai, auth: 'required',
     note: 'AI dashboard stubs (config/stats/status/health/activity). Real provider wiring is Phase 2.' },
   { prefix: '/api/voice', router: voiceRoute, auth: 'required',
@@ -267,7 +270,7 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Local DL store CRUD over dl_records + dl_addresses. /verify + /ocr-scan (external APIs) stay on legacy — proxy routes only the bare path + numeric :id here.' },
   { prefix: '/api/field-interviews', router: fieldInterviews, auth: 'required' },
   { prefix: '/api/fleet', router: fleet, auth: 'required',
-    note: 'List/analytics/detail + create/update/soft-delete. Other fleet sub-paths (fuel/maintenance/inspections/personnel-notes/archive/assign) still live on legacy.' },
+    note: 'Full fleet management: vehicles, fuel, maintenance, inspections, assignments, personnel, insurance, registration, tires, damage, recalls, parts, warranties, depreciation, accidents, keys, service providers, fuel cards, budgets, replacement plan, pretrip checklists, cost-per-mile, CSV export, analytics, map overlay, dashcam, utilization, emissions, lifecycle, scorecard. All sub-resource CRUD ported from legacy (May 2026).' },
   { prefix: '/api/forensics', router: forensics, auth: 'required',
     note: 'MVP: cases + exhibits + analyses + activity log; hash sets / reports / cross-links deferred' },
   { prefix: '/api/gang-intel', router: gangIntel, auth: 'required',
@@ -299,7 +302,7 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/skiptracer', router: skiptracer, auth: 'required',
     note: 'Read-only over skiptracer_dossiers + microbilt_searches; legacy still owns POST /search' },
   { prefix: '/api/trespass-orders', router: trespassOrders, auth: 'required' },
-  { prefix: '/api/victim-services', router: stubs, auth: 'required',
+  { prefix: '/api/victim-services', router: victimServices, auth: 'required',
     note: 'Victim services: notification, advocates, restitution, protective orders, safety planning' },
   { prefix: '/api/affairs', router: affairs, auth: 'required',
     note: 'Internal Affairs module: complaints, investigations, early intervention flags' },

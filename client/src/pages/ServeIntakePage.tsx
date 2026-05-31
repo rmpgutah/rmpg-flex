@@ -194,7 +194,7 @@ export default function ServeIntakePage() {
       if (resp.ok) {
         return await resp.json();
       }
-    } catch { }
+    } catch (err) { console.warn("[ServeIntakePage] operation failed:", err); }
     return null;
   }, []);
 

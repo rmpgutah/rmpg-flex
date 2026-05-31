@@ -329,12 +329,15 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
   }
 
   const {
-    maintenance_cost_trend, mileage_distribution, status_breakdown,
-    fuel_economy_trend, fleet_summary, cost_per_mile_ranking,
-    service_compliance, inspection_pass_rate, utilization,
-    daily_usage, maintenance_forecast, oldest_vehicle_year, avg_daily_miles,
-    top_issues,
-  } = analytics;
+    maintenance_cost_trend = [], mileage_distribution = [], status_breakdown = [],
+    fuel_economy_trend = [], fleet_summary = { total_vehicles: 0, avg_mileage: 0, avg_mpg: null, total_maintenance_cost: 0, total_fuel_cost: 0, vehicles_needing_service: 0, inspections_failing: 0 },
+    cost_per_mile_ranking = [],
+    service_compliance = { compliant: 0, overdue: 0, rate: 100 },
+    inspection_pass_rate = { total: 0, passed: 0, failed: 0, rate: 100 },
+    utilization = { assigned: 0, unassigned: 0, rate: 0 },
+    daily_usage = [], maintenance_forecast = [], oldest_vehicle_year = null, avg_daily_miles = null,
+    top_issues = [],
+  } = analytics || {};
 
   const totalCosts = (fleet_summary.total_maintenance_cost || 0) + (fleet_summary.total_fuel_cost || 0);
   const complianceRate = service_compliance?.rate ?? 100;

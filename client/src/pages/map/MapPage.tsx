@@ -44,17 +44,10 @@ import {
   Brain,
   ShieldAlert,
   Grab,
-  Radar,
-  FileSearch,
-  Timer,
   Target,
   Scale,
   Car,
-  AlertOctagon,
   Sun,
-  TreePine,
-  SlidersHorizontal,
-  BarChart3,
   Clock,
   RefreshCw,
   CircleDot,
@@ -86,55 +79,22 @@ import type { MapUnit as Unit, ActiveCall, MapProperty as Property, MapStyleId }
 import { whenStyleReady } from './utils/safeAddSource';
 import { UNIT_STATUS_COLORS, UNIT_STATUS_LABELS, PRIORITY_COLORS, MAP_STYLE_LABELS, MAP_STYLE_DESCRIPTIONS, getIncidentCategory, isLightMapStyle, isSatelliteStyle } from './utils/mapConstants';
 import { buildUnitMarkerContent, buildIncidentMarkerContent, buildPropertyMarkerContent, buildSelfPositionMarker, injectKeyframes } from './utils/mapMarkerBuilders';
-import { useMapHeatmapTimelapse } from './hooks/useMapHeatmapTimelapse';
-import { useMapHeatmapAdvanced, type HeatmapAdvancedMode, type HeatmapColorScheme, type HeatmapResolution, type HeatmapAdvancedOptions } from './hooks/useMapHeatmapAdvanced';
 import { useMapPredictions } from './hooks/useMapPredictions';
 import { useMapIntelLayers } from './hooks/useMapIntelLayers';
-import { useMapSafetyZones } from './hooks/useMapSafetyZones';
-import { useMapGeofences, type GeofenceAlert } from './hooks/useMapGeofences';
 import { useMapClustering } from './hooks/useMapClustering';
 import { useMapDragDispatch } from './hooks/useMapDragDispatch';
-import { useMapTrafficLayer } from './hooks/useMapTrafficLayer';
 import { useMapPatrolCheckpoints } from './hooks/useMapPatrolCheckpoints';
-import { useMapFieldInterviews } from './hooks/useMapFieldInterviews';
-import { useMapDwellTime } from './hooks/useMapDwellTime';
 import { useMapResponseRadius } from './hooks/useMapResponseRadius';
 import { useMapEnforcementClusters } from './hooks/useMapEnforcementClusters';
-import { useMapCoverageGaps } from './hooks/useMapCoverageGaps';
 import { useMapFleetVehicles } from './hooks/useMapFleetVehicles';
-import { useMapRepeatAddresses } from './hooks/useMapRepeatAddresses';
 import { useMapPanicZone } from './hooks/useMapPanicZone';
 import { useMapDaylightOverlay } from './hooks/useMapDaylightOverlay';
-import { useMapCallHistory } from './hooks/useMapCallHistory';
-import { useMapIncidentReports } from './hooks/useMapIncidentReports';
 import { fetchMapConfig, type MapSettings } from './hooks/useMapConfig';
 import PredictionsPanel from './components/PredictionsPanel';
-import GeofenceManager from './components/GeofenceManager';
-import { useMapThreatAssessment } from './hooks/useMapThreatAssessment';
-import { useMapUnitSafety } from './hooks/useMapUnitSafety';
-import { useMapPerimeter } from './hooks/useMapPerimeter';
-import { useMapCorridor } from './hooks/useMapCorridor';
-import { useMapEnvironment } from './hooks/useMapEnvironment';
 import { useMapTactical } from './hooks/useMapTactical';
-import { useMapAlerts, type SafetyAlertType } from './hooks/useMapAlerts';
-import SafetyDashboardPanel from './components/SafetyDashboardPanel';
-import SafetyAlertModal from './components/SafetyAlertModal';
-import ThreatAssessmentPanel from './components/ThreatAssessmentPanel';
 import TacticalToolsPanel, { type QuickDeployPreset } from './components/TacticalToolsPanel';
-import PerimeterToolsPanel from './components/PerimeterToolsPanel';
-import CorridorAnalysisPanel from './components/CorridorAnalysisPanel';
-import AlertSystemPanel from './components/AlertSystemPanel';
-import CallHistoryPanel from './components/CallHistoryPanel';
-import IncidentReportsPanel from './components/IncidentReportsPanel';
-import SafetyZonesPanel from './components/SafetyZonesPanel';
-import TacticalSummaryPanel from './components/TacticalSummaryPanel';
-import AdvancedHeatmapPanel from './components/AdvancedHeatmapPanel';
-import WeatherPanel from './components/WeatherPanel';
 import AnalysisDashboardPanel from './components/AnalysisDashboardPanel';
 import { useAnalysisSummary } from './hooks/useAnalysisSummary';
-import { useSpeedAnalytics } from './hooks/useSpeedAnalytics';
-import SpeedGraphOverlay from './components/SpeedGraphOverlay';
-import CoverageTimeline from './components/CoverageTimeline';
 
 // ============================================================
 // Constants
@@ -268,9 +228,12 @@ export default function MapPage() {
 
   // Fix 42: auto-refresh stale overlay data when tab becomes visible
   const fetchAllDataRef = useRef<((options?: { silent?: boolean }) => Promise<void>) | null>(null);
+  const lastVisibilityRefreshRef = useRef(0);
   useEffect(() => {
     const handleVisibility = () => {
       if (document.visibilityState === 'visible' && Date.now() - lastDataUpdate.getTime() > dataStaleThresholdMs) {
+        if (Date.now() - lastVisibilityRefreshRef.current < 10000) return;
+        lastVisibilityRefreshRef.current = Date.now();
         fetchAllDataRef.current?.({ silent: true });
       }
     };
@@ -293,46 +256,14 @@ export default function MapPage() {
   const [heatmapMode, setHeatmapMode] = useState<'all' | 'risk' | 'type'>('all');
   const [heatmapTypeFilter, setHeatmapTypeFilter] = useState('');
   const [heatmapTypes, setHeatmapTypes] = useState<{ incident_type: string; count: number }[]>([]);
-
-  // Advanced heatmap state
-  const [advancedHeatmapEnabled, setAdvancedHeatmapEnabled] = useState(false);
-  const [advHeatmapMode, setAdvHeatmapMode] = useState<HeatmapAdvancedMode>('density');
-  const [advHeatmapTypes, setAdvHeatmapTypes] = useState<string[]>([]);
-  const [advHeatmapHourRange, setAdvHeatmapHourRange] = useState<[number, number]>([0, 23]);
-  const [advHeatmapDayFilter, setAdvHeatmapDayFilter] = useState<number[]>([]);
-  const [advHeatmapResolution, setAdvHeatmapResolution] = useState<HeatmapResolution>('medium');
-  const [advHeatmapColorScheme, setAdvHeatmapColorScheme] = useState<HeatmapColorScheme>('heat');
-  const [advHeatmapOpacity, setAdvHeatmapOpacity] = useState(70);
-  const [advHeatmapRadius, setAdvHeatmapRadius] = useState(30);
-  const [advHeatmapShowClusters, setAdvHeatmapShowClusters] = useState(true);
-  const [advHeatmapComparisonDays, setAdvHeatmapComparisonDays] = useState(30);
-  const [showAdvHeatmapPanel, setShowAdvHeatmapPanel] = useState(false);
-
-  const advHeatmapOptions: HeatmapAdvancedOptions = useMemo(() => ({
-    enabled: advancedHeatmapEnabled && showHeatmap,
-    days: heatmapDays,
-    mode: advHeatmapMode,
-    types: advHeatmapTypes,
-    hourRange: advHeatmapHourRange,
-    dayFilter: advHeatmapDayFilter,
-    resolution: advHeatmapResolution,
-    colorScheme: advHeatmapColorScheme,
-    opacity: advHeatmapOpacity,
-    radius: advHeatmapRadius,
-    showClusters: advHeatmapShowClusters,
-    comparisonDays: advHeatmapComparisonDays,
-  }), [advancedHeatmapEnabled, showHeatmap, heatmapDays, advHeatmapMode, advHeatmapTypes, advHeatmapHourRange, advHeatmapDayFilter, advHeatmapResolution, advHeatmapColorScheme, advHeatmapOpacity, advHeatmapRadius, advHeatmapShowClusters, advHeatmapComparisonDays]);
-
-  // Breadcrumb trail state — default seeded from per-user map preferences
   const [showBreadcrumbs, setShowBreadcrumbs] = useState(() => getMapPreferences().overlays.breadcrumbs);
   const [breadcrumbHours, setBreadcrumbHours] = useState(8);
   const [exportingPdf, setExportingPdf] = useState(false);
   const [breadcrumbColorMode, setBreadcrumbColorMode] = useState<'unit' | 'speed' | 'status' | 'accel'>('unit');
   const breadcrumbLinesRef = useRef<any[]>([]);
-  const speedAlertMarkersRef = useRef<any[]>([]);
+  const speedAlertKeyedRef = useRef<Map<string, mapboxgl.Marker>>(new Map());
 
-  // Speed analytics integration
-  const speedAnalytics = useSpeedAnalytics({ hours: breadcrumbHours, enabled: showBreadcrumbs });
+  // ───────────────────  Trails (speed alerts now via breadcrumb trails)  ──
 
   // Trail playback state
   const [playbackTrails, setPlaybackTrails] = useState<PlaybackTrail[]>([]);
@@ -487,11 +418,9 @@ export default function MapPage() {
   const [newPlanName, setNewPlanName] = useState('');
 
   // Tactical map feature toggles
-  const [showTimelapse, setShowTimelapse] = useState(false);
   const [showPredictions, setShowPredictions] = useState(false);
-  const [showSafetyZones, setShowSafetyZones] = useState(false);
-  const [showGeofences, setShowGeofences] = useState(false);
   const [showAnalysisDashboard, setShowAnalysisDashboard] = useState(false);
+  const [showTacticalTools, setShowTacticalTools] = useState(false);
   const [dragDispatchMode, setDragDispatchMode] = useState(false);
   const clusteringInitRef = useRef(false);
   const [clusteringEnabled, setClusteringEnabled] = useState(false);
@@ -596,6 +525,17 @@ export default function MapPage() {
   const unitsRef = useRef(units);
   unitsRef.current = units;
 
+  // Track previous unit state to skip marker updates for stationary units
+  const prevUnitStateRef = useRef<Map<string, { lat: number; lng: number; status: string; heading: number | null; speed: number | null }>>(new Map());
+
+  const lastClickedPropRef = useRef<string | null>(null);
+  const abortedRef = useRef(false);
+  const lastRouteUpdateRef = useRef<{ time: number; lat: number; lng: number } | null>(null);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // WebSocket-poll race prevention: increment on WS updates, check before applying poll results
+  const dataVersionRef = useRef(0);
+
   // Intel layers
   const [intelLayers, setIntelLayers] = useState({ warrants: false, trespass: false, offenders: false, bolos: false });
   const toggleIntelLayer = (layer: 'warrants' | 'trespass' | 'offenders' | 'bolos') => {
@@ -604,58 +544,18 @@ export default function MapPage() {
 
   // New tactical layer toggles
   const [showPatrolCheckpoints, setShowPatrolCheckpoints] = useState(false);
-  const [showFieldInterviews, setShowFieldInterviews] = useState(false);
-  const [fiDays, setFiDays] = useState(30);
-  const [showDwellTime, setShowDwellTime] = useState(false);
   const [showResponseRadius, setShowResponseRadius] = useState(false);
   const [showEnforcementClusters, setShowEnforcementClusters] = useState(false);
   const [enforcementType, setEnforcementType] = useState<'citations' | 'arrests'>('citations');
   const [enforcementDays, setEnforcementDays] = useState(90);
-  const [showCoverage, setShowCoverage] = useState(false);
-  const [coverageRadius, setCoverageRadius] = useState(3);
   const [showFleetVehicles, setShowFleetVehicles] = useState(false);
-  const [showRepeatAddresses, setShowRepeatAddresses] = useState(false);
-  const [repeatDays, setRepeatDays] = useState(30);
-  const [repeatMinCount, setRepeatMinCount] = useState(3);
   const [showPanicZone, setShowPanicZone] = useState(true); // on by default for safety
   const [showDaylight, setShowDaylight] = useState(false);
 
-  // Historical call & incident report layers
-  const [showCallHistory, setShowCallHistory] = useState(false);
-  const [callHistoryDays, setCallHistoryDays] = useState(7);
-  const [callHistoryStatuses, setCallHistoryStatuses] = useState(['cleared', 'closed']);
-  const [callHistoryTypes, setCallHistoryTypes] = useState<string[]>([]);
-  const [callHistoryPriorities, setCallHistoryPriorities] = useState<string[]>([]);
-  const [showIncidentReports, setShowIncidentReports] = useState(false);
-  const [incidentDays, setIncidentDays] = useState(30);
-  const [incidentStatuses, setIncidentStatuses] = useState<string[]>([]);
-  const [incidentTypes, setIncidentTypes] = useState<string[]>([]);
-
-  // Officer Safety System
-  const [showSafetyDashboard, setShowSafetyDashboard] = useState(false);
-  const [showSafetyAlertModal, setShowSafetyAlertModal] = useState(false);
-  const [showThreatAssessment, setShowThreatAssessment] = useState(false);
-  const [showUnitMonitoring, setShowUnitMonitoring] = useState(false);
-  const [showPerimeterTools, setShowPerimeterTools] = useState(false);
-  const [showCorridorAnalysis, setShowCorridorAnalysis] = useState(false);
-  const [showEnvironmentInfo, setShowEnvironmentInfo] = useState(false);
-  const [showTacticalTools, setShowTacticalTools] = useState(false);
-  const [showAlertSystem, setShowAlertSystem] = useState(false);
-
   // Tactical map hooks
-  const timelapse = useMapHeatmapTimelapse(mapInstanceRef.current, showTimelapse && showHeatmap && !advancedHeatmapEnabled, heatmapDays, heatmapMode as 'all' | 'risk');
-  const advancedHeatmap = useMapHeatmapAdvanced(mapInstanceRef.current, advHeatmapOptions);
   const predictions = useMapPredictions(mapInstanceRef.current, showPredictions);
   const intelLayerData = useMapIntelLayers(mapInstanceRef.current, intelLayers);
-  const safetyZones = useMapSafetyZones(mapInstanceRef.current, showSafetyZones);
-  const handleGeofenceAlert = useCallback((alert: GeofenceAlert) => {
-    const verb = alert.eventType === 'enter' ? 'entered' : 'exited';
-    addToast(`${alert.unitCallSign} ${verb} ${alert.geofenceName}`, alert.eventType === 'enter' ? 'warning' : 'info');
-  }, [addToast]);
-  const geofences = useMapGeofences(mapInstanceRef.current, showGeofences, { onAlert: handleGeofenceAlert });
   const analysisSummary = useAnalysisSummary(showAnalysisDashboard);
-  // Traffic layer
-  const { showTraffic, toggleTraffic } = useMapTrafficLayer();
 
   // Clustering — groups call markers at low zoom levels
   const clustering = useMapClustering(mapInstanceRef.current, clusteringEnabled, callMarkersArrayRef.current);
@@ -683,98 +583,44 @@ export default function MapPage() {
 
   // New tactical hooks
   const patrolCheckpoints = useMapPatrolCheckpoints(mapInstanceRef.current, showPatrolCheckpoints);
-  const fieldInterviews = useMapFieldInterviews(mapInstanceRef.current, showFieldInterviews, fiDays);
-  const dwellTime = useMapDwellTime(mapInstanceRef.current, units as Parameters<typeof useMapDwellTime>[1], showDwellTime);
   const responseRadius = useMapResponseRadius(mapInstanceRef.current, showResponseRadius);
   const enforcementClusters = useMapEnforcementClusters(mapInstanceRef.current, showEnforcementClusters, enforcementType, enforcementDays);
-  const coverageGaps = useMapCoverageGaps(mapInstanceRef.current, units as Parameters<typeof useMapCoverageGaps>[1], showCoverage, coverageRadius);
   const fleetVehicles = useMapFleetVehicles(mapInstanceRef.current, showFleetVehicles);
-  const repeatAddresses = useMapRepeatAddresses(mapInstanceRef.current, showRepeatAddresses, repeatDays, repeatMinCount);
   const panicZone = useMapPanicZone(mapInstanceRef.current, showPanicZone);
   const daylight = useMapDaylightOverlay(mapInstanceRef.current, showDaylight);
 
-  // Historical call & incident report hooks
-  const callHistory = useMapCallHistory({
-    map: mapInstanceRef.current,
-    enabled: showCallHistory,
-    days: callHistoryDays,
-    statuses: callHistoryStatuses,
-    types: callHistoryTypes,
-    priorities: callHistoryPriorities,
-  });
-  const incidentReports = useMapIncidentReports({
-    map: mapInstanceRef.current,
-    enabled: showIncidentReports,
-    days: incidentDays,
-    statuses: incidentStatuses,
-    types: incidentTypes,
-  });
-
-  // Officer Safety hooks
-  const threatAssessment = useMapThreatAssessment(mapInstanceRef.current, showThreatAssessment);
-  const unitSafety = useMapUnitSafety(mapInstanceRef.current, showUnitMonitoring);
-  const perimeter = useMapPerimeter(mapInstanceRef.current, showPerimeterTools);
-  const corridor = useMapCorridor(mapInstanceRef.current, showCorridorAnalysis);
-  const environment = useMapEnvironment(mapInstanceRef.current, showEnvironmentInfo);
+  // Tactical tools hook (pure client-side, always active)
   const tactical = useMapTactical(mapInstanceRef.current);
-  const alerts = useMapAlerts(mapInstanceRef.current);
-
-  // Geofence alerts — show toast when triggered
-  useEffect(() => {
-    if (!geofences.alerts?.length) return;
-    const latest = geofences.alerts[geofences.alerts.length - 1];
-    if (latest) {
-      addToast(`Geofence: ${latest.unitCallSign} ${latest.eventType} ${latest.geofenceName}`, 'warning');
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [geofences.alerts.length, addToast]);
-
-  // Shift risk data for safety dashboard
-  const [shiftRisk, setShiftRisk] = useState<Record<string, any> | null>(null);
-  useEffect(() => {
-    if (!showSafetyDashboard) return;
-    let cancelled = false;
-    const fetchShiftRisk = async () => {
-      try {
-        const data = await apiFetch('/map/safety/shift-risk-summary');
-        if (!cancelled) setShiftRisk(data as Record<string, any> | null);
-      } catch { /* non-critical */ }
-    };
-    fetchShiftRisk();
-    const iv = setInterval(fetchShiftRisk, 60000);
-    return () => { cancelled = true; clearInterval(iv); };
-  }, [showSafetyDashboard]);
-
-  // Safety alert toasts
-  useEffect(() => {
-    if (alerts.activeAlerts && alerts.activeAlerts.length > 0) {
-      const latest = alerts.activeAlerts[alerts.activeAlerts.length - 1];
-      if (latest && !latest.acknowledged) {
-        addToast(`SAFETY ALERT: ${latest.type.replace(/_/g, ' ').toUpperCase()} — ${latest.details || 'No details'}`, 'error', 15000);
-      }
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [alerts.activeAlerts?.length, addToast]);
 
   // ============================================================
   // Data Fetching
   // ============================================================
 
   const fetchUnits = useCallback(async () => {
+    const v = ++dataVersionRef.current;
     try {
       const data = await apiFetch<Unit[]>('/dispatch/units');
+      if (abortedRef.current) return;
+      if (dataVersionRef.current !== v) return;
       setUnits(Array.isArray(data) ? data : []);
     } catch (err) {
+      if (abortedRef.current) return;
+      if (dataVersionRef.current !== v) return;
       console.error('Error fetching units:', err);
       setError('Failed to load units');
     }
   }, []);
 
   const fetchCalls = useCallback(async () => {
+    const v = ++dataVersionRef.current;
     try {
       const data = await apiFetch<ActiveCall[]>('/dispatch/queue');
+      if (abortedRef.current) return;
+      if (dataVersionRef.current !== v) return;
       setCalls(Array.isArray(data) ? data : []);
     } catch (err) {
+      if (abortedRef.current) return;
+      if (dataVersionRef.current !== v) return;
       console.error('Error fetching calls:', err);
       setError('Failed to load active calls');
     }
@@ -783,8 +629,10 @@ export default function MapPage() {
   const fetchProperties = useCallback(async () => {
     try {
       const data = await apiFetch<Property[]>('/records/properties');
+      if (abortedRef.current) return;
       setProperties(Array.isArray(data) ? data : []);
     } catch (err) {
+      if (abortedRef.current) return;
       console.error('Error fetching properties:', err);
       setError('Failed to load properties');
     }
@@ -818,6 +666,7 @@ export default function MapPage() {
 
   useEffect(() => {
     const unsubscribeUnit = subscribe('unit_update', (msg: any) => {
+      dataVersionRef.current++;
       const data = msg.data || msg;
       if (data?.action === 'unit_deleted' && data.unit_id) {
         setUnits((prev) => prev.filter((u) => u.id !== data.unit_id));
@@ -845,6 +694,7 @@ export default function MapPage() {
     const isInactive = (s: any) => typeof s === 'string' && INACTIVE_STATUSES.has(s.toLowerCase());
 
     const unsubscribeCall = subscribe('dispatch_update', (msg: any) => {
+      dataVersionRef.current++;
       const evtData = msg.data || msg;
 
       // Handle deletions explicitly — call_deleted broadcasts carry call_id, not call
@@ -893,7 +743,7 @@ export default function MapPage() {
   // ============================================================
 
   useEffect(() => {
-    if (!showHeatmap || advancedHeatmapEnabled) { setHeatmapData([]); return; }
+    if (!showHeatmap) { setHeatmapData([]); return; }
     let cancelled = false;
     let url = `/dispatch/heatmap?days=${heatmapDays}&mode=${heatmapMode}`;
     if (heatmapMode === 'type' && heatmapTypeFilter) url += `&type=${encodeURIComponent(heatmapTypeFilter)}`;
@@ -901,7 +751,7 @@ export default function MapPage() {
       .then((data) => { if (!cancelled) setHeatmapData(Array.isArray(data) ? data : []); })
       .catch((err) => { if (!cancelled) { console.warn('[MapPage] heatmap data fetch failed:', err); setHeatmapData([]); } });
     return () => { cancelled = true; };
-  }, [showHeatmap, heatmapDays, heatmapMode, heatmapTypeFilter, advancedHeatmapEnabled]);
+  }, [showHeatmap, heatmapDays, heatmapMode, heatmapTypeFilter]);
 
   // Fetch available incident types for heatmap type filter
   useEffect(() => {
@@ -1008,17 +858,21 @@ export default function MapPage() {
       mapInstanceRef.current = map;
       registerMapInstance(map);
 
-      // Fix 30: save map center/zoom to localStorage on moveend
-      map.on('moveend', () => {
-        try {
-          const c = map.getCenter();
-          const z = map.getZoom();
-          if (c && z != null) {
-            localStorage.setItem('rmpg_map_center', JSON.stringify({ lat: c.lat, lng: c.lng }));
-            localStorage.setItem('rmpg_map_zoom', String(z));
-          }
-        } catch { /* quota exceeded */ }
-      });
+      // Fix 30: save map center/zoom to localStorage on moveend (debounced to skip animation frames)
+      const savePosition = () => {
+        if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = setTimeout(() => {
+          try {
+            const c = map.getCenter();
+            const z = map.getZoom();
+            if (c && z != null) {
+              localStorage.setItem('rmpg_map_center', JSON.stringify({ lat: c.lat, lng: c.lng }));
+              localStorage.setItem('rmpg_map_zoom', String(z));
+            }
+          } catch { /* quota exceeded */ }
+        }, 1000);
+      };
+      map.on('moveend', savePosition);
 
       infoWindowRef.current = new mapboxgl.Popup({ closeButton: true, closeOnClick: false });
 
@@ -1124,7 +978,8 @@ export default function MapPage() {
     })();
 
     return () => {
-      cancelled = true; // Stop any pending retries
+      cancelled = true;
+      abortedRef.current = true;
       unsubOnline();
       if (tileMonitorCleanupRef.current) { tileMonitorCleanupRef.current(); tileMonitorCleanupRef.current = null; }
       if (mapInstanceRef.current) unregisterMapInstance(mapInstanceRef.current);
@@ -1132,10 +987,15 @@ export default function MapPage() {
         if (m && typeof m.remove === 'function') m.remove();
       });
       markersRef.current = [];
+      speedAlertKeyedRef.current.forEach((m) => m.remove());
+      speedAlertKeyedRef.current.clear();
+      if (playbackMarkerRef.current) { playbackMarkerRef.current.remove(); playbackMarkerRef.current = null; }
+      if (playbackSpeedLabelRef.current) { playbackSpeedLabelRef.current.remove(); playbackSpeedLabelRef.current = null; }
+      if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
       mapInstanceRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapRetry, mapStyle]);
+  }, [mapRetry]);
 
   // ============================================================
   // Switch Map Style
@@ -1265,10 +1125,45 @@ export default function MapPage() {
               infoWindowRef.current?.addTo(map);
           };
           const existing = unitMarkersMapRef.current.get(id);
+
+          // Skip marker updates for stationary units (Fix 4)
+          const prev = prevUnitStateRef.current.get(id);
+          const hasChanged = !prev || prev.lat !== unit.latitude || prev.lng !== unit.longitude || prev.status !== unit.status || prev.heading !== unit.gps_heading || prev.speed !== unit.gps_speed;
+          if (!hasChanged && existing) {
+            (existing as any)._rmpgClick = makeUnitClick;
+            return;
+          }
+
+          prevUnitStateRef.current.set(id, { lat: unit.latitude!, lng: unit.longitude!, status: unit.status, heading: unit.gps_heading ?? null, speed: unit.gps_speed ?? null });
+
           if (existing) {
             existing.setLngLat([unit.longitude, unit.latitude]);
             const el = existing.getElement?.();
-            if (el) el.replaceChildren(buildUnitMarkerContent(unit.call_sign, unit.status, unit.gps_source, unit.gps_heading, unit.gps_speed));
+            if (el) {
+              const label = el.querySelector('[data-unit-label]') as HTMLElement | null;
+              if (label) {
+                label.textContent = unit.call_sign;
+                label.style.color = UNIT_STATUS_COLORS[unit.status] || '#666666';
+              }
+              const statusDot = el.querySelector('[data-unit-status]') as HTMLElement | null;
+              if (statusDot) {
+                const sc = UNIT_STATUS_COLORS[unit.status] || '#666666';
+                statusDot.style.backgroundColor = sc;
+              }
+              const srcBadge = el.querySelector('[data-unit-source]') as HTMLElement | null;
+              if (srcBadge) {
+                srcBadge.style.display = unit.gps_source === 'clearpathgps' ? '' : 'none';
+              }
+              const arrow = el.querySelector('[data-unit-arrow]') as HTMLElement | null;
+              if (arrow) {
+                arrow.style.transform = `rotate(${unit.gps_heading ?? 0}deg)`;
+              }
+              const speedEl = el.querySelector('[data-unit-speed]') as HTMLElement | null;
+              if (speedEl) {
+                const mph = unit.gps_speed != null ? Math.round(unit.gps_speed * 2.237) : null;
+                speedEl.textContent = mph != null ? `${mph}` : '';
+              }
+            }
             (existing as any)._rmpgClick = makeUnitClick;
           } else {
             const content = buildUnitMarkerContent(unit.call_sign, unit.status, unit.gps_source, unit.gps_heading, unit.gps_speed);
@@ -1399,6 +1294,9 @@ export default function MapPage() {
             zIndex: 100,
             title: prop.name,
             onClick: async () => {
+              const propId = String(prop.id);
+              lastClickedPropRef.current = propId;
+
               // Show loading state immediately
               infoWindowRef.current?.setHTML(`
                 <div style="min-width:200px;font-family:'JetBrains Mono',monospace;background:#0c0c0c;color:#e5e7eb;padding:12px;border:1px solid #88888850;border-radius:4px;">
@@ -1412,6 +1310,7 @@ export default function MapPage() {
               // Fetch full property details (includes recent calls, contacts, schedules)
               try {
                 const details = await apiFetch<any>(`/records/properties/${prop.id}`);
+                if (lastClickedPropRef.current !== propId) return;
                 const recentCalls = details.recentCalls || [];
                 const schedules = details.todaySchedules || [];
                 const linkedPersons: any[] = details.linkedPersons || [];
@@ -1515,6 +1414,7 @@ export default function MapPage() {
                   </div>
                 `);
               } catch (err) {
+                if (lastClickedPropRef.current !== propId) return;
                 console.error('[MapPage] Failed to fetch property details:', err);
                 // If fetch fails, show basic info
                 infoWindowRef.current?.setHTML(`
@@ -1595,6 +1495,13 @@ export default function MapPage() {
     if (!activeRoute) return;
     const routedUnit = units.find(u => u.call_sign === activeRoute.unitCallSign);
     if (routedUnit?.latitude != null && routedUnit?.longitude != null) {
+      const now = Date.now();
+      const last = lastRouteUpdateRef.current;
+      const dist = last
+        ? Math.hypot(routedUnit.latitude - last.lat, routedUnit.longitude - last.lng) * 111000
+        : Infinity;
+      if (last && now - last.time < 10000 && dist < 50) return;
+      lastRouteUpdateRef.current = { time: now, lat: routedUnit.latitude, lng: routedUnit.longitude };
       updateOrigin(routedUnit.latitude, routedUnit.longitude);
     }
   }, [activeRoute, units, updateOrigin]);
@@ -1611,8 +1518,8 @@ export default function MapPage() {
     if (map.getLayer('rmpg-heatmap-layer')) map.removeLayer('rmpg-heatmap-layer');
     if (map.getSource('rmpg-heatmap')) map.removeSource('rmpg-heatmap');
 
-    // Skip basic heatmap rendering when advanced heatmap is active (it manages its own layers)
-    if (!showHeatmap || heatmapData.length === 0 || advancedHeatmapEnabled) return;
+    // Skip heatmap rendering when no data
+    if (!showHeatmap || heatmapData.length === 0) return;
 
     // Build weighted GeoJSON data points for heatmap
     const weightedFeatures = heatmapData
@@ -1630,7 +1537,14 @@ export default function MapPage() {
       }));
 
     try {
+      const existingSrc = map.getSource('rmpg-heatmap') as mapboxgl.GeoJSONSource | undefined;
+      if (existingSrc) {
+        existingSrc.setData({ type: 'FeatureCollection', features: weightedFeatures });
+        return;
+      }
+
       whenStyleReady(map, () => {
+      if (map.getSource('rmpg-heatmap')) return;
       map.addSource('rmpg-heatmap', {
         type: 'geojson',
         data: {
@@ -1689,7 +1603,7 @@ export default function MapPage() {
       if (map.getSource('rmpg-heatmap')) map.removeSource('rmpg-heatmap');
       heatmapLayerRef.current = null;
     };
-  }, [showHeatmap, heatmapData, heatmapMode, mapLoaded, advancedHeatmapEnabled]);
+  }, [showHeatmap, heatmapData, heatmapMode, mapLoaded]);
 
   // ============================================================
   // Unit-to-Call Tracking Lines
@@ -1699,13 +1613,13 @@ export default function MapPage() {
     const map = mapInstanceRef.current;
     if (!map || !mapLoaded) return;
 
-    // Clear existing lines
-    if (map.getLayer('rmpg-tracking-lines')) map.removeLayer('rmpg-tracking-lines');
-    if (map.getSource('rmpg-tracking-lines')) map.removeSource('rmpg-tracking-lines');
-    trackingLinesRef.current = [];
-    setTrackingLineCount(0);
-
-    if (!showTrackingLines) return;
+    if (!showTrackingLines) {
+      if (map.getLayer('rmpg-tracking-lines')) map.removeLayer('rmpg-tracking-lines');
+      if (map.getSource('rmpg-tracking-lines')) map.removeSource('rmpg-tracking-lines');
+      trackingLinesRef.current = [];
+      setTrackingLineCount(0);
+      return;
+    }
 
     const features: any[] = [];
 
@@ -1736,49 +1650,59 @@ export default function MapPage() {
       });
     });
 
-    if (features.length === 0) return;
-
-    try {
-      whenStyleReady(map, () => {
-      map.addSource('rmpg-tracking-lines', {
-        type: 'geojson',
-        data: { type: 'FeatureCollection', features },
-      });
-
-      // Mapbox 'case' requires both branches to produce the same type. The
-      // "then" branch returns [1, 4] (a 2-segment dash pattern), so the
-      // "else" must also return an array — not a bare `1`. Use [1] for a
-      // solid line (single-segment pattern). Previously this threw
-      // `line-dasharray[3]: Expected array<number> but found number`.
-      const dashExpr = ['case',
-        ['==', ['get', 'isDashed'], true],
-        [1, 4],
-        [1],
-      ];
-
-      map.addLayer({
-        id: 'rmpg-tracking-lines',
-        type: 'line',
-        source: 'rmpg-tracking-lines',
-        paint: {
-          'line-color': ['get', 'color'],
-          'line-opacity': ['case', ['==', ['get', 'isDashed'], true], 0, 0.6],
-          'line-width': 2,
-          'line-dasharray': dashExpr as any,
-        },
-      });
-
-      setTrackingLineCount(features.length);
-      });
-    } catch (err) {
-      console.warn('[MapPage] Error creating tracking lines:', err);
+    if (features.length === 0) {
+      const existingSrc = map.getSource('rmpg-tracking-lines') as mapboxgl.GeoJSONSource | undefined;
+      if (existingSrc) {
+        existingSrc.setData({ type: 'FeatureCollection', features: [] });
+      } else {
+        if (map.getLayer('rmpg-tracking-lines')) map.removeLayer('rmpg-tracking-lines');
+        if (map.getSource('rmpg-tracking-lines')) map.removeSource('rmpg-tracking-lines');
+      }
+      trackingLinesRef.current = [];
+      setTrackingLineCount(0);
+      return;
     }
 
-    return () => {
-      if (map.getLayer('rmpg-tracking-lines')) map.removeLayer('rmpg-tracking-lines');
-      if (map.getSource('rmpg-tracking-lines')) map.removeSource('rmpg-tracking-lines');
-    };
-  }, [units, calls, showTrackingLines, mapLoaded]);
+    try {
+      const geojsonData: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features };
+
+      const existingSrc = map.getSource('rmpg-tracking-lines') as mapboxgl.GeoJSONSource | undefined;
+      if (existingSrc) {
+        existingSrc.setData(geojsonData);
+        setTrackingLineCount(features.length);
+      } else {
+        whenStyleReady(map, () => {
+          if (map.getSource('rmpg-tracking-lines')) return;
+          map.addSource('rmpg-tracking-lines', {
+            type: 'geojson',
+            data: geojsonData,
+          });
+
+          const dashExpr = ['case',
+            ['==', ['get', 'isDashed'], true],
+            [1, 4],
+            [1],
+          ];
+
+          map.addLayer({
+            id: 'rmpg-tracking-lines',
+            type: 'line',
+            source: 'rmpg-tracking-lines',
+            paint: {
+              'line-color': ['get', 'color'],
+              'line-opacity': ['case', ['==', ['get', 'isDashed'], true], 0, 0.6],
+              'line-width': 2,
+              'line-dasharray': dashExpr as any,
+            },
+          });
+
+          setTrackingLineCount(features.length);
+        });
+      }
+    } catch (err) {
+      console.warn('[MapPage] Error updating tracking lines:', err);
+    }
+  }, [units, calls, showTrackingLines, mapLoaded, mapStyle]);
 
   // ============================================================
   // GPS Breadcrumb Trails (enhanced: color modes, arrows, road names, playback)
@@ -1946,15 +1870,15 @@ export default function MapPage() {
     const map = mapInstanceRef.current;
     if (!map || !mapLoaded) return;
 
-    // Clear existing breadcrumb visuals
-    if (map.getLayer('rmpg-breadcrumb-lines')) map.removeLayer('rmpg-breadcrumb-lines');
-    if (map.getSource('rmpg-breadcrumb-lines')) map.removeSource('rmpg-breadcrumb-lines');
+    // Clear existing breadcrumb visuals — dots & arrows use setData()
+    // for efficient updates during interval refreshes.  Lines migrated to
+    // setData as well (FIX 32) so we only tear them down on full cleanup.
     if (map.getLayer(DOTS_LAYER_ID)) map.removeLayer(DOTS_LAYER_ID);
     if (map.getSource(DOTS_SOURCE_ID)) map.removeSource(DOTS_SOURCE_ID);
     if (map.getLayer(ARROWS_LAYER_ID)) map.removeLayer(ARROWS_LAYER_ID);
     if (map.getSource(ARROWS_SOURCE_ID)) map.removeSource(ARROWS_SOURCE_ID);
-    speedAlertMarkersRef.current.forEach((m) => m.remove());
-    speedAlertMarkersRef.current = [];
+    speedAlertKeyedRef.current.forEach((m) => m.remove());
+    speedAlertKeyedRef.current.clear();
     breadcrumbTrailsRef.current = [];
 
     if (!showBreadcrumbs) { setPlaybackTrails([]); return; }
@@ -1984,9 +1908,6 @@ export default function MapPage() {
     let retryTimeout: ReturnType<typeof setTimeout>;
 
     const fetchTrails = async () => {
-      speedAlertMarkersRef.current.forEach((m) => m.remove());
-      speedAlertMarkersRef.current = [];
-
       try {
         const rawTrails = await apiFetch<Trail[]>(`/dispatch/gps/trails?hours=${breadcrumbHours}`);
         const trails = (Array.isArray(rawTrails) ? rawTrails : []).filter(t => Array.isArray(t?.points));
@@ -2086,14 +2007,17 @@ export default function MapPage() {
           });
         });
 
-        // Create or update breadcrumb line source & layer
-        if (map.getLayer('rmpg-breadcrumb-lines')) map.removeLayer('rmpg-breadcrumb-lines');
-        if (map.getSource('rmpg-breadcrumb-lines')) map.removeSource('rmpg-breadcrumb-lines');
-        if (lineFeatures.length > 0) {
+        // Create or update breadcrumb line source & layer via setData()
+        // (same pattern as dots/arrows — avoids source-teardown blink).
+        const linesData: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: lineFeatures };
+        const existingLineSrc = map.getSource('rmpg-breadcrumb-lines') as mapboxgl.GeoJSONSource | undefined;
+        if (existingLineSrc) {
+          existingLineSrc.setData(linesData);
+        } else if (lineFeatures.length > 0) {
           whenStyleReady(map, () => {
             map.addSource('rmpg-breadcrumb-lines', {
               type: 'geojson',
-              data: { type: 'FeatureCollection', features: lineFeatures },
+              data: linesData,
             });
             map.addLayer({
               id: 'rmpg-breadcrumb-lines',
@@ -2184,21 +2108,27 @@ export default function MapPage() {
           });
         }
 
-        // Speed alert triangle markers (>= 80 mph)
-        speedAlertMarkersRef.current.forEach((m) => m.remove());
-        speedAlertMarkersRef.current = [];
+        // Speed alert triangle markers (>= 80 mph) — delta update to avoid blink
+        const newKeys = new Set<string>();
         trails.forEach((trail) => {
-          trail.points.forEach((pt) => {
+          trail.points.forEach((pt, ptIdx) => {
             const mph = pt.speed != null ? pt.speed * 2.237 : 0;
             if (!isFinite(pt.lng) || !isFinite(pt.lat)) return;
             if (mph >= 80) {
-              const el = document.createElement('div');
-              el.innerHTML = `<svg width="18" height="16" viewBox="0 0 18 16"><polygon points="9,0 18,14 0,14" fill="#dc2626" stroke="#fbbf24" stroke-width="1.5"/><text x="9" y="11" text-anchor="middle" fill="#fff" font-size="9" font-weight="bold">!</text></svg>`;
-              el.title = `Speed alert: ${Math.round(mph)} mph \u2014 ${trail.call_sign}`;
-              const marker = new mapboxgl.Marker({ element: el }).setLngLat([pt.lng, pt.lat]).addTo(map);
-              speedAlertMarkersRef.current.push(marker);
+              const key = `${trail.unit_id}:${ptIdx}`;
+              newKeys.add(key);
+              if (!speedAlertKeyedRef.current.has(key)) {
+                const el = document.createElement('div');
+                el.innerHTML = `<svg width="18" height="16" viewBox="0 0 18 16"><polygon points="9,0 18,14 0,14" fill="#dc2626" stroke="#fbbf24" stroke-width="1.5"/><text x="9" y="11" text-anchor="middle" fill="#fff" font-size="9" font-weight="bold">!</text></svg>`;
+                el.title = `Speed alert: ${Math.round(mph)} mph \u2014 ${trail.call_sign}`;
+                const marker = new mapboxgl.Marker({ element: el }).setLngLat([pt.lng, pt.lat]).addTo(map);
+                speedAlertKeyedRef.current.set(key, marker);
+              }
             }
           });
+        });
+        speedAlertKeyedRef.current.forEach((marker, key) => {
+          if (!newKeys.has(key)) { marker.remove(); speedAlertKeyedRef.current.delete(key); }
         });
       } catch {
         retryTimeout = setTimeout(fetchTrails, 5000);
@@ -2217,10 +2147,10 @@ export default function MapPage() {
       if (map.getLayer(ARROWS_LAYER_ID)) map.removeLayer(ARROWS_LAYER_ID);
       if (map.getSource(ARROWS_SOURCE_ID)) map.removeSource(ARROWS_SOURCE_ID);
       breadcrumbTrailsRef.current = [];
-      speedAlertMarkersRef.current.forEach((m) => m.remove());
-      speedAlertMarkersRef.current = [];
+      speedAlertKeyedRef.current.forEach((m) => m.remove());
+      speedAlertKeyedRef.current.clear();
     };
-  }, [showBreadcrumbs, breadcrumbHours, breadcrumbColorMode, mapLoaded]);
+  }, [showBreadcrumbs, breadcrumbHours, breadcrumbColorMode, mapLoaded, mapStyle]);
 
   // ============================================================
   // Trail Playback Animation
@@ -2295,6 +2225,14 @@ export default function MapPage() {
         clearTimeout(playbackAnimRef.current);
         playbackAnimRef.current = null;
       }
+      if (playbackMarkerRef.current) {
+        playbackMarkerRef.current.remove();
+        playbackMarkerRef.current = null;
+      }
+      if (playbackSpeedLabelRef.current) {
+        playbackSpeedLabelRef.current.remove();
+        playbackSpeedLabelRef.current = null;
+      }
     };
   }, [isPlaying, playbackUnit, playbackSpeed, mapLoaded]);
 
@@ -2313,322 +2251,6 @@ export default function MapPage() {
   }, [playbackUnit]);
 
   // ============================================================
-  // Speed Heatmap Layer (grid rectangles)
-  // ============================================================
-
-  const heatmapRectsRef = useRef<any[]>([]);
-
-  useEffect(() => {
-    const map = mapInstanceRef.current;
-    if (!map || !mapLoaded) {
-      heatmapRectsRef.current.forEach(({ sourceId, layerId }) => {
-        if (map?.getLayer(layerId)) map.removeLayer(layerId);
-        if (map?.getSource(sourceId)) map.removeSource(sourceId);
-      });
-      heatmapRectsRef.current = [];
-      return;
-    }
-
-    // Clean previous
-    heatmapRectsRef.current.forEach(({ sourceId, layerId }) => {
-      if (map.getLayer(layerId)) map.removeLayer(layerId);
-      if (map.getSource(sourceId)) map.removeSource(sourceId);
-    });
-    heatmapRectsRef.current = [];
-
-    if (!speedAnalytics.showSpeedHeatmap || speedAnalytics.heatmapCells.length === 0) return;
-
-    const GRID_SIZE = 0.002; // ~200m grid cells
-    speedAnalytics.heatmapCells.forEach((cell, i) => {
-      const fillColor = speedToColor(cell.avg_speed / 2.237);
-      const fillOpacity = Math.min(0.15 + (cell.point_count / 50) * 0.35, 0.5);
-      const north = cell.grid_lat + GRID_SIZE;
-      const south = cell.grid_lat;
-      const east = cell.grid_lng + GRID_SIZE;
-      const west = cell.grid_lng;
-
-      const sourceId = `rmpg-speed-cell-${i}`;
-      const layerId = `rmpg-speed-cell-layer-${i}`;
-
-      whenStyleReady(map, () => {
-        map.addSource(sourceId, {
-          type: 'geojson',
-          data: {
-            type: 'Feature',
-            geometry: {
-              type: 'Polygon',
-              coordinates: [[[west, north], [east, north], [east, south], [west, south], [west, north]]],
-            },
-            properties: { fillColor, fillOpacity, strokeColor: fillColor },
-          },
-        });
-        map.addLayer({
-          id: layerId,
-          type: 'fill',
-          source: sourceId,
-          paint: {
-            'fill-color': ['get', 'fillColor'],
-            'fill-opacity': ['get', 'fillOpacity'],
-          },
-        });
-      });
-      heatmapRectsRef.current.push({ sourceId, layerId });
-    });
-
-    return () => {
-      heatmapRectsRef.current.forEach(({ sourceId, layerId }) => {
-        if (map.getLayer(layerId)) map.removeLayer(layerId);
-        if (map.getSource(sourceId)) map.removeSource(sourceId);
-      });
-      heatmapRectsRef.current = [];
-    };
-  }, [speedAnalytics.showSpeedHeatmap, speedAnalytics.heatmapCells, mapLoaded]);
-
-  // ============================================================
-  // Pursuit Corridor Polylines
-  // ============================================================
-
-  const pursuitLinesRef = useRef<any[]>([]);
-
-  useEffect(() => {
-    const map = mapInstanceRef.current;
-    if (!map || !mapLoaded) {
-      pursuitLinesRef.current.forEach((id) => {
-        if (map?.getLayer(id)) map.removeLayer(id);
-        if (map?.getSource(id)) map.removeSource(id);
-      });
-      pursuitLinesRef.current = [];
-      return;
-    }
-
-    // Clean previous
-    pursuitLinesRef.current.forEach((id) => {
-      if (map.getLayer(id)) map.removeLayer(id);
-      if (map.getSource(id)) map.removeSource(id);
-    });
-    pursuitLinesRef.current = [];
-
-    if (speedAnalytics.pursuitSegments.length === 0) return;
-
-    const lineFeatures: any[] = [];
-    const pinFeatures: any[] = [];   // start/end pins for segments missing
-                                     // the trail coordinate array — see the
-                                     // PursuitSegment interface note about
-                                     // the legacy API's `points: number` quirk.
-    speedAnalytics.pursuitSegments.forEach((seg) => {
-      // Primary path: handler returned full trail coordinates.
-      if (Array.isArray(seg.points) && seg.points.length >= 2) {
-        const coords = seg.points
-          .filter((p: any) => isFinite(p.lng) && isFinite(p.lat))
-          .map((p: any) => [p.lng, p.lat]);
-        if (coords.length >= 2) {
-          lineFeatures.push({
-            type: 'Feature',
-            geometry: { type: 'LineString', coordinates: coords },
-            properties: { unit_id: seg.unit_id, call_sign: seg.call_sign },
-          });
-        }
-        return;
-      }
-
-      // Fallback (option C): legacy handler returns points as a count,
-      // not a list. Render start + end pins from the lat/lng pair so
-      // dispatchers can still see where pursuits started/ended.
-      const sLat = seg.start_lat;
-      const sLng = seg.start_lng;
-      const eLat = seg.end_lat;
-      const eLng = seg.end_lng;
-      if (isFinite(sLat as number) && isFinite(sLng as number)) {
-        pinFeatures.push({
-          type: 'Feature',
-          geometry: { type: 'Point', coordinates: [sLng, sLat] },
-          properties: { kind: 'start', unit_id: seg.unit_id, call_sign: seg.call_sign },
-        });
-      }
-      if (isFinite(eLat as number) && isFinite(eLng as number)) {
-        pinFeatures.push({
-          type: 'Feature',
-          geometry: { type: 'Point', coordinates: [eLng, eLat] },
-          properties: { kind: 'end', unit_id: seg.unit_id, call_sign: seg.call_sign },
-        });
-      }
-    });
-
-    if (lineFeatures.length > 0) {
-      const sourceId = 'rmpg-pursuit-lines';
-      const layerId = 'rmpg-pursuit-lines';
-      whenStyleReady(map, () => {
-        map.addSource(sourceId, {
-          type: 'geojson',
-          data: { type: 'FeatureCollection', features: lineFeatures },
-        });
-        map.addLayer({
-          id: layerId,
-          type: 'line',
-          source: sourceId,
-          paint: {
-            'line-color': '#dc2626',
-            'line-opacity': 0.8,
-            'line-width': 6,
-          },
-        });
-      });
-      pursuitLinesRef.current.push(sourceId);
-    }
-
-    if (pinFeatures.length > 0) {
-      const sourceId = 'rmpg-pursuit-pins';
-      const layerId = 'rmpg-pursuit-pins';
-      whenStyleReady(map, () => {
-        map.addSource(sourceId, {
-          type: 'geojson',
-          data: { type: 'FeatureCollection', features: pinFeatures },
-        });
-        map.addLayer({
-          id: layerId,
-          type: 'circle',
-          source: sourceId,
-          paint: {
-            // Green for pursuit start, red for end — matches the rest of the
-            // map's stop/go conventions and Tailwind palette tokens used in
-            // the panel UI (#16a34a green-600, #dc2626 red-600).
-            'circle-color': [
-              'match',
-              ['get', 'kind'],
-              'start', '#16a34a',
-              'end', '#dc2626',
-              '#888888',
-            ],
-            'circle-radius': 7,
-            'circle-stroke-color': '#ffffff',
-            'circle-stroke-width': 2,
-            'circle-opacity': 0.95,
-          },
-        });
-      });
-      pursuitLinesRef.current.push(sourceId);
-    }
-
-    return () => {
-      pursuitLinesRef.current.forEach((id) => {
-        if (map.getLayer(id)) map.removeLayer(id);
-        if (map.getSource(id)) map.removeSource(id);
-      });
-      pursuitLinesRef.current = [];
-    };
-  }, [speedAnalytics.pursuitSegments, mapLoaded]);
-
-  // ============================================================
-  // Speed Zone Polygons
-  // ============================================================
-
-  const speedZonePolysRef = useRef<any[]>([]);
-  const speedZoneLabelsRef = useRef<any[]>([]);
-
-  useEffect(() => {
-    const map = mapInstanceRef.current;
-    if (!map || !mapLoaded) {
-      speedZonePolysRef.current.forEach((id) => {
-        if (map?.getLayer(id)) map.removeLayer(id);
-        if (map?.getSource(id)) map.removeSource(id);
-      });
-      speedZonePolysRef.current = [];
-      speedZoneLabelsRef.current.forEach((m) => m.remove());
-      speedZoneLabelsRef.current = [];
-      return;
-    }
-
-    // Clean previous
-    speedZonePolysRef.current.forEach((id) => {
-      if (map.getLayer(id)) map.removeLayer(id);
-      if (map.getSource(id)) map.removeSource(id);
-    });
-    speedZonePolysRef.current = [];
-    speedZoneLabelsRef.current.forEach((m) => m.remove());
-    speedZoneLabelsRef.current = [];
-
-    if (speedAnalytics.speedZones.length === 0) return;
-
-    const ZONE_TYPE_COLORS: Record<string, string> = {
-      school: '#eab308',
-      residential: '#22c55e',
-      highway: '#f97316',
-      construction: '#ef4444',
-      parking: '#6b7280',
-    };
-
-    speedAnalytics.speedZones.forEach((zone, i) => {
-      if (!zone.is_active || !zone.polygon_coords) return;
-      try {
-        const coords: { lat: number; lng: number }[] = JSON.parse(zone.polygon_coords);
-        if (coords.length < 3) return;
-        const validCoords = coords.filter((c) => isFinite(c.lat) && isFinite(c.lng));
-        if (validCoords.length < 3) return;
-
-        const zoneColor = ZONE_TYPE_COLORS[zone.zone_type] || '#888888';
-        const sourceId = `rmpg-speed-zone-${i}`;
-        const layerId = `rmpg-speed-zone-layer-${i}`;
-        const ringCoords = [...validCoords.map((c) => [c.lng, c.lat]), [validCoords[0].lng, validCoords[0].lat]];
-
-        whenStyleReady(map, () => {
-          map.addSource(sourceId, {
-            type: 'geojson',
-            data: {
-              type: 'Feature',
-              geometry: { type: 'Polygon', coordinates: [ringCoords] },
-              properties: { zoneColor, zoneOpacity: 0.15 },
-            },
-          });
-          map.addLayer({
-            id: layerId,
-            type: 'fill',
-            source: sourceId,
-            paint: {
-              'fill-color': zoneColor,
-              'fill-opacity': 0.15,
-            },
-          });
-          map.addLayer({
-            id: `${layerId}-outline`,
-            type: 'line',
-            source: sourceId,
-            paint: {
-              'line-color': zoneColor,
-              'line-opacity': 0.6,
-              'line-width': 2,
-            },
-          });
-        });
-        speedZonePolysRef.current.push(sourceId);
-
-        // Centroid label
-        const cLat = validCoords.reduce((s, c) => s + c.lat, 0) / validCoords.length;
-        const cLng = validCoords.reduce((s, c) => s + c.lng, 0) / validCoords.length;
-        const textEl = document.createElement('div');
-        textEl.textContent = `${zone.speed_limit_mph} mph`;
-        textEl.style.cssText = `color:${zoneColor};font-size:9px;font-weight:bold;font-family:'JetBrains Mono',monospace;text-shadow:0 0 2px rgba(0,0,0,0.9);white-space:nowrap;`;
-        const label = new mapboxgl.Marker({ element: textEl })
-          .setLngLat([cLng, cLat])
-          .addTo(map);
-        speedZoneLabelsRef.current.push(label);
-      } catch {
-        // Invalid polygon_coords JSON
-      }
-    });
-
-    return () => {
-      speedZonePolysRef.current.forEach((id) => {
-        if (map.getLayer(`${id}-outline`)) map.removeLayer(`${id}-outline`);
-        if (map.getLayer(id)) map.removeLayer(id);
-        if (map.getSource(id)) map.removeSource(id);
-      });
-      speedZonePolysRef.current = [];
-      speedZoneLabelsRef.current.forEach((m) => m.remove());
-      speedZoneLabelsRef.current = [];
-    };
-  }, [speedAnalytics.speedZones, mapLoaded]);
-
-  // ============================================================
   // GPS Self-Position Marker
   // ============================================================
 
@@ -2644,7 +2266,23 @@ export default function MapPage() {
         // the latest GPS reading without destroying/recreating the pin.
         selfMarkerRef.current.setLngLat(pos);
         const el = selfMarkerRef.current.getElement?.();
-        if (el) el.replaceChildren(buildSelfPositionMarker(gps.accuracy, gps.heading, gps.speed));
+        if (el) {
+          const ring = el.querySelector('[data-gps-ring]') as HTMLElement | null;
+          if (ring) {
+            const ringSize = gps.accuracy != null ? Math.max(20, Math.min(80, gps.accuracy * 2)) : 24;
+            ring.style.width = `${ringSize}px`;
+            ring.style.height = `${ringSize}px`;
+          }
+          const arrow = el.querySelector('[data-gps-arrow]') as HTMLElement | null;
+          if (arrow) {
+            arrow.style.transform = `rotate(${gps.heading ?? 0}deg)`;
+          }
+          const speedEl = el.querySelector('[data-gps-speed]') as HTMLElement | null;
+          if (speedEl) {
+            const mph = gps.speed != null ? Math.round(gps.speed * 2.237) : null;
+            speedEl.textContent = mph != null ? `${mph}` : '';
+          }
+        }
       } else {
         // Create new self marker
         selfMarkerRef.current = createMarker({
@@ -2675,6 +2313,7 @@ export default function MapPage() {
   // ============================================================
 
   const toggleLayer = (layer: keyof typeof layers) => {
+    if (eventPlanning.isDrawing) eventPlanning.cancelDrawing();
     setLayers((prev) => ({ ...prev, [layer]: !prev[layer] }));
   };
 
@@ -2713,39 +2352,6 @@ export default function MapPage() {
     const q = searchQuery.toLowerCase();
     return (c.call_number || '').toLowerCase().includes(q) || (c.incident_type || '').toLowerCase().includes(q) || (c.location_address || '').toLowerCase().includes(q);
   }), [calls, searchQuery]);
-
-  // Memoized SafetyDashboardPanel props
-  const safetyEnvironmentProp = useMemo(() => ({
-    lighting: environment?.lighting || 'unknown',
-    sunriseSunset: environment?.sunriseSunset ? {
-      sunrise: environment.sunriseSunset.sunrise ?? '',
-      sunset: environment.sunriseSunset.sunset ?? '',
-      minutesToTransition: environment.sunriseSunset?.minutesToNextTransition ?? 0,
-      nextTransition: environment.sunriseSunset?.nextTransition ?? '',
-    } : null,
-    lowVisibility: environment?.lowVisibility ?? false,
-    weatherHazards: [
-      environment?.weatherHazards?.freezing && 'Freezing',
-      environment?.weatherHazards?.highWind && 'High Wind',
-      environment?.weatherHazards?.rain && 'Rain',
-      environment?.weatherHazards?.snow && 'Snow',
-    ].filter(Boolean) as string[],
-    icyRoad: environment?.icyRoad ?? false,
-    windCondition: environment?.windCondition ? {
-      speed: environment.windCondition.speed ?? 0,
-      direction: environment.windCondition.cardinal ?? '',
-    } : null,
-    visibilityRange: environment?.visibilityRange ?? null,
-    schoolZoneActive: environment?.schoolZoneActive ?? false,
-  }), [environment]);
-
-  const safetyUnitSafetyProp = useMemo(() => ({
-    loneOfficers: unitSafety.loneOfficers ?? [],
-    exposureWarnings: unitSafety.exposureWarnings ?? [],
-    stationaryUnits: unitSafety.stationaryUnits ?? [],
-    speedAnomalies: unitSafety.speedAnomalies ?? [],
-    coveragePercent: unitSafety.coveragePercent ?? 0,
-  }), [unitSafety]);
 
   // Quick call status change from map sidebar
   const handleCallStatusChange = useCallback(async (callId: string, newStatus: string) => {
@@ -2872,12 +2478,6 @@ export default function MapPage() {
         case 'h': // Toggle heatmap
           e.preventDefault();
           setShowHeatmap(prev => !prev);
-          break;
-        case 't': // Toggle traffic
-          if (typeof toggleTraffic === 'function') {
-            e.preventDefault();
-            toggleTraffic(mapInstanceRef.current);
-          }
           break;
         case 'b': // Toggle breadcrumbs
           e.preventDefault();
@@ -3265,7 +2865,7 @@ export default function MapPage() {
                 <span className="text-[10px] text-rmpg-200 flex-1">Heat Map</span>
                 {showHeatmap && (
                   <span className="text-[8px] text-red-400 font-mono font-bold">
-                    {advancedHeatmapEnabled ? `${advancedHeatmap?.pointCount ?? 0} pts` : `${heatmapData.length} pts`}
+                    {heatmapData.length} pts
                   </span>
                 )}
               </button>
@@ -3288,464 +2888,38 @@ export default function MapPage() {
                     ))}
                   </div>
 
-                  {/* Advanced mode toggle */}
-                  <div className="border-t border-rmpg-700/50 pt-1 mt-1">
-                    <button
-                      onClick={() => { setAdvancedHeatmapEnabled(!advancedHeatmapEnabled); if (!advancedHeatmapEnabled) setShowAdvHeatmapPanel(true); }}
-                      className={`flex items-center gap-1.5 w-full text-[9px] font-bold transition-colors ${
-                        advancedHeatmapEnabled ? 'text-brand-400' : 'text-rmpg-500 hover:text-rmpg-300'
-                      }`}
-                    >
-                      <SlidersHorizontal className="w-2.5 h-2.5" />
-                      <span className="flex-1 text-left">Advanced Mode</span>
-                      {advancedHeatmapEnabled && <span className="led-dot led-blue" style={{ width: 5, height: 5 }} />}
-                    </button>
-                  </div>
-
-                  {/* ── Basic mode controls (when advanced is OFF) ── */}
-                  {!advancedHeatmapEnabled && (
-                    <>
-                      {/* Mode selector */}
-                      <div className="flex items-center gap-1">
-                        {([['all', 'All'], ['risk', 'Risk'], ['type', 'Type']] as const).map(([mode, label]) => (
-                          <button
-                            key={mode}
-                            onClick={() => { setHeatmapMode(mode); if (mode !== 'type') setHeatmapTypeFilter(''); }}
-                            className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm transition-colors ${
-                              heatmapMode === mode
-                                ? mode === 'risk' ? 'bg-orange-900/50 text-orange-400 border border-orange-700/50'
-                                : 'bg-red-900/50 text-red-400 border border-red-700/50'
-                                : 'text-rmpg-500 hover:text-rmpg-300'
-                            }`}
-                          >
-                            {label}
-                          </button>
-                        ))}
-                      </div>
-                      {/* Type filter dropdown */}
-                      {heatmapMode === 'type' && (
-                        <select
-                          value={heatmapTypeFilter}
-                          onChange={(e) => setHeatmapTypeFilter(e.target.value)}
-                          className="w-full bg-surface-deep border border-rmpg-600 text-[9px] text-rmpg-200 px-1.5 py-0.5 font-mono focus:outline-none focus:border-red-600"
-                          style={{ borderRadius: 2 }}
-                        >
-                          <option value="">Select type...</option>
-                          {heatmapTypes.map((t) => (
-                            <option key={t.incident_type} value={t.incident_type}>
-                              {formatIncidentType(t.incident_type)} ({t.count})
-                            </option>
-                          ))}
-                        </select>
-                      )}
-
-                      {/* Timelapse controls */}
-                      <div className="border-t border-rmpg-700/50 pt-1 mt-1">
-                        <button
-                          onClick={() => setShowTimelapse(!showTimelapse)}
-                          className={`flex items-center gap-1.5 w-full text-[9px] font-bold transition-colors ${
-                            showTimelapse ? 'text-orange-400' : 'text-rmpg-500 hover:text-rmpg-300'
-                          }`}
-                        >
-                          <SkipForward className="w-2.5 h-2.5" />
-                          <span className="flex-1 text-left">Time-Lapse</span>
-                          {showTimelapse && <span className="led-dot led-orange" style={{ width: 5, height: 5 }} />}
-                        </button>
-                        {showTimelapse && (
-                          <div className="mt-1 space-y-1">
-                            <div className="flex items-center gap-1">
-                              <button
-                                onClick={() => timelapse.setIsPlaying(!timelapse.isPlaying)}
-                                className="p-0.5 rounded-sm hover:bg-orange-900/40 transition-colors"
-                              >
-                                {timelapse.isPlaying ? <Pause className="w-3 h-3 text-amber-400" /> : <Play className="w-3 h-3 text-green-400" />}
-                              </button>
-                              <input
-                                type="range"
-                                min={0}
-                                max={Math.max(timelapse.totalSlices - 1, 0)}
-                                value={timelapse.currentIndex}
-                                onChange={(e) => { timelapse.setCurrentIndex(Number(e.target.value)); timelapse.setIsPlaying(false); }}
-                                className="flex-1 h-1 accent-orange-400"
-                                aria-label="Timelapse position"
-                              />
-                            </div>
-                            <div className="flex items-center justify-between">
-                              <span className="text-[7px] font-mono text-orange-300">{timelapse.currentLabel}</span>
-                              <div className="flex items-center gap-0.5">
-                                {([1, 2, 4] as const).map((s) => (
-                                  <button
-                                    key={s}
-                                    onClick={() => timelapse.setSpeed(s)}
-                                    className={`px-1 py-0 text-[7px] font-mono font-bold rounded-sm transition-colors ${
-                                      timelapse.speed === s ? 'bg-orange-900/50 text-orange-400 border border-orange-700/50' : 'text-rmpg-500 hover:text-rmpg-300'
-                                    }`}
-                                  >
-                                    {s}x
-                                  </button>
-                                ))}
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </>
-                  )}
-
-                  {/* ── Advanced mode controls ── */}
-                  {advancedHeatmapEnabled && (
-                    <div className="space-y-1.5">
-                      {/* Mode selector: Density | Risk | Temporal | Comparison */}
-                      <div className="flex items-center gap-0.5">
-                        {([['density', 'Density'], ['risk', 'Risk'], ['temporal', 'Temporal'], ['comparison', 'Compare']] as [HeatmapAdvancedMode, string][]).map(([mode, label]) => (
-                          <button
-                            key={mode}
-                            onClick={() => setAdvHeatmapMode(mode)}
-                            className={`px-1 py-0.5 text-[7px] font-mono font-bold rounded-sm transition-colors ${
-                              advHeatmapMode === mode
-                                ? 'bg-brand-900/50 text-brand-400 border border-brand-700/50'
-                                : 'text-rmpg-500 hover:text-rmpg-300'
-                            }`}
-                          >
-                            {label}
-                          </button>
-                        ))}
-                      </div>
-
-                      {/* Hour range filter */}
-                      <div>
-                        <div className="flex items-center justify-between mb-0.5">
-                          <span className="text-[7px] text-rmpg-400 font-mono">HOURS</span>
-                          <span className="text-[7px] text-rmpg-300 font-mono">
-                            {advHeatmapHourRange[0] === 0 && advHeatmapHourRange[1] === 23
-                              ? 'All day'
-                              : `${advHeatmapHourRange[0].toString().padStart(2, '0')}:00 - ${advHeatmapHourRange[1].toString().padStart(2, '0')}:59`
-                            }
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <input
-                            type="range"
-                            min={0} max={23}
-                            value={advHeatmapHourRange[0]}
-                            onChange={(e) => { const v = Number(e.target.value); setAdvHeatmapHourRange([Math.min(v, advHeatmapHourRange[1]), advHeatmapHourRange[1]]); }}
-                            className="flex-1 h-1 accent-red-400"
-                            aria-label="Start hour"
-                          />
-                          <input
-                            type="range"
-                            min={0} max={23}
-                            value={advHeatmapHourRange[1]}
-                            onChange={(e) => { const v = Number(e.target.value); setAdvHeatmapHourRange([advHeatmapHourRange[0], Math.max(v, advHeatmapHourRange[0])]); }}
-                            className="flex-1 h-1 accent-red-400"
-                            aria-label="End hour"
-                          />
-                        </div>
-                      </div>
-
-                      {/* Day-of-week filter */}
-                      <div>
-                        <div className="flex items-center justify-between mb-0.5">
-                          <span className="text-[7px] text-rmpg-400 font-mono">DAYS</span>
-                          <div className="flex gap-0.5">
-                            <button
-                              onClick={() => setAdvHeatmapDayFilter([1, 2, 3, 4, 5])}
-                              className="text-[6px] text-rmpg-400 hover:text-rmpg-200 font-mono"
-                            >Wkdays</button>
-                            <button
-                              onClick={() => setAdvHeatmapDayFilter([0, 6])}
-                              className="text-[6px] text-rmpg-400 hover:text-rmpg-200 font-mono"
-                            >Wkends</button>
-                            <button
-                              onClick={() => setAdvHeatmapDayFilter([])}
-                              className="text-[6px] text-rmpg-400 hover:text-rmpg-200 font-mono"
-                            >All</button>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-0.5">
-                          {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map((day, i) => (
-                            <button
-                              key={i}
-                              onClick={() => {
-                                setAdvHeatmapDayFilter(prev =>
-                                  prev.includes(i) ? prev.filter(d => d !== i) : [...prev, i]
-                                );
-                              }}
-                              aria-pressed={advHeatmapDayFilter.length === 0 || advHeatmapDayFilter.includes(i)}
-                              className={`px-1 py-0.5 text-[7px] font-mono font-bold rounded-sm transition-colors ${
-                                advHeatmapDayFilter.length === 0 || advHeatmapDayFilter.includes(i)
-                                  ? 'bg-red-900/40 text-red-400 border border-red-800/50'
-                                  : 'text-rmpg-600 border border-transparent'
-                              }`}
-                            >
-                              {day}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Color scheme */}
-                      <div>
-                        <span className="text-[7px] text-rmpg-400 font-mono block mb-0.5">COLOR SCHEME</span>
-                        <div className="flex items-center gap-0.5">
-                          {([
-                            ['heat', ['#888888', '#00c864', '#c8c800', '#ff8c00', '#ff3200']],
-                            ['risk', ['#4caf50', '#ffeb3b', '#ff9800', '#f44336', '#b71c1c']],
-                            ['gold', ['#fde047', '#facc15', '#d4a017', '#b48206', '#854d0e']],
-                            ['green', ['#90ee90', '#3cb371', '#228b22', '#006400', '#003c00']],
-                            ['purple', ['#d8bfd8', '#ba55d3', '#9467bd', '#6a0dad', '#4b0082']],
-                          ] as [HeatmapColorScheme, string[]][]).map(([scheme, colors]) => (
-                            <button
-                              key={scheme}
-                              onClick={() => setAdvHeatmapColorScheme(scheme)}
-                              className={`p-0.5 rounded-sm transition-all ${
-                                advHeatmapColorScheme === scheme ? 'ring-1 ring-white/50 scale-110' : 'opacity-60 hover:opacity-100'
-                              }`}
-                              title={scheme}
-                            >
-                              <div className="flex h-2" style={{ width: 20, borderRadius: 1, overflow: 'hidden' }}>
-                                {colors.map((c, i) => (
-                                  <div key={i} style={{ flex: 1, backgroundColor: c }} />
-                                ))}
-                              </div>
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Opacity slider */}
-                      <div>
-                        <div className="flex items-center justify-between mb-0.5">
-                          <span className="text-[7px] text-rmpg-400 font-mono">OPACITY</span>
-                          <span className="text-[7px] text-rmpg-300 font-mono">{advHeatmapOpacity}%</span>
-                        </div>
-                        <input
-                          type="range"
-                          min={10} max={100} step={5}
-                          value={advHeatmapOpacity}
-                          onChange={(e) => setAdvHeatmapOpacity(Number(e.target.value))}
-                          className="w-full h-1 accent-red-400"
-                          aria-label="Heatmap opacity"
-                        />
-                      </div>
-
-                      {/* Radius slider */}
-                      <div>
-                        <div className="flex items-center justify-between mb-0.5">
-                          <span className="text-[7px] text-rmpg-400 font-mono">RADIUS</span>
-                          <span className="text-[7px] text-rmpg-300 font-mono">{advHeatmapRadius}px</span>
-                        </div>
-                        <input
-                          type="range"
-                          min={10} max={50} step={2}
-                          value={advHeatmapRadius}
-                          onChange={(e) => setAdvHeatmapRadius(Number(e.target.value))}
-                          className="w-full h-1 accent-red-400"
-                          aria-label="Heatmap radius"
-                        />
-                      </div>
-
-                      {/* Resolution */}
-                      <div>
-                        <span className="text-[7px] text-rmpg-400 font-mono block mb-0.5">RESOLUTION</span>
-                        <div className="flex items-center gap-1">
-                          {([['fine', 'Fine'], ['medium', 'Med'], ['coarse', 'Coarse']] as [HeatmapResolution, string][]).map(([res, label]) => (
-                            <button
-                              key={res}
-                              onClick={() => setAdvHeatmapResolution(res)}
-                              className={`px-1.5 py-0.5 text-[7px] font-mono font-bold rounded-sm transition-colors ${
-                                advHeatmapResolution === res
-                                  ? 'bg-red-900/50 text-red-400 border border-red-700/50'
-                                  : 'text-rmpg-500 hover:text-rmpg-300'
-                              }`}
-                            >
-                              {label}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Show clusters toggle */}
+                  {/* Mode selector */}
+                  <div className="flex items-center gap-1">
+                    {([['all', 'All'], ['risk', 'Risk'], ['type', 'Type']] as const).map(([mode, label]) => (
                       <button
-                        onClick={() => setAdvHeatmapShowClusters(!advHeatmapShowClusters)}
-                        className={`flex items-center gap-1.5 w-full text-[8px] font-bold transition-colors ${
-                          advHeatmapShowClusters ? 'text-gray-400' : 'text-rmpg-500 hover:text-rmpg-300'
+                        key={mode}
+                        onClick={() => { setHeatmapMode(mode); if (mode !== 'type') setHeatmapTypeFilter(''); }}
+                        className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm transition-colors ${
+                          heatmapMode === mode
+                            ? mode === 'risk' ? 'bg-orange-900/50 text-orange-400 border border-orange-700/50'
+                            : 'bg-red-900/50 text-red-400 border border-red-700/50'
+                            : 'text-rmpg-500 hover:text-rmpg-300'
                         }`}
                       >
-                        <CircleDot className="w-2.5 h-2.5" />
-                        <span className="flex-1 text-left">Hotspot Clusters</span>
-                        {advHeatmapShowClusters && (
-                          <span className="text-[7px] font-mono text-gray-400">{advancedHeatmap.clusters?.length ?? 0}</span>
-                        )}
+                        {label}
                       </button>
-
-                      {/* Incident type multi-select */}
-                      <div>
-                        <div className="flex items-center justify-between mb-0.5">
-                          <span className="text-[7px] text-rmpg-400 font-mono">INCIDENT TYPES</span>
-                          <div className="flex gap-1">
-                            <button
-                              onClick={() => setAdvHeatmapTypes(heatmapTypes.map(t => t.incident_type))}
-                              className="text-[6px] text-rmpg-400 hover:text-rmpg-200 font-mono"
-                            >All</button>
-                            <button
-                              onClick={() => setAdvHeatmapTypes([])}
-                              className="text-[6px] text-rmpg-400 hover:text-rmpg-200 font-mono"
-                            >Clear</button>
-                          </div>
-                        </div>
-                        <div className="max-h-[60px] overflow-y-auto space-y-0" style={{ scrollbarWidth: 'thin' }}>
-                          {heatmapTypes.slice(0, 15).map((t) => (
-                            <label
-                              key={t.incident_type}
-                              className="flex items-center gap-1 px-0.5 py-0 cursor-pointer hover:bg-rmpg-800/30"
-                            >
-                              <input
-                                type="checkbox"
-                                checked={advHeatmapTypes.length === 0 || advHeatmapTypes.includes(t.incident_type)}
-                                onChange={() => {
-                                  setAdvHeatmapTypes(prev =>
-                                    prev.includes(t.incident_type)
-                                      ? prev.filter(x => x !== t.incident_type)
-                                      : [...prev, t.incident_type]
-                                  );
-                                }}
-                                className="w-2 h-2 accent-red-500"
-                              />
-                              <span className="text-[7px] text-rmpg-300 font-mono flex-1 truncate">{formatIncidentType(t.incident_type)}</span>
-                              <span className="text-[6px] text-rmpg-500 font-mono">{t.count}</span>
-                            </label>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Comparison mode options */}
-                      {advHeatmapMode === 'comparison' && (
-                        <div className="border-t border-rmpg-700/50 pt-1">
-                          <div className="flex items-center justify-between mb-0.5">
-                            <span className="text-[7px] text-rmpg-400 font-mono">COMPARE VS</span>
-                            <span className="text-[7px] text-rmpg-300 font-mono">Previous {advHeatmapComparisonDays}d</span>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            {[7, 14, 30, 90].map((d) => (
-                              <button
-                                key={d}
-                                onClick={() => setAdvHeatmapComparisonDays(d)}
-                                className={`px-1 py-0.5 text-[7px] font-mono font-bold rounded-sm transition-colors ${
-                                  advHeatmapComparisonDays === d
-                                    ? 'bg-gray-900/50 text-gray-400 border border-gray-700/50'
-                                    : 'text-rmpg-500 hover:text-rmpg-300'
-                                }`}
-                              >
-                                {d}d
-                              </button>
-                            ))}
-                          </div>
-                          <div className="flex items-center gap-2 mt-1">
-                            <div className="flex items-center gap-1">
-                              <div className="w-2 h-2 rounded-full bg-red-500" />
-                              <span className="text-[6px] text-rmpg-400 font-mono">Current</span>
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <div className="w-2 h-2 rounded-full bg-gray-500" />
-                              <span className="text-[6px] text-rmpg-400 font-mono">Previous</span>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Temporal animation controls */}
-                      {advHeatmapMode === 'temporal' && (
-                        <div className="border-t border-rmpg-700/50 pt-1">
-                          <div className="flex items-center gap-1">
-                            <button
-                              onClick={() => advancedHeatmap.setTemporalPlaying(!advancedHeatmap.temporalPlaying)}
-                              className="p-0.5 rounded-sm hover:bg-orange-900/40 transition-colors"
-                            >
-                              {advancedHeatmap.temporalPlaying
-                                ? <Pause className="w-3 h-3 text-amber-400" />
-                                : <Play className="w-3 h-3 text-green-400" />
-                              }
-                            </button>
-                            <input
-                              type="range"
-                              min={0} max={23}
-                              value={advancedHeatmap.temporalHour}
-                              onChange={(e) => { advancedHeatmap.setTemporalHour(Number(e.target.value)); advancedHeatmap.setTemporalPlaying(false); }}
-                              className="flex-1 h-1 accent-orange-400"
-                            />
-                          </div>
-                          <div className="flex items-center justify-between mt-0.5">
-                            <span className="text-[7px] font-mono text-orange-300">
-                              <Clock className="w-2 h-2 inline mr-0.5" />
-                              {advancedHeatmap.temporalHour.toString().padStart(2, '0')}:00 - {advancedHeatmap.temporalHour.toString().padStart(2, '0')}:59
-                            </span>
-                            <div className="flex items-center gap-0.5">
-                              {([1, 2, 4] as const).map((s) => (
-                                <button
-                                  key={s}
-                                  onClick={() => advancedHeatmap.setTemporalSpeed(s)}
-                                  className={`px-1 py-0 text-[7px] font-mono font-bold rounded-sm transition-colors ${
-                                    advancedHeatmap.temporalSpeed === s ? 'bg-orange-900/50 text-orange-400 border border-orange-700/50' : 'text-rmpg-500 hover:text-rmpg-300'
-                                  }`}
-                                >
-                                  {s}x
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Refresh + loading */}
-                      <div className="flex items-center justify-between pt-1 border-t border-rmpg-700/50">
-                        <button
-                          onClick={() => advancedHeatmap.refreshHeatmap()}
-                          className="flex items-center gap-1 text-[7px] text-rmpg-400 hover:text-rmpg-200 font-mono"
-                        >
-                          <RefreshCw className={`w-2.5 h-2.5 ${advancedHeatmap.loading ? 'animate-spin' : ''}`} />
-                          Refresh
-                        </button>
-                        {advancedHeatmap.loading && (
-                          <Loader2 className="w-2.5 h-2.5 text-brand-400 animate-spin" />
-                        )}
-                      </div>
-
-                      {/* Stats summary */}
-                      {advancedHeatmap.stats && (
-                        <div className="border-t border-rmpg-700/50 pt-1 space-y-0.5">
-                          <div className="flex items-center justify-between">
-                            <span className="text-[7px] text-rmpg-400 font-mono">TOTAL</span>
-                            <span className="text-[8px] text-red-400 font-mono font-bold">{advancedHeatmap.stats.total.toLocaleString()}</span>
-                          </div>
-                          {advancedHeatmap.stats.topTypes.slice(0, 3).map((t, i) => (
-                            <div key={i} className="flex items-center gap-1">
-                              <div
-                                className="h-1 rounded-full"
-                                style={{
-                                  width: `${Math.max(10, (t.count / (advancedHeatmap.stats?.topTypes[0]?.count || 1)) * 50)}%`,
-                                  backgroundColor: i === 0 ? '#ef4444' : i === 1 ? '#f59e0b' : '#888888',
-                                }}
-                              />
-                              <span className="text-[6px] text-rmpg-400 font-mono truncate flex-1">{formatIncidentType(t.type)}</span>
-                              <span className="text-[6px] text-rmpg-500 font-mono">{t.count}</span>
-                            </div>
-                          ))}
-                          <div className="flex items-center gap-2 mt-0.5">
-                            {advancedHeatmap.stats.peakHour !== null && (
-                              <span className="text-[6px] font-mono px-1 py-0.5 bg-orange-900/30 text-orange-400 rounded-sm">
-                                Peak: {advancedHeatmap.stats.peakHour.toString().padStart(2, '0')}:00
-                              </span>
-                            )}
-                            {advancedHeatmap.stats.peakDay && (
-                              <span className="text-[6px] font-mono px-1 py-0.5 bg-purple-900/30 text-purple-400 rounded-sm">
-                                {advancedHeatmap.stats.peakDay}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      )}
-                    </div>
+                    ))}
+                  </div>
+                  {/* Type filter dropdown */}
+                  {heatmapMode === 'type' && (
+                    <select
+                      value={heatmapTypeFilter}
+                      onChange={(e) => setHeatmapTypeFilter(e.target.value)}
+                      className="w-full bg-surface-deep border border-rmpg-600 text-[9px] text-rmpg-200 px-1.5 py-0.5 font-mono focus:outline-none focus:border-red-600"
+                      style={{ borderRadius: 2 }}
+                    >
+                      <option value="">Select type...</option>
+                      {heatmapTypes.map((t) => (
+                        <option key={t.incident_type} value={t.incident_type}>
+                          {formatIncidentType(t.incident_type)} ({t.count})
+                        </option>
+                      ))}
+                    </select>
                   )}
                 </div>
               )}
@@ -3826,7 +3000,7 @@ export default function MapPage() {
                       </button>
                     ))}
                   </div>
-                  {/* Speed color legend — interactive 8-band with toggles */}
+                  {/* Speed color legend — static 8-band */}
                   {breadcrumbColorMode === 'speed' && (
                     <div className="flex flex-wrap items-center gap-1 pl-1">
                       {[
@@ -3839,14 +3013,10 @@ export default function MapPage() {
                         { color: '#ef4444', label: '55-75', key: 'freeway' },
                         { color: '#dc2626', label: '75+', key: 'pursuit' },
                       ].map((band) => (
-                        <button key={band.key}
-                          onClick={() => speedAnalytics.setSpeedBandToggles(prev => ({ ...prev, [band.key]: !(prev[band.key] ?? true) }))}
-                          className="flex items-center gap-0.5 cursor-pointer"
-                          style={{ opacity: (speedAnalytics.speedBandToggles[band.key] ?? true) ? 1 : 0.3 }}
-                        >
+                        <span key={band.key} className="flex items-center gap-0.5">
                           <span className="w-2 h-2 rounded-full" style={{ background: band.color }} />
                           <span className="text-[7px] text-rmpg-400 font-mono">{band.label}</span>
-                        </button>
+                        </span>
                       ))}
                       <span className="text-[7px] text-rmpg-500 font-mono">mph</span>
                     </div>
@@ -3960,85 +3130,6 @@ export default function MapPage() {
               )}
             </div>
 
-            {/* ── Speed Analytics ── */}
-            {showBreadcrumbs && (
-              <div className="border-t border-rmpg-700 p-1.5">
-                <div className="text-[8px] text-rmpg-500 uppercase tracking-widest font-bold mb-1.5 px-1">Speed Analytics</div>
-
-                {/* Violations badge */}
-                {speedAnalytics.unacknowledgedCount > 0 && (
-                  <div className="flex items-center gap-2 px-2 py-1 mb-1 bg-red-900/20 border border-red-800/30 rounded-sm">
-                    <AlertTriangle className="w-3 h-3 text-red-400" />
-                    <span className="text-[9px] text-red-400 font-mono font-bold flex-1">
-                      {speedAnalytics.unacknowledgedCount} speed violation{speedAnalytics.unacknowledgedCount !== 1 ? 's' : ''}
-                    </span>
-                  </div>
-                )}
-
-                {/* Speed Heatmap toggle */}
-                <button
-                  onClick={() => speedAnalytics.setShowSpeedHeatmap(!speedAnalytics.showSpeedHeatmap)}
-                  className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
-                    speedAnalytics.showSpeedHeatmap ? 'panel-inset bg-orange-900/20 text-orange-400' : 'text-rmpg-400 hover:bg-surface-raised'
-                  }`}
-                >
-                  {speedAnalytics.showSpeedHeatmap ? <Eye className="w-3 h-3 text-orange-400" /> : <EyeOff className="w-3 h-3 text-rmpg-500" />}
-                  <Gauge className="w-3 h-3" />
-                  <span className="flex-1 text-left">Speed Heatmap</span>
-                </button>
-
-                {/* Zone Stats toggle */}
-                <button
-                  onClick={() => speedAnalytics.setShowZoneStats(!speedAnalytics.showZoneStats)}
-                  className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
-                    speedAnalytics.showZoneStats ? 'panel-inset bg-gray-900/20 text-gray-400' : 'text-rmpg-400 hover:bg-surface-raised'
-                  }`}
-                >
-                  {speedAnalytics.showZoneStats ? <Eye className="w-3 h-3 text-gray-400" /> : <EyeOff className="w-3 h-3 text-rmpg-500" />}
-                  <BarChart3 className="w-3 h-3" />
-                  <span className="flex-1 text-left">Zone Speed Stats</span>
-                </button>
-
-                {/* Zone Stats collapsible table */}
-                {speedAnalytics.showZoneStats && speedAnalytics.zoneSpeedStats.length > 0 && (
-                  <div className="ml-2 mt-1 max-h-32 overflow-y-auto">
-                    <table className="w-full text-[8px] font-mono">
-                      <thead>
-                        <tr className="text-rmpg-500">
-                          <th className="text-left px-1 py-0.5">Zone</th>
-                          <th className="text-right px-1 py-0.5">Avg</th>
-                          <th className="text-right px-1 py-0.5">Max</th>
-                          <th className="text-right px-1 py-0.5">P95</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {speedAnalytics.zoneSpeedStats.slice(0, 15).map((z) => (
-                          <tr key={z.beat_id} className="text-rmpg-300 hover:bg-surface-raised">
-                            <td className="px-1 py-0.5 truncate max-w-[80px]" title={z.beat_name}>{z.beat_code}</td>
-                            <td className="text-right px-1 py-0.5" style={{ color: speedToColor(z.avg_speed_mph / 2.237) }}>{z.avg_speed_mph.toFixed(0)}</td>
-                            <td className="text-right px-1 py-0.5" style={{ color: speedToColor(z.max_speed_mph / 2.237) }}>{z.max_speed_mph.toFixed(0)}</td>
-                            <td className="text-right px-1 py-0.5" style={{ color: speedToColor(z.p95_speed_mph / 2.237) }}>{z.p95_speed_mph.toFixed(0)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-
-                {/* Coverage Timeline toggle */}
-                <button
-                  onClick={() => speedAnalytics.setShowCoverageTimeline(!speedAnalytics.showCoverageTimeline)}
-                  className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
-                    speedAnalytics.showCoverageTimeline ? 'panel-inset bg-green-900/20 text-green-400' : 'text-rmpg-400 hover:bg-surface-raised'
-                  }`}
-                >
-                  {speedAnalytics.showCoverageTimeline ? <Eye className="w-3 h-3 text-green-400" /> : <EyeOff className="w-3 h-3 text-rmpg-500" />}
-                  <Clock className="w-3 h-3" />
-                  <span className="flex-1 text-left">Coverage Timeline</span>
-                </button>
-              </div>
-            )}
-
             {/* ── Intelligence Layers ── */}
             <div className="border-t border-rmpg-700 p-1.5">
               <div className="text-[8px] text-rmpg-500 uppercase tracking-widest font-bold mb-1.5 px-1">Intelligence</div>
@@ -4064,142 +3155,6 @@ export default function MapPage() {
               ))}
             </div>
 
-            {/* ── History Layers ── */}
-            <div className="border-t border-rmpg-700 p-1.5">
-              <div className="text-[8px] text-rmpg-500 uppercase tracking-widest font-bold mb-1.5 px-1">History</div>
-
-              {/* Call History */}
-              <button
-                onClick={() => setShowCallHistory(!showCallHistory)}
-                className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
-                  showCallHistory ? 'panel-inset bg-gray-900/20 text-gray-400' : 'text-rmpg-400 hover:bg-surface-raised'
-                }`}
-              >
-                <Clock className="w-3 h-3" />
-                <span className="flex-1 text-left">Call History</span>
-                {showCallHistory && callHistory.count > 0 && (
-                  <span className="text-[9px] font-mono">{callHistory.count}</span>
-                )}
-                {showCallHistory && callHistory.loading && (
-                  <Loader2 className="w-2.5 h-2.5 animate-spin" />
-                )}
-              </button>
-
-              {/* Call History sub-controls */}
-              {showCallHistory && (
-                <div className="ml-5 mt-1 space-y-1.5 pb-1">
-                  {/* Days slider */}
-                  <div className="flex items-center gap-1 flex-wrap">
-                    <span className="text-[7px] text-rmpg-600 uppercase w-8">Days:</span>
-                    {[1, 3, 7, 14, 30, 90].map((d) => (
-                      <button
-                        key={d}
-                        onClick={() => setCallHistoryDays(d)}
-                        className={`px-1.5 py-0 text-[7px] font-mono font-bold rounded-sm transition-colors ${
-                          callHistoryDays === d
-                            ? 'bg-gray-900/50 text-gray-400 border border-gray-700/50'
-                            : 'text-rmpg-500 hover:text-rmpg-300'
-                        }`}
-                      >
-                        {d}
-                      </button>
-                    ))}
-                  </div>
-
-                  {/* Status checkboxes */}
-                  <div className="flex items-center gap-1 flex-wrap">
-                    <span className="text-[7px] text-rmpg-600 uppercase w-8">Status:</span>
-                    {['cleared', 'closed', 'archived'].map((s) => (
-                      <button
-                        key={s}
-                        onClick={() => setCallHistoryStatuses(prev =>
-                          prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]
-                        )}
-                        className={`px-1.5 py-0 text-[7px] font-mono rounded-sm transition-colors ${
-                          callHistoryStatuses.includes(s)
-                            ? 'bg-gray-900/40 text-gray-300 border border-gray-700/40'
-                            : 'text-rmpg-600 hover:text-rmpg-400'
-                        }`}
-                      >
-                        {s.charAt(0).toUpperCase() + s.slice(1)}
-                      </button>
-                    ))}
-                  </div>
-
-                  {/* Priority pills */}
-                  <div className="flex items-center gap-1 flex-wrap">
-                    <span className="text-[7px] text-rmpg-600 uppercase w-8">Pri:</span>
-                    {['P1', 'P2', 'P3', 'P4'].map((p) => {
-                      const c = PRIORITY_TO_COLOR[p] || 'gray';
-                      return (
-                        <button
-                          key={p}
-                          onClick={() => setCallHistoryPriorities(prev =>
-                            prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p]
-                          )}
-                          className={`px-1.5 py-0 text-[7px] font-mono font-bold rounded-sm transition-colors ${
-                            callHistoryPriorities.includes(p)
-                              ? (PRIORITY_PILL_CLASSES[c]?.active || 'bg-[#0c0c0c]/40 text-gray-400 border border-gray-700/40')
-                              : 'text-rmpg-600 hover:text-rmpg-400'
-                          }`}
-                        >
-                          {p}
-                        </button>
-                      );
-                    })}
-                    {callHistoryPriorities.length > 0 && (
-                      <button
-                        onClick={() => setCallHistoryPriorities([])}
-                        className="text-[7px] text-rmpg-600 hover:text-rmpg-400 ml-0.5"
-                        title="Clear priority filter"
-                      >
-                        All
-                      </button>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Incident Reports */}
-              <button
-                onClick={() => setShowIncidentReports(!showIncidentReports)}
-                className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
-                  showIncidentReports ? 'panel-inset bg-emerald-900/20 text-emerald-400' : 'text-rmpg-400 hover:bg-surface-raised'
-                }`}
-              >
-                <FileText className="w-3 h-3" />
-                <span className="flex-1 text-left">Incident Reports</span>
-                {showIncidentReports && incidentReports.count > 0 && (
-                  <span className="text-[9px] font-mono">{incidentReports.count}</span>
-                )}
-                {showIncidentReports && incidentReports.loading && (
-                  <Loader2 className="w-2.5 h-2.5 animate-spin" />
-                )}
-              </button>
-
-              {/* Incident Reports sub-controls */}
-              {showIncidentReports && (
-                <div className="ml-5 mt-1 space-y-1.5 pb-1">
-                  <div className="flex items-center gap-1 flex-wrap">
-                    <span className="text-[7px] text-rmpg-600 uppercase w-8">Days:</span>
-                    {[7, 14, 30, 60, 90].map((d) => (
-                      <button
-                        key={d}
-                        onClick={() => setIncidentDays(d)}
-                        className={`px-1.5 py-0 text-[7px] font-mono font-bold rounded-sm transition-colors ${
-                          incidentDays === d
-                            ? 'bg-emerald-900/50 text-emerald-400 border border-emerald-700/50'
-                            : 'text-rmpg-500 hover:text-rmpg-300'
-                        }`}
-                      >
-                        {d}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-
             {/* ── Analysis ── */}
             <div className="border-t border-rmpg-700 p-1.5">
               <div className="text-[8px] text-rmpg-500 uppercase tracking-widest font-bold mb-1.5 px-1">Analysis</div>
@@ -4217,46 +3172,6 @@ export default function MapPage() {
                   <span className="text-[9px] font-mono">{predictions.hotspots.length}</span>
                 )}
               </button>
-
-              {/* Safety Zones */}
-              <button
-                onClick={() => setShowSafetyZones(!showSafetyZones)}
-                className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
-                  showSafetyZones ? 'panel-inset bg-red-900/20 text-red-400' : 'text-rmpg-400 hover:bg-surface-raised'
-                }`}
-              >
-                <ShieldAlert className="w-3 h-3" />
-                <span className="flex-1 text-left">Safety Zones</span>
-                {showSafetyZones && safetyZones.zones.length > 0 && (
-                  <span className="text-[9px] font-mono">{safetyZones.zones.length}</span>
-                )}
-              </button>
-
-              {/* Geofences */}
-              <div className="flex items-center gap-0.5">
-                <button
-                  onClick={() => setShowGeofences(!showGeofences)}
-                  className={`flex-1 flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
-                    showGeofences ? 'panel-inset bg-gray-900/20 text-gray-400' : 'text-rmpg-400 hover:bg-surface-raised'
-                  }`}
-                >
-                  <Radar className="w-3 h-3" />
-                  <span className="flex-1 text-left">Geofences</span>
-                  {showGeofences && geofences.geofences.length > 0 && (
-                    <span className="text-[9px] font-mono">{geofences.geofences.length}</span>
-                  )}
-                </button>
-                {showGeofences && (
-                  <button
-                    onClick={() => geofences.setDrawingMode(!geofences.drawingMode)}
-                    className={`px-1.5 py-1 text-[8px] font-bold rounded-sm transition-colors ${
-                      geofences.drawingMode ? 'bg-gray-900/50 text-gray-300 border border-gray-700/50' : 'text-rmpg-500 hover:text-rmpg-300'
-                    }`}
-                  >
-                    Draw
-                  </button>
-                )}
-              </div>
 
               {/* Analysis Intel Dashboard */}
               <button
@@ -4294,51 +3209,6 @@ export default function MapPage() {
                 )}
                 {showPatrolCheckpoints && !patrolCheckpoints.loading && patrolCheckpoints.overdueCount === 0 && (
                   <span className="text-[9px] font-mono">{patrolCheckpoints.checkpoints.length}</span>
-                )}
-              </button>
-
-              {/* Field Interviews */}
-              <button
-                onClick={() => setShowFieldInterviews(!showFieldInterviews)}
-                className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
-                  showFieldInterviews ? 'panel-inset bg-gray-900/20 text-gray-400' : 'text-rmpg-400 hover:bg-surface-raised'
-                }`}
-              >
-                <FileSearch className="w-3 h-3" />
-                <span className="flex-1 text-left">Field Interviews</span>
-                {showFieldInterviews && fieldInterviews.count > 0 && (
-                  <span className="text-[9px] font-mono">{fieldInterviews.count}</span>
-                )}
-              </button>
-              {showFieldInterviews && (
-                <div className="px-3 py-1 flex items-center gap-1">
-                  {[7, 14, 30, 90].map((d) => (
-                    <button
-                      key={d}
-                      onClick={() => setFiDays(d)}
-                      className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm transition-colors ${
-                        fiDays === d
-                          ? 'bg-gray-900/50 text-gray-400 border border-gray-700/50'
-                          : 'text-rmpg-500 hover:text-rmpg-300'
-                      }`}
-                    >
-                      {d}d
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              {/* Dwell Time */}
-              <button
-                onClick={() => setShowDwellTime(!showDwellTime)}
-                className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
-                  showDwellTime ? 'panel-inset bg-amber-900/20 text-amber-400' : 'text-rmpg-400 hover:bg-surface-raised'
-                }`}
-              >
-                <Timer className="w-3 h-3" />
-                <span className="flex-1 text-left">Dwell Time</span>
-                {showDwellTime && dwellTime.dwellAlertCount > 0 && (
-                  <span className="text-[9px] font-mono text-amber-400">{dwellTime.dwellAlertCount}</span>
                 )}
               </button>
 
@@ -4404,37 +3274,6 @@ export default function MapPage() {
                 </div>
               )}
 
-              {/* Coverage Map */}
-              <button
-                onClick={() => setShowCoverage(!showCoverage)}
-                className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
-                  showCoverage ? 'panel-inset bg-teal-900/20 text-teal-400' : 'text-rmpg-400 hover:bg-surface-raised'
-                }`}
-              >
-                <Radar className="w-3 h-3" />
-                <span className="flex-1 text-left">Coverage Map</span>
-                {showCoverage && coverageGaps.coverageCount > 0 && (
-                  <span className="text-[9px] font-mono">{coverageGaps.coverageCount}</span>
-                )}
-              </button>
-              {showCoverage && (
-                <div className="px-3 py-1 flex items-center gap-1">
-                  {[1, 2, 3, 5].map((r) => (
-                    <button
-                      key={r}
-                      onClick={() => setCoverageRadius(r)}
-                      className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm transition-colors ${
-                        coverageRadius === r
-                          ? 'bg-teal-900/50 text-teal-400 border border-teal-700/50'
-                          : 'text-rmpg-500 hover:text-rmpg-300'
-                      }`}
-                    >
-                      {r}mi
-                    </button>
-                  ))}
-                </div>
-              )}
-
               {/* Fleet Vehicles */}
               <button
                 onClick={() => setShowFleetVehicles(!showFleetVehicles)}
@@ -4449,55 +3288,6 @@ export default function MapPage() {
                 )}
               </button>
 
-              {/* Repeat Addresses */}
-              <button
-                onClick={() => setShowRepeatAddresses(!showRepeatAddresses)}
-                className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
-                  showRepeatAddresses ? 'panel-inset bg-orange-900/20 text-orange-400' : 'text-rmpg-400 hover:bg-surface-raised'
-                }`}
-              >
-                <AlertOctagon className="w-3 h-3" />
-                <span className="flex-1 text-left">Repeat Addresses</span>
-                {showRepeatAddresses && repeatAddresses.count > 0 && (
-                  <span className="text-[9px] font-mono">{repeatAddresses.count}</span>
-                )}
-              </button>
-              {showRepeatAddresses && (
-                <div className="px-3 py-1 space-y-1">
-                  <div className="flex items-center gap-1">
-                    {[7, 14, 30, 90].map((d) => (
-                      <button
-                        key={d}
-                        onClick={() => setRepeatDays(d)}
-                        className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm transition-colors ${
-                          repeatDays === d
-                            ? 'bg-orange-900/50 text-orange-400 border border-orange-700/50'
-                            : 'text-rmpg-500 hover:text-rmpg-300'
-                        }`}
-                      >
-                        {d}d
-                      </button>
-                    ))}
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <span className="text-[7px] text-rmpg-500">Min:</span>
-                    {[2, 3, 5, 10].map((c) => (
-                      <button
-                        key={c}
-                        onClick={() => setRepeatMinCount(c)}
-                        className={`px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm transition-colors ${
-                          repeatMinCount === c
-                            ? 'bg-orange-900/50 text-orange-400 border border-orange-700/50'
-                            : 'text-rmpg-500 hover:text-rmpg-300'
-                        }`}
-                      >
-                        {c}x
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-
               {/* Panic Zone */}
               <button
                 onClick={() => setShowPanicZone(!showPanicZone)}
@@ -4510,18 +3300,6 @@ export default function MapPage() {
                 {showPanicZone && panicZone.activePanic && (
                   <span className="text-[8px] font-bold bg-red-600 text-white px-1 py-0.5 rounded-sm animate-pulse">ACTIVE</span>
                 )}
-              </button>
-
-              {/* Traffic Layer */}
-              <button
-                onClick={() => toggleTraffic(mapInstanceRef.current)}
-                className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
-                  showTraffic ? 'panel-inset bg-green-900/20 text-green-400' : 'text-rmpg-400 hover:bg-surface-raised'
-                }`}
-              >
-                <Car className="w-3 h-3" />
-                <span className="flex-1 text-left">Traffic</span>
-                {showTraffic && <span className="led-dot led-green" style={{ width: 5, height: 5 }} />}
               </button>
 
               {/* Marker Clustering */}
@@ -4562,6 +3340,20 @@ export default function MapPage() {
                 <Grab className="w-3 h-3" />
                 <span className="flex-1 text-left">Drag Dispatch</span>
                 {dragDispatchMode && <span className="led-dot led-amber" style={{ width: 5, height: 5 }} />}
+              </button>
+            </div>
+
+            {/* ── Tactical Tools ── */}
+            <div className="border-t border-rmpg-700 p-1.5">
+              <button
+                onClick={() => setShowTacticalTools(!showTacticalTools)}
+                className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${
+                  showTacticalTools ? 'panel-inset bg-amber-900/20 text-amber-400' : 'text-rmpg-400 hover:bg-surface-raised'
+                }`}
+              >
+                <Grab className="w-3 h-3" />
+                <span className="flex-1 text-left">Tactical Tools</span>
+                {showTacticalTools && <span className="led-dot led-amber" style={{ width: 5, height: 5 }} />}
               </button>
             </div>
 
@@ -5238,52 +4030,6 @@ export default function MapPage() {
                 </div>
               )}
             </div>
-
-            {/* ── Officer Safety ──────────────────────── */}
-            <div className="mt-3 pt-3 border-t border-rmpg-700">
-              <div className="text-[8px] text-rmpg-500 uppercase tracking-widest font-bold mb-2">Officer Safety</div>
-
-              <button type="button" onClick={() => setShowSafetyDashboard(!showSafetyDashboard)} className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${showSafetyDashboard ? 'bg-red-900/20 text-red-400' : 'text-rmpg-400 hover:bg-surface-raised'}`}>
-                <ShieldAlert className="w-3 h-3" /> Safety Dashboard
-                {showSafetyDashboard && <span className="led-dot led-green ml-auto" />}
-              </button>
-
-              <button type="button" onClick={() => setShowThreatAssessment(!showThreatAssessment)} className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${showThreatAssessment ? 'bg-amber-900/20 text-amber-400' : 'text-rmpg-400 hover:bg-surface-raised'}`}>
-                <Crosshair className="w-3 h-3" /> Threat Assessment
-              </button>
-
-              <button type="button" onClick={() => setShowUnitMonitoring(!showUnitMonitoring)} className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${showUnitMonitoring ? 'bg-gray-900/20 text-gray-400' : 'text-rmpg-400 hover:bg-surface-raised'}`}>
-                <Target className="w-3 h-3" /> Unit Monitoring
-                {unitSafety.loneOfficers?.length > 0 && <span className="led-dot led-amber ml-auto animate-led-pulse" />}
-              </button>
-
-              <button type="button" onClick={() => setShowPerimeterTools(!showPerimeterTools)} className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${showPerimeterTools ? 'bg-purple-900/20 text-purple-400' : 'text-rmpg-400 hover:bg-surface-raised'}`}>
-                <Radar className="w-3 h-3" /> Perimeter Tools
-              </button>
-
-              <button type="button" onClick={() => setShowCorridorAnalysis(!showCorridorAnalysis)} className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${showCorridorAnalysis ? 'bg-gray-900/20 text-gray-400' : 'text-rmpg-400 hover:bg-surface-raised'}`}>
-                <Route className="w-3 h-3" /> Corridor Analysis
-              </button>
-
-              <button type="button" onClick={() => setShowEnvironmentInfo(!showEnvironmentInfo)} className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${showEnvironmentInfo ? 'bg-green-900/20 text-green-400' : 'text-rmpg-400 hover:bg-surface-raised'}`}>
-                <TreePine className="w-3 h-3" /> Environment
-                {environment.lowVisibility && <span className="led-dot led-amber ml-auto" />}
-              </button>
-
-              <button type="button" onClick={() => setShowTacticalTools(!showTacticalTools)} className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${showTacticalTools ? 'bg-amber-900/20 text-amber-400' : 'text-rmpg-400 hover:bg-surface-raised'}`}>
-                <Grab className="w-3 h-3" /> Tactical Tools
-              </button>
-
-              <button type="button" onClick={() => setShowAlertSystem(!showAlertSystem)} className={`w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors ${showAlertSystem ? 'bg-red-900/20 text-red-400' : 'text-rmpg-400 hover:bg-surface-raised'}`}>
-                <Siren className="w-3 h-3" /> Alert System
-                {alerts.activeAlerts?.length > 0 && <span className="ml-auto text-[9px] font-mono text-red-400">{alerts.activeAlerts?.length}</span>}
-              </button>
-
-              {/* Safety Alert Broadcast Button */}
-              <button type="button" onClick={() => setShowSafetyAlertModal(true)} className="w-full mt-2 toolbar-btn toolbar-btn-primary flex items-center justify-center gap-1.5 text-[10px] py-1.5" style={{ background: '#dc2626', border: '1px solid #ef4444' }}>
-                <Siren className="w-3 h-3" /> BROADCAST ALERT
-              </button>
-            </div>
           </div>
           )}
         </div>}
@@ -5300,172 +4046,9 @@ export default function MapPage() {
           </div>
         )}
 
-        {/* ── Geofence Manager (floating, desktop only) ── */}
-        {!isMobile && showGeofences && (
-          <div className="absolute top-4 z-[1001]" style={{ left: layersPanelOpen ? 'calc(clamp(160px, 14vw, 200px) + 24px)' : 52, top: showPredictions ? 320 : 16 }}>
-            <GeofenceManager
-              geofences={geofences.geofences}
-              loading={geofences.loading}
-              onDraw={() => geofences.setDrawingMode(!geofences.drawingMode)}
-              onDelete={async (id) => {
-                try {
-                  await apiFetch(`/map/geofences/${id}`, { method: 'DELETE' });
-                  addToast('Geofence deleted', 'success');
-                  // Refresh geofences by toggling
-                  setShowGeofences(false);
-                  setTimeout(() => setShowGeofences(true), 100);
-                } catch { addToast('Failed to delete geofence', 'error'); }
-              }}
-              onToggle={async (id) => {
-                const fence = geofences.geofences.find(g => g.id === id);
-                if (!fence) return;
-                try {
-                  await apiFetch(`/map/geofences/${id}`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ is_active: fence.is_active ? 0 : 1 }),
-                  });
-                  addToast(`Geofence ${fence.is_active ? 'deactivated' : 'activated'}`, 'success');
-                  setShowGeofences(false);
-                  setTimeout(() => setShowGeofences(true), 100);
-                } catch { addToast('Failed to toggle geofence', 'error'); }
-              }}
-              drawingMode={geofences.drawingMode}
-              onClose={() => setShowGeofences(false)}
-              alerts={geofences.alerts}
-              onNavigate={(lat, lng) => panTo(lat, lng)}
-            />
-          </div>
-        )}
-
-        {/* ── Safety Dashboard Panel (floating, desktop only) ── */}
-        {!isMobile && showSafetyDashboard && (
-          <div className="absolute top-2 right-2 z-30" style={{ maxWidth: 320 }}>
-            <SafetyDashboardPanel
-              shiftRisk={shiftRisk as any}
-              environment={safetyEnvironmentProp}
-              unitSafety={safetyUnitSafetyProp}
-              onClose={() => setShowSafetyDashboard(false)}
-            />
-          </div>
-        )}
-
-        {/* ── Safety Alert Modal ── */}
-        {showSafetyAlertModal && (
-          <SafetyAlertModal
-            isOpen={showSafetyAlertModal}
-            onClose={() => setShowSafetyAlertModal(false)}
-            onBroadcast={(type, lat, lng, details, radius) => alerts.broadcastAlert(type as SafetyAlertType, lat, lng, details, radius)}
-            defaultLat={mapInstanceRef.current?.getCenter()?.lat ?? DEFAULT_CENTER.lat}
-            defaultLng={mapInstanceRef.current?.getCenter()?.lng ?? DEFAULT_CENTER.lng}
-          />
-        )}
-
-        {/* Speed Graph Overlay */}
-        {speedAnalytics.speedGraphUnit != null && (
-          <SpeedGraphOverlay
-            unitId={speedAnalytics.speedGraphUnit}
-            callSign={playbackTrails.find(t => t.unit_id === speedAnalytics.speedGraphUnit)?.call_sign || ''}
-            hours={breadcrumbHours}
-            onClose={() => speedAnalytics.setSpeedGraphUnit(null)}
-            playbackIdx={playbackUnit === speedAnalytics.speedGraphUnit ? playbackIdx : undefined}
-          />
-        )}
-
-        {/* Coverage Timeline */}
-        {speedAnalytics.showCoverageTimeline && (
-          <CoverageTimeline
-            data={speedAnalytics.coverageTimeline.length > 0 ? { intervals: speedAnalytics.coverageTimeline, total_beats: 719 } : null}
-            expanded={speedAnalytics.showCoverageTimeline}
-            onToggle={() => speedAnalytics.setShowCoverageTimeline(!speedAnalytics.showCoverageTimeline)}
-          />
-        )}
-
-        {/* ── Weather / Environment Panel ── */}
-        {!isMobile && showEnvironmentInfo && (
-          <div className="absolute top-2 z-30" style={{ right: showThreatAssessment || showSafetyDashboard ? 320 : 8, maxWidth: 320, willChange: 'contents' }}>
-            <WeatherPanel
-              lighting={environment?.lighting || 'daylight'}
-              sunriseSunset={environment?.sunriseSunset || null}
-              lowVisibility={environment?.lowVisibility || false}
-              weatherHazards={environment?.weatherHazards || { freezing: false, highWind: false, rain: false, snow: false, description: '' }}
-              icyRoad={environment?.icyRoad || false}
-              windCondition={environment?.windCondition || null}
-              visibilityRange={environment?.visibilityRange || 10000}
-              schoolZoneActive={environment?.schoolZoneActive || false}
-              loading={environment?.loading || false}
-              onRefresh={() => environment?.refresh?.()}
-              onClose={() => setShowEnvironmentInfo(false)}
-            />
-          </div>
-        )}
-
-        {/* ── Advanced Heatmap Panel ── */}
-        {!isMobile && advancedHeatmapEnabled && showHeatmap && (
-          <div className="absolute top-2 z-30" style={{ left: layersPanelOpen ? 'calc(clamp(160px, 14vw, 200px) + 24px)' : 52, maxWidth: 400 }}>
-            <AdvancedHeatmapPanel
-              mode={advHeatmapMode}
-              onModeChange={setAdvHeatmapMode}
-              hourRange={advHeatmapHourRange}
-              onHourRangeChange={setAdvHeatmapHourRange}
-              dayFilter={advHeatmapDayFilter}
-              onDayFilterChange={setAdvHeatmapDayFilter}
-              colorScheme={advHeatmapColorScheme}
-              onColorSchemeChange={setAdvHeatmapColorScheme}
-              opacity={advHeatmapOpacity}
-              onOpacityChange={setAdvHeatmapOpacity}
-              radius={advHeatmapRadius}
-              onRadiusChange={setAdvHeatmapRadius}
-              resolution={advHeatmapResolution}
-              onResolutionChange={setAdvHeatmapResolution}
-              showClusters={advHeatmapShowClusters}
-              onShowClustersChange={setAdvHeatmapShowClusters}
-              clusterCount={advancedHeatmap.clusters?.length ?? 0}
-              types={advHeatmapTypes}
-              onTypesChange={setAdvHeatmapTypes}
-              availableTypes={heatmapTypes}
-              comparisonDays={advHeatmapComparisonDays}
-              onComparisonDaysChange={setAdvHeatmapComparisonDays}
-              temporalHour={advancedHeatmap.temporalHour}
-              temporalPlaying={advancedHeatmap.temporalPlaying}
-              temporalSpeed={advancedHeatmap.temporalSpeed}
-              onTemporalHourChange={advancedHeatmap.setTemporalHour}
-              onTemporalPlayingChange={advancedHeatmap.setTemporalPlaying}
-              onTemporalSpeedChange={advancedHeatmap.setTemporalSpeed}
-              stats={advancedHeatmap.stats}
-              pointCount={advancedHeatmap.pointCount}
-              comparisonPointCount={advancedHeatmap.comparisonPointCount}
-              loading={advancedHeatmap.loading}
-              onRefresh={() => advancedHeatmap.refreshHeatmap()}
-              onClose={() => setAdvancedHeatmapEnabled(false)}
-            />
-          </div>
-        )}
-
-        {/* ── Threat Assessment Panel ── */}
-        {!isMobile && showThreatAssessment && (
-          <div className="absolute top-2 right-2 z-30" style={{ maxWidth: 300, top: showSafetyDashboard ? 340 : 8 }}>
-            <ThreatAssessmentPanel
-              assessment={threatAssessment.currentAssessment}
-              approachRoutes={threatAssessment.approachRoutes}
-              loading={threatAssessment.loading}
-              onAssessCenter={() => {
-                const c = mapInstanceRef.current?.getCenter();
-                if (c) threatAssessment.assessLocation(c.lat, c.lng);
-              }}
-              onGetApproachRoutes={() => {
-                const c = mapInstanceRef.current?.getCenter();
-                if (c) threatAssessment.getApproachRoutes(c.lat, c.lng);
-              }}
-              onClear={() => threatAssessment.clearAssessment()}
-              onClose={() => setShowThreatAssessment(false)}
-            />
-          </div>
-        )}
-
         {/* ── Tactical Tools Panel ── */}
         {!isMobile && showTacticalTools && (
-          <div className="absolute top-2 z-30" style={{ right: showThreatAssessment ? 320 : 8, maxWidth: 280 }}>
+          <div className="absolute top-2 z-30" style={{ right: 8, maxWidth: 280 }}>
             <TacticalToolsPanel
               rallyPoint={tactical.rallyPoint}
               entryPoints={tactical.entryPoints}
@@ -5540,161 +4123,15 @@ export default function MapPage() {
           </div>
         )}
 
-        {/* ── Perimeter Tools Panel ── */}
-        {!isMobile && showPerimeterTools && (
-          <div className="absolute bottom-12 right-2 z-30" style={{ maxWidth: 280 }}>
-            <PerimeterToolsPanel
-              perimeterData={{
-                quadrants: { NE: 0, NW: 0, SE: 0, SW: 0 },
-                gaps: perimeter.coverageGaps.map((g, i) => `Gap ${i + 1}: ${g.lat.toFixed(4)}, ${g.lng.toFixed(4)}`),
-                staging_suggestion: perimeter.stagingSuggestion ? { ...perimeter.stagingSuggestion, reason: 'Optimal staging based on unit positions' } : null,
-              }}
-              isDrawingContainment={false}
-              containmentVertices={perimeter.containmentPolygon.length}
-              hvtVisible={false}
-              loading={perimeter.loading}
-              onAnalyzeCoverage={() => {
-                const c = mapInstanceRef.current?.getCenter();
-                if (c) perimeter.showPerimeter(c.lat, c.lng);
-              }}
-              onStartContainment={() => perimeter.startContainment()}
-              onClearContainment={() => perimeter.endContainment()}
-              onToggleHVTs={() => {
-                const c = mapInstanceRef.current?.getCenter();
-                if (c) perimeter.showPerimeter(c.lat, c.lng);
-              }}
-              onClose={() => setShowPerimeterTools(false)}
-            />
-          </div>
-        )}
-
-        {/* ── Corridor Analysis Panel ── */}
-        {!isMobile && showCorridorAnalysis && (
-          <div className="absolute bottom-12 z-30" style={{ right: showPerimeterTools ? 300 : 8, maxWidth: 280 }}>
-            <CorridorAnalysisPanel
-              corridorData={corridor.corridorData}
-              pursuitProjection={corridor.pursuitProjection}
-              loading={corridor.loading}
-              onAnalyzeCorridor={() => {
-                const c = mapInstanceRef.current?.getCenter();
-                if (c) corridor.analyzeCorridor(c.lat - 0.01, c.lng - 0.01, c.lat + 0.01, c.lng + 0.01);
-              }}
-              onShowPursuitProjection={(heading) => {
-                const c = mapInstanceRef.current?.getCenter();
-                if (c) corridor.showPursuitProjection(c.lat, c.lng, heading);
-              }}
-              onClearPursuit={() => corridor.clearPursuit()}
-              onShowEscapeRoutes={() => {
-                const c = mapInstanceRef.current?.getCenter();
-                if (c) corridor.showEscapeRoutes(c.lat, c.lng);
-              }}
-              onClearEscapeRoutes={() => corridor.clearEscapeRoutes()}
-              onClearCorridor={() => corridor.clearCorridor()}
-              onClose={() => setShowCorridorAnalysis(false)}
-            />
-          </div>
-        )}
-
-        {/* ── Alert System Panel ── */}
-        {!isMobile && showAlertSystem && (
-          <div className="absolute top-2 left-1/2 -translate-x-1/2 z-30" style={{ maxWidth: 320, top: showEnvironmentInfo ? 48 : 8 }}>
-            <AlertSystemPanel
-              activeAlerts={alerts.activeAlerts}
-              alertHistory={alerts.alertHistory}
-              onAcknowledge={(id) => alerts.acknowledgeAlert(id)}
-              onClear={(id) => alerts.clearAlert(id)}
-              onClearAll={() => alerts.clearAllAlerts()}
-              onClose={() => setShowAlertSystem(false)}
-            />
-          </div>
-        )}
-
-        {/* ── Call History Panel ── */}
-        {!isMobile && showCallHistory && callHistory.calls.length > 0 && (
-          <div className="absolute top-2 z-30" style={{ left: layersPanelOpen ? 'calc(clamp(160px, 14vw, 200px) + 24px)' : 52, top: showPredictions ? 340 : 8 }}>
-            <CallHistoryPanel
-              calls={callHistory.calls}
-              loading={callHistory.loading}
-              days={callHistoryDays}
-              onClose={() => setShowCallHistory(false)}
-            />
-          </div>
-        )}
-
-        {/* ── Incident Reports Panel ── */}
-        {!isMobile && showIncidentReports && (
-          <div className="absolute top-2 z-30" style={{ left: layersPanelOpen ? 'calc(clamp(160px, 14vw, 200px) + 24px)' : 52, top: showCallHistory ? 200 : showPredictions ? 340 : 8 }}>
-            <IncidentReportsPanel
-              count={incidentReports.count}
-              loading={incidentReports.loading}
-              days={incidentDays}
-              onClose={() => setShowIncidentReports(false)}
-              reports={incidentReports.incidents}
-              onDaysChange={setIncidentDays}
-              onNavigate={(lat, lng) => panTo(lat, lng)}
-            />
-          </div>
-        )}
-
-        {/* ── Safety Zones Panel ── */}
-        {!isMobile && showSafetyZones && (
-          <div className="absolute bottom-12 z-30" style={{ left: layersPanelOpen ? 'calc(clamp(160px, 14vw, 200px) + 24px)' : 52 }}>
-            <SafetyZonesPanel
-              zones={safetyZones.zones}
-              loading={safetyZones.loading}
-              days={safetyZones.days}
-              onDaysChange={safetyZones.setDays}
-              onRefresh={safetyZones.refresh}
-              onNavigate={(lat, lng) => panTo(lat, lng)}
-              onClose={() => setShowSafetyZones(false)}
-            />
-          </div>
-        )}
-
         {/* ── Analysis Intel Dashboard ── */}
         {!isMobile && showAnalysisDashboard && (
-          <div className="absolute top-2 right-2 z-30" style={{ maxWidth: 320, top: showSafetyDashboard ? 340 : showThreatAssessment ? 340 : 8 }}>
+          <div className="absolute top-2 right-2 z-30" style={{ maxWidth: 320, top: 8 }}>
             <AnalysisDashboardPanel
               data={analysisSummary.data}
               loading={analysisSummary.loading}
               onRefresh={analysisSummary.refresh}
               onNavigate={(lat, lng) => panTo(lat, lng)}
               onClose={() => setShowAnalysisDashboard(false)}
-            />
-          </div>
-        )}
-
-        {/* ── Tactical Summary Panel ── */}
-        {!isMobile && (showPatrolCheckpoints || showFieldInterviews || showDwellTime || showResponseRadius || showEnforcementClusters || showCoverage || showFleetVehicles || showRepeatAddresses || showDaylight) && (
-          <div className="absolute bottom-12 right-2 z-30" style={{ maxWidth: 260, bottom: showPerimeterTools || showCorridorAnalysis ? 280 : 48 }}>
-            <TacticalSummaryPanel
-              showCheckpoints={showPatrolCheckpoints}
-              checkpointCount={patrolCheckpoints.checkpoints.length}
-              overdueCount={patrolCheckpoints.overdueCount}
-              completionPct={patrolCheckpoints.completionPct}
-              showFieldInterviews={showFieldInterviews}
-              fiCount={fieldInterviews.count}
-              fiDays={fiDays}
-              showDwellTime={showDwellTime}
-              dwellAlertCount={dwellTime.dwellAlertCount}
-              showResponseRadius={showResponseRadius}
-              responseActive={!!responseRadius.activePoint}
-              showEnforcement={showEnforcementClusters}
-              enforcementTotal={enforcementClusters.totalRecords}
-              enforcementType={enforcementType}
-              enforcementDays={enforcementDays}
-              showCoverage={showCoverage}
-              coverageCount={coverageGaps.coverageCount}
-              showFleet={showFleetVehicles}
-              fleetCount={fleetVehicles.count}
-              showRepeat={showRepeatAddresses}
-              repeatCount={repeatAddresses.count}
-              repeatDays={repeatDays}
-              showDaylight={showDaylight}
-              daylightPhase={daylight.phase}
-              onClose={() => {
-                // Close the summary panel — doesn't disable layers
-              }}
             />
           </div>
         )}
@@ -5989,9 +4426,9 @@ export default function MapPage() {
             </div>
             {/* Coverage */}
             <div className="flex items-center gap-1.5">
-              <div className="led-dot" style={{ backgroundColor: (unitSafety.coveragePercent ?? 0) >= 70 ? '#22c55e' : (unitSafety.coveragePercent ?? 0) >= 40 ? '#f59e0b' : '#ef4444', width: 5, height: 5 }} />
+              <div className="led-dot" style={{ backgroundColor: '#22c55e', width: 5, height: 5 }} />
               <span className="text-[9px] font-mono text-rmpg-500 uppercase tracking-wider">Coverage</span>
-              <span className="text-[9px] font-mono font-bold text-rmpg-200">{unitSafety.coveragePercent ?? 0}%</span>
+              <span className="text-[9px] font-mono font-bold text-rmpg-200">Active</span>
             </div>
           </div>
         )}

@@ -24,7 +24,7 @@ interface RecordFieldProps {
   className?: string;
 }
 
-export default function RecordField({
+function RecordField({
   label,
   value,
   icon: Icon,
@@ -85,3 +85,5 @@ export default function RecordField({
     </div>
   );
 }
+
+export default React.memo(RecordField);

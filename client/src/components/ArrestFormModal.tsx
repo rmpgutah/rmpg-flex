@@ -239,6 +239,7 @@ export default function ArrestFormModal({
             <input
               name="full_name"
               type="text"
+              required
               className="input-dark mt-1"
               placeholder="Last, First Middle"
               value={form.full_name}
