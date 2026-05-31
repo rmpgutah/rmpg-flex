@@ -43,6 +43,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
+import { geocodeAddress } from './geocode';
 
 const sv = new Hono<Env>();
 
@@ -277,6 +278,15 @@ sv.post('/', async (c) => {
   }
   const priority = body.priority ?? 'normal';
   const status = body.status && STATUSES.has(body.status) ? body.status : 'pending';
+
+  // Backfill geocode when recipient_address is provided but coords are not
+  let lat = body.recipient_lat != null ? body.recipient_lat : null;
+  let lng = body.recipient_lng != null ? body.recipient_lng : null;
+  if ((lat == null || lng == null) && typeof body.recipient_address === 'string' && body.recipient_address.trim().length >= 3) {
+    const coords = await geocodeAddress(c.env, body.recipient_address).catch(() => null);
+    if (coords) { lat = coords.lat; lng = coords.lng; }
+  }
+
   const r = await execute(
     getDb(c.env),
     `INSERT INTO serve_queue (
@@ -289,7 +299,7 @@ sv.post('/', async (c) => {
      ) VALUES (?,?,?,?, ?,?,?,?, ?,?,?,?,?, ?,?,?,?, ?,?,?,?,?, ?,?,?,?)`,
     body.call_id ?? null, body.sm_job_id ?? null, body.officer_id ?? null, body.serve_date ?? null,
     body.recipient_name ?? null, body.recipient_person_id ?? null, body.recipient_address ?? null, body.recipient_city ?? null,
-    body.recipient_state ?? null, body.recipient_zip ?? null, body.recipient_lat ?? null, body.recipient_lng ?? null, body.property_id ?? null,
+    body.recipient_state ?? null, body.recipient_zip ?? null, lat, lng, body.property_id ?? null,
     body.document_type ?? null, body.case_number ?? null, body.court_name ?? null, body.jurisdiction ?? null,
     body.client_name ?? null, body.attorney_name ?? null, priority, body.time_window ?? null, body.deadline ?? null,
     body.max_attempts ?? 3, body.service_instructions ?? null, body.notes ?? null, status,
@@ -343,6 +353,17 @@ sv.put('/:id', async (c) => {
     args.push(body[k]);
   }
   if (!sets.length) return c.json({ error: 'No fields to update' }, 400);
+
+  // Backfill geocode when recipient_address is updated but coords are not
+  if ('recipient_address' in body && body.recipient_lat === undefined && body.recipient_lng === undefined
+      && typeof body.recipient_address === 'string' && body.recipient_address.trim().length >= 3) {
+    const coords = await geocodeAddress(c.env, body.recipient_address).catch(() => null);
+    if (coords) {
+      sets.push('recipient_lat = ?', 'recipient_lng = ?');
+      args.push(coords.lat, coords.lng);
+    }
+  }
+
   sets.push("updated_at = datetime('now','localtime')");
   args.push(id);
   await execute(getDb(c.env), `UPDATE serve_queue SET ${sets.join(', ')} WHERE id = ?`, ...args);

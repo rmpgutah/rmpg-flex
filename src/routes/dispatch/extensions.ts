@@ -22,6 +22,7 @@ import type { Env } from '../../types';
 import { getDb, query, queryFirst, execute } from '../../utils/db';
 import { requireRole } from '../../middleware/auth';
 import { broadcastAll } from '../ws';
+import { geocodeAddress } from '../geocode';
 
 const READ_ROLES  = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher'];
 const WRITE_ROLES = ['admin', 'manager', 'supervisor', 'dispatcher'];
@@ -276,14 +277,22 @@ premiseAlerts.post('/', requireRole(...WRITE_ROLES), async (c) => {
       return c.json({ error: `alert_level must be one of ${VALID_ALERT_LEVELS.join(', ')}`, code: 'PA_INVALID_LEVEL' }, 400);
     }
 
+    // Backfill geocode when address is provided but coords are not
+    let lat = body.latitude != null ? Number(body.latitude) : null;
+    let lng = body.longitude != null ? Number(body.longitude) : null;
+    if ((lat == null || lng == null) && address.length >= 3) {
+      const coords = await geocodeAddress(c.env, address).catch(() => null);
+      if (coords) { lat = coords.lat; lng = coords.lng; }
+    }
+
     const result = await execute(db, `
       INSERT INTO premise_alerts
         (address, latitude, longitude, alert_type, alert_level, title, description,
          flags, expires_at, created_by, active)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`,
       address,
-      body.latitude != null ? Number(body.latitude) : null,
-      body.longitude != null ? Number(body.longitude) : null,
+      lat,
+      lng,
       body.alert_type || 'caution',
       alert_level,
       title,
@@ -312,15 +321,26 @@ premiseAlerts.put('/:id', requireRole(...WRITE_ROLES), async (c) => {
     if (!VALID_ALERT_LEVELS.includes(alert_level)) {
       return c.json({ error: `alert_level must be one of ${VALID_ALERT_LEVELS.join(', ')}`, code: 'PA_INVALID_LEVEL' }, 400);
     }
+
+    // Backfill geocode when address changes and coords are not explicit in the body
+    const newAddress = b.address ?? before.address;
+    let lat = b.latitude !== undefined ? (b.latitude != null ? Number(b.latitude) : null) : before.latitude;
+    let lng = b.longitude !== undefined ? (b.longitude != null ? Number(b.longitude) : null) : before.longitude;
+    if (b.latitude === undefined && b.longitude === undefined
+        && typeof newAddress === 'string' && newAddress.trim().length >= 3) {
+      const coords = await geocodeAddress(c.env, newAddress).catch(() => null);
+      if (coords) { lat = coords.lat; lng = coords.lng; }
+    }
+
     await execute(db, `
       UPDATE premise_alerts SET
         address = ?, latitude = ?, longitude = ?, alert_type = ?, alert_level = ?,
         title = ?, description = ?, flags = ?, expires_at = ?, active = ?,
         updated_at = datetime('now')
       WHERE id = ?`,
-      b.address ?? before.address,
-      b.latitude !== undefined ? (b.latitude != null ? Number(b.latitude) : null) : before.latitude,
-      b.longitude !== undefined ? (b.longitude != null ? Number(b.longitude) : null) : before.longitude,
+      newAddress,
+      lat,
+      lng,
       b.alert_type ?? before.alert_type,
       alert_level,
       b.title ?? before.title,

@@ -34,7 +34,7 @@ const TOOLS: { id: Tool; icon: typeof MousePointer2; label: string }[] = [
   { id: 'polyline', icon: Spline, label: 'Polyline (click vertices, double-click or Esc to finish)' },
 ];
 
-const PRESETS = ['#0a0a0a', '#d4a017', '#c62828', '#1976d2', '#2e7d32', '#fbc02d', '#ffffff'];
+const PRESETS = ['#0a0a0a', '#333333', '#555555', '#777777', '#999999', '#bbbbbb', '#ffffff'];
 
 export default function ToolPalette({ tool, onTool, color, onColor, strokeWidth, onStrokeWidth }: Props) {
   return (

@@ -83,6 +83,7 @@ import forensics from './routes/forensics';
 import hr from './routes/hr';
 import patrol from './routes/patrol';
 import radio from './routes/radio';
+import iped from './routes/iped';
 import serveIntake from './routes/serveIntake';
 import ocr from './routes/ocr';
 import skiptracer from './routes/skiptracer';
@@ -116,6 +117,8 @@ import businessVisits from './routes/business/visits';
 import businessPhotos from './routes/business/photos';
 // Howen dashcam integration
 import howen from './routes/howen';
+// Downloads + auto-updates
+import downloads from './routes/downloads';
 // Offender registry (stats only)
 import offenderRegistry from './routes/offenderRegistry';
 
@@ -242,6 +245,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'MVP: cases + exhibits + analyses + activity log; hash sets / reports / cross-links deferred' },
   { prefix: '/api/hr', router: hr, auth: 'required',
     note: 'Leave + disciplinary + performance reviews; /benefits returns [] (table deferred). Payroll/exit/grievances/PIPs stay on legacy.' },
+  { prefix: '/api/iped', router: iped, auth: 'required',
+    note: 'Read-only surface over forensic_hash_sets + forensic_hash_entries + iped_imports tables. GET /status, /hash-sets, /hash-sets/:id, /downloads.' },
   { prefix: '/api/offline', router: offline, auth: 'required',
     note: 'Offline sync (push/pull + secrets). /sync/push dispatches allowlisted writes through the root app; see src/routes/offline.ts.' },
   { prefix: '/api/patrol', router: patrol, auth: 'required',
@@ -272,23 +277,9 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/business-visits', router: businessVisits, auth: 'required' },
   { prefix: '/api/business-photos', router: businessPhotos, auth: 'required' },
 
-  // ── Fleet ──────────────────────────────────────────────────
-  // Vehicles + dashcam videos. See src/routes/fleet.ts for the implemented
-  // subset; unimplemented sub-tabs (fuel-cards, recalls, health-scores,
-  // maintenance-schedule, driver-performance, service-alerts, cost-trends,
-  // vehicle-lifecycle, pretrip) continue to fall through to the proxy stubs
-  // in proxy/index.ts until their handlers land.
-  { prefix: '/api/fleet', router: fleet, auth: 'required' },
-
   // ── Howen dashcam integration ──────────────────────────────
   // Device fleet + recent events. See src/routes/howen.ts.
   { prefix: '/api/howen', router: howen, auth: 'required' },
-
-  // ── HR (leave module only — see src/routes/hr.ts) ──────────
-  // Other HR sub-modules (payroll, grievances, documents, attendance,
-  // pips, benefits) continue to fall through to the proxy stubs in
-  // proxy/index.ts until their backing tables land on live D1.
-  { prefix: '/api/hr', router: hr, auth: 'required' },
 
   // ── Offender registry (stats only) ─────────────────────────
   // /search + per-person detail is a follow-up; only the dashboard
@@ -307,6 +298,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Serves /api/geocode/* and /api/integrations/mapbox/client-token. See src/routes/geocode.ts for the in-router auth setup.' },
   { prefix: '/api', router: shiftPlans, auth: 'public',
     note: 'Serves /api/shift-plans/*, /api/shift-swaps/*, /api/shift-overtime, /api/staffing-levels, /api/shift-notifications. See src/routes/shiftPlans.ts for the in-router auth setup.' },
+  { prefix: '/api', router: downloads, auth: 'public',
+    note: 'Serves /api/downloads/info + /api/downloads/check for the public download page. Non-API download paths (/downloads/:filename, /download, etc.) are registered directly in src/index.ts.' },
 
   // ── Warrants — real implementation ─────────────────────────
   { prefix: '/api/warrants', router: warrants, auth: 'required' },

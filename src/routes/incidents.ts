@@ -15,6 +15,7 @@ import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { requireRole } from '../middleware/auth';
 import { validateIncidentForNibrs } from './nibrs';
+import { geocodeAddress } from './geocode';
 
 const incidents = new Hono<Env>();
 
@@ -72,6 +73,14 @@ incidents.post('/', requireRole(...WRITE_ROLES), async (c) => {
     const { incident_type, location_address, priority, call_id, narrative } = body;
     if (!incident_type || !location_address) return c.json({ error: 'incident_type and location_address are required', code: 'INC_MISSING_FIELDS' }, 400);
 
+    // Backfill geocoded coordinates when address is present but coords are not
+    let lat = body.latitude != null ? Number(body.latitude) : null;
+    let lng = body.longitude != null ? Number(body.longitude) : null;
+    if ((lat == null || lng == null) && typeof location_address === 'string' && location_address.trim().length >= 3) {
+      const coords = await geocodeAddress(c.env, location_address).catch(() => null);
+      if (coords) { lat = coords.lat; lng = coords.lng; }
+    }
+
     // Generate incident number: YY-RMP-NNNNN
     const year = new Date().getFullYear().toString().slice(-2);
     const [{ max }] = await query<{ max: string | null }>(db,
@@ -80,10 +89,10 @@ incidents.post('/', requireRole(...WRITE_ROLES), async (c) => {
     const incident_number = `${year}-RMP-${seq}`;
 
     const result = await execute(db, `
-      INSERT INTO incidents (incident_number, incident_type, priority, status, call_id, location_address, narrative, officer_id)
-      VALUES (?, ?, ?, 'draft', ?, ?, ?, ?)`,
+      INSERT INTO incidents (incident_number, incident_type, priority, status, call_id, location_address, latitude, longitude, narrative, officer_id)
+      VALUES (?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?)`,
       incident_number, incident_type, priority || 'P3',
-      call_id ?? null, location_address, narrative || null, userId);
+      call_id ?? null, location_address, lat, lng, narrative || null, userId);
     const created = await queryFirst(db, 'SELECT * FROM incidents WHERE id = ?', result.meta.last_row_id);
     return c.json(created, 201);
   } catch (err) {
@@ -108,6 +117,18 @@ incidents.put('/:id', requireRole(...WRITE_ROLES), async (c) => {
     const body = await c.req.json().catch(() => ({} as any));
     const editable = ['incident_type', 'priority', 'location_address', 'latitude', 'longitude', 'narrative'];
     const sets: string[] = []; const vals: unknown[] = [];
+
+    // Backfill geocode when location_address is updated but coords are missing
+    if ('location_address' in body && typeof body.location_address === 'string' && body.location_address.trim().length >= 3) {
+      const hasLat = body.latitude != null;
+      const hasLng = body.longitude != null;
+      const addrChanged = body.location_address !== incident.location_address;
+      if ((!hasLat || !hasLng) && addrChanged) {
+        const coords = await geocodeAddress(c.env, body.location_address).catch(() => null);
+        if (coords) { body.latitude = coords.lat; body.longitude = coords.lng; }
+      }
+    }
+
     for (const k of editable) if (k in body) { sets.push(`${k} = ?`); vals.push(body[k]); }
     if (sets.length === 0) return c.json(incident);
     await execute(db, `UPDATE incidents SET ${sets.join(', ')}, updated_at = datetime('now') WHERE id = ?`, ...vals, id);

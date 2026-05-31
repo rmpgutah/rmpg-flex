@@ -899,7 +899,7 @@ export default function MapPage() {
     if (heatmapMode === 'type' && heatmapTypeFilter) url += `&type=${encodeURIComponent(heatmapTypeFilter)}`;
     apiFetch<HeatmapPoint[]>(url)
       .then((data) => { if (!cancelled) setHeatmapData(Array.isArray(data) ? data : []); })
-      .catch(() => { if (!cancelled) setHeatmapData([]); });
+      .catch((err) => { if (!cancelled) { console.warn('[MapPage] heatmap data fetch failed:', err); setHeatmapData([]); } });
     return () => { cancelled = true; };
   }, [showHeatmap, heatmapDays, heatmapMode, heatmapTypeFilter, advancedHeatmapEnabled]);
 
@@ -1024,42 +1024,9 @@ export default function MapPage() {
 
       infoWindowRef.current = new mapboxgl.Popup({ closeButton: true, closeOnClick: false });
 
-      // Hide Google's dismissible "can't load correctly" dialog instantly.
-      const hideStyleId = '__rmpg_hide_gm_dialog__';
-      if (!document.getElementById(hideStyleId)) {
-        const s = document.createElement('style');
-        s.id = hideStyleId;
-        s.textContent = '[role="alertdialog"] { display: none !important; }';
-        document.head.appendChild(s);
-      }
-
-      dismissObserver = new MutationObserver(() => {
-        if (authFailed) return;
-        const hardErr = mapRef.current?.querySelector('.gm-err-container');
-        if (hardErr) {
-          console.error('[MapPage] Mapbox map error overlay detected');
-          authFailed = true;
-          dismissObserver?.disconnect();
-          setMapError(
-            'Mapbox map failed to load.\n\n' +
-            'Check your Mapbox account:\n' +
-            '1. Valid access token configured\n' +
-            '2. Styles and tilesets enabled\n' +
-            '3. No network restrictions blocking api.mapbox.com'
-          );
-          return;
-        }
-        const dialog = document.querySelector('[role="alertdialog"]');
-        if (dialog) {
-          const btn = dialog.querySelector('button');
-          if (btn) btn.click();
-          dialog.remove();
-        }
-      });
-      dismissObserver.observe(document.body, { childList: true, subtree: true });
-      dismissTimer = setTimeout(() => dismissObserver?.disconnect(), 10000);
-
-      // CartoDB dark_matter tiles handled by Mapbox style
+      // Mapbox does not have the Google Maps error overlay / dismissable
+      // alertdialog that the old mutation observer was designed to handle.
+      // Both the observer and the style injection were removed in #827.
 
       devLog('[MapPage] Map ready — using native mapbox-gl markers');
 

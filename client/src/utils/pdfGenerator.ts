@@ -127,8 +127,8 @@ export const DEFAULT_PDF_BRANDING: PdfBranding = {
   report_header_text: 'ROCKY MOUNTAIN PROTECTIVE GROUP',
   report_subheader_text: 'PRIVATE SECURITY & LAW ENFORCEMENT',
   primary_color: '#888888',
-  accent_color: '#d4a017',
-  header_bg_color: '#232832',
+  accent_color: '#555555', // neutralized 2026-05-30 (was gold #d4a017)
+  header_bg_color: '#333333', // neutralized 2026-05-30 (was dark blue #232832)
   // section_accent_color is intentionally LEFT UNSET so the
   // thematic per-section palette in resolveSectionAccentColor
   // becomes the default (burgundy for hazards, green for resolution,
@@ -183,11 +183,12 @@ export const CLASSIFICATION_BAR_HEIGHT = LAYOUT.CLASSIF_BAR_H;
 
 // Priority color mapping
 export const PRIORITY_COLORS: Record<string, { bg: [number, number, number]; text: [number, number, number]; label: string }> = {
-  critical: { bg: [220, 38, 38], text: [255, 255, 255], label: 'PRIORITY: CRITICAL' },
-  high: { bg: [220, 80, 20], text: [255, 255, 255], label: 'PRIORITY: HIGH' },
-  medium: { bg: [212, 160, 23], text: [0, 0, 0], label: 'PRIORITY: MEDIUM' },
-  low: { bg: [60, 130, 80], text: [255, 255, 255], label: 'PRIORITY: LOW' },
-  routine: { bg: [80, 120, 180], text: [255, 255, 255], label: 'PRIORITY: ROUTINE' },
+  // Neutralized 2026-05-30: luminance gradient replaces red/orange/gold/green/blue
+  critical: { bg: [45, 45, 45], text: [255, 255, 255], label: 'PRIORITY: CRITICAL' },
+  high:      { bg: [70, 70, 70], text: [255, 255, 255], label: 'PRIORITY: HIGH' },
+  medium:    { bg: [100, 100, 100], text: [255, 255, 255], label: 'PRIORITY: MEDIUM' },
+  low:       { bg: [130, 130, 130], text: [255, 255, 255], label: 'PRIORITY: LOW' },
+  routine:   { bg: [160, 160, 160], text: [0, 0, 0],       label: 'PRIORITY: ROUTINE' },
 };
 
 // Generation timestamp captured once per report
@@ -467,7 +468,7 @@ export function addDraftWatermark(doc: jsPDF) {
   // @ts-expect-error jsPDF GState
   doc.setGState(new doc.GState({ opacity: 0.12 }));
   doc.setFont(PDF_VALUE_FONT, 'bold');
-  doc.setTextColor(220, 38, 38); // Red
+  doc.setTextColor(120, 120, 120); // neutralized 2026-05-30 (was red)
 
   const cx = pageWidth / 2;
   const cy = pageHeight / 2;
@@ -475,7 +476,7 @@ export function addDraftWatermark(doc: jsPDF) {
   doc.text('DRAFT', cx, cy, { align: 'center', angle: 45 });
 
   // Add border warning
-  doc.setDrawColor(220, 38, 38);
+  doc.setDrawColor(120, 120, 120); // neutralized 2026-05-30 (was red)
   doc.setLineWidth(BORDER.BANNER);
   doc.rect(10, 10, pageWidth - 20, pageHeight - 20);
 
@@ -897,13 +898,13 @@ export function addCheckboxField(doc: jsPDF, label: string, checked: boolean, x:
   const boxY = y - 1.8;
 
   // Outer border (always drawn for checkbox shape)
-  doc.setDrawColor(80, 80, 85);
+  doc.setDrawColor(80, 80, 80); // neutralized 2026-05-30
   doc.setLineWidth(0.3);
   doc.rect(x, boxY, boxSize, boxSize);
 
   if (checked) {
     // Light fill + bold dark checkmark
-    doc.setFillColor(230, 245, 230);
+    doc.setFillColor(235, 235, 235); // neutralized 2026-05-30
     doc.rect(x + 0.15, boxY + 0.15, boxSize - 0.3, boxSize - 0.3, 'F');
     doc.setDrawColor(20, 20, 20);
     doc.setLineWidth(0.7);
@@ -962,63 +963,65 @@ export function addFlagBadges(
   const fontSize = 6;
   const cornerR = 1.2;      // Rounded corner radius
 
-  // Flag → color mapping (red for danger, amber for warnings, gray for info)
+  // Flag → color mapping — neutralized 2026-05-30: all hue-based urgency
+  // distinctions (red → danger, amber → warning, green → ok) replaced with
+  // luminance-graded grays. The flag label text carries the semantic meaning.
   const flagColors: Record<string, [number, number, number]> = {
-    'PRIORITY 1': [180, 20, 20],
-    'ACTIVE WARRANT': [180, 20, 20],
-    'ARMED & DANGEROUS': [180, 20, 20],
-    'VIOLENT': [180, 20, 20],
-    'FLIGHT RISK': [180, 20, 20],
-    'STOLEN': [180, 20, 20],
-    'WARRANT': [180, 20, 20],
-    'SEX OFFENDER': [180, 20, 20],
-    'GANG MEMBER': [180, 20, 20],
-    'WEAPONS': [180, 20, 20],
-    'EXPIRED': [180, 20, 20],
-    'USE OF FORCE': [180, 20, 20],
-    'SERVICE OVERDUE': [180, 20, 20],
-    'REGISTRATION EXPIRED': [180, 20, 20],
-    'INSURANCE EXPIRED': [180, 20, 20],
-    'BOLO': [200, 80, 10],
-    'CAUTION': [200, 80, 10],
-    'SUICIDAL': [200, 80, 10],
-    'MENTAL HEALTH': [200, 80, 10],
-    'DOMESTIC VIOLENCE': [200, 80, 10],
-    'INJURIES': [200, 80, 10],
-    'JUVENILE': [200, 80, 10],
-    'DRUG USER': [200, 80, 10],
-    'OFFICER SAFETY': [200, 80, 10],
-    'EMS REQUESTED': [200, 80, 10],
-    'FIRE REQUESTED': [200, 80, 10],
-    'ACCIDENT': [200, 80, 10],
-    'EXPIRING SOON': [200, 80, 10],
-    'SERVICE DUE': [200, 80, 10],
-    'REGISTRATION EXPIRING': [200, 80, 10],
-    'LICENSE EXPIRED': [200, 80, 10],
-    'LICENSE EXPIRING': [200, 80, 10],
-    'INACTIVE SITE': [200, 80, 10],
-    'K9 REQUESTED': [70, 75, 88],
-    'LE NOTIFIED': [70, 75, 88],
-    'PROCESS SERVICE': [70, 75, 88],
-    'DISPATCH LINK': [70, 75, 88],
-    'CLIENT CONTRACT': [70, 75, 88],
-    'LAB SUBMITTED': [70, 75, 88],
-    'CHAIN OF CUSTODY': [70, 75, 88],
-    'MAINTENANCE': [70, 75, 88],
-    'FUEL LOGS': [70, 75, 88],
-    'MILEAGE SUMMARY': [70, 75, 88],
-    'CONTROLLED ACCESS': [70, 75, 88],
-    'COURT DATE': [70, 75, 88],
-    'FINE ASSESSED': [70, 75, 88],
-    'PHOTO TAKEN': [70, 75, 88],
-    'DISPOSED': [70, 75, 88],
-    'VERIFIED': [70, 75, 88],
-    'SEPARATED': [70, 75, 88],
-    'ACTIVE SITE': [60, 130, 80],
-    'SERVED': [60, 130, 80],
-    'RESTRICTED': [120, 80, 160],
+    'PRIORITY 1': [50, 50, 50],
+    'ACTIVE WARRANT': [50, 50, 50],
+    'ARMED & DANGEROUS': [50, 50, 50],
+    'VIOLENT': [50, 50, 50],
+    'FLIGHT RISK': [50, 50, 50],
+    'STOLEN': [50, 50, 50],
+    'WARRANT': [50, 50, 50],
+    'SEX OFFENDER': [50, 50, 50],
+    'GANG MEMBER': [50, 50, 50],
+    'WEAPONS': [50, 50, 50],
+    'EXPIRED': [50, 50, 50],
+    'USE OF FORCE': [50, 50, 50],
+    'SERVICE OVERDUE': [50, 50, 50],
+    'REGISTRATION EXPIRED': [50, 50, 50],
+    'INSURANCE EXPIRED': [50, 50, 50],
+    'BOLO': [75, 75, 75],
+    'CAUTION': [75, 75, 75],
+    'SUICIDAL': [75, 75, 75],
+    'MENTAL HEALTH': [75, 75, 75],
+    'DOMESTIC VIOLENCE': [75, 75, 75],
+    'INJURIES': [75, 75, 75],
+    'JUVENILE': [75, 75, 75],
+    'DRUG USER': [75, 75, 75],
+    'OFFICER SAFETY': [75, 75, 75],
+    'EMS REQUESTED': [75, 75, 75],
+    'FIRE REQUESTED': [75, 75, 75],
+    'ACCIDENT': [75, 75, 75],
+    'EXPIRING SOON': [75, 75, 75],
+    'SERVICE DUE': [75, 75, 75],
+    'REGISTRATION EXPIRING': [75, 75, 75],
+    'LICENSE EXPIRED': [75, 75, 75],
+    'LICENSE EXPIRING': [75, 75, 75],
+    'INACTIVE SITE': [100, 100, 100],
+    'K9 REQUESTED': [100, 100, 100],
+    'LE NOTIFIED': [100, 100, 100],
+    'PROCESS SERVICE': [100, 100, 100],
+    'DISPATCH LINK': [100, 100, 100],
+    'CLIENT CONTRACT': [100, 100, 100],
+    'LAB SUBMITTED': [100, 100, 100],
+    'CHAIN OF CUSTODY': [100, 100, 100],
+    'MAINTENANCE': [100, 100, 100],
+    'FUEL LOGS': [100, 100, 100],
+    'MILEAGE SUMMARY': [100, 100, 100],
+    'CONTROLLED ACCESS': [100, 100, 100],
+    'COURT DATE': [100, 100, 100],
+    'FINE ASSESSED': [100, 100, 100],
+    'PHOTO TAKEN': [100, 100, 100],
+    'DISPOSED': [100, 100, 100],
+    'VERIFIED': [100, 100, 100],
+    'SEPARATED': [100, 100, 100],
+    'ACTIVE SITE': [120, 120, 120],
+    'SERVED': [120, 120, 120],
+    'RESTRICTED': [90, 90, 90],
   };
-  const defaultColor: [number, number, number] = [70, 75, 88]; // Slate for unrecognized
+  const defaultColor: [number, number, number] = [85, 85, 85]; // neutralized 2026-05-30
 
   doc.setFont(PDF_VALUE_FONT, 'bold');
   doc.setFontSize(fontSize);
@@ -1051,19 +1054,22 @@ export function addFlagBadges(
     // "UNINSURED", "TRESPASS WARNING") still renders in a meaningful
     // severity color instead of dropping to flat slate. Keeps the report
     // chips consistent with the records UI badges.
+    // Neutralized 2026-05-30: severity fallback uses luminance-graded grays
+    // instead of red/orange/pink/blue/amber/green. The regex patterns remain
+    // for backward compatibility but all resolve to neutral values.
     if (!matched) {
       const RED    = /ARMED|WEAPON|VIOLENT|WARRANT|WANTED|WATCHLIST|OFAC|ESCAPE|STOLEN|HAZMAT|HAZARD|OFFICER SAFETY/;
       const ORANGE = /FELONY|OFFENDER|PURSUIT|GANG|PAROLE|PROBATION|SUPERVISION|IMPOUND|UNINSURED|NO INSURANCE|SUSPENDED/;
-      const PINK   = /SUICID|SELF.?HARM|BIOHAZARD|OVERDOSE|MEDICAL/;   // self-harm / medical
-      const BLUE   = /MENTAL|PSYCH|CRISIS|5150/;                       // behavioral
+      const PINK   = /SUICID|SELF.?HARM|BIOHAZARD|OVERDOSE|MEDICAL/;
+      const BLUE   = /MENTAL|PSYCH|CRISIS|5150/;
       const AMBER  = /TRESPASS|BOLO|PARKING|NO CONTACT|RESTRAIN|EXPIR|HOLD|EVIDENCE/;
       const GREEN  = /CLEARED|VERIFIED|COOPERATIVE|RELEASED|RETURNED|SERVED/;
-      if (RED.test(upperFlag))         bg = [180, 20, 20];
-      else if (PINK.test(upperFlag))   bg = [190, 40, 110];
-      else if (BLUE.test(upperFlag))   bg = [40, 90, 170];   // behavioral (FLAG_MENTAL)
-      else if (ORANGE.test(upperFlag)) bg = [200, 80, 10];
-      else if (GREEN.test(upperFlag))  bg = [60, 130, 80];
-      else if (AMBER.test(upperFlag))  bg = [200, 80, 10];
+      if (RED.test(upperFlag))         bg = [50, 50, 50];
+      else if (PINK.test(upperFlag))   bg = [65, 65, 65];
+      else if (BLUE.test(upperFlag))   bg = [80, 80, 80];
+      else if (ORANGE.test(upperFlag)) bg = [65, 65, 65];
+      else if (GREEN.test(upperFlag))  bg = [100, 100, 100];
+      else if (AMBER.test(upperFlag))  bg = [80, 80, 80];
     }
 
     // Draw pill background
@@ -1117,8 +1123,8 @@ export function addCautionBlock(
   // Orange left accent bar
   doc.setFillColor(...COLOR.CAUTION_ACCENT);
   doc.rect(x, y, 2, boxH, 'F');
-  // Border
-  doc.setDrawColor(200, 160, 80);
+  // Border — neutralized 2026-05-30 (was amber)
+  doc.setDrawColor(120, 120, 120);
   doc.setLineWidth(0.3);
   doc.rect(x, y, width, boxH);
 
@@ -1131,7 +1137,7 @@ export function addCautionBlock(
   // Text content
   doc.setFont(PDF_VALUE_FONT, 'normal');
   doc.setFontSize(FONT.SIZE_FIELD_VALUE);
-  doc.setTextColor(80, 40, 0);
+  doc.setTextColor(80, 80, 80); // neutralized 2026-05-30 (was brown)
   let textY = y + 6;
   for (const line of lines) {
     doc.text(line, x + innerPad + 2, textY);

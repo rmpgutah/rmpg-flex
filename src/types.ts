@@ -10,6 +10,9 @@ export type Bindings = {
   // User-uploaded files. PR-E uses the business-photos/ prefix; future
   // R2-backed routes share this bucket with their own key prefixes.
   UPLOADS: R2Bucket;
+  // Desktop/mobile installers R2 bucket. Served via /downloads/* and
+  // /updates/* routes. Contains .exe, .dmg, .apk, .zip, .blockmap, .yml.
+  DOWNLOADS: R2Bucket;
   JWT_SECRET: string;
   CORS_ORIGINS?: string;
   PRIMARY_DOMAIN?: string;

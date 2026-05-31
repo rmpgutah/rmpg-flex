@@ -423,7 +423,7 @@ function drawDistrictBar(
   const valueColor: [number, number, number] = [
     COLOR.TEXT_INVERTED[0], COLOR.TEXT_INVERTED[1], COLOR.TEXT_INVERTED[2],
   ];
-  const sepColor: [number, number, number] = [80, 80, 85];
+  const sepColor: [number, number, number] = [80, 80, 80]; // neutralized 2026-05-30
 
   for (let i = 0; i < distFields.length; i++) {
     const f = distFields[i];
@@ -1706,7 +1706,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
         const it = items[i];
         // Status dot
         if (it.on) {
-          doc.setFillColor(60, 120, 70);
+          doc.setFillColor(80, 80, 80); // neutralized 2026-05-30
         } else {
           doc.setFillColor(180, 180, 180);
         }
@@ -2613,10 +2613,10 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
         || upper === '' || upper === 'SYSTEM';
       const entryType = isSystemTag ? (authorRaw.toUpperCase() || 'SYSTEM') : 'OFFICER NOTE';
       const officerSuffix = isSystemTag ? '' : authorRaw.toUpperCase();
-      const tagBg: [number, number, number] = upper === 'DISPATCH' ? [50, 75, 110]
-        : upper === 'SERVE INTAKE' || upper === 'INTAKE' ? [120, 90, 20]
-        : upper === 'NCIC' || upper === 'ALERT' ? [180, 25, 25]
-        : !isSystemTag ? [60, 80, 60]
+      const tagBg: [number, number, number] = upper === 'DISPATCH' ? [60, 60, 60]   // neutralized 2026-05-30
+        : upper === 'SERVE INTAKE' || upper === 'INTAKE' ? [75, 75, 75]
+        : upper === 'NCIC' || upper === 'ALERT' ? [45, 45, 45]
+        : !isSystemTag ? [90, 90, 90]
         : [70, 70, 70];
 
       // Initial entry header strip (top of this note).
@@ -3777,10 +3777,10 @@ export async function renderWarrantIntoDoc(doc: jsPDF, data: WarrantPdfData): Pr
   // bar landed near y=28. The chip now reserves its own vertical
   // band and pushes Y down before any section is drawn.
   const bucket = data.priority_score == null ? null :
-    data.priority_score >= 90 ? { label: 'CRITICAL', color: [220, 38, 38] as [number,number,number] } :
-    data.priority_score >= 70 ? { label: 'HIGH',     color: [245, 158, 11] as [number,number,number] } :
-    data.priority_score >= 40 ? { label: 'MEDIUM',   color: [100, 116, 139] as [number,number,number] } :
-    { label: 'LOW', color: [156, 163, 175] as [number,number,number] };
+    data.priority_score >= 90 ? { label: 'CRITICAL', color: [50, 50, 50] as [number,number,number] } :   // neutralized 2026-05-30
+    data.priority_score >= 70 ? { label: 'HIGH',     color: [75, 75, 75] as [number,number,number] } :
+    data.priority_score >= 40 ? { label: 'MEDIUM',   color: [100, 100, 100] as [number,number,number] } :
+    { label: 'LOW', color: [130, 130, 130] as [number,number,number] };
   if (bucket) {
     const pageW = doc.internal.pageSize.getWidth();
     const chipW = 50;
@@ -6082,7 +6082,7 @@ export function generateBoloPdf(subjects: BoloSubject[], options: BoloPdfOptions
     if (topSev.label) {
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(7);
-      const sevColor: [number, number, number] = topSev.label === 'felony' ? [220, 50, 50] : topSev.label === 'misdemeanor' ? [220, 160, 40] : [120, 120, 120];
+      const sevColor: [number, number, number] = topSev.label === 'felony' ? [50, 50, 50] : topSev.label === 'misdemeanor' ? [80, 80, 80] : [120, 120, 120]; // neutralized 2026-05-30
       doc.setTextColor(...sevColor);
       doc.text(topSev.label.toUpperCase(), margin + contentW - 2, y + 5, { align: 'right' });
     }
@@ -6144,7 +6144,7 @@ export function generateBoloPdf(subjects: BoloSubject[], options: BoloPdfOptions
       doc.setFontSize(6.5);
       doc.setTextColor(...COLOR.TEXT_SECONDARY);
       // Table header
-      doc.setFillColor(30, 40, 55);
+      doc.setFillColor(55, 55, 55); // neutralized 2026-05-30
       doc.rect(margin + 2, y, contentW - 4, 5, 'F');
       doc.text('WARRANT #', margin + 4, y + 3.5);
       doc.text('TYPE', margin + 40, y + 3.5);
@@ -6313,7 +6313,7 @@ export function generateWarrantSummaryPdf(data: WarrantSummaryData, options: Rec
     ty += 5;
 
     // Header row
-    doc.setFillColor(30, 40, 55);
+    doc.setFillColor(55, 55, 55); // neutralized 2026-05-30
     doc.rect(x, ty, w, 5, 'F');
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(6.5);
@@ -6364,7 +6364,7 @@ export function generateWarrantSummaryPdf(data: WarrantSummaryData, options: Rec
     doc.text('TOP ISSUING COURTS', margin, y + 3);
     y += 5;
 
-    doc.setFillColor(30, 40, 55);
+    doc.setFillColor(55, 55, 55); // neutralized 2026-05-30
     doc.rect(margin, y, contentW, 5, 'F');
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(6.5);

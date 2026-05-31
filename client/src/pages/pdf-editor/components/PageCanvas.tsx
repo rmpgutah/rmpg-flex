@@ -196,7 +196,7 @@ export default function PageCanvas(props: Props) {
     }
     if (tool === 'stamp') {
       const w = 220; const h = 64;
-      onAddAnnotation({ id: uid(), type: 'stamp', page: visualPageNumber, x: p.x, y: p.y, w, h, label: pendingStamp ?? 'CONFIDENTIAL', color: '#c62828' });
+      onAddAnnotation({ id: uid(), type: 'stamp', page: visualPageNumber, x: p.x, y: p.y, w, h, label: pendingStamp ?? 'CONFIDENTIAL', color: '#555555' });
       return;
     }
     if (tool === 'pen') {
@@ -281,7 +281,7 @@ export default function PageCanvas(props: Props) {
       } else if (w > 4 && h > 4) {
         if (t === 'rect') onAddAnnotation({ id: uid(), type: 'rect', page: visualPageNumber, x, y, w, h, color, strokeWidth: sw });
         else if (t === 'ellipse') onAddAnnotation({ id: uid(), type: 'ellipse', page: visualPageNumber, x, y, w, h, color, strokeWidth: sw });
-        else if (t === 'highlight') onAddAnnotation({ id: uid(), type: 'highlight', page: visualPageNumber, x, y, w, h, fillColor: '#fff050' });
+        else if (t === 'highlight') onAddAnnotation({ id: uid(), type: 'highlight', page: visualPageNumber, x, y, w, h, fillColor: '#999999' });
         else if (t === 'redact') onAddAnnotation({ id: uid(), type: 'redact', page: visualPageNumber, x, y, w, h });
       } else if ((t === 'line' || t === 'arrow') && (Math.abs(current.x - start.x) > 2 || Math.abs(current.y - start.y) > 2)) {
         onAddAnnotation({ id: uid(), type: 'line', page: visualPageNumber, x: start.x, y: start.y, w: current.x - start.x, h: current.y - start.y, color, strokeWidth: sw, arrow: t === 'arrow' });
@@ -522,7 +522,7 @@ function AnnotationView({ ann, zoom, selected, onPointerDown, onResizeStart, sho
       </div>
     );
   } else if (ann.type === 'highlight') {
-    inner = <div onPointerDown={onPointerDown} style={{ ...baseStyle, background: ann.fillColor ?? '#fff050', opacity: (ann.opacity ?? 1) * 0.4 }} />;
+    inner = <div onPointerDown={onPointerDown} style={{ ...baseStyle, background: ann.fillColor ?? '#999999', opacity: (ann.opacity ?? 1) * 0.35 }} />;
   } else if (ann.type === 'redact') {
     inner = <div onPointerDown={onPointerDown} style={{ ...baseStyle, background: '#000' }} />;
   } else if (ann.type === 'rect') {
@@ -571,7 +571,7 @@ function AnnotationView({ ann, zoom, selected, onPointerDown, onResizeStart, sho
   } else if (ann.type === 'stamp') {
     const fontSize = Math.max(10, ann.h * zoom * 0.45);
     inner = (
-      <div onPointerDown={onPointerDown} style={{ ...baseStyle, border: `${2.5 * zoom}px solid ${ann.color ?? '#c62828'}`, color: ann.color ?? '#c62828', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Helvetica, Arial, sans-serif', fontWeight: 800, fontSize, letterSpacing: '0.05em' }}>
+      <div onPointerDown={onPointerDown} style={{ ...baseStyle, border: `${2.5 * zoom}px solid ${ann.color ?? '#555555'}`, color: ann.color ?? '#555555', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Helvetica, Arial, sans-serif', fontWeight: 800, fontSize, letterSpacing: '0.05em' }}>
         {String(ann.label).toUpperCase()}
       </div>
     );
@@ -612,7 +612,7 @@ function DrawingPreview({ drawing, zoom, color, strokeWidth }: { drawing: { tool
 
   if (tool === 'rect') return <div style={{ ...style, border: `${strokeWidth * zoom}px dashed ${color}` }} />;
   if (tool === 'ellipse') return <div style={{ ...style, border: `${strokeWidth * zoom}px dashed ${color}`, borderRadius: '50%' }} />;
-  if (tool === 'highlight') return <div style={{ ...style, background: '#fff050', opacity: 0.3 }} />;
+  if (tool === 'highlight') return <div style={{ ...style, background: '#999999', opacity: 0.25 }} />;
   if (tool === 'redact') return <div style={{ ...style, background: '#000', opacity: 0.7 }} />;
   if (tool === 'line' || tool === 'arrow') {
     const sx = (start.x - x) * zoom; const sy = (start.y - y) * zoom;

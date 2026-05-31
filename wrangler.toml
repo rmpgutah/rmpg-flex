@@ -64,6 +64,13 @@ bucket_name = "system-essentials"
 binding = "UPLOADS"
 bucket_name = "rmpg-flex-uploads"
 
+# DOWNLOADS — desktop + mobile installer artifacts for public download
+# and auto-update serving. Contains .exe, .dmg, .apk, .zip, .blockmap,
+# .yml manifests, and the download page index.html.
+[[r2_buckets]]
+binding = "DOWNLOADS"
+bucket_name = "rmpg-flex-downloads"
+
 # ─── Cloudflare Containers ─────────────────────────────────
 # PDF Tools sidecar (qpdf + pdftotext + ocrmypdf). The Worker
 # can't shell out to native binaries — this container holds

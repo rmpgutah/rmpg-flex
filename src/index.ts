@@ -43,6 +43,35 @@ export { WelfareWatchDO, VoiceHubDO, PdfToolsContainer };
 // index.ts; at request time the cycle is fully resolved.
 export const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
+// Non-API paths served directly from the DOWNLOADS R2 bucket:
+// /download, /downloads/:filename, /updates/:filename,
+// /updates/latest.yml, /updates/latest-mac.yml, /rmpg-seal.png
+// These live outside the route registry because they don't carry
+// the /api/ prefix — they're meant to be linked from the public
+// download page and from electron-updater.
+import { serveDownloadFile, serveDownloadPage, serveRmpgSeal, serveUpdatesYaml } from './routes/downloads';
+
+const ALLOWED_DOWNLOAD_EXT = ['.dmg', '.exe', '.blockmap', '.yml', '.yaml', '.zip', '.apk'];
+
+app.get('/downloads/:filename', async (c) => {
+  const filename = c.req.param('filename');
+  const ext = filename.includes('.') ? '.' + filename.split('.').pop()?.toLowerCase() : '';
+  if (!ALLOWED_DOWNLOAD_EXT.includes(ext)) return c.json({ error: 'Forbidden file type' }, 403);
+  return serveDownloadFile(c.env.DOWNLOADS, filename, c);
+});
+
+app.get('/updates/:filename', async (c) => {
+  const filename = c.req.param('filename');
+  const ext = filename.includes('.') ? '.' + filename.split('.').pop()?.toLowerCase() : '';
+  if (!ALLOWED_DOWNLOAD_EXT.includes(ext)) return c.json({ error: 'Forbidden file type' }, 403);
+  return serveDownloadFile(c.env.DOWNLOADS, filename, c);
+});
+
+app.get('/download', async (c) => serveDownloadPage(c.env.DOWNLOADS, c));
+app.get('/rmpg-seal.png', async (c) => serveRmpgSeal(c.env.DOWNLOADS, c));
+app.get('/updates/latest.yml', async (c) => serveUpdatesYaml(c.env.DOWNLOADS, 'win', c));
+app.get('/updates/latest-mac.yml', async (c) => serveUpdatesYaml(c.env.DOWNLOADS, 'mac', c));
+
 // ─── Global middleware ───────────────────────────────────────
 app.use('*', logger());
 app.use('*', secureHeaders());

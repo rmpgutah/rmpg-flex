@@ -139,37 +139,38 @@ aggregates.get('/districts', async (c) => {
 
 // GET /dispatch/heatmap/enforcement?type=citations&days=90
 // Enforcement-activity clusters for the Map "Enforcement" overlay
-// (useMapEnforcementClusters). Citations carry no coordinates of their own,
-// but most reference a call_id whose calls_for_service row has latitude/
-// longitude — so we cluster citations through that join, bucketed to ~3
-// decimals (~110m). Arrests have no geolocation in D1, so type=arrests
-// returns []. FULLY DEFENSIVE: any schema drift (a missing column/table on
-// live D1, which can't be verified from here) is caught and degraded to []
-// so this optional overlay never 500s. Previously the path fell through the
-// proxy to env.LEGACY, which has no handler → 404 spam on the Map console.
+// (useMapEnforcementClusters). Citations now capture their own latitude/
+// longitude from the address autocomplete, so we prefer the citation's own
+// coords and fall back to the linked call's coords when available. Arrests
+// have no geolocation in D1, so type=arrests returns [].
+// FULLY DEFENSIVE: any schema drift (a missing column/table on live D1,
+// which can't be verified from here) is caught and degraded to [] so this
+// optional overlay never 500s.
 aggregates.get('/heatmap/enforcement', async (c) => {
   try {
     const type = (c.req.query('type') || 'citations').toLowerCase();
-    // Only citations are geolocatable today (via their call). Anything else
-    // (arrests/warnings) has no coordinates → empty layer, no error.
     if (type !== 'citations') return c.json([]);
     const daysRaw = Number(c.req.query('days') ?? 90);
     const days = Number.isFinite(daysRaw) ? Math.min(Math.max(Math.floor(daysRaw), 1), 365) : 90;
     const db = getDb(c.env);
     const rows = await query<Record<string, unknown>>(db, `
       SELECT
-        ROUND(cf.latitude, 3)            AS lat,
-        ROUND(cf.longitude, 3)           AS lng,
-        COUNT(*)                         AS total,
-        GROUP_CONCAT(DISTINCT c.statute) AS top_statutes,
-        MIN(COALESCE(c.violation_date, c.created_at)) AS first_date,
-        MAX(COALESCE(c.violation_date, c.created_at)) AS last_date
+        ROUND(COALESCE(c.latitude, cf.latitude), 3)   AS lat,
+        ROUND(COALESCE(c.longitude, cf.longitude), 3) AS lng,
+        COUNT(*)                                       AS total,
+        GROUP_CONCAT(DISTINCT c.statute)               AS top_statutes,
+        MIN(COALESCE(c.violation_date, c.created_at))  AS first_date,
+        MAX(COALESCE(c.violation_date, c.created_at))  AS last_date
       FROM citations c
-      JOIN calls_for_service cf ON cf.id = c.call_id
-      WHERE c.call_id IS NOT NULL
-        AND cf.latitude IS NOT NULL AND cf.longitude IS NOT NULL
+      LEFT JOIN calls_for_service cf ON cf.id = c.call_id
+      WHERE (
+        (c.latitude IS NOT NULL AND c.longitude IS NOT NULL)
+        OR
+        (cf.id IS NOT NULL AND cf.latitude IS NOT NULL AND cf.longitude IS NOT NULL)
+      )
         AND COALESCE(c.violation_date, c.created_at) >= datetime('now', ?)
-      GROUP BY ROUND(cf.latitude, 3), ROUND(cf.longitude, 3)
+      GROUP BY ROUND(COALESCE(c.latitude, cf.latitude), 3),
+               ROUND(COALESCE(c.longitude, cf.longitude), 3)
       ORDER BY total DESC
       LIMIT 500
     `, `-${days} days`);
