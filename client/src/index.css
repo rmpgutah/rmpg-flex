@@ -239,16 +239,6 @@
   to { opacity: 1; transform: translateY(0); }
 }
 
-/* --- Page Transition & Visual Polish --- */
-@keyframes page-enter {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-.animate-page-enter {
-  animation: page-enter 0.25s ease-out;
-}
-
 /* ============================================================
    DISPLAY EFFECTS — Toggle via View > Display Effects menu
    Each effect is controlled by a class on <body>
@@ -787,12 +777,6 @@ body.fx-noise::after {
   94%      { opacity: 1; }
 }
 .login-data-flicker { animation: login-data-flicker 8s steps(1, end) infinite; }
-
-/* --- LED Indicator Animations (Spillman Flex) --- */
-@keyframes led-blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.3; }
-}
 
 @keyframes led-pulse {
   0%, 100% {
@@ -2808,34 +2792,6 @@ body.fx-noise::after {
    Per-line coloring so officers can instantly
    distinguish normal data from warnings. */
 
-/* System header/footer — teal bookends the response */
-.ncic-c-header { color: #00ccaa; }
-
-/* Section titles — bright white, stands out */
-.ncic-c-section { color: #e0e0e0; font-weight: bold; }
-
-/* Field labels (NAM/, DOB/) — mint, contrasts against amber values */
-.ncic-c-label { color: #88ccaa; }
-
-/* Danger — bright red for warrants, stolen, caution blocks, OFAC */
-.ncic-c-danger { color: #ff3333; font-weight: bold; }
-
-/* Caution detail lines (>> prefix) — orange between amber and red */
-.ncic-c-caution { color: #ff8c00; }
-
-/* "No record found" — muted green, calm "all clear" */
-.ncic-c-clear { color: #558855; }
-
-/* Dividers / dim system lines */
-.ncic-c-dim { color: #3a2a15; }
-
-/* Error lines */
-.ncic-c-error { color: #ff3333; }
-
-/* Summary / overview — gold, draws eye to bottom-line */
-.ncic-c-summary { color: #ffd700; font-weight: bold; }
-
-/* ── NCIC semantic line coloring ─────────────────── */
 /* System header/footer bookends — neutral light gray (was sky blue) */
 .ncic-c-header {
   color: #c8c8c8;

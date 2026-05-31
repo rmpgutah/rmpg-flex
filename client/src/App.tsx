@@ -112,6 +112,14 @@ const RiskPage = lazyRetry(() => import('./pages/RiskPage'));
 const InteragencyPage = lazyRetry(() => import('./pages/InteragencyPage'));
 const IncidentDetailWindow = lazyRetry(() => import('./pages/detached/IncidentDetailWindow'));
 const RecordDetailWindow = lazyRetry(() => import('./pages/detached/RecordDetailWindow'));
+const CourtRecordsPage = lazyRetry(() => import('./pages/CourtRecordsPage'));
+const DashCamDetailPage = lazyRetry(() => import('./pages/DashCamDetailPage'));
+const DashcamAiPage = lazyRetry(() => import('./pages/DashcamAiPage'));
+const DocumentIntakePage = lazyRetry(() => import('./pages/DocumentIntakePage'));
+const DocumentsPage = lazyRetry(() => import('./pages/DocumentsPage'));
+const ForgotPasswordPage = lazyRetry(() => import('./pages/ForgotPasswordPage'));
+const ReconConnectPage = lazyRetry(() => import('./pages/ReconConnectPage'));
+const ResetPasswordPage = lazyRetry(() => import('./pages/ResetPasswordPage'));
 
 
 /** Branded loading splash — matches login page design language */
@@ -339,6 +347,8 @@ function AppRoutes() {
             path="/login"
             element={isAuthenticated ? <Navigate to={window.location.hostname === 'crm.rmpgutah.us' ? '/crm' : '/'} replace /> : <LoginPage />}
           />
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
 
           {/* Detached windows — no Layout wrapper */}
           <Route path="/detached/incident/:id" element={<ProtectedRoute><RouteErrorBoundary><IncidentDetailWindow /></RouteErrorBoundary></ProtectedRoute>} />
@@ -413,6 +423,12 @@ function AppRoutes() {
             <Route path="/iped" element={<RouteErrorBoundary><IpedPage /></RouteErrorBoundary>} />
             <Route path="/national-warrant-search" element={<RouteErrorBoundary><NationalWarrantSearchPage /></RouteErrorBoundary>} />
             <Route path="/settings" element={<RouteErrorBoundary><SettingsPage /></RouteErrorBoundary>} />
+            <Route path="/court-records" element={<RouteErrorBoundary><CourtRecordsPage /></RouteErrorBoundary>} />
+            <Route path="/dash-cameras/:id" element={<RouteErrorBoundary><DashCamDetailPage /></RouteErrorBoundary>} />
+            <Route path="/dashcam-ai" element={<RouteErrorBoundary><DashcamAiPage /></RouteErrorBoundary>} />
+            <Route path="/document-intake" element={<RouteErrorBoundary><DocumentIntakePage /></RouteErrorBoundary>} />
+            <Route path="/documents" element={<RouteErrorBoundary><DocumentsPage /></RouteErrorBoundary>} />
+            <Route path="/recon-connect" element={<RouteErrorBoundary><ReconConnectPage /></RouteErrorBoundary>} />
             <Route path="/jail" element={<RouteErrorBoundary><JailPage /></RouteErrorBoundary>} />
             <Route path="/affairs" element={<RouteErrorBoundary><AffairsPage /></RouteErrorBoundary>} />
             <Route path="/assets" element={<RouteErrorBoundary><AssetsPage /></RouteErrorBoundary>} />
