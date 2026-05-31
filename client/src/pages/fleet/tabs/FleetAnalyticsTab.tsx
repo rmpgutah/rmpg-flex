@@ -386,8 +386,8 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
             ${totalCosts >= 1000 ? `${(totalCosts / 1000).toFixed(1)}k` : totalCosts.toFixed(0)}
           </div>
           <div className="flex gap-3 mt-1 text-[8px] text-rmpg-400 font-mono tabular-nums">
-            <span>Maint: ${(fleet_summary.total_maintenance_cost / 1000).toFixed(1)}k</span>
-            <span>Fuel: ${(fleet_summary.total_fuel_cost / 1000).toFixed(1)}k</span>
+            <span>Maint: ${((fleet_summary.total_maintenance_cost || 0) / 1000).toFixed(1)}k</span>
+            <span>Fuel: ${((fleet_summary.total_fuel_cost || 0) / 1000).toFixed(1)}k</span>
           </div>
         </div>
 
@@ -1365,11 +1365,11 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
               <div className="text-[7px] text-rmpg-500 uppercase">Avg $/Mile</div>
             </div>
             <div className="text-center p-1.5 bg-surface-sunken rounded">
-              <div className="text-sm font-bold font-mono text-gray-400">${(costAnalytics.fleet_total_cost / 1000).toFixed(1)}k</div>
+              <div className="text-sm font-bold font-mono text-gray-400">${((costAnalytics.fleet_total_cost || 0) / 1000).toFixed(1)}k</div>
               <div className="text-[7px] text-rmpg-500 uppercase">Total Cost</div>
             </div>
             <div className="text-center p-1.5 bg-surface-sunken rounded">
-              <div className="text-sm font-bold font-mono text-brand-400">{(costAnalytics.fleet_total_miles / 1000).toFixed(0)}k</div>
+              <div className="text-sm font-bold font-mono text-brand-400">{((costAnalytics.fleet_total_miles || 0) / 1000).toFixed(0)}k</div>
               <div className="text-[7px] text-rmpg-500 uppercase">Total Miles</div>
             </div>
           </div>
