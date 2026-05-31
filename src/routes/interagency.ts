@@ -78,6 +78,21 @@ interagency.put('/partners/:id', async (c) => {
   }
 });
 
+interagency.delete('/partners/:id', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id'), 10);
+    if (isNaN(id)) return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
+    const result = await execute(db, 'DELETE FROM interagency_partners WHERE id = ?', id);
+    if (result.meta.changes === 0) return c.json({ error: 'Partner not found', code: 'NOT_FOUND' }, 404);
+    return c.json({ success: true });
+  } catch (err) {
+    return c.json({ error: 'Failed to delete partner', code: 'DELETE_ERROR' }, 500);
+  }
+});
+
 // ═══════════════════════════════════════════════════════════════
 // AGREEMENTS
 // ═══════════════════════════════════════════════════════════════

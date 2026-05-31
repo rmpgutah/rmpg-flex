@@ -105,6 +105,22 @@ qa.put('/reviews/:id', async (c) => {
   }
 });
 
+qa.delete('/reviews/:id', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id'), 10);
+    if (isNaN(id)) return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
+    await execute(db, 'DELETE FROM qa_scores WHERE review_id = ?', id);
+    const result = await execute(db, 'DELETE FROM qa_reviews WHERE id = ?', id);
+    if (result.meta.changes === 0) return c.json({ error: 'Review not found', code: 'NOT_FOUND' }, 404);
+    return c.json({ success: true });
+  } catch (err) {
+    return c.json({ error: 'Failed to delete review', code: 'DELETE_ERROR' }, 500);
+  }
+});
+
 // ═══════════════════════════════════════════════════════════════
 // CRITERIA
 // ═══════════════════════════════════════════════════════════════

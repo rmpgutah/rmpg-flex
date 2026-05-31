@@ -7,7 +7,7 @@ import {
   MessageSquare, QrCode, BarChart3, Calendar, TrendingUp, ClipboardCheck,
   Settings, ScrollText, Network, ChevronLeft, ChevronRight, Camera, Mail,
   Upload, Building2, ShieldAlert, Megaphone, GraduationCap, CheckCircle,
-  DollarSign, Shield, Share2,
+  DollarSign, Shield, Share2, Swords, Brain, Heart, Bell, Pill, Award, UserPlus,
 } from 'lucide-react';
 
 // ─── Sidebar Navigation Structure ──────────────────────────────
@@ -125,6 +125,14 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
       { path: '/billing', icon: DollarSign, label: 'Billing' },
       { path: '/risk', icon: Shield, label: 'Risk Mgmt' },
       { path: '/interagency', icon: Share2, label: 'Interagency' },
+      { path: '/gang-intel', icon: ShieldAlert, label: 'Gang Intel' },
+      { path: '/special-ops', icon: Swords, label: 'Special Ops' },
+      { path: '/crisis-response', icon: Brain, label: 'Crisis Response' },
+      { path: '/victim-services', icon: Heart, label: 'Victim Services' },
+      { path: '/alarms', icon: Bell, label: 'Alarm Mgmt' },
+      { path: '/narcotics', icon: Pill, label: 'Narcotics' },
+      { path: '/accreditation', icon: Award, label: 'Accreditation' },
+      { path: '/recruitment', icon: UserPlus, label: 'Recruitment' },
     ],
   },
 ];

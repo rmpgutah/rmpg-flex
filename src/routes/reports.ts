@@ -33,6 +33,7 @@ function clampDays(raw: string | undefined, fallback: number): number {
 
 // GET /api/reports/incidents-summary?days=30
 reports.get('/incidents-summary', async (c) => {
+  try {
   const db = getDb(c.env);
   const days = clampDays(c.req.query('days'), 30);
   const since = `-${days} days`;
@@ -77,6 +78,7 @@ reports.get('/incidents-summary', async (c) => {
     by_status,
     by_day,
   });
+  } catch (err) { return c.json({ error: 'Failed' }, 500); }
 });
 
 // GET /api/reports/crime-trends?days=90
@@ -84,6 +86,7 @@ reports.get('/incidents-summary', async (c) => {
 // top_categories[]: leaderboard of incident_type counts for the
 // whole window (denormalised for the dashboard's quick-stats card).
 reports.get('/crime-trends', async (c) => {
+  try {
   const db = getDb(c.env);
   const days = clampDays(c.req.query('days'), 90);
   const since = `-${days} days`;
@@ -109,6 +112,7 @@ reports.get('/crime-trends', async (c) => {
   );
 
   return c.json({ days, trends, top_categories });
+  } catch (err) { return c.json({ error: 'Failed' }, 500); }
 });
 
 // GET /api/reports/beat-activity?days=30
@@ -119,6 +123,7 @@ reports.get('/crime-trends', async (c) => {
 //   citations — citations.beat_id = dispatch_beats.beat_code
 // Inactive beats are excluded.
 reports.get('/beat-activity', async (c) => {
+  try {
   const db = getDb(c.env);
   const days = clampDays(c.req.query('days'), 30);
   const since = `-${days} days`;
@@ -165,6 +170,7 @@ reports.get('/beat-activity', async (c) => {
   );
 
   return c.json({ days, beats });
+  } catch (err) { return c.json({ error: 'Failed' }, 500); }
 });
 
 // GET /api/reports/citation-revenue?days=30
@@ -172,6 +178,7 @@ reports.get('/beat-activity', async (c) => {
 // by_violation: top fine-generating statutes (sums payments per citation).
 // by_month: yyyy-mm bucketed totals for trend chart.
 reports.get('/citation-revenue', async (c) => {
+  try {
   const db = getDb(c.env);
   const days = clampDays(c.req.query('days'), 30);
   const since = `-${days} days`;
@@ -221,6 +228,7 @@ reports.get('/citation-revenue', async (c) => {
     by_violation,
     by_month,
   });
+  } catch (err) { return c.json({ error: 'Failed' }, 500); }
 });
 
 // GET /api/reports/schedules
@@ -239,6 +247,7 @@ reports.get('/templates', (c) => c.json([]));
 // is computed against the total within the window so each row's
 // pct_of_total sums to ~100 (minor rounding ok).
 reports.get('/statute-analytics', async (c) => {
+  try {
   const db = getDb(c.env);
   const days = clampDays(c.req.query('days'), 180);
   const since = `-${days} days`;
@@ -300,6 +309,7 @@ reports.get('/statute-analytics', async (c) => {
   );
 
   return c.json({ days, total: total?.n ?? 0, top_statutes, by_category });
+  } catch (err) { return c.json({ error: 'Failed' }, 500); }
 });
 
 // GET /api/reports/response-times

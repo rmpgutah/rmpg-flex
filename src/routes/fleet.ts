@@ -382,26 +382,40 @@ fleet.get('/:id', async (c) => {
     );
     if (!vehicle) return c.json({ error: 'Vehicle not found' }, 404);
 
-    const assignments = await query<Record<string, unknown>>(
-      db,
-      `SELECT id, vehicle_id, unit_id, unit_call_sign, officer_name,
-              assigned_at, unassigned_at, notes, created_at
-       FROM fleet_assignments
-       WHERE vehicle_id = ?
-       ORDER BY assigned_at DESC LIMIT 50`,
-      id,
-    );
+    const assignments = await (async () => {
+      try {
+        return await query<Record<string, unknown>>(
+          db,
+          `SELECT id, vehicle_id, unit_id, unit_call_sign, officer_name,
+                  assigned_at, unassigned_at, notes, created_at
+           FROM fleet_assignments
+           WHERE vehicle_id = ?
+           ORDER BY assigned_at DESC LIMIT 50`,
+          id,
+        );
+      } catch (e) {
+        console.warn('assignments fetch failed for vehicle', id, (e as Error)?.message);
+        return [];
+      }
+    })();
 
-    const recent_maintenance = await query<Record<string, unknown>>(
-      db,
-      `SELECT id, vehicle_id, type, description, mileage_at_service,
-              cost, vendor, performed_by, performed_at,
-              next_due_date, next_due_mileage, created_at
-       FROM fleet_maintenance
-       WHERE vehicle_id = ?
-       ORDER BY performed_at DESC LIMIT 25`,
-      id,
-    );
+    const recent_maintenance = await (async () => {
+      try {
+        return await query<Record<string, unknown>>(
+          db,
+          `SELECT id, vehicle_id, type, description, mileage_at_service,
+                  cost, vendor, performed_by, performed_at,
+                  next_due_date, next_due_mileage, created_at
+           FROM fleet_maintenance
+           WHERE vehicle_id = ?
+           ORDER BY performed_at DESC LIMIT 25`,
+          id,
+        );
+      } catch (e) {
+        console.warn('maintenance fetch failed for vehicle', id, (e as Error)?.message);
+        return [];
+      }
+    })();
 
     // fleet_fuel_log (singular) is the canonical live table; some legacy
     // code references fleet_fuel_logs (plural). Try the canonical name

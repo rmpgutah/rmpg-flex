@@ -45,7 +45,7 @@ export function generateOfficerNotification(complaintId: string, officerId: stri
 export interface DisciplinaryAction { id: string; complaintId: string; officerId: string; actionType: 'verbal_counseling'|'written_reprimand'|'suspension'|'demotion'|'termination'|'training_referral'; issuedDate: string; effectiveDate: string; duration: number|null; appealDeadline: string; appealFiled: boolean; appealStatus: string|null; }
 export function useDisciplinaryTracking() {
   const [actions, setActions] = useState<DisciplinaryAction[]>([]); const [loading, setLoading] = useState(false);
-  const load = useCallback(async () => { setLoading(true); try { const r = await apiFetch<DisciplinaryAction[]>('/admin/ia/disciplinary'); if (r) setActions(r); } catch {} setLoading(false); }, []);
+  const load = useCallback(async () => { setLoading(true); try { const r = await apiFetch<DisciplinaryAction[]>('/admin/ia/disciplinary'); if (r) setActions(r); } catch (err) { console.warn('[useDisciplinaryTracking] load failed:', err); } setLoading(false); }, []);
   const active = useMemo(() => actions.filter(a => new Date(a.effectiveDate) <= new Date() && (!a.duration || new Date(a.effectiveDate).getTime() + a.duration*86400000 > Date.now())), [actions]);
   const underAppeal = useMemo(() => actions.filter(a => a.appealFiled && a.appealStatus !== 'resolved'), [actions]);
   return { actions, loading, load, active, underAppeal };
@@ -102,7 +102,7 @@ export function calculateDisparityIndex(stopsByGroup: Record<string,number>, pop
 export interface IAStats { totalComplaints: number; sustained: number; notSustained: number; exonerated: number; unfounded: number; avgInvestigationDays: number; byType: Array<{type:string;count:number;sustainedRate:number}>; byOfficer: Array<{officerName:string;count:number;repeatOffender:boolean}>; trend: 'increasing'|'stable'|'decreasing'; }
 export function useIAStats() {
   const [stats, setStats] = useState<IAStats|null>(null); const [loading, setLoading] = useState(false);
-  const load = useCallback(async () => { setLoading(true); try { const r = await apiFetch<IAStats>('/admin/ia/stats'); if (r) setStats(r); } catch {} setLoading(false); }, []);
+  const load = useCallback(async () => { setLoading(true); try { const r = await apiFetch<IAStats>('/admin/ia/stats'); if (r) setStats(r); } catch (err) { console.warn("[useIAStats/usePolicyCompliance] load failed:", err); } setLoading(false); }, []);
   return { stats, loading, load };
 }
 
@@ -110,7 +110,7 @@ export function useIAStats() {
 export interface PolicyAcknowledgement { policyId: string; policyTitle: string; version: string; effectiveDate: string; acknowledgedBy: string; acknowledgedAt: string|null; dueDate: string; status: 'acknowledged'|'pending'|'overdue'; }
 export function usePolicyCompliance() {
   const [policies, setPolicies] = useState<PolicyAcknowledgement[]>([]); const [loading, setLoading] = useState(false);
-  const load = useCallback(async () => { setLoading(true); try { const r = await apiFetch<PolicyAcknowledgement[]>('/admin/policies/acknowledgements'); if (r) setPolicies(r); } catch {} setLoading(false); }, []);
+  const load = useCallback(async () => { setLoading(true); try { const r = await apiFetch<PolicyAcknowledgement[]>('/admin/policies/acknowledgements'); if (r) setPolicies(r); } catch (err) { console.warn("[useIAStats/usePolicyCompliance] load failed:", err); } setLoading(false); }, []);
   const overdue = useMemo(() => policies.filter(p => p.status === 'overdue'), [policies]);
   const complianceRate = useMemo(() => policies.length > 0 ? Math.round(policies.filter(p => p.status === 'acknowledged').length / policies.length * 100) : 100, [policies]);
   return { policies, loading, load, overdue, complianceRate };

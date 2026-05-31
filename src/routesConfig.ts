@@ -81,8 +81,13 @@ import incidentsRouter from './routes/incidents';
 import audit from './routes/audit';
 import arrests from './routes/arrests';
 import cases from './routes/cases';
+import accreditation from './routes/accreditation';
+import alarms from './routes/alarms';
 import citations from './routes/citations';
+import clients from './routes/clients';
 import connections from './routes/connections';
+import crm from './routes/crm';
+import crisisResponse from './routes/crisisResponse';
 import fieldInterviews from './routes/fieldInterviews';
 import fleet from './routes/fleet';
 import documentFolders from './routes/documents/folders';
@@ -92,6 +97,7 @@ import tts from './routes/tts';
 import trespassOrders from './routes/trespassOrders';
 import voiceRoute from './routes/voice';
 import forensics from './routes/forensics';
+import gangIntel from './routes/gangIntel';
 import hr from './routes/hr';
 import patrol from './routes/patrol';
 import radio from './routes/radio';
@@ -104,7 +110,11 @@ import court from './routes/court';
 import dlRecords from './routes/dlRecords';
 import serve from './routes/serve';
 import settings from './routes/settings';
+import adminSettings from './routes/adminSettings';
+import recruitment from './routes/recruitment';
 import reports from './routes/reports';
+import specialOps from './routes/specialOps';
+import victimServices from './routes/victimServices';
 import stubs from './routes/stubs';
 // Dispatch domain
 import dispatchCalls from './routes/dispatch/calls';
@@ -132,6 +142,7 @@ import howen from './routes/howen';
 // Downloads + auto-updates
 import downloads from './routes/downloads';
 // Offender registry (stats only)
+import narcotics from './routes/narcotics';
 import offenderRegistry from './routes/offenderRegistry';
 
 // Permissive Router alias — `Hono<any>` accepts every router shape
@@ -207,6 +218,7 @@ export const ROUTE_REGISTRY: RouteMount[] = [
 
   // ── Admin / personnel / presence ───────────────────────────
   { prefix: '/api/admin', router: admin, auth: 'required' },
+  { prefix: '/api/admin/settings', router: adminSettings, auth: 'required' },
   { prefix: '/api/ai', router: ai, auth: 'required',
     note: 'AI dashboard stubs (config/stats/status/health/activity). Real provider wiring is Phase 2.' },
   { prefix: '/api/voice', router: voiceRoute, auth: 'required',
@@ -244,10 +256,16 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/cases', router: cases, auth: 'required',
     note: 'MVP core; entity-junction tables in a follow-up PR' },
   { prefix: '/api/citations', router: citations, auth: 'required' },
+  { prefix: '/api/clients', router: clients, auth: 'required',
+    note: 'Client stub — returns [] for GET, accepts POST/PUT/DELETE. Full CRUD lives under /api/admin/clients today.' },
   { prefix: '/api/connections', router: connections, auth: 'required',
     note: 'Connection-graph analyst tool: /search, /graph, /path, /investigations CRUD. Node types incl. call (CFS) + report (supplemental_reports). Backed by connection_investigations (live D1, migration 0043).' },
   { prefix: '/api/court', router: court, auth: 'required',
     note: 'Court events + subpoenas (single-table); reminder fan-out deferred' },
+  { prefix: '/api/crisis', router: crisisResponse, auth: 'required',
+    note: 'Crisis response: CIT deployments, mental health holds, mobile crisis team coordination' },
+  { prefix: '/api/crm', router: crm, auth: 'required',
+    note: 'CRM stub — dashboard, leads, proposals, reports, firecrawl, scraper admin, competitor monitor. All GETs return empty/null-safe shapes; mutations 201-OK as no-ops. Full CRM backend is Phase 2.' },
   { prefix: '/api/dl-records', router: dlRecords, auth: 'required',
     note: 'Local DL store CRUD over dl_records + dl_addresses. /verify + /ocr-scan (external APIs) stay on legacy — proxy routes only the bare path + numeric :id here.' },
   { prefix: '/api/field-interviews', router: fieldInterviews, auth: 'required' },
@@ -255,18 +273,26 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Full fleet management: vehicles, fuel, maintenance, inspections, assignments, personnel, insurance, registration, tires, damage, recalls, parts, warranties, depreciation, accidents, keys, service providers, fuel cards, budgets, replacement plan, pretrip checklists, cost-per-mile, CSV export, analytics, map overlay, dashcam, utilization, emissions, lifecycle, scorecard. All sub-resource CRUD ported from legacy (May 2026).' },
   { prefix: '/api/forensics', router: forensics, auth: 'required',
     note: 'MVP: cases + exhibits + analyses + activity log; hash sets / reports / cross-links deferred' },
+  { prefix: '/api/gang-intel', router: gangIntel, auth: 'required',
+    note: 'Gang intelligence: members, gangs, graffiti records, injunctions, activity mapping' },
   { prefix: '/api/hr', router: hr, auth: 'required',
     note: 'Leave + disciplinary + performance reviews; /benefits returns [] (table deferred). Payroll/exit/grievances/PIPs stay on legacy.' },
   { prefix: '/api/iped', router: iped, auth: 'required',
     note: 'Read-only surface over forensic_hash_sets + forensic_hash_entries + iped_imports tables. GET /status, /hash-sets, /hash-sets/:id, /downloads.' },
+  { prefix: '/api/narcotics', router: narcotics, auth: 'required',
+    note: 'Narcotics & vice: investigations, CI management, buy/bust ops, drug trend analysis' },
   { prefix: '/api/offline', router: offline, auth: 'required',
     note: 'Offline sync (push/pull + secrets). /sync/push dispatches allowlisted writes through the root app; see src/routes/offline.ts.' },
   { prefix: '/api/patrol', router: patrol, auth: 'required',
     note: 'MVP: checkpoints + scans + breaks + tour verifications; analytics endpoints deferred' },
   { prefix: '/api/radio', router: radio, auth: 'required',
     note: 'Channels + transmissions (append-only) + per-user recordings + stats' },
+  { prefix: '/api/recruitment', router: recruitment, auth: 'required',
+    note: 'Recruitment & hiring: applicant pipeline, testing, oral boards, onboarding workflow' },
   { prefix: '/api/serve', router: serve, auth: 'required',
     note: 'Officer-facing serve workflow (shares tables with /api/serve-intake)' },
+  { prefix: '/api/special-ops', router: specialOps, auth: 'required',
+    note: 'Special operations: SWAT callouts, tactical planning, equipment inventory' },
   { prefix: '/api/settings', router: settings, auth: 'required',
     note: 'Per-user + org-wide preference blobs for cross-device sync (migrations/0045)' },
   { prefix: '/api/serve-intake', router: serveIntake, auth: 'required',
@@ -276,8 +302,14 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/skiptracer', router: skiptracer, auth: 'required',
     note: 'Read-only over skiptracer_dossiers + microbilt_searches; legacy still owns POST /search' },
   { prefix: '/api/trespass-orders', router: trespassOrders, auth: 'required' },
+  { prefix: '/api/victim-services', router: victimServices, auth: 'required',
+    note: 'Victim services: notification, advocates, restitution, protective orders, safety planning' },
   { prefix: '/api/affairs', router: affairs, auth: 'required',
     note: 'Internal Affairs module: complaints, investigations, early intervention flags' },
+  { prefix: '/api/alarms', router: alarms, auth: 'required',
+    note: 'Alarm management: permit tracking, false alarm reduction, billing, verification' },
+  { prefix: '/api/accreditation', router: accreditation, auth: 'required',
+    note: 'Accreditation & compliance: standard tracking, proof of compliance, assessor coordination' },
   { prefix: '/api/alerts', router: alerts, auth: 'required',
     note: 'Mass notification / Rave Alert parity: templates, batches, recipients' },
   { prefix: '/api/arrests', router: arrests, auth: 'required',

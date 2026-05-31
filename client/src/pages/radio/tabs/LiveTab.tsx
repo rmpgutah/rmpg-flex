@@ -37,7 +37,7 @@ export default function LiveTab({ selectedChannelId, onSelectChannel }: Props) {
   const lastSeenIdRef = useRef<number | null>(null);
 
   useEffect(() => {
-    apiFetch<RadioChannel[]>('/radio/channels').then(setChannels).catch(console.error);
+    apiFetch<RadioChannel[]>('/radio/channels').then(setChannels).catch(err => console.warn('[LiveTab] channels load failed:', err));
   }, []);
 
   // Reset the new-TX baseline whenever the feed query changes, so

@@ -24,7 +24,7 @@ interface RecordBadgeProps {
   className?: string;
 }
 
-export default function RecordBadge({
+function RecordBadge({
   children,
   tone,
   flag,
@@ -59,3 +59,5 @@ export default function RecordBadge({
     </span>
   );
 }
+
+export default React.memo(RecordBadge);

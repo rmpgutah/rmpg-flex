@@ -20,7 +20,7 @@ interface FormSectionProps {
 
 const GOLD = '#d4a017';
 
-export default function FormSection({ title, icon: Icon, accent, children, className = '' }: FormSectionProps) {
+function FormSection({ title, icon: Icon, accent, children, className = '' }: FormSectionProps) {
   const accentColor = accent ? BADGE_TONES[accent].text : GOLD;
   const accentGlow = accent ? BADGE_TONES[accent].glow : 'rgba(212,160,23,0.3)';
   const railColor = accent ? BADGE_TONES[accent].border : 'rgba(212,160,23,0.45)';
@@ -46,3 +46,5 @@ export default function FormSection({ title, icon: Icon, accent, children, class
     </div>
   );
 }
+
+export default React.memo(FormSection);

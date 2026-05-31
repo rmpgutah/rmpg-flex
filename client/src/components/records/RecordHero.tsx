@@ -34,7 +34,7 @@ interface RecordHeroProps {
   children?: React.ReactNode;
 }
 
-export default function RecordHero({
+function RecordHero({
   name,
   subtitle,
   photoUrl,
@@ -101,3 +101,5 @@ export default function RecordHero({
     </div>
   );
 }
+
+export default React.memo(RecordHero);
