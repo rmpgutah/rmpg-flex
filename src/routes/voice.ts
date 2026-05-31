@@ -40,6 +40,7 @@ const voice = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 // source='speech'     → conversational human voice + P25 chirp
 // source='announcer'  → Spillman flat voice + classic chime
 voice.post('/dialogue', async (c) => {
+  try {
   const start = Date.now();
   const db = getDb(c.env);
   const userId = c.get('userId') as number;
@@ -150,6 +151,10 @@ voice.post('/dialogue', async (c) => {
     record: recordRef ?? undefined,
     intent,
   });
+  } catch (err) {
+    console.error('[voice] POST /dialogue failed:', err);
+    return c.json({ error: 'Dialogue processing failed', detail: (err as Error)?.message }, 500);
+  }
 });
 
 // ─── POST /api/voice/read-aloud ───────────────────────────────

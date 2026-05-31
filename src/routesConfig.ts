@@ -111,6 +111,7 @@ import settings from './routes/settings';
 import recruitment from './routes/recruitment';
 import reports from './routes/reports';
 import specialOps from './routes/specialOps';
+import victimServices from './routes/victimServices';
 import stubs from './routes/stubs';
 // Dispatch domain
 import dispatchCalls from './routes/dispatch/calls';
@@ -293,7 +294,7 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/skiptracer', router: skiptracer, auth: 'required',
     note: 'Read-only over skiptracer_dossiers + microbilt_searches; legacy still owns POST /search' },
   { prefix: '/api/trespass-orders', router: trespassOrders, auth: 'required' },
-  { prefix: '/api/victim-services', router: stubs, auth: 'required',
+  { prefix: '/api/victim-services', router: victimServices, auth: 'required',
     note: 'Victim services: notification, advocates, restitution, protective orders, safety planning' },
   { prefix: '/api/affairs', router: affairs, auth: 'required',
     note: 'Internal Affairs module: complaints, investigations, early intervention flags' },

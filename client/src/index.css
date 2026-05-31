@@ -60,21 +60,9 @@
   --window-chrome-close: #ef4444;
   --window-chrome-minimize: #d4a017;
   --window-chrome-maximize: #22c55e;
-  --window-chrome-dim: #333333;
-  /* Toolbar nav — colors for the F-key navigation bar */
-  --toolbar-nav-bg: #050505;
-  --toolbar-nav-hover: #141414;
-  --toolbar-nav-active: #1a1a1a;
-  --toolbar-nav-text: #888888;
-  --toolbar-nav-text-hover: #e0e0e0;
-  --toolbar-nav-text-active: #d4a017;
-  --toolbar-nav-border: #222222;
-  /* Spillman Flex console grid — alternating row colors */
-  --grid-row-odd: transparent;
-  --grid-row-even: #0a0a0a;
-  --grid-row-selected: rgba(212, 160, 23, 0.12);
-  --grid-row-selected-border: #d4a017;
-  --grid-header-text: #d4a017;
+  /* Typography — centralized font tokens */
+  --font-mono: 'Consolas', 'Courier New', ui-monospace, SFMono-Regular, monospace;
+  --font-sans: system-ui, -apple-system, 'Segoe UI', sans-serif;
 }
 
 /* --- Global Base Overrides --- */
@@ -2388,7 +2376,7 @@ body.fx-noise::after {
   padding: 0 12px;
   background: var(--surface-sunken);
   border: 1px solid #222222;
-  font-family: 'Consolas', 'Courier New', monospace;
+  font-family: var(--font-mono);
   font-size: 14px;
   color: #e0e0e0;
 }
@@ -2446,7 +2434,7 @@ body.fx-noise::after {
   flex-shrink: 0;
   padding: 6px 14px;
   font-size: 11px;
-  font-family: 'Consolas', 'Courier New', monospace;
+  font-family: var(--font-mono);
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -2540,7 +2528,7 @@ body.fx-noise::after {
 .cad-command-line {
   background: var(--surface-deep);
   border-top: 1px solid #222222;
-  font-family: 'Courier New', 'Consolas', monospace;
+  font-family: var(--font-mono);
   padding: 0;
 }
 
@@ -2557,7 +2545,7 @@ body.fx-noise::after {
   border: none;
   outline: none;
   color: #d4a017;
-  font-family: 'Courier New', 'Consolas', monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   letter-spacing: 0.5px;
   caret-color: #d4a017;
@@ -2571,7 +2559,7 @@ body.fx-noise::after {
 .cad-command-hint {
   color: #7a6a4a;
   font-size: 9px;
-  font-family: 'Courier New', monospace;
+  font-family: var(--font-mono);
   border: 1px solid #5a4a2a;
   padding: 0 4px;
   line-height: 16px;
@@ -2622,7 +2610,7 @@ body.fx-noise::after {
   border: 1px solid #5a3a1a;
   padding: 0 6px;
   font-size: 10px;
-  font-family: 'Courier New', monospace;
+  font-family: var(--font-mono);
   cursor: pointer;
   line-height: 18px;
 }
@@ -2692,7 +2680,7 @@ body.fx-noise::after {
   flex: 1;
   overflow-y: auto;
   padding: 12px;
-  font-family: 'Courier New', 'Consolas', monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   line-height: 1.5;
   color: #d4a017;
@@ -2875,7 +2863,7 @@ body.fx-noise::after {
 
 .ncic-prompt {
   color: #d4a017;
-  font-family: 'Courier New', monospace;
+  font-family: var(--font-mono);
   font-size: 14px;
   font-weight: bold;
   text-shadow: 0 0 8px rgba(212, 160, 23, 0.3);
@@ -2887,7 +2875,7 @@ body.fx-noise::after {
   border: none;
   outline: none;
   color: #d4a017;
-  font-family: 'Courier New', 'Consolas', monospace;
+  font-family: var(--font-mono);
   font-size: 12px;
   letter-spacing: 0.5px;
   caret-color: #d4a017;
@@ -3674,7 +3662,7 @@ body.fx-noise::after {
     color: #111 !important;
     border: 1px solid #ccc !important;
     padding: 6px !important;
-    font-family: 'Courier New', monospace !important;
+    font-family: var(--font-mono) !important;
     font-size: 9px !important;
     white-space: pre-wrap !important;
     word-break: break-word !important;
@@ -4932,7 +4920,7 @@ html, body {
 
   /* --- Monospace Data Readout (CAD terminal style) --- */
   .cad-readout {
-    font-family: 'JetBrains Mono', 'Courier New', monospace;
+    font-family: 'JetBrains Mono', var(--font-mono);
     font-variant-numeric: tabular-nums;
     letter-spacing: 0.02em;
   }
@@ -6242,7 +6230,7 @@ kbd.keycap {
   padding: 0 4px;
   font-size: 9px;
   font-weight: 600;
-  font-family: 'Consolas', 'Courier New', monospace;
+  font-family: var(--font-mono);
   color: #aaaaaa;
   background: var(--surface-raised);
   border: 1px solid var(--border-default);
@@ -6257,7 +6245,7 @@ kbd.keycap {
   margin-left: auto;
   padding-left: 12px;
   font-size: 9px;
-  font-family: 'Consolas', monospace;
+  font-family: var(--font-mono);
   color: #555555;
   display: flex;
   align-items: center;
@@ -6303,7 +6291,7 @@ kbd.keycap {
   color: #e0e0e0;
   outline: none;
   caret-color: var(--brand-gold);
-  font-family: 'Consolas', monospace;
+  font-family: var(--font-mono);
 }
 .command-palette-input::placeholder { color: #444444; }
 .command-palette-results {
@@ -6460,7 +6448,7 @@ pre.code-block {
   background: var(--surface-deep);
   border: 1px solid var(--border-subtle);
   padding: 8px 10px;
-  font-family: 'Consolas', 'Courier New', monospace;
+  font-family: var(--font-mono);
   font-size: 11px;
   line-height: 1.5;
   color: #c0c0c0;
@@ -6844,7 +6832,7 @@ mark.spillman-highlight-danger {
 .audit-log-entry {
   padding: 4px 8px;
   font-size: 10px;
-  font-family: 'Consolas', monospace;
+  font-family: var(--font-mono);
   border-bottom: 1px solid var(--border-subtle);
   line-height: 1.5;
 }
@@ -7324,7 +7312,7 @@ input[type="radio"].radio-spillman:disabled {
 .version-info {
   font-size: 9px;
   color: #444444;
-  font-family: 'Consolas', monospace;
+  font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
 }
 .version-info .version-num {
@@ -7424,7 +7412,7 @@ input[type="radio"].radio-spillman:disabled {
   padding: 0 4px;
   text-align: center;
   font-size: 10px;
-  font-family: 'Consolas', monospace;
+  font-family: var(--font-mono);
   color: #e0e0e0;
   background: var(--surface-sunken);
   border: 1px solid var(--border-default);
@@ -7459,7 +7447,7 @@ input[type="radio"].radio-spillman:disabled {
 .video-control-btn:hover { color: #ffffff; }
 .video-time {
   font-size: 9px;
-  font-family: 'Consolas', monospace;
+  font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
   color: #666666;
   margin: 0 4px;
@@ -7612,7 +7600,7 @@ ul.list-spillman li::before {
 
 /* 92. Monospace CAD data text */
 .text-cad-mono {
-  font-family: 'Courier New', 'Consolas', monospace;
+  font-family: var(--font-mono);
   letter-spacing: 0.03em;
   font-variant-numeric: tabular-nums;
   text-rendering: optimizeLegibility;
@@ -7670,7 +7658,7 @@ ul.list-spillman li::before {
 /* 99. Text with leading zero monospace padding */
 .text-zero-pad {
   font-variant-numeric: tabular-nums;
-  font-family: 'Consolas', 'Courier New', monospace;
+  font-family: var(--font-mono);
 }
 
 /* 100. Data null / empty value placeholder */
