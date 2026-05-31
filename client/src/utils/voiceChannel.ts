@@ -48,6 +48,10 @@ export interface CommandResult {
   action: string;
   message: string;
   data?: Record<string, unknown>;
+  /** Only set when a dialogue lookup hit a record (auto-open side panel). */
+  record?: { kind: 'vehicle' | 'person'; id: number };
+  /** The LLM's routing intent label for logging/debugging. */
+  intent?: string;
 }
 
 export interface VoiceChannelCallbacks {
@@ -390,6 +394,8 @@ export async function sendDialogueToServer(
       data: { actions: data.actions, off_topic: data.off_topic, latency_ms: data.latency_ms },
       voice_mode: data.voice_mode,
       pending_followup: data.pending_followup,
+      record: data.record,
+      intent: data.intent,
     };
   } catch {
     return { success: false, action: 'error', message: '' };
@@ -1297,4 +1303,58 @@ export async function announceTarget(transcript: string): Promise<{
     /* TTS failed — caller still gets the text reply for a screen render */
   }
   return { reply: result.message, voice_mode: voiceMode };
+}
+
+// ─── Read-Aloud Dispatch Announcer ────────────────────────────
+// When a new call/dispatch event occurs, the dispatch page can call
+// readAloud() to have the AI dispatcher speak the details over TTS.
+// The server generates natural spoken text from the structured event.
+
+export interface ReadAloudPayload {
+  type: 'new_call' | 'status_change' | 'dispatch' | 'call_update' | 'bolo';
+  call_number?: string;
+  unit?: string;
+  status?: string;
+  location?: string;
+  incident_type?: string;
+  priority?: string;
+  description?: string;
+  caller_name?: string;
+  title?: string;
+}
+
+/**
+ * Have the AI dispatcher read out dispatch details via TTS.
+ * Sends the event to POST /api/voice/read-aloud, receives
+ * natural spoken text, and plays it through the TTS pipeline.
+ */
+export async function readAloud(payload: ReadAloudPayload): Promise<{
+  reply: string;
+  phrase: string;
+} | null> {
+  try {
+    const token = localStorage.getItem('rmpg_token');
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    const res = await fetch('/api/voice/read-aloud', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) return null;
+    const data = await res.json();
+    const reply = (data.reply || '').trim();
+    if (!reply) return null;
+
+    try {
+      await speak(reply);
+    } catch {
+      /* TTS fallback — still return the text for UI display */
+    }
+    return { reply, phrase: data.phrase || '' };
+  } catch {
+    return null;
+  }
 }

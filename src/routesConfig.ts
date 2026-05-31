@@ -79,6 +79,7 @@ import documentIntake from './routes/documentIntake';
 import pdfTools from './routes/pdfTools';
 import tts from './routes/tts';
 import trespassOrders from './routes/trespassOrders';
+import voiceRoute from './routes/voice';
 import forensics from './routes/forensics';
 import hr from './routes/hr';
 import patrol from './routes/patrol';
@@ -197,6 +198,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/admin', router: admin, auth: 'required' },
   { prefix: '/api/ai', router: ai, auth: 'required',
     note: 'AI dashboard stubs (config/stats/status/health/activity). Real provider wiring is Phase 2.' },
+  { prefix: '/api/voice', router: voiceRoute, auth: 'required',
+    note: 'Voice dialogue agent (/dialogue) + dispatch read-aloud (/read-aloud) for the AI dispatcher.' },
   { prefix: '/api/personnel', router: personnel, auth: 'required' },
   { prefix: '/api/presence', router: presence, auth: 'required' },
   // /api/offline mounts further down in the alphabetical RMS section
