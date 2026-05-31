@@ -28,6 +28,17 @@ const WRITABLE_COLS: readonly string[] = [
 
 const VALID_STATUSES = new Set(['in_service', 'out_of_service', 'maintenance', 'retired', 'archived']);
 
+// D1 `.bind()` only accepts null | number | string | boolean | ArrayBuffer.
+// Columns like `equipment` arrive from the client as JS arrays (multi-select);
+// binding one directly throws `D1_TYPE_ERROR: Type 'object' not supported`.
+// We JSON-serialize any array/object so it lands as a string — the client's
+// `parseEquipment()` reads it back via JSON.parse. Empty string → null.
+function coerceBindValue(raw: unknown): unknown {
+  if (raw === '') return null;
+  if (raw !== null && typeof raw === 'object') return JSON.stringify(raw);
+  return raw;
+}
+
 // ─────────────────────────────────────────────────────────
 // GET /  — paginated list with filters
 // ─────────────────────────────────────────────────────────
@@ -493,8 +504,7 @@ fleet.post('/', async (c) => {
       if (key === 'vehicle_number') continue;
       if (Object.prototype.hasOwnProperty.call(body, key)) {
         cols.push(key);
-        const raw = body[key];
-        vals.push(raw === '' ? null : raw);
+        vals.push(coerceBindValue(body[key]));
       }
     }
 
@@ -551,8 +561,7 @@ fleet.put('/:id', async (c) => {
     for (const key of WRITABLE_COLS) {
       if (Object.prototype.hasOwnProperty.call(body, key)) {
         setCols.push(`${key} = ?`);
-        const raw = body[key];
-        bindings.push(raw === '' ? null : raw);
+        bindings.push(coerceBindValue(body[key]));
       }
     }
     if (setCols.length === 0) {
