@@ -59,7 +59,7 @@ export function assessHazmatRisk(crash:CMVCrash): { riskLevel:'none'|'low'|'high
 }
 
 /* FEATURE 48: Fatality Protocols */
-export interface CrashFatality { reportId:string; decedentName:string; timeOfDeath:string|null; medical Examiner:string|null; ME_CaseNumber:string|null; nextOfKinNotified:boolean; notificationTime:string|null; }
+export interface CrashFatality { reportId:string; decedentName:string; timeOfDeath:string|null; medicalExaminer:string|null; meCaseNumber:string|null; nextOfKinNotified:boolean; notificationTime:string|null; }
 export function trackFatalityProtocol(fatality:CrashFatality): { protocolComplete:boolean; outstandingItems:string[] } {
   const items:string[] = [];
   if (!fatality.timeOfDeath) items.push('Time of death not recorded');
