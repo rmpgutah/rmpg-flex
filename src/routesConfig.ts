@@ -84,7 +84,9 @@ import cases from './routes/cases';
 import accreditation from './routes/accreditation';
 import alarms from './routes/alarms';
 import citations from './routes/citations';
+import clients from './routes/clients';
 import connections from './routes/connections';
+import crm from './routes/crm';
 import crisisResponse from './routes/crisisResponse';
 import fieldInterviews from './routes/fieldInterviews';
 import fleet from './routes/fleet';
@@ -251,12 +253,16 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/cases', router: cases, auth: 'required',
     note: 'MVP core; entity-junction tables in a follow-up PR' },
   { prefix: '/api/citations', router: citations, auth: 'required' },
+  { prefix: '/api/clients', router: clients, auth: 'required',
+    note: 'Client stub — returns [] for GET, accepts POST/PUT/DELETE. Full CRUD lives under /api/admin/clients today.' },
   { prefix: '/api/connections', router: connections, auth: 'required',
     note: 'Connection-graph analyst tool: /search, /graph, /path, /investigations CRUD. Node types incl. call (CFS) + report (supplemental_reports). Backed by connection_investigations (live D1, migration 0043).' },
   { prefix: '/api/court', router: court, auth: 'required',
     note: 'Court events + subpoenas (single-table); reminder fan-out deferred' },
   { prefix: '/api/crisis', router: crisisResponse, auth: 'required',
     note: 'Crisis response: CIT deployments, mental health holds, mobile crisis team coordination' },
+  { prefix: '/api/crm', router: crm, auth: 'required',
+    note: 'CRM stub — dashboard, leads, proposals, reports, firecrawl, scraper admin, competitor monitor. All GETs return empty/null-safe shapes; mutations 201-OK as no-ops. Full CRM backend is Phase 2.' },
   { prefix: '/api/dl-records', router: dlRecords, auth: 'required',
     note: 'Local DL store CRUD over dl_records + dl_addresses. /verify + /ocr-scan (external APIs) stay on legacy — proxy routes only the bare path + numeric :id here.' },
   { prefix: '/api/field-interviews', router: fieldInterviews, auth: 'required' },
