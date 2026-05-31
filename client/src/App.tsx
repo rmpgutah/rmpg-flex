@@ -110,6 +110,14 @@ const QAPage = lazyRetry(() => import('./pages/QAPage'));
 const BillingPage = lazyRetry(() => import('./pages/BillingPage'));
 const RiskPage = lazyRetry(() => import('./pages/RiskPage'));
 const InteragencyPage = lazyRetry(() => import('./pages/InteragencyPage'));
+const GangIntelPage = lazyRetry(() => import('./pages/GangIntelPage'));
+const SpecialOpsPage = lazyRetry(() => import('./pages/SpecialOpsPage'));
+const CrisisResponsePage = lazyRetry(() => import('./pages/CrisisResponsePage'));
+const VictimServicesPage = lazyRetry(() => import('./pages/VictimServicesPage'));
+const AlarmManagementPage = lazyRetry(() => import('./pages/AlarmManagementPage'));
+const NarcoticsPage = lazyRetry(() => import('./pages/NarcoticsPage'));
+const AccreditationPage = lazyRetry(() => import('./pages/AccreditationPage'));
+const RecruitmentPage = lazyRetry(() => import('./pages/RecruitmentPage'));
 const IncidentDetailWindow = lazyRetry(() => import('./pages/detached/IncidentDetailWindow'));
 const RecordDetailWindow = lazyRetry(() => import('./pages/detached/RecordDetailWindow'));
 const CourtRecordsPage = lazyRetry(() => import('./pages/CourtRecordsPage'));
@@ -440,6 +448,14 @@ function AppRoutes() {
             <Route path="/billing" element={<RouteErrorBoundary><BillingPage /></RouteErrorBoundary>} />
             <Route path="/risk" element={<RouteErrorBoundary><RiskPage /></RouteErrorBoundary>} />
             <Route path="/interagency" element={<RouteErrorBoundary><InteragencyPage /></RouteErrorBoundary>} />
+            <Route path="/gang-intel" element={<RouteErrorBoundary><GangIntelPage /></RouteErrorBoundary>} />
+            <Route path="/special-ops" element={<RouteErrorBoundary><SpecialOpsPage /></RouteErrorBoundary>} />
+            <Route path="/crisis-response" element={<RouteErrorBoundary><CrisisResponsePage /></RouteErrorBoundary>} />
+            <Route path="/victim-services" element={<RouteErrorBoundary><VictimServicesPage /></RouteErrorBoundary>} />
+            <Route path="/alarms" element={<RouteErrorBoundary><AlarmManagementPage /></RouteErrorBoundary>} />
+            <Route path="/narcotics" element={<RouteErrorBoundary><NarcoticsPage /></RouteErrorBoundary>} />
+            <Route path="/accreditation" element={<RouteErrorBoundary><AccreditationPage /></RouteErrorBoundary>} />
+            <Route path="/recruitment" element={<RouteErrorBoundary><RecruitmentPage /></RouteErrorBoundary>} />
             {/* 404 within layout */}
             <Route path="*" element={<NotFoundPage />} />
           </Route>
