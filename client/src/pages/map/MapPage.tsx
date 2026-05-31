@@ -228,9 +228,12 @@ export default function MapPage() {
 
   // Fix 42: auto-refresh stale overlay data when tab becomes visible
   const fetchAllDataRef = useRef<((options?: { silent?: boolean }) => Promise<void>) | null>(null);
+  const lastVisibilityRefreshRef = useRef(0);
   useEffect(() => {
     const handleVisibility = () => {
       if (document.visibilityState === 'visible' && Date.now() - lastDataUpdate.getTime() > dataStaleThresholdMs) {
+        if (Date.now() - lastVisibilityRefreshRef.current < 10000) return;
+        lastVisibilityRefreshRef.current = Date.now();
         fetchAllDataRef.current?.({ silent: true });
       }
     };
@@ -258,7 +261,7 @@ export default function MapPage() {
   const [exportingPdf, setExportingPdf] = useState(false);
   const [breadcrumbColorMode, setBreadcrumbColorMode] = useState<'unit' | 'speed' | 'status' | 'accel'>('unit');
   const breadcrumbLinesRef = useRef<any[]>([]);
-  const speedAlertMarkersRef = useRef<any[]>([]);
+  const speedAlertKeyedRef = useRef<Map<string, mapboxgl.Marker>>(new Map());
 
   // ───────────────────  Trails (speed alerts now via breadcrumb trails)  ──
 
@@ -522,6 +525,17 @@ export default function MapPage() {
   const unitsRef = useRef(units);
   unitsRef.current = units;
 
+  // Track previous unit state to skip marker updates for stationary units
+  const prevUnitStateRef = useRef<Map<string, { lat: number; lng: number; status: string; heading: number | null; speed: number | null }>>(new Map());
+
+  const lastClickedPropRef = useRef<string | null>(null);
+  const abortedRef = useRef(false);
+  const lastRouteUpdateRef = useRef<{ time: number; lat: number; lng: number } | null>(null);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // WebSocket-poll race prevention: increment on WS updates, check before applying poll results
+  const dataVersionRef = useRef(0);
+
   // Intel layers
   const [intelLayers, setIntelLayers] = useState({ warrants: false, trespass: false, offenders: false, bolos: false });
   const toggleIntelLayer = (layer: 'warrants' | 'trespass' | 'offenders' | 'bolos') => {
@@ -583,20 +597,30 @@ export default function MapPage() {
   // ============================================================
 
   const fetchUnits = useCallback(async () => {
+    const v = ++dataVersionRef.current;
     try {
       const data = await apiFetch<Unit[]>('/dispatch/units');
+      if (abortedRef.current) return;
+      if (dataVersionRef.current !== v) return;
       setUnits(Array.isArray(data) ? data : []);
     } catch (err) {
+      if (abortedRef.current) return;
+      if (dataVersionRef.current !== v) return;
       console.error('Error fetching units:', err);
       setError('Failed to load units');
     }
   }, []);
 
   const fetchCalls = useCallback(async () => {
+    const v = ++dataVersionRef.current;
     try {
       const data = await apiFetch<ActiveCall[]>('/dispatch/queue');
+      if (abortedRef.current) return;
+      if (dataVersionRef.current !== v) return;
       setCalls(Array.isArray(data) ? data : []);
     } catch (err) {
+      if (abortedRef.current) return;
+      if (dataVersionRef.current !== v) return;
       console.error('Error fetching calls:', err);
       setError('Failed to load active calls');
     }
@@ -605,8 +629,10 @@ export default function MapPage() {
   const fetchProperties = useCallback(async () => {
     try {
       const data = await apiFetch<Property[]>('/records/properties');
+      if (abortedRef.current) return;
       setProperties(Array.isArray(data) ? data : []);
     } catch (err) {
+      if (abortedRef.current) return;
       console.error('Error fetching properties:', err);
       setError('Failed to load properties');
     }
@@ -640,6 +666,7 @@ export default function MapPage() {
 
   useEffect(() => {
     const unsubscribeUnit = subscribe('unit_update', (msg: any) => {
+      dataVersionRef.current++;
       const data = msg.data || msg;
       if (data?.action === 'unit_deleted' && data.unit_id) {
         setUnits((prev) => prev.filter((u) => u.id !== data.unit_id));
@@ -667,6 +694,7 @@ export default function MapPage() {
     const isInactive = (s: any) => typeof s === 'string' && INACTIVE_STATUSES.has(s.toLowerCase());
 
     const unsubscribeCall = subscribe('dispatch_update', (msg: any) => {
+      dataVersionRef.current++;
       const evtData = msg.data || msg;
 
       // Handle deletions explicitly — call_deleted broadcasts carry call_id, not call
@@ -830,17 +858,21 @@ export default function MapPage() {
       mapInstanceRef.current = map;
       registerMapInstance(map);
 
-      // Fix 30: save map center/zoom to localStorage on moveend
-      map.on('moveend', () => {
-        try {
-          const c = map.getCenter();
-          const z = map.getZoom();
-          if (c && z != null) {
-            localStorage.setItem('rmpg_map_center', JSON.stringify({ lat: c.lat, lng: c.lng }));
-            localStorage.setItem('rmpg_map_zoom', String(z));
-          }
-        } catch { /* quota exceeded */ }
-      });
+      // Fix 30: save map center/zoom to localStorage on moveend (debounced to skip animation frames)
+      const savePosition = () => {
+        if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = setTimeout(() => {
+          try {
+            const c = map.getCenter();
+            const z = map.getZoom();
+            if (c && z != null) {
+              localStorage.setItem('rmpg_map_center', JSON.stringify({ lat: c.lat, lng: c.lng }));
+              localStorage.setItem('rmpg_map_zoom', String(z));
+            }
+          } catch { /* quota exceeded */ }
+        }, 1000);
+      };
+      map.on('moveend', savePosition);
 
       infoWindowRef.current = new mapboxgl.Popup({ closeButton: true, closeOnClick: false });
 
@@ -946,7 +978,8 @@ export default function MapPage() {
     })();
 
     return () => {
-      cancelled = true; // Stop any pending retries
+      cancelled = true;
+      abortedRef.current = true;
       unsubOnline();
       if (tileMonitorCleanupRef.current) { tileMonitorCleanupRef.current(); tileMonitorCleanupRef.current = null; }
       if (mapInstanceRef.current) unregisterMapInstance(mapInstanceRef.current);
@@ -954,10 +987,15 @@ export default function MapPage() {
         if (m && typeof m.remove === 'function') m.remove();
       });
       markersRef.current = [];
+      speedAlertKeyedRef.current.forEach((m) => m.remove());
+      speedAlertKeyedRef.current.clear();
+      if (playbackMarkerRef.current) { playbackMarkerRef.current.remove(); playbackMarkerRef.current = null; }
+      if (playbackSpeedLabelRef.current) { playbackSpeedLabelRef.current.remove(); playbackSpeedLabelRef.current = null; }
+      if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
       mapInstanceRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapRetry, mapStyle]);
+  }, [mapRetry]);
 
   // ============================================================
   // Switch Map Style
@@ -1087,10 +1125,45 @@ export default function MapPage() {
               infoWindowRef.current?.addTo(map);
           };
           const existing = unitMarkersMapRef.current.get(id);
+
+          // Skip marker updates for stationary units (Fix 4)
+          const prev = prevUnitStateRef.current.get(id);
+          const hasChanged = !prev || prev.lat !== unit.latitude || prev.lng !== unit.longitude || prev.status !== unit.status || prev.heading !== unit.gps_heading || prev.speed !== unit.gps_speed;
+          if (!hasChanged && existing) {
+            (existing as any)._rmpgClick = makeUnitClick;
+            return;
+          }
+
+          prevUnitStateRef.current.set(id, { lat: unit.latitude!, lng: unit.longitude!, status: unit.status, heading: unit.gps_heading ?? null, speed: unit.gps_speed ?? null });
+
           if (existing) {
             existing.setLngLat([unit.longitude, unit.latitude]);
             const el = existing.getElement?.();
-            if (el) el.replaceChildren(buildUnitMarkerContent(unit.call_sign, unit.status, unit.gps_source, unit.gps_heading, unit.gps_speed));
+            if (el) {
+              const label = el.querySelector('[data-unit-label]') as HTMLElement | null;
+              if (label) {
+                label.textContent = unit.call_sign;
+                label.style.color = UNIT_STATUS_COLORS[unit.status] || '#666666';
+              }
+              const statusDot = el.querySelector('[data-unit-status]') as HTMLElement | null;
+              if (statusDot) {
+                const sc = UNIT_STATUS_COLORS[unit.status] || '#666666';
+                statusDot.style.backgroundColor = sc;
+              }
+              const srcBadge = el.querySelector('[data-unit-source]') as HTMLElement | null;
+              if (srcBadge) {
+                srcBadge.style.display = unit.gps_source === 'clearpathgps' ? '' : 'none';
+              }
+              const arrow = el.querySelector('[data-unit-arrow]') as HTMLElement | null;
+              if (arrow) {
+                arrow.style.transform = `rotate(${unit.gps_heading ?? 0}deg)`;
+              }
+              const speedEl = el.querySelector('[data-unit-speed]') as HTMLElement | null;
+              if (speedEl) {
+                const mph = unit.gps_speed != null ? Math.round(unit.gps_speed * 2.237) : null;
+                speedEl.textContent = mph != null ? `${mph}` : '';
+              }
+            }
             (existing as any)._rmpgClick = makeUnitClick;
           } else {
             const content = buildUnitMarkerContent(unit.call_sign, unit.status, unit.gps_source, unit.gps_heading, unit.gps_speed);
@@ -1221,6 +1294,9 @@ export default function MapPage() {
             zIndex: 100,
             title: prop.name,
             onClick: async () => {
+              const propId = String(prop.id);
+              lastClickedPropRef.current = propId;
+
               // Show loading state immediately
               infoWindowRef.current?.setHTML(`
                 <div style="min-width:200px;font-family:'JetBrains Mono',monospace;background:#0c0c0c;color:#e5e7eb;padding:12px;border:1px solid #88888850;border-radius:4px;">
@@ -1234,6 +1310,7 @@ export default function MapPage() {
               // Fetch full property details (includes recent calls, contacts, schedules)
               try {
                 const details = await apiFetch<any>(`/records/properties/${prop.id}`);
+                if (lastClickedPropRef.current !== propId) return;
                 const recentCalls = details.recentCalls || [];
                 const schedules = details.todaySchedules || [];
                 const linkedPersons: any[] = details.linkedPersons || [];
@@ -1337,6 +1414,7 @@ export default function MapPage() {
                   </div>
                 `);
               } catch (err) {
+                if (lastClickedPropRef.current !== propId) return;
                 console.error('[MapPage] Failed to fetch property details:', err);
                 // If fetch fails, show basic info
                 infoWindowRef.current?.setHTML(`
@@ -1417,6 +1495,13 @@ export default function MapPage() {
     if (!activeRoute) return;
     const routedUnit = units.find(u => u.call_sign === activeRoute.unitCallSign);
     if (routedUnit?.latitude != null && routedUnit?.longitude != null) {
+      const now = Date.now();
+      const last = lastRouteUpdateRef.current;
+      const dist = last
+        ? Math.hypot(routedUnit.latitude - last.lat, routedUnit.longitude - last.lng) * 111000
+        : Infinity;
+      if (last && now - last.time < 10000 && dist < 50) return;
+      lastRouteUpdateRef.current = { time: now, lat: routedUnit.latitude, lng: routedUnit.longitude };
       updateOrigin(routedUnit.latitude, routedUnit.longitude);
     }
   }, [activeRoute, units, updateOrigin]);
@@ -1452,7 +1537,14 @@ export default function MapPage() {
       }));
 
     try {
+      const existingSrc = map.getSource('rmpg-heatmap') as mapboxgl.GeoJSONSource | undefined;
+      if (existingSrc) {
+        existingSrc.setData({ type: 'FeatureCollection', features: weightedFeatures });
+        return;
+      }
+
       whenStyleReady(map, () => {
+      if (map.getSource('rmpg-heatmap')) return;
       map.addSource('rmpg-heatmap', {
         type: 'geojson',
         data: {
@@ -1521,13 +1613,13 @@ export default function MapPage() {
     const map = mapInstanceRef.current;
     if (!map || !mapLoaded) return;
 
-    // Clear existing lines
-    if (map.getLayer('rmpg-tracking-lines')) map.removeLayer('rmpg-tracking-lines');
-    if (map.getSource('rmpg-tracking-lines')) map.removeSource('rmpg-tracking-lines');
-    trackingLinesRef.current = [];
-    setTrackingLineCount(0);
-
-    if (!showTrackingLines) return;
+    if (!showTrackingLines) {
+      if (map.getLayer('rmpg-tracking-lines')) map.removeLayer('rmpg-tracking-lines');
+      if (map.getSource('rmpg-tracking-lines')) map.removeSource('rmpg-tracking-lines');
+      trackingLinesRef.current = [];
+      setTrackingLineCount(0);
+      return;
+    }
 
     const features: any[] = [];
 
@@ -1558,49 +1650,59 @@ export default function MapPage() {
       });
     });
 
-    if (features.length === 0) return;
-
-    try {
-      whenStyleReady(map, () => {
-      map.addSource('rmpg-tracking-lines', {
-        type: 'geojson',
-        data: { type: 'FeatureCollection', features },
-      });
-
-      // Mapbox 'case' requires both branches to produce the same type. The
-      // "then" branch returns [1, 4] (a 2-segment dash pattern), so the
-      // "else" must also return an array — not a bare `1`. Use [1] for a
-      // solid line (single-segment pattern). Previously this threw
-      // `line-dasharray[3]: Expected array<number> but found number`.
-      const dashExpr = ['case',
-        ['==', ['get', 'isDashed'], true],
-        [1, 4],
-        [1],
-      ];
-
-      map.addLayer({
-        id: 'rmpg-tracking-lines',
-        type: 'line',
-        source: 'rmpg-tracking-lines',
-        paint: {
-          'line-color': ['get', 'color'],
-          'line-opacity': ['case', ['==', ['get', 'isDashed'], true], 0, 0.6],
-          'line-width': 2,
-          'line-dasharray': dashExpr as any,
-        },
-      });
-
-      setTrackingLineCount(features.length);
-      });
-    } catch (err) {
-      console.warn('[MapPage] Error creating tracking lines:', err);
+    if (features.length === 0) {
+      const existingSrc = map.getSource('rmpg-tracking-lines') as mapboxgl.GeoJSONSource | undefined;
+      if (existingSrc) {
+        existingSrc.setData({ type: 'FeatureCollection', features: [] });
+      } else {
+        if (map.getLayer('rmpg-tracking-lines')) map.removeLayer('rmpg-tracking-lines');
+        if (map.getSource('rmpg-tracking-lines')) map.removeSource('rmpg-tracking-lines');
+      }
+      trackingLinesRef.current = [];
+      setTrackingLineCount(0);
+      return;
     }
 
-    return () => {
-      if (map.getLayer('rmpg-tracking-lines')) map.removeLayer('rmpg-tracking-lines');
-      if (map.getSource('rmpg-tracking-lines')) map.removeSource('rmpg-tracking-lines');
-    };
-  }, [units, calls, showTrackingLines, mapLoaded]);
+    try {
+      const geojsonData: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features };
+
+      const existingSrc = map.getSource('rmpg-tracking-lines') as mapboxgl.GeoJSONSource | undefined;
+      if (existingSrc) {
+        existingSrc.setData(geojsonData);
+        setTrackingLineCount(features.length);
+      } else {
+        whenStyleReady(map, () => {
+          if (map.getSource('rmpg-tracking-lines')) return;
+          map.addSource('rmpg-tracking-lines', {
+            type: 'geojson',
+            data: geojsonData,
+          });
+
+          const dashExpr = ['case',
+            ['==', ['get', 'isDashed'], true],
+            [1, 4],
+            [1],
+          ];
+
+          map.addLayer({
+            id: 'rmpg-tracking-lines',
+            type: 'line',
+            source: 'rmpg-tracking-lines',
+            paint: {
+              'line-color': ['get', 'color'],
+              'line-opacity': ['case', ['==', ['get', 'isDashed'], true], 0, 0.6],
+              'line-width': 2,
+              'line-dasharray': dashExpr as any,
+            },
+          });
+
+          setTrackingLineCount(features.length);
+        });
+      }
+    } catch (err) {
+      console.warn('[MapPage] Error updating tracking lines:', err);
+    }
+  }, [units, calls, showTrackingLines, mapLoaded, mapStyle]);
 
   // ============================================================
   // GPS Breadcrumb Trails (enhanced: color modes, arrows, road names, playback)
@@ -1768,15 +1870,15 @@ export default function MapPage() {
     const map = mapInstanceRef.current;
     if (!map || !mapLoaded) return;
 
-    // Clear existing breadcrumb visuals
-    if (map.getLayer('rmpg-breadcrumb-lines')) map.removeLayer('rmpg-breadcrumb-lines');
-    if (map.getSource('rmpg-breadcrumb-lines')) map.removeSource('rmpg-breadcrumb-lines');
+    // Clear existing breadcrumb visuals — dots & arrows use setData()
+    // for efficient updates during interval refreshes.  Lines migrated to
+    // setData as well (FIX 32) so we only tear them down on full cleanup.
     if (map.getLayer(DOTS_LAYER_ID)) map.removeLayer(DOTS_LAYER_ID);
     if (map.getSource(DOTS_SOURCE_ID)) map.removeSource(DOTS_SOURCE_ID);
     if (map.getLayer(ARROWS_LAYER_ID)) map.removeLayer(ARROWS_LAYER_ID);
     if (map.getSource(ARROWS_SOURCE_ID)) map.removeSource(ARROWS_SOURCE_ID);
-    speedAlertMarkersRef.current.forEach((m) => m.remove());
-    speedAlertMarkersRef.current = [];
+    speedAlertKeyedRef.current.forEach((m) => m.remove());
+    speedAlertKeyedRef.current.clear();
     breadcrumbTrailsRef.current = [];
 
     if (!showBreadcrumbs) { setPlaybackTrails([]); return; }
@@ -1806,9 +1908,6 @@ export default function MapPage() {
     let retryTimeout: ReturnType<typeof setTimeout>;
 
     const fetchTrails = async () => {
-      speedAlertMarkersRef.current.forEach((m) => m.remove());
-      speedAlertMarkersRef.current = [];
-
       try {
         const rawTrails = await apiFetch<Trail[]>(`/dispatch/gps/trails?hours=${breadcrumbHours}`);
         const trails = (Array.isArray(rawTrails) ? rawTrails : []).filter(t => Array.isArray(t?.points));
@@ -1908,14 +2007,17 @@ export default function MapPage() {
           });
         });
 
-        // Create or update breadcrumb line source & layer
-        if (map.getLayer('rmpg-breadcrumb-lines')) map.removeLayer('rmpg-breadcrumb-lines');
-        if (map.getSource('rmpg-breadcrumb-lines')) map.removeSource('rmpg-breadcrumb-lines');
-        if (lineFeatures.length > 0) {
+        // Create or update breadcrumb line source & layer via setData()
+        // (same pattern as dots/arrows — avoids source-teardown blink).
+        const linesData: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: lineFeatures };
+        const existingLineSrc = map.getSource('rmpg-breadcrumb-lines') as mapboxgl.GeoJSONSource | undefined;
+        if (existingLineSrc) {
+          existingLineSrc.setData(linesData);
+        } else if (lineFeatures.length > 0) {
           whenStyleReady(map, () => {
             map.addSource('rmpg-breadcrumb-lines', {
               type: 'geojson',
-              data: { type: 'FeatureCollection', features: lineFeatures },
+              data: linesData,
             });
             map.addLayer({
               id: 'rmpg-breadcrumb-lines',
@@ -2006,21 +2108,27 @@ export default function MapPage() {
           });
         }
 
-        // Speed alert triangle markers (>= 80 mph)
-        speedAlertMarkersRef.current.forEach((m) => m.remove());
-        speedAlertMarkersRef.current = [];
+        // Speed alert triangle markers (>= 80 mph) — delta update to avoid blink
+        const newKeys = new Set<string>();
         trails.forEach((trail) => {
-          trail.points.forEach((pt) => {
+          trail.points.forEach((pt, ptIdx) => {
             const mph = pt.speed != null ? pt.speed * 2.237 : 0;
             if (!isFinite(pt.lng) || !isFinite(pt.lat)) return;
             if (mph >= 80) {
-              const el = document.createElement('div');
-              el.innerHTML = `<svg width="18" height="16" viewBox="0 0 18 16"><polygon points="9,0 18,14 0,14" fill="#dc2626" stroke="#fbbf24" stroke-width="1.5"/><text x="9" y="11" text-anchor="middle" fill="#fff" font-size="9" font-weight="bold">!</text></svg>`;
-              el.title = `Speed alert: ${Math.round(mph)} mph \u2014 ${trail.call_sign}`;
-              const marker = new mapboxgl.Marker({ element: el }).setLngLat([pt.lng, pt.lat]).addTo(map);
-              speedAlertMarkersRef.current.push(marker);
+              const key = `${trail.unit_id}:${ptIdx}`;
+              newKeys.add(key);
+              if (!speedAlertKeyedRef.current.has(key)) {
+                const el = document.createElement('div');
+                el.innerHTML = `<svg width="18" height="16" viewBox="0 0 18 16"><polygon points="9,0 18,14 0,14" fill="#dc2626" stroke="#fbbf24" stroke-width="1.5"/><text x="9" y="11" text-anchor="middle" fill="#fff" font-size="9" font-weight="bold">!</text></svg>`;
+                el.title = `Speed alert: ${Math.round(mph)} mph \u2014 ${trail.call_sign}`;
+                const marker = new mapboxgl.Marker({ element: el }).setLngLat([pt.lng, pt.lat]).addTo(map);
+                speedAlertKeyedRef.current.set(key, marker);
+              }
             }
           });
+        });
+        speedAlertKeyedRef.current.forEach((marker, key) => {
+          if (!newKeys.has(key)) { marker.remove(); speedAlertKeyedRef.current.delete(key); }
         });
       } catch {
         retryTimeout = setTimeout(fetchTrails, 5000);
@@ -2039,10 +2147,10 @@ export default function MapPage() {
       if (map.getLayer(ARROWS_LAYER_ID)) map.removeLayer(ARROWS_LAYER_ID);
       if (map.getSource(ARROWS_SOURCE_ID)) map.removeSource(ARROWS_SOURCE_ID);
       breadcrumbTrailsRef.current = [];
-      speedAlertMarkersRef.current.forEach((m) => m.remove());
-      speedAlertMarkersRef.current = [];
+      speedAlertKeyedRef.current.forEach((m) => m.remove());
+      speedAlertKeyedRef.current.clear();
     };
-  }, [showBreadcrumbs, breadcrumbHours, breadcrumbColorMode, mapLoaded]);
+  }, [showBreadcrumbs, breadcrumbHours, breadcrumbColorMode, mapLoaded, mapStyle]);
 
   // ============================================================
   // Trail Playback Animation
@@ -2117,6 +2225,14 @@ export default function MapPage() {
         clearTimeout(playbackAnimRef.current);
         playbackAnimRef.current = null;
       }
+      if (playbackMarkerRef.current) {
+        playbackMarkerRef.current.remove();
+        playbackMarkerRef.current = null;
+      }
+      if (playbackSpeedLabelRef.current) {
+        playbackSpeedLabelRef.current.remove();
+        playbackSpeedLabelRef.current = null;
+      }
     };
   }, [isPlaying, playbackUnit, playbackSpeed, mapLoaded]);
 
@@ -2150,7 +2266,23 @@ export default function MapPage() {
         // the latest GPS reading without destroying/recreating the pin.
         selfMarkerRef.current.setLngLat(pos);
         const el = selfMarkerRef.current.getElement?.();
-        if (el) el.replaceChildren(buildSelfPositionMarker(gps.accuracy, gps.heading, gps.speed));
+        if (el) {
+          const ring = el.querySelector('[data-gps-ring]') as HTMLElement | null;
+          if (ring) {
+            const ringSize = gps.accuracy != null ? Math.max(20, Math.min(80, gps.accuracy * 2)) : 24;
+            ring.style.width = `${ringSize}px`;
+            ring.style.height = `${ringSize}px`;
+          }
+          const arrow = el.querySelector('[data-gps-arrow]') as HTMLElement | null;
+          if (arrow) {
+            arrow.style.transform = `rotate(${gps.heading ?? 0}deg)`;
+          }
+          const speedEl = el.querySelector('[data-gps-speed]') as HTMLElement | null;
+          if (speedEl) {
+            const mph = gps.speed != null ? Math.round(gps.speed * 2.237) : null;
+            speedEl.textContent = mph != null ? `${mph}` : '';
+          }
+        }
       } else {
         // Create new self marker
         selfMarkerRef.current = createMarker({
@@ -2181,6 +2313,7 @@ export default function MapPage() {
   // ============================================================
 
   const toggleLayer = (layer: keyof typeof layers) => {
+    if (eventPlanning.isDrawing) eventPlanning.cancelDrawing();
     setLayers((prev) => ({ ...prev, [layer]: !prev[layer] }));
   };
 

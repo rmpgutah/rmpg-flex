@@ -19,14 +19,25 @@ import type mapboxgl from 'mapbox-gl';
  * deferred callback bails on the `map.getStyle()` null check rather than
  * mutating a torn-down style graph.
  */
-export function whenStyleReady(map: mapboxgl.Map | null | undefined, fn: () => void): void {
-  if (!map) return;
+export function whenStyleReady(map: mapboxgl.Map | null | undefined, fn: () => void): () => void {
+  const noop = () => {};
+  if (!map) return noop;
   if (map.isStyleLoaded()) {
     fn();
-    return;
+    return noop;
   }
-  map.once('style.load', () => {
-    if (!map.getStyle()) return;
+
+  let fired = false;
+  const handler = () => {
+    fired = true;
+    if ((map as any)._removed || !map.loaded() || !map.getStyle()) return;
     fn();
-  });
+  };
+  map.once('style.load', handler);
+
+  return () => {
+    if (!fired) {
+      map.off('style.load', handler);
+    }
+  };
 }
