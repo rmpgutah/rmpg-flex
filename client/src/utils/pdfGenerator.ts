@@ -769,11 +769,11 @@ export function closeAutoSection(doc: jsPDF, sectionY: number, contentEndY: numb
 export function addFieldPair(doc: jsPDF, label: string, value: string, x: number, y: number, width: number, maxLinesOverride?: number): number {
   // @ts-expect-error jsPDF GState — ensure full opacity
   doc.setGState(new doc.GState({ opacity: 1.0 }));
-  // Height reserved for label above value. Bumped 2.3 → 3.2mm so label
-  // and value don't hug each other — e.g. "INCIDENT NUMBER" → ~1mm gap →
-  // "RKY26-#####-CRM" value. The 0.9mm increase propagates to every
-  // field across every PDF form via this single tokenized constant.
-  const labelH = 3.2;
+  // Height reserved for label above value. 2.7mm keeps the label clear of
+  // the value without the airy gap the old 3.2mm produced — e.g.
+  // "INCIDENT NUMBER" → ~0.6mm gap → "RKY26-#####-CRM" value. Condensed
+  // 2026-05-31 (3.2 → 2.7); propagates to every field across every PDF form.
+  const labelH = 2.7;
   const innerPad = 0.8;      // Horizontal padding
   const maxW = width - 2 * innerPad;
   // Auto-detect long text fields: if value > 200 chars or full-width field, allow more lines
@@ -784,7 +784,7 @@ export function addFieldPair(doc: jsPDF, label: string, value: string, x: number
   const isEmpty = !sanitized || sanitized.trim() === '';
   const useReadableText = !isEmpty && isNarrativeLikePdfText(sanitized, width);
   const lineStep = getPdfTextLineHeight(FONT.SIZE_FIELD_VALUE, useReadableText);
-  const baseBoxH = useReadableText ? 3.2 : 2.6;
+  const baseBoxH = useReadableText ? 2.8 : 2.3;  // condensed 2026-05-31 (3.2/2.6 → 2.8/2.3)
   const displayText = isEmpty ? 'N/A' : sanitized.toUpperCase();
   doc.setFont(PDF_VALUE_FONT, 'normal');
   doc.setFontSize(FONT.SIZE_FIELD_VALUE);
@@ -853,7 +853,7 @@ export function addFieldPair(doc: jsPDF, label: string, value: string, x: number
   // Reset text color
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
 
-  return fieldBottomY + 0.6; // field bottom + row gap
+  return fieldBottomY + 0.4; // field bottom + row gap (condensed 2026-05-31: 0.6 → 0.4)
 }
 
 /**
@@ -2097,8 +2097,8 @@ export function addTableWithShading(
   doc.setGState(new doc.GState({ opacity: 1.0 }));
   const cw = getContentWidth(doc);
   const pageW = doc.internal.pageSize.getWidth();
-  const minRowH = 5.5;
-  const cellLineH = 3.4;      // Line height within table cells
+  const minRowH = 4.6;        // condensed 2026-05-31 (5.5 → 4.6)
+  const cellLineH = 3.0;      // Line height within table cells (condensed 2026-05-31: 3.4 → 3.0)
   const cellPad = 1.5;        // Padding inside cells
   const maxCellLines = 50;    // Show full note text without truncation
 
@@ -2112,7 +2112,7 @@ export function addTableWithShading(
   // Helper to draw header row — dark blocky style (or light field-pair style)
   // atY = top of header rect; text is vertically centered within
   const lightHdr = opts?.lightHeader === true;
-  const headerRowH = 5;
+  const headerRowH = 4.6;  // condensed 2026-05-31 (5 → 4.6)
   const drawHeaders = (atY: number): number => {
     if (lightHdr) {
       // Light header: white background, thin border, uppercase label (field-pair style)
