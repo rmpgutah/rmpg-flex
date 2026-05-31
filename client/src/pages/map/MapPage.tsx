@@ -941,8 +941,6 @@ export default function MapPage() {
     // (e.g. server restart, brief network blip, slow vehicle WiFi).
     const MAX_RETRIES = 8;
     const RETRY_DELAYS = [2000, 4000, 8000, 12000, 16000, 20000, 25000, 30000]; // ms
-    let dismissObserver: MutationObserver | null = null;
-    let dismissTimer: ReturnType<typeof setTimeout> | null = null;
 
     function initMap(apiKey: string, cfg: MapSettings) {
       if (!mapRef.current || authFailed || cancelled) return;
@@ -1128,8 +1126,6 @@ export default function MapPage() {
     return () => {
       cancelled = true; // Stop any pending retries
       unsubOnline();
-      if (dismissTimer) clearTimeout(dismissTimer);
-      if (dismissObserver) dismissObserver.disconnect();
       if (tileMonitorCleanupRef.current) { tileMonitorCleanupRef.current(); tileMonitorCleanupRef.current = null; }
       if (mapInstanceRef.current) unregisterMapInstance(mapInstanceRef.current);
       markersRef.current.forEach((m) => {

@@ -119,12 +119,12 @@ export function drawFormCell(
     const cbSize = 3.0;
     const cbX = x + pad;
     const cbY = valueAreaTop + (valueAreaH - cbSize) / 2;
-  doc.setDrawColor(80, 80, 80); // neutralized 2026-05-30
-  doc.setLineWidth(0.3);
-  doc.rect(x, boxY, boxSize, boxSize);
+    doc.setDrawColor(80, 80, 80); // neutralized 2026-05-30
+    doc.setLineWidth(0.3);
+    doc.rect(cbX, cbY, cbSize, cbSize);
 
-  if (checked) {
-    doc.setFillColor(235, 235, 235); // neutralized 2026-05-30
+    if (cell.value && cell.value !== '' && cell.value !== '0') {
+      doc.setFillColor(235, 235, 235); // neutralized 2026-05-30
       doc.rect(cbX + 0.15, cbY + 0.15, cbSize - 0.3, cbSize - 0.3, 'F');
       doc.setDrawColor(20, 20, 20);
       doc.setLineWidth(0.7);
