@@ -39,6 +39,8 @@ async function generateComplaintNumber(db: ReturnType<typeof getDb>): Promise<st
 affairs.get('/complaints', async (c) => {
   try {
     const db = getDb(c.env);
+    const tableCheck = await queryFirst<{ n: number }>(db, "SELECT COUNT(*) as n FROM sqlite_master WHERE type='table' AND name='ia_complaints'");
+    if (!tableCheck?.n) return c.json({ data: [], pagination: { page: 1, per_page: 50, total: 0, totalPages: 0 } });
     const q = c.req.query.bind(c.req);
     const conditions: string[] = ['1=1'];
     const params: unknown[] = [];
@@ -269,6 +271,8 @@ affairs.put('/flags/:id', async (c) => {
 affairs.get('/stats', async (c) => {
   try {
     const db = getDb(c.env);
+    const complaintTable = await queryFirst<{ n: number }>(db, "SELECT COUNT(*) as n FROM sqlite_master WHERE type='table' AND name='ia_complaints'");
+    if (!complaintTable?.n) return c.json({ total_complaints: 0, open_complaints: 0, active_investigations: 0, sustained: 0, total_flags: 0, active_flags: 0 });
     const total = (await queryFirst<{ count: number }>(db, 'SELECT COUNT(*) as count FROM ia_complaints'))?.count ?? 0;
     const open = (await queryFirst<{ count: number }>(db, "SELECT COUNT(*) as count FROM ia_complaints WHERE status NOT IN ('closed','sustained','not_sustained','exonerated','unfounded')"))?.count ?? 0;
     const flags = (await queryFirst<{ count: number }>(db, 'SELECT COUNT(*) as count FROM early_intervention_flags WHERE resolved_at IS NULL'))?.count ?? 0;

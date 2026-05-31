@@ -49,6 +49,8 @@ async function recalcInvoiceTotal(db: ReturnType<typeof getDb>, invoiceId: numbe
 billing.get('/contracts', async (c) => {
   try {
     const db = getDb(c.env);
+    const tableCheck = await queryFirst<{ n: number }>(db, "SELECT COUNT(*) as n FROM sqlite_master WHERE type='table' AND name='client_contracts'");
+    if (!tableCheck?.n) return c.json({ data: [] });
     const q = c.req.query.bind(c.req);
     const conditions: string[] = ['1=1']; const params: unknown[] = [];
     if (q('client_id')) { conditions.push('c.client_id = ?'); params.push(q('client_id')); }
@@ -90,6 +92,8 @@ billing.post('/contracts', async (c) => {
 billing.get('/invoices', async (c) => {
   try {
     const db = getDb(c.env);
+    const tableCheck = await queryFirst<{ n: number }>(db, "SELECT COUNT(*) as n FROM sqlite_master WHERE type='table' AND name='invoices'");
+    if (!tableCheck?.n) return c.json({ data: [], pagination: { page: 1, per_page: 50, total: 0, totalPages: 0 } });
     const q = c.req.query.bind(c.req);
     const conditions: string[] = ['1=1']; const params: unknown[] = [];
     if (q('client_id')) { conditions.push('i.client_id = ?'); params.push(q('client_id')); }
@@ -319,6 +323,8 @@ billing.put('/expenses/:id', async (c) => {
 billing.get('/stats', async (c) => {
   try {
     const db = getDb(c.env);
+    const invoiceTable = await queryFirst<{ n: number }>(db, "SELECT COUNT(*) as n FROM sqlite_master WHERE type='table' AND name='invoices'");
+    if (!invoiceTable?.n) return c.json({ total_contracts: 0, active_contracts: 0, total_invoices: 0, outstanding_invoices: 0, total_revenue: 0, collected_revenue: 0, total_expenses: 0, overdue_invoices: 0 });
     const contractsActive = (await queryFirst<{ count: number }>(db, "SELECT COUNT(*) as count FROM client_contracts WHERE status = 'active'"))?.count ?? 0;
     const invoicesOutstanding = (await queryFirst<{ count: number }>(db, "SELECT COUNT(*) as count FROM invoices WHERE status IN ('draft','sent','partial','overdue')"))?.count ?? 0;
     const totalOutstanding = (await queryFirst<{ total: number }>(db, "SELECT COALESCE(SUM(total_amount - paid_amount),0) as total FROM invoices WHERE status NOT IN ('paid','void','cancelled')"))?.total ?? 0;

@@ -38,6 +38,8 @@ async function generateAssessmentNumber(db: ReturnType<typeof getDb>, prefix: st
 risk.get('/assessments', async (c) => {
   try {
     const db = getDb(c.env);
+    const tableCheck = await queryFirst<{ n: number }>(db, "SELECT COUNT(*) as n FROM sqlite_master WHERE type='table' AND name='risk_assessments'");
+    if (!tableCheck?.n) return c.json({ data: [] });
     const q = c.req.query.bind(c.req);
     const conditions: string[] = ['1=1']; const params: unknown[] = [];
     if (q('risk_level')) { conditions.push('risk_level = ?'); params.push(q('risk_level')); }
@@ -222,6 +224,8 @@ risk.put('/claims/:id', async (c) => {
 risk.get('/stats', async (c) => {
   try {
     const db = getDb(c.env);
+    const riskTable = await queryFirst<{ n: number }>(db, "SELECT COUNT(*) as n FROM sqlite_master WHERE type='table' AND name='risk_assessments'");
+    if (!riskTable?.n) return c.json({ total_assessments: 0, high_risk: 0, medium_risk: 0, low_risk: 0, total_inspections: 0, open_claims: 0 });
     const activeAssessments = (await queryFirst<{ count: number }>(db, "SELECT COUNT(*) as count FROM risk_assessments WHERE status = 'active'"))?.count ?? 0;
     const pendingInspections = (await queryFirst<{ count: number }>(db, "SELECT COUNT(*) as count FROM safety_inspections WHERE status = 'pending'"))?.count ?? 0;
     const openClaims = (await queryFirst<{ count: number }>(db, "SELECT COUNT(*) as count FROM insurance_claims WHERE status IN ('reported','under_review')"))?.count ?? 0;

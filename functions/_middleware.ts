@@ -58,5 +58,12 @@ export const onRequest: PagesFunction<Env> = async (context) => {
   // when the response came from upstream).
   const out = new Response(response.body, response);
   out.headers.set('Content-Security-Policy', FULL_CSP);
+  // The Cloudflare Dashboard also injects a restrictive
+  // Content-Security-Policy-Report-Only that is NOT overridden by
+  // _headers or <meta> tags. If it has connect-src 'none', every
+  // API call generates a violation in the browser console even
+  // though the request succeeds. Deleting it here silences the
+  // noise so the console only shows real errors.
+  out.headers.delete('Content-Security-Policy-Report-Only');
   return out;
 };

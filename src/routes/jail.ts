@@ -39,6 +39,8 @@ async function generateBookingNumber(db: ReturnType<typeof getDb>): Promise<stri
 jail.get('/inmates', async (c) => {
   try {
     const db = getDb(c.env);
+    const tableCheck = await queryFirst<{ n: number }>(db, "SELECT COUNT(*) as n FROM sqlite_master WHERE type='table' AND name='inmates'");
+    if (!tableCheck?.n) return c.json({ data: [], pagination: { page: 1, per_page: 50, total: 0, totalPages: 0 } });
     const q = c.req.query.bind(c.req);
     const conditions: string[] = ['1=1'];
     const params: unknown[] = [];
@@ -410,6 +412,8 @@ jail.put('/inmates/:id/transports/:transportId', async (c) => {
 jail.get('/stats', async (c) => {
   try {
     const db = getDb(c.env);
+    const inmateTable = await queryFirst<{ n: number }>(db, "SELECT COUNT(*) as n FROM sqlite_master WHERE type='table' AND name='inmates'");
+    if (!inmateTable?.n) return c.json({ total_inmates: 0, active_inmates: 0, on_probation: 0, released_this_month: 0, booked_this_month: 0, by_gender: [], by_race: [] });
     const total = (await queryFirst<{ count: number }>(db, 'SELECT COUNT(*) as count FROM inmates'))?.count ?? 0;
     const housed = (await queryFirst<{ count: number }>(db, "SELECT COUNT(*) as count FROM inmates WHERE status = 'housed'"))?.count ?? 0;
     const booked = (await queryFirst<{ count: number }>(db, "SELECT COUNT(*) as count FROM inmates WHERE status = 'booked'"))?.count ?? 0;
