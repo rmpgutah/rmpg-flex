@@ -48,8 +48,8 @@ export const COLOR = {
   // the headers stay strong/dark but are true gray. Zebra + tint backgrounds
   // also de-blued ([242,242,246]→[243,243,243], [248,248,252]→[249,249,249]).
   BG_ZEBRA:        [243, 243, 243]  as const,  // Even-row table shading
-  BG_SECTION_HDR:  [46, 46, 46]     as const,  // Header + subheader bar (neutral charcoal)
-  BG_TABLE_HDR:    [58, 58, 58]     as const,  // Table column header (neutral charcoal)
+  BG_SECTION_HDR: [0, 0, 0]       as const,  // Section header fill — solid black (Spillman convention, 2026-05-30)
+  BG_TABLE_HDR:    [0, 0, 0]       as const,  // Table column header — solid black band (Spillman convention, 2026-05-30)
   BG_SECTION_TINT: [249, 249, 249]  as const,  // Field-body tint (kept near-white for readability)
   BG_TABLE_HDR_LIGHT: [224, 224, 224] as const, // Nested table header (light gray)
   TEXT_TABLE_HDR_LIGHT: [54, 54, 54]  as const,  // Dark gray text on light hdr
@@ -87,7 +87,7 @@ export const COLOR = {
   FLAG_DEFAULT:    [84, 84, 84]     as const,  // Generic flag (unchanged)
 
   // NIBRS Grid Form — sidebar tabs + dense cells
-  BG_SIDEBAR_TAB:      [27, 27, 27]     as const,  // Dark sidebar tab background (de-blued 2026-05-30)
+  BG_SIDEBAR_TAB:      [0, 0, 0]        as const,  // Black sidebar tab (Spillman convention, 2026-05-30)
   BG_FORM_CELL_LABEL:  [241, 241, 241]  as const,  // Light gray label strip inside cell (de-blued 2026-05-30)
   BORDER_FORM_GRID:    [60, 60, 60]     as const,  // Dark grid lines (shared borders)
 
@@ -167,7 +167,7 @@ export const PDF_VALUE_FONT: 'helvetica' | 'courier' | 'times' = 'helvetica';
 
 export const FONT = {
   SIZE_HEADER_TITLE:      13,    // Agency name in header bar
-  SIZE_SECTION_TITLE:     7,     // Section header bar text (all-caps, Helvetica Bold 7pt)
+  SIZE_SECTION_TITLE:     9,     // Section header text (all-caps, Helvetica Bold 9pt — bumped 2026-05-30 for Spillman/LexisNexis readability)
   SIZE_FIELD_VALUE:       8,     // Courier values (compact without box borders)
   SIZE_FIELD_LABEL:       5,     // Helvetica Bold labels above field boxes
   SIZE_TABLE_HEADER:      6.5,   // Helvetica column headers
