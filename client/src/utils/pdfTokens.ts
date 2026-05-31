@@ -217,7 +217,7 @@ export const BORDER = {
   SIGNATURE_LINE:   0.5,   // Signature line (was 0.4)
   ACCENT_HEADER:    1.0,   // Accent line below header (was 0.8)
   ACCENT_FOOTER:    0.6,   // Accent line above footer (was 0.5)
-  ACCENT_SECTION:   2.0,   // Section header left-accent strip (was 1.5 — bolder anchor)
+  ACCENT_SECTION:   0,     // Section header left-accent strip REMOVED 2026-05-30 (was 2.0). Zero-width = no left highlight anywhere; section-header bars span full width and titles start at the left margin across all PDF generators.
   FIELD_UNDERLINE:  0.3,   // Field underline rule (was 0.15 — visibly defined)
   CASE_BOX:         1.0,   // White border inside case number box
   BANNER:           0.8,   // Banner borders

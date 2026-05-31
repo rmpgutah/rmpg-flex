@@ -29,7 +29,7 @@ import {
 import {
   COLOR, FONT, BORDER, SPACING, LAYOUT, PDF_VALUE_FONT, getContentWidth,
   getFullFieldWidth, getLeftX, getRightColumnX, getHalfFieldWidth, getThirdWidth,
-  getGridStartX, getGridContentWidth, formatEnumValue,
+  getGridStartX, getGridContentWidth, formatEnumValue, getCapHeight,
   applyPrintTarget, topMarginY, topHeaderY, type PrintTarget,
 } from './pdfTokens';
 
@@ -713,43 +713,30 @@ export function openAutoSection(doc: jsPDF, title: string, y: number): { content
   // @ts-expect-error jsPDF GState
   doc.setGState(new doc.GState({ opacity: 1.0 }));
 
-  // Left-accent strip — thematic per-section color (see
-  // resolveSectionAccentColor for palette rationale). Branding override
-  // wins; otherwise the title keyword maps to one of five colors.
-  const accentW = BORDER.ACCENT_SECTION;
-  const sectionAccentRgb = resolveSectionAccentColor(title);
-  doc.setFillColor(sectionAccentRgb[0], sectionAccentRgb[1], sectionAccentRgb[2]);
-  doc.rect(LAYOUT.PAGE_MARGIN, y, accentW, SPACING.SECTION_HEADER_H, 'F');
-
-  if (activeSectionStyle === 'light') {
-    // Dark header bar with white text (2026-05-05 darker-shading pass).
-    // Field bodies BELOW the header stay white; only the header BAR
-    // itself goes dark for strong contrast that scans like a real
-    // police-form section divider. Previously this branch used a
-    // cream tint with dark text.
-    doc.setFillColor(...COLOR.BG_SECTION_HDR);
-    doc.rect(LAYOUT.PAGE_MARGIN + accentW, y, cw - accentW, SPACING.SECTION_HEADER_H, 'F');
-
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(FONT.SIZE_SECTION_TITLE);
-    doc.setTextColor(...COLOR.TEXT_INVERTED);
-  } else {
-    // Dark default: charcoal fill + white text (original style).
-    doc.setFillColor(...COLOR.BG_SECTION_HDR);
-    doc.rect(LAYOUT.PAGE_MARGIN + accentW, y, cw - accentW, SPACING.SECTION_HEADER_H, 'F');
-
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(FONT.SIZE_SECTION_TITLE);
-    doc.setTextColor(...COLOR.TEXT_INVERTED);
-  }
-
-  // Vertically centered in header bar
-  const capH = FONT.SIZE_SECTION_TITLE * 0.35;
-  const sectionTextY = y + (SPACING.SECTION_HEADER_H + capH) / 2;
-  doc.text(sanitizePdfText(title.toUpperCase()), LAYOUT.PAGE_MARGIN + accentW + SPACING.CONTENT_INSET + 1, sectionTextY);
-
-  // Reset text color to primary (black) — prevents white text leaking into content
+  // Flat Spillman/Motorola-style section header (2026-05-30 redesign):
+  // plain bold UPPERCASE black title at the left margin with a thin
+  // full-width rule directly below — NO left-accent strip and NO dark
+  // fill bar. This matches the v2 engine's drawSectionHeader() so every
+  // PDF the app produces (v1 reports + v2 forms) reads identically and
+  // photocopies cleanly. The per-section accent-color palette and the
+  // light/dark bar styles were removed in this pass.
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(FONT.SIZE_SECTION_TITLE);
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
+
+  // Title sits near the top of the reserved header band so the rule
+  // below has room before the first content row.
+  const capH = getCapHeight(FONT.SIZE_SECTION_TITLE);
+  const sectionTextY = y + capH + 0.6;
+  doc.text(sanitizePdfText(title.toUpperCase()), LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET, sectionTextY);
+
+  // Thin full-width rule just below the title baseline.
+  const ruleY = y + SPACING.SECTION_HEADER_H - 0.6;
+  doc.setDrawColor(...COLOR.TEXT_PRIMARY);
+  doc.setLineWidth(BORDER.SECTION_OUTER);
+  doc.line(LAYOUT.PAGE_MARGIN, ruleY, LAYOUT.PAGE_MARGIN + cw, ruleY);
+
+  // Reset font for content below
   doc.setFont(PDF_VALUE_FONT, 'normal');
 
   // Content starts after header bar + content padding (not tight against bar)
@@ -1849,19 +1836,17 @@ export function addNarrativeSection(
   // Page break callback: draw section continuation sub-header + fresh tint
   const contTitle = title.toUpperCase() + ' -- CONTINUED';
   const narrativePageBreak = (newY: number): number => {
-    // Draw section sub-header bar
+    // Flat section continuation sub-header: black title + thin rule below.
     const cw = getContentWidth(doc);
-    doc.setFillColor(...COLOR.BG_SECTION_HDR);
-    doc.rect(LAYOUT.PAGE_MARGIN, newY, cw, SPACING.SECTION_HEADER_H, 'F');
-    doc.setDrawColor(...COLOR.BORDER_SECTION);
-    doc.setLineWidth(BORDER.SECTION_OUTER);
-    doc.rect(LAYOUT.PAGE_MARGIN, newY, cw, SPACING.SECTION_HEADER_H);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(FONT.SIZE_SECTION_TITLE);
-    doc.setTextColor(...COLOR.TEXT_INVERTED);
-    const secCapH = FONT.SIZE_SECTION_TITLE * 0.35;
-    const textYpos = newY + (SPACING.SECTION_HEADER_H + secCapH) / 2;
-    doc.text(contTitle, LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, textYpos);
+    doc.setTextColor(...COLOR.TEXT_PRIMARY);
+    const textYpos = newY + getCapHeight(FONT.SIZE_SECTION_TITLE) + 0.6;
+    doc.text(contTitle, LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET, textYpos);
+    const subRuleY = newY + SPACING.SECTION_HEADER_H - 0.6;
+    doc.setDrawColor(...COLOR.TEXT_PRIMARY);
+    doc.setLineWidth(BORDER.SECTION_OUTER);
+    doc.line(LAYOUT.PAGE_MARGIN, subRuleY, LAYOUT.PAGE_MARGIN + cw, subRuleY);
     const contentStartY = newY + SPACING.SECTION_HEADER_H + SPACING.SECTION_CONTENT_PAD + 2;
     // Draw fresh background tint for remaining text on this page
     const cw2 = getContentWidth(doc);
@@ -1915,17 +1900,15 @@ function addSupplementsSection(doc: jsPDF, data: IncidentData, y: number): numbe
       const contTitle = supTitle.toUpperCase() + ' -- CONTINUED';
       const supPageBreak = (newY: number): number => {
         const cw = getContentWidth(doc);
-        doc.setFillColor(...COLOR.BG_SECTION_HDR);
-        doc.rect(LAYOUT.PAGE_MARGIN, newY, cw, SPACING.SECTION_HEADER_H, 'F');
-        doc.setDrawColor(...COLOR.BORDER_SECTION);
-        doc.setLineWidth(BORDER.SECTION_OUTER);
-        doc.rect(LAYOUT.PAGE_MARGIN, newY, cw, SPACING.SECTION_HEADER_H);
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(FONT.SIZE_SECTION_TITLE);
-        doc.setTextColor(...COLOR.TEXT_INVERTED);
-        const capH = FONT.SIZE_SECTION_TITLE * 0.35;
-        const textYpos = newY + (SPACING.SECTION_HEADER_H + capH) / 2;
-        doc.text(sanitizePdfText(contTitle), LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, textYpos);
+        doc.setTextColor(...COLOR.TEXT_PRIMARY);
+        const textYpos = newY + getCapHeight(FONT.SIZE_SECTION_TITLE) + 0.6;
+        doc.text(sanitizePdfText(contTitle), LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET, textYpos);
+        const supRuleY = newY + SPACING.SECTION_HEADER_H - 0.6;
+        doc.setDrawColor(...COLOR.TEXT_PRIMARY);
+        doc.setLineWidth(BORDER.SECTION_OUTER);
+        doc.line(LAYOUT.PAGE_MARGIN, supRuleY, LAYOUT.PAGE_MARGIN + cw, supRuleY);
         const contentStartY = newY + SPACING.SECTION_HEADER_H + SPACING.SECTION_CONTENT_PAD + 2;
         doc.setTextColor(...COLOR.TEXT_PRIMARY);
         doc.setFont(PDF_VALUE_FONT, 'normal');
@@ -2075,37 +2058,16 @@ export function checkPageBreak(doc: jsPDF, y: number, needed: number, priority?:
     // 2026-05-04) renders gold accent + cream tint + dark text so it
     // matches the page-1 company header. Dark mode keeps the legacy
     // charcoal continuation bar.
-    const contIsLight = activeSectionStyle === 'light';
-    const contAccentW = BORDER.ACCENT_SECTION;
-    if (contIsLight) {
-      doc.setFillColor(COLOR.ACCENT_GOLD[0], COLOR.ACCENT_GOLD[1], COLOR.ACCENT_GOLD[2]);
-      doc.rect(LAYOUT.PAGE_MARGIN, contY, contAccentW, contH, 'F');
-      doc.setFillColor(...COLOR.BG_SECTION_TINT);
-      doc.rect(LAYOUT.PAGE_MARGIN + contAccentW, contY, cw - contAccentW, contH, 'F');
-      doc.setDrawColor(...COLOR.BORDER_SECTION);
-      doc.setLineWidth(BORDER.SECTION_OUTER);
-      doc.rect(LAYOUT.PAGE_MARGIN + contAccentW, contY, cw - contAccentW, contH);
-    } else {
-      doc.setFillColor(...COLOR.BG_SECTION_HDR);
-      doc.rect(LAYOUT.PAGE_MARGIN, contY, cw, contH, 'F');
-      // Bottom border for definition
-      doc.setDrawColor(...COLOR.BORDER_SECTION);
-      doc.setLineWidth(BORDER.SECTION_OUTER);
-      doc.line(LAYOUT.PAGE_MARGIN, contY + contH, LAYOUT.PAGE_MARGIN + cw, contY + contH);
-    }
-
-    // Text vertically centered in continuation header
-    const contCapH = FONT.SIZE_FIELD_LABEL * 0.35;
-    const contTextY = contY + (contH + contCapH) / 2;
-    // Mutable tuple so it can be spread into setTextColor (see same
-    // pattern in pdfFormHelpers.ts drawNibrsHeader).
-    const contTextColor: [number, number, number] = contIsLight
-      ? [COLOR.TEXT_PRIMARY[0], COLOR.TEXT_PRIMARY[1], COLOR.TEXT_PRIMARY[2]]
-      : [COLOR.TEXT_INVERTED[0], COLOR.TEXT_INVERTED[1], COLOR.TEXT_INVERTED[2]];
+    // Flat global continuation header: black title + thin full-width
+    // rule below, in both light and dark section styles.
+    const contTextY = contY + getCapHeight(FONT.SIZE_FIELD_LABEL) + 0.6;
+    const contTextColor: [number, number, number] = [
+      COLOR.TEXT_PRIMARY[0], COLOR.TEXT_PRIMARY[1], COLOR.TEXT_PRIMARY[2],
+    ];
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(FONT.SIZE_FIELD_LABEL);
     doc.setTextColor(...contTextColor);
-    const contInset = (contIsLight ? contAccentW : 0) + SPACING.CONTENT_INSET + 1;
+    const contInset = SPACING.CONTENT_INSET;
     doc.text(sanitizePdfText(`${activeBranding.report_header_text} -- CONTINUED`), LAYOUT.PAGE_MARGIN + contInset, contTextY);
 
     // Form number + case number on right (also vertically centered)
@@ -2116,6 +2078,12 @@ export function checkPageBreak(doc: jsPDF, y: number, needed: number, priority?:
     if (rightParts.length > 0) {
       doc.text(rightParts.join('  |  '), pageWidth - LAYOUT.PAGE_MARGIN - SPACING.CONTENT_INSET, contTextY, { align: 'right' });
     }
+
+    // Thin full-width rule just below the continuation title.
+    const contRuleY = contY + contH - 0.6;
+    doc.setDrawColor(...COLOR.TEXT_PRIMARY);
+    doc.setLineWidth(BORDER.SECTION_OUTER);
+    doc.line(LAYOUT.PAGE_MARGIN, contRuleY, LAYOUT.PAGE_MARGIN + cw, contRuleY);
 
     doc.setFont(PDF_VALUE_FONT, 'normal');
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
@@ -2253,18 +2221,23 @@ export function addTableWithShading(
       if (opts?.sectionTitle) {
         y -= SPACING.SECTION_GAP;
         const subBarH = SPACING.SECTION_HEADER_H;
-        doc.setFillColor(...COLOR.BG_SECTION_HDR);
-        doc.rect(LAYOUT.PAGE_MARGIN, y, cw, subBarH, 'F');
+        // Flat section-title continuation band: black title + thin rule
+        // below. The table column-header row that follows (drawHeaders)
+        // stays dark.
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(FONT.SIZE_SECTION_TITLE);
-        doc.setTextColor(...COLOR.TEXT_INVERTED);
-        const subCapH = FONT.SIZE_SECTION_TITLE * 0.35;
-        const subTextY = y + (subBarH + subCapH) / 2;
+        doc.setTextColor(...COLOR.TEXT_PRIMARY);
+        const subTextY = y + getCapHeight(FONT.SIZE_SECTION_TITLE) + 0.6;
         doc.text(
           sanitizePdfText(`${opts.sectionTitle.toUpperCase()} -- CONTINUED`),
-          LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1,
+          LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET,
           subTextY,
         );
+        const subRuleY = y + subBarH - 0.6;
+        doc.setDrawColor(...COLOR.TEXT_PRIMARY);
+        doc.setLineWidth(BORDER.SECTION_OUTER);
+        doc.line(LAYOUT.PAGE_MARGIN, subRuleY, LAYOUT.PAGE_MARGIN + cw, subRuleY);
+        doc.setTextColor(...COLOR.TEXT_PRIMARY);
         y += subBarH;
       }
       y = drawHeaders(y);
@@ -3254,16 +3227,14 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
     // Page break callback with continuation header
     const narrativeBreak = (newY: number): number => {
       const nCw = getContentWidth(doc);
-      doc.setFillColor(...COLOR.BG_SECTION_HDR);
-      doc.rect(LAYOUT.PAGE_MARGIN, newY, nCw, SPACING.SECTION_HEADER_H, 'F');
-      doc.setDrawColor(...COLOR.BORDER_TABLE);
-      doc.setLineWidth(BORDER.TABLE_ROW);
-      doc.rect(LAYOUT.PAGE_MARGIN, newY, nCw, SPACING.SECTION_HEADER_H);
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(FONT.SIZE_SECTION_TITLE);
-      doc.setTextColor(...COLOR.TEXT_INVERTED);
-      const capH2 = FONT.SIZE_SECTION_TITLE * 0.35;
-      doc.text('NARRATIVE / SERVICE NOTES -- CONTINUED', LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, newY + (SPACING.SECTION_HEADER_H + capH2) / 2);
+      doc.setTextColor(...COLOR.TEXT_PRIMARY);
+      doc.text('NARRATIVE / SERVICE NOTES -- CONTINUED', LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET, newY + getCapHeight(FONT.SIZE_SECTION_TITLE) + 0.6);
+      const nRuleY = newY + SPACING.SECTION_HEADER_H - 0.6;
+      doc.setDrawColor(...COLOR.TEXT_PRIMARY);
+      doc.setLineWidth(BORDER.SECTION_OUTER);
+      doc.line(LAYOUT.PAGE_MARGIN, nRuleY, LAYOUT.PAGE_MARGIN + nCw, nRuleY);
       doc.setFont(PDF_VALUE_FONT, 'normal');
       doc.setFontSize(FONT.SIZE_FIELD_VALUE);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
