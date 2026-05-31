@@ -7668,3 +7668,1929 @@ ul.list-spillman li::before {
   font-size: 10px;
   user-select: none;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   100 MORE SPILLMAN FLEX VISUAL STANDARDS — Motorola Solutions CAD/RMS Console
+   Extended system-level visual treatments. Groups 11-20 of 10 each.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── GROUP 11: GRID ENHANCEMENTS (101–110) ───────────────────────────────── */
+
+/* 101. Column resize handle */
+.col-resize-handle {
+  position: absolute;
+  top: 0; right: 0; bottom: 0;
+  width: 4px;
+  cursor: col-resize;
+  background: transparent;
+  transition: background 0.1s;
+  z-index: 2;
+}
+.col-resize-handle:hover,
+.col-resize-handle:active {
+  background: var(--brand-gold);
+}
+
+/* 102. Drag-to-reorder row handle */
+.row-drag-handle {
+  cursor: grab;
+  color: #444444;
+  padding: 2px 4px;
+  display: flex;
+  align-items: center;
+  transition: color 0.1s;
+}
+.row-drag-handle:hover { color: #888888; }
+.row-drag-handle:active { cursor: grabbing; color: var(--brand-gold); }
+.row-dragging {
+  opacity: 0.5;
+  background: rgba(212, 160, 23, 0.1) !important;
+  border: 1px dashed var(--brand-gold) !important;
+}
+.row-drop-target-above {
+  border-top: 2px solid var(--brand-gold) !important;
+}
+.row-drop-target-below {
+  border-bottom: 2px solid var(--brand-gold) !important;
+}
+
+/* 103. Inline row add form */
+tr.row-add-new {
+  background: rgba(212, 160, 23, 0.05) !important;
+}
+tr.row-add-new td {
+  padding: 4px 8px !important;
+}
+tr.row-add-new input {
+  width: 100%;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border-default);
+  color: #e0e0e0;
+  padding: 2px 6px;
+  font-size: 11px;
+  font-family: inherit;
+}
+tr.row-add-new input:focus {
+  border-color: var(--brand-gold);
+  outline: none;
+}
+
+/* 104. Expandable row detail panel */
+tr.row-expanded {
+  background: var(--surface-raised) !important;
+  border-bottom: none !important;
+}
+tr.row-detail-panel {
+  background: var(--surface-sunken);
+  border-left: 3px solid var(--brand-gold);
+}
+tr.row-detail-panel td {
+  padding: 10px 14px !important;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+/* 105. Grid density toggle */
+.grid-density-compact .spillman-grid tbody td,
+.grid-density-compact .table-dark tbody td {
+  padding: 1px 6px !important;
+  font-size: 10px !important;
+}
+.grid-density-compact .spillman-grid thead th,
+.grid-density-compact .table-dark thead th {
+  padding: 2px 6px !important;
+  font-size: 8px !important;
+}
+.grid-density-comfortable .spillman-grid tbody td,
+.grid-density-comfortable .table-dark tbody td {
+  padding: 6px 10px !important;
+  font-size: 12px !important;
+}
+
+/* 106. Column visibility toggle panel */
+.col-visibility-panel {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 50;
+  min-width: 180px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-strong);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+  padding: 4px 0;
+}
+.col-visibility-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px;
+  font-size: 11px;
+  color: #aaaaaa;
+  cursor: pointer;
+  transition: background 0.08s;
+}
+.col-visibility-item:hover { background: var(--surface-hover); color: #ffffff; }
+.col-visibility-item .col-check {
+  width: 14px; height: 14px;
+  border: 1px solid #555555;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 9px;
+  flex-shrink: 0;
+}
+.col-visibility-item.visible .col-check {
+  background: var(--brand-gold);
+  border-color: var(--brand-gold);
+  color: #000000;
+}
+
+/* 107. Bulk action bar (appears when rows selected) */
+.bulk-action-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: rgba(212, 160, 23, 0.1);
+  border: 1px solid rgba(212, 160, 23, 0.3);
+  border-bottom: none;
+  animation: slide-in-up 0.15s ease-out;
+}
+.bulk-action-bar .selection-count {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--brand-gold);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.bulk-action-bar .bulk-btn {
+  padding: 3px 8px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #aaaaaa;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-default);
+  cursor: pointer;
+  transition: all 0.1s;
+}
+.bulk-action-bar .bulk-btn:hover { color: #ffffff; border-color: var(--border-strong); }
+.bulk-action-bar .bulk-btn-danger { color: #fca5a5; border-color: rgba(239,68,68,0.3); }
+.bulk-action-bar .bulk-btn-danger:hover { background: rgba(239,68,68,0.15); }
+
+/* 108. Virtual scroll container */
+.virtual-scroll-container {
+  overflow-y: auto;
+  overflow-x: hidden;
+  position: relative;
+  contain: strict;
+  will-change: transform;
+}
+.virtual-scroll-spacer {
+  pointer-events: none;
+}
+.virtual-scroll-item {
+  position: absolute;
+  left: 0; right: 0;
+  contain: layout style;
+}
+
+/* 109. Grid status indicator stripe */
+.grid-status-stripe {
+  position: absolute;
+  top: 0; left: 0; bottom: 0;
+  width: 3px;
+}
+.grid-status-stripe.emergency { background: #dc2626; }
+.grid-status-stripe.urgent { background: #f59e0b; }
+.grid-status-stripe.routine { background: #888888; }
+.grid-status-stripe.complete { background: #22c55e; }
+
+/* 110. Column header context menu trigger */
+th.col-header-actions {
+  position: relative;
+}
+th.col-header-actions .col-menu-trigger {
+  position: absolute;
+  top: 2px; right: 2px;
+  width: 14px; height: 14px;
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0;
+  cursor: pointer;
+  color: #555555;
+  font-size: 10px;
+  transition: opacity 0.1s;
+}
+th.col-header-actions:hover .col-menu-trigger { opacity: 1; }
+
+/* ── GROUP 12: INPUT & FORM ENHANCEMENTS (111–120) ──────────────────────── */
+
+/* 111. Input group (prepend/append) */
+.input-group {
+  display: flex;
+  align-items: stretch;
+}
+.input-group .input-group-addon {
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  background: var(--surface-base);
+  border: 1px solid var(--border-strong);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.input-group .input-group-addon:first-child {
+  border-right: none;
+}
+.input-group .input-group-addon:last-child {
+  border-left: none;
+}
+.input-group input {
+  flex: 1;
+  min-width: 0;
+}
+
+/* 112. Multi-column form layout */
+.form-columns-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 12px;
+}
+.form-columns-3 {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px 12px;
+}
+.form-columns-4 {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr 1fr;
+  gap: 8px 12px;
+}
+@media (max-width: 768px) {
+  .form-columns-2, .form-columns-3, .form-columns-4 {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* 113. Form section with gold accent divider */
+.form-section-divider {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 0 8px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--brand-gold);
+}
+.form-section-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, var(--brand-gold), transparent);
+}
+
+/* 114. Form action bar (sticky bottom) */
+.form-action-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--surface-raised);
+  border-top: 1px solid var(--border-strong);
+  box-shadow: 0 -4px 12px rgba(0,0,0,0.3);
+}
+
+/* 115. Search bar with icon */
+.search-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border-strong);
+  border-bottom-color: #050505;
+  border-right-color: #050505;
+  transition: border-color 0.12s, box-shadow 0.12s;
+}
+.search-bar:focus-within {
+  border-color: var(--brand-gold);
+  box-shadow: 0 0 0 1px rgba(212,160,23,0.35);
+}
+.search-bar .search-icon {
+  color: #555555;
+  flex-shrink: 0;
+}
+.search-bar input {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: #e0e0e0;
+  font-size: 12px;
+  font-family: inherit;
+}
+.search-bar input::placeholder { color: #444444; }
+.search-bar .search-clear {
+  color: #555555;
+  cursor: pointer;
+  padding: 0 2px;
+  display: none;
+}
+.search-bar input:not(:placeholder-shown) ~ .search-clear { display: block; }
+.search-bar .search-shortcut {
+  font-size: 9px;
+  color: #444444;
+  background: var(--surface-base);
+  border: 1px solid #333333;
+  padding: 1px 5px;
+  font-family: 'Consolas', monospace;
+}
+
+/* 116. Tag input chip */
+.tag-input-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 4px 6px;
+  min-height: 30px;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border-strong);
+  align-items: center;
+}
+.tag-input-container:focus-within {
+  border-color: var(--brand-gold);
+  box-shadow: 0 0 0 1px rgba(212,160,23,0.35);
+}
+.tag-input-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px;
+  font-size: 10px;
+  font-weight: 600;
+  background: rgba(136,136,136,0.15);
+  border: 1px solid rgba(136,136,136,0.25);
+  color: #cccccc;
+}
+.tag-input-chip .tag-remove {
+  cursor: pointer;
+  color: #666666;
+  font-size: 12px;
+  line-height: 1;
+}
+.tag-input-chip .tag-remove:hover { color: #ef4444; }
+.tag-input-container input {
+  flex: 1;
+  min-width: 80px;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: #e0e0e0;
+  font-size: 11px;
+  padding: 2px 0;
+}
+
+/* 117. Toggle button group (connected buttons) */
+.toggle-group {
+  display: inline-flex;
+}
+.toggle-group button {
+  padding: 3px 10px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #888888;
+  background: var(--surface-base);
+  border: 1px solid var(--border-default);
+  cursor: pointer;
+  transition: all 0.1s;
+  margin-left: -1px;
+}
+.toggle-group button:first-child { margin-left: 0; }
+.toggle-group button:hover { color: #cccccc; background: var(--surface-hover); }
+.toggle-group button.active {
+  color: #ffffff;
+  background: rgba(212,160,23,0.15);
+  border-color: var(--brand-gold);
+  z-index: 1;
+}
+
+/* 118. Color swatch picker */
+.color-swatch-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.color-swatch {
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--border-default);
+  cursor: pointer;
+  transition: transform 0.1s, border-color 0.1s;
+}
+.color-swatch:hover { transform: scale(1.15); border-color: #ffffff; }
+.color-swatch.selected {
+  border-color: var(--brand-gold);
+  box-shadow: 0 0 0 1px var(--brand-gold);
+}
+
+/* 119. Date range picker */
+.date-range-picker {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.date-range-picker input[type="date"] {
+  padding: 4px 8px;
+  font-size: 11px;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border-strong);
+  color: #e0e0e0;
+  font-family: 'Consolas', monospace;
+}
+.date-range-picker input[type="date"]:focus {
+  border-color: var(--brand-gold);
+  outline: none;
+}
+.date-range-picker .date-separator {
+  color: #555555;
+  font-size: 12px;
+}
+
+/* 120. Copy-to-clipboard input */
+.clipboard-input {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border-strong);
+}
+.clipboard-input input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: #e0e0e0;
+  padding: 5px 10px;
+  font-size: 11px;
+  font-family: 'Consolas', monospace;
+}
+.clipboard-input input:focus { outline: none; }
+.clipboard-input .copy-btn {
+  padding: 5px 10px;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #888888;
+  background: var(--surface-base);
+  border: none;
+  border-left: 1px solid var(--border-default);
+  cursor: pointer;
+  transition: color 0.1s, background 0.1s;
+  white-space: nowrap;
+}
+.clipboard-input .copy-btn:hover { color: var(--brand-gold); background: var(--surface-hover); }
+.clipboard-input .copy-btn.copied { color: #22c55e; }
+
+/* ── GROUP 13: NAVIGATION & LAYOUT ENHANCEMENTS (121–130) ───────────────── */
+
+/* 121. Sticky section header */
+.sticky-section-header {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: var(--surface-base);
+  border-bottom: 1px solid var(--border-strong);
+  padding: 6px 10px;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+/* 122. Slide-out detail panel */
+.slide-out-panel {
+  position: fixed;
+  top: 0; right: 0; bottom: 0;
+  width: min(480px, 90vw);
+  z-index: 100;
+  background: var(--surface-raised);
+  border-left: 1px solid var(--border-strong);
+  box-shadow: -8px 0 32px rgba(0,0,0,0.6);
+  transform: translateX(100%);
+  transition: transform 0.25s cubic-bezier(0.32,0.72,0,1);
+  display: flex;
+  flex-direction: column;
+}
+.slide-out-panel.open { transform: translateX(0); }
+.slide-out-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: var(--titlebar-gradient);
+  border-bottom: 1px solid var(--border-default);
+  flex-shrink: 0;
+}
+.slide-out-panel-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px;
+}
+.slide-out-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 99;
+  background: rgba(0,0,0,0.5);
+  opacity: 0;
+  transition: opacity 0.25s;
+  pointer-events: none;
+}
+.slide-out-backdrop.open { opacity: 1; pointer-events: auto; }
+
+/* 123. Collapsible sidebar panel */
+.sidebar-collapsible {
+  overflow: hidden;
+  transition: max-height 0.2s ease-out, opacity 0.15s;
+}
+.sidebar-collapsible.collapsed {
+  max-height: 0 !important;
+  opacity: 0;
+}
+
+/* 124. Contextual action toolbar */
+.contextual-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-default);
+  border-top-color: var(--border-strong);
+  border-left-color: var(--border-strong);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+
+/* 125. Card deck grid */
+.card-deck {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 8px;
+}
+.card-deck-item {
+  background: var(--surface-raised);
+  border: 1px solid var(--border-default);
+  border-top-color: var(--border-strong);
+  border-left-color: var(--border-strong);
+  padding: 10px 12px;
+  transition: background 0.15s, border-color 0.15s;
+}
+.card-deck-item:hover {
+  background: var(--surface-hover);
+  border-color: var(--border-strong);
+}
+
+/* 126. Icon button grid / launcher */
+.icon-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(72px, 1fr));
+  gap: 4px;
+}
+.icon-grid-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 6px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: background 0.1s, border-color 0.1s;
+}
+.icon-grid-item:hover {
+  background: var(--surface-hover);
+  border-color: var(--border-default);
+}
+.icon-grid-item .grid-icon {
+  width: 28px; height: 28px;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--brand-gold);
+}
+.icon-grid-item .grid-label {
+  font-size: 9px;
+  text-align: center;
+  color: #888888;
+  line-height: 1.2;
+}
+
+/* 127. Multi-level breadcrumb trail */
+.breadcrumb-trail {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  font-size: 10px;
+  padding: 4px 0;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+.breadcrumb-trail .breadcrumb-link {
+  color: #888888;
+  cursor: pointer;
+  padding: 2px 4px;
+  text-decoration: none;
+  transition: color 0.1s;
+}
+.breadcrumb-trail .breadcrumb-link:hover { color: #ffffff; }
+.breadcrumb-trail .breadcrumb-current {
+  color: var(--brand-gold);
+  font-weight: 600;
+}
+.breadcrumb-trail .breadcrumb-chevron {
+  color: #444444;
+  margin: 0 2px;
+  font-size: 8px;
+}
+
+/* 128. Wizard step connector */
+.wizard-connector {
+  flex: 1;
+  height: 2px;
+  background: #333333;
+  margin: 0 8px;
+}
+.wizard-connector.active { background: var(--brand-gold); }
+.wizard-connector.completed { background: #22c55e; }
+
+/* 129. Filter bar with active count */
+.filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  background: var(--surface-base);
+  border-bottom: 1px solid var(--border-subtle);
+  overflow-x: auto;
+  flex-wrap: nowrap;
+}
+.filter-bar .active-filters-count {
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--brand-gold);
+  background: rgba(212,160,23,0.1);
+  border: 1px solid rgba(212,160,23,0.2);
+  padding: 2px 6px;
+  white-space: nowrap;
+}
+
+/* 130. View toggle (grid/list) */
+.view-toggle {
+  display: inline-flex;
+  border: 1px solid var(--border-default);
+  overflow: hidden;
+}
+.view-toggle button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 24px;
+  border: none;
+  background: var(--surface-base);
+  color: #666666;
+  cursor: pointer;
+  transition: all 0.1s;
+  padding: 0;
+  margin: 0;
+}
+.view-toggle button:hover { background: var(--surface-hover); color: #aaaaaa; }
+.view-toggle button.active {
+  background: rgba(212,160,23,0.12);
+  color: var(--brand-gold);
+}
+
+/* ── GROUP 14: DATA VISUALIZATION (131–140) ─────────────────────────────── */
+
+/* 131. Stat comparison card */
+.stat-compare {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-default);
+}
+.stat-compare .stat-current {
+  font-size: 22px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  font-family: ui-monospace, monospace;
+  color: #ffffff;
+}
+.stat-compare .stat-change {
+  font-size: 11px;
+  font-weight: 600;
+}
+.stat-compare .stat-change.positive { color: #22c55e; }
+.stat-compare .stat-change.negative { color: #ef4444; }
+.stat-compare .stat-change::before { content: ''; margin-right: 1px; }
+.stat-compare .stat-change.positive::before { content: '▲'; }
+.stat-compare .stat-change.negative::before { content: '▼'; }
+
+/* 132. Progress ring */
+.progress-ring {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+.progress-ring svg {
+  transform: rotate(-90deg);
+}
+.progress-ring .ring-bg {
+  fill: none;
+  stroke: var(--surface-sunken);
+  stroke-width: 3;
+}
+.progress-ring .ring-fill {
+  fill: none;
+  stroke: var(--brand-gold);
+  stroke-width: 3;
+  stroke-linecap: butt;
+  transition: stroke-dashoffset 0.4s ease;
+}
+.progress-ring .ring-text {
+  position: absolute;
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: #ffffff;
+}
+
+/* 133. Mini sparkline */
+.sparkline {
+  display: inline-flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 20px;
+}
+.sparkline-bar {
+  width: 3px;
+  min-height: 2px;
+  background: var(--brand-gold);
+  transition: height 0.3s;
+}
+.sparkline-bar.trend-up { background: #22c55e; }
+.sparkline-bar.trend-down { background: #ef4444; }
+
+/* 134. Gauge meter */
+.gauge-meter {
+  position: relative;
+  width: 100%;
+  height: 8px;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border-subtle);
+}
+.gauge-fill {
+  height: 100%;
+  transition: width 0.4s ease;
+  background: var(--brand-gold);
+}
+.gauge-fill.low { background: #22c55e; }
+.gauge-fill.medium { background: #f59e0b; }
+.gauge-fill.high { background: #ef4444; }
+.gauge-threshold {
+  position: absolute;
+  top: -1px;
+  width: 2px;
+  height: 10px;
+  background: #ffffff;
+  opacity: 0.5;
+}
+
+/* 135. Heatmap cell */
+.heatmap-cell {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 1px solid var(--border-subtle);
+}
+.heatmap-cell.level-0 { background: var(--surface-sunken); }
+.heatmap-cell.level-1 { background: rgba(212,160,23,0.15); }
+.heatmap-cell.level-2 { background: rgba(212,160,23,0.35); }
+.heatmap-cell.level-3 { background: rgba(212,160,23,0.55); }
+.heatmap-cell.level-4 { background: rgba(212,160,23,0.75); }
+.heatmap-cell.level-5 { background: rgba(220,38,38,0.6); }
+
+/* 136. Timeline connector */
+.timeline-connector {
+  position: relative;
+  padding-left: 20px;
+}
+.timeline-connector::before {
+  content: '';
+  position: absolute;
+  left: 7px;
+  top: 0; bottom: 0;
+  width: 2px;
+  background: var(--border-default);
+}
+.timeline-dot {
+  position: absolute;
+  left: 3px;
+  top: 6px;
+  width: 10px;
+  height: 10px;
+  background: var(--surface-sunken);
+  border: 2px solid #555555;
+  z-index: 1;
+}
+.timeline-dot.active { border-color: var(--brand-gold); background: var(--brand-gold); }
+.timeline-dot.complete { border-color: #22c55e; background: #22c55e; }
+
+/* 137. KPI metric display */
+.kpi-metric {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 10px 14px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-default);
+  text-align: center;
+}
+.kpi-metric .kpi-value {
+  font-size: 28px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  font-family: ui-monospace, monospace;
+  color: #ffffff;
+  line-height: 1;
+}
+.kpi-metric .kpi-label {
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+.kpi-metric .kpi-context {
+  font-size: 10px;
+  color: #555555;
+  margin-top: 2px;
+}
+
+/* 138. Threshold indicator bar */
+.threshold-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+}
+.threshold-bar .threshold-track {
+  flex: 1;
+  height: 6px;
+  background: var(--surface-sunken);
+  position: relative;
+}
+.threshold-bar .threshold-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #22c55e 0%, #f59e0b 50%, #ef4444 100%);
+  position: relative;
+}
+.threshold-bar .threshold-marker {
+  position: absolute;
+  top: -3px;
+  width: 2px;
+  height: 12px;
+  background: #ffffff;
+}
+
+/* 139. Animated number counter */
+.number-counter {
+  font-variant-numeric: tabular-nums;
+  font-family: ui-monospace, monospace;
+}
+
+/* 140. Data table mini sparkline column */
+td.sparkline-cell {
+  padding: 2px 4px !important;
+  vertical-align: middle !important;
+}
+
+/* ── GROUP 15: FEEDBACK & INTERACTION (141–150) ─────────────────────────── */
+
+/* 141. Loading overlay */
+.loading-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0,0,0,0.4);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+.loading-spinner {
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--border-default);
+  border-top-color: var(--brand-gold);
+  animation: spin 0.6s linear infinite;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* 142. Confirmation dialog */
+.confirm-dialog {
+  max-width: 360px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-strong);
+  border-top-color: #383838;
+  border-left-color: #383838;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+}
+.confirm-dialog .confirm-header {
+  padding: 8px 12px;
+  background: var(--titlebar-gradient);
+  border-bottom: 1px solid var(--border-default);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--brand-gold);
+}
+.confirm-dialog .confirm-body {
+  padding: 12px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+.confirm-dialog .confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+/* 143. Quick action FAB */
+.quick-fab {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 30;
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-raised);
+  border: 2px solid var(--brand-gold);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s;
+  color: var(--brand-gold);
+}
+.quick-fab:hover { transform: scale(1.05); box-shadow: 0 6px 24px rgba(0,0,0,0.5); }
+.quick-fab:active { transform: scale(0.95); }
+
+/* 144. Pulse notification dot */
+.pulse-dot {
+  width: 8px;
+  height: 8px;
+  background: #ef4444;
+  position: relative;
+}
+.pulse-dot::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  background: rgba(239,68,68,0.3);
+  border-radius: 50%;
+  animation: pulse-ring 2s ease-out infinite;
+}
+@keyframes pulse-ring {
+  0% { transform: scale(0.5); opacity: 1; }
+  100% { transform: scale(2.5); opacity: 0; }
+}
+
+/* 145. Status transition indicator */
+.status-transition-arrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  color: #888888;
+}
+.status-transition-arrow .from-status,
+.status-transition-arrow .to-status {
+  padding: 1px 6px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+.status-transition-arrow .arrow-icon {
+  color: #555555;
+}
+
+/* 146. Hover card preview */
+.hover-card {
+  position: absolute;
+  z-index: 100;
+  min-width: 200px;
+  max-width: 320px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-strong);
+  border-top-color: #383838;
+  border-left-color: #383838;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+  padding: 10px 12px;
+  font-size: 11px;
+  animation: fade-in 0.1s ease-out;
+}
+
+/* 147. Scroll-to-top button */
+.scroll-to-top {
+  position: fixed;
+  bottom: 24px;
+  right: 80px;
+  z-index: 30;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-default);
+  color: #888888;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.2s;
+  pointer-events: none;
+}
+.scroll-to-top.visible { opacity: 1; pointer-events: auto; }
+.scroll-to-top:hover { color: #ffffff; border-color: var(--border-strong); }
+
+/* 148. Pull-to-refresh indicator */
+.pull-to-refresh {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+  color: #555555;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* 149. Keyboard shortcut badge overlay */
+.shortcut-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 16px;
+  height: 14px;
+  padding: 0 3px;
+  font-size: 8px;
+  font-weight: 700;
+  font-family: 'Consolas', monospace;
+  color: #888888;
+  background: var(--surface-sunken);
+  border: 1px solid #333333;
+  margin-left: 4px;
+}
+
+/* 150. Animated ellipsis (loading dots) */
+.loading-ellipsis {
+  display: inline-flex;
+  gap: 3px;
+}
+.loading-ellipsis span {
+  width: 4px;
+  height: 4px;
+  background: var(--brand-gold);
+  animation: ellipsis-bounce 1.2s ease-in-out infinite;
+}
+.loading-ellipsis span:nth-child(2) { animation-delay: 0.2s; }
+.loading-ellipsis span:nth-child(3) { animation-delay: 0.4s; }
+@keyframes ellipsis-bounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.3; }
+  30% { transform: translateY(-6px); opacity: 1; }
+}
+
+/* ── GROUP 16: MAP & GIS OVERLAYS (151–160) ──────────────────────────────── */
+
+/* 151. Map control panel */
+.map-control-panel {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 10;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-strong);
+  border-top-color: #383838;
+  border-left-color: #383838;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.5);
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.map-control-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  background: var(--surface-base);
+  border: 1px solid var(--border-default);
+  color: #888888;
+  cursor: pointer;
+  transition: all 0.1s;
+  font-size: 14px;
+}
+.map-control-btn:hover { color: #ffffff; background: var(--surface-hover); }
+.map-control-btn.active { color: var(--brand-gold); border-color: var(--brand-gold); }
+
+/* 152. Map popup / info window */
+.map-popup {
+  background: var(--surface-raised);
+  border: 1px solid var(--border-strong);
+  border-top-color: #383838;
+  border-left-color: #383838;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+  padding: 8px 10px;
+  font-size: 11px;
+  min-width: 180px;
+}
+.map-popup .popup-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--brand-gold);
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--border-subtle);
+  padding-bottom: 4px;
+}
+.map-popup .popup-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 2px 0;
+}
+.map-popup .popup-label { color: var(--text-muted); font-size: 9px; text-transform: uppercase; }
+.map-popup .popup-value { color: var(--text-primary); font-size: 10px; }
+
+/* 153. Layer toggle panel */
+.layer-toggle-panel {
+  background: var(--surface-raised);
+  border: 1px solid var(--border-strong);
+  padding: 4px 0;
+  min-width: 160px;
+}
+.layer-toggle-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  font-size: 10px;
+  color: #888888;
+  cursor: pointer;
+  transition: color 0.1s;
+}
+.layer-toggle-item:hover { color: #cccccc; }
+.layer-toggle-item.active { color: #ffffff; }
+.layer-toggle-item .layer-indicator {
+  width: 10px; height: 10px;
+  border: 1px solid #555555;
+  flex-shrink: 0;
+}
+.layer-toggle-item.active .layer-indicator {
+  background: var(--brand-gold);
+  border-color: var(--brand-gold);
+}
+
+/* 154. Coordinate display */
+.coordinate-display {
+  font-family: 'Consolas', monospace;
+  font-size: 10px;
+  color: #888888;
+  padding: 2px 6px;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border-subtle);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 155. Geo-fence drawing panel */
+.geofence-panel {
+  position: absolute;
+  bottom: 10px;
+  left: 10px;
+  z-index: 10;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-strong);
+  padding: 8px 10px;
+  font-size: 10px;
+  color: #888888;
+}
+
+/* 156. Direction compass */
+.compass-rose {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 10;
+  width: 40px;
+  height: 40px;
+  opacity: 0.8;
+  pointer-events: none;
+}
+
+/* 157. Map drawing tools */
+.drawing-tools {
+  display: flex;
+  gap: 2px;
+  padding: 4px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-default);
+}
+.drawing-tool-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 26px;
+  background: var(--surface-base);
+  border: 1px solid #333333;
+  color: #888888;
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.1s;
+}
+.drawing-tool-btn:hover { color: #ffffff; border-color: #555555; }
+.drawing-tool-btn.active { color: var(--brand-gold); border-color: var(--brand-gold); background: rgba(212,160,23,0.1); }
+
+/* 158. Scale bar */
+.scale-bar {
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 0;
+  font-size: 8px;
+  color: #888888;
+  font-family: 'Consolas', monospace;
+}
+.scale-bar .scale-line {
+  height: 4px;
+  border-left: 1px solid #888888;
+  border-right: 1px solid #888888;
+  border-top: 1px solid #888888;
+  border-bottom: 1px solid #888888;
+  background: repeating-linear-gradient(90deg, #888888 0px, #888888 1px, transparent 1px, transparent 4px);
+}
+
+/* 159. Clustered marker */
+.cluster-marker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px; height: 30px;
+  border-radius: 50%;
+  background: rgba(212,160,23,0.8);
+  border: 2px solid var(--brand-gold);
+  color: #000000;
+  font-size: 10px;
+  font-weight: 700;
+  font-family: 'Consolas', monospace;
+  cursor: pointer;
+}
+
+/* 160. Unit tracking trail */
+.unit-trail-line {
+  stroke: var(--brand-gold);
+  stroke-width: 2;
+  stroke-dasharray: 4 2;
+  opacity: 0.5;
+  fill: none;
+}
+
+/* ── GROUP 17: COMMUNICATIONS & CHAT (161–170) ──────────────────────────── */
+
+/* 161. Chat message container */
+.chat-container {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  overflow-y: auto;
+}
+.chat-message {
+  max-width: 75%;
+  padding: 6px 10px;
+  font-size: 11px;
+  line-height: 1.4;
+  word-break: break-word;
+}
+.chat-message.sent {
+  background: rgba(212,160,23,0.1);
+  color: #e0e0e0;
+  border: 1px solid rgba(212,160,23,0.2);
+  align-self: flex-end;
+}
+.chat-message.received {
+  background: rgba(136,136,136,0.1);
+  color: #e0e0e0;
+  border: 1px solid rgba(136,136,136,0.2);
+  align-self: flex-start;
+}
+.chat-message .msg-header {
+  display: flex;
+  justify-content: space-between;
+  font-size: 8px;
+  color: #666666;
+  margin-bottom: 2px;
+}
+.chat-message .msg-sender { font-weight: 600; }
+.chat-message .msg-time { font-variant-numeric: tabular-nums; }
+
+/* 162. Chat input area */
+.chat-input-area {
+  display: flex;
+  gap: 6px;
+  padding: 8px;
+  border-top: 1px solid var(--border-default);
+  background: var(--surface-base);
+}
+.chat-input-area textarea {
+  flex: 1;
+  resize: none;
+  min-height: 32px;
+  max-height: 80px;
+  padding: 6px 8px;
+  font-size: 11px;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border-default);
+  color: #e0e0e0;
+  font-family: inherit;
+}
+.chat-input-area textarea:focus { border-color: var(--brand-gold); outline: none; }
+
+/* 163. Radio channel display */
+.radio-channel-display {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  background: var(--surface-base);
+  border: 1px solid var(--border-default);
+  font-family: 'Consolas', monospace;
+  font-size: 10px;
+}
+.radio-channel-display .channel-name {
+  color: var(--brand-gold);
+  font-weight: 700;
+}
+.radio-channel-display .channel-status {
+  color: #22c55e;
+}
+
+/* 164. Voice activity indicator */
+.voice-activity-bar {
+  display: flex;
+  align-items: flex-end;
+  gap: 1px;
+  height: 16px;
+  padding: 0 2px;
+}
+.voice-activity-bar .va-segment {
+  width: 2px;
+  background: #22c55e;
+  border-radius: 1px;
+  transition: height 0.05s;
+}
+
+/* 165. PTT (Push-to-Talk) button */
+.ptt-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 20px;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #ffffff;
+  background: var(--surface-raised);
+  border: 2px solid #dc2626;
+  cursor: pointer;
+  transition: all 0.1s;
+  user-select: none;
+}
+.ptt-button:active,
+.ptt-button.active {
+  background: #dc2626;
+  box-shadow: 0 0 16px rgba(220,38,38,0.4);
+}
+
+/* 166. Dispatch console audio VU meter */
+.vu-meter {
+  display: flex;
+  gap: 1px;
+  align-items: flex-end;
+  height: 12px;
+}
+.vu-meter .vu-bar {
+  width: 2px;
+  background: #22c55e;
+  transition: height 0.08s;
+}
+.vu-meter .vu-bar.warning { background: #f59e0b; }
+.vu-meter .vu-bar.clipping { background: #ef4444; }
+
+/* 167. Recording indicator */
+.recording-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.recording-indicator .rec-dot {
+  width: 8px;
+  height: 8px;
+  background: #ef4444;
+  animation: led-blink 1s ease-in-out infinite;
+}
+.recording-indicator .rec-label { color: #fca5a5; }
+
+/* 168. Message thread */
+.msg-thread {
+  border-left: 2px solid var(--border-default);
+  margin-left: 16px;
+  padding-left: 12px;
+}
+.msg-thread .thread-reply {
+  font-size: 10px;
+  padding: 4px 8px;
+  color: #888888;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.msg-thread .thread-reply:last-child { border-bottom: none; }
+
+/* 169. Emoji reaction bar */
+.emoji-reactions {
+  display: flex;
+  gap: 2px;
+  margin-top: 2px;
+}
+.emoji-reaction {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 1px 6px;
+  font-size: 10px;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border-subtle);
+  cursor: pointer;
+  transition: background 0.1s, border-color 0.1s;
+}
+.emoji-reaction:hover { background: var(--surface-hover); }
+.emoji-reaction.active { border-color: var(--brand-gold); background: rgba(212,160,23,0.1); }
+
+/* 170. Dispatch call log */
+.dispatch-log {
+  font-family: 'Courier New', monospace;
+  font-size: 10px;
+  line-height: 1.4;
+  color: #aaaaaa;
+  padding: 4px 8px;
+}
+.dispatch-log .log-entry {
+  display: flex;
+  gap: 8px;
+  padding: 2px 0;
+}
+.dispatch-log .log-time {
+  color: #555555;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+.dispatch-log .log-action { color: var(--brand-gold); font-weight: 600; min-width: 60px; }
+.dispatch-log .log-detail { color: #888888; }
+
+/* ── GROUP 18: ACCESSIBILITY & UTILITY (171–180) ────────────────────────── */
+
+/* 171. Screen reader only */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0,0,0,0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* 172. Focus ring for keyboard navigation */
+.focus-ring-gold:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--surface-base), 0 0 0 4px var(--brand-gold);
+}
+
+/* 173. High contrast text */
+.text-high-contrast {
+  color: #ffffff !important;
+  text-shadow: 0 0 1px rgba(0,0,0,0.5);
+}
+
+/* 174. Print-only elements */
+.print-only { display: none; }
+@media print {
+  .print-only { display: block; }
+  .no-print { display: none !important; }
+}
+
+/* 175. Text selection (gold) */
+::selection {
+  background: rgba(212,160,23,0.25);
+  color: #ffffff;
+}
+
+/* 176. Reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* 177. Resize handle (horizontal) */
+.resize-handle-h {
+  position: absolute;
+  bottom: 0;
+  left: 0; right: 0;
+  height: 4px;
+  cursor: ns-resize;
+  z-index: 10;
+}
+.resize-handle-h:hover { background: var(--brand-gold); }
+
+/* 178. Resize handle (vertical) */
+.resize-handle-v {
+  position: absolute;
+  top: 0; bottom: 0;
+  right: 0;
+  width: 4px;
+  cursor: ew-resize;
+  z-index: 10;
+}
+.resize-handle-v:hover { background: var(--brand-gold); }
+
+/* 179. Truncated text with tooltip */
+.text-truncate-tooltip {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: default;
+}
+
+/* 180. Monospace number alignment */
+.number-align-right {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-family: 'Consolas', monospace;
+}
+
+/* ── GROUP 19: PRINT & EXPORT ENHANCEMENTS (181–190) ────────────────────── */
+
+/* 181. Print-friendly tables */
+@media print {
+  .print-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 9px;
+  }
+  .print-table th {
+    background: #e8e8e8 !important;
+    color: #111 !important;
+    font-weight: 700;
+    padding: 4px 6px;
+    border: 1px solid #999;
+  }
+  .print-table td {
+    padding: 3px 6px;
+    border: 1px solid #ddd;
+    color: #222 !important;
+  }
+}
+
+/* 182. Export progress bar */
+.export-progress {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border-default);
+  font-size: 10px;
+  color: #888888;
+}
+.export-progress .progress-bar {
+  flex: 1;
+  height: 4px;
+  background: var(--surface-sunken);
+}
+.export-progress .progress-fill {
+  height: 100%;
+  background: var(--brand-gold);
+  transition: width 0.3s;
+}
+
+/* 183. Download button with icon */
+.download-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--brand-gold);
+  background: transparent;
+  border: 1px solid var(--brand-gold);
+  cursor: pointer;
+  transition: all 0.1s;
+}
+.download-btn:hover {
+  background: rgba(212,160,23,0.1);
+}
+
+/* 184. File format badge */
+.file-format-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 5px;
+  font-size: 8px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #aaaaaa;
+  background: var(--surface-sunken);
+  border: 1px solid var(--border-default);
+}
+
+/* 185. Print watermark */
+.print-watermark {
+  display: none;
+}
+@media print {
+  .print-watermark {
+    display: block;
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) rotate(-30deg);
+    font-size: 60px;
+    font-weight: 900;
+    color: rgba(0,0,0,0.05);
+    pointer-events: none;
+    white-space: nowrap;
+    z-index: -1;
+  }
+}
+
+/* 186. Page break control */
+.page-break-before { break-before: page; }
+.page-break-after { break-after: page; }
+.page-break-inside-avoid { break-inside: avoid; }
+
+/* 187. Export format selector */
+.export-format-selector {
+  display: flex;
+  gap: 0;
+  border: 1px solid var(--border-default);
+}
+.export-format-option {
+  padding: 4px 12px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #888888;
+  background: transparent;
+  border: none;
+  border-right: 1px solid var(--border-subtle);
+  cursor: pointer;
+  transition: all 0.1s;
+}
+.export-format-option:last-child { border-right: none; }
+.export-format-option:hover { color: #cccccc; }
+.export-format-option.selected {
+  color: #ffffff;
+  background: rgba(212,160,23,0.12);
+}
+
+/* 188. Signature line (print) */
+@media print {
+  .signature-line {
+    border-bottom: 1px solid #000;
+    min-width: 200px;
+    display: inline-block;
+    margin-top: 24px;
+  }
+  .signature-label {
+    font-size: 8px;
+    color: #555;
+    margin-top: 2px;
+  }
+}
+
+/* 189. Report header (print) */
+@media print {
+  .report-print-header {
+    text-align: center;
+    border-bottom: 2px solid #333;
+    padding-bottom: 8px;
+    margin-bottom: 12px;
+  }
+  .report-print-header .agency-name {
+    font-size: 13px;
+    font-weight: 900;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+}
+
+/* 190. Export status indicator */
+.export-status-dot {
+  width: 8px; height: 8px;
+  flex-shrink: 0;
+}
+.export-status-dot.queued { background: #555555; }
+.export-status-dot.processing { background: #f59e0b; animation: led-blink 0.8s ease-in-out infinite; }
+.export-status-dot.completed { background: #22c55e; }
+.export-status-dot.failed { background: #ef4444; }
+
+/* ── GROUP 20: SYSTEM CHROME & DESKTOP (191–200) ────────────────────────── */
+
+/* 191. Window resize border zones */
+.window-resize-n { cursor: n-resize; }
+.window-resize-s { cursor: s-resize; }
+.window-resize-e { cursor: e-resize; }
+.window-resize-w { cursor: w-resize; }
+.window-resize-ne { cursor: ne-resize; }
+.window-resize-nw { cursor: nw-resize; }
+.window-resize-se { cursor: se-resize; }
+.window-resize-sw { cursor: sw-resize; }
+
+/* 192. Desktop shortcut icon */
+.desktop-shortcut {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px;
+  cursor: pointer;
+  width: 72px;
+  text-align: center;
+}
+.desktop-shortcut .shortcut-icon {
+  width: 36px; height: 36px;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--brand-gold);
+}
+.desktop-shortcut .shortcut-label {
+  font-size: 9px;
+  color: #888888;
+  line-height: 1.2;
+}
+.desktop-shortcut:hover .shortcut-label { color: #ffffff; }
+
+/* 193. System tray icon */
+.system-tray-icon {
+  width: 16px; height: 16px;
+  display: flex; align-items: center; justify-content: center;
+  color: #888888;
+  cursor: pointer;
+}
+.system-tray-icon:hover { color: #ffffff; }
+
+/* 194. Quick launch bar */
+.quick-launch-bar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 4px;
+  background: var(--surface-base);
+  border-right: 1px solid var(--border-default);
+}
+.quick-launch-icon {
+  width: 24px; height: 24px;
+  display: flex; align-items: center; justify-content: center;
+  color: #888888;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 0.1s;
+}
+.quick-launch-icon:hover { color: #ffffff; background: rgba(255,255,255,0.05); border-color: var(--border-subtle); }
+
+/* 195. Clock display */
+.clock-display {
+  font-family: 'Consolas', monospace;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: #888888;
+  padding: 0 8px;
+  border-left: 1px solid var(--border-default);
+}
+.clock-display .clock-blink {
+  animation: led-blink 1s step-end infinite;
+}
+
+/* 196. Desktop wallpaper grid */
+.desktop-grid-bg {
+  background-image:
+    linear-gradient(rgba(212,160,23,0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(212,160,23,0.03) 1px, transparent 1px);
+  background-size: 32px 32px;
+  background-position: center center;
+}
+
+/* 197. Window cascade offset */
+.window-cascade-offset-1 { margin-top: 20px; margin-left: 20px; }
+.window-cascade-offset-2 { margin-top: 40px; margin-left: 40px; }
+.window-cascade-offset-3 { margin-top: 60px; margin-left: 60px; }
+
+/* 198. Title bar button hover */
+.title-bar-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px; height: 20px;
+  background: transparent;
+  border: none;
+  color: #888888;
+  cursor: pointer;
+  transition: color 0.1s, background 0.1s;
+  font-size: 12px;
+}
+.title-bar-btn:hover { color: #ffffff; background: rgba(255,255,255,0.08); }
+.title-bar-btn.close:hover { background: #dc2626; color: #ffffff; }
+
+/* 199. Status indicator in title bar */
+.title-bar-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 9px;
+  color: #888888;
+  margin-left: 8px;
+}
+.title-bar-status .status-dot {
+  width: 5px; height: 5px;
+}
+.title-bar-status .status-dot.connected { background: #22c55e; }
+.title-bar-status .status-dot.disconnected { background: #ef4444; }
+
+/* 200. Global notification bar */
+.global-notification-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 4px 12px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  text-align: center;
+}
+.global-notification-bar.info {
+  background: rgba(136,136,136,0.1);
+  border-bottom: 1px solid rgba(136,136,136,0.2);
+  color: #aaaaaa;
+}
+.global-notification-bar.warning {
+  background: rgba(245,158,11,0.1);
+  border-bottom: 1px solid rgba(245,158,11,0.25);
+  color: #fcd34d;
+}
+.global-notification-bar.critical {
+  background: rgba(239,68,68,0.1);
+  border-bottom: 1px solid rgba(239,68,68,0.3);
+  color: #fca5a5;
+  animation: emergency-blink 1.5s ease-in-out infinite;
+}
