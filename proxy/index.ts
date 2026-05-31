@@ -746,6 +746,28 @@ const API_ROUTES: RouteRule[] = [
   // env.API the same way it 404s from legacy today.
   { kind: 'prefix', value: '/api/warrants/scrapers' },
 
+  // ── Warrant CRUD — ported from legacy to src/routes/warrants.ts ──
+  // GET /api/warrants                — list with filters + pagination
+  // POST /api/warrants               — create (auto-generates WRN-YYYY-NNNNN)
+  // GET/PUT/DELETE /api/warrants/:id — detail/update/delete
+  // PUT /api/warrants/:id/serve      — mark served
+  // POST /api/warrants/:id/archive   — soft delete
+  // POST /api/warrants/:id/unarchive — restore
+  // POST /api/warrants/ingest-utah   — bulk Utah API import
+  // These were all 404 / on env.LEGACY before. Routing them to env.API
+  // closes the strangler-fig seam for the manual-entry write path
+  // (the proximate cause of "N/A walls" — see PR #808 / migration 0046).
+  // NOTE: unported sibling endpoints (/dashboard/*, /expiring, /export,
+  // /summary-report, /check/:id, /batch-update, /bulk-archive, /bulk-review,
+  // /person-intel, /utah-search) are deliberately NOT matched here — they
+  // continue to fall through to env.LEGACY until their own ports land.
+  { kind: 'regex', value: /^\/api\/warrants\/ingest-utah$/, methods: ['POST'] },
+  { kind: 'regex', value: /^\/api\/warrants\/\d+\/serve$/, methods: ['PUT'] },
+  { kind: 'regex', value: /^\/api\/warrants\/\d+\/archive$/, methods: ['POST'] },
+  { kind: 'regex', value: /^\/api\/warrants\/\d+\/unarchive$/, methods: ['POST'] },
+  { kind: 'regex', value: /^\/api\/warrants\/\d+$/, methods: ['GET', 'PUT', 'DELETE'] },
+  { kind: 'regex', value: /^\/api\/warrants\/?$/, methods: ['GET', 'POST'] },
+
   // ── TTS + PDF signing (rewrite ports of legacy/server-vps endpoints) ──
   // /api/tts now synthesizes real audio via Workers AI (@cf/myshell-ai/melotts,
   // src/routes/tts.ts) and returns audio/mpeg the client decodes directly; on
