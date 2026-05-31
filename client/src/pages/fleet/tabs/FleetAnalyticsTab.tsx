@@ -1121,6 +1121,14 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                 Critical: 'text-red-400 bg-red-900/20 border-red-800/40',
               };
               const factorLabels = ['age', 'mileage', 'service', 'inspection', 'cost'] as const;
+              // Defensive: never crash the whole Analytics tab if a health-score
+              // row arrives without a `factors` object (e.g. a leaner handler
+              // response or a partial/stale payload). Fall back to the overall
+              // score for every bar so the card still renders.
+              const factors = v.factors ?? {
+                age: v.health_score, mileage: v.health_score, service: v.health_score,
+                inspection: v.health_score, cost: v.health_score,
+              };
               return (
                 <div key={v.vehicle_id} className="bg-[#0c0c0c] border border-[#2b2b2b] rounded-[2px] p-2.5">
                   <div className="flex items-start justify-between mb-2">
@@ -1147,13 +1155,13 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                   </div>
                   <div className="flex gap-0.5 mb-1.5">
                     {factorLabels.map((f) => (
-                      <div key={f} className="flex-1" title={`${f}: ${v.factors[f]}`}>
+                      <div key={f} className="flex-1" title={`${f}: ${factors[f]}`}>
                         <div className="h-1 bg-[#2b2b2b] rounded-full overflow-hidden">
                           <div
                             className="h-full rounded-full transition-all duration-150"
                             style={{
-                              width: `${v.factors[f]}%`,
-                              backgroundColor: v.factors[f] >= 80 ? '#22c55e' : v.factors[f] >= 40 ? '#f59e0b' : '#ef4444',
+                              width: `${factors[f]}%`,
+                              backgroundColor: factors[f] >= 80 ? '#22c55e' : factors[f] >= 40 ? '#f59e0b' : '#ef4444',
                             }}
                           />
                         </div>
