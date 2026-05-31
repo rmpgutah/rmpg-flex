@@ -6,7 +6,8 @@ import {
   FileWarning, ShieldBan, Construction, Gavel, UserX, Users, Car, Video,
   MessageSquare, QrCode, BarChart3, Calendar, TrendingUp, ClipboardCheck,
   Settings, ScrollText, Network, ChevronLeft, ChevronRight, Camera, Mail,
-  Upload,
+  Upload, Building2, ShieldAlert, Megaphone, GraduationCap, CheckCircle,
+  DollarSign, Shield, Share2,
 } from 'lucide-react';
 
 // ─── Sidebar Navigation Structure ──────────────────────────────
@@ -107,6 +108,23 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
     items: [
       { path: '/audit', icon: ScrollText, label: 'Audit Log', adminOnly: true },
       { path: '/admin', icon: Settings, label: 'Admin', adminOnly: true },
+    ],
+  },
+  {
+    id: 'support',
+    label: 'Support Services',
+    items: [
+      { path: '/jail', icon: Building2, label: 'Jail Management' },
+      { path: '/affairs', icon: ShieldAlert, label: 'Internal Affairs' },
+      { path: '/assets', icon: Package, label: 'Asset Management' },
+      { path: '/community', icon: Users, label: 'Community' },
+      { path: '/tasks', icon: ClipboardList, label: 'Tasks' },
+      { path: '/alerts', icon: Megaphone, label: 'Notifications' },
+      { path: '/training-mgmt', icon: GraduationCap, label: 'Training' },
+      { path: '/qa', icon: CheckCircle, label: 'QA' },
+      { path: '/billing', icon: DollarSign, label: 'Billing' },
+      { path: '/risk', icon: Shield, label: 'Risk Mgmt' },
+      { path: '/interagency', icon: Share2, label: 'Interagency' },
     ],
   },
 ];

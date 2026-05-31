@@ -99,6 +99,17 @@ const NationalWarrantSearchPage = lazyRetry(() => import('./pages/NationalWarran
 const SettingsPage = lazyRetry(() => import('./pages/SettingsPage'));
 const DashcamPage = lazyRetry(() => import('./pages/DashcamPage'));
 const RadioPage = lazyRetry(() => import('./pages/radio'));
+const JailPage = lazyRetry(() => import('./pages/JailPage'));
+const AffairsPage = lazyRetry(() => import('./pages/AffairsPage'));
+const AssetsPage = lazyRetry(() => import('./pages/AssetsPage'));
+const CommunityPage = lazyRetry(() => import('./pages/CommunityPage'));
+const TasksPage = lazyRetry(() => import('./pages/TasksPage'));
+const AlertsPage = lazyRetry(() => import('./pages/AlertsPage'));
+const TrainingManagementPage = lazyRetry(() => import('./pages/TrainingManagementPage'));
+const QAPage = lazyRetry(() => import('./pages/QAPage'));
+const BillingPage = lazyRetry(() => import('./pages/BillingPage'));
+const RiskPage = lazyRetry(() => import('./pages/RiskPage'));
+const InteragencyPage = lazyRetry(() => import('./pages/InteragencyPage'));
 const IncidentDetailWindow = lazyRetry(() => import('./pages/detached/IncidentDetailWindow'));
 const RecordDetailWindow = lazyRetry(() => import('./pages/detached/RecordDetailWindow'));
 
@@ -377,6 +388,17 @@ function AppRoutes() {
             <Route path="/iped" element={<RouteErrorBoundary><IpedPage /></RouteErrorBoundary>} />
             <Route path="/national-warrant-search" element={<RouteErrorBoundary><NationalWarrantSearchPage /></RouteErrorBoundary>} />
             <Route path="/settings" element={<RouteErrorBoundary><SettingsPage /></RouteErrorBoundary>} />
+            <Route path="/jail" element={<RouteErrorBoundary><JailPage /></RouteErrorBoundary>} />
+            <Route path="/affairs" element={<RouteErrorBoundary><AffairsPage /></RouteErrorBoundary>} />
+            <Route path="/assets" element={<RouteErrorBoundary><AssetsPage /></RouteErrorBoundary>} />
+            <Route path="/community" element={<RouteErrorBoundary><CommunityPage /></RouteErrorBoundary>} />
+            <Route path="/tasks" element={<RouteErrorBoundary><TasksPage /></RouteErrorBoundary>} />
+            <Route path="/alerts" element={<RouteErrorBoundary><AlertsPage /></RouteErrorBoundary>} />
+            <Route path="/training-mgmt" element={<RouteErrorBoundary><TrainingManagementPage /></RouteErrorBoundary>} />
+            <Route path="/qa" element={<RouteErrorBoundary><QAPage /></RouteErrorBoundary>} />
+            <Route path="/billing" element={<RouteErrorBoundary><BillingPage /></RouteErrorBoundary>} />
+            <Route path="/risk" element={<RouteErrorBoundary><RiskPage /></RouteErrorBoundary>} />
+            <Route path="/interagency" element={<RouteErrorBoundary><InteragencyPage /></RouteErrorBoundary>} />
             {/* 404 within layout */}
             <Route path="*" element={<NotFoundPage />} />
           </Route>
