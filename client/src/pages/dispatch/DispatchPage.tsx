@@ -28,7 +28,7 @@ import { apiFetch } from '../../hooks/useApi';
 import { useLiveSync } from '../../hooks/useLiveSync';
 import { usePersistedTab } from '../../hooks/usePersistedState';
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
-import { formatIncidentType, INCIDENT_TYPE_CATEGORIES } from '../../utils/caseNumbers';
+import { formatIncidentType, INCIDENT_TYPE_CATEGORIES, type IncidentType } from '../../utils/caseNumbers';
 import { formatPhoneInput } from '../../utils/formatters';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import RmpgLogo from '../../components/RmpgLogo';
@@ -83,7 +83,6 @@ import VehicleFormModal, { type VehicleFormData } from '../../components/Vehicle
 import AIDispatchSidebar from '../../components/dispatch/AIDispatchSidebar';
 import DispatchCodeQuickPanel from '../../components/dispatch/DispatchCodeQuickPanel';
 import { useDispatchCodes } from '../../hooks/useDispatchCodes';
-import type { DispatchCode } from '../../hooks/useDispatchCodes';
 import NarrativeAssist from '../../components/dispatch/NarrativeAssist';
 import FileAttachments from '../../components/FileAttachments';
 import { safeDateTimeStr, parseTimestamp, toDatetimeLocalValue, mtDatetimeLocalToUtc } from '../../utils/dateUtils';
@@ -385,7 +384,7 @@ export default function DispatchPage() {
         method: 'PUT',
         body: JSON.stringify({ incident_type: code }),
       });
-      const updated: CallForService = { ...selectedCall!, incident_type: code };
+      const updated: CallForService = { ...selectedCall!, incident_type: (code as unknown) as IncidentType };
       setSelectedCall(updated);
       setCalls(prev => prev.map(c => c.id === selectedCall.id ? updated : c));
       addToast(`Code ${code} applied`, 'success');
