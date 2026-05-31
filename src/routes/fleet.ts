@@ -885,9 +885,22 @@ fleet.post('/:id/personnel-notes', async (c) => {
     if (!Number.isInteger(vehicleId) || vehicleId <= 0) return c.json({ error: 'Invalid vehicle id' }, 400);
     const db = getDb(c.env);
     const body = await c.req.json<Record<string, unknown>>();
-    if (!body.content) return c.json({ error: 'content required' }, 400);
-    const userId = (c.get('user') as { id: number } | undefined)?.id;
-    const result = await execute(db, 'INSERT INTO fleet_personnel_notes (vehicle_id, user_id, content) VALUES (?,?,?)', vehicleId, userId ?? null, body.content);
+    // Client may send `content` (rewrite shape) or `note` (legacy shape).
+    const text = (body.content ?? body.note) as string | undefined;
+    if (!text) return c.json({ error: 'note content required' }, 400);
+    const user = c.get('user') as { id: number; full_name?: string } | undefined;
+    const userId = user?.id;
+    // Live fleet_personnel_notes has NOT NULL on note + created_by (legacy
+    // schema) AND nullable content/user_id (rewrite cols). Write all of them
+    // so the INSERT satisfies every constraint regardless of which shape the
+    // reader expects. created_by falls back to officer_id then 0 (system).
+    const createdBy = userId ?? (body.officer_id as number | undefined) ?? 0;
+    const officerName = (body.officer_name as string | undefined) ?? user?.full_name ?? null;
+    const result = await execute(
+      db,
+      'INSERT INTO fleet_personnel_notes (vehicle_id, user_id, content, note, created_by, created_by_name, officer_id, officer_name) VALUES (?,?,?,?,?,?,?,?)',
+      vehicleId, userId ?? null, text, text, createdBy, officerName, (body.officer_id as number | undefined) ?? null, officerName,
+    );
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_personnel_notes WHERE id = ?', result.meta.last_row_id);
     return c.json(created, 201);
   } catch (err) { console.error('POST /fleet/:id/personnel-notes failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }

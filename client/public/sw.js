@@ -127,7 +127,7 @@
 //       + coerce inputs in its lookup helpers, so number/string mismatches stop
 //       causing crashes (map #807, dispatch panel). Retires that class of bug at
 //       the shared chokepoint instead of per-call-site.
-const CACHE_NAME = 'rmpg-flex-v652';
+const CACHE_NAME = 'rmpg-flex-v653';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
