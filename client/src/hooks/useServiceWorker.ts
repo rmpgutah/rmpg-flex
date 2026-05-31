@@ -35,6 +35,7 @@ export function useServiceWorker() {
 
     let checkInterval: ReturnType<typeof setInterval> | undefined;
     let unmounted = false;
+    let visibilityCheck: (() => void) | undefined;
 
     const handleControllerChange = () => {
       // The SW controller changed — a new version activated
@@ -78,6 +79,22 @@ export function useServiceWorker() {
           }, UPDATE_CHECK_INTERVAL);
         }
 
+        // Also check the moment the tab regains focus / visibility. The 15-min
+        // poll alone meant a freshly-deployed change could stay invisible for up
+        // to 15 minutes on an already-open console; an operator switching back to
+        // the tab now picks up the new bundle right away (debounced to avoid a
+        // burst of update() calls when focus + visibility fire together).
+        let lastVisibleCheck = 0;
+        visibilityCheck = () => {
+          if (document.visibilityState !== 'visible') return;
+          const now = Date.now();
+          if (now - lastVisibleCheck < 10_000) return; // debounce
+          lastVisibleCheck = now;
+          reg.update().catch(() => { /* offline / transient — interval retries */ });
+        };
+        document.addEventListener('visibilitychange', visibilityCheck);
+        window.addEventListener('focus', visibilityCheck);
+
       } catch (err) {
         console.warn('[useServiceWorker] Registration failed:', err);
       }
@@ -119,6 +136,10 @@ export function useServiceWorker() {
     return () => {
       unmounted = true;
       if (checkInterval) clearInterval(checkInterval);
+      if (visibilityCheck) {
+        document.removeEventListener('visibilitychange', visibilityCheck);
+        window.removeEventListener('focus', visibilityCheck);
+      }
       navigator.serviceWorker.removeEventListener('message', handleMessage);
       navigator.serviceWorker.removeEventListener('controllerchange', handleControllerChange);
     };
