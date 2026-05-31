@@ -50,7 +50,7 @@ export const COLOR = {
   BG_ZEBRA:        [243, 243, 243]  as const,  // Even-row table shading
   BG_SECTION_HDR: [0, 0, 0]       as const,  // Section header fill — solid black (Spillman convention, 2026-05-30)
   BG_TABLE_HDR:    [0, 0, 0]       as const,  // Table column header — solid black band (Spillman convention, 2026-05-30)
-  BG_SECTION_TINT: [249, 249, 249]  as const,  // Field-body tint (kept near-white for readability)
+  BG_SECTION_TINT: [255, 255, 255]  as const,  // Pure white — no background tint (removed 2026-05-30)
   BG_TABLE_HDR_LIGHT: [224, 224, 224] as const, // Nested table header (light gray)
   TEXT_TABLE_HDR_LIGHT: [54, 54, 54]  as const,  // Dark gray text on light hdr
 
@@ -61,7 +61,7 @@ export const COLOR = {
   // quick-reference banner left rule, district bar accent, notes entry
   // left rule, horizontal section dividers) automatically becomes
   // grayscale via this single point of change.
-  ACCENT_GOLD:     [60, 60, 60]     as const,  // dark charcoal accent
+  ACCENT_GOLD:     [0, 0, 0]       as const,  // Pure black accent (Spillman convention, 2026-05-30)
 
   // Financial — neutralized 2026-05-30: credit green and debit red converted to
   // neutral grays so financial indicators carry zero color splash. Distinct

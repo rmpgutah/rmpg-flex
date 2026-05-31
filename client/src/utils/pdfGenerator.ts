@@ -704,9 +704,7 @@ export function openAutoSection(doc: jsPDF, title: string, y: number): { content
   // Keep the header and its first content row on the same page. Reserve
   // the header bar + content pad + one field row (~14mm) so a section
   // opened near the page bottom moves WHOLE to the next page rather than
-  // stranding an orphan header (and, because record rows reuse one `y`
-  // across 3–4 side-by-side fields, cascading each field onto its own
-  // near-blank page — the PS-202 bug fixed 2026-05-30).
+  // stranding an orphan header.
   const FIRST_ROW_RESERVE = SPACING.SECTION_HEADER_H + SPACING.SECTION_CONTENT_PAD + 14;
   y = checkPageBreak(doc, y, FIRST_ROW_RESERVE);
 
@@ -714,26 +712,26 @@ export function openAutoSection(doc: jsPDF, title: string, y: number): { content
   // @ts-expect-error jsPDF GState
   doc.setGState(new doc.GState({ opacity: 1.0 }));
 
-  // Spillman Flex / LexisNexis convention (2026-05-30):
-  // Plain bold UPPERCASE section title at left, thin rule across full
-  // content width directly below. No fill bar, no left accent strip.
-  // Matches the look of real PD forms from Motorola Solutions / Spillman.
+  // Spillman Flex / LexisNexis convention:
+  // Solid black header band across the full content width, white UPPERCASE
+  // bold text. No accent strip, no tint — pure black-and-white police form.
   const sectionY = y;
   const sectionPage = doc.getNumberOfPages();
+  const barH = SPACING.SECTION_HEADER_H;
+
+  doc.setFillColor(0, 0, 0);
+  doc.rect(LAYOUT.PAGE_MARGIN, y, cw, barH, 'F');
+
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_SECTION_TITLE);
-  doc.setTextColor(...COLOR.TEXT_PRIMARY);
-  const textY = y + FONT.SIZE_SECTION_TITLE * 0.36;
+  doc.setTextColor(255, 255, 255);
+  const capH = FONT.SIZE_SECTION_TITLE * 0.35;
+  const textY = y + (barH + capH) / 2;
   doc.text(sanitizePdfText(title.toUpperCase()), LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, textY);
 
-  // Thin rule spanning the full content width below the section title
-  const ruleY = textY + 1.5;
-  doc.setDrawColor(...COLOR.TEXT_PRIMARY);
-  doc.setLineWidth(0.4);
-  doc.line(LAYOUT.PAGE_MARGIN, ruleY, LAYOUT.PAGE_MARGIN + cw, ruleY);
-
-  // Content starts after the header text + rule + gap
-  return { contentY: ruleY + SPACING.SECTION_CONTENT_PAD, sectionY, sectionPage };
+  // Reset text to black for content
+  doc.setTextColor(...COLOR.TEXT_PRIMARY);
+  return { contentY: y + barH + SPACING.SECTION_CONTENT_PAD, sectionY, sectionPage };
 }
 
 /**
@@ -1824,33 +1822,20 @@ export function addNarrativeSection(
   }
   const estimatedH = totalLines * lineH + Math.max(0, paraCount - 1) * paragraphGap + SPACING.SM + 2;
 
-  // Draw background tint sized to actual content (subtle light gray) — first page only
-  const cw = getContentWidth(doc);
-  const pageH = doc.internal.pageSize.getHeight();
-  const maxTintH = Math.min(estimatedH, pageH - y - LAYOUT.FOOTER_HEIGHT - 4);
-  doc.setFillColor(...COLOR.BG_SECTION_TINT);
-  doc.rect(LAYOUT.PAGE_MARGIN, y - 1, cw, maxTintH, 'F');
-
-  // Page break callback: draw section continuation sub-header + fresh tint
+  // Page break callback: draw section continuation sub-header
   const contTitle = title.toUpperCase() + ' -- CONTINUED';
   const narrativePageBreak = (newY: number): number => {
-    // Draw section continuation sub-header — Spillman style: plain bold UPPERCASE + thin rule
+    // Draw section continuation sub-header — Spillman black band + white text
     const cw = getContentWidth(doc);
+    doc.setFillColor(0, 0, 0);
+    doc.rect(LAYOUT.PAGE_MARGIN, newY, cw, SPACING.SECTION_HEADER_H, 'F');
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(FONT.SIZE_SECTION_TITLE);
-    doc.setTextColor(...COLOR.TEXT_PRIMARY);
-    const ht = FONT.SIZE_SECTION_TITLE * 0.36;
-    doc.text(contTitle, LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, newY + ht);
-    const ruleY2 = newY + ht + 1.5;
-    doc.setDrawColor(...COLOR.TEXT_PRIMARY);
-    doc.setLineWidth(0.4);
-    doc.line(LAYOUT.PAGE_MARGIN, ruleY2, LAYOUT.PAGE_MARGIN + cw, ruleY2);
-    const contentStartY = ruleY2 + SPACING.SECTION_CONTENT_PAD + 2;
-    // Draw fresh background tint for remaining text on this page
-    const cw2 = getContentWidth(doc);
-    const remainH = pageH - contentStartY - LAYOUT.FOOTER_HEIGHT - 4;
-    doc.setFillColor(...COLOR.BG_SECTION_TINT);
-    doc.rect(LAYOUT.PAGE_MARGIN, contentStartY - 1, cw2, remainH, 'F');
+    doc.setTextColor(255, 255, 255);
+    const secCapH = FONT.SIZE_SECTION_TITLE * 0.35;
+    const textYpos = newY + (SPACING.SECTION_HEADER_H + secCapH) / 2;
+    doc.text(contTitle, LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, textYpos);
+    const contentStartY = newY + SPACING.SECTION_HEADER_H + SPACING.SECTION_CONTENT_PAD + 2;
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
     doc.setFont(PDF_VALUE_FONT, 'normal');
     doc.setFontSize(fontSize);
@@ -2053,45 +2038,21 @@ export function checkPageBreak(doc: jsPDF, y: number, needed: number, priority?:
     // Continuation header sits 1mm above HEADER_TOP in office mode.
     // Mobile mode pushes it past the PJ-700 6mm leading-edge dead zone.
     const contY = 4 + (((doc as any).__printTarget === 'mobile') ? LAYOUT.MOBILE_PRINTER_TOP_OFFSET : 0);
-    const contH = SPACING.SECTION_HEADER_H; // Compact continuation header
-    // Style flips with the active section style — light mode (Person PDF
-    // 2026-05-04) renders gold accent + cream tint + dark text so it
-    // matches the page-1 company header. Dark mode keeps the legacy
-    // charcoal continuation bar.
-    const contIsLight = activeSectionStyle === 'light';
-    const contAccentW = BORDER.ACCENT_SECTION;
-    if (contIsLight) {
-      doc.setFillColor(COLOR.ACCENT_GOLD[0], COLOR.ACCENT_GOLD[1], COLOR.ACCENT_GOLD[2]);
-      doc.rect(LAYOUT.PAGE_MARGIN, contY, contAccentW, contH, 'F');
-      doc.setFillColor(...COLOR.BG_SECTION_TINT);
-      doc.rect(LAYOUT.PAGE_MARGIN + contAccentW, contY, cw - contAccentW, contH, 'F');
-      doc.setDrawColor(...COLOR.BORDER_SECTION);
-      doc.setLineWidth(BORDER.SECTION_OUTER);
-      doc.rect(LAYOUT.PAGE_MARGIN + contAccentW, contY, cw - contAccentW, contH);
-    } else {
-      doc.setFillColor(...COLOR.BG_SECTION_HDR);
-      doc.rect(LAYOUT.PAGE_MARGIN, contY, cw, contH, 'F');
-      // Bottom border for definition
-      doc.setDrawColor(...COLOR.BORDER_SECTION);
-      doc.setLineWidth(BORDER.SECTION_OUTER);
-      doc.line(LAYOUT.PAGE_MARGIN, contY + contH, LAYOUT.PAGE_MARGIN + cw, contY + contH);
-    }
+    const contH = SPACING.SECTION_HEADER_H;
 
-    // Text vertically centered in continuation header
-    const contCapH = FONT.SIZE_FIELD_LABEL * 0.35;
+    // Spillman black-band continuation header — solid black bar, white text
+    doc.setFillColor(0, 0, 0);
+    doc.rect(LAYOUT.PAGE_MARGIN, contY, cw, contH, 'F');
+
+    // Text centered in the black bar
+    const contCapH = FONT.SIZE_SECTION_TITLE * 0.35;
     const contTextY = contY + (contH + contCapH) / 2;
-    // Mutable tuple so it can be spread into setTextColor (see same
-    // pattern in pdfFormHelpers.ts drawNibrsHeader).
-    const contTextColor: [number, number, number] = contIsLight
-      ? [COLOR.TEXT_PRIMARY[0], COLOR.TEXT_PRIMARY[1], COLOR.TEXT_PRIMARY[2]]
-      : [COLOR.TEXT_INVERTED[0], COLOR.TEXT_INVERTED[1], COLOR.TEXT_INVERTED[2]];
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(FONT.SIZE_FIELD_LABEL);
-    doc.setTextColor(...contTextColor);
-    const contInset = (contIsLight ? contAccentW : 0) + SPACING.CONTENT_INSET + 1;
-    doc.text(sanitizePdfText(`${activeBranding.report_header_text} -- CONTINUED`), LAYOUT.PAGE_MARGIN + contInset, contTextY);
+    doc.setFontSize(FONT.SIZE_SECTION_TITLE);
+    doc.setTextColor(255, 255, 255);
+    doc.text(sanitizePdfText(`${activeBranding.report_header_text} -- CONTINUED`), LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, contTextY);
 
-    // Form number + case number on right (also vertically centered)
+    // Form number + case number on right
     const rightParts: string[] = [];
     const formNum = FORM_NUMBERS[activeFormKey] || '';
     if (formNum) rightParts.push(formNum);
@@ -2102,14 +2063,8 @@ export function checkPageBreak(doc: jsPDF, y: number, needed: number, priority?:
 
     doc.setFont(PDF_VALUE_FONT, 'normal');
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
-    doc.setDrawColor(...COLOR.TEXT_PRIMARY);
 
-    // Content starts below continuation header. The extra 2.5mm past
-    // SECTION_GAP accounts for text baseline offset — jsPDF draws text with
-    // the BASELINE at the given Y, so without this buffer the first line's
-    // ascenders overlap the header bar's bottom edge (caught on FORM PS-201
-    // page 3, where 6pt timestamp rows sat right under the continuation
-    // bar). Any first-line baseline fits cleanly inside this gap.
+    // Content starts below continuation header.
     return contY + contH + SPACING.SECTION_GAP + 2.5;
   }
   return y;

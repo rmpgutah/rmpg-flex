@@ -1726,14 +1726,13 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
 
   y = drawDistrictBar(doc, y, data as any);
 
-  // Classification
-  // Section/Zone/Beat is intentionally omitted — the district bar at
-  // the top of page 1 already shows it (and Incident Location was also
-  // displaying it, producing a visible triple-render of the same data).
-  // Case Number is normalized: legacy free-text values like "Not Field"
-  // / "Not Filed" / "N/A" are coerced to empty so the field falls back
-  // to the standard placeholder rendering rather than surfacing typos.
+  // Classification — includes Section / Zone / Beat / Code per Spillman convention
+  // The district bar above gives a compact at-a-glance display; these labeled fields
+  // provide the detailed audit-ready record.
   { const sec = openAutoSection(doc, 'Classification', y); y = sec.contentY;
+    const zone = zoneLeaf(data.zone_id) || data.zone_name || '';
+    const beat = beatLeaf(data.beat_id) || data.beat_name || '';
+    const combined = sectionZoneBeatCombined(data.sector_id, data.zone_id, data.beat_id) || data.zone_beat || '';
     y = addThreeColumnFields(doc, [
       { label: 'Call Number', value: data.call_number },
       { label: 'Incident Type', value: formatEnumValue(data.incident_type) },
@@ -1741,6 +1740,10 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       { label: 'Status', value: displayStatus(data.status || '') },
       { label: 'Source', value: formatEnumValue(data.source) },
       { label: 'Disposition', value: formatEnumValue(data.disposition) },
+      { label: 'Section', value: data.sector_name || data.sector_id || '' },
+      { label: 'Zone', value: zone },
+      { label: 'Beat', value: beat },
+      { label: 'Dispatch Code', value: data.dispatch_code || '' },
       { label: 'Case Number', value: normalizeCaseNumber(data.case_number) },
       { label: 'Incident Number', value: data.incident_number || '' },
     ], y);
