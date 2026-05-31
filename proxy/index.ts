@@ -795,6 +795,16 @@ const API_ROUTES: RouteRule[] = [
   { kind: 'prefix', value: '/api/admin/departments' },
   { kind: 'prefix', value: '/api/admin/notification-rules' },
   { kind: 'prefix', value: '/api/admin/announcements' },
+  // Console Settings — real handler lives in src/routes/adminSettings.ts
+  // (mounted at /api/admin/settings in routesConfig.ts) backed by the
+  // system_settings table on live D1 (428 rows, rich schema). Legacy never
+  // had this surface, so without this rule requests fall through to
+  // env.LEGACY and 500, producing the "Failed to load settings" screen on
+  // AdminSettingsTab. This route already exists in the DEPLOYED proxy but
+  // was missing from this repo file — committing it here prevents the next
+  // deploy-from-main from reverting the deployed fix. Covers /settings,
+  // /settings/values, /settings/reset, and /settings/:key.
+  { kind: 'prefix', value: '/api/admin/settings' },
   // AdminHealthTab observability — currently stubs in the new
   // Worker (src/routes/admin.ts). Listed individually rather than
   // a broad /api/admin prefix because most /api/admin/* still
