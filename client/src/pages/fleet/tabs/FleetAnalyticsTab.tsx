@@ -507,7 +507,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                         {v.cost_per_mile != null ? `$${v.cost_per_mile.toFixed(2)}` : '--'}
                       </td>
                       <td className="py-1 text-right font-mono tabular-nums text-gray-400">
-                        ${v.total_cost >= 1000 ? `${(v.total_cost / 1000).toFixed(1)}k` : v.total_cost.toFixed(0)}
+                        ${v.total_cost >= 1000 ? `${(v.total_cost / 1000).toFixed(1)}k` : (v.total_cost ?? 0).toFixed(0)}
                       </td>
                     </tr>
                   ))}
@@ -1018,7 +1018,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                         const best = getBestValue('total_cost', true);
                         return (
                           <td key={v.id} className={`py-1.5 px-2 text-right font-mono tabular-nums ${v.total_cost === best ? 'text-green-400 font-bold' : 'text-rmpg-300'}`}>
-                            ${v.total_cost >= 1000 ? `${(v.total_cost / 1000).toFixed(1)}k` : v.total_cost.toFixed(0)}
+                            ${v.total_cost >= 1000 ? `${(v.total_cost / 1000).toFixed(1)}k` : (v.total_cost ?? 0).toFixed(0)}
                           </td>
                         );
                       })}
