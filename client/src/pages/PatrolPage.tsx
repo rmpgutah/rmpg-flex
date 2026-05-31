@@ -658,9 +658,9 @@ const PatrolPage: React.FC = () => {
           <span className="text-[9px] font-bold uppercase tracking-wider text-[#d4a017]">PATROL MANAGEMENT</span>
           <div className="flex gap-1 ml-auto">
             {activeTab === 'checkpoints' && (
-              <button type="button" onClick={handleCreateCheckpoint} className="btn-gold btn-xs"><Plus className="w-3 h-3" /></button>
+              <button type="button" onClick={handleCreateCheckpoint} className="btn-gold btn-xs" aria-label="Create checkpoint"><Plus className="w-3 h-3" /></button>
             )}
-            <button type="button" onClick={loadCompliance} className="btn-secondary btn-xs"><RefreshCw className="w-3 h-3" /></button>
+            <button type="button" onClick={loadCompliance} className="btn-secondary btn-xs" aria-label="Refresh compliance"><RefreshCw className="w-3 h-3" /></button>
           </div>
         </div>
       ) : (

@@ -4,6 +4,7 @@
 import { useEffect, useState } from 'react';
 import { apiFetch } from '../../hooks/useApi';
 import { asArray } from '../../utils/asArray';
+import { useToast } from '../../components/ToastProvider';
 
 import RichTextArea from '../../components/RichTextArea';
 interface Rule {
@@ -16,6 +17,7 @@ interface Rule {
 }
 
 export default function AdminEmailRulesTab() {
+  const { addToast } = useToast();
   const [rules, setRules] = useState<Rule[]>([]);
   const [editing, setEditing] = useState<Partial<Rule> | null>(null);
   const [testResult, setTestResult] = useState<string | null>(null);
@@ -36,7 +38,7 @@ export default function AdminEmailRulesTab() {
       parsedConditions = JSON.parse(editing.conditions_json || '{}');
       parsedActions = JSON.parse(editing.actions_json || '[]');
     } catch {
-      alert('Conditions and actions must be valid JSON.');
+      addToast('Conditions and actions must be valid JSON.', 'error');
       return;
     }
     const payload = {
@@ -62,7 +64,7 @@ export default function AdminEmailRulesTab() {
       setTestResult(null);
       load();
     } catch (err: any) {
-      alert(`Save failed: ${err.message || err}`);
+      addToast(`Save failed: ${err.message || err}`, 'error');
     }
   }
 
@@ -72,7 +74,7 @@ export default function AdminEmailRulesTab() {
       await apiFetch(`/api/email/rules/${id}`, { method: 'DELETE' });
       load();
     } catch (err: any) {
-      alert(`Delete failed: ${err.message || err}`);
+      addToast(`Delete failed: ${err.message || err}`, 'error');
     }
   }
 
@@ -82,7 +84,7 @@ export default function AdminEmailRulesTab() {
     try {
       parsedConditions = JSON.parse(editing.conditions_json || '{}');
     } catch {
-      alert('Conditions must be valid JSON.');
+      addToast('Conditions must be valid JSON.', 'error');
       return;
     }
     try {

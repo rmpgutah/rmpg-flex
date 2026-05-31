@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
+import { useToast } from '../../components/ToastProvider';
 
 import RichTextArea from '../../components/RichTextArea';
 type Call = {
@@ -42,6 +43,7 @@ function clearAuth(callId: number): void {
 }
 
 export default function MobilePsoCfsPage() {
+  const { addToast } = useToast();
   const { id } = useParams<{ id: string }>();
   const [searchParams] = useSearchParams();
   const callId = useMemo(() => parseInt(String(id || '0'), 10), [id]);
@@ -135,7 +137,7 @@ export default function MobilePsoCfsPage() {
       const data = await r.json();
       setCall(data.call);
     } catch (err: any) {
-      alert(`Status update failed: ${err.message || err}`);
+      addToast(`Status update failed: ${err.message || err}`, 'error');
     } finally {
       setStatusBusy(false);
     }
@@ -155,7 +157,7 @@ export default function MobilePsoCfsPage() {
       setNarrativeSaved(true);
       setTimeout(() => setNarrativeSaved(false), 2500);
     } catch (err: any) {
-      alert(`Narrative save failed: ${err.message || err}`);
+      addToast(`Narrative save failed: ${err.message || err}`, 'error');
     } finally {
       setBusy(false);
     }
@@ -192,7 +194,7 @@ export default function MobilePsoCfsPage() {
       setPsoSaved(true);
       setTimeout(() => setPsoSaved(false), 2500);
     } catch (err: any) {
-      alert(`PSO save failed: ${err.message || err}`);
+      addToast(`PSO save failed: ${err.message || err}`, 'error');
     } finally {
       setBusy(false);
     }

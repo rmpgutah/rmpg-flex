@@ -214,7 +214,7 @@ export default function GeographyPage() {
           });
         } else if (tier === 'sector') {
           if (state.selectedAreaId == null) {
-            alert('Select an Area first');
+            addToast('Select an Area first', 'error');
             return;
           }
           await apiFetch('/dispatch/geography/sectors', {
@@ -227,7 +227,7 @@ export default function GeographyPage() {
           });
         } else if (tier === 'zone') {
           if (state.selectedSectorId == null) {
-            alert('Select a Sector first');
+            addToast('Select a Sector first', 'error');
             return;
           }
           await apiFetch('/dispatch/geography/zones', {
@@ -240,7 +240,7 @@ export default function GeographyPage() {
           });
         } else if (tier === 'beat') {
           if (state.selectedZoneId == null) {
-            alert('Select a Zone first');
+            addToast('Select a Zone first', 'error');
             return;
           }
           await apiFetch('/dispatch/geography/beats', {

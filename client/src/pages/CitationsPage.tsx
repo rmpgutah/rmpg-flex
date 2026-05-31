@@ -8,6 +8,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import RichTextArea from '../components/RichTextArea';
+import { useToast } from '../components/ToastProvider';
 import {
   FileWarning,
   Plus,
@@ -290,6 +291,7 @@ function formatCurrency(n: number | null | undefined): string {
 // ── Component ──────────────────────────────────────────────
 
 export default function CitationsPage() {
+  const { addToast } = useToast();
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin'; // Admin God Mode — unrestricted access
   const isMobile = useIsMobile();
@@ -498,7 +500,7 @@ export default function CitationsPage() {
       setShowPaymentForm(false);
       setPaymentForm({ amount: '', payment_date: localToday(), payment_method: 'cash', reference_number: '', notes: '' });
       fetchCitations({ silent: true }); fetchStats();
-    } catch (err: any) { alert(err.message || 'Failed to record payment'); }
+    } catch (err: any) { addToast(err.message || 'Failed to record payment', 'error'); }
     finally { setPaymentSubmitting(false); }
   };
 
@@ -710,7 +712,7 @@ export default function CitationsPage() {
       fetchStats();
       if (selectedCitation?.id === c.id) setSelectedCitation(null);
     } catch (err: any) {
-      alert(err.message || 'Failed to void citation');
+      addToast(err.message || 'Failed to void citation', 'error');
     }
   };
 

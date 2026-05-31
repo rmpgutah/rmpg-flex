@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef, useId } from 'react';
 import { formatEnumValue } from '../utils/formatters';
 import RichTextArea from '../components/RichTextArea';
+import { useToast } from '../components/ToastProvider';
 import {
   AlertTriangle, Plus, Search, Edit, Trash2, CheckCircle, XCircle, Clock,
   Loader2, Archive, RotateCcw, MapPin, User, Gavel, ChevronDown, X, Scale, Radar,
@@ -450,6 +451,7 @@ function FilterChip({ active, onClick, children }: { active: boolean; onClick: (
 }
 
 export default function WarrantsPage() {
+  const { addToast } = useToast();
   const isMobile = useIsMobile();
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -564,7 +566,7 @@ export default function WarrantsPage() {
       setBatchSelected(new Set());
       setBatchStatus('');
       fetchWarrants({ silent: true });
-    } catch (err: any) { alert(err?.message || 'Batch update failed'); }
+    } catch (err: any) { addToast(err?.message || 'Batch update failed', 'error'); }
     finally { setBatchSubmitting(false); }
   };
 
@@ -577,11 +579,11 @@ export default function WarrantsPage() {
         method: 'POST',
         body: JSON.stringify({ warrant_ids: Array.from(batchSelected) }),
       });
-      alert(`Archived ${res.archived} warrant(s)${res.skipped ? `, skipped ${res.skipped} already-archived` : ''}`);
+      addToast(`Archived ${res.archived} warrant(s)${res.skipped ? `, skipped ${res.skipped} already-archived` : ''}`, 'success');
       setBatchSelected(new Set());
       fetchWarrants({ silent: true });
     } catch (err: any) {
-      alert(err?.message || 'Bulk archive failed');
+      addToast(err?.message || 'Bulk archive failed', 'error');
     }
   };
 
@@ -592,17 +594,17 @@ export default function WarrantsPage() {
         method: 'POST',
         body: JSON.stringify({ warrant_ids: Array.from(batchSelected) }),
       });
-      alert(`Marked ${res.reviewed} warrant(s) reviewed`);
+      addToast(`Marked ${res.reviewed} warrant(s) reviewed`, 'success');
       setBatchSelected(new Set());
       fetchWarrants({ silent: true });
     } catch (err: any) {
-      alert(err?.message || 'Bulk review failed');
+      addToast(err?.message || 'Bulk review failed', 'error');
     }
   };
 
   const handleBulkPrintPacket = async () => {
     if (!batchSelected.size) return;
-    if (batchSelected.size > 200) { alert('Packet print limited to 200 warrants'); return; }
+    if (batchSelected.size > 200) { addToast('Packet print limited to 200 warrants', 'error'); return; }
     if (batchSelected.size > 50 && !window.confirm(`Print ${batchSelected.size} warrants as a single packet? This may take 30+ seconds.`)) return;
     const ids = Array.from(batchSelected);
     try {
@@ -611,7 +613,7 @@ export default function WarrantsPage() {
         badge_number: user?.badge_number,
       });
     } catch (err: any) {
-      alert(err?.message || 'Packet generation failed');
+      addToast(err?.message || 'Packet generation failed', 'error');
     }
   };
 
@@ -658,7 +660,7 @@ export default function WarrantsPage() {
 
       await downloadRecordPdf('warrant', data, filename);
     } catch (err: any) {
-      alert(err?.message || 'Failed to print warrant PDF');
+      addToast(err?.message || 'Failed to print warrant PDF', 'error');
     }
   };
 
