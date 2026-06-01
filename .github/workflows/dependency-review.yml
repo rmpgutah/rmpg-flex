@@ -18,11 +18,28 @@ jobs:
 
       - name: Dependency Review
         # v5.0.0 is purely the Node 20 -> 24 runtime bump (the `@v4` tag is
-        # still node20, which GitHub deprecates 2026-06-16). The earlier fear
-        # that v5 would drop `deny-licenses` (actions/dependency-review-action#938)
-        # did NOT materialize — v5.0.0 keeps `deny-licenses`, `fail-on-severity`,
-        # and `comment-summary-in-pr` unchanged, so the block-GPL-family policy
-        # below is preserved exactly.
+        # still node20, which GitHub deprecates 2026-06-16). v5.0.0 keeps
+        # `deny-licenses`, `fail-on-severity`, and `comment-summary-in-pr`
+        # working, so the block-GPL-family policy below still enforces exactly.
+        #
+        # `deny-licenses` now emits a "deprecated for possible removal in the
+        # next major release" warning on every PR summary (tracked upstream in
+        # actions/dependency-review-action#997). We INTENTIONALLY keep it. There
+        # is no policy-preserving successor:
+        #   * `allow-licenses` is an allow-LIST — it fails on any license NOT
+        #     enumerated, inverting our "block only the GPL family, permit
+        #     everything else" gate into a closed allowlist that would break CI
+        #     on every new/unlisted transitive license. That is a different,
+        #     stricter policy we have not opted into.
+        #   * `allow-dependencies-licenses` is a purl-based package-exclusion
+        #     list, not a license blocker.
+        #   * Moving this denylist into a `config-file` does NOT silence the
+        #     warning — it fires on the merged `config.deny_licenses` value
+        #     (src/summary.ts), regardless of whether the value comes from an
+        #     inline input or a config file.
+        # The warning is cosmetic; the check still passes and the GPL gate is
+        # unchanged. Revisit only when a future major actually removes the
+        # option (re-evaluate the upstream guidance in #997 at that point).
         uses: actions/dependency-review-action@v5
         with:
           # Block PRs that add dependencies with known critical/high vulns
