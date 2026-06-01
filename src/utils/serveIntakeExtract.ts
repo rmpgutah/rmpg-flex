@@ -155,15 +155,24 @@ const _RESPONSE_SCHEMA = {
   },
 } as const;
 
+// Placeholder values process-service docs routinely carry ("Case [not
+// provided]", "—", "None", "N/A"). The model frequently echoes them verbatim,
+// which would otherwise land in the DB as a literal case_number / address / etc.
+// Anchored to the WHOLE trimmed value so it never clips a real value that merely
+// contains one of these tokens (e.g. plaintiff "Capital One, N.A.").
+const PLACEHOLDER_VALUE = /^\[?\s*(not provided|none|n\/?a|unknown|tbd|pending|null|—|-{1,})\s*\]?$/i;
+
 function normalize(parsed: any, rawText: string, model: string, ms: number): ExtractionResult {
   const fields: Record<string, ExtractedField> = {};
   const incoming = (parsed?.fields ?? {}) as Record<string, any>;
   for (const f of TARGET_FIELDS) {
     const v = incoming[f];
     if (v && typeof v === 'object') {
+      let value = typeof v.value === 'string' ? v.value : '';
+      if (PLACEHOLDER_VALUE.test(value.trim())) value = ''; // scrub placeholders → empty
       fields[f] = {
-        value: typeof v.value === 'string' ? v.value : '',
-        confidence: typeof v.confidence === 'number' ? Math.max(0, Math.min(1, v.confidence)) : 0,
+        value,
+        confidence: value && typeof v.confidence === 'number' ? Math.max(0, Math.min(1, v.confidence)) : 0,
       };
     } else {
       fields[f] = { value: '', confidence: 0 };
