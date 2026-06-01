@@ -668,6 +668,7 @@ function computeFuelAnalytics(logs: Record<string, unknown>[]): {
     const gallons = num(log.gallons);
     const totalCost = num(log.total_cost);
     const isFull = num(log.is_full_tank);
+    const storedMpg = num(log.mpg); // manual MPG entered/backfilled on the row
     let calc_distance: number | null = null;
     let mpg: number | null = null;
     let cost_per_mile: number | null = null;
@@ -675,12 +676,16 @@ function computeFuelAnalytics(logs: Record<string, unknown>[]): {
       calc_distance = Math.round((odo - prevOdo) * 10) / 10;
       if (gallons != null && gallons > 0 && isFull !== 0) {
         mpg = Math.round((calc_distance / gallons) * 10) / 10;
-        if (mpg > 0 && mpg < 200) mpgValues.push(mpg);
       }
       if (totalCost != null && calc_distance > 0) {
         cost_per_mile = Math.round((totalCost / calc_distance) * 1000) / 1000;
       }
     }
+    // A stored MPG is authoritative: it overrides the odometer-derived estimate
+    // and lets rows without an odometer (or without a prior reading) still show
+    // MPG. Whatever the final value, feed it into the avg/best/worst aggregates.
+    if (storedMpg != null) mpg = storedMpg;
+    if (mpg != null && mpg > 0 && mpg < 200) mpgValues.push(mpg);
     computed.set(log.id, { calc_distance, mpg, cost_per_mile });
     if (odo != null) prevOdo = odo;
   }
@@ -764,7 +769,7 @@ fleet.post('/:id/fuel', async (c) => {
     // defaults to full (1) when the client omits it (back-compat with the
     // pre-enhancement modal that had no toggle).
     const isFullTank = body.is_full_tank == null ? 1 : (body.is_full_tank ? 1 : 0);
-    const result = await execute(db, `INSERT INTO fleet_fuel_log (vehicle_id, fuel_date, gallons, total_cost, cost_per_gallon, fuel_type, station, odometer, notes, is_full_tank, payment_method, driver_name, location) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, vehicleId, body.fuel_date, body.gallons ?? null, body.total_cost ?? null, body.cost_per_gallon ?? null, body.fuel_type ?? null, body.station ?? null, odometer, body.notes ?? null, isFullTank, body.payment_method ?? null, body.driver_name ?? null, body.location ?? null);
+    const result = await execute(db, `INSERT INTO fleet_fuel_log (vehicle_id, fuel_date, gallons, total_cost, cost_per_gallon, fuel_type, station, odometer, notes, is_full_tank, payment_method, driver_name, location, mpg) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, vehicleId, body.fuel_date, body.gallons ?? null, body.total_cost ?? null, body.cost_per_gallon ?? null, body.fuel_type ?? null, body.station ?? null, odometer, body.notes ?? null, isFullTank, body.payment_method ?? null, body.driver_name ?? null, body.location ?? null, body.mpg ?? null);
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_fuel_log WHERE id = ?', result.meta.last_row_id);
     return c.json(created, 201);
   } catch (err) { console.error('POST /fleet/:id/fuel failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
@@ -784,7 +789,7 @@ fleet.put('/fuel/:id', async (c) => {
       body.odometer = body.odometer_reading;
     }
     const setCols: string[] = []; const bindings: unknown[] = [];
-    for (const key of ['fuel_date', 'gallons', 'total_cost', 'cost_per_gallon', 'fuel_type', 'station', 'odometer', 'notes', 'is_full_tank', 'payment_method', 'driver_name', 'location']) {
+    for (const key of ['fuel_date', 'gallons', 'total_cost', 'cost_per_gallon', 'fuel_type', 'station', 'odometer', 'notes', 'is_full_tank', 'payment_method', 'driver_name', 'location', 'mpg']) {
       if (Object.prototype.hasOwnProperty.call(body, key)) {
         setCols.push(`${key} = ?`);
         // is_full_tank is an INTEGER flag — coerce truthy/empty into 0/1.
