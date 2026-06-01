@@ -20,7 +20,6 @@ CREATE TABLE IF NOT EXISTS system_settings (
 );
 
 -- Branding & Appearance
-
 INSERT OR IGNORE INTO system_settings (category, key, default_value, type, label, description, options, ui_order) VALUES
 ('branding', 'agency_name', 'Rocky Mountain Protective Group', 'string', 'Agency Name', 'Displayed in headers, reports, and login screen', NULL, 1),
 ('branding', 'agency_abbreviation', 'RMPG', 'string', 'Agency Abbreviation', 'Short code used in badges and compact displays', NULL, 2),
@@ -34,7 +33,10 @@ INSERT OR IGNORE INTO system_settings (category, key, default_value, type, label
 ('branding', 'favicon_url', '', 'string', 'Favicon URL', 'Custom browser tab icon. Leave empty for default.', NULL, 10),
 ('branding', 'login_background_url', '', 'string', 'Login Background URL', 'Background image for the login screen', NULL, 11),
 ('branding', 'report_watermark_text', 'CONFIDENTIAL', 'string', 'Report Watermark', 'Text watermark on all generated PDF reports', NULL, 12),
-('branding', 'report_classification', 'LE SENSITIVE', 'string', 'Report Classification', 'Default CJIS classification banner on reports', NULL, 13),
+('branding', 'report_classification', 'LE SENSITIVE', 'string', 'Report Classification', 'Default CJIS classification banner on reports', NULL, 13);
+
+-- Display & Theme
+INSERT OR IGNORE INTO system_settings (category, key, default_value, type, label, description, options, ui_order) VALUES
 ('display', 'default_theme', 'dark', 'select', 'Default Theme', 'Theme applied for new users', '["dark","light","high-contrast"]', 1),
 ('display', 'enable_crt_effects', 'false', 'boolean', 'CRT Display Effects', 'Enable scanlines, vignette, and phosphor bloom effects', NULL, 2),
 ('display', 'enable_animations', 'true', 'boolean', 'UI Animations', 'Enable transition animations throughout the interface', NULL, 3),
@@ -48,7 +50,10 @@ INSERT OR IGNORE INTO system_settings (category, key, default_value, type, label
 ('display', 'items_per_page', '50', 'number', 'Items Per Page', 'Default pagination size for data tables', NULL, 11),
 ('display', 'sidebar_width', '220', 'number', 'Sidebar Width', 'Width of the navigation sidebar in pixels', NULL, 12),
 ('display', 'status_bar_visible', 'true', 'boolean', 'Status Bar Visible', 'Show the bottom status bar', NULL, 13),
-('display', 'toolbar_position', 'top', 'select', 'Toolbar Position', 'Position of the main icon toolbar', '["top","left"]', 14),
+('display', 'toolbar_position', 'top', 'select', 'Toolbar Position', 'Position of the main icon toolbar', '["top","left"]', 14);
+
+-- CAD / Dispatch
+INSERT OR IGNORE INTO system_settings (category, key, default_value, type, label, description, options, ui_order) VALUES
 ('dispatch', 'default_call_priority', 'P3', 'select', 'Default Call Priority', 'Pre-selected priority for new calls', '["P1","P2","P3","P4"]', 1),
 ('dispatch', 'auto_refresh_interval', '30', 'number', 'Auto-Refresh Interval', 'Seconds between dispatch board auto-refresh (0 = off)', NULL, 2),
 ('dispatch', 'call_card_expand', 'true', 'boolean', 'Expand Call Cards', 'Show full call details by default in the queue', NULL, 3),
@@ -60,7 +65,10 @@ INSERT OR IGNORE INTO system_settings (category, key, default_value, type, label
 ('dispatch', 'proximity_alert_radius', '500', 'number', 'Proximity Alert Radius', 'Meters — alert when units are near active calls', NULL, 9),
 ('dispatch', 'welfare_check_interval', '15', 'number', 'Welfare Check Timer', 'Minutes between automated welfare checks', NULL, 10),
 ('dispatch', 'max_active_calls_per_unit', '3', 'number', 'Max Calls Per Unit', 'Maximum concurrent calls assigned to one unit', NULL, 11),
-('dispatch', 'default_disposition_code', '', 'string', 'Default Disposition', 'Default disposition code applied on call clear', NULL, 12),
+('dispatch', 'default_disposition_code', '', 'string', 'Default Disposition', 'Default disposition code applied on call clear', NULL, 12);
+
+-- Notifications
+INSERT OR IGNORE INTO system_settings (category, key, default_value, type, label, description, options, ui_order) VALUES
 ('notifications', 'email_notifications_enabled', 'true', 'boolean', 'Email Notifications', 'Enable email notification delivery', NULL, 1),
 ('notifications', 'sms_notifications_enabled', 'false', 'boolean', 'SMS Notifications', 'Enable SMS/text notification delivery', NULL, 2),
 ('notifications', 'push_notifications_enabled', 'true', 'boolean', 'Push Notifications', 'Enable browser push notifications', NULL, 3),
@@ -72,7 +80,10 @@ INSERT OR IGNORE INTO system_settings (category, key, default_value, type, label
 ('notifications', 'notify_officer_safety', 'true', 'boolean', 'Officer Safety Alerts', 'Notify on officer safety flags or panic activations', NULL, 9),
 ('notifications', 'notify_welfare_timeout', 'true', 'boolean', 'Welfare Timeout', 'Notify when a welfare check timer expires', NULL, 10),
 ('notifications', 'quiet_hours_start', '', 'string', 'Quiet Hours Start', 'Suspend non-critical notifications from (HH:MM)', NULL, 11),
-('notifications', 'quiet_hours_end', '', 'string', 'Quiet Hours End', 'Resume non-critical notifications at (HH:MM)', NULL, 12),
+('notifications', 'quiet_hours_end', '', 'string', 'Quiet Hours End', 'Resume non-critical notifications at (HH:MM)', NULL, 12);
+
+-- Security & Auth
+INSERT OR IGNORE INTO system_settings (category, key, default_value, type, label, description, options, ui_order) VALUES
 ('security', 'password_min_length', '8', 'number', 'Min Password Length', 'Minimum characters required for passwords', NULL, 1),
 ('security', 'password_require_uppercase', 'true', 'boolean', 'Require Uppercase', 'Passwords must contain at least one uppercase letter', NULL, 2),
 ('security', 'password_require_number', 'true', 'boolean', 'Require Number', 'Passwords must contain at least one digit', NULL, 3),
@@ -84,7 +95,10 @@ INSERT OR IGNORE INTO system_settings (category, key, default_value, type, label
 ('security', 'require_2fa', 'false', 'boolean', 'Require 2FA', 'Force two-factor authentication for all users', NULL, 9),
 ('security', 'require_2fa_admin', 'true', 'boolean', 'Require 2FA (Admin)', 'Force 2FA for admin and manager roles', NULL, 10),
 ('security', 'allowed_ip_ranges', '', 'string', 'Allowed IP Ranges', 'Restrict access to these IP ranges (CIDR, comma-separated)', NULL, 11),
-('security', 'mfa_grace_period_days', '7', 'number', '2FA Grace Period', 'Days new users have to set up 2FA before enforced', NULL, 12),
+('security', 'mfa_grace_period_days', '7', 'number', '2FA Grace Period', 'Days new users have to set up 2FA before enforced', NULL, 12);
+
+-- Records & Data
+INSERT OR IGNORE INTO system_settings (category, key, default_value, type, label, description, options, ui_order) VALUES
 ('records', 'auto_archive_days', '365', 'number', 'Auto-Archive Age', 'Days after which records are auto-archived (0 = never)', NULL, 1),
 ('records', 'retention_period_years', '7', 'number', 'Retention Period', 'Years records are kept before purge eligibility', NULL, 2),
 ('records', 'auto_purge_enabled', 'false', 'boolean', 'Auto-Purge Enabled', 'Automatically purge records past retention period', NULL, 3),
@@ -94,7 +108,10 @@ INSERT OR IGNORE INTO system_settings (category, key, default_value, type, label
 ('records', 'case_number_prefix', 'RMPG-', 'string', 'Case Number Prefix', 'Prefix prepended to all case numbers', NULL, 7),
 ('records', 'incident_number_prefix', 'INC-', 'string', 'Incident Number Prefix', 'Prefix prepended to all incident numbers', NULL, 8),
 ('records', 'citation_number_prefix', 'CIT-', 'string', 'Citation Number Prefix', 'Prefix prepended to all citation numbers', NULL, 9),
-('records', 'default_reporting_officer', '', 'string', 'Default Reporting Officer', 'User ID auto-filled as reporting officer on new records', NULL, 10),
+('records', 'default_reporting_officer', '', 'string', 'Default Reporting Officer', 'User ID auto-filled as reporting officer on new records', NULL, 10);
+
+-- Maps & GPS
+INSERT OR IGNORE INTO system_settings (category, key, default_value, type, label, description, options, ui_order) VALUES
 ('maps', 'default_map_style', 'dark', 'select', 'Default Map Style', 'Mapbox style for new map views', '["dark","light","satellite","streets"]', 1),
 ('maps', 'default_zoom_level', '14', 'number', 'Default Zoom', 'Initial map zoom level', NULL, 2),
 ('maps', 'default_center_lat', '40.7608', 'number', 'Default Center Lat', 'Default map center latitude', NULL, 3),
@@ -104,7 +121,10 @@ INSERT OR IGNORE INTO system_settings (category, key, default_value, type, label
 ('maps', 'gps_trail_length', '100', 'number', 'GPS Trail Length', 'Number of breadcrumb points to retain per unit', NULL, 7),
 ('maps', 'geofence_alert_enabled', 'true', 'boolean', 'Geofence Alerts', 'Alert when units enter/exit defined geofence zones', NULL, 8),
 ('maps', 'coordinate_format', 'decimal', 'select', 'Coordinate Format', 'Display format for GPS coordinates', '["decimal","dms","mgrs"]', 9),
-('maps', 'radius_search_default', '500', 'number', 'Radius Search Default', 'Default search radius in meters', NULL, 10),
+('maps', 'radius_search_default', '500', 'number', 'Radius Search Default', 'Default search radius in meters', NULL, 10);
+
+-- Reports & Printing
+INSERT OR IGNORE INTO system_settings (category, key, default_value, type, label, description, options, ui_order) VALUES
 ('reports', 'default_page_size', 'letter', 'select', 'Default Page Size', 'Default paper size for generated reports', '["letter","legal","a4"]', 1),
 ('reports', 'default_margin_mm', '10', 'number', 'Default Margins', 'Page margins in millimeters', NULL, 2),
 ('reports', 'include_classification_banner', 'true', 'boolean', 'Classification Banner', 'Include CJIS classification banner on reports', NULL, 3),
@@ -114,7 +134,10 @@ INSERT OR IGNORE INTO system_settings (category, key, default_value, type, label
 ('reports', 'report_logo_position', 'left', 'select', 'Logo Position', 'Header logo placement on reports', '["left","center","right","none"]', 7),
 ('reports', 'signature_required', 'true', 'boolean', 'Require Signature', 'Require digital signature on official reports', NULL, 8),
 ('reports', 'draft_watermark_enabled', 'true', 'boolean', 'Draft Watermark', 'Show DRAFT watermark on unapproved reports', NULL, 9),
-('reports', 'confidential_watermark_enabled', 'true', 'boolean', 'Confidential Watermark', 'Show CONFIDENTIAL on sensitive reports', NULL, 10),
+('reports', 'confidential_watermark_enabled', 'true', 'boolean', 'Confidential Watermark', 'Show CONFIDENTIAL on sensitive reports', NULL, 10);
+
+-- AI & Voice
+INSERT OR IGNORE INTO system_settings (category, key, default_value, type, label, description, options, ui_order) VALUES
 ('ai', 'ai_dispatcher_enabled', 'true', 'boolean', 'AI Dispatcher', 'Enable AI-powered dispatch assistant', NULL, 1),
 ('ai', 'ai_persona', 'professional', 'select', 'AI Persona', 'Communication style for AI dispatcher', '["professional","tactical","brief","conversational"]', 2),
 ('ai', 'ai_temperature', '0.7', 'number', 'AI Temperature', 'Creativity level for AI responses (0-1)', NULL, 3),
@@ -124,14 +147,20 @@ INSERT OR IGNORE INTO system_settings (category, key, default_value, type, label
 ('ai', 'ai_confidence_threshold', '0.75', 'number', 'Confidence Threshold', 'Minimum confidence for AI to auto-act on commands', NULL, 7),
 ('ai', 'ai_narrative_assist', 'true', 'boolean', 'Narrative Assist', 'AI helps write incident narratives', NULL, 8),
 ('ai', 'ai_call_recommendations', 'true', 'boolean', 'Call Recommendations', 'AI suggests unit assignments for calls', NULL, 9),
-('ai', 'ai_risk_assessment', 'true', 'boolean', 'Risk Assessment', 'AI analyzes calls for officer safety risks', NULL, 10),
+('ai', 'ai_risk_assessment', 'true', 'boolean', 'Risk Assessment', 'AI analyzes calls for officer safety risks', NULL, 10);
+
+-- Evidence & Property
+INSERT OR IGNORE INTO system_settings (category, key, default_value, type, label, description, options, ui_order) VALUES
 ('evidence', 'chain_of_custody_required', 'true', 'boolean', 'Chain of Custody', 'Require chain of custody entries for evidence', NULL, 1),
 ('evidence', 'evidence_photo_required', 'true', 'boolean', 'Evidence Photos', 'Require photo documentation of all evidence items', NULL, 2),
 ('evidence', 'barcode_format', 'code39', 'select', 'Barcode Format', 'Barcode symbology for evidence tags', '["code39","code128","pdf417"]', 3),
 ('evidence', 'auto_assign_location', 'true', 'boolean', 'Auto-Assign Location', 'Automatically assign storage location to new evidence', NULL, 4),
 ('evidence', 'purge_review_days', '30', 'number', 'Purge Review Period', 'Days before eligible purge items are reviewed', NULL, 5),
 ('evidence', 'digital_evidence_retention', '365', 'number', 'Digital Evidence Retention', 'Days to retain body cam / dash cam footage', NULL, 6),
-('evidence', 'audit_frequency_days', '90', 'number', 'Audit Frequency', 'Days between automatic property room audits', NULL, 7),
+('evidence', 'audit_frequency_days', '90', 'number', 'Audit Frequency', 'Days between automatic property room audits', NULL, 7);
+
+-- Integration & API
+INSERT OR IGNORE INTO system_settings (category, key, default_value, type, label, description, options, ui_order) VALUES
 ('integrations', 'mapbox_access_token', '', 'string', 'Mapbox Token', 'Mapbox GL JS access token', NULL, 1),
 ('integrations', 'google_maps_api_key', '', 'string', 'Google Maps API Key', 'Google Maps Geocoding API key (fallback)', NULL, 2),
 ('integrations', 'ncic_endpoint_url', '', 'string', 'NCIC Endpoint', 'NCIC/NLETS query endpoint URL', NULL, 3),
@@ -143,28 +172,40 @@ INSERT OR IGNORE INTO system_settings (category, key, default_value, type, label
 ('integrations', 'email_api_key', '', 'string', 'Email API Key', 'API key for email provider', NULL, 9),
 ('integrations', 'email_from_address', 'noreply@rmpgutah.us', 'string', 'From Address', 'Sender email address for system emails', NULL, 10),
 ('integrations', 'webhook_url', '', 'string', 'Webhook URL', 'URL for outgoing webhook notifications', NULL, 11),
-('integrations', 'webhook_secret', '', 'string', 'Webhook Secret', 'HMAC secret for webhook payload signing', NULL, 12),
+('integrations', 'webhook_secret', '', 'string', 'Webhook Secret', 'HMAC secret for webhook payload signing', NULL, 12);
+
+-- Fleet & GPS
+INSERT OR IGNORE INTO system_settings (category, key, default_value, type, label, description, options, ui_order) VALUES
 ('fleet', 'fuel_low_threshold_pct', '25', 'number', 'Low Fuel Alert %', 'Alert when fuel drops below this percentage', NULL, 1),
 ('fleet', 'maintenance_reminder_km', '5000', 'number', 'Maintenance Reminder', 'KM before next scheduled maintenance alert', NULL, 2),
 ('fleet', 'inspection_required_daily', 'true', 'boolean', 'Daily Inspection', 'Require daily vehicle inspection reports', NULL, 3),
 ('fleet', 'gps_tracking_enabled', 'true', 'boolean', 'GPS Tracking', 'Enable real-time GPS tracking for fleet vehicles', NULL, 4),
 ('fleet', 'gps_reporting_interval_sec', '30', 'number', 'Reporting Interval', 'Seconds between GPS position reports from vehicles', NULL, 5),
 ('fleet', 'speed_alert_kmh', '130', 'number', 'Speed Alert', 'Alert when vehicle exceeds this speed (km/h)', NULL, 6),
-('fleet', 'idle_alert_minutes', '10', 'number', 'Idle Alert', 'Alert when vehicle idles longer than this (minutes)', NULL, 7),
+('fleet', 'idle_alert_minutes', '10', 'number', 'Idle Alert', 'Alert when vehicle idles longer than this (minutes)', NULL, 7);
+
+-- Training & Certification
+INSERT OR IGNORE INTO system_settings (category, key, default_value, type, label, description, options, ui_order) VALUES
 ('training', 'cert_expiry_warning_days', '30', 'number', 'Expiry Warning', 'Days before cert expiry to send warning', NULL, 1),
 ('training', 'annual_training_hours', '40', 'number', 'Annual Hours Required', 'Minimum training hours per officer per year', NULL, 2),
 ('training', 'firearm_requal_months', '12', 'number', 'Firearm Requal', 'Months between required firearm requalification', NULL, 3),
 ('training', 'taser_requal_months', '12', 'number', 'Taser Requal', 'Months between required Taser requalification', NULL, 4),
 ('training', 'cpr_requal_months', '24', 'number', 'CPR Requal', 'Months between required CPR recertification', NULL, 5),
 ('training', 'use_of_force_retrain_months', '12', 'number', 'Use of Force Retrain', 'Months between use-of-force refresher training', NULL, 6),
-('training', 'fto_program_duration_days', '90', 'number', 'FTO Program Duration', 'Days for Field Training Officer program', NULL, 7),
+('training', 'fto_program_duration_days', '90', 'number', 'FTO Program Duration', 'Days for Field Training Officer program', NULL, 7);
+
+-- Shift & Schedule
+INSERT OR IGNORE INTO system_settings (category, key, default_value, type, label, description, options, ui_order) VALUES
 ('shift', 'default_shift_duration_hours', '12', 'number', 'Default Shift Duration', 'Hours in a standard patrol shift', NULL, 1),
 ('shift', 'shift_overlap_minutes', '15', 'number', 'Shift Overlap', 'Minutes of overlap between consecutive shifts', NULL, 2),
 ('shift', 'min_officers_per_shift', '2', 'number', 'Minimum Officers', 'Minimum officers required per shift', NULL, 3),
 ('shift', 'overtime_threshold_hours', '40', 'number', 'Overtime Threshold', 'Weekly hours before overtime rates apply', NULL, 4),
 ('shift', 'max_consecutive_days', '6', 'number', 'Max Consecutive Days', 'Maximum consecutive work days allowed', NULL, 5),
 ('shift', 'min_rest_hours', '10', 'number', 'Minimum Rest Hours', 'Minimum hours between consecutive shifts', NULL, 6),
-('shift', 'shift_bidding_enabled', 'false', 'boolean', 'Shift Bidding', 'Enable shift bidding/preference system', NULL, 7),
+('shift', 'shift_bidding_enabled', 'false', 'boolean', 'Shift Bidding', 'Enable shift bidding/preference system', NULL, 7);
+
+-- Audit & Logging
+INSERT OR IGNORE INTO system_settings (category, key, default_value, type, label, description, options, ui_order) VALUES
 ('audit', 'audit_log_enabled', 'true', 'boolean', 'Audit Logging', 'Enable system-wide audit logging', NULL, 1),
 ('audit', 'audit_log_retention_days', '365', 'number', 'Log Retention', 'Days to retain audit log entries', NULL, 2),
 ('audit', 'audit_record_views', 'true', 'boolean', 'Log Record Views', 'Log when users view sensitive records', NULL, 3),
@@ -172,12 +213,18 @@ INSERT OR IGNORE INTO system_settings (category, key, default_value, type, label
 ('audit', 'audit_record_deletes', 'true', 'boolean', 'Log Deletions', 'Log all record deletions with undo data', NULL, 5),
 ('audit', 'audit_login_attempts', 'true', 'boolean', 'Log Login Attempts', 'Log all successful and failed login attempts', NULL, 6),
 ('audit', 'audit_permission_changes', 'true', 'boolean', 'Log Permission Changes', 'Log role and permission modifications', NULL, 7),
-('audit', 'audit_export_enabled', 'true', 'boolean', 'Audit Export', 'Allow exporting audit logs', NULL, 8),
+('audit', 'audit_export_enabled', 'true', 'boolean', 'Audit Export', 'Allow exporting audit logs', NULL, 8);
+
+-- Email Templates
+INSERT OR IGNORE INTO system_settings (category, key, default_value, type, label, description, options, ui_order) VALUES
 ('email_templates', 'email_signature', 'Rocky Mountain Protective Group\nSalt Lake City, Utah\nwww.rmpgutah.us', 'string', 'Email Signature', 'Default signature appended to all system emails', NULL, 1),
 ('email_templates', 'welcome_email_enabled', 'true', 'boolean', 'Send Welcome Email', 'Send welcome email to new users', NULL, 2),
 ('email_templates', 'password_reset_template', 'Your RMPG Flex password reset link: {{reset_link}}\n\nThis link expires in 1 hour.\n\nIf you did not request this, contact your administrator.', 'string', 'Password Reset Template', 'Template for password reset emails', NULL, 3),
 ('email_templates', 'shift_reminder_template', 'Reminder: Your next shift starts {{shift_start}} at {{shift_location}}.\n\nPlease acknowledge this reminder.', 'string', 'Shift Reminder Template', 'Template for shift reminder emails', NULL, 4),
-('email_templates', 'cert_expiry_template', 'Your {{cert_name}} certification expires on {{expiry_date}}.\n\nPlease schedule your recertification soon.', 'string', 'Cert Expiry Template', 'Template for certification expiry warnings', NULL, 5),
+('email_templates', 'cert_expiry_template', 'Your {{cert_name}} certification expires on {{expiry_date}}.\n\nPlease schedule your recertification soon.', 'string', 'Cert Expiry Template', 'Template for certification expiry warnings', NULL, 5);
+
+-- System & Maintenance
+INSERT OR IGNORE INTO system_settings (category, key, default_value, type, label, description, options, ui_order) VALUES
 ('system', 'maintenance_mode', 'false', 'boolean', 'Maintenance Mode', 'Put system in maintenance mode (shows banner)', NULL, 1),
 ('system', 'maintenance_message', 'System maintenance in progress. Some features may be unavailable.', 'string', 'Maintenance Message', 'Message shown during maintenance mode', NULL, 2),
 ('system', 'api_rate_limit', '100', 'number', 'API Rate Limit', 'Max requests per minute per user (0 = unlimited)', NULL, 3),
