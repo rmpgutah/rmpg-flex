@@ -848,6 +848,17 @@ const API_ROUTES: RouteRule[] = [
   // (see [[feedback-proxy-stub-shadows-handler]]).
   { kind: 'prefix', value: '/api/clients' },
   { kind: 'prefix', value: '/api/crm' },
+  // Risk / Jail / QA / Victim-services — routers exist in the rewrite
+  // (src/routes/{risk,jail,qa,victimServices}.ts) and their backing tables
+  // (risk_assessments, inmates, qa_reviews, victim_services_records) all exist
+  // on live D1. Legacy 404s on these, so the RiskPage/JailPage/QAPage/
+  // VictimServicesPage mounts errored. risk/jail/qa self-guard with a
+  // sqlite_master table-existence check; victim_services_records confirmed
+  // present. Route the whole namespaces to env.API.
+  { kind: 'prefix', value: '/api/risk' },
+  { kind: 'prefix', value: '/api/jail' },
+  { kind: 'prefix', value: '/api/qa' },
+  { kind: 'prefix', value: '/api/victim-services' },
   // Comms BOLOs + message priority stats (legacy has /comms/messages
   // and /comms/bolos/active via stubs; the specific stats paths are new)
   { kind: 'prefix', value: '/api/comms/bolos' },
