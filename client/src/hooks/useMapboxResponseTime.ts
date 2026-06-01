@@ -4,6 +4,7 @@
 import { useCallback, useState, useRef, useEffect } from 'react';
 import type mapboxgl from 'mapbox-gl';
 import { apiFetch } from './useApi';
+import { whenStyleReady } from '../pages/map/utils/safeAddSource';
 
 interface BeatActivity {
   beat: string;
@@ -127,7 +128,7 @@ export function useMapboxResponseTime(map: mapboxgl.Map | null) {
       );
       const b = data?.beats || [];
       setBeats(b);
-      if (map.loaded()) await renderOnMap(b, map);
+      whenStyleReady(map, () => { void renderOnMap(b, map); });
     } catch (err) {
       console.warn('[useMapboxResponseTime] fetch failed:', err);
     } finally {

@@ -4,6 +4,7 @@
 import { useCallback, useState, useRef } from 'react';
 import type mapboxgl from 'mapbox-gl';
 import { apiFetch } from './useApi';
+import { whenStyleReady } from '../pages/map/utils/safeAddSource';
 
 interface RepeatAddress {
   location_address: string;
@@ -109,7 +110,7 @@ export function useMapboxRepeatAddresses(map: mapboxgl.Map | null) {
       );
       const addrs = data?.addresses || [];
       setAddresses(addrs);
-      if (map.loaded()) renderOnMap(addrs, map);
+      whenStyleReady(map, () => { renderOnMap(addrs, map); });
     } catch (err) {
       console.warn('[useMapboxRepeatAddresses] fetch failed:', err);
     } finally {

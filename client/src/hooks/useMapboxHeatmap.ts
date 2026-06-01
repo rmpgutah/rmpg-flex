@@ -4,6 +4,7 @@
 import { useCallback, useState, useEffect, useRef } from 'react';
 import type mapboxgl from 'mapbox-gl';
 import { apiFetch } from './useApi';
+import { whenStyleReady } from '../pages/map/utils/safeAddSource';
 
 interface HeatmapPoint {
   latitude: number;
@@ -127,7 +128,7 @@ export function useMapboxHeatmap(map: mapboxgl.Map | null) {
       setPoints(pts);
       setTotal(totalPts);
 
-      if (map.loaded()) {
+      whenStyleReady(map, () => {
         const features: GeoJSON.Feature[] = pts.map((p) => ({
           type: 'Feature',
           properties: {
@@ -147,7 +148,7 @@ export function useMapboxHeatmap(map: mapboxgl.Map | null) {
         if (!layerRef.current) {
           ensureLayer(map, preset, colorScheme);
         }
-      }
+      });
     } catch (err) {
       console.warn('[useMapboxHeatmap] fetch failed:', err);
     } finally {

@@ -3,6 +3,7 @@
 import { useCallback, useState, useRef } from 'react';
 import type mapboxgl from 'mapbox-gl';
 import { apiFetch } from './useApi';
+import { whenStyleReady } from '../pages/map/utils/safeAddSource';
 
 interface Incident {
   id: number;
@@ -138,7 +139,7 @@ export function useMapboxIncidents(map: mapboxgl.Map | null) {
       const data = await apiFetch<Incident[]>(`/incidents?days=${days}&limit=${limit}`);
       const incs = Array.isArray(data) ? data : [];
       setIncidents(incs);
-      if (map.loaded()) renderOnMap(incs, map);
+      whenStyleReady(map, () => { renderOnMap(incs, map); });
     } catch (err) {
       console.warn('[useMapboxIncidents] fetch failed:', err);
     } finally {

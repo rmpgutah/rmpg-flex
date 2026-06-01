@@ -4,6 +4,7 @@
 import { useCallback, useState, useRef, useEffect } from 'react';
 import type mapboxgl from 'mapbox-gl';
 import { apiFetch } from './useApi';
+import { whenStyleReady } from '../pages/map/utils/safeAddSource';
 
 interface RiskPoint {
   latitude: number;
@@ -194,7 +195,7 @@ export function useMapboxSafetyZones(map: mapboxgl.Map | null) {
       const points = Array.isArray(data) ? data : [];
       const clustered = clusterRiskPoints(points);
       setZones(clustered);
-      if (map.loaded()) renderOnMap(clustered, map);
+      whenStyleReady(map, () => { renderOnMap(clustered, map); });
     } catch (err) {
       console.warn('[useMapboxSafetyZones] fetch failed:', err);
     } finally {

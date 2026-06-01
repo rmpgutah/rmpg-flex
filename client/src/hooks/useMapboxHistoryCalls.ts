@@ -5,6 +5,7 @@ import { useCallback, useState, useRef } from 'react';
 import { parseTimestamp } from '../utils/dateUtils';
 import type mapboxgl from 'mapbox-gl';
 import { apiFetch } from './useApi';
+import { whenStyleReady } from '../pages/map/utils/safeAddSource';
 
 interface HistoryCall {
   id: number;
@@ -122,9 +123,9 @@ export function useMapboxHistoryCalls(map: mapboxgl.Map | null) {
       setCalls(calls);
       setTotal(calls.length);
 
-      if (map.loaded()) {
+      whenStyleReady(map, () => {
         renderOnMap(calls, map);
-      }
+      });
     } catch (err) {
       console.warn('[useMapboxHistoryCalls] fetch failed:', err);
     } finally {

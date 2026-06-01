@@ -4,6 +4,7 @@
 import { useRef, useCallback, useState, useEffect } from 'react';
 import type mapboxgl from 'mapbox-gl';
 import { getIsochrone, type IsochroneContour } from '../utils/mapboxServices';
+import { whenStyleReady } from '../pages/map/utils/safeAddSource';
 
 const SOURCE_ID = 'rmpg-isochrone-source';
 const LAYER_ID_PREFIX = 'rmpg-isochrone-layer-';
@@ -113,9 +114,9 @@ export function useMapboxIsochrone(map: mapboxgl.Map | null) {
     try {
       const data = await getIsochrone(lng, lat, minutes, profile);
       const contours = data.features || [];
-      if (activeRef.current && map.loaded()) {
-        renderOnMap(contours, map);
-      }
+      whenStyleReady(map, () => {
+        if (activeRef.current) renderOnMap(contours, map);
+      });
       setResult({ contours, center: [lng, lat], minutes, loading: false });
     } catch (err) {
       console.warn('[useMapboxIsochrone] failed:', err);

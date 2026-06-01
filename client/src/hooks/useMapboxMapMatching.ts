@@ -2,6 +2,7 @@
 import { useRef, useCallback, useState } from 'react';
 import type mapboxgl from 'mapbox-gl';
 import { matchToRoad } from '../utils/mapboxServices';
+import { whenStyleReady } from '../pages/map/utils/safeAddSource';
 
 const SOURCE_ID = 'rmpg-matched-source';
 const RAW_SOURCE_ID = 'rmpg-matched-raw-source';
@@ -87,14 +88,16 @@ export function useMapboxMapMatching(map: mapboxgl.Map | null) {
     try {
       const result = await matchToRoad(coordinates, profile);
       const bestMatch = result.matchings?.[0];
-      if (bestMatch && map.loaded()) {
+      if (bestMatch) {
         const r: MatchResult = {
           geometry: bestMatch.geometry,
           confidence: bestMatch.confidence,
           distance: bestMatch.distance,
           duration: bestMatch.duration,
         };
-        renderOnMap(coordinates, bestMatch.geometry, map);
+        whenStyleReady(map, () => {
+          renderOnMap(coordinates, bestMatch.geometry, map);
+        });
         setMatchResult(r);
       }
     } catch (err) {

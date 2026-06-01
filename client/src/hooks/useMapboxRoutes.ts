@@ -4,6 +4,7 @@
 import { useCallback, useState, useRef } from 'react';
 import type mapboxgl from 'mapbox-gl';
 import { getDirections } from '../utils/mapboxServices';
+import { whenStyleReady } from '../pages/map/utils/safeAddSource';
 
 const ROUTE_SOURCE_ID = 'rmpg-routes-polyline';
 const ROUTE_LAYER_ID = 'rmpg-routes-polyline-layer';
@@ -146,7 +147,7 @@ export function useMapboxRoutes(map: mapboxgl.Map | null) {
 
       setActiveRoutes((prev) => {
         const updated = [...prev.filter((r) => !isSameRoute(r, pair)), info];
-        if (map.loaded()) renderRoutes(updated, map);
+        whenStyleReady(map, () => { renderRoutes(updated, map); });
         return updated;
       });
 
@@ -199,7 +200,7 @@ export function useMapboxRoutes(map: mapboxgl.Map | null) {
     }
 
     setActiveRoutes(routes);
-    if (map.loaded()) renderRoutes(routes, map);
+    whenStyleReady(map, () => { renderRoutes(routes, map); });
     setLoading(false);
   }, [map, renderRoutes]);
 
