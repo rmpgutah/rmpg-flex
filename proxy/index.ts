@@ -859,6 +859,48 @@ const API_ROUTES: RouteRule[] = [
   { kind: 'prefix', value: '/api/jail' },
   { kind: 'prefix', value: '/api/qa' },
   { kind: 'prefix', value: '/api/victim-services' },
+  // ── Rewrite-only feature namespaces (2026-06-01 audit) ──────────
+  // Each of these has a REAL handler in src/routes/* that queries the
+  // shared live D1 (NOT a pure stub), and legacy 404s on them — the
+  // corresponding pages (Accreditation, Internal Affairs, Alarms,
+  // Assets, Billing, Cases, Citations, Community, Court, Crisis, Field
+  // Interviews, Forensics, Gang Intel, Incidents, Interagency,
+  // Narcotics, NIBRS, Patrol, Recruitment, Special Ops, Tasks,
+  // Training) errored on mount. Because both legacy and the rewrite hit
+  // the SAME D1, a real-handler route returns the same rows legacy
+  // would — so routing can't hide data (the regression vector is only
+  // pure-stub routers, which were excluded from this batch). Verified:
+  // none of these had a prior proxy mention, so no nuanced regex route
+  // is being clobbered. Excluded from the batch (deliberately left on
+  // legacy / handled elsewhere): user, notifications, email, weather,
+  // integrations (stubs.ts — would shadow real legacy data), health +
+  // map-data (public, work on legacy), voice (realtime), dl-records
+  // (careful regex), documents/document-intake/business-*/trespass-
+  // orders/presence (stub or no clean handler).
+  { kind: 'prefix', value: '/api/accreditation' },
+  { kind: 'prefix', value: '/api/affairs' },
+  { kind: 'prefix', value: '/api/alarms' },
+  { kind: 'prefix', value: '/api/alerts' },
+  { kind: 'prefix', value: '/api/assets' },
+  { kind: 'prefix', value: '/api/billing' },
+  { kind: 'prefix', value: '/api/community' },
+  { kind: 'prefix', value: '/api/crisis' },
+  { kind: 'prefix', value: '/api/field-interviews' },
+  { kind: 'prefix', value: '/api/forensics' },
+  { kind: 'prefix', value: '/api/gang-intel' },
+  { kind: 'prefix', value: '/api/interagency' },
+  // NOTE: /api/{incidents,citations,cases,court} deliberately NOT routed —
+  // core RMS/judicial namespaces the legacy worker likely already serves with
+  // working handlers (never observed 404ing). Routing a possibly-less-complete
+  // rewrite handler could regress a working page even on the shared DB. Route
+  // them only after confirming those pages actually error on legacy.
+  { kind: 'prefix', value: '/api/narcotics' },
+  { kind: 'prefix', value: '/api/nibrs' },
+  { kind: 'prefix', value: '/api/patrol' },
+  { kind: 'prefix', value: '/api/recruitment' },
+  { kind: 'prefix', value: '/api/special-ops' },
+  { kind: 'prefix', value: '/api/tasks' },
+  { kind: 'prefix', value: '/api/training' },
   // Comms BOLOs + message priority stats (legacy has /comms/messages
   // and /comms/bolos/active via stubs; the specific stats paths are new)
   { kind: 'prefix', value: '/api/comms/bolos' },
