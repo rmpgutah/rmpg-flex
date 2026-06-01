@@ -414,10 +414,13 @@ function EmptyState({ icon: Icon, label, action, onAdd }: {
   );
 }
 
-function ActionBar({ count, label, onAdd, addLabel }: { count: number; label: string; onAdd: () => void; addLabel: string }) {
+function ActionBar({ count, label, onAdd, addLabel, total }: { count: number; label: string; onAdd: () => void; addLabel: string; total?: string }) {
   return (
     <div className="flex items-center justify-between">
-      <h3 className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider">{label} ({count})</h3>
+      <h3 className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider flex items-center gap-2">
+        <span>{label} ({count})</span>
+        {total && <span className="text-green-400 font-mono normal-case">{total}</span>}
+      </h3>
       <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={onAdd}>
         <Plus className="w-3 h-3" /> {addLabel}
       </button>
@@ -447,7 +450,8 @@ function LoanList({ records, onAdd, onEdit, onDelete }: {
   if (records.length === 0) return <EmptyState icon={CreditCard} label="No Loans Recorded" action="Add Loan" onAdd={onAdd} />;
   return (
     <div className="space-y-2">
-      <ActionBar count={records.length} label="Loans" onAdd={onAdd} addLabel="Add Loan" />
+      <ActionBar count={records.length} label="Loans" onAdd={onAdd} addLabel="Add Loan"
+        total={`Σ ${fmtCurrency(records.reduce((s, l) => s + toNum((l as any).monthly_payment), 0))}/mo`} />
       <div className="space-y-1.5">
         {records.map((l) => (
           <div key={l.id} className="panel-beveled p-2.5 flex items-center gap-3 bg-surface-base">
@@ -495,7 +499,8 @@ function InsuranceList({ records, onAdd, onEdit, onDelete }: {
   };
   return (
     <div className="space-y-2">
-      <ActionBar count={records.length} label="Insurance Policies" onAdd={onAdd} addLabel="Add Policy" />
+      <ActionBar count={records.length} label="Insurance Policies" onAdd={onAdd} addLabel="Add Policy"
+        total={`Σ ${fmtCurrency(records.reduce((s, p) => s + toNum((p as any).premium_amount ?? (p as any).premium), 0))} prem.`} />
       <div className="space-y-1.5">
         {records.map((p) => {
           const expSoon = soon(p.expires_at);
@@ -540,7 +545,8 @@ function AccessoryList({ records, onAdd, onEdit, onDelete }: {
   if (records.length === 0) return <EmptyState icon={Wrench} label="No Accessories Tracked" action="Add Accessory" onAdd={onAdd} />;
   return (
     <div className="space-y-2">
-      <ActionBar count={records.length} label="Accessories" onAdd={onAdd} addLabel="Add Accessory" />
+      <ActionBar count={records.length} label="Accessories" onAdd={onAdd} addLabel="Add Accessory"
+        total={`Σ ${fmtCurrency(records.reduce((s, a) => s + toNum((a as any).cost), 0))}`} />
       <div className="space-y-1.5">
         {records.map((a) => (
           <div key={a.id} className="panel-beveled p-2.5 flex items-center gap-3 bg-surface-base">
@@ -578,7 +584,8 @@ function UtilityList({ records, onAdd, onEdit, onDelete }: {
   if (records.length === 0) return <EmptyState icon={Zap} label="No Utility Costs Recorded" action="Add Utility" onAdd={onAdd} />;
   return (
     <div className="space-y-2">
-      <ActionBar count={records.length} label="Utility Costs" onAdd={onAdd} addLabel="Add Utility" />
+      <ActionBar count={records.length} label="Utility Costs" onAdd={onAdd} addLabel="Add Utility"
+        total={`Σ ${fmtCurrency(records.reduce((s, u) => s + toNum((u as any).cost_amount), 0))}`} />
       <div className="space-y-1.5">
         {records.map((u) => (
           <div key={u.id} className="panel-beveled p-2.5 flex items-center gap-3 bg-surface-base">
@@ -614,7 +621,8 @@ function OtherList({ records, onAdd, onEdit, onDelete }: {
   if (records.length === 0) return <EmptyState icon={Receipt} label="No Other Costs Recorded" action="Add Cost" onAdd={onAdd} />;
   return (
     <div className="space-y-2">
-      <ActionBar count={records.length} label="Other Costs" onAdd={onAdd} addLabel="Add Cost" />
+      <ActionBar count={records.length} label="Other Costs" onAdd={onAdd} addLabel="Add Cost"
+        total={`Σ ${fmtCurrency(records.reduce((s, o) => s + toNum((o as any).amount), 0))}`} />
       <div className="space-y-1.5">
         {records.map((o) => (
           <div key={o.id} className="panel-beveled p-2.5 flex items-center gap-3 bg-surface-base">

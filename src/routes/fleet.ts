@@ -1285,7 +1285,18 @@ fleet.get('/:id/insurance', async (c) => {
   try {
     const vehicleId = Number(c.req.param('id'));
     const rows = await query<Record<string, unknown>>(getDb(c.env), 'SELECT * FROM fleet_insurance WHERE vehicle_id = ? ORDER BY effective_date DESC', vehicleId);
-    return c.json(rows);
+    // Outbound aliasing: the client lists + renewal alerts read modal-native
+    // names (premium_amount / effective_from / expires_at) but the columns are
+    // premium / effective_date / expiry_date. Without these aliases the rows
+    // render with blank premium + dates and never fire renewal alerts even
+    // though the data persisted fine. Keep BOTH names so every consumer works.
+    const mapped = rows.map((r) => ({
+      ...r,
+      premium_amount: r.premium ?? r.premium_amount ?? null,
+      effective_from: r.effective_date ?? r.effective_from ?? null,
+      expires_at: r.expiry_date ?? r.expires_at ?? null,
+    }));
+    return c.json(mapped);
   } catch (err) { console.error('GET /fleet/:id/insurance failed:', err); return c.json([]); }
 });
 
@@ -1464,7 +1475,10 @@ fleet.get('/:id/accessories', async (c) => {
   try {
     const vehicleId = Number(c.req.param('id'));
     const rows = await query<Record<string, unknown>>(getDb(c.env), 'SELECT * FROM fleet_accessories WHERE vehicle_id = ? ORDER BY installed_date DESC, id DESC', vehicleId);
-    return c.json(rows);
+    // Outbound alias: the column is `warranty_expiry` but the client list reads
+    // `warranty_until`. Expose both so the row shows the warranty date.
+    const mapped = rows.map((r) => ({ ...r, warranty_until: r.warranty_expiry ?? r.warranty_until ?? null }));
+    return c.json(mapped);
   } catch (err) { console.error('GET /fleet/:id/accessories failed:', err); return c.json([]); }
 });
 

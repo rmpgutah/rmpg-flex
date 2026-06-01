@@ -131,7 +131,13 @@
 //       bundle reaches operators pinned to a pre-fix cache (Fleet > Fuel tab
 //       couldn't scroll the fuel-log list). Layout source is correct; this is a
 //       cache-busting bump to retire the old bundle.
-const CACHE_NAME = 'rmpg-flex-v667';
+// v668: Fleet Costs fixes + enhancements — (1) insurance/accessory GET now
+//       aliases premium/effective_date/expiry_date/warranty_expiry to the
+//       modal-native names so saved rows stop displaying blank ("saves then
+//       vanishes"); (2) MoneyInput thousands-formatting on all cost $ fields
+//       (no more mangled input); (3) per-category running totals; (4) carry-
+//       over auto-fill from the last fuel/cost entry.
+const CACHE_NAME = 'rmpg-flex-v668';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

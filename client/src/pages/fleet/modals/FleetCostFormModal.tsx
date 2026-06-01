@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import PanelTitleBar from '../../../components/PanelTitleBar';
 import { useFormDraft } from '../../../hooks/useFormDraft';
+import MoneyInput from '../components/MoneyInput';
 
 export type CostCategory = 'loan' | 'insurance' | 'accessory' | 'utility' | 'other';
 
@@ -246,7 +247,10 @@ export default function FleetCostFormModal({
 
   useEffect(() => {
     if (!isOpen) return;
-    if (mode === 'edit' && initial) {
+    // Honour a provided `initial` in BOTH modes: edit pre-populates the full
+    // record; create uses it for "carry-over" auto-fill (context fields from
+    // the last entry, amounts/dates left blank). Falls back to empty.
+    if (initial) {
       setForm(initial);
     } else if (mode === 'create') {
       setForm(EMPTY_COST_FORM);
@@ -332,16 +336,16 @@ export default function FleetCostFormModal({
                 </select>
               </Field>
               <Field label="Original Amount ($) *">
-                <input className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="number" step="0.01" min="0"
-                  value={form.original_amount} onChange={(e) => set('original_amount', e.target.value)} placeholder="35000" />
+                <MoneyInput className="input-dark w-full text-[11px] font-mono min-h-[36px]" aria-label="Original loan amount"
+                  value={form.original_amount} onChange={(v) => set('original_amount', v)} placeholder="35,000.00" />
               </Field>
               <Field label="Current Balance ($)">
-                <input className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="number" step="0.01" min="0"
-                  value={form.current_balance} onChange={(e) => set('current_balance', e.target.value)} placeholder="22340" />
+                <MoneyInput className="input-dark w-full text-[11px] font-mono min-h-[36px]" aria-label="Current loan balance"
+                  value={form.current_balance} onChange={(v) => set('current_balance', v)} placeholder="22,340.00" />
               </Field>
               <Field label="Monthly Payment ($) *">
-                <input className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="number" step="0.01" min="0"
-                  value={form.monthly_payment} onChange={(e) => set('monthly_payment', e.target.value)} placeholder="589.42" />
+                <MoneyInput className="input-dark w-full text-[11px] font-mono min-h-[36px]" aria-label="Monthly loan payment"
+                  value={form.monthly_payment} onChange={(v) => set('monthly_payment', v)} placeholder="589.42" />
               </Field>
               <Field label="Interest Rate (%)">
                 <input className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="number" step="0.01" min="0" max="100"
@@ -387,8 +391,8 @@ export default function FleetCostFormModal({
                 </select>
               </Field>
               <Field label="Premium Amount ($) *">
-                <input className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="number" step="0.01" min="0"
-                  value={form.premium_amount} onChange={(e) => set('premium_amount', e.target.value)} placeholder="125.00" />
+                <MoneyInput className="input-dark w-full text-[11px] font-mono min-h-[36px]" aria-label="Premium amount"
+                  value={form.premium_amount} onChange={(v) => set('premium_amount', v)} placeholder="125.00" />
               </Field>
               <Field label="Billing Frequency *">
                 <select className="select-dark w-full text-[11px] min-h-[36px]" value={form.premium_frequency}
@@ -408,12 +412,12 @@ export default function FleetCostFormModal({
                   value={form.expires_at} onChange={(e) => set('expires_at', e.target.value)} />
               </Field>
               <Field label="Deductible ($)">
-                <input className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="number" step="0.01" min="0"
-                  value={form.deductible} onChange={(e) => set('deductible', e.target.value)} placeholder="500" />
+                <MoneyInput className="input-dark w-full text-[11px] font-mono min-h-[36px]" aria-label="Deductible"
+                  value={form.deductible} onChange={(v) => set('deductible', v)} placeholder="500.00" />
               </Field>
               <Field label="Liability Limit ($)">
-                <input className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="number" step="0.01" min="0"
-                  value={form.liability_limit} onChange={(e) => set('liability_limit', e.target.value)} placeholder="100000" />
+                <MoneyInput className="input-dark w-full text-[11px] font-mono min-h-[36px]" aria-label="Liability limit"
+                  value={form.liability_limit} onChange={(v) => set('liability_limit', v)} placeholder="100,000.00" />
               </Field>
             </div>
           )}
@@ -445,8 +449,8 @@ export default function FleetCostFormModal({
                   value={form.installed_date} onChange={(e) => set('installed_date', e.target.value)} />
               </Field>
               <Field label="Cost ($)">
-                <input className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="number" step="0.01" min="0"
-                  value={form.cost} onChange={(e) => set('cost', e.target.value)} />
+                <MoneyInput className="input-dark w-full text-[11px] font-mono min-h-[36px]" aria-label="Accessory cost"
+                  value={form.cost} onChange={(v) => set('cost', v)} placeholder="0.00" />
               </Field>
               <Field label="Vendor">
                 <input className="input-dark w-full text-[11px] min-h-[36px]" value={form.vendor}
@@ -497,8 +501,8 @@ export default function FleetCostFormModal({
                   onChange={(e) => set('provider', e.target.value)} placeholder="e.g. Rocky Mountain Power" />
               </Field>
               <Field label="Cost Amount ($) *">
-                <input className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="number" step="0.01" min="0"
-                  value={form.cost_amount} onChange={(e) => set('cost_amount', e.target.value)} />
+                <MoneyInput className="input-dark w-full text-[11px] font-mono min-h-[36px]" aria-label="Utility cost amount"
+                  value={form.cost_amount} onChange={(v) => set('cost_amount', v)} placeholder="0.00" />
               </Field>
               <Field label="Frequency *">
                 <select className="select-dark w-full text-[11px] min-h-[36px]" value={form.cost_frequency}
@@ -548,8 +552,8 @@ export default function FleetCostFormModal({
                   onChange={(e) => set('other_provider', e.target.value)} placeholder="e.g. Utah DMV" />
               </Field>
               <Field label="Amount ($) *">
-                <input className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="number" step="0.01" min="0"
-                  value={form.other_amount} onChange={(e) => set('other_amount', e.target.value)} />
+                <MoneyInput className="input-dark w-full text-[11px] font-mono min-h-[36px]" aria-label="Other cost amount"
+                  value={form.other_amount} onChange={(v) => set('other_amount', v)} placeholder="0.00" />
               </Field>
               <Field label="Frequency *">
                 <select className="select-dark w-full text-[11px] min-h-[36px]" value={form.other_frequency}

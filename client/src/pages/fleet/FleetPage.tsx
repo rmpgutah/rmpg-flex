@@ -33,7 +33,7 @@ import MaintenanceMonitor from './components/MaintenanceMonitor';
 import type {
   FleetVehicle, FleetMaintenance, FleetVehicleStatus, FleetFuelLog,
   FleetFuelSummary, FleetInspection, FleetAssignment, FleetAnalytics,
-  FleetPersonnelData,
+  FleetPersonnelData, FuelType,
 } from '../../types';
 
 // ============================================================
@@ -648,10 +648,20 @@ export default function FleetPage() {
     setModal('log_maintenance');
   };
   const openLogFuel = () => {
+    // Carry over context (station / payment / driver / fuel type / location)
+    // from the most recent fill — amounts & odometer stay fresh per entry.
+    const last: any = Array.isArray(fuelLogs) && fuelLogs.length ? fuelLogs[0] : null;
     setFuelForm({
       ...EMPTY_FUEL_FORM,
       fuel_date: nowLocalISO(),
       odometer_reading: detail?.current_mileage ? String(detail.current_mileage) : '',
+      ...(last ? {
+        fuel_type: (last.fuel_type as FuelType) || 'regular',
+        station: last.station ?? '',
+        payment_method: last.payment_method ?? '',
+        driver_name: last.driver_name ?? '',
+        location: last.location ?? '',
+      } : {}),
     });
     setModal('log_fuel');
   };
@@ -820,6 +830,41 @@ export default function FleetPage() {
     }
   };
 
+  // Auto-fill: seed a NEW cost entry with the "context" fields (who/how — not
+  // amounts or dates) from the most recent entry of that category, so logging
+  // a recurring cost doesn't mean re-typing the lender/carrier/provider every
+  // time. Returns null when there's no prior record (→ empty form).
+  const buildCostCarryOver = (category: CostCategory): CostFormState | null => {
+    const s = (v: unknown) => (v == null ? '' : String(v));
+    const latest = (arr: any[]): any | null => (Array.isArray(arr) && arr.length ? arr[0] : null);
+    switch (category) {
+      case 'loan': {
+        const r = latest(loans); if (!r) return null;
+        return { ...EMPTY_COST_FORM, lender: s(r.lender) };
+      }
+      case 'insurance': {
+        const r = latest(insurancePolicies); if (!r) return null;
+        return { ...EMPTY_COST_FORM, carrier: s(r.carrier), coverage_type: s(r.coverage_type),
+          premium_frequency: (r.premium_frequency || 'monthly') };
+      }
+      case 'accessory': {
+        const r = latest(accessories); if (!r) return null;
+        return { ...EMPTY_COST_FORM, accessory_category: s(r.category), vendor: s(r.vendor) };
+      }
+      case 'utility': {
+        const r = latest(utilities); if (!r) return null;
+        return { ...EMPTY_COST_FORM, utility_category: s(r.category), provider: s(r.provider),
+          cost_frequency: (r.cost_frequency || 'monthly') };
+      }
+      case 'other': {
+        const r = latest(otherCosts); if (!r) return null;
+        return { ...EMPTY_COST_FORM, other_provider: s(r.provider),
+          other_frequency: (r.frequency || 'one_time') };
+      }
+    }
+    return null;
+  };
+
   const handleSaveBudgets = async (rows: { category: string; monthly_budget: number }[]) => {
     if (selectedId == null) return;
     try {
@@ -832,7 +877,7 @@ export default function FleetPage() {
   };
 
   const handleAddCost = (category: CostCategory) => {
-    setCostCategory(category); setCostMode('create'); setCostInitial(null);
+    setCostCategory(category); setCostMode('create'); setCostInitial(buildCostCarryOver(category));
     setEditingCostId(null); setCostModalOpen(true);
   };
   const handleEditCost = (category: CostCategory, record: any) => {
