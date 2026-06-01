@@ -22,14 +22,14 @@ import FleetDamageTab from './tabs/FleetDamageTab';
 import FleetRecallsTab from './tabs/FleetRecallsTab';
 import FleetCostsTab from './tabs/FleetCostsTab';
 import type { CostCategory } from './modals/FleetCostFormModal';
-import type { FleetLoan, FleetInsurancePolicy, FleetAccessory, FleetUtilityCost, FleetCostSummary } from '../../types';
+import type { FleetLoan, FleetInsurancePolicy, FleetAccessory, FleetUtilityCost, FleetOtherCost, FleetCostSummary } from '../../types';
 import { formatMilitary } from './utils/fleetFormatters';
 import { generateFleetFuelReport } from './utils/fleetFuelReport';
 import { generateFlaggedAuditPdf } from './utils/flaggedAuditPdf';
 import PrintRecordButton from '../../components/PrintRecordButton';
 
 export type DetailTab = 'overview' | 'fuel' | 'costs' | 'inspections' | 'assignments' | 'personnel' | 'analytics' | 'tires' | 'damage' | 'recalls';
-export type CostSubTab = 'loan' | 'insurance' | 'accessory' | 'utility';
+export type CostSubTab = 'loan' | 'insurance' | 'accessory' | 'utility' | 'other';
 
 const STATUS_LED: Record<FleetVehicleStatus, string> = {
   in_service: 'led-dot led-green', maintenance: 'led-dot led-amber',
@@ -93,12 +93,14 @@ interface Props {
   insurancePolicies: FleetInsurancePolicy[];
   accessories: FleetAccessory[];
   utilities: FleetUtilityCost[];
+  otherCosts: FleetOtherCost[];
   costSummary: FleetCostSummary | null;
   costSubTab: CostSubTab;
   onCostSubTabChange: (t: CostSubTab) => void;
   onAddCost: (category: CostCategory) => void;
   onEditCost: (category: CostCategory, record: any) => void;
   onDeleteCost: (category: CostCategory, record: any) => void;
+  onSaveBudgets?: (rows: { category: string; monthly_budget: number }[]) => Promise<void>;
   onEditMaintenance?: (record: FleetMaintenance) => void;
   onDeleteMaintenance?: (record: FleetMaintenance) => void;
   onEditInspection?: (inspection: FleetInspection) => void;
@@ -213,7 +215,7 @@ export default function FleetDetailPanel({
   activeTab, onTabChange,
   onEditVehicle, onLogMaintenance, onLogFuel, onNewInspection,
   onEditFuel, onDeleteFuel,
-  loans, insurancePolicies, accessories, utilities, costSummary, costSubTab, onCostSubTabChange, onAddCost, onEditCost, onDeleteCost,
+  loans, insurancePolicies, accessories, utilities, otherCosts, costSummary, costSubTab, onCostSubTabChange, onAddCost, onEditCost, onDeleteCost, onSaveBudgets,
   onEditMaintenance, onDeleteMaintenance, onEditInspection, onDeleteInspection,
   onAssignVehicle, onUnassignVehicle, onAddPersonnelNote, onDeletePersonnelNote, onRefreshPersonnel,
   onArchiveVehicle, onUnarchiveVehicle, onDeleteVehicle, isArchived,
@@ -394,12 +396,14 @@ export default function FleetDetailPanel({
             insurance={insurancePolicies}
             accessories={accessories}
             utilities={utilities}
+            other={otherCosts}
             summary={costSummary}
             subTab={costSubTab}
             onSubTabChange={onCostSubTabChange}
             onAdd={onAddCost}
             onEdit={onEditCost}
             onDelete={onDeleteCost}
+            onSaveBudgets={onSaveBudgets}
           />
         )}
         {activeTab === 'inspections' && <FleetInspectionsTab inspections={inspections} onNewInspection={onNewInspection} onEditInspection={onEditInspection} onDeleteInspection={onDeleteInspection} />}

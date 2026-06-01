@@ -1557,8 +1557,54 @@ export interface FleetUtilityCost {
   [key: string]: any;
 }
 
+export interface FleetOtherCost {
+  id?: number;
+  vehicle_id?: number;
+  cost_type?: string;
+  provider?: string;
+  amount?: number;
+  frequency?: string;
+  incurred_date?: string;
+  period_end?: string;
+  status?: string;
+  notes?: string;
+  [key: string]: any;
+}
+
+export interface FleetCostBudget {
+  id?: number;
+  vehicle_id?: number;
+  category?: string;
+  monthly_budget?: number;
+  notes?: string;
+  updated_at?: string;
+  [key: string]: any;
+}
+
 export interface FleetCostSummary {
   total?: number;
+  total_lifetime?: number;
+  cost_per_mile?: number;
+  categories?: {
+    fuel?: number;
+    maintenance?: number;
+    loans?: number;
+    insurance?: number;
+    accessories?: number;
+    utilities?: number;
+    other?: number;
+    [key: string]: number | undefined;
+  };
+  monthly_commitment?: {
+    loan?: number;
+    insurance?: number;
+    utility?: number;
+    other?: number;
+    total?: number;
+    [key: string]: number | undefined;
+  };
+  projected_annual?: number;
+  budgets?: Record<string, { budget: number; actual: number; over: boolean }>;
   [key: string]: any;
 }
 
