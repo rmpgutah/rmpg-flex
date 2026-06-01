@@ -48,6 +48,7 @@ import type { PersonFormData } from '../../components/PersonFormModal';
 import WarrantBadge from '../../components/WarrantBadge';
 import AISearchButton from '../../components/AISearchButton';
 import { humanizeGender, humanizeRace, formatPhoneDisplay, formatAddressDisplay, humanizeFlag } from '../../utils/statusLabels';
+import { hasValue } from '../../utils/sentinel';
 
 // ── DB Mapper ──────────────────────────────────────
 
@@ -212,13 +213,9 @@ const FLAG_COLORS: Record<string, string> = {
 // Avatar rendering (name-hash colors + initials) now lives in the shared
 // RecordAvatar component; the list + hero both use it.
 
-// Some fields are stored verbatim and carry sentinel "no value" strings —
-// gang_affiliation is frequently the literal "None", which is truthy and was
-// firing a false GANG affiliation alert + badge. Treat these as absent.
-const ABSENT_SENTINELS = ['none', '0', 'n/a', 'na', ''];
-function hasValue(v?: string | null): boolean {
-  return !!v && !ABSENT_SENTINELS.includes(v.trim().toLowerCase());
-}
+// Sentinel "no value" guard (gang_affiliation is frequently the literal
+// "None", which is truthy and once fired a false GANG alert + badge) now lives
+// in the shared ../../utils/sentinel module — see hasValue import above.
 
 // Single source of truth for a person's posture-relevant flags. Shared by the
 // list avatar ring, the detail hero, and the alert computation so all three
