@@ -600,6 +600,83 @@ bolos.get('/', requireRole(...READ_ROLES), async (c) => {
   }
 });
 
+// Static sub-routes registered BEFORE GET /:id. This router is also mounted at
+// /api/comms/bolos (the channel the client actually calls); that mount must be a
+// SUPERSET of the stubs router's /bolos/{active,check,stats} or it would shadow
+// them with a 404 (parseInt('stats') → NaN). These three mirror stubs.ts.
+bolos.get('/active', requireRole(...READ_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(db, `
+      SELECT b.*, u.full_name AS issued_by_name
+      FROM bolos b LEFT JOIN users u ON u.id = b.issued_by
+      WHERE b.status = 'active'
+      ORDER BY b.priority = 'P1' DESC, b.priority = 'P2' DESC, b.created_at DESC`);
+    return c.json(rows);
+  } catch (err) {
+    console.error('[dispatch] bolos active error', err);
+    return c.json([]);
+  }
+});
+
+bolos.get('/check', requireRole(...READ_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const address = c.req.query('address') || '';
+    const subject = c.req.query('subject') || '';
+    const vehicle = c.req.query('vehicle') || '';
+    if (!address && !subject && !vehicle) return c.json({ matches: [], count: 0 });
+    const keywords = (text: string) =>
+      text.toUpperCase().split(/[\s,;]+/).filter((w) => w.length >= 3).slice(0, 5);
+    const matchClauses: string[] = [];
+    const params: unknown[] = [];
+    for (const kw of keywords(subject)) {
+      matchClauses.push('(UPPER(subject_description) LIKE ? OR UPPER(description) LIKE ?)');
+      params.push(`%${kw}%`, `%${kw}%`);
+    }
+    for (const kw of keywords(vehicle)) {
+      matchClauses.push('(UPPER(vehicle_description) LIKE ? OR UPPER(description) LIKE ?)');
+      params.push(`%${kw}%`, `%${kw}%`);
+    }
+    if (address && address.length >= 3) {
+      matchClauses.push('UPPER(description) LIKE ?');
+      params.push(`%${address.toUpperCase()}%`);
+    }
+    if (matchClauses.length === 0) return c.json({ matches: [], count: 0 });
+    const rows = await query<Record<string, unknown>>(db, `
+      SELECT id, bolo_number, type, title, description,
+             subject_description, vehicle_description, priority, created_at, expires_at
+      FROM bolos
+      WHERE status = 'active' AND (${matchClauses.join(' OR ')})
+      ORDER BY priority ASC, created_at DESC LIMIT 10`, ...params);
+    return c.json({ matches: rows, count: rows.length });
+  } catch (err) {
+    console.error('[dispatch] bolos check error', err);
+    return c.json({ matches: [], count: 0 });
+  }
+});
+
+bolos.get('/stats', requireRole(...READ_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const [{ totalActive }] = await query<{ totalActive: number }>(db, "SELECT COUNT(*) as totalActive FROM bolos WHERE status = 'active'");
+    const [{ expiringSoon }] = await query<{ expiringSoon: number }>(db, "SELECT COUNT(*) as expiringSoon FROM bolos WHERE status = 'active' AND expires_at IS NOT NULL AND expires_at <= datetime('now', '+24 hours')");
+    const byCategory = await query<Record<string, unknown>>(db, "SELECT type as category, COUNT(*) as count, SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as active_count FROM bolos GROUP BY type ORDER BY type");
+    const byPriority = await query<Record<string, unknown>>(db, "SELECT priority, COUNT(*) as count FROM bolos WHERE status = 'active' GROUP BY priority ORDER BY priority");
+    const avgLifespan = await queryFirst<{ hours: number | null }>(db, "SELECT ROUND(AVG((julianday(expired_at) - julianday(created_at)) * 24), 1) as hours FROM bolos WHERE status IN ('expired','cancelled') AND expired_at IS NOT NULL");
+    return c.json({
+      byCategory: byCategory || [],
+      byPriority: byPriority || [],
+      totalActive: totalActive ?? 0,
+      expiringSoon: expiringSoon ?? 0,
+      avgLifespanHours: avgLifespan?.hours ?? null,
+    });
+  } catch (err) {
+    console.error('[dispatch] bolos stats error', err);
+    return c.json({ byCategory: [], byPriority: [], totalActive: 0, expiringSoon: 0, avgLifespanHours: null });
+  }
+});
+
 bolos.get('/:id', requireRole(...READ_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
@@ -655,7 +732,11 @@ bolos.put('/:id', requireRole(...WRITE_ROLES), async (c) => {
     const before = await queryFirst<any>(db, 'SELECT * FROM bolos WHERE id = ?', id);
     if (!before) return c.json({ error: 'BOLO not found', code: 'BOLO_NOT_FOUND' }, 404);
     const b = await c.req.json().catch(() => ({} as any));
-    const status = b.status ? String(b.status).toLowerCase() : before.status;
+    // The Communications "Resolve" button sends status:'resolved', which is not a
+    // valid bolos.status enum value (live CHECK = active/expired/cancelled) and
+    // would 400. Treat "resolved" as "cancelled" (no longer needed).
+    let status = b.status ? String(b.status).toLowerCase() : before.status;
+    if (status === 'resolved') status = 'cancelled';
     if (!VALID_BOLO_STATUSES.includes(status)) return c.json({ error: `status must be one of ${VALID_BOLO_STATUSES.join(', ')}`, code: 'BOLO_INVALID_STATUS' }, 400);
 
     await execute(db, `
@@ -690,6 +771,69 @@ bolos.delete('/:id', requireRole(...ADMIN_ROLES), async (c) => {
     return c.json({ success: true });
   } catch (err) {
     return c.json({ error: 'Failed to delete BOLO', code: 'BOLO_DELETE_ERR' }, 500);
+  }
+});
+
+// POST /:id/archive — "archive" a single BOLO = mark expired (no archive column
+// on bolos; expired/cancelled are already hidden from the default active list).
+bolos.post('/:id/archive', requireRole(...WRITE_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id') || '', 10);
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid id', code: 'INVALID_ID' }, 400);
+    const before = await queryFirst(db, 'SELECT id FROM bolos WHERE id = ?', id);
+    if (!before) return c.json({ error: 'BOLO not found', code: 'BOLO_NOT_FOUND' }, 404);
+    await execute(db, "UPDATE bolos SET status = 'expired', expired_at = datetime('now') WHERE id = ?", id);
+    return c.json({ success: true, ...(await queryFirst(db, 'SELECT * FROM bolos WHERE id = ?', id) as object) });
+  } catch (err) {
+    console.error('[dispatch] bolos archive error', err);
+    return c.json({ error: 'Failed to archive BOLO', code: 'BOLO_ARCHIVE_ERR' }, 500);
+  }
+});
+
+// POST /:id/unarchive — reactivate a BOLO (clears the expired timestamp).
+bolos.post('/:id/unarchive', requireRole(...WRITE_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id') || '', 10);
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid id', code: 'INVALID_ID' }, 400);
+    const before = await queryFirst(db, 'SELECT id FROM bolos WHERE id = ?', id);
+    if (!before) return c.json({ error: 'BOLO not found', code: 'BOLO_NOT_FOUND' }, 404);
+    await execute(db, "UPDATE bolos SET status = 'active', expired_at = NULL WHERE id = ?", id);
+    return c.json({ success: true, ...(await queryFirst(db, 'SELECT * FROM bolos WHERE id = ?', id) as object) });
+  } catch (err) {
+    console.error('[dispatch] bolos unarchive error', err);
+    return c.json({ error: 'Failed to unarchive BOLO', code: 'BOLO_UNARCHIVE_ERR' }, 500);
+  }
+});
+
+// POST /expire-check — auto-expire active BOLOs past their expires_at. Static
+// route; registered after /:id but Hono's router prioritizes static segments.
+bolos.post('/expire-check', requireRole(...WRITE_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const res = await execute(db, "UPDATE bolos SET status = 'expired', expired_at = datetime('now') WHERE status = 'active' AND expires_at IS NOT NULL AND expires_at <= datetime('now')");
+    return c.json({ success: true, expired: res.meta.changes ?? 0 });
+  } catch (err) {
+    console.error('[dispatch] bolos expire-check error', err);
+    return c.json({ error: 'Failed to run expire check', code: 'BOLO_EXPIRE_ERR' }, 500);
+  }
+});
+
+// POST /auto-archive { days_expired } — cancel BOLOs that have been expired
+// longer than N days. Non-destructive (rows kept for history/audit); cancelled
+// BOLOs are already hidden from the active list. Default window 7 days.
+bolos.post('/auto-archive', requireRole(...WRITE_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const body = await c.req.json().catch(() => ({} as any));
+    const daysRaw = Number(body.days_expired ?? 7);
+    const days = Number.isFinite(daysRaw) ? Math.min(Math.max(Math.floor(daysRaw), 1), 3650) : 7;
+    const res = await execute(db, "UPDATE bolos SET status = 'cancelled' WHERE status = 'expired' AND expired_at IS NOT NULL AND expired_at <= datetime('now', ?)", `-${days} days`);
+    return c.json({ success: true, archived: res.meta.changes ?? 0 });
+  } catch (err) {
+    console.error('[dispatch] bolos auto-archive error', err);
+    return c.json({ error: 'Failed to auto-archive', code: 'BOLO_AUTOARCHIVE_ERR' }, 500);
   }
 });
 
@@ -1264,6 +1408,39 @@ callActions.post('/:id/broadcast-note', requireRole(...WRITE_ROLES), async (c) =
   } catch (err) {
     console.error('[dispatch] broadcast-note error', err);
     return c.json({ error: 'Failed to broadcast note', code: 'BROADCAST_NOTE_ERROR' }, 500);
+  }
+});
+
+// POST /:id/notes — append ONE note server-side. The client previously did a
+// read-modify-write of the entire notes JSON blob (read in-memory notes, push,
+// PUT the whole array), so two dispatchers adding notes to the same call within
+// each other's think-time silently dropped one. Appending on the server re-reads
+// the current notes immediately before writing, collapsing that window. The
+// static '/:id/notes' is registered before '/:id/notes/:noteId' so it never
+// collides with the edit/delete routes. Client sends { text, author? }.
+callActions.post('/:id/notes', requireRole(...WRITE_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id') || '', 10);
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid call id', code: 'INVALID_ID' }, 400);
+    const call = await queryFirst<{ id: number; notes: string | null }>(
+      db, 'SELECT id, notes FROM calls_for_service WHERE id = ?', id);
+    if (!call) return c.json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }, 404);
+    const body = await c.req.json<{ text?: string; author?: string }>().catch(() => ({} as { text?: string; author?: string }));
+    const text = typeof body.text === 'string' ? body.text.trim() : '';
+    if (text.length < 1 || text.length > 2000) {
+      return c.json({ error: 'text is required (1-2000 chars)', code: 'NOTE_TEXT_INVALID' }, 400);
+    }
+    const now = utcNow();
+    const notes = safeJson<any[]>(call.notes, []);
+    notes.push({ id: `n-${Date.now()}`, author: String(body.author || 'Dispatch').slice(0, 120), text, timestamp: now });
+    await execute(db, 'UPDATE calls_for_service SET notes = ?, updated_at = ? WHERE id = ?', JSON.stringify(notes), now, id);
+    const updated = await fetchCallRow(db, id);
+    broadcastAll('dispatch_update', { action: 'call_updated', call: updated });
+    return c.json(updated);
+  } catch (err) {
+    console.error('[dispatch] add-note error', err);
+    return c.json({ error: 'Failed to add note', code: 'ADD_NOTE_ERROR' }, 500);
   }
 });
 

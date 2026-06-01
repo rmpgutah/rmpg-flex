@@ -761,28 +761,29 @@ export default function Layout() {
       }
     });
 
-    // Active call: listen for unit status changes to track assigned call
-    const unsubUnitStatus = subscribe('units:status', (msg: any) => {
+    // Active call: track the call number assigned to THIS unit. The live Worker
+    // broadcasts call lifecycle events under 'dispatch_update' (the old
+    // 'units:status' / 'calls:updated' channels are never emitted, so the mobile
+    // active-call bar never updated). The call payload is the raw call row, whose
+    // assigned units live in the comma-joined `unit_call_signs` field.
+    const unsubMobileActive = subscribe('dispatch_update', (msg: any) => {
       const data = msg.data || msg;
-      // Check if this status update is for our unit
-      if (data.call_sign === gps.unitCallSign) {
-        setMobileActiveCallNumber(data.active_call_number || null);
-      }
-    });
-    // Also listen for call updates
-    const unsubCallUpdate = subscribe('calls:updated', (msg: any) => {
-      const data = msg.data || msg;
-      // If a call has our unit assigned, track it
-      if (data.assigned_unit === gps.unitCallSign && data.status !== 'closed') {
-        setMobileActiveCallNumber(data.call_number || null);
+      const action = data.action;
+      if (!gps.unitCallSign) return;
+      if ((action === 'call_status_changed' || action === 'call_updated' || action === 'call_created') && data.call) {
+        const assigned = String(data.call.unit_call_signs || '')
+          .split(',').map((s: string) => s.trim()).filter(Boolean);
+        if (assigned.includes(gps.unitCallSign)) {
+          const done = ['cleared', 'closed', 'cancelled', 'archived'].includes(data.call.status);
+          setMobileActiveCallNumber(done ? null : (data.call.call_number || null));
+        }
       }
     });
 
     return () => {
       unsubRadioState();
       unsubRadioLeave();
-      unsubUnitStatus();
-      unsubCallUpdate();
+      unsubMobileActive();
     };
   }, [subscribe, user?.id, gps.unitCallSign]);
 

@@ -158,7 +158,7 @@ aggregates.get('/heatmap/enforcement', async (c) => {
         ROUND(COALESCE(c.latitude, cf.latitude), 3)   AS lat,
         ROUND(COALESCE(c.longitude, cf.longitude), 3) AS lng,
         COUNT(*)                                       AS total,
-        GROUP_CONCAT(DISTINCT c.statute)               AS top_statutes,
+        GROUP_CONCAT(DISTINCT c.statute_citation)      AS top_statutes,
         MIN(COALESCE(c.violation_date, c.created_at))  AS first_date,
         MAX(COALESCE(c.violation_date, c.created_at))  AS last_date
       FROM citations c
@@ -212,8 +212,8 @@ aggregates.get('/heatmap/predictions', async (c) => {
         ROUND(longitude, 2) AS lng,
         COUNT(*)             AS incident_count,
         GROUP_CONCAT(DISTINCT COALESCE(incident_type, 'unknown')) AS top_types,
-        SUM(CASE WHEN flags LIKE '%weapon%' OR flags LIKE '%gun%' OR narrative LIKE '%weapon%' OR narrative LIKE '%knife%' OR narrative LIKE '%gun%' THEN 1 ELSE 0 END) AS weapons_count,
-        SUM(CASE WHEN flags LIKE '%dv%' OR flags LIKE '%domestic%' OR incident_type LIKE '%domestic%' OR incident_type LIKE '%dv%' THEN 1 ELSE 0 END) AS dv_count,
+        SUM(CASE WHEN (weapons_involved NOT IN ('', '0', 'None', 'N/A') AND weapons_involved IS NOT NULL) OR incident_type LIKE '%weapon%' OR incident_type LIKE '%gun%' THEN 1 ELSE 0 END) AS weapons_count,
+        SUM(CASE WHEN domestic_violence IN (1, '1', 'true') OR incident_type LIKE '%domestic%' OR incident_type LIKE '%dv%' THEN 1 ELSE 0 END) AS dv_count,
         MAX(created_at) AS last_incident
       FROM calls_for_service
       WHERE latitude IS NOT NULL AND longitude IS NOT NULL

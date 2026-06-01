@@ -382,6 +382,12 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // router so the stubs router doesn't also claim the prefix. /crime-analysis
   // still falls through to legacy via the proxy — separate concern.
   { prefix: '/api/reports', router: reports, auth: 'required' },
+  // BOLOs: the client calls /api/comms/bolos (list/create/update/delete +
+  // active/check/stats/archive/expire-check). Mount the full bolos router here
+  // BEFORE the broad /api/comms stubs mount so it owns the whole /bolos subtree
+  // (Hono runs the first-registered matching handler). bolosRouter is a superset
+  // of the stubs' /bolos/{active,check,stats}, so nothing is shadowed.
+  { prefix: '/api/comms/bolos', router: bolosRouter, auth: 'required' },
   { prefix: '/api/comms', router: stubs, auth: 'required' },
   { prefix: '/api/weather', router: stubs, auth: 'required' },
   { prefix: '/api/email', router: stubs, auth: 'required' },
