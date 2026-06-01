@@ -390,7 +390,10 @@ export function useGeoJsonLayers({
       }
 
       // Defensive re-check before each side-effect — a sibling caller could
-      // have completed between our fetch starting and finishing.
+      // have completed between our fetch starting and finishing. Guard on
+      // STYLE readiness — addSource/addLayer throw "Style is not done loading"
+      // when the basemap style hasn't finished, even if map.loaded() is true.
+      whenStyleReady(map, () => {
       if (!map.getSource(sourceId)) {
         map.addSource(sourceId, {
           type: 'geojson',

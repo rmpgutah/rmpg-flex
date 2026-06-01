@@ -95,16 +95,20 @@ export function useMapboxMatrix(map: mapboxgl.Map | null) {
             if (geom) {
               const srcId = 'rmpg-matrix-route';
               routeSourceRef.current = srcId;
-              map.addSource(srcId, { type: 'geojson', data: { type: 'Feature', properties: {}, geometry: geom } });
-              map.addLayer({
-                id: 'rmpg-matrix-route',
-                type: 'line',
-                source: srcId,
-                paint: {
-                  'line-color': '#d4a017',
-                  'line-width': 3,
-                  'line-opacity': 0.85,
-                },
+              const m = map;
+              // Guard on STYLE readiness — addSource throws otherwise.
+              whenStyleReady(m, () => {
+                m.addSource(srcId, { type: 'geojson', data: { type: 'Feature', properties: {}, geometry: geom } });
+                m.addLayer({
+                  id: 'rmpg-matrix-route',
+                  type: 'line',
+                  source: srcId,
+                  paint: {
+                    'line-color': '#d4a017',
+                    'line-width': 3,
+                    'line-opacity': 0.85,
+                  },
+                });
               });
             }
           } catch { /* route rendering is non-critical */ }

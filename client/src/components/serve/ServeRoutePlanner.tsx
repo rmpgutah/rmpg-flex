@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { initMapbox, mapboxgl, MAPBOX_STYLE_DARK } from '../../utils/mapboxLoader';
 import { getMapboxAccessToken } from '../../utils/mapboxApiKey';
+import { whenStyleReady } from '../../pages/map/utils/safeAddSource';
 import { apiFetch } from '../../hooks/useApi';
 import type { ServeJob } from '../../types';
 

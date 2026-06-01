@@ -298,31 +298,36 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
         setOffRoute(false);
 
         // ── Render on map (Feature 2: congestion-colored line) ──
-        clearRouteFromMap();
-        map.addSource(ROUTE_SOURCE_ID, {
-          type: 'geojson',
-          lineMetrics: true, // required for line-gradient
-          data: { type: 'Feature', properties: {}, geometry },
-        });
-        // Traveled-portion underlay (dimmed) — trimmed by updateProgress.
-        map.addLayer({
-          id: TRAVELED_LAYER_ID,
-          type: 'line',
-          source: ROUTE_SOURCE_ID,
-          layout: { 'line-cap': 'round', 'line-join': 'round' },
-          paint: { 'line-color': '#3a3a3a', 'line-width': 7, 'line-opacity': 0.5, 'line-gradient': ['step', ['line-progress'], '#3a3a3a', 0.0001, 'rgba(0,0,0,0)'] },
-        });
+        // Guard on STYLE readiness — addSource throws "Style is not done
+        // loading" if the basemap style hasn't finished (map.loaded() alone
+        // isn't sufficient).
         const gradient = buildCongestionGradient(cum, total, congestion);
-        map.addLayer({
-          id: ROUTE_LAYER_ID,
-          type: 'line',
-          source: ROUTE_SOURCE_ID,
-          layout: { 'line-cap': 'round', 'line-join': 'round' },
-          paint: {
-            ...(gradient ? { 'line-gradient': gradient } : { 'line-color': CONGESTION_COLOR.unknown }),
-            'line-width': 5,
-            'line-opacity': 0.9,
-          },
+        whenStyleReady(map, () => {
+          clearRouteFromMap();
+          map.addSource(ROUTE_SOURCE_ID, {
+            type: 'geojson',
+            lineMetrics: true, // required for line-gradient
+            data: { type: 'Feature', properties: {}, geometry },
+          });
+          // Traveled-portion underlay (dimmed) — trimmed by updateProgress.
+          map.addLayer({
+            id: TRAVELED_LAYER_ID,
+            type: 'line',
+            source: ROUTE_SOURCE_ID,
+            layout: { 'line-cap': 'round', 'line-join': 'round' },
+            paint: { 'line-color': '#3a3a3a', 'line-width': 7, 'line-opacity': 0.5, 'line-gradient': ['step', ['line-progress'], '#3a3a3a', 0.0001, 'rgba(0,0,0,0)'] },
+          });
+          map.addLayer({
+            id: ROUTE_LAYER_ID,
+            type: 'line',
+            source: ROUTE_SOURCE_ID,
+            layout: { 'line-cap': 'round', 'line-join': 'round' },
+            paint: {
+              ...(gradient ? { 'line-gradient': gradient } : { 'line-color': CONGESTION_COLOR.unknown }),
+              'line-width': 5,
+              'line-opacity': 0.9,
+            },
+          });
         });
 
         // Turn-by-turn maneuvers (single leg: unit → call).

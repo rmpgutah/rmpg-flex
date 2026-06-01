@@ -4,6 +4,7 @@
 import { useCallback, useState, useRef, useEffect } from 'react';
 import type mapboxgl from 'mapbox-gl';
 import { apiFetch } from './useApi';
+import { whenStyleReady } from '../pages/map/utils/safeAddSource';
 
 interface GpsPoint {
   latitude: number;
@@ -115,7 +116,9 @@ export function useMapboxCoverageGaps(map: mapboxgl.Map | null) {
       });
       setStats(s);
 
-      // Render on map
+      // Render on map — guard on STYLE readiness (addSource throws
+      // "Style is not done loading" before the basemap style finishes).
+      whenStyleReady(map, () => {
       clearFromMap();
       visibleRef.current = true;
 
@@ -161,6 +164,7 @@ export function useMapboxCoverageGaps(map: mapboxgl.Map | null) {
           ],
           'fill-outline-color': '#333333',
         },
+      });
       });
     } catch (err) {
       console.warn('[useMapboxCoverageGaps] compute failed:', err);
