@@ -7,6 +7,7 @@
 import jsPDF from 'jspdf';
 import QRCode from 'qrcode';
 import { isPast, isWithinDays, parseTimestamp } from './dateUtils';
+import { hasValue } from './sentinel';
 import { zoneLeaf, beatLeaf, sectionZoneBeatCombined } from './dispatchCodeParts';
 import {
   addConfidentialWatermark, openAutoSection, closeAutoSection, addFieldPair,
@@ -249,14 +250,6 @@ function personCrossRefTags(name: string, data: CallPdfData): string[] {
 // recordPosture() engine the UI uses and draws the band — skipped for a 'clear'
 // posture so low-risk records print exactly as before (no added length).
 
-// Sentinel guard mirroring PersonsTab.hasValue — live text columns store the
-// literal strings "None"/"N/A"/"0" rather than NULL (see project memory
-// [[project-sentinel-none-strings]]), so naive truthiness fires false alerts.
-const PDF_ABSENT_SENTINELS = ['none', 'n/a', 'na', '0', 'false', 'no', 'null', 'undefined', '--', ''];
-function hasValuePdf(v?: string | null): boolean {
-  return !!v && !PDF_ABSENT_SENTINELS.includes(String(v).trim().toLowerCase());
-}
-
 /** Run a posture-flag array through recordPosture() and render the band.
  *  Returns y unchanged for a 'clear' posture. Chips are the matched flags,
  *  de-duped + upper-cased; drawThreatPostureBand caps the count with "+N". */
@@ -292,10 +285,10 @@ function personPdfPostureFlags(data: PersonPdfData): Array<string | null | undef
   if ((data.warrants || []).some(w => (w.status || '').toLowerCase() === 'active')) flags.push('ACTIVE WARRANT');
   if (data.bolo_active) flags.push('BOLO');
   if (data.is_sex_offender) flags.push('SEX OFFENDER');
-  if (hasValuePdf(data.gang_affiliation)) flags.push('GANG');
-  if (hasValuePdf(data.probation_parole)) flags.push('PAROLE/PROBATION');
-  if (hasValuePdf(data.mental_health_flags)) flags.push('MENTAL HEALTH');
-  if (hasValuePdf(data.caution_flags)) flags.push(data.caution_flags!);
+  if (hasValue(data.gang_affiliation)) flags.push('GANG');
+  if (hasValue(data.probation_parole)) flags.push('PAROLE/PROBATION');
+  if (hasValue(data.mental_health_flags)) flags.push('MENTAL HEALTH');
+  if (hasValue(data.caution_flags)) flags.push(data.caution_flags!);
   return flags;
 }
 
@@ -312,8 +305,8 @@ function vehiclePdfPostureFlags(data: VehiclePdfData): Array<string | null | und
 
 function propertyPdfPostureFlags(data: PropertyPdfData): Array<string | null | undefined> {
   const flags: Array<string | null | undefined> = [];
-  if (hasValuePdf(data.known_hazards)) flags.push(data.known_hazards!);
-  if (hasValuePdf(data.hazard_notes)) flags.push('HAZARD');
+  if (hasValue(data.known_hazards)) flags.push(data.known_hazards!);
+  if (hasValue(data.hazard_notes)) flags.push('HAZARD');
   if ((data.trespass_orders || []).some(t => (t.status || '').toLowerCase() === 'active')) flags.push('TRESPASS');
   return flags;
 }
@@ -2798,7 +2791,7 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
   // literal "None" gang value from firing a false GANG signal. Skipped for a
   // clear-posture person so unflagged records print unchanged.
   {
-    const dobCtx = hasValuePdf(data.date_of_birth) ? `DOB ${data.date_of_birth}` : '';
+    const dobCtx = hasValue(data.date_of_birth) ? `DOB ${data.date_of_birth}` : '';
     y = renderRecordPostureBand(doc, personPdfPostureFlags(data), dobCtx, y);
   }
 

@@ -350,7 +350,7 @@ export default function ClientFormModal({
             </div>
             <div>
               <label className="block text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">Contact Phone</label>
-              <input type="tel" className="input-dark text-xs w-full" value={form.contact_phone} onChange={(e) => set('contact_phone', formatPhoneInput(e.target.value))} placeholder="(801) 555-3001" pattern="[0-9()\-\s+]{7,20}" />
+              <input type="tel" className="input-dark text-xs w-full" value={form.contact_phone} onChange={(e) => set('contact_phone', formatPhoneInput(e.target.value))} placeholder="(801) 555-3001" pattern="[0-9\(\)\-\s+]{7,20}" />
             </div>
           </div>
 

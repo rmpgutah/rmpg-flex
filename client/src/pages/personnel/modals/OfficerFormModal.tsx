@@ -247,7 +247,7 @@ export default function OfficerFormModal({
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="field-label">Phone</label>
-            <input type="tel" value={form.phone} onChange={e => set('phone', formatPhoneInput(e.target.value))} placeholder="(801) 555-0100" pattern="[0-9()\-\s+]{7,20}" className="input-dark min-h-[36px]" />
+            <input type="tel" value={form.phone} onChange={e => set('phone', formatPhoneInput(e.target.value))} placeholder="(801) 555-0100" pattern="[0-9\(\)\-\s+]{7,20}" className="input-dark min-h-[36px]" />
           </div>
           <div>
             <label className="field-label">Email</label>
@@ -298,7 +298,7 @@ export default function OfficerFormModal({
           </div>
           <div>
             <label className="field-label">Phone</label>
-            <input type="tel" value={form.emergency_contact_phone} onChange={e => set('emergency_contact_phone', formatPhoneInput(e.target.value))} placeholder="(801) 555-1234" pattern="[0-9()\-\s+]{7,20}" className="input-dark min-h-[36px]" />
+            <input type="tel" value={form.emergency_contact_phone} onChange={e => set('emergency_contact_phone', formatPhoneInput(e.target.value))} placeholder="(801) 555-1234" pattern="[0-9\(\)\-\s+]{7,20}" className="input-dark min-h-[36px]" />
           </div>
           <div>
             <label className="field-label">Relationship</label>
