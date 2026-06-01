@@ -1376,9 +1376,9 @@ export default function Layout() {
                     }}
                     className={`toolbar-nav-btn flex-col items-center justify-center ${isActive || isDropdownOpen ? 'active' : ''}`}
                     style={{
-                      width: 52,
+                      minWidth: 52,
                       height: 42,
-                      padding: '2px 4px',
+                      padding: '2px 7px',
                     }}
                     title={`${item.label}${item.shortcut ? ` (${item.shortcut})` : ''}`}
                     aria-label={`${item.label}${hasChildren ? ' menu' : ''}`}
