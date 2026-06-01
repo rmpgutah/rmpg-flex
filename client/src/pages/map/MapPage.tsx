@@ -95,6 +95,10 @@ import { useMapTactical } from './hooks/useMapTactical';
 import TacticalToolsPanel, { type QuickDeployPreset } from './components/TacticalToolsPanel';
 import AnalysisDashboardPanel from './components/AnalysisDashboardPanel';
 import { useAnalysisSummary } from './hooks/useAnalysisSummary';
+import MultiStopRoutePanel, { type QueuedStop } from './components/MultiStopRoutePanel';
+import MapExportMenu from './components/MapExportMenu';
+import { generateMapSituationReport } from '../../utils/mapSituationReportPdf';
+import { useAuth } from '../../context/AuthContext';
 
 // ============================================================
 // Constants
@@ -310,7 +314,15 @@ export default function MapPage() {
   }, [setMapStyle]);
 
   // Routing
-  const { activeRoute, routeLoading, routeProgress, offRoute, showRoute, clearRoute, updateOrigin } = useMapRouting({ map: mapInstanceRef.current });
+  const { activeRoute, routeLoading, routeProgress, offRoute, showRoute, clearRoute, updateOrigin,
+          multiStopRoute, multiStopLoading, showMultiStopRoute, clearMultiStop } = useMapRouting({ map: mapInstanceRef.current });
+
+  // Multi-stop patrol route queue (PSO client requests, welfare checks, etc.)
+  const [routeQueue, setRouteQueue] = useState<QueuedStop[]>([]);
+  const [routeUnit, setRouteUnit] = useState<string | null>(null);
+
+  // Current operator — stamped onto exported situation reports.
+  const { user } = useAuth();
 
   // Search (sidebar)
   const [searchQuery, setSearchQuery] = useState('');
@@ -832,6 +844,9 @@ export default function MapPage() {
         fadeDuration: cfg.fade_duration,
         clickTolerance: cfg.click_tolerance,
         crossSourceCollisions: cfg.cross_source_collisions,
+        // Required so the WebGL canvas can be read back into a PNG for the
+        // map screenshot + situation-report PDF (canvas.toDataURL()).
+        preserveDrawingBuffer: true,
       };
 
       if (cfg.language) {
@@ -1506,6 +1521,153 @@ export default function MapPage() {
     document.addEventListener('click', handleRouteClick);
     return () => document.removeEventListener('click', handleRouteClick);
   }, [showRoute]);
+
+  // Delegated handler for "ADD TO PATROL ROUTE" buttons in call popups —
+  // queue the call as a stop in the optimized multi-call route.
+  useEffect(() => {
+    function handleQueueClick(e: MouseEvent) {
+      const btn = (e.target as HTMLElement).closest('[data-queue-call]') as HTMLElement | null;
+      if (!btn) return;
+      const callNumber = btn.getAttribute('data-queue-call') || '';
+      const lat = parseFloat(btn.getAttribute('data-queue-lat') || '');
+      const lng = parseFloat(btn.getAttribute('data-queue-lng') || '');
+      const label = btn.getAttribute('data-queue-label') || '';
+      if (!callNumber || isNaN(lat) || isNaN(lng)) return;
+      setRouteQueue((prev) => (prev.some((s) => s.callNumber === callNumber)
+        ? prev
+        : [...prev, { callNumber, lat, lng, label }]));
+      infoWindowRef.current?.remove();
+    }
+    document.addEventListener('click', handleQueueClick);
+    return () => document.removeEventListener('click', handleQueueClick);
+  }, []);
+
+  // Auto-pick a responding unit the first time stops are queued: prefer an
+  // available unit, else any unit with GPS. Dispatcher can override.
+  useEffect(() => {
+    if (routeQueue.length === 0 || routeUnit) return;
+    const withGps = units.filter((u) => u.latitude != null && u.longitude != null);
+    if (!withGps.length) return;
+    const pick = withGps.find((u) => u.status === 'available') || withGps[0];
+    setRouteUnit(pick.call_sign);
+  }, [routeQueue.length, routeUnit, units]);
+
+  const handleOptimizeRoute = useCallback(() => {
+    if (!routeUnit || routeQueue.length === 0) return;
+    const unit = units.find((u) => u.call_sign === routeUnit);
+    if (!unit || unit.latitude == null || unit.longitude == null) return;
+    showMultiStopRoute(
+      routeUnit,
+      { lat: unit.latitude, lng: unit.longitude },
+      routeQueue.map((s) => ({ callNumber: s.callNumber, lat: s.lat, lng: s.lng, label: s.label })),
+    );
+  }, [routeUnit, routeQueue, units, showMultiStopRoute]);
+
+  const handleClearPatrol = useCallback(() => {
+    setRouteQueue([]);
+    setRouteUnit(null);
+    clearMultiStop();
+  }, [clearMultiStop]);
+
+  // Low-priority, schedulable service calls a single unit can batch into one
+  // optimized patrol loop (vs emergency calls that get their own responder).
+  const ROUTABLE_SERVICE_TYPES = useMemo(
+    () => new Set(['pso_client_request', 'civil_paper_service', 'process_service', 'welfare_check', 'civil_standby', 'paper_service']),
+    [],
+  );
+  const routableServiceCalls = useMemo(
+    () => calls.filter((c) => c.latitude != null && c.longitude != null && ROUTABLE_SERVICE_TYPES.has(c.incident_type)),
+    [calls, ROUTABLE_SERVICE_TYPES],
+  );
+  const handleQueueAllService = useCallback(() => {
+    setRouteQueue(routableServiceCalls.slice(0, 11).map((c) => ({
+      callNumber: c.call_number,
+      lat: c.latitude as number,
+      lng: c.longitude as number,
+      label: formatIncidentType(c.incident_type),
+    })));
+  }, [routableServiceCalls]);
+
+  // ── Map export: PNG snapshot, print, and situation-report PDF ──
+  // Read the live WebGL canvas (needs preserveDrawingBuffer:true on init).
+  const captureMapPng = useCallback((): { dataUrl: string | null; aspect: number } => {
+    const map = mapInstanceRef.current;
+    if (!map) return { dataUrl: null, aspect: 1.6 };
+    try {
+      map.triggerRepaint();
+      const canvas = map.getCanvas();
+      return { dataUrl: canvas.toDataURL('image/png'), aspect: canvas.width / canvas.height };
+    } catch (err) {
+      devWarn('[Map] canvas capture failed:', err);
+      return { dataUrl: null, aspect: 1.6 };
+    }
+  }, []);
+
+  const handleScreenshot = useCallback(async (): Promise<boolean> => {
+    const { dataUrl } = captureMapPng();
+    if (!dataUrl) return false;
+    const a = document.createElement('a');
+    a.href = dataUrl;
+    a.download = `RMPG_Map_${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}.png`;
+    a.click();
+    return true;
+  }, [captureMapPng]);
+
+  const handlePrintMap = useCallback(() => {
+    const { dataUrl } = captureMapPng();
+    if (!dataUrl) { window.print(); return; }
+    const w = window.open('', '_blank');
+    if (!w) return;
+    // Build the print page via DOM (no document.write — XSS-safe).
+    w.document.title = 'RMPG Map';
+    w.document.body.style.margin = '0';
+    w.document.body.style.background = '#000';
+    const img = w.document.createElement('img');
+    img.src = dataUrl;
+    img.style.cssText = 'width:100%;height:auto;display:block;';
+    img.onload = () => { setTimeout(() => { w.print(); w.close(); }, 250); };
+    w.document.body.appendChild(img);
+  }, [captureMapPng]);
+
+  const handleSituationReport = useCallback(async () => {
+    const map = mapInstanceRef.current;
+    const { dataUrl, aspect } = captureMapPng();
+    const center = map?.getCenter();
+    const zoom = map?.getZoom() ?? 12;
+    await generateMapSituationReport({
+      mapImageDataUrl: dataUrl,
+      mapAspect: aspect,
+      operator: user?.full_name || user?.username || '—',
+      center: { lat: center?.lat ?? 40.76, lng: center?.lng ?? -111.89 },
+      zoom,
+      calls: calls.filter((c) => c.latitude != null && c.longitude != null).map((c) => ({
+        call_number: c.call_number,
+        incident_type: c.incident_type,
+        priority: c.priority,
+        status: c.status,
+        location_address: c.location_address,
+      })),
+      units: units.filter((u) => u.latitude != null && u.longitude != null).map((u) => ({
+        call_sign: u.call_sign,
+        officer_name: u.officer_name,
+        status: u.status,
+        current_call_type: u.current_call_type,
+        current_call_location: u.current_call_location,
+      })),
+      analysis: analysisSummary.data ? {
+        safetyZones: analysisSummary.data.metrics?.totalSafetyZones,
+        highRisk: analysisSummary.data.metrics?.highRiskZones,
+        predictions: analysisSummary.data.metrics?.activePredictions,
+        repeatAddrs: analysisSummary.data.metrics?.repeatAddressCount,
+      } : null,
+      patrol: multiStopRoute ? {
+        unitCallSign: multiStopRoute.unitCallSign,
+        totalEta: multiStopRoute.totalEta,
+        totalDistance: multiStopRoute.totalDistance,
+        stops: multiStopRoute.stops.map((s) => ({ order: s.order, callNumber: s.callNumber, label: s.label, legEta: s.legEta })),
+      } : null,
+    });
+  }, [captureMapPng, user, calls, units, analysisSummary.data, multiStopRoute]);
 
   // Delegated handler for "Navigate with Organic Maps" buttons rendered inside
   // info-window HTML. Android-native only; TS wrapper no-ops on other platforms.
@@ -2603,7 +2765,7 @@ export default function MapPage() {
           <div
             className={`absolute left-3 z-[10] flex items-center gap-2 px-3 py-2 ${isMobile ? 'top-16' : 'top-12'}`}
             style={{
-              background: 'rgba(6,12,20,0.95)',
+              background: 'rgba(10,10,10,0.95)',
               border: '1px solid #f59e0b40',
               WebkitBackdropFilter: 'blur(4px)',
               backdropFilter: 'blur(4px)',
@@ -4199,8 +4361,8 @@ export default function MapPage() {
             aria-label="Map status legend"
             style={{
               borderRadius: 2,
-              background: isLightMapStyle(mapStyle) ? 'rgba(255,255,255,0.85)' : isSatelliteStyle(mapStyle) ? 'rgba(6,12,20,0.88)' : 'rgba(6,12,20,0.92)',
-              border: isLightMapStyle(mapStyle) ? '1px solid rgba(0,0,0,0.12)' : '1px solid rgba(30,48,72,0.5)',
+              background: isLightMapStyle(mapStyle) ? 'rgba(255,255,255,0.85)' : isSatelliteStyle(mapStyle) ? 'rgba(10,10,10,0.88)' : 'rgba(10,10,10,0.92)',
+              border: isLightMapStyle(mapStyle) ? '1px solid rgba(0,0,0,0.12)' : '1px solid rgba(43,43,43,0.5)',
               padding: '4px 8px',
             }}
           >
@@ -4235,8 +4397,8 @@ export default function MapPage() {
             className="backdrop-blur-md shadow-md"
             style={{
               borderRadius: 2,
-              background: isLightMapStyle(mapStyle) ? 'rgba(255,255,255,0.88)' : isSatelliteStyle(mapStyle) ? 'rgba(6,12,20,0.92)' : 'rgba(6,12,20,0.95)',
-              border: isLightMapStyle(mapStyle) ? '1px solid rgba(0,0,0,0.15)' : '1px solid rgba(30,48,72,0.6)',
+              background: isLightMapStyle(mapStyle) ? 'rgba(255,255,255,0.88)' : isSatelliteStyle(mapStyle) ? 'rgba(10,10,10,0.92)' : 'rgba(10,10,10,0.95)',
+              border: isLightMapStyle(mapStyle) ? '1px solid rgba(0,0,0,0.15)' : '1px solid rgba(43,43,43,0.6)',
             }}
           >
             <div className="flex items-center gap-0.5 px-1.5 py-1">
@@ -4298,7 +4460,7 @@ export default function MapPage() {
               ...(isMobile
                 ? { top: 56, left: 8, right: 8 }
                 : { bottom: 48, left: 16, minWidth: 200 }),
-              background: isLightMapStyle(mapStyle) ? 'rgba(255,255,255,0.92)' : 'rgba(6,12,20,0.95)',
+              background: isLightMapStyle(mapStyle) ? 'rgba(255,255,255,0.92)' : 'rgba(10,10,10,0.95)',
               border: isLightMapStyle(mapStyle) ? '1px solid rgba(136, 136, 136,0.3)' : '1px solid #88888850',
               padding: '8px 14px',
               fontFamily: "'JetBrains Mono', 'Courier New', monospace",
@@ -4351,6 +4513,47 @@ export default function MapPage() {
             )}
           </div>
         )}
+
+        {/* ── "Route all PSO/service calls" quick launcher (queue empty) ── */}
+        {routeQueue.length === 0 && routableServiceCalls.length >= 2 && (
+          <button
+            onClick={handleQueueAllService}
+            className="absolute z-[1001] backdrop-blur-md flex items-center gap-2 transition-colors"
+            style={{
+              ...(isMobile ? { top: 56, right: 8 } : { top: 64, right: 16 }),
+              background: 'rgba(10,10,10,0.96)',
+              border: '1px solid #d4a01755',
+              borderRadius: 2,
+              boxShadow: '0 8px 28px rgba(0,0,0,0.5)',
+              padding: '6px 10px',
+              fontFamily: "'JetBrains Mono',monospace",
+              fontSize: 9,
+              fontWeight: 900,
+              letterSpacing: '0.06em',
+              color: '#d4a017',
+              cursor: 'pointer',
+              textTransform: 'uppercase',
+            }}
+            title="Queue all service calls into one optimized patrol route"
+          >
+            <Route className="w-3.5 h-3.5" />
+            Route {routableServiceCalls.length} Service Calls
+          </button>
+        )}
+
+        {/* ── Multi-Stop Patrol Route Panel (optimized one-unit-many-calls) ── */}
+        <MultiStopRoutePanel
+          queue={routeQueue}
+          units={units}
+          selectedUnit={routeUnit}
+          result={multiStopRoute}
+          loading={multiStopLoading}
+          isMobile={isMobile}
+          onSelectUnit={setRouteUnit}
+          onRemoveStop={(callNumber) => setRouteQueue((prev) => prev.filter((s) => s.callNumber !== callNumber))}
+          onClear={handleClearPatrol}
+          onOptimize={handleOptimizeRoute}
+        />
 
         {/* ── Bottom Right Buttons (Recenter + GPS Locate) ── */}
         <div
@@ -4421,6 +4624,14 @@ export default function MapPage() {
               <Navigation2 className={`${isMobile ? 'w-5 h-5' : 'w-4 h-4'} ${isLightMapStyle(mapStyle) ? 'text-gray-600' : 'text-gray-400'}`} />
             </button>
           )}
+          {/* Export: screenshot PNG, print, situation-report PDF */}
+          <MapExportMenu
+            mapStyle={mapStyle}
+            isMobile={isMobile}
+            onScreenshot={handleScreenshot}
+            onPrint={handlePrintMap}
+            onReport={handleSituationReport}
+          />
           {/* Reset to default view */}
           <button
             onClick={() => {
@@ -4448,10 +4659,10 @@ export default function MapPage() {
             className="absolute bottom-0 left-0 right-0 z-20 flex items-center justify-center gap-6 px-4 select-none pointer-events-none"
             style={{
               height: 22,
-              background: 'rgba(20,30,43,0.80)',
+              background: 'rgba(10,10,10,0.85)',
               backdropFilter: 'blur(6px)',
               WebkitBackdropFilter: 'blur(6px)',
-              borderTop: '1px solid rgba(30,48,72,0.5)',
+              borderTop: '1px solid rgba(43,43,43,0.5)',
             }}
           >
             {/* Active Calls */}

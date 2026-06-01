@@ -83,6 +83,18 @@ function findClosestButton(callId: string): string {
   </button>`;
 }
 
+// "Add this call as a stop in the optimized multi-call patrol route." Gold-
+// accented to match the planned-route line. Handled by a delegated click in
+// MapPage that pushes onto the route queue.
+function queueStopButton(call: CallInfoData): string {
+  return `<button data-queue-call="${escapeHtml(call.call_number)}"
+    data-queue-lat="${call.latitude}" data-queue-lng="${call.longitude}"
+    data-queue-label="${escapeHtml(formatIncidentType(call.incident_type))}"
+    style="display:block;width:100%;margin-top:6px;padding:4px 8px;background:${C_GOLD}1f;border:1px solid ${C_GOLD}80;color:${C_GOLD};font-size:8px;font-weight:900;font-family:${FONT_MONO};cursor:pointer;letter-spacing:0.5px;text-transform:uppercase;border-radius:2px;text-align:center;transition:background 0.15s ease,border-color 0.15s ease;">
+    &#43; ADD TO PATROL ROUTE
+  </button>`;
+}
+
 function dataRow(label: string, value: string, valueColor = C_TEXT): string {
   if (!value) return '';
   return `<div style="display:flex;justify-content:space-between;align-items:baseline;padding:3px 0;border-bottom:1px solid ${C_BORDER}15;transition:background 0.1s ease;">
@@ -277,6 +289,7 @@ export function buildCallInfoWindow(
       ${call.disposition ? dataRow('Disposition', call.disposition, C_TEXT_DIM) : ''}
     </div>
     ${call.latitude != null && call.longitude != null ? findClosestButton(String(call.id)) : ''}
+    ${call.latitude != null && call.longitude != null ? queueStopButton(call) : ''}
   `;
 
   // Units tab

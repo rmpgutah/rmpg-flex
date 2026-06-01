@@ -55,7 +55,7 @@ export default function HeatmapLegend({
       className="absolute z-[1000] backdrop-blur-sm"
       style={{
         ...positionStyle(position),
-        background: 'rgba(6,12,20,0.92)',
+        background: 'rgba(10,10,10,0.92)',
         border: '1px solid #2b2b2b',
         borderRadius: 2,
         padding: '6px 10px',

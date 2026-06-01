@@ -60,8 +60,8 @@ export default function MapOverlays({
           aria-label="Map legend"
           style={{
             borderRadius: 2,
-            background: isLightMapStyle(mapStyle) ? 'rgba(255,255,255,0.85)' : isSatelliteStyle(mapStyle) ? 'rgba(6,12,20,0.88)' : 'rgba(6,12,20,0.92)',
-            border: isLightMapStyle(mapStyle) ? '1px solid rgba(0,0,0,0.12)' : '1px solid rgba(30,48,72,0.5)',
+            background: isLightMapStyle(mapStyle) ? 'rgba(255,255,255,0.85)' : isSatelliteStyle(mapStyle) ? 'rgba(10,10,10,0.88)' : 'rgba(10,10,10,0.92)',
+            border: isLightMapStyle(mapStyle) ? '1px solid rgba(0,0,0,0.12)' : '1px solid rgba(43,43,43,0.5)',
             padding: '4px 8px',
           }}
         >
@@ -98,8 +98,8 @@ export default function MapOverlays({
           aria-label="Map statistics"
           style={{
             borderRadius: 2,
-            background: isLightMapStyle(mapStyle) ? 'rgba(255,255,255,0.88)' : isSatelliteStyle(mapStyle) ? 'rgba(6,12,20,0.92)' : 'rgba(6,12,20,0.95)',
-            border: isLightMapStyle(mapStyle) ? '1px solid rgba(0,0,0,0.15)' : '1px solid rgba(30,48,72,0.6)',
+            background: isLightMapStyle(mapStyle) ? 'rgba(255,255,255,0.88)' : isSatelliteStyle(mapStyle) ? 'rgba(10,10,10,0.92)' : 'rgba(10,10,10,0.95)',
+            border: isLightMapStyle(mapStyle) ? '1px solid rgba(0,0,0,0.15)' : '1px solid rgba(43,43,43,0.6)',
           }}
         >
           <div className="flex items-center gap-0.5 px-1.5 py-1">
@@ -156,7 +156,7 @@ export default function MapOverlays({
             ...(isMobile
               ? { top: 56, left: 8, right: 8 }
               : { bottom: 48, left: 16, minWidth: 200 }),
-            background: isLightMapStyle(mapStyle) ? 'rgba(255,255,255,0.92)' : 'rgba(6,12,20,0.95)',
+            background: isLightMapStyle(mapStyle) ? 'rgba(255,255,255,0.92)' : 'rgba(10,10,10,0.95)',
             border: isLightMapStyle(mapStyle) ? '1px solid rgba(136, 136, 136,0.3)' : '1px solid #88888850',
             padding: '8px 14px',
             fontFamily: "'JetBrains Mono', 'Courier New', monospace",

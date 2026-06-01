@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Download, Camera, Printer, ChevronDown, Loader2 } from 'lucide-react';
+import { Download, Camera, Printer, ChevronDown, Loader2, FileText } from 'lucide-react';
 import { isLightMapStyle, isSatelliteStyle } from '../utils/mapConstants';
 import type { MapStyleId } from '../utils/mapConstants';
 
@@ -8,9 +8,11 @@ interface MapExportMenuProps {
   isMobile: boolean;
   onScreenshot: () => Promise<boolean>;
   onPrint: () => void;
+  /** Generate the branded Tactical Situation Report PDF (optional). */
+  onReport?: () => Promise<void> | void;
 }
 
-export default function MapExportMenu({ mapStyle, isMobile, onScreenshot, onPrint }: MapExportMenuProps) {
+export default function MapExportMenu({ mapStyle, isMobile, onScreenshot, onPrint, onReport }: MapExportMenuProps) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -40,8 +42,8 @@ export default function MapExportMenu({ mapStyle, isMobile, onScreenshot, onPrin
   const light = isLightMapStyle(mapStyle);
   const sat = isSatelliteStyle(mapStyle);
 
-  const bgBase = light ? 'rgba(255,255,255,0.92)' : sat ? 'rgba(6,12,20,0.92)' : 'rgba(6,12,20,0.95)';
-  const borderBase = light ? '1px solid rgba(0,0,0,0.15)' : '1px solid rgba(30,48,72,0.6)';
+  const bgBase = light ? 'rgba(255,255,255,0.92)' : sat ? 'rgba(10,10,10,0.92)' : 'rgba(10,10,10,0.95)';
+  const borderBase = light ? '1px solid rgba(0,0,0,0.15)' : '1px solid rgba(43,43,43,0.6)';
   const textColor = light ? 'text-gray-700' : 'text-rmpg-200';
   const hoverBg = light ? 'hover:bg-[#181818]' : 'hover:bg-[#181818]';
 
@@ -60,6 +62,19 @@ export default function MapExportMenu({ mapStyle, isMobile, onScreenshot, onPrin
   const handlePrint = () => {
     setOpen(false);
     onPrint();
+  };
+
+  const handleReport = async () => {
+    if (!onReport) return;
+    setBusy(true);
+    setOpen(false);
+    try {
+      await onReport();
+    } catch {
+      // Report generation failed — busy resets below.
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -121,6 +136,20 @@ export default function MapExportMenu({ mapStyle, isMobile, onScreenshot, onPrin
             <div className={`text-[9px] ${light ? 'text-rmpg-400' : 'text-rmpg-500'}`}>Download as PNG</div>
           </div>
         </button>
+        {onReport && (
+          <button type="button"
+            role="menuitem"
+            onClick={handleReport}
+            className={`w-full flex items-center gap-2.5 px-3 py-2.5 text-left transition-colors duration-100 active:scale-[0.97] ${textColor} ${hoverBg}`}
+            style={{ borderBottom: borderBase }}
+          >
+            <FileText className="w-3.5 h-3.5 shrink-0" style={{ color: '#d4a017' }} />
+            <div>
+              <div className="text-xs font-medium">Situation Report</div>
+              <div className={`text-[9px] ${light ? 'text-rmpg-400' : 'text-rmpg-500'}`}>Branded PDF w/ snapshot</div>
+            </div>
+          </button>
+        )}
         {/* #22: Removed duplicate divider between items */}
         <button type="button"
           role="menuitem"

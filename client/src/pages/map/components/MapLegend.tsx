@@ -12,8 +12,10 @@ interface MapLegendProps {
 }
 
 const STATUS_ORDER: UnitStatus[] = ['available', 'dispatched', 'enroute', 'onscene', 'busy', 'off_duty'];
+// PRIORITY_COLORS (= PRIORITY_HEX) only defines P1–P4; P5 falls back to muted.
 const PRIORITY_ORDER = ['P1', 'P2', 'P3', 'P4', 'P5'] as const;
 const PRIORITY_LABELS: Record<string, string> = { P1: 'CRITICAL', P2: 'HIGH', P3: 'MEDIUM', P4: 'LOW', P5: 'INFO' };
+const PRIORITY_FALLBACK = '#5a5142';
 
 const SPEED_GRADIENT = [
   { color: '#22c55e', label: '0 mph (Idle)' },
@@ -49,11 +51,11 @@ export default function MapLegend({ layers, showBreadcrumbs, breadcrumbColorMode
       >
         <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
           <rect x="2" y="3" width="4" height="2" rx="0.5" fill="#22c55e" />
-          <rect x="8" y="3" width="6" height="1" rx="0.5" fill="#8899aa" />
+          <rect x="8" y="3" width="6" height="1" rx="0.5" fill="#666666" />
           <rect x="2" y="7" width="4" height="2" rx="0.5" fill="#f59e0b" />
-          <rect x="8" y="7" width="6" height="1" rx="0.5" fill="#8899aa" />
+          <rect x="8" y="7" width="6" height="1" rx="0.5" fill="#666666" />
           <rect x="2" y="11" width="4" height="2" rx="0.5" fill="#888888" />
-          <rect x="8" y="11" width="6" height="1" rx="0.5" fill="#8899aa" />
+          <rect x="8" y="11" width="6" height="1" rx="0.5" fill="#666666" />
         </svg>
       </button>
     );
@@ -102,16 +104,20 @@ export default function MapLegend({ layers, showBreadcrumbs, breadcrumbColorMode
         {/* Call Priority */}
         <div>
           <div className="h-px mb-2" style={{ background: 'linear-gradient(90deg, transparent, #2b2b2b, transparent)' }} />
-          <div className="text-[8px] font-mono font-bold tracking-wider text-[#9ca3af] uppercase mb-1">Call Priority</div>
+          <div className="text-[8px] font-mono font-bold tracking-wider text-[#9ca3af] uppercase mb-1">Priority Badge</div>
           <div className="space-y-0.5">
-            {PRIORITY_ORDER.map((p) => (
+            {PRIORITY_ORDER.map((p) => {
+              const c = PRIORITY_COLORS[p] || PRIORITY_FALLBACK;
+              return (
               <div key={p} className="flex items-center gap-1.5 hover:bg-[#181818]/50 transition-colors duration-100 px-0.5 -mx-0.5 rounded-sm">
                 {/* #14: Priority legend swatches match swatch sizing */}
-              <div className="shrink-0 rounded-sm" style={{ backgroundColor: PRIORITY_COLORS[p], width: 10, height: 10, borderRadius: 2, boxShadow: `0 0 4px ${PRIORITY_COLORS[p]}50` }} />
+              <div className="shrink-0 rounded-sm" style={{ backgroundColor: c, width: 10, height: 10, borderRadius: 2, boxShadow: `0 0 4px ${c}50` }} />
                 <span className="text-[9px] font-mono text-[#9ca3af]">{p} - {PRIORITY_LABELS[p]}</span>
               </div>
-            ))}
+              );
+            })}
           </div>
+          <div className="text-[7px] font-mono text-[#666666] mt-1 leading-snug">Incident pin color = call type</div>
         </div>
 
         {/* Layer Symbols */}
@@ -129,6 +135,10 @@ export default function MapLegend({ layers, showBreadcrumbs, breadcrumbColorMode
             <div className="flex items-center gap-1.5 hover:bg-[#181818]/50 transition-colors duration-100 px-0.5 -mx-0.5 rounded-sm">
               <div className="shrink-0" style={{ width: 12, height: 2, background: 'linear-gradient(90deg, #888888, #22c55e)', borderRadius: 1 }} />
               <span className="text-[9px] font-mono text-[#9ca3af]">Tracking line</span>
+            </div>
+            <div className="flex items-center gap-1.5 hover:bg-[#181818]/50 transition-colors duration-100 px-0.5 -mx-0.5 rounded-sm">
+              <div className="shrink-0" style={{ width: 12, height: 0, borderTop: '2px dashed #d4a017', borderRadius: 1 }} />
+              <span className="text-[9px] font-mono text-[#9ca3af]">Patrol route</span>
             </div>
             <div className="flex items-center gap-1.5 hover:bg-[#181818]/50 transition-colors duration-100 px-0.5 -mx-0.5 rounded-sm">
               <div className="flex gap-px shrink-0">

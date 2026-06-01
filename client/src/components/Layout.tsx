@@ -1162,7 +1162,7 @@ export default function Layout() {
                   style={{ minWidth: 220, zIndex: 9995, boxShadow: '0 8px 32px rgba(0,0,0,0.5), 0 2px 8px rgba(0,0,0,0.3)' }}
                 >
                   {/* User info header */}
-                  <div className="px-3 py-2.5 border-b border-rmpg-700" style={{ background: 'rgba(13, 21, 32, 0.5)' }}>
+                  <div className="px-3 py-2.5 border-b border-rmpg-700" style={{ background: 'rgba(10,10,10, 0.5)' }}>
                     <div className="text-xs font-bold text-white">
                       {user?.first_name} {user?.last_name}
                     </div>

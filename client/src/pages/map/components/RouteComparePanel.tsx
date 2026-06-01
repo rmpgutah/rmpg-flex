@@ -64,7 +64,7 @@ export default function RouteComparePanel({
         right: 16,
         minWidth: 320,
         maxWidth: 380,
-        background: 'rgba(6,12,20,0.95)',
+        background: 'rgba(10,10,10,0.95)',
         border: '1px solid #d4a01780',
         padding: '8px 12px',
         fontFamily: "'JetBrains Mono', 'Courier New', monospace",

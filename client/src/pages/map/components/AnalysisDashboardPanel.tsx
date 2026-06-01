@@ -351,6 +351,25 @@ export default function AnalysisDashboardPanel({
                     <span className="text-[8px] text-rmpg-600 font-mono ml-0.5">calls</span>
                   </div>
                 </div>
+                {/* Mini comparison bars — this week (gold) vs last week (gray). */}
+                {(() => {
+                  const cur = data.shiftTrend.currentPeriodCalls;
+                  const prev = data.shiftTrend.previousPeriodCalls;
+                  const max = Math.max(cur, prev, 1);
+                  const Bar = ({ v, color }: { v: number; color: string }) => (
+                    <div className="flex items-center gap-1.5">
+                      <div className="h-1.5 flex-1 rounded-sm overflow-hidden" style={{ background: '#141414' }}>
+                        <div className="h-full rounded-sm transition-all duration-300" style={{ width: `${Math.round((v / max) * 100)}%`, background: color }} />
+                      </div>
+                    </div>
+                  );
+                  return (
+                    <div className="space-y-1 pt-0.5">
+                      <Bar v={cur} color="#d4a017" />
+                      <Bar v={prev} color="#555555" />
+                    </div>
+                  );
+                })()}
                 <div className="flex items-center gap-1">
                   {data.shiftTrend.changePercent > 0 ? (
                     <>
