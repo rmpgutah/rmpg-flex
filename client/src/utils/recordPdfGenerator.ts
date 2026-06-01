@@ -4770,14 +4770,31 @@ async function generateFleetReport(doc: jsPDF, data: FleetPdfData) {
     // Renders the equipment array as a numbered table (spreadsheet-style)
     // instead of a single comma-joined string, so each item has its own
     // line and officers can mark it visually when auditing.
-    if (data.equipment && data.equipment.length > 0) {
-      y = checkPageBreak(doc, y, 12 + data.equipment.length * 4);
-      { const sec = openAutoSection(doc, `Installed Equipment (${data.equipment.length})`, y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
+    // Normalize equipment to string[]: the live `fleet_vehicles.equipment`
+    // column is TEXT, so it arrives as a JSON-array string, a comma-separated
+    // string, null, or (when built client-side) a real array. A raw string has
+    // a `.length` but no `.map`, which crashed the fleet record PDF
+    // ("equipment.map is not a function"). Coerce before rendering.
+    const equipmentList: string[] = (() => {
+      const e: unknown = (data as { equipment?: unknown }).equipment;
+      if (Array.isArray(e)) return e.map((x) => String(x)).filter(Boolean);
+      if (typeof e === 'string' && e.trim()) {
+        const t = e.trim();
+        if (t.startsWith('[')) {
+          try { const p = JSON.parse(t); if (Array.isArray(p)) return p.map((x) => String(x)).filter(Boolean); } catch { /* fall through to CSV */ }
+        }
+        return t.split(',').map((s) => s.trim()).filter(Boolean);
+      }
+      return [];
+    })();
+    if (equipmentList.length > 0) {
+      y = checkPageBreak(doc, y, 12 + equipmentList.length * 4);
+      { const sec = openAutoSection(doc, `Installed Equipment (${equipmentList.length})`, y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
       const eqColW = [14, ffw - 14];
       const eqColPos = [lx, lx + eqColW[0]];
       const eqHeaders = ['ITEM #', 'DESCRIPTION']
         .map((label, i) => ({ label, x: eqColPos[i] }));
-      const eqRows = data.equipment.map((item, i) => [
+      const eqRows = equipmentList.map((item, i) => [
         `${String(i + 1).padStart(3, '0')}`,
         item || '',
       ]);

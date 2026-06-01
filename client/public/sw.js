@@ -137,7 +137,11 @@
 //       vanishes"); (2) MoneyInput thousands-formatting on all cost $ fields
 //       (no more mangled input); (3) per-category running totals; (4) carry-
 //       over auto-fill from the last fuel/cost entry.
-const CACHE_NAME = 'rmpg-flex-v668';
+// v669: fix fleet record-PDF crash "equipment.map is not a function" — the
+//       live fleet_vehicles.equipment column is TEXT (JSON/CSV string), but the
+//       PDF generator assumed string[] and called .map(). Now coerced to a
+//       string[] in recordPdfGenerator.ts so Print fleet record works.
+const CACHE_NAME = 'rmpg-flex-v669';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
