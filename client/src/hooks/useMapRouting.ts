@@ -13,6 +13,7 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
 import { mapboxgl } from '../utils/mapboxLoader';
 import { getMapboxAccessToken } from '../utils/mapboxApiKey';
+import { whenStyleReady } from '../pages/map/utils/safeAddSource';
 
 // ─── Types ──────────────────────────────────────────────────
 

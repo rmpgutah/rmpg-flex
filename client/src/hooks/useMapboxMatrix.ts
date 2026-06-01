@@ -2,6 +2,7 @@
 import { useRef, useCallback, useState } from 'react';
 import type mapboxgl from 'mapbox-gl';
 import { getMatrix, type MatrixResult } from '../utils/mapboxServices';
+import { whenStyleReady } from '../pages/map/utils/safeAddSource';
 
 export interface UnitEta {
   unitId: number;

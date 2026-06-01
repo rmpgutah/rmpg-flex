@@ -9,6 +9,7 @@
 
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { mapboxgl } from '../utils/mapboxLoader';
+import { whenStyleReady } from '../pages/map/utils/safeAddSource';
 
 // ── Layer Configuration ──────────────────────────────────────
 
@@ -495,6 +496,7 @@ export function useGeoJsonLayers({
           popup.setLngLat(e.lngLat).setHTML(html).addTo(map);
         });
       }
+      }); // end whenStyleReady
 
       setLayerStates((prev) => ({
         ...prev,
