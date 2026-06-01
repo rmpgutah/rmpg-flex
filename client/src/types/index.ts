@@ -1458,6 +1458,12 @@ export interface FleetFuelLog {
   // Optional backend-attached fields (not always present on every log row)
   flags?: string;              // JSON-encoded flag array, e.g. '["outlier:mpg"]'
   driver_officer_id?: string;  // officer who filled the tank (if tracked)
+  // Enhanced capture (2026-05-31)
+  is_full_tank?: number | boolean; // 1/0 from D1; gates MPG attribution
+  payment_method?: string;
+  driver_name?: string;
+  location?: string;
+  odometer?: number;           // live column name (FleetFuelLog also exposes odometer_reading)
 }
 
 export interface FleetFuelSummary {
@@ -1471,6 +1477,7 @@ export interface FleetFuelSummary {
   total_distance?: number | null;
   cost_per_mile?: number | null;
   fuel_cost_per_day?: number | null;
+  full_tank_count?: number;
 }
 
 // --- Fuel Analytics + Budget + Cost types (deploy-unblock placeholders) ---

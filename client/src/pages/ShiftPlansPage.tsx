@@ -77,12 +77,11 @@ export default function ShiftPlansPage() {
   const [overtimeLoading, setOvertimeLoading] = useState(true);
 
   useEffect(() => {
-    // Server mounts shiftPlanRoutes at /api/admin (see server/src/index.ts).
-    // Legacy paths under /api/shift-plans/* 404 because that prefix is not mounted.
-    apiFetch('/api/admin/shift-swaps?status=pending')
+    // shiftPlans router mounted at /api (see src/routesConfig.ts)
+    apiFetch('/shift-swaps?status=pending')
       .then(r => Array.isArray(r) ? setSwapRequests(r) : null)
       .catch((err: any) => addToast(err?.message || 'Failed to load swap requests', 'error'));
-    apiFetch('/api/admin/shift-notifications')
+    apiFetch('/shift-notifications')
       .then((r: any) => r?.notifications && setShiftNotifs(r.notifications))
       .catch((err: any) => addToast(err?.message || 'Failed to load shift notifications', 'error'));
   }, [addToast]);
@@ -91,15 +90,15 @@ export default function ShiftPlansPage() {
     setOvertimeLoading(true);
     let pending = 3;
     const done = () => { pending -= 1; if (pending === 0) setOvertimeLoading(false); };
-    apiFetch(`/api/admin/staffing-levels?date=${selectedDate}`)
+    apiFetch(`/staffing-levels?date=${selectedDate}`)
       .then((r: any) => r && setStaffingLevels(r))
       .catch((err: any) => addToast(err?.message || 'Failed to load staffing levels', 'error'))
       .finally(done);
-    apiFetch(`/api/admin/shift-plans/conflicts/${selectedDate}`)
+    apiFetch(`/shift-plans/conflicts/${selectedDate}`)
       .then((r: any) => r?.conflicts && setConflicts(r.conflicts))
       .catch((err: any) => addToast(err?.message || 'Failed to load conflicts', 'error'))
       .finally(done);
-    apiFetch(`/api/admin/shift-overtime?week_start=${selectedDate}`)
+    apiFetch(`/shift-overtime?week_start=${selectedDate}`)
       .then((r: any) => r && setOvertimeData(r))
       .catch((err: any) => addToast(err?.message || 'Failed to load overtime data', 'error'))
       .finally(done);

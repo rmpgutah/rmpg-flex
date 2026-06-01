@@ -11,6 +11,19 @@
 // fields, an Edit button (when handler wired), and a Delete (archive)
 // button (admin/manager only — the parent decides whether to wire the
 // callback). Empty states call out the action you can take.
+//
+// ⚠️ STATUS (2026-05-31): NOT YET RENDERED by any parent — and deliberately
+// so. Of the four categories only `insurance` has backend CRUD in
+// src/routes/fleet.ts (GET/POST/PUT/DELETE /[:id/]insurance over
+// fleet_insurance). `loan`, `accessory`, and `utility` have NO handlers and
+// NO backing tables on live D1 (fleet_loans / fleet_utility_costs don't
+// exist). Wiring this tab now would recreate the "saves then vanishes" bug
+// for 3 of 4 categories. To finish: add registerCostCategoryRoutes()-style
+// handlers + migrations for fleet_loans / fleet_accessories(write) /
+// fleet_utility_costs, THEN add a 'costs' entry to FleetDetailPanel TABS and
+// pass loans/insurance/accessories/utilities/summary + onAdd/onEdit/onDelete.
+// (The fuel Budget + CSV Import siblings WERE wired this pass — they had
+// real handlers. See FuelAnalyticsPage.)
 // ═══════════════════════════════════════════════════════════════
 
 import React from 'react';
@@ -24,6 +37,7 @@ import type {
 } from '../../../types';
 import type { CostCategory } from '../modals/FleetCostFormModal';
 import { parseTimestamp } from '../../../utils/dateUtils';
+import { toDisplayLabel } from '../../../utils/formatters';
 
 type SubTab = 'loan' | 'insurance' | 'accessory' | 'utility';
 
@@ -70,7 +84,7 @@ function StatusBadge({ status }: { status: string | null | undefined }) {
   };
   return (
     <span className={`px-1 py-0.5 text-[8px] font-bold uppercase border ${colors[status] || 'bg-rmpg-800 text-rmpg-400 border-rmpg-700'}`}>
-      {status.replace('_', ' ')}
+      {toDisplayLabel(status)}
     </span>
   );
 }
@@ -291,7 +305,7 @@ function InsuranceList({ records, onAdd, onEdit, onDelete }: {
                   <span className="text-[10px] text-rmpg-200 font-bold">{p.carrier || '(no carrier)'}</span>
                   <StatusBadge status={p.status} />
                   {p.policy_number && <span className="text-[9px] text-rmpg-500 font-mono">#{p.policy_number}</span>}
-                  <span className="text-[10px] text-green-400 font-mono">{fmtCurrency(p.premium_amount)} {p.premium_frequency.replace('_', '-')}</span>
+                  <span className="text-[10px] text-green-400 font-mono">{fmtCurrency(p.premium_amount)} {toDisplayLabel(p.premium_frequency)}</span>
                   {expSoon && (
                     <span className="text-[8px] font-bold uppercase text-amber-400 flex items-center gap-0.5">
                       <AlertTriangle className="w-2.5 h-2.5" /> Renews soon
@@ -299,7 +313,7 @@ function InsuranceList({ records, onAdd, onEdit, onDelete }: {
                   )}
                 </div>
                 <div className="flex items-center gap-3 mt-0.5 text-[9px] text-rmpg-500 font-mono">
-                  {p.coverage_type && <span>{p.coverage_type}</span>}
+                  {p.coverage_type && <span>{toDisplayLabel(p.coverage_type)}</span>}
                   <span>From: {p.effective_from}</span>
                   {p.expires_at && <span>Expires: {p.expires_at}</span>}
                   {p.deductible != null && <span>Deductible: {fmtCurrency(p.deductible)}</span>}
@@ -332,7 +346,7 @@ function AccessoryList({ records, onAdd, onEdit, onDelete }: {
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-[10px] text-rmpg-200 font-bold">{a.name}</span>
-                {a.category && <span className="text-[8px] font-bold uppercase text-amber-400 bg-amber-900/20 border border-amber-700/30 px-1 py-0.5">{a.category}</span>}
+                {a.category && <span className="text-[8px] font-bold uppercase text-amber-400 bg-amber-900/20 border border-amber-700/30 px-1 py-0.5">{toDisplayLabel(a.category)}</span>}
                 <StatusBadge status={a.status} />
                 <span className="text-[10px] text-amber-400 font-mono">{fmtCurrency(a.cost)}</span>
               </div>
@@ -369,8 +383,8 @@ function UtilityList({ records, onAdd, onEdit, onDelete }: {
             </div>
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-[10px] text-rmpg-200 font-bold">{u.category}</span>
-                <span className="text-[10px] text-purple-400 font-mono">{fmtCurrency(u.cost_amount)} {u.cost_frequency.replace('_', '-')}</span>
+                <span className="text-[10px] text-rmpg-200 font-bold">{toDisplayLabel(u.category)}</span>
+                <span className="text-[10px] text-purple-400 font-mono">{fmtCurrency(u.cost_amount)} {toDisplayLabel(u.cost_frequency)}</span>
                 {u.vehicle_id == null && (
                   <span className="text-[8px] font-bold uppercase text-rmpg-400 bg-rmpg-800 border border-rmpg-700 px-1 py-0.5">fleet-wide</span>
                 )}

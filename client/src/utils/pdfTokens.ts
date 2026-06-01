@@ -229,7 +229,7 @@ export const BORDER = {
   SIGNATURE_LINE:   0.5,   // Signature line (was 0.4)
   ACCENT_HEADER:    1.0,   // Accent line below header (was 0.8)
   ACCENT_FOOTER:    0.6,   // Accent line above footer (was 0.5)
-  ACCENT_SECTION:   2.0,   // Section header left-accent strip (was 1.5 — bolder anchor)
+  ACCENT_SECTION:   0,     // Section header left-accent strip REMOVED 2026-05-30 (was 2.0). Zero-width = no left highlight anywhere; section-header bars span full width and titles start at the left margin across all PDF generators.
   FIELD_UNDERLINE:  0.3,   // Field underline rule (was 0.15 — visibly defined)
   CASE_BOX:         1.0,   // White border inside case number box
   BANNER:           0.8,   // Banner borders
@@ -262,16 +262,15 @@ export const SPACING = {
 
   CONTENT_INSET:      1,     // Left/right padding inside sections
   SECTION_HEADER_H:   4.5,   // Section header bar height (readable with accent strip)
-  SECTION_GAP:        1.0,   // Gap between sections (compact but visible)
+  SECTION_GAP:        0.6,   // Gap between sections (condensed 2026-05-31: 1.0 → 0.6)
   // Breathing room between section header bar and first content row.
-  // 2mm gives the first label space to sit below the bar without hugging —
-  // e.g. "INCIDENT OVERVIEW" bar → ~2mm gap → "INCIDENT NUMBER" label.
-  // Small enough that form height doesn't balloon across multi-section forms.
-  SECTION_CONTENT_PAD: 2,
+  // 1.2mm keeps the first label clear of the bar without hugging while
+  // keeping multi-section forms compact (condensed 2026-05-31: 2 → 1.2).
+  SECTION_CONTENT_PAD: 1.2,
   SECTION_BOTTOM_PAD:  0.5,  // Padding inside section before bottom border
 
-  FIELD_ROW_HEIGHT:   2.8,   // Value area height (no box, just label+value)
-  FIELD_ROW_ADVANCE:  2.8,   // Y-advance after field row (tight)
+  FIELD_ROW_HEIGHT:   2.0,   // Value area height (condensed 2026-05-31: 2.8 → 2.0)
+  FIELD_ROW_ADVANCE:  2.0,   // Y-advance after field row (condensed 2026-05-31: 2.8 → 2.0)
 
   SIGNATURE_BOX_H:    20,    // Signature block total height (compact)
   SIGNATURE_ROLE_H:   4,     // Role label header bar height

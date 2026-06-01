@@ -4117,7 +4117,7 @@ export default function MapPage() {
                     tactical.showCommandRings(lat, lng); // perimeter rings
                     break;
                 }
-                addToast(`${preset.replace('_', ' ').toUpperCase()} deployed at map center`, 'success');
+                addToast(`${preset.replace(/_/g, ' ').toUpperCase()} deployed at map center`, 'success');
               }}
               onClose={() => setShowTacticalTools(false)}
             />

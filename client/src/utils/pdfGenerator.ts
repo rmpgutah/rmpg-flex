@@ -29,7 +29,7 @@ import {
 import {
   COLOR, FONT, BORDER, SPACING, LAYOUT, PDF_VALUE_FONT, getContentWidth,
   getFullFieldWidth, getLeftX, getRightColumnX, getHalfFieldWidth, getThirdWidth,
-  getGridStartX, getGridContentWidth, formatEnumValue,
+  getGridStartX, getGridContentWidth, formatEnumValue, getCapHeight,
   applyPrintTarget, topMarginY, topHeaderY, type PrintTarget,
 } from './pdfTokens';
 
@@ -769,11 +769,11 @@ export function closeAutoSection(doc: jsPDF, sectionY: number, contentEndY: numb
 export function addFieldPair(doc: jsPDF, label: string, value: string, x: number, y: number, width: number, maxLinesOverride?: number): number {
   // @ts-expect-error jsPDF GState — ensure full opacity
   doc.setGState(new doc.GState({ opacity: 1.0 }));
-  // Height reserved for label above value. Bumped 2.3 → 3.2mm so label
-  // and value don't hug each other — e.g. "INCIDENT NUMBER" → ~1mm gap →
-  // "RKY26-#####-CRM" value. The 0.9mm increase propagates to every
-  // field across every PDF form via this single tokenized constant.
-  const labelH = 3.2;
+  // Height reserved for label above value. 2.7mm keeps the label clear of
+  // the value without the airy gap the old 3.2mm produced — e.g.
+  // "INCIDENT NUMBER" → ~0.6mm gap → "RKY26-#####-CRM" value. Condensed
+  // 2026-05-31 (3.2 → 2.7); propagates to every field across every PDF form.
+  const labelH = 2.7;
   const innerPad = 0.8;      // Horizontal padding
   const maxW = width - 2 * innerPad;
   // Auto-detect long text fields: if value > 200 chars or full-width field, allow more lines
@@ -784,7 +784,7 @@ export function addFieldPair(doc: jsPDF, label: string, value: string, x: number
   const isEmpty = !sanitized || sanitized.trim() === '';
   const useReadableText = !isEmpty && isNarrativeLikePdfText(sanitized, width);
   const lineStep = getPdfTextLineHeight(FONT.SIZE_FIELD_VALUE, useReadableText);
-  const baseBoxH = useReadableText ? 3.2 : 2.6;
+  const baseBoxH = useReadableText ? 2.8 : 2.3;  // condensed 2026-05-31 (3.2/2.6 → 2.8/2.3)
   const displayText = isEmpty ? 'N/A' : sanitized.toUpperCase();
   doc.setFont(PDF_VALUE_FONT, 'normal');
   doc.setFontSize(FONT.SIZE_FIELD_VALUE);
@@ -853,7 +853,7 @@ export function addFieldPair(doc: jsPDF, label: string, value: string, x: number
   // Reset text color
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
 
-  return fieldBottomY + 0.6; // field bottom + row gap
+  return fieldBottomY + 0.4; // field bottom + row gap (condensed 2026-05-31: 0.6 → 0.4)
 }
 
 /**
@@ -1883,17 +1883,15 @@ function addSupplementsSection(doc: jsPDF, data: IncidentData, y: number): numbe
       const contTitle = supTitle.toUpperCase() + ' -- CONTINUED';
       const supPageBreak = (newY: number): number => {
         const cw = getContentWidth(doc);
-        doc.setFillColor(...COLOR.BG_SECTION_HDR);
-        doc.rect(LAYOUT.PAGE_MARGIN, newY, cw, SPACING.SECTION_HEADER_H, 'F');
-        doc.setDrawColor(...COLOR.BORDER_SECTION);
-        doc.setLineWidth(BORDER.SECTION_OUTER);
-        doc.rect(LAYOUT.PAGE_MARGIN, newY, cw, SPACING.SECTION_HEADER_H);
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(FONT.SIZE_SECTION_TITLE);
-        doc.setTextColor(...COLOR.TEXT_INVERTED);
-        const capH = FONT.SIZE_SECTION_TITLE * 0.35;
-        const textYpos = newY + (SPACING.SECTION_HEADER_H + capH) / 2;
-        doc.text(sanitizePdfText(contTitle), LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, textYpos);
+        doc.setTextColor(...COLOR.TEXT_PRIMARY);
+        const textYpos = newY + getCapHeight(FONT.SIZE_SECTION_TITLE) + 0.6;
+        doc.text(sanitizePdfText(contTitle), LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET, textYpos);
+        const supRuleY = newY + SPACING.SECTION_HEADER_H - 0.6;
+        doc.setDrawColor(...COLOR.TEXT_PRIMARY);
+        doc.setLineWidth(BORDER.SECTION_OUTER);
+        doc.line(LAYOUT.PAGE_MARGIN, supRuleY, LAYOUT.PAGE_MARGIN + cw, supRuleY);
         const contentStartY = newY + SPACING.SECTION_HEADER_H + SPACING.SECTION_CONTENT_PAD + 2;
         doc.setTextColor(...COLOR.TEXT_PRIMARY);
         doc.setFont(PDF_VALUE_FONT, 'normal');
@@ -2061,6 +2059,12 @@ export function checkPageBreak(doc: jsPDF, y: number, needed: number, priority?:
       doc.text(rightParts.join('  |  '), pageWidth - LAYOUT.PAGE_MARGIN - SPACING.CONTENT_INSET, contTextY, { align: 'right' });
     }
 
+    // Thin full-width rule just below the continuation title.
+    const contRuleY = contY + contH - 0.6;
+    doc.setDrawColor(...COLOR.TEXT_PRIMARY);
+    doc.setLineWidth(BORDER.SECTION_OUTER);
+    doc.line(LAYOUT.PAGE_MARGIN, contRuleY, LAYOUT.PAGE_MARGIN + cw, contRuleY);
+
     doc.setFont(PDF_VALUE_FONT, 'normal');
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
 
@@ -2093,8 +2097,8 @@ export function addTableWithShading(
   doc.setGState(new doc.GState({ opacity: 1.0 }));
   const cw = getContentWidth(doc);
   const pageW = doc.internal.pageSize.getWidth();
-  const minRowH = 5.5;
-  const cellLineH = 3.4;      // Line height within table cells
+  const minRowH = 4.6;        // condensed 2026-05-31 (5.5 → 4.6)
+  const cellLineH = 3.0;      // Line height within table cells (condensed 2026-05-31: 3.4 → 3.0)
   const cellPad = 1.5;        // Padding inside cells
   const maxCellLines = 50;    // Show full note text without truncation
 
@@ -2108,7 +2112,7 @@ export function addTableWithShading(
   // Helper to draw header row — dark blocky style (or light field-pair style)
   // atY = top of header rect; text is vertically centered within
   const lightHdr = opts?.lightHeader === true;
-  const headerRowH = 5;
+  const headerRowH = 4.6;  // condensed 2026-05-31 (5 → 4.6)
   const drawHeaders = (atY: number): number => {
     if (lightHdr) {
       // Light header: white background, thin border, uppercase label (field-pair style)
@@ -2191,18 +2195,23 @@ export function addTableWithShading(
       if (opts?.sectionTitle) {
         y -= SPACING.SECTION_GAP;
         const subBarH = SPACING.SECTION_HEADER_H;
-        doc.setFillColor(...COLOR.BG_SECTION_HDR);
-        doc.rect(LAYOUT.PAGE_MARGIN, y, cw, subBarH, 'F');
+        // Flat section-title continuation band: black title + thin rule
+        // below. The table column-header row that follows (drawHeaders)
+        // stays dark.
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(FONT.SIZE_SECTION_TITLE);
-        doc.setTextColor(...COLOR.TEXT_INVERTED);
-        const subCapH = FONT.SIZE_SECTION_TITLE * 0.35;
-        const subTextY = y + (subBarH + subCapH) / 2;
+        doc.setTextColor(...COLOR.TEXT_PRIMARY);
+        const subTextY = y + getCapHeight(FONT.SIZE_SECTION_TITLE) + 0.6;
         doc.text(
           sanitizePdfText(`${opts.sectionTitle.toUpperCase()} -- CONTINUED`),
-          LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1,
+          LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET,
           subTextY,
         );
+        const subRuleY = y + subBarH - 0.6;
+        doc.setDrawColor(...COLOR.TEXT_PRIMARY);
+        doc.setLineWidth(BORDER.SECTION_OUTER);
+        doc.line(LAYOUT.PAGE_MARGIN, subRuleY, LAYOUT.PAGE_MARGIN + cw, subRuleY);
+        doc.setTextColor(...COLOR.TEXT_PRIMARY);
         y += subBarH;
       }
       y = drawHeaders(y);
@@ -3192,16 +3201,14 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
     // Page break callback with continuation header
     const narrativeBreak = (newY: number): number => {
       const nCw = getContentWidth(doc);
-      doc.setFillColor(...COLOR.BG_SECTION_HDR);
-      doc.rect(LAYOUT.PAGE_MARGIN, newY, nCw, SPACING.SECTION_HEADER_H, 'F');
-      doc.setDrawColor(...COLOR.BORDER_TABLE);
-      doc.setLineWidth(BORDER.TABLE_ROW);
-      doc.rect(LAYOUT.PAGE_MARGIN, newY, nCw, SPACING.SECTION_HEADER_H);
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(FONT.SIZE_SECTION_TITLE);
-      doc.setTextColor(...COLOR.TEXT_INVERTED);
-      const capH2 = FONT.SIZE_SECTION_TITLE * 0.35;
-      doc.text('NARRATIVE / SERVICE NOTES -- CONTINUED', LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, newY + (SPACING.SECTION_HEADER_H + capH2) / 2);
+      doc.setTextColor(...COLOR.TEXT_PRIMARY);
+      doc.text('NARRATIVE / SERVICE NOTES -- CONTINUED', LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET, newY + getCapHeight(FONT.SIZE_SECTION_TITLE) + 0.6);
+      const nRuleY = newY + SPACING.SECTION_HEADER_H - 0.6;
+      doc.setDrawColor(...COLOR.TEXT_PRIMARY);
+      doc.setLineWidth(BORDER.SECTION_OUTER);
+      doc.line(LAYOUT.PAGE_MARGIN, nRuleY, LAYOUT.PAGE_MARGIN + nCw, nRuleY);
       doc.setFont(PDF_VALUE_FONT, 'normal');
       doc.setFontSize(FONT.SIZE_FIELD_VALUE);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);

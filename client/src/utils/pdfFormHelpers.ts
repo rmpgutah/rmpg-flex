@@ -11,7 +11,7 @@ import { sanitizePdfText, wordWrapText, getActiveSectionStyle } from './pdfGener
 import {
   COLOR, FONT, BORDER, SPACING, LAYOUT,
   PDF_VALUE_FONT,
-  getGridStartX, getGridContentWidth,
+  getGridStartX, getGridContentWidth, getCapHeight,
   CLASSIFICATION,
   topHeaderY,
   type RGBColor,
@@ -444,22 +444,18 @@ export function drawFormSection(
   const sectionStartY = curY;
 
   if (useBanner) {
-    // ── Draw horizontal banner (matches openAutoSection header style) ──
-    // Dark fill (#2e2e2e equivalent) matching CFS section headers
-    const bgColor = config.sideTab.color || COLOR.BG_SECTION_HDR;
-    doc.setFillColor(...bgColor);
-    doc.rect(gridX, curY, gridW, bannerH, 'F');
-    // Clean border around header
-    doc.setDrawColor(...COLOR.BORDER_SECTION);
-    doc.setLineWidth(BORDER.SECTION_OUTER);
-    doc.rect(gridX, curY, gridW, bannerH);
-    // White text, vertically centered
+    // ── Flat section banner (matches openAutoSection flat style) ──
+    // Black title + thin full-width rule below — no dark fill bar.
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(FONT.SIZE_SECTION_TITLE);
-    doc.setTextColor(...COLOR.TEXT_INVERTED);
-    const bannerCapH = FONT.SIZE_SECTION_TITLE * 0.35;
-    const textY = curY + (bannerH + bannerCapH) / 2;
-    doc.text(sanitizePdfText(config.sideTab.label.toUpperCase()), gridX + SPACING.CONTENT_INSET + 1, textY);
+    doc.setTextColor(...COLOR.TEXT_PRIMARY);
+    const textY = curY + getCapHeight(FONT.SIZE_SECTION_TITLE) + 0.6;
+    doc.text(sanitizePdfText(config.sideTab.label.toUpperCase()), gridX + SPACING.CONTENT_INSET, textY);
+    const bannerRuleY = curY + bannerH - 0.6;
+    doc.setDrawColor(...COLOR.TEXT_PRIMARY);
+    doc.setLineWidth(BORDER.SECTION_OUTER);
+    doc.line(gridX, bannerRuleY, gridX + gridW, bannerRuleY);
+    doc.setTextColor(...COLOR.TEXT_PRIMARY);
     curY += bannerH + SPACING.SM; // tight gap between banner and first grid row
   }
 
@@ -1285,15 +1281,18 @@ export function drawChainOfCustodyTable(
   let curY = y;
   if (opts?.itemNumber || opts?.itemDescription) {
     const stripH = 4;
-    doc.setFillColor(...COLOR.BG_SECTION_HDR);
-    doc.rect(x, curY, w, stripH, 'F');
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(FONT.SIZE_SECTION_TITLE);
-    doc.setTextColor(...COLOR.TEXT_INVERTED);
+    doc.setTextColor(...COLOR.TEXT_PRIMARY);
     const lbl = `CHAIN OF CUSTODY` +
       (opts.itemNumber ? `  |  ITEM #${sanitizePdfText(opts.itemNumber)}` : '') +
       (opts.itemDescription ? `  |  ${sanitizePdfText(opts.itemDescription).toUpperCase()}` : '');
-    doc.text(lbl, x + 1.5, curY + 2.8);
+    doc.text(lbl, x + SPACING.CONTENT_INSET, curY + getCapHeight(FONT.SIZE_SECTION_TITLE) + 0.6);
+    const cocRuleY = curY + stripH - 0.6;
+    doc.setDrawColor(...COLOR.TEXT_PRIMARY);
+    doc.setLineWidth(BORDER.SECTION_OUTER);
+    doc.line(x, cocRuleY, x + w, cocRuleY);
+    doc.setTextColor(...COLOR.TEXT_PRIMARY);
     curY += stripH;
   }
 
@@ -1431,14 +1430,16 @@ export function drawOfficerCertificationBlock(
     'knowledge and was prepared in the regular course of law enforcement duties. ' +
     'Falsification of this report is a Class A misdemeanor.';
 
-  // Heading bar
+  // Flat heading: black title + thin rule below.
   const headH = 4;
-  doc.setFillColor(...COLOR.BG_SECTION_HDR);
-  doc.rect(x, y, w, headH, 'F');
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_SECTION_TITLE);
-  doc.setTextColor(...COLOR.TEXT_INVERTED);
-  doc.text(heading, x + 1.5, y + headH - 1.3);
+  doc.setTextColor(...COLOR.TEXT_PRIMARY);
+  doc.text(heading, x + SPACING.CONTENT_INSET, y + getCapHeight(FONT.SIZE_SECTION_TITLE) + 0.6);
+  const certRuleY = y + headH - 0.6;
+  doc.setDrawColor(...COLOR.TEXT_PRIMARY);
+  doc.setLineWidth(BORDER.SECTION_OUTER);
+  doc.line(x, certRuleY, x + w, certRuleY);
   let curY = y + headH;
 
   // Certification paragraph box

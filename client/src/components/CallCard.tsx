@@ -446,7 +446,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
         {/* Source icon */}
         {call.source && (() => {
           const SourceIcon = SOURCE_ICONS[call.source] || Phone;
-          return <SourceIcon className="w-3 h-3 flex-shrink-0" title={call.source?.replace('_', ' ')} />;
+          return <SourceIcon className="w-3 h-3 flex-shrink-0" title={call.source?.replace(/_/g, ' ')} />;
         })()}
         {/* Feature 3: Call duration */}
         <span ref={durationRef} className="font-mono tabular-nums">{call.created_at ? formatCallDuration(call.created_at, call.status, (call as any).archived_at || call.cleared_at || call.closed_at) : ''}</span>

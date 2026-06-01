@@ -20,7 +20,7 @@ export default function PreferencesDialog({ open, prefs, onChange, onClose }: Pr
           <h3 className="text-sm font-semibold text-white inline-flex items-center gap-2">
             <Settings className="w-4 h-4 text-[#d4a017]" /> Editor preferences
           </h3>
-          <button type="button" onClick={onClose} className="p-1 text-rmpg-400 hover:text-white"><X className="w-4 h-4" /></button>
+          <button type="button" onClick={onClose} className="p-1 text-rmpg-400 hover:text-white" aria-label="Close preferences"><X className="w-4 h-4" /></button>
         </div>
 
         <div className="space-y-3">

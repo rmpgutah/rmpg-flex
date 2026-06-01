@@ -6,6 +6,7 @@
 // ============================================================
 
 import { apiFetch } from '../hooks/useApi';
+import { formatEnumValue } from './formatters';
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -964,7 +965,7 @@ export async function executeCommand(
           `/dispatch/geography/premise-alerts?address=${encodeURIComponent(address)}`
         );
         if (alerts && alerts.length > 0) {
-          const lines = alerts.map(a => `  ${a.alert_level === 'critical' ? '🔴' : a.alert_level === 'warning' ? '🟡' : '🔵'} ${a.title} (${a.alert_type})`).join('\n');
+          const lines = alerts.map(a => `  ${a.alert_level === 'critical' ? '🔴' : a.alert_level === 'warning' ? '🟡' : '🔵'} ${a.title} (${formatEnumValue(a.alert_type)})`).join('\n');
           return {
             success: true,
             message: `⚠ PREMISE ALERTS for "${address}":\n${lines}`,

@@ -8,7 +8,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 import jsPDF from 'jspdf';
-import type { FleetVehicle, FleetFuelLog, FleetFuelSummary, FleetMaintenance, FleetInspection, FleetAssignment, FleetInsurancePolicy, FleetAnalytics } from '../../types';
+import type { FleetVehicle, FleetFuelLog, FleetFuelSummary, FleetMaintenance, FleetInspection, FleetAssignment, FleetInsurancePolicy, FleetAnalytics } from '../../../types';
 
 const RMPG_GOLD = '#d4a017';
 const RMPG_BLACK = '#0a0a0a';
@@ -128,7 +128,7 @@ export function generateFleetMaintenanceReport(data: {
   const totalCost = data.records.reduce((s, r) => s + (r.cost || 0), 0);
   const cols = [['Total Records', String(data.records.length)], ['Total Cost', `$${totalCost.toLocaleString()}`, true], ['Avg Cost', `$${data.records.length > 0 ? Math.round(totalCost / data.records.length) : 0}`, true]];
   const boxW = (pageW - 80) / cols.length;
-  cols.forEach((c, i) => drawGridBox(doc, 40 + i * boxW, y, boxW - 4, c[0], c[1], c[2] as boolean));
+  cols.forEach((c, i) => drawGridBox(doc, 40 + i * boxW, y, boxW - 4, c[0] as string, c[1] as string, c[2] as boolean));
   y += 48;
 
   const headers = ['Date', 'Type', 'Description', 'Mileage', 'Cost', 'Vendor', 'Next Due'];

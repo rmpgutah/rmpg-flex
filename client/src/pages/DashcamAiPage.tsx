@@ -19,6 +19,7 @@ import {
   Shield, Signal, Video, Zap,
 } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
+import { formatEnumValue } from '../utils/formatters';
 import { apiFetch } from '../hooks/useApi';
 import usePersistedState from '../hooks/usePersistedState';
 import useLiveSync from '../hooks/useLiveSync';
@@ -359,7 +360,7 @@ export default function DashcamAiPage(): React.ReactElement {
                       {ev.source}
                     </span>
                   </td>
-                  <td className="py-1 px-2 font-mono">{ev.event_type}</td>
+                  <td className="py-1 px-2 font-mono">{formatEnumValue(ev.event_type)}</td>
                   <td className="py-1 px-2">
                     <span className={`inline-block px-1.5 py-0.5 text-[10px] font-mono uppercase border ${SEVERITY_BADGE[ev.severity] ?? SEVERITY_BADGE.info}`}>
                       {ev.severity}
@@ -387,7 +388,7 @@ export default function DashcamAiPage(): React.ReactElement {
             <div className="p-3 border-b border-[#222] flex items-start justify-between">
               <div>
                 <div className="text-[10px] uppercase tracking-wider text-rmpg-500">Event #{selected.id}</div>
-                <div className="text-base font-mono text-[#d4a017] mt-0.5">{selected.event_type}</div>
+                <div className="text-base font-mono text-[#d4a017] mt-0.5">{formatEnumValue(selected.event_type)}</div>
                 <div className="text-[11px] text-rmpg-300 mt-0.5">{formatLocalDate(selected.event_timestamp)}</div>
               </div>
               <button
