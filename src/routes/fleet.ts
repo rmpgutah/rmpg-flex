@@ -1110,6 +1110,70 @@ fleet.get('/:id{[0-9]+}/maintenance-costs', async (c) => {
   } catch (err) { console.error('GET /fleet/:id/maintenance-costs failed:', err); return c.json({ total_cost: 0, total_parts_cost: 0, total_labor_cost: 0, by_type: [] }); }
 });
 
+// GET /:id/monthly-cost-averages — true trailing-period monthly averages for
+// fuel + maintenance, for the Costs tab Budget-vs-Actual. Lifetime÷12 was wrong
+// (it divided all-time spend by 12 regardless of tracking duration). Here we
+// divide each category's total by the number of months actually spanned by its
+// records (earliest→latest, rounded up, min 1). All math is UTC; null/absent
+// dates collapse to a 1-month span so we never divide by zero or crash.
+// Shape: { fuel_monthly, maintenance_monthly, fuel_total, maintenance_total,
+// fuel_months, maintenance_months } — all numbers, cents-rounded.
+fleet.get('/:id{[0-9]+}/monthly-cost-averages', async (c) => {
+  // monthsBetween: whole months from a→b (UTC), rounded up, floored at 1.
+  // Returns 1 for null/equal/unparseable dates (single-row or no-date case).
+  const monthsBetween = (earliest: string | null | undefined, latest: string | null | undefined): number => {
+    if (!earliest || !latest) return 1;
+    const a = new Date(`${String(earliest).replace(' ', 'T')}Z`).getTime();
+    const b = new Date(`${String(latest).replace(' ', 'T')}Z`).getTime();
+    if (!Number.isFinite(a) || !Number.isFinite(b) || b <= a) return 1;
+    // ~30.44 days/month average; round up so a partial month counts as one.
+    const months = Math.ceil((b - a) / (1000 * 60 * 60 * 24 * 30.4375));
+    return Math.max(1, months);
+  };
+  const cents = (n: number): number => Math.round((Number.isFinite(n) ? n : 0) * 100) / 100;
+
+  try {
+    const vehicleId = Number(c.req.param('id'));
+    const db = getDb(c.env);
+
+    const fuel = await queryFirst<{ earliest: string | null; latest: string | null; total: number }>(
+      db,
+      `SELECT MIN(fuel_date) AS earliest, MAX(fuel_date) AS latest, COALESCE(SUM(total_cost),0) AS total
+       FROM fleet_fuel_log WHERE vehicle_id = ?`,
+      vehicleId,
+    );
+    // fleet_maintenance dates: performed_at is the column the INSERT writes;
+    // fall back to created_at for legacy rows that predate it. COALESCE both
+    // for the span; SUM(cost) for the total.
+    const maint = await queryFirst<{ earliest: string | null; latest: string | null; total: number }>(
+      db,
+      `SELECT MIN(COALESCE(performed_at, created_at)) AS earliest,
+              MAX(COALESCE(performed_at, created_at)) AS latest,
+              COALESCE(SUM(cost),0) AS total
+       FROM fleet_maintenance WHERE vehicle_id = ?`,
+      vehicleId,
+    );
+
+    const fuelTotal = cents(Number(fuel?.total ?? 0));
+    const maintTotal = cents(Number(maint?.total ?? 0));
+    const fuelMonths = monthsBetween(fuel?.earliest, fuel?.latest);
+    const maintMonths = monthsBetween(maint?.earliest, maint?.latest);
+
+    return c.json({
+      fuel_monthly: cents(fuelTotal / fuelMonths),
+      maintenance_monthly: cents(maintTotal / maintMonths),
+      fuel_total: fuelTotal,
+      maintenance_total: maintTotal,
+      fuel_months: fuelMonths,
+      maintenance_months: maintMonths,
+    });
+  } catch (err) {
+    console.error('GET /fleet/:id/monthly-cost-averages failed:', err);
+    // Never 500 the Costs tab — zeros let the client fall back gracefully.
+    return c.json({ fuel_monthly: 0, maintenance_monthly: 0, fuel_total: 0, maintenance_total: 0, fuel_months: 1, maintenance_months: 1 });
+  }
+});
+
 // GET /:id/mileage-history — there is no dedicated mileage log table on live
 // D1, so reconstruct an odometer trail from fuel-log readings (the real
 // field signal). Shape: [{ id, recorded_at, recorded_by_name, previous_mileage,
@@ -1472,6 +1536,73 @@ fleet.put('/utilities/:id', async (c) => {
 fleet.delete('/utilities/:id', async (c) => {
   try { const id = Number(c.req.param('id')); await execute(getDb(c.env), 'DELETE FROM fleet_utility_costs WHERE id = ?', id); return c.json({ success: true }); }
   catch (err) { console.error('DELETE /fleet/utilities/:id failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+});
+
+// — Other costs — (user-defined flexible cost types, one-off or recurring)
+fleet.get('/:id/other-costs', async (c) => {
+  try {
+    const vehicleId = Number(c.req.param('id'));
+    const rows = await query<Record<string, unknown>>(getDb(c.env), 'SELECT * FROM fleet_other_costs WHERE vehicle_id = ? ORDER BY incurred_date DESC, id DESC', vehicleId);
+    return c.json(rows);
+  } catch (err) { console.error('GET /fleet/:id/other-costs failed:', err); return c.json([]); }
+});
+
+fleet.post('/:id/other-costs', async (c) => {
+  try {
+    const vehicleId = Number(c.req.param('id'));
+    const db = getDb(c.env);
+    const b = await c.req.json<Record<string, unknown>>();
+    const result = await execute(db, `INSERT INTO fleet_other_costs (vehicle_id, cost_type, provider, amount, frequency, incurred_date, period_end, status, notes) VALUES (?,?,?,?,?,?,?,?,?)`, vehicleId, b.cost_type ?? null, b.provider ?? null, b.amount ?? null, b.frequency ?? 'one_time', b.incurred_date ?? null, b.period_end ?? null, b.status ?? 'active', b.notes ?? null);
+    const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_other_costs WHERE id = ?', result.meta.last_row_id);
+    return c.json(created, 201);
+  } catch (err) { console.error('POST /fleet/:id/other-costs failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+});
+
+fleet.put('/other-costs/:id', async (c) => {
+  try {
+    const id = Number(c.req.param('id'));
+    const db = getDb(c.env);
+    const b = await c.req.json<Record<string, unknown>>();
+    const cols = ['cost_type', 'provider', 'amount', 'frequency', 'incurred_date', 'period_end', 'status', 'notes'];
+    const setCols: string[] = []; const bindings: unknown[] = [];
+    for (const key of cols) { if (Object.prototype.hasOwnProperty.call(b, key)) { setCols.push(`${key} = ?`); bindings.push(b[key] === '' ? null : b[key]); } }
+    if (setCols.length === 0) return c.json({ error: 'No fields to update' }, 400);
+    bindings.push(id);
+    await execute(db, `UPDATE fleet_other_costs SET ${setCols.join(', ')} WHERE id = ?`, ...bindings);
+    return c.json({ success: true });
+  } catch (err) { console.error('PUT /fleet/other-costs/:id failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+});
+
+fleet.delete('/other-costs/:id', async (c) => {
+  try { const id = Number(c.req.param('id')); await execute(getDb(c.env), 'DELETE FROM fleet_other_costs WHERE id = ?', id); return c.json({ success: true }); }
+  catch (err) { console.error('DELETE /fleet/other-costs/:id failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+});
+
+// — Per-category monthly budgets (Budget vs. Actual) —
+const FLEET_BUDGET_CATEGORIES = ['fuel', 'maintenance', 'loan', 'insurance', 'accessory', 'utility', 'other'];
+
+fleet.get('/:id/cost-budgets', async (c) => {
+  try {
+    const vehicleId = Number(c.req.param('id'));
+    const rows = await query<Record<string, unknown>>(getDb(c.env), 'SELECT * FROM fleet_cost_budgets WHERE vehicle_id = ?', vehicleId);
+    return c.json(rows);
+  } catch (err) { console.error('GET /fleet/:id/cost-budgets failed:', err); return c.json([]); }
+});
+
+fleet.put('/:id/cost-budgets', async (c) => {
+  try {
+    const vehicleId = Number(c.req.param('id'));
+    const db = getDb(c.env);
+    const body = await c.req.json<{ budgets?: Array<{ category?: string; monthly_budget?: number }> }>();
+    const budgets = Array.isArray(body.budgets) ? body.budgets : [];
+    for (const row of budgets) {
+      const cat = String(row.category ?? '');
+      if (!FLEET_BUDGET_CATEGORIES.includes(cat)) continue;
+      const amt = row.monthly_budget == null ? null : Number(row.monthly_budget);
+      await execute(db, `INSERT INTO fleet_cost_budgets (vehicle_id, category, monthly_budget, updated_at) VALUES (?,?,?,datetime('now')) ON CONFLICT(vehicle_id, category) DO UPDATE SET monthly_budget = excluded.monthly_budget, updated_at = datetime('now')`, vehicleId, cat, amt);
+    }
+    return c.json({ success: true });
+  } catch (err) { console.error('PUT /fleet/:id/cost-budgets failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
 });
 
 // ═══════════════════════════════════════════════════════════════

@@ -1,51 +1,54 @@
 // ═══════════════════════════════════════════════════════════════
 // RMPG Flex — Fleet Costs Tab
 //
-// Single tab that consolidates the four operating-cost categories
-// (Loan / Insurance / Accessories / Utilities) under a sub-navigation
-// strip. The cost-of-ownership summary at the top stays visible
-// regardless of which sub-tab is active so the operator always sees
-// the full TCO context.
+// Single tab that consolidates the operating-cost categories
+// (Loan / Insurance / Accessories / Utilities / Other) under a
+// sub-navigation strip. The cost-of-ownership summary at the top stays
+// visible regardless of which sub-tab is active so the operator always
+// sees the full TCO context — including a recurring monthly run-rate,
+// annual projection, an upcoming-renewals alerts strip, and per-category
+// Budget vs. Actual.
 //
 // Each sub-list renders a compact row per record with category-specific
-// fields, an Edit button (when handler wired), and a Delete (archive)
-// button (admin/manager only — the parent decides whether to wire the
-// callback). Empty states call out the action you can take.
-//
-// ⚠️ STATUS (2026-05-31): NOT YET RENDERED by any parent — and deliberately
-// so. Of the four categories only `insurance` has backend CRUD in
-// src/routes/fleet.ts (GET/POST/PUT/DELETE /[:id/]insurance over
-// fleet_insurance). `loan`, `accessory`, and `utility` have NO handlers and
-// NO backing tables on live D1 (fleet_loans / fleet_utility_costs don't
-// exist). Wiring this tab now would recreate the "saves then vanishes" bug
-// for 3 of 4 categories. To finish: add registerCostCategoryRoutes()-style
-// handlers + migrations for fleet_loans / fleet_accessories(write) /
-// fleet_utility_costs, THEN add a 'costs' entry to FleetDetailPanel TABS and
-// pass loans/insurance/accessories/utilities/summary + onAdd/onEdit/onDelete.
-// (The fuel Budget + CSV Import siblings WERE wired this pass — they had
-// real handlers. See FuelAnalyticsPage.)
+// fields, an Edit button, and a Delete (archive) button. Empty states
+// call out the action you can take.
 // ═══════════════════════════════════════════════════════════════
 
-import React from 'react';
+import React, { useState } from 'react';
 import {
   CreditCard, Shield, Wrench, Zap, DollarSign, Calendar, Plus, Pencil, Trash2,
-  AlertTriangle, Gauge,
+  AlertTriangle, Gauge, Receipt, TrendingUp, Target, Save, X as XIcon,
 } from 'lucide-react';
 import type {
   FleetLoan, FleetInsurancePolicy, FleetAccessory, FleetUtilityCost,
-  FleetCostSummary,
+  FleetOtherCost, FleetCostSummary,
 } from '../../../types';
 import type { CostCategory } from '../modals/FleetCostFormModal';
 import { parseTimestamp } from '../../../utils/dateUtils';
 import { toDisplayLabel } from '../../../utils/formatters';
+import { toNum, fmtFixed } from '../utils/fleetFormatters';
 
-type SubTab = 'loan' | 'insurance' | 'accessory' | 'utility';
+/**
+ * Is `d` a real, parseable date string? Live D1 stores sentinel strings
+ * ("None"/"N/A"/"0") where a date is missing; feeding those to parseTimestamp
+ * yields NaN, which would otherwise render "NaNd" in the alerts strip or fire a
+ * bogus "upcoming" alert. Treat anything non-date / unparseable as "no date".
+ */
+function isRealDate(d: unknown): d is string {
+  if (typeof d !== 'string') return false;
+  const t = d.trim();
+  if (!t || t === 'None' || t === 'N/A' || t === '0') return false;
+  return !isNaN(parseTimestamp(t).getTime());
+}
+
+type SubTab = 'loan' | 'insurance' | 'accessory' | 'utility' | 'other';
 
 interface Props {
   loans: FleetLoan[];
   insurance: FleetInsurancePolicy[];
   accessories: FleetAccessory[];
   utilities: FleetUtilityCost[];
+  other: FleetOtherCost[];
   summary: FleetCostSummary | null;
   /** Active sub-tab. Lifted to the parent so it survives re-mounts when
    *  the user switches outer tabs and back. */
@@ -54,6 +57,8 @@ interface Props {
   onAdd: (category: CostCategory) => void;
   onEdit: (category: CostCategory, record: any) => void;
   onDelete: (category: CostCategory, record: any) => void;
+  /** Persist per-category monthly budgets. */
+  onSaveBudgets?: (rows: { category: string; monthly_budget: number }[]) => Promise<void>;
 }
 
 const SUB_TABS: { value: SubTab; label: string; icon: React.ComponentType<{ className?: string }>; color: string }[] = [
@@ -61,11 +66,27 @@ const SUB_TABS: { value: SubTab; label: string; icon: React.ComponentType<{ clas
   { value: 'insurance', label: 'Insurance',   icon: Shield,     color: 'text-green-400' },
   { value: 'accessory', label: 'Accessories', icon: Wrench,     color: 'text-amber-400' },
   { value: 'utility',   label: 'Utilities',   icon: Zap,        color: 'text-purple-400' },
+  { value: 'other',     label: 'Other',       icon: Receipt,    color: 'text-brand-400' },
 ];
 
-function fmtCurrency(n: number | null | undefined, digits = 2): string {
-  if (n == null) return '-';
-  return `$${n.toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
+// Categories that managers can set a monthly budget for.
+const BUDGET_CATEGORIES: { key: string; label: string }[] = [
+  { key: 'fuel',        label: 'Fuel' },
+  { key: 'maintenance', label: 'Maintenance' },
+  { key: 'loan',        label: 'Loan' },
+  { key: 'insurance',   label: 'Insurance' },
+  { key: 'accessory',   label: 'Accessories' },
+  { key: 'utility',     label: 'Utilities' },
+  { key: 'other',       label: 'Other' },
+];
+
+function fmtCurrency(n: number | string | null | undefined, digits = 2): string {
+  if (n == null || n === '') return '-';
+  // Coerce first: live D1 can hand us a sentinel STRING ("None"/"N/A") where a
+  // number is expected; toNum collapses those (and any non-numeric) to 0 so we
+  // never render "$None" or throw on a missing toLocaleString.
+  const v = toNum(n);
+  return `$${v.toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
 }
 
 function StatusBadge({ status }: { status: string | null | undefined }) {
@@ -81,6 +102,7 @@ function StatusBadge({ status }: { status: string | null | undefined }) {
     removed:    'bg-rmpg-800 text-rmpg-500 border-rmpg-700',
     replaced:   'bg-gray-900/30 text-gray-400 border-gray-700/40',
     damaged:    'bg-red-900/30 text-red-400 border-red-700/40',
+    inactive:   'bg-rmpg-800 text-rmpg-500 border-rmpg-700',
   };
   return (
     <span className={`px-1 py-0.5 text-[8px] font-bold uppercase border ${colors[status] || 'bg-rmpg-800 text-rmpg-400 border-rmpg-700'}`}>
@@ -90,23 +112,59 @@ function StatusBadge({ status }: { status: string | null | undefined }) {
 }
 
 export default function FleetCostsTab({
-  loans, insurance, accessories, utilities, summary,
-  subTab, onSubTabChange, onAdd, onEdit, onDelete,
+  loans, insurance, accessories, utilities, other, summary,
+  subTab, onSubTabChange, onAdd, onEdit, onDelete, onSaveBudgets,
 }: Props) {
+  const [budgetEditorOpen, setBudgetEditorOpen] = useState(false);
+  const monthly = summary?.monthly_commitment || {};
+  const alerts = computeAlerts(insurance, loans, accessories, other);
+
   return (
     <div className="flex-1 overflow-y-auto p-4 space-y-3">
+      {/* ── Upcoming-renewals alerts strip (next 60 days) ──────── */}
+      {alerts.length > 0 && (
+        <div className="panel-beveled p-2 border border-amber-700/30 bg-amber-900/10 space-y-1">
+          <div className="flex items-center gap-1.5 text-[9px] text-amber-400 uppercase font-bold tracking-wider">
+            <AlertTriangle className="w-3 h-3" /> Upcoming (next 60 days)
+          </div>
+          {alerts.map((a, i) => (
+            <div key={i} className="flex items-center gap-2 text-[10px] text-amber-300 font-mono">
+              <span className="w-32 text-amber-400">{a.kind}</span>
+              <span className="flex-1 truncate">{a.label}</span>
+              <span className="text-rmpg-400">{a.date}</span>
+              <span className="text-amber-500 w-16 text-right">{a.days}d</span>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* ── Cost-of-ownership summary ─────────────────────────── */}
       {summary && (
         <>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            <Stat icon={DollarSign} color="text-gray-400" label="Lifetime Cost" value={fmtCurrency(summary.total_lifetime)} />
-            <Stat icon={Gauge}      color="text-brand-400" label="Cost / Mile"  value={summary.cost_per_mile != null ? fmtCurrency(summary.cost_per_mile, 3) : '-'} />
-            <Stat icon={Calendar}   color="text-amber-400" label="Monthly Loan" value={fmtCurrency(summary.monthly_commitment.loan)} />
-            <Stat icon={Shield}     color="text-green-400" label="Monthly Ins." value={fmtCurrency(summary.monthly_commitment.insurance)} />
+            <Stat icon={DollarSign} color="text-gray-400"  label="Lifetime Cost"    value={fmtCurrency(summary.total_lifetime)} />
+            <Stat icon={Gauge}      color="text-brand-400" label="Cost / Mile"      value={summary.cost_per_mile != null ? fmtCurrency(summary.cost_per_mile, 3) : '-'} />
+            <Stat icon={Calendar}   color="text-amber-400" label="Monthly Run-Rate" value={fmtCurrency(monthly.total)} />
+            <Stat icon={TrendingUp} color="text-green-400" label="Annual Proj."     value={fmtCurrency(summary.projected_annual)} />
           </div>
           <div className="panel-beveled bg-surface-sunken p-2">
             <div className="text-[8px] text-rmpg-500 uppercase font-bold tracking-wider mb-1">Cost Breakdown by Category</div>
             <CostBreakdown summary={summary} />
+          </div>
+
+          {/* ── Budget vs. Actual ──────────────────────────────── */}
+          <div className="panel-beveled bg-surface-sunken p-2">
+            <div className="flex items-center justify-between mb-1">
+              <div className="flex items-center gap-1 text-[8px] text-rmpg-500 uppercase font-bold tracking-wider">
+                <Target className="w-3 h-3 text-brand-400" /> Monthly Budget vs. Actual
+              </div>
+              {onSaveBudgets && (
+                <button type="button" className="toolbar-btn toolbar-btn-primary text-[9px] print:hidden" onClick={() => setBudgetEditorOpen(true)}>
+                  <Pencil className="w-3 h-3" /> Set Budgets
+                </button>
+              )}
+            </div>
+            <BudgetVsActual summary={summary} />
           </div>
         </>
       )}
@@ -118,6 +176,7 @@ export default function FleetCostsTab({
           const counts: Record<SubTab, number> = {
             loan: loans.length, insurance: insurance.length,
             accessory: accessories.length, utility: utilities.length,
+            other: other.length,
           };
           const isActive = subTab === t.value;
           return (
@@ -139,8 +198,55 @@ export default function FleetCostsTab({
       {subTab === 'insurance' && <InsuranceList records={insurance}    onAdd={() => onAdd('insurance')} onEdit={(r) => onEdit('insurance', r)} onDelete={(r) => onDelete('insurance', r)} />}
       {subTab === 'accessory' && <AccessoryList records={accessories}  onAdd={() => onAdd('accessory')} onEdit={(r) => onEdit('accessory', r)} onDelete={(r) => onDelete('accessory', r)} />}
       {subTab === 'utility'   && <UtilityList   records={utilities}    onAdd={() => onAdd('utility')}   onEdit={(r) => onEdit('utility', r)}   onDelete={(r) => onDelete('utility', r)} />}
+      {subTab === 'other'     && <OtherList     records={other}        onAdd={() => onAdd('other')}     onEdit={(r) => onEdit('other', r)}     onDelete={(r) => onDelete('other', r)} />}
+
+      {budgetEditorOpen && onSaveBudgets && (
+        <BudgetEditor
+          summary={summary}
+          onClose={() => setBudgetEditorOpen(false)}
+          onSave={async (rows) => { await onSaveBudgets(rows); setBudgetEditorOpen(false); }}
+        />
+      )}
     </div>
   );
+}
+
+// ── Alerts (renewals / payoffs / warranty expiry — next 60 days) ──
+
+interface AlertItem { kind: string; label: string; date: string; days: number; }
+
+function computeAlerts(
+  insurance: FleetInsurancePolicy[],
+  loans: FleetLoan[],
+  accessories: FleetAccessory[],
+  other: FleetOtherCost[],
+): AlertItem[] {
+  const out: AlertItem[] = [];
+  const within = (d: unknown): number | null => {
+    // isRealDate rejects null/""/sentinel/unparseable so a "None" can't produce
+    // a NaN-day alert or a false "upcoming" entry.
+    if (!isRealDate(d)) return null;
+    const days = Math.round((parseTimestamp(d).getTime() - Date.now()) / 86400_000);
+    return Number.isFinite(days) && days >= 0 && days <= 60 ? days : null;
+  };
+  for (const p of insurance) {
+    const days = within(p.expires_at);
+    if (days != null) out.push({ kind: 'Insurance renews', label: p.carrier || '(policy)', date: p.expires_at || '', days });
+  }
+  for (const l of loans) {
+    const days = within(l.payoff_date);
+    if (days != null) out.push({ kind: 'Loan payoff', label: l.lender || '(loan)', date: l.payoff_date || '', days });
+  }
+  for (const a of accessories) {
+    const w = a.warranty_until ?? a.warranty_expiry;
+    const days = within(w);
+    if (days != null) out.push({ kind: 'Warranty expires', label: a.name || '(accessory)', date: w || '', days });
+  }
+  for (const o of other) {
+    const days = within(o.period_end);
+    if (days != null) out.push({ kind: toDisplayLabel(o.cost_type || 'Other'), label: o.provider || o.cost_type || '(cost)', date: o.period_end || '', days });
+  }
+  return out.sort((a, b) => a.days - b.days);
 }
 
 // ── Stat & breakdown helpers ─────────────────────────────────────
@@ -161,14 +267,18 @@ function Stat({ icon: Icon, label, value, color }: {
 }
 
 function CostBreakdown({ summary }: { summary: FleetCostSummary }) {
-  const total = summary.total_lifetime || 1;
+  // Coerce through toNum so a stray sentinel/string in a summary field can't
+  // poison the division or the .toFixed() below.
+  const total = toNum(summary.total_lifetime) || 1;
+  const cat = summary.categories || {};
   const rows: { label: string; value: number; color: string }[] = [
-    { label: 'Fuel',        value: summary.categories.fuel,        color: 'bg-gray-600' },
-    { label: 'Maintenance', value: summary.categories.maintenance, color: 'bg-amber-600' },
-    { label: 'Loan',        value: summary.categories.loans,       color: 'bg-gray-600' },
-    { label: 'Insurance',   value: summary.categories.insurance,   color: 'bg-green-600' },
-    { label: 'Accessories', value: summary.categories.accessories, color: 'bg-purple-600' },
-    { label: 'Utilities',   value: summary.categories.utilities,   color: 'bg-pink-600' },
+    { label: 'Fuel',        value: toNum(cat.fuel),        color: 'bg-gray-600' },
+    { label: 'Maintenance', value: toNum(cat.maintenance), color: 'bg-amber-600' },
+    { label: 'Loan',        value: toNum(cat.loans),       color: 'bg-gray-600' },
+    { label: 'Insurance',   value: toNum(cat.insurance),   color: 'bg-green-600' },
+    { label: 'Accessories', value: toNum(cat.accessories), color: 'bg-purple-600' },
+    { label: 'Utilities',   value: toNum(cat.utilities),   color: 'bg-pink-600' },
+    { label: 'Other',       value: toNum(cat.other),       color: 'bg-yellow-600' },
   ];
   return (
     <div className="space-y-1">
@@ -185,6 +295,100 @@ function CostBreakdown({ summary }: { summary: FleetCostSummary }) {
           </div>
         );
       })}
+    </div>
+  );
+}
+
+// ── Budget vs. Actual (monthly) ──────────────────────────────────
+
+function BudgetVsActual({ summary }: { summary: FleetCostSummary }) {
+  const budgets = summary.budgets || {};
+  const set = BUDGET_CATEGORIES.filter((c) => budgets[c.key] && toNum(budgets[c.key].budget) > 0);
+  if (set.length === 0) {
+    return <p className="text-[9px] text-rmpg-500 italic">No monthly budgets set. Use “Set Budgets” to define targets per category.</p>;
+  }
+  return (
+    <div className="space-y-1">
+      {set.map((c) => {
+        const raw = budgets[c.key];
+        // Coerce both sides — budgetMap is built numerically upstream, but a
+        // sentinel slipping in must not crash the bar math or fmtCurrency.
+        const b = { budget: toNum(raw.budget), actual: toNum(raw.actual), over: !!raw.over };
+        const pct = b.budget > 0 ? (b.actual / b.budget) * 100 : 0;
+        const bar = b.over ? 'bg-red-600' : 'bg-green-600';
+        return (
+          <div key={c.key} className="flex items-center gap-2 text-[9px] font-mono">
+            <span className="text-rmpg-400 w-20">{c.label}</span>
+            <div className="flex-1 h-2 bg-surface-base border border-rmpg-800 overflow-hidden">
+              <div className={`h-full ${bar}`} style={{ width: `${Math.min(100, pct)}%` }} />
+            </div>
+            <span className={`w-20 text-right ${b.over ? 'text-red-400' : 'text-rmpg-300'}`}>{fmtCurrency(b.actual)}</span>
+            <span className="text-rmpg-500 w-20 text-right">/ {fmtCurrency(b.budget)}</span>
+            {b.over && <span className="text-[8px] font-bold uppercase text-red-400 w-12 text-right">Over</span>}
+            {!b.over && <span className="w-12" />}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ── Budget editor (lightweight inline modal) ─────────────────────
+
+function BudgetEditor({ summary, onClose, onSave }: {
+  summary: FleetCostSummary | null;
+  onClose: () => void;
+  onSave: (rows: { category: string; monthly_budget: number }[]) => Promise<void>;
+}) {
+  const budgets = summary?.budgets || {};
+  const [vals, setVals] = useState<Record<string, string>>(() => {
+    const init: Record<string, string> = {};
+    for (const c of BUDGET_CATEGORIES) {
+      const b = budgets[c.key];
+      init[c.key] = b && b.budget ? String(b.budget) : '';
+    }
+    return init;
+  });
+  const [saving, setSaving] = useState(false);
+
+  const submit = async () => {
+    setSaving(true);
+    try {
+      const rows = BUDGET_CATEGORIES.map((c) => ({ category: c.key, monthly_budget: parseFloat(vals[c.key]) || 0 }));
+      await onSave(rows);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center"
+      role="dialog" aria-modal="true" style={{ background: 'rgba(0,0,0,0.6)' }} onClick={saving ? undefined : onClose}>
+      <div className="panel-beveled w-[420px] max-w-full mx-4 flex flex-col bg-surface-raised" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-3 py-2 border-b border-rmpg-700">
+          <div className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-wider text-brand-400">
+            <Target className="w-3.5 h-3.5" /> Monthly Budgets
+          </div>
+          <button type="button" className="toolbar-btn text-[9px]" onClick={onClose}>X</button>
+        </div>
+        <div className="p-4 space-y-2">
+          {BUDGET_CATEGORIES.map((c) => (
+            <div key={c.key} className="flex items-center gap-2">
+              <label className="text-[10px] text-rmpg-400 w-28 uppercase">{c.label}</label>
+              <input type="number" step="0.01" min="0" className="input-dark flex-1 text-[11px] font-mono min-h-[32px]"
+                value={vals[c.key]} onChange={(e) => setVals({ ...vals, [c.key]: e.target.value })} placeholder="0.00" />
+            </div>
+          ))}
+        </div>
+        <div className="flex items-center justify-end gap-2 px-4 py-2 border-t border-rmpg-700">
+          <button type="button" className="toolbar-btn" onClick={onClose} disabled={saving}>
+            <XIcon className="w-3 h-3" /> Cancel
+          </button>
+          <button type="button" className="toolbar-btn toolbar-btn-primary" onClick={submit} disabled={saving}>
+            <Save className="w-3 h-3" /> {saving ? 'Saving...' : 'Save Budgets'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -255,8 +459,8 @@ function LoanList({ records, onAdd, onEdit, onDelete }: {
                 <span className="text-[10px] text-rmpg-200 font-bold">{l.lender || '(no lender)'}</span>
                 <StatusBadge status={l.status} />
                 <span className="text-[10px] text-gray-400 font-mono">{fmtCurrency(l.monthly_payment)}/mo</span>
-                {l.interest_rate != null && (
-                  <span className="text-[9px] font-mono text-rmpg-500">{l.interest_rate.toFixed(2)}% APR</span>
+                {fmtFixed(l.interest_rate, 2, '') !== '' && (
+                  <span className="text-[9px] font-mono text-rmpg-500">{fmtFixed(l.interest_rate, 2)}% APR</span>
                 )}
                 {l.term_months != null && (
                   <span className="text-[9px] font-mono text-rmpg-500">{l.term_months} mo</span>
@@ -396,6 +600,41 @@ function UtilityList({ records, onAdd, onEdit, onDelete }: {
               {u.notes && <p className="text-[9px] text-rmpg-400 mt-0.5">{u.notes}</p>}
             </div>
             <RowActions onEdit={() => onEdit(u)} onDelete={() => onDelete(u)} />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// — Other (user-defined) list —
+function OtherList({ records, onAdd, onEdit, onDelete }: {
+  records: FleetOtherCost[]; onAdd: () => void; onEdit: (r: FleetOtherCost) => void; onDelete: (r: FleetOtherCost) => void;
+}) {
+  if (records.length === 0) return <EmptyState icon={Receipt} label="No Other Costs Recorded" action="Add Cost" onAdd={onAdd} />;
+  return (
+    <div className="space-y-2">
+      <ActionBar count={records.length} label="Other Costs" onAdd={onAdd} addLabel="Add Cost" />
+      <div className="space-y-1.5">
+        {records.map((o) => (
+          <div key={o.id} className="panel-beveled p-2.5 flex items-center gap-3 bg-surface-base">
+            <div className="flex-shrink-0 w-8 h-8 rounded-sm flex items-center justify-center bg-brand-900/20 border border-brand-700/40">
+              <Receipt className="w-4 h-4 text-brand-400" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-[10px] text-rmpg-200 font-bold">{toDisplayLabel(o.cost_type || '')}</span>
+                <StatusBadge status={o.status} />
+                <span className="text-[10px] text-brand-400 font-mono">{fmtCurrency(o.amount)} {toDisplayLabel(o.frequency || '')}</span>
+              </div>
+              <div className="flex items-center gap-3 mt-0.5 text-[9px] text-rmpg-500 font-mono">
+                {o.provider && <span>{o.provider}</span>}
+                {o.incurred_date && <span>Incurred: {o.incurred_date}</span>}
+                {o.period_end && <span>Until: {o.period_end}</span>}
+              </div>
+              {o.notes && <p className="text-[9px] text-rmpg-400 mt-0.5">{o.notes}</p>}
+            </div>
+            <RowActions onEdit={() => onEdit(o)} onDelete={() => onDelete(o)} />
           </div>
         ))}
       </div>

@@ -21,7 +21,7 @@ import { nowLocalISO, toDatetimeLocal } from './utils/fleetFormatters';
 import GaugeRing from './components/GaugeRing';
 import FleetDetailPanel, { type DetailTab, type CostSubTab } from './FleetDetailPanel';
 import FleetCostFormModal, { type CostCategory, type CostFormState, EMPTY_COST_FORM } from './modals/FleetCostFormModal';
-import type { FleetLoan, FleetInsurancePolicy, FleetAccessory, FleetUtilityCost, FleetCostSummary } from '../../types';
+import type { FleetLoan, FleetInsurancePolicy, FleetAccessory, FleetUtilityCost, FleetOtherCost, FleetCostBudget, FleetCostSummary } from '../../types';
 import FleetAnalyticsTab from './tabs/FleetAnalyticsTab';
 import VehicleFormModal, { type VehicleFormState, EMPTY_VEHICLE_FORM } from './modals/VehicleFormModal';
 import MaintenanceFormModal, { type MaintenanceFormState, EMPTY_MAINT_FORM } from './modals/MaintenanceFormModal';
@@ -160,6 +160,7 @@ export default function FleetPage() {
   const [insurancePolicies, setInsurancePolicies] = useState<FleetInsurancePolicy[]>([]);
   const [accessories, setAccessories] = useState<FleetAccessory[]>([]);
   const [utilities, setUtilities] = useState<FleetUtilityCost[]>([]);
+  const [otherCosts, setOtherCosts] = useState<FleetOtherCost[]>([]);
   const [costSubTab, setCostSubTab] = useState<CostSubTab>('loan');
   const [costModalOpen, setCostModalOpen] = useState(false);
   const [costCategory, setCostCategory] = useState<CostCategory>('loan');
@@ -668,7 +669,7 @@ export default function FleetPage() {
   // Endpoint suffix per category. Insurance pre-existed; loans/accessories/
   // utilities were added this pass. GET returns a bare array per category.
   const COST_PATH: Record<CostCategory, string> = {
-    loan: 'loans', insurance: 'insurance', accessory: 'accessories', utility: 'utilities',
+    loan: 'loans', insurance: 'insurance', accessory: 'accessories', utility: 'utilities', other: 'other-costs',
   };
 
   // Recompute the cost-of-ownership summary client-side from the four lists
@@ -676,6 +677,8 @@ export default function FleetPage() {
   // reflects live edits without a dedicated summary endpoint.
   const recomputeCostSummary = useCallback((
     ln: FleetLoan[], ins: FleetInsurancePolicy[], acc: FleetAccessory[], util: FleetUtilityCost[],
+    others: FleetOtherCost[], budgets: FleetCostBudget[],
+    monthlyAverages?: { fuel_monthly?: unknown; maintenance_monthly?: unknown } | null,
   ) => {
     const num = (v: unknown): number => {
       if (typeof v === 'number') return Number.isFinite(v) ? v : 0;
@@ -683,6 +686,7 @@ export default function FleetPage() {
       return 0;
     };
     // Normalize a recurring cost to a monthly figure for the commitment stats.
+    // one_time → 0 (excluded from run-rate); unknown frequency → monthly.
     const perMonth = (amount: number, freq: unknown): number => {
       switch (String(freq)) {
         case 'annual': return amount / 12;
@@ -698,14 +702,51 @@ export default function FleetPage() {
     const insTotal = ins.reduce((s, p) => s + num((p as any).premium ?? (p as any).premium_amount), 0);
     const accTotal = acc.reduce((s, a) => s + num((a as any).cost), 0);
     const utilTotal = util.reduce((s, u) => s + num((u as any).cost_amount), 0);
+    const otherTotal = others.reduce((s, o) => s + num((o as any).amount), 0);
     const monthlyLoan = ln.filter((l) => String((l as any).status ?? 'active') === 'active').reduce((s, l) => s + num((l as any).monthly_payment), 0);
     const monthlyIns = ins.reduce((s, p) => s + perMonth(num((p as any).premium ?? (p as any).premium_amount), (p as any).premium_frequency), 0);
+    const monthlyUtil = util.reduce((s, u) => s + perMonth(num((u as any).cost_amount), (u as any).cost_frequency), 0);
+    const monthlyOther = others
+      .filter((o) => String((o as any).status ?? 'active') !== 'cancelled' && String((o as any).status ?? 'active') !== 'inactive')
+      .reduce((s, o) => s + perMonth(num((o as any).amount), (o as any).frequency), 0);
+    const monthlyTotal = monthlyLoan + monthlyIns + monthlyUtil + monthlyOther;
     const totalMiles = num(costPerMile?.total_miles);
-    const lifetime = fuelTotal + maintTotal + loanTotal + insTotal + accTotal + utilTotal;
+    const lifetime = fuelTotal + maintTotal + loanTotal + insTotal + accTotal + utilTotal + otherTotal;
+
+    // Monthly "actual" per budgetable category. Recurring categories use their
+    // normalized monthly figure. Fuel/maintenance use a TRUE trailing-period
+    // monthly average from the /monthly-cost-averages endpoint (total ÷ months
+    // actually spanned), falling back to 0 when that fetch failed — never a
+    // misleading lifetime/12. Accessories are one-off purchases (lifetime).
+    // Every value is coerced through num() so a sentinel "None" can't crash it.
+    const actualByCat: Record<string, number> = {
+      loan: monthlyLoan,
+      insurance: monthlyIns,
+      utility: monthlyUtil,
+      other: monthlyOther,
+      accessory: accTotal,
+      fuel: num(monthlyAverages?.fuel_monthly),
+      maintenance: num(monthlyAverages?.maintenance_monthly),
+    };
+    const budgetMap: Record<string, { budget: number; actual: number; over: boolean }> = {};
+    for (const b of budgets) {
+      const cat = String((b as any).category ?? '');
+      const budget = num((b as any).monthly_budget);
+      const actual = Math.round((actualByCat[cat] || 0) * 100) / 100;
+      budgetMap[cat] = { budget, actual, over: actual > budget && budget > 0 };
+    }
+
     setCostSummary({
       total_lifetime: Math.round(lifetime * 100) / 100,
       cost_per_mile: totalMiles > 0 ? Math.round((lifetime / totalMiles) * 1000) / 1000 : null,
-      monthly_commitment: { loan: Math.round(monthlyLoan * 100) / 100, insurance: Math.round(monthlyIns * 100) / 100 },
+      monthly_commitment: {
+        loan: Math.round(monthlyLoan * 100) / 100,
+        insurance: Math.round(monthlyIns * 100) / 100,
+        utility: Math.round(monthlyUtil * 100) / 100,
+        other: Math.round(monthlyOther * 100) / 100,
+        total: Math.round(monthlyTotal * 100) / 100,
+      },
+      projected_annual: Math.round(monthlyTotal * 12 * 100) / 100,
       categories: {
         fuel: Math.round(fuelTotal * 100) / 100,
         maintenance: Math.round(maintTotal * 100) / 100,
@@ -713,24 +754,35 @@ export default function FleetPage() {
         insurance: Math.round(insTotal * 100) / 100,
         accessories: Math.round(accTotal * 100) / 100,
         utilities: Math.round(utilTotal * 100) / 100,
+        other: Math.round(otherTotal * 100) / 100,
       },
+      budgets: budgetMap,
     } as FleetCostSummary);
   }, [fuelSummary, maintenance, costPerMile]);
 
   const fetchCosts = useCallback(async (id: string | number) => {
     try {
-      const [ln, ins, acc, util] = await Promise.all([
+      const [ln, ins, acc, util, others, budgets, monthlyAvgs] = await Promise.all([
         apiFetch<FleetLoan[]>(`/fleet/${id}/loans`).catch(() => []),
         apiFetch<FleetInsurancePolicy[]>(`/fleet/${id}/insurance`).catch(() => []),
         apiFetch<FleetAccessory[]>(`/fleet/${id}/accessories`).catch(() => []),
         apiFetch<FleetUtilityCost[]>(`/fleet/${id}/utilities`).catch(() => []),
+        apiFetch<FleetOtherCost[]>(`/fleet/${id}/other-costs`).catch(() => []),
+        apiFetch<FleetCostBudget[]>(`/fleet/${id}/cost-budgets`).catch(() => []),
+        // True trailing-period fuel/maintenance monthly averages for Budget vs.
+        // Actual. Null on failure → recompute falls back to 0 actuals.
+        apiFetch<{ fuel_monthly?: number; maintenance_monthly?: number }>(`/fleet/${id}/monthly-cost-averages`).catch(() => null),
       ]);
       const lnA = Array.isArray(ln) ? ln : [];
       const insA = Array.isArray(ins) ? ins : [];
       const accA = Array.isArray(acc) ? acc : [];
       const utilA = Array.isArray(util) ? util : [];
+      const otherA = Array.isArray(others) ? others : [];
+      const budgetA = Array.isArray(budgets) ? budgets : [];
+      const monthlyAvgsObj = (monthlyAvgs && typeof monthlyAvgs === 'object') ? monthlyAvgs : null;
       setLoans(lnA); setInsurancePolicies(insA); setAccessories(accA); setUtilities(utilA);
-      recomputeCostSummary(lnA, insA, accA, utilA);
+      setOtherCosts(otherA);
+      recomputeCostSummary(lnA, insA, accA, utilA, otherA, budgetA, monthlyAvgsObj);
       // Cost-per-mile feeds the TCO/mile stat; fetch if not already loaded.
       if (!costPerMile) loadCostPerMile(id);
     } catch (err) {
@@ -761,6 +813,21 @@ export default function FleetPage() {
       case 'utility': return { ...base,
         utility_category: s(r.category), provider: s(r.provider), cost_amount: s(r.cost_amount),
         cost_frequency: (r.cost_frequency || 'monthly'), period_start: s(r.period_start), period_end: s(r.period_end) };
+      case 'other': return { ...base,
+        other_cost_type: s(r.cost_type), other_provider: s(r.provider), other_amount: s(r.amount),
+        other_frequency: (r.frequency || 'one_time'), other_incurred_date: s(r.incurred_date),
+        other_period_end: s(r.period_end), other_status: (r.status || 'active') };
+    }
+  };
+
+  const handleSaveBudgets = async (rows: { category: string; monthly_budget: number }[]) => {
+    if (selectedId == null) return;
+    try {
+      await apiFetch(`/fleet/${selectedId}/cost-budgets`, { method: 'PUT', body: JSON.stringify({ budgets: rows }) });
+      addToast('Budgets saved', 'success');
+      fetchCosts(selectedId);
+    } catch (err) {
+      addToast(err instanceof Error ? err.message : 'Failed to save budgets', 'error');
     }
   };
 
@@ -1271,12 +1338,14 @@ export default function FleetPage() {
               insurancePolicies={insurancePolicies}
               accessories={accessories}
               utilities={utilities}
+              otherCosts={otherCosts}
               costSummary={costSummary}
               costSubTab={costSubTab}
               onCostSubTabChange={setCostSubTab}
               onAddCost={handleAddCost}
               onEditCost={handleEditCost}
               onDeleteCost={handleDeleteCost}
+              onSaveBudgets={handleSaveBudgets}
               onEditVehicle={openEditVehicle}
               onLogMaintenance={openLogMaintenance}
               onLogFuel={openLogFuel}

@@ -15,12 +15,12 @@
 import React, { useEffect, useId, useState } from 'react';
 import {
   DollarSign, Calendar, Save, X as XIcon, AlertTriangle,
-  CreditCard, Shield, Wrench, Zap, Clock,
+  CreditCard, Shield, Wrench, Zap, Clock, Receipt,
 } from 'lucide-react';
 import PanelTitleBar from '../../../components/PanelTitleBar';
 import { useFormDraft } from '../../../hooks/useFormDraft';
 
-export type CostCategory = 'loan' | 'insurance' | 'accessory' | 'utility';
+export type CostCategory = 'loan' | 'insurance' | 'accessory' | 'utility' | 'other';
 
 export interface CostFormState {
   // Common
@@ -63,6 +63,14 @@ export interface CostFormState {
   cost_frequency: 'one_time' | 'monthly' | 'quarterly' | 'semi_annual' | 'annual';
   period_start: string;
   period_end: string;
+  // Other (user-defined)
+  other_cost_type: string;
+  other_provider: string;
+  other_amount: string;
+  other_frequency: 'one_time' | 'monthly' | 'quarterly' | 'semi_annual' | 'annual';
+  other_incurred_date: string;
+  other_period_end: string;
+  other_status: 'active' | 'inactive' | 'cancelled';
 }
 
 export const EMPTY_COST_FORM: CostFormState = {
@@ -78,6 +86,9 @@ export const EMPTY_COST_FORM: CostFormState = {
   accessory_status: 'installed',
   utility_category: '', provider: '', cost_amount: '',
   cost_frequency: 'monthly', period_start: '', period_end: '',
+  other_cost_type: '', other_provider: '', other_amount: '',
+  other_frequency: 'one_time', other_incurred_date: '', other_period_end: '',
+  other_status: 'active',
 };
 
 const CATEGORY_META: Record<CostCategory, { title: string; icon: React.ComponentType<{ className?: string }> }> = {
@@ -85,6 +96,7 @@ const CATEGORY_META: Record<CostCategory, { title: string; icon: React.Component
   insurance: { title: 'INSURANCE',     icon: Shield },
   accessory: { title: 'ACCESSORY',     icon: Wrench },
   utility:   { title: 'UTILITY COST',  icon: Zap },
+  other:     { title: 'OTHER COST',    icon: Receipt },
 };
 
 interface Props {
@@ -188,6 +200,24 @@ function buildPayload(category: CostCategory, f: CostFormState): { payload: Reco
           cost_frequency: f.cost_frequency,
           period_start: f.period_start,
           period_end: f.period_end || null,
+          notes: str(f.notes),
+        },
+        error: null,
+      };
+    }
+    case 'other': {
+      if (!f.other_cost_type.trim() || !num(f.other_amount) || !f.other_incurred_date) {
+        return { payload: {}, error: 'Cost type, amount, and date are required' };
+      }
+      return {
+        payload: {
+          cost_type: f.other_cost_type.trim(),
+          provider: str(f.other_provider),
+          amount: num(f.other_amount),
+          frequency: f.other_frequency,
+          incurred_date: f.other_incurred_date,
+          period_end: f.other_period_end || null,
+          status: f.other_status,
           notes: str(f.notes),
         },
         error: null,
@@ -487,6 +517,65 @@ export default function FleetCostFormModal({
               <Field label="Period End">
                 <input className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="date"
                   value={form.period_end} onChange={(e) => set('period_end', e.target.value)} />
+              </Field>
+            </div>
+          )}
+
+          {/* ── Other (user-defined) fields ──────────────────── */}
+          {category === 'other' && (
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Cost Type *">
+                <input className="input-dark w-full text-[11px] min-h-[36px]" value={form.other_cost_type}
+                  onChange={(e) => set('other_cost_type', e.target.value)}
+                  placeholder="e.g. Registration / Tolls" list="other-cost-types" />
+                <datalist id="other-cost-types">
+                  <option value="Registration" />
+                  <option value="Tolls" />
+                  <option value="Citation/Fine" />
+                  <option value="Towing" />
+                  <option value="Car Wash/Detailing" />
+                  <option value="Property Tax" />
+                  <option value="Telematics Subscription" />
+                  <option value="Parking" />
+                  <option value="Emissions/Inspection Fee" />
+                  <option value="Extended Warranty" />
+                  <option value="Decals/Wrap" />
+                  <option value="Storage" />
+                </datalist>
+              </Field>
+              <Field label="Provider">
+                <input className="input-dark w-full text-[11px] min-h-[36px]" value={form.other_provider}
+                  onChange={(e) => set('other_provider', e.target.value)} placeholder="e.g. Utah DMV" />
+              </Field>
+              <Field label="Amount ($) *">
+                <input className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="number" step="0.01" min="0"
+                  value={form.other_amount} onChange={(e) => set('other_amount', e.target.value)} />
+              </Field>
+              <Field label="Frequency *">
+                <select className="select-dark w-full text-[11px] min-h-[36px]" value={form.other_frequency}
+                  onChange={(e) => set('other_frequency', e.target.value as CostFormState['other_frequency'])}>
+                  <option value="one_time">One-time</option>
+                  <option value="monthly">Monthly</option>
+                  <option value="quarterly">Quarterly</option>
+                  <option value="semi_annual">Semi-Annual</option>
+                  <option value="annual">Annual</option>
+                </select>
+              </Field>
+              <Field label="Date Incurred *">
+                <input className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="date"
+                  value={form.other_incurred_date} onChange={(e) => set('other_incurred_date', e.target.value)} />
+              </Field>
+              <Field label="Period End">
+                <input className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="date"
+                  value={form.other_period_end} onChange={(e) => set('other_period_end', e.target.value)} />
+              </Field>
+              <Field label="Status">
+                <select className="select-dark w-full text-[11px] min-h-[36px]" value={form.other_status}
+                  onChange={(e) => set('other_status', e.target.value as CostFormState['other_status'])}>
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                  <option value="cancelled">Cancelled</option>
+                </select>
               </Field>
             </div>
           )}
