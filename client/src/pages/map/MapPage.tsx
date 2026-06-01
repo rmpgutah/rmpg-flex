@@ -670,6 +670,27 @@ export default function MapPage() {
     return () => clearInterval(interval);
   }, [fetchAllData]);
 
+  // Near-live unit positions without a WebSocket push.
+  // True real-time GPS push would require a server broadcast, but the dispatch
+  // socket (/api/ws) and the bare POST /api/dispatch/gps both live on the LEGACY
+  // worker, while broadcastAll() is per-isolate — so a push emitted from the
+  // rewrite worker can't reach these clients (see project-dispatch-ws memory).
+  // Instead we tighten the *consumer*: units.latitude/longitude IS freshened by
+  // the GPS POST (gps_source/gps_updated_at on the row), so a fast units-only
+  // poll makes the dots move in near-real-time. Adaptive on purpose — it only
+  // fetches when a unit is actually on duty (position can change); a fully
+  // parked fleet falls back to the 30s full poll above with no extra load.
+  useEffect(() => {
+    const LIVE_UNIT_POLL_MS = 7000;
+    const MOVING_STATUSES = new Set<string>(['available', 'dispatched', 'enroute', 'onscene', 'busy']);
+    const tick = () => {
+      const anyOnDuty = unitsRef.current.some((u) => MOVING_STATUSES.has(u.status));
+      if (anyOnDuty) fetchUnits(); // light: /dispatch/units only, not the full fetch
+    };
+    const iv = setInterval(tick, LIVE_UNIT_POLL_MS);
+    return () => clearInterval(iv);
+  }, [fetchUnits]);
+
   // Live sync — auto-refresh map when dispatch data changes from any device (silent to avoid unmounting UI)
   const silentRefreshMap = useCallback(() => fetchAllData({ silent: true }), [fetchAllData]);
   useLiveSync('dispatch', silentRefreshMap);
