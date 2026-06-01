@@ -83,17 +83,42 @@ export function useLiveSync(
     }, delay);
   }, [moduleList]);
 
+  // The live Worker broadcasts dispatch-family mutations under the
+  // 'dispatch_update' message type (with an `action` discriminator), NOT the
+  // 'data_changed' shape this hook was written for. 'data_changed' is never
+  // emitted by the deployed worker, so a consumer like DispatchPage
+  // (useLiveSync('dispatch', …)) got no reconciliation refresh at all. Bridge
+  // the real channel: any 'dispatch_update' counts as a change for the
+  // dispatch-family modules below, so those consumers get their debounced
+  // silent-refresh safety net back. (records/personnel/fleet still need
+  // server-side broadcasts on their own mutations — tracked separately.)
+  const DISPATCH_FAMILY = useMemo(() => ['dispatch', 'incidents', 'patrol'], []);
+
+  const handleDispatchUpdate = useCallback((message: WSMessage) => {
+    if (optionsRef.current?.disabled) return;
+    // Only refresh if this consumer actually watches a dispatch-family module.
+    if (!moduleList.some((m) => DISPATCH_FAMILY.includes(m))) return;
+    if (debounceTimer.current) clearTimeout(debounceTimer.current);
+    const delay = optionsRef.current?.debounceMs ?? DEBOUNCE_MS;
+    debounceTimer.current = setTimeout(() => {
+      onRefreshRef.current();
+    }, delay);
+  }, [moduleList, DISPATCH_FAMILY]);
+
   useEffect(() => {
-    // Subscribe to the 'data_changed' message type that the liveBroadcast middleware sends
-    const unsubscribe = subscribe('data_changed', handleDataChanged);
+    // Keep 'data_changed' for forward-compat if the worker ever emits it, and
+    // add the channel the worker actually broadcasts on today.
+    const unsubLegacy = subscribe('data_changed', handleDataChanged);
+    const unsubDispatch = subscribe('dispatch_update', handleDispatchUpdate);
 
     return () => {
-      unsubscribe();
+      unsubLegacy();
+      unsubDispatch();
       if (debounceTimer.current) {
         clearTimeout(debounceTimer.current);
       }
     };
-  }, [subscribe, handleDataChanged]);
+  }, [subscribe, handleDataChanged, handleDispatchUpdate]);
 }
 
 export default useLiveSync;
