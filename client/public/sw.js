@@ -148,7 +148,7 @@
 //       Server side (same push): dispatch call DELETE now unlinks non-cascading
 //       FK refs before deleting (was 500), and /api/hr/dashboard has a real
 //       handler (was 404).
-const CACHE_NAME = 'rmpg-flex-v672';
+const CACHE_NAME = 'rmpg-flex-v673';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
