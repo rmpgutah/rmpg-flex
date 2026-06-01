@@ -391,7 +391,7 @@ export default function UserFormModal({
             </div>
             <div>
               <label className={labelCls}>Phone</label>
-              <input type="tel" value={form.phone} onChange={e => set('phone', formatPhoneInput(e.target.value))} placeholder="(801) 555-1234" pattern="[0-9()\-\s+]{7,20}" className={inputCls} />
+              <input type="tel" value={form.phone} onChange={e => set('phone', formatPhoneInput(e.target.value))} placeholder="(801) 555-1234" pattern="[0-9\(\)\-\s+]{7,20}" className={inputCls} />
             </div>
           </div>
           <div>
@@ -461,7 +461,7 @@ export default function UserFormModal({
             </div>
             <div>
               <label className={labelCls}>Contact Phone</label>
-              <input type="tel" value={form.emergency_contact_phone} onChange={e => set('emergency_contact_phone', formatPhoneInput(e.target.value))} placeholder="(801) 555-1234" pattern="[0-9()\-\s+]{7,20}" className={inputCls} />
+              <input type="tel" value={form.emergency_contact_phone} onChange={e => set('emergency_contact_phone', formatPhoneInput(e.target.value))} placeholder="(801) 555-1234" pattern="[0-9\(\)\-\s+]{7,20}" className={inputCls} />
             </div>
           </div>
           <div>

@@ -505,7 +505,7 @@ export default function VehicleFormModal({
                 />
               </FormField>
               <FormField label="Owner Phone">
-                <input name="owner_phone" type="tel" className="input-dark mt-1" value={form.owner_phone} onChange={(e) => setForm(prev => ({ ...prev, owner_phone: formatPhoneInput(e.target.value) }))} placeholder="(801) 555-1234" pattern="[0-9()\-\s+]{7,20}" />
+                <input name="owner_phone" type="tel" className="input-dark mt-1" value={form.owner_phone} onChange={(e) => setForm(prev => ({ ...prev, owner_phone: formatPhoneInput(e.target.value) }))} placeholder="(801) 555-1234" pattern="[0-9\(\)\-\s+]{7,20}" />
               </FormField>
               <FormField label="Owner Date of Birth">
                 <input name="owner_dob" type="date" className="input-dark mt-1" value={form.owner_dob} onChange={handleChange} />
