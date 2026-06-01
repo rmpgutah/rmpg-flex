@@ -176,6 +176,60 @@ export function getIncidentCategoryColor(type: string): string {
   return INCIDENT_CATEGORY_COLORS[category] || '#666666';
 }
 
+// ── Incident Category Glyphs (lucide-style monochrome SVG) ───────
+// One or more SVG <path d="..."> strings per category, drawn in a 0 0 24 24
+// viewBox, meant to render as a stroked monochrome glyph (no fill). Replaces
+// the OS-dependent emoji set so call markers read crisply at any zoom and
+// match the rest of the app's lucide iconography. Keys match getIncidentCategory's
+// `category` codes; CALL is the generic fallback.
+export const INCIDENT_CATEGORY_GLYPHS: Record<string, string[]> = {
+  // key (lucide key-round)
+  THEFT: ['M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 1 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z', 'M16.5 7.5h.01'],
+  // zap (lightning strike → reads as violence/assault; distinct from the bell)
+  ASLT: ['M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z'],
+  // car
+  TRFC: ['M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9L18.5 8h-13L4 11.1C3.2 11.3 2.5 12.1 2.5 13v3c0 .6.4 1 1 1h2', 'M5 17a2 2 0 1 0 4 0 2 2 0 1 0-4 0', 'M15 17a2 2 0 1 0 4 0 2 2 0 1 0-4 0', 'M5 11h14'],
+  // flame
+  FIRE: ['M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z'],
+  // plus/cross (medical)
+  MED: ['M11 2a2 2 0 0 0-2 2v5H4a2 2 0 0 0-2 2v2c0 1.1.9 2 2 2h5v5c0 1.1.9 2 2 2h2a2 2 0 0 0 2-2v-5h5a2 2 0 0 0 2-2v-2a2 2 0 0 0-2-2h-5V4a2 2 0 0 0-2-2z'],
+  // eye (suspicious)
+  SUSP: ['M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0', 'M12 9a3 3 0 1 0 0 6 3 3 0 1 0 0-6'],
+  // bell (alarm)
+  ALM: ['M10.268 21a2 2 0 0 0 3.464 0', 'M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326'],
+  // circle-slash (trespass)
+  TRSP: ['M12 2a10 10 0 1 0 0 20 10 10 0 1 0 0-20', 'm4.9 4.9 14.2 14.2'],
+  // home (domestic)
+  DV: ['M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8', 'M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z'],
+  // pill (drugs)
+  DRUG: ['M10.5 20.5 21 10a2.5 2.5 0 0 0-3.5-3.5L7 17a2.5 2.5 0 1 0 3.5 3.5Z', 'm8.5 8.5 7 7'],
+  // x (vandalism)
+  VNDL: ['M18 6 6 18', 'm6 6 12 12'],
+  // shield (patrol)
+  PTRL: ['M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z'],
+  // volume (noise)
+  NOIS: ['M11 4.702a.705.705 0 0 0-1.203-.498L6.413 7.587A1.4 1.4 0 0 1 5.416 8H3a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h2.416a1.4 1.4 0 0 1 .997.413l3.383 3.384A.705.705 0 0 0 11 19.298z', 'M16 9a5 5 0 0 1 0 6', 'M19.364 18.364a9 9 0 0 0 0-12.728'],
+  // file (fraud)
+  FRAD: ['M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7z', 'M14 2v4a2 2 0 0 0 2 2h4', 'M9 13h6', 'M9 17h6'],
+  // help (missing)
+  MISP: ['M12 2a10 10 0 1 0 0 20 10 10 0 1 0 0-20', 'M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3', 'M12 17h.01'],
+  // crosshair (weapons)
+  WPNS: ['M12 2a10 10 0 1 0 0 20 10 10 0 1 0 0-20', 'M22 12h-4', 'M6 12H2', 'M12 6V2', 'M12 22v-4'],
+  // clipboard (warrant)
+  WRNT: ['M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2', 'M9 2h6a1 1 0 0 1 1 1v2a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1', 'M9 12h6', 'M9 16h6'],
+  // triangle-alert (hazmat)
+  HZMT: ['m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3', 'M12 9v4', 'M12 17h.01'],
+  // paw (animal)
+  ANML: ['M11 4a2 2 0 1 0 0 4 2 2 0 1 0 0-4', 'M18 5a2 2 0 1 0 0 4 2 2 0 1 0 0-4', 'M20 11a2 2 0 1 0 0 4 2 2 0 1 0 0-4', 'M6 5a2 2 0 1 0 0 4 2 2 0 1 0 0-4', 'M5.4 18.3A4 4 0 0 1 9 16h6a4 4 0 0 1 3.6 2.3 2.5 2.5 0 0 1-2.4 3.7c-1.4 0-2.8-.5-4.2-.5s-2.8.5-4.2.5a2.5 2.5 0 0 1-2.4-3.7'],
+  // dot (generic call) — circle
+  CALL: ['M12 7a5 5 0 1 0 0 10 5 5 0 1 0 0-10'],
+};
+
+export function getIncidentCategoryGlyph(type: string): string[] {
+  const { category } = getIncidentCategory(type);
+  return INCIDENT_CATEGORY_GLYPHS[category] || INCIDENT_CATEGORY_GLYPHS.CALL;
+}
+
 // ── Map Zoom Breakpoints ─────────────────────────────────────
 
 export const MAP_ZOOM_BREAKPOINTS = { overview: 10, neighborhood: 13, street: 15, building: 18 } as const;

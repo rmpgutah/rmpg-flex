@@ -4,8 +4,29 @@
 // ============================================================
 
 import type { UnitStatus } from '../../../types';
-import { UNIT_STATUS_COLORS, UNIT_STATUS_LABELS, PRIORITY_COLORS, getIncidentCategory } from './mapConstants';
+import { UNIT_STATUS_COLORS, UNIT_STATUS_LABELS, PRIORITY_COLORS, getIncidentCategory, getIncidentCategoryColor, getIncidentCategoryGlyph } from './mapConstants';
 import { parseTimestamp } from '../../../utils/dateUtils';
+
+// ── Shared: build a stroked monochrome glyph SVG from lucide path strings ──
+// `paths` are <path d="..."> data in a 0 0 24 24 viewBox. Rendered stroked
+// (no fill) to read as a crisp icon at marker scale. Built via DOM (no
+// innerHTML) so it passes the XSS guard.
+function buildGlyphSvg(paths: string[], size: number, stroke: string, strokeWidth = 2): SVGSVGElement {
+  const svg = document.createElementNS(SVG_NS, 'svg');
+  svg.setAttribute('width', String(size));
+  svg.setAttribute('height', String(size));
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('fill', 'none');
+  svg.setAttribute('stroke', stroke);
+  svg.setAttribute('stroke-width', String(strokeWidth));
+  svg.setAttribute('stroke-linecap', 'round');
+  svg.setAttribute('stroke-linejoin', 'round');
+  svg.style.cssText = 'display:block;overflow:visible;';
+  for (const d of paths) {
+    svg.appendChild(svgPath(d, {}));
+  }
+  return svg;
+}
 
 // ── Directional Heading Arrow (shared, speed-aware SVG) ───────
 // A crisp "navigation cursor" that points along the unit's heading.
@@ -175,13 +196,16 @@ export function buildUnitMarkerContent(callSign: string, status: UnitStatus, _gp
 }
 
 export function buildIncidentMarkerContent(priority: string, incidentType: string, callNumber?: string, createdAt?: string | null): HTMLElement {
-  const color = PRIORITY_COLORS[priority] || '#666666';
+  // Type color from the 20-hue category palette (was a flat priority color, so
+  // every call looked identical). Priority is now carried by the pulse + the
+  // corner pip, leaving the main badge free to encode TYPE via color + glyph.
+  const color = getIncidentCategoryColor(incidentType);
+  const priColor = PRIORITY_COLORS[priority] || '#666666';
   const { category } = getIncidentCategory(incidentType);
-
-  const glowShadow = priority === 'P1' ? `0 0 12px ${color}50` : priority === 'P2' ? `0 0 8px ${color}40` : `0 0 6px ${color}30`;
+  const glyph = getIncidentCategoryGlyph(incidentType);
 
   const wrapper = document.createElement('div');
-  wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;cursor:pointer;filter:drop-shadow(0 1px 4px rgba(0,0,0,0.8)) drop-shadow(0 0 2px rgba(0,0,0,0.5));transition:transform 0.2s ease;transform:scale(var(--mz,1));';
+  wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;cursor:pointer;filter:drop-shadow(0 1px 4px rgba(0,0,0,0.85)) drop-shadow(0 0 2px rgba(0,0,0,0.6));transition:transform 0.2s ease;transform:scale(var(--mz,1));';
   wrapper.setAttribute('aria-label', (callNumber || '') + ' ' + category);
   wrapper.classList.add('rmpg-zoom-marker');
 
@@ -191,56 +215,60 @@ export function buildIncidentMarkerContent(priority: string, incidentType: strin
     wrapper.style.animation = 'pulse-p2 2s ease-in-out infinite';
   }
 
-  wrapper.addEventListener('mouseenter', () => { wrapper.style.transform = 'scale(calc(var(--mz,1) * 1.08))'; });
+  wrapper.addEventListener('mouseenter', () => { wrapper.style.transform = 'scale(calc(var(--mz,1) * 1.12))'; });
   wrapper.addEventListener('mouseleave', () => { wrapper.style.transform = 'scale(var(--mz,1))'; });
 
-  const tag = document.createElement('div');
-  tag.style.cssText =
-    `background:${color};color:#fff;font-size:9px;font-weight:900;` +
-    "padding:2px 6px;border:1.5px solid rgba(255,255,255,0.95);white-space:nowrap;font-family:'JetBrains Mono',monospace;letter-spacing:0.05em;" +
-    `display:flex;align-items:center;gap:3px;border-radius:1px;line-height:1.2;min-width:40px;text-align:center;justify-content:center;` +
-    `box-shadow:${glowShadow};`;
+  // ── Glyph chip: dark tactical badge, category-colored border + glyph ──
+  const chip = document.createElement('div');
+  chip.style.cssText =
+    `position:relative;width:26px;height:26px;display:flex;align-items:center;justify-content:center;` +
+    `background:linear-gradient(180deg,#161616,#080808);border:1.5px solid ${color};border-radius:2px;` +
+    `box-shadow:inset 0 1px 0 rgba(255,255,255,0.08), 0 0 8px ${color}55, 0 1px 4px rgba(0,0,0,0.6);`;
+  chip.appendChild(buildGlyphSvg(glyph, 15, color, 2.1));
 
-  if (callNumber) {
-    const numSpan = document.createElement('span');
-    numSpan.textContent = callNumber;
-    tag.appendChild(numSpan);
-  }
+  // Priority pip — top-left corner, priority-colored so urgency is still
+  // readable at a glance without re-coloring the whole badge.
+  const pip = document.createElement('div');
+  pip.style.cssText =
+    `position:absolute;top:-4px;left:-4px;min-width:13px;height:13px;padding:0 2px;border-radius:2px;` +
+    `background:${priColor};color:#0a0a0a;font-size:7px;font-weight:900;font-family:'JetBrains Mono',monospace;` +
+    `display:flex;align-items:center;justify-content:center;border:1px solid rgba(0,0,0,0.5);line-height:1;`;
+  pip.textContent = priority || 'P3';
+  chip.appendChild(pip);
 
-  const catSpan = document.createElement('span');
-  catSpan.style.cssText = 'font-size:8px;opacity:0.85;letter-spacing:0.3px;';
-  catSpan.textContent = category;
-  tag.appendChild(catSpan);
-
+  // Age pip — top-right, color ramps cold→hot as the call ages.
   if (createdAt) {
-    const ageMs = Date.now() - parseTimestamp(createdAt).getTime();
-    const ageMin = Math.floor(ageMs / 60000);
+    const ageMin = Math.floor((Date.now() - parseTimestamp(createdAt).getTime()) / 60000);
     if (ageMin >= 0) {
-      let ageColor: string;
-      let ageGlow = '';
-      if (ageMin < 5) {
-        ageColor = '#ffffff';
-      } else if (ageMin < 15) {
-        ageColor = '#fbbf24';
-      } else if (ageMin < 30) {
-        ageColor = '#f97316';
-      } else {
-        ageColor = '#ef4444';
-        ageGlow = 'text-shadow:0 0 4px rgba(239,68,68,0.8);';
-      }
-      const ageSpan = document.createElement('span');
-      ageSpan.style.cssText = `font-size:7px;font-weight:700;color:${ageColor};margin-left:1px;${ageGlow}`;
-      ageSpan.textContent = ageMin < 60 ? `${ageMin}m` : `${Math.floor(ageMin / 60)}h${ageMin % 60}m`;
-      tag.appendChild(ageSpan);
+      const ageColor = ageMin < 5 ? '#9ca3af' : ageMin < 15 ? '#fbbf24' : ageMin < 30 ? '#f97316' : '#ef4444';
+      const agePip = document.createElement('div');
+      agePip.style.cssText =
+        `position:absolute;bottom:-5px;right:-5px;padding:0 2px;height:11px;border-radius:2px;` +
+        `background:#0a0a0a;color:${ageColor};font-size:7px;font-weight:800;font-family:'JetBrains Mono',monospace;` +
+        `display:flex;align-items:center;justify-content:center;border:1px solid ${ageColor}80;line-height:1;` +
+        (ageMin >= 30 ? `box-shadow:0 0 4px ${ageColor}80;` : '');
+      agePip.textContent = ageMin < 60 ? `${ageMin}m` : `${Math.floor(ageMin / 60)}h`;
+      chip.appendChild(agePip);
     }
   }
 
+  // ── Call number label below the chip (compact, mono) ──
   const caret = document.createElement('div');
   caret.style.cssText =
-    `width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:7px solid ${color};`;
+    `width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:7px solid ${color};margin-top:-1px;`;
 
-  wrapper.appendChild(tag);
+  wrapper.appendChild(chip);
   wrapper.appendChild(caret);
+
+  if (callNumber) {
+    const numLabel = document.createElement('div');
+    numLabel.style.cssText =
+      `margin-top:1px;padding:0 3px;background:#0a0a0aee;color:#cfcfcf;font-size:7px;font-weight:800;` +
+      `font-family:'JetBrains Mono',monospace;letter-spacing:0.04em;border:1px solid ${color}40;border-radius:1px;line-height:1.4;white-space:nowrap;`;
+    numLabel.textContent = callNumber;
+    wrapper.appendChild(numLabel);
+  }
+
   return wrapper;
 }
 
@@ -311,48 +339,53 @@ export function buildPropertyMarkerContent(name: string, address?: string, clien
 // ── Historical Call Marker (semi-transparent, smaller, with clock badge) ──
 
 export function buildHistoricalCallMarkerContent(priority: string, incidentType: string, callNumber?: string): HTMLElement {
-  const color = PRIORITY_COLORS[priority] || '#666666';
+  // Faded twin of the active-call glyph chip \u2014 same type color + glyph so a
+  // historical call reads as "the same kind of thing, but past."
+  const color = getIncidentCategoryColor(incidentType);
   const { category } = getIncidentCategory(incidentType);
+  const glyph = getIncidentCategoryGlyph(incidentType);
 
   const wrapper = document.createElement('div');
-  wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;cursor:pointer;filter:drop-shadow(0 1px 3px rgba(0,0,0,0.6));opacity:0.55;transition:opacity 0.2s ease, transform 0.2s ease;transform:scale(var(--mz,1));';
+  wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;cursor:pointer;filter:drop-shadow(0 1px 3px rgba(0,0,0,0.6));opacity:0.5;transition:opacity 0.2s ease, transform 0.2s ease;transform:scale(var(--mz,1));';
   wrapper.setAttribute('aria-label', 'Historical: ' + (callNumber || '') + ' ' + category);
   wrapper.classList.add('rmpg-zoom-marker');
 
-  wrapper.addEventListener('mouseenter', () => { wrapper.style.opacity = '0.9'; wrapper.style.transform = 'scale(calc(var(--mz,1) * 1.05))'; });
-  wrapper.addEventListener('mouseleave', () => { wrapper.style.opacity = '0.55'; wrapper.style.transform = 'scale(var(--mz,1))'; });
+  wrapper.addEventListener('mouseenter', () => { wrapper.style.opacity = '0.9'; wrapper.style.transform = 'scale(calc(var(--mz,1) * 1.08))'; });
+  wrapper.addEventListener('mouseleave', () => { wrapper.style.opacity = '0.5'; wrapper.style.transform = 'scale(var(--mz,1))'; });
 
-  const tag = document.createElement('div');
-  tag.style.cssText =
-    `background:${color};color:#fff;font-size:7px;font-weight:900;` +
-    "padding:1px 4px;border:1px solid rgba(255,255,255,0.7);white-space:nowrap;font-family:'JetBrains Mono',monospace;letter-spacing:0.05em;" +
-    'display:flex;align-items:center;gap:2px;border-radius:1px;position:relative;';
+  // Smaller dashed-border chip (vs solid for active) \u2014 signals "past".
+  const chip = document.createElement('div');
+  chip.style.cssText =
+    `position:relative;width:20px;height:20px;display:flex;align-items:center;justify-content:center;` +
+    `background:linear-gradient(180deg,#121212,#070707);border:1px dashed ${color};border-radius:2px;` +
+    `box-shadow:0 0 5px ${color}35;`;
+  chip.appendChild(buildGlyphSvg(glyph, 11, color, 2));
 
+  // Clock badge marks it as historical.
   const badge = document.createElement('div');
   badge.style.cssText =
-    'position:absolute;top:-6px;right:-6px;width:12px;height:12px;border-radius:2px;' +
-    'background:#0c0c0c;border:1px solid ' + color + ';display:flex;align-items:center;justify-content:center;' +
-    'font-size:7px;color:' + color + ';font-weight:900;line-height:1;backdrop-filter:blur(4px);';
+    `position:absolute;top:-5px;right:-5px;width:11px;height:11px;border-radius:2px;` +
+    `background:#0a0a0a;border:1px solid ${color};display:flex;align-items:center;justify-content:center;` +
+    `font-size:7px;color:${color};font-weight:900;line-height:1;`;
   badge.textContent = '\u23F1';
-  tag.appendChild(badge);
-
-  if (callNumber) {
-    const numSpan = document.createElement('span');
-    numSpan.textContent = callNumber;
-    tag.appendChild(numSpan);
-  }
-
-  const catSpan = document.createElement('span');
-  catSpan.style.cssText = 'font-size:6px;opacity:0.85;letter-spacing:0.3px;';
-  catSpan.textContent = category;
-  tag.appendChild(catSpan);
+  chip.appendChild(badge);
 
   const caret = document.createElement('div');
   caret.style.cssText =
-    `width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-top:5px solid ${color};`;
+    `width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-top:5px solid ${color};margin-top:-1px;`;
 
-  wrapper.appendChild(tag);
+  wrapper.appendChild(chip);
   wrapper.appendChild(caret);
+
+  if (callNumber) {
+    const numLabel = document.createElement('div');
+    numLabel.style.cssText =
+      `margin-top:1px;padding:0 2px;background:#0a0a0acc;color:#9ca3af;font-size:6px;font-weight:700;` +
+      `font-family:'JetBrains Mono',monospace;border:1px solid ${color}30;border-radius:1px;line-height:1.4;white-space:nowrap;`;
+    numLabel.textContent = callNumber;
+    wrapper.appendChild(numLabel);
+  }
+
   return wrapper;
 }
 
@@ -376,18 +409,32 @@ export function buildIncidentReportMarkerContent(status: string): HTMLElement {
   wrapper.addEventListener('mouseenter', () => { wrapper.style.transform = 'scale(calc(var(--mz,1) * 1.1))'; });
   wrapper.addEventListener('mouseleave', () => { wrapper.style.transform = 'scale(var(--mz,1))'; });
 
+  // Dark tactical diamond — status-colored bevel border + glow, distinct
+  // rotated silhouette so reports never read as call/incident square chips.
   const diamond = document.createElement('div');
   diamond.style.cssText =
-    `width:22px;height:22px;background:${color};transform:rotate(45deg);` +
-    `border:1.5px solid rgba(255,255,255,0.9);display:flex;align-items:center;justify-content:center;` +
-    `box-shadow:0 0 8px ${color}50;outline:1px solid ${color}40;outline-offset:2px;border-radius:1px;`;
+    `width:22px;height:22px;background:linear-gradient(135deg,#1a1a1a,#070707);transform:rotate(45deg);` +
+    `border:1.5px solid ${color};display:flex;align-items:center;justify-content:center;` +
+    `box-shadow:inset 0 1px 0 rgba(255,255,255,0.07), 0 0 8px ${color}55;outline:1px solid ${color}30;outline-offset:2px;border-radius:2px;`;
+
+  // Counter-rotate the contents so the "IR" + glyph sit upright.
+  const inner = document.createElement('div');
+  inner.style.cssText = 'transform:rotate(-45deg);display:flex;flex-direction:column;align-items:center;gap:0px;line-height:1;';
+
+  const glyph = buildGlyphSvg(
+    // lucide file-text
+    ['M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z', 'M14 2v6h6', 'M16 13H8', 'M16 17H8', 'M10 9H8'],
+    9, color, 2,
+  );
+  inner.appendChild(glyph);
 
   const label = document.createElement('span');
   label.style.cssText =
-    "transform:rotate(-45deg);color:#fff;font-size:8px;font-weight:900;font-family:'JetBrains Mono',monospace;letter-spacing:0.3px;line-height:1;";
+    `color:${color};font-size:6px;font-weight:900;font-family:'JetBrains Mono',monospace;letter-spacing:0.4px;line-height:1;margin-top:1px;`;
   label.textContent = 'IR';
-  diamond.appendChild(label);
+  inner.appendChild(label);
 
+  diamond.appendChild(inner);
   wrapper.appendChild(diamond);
   return wrapper;
 }
