@@ -127,7 +127,11 @@
 //       + coerce inputs in its lookup helpers, so number/string mismatches stop
 //       causing crashes (map #807, dispatch panel). Retires that class of bug at
 //       the shared chokepoint instead of per-call-site.
-const CACHE_NAME = 'rmpg-flex-v666';
+// v667: force-evict stale chunks so the fleet/global scroll fix already in this
+//       bundle reaches operators pinned to a pre-fix cache (Fleet > Fuel tab
+//       couldn't scroll the fuel-log list). Layout source is correct; this is a
+//       cache-busting bump to retire the old bundle.
+const CACHE_NAME = 'rmpg-flex-v667';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
