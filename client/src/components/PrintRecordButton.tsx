@@ -237,13 +237,15 @@ export default function PrintRecordButton({
       } catch { /* non-fatal — endpoint may be stubbed */ }
     }
 
-    // For call records, fetch GPS breadcrumb trail
-    if (recordType === 'call' && data.id) {
+    // For call records, fetch GPS breadcrumb trail. Require a real numeric id —
+    // a missing/"undefined" id otherwise produced GET /call-trail/undefined → 400.
+    const callId = Number(data.id);
+    if (recordType === 'call' && Number.isInteger(callId) && callId > 0) {
       try {
         const trail = await apiFetch<{
           points: any[];
           stats: { total_points: number; total_distance_miles: number; duration_minutes: number; avg_speed_mph: number; max_speed_mph: number; source_breakdown?: Record<string, number> };
-        }>(`/dispatch/gps/call-trail/${data.id}`);
+        }>(`/dispatch/gps/call-trail/${callId}`);
         if (trail?.points?.length > 0) {
           enriched.breadcrumb_trail = trail;
         }

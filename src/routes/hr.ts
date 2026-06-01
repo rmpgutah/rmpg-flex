@@ -61,6 +61,37 @@ function isManager(role: string) {
   return (MANAGER_ROLES as readonly string[]).includes(role);
 }
 
+// ── /dashboard — HRDashboardTab summary ─────────────────────
+// Aggregated from the live HR tables (leave_requests / disciplinary_records)
+// + users headcount. Each metric is independently fail-safe so one missing
+// column can't zero the whole card; training/credential compliance stay 0
+// until those tables land. Was 404 (no handler) → HrPage dashboard blank.
+hr.get('/dashboard', requireRole(...ALL_ROLES), async (c) => {
+  const db = getDb(c.env);
+  const n = async (sql: string): Promise<number> => {
+    try { const r = await queryFirst<{ n: number }>(db, sql); return r?.n ?? 0; } catch { return 0; }
+  };
+  let recent_activity: unknown[] = [];
+  try {
+    recent_activity = await query(db,
+      `SELECT lr.id, 'leave_request' AS type,
+              ('Leave (' || COALESCE(lr.type,'') || ') ' || COALESCE(lr.status,'')) AS description,
+              COALESCE(u.full_name,'') AS officer_name, lr.created_at
+       FROM leave_requests lr LEFT JOIN users u ON u.id = lr.officer_id
+       ORDER BY lr.created_at DESC LIMIT 8`);
+  } catch { recent_activity = []; }
+  return c.json({
+    total_active: await n("SELECT COUNT(*) n FROM users WHERE COALESCE(status,'active') != 'terminated'"),
+    new_hires_30d: await n("SELECT COUNT(*) n FROM users WHERE created_at >= datetime('now','-30 days')"),
+    on_leave_today: await n("SELECT COUNT(*) n FROM leave_requests WHERE status='approved' AND date('now') BETWEEN date(start_date) AND date(end_date)"),
+    pending_approvals: await n("SELECT COUNT(*) n FROM leave_requests WHERE status='pending'"),
+    training_compliance_pct: 0,
+    credential_compliance_pct: 0,
+    overdue_items: await n("SELECT COUNT(*) n FROM disciplinary_records WHERE status='open'"),
+    recent_activity,
+  });
+});
+
 // ── /benefits — deferred until hr_benefits table exists ─────
 
 hr.get('/benefits', requireRole(...ALL_ROLES), async (c) => {

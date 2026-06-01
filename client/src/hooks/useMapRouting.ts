@@ -289,7 +289,12 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
         expr.push(frac, CONGESTION_COLOR[congestion[i]]);
         lastFrac = frac;
       }
-      return expr.length >= 3 ? expr : null;
+      // A Mapbox `step` needs at least one stop PAIR — minimum valid form is
+      // ['step', input, base, stop1_in, stop1_out] (length 5). A length-3 expr
+      // (single congestion segment → just a base color, no stops) is invalid
+      // and throws "Expected at least 4 arguments" on addLayer. Fall back to a
+      // flat line-color in that case (caller treats null as "no gradient").
+      return expr.length >= 5 ? expr : null;
     },
     [],
   );

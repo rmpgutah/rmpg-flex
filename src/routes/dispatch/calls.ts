@@ -762,10 +762,22 @@ calls.delete('/:id', async (c) => {
   try {
     const db = getDb(c.env);
     const id = c.req.param('id');
+    // Clear/unlink the non-cascading FK references before deleting, or the
+    // raw DELETE hits a FOREIGN KEY constraint and 500s. Tables that point at
+    // calls_for_service WITHOUT ON DELETE CASCADE: units.current_call_id,
+    // incidents.call_id, radio_transmissions.call_id (records — UNLINK, don't
+    // delete) and the call_persons/call_vehicles link rows (safe to DELETE).
+    // calls_for_service_ext / call_businesses / case_calls cascade on their own.
+    await execute(db, 'UPDATE units SET current_call_id = NULL WHERE current_call_id = ?', id);
+    await execute(db, 'UPDATE incidents SET call_id = NULL WHERE call_id = ?', id);
+    await execute(db, 'UPDATE radio_transmissions SET call_id = NULL WHERE call_id = ?', id);
+    await execute(db, 'DELETE FROM call_persons WHERE call_id = ?', id);
+    await execute(db, 'DELETE FROM call_vehicles WHERE call_id = ?', id);
     await execute(db, 'DELETE FROM calls_for_service WHERE id = ?', id);
     return c.json({ message: 'Call deleted' });
   } catch (err) {
-    return c.json({ error: 'Failed to delete call' }, 500);
+    // Surface the real reason (FK name, missing table) instead of an opaque 500.
+    return c.json({ error: 'Failed to delete call', detail: (err as Error)?.message }, 500);
   }
 });
 

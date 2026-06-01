@@ -141,7 +141,14 @@
 //       live fleet_vehicles.equipment column is TEXT (JSON/CSV string), but the
 //       PDF generator assumed string[] and called .map(). Now coerced to a
 //       string[] in recordPdfGenerator.ts so Print fleet record works.
-const CACHE_NAME = 'rmpg-flex-v669';
+// v670: fix dispatch map crash "line-gradient: Expected at least 4 arguments"
+//       (single-segment route built a stop-less step expr → invalid; now falls
+//       back to flat line-color), and harden PrintRecordButton breadcrumb fetch
+//       to require a numeric call id (stops GET /call-trail/undefined → 400).
+//       Server side (same push): dispatch call DELETE now unlinks non-cascading
+//       FK refs before deleting (was 500), and /api/hr/dashboard has a real
+//       handler (was 404).
+const CACHE_NAME = 'rmpg-flex-v670';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
