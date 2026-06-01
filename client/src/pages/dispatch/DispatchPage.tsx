@@ -275,6 +275,11 @@ export default function DispatchPage() {
   useEffect(() => { callsRef.current = calls; }, [calls]);
   const recentlyCreatedIdsRef = useRef<Set<string | number>>(new Set()); // synchronous dedup for POST + WS race
   const [units, setUnits] = useState<Unit[]>([]);
+  // Mirror `units` into a ref so the mount-only adaptive GPS-poll effect (deps
+  // exclude `units` to avoid re-arming the interval on every position tick) can
+  // read current on-duty state.
+  const unitsRef = useRef<Unit[]>([]);
+  useEffect(() => { unitsRef.current = units; }, [units]);
   const [selectedCall, setSelectedCall] = useState<CallForService | null>(null);
   const [filterTab, setFilterTab] = usePersistedTab('rmpg_dispatch_tab', 'all' as FilterTab, ['all', 'pending', 'active', 'cleared', 'archived', 'serve', 'mine'] as const);
   const [showNewCallModal, setShowNewCallModal] = useState(false);
@@ -808,6 +813,30 @@ export default function DispatchPage() {
   // path only mirrors *other* devices' changes, where ~1s latency is invisible).
   const silentRefresh = useCallback(() => fetchData({ silent: true }), [fetchData]);
   useLiveSync('dispatch', silentRefresh, { debounceMs: 1500 });
+
+  // Near-live unit positions on the status board without a WebSocket push.
+  // The dispatch socket (/api/ws) and the bare POST /api/dispatch/gps both run
+  // on the LEGACY worker while broadcastAll() is per-isolate, so a push from the
+  // rewrite worker can't reach these clients (see project-dispatch-ws memory).
+  // But units.latitude/longitude IS freshened by the GPS POST, so a light
+  // units-only poll keeps the board's GPS column current. Adaptive on purpose:
+  // only fetch when a unit is on duty (position can change) — a parked fleet
+  // adds no load and rides the WS/action-driven updates. Mirrors MapPage.
+  const refreshUnitsLive = useCallback(async () => {
+    try {
+      const unitsRes = await apiFetch<any[]>('/dispatch/units');
+      setUnits((Array.isArray(unitsRes) ? unitsRes : []).map(mapDbUnit));
+    } catch { /* silent — transient poll miss; the next tick retries */ }
+  }, []);
+
+  useEffect(() => {
+    const LIVE_UNIT_POLL_MS = 7000;
+    const MOVING_STATUSES = new Set<string>(['available', 'dispatched', 'enroute', 'onscene', 'busy']);
+    const iv = setInterval(() => {
+      if (unitsRef.current.some((u) => MOVING_STATUSES.has(u.status))) refreshUnitsLive();
+    }, LIVE_UNIT_POLL_MS);
+    return () => clearInterval(iv);
+  }, [refreshUnitsLive]);
 
   // Call-lifecycle state + handlers (extracted to keep this component below the
   // 6,500-line ceiling). The hook owns: 6 transient state items (delete/disposition/
