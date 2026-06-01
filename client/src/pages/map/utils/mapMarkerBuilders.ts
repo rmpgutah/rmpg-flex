@@ -108,12 +108,16 @@ export function buildUnitMarkerContent(callSign: string, status: UnitStatus, _gp
   const label = UNIT_STATUS_LABELS[status];
 
   const wrapper = document.createElement('div');
-  wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;cursor:pointer;filter:drop-shadow(0 1px 3px rgba(0,0,0,0.7)) drop-shadow(0 0 1px rgba(0,0,0,0.5));transition:all 0.2s ease;will-change:transform;position:relative;';
+  // --mz is the zoom-scale factor (default 1), driven by MapPage's zoom
+  // listener so markers shrink when zoomed out. Hover multiplies it via
+  // calc() instead of overwriting, so the two effects compose cleanly.
+  wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;cursor:pointer;filter:drop-shadow(0 1px 3px rgba(0,0,0,0.7)) drop-shadow(0 0 1px rgba(0,0,0,0.5));transition:all 0.2s ease;will-change:transform;position:relative;transform:scale(var(--mz,1));';
   wrapper.setAttribute('aria-label', callSign + ' - ' + label);
   wrapper.title = callSign + ' \u2014 ' + label;
+  wrapper.classList.add('rmpg-zoom-marker');
 
-  wrapper.addEventListener('mouseenter', () => { wrapper.style.transform = 'scale(1.08)'; });
-  wrapper.addEventListener('mouseleave', () => { wrapper.style.transform = 'scale(1)'; });
+  wrapper.addEventListener('mouseenter', () => { wrapper.style.transform = 'scale(calc(var(--mz,1) * 1.08))'; });
+  wrapper.addEventListener('mouseleave', () => { wrapper.style.transform = 'scale(var(--mz,1))'; });
 
   if (heading != null) {
     const arrow = buildDirectionArrow(color, heading, { speed, scale: 1, offsetTop: 13 });
@@ -175,8 +179,9 @@ export function buildIncidentMarkerContent(priority: string, incidentType: strin
   const glowShadow = priority === 'P1' ? `0 0 12px ${color}50` : priority === 'P2' ? `0 0 8px ${color}40` : `0 0 6px ${color}30`;
 
   const wrapper = document.createElement('div');
-  wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;cursor:pointer;filter:drop-shadow(0 1px 4px rgba(0,0,0,0.8)) drop-shadow(0 0 2px rgba(0,0,0,0.5));transition:transform 0.2s ease;';
+  wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;cursor:pointer;filter:drop-shadow(0 1px 4px rgba(0,0,0,0.8)) drop-shadow(0 0 2px rgba(0,0,0,0.5));transition:transform 0.2s ease;transform:scale(var(--mz,1));';
   wrapper.setAttribute('aria-label', (callNumber || '') + ' ' + category);
+  wrapper.classList.add('rmpg-zoom-marker');
 
   if (priority === 'P1') {
     wrapper.style.animation = 'pulse-p1 1s ease-in-out infinite';
@@ -184,8 +189,8 @@ export function buildIncidentMarkerContent(priority: string, incidentType: strin
     wrapper.style.animation = 'pulse-p2 2s ease-in-out infinite';
   }
 
-  wrapper.addEventListener('mouseenter', () => { wrapper.style.transform = 'scale(1.08)'; });
-  wrapper.addEventListener('mouseleave', () => { wrapper.style.transform = 'scale(1)'; });
+  wrapper.addEventListener('mouseenter', () => { wrapper.style.transform = 'scale(calc(var(--mz,1) * 1.08))'; });
+  wrapper.addEventListener('mouseleave', () => { wrapper.style.transform = 'scale(var(--mz,1))'; });
 
   const tag = document.createElement('div');
   tag.style.cssText =
@@ -239,7 +244,10 @@ export function buildIncidentMarkerContent(priority: string, incidentType: strin
 
 export function buildPropertyMarkerContent(name: string, address?: string, clientName?: string): HTMLElement {
   const wrapper = document.createElement('div');
-  wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;cursor:pointer;position:relative;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.6));';
+  // --mz zoom-scale (default 1) drives shrink-on-zoom-out from MapPage. The
+  // inner dot's own hover scale composes on top of this wrapper transform.
+  wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;cursor:pointer;position:relative;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.6));transform:scale(var(--mz,1));transition:transform 0.2s ease;';
+  wrapper.classList.add('rmpg-zoom-marker');
 
   const dot = document.createElement('div');
   dot.style.cssText =
@@ -305,11 +313,12 @@ export function buildHistoricalCallMarkerContent(priority: string, incidentType:
   const { category } = getIncidentCategory(incidentType);
 
   const wrapper = document.createElement('div');
-  wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;cursor:pointer;filter:drop-shadow(0 1px 3px rgba(0,0,0,0.6));opacity:0.55;transition:opacity 0.2s ease, transform 0.2s ease;';
+  wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;cursor:pointer;filter:drop-shadow(0 1px 3px rgba(0,0,0,0.6));opacity:0.55;transition:opacity 0.2s ease, transform 0.2s ease;transform:scale(var(--mz,1));';
   wrapper.setAttribute('aria-label', 'Historical: ' + (callNumber || '') + ' ' + category);
+  wrapper.classList.add('rmpg-zoom-marker');
 
-  wrapper.addEventListener('mouseenter', () => { wrapper.style.opacity = '0.9'; wrapper.style.transform = 'scale(1.05)'; });
-  wrapper.addEventListener('mouseleave', () => { wrapper.style.opacity = '0.55'; wrapper.style.transform = 'scale(1)'; });
+  wrapper.addEventListener('mouseenter', () => { wrapper.style.opacity = '0.9'; wrapper.style.transform = 'scale(calc(var(--mz,1) * 1.05))'; });
+  wrapper.addEventListener('mouseleave', () => { wrapper.style.opacity = '0.55'; wrapper.style.transform = 'scale(var(--mz,1))'; });
 
   const tag = document.createElement('div');
   tag.style.cssText =
@@ -358,11 +367,12 @@ export function buildIncidentReportMarkerContent(status: string): HTMLElement {
   const color = statusColors[status] || '#666666';
 
   const wrapper = document.createElement('div');
-  wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;cursor:pointer;filter:drop-shadow(0 1px 3px rgba(0,0,0,0.7));transition:transform 0.2s ease;';
+  wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;cursor:pointer;filter:drop-shadow(0 1px 3px rgba(0,0,0,0.7));transition:transform 0.2s ease;transform:scale(var(--mz,1));';
   wrapper.setAttribute('aria-label', 'Incident Report - ' + status);
+  wrapper.classList.add('rmpg-zoom-marker');
 
-  wrapper.addEventListener('mouseenter', () => { wrapper.style.transform = 'scale(1.1)'; });
-  wrapper.addEventListener('mouseleave', () => { wrapper.style.transform = 'scale(1)'; });
+  wrapper.addEventListener('mouseenter', () => { wrapper.style.transform = 'scale(calc(var(--mz,1) * 1.1))'; });
+  wrapper.addEventListener('mouseleave', () => { wrapper.style.transform = 'scale(var(--mz,1))'; });
 
   const diamond = document.createElement('div');
   diamond.style.cssText =

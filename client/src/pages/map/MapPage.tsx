@@ -1060,6 +1060,30 @@ export default function MapPage() {
     if (m && typeof m.remove === 'function') m.remove();
   }, []);
 
+  // ── Zoom-scale DOM markers (shrink on zoom-out) ──────────────
+  // Native mapboxgl.Marker content is fixed-pixel HTML — Mapbox repositions
+  // it but never resizes it, so pins stay huge when zoomed way out. Every
+  // marker wrapper carries `transform:scale(var(--mz,1))`; we set `--mz` once
+  // on the map's container element and CSS inheritance cascades it to all
+  // current AND future `.rmpg-zoom-marker` wrappers — no per-marker iteration,
+  // no coupling to the marker registries. Scale ramps linearly from full size
+  // at/above zoom 12 down to a 0.45 floor at zoom 4, clamped both ends so pins
+  // stay clickable when zoomed out and never balloon past 1× when zoomed in.
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !mapLoaded) return;
+    const container = map.getContainer();
+    const applyZoomScale = () => {
+      const z = map.getZoom();
+      // zoom 12+ → 1.0 ; zoom 4 → 0.45 ; linear between, clamped.
+      const scale = Math.max(0.45, Math.min(1, 0.45 + ((z - 4) / (12 - 4)) * 0.55));
+      container.style.setProperty('--mz', scale.toFixed(3));
+    };
+    applyZoomScale();
+    map.on('zoom', applyZoomScale);
+    return () => { map.off('zoom', applyZoomScale); };
+  }, [mapLoaded]);
+
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map || !mapLoaded) return;
