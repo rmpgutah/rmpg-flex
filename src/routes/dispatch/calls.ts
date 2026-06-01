@@ -873,7 +873,12 @@ calls.post('/:id/hold', async (c) => {
     await execute(db, 'INSERT OR IGNORE INTO calls_for_service_ext (id) VALUES (?)', id);
     await execute(db, "UPDATE calls_for_service_ext SET held_at = datetime('now') WHERE id = ?", id);
     await execute(db, "UPDATE calls_for_service SET updated_at = datetime('now') WHERE id = ?", id);
-    return c.json({ message: 'On hold' });
+    // Return the full row (not a bare {message}) incl. held_at so the client can
+    // map it back to a real call object — mapDbCall derives the synthetic
+    // 'on_hold' status from held_at. Returning {message} blanked the call card.
+    const row = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
+    const ext = await queryFirst<Record<string, unknown>>(db, 'SELECT held_at FROM calls_for_service_ext WHERE id = ?', id);
+    return c.json({ ...(row || {}), held_at: ext?.held_at ?? null });
   } catch (err) {
     return c.json({ error: 'Hold failed' }, 500);
   }
@@ -886,7 +891,10 @@ calls.post('/:id/resume', async (c) => {
     const id = c.req.param('id');
     await execute(db, 'UPDATE calls_for_service_ext SET held_at = NULL WHERE id = ?', id);
     await execute(db, "UPDATE calls_for_service SET updated_at = datetime('now') WHERE id = ?", id);
-    return c.json({ message: 'Resumed' });
+    // Return the full row with held_at cleared so the client maps it back to the
+    // call's real (non-held) status instead of mapping a bare {message} to a blank.
+    const row = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
+    return c.json({ ...(row || {}), held_at: null });
   } catch (err) {
     return c.json({ error: 'Resume failed' }, 500);
   }

@@ -268,6 +268,11 @@ export default function DispatchPage() {
   const signalLookup = useMemo(() => dispatchCodes.lookup, [dispatchCodes.lookup]);
   const knownSignalCodes = useMemo(() => new Set(dispatchCodes.codes.map(c => c.code)), [dispatchCodes.codes]);
   const [calls, setCalls] = useState<CallForService[]>([]);
+  // Mirror `calls` into a ref so the mount-only WebSocket effect (deps exclude
+  // `calls` to avoid re-subscribing on every list change) can read current
+  // state — e.g. priority-escalation detection in the call_updated handler.
+  const callsRef = useRef<CallForService[]>([]);
+  useEffect(() => { callsRef.current = calls; }, [calls]);
   const recentlyCreatedIdsRef = useRef<Set<string | number>>(new Set()); // synchronous dedup for POST + WS race
   const [units, setUnits] = useState<Unit[]>([]);
   const [selectedCall, setSelectedCall] = useState<CallForService | null>(null);
@@ -893,8 +898,9 @@ export default function DispatchPage() {
         }
       } else if (data.action === 'call_updated' && data.call) {
         const mapped = mapDbCall(data.call);
-        // Detect priority escalation before updating state
-        const prevCall = calls.find((c: any) => c.id === mapped.id);
+        // Detect priority escalation before updating state. Read from the ref —
+        // the plain `calls` here would be the stale mount-time snapshot.
+        const prevCall = callsRef.current.find((c: any) => c.id === mapped.id);
         if (prevCall && prevCall.priority !== mapped.priority) {
           const priorities = ['P1', 'P2', 'P3', 'P4'];
           if (priorities.indexOf(mapped.priority) < priorities.indexOf(prevCall.priority)) {
@@ -940,6 +946,15 @@ export default function DispatchPage() {
             assigned_units: mapped.assigned_units,
           }, mapped.status);
         }
+      } else if (data.action === 'call_deleted') {
+        // Server broadcasts this on undo-redispatch (the child call is deleted).
+        // mapDbCall stringifies ids, so compare as strings. Drop it from the
+        // queue and clear the detail pane if it was open.
+        const deletedId = data.call_id ?? data.call?.id;
+        if (deletedId != null) {
+          setCalls((prev) => prev.filter((c) => String(c.id) !== String(deletedId)));
+          setSelectedCall((prev) => (prev && String(prev.id) === String(deletedId) ? null : prev));
+        }
       } else if (data.action === 'units_dispatched' || data.action === 'unit_assigned' || data.action === 'unit_unassigned') {
         // Voice alert: announce unit assignment
         if (data.action === 'unit_assigned' && data.unit_call_sign && data.call_number) {
@@ -963,8 +978,13 @@ export default function DispatchPage() {
       }
     });
 
-    // Listen for unit updates (status changes, new units, deletions)
-    const unsubUnit = subscribe('unit_update', (msg: any) => {
+    // Listen for unit updates (status changes, GPS position pushes, etc.).
+    // The live Worker broadcasts ALL unit events under the 'dispatch_update'
+    // channel with an action discriminator — there is no 'unit_update' channel,
+    // so this handler was previously dead (the roster never updated live).
+    // subscribersRef is a Map<type, Set<handler>>, so this coexists with the
+    // call handler above; each ignores the other's actions.
+    const unsubUnit = subscribe('dispatch_update', (msg: any) => {
       const data = msg.data || msg;
       if (data.action === 'unit_status_changed' && data.unit) {
         setUnits((prev) => prev.map((u) => (String(u.id) === String(data.unit.id) ? { ...u, ...data.unit, id: String(data.unit.id) } : u)));

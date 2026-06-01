@@ -616,7 +616,7 @@ const API_ROUTES: RouteRule[] = [
   // (writes cleared_at in UTC + persists disposition), and /archive-bulk.
   // Without these the paths fall through to env.LEGACY, which loses the
   // disposition and writes status timestamps as local MST mislabeled +00:00.
-  { kind: 'regex', value: /^\/api\/dispatch\/calls\/\d+\/(revert-status|le-notification|transfer|broadcast-note|generate-incident)$/, methods: ['POST'] },
+  { kind: 'regex', value: /^\/api\/dispatch\/calls\/\d+\/(revert-status|le-notification|transfer|broadcast-note|generate-incident|notes)$/, methods: ['POST'] },
   { kind: 'regex', value: /^\/api\/dispatch\/calls\/\d+\/notes\/[^/]+$/, methods: ['PUT', 'DELETE'] },
   { kind: 'regex', value: /^\/api\/dispatch\/calls\/\d+\/status$/, methods: ['POST'] },
   // Single-call archive — rewrite writes archived_at in UTC; legacy mislabels MST.

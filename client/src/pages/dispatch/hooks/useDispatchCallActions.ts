@@ -64,11 +64,22 @@ export function useDispatchCallActions(args: UseDispatchCallActionsArgs) {
   // ── Archive / unarchive (declared early so handleStatusChange can call it) ──
   const handleArchive = useCallback(async (callId: string) => {
     try {
-      const result = await apiFetch<any>(`/dispatch/calls/${callId}/archive`, { method: 'POST' });
-      const updatedCall = mapDbCall(result);
-      setCalls((prev) => prev.filter((c) => c.id !== callId));
-      setArchivedCalls((prev) => [updatedCall, ...prev]);
-      setSelectedCall((prev) => prev?.id === callId ? updatedCall : prev);
+      // The /archive handler returns a bare {message}, NOT the call row — mapping
+      // that into mapDbCall() produced a blank call (id 'undefined', empty fields)
+      // that overwrote the real one in the archived list. Reuse the in-memory row
+      // instead. `moved` is captured inside the functional updater so we don't need
+      // the full `calls` array in this hook's scope.
+      await apiFetch(`/dispatch/calls/${callId}/archive`, { method: 'POST' });
+      let moved: CallForService | undefined;
+      setCalls((prev) => {
+        moved = prev.find((c) => c.id === callId);
+        return prev.filter((c) => c.id !== callId);
+      });
+      if (moved) {
+        const archived: CallForService = { ...moved, status: 'archived' as CallStatus };
+        setArchivedCalls((prev) => [archived, ...prev]);
+      }
+      setSelectedCall((prev) => prev?.id === callId ? null : prev);
     } catch (err) {
       console.error('Failed to archive call:', err);
       addToast('Failed to archive call', 'error');
@@ -77,11 +88,20 @@ export function useDispatchCallActions(args: UseDispatchCallActionsArgs) {
 
   const handleUnarchive = useCallback(async (callId: string) => {
     try {
-      const result = await apiFetch<any>(`/dispatch/calls/${callId}/unarchive`, { method: 'POST' });
-      const updatedCall = mapDbCall(result);
-      setArchivedCalls((prev) => prev.filter((c) => c.id !== callId));
-      setCalls((prev) => [updatedCall, ...prev]);
-      setSelectedCall((prev) => prev?.id === callId ? updatedCall : prev);
+      // Same bare-{message} response as /archive — reuse the in-memory archived
+      // row rather than mapping the ack into a blank call. The server restores
+      // status to 'closed' (see /:id/unarchive).
+      await apiFetch(`/dispatch/calls/${callId}/unarchive`, { method: 'POST' });
+      let moved: CallForService | undefined;
+      setArchivedCalls((prev) => {
+        moved = prev.find((c) => c.id === callId);
+        return prev.filter((c) => c.id !== callId);
+      });
+      if (moved) {
+        const restored: CallForService = { ...moved, status: 'closed' as CallStatus };
+        setCalls((prev) => [restored, ...prev]);
+        setSelectedCall((prev) => prev?.id === callId ? restored : prev);
+      }
     } catch (err) {
       console.error('Failed to unarchive call:', err);
       addToast('Failed to unarchive call', 'error');
@@ -142,9 +162,18 @@ export function useDispatchCallActions(args: UseDispatchCallActionsArgs) {
   const handleHoldCall = useCallback(async (callId: string) => {
     try {
       const result = await apiFetch<any>(`/dispatch/calls/${callId}/hold`, { method: 'POST' });
-      const updatedCall = mapDbCall(result);
-      setCalls((prev) => prev.map((c) => c.id === callId ? updatedCall : c));
-      setSelectedCall((prev) => prev?.id === callId ? updatedCall : prev);
+      // Server now returns the full row (incl. held_at) → mapDbCall derives the
+      // synthetic 'on_hold' status. Guard the legacy bare-{message} shape: if no
+      // id came back, update in place rather than blanking the card.
+      if (result && result.id != null) {
+        const updatedCall = mapDbCall(result);
+        setCalls((prev) => prev.map((c) => c.id === callId ? updatedCall : c));
+        setSelectedCall((prev) => prev?.id === callId ? updatedCall : prev);
+      } else {
+        const hold = (c: CallForService): CallForService => ({ ...c, status: 'on_hold' as CallStatus });
+        setCalls((prev) => prev.map((c) => c.id === callId ? hold(c) : c));
+        setSelectedCall((prev) => prev?.id === callId ? hold(prev) : prev);
+      }
     } catch (err) {
       console.error('Failed to hold call:', err);
       addToast('Failed to hold call', 'error');
@@ -154,9 +183,17 @@ export function useDispatchCallActions(args: UseDispatchCallActionsArgs) {
   const handleResumeCall = useCallback(async (callId: string) => {
     try {
       const result = await apiFetch<any>(`/dispatch/calls/${callId}/resume`, { method: 'POST' });
-      const updatedCall = mapDbCall(result);
-      setCalls((prev) => prev.map((c) => c.id === callId ? updatedCall : c));
-      setSelectedCall((prev) => prev?.id === callId ? updatedCall : prev);
+      if (result && result.id != null) {
+        const updatedCall = mapDbCall(result);
+        setCalls((prev) => prev.map((c) => c.id === callId ? updatedCall : c));
+        setSelectedCall((prev) => prev?.id === callId ? updatedCall : prev);
+      } else {
+        // Bare-ack fallback: restore a sensible non-held status from assignments.
+        const resume = (c: CallForService): CallForService =>
+          ({ ...c, status: (c.assigned_units?.length ? 'dispatched' : 'pending') as CallStatus });
+        setCalls((prev) => prev.map((c) => c.id === callId ? resume(c) : c));
+        setSelectedCall((prev) => prev?.id === callId ? resume(prev) : prev);
+      }
     } catch (err) {
       console.error('Failed to resume call:', err);
       addToast('Failed to resume call', 'error');

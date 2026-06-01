@@ -35,7 +35,15 @@ export function mapDbCall(row: any): CallForService {
     call_number: row.call_number || '',
     incident_type: row.incident_type || 'other',
     priority: row.priority || 'P3',
-    status: row.status || 'pending',
+    // Hold is stored server-side as calls_for_service_ext.held_at, NOT a status
+    // enum — the live `status` CHECK constraint has no 'on_hold' value (see
+    // src/routes/dispatch/calls.ts /:id/hold). The entire dispatch UI keys "held"
+    // off status === 'on_hold', so synthesize it here from held_at while the call
+    // is still active. A terminal call (cleared/closed/cancelled/archived) keeps
+    // its real status even if a stale held_at lingers.
+    status: (row.held_at && !['cleared', 'closed', 'cancelled', 'archived'].includes(row.status))
+      ? 'on_hold'
+      : (row.status || 'pending'),
     caller_name: row.caller_name || undefined,
     caller_phone: row.caller_phone || undefined,
     caller_relationship: row.caller_relationship || undefined,
