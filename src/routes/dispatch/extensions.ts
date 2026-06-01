@@ -896,11 +896,19 @@ function safeJson<T>(s: string | null | undefined, fb: T): T {
 // entries before the call's own created_at). Always store UTC here.
 const utcNow = () => new Date().toISOString().replace('T', ' ').slice(0, 19);
 
-// Canonical updated-call payload: bare base row (no JOINs) so we stay under the
-// D1 100-column result-set cap. The client maps this through mapDbCall(), which
-// only reads base columns, so a flat SELECT * is sufficient.
+// Canonical updated-call payload. mapDbCall() reads two ext-only columns that
+// live on calls_for_service_ext (the 1:1 overflow table): `held_at` (from which
+// it SYNTHESIZES the client-facing status:'on_hold', since the base status CHECK
+// has no on_hold) and `pinned` (queue-top sort). A bare `SELECT *` from the base
+// table omitted both, so EVERY mutation routed through here (transfer, assign,
+// unassign, dispatch, etc.) silently dropped a call's hold + pin in the UI.
+// Merge them back in via a second cheap point-lookup rather than a JOIN, so we
+// never risk the D1 100-column result-set cap on this base table.
 async function fetchCallRow(db: D1Database, id: number) {
-  return queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
+  const base = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
+  if (!base) return base;
+  const ext = await queryFirst<Record<string, unknown>>(db, 'SELECT held_at, pinned FROM calls_for_service_ext WHERE id = ?', id);
+  return { ...base, held_at: ext?.held_at ?? null, pinned: ext?.pinned ?? 0 };
 }
 
 // =====================================================================

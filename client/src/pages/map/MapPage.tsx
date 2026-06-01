@@ -617,6 +617,7 @@ export default function MapPage() {
       if (abortedRef.current) return;
       if (dataVersionRef.current !== v) return;
       setUnits(Array.isArray(data) ? data : []);
+      setError(null); // connectivity recovered — clear any stale "failed to load" banner
     } catch (err) {
       if (abortedRef.current) return;
       if (dataVersionRef.current !== v) return;
@@ -664,9 +665,16 @@ export default function MapPage() {
   // Initial Load & Auto-Refresh
   // ============================================================
 
+  // Skip background polls when the tab is hidden or the device is offline —
+  // otherwise a backgrounded/disconnected console silently spams failed
+  // fetches (and MapPage's catch sets a sticky "Failed to load" banner).
+  const pollEligible = () =>
+    (typeof document === 'undefined' || document.visibilityState === 'visible') &&
+    (typeof navigator === 'undefined' || navigator.onLine !== false);
+
   useEffect(() => {
     fetchAllData();
-    const interval = setInterval(() => { fetchAllData({ silent: true }); }, 30000);
+    const interval = setInterval(() => { if (pollEligible()) fetchAllData({ silent: true }); }, 30000);
     return () => clearInterval(interval);
   }, [fetchAllData]);
 
@@ -684,6 +692,7 @@ export default function MapPage() {
     const LIVE_UNIT_POLL_MS = 7000;
     const MOVING_STATUSES = new Set<string>(['available', 'dispatched', 'enroute', 'onscene', 'busy']);
     const tick = () => {
+      if (!pollEligible()) return; // skip when tab hidden / offline
       const anyOnDuty = unitsRef.current.some((u) => MOVING_STATUSES.has(u.status));
       if (anyOnDuty) fetchUnits(); // light: /dispatch/units only, not the full fetch
     };
