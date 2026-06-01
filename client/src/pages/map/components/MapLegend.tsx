@@ -42,7 +42,7 @@ export default function MapLegend({ layers, showBreadcrumbs, breadcrumbColorMode
           width: 32,
           height: 32,
           borderRadius: 2,
-          background: 'rgba(13, 21, 32, 0.9)',
+          background: 'rgba(10, 10, 10, 0.9)',
           border: '1px solid #2b2b2b',
         }}
         title="Show legend"
@@ -64,7 +64,7 @@ export default function MapLegend({ layers, showBreadcrumbs, breadcrumbColorMode
       className="backdrop-blur-md shadow-xl transition-all duration-200 scrollbar-thin"
       style={{
         borderRadius: 2,
-        background: 'rgba(13, 21, 32, 0.9)',
+        background: 'rgba(10, 10, 10, 0.9)',
         border: '1px solid #2b2b2b',
         maxHeight: 360,
         overflowY: 'auto',

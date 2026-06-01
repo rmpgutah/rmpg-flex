@@ -201,7 +201,7 @@ export default function MapOverlays({
             className="flex flex-col overflow-hidden"
             style={{
               borderRadius: 2,
-              background: 'rgba(13, 21, 32, 0.9)',
+              background: 'rgba(10, 10, 10, 0.9)',
               border: '1px solid #2b2b2b',
             }}
           >

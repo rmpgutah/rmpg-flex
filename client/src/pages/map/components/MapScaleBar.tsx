@@ -86,7 +86,7 @@ export default function MapScaleBar({ mapInstance }: MapScaleBarProps) {
       className="backdrop-blur-md shadow-lg transition-all duration-200 border border-[#2b2b2b]/50 rounded-sm"
       style={{
         borderRadius: 2,
-        background: 'rgba(13, 21, 32, 0.9)',
+        background: 'rgba(10, 10, 10, 0.9)',
         padding: '4px 8px 5px',
       }}
     >

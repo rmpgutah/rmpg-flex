@@ -54,7 +54,7 @@ export default function MapMobileSheet({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          background: 'rgba(13, 21, 32, 0.9)',
+          background: 'rgba(10, 10, 10, 0.9)',
           backdropFilter: 'blur(16px)',
           WebkitBackdropFilter: 'blur(16px)',
           border: '1px solid #2b2b2b',

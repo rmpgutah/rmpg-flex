@@ -259,7 +259,7 @@ export default function MapPage() {
   const [showBreadcrumbs, setShowBreadcrumbs] = useState(() => getMapPreferences().overlays.breadcrumbs);
   const [breadcrumbHours, setBreadcrumbHours] = useState(8);
   const [exportingPdf, setExportingPdf] = useState(false);
-  const [breadcrumbColorMode, setBreadcrumbColorMode] = useState<'unit' | 'speed' | 'status' | 'accel'>('unit');
+  const [breadcrumbColorMode, setBreadcrumbColorMode] = usePersistedTab('rmpg_breadcrumb_color_mode', 'unit', ['unit', 'speed', 'status', 'accel'] as const);
   const breadcrumbLinesRef = useRef<any[]>([]);
   const speedAlertKeyedRef = useRef<Map<string, mapboxgl.Marker>>(new Map());
 
@@ -327,6 +327,8 @@ export default function MapPage() {
   const addressSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const addressMarkerRef = useRef<mapboxgl.Marker | null>(null);
   const addressDismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Zoom-bound flags so the +/- buttons dim + disable at the map's min/max.
+  const [zoomBounds, setZoomBounds] = useState<{ atMin: boolean; atMax: boolean }>({ atMin: false, atMax: false });
 
   // Clean up address search/dismiss timers on unmount
   useEffect(() => {
@@ -1078,6 +1080,10 @@ export default function MapPage() {
       // zoom 12+ → 1.0 ; zoom 4 → 0.45 ; linear between, clamped.
       const scale = Math.max(0.45, Math.min(1, 0.45 + ((z - 4) / (12 - 4)) * 0.55));
       container.style.setProperty('--mz', scale.toFixed(3));
+      // Track min/max so the zoom buttons can disable at the bounds.
+      const atMax = z >= map.getMaxZoom() - 0.01;
+      const atMin = z <= map.getMinZoom() + 0.01;
+      setZoomBounds((prev) => (prev.atMin === atMin && prev.atMax === atMax ? prev : { atMin, atMax }));
     };
     applyZoomScale();
     map.on('zoom', applyZoomScale);
@@ -2462,11 +2468,12 @@ export default function MapPage() {
     el.style.cssText = 'display:flex;flex-direction:column;align-items:center;cursor:pointer;';
     // Use safe DOM methods instead of innerHTML to prevent XSS
     const label = document.createElement('div');
-    label.style.cssText = 'background:#888888;color:#fff;font-size:9px;font-weight:900;padding:3px 8px;border:2px solid #fff;white-space:nowrap;font-family:\'JetBrains Mono\',monospace;letter-spacing:0.05em;max-width:200px;overflow:hidden;text-overflow:ellipsis;border-radius:2px;';
+    // Spillman gold search pin (was generic #888888 gray).
+    label.style.cssText = 'background:#0c0c0c;color:#d4a017;font-size:9px;font-weight:900;padding:3px 8px;border:1.5px solid #d4a017;white-space:nowrap;font-family:\'JetBrains Mono\',monospace;letter-spacing:0.05em;max-width:200px;overflow:hidden;text-overflow:ellipsis;border-radius:2px;box-shadow:0 0 8px rgba(212,160,23,0.45),0 1px 4px rgba(0,0,0,0.6);';
     label.textContent = description.split(',')[0];
 
     const arrow = document.createElement('div');
-    arrow.style.cssText = 'width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-top:8px solid #888888;';
+    arrow.style.cssText = 'width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-top:8px solid #d4a017;';
 
     el.appendChild(label);
     el.appendChild(arrow);
@@ -2479,13 +2486,15 @@ export default function MapPage() {
       title: description,
     });
 
-    // Auto-dismiss after 30 seconds
+    // Auto-dismiss after 30 seconds — also clear the search box so the user
+    // isn't left with stale text after the pin silently disappears.
     if (addressDismissTimer.current) clearTimeout(addressDismissTimer.current);
     addressDismissTimer.current = setTimeout(() => {
       if (addressMarkerRef.current) {
         removeMarker(addressMarkerRef.current);
         addressMarkerRef.current = null;
       }
+      setAddressSearch('');
       addressDismissTimer.current = null;
     }, 30000);
 
@@ -2813,7 +2822,8 @@ export default function MapPage() {
                   const map = mapInstanceRef.current;
                   if (map) map.setZoom((map.getZoom() ?? 12) + 1);
                 }}
-                className={`border border-b-0 backdrop-blur-md px-2 py-1.5 transition-colors ${
+                disabled={zoomBounds.atMax}
+                className={`border border-b-0 backdrop-blur-md px-2 py-1.5 transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${
                   isLightMapStyle(mapStyle) ? 'bg-white/80 border-gray-300 hover:bg-white/95' : 'bg-black/30 border-white/15 hover:bg-black/50'
                 }`}
                 style={{ borderRadius: '2px 2px 0 0' }}
@@ -2827,7 +2837,8 @@ export default function MapPage() {
                   const map = mapInstanceRef.current;
                   if (map) map.setZoom((map.getZoom() ?? 12) - 1);
                 }}
-                className={`border backdrop-blur-md px-2 py-1.5 transition-colors ${
+                disabled={zoomBounds.atMin}
+                className={`border backdrop-blur-md px-2 py-1.5 transition-colors disabled:opacity-30 disabled:cursor-not-allowed ${
                   isLightMapStyle(mapStyle) ? 'bg-white/80 border-gray-300 hover:bg-white/95' : 'bg-black/30 border-white/15 hover:bg-black/50'
                 }`}
                 style={{ borderRadius: '0 0 2px 2px' }}
@@ -4345,7 +4356,7 @@ export default function MapPage() {
               className="flex flex-col overflow-hidden"
               style={{
                 borderRadius: 2,
-                background: 'rgba(13, 21, 32, 0.9)',
+                background: 'rgba(10, 10, 10, 0.9)',
                 border: '1px solid #2b2b2b',
               }}
             >
@@ -4354,7 +4365,8 @@ export default function MapPage() {
                   const map = mapInstanceRef.current;
                   if (map) map.setZoom((map.getZoom() ?? 12) + 1);
                 }}
-                className="flex items-center justify-center transition-colors hover:bg-white/10 active:bg-white/20"
+                disabled={zoomBounds.atMax}
+                className="flex items-center justify-center transition-colors hover:bg-white/10 active:bg-white/20 disabled:opacity-30 disabled:pointer-events-none"
                 style={{ width: 48, height: 48, borderBottom: '1px solid #2b2b2b' }}
                 title="Zoom in"
                 aria-label="Zoom in"
@@ -4366,7 +4378,8 @@ export default function MapPage() {
                   const map = mapInstanceRef.current;
                   if (map) map.setZoom((map.getZoom() ?? 12) - 1);
                 }}
-                className="flex items-center justify-center transition-colors hover:bg-white/10 active:bg-white/20"
+                disabled={zoomBounds.atMin}
+                className="flex items-center justify-center transition-colors hover:bg-white/10 active:bg-white/20 disabled:opacity-30 disabled:pointer-events-none"
                 style={{ width: 48, height: 48 }}
                 title="Zoom out"
                 aria-label="Zoom out"
@@ -4677,7 +4690,7 @@ export default function MapPage() {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              background: 'rgba(13, 21, 32, 0.9)',
+              background: 'rgba(10, 10, 10, 0.9)',
               border: '1px solid #2b2b2b',
               borderRadius: 2,
             }}

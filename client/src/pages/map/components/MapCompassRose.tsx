@@ -39,7 +39,7 @@ export default function MapCompassRose({ mapInstance }: MapCompassRoseProps) {
         width: 48,
         height: 48,
         borderRadius: '50%',
-        background: 'rgba(13, 21, 32, 0.88)',
+        background: 'rgba(10, 10, 10, 0.88)',
         border: '1px solid #2b2b2b',
         display: 'flex',
         alignItems: 'center',
