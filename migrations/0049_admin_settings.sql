@@ -53,19 +53,19 @@ INSERT OR IGNORE INTO system_settings (category, key, default_value, type, label
 ('display', 'toolbar_position', 'top', 'select', 'Toolbar Position', 'Position of the main icon toolbar', '["top","left"]', 14);
 
 -- CAD / Dispatch
-INSERT OR IGNORE INTO system_settings (category, key, default_value, type, label, description, ui_order) VALUES
+INSERT OR IGNORE INTO system_settings (category, key, default_value, type, label, description, options, ui_order) VALUES
 ('dispatch', 'default_call_priority', 'P3', 'select', 'Default Call Priority', 'Pre-selected priority for new calls', '["P1","P2","P3","P4"]', 1),
-('dispatch', 'auto_refresh_interval', '30', 'number', 'Auto-Refresh Interval', 'Seconds between dispatch board auto-refresh (0 = off)', 2),
-('dispatch', 'call_card_expand', 'true', 'boolean', 'Expand Call Cards', 'Show full call details by default in the queue', 3),
-('dispatch', 'show_cleared_calls', 'false', 'boolean', 'Show Cleared Calls', 'Include cleared calls in the dispatch queue view', 4),
-('dispatch', 'show_archived_calls', 'false', 'boolean', 'Show Archived Calls', 'Include archived calls in search results', 5),
+('dispatch', 'auto_refresh_interval', '30', 'number', 'Auto-Refresh Interval', 'Seconds between dispatch board auto-refresh (0 = off)', NULL, 2),
+('dispatch', 'call_card_expand', 'true', 'boolean', 'Expand Call Cards', 'Show full call details by default in the queue', NULL, 3),
+('dispatch', 'show_cleared_calls', 'false', 'boolean', 'Show Cleared Calls', 'Include cleared calls in the dispatch queue view', NULL, 4),
+('dispatch', 'show_archived_calls', 'false', 'boolean', 'Show Archived Calls', 'Include archived calls in search results', NULL, 5),
 ('dispatch', 'dispatch_sort_order', 'priority', 'select', 'Default Sort', 'Default call queue sort order', '["priority","time","status","location"]', 6),
-('dispatch', 'enable_voice_alerts', 'true', 'boolean', 'Voice Alerts', 'Enable AI voice alerts for dispatch events', 7),
-('dispatch', 'voice_alert_volume', '0.7', 'number', 'Voice Alert Volume', 'Volume level for dispatch voice alerts (0-1)', 8),
-('dispatch', 'proximity_alert_radius', '500', 'number', 'Proximity Alert Radius', 'Meters — alert when units are near active calls', 9),
-('dispatch', 'welfare_check_interval', '15', 'number', 'Welfare Check Timer', 'Minutes between automated welfare checks', 10),
-('dispatch', 'max_active_calls_per_unit', '3', 'number', 'Max Calls Per Unit', 'Maximum concurrent calls assigned to one unit', 11),
-('dispatch', 'default_disposition_code', '', 'string', 'Default Disposition', 'Default disposition code applied on call clear', 12);
+('dispatch', 'enable_voice_alerts', 'true', 'boolean', 'Voice Alerts', 'Enable AI voice alerts for dispatch events', NULL, 7),
+('dispatch', 'voice_alert_volume', '0.7', 'number', 'Voice Alert Volume', 'Volume level for dispatch voice alerts (0-1)', NULL, 8),
+('dispatch', 'proximity_alert_radius', '500', 'number', 'Proximity Alert Radius', 'Meters — alert when units are near active calls', NULL, 9),
+('dispatch', 'welfare_check_interval', '15', 'number', 'Welfare Check Timer', 'Minutes between automated welfare checks', NULL, 10),
+('dispatch', 'max_active_calls_per_unit', '3', 'number', 'Max Calls Per Unit', 'Maximum concurrent calls assigned to one unit', NULL, 11),
+('dispatch', 'default_disposition_code', '', 'string', 'Default Disposition', 'Default disposition code applied on call clear', NULL, 12);
 
 -- Notifications
 INSERT OR IGNORE INTO system_settings (category, key, default_value, type, label, description, ui_order) VALUES
@@ -138,41 +138,41 @@ INSERT OR IGNORE INTO system_settings (category, key, default_value, type, label
 
 -- AI & Voice
 INSERT OR IGNORE INTO system_settings (category, key, default_value, type, label, description, options, ui_order) VALUES
-('ai', 'ai_dispatcher_enabled', 'true', 'boolean', 'AI Dispatcher', 'Enable AI-powered dispatch assistant', 1),
+('ai', 'ai_dispatcher_enabled', 'true', 'boolean', 'AI Dispatcher', 'Enable AI-powered dispatch assistant', NULL, 1),
 ('ai', 'ai_persona', 'professional', 'select', 'AI Persona', 'Communication style for AI dispatcher', '["professional","tactical","brief","conversational"]', 2),
-('ai', 'ai_temperature', '0.7', 'number', 'AI Temperature', 'Creativity level for AI responses (0-1)', 3),
-('ai', 'ai_max_reply_chars', '500', 'number', 'Max Reply Length', 'Maximum characters in AI dispatcher replies', 4),
+('ai', 'ai_temperature', '0.7', 'number', 'AI Temperature', 'Creativity level for AI responses (0-1)', NULL, 3),
+('ai', 'ai_max_reply_chars', '500', 'number', 'Max Reply Length', 'Maximum characters in AI dispatcher replies', NULL, 4),
 ('ai', 'ai_listen_mode', 'push_to_talk', 'select', 'Listen Mode', 'How the AI listens for officer speech', '["push_to_talk","always_on","voice_activated"]', 5),
-('ai', 'ai_wake_word', 'dispatch', 'string', 'Wake Word', 'Word that activates AI listening', 6),
-('ai', 'ai_confidence_threshold', '0.75', 'number', 'Confidence Threshold', 'Minimum confidence for AI to auto-act on commands', 7),
-('ai', 'ai_narrative_assist', 'true', 'boolean', 'Narrative Assist', 'AI helps write incident narratives', 8),
-('ai', 'ai_call_recommendations', 'true', 'boolean', 'Call Recommendations', 'AI suggests unit assignments for calls', 9),
-('ai', 'ai_risk_assessment', 'true', 'boolean', 'Risk Assessment', 'AI analyzes calls for officer safety risks', 10);
+('ai', 'ai_wake_word', 'dispatch', 'string', 'Wake Word', 'Word that activates AI listening', NULL, 6),
+('ai', 'ai_confidence_threshold', '0.75', 'number', 'Confidence Threshold', 'Minimum confidence for AI to auto-act on commands', NULL, 7),
+('ai', 'ai_narrative_assist', 'true', 'boolean', 'Narrative Assist', 'AI helps write incident narratives', NULL, 8),
+('ai', 'ai_call_recommendations', 'true', 'boolean', 'Call Recommendations', 'AI suggests unit assignments for calls', NULL, 9),
+('ai', 'ai_risk_assessment', 'true', 'boolean', 'Risk Assessment', 'AI analyzes calls for officer safety risks', NULL, 10);
 
 -- Evidence & Property
-INSERT OR IGNORE INTO system_settings (category, key, default_value, type, label, description, ui_order) VALUES
-('evidence', 'chain_of_custody_required', 'true', 'boolean', 'Chain of Custody', 'Require chain of custody entries for evidence', 1),
-('evidence', 'evidence_photo_required', 'true', 'boolean', 'Evidence Photos', 'Require photo documentation of all evidence items', 2),
+INSERT OR IGNORE INTO system_settings (category, key, default_value, type, label, description, options, ui_order) VALUES
+('evidence', 'chain_of_custody_required', 'true', 'boolean', 'Chain of Custody', 'Require chain of custody entries for evidence', NULL, 1),
+('evidence', 'evidence_photo_required', 'true', 'boolean', 'Evidence Photos', 'Require photo documentation of all evidence items', NULL, 2),
 ('evidence', 'barcode_format', 'code39', 'select', 'Barcode Format', 'Barcode symbology for evidence tags', '["code39","code128","pdf417"]', 3),
-('evidence', 'auto_assign_location', 'true', 'boolean', 'Auto-Assign Location', 'Automatically assign storage location to new evidence', 4),
-('evidence', 'purge_review_days', '30', 'number', 'Purge Review Period', 'Days before eligible purge items are reviewed', 5),
-('evidence', 'digital_evidence_retention', '365', 'number', 'Digital Evidence Retention', 'Days to retain body cam / dash cam footage', 6),
-('evidence', 'audit_frequency_days', '90', 'number', 'Audit Frequency', 'Days between automatic property room audits', 7);
+('evidence', 'auto_assign_location', 'true', 'boolean', 'Auto-Assign Location', 'Automatically assign storage location to new evidence', NULL, 4),
+('evidence', 'purge_review_days', '30', 'number', 'Purge Review Period', 'Days before eligible purge items are reviewed', NULL, 5),
+('evidence', 'digital_evidence_retention', '365', 'number', 'Digital Evidence Retention', 'Days to retain body cam / dash cam footage', NULL, 6),
+('evidence', 'audit_frequency_days', '90', 'number', 'Audit Frequency', 'Days between automatic property room audits', NULL, 7);
 
 -- Integration & API
-INSERT OR IGNORE INTO system_settings (category, key, default_value, type, label, description, ui_order) VALUES
-('integrations', 'mapbox_access_token', '', 'string', 'Mapbox Token', 'Mapbox GL JS access token', 1),
-('integrations', 'google_maps_api_key', '', 'string', 'Google Maps API Key', 'Google Maps Geocoding API key (fallback)', 2),
-('integrations', 'ncic_endpoint_url', '', 'string', 'NCIC Endpoint', 'NCIC/NLETS query endpoint URL', 3),
-('integrations', 'weather_api_key', '', 'string', 'Weather API Key', 'Weather service API key', 4),
+INSERT OR IGNORE INTO system_settings (category, key, default_value, type, label, description, options, ui_order) VALUES
+('integrations', 'mapbox_access_token', '', 'string', 'Mapbox Token', 'Mapbox GL JS access token', NULL, 1),
+('integrations', 'google_maps_api_key', '', 'string', 'Google Maps API Key', 'Google Maps Geocoding API key (fallback)', NULL, 2),
+('integrations', 'ncic_endpoint_url', '', 'string', 'NCIC Endpoint', 'NCIC/NLETS query endpoint URL', NULL, 3),
+('integrations', 'weather_api_key', '', 'string', 'Weather API Key', 'Weather service API key', NULL, 4),
 ('integrations', 'sms_provider', '', 'select', 'SMS Provider', 'Provider for SMS notifications', '["twilio","none"]', 5),
-('integrations', 'sms_provider_key', '', 'string', 'SMS API Key', 'API key for SMS provider', 6),
-('integrations', 'sms_from_number', '', 'string', 'SMS From Number', 'Sender phone number for SMS messages', 7),
+('integrations', 'sms_provider_key', '', 'string', 'SMS API Key', 'API key for SMS provider', NULL, 6),
+('integrations', 'sms_from_number', '', 'string', 'SMS From Number', 'Sender phone number for SMS messages', NULL, 7),
 ('integrations', 'email_provider', 'sendgrid', 'select', 'Email Provider', 'Provider for transactional emails', '["sendgrid","mailgun","smtp","none"]', 8),
-('integrations', 'email_api_key', '', 'string', 'Email API Key', 'API key for email provider', 9),
-('integrations', 'email_from_address', 'noreply@rmpgutah.us', 'string', 'From Address', 'Sender email address for system emails', 10),
-('integrations', 'webhook_url', '', 'string', 'Webhook URL', 'URL for outgoing webhook notifications', 11),
-('integrations', 'webhook_secret', '', 'string', 'Webhook Secret', 'HMAC secret for webhook payload signing', 12);
+('integrations', 'email_api_key', '', 'string', 'Email API Key', 'API key for email provider', NULL, 9),
+('integrations', 'email_from_address', 'noreply@rmpgutah.us', 'string', 'From Address', 'Sender email address for system emails', NULL, 10),
+('integrations', 'webhook_url', '', 'string', 'Webhook URL', 'URL for outgoing webhook notifications', NULL, 11),
+('integrations', 'webhook_secret', '', 'string', 'Webhook Secret', 'HMAC secret for webhook payload signing', NULL, 12);
 
 -- Fleet & GPS
 INSERT OR IGNORE INTO system_settings (category, key, default_value, type, label, description, ui_order) VALUES
@@ -196,13 +196,13 @@ INSERT OR IGNORE INTO system_settings (category, key, default_value, type, label
 
 -- Shift & Schedule
 INSERT OR IGNORE INTO system_settings (category, key, default_value, type, label, description, options, ui_order) VALUES
-('shift', 'default_shift_duration_hours', '12', 'number', 'Default Shift Duration', 'Hours in a standard patrol shift', 1),
-('shift', 'shift_overlap_minutes', '15', 'number', 'Shift Overlap', 'Minutes of overlap between consecutive shifts', 2),
-('shift', 'min_officers_per_shift', '2', 'number', 'Minimum Officers', 'Minimum officers required per shift', 3),
-('shift', 'overtime_threshold_hours', '40', 'number', 'Overtime Threshold', 'Weekly hours before overtime rates apply', 4),
-('shift', 'max_consecutive_days', '6', 'number', 'Max Consecutive Days', 'Maximum consecutive work days allowed', 5),
-('shift', 'min_rest_hours', '10', 'number', 'Minimum Rest Hours', 'Minimum hours between consecutive shifts', 6),
-('shift', 'shift_bidding_enabled', 'false', 'boolean', 'Shift Bidding', 'Enable shift bidding/preference system', 7);
+('shift', 'default_shift_duration_hours', '12', 'number', 'Default Shift Duration', 'Hours in a standard patrol shift', NULL, 1),
+('shift', 'shift_overlap_minutes', '15', 'number', 'Shift Overlap', 'Minutes of overlap between consecutive shifts', NULL, 2),
+('shift', 'min_officers_per_shift', '2', 'number', 'Minimum Officers', 'Minimum officers required per shift', NULL, 3),
+('shift', 'overtime_threshold_hours', '40', 'number', 'Overtime Threshold', 'Weekly hours before overtime rates apply', NULL, 4),
+('shift', 'max_consecutive_days', '6', 'number', 'Max Consecutive Days', 'Maximum consecutive work days allowed', NULL, 5),
+('shift', 'min_rest_hours', '10', 'number', 'Minimum Rest Hours', 'Minimum hours between consecutive shifts', NULL, 6),
+('shift', 'shift_bidding_enabled', 'false', 'boolean', 'Shift Bidding', 'Enable shift bidding/preference system', NULL, 7);
 
 -- Audit & Logging
 INSERT OR IGNORE INTO system_settings (category, key, default_value, type, label, description, ui_order) VALUES
