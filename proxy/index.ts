@@ -164,68 +164,12 @@ const STUBS: StubRule[] = [
   // live D1; each wraps queries in try/catch → [] so a schema gap degrades
   // to the same empty the stub returned). /training-alerts + /training-materials
   // stubs stay (no handler / no backing table).
-  // ── CRM module (entirely legacy-only on live D1) ──────────────
-  // CrmPage's mount issues 6 GETs in parallel. All hit legacy which
-  // queries crm_leads / crm_tasks / crm_activity etc — those tables
-  // don't exist on live D1. Empty/zeroed shapes match each consumer.
-  {
-    match: /^\/api\/crm\/dashboard(\?.*)?$/,
-    methods: ['GET'],
-    body: {
-      total_leads: 0, qualified_leads: 0, won_deals: 0, lost_deals: 0,
-      pipeline_value: 0, expected_revenue: 0, conversion_rate: 0,
-      avg_deal_size: 0, avg_sales_cycle_days: 0,
-    },
-    reason: 'no crm tables on live D1',
-  },
-  {
-    match: /^\/api\/crm\/recent-activity(\?.*)?$/,
-    methods: ['GET'],
-    body: [],
-    reason: 'no crm_activity table on live D1',
-  },
-  {
-    match: /^\/api\/crm\/tasks(\?.*)?$/,
-    methods: ['GET'],
-    body: [],
-    reason: 'no crm_tasks table on live D1',
-  },
-  {
-    match: /^\/api\/crm\/expiring-contracts(\?.*)?$/,
-    methods: ['GET'],
-    body: [],
-    reason: 'no contract expiry tracking yet',
-  },
-  {
-    match: /^\/api\/crm\/leads\/source-analytics(\?.*)?$/,
-    methods: ['GET'],
-    body: { by_source: [], total: 0 },
-    reason: 'no crm_leads table on live D1',
-  },
-  {
-    match: /^\/api\/crm\/leads\/follow-ups(\?.*)?$/,
-    methods: ['GET'],
-    body: { overdue: [], today: [], upcoming: [] },
-    reason: 'no crm_leads table on live D1',
-  },
-  {
-    match: /^\/api\/crm\/leads\/pipeline-summary(\?.*)?$/,
-    methods: ['GET'],
-    body: [],
-    reason: 'no crm_leads table on live D1',
-  },
-  {
-    match: /^\/api\/crm\/pipeline-summary(\?.*)?$/,
-    methods: ['GET'],
-    body: { stages: [], total_value: 0 },
-    reason: 'no crm tables on live D1',
-  },
-  {
-    match: /^\/api\/crm\/revenue-forecast(\?.*)?$/,
-    methods: ['GET'],
-    body: { monthly: [], total_forecast: 0 },
-    reason: 'no crm revenue forecast engine',
-  },
+  // ── CRM module — REAL backend now lives on the rewrite ───────────
+  // crm_leads / crm_lead_activity / crm_proposals / crm_proposal_templates /
+  // crm_tasks / crm_activity were created on live D1 (2026-06-01) and
+  // src/routes/crm.ts now serves real data. The fake-data stubs that used to
+  // sit here were DELETED — leaving them would shadow the real handlers
+  // (STUBS are checked before API_ROUTES). /api/crm now routes to env.API.
   // /records/reports/approval-queue — ReportsPage opens this on mount.
   // Was previously routed to env.API via the proxy (line ~152) but no
   // handler exists in /src/routes/records.ts for /reports/approval-queue.
@@ -296,19 +240,8 @@ const STUBS: StubRule[] = [
     body: [],
     reason: 'no backing tables yet; HrPage tabs render empty until schema lands',
   },
-  // ── CRM module (entire namespace 500s on legacy) ──
-  {
-    match: /^\/api\/crm\/(dashboard|pipeline-summary|revenue-forecast|leads\/source-analytics)/,
-    methods: ['GET'],
-    body: {},
-    reason: 'legacy CRM stat handlers 500; CrmPage tolerates empty object',
-  },
-  {
-    match: /^\/api\/crm\/(recent-activity|leads\/follow-ups|tasks|expiring-contracts)/,
-    methods: ['GET'],
-    body: [],
-    reason: 'legacy CRM list handlers 500; CrmPage tolerates empty arrays',
-  },
+  // ── CRM module — stubs removed 2026-06-01; real handlers on the rewrite
+  // now own the whole /api/crm namespace (see note above + src/routes/crm.ts).
   // /api/offender-registry/stats now has a real handler in
   // src/routes/offenderRegistry.ts. /api/sex-offender-registry/stats stays
   // stubbed — no dedicated sex-offender table on live D1 yet (use the
