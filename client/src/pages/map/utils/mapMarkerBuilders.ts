@@ -283,13 +283,13 @@ export function buildPropertyMarkerContent(name: string, address?: string, clien
   tooltip.appendChild(tooltipCaret);
 
   wrapper.addEventListener('mouseenter', () => {
-    dot.style.transform = 'scale(1.5)';
-    dot.style.boxShadow = '0 0 12px rgba(136, 136, 136,0.8), 0 1px 3px rgba(0,0,0,0.4)';
+    dot.style.transform = 'scale(1.25)';
+    dot.style.boxShadow = '0 0 12px rgba(212,160,23,0.8), 0 1px 3px rgba(0,0,0,0.5)';
     tooltip.style.opacity = '1';
   });
   wrapper.addEventListener('mouseleave', () => {
     dot.style.transform = 'scale(1)';
-    dot.style.boxShadow = '0 0 6px rgba(136, 136, 136,0.6), 0 1px 3px rgba(0,0,0,0.4)';
+    dot.style.boxShadow = '0 0 6px rgba(212,160,23,0.5), 0 1px 4px rgba(0,0,0,0.6)';
     tooltip.style.opacity = '0';
   });
 
