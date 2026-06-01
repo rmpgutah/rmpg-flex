@@ -208,6 +208,18 @@ const HEARTBEAT_STALE_THRESHOLD = 30000; // 30 seconds
 const HEARTBEAT_STALE_THRESHOLD_WIFI = 15000; // 15 seconds
 /** How often to check for stale GPS (ms) */
 const HEARTBEAT_INTERVAL = 15000; // 15 seconds
+/**
+ * Cap on how far the stale-watch restart cadence backs off once we've already
+ * restarted MAX_HEARTBEAT_RESTARTS times without a single successful callback.
+ * This kills the perpetual ~30s restart loop on a STATIONARY non-Electron
+ * device (e.g. a fixed dispatch console whose browser never re-fires
+ * watchPosition) — the watchdog keeps retrying, but progressively less often,
+ * up to base × this factor (30s → 5 min on cellular, 15s → 2.5 min on WiFi).
+ * A single real fix resets heartbeatRestartCountRef to 0 (success handler),
+ * instantly collapsing the backoff so a field unit regaining signal resumes
+ * the aggressive base cadence with no penalty.
+ */
+const MAX_HEARTBEAT_BACKOFF_FACTOR = 10;
 
 // ─── Electron Desktop Detection ──────────────────────────────
 // Desktop Electron apps often lack GPS hardware. Chromium's
@@ -876,9 +888,22 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
     heartbeatRef.current = setInterval(() => {
       const staleDuration = Date.now() - lastCallbackTimeRef.current;
       const connType = getConnectionType();
-      const threshold = connType === 'wifi' ? HEARTBEAT_STALE_THRESHOLD_WIFI : HEARTBEAT_STALE_THRESHOLD;
+      const baseThreshold = connType === 'wifi' ? HEARTBEAT_STALE_THRESHOLD_WIFI : HEARTBEAT_STALE_THRESHOLD;
+      // Back off the restart cadence once we've already restarted several times
+      // with no successful callback in between. The first MAX_HEARTBEAT_RESTARTS
+      // restarts stay at the aggressive base cadence (intentional for vehicles on
+      // a brief signal drop); beyond that, the threshold grows geometrically up
+      // to base × MAX_HEARTBEAT_BACKOFF_FACTOR so a stationary desktop console no
+      // longer tears down + recreates the watch every 30s forever. A single real
+      // fix resets heartbeatRestartCountRef to 0, collapsing this immediately.
+      const overshoot = Math.max(0, heartbeatRestartCountRef.current - MAX_HEARTBEAT_RESTARTS);
+      const backoffFactor = Math.min(2 ** overshoot, MAX_HEARTBEAT_BACKOFF_FACTOR);
+      const threshold = baseThreshold * backoffFactor;
       if (staleDuration >= threshold && watchIdRef.current !== null) {
-        console.warn(`[GPS] No position callback in ${Math.round(staleDuration / 1000)}s (connection: ${connType})`);
+        // Throttle log noise: warn while still in the aggressive phase, then
+        // drop to debug so a perpetually-stale console doesn't flood the log.
+        const log = heartbeatRestartCountRef.current >= MAX_HEARTBEAT_RESTARTS ? console.debug : console.warn;
+        log(`[GPS] No position callback in ${Math.round(staleDuration / 1000)}s (connection: ${connType})`);
         // On Electron desktop, use IP fallback instead of endlessly restarting
         if (IS_ELECTRON) {
           startIpFallbackPoller();
