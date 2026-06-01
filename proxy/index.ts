@@ -905,6 +905,16 @@ const API_ROUTES: RouteRule[] = [
   { kind: 'prefix', value: '/api/connections' },
   // Fleet — entire namespace
   { kind: 'prefix', value: '/api/fleet' },
+  // Clients + CRM — the rewrite (src/routes/clients.ts, src/routes/crm.ts)
+  // owns these; legacy 404s on /api/clients and 500s on the un-stubbed
+  // /api/crm/* paths (proposals, proposal-templates, leads?…). Route the
+  // whole namespaces to env.API. NOTE: the fake-data CRM stubs earlier in
+  // this file (dashboard/tasks/etc.) are still checked FIRST, so they keep
+  // shadowing those specific paths until the real handlers replace them —
+  // when CRM gets real tables, delete those stubs so live data flows
+  // (see [[feedback-proxy-stub-shadows-handler]]).
+  { kind: 'prefix', value: '/api/clients' },
+  { kind: 'prefix', value: '/api/crm' },
   // Comms BOLOs + message priority stats (legacy has /comms/messages
   // and /comms/bolos/active via stubs; the specific stats paths are new)
   { kind: 'prefix', value: '/api/comms/bolos' },
