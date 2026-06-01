@@ -1046,7 +1046,17 @@ export default function MapPage() {
     try {
       if (opts.title) opts.content.title = opts.title;
       if (opts.zIndex != null) opts.content.style.zIndex = String(opts.zIndex);
-      const marker = new mapboxgl.Marker(opts.content)
+      // Two-layer marker: Mapbox writes `transform: translate(...)` to the
+      // element we hand it on EVERY position update. If that element also has
+      // a CSS `transition` on transform (or its own transform), Mapbox's
+      // translate gets animated → the pin "flies" across the map instead of
+      // snapping, and our zoom-scale transform gets clobbered. So we give
+      // Mapbox a bare outer shell (no transition, no transform of its own) and
+      // keep all the content — scale(var(--mz)), hover, transitions — on the
+      // inner element. getElement()/querySelector still reach the content.
+      const shell = document.createElement('div');
+      shell.appendChild(opts.content);
+      const marker = new mapboxgl.Marker({ element: shell, anchor: 'center' })
         .setLngLat(opts.position)
         .addTo(opts.map);
       if (opts.onClick) opts.content.addEventListener('click', opts.onClick);
