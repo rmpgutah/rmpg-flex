@@ -320,6 +320,9 @@ export function useEventPlanning({ map, popup }: UseEventPlanningOptions) {
 
     if (!map || !activePlan || !planVisible) return;
 
+    // Guard on STYLE readiness — addSource/addLayer throw "Style is not done
+    // loading" if this render effect fires before the basemap style finishes.
+    whenStyleReady(map, () => {
     let idx = 0;
     for (const item of activePlan.items) {
       if (item.type === 'perimeter' && item.path && item.path.length >= 3) {
@@ -403,6 +406,7 @@ export function useEventPlanning({ map, popup }: UseEventPlanningOptions) {
         overlayMarkersRef.current.push(marker);
       }
     }
+    });
   }, [map, activePlan, planVisible, popup]);
 
   // ── Cleanup on unmount ─────────────────────────────────────
