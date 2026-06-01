@@ -154,7 +154,9 @@ export function buildUnitMarkerContent(callSign: string, status: UnitStatus, _gp
 
   const srcBadge = document.createElement('span');
   srcBadge.setAttribute('data-unit-source', '');
-  srcBadge.style.cssText = _gpsSource === 'clearpathgps' ? 'position:absolute;bottom:-7px;right:-2px;font-size:6px;font-weight:900;font-family:monospace;color:#22c55e;text-shadow:0 0 4px #22c55e80;letter-spacing:0.5px;' : 'display:none;';
+  // ClearPathGPS source badge — neutral gold so it doesn't read as a green
+  // "available" status on a dispatched/onscene/busy unit (was hardcoded green).
+  srcBadge.style.cssText = _gpsSource === 'clearpathgps' ? 'position:absolute;bottom:-7px;right:-2px;font-size:6px;font-weight:900;font-family:monospace;color:#d4a017;text-shadow:0 0 4px #d4a01780;letter-spacing:0.5px;' : 'display:none;';
   srcBadge.textContent = _gpsSource === 'clearpathgps' ? 'C' : '';
   tag.appendChild(srcBadge);
 

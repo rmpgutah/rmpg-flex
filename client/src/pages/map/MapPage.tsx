@@ -1588,10 +1588,12 @@ export default function MapPage() {
             'rgba(200,0,0,1)',
           ]
         : [
+            // Spillman pure-black theme — ZERO blue. Ramp through brand gold
+            // into amber/red (was rgba(0,128,255) cyan at the low end).
             'rgba(0,0,0,0)',
-            'rgba(0,128,255,0.2)',
-            'rgba(0,200,100,0.4)',
-            'rgba(200,200,0,0.6)',
+            'rgba(212,160,23,0.25)',
+            'rgba(230,180,40,0.45)',
+            'rgba(255,200,0,0.6)',
             'rgba(255,140,0,0.8)',
             'rgba(255,50,0,0.95)',
           ];
@@ -2408,9 +2410,14 @@ export default function MapPage() {
     addressSearchTimer.current = setTimeout(async () => {
       const token = mapboxgl.accessToken;
       if (!token) return;
-      const geocodeUrl = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${token}&country=US&autocomplete=true&types=address,place`;
+      // Bias to Utah (proximity + bbox) so local addresses rank first, and
+      // cap the request at 8 results. AbortController prevents a slow/stale
+      // response from a stale keystroke clobbering newer results.
+      const geocodeUrl = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${token}&country=US&autocomplete=true&types=address,place&limit=8&proximity=-111.89,40.76&bbox=-114.052,36.998,-109.041,42.001`;
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
       try {
-        const resp = await fetch(geocodeUrl);
+        const resp = await fetch(geocodeUrl, { signal: controller.signal });
         const data = await resp.json();
         if (data.features && data.features.length > 0) {
           setAddressResults(
@@ -2427,7 +2434,9 @@ export default function MapPage() {
           setAddressResults([]);
         }
       } catch {
-        // Ignore network errors
+        // Ignore network errors / aborts
+      } finally {
+        clearTimeout(timeoutId);
       }
     }, 300);
   }, []);
@@ -2713,7 +2722,7 @@ export default function MapPage() {
                 )}
               </div>
               {showAddressResults && addressResults.length > 0 && (
-                <div className="absolute top-full left-0 right-0 mt-1 bg-black/90 border border-white/15 shadow-md backdrop-blur-md overflow-hidden" style={{ borderRadius: 2 }} role="listbox">
+                <div className="absolute top-full left-0 right-0 mt-1 bg-[#0a0a0a]/95 border border-[#2e2e2e] shadow-md backdrop-blur-md overflow-y-auto scrollbar-dark" style={{ borderRadius: 2, maxHeight: 260 }} role="listbox">
                   {addressResults.map((r) => (
                     <button
                       key={r.place_id}
@@ -2780,7 +2789,7 @@ export default function MapPage() {
                 )}
               </div>
               {showAddressResults && addressResults.length > 0 && (
-                <div className="absolute top-full left-0 right-0 mt-1 bg-black/80 border border-white/15 shadow-md backdrop-blur-md overflow-hidden" style={{ borderRadius: 2 }} role="listbox">
+                <div className="absolute top-full left-0 right-0 mt-1 bg-[#0a0a0a]/95 border border-[#2e2e2e] shadow-md backdrop-blur-md overflow-y-auto scrollbar-dark" style={{ borderRadius: 2, maxHeight: 240 }} role="listbox">
                   {addressResults.map((r) => (
                     <button
                       key={r.place_id}
@@ -2843,7 +2852,7 @@ export default function MapPage() {
               <PanelLeftOpen className="w-4 h-4" />
             </button>
           ) : (
-          <div className="bg-surface-deep border border-rmpg-600 shadow-md overflow-y-auto scrollbar-dark" style={{ width: 'clamp(160px, 14vw, 200px)', maxHeight: 'calc(100dvh - 160px)', borderRadius: 2, isolation: 'isolate', WebkitTransform: 'translateZ(0)', overscrollBehavior: 'contain' } as React.CSSProperties} role="region" aria-label="Map layer controls">
+          <div className="panel-beveled bg-surface-deep border border-rmpg-600 shadow-md overflow-y-auto scrollbar-dark" style={{ width: 'clamp(160px, 14vw, 200px)', maxHeight: 'calc(100dvh - 96px)', borderRadius: 2, isolation: 'isolate', WebkitTransform: 'translateZ(0)', overscrollBehavior: 'contain' } as React.CSSProperties} role="region" aria-label="Map layer controls">
             <div className="flex items-center gap-2 px-3 py-2 border-b border-rmpg-700">
               <Layers className="w-3.5 h-3.5 text-brand-400" />
               <span className="text-[10px] font-bold text-rmpg-300 uppercase tracking-widest flex-1">Layers</span>

@@ -27,7 +27,7 @@ export interface HeatmapLegendProps {
 }
 
 const CALLS_GRADIENT =
-  'linear-gradient(to right, rgba(0,128,255,0.4) 0%, rgba(0,200,100,0.6) 25%, rgba(200,200,0,0.75) 50%, rgba(255,140,0,0.9) 75%, rgba(255,50,0,1) 100%)';
+  'linear-gradient(to right, rgba(212,160,23,0.45) 0%, rgba(230,180,40,0.6) 25%, rgba(255,200,0,0.75) 50%, rgba(255,140,0,0.9) 75%, rgba(255,50,0,1) 100%)';
 
 const RISK_GRADIENT =
   'linear-gradient(to right, rgba(255,165,0,0.4) 0%, rgba(255,100,0,0.6) 30%, rgba(255,50,0,0.8) 60%, rgba(200,0,0,1) 100%)';
