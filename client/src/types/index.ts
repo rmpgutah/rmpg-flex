@@ -431,6 +431,12 @@ export interface Unit {
   latitude?: number | null;
   longitude?: number | null;
   vehicle?: string;
+  /** Unit setup fields (admin create/edit). capabilities is parsed from the
+   *  units.capabilities JSON text column; assigned_beat is a default patrol
+   *  beat; audio_mode is the MDT default (audible | silent | vibrate). */
+  capabilities?: string[];
+  assigned_beat?: string;
+  audio_mode?: string;
   last_status_change: string;
   /** Feature 2: GPS timestamp for stale indicator */
   gps_updated_at?: string;

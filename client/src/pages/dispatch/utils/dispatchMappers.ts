@@ -192,6 +192,18 @@ export function mapDbUnit(row: any): Unit {
     latitude: row.latitude,
     longitude: row.longitude,
     vehicle: row.vehicle || row.vehicle_id || undefined,
+    // Setup fields. capabilities is a JSON-text column — parse defensively to
+    // an array so the edit modal can pre-fill the multi-select.
+    capabilities: (() => {
+      const raw = row.capabilities;
+      if (Array.isArray(raw)) return raw.map(String);
+      if (typeof raw === 'string' && raw.trim()) {
+        try { const p = JSON.parse(raw); return Array.isArray(p) ? p.map(String) : []; } catch { return []; }
+      }
+      return [];
+    })(),
+    assigned_beat: row.assigned_beat || undefined,
+    audio_mode: row.audio_mode || undefined,
     last_status_change: row.last_status_change || '',
     created_at: row.created_at || '',
     updated_at: row.updated_at || '',

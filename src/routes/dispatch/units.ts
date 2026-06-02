@@ -37,12 +37,18 @@ units.post('/', async (c) => {
     // the DB default. Honor it, defaulting to 'available'. Must match the live
     // `units` CHECK constraint (no 'on_patrol').
     const VALID_UNIT_STATUSES = ['available', 'dispatched', 'enroute', 'onscene', 'busy', 'off_duty', 'out_of_service'];
-    const { call_sign, officer_id, vehicle_id, capabilities } = body;
+    const VALID_AUDIO_MODES = ['audible', 'silent', 'vibrate'];
+    const { call_sign, officer_id, vehicle_id, capabilities, assigned_beat } = body;
     const status = VALID_UNIT_STATUSES.includes(String(body.status || '').toLowerCase())
       ? String(body.status).toLowerCase() : 'available';
+    const audioMode = VALID_AUDIO_MODES.includes(String(body.audio_mode || '').toLowerCase())
+      ? String(body.audio_mode).toLowerCase() : 'audible';
+    // capabilities may arrive as an array (multi-select) or a pre-stringified
+    // JSON string — normalize to a JSON string for the TEXT column.
+    const capsJson = typeof capabilities === 'string' ? capabilities : JSON.stringify(capabilities || []);
     const result = await execute(db,
-      'INSERT INTO units (call_sign, officer_id, vehicle_id, capabilities, status) VALUES (?, ?, ?, ?, ?)',
-      call_sign, officer_id || null, vehicle_id || null, JSON.stringify(capabilities || []), status
+      'INSERT INTO units (call_sign, officer_id, vehicle_id, capabilities, status, assigned_beat, audio_mode) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      call_sign, officer_id || null, vehicle_id || null, capsJson, status, assigned_beat || null, audioMode
     );
     const unit = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM units WHERE id = ?', Number(result.meta.last_row_id));
     // Live fan-out so every open dispatch/map board adds the new unit without a
@@ -117,6 +123,76 @@ units.delete('/:id', requireRole('admin', 'manager'), async (c) => {
     return c.json({ message: 'Unit deleted', id });
   } catch (err) {
     return c.json({ error: 'Failed to delete unit' }, 500);
+  }
+});
+
+// POST /dispatch/units/:id/dispose — admin/manager unit disposal.
+// The plain DELETE refuses a unit that's still on a call (it would orphan the
+// unit id inside calls_for_service.assigned_unit_ids). In practice units get
+// STUCK with a stale current_call_id (e.g. an off-duty placeholder pinned to an
+// old call), so an admin could never remove them. Disposal force-clears the
+// call membership first, then either:
+//   mode 'delete' (default) — permanently removes the unit row, or
+//   mode 'retire'           — keeps the row for history but sets it
+//                             out_of_service + frees it from the call (a soft,
+//                             reversible decommission; flip status back to
+//                             available to reinstate).
+units.post('/:id/dispose', requireRole('admin', 'manager'), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id') || '', 10);
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid unit id', code: 'INVALID_ID' }, 400);
+
+    const body = await c.req.json<{ mode?: string }>().catch(() => ({} as { mode?: string }));
+    const mode = body.mode === 'retire' ? 'retire' : 'delete';
+
+    const unit = await queryFirst<{ id: number; call_sign: string; current_call_id: number | null }>(
+      db, 'SELECT id, call_sign, current_call_id FROM units WHERE id = ?', id);
+    if (!unit) return c.json({ error: 'Unit not found', code: 'UNIT_NOT_FOUND' }, 404);
+
+    // Force-clear the unit from its current call's assigned_unit_ids so the call
+    // doesn't keep a phantom member. Best-effort; never block disposal on it.
+    if (unit.current_call_id != null) {
+      try {
+        const call = await queryFirst<{ assigned_unit_ids: string }>(
+          db, 'SELECT assigned_unit_ids FROM calls_for_service WHERE id = ?', unit.current_call_id);
+        if (call) {
+          const remaining = (JSON.parse(call.assigned_unit_ids || '[]') as number[]).filter((u) => u !== id);
+          await execute(db, 'UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?', JSON.stringify(remaining), unit.current_call_id);
+        }
+      } catch (err) { console.error('[dispatch] dispose: clear call membership:', err); }
+    }
+
+    const userId = c.get('userId') as number | undefined;
+    const ip = c.req.header('CF-Connecting-IP') || 'unknown';
+
+    if (mode === 'retire') {
+      await execute(db, "UPDATE units SET status = 'out_of_service', current_call_id = NULL, last_status_change = datetime('now'), updated_at = datetime('now') WHERE id = ?", id);
+      const updated = await queryFirst<Record<string, any>>(db, 'SELECT * FROM units WHERE id = ?', id);
+      try {
+        if (updated) {
+          broadcastAll('dispatch_update', { action: 'unit_status_changed', unit: updated });
+          broadcastAll('dispatch_update', { action: 'unit_updated', unit: updated });
+        }
+      } catch { /* never break the write */ }
+      try {
+        if (userId != null) await execute(db,
+          "INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, 'unit_retired', 'unit', ?, ?, ?)",
+          userId, id, `Retired unit ${unit.call_sign}`, ip);
+      } catch { /* audit is best-effort */ }
+      return c.json({ message: 'Unit retired (out of service)', id, mode: 'retire', unit: updated });
+    }
+
+    await execute(db, 'DELETE FROM units WHERE id = ?', id);
+    try { broadcastAll('dispatch_update', { action: 'unit_deleted', unit_id: id }); } catch { /* never break the write */ }
+    try {
+      if (userId != null) await execute(db,
+        "INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, 'unit_deleted', 'unit', ?, ?, ?)",
+        userId, id, `Disposed (deleted) unit ${unit.call_sign}`, ip);
+    } catch { /* audit is best-effort */ }
+    return c.json({ message: 'Unit disposed (deleted)', id, mode: 'delete' });
+  } catch (err) {
+    return c.json({ error: 'Failed to dispose unit', code: 'UNIT_DISPOSE_ERROR' }, 500);
   }
 });
 
