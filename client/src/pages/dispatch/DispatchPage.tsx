@@ -836,7 +836,7 @@ export default function DispatchPage() {
 
   useEffect(() => {
     const LIVE_UNIT_POLL_MS = 7000;
-    const MOVING_STATUSES = new Set<string>(['available', 'dispatched', 'enroute', 'onscene', 'busy']);
+    const MOVING_STATUSES = new Set<string>(['available', 'dispatched', 'enroute', 'onscene', 'busy', 'on_patrol']);
     const iv = setInterval(() => {
       if (!pollEligible()) return;
       if (unitsRef.current.some((u) => MOVING_STATUSES.has(u.status))) refreshUnitsLive();

@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import type { Env } from '../../types';
 import { getDb, query, queryFirst, execute } from '../../utils/db';
 import { requireRole } from '../../middleware/auth';
+import { broadcastAll } from '../ws';
 
 const units = new Hono<Env>();
 
@@ -31,12 +32,22 @@ units.post('/', async (c) => {
     const body = await c.req.json<Record<string, unknown>>();
     if (!body.call_sign) return c.json({ error: 'call_sign is required' }, 400);
 
+    // The create form (useDispatchUnitActions) sends a chosen status; it was
+    // previously dropped (not in the INSERT), so a new unit always landed on
+    // the DB default. Honor it, defaulting to 'available'.
+    const VALID_UNIT_STATUSES = ['available', 'dispatched', 'enroute', 'onscene', 'busy', 'off_duty', 'out_of_service', 'on_patrol'];
     const { call_sign, officer_id, vehicle_id, capabilities } = body;
+    const status = VALID_UNIT_STATUSES.includes(String(body.status || '').toLowerCase())
+      ? String(body.status).toLowerCase() : 'available';
     const result = await execute(db,
-      'INSERT INTO units (call_sign, officer_id, vehicle_id, capabilities) VALUES (?, ?, ?, ?)',
-      call_sign, officer_id || null, vehicle_id || null, JSON.stringify(capabilities || [])
+      'INSERT INTO units (call_sign, officer_id, vehicle_id, capabilities, status) VALUES (?, ?, ?, ?, ?)',
+      call_sign, officer_id || null, vehicle_id || null, JSON.stringify(capabilities || []), status
     );
     const unit = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM units WHERE id = ?', Number(result.meta.last_row_id));
+    // Live fan-out so every open dispatch/map board adds the new unit without a
+    // manual refresh. /dispatch is excluded from the generic data_changed sync
+    // (src/index.ts), so these surgical broadcasts are the only live path.
+    try { if (unit) broadcastAll('dispatch_update', { action: 'unit_created', unit }); } catch { /* never break the write */ }
     return c.json(unit, 201);
   } catch (err: any) {
     if (err?.message?.includes('UNIQUE')) return c.json({ error: 'Call sign already exists' }, 409);
@@ -65,6 +76,7 @@ units.put('/:id', async (c) => {
     params.push(id);
     await execute(db, `UPDATE units SET ${sets.join(', ')} WHERE id = ?`, ...params);
     const updated = await queryFirst(db, 'SELECT * FROM units WHERE id = ?', id);
+    try { if (updated) broadcastAll('dispatch_update', { action: 'unit_updated', unit: updated }); } catch { /* never break the write */ }
     return c.json(updated);
   } catch (err) {
     return c.json({ error: 'Failed to update unit' }, 500);
@@ -86,6 +98,7 @@ units.delete('/:id', requireRole('admin', 'manager'), async (c) => {
       return c.json({ error: 'Unit is assigned to an active call — clear it first', code: 'UNIT_ON_CALL' }, 409);
     }
     await execute(db, 'DELETE FROM units WHERE id = ?', id);
+    try { broadcastAll('dispatch_update', { action: 'unit_deleted', unit_id: id }); } catch { /* never break the write */ }
     return c.json({ message: 'Unit deleted', id });
   } catch (err) {
     return c.json({ error: 'Failed to delete unit' }, 500);
@@ -103,6 +116,10 @@ units.post('/assign-unit', async (c) => {
     assigned.add(unit_id);
     await execute(db, 'UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?', JSON.stringify([...assigned]), call_id);
     await execute(db, "UPDATE units SET status = 'dispatched', current_call_id = ? WHERE id = ?", call_id, unit_id);
+    try {
+      const unit = await queryFirst<Record<string, any>>(db, 'SELECT * FROM units WHERE id = ?', unit_id);
+      broadcastAll('dispatch_update', { action: 'unit_assigned', unit, unit_id, unit_call_sign: unit?.call_sign, call_id });
+    } catch { /* never break the write */ }
     return c.json({ message: 'Unit assigned' });
   } catch (err) { return c.json({ error: 'Assign failed' }, 500); }
 });

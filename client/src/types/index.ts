@@ -416,7 +416,12 @@ export type UnitStatus =
   | 'onscene'
   | 'busy'
   | 'off_duty'
-  | 'out_of_service';
+  | 'out_of_service'
+  // Backend (VALID_UNIT_STATUSES in src/routes/dispatch/extensions.ts) allows
+  // 'on_patrol', and the recommended-units query filters on it — but it was
+  // missing here, so on_patrol units fell through every status map (undefined
+  // marker color / badge label). Keep this union in sync with the backend.
+  | 'on_patrol';
 
 export interface Unit {
   id: string;

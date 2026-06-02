@@ -54,6 +54,7 @@ const STATUS_LED_CLASSES: Record<UnitStatus, string> = {
   busy: 'led-dot led-red animate-led-blink',
   off_duty: 'led-dot led-off',
   out_of_service: 'led-dot led-red',
+  on_patrol: 'led-dot led-green',
 };
 
 export default React.memo(function UnitStatusBoard({

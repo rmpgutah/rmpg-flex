@@ -563,6 +563,11 @@ unitStatus.put('/:id/status', requireRole(...READ_ROLES), async (c) => {
 
     await execute(db, "UPDATE units SET status = ?, last_status_change = datetime('now'), updated_at = datetime('now') WHERE id = ?", status, unitId);
     const updated = await queryFirst<any>(db, 'SELECT * FROM units WHERE id = ?', unitId);
+    // Live fan-out — this is THE unit-status path (mobile UnitStatusCard +
+    // MDT both call it). Without the broadcast an officer flipping their own
+    // status never reaches the dispatch board / map until a manual refresh.
+    // /dispatch is excluded from the generic data_changed sync (src/index.ts).
+    try { if (updated) broadcastAll('dispatch_update', { action: 'unit_status_changed', unit: updated }); } catch { /* never break the write */ }
     return c.json(updated);
   } catch (err) {
     console.error('[dispatch] unit status error', err);

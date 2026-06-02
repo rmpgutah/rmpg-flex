@@ -277,7 +277,13 @@
 //       rendered. Hoisted Process Service Details to a top-level section
 //       (self-gated by process data / service-type) and added
 //       'civil_paper_service' to the visit-history gate.
-const CACHE_NAME = 'rmpg-flex-v700';
+// v701 — Unit subsystem live-sync: revive the dead 'unit_update' WS channel
+//        (map/MDT/mobile-card/recommended panels subscribed to a type the
+//        Worker never emitted) by re-fanning dispatch_update unit actions;
+//        + add 'on_patrol' to UnitStatus union + all status maps (was undefined
+//        marker color/label). Pairs with Worker broadcasts on assign/unassign/
+//        dispatch/status/create/update/delete/GPS.
+const CACHE_NAME = 'rmpg-flex-v701';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

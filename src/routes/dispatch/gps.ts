@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../../types';
 import { getDb, query, queryFirst, execute } from '../../utils/db';
+import { broadcastAll } from '../ws';
 
 const gps = new Hono<Env>();
 
@@ -39,6 +40,17 @@ gps.post('/', async (c) => {
       await execute(db,
         "UPDATE units SET latitude = ?, longitude = ?, gps_updated_at = datetime('now'), updated_at = datetime('now') WHERE id = ?",
         lastPt.latitude, lastPt.longitude, unit.id);
+      // Live fan-out so the map unit pin moves without a 7s poll, and
+      // recommended-units re-ranks on fresh GPS. /dispatch is excluded from the
+      // generic data_changed sync, and gps was previously silent — pins froze.
+      // One small frame per fix; the map/recommended consumers debounce.
+      try {
+        broadcastAll('dispatch_update', {
+          action: 'unit_position_update',
+          unit_id: unit.id,
+          unit: { id: unit.id, call_sign: unit.call_sign, latitude: lastPt.latitude, longitude: lastPt.longitude },
+        });
+      } catch { /* never break the write */ }
     }
 
     return c.json({ inserted: inserted.length }, 201);

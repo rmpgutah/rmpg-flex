@@ -18,6 +18,7 @@ export const UNIT_STATUS_HEX: Record<UnitStatus, string> = {
   busy: '#ef4444',
   off_duty: '#666666',
   out_of_service: '#991b1b',
+  on_patrol: '#15803d', // active-roving green, distinct from available's brighter #22c55e
 };
 
 export const UNIT_STATUS_CLASSES: Record<UnitStatus, string> = {
@@ -28,6 +29,7 @@ export const UNIT_STATUS_CLASSES: Record<UnitStatus, string> = {
   busy: 'bg-red-900/50 text-red-400 border border-red-700/50',
   off_duty: 'bg-rmpg-700/50 text-rmpg-400 border border-rmpg-600/50',
   out_of_service: 'bg-red-950/50 text-red-300 border border-red-800/50',
+  on_patrol: 'bg-green-950/50 text-green-300 border border-green-800/50',
 };
 
 export const UNIT_STATUS_LABELS: Record<UnitStatus, string> = {
@@ -38,6 +40,7 @@ export const UNIT_STATUS_LABELS: Record<UnitStatus, string> = {
   busy: 'Busy',
   off_duty: 'Off Duty',
   out_of_service: 'Out of Service',
+  on_patrol: 'On Patrol',
 };
 
 export const UNIT_STATUS_ABBREV: Record<UnitStatus, string> = {
@@ -48,6 +51,7 @@ export const UNIT_STATUS_ABBREV: Record<UnitStatus, string> = {
   busy: 'BSY',
   off_duty: 'OFD',
   out_of_service: 'OOS',
+  on_patrol: 'PAT',
 };
 
 // ── Call Priority ───────────────────────────────────────────
