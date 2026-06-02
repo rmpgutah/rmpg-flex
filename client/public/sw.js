@@ -277,7 +277,11 @@
 //       rendered. Hoisted Process Service Details to a top-level section
 //       (self-gated by process data / service-type) and added
 //       'civil_paper_service' to the visit-history gate.
-const CACHE_NAME = 'rmpg-flex-v700';
+// v701: Phase 2 — unified always-visible map Legend (bottom-left, collapsible)
+//       reflecting EVERY active overlay: geography coverage (Area/Section/
+//       Zone/Beat + compact categorical key), County/Muni outline boundaries,
+//       statewide road classes + address dot, and the activity-choropleth ramp.
+const CACHE_NAME = 'rmpg-flex-v701';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
