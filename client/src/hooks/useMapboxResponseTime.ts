@@ -78,7 +78,10 @@ export function useMapboxResponseTime(map: mapboxgl.Map | null) {
         ...f,
         properties: {
           ...f.properties,
-          avg_response: data?.avg_response_min ?? null,
+          // Omit avg_response entirely for no-data beats so the paint's
+          // ['has','avg_response'] guard reads false (faint 0.05 fill) instead
+          // of painting them solid worst-case red via the to-number fallback.
+          ...(data?.avg_response_min != null ? { avg_response: data.avg_response_min } : {}),
           calls: data?.calls ?? 0,
           incidents: data?.incidents ?? 0,
         },
