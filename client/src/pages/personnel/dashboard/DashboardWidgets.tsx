@@ -188,7 +188,7 @@ export function HoursTrendCard({ timeEntries }: { timeEntries: TimeEntry[] }) {
     const days: Record<string, number> = {};
     const now = new Date();
     for (let i = 6; i >= 0; i--) {
-      const d = new Date(now); d.setDate(d.getDate() - i);
+      const d = new Date(now); d.setDate(d.getDate() - i); // new-date-ok: cloning a Date, not parsing a server string
       days[dateToLocalYMD(d)] = 0;
     }
     timeEntries.forEach(t => {
