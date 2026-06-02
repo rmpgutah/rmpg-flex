@@ -240,7 +240,7 @@
 //       become OUTLINE-ONLY neutral reference lines lifted above the
 //       coverage (fills killed). Boundary lines + level labels z-ordered on
 //       top of the fills.
-const CACHE_NAME = 'rmpg-flex-v693';
+const CACHE_NAME = 'rmpg-flex-v694';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
