@@ -171,6 +171,12 @@ ct.get('/statistics', async (c) => {
     db,
     `SELECT event_type, COUNT(*) AS n FROM court_events GROUP BY event_type`,
   );
+  const continued = await queryFirst<{ n: number }>(db, "SELECT COUNT(*) AS n FROM court_events WHERE status='continued'");
+  const byOutcome = await query<{ outcome: string; count: number }>(
+    db, `SELECT status AS outcome, COUNT(*) AS count FROM court_events GROUP BY status`,
+  );
+  // CourtTrackerPage reads res.data.totals / byOutcome / byType; keep top-level
+  // keys too for any other consumer. avg_fine has no source column yet (null).
   return c.json({
     total: total?.n ?? 0,
     scheduled: scheduled?.n ?? 0,
@@ -178,6 +184,17 @@ ct.get('/statistics', async (c) => {
     no_show: noShow?.n ?? 0,
     upcoming_7d: upcoming7?.n ?? 0,
     by_type: byType,
+    data: {
+      totals: {
+        total: total?.n ?? 0,
+        completed: completed?.n ?? 0,
+        scheduled: scheduled?.n ?? 0,
+        total_continuances: continued?.n ?? 0,
+        avg_fine: null as number | null,
+      },
+      byOutcome,
+      byType: byType.map((t) => ({ type: t.event_type, count: t.n })),
+    },
   });
 });
 
