@@ -68,7 +68,12 @@ function validateKey(value: string, config: ApiKeyConfig): string | null {
 
 const MAPBOX_KEYS: ApiKeyConfig[] = [
   { key: 'mapbox_username', label: 'Account Username', desc: 'Your Mapbox account username — used in style URLs and studio access (mapbox.com → Account)' },
-  { key: 'mapbox_password', label: 'Account Password', desc: 'Mapbox account password — used for API token management and Mapbox Studio login', formatHint: 'Your Mapbox account password (encrypted at rest)' },
+  // NOTE: Do NOT add a `mapbox_password` field here. The app authenticates to
+  // Mapbox solely via the public `mapbox_access_token` (pk.) below — the account
+  // password is never used by any code path. It was previously stored in
+  // system_config in PLAINTEXT (mapbox keys are not encrypted at rest on this
+  // stack) and was purged 2026-06-02 as a credential-hygiene fix. Re-adding the
+  // field would recreate the plaintext-secret leak.
   { key: 'mapbox_style_url', label: 'Custom Style URL', desc: 'Your Mapbox Studio custom style URL — creates a branded map (mapbox://styles/username/style_id)', formatHint: 'mapbox://styles/{username}/{style_id}' },
   { key: 'mapbox_access_token', label: 'Public Access Token', desc: 'PRIMARY — Client-side map rendering, geocoding, directions. Starts with pk.', pattern: /^pk\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/, formatHint: 'Starts with pk. — from account.mapbox.com → Access Tokens' },
 ];
