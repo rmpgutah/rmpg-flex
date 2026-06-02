@@ -357,7 +357,16 @@
 //       layers. The hierarchy labels no longer @turf/dissolve all ~770 beat
 //       polygons (geometry that was never drawn); they now anchor one label
 //       per level on its largest member beat in O(n). Fill coverage unchanged.
-const CACHE_NAME = 'rmpg-flex-v713';
+// v714: FIX — auto-update force-reloaded the page mid-work, wiping unsaved
+//       edits ("changes lost / functions reset / app goes back"). The repo
+//       deploys many times/day; WebUpdateBanner reloaded unconditionally ~2s
+//       after detecting any new bundle, ignoring the hook's focused-field
+//       guard. Now reloads only when SAFE (no focused input/contenteditable,
+//       no open modal/dialog) and retries every 4s until safe — so updates
+//       still land within seconds of pausing, without clobbering in-progress
+//       data entry. Reload authority centralized in WebUpdateBanner (the hook
+//       no longer races it).
+const CACHE_NAME = 'rmpg-flex-v714';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
