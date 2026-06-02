@@ -417,9 +417,11 @@ si.post('/upload', async (c) => {
 
   // ── Phase 3: persist a serve_intake_documents row per file ──
   const documents: any[] = [];
+  const failedDocs: string[] = [];   // docs that yielded no usable extraction
   for (const c2 of collected) {
     if (c2.error && !c2.text) {
       documents.push({ file_name: c2.file.name, status: 'failed', error: c2.error });
+      failedDocs.push(c2.file.name);
       continue;
     }
     // Per-document extraction now lives on c2.ex (Vision for images,
@@ -433,6 +435,7 @@ si.post('/upload', async (c) => {
     // Capture this doc's own extraction error (timeout / parse miss / AI
     // error) so a confidence=0 row is diagnosable instead of silent.
     const docError = c2.error ?? c2.ex.error ?? null;
+    if (docError) failedDocs.push(c2.file.name);   // extracted text but no fields → flag for the partial-failure warning
     const res = await execute(
       db,
       `INSERT INTO serve_intake_documents (
@@ -496,11 +499,18 @@ si.post('/upload', async (c) => {
   // instead of a silent partial success (doc rows but no queue entry).
   const noRecords = commit.serve_queue_id == null && commit.call_id == null;
   const hadText = collected.some((c2) => (c2.text || '').trim().length > 0);
-  const warning = noRecords
+  let warning: string | null = noRecords
     ? (hadText
         ? `Documents stored but no recipient could be extracted${combined.error ? ` (${combined.error})` : ''}. Review the documents and create the entry manually.`
         : 'No readable text found in the uploaded documents (likely scans). Nothing was extracted.')
     : null;
+  // Partial failure: the entry WAS created, but one or more documents didn't
+  // extract — fields that live only on those (e.g. attorney/case details from a
+  // Court Docket whose OCR timed out) may be missing. Previously this was
+  // silent; surface it so the user knows to review those documents.
+  if (!noRecords && failedDocs.length > 0) {
+    warning = `Entry created, but ${failedDocs.length} document(s) didn't extract (${failedDocs.join(', ')}). Some fields may be missing — review those documents.`;
+  }
 
   return c.json({
     success: commit.serve_queue_id != null || commit.call_id != null,

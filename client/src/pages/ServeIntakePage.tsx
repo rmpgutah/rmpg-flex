@@ -44,8 +44,10 @@ const SCANNED_PDF_TEXT_THRESHOLD = 200;
 // Pages to rasterize from a scanned PDF. Recipient/service data on civil
 // papers lives in the first few pages (cover sheet, summons face, field
 // sheet); rendering every page of a 40-page docket would blow the 12-file
-// upload cap and the Vision latency budget for no extraction gain.
-const MAX_RASTER_PAGES = 4;
+// upload cap and the Vision latency budget for no extraction gain. 6 gives a
+// margin for packets where a cover/notice page pushes the info form to p3-5,
+// while staying well under the upload cap.
+const MAX_RASTER_PAGES = 6;
 // Render scale — 2x device pixels keeps small print legible to the OCR
 // model while JPEG q0.82 holds a letter page well under the 4 MB Vision cap.
 const RASTER_SCALE = 2;
