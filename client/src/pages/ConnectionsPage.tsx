@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { Network, Loader2 } from 'lucide-react';
+import { Network, Loader2, Eye, Pencil, Route } from 'lucide-react';
 import { forceSimulation, forceManyBody, forceLink, forceCenter, forceCollide, Simulation } from 'd3-force';
 import { zoom, zoomIdentity, ZoomBehavior } from 'd3-zoom';
 import { select } from 'd3-selection';
 import PanelTitleBar from '../components/PanelTitleBar';
+import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
+import { useMenuActions } from '../utils/contextMenuActions';
 import { apiFetch } from '../hooks/useApi';
 import { svgElementToPngDataUrl, downloadDataUrl } from '../utils/graphToPng';
 import { exportGraphToPdf } from '../utils/graphToPdf';
@@ -71,6 +73,8 @@ const MIN_QUERY_LEN = 2;
 
 export default function ConnectionsPage() {
   const { addToast } = useToast();
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
   const [searchQuery, setSearchQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [searching, setSearching] = useState(false);
@@ -404,6 +408,16 @@ export default function ConnectionsPage() {
     });
   }
 
+  // ── Right-click context menu for graph nodes ──
+  const buildNodeMenu = (n: SimNode): ContextMenuItem[] => [
+    m.action('Select node', () => setSelectedNodeId(n.id), { icon: <Eye size={12} /> }),
+    m.action('Start path from here', () => setPathFrom({ type: n.type, id: n.entityId, label: n.label }), { icon: <Route size={12} /> }),
+    m.action(annotations[n.id] ? 'Edit note' : 'Add note', () => { setEditingAnnotationFor(n.id); setAnnotationDraft(annotations[n.id] || ''); }, { icon: <Pencil size={12} /> }),
+    m.separator(),
+    m.copy('Copy label', n.label),
+    m.copyId(n.entityId),
+  ];
+
   return (
     <div className="p-4 space-y-4 h-full flex flex-col">
       <PanelTitleBar title="CONNECTIONS ANALYST" icon={Network} />
@@ -611,6 +625,7 @@ export default function ConnectionsPage() {
                 <g
                   key={n.id}
                   onClick={() => handleNodeClick(n)}
+                  onContextMenu={(e) => openMenu(e, buildNodeMenu(n))}
                   onMouseEnter={() => setHoveredNodeId(n.id)}
                   onMouseLeave={() => setHoveredNodeId(prev => (prev === n.id ? null : prev))}
                   data-has-annotation={annotations[n.id] ? 'true' : 'false'}
@@ -675,6 +690,7 @@ export default function ConnectionsPage() {
                 <g
                   key={`label-${n.id}`}
                   onClick={() => handleNodeClick(n)}
+                  onContextMenu={(e) => openMenu(e, buildNodeMenu(n))}
                   onMouseEnter={() => setHoveredNodeId(n.id)}
                   onMouseLeave={() => setHoveredNodeId(prev => (prev === n.id ? null : prev))}
                   style={{ cursor: 'pointer', opacity: dim ? 0.35 : 1 }}

@@ -4,9 +4,11 @@ import PanelTitleBar from '../components/PanelTitleBar';
 import DataTable from '../components/DataTable';
 import StatsCard from '../components/StatsCard';
 import { useToast } from '../components/ToastProvider';
+import { useMenuActions } from '../utils/contextMenuActions';
 import { Users, Calendar, MessageSquare, Bell, Plus, Pencil, Trash2 } from 'lucide-react';
 
 export default function CommunityPage() {
+  const m = useMenuActions();
   const [events, setEvents] = useState<Record<string, any>[]>([]);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({ events: 0, tips: 0, watch_groups: 0, alerts: 0 });
@@ -71,7 +73,18 @@ export default function CommunityPage() {
         <StatsCard icon={Users} label="Watch Groups" value={stats.watch_groups} />
         <StatsCard icon={Bell} label="Alerts Sent" value={stats.alerts} />
       </div>
-      <DataTable columns={columns} data={events} emptyMessage="No community events found" onRowClick={(row) => openEdit(row)} />
+      <DataTable
+        columns={columns}
+        data={events}
+        emptyMessage="No community events found"
+        onRowClick={(row) => openEdit(row)}
+        rowContextMenu={(row) => [
+          m.action('Open / Edit', () => openEdit(row), { icon: <Pencil size={12} /> }),
+          m.separator(),
+          m.copyId((row as any).id),
+          m.action('Delete', () => setDeleteId((row as any).id), { danger: true, icon: <Trash2 size={12} /> }),
+        ]}
+      />
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={() => setEditingRecord(null)}>
           <div className="bg-surface-raised border border-[#333] p-6 max-w-lg w-full" style={{ borderRadius: 2 }} onClick={e => e.stopPropagation()}>

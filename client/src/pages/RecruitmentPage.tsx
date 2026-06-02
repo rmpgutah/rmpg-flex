@@ -4,6 +4,7 @@ import PanelTitleBar from '../components/PanelTitleBar';
 import DataTable from '../components/DataTable';
 import StatsCard from '../components/StatsCard';
 import { useToast } from '../components/ToastProvider';
+import { useMenuActions } from '../utils/contextMenuActions';
 import { UserPlus, Users, CheckCircle, GraduationCap, Clock, Plus, Pencil, Trash2 } from 'lucide-react';
 
 interface Candidate { id: number; candidate_name: string; email: string; phone: string; position: string; stage: string; applied_date: string; notes: string; }
@@ -24,6 +25,7 @@ export default function RecruitmentPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const { addToast } = useToast();
+  const m = useMenuActions();
 
   const fetchData = useCallback(async () => {
     try {
@@ -96,7 +98,19 @@ export default function RecruitmentPage() {
         <StatsCard label="ACADEMY CLASSES" value={String(stats.academyClasses)} icon={GraduationCap} />
       </div>
 
-      <DataTable columns={columns} data={candidates} emptyMessage="No candidates in pipeline" onRowClick={openEdit} />
+      <DataTable
+        columns={columns}
+        data={candidates}
+        emptyMessage="No candidates in pipeline"
+        onRowClick={openEdit}
+        rowContextMenu={(row) => [
+          m.action('Open / Edit', () => openEdit(row), { icon: <Pencil size={12} /> }),
+          m.separator(),
+          m.copy('Copy name', row.candidate_name),
+          m.copyId(row.id),
+          m.action('Delete', () => setDeleteId(row.id), { danger: true, icon: <Trash2 size={12} /> }),
+        ]}
+      />
 
       {formOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={() => setFormOpen(false)}>

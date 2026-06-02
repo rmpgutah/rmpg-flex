@@ -5,9 +5,11 @@ import DataTable from '../components/DataTable';
 import StatsCard from '../components/StatsCard';
 import BillingFormModal, { BillingFormData } from '../components/BillingFormModal';
 import { useToast } from '../components/ToastProvider';
+import { useMenuActions } from '../utils/contextMenuActions';
 import { DollarSign, FileText, Clock, Receipt, Plus, Pencil, Trash2 } from 'lucide-react';
 
 export default function BillingPage() {
+  const m = useMenuActions();
   const [invoices, setInvoices] = useState<Record<string, any>[]>([]);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({ active_contracts: 0, outstanding_invoices: 0, total_outstanding_amount: 0, pending_expenses: 0 });
@@ -90,7 +92,18 @@ export default function BillingPage() {
         <StatsCard icon={DollarSign} label="Total Owed" value={`$${(stats.total_outstanding_amount || 0).toLocaleString()}`} />
         <StatsCard icon={Receipt} label="Pending Expenses" value={stats.pending_expenses} />
       </div>
-      <DataTable columns={columns} data={invoices} emptyMessage="No invoices found" onRowClick={(row) => openEdit(row)} />
+      <DataTable
+        columns={columns}
+        data={invoices}
+        emptyMessage="No invoices found"
+        onRowClick={(row) => openEdit(row)}
+        rowContextMenu={(row) => [
+          m.action('Open / Edit', () => openEdit(row), { icon: <Pencil size={12} /> }),
+          m.separator(),
+          m.copyId((row as any).id),
+          m.action('Delete', () => setDeleteId((row as any).id), { danger: true, icon: <Trash2 size={12} /> }),
+        ]}
+      />
       <BillingFormModal isOpen={formOpen} onClose={() => { setFormOpen(false); setEditingRecord(undefined); }}
         onSubmit={handleSubmit} isSubmitting={formSubmitting} editingRecord={editingRecord} submitError={formError} />
       {deleteId !== null && (

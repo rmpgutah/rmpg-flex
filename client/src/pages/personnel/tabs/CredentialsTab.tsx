@@ -10,6 +10,8 @@ import type { Credential } from '../../../types';
 import { CREDENTIAL_STATUS_COLORS } from '../utils/personnelConstants';
 import { toDisplayLabel } from '../../../utils/formatters';
 import { parseTimestamp } from '../../../utils/dateUtils';
+import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
+import { useMenuActions } from '../../../utils/contextMenuActions';
 
 interface Props {
   credentials: Credential[];
@@ -63,6 +65,19 @@ export default function CredentialsTab({ credentials, onAddCredential, onEditCre
     { label: 'Valid', value: stats.valid, color: 'text-green-400', bgClass: 'bg-surface-base', border: 'border-green-700/30', topBorder: 'border-t-green-500' },
     { label: 'Expiring Soon', value: stats.expiringSoon, color: 'text-amber-400', bgClass: 'bg-amber-900/20', border: 'border-amber-700/30', topBorder: 'border-t-amber-500' },
     { label: 'Expired', value: stats.expired, color: 'text-red-400', bgClass: 'bg-surface-base', border: 'border-red-700/30', topBorder: 'border-t-red-500' },
+  ];
+
+  // Right-click context menu
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+  const buildRowMenu = (cred: Credential): ContextMenuItem[] => [
+    m.action('Edit credential', () => onEditCredential(cred), { icon: <Edit3 size={12} /> }),
+    m.separator(),
+    m.copy('Copy credential #', cred.credential_number),
+    m.copy('Copy officer', cred.officer_name),
+    m.copyId(cred.id),
+    m.separator(),
+    m.action('Delete credential', () => onDeleteCredential(cred.id), { icon: <Trash2 size={12} />, danger: true }),
   ];
 
   // Set document title
@@ -182,6 +197,7 @@ export default function CredentialsTab({ credentials, onAddCredential, onEditCre
                 <tr
                   key={cred.id}
                   className={cred.status === 'expired' ? 'bg-red-900/10' : ''}
+                  onContextMenu={(e) => openMenu(e, buildRowMenu(cred))}
                 >
                   <td>
                     <span className="text-xs text-rmpg-200">{cred.officer_name}</span>

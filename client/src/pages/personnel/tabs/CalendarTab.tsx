@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { Calendar, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import IconButton from '../../../components/IconButton';
+import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
+import { useMenuActions } from '../../../utils/contextMenuActions';
 
 interface Shift {
   id: number;
@@ -67,6 +69,17 @@ export default function CalendarTab() {
   const today = new Date();
   const isToday = (day: number) => today.getFullYear() === year && today.getMonth() + 1 === month && today.getDate() === day;
 
+  // ── Right-click context menu ──────────────────────────────
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+
+  const buildShiftMenu = (s: Shift): ContextMenuItem[] => [
+    m.copy('Copy officer', s.officer_name),
+    ...(s.property_name ? [m.copy('Copy property', s.property_name)] : []),
+    m.separator(),
+    m.copyId(s.id),
+  ];
+
   return (
     <div className="p-4 space-y-3">
       <div className="flex items-center justify-between">
@@ -102,7 +115,7 @@ export default function CalendarTab() {
                         <span className={`text-[10px] font-bold ${isToday(day) ? 'text-brand-400' : 'text-rmpg-300'}`}>{day}</span>
                         <div className="space-y-0.5 mt-0.5">
                           {dayShifts.slice(0, 3).map((s, si) => (
-                            <div key={si} className="text-[8px] px-1 py-0.5 bg-brand-900/30 text-brand-300 truncate leading-tight">
+                            <div key={si} onContextMenu={(e) => openMenu(e, buildShiftMenu(s))} className="text-[8px] px-1 py-0.5 bg-brand-900/30 text-brand-300 truncate leading-tight">
                               {s.officer_name?.split(' ').pop()} {s.start_time?.substring(0, 5)}
                             </div>
                           ))}

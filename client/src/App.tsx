@@ -4,6 +4,7 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { WebSocketProvider } from './context/WebSocketContext';
 import { UserPreferencesProvider } from './context/UserPreferencesContext';
 import { ToastProvider } from './components/ToastProvider';
+import { ContextMenuProvider } from './context/ContextMenuContext';
 import { GlobalSearch } from './components/GlobalSearch';
 import { KeyboardShortcuts } from './components/KeyboardShortcuts';
 import Layout from './components/Layout';
@@ -484,11 +485,13 @@ export default function App() {
       <WebSocketProvider>
         <UserPreferencesProvider>
           <ToastProvider>
-            <ErrorBoundary>
-              <WebUpdateBanner />
-              <AndroidUpdateChecker />
-              <AppRoutes />
-            </ErrorBoundary>
+            <ContextMenuProvider>
+              <ErrorBoundary>
+                <WebUpdateBanner />
+                <AndroidUpdateChecker />
+                <AppRoutes />
+              </ErrorBoundary>
+            </ContextMenuProvider>
           </ToastProvider>
         </UserPreferencesProvider>
       </WebSocketProvider>

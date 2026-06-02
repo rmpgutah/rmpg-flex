@@ -13,6 +13,8 @@ import type {
 } from '../../types';
 import DocumentViewer from '../../components/DocumentViewer';
 import { localToday, dateToLocalYMD } from '../../utils/dateUtils';
+import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
+import { useMenuActions } from '../../utils/contextMenuActions';
 
 function fmtShortDate(d: string | null | undefined): string {
   if (!d) return '\u2014';
@@ -118,7 +120,27 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
     setLoading(false);
   }, []);
 
+  // Shared "open invoice" — used by the list row onClick + right-click menu.
+  const openInvoice = useCallback((id: string) => {
+    fetchInvoiceDetail(id);
+    setView('detail');
+  }, [fetchInvoiceDetail]);
+
   useEffect(() => { fetchInvoices(); fetchStats(); }, [fetchInvoices, fetchStats]);
+
+  // Right-click context menu (list rows). Status changes operate on the
+  // open invoice in the detail view, so the row menu sticks to Open + copy.
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+
+  const buildInvoiceMenu = (inv: Invoice): ContextMenuItem[] => [
+    m.action('Open invoice', () => openInvoice(inv.id), { icon: <Eye size={12} /> }),
+    m.separator(),
+    m.copy('Copy invoice #', inv.invoice_number, <Hash size={12} />),
+    m.copy('Copy total', formatCurrency(inv.total), <DollarSign size={12} />),
+    m.copy('Copy balance due', formatCurrency(inv.balance_due), <DollarSign size={12} />),
+    m.copyId(inv.id),
+  ];
 
   // ─── Actions ──────────────────────────────────────
   const handleCreate = async () => {
@@ -331,7 +353,8 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
               {invoices.map(inv => (
                 <tr
                   key={inv.id}
-                  onClick={() => { fetchInvoiceDetail(inv.id); setView('detail'); }}
+                  onClick={() => openInvoice(inv.id)}
+                  onContextMenu={(e) => openMenu(e, buildInvoiceMenu(inv))}
                   className="border-b border-rmpg-700/50 hover:bg-rmpg-700/20 cursor-pointer transition-colors"
                 >
                   <td className="p-1.5 font-mono text-brand-400 font-bold">{inv.invoice_number}</td>

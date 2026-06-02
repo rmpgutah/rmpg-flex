@@ -11,6 +11,8 @@ import { toDisplayLabel } from '../../utils/formatters';
 import LoginHistoryTable from '../../components/security/LoginHistoryTable';
 import { useToast } from '../../components/ToastProvider';
 import { safeDateTimeStr } from '../../utils/dateUtils';
+import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
+import { useMenuActions } from '../../utils/contextMenuActions';
 
 interface Session {
   id: number;
@@ -71,6 +73,18 @@ export default function AdminSessionsTab({ LoadingSpinner, error, setError }: Pr
       addToast(err.message || 'Failed to revoke session', 'error');
     }
   };
+
+  // ── Right-click context menu ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+
+  const buildSessionMenu = (s: Session): ContextMenuItem[] => [
+    m.copy('Copy user', `${s.full_name || ''} (${s.username || ''})`.trim()),
+    ...(s.ip_address ? [m.copy('Copy IP', s.ip_address, <Globe size={12} />)] : []),
+    m.copyId(s.id, 'Copy session ID'),
+    m.separator(),
+    m.action('Revoke session', () => handleRevoke(s.id), { icon: <Trash2 size={12} />, danger: true }),
+  ];
 
   if (loading) return <LoadingSpinner />;
 
@@ -136,7 +150,7 @@ export default function AdminSessionsTab({ LoadingSpinner, error, setError }: Pr
           {activeSessions.map((s, idx) => {
             const { device, icon: DeviceIcon } = parseUserAgent(s.user_agent);
             return (
-              <tr key={s.id} className={`border-b border-rmpg-800/30 hover:bg-surface-raised/30 transition-colors ${idx % 2 !== 0 ? 'bg-rmpg-800/10' : ''}`}>
+              <tr key={s.id} onContextMenu={(e) => openMenu(e, buildSessionMenu(s))} className={`border-b border-rmpg-800/30 hover:bg-surface-raised/30 transition-colors ${idx % 2 !== 0 ? 'bg-rmpg-800/10' : ''}`}>
                 <td className="px-3 py-2">
                   <span className="font-semibold text-white">{s.full_name}</span>
                   <span className="text-rmpg-500 ml-1">({s.username})</span>

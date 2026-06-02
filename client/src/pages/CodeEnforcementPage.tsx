@@ -16,6 +16,8 @@ import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
 import ExportButton from '../components/ExportButton';
 import { apiFetch } from '../hooks/useApi';
+import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
+import { useMenuActions } from '../utils/contextMenuActions';
 import { useDistrictOptions } from '../hooks/useDistrictLookup';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -93,6 +95,8 @@ export default function CodeEnforcementPage() {
   const { sections: sectionOptions, sectionLabels, zoneLabels, zonesForSection, beatsForZone, getBeatLabel } = useDistrictOptions();
   const { errors: vFormErrors, validate: validateVForm, clearAllErrors: clearVErrors } = useFormValidation();
   const { errors: tFormErrors, validate: validateTForm, clearAllErrors: clearTErrors } = useFormValidation();
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
 
   const [activeTab, setActiveTab] = useState<'violations' | 'tows'>('violations');
 
@@ -334,6 +338,23 @@ export default function CodeEnforcementPage() {
     } catch (err: any) { addToast(err?.message || 'Operation failed', 'error'); }
   };
 
+  // \u2500\u2500 Right-click context menus \u2500\u2500
+  const buildViolationMenu = (v: CodeViolation): ContextMenuItem[] => [
+    m.action('Open violation', () => setSelectedViolation(v), { icon: <Eye size={12} /> }),
+    m.separator(),
+    m.copy('Copy violation number', v.violation_number),
+    m.copyId(v.id),
+    ...(v.location ? [m.copy('Copy location', v.location)] : []),
+  ];
+
+  const buildTowMenu = (t: VehicleTow): ContextMenuItem[] => [
+    m.action('Open tow order', () => setSelectedTow(t), { icon: <Eye size={12} /> }),
+    m.separator(),
+    m.copy('Copy tow number', t.tow_number),
+    m.copyId(t.id),
+    ...(t.vehicle_plate ? [m.copy('Copy plate', t.vehicle_plate)] : []),
+  ];
+
   // Set document title
   useEffect(() => { document.title = 'Code Enforcement \u2014 RMPG Flex'; }, []);
 
@@ -452,6 +473,7 @@ export default function CodeEnforcementPage() {
               <button type="button"
                 key={v.id}
                 onClick={() => setSelectedViolation(v)}
+                onContextMenu={(e) => openMenu(e, buildViolationMenu(v))}
                 className={`w-full text-left px-3 ${isMobile ? 'py-3' : 'py-2'} border-b border-rmpg-800 transition-colors ${
                   selectedViolation?.id === v.id ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : 'hover:bg-rmpg-800/40 border-l-2 border-l-transparent'
                 }`}
@@ -493,6 +515,7 @@ export default function CodeEnforcementPage() {
               <button type="button"
                 key={t.id}
                 onClick={() => setSelectedTow(t)}
+                onContextMenu={(e) => openMenu(e, buildTowMenu(t))}
                 className={`w-full text-left px-3 ${isMobile ? 'py-3' : 'py-2'} border-b border-rmpg-800 transition-colors ${
                   selectedTow?.id === t.id ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : 'hover:bg-rmpg-800/40 border-l-2 border-l-transparent'
                 }`}

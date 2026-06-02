@@ -4,7 +4,9 @@ import PanelTitleBar from '../components/PanelTitleBar';
 import DataTable from '../components/DataTable';
 import StatsCard from '../components/StatsCard';
 import { useToast } from '../components/ToastProvider';
-import { Bell, AlertTriangle, ShieldCheck, DollarSign, Plus, Pencil, Trash2 } from 'lucide-react';
+import { useMenuActions } from '../utils/contextMenuActions';
+import type { ContextMenuItem } from '../context/ContextMenuContext';
+import { Bell, AlertTriangle, ShieldCheck, DollarSign, Plus, Pencil, Trash2, Eye } from 'lucide-react';
 
 interface AlarmAccount { id: number; account_number: string; account_name: string; address: string; contact_name: string; contact_phone: string; permit_number: string; permit_status: string; permit_expiry: string; alarm_type: string; false_alarm_count: number; status: string; notes: string; }
 interface AlarmStats { totalAlarms: number; falseAlarms: number; permitsActive: number; permitsExpired: number; revenueCollected: number; }
@@ -22,6 +24,7 @@ export default function AlarmManagementPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const { addToast } = useToast();
+  const m = useMenuActions();
 
   const fetchData = useCallback(async () => {
     try {
@@ -97,7 +100,20 @@ export default function AlarmManagementPage() {
         <StatsCard label="REVENUE" value={`$${(stats.revenueCollected || 0).toLocaleString()}`} icon={DollarSign} />
       </div>
 
-      <DataTable columns={columns} data={accounts} emptyMessage="No alarm accounts" onRowClick={openEdit} />
+      <DataTable
+        columns={columns}
+        data={accounts}
+        emptyMessage="No alarm accounts"
+        onRowClick={openEdit}
+        enableContextMenu
+        rowContextMenu={(row: AlarmAccount): ContextMenuItem[] => [
+          m.action('Open', () => openEdit(row), { icon: <Eye size={12} /> }),
+          m.action('Edit', () => openEdit(row), { icon: <Pencil size={12} /> }),
+          m.separator(),
+          m.copyId(row.id),
+          m.action('Delete', () => setDeleteId(row.id), { danger: true, icon: <Trash2 size={12} /> }),
+        ]}
+      />
 
       {formOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={() => setFormOpen(false)}>

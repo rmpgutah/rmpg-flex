@@ -2,10 +2,12 @@ import React, { useState, useEffect } from 'react';
 import {
   Search, Building2, Shield, MapPin, FileWarning, Trash2, Pencil, X, Phone,
   AlertTriangle, Calendar, Archive, RotateCcw, Globe, Users, Key, FileText, Wrench,
-  Camera, ArrowUpDown, Filter,
+  Camera, ArrowUpDown, Filter, Eye, Navigation,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { useAuth } from '../../context/AuthContext';
+import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
+import { useMenuActions } from '../../utils/contextMenuActions';
 import PropertyFormModal from '../../components/PropertyFormModal';
 import FileAttachments from '../../components/FileAttachments';
 import LinkedRecordsSection from '../../components/LinkedRecordsSection';
@@ -238,6 +240,7 @@ export function usePropertiesTab(props: PropertiesTabProps): PropertiesTabState 
 // ════════════════════════════════════════════════════
 
 export function PropertiesTabList({ state }: { state: PropertiesTabState }) {
+  const { user } = useAuth();
   const {
     filteredProperties, selectedProperty, setSelectedProperty, properties,
     searchQuery, setSearchQuery, showArchived,
@@ -245,6 +248,28 @@ export function PropertiesTabList({ state }: { state: PropertiesTabState }) {
     propertyModalOpen, editingProperty, propertySubmitting, handlePropertySubmit, closeModal, clients,
     propertySubmitError,
   } = state;
+
+  // ── Right-click context menu ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+  const canModify = !showArchived || user?.role === 'admin';
+  const buildPropertyMenu = (prop: Property): ContextMenuItem[] => {
+    const addr = `${prop.address || ''}${prop.city ? `, ${prop.city}` : ''}${prop.state ? `, ${prop.state}` : ''} ${prop.zip || ''}`.trim();
+    return [
+      m.action('Open record', () => setSelectedProperty(selectedProperty?.id === prop.id ? null : prop), { icon: <Eye size={12} /> }),
+      ...(canModify ? [m.action('Edit property', () => openEditProperty(prop), { icon: <Pencil size={12} /> })] : []),
+      m.separator(),
+      m.copy('Copy name', prop.name),
+      m.copyId(prop.id),
+      ...(addr ? [m.copy('Copy address', addr, <MapPin size={12} />)] : []),
+      ...(addr ? [m.openExternal('Navigate to address', `https://maps.google.com/?q=${encodeURIComponent(addr)}`, <Navigation size={12} />)] : []),
+      m.separator(),
+      ...(showArchived
+        ? (canModify ? [m.action('Unarchive', () => handleUnarchive('properties', prop.id), { icon: <RotateCcw size={12} /> })] : [])
+        : [m.action('Archive', () => handleArchive('properties', prop.id), { icon: <Archive size={12} /> })]),
+      ...(canModify ? [m.action('Delete', () => setDeleteTarget({ type: 'property', id: prop.id, label: prop.name }), { icon: <Trash2 size={12} />, danger: true })] : []),
+    ];
+  };
 
   const [sortBy, setSortBy] = useState<'name' | 'client' | 'newest'>('name');
   const [filterType, setFilterType] = useState<string | null>(null);
@@ -341,6 +366,7 @@ export function PropertiesTabList({ state }: { state: PropertiesTabState }) {
             tabIndex={0}
             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedProperty(selectedProperty?.id === prop.id ? null : prop); } }}
             onClick={() => setSelectedProperty(selectedProperty?.id === prop.id ? null : prop)}
+            onContextMenu={(e) => openMenu(e, buildPropertyMenu(prop))}
             className={`
               px-4 py-3 border-b border-rmpg-700/50 cursor-pointer transition-all duration-150
               ${selectedProperty?.id === prop.id

@@ -25,6 +25,8 @@ import PrintButton from '../components/PrintButton';
 import ExportButton from '../components/ExportButton';
 import { localToday, parseTimestamp } from '../utils/dateUtils';
 import { useToast } from '../components/ToastProvider';
+import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
+import { useMenuActions } from '../utils/contextMenuActions';
 
 interface AuditLogEntry {
   id: number;
@@ -71,6 +73,8 @@ const getActionIcon = (action: string): React.ElementType => {
 
 const AuditLogPage: React.FC = () => {
   const { addToast } = useToast();
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
 
   // Set document title
   useEffect(() => { document.title = 'Audit Log \u2014 RMPG Flex'; }, []);
@@ -245,6 +249,24 @@ const AuditLogPage: React.FC = () => {
       second: '2-digit',
       hour12: false
     });
+  };
+
+  // ── Right-click context menu (read-only log rows) ──
+  const buildLogMenu = (log: AuditLogEntry): ContextMenuItem[] => {
+    const entry = [
+      formatTimestamp(log.created_at),
+      log.user_name || 'System',
+      log.action,
+      [log.entity_type, log.entity_id].filter(Boolean).join(' '),
+      log.details,
+    ].filter(Boolean).join(' | ');
+    return [
+      m.copy('Copy entry', entry),
+      ...(log.details ? [m.copy('Copy details', log.details)] : []),
+      ...(log.entity_id ? [m.copy('Copy entity ID', log.entity_id)] : []),
+      m.separator(),
+      m.copyId(log.id),
+    ];
   };
 
   // Clear all filters
@@ -597,7 +619,7 @@ const AuditLogPage: React.FC = () => {
               </thead>
               <tbody>
                 {logs.map((log) => (
-                  <tr key={log.id} className="hover:bg-surface-raised">
+                  <tr key={log.id} className="hover:bg-surface-raised" onContextMenu={(e) => openMenu(e, buildLogMenu(log))}>
                     <td className="px-3 py-1.5 whitespace-nowrap font-mono">
                       <div className="flex items-center gap-1.5">
                         <Clock className="w-3.5 h-3.5 text-rmpg-400" />

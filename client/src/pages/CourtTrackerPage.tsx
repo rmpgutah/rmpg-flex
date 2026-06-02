@@ -14,10 +14,12 @@ import { formatPhoneInput, formatEnumValue} from '../utils/formatters';
 import {
   Gavel, Search, Plus, Calendar, Clock, User, X, Save, Loader2, AlertTriangle,
   CheckCircle, FileText, Scale, ChevronLeft, ChevronRight, Shield, DollarSign,
-  BookOpen, AlertCircle, Check, RefreshCw, Users,
+  BookOpen, AlertCircle, Check, RefreshCw, Users, Eye, Copy,
 } from 'lucide-react';
 import type { CourtEvent, CourtEventType, CourtEventStatus, CourtOutcome } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';
+import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
+import { useMenuActions } from '../utils/contextMenuActions';
 import IconButton from '../components/IconButton';
 import EmptyState from '../components/EmptyState';
 import { apiFetch } from '../hooks/useApi';
@@ -223,6 +225,22 @@ export default function CourtTrackerPage() {
       addToast(`Event cloned: ${res.data?.event_number}`, 'success');
       fetchEvents({ silent: true }); fetchUpcoming();
     } catch (err: any) { addToast(err?.message || 'Clone failed', 'error'); }
+  };
+
+  // ── Right-click context menu ──
+  const { openMenu } = useContextMenu();
+  const menu = useMenuActions();
+  const buildEventMenu = (evt: CourtEvent): ContextMenuItem[] => {
+    return [
+      menu.action('Open record', () => setSelected(evt), { icon: <Eye size={12} /> }),
+      menu.separator(),
+      menu.copy('Copy event #', evt.event_number),
+      menu.copyId(evt.id),
+      ...(evt.defendant_name ? [menu.copy('Copy defendant', evt.defendant_name, <User size={12} />)] : []),
+      ...(evt.court_case_number ? [menu.copy('Copy case #', evt.court_case_number, <FileText size={12} />)] : []),
+      menu.separator(),
+      menu.action('Clone for continuance', () => handleCloneEvent(parseInt(String(evt.id))), { icon: <Copy size={12} /> }),
+    ];
   };
 
   // Feature 6: Generate 24h reminders
@@ -637,6 +655,7 @@ export default function CourtTrackerPage() {
                   <button type="button"
                     key={evt.id}
                     onClick={() => setSelected(evt)}
+                    onContextMenu={(e) => openMenu(e, buildEventMenu(evt))}
                     aria-label={`Court event ${evt.event_number}`}
                     className={`w-full text-left px-3 py-2 border-b border-rmpg-800 transition-colors ${
                       selected?.id === evt.id ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : 'hover:bg-rmpg-800/40 border-l-2 border-l-transparent'

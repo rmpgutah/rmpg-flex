@@ -2,9 +2,11 @@ import { useState, useEffect, useCallback } from 'react';
 import RichTextArea from '../../components/RichTextArea';
 import {
   Car, Plus, Wrench, Search, Gauge, AlertTriangle, CheckCircle, Calendar, Shield,
-  Tag, Radio, Archive, DollarSign, Fuel,
+  Tag, Radio, Archive, DollarSign, Fuel, Eye, Trash2,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
+import { useMenuActions } from '../../utils/contextMenuActions';
 import { parseTimestamp, safeDateStr } from '../../utils/dateUtils';
 import { useLiveSync } from '../../hooks/useLiveSync';
 import { usePersistedTab } from '../../hooks/usePersistedState';
@@ -81,6 +83,10 @@ export default function FleetPage() {
   const { addToast } = useToast();
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin'; // Admin God Mode — unrestricted access
+
+  // Right-click context menu
+  const { openMenu } = useContextMenu();
+  const cm = useMenuActions();
 
   // Core state
   const [vehicles, setVehicles] = useState<FleetVehicle[]>([]);
@@ -1040,6 +1046,23 @@ export default function FleetPage() {
     setModal('none');
   };
 
+  // Right-click menu for a vehicle list row. Acts on the right-clicked row,
+  // not the current selection (Open selects it; Delete opens the confirm).
+  const buildVehicleMenu = (vehicle: FleetVehicle): ContextMenuItem[] => {
+    const label = `${vehicle.vehicle_number}${[vehicle.year, vehicle.make, vehicle.model].filter(Boolean).length ? ' — ' + [vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(' ') : ''}`;
+    return [
+      cm.action('Open vehicle', () => setSelectedId(vehicle.id), { icon: <Eye size={12} /> }),
+      cm.separator(),
+      cm.copy('Copy unit #', vehicle.vehicle_number),
+      ...(vehicle.plate_number ? [cm.copy('Copy plate', vehicle.plate_number, <Tag size={12} />)] : []),
+      ...(vehicle.vin ? [cm.copy('Copy VIN', vehicle.vin)] : []),
+      cm.copyId(vehicle.id),
+      ...(isAdmin && !showArchived
+        ? [cm.separator(), cm.action('Delete', () => setDeletingVehicleId(vehicle.id), { danger: true, icon: <Trash2 size={12} /> })]
+        : []),
+    ];
+  };
+
   return (
     <div className="flex flex-col h-full animate-fade-in bg-surface-base">
       <UnsavedChangesGuard hasUnsavedChanges={isDirtyAny} />
@@ -1236,6 +1259,7 @@ export default function FleetPage() {
                   }`}
                   style={isSelected ? { backgroundColor: 'var(--surface-base)', borderLeft: `3px solid ${statusColor}` } : { borderLeft: '3px solid transparent' }}
                   onClick={() => setSelectedId(v.id)}
+                  onContextMenu={(e) => openMenu(e, buildVehicleMenu(v))}
                   aria-selected={isSelected}
                 >
                   <div className="flex items-center gap-2.5">

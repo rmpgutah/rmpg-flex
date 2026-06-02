@@ -11,9 +11,11 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Database, Search, X, Loader2, UserPlus, UserX, Shield, BarChart3, Eye, Plus,
   Link2, Unlink, AlertTriangle, RefreshCw, Download, Pencil, Trash2, ArrowUpDown,
-  FileText, ShieldAlert, Calendar, Scale,
+  FileText, ShieldAlert, Calendar, Scale, Copy,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
+import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
+import { useMenuActions } from '../utils/contextMenuActions';
 import { useLiveSync } from '../hooks/useLiveSync';
 import PanelTitleBar from '../components/PanelTitleBar';
 import EmptyState from '../components/EmptyState';
@@ -205,6 +207,10 @@ export default function ArrestRecordsPage() {
   const { addToast } = useToast();
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin'; // Admin God Mode — unrestricted access
+
+  // Right-click context menu (reusable global system)
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
 
   // Statistics
   const [stats, setStats] = useState<{
@@ -436,6 +442,33 @@ export default function ArrestRecordsPage() {
     setFormOpen(true);
   };
 
+  // ── Right-click row menu ────────────────────────────────
+  // Edit/Delete mirror the detail-panel gate (manual record OR admin);
+  // scraper/CSV-imported records are read-only for non-admins.
+
+  const buildArrestMenu = (rec: ArrestRecord): ContextMenuItem[] => {
+    const name =
+      rec.linked_person?.name ||
+      (rec.full_name && rec.full_name.trim()) ||
+      `${rec.first_name ?? ''} ${rec.last_name ?? ''}`.trim();
+    const canModify = isManualRecord(rec) || isAdmin;
+    return [
+      m.action('Open record', () => setSelectedRecord(rec), { icon: <Eye size={12} /> }),
+      ...(canModify
+        ? [m.action('Edit record', () => openEdit(rec), { icon: <Pencil size={12} /> })]
+        : []),
+      m.separator(),
+      m.copy('Copy name', name, <Copy size={12} />),
+      m.copyId(rec.id),
+      ...(canModify
+        ? [
+            m.separator(),
+            m.action('Delete', () => setDeleteConfirm(rec.id), { icon: <Trash2 size={12} />, danger: true }),
+          ]
+        : []),
+    ];
+  };
+
   // ── Sort ────────────────────────────────────────────────
 
   const cycleSort = () => setSortIdx(i => (i + 1) % SORT_CYCLE.length);
@@ -624,6 +657,7 @@ export default function ArrestRecordsPage() {
                       : 'bg-surface-sunken hover:bg-rmpg-800/40 border-l-2 border-transparent'
                   }`}
                   onClick={() => setSelectedRecord(rec)}
+                  onContextMenu={(e) => openMenu(e, buildArrestMenu(rec))}
                   aria-selected={isSelected}
                 >
                   {/* County color indicator */}

@@ -1,7 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Eye, Copy } from 'lucide-react';
 import { parseTimestamp } from '../../../utils/dateUtils';
 import { apiFetch } from '../../../hooks/useApi';
 import { useWebSocket } from '../../../context/WebSocketContext';
+import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
+import { copyToClipboard, separator } from '../../../utils/contextMenuActions';
+
+// NOTE: these cards render in bare-render unit tests with no ToastProvider /
+// Router. useMenuActions() (the usual PATH-B helper) calls useToast()/useNavigate()
+// which THROW outside their providers, so we build ContextMenuItem[] inline with
+// useContextMenu() (safe no-op fallback) + the standalone clipboard/separator
+// helpers instead. Copy items skip the toast confirmation by design.
 
 // Endpoints:
 //   GET /api/comms/bolos/active             — active BOLOs (server already filters active+unexpired)
@@ -37,6 +46,7 @@ type FeedItem =
 
 export default function BolosCard() {
   const { subscribe } = useWebSocket();
+  const { openMenu } = useContextMenu();
 
   const [bolos, setBolos] = useState<BoloRow[]>([]);
   const [alerts, setAlerts] = useState<PremiseRow[]>([]);
@@ -110,6 +120,36 @@ export default function BolosCard() {
     return items.slice(0, 8);
   }, [bolos, alerts]);
 
+  // Build a right-click menu for a feed row. Reuses the row's expand toggle
+  // for 'Open'; copy items use the standalone clipboard helper (no toast).
+  const buildRowMenu = useCallback(
+    (opts: { key: string; isExpanded: boolean; title: string; details: string }): ContextMenuItem[] => {
+      const items: ContextMenuItem[] = [
+        {
+          label: opts.isExpanded ? 'Collapse' : 'Open',
+          icon: <Eye size={12} />,
+          onClick: () => setExpandedKey(opts.isExpanded ? null : opts.key),
+        },
+        separator(),
+        {
+          label: 'Copy title',
+          icon: <Copy size={12} />,
+          disabled: !opts.title,
+          onClick: () => { void copyToClipboard(opts.title); },
+        },
+      ];
+      if (opts.details) {
+        items.push({
+          label: 'Copy details',
+          icon: <Copy size={12} />,
+          onClick: () => { void copyToClipboard(opts.details); },
+        });
+      }
+      return items;
+    },
+    [],
+  );
+
   if (loading) {
     return (
       <section className="bg-[#141414] border border-[#222] p-3">
@@ -162,6 +202,7 @@ export default function BolosCard() {
                   <button
                     type="button"
                     onClick={() => setExpandedKey(isExpanded ? null : key)}
+                    onContextMenu={(e) => openMenu(e, buildRowMenu({ key, isExpanded, title, details: fullText }))}
                     aria-expanded={isExpanded}
                     className="w-full text-left min-h-[44px] border-l-2 border-l-red-700 pl-2 py-2 flex flex-col"
                   >
@@ -188,6 +229,7 @@ export default function BolosCard() {
                 <button
                   type="button"
                   onClick={() => setExpandedKey(isExpanded ? null : key)}
+                  onContextMenu={(e) => openMenu(e, buildRowMenu({ key, isExpanded, title, details: fullText }))}
                   aria-expanded={isExpanded}
                   className="w-full text-left min-h-[44px] border-l-2 border-l-amber-700 pl-2 py-2 flex flex-col"
                 >

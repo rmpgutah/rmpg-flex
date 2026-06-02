@@ -40,6 +40,8 @@ import FirecrawlTab from '../components/crm/FirecrawlTab';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useToast } from '../components/ToastProvider';
+import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
+import { useMenuActions } from '../utils/contextMenuActions';
 import { useIsMobile } from '../hooks/useIsMobile';
 import PanelTitleBar from '../components/PanelTitleBar';
 import RmpgLogo from '../components/RmpgLogo';
@@ -139,6 +141,8 @@ function invoiceStatusColor(s: string): string {
 export default function CrmPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
   const [activeSection, setActiveSection] = useState<CrmSection>(() => {
     const saved = localStorage.getItem('crm_active_section');
     return (saved as CrmSection) || 'dashboard';
@@ -410,6 +414,28 @@ export default function CrmPage() {
     if (!selectedClientId) return null;
     return clients.find(c => String(c.id) === selectedClientId) || null;
   }, [clients, selectedClientId]);
+
+  // ── Right-click context menus ──
+  const buildClientMenu = (c: Client): ContextMenuItem[] => [
+    m.action('Open client', () => setSelectedClientId(String(c.id)), { icon: <Eye size={12} /> }),
+    m.action('Edit client', () => { setEditingClient(c); setShowClientModal(true); }, { icon: <Edit3 size={12} /> }),
+    m.action('New task', () => openNewTask(String(c.id)), { icon: <Plus size={12} /> }),
+    m.separator(),
+    m.copy('Copy name', c.name),
+    ...(c.contact_phone ? [m.copy('Copy phone', c.contact_phone, <Phone size={12} />)] : []),
+    ...(c.contact_email ? [m.copy('Copy email', c.contact_email, <Mail size={12} />)] : []),
+    m.copyId(c.id),
+  ];
+
+  const buildTaskMenu = (task: CrmTask): ContextMenuItem[] => [
+    m.action(task.status === 'completed' ? 'Mark incomplete' : 'Mark complete', () => toggleTaskComplete(task), { icon: <CheckSquare size={12} /> }),
+    m.action('Edit task', () => openEditTask(task), { icon: <Edit3 size={12} /> }),
+    m.separator(),
+    m.copy('Copy title', task.title),
+    m.copyId(task.id),
+    m.separator(),
+    m.action('Delete', () => deleteTask(task.id), { icon: <Trash2 size={12} />, danger: true }),
+  ];
 
   // ════════════════════════════════════════════════════════
   // RENDER
@@ -864,6 +890,7 @@ export default function CrmPage() {
               <button type="button"
                 key={c.id}
                 onClick={() => setSelectedClientId(String(c.id))}
+                onContextMenu={(e) => openMenu(e, buildClientMenu(c))}
                 className={`w-full text-left px-3 py-2 border-b border-rmpg-700/30 transition-colors ${
                   selectedClientId === String(c.id) ? 'bg-brand-600/15 border-l-2 border-l-brand-400' : 'hover:bg-rmpg-700/20 border-l-2 border-l-transparent'
                 }`}
@@ -1180,7 +1207,7 @@ export default function CrmPage() {
           ) : (
             <div className="space-y-2">
               {tasks.map(task => (
-                <div key={task.id} className="panel-inset p-3 flex items-start gap-3">
+                <div key={task.id} onContextMenu={(e) => openMenu(e, buildTaskMenu(task))} className="panel-inset p-3 flex items-start gap-3">
                   {/* Checkbox */}
                   <button type="button"
                     onClick={() => toggleTaskComplete(task)}

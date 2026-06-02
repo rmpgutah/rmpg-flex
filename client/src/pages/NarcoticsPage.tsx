@@ -4,7 +4,9 @@ import PanelTitleBar from '../components/PanelTitleBar';
 import DataTable from '../components/DataTable';
 import StatsCard from '../components/StatsCard';
 import { useToast } from '../components/ToastProvider';
-import { Pill, TrendingUp, Scale, Shield, DollarSign, Plus, Pencil, Trash2 } from 'lucide-react';
+import { useMenuActions } from '../utils/contextMenuActions';
+import type { ContextMenuItem } from '../context/ContextMenuContext';
+import { Pill, TrendingUp, Scale, Shield, DollarSign, Plus, Pencil, Trash2, Eye } from 'lucide-react';
 
 interface NarcCase { id: number; case_number: string; case_type: string; subject_name: string; location: string; substance: string; street_value: number; status: string; priority: string; notes: string; }
 interface NarcStats { totalInvestigations: number; totalSeizures: number; totalStreetValue: number; activeCIs: number; }
@@ -22,6 +24,7 @@ export default function NarcoticsPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const { addToast } = useToast();
+  const m = useMenuActions();
 
   const fetchData = useCallback(async () => {
     try {
@@ -96,7 +99,19 @@ export default function NarcoticsPage() {
         <StatsCard label="ACTIVE CIs" value={String(stats.activeCIs)} icon={TrendingUp} />
       </div>
 
-      <DataTable columns={columns} data={cases} emptyMessage="No narcotics cases" onRowClick={openEdit} />
+      <DataTable
+        columns={columns}
+        data={cases}
+        emptyMessage="No narcotics cases"
+        onRowClick={openEdit}
+        rowContextMenu={(r): ContextMenuItem[] => [
+          m.action('Open', () => openEdit(r), { icon: <Eye size={12} /> }),
+          m.action('Edit', () => openEdit(r), { icon: <Pencil size={12} /> }),
+          m.separator(),
+          m.copyId(r.id),
+          m.action('Delete', () => setDeleteId(r.id), { danger: true, icon: <Trash2 size={12} /> }),
+        ]}
+      />
 
       {formOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={() => setFormOpen(false)}>

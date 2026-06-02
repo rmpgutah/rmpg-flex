@@ -8,9 +8,12 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import RichTextArea from '../components/RichTextArea';
 import {
   Plus, RefreshCw, MapPin, BarChart3, List, Map as MapIcon, Briefcase, Calendar,
-  Route, Navigation, Loader2, CheckCircle, Circle,
+  Route, Navigation, Loader2, CheckCircle, Circle, Eye, Pencil, ClipboardCheck,
+  Search as SearchIcon, AlertTriangle,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
+import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
+import { useMenuActions } from '../utils/contextMenuActions';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useAuth } from '../context/AuthContext';
@@ -101,6 +104,9 @@ interface StatsSummary {
 export default function ServePage() {
   const isMobile = useIsMobile();
   const { user } = useAuth();
+  // ── Right-click context menu ──────────────────────────────────────────
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
   // ── Core state ──────────────────────────────────────────────────────
   const [selectedDate, setSelectedDate] = useState(() => formatDate(new Date()));
   const [activeTab, setActiveTab] = useState<Tab>('Queue');
@@ -634,6 +640,25 @@ export default function ServePage() {
     return () => window.removeEventListener('keydown', handler);
   }, []);
 
+  // ── Build a serve-job row context menu ──
+  const buildJobMenu = (job: ServeJob): ContextMenuItem[] => {
+    const addr = [job.recipient_address, job.recipient_city, job.recipient_state, job.recipient_zip]
+      .filter(Boolean).join(', ');
+    const isClosed = job.status === 'served' || job.status === 'failed' || job.status === 'archived';
+    return [
+      m.action('Open / expand', () => setExpandedJobId(prev => prev === job.id ? null : job.id), { icon: <Eye size={12} /> }),
+      m.action('Edit job', () => openEdit(job.id), { icon: <Pencil size={12} /> }),
+      ...(isClosed ? [] : [m.action('Log attempt', () => setAttemptJob(job), { icon: <ClipboardCheck size={12} /> })]),
+      m.action('Skip trace', () => setSkipTraceJob(job), { icon: <SearchIcon size={12} /> }),
+      m.separator(),
+      m.copy('Copy recipient', job.recipient_name),
+      m.copyId(job.id),
+      ...(addr ? [m.action('Navigate to address', () => handleNavigate(job.id), { icon: <Navigation size={12} /> })] : []),
+      m.separator(),
+      m.action('Flag bad address', () => handleFlagAddress(job.id), { icon: <AlertTriangle size={12} />, danger: true }),
+    ];
+  };
+
   return (
     <div className="flex flex-col h-full bg-surface-base" role="main">
       {fetchError && (
@@ -814,8 +839,8 @@ export default function ServePage() {
                 </div>
               ) : (
                 filteredJobs.map(job => (
+                  <div key={job.id} onContextMenu={(e) => openMenu(e, buildJobMenu(job))}>
                   <ServeJobCard
-                    key={job.id}
                     job={job}
                     linkedCall={linkedCalls[job.id] || null}
                     onAttempt={(id) => {
@@ -832,6 +857,7 @@ export default function ServePage() {
                     isExpanded={expandedJobId === job.id}
                     onToggleExpand={() => setExpandedJobId(prev => prev === job.id ? null : job.id)}
                   />
+                  </div>
                 ))
               )}
             </div>

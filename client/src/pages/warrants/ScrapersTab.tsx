@@ -26,6 +26,8 @@ import { apiFetch } from '../../hooks/useApi';
 import { parseTimestamp, safeDateTimeStr } from '../../utils/dateUtils';
 import { useWebSocket } from '../../context/WebSocketContext';
 import { useToast } from '../../components/ToastProvider';
+import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
+import { useMenuActions } from '../../utils/contextMenuActions';
 import type {
   ScraperSource,
   ScraperHealthSummary,
@@ -287,6 +289,8 @@ function ScraperSourceCard({
 }) {
   const [expanded, setExpanded] = useState(false);
   const { addToast } = useToast();
+  const { openMenu } = useContextMenu();
+  const menu = useMenuActions();
   const grade = source.metrics_24h?.health_grade || 'F';
   const m = source.metrics_24h;
 
@@ -314,10 +318,20 @@ function ScraperSourceCard({
     }
   };
 
+  const buildMenu = (): ContextMenuItem[] => [
+    menu.action(expanded ? 'Collapse' : 'Expand details', () => setExpanded((v) => !v), { icon: <Eye size={12} /> }),
+    menu.action('Trigger scrape', () => { void trigger(); }, { icon: <Zap size={12} /> }),
+    menu.action('Reset circuit', () => { void reset(); }, { icon: <RotateCw size={12} /> }),
+    ...(source.source_url ? [menu.openExternal('View source', source.source_url)] : []),
+    menu.separator(),
+    menu.copyId(source.source_key, 'Copy source key'),
+  ];
+
   return (
     <div className="panel-raised">
       <button
         onClick={() => setExpanded(!expanded)}
+        onContextMenu={(e) => openMenu(e, buildMenu())}
         className="w-full p-2 flex items-center gap-2 hover:bg-rmpg-800/50 text-left"
       >
         <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 bg-rmpg-900 text-rmpg-400 border border-rmpg-700 w-12 text-center">

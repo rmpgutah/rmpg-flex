@@ -37,6 +37,8 @@ import ActivityFeed from '../components/ActivityFeed';
 import FormModal from '../components/FormModal';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { apiFetch, apiUploadFiles } from '../hooks/useApi';
+import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
+import { useMenuActions } from '../utils/contextMenuActions';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { usePersistedTab } from '../hooks/usePersistedState';
 import { formatShortTime, formatDateTime, parseTimestamp } from '../utils/dateUtils';
@@ -239,6 +241,8 @@ export default function CommunicationsPage() {
   const isMobile = useIsMobile();
   const { user } = useAuth();
   const { addToast } = useToast();
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
 
   // --- Panel state ---
   const [activePanel, setActivePanel] = usePersistedTab('rmpg_comms_tab', 'messages' as Panel, ['messages', 'bolos', 'activity'] as const);
@@ -650,6 +654,30 @@ export default function CommunicationsPage() {
     { id: 'activity', label: 'Activity Feed', icon: Activity },
   ];
 
+  // ── Right-click context menus ──
+  const buildThreadMenu = (thread: MessageThread): ContextMenuItem[] => [
+    m.action('Open conversation', () => handleSelectThread(thread), { icon: <Reply size={12} /> }),
+    m.separator(),
+    m.copy('Copy subject', thread.subject),
+    m.copyId(thread.threadId),
+  ];
+
+  const buildBoloMenu = (bolo: BOLO): ContextMenuItem[] => [
+    ...(bolo.status === 'active'
+      ? [
+          m.action('Mark resolved', () => handleResolveBOLO(bolo.id), { icon: <CheckCircle size={12} /> }),
+          m.action('Archive', () => handleArchiveBOLO(bolo.id), { icon: <Archive size={12} /> }),
+        ]
+      : [m.action('Unarchive', () => handleUnarchiveBOLO(bolo.id), { icon: <RotateCcw size={12} /> })]),
+    m.separator(),
+    m.copy('Copy BOLO #', bolo.bolo_number),
+    m.copy('Copy title', bolo.title),
+    m.copyId(bolo.id),
+    ...(bolo.status === 'active'
+      ? [m.separator(), m.action('Cancel BOLO', () => setCancelTarget(bolo), { icon: <Trash2 size={12} />, danger: true })]
+      : []),
+  ];
+
   // ============================================================
   // Spinner helper
   // ============================================================
@@ -859,6 +887,7 @@ export default function CommunicationsPage() {
                         <div
                           key={thread.threadId}
                           onClick={() => handleSelectThread(thread)}
+                          onContextMenu={(e) => openMenu(e, buildThreadMenu(thread))}
                           className={`
                             px-3 py-2.5 border-b border-rmpg-600/30 cursor-pointer transition-colors
                             ${isSelected ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : 'border-l-2 border-l-transparent hover:bg-surface-raised'}
@@ -1211,6 +1240,7 @@ export default function CommunicationsPage() {
               bolos.map((bolo) => (
                 <div
                   key={bolo.id}
+                  onContextMenu={(e) => openMenu(e, buildBoloMenu(bolo))}
                   className={`panel-beveled p-4 bg-surface-base ${bolo.priority === 'P1' ? 'border-red-700/50 animate-emergency-pulse' : bolo.priority === 'P2' ? 'border-amber-700/40' : ''}`}
                   style={{ borderLeftWidth: '3px', borderLeftColor: bolo.priority === 'P1' ? '#ef4444' : bolo.priority === 'P2' ? '#f97316' : bolo.priority === 'P3' ? '#eab308' : '#22c55e' }}
                 >

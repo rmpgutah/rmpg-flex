@@ -5,7 +5,7 @@
 // ============================================================
 
 import {useState, useCallback, useEffect} from 'react';
-import { Search, AlertTriangle, User, Shield, Calendar, MapPin, FileText, ChevronRight, Scale, List, Clock, Loader2 } from 'lucide-react';
+import { Search, AlertTriangle, User, Shield, Calendar, MapPin, FileText, ChevronRight, Scale, List, Clock, Loader2, Eye } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { toDisplayLabel } from '../utils/formatters';
@@ -13,6 +13,8 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import { useToast } from '../components/ToastProvider';
 import { formatAddressDisplay } from '../utils/statusLabels';
 import { parseTimestamp } from '../utils/dateUtils';
+import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
+import { useMenuActions } from '../utils/contextMenuActions';
 
 interface PersonResult {
   id: string;
@@ -161,6 +163,21 @@ export default function CriminalHistoryPage() {
     window.open(url, '_blank', 'noopener,noreferrer');
   }, []);
 
+  // ── Right-click context menu ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+  const buildPersonMenu = (p: PersonResult): ContextMenuItem[] => {
+    const fullName = `${p.first_name || ''} ${p.last_name || ''}`.trim();
+    return [
+      m.action('View criminal history', () => selectPerson(p), { icon: <Eye size={12} /> }),
+      m.action('Search Utah Courts', () => openUtahCourts(p), { icon: <Scale size={12} /> }),
+      m.separator(),
+      m.copy('Copy name', fullName),
+      m.copyId(p.id),
+      ...(p.drivers_license ? [m.copy('Copy DL #', p.drivers_license)] : []),
+    ];
+  };
+
   const cautionFlags = selectedPerson?.caution_flags ? selectedPerson.caution_flags.split(',').map(f => f.trim()).filter(Boolean) : [];
 
   const typeIcon = (type: string) => {
@@ -266,6 +283,7 @@ export default function CriminalHistoryPage() {
             <button type="button"
               key={p.id}
               onClick={() => selectPerson(p)}
+              onContextMenu={(e) => openMenu(e, buildPersonMenu(p))}
               className={`w-full text-left px-3 py-2 border-b border-rmpg-800/30 transition-all duration-150 ${
                 selectedPerson?.id === p.id ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : 'hover:bg-rmpg-800/20 border-l-2 border-l-transparent'
               }`}

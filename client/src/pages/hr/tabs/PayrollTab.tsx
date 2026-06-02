@@ -6,10 +6,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   DollarSign, Calendar, Plus, RefreshCw, Loader2, Users, Clock, ChevronRight,
-  Edit3, Trash2, Check, X, AlertTriangle, Banknote, TrendingUp, FileText, Download,
+  Edit3, Trash2, Check, X, AlertTriangle, Banknote, TrendingUp, FileText, Download, Eye, XCircle,
 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import IconButton from '../../../components/IconButton';
+import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
+import { useMenuActions } from '../../../utils/contextMenuActions';
 import { localToday, parseTimestamp } from '../../../utils/dateUtils';
 import { useFormDraft } from '../../../hooks/useFormDraft';
 import UnsavedChangesGuard from '../../../components/UnsavedChangesGuard';
@@ -151,6 +153,10 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
   }, []);
 
   const isManager = ['admin', 'manager'].includes(userRole);
+
+  // ── Right-click context menu ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
 
   // ─── Fetch ────────────────────────────────────────────────
 
@@ -443,6 +449,61 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
     return () => window.removeEventListener('keydown', handler);
   }, []);
 
+  // ─── Context-menu builders (one per sub-tab row) ──────────
+  const buildPeriodMenu = (period: PayPeriod): ContextMenuItem[] => [
+    m.action('Open timesheet', () => { setSelectedPeriod(period); setSubTab('entries'); }, { icon: <Eye size={12} /> }),
+    m.separator(),
+    m.copy('Copy period name', period.name),
+    m.copy('Copy gross total', formatCurrency(period.total_gross)),
+    m.copyId(period.id),
+    ...(isManager && period.status === 'open'
+      ? [
+          m.separator(),
+          m.action('Auto-populate employees', () => handlePopulatePeriod(period.id), { icon: <Users size={12} /> }),
+          m.action('Close period', () => handleClosePeriod(period.id), { icon: <Check size={12} /> }),
+          m.action('Delete period', () => handleDeletePeriod(period.id), { icon: <Trash2 size={12} />, danger: true }),
+        ]
+      : []),
+  ];
+
+  const buildRateMenu = (rate: PayRate): ContextMenuItem[] => [
+    m.copy('Copy employee name', rate.officer_name),
+    m.copy('Copy rate', formatCurrency(rate.rate)),
+    m.copyId(rate.id),
+  ];
+
+  const buildEntryMenu = (entry: PayrollEntry): ContextMenuItem[] => [
+    ...(isManager && entry.status !== 'approved'
+      ? [
+          m.action('Edit hours', () => startEditing(entry), { icon: <Edit3 size={12} /> }),
+          m.action('Approve entry', () => handleApproveEntry(entry.id), { icon: <Check size={12} /> }),
+          m.separator(),
+        ]
+      : []),
+    m.copy('Copy employee name', entry.officer_name),
+    m.copy('Copy gross pay', formatCurrency(entry.gross_pay)),
+    m.copyId(entry.id),
+  ];
+
+  const buildOtMenu = (ot: OvertimeRequest): ContextMenuItem[] => [
+    ...(isManager && ot.status === 'requested'
+      ? [
+          m.action('Approve request', () => handleOtDecision(ot.id, 'approved'), { icon: <Check size={12} /> }),
+          m.action('Deny request', () => handleOtDecision(ot.id, 'denied'), { icon: <XCircle size={12} />, danger: true }),
+          m.separator(),
+        ]
+      : []),
+    m.copy('Copy officer name', ot.officer_name),
+    m.copy('Copy hours', `${ot.hours_requested}h`),
+    m.copyId(ot.id),
+  ];
+
+  const buildLeaveMenu = (lb: LeaveBalance): ContextMenuItem[] => [
+    m.copy('Copy officer name', lb.full_name),
+    ...(lb.badge_number ? [m.copy('Copy badge number', lb.badge_number)] : []),
+    m.copyId(lb.id),
+  ];
+
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Toast */}
@@ -545,6 +606,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                       : 'border-rmpg-700 bg-surface-base hover:border-rmpg-700'
                   }`}
                   onClick={() => { setSelectedPeriod(period); setSubTab('entries'); }}
+                  onContextMenu={(e) => openMenu(e, buildPeriodMenu(period))}
                 >
                   <div className="flex items-center gap-3 px-4 py-3">
                     <div className="flex-shrink-0">
@@ -680,7 +742,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                 </thead>
                 <tbody>
                   {rates.map(rate => (
-                    <tr key={rate.id} className="border-b border-rmpg-700/50 hover:bg-brand-500/5">
+                    <tr key={rate.id} onContextMenu={(e) => openMenu(e, buildRateMenu(rate))} className="border-b border-rmpg-700/50 hover:bg-brand-500/5">
                       <td className="px-3 py-2 text-white font-medium">{rate.officer_name}</td>
                       <td className="px-3 py-2">
                         <span className="px-1.5 py-0.5 text-[9px] rounded-sm bg-brand-500/15 text-brand-400 uppercase font-bold">{rate.pay_type}</span>
@@ -764,7 +826,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                   {entries.map(entry => {
                     const isEditing = editingEntry === entry.id;
                     return (
-                      <tr key={entry.id} className={`border-b border-rmpg-700/50 ${isEditing ? 'bg-brand-500/5' : 'hover:bg-brand-500/5'}`}>
+                      <tr key={entry.id} onContextMenu={(e) => openMenu(e, buildEntryMenu(entry))} className={`border-b border-rmpg-700/50 ${isEditing ? 'bg-brand-500/5' : 'hover:bg-brand-500/5'}`}>
                         <td className="px-2 py-2 text-white font-medium whitespace-nowrap">{entry.officer_name}</td>
                         <td className="px-2 py-2 text-right text-rmpg-300 font-mono">{entry.hourly_rate ? formatCurrency(entry.hourly_rate) : '—'}</td>
                         {isEditing ? (
@@ -897,7 +959,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                 </thead>
                 <tbody>
                   {otRequests.map(ot => (
-                    <tr key={ot.id} className="border-b border-rmpg-700 hover:bg-surface-base">
+                    <tr key={ot.id} onContextMenu={(e) => openMenu(e, buildOtMenu(ot))} className="border-b border-rmpg-700 hover:bg-surface-base">
                       <td className="px-2 py-1.5 text-white">{ot.officer_name}</td>
                       <td className="px-2 py-1.5 text-rmpg-300">{formatDate(ot.requested_date)}</td>
                       <td className="px-2 py-1.5 text-rmpg-300 font-mono">{ot.hours_requested}h</td>
@@ -972,7 +1034,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                     const accrued = lb.pto_pending + lb.pto_used;
                     const pctUsed = accrued > 0 ? (lb.pto_used / accrued) * 100 : 0;
                     return (
-                      <tr key={lb.id} className="border-b border-rmpg-700/50 hover:bg-surface-raised/30">
+                      <tr key={lb.id} onContextMenu={(e) => openMenu(e, buildLeaveMenu(lb))} className="border-b border-rmpg-700/50 hover:bg-surface-raised/30">
                         <td className="py-2 px-3 text-white font-medium">{lb.full_name}</td>
                         <td className="py-2 px-3 text-rmpg-400 font-mono">{lb.badge_number || '—'}</td>
                         <td className="py-2 px-3 text-right text-rmpg-300">{accrued.toFixed(1)}h</td>

@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   Bell, Plus, Edit2, Trash2, Zap, Loader2, X, Search, Play, CheckCircle2, Mail,
-  Smartphone,
+  Smartphone, Power, PowerOff,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { asArray } from '../../utils/asArray';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import IconButton from '../../components/IconButton';
+import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
+import { useMenuActions } from '../../utils/contextMenuActions';
 import type { User } from '../../types';
 
 // ============================================================
@@ -183,6 +185,23 @@ export default function AdminNotifRulesTab({ users, LoadingSpinner, error, setEr
     setForm((f) => ({ ...f, target_roles: JSON.stringify(next) }));
   };
 
+  // ── Right-click context menu (per rule) ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+
+  const buildRuleMenu = (r: NotificationRule): ContextMenuItem[] => [
+    m.action('Edit rule', () => openEdit(r), { icon: <Edit2 size={12} /> }),
+    m.action('Send test notification', () => testRule(r.id), { icon: <Play size={12} />, disabled: testing === r.id }),
+    m.action(r.is_active ? 'Disable rule' : 'Enable rule', () => toggleActive(r), {
+      icon: r.is_active ? <PowerOff size={12} /> : <Power size={12} />,
+    }),
+    m.separator(),
+    m.copy('Copy name', r.name),
+    m.copyId(r.id),
+    m.separator(),
+    m.action('Delete rule', () => setDeleteId(r.id), { icon: <Trash2 size={12} />, danger: true }),
+  ];
+
   // Keyboard shortcut: Escape to close modals
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -232,7 +251,7 @@ export default function AdminNotifRulesTab({ users, LoadingSpinner, error, setEr
           const roles = (() => { try { return JSON.parse(r.target_roles || '[]') as string[]; } catch { return []; } })();
 
           return (
-            <div key={r.id} className={`panel-beveled bg-surface-base p-3 border-l-[3px] ${r.is_active ? 'border-l-brand-500' : 'border-l-rmpg-700 opacity-60'}`}>
+            <div key={r.id} onContextMenu={(e) => openMenu(e, buildRuleMenu(r))} className={`panel-beveled bg-surface-base p-3 border-l-[3px] ${r.is_active ? 'border-l-brand-500' : 'border-l-rmpg-700 opacity-60'}`}>
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-start gap-2 flex-1 min-w-0">
                   <div className="p-1 rounded-sm bg-surface-sunken border border-rmpg-700">

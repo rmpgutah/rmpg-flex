@@ -8,6 +8,8 @@ import { apiFetch } from '../../hooks/useApi';
 import { asArray } from '../../utils/asArray';
 import { formatDateTime } from '../../utils/dateUtils';
 import ConfirmDialog from '../../components/ConfirmDialog';
+import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
+import { useMenuActions } from '../../utils/contextMenuActions';
 
 // ============================================================
 // System Announcements Management Tab
@@ -161,6 +163,20 @@ export default function AdminAnnouncementsTab({ LoadingSpinner, error, setError 
     }
   };
 
+  // ── Right-click context menu ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+
+  const buildAnnouncementMenu = (a: Announcement): ContextMenuItem[] => [
+    m.action('Edit announcement', () => openEdit(a), { icon: <Edit2 size={12} /> }),
+    m.action(a.is_active ? 'Deactivate' : 'Activate', () => toggleActive(a), { icon: a.is_active ? <EyeOff size={12} /> : <Eye size={12} /> }),
+    m.separator(),
+    m.copy('Copy title', a.title),
+    m.copyId(a.id),
+    m.separator(),
+    m.action('Delete announcement', () => setDeleteId(a.id), { icon: <Trash2 size={12} />, danger: true }),
+  ];
+
   const filtered = announcements.filter((a) =>
     !search || a.title.toLowerCase().includes(search.toLowerCase()) || a.body.toLowerCase().includes(search.toLowerCase())
   );
@@ -236,6 +252,7 @@ export default function AdminAnnouncementsTab({ LoadingSpinner, error, setError 
           return (
             <div
               key={a.id}
+              onContextMenu={(e) => openMenu(e, buildAnnouncementMenu(a))}
               className={`panel-beveled bg-surface-base p-3 border-l-[3px] ${a.is_active ? 'border-l-brand-500' : 'border-l-rmpg-700 opacity-60'}`}
             >
               <div className="flex items-start justify-between gap-3">

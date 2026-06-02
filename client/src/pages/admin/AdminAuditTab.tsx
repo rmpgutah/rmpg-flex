@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { Clock, Download, Search, Filter } from 'lucide-react';
 import { localToday, safeDateTimeStr } from '../../utils/dateUtils';
+import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
+import { useMenuActions } from '../../utils/contextMenuActions';
 
 // ============================================================
 // Types
@@ -39,6 +41,23 @@ export default function AdminAuditTab({
   const [filterAction, setFilterAction] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [exporting, setExporting] = useState(false);
+
+  // Right-click context menu — audit rows are read-only logs, so copy only.
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+
+  const buildEntryMenu = (entry: AuditEntry): ContextMenuItem[] => {
+    const full = `${safeDateTimeStr(entry.timestamp)} | ${entry.user} | ${entry.action} | ${entry.details}`;
+    return [
+      m.copy('Copy entry', full),
+      m.separator(),
+      m.copy('Copy user', entry.user),
+      m.copy('Copy action', entry.action),
+      m.copy('Copy details', entry.details),
+      m.copy('Copy timestamp', safeDateTimeStr(entry.timestamp), <Clock size={12} />),
+      m.copyId(entry.id),
+    ];
+  };
 
   const handleExport = async () => {
     setExporting(true);
@@ -152,7 +171,7 @@ export default function AdminAuditTab({
           </thead>
           <tbody>
             {filteredLog.map((entry, idx) => (
-              <tr key={entry.id} className={idx % 2 === 0 ? '' : 'bg-rmpg-800/15'}>
+              <tr key={entry.id} onContextMenu={(e) => openMenu(e, buildEntryMenu(entry))} className={idx % 2 === 0 ? '' : 'bg-rmpg-800/15'}>
                 <td className="text-xs text-rmpg-300 font-mono whitespace-nowrap tabular-nums">
                   <div className="flex items-center gap-1.5">
                     <Clock className="w-3 h-3 text-rmpg-400" aria-hidden="true" />

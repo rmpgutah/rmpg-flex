@@ -1,7 +1,9 @@
 import React from 'react';
-import { ChevronUp, ChevronDown, Inbox } from 'lucide-react';
+import { ChevronUp, ChevronDown, Inbox, Copy } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import EmptyState from './EmptyState';
+import { useContextMenuSafe, type ContextMenuItem } from '../context/ContextMenuContext';
+import { copyToClipboard } from '../utils/contextMenuActions';
 
 // ── Types ─────────────────────────────────────────────────────
 export interface Column<T> {
@@ -35,6 +37,17 @@ export interface DataTableProps<T> {
   spillman?: boolean;
   /** Condensed mode — even tighter padding for data-dense displays */
   condensed?: boolean;
+  /**
+   * Build a right-click context menu for a row. Return [] to suppress.
+   * Receives the row plus the column whose cell was right-clicked (if any),
+   * so callers can offer cell-specific actions.
+   */
+  rowContextMenu?: (row: T, col?: Column<T>) => ContextMenuItem[];
+  /**
+   * Enable built-in "Copy cell / Copy row" right-click defaults even when
+   * no rowContextMenu is supplied (or appended below custom items).
+   */
+  enableContextMenu?: boolean;
 }
 
 // ── Skeleton loader rows ──────────────────────────────────────
@@ -94,7 +107,50 @@ function DataTable<T>({
   ariaLabel,
   spillman = false,
   condensed = false,
+  rowContextMenu,
+  enableContextMenu = false,
 }: DataTableProps<T>) {
+  const { openMenu } = useContextMenuSafe();
+  const ctxEnabled = enableContextMenu || !!rowContextMenu;
+
+  // Assemble the row menu: caller's custom items first, then built-in
+  // Copy-cell / Copy-row defaults derived straight from the rendered DOM.
+  const handleRowContextMenu = (row: T, e: React.MouseEvent) => {
+    if (!ctxEnabled) return;
+    const tr = e.currentTarget as HTMLElement;
+    const td = (e.target as HTMLElement)?.closest?.('td') as HTMLElement | null;
+    const col = columns.find((c) => c.key === td?.dataset.colKey);
+    const custom = rowContextMenu ? rowContextMenu(row, col) : [];
+
+    const cellText = (td?.textContent || '').trim();
+    const rowText = Array.from(tr.querySelectorAll('td'))
+      .map((cell) => (cell.textContent || '').trim())
+      .filter(Boolean)
+      .join('\t');
+
+    const defaults: ContextMenuItem[] = [];
+    if (col && cellText) {
+      defaults.push({
+        label: `Copy ${col.label}`,
+        icon: <Copy size={12} />,
+        onClick: () => { void copyToClipboard(cellText); },
+      });
+    }
+    if (rowText) {
+      defaults.push({
+        label: 'Copy row',
+        icon: <Copy size={12} />,
+        onClick: () => { void copyToClipboard(rowText); },
+      });
+    }
+
+    const items = custom.length && defaults.length
+      ? [...custom, { separator: true } as ContextMenuItem, ...defaults]
+      : custom.length ? custom : defaults;
+
+    if (items.length) openMenu(e, items);
+  };
+
   const getKey = (row: T, index: number): string | number => {
     if (rowKey) return rowKey(row);
     if (row != null && typeof row === 'object' && 'id' in row) return (row as Record<string, unknown>).id as string | number;
@@ -173,6 +229,7 @@ function DataTable<T>({
                 <tr
                   key={key}
                   onClick={onRowClick ? () => onRowClick(row) : undefined}
+                  onContextMenu={ctxEnabled ? (e) => handleRowContextMenu(row, e) : undefined}
                   className={`${spillman ? '' : 'group/row border-b border-rmpg-700/30 transition-colors duration-100'} ${
                     isSelected
                       ? spillman ? 'selected' : 'bg-brand-900/30 ring-1 ring-inset ring-brand-600/40'
@@ -192,6 +249,7 @@ function DataTable<T>({
                   {columns.map((col) => (
                     <td
                       key={col.key}
+                      data-col-key={col.key}
                       className={`${cellPadding} text-rmpg-200 ${bodyText} ${alignClass(col.align)}`}
                       style={col.width ? { width: col.width } : undefined}
                     >

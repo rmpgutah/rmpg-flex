@@ -3,6 +3,8 @@ import { Activity, Award, Plus, TrendingUp, Star, Loader2 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { useToast } from '../../../components/ToastProvider';
 import { localToday, parseTimestamp } from '../../../utils/dateUtils';
+import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
+import { useMenuActions } from '../../../utils/contextMenuActions';
 
 import RichTextArea from '../../../components/RichTextArea';
 function fmtDate(d: string | null | undefined): string {
@@ -76,6 +78,21 @@ export default function FitnessCommendationsTab({ officerId }: { officerId: stri
     try { await apiFetch<any[]>(`/personnel/commendations/${officerId}`, { method: 'POST', body: JSON.stringify(commForm) }); addToast('Commendation added', 'success'); setShowCommForm(false); setCommForm({ date: localToday(), type: 'commendation', description: '' }); loadCommendations(); } catch { addToast('Failed to add commendation', 'error'); } finally { setSubmittingComm(false); }
   };
 
+  // Right-click context menus
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+  const buildFitnessMenu = (f: FitnessScore): ContextMenuItem[] => [
+    m.copy('Copy date', fmtDate(f.date)),
+    ...(f.score != null ? [m.copy('Copy score', f.score)] : []),
+    ...(f.notes ? [m.copy('Copy notes', f.notes)] : []),
+  ];
+  const buildCommMenu = (c: Commendation): ContextMenuItem[] => [
+    m.copy('Copy type', c.type?.replace(/_/g, ' ')),
+    m.copy('Copy description', c.description),
+    m.separator(),
+    m.copyId(c.id),
+  ];
+
   // Set document title
   useEffect(() => { document.title = 'Personnel - Fitness \u2014 RMPG Flex'; }, []);
 
@@ -110,7 +127,7 @@ export default function FitnessCommendationsTab({ officerId }: { officerId: stri
         {fitness.length > 0 ? (
           <div className="space-y-1">
             {fitness.slice(0, 10).map((f, i) => (
-              <div key={i} className="panel-inset p-2 flex items-center justify-between">
+              <div key={i} className="panel-inset p-2 flex items-center justify-between" onContextMenu={(e) => openMenu(e, buildFitnessMenu(f))}>
                 <div className="flex items-center gap-3">
                   <span className="text-[10px] text-rmpg-400">{fmtDate(f.date)}</span>
                   {f.score && <span className="text-xs font-bold text-white">Score: {f.score}</span>}
@@ -167,7 +184,7 @@ export default function FitnessCommendationsTab({ officerId }: { officerId: stri
         {commendations.length > 0 ? (
           <div className="space-y-1">
             {commendations.map((c, i) => (
-              <div key={i} className="panel-inset p-2 flex items-start gap-2">
+              <div key={i} className="panel-inset p-2 flex items-start gap-2" onContextMenu={(e) => openMenu(e, buildCommMenu(c))}>
                 <Star className="w-3.5 h-3.5 text-amber-400 mt-0.5 flex-shrink-0" />
                 <div>
                   <div className="flex items-center gap-2">

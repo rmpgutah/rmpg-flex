@@ -1,9 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Eye, Copy } from 'lucide-react';
 import { parseTimestamp } from '../../../utils/dateUtils';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch } from '../../../hooks/useApi';
 import { useWebSocket } from '../../../context/WebSocketContext';
 import { useGeolocation } from '../hooks/useGeolocation';
+import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
+import { copyToClipboard, separator } from '../../../utils/contextMenuActions';
+
+// See BolosCard for why we build menus inline (useMenuActions throws without
+// ToastProvider/Router, which the bare-render tests don't mount).
 
 // Server accepts lowercase statuses (see server/src/routes/dispatch/calls.ts:131).
 // "Active" here = not cleared/closed/cancelled/archived.
@@ -55,6 +61,7 @@ function prioNum(p: unknown): number | null {
 export default function ActiveCallsCard() {
   const navigate = useNavigate();
   const { subscribe } = useWebSocket();
+  const { openMenu } = useContextMenu();
 
   const [calls, setCalls] = useState<CallRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -122,6 +129,35 @@ export default function ActiveCallsCard() {
 
   const handleRowClick = (call: CallRow) => {
     if (call.call_number) navigate(`/dispatch?call=${call.call_number}`);
+  };
+
+  // Right-click menu for a call row. 'Open call' reuses handleRowClick;
+  // copy items use the standalone clipboard helper (no toast).
+  const buildCallMenu = (c: CallRow, addr: string): ContextMenuItem[] => {
+    const callNo = c.call_number || `#${c.id}`;
+    const items: ContextMenuItem[] = [
+      {
+        label: 'Open call',
+        icon: <Eye size={12} />,
+        disabled: !c.call_number,
+        onClick: () => handleRowClick(c),
+      },
+      separator(),
+      {
+        label: 'Copy call #',
+        icon: <Copy size={12} />,
+        disabled: !c.call_number,
+        onClick: () => { void copyToClipboard(callNo); },
+      },
+    ];
+    if (addr) {
+      items.push({
+        label: 'Copy address',
+        icon: <Copy size={12} />,
+        onClick: () => { void copyToClipboard(addr); },
+      });
+    }
+    return items;
   };
 
   const distanceFor = (c: CallRow): string => {
@@ -201,6 +237,7 @@ export default function ActiveCallsCard() {
                 <button
                   type="button"
                   onClick={() => handleRowClick(c)}
+                  onContextMenu={(e) => openMenu(e, buildCallMenu(c, addr))}
                   className={[
                     'w-full min-h-[44px] py-2 text-white text-xs flex items-center justify-between gap-2 text-left',
                     isLast ? '' : 'border-b border-[#1a1a1a]',

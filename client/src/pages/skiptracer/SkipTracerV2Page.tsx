@@ -17,6 +17,8 @@ import { apiFetch } from '../../hooks/useApi';
 import PanelTitleBar from '../../components/PanelTitleBar';
 import IconButton from '../../components/IconButton';
 import { useIsMobile } from '../../hooks/useIsMobile';
+import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
+import { useMenuActions } from '../../utils/contextMenuActions';
 
 // ─── Types ───────────────────────────────────────────────────
 
@@ -785,6 +787,45 @@ export default function SkipTracerV2Page() {
     return events;
   }, []);
 
+  // ─── Right-click context menus ─────────────────────────────
+
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+
+  const buildProfileMenu = useCallback((profile: Profile): ContextMenuItem[] => {
+    const name = getDisplayName(profile);
+    const firstPhone = profile.phones?.[0]?.number;
+    return [
+      m.action('View dossier', () => setSelected(profile), { icon: <Eye size={12} /> }),
+      m.separator(),
+      m.copy('Copy name', name),
+      ...(firstPhone ? [m.copy('Copy phone', firstPhone, <Phone size={12} />)] : []),
+      m.copyId(profile.id),
+    ];
+  }, [m, getDisplayName]);
+
+  const buildDossierMenu = useCallback((d: Dossier): ContextMenuItem[] => [
+    m.action('Open dossier', () => openDossier(d), { icon: <Eye size={12} /> }),
+    m.action('Export PDF', () => { void handleExportPdf(d.id); }, { icon: <Download size={12} /> }),
+    m.separator(),
+    m.copy('Copy subject name', d.subject_name),
+    m.copyId(d.id),
+  ], [m, openDossier, handleExportPdf]);
+
+  const buildHistoryMenu = useCallback((h: SearchHistory): ContextMenuItem[] => {
+    let queryDisplay = '';
+    try {
+      const params = JSON.parse(h.query_params);
+      queryDisplay = params.name || params.phone || params.email || params.address || h.query_params;
+    } catch { queryDisplay = h.query_params; }
+    return [
+      m.action('Re-run search', () => rerunSearch(h), { icon: <RefreshCw size={12} /> }),
+      m.separator(),
+      m.copy('Copy query', queryDisplay),
+      m.copyId(h.id),
+    ];
+  }, [m, rerunSearch]);
+
   // ─── Source counts by category ─────────────────────────────
 
   const sourceSummary = useMemo(() => {
@@ -1089,6 +1130,7 @@ export default function SkipTracerV2Page() {
             <button type="button"
               key={profile.id}
               onClick={() => setSelected(profile)}
+              onContextMenu={(e) => openMenu(e, buildProfileMenu(profile))}
               className={`w-full text-left p-2.5 border rounded-sm transition-all ${
                 isSelected
                   ? 'border-[#888888] bg-[#888888]/15 shadow-lg shadow-[#888888]/10'
@@ -1712,7 +1754,7 @@ export default function SkipTracerV2Page() {
       ) : (
         <div className="space-y-2">
           {dossiers.map(d => (
-            <div key={d.id} className="border border-[#1a1a1a] rounded-sm bg-[#181818] p-3 hover:bg-[#1a1a1a] transition-colors">
+            <div key={d.id} className="border border-[#1a1a1a] rounded-sm bg-[#181818] p-3 hover:bg-[#1a1a1a] transition-colors" onContextMenu={(e) => openMenu(e, buildDossierMenu(d))}>
               <div className="flex items-start justify-between">
                 <div className="flex-1 min-w-0">
                   <div className="text-[12px] font-bold text-white">{d.subject_name}</div>
@@ -1763,7 +1805,7 @@ export default function SkipTracerV2Page() {
             const badgeType = h.search_type === 'name' ? 'Name' : h.search_type === 'phone' ? 'Phone' : h.search_type === 'email' ? 'Email' : 'Address';
 
             return (
-              <div key={h.id} className="border border-[#1a1a1a] rounded-sm bg-[#181818] p-2.5 hover:bg-[#1a1a1a] transition-colors">
+              <div key={h.id} className="border border-[#1a1a1a] rounded-sm bg-[#181818] p-2.5 hover:bg-[#1a1a1a] transition-colors" onContextMenu={(e) => openMenu(e, buildHistoryMenu(h))}>
                 <div className="flex items-center justify-between">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">

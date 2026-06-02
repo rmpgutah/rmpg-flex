@@ -8,6 +8,8 @@ import type { TimeEntry } from '../../../types';
 import type { OfficerWithStatus } from '../utils/personnelMappers';
 import ConfirmDialog from '../../../components/ConfirmDialog';
 import { parseTimestamp } from '../../../utils/dateUtils';
+import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
+import { useMenuActions } from '../../../utils/contextMenuActions';
 
 interface Props {
   timeEntries: TimeEntry[];
@@ -60,6 +62,19 @@ export default function TimeAttendanceTab({ timeEntries, officers, onEditTimeEnt
     { label: 'On Break', value: stats.onBreakCount, icon: Coffee, color: 'text-amber-400', bgClass: 'bg-surface-base', border: 'border-amber-700/30', topBorder: 'border-t-amber-500' },
     { label: 'Clocked Out', value: stats.clockedOutCount, icon: LogOut, color: 'text-rmpg-400', bgClass: 'bg-surface-base', border: 'border-rmpg-700', topBorder: 'border-t-rmpg-600' },
     { label: 'Avg Hours/Officer', value: stats.avgHours, icon: BarChart3, color: 'text-brand-400', bgClass: 'bg-surface-base', border: 'border-brand-700/30', topBorder: 'border-t-brand-500' },
+  ];
+
+  // Right-click context menu
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+  const buildRowMenu = (te: TimeEntry): ContextMenuItem[] => [
+    ...(onEditTimeEntry ? [m.action('Edit time entry', () => onEditTimeEntry(te), { icon: <Pencil size={12} /> })] : []),
+    ...(onEditTimeEntry ? [m.separator()] : []),
+    m.copy('Copy officer', te.officer_name),
+    m.copyId(te.id),
+    ...(onDeleteTimeEntry
+      ? [m.separator(), m.action('Delete time entry', () => setDeleteTarget(te.id), { icon: <Trash2 size={12} />, danger: true })]
+      : []),
   ];
 
   // Set document title
@@ -142,7 +157,7 @@ export default function TimeAttendanceTab({ timeEntries, officers, onEditTimeEnt
               </tr>
             ) : (
               timeEntries.map((te) => (
-                <tr key={te.id}>
+                <tr key={te.id} onContextMenu={(e) => openMenu(e, buildRowMenu(te))}>
                   <td>
                     <div className="flex items-center gap-1.5">
                       {te.status === 'clocked_in' && <span className="led-dot led-green" />}
