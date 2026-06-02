@@ -14,7 +14,7 @@
     "migrate:prod": "wrangler d1 migrations apply rmpg-flex --remote"
   },
   "dependencies": {
-    "@cloudflare/containers": "^0.3.4",
+    "@cloudflare/containers": "^0.3.6",
     "bcryptjs": "^3.0.3",
     "hono": "^4.12.21",
     "jose": "^6.2.3",
