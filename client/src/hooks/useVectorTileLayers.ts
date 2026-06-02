@@ -213,7 +213,11 @@ export function useVectorTileLayers({ map, popup, isLight = false, onUseLocation
                 visibility: 'none',
                 'symbol-placement': 'line',
                 'text-field': ['coalesce', ['get', 'FULLNAME'], ['get', 'NAME'], ''] as any,
-                'text-size': 10,
+                // Visual-harmony: major roads (lower sort key) win label
+                // collisions over local streets, and label slightly larger,
+                // so the network reads cleanly instead of as label soup.
+                'symbol-sort-key': ['match', ['to-string', ['get', 'CARTOCODE']], '1', 0, '2', 1, '3', 2, '4', 3, 9] as any,
+                'text-size': ['match', ['to-string', ['get', 'CARTOCODE']], '1', 12, '2', 11.5, '3', 11, 10] as any,
                 'text-font': ['DIN Offc Pro Medium', 'Arial Unicode MS Regular'],
               },
               paint: {

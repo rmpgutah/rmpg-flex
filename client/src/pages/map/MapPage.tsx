@@ -433,6 +433,21 @@ export default function MapPage() {
   });
   const [showGeoPanel, setShowGeoPanel] = useState(false);
 
+  // Statewide vector-tile overlays (PMTiles: Utah roads + address points).
+  // isLight keeps labels legible across basemaps; onUseLocation routes a clicked
+  // address/road into the SAME pan+zoom+marker flow as the address search box,
+  // so the statewide data feeds the existing dispatch location workflow.
+  const { vectorLayerStates, toggleVectorLayer, vectorConfigs } = useVectorTileLayers({
+    map: mapInstanceRef.current,
+    popup: infoWindowRef.current,
+    isLight: isLightMapStyle(mapStyle),
+    onUseLocation: (info) => {
+      handleAddressSelect([info.lng, info.lat], info.label);
+      setAddressSearch(info.label);
+    },
+  });
+  const [showVectorPanel, setShowVectorPanel] = useState(false);
+
   // District hierarchy layers (Area/Section/Zone) derived from beat geometry +
   // the dispatch_geography districts join. Beat itself stays in useGeoJsonLayers.
   const { hierarchyStates, toggleHierarchyLayer, hierarchyConfigs } = useDistrictHierarchyLayers({
@@ -451,6 +466,28 @@ export default function MapPage() {
   useWhatsHere({ map: mapInstanceRef.current, popup: infoWindowRef.current, active: whatsHereActive });
   const { choroLegend } = useActivityChoropleth({ map: mapInstanceRef.current, calls, level: choroLevel });
   const { measureResult, clearMeasure } = useMapMeasureDraw({ map: mapInstanceRef.current, mode: measureMode });
+
+  // Layer-visibility memory: persist which Statewide / hierarchy layers are on
+  // and restore them once the map is ready, so the operator's overlay setup
+  // survives a reload. Wrappers keep the persisted set in sync on each toggle.
+  const [savedStatewide, setSavedStatewide] = usePersistedState<string[]>('rmpg_statewide_on', []);
+  const [savedHier, setSavedHier] = usePersistedState<string[]>('rmpg_hier_on', []);
+  const restoredOverlaysRef = useRef(false);
+  const handleToggleStatewide = useCallback((id: string) => {
+    toggleVectorLayer(id);
+    setSavedStatewide((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
+  }, [toggleVectorLayer, setSavedStatewide]);
+  const handleToggleHier = useCallback((id: string) => {
+    toggleHierarchyLayer(id as any);
+    setSavedHier((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
+  }, [toggleHierarchyLayer, setSavedHier]);
+  useEffect(() => {
+    if (restoredOverlaysRef.current || !mapLoaded) return;
+    restoredOverlaysRef.current = true;
+    for (const id of savedStatewide) if (!vectorLayerStates[id]?.visible) toggleVectorLayer(id);
+    for (const id of savedHier) if (!hierarchyStates[id]?.visible) toggleHierarchyLayer(id as any);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mapLoaded]);
 
   // Categorical legend for the active Area/Section level (Zone has ~250
   // values — too many to list, so it's summarized instead).
@@ -488,22 +525,12 @@ export default function MapPage() {
         }
       } catch { /* style not ready */ }
     }
-  }, [overlayOpacity, hierarchyStates, geoLayerStates, choroLevel, mapLoaded]);
-
-  // Statewide vector-tile overlays (PMTiles: Utah roads + address points).
-  // isLight keeps labels legible across basemaps; onUseLocation routes a clicked
-  // address/road into the SAME pan+zoom+marker flow as the address search box,
-  // so the statewide data feeds the existing dispatch location workflow.
-  const { vectorLayerStates, toggleVectorLayer, vectorConfigs } = useVectorTileLayers({
-    map: mapInstanceRef.current,
-    popup: infoWindowRef.current,
-    isLight: isLightMapStyle(mapStyle),
-    onUseLocation: (info) => {
-      handleAddressSelect([info.lng, info.lat], info.label);
-      setAddressSearch(info.label);
-    },
-  });
-  const [showVectorPanel, setShowVectorPanel] = useState(false);
+    // Statewide overlays (first-class): scale their line/circle opacity too.
+    try { if (map.getLayer('vt-utah_roads-line')) map.setPaintProperty('vt-utah_roads-line', 'line-opacity', 0.85 * overlayOpacity); } catch { /* */ }
+    try { if (map.getLayer('vt-utah_roads-label')) map.setPaintProperty('vt-utah_roads-label', 'text-opacity', overlayOpacity); } catch { /* */ }
+    try { if (map.getLayer('vt-utah_addresses-circle')) map.setPaintProperty('vt-utah_addresses-circle', 'circle-opacity', 0.9 * overlayOpacity); } catch { /* */ }
+    try { if (map.getLayer('vt-utah_addresses-label')) map.setPaintProperty('vt-utah_addresses-label', 'text-opacity', overlayOpacity); } catch { /* */ }
+  }, [overlayOpacity, hierarchyStates, geoLayerStates, vectorLayerStates, choroLevel, mapLoaded]);
 
   // Event planning overlays
   const eventPlanning = useEventPlanning({
@@ -3760,7 +3787,7 @@ export default function MapPage() {
                   return (
                     <button
                       key={cfg.id}
-                      onClick={() => toggleHierarchyLayer(cfg.id)}
+                      onClick={() => handleToggleHier(cfg.id)}
                       title={cfg.description}
                       className={`flex items-center gap-2 w-full px-2 py-1 text-left transition-colors ${
                         state?.visible ? 'panel-inset bg-surface-deep' : 'opacity-40 hover:opacity-70 hover:bg-rmpg-800/50'
@@ -3817,7 +3844,7 @@ export default function MapPage() {
                     return (
                       <button
                         key={cfg.id}
-                        onClick={() => toggleVectorLayer(cfg.id)}
+                        onClick={() => handleToggleStatewide(cfg.id)}
                         className={`flex items-center gap-2 w-full px-2 py-1 text-left transition-colors ${
                           state?.visible ? 'panel-inset bg-surface-deep' : 'opacity-40 hover:opacity-70 hover:bg-rmpg-800/50'
                         }`}
@@ -3833,6 +3860,27 @@ export default function MapPage() {
                       </button>
                     );
                   })}
+                  {/* Statewide legend (first-class overlay integration) */}
+                  {(vectorLayerStates['utah_roads']?.visible || vectorLayerStates['utah_addresses']?.visible) && (
+                    <div className="px-2 pt-1 mt-0.5 border-t border-[#1a1a1a] space-y-0.5">
+                      {vectorLayerStates['utah_roads']?.visible && (
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {[['Interstate', '#ef4444'], ['US Hwy', '#f59e0b'], ['State', '#e8b84b'], ['Local', '#d4a017']].map(([lbl, c]) => (
+                            <span key={lbl} className="flex items-center gap-1">
+                              <span className="inline-block w-3 h-0.5" style={{ background: c }} />
+                              <span className="text-[8px] text-rmpg-400">{lbl}</span>
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      {vectorLayerStates['utah_addresses']?.visible && (
+                        <div className="flex items-center gap-1">
+                          <span className="inline-block w-2 h-2 rounded-full" style={{ background: '#e8b84b', border: '1px solid #1a1a1a' }} />
+                          <span className="text-[8px] text-rmpg-400">Address point</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
             </div>

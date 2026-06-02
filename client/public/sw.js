@@ -196,7 +196,12 @@
 //       skipTraces, distribution/checked) so a sentinel "None" string (truthy
 //       .length, no .map/.join) can no longer crash a PDF. Plus finite-guard
 //       on recordExt fine_amount ($NaN -> raw value).
-const CACHE_NAME = 'rmpg-flex-v685';
+// v686: Statewide Data first-class integration (Phase A) — Roads/Addresses
+//       join the overlay opacity slider, get a legend (road classes +
+//       address dot), and persisted on/off visibility across reloads;
+//       road labels gain class-based collision priority (major roads win)
+//       so the network reads cleanly. Backend address search/snap next.
+const CACHE_NAME = 'rmpg-flex-v686';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
