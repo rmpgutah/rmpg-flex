@@ -237,3 +237,39 @@ export async function findStreetImage(lng: number, lat: number, radiusM = 200, s
     return null;
   }
 }
+
+/**
+ * Nearest-road viewing bearing — the fallback for "point the photo at the
+ * address" where Mapillary has NO ground coverage. Uses the Mapbox Tilequery
+ * API to snap to the closest road centerline (`road` layer of the hosted
+ * mapbox-streets-v8 tileset), then returns bearing(roadPoint → address): the
+ * direction a camera on the street would look to face the building front.
+ *
+ * Returns null when no token, no road within `radiusM`, or the request fails —
+ * the caller then keeps the default perspective angle. `api.mapbox.com` is
+ * already allowed by the CSP connect-src, so no policy change is needed.
+ */
+export async function findNearestRoadBearing(
+  lng: number, lat: number, radiusM = 90, signal?: AbortSignal,
+): Promise<number | null> {
+  const token = getCachedMapboxAccessToken();
+  if (!token) return null;
+  const url = `https://api.mapbox.com/v4/mapbox.mapbox-streets-v8/tilequery/${lng},${lat}.json`
+    + `?radius=${radiusM}&limit=1&dedupe=true&layers=road&geometry=linestring`
+    + `&access_token=${encodeURIComponent(token)}`;
+  try {
+    const res = await fetch(url, { signal });
+    if (!res.ok) return null;
+    const json: any = await res.json();
+    const f = json?.features?.[0];
+    // Tilequery snaps the returned Point to the nearest spot on the road line.
+    const coords = f?.geometry?.coordinates;
+    if (!Array.isArray(coords) || coords.length < 2) return null;
+    const [rlng, rlat] = coords;
+    // Degenerate (query point sat exactly on the road) → no meaningful bearing.
+    if (haversineM(lng, lat, rlng, rlat) < 1) return null;
+    return bearingDeg(rlng, rlat, lng, lat);
+  } catch {
+    return null;
+  }
+}

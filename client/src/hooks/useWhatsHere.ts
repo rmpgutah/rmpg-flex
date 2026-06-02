@@ -20,7 +20,7 @@ import { getTaggedBeats, getCountyFC, getMunicipalityFC, findBeatAt } from '../p
 import { apiFetch } from './useApi';
 import { toDisplayLabel } from '../utils/formatters';
 import { classifyPtType, type PropertyType } from '../pages/map/utils/landTypes';
-import { getAerialThumbUrl, getStreetPerspectiveUrl, findStreetImage, warmImageryToken, compassCardinal, distanceAndBearing, type StreetImage } from '../utils/locationImagery';
+import { getAerialThumbUrl, getStreetPerspectiveUrl, findStreetImage, findNearestRoadBearing, warmImageryToken, compassCardinal, distanceAndBearing, type StreetImage } from '../utils/locationImagery';
 import type { StreetViewTarget } from '../pages/map/components/StreetViewLightbox';
 
 /** Live device position the popup uses for the nav-to-point readout. */
@@ -205,6 +205,7 @@ export function useWhatsHere({ map, popup, active, gps, onOpenStreetView }: Opts
         premise: PremiseIntel | null,
         street: StreetImage | null,
         loading: boolean,
+        roadBearing?: number | null,
       ) => {
         const rows = [...baseRows];
         if (nearest) {
@@ -218,8 +219,9 @@ export function useWhatsHere({ map, popup, active, gps, onOpenStreetView }: Opts
         }
 
         // Aim the oblique perspective at the building: prefer the bearing FROM a
-        // found street photo TO the address; fall back to the default angle.
-        const faceBearing = street?.bearingToAddress;
+        // found street photo TO the address; else the nearest-road bearing
+        // (Tilequery); else the default angle.
+        const faceBearing = street?.bearingToAddress ?? roadBearing ?? undefined;
         const perspectiveUrl = getStreetPerspectiveUrl(lng, lat, {
           width: 248, height: 150,
           ...(faceBearing != null ? { bearing: faceBearing } : {}),
@@ -305,7 +307,7 @@ export function useWhatsHere({ map, popup, active, gps, onOpenStreetView }: Opts
           lng, lat,
           label: nearest?.full_add,
           imageId: street?.id,
-          bearingToAddress: street?.bearingToAddress,
+          bearingToAddress: faceBearing,
         };
         const root = pop.getElement?.();
         const svEl = root?.querySelector('[data-rmpg-streetview="1"]') as HTMLElement | null;
@@ -327,12 +329,14 @@ export function useWhatsHere({ map, popup, active, gps, onOpenStreetView }: Opts
         apiFetch<{ results: NearestAddr[] }>(`/geo/address-nearest?lat=${lat}&lng=${lng}`),
         apiFetch<PremiseIntel>(`/dispatch/geography/premise-intel?lat=${lat}&lng=${lng}`),
         findStreetImage(lng, lat, 120, ctrl.signal),
-      ]).then(([addrRes, premRes, streetRes]) => {
+        findNearestRoadBearing(lng, lat, 90, ctrl.signal),
+      ]).then(([addrRes, premRes, streetRes, roadRes]) => {
         if (myId !== seqRef.current) return; // a newer click superseded this
         const nearest = addrRes.status === 'fulfilled' ? (addrRes.value?.results?.[0] ?? null) : null;
         const premise = premRes.status === 'fulfilled' ? premRes.value : null;
         const street = streetRes.status === 'fulfilled' ? streetRes.value : null;
-        render(nearest, premise, street, false);
+        const roadBearing = roadRes.status === 'fulfilled' ? roadRes.value : null;
+        render(nearest, premise, street, false, roadBearing);
       });
     };
     map.on('click', handler);
