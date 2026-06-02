@@ -319,7 +319,11 @@
 //       sessions (rmpg_map_collapsed_sections). Lets the operator keep the
 //       panel compact alongside the already-collapsible Map Style / Spatial
 //       Layers / Statewide Data / Advanced Tools sections.
-const CACHE_NAME = 'rmpg-flex-v707';
+// v708: Record links in plain language on the Connections graph (de-underscored
+//       edge tags) + record PDFs (humanized Relationship column); fixed PDF
+//       cross-reference sections that rendered blank names (PrintRecordButton
+//       now reads the API's linked_type/linked_label, both link directions).
+const CACHE_NAME = 'rmpg-flex-v708';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
