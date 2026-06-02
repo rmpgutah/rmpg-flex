@@ -796,7 +796,15 @@ export default function MapPage() {
   // ============================================================
 
   const fetchUnits = useCallback(async () => {
-    const v = ++dataVersionRef.current;
+    // Capture (do NOT bump) the WS-invalidation epoch. dataVersionRef exists so
+    // a WebSocket update (which increments it at the subscribe handlers below)
+    // can discard a now-stale in-flight poll response. Incrementing it HERE made
+    // fetchUnits and fetchCalls — run concurrently via Promise.all in
+    // fetchAllData — invalidate each other: fetchUnits read v, fetchCalls then
+    // bumped the shared ref, so fetchUnits's post-await `current !== v` check
+    // always tripped and setUnits NEVER ran. Units stayed permanently empty on
+    // the map (and the on-duty-gated 7s poll never recovered). Read-only fixes it.
+    const v = dataVersionRef.current;
     try {
       const data = await apiFetch<Unit[]>('/dispatch/units');
       if (abortedRef.current) return;
@@ -812,7 +820,9 @@ export default function MapPage() {
   }, []);
 
   const fetchCalls = useCallback(async () => {
-    const v = ++dataVersionRef.current;
+    // Capture (do NOT bump) the epoch — see fetchUnits. Bumping here raced with
+    // the concurrent fetchUnits under Promise.all and silently dropped one set.
+    const v = dataVersionRef.current;
     try {
       const data = await apiFetch<ActiveCall[]>('/dispatch/queue');
       if (abortedRef.current) return;
