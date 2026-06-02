@@ -390,7 +390,10 @@
 // v718: What's Here popup — guaranteed ground view (Mapbox oblique 3D
 //       perspective + facing-aware Mapillary), dark popup tip all directions,
 //       scrollable popup (no viewport clipping), wider maxWidth for imagery.
-const CACHE_NAME = 'rmpg-flex-v718';
+// v719: Map layers/settings panel polish — wider panel (no truncation),
+//       de-blue (led dots + #5a6e80 → neutral), roomier rows, sticky "Layers"
+//       header, expanded-state highlight on collapsible sections.
+const CACHE_NAME = 'rmpg-flex-v719';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
