@@ -373,9 +373,22 @@ function formatCurrency(amount: number | null): string {
 }
 
 const SENTINEL_TXT = new Set(['none', 'n/a', 'na', '0', 'null', '']);
-function chargesFromJson(charges: string | null): string {
+// Utah/scraped charges arrive as a JSON-stringified array ('["BATTERY"]').
+// Render the human form: parse the array and join, fall back to the raw
+// string for already-plain values. Guards against JSON.parse yielding a
+// non-array (number/object) which would throw on .join and leak the raw
+// brackets into the UI (the '["FAILURE TO REMAIN…"]' display bug).
+function chargesFromJson(charges: string | null | undefined): string {
   if (!charges || SENTINEL_TXT.has(String(charges).trim().toLowerCase())) return '';
-  try { return JSON.parse(charges).join('; '); } catch { return charges; }
+  const raw = String(charges).trim();
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) return parsed.filter(Boolean).map(String).join('; ');
+    if (parsed == null) return '';
+    return String(parsed);
+  } catch {
+    return raw;
+  }
 }
 
 function computeDuration(start: string, end: string | null): string {
@@ -2691,7 +2704,7 @@ export default function WarrantsPage() {
                                 {w.age && <span className="text-[10px] text-rmpg-400">Age: {w.age}</span>}
                                 {w.city && <span className="text-[10px] text-rmpg-400">{w.city}</span>}
                               </div>
-                              <div className="text-xs text-rmpg-300 mt-1">{w.charges || w.charge_description || 'No charge description'}</div>
+                              <div className="text-xs text-rmpg-300 mt-1">{chargesFromJson(w.charges || w.charge_description) || 'No charge description'}</div>
                               <div className="flex items-center gap-3 mt-1.5 text-[10px] text-rmpg-400 flex-wrap">
                                 {w.court_name && <span>Court: {w.court_name}</span>}
                                 {w.case_id && <span>Case: {w.case_id}</span>}
@@ -2744,7 +2757,7 @@ export default function WarrantsPage() {
                                 <span className="text-sm font-bold text-white">{w.last_name}, {w.first_name}</span>
                                 {w.source_key && <span className="text-[9px] text-rmpg-400 bg-rmpg-700/30 px-1 rounded">{w.source_key}</span>}
                               </div>
-                              <div className="text-xs text-rmpg-300 mt-1">{w.charges || w.charge_description || '—'}</div>
+                              <div className="text-xs text-rmpg-300 mt-1">{chargesFromJson(w.charges || w.charge_description) || '—'}</div>
                               <div className="flex items-center gap-3 mt-1.5 text-[10px] text-rmpg-400 flex-wrap">
                                 {w.court_name && <span>Court: {w.court_name}</span>}
                                 {w.issue_date && <span>Issued: {w.issue_date}</span>}
@@ -3143,7 +3156,7 @@ export default function WarrantsPage() {
                                       {allUtah.map((uw, i) => (
                                         <div key={i} className="flex items-center gap-2 text-[10px] p-1.5 rounded bg-surface-sunken/50">
                                           <span className="font-mono text-rmpg-200">{uw.utah_warrant_id}</span>
-                                          <span className="text-rmpg-200 flex-1 truncate">{uw.charges}</span>
+                                          <span className="text-rmpg-200 flex-1 truncate">{chargesFromJson(uw.charges)}</span>
                                           <span className="text-rmpg-400 truncate">{uw.court_name}</span>
                                           <span className="text-rmpg-500">{uw.issue_date}</span>
                                         </div>
@@ -3232,7 +3245,7 @@ export default function WarrantsPage() {
                           <span className={`text-[10px] ${h.event === 'warrant_found' ? 'text-red-400' : 'text-green-400'}`}>
                             {h.event === 'warrant_found' ? 'WARRANT FOUND' : 'WARRANT CLEARED'}
                           </span>
-                          {h.charges && <span className="text-[10px] text-rmpg-400 truncate flex-1">{h.charges}</span>}
+                          {h.charges && <span className="text-[10px] text-rmpg-400 truncate flex-1">{chargesFromJson(h.charges)}</span>}
                           <span className="text-[10px] text-rmpg-500 flex-shrink-0 ml-auto">{formatDateTime(h.created_at)}</span>
                         </div>
                       ))}
@@ -4052,7 +4065,7 @@ export default function WarrantsPage() {
                   {(utahDetailWarrant.charges || utahDetailWarrant.charge_description) && (
                     <div className="mt-3">
                       <span className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider">Offense / Charges</span>
-                      <div className="font-mono text-white mt-0.5 text-xs whitespace-pre-wrap">{utahDetailWarrant.charges || utahDetailWarrant.charge_description}</div>
+                      <div className="font-mono text-white mt-0.5 text-xs whitespace-pre-wrap">{chargesFromJson(utahDetailWarrant.charges || utahDetailWarrant.charge_description) || '—'}</div>
                     </div>
                   )}
                 </div>
