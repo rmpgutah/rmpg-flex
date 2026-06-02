@@ -23,6 +23,7 @@ import { authMiddleware } from './middleware/auth';
 import { handleWebSocket, sendToUser, broadcastAll } from './routes/ws';
 import { WelfareWatchDO } from './durable-objects/WelfareWatchDO';
 import { VoiceHubDO } from './durable-objects/VoiceHubDO';
+import { AlertHubDO } from './durable-objects/AlertHubDO';
 import { PdfToolsContainer } from './containers/pdfToolsContainer';
 import { runAllSourceScans } from './utils/warrantSources/runScan';
 import { detectDispatchAnomalies } from './routes/dispatch/anomalies';
@@ -33,7 +34,7 @@ import { ROUTE_REGISTRY } from './routesConfig';
 // Export Durable Object classes so wrangler can find them at build time.
 // The Container subclass extends DurableObject and is configured by
 // [[containers]] + [[durable_objects.bindings]] in wrangler.toml.
-export { WelfareWatchDO, VoiceHubDO, PdfToolsContainer };
+export { WelfareWatchDO, VoiceHubDO, AlertHubDO, PdfToolsContainer };
 
 // Exported so sub-routers that need to dispatch internal subrequests
 // (e.g. src/routes/offline.ts replaying queued offline writes through
@@ -222,6 +223,14 @@ export default {
       }
       const id = env.VOICE_HUB.idFromName(room);
       return env.VOICE_HUB.get(id).fetch(request);
+    }
+    // Agency-wide officer-safety alert socket → the single global AlertHubDO.
+    // Every client holds one of these (connected straight at api.rmpgutah.us,
+    // bypassing the proxy, same as voice). It's how rewrite-originated panic
+    // broadcasts actually reach dispatchers — see src/durable-objects/AlertHubDO.ts.
+    if (url.pathname === '/api/alerts-ws') {
+      const id = env.ALERT_HUB.idFromName('global');
+      return env.ALERT_HUB.get(id).fetch(request);
     }
     return app.fetch(request, env, ctx);
   },

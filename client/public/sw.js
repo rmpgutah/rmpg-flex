@@ -409,7 +409,7 @@
 //       also fetches /dispatch/address-occupants and renders persons on file at
 //       the address with active-warrant / gang / caution flags, a blinking
 //       FLAGGED AT ADDRESS banner, and the alert tone.
-const CACHE_NAME = 'rmpg-flex-v721';
+const CACHE_NAME = 'rmpg-flex-v722';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

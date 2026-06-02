@@ -4,6 +4,13 @@ import type { Unit, UnitStatus } from '../types';
 import StatusBadge from './StatusBadge';
 import { parseTimestamp } from '../utils/dateUtils';
 
+// Spillman EMERGENCY overlay: an officer with an active panic. Truthy for
+// either the numeric (1) or boolean (true) shape the API may serialize.
+function isEmergency(unit: Unit): boolean {
+  const e = unit.emergency_active;
+  return e === 1 || e === true;
+}
+
 // Feature 2: GPS stale indicator thresholds
 function getGpsStaleStatus(unit: Unit): 'ok' | 'stale' | 'lost' {
   if (!unit.gps_updated_at || unit.status === 'off_duty') return 'ok';
@@ -76,9 +83,14 @@ export default React.memo(function UnitStatusBoard({
   const statusOrder: UnitStatus[] = ['onscene', 'enroute', 'dispatched', 'available', 'busy', 'off_duty', 'out_of_service'];
   // Unknown/sentinel statuses sort last (rank after the known list) instead of -1.
   const rank = (s: UnitStatus) => { const i = statusOrder.indexOf(s); return i === -1 ? statusOrder.length : i; };
-  const sorted = [...units].sort(
-    (a, b) => rank(a.status) - rank(b.status)
-  );
+  // EMERGENCY units float to the very top of the board (Spillman Status
+  // Monitor behaviour) regardless of their underlying status; then by status.
+  const sorted = [...units].sort((a, b) => {
+    const ea = isEmergency(a) ? 0 : 1;
+    const eb = isEmergency(b) ? 0 : 1;
+    if (ea !== eb) return ea - eb;
+    return rank(a.status) - rank(b.status);
+  });
 
   const isDraggable = (unit: Unit) => unit.status !== 'off_duty';
 
@@ -151,12 +163,24 @@ export default React.memo(function UnitStatusBoard({
               onDragStart={(e) => handleDragStart(e, unit)}
               onDragEnd={handleDragEnd}
               onClick={() => onUnitClick?.(unit)}
-              className={`cursor-pointer ${isDraggable(unit) ? 'cursor-grab active:cursor-grabbing' : ''}`}
+              className={`cursor-pointer ${isDraggable(unit) ? 'cursor-grab active:cursor-grabbing' : ''} ${isEmergency(unit) ? 'animate-emergency-blink' : ''}`}
+              style={isEmergency(unit) ? { background: 'rgba(220,38,38,0.18)', boxShadow: 'inset 3px 0 0 #ff0000' } : undefined}
             >
               <td>
                 <div className="flex items-center gap-2">
                   <span className={STATUS_LED_CLASSES[unit.status] || 'led-dot led-off'} />
                   <span className="font-bold text-white font-mono">{unit.call_sign}</span>
+                  {/* Spillman EMERGENCY overlay — flashing red badge, floats this
+                      row to the top of the board (see sort above). */}
+                  {isEmergency(unit) && (
+                    <span
+                      className="inline-flex items-center gap-0.5 px-1 py-0 text-[8px] font-black uppercase tracking-wider text-white animate-emergency-blink"
+                      style={{ background: '#dc2626', letterSpacing: '1px' }}
+                      title="EMERGENCY — active panic activation"
+                    >
+                      <AlertTriangle className="w-2.5 h-2.5" /> EMER
+                    </span>
+                  )}
                   {/* Feature 2: GPS stale indicator */}
                   {(() => {
                     const gpsStatus = getGpsStaleStatus(unit);

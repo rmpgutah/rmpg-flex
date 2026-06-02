@@ -1078,11 +1078,18 @@ export default function DispatchPage() {
       }
     });
 
-    // Listen for panic alerts — play alarm tone + voice alert, switch to active tab
+    // Listen for panic alerts — play alarm tone + voice alert, switch to active
+    // tab, and immediately refetch so the auto-created P1 officer_assist call
+    // and the unit's EMERGENCY overlay flash appear at once (not on the 20s
+    // poll). Delivered live via the AlertHubDO socket (WebSocketContext).
     const unsubPanic = subscribe('panic_alert', (msg: any) => {
       const data = msg.data || msg;
       setFilterTab('active');
       announcePanicAlert(data.user_name || data.userName);
+      const action = data.action || data.panic?.action;
+      // Refresh on activation (new call + emergent unit) and on clears
+      // (unit returns to normal) so the board tracks the lifecycle.
+      if (action !== 'panic_acknowledged') fetchData({ silent: true });
     });
 
     // Listen for serve queue events — update gold serve status panel in real time
