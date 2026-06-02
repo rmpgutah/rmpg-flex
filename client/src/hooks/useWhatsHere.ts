@@ -17,6 +17,7 @@ import { useEffect, useRef } from 'react';
 import { mapboxgl } from '../utils/mapboxLoader';
 import { booleanPointInPolygon } from '@turf/boolean-point-in-polygon';
 import { getTaggedBeats, getCountyFC, getMunicipalityFC } from '../pages/map/utils/districtGeoData';
+import { apiFetch } from './useApi';
 
 function findContaining(fc: any, lng: number, lat: number): any | null {
   if (!fc || !Array.isArray(fc.features)) return null;
@@ -65,48 +66,46 @@ export function useWhatsHere({ map, popup, active }: Opts) {
       const county = findContaining(dataRef.current.county, lng, lat);
       const muni = findContaining(dataRef.current.muni, lng, lat);
 
-      // Nearest address point — only resolvable where the statewide address
-      // layer is actually rendered (z14+ with the layer on).
-      let address: string | null = null;
-      try {
-        const box: [mapboxgl.PointLike, mapboxgl.PointLike] = [
-          [e.point.x - 12, e.point.y - 12],
-          [e.point.x + 12, e.point.y + 12],
-        ];
-        const feats = map.getLayer('vt-utah_addresses-circle')
-          ? map.queryRenderedFeatures(box, { layers: ['vt-utah_addresses-circle'] })
-          : [];
-        if (feats && feats.length) {
-          const fa = feats[0].properties?.FullAdd || feats[0].properties?.City;
-          if (fa) address = String(fa);
-        }
-      } catch { /* address layer not present */ }
-
       const bp = beat?.properties || {};
-      const rows: { label: string; value: string; color?: string }[] = [];
+      const baseRows: { label: string; value: string; color?: string }[] = [];
       if (beat) {
-        rows.push({ label: 'Area', value: bp._areaName || '—', color: bp._areaColor });
-        rows.push({ label: 'Section', value: bp._sectionName || '—', color: bp._sectionColor });
-        rows.push({ label: 'Zone', value: bp._zoneName || '—', color: bp._zoneColor });
-        rows.push({ label: 'Beat', value: bp.beat_code || bp.beat_id || '—' });
+        baseRows.push({ label: 'Area', value: bp._areaName || '—', color: bp._areaColor });
+        baseRows.push({ label: 'Section', value: bp._sectionName || '—', color: bp._sectionColor });
+        baseRows.push({ label: 'Zone', value: bp._zoneName || '—', color: bp._zoneColor });
+        baseRows.push({ label: 'Beat', value: bp.beat_code || bp.beat_id || '—' });
       }
-      if (county) rows.push({ label: 'County', value: county.properties?.NAME || '—' });
-      if (muni) rows.push({ label: 'Municipality', value: muni.properties?.NAME || '—' });
-      if (address) rows.push({ label: 'Nearest Addr', value: address });
+      if (county) baseRows.push({ label: 'County', value: county.properties?.NAME || '—' });
+      if (muni) baseRows.push({ label: 'Municipality', value: muni.properties?.NAME || '—' });
 
-      let html = `<div style="font-family:'Courier New',monospace;color:#d4d4d4;font-size:11px;min-width:180px;">`;
-      html += `<div style="font-weight:bold;font-size:11px;color:#d4a017;margin-bottom:4px;border-bottom:1px solid #444;padding-bottom:3px;letter-spacing:0.5px;">WHAT'S HERE</div>`;
-      if (rows.length === 0) {
-        html += `<div style="color:#888;font-size:10px;">No geography at this point.</div>`;
-      } else {
-        for (const r of rows) {
-          const dot = r.color ? `<span style="display:inline-block;width:7px;height:7px;border-radius:2px;background:${r.color};margin-right:4px;vertical-align:middle;"></span>` : '';
-          html += `<div style="font-size:10px;color:#999;margin-top:2px;"><span style="color:#bbb;">${esc(r.label)}:</span> ${dot}<span style="color:#ddd;">${esc(r.value)}</span></div>`;
+      // Render with the nearest address resolved asynchronously from the
+      // statewide address DB (/api/geo/address-nearest) — works everywhere,
+      // independent of whether the address overlay is toggled on.
+      const render = (addr: string | null, dist: number | null, loading: boolean) => {
+        const rows = [...baseRows];
+        if (addr) rows.push({ label: 'Nearest Addr', value: dist != null ? `${addr} (${dist} m)` : addr });
+        else if (loading) rows.push({ label: 'Nearest Addr', value: '…' });
+        let html = `<div style="font-family:'Courier New',monospace;color:#d4d4d4;font-size:11px;min-width:190px;">`;
+        html += `<div style="font-weight:bold;font-size:11px;color:#d4a017;margin-bottom:4px;border-bottom:1px solid #444;padding-bottom:3px;letter-spacing:0.5px;">WHAT'S HERE</div>`;
+        if (rows.length === 0) {
+          html += `<div style="color:#888;font-size:10px;">No geography at this point.</div>`;
+        } else {
+          for (const r of rows) {
+            const dot = r.color ? `<span style="display:inline-block;width:7px;height:7px;border-radius:2px;background:${r.color};margin-right:4px;vertical-align:middle;"></span>` : '';
+            html += `<div style="font-size:10px;color:#999;margin-top:2px;"><span style="color:#bbb;">${esc(r.label)}:</span> ${dot}<span style="color:#ddd;">${esc(r.value)}</span></div>`;
+          }
         }
-      }
-      html += `<div style="margin-top:5px;padding-top:3px;border-top:1px solid #2a2a2a;font-size:8px;color:#666;">${lat.toFixed(5)}, ${lng.toFixed(5)}</div>`;
-      html += `</div>`;
-      pop.setLngLat(e.lngLat).setHTML(html).addTo(map);
+        html += `<div style="margin-top:5px;padding-top:3px;border-top:1px solid #2a2a2a;font-size:8px;color:#666;">${lat.toFixed(5)}, ${lng.toFixed(5)}</div>`;
+        html += `</div>`;
+        pop.setLngLat(e.lngLat).setHTML(html).addTo(map);
+      };
+
+      render(null, null, true);
+      apiFetch<{ results: { full_add: string; city: string; distance_m?: number }[] }>(`/geo/address-nearest?lat=${lat}&lng=${lng}`)
+        .then((d) => {
+          const r = d?.results?.[0];
+          render(r ? `${r.full_add}${r.city ? ', ' + r.city : ''}` : null, r?.distance_m ?? null, false);
+        })
+        .catch(() => render(null, null, false));
     };
     map.on('click', handler);
     return () => { map.off('click', handler); };

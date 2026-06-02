@@ -5,6 +5,9 @@ import type { PdfToolsContainer } from './containers/pdfToolsContainer';
 
 export type Bindings = {
   DB: D1Database;
+  // Dedicated statewide address-points DB (rmpg-geo). Optional so contexts
+  // without the binding don't break; geo routes guard on it.
+  GEO_DB?: D1Database;
   KV: KVNamespace;
   MAP_DATA: R2Bucket;
   // User-uploaded files. PR-E uses the business-photos/ prefix; future

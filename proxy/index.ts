@@ -965,6 +965,11 @@ const API_ROUTES: RouteRule[] = [
   // so future OCR sub-paths come along automatically.
   { kind: 'prefix', value: '/api/ocr' },
 
+  // ── Geo address service (statewide UGRC address points) ──
+  // src/routes/geo.ts, backed by the dedicated rmpg-geo D1 (GEO_DB binding).
+  // Powers map address search + snap-to-address. Public, read-only.
+  { kind: 'prefix', value: '/api/geo' },
+
   // ── Vector tiles (PMTiles statewide overlays) ──
   // New isolated namespace served by src/routes/tiles.ts from R2 with
   // HTTP Range support (mandatory for PMTiles). Kept separate from

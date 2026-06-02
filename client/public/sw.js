@@ -201,7 +201,12 @@
 //       address dot), and persisted on/off visibility across reloads;
 //       road labels gain class-based collision priority (major roads win)
 //       so the network reads cleanly. Backend address search/snap next.
-const CACHE_NAME = 'rmpg-flex-v686';
+// v687: Statewide address service (Phase B) — dedicated rmpg-geo D1 (1.48M
+//       UGRC address points + FTS) behind /api/geo. Map search box now
+//       returns authoritative statewide addresses first (Mapbox fills);
+//       "What's Here" resolves nearest address from the DB (works anywhere,
+//       no tile dependency).
+const CACHE_NAME = 'rmpg-flex-v687';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

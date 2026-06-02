@@ -2725,31 +2725,41 @@ export default function MapPage() {
     }
 
     addressSearchTimer.current = setTimeout(async () => {
-      const token = mapboxgl.accessToken;
-      if (!token) return;
-      // Bias to Utah (proximity + bbox) so local addresses rank first, and
-      // cap the request at 8 results. AbortController prevents a slow/stale
-      // response from a stale keystroke clobbering newer results.
-      const geocodeUrl = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${token}&country=US&autocomplete=true&types=address,place&limit=8&proximity=-111.89,40.76&bbox=-114.052,36.998,-109.041,42.001`;
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 5000);
       try {
-        const resp = await fetch(geocodeUrl, { signal: controller.signal });
-        const data = await resp.json();
-        if (data.features && data.features.length > 0) {
-          setAddressResults(
-            data.features
-              .filter((f: any) => Array.isArray(f.center) && f.center.length === 2)
-              .map((f: any) => ({
-                description: f.place_name,
-                place_id: f.id,
-                center: f.center as [number, number],
-              }))
-          );
-          setShowAddressResults(true);
-        } else {
-          setAddressResults([]);
+        // 1) Authoritative statewide UGRC address points (rmpg-geo D1) first.
+        const local = await apiFetch<{ results: { full_add: string; city: string; zip: string; lat: number; lng: number }[] }>(
+          `/geo/address-search?q=${encodeURIComponent(query)}&limit=6`,
+        ).catch(() => ({ results: [] as any[] }));
+        const localResults = (local?.results || [])
+          .filter((r) => Number.isFinite(r.lat) && Number.isFinite(r.lng))
+          .map((r, i) => ({
+            description: `${r.full_add}${r.city ? ', ' + r.city : ''}${r.zip ? ' ' + r.zip : ''}`,
+            place_id: `geo-${i}`,
+            center: [r.lng, r.lat] as [number, number],
+          }));
+
+        // 2) Mapbox geocoding to fill (POIs / places / out-of-DB), deduped.
+        let mapboxResults: { description: string; place_id: string; center: [number, number] }[] = [];
+        const token = mapboxgl.accessToken;
+        if (token) {
+          const geocodeUrl = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${token}&country=US&autocomplete=true&types=address,place&limit=8&proximity=-111.89,40.76&bbox=-114.052,36.998,-109.041,42.001`;
+          try {
+            const resp = await fetch(geocodeUrl, { signal: controller.signal });
+            const data = await resp.json();
+            if (data.features) {
+              mapboxResults = data.features
+                .filter((f: any) => Array.isArray(f.center) && f.center.length === 2)
+                .map((f: any) => ({ description: f.place_name, place_id: f.id, center: f.center as [number, number] }));
+            }
+          } catch { /* mapbox optional */ }
         }
+
+        const seen = new Set(localResults.map((r) => r.description.toLowerCase()));
+        const merged = [...localResults, ...mapboxResults.filter((m) => !seen.has(m.description.toLowerCase()))].slice(0, 10);
+        setAddressResults(merged);
+        setShowAddressResults(merged.length > 0);
       } catch {
         // Ignore network errors / aborts
       } finally {

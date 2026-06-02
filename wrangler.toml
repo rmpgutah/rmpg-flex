@@ -23,6 +23,14 @@ binding = "DB"
 database_name = "rmpg-flex"
 database_id = "785de7ae-3e7a-4e01-93bb-d24ddd813f6b"
 
+# Dedicated geo database — statewide UGRC address points (~1.48M rows) for
+# the map address search + snap-to-address. Kept SEPARATE from the production
+# CAD DB so the address index can't bloat or contend with live dispatch data.
+[[d1_databases]]
+binding = "GEO_DB"
+database_name = "rmpg-geo"
+database_id = "fbc33751-dce0-499a-bc45-93c0b7ee0da1"
+
 # ─── Durable Objects ─────────────────────────────────────
 # WelfareWatchDO — automated officer welfare escalation timer
 # (Spillman parity, DI-4 follow-up). One instance per officer
