@@ -28,13 +28,15 @@ import { getDb, query, queryFirst, execute } from '../utils/db';
 import { broadcastAll } from './ws';
 import {
   ocrImage,
+  ocrExtractStructured,
+  lookupFromOcr,
   decideDispatcherReply,
   phraseLookupReply,
   synthesizeDispatcherVoice,
   bytesToBase64,
   type DispatcherTurn,
 } from '../utils/aiDispatcher';
-import { gatherAwareness, runLookup, runAction } from '../utils/dispatcherAwareness';
+import { gatherAwareness, runLookup, runAction, VERBATIM_LOOKUPS } from '../utils/dispatcherAwareness';
 import { getRadioSettings, setRadioSettings, RADIO_SETTING_DEFAULTS, RADIO_SETTING_OPTIONS } from '../utils/radioSettings';
 import { generateIncidentNarrative, generateShiftSummary } from '../utils/aiReports';
 import type { Bindings } from '../types';
@@ -415,14 +417,35 @@ rt.post('/dispatcher/ocr', async (c) => {
   }
   const image = new Uint8Array(await file.arrayBuffer());
 
-  // 1. OCR — read the text off the image.
-  const ocrText = await ocrImage(c.env.AI, image);
+  const db = getDb(c.env);
+  const unit = (form?.get('unit') as string | null)?.trim() || null;
+
+  // 1. OCR — read AND STRUCTURE the image (doc type + runnable identifiers).
+  //    Falls back to plain-text OCR if structuring fails, so behavior never
+  //    regresses below the old endpoint.
+  const extraction = await ocrExtractStructured(c.env.AI, image).catch(() => null);
+  const ocrText = extraction?.rawText || (await ocrImage(c.env.AI, image).catch(() => null));
   if (!ocrText) {
     return c.json({ success: false, error: 'No legible text found in the image.' }, 200);
   }
 
-  const db = getDb(c.env);
-  const unit = (form?.get('unit') as string | null)?.trim() || null;
+  // 1a. AUTO-CHAIN — if the image yielded a plate / VIN / name, run THAT CAD
+  //     check now (deterministically), so the dispatcher reads the hit back in
+  //     this same turn instead of relying on the model to chain it. The result
+  //     is fed into the turn as a CAD AUTO-CHECK block (see buildUserPrompt).
+  let autoCheck: string | null = null;
+  let record: import('../utils/dispatcherAwareness').RecordRef | null = null;
+  let performed: string | null = null;
+  const autoReq = extraction ? lookupFromOcr(extraction) : null;
+  if (autoReq) {
+    const r = await runLookup(c.env as unknown as Bindings, db, autoReq, { speaker: unit }).catch(() => null);
+    if (r) {
+      autoCheck = r.text;
+      if (r.record) record = r.record;
+      performed = `auto_lookup:${autoReq.type}`;
+    }
+  }
+
   const transcript = (form?.get('transcript') as string | null)?.trim()
     || 'Dispatch, I am sending you an image — read it and advise.';
   const channelIdRaw = form?.get('channel_id');
@@ -441,29 +464,41 @@ rt.post('/dispatcher/ocr', async (c) => {
     recent: [],
     awareness,
     ocrText,
+    autoCheck,
   };
 
-  // 3. Reason — the brain may answer, run a lookup, or file a write.
+  // Structured payload the client UI can render (doc type + extracted fields).
+  const structured = extraction
+    ? { docType: extraction.docType, fields: extraction.fields }
+    : { docType: 'unknown' as const, fields: {} };
+
+  // 3. Reason — the brain may answer, read the auto-check back, run another
+  //    lookup, or file a write.
   const decision = await decideDispatcherReply(c.env.AI, turn);
   if (!decision) {
-    return c.json({ success: true, ocrText, reply: '', intent: 'unclear', note: 'Dispatcher had no reply.' });
+    // No model reply — but if we auto-ran a check, hand that back so the unit
+    // still gets the answer the image asked for.
+    return c.json({
+      success: true, ocrText, structured, autoCheck, record, performed,
+      reply: autoCheck ?? '', intent: autoCheck ? 'lookup_request' : 'unclear',
+      note: autoCheck ? undefined : 'Dispatcher had no reply.',
+    });
   }
 
   let reply = decision.reply;
-  let performed: string | null = null;
-  let record: import('../utils/dispatcherAwareness').RecordRef | null = null;
 
   if (decision.lookup) {
     const result = await runLookup(
-      c.env as unknown as Bindings, db, decision.lookup, { speaker: unit },
+      c.env as unknown as Bindings, db, decision.lookup, { speaker: unit, channelId },
     ).catch(() => null);
     if (result) {
-      // unit_location / eta already speak a complete line; record checks get
-      // re-phrased through the persona (mirrors VoiceHubDO.runDispatcher).
-      reply = (decision.lookup.type === 'unit_location' || decision.lookup.type === 'eta')
+      // Verbatim lookups (location/eta/call_status/closest_unit/say-again)
+      // already speak a complete line; record checks get re-phrased through the
+      // persona (mirrors VoiceHubDO.runDispatcher).
+      reply = VERBATIM_LOOKUPS.has(decision.lookup.type)
         ? result.text
         : await phraseLookupReply(c.env.AI, turn, decision.lookup, result.text);
-      record = result.record ?? null;
+      if (result.record) record = result.record;
       performed = `lookup:${decision.lookup.type}`;
     }
   }
@@ -491,6 +526,8 @@ rt.post('/dispatcher/ocr', async (c) => {
   return c.json({
     success: true,
     ocrText,
+    structured,
+    autoCheck,
     reply,
     intent: decision.intent,
     lookup: decision.lookup ?? null,
