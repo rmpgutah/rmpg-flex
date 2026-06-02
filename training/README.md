@@ -65,6 +65,11 @@ npx tsx training/build-dataset.ts
 # Add --include-unverified to build from ALL drafts (fast experiments only).
 ```
 
+Augmentation is **on by default**: each CSV-backed doc also emits a copy with the
+embedded `Imported CSV Row` JSON removed (same target), forcing the model to read
+the rendered layout instead of transcribing the CSV. `--no-augment` to disable.
+Both views of a doc share its id, so they stay in the same train/val split.
+
 The (system, user) half comes from `buildExtractionMessages()` — the **same**
 function prod inference uses — so there is zero train/serve prompt skew.
 
@@ -82,22 +87,58 @@ Prints the stock-70B weighted score + weakest fields on the held-out val split.
 **Record this number** — it's the bar the LoRA must beat. The scoring rubric is
 [`training/eval.ts → scoreField`](eval.ts) (field weights + match logic live there).
 
-## Stage 3 — Train the adapter (offline)
+## Stage 3 — Train the adapter (offline GPU)
 
-Follow Cloudflare's tutorial:
-<https://developers.cloudflare.com/workers-ai/guides/tutorials/fine-tune-models-with-autotrain/>
+Use the included trainer ([`train_lora.py`](train_lora.py)) — a PEFT + TRL QLoRA
+script with the advanced settings this task needs. (Cloudflare's
+[AutoTrain tutorial](https://developers.cloudflare.com/workers-ai/guides/tutorials/fine-tune-models-with-autotrain/)
+is the no-code alternative, but the script gives you completion-only loss and
+the regularization knobs, which matter on a small set.)
 
-Constraints Workers AI enforces on the uploaded adapter:
+```bash
+pip install -r training/requirements.txt
+python training/train_lora.py \
+  --train training/dist/train.jsonl --val training/dist/val.jsonl \
+  --out training/adapter-v1
+# → training/adapter-v1/{adapter_model.safetensors, adapter_config.json}
+# model_type:"llama" is patched in and rank/size are checked automatically.
+```
 
-- Base model **must** be a LoRA-capable one — use `llama-3.3-70b` (matches prod).
-- LoRA rank `r ≤ 32`.
-- `adapter_model.safetensors` **< 300 MB**.
-- Files named **exactly** `adapter_model.safetensors` and `adapter_config.json`.
-- `adapter_config.json` must include `"model_type": "llama"` and `"task_type": "CAUSAL_LM"`.
+**GPU sizing.** Llama-3.3-70B QLoRA needs ~1×A100/H100 **80 GB**. To iterate
+cheaply on a 24 GB card, train against the 8B base and serve it on the matching
+CF model:
 
-Train on `train.jsonl`; hold out `val.jsonl`. The trainer applies the llama-3
-chat template to the `messages` rows — keep that consistent with the `raw: true`
-inference path (see the note in `extractFromText`).
+```bash
+python training/train_lora.py --base meta-llama/Llama-3.1-8B-Instruct \
+  --cf-model @cf/meta/llama-3.1-8b-instruct-fast --out training/adapter-8b-v1
+```
+
+### Why these settings (the "advanced" part)
+
+| Setting | Default | Why |
+|---|---|---|
+| **Completion-only loss** | on | Loss is computed *only* on the assistant JSON, not the 4 KB prompt. The adapter learns to **extract**, not to echo instructions. Biggest single lever. |
+| **LoRA rank `r`** | 16 | Low rank = fewer params to overfit ~40 rows. Must be ≤ 32 for Workers AI. Bump to 32 only if val loss is still falling at stop. |
+| **`alpha`** | 32 | 2×r — standard, stable scaling. |
+| **dropout** | 0.10 | Higher than the usual 0.05 *because* the set is small; regularizes hard. |
+| **epochs** | 3 | More than ~3 on 40 rows memorizes. `EarlyStopping(patience=2)` + `load_best_model_at_end` cut it off when val loss turns up. |
+| **lr** | 2e-4 | Typical QLoRA LR; cosine decay + 5% warmup. |
+| **target_modules** | all q/k/v/o + gate/up/down | Touching the MLP (not just attention) helps structured-JSON tasks. |
+
+### Reading the run
+
+Watch **eval loss**, not train loss. Train loss will drop fast (small data);
+the moment **eval loss stops improving is your real stopping point** — the script
+keeps that checkpoint automatically. If eval loss never improves over the base,
+the data is too small or too noisy — gather/verify more docs before trusting a run.
+
+Constraints the script enforces on export: rank ≤ 32, `adapter_model.safetensors`
+< 300 MB, exact filenames, `model_type:"llama"` + `task_type:"CAUSAL_LM"`.
+
+> **Honest scope note.** 51 verified docs (→ 68 rows with augmentation) is the
+> *low end* for a fine-tune. Expect a modest, real gain on the fields you labeled
+> well — not magic. The highest-ROI next step is almost always **more verified
+> data** (finish the held docs, label new packets), not hyperparameter fiddling.
 
 ## Stage 4 — Upload, eval, enable
 

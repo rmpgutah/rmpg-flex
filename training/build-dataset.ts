@@ -56,6 +56,22 @@ interface LabeledDoc {
 // every draft anyway (fast experiments / smoke tests only).
 const INCLUDE_UNVERIFIED = process.argv.includes('--include-unverified');
 
+// Data augmentation (on by default; --no-augment to disable). For each doc whose
+// source embeds the ServeManager "Imported CSV Row" JSON, emit a SECOND copy
+// with that block REMOVED and the SAME target. The CSV is a near-answer-key the
+// model can just transcribe; the stripped copy forces it to read the rendered
+// Recipient/Court blocks instead — so the adapter learns extraction that
+// generalizes to packets without a clean CSV. Both copies share the doc id, so
+// they always land in the same train/val bucket (no leakage across the split).
+const AUGMENT = !process.argv.includes('--no-augment');
+
+function stripCsvBlock(text: string): string {
+  return text.replace(
+    /Imported CSV Row:[\s\S]*?\n\s*\}[^\n]*(?:\n|$)/,
+    '[Imported CSV row omitted — read the fields from the rendered form]\n',
+  );
+}
+
 // Build the assistant "target" completion: the exact JSON shape prod parses
 // back (documentType, confidence, allDates, fields:{f:{value,confidence}}).
 // Ground-truth confidence is 1.0 for a filled field and 0 for an empty one —
@@ -110,9 +126,11 @@ function isVal(id: string): boolean {
   return h % 100 < 15;
 }
 
-function toRow(doc: LabeledDoc): string {
+// Build one JSONL row from a doc + the input text to train on (lets us reuse
+// the same target with an alternate, harder input for augmentation).
+function toRow(doc: LabeledDoc, inputText: string): string {
   const messages: ChatMessage[] = [
-    ...buildExtractionMessages(doc.rawText),
+    ...buildExtractionMessages(inputText),
     { role: 'assistant', content: buildTargetCompletion(doc) },
   ];
   return JSON.stringify({ messages });
@@ -122,13 +140,24 @@ function main() {
   const docs = loadDocs();
   const train: string[] = [];
   const val: string[] = [];
-  for (const doc of docs) (isVal(doc.id) ? val : train).push(toRow(doc));
+  let augmented = 0;
+  for (const doc of docs) {
+    const bucket = isVal(doc.id) ? val : train;
+    bucket.push(toRow(doc, doc.rawText));               // primary view (matches prod input)
+    if (AUGMENT) {
+      const stripped = stripCsvBlock(doc.rawText);
+      if (stripped !== doc.rawText && stripped.trim().length > 40) {
+        bucket.push(toRow(doc, stripped));              // hard view: same answer, CSV removed
+        augmented++;
+      }
+    }
+  }
 
   mkdirSync(DIST_DIR, { recursive: true });
   writeFileSync(join(DIST_DIR, 'train.jsonl'), train.join('\n') + '\n');
   writeFileSync(join(DIST_DIR, 'val.jsonl'), val.join('\n') + '\n');
 
-  console.log(`Built dataset from ${docs.length} labeled docs:`);
+  console.log(`Built dataset from ${docs.length} labeled docs${AUGMENT ? ` (+${augmented} CSV-stripped augmented rows)` : ''}:`);
   console.log(`  train: ${train.length} rows → training/dist/train.jsonl`);
   console.log(`  val:   ${val.length} rows → training/dist/val.jsonl`);
   if (val.length === 0) console.warn('  ⚠ val is empty — add more docs so eval has a held-out set.');
