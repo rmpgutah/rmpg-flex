@@ -4,6 +4,15 @@ import { getDb, query, queryFirst, execute } from '../utils/db';
 
 const alarms = new Hono<Env>();
 
+// Writes to alarm_accounts (permit records) must be role-gated — previously any
+// authenticated user, incl. client_viewer/dispatcher, could create/edit/delete.
+function denyWrite(c: any, roles: string[]): boolean {
+  const u = c.get('user');
+  return !u || !roles.includes(u.role);
+}
+const WRITE_ROLES = ['admin', 'manager', 'supervisor'];
+const DELETE_ROLES = ['admin', 'manager'];
+
 alarms.get('/accounts', async (c) => {
   try {
     const db = getDb(c.env);
@@ -14,6 +23,7 @@ alarms.get('/accounts', async (c) => {
 
 alarms.post('/accounts', async (c) => {
   try {
+    if (denyWrite(c, WRITE_ROLES)) return c.json({ error: 'Insufficient role', code: 'FORBIDDEN' }, 403);
     const db = getDb(c.env);
     const body = await c.req.json();
     const result = await execute(db,
@@ -26,6 +36,7 @@ alarms.post('/accounts', async (c) => {
 
 alarms.put('/accounts/:id', async (c) => {
   try {
+    if (denyWrite(c, WRITE_ROLES)) return c.json({ error: 'Insufficient role', code: 'FORBIDDEN' }, 403);
     const db = getDb(c.env);
     const id = c.req.param('id');
     const body = await c.req.json();
@@ -39,6 +50,7 @@ alarms.put('/accounts/:id', async (c) => {
 
 alarms.delete('/accounts/:id', async (c) => {
   try {
+    if (denyWrite(c, DELETE_ROLES)) return c.json({ error: 'Insufficient role', code: 'FORBIDDEN' }, 403);
     const db = getDb(c.env);
     const id = c.req.param('id');
     await execute(db, 'DELETE FROM alarm_accounts WHERE id=?', id);

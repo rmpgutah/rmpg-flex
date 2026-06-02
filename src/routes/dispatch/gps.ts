@@ -30,6 +30,17 @@ gps.post('/', async (c) => {
       inserted.push(Number(result.meta.last_row_id));
     }
 
+    // Mirror the latest fix onto the unit row. The map filters officer pins by
+    // `u.latitude != null` and closest-unit/anomaly logic reads u.latitude/
+    // longitude/gps_updated_at — breadcrumbs alone never updated the unit, so
+    // pins never plotted and proximity logic saw no position.
+    const lastPt = points[points.length - 1];
+    if (lastPt && lastPt.latitude != null && lastPt.longitude != null) {
+      await execute(db,
+        "UPDATE units SET latitude = ?, longitude = ?, gps_updated_at = datetime('now'), updated_at = datetime('now') WHERE id = ?",
+        lastPt.latitude, lastPt.longitude, unit.id);
+    }
+
     return c.json({ inserted: inserted.length }, 201);
   } catch (err) {
     return c.json({ error: 'GPS update failed' }, 500);

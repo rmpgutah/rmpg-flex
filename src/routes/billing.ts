@@ -233,9 +233,12 @@ billing.get('/payments', async (c) => {
     const db = getDb(c.env);
     const invoiceId = c.req.query('invoice_id');
     const clientId = c.req.query('client_id');
-    let where = '1=1'; const params: unknown[] = [];
-    if (invoiceId) { where = 'p.invoice_id = ?'; params.push(invoiceId); }
-    if (clientId) { where = 'p.client_id = ?'; params.push(clientId); }
+    // AND the filters — reassigning `where` (the old bug) dropped a condition
+    // while keeping both params, causing a placeholder/bind mismatch → 500.
+    const cond: string[] = ['1=1']; const params: unknown[] = [];
+    if (invoiceId) { cond.push('p.invoice_id = ?'); params.push(invoiceId); }
+    if (clientId) { cond.push('p.client_id = ?'); params.push(clientId); }
+    const where = cond.join(' AND ');
     const rows = await query<Record<string, unknown>>(db,
       `SELECT p.*, i.invoice_number, cl.client_name FROM payments p
        LEFT JOIN invoices i ON p.invoice_id = i.id
