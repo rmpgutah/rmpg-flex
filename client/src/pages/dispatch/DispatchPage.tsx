@@ -43,6 +43,7 @@ import type { WarningTag } from '../../components/WarningTags';
 import FloatingSaveBar from '../../components/FloatingSaveBar';
 import CadCommandLine from '../../components/CadCommandLine';
 import NcicQueryPanel from '../../components/NcicQueryPanel';
+import MileagePromptModal from '../../components/MileagePromptModal';
 import UnitRecommendationPanel from '../../components/UnitRecommendationPanel';
 import RecommendedUnitsInline from '../../components/RecommendedUnitsInline';
 import type { CommandAction } from '../../utils/cadCommandParser';
@@ -893,7 +894,7 @@ export default function DispatchPage() {
     dispositionPromptCallId, setDispositionPromptCallId,
     isGenerating,
     isBulkArchiving,
-    handleStatusChange,
+    handleStatusChange: rawHandleStatusChange,
     handleHoldCall, handleResumeCall, handleRevertStatus,
     handleClearWithDisposition, handleConfirmClear,
     handleArchive, handleUnarchive, handleBulkArchive,
@@ -903,6 +904,69 @@ export default function DispatchPage() {
     selectedCall, setSelectedCall, setCalls, setArchivedCalls,
     setUnits, setArchivedLoaded, refetchAll: silentRefresh,
   });
+
+  // ── Mileage prompt on enroute / onscene (officer-requested) ───────────────
+  // Dispatch asks the officer's odometer when they go EN ROUTE (starting) and
+  // again ON SCENE (ending). Wrapping handleStatusChange here means EVERY entry
+  // point — call-detail buttons, keyboard shortcuts (F-keys), the status board,
+  // and the right-click context menu — funnels through the same prompt without
+  // editing each call site. The reading is persisted atomically with the status
+  // transition (POST /dispatch/calls/:id/status, extended to take mileage).
+  const [mileagePrompt, setMileagePrompt] = useState<{
+    callId: string;
+    callNumber: string;
+    vehicleId: string;
+    mode: 'starting' | 'ending';
+    startingMileage: number | null;
+    pendingStatus: CallStatus;
+  } | null>(null);
+
+  const handleStatusChange = useCallback((
+    callId: string,
+    newStatus: CallStatus,
+    extraBody?: Record<string, any>,
+  ) => {
+    if (newStatus === 'enroute' || newStatus === 'onscene') {
+      const call = calls.find((c) => c.id === callId)
+        || (selectedCall?.id === callId ? selectedCall : undefined);
+      // Responding vehicle: explicit field on the call, else the first assigned
+      // unit's vehicle id. Lets the prompt show/confirm the vehicle being driven.
+      const respondingVehicle = (() => {
+        const rv = (call as any)?.responding_vehicle_id;
+        if (rv) return String(rv);
+        const firstUnitId = call?.assigned_units?.[0];
+        const u = units.find((x) => String(x.id) === String(firstUnitId));
+        return u?.vehicle ? String(u.vehicle) : '';
+      })();
+      setMileagePrompt({
+        callId,
+        callNumber: call?.call_number || `#${callId}`,
+        vehicleId: respondingVehicle,
+        mode: newStatus === 'enroute' ? 'starting' : 'ending',
+        startingMileage: call?.starting_mileage != null ? Number(call.starting_mileage) : null,
+        pendingStatus: newStatus,
+      });
+      return;
+    }
+    return rawHandleStatusChange(callId, newStatus, extraBody);
+  }, [calls, units, selectedCall, rawHandleStatusChange]);
+
+  // Prompt submit: persist the reading (if any) with the transition. Calls the
+  // RAW handler directly so it doesn't re-open the prompt. "Skip" sends 0 →
+  // status changes with no mileage written (server ignores non-positive values).
+  const handleMileagePromptSubmit = useCallback((mileage: number, vehicleId: string) => {
+    setMileagePrompt((prompt) => {
+      if (!prompt) return null;
+      const extra: Record<string, any> = {};
+      if (mileage > 0) {
+        if (prompt.mode === 'starting') extra.starting_mileage = mileage;
+        else extra.ending_mileage = mileage;
+      }
+      if (vehicleId && vehicleId.trim()) extra.responding_vehicle_id = vehicleId.trim();
+      rawHandleStatusChange(prompt.callId, prompt.pendingStatus, extra);
+      return null;
+    });
+  }, [rawHandleStatusChange]);
 
   // Notes + timeline state + handlers (extracted alongside the unit/call
   // hooks). Owns 9 state items (note input + inline-edit, timeline input
@@ -6837,6 +6901,19 @@ export default function DispatchPage() {
         onClose={() => { setShowNcicPanel(false); setNcicInitialQuery(null); }}
         initialQuery={ncicInitialQuery}
       />
+
+      {/* Mileage prompt on enroute (starting) / onscene (ending). Cancel aborts
+          the transition; Skip proceeds with no reading. */}
+      {mileagePrompt && (
+        <MileagePromptModal
+          mode={mileagePrompt.mode}
+          callNumber={mileagePrompt.callNumber}
+          vehicleId={mileagePrompt.vehicleId}
+          startingMileage={mileagePrompt.startingMileage}
+          onSubmit={handleMileagePromptSubmit}
+          onCancel={() => setMileagePrompt(null)}
+        />
+      )}
 
       {/* Create Person from Dispatch */}
       <PersonFormModal

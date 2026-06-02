@@ -9,6 +9,7 @@ export interface TimeEntryEditData {
   id: string;
   clock_in: string;
   clock_out: string;
+  reason: string;
 }
 
 interface Props {
@@ -34,9 +35,9 @@ export default function TimeEntryEditModal({
     wasRestored,
     clearDraft,
     snapshot,
-  } = useFormDraft<{ clockIn: string; clockOut: string }>({
+  } = useFormDraft<{ clockIn: string; clockOut: string; reason: string }>({
     storageKey: 'rmpg_personnel_time_entry_form',
-    defaultValue: { clockIn: '', clockOut: '' },
+    defaultValue: { clockIn: '', clockOut: '', reason: '' },
     isActive: isOpen,
   });
 
@@ -44,10 +45,11 @@ export default function TimeEntryEditModal({
     if (isOpen && entry) {
       const initialIn = toLocalInput(entry.clock_in);
       const initialOut = toLocalInput(entry.clock_out);
-      setForm({ clockIn: initialIn, clockOut: initialOut });
+      // Reason is always re-entered per edit — never carry it over.
+      setForm({ clockIn: initialIn, clockOut: initialOut, reason: '' });
       snapshot();
     } else if (isOpen) {
-      setForm({ clockIn: '', clockOut: '' });
+      setForm({ clockIn: '', clockOut: '', reason: '' });
       snapshot();
     }
   }, [isOpen, entry, setForm, snapshot]);
@@ -70,10 +72,11 @@ export default function TimeEntryEditModal({
       id: entry.id,
       clock_in: mtDatetimeLocalToUtc(form.clockIn),
       clock_out: form.clockOut ? mtDatetimeLocalToUtc(form.clockOut) : form.clockOut,
+      reason: form.reason.trim(),
     });
   };
 
-  const handleClose = () => { setForm({ clockIn: '', clockOut: '' }); onClose(); };
+  const handleClose = () => { setForm({ clockIn: '', clockOut: '', reason: '' }); onClose(); };
 
   return (
     <FormModal
@@ -125,6 +128,21 @@ export default function TimeEntryEditModal({
           />
           {!form.clockOut && <p className="text-[9px] text-amber-400 mt-1">Leave blank if still active</p>}
         </div>
+      </div>
+
+      {/* Reason — required. Edits move total_hours → payroll, so every change is
+          audited (who / old / new / reason) in time_entry_edits. */}
+      <div className="panel-inset p-3">
+        <label className="field-label">Reason for change <span className="text-red-400">*</span></label>
+        <textarea id="ff-timeentryeditmodal-2"
+          required
+          rows={2}
+          value={form.reason}
+          onChange={e => setForm(f => ({ ...f, reason: e.target.value }))}
+          placeholder="e.g. Officer radioed in — forgot to clock out at end of shift"
+          className="input-dark min-h-[44px] resize-y"
+        />
+        <p className="text-[9px] text-rmpg-400 mt-1">Recorded in the entry's audit trail.</p>
       </div>
 
       {/* Live hours preview */}

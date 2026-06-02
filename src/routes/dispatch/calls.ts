@@ -853,7 +853,17 @@ calls.post('/:id/status', async (c) => {
     // The clear/close flow (client handleConfirmClear) sends { status, disposition }.
     // Persist disposition alongside the status transition — dropping it left the
     // call's outcome blank and the disposition column NULL after every clear.
-    const { status, disposition, notes } = await c.req.json<{ status: string; disposition?: string; notes?: string }>();
+    // starting_mileage/ending_mileage/responding_vehicle_id arrive with the
+    // enroute (starting) and onscene (ending) transitions — dispatch captures
+    // the officer's odometer reading over the radio via the mileage prompt and
+    // persists it atomically with the status change (no second request).
+    const { status, disposition, notes, starting_mileage, ending_mileage, responding_vehicle_id } =
+      await c.req.json<{
+        status: string; disposition?: string; notes?: string;
+        starting_mileage?: number | string | null;
+        ending_mileage?: number | string | null;
+        responding_vehicle_id?: string | null;
+      }>();
     // 'on_hold' is intentionally NOT a status value — hold is an orthogonal flag
     // in calls_for_service_ext.held_at (see /:id/hold). The live status CHECK
     // enum has no 'on_hold'.
@@ -871,11 +881,33 @@ calls.post('/:id/status', async (c) => {
     const dispSql = typeof disposition === 'string' && disposition.length > 0 ? ', disposition = ?' : '';
     const notesSql = typeof notes === 'string' && notes.length > 0 ? ', notes = ?' : '';
 
+    // Mileage capture (officer-requested on enroute/onscene). Only persist a
+    // positive, finite reading — a 0/blank means the dispatcher skipped the
+    // prompt, in which case the existing value is left untouched.
+    const sm = Number(starting_mileage);
+    const em = Number(ending_mileage);
+    const mileageSets: string[] = [];
+    const mileageParams: unknown[] = [];
+    if (starting_mileage != null && Number.isFinite(sm) && sm > 0) { mileageSets.push('starting_mileage = ?'); mileageParams.push(sm); }
+    if (ending_mileage != null && Number.isFinite(em) && em > 0) { mileageSets.push('ending_mileage = ?'); mileageParams.push(em); }
+    if (typeof responding_vehicle_id === 'string' && responding_vehicle_id.trim()) { mileageSets.push('responding_vehicle_id = ?'); mileageParams.push(responding_vehicle_id.trim()); }
+    const mileageSql = mileageSets.length ? `, ${mileageSets.join(', ')}` : '';
+
     const params: unknown[] = [status];
     if (dispSql) params.push(disposition);
     if (notesSql) params.push(notes);
+    params.push(...mileageParams);
     params.push(id);
-    await execute(db, `UPDATE calls_for_service SET status = ?, status_changed_at = datetime('now'), updated_at = datetime('now')${timeSql}${dispSql}${notesSql} WHERE id = ?`, ...params);
+    await execute(db, `UPDATE calls_for_service SET status = ?, status_changed_at = datetime('now'), updated_at = datetime('now')${timeSql}${dispSql}${notesSql}${mileageSql} WHERE id = ?`, ...params);
+
+    // Mirror the latest odometer reading onto the unit(s) working this call so
+    // the unit board's mileage stays current (ending preferred over starting).
+    const latestReading = (Number.isFinite(em) && em > 0) ? em : ((Number.isFinite(sm) && sm > 0) ? sm : null);
+    if (latestReading != null) {
+      try {
+        await execute(db, "UPDATE units SET mileage = ?, updated_at = datetime('now') WHERE current_call_id = ?", latestReading, id);
+      } catch (mErr) { console.warn('unit mileage mirror failed:', mErr); }
+    }
 
     // Free the units working this call when it ends. Clearing/closing/cancelling
     // a call previously left every assigned unit pinned (current_call_id set,
