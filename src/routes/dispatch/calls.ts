@@ -1152,6 +1152,20 @@ calls.post('/:id/assign-unit', async (c) => {
       if (priorCall) {
         const priorList = (JSON.parse(priorCall.assigned_unit_ids || '[]') as number[]).filter((u) => u !== unit_id);
         await execute(db, 'UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?', JSON.stringify(priorList), prior.current_call_id);
+        // If that was the prior call's LAST unit, it's now an ACTIVE call with
+        // nobody on it. The clear-path only frees units when the CALL goes
+        // terminal, so without this the orphan never self-heals — it sits
+        // dispatched/enroute/onscene with zero units, still counting against the
+        // board + SLA timers. Demote it back to 'pending' (held_at, timestamps,
+        // and history are untouched; a later re-assign flips it forward again).
+        if (priorList.length === 0) {
+          await execute(
+            db,
+            `UPDATE calls_for_service SET status = 'pending', updated_at = datetime('now')
+             WHERE id = ? AND status IN ('dispatched','enroute','onscene')`,
+            prior.current_call_id,
+          );
+        }
       }
     }
 
