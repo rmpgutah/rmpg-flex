@@ -455,7 +455,12 @@
 // v743: HR Reviews + Disciplinary save buttons now surface a "Failed to …"
 //       error toast when the create/update API call fails (the handlers had a
 //       success toast but no catch, so a failed save looked like a dead button).
-const CACHE_NAME = 'rmpg-flex-v743';
+// v744: Bug-repair wave — dispatcher-brain overdue-status timer revived
+//       (accept 'unit_status_changed') + "that call" referent now reads the
+//       nested .call/.unit payload; priority chime reuses one AudioContext
+//       (was leaking → Chrome 6-context cap) and respects the global mute;
+//       alerts WebSocket reconnect now capped like the main socket.
+const CACHE_NAME = 'rmpg-flex-v744';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

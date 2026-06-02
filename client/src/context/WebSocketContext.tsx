@@ -56,10 +56,26 @@ const UNIT_ACTIONS = new Set<string>([
 // live Worker delivers new calls as dispatch_update/call_created — it never
 // emits a 'calls:created' message type (see broadcastAll in src/routes/ws.ts),
 // so the previous type-keyed alert never played.
+// One reused AudioContext for the chime. Creating a fresh AudioContext per call
+// (the old behavior) leaked one each time — Chrome caps hardware contexts (~6)
+// and then throws, silently killing the chime partway through a busy shift.
+let chimeCtx: AudioContext | null = null;
+function getChimeCtx(): AudioContext | null {
+  try {
+    if (!chimeCtx) chimeCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    if (chimeCtx.state === 'suspended') void chimeCtx.resume().catch(() => {});
+    return chimeCtx;
+  } catch { return null; }
+}
+
 function playPriorityChime(priority: string | undefined): void {
   if (priority !== 'P1' && priority !== 'P2') return;
+  // Respect the global sound mute (the same 'rmpg-sound' key the voice-alert
+  // layer + edgeTTS honor) — the chime used to fire even when alerts were muted.
+  try { if (localStorage.getItem('rmpg-sound') === 'false') return; } catch { /* no storage */ }
+  const ctx = getChimeCtx();
+  if (!ctx) return;
   try {
-    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.connect(gain);
@@ -110,6 +126,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   const alertsReconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const alertsDelayRef = useRef(WS_RECONNECT_DELAY);
   const alertsHeartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const alertsRetryRef = useRef(0); // cap reconnect attempts like the main socket
 
   // Shared fan-in: dispatch a parsed WS frame to the brain, the priority
   // chime, the legacy unit_update bridge, and the type-keyed subscribers.
@@ -328,6 +345,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
 
       ws.onopen = () => {
         alertsDelayRef.current = WS_RECONNECT_DELAY;
+        alertsRetryRef.current = 0; // successful connect — clear the retry budget
         try { ws.send(JSON.stringify({ type: 'authenticate', token })); } catch { /* retried on reconnect */ }
         if (alertsHeartbeatRef.current) clearInterval(alertsHeartbeatRef.current);
         alertsHeartbeatRef.current = setInterval(() => {
@@ -354,7 +372,12 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
         if (alertsRef.current !== ws) return;
         if (alertsHeartbeatRef.current) { clearInterval(alertsHeartbeatRef.current); alertsHeartbeatRef.current = null; }
         alertsRef.current = null;
-        if (isAuthenticated) {
+        alertsRetryRef.current++;
+        // Cap reconnects like the main socket (WS_MAX_RETRIES). Without this the
+        // alerts socket re-authenticated with the same (possibly expired) token
+        // every ≤30s forever — newly reachable now that idle-logout removal keeps
+        // isAuthenticated true for arbitrarily long. Reset on tab-focus below.
+        if (isAuthenticated && alertsRetryRef.current < WS_MAX_RETRIES) {
           alertsReconnectRef.current = setTimeout(() => {
             alertsDelayRef.current = Math.min(alertsDelayRef.current * 1.5, WS_MAX_RECONNECT_DELAY);
             connectAlerts();
@@ -383,6 +406,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
           connect();
         }
         if (!alertsRef.current) {
+          alertsRetryRef.current = 0; // tab regained focus — re-arm reconnects
           alertsDelayRef.current = WS_RECONNECT_DELAY;
           connectAlerts();
         }

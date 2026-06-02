@@ -50,15 +50,21 @@ export function __resetBrainForTest(): void {
 function absorbPayloadIntoContext(payload: any): void {
   if (!payload || typeof payload !== 'object') return;
 
-  if (payload.call_number) {
+  // Dispatch events nest the row under .call / .unit ({action, call} /
+  // {action, unit}); only a few flat events put fields at the top level. Unwrap
+  // both so the "that call / him" referent memory actually populates — reading
+  // payload.call_number directly left ctx.lastCall empty for every call event.
+  const call = payload.call ?? payload;
+  if (call.call_number) {
     ctx.lastCall = {
-      id:           String(payload.id ?? payload.call_number),
-      call_number:  String(payload.call_number),
-      location:     String(payload.location_address ?? payload.location ?? ''),
-      type:         String(payload.incident_type ?? ''),
+      id:           String(call.id ?? call.call_number),
+      call_number:  String(call.call_number),
+      location:     String(call.location_address ?? call.location ?? ''),
+      type:         String(call.incident_type ?? ''),
     };
   }
-  const callSign = payload.unit_call_sign ?? payload.call_sign;
+  const unit = payload.unit ?? payload;
+  const callSign = unit.unit_call_sign ?? unit.call_sign ?? payload.unit_call_sign ?? payload.call_sign;
   if (callSign) {
     ctx.lastUnit = { call_sign: String(callSign) };
   }
@@ -139,7 +145,11 @@ function tickTimers(): void {
 // Track when the current user's unit transitions into 'on_scene'
 // status so the overdue-status timer rule has a reference point.
 function maybeMarkOnScene(type: string, payload: any): void {
-  if (type !== 'unit_status' && type !== 'status_update' && type !== 'unit_update') return;
+  // 'unit_status_changed' is the ONLY unit-status action the Worker actually
+  // emits (calls.ts / dispatcherAwareness.ts). The other three names are never
+  // broadcast, so without this the overdue-status timer rule never had a
+  // reference point and could never fire.
+  if (type !== 'unit_status_changed' && type !== 'unit_status' && type !== 'status_update' && type !== 'unit_update') return;
   const callSign = payload?.call_sign ?? payload?.unit_call_sign ?? payload?.unit?.call_sign;
   if (!callSign || callSign !== ctx.currentUserCallSign) return;
   const status = String(payload?.status ?? payload?.unit?.status ?? '').toLowerCase();
