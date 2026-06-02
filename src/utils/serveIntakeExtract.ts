@@ -282,7 +282,7 @@ const PLACEHOLDER_VALUE = /^\[?\s*(not provided|none|n\/?a|unknown|tbd|pending|n
 // often sits as a bare date after "DOB:" or alone inside a description field
 // rather than in a dedicated DOB field. Only runs when the model left
 // recipient_dob empty, so it never overrides a confidently-read value.
-function recoverDob(rawText: string): string | null {
+export function recoverDob(rawText: string): string | null {
   const t = rawText || '';
   const labeled = t.match(/\b(?:DOB|D\.O\.B\.?|date of birth|born)\b[:\s]*?(\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{1,2}-\d{1,2})/i);
   if (labeled) { const iso = toIsoDate(labeled[1]); if (iso) return iso; }
@@ -532,6 +532,24 @@ export function toIsoDate(raw: string): string | null {
   return null;
 }
 
+// DOB-aware date: like toIsoDate, but a 2-digit year that resolves into the
+// FUTURE is rolled back a century — nobody being served has a future birth
+// date, so "3/4/85" is 1985, not 2085 (toIsoDate's blanket "20"+yy rule is
+// correct for due dates but wrong for births). 4-digit-year input is untouched,
+// which is what the real packets carry. refYear is injectable for tests.
+export function normalizeBirthDate(raw: string, refYear?: number): string | null {
+  const iso = toIsoDate(raw);
+  if (!iso) return null;
+  const [y, m, d] = iso.split('-');
+  let year = Number(y);
+  const ref = refYear ?? new Date().getUTCFullYear();
+  // Only correct when the source was a 2-digit year (toIsoDate already
+  // expanded it). A real 4-digit future year stays as-is (and is rejected
+  // downstream if implausible).
+  if (year > ref && /[/-]\d{2}$/.test(raw.trim())) year -= 100;
+  return `${year}-${m}-${d}`;
+}
+
 // Full state name OR 2-letter code → uppercase 2-letter. Unknown input
 // is returned uppercased+trimmed (we'd rather keep a 3-letter oddity
 // than blank a column), but a 2-char column will reject >2 chars, so the
@@ -556,7 +574,9 @@ export function normalizeState(raw: string): string {
   if (!s) return '';
   const lower = s.toLowerCase().replace(/\./g, '');
   if (US_STATES[lower]) return US_STATES[lower];
-  if (/^[a-z]{2}$/i.test(s)) return s.toUpperCase();
+  // Strip dots/spaces so a dotted abbreviation ("U.T.") still reads as a code.
+  const compact = s.replace(/[.\s]/g, '');
+  if (/^[a-z]{2}$/i.test(compact)) return compact.toUpperCase();
   return s.toUpperCase();
 }
 
@@ -596,15 +616,20 @@ export function normalizeFields(
   const out: Record<string, ExtractedField> = {};
   for (const [k, v] of Object.entries(fields)) {
     const key = k as TargetField;
-    const value = (v?.value || '').trim();
-    let next = value;
+    let value = (v?.value || '').trim();
     let conf = v?.confidence ?? 0;
+    // Final placeholder guard before the DB — scrub "[not provided]", "None",
+    // "—", etc. even if they slipped past the model-output pass. Idempotent.
+    if (PLACEHOLDER_VALUE.test(value)) { value = ''; conf = 0; }
+    let next = value;
     if (value) {
       if (PHONE_FIELDS.has(key)) next = normalizePhone(value);
       else if (STATE_FIELDS.has(key)) next = normalizeState(value);
       else if (ZIP_FIELDS.has(key)) next = normalizeZip(value);
       else if (DATE_FIELDS.has(key)) {
-        const iso = toIsoDate(value);
+        // DOB gets the birth-aware parse (2-digit future year → previous
+        // century); other dates (filing/deadline/hearing) take the plain ISO.
+        const iso = key === 'recipient_dob' ? normalizeBirthDate(value) : toIsoDate(value);
         if (iso) next = iso;
         else { next = ''; conf = 0; }   // unparseable date → drop, don't guess
       }
