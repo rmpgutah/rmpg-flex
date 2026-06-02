@@ -126,6 +126,10 @@ records.post('/persons/merge', async (c) => {
     for (const t of ['vehicles_records', 'incident_persons', 'call_persons', 'warrants', 'criminal_history']) {
       try { await execute(db, `UPDATE ${t} SET person_id = ? WHERE person_id = ?`, keep_id, merge_id); } catch { /* table may not exist */ }
     }
+    // warrants link the subject via subject_person_id on live (person_id is NULL),
+    // so the generic loop above never re-points them — do it explicitly, or the
+    // merged person's warrants orphan when the row is deleted below.
+    try { await execute(db, 'UPDATE warrants SET subject_person_id = ? WHERE subject_person_id = ?', keep_id, merge_id); } catch { /* subject link optional */ }
     await execute(db, 'DELETE FROM persons WHERE id = ?', merge_id);
     return c.json({ success: true, keep_id });
   } catch (err) { return c.json({ error: 'Merge failed', detail: (err as Error)?.message }, 500); }
@@ -218,6 +222,12 @@ records.delete('/persons/:id', async (c) => {
     await execute(db, 'DELETE FROM call_persons WHERE person_id = ?', id);
     await execute(db, 'UPDATE vehicles_records SET owner_person_id = NULL WHERE owner_person_id = ?', id);
     await execute(db, "DELETE FROM record_links WHERE (source_type='person' AND source_id=?) OR (target_type='person' AND target_id=?)", id, id);
+    // Detach (not delete) the person from records that should survive: a warrant
+    // and its citations are real records that must not vanish with the person,
+    // but they also must not dangle at a deleted id (ghost nodes in Connections).
+    try { await execute(db, 'UPDATE warrants SET subject_person_id = NULL WHERE subject_person_id = ?', id); } catch { /* optional */ }
+    try { await execute(db, 'UPDATE warrants SET person_id = NULL WHERE person_id = ?', id); } catch { /* optional */ }
+    try { await execute(db, 'UPDATE citations SET person_id = NULL WHERE person_id = ?', id); } catch { /* optional */ }
     await execute(db, 'DELETE FROM persons WHERE id = ?', id);
     return c.json({ success: true });
   } catch (err) {
@@ -285,7 +295,7 @@ records.get('/persons/:id/system-history', async (c) => {
     const db = getDb(c.env);
     const id = c.req.param('id');
     const [warrants, incidents, calls, citations] = await Promise.all([
-      query<Record<string, unknown>>(db, `SELECT id, warrant_number, type, charge_description AS description, status, bond_amount, bail_amount, issuing_agency, issuing_court, issued_date, expires_at FROM warrants WHERE person_id = ? ORDER BY created_at DESC LIMIT 50`, id),
+      query<Record<string, unknown>>(db, `SELECT id, warrant_number, type, charge_description AS description, status, bond_amount, bail_amount, issuing_agency, issuing_court, issued_date, expires_at FROM warrants WHERE (person_id = ? OR subject_person_id = ?) ORDER BY created_at DESC LIMIT 50`, id, id),
       query<Record<string, unknown>>(db, 'SELECT i.id, i.incident_number, i.incident_type, i.status, i.created_at, i.location_address FROM incidents i JOIN incident_persons ip ON i.id = ip.incident_id WHERE ip.person_id = ? ORDER BY i.created_at DESC LIMIT 50', id),
       query<Record<string, unknown>>(db, 'SELECT c.id, c.call_number, c.incident_type, c.status, c.created_at, c.location_address FROM calls_for_service c JOIN call_persons cp ON c.id = cp.call_id WHERE cp.person_id = ? ORDER BY c.created_at DESC LIMIT 50', id),
       query<Record<string, unknown>>(db, 'SELECT id, citation_number, type, violation_description, status, fine_amount, violation_date, court_date FROM citations WHERE person_id = ? ORDER BY created_at DESC LIMIT 50', id),
@@ -388,7 +398,7 @@ records.get('/vehicles/search', async (c) => {
     const q = c.req.query('q');
     if (!q || q.length < 2) return c.json([]);
     const rows = await query<Record<string, unknown>>(db, `
-      SELECT v.*, p.first_name, p.last_name FROM vehicles_records v
+      SELECT v.*, p.first_name, p.last_name, p.first_name AS owner_first_name, p.last_name AS owner_last_name FROM vehicles_records v
       LEFT JOIN persons p ON v.owner_person_id = p.id
       WHERE v.plate_number LIKE ? OR v.vin LIKE ? OR v.make LIKE ? OR v.model LIKE ?
       ORDER BY v.plate_number LIMIT 50
@@ -694,11 +704,16 @@ records.post('/evidence', async (c) => {
     if (!body.type || !body.description) return c.json({ error: 'type and description required' }, 400);
     const user = c.get('user') as { id: number } | undefined;
     const collected_by = body.collected_by ?? user?.id ?? null;
+    // Live `evidence` has `evidence_type` (not `type`) and NO `case_id`/`case_number`
+    // — the old INSERT named both and 500'd every create. Map type→evidence_type
+    // (accept either client field name) and persist the rich fields the form sends.
     const result = await execute(db,
-      'INSERT INTO evidence (evidence_number, incident_id, case_id, type, description, location_found, collected_by, storage_location, chain_of_custody, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime(\'now\'))',
-      body.evidence_number || `E${Date.now()}`, body.incident_id || null, body.case_id || null,
-      body.type, body.description, body.location_found || null, collected_by,
-      body.storage_location || null, body.chain_of_custody || '[]', body.status || 'collected');
+      'INSERT INTO evidence (evidence_number, incident_id, evidence_type, description, location_found, collected_by, storage_location, chain_of_custody, status, category, quantity, condition, serial_number, brand, model, estimated_value, notes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime(\'now\'))',
+      body.evidence_number || `E${Date.now()}`, body.incident_id || null,
+      body.evidence_type ?? body.type ?? null, body.description, body.location_found || null, collected_by,
+      body.storage_location || null, body.chain_of_custody || '[]', body.status || 'collected',
+      body.category ?? null, body.quantity ?? null, body.condition ?? null, body.serial_number ?? null,
+      body.brand ?? null, body.model ?? null, body.estimated_value ?? null, body.notes ?? null);
     const created = await queryFirst(db, 'SELECT e.*, u.full_name as collected_by_name FROM evidence e LEFT JOIN users u ON e.collected_by = u.id WHERE e.id = ?', Number(result.meta.last_row_id));
     return c.json(created, 201);
   } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
@@ -712,7 +727,11 @@ records.put('/evidence/:id', async (c) => {
     const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM evidence WHERE id = ?', id);
     if (!existing) return c.json({ error: 'Evidence not found' }, 404);
     const body = await c.req.json<Record<string, unknown>>();
-    const writable = new Set(['evidence_number', 'incident_id', 'case_id', 'type', 'description', 'location_found', 'collected_by', 'storage_location', 'chain_of_custody', 'status']);
+    // Real live evidence columns (no case_id/type — those 500'd updates and
+    // dropped the rich fields the client sends).
+    const writable = new Set(['evidence_number', 'incident_id', 'evidence_type', 'description', 'location_found', 'collected_by', 'storage_location', 'chain_of_custody', 'status', 'category', 'quantity', 'condition', 'packaging_type', 'dimensions', 'weight', 'serial_number', 'brand', 'model', 'estimated_value', 'notes', 'lab_submitted', 'lab_case_number', 'lab_name', 'disposition', 'retention_until', 'is_biological']);
+    // Accept the legacy `type` field name as an alias for evidence_type.
+    if (body.type != null && body.evidence_type == null) body.evidence_type = body.type;
     const cols: string[] = []; const params: unknown[] = [];
     for (const [key, val] of Object.entries(body)) { if (writable.has(key)) { cols.push(`${key} = ?`); params.push(val ?? null); } }
     if (cols.length === 0) return c.json({ message: 'No changes' });
@@ -762,9 +781,11 @@ records.post('/evidence/:id/unarchive', async (c) => {
 // Powers the NCIC/NLETS terminal (QH/QV/QW/QT/QA + the QX cross-reference
 // fan-out). Ported from the legacy VPS handler with the fixes that were
 // causing live "PERSON QUERY FAILED" / "WARRANT QUERY FAILED" errors:
-//   1. warrants are keyed on person_id — the legacy handler queried
-//      subject_person_id, a column that does NOT exist on the live warrants
-//      table, so every warrant/person query threw a SQL 500.
+//   1. warrants link the subject via subject_person_id on live (person_id is
+//      NULL on every current row). Both columns exist; query (person_id OR
+//      subject_person_id) so the link resolves regardless of which is set —
+//      keying on person_id alone silently returned ZERO warrants for a wanted
+//      subject (a false "no warrants" officer-safety failure).
 //   2. each optional sub-query (criminal_history, warrants) is wrapped so a
 //      missing/drifted table degrades to an empty list instead of 500ing the
 //      whole request (live D1 schema drifts from /migrations/).
@@ -825,8 +846,8 @@ records.get('/ncic-query', async (c) => {
             p.id));
           const warrants = await soft(() => query<Record<string, any>>(db,
             `SELECT ${WARRANT_COLS} FROM warrants
-             WHERE person_id = ? AND status = 'active' ORDER BY created_at DESC LIMIT 50`,
-            p.id));
+             WHERE (person_id = ? OR subject_person_id = ?) AND status = 'active' ORDER BY created_at DESC LIMIT 50`,
+            p.id, p.id));
           results.push({ person: p, criminalHistory, warrants });
         }
         return c.json({ type, results, query: q });
@@ -836,7 +857,7 @@ records.get('/ncic-query', async (c) => {
           SELECT ${WARRANT_COLS.split(',').map(s => 'w.' + s.trim()).join(', ')},
                  p.first_name AS subject_first_name, p.last_name AS subject_last_name
           FROM warrants w
-          LEFT JOIN persons p ON w.person_id = p.id
+          LEFT JOIN persons p ON p.id = COALESCE(w.person_id, w.subject_person_id)
           WHERE w.status = 'active'
             AND (w.warrant_number LIKE ? OR p.first_name LIKE ? OR p.last_name LIKE ?
                  OR (p.last_name || ', ' || p.first_name) LIKE ?)
@@ -951,7 +972,7 @@ records.get('/search', async (c) => {
     if (type === 'evidence') {
       const rows = await query<Record<string, unknown>>(db, `
         SELECT * FROM evidence
-        WHERE evidence_number LIKE ? OR description LIKE ? OR case_number LIKE ?
+        WHERE evidence_number LIKE ? OR description LIKE ? OR lab_case_number LIKE ?
         ORDER BY evidence_number LIMIT 50
       `, like, like, like);
       return c.json(rows.map((r) => ({
