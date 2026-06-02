@@ -202,6 +202,10 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
       else delete body.bail_amount;
 
       if (editingId) {
+        // The manual form has no inputs for these columns (they're populated by
+        // the jail-roster poller), and handleEdit hardcodes them to ''. Sending
+        // them on PUT would blank previously-scraped values, so omit them.
+        for (const k of ['height', 'weight', 'hair_color', 'eye_color', 'address']) delete body[k];
         await apiFetch(`/arrests/manual/${editingId}`, { method: 'PUT', body: JSON.stringify(body) });
       } else {
         await apiFetch('/arrests/manual', { method: 'POST', body: JSON.stringify(body) });

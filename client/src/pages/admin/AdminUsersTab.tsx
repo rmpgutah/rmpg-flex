@@ -430,12 +430,12 @@ export default function AdminUsersTab({
                   }
                   return null;
                 })()}
-                {(selectedUser as any).totp_enabled ? (
+                {(selectedUser as any).totpEnabled ? (
                   <button type="button"
                     onClick={() => {
                       if (window.confirm(`Reset 2FA for ${selectedUser.first_name} ${selectedUser.last_name}? They will need to set up 2FA again.`))
                         apiFetch(`/admin/users/${selectedUser.id}/totp`, { method: 'DELETE' })
-                          .then(() => { setSelectedUser({ ...selectedUser, totp_enabled: false } as any); })
+                          .then(() => { setSelectedUser({ ...selectedUser, totpEnabled: false } as any); })
                           .catch((err) => { console.warn('[AdminUsersTab] reset 2FA failed:', err); });
                     }}
                     className="toolbar-btn text-amber-400 hover:text-amber-300 hover:bg-amber-900/30"

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { MessageSquare, Plus, Trash2, Send, Loader2, FileCode, X, Bot, User, Circle } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
+import { asArray } from '../../../utils/asArray';
 
 import RichTextArea from '../../../components/RichTextArea';
 interface ChatMessage {
@@ -233,7 +234,7 @@ export default function AIDevChatPanel() {
   const fetchSessions = useCallback(async () => {
     try {
       const data = await apiFetch<ChatSession[]>('/ai/dev-chat/history');
-      setSessions(data);
+      setSessions(asArray<ChatSession>(data));
     } catch { /* ignore */ }
   }, []);
 
@@ -242,7 +243,7 @@ export default function AIDevChatPanel() {
     setActiveSession(sessionId);
     try {
       const data = await apiFetch<ChatMessage[]>(`/ai/dev-chat/history/${sessionId}`);
-      setMessages(data);
+      setMessages(asArray<ChatMessage>(data));
     } catch { /* ignore */ }
   }, []);
 

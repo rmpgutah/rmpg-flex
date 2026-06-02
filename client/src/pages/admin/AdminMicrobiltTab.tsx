@@ -119,11 +119,11 @@ function BackgroundCheckUsagePanel() {
       </div>
       <div className="grid grid-cols-5 gap-2">
         {[
-          { label: 'Total Searches', value: usage.totalSearches },
-          { label: 'Total Hits', value: usage.totalHits },
-          { label: 'Hit Rate', value: `${usage.hitRate}%` },
-          { label: 'Unique Subjects', value: usage.uniqueSubjects },
-          { label: 'Last 30 Days', value: usage.last30Days },
+          { label: 'Total Searches', value: usage.totalSearches ?? 0 },
+          { label: 'Total Hits', value: usage.totalHits ?? 0 },
+          { label: 'Hit Rate', value: `${usage.hitRate ?? 0}%` },
+          { label: 'Unique Subjects', value: usage.uniqueSubjects ?? 0 },
+          { label: 'Last 30 Days', value: usage.last30Days ?? 0 },
         ].map(stat => (
           <div key={stat.label} className="bg-surface-sunken p-2 rounded-sm text-center">
             <div className="text-sm font-bold text-rmpg-100">{stat.value}</div>

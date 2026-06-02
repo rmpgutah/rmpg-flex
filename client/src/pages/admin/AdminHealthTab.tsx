@@ -220,27 +220,11 @@ export default function AdminHealthTab({ LoadingSpinner }: Props) {
     return 'bg-green-900/30 text-green-400 border-green-800/40';
   };
 
-  if (!h) return <div className="p-6 text-rmpg-400 text-xs">Failed to load health data.</div>;
+  // Order matters: `loading` starts true and `health` starts null, so the
+  // spinner must be checked BEFORE the failure state — otherwise every initial
+  // load flashes "Failed to load health data" while the fetch is still in flight.
   if (loading && !health) return <LoadingSpinner />;
-
-
   if (!h) return <div className="p-6 text-rmpg-400 text-xs">Failed to load health data.</div>;
-  if (loading && !health) return <LoadingSpinner />;
-
-
-
-  if (!h) return <div className="p-6 text-rmpg-400 text-xs">Failed to load health data.</div>;
-  if (loading && !health) return <LoadingSpinner />;
-
-
-
-  if (!h) return <div className="p-6 text-rmpg-400 text-xs">Failed to load health data.</div>;
-  if (loading && !health) return <LoadingSpinner />;
-
-
-
-  if (!h) return <div className="p-6 text-rmpg-400 text-xs">Failed to load health data.</div>;
-  if (loading && !health) return <LoadingSpinner />;
 
 
   return (
@@ -304,7 +288,7 @@ export default function AdminHealthTab({ LoadingSpinner }: Props) {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           <div className="bg-surface-sunken p-2 panel-beveled">
             <div className="text-[10px] text-rmpg-400 uppercase">DB Size</div>
-            <div className="text-sm font-bold text-white font-mono">{systemHealth.database.sizeMB ?? '?'} MB</div>
+            <div className="text-sm font-bold text-white font-mono">{systemHealth.database?.sizeMB ?? '?'} MB</div>
           </div>
           <div className="bg-surface-sunken p-2 panel-beveled">
             <div className="text-[10px] text-rmpg-400 uppercase">Server Uptime</div>
@@ -324,7 +308,7 @@ export default function AdminHealthTab({ LoadingSpinner }: Props) {
       )}
 
       {/* Upgrade: Top Users by Activity (30d) */}
-      {usersActivity && usersActivity.data.length > 0 && (
+      {Array.isArray(usersActivity?.data) && usersActivity.data.length > 0 && (
         <div className="panel-beveled bg-surface-base p-3">
           <div className="flex items-center gap-2 mb-2 text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">
             <Shield className="w-3.5 h-3.5 text-brand-400" />

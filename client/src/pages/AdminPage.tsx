@@ -439,7 +439,10 @@ export default function AdminPage() {
             body: JSON.stringify({ role: data.role }),
           });
         }
-        if (data.status && data.status !== editingUser.status) {
+        // mapPersonnelToUser strips `status` and stores it as `raw_status`, so
+        // editingUser.status is always undefined — compare against raw_status to
+        // avoid firing a redundant status POST (+ spurious audit) on every save.
+        if (data.status && data.status !== (editingUser as any).raw_status) {
           await apiFetch(`/personnel/${editingUser.id}/status`, {
             method: 'POST',
             body: JSON.stringify({ status: data.status }),

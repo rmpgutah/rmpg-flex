@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Loader2, Save, Trash2, Check, ChevronDown, ChevronRight } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
+import { asArray } from '../../../utils/asArray';
 
 interface ModelParams {
   temperature: number;
@@ -58,14 +59,16 @@ export default function AIModelTuningPanel() {
         apiFetch<{ defaultParams: ModelParams; featureParams: Record<FeatureName, FeatureOverride> }>('/ai/model-params'),
         apiFetch<Preset[]>('/ai/presets'),
       ]);
-      setDefaults(paramsData.defaultParams);
-      if (paramsData.featureParams) {
+      // Only replace when present — a `{}`/partial /ai/model-params response
+      // would otherwise set `defaults` undefined and crash the first <Slider>.
+      if (paramsData?.defaultParams) setDefaults(paramsData.defaultParams);
+      if (paramsData?.featureParams) {
         // Merge with defaults so every feature key exists
         const merged: Record<string, FeatureOverride> = {};
         FEATURES.forEach(f => { merged[f] = paramsData.featureParams[f] || {}; });
         setFeatureParams(merged as Record<FeatureName, FeatureOverride>);
       }
-      setPresets(presetsData);
+      setPresets(asArray<Preset>(presetsData));
     } catch (err: any) {
       setError(err?.message || 'Failed to load model parameters');
     } finally {

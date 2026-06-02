@@ -146,7 +146,8 @@ export default function AdminGodModeTab() {
   const handleIntegrity = async () => {
     try {
       const result = await apiFetch<any>('/admin/database/integrity-check', { method: 'POST' });
-      showResult(result.healthy ? 'success' : 'error', result.healthy ? 'Database integrity: OK' : `Issues found: ${result.result.join(', ')}`);
+      const issues = Array.isArray(result.result) ? result.result.join(', ') : String(result.result ?? 'unknown');
+      showResult(result.healthy ? 'success' : 'error', result.healthy ? 'Database integrity: OK' : `Issues found: ${issues}`);
     } catch (err: any) { showResult('error', err.message); }
   };
 
@@ -302,7 +303,10 @@ export default function AdminGodModeTab() {
     } catch (err: any) { showResult('error', err.message); }
   };
 
-  const formatNumber = (n: number) => n.toLocaleString();
+  // Defensive: /admin/system-overview is an `any`-shaped fetch; a non-numeric
+  // value (null / string sentinel) reaching .toLocaleString() white-screens
+  // the whole admin page (no per-tab error boundary).
+  const formatNumber = (n: number) => (typeof n === 'number' && isFinite(n) ? n.toLocaleString() : '0');
 
   // ── Right-click context menus ──
   const { openMenu } = useContextMenu();
@@ -366,7 +370,7 @@ export default function AdminGodModeTab() {
             <StatBox label="Active Users (24h)" value={String(systemOverview.active_users_24h ?? 0)} />
           </div>
           <div className="mt-2 grid grid-cols-3 md:grid-cols-5 lg:grid-cols-7 gap-1">
-            {Object.entries(systemOverview.record_counts ?? {}).filter(([, v]) => v >= 0).map(([table, count]) => (
+            {Object.entries(systemOverview.record_counts ?? {}).filter(([, v]) => typeof v === 'number' && v >= 0).map(([table, count]) => (
               <div key={table} className="bg-[#0c0c0c] px-2 py-1 rounded-sm">
                 <div className="text-[9px] text-gray-500 uppercase truncate">{table.replace(/_/g, ' ')}</div>
                 <div className="text-[11px] font-mono text-white">{formatNumber(count)}</div>
