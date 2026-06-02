@@ -352,7 +352,12 @@
 //       arrival detection, audible reroute, a mute toggle, maneuver arrows,
 //       and a "then …" next-maneuver preview. New useNavGuidance hook +
 //       voiceAlerts nav phrases; useMapRouting now exposes route geometry.
-const CACHE_NAME = 'rmpg-flex-v712';
+// v713: Map perf — eliminate the ~1–2s main-thread freeze (Chrome
+//       "'setTimeout' handler took ~2000ms") when toggling Area/Section/Zone
+//       layers. The hierarchy labels no longer @turf/dissolve all ~770 beat
+//       polygons (geometry that was never drawn); they now anchor one label
+//       per level on its largest member beat in O(n). Fill coverage unchanged.
+const CACHE_NAME = 'rmpg-flex-v713';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
