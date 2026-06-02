@@ -1,0 +1,12 @@
+# Labeled docs contain REAL PII (recipient names, DOBs, addresses, case
+# numbers from live service-of-process packets). NEVER commit them.
+data/
+dist/
+
+# Trained adapter artifacts (large, regenerable)
+*.safetensors
+adapter_config.json
+adapter-*/
+
+# Python
+__pycache__/

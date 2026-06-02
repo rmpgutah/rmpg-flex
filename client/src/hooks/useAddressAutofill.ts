@@ -15,6 +15,11 @@ import { fetchNearbyRoads, deriveCrossStreet } from '../utils/crossStreet';
 export interface ResolvedAddressDetails {
   latitude: number | null;
   longitude: number | null;
+  // Area is the TOP of the dispatch hierarchy (Area > Sector/Section > Zone >
+  // Beat). The geofence identify returns it alongside S/Z/B, so we surface it
+  // here too and let the call capture the full A/S/Z/B.
+  area_code: string;
+  area_name: string;
   sector_id: string;
   zone_id: string;
   beat_id: string;
@@ -34,6 +39,7 @@ export function useAddressAutofill() {
     const base: ResolvedAddressDetails = {
       latitude: addr.latitude ?? null,
       longitude: addr.longitude ?? null,
+      area_code: '', area_name: '',
       sector_id: '', zone_id: '', beat_id: '', dispatch_code: '', cross_street: '',
     };
     if (addr.latitude == null || addr.longitude == null) return base;
@@ -46,6 +52,8 @@ export function useAddressAutofill() {
     return {
       latitude: addr.latitude,
       longitude: addr.longitude,
+      area_code: district?.area_code || '',
+      area_name: district?.area_name || '',
       sector_id: district?.sector_id || '',
       zone_id: district?.zone_id || '',
       beat_id: district?.beat_id || '',

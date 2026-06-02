@@ -19,6 +19,7 @@ import BoloAlertBanner from './BoloAlertBanner';
 import RunCardPreview, { type RunCard } from './RunCardPreview';
 import { useDistrictOptions } from '../hooks/useDistrictLookup';
 import { useAddressAutofill } from '../hooks/useAddressAutofill';
+import { parseLocationParts } from '../utils/parseLocationParts';
 import { apiFetch } from '../hooks/useApi';
 import Dropdown from './ui/Dropdown';
 
@@ -107,6 +108,8 @@ const DEFAULT_FORM_DATA = {
   location_floor: '',
   location_room: '',
   zone_beat: '',
+  area_code: '',
+  area_name: '',
   sector_id: '',
   zone_id: '',
   beat_id: '',
@@ -181,7 +184,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
   const titleId = useId();
   const dialogRef = useRef<HTMLDivElement>(null);
   const { resolve: resolveAddress, resolveFromText } = useAddressAutofill();
-  const { sections, sectionLabels, zoneLabels, zonesForSection, beatsForZone, getBeatLabel } = useDistrictOptions();
+  const { sections, sectionLabels, zoneLabels, zonesForSection, beatsForZone, getBeatLabel, getArea } = useDistrictOptions();
 
   // Person/vehicle record search for linking
   const [personSearchResults, setPersonSearchResults] = useState<any[]>([]);
@@ -659,6 +662,65 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
             </div>
           </div>
 
+          {/* Client selector — visible in BOTH Quick and Full modes. Picking a
+              client auto-fills the caller's name / phone / address (fill-if-empty
+              — never overwrites what the dispatcher already typed). Hidden for
+              PSO Client Requests, which have their own purple client dropdown
+              above with PSO-specific autofill. */}
+          {clients.length > 0 && formData.incident_type !== 'pso_client_request' && (
+            <div>
+              <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Client</label>
+              <select id="ff-newcallmodal-client"
+                className="select-dark w-full"
+                value={formData.client_id || ''}
+                onChange={(e) => {
+                  const id = e.target.value;
+                  const client = clients.find((c) => c.id === id);
+                  if (!client) { update('client_id', ''); return; }
+                  setFormData((prev) => ({
+                    ...prev,
+                    client_id: client.id,
+                    caller_name: prev.caller_name || client.contact_name || '',
+                    caller_phone: prev.caller_phone || client.contact_phone || '',
+                    caller_address: prev.caller_address || client.address || '',
+                  }));
+                  try {
+                    const recent = JSON.parse(localStorage.getItem('rmpg_recent_call_clients') || '[]') as string[];
+                    const updated = [id, ...recent.filter((r) => r !== id)].slice(0, 5);
+                    localStorage.setItem('rmpg_recent_call_clients', JSON.stringify(updated));
+                  } catch { /* localStorage unavailable */ }
+                }}
+              >
+                <option value="">— No Client —</option>
+                {(() => {
+                  let recentIds: string[] = [];
+                  try { recentIds = JSON.parse(localStorage.getItem('rmpg_recent_call_clients') || '[]'); } catch { /* ignore */ }
+                  const recentClients = recentIds.map((id) => clients.find((c) => c.id === id)).filter(Boolean) as typeof clients;
+                  const otherClients = clients.filter((c) => !recentIds.includes(c.id));
+                  return (
+                    <>
+                      {recentClients.length > 0 && (
+                        <optgroup label="Recent">
+                          {recentClients.map((c) => (
+                            <option key={`recent-${c.id}`} value={c.id}>{c.name}{c.contact_name ? ` (${c.contact_name})` : ''}</option>
+                          ))}
+                        </optgroup>
+                      )}
+                      <optgroup label={recentClients.length > 0 ? 'All Clients' : 'Clients'}>
+                        {otherClients.map((c) => (
+                          <option key={c.id} value={c.id}>{c.name}{c.contact_name ? ` (${c.contact_name})` : ''}</option>
+                        ))}
+                      </optgroup>
+                    </>
+                  );
+                })()}
+              </select>
+              {formData.client_id && (
+                <p className="mt-0.5 text-[9px] text-rmpg-500">Caller name, phone &amp; address auto-filled from this client (edit freely).</p>
+              )}
+            </div>
+          )}
+
           {/* Caller Info — Quick: name + phone only; Full: all 4 fields */}
           <div className={`grid gap-4 ${mode === 'full' ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-1 sm:grid-cols-2'}`}>
             <div>
@@ -731,35 +793,64 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
               value={formData.location}
               onChange={(val) => update('location', val)}
               onSelect={async (addr: ParsedAddress) => {
+                // The geocoder normalizes away sub-address tokens, so parse
+                // Building/Suite/Floor from what the dispatcher TYPED (still in
+                // formData.location at this point) before we overwrite it with
+                // the canonical address.
+                const parts = parseLocationParts(formData.location || addr.formatted);
                 update('location', addr.formatted);
                 if (addr.latitude != null) {
                   setFormData((prev) => ({ ...prev, latitude: addr.latitude as any, longitude: addr.longitude as any }));
                   // Auto-fill ALL geolocation detail from the coordinates:
-                  // section/zone/beat + nearest cross street (shared cascade).
+                  // Area + section/zone/beat + dispatch code + nearest cross
+                  // street (shared cascade).
                   const details = await resolveAddress(addr);
                   setFormData((prev) => ({
                     ...prev,
+                    area_code: details.area_code || prev.area_code,
+                    area_name: details.area_name || prev.area_name,
                     sector_id: details.sector_id || prev.sector_id,
                     zone_id: details.zone_id || prev.zone_id,
                     beat_id: details.beat_id || prev.beat_id,
-                    // Create path: never clobber a cross street the dispatcher typed.
+                    zone_beat: prev.zone_beat || details.dispatch_code,
+                    // Create path: never clobber detail the dispatcher typed.
                     cross_street: prev.cross_street || details.cross_street,
+                    location_building: prev.location_building || parts.building,
+                    location_floor: prev.location_floor || parts.floor,
+                    location_room: prev.location_room || parts.suite,
+                  }));
+                } else {
+                  // No coordinates returned — still capture any typed Bldg/Suite.
+                  setFormData((prev) => ({
+                    ...prev,
+                    location_building: prev.location_building || parts.building,
+                    location_floor: prev.location_floor || parts.floor,
+                    location_room: prev.location_room || parts.suite,
                   }));
                 }
               }}
               // Typed an address without picking a suggestion → forward-geocode
-              // the freehand text so section/zone/beat + cross-street still fill.
+              // the freehand text so Area + section/zone/beat + cross-street fill.
+              // Building/Suite parse from the text regardless of geocode success.
               onResolveTyped={async (text) => {
+                const parts = parseLocationParts(text);
                 const details = await resolveFromText(text);
-                if (!details) return;
                 setFormData((prev) => ({
                   ...prev,
-                  latitude: (prev.latitude || details.latitude) as any,
-                  longitude: (prev.longitude || details.longitude) as any,
-                  sector_id: details.sector_id || prev.sector_id,
-                  zone_id: details.zone_id || prev.zone_id,
-                  beat_id: details.beat_id || prev.beat_id,
-                  cross_street: prev.cross_street || details.cross_street,
+                  location_building: prev.location_building || parts.building,
+                  location_floor: prev.location_floor || parts.floor,
+                  location_room: prev.location_room || parts.suite,
+                  ...(details ? {
+                    latitude: (prev.latitude || details.latitude) as any,
+                    longitude: (prev.longitude || details.longitude) as any,
+                    area_code: details.area_code || prev.area_code,
+                    area_name: details.area_name || prev.area_name,
+                    sector_id: details.sector_id || prev.sector_id,
+                    zone_id: details.zone_id || prev.zone_id,
+                    beat_id: details.beat_id || prev.beat_id,
+                    zone_beat: prev.zone_beat || details.dispatch_code,
+                    cross_street: prev.cross_street || details.cross_street,
+                  } : {}),
                 }));
               }}
               required
@@ -809,22 +900,8 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
             </div>
           )}
 
-          {/* Client — full mode only */}
-          {mode === 'full' && clients.length > 0 && (
-            <div>
-              <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Client</label>
-              <select id="ff-newcallmodal-15"
-                className="select-dark"
-                value={formData.client_id}
-                onChange={(e) => update('client_id', e.target.value)}
-              >
-                <option value="">— No Client —</option>
-                {clients.map((c) => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
-            </div>
-          )}
+          {/* (Client selector now lives near the top — visible in both modes
+              with caller-detail autofill — so it's not repeated here.) */}
 
           {/* Location Details — full mode only */}
           {mode === 'full' && <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
@@ -845,8 +922,27 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
               <input id="ff-newcallmodal-19" type="text" className="input-dark" placeholder="Suite 302" value={formData.location_room} onChange={(e) => update('location_room', e.target.value)} />
             </div>
             <div>
+              <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Area</label>
+              <input
+                id="ff-newcallmodal-area"
+                type="text"
+                className="input-dark"
+                placeholder="Auto"
+                value={formData.area_name}
+                readOnly
+                tabIndex={-1}
+                title="Auto-filled from the address / Section — top of the A/S/Z/B hierarchy"
+              />
+            </div>
+            <div>
               <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Section</label>
-              <select id="ff-newcallmodal-20" className="select-dark" value={formData.sector_id} onChange={(e) => { update('sector_id', e.target.value); update('zone_id', ''); update('beat_id', ''); }}>
+              <select id="ff-newcallmodal-20" className="select-dark" value={formData.sector_id} onChange={(e) => {
+                // Manual Section change re-derives Area (its parent) and resets
+                // the dependent Zone/Beat so the A/S/Z/B chain stays consistent.
+                const sid = e.target.value;
+                const area = getArea(sid);
+                setFormData((prev) => ({ ...prev, sector_id: sid, zone_id: '', beat_id: '', area_code: area?.code || '', area_name: area?.name || '' }));
+              }}>
                 <option value="">— Select —</option>
                 {sections.map(s => <option key={s} value={s}>{sectionLabels.get(s) || s}</option>)}
               </select>
