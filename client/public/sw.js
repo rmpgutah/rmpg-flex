@@ -409,7 +409,28 @@
 //       also fetches /dispatch/address-occupants and renders persons on file at
 //       the address with active-warrant / gang / caution flags, a blinking
 //       FLAGGED AT ADDRESS banner, and the alert tone.
-const CACHE_NAME = 'rmpg-flex-v722';
+// v722: Serve Intake — folder drops now upload. dataTransfer.files is empty for
+//       a dropped FOLDER; read the contents via webkitGetAsEntry() recursively
+//       (filesFromDrop). Raised the per-upload file cap 12→30 so a whole job
+//       packet (Field Sheet + Info Form + Court Docket + Summons + scanned-page
+//       rasters) goes through in one drop.
+// v723: Serve Intake drop zone — gold drag-active highlight ("RELEASE TO ADD
+//       DOCUMENTS") so a drag gets a visible response, + window-level dragover/
+//       drop guard so a stray drop just outside the zone (common in the Electron
+//       shell) no longer navigates/loses the files.
+// v724: Dispatch address autofill for TYPED addresses. Previously cross-street
+//       + section/zone/beat only filled when you PICKED an autocomplete
+//       suggestion; typing an address and tabbing away left them blank. Now on
+//       blur the field resolves from the best Mapbox suggestion (or, if none, a
+//       normalized server geocode — "4974 S Redwood Rd" → "South Redwood Road")
+//       and fills coords + cross-street + A/S/Z/B. Wired in the dispatch call-
+//       edit panel and the New Call modal.
+// v725: Unit status board "No GPS" fix — the location cell keyed off the
+//       optional text `location` field, so a unit reporting LIVE coordinates
+//       (browser/device GPS, no reverse-geocoded address) falsely showed
+//       "No GPS" even though it's on the map. Now shows the live coords (+ age)
+//       whenever lat/lng are present; "No GPS" only when there's truly no fix.
+const CACHE_NAME = 'rmpg-flex-v725';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

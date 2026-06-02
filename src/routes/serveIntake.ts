@@ -74,7 +74,13 @@ const ATTEMPT_RESULTS = new Set([
 
 // ── OCR + upload constants ──────────────────────────────────
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;   // 25 MB per file
-const MAX_FILES_PER_UPLOAD = 12;
+// A single job folder legitimately carries many documents — Field Sheet +
+// Information Form + Court Docket + Summons + Complaint + Cover Sheet + Notices
+// — and scanned PDFs each fan out to several rasterized page-images. 12 was too
+// low for a whole-folder drop; 30 covers a real packet. Extraction is per-doc,
+// parallel, and timeout-bounded, so the higher count doesn't lengthen any single
+// AI call (only widens the parallel fan-out).
+const MAX_FILES_PER_UPLOAD = 30;
 const PDF_TOOLS_NAME = 'shared';
 const INTAKE_ROLES = ['admin', 'manager', 'supervisor', 'dispatcher', 'officer'];
 

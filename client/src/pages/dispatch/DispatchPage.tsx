@@ -263,7 +263,7 @@ export default function DispatchPage() {
   const isMobile = useIsMobile();
   const { prefs: userPrefs, reload: reloadPrefs } = useUserPreferences();
   const { districts, sections, sectionLabels, getSectionCode, getArea, zoneLabels, zonesForSection, beatsForZone, beatsForSection, districtForSectionBeat, getBeatLabel } = useDistrictOptions();
-  const { resolve: resolveAddress } = useAddressAutofill();
+  const { resolve: resolveAddress, resolveFromText } = useAddressAutofill();
   const dispatchCodes = useDispatchCodes();
   const signalLookup = useMemo(() => dispatchCodes.lookup, [dispatchCodes.lookup]);
   const knownSignalCodes = useMemo(() => new Set(dispatchCodes.codes.map(c => c.code)), [dispatchCodes.codes]);
@@ -4145,6 +4145,24 @@ export default function DispatchPage() {
                                 cross_street: details.cross_street || prev.cross_street,
                               }));
                             }
+                          }}
+                          // Typed an address without picking a suggestion →
+                          // forward-geocode the freehand text and fill the same
+                          // derived geo fields, so manual entries still get
+                          // cross-street + section/zone/beat.
+                          onResolveTyped={async (text) => {
+                            const details = await resolveFromText(text);
+                            if (!details) return;
+                            setEditData(prev => ({
+                              ...prev,
+                              latitude: details.latitude ?? prev.latitude,
+                              longitude: details.longitude ?? prev.longitude,
+                              sector_id: details.sector_id || prev.sector_id,
+                              zone_id: details.zone_id || prev.zone_id,
+                              beat_id: details.beat_id || prev.beat_id,
+                              dispatch_code: details.dispatch_code || prev.dispatch_code,
+                              cross_street: details.cross_street || prev.cross_street,
+                            }));
                           }}
                         />
                       ) : (
