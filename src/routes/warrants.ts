@@ -707,6 +707,22 @@ const SOURCE_REGISTRY: Record<string, ScraperRegistryEntry> = {
     source_type: 'api',
     priority: 1,
   },
+  'ada-county-id': {
+    display_name: 'Ada County Sheriff (ID)',
+    state: 'ID',
+    county: 'Ada',
+    source_url: 'https://apps.adacounty.id.gov/sheriff/reports/warrants.aspx',
+    source_type: 'html',
+    priority: 2,
+  },
+  'natrona-county-wy': {
+    display_name: 'Natrona County Sheriff (WY)',
+    state: 'WY',
+    county: 'Natrona',
+    source_url: 'https://warrants.natronacounty-wy.gov',
+    source_type: 'html',
+    priority: 2,
+  },
 };
 
 // A-F grade per client/src/types/scrapers.ts cutoffs. Threshold-only —
