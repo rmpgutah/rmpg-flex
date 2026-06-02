@@ -27,16 +27,26 @@ const MapPage = lazyRetry(importMap);
 function lazyRetry<T extends React.ComponentType<any>>(
   factory: () => Promise<{ default: T }>,
 ): React.LazyExoticComponent<T> {
-  return lazy(() => factory().catch(() => {
-    // Force reload from server on chunk failure (once per session per module)
-    return new Promise<{ default: T }>((resolve, reject) => {
-      const reloaded = sessionStorage.getItem('rmpg_chunk_reload');
-      if (!reloaded || Date.now() - parseInt(reloaded) > 30000) {
-        sessionStorage.setItem('rmpg_chunk_reload', String(Date.now()));
-        window.location.reload();
-      }
-      reject(new Error('Chunk load failed — page will reload'));
-    });
+  return lazy(() => factory().catch((err) => {
+    // A lazy chunk failed to load — almost always a stale bundle after a
+    // deploy: this long-lived tab requests an old hash the server no longer
+    // serves. Reload ONCE per 30s to pick up the fresh index. On that first
+    // failure return a promise that NEVER settles, so React keeps rendering
+    // the Suspense fallback (spinner) while the reload navigates away —
+    // rejecting here instead would flash the ErrorBoundary's red error card
+    // for a frame (the exact "[ErrorBoundary] Chunk load failed — page will
+    // reload" noise seen in prod). If a second failure lands inside the 30s
+    // window the reload didn't help, so rethrow and let the ErrorBoundary show
+    // its recovery UI rather than reload-loop forever.
+    const KEY = 'rmpg_chunk_reload';
+    const last = sessionStorage.getItem(KEY);
+    const now = Date.now();
+    if (!last || now - parseInt(last) > 30000) {
+      sessionStorage.setItem(KEY, String(now));
+      window.location.reload();
+      return new Promise<{ default: T }>(() => { /* stay pending; reload in flight */ });
+    }
+    throw err instanceof Error ? err : new Error('Chunk load failed');
   }));
 }
 

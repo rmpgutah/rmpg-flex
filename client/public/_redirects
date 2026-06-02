@@ -16,6 +16,22 @@
 
 /api/*  https://api.rmpgutah.us/api/:splat  200
 
+# Missing build assets must 404, NOT fall through to the SPA catch-all.
+# After a deploy the build emits new hashed chunk names and DELETES the old
+# ones. A long-lived tab still running the previous bundle then imports an
+# old hash (e.g. /assets/WarrantsPage-OLDHASH.js). Without this rule that
+# path matches the `/*  /index.html  200` SPA fallback below and Pages
+# returns index.html (HTTP 200, text/html) for a `.js` request. The browser
+# refuses to execute HTML as an ES module ("Expected a JavaScript-or-Wasm
+# module script but the server responded with a MIME type of text/html") and
+# the service worker even caches that HTML under the .js URL, persisting the
+# failure. Returning a real 404 instead lets the client's lazyRetry reload to
+# the fresh index. Existing (valid) assets are served by Pages' static-file
+# layer BEFORE _redirects rules are consulted, so this only ever fires for
+# genuinely-missing hashes — never for the current build's assets.
+# Must sit ABOVE the `/*` catch-all (first match wins).
+/assets/*  /index.html  404
+
 # SPA fallback — every non-asset, non-API path serves index.html so the
 # React Router can handle the route client-side.
 /*  /index.html  200

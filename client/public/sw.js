@@ -376,7 +376,18 @@
 //       now populated (was hardcoded []). Also: fuel-report PDF now includes
 //       an Odometer column per fill (was missing entirely; reads
 //       odometer_reading ?? raw odometer).
-const CACHE_NAME = 'rmpg-flex-v715';
+// v716: FIX — "Chunk load failed" / "Expected a JavaScript-or-Wasm module
+//       script but the server responded with a MIME type of text/html" on
+//       navigating to a lazy page (WarrantsPage, MdtPage, ...) after a deploy.
+//       A 404'd old chunk came back as 200 text/html (the SPA fallback), and
+//       this SW cached that HTML under the .js URL — poisoning the cache so
+//       the failure persisted across reloads. The JS/CSS fetch branches now
+//       refuse to cache OR return a text/html response for a .js/.css request,
+//       returning a synthetic 404 instead so the import rejects cleanly and
+//       the app's lazyRetry reloads to the fresh index. Paired with the new
+//       `/assets/* … 404` _redirects rule (server-side root cause). Bumping
+//       CACHE_NAME also evicts any already-poisoned entries from prior bundles.
+const CACHE_NAME = 'rmpg-flex-v716';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
@@ -502,6 +513,16 @@ self.addEventListener('fetch', (event) => {
           if (cached) return cached;
           return fetch(event.request)
             .then((response) => {
+              // Poison guard: a deploy-removed chunk hash can come back as a
+              // 200 text/html SPA fallback (index.html). NEVER cache or return
+              // HTML for a JS/CSS request — that produces the "Expected a
+              // JavaScript-or-Wasm module … MIME type text/html" execution
+              // error and, if cached, persists it. Surface a 404 so the
+              // dynamic import rejects and lazyRetry reloads the fresh bundle.
+              const ct = response.headers.get('Content-Type') || '';
+              if (ct.includes('text/html')) {
+                return new Response('', { status: 404, statusText: 'Stale chunk (HTML fallback)' });
+              }
               if (response.ok) {
                 const clone = response.clone();
                 caches.open(CACHE_NAME).then((cache) => {
@@ -521,6 +542,14 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       fetch(event.request)
         .then((response) => {
+          // Same poison guard as the hashed branch — never cache/return HTML
+          // for a JS/CSS request (see v716 note).
+          const ct = response.headers.get('Content-Type') || '';
+          if (ct.includes('text/html')) {
+            return caches.match(event.request).then(
+              (cached) => cached || new Response('', { status: 404, statusText: 'Stale chunk (HTML fallback)' })
+            );
+          }
           if (response.ok) {
             const clone = response.clone();
             caches.open(CACHE_NAME).then((cache) => {
