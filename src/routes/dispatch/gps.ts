@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../../types';
 import { getDb, query, queryFirst, execute } from '../../utils/db';
-import { broadcastAll } from '../ws';
+import { emitAlert } from '../../utils/alertHub';
 
 const gps = new Hono<Env>();
 
@@ -48,10 +48,25 @@ gps.post('/', async (c) => {
       // 7s poll, and recommended-units re-ranks on fresh GPS. /dispatch is
       // excluded from the generic data_changed sync, and gps was previously
       // silent — pins froze. One small frame per fix; consumers debounce.
+      //
+      // CRITICAL: this MUST go through AlertHubDO (the shared cross-worker bus),
+      // not broadcastAll(). The client's live socket is /api/alerts-ws on THIS
+      // (rewrite) worker via the global AlertHubDO; broadcastAll() only reaches
+      // routes/ws.ts's per-isolate map, which is empty because the main /api/ws
+      // socket lives on the LEGACY worker — so broadcastAll() delivered to 0
+      // clients (dead). emitAlert() fans out via env.ALERT_HUB exactly like
+      // panic, so every connected console/MDT actually receives the position.
+      // Message type 'unit_position' / action 'gps_update' (see report); the DO
+      // broadcasts any non-panic frame and skips the forced-ack lifecycle.
+      // Best-effort: a fan-out failure must never fail the breadcrumb write.
       try {
-        broadcastAll('dispatch_update', {
-          action: 'unit_position_update',
+        await emitAlert(c.env, 'unit_position', {
+          action: 'gps_update',
           unit_id: unit.id,
+          lat: lastPt.latitude,
+          lng: lastPt.longitude,
+          heading,
+          speed,
           unit: {
             id: unit.id, call_sign: unit.call_sign,
             latitude: lastPt.latitude, longitude: lastPt.longitude,
