@@ -345,8 +345,15 @@ export function useVectorTileLayers({ map, popup, isLight = false, onUseLocation
   useEffect(() => {
     if (!map) return;
     const onStyleLoad = () => {
+      // setStyle() wipes layers/sources (so addedRef must be cleared to re-add
+      // them) but Mapbox RETAINS map-level delegated listeners across a style
+      // change. Do NOT clear clickBoundRef here: re-running addLayer would then
+      // bind a SECOND click/hover handler on the same layer id while the first
+      // is still attached, so each basemap switch added another duplicate
+      // (N switches → N stacked popups + N 'Use This Location' dispatch
+      // callbacks). Keeping clickBoundRef means the handlers bind exactly once
+      // per layer for the life of the map instance.
       addedRef.current.clear();
-      clickBoundRef.current.clear();
       for (const cfg of VECTOR_TILE_CONFIGS) {
         if (layerStatesRef.current[cfg.id]?.visible) {
           addLayer(cfg);

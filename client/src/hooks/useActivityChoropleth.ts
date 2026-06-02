@@ -93,8 +93,17 @@ export function useActivityChoropleth({ map, calls, level }: Opts) {
     const data = { type: 'FeatureCollection', features };
 
     const max = Math.max(0, ...Array.from(groupTotal.values()), ...features.map((f: any) => f.properties._count));
-    const t = [Math.max(1, Math.round(max * 0.25)), Math.max(2, Math.round(max * 0.5)), Math.max(3, Math.round(max * 0.75))];
-    const fillColor: any = ['step', ['get', '_count'], RAMP[0], 1, RAMP[1], t[0], RAMP[2], t[1], RAMP[3], t[2], RAMP[4]];
+    // Mapbox 'step' inputs MUST be strictly ascending or addLayer throws. For low
+    // maxima the 0.25/0.5/0.75 breakpoints collapse to the same value (e.g. max=3
+    // → 1,1,2,3) which crashed the FILL layer. Build distinct, strictly-increasing
+    // stops and pair each with the next ramp color.
+    const stops: number[] = [];
+    for (const v of [1, Math.round(max * 0.25), Math.round(max * 0.5), Math.round(max * 0.75)]) {
+      const n = Math.max(1, v);
+      if (stops.length === 0 || n > stops[stops.length - 1]) stops.push(n);
+    }
+    const fillColor: any = ['step', ['get', '_count'], RAMP[0]];
+    stops.forEach((s, i) => { fillColor.push(s, RAMP[Math.min(i + 1, RAMP.length - 1)]); });
 
     whenStyleReady(map, () => {
       const src = map.getSource(SRC) as mapboxgl.GeoJSONSource | undefined;
@@ -113,7 +122,7 @@ export function useActivityChoropleth({ map, calls, level }: Opts) {
         map.setPaintProperty(FILL, 'fill-color', fillColor);
       }
     });
-    setLegend({ level: lvl, max, thresholds: t, colors: RAMP });
+    setLegend({ level: lvl, max, thresholds: stops, colors: RAMP });
   }, [map]);
 
   // React to level on/off.

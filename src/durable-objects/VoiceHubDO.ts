@@ -433,7 +433,18 @@ export class VoiceHubDO {
     // a unit directs traffic at it (or explicitly asked for a lookup/write);
     // it stays off undirected unit-to-unit chatter. 'all' answers everything.
     const hasActionable = !!(decision?.lookup || decision?.action);
-    if (settings.ai_respond_mode === 'addressed' && !addressed && !hasActionable) return;
+    // OFFICER-SAFETY OVERRIDE: a duress / high-stress transmission must NEVER be
+    // dropped by respond-mode gating. In 'addressed' mode an undirected, non-
+    // actionable transmission would otherwise return here — before the stress/
+    // duress check below — so a unit under duress on unit-to-unit chatter would
+    // get no silent console alert. Assess escalation first and stay if present.
+    let safetyEscalated = false;
+    if (settings.stress_monitoring_enabled) {
+      const dc = settings.duress_code.trim().toLowerCase();
+      const codeHitEarly = dc.length > 0 && transcript.toLowerCase().includes(dc);
+      safetyEscalated = !!decision?.safety?.duress || codeHitEarly || decision?.safety?.stress === 'high';
+    }
+    if (settings.ai_respond_mode === 'addressed' && !addressed && !hasActionable && !safetyEscalated) return;
 
     // 3a. If the unit asked for a record check, run it for real and let the
     // dispatcher read the result back instead of the holding "stand by".
