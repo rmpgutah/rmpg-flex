@@ -19,8 +19,11 @@ admin.get('/config', async (c) => {
     const result: Record<string, any> = {};
     const customDispositions: any[] = [];
     for (const row of config) {
-      const key = String(row.key);
-      const value = String(row.value ?? '');
+      // Live system_config columns are config_key/config_value (NOT key/value);
+      // reading key/value yielded "undefined" for every row, so custom
+      // dispositions + flat config never loaded once this route goes live.
+      const key = String(row.config_key);
+      const value = String(row.config_value ?? '');
       // Disposition rows live under the 'disposition.<code>' namespace
       // so we can keep the flat key/value schema while still allowing
       // the client to consume them as a typed array.

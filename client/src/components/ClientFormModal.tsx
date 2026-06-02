@@ -188,7 +188,11 @@ export default function ClientFormModal({
         snapshot();
       }
     }
-  }, [isOpen, editingClient]);
+    // Depend on the id, not the object ref: a LiveSync list refresh produces a
+    // new editingClient object for the same client, and depending on the ref
+    // would re-run this reset mid-edit, wiping in-progress input + stealing focus
+    // (matches the fix UserFormModal already uses).
+  }, [isOpen, editingClient?.id]);
 
   const set = (field: keyof ClientFormData, value: string | boolean) =>
     setForm((prev) => ({ ...prev, [field]: value }));

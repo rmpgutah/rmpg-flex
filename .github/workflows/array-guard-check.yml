@@ -1,0 +1,27 @@
+name: Array Guard Check
+
+on:
+  pull_request:
+    paths:
+      - 'client/src/pages/admin/**'
+      - 'scripts/check-array-guards.js'
+      - '.github/workflows/array-guard-check.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'client/src/pages/admin/**'
+      - 'scripts/check-array-guards.js'
+      - '.github/workflows/array-guard-check.yml'
+  workflow_dispatch:
+
+jobs:
+  array-guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+      - name: Run unguarded-array apiFetch check (admin console)
+        run: node scripts/check-array-guards.js
