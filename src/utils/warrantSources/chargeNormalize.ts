@@ -16,6 +16,11 @@ export interface NormalizedCharge {
 }
 
 // Felony keywords win over infraction keywords when both are present.
+// NOTE: matching is intentionally substring-based (so "weapon" matches
+// "weapons") and intentionally biased toward felony — over-classifying a
+// charge as more severe is the safer officer-safety direction. Do NOT add
+// short/ambiguous tokens here (e.g. a bare 3-letter word) without switching
+// to word-boundary matching, or they will misfire on unrelated charge text.
 const FELONY_KEYWORDS = [
   'felony',
   'aggravated',
