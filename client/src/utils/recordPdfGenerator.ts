@@ -5612,7 +5612,10 @@ async function generateCitationReport(doc: jsPDF, data: CitationPdfData) {
   }
 
   // ── Violations Table (multiple per citation) ──
-  if (data.violations && data.violations.length > 0) {
+  // Array.isArray guard, not bare truthiness: live TEXT columns can deliver a
+  // sentinel string ("None"/"[]") whose .length is truthy but whose .map throws
+  // (the recurring equipment.map crash class). [[project-sentinel-none-strings]]
+  if (Array.isArray(data.violations) && data.violations.length > 0) {
     y = checkPageBreak(doc, y, 20, prio);
     { const sec = openAutoSection(doc, 'Violations', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
     const violRows = data.violations.map(v => [

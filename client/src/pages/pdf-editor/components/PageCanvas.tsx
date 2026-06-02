@@ -105,6 +105,10 @@ export default function PageCanvas(props: Props) {
             for (const item of items) {
               if (!item.str) continue;
               const tx = item.transform;
+              // Malformed text items (some XFA/odd PDFs) can carry a short or
+              // missing transform; indexing tx[4]/tx[5] would throw and break
+              // the whole page's text/selection layer. Skip the bad item.
+              if (!tx || tx.length < 6) continue;
               const x = tx[4];
               const y = viewport.height - tx[5];
               const fontSize = Math.hypot(tx[2], tx[3]);

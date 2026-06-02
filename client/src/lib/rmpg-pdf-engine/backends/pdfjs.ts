@@ -61,6 +61,11 @@ class PdfJsPage implements RmpgPdfPage {
         const it = raw as { str?: string; transform: number[]; width: number; height: number };
         if (typeof it.str !== 'string' || it.str.length === 0) continue;
         const t = it.transform;
+        // Defensive: a malformed/short transform (rare XFA + odd producers)
+        // would make t[...] undefined and poison downstream coord math in the
+        // editor's text layer. Valid items always carry a length-6 matrix, so
+        // this only skips genuinely broken items.
+        if (!Array.isArray(t) || t.length < 6) continue;
         items.push({
           str: it.str,
           transform: [t[0], t[1], t[2], t[3], t[4], t[5]],
