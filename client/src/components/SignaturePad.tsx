@@ -1,5 +1,6 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import { Eraser, Check, X, Type, PenTool } from 'lucide-react';
+import '../signatureFonts.css';
 
 interface SignaturePadProps {
   /** Current signature data URL (PNG base64) or null */
@@ -16,13 +17,31 @@ interface SignaturePadProps {
   compact?: boolean;
 }
 
-// Signature-style cursive fonts rendered via canvas
+// Realistic, self-hosted handwriting fonts (see signatureFonts.css). `family`
+// must match the @font-face family name exactly — canvas only renders the
+// webfont once document.fonts.load() resolves for it.
 const SIGNATURE_FONTS = [
-  { name: 'Brush Script', css: 'italic 36px "Brush Script MT", "Segoe Script", cursive' },
-  { name: 'Cursive', css: 'italic 32px "Segoe Script", "Apple Chancery", cursive' },
-  { name: 'Formal', css: '28px "Palatino Linotype", "Book Antiqua", Palatino, serif' },
-  { name: 'Handwritten', css: 'italic 30px "Comic Sans MS", "Marker Felt", cursive' },
+  { name: 'Elegant',   family: 'Great Vibes',    size: 46, weight: 400 },
+  { name: 'Flowing',   family: 'Dancing Script', size: 40, weight: 600 },
+  { name: 'Casual',    family: 'Sacramento',     size: 44, weight: 400 },
+  { name: 'Penned',    family: 'Homemade Apple', size: 30, weight: 400 },
+  { name: 'Marker',    family: 'Caveat',         size: 44, weight: 600 },
 ];
+
+const fontCss = (f: typeof SIGNATURE_FONTS[number], sizePx = f.size) =>
+  `${f.weight} ${sizePx}px "${f.family}", cursive`;
+
+// Fixed export resolution multiplier — the backing canvas is rendered at this
+// scale so the exported PNG is crisp when placed on a PDF (a 400×150 pad
+// exports at 1200×450). Independent of screen devicePixelRatio so output is
+// deterministic across devices.
+const RENDER_SCALE = 3;
+
+// Stroke width envelope (in CSS px, before RENDER_SCALE).
+const MIN_W = 0.7;
+const MAX_W = 3.2;
+
+interface StrokePoint { x: number; y: number; time: number; pressure: number; }
 
 export default function SignaturePad({
   value,
@@ -39,178 +58,249 @@ export default function SignaturePad({
   const [mode, setMode] = useState<'draw' | 'type'>('draw');
   const [typedName, setTypedName] = useState('');
   const [selectedFont, setSelectedFont] = useState(0);
-  const lastPointRef = useRef<{ x: number; y: number; time: number } | null>(null);
-  const lastWidthRef = useRef(2);
+  const [fontsReady, setFontsReady] = useState(false);
 
-  // Canvas dimensions for compact mode
+  // Continuous-curve drawing state: previous raw point + previous midpoint.
+  const lastPointRef = useRef<StrokePoint | null>(null);
+  const lastMidRef = useRef<{ x: number; y: number } | null>(null);
+  const lastWidthRef = useRef(2);
+  const movedRef = useRef(false);
+
+  // Canvas display dimensions (CSS px)
   const cW = compact ? 280 : width;
   const cH = compact ? 100 : height;
 
-  // Initialize canvas with white background and signature line
+  // Configure the 2D context to draw in CSS-px coordinates on a
+  // RENDER_SCALE-times-larger backing store (crisp export).
+  const prepareCtx = useCallback((ctx: CanvasRenderingContext2D) => {
+    ctx.setTransform(RENDER_SCALE, 0, 0, RENDER_SCALE, 0, 0);
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = '#161616';
+    ctx.fillStyle = '#161616';
+  }, []);
+
+  // Paint white background + the "X" signature baseline.
+  const paintBackground = useCallback((ctx: CanvasRenderingContext2D) => {
+    ctx.save();
+    ctx.setTransform(RENDER_SCALE, 0, 0, RENDER_SCALE, 0, 0);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, cW, cH);
+    ctx.strokeStyle = '#cccccc';
+    ctx.lineWidth = 0.6;
+    ctx.beginPath();
+    ctx.moveTo(20, cH - 25);
+    ctx.lineTo(cW - 20, cH - 25);
+    ctx.stroke();
+    ctx.fillStyle = '#999999';
+    ctx.font = '12px Helvetica, Arial, sans-serif';
+    ctx.fillText('X', 10, cH - 28);
+    ctx.restore();
+  }, [cW, cH]);
+
+  // Initialize / clear the drawing canvas.
   const initCanvas = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+    canvas.width = Math.round(cW * RENDER_SCALE);
+    canvas.height = Math.round(cH * RENDER_SCALE);
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-    // Signature line
-    ctx.strokeStyle = '#cccccc';
-    ctx.lineWidth = 0.5;
-    ctx.beginPath();
-    ctx.moveTo(20, canvas.height - 25);
-    ctx.lineTo(canvas.width - 20, canvas.height - 25);
-    ctx.stroke();
-    // "X" marker
-    ctx.fillStyle = '#999999';
-    ctx.font = '12px Helvetica';
-    ctx.fillText('X', 10, canvas.height - 28);
-    // Reset for drawing
-    ctx.strokeStyle = '#1a1a1a';
-    ctx.lineWidth = 2;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    setHasContent(false);
+    paintBackground(ctx);
+    prepareCtx(ctx);
     lastWidthRef.current = 2;
-  }, []);
+    lastPointRef.current = null;
+    lastMidRef.current = null;
+    setHasContent(false);
+  }, [cW, cH, paintBackground, prepareCtx]);
 
   useEffect(() => {
     if (showPad && mode === 'draw') {
-      setTimeout(initCanvas, 50);
+      const t = setTimeout(initCanvas, 50);
+      return () => clearTimeout(t);
     }
   }, [showPad, mode, initCanvas]);
 
-  const getPoint = (e: React.MouseEvent | React.TouchEvent): { x: number; y: number; time: number } => {
-    const canvas = canvasRef.current;
-    if (!canvas) return { x: 0, y: 0, time: Date.now() };
-    const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width / rect.width;
-    const scaleY = canvas.height / rect.height;
+  // Preload the handwriting fonts when the Type tab opens so the live preview
+  // and the exported canvas both render the real glyphs (not a fallback).
+  useEffect(() => {
+    if (!showPad || mode !== 'type') return;
+    let cancelled = false;
+    Promise.all(
+      SIGNATURE_FONTS.map(f => document.fonts.load(`${f.weight} ${f.size}px "${f.family}"`, 'Signature')),
+    )
+      .then(() => { if (!cancelled) setFontsReady(true); })
+      .catch(() => { if (!cancelled) setFontsReady(true); });
+    return () => { cancelled = true; };
+  }, [showPad, mode]);
 
-    if ('touches' in e) {
-      const touch = e.touches[0];
-      return {
-        x: (touch.clientX - rect.left) * scaleX,
-        y: (touch.clientY - rect.top) * scaleY,
-        time: Date.now(),
-      };
-    }
+  // Map a pointer event to a canvas point in CSS-px coordinates (+ pressure).
+  const getPoint = (e: React.PointerEvent): StrokePoint => {
+    const canvas = canvasRef.current;
+    if (!canvas) return { x: 0, y: 0, time: Date.now(), pressure: 0.5 };
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = cW / rect.width;
+    const scaleY = cH / rect.height;
+    // Pen reports a real 0–1 pressure; mouse/touch report 0 or 0.5 → treat as neutral.
+    const usePressure = e.pointerType === 'pen' && e.pressure > 0;
     return {
       x: (e.clientX - rect.left) * scaleX,
       y: (e.clientY - rect.top) * scaleY,
       time: Date.now(),
+      pressure: usePressure ? e.pressure : 0.5,
     };
   };
 
-  const startDraw = (e: React.MouseEvent | React.TouchEvent) => {
-    e.preventDefault();
-    setIsDrawing(true);
-    const pt = getPoint(e);
-    lastPointRef.current = pt;
-    lastWidthRef.current = 2;
+  // Compute stroke width: real pen pressure when available, otherwise velocity
+  // (fast → thin, slow → thick). Smoothed against the previous width so the
+  // line tapers naturally instead of jumping.
+  const widthFor = (prev: StrokePoint, pt: StrokePoint): number => {
+    let target: number;
+    if (pt.pressure !== 0.5) {
+      target = MIN_W + (MAX_W - MIN_W) * pt.pressure;
+    } else {
+      const dx = pt.x - prev.x;
+      const dy = pt.y - prev.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const dt = Math.max(1, pt.time - prev.time);
+      const velocity = dist / dt; // px/ms
+      target = Math.max(MIN_W, Math.min(MAX_W, MAX_W - velocity * 2.2));
+    }
+    const smooth = lastWidthRef.current * 0.55 + target * 0.45;
+    lastWidthRef.current = smooth;
+    return smooth;
   };
 
-  // Velocity-based line width for natural pen feel
-  const draw = (e: React.MouseEvent | React.TouchEvent) => {
+  // Draw one continuous quadratic segment: previous midpoint → current
+  // midpoint, using the previous raw point as the control. This connects the
+  // FULL span between samples (the old code drew only last→midpoint, leaving
+  // the midpoint→point half blank, which is what produced the dashed look).
+  const drawSegment = (ctx: CanvasRenderingContext2D, prev: StrokePoint, pt: StrokePoint) => {
+    const mid = { x: (prev.x + pt.x) / 2, y: (prev.y + pt.y) / 2 };
+    const startMid = lastMidRef.current ?? prev;
+    ctx.beginPath();
+    ctx.moveTo(startMid.x, startMid.y);
+    ctx.quadraticCurveTo(prev.x, prev.y, mid.x, mid.y);
+    ctx.lineWidth = widthFor(prev, pt);
+    ctx.stroke();
+    lastMidRef.current = mid;
+  };
+
+  const startDraw = (e: React.PointerEvent) => {
+    e.preventDefault();
+    (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+    setIsDrawing(true);
+    movedRef.current = false;
+    const pt = getPoint(e);
+    lastPointRef.current = pt;
+    lastMidRef.current = { x: pt.x, y: pt.y };
+    lastWidthRef.current = MIN_W + (MAX_W - MIN_W) * 0.5;
+  };
+
+  const draw = (e: React.PointerEvent) => {
     if (!isDrawing) return;
     e.preventDefault();
     const ctx = canvasRef.current?.getContext('2d');
     if (!ctx) return;
-    const pt = getPoint(e);
-    const last = lastPointRef.current;
-    if (!last) {
+
+    // High-frequency intermediate points between animation frames → smoother ink.
+    const native = e.nativeEvent as PointerEvent;
+    const events: PointerEvent[] = native.getCoalescedEvents?.().length
+      ? native.getCoalescedEvents()
+      : [native];
+
+    for (const ev of events) {
+      const prev = lastPointRef.current;
+      if (!prev) break;
+      const rect = canvasRef.current!.getBoundingClientRect();
+      const usePressure = ev.pointerType === 'pen' && ev.pressure > 0;
+      const pt: StrokePoint = {
+        x: (ev.clientX - rect.left) * (cW / rect.width),
+        y: (ev.clientY - rect.top) * (cH / rect.height),
+        time: Date.now(),
+        pressure: usePressure ? ev.pressure : 0.5,
+      };
+      const dx = pt.x - prev.x;
+      const dy = pt.y - prev.y;
+      if (dx * dx + dy * dy < 0.05) continue; // skip jitter / duplicate samples
+      drawSegment(ctx, prev, pt);
       lastPointRef.current = pt;
-      return;
+      movedRef.current = true;
     }
-
-    // Compute velocity (pixels per millisecond)
-    const dx = pt.x - last.x;
-    const dy = pt.y - last.y;
-    const dist = Math.sqrt(dx * dx + dy * dy);
-    const dt = Math.max(1, pt.time - last.time);
-    const velocity = dist / dt;
-
-    // Map velocity to line width: fast strokes → thin, slow strokes → thick
-    // Clamp between 0.8 and 4 pixels, smooth with previous width
-    const targetWidth = Math.max(0.8, Math.min(4, 3.5 - velocity * 2.5));
-    const smoothWidth = lastWidthRef.current * 0.6 + targetWidth * 0.4;
-    lastWidthRef.current = smoothWidth;
-
-    // Draw with quadratic bezier for smooth curves
-    const midX = (last.x + pt.x) / 2;
-    const midY = (last.y + pt.y) / 2;
-
-    ctx.beginPath();
-    ctx.moveTo(last.x, last.y);
-    ctx.quadraticCurveTo(last.x, last.y, midX, midY);
-    ctx.strokeStyle = '#1a1a1a';
-    ctx.lineWidth = smoothWidth;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    ctx.stroke();
-
-    lastPointRef.current = pt;
     setHasContent(true);
   };
 
-  const endDraw = () => {
+  const endDraw = (e: React.PointerEvent) => {
+    if (!isDrawing) return;
+    // A tap with no movement should leave a dot, not nothing.
+    if (!movedRef.current) {
+      const ctx = canvasRef.current?.getContext('2d');
+      const p = lastPointRef.current;
+      if (ctx && p) {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, MIN_W + 0.6, 0, Math.PI * 2);
+        ctx.fill();
+        setHasContent(true);
+      }
+    }
+    (e.target as HTMLElement).releasePointerCapture?.(e.pointerId);
     setIsDrawing(false);
     lastPointRef.current = null;
+    lastMidRef.current = null;
   };
 
   const handleClear = () => {
-    if (mode === 'type') {
-      setTypedName('');
-    } else {
-      initCanvas();
-    }
+    if (mode === 'type') setTypedName('');
+    else initCanvas();
   };
 
-  // Render typed signature onto canvas and export as PNG
-  const renderTypedSignature = useCallback((): string | null => {
+  // Render the typed signature onto a hi-res offscreen canvas and export PNG.
+  // Awaits the active font so canvas never falls back to a generic face.
+  const renderTypedSignature = useCallback(async (): Promise<string | null> => {
+    const f = SIGNATURE_FONTS[selectedFont];
+    try {
+      await document.fonts.load(`${f.weight} ${f.size}px "${f.family}"`, typedName || 'Signature');
+    } catch { /* fall through — swap face if not ready */ }
+
     const canvas = document.createElement('canvas');
-    canvas.width = cW;
-    canvas.height = cH;
+    canvas.width = Math.round(cW * RENDER_SCALE);
+    canvas.height = Math.round(cH * RENDER_SCALE);
     const ctx = canvas.getContext('2d');
     if (!ctx) return null;
+    ctx.setTransform(RENDER_SCALE, 0, 0, RENDER_SCALE, 0, 0);
 
-    // White background
+    // White background + baseline.
     ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    // Signature line
+    ctx.fillRect(0, 0, cW, cH);
     ctx.strokeStyle = '#cccccc';
-    ctx.lineWidth = 0.5;
+    ctx.lineWidth = 0.6;
     ctx.beginPath();
-    ctx.moveTo(20, canvas.height - 25);
-    ctx.lineTo(canvas.width - 20, canvas.height - 25);
+    ctx.moveTo(20, cH - 25);
+    ctx.lineTo(cW - 20, cH - 25);
     ctx.stroke();
 
-    // Render typed name
-    ctx.fillStyle = '#1a1a1a';
-    ctx.font = SIGNATURE_FONTS[selectedFont].css;
-    ctx.textBaseline = 'bottom';
-
-    // Center the text and auto-scale if too wide
-    const textWidth = ctx.measureText(typedName).width;
-    const maxWidth = canvas.width - 50;
+    // Typed name, auto-scaled to fit and centered on the baseline.
+    ctx.fillStyle = '#161616';
+    ctx.font = fontCss(f);
+    ctx.textBaseline = 'alphabetic';
+    ctx.textAlign = 'center';
+    const textWidth = ctx.measureText(typedName).width || 1;
+    const maxWidth = cW - 50;
     const scale = textWidth > maxWidth ? maxWidth / textWidth : 1;
 
     ctx.save();
-    const x = canvas.width / 2;
-    const y = canvas.height - 28;
-    ctx.translate(x, y);
+    ctx.translate(cW / 2, cH - 30);
     ctx.scale(scale, scale);
-    ctx.fillText(typedName, -textWidth / 2, 0);
+    ctx.fillText(typedName, 0, 0);
     ctx.restore();
 
     return canvas.toDataURL('image/png');
   }, [typedName, selectedFont, cW, cH]);
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (mode === 'type') {
       if (!typedName.trim()) return;
-      const dataUrl = renderTypedSignature();
+      const dataUrl = await renderTypedSignature();
       if (dataUrl) {
         onChange(dataUrl);
         setShowPad(false);
@@ -219,8 +309,7 @@ export default function SignaturePad({
     } else {
       const canvas = canvasRef.current;
       if (!canvas || !hasContent) return;
-      const dataUrl = canvas.toDataURL('image/png');
-      onChange(dataUrl);
+      onChange(canvas.toDataURL('image/png'));
       setShowPad(false);
     }
   };
@@ -311,21 +400,17 @@ export default function SignaturePad({
         </div>
 
         {mode === 'draw' ? (
-          /* Drawing canvas */
+          /* Drawing canvas — pointer events unify mouse/touch/pen + pressure */
           <canvas
             ref={canvasRef}
-            width={cW}
-            height={cH}
             aria-label="Signature drawing area"
-            className="bg-white rounded-sm cursor-crosshair touch-none"
+            className="bg-white rounded-sm cursor-crosshair touch-none select-none"
             style={{ width: cW, height: cH }}
-            onMouseDown={startDraw}
-            onMouseMove={draw}
-            onMouseUp={endDraw}
-            onMouseLeave={endDraw}
-            onTouchStart={startDraw}
-            onTouchMove={draw}
-            onTouchEnd={endDraw}
+            onPointerDown={startDraw}
+            onPointerMove={draw}
+            onPointerUp={endDraw}
+            onPointerLeave={endDraw}
+            onPointerCancel={endDraw}
           />
         ) : (
           /* Typed signature mode */
@@ -334,16 +419,16 @@ export default function SignaturePad({
             style={{ width: cW, height: cH }}
           >
             {/* Preview of typed signature */}
-            <div className="flex-1 flex items-end justify-center w-full px-4 pb-1">
+            <div className="flex-1 flex items-end justify-center w-full px-4 pb-1 overflow-hidden">
               <span
-                className="text-center truncate max-w-full"
+                className="text-center truncate max-w-full leading-none"
                 style={{
-                  font: SIGNATURE_FONTS[selectedFont].css,
-                  color: '#1a1a1a',
-                  fontSize: typedName.length > 20 ? '22px' : undefined,
+                  font: fontCss(SIGNATURE_FONTS[selectedFont], typedName.length > 18 ? 30 : SIGNATURE_FONTS[selectedFont].size),
+                  color: '#161616',
+                  opacity: fontsReady ? 1 : 0.4,
                 }}
               >
-                {typedName || '\u00A0'}
+                {typedName || ' '}
               </span>
             </div>
             {/* Signature line */}
@@ -361,17 +446,19 @@ export default function SignaturePad({
               autoFocus
             />
             {/* Font selector */}
-            <div className="flex gap-1 mb-1">
+            <div className="flex gap-1 mb-1 flex-wrap justify-center">
               {SIGNATURE_FONTS.map((f, i) => (
                 <button
                   key={f.name}
                   type="button"
                   onClick={() => setSelectedFont(i)}
-                  className={`px-1.5 py-0.5 text-[9px] rounded-sm transition-colors ${
+                  style={{ fontFamily: `"${f.family}", cursive` }}
+                  className={`px-2 py-0.5 text-[13px] leading-none rounded-sm transition-colors ${
                     selectedFont === i
-                      ? 'bg-gray-100 border border-gray-400 text-gray-700'
+                      ? 'bg-gray-100 border border-gray-400 text-gray-800'
                       : 'bg-rmpg-800 border border-rmpg-600 text-rmpg-300 hover:bg-rmpg-700'
                   }`}
+                  title={f.name}
                 >
                   {f.name}
                 </button>
