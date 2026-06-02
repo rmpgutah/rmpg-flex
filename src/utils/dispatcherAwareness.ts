@@ -23,6 +23,7 @@
 import type { D1Database } from '@cloudflare/workers-types';
 import type { Bindings } from '../types';
 import { query, queryFirst, execute } from './db';
+import { emitAlert } from './alertHub';
 import { geocodeAddress, reverseGeocodeAddress } from '../routes/geocode';
 import { resolveDistrict } from './districtResolver';
 import { estimateEta } from './eta';
@@ -596,7 +597,59 @@ async function lookupEta(env: Bindings, db: D1Database, callSign: string): Promi
 //   • policy-gated  — evaluateActionPolicy() (the operator knob) can refuse.
 //   • best-effort   — a failure returns null so the relay tail never throws;
 //                     the dispatcher just acknowledges verbally instead.
+//   • board-live    — a successful write fans a 'dispatch_update' to every
+//                     dispatcher console via AlertHubDO (broadcastBoard below),
+//                     so a radio-AI call / status change appears INSTANTLY, not
+//                     on the board's ~20s poll. The room socket's existing
+//                     'dispatch_action' frame only reaches the radio console.
 // ============================================================
+
+// Push a live board event over the agency-wide AlertHubDO bus. This is the
+// SAME 'dispatch_update' contract the HTTP create handler emits
+// (broadcastAll('dispatch_update', { action, call/unit })) — but over the bus
+// that actually reaches clients: the rewrite worker's broadcastAll() lands in
+// an empty per-isolate socket map (the live /api/ws is on the legacy worker),
+// whereas every console holds a socket to AlertHubDO (see src/utils/alertHub.ts).
+// Fires from all three radio entry points (VoiceHubDO, radio.ts, voice.ts)
+// since they share runAction. Best-effort — never throws into the relay tail.
+async function broadcastBoard(env: Bindings, action: string, payload: Record<string, unknown>): Promise<void> {
+  try {
+    await emitAlert(env, 'dispatch_update', { action, ...payload });
+  } catch (err) {
+    console.warn('[awareness] board broadcast failed (non-fatal):', (err as Error)?.message);
+  }
+}
+
+// Board-shaped call row — the columns the client mapDbCall renders into a card.
+// Explicit list (never SELECT * — calls_for_service is at the 100-col D1 cap);
+// any field not selected just defaults client-side and the ~20s poll backfills.
+async function boardCallRow(db: D1Database, callId: number): Promise<Record<string, unknown> | null> {
+  return queryFirst<Record<string, unknown>>(
+    db,
+    `SELECT id, call_number, incident_type, priority, status, location_address,
+            latitude, longitude, description, caller_name, source, disposition,
+            sector_id, sector_name, zone_id, zone_name, beat_id, beat_name,
+            dispatch_code, created_at, updated_at, dispatched_at, cleared_at
+     FROM calls_for_service WHERE id = ? LIMIT 1`,
+    callId,
+  ).catch(() => null);
+}
+
+// Board-shaped unit row — the fields DispatchPage.applyUnitPatch + the map's
+// unit_update bridge read (status, position, officer name, current call number).
+async function boardUnitRow(db: D1Database, unitId: number): Promise<Record<string, unknown> | null> {
+  return queryFirst<Record<string, unknown>>(
+    db,
+    `SELECT u.id, u.call_sign, u.status, u.officer_id, u.latitude, u.longitude,
+            u.current_call_id, u.last_status_change, u.updated_at,
+            usr.full_name AS officer_name, c.call_number AS current_call_number
+     FROM units u
+     LEFT JOIN users usr ON usr.id = u.officer_id
+     LEFT JOIN calls_for_service c ON c.id = u.current_call_id
+     WHERE u.id = ? LIMIT 1`,
+    unitId,
+  ).catch(() => null);
+}
 
 export type ActionType = 'set_unit_status' | 'create_call' | 'clear_call' | 'dispatch_backup' | 'create_bolo';
 
@@ -731,10 +784,10 @@ export async function runAction(env: Bindings, db: D1Database, req: ActionReques
     return null;
   }
   try {
-    if (req.type === 'set_unit_status') return await setUnitStatus(db, req);
+    if (req.type === 'set_unit_status') return await setUnitStatus(env, db, req);
     if (req.type === 'create_call') return await createCall(env, db, req);
-    if (req.type === 'clear_call') return await clearCall(db, req);
-    if (req.type === 'dispatch_backup') return await dispatchBackup(db, req);
+    if (req.type === 'clear_call') return await clearCall(env, db, req);
+    if (req.type === 'dispatch_backup') return await dispatchBackup(env, db, req);
     if (req.type === 'create_bolo') return await createBolo(db, req, ctx);
     return null;
   } catch (err) {
@@ -813,7 +866,7 @@ async function createBolo(db: D1Database, req: ActionRequest, ctx: ActionContext
   };
 }
 
-async function setUnitStatus(db: D1Database, req: ActionRequest): Promise<ActionResult | null> {
+async function setUnitStatus(env: Bindings, db: D1Database, req: ActionRequest): Promise<ActionResult | null> {
   const status = mapUnitStatus(req.status);
   const callSign = (req.unit || '').trim();
   if (!status || !callSign) return null;
@@ -832,6 +885,9 @@ async function setUnitStatus(db: D1Database, req: ActionRequest): Promise<Action
     `UPDATE units SET status = ?, last_status_change = datetime('now'), updated_at = datetime('now') WHERE id = ?`,
     status, unit.id,
   );
+  // Live board: the new status hits every dispatcher console instantly.
+  const unitRow = await boardUnitRow(db, unit.id);
+  if (unitRow) await broadcastBoard(env, 'unit_status_changed', { unit: unitRow });
   const where = req.location ? ` at ${req.location.trim()}` : '';
   return {
     spoken: `${unit.call_sign}, copy, show you ${spokenStatus(status)}${where}.`,
@@ -948,7 +1004,7 @@ async function createCall(env: Bindings, db: D1Database, req: ActionRequest): Pr
 
 // ── Clear / close a call (10-8 from scene, disposition) ──
 const CLOSED_STATES = new Set(['cleared', 'closed', 'archived', 'cancelled', 'canceled']);
-async function clearCall(db: D1Database, req: ActionRequest): Promise<ActionResult | null> {
+async function clearCall(env: Bindings, db: D1Database, req: ActionRequest): Promise<ActionResult | null> {
   const cn = (req.call_number || '').trim();
   if (!cn) return null;
   const call = await queryFirst<{ id: number; call_number: string; status: string | null }>(
@@ -968,6 +1024,10 @@ async function clearCall(db: D1Database, req: ActionRequest): Promise<ActionResu
      WHERE id = ?`,
     disp, call.id,
   );
+  // Live board: drop/refresh the now-cleared call on every console immediately
+  // (mapDbCall reads status='cleared'; the board filters it from the active list).
+  const clearedRow = await boardCallRow(db, call.id);
+  if (clearedRow) await broadcastBoard(env, 'call_updated', { call: clearedRow });
   return {
     spoken: `Copy, ${call.call_number} cleared${disp ? `, disposition ${disp}` : ''}.`,
     summary: `call_cleared:${call.call_number}`,
@@ -975,7 +1035,7 @@ async function clearCall(db: D1Database, req: ActionRequest): Promise<ActionResu
 }
 
 // ── Dispatch the nearest available unit as backup (10-78) ──
-async function dispatchBackup(db: D1Database, req: ActionRequest): Promise<ActionResult | null> {
+async function dispatchBackup(env: Bindings, db: D1Database, req: ActionRequest): Promise<ActionResult | null> {
   const reqUnit = (req.unit || '').trim();
   let callId: number | null = null;
   let callNumber: string | null = null;
@@ -1000,9 +1060,9 @@ async function dispatchBackup(db: D1Database, req: ActionRequest): Promise<Actio
   // Closest available responder — prefer the requesting unit's beat, never the
   // requester itself. (Drive-time ranking is a client/Matrix concern; on the
   // server we use beat affinity as a cheap proxy.)
-  const candidate = await queryFirst<{ call_sign: string }>(
+  const candidate = await queryFirst<{ id: number; call_sign: string }>(
     db,
-    `SELECT call_sign FROM units
+    `SELECT id, call_sign FROM units
      WHERE status = 'available' AND call_sign IS NOT NULL AND UPPER(call_sign) <> UPPER(?)
      ORDER BY CASE WHEN assigned_beat = ? THEN 0 ELSE 1 END, call_sign
      LIMIT 1`,
@@ -1028,6 +1088,9 @@ async function dispatchBackup(db: D1Database, req: ActionRequest): Promise<Actio
       candidate.call_sign,
     );
   }
+  // Live board: the backup unit flips to 'dispatched' on every console instantly.
+  const backupRow = await boardUnitRow(db, candidate.id);
+  if (backupRow) await broadcastBoard(env, 'unit_status_changed', { unit: backupRow });
   const assist = reqUnit ? ` to assist ${reqUnit}` : '';
   const onCall = callNumber ? ` on ${callNumber}` : '';
   return {

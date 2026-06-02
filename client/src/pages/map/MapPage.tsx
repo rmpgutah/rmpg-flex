@@ -93,7 +93,7 @@ import MobileBottomSheet from '../../components/mobile/MobileBottomSheet';
 import type { MapUnit as Unit, ActiveCall, MapProperty as Property, MapStyleId } from './utils/mapConstants';
 import { whenStyleReady } from './utils/safeAddSource';
 import { UNIT_STATUS_COLORS, UNIT_STATUS_LABELS, PRIORITY_COLORS, MAP_STYLE_LABELS, MAP_STYLE_DESCRIPTIONS, getIncidentCategory, isLightMapStyle, isSatelliteStyle } from './utils/mapConstants';
-import { buildUnitMarkerContent, buildIncidentMarkerContent, buildPropertyMarkerContent, buildSelfPositionMarker, injectKeyframes } from './utils/mapMarkerBuilders';
+import { buildUnitMarkerContent, buildIncidentMarkerContent, buildPropertyMarkerContent, buildSelfPositionMarker, buildDirectionArrow, injectKeyframes } from './utils/mapMarkerBuilders';
 import { roadLegendRows, propertyLegendRows } from './utils/landTypes';
 import { useMapPredictions } from './hooks/useMapPredictions';
 import { useMapIntelLayers } from './hooks/useMapIntelLayers';
@@ -1107,7 +1107,68 @@ export default function MapPage() {
       }
     });
 
-    return () => { unsubscribeUnit(); unsubscribeCall(); };
+    // ── Instant unit-pin glide (gps.ts → AlertHubDO, type 'unit_position') ──
+    // High-frequency GPS breadcrumbs ride their OWN lightweight frame so a ~1 Hz
+    // fix never runs the dispatcher-brain fan-in or a setUnits() re-render storm.
+    // We move the EXISTING marker in place (glide), rotate its heading arrow,
+    // and update the mph label directly — no setUnits(), so the dataVersionRef
+    // poll epoch is untouched and the ~7s poll stays the fallback. A unit we
+    // haven't rendered yet is a no-op: the next poll creates the marker, then
+    // subsequent fixes glide it. (gps.ts also mirrors the fix onto units.lat/lng,
+    // so when the poll does run its position already matches — no rewind jitter.)
+    const unsubscribePos = subscribe('unit_position', (msg: any) => {
+      const data = msg.data || msg;
+      const unitId = data.unit_id ?? data.unit?.id;
+      if (unitId == null) return;
+      const lat = data.lat ?? data.unit?.latitude;
+      const lng = data.lng ?? data.unit?.longitude;
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+      const heading = data.heading ?? data.unit?.gps_heading ?? null;
+      const speed = data.speed ?? data.unit?.gps_speed ?? null;
+
+      const id = String(unitId);
+      const marker = unitMarkersMapRef.current.get(id);
+      if (!marker) return; // not on the map yet — the poll will create it
+
+      marker.setLngLat([lng, lat]);
+      const el = marker.getElement?.();
+      if (el) {
+        const arrow = el.querySelector('[data-unit-arrow]') as HTMLElement | null;
+        if (arrow) {
+          // Present (unit was moving when drawn): just re-aim it. The 0.45s CSS
+          // transition on the arrow's transform makes the turn glide.
+          if (Number.isFinite(heading)) arrow.style.transform = `rotate(${heading}deg)`;
+        } else if (Number.isFinite(heading)) {
+          // Absent: the unit was parked when first drawn (buildUnitMarkerContent
+          // omits the arrow for a stationary unit) and is now moving. Rebuild it
+          // so a unit that just pulled out shows direction immediately, not only
+          // after a full marker recreate. Insert into the wrapper (the element
+          // that holds the speed label); absolute positioning ignores order.
+          const wrap = (el.querySelector('[data-unit-speed]')?.parentElement as HTMLElement | null) || el;
+          const color = (UNIT_STATUS_COLORS as Record<string, string>)[data.unit?.status] || '#888888';
+          const rebuilt = buildDirectionArrow(color, heading, { speed, scale: 1, offsetTop: 13 });
+          if (rebuilt) { rebuilt.setAttribute('data-unit-arrow', ''); wrap.insertBefore(rebuilt, wrap.firstChild); }
+        }
+        const speedEl = el.querySelector('[data-unit-speed]') as HTMLElement | null;
+        if (speedEl) {
+          const mph = speed != null && Number.isFinite(speed) ? Math.round(speed * 2.237) : null;
+          speedEl.textContent = mph != null ? `${mph}` : '';
+        }
+      }
+
+      // Sync the marker-effect's change-detector so the next poll, whose units
+      // row gps.ts already updated to this same fix, sees no change and skips
+      // (avoids a redundant re-apply / brief rewind). Preserve last known status.
+      const prev = prevUnitStateRef.current.get(id);
+      prevUnitStateRef.current.set(id, {
+        lat, lng,
+        status: prev?.status ?? (data.unit?.status || 'available'),
+        heading: Number.isFinite(heading) ? heading : null,
+        speed: speed != null && Number.isFinite(speed) ? speed : null,
+      });
+    });
+
+    return () => { unsubscribeUnit(); unsubscribeCall(); unsubscribePos(); };
   }, [subscribe]);
 
   // ============================================================

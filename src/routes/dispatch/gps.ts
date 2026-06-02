@@ -15,9 +15,10 @@ gps.post('/', async (c) => {
     const points = 'points' in body ? body.points : [body];
     if (!points.length) return c.json({ error: 'No points' }, 400);
 
-    // Get user's unit info
-    const unit = await queryFirst<{ id: number; call_sign: string }>(db,
-      'SELECT id, call_sign FROM units WHERE officer_id = ? LIMIT 1', userId);
+    // Get user's unit info (status carried into the live frame so the map can
+    // color a freshly-rebuilt heading arrow without a second lookup).
+    const unit = await queryFirst<{ id: number; call_sign: string; status: string | null }>(db,
+      'SELECT id, call_sign, status FROM units WHERE officer_id = ? LIMIT 1', userId);
 
     if (!unit) return c.json({ error: 'No assigned unit' }, 400);
 
@@ -68,7 +69,7 @@ gps.post('/', async (c) => {
           heading,
           speed,
           unit: {
-            id: unit.id, call_sign: unit.call_sign,
+            id: unit.id, call_sign: unit.call_sign, status: unit.status,
             latitude: lastPt.latitude, longitude: lastPt.longitude,
             gps_heading: heading, gps_speed: speed, gps_source: 'gps',
           },
