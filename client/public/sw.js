@@ -366,7 +366,17 @@
 //       still land within seconds of pausing, without clobbering in-progress
 //       data entry. Reload authority centralized in WebUpdateBanner (the hook
 //       no longer races it).
-const CACHE_NAME = 'rmpg-flex-v714';
+// v715: FIX — Fleet Analytics showed $0 costs / "--" MPG / empty Fuel-Economy
+//       trend / "No cost data" despite real data. The /fleet/analytics summary
+//       read STALE materialized rollup columns (total_fuel_cost/avg_mpg) on
+//       fleet_vehicles that are never updated on fuel log; now aggregated LIVE
+//       from fleet_fuel_log + fleet_maintenance (verified: $3,200.35 fuel,
+//       13.5 MPG, $238.96 maint). fuel_economy_trend.avg_mpg computed per month
+//       (was hardcoded NULL); cost_per_mile_ranking ("Top Vehicles by Cost")
+//       now populated (was hardcoded []). Also: fuel-report PDF now includes
+//       an Odometer column per fill (was missing entirely; reads
+//       odometer_reading ?? raw odometer).
+const CACHE_NAME = 'rmpg-flex-v715';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
