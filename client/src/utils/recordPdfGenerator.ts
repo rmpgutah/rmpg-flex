@@ -1561,7 +1561,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
     formNumber: 'FORM PS-201',
     caseNumber: data.call_number,
     caseNumberLabel: 'CALL FOR SERVICE',
-    reportDate: fmtTimestamp(data.created_at || ''),
+    reportDate: fmtTimestamp(data.created_at) || 'N/A',
   });
 
   // Quick-reference banner — primary identifier in big text immediately
@@ -3342,8 +3342,8 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     onPageBreak: formSectionPageBreak,
     rows: [
       { cells: [
-        { label: '48. CREATED', value: fmtTimestamp(data.created_at || ''), ratio: 1 },
-        { label: '49. LAST UPDATED', value: fmtTimestamp(data.updated_at || ''), ratio: 1 },
+        { label: '48. CREATED', value: fmtTimestamp(data.created_at) || 'N/A', ratio: 1 },
+        { label: '49. LAST UPDATED', value: fmtTimestamp(data.updated_at) || 'N/A', ratio: 1 },
       ]},
     ],
     y,
@@ -3647,8 +3647,8 @@ async function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
     topBanner: true,
     onPageBreak: formSectionPageBreak,
     rows: [{ cells: [
-      { label: 'CREATED', value: fmtTimestamp(data.created_at || ''), ratio: 1 },
-      { label: 'LAST UPDATED', value: fmtTimestamp(data.updated_at || ''), ratio: 1 },
+      { label: 'CREATED', value: fmtTimestamp(data.created_at) || 'N/A', ratio: 1 },
+      { label: 'LAST UPDATED', value: fmtTimestamp(data.updated_at) || 'N/A', ratio: 1 },
     ]}],
     y,
   });
@@ -5436,8 +5436,8 @@ async function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
     topBanner: true,
     onPageBreak: formSectionPageBreak,
     rows: [{ cells: [
-      { label: 'CREATED', value: fmtTimestamp(data.created_at || ''), ratio: 1 },
-      { label: 'LAST UPDATED', value: fmtTimestamp(data.updated_at || ''), ratio: 1 },
+      { label: 'CREATED', value: fmtTimestamp(data.created_at) || 'N/A', ratio: 1 },
+      { label: 'LAST UPDATED', value: fmtTimestamp(data.updated_at) || 'N/A', ratio: 1 },
     ]}],
     y,
   });

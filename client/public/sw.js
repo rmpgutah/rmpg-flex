@@ -206,7 +206,11 @@
 //       returns authoritative statewide addresses first (Mapbox fills);
 //       "What's Here" resolves nearest address from the DB (works anywhere,
 //       no tile dependency).
-const CACHE_NAME = 'rmpg-flex-v687';
+// v688: PDF META consistency — Created/Last Updated now fall back to "N/A"
+//       (matching the rest of the form) instead of rendering blank boxes when
+//       a record has no created_at/updated_at. Found via visual render+review
+//       of a fully-populated person record PDF.
+const CACHE_NAME = 'rmpg-flex-v688';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
