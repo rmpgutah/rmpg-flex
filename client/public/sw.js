@@ -346,7 +346,13 @@
 // v711: Dispatch surfaces (call cards, detail read-view, call PDF) now show
 //       the SHORT dispatch code only (e.g. "SLA-A2"); the full Area/Section/
 //       Zone/Beat names remain on the Map UI (What's Here + hierarchy labels).
-const CACHE_NAME = 'rmpg-flex-v711';
+// v712: Advanced GPS navigation — the map directions module gains spoken
+//       turn-by-turn (distance-gated pre-alert + "now" cue), CAD-unique
+//       hazard-ahead alerts (active calls on the path ahead, voice + banner),
+//       arrival detection, audible reroute, a mute toggle, maneuver arrows,
+//       and a "then …" next-maneuver preview. New useNavGuidance hook +
+//       voiceAlerts nav phrases; useMapRouting now exposes route geometry.
+const CACHE_NAME = 'rmpg-flex-v712';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
