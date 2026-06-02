@@ -1,7 +1,9 @@
 import { Hono } from 'hono';
 import type { Env } from '../../types';
-import { getDb, query, queryFirst } from '../../utils/db';
+import { getDb, query, queryFirst, execute } from '../../utils/db';
 import { resolveDistrict } from '../../utils/districtResolver';
+import { geocodeAddress } from '../geocode';
+import { requireRole } from '../../middleware/auth';
 
 const geography = new Hono<Env>();
 
@@ -162,6 +164,73 @@ geography.get('/premise-intel', async (c) => {
   } catch (err) {
     console.error('GET /dispatch/geography/premise-intel failed:', err);
     return c.json({ calls: [], incidents: [], callCount: 0, incidentCount: 0 });
+  }
+});
+
+// POST /dispatch/geography/backfill — repeatable geography repair.
+// For every call + incident with an address: geocode if coordinates are
+// missing, then re-run the canonical geofence (incorporated-beat-correct) and
+// write the full Area>Section>Zone>Beat. Idempotent; safe to re-run. Admin-only.
+// This is the systematic version of the one-time data repair (so stale rows can
+// always be re-squared without manual SQL).
+geography.post('/backfill', requireRole('admin', 'manager', 'supervisor'), async (c) => {
+  const db = getDb(c.env);
+  const out = {
+    calls: { scanned: 0, geocoded: 0, geofenced: 0 },
+    incidents: { scanned: 0, geocoded: 0, geofenced: 0 },
+  };
+
+  const coordOf = (latRaw: unknown, lngRaw: unknown): [number | null, number | null] => {
+    const lat = latRaw != null && latRaw !== '' ? Number(latRaw) : null;
+    const lng = lngRaw != null && lngRaw !== '' ? Number(lngRaw) : null;
+    return [Number.isFinite(lat as number) ? (lat as number) : null, Number.isFinite(lng as number) ? (lng as number) : null];
+  };
+
+  try {
+    // ── Calls ──
+    const calls = await query<{ id: number; latitude: unknown; longitude: unknown; location_address: string | null }>(
+      db, `SELECT id, latitude, longitude, location_address FROM calls_for_service WHERE location_address IS NOT NULL AND location_address != ''`);
+    for (const row of calls) {
+      out.calls.scanned++;
+      let [lat, lng] = coordOf(row.latitude, row.longitude);
+      if ((lat == null || lng == null) && row.location_address) {
+        const g = await geocodeAddress(c.env, row.location_address).catch(() => null);
+        if (g) { lat = g.lat; lng = g.lng; out.calls.geocoded++; await execute(db, 'UPDATE calls_for_service SET latitude=?, longitude=? WHERE id=?', lat, lng, row.id); }
+      }
+      if (lat == null || lng == null) continue;
+      const d = await resolveDistrict(c.env, { lat, lng }).catch(() => null);
+      if (!d || !d.beat_id) continue;
+      await execute(db,
+        `UPDATE calls_for_service SET sector_id=?, sector_name=?, zone_id=?, zone_name=?, beat_id=?, beat_name=?, beat_descriptor=?, dispatch_code=?, zone_beat=? WHERE id=?`,
+        d.sector_id, d.sector_name, d.zone_id, d.zone_name, d.beat_id, d.beat_name, d.beat_descriptor, d.dispatch_code, d.zone_beat, row.id);
+      await execute(db, 'INSERT OR IGNORE INTO calls_for_service_ext (id) VALUES (?)', row.id);
+      await execute(db, 'UPDATE calls_for_service_ext SET area_code=?, area_name=? WHERE id=?', d.area_code, d.area_name, row.id);
+      out.calls.geofenced++;
+    }
+
+    // ── Incidents ──
+    const incidents = await query<{ id: number; latitude: unknown; longitude: unknown; location_address: string | null }>(
+      db, `SELECT id, latitude, longitude, location_address FROM incidents WHERE location_address IS NOT NULL AND location_address != ''`);
+    for (const row of incidents) {
+      out.incidents.scanned++;
+      let [lat, lng] = coordOf(row.latitude, row.longitude);
+      if ((lat == null || lng == null) && row.location_address) {
+        const g = await geocodeAddress(c.env, row.location_address).catch(() => null);
+        if (g) { lat = g.lat; lng = g.lng; out.incidents.geocoded++; await execute(db, 'UPDATE incidents SET latitude=?, longitude=? WHERE id=?', lat, lng, row.id); }
+      }
+      if (lat == null || lng == null) continue;
+      const d = await resolveDistrict(c.env, { lat, lng }).catch(() => null);
+      if (!d || !d.beat_id) continue;
+      await execute(db,
+        `UPDATE incidents SET sector_id=?, zone_id=?, beat_id=?, zone_beat=?, area_code=?, area_name=? WHERE id=?`,
+        d.sector_id, d.zone_id, d.beat_id, d.zone_beat, d.area_code, d.area_name, row.id);
+      out.incidents.geofenced++;
+    }
+
+    return c.json({ ok: true, ...out });
+  } catch (err) {
+    console.error('POST /dispatch/geography/backfill failed:', err);
+    return c.json({ ok: false, error: (err as Error)?.message, ...out }, 500);
   }
 });
 

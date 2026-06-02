@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import type { Env } from '../../types';
 import { getDb, query, queryFirst, execute } from '../../utils/db';
 import { requireRole } from '../../middleware/auth';
+import { broadcastAll } from '../ws';
 
 const units = new Hono<Env>();
 
@@ -31,12 +32,23 @@ units.post('/', async (c) => {
     const body = await c.req.json<Record<string, unknown>>();
     if (!body.call_sign) return c.json({ error: 'call_sign is required' }, 400);
 
+    // The create form (useDispatchUnitActions) sends a chosen status; it was
+    // previously dropped (not in the INSERT), so a new unit always landed on
+    // the DB default. Honor it, defaulting to 'available'. Must match the live
+    // `units` CHECK constraint (no 'on_patrol').
+    const VALID_UNIT_STATUSES = ['available', 'dispatched', 'enroute', 'onscene', 'busy', 'off_duty', 'out_of_service'];
     const { call_sign, officer_id, vehicle_id, capabilities } = body;
+    const status = VALID_UNIT_STATUSES.includes(String(body.status || '').toLowerCase())
+      ? String(body.status).toLowerCase() : 'available';
     const result = await execute(db,
-      'INSERT INTO units (call_sign, officer_id, vehicle_id, capabilities) VALUES (?, ?, ?, ?)',
-      call_sign, officer_id || null, vehicle_id || null, JSON.stringify(capabilities || [])
+      'INSERT INTO units (call_sign, officer_id, vehicle_id, capabilities, status) VALUES (?, ?, ?, ?, ?)',
+      call_sign, officer_id || null, vehicle_id || null, JSON.stringify(capabilities || []), status
     );
     const unit = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM units WHERE id = ?', Number(result.meta.last_row_id));
+    // Live fan-out so every open dispatch/map board adds the new unit without a
+    // manual refresh. /dispatch is excluded from the generic data_changed sync
+    // (src/index.ts), so these surgical broadcasts are the only live path.
+    try { if (unit) broadcastAll('dispatch_update', { action: 'unit_created', unit }); } catch { /* never break the write */ }
     return c.json(unit, 201);
   } catch (err: any) {
     if (err?.message?.includes('UNIQUE')) return c.json({ error: 'Call sign already exists' }, 409);
@@ -53,18 +65,33 @@ units.put('/:id', async (c) => {
     if (!existing) return c.json({ error: 'Unit not found' }, 404);
 
     const body = await c.req.json<Record<string, unknown>>();
+    // Allowlist the writable columns. The previous version interpolated EVERY
+    // body key straight into the SQL as a column name, which (1) 500'd the whole
+    // update if the payload carried any non-column key (e.g. unit_type, which
+    // does not exist on the live 17-col units table) and (2) was a column-name
+    // injection vector. Only these columns exist on live units and are safe to set.
+    const ALLOWED_COLS = new Set([
+      'call_sign', 'officer_id', 'status', 'vehicle_id', 'current_call_id',
+      'capabilities', 'latitude', 'longitude', 'gps_source', 'assigned_beat',
+      'mileage', 'audio_mode',
+    ]);
+    const VALID_UNIT_STATUSES = ['available', 'dispatched', 'enroute', 'onscene', 'busy', 'off_duty', 'out_of_service'];
     const sets: string[] = [];
     const params: unknown[] = [];
     for (const [k, v] of Object.entries(body)) {
-      if (['id', 'created_at'].includes(k)) continue;
+      if (!ALLOWED_COLS.has(k)) continue;
+      if (k === 'status' && !VALID_UNIT_STATUSES.includes(String(v || '').toLowerCase())) {
+        return c.json({ error: `status must be one of ${VALID_UNIT_STATUSES.join(', ')}`, code: 'INVALID_STATUS' }, 400);
+      }
       sets.push(`${k} = ?`);
-      params.push(v ?? null);
+      params.push(k === 'capabilities' && v != null && typeof v !== 'string' ? JSON.stringify(v) : (v ?? null));
     }
     if (!sets.length) return c.json({ message: 'No changes' });
     sets.push("updated_at = datetime('now')");
     params.push(id);
     await execute(db, `UPDATE units SET ${sets.join(', ')} WHERE id = ?`, ...params);
     const updated = await queryFirst(db, 'SELECT * FROM units WHERE id = ?', id);
+    try { if (updated) broadcastAll('dispatch_update', { action: 'unit_updated', unit: updated }); } catch { /* never break the write */ }
     return c.json(updated);
   } catch (err) {
     return c.json({ error: 'Failed to update unit' }, 500);
@@ -86,25 +113,17 @@ units.delete('/:id', requireRole('admin', 'manager'), async (c) => {
       return c.json({ error: 'Unit is assigned to an active call — clear it first', code: 'UNIT_ON_CALL' }, 409);
     }
     await execute(db, 'DELETE FROM units WHERE id = ?', id);
+    try { broadcastAll('dispatch_update', { action: 'unit_deleted', unit_id: id }); } catch { /* never break the write */ }
     return c.json({ message: 'Unit deleted', id });
   } catch (err) {
     return c.json({ error: 'Failed to delete unit' }, 500);
   }
 });
 
-// POST /dispatch/calls/:callId/assign-unit
-units.post('/assign-unit', async (c) => {
-  try {
-    const db = getDb(c.env);
-    const { call_id, unit_id } = await c.req.json<{ call_id: number; unit_id: number }>();
-    const call = await queryFirst<{ assigned_unit_ids: string }>(db, 'SELECT assigned_unit_ids FROM calls_for_service WHERE id = ?', call_id);
-    if (!call) return c.json({ error: 'Call not found' }, 404);
-    const assigned = new Set(JSON.parse(call.assigned_unit_ids || '[]') as number[]);
-    assigned.add(unit_id);
-    await execute(db, 'UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?', JSON.stringify([...assigned]), call_id);
-    await execute(db, "UPDATE units SET status = 'dispatched', current_call_id = ? WHERE id = ?", call_id, unit_id);
-    return c.json({ message: 'Unit assigned' });
-  } catch (err) { return c.json({ error: 'Assign failed' }, 500); }
-});
+// NOTE: unit↔call assignment is owned by calls.ts (`POST /dispatch/calls/:id/
+// assign-unit`), which every client and the CAD command parser target. A
+// divergent duplicate previously lived here at `/dispatch/units/assign-unit`
+// (Set-dedup, no premise push, no double-assign cleanup, bare {message}
+// response) that no client ever reached — removed to prevent silent drift.
 
 export default units;

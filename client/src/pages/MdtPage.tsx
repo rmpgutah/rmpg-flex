@@ -452,13 +452,17 @@ export default function MdtPage() {
   // ── Real-time WebSocket subscriptions for dispatch events ──
   const { subscribe } = useWebSocket();
   useEffect(() => {
-    // When dispatch assigns/unassigns units or changes call status, refresh immediately
-    const unsubDispatch = subscribe('dispatch_update', () => {
+    // When dispatch assigns/unassigns units or changes call status, refresh
+    // immediately — but skip high-frequency GPS position pushes (every ~1s),
+    // which the MDT doesn't display and which would refetch on every tick.
+    const unsubDispatch = subscribe('dispatch_update', (msg: any) => {
+      if ((msg?.data || msg)?.action === 'unit_position_update') return;
       fetchData();
     });
     // When any unit status changes (dispatched, enroute, onscene, available)
     const unsubUnit = subscribe('unit_update', (msg: any) => {
       const data = msg.data || msg;
+      if (data?.action === 'unit_position_update') return;
       if (data?.unit && gps.unitId && data.unit.id === gps.unitId) {
         // Our unit was updated — refresh to pick up status/call changes
         fetchData();

@@ -91,6 +91,8 @@ export default function UnitStatusCard() {
   // WebSocket refresh — debounced 250ms
   useEffect(() => {
     const unsub = subscribe('unit_update' as any, (msg: any) => {
+      // Skip GPS position pushes (~1s) — the card shows status/call, not coords.
+      if ((msg?.action ?? msg?.data?.action) === 'unit_position_update') return;
       const payload = msg?.unit ?? msg?.data?.unit ?? msg?.data ?? null;
       const incomingId = payload?.id ?? payload?.unit_id ?? null;
       const mineId = unitIdRef.current;

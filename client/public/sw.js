@@ -297,10 +297,17 @@
 //       create; no-op until units on duty). (5) Activity choropleth gains a
 //       Calls/Incidents data source — Incidents source bins RMS incident
 //       points over the geography (fetched on demand). Map <-> Fleet/Dispatch/RMS.
-// v705: Personnel Management dashboard-first redesign — new Command landing tab
-//       (PersonnelDashboard) with deep-linking KPI/alert/officer widgets;
-//       extracted shared dashboard widgets; status strip hidden on Command;
-//       2-band detail-panel header; consistent global-tab headers.
+// v705 — Unit subsystem audit (PR #896): (1) live-sync — revive the dead
+//        'unit_update' WS channel by re-fanning dispatch_update unit actions +
+//        new Worker broadcasts on status/assign/unassign/dispatch/create/update/
+//        delete/GPS. (2) 19-bug audit — align UnitStatus to the 7 live-DB
+//        statuses (removed 'on_patrol', which the units CHECK rejects); board
+//        Assignment column (current_call_number alias); out_of_service sort +
+//        sentinel-status LED fallback; unitRecommendation hasGps sentinel/zero
+//        coercion; map nav-cursor heading arrow + speed via units.gps_heading/
+//        gps_speed (migration 0065). Worker: PUT /units allowlist, dead
+//        /units/assign-unit removed, assign/dispatch prior-call cleanup +
+//        call-status + last_status_change, aggregates 'busy' committed count.
 const CACHE_NAME = 'rmpg-flex-v705';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [

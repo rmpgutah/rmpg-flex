@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../../types';
 import { getDb, query, queryFirst, execute } from '../../utils/db';
+import { broadcastAll } from '../ws';
 
 const gps = new Hono<Env>();
 
@@ -36,9 +37,28 @@ gps.post('/', async (c) => {
     // pins never plotted and proximity logic saw no position.
     const lastPt = points[points.length - 1];
     if (lastPt && lastPt.latitude != null && lastPt.longitude != null) {
+      // Mirror heading/speed too (the map's nav-cursor arrow + speed label read
+      // unit.gps_heading / unit.gps_speed; columns added in migration 0065).
+      const heading = lastPt.heading ?? null;
+      const speed = lastPt.speed ?? null;
       await execute(db,
-        "UPDATE units SET latitude = ?, longitude = ?, gps_updated_at = datetime('now'), updated_at = datetime('now') WHERE id = ?",
-        lastPt.latitude, lastPt.longitude, unit.id);
+        "UPDATE units SET latitude = ?, longitude = ?, gps_heading = ?, gps_speed = ?, gps_source = 'gps', gps_updated_at = datetime('now'), updated_at = datetime('now') WHERE id = ?",
+        lastPt.latitude, lastPt.longitude, heading, speed, unit.id);
+      // Live fan-out so the map unit pin moves (and the arrow rotates) without a
+      // 7s poll, and recommended-units re-ranks on fresh GPS. /dispatch is
+      // excluded from the generic data_changed sync, and gps was previously
+      // silent — pins froze. One small frame per fix; consumers debounce.
+      try {
+        broadcastAll('dispatch_update', {
+          action: 'unit_position_update',
+          unit_id: unit.id,
+          unit: {
+            id: unit.id, call_sign: unit.call_sign,
+            latitude: lastPt.latitude, longitude: lastPt.longitude,
+            gps_heading: heading, gps_speed: speed, gps_source: 'gps',
+          },
+        });
+      } catch { /* never break the write */ }
     }
 
     return c.json({ inserted: inserted.length }, 201);
