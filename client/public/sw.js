@@ -277,7 +277,7 @@
 //       rendered. Hoisted Process Service Details to a top-level section
 //       (self-gated by process data / service-type) and added
 //       'civil_paper_service' to the visit-history gate.
-const CACHE_NAME = 'rmpg-flex-v699';
+const CACHE_NAME = 'rmpg-flex-v700';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

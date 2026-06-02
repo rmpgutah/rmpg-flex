@@ -1943,7 +1943,7 @@ export type WSMessageType =
   | 'warrants_updated'
   | 'warrant_served'
   | 'warrant_recalled'
-  | 'scraper_event'
+  | 'scraper_events'
   // Trespass orders
   | 'trespass_order_violated'
   | 'trespass_order_created'
