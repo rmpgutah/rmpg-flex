@@ -165,25 +165,37 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
 
   // ── Handlers ──────────────────────────────────────────
   const handleCreate = async (data: any) => {
-    await apiFetch('/hr/reviews', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    });
-    addToast('Review created', 'success');
-    fetchReviews();
+    try {
+      await apiFetch('/hr/reviews', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      addToast('Review created', 'success');
+      fetchReviews();
+    } catch (err) {
+      // Surface the failure so the Save button doesn't look dead. Rethrow keeps
+      // the modal open (ReviewFormModal's `await onSubmit` rejects, skipping onClose).
+      addToast('Failed to create review', 'error');
+      throw err;
+    }
   };
 
   const handleUpdate = async (data: any) => {
     if (!editReview) return;
-    await apiFetch(`/hr/reviews/${editReview.id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    });
-    addToast('Review updated', 'success');
-    setEditReview(null);
-    fetchReviews();
+    try {
+      await apiFetch(`/hr/reviews/${editReview.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      addToast('Review updated', 'success');
+      setEditReview(null);
+      fetchReviews();
+    } catch (err) {
+      addToast('Failed to update review', 'error');
+      throw err;
+    }
   };
 
   const handleDelete = async (id: number) => {

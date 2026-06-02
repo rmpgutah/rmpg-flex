@@ -435,7 +435,10 @@
 //       cross street (Mapbox Tilequery), and raw coordinates — instead of just
 //       coords. Resolved + cached per ~11m grid (useUnitLocations) so a parked
 //       unit doesn't re-geocode and a moving one updates when it changes block.
-const CACHE_NAME = 'rmpg-flex-v732';
+// v733: HR Reviews + Disciplinary save buttons now surface a "Failed to …"
+//       error toast when the create/update API call fails (the handlers had a
+//       success toast but no catch, so a failed save looked like a dead button).
+const CACHE_NAME = 'rmpg-flex-v733';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

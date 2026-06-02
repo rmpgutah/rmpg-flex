@@ -175,22 +175,29 @@ export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabPro
   };
 
   const handleSubmit = async (data: any) => {
-    if (editRecord) {
-      await apiFetch(`/hr/disciplinary/${editRecord.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-      });
-      toast.addToast('Record updated', 'success');
-    } else {
-      await apiFetch('/hr/disciplinary', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-      });
-      toast.addToast('Record created', 'success');
+    try {
+      if (editRecord) {
+        await apiFetch(`/hr/disciplinary/${editRecord.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data),
+        });
+        toast.addToast('Record updated', 'success');
+      } else {
+        await apiFetch('/hr/disciplinary', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data),
+        });
+        toast.addToast('Record created', 'success');
+      }
+      fetchRecords();
+    } catch (err) {
+      // Surface the failure so the Save button doesn't look dead. Rethrow keeps
+      // the modal open (DisciplinaryFormModal's `await onSubmit` rejects, skipping onClose).
+      toast.addToast(`Failed to ${editRecord ? 'update' : 'create'} record`, 'error');
+      throw err;
     }
-    fetchRecords();
   };
 
   const toggleExpand = (id: number) => {
