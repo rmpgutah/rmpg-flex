@@ -749,8 +749,8 @@ export function drawGeographyStrip(
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
     const val = String(values[i]).toUpperCase();
     // Truncate to fit cell
-    const maxChars = Math.floor((cellW - 3) / 1.5);
-    const displayVal = val.length > maxChars ? val.slice(0, maxChars - 1) + '…' : val;
+    const maxChars = Math.max(1, Math.floor((cellW - 3) / 1.5)); // clamp: narrow cells gave a negative slice
+    const displayVal = val.length > maxChars ? val.slice(0, Math.max(1, maxChars - 1)) + '…' : val;
     doc.text(displayVal, cellX + 1.5, y + 5.5);
   }
 
