@@ -351,10 +351,19 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
       queueRef.current = [];
 
       try {
-        await apiFetch('/dispatch/gps', {
+        const result = await apiFetch<{ error?: unknown } | null>('/dispatch/gps', {
           method: 'POST',
           body: JSON.stringify({ points: allPoints, device_type: IS_DESKTOP ? 'desktop' : 'mobile' }),
         });
+        // A 200 that carries an error body (e.g. D1 momentarily locked) means
+        // the points were NOT persisted. apiFetch already throws on non-2xx, so
+        // this only adds the 200-with-error case — without it we'd clear the
+        // failover queue and silently drop those breadcrumbs. Throwing routes
+        // into the catch below, which re-enqueues both the in-memory and
+        // failover queues. (Audit item A.)
+        if (result && typeof result === 'object' && (result as { error?: unknown }).error) {
+          throw new Error(`GPS upload reported error: ${String((result as { error?: unknown }).error)}`);
+        }
         // Success — clear the failover queue
         clearFailoverQueue();
         // Check if we need to fetch unit info using ref (avoids stale closure from empty deps)

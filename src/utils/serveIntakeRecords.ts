@@ -391,7 +391,14 @@ export async function commitIntake(db: D1Database, input: CommitInput): Promise<
   // they just won't have a map pin until someone geocodes them later.
   let coords: { lat: number; lng: number } | null = null;
   if (fullLocation || addr) {
-    coords = await geocodeAddress(input.env, fullLocation || addr).catch(() => null);
+    // Time-boxed: geocodeAddress hits external Nominatim (1 req/sec, can stall
+    // or hang). Cap at 8s so a slow geocoder can't hold the whole /upload commit
+    // response open — on timeout coords stay null, exactly as on a miss, and the
+    // records still link (lat/lng backfill later). (Audit item B.)
+    coords = await Promise.race([
+      geocodeAddress(input.env, fullLocation || addr).catch(() => null),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 8_000)),
+    ]);
   }
 
   // ── 1. Business row (corporate recipients only) ────────────

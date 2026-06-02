@@ -154,7 +154,12 @@
 //       throw "Style is not done loading"; useMapRouting bails on <2-coord
 //       routes before building a degenerate line-gradient. (Worker side same
 //       push: OCR/AI-dispatch timeout guards + VoiceHubDO never-silence broadcast.)
-const CACHE_NAME = 'rmpg-flex-v677';
+// v678: audit item A — useGpsTracking.sendBatch no longer clears the failover
+//       queue on a 200-with-error body; it re-enqueues those breadcrumbs (was
+//       silent GPS data loss when /dispatch/gps 200s with {error}). (Worker
+//       same push: audit item B — geocodeAddress in the serve-intake commit is
+//       now 8s-time-boxed so a slow Nominatim can't stall the /upload response.)
+const CACHE_NAME = 'rmpg-flex-v678';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
