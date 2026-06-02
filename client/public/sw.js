@@ -182,7 +182,13 @@
 //       OCR rasterization (JPEG has no alpha); skip malformed-transform text
 //       items in engine backend + pdf-editor; null-guard serve-PDF GPS
 //       toFixed; Array.isArray guard on record-PDF violations.map.
-const CACHE_NAME = 'rmpg-flex-v683';
+// v684: Advanced overlay tools — (1) "What's Here" click-to-identify
+//       (Area/Section/Zone/Beat + County/Municipality + nearest address
+//       via turf PIP); (2) Activity choropleth coloring beats/zones/
+//       sections/areas by live call volume (calls binned via PIP); (3)
+//       overlay opacity slider + Area/Section legend + persisted tool
+//       state; (4) Measure (distance/area via @turf/length+area).
+const CACHE_NAME = 'rmpg-flex-v684';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

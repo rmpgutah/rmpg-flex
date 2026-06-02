@@ -51,6 +51,9 @@ import {
   Clock,
   RefreshCw,
   CircleDot,
+  Activity,
+  Ruler,
+  SlidersHorizontal,
 } from 'lucide-react';
 import type { UnitStatus } from '../../types';
 import RmpgLogo from '../../components/RmpgLogo';
@@ -72,6 +75,11 @@ import { localToday, dateToLocalYMD, safeDateTimeStr, parseTimestamp } from '../
 import { useGeoJsonLayers, GEO_LAYER_CONFIGS, getSectionColor, type BeatDistrictEntry } from '../../hooks/useGeoJsonLayers';
 import { useVectorTileLayers } from '../../hooks/useVectorTileLayers';
 import { useDistrictHierarchyLayers } from '../../hooks/useDistrictHierarchyLayers';
+import { useWhatsHere } from '../../hooks/useWhatsHere';
+import { useActivityChoropleth, type ChoroLevel } from '../../hooks/useActivityChoropleth';
+import { useMapMeasureDraw, type MeasureMode } from '../../hooks/useMapMeasureDraw';
+import { usePersistedState } from '../../hooks/usePersistedState';
+import { getTaggedBeats } from './utils/districtGeoData';
 import { useEventPlanning, PLAN_COLORS, PLAN_TYPE_LABELS, type PlanItemType } from '../../hooks/useEventPlanning';
 import { useShiftPlanning, SHIFT_TYPES, type ShiftType } from '../../hooks/useShiftPlanning';
 import { useIsMobile } from '../../hooks/useIsMobile';
@@ -431,6 +439,56 @@ export default function MapPage() {
     map: mapInstanceRef.current,
     popup: infoWindowRef.current,
   });
+
+  // ── Advanced overlay tools ──────────────────────────────────
+  const [showAdvTools, setShowAdvTools] = useState(false);
+  const [whatsHereActive, setWhatsHereActive] = usePersistedState<boolean>('rmpg_whatshere', false);
+  const [choroLevel, setChoroLevel] = usePersistedState<ChoroLevel | null>('rmpg_choro_level', null);
+  const [measureMode, setMeasureMode] = useState<MeasureMode>(null);
+  const [overlayOpacity, setOverlayOpacity] = usePersistedState<number>('rmpg_overlay_opacity', 1);
+  const [hierLegend, setHierLegend] = useState<{ label: string; color: string }[]>([]);
+
+  useWhatsHere({ map: mapInstanceRef.current, popup: infoWindowRef.current, active: whatsHereActive });
+  const { choroLegend } = useActivityChoropleth({ map: mapInstanceRef.current, calls, level: choroLevel });
+  const { measureResult, clearMeasure } = useMapMeasureDraw({ map: mapInstanceRef.current, mode: measureMode });
+
+  // Categorical legend for the active Area/Section level (Zone has ~250
+  // values — too many to list, so it's summarized instead).
+  useEffect(() => {
+    const lvl = hierarchyStates.area?.visible ? 'area' : hierarchyStates.section?.visible ? 'section' : null;
+    if (!lvl) { setHierLegend([]); return; }
+    let cancelled = false;
+    getTaggedBeats().then((fc: any) => {
+      if (cancelled) return;
+      const nameKey = lvl === 'area' ? '_areaName' : '_sectionName';
+      const colorKey = lvl === 'area' ? '_areaColor' : '_sectionColor';
+      const seen = new Map<string, string>();
+      for (const f of fc.features) {
+        const n = f.properties[nameKey];
+        if (n && !seen.has(n)) seen.set(n, f.properties[colorKey]);
+      }
+      setHierLegend(Array.from(seen.entries()).map(([label, color]) => ({ label, color })).slice(0, 40));
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [hierarchyStates.area?.visible, hierarchyStates.section?.visible]);
+
+  // Apply overlay opacity to all overlay fill layers (hierarchy + boundaries +
+  // choropleth) whenever the slider or layer set changes.
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+    // choro-fill is intentionally excluded — it owns a count-driven opacity
+    // expression that a flat value would clobber.
+    const fillIds = ['dh-area-fill', 'dh-section-fill', 'dh-zone-fill', 'geojson-county-fill', 'geojson-municipality-fill'];
+    for (const id of fillIds) {
+      try {
+        if (map.getLayer(id)) {
+          const base = id.startsWith('dh-') ? 0.18 : 0.15;
+          map.setPaintProperty(id, 'fill-opacity', base * overlayOpacity);
+        }
+      } catch { /* style not ready */ }
+    }
+  }, [overlayOpacity, hierarchyStates, geoLayerStates, choroLevel, mapLoaded]);
 
   // Statewide vector-tile overlays (PMTiles: Utah roads + address points).
   // isLight keeps labels legible across basemaps; onUseLocation routes a clicked
@@ -3775,6 +3833,131 @@ export default function MapPage() {
                       </button>
                     );
                   })}
+                </div>
+              )}
+            </div>
+
+            {/* ── Advanced Tools Section ── */}
+            <div className="border-t border-rmpg-700 p-1.5">
+              <button
+                onClick={() => setShowAdvTools(!showAdvTools)}
+                className="flex items-center gap-2 w-full px-2 py-1.5 text-left transition-colors hover:bg-rmpg-800/50"
+              >
+                <SlidersHorizontal className="w-3 h-3 text-gray-400" />
+                <span className="text-[10px] text-rmpg-300 flex-1">Advanced Tools</span>
+                <span className="text-[9px] text-rmpg-500">
+                  {[whatsHereActive, !!choroLevel, !!measureMode].filter(Boolean).length}/3
+                </span>
+                {showAdvTools ? <ChevronUp className="w-2.5 h-2.5 text-rmpg-500" /> : <ChevronDown className="w-2.5 h-2.5 text-rmpg-500" />}
+              </button>
+              {showAdvTools && (
+                <div className="mt-1 space-y-2">
+                  {/* What's Here identify */}
+                  <button
+                    onClick={() => setWhatsHereActive((v) => !v)}
+                    className={`flex items-center gap-2 w-full px-2 py-1 text-left transition-colors ${
+                      whatsHereActive ? 'panel-inset bg-surface-deep' : 'opacity-50 hover:opacity-80 hover:bg-rmpg-800/50'
+                    }`}
+                  >
+                    <Crosshair className={`w-3 h-3 ${whatsHereActive ? 'text-green-400' : 'text-rmpg-500'}`} />
+                    <div className="flex-1 min-w-0">
+                      <div className="text-[9px] text-rmpg-200">What's Here</div>
+                      <div className="text-[8px] text-rmpg-500">Click map to identify geography</div>
+                    </div>
+                  </button>
+
+                  {/* Activity choropleth */}
+                  <div>
+                    <div className="px-2 text-[8px] font-semibold uppercase tracking-wider text-[#d4a017] flex items-center gap-1">
+                      <Gauge className="w-2.5 h-2.5" /> Call Activity
+                    </div>
+                    <div className="flex gap-0.5 px-2 mt-0.5">
+                      {(['off', 'beat', 'zone', 'section', 'area'] as const).map((l) => {
+                        const isOn = l === 'off' ? !choroLevel : choroLevel === l;
+                        return (
+                          <button
+                            key={l}
+                            onClick={() => setChoroLevel(l === 'off' ? null : (l as ChoroLevel))}
+                            className={`flex-1 px-1 py-0.5 text-[8px] uppercase rounded-sm transition-colors ${
+                              isOn ? 'bg-brand-600/30 text-brand-300' : 'text-rmpg-500 hover:bg-rmpg-800/50'
+                            }`}
+                          >
+                            {l}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {choroLegend && (
+                      <div className="px-2 mt-1 flex items-center gap-1">
+                        <span className="text-[8px] text-rmpg-500">low</span>
+                        {choroLegend.colors.slice(1).map((c, i) => (
+                          <div key={i} className="h-2 flex-1 rounded-sm" style={{ background: c }} />
+                        ))}
+                        <span className="text-[8px] text-rmpg-500">{choroLegend.max}+</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Measure */}
+                  <div>
+                    <div className="px-2 text-[8px] font-semibold uppercase tracking-wider text-[#d4a017] flex items-center gap-1">
+                      <Ruler className="w-2.5 h-2.5" /> Measure
+                    </div>
+                    <div className="flex gap-0.5 px-2 mt-0.5">
+                      <button
+                        onClick={() => setMeasureMode(measureMode === 'distance' ? null : 'distance')}
+                        className={`flex-1 px-1 py-0.5 text-[8px] uppercase rounded-sm transition-colors ${measureMode === 'distance' ? 'bg-brand-600/30 text-brand-300' : 'text-rmpg-500 hover:bg-rmpg-800/50'}`}
+                      >Distance</button>
+                      <button
+                        onClick={() => setMeasureMode(measureMode === 'area' ? null : 'area')}
+                        className={`flex-1 px-1 py-0.5 text-[8px] uppercase rounded-sm transition-colors ${measureMode === 'area' ? 'bg-brand-600/30 text-brand-300' : 'text-rmpg-500 hover:bg-rmpg-800/50'}`}
+                      >Area</button>
+                      <button
+                        onClick={() => { setMeasureMode(null); clearMeasure(); }}
+                        className="flex-1 px-1 py-0.5 text-[8px] uppercase rounded-sm text-rmpg-500 hover:bg-rmpg-800/50 transition-colors"
+                      >Clear</button>
+                    </div>
+                    {measureMode && measureResult.points > 0 && (
+                      <div className="px-2 mt-1 text-[9px] text-rmpg-200 font-mono">
+                        {measureResult.distanceMeters > 0 && (
+                          <span>{measureResult.distanceMeters >= 1609 ? `${(measureResult.distanceMeters / 1609.34).toFixed(2)} mi` : `${Math.round(measureResult.distanceMeters * 3.28084)} ft`}</span>
+                        )}
+                        {measureResult.areaSqMeters > 0 && (
+                          <span> · {measureResult.areaSqMeters * 0.000247105 >= 1 ? `${(measureResult.areaSqMeters * 0.000247105).toFixed(2)} ac` : `${Math.round(measureResult.areaSqMeters * 10.7639)} ft²`}</span>
+                        )}
+                        <span className="text-rmpg-500"> ({measureResult.points} pts)</span>
+                      </div>
+                    )}
+                    {measureMode && (
+                      <div className="px-2 text-[8px] text-rmpg-500 mt-0.5">Click to add points · double-click to finish</div>
+                    )}
+                  </div>
+
+                  {/* Overlay opacity */}
+                  <div className="px-2">
+                    <div className="text-[8px] font-semibold uppercase tracking-wider text-[#888888] mb-0.5">Overlay Opacity — {Math.round(overlayOpacity * 100)}%</div>
+                    <input
+                      type="range" min={0} max={1} step={0.05} value={overlayOpacity}
+                      onChange={(e) => setOverlayOpacity(parseFloat(e.target.value))}
+                      aria-label="Overlay opacity"
+                      className="w-full accent-[#d4a017]"
+                    />
+                  </div>
+
+                  {/* Categorical legend (Area / Section) */}
+                  {hierLegend.length > 0 && (
+                    <div className="px-2">
+                      <div className="text-[8px] font-semibold uppercase tracking-wider text-[#888888] mb-0.5">Legend</div>
+                      <div className="max-h-[120px] overflow-y-auto space-y-0.5">
+                        {hierLegend.map((l) => (
+                          <div key={l.label} className="flex items-center gap-1.5">
+                            <div className="w-2.5 h-2.5 rounded-sm shrink-0" style={{ background: l.color }} />
+                            <span className="text-[9px] text-rmpg-300 truncate">{l.label}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

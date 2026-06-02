@@ -17,8 +17,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { mapboxgl } from '../utils/mapboxLoader';
 import { whenStyleReady } from '../pages/map/utils/safeAddSource';
-import { getCityColor, getSectionColor } from './useGeoJsonLayers';
-import { apiFetch } from './useApi';
+import { getTaggedBeats } from '../pages/map/utils/districtGeoData';
 import { dissolve } from '@turf/dissolve';
 
 export type HierarchyLevelId = 'area' | 'section' | 'zone';
@@ -42,14 +41,6 @@ const FIELD: Record<HierarchyLevelId, { key: string; name: string; color: string
   section: { key: '_section', name: '_sectionName', color: '_sectionColor' },
   zone: { key: '_zone', name: '_zoneName', color: '_zoneColor' },
 };
-
-const AREA_PALETTE = ['#d4a017', '#22c55e', '#ef4444', '#a855f7', '#f59e0b', '#14b8a6', '#ec4899', '#84cc16', '#fb923c', '#eab308'];
-function getAreaColor(code: string): string {
-  if (!code) return AREA_PALETTE[0];
-  let h = 0;
-  for (let i = 0; i < code.length; i++) h = ((h << 5) - h + code.charCodeAt(i)) | 0;
-  return AREA_PALETTE[Math.abs(h) % AREA_PALETTE.length];
-}
 
 const SRC_FILL = 'dh-beats';
 const dissolveSrc = (id: string) => `dh-dissolve-${id}`;
@@ -88,50 +79,7 @@ export function useDistrictHierarchyLayers({ map, popup }: Opts) {
 
   const ensureData = useCallback(() => {
     if (!dataPromiseRef.current) {
-      dataPromiseRef.current = (async () => {
-        const [beatJson, districts] = await Promise.all([
-          fetch('/geojson/beat.geojson').then((r) => r.json()).catch(() => ({ features: [] })),
-          apiFetch<any[]>('/dispatch/geography/districts').catch(() => [] as any[]),
-        ]);
-        // zone_code (== beat.city_code) -> section/area/zone naming.
-        const zoneInfo = new Map<string, any>();
-        for (const d of (districts || [])) {
-          const z = d.zone_id != null ? String(d.zone_id) : '';
-          if (!z || zoneInfo.has(z)) continue;
-          zoneInfo.set(z, {
-            sectorId: d.sector_id != null ? String(d.sector_id) : '',
-            sectorName: d.sector_name || '',
-            zoneName: d.zone_name || '',
-            areaCode: d.area_code != null ? String(d.area_code) : '',
-            areaName: d.area_name || '',
-          });
-        }
-        const feats = (beatJson.features || []).map((f: any) => {
-          const p = f.properties || {};
-          const city = p.city_code != null ? String(p.city_code) : '';
-          const info = zoneInfo.get(city) || {};
-          const zone = city || 'UNK';
-          const section = info.sectorId || 'UNASSIGNED';
-          const area = info.areaCode || 'UNASSIGNED';
-          return {
-            ...f,
-            properties: {
-              ...p,
-              _zone: zone,
-              _zoneName: info.zoneName || p.city || city,
-              _zoneColor: getCityColor(zone),
-              _section: section,
-              _sectionName: info.sectorName || (section === 'UNASSIGNED' ? 'Unassigned' : section),
-              _sectionColor: getSectionColor(section),
-              _area: area,
-              _areaName: info.areaName || (area === 'UNASSIGNED' ? 'Unassigned' : area),
-              _areaColor: getAreaColor(area),
-            },
-          };
-        });
-        taggedRef.current = { type: 'FeatureCollection', features: feats };
-        return taggedRef.current;
-      })();
+      dataPromiseRef.current = getTaggedBeats().then((fc) => { taggedRef.current = fc; return fc; });
     }
     return dataPromiseRef.current;
   }, []);
