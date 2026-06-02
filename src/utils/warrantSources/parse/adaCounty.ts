@@ -81,9 +81,12 @@ function parseName(full: string): { last: string | null; first: string | null; m
   return { last, first, middle };
 }
 
-/** Pull the desktop `.hidden-xs` charge table for one person block, or null. */
+/** Pull the desktop `.hidden-xs` charge table for one person block, or null.
+ *  Attribute matches are quote-agnostic (`['"]`) so an upstream change from
+ *  single to double quotes degrades to a skipped person (under-count) rather
+ *  than going unnoticed — never a throw. */
 function extractDesktopTable(block: string): string | null {
-  const m = block.match(/<div class='hidden-xs'>\s*(<table[^>]*charge[^>]*>[\s\S]*?<\/table>)/i);
+  const m = block.match(/<div class=['"]hidden-xs['"]>\s*(<table[^>]*charge[^>]*>[\s\S]*?<\/table>)/i);
   return m ? m[1] : null;
 }
 
@@ -93,7 +96,7 @@ function extractDesktopTable(block: string): string | null {
  */
 function splitPersonBlocks(html: string): string[] {
   const blocks: string[] = [];
-  const re = /class='arrest'/g;
+  const re = /class=['"]arrest['"]/g;
   const starts: number[] = [];
   let m: RegExpExecArray | null;
   while ((m = re.exec(html)) !== null) {
@@ -117,7 +120,7 @@ export function parseAdaCounty(html: string): RawWarrantHit[] {
   for (const block of blocks) {
     try {
       // --- Name ---
-      const nameMatch = block.match(/<div class='myNameTitle'>\s*<strong>([\s\S]*?)<\/strong>/i);
+      const nameMatch = block.match(/<div class=['"]myNameTitle['"]>\s*<strong>([\s\S]*?)<\/strong>/i);
       const fullName = nameMatch ? text(nameMatch[1]) : '';
       const { last, first, middle } = parseName(fullName);
 
@@ -160,6 +163,12 @@ export function parseAdaCounty(html: string): RawWarrantHit[] {
           const issued = text(wm[2]) || null;
           const severity = text(wm[3]) || null;
           const bond = parseMoney(text(wm[4]));
+          // 1:1 assumption: each warrant row is followed by exactly one
+          // colspan="4" charge row, so warrant N pairs with charges[N]. We
+          // advance idx even on a skipped (blank-id) warrant above so the
+          // remaining warrants stay aligned with their charge rows. Verified
+          // 109/109 in the fixture; if a future page drops a charge row this
+          // mis-pairs (wrong charge, no crash) — re-pair by scan position then.
           const charge = charges[idx] || null;
           idx++;
 
