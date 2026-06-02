@@ -86,8 +86,15 @@ calls.get('/', async (c) => {
     if (archived === 'true') where += " AND c.status = 'archived'";
     else if (archived !== 'all') where += " AND c.status != 'archived'";
 
-    if (active === 'true' || (!status && !archived)) {
-      where = "WHERE c.status IN ('dispatched','enroute','onscene','pending','open')";
+    // Default to active calls when the caller passed NO explicit filter. APPEND
+    // the clause (don't REPLACE `where`) — replacing it discarded the
+    // priority/search/date clauses while leaving their values in `params`, so a
+    // request like ?priority=P1&search=main hit a bind-count mismatch (D1 error)
+    // or silently dropped the filters. Appending a zero-placeholder clause keeps
+    // params aligned. Only force it when no narrowing filter was supplied.
+    const noExplicitFilter = !status && !archived && !priority && !search && !startDate && !endDate;
+    if (active === 'true' || noExplicitFilter) {
+      where += " AND c.status IN ('dispatched','enroute','onscene','pending','open')";
     }
 
     const pageNum = Math.max(1, parseInt(page || '1', 10));
@@ -835,7 +842,32 @@ calls.post('/:id/status', async (c) => {
     if (notesSql) params.push(notes);
     params.push(id);
     await execute(db, `UPDATE calls_for_service SET status = ?, status_changed_at = datetime('now'), updated_at = datetime('now')${timeSql}${dispSql}${notesSql} WHERE id = ?`, ...params);
+
+    // Free the units working this call when it ends. Clearing/closing/cancelling
+    // a call previously left every assigned unit pinned (current_call_id set,
+    // status stuck 'dispatched'/'enroute'/'onscene') — so units never returned
+    // to 'available' on their own and accumulated as phantom assignments (live
+    // data showed units stuck on closed calls). Only step an on-call status back
+    // to 'available'; never override off_duty/busy/out_of_service.
+    const TERMINAL_STATUSES = ['cleared', 'closed', 'cancelled', 'archived'];
+    let freedUnits: Array<Record<string, unknown>> = [];
+    if (TERMINAL_STATUSES.includes(status)) {
+      freedUnits = await query<Record<string, unknown>>(db, 'SELECT id FROM units WHERE current_call_id = ?', id);
+      await execute(db,
+        `UPDATE units SET status = CASE WHEN status IN ('dispatched','enroute','onscene') THEN 'available' ELSE status END,
+                          current_call_id = NULL, last_status_change = datetime('now'), updated_at = datetime('now')
+         WHERE current_call_id = ?`, id);
+    }
+
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
+
+    // Surface the freed units so any open board reflects them (best-effort).
+    try {
+      for (const fu of freedUnits) {
+        const unit = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM units WHERE id = ?', fu.id as number);
+        if (unit) broadcastAll('dispatch_update', { action: 'unit_status_changed', unit });
+      }
+    } catch (err) { console.error('[dispatch] free-units-on-clear broadcast:', err); }
 
     // Audit trail — parity with the legacy handler this replaced (which wrote
     // a STATUS_CHANGE row). Without this the call's Audit tab showed nothing
@@ -857,7 +889,15 @@ calls.post('/:id/status', async (c) => {
       console.warn('audit_log insert failed for status change:', auditErr);
     }
 
-    return c.json(updated);
+    // Return base + ext merged (mirrors PUT /:id, /hold, /resume). The client
+    // (handleStatusChange/handleConfirmClear) does setSelectedCall(mapDbCall(result))
+    // as a FULL replacement, and mapDbCall reads ext-only fields (held_at →
+    // on_hold synthesis, PSO process-service fields, parent_call_id, ext tactical
+    // flags). Returning the base row alone blanked all of those on the selected
+    // call until the next full GET. Best-effort ext fetch.
+    let ext: Record<string, unknown> | null = null;
+    try { ext = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service_ext WHERE id = ?', id); } catch { /* ext optional */ }
+    return c.json({ ...(updated || {}), ...(ext || {}) });
   } catch (err) {
     return c.json({ error: 'Failed to update status' }, 500);
   }
