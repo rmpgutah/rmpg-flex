@@ -312,8 +312,19 @@ export async function runAllSourceScans(
     const canonical = reconcileHits(rawHits, person);
     for (const hit of canonical) {
       if (hit.confidence !== 'confirmed') continue;
-      const isNew = await promoteCanonicalWarrant(db, hit, personId);
-      if (isNew) await logScrapedWatchEvent(db, 'warrant_found', hit, personId, runId);
+      // Isolate each promotion: a single failing promote (transient D1 error,
+      // future schema drift, a CHECK violation on a written column) must not
+      // abort the remaining promotions — same one-bad-hit-can't-kill-the-run
+      // contract the rest of this file's try/catch lattice enforces.
+      try {
+        const isNew = await promoteCanonicalWarrant(db, hit, personId);
+        if (isNew) await logScrapedWatchEvent(db, 'warrant_found', hit, personId, runId);
+      } catch (err) {
+        console.warn(
+          `[warrantSources.runScan] promote failed for ${hit.source_key}/${hit.warrant_id}:`,
+          err instanceof Error ? err.message : String(err),
+        );
+      }
     }
   }
 
