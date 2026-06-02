@@ -39,6 +39,14 @@ const isBlank = (v: unknown): boolean => v === null || v === undefined || v === 
  * Missing composite parts become empty strings.
  */
 function dedupKey(h: RawWarrantHit): string {
+  // NOTE: warrant_id is NOT source-scoped here, so two DIFFERENT sources that
+  // happen to emit an equal warrant_id string would false-merge into one hit
+  // (and falsely claim two corroborating `sources`). This is unreachable for
+  // the Phase-1 sources — their id namespaces are disjoint: Natrona prefixes
+  // every id with `natrona:`, Utah lives in its own table/poller and never
+  // reaches reconcile, and Ada is the only source emitting bare Idaho court
+  // numbers. TODO(phase-2): when adding any new un-prefixed source, either
+  // prefix its ids at the adapter OR switch this to `wid:${source_key}:${id}`.
   if (!isBlank(h.warrant_id)) return `wid:${h.warrant_id}`;
   if (!isBlank(h.case_number)) return `cn:${h.case_number}`;
   const ln = (h.last_name ?? '').toLowerCase();
@@ -126,6 +134,12 @@ export function reconcileHits(hits: RawWarrantHit[], person: PersonRow): Canonic
 
   const out: CanonicalHit[] = [];
   for (const canonical of byKey.values()) {
+    // Confidence is evaluated on the merged (first-seen) age. If two sources
+    // share a warrant_id and disagree on age, the later one was dropped by the
+    // first-non-empty merge above — so a same-warrant disconfirming age can be
+    // masked by an earlier corroborating one. That's a same-warrant data
+    // discrepancy (not a namesake), so it doesn't weaken the invariant that a
+    // DOB-less person or a decisive >1-off age reads unverified.
     let confidence: 'confirmed' | 'unverified';
     if (!personHasDob) {
       confidence = 'unverified';
