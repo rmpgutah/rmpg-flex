@@ -227,13 +227,13 @@ export async function generateCaseReport(doc: jsPDF, data: CasePdfData): Promise
   }
 
   // ── Investigation Team ────────────────────────────────
-  if (data.lead_investigator_name || (data.assigned_officer_names && data.assigned_officer_names.length > 0)) {
+  if (data.lead_investigator_name || (Array.isArray(data.assigned_officer_names) && data.assigned_officer_names.length > 0)) {
     y = checkPageBreak(doc, y, 18);
     const sec = openAutoSection(doc, 'Investigation Team', y); y = sec.contentY;
     if (data.lead_investigator_name) {
       y = addFieldPair(doc, 'Lead Investigator', data.lead_investigator_name, lx, y, ffw);
     }
-    if (data.assigned_officer_names && data.assigned_officer_names.length > 0) {
+    if (Array.isArray(data.assigned_officer_names) && data.assigned_officer_names.length > 0) {
       y = addFieldPair(doc, 'Assigned Officers', data.assigned_officer_names.join(', '), lx, y, ffw);
     }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
@@ -250,7 +250,7 @@ export async function generateCaseReport(doc: jsPDF, data: CasePdfData): Promise
   }
 
   // ── Linked Persons ────────────────────────────────────
-  if (data.linked_persons && data.linked_persons.length > 0) {
+  if (Array.isArray(data.linked_persons) && data.linked_persons.length > 0) {
     y = renderLinkedTable(doc, y, 'Linked Persons',
       ['NAME', 'DOB', 'RELATIONSHIP'],
       [40, 18, 26],
@@ -263,7 +263,7 @@ export async function generateCaseReport(doc: jsPDF, data: CasePdfData): Promise
   }
 
   // ── Linked Incidents ──────────────────────────────────
-  if (data.linked_incidents && data.linked_incidents.length > 0) {
+  if (Array.isArray(data.linked_incidents) && data.linked_incidents.length > 0) {
     y = renderLinkedTable(doc, y, 'Linked Incidents',
       ['INCIDENT #', 'TYPE', 'STATUS', 'DATE'],
       [22, 30, 14, 18],
@@ -277,7 +277,7 @@ export async function generateCaseReport(doc: jsPDF, data: CasePdfData): Promise
   }
 
   // ── Linked Evidence ───────────────────────────────────
-  if (data.linked_evidence && data.linked_evidence.length > 0) {
+  if (Array.isArray(data.linked_evidence) && data.linked_evidence.length > 0) {
     y = renderLinkedTable(doc, y, 'Linked Evidence',
       ['ITEM #', 'DESCRIPTION', 'STATUS', 'COLLECTED'],
       [16, 38, 14, 18],
@@ -291,7 +291,7 @@ export async function generateCaseReport(doc: jsPDF, data: CasePdfData): Promise
   }
 
   // ── Linked Citations ──────────────────────────────────
-  if (data.linked_citations && data.linked_citations.length > 0) {
+  if (Array.isArray(data.linked_citations) && data.linked_citations.length > 0) {
     y = renderLinkedTable(doc, y, 'Linked Citations',
       ['CITATION #', 'TYPE', 'STATUS', 'VIOLATION DATE'],
       [22, 22, 14, 18],
@@ -305,7 +305,7 @@ export async function generateCaseReport(doc: jsPDF, data: CasePdfData): Promise
   }
 
   // ── Linked Warrants ───────────────────────────────────
-  if (data.linked_warrants && data.linked_warrants.length > 0) {
+  if (Array.isArray(data.linked_warrants) && data.linked_warrants.length > 0) {
     y = renderLinkedTable(doc, y, 'Linked Warrants',
       ['WARRANT #', 'TYPE', 'STATUS', 'CHARGE'],
       [20, 16, 12, 36],
@@ -500,7 +500,7 @@ export async function generateCourtEventReport(doc: jsPDF, data: CourtEventPdfDa
     const r2a = addFieldPair(doc, 'Prosecutor', data.prosecutor || '', lx, y, hfw);
     const r2b = addFieldPair(doc, 'Defense Attorney', data.defense_attorney || '', rx, y, hfw);
     y = Math.max(r2a, r2b);
-    if (data.officers_required && data.officers_required.length > 0) {
+    if (Array.isArray(data.officers_required) && data.officers_required.length > 0) {
       y = addFieldPair(doc, 'Officers Required', data.officers_required.join(', '), lx, y, ffw);
     }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
@@ -529,7 +529,12 @@ export async function generateCourtEventReport(doc: jsPDF, data: CourtEventPdfDa
       y = addFieldPair(doc, 'Sentence', data.sentence, lx, y, ffw);
     }
     if (data.fine_amount != null) {
-      y = addFieldPair(doc, 'Fine Amount', `$${Number(data.fine_amount).toFixed(2)}`, lx, y, hfw);
+      // A sentinel "None"/"N/A" string passes != null but Number()s to NaN,
+      // which would print "$NaN". Format as currency only when finite; else
+      // fall back to the raw value. [[project-sentinel-none-strings]]
+      const fa = Number(data.fine_amount);
+      const faText = Number.isFinite(fa) ? `$${fa.toFixed(2)}` : String(data.fine_amount);
+      y = addFieldPair(doc, 'Fine Amount', faText, lx, y, hfw);
     }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
@@ -636,7 +641,7 @@ export async function generateJailBookingReport(doc: jsPDF, data: JailBookingPdf
   //     legacy hand-typed entries
   //   - an already-parsed array (defensive — same shape after JSON.parse)
   const chargeRows: string[][] = [];
-  if (data.charge_lines && data.charge_lines.length > 0) {
+  if (Array.isArray(data.charge_lines) && data.charge_lines.length > 0) {
     for (let i = 0; i < data.charge_lines.length; i++) {
       chargeRows.push([String(i + 1), data.charge_lines[i]]);
     }

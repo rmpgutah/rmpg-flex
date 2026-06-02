@@ -236,7 +236,7 @@ function personCrossRefTags(name: string, data: CallPdfData): string[] {
   const tags: string[] = [];
   if (sameEntityName(name, data.caller_name)) tags.push('ALSO CALLER');
   if (sameEntityName(name, data.responding_officer)) tags.push('RESP OFFICER');
-  if ((data.assigned_units_detail || []).some(u => sameEntityName(name, u.officer_name))) {
+  if ((Array.isArray(data.assigned_units_detail) ? data.assigned_units_detail : []).some(u => sameEntityName(name, u.officer_name))) {
     tags.push('ASSIGNED UNIT');
   }
   return tags;
@@ -282,7 +282,7 @@ function renderRecordPostureBand(
 function personPdfPostureFlags(data: PersonPdfData): Array<string | null | undefined> {
   const flags: Array<string | null | undefined> = [];
   for (const f of data.flags || []) flags.push(typeof f === 'object' ? (f as any).type : f);
-  if ((data.warrants || []).some(w => (w.status || '').toLowerCase() === 'active')) flags.push('ACTIVE WARRANT');
+  if ((Array.isArray(data.warrants) ? data.warrants : []).some(w => (w.status || '').toLowerCase() === 'active')) flags.push('ACTIVE WARRANT');
   if (data.bolo_active) flags.push('BOLO');
   if (data.is_sex_offender) flags.push('SEX OFFENDER');
   if (hasValue(data.gang_affiliation)) flags.push('GANG');
@@ -307,7 +307,7 @@ function propertyPdfPostureFlags(data: PropertyPdfData): Array<string | null | u
   const flags: Array<string | null | undefined> = [];
   if (hasValue(data.known_hazards)) flags.push(data.known_hazards!);
   if (hasValue(data.hazard_notes)) flags.push('HAZARD');
-  if ((data.trespass_orders || []).some(t => (t.status || '').toLowerCase() === 'active')) flags.push('TRESPASS');
+  if ((Array.isArray(data.trespass_orders) ? data.trespass_orders : []).some(t => (t.status || '').toLowerCase() === 'active')) flags.push('TRESPASS');
   return flags;
 }
 
@@ -2185,7 +2185,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
           }
           y = maxUY;
         }
-      } else if (data.assigned_units && data.assigned_units.length > 0) {
+      } else if (Array.isArray(data.assigned_units) && data.assigned_units.length > 0) {
         y = addFieldPair(doc, 'Assigned Units', data.assigned_units.join(', '), lx, y, ffw);
       }
       y = closeAutoSection(doc, uSec.sectionY, y, undefined, uSec.sectionPage);
@@ -2219,7 +2219,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
   // so the table automatically redraws column headers + a
   // "LINKED PERSONS -- CONTINUED" sub-bar on any page break (no more
   // orphaned data rows on continuation pages).
-  if (data.linked_persons && data.linked_persons.length > 0) {
+  if (Array.isArray(data.linked_persons) && data.linked_persons.length > 0) {
     y = checkPageBreak(doc, y, 22, prio);
     const sec = openAutoSection(doc, 'LINKED PERSONS', y);
     y = sec.sectionY + SPACING.SECTION_HEADER_H;
@@ -2252,7 +2252,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
   }
 
   // Linked Vehicles — clean table: section header + column headers + data rows
-  if (data.linked_vehicles && data.linked_vehicles.length > 0) {
+  if (Array.isArray(data.linked_vehicles) && data.linked_vehicles.length > 0) {
     y = checkPageBreak(doc, y, 22, prio);
     const sec = openAutoSection(doc, 'LINKED VEHICLES', y);
     y = sec.sectionY + SPACING.SECTION_HEADER_H;
@@ -2271,7 +2271,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       const tokens: string[] = [];
       if (isStolen) tokens.push(formatEnumValue(v.stolen_status!) || 'STOLEN');
       if (sameEntityName(ownerName, data.caller_name)) tokens.push('OWNER=CALLER');
-      else if ((data.linked_persons || []).some(p => sameEntityName(ownerName, `${p.first_name || ''} ${p.last_name || ''}`))) {
+      else if ((Array.isArray(data.linked_persons) ? data.linked_persons : []).some(p => sameEntityName(ownerName, `${p.first_name || ''} ${p.last_name || ''}`))) {
         tokens.push('OWNER LINKED');
       }
       return [
@@ -2351,7 +2351,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
   // Visit History Timeline (PSO calls with return visits)
   // Both pso_client_request AND process_service calls accrue visit history on
   // re-dispatch (server attaches it for both — see src/routes/dispatch/calls.ts).
-  if (['pso_client_request', 'process_service'].includes(String(data.incident_type)) && data.visit_history && data.visit_history.length > 0) {
+  if (['pso_client_request', 'process_service'].includes(String(data.incident_type)) && Array.isArray(data.visit_history) && data.visit_history.length > 0) {
     y = checkPageBreak(doc, y, 25, prio);
     const sec = openAutoSection(doc, `Visit History -- ${data.visit_history.length} Prior ${data.visit_history.length === 1 ? 'Visit' : 'Visits'}`, y);
     y = sec.sectionY + SPACING.SECTION_HEADER_H;
@@ -2530,7 +2530,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
   // already contains a system tag like "SERVE INTAKE" or "DISPATCH"
   // — surfaces as the colored entry-type chip on the right of the
   // header strip; otherwise falls back to "OFFICER NOTE".
-  if (data.notes && data.notes.length > 0) {
+  if (Array.isArray(data.notes) && data.notes.length > 0) {
     y = checkPageBreak(doc, y, 25, prio);
     const sec = openAutoSection(doc, 'Notes / Narrative', y); y = sec.contentY;
     y += 1.5;
@@ -2663,7 +2663,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
   }
 
   // Attachments
-  if (data.attachment_images && data.attachment_images.length > 0) {
+  if (Array.isArray(data.attachment_images) && data.attachment_images.length > 0) {
     y = await addAttachmentsSection(doc, data.attachment_images, y);
   }
 
@@ -3160,7 +3160,7 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
   }
 
   // ── 10. Active Warrants ───────────────────────────────────
-  if (data.warrants && data.warrants.length > 0) {
+  if (Array.isArray(data.warrants) && data.warrants.length > 0) {
     y = checkPageBreak(doc, y, 30, prio);
     { const sec = openAutoSection(doc, 'Active Warrants', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
     const warrantRows = data.warrants.map(w => [
@@ -3189,7 +3189,7 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
   }
 
   // ── 11. Incident History ──────────────────────────────────
-  if (data.incidents && data.incidents.length > 0) {
+  if (Array.isArray(data.incidents) && data.incidents.length > 0) {
     y = checkPageBreak(doc, y, 30, prio);
     { const sec = openAutoSection(doc, 'Incident History', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
     const incidentRows = data.incidents.map(inc => [
@@ -3216,7 +3216,7 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
   }
 
   // ── 12. Citation History ──────────────────────────────────
-  if (data.citations && data.citations.length > 0) {
+  if (Array.isArray(data.citations) && data.citations.length > 0) {
     y = checkPageBreak(doc, y, 30, prio);
     { const sec = openAutoSection(doc, 'Citation History', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
     const citationRows = data.citations.map(c => [
@@ -3243,7 +3243,7 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
   }
 
   // ── 13. Dispatch Call History ──────────────────────────────
-  if (data.calls && data.calls.length > 0) {
+  if (Array.isArray(data.calls) && data.calls.length > 0) {
     y = checkPageBreak(doc, y, 30, prio);
     { const sec = openAutoSection(doc, 'Dispatch Call History', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
     const callRows = data.calls.map(c => [
@@ -3270,7 +3270,7 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
   }
 
   // ── 14. Criminal History — condensed single table ──────────
-  if (data.criminal_records && data.criminal_records.length > 0) {
+  if (Array.isArray(data.criminal_records) && data.criminal_records.length > 0) {
     y = checkPageBreak(doc, y, 30, prio);
     { const sec = openAutoSection(doc, 'Criminal History', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
     const crCw = getContentWidth(doc);
@@ -3304,7 +3304,7 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
   }
 
   // ── 14b. Linked Vehicles ──────────────────────────────────
-  if (data.linked_vehicles && data.linked_vehicles.length > 0) {
+  if (Array.isArray(data.linked_vehicles) && data.linked_vehicles.length > 0) {
     y = checkPageBreak(doc, y, 25, prio);
     { const sec = openAutoSection(doc, 'Linked Vehicles', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
     const vehRows = data.linked_vehicles.map(v => [
@@ -3319,7 +3319,7 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
   }
 
   // ── 14c. Linked Properties ──────────────────────────────────
-  if (data.linked_properties && data.linked_properties.length > 0) {
+  if (Array.isArray(data.linked_properties) && data.linked_properties.length > 0) {
     y = checkPageBreak(doc, y, 25, prio);
     { const sec = openAutoSection(doc, 'Linked Properties', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
     const propRows = data.linked_properties.map(p => [
@@ -3350,7 +3350,7 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
   });
 
   // ── 17. Attachments ───────────────────────────────────────
-  if (data.attachment_images && data.attachment_images.length > 0) {
+  if (Array.isArray(data.attachment_images) && data.attachment_images.length > 0) {
     y = await addAttachmentsSection(doc, data.attachment_images, y, 'Attachments / Evidence Photos', prio);
   }
 
@@ -3556,7 +3556,7 @@ async function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
   y = addNarrativeSection(doc, 'Distinguishing Features', data.distinguishing_features || '', y);
   y = addNarrativeSection(doc, 'Damage Description', data.damage_description || '', y);
 
-  if (data.flags && data.flags.length > 0) {
+  if (Array.isArray(data.flags) && data.flags.length > 0) {
     y = checkPageBreak(doc, y, 10);
     { const sec = openAutoSection(doc, 'Flags', y); y = sec.contentY;
       y = addFieldPair(doc, 'Active Flags', data.flags.join(', '), lx, y, ffw);
@@ -3565,7 +3565,7 @@ async function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
   }
 
   // ── Incident History ──
-  if (data.incidents && data.incidents.length > 0) {
+  if (Array.isArray(data.incidents) && data.incidents.length > 0) {
     y = checkPageBreak(doc, y, 25);
     { const sec = openAutoSection(doc, 'Incident History', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
     const incRows = data.incidents.map(inc => [
@@ -3580,7 +3580,7 @@ async function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
   }
 
   // ── Call History ──
-  if (data.calls && data.calls.length > 0) {
+  if (Array.isArray(data.calls) && data.calls.length > 0) {
     y = checkPageBreak(doc, y, 25);
     { const sec = openAutoSection(doc, 'Dispatch Call History', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
     const callRows = data.calls.map(c => [
@@ -3596,7 +3596,7 @@ async function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
   }
 
   // ── Citation History ──
-  if (data.citations && data.citations.length > 0) {
+  if (Array.isArray(data.citations) && data.citations.length > 0) {
     y = checkPageBreak(doc, y, 25);
     { const sec = openAutoSection(doc, 'Citation History', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
     const citRows = data.citations.map(c => [
@@ -3611,7 +3611,7 @@ async function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
   }
 
   // ── Linked Persons (cross-reference from record_links) ──
-  if (data.linked_persons && data.linked_persons.length > 0) {
+  if (Array.isArray(data.linked_persons) && data.linked_persons.length > 0) {
     y = checkPageBreak(doc, y, 25);
     { const sec = openAutoSection(doc, 'Linked Persons', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
     const personRows = data.linked_persons.map(p => [
@@ -3626,7 +3626,7 @@ async function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
   }
 
   // ── Linked Properties (cross-reference from record_links) ──
-  if (data.linked_properties && data.linked_properties.length > 0) {
+  if (Array.isArray(data.linked_properties) && data.linked_properties.length > 0) {
     y = checkPageBreak(doc, y, 25);
     { const sec = openAutoSection(doc, 'Linked Properties', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
     const propRows = data.linked_properties.map(p => [
@@ -3653,7 +3653,7 @@ async function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
     y,
   });
 
-  if (data.attachment_images && data.attachment_images.length > 0) {
+  if (Array.isArray(data.attachment_images) && data.attachment_images.length > 0) {
     y = await addAttachmentsSection(doc, data.attachment_images, y);
   }
 
@@ -4318,7 +4318,7 @@ async function generateEvidenceReport(doc: jsPDF, data: EvidencePdfData) {
   // receivedBy, reason → purpose, timestamp → dateTime. Pads
   // empty rows up to a 3-row minimum so paper handoff has space.
   {
-    const transfers: CustodyTransfer[] = (data.chain_of_custody || []).map(c => ({
+    const transfers: CustodyTransfer[] = (Array.isArray(data.chain_of_custody) ? data.chain_of_custody : []).map(c => ({
       dateTime: c.timestamp,
       releasedBy: c.from_person,
       receivedBy: c.to_person,
@@ -4335,7 +4335,7 @@ async function generateEvidenceReport(doc: jsPDF, data: EvidencePdfData) {
   }
 
   // Attachments
-  if (data.attachment_images && data.attachment_images.length > 0) {
+  if (Array.isArray(data.attachment_images) && data.attachment_images.length > 0) {
     y = await addAttachmentsSection(doc, data.attachment_images, y);
   }
 
@@ -4507,7 +4507,7 @@ async function generateFleetReport(doc: jsPDF, data: FleetPdfData) {
   }
 
   // ── FUEL LOG REPORT ──
-  if (reportType === 'fuel_logs' && data.fuel_logs && data.fuel_logs.length > 0) {
+  if (reportType === 'fuel_logs' && Array.isArray(data.fuel_logs) && data.fuel_logs.length > 0) {
     // Use fuel_summary from backend if available, otherwise compute locally
     const fs = data.fuel_summary;
     const totalGal = fs?.total_gallons ?? data.fuel_logs.reduce((sum, f) => sum + (f.gallons || 0), 0);
@@ -4626,7 +4626,7 @@ async function generateFleetReport(doc: jsPDF, data: FleetPdfData) {
   }
 
   // ── MAINTENANCE REPORT ──
-  if (reportType === 'maintenance' && data.maintenance_logs && data.maintenance_logs.length > 0) {
+  if (reportType === 'maintenance' && Array.isArray(data.maintenance_logs) && data.maintenance_logs.length > 0) {
     // Summary row
     const totalCost = data.maintenance_logs.reduce((sum, m) => sum + (m.cost || 0), 0);
     const totalLabor = data.maintenance_logs.reduce((sum, m) => sum + (m.labor_cost || 0), 0);
@@ -4658,7 +4658,7 @@ async function generateFleetReport(doc: jsPDF, data: FleetPdfData) {
   }
 
   // ── MILEAGE SUMMARY REPORT ──
-  if (reportType === 'mileage_summary' && data.fuel_logs && data.fuel_logs.length > 0) {
+  if (reportType === 'mileage_summary' && Array.isArray(data.fuel_logs) && data.fuel_logs.length > 0) {
     // Distance resolution order (most trustworthy -> fallback):
     //   1. calc_distance — backend computes from odometer deltas, most accurate
     //   2. distance      — legacy user-entered field
@@ -4801,7 +4801,7 @@ async function generateFleetReport(doc: jsPDF, data: FleetPdfData) {
     // Merged chronological view of fuel + maintenance events (last 8)
     // so readers get a single-glance history at the end of the status
     // report without needing to jump to a separate log.
-    const fuelEntries = (data.fuel_logs || []).map(f => ({
+    const fuelEntries = (Array.isArray(data.fuel_logs) ? data.fuel_logs : []).map(f => ({
       date: f.fuel_date || '',
       type: 'FUEL',
       summary: `${(f.gallons || 0).toFixed(1)} GAL` +
@@ -4809,7 +4809,7 @@ async function generateFleetReport(doc: jsPDF, data: FleetPdfData) {
         (f.station ? ` - ${f.station}` : ''),
       odometer: f.odometer_reading,
     }));
-    const maintEntries = (data.maintenance_logs || []).map(m => ({
+    const maintEntries = (Array.isArray(data.maintenance_logs) ? data.maintenance_logs : []).map(m => ({
       date: m.service_date || '',
       type: 'MAINT',
       summary: (m.description || '').slice(0, 60) +
@@ -4982,7 +4982,7 @@ async function generatePersonnelReport(doc: jsPDF, data: PersonnelPdfData) {
   }
 
   // ── CREDENTIALS TABLE ──
-  if ((reportType === 'full' || reportType === 'credentials') && data.credentials && data.credentials.length > 0) {
+  if ((reportType === 'full' || reportType === 'credentials') && Array.isArray(data.credentials) && data.credentials.length > 0) {
     y = checkPageBreak(doc, y, 12);
     { const sec = openAutoSection(doc, 'Credentials', y); y = sec.contentY;
       y = addFieldPair(doc, 'Credentials', `${data.credentials.length} on file`, lx, y, ffw);
@@ -5007,7 +5007,7 @@ async function generatePersonnelReport(doc: jsPDF, data: PersonnelPdfData) {
   }
 
   // ── TRAINING RECORDS TABLE ──
-  if ((reportType === 'full' || reportType === 'training') && data.training_records && data.training_records.length > 0) {
+  if ((reportType === 'full' || reportType === 'training') && Array.isArray(data.training_records) && data.training_records.length > 0) {
     // Summary stats
     const totalHours = data.training_records.reduce((s, t) => s + (t.hours || 0), 0);
     const completedCount = data.training_records.filter(t => t.status === 'completed').length;
@@ -5041,7 +5041,7 @@ async function generatePersonnelReport(doc: jsPDF, data: PersonnelPdfData) {
   }
 
   // ── EQUIPMENT TABLE ──
-  if ((reportType === 'full' || reportType === 'equipment') && data.equipment_list && data.equipment_list.length > 0) {
+  if ((reportType === 'full' || reportType === 'equipment') && Array.isArray(data.equipment_list) && data.equipment_list.length > 0) {
     y = checkPageBreak(doc, y, 12);
     { const sec = openAutoSection(doc, 'Assigned Equipment', y); y = sec.contentY;
       y = addFieldPair(doc, 'Equipment', `${data.equipment_list.length} items`, lx, y, ffw);
@@ -5066,7 +5066,7 @@ async function generatePersonnelReport(doc: jsPDF, data: PersonnelPdfData) {
   }
 
   // ── BODY CAMERAS TABLE ──
-  if ((reportType === 'full' || reportType === 'equipment') && data.body_cameras && data.body_cameras.length > 0) {
+  if ((reportType === 'full' || reportType === 'equipment') && Array.isArray(data.body_cameras) && data.body_cameras.length > 0) {
     y = checkPageBreak(doc, y, 12);
     { const sec = openAutoSection(doc, 'Body Cameras', y); y = sec.contentY;
       y = addFieldPair(doc, 'Cameras', `${data.body_cameras.length} assigned`, lx, y, ffw);
@@ -5091,7 +5091,7 @@ async function generatePersonnelReport(doc: jsPDF, data: PersonnelPdfData) {
   }
 
   // ── DEPLOYMENTS TABLE ──
-  if ((reportType === 'full') && data.deployments && data.deployments.length > 0) {
+  if ((reportType === 'full') && Array.isArray(data.deployments) && data.deployments.length > 0) {
     y = checkPageBreak(doc, y, 12);
     { const sec = openAutoSection(doc, 'Deployments', y); y = sec.contentY;
       y = addFieldPair(doc, 'Deployments', `${data.deployments.length} records`, lx, y, ffw);
@@ -5116,7 +5116,7 @@ async function generatePersonnelReport(doc: jsPDF, data: PersonnelPdfData) {
   }
 
   // ── TIME & ATTENDANCE TABLE ──
-  if ((reportType === 'full' || reportType === 'time') && data.time_entries && data.time_entries.length > 0) {
+  if ((reportType === 'full' || reportType === 'time') && Array.isArray(data.time_entries) && data.time_entries.length > 0) {
     const totalHours = data.time_entries.reduce((s, t) => s + (t.total_hours || 0), 0);
 
     y = checkPageBreak(doc, y, 12);
@@ -5146,7 +5146,7 @@ async function generatePersonnelReport(doc: jsPDF, data: PersonnelPdfData) {
   y = addNarrativeSection(doc, 'Notes', data.notes || '', y);
 
   // Attachments
-  if (data.attachment_images && data.attachment_images.length > 0) {
+  if (Array.isArray(data.attachment_images) && data.attachment_images.length > 0) {
     y = await addAttachmentsSection(doc, data.attachment_images, y);
   }
 
@@ -5343,7 +5343,7 @@ async function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
   }
 
   // ── Incident History at this property ──
-  if (data.incidents && data.incidents.length > 0) {
+  if (Array.isArray(data.incidents) && data.incidents.length > 0) {
     y = checkPageBreak(doc, y, 25);
     { const sec = openAutoSection(doc, 'Incident History', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
     const incRows = data.incidents.map(inc => [
@@ -5358,7 +5358,7 @@ async function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
   }
 
   // ── Dispatch Call History at this property ──
-  if (data.calls && data.calls.length > 0) {
+  if (Array.isArray(data.calls) && data.calls.length > 0) {
     y = checkPageBreak(doc, y, 25);
     { const sec = openAutoSection(doc, 'Dispatch Call History', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
     const callRows = data.calls.map(c => [
@@ -5389,7 +5389,7 @@ async function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
   }
 
   // ── Linked Persons (cross-reference from record_links) ──
-  if (data.linked_persons && data.linked_persons.length > 0) {
+  if (Array.isArray(data.linked_persons) && data.linked_persons.length > 0) {
     y = checkPageBreak(doc, y, 25);
     { const sec = openAutoSection(doc, 'Linked Persons', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
     const personRows = data.linked_persons.map(p => [
@@ -5404,7 +5404,7 @@ async function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
   }
 
   // ── Linked Vehicles (cross-reference from record_links) ──
-  if (data.linked_vehicles && data.linked_vehicles.length > 0) {
+  if (Array.isArray(data.linked_vehicles) && data.linked_vehicles.length > 0) {
     y = checkPageBreak(doc, y, 25);
     { const sec = openAutoSection(doc, 'Linked Vehicles', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
     const vehRows = data.linked_vehicles.map(v => [
@@ -5443,7 +5443,7 @@ async function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
   });
 
   // Attachments
-  if (data.attachment_images && data.attachment_images.length > 0) {
+  if (Array.isArray(data.attachment_images) && data.attachment_images.length > 0) {
     y = await addAttachmentsSection(doc, data.attachment_images, y);
   }
 
