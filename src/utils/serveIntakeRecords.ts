@@ -264,7 +264,11 @@ export async function nextCallNumber(db: D1Database): Promise<string> {
 // instead of swallowing it.
 export function isUniqueViolation(err: unknown): boolean {
   const msg = (err instanceof Error ? err.message : String(err ?? '')).toLowerCase();
-  return msg.includes('unique') || msg.includes('constraint failed') || msg.includes('2067') /* SQLITE_CONSTRAINT_UNIQUE */;
+  // Match ONLY UNIQUE violations — NOT the bare "constraint failed" substring,
+  // which SQLite/D1 also emits for NOT NULL / CHECK / FOREIGN KEY failures
+  // ("NOT NULL constraint failed: …"). Treating those as a call_number collision
+  // re-minted + retried 5× pointlessly and masked the real cause.
+  return msg.includes('unique') || msg.includes('2067') /* SQLITE_CONSTRAINT_UNIQUE */;
 }
 
 // Run an INSERT that may collide on a freshly-minted unique key. `mint` produces
