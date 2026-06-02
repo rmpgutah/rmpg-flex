@@ -601,6 +601,11 @@ const API_ROUTES: RouteRule[] = [
   // (persons on file at the address + warrant/gang/caution flags). New rewrite
   // handler in src/routes/dispatch/premiseHistory.ts; legacy never had it.
   { kind: 'regex', value: /^\/api\/dispatch\/address-occupants(\?|$)/, methods: ['GET'] },
+  // /api/geocode/reverse — reverse-geocode a unit's live GPS to a street label
+  // for the dispatch unit board. New rewrite handler (src/routes/geocode.ts,
+  // KV-cached Nominatim); legacy never had it, so route it explicitly to
+  // env.API. /api/geocode/search stays on its existing path.
+  { kind: 'regex', value: /^\/api\/geocode\/reverse(\?|$)/, methods: ['GET'] },
 
   // /api/dispatch/heatmap/enforcement — enforcement-activity clusters for the
   // Map "Enforcement" overlay (src/routes/dispatch/aggregates.ts). Legacy has

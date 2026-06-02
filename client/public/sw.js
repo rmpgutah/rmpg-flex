@@ -430,7 +430,12 @@
 //       (browser/device GPS, no reverse-geocoded address) falsely showed
 //       "No GPS" even though it's on the map. Now shows the live coords (+ age)
 //       whenever lat/lng are present; "No GPS" only when there's truly no fix.
-const CACHE_NAME = 'rmpg-flex-v725';
+// v726: Unit board now shows each unit's LIVE location three ways — street
+//       address (reverse-geocoded from GPS via new /api/geocode/reverse),
+//       cross street (Mapbox Tilequery), and raw coordinates — instead of just
+//       coords. Resolved + cached per ~11m grid (useUnitLocations) so a parked
+//       unit doesn't re-geocode and a moving one updates when it changes block.
+const CACHE_NAME = 'rmpg-flex-v726';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

@@ -3,6 +3,7 @@ import { Radio, MapPin, PlusCircle, Plus, Edit, Trash2, AlertTriangle } from 'lu
 import type { Unit, UnitStatus } from '../types';
 import StatusBadge from './StatusBadge';
 import { parseTimestamp } from '../utils/dateUtils';
+import { useUnitLocations } from '../hooks/useUnitLocations';
 
 // Spillman EMERGENCY overlay: an officer with an active panic. Truthy for
 // either the numeric (1) or boolean (true) shape the API may serialize.
@@ -77,6 +78,9 @@ export default React.memo(function UnitStatusBoard({
 }: UnitStatusBoardProps) {
   const canAssign = !!selectedCallId && !!onAssignUnit;
   const hasActions = !!onEditUnit || !!onDeleteUnit;
+  // Live street address + cross street resolved from each unit's GPS, so the
+  // board always shows where a unit physically is — not just coordinates.
+  const unitLocations = useUnitLocations(units);
   // Sort: on-duty first (available, dispatched, enroute, onscene, busy), then off_duty
   // Includes every live status. out_of_service was missing, so indexOf returned
   // -1 and those units sorted ABOVE onscene (index 0) at the very top of the board.
@@ -214,28 +218,41 @@ export default React.memo(function UnitStatusBoard({
               </td>
               <td>
                 {(() => {
+                  const lat = Number(unit.latitude), lng = Number(unit.longitude);
                   const hasCoords = unit.latitude != null && unit.longitude != null
-                    && Number.isFinite(Number(unit.latitude)) && Number.isFinite(Number(unit.longitude));
-                  // "No GPS" must reflect actual position, not the optional text
-                  // address: a unit reporting live coordinates (e.g. browser GPS)
-                  // has no `location` string but IS on the map. Show its coords.
-                  if (unit.location || hasCoords) {
-                    return (
-                      <div className="flex items-center gap-1 text-xs text-rmpg-300">
-                        <MapPin className="w-3 h-3" />
-                        <span className="truncate max-w-[150px]"
-                          title={hasCoords ? `${Number(unit.latitude).toFixed(6)}, ${Number(unit.longitude).toFixed(6)}` : undefined}>
-                          {unit.location || `GPS ${Number(unit.latitude).toFixed(4)}, ${Number(unit.longitude).toFixed(4)}`}
+                    && Number.isFinite(lat) && Number.isFinite(lng);
+                  if (!unit.location && !hasCoords) {
+                    return <span className="text-rmpg-500 italic text-[10px]">No GPS</span>;
+                  }
+                  // Three-line live location: street address, cross street, and
+                  // coordinates — resolved from the unit's GPS (useUnitLocations).
+                  const loc = unitLocations[String(unit.id)];
+                  const street = unit.location || loc?.address || loc?.onStreet || null;
+                  const cross = loc?.crossStreet || null;
+                  const coords = hasCoords ? `${lat.toFixed(5)}, ${lng.toFixed(5)}` : null;
+                  return (
+                    <div className="flex flex-col gap-0.5 text-xs text-rmpg-300 max-w-[190px]">
+                      <div className="flex items-center gap-1">
+                        <MapPin className="w-3 h-3 flex-shrink-0" />
+                        <span className="truncate" title={street || coords || ''}>
+                          {street || coords || 'Locating…'}
                         </span>
                         {unit.gps_updated_at && unit.status !== 'off_duty' && (() => {
                           const mins = Math.floor((Date.now() - parseTimestamp(unit.gps_updated_at).getTime()) / 60000);
                           const color = mins > 10 ? '#ef4444' : mins > 5 ? '#f59e0b' : '#666666';
-                          return <span className="text-[8px] font-mono ml-1" style={{ color }}>{mins}m</span>;
+                          return <span className="text-[8px] font-mono ml-1 flex-shrink-0" style={{ color }} title="GPS age">{mins}m</span>;
                         })()}
                       </div>
-                    );
-                  }
-                  return <span className="text-rmpg-500 italic text-[10px]">No GPS</span>;
+                      {cross && (
+                        <span className="text-[9px] text-rmpg-500 truncate pl-4" title={`Cross street: ${loc?.onStreet ? loc.onStreet + ' & ' : ''}${cross}`}>
+                          &times; {loc?.onStreet ? `${loc.onStreet} & ` : ''}{cross}
+                        </span>
+                      )}
+                      {coords && street && (
+                        <span className="text-[8px] font-mono text-rmpg-600 pl-4 select-all" title="Live coordinates">{coords}</span>
+                      )}
+                    </div>
+                  );
                 })()}
               </td>
               {canAssign && (

@@ -187,6 +187,22 @@ geocode.get('/geocode/search', async (c) => {
   }
 });
 
+// GET /api/geocode/reverse?lat=…&lng=…
+// Reverse-geocode a unit's live GPS to a short street label for the dispatch
+// board ("123 S Main St, Salt Lake City"). Reuses the KV-cached Nominatim
+// helper (rounds to ~11 m so a stationary unit's jittering fix hits cache).
+// Cross-street derivation stays client-side (Mapbox Tilequery in
+// utils/crossStreet); this endpoint only owns the street address.
+geocode.get('/geocode/reverse', async (c) => {
+  const lat = parseFloat(c.req.query('lat') || '');
+  const lng = parseFloat(c.req.query('lng') || '');
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return c.json({ error: 'lat and lng required', address: null }, 400);
+  }
+  const address = await reverseGeocodeAddress(c.env, lat, lng);
+  return c.json({ address: address ?? null });
+});
+
 // GET /api/integrations/mapbox/client-token
 // Returns { configured: bool, accessToken?: string }. Client uses it
 // as the primary geocoder when present. Empty response makes the
