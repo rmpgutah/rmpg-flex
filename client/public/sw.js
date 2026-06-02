@@ -249,7 +249,14 @@
 //       on live D1) and remove the Account Password field from the Mapbox
 //       integration UI so it can't be re-saved as a cleartext secret. The app
 //       only ever needs the public mapbox_access_token.
-const CACHE_NAME = 'rmpg-flex-v695';
+// v696: FIX — CFS/Property/Business PDF "opens then goes blank". The v690 map
+//       helper used auth-coupled apiFetch (getMapboxAccessToken, forwardGeocode)
+//       inside PDF generation; a 401 there triggers apiFetch's token-refresh →
+//       window.location.href='/login', tearing down the open viewer. Now uses
+//       the sync cached token + direct api.mapbox.com geocode (no apiFetch, no
+//       auth coupling) with AbortController timeouts. Map can no longer
+//       redirect, hang, or destabilize generation.
+const CACHE_NAME = 'rmpg-flex-v696';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
