@@ -511,6 +511,16 @@ self.addEventListener('fetch', (event) => {
           if (cached) return cached;
           return fetch(event.request)
             .then((response) => {
+              // Poison guard: a deploy-removed chunk hash can come back as a
+              // 200 text/html SPA fallback (index.html). NEVER cache or return
+              // HTML for a JS/CSS request — that produces the "Expected a
+              // JavaScript-or-Wasm module … MIME type text/html" execution
+              // error and, if cached, persists it. Surface a 404 so the
+              // dynamic import rejects and lazyRetry reloads the fresh bundle.
+              const ct = response.headers.get('Content-Type') || '';
+              if (ct.includes('text/html')) {
+                return new Response('', { status: 404, statusText: 'Stale chunk (HTML fallback)' });
+              }
               if (response.ok) {
                 const clone = response.clone();
                 caches.open(CACHE_NAME).then((cache) => {
@@ -530,6 +540,14 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       fetch(event.request)
         .then((response) => {
+          // Same poison guard as the hashed branch — never cache/return HTML
+          // for a JS/CSS request (see v716 note).
+          const ct = response.headers.get('Content-Type') || '';
+          if (ct.includes('text/html')) {
+            return caches.match(event.request).then(
+              (cached) => cached || new Response('', { status: 404, statusText: 'Stale chunk (HTML fallback)' })
+            );
+          }
           if (response.ok) {
             const clone = response.clone();
             caches.open(CACHE_NAME).then((cache) => {
