@@ -431,6 +431,39 @@ export function useVectorTileLayers({ map, popup, isLight = false, onUseLocation
     }
   }, [map, addLayer]);
 
+  // ── Self-healing safety net ──────────────────────────────────────────────
+  // Every other add path hangs off a SINGLE one-shot signal (whenStyleReady's
+  // immediate call or the next 'style.load'). If that signal is missed — the
+  // style finished before the listener attached, a setStyle() wipe + re-add
+  // raced, the source errored once, or a slow/throttled edge stalled the style
+  // so style.load never fired — the layers are never added and nothing retries,
+  // so the statewide overlays silently never appear (confirmed live: a fully
+  // built basemap with zero vt-* layers/sources). 'idle' fires whenever the map
+  // settles after any render/interaction; we use it as an idempotent re-assert:
+  // for each layer that SHOULD be visible, if its layer is missing from the
+  // style, re-add it. addLayer is guarded by addedRef + getLayer/getSource
+  // checks, so this is a no-op once everything is present.
+  useEffect(() => {
+    if (!map) return;
+    const ensure = () => {
+      for (const cfg of VECTOR_TILE_CONFIGS) {
+        if (!layerStatesRef.current[cfg.id]?.visible) continue;
+        const dataLayer = cfg.kind === 'line' ? lineLayerId(cfg.id) : circleLayerId(cfg.id);
+        try {
+          if (!map.getLayer(dataLayer)) {
+            // Layer absent (never added, or wiped by a style swap and not
+            // re-added) — clear the add-guard and rebuild it.
+            addedRef.current.delete(cfg.id);
+            addLayer(cfg);
+            setLayerVisibility(cfg, true);
+          }
+        } catch { /* style mid-swap; next idle retries */ }
+      }
+    };
+    map.on('idle', ensure);
+    return () => { map.off('idle', ensure); };
+  }, [map, addLayer, setLayerVisibility]);
+
   // Re-color labels live when the basemap light/dark theme changes (for layers
   // already on the map — newly added ones pick up the current theme in addLayer).
   useEffect(() => {
