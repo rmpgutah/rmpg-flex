@@ -7,7 +7,7 @@
 // ============================================================
 
 import { describe, it, expect } from 'vitest';
-import { runLookup, VERBATIM_LOOKUPS } from '../src/utils/dispatcherAwareness';
+import { runLookup, runAction, evaluateActionPolicy, VERBATIM_LOOKUPS } from '../src/utils/dispatcherAwareness';
 import { lookupFromOcr } from '../src/utils/aiDispatcher';
 
 type Row = Record<string, unknown>;
@@ -85,6 +85,36 @@ describe('runLookup — last_dispatch (say again)', () => {
     const db = fakeDb([{ match: /FROM radio_transmissions/, rows: [] }]);
     const r = await runLookup(env, db, { type: 'last_dispatch', query: '' }, { channelId: 5 });
     expect(r?.text).toMatch(/no prior transmission/i);
+  });
+});
+
+describe('create_bolo — policy + issuer guard', () => {
+  it('refuses with no detail, allows with a title', () => {
+    expect(evaluateActionPolicy({ type: 'create_bolo' }).allow).toBe(false);
+    expect(evaluateActionPolicy({ type: 'create_bolo', title: 'Red sedan fled scene' }).allow).toBe(true);
+  });
+  it('refuses (null) when there is no issuing officer — the issued_by FK', async () => {
+    const db = fakeDb([]);
+    const r = await runAction(env, db, { type: 'create_bolo', title: 'Suspect on foot' }, {});
+    expect(r).toBeNull();
+  });
+  it('issues a numbered BOLO when an officer id is supplied', async () => {
+    // run() must report a row id for createBolo to confirm success.
+    const db = {
+      prepare(sql: string) {
+        const stmt = {
+          bind: (..._a: unknown[]) => stmt,
+          all: async () => ({ results: /MAX\(bolo_number\)/.test(sql) ? [{ max: null }] : [] }),
+          first: async () => null,
+          run: async () => ({ meta: { changes: 1, last_row_id: 7 } }),
+        };
+        return stmt;
+      },
+    } as unknown as import('@cloudflare/workers-types').D1Database;
+    const r = await runAction(env, db, { type: 'create_bolo', bolo_type: 'vehicle', title: 'Red sedan, no plate', priority: 'P2' }, { issuedBy: 3 });
+    expect(r?.summary).toMatch(/^bolo_created:BOLO\d\d-00001$/);
+    expect(r?.spoken).toContain('Red sedan, no plate');
+    expect(r?.spoken).toContain('BOLO');
   });
 });
 

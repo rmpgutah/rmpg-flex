@@ -201,6 +201,7 @@ You hear EVERY transmission on the channel and you acknowledge or respond to eac
     • START / CREATE a call — action {type:"create_call", incident_type:"<short type>", priority:"<P1|P2|P3|P4>", location_address:"<address>", description:"<details>", caller_name:"<if given>"}; the call number is read back automatically.
     • CLEAR / CLOSE a call ("clear me from <call>", "show <call> cleared", "10-8 from <call>") — action {type:"clear_call", call_number:"<call number, e.g. CFS26-00042>", disposition:"<outcome if given>"}.
     • DISPATCH BACKUP ("start me another unit", "10-78", "need backup on <call>") — action {type:"dispatch_backup", unit:"<requesting call-sign if known>", call_number:"<call number if given>"}; the system picks the nearest available unit and you read back who's responding.
+    • ISSUE A BOLO ("put out a BOLO on …", "be on the lookout for …", "attempt to locate …") — action {type:"create_bolo", bolo_type:"person|vehicle|other", title:"<short headline>", subject_description:"<person details if any>", vehicle_description:"<vehicle details if any>", description:"<the rest>", priority:"<P1|P2|P3|P4>"}; the BOLO number is read back and it lands on the board for all units. The BOLO is issued under the REQUESTING unit's officer.
   Only set "action" when the unit clearly asked. If a required detail is missing, ask for it instead of guessing.
 - If you are given OCR TEXT read from an image the unit sent, treat it as facts you may read back or use to fill a lookup/action — but never invent fields the OCR didn't contain. If you are ALSO given a CAD AUTO-CHECK block, the system already ran the check on the plate/VIN/name in that image — read that result back to the unit (warrants, stolen flag, owner) and do NOT request the same check again.
 - Plain unit-to-unit chatter not directed at dispatch → a brief "copy" is enough.
@@ -212,7 +213,7 @@ Common 10-codes: 10-4 acknowledged, 10-8 in service, 10-7 out of service, 10-20 
 Never invent unit numbers, names, plates, warrants, call numbers, or facts you were not given in the snapshot or a lookup result. If you don't have a detail, ask for it briefly.`;
 
 const FORMAT_INSTRUCTION = `Respond with ONLY a JSON object, no prose around it:
-{"intent":"<status_update|out_at_location|backup_request|emergency|lookup_request|location_request|eta_request|call_status|closest_unit|say_again|data_entry|en_route|arrived|code4|chatter|unclear>","reply":"<exactly what dispatch says over the radio — one or two short sentences>","safety":{"stress":"normal|elevated|high","duress":false},"lookup":{"type":"plate|person|warrant|premise|vin|unit_location|eta|call_status|closest_unit|last_dispatch","query":"<value; empty for unit_location/eta/last_dispatch>"},"action":{"type":"set_unit_status|create_call|clear_call|dispatch_backup","unit":"<call-sign>","status":"<status>","location":"<place>","incident_type":"<type>","priority":"<P1|P2|P3|P4>","location_address":"<address>","description":"<details>","caller_name":"<name>","call_number":"<call #>","disposition":"<outcome>"}}
+{"intent":"<status_update|out_at_location|backup_request|emergency|lookup_request|location_request|eta_request|call_status|closest_unit|say_again|data_entry|en_route|arrived|code4|chatter|unclear>","reply":"<exactly what dispatch says over the radio — one or two short sentences>","safety":{"stress":"normal|elevated|high","duress":false},"lookup":{"type":"plate|person|warrant|premise|vin|unit_location|eta|call_status|closest_unit|last_dispatch","query":"<value; empty for unit_location/eta/last_dispatch>"},"action":{"type":"set_unit_status|create_call|clear_call|dispatch_backup|create_bolo","unit":"<call-sign>","status":"<status>","location":"<place>","incident_type":"<type>","priority":"<P1|P2|P3|P4>","location_address":"<address>","description":"<details>","caller_name":"<name>","call_number":"<call #>","disposition":"<outcome>","bolo_type":"person|vehicle|other","title":"<bolo headline>","subject_description":"<person>","vehicle_description":"<vehicle>"}}
 ALWAYS include "safety". Include "lookup" for a record check (plate/person/warrant/premise/vin), a unit_location/eta question about the asking unit (query empty), a call_status (query = call number), a closest_unit (query = address), or a last_dispatch "say again" (query empty). Include "action" ONLY for a status/call write; send only the fields that action type needs. Omit "lookup"/"action" otherwise.
 If the transmission is unintelligible, set intent to "unclear" and reply asking the unit to repeat their last.`;
 
@@ -481,7 +482,7 @@ function parseLookup(value: unknown): LookupRequest | undefined {
   return { type: type as LookupRequest['type'], query: q };
 }
 
-const ACTION_TYPES = ['set_unit_status', 'create_call', 'clear_call', 'dispatch_backup'] as const;
+const ACTION_TYPES = ['set_unit_status', 'create_call', 'clear_call', 'dispatch_backup', 'create_bolo'] as const;
 
 // Pull a string field off a loose object (the model may emit '', null, or
 // the wrong type). Returns undefined for anything not a non-empty string.
@@ -513,6 +514,20 @@ function parseAction(value: unknown): ActionRequest | undefined {
     const call_number = str(obj, 'call_number');
     if (!unit && !call_number) return undefined;
     return { type: type as ActionType, unit, call_number };
+  }
+  if (type === 'create_bolo') {
+    const title = str(obj, 'title');
+    const description = str(obj, 'description');
+    const subject_description = str(obj, 'subject_description');
+    const vehicle_description = str(obj, 'vehicle_description');
+    // Need at least one piece of detail to issue a BOLO.
+    if (!title && !description && !subject_description && !vehicle_description) return undefined;
+    return {
+      type: type as ActionType,
+      bolo_type: str(obj, 'bolo_type'), // person|vehicle|other; mapped server-side
+      title, description, subject_description, vehicle_description,
+      priority: str(obj, 'priority'),
+    };
   }
   // create_call
   const incident_type = str(obj, 'incident_type');

@@ -597,7 +597,7 @@ async function lookupEta(env: Bindings, db: D1Database, callSign: string): Promi
 //                     the dispatcher just acknowledges verbally instead.
 // ============================================================
 
-export type ActionType = 'set_unit_status' | 'create_call' | 'clear_call' | 'dispatch_backup';
+export type ActionType = 'set_unit_status' | 'create_call' | 'clear_call' | 'dispatch_backup' | 'create_bolo';
 
 export interface ActionRequest {
   type: ActionType;
@@ -617,7 +617,16 @@ export interface ActionRequest {
   call_number?: string;
   /** Disposition/outcome when clearing a call (clear_call). */
   disposition?: string;
+  /** BOLO fields (create_bolo). bolo_type maps to the person/vehicle/other CHECK. */
+  bolo_type?: string;
+  title?: string;
+  subject_description?: string;
+  vehicle_description?: string;
 }
+
+/** Context a write may need beyond the request — chiefly WHO is issuing it, for
+ *  writes (create_bolo) whose row carries a NOT NULL issued_by FK to users. */
+export interface ActionContext { issuedBy?: number | null }
 
 export interface ActionResult {
   /** Terse line the dispatcher reads back confirming what was written. */
@@ -696,6 +705,15 @@ export function evaluateActionPolicy(req: ActionRequest): { allow: boolean; reas
     }
     return { allow: true };
   }
+  if (req.type === 'create_bolo') {
+    // Need a title or a description to issue a meaningful BOLO. (The issuer's
+    // user id is required too, but that's checked in createBolo where the FK
+    // lives — the sync gate only screens shape.)
+    if (!req.title?.trim() && !req.description?.trim() && !req.subject_description?.trim() && !req.vehicle_description?.trim()) {
+      return { allow: false, reason: 'no BOLO detail given' };
+    }
+    return { allow: true };
+  }
   return { allow: false, reason: 'unknown action' };
 }
 
@@ -705,7 +723,7 @@ export function evaluateActionPolicy(req: ActionRequest): { allow: boolean; reas
  * on a hard failure / policy refusal so the caller falls back to a plain
  * verbal acknowledgement. Never throws into the relay tail.
  */
-export async function runAction(env: Bindings, db: D1Database, req: ActionRequest): Promise<ActionResult | null> {
+export async function runAction(env: Bindings, db: D1Database, req: ActionRequest, ctx: ActionContext = {}): Promise<ActionResult | null> {
   const gate = evaluateActionPolicy(req);
   if (!gate.allow) {
     console.warn('[awareness] action refused:', gate.reason, JSON.stringify(req));
@@ -716,11 +734,65 @@ export async function runAction(env: Bindings, db: D1Database, req: ActionReques
     if (req.type === 'create_call') return await createCall(env, db, req);
     if (req.type === 'clear_call') return await clearCall(db, req);
     if (req.type === 'dispatch_backup') return await dispatchBackup(db, req);
+    if (req.type === 'create_bolo') return await createBolo(db, req, ctx);
     return null;
   } catch (err) {
     console.error('[awareness] action failed:', (err as Error)?.message);
     return null;
   }
+}
+
+// ── Issue a BOLO by voice ("put out a BOLO on …") ──
+// bolos: type CHECK('person','vehicle','other'), status CHECK('active',…),
+// issued_by NOT NULL FK→users(id). The AI has no user row of its own, so the
+// REQUESTING officer is the issuer (ctx.issuedBy) — without it we refuse rather
+// than violate the FK. bolo_number is UNIQUE; minted BOLO{YY}-{NNNNN}.
+const BOLO_TYPES = new Set(['person', 'vehicle', 'other']);
+function mapBoloType(raw: string | undefined): 'person' | 'vehicle' | 'other' {
+  const s = (raw || '').trim().toLowerCase();
+  if (BOLO_TYPES.has(s)) return s as 'person' | 'vehicle' | 'other';
+  if (/person|subject|suspect|individual|male|female|juvenile/.test(s)) return 'person';
+  if (/vehicle|car|truck|plate|suv|van|motorcycle/.test(s)) return 'vehicle';
+  return 'other';
+}
+
+async function createBolo(db: D1Database, req: ActionRequest, ctx: ActionContext): Promise<ActionResult | null> {
+  const issuedBy = ctx.issuedBy;
+  if (!issuedBy || !Number.isFinite(issuedBy)) {
+    // No known issuer → can't satisfy the NOT NULL FK. Refuse (honesty guard).
+    console.warn('[awareness] BOLO refused — no issuing user id');
+    return null;
+  }
+  const boloType = mapBoloType(req.bolo_type);
+  const title = (req.title || req.description || req.subject_description || req.vehicle_description || '').trim().slice(0, 200);
+  if (!title) return null;
+  const priority = mapPriority(req.priority);
+
+  // Mint a unique BOLO number in the board's format.
+  const year = new Date().getFullYear().toString().slice(-2);
+  const prefix = `BOLO${year}-`;
+  const [{ max }] = await query<{ max: string | null }>(
+    db, 'SELECT MAX(bolo_number) as max FROM bolos WHERE bolo_number LIKE ?', `${prefix}%`,
+  );
+  const seq = max ? String(parseInt(max.slice(prefix.length), 10) + 1).padStart(5, '0') : '00001';
+  const boloNumber = `${prefix}${seq}`;
+
+  const res = await execute(
+    db,
+    `INSERT INTO bolos (bolo_number, type, title, description, subject_description, vehicle_description,
+                        status, priority, issued_by, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, datetime('now'))`,
+    boloNumber, boloType, title,
+    req.description?.trim() || null,
+    req.subject_description?.trim() || null,
+    req.vehicle_description?.trim() || null,
+    priority, issuedBy,
+  );
+  if (!res.meta.last_row_id) return null;
+  return {
+    spoken: `Copy, BOLO is out — ${boloNumber}, ${priority}, ${title}. All units be on the lookout.`,
+    summary: `bolo_created:${boloNumber}`,
+  };
 }
 
 async function setUnitStatus(db: D1Database, req: ActionRequest): Promise<ActionResult | null> {

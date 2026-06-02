@@ -503,7 +503,11 @@ rt.post('/dispatcher/ocr', async (c) => {
     }
   }
   if (decision.action) {
-    const written = await runAction(c.env as unknown as Bindings, db, decision.action).catch(() => null);
+    const issuer = c.get('user') as { id: number } | undefined;
+    const written = await runAction(
+      c.env as unknown as Bindings, db, decision.action,
+      { issuedBy: issuer?.id ?? null },
+    ).catch(() => null);
     if (written) {
       reply = written.spoken;
       performed = written.summary;
@@ -511,7 +515,9 @@ rt.post('/dispatcher/ocr', async (c) => {
       // Honesty: a refused/failed write must not read back as success.
       reply = decision.action.type === 'set_unit_status'
         ? 'Unable to log that status — an unrecognized call-sign or unclear status.'
-        : 'Unable to start that call — a location and nature of the call are required.';
+        : decision.action.type === 'create_bolo'
+          ? 'Unable to put that BOLO out — the BOLO details are required.'
+          : 'Unable to start that call — a location and nature of the call are required.';
       performed = `action_refused:${decision.action.type}`;
     }
   }

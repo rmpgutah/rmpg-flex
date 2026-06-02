@@ -480,6 +480,8 @@ export class VoiceHubDO {
     if (decision?.action) {
       const written = await runAction(
         this.env as unknown as Bindings, db, decision.action,
+        // The requesting officer is the BOLO issuer (bolos.issued_by FK).
+        { issuedBy: speaker?.user_id ?? null },
       ).catch(() => null);
       if (written) {
         replyText = written.spoken;
@@ -492,7 +494,9 @@ export class VoiceHubDO {
         // an honest correction so the unit knows to identify / repeat.
         replyText = decision.action.type === 'set_unit_status'
           ? `${speaker?.unit_label || 'Unit calling'}, dispatch did not catch your call-sign — say again your unit and status.`
-          : `${speaker?.unit_label || 'Unit calling'}, unable to start that call — say again the location and the nature.`;
+          : decision.action.type === 'create_bolo'
+            ? `${speaker?.unit_label || 'Unit calling'}, unable to put that BOLO out — say again the details.`
+            : `${speaker?.unit_label || 'Unit calling'}, unable to start that call — say again the location and the nature.`;
         actionIntent = `action_refused:${decision.action.type}`;
       }
     }
