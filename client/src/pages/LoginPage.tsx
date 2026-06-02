@@ -157,23 +157,8 @@ export default function LoginPage() {
   // Device info (computed once)
   const device = useMemo(() => getDeviceInfo(), []);
 
-  // Idle logout message
-  const [showIdleMessage, setShowIdleMessage] = useState(false);
-  const [showSessionExpired, setShowSessionExpired] = useState(false);
-  useEffect(() => {
-    if (sessionStorage.getItem('rmpg_idle_logout') === '1') {
-      setShowIdleMessage(true);
-      sessionStorage.removeItem('rmpg_idle_logout');
-      const t = setTimeout(() => setShowIdleMessage(false), 15000);
-      return () => clearTimeout(t);
-    }
-    if (sessionStorage.getItem('rmpg_session_expired') === '1') {
-      setShowSessionExpired(true);
-      sessionStorage.removeItem('rmpg_session_expired');
-      const t = setTimeout(() => setShowSessionExpired(false), 15000);
-      return () => clearTimeout(t);
-    }
-  }, []);
+  // Auto-logout (idle / max-session) messaging removed — sessions no longer
+  // expire automatically, so these notices can never fire.
 
   const usernameRef = useRef<HTMLInputElement>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
@@ -519,27 +504,6 @@ export default function LoginPage() {
           </div>
 
           <div className="p-4 sm:p-5">
-            {/* Idle timeout message */}
-            {showIdleMessage && (
-              <div className="mb-3 p-2.5 bg-amber-900/25 border border-amber-700/50 flex items-start gap-2" role="status" aria-live="polite">
-                <Lock className="w-3.5 h-3.5 text-amber-400 flex-shrink-0 mt-0.5" aria-hidden="true" />
-                <div>
-                  <p className="text-[10px] text-amber-300 font-semibold">Session Expired</p>
-                  <p className="text-[9px] text-amber-400/80">You were automatically logged out due to inactivity.</p>
-                </div>
-              </div>
-            )}
-            {/* Max session duration message — neutral info style (not gold/warning) */}
-            {showSessionExpired && (
-              <div className="mb-3 p-2.5 bg-[#141414] border border-[#2e2e2e] flex items-start gap-2" role="status" aria-live="polite">
-                <Lock className="w-3.5 h-3.5 text-[#888888] flex-shrink-0 mt-0.5" aria-hidden="true" />
-                <div>
-                  <p className="text-[10px] text-[#cccccc] font-semibold">Session Duration Limit</p>
-                  <p className="text-[9px] text-[#888888]">Your session reached the maximum duration. Please sign in again.</p>
-                </div>
-              </div>
-            )}
-
             {/* Last login info banner */}
             {lastLoginInfo && (
               <div className="flex items-center gap-2 p-2 mb-4 animate-fade-in" style={{ background: 'rgba(34, 197, 94, 0.08)', border: '1px solid #166534' }}>
