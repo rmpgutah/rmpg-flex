@@ -4,6 +4,7 @@ import PanelTitleBar from '../components/PanelTitleBar';
 import DataTable from '../components/DataTable';
 import StatsCard from '../components/StatsCard';
 import { useToast } from '../components/ToastProvider';
+import { useMenuActions } from '../utils/contextMenuActions';
 import { CheckCircle, Star, ThumbsUp, Users, Plus, Pencil, Trash2 } from 'lucide-react';
 
 export default function QAPage() {
@@ -15,6 +16,7 @@ export default function QAPage() {
   const [submitting, setSubmitting] = useState(false);
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const { addToast } = useToast();
+  const m = useMenuActions();
 
   const fetchData = useCallback(async () => {
     try {
@@ -72,7 +74,18 @@ export default function QAPage() {
         <StatsCard icon={ThumbsUp} label="Avg Rating" value={`${stats.avg_survey_rating}/5`} />
         <StatsCard icon={Users} label="Surveys" value={stats.total_surveys} />
       </div>
-      <DataTable columns={columns} data={reviews} emptyMessage="No QA reviews found" onRowClick={(row) => openEdit(row)} />
+      <DataTable
+        columns={columns}
+        data={reviews}
+        emptyMessage="No QA reviews found"
+        onRowClick={(row) => openEdit(row)}
+        rowContextMenu={(row) => [
+          m.action('Open / Edit', () => openEdit(row), { icon: <Pencil size={12} /> }),
+          m.separator(),
+          m.copyId(row.id),
+          m.action('Delete', () => setDeleteId(row.id), { danger: true, icon: <Trash2 size={12} /> }),
+        ]}
+      />
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={() => setEditingRecord(null)}>
           <div className="bg-surface-raised border border-[#333] p-6 max-w-lg w-full" style={{ borderRadius: 2 }} onClick={e => e.stopPropagation()}>

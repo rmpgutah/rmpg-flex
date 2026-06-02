@@ -2,11 +2,13 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   Plus, Trash2, Copy, CheckCircle2, XCircle, Key, AlertTriangle,
   Loader2, RotateCcw, ShieldCheck, ShieldOff, Globe, Eye, EyeOff, Save, Link2,
-  Shield, Database, Bell, Unlock, Cloud, Cpu, MapPin, Navigation, Server,
+  Shield, Database, Bell, Unlock, Cloud, Cpu, MapPin, Navigation, Server, Hash,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { asArray } from '../../utils/asArray';
 import { safeDateStr } from '../../utils/dateUtils';
+import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
+import { useMenuActions } from '../../utils/contextMenuActions';
 
 interface Props {
   LoadingSpinner: React.FC;
@@ -326,6 +328,10 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
   // ── Delete confirm ──
   const [deletingId, setDeletingId] = useState<number | null>(null);
 
+  // ── Right-click context menu ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+
   // ── Data fetching ──
 
   const fetchSvcConfig = useCallback(async () => {
@@ -469,6 +475,29 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
     setCreatedKey(null);
     setCopied(false);
   };
+
+  // ── Context menus ──
+  // Integration API key row: revoke/activate toggle + delete (routes through
+  // the existing inline confirm) + copy name / prefix.
+  const buildKeyMenu = (k: ApiKey): ContextMenuItem[] => [
+    k.status === 'active'
+      ? m.action('Revoke key', () => handleRevoke(k.id), { icon: <ShieldOff size={12} /> })
+      : m.action('Activate key', () => handleActivate(k.id), { icon: <ShieldCheck size={12} /> }),
+    m.separator(),
+    m.copy('Copy name', k.name),
+    m.copy('Copy key prefix', k.key_prefix),
+    m.copyId(k.id),
+    m.separator(),
+    m.action('Delete key', () => setDeletingId(k.id), { icon: <Trash2 size={12} />, danger: true }),
+  ];
+
+  // Request log row: read-only, copy fields only.
+  const buildLogMenu = (entry: RequestLogEntry): ContextMenuItem[] => [
+    m.copy('Copy details', entry.details),
+    ...(entry.ip_address ? [m.copy('Copy IP address', entry.ip_address)] : []),
+    ...(entry.entity_id ? [m.copy('Copy Call ID', entry.entity_id, <Hash size={12} />)] : []),
+    m.copyId(entry.id),
+  ];
 
   // ── Render ──
 
@@ -650,6 +679,7 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
                 {keys.map((k, idx) => (
                   <tr
                     key={k.id}
+                    onContextMenu={(e) => openMenu(e, buildKeyMenu(k))}
                     className={`border-b border-[#2b2b2b]/50 hover:bg-[#181818] transition-colors ${
                       idx % 2 === 0 ? 'bg-transparent' : 'bg-[#0c0c0c]/30'
                     }`}
@@ -776,6 +806,7 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
                 {requestLog.map((entry, idx) => (
                   <tr
                     key={entry.id}
+                    onContextMenu={(e) => openMenu(e, buildLogMenu(entry))}
                     className={`border-b border-[#2b2b2b]/50 hover:bg-[#181818] transition-colors ${
                       idx % 2 === 0 ? 'bg-transparent' : 'bg-[#0c0c0c]/30'
                     }`}

@@ -10,6 +10,8 @@ import {
   MapPin,
   FileText,
   AlertTriangle,
+  Check,
+  RotateCcw,
 } from 'lucide-react';
 import {
   BarChart,
@@ -30,6 +32,8 @@ import {
 } from 'recharts';
 import { apiFetch } from '../hooks/useApi';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
+import { useMenuActions } from '../utils/contextMenuActions';
 import PanelTitleBar from '../components/PanelTitleBar';
 import RmpgLogo from '../components/RmpgLogo';
 import PrintButton from '../components/PrintButton';
@@ -264,6 +268,10 @@ function ReportApprovalQueue() {
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState<string | null>(null);
 
+  // ── Right-click context menu ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+
   const fetchQueue = useCallback(async () => {
     try {
       const data = await apiFetch<any[]>('/records/reports/approval-queue');
@@ -294,13 +302,21 @@ function ReportApprovalQueue() {
     finally { setProcessing(null); }
   };
 
+  const buildReportMenu = (r: any): ContextMenuItem[] => [
+    m.action('Approve', () => handleApprove(String(r.id)), { icon: <Check size={12} />, disabled: processing === String(r.id) }),
+    m.action('Return for revision', () => handleReturn(String(r.id)), { icon: <RotateCcw size={12} />, danger: true, disabled: processing === String(r.id) }),
+    m.separator(),
+    m.copy('Copy incident #', r.incident_number),
+    m.copyId(r.id),
+  ];
+
   if (loading) return <div className="flex items-center gap-2 text-[10px] text-rmpg-500"><Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> Loading queue...</div>;
   if (reports.length === 0) return <div className="text-[10px] text-rmpg-500 text-center py-4">No reports pending review</div>;
 
   return (
     <div className="space-y-2">
       {reports.map((r: any) => (
-        <div key={r.id} className="panel-beveled p-3 flex items-center gap-3">
+        <div key={r.id} className="panel-beveled p-3 flex items-center gap-3" onContextMenu={(e) => openMenu(e, buildReportMenu(r))}>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
               <span className="text-xs font-bold text-green-400 font-mono">{r.incident_number}</span>

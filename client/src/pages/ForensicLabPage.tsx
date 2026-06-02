@@ -17,6 +17,8 @@ import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
 import FormModal from '../components/FormModal';
 import { apiFetch } from '../hooks/useApi';
+import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
+import { useMenuActions } from '../utils/contextMenuActions';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
 import ExportButton from '../components/ExportButton';
@@ -254,6 +256,8 @@ export default function ForensicLabPage() {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
   const { addToast } = useToast();
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
   const [activeTab, setActiveTab] = useState<Tab>('My Cases');
   const [cases, setCases] = useState<ForensicCase[]>([]);
   const [stats, setStats] = useState<Stats | null>(null);
@@ -747,6 +751,16 @@ export default function ForensicLabPage() {
     if (!c.due_date || ['closed', 'cancelled', 'report_final'].includes(c.status)) return false;
     return parseTimestamp(c.due_date) < new Date();
   };
+
+  // \u2500\u2500 Right-click context menu for forensic case list rows \u2500\u2500
+  const buildCaseMenu = (c: ForensicCase): ContextMenuItem[] => [
+    m.action('Open case', () => fetchCaseDetail(c.id), { icon: <Eye size={12} /> }),
+    m.action('View connections', () => navigate(`/forensics?type=case&id=${c.id}`), { icon: <Network size={12} /> }),
+    m.separator(),
+    m.copy('Copy lab case number', c.lab_case_number),
+    m.copyId(c.id),
+    ...(c.title ? [m.copy('Copy title', c.title)] : []),
+  ];
 
   // Set document title
   useEffect(() => { document.title = 'Forensic Lab \u2014 RMPG Flex'; }, []);
@@ -1598,7 +1612,14 @@ export default function ForensicLabPage() {
               ) : (
                 <div className="space-y-1.5">
                   {caseLinks.map((link: any) => (
-                    <div key={link.id} className="flex items-center gap-2 p-2 panel-beveled bg-surface-sunken">
+                    <div key={link.id} className="flex items-center gap-2 p-2 panel-beveled bg-surface-sunken"
+                      onContextMenu={(e) => openMenu(e, [
+                        m.copy('Copy label', link.entity_label || `${link.entity_type} #${link.entity_id}`),
+                        m.copyId(link.entity_id),
+                        m.separator(),
+                        m.action('Unlink entity', () => handleUnlinkEntity(link.id), { icon: <Unlink size={12} />, danger: true }),
+                      ])}
+                    >
                       <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-sm bg-purple-900/20 text-purple-400">{link.entity_type}</span>
                       <span className="text-xs text-rmpg-200 flex-1">{link.entity_label || `${link.entity_type} #${link.entity_id}`}</span>
                       <span className="text-[9px] text-rmpg-500">{link.relationship}</span>
@@ -2072,6 +2093,7 @@ export default function ForensicLabPage() {
                     <div
                       key={c.id}
                       onClick={() => fetchCaseDetail(c.id)}
+                      onContextMenu={(e) => openMenu(e, buildCaseMenu(c))}
                       className="panel-beveled bg-surface-sunken p-3 cursor-pointer hover:bg-surface-raised transition-colors border-l-[3px] group"
                       style={{ borderLeftColor: sc.color }}
                     >

@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Users, Search, X, Clock, AlertTriangle, Loader2, Plus, Archive } from 'lucide-react';
+import { Users, Search, X, Clock, AlertTriangle, Loader2, Plus, Archive, Eye, Pencil, Trash2, RotateCcw } from 'lucide-react';
+import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
+import { useMenuActions } from '../../utils/contextMenuActions';
 import type {
   Schedule, TimeEntry, Credential, TrainingRecord, TrainingRequirement,
   Deployment, CoverageGap, PersonnelAnalytics, OfficerEquipment, BodyCamera,
@@ -78,6 +80,10 @@ interface ActivityEntry {
 export default function PersonnelPage() {
   const { addToast } = useToast();
   const isMobile = useIsMobile();
+
+  // Right-click context menu
+  const { openMenu } = useContextMenu();
+  const cm = useMenuActions();
 
   // Tab state
   const [activeTab, setActiveTab] = usePersistedTab(
@@ -749,38 +755,41 @@ export default function PersonnelPage() {
     }
   };
 
-  const openEditOfficer = () => {
-    if (!selectedOfficer) return;
+  // Accepts an optional officer so the right-click menu can edit the
+  // right-clicked row; the header button passes nothing → edits the selection.
+  const openEditOfficer = (target?: OfficerWithStatus) => {
+    const o = target ?? selectedOfficer;
+    if (!o) return;
     setOfficerEditData({
-      id: selectedOfficer.id,
-      role: selectedOfficer.role,
-      full_name: selectedOfficer.full_name || '',
-      first_name: selectedOfficer.first_name,
-      last_name: selectedOfficer.last_name,
-      middle_name: selectedOfficer.middle_name || '',
-      date_of_birth: selectedOfficer.date_of_birth || '',
-      badge_number: selectedOfficer.badge_number || '',
-      rank: selectedOfficer.rank || '',
-      department: selectedOfficer.department || '',
-      hire_date: selectedOfficer.hire_date || '',
-      shift_preference: selectedOfficer.shift_preference || '',
-      employee_id: selectedOfficer.employee_id || '',
-      phone: selectedOfficer.phone || '',
-      email: selectedOfficer.email || '',
-      address: selectedOfficer.address || '',
-      city: selectedOfficer.city || '',
-      state: selectedOfficer.state || '',
-      zip: selectedOfficer.zip || '',
-      emergency_contact_name: selectedOfficer.emergency_contact_name || '',
-      emergency_contact_phone: selectedOfficer.emergency_contact_phone || '',
-      emergency_contact_relationship: selectedOfficer.emergency_contact_relationship || '',
-      blood_type: selectedOfficer.blood_type || '',
-      allergies: selectedOfficer.allergies || '',
-      uniform_size: selectedOfficer.uniform_size || '',
-      dl_number: selectedOfficer.dl_number || '',
-      dl_state: selectedOfficer.dl_state || '',
-      dl_expiry: selectedOfficer.dl_expiry || '',
-      notes: selectedOfficer.notes || '',
+      id: o.id,
+      role: o.role,
+      full_name: o.full_name || '',
+      first_name: o.first_name,
+      last_name: o.last_name,
+      middle_name: o.middle_name || '',
+      date_of_birth: o.date_of_birth || '',
+      badge_number: o.badge_number || '',
+      rank: o.rank || '',
+      department: o.department || '',
+      hire_date: o.hire_date || '',
+      shift_preference: o.shift_preference || '',
+      employee_id: o.employee_id || '',
+      phone: o.phone || '',
+      email: o.email || '',
+      address: o.address || '',
+      city: o.city || '',
+      state: o.state || '',
+      zip: o.zip || '',
+      emergency_contact_name: o.emergency_contact_name || '',
+      emergency_contact_phone: o.emergency_contact_phone || '',
+      emergency_contact_relationship: o.emergency_contact_relationship || '',
+      blood_type: o.blood_type || '',
+      allergies: o.allergies || '',
+      uniform_size: o.uniform_size || '',
+      dl_number: o.dl_number || '',
+      dl_state: o.dl_state || '',
+      dl_expiry: o.dl_expiry || '',
+      notes: o.notes || '',
       username: '', password: '',
     });
     setOfficerModalMode('edit');
@@ -898,7 +907,7 @@ export default function PersonnelPage() {
     try {
       await apiFetch(`/personnel/time/${data.id}`, {
         method: 'PUT',
-        body: JSON.stringify({ clock_in: data.clock_in, clock_out: data.clock_out || null }),
+        body: JSON.stringify({ clock_in: data.clock_in, clock_out: data.clock_out || null, reason: data.reason }),
       });
       setModal('none');
       setEditingTimeEntry(null);
@@ -920,6 +929,24 @@ export default function PersonnelPage() {
   // ----------------------------------------------------------
   // Roster List (Left Panel)
   // ----------------------------------------------------------
+
+  // Right-click menu for a roster row. Acts on the right-clicked officer.
+  const buildOfficerMenu = (officer: OfficerWithStatus): ContextMenuItem[] => {
+    const fullName = `${officer.first_name || ''} ${officer.last_name || ''}`.trim();
+    return [
+      cm.action('Open officer', () => { setSelectedOfficer(officer); setDetailTab('profile'); }, { icon: <Eye size={12} /> }),
+      cm.action('Edit officer', () => openEditOfficer(officer), { icon: <Pencil size={12} /> }),
+      cm.separator(),
+      cm.copy('Copy name', fullName),
+      ...(officer.badge_number ? [cm.copy('Copy badge', officer.badge_number)] : []),
+      cm.copyId(officer.id),
+      cm.separator(),
+      ...(showArchived
+        ? [cm.action('Unarchive', () => handleUnarchiveOfficer(officer.id), { icon: <RotateCcw size={12} /> })]
+        : [cm.action('Archive', () => handleArchiveOfficer(officer.id), { icon: <Archive size={12} /> })]),
+      cm.action('Terminate', () => setDeleteTarget(officer), { danger: true, icon: <Trash2 size={12} /> }),
+    ];
+  };
 
   const rosterList = (
     <div className="flex flex-col h-full overflow-hidden">
@@ -968,6 +995,7 @@ export default function PersonnelPage() {
             <div
               key={officer.id}
               onClick={() => { setSelectedOfficer(officer); setDetailTab('profile'); }}
+              onContextMenu={(e) => openMenu(e, buildOfficerMenu(officer))}
               className={`panel-beveled mb-1 mx-2 p-3 cursor-pointer transition-all duration-200 border-l-3 focus-visible:ring-1 focus-visible:ring-brand-500/50 focus-visible:outline-none ${
                 isSelected
                   ? 'bg-brand-900/20 border-l-brand-500 shadow-md shadow-brand-900/20'

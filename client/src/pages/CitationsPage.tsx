@@ -29,6 +29,9 @@ import {
   FileText,
   Ban,
   RefreshCw,
+  Eye,
+  Pencil,
+  Copy,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { toDisplayLabel } from '../utils/formatters';
@@ -49,6 +52,8 @@ import { useFormDraft } from '../hooks/useFormDraft';
 import UnsavedChangesGuard from '../components/UnsavedChangesGuard';
 import FloatingSaveBar from '../components/FloatingSaveBar';
 import AddressAutocomplete from '../components/AddressAutocomplete';
+import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
+import { useMenuActions } from '../utils/contextMenuActions';
 
 // ── Types ──────────────────────────────────────────────────
 
@@ -296,6 +301,8 @@ export default function CitationsPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin'; // Admin God Mode — unrestricted access
   const isMobile = useIsMobile();
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
   const { sections: sectionOptions, sectionLabels, zoneLabels, zonesForSection, beatsForZone, getBeatLabel } = useDistrictOptions();
   const { identify: identifyDistrict } = useDistrictIdentify();
 
@@ -732,6 +739,24 @@ export default function CitationsPage() {
     }
   };
 
+  // ── Right-click context menu ─────────────────────────────
+
+  const buildCitationMenu = (c: Citation): ContextMenuItem[] => [
+    m.action('Open citation', () => handleSelectCitation(c), { icon: <Eye size={12} /> }),
+    m.action('Edit citation', () => handleEditCitation(c), { icon: <Pencil size={12} /> }),
+    m.separator(),
+    ...(c.status !== 'voided'
+      ? [m.action('Void citation', () => handleVoid(c), { icon: <Ban size={12} />, danger: true })]
+      : []),
+    m.separator(),
+    m.copy('Copy citation #', c.citation_number, <Copy size={12} />),
+    m.copy('Copy violator', c.person_name),
+    m.copyId(c.id),
+    ...(c.latitude != null && c.longitude != null
+      ? [m.go('Show on map', `/map?flyto=${c.latitude},${c.longitude}`, <MapPin size={12} />)]
+      : []),
+  ];
+
   // ── Statute category filter based on citation type ───────
 
   const statuteCategoryFilter = form.type === 'traffic' || form.type === 'parking' ? 'vehicle' as const : undefined;
@@ -841,6 +866,7 @@ export default function CitationsPage() {
             <button type="button"
               key={c.id}
               onClick={() => handleSelectCitation(c)}
+              onContextMenu={(e) => openMenu(e, buildCitationMenu(c))}
               className={`w-full text-left px-3 ${isMobile ? 'py-3' : 'py-2'} border-b border-rmpg-700/50 hover:bg-rmpg-700/20 transition-colors ${
                 selectedCitation?.id === c.id && mode === 'list' ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : ''
               }`}

@@ -86,6 +86,8 @@ import { useEventPlanning, PLAN_COLORS, PLAN_TYPE_LABELS, type PlanItemType } fr
 import { useShiftPlanning, SHIFT_TYPES, type ShiftType } from '../../hooks/useShiftPlanning';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useMapRouting } from '../../hooks/useMapRouting';
+import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
+import { useMenuActions } from '../../utils/contextMenuActions';
 import { useNavGuidance, type NavHazard } from '../../hooks/useNavGuidance';
 import MobileBottomSheet from '../../components/mobile/MobileBottomSheet';
 import type { MapUnit as Unit, ActiveCall, MapProperty as Property, MapStyleId } from './utils/mapConstants';
@@ -340,6 +342,90 @@ export default function MapPage() {
   // Routing
   const { activeRoute, routeLoading, routeProgress, routeGeom, offRoute, showRoute, clearRoute, updateOrigin,
           multiStopRoute, multiStopLoading, showMultiStopRoute, clearMultiStop } = useMapRouting({ map: mapInstanceRef.current });
+
+  // ── Right-click context menus (markers + empty map) ──
+  const { openMenu } = useContextMenu();
+  const cm = useMenuActions();
+
+  const centerOnPoint = (lng?: number | null, lat?: number | null) => {
+    const map = mapInstanceRef.current;
+    if (map && lng != null && lat != null) {
+      map.easeTo({ center: [lng, lat], zoom: Math.max(map.getZoom(), 16), duration: 600 });
+    }
+  };
+
+  const buildUnitMarkerMenu = (unit: Unit): ContextMenuItem[] => {
+    const call = calls.find((c) => String(c.id) === String(unit.current_call_id));
+    const canRoute = !!call && unit.latitude != null && unit.longitude != null && call.latitude != null && call.longitude != null;
+    return [
+      ...(canRoute
+        ? [cm.action('Route to assigned call', () => showRoute(unit.call_sign, call!.call_number, unit.latitude!, unit.longitude!, call!.latitude!, call!.longitude!), { icon: <Navigation size={12} /> })]
+        : []),
+      cm.action('Center on unit', () => centerOnPoint(unit.longitude, unit.latitude), { icon: <Target size={12} /> }),
+      cm.separator(),
+      cm.copy('Copy unit', unit.call_sign),
+      ...(unit.officer_name ? [cm.copy('Copy officer', unit.officer_name)] : []),
+      cm.copyCoords(unit.latitude, unit.longitude),
+    ];
+  };
+
+  const buildCallMarkerMenu = (call: ActiveCall): ContextMenuItem[] => [
+    cm.action('Center on call', () => centerOnPoint(call.longitude, call.latitude), { icon: <Target size={12} /> }),
+    ...(call.latitude != null && call.longitude != null
+      ? [cm.action('Navigate here', () => navigateTo(call.latitude as number, call.longitude as number, call.call_number), { icon: <Navigation size={12} /> })]
+      : []),
+    cm.separator(),
+    cm.copy('Copy call #', call.call_number),
+    cm.copy('Copy address', call.location_address),
+    cm.copyCoords(call.latitude, call.longitude),
+  ];
+
+  const buildPropertyMarkerMenu = (prop: { id: string | number; name: string; address?: string; latitude?: number | null; longitude?: number | null }): ContextMenuItem[] => [
+    cm.action('Center on property', () => centerOnPoint(prop.longitude, prop.latitude), { icon: <Target size={12} /> }),
+    ...(prop.latitude != null && prop.longitude != null
+      ? [cm.action('Navigate here', () => navigateTo(prop.latitude as number, prop.longitude as number, prop.name), { icon: <Navigation size={12} /> })]
+      : []),
+    cm.separator(),
+    cm.copy('Copy property', prop.name),
+    ...(prop.address ? [cm.copy('Copy address', prop.address)] : []),
+    cm.copyCoords(prop.latitude, prop.longitude),
+  ];
+
+  const buildMapPointMenu = (lat: number, lng: number): ContextMenuItem[] => [
+    cm.copyCoords(lat, lng),
+    cm.action('Center here', () => centerOnPoint(lng, lat), { icon: <Target size={12} /> }),
+    cm.action('Navigate here', () => navigateTo(lat, lng, 'Dropped pin'), { icon: <Navigation size={12} /> }),
+  ];
+
+  // Right-click on the empty map surface → coordinate / navigation actions.
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !mapLoaded) return;
+    const onCtx = (e: mapboxgl.MapMouseEvent) => {
+      openMenu(e.originalEvent, buildMapPointMenu(e.lngLat.lat, e.lngLat.lng));
+    };
+    map.on('contextmenu', onCtx);
+    return () => { map.off('contextmenu', onCtx); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mapLoaded]);
+
+  // Deep-link: /map?flyto=<lat>,<lng> centers the map on a point on load
+  // (used by record right-click "Show on map"). One-shot, on first map load.
+  const flewToRef = useRef(false);
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !mapLoaded || flewToRef.current) return;
+    const flyto = new URLSearchParams(window.location.search).get('flyto');
+    if (!flyto) return;
+    const [latS, lngS] = flyto.split(',');
+    const lat = parseFloat(latS);
+    const lng = parseFloat(lngS);
+    if (Number.isFinite(lat) && Number.isFinite(lng)) {
+      flewToRef.current = true;
+      map.flyTo({ center: [lng, lat], zoom: 17, essential: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mapLoaded]);
 
   // Multi-stop patrol route queue (PSO client requests, welfare checks, etc.)
   const [routeQueue, setRouteQueue] = useState<QueuedStop[]>([]);
@@ -1496,6 +1582,7 @@ export default function MapPage() {
             (existing as any)._rmpgClick = makeUnitClick;
           } else {
             const content = buildUnitMarkerContent(unit.call_sign, unit.status, unit.gps_source, unit.gps_heading, unit.gps_speed);
+            content.addEventListener('contextmenu', (ev) => openMenu(ev, buildUnitMarkerMenu(unit)));
             const marker = createMarker({
               map,
               position: [unit.longitude, unit.latitude],
@@ -1531,6 +1618,7 @@ export default function MapPage() {
       calls.forEach((call) => {
         if (call.latitude != null && call.longitude != null) {
           const content = buildIncidentMarkerContent(call.priority, call.incident_type, call.call_number);
+          content.addEventListener('contextmenu', (ev) => openMenu(ev, buildCallMarkerMenu(call)));
           const pColor = PRIORITY_COLORS[call.priority] || '#666666';
 
           const marker = createMarker({
@@ -1615,6 +1703,7 @@ export default function MapPage() {
       properties.forEach((prop) => {
         if (prop.latitude != null && prop.longitude != null) {
           const content = buildPropertyMarkerContent(prop.name, prop.address, prop.client_name || undefined);
+          content.addEventListener('contextmenu', (ev) => openMenu(ev, buildPropertyMarkerMenu(prop)));
 
           const marker = createMarker({
             map,

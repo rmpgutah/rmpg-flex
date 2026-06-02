@@ -15,6 +15,7 @@ import UnitStatusBoard from '../../components/UnitStatusBoard';
 import DispositionPrompt from '../../components/DispositionPrompt';
 import { dispositionGroupsForIncident, DEFAULT_DISPOSITION_CODES } from '../../constants/dispositionCodes';
 import { zoneLeaf, beatLeaf, sectionPrefix, sectionZoneBeatCombined } from '../../utils/dispatchCodeParts';
+import { parseLocationParts } from '../../utils/parseLocationParts';
 import DispatchMiniMap from '../../components/DispatchMiniMap';
 import BoloAlertBanner from '../../components/BoloAlertBanner';
 import StatusBadge from '../../components/StatusBadge';
@@ -42,6 +43,7 @@ import type { WarningTag } from '../../components/WarningTags';
 import FloatingSaveBar from '../../components/FloatingSaveBar';
 import CadCommandLine from '../../components/CadCommandLine';
 import NcicQueryPanel from '../../components/NcicQueryPanel';
+import MileagePromptModal from '../../components/MileagePromptModal';
 import UnitRecommendationPanel from '../../components/UnitRecommendationPanel';
 import RecommendedUnitsInline from '../../components/RecommendedUnitsInline';
 import type { CommandAction } from '../../utils/cadCommandParser';
@@ -256,6 +258,9 @@ export default function DispatchPage() {
   const { user } = useAuth();
   const isAdminOrManager = user?.role === 'admin' || user?.role === 'manager';
   const isGodMode = user?.role === 'admin'; // Admin God Mode — unrestricted access
+  // Only senior roles may remove (soft-delete) a call from the board — mirrors
+  // the server-side guard in src/routes/dispatch/calls.ts (CALL_DELETE_ROLES).
+  const canDeleteCall = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'supervisor';
   const unitModalTitleId = useId();
   const navigate = useNavigate();
   const { addToast } = useToast();
@@ -298,6 +303,24 @@ export default function DispatchPage() {
   const [templates, setTemplates] = useState<any[]>([]);
   const [showTemplateDropdown, setShowTemplateDropdown] = useState(false);
   const [templateInitialData, setTemplateInitialData] = useState<Record<string, any> | undefined>(undefined);
+
+  // Deep-link: /dispatch?newCall=1&location=...&description=... opens the New
+  // Call modal pre-seeded (used by record right-click "Create call here" /
+  // "Dispatch to address"). Strips the params after so it doesn't re-fire.
+  useEffect(() => {
+    const sp = new URLSearchParams(window.location.search);
+    if (sp.get('newCall') === '1') {
+      setTemplateInitialData({
+        location: sp.get('location') || '',
+        description: sp.get('description') || '',
+        source: 'dispatch',
+      });
+      setShowNewCallModal(true);
+      navigate(window.location.pathname, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Quick Template Dialog — minimal address-only dispatch
   const [quickTemplateData, setQuickTemplateData] = useState<{ name: string; incident_type: string; priority: string; description: string; source: string } | null>(null);
   const [quickTemplateAddress, setQuickTemplateAddress] = useState('');
@@ -874,7 +897,7 @@ export default function DispatchPage() {
     dispositionPromptCallId, setDispositionPromptCallId,
     isGenerating,
     isBulkArchiving,
-    handleStatusChange,
+    handleStatusChange: rawHandleStatusChange,
     handleHoldCall, handleResumeCall, handleRevertStatus,
     handleClearWithDisposition, handleConfirmClear,
     handleArchive, handleUnarchive, handleBulkArchive,
@@ -884,6 +907,69 @@ export default function DispatchPage() {
     selectedCall, setSelectedCall, setCalls, setArchivedCalls,
     setUnits, setArchivedLoaded, refetchAll: silentRefresh,
   });
+
+  // ── Mileage prompt on enroute / onscene (officer-requested) ───────────────
+  // Dispatch asks the officer's odometer when they go EN ROUTE (starting) and
+  // again ON SCENE (ending). Wrapping handleStatusChange here means EVERY entry
+  // point — call-detail buttons, keyboard shortcuts (F-keys), the status board,
+  // and the right-click context menu — funnels through the same prompt without
+  // editing each call site. The reading is persisted atomically with the status
+  // transition (POST /dispatch/calls/:id/status, extended to take mileage).
+  const [mileagePrompt, setMileagePrompt] = useState<{
+    callId: string;
+    callNumber: string;
+    vehicleId: string;
+    mode: 'starting' | 'ending';
+    startingMileage: number | null;
+    pendingStatus: CallStatus;
+  } | null>(null);
+
+  const handleStatusChange = useCallback((
+    callId: string,
+    newStatus: CallStatus,
+    extraBody?: Record<string, any>,
+  ) => {
+    if (newStatus === 'enroute' || newStatus === 'onscene') {
+      const call = calls.find((c) => c.id === callId)
+        || (selectedCall?.id === callId ? selectedCall : undefined);
+      // Responding vehicle: explicit field on the call, else the first assigned
+      // unit's vehicle id. Lets the prompt show/confirm the vehicle being driven.
+      const respondingVehicle = (() => {
+        const rv = (call as any)?.responding_vehicle_id;
+        if (rv) return String(rv);
+        const firstUnitId = call?.assigned_units?.[0];
+        const u = units.find((x) => String(x.id) === String(firstUnitId));
+        return u?.vehicle ? String(u.vehicle) : '';
+      })();
+      setMileagePrompt({
+        callId,
+        callNumber: call?.call_number || `#${callId}`,
+        vehicleId: respondingVehicle,
+        mode: newStatus === 'enroute' ? 'starting' : 'ending',
+        startingMileage: call?.starting_mileage != null ? Number(call.starting_mileage) : null,
+        pendingStatus: newStatus,
+      });
+      return;
+    }
+    return rawHandleStatusChange(callId, newStatus, extraBody);
+  }, [calls, units, selectedCall, rawHandleStatusChange]);
+
+  // Prompt submit: persist the reading (if any) with the transition. Calls the
+  // RAW handler directly so it doesn't re-open the prompt. "Skip" sends 0 →
+  // status changes with no mileage written (server ignores non-positive values).
+  const handleMileagePromptSubmit = useCallback((mileage: number, vehicleId: string) => {
+    setMileagePrompt((prompt) => {
+      if (!prompt) return null;
+      const extra: Record<string, any> = {};
+      if (mileage > 0) {
+        if (prompt.mode === 'starting') extra.starting_mileage = mileage;
+        else extra.ending_mileage = mileage;
+      }
+      if (vehicleId && vehicleId.trim()) extra.responding_vehicle_id = vehicleId.trim();
+      rawHandleStatusChange(prompt.callId, prompt.pendingStatus, extra);
+      return null;
+    });
+  }, [rawHandleStatusChange]);
 
   // Notes + timeline state + handlers (extracted alongside the unit/call
   // hooks). Owns 9 state items (note input + inline-edit, timeline input
@@ -1572,6 +1658,11 @@ export default function DispatchPage() {
         location_floor: callData.location_floor || null,
         location_room: callData.location_room || null,
         zone_beat: callData.zone_beat || null,
+        // Area — top of the A/S/Z/B hierarchy. The server also backfills this
+        // from coordinates, but sending what the form resolved keeps the value
+        // the dispatcher saw and covers manual Section picks made without coords.
+        area_code: callData.area_code || null,
+        area_name: callData.area_name || null,
         sector_id: callData.sector_id ?? null,
         zone_id: callData.zone_id ?? null,
         beat_id: callData.beat_id ?? null,
@@ -3971,10 +4062,10 @@ export default function DispatchPage() {
                         <RotateCcw style={{ width: 10, height: 10 }} /> Restore
                       </button>
                     )}
-                    {/* Delete — available on any call */}
-                    {!isEditing && (
-                      <button type="button" onClick={() => setDeleteCallTarget(selectedCall)} className="toolbar-btn text-red-400 hover:text-red-300" title="Delete this call permanently">
-                        <Trash2 style={{ width: 10, height: 10 }} /> Delete
+                    {/* Remove — soft-delete (archive); senior roles only */}
+                    {!isEditing && canDeleteCall && (
+                      <button type="button" onClick={() => setDeleteCallTarget(selectedCall)} className="toolbar-btn text-red-400 hover:text-red-300" title="Remove this call from the board (archived, admin-recoverable)">
+                        <Trash2 style={{ width: 10, height: 10 }} /> Remove
                       </button>
                     )}
                   </div>
@@ -4127,6 +4218,10 @@ export default function DispatchPage() {
                           value={editData.location}
                           onChange={(val) => updateEditField('location', val)}
                           onSelect={async (addr: ParsedAddress) => {
+                            // Parse Building/Suite/Floor from the typed text (still
+                            // in editData.location) before it's replaced — the
+                            // geocoder strips sub-address tokens.
+                            const parts = parseLocationParts(editData.location || addr.formatted);
                             updateEditField('location', addr.formatted);
                             if (addr.latitude != null) {
                               // Location changed → recompute and OVERWRITE every
@@ -4143,25 +4238,42 @@ export default function DispatchPage() {
                                 beat_id: details.beat_id || prev.beat_id,
                                 dispatch_code: details.dispatch_code || prev.dispatch_code,
                                 cross_street: details.cross_street || prev.cross_street,
+                                // Bldg/Suite/Floor: fill-if-empty, never clobber.
+                                location_building: prev.location_building || parts.building,
+                                location_floor: prev.location_floor || parts.floor,
+                                location_room: prev.location_room || parts.suite,
+                              }));
+                            } else {
+                              setEditData(prev => ({
+                                ...prev,
+                                location_building: prev.location_building || parts.building,
+                                location_floor: prev.location_floor || parts.floor,
+                                location_room: prev.location_room || parts.suite,
                               }));
                             }
                           }}
                           // Typed an address without picking a suggestion →
                           // forward-geocode the freehand text and fill the same
                           // derived geo fields, so manual entries still get
-                          // cross-street + section/zone/beat.
+                          // cross-street + section/zone/beat. Bldg/Suite parse
+                          // from the text even when the geocode misses.
                           onResolveTyped={async (text) => {
+                            const parts = parseLocationParts(text);
                             const details = await resolveFromText(text);
-                            if (!details) return;
                             setEditData(prev => ({
                               ...prev,
-                              latitude: details.latitude ?? prev.latitude,
-                              longitude: details.longitude ?? prev.longitude,
-                              sector_id: details.sector_id || prev.sector_id,
-                              zone_id: details.zone_id || prev.zone_id,
-                              beat_id: details.beat_id || prev.beat_id,
-                              dispatch_code: details.dispatch_code || prev.dispatch_code,
-                              cross_street: details.cross_street || prev.cross_street,
+                              location_building: prev.location_building || parts.building,
+                              location_floor: prev.location_floor || parts.floor,
+                              location_room: prev.location_room || parts.suite,
+                              ...(details ? {
+                                latitude: details.latitude ?? prev.latitude,
+                                longitude: details.longitude ?? prev.longitude,
+                                sector_id: details.sector_id || prev.sector_id,
+                                zone_id: details.zone_id || prev.zone_id,
+                                beat_id: details.beat_id || prev.beat_id,
+                                dispatch_code: details.dispatch_code || prev.dispatch_code,
+                                cross_street: details.cross_street || prev.cross_street,
+                              } : {}),
                             }));
                           }}
                         />
@@ -6174,10 +6286,14 @@ export default function DispatchPage() {
                 <Copy style={{ width: 12, height: 12 }} /> Duplicate as New
               </button>
             )}
-            <div className="border-t border-rmpg-600 my-1" />
-            <button type="button" className="context-menu-item text-red-400" onClick={() => { setDeleteCallTarget(contextMenu.call); setContextMenu(null); }}>
-              <Trash2 style={{ width: 12, height: 12 }} /> Delete
-            </button>
+            {canDeleteCall && (
+              <>
+                <div className="border-t border-rmpg-600 my-1" />
+                <button type="button" className="context-menu-item text-red-400" onClick={() => { setDeleteCallTarget(contextMenu.call); setContextMenu(null); }}>
+                  <Trash2 style={{ width: 12, height: 12 }} /> Remove
+                </button>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -6490,9 +6606,9 @@ export default function DispatchPage() {
         isOpen={deleteCallTarget !== null}
         onClose={() => setDeleteCallTarget(null)}
         onConfirm={handleDeleteAnyCall}
-        title="Delete Call"
-        message={`Are you sure you want to permanently delete call "${deleteCallTarget?.call_number || ''}"? This will also free any assigned units. This action cannot be undone.`}
-        confirmLabel="Delete Call"
+        title="Remove Call"
+        message={`Remove call "${deleteCallTarget?.call_number || ''}" from the board? It will be archived and recoverable by an admin. Any assigned units will be freed.`}
+        confirmLabel="Remove Call"
         confirmVariant="danger"
         isLoading={isDeletingCall}
       />
@@ -6792,6 +6908,19 @@ export default function DispatchPage() {
         onClose={() => { setShowNcicPanel(false); setNcicInitialQuery(null); }}
         initialQuery={ncicInitialQuery}
       />
+
+      {/* Mileage prompt on enroute (starting) / onscene (ending). Cancel aborts
+          the transition; Skip proceeds with no reading. */}
+      {mileagePrompt && (
+        <MileagePromptModal
+          mode={mileagePrompt.mode}
+          callNumber={mileagePrompt.callNumber}
+          vehicleId={mileagePrompt.vehicleId}
+          startingMileage={mileagePrompt.startingMileage}
+          onSubmit={handleMileagePromptSubmit}
+          onCancel={() => setMileagePrompt(null)}
+        />
+      )}
 
       {/* Create Person from Dispatch */}
       <PersonFormModal

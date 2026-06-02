@@ -5,7 +5,9 @@ import DataTable from '../components/DataTable';
 import StatsCard from '../components/StatsCard';
 import AffairsFormModal, { AffairsFormData } from '../components/AffairsFormModal';
 import { useToast } from '../components/ToastProvider';
-import { ShieldAlert, FileText, Clock, Flag, Plus, Pencil, Trash2 } from 'lucide-react';
+import { useMenuActions } from '../utils/contextMenuActions';
+import type { ContextMenuItem } from '../context/ContextMenuContext';
+import { ShieldAlert, FileText, Clock, Flag, Plus, Pencil, Trash2, Eye } from 'lucide-react';
 
 interface Complaint {
   id: number; complaint_number: string; complainant_name: string;
@@ -22,6 +24,7 @@ export default function AffairsPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const { addToast } = useToast();
+  const m = useMenuActions();
 
   const fetchData = useCallback(async () => {
     try {
@@ -92,7 +95,20 @@ export default function AffairsPage() {
         <StatsCard icon={Clock} label="Open Complaints" value={stats.open_complaints} />
         <StatsCard icon={Flag} label="Active Flags" value={stats.unresolved_flags} />
       </div>
-      <DataTable columns={columns} data={complaints} emptyMessage="No complaints found" onRowClick={(row) => openEdit(row)} />
+      <DataTable
+        columns={columns}
+        data={complaints}
+        emptyMessage="No complaints found"
+        onRowClick={(row) => openEdit(row)}
+        enableContextMenu
+        rowContextMenu={(row: Complaint): ContextMenuItem[] => [
+          m.action('Open', () => openEdit(row), { icon: <Eye size={12} /> }),
+          m.action('Edit', () => openEdit(row), { icon: <Pencil size={12} /> }),
+          m.separator(),
+          m.copyId(row.id),
+          m.action('Delete', () => setDeleteId(row.id), { danger: true, icon: <Trash2 size={12} /> }),
+        ]}
+      />
       <AffairsFormModal isOpen={formOpen} onClose={() => { setFormOpen(false); setEditingRecord(undefined); }}
         onSubmit={handleSubmit} isSubmitting={formSubmitting} editingRecord={editingRecord} submitError={formError} />
       {deleteId !== null && (

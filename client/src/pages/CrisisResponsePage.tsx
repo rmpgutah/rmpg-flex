@@ -4,6 +4,7 @@ import PanelTitleBar from '../components/PanelTitleBar';
 import DataTable from '../components/DataTable';
 import StatsCard from '../components/StatsCard';
 import { useToast } from '../components/ToastProvider';
+import { useMenuActions } from '../utils/contextMenuActions';
 import { Brain, Heart, PhoneCall, Users, Plus, Pencil, Trash2 } from 'lucide-react';
 
 interface CrisisIncident { id: number; incident_number: string; incident_type: string; location: string; subject_name: string; disposition: string; cit_team_used: number; resolved_on_scene: number; diverted: number; notes: string; }
@@ -22,6 +23,7 @@ export default function CrisisResponsePage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const { addToast } = useToast();
+  const m = useMenuActions();
 
   const fetchData = useCallback(async () => {
     try {
@@ -96,7 +98,18 @@ export default function CrisisResponsePage() {
         <StatsCard label="TEAMS AVAILABLE" value={String(stats.teamsAvailable)} icon={Brain} />
       </div>
 
-      <DataTable columns={columns} data={incidents} emptyMessage="No crisis incidents recorded" onRowClick={openEdit} />
+      <DataTable
+        columns={columns}
+        data={incidents}
+        emptyMessage="No crisis incidents recorded"
+        onRowClick={openEdit}
+        rowContextMenu={(row) => [
+          m.action('Open / Edit', () => openEdit(row), { icon: <Pencil size={12} /> }),
+          m.separator(),
+          m.copyId(row.id),
+          m.action('Delete', () => setDeleteId(row.id), { danger: true, icon: <Trash2 size={12} /> }),
+        ]}
+      />
 
       {formOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={() => setFormOpen(false)}>

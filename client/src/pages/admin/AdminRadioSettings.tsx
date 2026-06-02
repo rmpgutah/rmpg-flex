@@ -21,8 +21,10 @@ interface RadioSettings {
   ai_temperature: number;
   ai_max_reply_chars: number;
   ai_auto_open_records: boolean;
+  voice_dynamics_enabled: boolean;
   auto_record: boolean;
   auto_transcribe: boolean;
+  stt_vocabulary: string;
   recording_retention_days: number;
   safety_alerts_enabled: boolean;
   stress_monitoring_enabled: boolean;
@@ -244,6 +246,7 @@ export default function AdminRadioSettings() {
           <input id="ff-adminradiosettings-3" aria-label="Max reply length" type="number" min={40} max={1200} className={`${inputCls} w-24 font-mono`} value={settings.ai_max_reply_chars} onChange={(e) => set('ai_max_reply_chars', parseInt(e.target.value, 10) || 0)} />
         </div>
         <Toggle label="Auto-open record files" hint="When a unit asks dispatch to run a plate or person, pop the matching record into the console's side panel. Dispatch reads it back on the radio either way." checked={settings.ai_auto_open_records} onChange={(v) => set('ai_auto_open_records', v)} />
+        <Toggle label="Dynamic voice delivery" hint="Shape the spoken reply to the situation: calm on routine traffic, forceful and emphatic under stress/emergency, with enforcement command weight. Off = flat, uniform delivery. Covert-duress is never voiced urgently." checked={settings.voice_dynamics_enabled} onChange={(v) => set('voice_dynamics_enabled', v)} />
         <div className="pt-1">
           <label className="block text-[11px] text-gray-300 mb-1">Persona / extra directives</label>
           <textarea id="ff-adminradiosettings-4"
@@ -261,6 +264,17 @@ export default function AdminRadioSettings() {
       <GroupCard icon={<Mic size={14} className="text-[#d4a017]" />} title="Recording & Transcription">
         <Toggle label="Record transmissions" hint="When off, transmissions are still logged but no audio is kept." checked={settings.auto_record} onChange={(v) => set('auto_record', v)} />
         <Toggle label="Auto-transcribe (Whisper)" hint="Transcribe clips that arrive without a client transcript." checked={settings.auto_transcribe} onChange={(v) => set('auto_transcribe', v)} />
+        <div className="pt-1">
+          <label className="block text-[11px] text-gray-300 mb-1">Recognition vocabulary</label>
+          <textarea id="ff-adminradiosettings-stt"
+            aria-label="Speech recognition vocabulary"
+            className={`${inputCls} w-full h-24 resize-y leading-relaxed`}
+            placeholder="Optional. Words & names Whisper should expect — local streets, client/property names, officer names, agency jargon. e.g. 'Penney Avenue, South Salt Lake, SSL-A1, Gateway Mall, Officer Zamora, mileage'"
+            value={settings.stt_vocabulary}
+            onChange={(e) => set('stt_vocabulary', e.target.value)}
+          />
+          <div className="text-[10px] text-gray-600 mt-0.5">Biases transcription toward the words your units actually say, so domain terms aren't misheard. Applied live on the next transmission; a built-in dispatch glossary is always in effect.</div>
+        </div>
         <div className="flex items-center justify-between gap-3 py-1">
           <div className="text-[11px] text-gray-300">Recording retention <span className="text-gray-600">(days, 0 = forever)</span></div>
           <input id="ff-adminradiosettings-5" aria-label="Recording retention days" type="number" min={0} max={3650} className={`${inputCls} w-24 font-mono`} value={settings.recording_retention_days} onChange={(e) => set('recording_retention_days', parseInt(e.target.value, 10) || 0)} />

@@ -1,3 +1,11 @@
+# DO NOT rename to "rmpg-api-proxy". This config deploys the rewrite app
+# (src/index.ts) and MUST target the worker `rmpg-flex-api`. The worker named
+# `rmpg-api-proxy` is the separate strangler dispatcher (proxy/wrangler.toml,
+# bound to rmpgutah.us/api/*) — it routes /api/auth/login to the legacy worker.
+# Renaming this to `rmpg-api-proxy` makes `wrangler deploy` overwrite the
+# dispatcher with this rewrite, which has NO `JWT_SECRET` secret of its own →
+# every login 500s on token signing (incident 2026-06-02, PRs #937/#946 →
+# reverted by #945 and this one). See [[project-auth-login-500-incident]].
 name = "rmpg-flex-api"
 main = "src/index.ts"
 compatibility_date = "2026-05-01"

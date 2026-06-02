@@ -7,6 +7,8 @@ import PanelTitleBar from '../components/PanelTitleBar';
 import { apiFetch } from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/ToastProvider';
+import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
+import { useMenuActions } from '../utils/contextMenuActions';
 import { formatDateTime, parseTimestamp } from '../utils/dateUtils';
 
 interface Notification {
@@ -49,6 +51,8 @@ interface NotificationStats {
 export default function NotificationsPage() {
   const { user } = useAuth();
   const { addToast } = useToast();
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
 
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
@@ -212,6 +216,18 @@ export default function NotificationsPage() {
     return <Bell className="w-4 h-4 text-rmpg-400" />;
   };
 
+  // ── Right-click context menu ──
+  const buildNotificationMenu = (n: Notification): ContextMenuItem[] => [
+    ...(!n.is_read ? [m.action('Mark read', () => markRead(n.id), { icon: <Check size={12} /> })] : []),
+    m.action('Snooze 30 min', () => snoozeNotification(n.id, 30), { icon: <Clock size={12} /> }),
+    ...(n.priority !== 'normal' ? [m.action('Escalate', () => escalateNotification(n.id), { icon: <ArrowUpRight size={12} /> })] : []),
+    m.separator(),
+    m.copy('Copy title', n.title),
+    m.copyId(n.id),
+    m.separator(),
+    m.action('Delete', () => deleteNotification(n.id), { icon: <Trash2 size={12} />, danger: true }),
+  ];
+
   return (
     <div className="flex flex-col h-full animate-fade-in">
       <PanelTitleBar title="NOTIFICATIONS" icon={Bell}>
@@ -351,6 +367,7 @@ export default function NotificationsPage() {
               {notifications.map(n => (
                 <div
                   key={n.id}
+                  onContextMenu={(e) => openMenu(e, buildNotificationMenu(n))}
                   className={`flex items-start gap-3 px-4 py-3 transition-colors ${
                     n.is_read ? 'opacity-60 hover:opacity-80' : 'hover:bg-surface-raised'
                   } ${priorityColor(n.priority)} border-l-2`}

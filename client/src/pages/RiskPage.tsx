@@ -4,6 +4,7 @@ import PanelTitleBar from '../components/PanelTitleBar';
 import DataTable from '../components/DataTable';
 import StatsCard from '../components/StatsCard';
 import { useToast } from '../components/ToastProvider';
+import { useMenuActions } from '../utils/contextMenuActions';
 import { Shield, AlertTriangle, ClipboardCheck, FileText, Plus, Pencil, Trash2 } from 'lucide-react';
 
 export default function RiskPage() {
@@ -15,6 +16,7 @@ export default function RiskPage() {
   const [submitting, setSubmitting] = useState(false);
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const { addToast } = useToast();
+  const m = useMenuActions();
 
   const fetchData = useCallback(async () => {
     try {
@@ -71,7 +73,18 @@ export default function RiskPage() {
         <StatsCard icon={ClipboardCheck} label="Pending Inspections" value={stats.pending_inspections} />
         <StatsCard icon={FileText} label="Open Claims" value={stats.open_claims} />
       </div>
-      <DataTable columns={columns} data={assessments} emptyMessage="No risk assessments found" onRowClick={(row) => openEdit(row)} />
+      <DataTable
+        columns={columns}
+        data={assessments}
+        emptyMessage="No risk assessments found"
+        onRowClick={(row) => openEdit(row)}
+        rowContextMenu={(row) => [
+          m.action('Open / Edit', () => openEdit(row), { icon: <Pencil size={12} /> }),
+          m.separator(),
+          m.copyId(row.id),
+          m.action('Delete', () => setDeleteId(row.id), { danger: true, icon: <Trash2 size={12} /> }),
+        ]}
+      />
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={() => setEditingRecord(null)}>
           <div className="bg-surface-raised border border-[#333] p-6 max-w-lg w-full" style={{ borderRadius: 2 }} onClick={e => e.stopPropagation()}>

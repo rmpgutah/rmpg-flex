@@ -4,8 +4,10 @@ import { parseTimestamp } from '../../utils/dateUtils';
 import {
   Car, Fuel, ClipboardCheck, Radio, BarChart3, Settings, Wrench, X, Clock, Users,
   Archive, RotateCcw, Trash2, Printer, ChevronDown, Circle, AlertTriangle, AlertOctagon,
-  DollarSign,
+  DollarSign, Pencil, Tag,
 } from 'lucide-react';
+import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
+import { useMenuActions } from '../../utils/contextMenuActions';
 import type {
   FleetVehicle, FleetMaintenance, FleetFuelLog, FleetFuelSummary,
   FleetInspection, FleetAssignment, FleetAnalytics, FleetVehicleStatus,
@@ -223,10 +225,29 @@ export default function FleetDetailPanel({
 }: Props) {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin'; // Admin God Mode
+
+  // Right-click context menu for the vehicle header (acts on this record).
+  const { openMenu } = useContextMenu();
+  const cm = useMenuActions();
+  const buildVehicleMenu = (): ContextMenuItem[] => [
+    ...(!isArchived ? [cm.action('Edit vehicle', onEditVehicle, { icon: <Pencil size={12} /> })] : []),
+    cm.separator(),
+    cm.copy('Copy unit #', detail.vehicle_number),
+    ...(detail.plate_number ? [cm.copy('Copy plate', detail.plate_number, <Tag size={12} />)] : []),
+    ...(detail.vin ? [cm.copy('Copy VIN', detail.vin)] : []),
+    cm.copyId(detail.id),
+    ...((isArchived || isAdmin)
+      ? [cm.separator(), cm.action('Delete', onDeleteVehicle, { danger: true, icon: <Trash2 size={12} /> })]
+      : []),
+  ];
+
   return (
     <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
       {/* Detail header */}
-      <div className="flex-shrink-0 px-4 py-3 border-b border-rmpg-700 flex items-start justify-between bg-surface-sunken transition-colors duration-200">
+      <div
+        className="flex-shrink-0 px-4 py-3 border-b border-rmpg-700 flex items-start justify-between bg-surface-sunken transition-colors duration-200"
+        onContextMenu={(e) => openMenu(e, buildVehicleMenu())}
+      >
         <div>
           <div className="flex items-center gap-3">
             <div className={`w-10 h-10 rounded-sm flex items-center justify-center border ${

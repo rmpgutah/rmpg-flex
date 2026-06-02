@@ -26,9 +26,13 @@
 //   • properties: normalized address only
 // ============================================================
 
-import type { D1Database, KVNamespace } from '@cloudflare/workers-types';
+import type { D1Database } from '@cloudflare/workers-types';
+import type { Bindings } from '../types';
 import { execute, query, queryFirst } from './db';
 import { geocodeAddress } from '../routes/geocode';
+import { resolveDistrict } from './districtResolver';
+import { deriveCrossStreetFromCoords } from './crossStreet';
+import { parseLocationParts } from './parseLocationParts';
 import { buildPsoBriefing } from './serveIntakeBriefing';
 import type { ExtractedField, QueueRow, ServePriority } from './serveIntakeExtract';
 
@@ -65,6 +69,32 @@ export function normAddr(s: string | null | undefined): string {
 function normName(s: string | null | undefined): string {
   if (!s) return '';
   return s.toLowerCase().replace(/[.,]/g, '').replace(/\s+/g, ' ').trim();
+}
+
+// A registered-agent string is only a real human name worth a `persons` row
+// when it (a) doesn't read as a role/department label and (b) actually has a
+// plausible two-token human name. Court packets routinely list the corporate
+// agent as generic boilerplate ("Medical Records Department", "Registered
+// Agent", "Custodian of Records", "Front Desk") — splitFullName() turns those
+// into junk rows like first="Medical"/last="Department". When the agent text
+// looks like a role rather than a person, we link the business only and skip
+// the person row.
+const AGENT_ROLE_PATTERN = /department|records|registered agent|authorized|custodian|front desk|reception|legal dept|hr\b/i;
+
+export function isPlausibleAgentPersonName(full: string | null | undefined): boolean {
+  const s = (full || '').trim();
+  if (!s) return false;
+  // Reject sentinel/placeholder noise the OCR sometimes emits.
+  if (/^(none|n\/?a|unknown|n\/a)$/i.test(s)) return false;
+  // Role/department label → not a person.
+  if (AGENT_ROLE_PATTERN.test(s)) return false;
+  // Require a plausible 2-token human name: at least two alphabetic tokens
+  // (allowing internal hyphens/apostrophes for names like "O'Brien" or
+  // "Smith-Jones"). A single token ("Reception") or a token soup of initials
+  // doesn't clear the bar.
+  const tokens = s.split(/\s+/).filter(Boolean);
+  const nameTokens = tokens.filter((t) => /^[A-Za-z][A-Za-z'’-]*$/.test(t));
+  return nameTokens.length >= 2;
 }
 
 // Split a corporate-style "First Middle Last" into a person row.
@@ -226,6 +256,42 @@ export async function nextCallNumber(db: D1Database): Promise<string> {
   return `${prefix}${seq}`;
 }
 
+// ── UNIQUE-violation detection + retry ───────────────────────
+// call_number is UNIQUE on calls_for_service. The minter is a non-atomic
+// SELECT MAX()+1, so two writers racing (intake + dispatcher, or two intakes)
+// can mint the same number; the loser's INSERT throws SQLITE_CONSTRAINT and the
+// call silently drops. Detect that specific failure so we can re-mint + retry
+// instead of swallowing it.
+export function isUniqueViolation(err: unknown): boolean {
+  const msg = (err instanceof Error ? err.message : String(err ?? '')).toLowerCase();
+  return msg.includes('unique') || msg.includes('constraint failed') || msg.includes('2067') /* SQLITE_CONSTRAINT_UNIQUE */;
+}
+
+// Run an INSERT that may collide on a freshly-minted unique key. `mint` produces
+// a candidate value (re-minted each attempt so a retry picks up any rows the
+// racing writer just committed); `insert` performs the INSERT with it. On a
+// UNIQUE violation we re-mint + retry up to `attempts` times; any other error
+// (or exhausting the retries) rethrows so the caller's existing handling fires.
+export async function withUniqueRetry<T>(
+  mint: () => Promise<string>,
+  insert: (value: string) => Promise<T>,
+  attempts = 5,
+): Promise<{ value: string; result: T }> {
+  let lastErr: unknown;
+  for (let i = 0; i < attempts; i++) {
+    const value = await mint();
+    try {
+      const result = await insert(value);
+      return { value, result };
+    } catch (err) {
+      lastErr = err;
+      if (!isUniqueViolation(err)) throw err;
+      // Collision — loop re-mints against the now-advanced MAX and retries.
+    }
+  }
+  throw lastErr;
+}
+
 // ── Priority mapping (serve → CAD ladder) ────────────────────
 // CAD CFS priority is P1..P4. Civil-paper service is rarely time-
 // critical; even a rush packet sits at P2 because true P1 is
@@ -259,6 +325,26 @@ export interface ServiceCallInput {
   officer_safety_caution: 0 | 1;         // red caution badge / Flags tab
   domestic_violence: 0 | 1;              // Flags tab (protective orders)
   dispatcher_id: number | null;
+  // ── Geo enrichment (parity with a dispatcher-created call) ──
+  // All optional + best-effort. The base columns are the SAME ones
+  // dispatch/calls.ts populates (they exist on live calls_for_service);
+  // area_* live on the 1:1 calls_for_service_ext (base is at the 100-col cap).
+  // Written via a post-INSERT UPDATE so a column miss never blocks call creation.
+  cross_street?: string | null;
+  location_building?: string | null;
+  location_floor?: string | null;
+  location_room?: string | null;
+  sector_id?: number | null;
+  sector_name?: string | null;
+  zone_id?: string | null;
+  zone_name?: string | null;
+  beat_id?: string | null;
+  beat_name?: string | null;
+  beat_descriptor?: string | null;
+  zone_beat?: string | null;
+  dispatch_code?: string | null;
+  area_code?: string | null;             // → calls_for_service_ext
+  area_name?: string | null;             // → calls_for_service_ext
 }
 
 export async function createServiceCall(db: D1Database, c: ServiceCallInput): Promise<{ id: number }> {
@@ -292,7 +378,55 @@ export async function createServiceCall(db: D1Database, c: ServiceCallInput): Pr
     c.notes, c.scene_safety, c.officer_safety_caution, c.domestic_violence,
     c.dispatcher_id,
   );
-  return { id: Number(result.meta.last_row_id) };
+  const id = Number(result.meta.last_row_id);
+
+  // ── Geo enrichment (best-effort, AFTER the call commits) ──────
+  // Applied as a separate UPDATE rather than folded into the INSERT above so a
+  // single drifted column can never abort call creation — the intake's whole
+  // purpose is to produce a call. A failure here degrades to "no cross-street /
+  // district", not "no call". These base columns mirror dispatch/calls.ts.
+  const geoSets: string[] = [];
+  const geoParams: unknown[] = [];
+  const addGeo = (col: string, val: unknown) => {
+    if (val != null && val !== '') { geoSets.push(`${col} = ?`); geoParams.push(val); }
+  };
+  addGeo('cross_street', c.cross_street);
+  addGeo('location_building', c.location_building);
+  addGeo('location_floor', c.location_floor);
+  addGeo('location_room', c.location_room);
+  addGeo('sector_id', c.sector_id);
+  addGeo('sector_name', c.sector_name);
+  addGeo('zone_id', c.zone_id);
+  addGeo('zone_name', c.zone_name);
+  addGeo('beat_id', c.beat_id);
+  addGeo('beat_name', c.beat_name);
+  addGeo('beat_descriptor', c.beat_descriptor);
+  addGeo('zone_beat', c.zone_beat);
+  addGeo('dispatch_code', c.dispatch_code);
+  if (geoSets.length) {
+    try {
+      geoParams.push(id);
+      await execute(db, `UPDATE calls_for_service SET ${geoSets.join(', ')} WHERE id = ?`, ...geoParams);
+    } catch (err) {
+      console.warn('[createServiceCall] geo enrichment update skipped (non-fatal):', err);
+    }
+  }
+
+  // Area (top of A/S/Z/B) lives on the 1:1 ext table (base is at the 100-col cap).
+  if (c.area_code != null || c.area_name != null) {
+    try {
+      await execute(db, 'INSERT OR IGNORE INTO calls_for_service_ext (id) VALUES (?)', id);
+      await execute(
+        db,
+        'UPDATE calls_for_service_ext SET area_code = COALESCE(?, area_code), area_name = COALESCE(?, area_name) WHERE id = ?',
+        c.area_code ?? null, c.area_name ?? null, id,
+      );
+    } catch (err) {
+      console.warn('[createServiceCall] area ext write skipped (non-fatal):', err);
+    }
+  }
+
+  return { id };
 }
 
 // ── Linking ──────────────────────────────────────────────────
@@ -349,9 +483,11 @@ export interface CommitInput {
   userId: number | null;
   documentSummary: string;             // free-text inserted into call.description
   docCount: number;                    // number of uploaded docs (for the briefing note)
-  // KV is needed for the geocode cache. Best-effort: a null/failed
-  // geocode never blocks the commit — coords just stay null.
-  env: { KV: KVNamespace };
+  // Full Worker bindings. KV powers the geocode cache; DB + MAP_DATA back the
+  // R2 geofence (district resolve); MAPBOX_ACCESS_TOKEN powers cross-street
+  // derivation. All geo enrichment is best-effort — a miss never blocks commit.
+  // (Both callers — /upload and /intake — already pass `env: c.env`.)
+  env: Bindings;
 }
 
 export async function commitIntake(db: D1Database, input: CommitInput): Promise<CommitResult> {
@@ -401,6 +537,26 @@ export async function commitIntake(db: D1Database, input: CommitInput): Promise<
     ]);
   }
 
+  // ── Geo enrichment (A/S/Z/B + cross street + Building/Suite) ──
+  // Parity with a dispatcher-created call: resolve the district from the
+  // geocoded point (R2 geofence), derive the nearest cross street (Mapbox
+  // Tilequery via the server-side token), and parse Building/Suite/Floor from
+  // the address text. Mirrors the dispatch create-call backfill. Every piece is
+  // best-effort + time-boxed so it can never block the commit — a miss just
+  // leaves that field null, exactly as before this enrichment existed.
+  let district: Awaited<ReturnType<typeof resolveDistrict>> = null;
+  let crossStreet = '';
+  if (coords) {
+    [district, crossStreet] = await Promise.all([
+      resolveDistrict(input.env, { lat: coords.lat, lng: coords.lng }).catch(() => null),
+      Promise.race([
+        deriveCrossStreetFromCoords(input.env, coords.lng, coords.lat, addr).catch(() => ''),
+        new Promise<string>((resolve) => setTimeout(() => resolve(''), 6_000)),
+      ]),
+    ]);
+  }
+  const locParts = parseLocationParts(fullLocation || addr);
+
   // ── 1. Business row (corporate recipients only) ────────────
   let business: RecordRef = { id: 0, created: false };
   if (isBusiness && businessName) {
@@ -423,7 +579,12 @@ export async function commitIntake(db: D1Database, input: CommitInput): Promise<
   let agentPerson: RecordRef = { id: 0, created: false };
 
   if (isBusiness) {
-    if (agentFullName) {
+    // Only create a person row for the registered agent when the agent text is
+    // a plausible human name. Generic role/department labels ("Medical Records
+    // Department", "Registered Agent", "Custodian of Records") create junk
+    // persons rows like first="Medical"/last="Department" — skip those and keep
+    // the business link as the sole record. (Audit AI-2.)
+    if (agentFullName && isPlausibleAgentPersonName(agentFullName)) {
       const parts = splitFullName(agentFullName);
       agentPerson = await findOrCreatePerson(db, {
         first_name: parts.first,
@@ -464,7 +625,6 @@ export async function commitIntake(db: D1Database, input: CommitInput): Promise<
   let callId: number | null = null;
   let callNumber: string | null = null;
   if (fullLocation || addr) {
-    const cn = await nextCallNumber(db);
     const caller_name = queueRow.client_name || queueRow.attorney_name;
     const caller_phone = get('attorney_phone') || null;
 
@@ -485,23 +645,45 @@ export async function commitIntake(db: D1Database, input: CommitInput): Promise<
     const description = briefing.descriptionPrefix + input.documentSummary;
 
     try {
-      const call = await createServiceCall(db, {
-        call_number: cn,
-        incident_type: 'civil_paper_service',
-        priority: cadPriority(queueRow.priority),
-        caller_name: caller_name || null,
-        caller_phone,
-        location_address: fullLocation || addr,
-        property_id: property.id || null,
-        latitude: coords?.lat ?? null,
-        longitude: coords?.lng ?? null,
-        description,
-        notes: briefing.notes.length ? JSON.stringify(briefing.notes) : null,
-        scene_safety: briefing.sceneSafety || null,
-        officer_safety_caution: briefing.officerSafetyCaution,
-        domestic_violence: briefing.domesticViolence,
-        dispatcher_id: userId,
-      });
+      // call_number is UNIQUE — re-mint + retry on a collision so a concurrent
+      // writer racing the non-atomic SELECT MAX()+1 minter can't silently drop
+      // this call. (Audit AI-4.)
+      const { value: cn, result: call } = await withUniqueRetry(
+        () => nextCallNumber(db),
+        (callNo) => createServiceCall(db, {
+          call_number: callNo,
+          incident_type: 'civil_paper_service',
+          priority: cadPriority(queueRow.priority),
+          caller_name: caller_name || null,
+          caller_phone,
+          location_address: fullLocation || addr,
+          property_id: property.id || null,
+          latitude: coords?.lat ?? null,
+          longitude: coords?.lng ?? null,
+          description,
+          notes: briefing.notes.length ? JSON.stringify(briefing.notes) : null,
+          scene_safety: briefing.sceneSafety || null,
+          officer_safety_caution: briefing.officerSafetyCaution,
+          domestic_violence: briefing.domesticViolence,
+          dispatcher_id: userId,
+          // Geo enrichment — parity with a dispatcher-created call.
+          cross_street: crossStreet || null,
+          location_building: locParts.building || null,
+          location_floor: locParts.floor || null,
+          location_room: locParts.suite || null,
+          sector_id: district?.sector_id ?? null,
+          sector_name: district?.sector_name ?? null,
+          zone_id: district?.zone_id ?? null,
+          zone_name: district?.zone_name ?? null,
+          beat_id: district?.beat_id ?? null,
+          beat_name: district?.beat_name ?? null,
+          beat_descriptor: district?.beat_descriptor ?? null,
+          zone_beat: district?.zone_beat ?? null,
+          dispatch_code: district?.dispatch_code ?? null,
+          area_code: district?.area_code ?? null,
+          area_name: district?.area_name ?? null,
+        }),
+      );
       callId = call.id;
       callNumber = cn;
     } catch (err) {
@@ -515,6 +697,19 @@ export async function commitIntake(db: D1Database, input: CommitInput): Promise<
   // ── 5. serve_queue row ────────────────────────────────────
   let queueId: number | null = null;
   if (queueRow.recipient_name || queueRow.recipient_address) {
+    // Catch-all: persist EVERY extracted field as flat {field: value} JSON so no
+    // OCR'd data is lost on commit. fieldsToQueueRow maps the hot query paths to
+    // dedicated columns; parsed_data covers the long tail the queue has no column
+    // for (attorney_phone/email/bar, filing_date, documents_to_serve,
+    // recipient_phone/county, job_number, fee_amount, process_type, server_name,
+    // registered_agent_name) — queryable via json_extract(parsed_data, '$.field').
+    const parsedData = JSON.stringify(
+      Object.fromEntries(
+        Object.entries(fields)
+          .map(([k, v]) => [k, (v?.value || '').trim()] as const)
+          .filter(([, val]) => val),
+      ),
+    );
     const ins = await execute(
       db,
       `INSERT INTO serve_queue (
@@ -524,8 +719,9 @@ export async function commitIntake(db: D1Database, input: CommitInput): Promise<
         property_id,
         document_type, case_number, court_name, jurisdiction,
         client_name, attorney_name, priority, deadline,
-        service_instructions, notes, status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
+        service_instructions, notes,
+        plaintiff_name, defendant_name, court_date, parsed_data, status
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
       callId, userId,
       queueRow.recipient_name, person.id || null,
       queueRow.recipient_address, queueRow.recipient_city,
@@ -537,6 +733,7 @@ export async function commitIntake(db: D1Database, input: CommitInput): Promise<
       queueRow.client_name, queueRow.attorney_name,
       queueRow.priority, queueRow.deadline,
       queueRow.service_instructions, queueRow.notes,
+      queueRow.plaintiff, queueRow.defendant, queueRow.court_date, parsedData,
     );
     queueId = Number(ins.meta.last_row_id);
   }

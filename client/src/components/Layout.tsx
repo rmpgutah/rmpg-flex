@@ -430,47 +430,11 @@ export default function Layout() {
   // handled by AuthContext and show messages on the login page.
   const showSessionWarning = false;
 
-  // ── Feature 24: Auto-logout on idle ──
-  // This is a CJIS-style backstop for a genuinely abandoned workstation, NOT
-  // a productivity timer. A dispatcher monitoring a live incident — watching
-  // the map, on the radio, reading a long call — must never be logged out
-  // mid-shift. So the window is shift-length (12h) and "activity" counts:
-  //   • broad user input (move/click/key/scroll/touch/wheel), not just clicks
-  //   • the tab regaining visibility
-  //   • network traffic — every apiFetch dispatches `rmpg:activity`, so live
-  //     polling / live-sync keeps a monitoring-only screen alive.
-  // Net effect: the timer only fires if the app sits with zero user presence
-  // AND zero network traffic for a full 12 hours (i.e. truly walked away).
-  const lastActivityRef = useRef(Date.now());
-  const [showIdleDialog, setShowIdleDialog] = useState(false);
-  const IDLE_TIMEOUT_MS = 12 * 60 * 60 * 1000; // 12h — full shift backstop
-  const IDLE_WARNING_MS = IDLE_TIMEOUT_MS - 5 * 60 * 1000; // warn 5 min before
-
-  useEffect(() => {
-    const resetActivity = () => { lastActivityRef.current = Date.now(); setShowIdleDialog(false); };
-    // Visual activity: broad input set so passive monitoring (mouse drift,
-    // a glance-and-scroll) counts. Network activity: `rmpg:activity` from
-    // apiFetch. Tab focus: `visibilitychange` (fires on document).
-    const events = ['mousedown', 'mousemove', 'keydown', 'scroll', 'wheel', 'touchstart', 'rmpg:activity'];
-    events.forEach(ev => window.addEventListener(ev, resetActivity, { passive: true }));
-    const onVisible = () => { if (document.visibilityState === 'visible') resetActivity(); };
-    document.addEventListener('visibilitychange', onVisible);
-
-    const checkIdle = setInterval(() => {
-      const idle = Date.now() - lastActivityRef.current;
-      if (idle >= IDLE_TIMEOUT_MS) {
-        logout();
-      } else if (idle >= IDLE_WARNING_MS) {
-        setShowIdleDialog(true);
-      }
-    }, 30000); // check every 30s
-
-    return () => {
-      events.forEach(ev => window.removeEventListener(ev, resetActivity));
-      document.removeEventListener('visibilitychange', onVisible);
-      clearInterval(checkIdle);
-    };
-  }, [logout]);
+  // ── Feature 24: Auto-logout on idle — REMOVED per operator request ──
+  // The idle backstop that signed a workstation out after 12h of zero
+  // user presence + zero network traffic has been removed. Sessions now
+  // persist until the user explicitly signs out (access tokens still
+  // auto-refresh via AuthContext, so the session simply stays alive).
 
   // Live header stats
   const [activeCallCount, setActiveCallCount] = useState(0);
@@ -1589,25 +1553,6 @@ export default function Layout() {
 
       {/* Force 2FA Setup Modal — blocks UI until 2FA is enabled */}
       <Force2FASetupModal />
-
-      {/* Feature 24: Auto-logout idle warning dialog */}
-      {showIdleDialog && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Idle timeout warning">
-          {/* 13: Idle dialog with stronger visual hierarchy */}
-          <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-6 w-[350px] text-center animate-dropdown-appear" style={{ borderTop: '3px solid #d4a017', boxShadow: '0 16px 48px rgba(0,0,0,0.6)' }}>
-            <AlertTriangle className="w-10 h-10 text-amber-400 mx-auto mb-3" />
-            <h3 className="text-white font-bold text-base mb-2">Still on shift?</h3>
-            <p className="text-sm text-rmpg-300 mb-4">This workstation has been idle for nearly 12 hours. For security, it will sign out in 5 minutes unless you confirm you're still here.</p>
-            <button type="button"
-              onClick={() => { lastActivityRef.current = Date.now(); setShowIdleDialog(false); }}
-              className="px-4 py-2 text-sm font-bold text-white bg-brand-600 hover:bg-brand-500 rounded-sm transition-colors duration-150 active:scale-[0.97] focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none"
-              autoFocus
-            >
-              I'm still here
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* Keyboard Shortcut Help Modal */}
       {showShortcutHelp && (

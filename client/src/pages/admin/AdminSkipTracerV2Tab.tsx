@@ -4,6 +4,9 @@ import {
   DollarSign, BarChart3,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { asArray } from '../../utils/asArray';
+import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
+import { useMenuActions } from '../../utils/contextMenuActions';
 
 interface Props {
   LoadingSpinner: React.FC;
@@ -34,10 +37,16 @@ export default function AdminSkipTracerV2Tab({ LoadingSpinner, error, setError }
   const [showKeys, setShowKeys] = useState<Record<string, boolean>>({});
   const [stats, setStats] = useState<any>(null);
 
+  // ── Right-click context menu ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+
   const fetchSources = useCallback(async () => {
     try {
       const data = await apiFetch<SourceInfo[]>('/skiptracer-v2/sources');
-      setSources(data);
+      // Guard: a stub/legacy shape ({} or {data:[]}) would make `sources.map`
+      // / `source.costPerLookup.toFixed` throw and white-screen the admin page.
+      setSources(asArray<SourceInfo>(data));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load sources');
     } finally {
@@ -93,6 +102,21 @@ export default function AdminSkipTracerV2Tab({ LoadingSpinner, error, setError }
     } finally {
       setSaving(null);
     }
+  };
+
+  const buildSourceMenu = (source: SourceInfo): ContextMenuItem[] => {
+    const isEnabled = edits[source.name]?.enabled ?? source.enabled;
+    return [
+      m.action(
+        isEnabled ? 'Disable source' : 'Enable source',
+        () => handleToggle(source.name, isEnabled),
+        { icon: isEnabled ? <ToggleLeft size={12} /> : <ToggleRight size={12} /> },
+      ),
+      m.separator(),
+      m.copy('Copy name', source.displayName),
+      m.copy('Copy source key', source.name),
+      m.copyId(source.name, 'Copy source key'),
+    ];
   };
 
   const getCategoryColor = (cat: string) => {
@@ -180,6 +204,7 @@ export default function AdminSkipTracerV2Tab({ LoadingSpinner, error, setError }
               <div
                 key={source.name}
                 className="bg-surface-sunken border border-rmpg-700 p-3 space-y-2"
+                onContextMenu={(e) => openMenu(e, buildSourceMenu(source))}
               >
                 {/* Source header row */}
                 <div className="flex items-center gap-3">

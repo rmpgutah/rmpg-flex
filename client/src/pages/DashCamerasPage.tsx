@@ -9,7 +9,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Camera, Video, Upload, Search, Loader2, Trash2, Edit2, Link2, Filter, MapPin,
   FileText, ChevronLeft, ChevronRight, Plus, Grid, List, Film, HardDrive,
-  Maximize2, X, Zap, Car, Play,
+  Maximize2, X, Zap, Car, Play, Eye,
 } from 'lucide-react';
 import type { DashCamVideo } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -24,6 +24,8 @@ import DashCamLinkModal from '../components/DashCamLinkModal';
 import { apiFetch } from '../hooks/useApi';
 import { useToast } from '../components/ToastProvider';
 import { useAuth } from '../context/AuthContext';
+import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
+import { useMenuActions } from '../utils/contextMenuActions';
 import { useLiveSync } from '../hooks/useLiveSync';
 import usePersistedState from '../hooks/usePersistedState';
 import { parseTimestamp } from '../utils/dateUtils';
@@ -101,6 +103,10 @@ export default function DashCamerasPage() {
   const canManage = ['admin', 'manager', 'supervisor'].includes(user?.role || '');
   const isAdmin = user?.role === 'admin';
   const isGodMode = user?.role === 'admin'; // Admin God Mode — unrestricted access
+
+  // ── Right-click context menu ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
 
   // ── State ────────────────────────────────
   const [videos, setVideos] = useState<DashCamVideo[]>([]);
@@ -228,6 +234,21 @@ export default function DashCamerasPage() {
     } catch { addToast('Failed to update classification', 'error'); }
   };
 
+  // ── Row context menu ─────────────────────
+  const buildVideoMenu = (v: DashCamVideo): ContextMenuItem[] => [
+    m.action('Open', () => setSelectedVideo(v), { icon: <Eye size={12} /> }),
+    m.action('Play full screen', () => setPlayingVideo(v), { icon: <Play size={12} /> }),
+    ...(canManage ? [
+      m.separator(),
+      m.action('Edit', () => setEditingVideo(v), { icon: <Edit2 size={12} /> }),
+      m.action('Link case', () => setLinkingVideo(v), { icon: <Link2 size={12} /> }),
+    ] : []),
+    m.separator(),
+    m.copy('Copy title', v.title),
+    m.copyId(v.id),
+    ...(isAdmin ? [m.separator(), m.action('Delete', () => handleDelete(v.id), { icon: <Trash2 size={12} />, danger: true })] : []),
+  ];
+
   // ── Gallery View (Left Panel) ────────────
   const galleryView = (
     <div className="h-full overflow-y-auto scrollbar-dark p-2">
@@ -255,6 +276,7 @@ export default function DashCamerasPage() {
             <div
               key={v.id}
               onClick={() => setSelectedVideo(v)}
+              onContextMenu={(e) => openMenu(e, buildVideoMenu(v))}
               className={`panel-beveled cursor-pointer transition-all duration-200 hover:border-brand-400 hover:shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50 ${
                 selectedVideo?.id === v.id ? 'border-brand-400 ring-1 ring-brand-500/30' : ''
               }`}
@@ -365,6 +387,7 @@ export default function DashCamerasPage() {
             ) : filtered.map(v => (
               <tr key={v.id}
                 onClick={() => setSelectedVideo(v)}
+                onContextMenu={(e) => openMenu(e, buildVideoMenu(v))}
                 className={`hover:bg-surface-hover cursor-pointer transition-colors ${
                   selectedVideo?.id === v.id ? 'bg-brand-500/10 border-l-2 border-l-brand-400' : ''
                 }`}

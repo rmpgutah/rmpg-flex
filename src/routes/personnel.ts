@@ -22,6 +22,14 @@ personnel.route('/bodycam-videos', bodycamVideosRouter);
 // but the editable column set is narrower (see SELF_EDITABLE).
 const MANAGER_ROLES = new Set(['admin', 'manager', 'supervisor', 'human_resources']);
 
+// Roles allowed to CREATE/EDIT time entries from the dispatch console. Editing
+// clock_in/clock_out moves total_hours → overtime → payroll, so this is a
+// deliberately scoped authorization set: the operator chose Admin / Manager /
+// Supervisor / Dispatch (dispatcher logs an officer's time on radio request),
+// and human_resources is retained because it already owns payroll/time reads.
+// Every edit is audited in time_entry_edits (who / old / new / reason).
+const TIME_WRITE_ROLES = new Set(['admin', 'manager', 'supervisor', 'human_resources', 'dispatcher']);
+
 // Valid role values for POST /:id/role. Mirrors the role set documented
 // in CLAUDE.md and the legacy users.role column. Adding a role here is
 // the only place that has to change to recognize it for assignment.
@@ -113,6 +121,31 @@ function requireManager(c: Context<Env>): Response | null {
   if (!actor) return c.json({ error: 'Authentication required' }, 401);
   if (!MANAGER_ROLES.has(actor.role)) return c.json({ error: 'Insufficient permissions' }, 403);
   return null;
+}
+
+function requireTimeWriter(c: Context<Env>): Response | null {
+  const actor = c.get('user') as { id: number; role: string } | undefined;
+  if (!actor) return c.json({ error: 'Authentication required' }, 401);
+  if (!TIME_WRITE_ROLES.has(actor.role)) return c.json({ error: 'Insufficient permissions' }, 403);
+  return null;
+}
+
+// Net worked hours from a clock_in/clock_out pair, less break minutes. Returns
+// null when the entry is still open (no clock_out) or the range is invalid, so
+// total_hours stays NULL until the shift is actually closed. Rounded to 2dp to
+// match the precision the roster + payroll rollups display.
+function computeTotalHours(
+  clockIn: string | null | undefined,
+  clockOut: string | null | undefined,
+  breakMinutes: number,
+): number | null {
+  if (!clockIn || !clockOut) return null;
+  const start = new Date(clockIn).getTime();
+  const end = new Date(clockOut).getTime();
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return null;
+  const grossHours = (end - start) / 3_600_000;
+  const netHours = grossHours - (Number.isFinite(breakMinutes) ? breakMinutes : 0) / 60;
+  return Math.round(Math.max(0, netHours) * 100) / 100;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────
@@ -340,6 +373,209 @@ personnel.get('/time', async (c) => {
   } catch (err) {
     console.error('GET /personnel/time failed:', err);
     return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+  }
+});
+
+// ── POST /personnel/time — create a time entry on an officer's behalf ──
+// Dispatch logs an officer's clock-in (and optionally clock-out) on radio
+// request. Creating an entry isn't itself an "edit", so it's recorded as a
+// normal 'active'/'completed' row; subsequent corrections go through PUT and
+// are audited in time_entry_edits.
+personnel.post('/time', async (c) => {
+  const denied = requireTimeWriter(c);
+  if (denied) return denied;
+
+  try {
+    const db = getDb(c.env);
+    const body = await c.req.json<Record<string, unknown>>();
+
+    const officerId = Number(body.officer_id);
+    if (!Number.isFinite(officerId) || officerId <= 0) {
+      return c.json({ error: 'officer_id is required', code: 'MISSING_OFFICER' }, 400);
+    }
+    const clockIn = typeof body.clock_in === 'string' && body.clock_in.trim() ? body.clock_in.trim() : null;
+    if (!clockIn) {
+      return c.json({ error: 'clock_in is required', code: 'MISSING_CLOCK_IN' }, 400);
+    }
+    const clockOut = typeof body.clock_out === 'string' && body.clock_out.trim() ? body.clock_out.trim() : null;
+    const breakMinutes = Number.isFinite(Number(body.break_minutes)) ? Number(body.break_minutes) : 0;
+    const notes = typeof body.notes === 'string' && body.notes.trim() ? body.notes.trim() : null;
+
+    // Reject a non-existent officer up front (FK has no enforcement on D1).
+    const officer = await queryFirst<{ id: number }>(db, 'SELECT id FROM users WHERE id = ?', officerId);
+    if (!officer) return c.json({ error: 'Officer not found', code: 'OFFICER_NOT_FOUND' }, 404);
+
+    const totalHours = computeTotalHours(clockIn, clockOut, breakMinutes);
+    const status = clockOut ? 'completed' : 'active';
+
+    const res = await execute(
+      db,
+      `INSERT INTO time_entries (officer_id, clock_in, clock_out, break_minutes, total_hours, status, notes, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))`,
+      officerId, clockIn, clockOut, breakMinutes, totalHours, status, notes,
+    );
+
+    const newId = res?.meta?.last_row_id;
+    const created = await queryFirst<Record<string, unknown>>(
+      db,
+      `SELECT te.*, u.full_name AS officer_name
+         FROM time_entries te LEFT JOIN users u ON u.id = te.officer_id
+        WHERE te.id = ?`,
+      newId,
+    );
+    return c.json({ ...(created || {}), edits: [] }, 201);
+  } catch (err) {
+    console.error('POST /personnel/time failed:', err);
+    return c.json({ error: 'Failed to create time entry', detail: (err as Error)?.message }, 500);
+  }
+});
+
+// ── PUT /personnel/time/:id — edit an existing time entry ──
+// Each changed field writes a time_entry_edits audit row (who/old/new/reason)
+// and the entry is flagged status='edited'. total_hours is recomputed so the
+// payroll rollup in GET /time stays correct. A `reason` is required because the
+// edit feeds payroll — every correction must be explainable.
+personnel.put('/time/:id', async (c) => {
+  const denied = requireTimeWriter(c);
+  if (denied) return denied;
+
+  try {
+    const db = getDb(c.env);
+    const actor = c.get('user') as { id: number; full_name?: string; username?: string } | undefined;
+    const id = Number(c.req.param('id'));
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid id', code: 'INVALID_ID' }, 400);
+
+    const existing = await queryFirst<{
+      id: number; clock_in: string | null; clock_out: string | null;
+      break_minutes: number | null; notes: string | null; status: string;
+    }>(db, 'SELECT id, clock_in, clock_out, break_minutes, notes, status FROM time_entries WHERE id = ?', id);
+    if (!existing) return c.json({ error: 'Time entry not found', code: 'ENTRY_NOT_FOUND' }, 404);
+
+    const body = await c.req.json<Record<string, unknown>>();
+    const reason = typeof body.reason === 'string' && body.reason.trim() ? body.reason.trim() : null;
+    if (!reason) return c.json({ error: 'A reason for the change is required', code: 'MISSING_REASON' }, 400);
+
+    // Build the change set. Only fields actually present in the body and
+    // actually different from the stored value are touched + audited.
+    type Edit = { edit_type: string; old: string | null; new: string | null };
+    const edits: Edit[] = [];
+
+    const newClockIn = typeof body.clock_in === 'string' && body.clock_in.trim() ? body.clock_in.trim() : existing.clock_in;
+    if (body.clock_in !== undefined && newClockIn !== existing.clock_in) {
+      edits.push({ edit_type: 'clock_in_changed', old: existing.clock_in, new: newClockIn });
+    }
+
+    // clock_out may be cleared (re-open an entry) by sending null/''.
+    const newClockOut = body.clock_out === undefined
+      ? existing.clock_out
+      : (typeof body.clock_out === 'string' && body.clock_out.trim() ? body.clock_out.trim() : null);
+    if (body.clock_out !== undefined && newClockOut !== existing.clock_out) {
+      edits.push({ edit_type: 'clock_out_changed', old: existing.clock_out, new: newClockOut });
+    }
+
+    const existingBreak = Number(existing.break_minutes) || 0;
+    const newBreak = body.break_minutes === undefined
+      ? existingBreak
+      : (Number.isFinite(Number(body.break_minutes)) ? Number(body.break_minutes) : existingBreak);
+    if (body.break_minutes !== undefined && newBreak !== existingBreak) {
+      edits.push({ edit_type: 'break_adjusted', old: String(existingBreak), new: String(newBreak) });
+    }
+
+    const newNotes = body.notes === undefined
+      ? existing.notes
+      : (typeof body.notes === 'string' && body.notes.trim() ? body.notes.trim() : null);
+    if (body.notes !== undefined && newNotes !== existing.notes) {
+      edits.push({ edit_type: 'notes_changed', old: existing.notes, new: newNotes });
+    }
+
+    if (edits.length === 0) {
+      return c.json({ error: 'No changes supplied', code: 'NO_CHANGES' }, 400);
+    }
+
+    const totalHours = computeTotalHours(newClockIn, newClockOut, newBreak);
+
+    await execute(
+      db,
+      `UPDATE time_entries
+          SET clock_in = ?, clock_out = ?, break_minutes = ?, total_hours = ?, notes = ?,
+              status = 'edited', edit_reason = ?, edited_by = ?, edited_at = datetime('now','localtime')
+        WHERE id = ?`,
+      newClockIn, newClockOut, newBreak, totalHours, newNotes, reason, actor?.id ?? null, id,
+    );
+
+    const editorName = actor?.full_name || actor?.username || 'Unknown';
+    for (const e of edits) {
+      await execute(
+        db,
+        `INSERT INTO time_entry_edits (time_entry_id, edited_by, edited_by_name, edit_type, old_value, new_value, reason, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))`,
+        id, actor?.id ?? 0, editorName, e.edit_type, e.old, e.new, reason,
+      );
+    }
+
+    const updated = await queryFirst<Record<string, unknown>>(
+      db,
+      `SELECT te.*, u.full_name AS officer_name
+         FROM time_entries te LEFT JOIN users u ON u.id = te.officer_id
+        WHERE te.id = ?`,
+      id,
+    );
+    const editRows = await query<Record<string, unknown>>(
+      db,
+      `SELECT id, time_entry_id, edited_by, edited_by_name, edit_type, old_value, new_value, reason, created_at
+         FROM time_entry_edits WHERE time_entry_id = ? ORDER BY created_at ASC`,
+      id,
+    );
+    return c.json({ ...(updated || {}), edits: editRows });
+  } catch (err) {
+    console.error('PUT /personnel/time/:id failed:', err);
+    return c.json({ error: 'Failed to update time entry', detail: (err as Error)?.message }, 500);
+  }
+});
+
+// ── DELETE /personnel/time/:id — remove a time entry ──
+// Hard delete (the client confirms "cannot be undone"). The deletion is logged
+// to audit_log rather than time_entry_edits: the latter has ON DELETE CASCADE to
+// time_entries, so an edit-row written here would be wiped by the delete it
+// records. audit_log has no such FK, so the trail survives.
+personnel.delete('/time/:id', async (c) => {
+  const denied = requireTimeWriter(c);
+  if (denied) return denied;
+
+  try {
+    const db = getDb(c.env);
+    const actor = c.get('user') as { id: number; full_name?: string; username?: string } | undefined;
+    const id = Number(c.req.param('id'));
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid id', code: 'INVALID_ID' }, 400);
+
+    const existing = await queryFirst<{
+      id: number; officer_id: number; clock_in: string | null; clock_out: string | null; total_hours: number | null;
+    }>(db, 'SELECT id, officer_id, clock_in, clock_out, total_hours FROM time_entries WHERE id = ?', id);
+    if (!existing) return c.json({ error: 'Time entry not found', code: 'ENTRY_NOT_FOUND' }, 404);
+
+    const body = await c.req.json<{ reason?: string }>().catch(() => ({} as { reason?: string }));
+    const reason = typeof body.reason === 'string' && body.reason.trim() ? body.reason.trim() : 'No reason given';
+
+    await execute(db, 'DELETE FROM time_entries WHERE id = ?', id);
+
+    try {
+      if (actor?.id != null) {
+        await execute(
+          db,
+          `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, created_at)
+           VALUES (?, 'TIME_ENTRY_DELETE', 'time_entry', ?, ?, datetime('now'))`,
+          actor.id, id,
+          `Deleted time entry #${id} (officer ${existing.officer_id}, ${existing.total_hours ?? 0}h) — ${reason}`,
+        );
+      }
+    } catch (auditErr) {
+      console.warn('audit_log insert failed for time-entry delete:', auditErr);
+    }
+
+    return c.json({ message: 'Time entry deleted', id });
+  } catch (err) {
+    console.error('DELETE /personnel/time/:id failed:', err);
+    return c.json({ error: 'Failed to delete time entry', detail: (err as Error)?.message }, 500);
   }
 });
 

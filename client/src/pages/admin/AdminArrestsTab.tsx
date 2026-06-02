@@ -4,9 +4,11 @@ import {
   Fingerprint, Key, Eye, EyeOff, Loader2, CheckCircle2, XCircle, Trash2, Zap,
   AlertTriangle, ToggleLeft, ToggleRight, RefreshCw, Clock, Database, Plus, Upload,
   User, FileText, ChevronDown, ChevronRight, Search, Edit2, X, Globe, Shield,
-  Activity, RotateCcw,
+  Activity, RotateCcw, Pencil, Hash,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
+import { useMenuActions } from '../../utils/contextMenuActions';
 
 interface Props {
   LoadingSpinner: React.FC;
@@ -104,6 +106,10 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
   // Search
   const [searchTerm, setSearchTerm] = useState('');
 
+  // Right-click context menu
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+
   const fetchStatus = useCallback(async () => {
     try {
       const data = await apiFetch<ArrestStatus>('/arrests/status');
@@ -196,6 +202,10 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
       else delete body.bail_amount;
 
       if (editingId) {
+        // The manual form has no inputs for these columns (they're populated by
+        // the jail-roster poller), and handleEdit hardcodes them to ''. Sending
+        // them on PUT would blank previously-scraped values, so omit them.
+        for (const k of ['height', 'weight', 'hair_color', 'eye_color', 'address']) delete body[k];
         await apiFetch(`/arrests/manual/${editingId}`, { method: 'PUT', body: JSON.stringify(body) });
       } else {
         await apiFetch('/arrests/manual', { method: 'POST', body: JSON.stringify(body) });
@@ -241,6 +251,32 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete');
     }
+  };
+
+  // Right-click menu for a booking record row. Manual entries are editable /
+  // deletable; scraped/CSV/API records expose copy actions only (the
+  // /arrests/manual handlers only target manual rows).
+  const buildBookingMenu = (rec: BookingRecord): ContextMenuItem[] => {
+    const isManual = rec.entry_source === 'manual';
+    const charges = Array.isArray(rec.charges) ? rec.charges.join('\n') : '';
+    return [
+      ...(isManual
+        ? [m.action('Edit booking', () => handleEdit(rec), { icon: <Pencil size={12} /> })]
+        : []),
+      m.separator(),
+      m.copy('Copy name', rec.full_name),
+      ...(rec.booking_number
+        ? [m.copy('Copy booking #', rec.booking_number, <Hash size={12} />)]
+        : []),
+      ...(charges ? [m.copy('Copy charges', charges)] : []),
+      m.copyId(rec.id),
+      ...(isManual
+        ? [
+            m.separator(),
+            m.action('Delete booking', () => handleDelete(rec.id), { icon: <Trash2 size={12} />, danger: true }),
+          ]
+        : []),
+    ];
   };
 
   // ── CSV Import ────────────────────────────────────────────
@@ -569,6 +605,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
             {records.map(rec => (
               <div
                 key={rec.id}
+                onContextMenu={(e) => openMenu(e, buildBookingMenu(rec))}
                 className="flex items-center gap-2 px-2 py-1.5 rounded-sm bg-surface-sunken hover:bg-rmpg-800/30 transition-colors group"
               >
                 {/* Source badge */}

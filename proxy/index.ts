@@ -607,6 +607,27 @@ const API_ROUTES: RouteRule[] = [
   // env.API. /api/geocode/search stays on its existing path.
   { kind: 'regex', value: /^\/api\/geocode\/reverse(\?|$)/, methods: ['GET'] },
 
+  // ── Dispatch GPS breadcrumb write + reads (src/routes/dispatch/gps.ts) ──
+  // POST /api/dispatch/gps was NEVER routed here, so the unit-GPS ping fell
+  // through to env.LEGACY. The legacy handler (a) stamps units.gps_updated_at
+  // as Denver wall-clock mislabeled "+00:00" — i.e. ~6h in the past, so the
+  // dispatch board flags EVERY live unit as "GPS LOST" — and (b) never writes
+  // units.gps_heading / units.gps_speed (columns added in migration 0065), so
+  // the map nav-cursor arrow is stuck pointing north with no speed. The rewrite
+  // handler writes datetime('now') (UTC) AND mirrors heading/speed onto the
+  // unit row, fixing both. Route ONLY the three paths the rewrite implements:
+  //   POST /api/dispatch/gps           (breadcrumb write — the bug)
+  //   GET  /api/dispatch/gps/current   (latest position per unit)
+  //   GET  /api/dispatch/gps/my-unit   (caller's own unit row)
+  // The bare path is POST-only (the rewrite has no GET '/' handler) and the
+  // GET sub-paths are anchored to (current|my-unit). This deliberately does
+  // NOT match /api/dispatch/gps/speed-zones or /api/dispatch/gps/zone-speed-stats
+  // (both are STUBbed above and have no rewrite handler — routing them to
+  // env.API would 404). STUBS are evaluated before API_ROUTES, so those two are
+  // already short-circuited, but the tight anchors keep this rule honest.
+  { kind: 'regex', value: /^\/api\/dispatch\/gps\/?(\?.*)?$/, methods: ['POST'] },
+  { kind: 'regex', value: /^\/api\/dispatch\/gps\/(current|my-unit)(\?.*)?$/, methods: ['GET'] },
+
   // /api/dispatch/heatmap/enforcement — enforcement-activity clusters for the
   // Map "Enforcement" overlay (src/routes/dispatch/aggregates.ts). Legacy has
   // NO handler for it, so it fell through to env.LEGACY and 404'd (console
@@ -907,7 +928,16 @@ const API_ROUTES: RouteRule[] = [
   // handlers. /coverage-gaps is read-only by nature but listed under
   // the same GET filter for consistency.
   { kind: 'prefix', value: '/api/personnel/schedules', methods: ['GET'] },
+  // GET /api/personnel/time[/...] (roster/payroll read) → rewrite.
   { kind: 'prefix', value: '/api/personnel/time', methods: ['GET'] },
+  // POST /api/personnel/time (create) + PUT /api/personnel/time/:id (edit) →
+  // rewrite (src/routes/personnel.ts over time_entries + time_entry_edits).
+  // Dispatch creates/corrects officer time on radio request. These are anchored
+  // EXACTLY so the sibling clock-in/clock-out POSTs (handled only by legacy via
+  // the mobile ShiftCard) keep falling through to env.LEGACY — a broad prefix
+  // would have hijacked them to the rewrite, which has no clock-in/out handler.
+  { kind: 'regex', value: /^\/api\/personnel\/time\/?$/, methods: ['POST'] },
+  { kind: 'regex', value: /^\/api\/personnel\/time\/\d+$/, methods: ['PUT', 'DELETE'] },
   { kind: 'prefix', value: '/api/personnel/deployments', methods: ['GET'] },
   { kind: 'prefix', value: '/api/personnel/coverage-gaps', methods: ['GET'] },
   { kind: 'prefix', value: '/api/personnel/body-cameras' },
@@ -1206,6 +1236,50 @@ function stubMatches(stub: StubRule, pathname: string, method: string): boolean 
   if (stub.methods && !stub.methods.includes(method)) return false;
   return stub.match.test(pathname);
 }
+
+// ============================================================
+// Durable Object stub classes — DO NOT DELETE without a delete-class migration
+// ============================================================
+// These empty classes exist ONLY to keep the `rmpg-api-proxy` Worker
+// deployable. They are NOT used by this router (no `durable_objects.bindings`
+// in proxy/wrangler.toml, and nothing here ever instantiates them).
+//
+// Why they're here — the 2026-06-02 name-collision incident:
+//   PR #937 (a cloudflare-workers-and-pages[bot] dashboard commit) renamed the
+//   ROOT wrangler.toml `name` rmpg-flex-api → rmpg-api-proxy. deploy.yml's
+//   "Deploy Worker" step then published the REWRITE (src/index.ts, which DOES
+//   declare WelfareWatchDO/VoiceHubDO/AlertHubDO/PdfToolsContainer via its DO
+//   migrations) ONTO the `rmpg-api-proxy` worker. That registered four DO
+//   namespaces on this worker. PR #945 reverted the name, but the namespaces
+//   remain. Cloudflare now rejects any new `rmpg-api-proxy` version that does
+//   not EXPORT those four classes with error 10064 ("does not export class
+//   'WelfareWatchDO' which is depended on by existing Durable Objects").
+//
+// Re-exporting the classes (even as empty stubs) satisfies 10064 WITHOUT a
+// migration — per Cloudflare docs, "updating the code for an existing DO class
+// does not require a migration." This is the deliberately NON-DESTRUCTIVE fix:
+// it preserves whatever DO instances may have been created on this worker
+// during the #937 window (e.g. an in-flight officer welfare-check escalation),
+// rather than wiping them with a `deleted_classes` migration. The canonical,
+// live instances of these DOs live on `rmpg-flex-api` (where welfare/voice/
+// alert traffic is actually routed) and are untouched by any of this.
+//
+// Cleanup path (later, once the rmpg-api-proxy namespaces are confirmed empty
+// in the dashboard): add a `deleted_classes` migration to proxy/wrangler.toml
+// for all four classes, deploy, then delete this block. See LEGACY.md +
+// memory project-auth-outage-name-collision.
+class InertDurableObject {
+  constructor(_state: unknown, _env: unknown) {}
+  async fetch(): Promise<Response> {
+    // Should never be reached — the proxy has no DO bindings and never
+    // routes to these. If it ever is, fail loud rather than silent.
+    return new Response('rmpg-api-proxy is a router and does not implement Durable Objects', { status: 410 });
+  }
+}
+export class WelfareWatchDO extends InertDurableObject {}
+export class VoiceHubDO extends InertDurableObject {}
+export class AlertHubDO extends InertDurableObject {}
+export class PdfToolsContainer extends InertDurableObject {}
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {

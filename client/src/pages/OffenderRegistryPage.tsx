@@ -24,6 +24,8 @@ import UnsavedChangesGuard from '../components/UnsavedChangesGuard';
 import FloatingSaveBar from '../components/FloatingSaveBar';
 import { getMapboxAccessToken } from '../utils/mapboxApiKey';
 import { safeDateTimeStr, parseTimestamp } from '../utils/dateUtils';
+import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
+import { useMenuActions } from '../utils/contextMenuActions';
 
 const ALERT_TYPES: { value: OffenderAlertType; label: string }[] = [
   { value: 'ban_zone', label: 'Ban Zone' }, { value: 'watch_list', label: 'Watch List' },
@@ -378,6 +380,22 @@ export default function OffenderRegistryPage() {
     }
   };
 
+  // ── Right-click context menu ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+  const buildAlertMenu = (alert: OffenderAlert): ContextMenuItem[] => {
+    const name = alert.person_name || `Person #${alert.person_id}`;
+    return [
+      m.action('Open alert', () => setSelected(alert), { icon: <Eye size={12} /> }),
+      m.action('Risk assessment', () => { setSelected(alert); handleRiskAssessment(alert.id); }, { icon: <ShieldAlert size={12} /> }),
+      m.separator(),
+      m.copy('Copy name', name),
+      m.copyId(alert.id),
+      m.separator(),
+      m.action('Clear alert', () => handleClear(alert.id), { icon: <ShieldCheck size={12} />, danger: true }),
+    ];
+  };
+
   // Set document title
   useEffect(() => { document.title = 'Offender Registry \u2014 RMPG Flex'; }, []);
 
@@ -468,6 +486,7 @@ export default function OffenderRegistryPage() {
               <button type="button"
                 key={alert.id}
                 onClick={() => setSelected(alert)}
+                onContextMenu={(e) => openMenu(e, buildAlertMenu(alert))}
                 className={`w-full text-left px-3 py-2 border-b border-rmpg-700/50 transition-colors ${
                   selected?.id === alert.id ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : 'hover:bg-surface-raised/50 border-l-2 border-l-transparent'
                 } ${alert.severity === 'danger' ? 'border-l-red-600' : ''}`}

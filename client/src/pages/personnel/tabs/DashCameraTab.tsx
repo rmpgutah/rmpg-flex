@@ -15,6 +15,8 @@ import PrintButton from '../../../components/PrintButton';
 import ExportButton from '../../../components/ExportButton';
 import RmpgLogo from '../../../components/RmpgLogo';
 import { parseTimestamp } from '../../../utils/dateUtils';
+import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
+import { useMenuActions } from '../../../utils/contextMenuActions';
 
 // ── Filters ──────────────────────────────────────────────────
 
@@ -138,6 +140,30 @@ export default function DashCameraTab({
     { label: 'Hard Brakes', value: stats.hardBrakes, color: 'text-red-400', bgClass: 'bg-surface-base', border: 'border-red-700/30', topBorder: 'border-t-red-500' },
     { label: 'Speeding', value: stats.speeding, color: 'text-amber-400', bgClass: 'bg-surface-base', border: 'border-amber-700/30', topBorder: 'border-t-amber-500' },
     { label: 'Video Clips', value: stats.videoEvents, color: 'text-purple-400', bgClass: 'bg-surface-base', border: 'border-purple-700/30', topBorder: 'border-t-purple-500' },
+  ];
+
+  // ── Right-click context menus ─────────────────────────────
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+
+  const buildDeviceMenu = (dev: CpgDeviceMapping): ContextMenuItem[] => [
+    ...(onSelectOfficer && dev.officer_id
+      ? [m.action('Open officer', () => onSelectOfficer(String(dev.officer_id)), { icon: <Car size={12} /> }), m.separator()]
+      : []),
+    m.copy('Copy serial', dev.cpg_serial_number),
+    m.copy('Copy call sign', dev.call_sign),
+    m.copy('Copy device name', dev.cpg_display_name),
+    m.copyId(dev.id),
+  ];
+
+  const buildEventMenu = (evt: DashcamEvent): ContextMenuItem[] => [
+    ...(onSelectOfficer && evt.officer_id
+      ? [m.action('Open officer', () => onSelectOfficer(String(evt.officer_id)), { icon: <Car size={12} /> }), m.separator()]
+      : []),
+    m.copy('Copy call sign', evt.call_sign),
+    m.copy('Copy address', evt.address),
+    m.copyCoords(evt.latitude, evt.longitude),
+    m.copyId(evt.id),
   ];
 
   // ── Render ───────────────────────────────────────────────
@@ -291,6 +317,7 @@ export default function DashCameraTab({
                   <tr
                     key={dev.id}
                     className="cursor-pointer hover:bg-surface-hover"
+                    onContextMenu={(e) => openMenu(e, buildDeviceMenu(dev))}
                     onClick={() => {
                       // Find the officer for this unit — if available in mappings
                       if (dev.officer_name && onSelectOfficer) {
@@ -392,6 +419,7 @@ export default function DashCameraTab({
                         evt.event_type === 'impact' ? 'bg-red-900/10' :
                         evt.event_type === 'speeding' ? 'bg-amber-900/5' : ''
                       }`}
+                      onContextMenu={(e) => openMenu(e, buildEventMenu(evt))}
                     >
                       <td>
                         <span className="text-xs font-mono text-rmpg-300 flex items-center gap-1">

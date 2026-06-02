@@ -8,6 +8,8 @@ import { apiFetch } from '../../hooks/useApi';
 import { asArray } from '../../utils/asArray';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import IconButton from '../../components/IconButton';
+import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
+import { useMenuActions } from '../../utils/contextMenuActions';
 import type { User } from '../../types';
 
 // ============================================================
@@ -124,6 +126,20 @@ export default function AdminDepartmentsTab({ users, LoadingSpinner, error, setE
     }
   };
 
+  // ── Right-click context menu ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+
+  const buildDeptMenu = (d: Department): ContextMenuItem[] => [
+    m.action('Edit department', () => openEdit(d), { icon: <Edit2 size={12} /> }),
+    m.separator(),
+    m.copy('Copy name', d.name),
+    ...(d.code ? [m.copy('Copy code', d.code)] : []),
+    m.copyId(d.id),
+    m.separator(),
+    m.action('Delete department', () => setDeleteTarget(d), { icon: <Trash2 size={12} />, danger: true }),
+  ];
+
   const filtered = departments.filter((d) =>
     !search || d.name.toLowerCase().includes(search.toLowerCase()) || (d.code || '').toLowerCase().includes(search.toLowerCase())
   );
@@ -191,7 +207,7 @@ export default function AdminDepartmentsTab({ users, LoadingSpinner, error, setE
         {topLevel.map((dept) => {
           const subs = children(dept.id);
           return (
-            <div key={dept.id} className={`panel-beveled bg-surface-base p-3 ${!dept.is_active ? 'opacity-60' : ''}`}>
+            <div key={dept.id} onContextMenu={(e) => openMenu(e, buildDeptMenu(dept))} className={`panel-beveled bg-surface-base p-3 ${!dept.is_active ? 'opacity-60' : ''}`}>
               <div className="flex items-start justify-between mb-2">
                 <div className="flex items-center gap-2">
                   <Building2 className="w-4 h-4 text-brand-400" />
@@ -218,7 +234,7 @@ export default function AdminDepartmentsTab({ users, LoadingSpinner, error, setE
               {subs.length > 0 && (
                 <div className="mt-2 ml-4 space-y-1 border-l border-rmpg-700 pl-3">
                   {subs.map((sub) => (
-                    <div key={sub.id} className="flex items-center justify-between bg-surface-sunken px-2 py-1 rounded-sm">
+                    <div key={sub.id} onContextMenu={(e) => openMenu(e, buildDeptMenu(sub))} className="flex items-center justify-between bg-surface-sunken px-2 py-1 rounded-sm">
                       <div className="flex items-center gap-1.5">
                         <ChevronRight className="w-3 h-3 text-rmpg-600" />
                         <span className="text-[10px] text-rmpg-200 font-medium">{sub.name}</span>

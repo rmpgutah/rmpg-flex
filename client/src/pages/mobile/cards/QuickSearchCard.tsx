@@ -1,6 +1,12 @@
 import { FormEvent, useState } from 'react';
+import { Eye, Copy } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch } from '../../../hooks/useApi';
+import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
+import { copyToClipboard, separator } from '../../../utils/contextMenuActions';
+
+// See BolosCard for why we build menus inline (useMenuActions throws without
+// ToastProvider/Router, which the bare-render tests don't mount).
 
 interface SearchResult {
   id: number | string;
@@ -41,6 +47,7 @@ function routeFor(type: string, id: number | string, q: string): string {
 
 export default function QuickSearchCard() {
   const navigate = useNavigate();
+  const { openMenu } = useContextMenu();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [submittedQuery, setSubmittedQuery] = useState('');
@@ -86,6 +93,31 @@ export default function QuickSearchCard() {
   function handleRowClick(r: SearchResult) {
     const t = normalizeType(r);
     navigate(routeFor(t, r.id, submittedQuery));
+  }
+
+  // Right-click menu for a result row. 'Open record' reuses handleRowClick;
+  // copy items use the standalone clipboard helper (no toast).
+  function buildResultMenu(r: SearchResult): ContextMenuItem[] {
+    const label = r.label || `#${r.id}`;
+    return [
+      {
+        label: 'Open record',
+        icon: <Eye size={12} />,
+        onClick: () => handleRowClick(r),
+      },
+      separator(),
+      {
+        label: 'Copy label',
+        icon: <Copy size={12} />,
+        onClick: () => { void copyToClipboard(label); },
+      },
+      {
+        label: 'Copy ID',
+        icon: <Copy size={12} />,
+        disabled: r.id == null || r.id === '',
+        onClick: () => { void copyToClipboard(String(r.id)); },
+      },
+    ];
   }
 
   // Group results by type, cap at 5 total
@@ -158,6 +190,7 @@ export default function QuickSearchCard() {
                   key={`${type}-${r.id}-${idx}`}
                   type="button"
                   onClick={() => handleRowClick(r)}
+                  onContextMenu={(e) => openMenu(e, buildResultMenu(r))}
                   className="py-2 border-b border-[#1a1a1a] text-white text-xs w-full text-left flex items-center"
                 >
                   <span className="bg-[#0a0a0a] border border-[#222] text-[#d4a017] text-[9px] font-bold tracking-widest px-1.5 py-0.5 mr-2">

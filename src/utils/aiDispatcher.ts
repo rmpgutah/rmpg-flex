@@ -73,9 +73,37 @@ const MAX_OCR_BYTES = 6 * 1024 * 1024;
 // dispatcher's short replies is negligible (~300 chars/reply).
 const TTS_PRIMARY_MODEL = '@cf/deepgram/aura-2-en';
 const TTS_FALLBACK_MODEL = '@cf/myshell-ai/melotts';
-// Deepgram Aura speaker. Calm, clear, professional female dispatcher voice.
-// Other options: orion/zeus/perseus (male), athena/luna/hera (female).
+// Deepgram Aura-2 speaker. Calm, clear, professional female dispatcher voice.
+// MUST be a valid aura-2-en speaker (see AURA2_EN_VOICES) — an Aura-1-only name
+// errors the model and drops us to the robotic melotts fallback.
 const DISPATCH_VOICE = 'asteria';
+// Valid @cf/deepgram/aura-2-en speakers (the full model enum). Used to validate
+// an operator-chosen voice before it reaches the model, so a stale/invalid stored
+// value can never knock the premium voice offline. NOTE: Aura-2 has a different
+// roster than Aura-1 — asteria/luna/athena/hera/orion/arcas/orpheus/zeus exist in
+// both, but stella/perseus/angus/helios are Aura-1 ONLY.
+export const AURA2_EN_VOICES = new Set([
+  'amalthea', 'andromeda', 'apollo', 'arcas', 'aries', 'asteria', 'athena', 'atlas',
+  'aurora', 'callista', 'cora', 'cordelia', 'delia', 'draco', 'electra', 'harmonia',
+  'helena', 'hera', 'hermes', 'hyperion', 'iris', 'janus', 'juno', 'jupiter', 'luna',
+  'mars', 'minerva', 'neptune', 'odysseus', 'ophelia', 'orion', 'orpheus', 'pandora',
+  'phoebe', 'pluto', 'saturn', 'thalia', 'theia', 'vesta', 'zeus',
+]);
+
+// The Aura-2 English TTS model id — exported so other voice surfaces (the
+// client-facing /api/tts endpoint) synthesize through the SAME premium voice.
+export const AURA2_EN_MODEL = TTS_PRIMARY_MODEL;
+
+/**
+ * Resolve a requested voice name to a valid Aura-2 speaker, coercing anything
+ * unknown (an Aura-1 leftover, a browser persona name like "en-US-JennyNeural",
+ * empty) to a known-good default. Single source of truth for both the radio
+ * dispatcher and the /api/tts alert voice.
+ */
+export function resolveAura2Voice(name: string | null | undefined, fallback: string = DISPATCH_VOICE): string {
+  const v = (name || '').trim().toLowerCase();
+  return AURA2_EN_VOICES.has(v) ? v : fallback;
+}
 
 // Radio brevity — keep replies tight. melotts is billed per audio-minute
 // and real dispatchers don't monologue. ~60 words ≈ 20s of speech.
@@ -128,6 +156,14 @@ export interface DispatcherDecision {
    * VoiceHubDO. Always present; defaults to a calm read.
    */
   safety?: SafetyAssessment;
+  /**
+   * How confident the model is that it correctly understood what the unit said.
+   * On 'low' the caller issues a 10-9 ("say again") readback — repeating dispatch's
+   * best understanding so the unit can confirm/correct — and SUPPRESSES any
+   * lookup/action so dispatch never runs a check or a CAD write on a guess.
+   * Defaults to 'high' when the model omits it.
+   */
+  confidence?: 'high' | 'medium' | 'low';
 }
 
 export interface SafetyAssessment {
@@ -140,6 +176,16 @@ export interface SafetyAssessment {
 }
 
 const STRESS_LEVELS = ['normal', 'elevated', 'high'] as const;
+const CONFIDENCE_LEVELS = ['high', 'medium', 'low'] as const;
+
+// Parse the model's self-reported understanding-confidence. Defaults to 'high'
+// — the 10-9 readback is opt-in, so an omitted/garbage value never silences a
+// transmission dispatch actually understood.
+function parseConfidence(value: unknown): 'high' | 'medium' | 'low' {
+  return typeof value === 'string' && (CONFIDENCE_LEVELS as readonly string[]).includes(value)
+    ? (value as 'high' | 'medium' | 'low')
+    : 'high';
+}
 
 function parseSafety(value: unknown): SafetyAssessment {
   const fallback: SafetyAssessment = { stress: 'normal', duress: false };
@@ -167,6 +213,23 @@ export interface DispatcherOptions {
   temperature?: number;
   /** Hard cap on spoken reply length (characters). */
   maxReplyChars?: number;
+  /**
+   * Prosody/emotion shaping for the spoken reply (see shapeDelivery). Built by
+   * the caller from the live safety read. Omit (or pass undefined) for flat,
+   * unshaped delivery — the prior behavior.
+   */
+  delivery?: DeliveryProfile;
+}
+
+/** How forcefully the dispatcher should VOICE this reply. Drives shapeDelivery. */
+export interface DeliveryProfile {
+  /**
+   * Spoken urgency: 'normal' = calm and even, 'elevated' = firm/direct,
+   * 'high' = forceful and emphatic (emergency command voice). This is the
+   * SPOKEN urgency, not the internal alarm level — covert duress is delivered
+   * 'normal' so the voice never tips off a nearby suspect (the caller decides).
+   */
+  stress: 'normal' | 'elevated' | 'high';
 }
 
 // Compose the system prompt: the built-in radio-procedure policy plus any
@@ -206,6 +269,8 @@ You hear EVERY transmission on the channel and you acknowledge or respond to eac
 - If you are given OCR TEXT read from an image the unit sent, treat it as facts you may read back or use to fill a lookup/action — but never invent fields the OCR didn't contain. If you are ALSO given a CAD AUTO-CHECK block, the system already ran the check on the plate/VIN/name in that image — read that result back to the unit (warrants, stolen flag, owner) and do NOT request the same check again.
 - Plain unit-to-unit chatter not directed at dispatch → a brief "copy" is enough.
 
+UNDERSTANDING CONFIDENCE (10-9) — on EVERY transmission, set the "confidence" field to how sure you are that you correctly understood what the unit SAID: "high" | "medium" | "low". Use "low" when the transcript is garbled, fragmentary, contradictory, or has more than one plausible reading, or names a plate/address/name/call number you can't make out cleanly. When confidence is "low", DO NOT guess and DO NOT set a lookup or action — instead 10-9 the unit: repeat back your best understanding of what you heard and ask them to confirm or say again, e.g. "10-9 — I copy '<your best read of what they said>', say again to confirm." It is always better to read it back and re-confirm than to run a check or log a status on a mis-hear. EXCEPTION: never delay a clear emergency to re-confirm — answer urgently first.
+
 OFFICER SAFETY ASSESSMENT — on EVERY transmission, set the "safety" field reading the unit's stress/duress: {"stress":"normal|elevated|high","duress":true|false,"reason":"<short>"}. Use "high" stress for shouting, calls for help, "shots fired", "officer down", "10-33", panic, or a frantic/breathless delivery. Set "duress":true if the unit may be coerced, in danger, or covertly signaling distress. When stress is high or duress is true, your reply MUST be urgent: acknowledge immediately, confirm help is rolling, and tell other units to hold traffic. Default to {"stress":"normal","duress":false} for routine traffic.
 
 Common 10-codes: 10-4 acknowledged, 10-8 in service, 10-7 out of service, 10-20 location, 10-23 arrived, 10-28 plate check, 10-29 wants/warrants, 10-33 emergency/officer needs help, 10-76 en route, 10-78 need backup, 10-97 arrived on scene, code 4 = scene secure.
@@ -213,9 +278,9 @@ Common 10-codes: 10-4 acknowledged, 10-8 in service, 10-7 out of service, 10-20 
 Never invent unit numbers, names, plates, warrants, call numbers, or facts you were not given in the snapshot or a lookup result. If you don't have a detail, ask for it briefly.`;
 
 const FORMAT_INSTRUCTION = `Respond with ONLY a JSON object, no prose around it:
-{"intent":"<status_update|out_at_location|backup_request|emergency|lookup_request|location_request|eta_request|call_status|closest_unit|say_again|data_entry|en_route|arrived|code4|chatter|unclear>","reply":"<exactly what dispatch says over the radio — one or two short sentences>","safety":{"stress":"normal|elevated|high","duress":false},"lookup":{"type":"plate|person|warrant|premise|vin|unit_location|eta|call_status|closest_unit|last_dispatch","query":"<value; empty for unit_location/eta/last_dispatch>"},"action":{"type":"set_unit_status|create_call|clear_call|dispatch_backup|create_bolo","unit":"<call-sign>","status":"<status>","location":"<place>","incident_type":"<type>","priority":"<P1|P2|P3|P4>","location_address":"<address>","description":"<details>","caller_name":"<name>","call_number":"<call #>","disposition":"<outcome>","bolo_type":"person|vehicle|other","title":"<bolo headline>","subject_description":"<person>","vehicle_description":"<vehicle>"}}
-ALWAYS include "safety". Include "lookup" for a record check (plate/person/warrant/premise/vin), a unit_location/eta question about the asking unit (query empty), a call_status (query = call number), a closest_unit (query = address), or a last_dispatch "say again" (query empty). Include "action" ONLY for a status/call write; send only the fields that action type needs. Omit "lookup"/"action" otherwise.
-If the transmission is unintelligible, set intent to "unclear" and reply asking the unit to repeat their last.`;
+{"intent":"<status_update|out_at_location|backup_request|emergency|lookup_request|location_request|eta_request|call_status|closest_unit|say_again|data_entry|en_route|arrived|code4|chatter|unclear>","reply":"<exactly what dispatch says over the radio — one or two short sentences>","confidence":"high|medium|low","safety":{"stress":"normal|elevated|high","duress":false},"lookup":{"type":"plate|person|warrant|premise|vin|unit_location|eta|call_status|closest_unit|last_dispatch","query":"<value; empty for unit_location/eta/last_dispatch>"},"action":{"type":"set_unit_status|create_call|clear_call|dispatch_backup|create_bolo","unit":"<call-sign>","status":"<status>","location":"<place>","incident_type":"<type>","priority":"<P1|P2|P3|P4>","location_address":"<address>","description":"<details>","caller_name":"<name>","call_number":"<call #>","disposition":"<outcome>","bolo_type":"person|vehicle|other","title":"<bolo headline>","subject_description":"<person>","vehicle_description":"<vehicle>"}}
+ALWAYS include "safety" and "confidence". Include "lookup" for a record check (plate/person/warrant/premise/vin), a unit_location/eta question about the asking unit (query empty), a call_status (query = call number), a closest_unit (query = address), or a last_dispatch "say again" (query empty). Include "action" ONLY for a status/call write; send only the fields that action type needs. Omit "lookup"/"action" otherwise.
+If you are not sure what the unit said, set "confidence":"low", set intent to "unclear", OMIT "lookup"/"action", and make "reply" a 10-9 readback that repeats your best understanding and asks them to say again to confirm.`;
 
 // ─── Transcription ──────────────────────────────────────────
 
@@ -231,17 +296,108 @@ function bytesToBase64(bytes: Uint8Array): string {
 
 export { bytesToBase64 };
 
+// ─── Speech-recognition vocabulary biasing ──────────────────
+// Whisper is a free-running decoder: given a noisy, P25-hazed radio burst it
+// will happily emit a real-but-wrong word ("Maya list" for "mileage"). The
+// fix is its `initial_prompt` — a short priming text in the SAME style and
+// vocabulary as the audio. Whisper biases its first decode window toward the
+// terms it sees there, so feeding it the agency name, dispatch verbs, 10-codes,
+// and (dynamically) the live call-signs + recent traffic makes it spell our
+// domain right instead of guessing. This is the single biggest STT-quality
+// lever and it costs nothing extra per call.
+
+/**
+ * Built-in domain glossary — the always-on baseline biasing text. Written as
+ * natural radio-style prose (Whisper prompts work best as an *example* in the
+ * target vocabulary, not a bare word list). Keep it tight: every char competes
+ * for Whisper's ~224-token prompt budget against the live context appended
+ * after it. Operator-specific terms (local streets, client/property names,
+ * officer names) belong in the `stt_vocabulary` radio setting, not here.
+ */
+export const STT_DOMAIN_GLOSSARY =
+  'RMPG Dispatch radio traffic for Rocky Mountain Protective Group, a security and law-enforcement agency in Salt Lake City, Utah. '
+  + 'Standard police dispatch vocabulary: dispatch, control, copy, ten-four, 10-4, 10-8 in service, 10-7 out of service, 10-20 location, '
+  + '10-76 en route, 10-78 backup, 10-97 on scene, code 4, show me out, stand by, be advised, BOLO, attempt to locate, '
+  + 'license plate, registration, warrant, mileage, odometer, in service, out of service. '
+  + 'Example traffic: "Dispatch, D19, show me out at 329 Penney Avenue, South Salt Lake. Can you update my mileage?"';
+
+export interface TranscriptionContext {
+  /** Operator-authored vocabulary hint (live, from the stt_vocabulary setting). */
+  vocabulary?: string | null;
+  /** Live call-signs relevant on the channel (recent speakers + on-duty units). */
+  callSigns?: string[];
+  /** Recent transcripts on this channel, oldest→newest, for term/style continuity. */
+  recent?: string[];
+}
+
+// Whisper only honors roughly the LAST 224 tokens of the prompt — when the text
+// is over budget it truncates from the FRONT. We exploit that: the fixed
+// glossary leads, then operator vocab, then the clip-specific live context
+// (call-signs + most-recent traffic) trails, so the most predictive material is
+// what survives if anything is dropped. ~900 chars ≈ a safe ceiling.
+const STT_PROMPT_MAX_CHARS = 900;
+
+function clampTail(s: string, max: number): string {
+  return s.length <= max ? s : s.slice(s.length - max);
+}
+
+/**
+ * Compose the Whisper `initial_prompt` for one transmission: the built-in
+ * glossary plus any live, channel-aware context. Everything is optional — with
+ * an empty context this is just the domain glossary, which already fixes the
+ * common mishears. Exported so it can be unit-tested / reused.
+ */
+export function buildTranscriptionPrompt(ctx: TranscriptionContext = {}): string {
+  const parts: string[] = [STT_DOMAIN_GLOSSARY];
+
+  const vocab = (ctx.vocabulary || '').trim();
+  if (vocab) parts.push(`Local terms: ${vocab.replace(/\s+/g, ' ').slice(0, 600)}`);
+
+  const signs = Array.from(new Set((ctx.callSigns || []).map((s) => (s || '').trim()).filter(Boolean))).slice(0, 24);
+  if (signs.length) parts.push(`Units on the air: ${signs.join(', ')}.`);
+
+  // Last two transmissions only — closest context to this clip, placed last.
+  const recent = (ctx.recent || []).map((s) => (s || '').trim()).filter(Boolean).slice(-2);
+  if (recent.length) parts.push(recent.join(' '));
+
+  return clampTail(parts.join(' '), STT_PROMPT_MAX_CHARS);
+}
+
 /**
  * Transcribe a recorded transmission. Tries whisper-large-v3-turbo first
- * (higher quality, base64 `audio`); if that throws or returns empty it
- * falls back to the base whisper model (array-of-bytes `audio`). Both were
- * verified to accept our WebM/Opus recordings. Returns null only when both
- * fail, so the caller simply skips the reply rather than crashing the relay.
+ * (higher quality, base64 `audio`, honors `initial_prompt`); if that throws or
+ * returns empty it falls back to the base whisper model (array-of-bytes
+ * `audio`, no prompt support). Both were verified to accept our WebM/Opus
+ * recordings. Returns null only when both fail, so the caller simply skips the
+ * reply rather than crashing the relay.
+ *
+ * `opts.initialPrompt` (build it with buildTranscriptionPrompt) biases the
+ * decoder toward our domain vocabulary + live call-signs — the difference
+ * between "update my mileage" and "update my Maya list".
  */
-export async function transcribeTransmission(ai: Ai, audio: Uint8Array): Promise<string | null> {
-  // Primary — whisper-large-v3-turbo (base64 string input).
+export async function transcribeTransmission(
+  ai: Ai,
+  audio: Uint8Array,
+  opts: { initialPrompt?: string } = {},
+): Promise<string | null> {
+  const prompt = (opts.initialPrompt || '').trim();
+  // Primary — whisper-large-v3-turbo (base64 string input). Three tuning knobs
+  // beyond the raw audio:
+  //   • initial_prompt — vocabulary biasing (see buildTranscriptionPrompt).
+  //   • vad_filter — voice-activity detection trims the dead air around a keyed
+  //     PTT burst, recovering short clips that would otherwise come back empty
+  //     ("no transcript").
+  //   • condition_on_previous_text:false — kills the repetition-hallucination
+  //     loop that short, clipped radio bursts are especially prone to.
   try {
-    const res = (await withAiTimeout(ai.run(WHISPER_MODEL, { audio: bytesToBase64(audio), language: 'en' } as never), 'whisper-turbo')) as { text?: string };
+    const input: Record<string, unknown> = {
+      audio: bytesToBase64(audio),
+      language: 'en',
+      vad_filter: true,
+      condition_on_previous_text: false,
+    };
+    if (prompt) input.initial_prompt = prompt;
+    const res = (await withAiTimeout(ai.run(WHISPER_MODEL, input as never), 'whisper-turbo')) as { text?: string };
     const text = (res?.text || '').trim();
     if (text) return text;
     console.warn('[aiDispatcher] turbo whisper returned empty — trying base whisper');
@@ -249,7 +405,7 @@ export async function transcribeTransmission(ai: Ai, audio: Uint8Array): Promise
     console.warn('[aiDispatcher] turbo whisper failed, trying base whisper:', (err as Error)?.message);
   }
 
-  // Fallback — base whisper (classic array-of-bytes input).
+  // Fallback — base whisper (classic array-of-bytes input; no prompt support).
   try {
     const res = (await withAiTimeout(ai.run(TRANSCRIBE_FALLBACK_MODEL, { audio: Array.from(audio) } as never), 'whisper-base')) as { text?: string };
     const text = (res?.text || '').trim();
@@ -551,16 +707,18 @@ function decisionFromObject(obj: Record<string, unknown>): DispatcherDecision | 
   const lookup = parseLookup(obj.lookup);
   const action = parseAction(obj.action);
   const safety = parseSafety(obj.safety);
-  // A lookup OR an action OR a safety concern with only a holding reply is
-  // still actionable — a high-stress/duress read must never be dropped just
-  // because the spoken reply was terse.
-  if (reply || lookup || action || safety.stress !== 'normal' || safety.duress) {
+  const confidence = parseConfidence(obj.confidence);
+  // A lookup OR an action OR a safety concern OR a low-confidence read with only
+  // a holding reply is still actionable — a high-stress/duress read or a 10-9
+  // "say again" must never be dropped just because the spoken reply was terse.
+  if (reply || lookup || action || safety.stress !== 'normal' || safety.duress || confidence === 'low') {
     return {
       intent: (typeof obj.intent === 'string' ? obj.intent : 'general').trim() || 'general',
       reply: reply || (action ? 'Copy, stand by.' : 'Stand by.'),
       lookup,
       action,
       safety,
+      confidence,
     };
   }
   return null;
@@ -627,6 +785,29 @@ async function runLLM(
 }
 
 /**
+ * Clamp a spoken reply to a character budget WITHOUT chopping mid-word. A raw
+ * slice(0, cap) makes the dispatcher's voice trail off ("...show you out at two
+ * hund—"); this prefers the last sentence terminator within budget, else the
+ * last word boundary, so the voice always finishes a complete thought.
+ * Exported for testing.
+ */
+export function clampSpoken(text: string, cap: number): string {
+  const s = (text || '').trim();
+  if (s.length <= cap) return s;
+  const w = s.slice(0, cap);
+  // Last sentence terminator in the budget window.
+  let cut = -1;
+  for (let i = w.length - 1; i >= 0; i--) {
+    const ch = w[i];
+    if (ch === '.' || ch === '!' || ch === '?') { cut = i; break; }
+  }
+  // Use it only if it's not so early that we'd drop most of the line.
+  if (cut >= Math.floor(cap * 0.5)) return w.slice(0, cut + 1).trim();
+  const sp = w.lastIndexOf(' ');
+  return (sp > 0 ? w.slice(0, sp) : w).trim();
+}
+
+/**
  * Decide what dispatch says back. Returns null when the model fails or
  * elects to stay silent (empty reply).
  */
@@ -648,9 +829,7 @@ export async function decideDispatcherReply(
   if (response == null) return null;
   const decision = coerceDecision(response);
   if (!decision) return null;
-  if (decision.reply.length > cap) {
-    decision.reply = decision.reply.slice(0, cap).trimEnd();
-  }
+  decision.reply = clampSpoken(decision.reply, cap);
   return decision;
 }
 
@@ -687,7 +866,7 @@ export async function phraseLookupReply(
     // If the model wrapped it in JSON anyway, recover the reply field.
     if (reply.startsWith('{')) reply = parseDecision(reply)?.reply ?? '';
     if (!reply) return resultText;
-    return reply.length > cap ? reply.slice(0, cap).trimEnd() : reply;
+    return clampSpoken(reply, cap);
   } catch (err) {
     console.error('[aiDispatcher] phrase lookup failed:', (err as Error)?.message);
     return resultText;
@@ -962,26 +1141,68 @@ export function humanizeForSpeech(text: string): string {
   return s;
 }
 
+// ── Delivery shaping (emotion / stress / enforcement tone) ──
+// Aura-2 exposes NO emotion parameter — it infers pacing + emphasis from the
+// TEXT (punctuation, capitalization). So we encode the desired delivery INTO
+// the text: capitalized command phrases read with emphasis ("ALL UNITS, HOLD
+// YOUR TRAFFIC"), and a hard exclamation close lands an emergency directive.
+// This gives the voice dynamic flux + enforcement weight instead of a flat
+// monotone. Curated to genuine command/urgency phrases — never ordinary words,
+// and never single capital letters (which humanizeForSpeech would spell out).
+const COMMAND_WORDS_RE =
+  /\b(all units|hold(?: your)? traffic|clear the (?:air|channel|net)|emergency traffic|code (?:3|three)|shots fired|officer down|stand by|en route|rolling|help is (?:en route|rolling)|hold your fire)\b/gi;
+
+/**
+ * Shape a reply's PROSODY for the situation by rewriting its text — the only
+ * emotion lever Aura-2 gives us. Calm and even on routine traffic; firm and
+ * emphatic under stress; forceful with an emergency exclamation on 'high'.
+ * A no-op for empty text or when no profile is supplied (today's flat delivery).
+ * Exported for testing.
+ */
+export function shapeDelivery(text: string, profile?: DeliveryProfile): string {
+  const s = (text || '').trim();
+  if (!s || !profile) return s;
+  if (profile.stress === 'high') {
+    // Emphasize command words AND harden the close (trailing period → "!") so
+    // the emergency directive lands with urgency.
+    return s.replace(COMMAND_WORDS_RE, (m) => m.toUpperCase()).replace(/\.(\s*)$/, '!$1');
+  }
+  if (profile.stress === 'elevated') {
+    // Firm, direct — emphasize commands without the emergency exclamation.
+    return s.replace(COMMAND_WORDS_RE, (m) => m.toUpperCase());
+  }
+  return s; // normal — calm, as written
+}
+
 /**
  * Synthesize the dispatcher's reply as natural human speech. Primary voice is
  * Deepgram Aura-2 (returns raw MP3 via returnRawResponse); melotts is the
  * fallback so the dispatcher is never voiceless. The client's decodeAudioData
  * sniffs the container, so MP3/WAV bytes stored at radio-audio/<id>.webm both
  * replay fine through the haze chain. Returns null only if both fail.
+ *
+ * `opts.delivery` shapes the spoken prosody (emotion/stress/enforcement tone)
+ * BEFORE the pronunciation pass, so the emphasis it adds survives into Aura-2.
  */
 export async function synthesizeDispatcherVoice(
   ai: Ai,
   text: string,
   opts: DispatcherOptions = {},
 ): Promise<Uint8Array | null> {
-  const speech = humanizeForSpeech(text);
-  const speaker = opts.voice || DISPATCH_VOICE;
+  const speech = humanizeForSpeech(shapeDelivery(text, opts.delivery));
+  // Validate the operator's voice against the model's real roster — an unknown
+  // name (e.g. an Aura-1 leftover) would error the model and force the robotic
+  // melotts fallback, so coerce it to the known-good default instead.
+  const speaker = resolveAura2Voice(opts.voice);
 
-  // Primary — Deepgram Aura-2 (raw MP3 Response).
+  // Primary — Deepgram Aura-2. encoding:'mp3' is explicit so the bytes are
+  // always a browser-decodable MP3 (decodeAudioData can't parse raw linear16
+  // PCM, which is among Aura-2's selectable encodings) — guarantees the
+  // dispatcher's voice actually plays, not just synthesizes.
   try {
     const resp = (await withAiTimeout(ai.run(
       TTS_PRIMARY_MODEL,
-      { text: speech, speaker } as never,
+      { text: speech, speaker, encoding: 'mp3' } as never,
       { returnRawResponse: true } as never,
     ), 'aura-tts')) as unknown as Response;
     const bytes = new Uint8Array(await resp.arrayBuffer());
@@ -1043,4 +1264,19 @@ export function isAddressedToDispatch(transcript: string): boolean {
 export function fallbackAcknowledgement(callSign: string | null): string {
   const who = callSign && callSign.trim() ? callSign.trim() : 'Unit calling';
   return `${who}, dispatch copies — go ahead with your traffic.`;
+}
+
+/**
+ * 10-9 ("say again") readback for a transmission dispatch isn't sure it heard
+ * right. Standard radio practice: rather than guess, dispatch repeats back what
+ * it THINKS it heard and asks the unit to confirm or correct — so an officer is
+ * never acted on (plate run, status logged) from a mis-hear. The heard text is
+ * trimmed to a short clause to keep the readback radio-brief.
+ */
+export function sayAgainReadback(callSign: string | null, heard: string): string {
+  const who = callSign && callSign.trim() ? callSign.trim() : 'Unit calling';
+  const h = (heard || '').replace(/\s+/g, ' ').trim();
+  if (!h) return `${who}, dispatch did not copy your last — 10-9, say again.`;
+  const snippet = h.length > 120 ? `${h.slice(0, 117).trimEnd()}…` : h;
+  return `${who}, 10-9 — I copy: "${snippet}". Say again to confirm.`;
 }

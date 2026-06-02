@@ -1,9 +1,11 @@
 import React, { useMemo } from 'react';
-import { Radio, MapPin, PlusCircle, Plus, Edit, Trash2, AlertTriangle } from 'lucide-react';
+import { Radio, MapPin, PlusCircle, Plus, Edit, Trash2, AlertTriangle, Activity, UserPlus, Eye, Pencil } from 'lucide-react';
 import type { Unit, UnitStatus } from '../types';
 import StatusBadge from './StatusBadge';
 import { parseTimestamp } from '../utils/dateUtils';
 import { useUnitLocations } from '../hooks/useUnitLocations';
+import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
+import { useMenuActions } from '../utils/contextMenuActions';
 
 // Spillman EMERGENCY overlay: an officer with an active panic. Truthy for
 // either the numeric (1) or boolean (true) shape the API may serialize.
@@ -81,6 +83,35 @@ export default React.memo(function UnitStatusBoard({
   // Live street address + cross street resolved from each unit's GPS, so the
   // board always shows where a unit physically is — not just coordinates.
   const unitLocations = useUnitLocations(units);
+
+  // ── Right-click context menu ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+
+  // All unit statuses, for the "Set status" submenu. Mirrors the UnitStatus union.
+  const STATUSES: UnitStatus[] = ['available', 'dispatched', 'enroute', 'onscene', 'busy', 'off_duty', 'out_of_service'];
+  const prettyStatus = (s: UnitStatus) => s.replace(/_/g, ' ').replace(/\b\w/g, (ch) => ch.toUpperCase());
+
+  const buildUnitMenu = (unit: Unit): ContextMenuItem[] => [
+    ...(onStatusChange
+      ? [{
+          label: 'Set status',
+          icon: <Activity size={12} />,
+          submenu: STATUSES.map((s) =>
+            m.action(prettyStatus(s), () => onStatusChange(unit.id, s), { disabled: unit.status === s }),
+          ),
+        } as ContextMenuItem]
+      : []),
+    ...(onAssignUnit ? [m.action('Assign to selected call', () => onAssignUnit(unit.id), { icon: <UserPlus size={12} /> })] : []),
+    m.action('View call', () => onUnitClick?.(unit), { icon: <Eye size={12} /> }),
+    m.separator(),
+    m.copy('Copy unit', unit.call_sign),
+    ...(unit.officer_name ? [m.copy('Copy officer', unit.officer_name)] : []),
+    m.copyId(unit.id),
+    m.separator(),
+    ...(onEditUnit ? [m.action('Edit unit', () => onEditUnit(unit), { icon: <Pencil size={12} /> })] : []),
+    ...(onDeleteUnit ? [m.action('Delete unit', () => onDeleteUnit(unit), { icon: <Trash2 size={12} />, danger: true })] : []),
+  ];
   // Sort: on-duty first (available, dispatched, enroute, onscene, busy), then off_duty
   // Includes every live status. out_of_service was missing, so indexOf returned
   // -1 and those units sorted ABOVE onscene (index 0) at the very top of the board.
@@ -127,6 +158,7 @@ export default React.memo(function UnitStatusBoard({
             onDragStart={(e) => handleDragStart(e, unit)}
             onDragEnd={handleDragEnd}
             onClick={() => onUnitClick?.(unit)}
+            onContextMenu={(e) => openMenu(e, buildUnitMenu(unit))}
             className={`flex items-center gap-2 p-1.5 panel-beveled cursor-pointer hover:bg-surface-raised transition-colors ${isDraggable(unit) ? 'cursor-grab active:cursor-grabbing' : ''}`}
             style={{ background: '#0a0a0a' }}
           >
@@ -167,6 +199,7 @@ export default React.memo(function UnitStatusBoard({
               onDragStart={(e) => handleDragStart(e, unit)}
               onDragEnd={handleDragEnd}
               onClick={() => onUnitClick?.(unit)}
+              onContextMenu={(e) => openMenu(e, buildUnitMenu(unit))}
               className={`cursor-pointer ${isDraggable(unit) ? 'cursor-grab active:cursor-grabbing' : ''} ${isEmergency(unit) ? 'animate-emergency-blink' : ''}`}
               style={isEmergency(unit) ? { background: 'rgba(220,38,38,0.18)', boxShadow: 'inset 3px 0 0 #ff0000' } : undefined}
             >

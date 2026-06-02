@@ -14,9 +14,11 @@
 // ============================================================
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { RefreshCw, CheckSquare, Square, AlertTriangle } from 'lucide-react';
+import { RefreshCw, CheckSquare, Square, AlertTriangle, Power, PowerOff, RotateCcw } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { useToast } from '../../components/ToastProvider';
+import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
+import { useMenuActions } from '../../utils/contextMenuActions';
 import type { ScraperSource, ScraperHealthGrade } from '../../types/scrapers';
 
 interface Props {
@@ -90,14 +92,13 @@ export default function AdminWarrantScrapersTab({ LoadingSpinner, error, setErro
     }
   };
 
-  const bulk = async (action: BulkAction, priority?: number) => {
-    if (selected.size === 0) return;
-    if (submitting) return;
+  // Shared bulk runner — targets an explicit set of source keys so the
+  // right-click menu can act on a single row without touching `selected`.
+  const runBulk = async (action: BulkAction, keys: string[], priority?: number): Promise<boolean> => {
+    if (keys.length === 0) return false;
+    if (submitting) return false;
 
-    const body: Record<string, unknown> = {
-      action,
-      source_keys: Array.from(selected),
-    };
+    const body: Record<string, unknown> = { action, source_keys: keys };
     if (action === 'set_priority') body.priority = priority;
 
     try {
@@ -107,14 +108,43 @@ export default function AdminWarrantScrapersTab({ LoadingSpinner, error, setErro
         { method: 'POST', body: JSON.stringify(body) },
       );
       addToast(`Bulk ${action} applied to ${res.affected} source(s)`, 'success');
-      setSelected(new Set());
       await fetchAll();
+      return true;
     } catch (e) {
       addToast(e instanceof Error ? e.message : 'Bulk op failed', 'error');
+      return false;
     } finally {
       setSubmitting(false);
     }
   };
+
+  const bulk = async (action: BulkAction, priority?: number) => {
+    if (selected.size === 0) return;
+    const ok = await runBulk(action, Array.from(selected), priority);
+    if (ok) setSelected(new Set());
+  };
+
+  // ── Right-click context menu (per scraper source) ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+
+  const buildSourceMenu = (s: ScraperSource): ContextMenuItem[] => [
+    s.enabled
+      ? m.action('Disable source', () => runBulk('disable', [s.source_key]), { icon: <PowerOff size={12} />, disabled: submitting })
+      : m.action('Enable source', () => runBulk('enable', [s.source_key]), { icon: <Power size={12} />, disabled: submitting }),
+    ...(s.circuit_broken
+      ? [m.action('Reset circuit breaker', () => runBulk('reset', [s.source_key]), { icon: <RotateCcw size={12} />, disabled: submitting })]
+      : []),
+    m.separator(),
+    m.action('Set priority: Critical', () => runBulk('set_priority', [s.source_key], 1), { disabled: submitting }),
+    m.action('Set priority: High', () => runBulk('set_priority', [s.source_key], 2), { disabled: submitting }),
+    m.action('Set priority: Normal', () => runBulk('set_priority', [s.source_key], 3), { disabled: submitting }),
+    m.action('Set priority: Low', () => runBulk('set_priority', [s.source_key], 4), { disabled: submitting }),
+    m.separator(),
+    m.copy('Copy source key', s.source_key),
+    ...(s.display_name ? [m.copy('Copy name', s.display_name)] : []),
+    ...(s.source_url ? [m.openExternal('Open source URL', s.source_url)] : []),
+  ];
 
   if (loading) return <LoadingSpinner />;
 
@@ -251,6 +281,7 @@ export default function AdminWarrantScrapersTab({ LoadingSpinner, error, setErro
                 return (
                   <tr
                     key={s.source_key}
+                    onContextMenu={(e) => openMenu(e, buildSourceMenu(s))}
                     className={`border-t border-rmpg-800 hover:bg-rmpg-800/50 ${isSelected ? 'bg-rmpg-800/30' : ''}`}
                   >
                     <td className="p-2">

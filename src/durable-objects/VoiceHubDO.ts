@@ -33,12 +33,14 @@ import type { Bindings } from '../types';
 import { getDb, queryFirst, query, execute } from '../utils/db';
 import {
   transcribeTransmission,
+  buildTranscriptionPrompt,
   decideDispatcherReply,
   phraseLookupReply,
   synthesizeDispatcherVoice,
   estimateSpeechSeconds,
   isAddressedToDispatch,
   fallbackAcknowledgement,
+  sayAgainReadback,
   bytesToBase64,
   type DispatcherTurn,
 } from '../utils/aiDispatcher';
@@ -380,28 +382,9 @@ export class VoiceHubDO {
       maxReplyChars: settings.ai_max_reply_chars,
     };
 
-    // 1. Transcript — prefer the client's, else transcribe the clip (only when
-    //    auto_transcribe is on; otherwise an un-transcribed clip is skipped).
-    let transcript = (clientTranscript || '').trim();
-    if (!transcript) {
-      if (!settings.auto_transcribe) return;
-      const t = await transcribeTransmission(this.env.AI, audio);
-      if (!t) return; // unintelligible → nothing to answer
-      transcript = t;
-      // Backfill the source row so the operator's feed shows what was said.
-      await execute(db, 'UPDATE radio_transmissions SET transcript = ? WHERE id = ?', transcript, sourceTxId)
-        .catch(() => { /* best-effort */ });
-    }
-
-    // 2. Context — speaker call-sign, channel name, recent traffic. user_id is
-    // the requesting officer — carried on dispatch_speak so that officer's own
-    // device (not the whole channel) can auto-open the looked-up record.
-    const speaker = await queryFirst<{ unit_label: string | null; user_id: number | null }>(
-      db, 'SELECT unit_label, user_id FROM radio_transmissions WHERE id = ?', sourceTxId,
-    );
-    const channel = await queryFirst<{ name: string }>(
-      db, 'SELECT name FROM radio_channels WHERE id = ?', this.refId,
-    );
+    // Recent traffic on this channel (oldest→newest). Gathered up-front because
+    // it does double duty: it primes the Whisper transcription below AND grounds
+    // the dispatcher's reasoning turn further down — so the read is paid once.
     const recentRows = await query<{ unit_label: string | null; transcript: string | null }>(
       db,
       `SELECT unit_label, transcript FROM radio_transmissions
@@ -412,6 +395,42 @@ export class VoiceHubDO {
     const recent = recentRows
       .reverse()
       .map((r) => ({ speaker: r.unit_label, text: (r.transcript as string) }));
+
+    // 1. Transcript — prefer the client's, else transcribe the clip (only when
+    //    auto_transcribe is on; otherwise an un-transcribed clip is skipped).
+    //    The clip is transcribed with a channel-aware vocabulary hint (domain
+    //    glossary + operator vocab + live call-signs + recent traffic) so
+    //    Whisper spells our call-signs, street names, and dispatch terms right
+    //    instead of guessing ("mileage", not "Maya list").
+    let transcript = (clientTranscript || '').trim();
+    if (!transcript) {
+      if (!settings.auto_transcribe) return;
+      const callSigns = [
+        ...recent.map((r) => r.speaker).filter((s): s is string => !!s),
+        ...(await this.activeCallSigns(db)),
+      ];
+      const initialPrompt = buildTranscriptionPrompt({
+        vocabulary: settings.stt_vocabulary,
+        callSigns,
+        recent: recent.map((r) => r.text),
+      });
+      const t = await transcribeTransmission(this.env.AI, audio, { initialPrompt });
+      if (!t) return; // unintelligible → nothing to answer
+      transcript = t;
+      // Backfill the source row so the operator's feed shows what was said.
+      await execute(db, 'UPDATE radio_transmissions SET transcript = ? WHERE id = ?', transcript, sourceTxId)
+        .catch(() => { /* best-effort */ });
+    }
+
+    // 2. Context — speaker call-sign, channel name. user_id is the requesting
+    // officer — carried on dispatch_speak so that officer's own device (not the
+    // whole channel) can auto-open the looked-up record. (recent gathered above.)
+    const speaker = await queryFirst<{ unit_label: string | null; user_id: number | null }>(
+      db, 'SELECT unit_label, user_id FROM radio_transmissions WHERE id = ?', sourceTxId,
+    );
+    const channel = await queryFirst<{ name: string }>(
+      db, 'SELECT name FROM radio_channels WHERE id = ?', this.refId,
+    );
 
     // Advanced awareness — a live CAD board snapshot grounds every reply.
     const awareness = await gatherAwareness(db, this.refId, speaker?.unit_label ?? null)
@@ -445,6 +464,19 @@ export class VoiceHubDO {
       safetyEscalated = !!decision?.safety?.duress || codeHitEarly || decision?.safety?.stress === 'high';
     }
     if (settings.ai_respond_mode === 'addressed' && !addressed && !hasActionable && !safetyEscalated) return;
+
+    // 3-bis. 10-9 (say again) on LOW CONFIDENCE — if dispatch isn't sure what
+    // the unit said, never act on a guess. Suppress any lookup/CAD write the
+    // model proposed and replace the reply with a readback of what dispatch
+    // heard, asking the unit to confirm/repeat. Skipped on a safety escalation:
+    // a clear emergency is answered urgently, not re-queried.
+    if (decision && decision.confidence === 'low' && !safetyEscalated) {
+      decision.lookup = undefined;
+      decision.action = undefined;
+      if (!/\b(10-9|say again)\b/i.test(decision.reply)) {
+        decision.reply = sayAgainReadback(speaker?.unit_label ?? null, transcript);
+      }
+    }
 
     // 3a. If the unit asked for a record check, run it for real and let the
     // dispatcher read the result back instead of the holding "stand by".
@@ -535,6 +567,10 @@ export class VoiceHubDO {
     // also answer urgently on-air; for a COVERT duress-code hit we keep the
     // spoken reply normal so a nearby suspect isn't tipped off.
     let safetyTag = '';
+    // SPOKEN urgency for voice delivery (shapeDelivery) — distinct from the
+    // internal alarm: a COVERT duress hit stays 'normal' so the voice is calm
+    // and never tips off a nearby suspect, even though the console is alerted.
+    let deliveryStress: 'normal' | 'elevated' | 'high' = 'normal';
     if (settings.stress_monitoring_enabled) {
       const safety = decision?.safety;
       const code = settings.duress_code.trim().toLowerCase();
@@ -545,6 +581,9 @@ export class VoiceHubDO {
       if (duress) safetyTag = 'safety:duress';
       else if (high) safetyTag = 'safety:high';
       else if (safety?.stress === 'elevated') safetyTag = 'safety:elevated';
+      deliveryStress = (high || duress) && !covert ? 'high'
+        : safety?.stress === 'elevated' ? 'elevated'
+        : 'normal';
 
       if (duress || high) {
         if (!covert && !/\b(copy|hold|en\s?route|rolling|help|stand by|on the way)\b/i.test(replyText)) {
@@ -573,7 +612,12 @@ export class VoiceHubDO {
     }
 
     // 4. Synthesize the dispatcher's voice (operator-selected Aura-2 speaker).
-    const audioBytes = await synthesizeDispatcherVoice(this.env.AI, replyText, opts);
+    // Dynamic delivery shapes the prosody to the situation (calm → forceful)
+    // when enabled; covert duress was already coerced to 'normal' above.
+    const audioBytes = await synthesizeDispatcherVoice(this.env.AI, replyText, {
+      ...opts,
+      delivery: settings.voice_dynamics_enabled ? { stress: deliveryStress } : undefined,
+    });
     if (!audioBytes) return;
 
     // 5. Persist as a DISPATCH transmission — INSERT mints the id, then key
@@ -642,5 +686,24 @@ export class VoiceHubDO {
       record: recordRef ?? undefined,
       source_user_id: recordRef ? (speaker?.user_id ?? null) : undefined,
     });
+  }
+
+  // On-duty unit call-signs — fed into the Whisper prompt so live call-signs
+  // (D19, 12-Adam) are spelled correctly instead of phonetically guessed. All
+  // non-empty call-signs are returned (a unit can key up the moment it comes on
+  // duty); the prompt builder dedupes against recent speakers and caps the list.
+  // Best-effort: returns [] on any read error so transcription never blocks.
+  private async activeCallSigns(db: ReturnType<typeof getDb>): Promise<string[]> {
+    try {
+      const rows = await query<{ call_sign: string | null }>(
+        db,
+        `SELECT call_sign FROM units
+         WHERE call_sign IS NOT NULL AND TRIM(call_sign) <> ''
+         ORDER BY call_sign LIMIT 30`,
+      );
+      return rows.map((r) => (r.call_sign || '').trim()).filter(Boolean);
+    } catch {
+      return [];
+    }
   }
 }

@@ -11,27 +11,21 @@
 --
 -- Generated from the exact INSERT/UPDATE column lists in
 -- src/routes/fleet.ts, verified against live PRAGMA table_info.
--- D1 has no `IF NOT EXISTS` on ADD COLUMN; the ALTERs below target
--- columns confirmed absent on live. On re-apply they error harmlessly
--- (deploy.yml runs migrations with continue-on-error).
+-- D1 has no `IF NOT EXISTS` on ADD COLUMN. The 15 column additions that
+-- USED to live here were removed (2026-06-02) because they were never
+-- idempotent and `duplicate column name` failed on every apply:
+--   * On a FRESH apply they are redundant — fleet_fuel_log /
+--     fleet_maintenance / fleet_inspections already declare these columns
+--     in their CREATE TABLE in 0052_fleet_tables.sql, and
+--     fleet_personnel_notes gets user_id + content from its CREATE in
+--     0053_fleet_extended_tables.sql. The ALTERs hit the dup error
+--     immediately (this also broke `npm run migrate:local`).
+--   * On LIVE D1 (785de7ae) all 15 columns were applied directly and are
+--     present (verified via pragma_table_info 2026-06-02). This migration
+--     is now recorded in d1_migrations, so wrangler never re-runs it there.
+-- Reduced to the idempotent CREATE TABLE block below — same approach as
+-- 0041_geography_create_columns.sql. See migrations/README.md.
 -- ============================================================
-
--- ── Column additions to existing tables ──
-ALTER TABLE fleet_fuel_log ADD COLUMN total_cost REAL;
-ALTER TABLE fleet_fuel_log ADD COLUMN notes TEXT;
-ALTER TABLE fleet_maintenance ADD COLUMN type TEXT;
-ALTER TABLE fleet_maintenance ADD COLUMN description TEXT;
-ALTER TABLE fleet_maintenance ADD COLUMN mileage_at_service TEXT;
-ALTER TABLE fleet_maintenance ADD COLUMN vendor TEXT;
-ALTER TABLE fleet_maintenance ADD COLUMN performed_by TEXT;
-ALTER TABLE fleet_maintenance ADD COLUMN performed_at TEXT;
-ALTER TABLE fleet_maintenance ADD COLUMN next_due_date TEXT;
-ALTER TABLE fleet_maintenance ADD COLUMN next_due_mileage INTEGER;
-ALTER TABLE fleet_inspections ADD COLUMN overall_result TEXT;
-ALTER TABLE fleet_inspections ADD COLUMN inspector_id INTEGER;
-ALTER TABLE fleet_inspections ADD COLUMN mileage_at_inspection TEXT;
-ALTER TABLE fleet_personnel_notes ADD COLUMN user_id INTEGER;
-ALTER TABLE fleet_personnel_notes ADD COLUMN content TEXT;
 
 -- ── New tables (CREATE IF NOT EXISTS — idempotent) ──
 CREATE TABLE IF NOT EXISTS fleet_pretrip_checklists (

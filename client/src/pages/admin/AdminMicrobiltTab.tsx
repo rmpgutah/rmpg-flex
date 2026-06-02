@@ -5,6 +5,8 @@ import {
   Shield, Search, Users, Landmark, FileSearch, Building2, CreditCard,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
+import { useMenuActions } from '../../utils/contextMenuActions';
 
 interface Props {
   LoadingSpinner: React.FC;
@@ -117,11 +119,11 @@ function BackgroundCheckUsagePanel() {
       </div>
       <div className="grid grid-cols-5 gap-2">
         {[
-          { label: 'Total Searches', value: usage.totalSearches },
-          { label: 'Total Hits', value: usage.totalHits },
-          { label: 'Hit Rate', value: `${usage.hitRate}%` },
-          { label: 'Unique Subjects', value: usage.uniqueSubjects },
-          { label: 'Last 30 Days', value: usage.last30Days },
+          { label: 'Total Searches', value: usage.totalSearches ?? 0 },
+          { label: 'Total Hits', value: usage.totalHits ?? 0 },
+          { label: 'Hit Rate', value: `${usage.hitRate ?? 0}%` },
+          { label: 'Unique Subjects', value: usage.uniqueSubjects ?? 0 },
+          { label: 'Last 30 Days', value: usage.last30Days ?? 0 },
         ].map(stat => (
           <div key={stat.label} className="bg-surface-sunken p-2 rounded-sm text-center">
             <div className="text-sm font-bold text-rmpg-100">{stat.value}</div>
@@ -260,6 +262,25 @@ export default function AdminMicrobiltTab({ LoadingSpinner, error, setError }: P
 
   // Set document title — MUST be before any early returns (React hooks rules)
   useEffect(() => { document.title = 'Admin - MicroBilt \u2014 RMPG Flex'; }, []);
+
+  // \u2500\u2500 Right-click context menu (product catalog rows) \u2500\u2500
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+
+  const buildProductMenu = (product: { id: string; name: string; desc: string; credentialed?: boolean }): ContextMenuItem[] => {
+    const enabled = status?.enabled_products?.includes(product.id) || false;
+    return [
+      ...(status?.configured
+        ? [m.action(enabled ? 'Disable product' : 'Enable product', () => handleToggleProduct(product.id), {
+            icon: enabled ? <ToggleLeft size={12} /> : <ToggleRight size={12} />,
+          })]
+        : []),
+      m.separator(),
+      m.copy('Copy product name', product.name),
+      m.copyId(product.id, 'Copy product ID'),
+      m.openExternal('Open Developer Portal', 'https://developer.microbilt.com/apis'),
+    ];
+  };
 
   const filteredCatalog = productSearch
     ? PRODUCT_CATALOG.map(cat => ({
@@ -472,6 +493,7 @@ export default function AdminMicrobiltTab({ LoadingSpinner, error, setError }: P
                     return (
                       <div
                         key={product.id}
+                        onContextMenu={(e) => openMenu(e, buildProductMenu(product))}
                         className="flex items-center gap-2 px-2 py-1.5 rounded-sm transition-colors hover:bg-rmpg-800/30"
                         style={{
                           background: enabled ? 'rgba(136, 136, 136, 0.06)' : undefined,
