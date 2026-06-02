@@ -392,7 +392,12 @@
 //       Connections graph legend/node tooltips, the link picker chips, and the
 //       record-delete dialog; getEntityLabel delegates to it. (PDFs already
 //       title each record by its plain type.)
-const CACHE_NAME = 'rmpg-flex-v718';
+// v719: fix CrmPage hard crash — toDisplayLabel()/.replace on an undefined
+//       status/type/relationship/source field threw "Cannot read properties of
+//       undefined (reading 'replace')" and the ErrorBoundary took the whole
+//       /crm page down (live sweep 2026-06-02). Null-guarded the helper + the
+//       lead-source label.
+const CACHE_NAME = 'rmpg-flex-v719';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
