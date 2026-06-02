@@ -71,6 +71,7 @@ import { useToast } from '../../components/ToastProvider';
 import { localToday, dateToLocalYMD, safeDateTimeStr, parseTimestamp } from '../../utils/dateUtils';
 import { useGeoJsonLayers, GEO_LAYER_CONFIGS, getSectionColor, type BeatDistrictEntry } from '../../hooks/useGeoJsonLayers';
 import { useVectorTileLayers } from '../../hooks/useVectorTileLayers';
+import { useDistrictHierarchyLayers } from '../../hooks/useDistrictHierarchyLayers';
 import { useEventPlanning, PLAN_COLORS, PLAN_TYPE_LABELS, type PlanItemType } from '../../hooks/useEventPlanning';
 import { useShiftPlanning, SHIFT_TYPES, type ShiftType } from '../../hooks/useShiftPlanning';
 import { useIsMobile } from '../../hooks/useIsMobile';
@@ -423,6 +424,13 @@ export default function MapPage() {
     beatDistrictMap,
   });
   const [showGeoPanel, setShowGeoPanel] = useState(false);
+
+  // District hierarchy layers (Area/Section/Zone) derived from beat geometry +
+  // the dispatch_geography districts join. Beat itself stays in useGeoJsonLayers.
+  const { hierarchyStates, toggleHierarchyLayer, hierarchyConfigs } = useDistrictHierarchyLayers({
+    map: mapInstanceRef.current,
+    popup: infoWindowRef.current,
+  });
 
   // Statewide vector-tile overlays (PMTiles: Utah roads + address points).
   // isLight keeps labels legible across basemaps; onUseLocation routes a clicked
@@ -3656,7 +3664,7 @@ export default function MapPage() {
               )}
             </div>
 
-            {/* ── GeoJSON Spatial Layers Section ── */}
+            {/* ── Spatial Layers Section (Police Geography + Boundaries) ── */}
             <div className="border-t border-rmpg-700 p-1.5">
               <button
                 onClick={() => setShowGeoPanel(!showGeoPanel)}
@@ -3665,35 +3673,70 @@ export default function MapPage() {
                 <Globe2 className="w-3 h-3 text-gray-400" />
                 <span className="text-[10px] text-rmpg-300 flex-1">Spatial Layers</span>
                 <span className="text-[9px] text-rmpg-500">
-                  {Object.values(geoLayerStates).filter((s) => s.visible).length}/{geoConfigs.length}
+                  {Object.values(hierarchyStates).filter((s) => s.visible).length
+                    + geoConfigs.filter((c) => ['beat', 'municipality', 'county'].includes(c.id) && geoLayerStates[c.id]?.visible).length}
+                  /{hierarchyConfigs.length + 3}
                 </span>
                 {showGeoPanel ? <ChevronUp className="w-2.5 h-2.5 text-rmpg-500" /> : <ChevronDown className="w-2.5 h-2.5 text-rmpg-500" />}
               </button>
-              {showGeoPanel && (
-                <div className="mt-1 space-y-0.5">
-                  {geoConfigs.map((cfg) => {
-                    const state = geoLayerStates[cfg.id];
-                    return (
-                      <button
-                        key={cfg.id}
-                        onClick={() => toggleGeoLayer(cfg.id)}
-                        className={`flex items-center gap-2 w-full px-2 py-1 text-left transition-colors ${
-                          state?.visible ? 'panel-inset bg-surface-deep' : 'opacity-40 hover:opacity-70 hover:bg-rmpg-800/50'
-                        }`}
-                      >
-                        {state?.visible ? <Eye className="w-2.5 h-2.5 text-green-400" /> : <EyeOff className="w-2.5 h-2.5 text-rmpg-500" />}
-                        <div className="w-2 h-2 rounded-sm" style={{ backgroundColor: cfg.style.strokeColor, opacity: state?.visible ? 1 : 0.3 }} />
-                        <span className="text-[9px] text-rmpg-200 flex-1">{cfg.label}</span>
-                        {state?.loaded && (state?.featureCount ?? 0) > 0 && (
-                          <span className="text-[8px] font-mono" style={{ color: state.visible ? cfg.style.strokeColor : '#666666' }}>
-                            {state.featureCount}
-                          </span>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
+              {showGeoPanel && (() => {
+                const HSWATCH: Record<string, string> = { area: '#d4a017', section: '#f59e0b', zone: '#22c55e' };
+                const geoRow = (cfg: typeof geoConfigs[number]) => {
+                  const state = geoLayerStates[cfg.id];
+                  return (
+                    <button
+                      key={cfg.id}
+                      onClick={() => toggleGeoLayer(cfg.id)}
+                      className={`flex items-center gap-2 w-full px-2 py-1 text-left transition-colors ${
+                        state?.visible ? 'panel-inset bg-surface-deep' : 'opacity-40 hover:opacity-70 hover:bg-rmpg-800/50'
+                      }`}
+                    >
+                      {state?.visible ? <Eye className="w-2.5 h-2.5 text-green-400" /> : <EyeOff className="w-2.5 h-2.5 text-rmpg-500" />}
+                      <div className="w-2 h-2 rounded-sm" style={{ backgroundColor: cfg.style.strokeColor, opacity: state?.visible ? 1 : 0.3 }} />
+                      <span className="text-[9px] text-rmpg-200 flex-1">{cfg.label}</span>
+                    </button>
+                  );
+                };
+                const hierRow = (cfg: typeof hierarchyConfigs[number]) => {
+                  const state = hierarchyStates[cfg.id];
+                  return (
+                    <button
+                      key={cfg.id}
+                      onClick={() => toggleHierarchyLayer(cfg.id)}
+                      title={cfg.description}
+                      className={`flex items-center gap-2 w-full px-2 py-1 text-left transition-colors ${
+                        state?.visible ? 'panel-inset bg-surface-deep' : 'opacity-40 hover:opacity-70 hover:bg-rmpg-800/50'
+                      }`}
+                    >
+                      {state?.visible ? <Eye className="w-2.5 h-2.5 text-green-400" /> : <EyeOff className="w-2.5 h-2.5 text-rmpg-500" />}
+                      <div className="w-2 h-2 rounded-sm" style={{ backgroundColor: HSWATCH[cfg.id], opacity: state?.visible ? 1 : 0.3 }} />
+                      <span className="text-[9px] text-rmpg-200 flex-1">{cfg.label}</span>
+                      <span className="text-[8px] font-mono text-rmpg-600">z{cfg.minzoom}+</span>
+                    </button>
+                  );
+                };
+                const beatCfg = geoConfigs.find((c) => c.id === 'beat');
+                const boundaryCfgs = geoConfigs.filter((c) => c.id === 'municipality' || c.id === 'county');
+                return (
+                  <div className="mt-1 space-y-1.5">
+                    {/* Police Geography: Area › Section › Zone › Beat */}
+                    <div>
+                      <div className="px-2 py-0.5 text-[8px] font-semibold uppercase tracking-wider text-[#d4a017]">Police Geography</div>
+                      <div className="space-y-0.5">
+                        {hierarchyConfigs.map(hierRow)}
+                        {beatCfg && geoRow(beatCfg)}
+                      </div>
+                    </div>
+                    {/* Boundaries: Municipality, County */}
+                    <div>
+                      <div className="px-2 py-0.5 text-[8px] font-semibold uppercase tracking-wider text-[#888888]">Boundaries</div>
+                      <div className="space-y-0.5">
+                        {boundaryCfgs.map(geoRow)}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
 
             {/* ── Statewide Data (Vector Tiles) Section ── */}
