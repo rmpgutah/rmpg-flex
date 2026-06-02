@@ -9,6 +9,7 @@ import {
   RELATIONSHIP_OPTIONS,
   relationshipCode,
   DEFAULT_RELATIONSHIP_CODE,
+  getEntityLabel,
 } from '../utils/recordLinks';
 
 import RichTextArea from './RichTextArea';
@@ -209,7 +210,7 @@ export default function LinkRecordModal({
                 )}
                 <span className="truncate">{result.label || result.name || result.id}</span>
                 <span className="ml-auto text-[9px] font-bold uppercase tracking-wider text-rmpg-500 bg-rmpg-700 px-1.5 py-0.5 rounded-sm">
-                  {result.record_type || targetType}
+                  {getEntityLabel(result.record_type || targetType)}
                 </span>
               </div>
             );
