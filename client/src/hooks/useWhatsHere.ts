@@ -44,6 +44,9 @@ export function useWhatsHere({ map, popup, active }: Opts) {
   const popupRef = useRef(popup);
   useEffect(() => { popupRef.current = popup; }, [popup]);
   const dataRef = useRef<{ beats?: any; county?: any; muni?: any }>({});
+  // Monotonic click id — guards against an older nearest-address response
+  // resolving after a newer click and overwriting the newer popup.
+  const seqRef = useRef(0);
 
   // Warm the polygon datasets the first time the tool is switched on.
   useEffect(() => {
@@ -99,13 +102,15 @@ export function useWhatsHere({ map, popup, active }: Opts) {
         pop.setLngLat(e.lngLat).setHTML(html).addTo(map);
       };
 
+      const myId = ++seqRef.current;
       render(null, null, true);
       apiFetch<{ results: { full_add: string; city: string; distance_m?: number }[] }>(`/geo/address-nearest?lat=${lat}&lng=${lng}`)
         .then((d) => {
+          if (myId !== seqRef.current) return; // a newer click superseded this
           const r = d?.results?.[0];
           render(r ? `${r.full_add}${r.city ? ', ' + r.city : ''}` : null, r?.distance_m ?? null, false);
         })
-        .catch(() => render(null, null, false));
+        .catch(() => { if (myId === seqRef.current) render(null, null, false); });
     };
     map.on('click', handler);
     return () => { map.off('click', handler); };

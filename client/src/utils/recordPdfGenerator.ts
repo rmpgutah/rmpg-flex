@@ -1596,7 +1596,9 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
     let prevTs: number | null = null;
     for (let i = 0; i < stages.length; i++) {
       const s = stages[i];
-      const t = s.iso ? Date.parse(s.iso) : NaN;
+      // parseTimestamp interprets naive server strings as UTC (the app standard);
+      // Date.parse treated them as local, skewing the elapsed deltas ~6-7h.
+      const t = s.iso ? parseTimestamp(s.iso).getTime() : NaN;
       const time = isFinite(t) ? new Date(t).toLocaleTimeString('en-US', { hour12: false }) : undefined;
       const elapsed = isFinite(t) && prevTs != null ? formatElapsed(t - prevTs) : undefined;
       // Status-aware state: done if timestamped, else active/future per the
