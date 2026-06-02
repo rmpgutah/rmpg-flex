@@ -24,6 +24,7 @@ import type { D1Database } from '@cloudflare/workers-types';
 import type { Bindings } from '../types';
 import { query, queryFirst, execute } from './db';
 import { emitAlert } from './alertHub';
+import { isFlagSet } from './sentinel';
 import { geocodeAddress, reverseGeocodeAddress } from '../routes/geocode';
 import { resolveDistrict } from './districtResolver';
 import { estimateEta } from './eta';
@@ -313,7 +314,7 @@ async function lookupVin(db: D1Database, raw: string): Promise<string> {
   const desc = [v.year, v.color, v.make, v.model].filter(Boolean).join(' ') || 'vehicle';
   const parts = [
     `VIN ${v.vin || ''} comes back ${desc}${v.plate_number ? `, plate ${v.plate_number}` : ''}.`,
-    v.registered_owner ? `Registered owner ${v.registered_owner}.` : null,
+    isFlagSet(v.registered_owner) ? `Registered owner ${v.registered_owner}.` : null,
     v.is_stolen ? 'FLAGGED STOLEN — confirm and use caution.' : 'Not flagged stolen.',
   ].filter(Boolean);
   return parts.join(' ');
@@ -337,14 +338,18 @@ async function lookupPlate(db: D1Database, raw: string): Promise<LookupResult> {
   );
   if (!v) return { text: `No record on file for plate ${norm(raw)}.` };
   const desc = [v.year, v.color, v.make, v.model].filter(Boolean).join(' ') || 'vehicle';
-  const owner = v.registered_owner || v.owner_name;
+  // Sentinel guard (isFlagSet): a literal "None"/"N/A" owner/insurance/flags
+  // value would otherwise be read back as "Registered owner None." etc. (The
+  // stolen check stays as-is — is_stolen is an integer and stolen_status is
+  // regex-matched, so neither leaks a sentinel.)
+  const owner = [v.registered_owner, v.owner_name].find(isFlagSet);
   const stolen = v.is_stolen || (v.stolen_status && /stolen|yes|active/i.test(v.stolen_status));
   const parts = [
     `Plate ${v.plate_number}${v.registration_state || v.state ? ` (${v.registration_state || v.state})` : ''}: ${desc}.`,
     owner ? `Registered owner ${owner}.` : null,
     stolen ? 'FLAGGED STOLEN — confirm and use caution.' : 'Not flagged stolen.',
-    v.insurance_status ? `Insurance ${v.insurance_status}.` : null,
-    v.flags ? `Flags: ${v.flags}.` : null,
+    isFlagSet(v.insurance_status) ? `Insurance ${v.insurance_status}.` : null,
+    isFlagSet(v.flags) ? `Flags: ${v.flags}.` : null,
   ].filter(Boolean);
   return { text: parts.join(' '), record: { kind: 'vehicle', id: v.id } };
 }
@@ -375,14 +380,17 @@ async function lookupPerson(db: D1Database, raw: string): Promise<LookupResult> 
      LIMIT 3`,
     p.id, p.id, `%${name}%`, `%${name}%`,
   ).catch(() => []);
-  const cautions = [p.caution_flags, p.flags].filter(Boolean).join('; ');
+  // Sentinel guard (isFlagSet): live D1 stores "None"/"N/A"/"0" not NULL, so a
+  // raw truthiness check would speak a FALSE "gang affiliation noted: None" /
+  // "Caution: None" over the air on a clean subject. Guard every flag read.
+  const cautions = [p.caution_flags, p.flags].filter(isFlagSet).join('; ');
   const parts = [
     `${name}${p.dob ? `, DOB ${p.dob}` : ''}.`,
     warrants.length
       ? `ACTIVE WARRANT${warrants.length > 1 ? 'S' : ''}: ${warrants.map((w) => `${w.warrant_number || 'warrant'}${w.offense ? ` for ${w.offense}` : ''}`).join('; ')}. Confirm before action.`
       : 'No active warrants on file.',
-    p.is_sex_offender ? 'Registered sex offender.' : null,
-    p.gang_affiliation ? `Gang affiliation noted: ${p.gang_affiliation}.` : null,
+    isFlagSet(p.is_sex_offender) ? 'Registered sex offender.' : null,
+    isFlagSet(p.gang_affiliation) ? `Gang affiliation noted: ${p.gang_affiliation}.` : null,
     cautions ? `Caution: ${cautions}.` : null,
   ].filter(Boolean);
   return { text: parts.join(' '), record: { kind: 'person', id: p.id } };

@@ -455,12 +455,12 @@
 // v743: HR Reviews + Disciplinary save buttons now surface a "Failed to …"
 //       error toast when the create/update API call fails (the handlers had a
 //       success toast but no catch, so a failed save looked like a dead button).
-// v746: CRITICAL — completed calls no longer "vanish". The Cleared tab now has
-//       its own fetch (status=cleared,closed,cancelled); the default call list
-//       is active-only, so cleared/closed calls were never sent to the client
-//       and the Cleared tab was permanently empty — a closed call looked
-//       deleted. NO data was lost (rows are intact in D1, status='closed').
-const CACHE_NAME = 'rmpg-flex-v746';
+// v745: CRM Reports tab repaired — Lead Source ROI no longer crashes on
+//       undefined conversion_rate (worker returns leads/won/pipeline_value;
+//       client now derives the display fields); Monthly Revenue + Clients-by-
+//       Status charts realigned to the worker's actual shapes; CRM Invoices tab
+//       reads the {data} envelope. (v744 reserved for the dispatch wave-1 PR.)
+const CACHE_NAME = 'rmpg-flex-v745';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

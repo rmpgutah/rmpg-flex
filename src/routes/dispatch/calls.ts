@@ -1152,6 +1152,20 @@ calls.post('/:id/assign-unit', async (c) => {
       if (priorCall) {
         const priorList = (JSON.parse(priorCall.assigned_unit_ids || '[]') as number[]).filter((u) => u !== unit_id);
         await execute(db, 'UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?', JSON.stringify(priorList), prior.current_call_id);
+        // If that was the prior call's LAST unit, it's now an ACTIVE call with
+        // nobody on it. The clear-path only frees units when the CALL goes
+        // terminal, so without this the orphan never self-heals — it sits
+        // dispatched/enroute/onscene with zero units, still counting against the
+        // board + SLA timers. Demote it back to 'pending' (held_at, timestamps,
+        // and history are untouched; a later re-assign flips it forward again).
+        if (priorList.length === 0) {
+          await execute(
+            db,
+            `UPDATE calls_for_service SET status = 'pending', updated_at = datetime('now')
+             WHERE id = ? AND status IN ('dispatched','enroute','onscene')`,
+            prior.current_call_id,
+          );
+        }
       }
     }
 
@@ -1383,7 +1397,13 @@ calls.post('/:id/redispatch', requireRole('admin', 'manager', 'supervisor', 'dis
     if (!['pso_client_request', 'process_service'].includes(String(parentBase.incident_type))) {
       return c.json({ error: 'Re-dispatch is only available for PSO Client Request and Process Service calls', code: 'REDISPATCH_TYPE_INVALID' }, 400);
     }
-    if (!['cleared', 'closed', 'cancelled', 'on_hold', 'archived'].includes(String(parentBase.status))) {
+    // Hold lives in calls_for_service_ext.held_at, NOT the base status enum —
+    // 'on_hold' is synthesized client-side (mapDbCall), so a HELD call's base
+    // status is still pending/dispatched and the literal 'on_hold' below could
+    // never match. The dispatcher sees the Re-dispatch button on a held call,
+    // clicks it, and used to hit this 400. Accept held_at as "inactive enough".
+    const parentHeld = parentExt?.held_at != null;
+    if (!['cleared', 'closed', 'cancelled', 'archived'].includes(String(parentBase.status)) && !parentHeld) {
       return c.json({ error: 'Call must be cleared, closed, cancelled, on hold, or archived to re-dispatch', code: 'CALL_MUST_BE_INACTIVE' }, 400);
     }
 
