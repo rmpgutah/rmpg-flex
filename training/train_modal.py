@@ -34,10 +34,14 @@ app = modal.App("rmpg-serve-intake-lora")
 # faster 70B download. Mirrors training/requirements.txt.
 image = (
     modal.Image.debian_slim(python_version="3.11")
+    # Pinned to a mutually-compatible late-2024 set that matches the SFT API
+    # train_lora.py is written against (SFTConfig.max_seq_length /
+    # dataset_text_field, SFTTrainer.processing_class). Avoids surprise breakage
+    # from a newer TRL that reshuffled the API.
     .pip_install(
-        "torch>=2.4", "transformers>=4.46", "peft>=0.13", "trl>=0.12",
-        "datasets>=3.0", "accelerate>=1.0", "bitsandbytes>=0.44",
-        "safetensors>=0.4", "sentencepiece>=0.2", "hf_transfer>=0.1",
+        "torch==2.5.1", "transformers==4.46.3", "peft==0.13.2", "trl==0.12.2",
+        "datasets==3.1.0", "accelerate==1.1.1", "bitsandbytes==0.44.1",
+        "safetensors>=0.4.5", "sentencepiece>=0.2", "hf_transfer>=0.1.8",
     )
     .env({"HF_HUB_ENABLE_HF_TRANSFER": "1"})
     # Ship train_lora.py + dist/ into the container (excludes big/regenerable
@@ -49,17 +53,21 @@ image = (
 # for it. Adapters are also stashed here as a belt-and-suspenders copy.
 HF_CACHE_DIR = "/cache/huggingface"
 cache = modal.Volume.from_name("rmpg-hf-cache", create_if_missing=True)
+# Persist the finished adapter remotely so a --detach run's result survives the
+# local client disconnecting; retrieve with `modal volume get rmpg-adapters …`.
+adapters = modal.Volume.from_name("rmpg-adapters", create_if_missing=True)
 
 
 @app.function(
     image=image,
     gpu="H100",                                   # 70B QLoRA → 80 GB. For --base 8B, "A100-40GB" or "A10G" is plenty (and cheaper).
     timeout=4 * 60 * 60,                          # first run downloads 70B; training itself is minutes on this set.
-    volumes={HF_CACHE_DIR: cache},
+    volumes={HF_CACHE_DIR: cache, "/adapters": adapters},
     secrets=[modal.Secret.from_name("huggingface")],  # exposes HF_TOKEN for the gated base
 )
 def train(base: str, cf_model: str, rank: int, alpha: int, epochs: float) -> dict:
     import os
+    import shutil
     import subprocess
 
     os.environ["HF_HOME"] = HF_CACHE_DIR          # cache base weights on the Volume
@@ -73,6 +81,12 @@ def train(base: str, cf_model: str, rank: int, alpha: int, epochs: float) -> dic
         cwd="/root/work", check=True,
     )
     cache.commit()
+    # Persist to the adapters Volume FIRST (survives a detached run / client drop),
+    # then also return the bytes for the connected-client convenience path.
+    dst = "/adapters/serve-intake"
+    shutil.rmtree(dst, ignore_errors=True)
+    shutil.copytree(out, dst)
+    adapters.commit()
     return {
         name: pathlib.Path(out, name).read_bytes()
         for name in ("adapter_model.safetensors", "adapter_config.json")

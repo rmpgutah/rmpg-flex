@@ -141,6 +141,7 @@ def main():
         warmup_ratio=0.05,
         weight_decay=0.01,
         max_seq_length=args.max_seq_len,
+        dataset_text_field="text",           # we rendered each row to a "text" field above
         packing=False,                       # MUST be False for completion-only masking
         bf16=True,
         gradient_checkpointing=True,
@@ -157,6 +158,7 @@ def main():
     trainer = SFTTrainer(
         model=model, args=cfg,
         train_dataset=ds["train"], eval_dataset=ds["val"],
+        processing_class=tok,                # TRL ≥0.12 wants the tokenizer here (was `tokenizer=`)
         data_collator=collator,
         callbacks=[EarlyStoppingCallback(early_stopping_patience=2)],
     )
@@ -165,6 +167,17 @@ def main():
     # Save adapter, then make it Workers-AI compatible: PEFT omits model_type,
     # which Cloudflare requires. Patch it and sanity-check the constraints.
     trainer.model.save_pretrained(args.out)
+
+    # QLoRA keeps the trainable LoRA weights in fp32 (4 B/param), which on a 70B
+    # base blows past Workers AI's 300 MB adapter cap. Re-save as bf16 (2 B/param)
+    # — standard for LoRA inference, no meaningful quality loss — to halve it.
+    weights = os.path.join(args.out, "adapter_model.safetensors")
+    if os.path.exists(weights):
+        from safetensors.torch import load_file, save_file
+        save_file({k: v.to(torch.bfloat16) for k, v in load_file(weights).items()},
+                  weights, metadata={"format": "pt"})
+
+    # PEFT omits model_type, which Cloudflare requires. Patch it + sanity-check.
     cfg_path = os.path.join(args.out, "adapter_config.json")
     with open(cfg_path) as fh:
         ac = json.load(fh)
@@ -175,7 +188,6 @@ def main():
 
     if ac.get("r", args.rank) > 32:
         print("⚠ rank > 32 — Workers AI will reject this adapter.")
-    weights = os.path.join(args.out, "adapter_model.safetensors")
     if os.path.exists(weights):
         mb = os.path.getsize(weights) / 1e6
         print(f"adapter_model.safetensors: {mb:.1f} MB {'⚠ >300 MB!' if mb > 300 else 'OK (<300 MB)'}")
