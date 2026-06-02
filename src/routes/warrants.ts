@@ -116,9 +116,9 @@ warrants.get('/utah', requireRole(...READ_ROLES), async (c) => {
 // utah_warrants table (the cron poller's cache) and returns the SPA's
 // UnifiedSearchResults shape { local, utah, scraped, meta }. Was 404 in both
 // Workers → the tab threw "API endpoint not found" and the unhandled rejection
-// surfaced in the console. `scraped` is empty: there is no separate scraped
-// table on live D1 (the rewrite synthesizes scrapers from utah_warrants), so
-// folding scraped results in would double-list the Utah hits.
+// surfaced in the console. `scraped` is now backed by the scraped_warrants
+// table populated by the multi-source orchestrator (Ada/Natrona/etc.); it
+// mirrors the utah branch (filter guard + LIKE escaping + defensive []).
 warrants.post('/search-all', requireRole(...READ_ROLES), async (c) => {
   const startedAt = Date.now();
   let body: Record<string, unknown> = {};
@@ -212,7 +212,37 @@ warrants.post('/search-all', requireRole(...READ_ROLES), async (c) => {
     utah = [];
   }
 
-  const scraped: Record<string, unknown>[] = [];
+  // ── Multi-State scraped warrants (multi-source orchestrator cache) ──
+  // Mirrors the utah branch: only run with a name/court/charge/number filter,
+  // reuse the same like() ESCAPE pattern, and defensively fall back to [] if
+  // the table is cold. Feeds the WarrantsPage "Multi-State Scraped" panel.
+  let scraped: Record<string, unknown>[] = [];
+  try {
+    const hasScrapedFilter = firstName || lastName || court || chargeKeyword || warrantNumber;
+    if (hasScrapedFilter) {
+      const f: string[] = ["status = 'active'"];
+      const p: unknown[] = [];
+      if (firstName) { f.push("first_name LIKE ? ESCAPE '\\'"); p.push(like(firstName)); }
+      if (lastName) { f.push("last_name LIKE ? ESCAPE '\\'"); p.push(like(lastName)); }
+      if (court) { f.push("court_name LIKE ? ESCAPE '\\'"); p.push(like(court)); }
+      if (chargeKeyword) { f.push("charge_description LIKE ? ESCAPE '\\'"); p.push(like(chargeKeyword)); }
+      if (warrantNumber) { f.push("(case_number LIKE ? ESCAPE '\\' OR warrant_id LIKE ? ESCAPE '\\')"); p.push(like(warrantNumber), like(warrantNumber)); }
+      scraped = await query<Record<string, unknown>>(
+        db,
+        `SELECT source_key, first_name, last_name, charge_description, court_name,
+                case_number, issue_date, bail_amount, offense_level, warrant_id,
+                city, state
+           FROM scraped_warrants
+           WHERE ${f.join(' AND ')}
+           ORDER BY last_seen_at DESC
+           LIMIT 100`,
+        ...p,
+      );
+    }
+  } catch (err) {
+    console.error('[warrants] search-all scraped query error:', (err as Error)?.message);
+    scraped = [];
+  }
 
   return c.json({
     local,
@@ -220,7 +250,7 @@ warrants.post('/search-all', requireRole(...READ_ROLES), async (c) => {
     scraped,
     meta: {
       duration: Date.now() - startedAt,
-      sources: ['local', 'utah'],
+      sources: ['local', 'utah', 'scraped'],
       utahBlocked: false,
       searchedAt: new Date().toISOString(),
       totalHits: local.length + utah.length + scraped.length,
