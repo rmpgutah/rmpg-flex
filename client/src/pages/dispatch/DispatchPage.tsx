@@ -258,6 +258,9 @@ export default function DispatchPage() {
   const { user } = useAuth();
   const isAdminOrManager = user?.role === 'admin' || user?.role === 'manager';
   const isGodMode = user?.role === 'admin'; // Admin God Mode — unrestricted access
+  // Only senior roles may remove (soft-delete) a call from the board — mirrors
+  // the server-side guard in src/routes/dispatch/calls.ts (CALL_DELETE_ROLES).
+  const canDeleteCall = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'supervisor';
   const unitModalTitleId = useId();
   const navigate = useNavigate();
   const { addToast } = useToast();
@@ -4059,10 +4062,10 @@ export default function DispatchPage() {
                         <RotateCcw style={{ width: 10, height: 10 }} /> Restore
                       </button>
                     )}
-                    {/* Delete — available on any call */}
-                    {!isEditing && (
-                      <button type="button" onClick={() => setDeleteCallTarget(selectedCall)} className="toolbar-btn text-red-400 hover:text-red-300" title="Delete this call permanently">
-                        <Trash2 style={{ width: 10, height: 10 }} /> Delete
+                    {/* Remove — soft-delete (archive); senior roles only */}
+                    {!isEditing && canDeleteCall && (
+                      <button type="button" onClick={() => setDeleteCallTarget(selectedCall)} className="toolbar-btn text-red-400 hover:text-red-300" title="Remove this call from the board (archived, admin-recoverable)">
+                        <Trash2 style={{ width: 10, height: 10 }} /> Remove
                       </button>
                     )}
                   </div>
@@ -6283,10 +6286,14 @@ export default function DispatchPage() {
                 <Copy style={{ width: 12, height: 12 }} /> Duplicate as New
               </button>
             )}
-            <div className="border-t border-rmpg-600 my-1" />
-            <button type="button" className="context-menu-item text-red-400" onClick={() => { setDeleteCallTarget(contextMenu.call); setContextMenu(null); }}>
-              <Trash2 style={{ width: 12, height: 12 }} /> Delete
-            </button>
+            {canDeleteCall && (
+              <>
+                <div className="border-t border-rmpg-600 my-1" />
+                <button type="button" className="context-menu-item text-red-400" onClick={() => { setDeleteCallTarget(contextMenu.call); setContextMenu(null); }}>
+                  <Trash2 style={{ width: 12, height: 12 }} /> Remove
+                </button>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -6599,9 +6606,9 @@ export default function DispatchPage() {
         isOpen={deleteCallTarget !== null}
         onClose={() => setDeleteCallTarget(null)}
         onConfirm={handleDeleteAnyCall}
-        title="Delete Call"
-        message={`Are you sure you want to permanently delete call "${deleteCallTarget?.call_number || ''}"? This will also free any assigned units. This action cannot be undone.`}
-        confirmLabel="Delete Call"
+        title="Remove Call"
+        message={`Remove call "${deleteCallTarget?.call_number || ''}" from the board? It will be archived and recoverable by an admin. Any assigned units will be freed.`}
+        confirmLabel="Remove Call"
         confirmVariant="danger"
         isLoading={isDeletingCall}
       />
