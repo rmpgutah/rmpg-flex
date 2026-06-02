@@ -560,7 +560,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData, 
         const rRowData = [
           (seg.call_number || 'N/A').toUpperCase(),
           (seg.incident_type || 'N/A').replace(/_/g, ' ').toUpperCase(),
-          `P${seg.priority}`.toUpperCase(),
+          (seg.priority ? (String(seg.priority).toUpperCase().startsWith('P') ? String(seg.priority).toUpperCase() : `P${seg.priority}`.toUpperCase()) : 'N/A'),
           seg.dispatched_at ? formatDateTime(seg.dispatched_at).toUpperCase() : 'N/A',
           seg.onscene_at ? formatDateTime(seg.onscene_at).toUpperCase() : 'N/A',
           seg.time_to_onscene_seconds != null ? formatDuration(seg.time_to_onscene_seconds).toUpperCase() : 'N/A',

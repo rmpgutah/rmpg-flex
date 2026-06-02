@@ -64,6 +64,9 @@ const WRITE = ['admin', 'manager', 'supervisor', 'officer'];
 const READ = [...WRITE, 'dispatcher'];
 
 const STATUSES = new Set(['pending', 'assigned', 'in_progress', 'served', 'attempted', 'failed', 'cancelled']);
+// serve_queue.priority CHECK enum — coerce unknown values to 'normal' (a bad
+// value 500s the INSERT/UPDATE on the constraint).
+const PRIORITIES = new Set(['routine', 'normal', 'rush', 'urgent']);
 const ATTEMPT_RESULTS = new Set([
   'served', 'sub_served', 'posted', 'no_answer', 'refused',
   'bad_address', 'moved', 'deceased', 'other',
@@ -276,7 +279,7 @@ sv.post('/', async (c) => {
   if (!body.recipient_name && !body.recipient_address) {
     return c.json({ error: 'recipient_name or recipient_address required' }, 400);
   }
-  const priority = body.priority ?? 'normal';
+  const priority = PRIORITIES.has(body.priority) ? body.priority : 'normal';
   const status = body.status && STATUSES.has(body.status) ? body.status : 'pending';
 
   // Backfill geocode when recipient_address is provided but coords are not
@@ -349,6 +352,7 @@ sv.put('/:id', async (c) => {
   for (const k of allowed) {
     if (!(k in body)) continue;
     if (k === 'status' && body[k] && !STATUSES.has(body[k])) continue;
+    if (k === 'priority' && body[k] && !PRIORITIES.has(body[k])) continue; // skip invalid (CHECK enum)
     sets.push(`${k} = ?`);
     args.push(body[k]);
   }
