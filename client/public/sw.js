@@ -319,7 +319,13 @@
 //       sessions (rmpg_map_collapsed_sections). Lets the operator keep the
 //       panel compact alongside the already-collapsible Map Style / Spatial
 //       Layers / Statewide Data / Advanced Tools sections.
-// v708 — Unit management: admin can now DISPOSE units (retire = soft
+// v708: Statewide data visual upgrade — (1) address points now color-coded by
+//       structure/property type (Residential/Commercial/Industrial/Agricultural/
+//       Mixed/Other via PtType); (2) roads keep class color codes (+ Ramp);
+//       (3) both ALWAYS load — gates lowered to the archive min zoom (roads z6,
+//       addresses z10) so they no longer vanish when zoomed out; legends
+//       updated. Click still populates full point detail.
+// v709 — Unit management: admin can now DISPOSE units (retire = soft
 //        out-of-service keeping history, or delete = permanent) — both
 //        force-clear a stale call assignment server-side, so units stuck on a
 //        call (the old delete refused them) can finally be removed; the board
@@ -328,7 +334,7 @@
 //        capabilities (K9/SWAT/Supervisor/FTO/Traffic/Detective/Patrol), audio
 //        mode. Unit create/update/delete/dispose + GET now route to the
 //        rewrite (env.API) so the new fields persist + the hardened handlers run.
-const CACHE_NAME = 'rmpg-flex-v708';
+const CACHE_NAME = 'rmpg-flex-v709';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

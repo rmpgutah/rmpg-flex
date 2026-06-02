@@ -123,7 +123,14 @@ export default function UnifiedMapLegend({ hierarchy, boundaries, statewide, cho
                 </div>
               )}
               {statewide.addresses && (
-                <div className="flex items-center gap-1.5" style={{ marginTop: 2 }}><Swatch color="#e8b84b" dot /><span style={{ fontSize: 9, color: fg }}>Address point</span></div>
+                <div className="mt-1">
+                  <div style={{ fontSize: 7, color: sub, marginBottom: 1 }}>Address points by type</div>
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                    {[['Residential', '#22c55e'], ['Commercial', '#f59e0b'], ['Industrial', '#ef4444'], ['Agricultural', '#84cc16'], ['Mixed', '#14b8a6'], ['Other', '#e8b84b']].map(([l, col]) => (
+                      <span key={l} className="flex items-center gap-1"><Swatch color={col} dot /><span style={{ fontSize: 8, color: fg }}>{l}</span></span>
+                    ))}
+                  </div>
+                </div>
               )}
             </div>
           )}

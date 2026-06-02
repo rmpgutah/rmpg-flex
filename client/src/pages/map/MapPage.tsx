@@ -4111,9 +4111,13 @@ export default function MapPage() {
                         </div>
                       )}
                       {vectorLayerStates['utah_addresses']?.visible && (
-                        <div className="flex items-center gap-1">
-                          <span className="inline-block w-2 h-2 rounded-full" style={{ background: '#e8b84b', border: '1px solid #1a1a1a' }} />
-                          <span className="text-[8px] text-rmpg-400">Address point</span>
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                          {[['Residential', '#22c55e'], ['Commercial', '#f59e0b'], ['Industrial', '#ef4444'], ['Agric.', '#84cc16'], ['Mixed', '#14b8a6'], ['Other', '#e8b84b']].map(([l, c]) => (
+                            <span key={l} className="flex items-center gap-1">
+                              <span className="inline-block w-2 h-2 rounded-full" style={{ background: c, border: '1px solid #1a1a1a' }} />
+                              <span className="text-[8px] text-rmpg-400">{l}</span>
+                            </span>
+                          ))}
                         </div>
                       )}
                     </div>

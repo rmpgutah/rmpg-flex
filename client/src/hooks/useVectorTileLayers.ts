@@ -198,22 +198,32 @@ export function useVectorTileLayers({ map, popup, isLight = false, onUseLocation
               type: 'line',
               source,
               'source-layer': cfg.sourceLayer,
-              minzoom: cfg.minzoom,
+              // Always load regardless of zoom — gate only at the archive's own
+              // min zoom (z6) so roads appear statewide, not just zoomed in.
+              minzoom: cfg.sourceMinzoom,
               layout: { visibility: 'none', 'line-join': 'round', 'line-cap': 'round' },
               paint: {
-                // Major classes (interstate/US/state) draw brighter + wider.
+                // Road-class color codes: Interstate red, US Hwy orange, State
+                // gold, Ramp light-gold, everything else muted gold.
                 'line-color': [
                   'match', ['to-string', ['get', 'CARTOCODE']],
-                  '1', '#ef4444', '2', '#f59e0b', '3', '#e8b84b',
+                  '1', '#ef4444', '2', '#f59e0b', '3', '#e8b84b', '4', '#caa53a',
                   cfg.color,
                 ] as any,
                 'line-width': [
                   'interpolate', ['linear'], ['zoom'],
+                  6, ['match', ['to-string', ['get', 'CARTOCODE']], '1', 1.2, '2', 0.9, '3', 0.6, 0.2],
                   9, ['match', ['to-string', ['get', 'CARTOCODE']], '1', 2, '2', 1.6, '3', 1.2, 0.4],
                   14, ['match', ['to-string', ['get', 'CARTOCODE']], '1', 4, '2', 3, '3', 2.4, 1.2],
                   18, ['match', ['to-string', ['get', 'CARTOCODE']], '1', 7, '2', 6, '3', 5, 3],
                 ] as any,
-                'line-opacity': ['interpolate', ['linear'], ['zoom'], 9, 0.45, 14, 0.85] as any,
+                // Below z9, only major roads carry visible opacity so the
+                // statewide view isn't a solid web of local streets.
+                'line-opacity': [
+                  'interpolate', ['linear'], ['zoom'],
+                  6, ['match', ['to-string', ['get', 'CARTOCODE']], '1', 0.7, '2', 0.55, '3', 0.4, 0.12],
+                  9, 0.45, 14, 0.85,
+                ] as any,
               },
             });
           }
@@ -251,13 +261,25 @@ export function useVectorTileLayers({ map, popup, isLight = false, onUseLocation
               type: 'circle',
               source,
               'source-layer': cfg.sourceLayer,
-              minzoom: cfg.minzoom,
+              // Always load regardless of zoom — gate at the archive's own min
+              // (z10) so address points appear well before street level.
+              minzoom: cfg.sourceMinzoom,
               layout: { visibility: 'none' },
               paint: {
-                'circle-radius': ['interpolate', ['linear'], ['zoom'], 14, 2, 18, 5] as any,
-                'circle-color': cfg.color,
+                'circle-radius': ['interpolate', ['linear'], ['zoom'], 10, 1.4, 14, 2.4, 18, 5] as any,
+                // Color-code by structure / property type for differentiation
+                // (PtType is mixed-case in UGRC data, so normalize with upcase).
+                'circle-color': [
+                  'match', ['upcase', ['to-string', ['get', 'PtType']]],
+                  'RESIDENTIAL', '#22c55e',
+                  'COMMERCIAL', '#f59e0b',
+                  'INDUSTRIAL', '#ef4444',
+                  'AGRICULTURAL', '#84cc16',
+                  'MIXED USE', '#14b8a6',
+                  cfg.color,
+                ] as any,
                 'circle-opacity': 0.9,
-                'circle-stroke-color': '#1a1a1a',
+                'circle-stroke-color': '#0a0a0a',
                 'circle-stroke-width': 0.6,
               },
             });
