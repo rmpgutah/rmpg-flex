@@ -314,7 +314,12 @@
 //       (clamp(160px,14vw,200px)+24) when it's open and return to the edge
 //       when collapsed, matching the other map overlays; they stack cleanly
 //       when navigation is active.
-const CACHE_NAME = 'rmpg-flex-v706';
+// v707: LAYERS panel — Intelligence / Analysis / Tactical groups are now
+//       collapsible (click the section header to fold), persisted across
+//       sessions (rmpg_map_collapsed_sections). Lets the operator keep the
+//       panel compact alongside the already-collapsible Map Style / Spatial
+//       Layers / Statewide Data / Advanced Tools sections.
+const CACHE_NAME = 'rmpg-flex-v707';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
