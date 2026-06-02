@@ -73,7 +73,7 @@ ocr.post('/scan-document', async (c) => {
       const bytes = new Uint8Array(await file.arrayBuffer());
       const container = getContainer(c.env.PDF_TOOLS, PDF_TOOLS_NAME);
       const txt = await withTimeout(extractTextFromPdf(container, bytes, file.name || 'doc.pdf'), CONTAINER_TIMEOUT_MS, 'PDF text extraction timed out');
-      const r = await withTimeout(extractFromText(c.env.AI, txt.text), AI_TIMEOUT_MS, 'Text extraction timed out');
+      const r = await withTimeout(extractFromText(c.env.AI, txt.text, c.env.SERVE_INTAKE_LORA), AI_TIMEOUT_MS, 'Text extraction timed out');
       return c.json({
         success: r.success, documentType: r.documentType, confidence: r.confidence,
         fields: r.fields, rawText: r.rawText, allDates: r.allDates,
