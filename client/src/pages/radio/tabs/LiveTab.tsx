@@ -139,7 +139,7 @@ export default function LiveTab({ selectedChannelId, onSelectChannel }: Props) {
       {/* Search row + channel picker */}
       <div className="flex items-center gap-2 px-3 py-1.5" style={{ borderBottom: '1px solid var(--rt-border)' }}>
         <Search className="w-3 h-3" style={{ color: 'var(--rt-muted)' }} />
-        <input
+        <input id="ff-livetab-0"
           type="text" value={q} onChange={(e) => setQ(e.target.value)}
           placeholder='search: "10-50" | "code 4" -test'
           className="flex-1 bg-transparent outline-none text-[10px] font-mono"
@@ -147,7 +147,7 @@ export default function LiveTab({ selectedChannelId, onSelectChannel }: Props) {
           aria-label="Search transmissions"
         />
         <Sep />
-        <select
+        <select id="ff-livetab-1"
           value={selectedChannelId ?? ''}
           onChange={(e) => onSelectChannel(e.target.value ? parseInt(e.target.value, 10) : null)}
           aria-label="Select channel"

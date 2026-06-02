@@ -114,7 +114,7 @@ export default function DispatchToolPanel(props: DispatchToolPanelProps) {
         {activeTab === 'geocode' && (
           <div className="p-2.5 space-y-2">
             <form onSubmit={handleGeocodeSubmit} className="flex gap-1.5">
-              <input
+              <input id="ff-dispatchtoolpanel-0"
                 type="text"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
@@ -232,7 +232,7 @@ export default function DispatchToolPanel(props: DispatchToolPanelProps) {
           <div className="p-2.5 space-y-2">
             <form onSubmit={handleIsochroneSubmit} className="space-y-1.5">
               <div className="flex gap-1.5">
-                <input
+                <input id="ff-dispatchtoolpanel-1"
                   type="text"
                   value={isoLng}
                   onChange={(e) => setIsoLng(e.target.value)}
@@ -240,7 +240,7 @@ export default function DispatchToolPanel(props: DispatchToolPanelProps) {
                   className="flex-1 px-2 py-1 text-[10px] border border-[#3a3a3a] outline-none"
                   style={{ background: '#050505', color: '#cccccc', borderRadius: 2 }}
                 />
-                <input
+                <input id="ff-dispatchtoolpanel-2"
                   type="text"
                   value={isoLat}
                   onChange={(e) => setIsoLat(e.target.value)}

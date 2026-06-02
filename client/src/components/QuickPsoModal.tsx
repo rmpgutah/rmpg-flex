@@ -144,7 +144,7 @@ export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFul
           {clients.length > 0 && (
             <div>
               <label className="block text-xs font-semibold text-brand-gold-500 uppercase mb-1">Client / Requestor</label>
-              <select
+              <select id="ff-quickpsomodal-0"
                 className="select-dark w-full"
                 value={formData.client_id || ''}
                 onChange={(e) => {
@@ -199,7 +199,7 @@ export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFul
           {/* Service Type */}
           <div>
             <label className="block text-xs font-semibold text-purple-300 uppercase mb-1">Service Type</label>
-            <select
+            <select id="ff-quickpsomodal-1"
               ref={firstInputRef}
               className="select-dark"
               value={formData.pso_service_type}
@@ -267,7 +267,7 @@ export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFul
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-semibold text-purple-300 uppercase mb-1">Requestor Name</label>
-              <input
+              <input id="ff-quickpsomodal-2"
                 type="text"
                 className="input-dark"
                 placeholder="Client contact"
@@ -278,7 +278,7 @@ export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFul
             </div>
             <div>
               <label className="block text-xs font-semibold text-purple-300 uppercase mb-1">Requestor Phone</label>
-              <input
+              <input id="ff-quickpsomodal-3"
                 type="text"
                 className="input-dark"
                 placeholder="(801) 555-0100"
@@ -292,7 +292,7 @@ export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFul
           {/* Contract ID */}
           <div>
             <label className="block text-xs font-semibold text-purple-300 uppercase mb-1">Contract ID</label>
-            <input
+            <input id="ff-quickpsomodal-4"
               type="text"
               className="input-dark"
               placeholder="PSO contract #"
@@ -321,7 +321,7 @@ export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFul
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
                 <div>
                   <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Document Type</label>
-                  <select
+                  <select id="ff-quickpsomodal-5"
                     className="select-dark"
                     value={formData.process_service_type}
                     onChange={(e) => update('process_service_type', e.target.value)}
@@ -333,7 +333,7 @@ export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFul
                 </div>
                 <div>
                   <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Serve To (Name)</label>
-                  <input
+                  <input id="ff-quickpsomodal-6"
                     type="text"
                     className="input-dark"
                     placeholder="Person to be served"
@@ -344,7 +344,7 @@ export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFul
               </div>
               <div>
                 <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Service Address</label>
-                <input
+                <input id="ff-quickpsomodal-7"
                   type="text"
                   className="input-dark w-full"
                   placeholder="Address for service"

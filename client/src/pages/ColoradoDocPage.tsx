@@ -232,7 +232,7 @@ export default function ColoradoDocPage() {
 
             {searchMode === 'name' ? (
               <div className="flex gap-2">
-                <input
+                <input id="ff-coloradodocpage-0"
                   type="text"
                   placeholder="Last Name *"
                   value={lastName}
@@ -240,7 +240,7 @@ export default function ColoradoDocPage() {
                   className="flex-1 bg-[#0c0c0c] border border-[#2b2b2b] rounded-sm px-2.5 py-1.5 text-xs text-white placeholder:text-rmpg-600 focus:border-[#888888] focus:outline-none"
                   autoFocus
                 />
-                <input
+                <input id="ff-coloradodocpage-1"
                   type="text"
                   placeholder="First Name"
                   value={firstName}
@@ -249,7 +249,7 @@ export default function ColoradoDocPage() {
                 />
               </div>
             ) : (
-              <input
+              <input id="ff-coloradodocpage-2"
                 type="text"
                 placeholder="DOC Number (e.g. 123456)"
                 value={docNumber}

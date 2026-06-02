@@ -461,7 +461,7 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
         <div className="flex items-center gap-1 text-rmpg-400">
           <Search size={14} />
         </div>
-        <select
+        <select id="ff-reviewstab-0"
           value={filterOfficer}
           onChange={(e) => setFilterOfficer(e.target.value)}
           className="bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1 text-xs text-white focus:border-brand-500 focus:outline-none"
@@ -473,7 +473,7 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
             </option>
           ))}
         </select>
-        <select
+        <select id="ff-reviewstab-1"
           value={filterType}
           onChange={(e) => setFilterType(e.target.value)}
           className="bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1 text-xs text-white focus:border-brand-500 focus:outline-none"
@@ -485,7 +485,7 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
             </option>
           ))}
         </select>
-        <select
+        <select id="ff-reviewstab-2"
           value={filterStatus}
           onChange={(e) => setFilterStatus(e.target.value)}
           className="bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1 text-xs text-white focus:border-brand-500 focus:outline-none"

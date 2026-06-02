@@ -334,7 +334,7 @@ export default function AdminIPEDTab({ LoadingSpinner, error, setError }: Props)
         {/* IPED Install Path */}
         <div className="space-y-1.5">
           <label className="text-[10px] text-rmpg-400">IPED Installation Path</label>
-          <input
+          <input id="ff-adminipedtab-0"
             type="text"
             value={installPath}
             onChange={(e) => setInstallPath(e.target.value)}
@@ -349,7 +349,7 @@ export default function AdminIPEDTab({ LoadingSpinner, error, setError }: Props)
         {/* Java Home */}
         <div className="space-y-1.5">
           <label className="text-[10px] text-rmpg-400">Java Home <span className="text-rmpg-600">(JDK 11+ required)</span></label>
-          <input
+          <input id="ff-adminipedtab-1"
             type="text"
             value={javaHome}
             onChange={(e) => setJavaHome(e.target.value)}
@@ -540,14 +540,14 @@ export default function AdminIPEDTab({ LoadingSpinner, error, setError }: Props)
         <div className="space-y-1.5">
           <label className="text-[10px] text-rmpg-400">IPED Web API <span className="text-rmpg-600">(optional — for case browsing)</span></label>
           <div className="flex gap-2">
-            <input
+            <input id="ff-adminipedtab-2"
               type="text"
               value={webApiUrl}
               onChange={(e) => setWebApiUrl(e.target.value)}
               placeholder={status?.webApiUrl || 'http://localhost'}
               className="flex-1 bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-xs px-2.5 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none font-mono"
             />
-            <input
+            <input id="ff-adminipedtab-3"
               type="text"
               value={webApiPort}
               onChange={(e) => setWebApiPort(e.target.value)}
@@ -585,7 +585,7 @@ export default function AdminIPEDTab({ LoadingSpinner, error, setError }: Props)
           </div>
           <div className="flex items-center gap-2">
             <div className="space-y-1">
-              <input
+              <input id="ff-adminipedtab-4"
                 type="text"
                 value={hashSetsPath}
                 onChange={(e) => setHashSetsPath(e.target.value)}

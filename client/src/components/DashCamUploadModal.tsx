@@ -220,26 +220,26 @@ export default function DashCamUploadModal({
                 <span className="text-[9px] text-rmpg-600">MP4, MOV, AVI, WebM</span>
               </button>
             )}
-            <input ref={fileRef} type="file" accept="video/mp4,video/quicktime,video/x-msvideo,video/webm,.mp4,.mov,.avi,.webm" onChange={handleFileChange} className="hidden" />
+            <input id="ff-dashcamuploadmodal-0" ref={fileRef} type="file" accept="video/mp4,video/quicktime,video/x-msvideo,video/webm,.mp4,.mov,.avi,.webm" onChange={handleFileChange} className="hidden" />
           </div>
 
           {/* Metadata */}
           <div className="panel-inset p-3 space-y-3">
             <div>
               <label className="field-label">Title <span className="text-red-400">*</span></label>
-              <input type="text" value={title} onChange={e => setTitle(e.target.value)} required placeholder="Video title" className="input-dark" />
+              <input id="ff-dashcamuploadmodal-1" type="text" value={title} onChange={e => setTitle(e.target.value)} required placeholder="Video title" className="input-dark" />
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="field-label">Vehicle</label>
-                <select value={vehicleId} onChange={e => setVehicleId(e.target.value)} className="select-dark">
+                <select id="ff-dashcamuploadmodal-2" value={vehicleId} onChange={e => setVehicleId(e.target.value)} className="select-dark">
                   <option value="">Select vehicle...</option>
                   {vehicles.map(v => <option key={v.id} value={v.id}>#{v.vehicle_number} — {[v.year, v.make, v.model].filter(Boolean).join(' ')}</option>)}
                 </select>
               </div>
               <div>
                 <label className="field-label">Unit</label>
-                <select value={unitId} onChange={e => setUnitId(e.target.value)} className="select-dark">
+                <select id="ff-dashcamuploadmodal-3" value={unitId} onChange={e => setUnitId(e.target.value)} className="select-dark">
                   <option value="">Select unit...</option>
                   {units.map(u => <option key={u.id} value={u.id}>{u.call_sign}</option>)}
                 </select>
@@ -248,11 +248,11 @@ export default function DashCamUploadModal({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="field-label">Recorded Date</label>
-                <input type="datetime-local" value={recordedAt} onChange={e => setRecordedAt(e.target.value)} className="input-dark" />
+                <input id="ff-dashcamuploadmodal-4" type="datetime-local" value={recordedAt} onChange={e => setRecordedAt(e.target.value)} className="input-dark" />
               </div>
               <div>
                 <label className="field-label">Classification</label>
-                <select value={classification} onChange={e => setClassification(e.target.value)} className="select-dark">
+                <select id="ff-dashcamuploadmodal-5" value={classification} onChange={e => setClassification(e.target.value)} className="select-dark">
                   {CLASSIFICATIONS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
                 </select>
               </div>
@@ -266,15 +266,15 @@ export default function DashCamUploadModal({
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
               <div>
                 <label className="field-label flex items-center gap-1"><Gauge className="w-2.5 h-2.5" /> Speed (MPH)</label>
-                <input type="number" step="0.1" value={speedMph} onChange={e => setSpeedMph(e.target.value)} placeholder="e.g. 45" className="input-dark" />
+                <input id="ff-dashcamuploadmodal-6" type="number" step="0.1" value={speedMph} onChange={e => setSpeedMph(e.target.value)} placeholder="e.g. 45" className="input-dark" />
               </div>
               <div>
                 <label className="field-label">Latitude</label>
-                <input type="number" step="0.0001" value={latitude} onChange={e => setLatitude(e.target.value)} placeholder="e.g. 40.7608" className="input-dark" />
+                <input id="ff-dashcamuploadmodal-7" type="number" step="0.0001" value={latitude} onChange={e => setLatitude(e.target.value)} placeholder="e.g. 40.7608" className="input-dark" />
               </div>
               <div>
                 <label className="field-label">Longitude</label>
-                <input type="number" step="0.0001" value={longitude} onChange={e => setLongitude(e.target.value)} placeholder="e.g. -111.8910" className="input-dark" />
+                <input id="ff-dashcamuploadmodal-8" type="number" step="0.0001" value={longitude} onChange={e => setLongitude(e.target.value)} placeholder="e.g. -111.8910" className="input-dark" />
               </div>
             </div>
              <div>
@@ -298,7 +298,7 @@ export default function DashCamUploadModal({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="field-label">Case Number</label>
-                <input type="text" value={caseNumber} onChange={e => setCaseNumber(e.target.value)} placeholder="e.g. 2026-0001" className="input-dark" />
+                <input id="ff-dashcamuploadmodal-9" type="text" value={caseNumber} onChange={e => setCaseNumber(e.target.value)} placeholder="e.g. 2026-0001" className="input-dark" />
               </div>
             </div>
             <div>

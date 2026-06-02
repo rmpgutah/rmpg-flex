@@ -78,19 +78,19 @@ export default function RiskPage() {
             <h3 className="text-sm font-bold text-white mb-4">{editingRecord ? 'Edit Assessment' : 'New Assessment'}</h3>
             <div className="space-y-3">
               <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Entity Type <span className="text-red-500">*</span></label>
-                <input className="input-dark mt-1" value={formData.entity_type || ''} onChange={e => setFormData({...formData, entity_type: e.target.value})} autoFocus placeholder="e.g. premise, officer, vehicle" /></div>
+                <input id="ff-riskpage-0" className="input-dark mt-1" value={formData.entity_type || ''} onChange={e => setFormData({...formData, entity_type: e.target.value})} autoFocus placeholder="e.g. premise, officer, vehicle" /></div>
               <div className="grid grid-cols-2 gap-3">
                 <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Risk Level</label>
-                  <select className="select-dark mt-1" value={formData.risk_level || 'low'} onChange={e => setFormData({...formData, risk_level: e.target.value})}>
+                  <select id="ff-riskpage-1" className="select-dark mt-1" value={formData.risk_level || 'low'} onChange={e => setFormData({...formData, risk_level: e.target.value})}>
                     {['low','moderate','high','critical'].map(l=><option key={l} value={l}>{l}</option>)}
                   </select></div>
                 <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Category</label>
-                  <input className="input-dark mt-1" value={formData.risk_category || ''} onChange={e => setFormData({...formData, risk_category: e.target.value})} /></div>
+                  <input id="ff-riskpage-2" className="input-dark mt-1" value={formData.risk_category || ''} onChange={e => setFormData({...formData, risk_category: e.target.value})} /></div>
               </div>
               <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Description <span className="text-red-500">*</span></label>
-                <textarea rows={3} className="input-dark mt-1" value={formData.description || ''} onChange={e => setFormData({...formData, description: e.target.value})} /></div>
+                <textarea id="ff-riskpage-3" rows={3} className="input-dark mt-1" value={formData.description || ''} onChange={e => setFormData({...formData, description: e.target.value})} /></div>
               <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Mitigation Plan</label>
-                <textarea rows={2} className="input-dark mt-1" value={formData.mitigation_plan || ''} onChange={e => setFormData({...formData, mitigation_plan: e.target.value})} /></div>
+                <textarea id="ff-riskpage-4" rows={2} className="input-dark mt-1" value={formData.mitigation_plan || ''} onChange={e => setFormData({...formData, mitigation_plan: e.target.value})} /></div>
             </div>
             <div className="flex justify-end gap-3 mt-4">
               <button onClick={() => setEditingRecord(null)} className="toolbar-btn px-4" style={{ height: 28 }}>Cancel</button>

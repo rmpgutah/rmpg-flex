@@ -43,7 +43,7 @@ export default function VoicePersonaSettings() {
           <span className="text-[11px]" style={{ color: '#888888' }}>
             Dispatcher voice
           </span>
-          <select
+          <select id="ff-voicepersonasettings-0"
             value={persona.voiceId}
             onChange={(e) => setPersona({ voiceId: e.target.value })}
             className="mt-1 w-full text-xs p-1"
@@ -95,7 +95,7 @@ export default function VoicePersonaSettings() {
           <span className="text-[11px]" style={{ color: '#888888' }}>
             Rate: {persona.rate.toFixed(2)}x
           </span>
-          <input
+          <input id="ff-voicepersonasettings-1"
             type="range"
             min="0.7"
             max="1.4"
@@ -111,7 +111,7 @@ export default function VoicePersonaSettings() {
           <span className="text-[11px]" style={{ color: '#888888' }}>
             Pitch: {persona.pitch > 0 ? '+' : ''}{persona.pitch}
           </span>
-          <input
+          <input id="ff-voicepersonasettings-2"
             type="range"
             min="-20"
             max="20"

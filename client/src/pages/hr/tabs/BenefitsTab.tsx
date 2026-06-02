@@ -83,7 +83,7 @@ export default function BenefitsTab({ userRole }: { userRole: string }) {
         <div className="flex items-center gap-2">
           <div className="relative">
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500 pointer-events-none" aria-hidden="true" />
-            <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Search benefits..." aria-label="Search benefits by officer, type, or plan" className="input-field text-xs py-1 pl-6 pr-2 w-48 focus:ring-1 focus:ring-brand-500/50 transition-shadow duration-150" />
+            <input id="ff-benefitstab-0" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Search benefits..." aria-label="Search benefits by officer, type, or plan" className="input-field text-xs py-1 pl-6 pr-2 w-48 focus:ring-1 focus:ring-brand-500/50 transition-shadow duration-150" />
           </div>
           {isManager && <button type="button" onClick={() => setShowForm(!showForm)} className="toolbar-btn toolbar-btn-success text-xs"><Plus className="w-3 h-3" /> Add Benefit</button>}
         </div>
@@ -94,30 +94,30 @@ export default function BenefitsTab({ userRole }: { userRole: string }) {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div>
               <label className="field-label">Officer *</label>
-              <select value={form.officer_id} onChange={e => setForm(f => ({ ...f, officer_id: e.target.value }))} className="input-field w-full text-xs">
+              <select id="ff-benefitstab-1" value={form.officer_id} onChange={e => setForm(f => ({ ...f, officer_id: e.target.value }))} className="input-field w-full text-xs">
                 <option value="">Select...</option>
                 {officers.map(o => <option key={o.id} value={o.id}>{o.full_name}</option>)}
               </select>
             </div>
             <div>
               <label className="field-label">Type *</label>
-              <select value={form.benefit_type} onChange={e => setForm(f => ({ ...f, benefit_type: e.target.value }))} className="input-field w-full text-xs">
+              <select id="ff-benefitstab-2" value={form.benefit_type} onChange={e => setForm(f => ({ ...f, benefit_type: e.target.value }))} className="input-field w-full text-xs">
                 {BENEFIT_TYPES.map(t => <option key={t} value={t}>{t === '401k' ? '401(k)' : t === 'hsa' ? 'HSA' : t === 'fsa' ? 'FSA' : t.charAt(0).toUpperCase() + t.slice(1)}</option>)}
               </select>
             </div>
             <div>
               <label className="field-label">Plan Name</label>
-              <input value={form.plan_name} onChange={e => setForm(f => ({ ...f, plan_name: e.target.value }))} className="input-field w-full text-xs" placeholder="e.g. Blue Cross PPO" />
+              <input id="ff-benefitstab-3" value={form.plan_name} onChange={e => setForm(f => ({ ...f, plan_name: e.target.value }))} className="input-field w-full text-xs" placeholder="e.g. Blue Cross PPO" />
             </div>
             <div>
               <label className="field-label">Provider</label>
-              <input value={form.provider} onChange={e => setForm(f => ({ ...f, provider: e.target.value }))} className="input-field w-full text-xs" placeholder="e.g. Blue Cross" />
+              <input id="ff-benefitstab-4" value={form.provider} onChange={e => setForm(f => ({ ...f, provider: e.target.value }))} className="input-field w-full text-xs" placeholder="e.g. Blue Cross" />
             </div>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div>
               <label className="field-label">Coverage</label>
-              <select value={form.coverage_level} onChange={e => setForm(f => ({ ...f, coverage_level: e.target.value }))} className="input-field w-full text-xs">
+              <select id="ff-benefitstab-5" value={form.coverage_level} onChange={e => setForm(f => ({ ...f, coverage_level: e.target.value }))} className="input-field w-full text-xs">
                 <option value="individual">Individual</option>
                 <option value="individual_spouse">Individual + Spouse</option>
                 <option value="family">Family</option>
@@ -125,15 +125,15 @@ export default function BenefitsTab({ userRole }: { userRole: string }) {
             </div>
             <div>
               <label className="field-label">Employee Cost ($/mo)</label>
-              <input type="number" min="0" step="0.01" value={form.employee_cost} onChange={e => setForm(f => ({ ...f, employee_cost: Number(e.target.value) }))} className="input-field w-full text-xs tabular-nums" />
+              <input id="ff-benefitstab-6" type="number" min="0" step="0.01" value={form.employee_cost} onChange={e => setForm(f => ({ ...f, employee_cost: Number(e.target.value) }))} className="input-field w-full text-xs tabular-nums" />
             </div>
             <div>
               <label className="field-label">Employer Cost ($/mo)</label>
-              <input type="number" min="0" step="0.01" value={form.employer_cost} onChange={e => setForm(f => ({ ...f, employer_cost: Number(e.target.value) }))} className="input-field w-full text-xs tabular-nums" />
+              <input id="ff-benefitstab-7" type="number" min="0" step="0.01" value={form.employer_cost} onChange={e => setForm(f => ({ ...f, employer_cost: Number(e.target.value) }))} className="input-field w-full text-xs tabular-nums" />
             </div>
             <div>
               <label className="field-label">Effective Date</label>
-              <input type="date" value={form.effective_date} onChange={e => setForm(f => ({ ...f, effective_date: e.target.value }))} className="input-field w-full text-xs" />
+              <input id="ff-benefitstab-8" type="date" value={form.effective_date} onChange={e => setForm(f => ({ ...f, effective_date: e.target.value }))} className="input-field w-full text-xs" />
             </div>
           </div>
           <div className="flex gap-2">

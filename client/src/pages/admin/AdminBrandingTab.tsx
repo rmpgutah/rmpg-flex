@@ -174,12 +174,12 @@ export default function AdminBrandingTab({ LoadingSpinner, error, setError }: Ad
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Report Header Text</label>
-            <input className="input-dark text-xs w-full" value={config.report_header_text} onChange={(e) => update('report_header_text', e.target.value)} placeholder="AGENCY NAME" />
+            <input id="ff-adminbrandingtab-0" className="input-dark text-xs w-full" value={config.report_header_text} onChange={(e) => update('report_header_text', e.target.value)} placeholder="AGENCY NAME" />
             <p className="text-[9px] text-rmpg-600 mt-0.5">Primary agency name — appears at top of every PDF</p>
           </div>
           <div>
             <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Report Subheader Text</label>
-            <input className="input-dark text-xs w-full" value={config.report_subheader_text} onChange={(e) => update('report_subheader_text', e.target.value)} placeholder="SUBTITLE" />
+            <input id="ff-adminbrandingtab-1" className="input-dark text-xs w-full" value={config.report_subheader_text} onChange={(e) => update('report_subheader_text', e.target.value)} placeholder="SUBTITLE" />
             <p className="text-[9px] text-rmpg-600 mt-0.5">Subtitle — appears below agency name</p>
           </div>
         </div>
@@ -190,7 +190,7 @@ export default function AdminBrandingTab({ LoadingSpinner, error, setError }: Ad
         </div>
         <div>
           <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Form Number Prefix</label>
-          <input className="input-dark text-xs w-32" value={config.form_number_prefix} onChange={(e) => update('form_number_prefix', e.target.value)} placeholder="RKY" />
+          <input id="ff-adminbrandingtab-2" className="input-dark text-xs w-32" value={config.form_number_prefix} onChange={(e) => update('form_number_prefix', e.target.value)} placeholder="RKY" />
           <p className="text-[9px] text-rmpg-600 mt-0.5">Prefix for form numbers (e.g., RKY → FORM RKY-201)</p>
         </div>
       </div>
@@ -206,7 +206,7 @@ export default function AdminBrandingTab({ LoadingSpinner, error, setError }: Ad
           <div>
             <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Primary Color</label>
             <div className="flex items-center gap-2">
-              <input type="color" value={config.primary_color} onChange={(e) => update('primary_color', e.target.value)} className="w-10 h-10 cursor-pointer border-0 p-0 bg-transparent" />
+              <input id="ff-adminbrandingtab-3" type="color" value={config.primary_color} onChange={(e) => update('primary_color', e.target.value)} className="w-10 h-10 cursor-pointer border-0 p-0 bg-transparent" />
               <div>
                 <span className="text-[10px] text-rmpg-500 font-mono block">{config.primary_color}</span>
                 <span className="text-[9px] text-rmpg-600">Case # box, accents</span>
@@ -216,7 +216,7 @@ export default function AdminBrandingTab({ LoadingSpinner, error, setError }: Ad
           <div>
             <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Accent Color</label>
             <div className="flex items-center gap-2">
-              <input type="color" value={config.accent_color} onChange={(e) => update('accent_color', e.target.value)} className="w-10 h-10 cursor-pointer border-0 p-0 bg-transparent" />
+              <input id="ff-adminbrandingtab-4" type="color" value={config.accent_color} onChange={(e) => update('accent_color', e.target.value)} className="w-10 h-10 cursor-pointer border-0 p-0 bg-transparent" />
               <div>
                 <span className="text-[10px] text-rmpg-500 font-mono block">{config.accent_color}</span>
                 <span className="text-[9px] text-rmpg-600">Subtitles, lines</span>
@@ -226,7 +226,7 @@ export default function AdminBrandingTab({ LoadingSpinner, error, setError }: Ad
           <div>
             <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Header Background</label>
             <div className="flex items-center gap-2">
-              <input type="color" value={config.header_bg_color} onChange={(e) => update('header_bg_color', e.target.value)} className="w-10 h-10 cursor-pointer border-0 p-0 bg-transparent" />
+              <input id="ff-adminbrandingtab-5" type="color" value={config.header_bg_color} onChange={(e) => update('header_bg_color', e.target.value)} className="w-10 h-10 cursor-pointer border-0 p-0 bg-transparent" />
               <div>
                 <span className="text-[10px] text-rmpg-500 font-mono block">{config.header_bg_color}</span>
                 <span className="text-[9px] text-rmpg-600">Header bar fill</span>
@@ -236,7 +236,7 @@ export default function AdminBrandingTab({ LoadingSpinner, error, setError }: Ad
           <div>
             <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Section Accent</label>
             <div className="flex items-center gap-2">
-              <input type="color" value={config.section_accent_color} onChange={(e) => update('section_accent_color', e.target.value)} className="w-10 h-10 cursor-pointer border-0 p-0 bg-transparent" />
+              <input id="ff-adminbrandingtab-6" type="color" value={config.section_accent_color} onChange={(e) => update('section_accent_color', e.target.value)} className="w-10 h-10 cursor-pointer border-0 p-0 bg-transparent" />
               <div>
                 <span className="text-[10px] text-rmpg-500 font-mono block">{config.section_accent_color}</span>
                 <span className="text-[9px] text-rmpg-600">Gold accent strip</span>
@@ -362,7 +362,7 @@ export default function AdminBrandingTab({ LoadingSpinner, error, setError }: Ad
           </div>
           <div>
             <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Default Classification</label>
-            <select
+            <select id="ff-adminbrandingtab-7"
               className="input-dark text-xs w-full min-h-[36px]"
               value={config.default_classification}
               onChange={(e) => update('default_classification', e.target.value)}
@@ -404,7 +404,7 @@ export default function AdminBrandingTab({ LoadingSpinner, error, setError }: Ad
           {config.show_confidential_watermark === '1' && (
             <div className="mt-2">
               <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Watermark Text</label>
-              <input className="input-dark text-xs w-full" value={config.watermark_text} onChange={(e) => update('watermark_text', e.target.value)} placeholder="CONFIDENTIAL" />
+              <input id="ff-adminbrandingtab-8" className="input-dark text-xs w-full" value={config.watermark_text} onChange={(e) => update('watermark_text', e.target.value)} placeholder="CONFIDENTIAL" />
             </div>
           )}
         </div>

@@ -159,13 +159,13 @@ export default function AdminEmailRulesTab() {
 
       {editing && (
         <div className="border border-[#222] p-3 space-y-2 bg-[#141414]">
-          <input
+          <input id="ff-adminemailrulestab-0"
             placeholder="Rule name"
             value={editing.name || ''}
             onChange={e => setEditing({ ...editing, name: e.target.value })}
             className="w-full bg-black text-white px-2 py-1"
           />
-          <input
+          <input id="ff-adminemailrulestab-1"
             type="number"
             placeholder="Priority"
             value={editing.priority ?? 100}
@@ -185,7 +185,7 @@ export default function AdminEmailRulesTab() {
             className="w-full bg-black text-white px-2 py-1 h-20 font-mono text-xs"
           />
           <label className="flex items-center gap-2 text-xs">
-            <input
+            <input id="ff-adminemailrulestab-2"
               type="checkbox"
               checked={!!editing.enabled}
               onChange={e => setEditing({ ...editing, enabled: e.target.checked ? 1 : 0 })}

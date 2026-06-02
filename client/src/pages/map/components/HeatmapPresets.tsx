@@ -175,7 +175,7 @@ export default function HeatmapPresets({ current, onApply }: Props) {
         {isNaming && (
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
             <Bookmark className="w-3 h-3 text-[#d4a017]" aria-hidden="true" />
-            <input
+            <input id="ff-heatmappresets-0"
               type="text"
               value={draftName}
               onChange={(e) => setDraftName(e.target.value)}

@@ -410,7 +410,7 @@ export default function ConnectionsPage() {
 
       <div className="relative">
         <div className="flex items-center gap-2">
-          <input
+          <input id="ff-connectionspage-0"
             type="text"
             placeholder="Search for a person, vehicle, case, incident..."
             className="flex-1 bg-surface-raised border border-[#222222] px-3 py-2 text-sm text-gray-200 placeholder-gray-500 focus:border-[#d4a017] focus:outline-none"
@@ -785,7 +785,7 @@ export default function ConnectionsPage() {
               key={t}
               className="flex items-center gap-2 text-xs text-gray-300 cursor-pointer hover:text-[#d4a017]"
             >
-              <input
+              <input id="ff-connectionspage-1"
                 type="checkbox"
                 checked={!hiddenTypes.has(t)}
                 onChange={() => toggleType(t)}
@@ -872,7 +872,7 @@ export default function ConnectionsPage() {
 
             <label className="block text-xs text-gray-300">
               Name
-              <input
+              <input id="ff-connectionspage-2"
                 type="text"
                 className="mt-1 w-full bg-surface-sunken border border-[#222222] px-2 py-1.5 text-sm text-gray-200 focus:border-[#d4a017] focus:outline-none"
                 style={{ borderRadius: 2 }}

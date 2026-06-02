@@ -849,7 +849,7 @@ export default function SkipTracerV2Page() {
         <div className="relative flex items-center gap-1">
           <div className="relative flex-1">
             <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#556677] pointer-events-none" />
-            <input
+            <input id="ff-skiptracerv2page-0"
               type="text"
               value={query}
               onChange={e => setQuery(e.target.value)}
@@ -974,7 +974,7 @@ export default function SkipTracerV2Page() {
             ].map(field => (
               <div key={field.key}>
                 <label className="text-[8px] text-[#556677] uppercase tracking-wider block mb-0.5">{field.label}</label>
-                <input
+                <input id="ff-skiptracerv2page-1"
                   type="text"
                   value={advancedFields[field.key] || ''}
                   onChange={e => setAdvancedFields(prev => ({ ...prev, [field.key]: e.target.value }))}
@@ -1220,7 +1220,7 @@ export default function SkipTracerV2Page() {
                           </button>
                         ))}
                       </div>
-                      <input
+                      <input id="ff-skiptracerv2page-2"
                         type="text"
                         value={linkValue}
                         onChange={e => setLinkValue(e.target.value)}
@@ -1695,7 +1695,7 @@ export default function SkipTracerV2Page() {
 
       <div className="relative mb-3">
         <Search size={14} className="absolute left-2.5 top-2 text-[#556677]" />
-        <input
+        <input id="ff-skiptracerv2page-3"
           type="text"
           value={dossierSearch}
           onChange={e => setDossierSearch(e.target.value)}

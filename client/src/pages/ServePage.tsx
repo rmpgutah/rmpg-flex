@@ -653,7 +653,7 @@ export default function ServePage() {
         {/* Date picker + route stats */}
         <div className="flex items-center gap-1 ml-auto sm:ml-2">
           <Calendar size={14} className="text-rmpg-400" />
-          <input
+          <input id="ff-servepage-0"
             type="date"
             value={selectedDate}
             onChange={e => setSelectedDate(e.target.value)}
@@ -1101,7 +1101,7 @@ export default function ServePage() {
             <div className="p-3 bg-[#141414] border border-[#2b2b2b] rounded-[2px]">
               <div className="text-[10px] text-[#d4a017] uppercase font-semibold tracking-wider mb-2">Job Cost Calculator</div>
               <div className="flex items-center gap-2">
-                <select
+                <select id="ff-servepage-1"
                   value={costJobId || ''}
                   onChange={e => { const v = parseInt(e.target.value, 10); if (v) handleLoadCostEstimate(v); }}
                   className="flex-1 px-2 py-1 text-xs bg-[#0c0c0c] border border-[#2b2b2b] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
@@ -1262,7 +1262,7 @@ export default function ServePage() {
             <label className="block text-[11px] text-rmpg-400 mb-1">
               Recipient Name <span className="text-red-400">*</span>
             </label>
-            <input
+            <input id="ff-servepage-2"
               type="text"
               required
               value={formData.recipient_name}
@@ -1276,7 +1276,7 @@ export default function ServePage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="sm:col-span-2">
               <label className="block text-[11px] text-rmpg-400 mb-1">Address</label>
-              <input
+              <input id="ff-servepage-3"
                 type="text"
                 value={formData.recipient_address}
                 onChange={e => handleFormChange('recipient_address', e.target.value)}
@@ -1286,7 +1286,7 @@ export default function ServePage() {
             </div>
             <div>
               <label className="block text-[11px] text-rmpg-400 mb-1">City</label>
-              <input
+              <input id="ff-servepage-4"
                 type="text"
                 value={formData.recipient_city}
                 onChange={e => handleFormChange('recipient_city', e.target.value)}
@@ -1296,7 +1296,7 @@ export default function ServePage() {
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className="block text-[11px] text-rmpg-400 mb-1">State</label>
-                <input
+                <input id="ff-servepage-5"
                   type="text"
                   value={formData.recipient_state}
                   onChange={e => handleFormChange('recipient_state', e.target.value)}
@@ -1306,7 +1306,7 @@ export default function ServePage() {
               </div>
               <div>
                 <label className="block text-[11px] text-rmpg-400 mb-1">ZIP</label>
-                <input
+                <input id="ff-servepage-6"
                   type="text"
                   value={formData.recipient_zip}
                   onChange={e => handleFormChange('recipient_zip', e.target.value)}
@@ -1321,7 +1321,7 @@ export default function ServePage() {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-[11px] text-rmpg-400 mb-1">Document Type</label>
-              <select
+              <select id="ff-servepage-7"
                 value={formData.document_type}
                 onChange={e => handleFormChange('document_type', e.target.value)}
                 className="w-full px-3 py-2 text-sm bg-[#0c0c0c] border border-[#2b2b2b] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
@@ -1331,7 +1331,7 @@ export default function ServePage() {
             </div>
             <div>
               <label className="block text-[11px] text-rmpg-400 mb-1">Priority</label>
-              <select
+              <select id="ff-servepage-8"
                 value={formData.priority}
                 onChange={e => handleFormChange('priority', e.target.value)}
                 className="w-full px-3 py-2 text-sm bg-[#0c0c0c] border border-[#2b2b2b] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
@@ -1350,7 +1350,7 @@ export default function ServePage() {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-[11px] text-rmpg-400 mb-1">Time Window</label>
-              <select
+              <select id="ff-servepage-9"
                 value={formData.time_window}
                 onChange={e => handleFormChange('time_window', e.target.value)}
                 className="w-full px-3 py-2 text-sm bg-[#0c0c0c] border border-[#2b2b2b] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
@@ -1363,7 +1363,7 @@ export default function ServePage() {
             </div>
             <div>
               <label className="block text-[11px] text-rmpg-400 mb-1">Deadline</label>
-              <input
+              <input id="ff-servepage-10"
                 type="date"
                 value={formData.deadline}
                 onChange={e => handleFormChange('deadline', e.target.value)}
@@ -1376,7 +1376,7 @@ export default function ServePage() {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className="block text-[11px] text-rmpg-400 mb-1">Case Number</label>
-              <input
+              <input id="ff-servepage-11"
                 type="text"
                 value={formData.case_number}
                 onChange={e => handleFormChange('case_number', e.target.value)}
@@ -1385,7 +1385,7 @@ export default function ServePage() {
             </div>
             <div>
               <label className="block text-[11px] text-rmpg-400 mb-1">Court</label>
-              <input
+              <input id="ff-servepage-12"
                 type="text"
                 value={formData.court_name}
                 onChange={e => handleFormChange('court_name', e.target.value)}
@@ -1394,7 +1394,7 @@ export default function ServePage() {
             </div>
             <div>
               <label className="block text-[11px] text-rmpg-400 mb-1">Jurisdiction</label>
-              <input
+              <input id="ff-servepage-13"
                 type="text"
                 value={formData.jurisdiction}
                 onChange={e => handleFormChange('jurisdiction', e.target.value)}
@@ -1407,7 +1407,7 @@ export default function ServePage() {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-[11px] text-rmpg-400 mb-1">Client Name</label>
-              <input
+              <input id="ff-servepage-14"
                 type="text"
                 value={formData.client_name}
                 onChange={e => handleFormChange('client_name', e.target.value)}
@@ -1416,7 +1416,7 @@ export default function ServePage() {
             </div>
             <div>
               <label className="block text-[11px] text-rmpg-400 mb-1">Attorney Name</label>
-              <input
+              <input id="ff-servepage-15"
                 type="text"
                 value={formData.attorney_name}
                 onChange={e => handleFormChange('attorney_name', e.target.value)}
@@ -1429,7 +1429,7 @@ export default function ServePage() {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-[11px] text-rmpg-400 mb-1">Max Attempts</label>
-              <input
+              <input id="ff-servepage-16"
                 type="number"
                 min={1}
                 max={10}

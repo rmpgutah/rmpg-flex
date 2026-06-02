@@ -580,7 +580,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
       {showQuickNote && onQuickNote && (
         <div className="mt-1.5 pt-1 border-t border-rmpg-700/50 flex gap-1" onClick={(e) => e.stopPropagation()}>
           {/* 25: Focus ring on quick note input; 26: Transition on border color */}
-          <input
+          <input id="ff-callcard-0"
             type="text"
             className="flex-1 bg-surface-sunken border border-rmpg-600 text-[10px] text-rmpg-200 px-1.5 py-0.5 rounded-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500/30 focus:outline-none transition-colors"
             placeholder="Add note..."

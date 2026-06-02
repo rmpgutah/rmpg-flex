@@ -289,7 +289,7 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
             {unitsLoading ? (
               <div className="flex items-center gap-2 text-xs text-rmpg-400"><Loader2 className="w-3 h-3 animate-spin" /> Loading units...</div>
             ) : (
-              <select
+              <select id="ff-gpsbreadcrumbpanel-0"
                 value={selectedUnit || ''}
                 onChange={e => setSelectedUnit(Number(e.target.value) || null)}
                 className="w-full px-2 py-1.5 text-xs bg-[#0c0c0c] border border-[#2b2b2b] rounded-[2px] text-white focus:border-[#888888] focus:outline-none"
@@ -305,13 +305,13 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className="text-[9px] text-rmpg-400 block mb-0.5">From</label>
-                <input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="w-full px-2 py-1 text-xs bg-[#0c0c0c] border border-[#2b2b2b] rounded-[2px] text-white" />
-                <input type="time" value={timeFrom} onChange={e => setTimeFrom(e.target.value)} className="w-full px-2 py-1 text-xs bg-[#0c0c0c] border border-[#2b2b2b] rounded-[2px] text-white mt-1" />
+                <input id="ff-gpsbreadcrumbpanel-1" type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="w-full px-2 py-1 text-xs bg-[#0c0c0c] border border-[#2b2b2b] rounded-[2px] text-white" />
+                <input id="ff-gpsbreadcrumbpanel-2" type="time" value={timeFrom} onChange={e => setTimeFrom(e.target.value)} className="w-full px-2 py-1 text-xs bg-[#0c0c0c] border border-[#2b2b2b] rounded-[2px] text-white mt-1" />
               </div>
               <div>
                 <label className="text-[9px] text-rmpg-400 block mb-0.5">To</label>
-                <input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="w-full px-2 py-1 text-xs bg-[#0c0c0c] border border-[#2b2b2b] rounded-[2px] text-white" />
-                <input type="time" value={timeTo} onChange={e => setTimeTo(e.target.value)} className="w-full px-2 py-1 text-xs bg-[#0c0c0c] border border-[#2b2b2b] rounded-[2px] text-white mt-1" />
+                <input id="ff-gpsbreadcrumbpanel-3" type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="w-full px-2 py-1 text-xs bg-[#0c0c0c] border border-[#2b2b2b] rounded-[2px] text-white" />
+                <input id="ff-gpsbreadcrumbpanel-4" type="time" value={timeTo} onChange={e => setTimeTo(e.target.value)} className="w-full px-2 py-1 text-xs bg-[#0c0c0c] border border-[#2b2b2b] rounded-[2px] text-white mt-1" />
               </div>
             </div>
             <button type="button" onClick={loadTrail} disabled={!selectedUnit || loading}
@@ -336,7 +336,7 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
                 </button>
                 <button type="button" onClick={() => stepPlayback(1)} className="text-rmpg-400 hover:text-white p-1"><SkipForward className="w-3.5 h-3.5" /></button>
                 <span className="text-[10px] text-rmpg-300 font-mono ml-1">{playbackIdx + 1}/{trail.points.length}</span>
-                <select value={playbackSpeed} onChange={e => setPlaybackSpeed(Number(e.target.value))}
+                <select id="ff-gpsbreadcrumbpanel-5" value={playbackSpeed} onChange={e => setPlaybackSpeed(Number(e.target.value))}
                   className="ml-auto px-1.5 py-0.5 text-[10px] bg-[#0c0c0c] border border-[#2b2b2b] rounded-[2px] text-rmpg-300">
                   <option value={1}>1x</option><option value={2}>2x</option><option value={5}>5x</option><option value={10}>10x</option>
                 </select>

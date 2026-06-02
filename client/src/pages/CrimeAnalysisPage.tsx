@@ -163,7 +163,7 @@ export default function CrimeAnalysisPage() {
     <div className="h-full flex flex-col">
       <PanelTitleBar title="Crime Analysis — Intelligence-Led Policing" icon={TrendingUp}>
         <div className="flex items-center gap-2">
-          <select
+          <select id="ff-crimeanalysispage-0"
             value={dateRange}
             onChange={e => setDateRange(e.target.value)}
             className="text-[10px] bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-1.5 py-0.5 outline-none"
@@ -176,10 +176,10 @@ export default function CrimeAnalysisPage() {
           </select>
           {dateRange === 'custom' && (
             <>
-              <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)}
+              <input id="ff-crimeanalysispage-1" type="date" value={startDate} onChange={e => setStartDate(e.target.value)}
                 className="text-[10px] bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-1.5 py-0.5 outline-none" title="Start date" />
               <span className="text-[10px] text-rmpg-500">to</span>
-              <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)}
+              <input id="ff-crimeanalysispage-2" type="date" value={endDate} onChange={e => setEndDate(e.target.value)}
                 className="text-[10px] bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-1.5 py-0.5 outline-none" title="End date" />
             </>
           )}

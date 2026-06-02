@@ -134,7 +134,7 @@ export default function BodyCamVideoEditModal({ isOpen, onClose, video, onSave }
           {/* Title */}
           <div>
             <label className="field-label">Title *</label>
-            <input
+            <input id="ff-bodycamvideoeditmodal-0"
               type="text"
               value={title}
               onChange={e => setTitle(e.target.value)}
@@ -148,7 +148,7 @@ export default function BodyCamVideoEditModal({ isOpen, onClose, video, onSave }
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="field-label">Interaction Type</label>
-              <select
+              <select id="ff-bodycamvideoeditmodal-1"
                 value={interactionType}
                 onChange={e => setInteractionType(e.target.value as BwcInteractionType | '')}
                 className="input-field w-full"
@@ -161,7 +161,7 @@ export default function BodyCamVideoEditModal({ isOpen, onClose, video, onSave }
             </div>
             <div>
               <label className="field-label">Case Number</label>
-              <input
+              <input id="ff-bodycamvideoeditmodal-2"
                 type="text"
                 value={caseNumber}
                 onChange={e => setCaseNumber(e.target.value)}
@@ -175,7 +175,7 @@ export default function BodyCamVideoEditModal({ isOpen, onClose, video, onSave }
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="field-label">Classification</label>
-              <select
+              <select id="ff-bodycamvideoeditmodal-3"
                 value={classification}
                 onChange={e => setClassification(e.target.value as VideoClassification)}
                 className="input-field w-full"
@@ -187,7 +187,7 @@ export default function BodyCamVideoEditModal({ isOpen, onClose, video, onSave }
             </div>
             <div>
               <label className="field-label">Retention Status</label>
-              <select
+              <select id="ff-bodycamvideoeditmodal-4"
                 value={retentionStatus}
                 onChange={e => setRetentionStatus(e.target.value)}
                 className="input-field w-full"
@@ -202,7 +202,7 @@ export default function BodyCamVideoEditModal({ isOpen, onClose, video, onSave }
           {/* Recorded At */}
           <div>
             <label className="field-label">Recorded At</label>
-            <input
+            <input id="ff-bodycamvideoeditmodal-5"
               type="datetime-local"
               value={recordedAt}
               onChange={e => setRecordedAt(e.target.value)}

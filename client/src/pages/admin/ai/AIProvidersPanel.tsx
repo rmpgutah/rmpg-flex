@@ -141,7 +141,7 @@ export default function AIProvidersPanel({ config, providerStatus, setConfig, on
           />
         </div>
         <label className="flex items-center gap-2 cursor-pointer">
-          <input
+          <input id="ff-aiproviderspanel-0"
             type="checkbox"
             checked={config.autoFallback}
             onChange={toggleFallback}
@@ -221,7 +221,7 @@ export default function AIProvidersPanel({ config, providerStatus, setConfig, on
             show={!!showKeys.openai} onToggle={() => setShowKeys(p => ({ ...p, openai: !p.openai }))} />
           <div className="flex items-center gap-2">
             <label className="text-[10px] text-rmpg-500 w-20 shrink-0">Base URL</label>
-            <input
+            <input id="ff-aiproviderspanel-1"
               type="text" value={openaiBaseUrl}
               onChange={e => { setOpenaiBaseUrl(e.target.value); setDirty(true); }}
               placeholder="https://api.openai.com/v1"
@@ -238,7 +238,7 @@ export default function AIProvidersPanel({ config, providerStatus, setConfig, on
         >
           <div className="flex items-center gap-2">
             <label className="text-[10px] text-rmpg-500 w-20 shrink-0">Server URL</label>
-            <input
+            <input id="ff-aiproviderspanel-2"
               type="text" value={ollamaUrl}
               onChange={e => { setOllamaUrl(e.target.value); setDirty(true); }}
               placeholder="http://localhost:11434"

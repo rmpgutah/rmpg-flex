@@ -139,7 +139,7 @@ export default function FuelAnalyticsPage() {
         </div>
         <div className="flex items-center gap-1.5">
           <label className="text-[9px] text-rmpg-500 uppercase mr-1">Window</label>
-          <select className="select-dark text-[10px] min-h-[28px] py-0.5"
+          <select id="ff-fuelanalyticspage-0" className="select-dark text-[10px] min-h-[28px] py-0.5"
             value={windowDays} onChange={(e) => setWindowDays(Number(e.target.value))}>
             {WINDOW_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>

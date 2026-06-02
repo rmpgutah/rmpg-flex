@@ -95,7 +95,7 @@ export default function FullCatalog({ categorySlug }: { categorySlug: string }) 
         <div className="text-[9px] text-[#d4a017] uppercase tracking-wider font-semibold">
           Full Catalog — {tools.length} upstream tools
         </div>
-        <input
+        <input id="ff-fullcatalog-0"
           type="text"
           placeholder="Filter by name…"
           value={query}

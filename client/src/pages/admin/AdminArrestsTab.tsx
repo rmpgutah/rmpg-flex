@@ -358,7 +358,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
         </button>
 
         {/* Source filter */}
-        <select
+        <select id="ff-adminarreststab-0"
           value={sourceFilter}
           onChange={e => { setSourceFilter(e.target.value); setRecordsPage(1); }}
           className="bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-[10px] px-2 py-1.5 rounded-sm"
@@ -373,7 +373,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
         {/* Search */}
         <div className="relative flex-1 min-w-[180px]">
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" />
-          <input
+          <input id="ff-adminarreststab-1"
             type="text"
             value={searchTerm}
             onChange={e => { setSearchTerm(e.target.value); setRecordsPage(1); }}
@@ -414,7 +414,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
               <div key={f.key} className={f.span ? 'col-span-2 sm:col-span-3' : ''}>
                 <label className="text-[9px] text-rmpg-400 uppercase">{f.label}</label>
                 {f.select ? (
-                  <select
+                  <select id="ff-adminarreststab-2"
                     value={(form as any)[f.key]}
                     onChange={e => setForm(p => ({ ...p, [f.key]: e.target.value }))}
                     className="w-full bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-[10px] px-2 py-1 rounded-sm"
@@ -423,7 +423,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
                     {f.select.map(o => <option key={o} value={o}>{o}</option>)}
                   </select>
                 ) : (
-                  <input
+                  <input id="ff-adminarreststab-3"
                     type={f.type || 'text'}
                     value={(form as any)[f.key]}
                     onChange={e => setForm(p => ({ ...p, [f.key]: e.target.value }))}
@@ -489,7 +489,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <div>
               <label className="text-[9px] text-rmpg-400 uppercase">Default County</label>
-              <select
+              <select id="ff-adminarreststab-4"
                 value={csvCounty}
                 onChange={e => setCsvCounty(e.target.value)}
                 className="w-full bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-[10px] px-2 py-1 rounded-sm"
@@ -500,7 +500,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
             </div>
             <div>
               <label className="text-[9px] text-rmpg-400 uppercase">Default Agency</label>
-              <input
+              <input id="ff-adminarreststab-5"
                 value={csvAgency}
                 onChange={e => setCsvAgency(e.target.value)}
                 placeholder="Salt Lake County Jail"
@@ -649,7 +649,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
             <div className="space-y-1.5 mt-2">
               <label className="text-[9px] text-rmpg-400 uppercase">RapidAPI Key</label>
               <div className="relative">
-                <input
+                <input id="ff-adminarreststab-6"
                   type={showKey ? 'text' : 'password'}
                   value={apiKey}
                   onChange={e => setApiKey(e.target.value)}
@@ -787,7 +787,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
                           )}
 
                           {/* Interval selector */}
-                          <select
+                          <select id="ff-adminarreststab-7"
                             value={county.scrape_interval_minutes || 30}
                             onChange={e => handleIntervalChange(county.county, parseInt(e.target.value, 10))}
                             className="bg-surface-base border border-rmpg-700 text-rmpg-400 text-[9px] px-1 py-0.5 rounded-sm"

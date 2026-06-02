@@ -63,7 +63,7 @@ export default function FindDialog({ open, onClose, currentPage, onJumpTo }: Pro
     <div className="fixed top-[120px] right-6 z-40 bg-[#141414] border border-[#222] rounded-[2px] p-2 shadow-lg w-[320px]">
       <div className="flex items-center gap-1.5">
         <Search className="w-3.5 h-3.5 text-rmpg-400" />
-        <input ref={inputRef} type="text" value={query} onChange={e => setQuery(e.target.value)}
+        <input id="ff-finddialog-0" ref={inputRef} type="text" value={query} onChange={e => setQuery(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter') navigate(e.shiftKey ? -1 : 1);
             else if (e.key === 'Escape') onClose();

@@ -176,7 +176,7 @@ export default function ShiftPlansPage() {
           >
             ◀
           </button>
-          <input
+          <input id="ff-shiftplanspage-0"
             type="date"
             value={selectedDate}
             onChange={(e) => setSelectedDate(e.target.value)}
@@ -246,7 +246,7 @@ export default function ShiftPlansPage() {
                   <X style={{ width: 10, height: 10 }} />
                 </button>
               </div>
-              <input
+              <input id="ff-shiftplanspage-1"
                 type="text"
                 value={newPlanName}
                 onChange={(e) => setNewPlanName(e.target.value)}

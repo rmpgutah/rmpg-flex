@@ -57,7 +57,7 @@ export default function GlobalCatalogSearch({ onNavigate }: { onNavigate: (path:
         <div className="text-[9px] text-[#d4a017] uppercase tracking-wider font-semibold">
           Search all {ALL_TOOLS.length} tools
         </div>
-        <input
+        <input id="ff-globalcatalogsearch-0"
           type="text"
           placeholder="nmap, sqlmap, exif, wifi, hash…"
           value={q}

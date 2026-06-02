@@ -253,7 +253,7 @@ export default function DashcamAiPage(): React.ReactElement {
       {/* Filter bar */}
       <div className="px-3 py-2 border-b border-[#222] bg-surface-base flex flex-wrap items-center gap-2 text-[11px]">
         <Filter className="w-3 h-3 text-rmpg-500" aria-hidden="true" />
-        <select
+        <select id="ff-dashcamaipage-0"
           value={filters.source}
           onChange={e => setFilters({ ...filters, source: e.target.value })}
           className="bg-surface-sunken border border-[#222] px-2 py-1 text-rmpg-200"
@@ -266,7 +266,7 @@ export default function DashcamAiPage(): React.ReactElement {
           <option value="freematics">Freematics</option>
           <option value="manual">Manual</option>
         </select>
-        <select
+        <select id="ff-dashcamaipage-1"
           value={filters.severity}
           onChange={e => setFilters({ ...filters, severity: e.target.value })}
           className="bg-surface-sunken border border-[#222] px-2 py-1 text-rmpg-200"
@@ -278,7 +278,7 @@ export default function DashcamAiPage(): React.ReactElement {
           <option value="alert">Alert</option>
           <option value="critical">Critical</option>
         </select>
-        <select
+        <select id="ff-dashcamaipage-2"
           value={filters.event_type}
           onChange={e => setFilters({ ...filters, event_type: e.target.value })}
           className="bg-surface-sunken border border-[#222] px-2 py-1 text-rmpg-200"
@@ -300,7 +300,7 @@ export default function DashcamAiPage(): React.ReactElement {
           <option value="ignition_off">Ignition off</option>
           <option value="custom">Custom</option>
         </select>
-        <select
+        <select id="ff-dashcamaipage-3"
           value={filters.has_video}
           onChange={e => setFilters({ ...filters, has_video: e.target.value })}
           className="bg-surface-sunken border border-[#222] px-2 py-1 text-rmpg-200"

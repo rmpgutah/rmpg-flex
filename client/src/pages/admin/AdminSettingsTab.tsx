@@ -105,7 +105,7 @@ export default function AdminSettingsTab(_props: Props) {
       <div className="flex items-center gap-3 p-3 bg-[#060606] border-b border-[#1a1a1a]">
         <Settings size={14} color="#d4a017" />
         <span className="text-[10px] font-bold uppercase text-[#d4a017] tracking-wider flex-1">System Settings</span>
-        <input
+        <input id="ff-adminsettingstab-0"
           type="text" placeholder="Search settings..."
           value={search} onChange={e => setSearch(e.target.value)}
           className="px-3 py-1.5 text-[10px] bg-[#080808] border border-[#1a1a1a] text-[#aaa] w-48 focus:border-[#d4a017]"
@@ -152,7 +152,7 @@ export default function AdminSettingsTab(_props: Props) {
                   <div className="flex-shrink-0" style={{ minWidth: '200px' }}>
                     {setting.type === 'boolean' ? (
                       <label className="flex items-center gap-2 cursor-pointer">
-                        <input
+                        <input id="ff-adminsettingstab-1"
                           type="checkbox"
                           checked={editValues[setting.key] === 'true'}
                           onChange={e => updateValue(setting.key, e.target.checked ? 'true' : 'false')}
@@ -161,7 +161,7 @@ export default function AdminSettingsTab(_props: Props) {
                         <span className="text-[10px] text-[#888]">Enabled</span>
                       </label>
                     ) : setting.type === 'select' && setting.options ? (
-                      <select
+                      <select id="ff-adminsettingstab-2"
                         value={editValues[setting.key] || ''}
                         onChange={e => updateValue(setting.key, e.target.value)}
                         className="w-full px-2 py-1.5 text-[10px] bg-[#080808] border border-[#1a1a1a] text-[#aaa] focus:border-[#d4a017]"
@@ -172,13 +172,13 @@ export default function AdminSettingsTab(_props: Props) {
                       </select>
                     ) : setting.type === 'color' ? (
                       <div className="flex items-center gap-2">
-                        <input
+                        <input id="ff-adminsettingstab-3"
                           type="color"
                           value={editValues[setting.key] || '#000000'}
                           onChange={e => updateValue(setting.key, e.target.value)}
                           className="w-8 h-8 bg-transparent border border-[#1a1a1a] cursor-pointer p-0"
                         />
-                        <input
+                        <input id="ff-adminsettingstab-4"
                           type="text"
                           value={editValues[setting.key] || ''}
                           onChange={e => updateValue(setting.key, e.target.value)}
@@ -186,7 +186,7 @@ export default function AdminSettingsTab(_props: Props) {
                         />
                       </div>
                     ) : setting.type === 'number' ? (
-                      <input
+                      <input id="ff-adminsettingstab-5"
                         type="number"
                         value={editValues[setting.key] || ''}
                         onChange={e => updateValue(setting.key, e.target.value)}
@@ -195,7 +195,7 @@ export default function AdminSettingsTab(_props: Props) {
                         className="w-full px-2 py-1.5 text-[10px] bg-[#080808] border border-[#1a1a1a] text-[#aaa] font-mono focus:border-[#d4a017]"
                       />
                     ) : (
-                      <input
+                      <input id="ff-adminsettingstab-6"
                         type="text"
                         value={editValues[setting.key] || ''}
                         onChange={e => updateValue(setting.key, e.target.value)}

@@ -184,7 +184,7 @@ export default function CommandPalette({ open, onClose, navTargets }: CommandPal
         {/* Input */}
         <div className="flex items-center gap-2 px-4 py-3 border-b border-[#2b2b2b]">
           <Search className="w-4 h-4 flex-shrink-0" style={{ color: '#d4a017' }} />
-          <input
+          <input id="ff-commandpalette-0"
             ref={inputRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}

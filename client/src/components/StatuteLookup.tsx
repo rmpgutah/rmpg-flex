@@ -173,7 +173,7 @@ export default function StatuteLookup({
       {/* Search Input */}
       <div className="relative">
         <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400 pointer-events-none" />
-        <input
+        <input id="ff-statutelookup-0"
           type="text"
           className="input-dark text-xs w-full pl-8 pr-3"
           aria-label="Search statutes"

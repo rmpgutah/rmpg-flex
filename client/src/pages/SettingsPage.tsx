@@ -74,7 +74,7 @@ function SliderRow({ label, value, min, max, step, format, onChange }: {
         <span className="text-[11px] text-white">{label}</span>
         <span className="text-[10px] font-mono text-brand-400">{format(value)}</span>
       </div>
-      <input
+      <input id="ff-settingspage-0"
         type="range"
         min={min} max={max} step={step} value={value}
         onChange={(e) => onChange(Number(e.target.value))}
@@ -123,7 +123,7 @@ function SoundAssignRow({ label, desc, value, onPick }: {
         <span className="block text-[11px] text-white truncate">{label}</span>
         <span className="block text-[9px] text-rmpg-500 truncate">{desc}</span>
       </span>
-      <select
+      <select id="ff-settingspage-1"
         value={value}
         onChange={(e) => onPick(e.target.value as SoundId)}
         className="shrink-0 w-[150px] bg-[#141414] border border-[#222] text-[10px] text-white px-1.5 py-1"
@@ -298,7 +298,7 @@ export default function SettingsPage() {
             {/* Voice picker */}
             <div className="px-3 py-2 border-b border-[#1a1a1a]">
               <span className="block text-[11px] text-white mb-1.5">Voice</span>
-              <select
+              <select id="ff-settingspage-2"
                 value={persona.voiceId}
                 onChange={(e) => setPersona({ voiceId: e.target.value })}
                 className="w-full bg-[#141414] border border-[#222] text-[11px] text-white px-2 py-1.5"
@@ -451,7 +451,7 @@ export default function SettingsPage() {
             </div>
             <div className="px-3 py-2 border-b border-[#1a1a1a]">
               <span className="block text-[11px] text-white mb-1.5">Transmit channel</span>
-              <select
+              <select id="ff-settingspage-3"
                 value={ptt.channelId == null ? '' : String(ptt.channelId)}
                 onChange={(e) => patchPtt({ channelId: e.target.value === '' ? null : Number(e.target.value) })}
                 className="w-full bg-[#141414] border border-[#222] text-[11px] text-white px-2 py-1.5"
@@ -477,7 +477,7 @@ export default function SettingsPage() {
           <SectionCard title="MAP — DEFAULT VIEW" icon={MapIcon}>
             <div className="px-3 py-2 border-b border-[#1a1a1a]">
               <span className="block text-[11px] text-white mb-1.5">Default map style</span>
-              <select
+              <select id="ff-settingspage-4"
                 value={mapPrefs.defaultStyle}
                 onChange={(e) => patchMap({ defaultStyle: e.target.value as MapStyleId })}
                 className="w-full bg-[#141414] border border-[#222] text-[11px] text-white px-2 py-1.5"

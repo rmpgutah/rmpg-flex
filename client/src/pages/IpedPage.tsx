@@ -395,7 +395,7 @@ export default function IpedPage() {
           </div>
           <div className="p-3 space-y-2">
             <div className="flex gap-2">
-              <input
+              <input id="ff-ipedpage-0"
                 type="text"
                 value={hashSearchQuery}
                 onChange={e => setHashSearchQuery(e.target.value)}
@@ -504,7 +504,7 @@ export default function IpedPage() {
             </div>
             <div className="flex items-center gap-2">
               {/* Status filter */}
-              <select
+              <select id="ff-ipedpage-1"
                 value={jobsFilter}
                 onChange={(e) => { setJobsFilter(e.target.value); setJobsPage(1); }}
                 className="text-[10px] bg-[#0c0c0c] border border-[#2b2b2b] text-rmpg-300 rounded-sm px-2 py-1 focus:outline-none focus:border-brand-blue/50"
@@ -813,7 +813,7 @@ export default function IpedPage() {
               {/* Job type */}
               <div>
                 <label className="text-[10px] text-rmpg-500 uppercase block mb-1">Job Type</label>
-                <select
+                <select id="ff-ipedpage-2"
                   value={newJob.jobType}
                   onChange={(e) => setNewJob(j => ({ ...j, jobType: e.target.value }))}
                   className="w-full text-xs bg-[#0c0c0c] border border-[#2b2b2b] text-rmpg-300 rounded-sm px-3 py-2 focus:outline-none focus:border-brand-blue/50"
@@ -828,7 +828,7 @@ export default function IpedPage() {
               {/* Input path */}
               <div>
                 <label className="text-[10px] text-rmpg-500 uppercase block mb-1">Input Path *</label>
-                <input
+                <input id="ff-ipedpage-3"
                   type="text"
                   value={newJob.inputPath}
                   onChange={(e) => setNewJob(j => ({ ...j, inputPath: e.target.value }))}
@@ -840,7 +840,7 @@ export default function IpedPage() {
               {/* Output path */}
               <div>
                 <label className="text-[10px] text-rmpg-500 uppercase block mb-1">Output Path (optional)</label>
-                <input
+                <input id="ff-ipedpage-4"
                   type="text"
                   value={newJob.outputPath}
                   onChange={(e) => setNewJob(j => ({ ...j, outputPath: e.target.value }))}
@@ -852,7 +852,7 @@ export default function IpedPage() {
               {/* Evidence ID */}
               <div>
                 <label className="text-[10px] text-rmpg-500 uppercase block mb-1">Evidence ID (optional)</label>
-                <input
+                <input id="ff-ipedpage-5"
                   type="text"
                   value={newJob.evidenceId}
                   onChange={(e) => setNewJob(j => ({ ...j, evidenceId: e.target.value }))}
@@ -864,7 +864,7 @@ export default function IpedPage() {
               {/* Profile */}
               <div>
                 <label className="text-[10px] text-rmpg-500 uppercase block mb-1">IPED Profile</label>
-                <input
+                <input id="ff-ipedpage-6"
                   type="text"
                   value={newJob.profile}
                   onChange={(e) => setNewJob(j => ({ ...j, profile: e.target.value }))}
@@ -909,7 +909,7 @@ export default function IpedPage() {
             <div className="p-4 space-y-3">
               <div>
                 <label className="text-[10px] text-rmpg-500 uppercase block mb-1">File Path *</label>
-                <input
+                <input id="ff-ipedpage-7"
                   type="text"
                   value={importData.filePath}
                   onChange={(e) => setImportData(d => ({ ...d, filePath: e.target.value }))}
@@ -919,7 +919,7 @@ export default function IpedPage() {
               </div>
               <div>
                 <label className="text-[10px] text-rmpg-500 uppercase block mb-1">Set Name *</label>
-                <input
+                <input id="ff-ipedpage-8"
                   type="text"
                   value={importData.setName}
                   onChange={(e) => setImportData(d => ({ ...d, setName: e.target.value }))}
@@ -930,7 +930,7 @@ export default function IpedPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-[10px] text-rmpg-500 uppercase block mb-1">Category</label>
-                  <select
+                  <select id="ff-ipedpage-9"
                     value={importData.category}
                     onChange={(e) => setImportData(d => ({ ...d, category: e.target.value }))}
                     className="w-full text-xs bg-[#0c0c0c] border border-[#2b2b2b] text-rmpg-300 rounded-sm px-3 py-2 focus:outline-none focus:border-brand-blue/50"
@@ -942,7 +942,7 @@ export default function IpedPage() {
                 </div>
                 <div>
                   <label className="text-[10px] text-rmpg-500 uppercase block mb-1">Hash Type</label>
-                  <select
+                  <select id="ff-ipedpage-10"
                     value={importData.hashType}
                     onChange={(e) => setImportData(d => ({ ...d, hashType: e.target.value }))}
                     className="w-full text-xs bg-[#0c0c0c] border border-[#2b2b2b] text-rmpg-300 rounded-sm px-3 py-2 focus:outline-none focus:border-brand-blue/50"

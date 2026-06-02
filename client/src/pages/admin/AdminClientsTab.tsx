@@ -392,19 +392,19 @@ export default function AdminClientsTab({
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div>
                       <label className="block text-[9px] text-rmpg-500 uppercase mb-0.5">Contact Name</label>
-                      <input className="input-dark text-xs w-full min-h-[36px]" value={clientEdit.contact_name || ''} onChange={(e) => setClientField('contact_name', e.target.value)} placeholder="Contact name" />
+                      <input id="ff-adminclientstab-0" className="input-dark text-xs w-full min-h-[36px]" value={clientEdit.contact_name || ''} onChange={(e) => setClientField('contact_name', e.target.value)} placeholder="Contact name" />
                     </div>
                     <div>
                       <label className="block text-[9px] text-rmpg-500 uppercase mb-0.5">Email</label>
-                      <input className="input-dark text-xs w-full min-h-[36px]" value={clientEdit.contact_email || ''} onChange={(e) => setClientField('contact_email', e.target.value)} placeholder="Email" />
+                      <input id="ff-adminclientstab-1" className="input-dark text-xs w-full min-h-[36px]" value={clientEdit.contact_email || ''} onChange={(e) => setClientField('contact_email', e.target.value)} placeholder="Email" />
                     </div>
                     <div>
                       <label className="block text-[9px] text-rmpg-500 uppercase mb-0.5">Phone</label>
-                      <input className="input-dark text-xs w-full min-h-[36px]" type="tel" value={clientEdit.contact_phone || ''} onChange={(e) => setClientField('contact_phone', formatPhoneInput(e.target.value))} placeholder="(801) 555-1234" />
+                      <input id="ff-adminclientstab-2" className="input-dark text-xs w-full min-h-[36px]" type="tel" value={clientEdit.contact_phone || ''} onChange={(e) => setClientField('contact_phone', formatPhoneInput(e.target.value))} placeholder="(801) 555-1234" />
                     </div>
                     <div className="col-span-3">
                       <label className="block text-[9px] text-rmpg-500 uppercase mb-0.5">Address</label>
-                      <input className="input-dark text-xs w-full min-h-[36px]" value={clientEdit.address || ''} onChange={(e) => setClientField('address', e.target.value)} placeholder="Address" />
+                      <input id="ff-adminclientstab-3" className="input-dark text-xs w-full min-h-[36px]" value={clientEdit.address || ''} onChange={(e) => setClientField('address', e.target.value)} placeholder="Address" />
                     </div>
                   </div>
                 </div>
@@ -414,7 +414,7 @@ export default function AdminClientsTab({
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div>
                       <label className="block text-[9px] text-rmpg-500 uppercase mb-0.5">Type</label>
-                      <select className="select-dark text-xs w-full" value={clientEdit.contract_type || ''} onChange={(e) => setClientField('contract_type', e.target.value)}>
+                      <select id="ff-adminclientstab-4" className="select-dark text-xs w-full" value={clientEdit.contract_type || ''} onChange={(e) => setClientField('contract_type', e.target.value)}>
                         <option value="">-- Select --</option>
                         <option value="Fixed Price">Fixed Price</option>
                         <option value="Hourly">Hourly</option>
@@ -426,11 +426,11 @@ export default function AdminClientsTab({
                     </div>
                     <div>
                       <label className="block text-[9px] text-rmpg-500 uppercase mb-0.5">Value ($)</label>
-                      <input type="number" min="0" step="0.01" className="input-dark text-xs w-full min-h-[36px]" value={clientEdit.contract_value || ''} onChange={(e) => setClientField('contract_value', e.target.value)} placeholder="0.00" />
+                      <input id="ff-adminclientstab-5" type="number" min="0" step="0.01" className="input-dark text-xs w-full min-h-[36px]" value={clientEdit.contract_value || ''} onChange={(e) => setClientField('contract_value', e.target.value)} placeholder="0.00" />
                     </div>
                     <div>
                       <label className="block text-[9px] text-rmpg-500 uppercase mb-0.5">Payment Terms</label>
-                      <select className="select-dark text-xs w-full" value={clientEdit.payment_terms || ''} onChange={(e) => setClientField('payment_terms', e.target.value)}>
+                      <select id="ff-adminclientstab-6" className="select-dark text-xs w-full" value={clientEdit.payment_terms || ''} onChange={(e) => setClientField('payment_terms', e.target.value)}>
                         <option value="">-- Select --</option>
                         <option value="Net 15">Net 15</option>
                         <option value="Net 30">Net 30</option>
@@ -442,21 +442,21 @@ export default function AdminClientsTab({
                     </div>
                     <div>
                       <label className="block text-[9px] text-rmpg-500 uppercase mb-0.5">Start Date</label>
-                      <input type="date" className="input-dark text-xs w-full min-h-[36px]" value={clientEdit.contract_start || ''} onChange={(e) => setClientField('contract_start', e.target.value)} />
+                      <input id="ff-adminclientstab-7" type="date" className="input-dark text-xs w-full min-h-[36px]" value={clientEdit.contract_start || ''} onChange={(e) => setClientField('contract_start', e.target.value)} />
                     </div>
                     <div>
                       <label className="block text-[9px] text-rmpg-500 uppercase mb-0.5">End Date</label>
-                      <input type="date" className="input-dark text-xs w-full min-h-[36px]" value={clientEdit.contract_end || ''} onChange={(e) => setClientField('contract_end', e.target.value)} />
+                      <input id="ff-adminclientstab-8" type="date" className="input-dark text-xs w-full min-h-[36px]" value={clientEdit.contract_end || ''} onChange={(e) => setClientField('contract_end', e.target.value)} />
                     </div>
                     <div className="flex items-end gap-3">
                       <label className="flex items-center gap-2 p-1.5 bg-rmpg-800/50 border border-rmpg-600 cursor-pointer hover:border-rmpg-400 transition-colors">
-                        <input type="checkbox" checked={!!clientEdit.auto_renew} onChange={(e) => setClientField('auto_renew', e.target.checked)} className="w-3.5 h-3.5 accent-red-500" />
+                        <input id="ff-adminclientstab-9" type="checkbox" checked={!!clientEdit.auto_renew} onChange={(e) => setClientField('auto_renew', e.target.checked)} className="w-3.5 h-3.5 accent-red-500" />
                         <span className="text-[10px] text-rmpg-200">Auto-Renew</span>
                       </label>
                     </div>
                     <div>
                       <label className="block text-[9px] text-rmpg-500 uppercase mb-0.5">SLA Response (min)</label>
-                      <input type="number" min="1" className="input-dark text-xs w-full min-h-[36px]" value={clientEdit.sla_response_minutes || ''} onChange={(e) => setClientField('sla_response_minutes', e.target.value)} placeholder="e.g. 15" />
+                      <input id="ff-adminclientstab-10" type="number" min="1" className="input-dark text-xs w-full min-h-[36px]" value={clientEdit.sla_response_minutes || ''} onChange={(e) => setClientField('sla_response_minutes', e.target.value)} placeholder="e.g. 15" />
                     </div>
                   </div>
                 </div>
@@ -496,15 +496,15 @@ export default function AdminClientsTab({
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div>
                       <label className="block text-[9px] text-rmpg-500 uppercase mb-0.5">Billing Email</label>
-                      <input className="input-dark text-xs w-full min-h-[36px]" value={clientEdit.billing_email || ''} onChange={(e) => setClientField('billing_email', e.target.value)} placeholder="billing@example.com" />
+                      <input id="ff-adminclientstab-11" className="input-dark text-xs w-full min-h-[36px]" value={clientEdit.billing_email || ''} onChange={(e) => setClientField('billing_email', e.target.value)} placeholder="billing@example.com" />
                     </div>
                     <div>
                       <label className="block text-[9px] text-rmpg-500 uppercase mb-0.5">Billing Address</label>
-                      <input className="input-dark text-xs w-full min-h-[36px]" value={clientEdit.billing_address || ''} onChange={(e) => setClientField('billing_address', e.target.value)} placeholder="Billing address" />
+                      <input id="ff-adminclientstab-12" className="input-dark text-xs w-full min-h-[36px]" value={clientEdit.billing_address || ''} onChange={(e) => setClientField('billing_address', e.target.value)} placeholder="Billing address" />
                     </div>
                     <div>
                       <label className="block text-[9px] text-rmpg-500 uppercase mb-0.5">Payment Terms</label>
-                      <select className="select-dark text-xs w-full" value={clientEdit.payment_terms || ''} onChange={(e) => setClientField('payment_terms', e.target.value)}>
+                      <select id="ff-adminclientstab-13" className="select-dark text-xs w-full" value={clientEdit.payment_terms || ''} onChange={(e) => setClientField('payment_terms', e.target.value)}>
                         <option value="">-- Select --</option>
                         <option value="Net 15">Net 15</option>
                         <option value="Net 30">Net 30</option>
@@ -516,7 +516,7 @@ export default function AdminClientsTab({
                     </div>
                     <div>
                       <label className="block text-[9px] text-rmpg-500 uppercase mb-0.5">Billing Cycle</label>
-                      <select className="select-dark text-xs w-full" value={clientEdit.billing_cycle || ''} onChange={(e) => setClientField('billing_cycle', e.target.value)}>
+                      <select id="ff-adminclientstab-14" className="select-dark text-xs w-full" value={clientEdit.billing_cycle || ''} onChange={(e) => setClientField('billing_cycle', e.target.value)}>
                         <option value="">-- Select --</option>
                         <option value="weekly">Weekly</option>
                         <option value="bi-weekly">Bi-Weekly</option>
@@ -528,7 +528,7 @@ export default function AdminClientsTab({
                     </div>
                     <div>
                       <label className="block text-[9px] text-rmpg-500 uppercase mb-0.5">Contract Value ($)</label>
-                      <input type="number" min="0" step="0.01" className="input-dark text-xs w-full min-h-[36px]" value={clientEdit.contract_value || ''} onChange={(e) => setClientField('contract_value', e.target.value)} placeholder="0.00" />
+                      <input id="ff-adminclientstab-15" type="number" min="0" step="0.01" className="input-dark text-xs w-full min-h-[36px]" value={clientEdit.contract_value || ''} onChange={(e) => setClientField('contract_value', e.target.value)} placeholder="0.00" />
                     </div>
                   </div>
                 </div>
@@ -547,15 +547,15 @@ export default function AdminClientsTab({
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <div>
                       <label className="block text-[9px] text-rmpg-500 uppercase mb-0.5">Rate per Hour ($)</label>
-                      <input type="number" min="0" step="0.01" className="input-dark text-xs w-full min-h-[36px]" value={clientEdit.rate_per_hour || ''} onChange={(e) => setClientField('rate_per_hour', e.target.value)} placeholder="0.00" />
+                      <input id="ff-adminclientstab-16" type="number" min="0" step="0.01" className="input-dark text-xs w-full min-h-[36px]" value={clientEdit.rate_per_hour || ''} onChange={(e) => setClientField('rate_per_hour', e.target.value)} placeholder="0.00" />
                     </div>
                     <div>
                       <label className="block text-[9px] text-rmpg-500 uppercase mb-0.5">Rate per Incident ($)</label>
-                      <input type="number" min="0" step="0.01" className="input-dark text-xs w-full min-h-[36px]" value={clientEdit.rate_per_incident || ''} onChange={(e) => setClientField('rate_per_incident', e.target.value)} placeholder="0.00" />
+                      <input id="ff-adminclientstab-17" type="number" min="0" step="0.01" className="input-dark text-xs w-full min-h-[36px]" value={clientEdit.rate_per_incident || ''} onChange={(e) => setClientField('rate_per_incident', e.target.value)} placeholder="0.00" />
                     </div>
                     <div>
                       <label className="block text-[9px] text-rmpg-500 uppercase mb-0.5">Rate per CFS ($)</label>
-                      <input type="number" min="0" step="0.01" className="input-dark text-xs w-full min-h-[36px]" value={clientEdit.rate_per_cfs || ''} onChange={(e) => setClientField('rate_per_cfs', e.target.value)} placeholder="0.00" />
+                      <input id="ff-adminclientstab-18" type="number" min="0" step="0.01" className="input-dark text-xs w-full min-h-[36px]" value={clientEdit.rate_per_cfs || ''} onChange={(e) => setClientField('rate_per_cfs', e.target.value)} placeholder="0.00" />
                     </div>
                   </div>
                   <p className="text-[9px] text-rmpg-500 mt-2">These rates are used when auto-generating invoice line items.</p>

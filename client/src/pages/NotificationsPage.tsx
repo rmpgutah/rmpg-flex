@@ -302,7 +302,7 @@ export default function NotificationsPage() {
               <div className="space-y-3">
                 {Object.entries(prefs).filter(([k]) => typeof (prefs as any)[k] === 'boolean').map(([key, value]) => (
                   <label key={key} className="flex items-center gap-3 text-xs text-rmpg-200 cursor-pointer">
-                    <input
+                    <input id="ff-notificationspage-0"
                       type="checkbox"
                       checked={value as boolean}
                       onChange={(e) => setPrefs(prev => prev ? { ...prev, [key]: e.target.checked } : prev)}
@@ -314,7 +314,7 @@ export default function NotificationsPage() {
                 <div className="grid grid-cols-2 gap-3 mt-4">
                   <div>
                     <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Quiet Hours Start</label>
-                    <input
+                    <input id="ff-notificationspage-1"
                       type="time"
                       value={prefs.quiet_hours_start || ''}
                       onChange={(e) => setPrefs(prev => prev ? { ...prev, quiet_hours_start: e.target.value || null } : prev)}
@@ -323,7 +323,7 @@ export default function NotificationsPage() {
                   </div>
                   <div>
                     <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Quiet Hours End</label>
-                    <input
+                    <input id="ff-notificationspage-2"
                       type="time"
                       value={prefs.quiet_hours_end || ''}
                       onChange={(e) => setPrefs(prev => prev ? { ...prev, quiet_hours_end: e.target.value || null } : prev)}

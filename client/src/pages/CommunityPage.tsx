@@ -78,19 +78,19 @@ export default function CommunityPage() {
             <h3 className="text-sm font-bold text-white mb-4">{editingRecord ? 'Edit Event' : 'New Event'}</h3>
             <div className="space-y-3">
               <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Event Name <span className="text-red-500">*</span></label>
-                <input className="input-dark mt-1" value={formData.event_name || ''} onChange={e => setFormData({...formData, event_name: e.target.value})} autoFocus /></div>
+                <input id="ff-communitypage-0" className="input-dark mt-1" value={formData.event_name || ''} onChange={e => setFormData({...formData, event_name: e.target.value})} autoFocus /></div>
               <div className="grid grid-cols-2 gap-3">
                 <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Type</label>
-                  <select className="select-dark mt-1" value={formData.event_type || 'other'} onChange={e => setFormData({...formData, event_type: e.target.value})}>
+                  <select id="ff-communitypage-1" className="select-dark mt-1" value={formData.event_type || 'other'} onChange={e => setFormData({...formData, event_type: e.target.value})}>
                     {['outreach','training','meeting','fundraiser','patrol_ride_along','other'].map(t=><option key={t} value={t}>{t}</option>)}
                   </select></div>
                 <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Date</label>
-                  <input type="date" className="input-dark mt-1" value={formData.start_date || ''} onChange={e => setFormData({...formData, start_date: e.target.value})} /></div>
+                  <input id="ff-communitypage-2" type="date" className="input-dark mt-1" value={formData.start_date || ''} onChange={e => setFormData({...formData, start_date: e.target.value})} /></div>
               </div>
               <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Location</label>
-                <input className="input-dark mt-1" value={formData.location || ''} onChange={e => setFormData({...formData, location: e.target.value})} /></div>
+                <input id="ff-communitypage-3" className="input-dark mt-1" value={formData.location || ''} onChange={e => setFormData({...formData, location: e.target.value})} /></div>
               <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Status</label>
-                <select className="select-dark mt-1" value={formData.status || 'planned'} onChange={e => setFormData({...formData, status: e.target.value})}>
+                <select id="ff-communitypage-4" className="select-dark mt-1" value={formData.status || 'planned'} onChange={e => setFormData({...formData, status: e.target.value})}>
                   {['planned','in_progress','completed','cancelled'].map(s=><option key={s} value={s}>{s}</option>)}
                 </select></div>
             </div>

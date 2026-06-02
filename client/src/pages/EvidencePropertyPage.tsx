@@ -502,14 +502,14 @@ export default function EvidencePropertyPage() {
           <div className="flex gap-1.5">
             <div className="flex-1 relative">
               <Search className="absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500 pointer-events-none" style={{ width: 12, height: 12 }} />
-              <input
+              <input id="ff-evidencepropertypage-0"
                 value={searchQuery}
                 onChange={e => { setSearchQuery(e.target.value); setPage(1); }}
                 placeholder="Search evidence..." aria-label="Search evidence..."
                 className="input-dark w-full pl-7 pr-2 py-1 text-xs min-h-[36px] focus:ring-1 focus:ring-brand-500/50 focus:border-brand-600 transition-shadow"
               />
             </div>
-            <select
+            <select id="ff-evidencepropertypage-1"
               value={filterType}
               onChange={e => { setFilterType(e.target.value); setPage(1); }}
               className="select-dark text-[10px] px-1.5 py-1"
@@ -768,7 +768,7 @@ export default function EvidencePropertyPage() {
                           </button>
                         ) : (
                           <div className="space-y-2">
-                            <input value={releaseTo} onChange={e => setReleaseTo(e.target.value)} placeholder="Release to (name/entity)..."
+                            <input id="ff-evidencepropertypage-2" value={releaseTo} onChange={e => setReleaseTo(e.target.value)} placeholder="Release to (name/entity)..."
                               className="input-dark w-full min-h-[36px]" />
                             <RichTextArea value={releaseReason} onChange={e => setReleaseReason(e.target.value)} placeholder="Reason for release..."
                               rows={2} className="textarea-dark w-full" />
@@ -857,7 +857,7 @@ export default function EvidencePropertyPage() {
                       </div>
                       <div className="space-y-2">
                         <label className="block text-[10px] text-rmpg-400 uppercase tracking-wider">Condition on Return</label>
-                        <select value={checkinCondition} onChange={e => setCheckinCondition(e.target.value)}
+                        <select id="ff-evidencepropertypage-3" value={checkinCondition} onChange={e => setCheckinCondition(e.target.value)}
                           className="input-standard w-full text-xs">
                           <option value="">Good / Unchanged</option>
                           <option value="good">Good</option>
@@ -880,10 +880,10 @@ export default function EvidencePropertyPage() {
                       </div>
                       <div className="space-y-2">
                         <label className="block text-[10px] text-rmpg-400 uppercase tracking-wider">Checkout Reason *</label>
-                        <input type="text" value={checkoutReason} onChange={e => setCheckoutReason(e.target.value)}
+                        <input id="ff-evidencepropertypage-4" type="text" value={checkoutReason} onChange={e => setCheckoutReason(e.target.value)}
                           className="input-standard w-full text-xs" placeholder="Court presentation, lab analysis, etc." />
                         <label className="block text-[10px] text-rmpg-400 uppercase tracking-wider mt-2">Expected Return Date</label>
-                        <input type="date" value={checkoutExpectedReturn} onChange={e => setCheckoutExpectedReturn(e.target.value)}
+                        <input id="ff-evidencepropertypage-5" type="date" value={checkoutExpectedReturn} onChange={e => setCheckoutExpectedReturn(e.target.value)}
                           className="input-standard w-full text-xs" />
                         <button type="button" onClick={handleCheckout} disabled={checkoutSubmitting || !checkoutReason}
                           className="btn-primary w-full flex items-center justify-center gap-2">
@@ -901,7 +901,7 @@ export default function EvidencePropertyPage() {
                     </button>
                     {dispositionOpen && (
                       <div className="space-y-2 mt-2">
-                        <select value={dispositionType} onChange={e => setDispositionType(e.target.value)}
+                        <select id="ff-evidencepropertypage-6" value={dispositionType} onChange={e => setDispositionType(e.target.value)}
                           className="input-standard w-full text-xs">
                           <option value="pending">Pending</option>
                           <option value="return_to_owner">Return to Owner</option>
@@ -911,7 +911,7 @@ export default function EvidencePropertyPage() {
                           <option value="retain">Retain</option>
                           <option value="transfer_to_agency">Transfer to Agency</option>
                         </select>
-                        <input type="text" value={dispositionMethod} onChange={e => setDispositionMethod(e.target.value)}
+                        <input id="ff-evidencepropertypage-7" type="text" value={dispositionMethod} onChange={e => setDispositionMethod(e.target.value)}
                           className="input-standard w-full text-xs" placeholder="Method details..." />
                         <RichTextArea value={dispositionNotes} onChange={e => setDispositionNotes(e.target.value)}
                           className="input-standard w-full text-xs h-16 resize-none" placeholder="Disposition notes..." />
@@ -1105,7 +1105,7 @@ export default function EvidencePropertyPage() {
             <div className="p-4 space-y-3">
               <div>
                 <label className="field-label">Action</label>
-                <select
+                <select id="ff-evidencepropertypage-8"
                   value={chainAction}
                   onChange={e => setChainAction(e.target.value)}
                   className="select-dark w-full"
@@ -1117,7 +1117,7 @@ export default function EvidencePropertyPage() {
               {(chainAction === 'check_in' || chainAction === 'transfer') && (
                 <div>
                   <label className="field-label">Destination Location</label>
-                  <select
+                  <select id="ff-evidencepropertypage-9"
                     value={chainLocation}
                     onChange={e => setChainLocation(e.target.value)}
                     className="select-dark w-full"
@@ -1167,7 +1167,7 @@ export default function EvidencePropertyPage() {
             <div className="p-4 space-y-3">
               <div>
                 <label className="field-label">Description <span className="text-red-400">*</span></label>
-                <input
+                <input id="ff-evidencepropertypage-10"
                   type="text"
                   value={newEvidence.description}
                   onChange={e => setNewEvidence(p => ({ ...p, description: e.target.value }))}
@@ -1179,7 +1179,7 @@ export default function EvidencePropertyPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="field-label">Type <span className="text-red-400">*</span></label>
-                  <select
+                  <select id="ff-evidencepropertypage-11"
                     value={newEvidence.evidence_type}
                     onChange={e => setNewEvidence(p => ({ ...p, evidence_type: e.target.value }))}
                     className="select-dark w-full"
@@ -1189,7 +1189,7 @@ export default function EvidencePropertyPage() {
                 </div>
                 <div>
                   <label className="field-label">Category</label>
-                  <input
+                  <input id="ff-evidencepropertypage-12"
                     type="text"
                     value={newEvidence.category}
                     onChange={e => setNewEvidence(p => ({ ...p, category: e.target.value }))}
@@ -1202,7 +1202,7 @@ export default function EvidencePropertyPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="field-label">Incident #</label>
-                  <input
+                  <input id="ff-evidencepropertypage-13"
                     type="text"
                     value={newEvidence.incident_id}
                     onChange={e => setNewEvidence(p => ({ ...p, incident_id: e.target.value }))}
@@ -1212,7 +1212,7 @@ export default function EvidencePropertyPage() {
                 </div>
                 <div>
                   <label className="field-label">Storage Location</label>
-                  <select
+                  <select id="ff-evidencepropertypage-14"
                     value={newEvidence.storage_location}
                     onChange={e => setNewEvidence(p => ({ ...p, storage_location: e.target.value }))}
                     className="select-dark w-full"
@@ -1226,7 +1226,7 @@ export default function EvidencePropertyPage() {
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="field-label">Serial #</label>
-                  <input
+                  <input id="ff-evidencepropertypage-15"
                     type="text"
                     value={newEvidence.serial_number}
                     onChange={e => setNewEvidence(p => ({ ...p, serial_number: e.target.value }))}
@@ -1235,7 +1235,7 @@ export default function EvidencePropertyPage() {
                 </div>
                 <div>
                   <label className="field-label">Brand</label>
-                  <input
+                  <input id="ff-evidencepropertypage-16"
                     type="text"
                     value={newEvidence.brand}
                     onChange={e => setNewEvidence(p => ({ ...p, brand: e.target.value }))}
@@ -1244,7 +1244,7 @@ export default function EvidencePropertyPage() {
                 </div>
                 <div>
                   <label className="field-label">Model</label>
-                  <input
+                  <input id="ff-evidencepropertypage-17"
                     type="text"
                     value={newEvidence.model}
                     onChange={e => setNewEvidence(p => ({ ...p, model: e.target.value }))}
@@ -1256,7 +1256,7 @@ export default function EvidencePropertyPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="field-label">Estimated Value</label>
-                  <input
+                  <input id="ff-evidencepropertypage-18"
                     type="number"
                     step="0.01"
                     value={newEvidence.estimated_value}
@@ -1267,7 +1267,7 @@ export default function EvidencePropertyPage() {
                 </div>
                 <div>
                   <label className="field-label">Collected Date</label>
-                  <input
+                  <input id="ff-evidencepropertypage-19"
                     type="datetime-local"
                     value={newEvidence.collected_date}
                     onChange={e => setNewEvidence(p => ({ ...p, collected_date: e.target.value }))}

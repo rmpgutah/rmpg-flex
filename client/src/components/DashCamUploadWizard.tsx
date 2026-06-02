@@ -482,7 +482,7 @@ export default function DashCamUploadWizard({
         </span>
         <span className="text-[9px] text-rmpg-600">MP4, MOV, AVI, WebM, MKV</span>
       </div>
-      <input
+      <input id="ff-dashcamuploadwizard-0"
         ref={fileRef}
         type="file"
         accept={ACCEPTED_TYPES + ',.mp4,.mov,.avi,.webm,.mkv'}
@@ -623,7 +623,7 @@ export default function DashCamUploadWizard({
                     <label className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">
                       Title <span className="text-red-400">*</span>
                     </label>
-                    <input
+                    <input id="ff-dashcamuploadwizard-1"
                       type="text"
                       value={entry.title}
                       onChange={(e) => updateFile(entry.id, { title: e.target.value })}
@@ -638,7 +638,7 @@ export default function DashCamUploadWizard({
                       <label className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">
                         Vehicle
                       </label>
-                      <select
+                      <select id="ff-dashcamuploadwizard-2"
                         value={entry.vehicleId}
                         onChange={(e) => updateFile(entry.id, { vehicleId: e.target.value })}
                         className="select-dark"
@@ -655,7 +655,7 @@ export default function DashCamUploadWizard({
                       <label className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">
                         Unit
                       </label>
-                      <select
+                      <select id="ff-dashcamuploadwizard-3"
                         value={entry.unitId}
                         onChange={(e) => updateFile(entry.id, { unitId: e.target.value })}
                         className="select-dark"
@@ -676,7 +676,7 @@ export default function DashCamUploadWizard({
                       <label className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">
                         Recorded At
                       </label>
-                      <input
+                      <input id="ff-dashcamuploadwizard-4"
                         type="datetime-local"
                         value={entry.recordedAt}
                         onChange={(e) => updateFile(entry.id, { recordedAt: e.target.value })}
@@ -687,7 +687,7 @@ export default function DashCamUploadWizard({
                       <label className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">
                         Classification
                       </label>
-                      <select
+                      <select id="ff-dashcamuploadwizard-5"
                         value={entry.classification}
                         onChange={(e) => updateFile(entry.id, { classification: e.target.value })}
                         className="select-dark"
@@ -707,7 +707,7 @@ export default function DashCamUploadWizard({
                       <label className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">
                         Case Number
                       </label>
-                      <input
+                      <input id="ff-dashcamuploadwizard-6"
                         type="text"
                         value={entry.caseNumber}
                         onChange={(e) => updateFile(entry.id, { caseNumber: e.target.value })}
@@ -719,7 +719,7 @@ export default function DashCamUploadWizard({
                       <label className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">
                         Speed (MPH)
                       </label>
-                      <input
+                      <input id="ff-dashcamuploadwizard-7"
                         type="number"
                         step="0.1"
                         value={entry.speedMph}
@@ -736,7 +736,7 @@ export default function DashCamUploadWizard({
                       <label className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">
                         Latitude
                       </label>
-                      <input
+                      <input id="ff-dashcamuploadwizard-8"
                         type="number"
                         step="0.0001"
                         value={entry.latitude}
@@ -749,7 +749,7 @@ export default function DashCamUploadWizard({
                       <label className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">
                         Longitude
                       </label>
-                      <input
+                      <input id="ff-dashcamuploadwizard-9"
                         type="number"
                         step="0.0001"
                         value={entry.longitude}
@@ -765,7 +765,7 @@ export default function DashCamUploadWizard({
                     <label className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">
                       Address
                     </label>
-                    <input
+                    <input id="ff-dashcamuploadwizard-10"
                       type="text"
                       value={entry.address}
                       onChange={(e) => updateFile(entry.id, { address: e.target.value })}

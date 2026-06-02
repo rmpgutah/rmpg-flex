@@ -62,12 +62,26 @@
       CSP Note: 'unsafe-inline' is required in script-src and style-src for:
       1. Vite dev mode injects inline scripts/styles for HMR
       2. Mapbox GL JS popup InfoWindow inline styles
+      'unsafe-eval' is required by bundled vendor libs (charts/pdf/barcode + the
+      Mapbox expression evaluator) that compile code at runtime via the Function
+      constructor.
+
+      MUST stay in sync with the canonical policy in client/public/_headers.
+      A document governed by BOTH a header CSP and this <meta> CSP enforces the
+      INTERSECTION (most-restrictive-wins per directive) — NOT "header overrides
+      meta". A directive omitted here (e.g. a missing 'unsafe-eval' or media-src)
+      independently blocks that capability even when _headers allows it. That
+      exact drift previously blocked runtime code evaluation in production.
+      'frame-ancestors', 'report-uri'/'report-to' are intentionally omitted:
+      browsers ignore them when delivered via <meta>, so they live only in the
+      _headers HTTP header.
+
       TODO (production hardening): Replace 'unsafe-inline' with nonce-based CSP
       by generating a per-request nonce on the server and injecting it into both
       the CSP header and all inline <script>/<style> tags. This requires server-side
       rendering of index.html (not static serving).
     -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' blob: https://*.googleapis.com https://*.gstatic.com https://js.arcgis.com https://*.arcgis.com https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://unpkg.com https://*.googleapis.com https://*.gstatic.com https://js.arcgis.com https://*.arcgis.com https://api.mapbox.com; img-src 'self' data: blob: https://*.tile.openstreetmap.org https://basemaps.cartocdn.com https://*.basemaps.cartocdn.com https://unpkg.com https://*.googleapis.com https://*.gstatic.com https://*.ggpht.com https://*.google.com https://*.googleusercontent.com https://*.arcgis.com https://js.arcgis.com https://api.mapbox.com; font-src 'self' data: https://*.gstatic.com https://js.arcgis.com https://*.arcgis.com; connect-src 'self' ws: wss: https://api.rmpgutah.us https://*.rmpgutah.us https://*.googleapis.com https://*.google.com https://*.gstatic.com https://*.arcgis.com https://js.arcgis.com https://*.arcgisonline.com https://api.mapbox.com https://events.mapbox.com https://nominatim.openstreetmap.org https://photon.komoot.io https://basemaps.cartocdn.com https://*.basemaps.cartocdn.com https://*.cartocdn.com https://api.open-meteo.com https://api.fbi.gov https://static.cloudflareinsights.com; frame-src 'self' blob: https://*.arcgis.com; worker-src 'self' blob:; child-src 'self' blob:; manifest-src 'self'" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https://api.mapbox.com https://js.arcgis.com https://*.arcgis.com https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://unpkg.com https://api.mapbox.com https://js.arcgis.com https://*.arcgis.com; img-src 'self' data: blob: https: http:; font-src 'self' data: https://*.gstatic.com https://js.arcgis.com https://*.arcgis.com; connect-src 'self' ws: wss: https://api.rmpgutah.us https://*.rmpgutah.us https://api.mapbox.com https://events.mapbox.com https://*.arcgis.com https://js.arcgis.com https://*.arcgisonline.com https://api.open-meteo.com https://basemaps.cartocdn.com https://*.basemaps.cartocdn.com https://*.cartocdn.com https://nominatim.openstreetmap.org https://api.fbi.gov https://photon.komoot.io https://static.cloudflareinsights.com; frame-src 'self' blob: https://*.arcgis.com; media-src 'self' blob: data:; worker-src 'self' blob:; child-src 'self' blob:; manifest-src 'self'; base-uri 'self'; form-action 'self'; object-src 'none'" />
     <link rel="manifest" href="/manifest.json" />
     <title>RMPG Flex - Rocky Mountain Protective Group</title>
   </head>

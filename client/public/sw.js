@@ -277,7 +277,31 @@
 //       rendered. Hoisted Process Service Details to a top-level section
 //       (self-gated by process data / service-type) and added
 //       'civil_paper_service' to the visit-history gate.
-const CACHE_NAME = 'rmpg-flex-v701';
+// v701: Phase 2 — unified always-visible map Legend (bottom-left, collapsible)
+//       reflecting EVERY active overlay: geography coverage (Area/Section/
+//       Zone/Beat + compact categorical key), County/Muni outline boundaries,
+//       statewide road classes + address dot, and the activity-choropleth ramp.
+// v702: Phase 3 — Address/Premise Intelligence. "What's Here" now also pulls
+//       nearby prior calls + incidents (new GET /api/dispatch/geography/
+//       premise-intel, lat/lng bbox) and shows a premise-history band
+//       ("N prior calls · M incidents · Last: <type> <date>") with acronym-
+//       formatted incident types (toDisplayLabel). Map <-> Dispatch/RMS.
+// v703: cache-invalidation catch-up. PR #893 (CSP eval fix + 1,984-control a11y
+//       id sweep) and PR #894 (warrants self-clear fix) both merged AFTER v702
+//       was already deployed, and #893's web-UI conflict resolution kept v702 —
+//       so clients holding the v702 cache would never pull the merged bundle
+//       (the <meta> CSP fix that unblocks eval, the form-field ids, the warrant
+//       fix). Bump forces every client onto the current code.
+// v704: Phase 4+5 — (4) Dispatch Here gains "Assign nearest available unit"
+//       (auto-assigns closest unit via /dispatch/calls/:id/auto-assign after
+//       create; no-op until units on duty). (5) Activity choropleth gains a
+//       Calls/Incidents data source — Incidents source bins RMS incident
+//       points over the geography (fetched on demand). Map <-> Fleet/Dispatch/RMS.
+// v705: Personnel Management dashboard-first redesign — new Command landing tab
+//       (PersonnelDashboard) with deep-linking KPI/alert/officer widgets;
+//       extracted shared dashboard widgets; status strip hidden on Command;
+//       2-band detail-panel header; consistent global-tab headers.
+const CACHE_NAME = 'rmpg-flex-v705';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

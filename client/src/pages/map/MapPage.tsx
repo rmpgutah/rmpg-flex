@@ -76,6 +76,7 @@ import { localToday, dateToLocalYMD, safeDateTimeStr, parseTimestamp } from '../
 import { useGeoJsonLayers, GEO_LAYER_CONFIGS, getSectionColor, type BeatDistrictEntry } from '../../hooks/useGeoJsonLayers';
 import { useVectorTileLayers } from '../../hooks/useVectorTileLayers';
 import { useDistrictHierarchyLayers } from '../../hooks/useDistrictHierarchyLayers';
+import UnifiedMapLegend from './components/UnifiedMapLegend';
 import { useWhatsHere } from '../../hooks/useWhatsHere';
 import { useActivityChoropleth, type ChoroLevel } from '../../hooks/useActivityChoropleth';
 import { useMapMeasureDraw, type MeasureMode } from '../../hooks/useMapMeasureDraw';
@@ -362,6 +363,7 @@ export default function MapPage() {
   const [dispatchIncidentType, setDispatchIncidentType] = useState('');
   const [dispatchPriority, setDispatchPriority] = useState('P3');
   const [dispatchBusy, setDispatchBusy] = useState(false);
+  const [autoAssignNearest, setAutoAssignNearest] = useState(false);
 
   // Clean up address search/dismiss timers on unmount
   useEffect(() => {
@@ -470,12 +472,28 @@ export default function MapPage() {
   const [showAdvTools, setShowAdvTools] = useState(false);
   const [whatsHereActive, setWhatsHereActive] = usePersistedState<boolean>('rmpg_whatshere', false);
   const [choroLevel, setChoroLevel] = usePersistedState<ChoroLevel | null>('rmpg_choro_level', null);
+  const [choroSource, setChoroSource] = usePersistedState<'calls' | 'incidents'>('rmpg_choro_source', 'calls');
+  const [incidentPoints, setIncidentPoints] = useState<{ latitude: number | null; longitude: number | null }[]>([]);
   const [measureMode, setMeasureMode] = useState<MeasureMode>(null);
   const [overlayOpacity, setOverlayOpacity] = usePersistedState<number>('rmpg_overlay_opacity', 1);
   const [hierLegend, setHierLegend] = useState<{ label: string; color: string }[]>([]);
 
   useWhatsHere({ map: mapInstanceRef.current, popup: infoWindowRef.current, active: whatsHereActive });
-  const { choroLegend } = useActivityChoropleth({ map: mapInstanceRef.current, calls, level: choroLevel });
+  const { choroLegend } = useActivityChoropleth({
+    map: mapInstanceRef.current,
+    calls: choroSource === 'incidents' ? incidentPoints : calls,
+    level: choroLevel,
+  });
+  // RMS source fetch: load incident points (with coords) when the choropleth
+  // is set to the Incidents source. Calls come from the live queue already.
+  useEffect(() => {
+    if (!choroLevel || choroSource !== 'incidents') return;
+    let cancelled = false;
+    apiFetch<{ latitude: number | null; longitude: number | null }[]>('/incidents?days=365&limit=1000')
+      .then((rows) => { if (!cancelled) setIncidentPoints(Array.isArray(rows) ? rows : []); })
+      .catch(() => { if (!cancelled) setIncidentPoints([]); });
+    return () => { cancelled = true; };
+  }, [choroLevel, choroSource]);
   const { measureResult, clearMeasure } = useMapMeasureDraw({ map: mapInstanceRef.current, mode: measureMode });
 
   // Layer-visibility memory: persist which Statewide / hierarchy layers are on
@@ -2908,7 +2926,7 @@ export default function MapPage() {
     if (!incident) return;
     setDispatchBusy(true);
     try {
-      await apiFetch('/dispatch/calls', {
+      const created = await apiFetch<{ id?: number }>('/dispatch/calls', {
         method: 'POST',
         body: JSON.stringify({
           incident_type: incident,
@@ -2919,6 +2937,19 @@ export default function MapPage() {
         }),
       });
       addToast(`Call created at ${selectedAddr.label.split(',')[0]}`, 'success');
+
+      // Optionally assign the nearest available unit by drive distance.
+      if (autoAssignNearest && created?.id) {
+        try {
+          await apiFetch(`/dispatch/calls/${created.id}/auto-assign`, { method: 'POST', body: '{}' });
+          addToast('Nearest available unit assigned', 'success');
+          await fetchUnits();
+        } catch (assignErr: any) {
+          // No units on duty / no GPS — informational, not a failure.
+          addToast(assignErr?.message || 'No nearby unit available to assign', 'info');
+        }
+      }
+
       setShowDispatchHere(false);
       setDispatchIncidentType('');
       await fetchCalls();
@@ -2927,7 +2958,7 @@ export default function MapPage() {
     } finally {
       setDispatchBusy(false);
     }
-  }, [selectedAddr, dispatchIncidentType, dispatchPriority, dispatchBusy, addToast, fetchCalls]);
+  }, [selectedAddr, dispatchIncidentType, dispatchPriority, dispatchBusy, autoAssignNearest, addToast, fetchCalls, fetchUnits]);
 
   // ============================================================
   // Keyboard Shortcuts for Map
@@ -3125,7 +3156,7 @@ export default function MapPage() {
             <div className="relative">
               <div className="relative flex items-center">
                 <Search className="absolute left-2.5 w-3.5 h-3.5 text-white/50 pointer-events-none" />
-                <input
+                <input id="ff-mappage-0"
                   type="text"
                   value={addressSearch}
                   onChange={(e) => handleAddressSearch(e.target.value)}
@@ -3190,7 +3221,7 @@ export default function MapPage() {
             <div className="relative">
               <div className="relative flex items-center">
                 <Search className="absolute left-2.5 w-3.5 h-3.5 text-rmpg-500 pointer-events-none" />
-                <input
+                <input id="ff-mappage-1"
                   type="text"
                   value={addressSearch}
                   onChange={(e) => handleAddressSearch(e.target.value)}
@@ -3270,7 +3301,7 @@ export default function MapPage() {
                   </div>
                   {showDispatchHere && (
                     <div className="space-y-1 pt-1 border-t border-[#1a1a1a]">
-                      <input
+                      <input id="ff-mappage-2"
                         value={dispatchIncidentType}
                         onChange={(e) => setDispatchIncidentType(e.target.value)}
                         placeholder="Incident type (e.g. Welfare Check)"
@@ -3288,6 +3319,16 @@ export default function MapPage() {
                           >{p}</button>
                         ))}
                       </div>
+                      <button
+                        type="button"
+                        onClick={() => setAutoAssignNearest((v) => !v)}
+                        className="w-full flex items-center gap-1.5 px-1 py-0.5 text-[9px] text-rmpg-300 hover:text-white transition-colors"
+                      >
+                        <div className="w-3 h-3 shrink-0 flex items-center justify-center rounded-sm" style={{ border: '1px solid #d4a017', background: autoAssignNearest ? '#d4a017' : 'transparent' }}>
+                          {autoAssignNearest && <span style={{ fontSize: 8, color: '#0a0a0a', lineHeight: 1 }}>✓</span>}
+                        </div>
+                        Assign nearest available unit
+                      </button>
                       <button
                         onClick={createCallHere}
                         disabled={dispatchBusy || !dispatchIncidentType.trim()}
@@ -3438,7 +3479,7 @@ export default function MapPage() {
                   </div>
                   {/* Type filter dropdown */}
                   {heatmapMode === 'type' && (
-                    <select
+                    <select id="ff-mappage-3"
                       value={heatmapTypeFilter}
                       onChange={(e) => setHeatmapTypeFilter(e.target.value)}
                       className="w-full bg-surface-deep border border-rmpg-600 text-[9px] text-rmpg-200 px-1.5 py-0.5 font-mono focus:outline-none focus:border-red-600"
@@ -3568,7 +3609,7 @@ export default function MapPage() {
                     <div className="space-y-1 pt-0.5">
                       <div className="flex items-center gap-1">
                         <Play className="w-2.5 h-2.5 text-green-400" />
-                        <select
+                        <select id="ff-mappage-4"
                           value={playbackUnit ?? ''}
                           onChange={(e) => {
                             const val = e.target.value ? Number(e.target.value) : null;
@@ -3609,7 +3650,7 @@ export default function MapPage() {
                               >
                                 {isPlaying ? <Pause className="w-3 h-3 text-amber-400" /> : <Play className="w-3 h-3 text-green-400" />}
                               </button>
-                              <input
+                              <input id="ff-mappage-5"
                                 type="range"
                                 min={0}
                                 max={Math.max(totalPts - 1, 0)}
@@ -4091,7 +4132,19 @@ export default function MapPage() {
                   {/* Activity choropleth */}
                   <div>
                     <div className="px-2 text-[8px] font-semibold uppercase tracking-wider text-[#d4a017] flex items-center gap-1">
-                      <Gauge className="w-2.5 h-2.5" /> Call Activity
+                      <Gauge className="w-2.5 h-2.5" /> Activity Choropleth
+                    </div>
+                    {/* Data source: live Calls (queue) or Incidents (RMS) */}
+                    <div className="flex gap-0.5 px-2 mt-0.5">
+                      {(['calls', 'incidents'] as const).map((s) => (
+                        <button
+                          key={s}
+                          onClick={() => setChoroSource(s)}
+                          className={`flex-1 px-1 py-0.5 text-[8px] uppercase rounded-sm transition-colors ${
+                            choroSource === s ? 'bg-rmpg-700/60 text-brand-300' : 'text-rmpg-500 hover:bg-rmpg-800/50'
+                          }`}
+                        >{s}</button>
+                      ))}
                     </div>
                     <div className="flex gap-0.5 px-2 mt-0.5">
                       {(['off', 'beat', 'zone', 'section', 'area'] as const).map((l) => {
@@ -4158,7 +4211,7 @@ export default function MapPage() {
                   {/* Overlay opacity */}
                   <div className="px-2">
                     <div className="text-[8px] font-semibold uppercase tracking-wider text-[#888888] mb-0.5">Overlay Opacity — {Math.round(overlayOpacity * 100)}%</div>
-                    <input
+                    <input id="ff-mappage-6"
                       type="range" min={0} max={1} step={0.05} value={overlayOpacity}
                       onChange={(e) => setOverlayOpacity(parseFloat(e.target.value))}
                       aria-label="Overlay opacity"
@@ -4279,14 +4332,14 @@ export default function MapPage() {
                   {/* New plan form */}
                   <div className="space-y-1 px-1">
                     <div className="flex items-center gap-1">
-                      <input
+                      <input id="ff-mappage-7"
                         type="text"
                         value={newShiftPlanName}
                         onChange={(e) => setNewShiftPlanName(e.target.value)}
                         placeholder="Plan name..."
                         className="input-dark flex-1 px-1.5 py-0.5 text-[9px]"
                       />
-                      <input
+                      <input id="ff-mappage-8"
                         type="date"
                         value={newShiftPlanDate}
                         onChange={(e) => setNewShiftPlanDate(e.target.value)}
@@ -4403,7 +4456,7 @@ export default function MapPage() {
                                             : 'hover:bg-rmpg-800/50 text-rmpg-400'
                                         }`}
                                       >
-                                        <input
+                                        <input id="ff-mappage-9"
                                           type="checkbox"
                                           checked={assignOfficerIds.includes(officer.id)}
                                           onChange={(e) => {
@@ -4438,7 +4491,7 @@ export default function MapPage() {
                                               : 'hover:bg-rmpg-800/50 text-rmpg-400'
                                           }`}
                                         >
-                                          <input
+                                          <input id="ff-mappage-10"
                                             type="checkbox"
                                             checked={assignUnitIds.includes(unit.id)}
                                             onChange={(e) => {
@@ -4462,7 +4515,7 @@ export default function MapPage() {
 
                                 {/* Notes */}
                                 <div className="px-1">
-                                  <input
+                                  <input id="ff-mappage-11"
                                     type="text"
                                     value={assignNotes}
                                     onChange={(e) => setAssignNotes(e.target.value)}
@@ -4651,7 +4704,7 @@ export default function MapPage() {
 
                   {/* New plan input */}
                   <div className="flex items-center gap-1 px-1">
-                    <input
+                    <input id="ff-mappage-12"
                       type="text"
                       value={newPlanName}
                       onChange={(e) => setNewPlanName(e.target.value)}
@@ -4987,6 +5040,30 @@ export default function MapPage() {
         </div>}
 
         {/* ── Route Info Panel (bottom-left, top on mobile) ── */}
+        {/* Unified always-visible legend for every active overlay */}
+        {!isMobile && (
+          <UnifiedMapLegend
+            hierarchy={{
+              area: !!hierarchyStates.area?.visible,
+              section: !!hierarchyStates.section?.visible,
+              zone: !!hierarchyStates.zone?.visible,
+              beat: !!geoLayerStates.beat?.visible,
+            }}
+            boundaries={{
+              county: !!geoLayerStates.county?.visible,
+              municipality: !!geoLayerStates.municipality?.visible,
+            }}
+            statewide={{
+              roads: !!vectorLayerStates['utah_roads']?.visible,
+              addresses: !!vectorLayerStates['utah_addresses']?.visible,
+            }}
+            choro={choroLegend}
+            categorical={hierLegend}
+            isLight={isLightMapStyle(mapStyle)}
+            bottomPx={activeRoute ? 132 : 28}
+          />
+        )}
+
         {activeRoute && (
           <div
             className="absolute z-[1000] backdrop-blur-md"
@@ -5318,7 +5395,7 @@ export default function MapPage() {
             <div className="px-2 py-1.5" style={{ borderBottom: '1px solid #303030' }}>
               <div className="relative">
                 <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" />
-                <input
+                <input id="ff-mappage-13"
                   type="text"
                   className="input-dark w-full text-[10px] py-1 pl-6 pr-2"
                   placeholder={sidebarTab === 'units' ? 'SEARCH UNITS...' : 'SEARCH CALLS...'}

@@ -191,7 +191,7 @@ export default function CadCommandLine({ context, onAction }: CadCommandLineProp
       <div className="cad-command-input-row">
         <Terminal style={{ width: 12, height: 12, color: '#d4a017', flexShrink: 0 }} />
         <ChevronRight style={{ width: 10, height: 10, color: '#d4a017', flexShrink: 0 }} />
-        <input
+        <input id="ff-cadcommandline-0"
           ref={inputRef}
           data-cad-input
           type="text"

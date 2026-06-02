@@ -213,7 +213,7 @@ export default function TwoFactorSetupWizard({ onComplete, onCancel }: Props) {
             Enter the 6-digit code from your authenticator app to confirm setup:
           </p>
 
-          <input
+          <input id="ff-twofactorsetupwizard-0"
             type="text"
             inputMode="numeric"
             maxLength={6}

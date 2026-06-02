@@ -196,7 +196,7 @@ function LinkedEntityPanel({
             </PanelTitleBar>
             <div className="p-4 space-y-3">
               <div className="flex gap-2">
-                <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
+                <input id="ff-casemanagementpage-0" value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && handleSearch()}
                   placeholder={`Search ${entityType}...`} aria-label={`Search ${entityType}`}
                   className="flex-1 px-2 py-1.5 w-full text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
@@ -652,7 +652,7 @@ export default function CaseManagementPage() {
         <div className="flex flex-wrap gap-1 p-1.5 border-b border-rmpg-700 bg-surface-base">
           <div className="flex-1 min-w-[120px] relative">
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500 pointer-events-none" style={{ width: 12, height: 12 }} />
-            <input
+            <input id="ff-casemanagementpage-1"
               value={searchQuery}
               onChange={e => { setSearchQuery(e.target.value); setPage(1); }}
               placeholder="Search cases..." aria-label="Search cases..."
@@ -664,11 +664,11 @@ export default function CaseManagementPage() {
               </IconButton>
             )}
           </div>
-          <select value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setPage(1); }} className="text-[10px] bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-1 py-1 outline-none">
+          <select id="ff-casemanagementpage-2" value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setPage(1); }} className="text-[10px] bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-1 py-1 outline-none">
             <option value="">All Status</option>
             {STATUS_OPTIONS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
           </select>
-          <select value={filterType} onChange={e => { setFilterType(e.target.value); setPage(1); }} className="text-[10px] bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-1 py-1 outline-none">
+          <select id="ff-casemanagementpage-3" value={filterType} onChange={e => { setFilterType(e.target.value); setPage(1); }} className="text-[10px] bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-1 py-1 outline-none">
             <option value="">All Types</option>
             {TYPE_OPTIONS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
           </select>
@@ -1138,7 +1138,7 @@ export default function CaseManagementPage() {
                     <div className="space-y-2">
                       {SOLVABILITY_FACTORS.map(f => (
                         <label key={f.key} className="flex items-center gap-3 cursor-pointer">
-                          <input
+                          <input id="ff-casemanagementpage-4"
                             type="checkbox"
                             checked={!!solvFactors[f.key]}
                             onChange={e => setSolvFactors(prev => ({ ...prev, [f.key]: e.target.checked }))}
@@ -1215,7 +1215,7 @@ export default function CaseManagementPage() {
             </PanelTitleBar>
             <div className="p-4 space-y-3">
               <div className="flex gap-2">
-                <input value={personSearchQuery} onChange={e => setPersonSearchQuery(e.target.value)}
+                <input id="ff-casemanagementpage-5" value={personSearchQuery} onChange={e => setPersonSearchQuery(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && handlePersonSearch()}
                   placeholder="Search by name, phone, email..." aria-label="Search by name, phone, email..."
                   className="flex-1 px-2 py-1.5 w-full text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
@@ -1254,24 +1254,24 @@ export default function CaseManagementPage() {
             <div className="p-4 space-y-3">
               <div>
                 <label className="field-label">Title *</label>
-                <input value={formData.title} onChange={e => setFormData(p => ({ ...p, title: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
+                <input id="ff-casemanagementpage-6" value={formData.title} onChange={e => setFormData(p => ({ ...p, title: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="field-label">Type</label>
-                  <select value={formData.case_type} onChange={e => setFormData(p => ({ ...p, case_type: e.target.value as CaseType }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none">
+                  <select id="ff-casemanagementpage-7" value={formData.case_type} onChange={e => setFormData(p => ({ ...p, case_type: e.target.value as CaseType }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none">
                     {TYPE_OPTIONS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="field-label">Priority</label>
-                  <select value={formData.priority} onChange={e => setFormData(p => ({ ...p, priority: e.target.value as CasePriority }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none">
+                  <select id="ff-casemanagementpage-8" value={formData.priority} onChange={e => setFormData(p => ({ ...p, priority: e.target.value as CasePriority }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none">
                     {PRIORITY_OPTIONS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="field-label">Lead Investigator</label>
-                  <select value={formData.lead_investigator_id} onChange={e => setFormData(p => ({ ...p, lead_investigator_id: e.target.value }))} disabled={personnelLoading} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none disabled:opacity-60">
+                  <select id="ff-casemanagementpage-9" value={formData.lead_investigator_id} onChange={e => setFormData(p => ({ ...p, lead_investigator_id: e.target.value }))} disabled={personnelLoading} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none disabled:opacity-60">
                     {personnelLoading ? (
                       <option value="">Loading…</option>
                     ) : (

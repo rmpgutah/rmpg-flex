@@ -264,7 +264,7 @@ export default function IntegrationWizardModal({
                     {field.label} {field.required && '*'}
                   </label>
                   {field.type === 'select' ? (
-                    <select
+                    <select id="ff-integrationwizardmodal-0"
                       className="select-dark w-full text-xs"
                       value={formValues[field.key] || ''}
                       onChange={e => setFormValues(v => ({ ...v, [field.key]: e.target.value }))}
@@ -272,7 +272,7 @@ export default function IntegrationWizardModal({
                       {field.options?.map(opt => <option key={opt} value={opt}>{opt}</option>)}
                     </select>
                   ) : (
-                    <input
+                    <input id="ff-integrationwizardmodal-1"
                       type={field.type}
                       className="input-dark w-full text-xs"
                       placeholder={field.placeholder}

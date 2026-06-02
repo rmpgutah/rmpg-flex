@@ -845,7 +845,7 @@ export default function DashCamDetailPage() {
               ? <VolumeX className="w-4 h-4" />
               : <Volume2 className="w-4 h-4" />}
           </button>
-          <input type="range" min="0" max="1" step="0.05"
+          <input id="ff-dashcamdetailpage-0" type="range" min="0" max="1" step="0.05"
             value={isMuted ? 0 : volume}
             onChange={handleVolumeChange}
             className="w-16 h-1 accent-brand-500 cursor-pointer"

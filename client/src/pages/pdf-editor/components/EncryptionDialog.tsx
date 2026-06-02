@@ -71,7 +71,7 @@ export default function EncryptionDialog({ open, onClose, onConfirm }: Props) {
             <div>
               <label className={labelCls}>User password (open password)</label>
               <div className="relative">
-                <input type={showUser ? 'text' : 'password'} value={cfg.userPassword}
+                <input id="ff-encryptiondialog-0" type={showUser ? 'text' : 'password'} value={cfg.userPassword}
                   onChange={(e) => setCfg({ ...cfg, userPassword: e.target.value })}
                   placeholder="Empty = no prompt to open"
                   className={inputCls + ' pr-7'} />
@@ -83,7 +83,7 @@ export default function EncryptionDialog({ open, onClose, onConfirm }: Props) {
             <div>
               <label className={labelCls}>Owner password (controls removing restrictions)</label>
               <div className="relative">
-                <input type={showOwner ? 'text' : 'password'} value={cfg.ownerPassword}
+                <input id="ff-encryptiondialog-1" type={showOwner ? 'text' : 'password'} value={cfg.ownerPassword}
                   onChange={(e) => setCfg({ ...cfg, ownerPassword: e.target.value })}
                   placeholder="Auto-generated random if blank"
                   className={inputCls + ' pr-7'} />
@@ -94,7 +94,7 @@ export default function EncryptionDialog({ open, onClose, onConfirm }: Props) {
             </div>
             <div>
               <label className={labelCls}>Encryption strength</label>
-              <select value={cfg.bitLength} onChange={(e) => setCfg({ ...cfg, bitLength: parseInt(e.target.value, 10) as 128 | 256 })} className={inputCls}>
+              <select id="ff-encryptiondialog-2" value={cfg.bitLength} onChange={(e) => setCfg({ ...cfg, bitLength: parseInt(e.target.value, 10) as 128 | 256 })} className={inputCls}>
                 <option value={256}>256-bit AES (PDF 2.0 — strongest, recommended)</option>
                 <option value={128}>128-bit AES (PDF 1.7 — broader compatibility)</option>
               </select>
@@ -104,7 +104,7 @@ export default function EncryptionDialog({ open, onClose, onConfirm }: Props) {
           <div className="space-y-2">
             <div>
               <label className={labelCls}>Printing</label>
-              <select value={cfg.permissions.print} onChange={(e) => setCfg({ ...cfg, permissions: { ...cfg.permissions, print: e.target.value as any } })} className={inputCls}>
+              <select id="ff-encryptiondialog-3" value={cfg.permissions.print} onChange={(e) => setCfg({ ...cfg, permissions: { ...cfg.permissions, print: e.target.value as any } })} className={inputCls}>
                 <option value="full">Allow high-resolution printing</option>
                 <option value="low">Allow low-resolution printing only</option>
                 <option value="none">Disallow printing</option>
@@ -112,7 +112,7 @@ export default function EncryptionDialog({ open, onClose, onConfirm }: Props) {
             </div>
             <div>
               <label className={labelCls}>Modifications</label>
-              <select value={cfg.permissions.modify} onChange={(e) => setCfg({ ...cfg, permissions: { ...cfg.permissions, modify: e.target.value as any } })} className={inputCls}>
+              <select id="ff-encryptiondialog-4" value={cfg.permissions.modify} onChange={(e) => setCfg({ ...cfg, permissions: { ...cfg.permissions, modify: e.target.value as any } })} className={inputCls}>
                 <option value="all">Allow all modifications</option>
                 <option value="annotate">Allow annotation only</option>
                 <option value="form">Allow form filling only</option>
@@ -122,15 +122,15 @@ export default function EncryptionDialog({ open, onClose, onConfirm }: Props) {
             </div>
             <div className="space-y-1 pt-1">
               <label className="inline-flex items-center gap-2 text-[10px] text-rmpg-300">
-                <input type="checkbox" checked={cfg.permissions.extract} onChange={(e) => setCfg({ ...cfg, permissions: { ...cfg.permissions, extract: e.target.checked } })} />
+                <input id="ff-encryptiondialog-5" type="checkbox" checked={cfg.permissions.extract} onChange={(e) => setCfg({ ...cfg, permissions: { ...cfg.permissions, extract: e.target.checked } })} />
                 Allow text/image copy and extraction
               </label>
               <label className="inline-flex items-center gap-2 text-[10px] text-rmpg-300">
-                <input type="checkbox" checked={cfg.permissions.fillForms} onChange={(e) => setCfg({ ...cfg, permissions: { ...cfg.permissions, fillForms: e.target.checked } })} />
+                <input id="ff-encryptiondialog-6" type="checkbox" checked={cfg.permissions.fillForms} onChange={(e) => setCfg({ ...cfg, permissions: { ...cfg.permissions, fillForms: e.target.checked } })} />
                 Allow form field filling
               </label>
               <label className="inline-flex items-center gap-2 text-[10px] text-rmpg-300">
-                <input type="checkbox" checked={cfg.permissions.accessibility} onChange={(e) => setCfg({ ...cfg, permissions: { ...cfg.permissions, accessibility: e.target.checked } })} />
+                <input id="ff-encryptiondialog-7" type="checkbox" checked={cfg.permissions.accessibility} onChange={(e) => setCfg({ ...cfg, permissions: { ...cfg.permissions, accessibility: e.target.checked } })} />
                 Allow accessibility tools (screen readers)
               </label>
             </div>

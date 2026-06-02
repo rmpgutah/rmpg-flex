@@ -242,7 +242,7 @@ export default function AdminSkipTracerV2Tab({ LoadingSpinner, error, setError }
                   <div className="flex items-center gap-2 mt-2">
                     <Key className="w-3 h-3 text-rmpg-500 shrink-0" />
                     <div className="relative flex-1">
-                      <input
+                      <input id="ff-adminskiptracerv2tab-0"
                         type={showKeys[source.name] ? 'text' : 'password'}
                         value={edit?.apiKey ?? ''}
                         onChange={(e) => handleApiKeyChange(source.name, e.target.value)}

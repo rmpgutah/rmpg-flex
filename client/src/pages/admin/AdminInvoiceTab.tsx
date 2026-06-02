@@ -369,7 +369,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
             <label className="block text-[10px] uppercase text-rmpg-500 mb-1">Period Start</label>
-            <input
+            <input id="ff-admininvoicetab-0"
               type="date"
               className="input-dark w-full text-xs min-h-[36px]"
               value={createForm.period_start}
@@ -378,7 +378,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
           </div>
           <div>
             <label className="block text-[10px] uppercase text-rmpg-500 mb-1">Period End</label>
-            <input
+            <input id="ff-admininvoicetab-1"
               type="date"
               className="input-dark w-full text-xs min-h-[36px]"
               value={createForm.period_end}
@@ -388,7 +388,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
         </div>
         <div>
           <label className="block text-[10px] uppercase text-rmpg-500 mb-1">Issue Date</label>
-          <input
+          <input id="ff-admininvoicetab-2"
             type="date"
             className="input-dark w-full text-xs min-h-[36px]"
             value={createForm.issue_date}
@@ -516,7 +516,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px]">
                 <div>
                   <label className="text-rmpg-500 uppercase block mb-0.5">Type</label>
-                  <select className="select-dark w-full text-[10px] min-h-[36px]" value={itemForm.line_type} onChange={e => setItemForm(f => ({ ...f, line_type: e.target.value }))}>
+                  <select id="ff-admininvoicetab-3" className="select-dark w-full text-[10px] min-h-[36px]" value={itemForm.line_type} onChange={e => setItemForm(f => ({ ...f, line_type: e.target.value }))}>
                     <option value="custom">Custom</option>
                     <option value="contract_base">Contract Base</option>
                     <option value="service_hours">Service Hours</option>
@@ -529,15 +529,15 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
                 </div>
                 <div className="col-span-3">
                   <label className="text-rmpg-500 uppercase block mb-0.5">Description</label>
-                  <input className="input-dark w-full text-[10px] min-h-[36px]" value={itemForm.description} onChange={e => setItemForm(f => ({ ...f, description: e.target.value }))} placeholder="Description..." />
+                  <input id="ff-admininvoicetab-4" className="input-dark w-full text-[10px] min-h-[36px]" value={itemForm.description} onChange={e => setItemForm(f => ({ ...f, description: e.target.value }))} placeholder="Description..." />
                 </div>
                 <div>
                   <label className="text-rmpg-500 uppercase block mb-0.5">Qty</label>
-                  <input type="number" className="input-dark w-full text-[10px] min-h-[36px]" value={itemForm.quantity} onChange={e => setItemForm(f => ({ ...f, quantity: e.target.value }))} />
+                  <input id="ff-admininvoicetab-5" type="number" className="input-dark w-full text-[10px] min-h-[36px]" value={itemForm.quantity} onChange={e => setItemForm(f => ({ ...f, quantity: e.target.value }))} />
                 </div>
                 <div>
                   <label className="text-rmpg-500 uppercase block mb-0.5">Unit Price</label>
-                  <input type="number" step="0.01" className="input-dark w-full text-[10px] min-h-[36px]" value={itemForm.unit_price} onChange={e => setItemForm(f => ({ ...f, unit_price: e.target.value }))} />
+                  <input id="ff-admininvoicetab-6" type="number" step="0.01" className="input-dark w-full text-[10px] min-h-[36px]" value={itemForm.unit_price} onChange={e => setItemForm(f => ({ ...f, unit_price: e.target.value }))} />
                 </div>
                 <div className="col-span-2 flex items-end gap-1">
                   <button type="button" onClick={handleAddLineItem} disabled={saving || !itemForm.description} className="toolbar-btn text-green-400 disabled:opacity-50">
@@ -617,15 +617,15 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[10px]">
               <div>
                 <label className="text-rmpg-500 uppercase block mb-0.5">Amount</label>
-                <input type="number" step="0.01" className="input-dark w-full text-[10px] min-h-[36px]" value={payForm.amount} onChange={e => setPayForm(f => ({ ...f, amount: e.target.value }))} placeholder="0.00" />
+                <input id="ff-admininvoicetab-7" type="number" step="0.01" className="input-dark w-full text-[10px] min-h-[36px]" value={payForm.amount} onChange={e => setPayForm(f => ({ ...f, amount: e.target.value }))} placeholder="0.00" />
               </div>
               <div>
                 <label className="text-rmpg-500 uppercase block mb-0.5">Date</label>
-                <input type="date" className="input-dark w-full text-[10px] min-h-[36px]" value={payForm.payment_date} onChange={e => setPayForm(f => ({ ...f, payment_date: e.target.value }))} />
+                <input id="ff-admininvoicetab-8" type="date" className="input-dark w-full text-[10px] min-h-[36px]" value={payForm.payment_date} onChange={e => setPayForm(f => ({ ...f, payment_date: e.target.value }))} />
               </div>
               <div>
                 <label className="text-rmpg-500 uppercase block mb-0.5">Method</label>
-                <select className="select-dark w-full text-[10px] min-h-[36px]" value={payForm.payment_method} onChange={e => setPayForm(f => ({ ...f, payment_method: e.target.value }))}>
+                <select id="ff-admininvoicetab-9" className="select-dark w-full text-[10px] min-h-[36px]" value={payForm.payment_method} onChange={e => setPayForm(f => ({ ...f, payment_method: e.target.value }))}>
                   <option value="check">Check</option>
                   <option value="ach">ACH</option>
                   <option value="wire">Wire</option>
@@ -636,11 +636,11 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
               </div>
               <div>
                 <label className="text-rmpg-500 uppercase block mb-0.5">Reference #</label>
-                <input className="input-dark w-full text-[10px] min-h-[36px]" value={payForm.reference_number} onChange={e => setPayForm(f => ({ ...f, reference_number: e.target.value }))} placeholder="Check #, etc." />
+                <input id="ff-admininvoicetab-10" className="input-dark w-full text-[10px] min-h-[36px]" value={payForm.reference_number} onChange={e => setPayForm(f => ({ ...f, reference_number: e.target.value }))} placeholder="Check #, etc." />
               </div>
               <div className="col-span-2">
                 <label className="text-rmpg-500 uppercase block mb-0.5">Notes</label>
-                <input className="input-dark w-full text-[10px] min-h-[36px]" value={payForm.notes} onChange={e => setPayForm(f => ({ ...f, notes: e.target.value }))} placeholder="Optional notes..." />
+                <input id="ff-admininvoicetab-11" className="input-dark w-full text-[10px] min-h-[36px]" value={payForm.notes} onChange={e => setPayForm(f => ({ ...f, notes: e.target.value }))} placeholder="Optional notes..." />
               </div>
             </div>
             <div className="flex justify-end gap-1 mt-2">
