@@ -334,7 +334,11 @@
 //        capabilities (K9/SWAT/Supervisor/FTO/Traffic/Detective/Patrol), audio
 //        mode. Unit create/update/delete/dispose + GET now route to the
 //        rewrite (env.API) so the new fields persist + the hardened handlers run.
-const CACHE_NAME = 'rmpg-flex-v709';
+// v710: Connections graph edges now carry a hover tooltip with the full
+//       plain-English link description ("John Smith — Owner of 325 S Melrose
+//       Cir") via shared linkSentence(); widened invisible hit-area so the
+//       thin dashed edge is easy to hover.
+const CACHE_NAME = 'rmpg-flex-v710';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
