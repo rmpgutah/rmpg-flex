@@ -412,6 +412,108 @@ auth.put('/profile', authMiddleware, async (c) => {
 });
 
 // ════════════════════════════════════════════════════════════════
+// Profile photo / sessions / MFA status (UserProfileModal.tsx)
+// ════════════════════════════════════════════════════════════════
+// These four surfaces were added to the client after the legacy `rmpg-flex`
+// bundle froze, so legacy 404s them (live sweep 2026-06-02: profile-image,
+// sessions, totp/status, 2fa/status). They read ONLY columns that exist on
+// live D1 (users.profile_image / .totp_enabled / .totp_backup_codes,
+// sessions.is_active/expires_at), so unlike the login/refresh handlers above
+// they run correctly on the rewrite. Routed to env.API in proxy/index.ts.
+
+// GET /auth/profile-image — current user's profile photo (data URL) or null.
+auth.get('/profile-image', authMiddleware, async (c) => {
+  const db = getDb(c.env);
+  const row = await queryFirst<{ profile_image: string | null }>(
+    db,
+    'SELECT profile_image FROM users WHERE id = ?',
+    c.get('userId'),
+  );
+  return c.json({ profile_image: row?.profile_image ?? null });
+});
+
+// PUT /auth/profile-image — set or clear the photo. Body: { profile_image: string | null }.
+// The client sends a 256×256 JPEG data URL (~tens of KB) or null to remove.
+auth.put('/profile-image', authMiddleware, async (c) => {
+  try {
+    const db = getDb(c.env);
+    const { profile_image } = await c.req.json<{ profile_image?: string | null }>();
+    const value = typeof profile_image === 'string' && profile_image.length > 0 ? profile_image : null;
+    await execute(db, 'UPDATE users SET profile_image = ? WHERE id = ?', value, c.get('userId'));
+    return c.json({ success: true, profile_image: value });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return c.json({ error: 'Failed to save profile image', detail: msg }, 500);
+  }
+});
+
+// GET /auth/sessions — active login sessions for the current user. The Sessions
+// tab reads session_id / ip_address / user_agent / last_used_at|created_at and
+// does `setSessions(Array.isArray(data) ? data : [])`, so return a bare array.
+auth.get('/sessions', authMiddleware, async (c) => {
+  const db = getDb(c.env);
+  const rows = await query<any>(
+    db,
+    `SELECT session_id, ip_address, user_agent, created_at, last_used_at, expires_at
+       FROM sessions
+      WHERE user_id = ? AND COALESCE(is_active, 1) = 1 AND expires_at > datetime('now')
+      ORDER BY COALESCE(last_used_at, created_at) DESC`,
+    c.get('userId'),
+  );
+  return c.json(rows || []);
+});
+
+// DELETE /auth/sessions/:sessionId — revoke one session (soft: is_active = 0,
+// which the GET filter then hides). Scoped to user_id so a user can only revoke
+// their own sessions. Legacy 404'd this too, so the "Revoke" button was dead.
+auth.delete('/sessions/:sessionId', authMiddleware, async (c) => {
+  const db = getDb(c.env);
+  const sessionId = c.req.param('sessionId');
+  await execute(
+    db,
+    'UPDATE sessions SET is_active = 0 WHERE session_id = ? AND user_id = ?',
+    sessionId,
+    c.get('userId'),
+  );
+  return c.json({ success: true });
+});
+
+// GET /auth/totp/status — TOTP enrollment state. No enroll/verify flow is wired
+// up on the Worker yet (legacy-era MFA was never ported), so this is a read-only
+// honest status sourced from users.totp_enabled. Shape: { enabled, required }.
+auth.get('/totp/status', authMiddleware, async (c) => {
+  const db = getDb(c.env);
+  const row = await queryFirst<{ totp_enabled: number | null }>(
+    db,
+    'SELECT totp_enabled FROM users WHERE id = ?',
+    c.get('userId'),
+  );
+  return c.json({ enabled: !!row?.totp_enabled, required: false });
+});
+
+// GET /auth/2fa/status — two-factor status for the Security tab. The client reads
+// { enabled, backupCodesRemaining }. backupCodesRemaining is the real count from
+// users.totp_backup_codes (JSON array or comma-separated), 0 when un-enrolled.
+auth.get('/2fa/status', authMiddleware, async (c) => {
+  const db = getDb(c.env);
+  const row = await queryFirst<{ totp_enabled: number | null; totp_backup_codes: string | null }>(
+    db,
+    'SELECT totp_enabled, totp_backup_codes FROM users WHERE id = ?',
+    c.get('userId'),
+  );
+  let backupCodesRemaining = 0;
+  if (row?.totp_backup_codes) {
+    try {
+      const parsed = JSON.parse(row.totp_backup_codes);
+      backupCodesRemaining = Array.isArray(parsed) ? parsed.length : 0;
+    } catch {
+      backupCodesRemaining = row.totp_backup_codes.split(',').map((s) => s.trim()).filter(Boolean).length;
+    }
+  }
+  return c.json({ enabled: !!row?.totp_enabled, backupCodesRemaining });
+});
+
+// ════════════════════════════════════════════════════════════════
 // Security Dashboard (SecurityDashboardPage.tsx, route /security-dashboard)
 // ════════════════════════════════════════════════════════════════
 // The /api/auth router is mounted public (login/refresh are open), so we

@@ -1106,7 +1106,9 @@ export default function MapPage() {
       };
       map.on('moveend', savePosition);
 
-      infoWindowRef.current = new mapboxgl.Popup({ closeButton: true, closeOnClick: false });
+      // maxWidth must clear the 248px imagery + padding in the "What's Here"
+      // popup (Mapbox defaults to 240px, which would clip the street view).
+      infoWindowRef.current = new mapboxgl.Popup({ closeButton: true, closeOnClick: false, maxWidth: '290px' });
 
       // Mapbox does not have the Google Maps error overlay / dismissable
       // alertdialog that the old mutation observer was designed to handle.
@@ -1379,14 +1381,14 @@ export default function MapPage() {
                     <span style="margin-left:auto;font-size:9px;text-transform:uppercase;color:${statusColor};font-weight:800;letter-spacing:1px;padding:1px 6px;background:${statusColor}20;border:1px solid ${statusColor}30;border-radius:2px;">${escapeHtml(unit.status.replace(/_/g, ' '))}</span>
                   </div>
                   <div style="font-size:11px;color:#d1d5db;margin-bottom:2px;">${escapeHtml(unit.officer_name)}</div>
-                  ${unit.vehicle ? `<div style="font-size:10px;color:#5a6e80;margin-bottom:6px;">Vehicle: ${escapeHtml(unit.vehicle)}</div>` : ''}
+                  ${unit.vehicle ? `<div style="font-size:10px;color:#8a8a8a;margin-bottom:6px;">Vehicle: ${escapeHtml(unit.vehicle)}</div>` : ''}
                   ${unit.call_number ? `
                     <div style="margin-top:6px;padding-top:6px;border-top:1px solid #2b2b2b;">
                       <div style="font-size:10px;color:#a0a0a0;font-weight:bold;">${escapeHtml(unit.call_number)}</div>
                       ${unit.current_call_type ? `<div style="font-size:10px;color:#d1d5db;">${escapeHtml(formatIncidentType(unit.current_call_type))}</div>` : ''}
-                      <div style="font-size:9px;color:#5a6e80;margin-top:2px;">${escapeHtml(location)}</div>
+                      <div style="font-size:9px;color:#8a8a8a;margin-top:2px;">${escapeHtml(location)}</div>
                     </div>
-                  ` : `<div style="font-size:9px;color:#5a6e80;margin-top:4px;">${escapeHtml(location)}</div>`}
+                  ` : `<div style="font-size:9px;color:#8a8a8a;margin-top:4px;">${escapeHtml(location)}</div>`}
                   ${routeBtnHtml}
                   ${omBtnHtml}
                 </div>
@@ -1485,7 +1487,7 @@ export default function MapPage() {
               let unitsHtml = '';
               if (assignedUnits.length > 0) {
                 unitsHtml = `<div style="margin-top:6px;padding-top:6px;border-top:1px solid #2b2b2b;">
-                  <div style="font-size:9px;color:#5a6e80;margin-bottom:4px;font-weight:bold;text-transform:uppercase;letter-spacing:1px;">ASSIGNED UNITS (${assignedUnits.length})</div>
+                  <div style="font-size:9px;color:#8a8a8a;margin-bottom:4px;font-weight:bold;text-transform:uppercase;letter-spacing:1px;">ASSIGNED UNITS (${assignedUnits.length})</div>
                   ${assignedUnits.map(u => {
                     const uc = UNIT_STATUS_COLORS[u.status] || '#666666';
                     const routeBtn = (u.latitude != null && u.longitude != null && call.latitude != null && call.longitude != null)
@@ -1514,7 +1516,7 @@ export default function MapPage() {
                   }).join('')}
                 </div>`;
               } else {
-                unitsHtml = `<div style="margin-top:6px;padding-top:6px;border-top:1px solid #2b2b2b;font-size:9px;color:#5a6e80;">No units assigned</div>`;
+                unitsHtml = `<div style="margin-top:6px;padding-top:6px;border-top:1px solid #2b2b2b;font-size:9px;color:#8a8a8a;">No units assigned</div>`;
               }
 
               infoWindowRef.current?.setHTML(`
@@ -1526,7 +1528,7 @@ export default function MapPage() {
                   <div style="font-size:12px;color:#a0a0a0;font-weight:bold;">${escapeHtml(call.call_number)}</div>
                   <div style="font-size:10px;margin-top:4px;color:#d1d5db;">${escapeHtml(call.location_address)}</div>
                   ${call.property_name ? `<div style="font-size:10px;margin-top:4px;color:#888888;">\u{1F3E2} ${escapeHtml(call.property_name)}</div>` : ''}
-                  <div style="font-size:9px;margin-top:6px;text-transform:uppercase;color:#5a6e80;letter-spacing:1px;font-weight:800;">${escapeHtml(call.status.replace(/_/g, ' '))}</div>
+                  <div style="font-size:9px;margin-top:6px;text-transform:uppercase;color:#8a8a8a;letter-spacing:1px;font-weight:800;">${escapeHtml(call.status.replace(/_/g, ' '))}</div>
                   ${unitsHtml}
                 </div>
               `);
@@ -3464,8 +3466,8 @@ export default function MapPage() {
               <PanelLeftOpen className="w-4 h-4" />
             </button>
           ) : (
-          <div className="panel-beveled bg-surface-deep border border-rmpg-600 shadow-md overflow-y-auto scrollbar-dark" style={{ width: 'clamp(160px, 14vw, 200px)', maxHeight: 'calc(100dvh - 96px)', borderRadius: 2, isolation: 'isolate', WebkitTransform: 'translateZ(0)', overscrollBehavior: 'contain' } as React.CSSProperties} role="region" aria-label="Map layer controls">
-            <div className="flex items-center gap-2 px-3 py-2 border-b border-rmpg-700">
+          <div className="panel-beveled bg-surface-deep border border-rmpg-600 shadow-md overflow-y-auto scrollbar-dark" style={{ width: 'clamp(208px, 15vw, 248px)', maxHeight: 'calc(100dvh - 96px)', borderRadius: 2, isolation: 'isolate', WebkitTransform: 'translateZ(0)', overscrollBehavior: 'contain' } as React.CSSProperties} role="region" aria-label="Map layer controls">
+            <div className="sticky top-0 z-10 flex items-center gap-2 px-3 py-2 border-b border-rmpg-700 bg-surface-deep">
               <Layers className="w-3.5 h-3.5 text-brand-400" />
               <span className="text-[10px] font-bold text-rmpg-300 uppercase tracking-widest flex-1">Layers</span>
               <div className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-green-400 animate-pulse' : 'bg-red-500'}`} />
@@ -3869,7 +3871,7 @@ export default function MapPage() {
                 <Target className="w-3 h-3" />
                 <span className="flex-1 text-left">Response Radius</span>
                 {showResponseRadius && responseRadius.activePoint && (
-                  <span className="led-dot led-indigo" style={{ width: 5, height: 5 }} />
+                  <span className="led-dot" style={{ width: 5, height: 5, background: '#9a9a9a', boxShadow: '0 0 4px rgba(154,154,154,0.5)' }} />
                 )}
               </button>
 
@@ -3958,7 +3960,7 @@ export default function MapPage() {
               >
                 <CircleDot className="w-3 h-3" />
                 <span className="flex-1 text-left">Cluster Calls</span>
-                {clusteringEnabled && clustering.clustered && <span className="led-dot led-blue" style={{ width: 5, height: 5 }} />}
+                {clusteringEnabled && clustering.clustered && <span className="led-dot" style={{ width: 5, height: 5, background: '#9a9a9a', boxShadow: '0 0 4px rgba(154,154,154,0.5)' }} />}
               </button>
 
               {/* Daylight Overlay */}
@@ -4008,9 +4010,9 @@ export default function MapPage() {
             <div className="border-t border-rmpg-700 p-1.5">
               <button
                 onClick={() => setShowMapStyles(!showMapStyles)}
-                className="flex items-center gap-2 w-full px-2 py-1.5 text-left transition-colors hover:bg-rmpg-800/50"
+                className={`flex items-center gap-2 w-full px-2 py-1.5 text-left transition-colors ${showMapStyles ? 'panel-inset bg-surface-raised/60' : 'hover:bg-rmpg-800/50'}`}
               >
-                <MapIcon className="w-3 h-3 text-rmpg-400" />
+                <MapIcon className="w-3 h-3 text-gray-400" />
                 <span className="text-[10px] text-rmpg-300 flex-1">Map Style</span>
                 <span className="text-[9px] text-brand-400 font-bold">{MAP_STYLE_LABELS[mapStyle]}</span>
                 {showMapStyles ? <ChevronUp className="w-2.5 h-2.5 text-rmpg-500" /> : <ChevronDown className="w-2.5 h-2.5 text-rmpg-500" />}
@@ -4045,7 +4047,7 @@ export default function MapPage() {
             <div className="border-t border-rmpg-700 p-1.5">
               <button
                 onClick={() => setShowGeoPanel(!showGeoPanel)}
-                className="flex items-center gap-2 w-full px-2 py-1.5 text-left transition-colors hover:bg-rmpg-800/50"
+                className={`flex items-center gap-2 w-full px-2 py-1.5 text-left transition-colors ${showGeoPanel ? 'panel-inset bg-surface-raised/60' : 'hover:bg-rmpg-800/50'}`}
               >
                 <Globe2 className="w-3 h-3 text-gray-400" />
                 <span className="text-[10px] text-rmpg-300 flex-1">Spatial Layers</span>
@@ -4064,7 +4066,7 @@ export default function MapPage() {
                     <button
                       key={cfg.id}
                       onClick={() => toggleGeoLayer(cfg.id)}
-                      className={`flex items-center gap-2 w-full px-2 py-1 text-left transition-colors ${
+                      className={`flex items-center gap-2 w-full px-2 py-1.5 text-left transition-colors ${
                         state?.visible ? 'panel-inset bg-surface-deep' : 'opacity-40 hover:opacity-70 hover:bg-rmpg-800/50'
                       }`}
                     >
@@ -4081,7 +4083,7 @@ export default function MapPage() {
                       key={cfg.id}
                       onClick={() => handleToggleHier(cfg.id)}
                       title={cfg.description}
-                      className={`flex items-center gap-2 w-full px-2 py-1 text-left transition-colors ${
+                      className={`flex items-center gap-2 w-full px-2 py-1.5 text-left transition-colors ${
                         state?.visible ? 'panel-inset bg-surface-deep' : 'opacity-40 hover:opacity-70 hover:bg-rmpg-800/50'
                       }`}
                     >
@@ -4119,7 +4121,7 @@ export default function MapPage() {
             <div className="border-t border-rmpg-700 p-1.5">
               <button
                 onClick={() => setShowVectorPanel(!showVectorPanel)}
-                className="flex items-center gap-2 w-full px-2 py-1.5 text-left transition-colors hover:bg-rmpg-800/50"
+                className={`flex items-center gap-2 w-full px-2 py-1.5 text-left transition-colors ${showVectorPanel ? 'panel-inset bg-surface-raised/60' : 'hover:bg-rmpg-800/50'}`}
               >
                 <Globe2 className="w-3 h-3 text-gray-400" />
                 <span className="text-[10px] text-rmpg-300 flex-1">Statewide Data</span>
@@ -4136,7 +4138,7 @@ export default function MapPage() {
                       <button
                         key={cfg.id}
                         onClick={() => handleToggleStatewide(cfg.id)}
-                        className={`flex items-center gap-2 w-full px-2 py-1 text-left transition-colors ${
+                        className={`flex items-center gap-2 w-full px-2 py-1.5 text-left transition-colors ${
                           state?.visible ? 'panel-inset bg-surface-deep' : 'opacity-40 hover:opacity-70 hover:bg-rmpg-800/50'
                         }`}
                         title={cfg.description}
@@ -4184,7 +4186,7 @@ export default function MapPage() {
             <div className="border-t border-rmpg-700 p-1.5">
               <button
                 onClick={() => setShowAdvTools(!showAdvTools)}
-                className="flex items-center gap-2 w-full px-2 py-1.5 text-left transition-colors hover:bg-rmpg-800/50"
+                className={`flex items-center gap-2 w-full px-2 py-1.5 text-left transition-colors ${showAdvTools ? 'panel-inset bg-surface-raised/60' : 'hover:bg-rmpg-800/50'}`}
               >
                 <SlidersHorizontal className="w-3 h-3 text-gray-400" />
                 <span className="text-[10px] text-rmpg-300 flex-1">Advanced Tools</span>
@@ -4198,7 +4200,7 @@ export default function MapPage() {
                   {/* What's Here identify */}
                   <button
                     onClick={() => setWhatsHereActive((v) => !v)}
-                    className={`flex items-center gap-2 w-full px-2 py-1 text-left transition-colors ${
+                    className={`flex items-center gap-2 w-full px-2 py-1.5 text-left transition-colors ${
                       whatsHereActive ? 'panel-inset bg-surface-deep' : 'opacity-50 hover:opacity-80 hover:bg-rmpg-800/50'
                     }`}
                   >

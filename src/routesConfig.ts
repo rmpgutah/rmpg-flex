@@ -57,6 +57,7 @@ import mapData from './routes/mapData';
 import tiles from './routes/tiles';
 import geo from './routes/geo';
 import admin from './routes/admin';
+import announcements from './routes/announcements';
 import affairs from './routes/affairs';
 import ai from './routes/ai';
 import alerts from './routes/notifications';
@@ -228,6 +229,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // ── Admin / personnel / presence ───────────────────────────
   { prefix: '/api/admin', router: admin, auth: 'required' },
   { prefix: '/api/admin/settings', router: adminSettings, auth: 'required' },
+  { prefix: '/api/announcements', router: announcements, auth: 'required',
+    note: 'Officer-facing reader for active/role-scoped broadcasts. Admin CRUD lives under /api/admin/announcements.' },
   { prefix: '/api/ai', router: ai, auth: 'required',
     note: 'AI dashboard stubs (config/stats/status/health/activity). Real provider wiring is Phase 2.' },
   { prefix: '/api/voice', router: voiceRoute, auth: 'required',

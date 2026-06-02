@@ -287,6 +287,91 @@ fleet.get('/analytics', async (c) => {
        AND inspection_date >= date('now', '-90 days')`,
   ), null))?.n ?? 0;
 
+  // ── Live-computed dashboard fields (previously hardcoded empty) ──────────
+  // Oldest model year among active (non-retired) vehicles.
+  const oldest_vehicle_year = (await safe(() => queryFirst<{ y: number | null }>(
+    db,
+    `SELECT MIN(year) as y FROM fleet_vehicles
+     WHERE archived_at IS NULL AND status != 'retired' AND year IS NOT NULL AND year > 1900`,
+  ), null))?.y ?? null;
+
+  // Utilization — a vehicle counts as "assigned" if it carries a unit id OR
+  // has an open fleet_assignment (unassigned_at IS NULL).
+  const utilRow = await safe(() => queryFirst<{ total: number; assigned: number }>(
+    db,
+    `SELECT COUNT(*) as total,
+            SUM(CASE WHEN (assigned_unit_id IS NOT NULL AND assigned_unit_id != '')
+                       OR id IN (SELECT vehicle_id FROM fleet_assignments WHERE unassigned_at IS NULL)
+                     THEN 1 ELSE 0 END) as assigned
+     FROM fleet_vehicles WHERE archived_at IS NULL`,
+  ), null);
+  const utilTotal = utilRow?.total ?? 0;
+  const utilAssigned = utilRow?.assigned ?? 0;
+  const utilization = {
+    assigned: utilAssigned,
+    unassigned: Math.max(0, utilTotal - utilAssigned),
+    rate: utilTotal > 0 ? Math.round((utilAssigned / utilTotal) * 100) : 0,
+  };
+
+  // Service compliance — active vehicles not currently overdue for service.
+  const service_compliance = {
+    compliant: Math.max(0, utilTotal - vehicles_needing_service),
+    overdue: vehicles_needing_service,
+    rate: utilTotal > 0 ? Math.round(((utilTotal - vehicles_needing_service) / utilTotal) * 100) : 100,
+  };
+
+  // Inspection pass rate — all recorded inspections.
+  const inspRow = await safe(() => queryFirst<{ total: number; passed: number; failed: number }>(
+    db,
+    `SELECT COUNT(*) as total,
+            SUM(CASE WHEN overall_result = 'pass' THEN 1 ELSE 0 END) as passed,
+            SUM(CASE WHEN overall_result = 'fail' THEN 1 ELSE 0 END) as failed
+     FROM fleet_inspections`,
+  ), null);
+  const inspTotal = inspRow?.total ?? 0;
+  const inspPassed = inspRow?.passed ?? 0;
+  const inspection_pass_rate = {
+    total: inspTotal,
+    passed: inspPassed,
+    failed: inspRow?.failed ?? 0,
+    rate: inspTotal > 0 ? Math.round((inspPassed / inspTotal) * 100) : 100,
+  };
+
+  // Avg daily miles — fleet-wide, derived from the odometer span across all
+  // fuel fills over the elapsed day span (no GPS telematics needed).
+  const adm = await safe(() => queryFirst<{ span_miles: number | null; span_days: number | null }>(
+    db,
+    `SELECT (MAX(odometer) - MIN(odometer)) as span_miles,
+            (julianday(MAX(fuel_date)) - julianday(MIN(fuel_date))) as span_days
+     FROM fleet_fuel_log WHERE odometer IS NOT NULL AND odometer > 0`,
+  ), null);
+  const avg_daily_miles = (adm?.span_days && adm.span_days > 0 && (adm.span_miles ?? 0) > 0)
+    ? Math.round(((adm.span_miles as number) / adm.span_days) * 10) / 10
+    : null;
+
+  // Maintenance forecast — active vehicles with their current mileage + any
+  // scheduled next service; est_days from next_service_due when set.
+  const maintenance_forecast = await safe(() => query<{
+    id: number; vehicle_number: string; current_mileage: number | null;
+    next_service_due: string | null; next_service_mileage: number | null;
+  }>(
+    db,
+    `SELECT id, vehicle_number, current_mileage, next_service_due, next_service_mileage
+     FROM fleet_vehicles
+     WHERE archived_at IS NULL AND status != 'retired'
+     ORDER BY (next_service_due IS NULL), date(next_service_due) ASC
+     LIMIT 15`,
+  ), []).then(rows => rows.map(r => ({
+    id: r.id,
+    vehicle_number: r.vehicle_number,
+    current_mileage: r.current_mileage ?? null,
+    next_service_due: r.next_service_due ?? null,
+    next_service_mileage: r.next_service_mileage ?? null,
+    est_days_until_service: r.next_service_due
+      ? Math.round((new Date(r.next_service_due).getTime() - Date.now()) / 86400000)
+      : null,
+  })));
+
   return c.json({
     maintenance_cost_trend,
     mileage_distribution,
@@ -302,16 +387,15 @@ fleet.get('/analytics', async (c) => {
       inspections_failing,
     },
     cost_per_mile_ranking,
-    // Fields the FleetAnalyticsTab destructures but whose endpoints
-    // live in separate handlers. Return empty defaults so an unguarded
-    // destructuring (pre-May-2026 client builds) never reads undefined.
-    service_compliance: { compliant: 0, overdue: 0, rate: 100 },
-    inspection_pass_rate: { total: 0, passed: 0, failed: 0, rate: 100 },
-    utilization: { assigned: 0, unassigned: 0, rate: 0 },
+    service_compliance,
+    inspection_pass_rate,
+    utilization,
+    maintenance_forecast,
+    oldest_vehicle_year,
+    avg_daily_miles,
+    // daily_usage is GPS-telematics derived (active vehicles per day); it stays
+    // empty until GPS breadcrumb data exists — the UI shows "No GPS usage data".
     daily_usage: [],
-    maintenance_forecast: [],
-    oldest_vehicle_year: null,
-    avg_daily_miles: null,
     top_issues: [],
   });
 });
@@ -2310,8 +2394,48 @@ fleet.get('/cost-trends', async (c) => {
 fleet.get('/driver-performance', async (c) => {
   try {
     const db = getDb(c.env);
-    const rows = await query<Record<string, unknown>>(db, `SELECT a.officer_name as driver, COUNT(*) as trips, COALESCE(SUM(f.gallons),0) as gallons, COALESCE(SUM(f.total_cost),0) as cost, COALESCE(MAX(f.odometer)-MIN(f.odometer),0) as miles FROM fleet_assignments a LEFT JOIN fleet_fuel_log f ON f.vehicle_id = a.vehicle_id AND f.fuel_date >= a.assigned_at AND (a.unassigned_at IS NULL OR f.fuel_date <= a.unassigned_at) WHERE a.officer_name IS NOT NULL AND a.assigned_at >= datetime('now', '-90 days') GROUP BY a.officer_name ORDER BY miles DESC LIMIT 50`);
-    return c.json({ drivers: rows });
+    // Aggregate per driver from the fuel log (driver_name is captured per fill
+    // and IS populated), not from fleet_assignments — most vehicles have fuel
+    // history but no formal assignment rows, so the assignment-join version
+    // always came back empty. total_miles from the odometer span; avg_mpg from
+    // the per-fill MPG. GPS-only telematics fields (hours/idle/speed) stay 0
+    // until breadcrumb data exists; overall_score is a simple MPG-based proxy.
+    const rows = await query<{
+      officer_name: string; total_miles: number; avg_mpg: number | null;
+      fills: number; total_cost: number;
+    }>(
+      db,
+      `SELECT driver_name as officer_name,
+              COALESCE(MAX(odometer) - MIN(odometer), 0) as total_miles,
+              AVG(NULLIF(mpg, 0)) as avg_mpg,
+              COUNT(*) as fills,
+              COALESCE(SUM(total_cost), 0) as total_cost
+       FROM fleet_fuel_log
+       WHERE driver_name IS NOT NULL AND driver_name != '' AND driver_name != 'None'
+       GROUP BY driver_name
+       ORDER BY total_miles DESC
+       LIMIT 50`,
+    );
+    const drivers = rows.map(r => {
+      const mpg = (typeof r.avg_mpg === 'number' && r.avg_mpg > 0) ? Math.round(r.avg_mpg * 10) / 10 : null;
+      // Lightweight score: scale MPG into 0-100 (25 mpg ≈ 100). Purely a
+      // fuel-economy proxy until real telematics scoring exists.
+      const overall_score = mpg != null ? Math.min(100, Math.round((mpg / 25) * 100)) : 0;
+      return {
+        officer_name: r.officer_name,
+        call_sign: '',
+        total_miles: Math.max(0, Math.round(r.total_miles ?? 0)),
+        total_hours: 0,
+        idle_pct: 0,
+        avg_speed: 0,
+        max_speed: 0,
+        avg_mpg: mpg,
+        inspection_score: 0,
+        damage_count: 0,
+        overall_score,
+      };
+    });
+    return c.json({ drivers });
   } catch (err) { console.error('GET /fleet/driver-performance failed:', err); return c.json({ drivers: [] }); }
 });
 

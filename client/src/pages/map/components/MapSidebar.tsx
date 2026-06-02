@@ -125,7 +125,7 @@ export default function MapSidebar({
               <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500 pointer-events-none" />
               <input id="ff-mapsidebar-0"
                 type="text"
-                className="input-dark w-full text-[10px] py-1 pl-6 pr-6 focus:ring-1 focus:ring-[#888888] focus:border-[#888888] placeholder:text-[#5a6e80] transition-shadow duration-150"
+                className="input-dark w-full text-[10px] py-1 pl-6 pr-6 focus:ring-1 focus:ring-[#888888] focus:border-[#888888] placeholder:text-[#6b6b6b] transition-shadow duration-150"
                 placeholder={sidebarTab === 'units' ? 'SEARCH UNITS...' : 'SEARCH CALLS...'}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}

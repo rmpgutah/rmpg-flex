@@ -23,7 +23,8 @@
 
 import { Hono } from 'hono';
 import type { Env } from '../types';
-import { getDb, query, queryFirst } from '../utils/db';
+import type { D1Database } from '@cloudflare/workers-types';
+import { getDb, query, queryFirst, execute } from '../utils/db';
 
 // IPED_API_KEY is optional and only consulted by /status to report
 // "configured". Declared here (not in src/types.ts) because no other
@@ -35,19 +36,80 @@ type IpedEnv = {
 
 const iped = new Hono<IpedEnv>();
 
-// GET /status — dashboard polls on mount.
-// `configured` is purely "is the binding present?" — the Worker has no
-// cheap way to verify the IPED endpoint is alive at request time, and
-// pinging it from every status poll would defeat the point.
+// ── IPED deployment config (system_config-backed) ───────────
+// The analyzer is offline-only, so the Worker can't reach the lab
+// machine to verify binaries. It stores the deployment profile
+// (paths, default profile, toggles) as one JSON row and reports it
+// back via /status; /validate is honest that it only confirms config
+// is RECORDED, not that the binaries exist on the lab box.
+const IPED_CONFIG_KEY = 'iped_config';
+const DEFAULT_IPED_CONFIG = {
+  installPath: null as string | null,
+  javaHome: null as string | null,
+  webApiUrl: null as string | null,
+  webApiPort: null as string | null,
+  defaultProfile: 'forensic',
+  photodnaEnabled: false,
+  autoHashOnUpload: false,
+  hashSetsPath: null as string | null,
+};
+type IpedConfig = typeof DEFAULT_IPED_CONFIG;
+
+async function loadIpedConfig(db: D1Database): Promise<IpedConfig> {
+  const row = await queryFirst<{ config_value: string }>(
+    db, `SELECT config_value FROM system_config WHERE config_key = ? ORDER BY id DESC LIMIT 1`, IPED_CONFIG_KEY,
+  );
+  if (!row) return { ...DEFAULT_IPED_CONFIG };
+  try { return { ...DEFAULT_IPED_CONFIG, ...JSON.parse(row.config_value) }; }
+  catch { return { ...DEFAULT_IPED_CONFIG }; }
+}
+
+async function saveIpedConfig(db: D1Database, cfg: IpedConfig): Promise<void> {
+  const value = JSON.stringify(cfg);
+  const r = await execute(
+    db, `UPDATE system_config SET config_value = ?, updated_at = datetime('now','localtime') WHERE config_key = ?`,
+    value, IPED_CONFIG_KEY,
+  );
+  if (!r.meta.changes) {
+    await execute(db, `INSERT INTO system_config (config_key, config_value, category) VALUES (?, ?, 'forensics')`, IPED_CONFIG_KEY, value);
+  }
+}
+
+// GET /status — dashboard polls on mount. Returns the recorded config
+// merged with live usage counts over the forensic_* + iped_imports
+// tables. `configured` is true when a deployment has been recorded OR
+// the IPED_API_KEY binding is present.
 iped.get('/status', async (c) => {
   try {
     const db = getDb(c.env);
-    const last = await queryFirst<{ last_sync: string | null }>(
-      db, `SELECT MAX(updated_at) AS last_sync FROM forensic_hash_sets`,
+    const cfg = await loadIpedConfig(db);
+    const jobs = await queryFirst<{ total: number }>(db, `SELECT COUNT(*) AS total FROM iped_imports`);
+    const hashAgg = await queryFirst<{ sets: number; hashes: number }>(
+      db, `SELECT COUNT(*) AS sets, COALESCE(SUM(hash_count), 0) AS hashes FROM forensic_hash_sets`,
     );
+    const flagged = await queryFirst<{ c: number }>(
+      db, `SELECT COUNT(*) AS c FROM forensic_hash_results WHERE is_match = 1`,
+    ).catch(() => ({ c: 0 }));
+    const totalJobs = jobs?.total ?? 0;
+    const configured = !!c.env.IPED_API_KEY || !!cfg.installPath || !!cfg.webApiUrl;
     return c.json({
-      configured: !!c.env.IPED_API_KEY,
-      last_sync: last?.last_sync ?? null,
+      configured,
+      installed: !!cfg.installPath,
+      installPath: cfg.installPath,
+      javaHome: cfg.javaHome,
+      webApiUrl: cfg.webApiUrl,
+      webApiPort: cfg.webApiPort,
+      defaultProfile: cfg.defaultProfile,
+      photodnaEnabled: cfg.photodnaEnabled,
+      autoHashOnUpload: cfg.autoHashOnUpload,
+      hashSetsPath: cfg.hashSetsPath,
+      totalJobs,
+      completedJobs: totalJobs,
+      runningJobs: 0,
+      failedJobs: 0,
+      totalHashes: hashAgg?.hashes ?? 0,
+      flaggedHashes: flagged?.c ?? 0,
+      hashSetCount: hashAgg?.sets ?? 0,
     });
   } catch (err) {
     return c.json({
@@ -55,6 +117,100 @@ iped.get('/status', async (c) => {
       code: 'STATUS_ERROR',
       detail: err instanceof Error ? err.message : String(err),
     }, 500);
+  }
+});
+
+// PUT /config — merge a partial config patch (toggles send one field).
+iped.put('/config', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const patch = await c.req.json<Partial<IpedConfig>>();
+    const current = await loadIpedConfig(db);
+    const next: IpedConfig = { ...current };
+    for (const k of Object.keys(DEFAULT_IPED_CONFIG) as (keyof IpedConfig)[]) {
+      if (Object.prototype.hasOwnProperty.call(patch, k) && patch[k] !== undefined) {
+        (next as Record<string, unknown>)[k] = patch[k];
+      }
+    }
+    await saveIpedConfig(db, next);
+    return c.json({ success: true, config: next });
+  } catch (err) {
+    return c.json({ error: 'Failed to save IPED config', detail: err instanceof Error ? err.message : String(err) }, 500);
+  }
+});
+
+// DELETE /config — clear the recorded deployment back to defaults.
+iped.delete('/config', async (c) => {
+  try {
+    const db = getDb(c.env);
+    await execute(db, `DELETE FROM system_config WHERE config_key = ?`, IPED_CONFIG_KEY);
+    return c.json({ success: true });
+  } catch (err) {
+    return c.json({ error: 'Failed to clear IPED config', detail: err instanceof Error ? err.message : String(err) }, 500);
+  }
+});
+
+// POST /validate — honest validation. The edge can't see the lab
+// machine's filesystem, so this confirms the deployment profile is
+// RECORDED (paths present) rather than that binaries exist on disk.
+iped.post('/validate', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const cfg = await loadIpedConfig(db);
+    const ipedFound = !!cfg.installPath;
+    const javaFound = !!cfg.javaHome;
+    const errors: string[] = [];
+    if (!ipedFound) errors.push('IPED install path not configured');
+    if (!javaFound) errors.push('JAVA_HOME not configured');
+    errors.push('Note: the server records configuration but cannot verify binaries on the offline analyzer host.');
+    return c.json({
+      valid: ipedFound && javaFound,
+      ipedFound, javaFound,
+      ipedVersion: null, javaVersion: null,
+      platform: 'recorded-config',
+      errors,
+    });
+  } catch (err) {
+    return c.json({
+      valid: false, ipedFound: false, javaFound: false,
+      ipedVersion: null, javaVersion: null, platform: 'unknown',
+      errors: [err instanceof Error ? err.message : 'Validation failed'],
+    });
+  }
+});
+
+// POST /test-api — attempt to reach the configured IPED Web API. From
+// the Cloudflare edge a LAN URL is unreachable; report that honestly.
+iped.post('/test-api', async (c) => {
+  const db = getDb(c.env);
+  const cfg = await loadIpedConfig(db);
+  if (!cfg.webApiUrl) {
+    return c.json({ success: false, message: 'No IPED Web API URL configured.' });
+  }
+  const base = cfg.webApiUrl.replace(/\/+$/, '') + (cfg.webApiPort ? `:${cfg.webApiPort}` : '');
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 5000);
+    const res = await fetch(base, { signal: ctrl.signal });
+    clearTimeout(t);
+    return c.json({ success: res.ok, message: res.ok ? `Reachable (HTTP ${res.status})` : `Responded HTTP ${res.status}` });
+  } catch (err) {
+    return c.json({
+      success: false,
+      message: `Unreachable from server: ${err instanceof Error ? err.message : String(err)}. A LAN-only analyzer URL can't be tested from the cloud.`,
+    });
+  }
+});
+
+// DELETE /hash-sets/:name — remove a loaded hash set by name.
+iped.delete('/hash-sets/:name', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const name = decodeURIComponent(c.req.param('name'));
+    await execute(db, `DELETE FROM forensic_hash_sets WHERE name = ?`, name);
+    return c.json({ success: true });
+  } catch (err) {
+    return c.json({ error: 'Failed to remove hash set', detail: err instanceof Error ? err.message : String(err) }, 500);
   }
 });
 

@@ -8,6 +8,7 @@ import { applyRunCard } from '../runCards';
 import { sendToUser, broadcastAll } from '../ws';
 import { geocodeAddress } from '../geocode';
 import { resolveDistrict } from '../../utils/districtResolver';
+import { evaluateNotificationRules } from '../notificationEngine';
 
 const calls = new Hono<Env>();
 
@@ -374,6 +375,21 @@ calls.post('/', async (c) => {
       // Broadcast to every connected dispatcher so rosters re-render
       // without a manual refresh. Matches the legacy POST behavior.
       broadcastAll('dispatch_update', { action: 'call_created', call });
+
+      // Alert Rules engine — fire P1/P2 call-created triggers so admin-
+      // configured notification rules fan out to their target roles/users.
+      // Best-effort; evaluateNotificationRules never throws into this path.
+      const prio = String(priority).toUpperCase();
+      if (prio === 'P1' || prio === 'P2') {
+        await evaluateNotificationRules(db, prio === 'P1' ? 'call_created_p1' : 'call_created_p2', {
+          title: `${prio} Call: ${normalizedIncidentType}`,
+          message: `${callNumber} — ${String(location_address)}`,
+          priority: prio === 'P1' ? 'critical' : 'high',
+          entity_type: 'call',
+          entity_id: callId as number,
+          incident_type: normalizedIncidentType,
+        });
+      }
 
       return c.json({ ...call, runCard: rcResult.card }, 201);
     } catch (sqlErr: any) {

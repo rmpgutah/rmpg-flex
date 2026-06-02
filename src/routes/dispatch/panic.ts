@@ -15,6 +15,7 @@ import { Hono } from 'hono';
 import type { Env } from '../../types';
 import { getDb, query, queryFirst, execute } from '../../utils/db';
 import { sendToUser, broadcastAll } from '../ws';
+import { evaluateNotificationRules } from '../notificationEngine';
 
 const panic = new Hono<Env>();
 
@@ -92,6 +93,16 @@ panic.post('/panic', async (c) => {
   for (const t of targets) {
     sendToUser(t.id, 'panic_alert', { action: 'panic_activated', panic: created });
   }
+  // Alert Rules engine — fire the 'unit_panic' trigger so any admin-
+  // configured panic rules notify their targets. Best-effort.
+  await evaluateNotificationRules(db, 'unit_panic', {
+    title: 'PANIC ACTIVATED',
+    message: `Officer panic alert${(created as Record<string, unknown>)?.officer_name ? ' — ' + (created as Record<string, unknown>).officer_name : ''}`,
+    priority: 'critical',
+    entity_type: 'panic_alert',
+    entity_id: panicId,
+  });
+
   // Include `panic_id` explicitly: the client (PanicButton) reads it to
   // open the panic voice room (room panic-<panicId>) for the live mic
   // broadcast. The full row is spread in for the dispatcher overlay.
