@@ -3,6 +3,7 @@ import { Network, Loader2, Maximize2, Minimize2 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import CollapsibleSection from './CollapsibleSection';
 import { humanizeRelationship, linkSentence } from '../utils/recordLinks';
+import { recordTypeLabel } from '../utils/recordTypeLabel';
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -261,6 +262,9 @@ export default function ConnectionsGraphPanel({ personId, personName }: Props) {
                   onMouseLeave={() => setHoveredNode(null)}
                   style={{ cursor: 'pointer' }}
                 >
+                  {/* Plain-language type + name on hover (node shows only a
+                      type initial/icon; this guarantees the type is legible). */}
+                  <title>{`${recordTypeLabel(n.type)} — ${n.rawLabel || n.label}`}</title>
                   {/* Glow on hover */}
                   {isHovered && (
                     <circle cx={n.x} cy={n.y} r={r + 4} fill="none" stroke={color} strokeWidth={2} opacity={0.4} />
@@ -304,7 +308,7 @@ export default function ConnectionsGraphPanel({ personId, personName }: Props) {
                 <g key={`legend-${t}`} transform={`translate(10, ${viewH - 14 - (types.length - 1 - i) * 14})`}>
                   <circle cx={6} cy={0} r={4} fill={NODE_COLORS[t]} />
                   <text x={14} y={3} fontSize={8} fill="#888" fontFamily="monospace">
-                    {t.toUpperCase()}
+                    {recordTypeLabel(t).toUpperCase()}
                   </text>
                 </g>
               ));
