@@ -115,8 +115,11 @@ links.post('/calls/:id/persons', async (c) => {
   // This channel had NO producer, so the warrant-hit banner/voice never fired.
   // Best-effort: a warrants-query failure must not break the link.
   try {
+    // Live warrants store the subject on subject_person_id (person_id is NULL on
+    // every current row); query BOTH so the officer-safety alert is robust to
+    // that column drift instead of silently matching nothing.
     const wc = await queryFirst<{ n: number }>(
-      db, "SELECT COUNT(*) AS n FROM warrants WHERE person_id = ? AND status = 'active'", body.person_id,
+      db, "SELECT COUNT(*) AS n FROM warrants WHERE (subject_person_id = ? OR person_id = ?) AND status = 'active'", body.person_id, body.person_id,
     );
     if ((wc?.n ?? 0) > 0) {
       const subjectName = `${person.first_name ?? ''} ${person.last_name ?? ''}`.trim() || 'Unknown subject';

@@ -27,8 +27,11 @@ const SOURCE_ICONS: Record<string, React.ElementType> = {
 
 // Feature 3: Elapsed time formatter
 function formatCallDuration(createdAt: string, status?: string, archivedAt?: string): string {
-  // For archived/closed/cancelled calls, show the final duration (not a running timer)
-  if (status && ['archived', 'closed', 'cancelled'].includes(status)) {
+  // For terminal calls show the final duration, not a running timer. 'cleared'
+  // belongs here too — the call site passes cleared_at as the end time, and
+  // isActiveStatus already treats cleared as inactive; without it a cleared
+  // call's duration ticked up forever.
+  if (status && ['archived', 'closed', 'cancelled', 'cleared'].includes(status)) {
     const endTime = archivedAt || createdAt;
     const start = parseTimestamp(createdAt).getTime();
     const end = parseTimestamp(endTime).getTime();
@@ -136,10 +139,15 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
         durationRef.current.textContent = formatCallDuration(call.created_at, call.status, (call as any).archived_at || call.cleared_at || call.closed_at);
       }
 
-      // Feature 12: Update hold timer
+      // Feature 12: Update hold timer — gated on the real held state. mapDbCall
+      // synthesizes status='on_hold' from calls_for_service_ext.held_at, so the
+      // badge must key off 'on_hold' (it previously keyed off pending+unassigned,
+      // which NEVER matched a held call and mislabeled every routine pending call
+      // as HOLD). Elapsed runs from held_at when present.
       if (holdTimerRef.current) {
-        if (call.status === 'pending' && !call.assigned_units?.length) {
-          const holdMs = Date.now() - parseTimestamp(call.created_at).getTime();
+        if (call.status === 'on_hold') {
+          const heldFrom = (call as any).held_at || call.created_at;
+          const holdMs = Date.now() - parseTimestamp(heldFrom).getTime();
           const holdMins = Math.floor(holdMs / 60000);
           holdTimerRef.current.textContent = `HOLD ${holdMins}m`;
           holdTimerRef.current.style.display = 'inline-flex';
@@ -391,7 +399,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
           <span
             ref={holdTimerRef}
             className="text-[8px] font-bold font-mono text-yellow-400 bg-yellow-900/30 border border-yellow-700/50 px-1 py-0"
-            style={{ display: call.status === 'pending' && !call.assigned_units?.length ? 'inline-flex' : 'none' }}
+            style={{ display: call.status === 'on_hold' ? 'inline-flex' : 'none' }}
           >
             HOLD 0m
           </span>

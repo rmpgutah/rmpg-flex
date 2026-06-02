@@ -334,7 +334,17 @@
 //        capabilities (K9/SWAT/Supervisor/FTO/Traffic/Detective/Patrol), audio
 //        mode. Unit create/update/delete/dispose + GET now route to the
 //        rewrite (env.API) so the new fields persist + the hardened handlers run.
-const CACHE_NAME = 'rmpg-flex-v709';
+// v710 — Dispatch run-through (22-finding audit): clearing/closing a call now
+//        FREES its units (was leaving them pinned 'dispatched' forever); status
+//        response merges ext fields (PSO/held_at no longer blanked); GET /calls
+//        filter+bind fix (?priority/search no longer 500s); CallCard HOLD badge
+//        keys off real on_hold state (+ cleared calls stop their duration timer);
+//        call-warnings briefing reads call_persons (not just incident_persons) +
+//        warrant subquery uses subject_person_id; /queue surfaces held_at;
+//        disposition-stats sentinel-normalized; vehicle Owner alias; unit WS
+//        patch no longer corrupts mapped-unit types/joined fields; CAD BO
+//        command sends type+P-priority (was 400); NT note preserves prior text.
+const CACHE_NAME = 'rmpg-flex-v710';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

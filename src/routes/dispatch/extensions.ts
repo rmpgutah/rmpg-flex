@@ -467,15 +467,20 @@ callWarnings.get('/:id/warnings', requireRole(...READ_ROLES), async (c) => {
       } catch { /* premise_alerts may not exist in dev */ }
     }
 
-    // ── Linked persons (incident_persons via incidents.call_id) ──
+    // ── Linked persons (call_persons AND incident_persons) ──
+    // Dispatch links people straight to the call via call_persons (callLinks.ts);
+    // reading only incident_persons missed every directly-linked subject (and
+    // their warrants) until an incident was generated. Union both sources.
     try {
       const linkedPersons = await query<any>(db, `
         SELECT p.first_name, p.last_name
-        FROM incident_persons ip
-        JOIN persons p ON ip.person_id = p.id
-        JOIN incidents i ON ip.incident_id = i.id
-        WHERE i.call_id = ?
-        LIMIT 100`, id);
+        FROM persons p
+        WHERE p.id IN (
+          SELECT cp.person_id FROM call_persons cp WHERE cp.call_id = ?
+          UNION
+          SELECT ip.person_id FROM incident_persons ip JOIN incidents i ON ip.incident_id = i.id WHERE i.call_id = ?
+        )
+        LIMIT 100`, id, id);
       // The lean persons table may not have caution_flags / is_sex_offender / etc.
       // columns yet; surface presence as a soft hint only.
       if (linkedPersons.length > 0) {
@@ -483,7 +488,7 @@ callWarnings.get('/:id/warnings', requireRole(...READ_ROLES), async (c) => {
           type: 'LINKED_PERSONS',
           label: `${linkedPersons.length} LINKED PERSON${linkedPersons.length !== 1 ? 'S' : ''}`,
           severity: 'medium',
-          source: 'incident_persons',
+          source: 'linked to call',
         });
       }
     } catch { /* incidents may not be linked yet */ }
@@ -496,11 +501,13 @@ callWarnings.get('/:id/warnings', requireRole(...READ_ROLES), async (c) => {
         LEFT JOIN persons p ON w.subject_person_id = p.id
         WHERE w.status = 'active'
           AND w.subject_person_id IN (
+            SELECT cp.person_id FROM call_persons cp WHERE cp.call_id = ?
+            UNION
             SELECT ip.person_id FROM incident_persons ip
             JOIN incidents i ON ip.incident_id = i.id
             WHERE i.call_id = ?
           )
-        LIMIT 50`, id);
+        LIMIT 50`, id, id);
       for (const w of warrants) {
         warnings.push({
           type: 'WARRANT',

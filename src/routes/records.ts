@@ -392,7 +392,7 @@ records.get('/vehicles/:id', async (c) => {
   try {
     const db = getDb(c.env);
     const id = c.req.param('id');
-    const vehicle = await queryFirst<Record<string, unknown>>(db, 'SELECT v.*, p.first_name, p.last_name FROM vehicles_records v LEFT JOIN persons p ON v.owner_person_id = p.id WHERE v.id = ?', id);
+    const vehicle = await queryFirst<Record<string, unknown>>(db, 'SELECT v.*, p.first_name, p.last_name, p.first_name AS owner_first_name, p.last_name AS owner_last_name FROM vehicles_records v LEFT JOIN persons p ON v.owner_person_id = p.id WHERE v.id = ?', id);
     if (!vehicle) return c.json({ error: 'Vehicle not found' }, 404);
     return c.json(vehicle);
   } catch (err) { return c.json({ error: 'Failed to get vehicle', detail: (err as Error)?.message }, 500); }

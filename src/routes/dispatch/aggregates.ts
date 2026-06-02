@@ -51,10 +51,14 @@ aggregates.get('/', async (c) => {
 aggregates.get('/disposition-stats', async (c) => {
   try {
     const db = getDb(c.env);
+    // Normalize sentinel strings ("None"/"N/A"/"0"/"" — live text cols store
+    // these literally, not NULL) into a single 'Not Set' bucket so they don't
+    // fragment the stats into bogus separate dispositions.
     const rows = await query<Record<string, unknown>>(db, `
-      SELECT COALESCE(disposition, 'Not Set') as disposition, COUNT(*) as count
+      SELECT CASE WHEN disposition IS NULL OR TRIM(disposition) IN ('','None','N/A','0') THEN 'Not Set' ELSE disposition END as disposition,
+             COUNT(*) as count
       FROM calls_for_service WHERE status IN ('cleared','closed')
-      GROUP BY disposition ORDER BY count DESC
+      GROUP BY 1 ORDER BY count DESC
     `);
     return c.json(rows);
   } catch (err) {
@@ -71,15 +75,22 @@ aggregates.get('/queue', async (c) => {
     const db = getDb(c.env);
     // Narrow projection — D1 caps result sets at 100 cols and
     // calls_for_service alone is at the cap. See dispatch/calls.ts.
+    // Hold is NOT a status (the CHECK enum has no 'on_hold') — it's the
+    // orthogonal calls_for_service_ext.held_at flag, which mapDbCall synthesizes
+    // into status='on_hold'. The old query's 'on_hold' literal (WHERE + ORDER BY)
+    // was therefore dead: held calls were never surfaced as held, never returned
+    // held_at, and the hold-deferral sort never fired. Join held_at and drive the
+    // deferral off it; the client synthesizes on_hold from held_at.
     const rows = await query<Record<string, unknown>>(db, `
       SELECT ${LIST_VIEW_SELECT},
-        p.name as property_name, u.full_name as dispatcher_name
+        p.name as property_name, u.full_name as dispatcher_name, e.held_at
       FROM calls_for_service c
       LEFT JOIN properties p ON c.property_id = p.id
       LEFT JOIN users u ON c.dispatcher_id = u.id
-      WHERE c.status IN ('pending', 'dispatched', 'enroute', 'onscene', 'on_hold')
+      LEFT JOIN calls_for_service_ext e ON e.id = c.id
+      WHERE c.status IN ('pending', 'dispatched', 'enroute', 'onscene')
       ORDER BY
-        CASE c.status WHEN 'on_hold' THEN 1 ELSE 0 END,
+        CASE WHEN e.held_at IS NOT NULL THEN 1 ELSE 0 END,
         COALESCE(c.priority_score, CASE c.priority WHEN 'P1' THEN 400 WHEN 'P2' THEN 300 WHEN 'P3' THEN 200 WHEN 'P4' THEN 100 END) DESC,
         c.created_at ASC
       LIMIT 200

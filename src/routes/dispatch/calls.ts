@@ -86,8 +86,15 @@ calls.get('/', async (c) => {
     if (archived === 'true') where += " AND c.status = 'archived'";
     else if (archived !== 'all') where += " AND c.status != 'archived'";
 
-    if (active === 'true' || (!status && !archived)) {
-      where = "WHERE c.status IN ('dispatched','enroute','onscene','pending','open')";
+    // Default to active calls when the caller passed NO explicit filter. APPEND
+    // the clause (don't REPLACE `where`) — replacing it discarded the
+    // priority/search/date clauses while leaving their values in `params`, so a
+    // request like ?priority=P1&search=main hit a bind-count mismatch (D1 error)
+    // or silently dropped the filters. Appending a zero-placeholder clause keeps
+    // params aligned. Only force it when no narrowing filter was supplied.
+    const noExplicitFilter = !status && !archived && !priority && !search && !startDate && !endDate;
+    if (active === 'true' || noExplicitFilter) {
+      where += " AND c.status IN ('dispatched','enroute','onscene','pending','open')";
     }
 
     const pageNum = Math.max(1, parseInt(page || '1', 10));
@@ -882,7 +889,15 @@ calls.post('/:id/status', async (c) => {
       console.warn('audit_log insert failed for status change:', auditErr);
     }
 
-    return c.json(updated);
+    // Return base + ext merged (mirrors PUT /:id, /hold, /resume). The client
+    // (handleStatusChange/handleConfirmClear) does setSelectedCall(mapDbCall(result))
+    // as a FULL replacement, and mapDbCall reads ext-only fields (held_at →
+    // on_hold synthesis, PSO process-service fields, parent_call_id, ext tactical
+    // flags). Returning the base row alone blanked all of those on the selected
+    // call until the next full GET. Best-effort ext fetch.
+    let ext: Record<string, unknown> | null = null;
+    try { ext = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service_ext WHERE id = ?', id); } catch { /* ext optional */ }
+    return c.json({ ...(updated || {}), ...(ext || {}) });
   } catch (err) {
     return c.json({ error: 'Failed to update status' }, 500);
   }
