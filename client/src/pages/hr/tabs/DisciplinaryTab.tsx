@@ -24,7 +24,8 @@ interface DisciplinaryTabProps {
   userId: number;
 }
 
-const MANAGER_ROLES = ['admin', 'manager', 'supervisor'];
+// Must match server tier (hr.ts MANAGER_ROLES includes human_resources).
+const MANAGER_ROLES = ['admin', 'manager', 'supervisor', 'human_resources'];
 const isGodModeRole = (role: string) => role === 'admin'; // Admin God Mode — unrestricted access
 
 function isManagerPlus(role: string) {

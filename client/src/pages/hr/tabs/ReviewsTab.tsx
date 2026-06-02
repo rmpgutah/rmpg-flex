@@ -18,7 +18,8 @@ import ExportButton from '../../../components/ExportButton';
 import type { PerformanceReview, ReviewType, ReviewStatus } from '../../../types';
 import { parseTimestamp } from '../../../utils/dateUtils';
 
-const MANAGER_ROLES = ['admin', 'manager', 'supervisor'];
+// Must match server tier (hr.ts MANAGER_ROLES includes human_resources).
+const MANAGER_ROLES = ['admin', 'manager', 'supervisor', 'human_resources'];
 
 // ── Star rating display ────────────────────────────────────
 function StarRating({ rating, max = 5, size = 14 }: { rating: number; max?: number; size?: number }) {

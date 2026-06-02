@@ -20,7 +20,8 @@ import { parseTimestamp } from '../../../utils/dateUtils';
 
 // ─── Helpers ────────────────────────────────────────────────
 
-const MANAGER_ROLES = ['admin', 'manager', 'supervisor'];
+// Must match server tier (hr.ts MANAGER_ROLES includes human_resources).
+const MANAGER_ROLES = ['admin', 'manager', 'supervisor', 'human_resources'];
 
 const LEAVE_TYPE_LABELS: Record<string, string> = {
   vacation: 'Vacation',
