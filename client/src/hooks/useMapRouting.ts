@@ -672,10 +672,21 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
         // Coord 0 = unit origin; coords 1..n = the calls (in queue order).
         const pts = [origin, ...valid];
         const coordStr = pts.map((p) => `${p.lng},${p.lat}`).join(';');
+        // Mapbox Optimization v1 only implements two (source,destination,roundtrip)
+        // combos: roundtrip=true (any endpoints), or roundtrip=false with BOTH
+        // source=first AND destination=last. The open-tour we actually want
+        // (unit pinned as start, end optimized freely) maps to the UNSUPPORTED
+        // roundtrip=false + destination=any — Mapbox answers HTTP 200 with
+        // {code:"NotImplemented"}, which surfaced as "[useMapRouting] Optimization
+        // query failed: Error: NotImplemented". So we solve it as a ROUNDTRIP
+        // (optimal visiting order, unit as the fixed start) and drop the final
+        // return-to-unit leg from the drawn line + ETA below — dispatch doesn't
+        // need the officer to loop back to where they started. steps=true gives
+        // per-leg geometry so the line can be rebuilt without that return leg.
         const url =
           `https://api.mapbox.com/optimized-trips/v1/mapbox/driving/${coordStr}` +
-          `?access_token=${token}&source=first&destination=any&roundtrip=false` +
-          `&geometries=geojson&overview=full&annotations=duration,distance`;
+          `?access_token=${token}&source=first&roundtrip=true` +
+          `&geometries=geojson&overview=full&steps=true&annotations=duration,distance`;
 
         const res = await fetch(url);
         if (!res.ok) throw new Error(`Optimization HTTP ${res.status}`);
@@ -683,7 +694,6 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
         if (data.code !== 'Ok' || !data.trips?.[0]) throw new Error(data.code || 'No trip');
 
         const trip = data.trips[0];
-        const geometry = trip.geometry; // GeoJSON LineString in optimized order
         const legs: any[] = trip.legs ?? [];
 
         // `waypoints[i].waypoint_index` = position of input coord i in the
@@ -699,6 +709,7 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
         // is the drive INTO optimized position k+1.
         const orderedStops: MultiStop[] = [];
         let cumSec = 0;
+        let cumMeters = 0;
         for (let pos = 1; pos < optimizedOrder.length; pos++) {
           const inputIdx = optimizedOrder[pos];
           const stop = pts[inputIdx] as typeof valid[number];
@@ -706,6 +717,7 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
           const legSec = typeof leg.duration === 'number' ? leg.duration : 0;
           const legMeters = typeof leg.distance === 'number' ? leg.distance : 0;
           cumSec += legSec;
+          cumMeters += legMeters;
           orderedStops.push({
             callNumber: stop.callNumber,
             lat: stop.lat,
@@ -719,6 +731,29 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
             cumEta: fmtEta(cumSec),
           });
         }
+
+        // Build the drawn line from ONLY the legs INTO the stops (legs 0..k-1),
+        // excluding the roundtrip's final return-to-unit leg (legs[k]). Each leg's
+        // geometry is the concatenation of its steps' geometries (steps=true),
+        // de-duping the vertex shared between consecutive steps. Falls back to the
+        // full trip geometry (the closed loop, incl. return) only if steps are
+        // missing — better a slightly-wrong line than none.
+        const usedLegCount = Math.max(0, optimizedOrder.length - 1);
+        const lineCoords: [number, number][] = [];
+        for (let i = 0; i < usedLegCount; i++) {
+          for (const step of legs[i]?.steps ?? []) {
+            const cs = step?.geometry?.coordinates;
+            if (!Array.isArray(cs)) continue;
+            for (const c of cs) {
+              const last = lineCoords[lineCoords.length - 1];
+              if (!last || last[0] !== c[0] || last[1] !== c[1]) lineCoords.push(c as [number, number]);
+            }
+          }
+        }
+        const geometry =
+          lineCoords.length >= 2
+            ? { type: 'LineString' as const, coordinates: lineCoords }
+            : trip.geometry; // fallback: full loop incl. the return leg
 
         // ── Render the optimized line + numbered markers ──
         clearMultiStopFromMap();
@@ -756,8 +791,10 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
           } catch { /* ignore marker failure */ }
         }
 
-        const totalSec = typeof trip.duration === 'number' ? trip.duration : cumSec;
-        const totalMeters = typeof trip.distance === 'number' ? trip.distance : 0;
+        // Totals are the sum of the kept (into-stop) legs, so they exclude the
+        // dropped return-to-unit leg — trip.duration/trip.distance would include it.
+        const totalSec = cumSec;
+        const totalMeters = cumMeters;
         const route: MultiStopRoute = {
           unitCallSign,
           stops: orderedStops,
