@@ -625,6 +625,19 @@ export async function commitIntake(db: D1Database, input: CommitInput): Promise<
   // ── 5. serve_queue row ────────────────────────────────────
   let queueId: number | null = null;
   if (queueRow.recipient_name || queueRow.recipient_address) {
+    // Catch-all: persist EVERY extracted field as flat {field: value} JSON so no
+    // OCR'd data is lost on commit. fieldsToQueueRow maps the hot query paths to
+    // dedicated columns; parsed_data covers the long tail the queue has no column
+    // for (attorney_phone/email/bar, filing_date, documents_to_serve,
+    // recipient_phone/county, job_number, fee_amount, process_type, server_name,
+    // registered_agent_name) — queryable via json_extract(parsed_data, '$.field').
+    const parsedData = JSON.stringify(
+      Object.fromEntries(
+        Object.entries(fields)
+          .map(([k, v]) => [k, (v?.value || '').trim()] as const)
+          .filter(([, val]) => val),
+      ),
+    );
     const ins = await execute(
       db,
       `INSERT INTO serve_queue (
@@ -634,8 +647,9 @@ export async function commitIntake(db: D1Database, input: CommitInput): Promise<
         property_id,
         document_type, case_number, court_name, jurisdiction,
         client_name, attorney_name, priority, deadline,
-        service_instructions, notes, status
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
+        service_instructions, notes,
+        plaintiff_name, defendant_name, court_date, parsed_data, status
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
       callId, userId,
       queueRow.recipient_name, person.id || null,
       queueRow.recipient_address, queueRow.recipient_city,
@@ -647,6 +661,7 @@ export async function commitIntake(db: D1Database, input: CommitInput): Promise<
       queueRow.client_name, queueRow.attorney_name,
       queueRow.priority, queueRow.deadline,
       queueRow.service_instructions, queueRow.notes,
+      queueRow.plaintiff, queueRow.defendant, queueRow.court_date, parsedData,
     );
     queueId = Number(ins.meta.last_row_id);
   }
