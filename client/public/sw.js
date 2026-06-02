@@ -334,7 +334,16 @@
 //        capabilities (K9/SWAT/Supervisor/FTO/Traffic/Detective/Patrol), audio
 //        mode. Unit create/update/delete/dispose + GET now route to the
 //        rewrite (env.API) so the new fields persist + the hardened handlers run.
-const CACHE_NAME = 'rmpg-flex-v709';
+// v710: FIX — Fleet detail page wouldn't scroll. The vehicle-detail tab panel
+//       (FleetDetailPanel) is a single overflow-y-auto scroller, but 7 of the
+//       tabs (Overview/Fuel/Costs/Inspections/Assignments/Personnel/Analytics)
+//       also declared `flex-1 overflow-y-auto` on their own root — a nested
+//       zero-range scroll container that trapped trackpad gestures and never
+//       chained out to the real scroller. Stripped the redundant inner
+//       overflow so the panel is the single scroll owner for all tabs
+//       (Tires/Damage/Recalls already relied on it). SW bump also clears any
+//       stale cached bundle.
+const CACHE_NAME = 'rmpg-flex-v710';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

@@ -115,7 +115,7 @@ export default function FleetPersonnelTab({
   const dlProgress = officer?.dl_expiry ? expiryProgress(officer.dl_expiry) : 0;
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 space-y-3">
+    <div className="p-4 space-y-3">
 
       {/* ─── A) CURRENT ASSIGNMENT BANNER ─── */}
       {isAssigned ? (
