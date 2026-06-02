@@ -726,7 +726,7 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
     try {
       const data = await apiFetch<any>('/records/vehicles/stolen-check', {
         method: 'POST',
-        body: JSON.stringify({ plate_number: selectedVehicle.license_plate, vin: selectedVehicle.vin }),
+        body: JSON.stringify({ plate: selectedVehicle.license_plate, vin: selectedVehicle.vin }),
       });
       setStolenCheckResult(data?.data || data);
     } catch { /* ignore */ }
@@ -772,12 +772,18 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
           </button>
         </div>
         {/* Feature 44: Stolen Check Result */}
-        {stolenCheckResult && (
-          <div className={`mt-1 p-1.5 text-[10px] border ${stolenCheckResult.status === 'HIT' ? 'bg-red-900/30 border-red-700/50 text-red-300' : 'bg-green-900/30 border-green-700/50 text-green-300'}`}>
-            <span className="font-bold">{stolenCheckResult.status}</span> — {stolenCheckResult.message}
+        {stolenCheckResult && (() => {
+          // Handler returns { checked, stolen: boolean, source, ... }.
+          const isHit = stolenCheckResult.stolen === true || stolenCheckResult.status === 'HIT';
+          const msg = stolenCheckResult.message
+            || (isHit ? 'Vehicle reported STOLEN' : `No stolen record (source: ${stolenCheckResult.source || 'local'})`);
+          return (
+          <div className={`mt-1 p-1.5 text-[10px] border ${isHit ? 'bg-red-900/30 border-red-700/50 text-red-300' : 'bg-green-900/30 border-green-700/50 text-green-300'}`}>
+            <span className="font-bold">{isHit ? 'HIT' : 'CLEAR'}</span> — {msg}
             <button type="button" onClick={() => setStolenCheckResult(null)} className="ml-2 text-rmpg-500">x</button>
           </div>
-        )}
+          );
+        })()}
         {/* Feature 41: History Panel */}
         {vehicleHistory && (
           <div className="mt-1 p-1.5 text-[10px] bg-gray-900/10 border border-gray-700/30">

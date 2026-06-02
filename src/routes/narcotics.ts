@@ -27,7 +27,11 @@ narcotics.delete('/cases/:id', async (c) => {
 });
 
 narcotics.get('/stats', async (c) => {
-  try { const db = getDb(c.env); const total = await queryFirst<{cnt:number}>(db, 'SELECT COUNT(*) as cnt FROM narcotics_cases'); const active = await queryFirst<{cnt:number}>(db, "SELECT COUNT(*) as cnt FROM narcotics_cases WHERE status IN ('open','active')"); const seized = await queryFirst<{cnt:number}>(db, 'SELECT COALESCE(SUM(street_value),0) as cnt FROM narcotics_cases'); return c.json({ totalInvestigations: total?.cnt || 0, activeCIs: active?.cnt || 0, totalSeizures: total?.cnt || 0, totalStreetValue: seized?.cnt || 0 }); }
+  try { const db = getDb(c.env); const total = await queryFirst<{cnt:number}>(db, 'SELECT COUNT(*) as cnt FROM narcotics_cases'); const active = await queryFirst<{cnt:number}>(db, "SELECT COUNT(*) as cnt FROM narcotics_cases WHERE status IN ('open','active')"); const seized = await queryFirst<{cnt:number}>(db, 'SELECT COALESCE(SUM(street_value),0) as cnt FROM narcotics_cases');
+    // Seizures = cases with an actual substance recorded (was duplicating the
+    // total case count). Guards live-D1 sentinel strings.
+    const seizures = await queryFirst<{cnt:number}>(db, "SELECT COUNT(*) as cnt FROM narcotics_cases WHERE substance IS NOT NULL AND TRIM(LOWER(substance)) NOT IN ('','none','n/a','na')");
+    return c.json({ totalInvestigations: total?.cnt || 0, activeCIs: active?.cnt || 0, totalSeizures: seizures?.cnt || 0, totalStreetValue: seized?.cnt || 0 }); }
   catch (err) { return c.json({ error: 'Failed to fetch narcotics stats', detail: (err as Error)?.message }, 500); }
 });
 
