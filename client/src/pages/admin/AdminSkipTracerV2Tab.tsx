@@ -4,6 +4,7 @@ import {
   DollarSign, BarChart3,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { asArray } from '../../utils/asArray';
 
 interface Props {
   LoadingSpinner: React.FC;
@@ -37,7 +38,9 @@ export default function AdminSkipTracerV2Tab({ LoadingSpinner, error, setError }
   const fetchSources = useCallback(async () => {
     try {
       const data = await apiFetch<SourceInfo[]>('/skiptracer-v2/sources');
-      setSources(data);
+      // Guard: a stub/legacy shape ({} or {data:[]}) would make `sources.map`
+      // / `source.costPerLookup.toFixed` throw and white-screen the admin page.
+      setSources(asArray<SourceInfo>(data));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load sources');
     } finally {

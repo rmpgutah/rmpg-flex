@@ -445,7 +445,10 @@ export default function AdminSystemTab({
     setLoadingTemplates(true);
     try {
       const templates = await apiFetch<CallTemplate[]>('/admin/call-templates');
-      setCallTemplates(templates.filter((t) => t.is_active));
+      // Legacy endpoint may return a bare array or a { data: [...] } envelope;
+      // normalize so a non-array shape doesn't silently empty the list.
+      const list = Array.isArray(templates) ? templates : ((templates as any)?.data ?? []);
+      setCallTemplates(list.filter((t: CallTemplate) => t.is_active));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load call templates');
     } finally {

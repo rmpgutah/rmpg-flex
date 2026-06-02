@@ -122,7 +122,14 @@ export default function AdminMapSettingsTab({ LoadingSpinner, error, setError }:
     setLoading(true);
     try {
       const data = await apiFetch<MapSettings>('/admin/map-config');
-      setSettings(prev => ({ ...DEFAULT_VALUES, ...prev, ...data }));
+      setSettings(prev => {
+        const merged = { ...DEFAULT_VALUES, ...prev, ...data };
+        // A payload with an explicit `null` for these array fields would
+        // override the default and crash the later `.includes()` calls.
+        if (!Array.isArray(merged.enabled_styles)) merged.enabled_styles = DEFAULT_VALUES.enabled_styles;
+        if (!Array.isArray(merged.default_visible_layers)) merged.default_visible_layers = DEFAULT_VALUES.default_visible_layers;
+        return merged;
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load map settings');
     } finally {

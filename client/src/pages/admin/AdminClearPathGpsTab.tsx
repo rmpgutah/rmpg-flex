@@ -179,7 +179,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
   const fetchSettings = useCallback(async () => {
     try {
       const data = await apiFetch<{ history_backfill: boolean }>('/clearpathgps/settings');
-      setHistoryBackfill(data.history_backfill);
+      setHistoryBackfill(!!data?.history_backfill);
     } catch (e) { console.error('Failed to fetch GPS settings:', e); }
   }, []);
 
