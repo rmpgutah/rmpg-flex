@@ -47,8 +47,8 @@ export const TARGET_FIELDS = [
   'attorney_name', 'attorney_phone', 'attorney_email', 'attorney_bar_number',
   'client_name', 'job_number', 'fee_amount',
   // client_reference = the CLIENT's own job number (ServeManager
-  // "client_job_number", e.g. 542074), distinct from the ServeManager
-  // job_number in the page header (e.g. 15766662).
+  // "client_job_number", e.g. 880231), distinct from the larger ServeManager
+  // job_number in the page header (e.g. 13572468).
   'client_reference',
   // documents_to_serve = the full "Docs to Be Served" / document_titles
   // string verbatim (e.g. "Summons and Complaint; Bilingual Notice"),
@@ -119,10 +119,10 @@ EXTRACTION RULES (learned from real packets):
   • job_number = the ServeManager job number in the page header (the larger one).
     client_reference = the client's own job number (smaller, secondary).
   • Recipient name: split into first / middle / last. A single middle initial
-    ("Jenna M Yuen") → middle="M". Keep suffixes (Jr/Sr/III) with the last name.
+    ("John Q Sample") → middle="Q". Keep suffixes (Jr/Sr/III) with the last name.
   • DOB frequently appears as a bare date after "DOB:" OR inside a free-text
-    "description"/"recipient_description" field (e.g. description just holds
-    "11/16/2000"). Pull it into recipient_dob as ISO.
+    "description"/"recipient_description" field (e.g. a description whose entire
+    value is a date like "03/04/1985"). Pull it into recipient_dob as ISO.
   • Address: prefer the "Recipient:" service-address block; map street→
     recipient_address, city→recipient_city (use the city shown directly under
     the recipient, not a generic county seat), state→recipient_state (2-letter),
@@ -286,7 +286,7 @@ function recoverDob(rawText: string): string | null {
   const t = rawText || '';
   const labeled = t.match(/\b(?:DOB|D\.O\.B\.?|date of birth|born)\b[:\s]*?(\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{1,2}-\d{1,2})/i);
   if (labeled) { const iso = toIsoDate(labeled[1]); if (iso) return iso; }
-  // "recipient_description": "11/16/2000" — a description whose entire value is a date.
+  // "recipient_description": "03/04/1985" — a description whose entire value is a date.
   const desc = t.match(/"recipient_description"\s*:\s*"(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})"/i);
   if (desc) { const iso = toIsoDate(desc[1]); if (iso) return iso; }
   return null;
