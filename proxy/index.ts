@@ -1074,6 +1074,14 @@ const API_ROUTES: RouteRule[] = [
   // pipeline is what runs in prod. Legacy serve-intake is dead code
   // after this entry lands.
   { kind: 'prefix', value: '/api/serve-intake' },
+  // /api/process-server/{deadlines,success-rates} — the ServePage Deadlines
+  // panel + Success Rates view. Both 404'd on legacy because serve.ts declares
+  // them AFTER `/:id`, so Express matched `/deadlines` against `/:id` and never
+  // reached them. Ported to src/routes/processServer.ts (qualified columns,
+  // async D1) and routed here on their exact paths so they resolve. The rest of
+  // /api/process-server (list, attempts, affidavit, …) stays on legacy.
+  { kind: 'regex', value: /^\/api\/process-server\/deadlines$/, methods: ['GET'] },
+  { kind: 'regex', value: /^\/api\/process-server\/success-rates(\?|$)/, methods: ['GET'] },
   // /api/ocr/scan-document is the alias URL the ServeIntakePage client
   // already calls for its in-page image preview path. The handler is
   // src/routes/ocr.ts (delegates to the same extraction utility as
