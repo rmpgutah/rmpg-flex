@@ -275,7 +275,7 @@ records.get('/persons/:id/system-history', async (c) => {
     const db = getDb(c.env);
     const id = c.req.param('id');
     const [warrants, incidents, calls, citations] = await Promise.all([
-      query<Record<string, unknown>>(db, `SELECT id, warrant_number, type, charge AS description, status, bond_amount, jurisdiction, issuing_agency, issued_at, expires_at FROM warrants WHERE person_id = ? ORDER BY created_at DESC LIMIT 50`, id),
+      query<Record<string, unknown>>(db, `SELECT id, warrant_number, type, charge_description AS description, status, bond_amount, bail_amount, issuing_agency, issuing_court, issued_date, expires_at FROM warrants WHERE person_id = ? ORDER BY created_at DESC LIMIT 50`, id),
       query<Record<string, unknown>>(db, 'SELECT i.id, i.incident_number, i.incident_type, i.status, i.created_at, i.location_address FROM incidents i JOIN incident_persons ip ON i.id = ip.incident_id WHERE ip.person_id = ? ORDER BY i.created_at DESC LIMIT 50', id),
       query<Record<string, unknown>>(db, 'SELECT c.id, c.call_number, c.incident_type, c.status, c.created_at, c.location_address FROM calls_for_service c JOIN call_persons cp ON c.id = cp.call_id WHERE cp.person_id = ? ORDER BY c.created_at DESC LIMIT 50', id),
       query<Record<string, unknown>>(db, 'SELECT id, citation_number, type, violation_description, status, fine_amount, violation_date, court_date FROM citations WHERE person_id = ? ORDER BY created_at DESC LIMIT 50', id),
@@ -772,8 +772,13 @@ records.get('/ncic-query', async (c) => {
   // Warrant projection aliased to the field names the client formatter reads
   // (charge_description, bail_amount). offense_level isn't on the live table —
   // the formatter tolerates its absence.
-  const WARRANT_COLS = `id, warrant_number, type, charge AS charge_description, status,
-    bond_amount AS bail_amount, jurisdiction, issuing_agency, issued_at, expires_at`;
+  // Real live columns: charge_description / bail_amount|bond_amount / issuing_court /
+  // issued_date / expires_at. Alias to the names the formatter reads (jurisdiction,
+  // issued_at) so none resolve undefined; `charge`/`jurisdiction`/`issued_at` do NOT
+  // exist on the live warrants table (the old names 500'd this query).
+  const WARRANT_COLS = `id, warrant_number, type, charge_description, status,
+    COALESCE(bail_amount, bond_amount) AS bail_amount, issuing_court AS jurisdiction,
+    issuing_agency, issued_date AS issued_at, expires_at`;
 
   try {
     switch (type) {

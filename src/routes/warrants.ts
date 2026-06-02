@@ -422,15 +422,20 @@ warrants.get('/utah-search/auto-poll-status', requireRole(...READ_ROLES), async 
                    ORDER BY created_at DESC`, p.id),
         query(db, `SELECT utah_warrant_id, charges, court_name, issue_date
                    FROM utah_warrants WHERE LOWER(first_name) = LOWER(?) AND LOWER(last_name) = LOWER(?)
-                   ORDER BY fetched_at DESC LIMIT 20`, p.first_name, p.last_name),
+                   ORDER BY last_seen_at DESC LIMIT 20`, p.first_name, p.last_name), // utah_warrants has no fetched_at
       ]);
       return { ...p, warrants: localWarrants, utahWarrants };
     }));
 
-    const recentHits = await query<Record<string, any>>(db, `
-      SELECT id, person_id, person_name, event, charges, court_name, created_at
-      FROM warrant_watch_log WHERE event IN ('warrant_found', 'warrant_cleared')
-      ORDER BY created_at DESC LIMIT 50`);
+    // Isolated try/catch: warrant_watch_log may not exist on live; a missing
+    // table must not collapse the already-resolved runs/flaggedPersons into [].
+    let recentHits: Record<string, any>[] = [];
+    try {
+      recentHits = await query<Record<string, any>>(db, `
+        SELECT id, person_id, person_name, event, charges, court_name, created_at
+        FROM warrant_watch_log WHERE event IN ('warrant_found', 'warrant_cleared')
+        ORDER BY created_at DESC LIMIT 50`);
+    } catch { recentHits = []; }
 
     const totalRows = await query<{ cnt: number }>(db,
       `SELECT COUNT(*) AS cnt FROM persons WHERE first_name IS NOT NULL AND last_name IS NOT NULL`);
@@ -536,7 +541,9 @@ interface RunRow {
 //   - last_error_at (the started_at of the most recent failed run)
 function summarizeRuns(runs24h: RunRow[], trailingRuns: RunRow[]) {
   const total = runs24h.length;
-  const failed = runs24h.filter((r) => r.errors && r.errors > 0).length;
+  // A run's success is its STATUS, not whether it logged any per-person errors —
+  // a completed run that hit a few transient lookup errors is still a success.
+  const failed = runs24h.filter((r) => r.status === 'failed').length;
   const successful = total - failed;
   // "unchanged" runs = successful runs that found and cleared nothing —
   // the steady-state with no roster churn. Matters because the dashboard
