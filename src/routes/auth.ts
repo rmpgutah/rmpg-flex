@@ -411,4 +411,90 @@ auth.put('/profile', authMiddleware, async (c) => {
   }
 });
 
+// ════════════════════════════════════════════════════════════════
+// Security Dashboard (SecurityDashboardPage.tsx, route /security-dashboard)
+// ════════════════════════════════════════════════════════════════
+// The /api/auth router is mounted public (login/refresh are open), so we
+// gate just the /security/* subtree with authMiddleware. Backed by the live
+// login_attempts + sessions tables. Every handler is defensive and returns
+// the page's safe empty shape on any error. Legacy had only login-history
+// (a proxy stub) — the rest 404'd (live sweep 2026-06-02).
+auth.use('/security/*', authMiddleware);
+
+// GET /api/auth/security/status
+auth.get('/security/status', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const userId = c.get('userId');
+    const sess = await queryFirst<{ active: number }>(db, "SELECT COUNT(*) AS active FROM sessions WHERE user_id = ? AND COALESCE(is_active,1) = 1 AND expires_at > datetime('now')", userId);
+    const last = await queryFirst<{ created_at: string; ip_address: string | null }>(db, 'SELECT created_at, ip_address FROM sessions WHERE user_id = ? ORDER BY created_at DESC LIMIT 1', userId);
+    return c.json({
+      twoFactorEnabled: false,
+      passwordAge: 0,
+      trustedDevices: 0,
+      activeSessions: sess?.active ?? 0,
+      lastLogin: last?.created_at ?? '',
+      lastLoginIp: last?.ip_address ?? '',
+      accountStatus: 'Active',
+    });
+  } catch {
+    return c.json({ twoFactorEnabled: false, passwordAge: 0, trustedDevices: 0, activeSessions: 0, lastLogin: '', lastLoginIp: '', accountStatus: 'Active' });
+  }
+});
+
+// GET /api/auth/security/recent-threats — recent failed logins.
+auth.get('/security/recent-threats', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(db,
+      "SELECT id, 'failed_login' AS type, username, ip_address AS ip, failure_reason AS reason, created_at AS timestamp FROM login_attempts WHERE COALESCE(success,0) = 0 ORDER BY created_at DESC LIMIT 50");
+    return c.json({ data: rows || [] });
+  } catch {
+    return c.json({ data: [] });
+  }
+});
+
+// GET /api/auth/security/blocked-ips — IPs with repeated failures (>=5/24h).
+auth.get('/security/blocked-ips', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(db,
+      "SELECT ip_address, COUNT(*) AS failed_attempts, MAX(created_at) AS last_attempt FROM login_attempts WHERE COALESCE(success,0) = 0 AND ip_address IS NOT NULL AND created_at >= datetime('now','-1 day') GROUP BY ip_address HAVING COUNT(*) >= 5 ORDER BY failed_attempts DESC LIMIT 100");
+    return c.json({ data: rows || [] });
+  } catch {
+    return c.json({ data: [] });
+  }
+});
+
+// GET /api/auth/security/password-compliance — no password-age tracking on
+// live D1 yet; return empty (page tolerates {data:[]}).
+auth.get('/security/password-compliance', async (c) => c.json({ data: [] }));
+
+// GET /api/auth/security/session-analytics — sessions per day (last 14d).
+auth.get('/security/session-analytics', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<{ day: string; count: number }>(db,
+      "SELECT substr(created_at,1,10) AS day, COUNT(*) AS count FROM sessions WHERE created_at >= datetime('now','-14 days') GROUP BY substr(created_at,1,10) ORDER BY day");
+    const data: Record<string, number> = {};
+    for (const r of rows || []) data[r.day] = r.count;
+    return c.json({ data });
+  } catch {
+    return c.json({ data: {} });
+  }
+});
+
+// GET /api/auth/security/event-timeline?limit= — login successes + failures.
+auth.get('/security/event-timeline', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const limit = Math.min(500, Math.max(1, parseInt(c.req.query('limit') || '100', 10) || 100));
+    const rows = await query<Record<string, unknown>>(db,
+      "SELECT id, CASE WHEN COALESCE(success,0)=1 THEN 'login' ELSE 'failed_login' END AS event, username, ip_address AS ip, failure_reason AS reason, created_at AS timestamp FROM login_attempts ORDER BY created_at DESC LIMIT ?", limit);
+    return c.json({ data: rows || [] });
+  } catch {
+    return c.json({ data: [] });
+  }
+});
+
 export default auth;

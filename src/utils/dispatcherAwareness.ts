@@ -69,6 +69,22 @@ export async function gatherAwareness(db: D1Database, channelId: number, speaker
         ).catch(() => null);
         if (c) lines.push(`  Currently assigned to ${c.call_number || 'a call'} — ${c.incident_type || 'unknown type'} at ${c.location_address || 'unknown location'} [${c.status || '?'}].`);
       }
+      // The unit's QUEUE — other open calls it's attached to (so dispatch can
+      // answer "what else do I have"). Matched on the denormalized
+      // unit_call_signs list; the current call above is included but the line
+      // is only emitted when there's MORE than one.
+      const queue = await safe(query<{ call_number: string | null; incident_type: string | null; status: string | null }>(
+        db,
+        `SELECT call_number, incident_type, status FROM calls_for_service
+         WHERE unit_call_signs LIKE ? AND archived_at IS NULL
+           AND COALESCE(status,'') NOT IN (${CLOSED_CALL_STATUSES.map(() => '?').join(',')})
+         ORDER BY datetime(created_at) DESC LIMIT 4`,
+        `%${unit.call_sign}%`, ...CLOSED_CALL_STATUSES,
+      ));
+      const queued = queue.filter((q) => q.call_number);
+      if (queued.length > 1) {
+        lines.push(`  ${unit.call_sign} queue: ${queued.map((q) => `${q.call_number} (${q.incident_type || '?'}, ${q.status || '?'})`).join('; ')}.`);
+      }
     }
   }
 
@@ -88,6 +104,17 @@ export async function gatherAwareness(db: D1Database, channelId: number, speaker
       lines.push(`  ${c.call_number || '(no #)'} ${c.incident_type || '?'} @ ${c.location_address || '?'} [${c.status || '?'}${c.unit_call_signs ? `, units ${c.unit_call_signs}` : ''}]`);
     }
   }
+
+  // ── Unassigned backlog — active calls with NO unit attached. The dispatcher
+  // should know how many jobs are holding so it can prioritize a backup ask. ──
+  const pending = await safe(query<{ n: number }>(
+    db,
+    `SELECT COUNT(*) AS n FROM calls_for_service
+     WHERE COALESCE(status,'') NOT IN (${CLOSED_CALL_STATUSES.map(() => '?').join(',')}) AND archived_at IS NULL
+       AND COALESCE(TRIM(unit_call_signs), '') = ''`,
+    ...CLOSED_CALL_STATUSES,
+  ));
+  if (pending[0]?.n) lines.push(`Unassigned/holding calls: ${pending[0].n}.`);
 
   // ── Units currently working ──
   const units = await safe(query<UnitRow>(
@@ -127,8 +154,25 @@ export async function gatherAwareness(db: D1Database, channelId: number, speaker
 
 // ─── CAD lookups ────────────────────────────────────────────
 
-export type LookupType = 'plate' | 'person' | 'warrant' | 'premise' | 'vin' | 'unit_location' | 'eta';
+export type LookupType =
+  | 'plate' | 'person' | 'warrant' | 'premise' | 'vin'
+  | 'unit_location' | 'eta'
+  // ── new functions ──
+  | 'call_status'    // status/units on a call number ("status on CFS26-0042")
+  | 'closest_unit'   // nearest available unit to an address ("who's closest to …")
+  | 'last_dispatch'; // re-speak dispatch's last transmission ("say again")
 export interface LookupRequest { type: LookupType; query: string }
+
+/**
+ * Lookups whose result is ALREADY a complete spoken radio line — the caller
+ * reads `result.text` back verbatim instead of re-phrasing it through the LLM
+ * (which would risk paraphrasing a GPS fix, an ETA, or a "say again" re-read).
+ * The record checks (plate/person/warrant/vin/premise) are NOT here — they get
+ * persona-phrased for radio brevity.
+ */
+export const VERBATIM_LOOKUPS = new Set<LookupType>([
+  'unit_location', 'eta', 'call_status', 'closest_unit', 'last_dispatch',
+]);
 
 /**
  * A pointer to the underlying record a lookup hit, so the operator console can
@@ -151,7 +195,7 @@ const norm = (s: string) => s.trim().toUpperCase().replace(/[^A-Z0-9 ]/g, '').tr
  * Context a lookup may need beyond its own query — chiefly WHO is asking, so
  * "where am I" / "what's my ETA" can resolve to the transmitting unit.
  */
-export interface LookupContext { speaker?: string | null }
+export interface LookupContext { speaker?: string | null; channelId?: number }
 
 /**
  * Run the record check a unit requested. Returns a LookupResult (a terse facts
@@ -174,6 +218,10 @@ export async function runLookup(
     // wrap them as a text-only LookupResult (no auto-open record).
     if (req.type === 'premise') return { text: await lookupPremiseText(db, req.query) };
     if (req.type === 'vin') return { text: await lookupVin(db, req.query) };
+    // ── new functions ──
+    if (req.type === 'call_status') return { text: await lookupCallStatus(db, req.query) };
+    if (req.type === 'closest_unit') return { text: await lookupClosestUnit(env, db, req.query) };
+    if (req.type === 'last_dispatch') return { text: await lookupLastDispatch(db, ctx.channelId ?? 0) };
     // "where am I" / "what's my ETA" key off the transmitting unit, not the
     // spoken query — the model may pass the call-sign through `query`, but the
     // speaker the relay already knows is authoritative.
@@ -363,6 +411,93 @@ async function lookupWarrant(db: D1Database, raw: string): Promise<LookupResult>
   return { text };
 }
 
+// ─── Call status ("status on CFS26-0042") ───────────────────
+async function lookupCallStatus(db: D1Database, raw: string): Promise<string> {
+  const q = raw.trim();
+  if (q.length < 1) return 'Say again the call number.';
+  // Exact call number first, then a loose contains-match so "status on 42"
+  // can still find CFS26-00042.
+  const stripped = q.replace(/[^A-Za-z0-9]/g, '');
+  const c = await queryFirst<{
+    call_number: string | null; incident_type: string | null; status: string | null;
+    priority: string | null; location_address: string | null; unit_call_signs: string | null;
+    disposition: string | null;
+  }>(
+    db,
+    `SELECT call_number, incident_type, status, priority, location_address, unit_call_signs, disposition
+     FROM calls_for_service
+     WHERE UPPER(call_number) = UPPER(?)
+        OR REPLACE(REPLACE(UPPER(call_number),'-',''),' ','') LIKE UPPER(?)
+     ORDER BY datetime(COALESCE(updated_at, created_at)) DESC LIMIT 1`,
+    q, `%${stripped}`,
+  ).catch(() => null);
+  if (!c) return `No call on file matching "${q}".`;
+  const parts = [
+    `${c.call_number || 'That call'} — ${c.incident_type || 'unknown type'}${c.priority ? `, ${c.priority}` : ''} at ${c.location_address || 'unknown location'}.`,
+    `Status ${c.status || 'unknown'}${c.unit_call_signs ? `, units ${c.unit_call_signs}` : ', no units assigned'}.`,
+    c.disposition ? `Disposition ${c.disposition}.` : null,
+  ].filter(Boolean);
+  return parts.join(' ');
+}
+
+// ─── Closest available unit to an address ───────────────────
+function haversineMiles(aLat: number, aLng: number, bLat: number, bLng: number): number {
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const R = 3958.8; // earth radius in miles
+  const dLat = toRad(bLat - aLat);
+  const dLng = toRad(bLng - aLng);
+  const s = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(aLat)) * Math.cos(toRad(bLat)) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(s), Math.sqrt(1 - s));
+}
+
+async function lookupClosestUnit(env: Bindings, db: D1Database, raw: string): Promise<string> {
+  const addr = raw.trim();
+  if (addr.length < 3) return 'Say again the location for a closest-unit check.';
+  const coords = await geocodeAddress(env, addr).catch(() => null);
+  if (!coords) return `Couldn't locate ${addr} to find the closest unit.`;
+
+  // Latest GPS fix per call-sign in the last 30 min (SQLite returns the row at
+  // MAX(recorded_at) for the bare columns), intersected with AVAILABLE units.
+  const [fixes, avail] = await Promise.all([
+    safe(query<{ call_sign: string; latitude: number; longitude: number }>(
+      db,
+      `SELECT call_sign, latitude, longitude, MAX(recorded_at) AS rec
+       FROM gps_breadcrumbs
+       WHERE call_sign IS NOT NULL AND recorded_at > datetime('now','-30 minutes')
+       GROUP BY UPPER(call_sign)`,
+    )),
+    safe(query<{ cs: string }>(
+      db,
+      `SELECT UPPER(call_sign) AS cs FROM units WHERE status = 'available' AND call_sign IS NOT NULL`,
+    )),
+  ]);
+  const availSet = new Set(avail.map((a) => a.cs));
+  let best: { call_sign: string; miles: number } | null = null;
+  for (const f of fixes) {
+    if (!availSet.has(f.call_sign.toUpperCase())) continue;
+    if (!Number.isFinite(f.latitude) || !Number.isFinite(f.longitude)) continue;
+    const miles = haversineMiles(coords.lat, coords.lng, f.latitude, f.longitude);
+    if (!best || miles < best.miles) best = { call_sign: f.call_sign, miles };
+  }
+  if (!best) return `No available unit with a recent GPS fix to send to ${addr}.`;
+  return `Closest available is ${best.call_sign}, about ${best.miles.toFixed(1)} miles from ${addr}.`;
+}
+
+// ─── "Say again" — re-speak dispatch's last transmission ─────
+async function lookupLastDispatch(db: D1Database, channelId: number): Promise<string> {
+  if (!channelId) return 'Dispatch has nothing to repeat.';
+  // DISPATCH transmissions are inserted with user_id NULL (see VoiceHubDO).
+  const row = await queryFirst<{ transcript: string | null }>(
+    db,
+    `SELECT transcript FROM radio_transmissions
+     WHERE channel_id = ? AND user_id IS NULL AND transcript IS NOT NULL AND TRIM(transcript) <> ''
+     ORDER BY id DESC LIMIT 1`,
+    channelId,
+  ).catch(() => null);
+  if (!row?.transcript) return 'Dispatch has no prior transmission to repeat.';
+  return row.transcript.trim();
+}
+
 // ─── "Where am I" + "What's my ETA" (unit-centric lookups) ──
 // Both key off the transmitting unit. They speak a complete radio line (the
 // caller does NOT re-phrase them through the LLM), so the spoken text below IS
@@ -462,7 +597,7 @@ async function lookupEta(env: Bindings, db: D1Database, callSign: string): Promi
 //                     the dispatcher just acknowledges verbally instead.
 // ============================================================
 
-export type ActionType = 'set_unit_status' | 'create_call' | 'clear_call' | 'dispatch_backup';
+export type ActionType = 'set_unit_status' | 'create_call' | 'clear_call' | 'dispatch_backup' | 'create_bolo';
 
 export interface ActionRequest {
   type: ActionType;
@@ -482,7 +617,16 @@ export interface ActionRequest {
   call_number?: string;
   /** Disposition/outcome when clearing a call (clear_call). */
   disposition?: string;
+  /** BOLO fields (create_bolo). bolo_type maps to the person/vehicle/other CHECK. */
+  bolo_type?: string;
+  title?: string;
+  subject_description?: string;
+  vehicle_description?: string;
 }
+
+/** Context a write may need beyond the request — chiefly WHO is issuing it, for
+ *  writes (create_bolo) whose row carries a NOT NULL issued_by FK to users. */
+export interface ActionContext { issuedBy?: number | null }
 
 export interface ActionResult {
   /** Terse line the dispatcher reads back confirming what was written. */
@@ -561,6 +705,15 @@ export function evaluateActionPolicy(req: ActionRequest): { allow: boolean; reas
     }
     return { allow: true };
   }
+  if (req.type === 'create_bolo') {
+    // Need a title or a description to issue a meaningful BOLO. (The issuer's
+    // user id is required too, but that's checked in createBolo where the FK
+    // lives — the sync gate only screens shape.)
+    if (!req.title?.trim() && !req.description?.trim() && !req.subject_description?.trim() && !req.vehicle_description?.trim()) {
+      return { allow: false, reason: 'no BOLO detail given' };
+    }
+    return { allow: true };
+  }
   return { allow: false, reason: 'unknown action' };
 }
 
@@ -570,7 +723,7 @@ export function evaluateActionPolicy(req: ActionRequest): { allow: boolean; reas
  * on a hard failure / policy refusal so the caller falls back to a plain
  * verbal acknowledgement. Never throws into the relay tail.
  */
-export async function runAction(env: Bindings, db: D1Database, req: ActionRequest): Promise<ActionResult | null> {
+export async function runAction(env: Bindings, db: D1Database, req: ActionRequest, ctx: ActionContext = {}): Promise<ActionResult | null> {
   const gate = evaluateActionPolicy(req);
   if (!gate.allow) {
     console.warn('[awareness] action refused:', gate.reason, JSON.stringify(req));
@@ -581,11 +734,65 @@ export async function runAction(env: Bindings, db: D1Database, req: ActionReques
     if (req.type === 'create_call') return await createCall(env, db, req);
     if (req.type === 'clear_call') return await clearCall(db, req);
     if (req.type === 'dispatch_backup') return await dispatchBackup(db, req);
+    if (req.type === 'create_bolo') return await createBolo(db, req, ctx);
     return null;
   } catch (err) {
     console.error('[awareness] action failed:', (err as Error)?.message);
     return null;
   }
+}
+
+// ── Issue a BOLO by voice ("put out a BOLO on …") ──
+// bolos: type CHECK('person','vehicle','other'), status CHECK('active',…),
+// issued_by NOT NULL FK→users(id). The AI has no user row of its own, so the
+// REQUESTING officer is the issuer (ctx.issuedBy) — without it we refuse rather
+// than violate the FK. bolo_number is UNIQUE; minted BOLO{YY}-{NNNNN}.
+const BOLO_TYPES = new Set(['person', 'vehicle', 'other']);
+function mapBoloType(raw: string | undefined): 'person' | 'vehicle' | 'other' {
+  const s = (raw || '').trim().toLowerCase();
+  if (BOLO_TYPES.has(s)) return s as 'person' | 'vehicle' | 'other';
+  if (/person|subject|suspect|individual|male|female|juvenile/.test(s)) return 'person';
+  if (/vehicle|car|truck|plate|suv|van|motorcycle/.test(s)) return 'vehicle';
+  return 'other';
+}
+
+async function createBolo(db: D1Database, req: ActionRequest, ctx: ActionContext): Promise<ActionResult | null> {
+  const issuedBy = ctx.issuedBy;
+  if (!issuedBy || !Number.isFinite(issuedBy)) {
+    // No known issuer → can't satisfy the NOT NULL FK. Refuse (honesty guard).
+    console.warn('[awareness] BOLO refused — no issuing user id');
+    return null;
+  }
+  const boloType = mapBoloType(req.bolo_type);
+  const title = (req.title || req.description || req.subject_description || req.vehicle_description || '').trim().slice(0, 200);
+  if (!title) return null;
+  const priority = mapPriority(req.priority);
+
+  // Mint a unique BOLO number in the board's format.
+  const year = new Date().getFullYear().toString().slice(-2);
+  const prefix = `BOLO${year}-`;
+  const [{ max }] = await query<{ max: string | null }>(
+    db, 'SELECT MAX(bolo_number) as max FROM bolos WHERE bolo_number LIKE ?', `${prefix}%`,
+  );
+  const seq = max ? String(parseInt(max.slice(prefix.length), 10) + 1).padStart(5, '0') : '00001';
+  const boloNumber = `${prefix}${seq}`;
+
+  const res = await execute(
+    db,
+    `INSERT INTO bolos (bolo_number, type, title, description, subject_description, vehicle_description,
+                        status, priority, issued_by, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, datetime('now'))`,
+    boloNumber, boloType, title,
+    req.description?.trim() || null,
+    req.subject_description?.trim() || null,
+    req.vehicle_description?.trim() || null,
+    priority, issuedBy,
+  );
+  if (!res.meta.last_row_id) return null;
+  return {
+    spoken: `Copy, BOLO is out — ${boloNumber}, ${priority}, ${title}. All units be on the lookout.`,
+    summary: `bolo_created:${boloNumber}`,
+  };
 }
 
 async function setUnitStatus(db: D1Database, req: ActionRequest): Promise<ActionResult | null> {

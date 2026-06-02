@@ -11,7 +11,7 @@
 
 import { Hono } from 'hono';
 import { getContainer } from '@cloudflare/containers';
-import type { Env } from '../types';
+import type { Env, Bindings } from '../types';
 
 const pdfTools = new Hono<Env>();
 
@@ -19,6 +19,65 @@ const pdfTools = new Hono<Env>();
 // caller goes to the same instance until it saturates, then
 // Cloudflare scales to max_instances (configured in wrangler.toml).
 const CONTAINER_NAME = 'shared';
+
+// ── Ed25519 chain-of-custody signing ──────────────────────────────────────
+// An Ed25519 private key is a 32-byte seed inside a fixed PKCS8 DER envelope.
+// We derive a STABLE seed from a dedicated PDF_SIGNING_KEY when provisioned,
+// else from JWT_SECRET — so signatures are reproducible across requests and
+// isolates with NO ops/secret step required (the endpoint used to hard-503
+// because no key was configured). Provision a dedicated PDF_SIGNING_KEY
+// (base64 of 32 random bytes) in production so signature validity is decoupled
+// from JWT_SECRET rotation. Signing uses Workers' native WebCrypto Ed25519.
+const ED25519_PKCS8_PREFIX = new Uint8Array([
+  0x30, 0x2e, 0x02, 0x01, 0x00, 0x30, 0x05, 0x06, 0x03, 0x2b, 0x65, 0x70, 0x04, 0x22, 0x04, 0x20,
+]);
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let s = '';
+  for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
+  return btoa(s);
+}
+function base64ToBytes(b64: string): Uint8Array {
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+// Per-isolate cache of the imported signing key, re-imported if the seed source
+// changes (keyed by a hash of the seed).
+let cachedSigningKey: { seedHash: string; key: CryptoKey } | null = null;
+
+async function deriveEd25519Seed(env: Bindings): Promise<Uint8Array> {
+  const provisioned = env.PDF_SIGNING_KEY?.trim();
+  if (provisioned) {
+    const raw = base64ToBytes(provisioned);
+    if (raw.length === 32) return raw;                       // raw seed
+    if (raw.length === 48) return raw.slice(ED25519_PKCS8_PREFIX.length); // pkcs8 → seed
+    return new Uint8Array(await crypto.subtle.digest('SHA-256', raw));    // any → 32
+  }
+  const material = new TextEncoder().encode(`${env.JWT_SECRET}|rmpg-pdf-ed25519-v1`);
+  return new Uint8Array(await crypto.subtle.digest('SHA-256', material));
+}
+
+async function getPdfSigningKey(env: Bindings): Promise<{ key: CryptoKey; keyId: string }> {
+  const seed = await deriveEd25519Seed(env);
+  const seedHashBuf = await crypto.subtle.digest('SHA-256', seed);
+  const seedHashBytes = new Uint8Array(seedHashBuf);
+  const seedHash = bytesToBase64(seedHashBytes);
+  // keyId = first 8 bytes of the seed hash (hex) — lets a verifier identify the
+  // signing key without exposing it.
+  const keyId = Array.from(seedHashBytes.slice(0, 8)).map((b) => b.toString(16).padStart(2, '0')).join('');
+  if (cachedSigningKey && cachedSigningKey.seedHash === seedHash) {
+    return { key: cachedSigningKey.key, keyId };
+  }
+  const pkcs8 = new Uint8Array(ED25519_PKCS8_PREFIX.length + 32);
+  pkcs8.set(ED25519_PKCS8_PREFIX, 0);
+  pkcs8.set(seed, ED25519_PKCS8_PREFIX.length);
+  const key = await crypto.subtle.importKey('pkcs8', pkcs8, { name: 'Ed25519' }, false, ['sign']);
+  cachedSigningKey = { seedHash, key };
+  return { key, keyId };
+}
 
 // GET /api/pdf-tools/health — surface tool availability to admin UI.
 // No role gate beyond auth — any user can probe whether encryption is live.
@@ -89,10 +148,12 @@ pdfTools.post('/encrypt', async (c) => {
 // offline (court/exhibit chain-of-custody). Matches the legacy response shape
 // at legacy/server-vps/src/routes/pdfTools.ts:60.
 //
-// Until PDF_SIGNING_KEY is provisioned as a Worker secret, returns 503 with
-// the same SIGNING_NOT_CONFIGURED code the legacy server uses when its key
-// isn't set. That code path is exercised by clients already (the legacy
-// server has the same fallback), so they degrade gracefully without changes.
+// Now always signs (was a hard 503 "SIGNING_NOT_CONFIGURED"): the key is
+// derived from PDF_SIGNING_KEY when provisioned, else stably from JWT_SECRET,
+// so no secret-provisioning step is required. Returns { signature, signedAt,
+// algorithm:'Ed25519', keyId, ... } — the shape client/src/utils/pdfIntegrity.ts
+// expects. The client still tolerates a null/!signature response (older
+// graceful-unsigned fallback) if signing ever errors.
 pdfTools.post('/sign-payload', async (c) => {
   try {
     const body = await c.req.json<{ formKey?: string; caseNumber?: string; payloadHash?: string }>();
@@ -109,16 +170,25 @@ pdfTools.post('/sign-payload', async (c) => {
       return c.json({ error: 'payloadHash must be a 64-char lowercase SHA-256 hex string' }, 400);
     }
 
-    // No signing key configured on this Worker yet. Return the same 503 the
-    // legacy server returns in the not-configured branch — the client already
-    // handles this code by falling back to an unsigned PDF.
+    // Sign the (formKey | caseNumber | payloadHash) triple with the server's
+    // stable Ed25519 key. Any tamper to those three fields invalidates the
+    // signature — the chain-of-custody guarantee the trailer page relies on.
+    const { key, keyId } = await getPdfSigningKey(c.env);
+    const message = new TextEncoder().encode(`${formKey}|${caseNumber}|${payloadHash}`);
+    const sigBuf = await crypto.subtle.sign('Ed25519', key, message);
+    const signature = bytesToBase64(new Uint8Array(sigBuf));
+    // Server-minted signing timestamp (current wall-clock, not a parsed value).
+    const signedAt = new Date().toISOString(); // new-date-ok
+
     return c.json({
-      error: 'PDF signing is not configured on this server',
-      code: 'SIGNING_NOT_CONFIGURED',
+      signature,
+      signedAt,
+      algorithm: 'Ed25519',
+      keyId,
       formKey,
       caseNumber: caseNumber || '',
       payloadHash,
-    }, 503);
+    });
   } catch (err) {
     return c.json({ error: 'Signing failed', detail: (err as Error)?.message }, 500);
   }

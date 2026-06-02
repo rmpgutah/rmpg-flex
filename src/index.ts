@@ -24,7 +24,7 @@ import { handleWebSocket, sendToUser, broadcastAll } from './routes/ws';
 import { WelfareWatchDO } from './durable-objects/WelfareWatchDO';
 import { VoiceHubDO } from './durable-objects/VoiceHubDO';
 import { PdfToolsContainer } from './containers/pdfToolsContainer';
-import { runUtahWarrantScan } from './utils/utahWarrantPoller';
+import { runAllSourceScans } from './utils/warrantSources/runScan';
 import { detectDispatchAnomalies } from './routes/dispatch/anomalies';
 import { getRadioSettings, purgeOldRecordings } from './utils/radioSettings';
 import type { Bindings, Variables } from './types';
@@ -233,8 +233,8 @@ export default {
   // can't crash the cron loop.
   async scheduled(event: ScheduledEvent, env: Bindings, ctx: ExecutionContext): Promise<void> {
     ctx.waitUntil(
-      runUtahWarrantScan(env.DB).catch((err) => {
-        console.error('Utah warrant scheduled scan failed:', err);
+      runAllSourceScans(env.DB).catch((err) => {
+        console.error('Multi-source warrant scheduled scan failed:', err);
       }),
     );
     // Dispatch anomaly detection — populates anomaly_alerts for the
