@@ -376,17 +376,15 @@
 //       now populated (was hardcoded []). Also: fuel-report PDF now includes
 //       an Odometer column per fill (was missing entirely; reads
 //       odometer_reading ?? raw odometer).
-// v716: FIX — "Chunk load failed" / "Expected a JavaScript-or-Wasm module
-//       script but the server responded with a MIME type of text/html" on
-//       navigating to a lazy page (WarrantsPage, MdtPage, ...) after a deploy.
-//       A 404'd old chunk came back as 200 text/html (the SPA fallback), and
-//       this SW cached that HTML under the .js URL — poisoning the cache so
-//       the failure persisted across reloads. The JS/CSS fetch branches now
-//       refuse to cache OR return a text/html response for a .js/.css request,
-//       returning a synthetic 404 instead so the import rejects cleanly and
-//       the app's lazyRetry reloads to the fresh index. Paired with the new
-//       `/assets/* … 404` _redirects rule (server-side root cause). Bumping
-//       CACHE_NAME also evicts any already-poisoned entries from prior bundles.
+// v716: Dispatch dispositions are now SHORT-CODED (detailed but terse) —
+//       general patrol dispositions use mnemonics (RTF/GOA/ARR/CIT…), process-
+//       service CFS use PS/### in increments of 5 (anchored on the live
+//       PS/055=Personal/Individual). Selection dropdowns show "CODE — Description";
+//       output surfaces show the CODE only (description on hover) with a chart
+//       color badge. Full 39-code chart seeded to system_config. Also restored
+//       A/S/Z/B as a SHORT-code Section/Zone/Beat chip (e.g. "SL1/HER/A1") on the
+//       CFS card + detail — long Area›Section›Zone›Beat NAMES remain strictly on
+//       the Map UI ("What's Here").
 const CACHE_NAME = 'rmpg-flex-v716';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [

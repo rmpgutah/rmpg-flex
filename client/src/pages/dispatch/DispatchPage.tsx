@@ -14,7 +14,7 @@ import DuplicateCandidatesModal, { DuplicateCandidate } from '../../components/D
 import UnitStatusBoard from '../../components/UnitStatusBoard';
 import DispositionPrompt from '../../components/DispositionPrompt';
 import { dispositionGroupsForIncident, DEFAULT_DISPOSITION_CODES } from '../../constants/dispositionCodes';
-import { zoneLeaf, beatLeaf, sectionPrefix } from '../../utils/dispatchCodeParts';
+import { zoneLeaf, beatLeaf, sectionPrefix, sectionZoneBeatCombined } from '../../utils/dispatchCodeParts';
 import DispatchMiniMap from '../../components/DispatchMiniMap';
 import BoloAlertBanner from '../../components/BoloAlertBanner';
 import StatusBadge from '../../components/StatusBadge';
@@ -87,7 +87,7 @@ import NarrativeAssist from '../../components/dispatch/NarrativeAssist';
 import FileAttachments from '../../components/FileAttachments';
 import { safeDateTimeStr, parseTimestamp, toDatetimeLocalValue, mtDatetimeLocalToUtc } from '../../utils/dateUtils';
 import {
-  humanizePriority, formatDispositionCode, getStatusTooltip, formatPhoneDisplay,
+  humanizePriority, formatDispositionCode, humanizeDisposition, getStatusTooltip, formatPhoneDisplay,
   formatAddressDisplay, timeAgo, humanizeStatus,
 } from '../../utils/statusLabels';
 
@@ -2713,7 +2713,7 @@ export default function DispatchPage() {
                       {selectedCall.pso_requestor_phone && <div><span className="text-rmpg-400">Phone:</span> {formatPhoneDisplay(selectedCall.pso_requestor_phone)}</div>}
                       {selectedCall.pso_billing_code && <div><span className="text-rmpg-400">Billing:</span> {selectedCall.pso_billing_code}</div>}
                       {selectedCall.pso_authorization && <div><span className="text-rmpg-400">Auth:</span> {selectedCall.pso_authorization}</div>}
-                      {selectedCall.disposition && <div><span className="text-rmpg-400">Disposition:</span> {formatDispositionCode(selectedCall.disposition)}</div>}
+                      {selectedCall.disposition && <div><span className="text-rmpg-400">Disposition:</span> <span title={humanizeDisposition(selectedCall.disposition)}>{selectedCall.disposition}</span></div>}
                     </div>
 
                     {/* Serve Queue Integration — Gold Status Panel */}
@@ -4234,8 +4234,11 @@ export default function DispatchPage() {
                                 reachable. */}
                             {dispositionGroupsForIncident(selectedCall.incident_type).map((g) => (
                               <optgroup key={g.label} label={g.label}>
+                                {/* Selection shows CODE — Description so the
+                                    dispatcher picks the right code; only the
+                                    code is stored + shown on output surfaces. */}
                                 {g.codes.map((d) => (
-                                  <option key={d.code} value={d.code}>{d.description}</option>
+                                  <option key={d.code} value={d.code}>{d.code} — {d.description}</option>
                                 ))}
                               </optgroup>
                             ))}
@@ -4256,20 +4259,30 @@ export default function DispatchPage() {
                         </div>
                       </>
                     )}
-                    {!isEditing && selectedCall.disposition && (
-                      <div>
-                        <label className="field-label">Disposition:</label>
-                        <p className="text-sm text-rmpg-200">
-                          <span className="inline-block px-2 py-0.5 bg-brand-900/40 text-brand-300 text-[11px] uppercase font-bold border border-brand-600/40 mr-1.5 rounded-sm tracking-wide">
-                            {selectedCall.disposition}
-                          </span>
-                          {(() => {
-                            const match = dispositionCodes.find((d) => d.code === selectedCall.disposition);
-                            return match ? <span className="text-rmpg-300">{match.description}</span> : null;
-                          })()}
-                        </p>
-                      </div>
-                    )}
+                    {!isEditing && selectedCall.disposition && (() => {
+                      // OUTPUT = code only (per the short-code contract). The
+                      // description rides along as a hover tooltip for
+                      // discoverability but is not shown inline. Badge color
+                      // comes from the chart when the code is known.
+                      const match = dispositionCodes.find((d) => d.code === selectedCall.disposition);
+                      const color = (match as any)?.color as string | undefined;
+                      return (
+                        <div>
+                          <label className="field-label">Disposition:</label>
+                          <p className="text-sm text-rmpg-200">
+                            <span
+                              className="inline-block px-2 py-0.5 text-[11px] uppercase font-bold border mr-1.5 rounded-sm tracking-wide"
+                              title={match?.description || selectedCall.disposition || ''}
+                              style={color
+                                ? { color, borderColor: `${color}66`, background: `${color}1a` }
+                                : undefined}
+                            >
+                              {selectedCall.disposition}
+                            </span>
+                          </p>
+                        </div>
+                      );
+                    })()}
                   </div>
 
                   {/* Right Column: Caller, Timeline, Units */}
@@ -4681,11 +4694,27 @@ export default function DispatchPage() {
                             {selectedCall.dispatch_code}
                           </span>
                         )}
-                        {/* Geography on dispatch surfaces is the SHORT CODE only —
-                            the dispatch_code badge above (e.g. "SLA-A2"). The verbose
-                            Area / Sec / Zone / Beat full-name lines were removed; the
-                            full Area›Section›Zone›Beat names are presented on the Map
-                            UI ("What's Here") instead. */}
+                        {/* Section/Zone/Beat in SHORT-CODE form (e.g. "SL1/HER/A1")
+                            via the chart-code parser — NO long names. Dispatch shows
+                            short codes only; the full Area›Section›Zone›Beat NAMES are
+                            presented on the Map UI ("What's Here") instead. Hidden
+                            when it would merely echo the dispatch_code badge. */}
+                        {(() => {
+                          const szb = sectionZoneBeatCombined(selectedCall.sector_id, selectedCall.zone_id, selectedCall.beat_id);
+                          if (!szb || szb === selectedCall.dispatch_code) return null;
+                          return (
+                            <span
+                              role="button"
+                              tabIndex={0}
+                              title="Section / Zone / Beat (short code) — click to copy"
+                              onClick={() => { try { navigator.clipboard?.writeText(szb); } catch { /* clipboard unavailable */ } }}
+                              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); try { navigator.clipboard?.writeText(szb); } catch { /* clipboard unavailable */ } } }}
+                              className="cursor-pointer hover:brightness-110 text-[10px] font-bold font-mono text-rmpg-300 bg-rmpg-800/60 border border-rmpg-600/50 px-2 py-0.5 rounded-sm tracking-wider"
+                            >
+                              <span className="text-rmpg-500 mr-1">S/Z/B</span>{szb}
+                            </span>
+                          );
+                        })()}
                         {selectedCall.latitude != null && selectedCall.longitude != null && (
                           <span className="text-rmpg-400 font-mono text-[9px] tabular-nums select-all">
                             GPS: {Number(selectedCall.latitude).toFixed(5)}, {Number(selectedCall.longitude).toFixed(5)}
