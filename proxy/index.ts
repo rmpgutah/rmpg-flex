@@ -683,12 +683,31 @@ const API_ROUTES: RouteRule[] = [
   // /summary-report, /check/:id, /batch-update, /bulk-archive, /bulk-review,
   // /person-intel, /utah-search) are deliberately NOT matched here — they
   // continue to fall through to env.LEGACY until their own ports land.
+  // /api/warrants/check/:personId — advisory active-warrant lookup used by
+  // the incident LinkPersonModal. Ported to src/routes/warrants.ts (legacy
+  // 404'd). Two segments after /warrants so it never collides with the
+  // single-segment /warrants/:id CRUD regex below.
+  { kind: 'regex', value: /^\/api\/warrants\/check\/\d+$/, methods: ['GET'] },
   { kind: 'regex', value: /^\/api\/warrants\/ingest-utah$/, methods: ['POST'] },
   { kind: 'regex', value: /^\/api\/warrants\/\d+\/serve$/, methods: ['PUT'] },
   { kind: 'regex', value: /^\/api\/warrants\/\d+\/archive$/, methods: ['POST'] },
   { kind: 'regex', value: /^\/api\/warrants\/\d+\/unarchive$/, methods: ['POST'] },
   { kind: 'regex', value: /^\/api\/warrants\/\d+$/, methods: ['GET', 'PUT', 'DELETE'] },
   { kind: 'regex', value: /^\/api\/warrants\/?$/, methods: ['GET', 'POST'] },
+
+  // ── Incident NIBRS sub-resources — ported to src/routes/incidentSubresources.ts ──
+  // The IncidentsPage detail panels (Offenses / Responding Officers /
+  // Cross-References / Supplements) POST+GET these. Legacy 404'd (officers)
+  // or 500'd against a MINIMAL live schema (incident_offenses lacked
+  // ucr_code/nibrs_code/counts/...; incident_links omitted the NOT-NULL
+  // added_by; supplemental_reports lacked subject/status). Migration 0064
+  // widened the tables and these routes go to the rewrite's real handlers.
+  // ONLY the sub-resource paths are routed — base /api/incidents CRUD stays
+  // on legacy (deliberately, per its working-page note). The supplement
+  // regex also covers the dv/pursuit string suffixes served by
+  // incidentSupplements.ts so those reach env.API too.
+  { kind: 'regex', value: /^\/api\/incidents\/\d+\/(offenses|officers|links)(\/\d+)?$/ },
+  { kind: 'regex', value: /^\/api\/incidents\/\d+\/supplements(\/(dv|pursuit|\d+))?$/ },
 
   // ── TTS + PDF signing (rewrite ports of legacy/server-vps endpoints) ──
   // /api/tts now synthesizes real audio via Workers AI (@cf/myshell-ai/melotts,
