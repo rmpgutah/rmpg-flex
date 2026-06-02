@@ -81,7 +81,20 @@ jobs:
       # deployed it before rmpg-flex-api here the binding would point at the
       # previous script for the few seconds until rmpg-flex-api finishes its
       # rollout. Sequencing keeps the strangler seam consistent across deploys.
+      # `continue-on-error` (added 2026-06-02): the deployed rmpg-api-proxy has an
+      # ORPHANED `WelfareWatchDO` Durable Object namespace (left by a past deploy
+      # from the now-deleted proxies/api-proxy/ config — see LEGACY.md). Cloudflare
+      # rejects every new proxy version with error 10064 ("doesn't export class
+      # WelfareWatchDO which existing DOs depend on"). This was silently SKIPPING
+      # the client/Pages deploy below — the same "UI silently rots" failure mode
+      # the 2026-05-24 incident note warns about. The proxy is a pure router and
+      # never instantiates WelfareWatchDO, so the orphan namespace is empty; the
+      # proper fix is a delete-class migration on the proxy (deliberate, tracked
+      # separately). Until then, don't let the proxy block worker+client deploys —
+      # the proxy keeps running its current (working) version, and the failed step
+      # stays visible (red) in the run as the signal to fix it.
       - name: Deploy proxy
+        continue-on-error: true
         uses: cloudflare/wrangler-action@v4
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
