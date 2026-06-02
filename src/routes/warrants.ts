@@ -1311,16 +1311,18 @@ warrants.put('/:id{\\d+}/serve', requireRole(...ROLES_CRUD_WRITE), async (c) => 
       return c.json({ error: 'Only active warrants can be served', code: 'ONLY_ACTIVE_CAN_SERVE' }, 400);
     }
 
-    // NOTE: the live `warrants` table has no `served_location` column (see
-    // migration 0046). Writing to it 500s every serve, so it is intentionally
-    // omitted here. served_by/served_at/status are the real served-state columns.
+    // served_location column added in migration 0064 — persist the operator's
+    // typed "Location Served" (the client sends it; the detail panel + record
+    // PDF render it). Sentinel-guarded to NULL when blank.
+    const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
+    const servedLocation = nullify(body.served_location);
     await execute(
       db,
       `UPDATE warrants
           SET status = 'served', served_by = ?, served_at = datetime('now'),
-              updated_at = datetime('now')
+              served_location = ?, updated_at = datetime('now')
         WHERE id = ?`,
-      user.id, id,
+      user.id, servedLocation, id,
     );
 
     const updated = await queryFirst<Record<string, unknown>>(

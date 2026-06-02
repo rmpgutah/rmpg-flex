@@ -893,7 +893,9 @@ export default function WarrantsPage() {
     if (formOpen) return; // Don't refresh list while editing
     fetchWarrants({ silent: true });
   }, [fetchWarrants, formOpen]);
-  useLiveSync('alerts', silentRefreshWarrants);
+  // 'warrants' matches the liveBroadcast module derived from /api/warrants/*
+  // mutations; 'alerts' never fired (no producer emits that module).
+  useLiveSync('warrants', silentRefreshWarrants);
 
   // Fetch warrant detail
   const fetchWarrantDetail = useCallback(async (id: number) => {
