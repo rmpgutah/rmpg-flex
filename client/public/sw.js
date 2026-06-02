@@ -222,7 +222,7 @@
 //       pdfStaticMap.ts helper; BusinessTab gains a Print button (businesses
 //       render via the property generator). Best-effort — omitted silently if
 //       no coords/token/network.
-const CACHE_NAME = 'rmpg-flex-v690';
+const CACHE_NAME = 'rmpg-flex-v691';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
