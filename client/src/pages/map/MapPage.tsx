@@ -424,10 +424,18 @@ export default function MapPage() {
   });
   const [showGeoPanel, setShowGeoPanel] = useState(false);
 
-  // Statewide vector-tile overlays (PMTiles: Utah roads + address points)
+  // Statewide vector-tile overlays (PMTiles: Utah roads + address points).
+  // isLight keeps labels legible across basemaps; onUseLocation routes a clicked
+  // address/road into the SAME pan+zoom+marker flow as the address search box,
+  // so the statewide data feeds the existing dispatch location workflow.
   const { vectorLayerStates, toggleVectorLayer, vectorConfigs } = useVectorTileLayers({
     map: mapInstanceRef.current,
     popup: infoWindowRef.current,
+    isLight: isLightMapStyle(mapStyle),
+    onUseLocation: (info) => {
+      handleAddressSelect([info.lng, info.lat], info.label);
+      setAddressSearch(info.label);
+    },
   });
   const [showVectorPanel, setShowVectorPanel] = useState(false);
 

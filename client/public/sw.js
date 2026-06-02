@@ -163,7 +163,11 @@
 //       tiles served from R2 via /api/tiles/* (Range-capable). New
 //       "Statewide Data" toggle section on the Map page. /api/* is already
 //       SW-bypassed, so PMTiles range requests pass straight to network.
-const CACHE_NAME = 'rmpg-flex-v679';
+// v680: Statewide overlays made dynamic — survive basemap switch + print
+//       (re-add on style.load), theme-aware labels (legible on light/
+//       satellite), and "Use This Location" popup action routes a clicked
+//       address/road into the existing address-search pan+zoom+marker flow.
+const CACHE_NAME = 'rmpg-flex-v680';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

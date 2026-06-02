@@ -91,6 +91,14 @@ export interface VectorLayerState {
 interface UseVectorTileLayersOptions {
   map: mapboxgl.Map | null;
   popup: mapboxgl.Popup | null;
+  /** True when the active basemap is a light style — flips label colors for legibility. */
+  isLight?: boolean;
+  /**
+   * Fired when a feature is clicked while NOT in a passive state — lets the
+   * map page route an address/road into dispatch (e.g. "set call location").
+   * When provided, address-point/road popups gain a "Use this location" action.
+   */
+  onUseLocation?: (info: { lng: number; lat: number; label: string; kind: VectorLayerKind; props: Record<string, any> }) => void;
 }
 
 function srcId(id: string) { return `vt-${id}`; }
@@ -109,7 +117,7 @@ const CARTO_NAMES: Record<string, string> = {
   '9': 'Local', '10': 'Service', '11': 'Local Street', '12': 'Driveway',
 };
 
-export function useVectorTileLayers({ map, popup }: UseVectorTileLayersOptions) {
+export function useVectorTileLayers({ map, popup, isLight = false, onUseLocation }: UseVectorTileLayersOptions) {
   const [layerStates, setLayerStates] = useState<Record<string, VectorLayerState>>(() => {
     const init: Record<string, VectorLayerState> = {};
     for (const cfg of VECTOR_TILE_CONFIGS) init[cfg.id] = { visible: false, loaded: false };
@@ -118,10 +126,24 @@ export function useVectorTileLayers({ map, popup }: UseVectorTileLayersOptions) 
 
   const popupRef = useRef(popup);
   useEffect(() => { popupRef.current = popup; }, [popup]);
+  const isLightRef = useRef(isLight);
+  useEffect(() => { isLightRef.current = isLight; }, [isLight]);
+  const onUseLocationRef = useRef(onUseLocation);
+  useEffect(() => { onUseLocationRef.current = onUseLocation; }, [onUseLocation]);
 
   // Guard against double-add when multiple effects race the style-ready gate.
   const addedRef = useRef<Set<string>>(new Set());
   const clickBoundRef = useRef<Set<string>>(new Set());
+  // Mirror of layerStates for use inside the persistent style.load handler,
+  // which must re-add visible layers after a basemap switch without re-binding.
+  const layerStatesRef = useRef(layerStates);
+  useEffect(() => { layerStatesRef.current = layerStates; }, [layerStates]);
+
+  // Label paint that stays legible on both dark and light basemaps.
+  const labelPaint = (light: boolean) => ({
+    text: light ? '#3a2e05' : '#e8d8a8',
+    halo: light ? '#ffffff' : '#000000',
+  });
 
   const buildPopupHtml = useCallback((cfg: VectorTileLayerConfig, props: Record<string, any>): string => {
     const titleRaw = props[cfg.labelProp];
@@ -146,6 +168,7 @@ export function useVectorTileLayers({ map, popup }: UseVectorTileLayersOptions) 
     whenStyleReady(map, () => {
       if (addedRef.current.has(cfg.id)) return;
       const source = srcId(cfg.id);
+      const lp = labelPaint(isLightRef.current);
 
       try {
         if (!map.getSource(source)) {
@@ -194,8 +217,8 @@ export function useVectorTileLayers({ map, popup }: UseVectorTileLayersOptions) 
                 'text-font': ['DIN Offc Pro Medium', 'Arial Unicode MS Regular'],
               },
               paint: {
-                'text-color': '#e8d8a8',
-                'text-halo-color': '#000000',
+                'text-color': lp.text,
+                'text-halo-color': lp.halo,
                 'text-halo-width': 1.4,
               },
             });
@@ -236,8 +259,8 @@ export function useVectorTileLayers({ map, popup }: UseVectorTileLayersOptions) 
                 'text-allow-overlap': false,
               },
               paint: {
-                'text-color': '#d8c890',
-                'text-halo-color': '#000000',
+                'text-color': lp.text,
+                'text-halo-color': lp.halo,
                 'text-halo-width': 1.2,
               },
             });
@@ -253,7 +276,23 @@ export function useVectorTileLayers({ map, popup }: UseVectorTileLayersOptions) 
             const pop = popupRef.current;
             if (!pop || !e.features || e.features.length === 0) return;
             const props = e.features[0].properties || {};
-            pop.setLngLat(e.lngLat).setHTML(buildPopupHtml(cfg, props)).addTo(map);
+            const titleRaw = props[cfg.labelProp];
+            const label = titleRaw != null && String(titleRaw).trim() !== '' ? String(titleRaw) : cfg.label;
+            let html = buildPopupHtml(cfg, props);
+            const canUse = !!onUseLocationRef.current;
+            if (canUse) {
+              html += `<button id="vt-use-loc" style="margin-top:6px;width:100%;padding:4px;font-family:'Courier New',monospace;font-size:10px;font-weight:bold;letter-spacing:0.5px;color:#0a0a0a;background:${cfg.color};border:none;border-radius:2px;cursor:pointer;text-transform:uppercase;">Use This Location</button>`;
+            }
+            pop.setLngLat(e.lngLat).setHTML(html).addTo(map);
+            if (canUse) {
+              const el = pop.getElement()?.querySelector('#vt-use-loc') as HTMLButtonElement | null;
+              if (el) {
+                el.addEventListener('click', () => {
+                  onUseLocationRef.current?.({ lng: e.lngLat.lng, lat: e.lngLat.lat, label, kind: cfg.kind, props });
+                  pop.remove();
+                });
+              }
+            }
           });
           map.on('mouseenter', interactiveLayer, () => { map.getCanvas().style.cursor = 'pointer'; });
           map.on('mouseleave', interactiveLayer, () => { map.getCanvas().style.cursor = ''; });
@@ -292,6 +331,44 @@ export function useVectorTileLayers({ map, popup }: UseVectorTileLayersOptions) 
       return { ...prev, [layerId]: { ...curr, visible: nowVisible } };
     });
   }, [addLayer, setLayerVisibility]);
+
+  // Basemap-switch / print resilience. map.setStyle() (basemap change in
+  // MapPage, or the print light-mode swap) WIPES every custom source + layer
+  // but keeps the same map instance, firing 'style.load' when the new style is
+  // ready. Other overlays survive by keying their effects on mapStyle; we
+  // instead listen directly so we also cover print mode. Clear add-tracking
+  // and re-create whatever was visible, then restore its visibility.
+  useEffect(() => {
+    if (!map) return;
+    const onStyleLoad = () => {
+      addedRef.current.clear();
+      clickBoundRef.current.clear();
+      for (const cfg of VECTOR_TILE_CONFIGS) {
+        if (layerStatesRef.current[cfg.id]?.visible) {
+          addLayer(cfg);
+          setLayerVisibility(cfg, true);
+        }
+      }
+    };
+    map.on('style.load', onStyleLoad);
+    return () => { map.off('style.load', onStyleLoad); };
+  }, [map, addLayer, setLayerVisibility]);
+
+  // Re-color labels live when the basemap light/dark theme changes (for layers
+  // already on the map — newly added ones pick up the current theme in addLayer).
+  useEffect(() => {
+    if (!map) return;
+    const lp = labelPaint(isLight);
+    for (const cfg of VECTOR_TILE_CONFIGS) {
+      const id = labelLayerId(cfg.id);
+      try {
+        if (map.getLayer(id)) {
+          map.setPaintProperty(id, 'text-color', lp.text);
+          map.setPaintProperty(id, 'text-halo-color', lp.halo);
+        }
+      } catch { /* style not ready */ }
+    }
+  }, [map, isLight]);
 
   // Reset per-map tracking when the map instance changes (handlers/layers
   // live on the map; a new map needs fresh adds).
