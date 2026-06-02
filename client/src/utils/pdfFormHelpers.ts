@@ -2217,8 +2217,8 @@ export function drawDistributionFooter(
   const lineY = y + 3.2;
 
   // Left: distribution checkboxes
-  const dist = data.distribution || ['PATROL', 'RECORDS', 'DETECTIVES', 'DA', 'COURT'];
-  const checked = new Set((data.checked || []).map((s) => s.toUpperCase()));
+  const dist = Array.isArray(data.distribution) ? data.distribution : ['PATROL', 'RECORDS', 'DETECTIVES', 'DA', 'COURT'];
+  const checked = new Set((Array.isArray(data.checked) ? data.checked : []).map((s) => s.toUpperCase()));
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_FOOTER_PRIMARY);
   doc.setTextColor(...COLOR.TEXT_SECONDARY);

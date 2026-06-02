@@ -188,9 +188,14 @@
 //       sections/areas by live call volume (calls binned via PIP); (3)
 //       overlay opacity slider + Area/Section legend + persisted tool
 //       state; (4) Measure (distance/area via @turf/length+area).
-// v685: audit wave-2 — VehiclesTab stolen-check reads the handler's `stolen`
-//       boolean (was never-returned status/message); ships with worker-side
-//       stats-shape + correctness fixes (cases/billing/citations/court/narcotics).
+// v685: PDF output crash-hardening sweep — Array.isArray guards on every
+//       DB-sourced array field across record/recordExt/invoice/serve/form PDF
+//       generators (~30 sites: linked_persons/vehicles/properties, warrants,
+//       incidents, citations, calls, criminal_records, visit_history, notes,
+//       attachment_images, fleet/personnel logs, line_items, payments, photos,
+//       skipTraces, distribution/checked) so a sentinel "None" string (truthy
+//       .length, no .map/.join) can no longer crash a PDF. Plus finite-guard
+//       on recordExt fine_amount ($NaN -> raw value).
 const CACHE_NAME = 'rmpg-flex-v685';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [

@@ -325,7 +325,7 @@ export async function generateAffidavitOfService(data: AffidavitOfServiceData): 
   }
 
   // ── Photos ──
-  if (data.photos && data.photos.length > 0) {
+  if (Array.isArray(data.photos) && data.photos.length > 0) {
     y = checkPageBreak(doc, y, 40);
     const sec = openAutoSection(doc, 'Service Photos', y);
     y = sec.contentY;
@@ -491,7 +491,7 @@ export async function generateAffidavitOfNonService(data: AffidavitOfNonServiceD
   }
 
   // ── Skip Trace Summary ──
-  if (data.skipTraces && data.skipTraces.length > 0) {
+  if (Array.isArray(data.skipTraces) && data.skipTraces.length > 0) {
     y = checkPageBreak(doc, y, 30);
     const sec = openAutoSection(doc, 'Skip Trace Summary', y);
     y = sec.contentY;
