@@ -97,6 +97,7 @@ export default function ScheduleTab({ officers, schedules, weekMonday, onWeekCha
         <div className="flex items-center gap-2">
           <Calendar className="w-4 h-4 text-brand-400" />
           <h2 className="text-sm font-bold text-rmpg-200 uppercase tracking-wider">Schedule</h2>
+          <span className="text-[11px] font-mono text-rmpg-500">({schedules.length})</span>
         </div>
         <div className="panel-beveled p-2 flex items-center gap-1.5">
           <button type="button" onClick={handlePrevWeek} className="toolbar-btn p-1">

@@ -69,6 +69,13 @@ export default function DeploymentTab({ deployments, coverageGaps, officers, loa
 
   return (
     <div className="flex-1 overflow-y-auto p-4 space-y-3">
+      {/* Header */}
+      <div className="flex items-center gap-2">
+        <MapPinned className="w-4 h-4 text-brand-400" />
+        <h2 className="text-sm font-bold text-rmpg-200 uppercase tracking-wider">Deployment</h2>
+        <span className="text-[11px] font-mono text-rmpg-500">({deployments.length})</span>
+      </div>
+
       {/* Coverage Gap Alert */}
       {gapsWithDeficit.length > 0 && (
         <div className="panel-beveled p-3 border border-red-700/40 border-l-2 border-l-red-500 bg-red-900/20">

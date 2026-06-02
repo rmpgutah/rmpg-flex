@@ -33,7 +33,7 @@ import { ROLE_COLORS } from './utils/personnelConstants';
 import { toDisplayLabel } from '../../utils/formatters';
 import { parseTimestamp } from '../../utils/dateUtils';
 import PersonnelDetailPanel from './PersonnelDetailPanel';
-import PersonnelAnalyticsDashboard from './PersonnelAnalyticsDashboard';
+import PersonnelDashboard from './PersonnelDashboard';
 import DutyBoardTab from './tabs/DutyBoardTab';
 import ScheduleTab from './tabs/ScheduleTab';
 import TimeAttendanceTab from './tabs/TimeAttendanceTab';
@@ -41,9 +41,6 @@ import CredentialsTab from './tabs/CredentialsTab';
 import TrainingTab from './tabs/TrainingTab';
 import EquipmentTab from './tabs/EquipmentTab';
 import DeploymentTab from './tabs/DeploymentTab';
-import AnalyticsTab from './tabs/AnalyticsTab';
-import DashCameraTab from './tabs/DashCameraTab';
-import CalendarTab from './tabs/CalendarTab';
 import TrainingFormModal from './modals/TrainingFormModal';
 import type { TrainingFormData } from './modals/TrainingFormModal';
 import EquipmentFormModal from './modals/EquipmentFormModal';
@@ -85,8 +82,8 @@ export default function PersonnelPage() {
   // Tab state
   const [activeTab, setActiveTab] = usePersistedTab(
     'rmpg_personnel_tab',
-    'roster' as MainTab,
-    ['roster', 'duty_board', 'schedule', 'calendar', 'time', 'credentials', 'training', 'equipment', 'dash_cameras', 'deployment', 'analytics'] as const,
+    'command' as MainTab,
+    ['command', 'roster', 'duty_board', 'schedule', 'time', 'credentials', 'training', 'equipment', 'deployment'] as const,
   );
   const [detailTab, setDetailTab] = useState<DetailTab>('profile');
   const [searchQuery, setSearchQuery] = useState('');
@@ -216,6 +213,31 @@ export default function PersonnelPage() {
 
   // Lazy-load tab data
   useEffect(() => {
+    // Command dashboard needs training + deployments + coverage gaps to populate
+    // its alert/chart widgets. Each guard is independent so a tab visited earlier
+    // doesn't force a refetch here.
+    if (activeTab === 'command') {
+      if (training.length === 0 && !trainingLoading) {
+        setTrainingLoading(true);
+        apiFetch<any[]>('/personnel/training')
+          .then(raw => setTraining((Array.isArray(raw) ? raw : []).map(mapTraining)))
+          .catch(() => { /* dashboard degrades gracefully */ })
+          .finally(() => setTrainingLoading(false));
+      }
+      if (deployments.length === 0 && !deploymentsLoading) {
+        setDeploymentsLoading(true);
+        Promise.all([
+          apiFetch<any[]>('/personnel/deployments'),
+          apiFetch<any[]>('/personnel/coverage-gaps'),
+        ])
+          .then(([dRaw, gaps]) => {
+            setDeployments((Array.isArray(dRaw) ? dRaw : []).map(mapDeployment));
+            setCoverageGaps(Array.isArray(gaps) ? gaps : []);
+          })
+          .catch(() => { /* dashboard degrades gracefully */ })
+          .finally(() => setDeploymentsLoading(false));
+      }
+    }
     if (activeTab === 'training' && training.length === 0 && !trainingLoading) {
       setTrainingLoading(true);
       Promise.all([
@@ -1080,13 +1102,33 @@ export default function PersonnelPage() {
       onClose={() => setSelectedOfficer(null)}
     />
   ) : (
-    <PersonnelAnalyticsDashboard
-      officers={officers}
-      credentials={credentials}
-      timeEntries={timeEntries}
-      training={training}
-    />
+    // Light prompt — at-a-glance analytics now live on the Command tab
+    <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
+      <div className="w-16 h-16 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-sunken mb-4">
+        <Users className="w-8 h-8 text-rmpg-600" />
+      </div>
+      <p className="text-sm text-rmpg-300 font-medium">Select an officer</p>
+      <p className="text-[11px] text-rmpg-500 mt-1 max-w-[260px]">
+        Choose someone from the roster to view their profile, credentials, schedule, and records.
+      </p>
+      <button type="button" onClick={() => setActiveTab('command')} className="toolbar-btn mt-4">
+        View Command Dashboard
+      </button>
+    </div>
   );
+
+  // Dashboard widget → drill-down navigation. When an officer is supplied,
+  // open them in the roster master-detail; otherwise just switch tabs.
+  const navigateTo = (tab: MainTab, officer?: OfficerWithStatus) => {
+    if (officer) {
+      setActiveTab('roster');
+      setSelectedOfficer(officer);
+      setDetailTab('profile');
+    } else {
+      setActiveTab(tab);
+      if (tab !== 'roster') setSelectedOfficer(null);
+    }
+  };
 
   // ----------------------------------------------------------
   // Render
@@ -1116,7 +1158,8 @@ export default function PersonnelPage() {
         <PrintButton />
       </PanelTitleBar>
 
-      {/* Command Status Strip — two-row layout */}
+      {/* Command Status Strip — hidden on the Command tab, whose dashboard owns the KPIs */}
+      {activeTab !== 'command' && (
       <div className="border-b border-rmpg-700" role="group" aria-label="Personnel statistics">
         {/* Row 1: Operational stats */}
         <div className={`panel-inset ${isMobile ? 'grid grid-cols-2 gap-px' : 'flex items-stretch'}`}>
@@ -1152,6 +1195,7 @@ export default function PersonnelPage() {
           </div>
         )}
       </div>
+      )}
 
       {/* Tab Navigation */}
       <div className="tab-bar overflow-x-auto scrollbar-dark" role="tablist" aria-label="Personnel management tabs" style={{ scrollbarWidth: 'none' }}>
@@ -1207,6 +1251,20 @@ export default function PersonnelPage() {
           </div>
         )}
 
+        {/* Command Dashboard — landing view */}
+        {!loading && !error && activeTab === 'command' && (
+          <PersonnelDashboard
+            officers={officers}
+            credentials={credentials}
+            timeEntries={timeEntries}
+            training={training}
+            schedules={schedules}
+            coverageGaps={coverageGaps}
+            onNavigate={navigateTo}
+            onSelectOfficer={officer => navigateTo('roster', officer)}
+          />
+        )}
+
         {/* Roster Tab with Split Panel */}
         {!loading && !error && activeTab === 'roster' && (
           <SplitPanel
@@ -1215,6 +1273,8 @@ export default function PersonnelPage() {
             minLeftPx={300}
             minRightPx={400}
             rightVisible={true}
+            leftLabel="Roster"
+            rightLabel="Officer"
             left={rosterList}
             right={detailPanel}
           />
