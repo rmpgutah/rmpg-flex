@@ -376,7 +376,16 @@
 //       now populated (was hardcoded []). Also: fuel-report PDF now includes
 //       an Odometer column per fill (was missing entirely; reads
 //       odometer_reading ?? raw odometer).
-const CACHE_NAME = 'rmpg-flex-v715';
+// v716: Dispatch dispositions are now SHORT-CODED (detailed but terse) —
+//       general patrol dispositions use mnemonics (RTF/GOA/ARR/CIT…), process-
+//       service CFS use PS/### in increments of 5 (anchored on the live
+//       PS/055=Personal/Individual). Selection dropdowns show "CODE — Description";
+//       output surfaces show the CODE only (description on hover) with a chart
+//       color badge. Full 39-code chart seeded to system_config. Also restored
+//       A/S/Z/B as a SHORT-code Section/Zone/Beat chip (e.g. "SL1/HER/A1") on the
+//       CFS card + detail — long Area›Section›Zone›Beat NAMES remain strictly on
+//       the Map UI ("What's Here").
+const CACHE_NAME = 'rmpg-flex-v716';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
