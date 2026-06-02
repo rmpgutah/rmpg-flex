@@ -16,7 +16,7 @@
 import { useEffect, useRef } from 'react';
 import { mapboxgl } from '../utils/mapboxLoader';
 import { booleanPointInPolygon } from '@turf/boolean-point-in-polygon';
-import { getTaggedBeats, getCountyFC, getMunicipalityFC } from '../pages/map/utils/districtGeoData';
+import { getTaggedBeats, getCountyFC, getMunicipalityFC, findBeatAt } from '../pages/map/utils/districtGeoData';
 import { apiFetch } from './useApi';
 
 function findContaining(fc: any, lng: number, lat: number): any | null {
@@ -65,7 +65,8 @@ export function useWhatsHere({ map, popup, active }: Opts) {
       const lng = e.lngLat.lng;
       const lat = e.lngLat.lat;
 
-      const beat = findContaining(dataRef.current.beats, lng, lat);
+      // Beat: prefer the incorporated city beat over the UNINC county catch-all.
+      const beat = findBeatAt(dataRef.current.beats?.features || [], lng, lat);
       const county = findContaining(dataRef.current.county, lng, lat);
       const muni = findContaining(dataRef.current.muni, lng, lat);
 

@@ -11,8 +11,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { mapboxgl } from '../utils/mapboxLoader';
 import { whenStyleReady } from '../pages/map/utils/safeAddSource';
-import { booleanPointInPolygon } from '@turf/boolean-point-in-polygon';
-import { getTaggedBeats } from '../pages/map/utils/districtGeoData';
+import { getTaggedBeats, findBeatAt } from '../pages/map/utils/districtGeoData';
 
 export type ChoroLevel = 'beat' | 'zone' | 'section' | 'area';
 const LEVEL_PROP: Record<ChoroLevel, string> = { beat: 'beat_id', zone: '_zone', section: '_section', area: '_area' };
@@ -46,17 +45,11 @@ export function useActivityChoropleth({ map, calls, level }: Opts) {
       const counts = new Map<string, number>();
       for (const c of calls) {
         if (c.latitude == null || c.longitude == null) continue;
-        const pt = { type: 'Point', coordinates: [c.longitude, c.latitude] } as any;
-        for (const f of fc.features) {
-          const g = f.geometry;
-          if (!g || (g.type !== 'Polygon' && g.type !== 'MultiPolygon')) continue;
-          try {
-            if (booleanPointInPolygon(pt, f as any)) {
-              const bid = String(f.properties.beat_id ?? f.properties.beat_code ?? '');
-              counts.set(bid, (counts.get(bid) || 0) + 1);
-              break;
-            }
-          } catch { /* skip */ }
+        // Bin into the incorporated city beat, not the overlapping UNINC catch-all.
+        const f = findBeatAt(fc.features, c.longitude, c.latitude);
+        if (f) {
+          const bid = String(f.properties.beat_id ?? f.properties.beat_code ?? '');
+          counts.set(bid, (counts.get(bid) || 0) + 1);
         }
       }
       countByBeatRef.current = counts;

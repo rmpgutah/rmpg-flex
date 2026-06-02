@@ -14,6 +14,33 @@
 
 import { getCityColor, getSectionColor } from '../../../hooks/useGeoJsonLayers';
 import { apiFetch } from '../../../hooks/useApi';
+import { booleanPointInPolygon } from '@turf/boolean-point-in-polygon';
+
+// The 29 county "<CITY>-UNINC" catch-all beats fully overlap the incorporated
+// city beats, so a naive first-match PIP wrongly reports e.g. Midvale as "SLC
+// Unincorporated". Mirror the server geofence rule (src/utils/geofence.ts):
+// an incorporated city beat wins; the "-UNINC" catch-all is only a fallback.
+export function isUnincorporatedBeat(props: any): boolean {
+  return String(props?.beat_code || '').endsWith('-UNINC');
+}
+
+/** Best beat feature at a point: incorporated city beat over the UNINC catch-all. */
+export function findBeatAt(features: any[], lng: number, lat: number): any | null {
+  if (!Array.isArray(features)) return null;
+  const pt = { type: 'Point', coordinates: [lng, lat] } as any;
+  let uninc: any = null;
+  for (const f of features) {
+    const g = f.geometry;
+    if (!g || (g.type !== 'Polygon' && g.type !== 'MultiPolygon')) continue;
+    try {
+      if (booleanPointInPolygon(pt, f as any)) {
+        if (!isUnincorporatedBeat(f.properties)) return f;
+        if (!uninc) uninc = f;
+      }
+    } catch { /* skip malformed */ }
+  }
+  return uninc;
+}
 
 export const AREA_PALETTE = ['#d4a017', '#22c55e', '#ef4444', '#a855f7', '#f59e0b', '#14b8a6', '#ec4899', '#84cc16', '#fb923c', '#eab308'];
 
@@ -78,6 +105,11 @@ export function getTaggedBeats(): Promise<any> {
           },
         };
       });
+      // Draw order: unincorporated "-UNINC" catch-alls first so the
+      // incorporated city beats render ON TOP of them — otherwise the big
+      // county catch-all fill washes over the cities it overlaps.
+      features.sort((a: any, b: any) =>
+        (isUnincorporatedBeat(a.properties) ? 0 : 1) - (isUnincorporatedBeat(b.properties) ? 0 : 1));
       return { type: 'FeatureCollection', features };
     })();
   }

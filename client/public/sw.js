@@ -263,7 +263,14 @@
 //       current-maneuver line added to the nav banner and live origin
 //       updates as you drive; Dispatch creates a call at the address
 //       (POST /dispatch/calls, incident type + priority, coords prefilled).
-const CACHE_NAME = 'rmpg-flex-v697';
+// v698: FIX "Unincorporated" misclassification — the 29 county "<CITY>-UNINC"
+//       catch-all beats fully overlap the incorporated city beats, so the
+//       client first-match PIP reported e.g. Midvale as "SLC Unincorporated".
+//       New findBeatAt() mirrors the server geofence rule (incorporated city
+//       beat wins; -UNINC only as fallback) and is used by What's-Here +
+//       the activity choropleth. Tagged beats sorted so city fills draw on
+//       top of the catch-all coverage (no more unincorporated bleed).
+const CACHE_NAME = 'rmpg-flex-v698';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
