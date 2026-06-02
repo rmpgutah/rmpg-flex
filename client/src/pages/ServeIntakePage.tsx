@@ -168,7 +168,7 @@ function fileMeta(f: UploadedFile): string {
   const parts: string[] = [];
   if (f.size != null) parts.push(formatBytes(f.size));
   if (f.pages && f.pages > 0) parts.push(`${f.pages} page${f.pages > 1 ? 's' : ''}`);
-  if (f.lastModified) parts.push(new Date(f.lastModified).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }));
+  if (f.lastModified) parts.push(new Date(f.lastModified).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })); // new-date-ok: File.lastModified is epoch ms (number), not a naive server timestamp string
   return parts.join(' · ');
 }
 
