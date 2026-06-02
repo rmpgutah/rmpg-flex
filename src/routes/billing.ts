@@ -344,7 +344,8 @@ billing.get('/stats', async (c) => {
   try {
     const db = getDb(c.env);
     const invoiceTable = await queryFirst<{ n: number }>(db, "SELECT COUNT(*) as n FROM sqlite_master WHERE type='table' AND name='invoices'");
-    if (!invoiceTable?.n) return c.json({ total_contracts: 0, active_contracts: 0, total_invoices: 0, outstanding_invoices: 0, total_revenue: 0, collected_revenue: 0, total_expenses: 0, overdue_invoices: 0 });
+    // Match the happy-path key set BillingPage reads (was a divergent shape → blank tiles).
+    if (!invoiceTable?.n) return c.json({ active_contracts: 0, outstanding_invoices: 0, total_outstanding_amount: 0, pending_expenses: 0 });
     const contractsActive = (await queryFirst<{ count: number }>(db, "SELECT COUNT(*) as count FROM client_contracts WHERE status = 'active'"))?.count ?? 0;
     const invoicesOutstanding = (await queryFirst<{ count: number }>(db, "SELECT COUNT(*) as count FROM invoices WHERE status IN ('draft','sent','partial','overdue')"))?.count ?? 0;
     const totalOutstanding = (await queryFirst<{ total: number }>(db, "SELECT COALESCE(SUM(total_amount - paid_amount),0) as total FROM invoices WHERE status NOT IN ('paid','void','cancelled')"))?.total ?? 0;

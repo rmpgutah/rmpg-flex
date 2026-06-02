@@ -570,7 +570,7 @@ cases.get('/:id/persons', async (c) => {
     const rows = await query<Record<string, unknown>>(
       db,
       `SELECT cpl.id as link_id, cpl.relationship, cpl.created_at,
-              p.id, p.first_name, p.last_name, p.dob, p.phone, p.address
+              p.id, p.first_name, p.last_name, p.dob AS date_of_birth, p.phone, p.address
        FROM case_person_links cpl
        JOIN persons p ON cpl.person_id = p.id
        WHERE cpl.case_id = ?
@@ -726,9 +726,10 @@ cases.get('/export/csv', async (c) => {
 //      (CaseManagementPage.tsx lines 921-928) plus call_id for the
 //      sub-tab unlink action.
 //
-// Routed via proxy/index.ts so this overrides the legacy handler for
-// /api/cases/:id/full only — other /api/cases/* paths still fall
-// through to legacy until the rewrite of those handlers lands.
+// NOTE: /api/cases/* is NOT currently routed to the rewrite by the proxy
+// (proxy/index.ts deliberately leaves incidents/citations/cases/court on
+// legacy), so this cap-safe handler is dormant until a proxy route lands.
+// Keep it ready for that cutover — do not assume it serves prod today.
 cases.get('/:id/full', async (c) => {
   try {
     const db = getDb(c.env);
@@ -781,7 +782,7 @@ cases.get('/:id/full', async (c) => {
       id,
     );
     const persons = await safeQuery<Record<string, unknown>>(
-      `SELECT cp.*, p.first_name, p.last_name, p.dob, p.phone, p.address
+      `SELECT cp.*, p.first_name, p.last_name, p.dob AS date_of_birth, p.phone, p.address
        FROM case_persons cp
        LEFT JOIN persons p ON cp.person_id = p.id
        WHERE cp.case_id = ?
