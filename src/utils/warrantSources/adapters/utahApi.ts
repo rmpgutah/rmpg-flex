@@ -27,7 +27,7 @@ const meta: SourceMeta = {
 /** Map one upstream FetchedWarrant to a source-agnostic RawWarrantHit. */
 function toRawHit(w: FetchedWarrant): RawWarrantHit {
   return {
-    source_key: 'utah-warrant-watch',
+    source_key: meta.key, // single source of truth — never drift from meta
     warrant_id: w.utah_warrant_id,
     first_name: w.first_name,
     middle_name: w.middle_name,
