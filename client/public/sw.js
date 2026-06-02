@@ -222,7 +222,14 @@
 //       pdfStaticMap.ts helper; BusinessTab gains a Print button (businesses
 //       render via the property generator). Best-effort — omitted silently if
 //       no coords/token/network.
-const CACHE_NAME = 'rmpg-flex-v690';
+// v691: FIX statewide overlays not rendering — root cause: Mapbox GL JS has
+//       NO addProtocol (MapLibre-only), so the pmtiles:// protocol silently
+//       never registered and Roads/Address Points loaded nothing despite
+//       showing toggled-on. Now the Worker extracts MVT tiles from the
+//       PMTiles archives in R2 and serves /api/tiles/<name>/{z}/{x}/{y}.mvt;
+//       client uses a NATIVE mapbox vector source (no protocol). Verified
+//       tile extraction against the real archives.
+const CACHE_NAME = 'rmpg-flex-v691';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

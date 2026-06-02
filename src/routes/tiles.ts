@@ -1,139 +1,112 @@
 import { Hono } from 'hono';
+import { PMTiles, type Source, type RangeResponse } from 'pmtiles';
 import type { Env } from '../types';
 
 // ============================================================
-// RMPG Flex — Vector Tile (PMTiles) server
+// RMPG Flex — Vector Tile server (PMTiles -> native XYZ MVT)
 // ============================================================
-// Serves PMTiles archives from R2 (`MAP_DATA` = system-essentials,
-// under the `tiles/` key prefix) with HTTP Range support.
+// Mapbox GL JS (unlike MapLibre) has NO addProtocol, so the client can't
+// read a `pmtiles://` archive directly. Instead this Worker reads the
+// PMTiles archives from R2 server-side (the `pmtiles` lib is isomorphic)
+// and serves individual /api/tiles/{name}/{z}/{x}/{y}.mvt tiles, which
+// mapbox-gl consumes as a standard `{type:'vector', tiles:[...]}` source.
 //
-// PMTiles is a single-file tile archive: the client (pmtiles JS lib,
-// registered as a `pmtiles://` protocol on Mapbox GL JS) first reads
-// the header/directory with a small range request, then range-fetches
-// only the individual MVT tiles in the current viewport. Range support
-// here is therefore MANDATORY — without a 206 response the client falls
-// back to downloading the entire (tens-of-MB) archive per map.
-//
-// This is a NEW, isolated namespace deliberately kept separate from
-// /api/map-data (which stays on the legacy worker — see proxy/index.ts).
-// Routed to env.API via an API_ROUTES rule in the proxy.
+// Archives live in R2 (MAP_DATA = system-essentials) under tiles/<name>.pmtiles.
 // ============================================================
 
 const tiles = new Hono<Env>();
 
-// Parse a single-range `Range: bytes=start-end` header against a known
-// object size. Returns null for absent/unsatisfiable/multi-range headers
-// (caller then serves the full object). Supports open-ended (`bytes=500-`)
-// and suffix (`bytes=-500`) forms.
-function parseRange(
-  header: string | undefined,
-  size: number,
-): { offset: number; length: number } | null {
-  if (!header) return null;
-  const m = /^bytes=(\d*)-(\d*)$/.exec(header.trim());
-  if (!m) return null;
-  const [, startStr, endStr] = m;
-
-  if (startStr === '' && endStr === '') return null;
-
-  let start: number;
-  let end: number;
-  if (startStr === '') {
-    // suffix: last N bytes
-    const suffix = parseInt(endStr, 10);
-    if (!Number.isFinite(suffix) || suffix <= 0) return null;
-    start = Math.max(0, size - suffix);
-    end = size - 1;
-  } else {
-    start = parseInt(startStr, 10);
-    end = endStr === '' ? size - 1 : parseInt(endStr, 10);
+// R2-backed PMTiles Source: range reads against the archive object.
+class R2Source implements Source {
+  constructor(private bucket: R2Bucket, private archiveKey: string) {}
+  getKey() { return this.archiveKey; }
+  async getBytes(offset: number, length: number): Promise<RangeResponse> {
+    const obj = await this.bucket.get(this.archiveKey, { range: { offset, length } });
+    if (!obj) throw new Error(`archive not found: ${this.archiveKey}`);
+    const data = await obj.arrayBuffer();
+    return { data };
   }
-
-  if (!Number.isFinite(start) || !Number.isFinite(end)) return null;
-  if (start > end || start >= size) return null;
-  end = Math.min(end, size - 1);
-
-  return { offset: start, length: end - start + 1 };
 }
 
-function applyTileHeaders(headers: Headers, obj: R2Object): void {
-  // PMTiles archives are content-addressed by filename; treat as immutable
-  // and cacheable for a long time. Bump the filename to bust the cache.
-  headers.set('Cache-Control', 'public, max-age=31536000, immutable');
-  headers.set('Accept-Ranges', 'bytes');
-  headers.set('Access-Control-Allow-Origin', '*');
-  headers.set('Access-Control-Allow-Headers', 'Range');
-  headers.set('Access-Control-Expose-Headers', 'Content-Length, Content-Range, Accept-Ranges, ETag');
-  headers.set('Content-Type', 'application/octet-stream');
-  if (obj.httpEtag) headers.set('ETag', obj.httpEtag);
+// Cache PMTiles instances per isolate so the header + root directory are
+// read once and reused across tile requests.
+const archives = new Map<string, PMTiles>();
+function getArchive(bucket: R2Bucket, name: string): PMTiles {
+  const key = `tiles/${name}.pmtiles`;
+  let p = archives.get(key);
+  if (!p) {
+    p = new PMTiles(new R2Source(bucket, key));
+    archives.set(key, p);
+  }
+  return p;
 }
 
-// GET /api/tiles/:path+ — stream a PMTiles archive (with Range support)
-tiles.get('/:path{[\\s\\S]+}', async (c) => {
+const TILE_HEADERS: Record<string, string> = {
+  'Content-Type': 'application/x-protobuf',
+  'Cache-Control': 'public, max-age=86400',
+  'Access-Control-Allow-Origin': '*',
+};
+
+// GET /api/tiles/:name/:z/:x/:y(.mvt) — one vector tile.
+tiles.get('/:name/:z/:x/:y', async (c) => {
+  const name = c.req.param('name');
+  if (!/^[a-z0-9_-]+$/i.test(name)) return c.json({ error: 'bad name' }, 400);
+  const z = parseInt(c.req.param('z'), 10);
+  const x = parseInt(c.req.param('x'), 10);
+  const y = parseInt(c.req.param('y').replace(/\.(mvt|pbf)$/i, ''), 10);
+  if (![z, x, y].every(Number.isFinite)) return c.json({ error: 'bad zxy' }, 400);
+
   try {
-    const path = c.req.param('path') || '';
-    // Guard against traversal; only serve from the tiles/ prefix.
-    if (path.includes('..')) return c.json({ error: 'Invalid path' }, 400);
-    const key = `tiles/${path}`;
-
-    const rangeHeader = c.req.header('Range');
-
-    // Size probe first so we can compute a valid 206 without pulling the
-    // whole body when a range is requested.
-    if (rangeHeader) {
-      const head = await c.env.MAP_DATA.head(key);
-      if (!head) return c.json({ error: 'File not found', key }, 404);
-
-      const range = parseRange(rangeHeader, head.size);
-      if (!range) {
-        // Unsatisfiable range -> 416 with the object size.
-        const headers = new Headers();
-        headers.set('Content-Range', `bytes */${head.size}`);
-        headers.set('Access-Control-Allow-Origin', '*');
-        return new Response(null, { status: 416, headers });
-      }
-
-      const obj = await c.env.MAP_DATA.get(key, {
-        range: { offset: range.offset, length: range.length },
-      });
-      if (!obj) return c.json({ error: 'File not found', key }, 404);
-
-      const headers = new Headers();
-      applyTileHeaders(headers, obj);
-      headers.set('Content-Length', String(range.length));
-      headers.set(
-        'Content-Range',
-        `bytes ${range.offset}-${range.offset + range.length - 1}/${head.size}`,
-      );
-      return new Response(obj.body, { status: 206, headers });
+    const arch = getArchive(c.env.MAP_DATA, name);
+    const tile = await arch.getZxy(z, x, y);
+    if (!tile || !tile.data) {
+      // No data at this tile — empty 204 so mapbox treats it as a blank tile.
+      return new Response(null, { status: 204, headers: { 'Access-Control-Allow-Origin': '*' } });
     }
-
-    // No range — serve the whole archive (still advertise Accept-Ranges so
-    // a client that probed without a range learns ranges are available).
-    const obj = await c.env.MAP_DATA.get(key);
-    if (!obj) return c.json({ error: 'File not found', key }, 404);
-
-    const headers = new Headers();
-    applyTileHeaders(headers, obj);
-    headers.set('Content-Length', String(obj.size));
-    return new Response(obj.body, { status: 200, headers });
+    return new Response(tile.data, { headers: TILE_HEADERS });
   } catch (err) {
-    console.error('Tile serve error:', err);
-    return c.json({ error: 'Failed to get tile' }, 500);
+    console.error(`tile ${name}/${z}/${x}/${y} error:`, err);
+    return c.json({ error: 'tile failed' }, 500);
   }
 });
 
-// OPTIONS preflight for cross-origin Range requests.
-tiles.options('/:path{[\\s\\S]+}', (c) => {
-  return new Response(null, {
-    status: 204,
-    headers: {
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, HEAD, OPTIONS',
-      'Access-Control-Allow-Headers': 'Range',
-      'Access-Control-Max-Age': '86400',
-    },
-  });
+// GET /api/tiles/:file — raw archive (single segment, e.g. utah-roads.pmtiles).
+// Kept for direct download / debugging with HTTP Range support.
+tiles.get('/:file', async (c) => {
+  const file = c.req.param('file');
+  if (file.includes('..') || file.includes('/')) return c.json({ error: 'bad path' }, 400);
+  const key = `tiles/${file}`;
+  const rangeHeader = c.req.header('Range');
+  try {
+    if (rangeHeader) {
+      const head = await c.env.MAP_DATA.head(key);
+      if (!head) return c.json({ error: 'not found' }, 404);
+      const m = /^bytes=(\d+)-(\d*)$/.exec(rangeHeader.trim());
+      if (!m) return c.json({ error: 'bad range' }, 416);
+      const start = parseInt(m[1], 10);
+      const end = m[2] ? Math.min(parseInt(m[2], 10), head.size - 1) : head.size - 1;
+      const obj = await c.env.MAP_DATA.get(key, { range: { offset: start, length: end - start + 1 } });
+      if (!obj) return c.json({ error: 'not found' }, 404);
+      return new Response(obj.body, {
+        status: 206,
+        headers: {
+          'Content-Type': 'application/octet-stream',
+          'Content-Range': `bytes ${start}-${end}/${head.size}`,
+          'Content-Length': String(end - start + 1),
+          'Accept-Ranges': 'bytes',
+          'Access-Control-Allow-Origin': '*',
+        },
+      });
+    }
+    const obj = await c.env.MAP_DATA.get(key);
+    if (!obj) return c.json({ error: 'not found' }, 404);
+    return new Response(obj.body, {
+      headers: { 'Content-Type': 'application/octet-stream', 'Accept-Ranges': 'bytes', 'Access-Control-Allow-Origin': '*' },
+    });
+  } catch (err) {
+    console.error('archive serve error:', err);
+    return c.json({ error: 'failed' }, 500);
+  }
 });
 
 export default tiles;
