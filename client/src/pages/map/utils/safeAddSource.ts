@@ -30,7 +30,14 @@ export function whenStyleReady(map: mapboxgl.Map | null | undefined, fn: () => v
   let fired = false;
   const handler = () => {
     fired = true;
-    if ((map as any)._removed || !map.loaded() || !map.getStyle()) return;
+    // Gate ONLY on teardown. Do NOT also require map.loaded(): on 'style.load'
+    // the STYLE graph is ready (mutations are safe), but map.loaded() stays
+    // false while tiles/sources are still streaming — so requiring it here
+    // silently dropped the deferred addSource/addLayer (this is a `once`
+    // listener, so it never retried) and the layer never appeared.
+    // getStyle() is falsy on a removed/torn-down style — the real "don't
+    // mutate" condition.
+    if ((map as any)._removed || !map.getStyle()) return;
     fn();
   };
   map.once('style.load', handler);

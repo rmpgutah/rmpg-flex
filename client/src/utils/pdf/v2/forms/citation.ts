@@ -56,8 +56,11 @@ export interface CitationData {
 }
 
 const str = (v: unknown): string => (v == null ? '' : String(v));
-const fineFmt = (v: number | null | undefined): string =>
-  v == null ? '' : `$${Number(v).toFixed(2)}`;
+const fineFmt = (v: number | null | undefined | string): string => {
+  if (v == null) return '';
+  const n = Number(v);
+  return Number.isFinite(n) ? `$${n.toFixed(2)}` : ''; // sentinel string → blank, never $NaN
+};
 // snake_case / SNAKE_CASE / kebab-case → Title Case for enum-like values
 // (type='criminal' → 'Criminal', offense_level='second_degree_felony' →
 // 'Second Degree Felony'). Leaves values that are already mixed-case alone.
