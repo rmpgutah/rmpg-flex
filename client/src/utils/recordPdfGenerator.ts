@@ -43,6 +43,7 @@ import {
 import { recordPosture } from '../components/records/recordVisuals';
 import type { PdfImage, PdfSignatureData } from './pdfGenerator';
 import { convertToGrayscale, getActiveSectionStyle, setFieldNumberingEnabled, resetActiveFieldCounter } from './pdfGenerator';
+import { fetchLocationMapImage } from './pdfStaticMap';
 import {
   LAYOUT, SPACING, FONT, COLOR, BORDER, PDF_VALUE_FONT, getContentWidth,
   getFullFieldWidth, getLeftX, getRightColumnX, getHalfFieldWidth, formatEnumValue,
@@ -1527,6 +1528,73 @@ function titleCase(str: string): string {
 
 // ── Call for Service Report ──────────────────────────────────
 
+/**
+ * Fetch + render a static location-map snapshot section (used by CFS,
+ * Property, and Business PDFs). Best-effort: if no image can be produced
+ * (no coordinates/address, no Mapbox token, offline, or a test environment
+ * without OffscreenCanvas) it returns `y` unchanged and the document
+ * continues text-only — never throws, never blanks the page.
+ */
+async function addLocationMapSection(
+  doc: jsPDF,
+  opts: {
+    title: string;
+    lat?: number | null;
+    lng?: number | null;
+    address?: string | null;
+    caption?: string;
+    style?: string;
+    zoom?: number;
+    priority?: string;
+  },
+  y: number,
+): Promise<number> {
+  const img = await fetchLocationMapImage({
+    lat: opts.lat,
+    lng: opts.lng,
+    address: opts.address,
+    style: opts.style,
+    zoom: opts.zoom,
+  });
+  if (!img) return y;
+
+  const lx = getLeftX();
+  const ffw = getFullFieldWidth(doc);
+  const aspect = img.width > 0 && img.height > 0 ? img.width / img.height : 2.2;
+  let drawW = ffw;
+  let drawH = drawW / aspect;
+  const maxH = 78; // mm — keep the map to ~a third of a page
+  if (drawH > maxH) {
+    drawH = maxH;
+    drawW = drawH * aspect;
+    if (drawW > ffw) { drawW = ffw; drawH = drawW / aspect; }
+  }
+  const offX = lx + (ffw - drawW) / 2;
+
+  // Reserve header (~5) + image + caption (~6) + section pad before drawing.
+  y = checkPageBreak(doc, y, drawH + 15, opts.priority);
+  const sec = openAutoSection(doc, opts.title, y);
+  y = sec.contentY;
+  try {
+    doc.addImage(img.dataUrl, 'JPEG', offX, y, drawW, drawH);
+    doc.setDrawColor(...COLOR.BORDER_FORM_GRID);
+    doc.setLineWidth(0.3);
+    doc.rect(offX, y, drawW, drawH);
+    y += drawH;
+  } catch {
+    return closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+  // Caption strip: address (if given) + precise coordinates.
+  const captionText = `${opts.caption ? sanitizePdfText(opts.caption) + '  -  ' : ''}${img.lat.toFixed(5)}, ${img.lng.toFixed(5)}`;
+  y += 1.5;
+  doc.setFont(PDF_VALUE_FONT, 'normal');
+  doc.setFontSize(6);
+  doc.setTextColor(...COLOR.TEXT_SECONDARY);
+  doc.text(captionText.toUpperCase(), offX + 0.5, y + 2.5);
+  y += 4;
+  return closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+}
+
 async function generateCallReport(doc: jsPDF, data: CallPdfData) {
   // Adopt light-banner style for Call PDF (2026-05-04) — visual cohesion
   // with the Person PDF tactical-report look. Restored to 'dark' at end
@@ -2085,6 +2153,19 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
     }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
+
+  // CFS address-location map — static Mapbox snapshot with a marker pin at
+  // the incident coordinates (geocodes data.location when lat/lng absent).
+  y = await addLocationMapSection(doc, {
+    title: 'Incident Location Map',
+    lat: data.latitude,
+    lng: data.longitude,
+    address: data.location || (data as any).location_address,
+    caption: data.location || (data as any).location_address,
+    style: 'mapbox/streets-v12',
+    zoom: 15,
+    priority: prio,
+  }, y);
 
   // Flags — before Scene Conditions
   // Need: section header (~5mm) + 4 checkbox rows × 3.5mm (14mm) + section
@@ -5242,6 +5323,19 @@ async function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
     y = Math.max(r2a, r2b);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
+
+  // Property / business site map — satellite-streets at close zoom shows the
+  // actual structure + parking; geocodes the full address when lat/lng absent
+  // (business records store no coordinates).
+  y = await addLocationMapSection(doc, {
+    title: 'Location Map',
+    lat: data.latitude,
+    lng: data.longitude,
+    address: `${data.address || ''}${data.city ? `, ${data.city}` : ''}${data.state ? `, ${data.state}` : ''} ${data.zip || ''}`.trim(),
+    caption: data.address || data.name,
+    style: 'mapbox/satellite-streets-v12',
+    zoom: 17,
+  }, y);
 
   // ── Access & Security ──
   y = checkPageBreak(doc, y, 12);

@@ -214,7 +214,15 @@
 //       choropleth strictly-ascending step stops, response-time no-data
 //       coloring, measure-tool unmount cleanup) + VoiceHubDO officer-safety
 //       alert gap. Bump so users get the fixed map hooks.
-const CACHE_NAME = 'rmpg-flex-v689';
+// v690: Location-map snapshots on record PDFs — Call (CFS), Property, and
+//       Business reports now embed a static Mapbox map of the address with a
+//       gold marker pin (CFS: light streets @ z15; Property/Business:
+//       satellite-streets @ z17 to show the structure). Geocodes the address
+//       when a record has no stored lat/lng (e.g. businesses). New
+//       pdfStaticMap.ts helper; BusinessTab gains a Print button (businesses
+//       render via the property generator). Best-effort — omitted silently if
+//       no coords/token/network.
+const CACHE_NAME = 'rmpg-flex-v690';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
