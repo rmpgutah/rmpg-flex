@@ -115,6 +115,9 @@ interface Person {
 // Dashboard types
 interface DashboardStats {
   activeWarrants: number;
+  // Utah hits attributed to DOB-less persons (name-only matches) — possible
+  // namesakes, kept OUT of activeWarrants and surfaced separately.
+  unverifiedWarrants?: number;
   hitsToday: number;
   personsFlagged: number;
   sourcesOnline: number;
@@ -146,6 +149,8 @@ interface PriorityWarrant {
   bail_amount: number | null;
   source: string | null;
   created_at: string;
+  // Utah lead matched on name only (DOB-less person) — possible namesake.
+  unverified?: boolean;
 }
 
 // Person profile (slide-out)
@@ -237,10 +242,13 @@ interface WatchPerson {
   address?: string;
   photo_url?: string | null;
   warrant_severity: string | null;
+  // True when the local person has no DOB, so the poller could not age-confirm
+  // the Utah match — these hits are possible namesakes, shown as leads.
+  unverified?: boolean;
   local_warrant_count: number;
   utah_hit_count: number;
   warrants: { id: number; warrant_number: string; type: string; status: string; charge_description: string; offense_level: string | null; bail_amount: number | null; issuing_court: string | null; source: string | null; created_at: string }[];
-  utahWarrants: { utah_warrant_id: string; charges: string; court_name: string; issue_date: string }[];
+  utahWarrants: { utah_warrant_id: string; charges: string; court_name: string; issue_date: string; city?: string | null; age?: number | null }[];
 }
 
 // Coverage / Sources
@@ -359,12 +367,14 @@ const FEED_RANGE_PARAMS: Record<FeedRange, string> = {
 // ============================================================
 
 function formatCurrency(amount: number | null): string {
-  if (amount == null) return '-';
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
+  const n = Number(amount);
+  if (amount == null || !Number.isFinite(n)) return '-'; // sentinel string → '-', never $NaN
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n);
 }
 
+const SENTINEL_TXT = new Set(['none', 'n/a', 'na', '0', 'null', '']);
 function chargesFromJson(charges: string | null): string {
-  if (!charges) return '';
+  if (!charges || SENTINEL_TXT.has(String(charges).trim().toLowerCase())) return '';
   try { return JSON.parse(charges).join('; '); } catch { return charges; }
 }
 
@@ -891,7 +901,9 @@ export default function WarrantsPage() {
     if (formOpen) return; // Don't refresh list while editing
     fetchWarrants({ silent: true });
   }, [fetchWarrants, formOpen]);
-  useLiveSync('alerts', silentRefreshWarrants);
+  // 'warrants' matches the liveBroadcast module derived from /api/warrants/*
+  // mutations; 'alerts' never fired (no producer emits that module).
+  useLiveSync('warrants', silentRefreshWarrants);
 
   // Fetch warrant detail
   const fetchWarrantDetail = useCallback(async (id: number) => {
@@ -1577,6 +1589,14 @@ export default function WarrantsPage() {
                   {dashStatsLoading ? <Loader2 className="w-5 h-5 animate-spin mx-auto" role="status" aria-label="Loading" /> : (dashStats?.activeWarrants ?? 0)}
                 </div>
                 <div className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mt-1">Active Warrants</div>
+                {!dashStatsLoading && (dashStats?.unverifiedWarrants ?? 0) > 0 && (
+                  <div
+                    className="text-[9px] font-bold text-amber-400 mt-0.5 inline-flex items-center gap-1"
+                    title="Utah hits matched on name only (no DOB on file) — possible namesakes. Not counted as confirmed active warrants."
+                  >
+                    <AlertTriangle className="w-2.5 h-2.5" />+{dashStats?.unverifiedWarrants} unverified
+                  </div>
+                )}
               </div>
               <div className={`panel-inset p-3 rounded-sm text-center ${(dashStats?.hitsToday || 0) > 0 ? 'bg-amber-900/20 border border-amber-900/40' : 'bg-surface-sunken'}`}>
                 <div className={`text-2xl font-bold font-mono tabular-nums ${(dashStats?.hitsToday || 0) > 0 ? 'text-amber-400' : 'text-white'}`}>
@@ -1731,6 +1751,14 @@ export default function WarrantsPage() {
                               }`}>
                                 {(pw.offense_level || pw.type || 'WARRANT').toUpperCase()}
                               </span>
+                              {pw.unverified && (
+                                <span
+                                  className="inline-flex items-center gap-0.5 px-1 py-0.5 text-[8px] font-bold rounded-sm border bg-amber-900/30 text-amber-300 border-amber-600/40"
+                                  title="No DOB on file — matched on name only, may be a namesake. Verify identity before acting."
+                                >
+                                  <AlertTriangle className="w-2 h-2" /> UNVERIFIED
+                                </span>
+                              )}
                             </div>
                             <div className="text-[10px] text-rmpg-300 truncate mt-0.5">{chargesFromJson(pw.charge_description)}</div>
                             <div className="flex items-center gap-2 mt-1 text-[9px] text-rmpg-400">
@@ -3036,11 +3064,24 @@ export default function WarrantsPage() {
                                     </span>
                                   )}
                                   {p.utah_hit_count > 0 && (
-                                    <span className="text-[9px] bg-red-900/30 text-red-400 border border-red-700/40 px-1.5 py-0.5 rounded">
+                                    <span className={`text-[9px] px-1.5 py-0.5 rounded border ${p.unverified ? 'bg-amber-900/30 text-amber-400 border-amber-700/40' : 'bg-red-900/30 text-red-400 border-red-700/40'}`}>
                                       {p.utah_hit_count} Utah
                                     </span>
                                   )}
+                                  {p.unverified && p.utah_hit_count > 0 && (
+                                    <span
+                                      className="text-[9px] font-bold uppercase bg-amber-900/30 text-amber-300 border border-amber-600/40 px-1.5 py-0.5 rounded inline-flex items-center gap-1"
+                                      title="No DOB on file — Utah hits matched on name only and may belong to a namesake. Verify identity before acting; add a DOB to confirm."
+                                    >
+                                      <AlertTriangle className="w-2.5 h-2.5" /> Unverified
+                                    </span>
+                                  )}
                                 </div>
+                                {p.unverified && p.utah_hit_count > 0 && (
+                                  <div className="text-[10px] text-amber-400/80 mt-0.5">
+                                    Name-only match (no DOB) — possible namesake. Confirm identity before acting.
+                                  </div>
+                                )}
                                 {p.dob && <div className="text-[10px] text-rmpg-400 mt-0.5">DOB: {p.dob}</div>}
                                 {(() => {
                                   const descs = [p.gender, p.race, p.height, p.weight, p.hair_color ? `${p.hair_color} hair` : null, p.eye_color ? `${p.eye_color} eyes` : null].filter(Boolean);

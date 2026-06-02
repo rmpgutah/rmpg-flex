@@ -1,3 +1,9 @@
+// ⚠️ MOCK / SCAFFOLD ONLY — NOT WIRED INTO THE APP (no importers as of 2026-06-02).
+// These helpers fabricate warrant priority scores, batches, extradition/recall
+// outcomes and bond figures with NO backing data source. They must NEVER feed a
+// PDF, an NCIC submission, a real bond/extradition decision, or any officer-facing
+// surface. Use the real handlers (src/routes/warrants.ts) + verified D1 data instead.
+// Kept only as a UI-shape reference; delete if it remains unused.
 // 50 warrant enhancements
 export interface WarrantBatch { id:string; warrants:string[]; batchType:'service'|'verification'|'recall'; createdBy:string; status:string; }
 export function createWarrantBatch(warrantIds:string[],type:string): WarrantBatch { return{id:`wb-${Date.now()}`,warrants:warrantIds,batchType:type as any,createdBy:'',status:'pending'}; }

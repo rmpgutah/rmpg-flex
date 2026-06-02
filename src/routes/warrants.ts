@@ -397,19 +397,26 @@ warrants.get('/utah-search/auto-poll-status', requireRole(...READ_ROLES), async 
       db, 'SELECT * FROM warrant_watch_runs ORDER BY started_at DESC LIMIT 10');
     const latest = runs[0] ?? null;
 
-    // Persons with ≥1 active local warrant OR a name match in the Utah feed.
-    // `warrant_severity IS NULL, ...` is the portable form of NULLS LAST.
+    // Persons with ≥1 active local warrant OR ≥1 active Utah hit linked to
+    // them by person_id. We match on person_id — the linkage the poller
+    // already resolved with age-tolerance — NOT a raw LOWER(name) compare,
+    // which cross-attributed a DIFFERENT person's warrant whenever two local
+    // records shared a name. `unverified` flags the namesake-attribution case
+    // (DOB-less person → the poller couldn't age-confirm the match); the
+    // client tags those hits so an officer treats them as leads, not
+    // confirmed warrants. `warrant_severity IS NULL, ...` = portable NULLS LAST.
     const flagged = await query<Record<string, any>>(db, `
       SELECT p.id, p.first_name, p.last_name, p.dob, p.gender, p.race, p.height,
         p.weight, p.hair_color, p.eye_color, p.address, p.photo_url,
+        CASE WHEN ${DOB_PRESENT} THEN 0 ELSE 1 END AS unverified,
         (SELECT COUNT(*) FROM warrants w WHERE w.subject_person_id = p.id AND w.status = 'active') AS local_warrant_count,
-        (SELECT COUNT(*) FROM utah_warrants uw WHERE LOWER(uw.first_name) = LOWER(p.first_name) AND LOWER(uw.last_name) = LOWER(p.last_name)) AS utah_hit_count,
+        (SELECT COUNT(*) FROM utah_warrants uw WHERE uw.person_id = p.id AND uw.is_active = 1) AS utah_hit_count,
         (SELECT w2.offense_level FROM warrants w2 WHERE w2.subject_person_id = p.id AND w2.status = 'active'
           ORDER BY CASE w2.offense_level WHEN 'felony' THEN 1 WHEN 'misdemeanor' THEN 2 ELSE 3 END LIMIT 1) AS warrant_severity
       FROM persons p
       WHERE (SELECT COUNT(*) FROM warrants w WHERE w.subject_person_id = p.id AND w.status = 'active') > 0
-        OR (SELECT COUNT(*) FROM utah_warrants uw WHERE LOWER(uw.first_name) = LOWER(p.first_name) AND LOWER(uw.last_name) = LOWER(p.last_name)) > 0
-      ORDER BY warrant_severity IS NULL, warrant_severity, p.last_name
+        OR (SELECT COUNT(*) FROM utah_warrants uw WHERE uw.person_id = p.id AND uw.is_active = 1) > 0
+      ORDER BY unverified ASC, warrant_severity IS NULL, warrant_severity, p.last_name
       LIMIT 200`);
 
     // Per-person warrant detail. N+1, but bounded by LIMIT 200 and flagged sets
@@ -420,17 +427,22 @@ warrants.get('/utah-search/auto-poll-status', requireRole(...READ_ROLES), async 
                      bail_amount, issuing_court, source, created_at
                    FROM warrants WHERE subject_person_id = ? AND status = 'active'
                    ORDER BY created_at DESC`, p.id),
-        query(db, `SELECT utah_warrant_id, charges, court_name, issue_date
-                   FROM utah_warrants WHERE LOWER(first_name) = LOWER(?) AND LOWER(last_name) = LOWER(?)
-                   ORDER BY fetched_at DESC LIMIT 20`, p.first_name, p.last_name),
+        query(db, `SELECT utah_warrant_id, charges, court_name, issue_date, city, age
+                   FROM utah_warrants WHERE person_id = ? AND is_active = 1
+                   ORDER BY last_seen_at DESC LIMIT 20`, p.id),
       ]);
-      return { ...p, warrants: localWarrants, utahWarrants };
+      return { ...p, unverified: Number(p.unverified) === 1, warrants: localWarrants, utahWarrants };
     }));
 
-    const recentHits = await query<Record<string, any>>(db, `
-      SELECT id, person_id, person_name, event, charges, court_name, created_at
-      FROM warrant_watch_log WHERE event IN ('warrant_found', 'warrant_cleared')
-      ORDER BY created_at DESC LIMIT 50`);
+    // Isolated try/catch: warrant_watch_log may not exist on live; a missing
+    // table must not collapse the already-resolved runs/flaggedPersons into [].
+    let recentHits: Record<string, any>[] = [];
+    try {
+      recentHits = await query<Record<string, any>>(db, `
+        SELECT id, person_id, person_name, event, charges, court_name, created_at
+        FROM warrant_watch_log WHERE event IN ('warrant_found', 'warrant_cleared')
+        ORDER BY created_at DESC LIMIT 50`);
+    } catch { recentHits = []; }
 
     const totalRows = await query<{ cnt: number }>(db,
       `SELECT COUNT(*) AS cnt FROM persons WHERE first_name IS NOT NULL AND last_name IS NOT NULL`);
@@ -458,6 +470,204 @@ warrants.get('/utah-search/auto-poll-status', requireRole(...READ_ROLES), async 
   } catch (err) {
     // Pre-migration / table-missing → complete empty shape, never 500.
     return c.json(empty);
+  }
+});
+
+// ============================================================
+// /dashboard/* + /expiring — Warrants DASHBOARD tab widgets
+// ============================================================
+// Ported from legacy, where they queried the (perpetually empty on live)
+// manual `warrants` table and so returned all-zeros — making the DASHBOARD
+// tab look dead while the Watch List showed real Utah hits. These read the
+// data where it actually lives: utah_warrants (the cron poller's cache) +
+// the manual warrants table + warrant_scraper_config.
+//
+// CONFIDENCE MODEL — confirmed vs unverified, with NO schema column:
+//   The poller (utahWarrantPoller.ts:isLikelyMatch) only persists a Utah
+//   warrant for a local person when the local DOB-derived age matches the
+//   upstream age (±1) — it REJECTS age-mismatched candidates before storing.
+//   So any stored row whose linked person HAS a dob necessarily passed
+//   age-matching → CONFIRMED. A row linked to a DOB-less person came through
+//   the deliberate "attribute the namesake rather than skip" branch → it's a
+//   possible-namesake (the "8 Ryan Smiths" problem) → UNVERIFIED. We count
+//   and surface UNVERIFIED separately and NEVER fold it into the confirmed
+//   active total. Because it's derived from persons.dob at query time, a
+//   backfilled DOB upgrades the row automatically on the next scan.
+const DOB_PRESENT = "(p.dob IS NOT NULL AND TRIM(p.dob) != '')";
+
+// GET /warrants/dashboard/stats → { activeWarrants, unverifiedWarrants,
+//   hitsToday, personsFlagged, sourcesOnline, sourcesTotal }
+warrants.get('/dashboard/stats', requireRole(...READ_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+
+    // Active Utah hits split by confidence (see CONFIDENCE MODEL above).
+    const utahRow = await queryFirst<{ confirmed: number | null; unverified: number | null }>(db, `
+      SELECT
+        SUM(CASE WHEN ${DOB_PRESENT} THEN 1 ELSE 0 END) AS confirmed,
+        SUM(CASE WHEN ${DOB_PRESENT} THEN 0 ELSE 1 END) AS unverified
+      FROM utah_warrants uw
+      LEFT JOIN persons p ON uw.person_id = p.id
+      WHERE uw.is_active = 1`);
+
+    const manualRow = await queryFirst<{ active: number }>(db,
+      `SELECT COUNT(*) AS active FROM warrants WHERE status='active' AND archived_at IS NULL`);
+
+    // Distinct persons flagged across BOTH sources (manual + active Utah).
+    const flaggedRow = await queryFirst<{ n: number }>(db, `
+      SELECT COUNT(*) AS n FROM (
+        SELECT subject_person_id AS pid FROM warrants
+          WHERE status='active' AND archived_at IS NULL AND subject_person_id IS NOT NULL
+        UNION
+        SELECT person_id AS pid FROM utah_warrants
+          WHERE is_active=1 AND person_id IS NOT NULL
+      )`);
+
+    // Hits first seen today (UTC): new Utah rows + manual warrants created.
+    const hitsRow = await queryFirst<{ n: number }>(db, `
+      SELECT
+        (SELECT COUNT(*) FROM utah_warrants WHERE is_active=1 AND date(first_seen_at)=date('now'))
+        + (SELECT COUNT(*) FROM warrants WHERE status='active' AND archived_at IS NULL AND date(created_at)=date('now'))
+        AS n`);
+
+    // Sources online/total. One shared poller drives a global run history,
+    // so circuit health is global: a source is offline only when its circuit
+    // is broken (5+ trailing failed runs), mirroring the Scrapers-tab logic.
+    const total = (await queryFirst<{ n: number }>(db,
+      `SELECT COUNT(*) AS n FROM warrant_scraper_config`))?.n ?? 0;
+    const trailing = await query<{ errors: number | null }>(db,
+      `SELECT errors FROM warrant_watch_runs ORDER BY started_at DESC LIMIT 10`);
+    let consec = 0;
+    for (const r of trailing) { if (r.errors && r.errors > 0) consec++; else break; }
+    const sourcesOnline = consec >= 5 ? 0 : total;
+
+    return c.json({
+      activeWarrants: (utahRow?.confirmed ?? 0) + (manualRow?.active ?? 0),
+      unverifiedWarrants: utahRow?.unverified ?? 0,
+      hitsToday: hitsRow?.n ?? 0,
+      personsFlagged: flaggedRow?.n ?? 0,
+      sourcesOnline,
+      sourcesTotal: total,
+    });
+  } catch (err) {
+    console.error('[warrants] dashboard/stats error', err);
+    return c.json({ activeWarrants: 0, unverifiedWarrants: 0, hitsToday: 0, personsFlagged: 0, sourcesOnline: 0, sourcesTotal: 0 });
+  }
+});
+
+// GET /warrants/dashboard/feed?range=24h&limit=50 → { data: FeedEntry[] }
+// Synthesised from utah_warrants lifecycle timestamps: first_seen_at = a
+// FOUND event, and a cleared row's last_seen_at = a CLEARED event. (The
+// poller records run COUNTS, not per-event rows — warrant_watch_log is
+// unpopulated on live — so a log-table read would always be empty.)
+warrants.get('/dashboard/feed', requireRole(...READ_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rangeRaw = (c.req.query('range') || '24h').toLowerCase().trim();
+    const m = rangeRaw.match(/^(\d+)\s*([hd])$/);
+    let hours = m ? parseInt(m[1], 10) * (m[2] === 'd' ? 24 : 1) : 24;
+    if (!Number.isFinite(hours) || hours <= 0) hours = 24;
+    hours = Math.min(hours, 24 * 90); // cap 90d
+    const limit = Math.min(Math.max(parseInt(c.req.query('limit') || '50', 10) || 50, 1), 200);
+
+    const rows = await query<Record<string, unknown>>(db, `
+      SELECT uw.id, uw.person_id,
+             COALESCE(NULLIF(TRIM(p.first_name || ' ' || p.last_name), ''),
+                      TRIM(uw.first_name || ' ' || uw.last_name)) AS person_name,
+             CASE WHEN uw.is_active = 1 THEN 'warrant_found' ELSE 'warrant_cleared' END AS event,
+             uw.utah_warrant_id, uw.charges, uw.court_name,
+             CASE WHEN uw.is_active = 1 THEN uw.first_seen_at ELSE uw.last_seen_at END AS created_at,
+             p.photo_url
+      FROM utah_warrants uw
+      LEFT JOIN persons p ON uw.person_id = p.id
+      WHERE datetime(CASE WHEN uw.is_active = 1 THEN uw.first_seen_at ELSE uw.last_seen_at END)
+            >= datetime('now', ?)
+      ORDER BY created_at DESC
+      LIMIT ?`,
+      `-${hours} hours`, limit);
+    return c.json({ data: rows });
+  } catch (err) {
+    console.error('[warrants] dashboard/feed error', err);
+    return c.json({ data: [] });
+  }
+});
+
+// GET /warrants/dashboard/priority → { data: PriorityWarrant[] }
+// High-priority active warrants for the right-rail. Manual felonies / high
+// bail first, then active Utah hits whose charge text reads as serious.
+// Each Utah row carries `unverified` so the UI can flag namesake leads.
+warrants.get('/dashboard/priority', requireRole(...READ_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+
+    const manual = await query<Record<string, unknown>>(db, `
+      SELECT w.id, w.warrant_number, COALESCE(w.warrant_type, w.type) AS type, w.status,
+             COALESCE(w.charge_description, w.offense_description, w.offense) AS charge_description,
+             w.offense_level, p.first_name AS subject_first_name, p.last_name AS subject_last_name,
+             p.photo_url AS subject_photo_url,
+             COALESCE(w.bail_amount, w.bond_amount) AS bail_amount, w.source, w.created_at,
+             0 AS unverified
+      FROM warrants w
+      LEFT JOIN persons p ON w.subject_person_id = p.id
+      WHERE w.status='active' AND w.archived_at IS NULL
+        AND (w.offense_level='felony' OR COALESCE(w.bail_amount, w.bond_amount, 0) >= 5000)
+      ORDER BY CASE w.offense_level WHEN 'felony' THEN 1 ELSE 2 END,
+               COALESCE(w.bail_amount, w.bond_amount, 0) DESC
+      LIMIT 25`);
+
+    const utahRows = await query<Record<string, any>>(db, `
+      SELECT uw.id, uw.utah_warrant_id AS warrant_number, 'arrest' AS type, 'active' AS status,
+             uw.charges AS charge_description, NULL AS offense_level,
+             uw.first_name AS subject_first_name, uw.last_name AS subject_last_name,
+             p.photo_url AS subject_photo_url, NULL AS bail_amount,
+             'utah-warrant-watch' AS source, uw.first_seen_at AS created_at,
+             CASE WHEN ${DOB_PRESENT} THEN 0 ELSE 1 END AS unverified
+      FROM utah_warrants uw
+      LEFT JOIN persons p ON uw.person_id = p.id
+      WHERE uw.is_active = 1
+        AND (UPPER(uw.charges) LIKE '%ASSAULT%' OR UPPER(uw.charges) LIKE '%BATTERY%'
+          OR UPPER(uw.charges) LIKE '%INFLUENCE%' OR UPPER(uw.charges) LIKE '%DUI%'
+          OR UPPER(uw.charges) LIKE '%WEAPON%'   OR UPPER(uw.charges) LIKE '%FIREARM%'
+          OR UPPER(uw.charges) LIKE '%FELONY%'   OR UPPER(uw.charges) LIKE '%ROBBERY%'
+          OR UPPER(uw.charges) LIKE '%BURGLARY%' OR UPPER(uw.charges) LIKE '%DOMESTIC%'
+          OR UPPER(uw.charges) LIKE '%HOMICIDE%' OR UPPER(uw.charges) LIKE '%THEFT%')
+      ORDER BY unverified ASC, uw.first_seen_at DESC
+      LIMIT 25`);
+
+    const utah = utahRows.map((w) => {
+      let chargeText = '';
+      try {
+        const arr = JSON.parse(String(w.charge_description || '[]'));
+        chargeText = Array.isArray(arr) ? arr.join('; ') : String(w.charge_description || '');
+      } catch { chargeText = String(w.charge_description || ''); }
+      return { ...w, charge_description: chargeText, unverified: Number(w.unverified) === 1 };
+    });
+
+    return c.json({ data: [...manual, ...utah].slice(0, 30) });
+  } catch (err) {
+    console.error('[warrants] dashboard/priority error', err);
+    return c.json({ data: [] });
+  }
+});
+
+// GET /warrants/expiring?days=30 → { count } — active manual warrants whose
+// expiry falls inside the window. Utah warrants have no expiry concept, so
+// this is manual-only (returns 0 until manual warrants are entered).
+warrants.get('/expiring', requireRole(...READ_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const daysRaw = parseInt(c.req.query('days') || '30', 10);
+    const days = Number.isFinite(daysRaw) && daysRaw > 0 ? Math.min(daysRaw, 365) : 30;
+    const row = await queryFirst<{ count: number }>(db, `
+      SELECT COUNT(*) AS count FROM warrants
+      WHERE status='active' AND archived_at IS NULL
+        AND COALESCE(expiry_date, expires_at) IS NOT NULL
+        AND date(COALESCE(expiry_date, expires_at)) BETWEEN date('now') AND date('now', ?)`,
+      `+${days} days`);
+    return c.json({ count: row?.count ?? 0 });
+  } catch (err) {
+    console.error('[warrants] expiring error', err);
+    return c.json({ count: 0 });
   }
 });
 
@@ -536,7 +746,9 @@ interface RunRow {
 //   - last_error_at (the started_at of the most recent failed run)
 function summarizeRuns(runs24h: RunRow[], trailingRuns: RunRow[]) {
   const total = runs24h.length;
-  const failed = runs24h.filter((r) => r.errors && r.errors > 0).length;
+  // A run's success is its STATUS, not whether it logged any per-person errors —
+  // a completed run that hit a few transient lookup errors is still a success.
+  const failed = runs24h.filter((r) => r.status === 'failed').length;
   const successful = total - failed;
   // "unchanged" runs = successful runs that found and cleared nothing —
   // the steady-state with no roster churn. Matters because the dashboard
@@ -928,6 +1140,40 @@ function warrantNumberFor(prefix: 'WRN' | 'EXT', id: number | bigint): string {
   return `${prefix}-${new Date().getFullYear()}-${String(id).padStart(5, '0')}`;
 }
 
+// ── GET /warrants/check/:personId — advisory active-warrant check ──
+// Called by LinkPersonModal when a person is selected/created on an
+// incident, to flash an "ACTIVE WARRANTS" banner. Advisory only (the
+// client swallows errors), but legacy 404'd on it. Live `warrants`
+// carries BOTH person_id and subject_person_id columns (schema drift),
+// so we match either. Returns the shape the client's WarrantCheckResult
+// expects: { has_warrants, count, warrants: [...] }.
+warrants.get('/check/:personId{\\d+}', requireRole(...ROLES_CRUD_READ), async (c) => {
+  try {
+    const personId = parseInt(c.req.param('personId') || '', 10);
+    if (!Number.isFinite(personId) || personId <= 0) {
+      return c.json({ error: 'Invalid person id', code: 'INVALID_ID' }, 400);
+    }
+    const rows = await query<any>(getDb(c.env), `
+      SELECT id, warrant_number, COALESCE(warrant_type, type) AS warrant_type,
+             COALESCE(charge_description, offense_description, offense, description) AS charge_description,
+             status
+      FROM warrants
+      WHERE (person_id = ? OR subject_person_id = ?)
+        AND status = 'active' AND archived_at IS NULL
+      ORDER BY COALESCE(issued_date, created_at) DESC`,
+      personId, personId);
+    return c.json({
+      person_id: personId,
+      has_warrants: rows.length > 0,
+      count: rows.length,
+      warrants: rows,
+    });
+  } catch (err) {
+    console.error('[warrants] check error', err);
+    return c.json({ error: 'Failed to check warrants', code: 'WARRANT_CHECK_ERR' }, 500);
+  }
+});
+
 // ── GET /warrants — list with filters + pagination ──
 // Mirrors the legacy filter surface so the WarrantsPage useEffect that
 // passes ~16 query params keeps working unchanged. All optional filters
@@ -1304,16 +1550,18 @@ warrants.put('/:id{\\d+}/serve', requireRole(...ROLES_CRUD_WRITE), async (c) => 
       return c.json({ error: 'Only active warrants can be served', code: 'ONLY_ACTIVE_CAN_SERVE' }, 400);
     }
 
-    // NOTE: the live `warrants` table has no `served_location` column (see
-    // migration 0046). Writing to it 500s every serve, so it is intentionally
-    // omitted here. served_by/served_at/status are the real served-state columns.
+    // served_location column added in migration 0064 — persist the operator's
+    // typed "Location Served" (the client sends it; the detail panel + record
+    // PDF render it). Sentinel-guarded to NULL when blank.
+    const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
+    const servedLocation = nullify(body.served_location);
     await execute(
       db,
       `UPDATE warrants
           SET status = 'served', served_by = ?, served_at = datetime('now'),
-              updated_at = datetime('now')
+              served_location = ?, updated_at = datetime('now')
         WHERE id = ?`,
-      user.id, id,
+      user.id, servedLocation, id,
     );
 
     const updated = await queryFirst<Record<string, unknown>>(

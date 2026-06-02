@@ -277,17 +277,16 @@
 //       rendered. Hoisted Process Service Details to a top-level section
 //       (self-gated by process data / service-type) and added
 //       'civil_paper_service' to the visit-history gate.
-// v700: FIX CSP eval block — the index.html <meta> CSP had drifted stale
-//       (no 'unsafe-eval', no Mapbox in script-src, no media-src, dead Google
-//       Maps domains). Because a header CSP and a <meta> CSP are enforced as an
-//       INTERSECTION (not "header overrides meta"), the meta independently
-//       blocked runtime code evaluation despite _headers allowing it. Realigned
-//       the <meta> to the canonical _headers policy and corrected the wrong
-//       "header overrides meta" comment so the drift can't recur.
-//       Also a11y: AST codemod added a generated id to every intrinsic
-//       <input>/<select>/<textarea> lacking id/name (1,984 controls / 251
-//       files), clearing the "form field should have an id or name" warning.
-const CACHE_NAME = 'rmpg-flex-v700';
+// v701: Phase 2 — unified always-visible map Legend (bottom-left, collapsible)
+//       reflecting EVERY active overlay: geography coverage (Area/Section/
+//       Zone/Beat + compact categorical key), County/Muni outline boundaries,
+//       statewide road classes + address dot, and the activity-choropleth ramp.
+// v702: Phase 3 — Address/Premise Intelligence. "What's Here" now also pulls
+//       nearby prior calls + incidents (new GET /api/dispatch/geography/
+//       premise-intel, lat/lng bbox) and shows a premise-history band
+//       ("N prior calls · M incidents · Last: <type> <date>") with acronym-
+//       formatted incident types (toDisplayLabel). Map <-> Dispatch/RMS.
+const CACHE_NAME = 'rmpg-flex-v702';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

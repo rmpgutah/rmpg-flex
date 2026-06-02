@@ -76,6 +76,7 @@ import { localToday, dateToLocalYMD, safeDateTimeStr, parseTimestamp } from '../
 import { useGeoJsonLayers, GEO_LAYER_CONFIGS, getSectionColor, type BeatDistrictEntry } from '../../hooks/useGeoJsonLayers';
 import { useVectorTileLayers } from '../../hooks/useVectorTileLayers';
 import { useDistrictHierarchyLayers } from '../../hooks/useDistrictHierarchyLayers';
+import UnifiedMapLegend from './components/UnifiedMapLegend';
 import { useWhatsHere } from '../../hooks/useWhatsHere';
 import { useActivityChoropleth, type ChoroLevel } from '../../hooks/useActivityChoropleth';
 import { useMapMeasureDraw, type MeasureMode } from '../../hooks/useMapMeasureDraw';
@@ -4987,6 +4988,30 @@ export default function MapPage() {
         </div>}
 
         {/* ── Route Info Panel (bottom-left, top on mobile) ── */}
+        {/* Unified always-visible legend for every active overlay */}
+        {!isMobile && (
+          <UnifiedMapLegend
+            hierarchy={{
+              area: !!hierarchyStates.area?.visible,
+              section: !!hierarchyStates.section?.visible,
+              zone: !!hierarchyStates.zone?.visible,
+              beat: !!geoLayerStates.beat?.visible,
+            }}
+            boundaries={{
+              county: !!geoLayerStates.county?.visible,
+              municipality: !!geoLayerStates.municipality?.visible,
+            }}
+            statewide={{
+              roads: !!vectorLayerStates['utah_roads']?.visible,
+              addresses: !!vectorLayerStates['utah_addresses']?.visible,
+            }}
+            choro={choroLegend}
+            categorical={hierLegend}
+            isLight={isLightMapStyle(mapStyle)}
+            bottomPx={activeRoute ? 132 : 28}
+          />
+        )}
+
         {activeRoute && (
           <div
             className="absolute z-[1000] backdrop-blur-md"

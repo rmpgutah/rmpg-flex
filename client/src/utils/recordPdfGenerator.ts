@@ -1500,9 +1500,10 @@ function parseCharges(raw: unknown): string[] {
   return s.split(/\r?\n|;|,(?=\s)|,/).map(t => t.trim()).filter(Boolean);
 }
 
-function fmtCurrency(val?: number | null): string {
-  if (val == null) return EMPTY_FIELD;
-  return `$${val.toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
+function fmtCurrency(val?: number | null | string): string {
+  const n = typeof val === 'number' ? val : Number(String(val ?? '').trim());
+  if (val == null || !Number.isFinite(n)) return EMPTY_FIELD; // sentinel "None"/"" → blank, never "$None"
+  return `$${n.toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
 }
 
 /**

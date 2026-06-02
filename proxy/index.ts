@@ -652,6 +652,14 @@ const API_ROUTES: RouteRule[] = [
   // it, so the POST 404'd and the tab threw an unhandled rejection.
   { kind: 'prefix', value: '/api/warrants/search-all' },
   { kind: 'regex', value: /^\/api\/warrants\/person\/\d+\/profile$/, methods: ['GET'] },
+  // /api/warrants/dashboard/* (stats, feed, priority) + /api/warrants/expiring
+  // — the DASHBOARD tab widgets. Legacy served these against the empty manual
+  // `warrants` table, so every card read 0 while the Watch List showed real
+  // Utah hits. Ported to src/routes/warrants.ts where they aggregate
+  // utah_warrants (confirmed vs unverified by linked-person DOB) + manual
+  // warrants + warrant_scraper_config. Route to env.API.
+  { kind: 'prefix', value: '/api/warrants/dashboard' },
+  { kind: 'regex', value: /^\/api\/warrants\/expiring$/, methods: ['GET'] },
   // /api/warrants/scrapers* — Sources tab + Layout header badge + per-source
   // trigger/reset-circuit buttons. Legacy `rmpg-flex` had /scrapers handlers
   // but they queried columns that don't exist on live D1 (`source_key`,
@@ -683,12 +691,31 @@ const API_ROUTES: RouteRule[] = [
   // /summary-report, /check/:id, /batch-update, /bulk-archive, /bulk-review,
   // /person-intel, /utah-search) are deliberately NOT matched here — they
   // continue to fall through to env.LEGACY until their own ports land.
+  // /api/warrants/check/:personId — advisory active-warrant lookup used by
+  // the incident LinkPersonModal. Ported to src/routes/warrants.ts (legacy
+  // 404'd). Two segments after /warrants so it never collides with the
+  // single-segment /warrants/:id CRUD regex below.
+  { kind: 'regex', value: /^\/api\/warrants\/check\/\d+$/, methods: ['GET'] },
   { kind: 'regex', value: /^\/api\/warrants\/ingest-utah$/, methods: ['POST'] },
   { kind: 'regex', value: /^\/api\/warrants\/\d+\/serve$/, methods: ['PUT'] },
   { kind: 'regex', value: /^\/api\/warrants\/\d+\/archive$/, methods: ['POST'] },
   { kind: 'regex', value: /^\/api\/warrants\/\d+\/unarchive$/, methods: ['POST'] },
   { kind: 'regex', value: /^\/api\/warrants\/\d+$/, methods: ['GET', 'PUT', 'DELETE'] },
   { kind: 'regex', value: /^\/api\/warrants\/?$/, methods: ['GET', 'POST'] },
+
+  // ── Incident NIBRS sub-resources — ported to src/routes/incidentSubresources.ts ──
+  // The IncidentsPage detail panels (Offenses / Responding Officers /
+  // Cross-References / Supplements) POST+GET these. Legacy 404'd (officers)
+  // or 500'd against a MINIMAL live schema (incident_offenses lacked
+  // ucr_code/nibrs_code/counts/...; incident_links omitted the NOT-NULL
+  // added_by; supplemental_reports lacked subject/status). Migration 0064
+  // widened the tables and these routes go to the rewrite's real handlers.
+  // ONLY the sub-resource paths are routed — base /api/incidents CRUD stays
+  // on legacy (deliberately, per its working-page note). The supplement
+  // regex also covers the dv/pursuit string suffixes served by
+  // incidentSupplements.ts so those reach env.API too.
+  { kind: 'regex', value: /^\/api\/incidents\/\d+\/(offenses|officers|links)(\/\d+)?$/ },
+  { kind: 'regex', value: /^\/api\/incidents\/\d+\/supplements(\/(dv|pursuit|\d+))?$/ },
 
   // ── TTS + PDF signing (rewrite ports of legacy/server-vps endpoints) ──
   // /api/tts now synthesizes real audio via Workers AI (@cf/myshell-ai/melotts,

@@ -470,7 +470,7 @@ export default function ScrapersTab() {
       }
     };
 
-    const unsubscribe = subscribe('scraper_event', handler);
+    const unsubscribe = subscribe('scraper_events', handler); // Worker broadcasts the PLURAL type
     return () => unsubscribe();
   }, [subscribe, fetchAll]);
 

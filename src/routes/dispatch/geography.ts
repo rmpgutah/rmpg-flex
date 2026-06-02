@@ -131,4 +131,38 @@ geography.get('/districts/identify', async (c) => {
   }
 });
 
+// GET /dispatch/geography/premise-intel?lat=&lng=&radius=
+// Point-based premise intelligence for the map "What's Here" tool: recent
+// calls + incidents near a clicked location (cross-system map<->dispatch/RMS).
+// Bounding-box filter on lat/lng (indexed), newest first. Best-effort — a
+// query error degrades to empty so the popup still renders geography.
+geography.get('/premise-intel', async (c) => {
+  const lat = Number.parseFloat(c.req.query('lat') ?? '');
+  const lng = Number.parseFloat(c.req.query('lng') ?? '');
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return c.json({ calls: [], incidents: [], callCount: 0, incidentCount: 0 });
+  // ~0.0025deg ≈ 275 m at this latitude.
+  const r = Math.min(0.02, Math.max(0.0008, Number.parseFloat(c.req.query('radius') ?? '0.0025') || 0.0025));
+  const db = getDb(c.env);
+  try {
+    const [calls, incidents] = await Promise.all([
+      query<Record<string, unknown>>(db,
+        `SELECT id, call_number, incident_type, priority, status, location_address, created_at
+         FROM calls_for_service
+         WHERE latitude BETWEEN ? AND ? AND longitude BETWEEN ? AND ?
+         ORDER BY created_at DESC LIMIT 10`,
+        lat - r, lat + r, lng - r, lng + r).catch(() => []),
+      query<Record<string, unknown>>(db,
+        `SELECT id, incident_number, incident_type, status, location_address, created_at
+         FROM incidents
+         WHERE latitude BETWEEN ? AND ? AND longitude BETWEEN ? AND ?
+         ORDER BY created_at DESC LIMIT 10`,
+        lat - r, lat + r, lng - r, lng + r).catch(() => []),
+    ]);
+    return c.json({ calls, incidents, callCount: calls.length, incidentCount: incidents.length });
+  } catch (err) {
+    console.error('GET /dispatch/geography/premise-intel failed:', err);
+    return c.json({ calls: [], incidents: [], callCount: 0, incidentCount: 0 });
+  }
+});
+
 export default geography;
