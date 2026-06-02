@@ -206,7 +206,11 @@
 //       returns authoritative statewide addresses first (Mapbox fills);
 //       "What's Here" resolves nearest address from the DB (works anywhere,
 //       no tile dependency).
-const CACHE_NAME = 'rmpg-flex-v687';
+// v688: audit wave-3 — map-overlay fixes (vector-tile listener-leak dedup,
+//       choropleth strictly-ascending step stops, response-time no-data
+//       coloring, measure-tool unmount cleanup) + VoiceHubDO officer-safety
+//       alert gap. Bump so users get the fixed map hooks.
+const CACHE_NAME = 'rmpg-flex-v688';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
