@@ -60,8 +60,11 @@ def parse_args():
     p.add_argument("--lr", type=float, default=2e-4)
     p.add_argument("--batch", type=int, default=1)
     p.add_argument("--grad-accum", type=int, default=8)
-    p.add_argument("--max-seq-len", type=int, default=8192,
-                   help="Packets are long; 8K covers most. Raise if rawText truncates.")
+    p.add_argument("--max-seq-len", type=int, default=16384,
+                   help="Must fit prompt+target or the JSON target is truncated away. "
+                        "16K covers the full ICU set (longest ≈13K tok); run "
+                        "validate-dataset.ts to confirm before changing. With batch=1 + "
+                        "no packing, short rows cost nothing extra — only the long ones use it.")
     p.add_argument("--no-4bit", action="store_true", help="Disable QLoRA 4-bit (needs more VRAM).")
     return p.parse_args()
 
