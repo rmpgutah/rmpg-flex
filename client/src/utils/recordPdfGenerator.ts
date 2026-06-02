@@ -2161,14 +2161,18 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
 
   // CFS address-location map — static Mapbox snapshot with a marker pin at
   // the incident coordinates (geocodes data.location when lat/lng absent).
+  // Satellite-streets at close zoom 18 so the actual structure/lot is visible
+  // (a property-level view, not a several-blocks-wide z15 overview) while the
+  // hybrid style keeps the fronting road + street labels in frame. Matches the
+  // Property record's location map for a consistent aerial close-up.
   y = await addLocationMapSection(doc, {
     title: 'Incident Location Map',
     lat: data.latitude,
     lng: data.longitude,
     address: data.location || (data as any).location_address,
     caption: data.location || (data as any).location_address,
-    style: 'mapbox/streets-v12',
-    zoom: 15,
+    style: 'mapbox/satellite-streets-v12',
+    zoom: 18,
     priority: prio,
   }, y);
 
@@ -5329,9 +5333,11 @@ async function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // Property / business site map — satellite-streets at close zoom shows the
-  // actual structure + parking; geocodes the full address when lat/lng absent
-  // (business records store no coordinates).
+  // Property / business site map — satellite-streets at close zoom 18 frames
+  // the actual structure + parking/lot tight in view (a property-level close-up,
+  // not zoomed out), while the hybrid style keeps the fronting road + labels
+  // visible. Geocodes the full address when lat/lng absent (business records
+  // store no coordinates).
   y = await addLocationMapSection(doc, {
     title: 'Location Map',
     lat: data.latitude,
@@ -5339,7 +5345,7 @@ async function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
     address: `${data.address || ''}${data.city ? `, ${data.city}` : ''}${data.state ? `, ${data.state}` : ''} ${data.zip || ''}`.trim(),
     caption: data.address || data.name,
     style: 'mapbox/satellite-streets-v12',
-    zoom: 17,
+    zoom: 18,
   }, y);
 
   // ── Access & Security ──
