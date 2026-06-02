@@ -111,6 +111,44 @@ function confidenceBar(conf: number): string {
   return 'bg-red-500';
 }
 
+// Recursively collect every File from a dropped FileSystemEntry (a dropped
+// FOLDER is a directory entry, not a flat file). Best-effort — unreadable
+// entries resolve to [].
+async function readEntryFiles(entry: any): Promise<File[]> {
+  if (!entry) return [];
+  if (entry.isFile) {
+    return new Promise<File[]>((res) => entry.file((f: File) => res([f]), () => res([])));
+  }
+  if (entry.isDirectory) {
+    const reader = entry.createReader();
+    const readBatch = () => new Promise<any[]>((res) => reader.readEntries((e: any[]) => res(e), () => res([])));
+    const all: File[] = [];
+    // readEntries returns at most ~100 entries per call — loop until drained.
+    for (let batch = await readBatch(); batch.length; batch = await readBatch()) {
+      for (const child of batch) all.push(...await readEntryFiles(child));
+    }
+    return all;
+  }
+  return [];
+}
+
+// Resolve the files from a drop, expanding any dropped FOLDERS. dataTransfer.files
+// is EMPTY for a folder drop — the contents only exist as webkitGetAsEntry()
+// entries, which must be captured synchronously during the drop event (the item
+// list is invalidated once we await). Falls back to .files when entries aren't
+// available (older browsers / plain multi-file drops).
+async function filesFromDrop(dt: DataTransfer): Promise<File[]> {
+  const entries = dt.items
+    ? Array.from(dt.items).map((it) => (it as any).webkitGetAsEntry?.()).filter(Boolean)
+    : [];
+  if (entries.length) {
+    const nested = await Promise.all(entries.map(readEntryFiles));
+    const files = nested.flat();
+    if (files.length) return files;
+  }
+  return Array.from(dt.files);
+}
+
 export default function ServeIntakePage() {
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [processing, setProcessing] = useState(false);
@@ -273,7 +311,15 @@ export default function ServeIntakePage() {
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (e.dataTransfer.files.length > 0) handleFiles(e.dataTransfer.files);
+    // Expand any dropped folders. filesFromDrop must read the entry list
+    // before the first await (the DataTransfer is invalidated after), so we
+    // hand it the event's dataTransfer synchronously and resolve async.
+    filesFromDrop(e.dataTransfer).then((files) => {
+      if (files.length > 0) handleFiles(files);
+      else setError('No PDF or image files found in what you dropped. If you dropped a folder, its files should load automatically — otherwise drop the documents directly.');
+    }).catch(() => {
+      if (e.dataTransfer?.files?.length) handleFiles(e.dataTransfer.files);
+    });
   }, [handleFiles]);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {

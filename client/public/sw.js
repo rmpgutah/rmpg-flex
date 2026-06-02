@@ -409,7 +409,12 @@
 //       also fetches /dispatch/address-occupants and renders persons on file at
 //       the address with active-warrant / gang / caution flags, a blinking
 //       FLAGGED AT ADDRESS banner, and the alert tone.
-const CACHE_NAME = 'rmpg-flex-v721';
+// v722: Serve Intake — folder drops now upload. dataTransfer.files is empty for
+//       a dropped FOLDER; read the contents via webkitGetAsEntry() recursively
+//       (filesFromDrop). Raised the per-upload file cap 12→30 so a whole job
+//       packet (Field Sheet + Info Form + Court Docket + Summons + scanned-page
+//       rasters) goes through in one drop.
+const CACHE_NAME = 'rmpg-flex-v722';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
