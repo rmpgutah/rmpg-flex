@@ -359,12 +359,14 @@ const FEED_RANGE_PARAMS: Record<FeedRange, string> = {
 // ============================================================
 
 function formatCurrency(amount: number | null): string {
-  if (amount == null) return '-';
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
+  const n = Number(amount);
+  if (amount == null || !Number.isFinite(n)) return '-'; // sentinel string → '-', never $NaN
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n);
 }
 
+const SENTINEL_TXT = new Set(['none', 'n/a', 'na', '0', 'null', '']);
 function chargesFromJson(charges: string | null): string {
-  if (!charges) return '';
+  if (!charges || SENTINEL_TXT.has(String(charges).trim().toLowerCase())) return '';
   try { return JSON.parse(charges).join('; '); } catch { return charges; }
 }
 

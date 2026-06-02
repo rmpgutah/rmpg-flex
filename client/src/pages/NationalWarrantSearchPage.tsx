@@ -740,7 +740,7 @@ function WarrantRow({ warrant }: { warrant: any }) {
             Issued: {formatDate(warrant.issued_date)}
           </span>
         )}
-        {warrant.bond_amount && (
+        {Number.isFinite(Number(warrant.bond_amount)) && Number(warrant.bond_amount) > 0 && (
           <span className="text-[10px] text-amber-400 font-mono">
             Bond: ${Number(warrant.bond_amount).toLocaleString()}
           </span>
