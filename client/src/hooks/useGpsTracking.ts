@@ -28,10 +28,18 @@ export interface GpsState {
   longitude: number | null;
   /** Accuracy in meters */
   accuracy: number | null;
-  /** Heading in degrees (0-360, null if unavailable) */
+  /** Heading in degrees (0-360, null if unavailable) — raw device heading. */
   heading: number | null;
+  /** Heading smoothed with a circular low-pass + course-over-ground fallback,
+   *  so the directional arrow doesn't jitter when stationary or heading is null. */
+  headingSmoothed: number | null;
+  /** Course over ground (deg) derived from consecutive fixes when the device
+   *  actually moved — independent of the (often-null) device compass heading. */
+  course: number | null;
   /** Speed in m/s (null if unavailable) */
   speed: number | null;
+  /** Number of fixes captured into the exportable session track (0 when capture off). */
+  capturedCount: number;
   /** Last time we successfully sent position to server */
   lastSentAt: string | null;
   /** Error message if something went wrong */
@@ -69,6 +77,13 @@ interface UseGpsTrackingOptions {
    * e.g. live turn-by-turn nav — so we don't double-POST GPS. Default: true.
    */
   upload?: boolean;
+  /**
+   * Record every accepted fix into an in-memory session track that can be
+   * exported (CSV / GeoJSON). Off by default so the always-on Layout tracker
+   * doesn't accumulate; the map opts in so the operator can capture/export the
+   * track they drove. Default: false.
+   */
+  capture?: boolean;
 }
 
 // ─── Constants ──────────────────────────────────────────────
@@ -140,6 +155,24 @@ function inferPositionSource(accuracy: number | null, connType: ConnectionType):
   if (accuracy <= 50) return 'gps';
   if (accuracy <= 300) return 'wifi';
   return 'ip';
+}
+
+// ─── Heading math (course-over-ground + smoothing) ──────────
+/** Initial great-circle bearing (deg, 0=N) from point 1 to point 2. */
+function bearingBetween(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const φ1 = toRad(lat1), φ2 = toRad(lat2), Δλ = toRad(lng2 - lng1);
+  const y = Math.sin(Δλ) * Math.cos(φ2);
+  const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+  return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+}
+
+/** Circular low-pass: nudge `prev` toward `next` by `alpha` along the SHORTEST
+ *  arc, so 350°→10° crosses through 0° instead of sweeping backward. */
+function blendAngle(prev: number | null, next: number, alpha: number): number {
+  if (prev == null || !isFinite(prev)) return next;
+  const diff = ((next - prev + 540) % 360) - 180; // shortest signed delta
+  return (((prev + alpha * diff) % 360) + 360) % 360;
 }
 
 // ─── Haversine Distance (meters) ────────────────────────────
@@ -242,12 +275,15 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
     maxAccuracyMeters = DEFAULT_MAX_ACCURACY,
     maxSpeedMs = DEFAULT_MAX_SPEED,
     upload = true,
+    capture = false,
   } = options || {};
 
   // Read in the POST helpers (empty-deps useCallbacks) so a read-only consumer
   // never uploads. Kept in a ref so toggling the option doesn't re-create them.
   const uploadRef = useRef(upload);
   uploadRef.current = upload;
+  const captureEnabledRef = useRef(capture);
+  captureEnabledRef.current = capture;
 
   // GPS is ALWAYS tracking — mandatory for all users
   const [isTracking, setIsTracking] = useState<boolean>(false);
@@ -257,7 +293,10 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
     longitude: null,
     accuracy: null,
     heading: null,
+    headingSmoothed: null,
+    course: null,
     speed: null,
+    capturedCount: 0,
     lastSentAt: null,
     error: null,
     isSupported: typeof navigator !== 'undefined' && 'geolocation' in navigator,
@@ -288,6 +327,11 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
   const lastAcceptedRef = useRef<{ lat: number; lng: number; time: number } | null>(null);
   // Keep the latest position for UI display (real-time dot on map)
   const latestPositionRef = useRef<QueuedPoint | null>(null);
+  // Exportable session track (opt-in via `capture`). Capped ring buffer.
+  const captureRef = useRef<QueuedPoint[]>([]);
+  const MAX_CAPTURE = 10000;
+  // Last smoothed heading for the circular low-pass filter.
+  const smoothedHeadingRef = useRef<number | null>(null);
   // Flag: send first position immediately for real-time icon placement
   const firstPositionSentRef = useRef(false);
   // Track unitId via ref so sendBatch (empty deps) can read the latest value
@@ -600,44 +644,76 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
     // Internal NMEA is always 'gps' regardless of network type
     const source = coords.sourceHint ?? inferPositionSource(accuracy, connType);
 
+    // ── Directional output: course-over-ground + smoothed heading ──
+    // Device compass `heading` is frequently null (desktop/WiFi) and noisy at
+    // low speed. Derive course from movement between accepted fixes, prefer the
+    // device heading only while genuinely moving, and run the result through a
+    // circular low-pass so the on-screen arrow glides instead of snapping.
+    const prevAccepted = lastAcceptedRef.current;
+    let course: number | null = null;
+    if (prevAccepted) {
+      const movedM = haversineMeters(prevAccepted.lat, prevAccepted.lng, latitude, longitude);
+      if (movedM >= 3) course = bearingBetween(prevAccepted.lat, prevAccepted.lng, latitude, longitude);
+    }
+    const moving = speed != null && speed > 1.5;
+    const headingCandidate = heading != null && (moving || course == null) ? heading : (course ?? heading);
+    const headingSmoothed = headingCandidate != null
+      ? blendAngle(smoothedHeadingRef.current, headingCandidate, 0.35)
+      : smoothedHeadingRef.current;
+    smoothedHeadingRef.current = headingSmoothed;
+
+    const accepted = shouldAcceptPoint(latitude, longitude, accuracy);
+    let capturedCountNext = captureRef.current.length;
+
+    if (accepted) {
+      const point: QueuedPoint = {
+        lat: latitude,
+        lng: longitude,
+        accuracy,
+        heading,
+        speed,
+        timestamp: new Date().toISOString(),
+        source,
+      };
+
+      lastAcceptedRef.current = { lat: latitude, lng: longitude, time: Date.now() };
+      latestPositionRef.current = point;
+
+      if (queueRef.current.length >= MAX_QUEUE_SIZE) {
+        queueRef.current = queueRef.current.slice(-Math.floor(MAX_QUEUE_SIZE / 2));
+      }
+      queueRef.current.push(point);
+
+      // Opt-in exportable session track (separate from the upload queue, which
+      // gets drained on every batch send).
+      if (captureEnabledRef.current) {
+        if (captureRef.current.length >= MAX_CAPTURE) captureRef.current.shift();
+        captureRef.current.push(point);
+        capturedCountNext = captureRef.current.length;
+      }
+
+      if (!firstPositionSentRef.current) {
+        firstPositionSentRef.current = true;
+        sendImmediate(point);
+      }
+    }
+
     setState((prev) => ({
       ...prev,
       latitude,
       longitude,
       accuracy,
       heading,
+      headingSmoothed,
+      course,
       speed,
+      capturedCount: capturedCountNext,
       error: null,
       permissionDenied: false,
       permissionPending: false,
       connectionType: connType,
       positionSource: source,
     }));
-
-    if (!shouldAcceptPoint(latitude, longitude, accuracy)) return;
-
-    const point: QueuedPoint = {
-      lat: latitude,
-      lng: longitude,
-      accuracy,
-      heading,
-      speed,
-      timestamp: new Date().toISOString(),
-      source,
-    };
-
-    lastAcceptedRef.current = { lat: latitude, lng: longitude, time: Date.now() };
-    latestPositionRef.current = point;
-
-    if (queueRef.current.length >= MAX_QUEUE_SIZE) {
-      queueRef.current = queueRef.current.slice(-Math.floor(MAX_QUEUE_SIZE / 2));
-    }
-    queueRef.current.push(point);
-
-    if (!firstPositionSentRef.current) {
-      firstPositionSentRef.current = true;
-      sendImmediate(point);
-    }
   }, [shouldAcceptPoint, sendImmediate]);
 
   // ─── Toughbook internal GPS subscription ─────────────────
@@ -1125,11 +1201,45 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
     };
   }, []);
 
+  // ─── Captured-track accessors / export ───────────────────
+  const getCapturedTrack = useCallback((): QueuedPoint[] => captureRef.current.slice(), []);
+  const clearCapturedTrack = useCallback(() => {
+    captureRef.current = [];
+    setState((prev) => ({ ...prev, capturedCount: 0 }));
+  }, []);
+  /** Serialise the captured session track to a downloadable file payload.
+   *  CSV for spreadsheets/evidence, GeoJSON for re-import onto a map. */
+  const exportTrack = useCallback((format: 'csv' | 'geojson'): { filename: string; mime: string; content: string } => {
+    const pts = captureRef.current;
+    const stamp = pts.length ? pts[pts.length - 1].timestamp.replace(/[:.]/g, '-').slice(0, 19) : 'empty';
+    if (format === 'geojson') {
+      const fc = {
+        type: 'FeatureCollection',
+        features: pts.map((p) => ({
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: [p.lng, p.lat] },
+          properties: { timestamp: p.timestamp, heading: p.heading, speed_ms: p.speed, accuracy_m: p.accuracy, source: p.source },
+        })),
+      };
+      return { filename: `rmpg-track-${stamp}.geojson`, mime: 'application/geo+json', content: JSON.stringify(fc, null, 2) };
+    }
+    const header = 'timestamp,latitude,longitude,heading_deg,speed_ms,speed_mph,accuracy_m,source';
+    const rows = pts.map((p) => [
+      p.timestamp, p.lat, p.lng,
+      p.heading ?? '', p.speed ?? '', p.speed != null ? (p.speed * 2.237).toFixed(1) : '',
+      p.accuracy ?? '', p.source,
+    ].join(','));
+    return { filename: `rmpg-track-${stamp}.csv`, mime: 'text/csv', content: [header, ...rows].join('\n') };
+  }, []);
+
   return {
     ...state,
     isTracking,
     startTracking,
     stopTracking,
     toggleTracking,
+    getCapturedTrack,
+    clearCapturedTrack,
+    exportTrack,
   };
 }
