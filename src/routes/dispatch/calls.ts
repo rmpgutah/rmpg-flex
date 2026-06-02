@@ -9,6 +9,7 @@ import { sendToUser, broadcastAll } from '../ws';
 import { geocodeAddress } from '../geocode';
 import { resolveDistrict } from '../../utils/districtResolver';
 import { evaluateNotificationRules } from '../notificationEngine';
+import { resolvePanicForCall } from './panic';
 
 const calls = new Hono<Env>();
 
@@ -98,6 +99,14 @@ calls.get('/', async (c) => {
       where += " AND c.status IN ('dispatched','enroute','onscene','pending','open')";
     }
 
+    // Exclude soft-deleted calls from every list/queue/active view. A non-NULL
+    // calls_for_service_ext.deleted_at means the call was removed from the board
+    // (admin-recoverable). Expressed as a correlated subquery (not a join
+    // condition) so it applies identically to the COUNT query below — which does
+    // NOT join the ext table — and the row query. The single-call GET (/:id)
+    // intentionally still returns soft-deleted calls so they can be recovered.
+    where += ' AND NOT EXISTS (SELECT 1 FROM calls_for_service_ext xd WHERE xd.id = c.id AND xd.deleted_at IS NOT NULL)';
+
     const pageNum = Math.max(1, parseInt(page || '1', 10));
     const limitNum = Math.min(1000, Math.max(1, parseInt(limit || '200', 10)));
     const offset = (pageNum - 1) * limitNum;
@@ -184,15 +193,23 @@ calls.post('/', async (c) => {
     // collide with the old sequence.
     const year = new Date().getFullYear().toString().slice(-2);
     const prefix = `CFS${year}-`;
-    const [{ max }] = await query<{ max: string | null }>(
-      db,
-      "SELECT MAX(call_number) as max FROM calls_for_service WHERE call_number LIKE ?",
-      `${prefix}%`,
-    );
-    const seq = max
-      ? String(parseInt(max.slice(prefix.length), 10) + 1).padStart(5, '0')
-      : '00001';
-    const callNumber = `${prefix}${seq}`;
+    // Mint the next call number from MAX(call_number)+1 for this year's prefix.
+    // Extracted so the INSERT below can re-mint and retry on a UNIQUE collision
+    // (two dispatchers creating a call in the same instant both read the same
+    // MAX → both build the same CFSYY-NNNNN → the second INSERT hits the
+    // `call_number TEXT UNIQUE` constraint). See the retry loop below.
+    const mintCallNumber = async (): Promise<string> => {
+      const [{ max }] = await query<{ max: string | null }>(
+        db,
+        "SELECT MAX(call_number) as max FROM calls_for_service WHERE call_number LIKE ?",
+        `${prefix}%`,
+      );
+      const seq = max
+        ? String(parseInt(max.slice(prefix.length), 10) + 1).padStart(5, '0')
+        : '00001';
+      return `${prefix}${seq}`;
+    };
+    let callNumber = await mintCallNumber();
 
     // FK guard — restored-pending-draft can carry a stale property_id
     // from localStorage that no longer exists in this database. If
@@ -329,7 +346,25 @@ calls.post('/', async (c) => {
     // succeeds (below) so the call row commits even if the ext write fails.
 
     try {
-      const result = await execute(db, `INSERT INTO calls_for_service (${cols.join(',')}) VALUES (${vals.join(',')})`, ...bindParams);
+      // Retry-on-collision: callNumber is bindParams[0] (pushed first). If the
+      // INSERT trips the `call_number TEXT UNIQUE` constraint — a concurrent
+      // create grabbed the same MAX()+1 — re-mint and retry up to 3x so the
+      // call isn't silently lost. Any non-UNIQUE error rethrows immediately.
+      const insertSql = `INSERT INTO calls_for_service (${cols.join(',')}) VALUES (${vals.join(',')})`;
+      let result: Awaited<ReturnType<typeof execute>> | null = null;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          result = await execute(db, insertSql, ...bindParams);
+          break;
+        } catch (insErr: any) {
+          const m = String(insErr?.message || insErr || '');
+          const isUnique = /UNIQUE|constraint failed: calls_for_service\.call_number/i.test(m);
+          if (!isUnique || attempt === 2) throw insErr;
+          callNumber = await mintCallNumber();
+          bindParams[0] = callNumber;
+        }
+      }
+      if (!result) throw new Error('Call INSERT produced no result');
       const callId = Number(result.meta.last_row_id);
 
       // Write the PSO/process-service/tactical-flag overflow columns AND the
@@ -822,22 +857,58 @@ calls.get('/:id/audit-trail', async (c) => {
 });
 
 // DELETE /dispatch/calls/:id
+// SOFT delete: the destructive physical DELETE (which cascaded into
+// call_persons/call_vehicles/_ext) destroyed 14 live calls because it had no
+// role guard and no audit. We now (1) gate the action to admin/manager/
+// supervisor, (2) tombstone the call on calls_for_service_ext.deleted_at
+// instead of removing any row, and (3) write an audit_log entry. The base row,
+// linked persons/vehicles, and ext detail are all preserved for admin recovery
+// (the single-call GET /:id still returns soft-deleted calls). The call simply
+// leaves the dispatch board (the list handler filters deleted_at IS NOT NULL).
+const CALL_DELETE_ROLES = ['admin', 'manager', 'supervisor'];
 calls.delete('/:id', async (c) => {
   try {
     const db = getDb(c.env);
     const id = c.req.param('id');
-    // Clear/unlink the non-cascading FK references before deleting, or the
-    // raw DELETE hits a FOREIGN KEY constraint and 500s. Tables that point at
-    // calls_for_service WITHOUT ON DELETE CASCADE: units.current_call_id,
-    // incidents.call_id, radio_transmissions.call_id (records — UNLINK, don't
-    // delete) and the call_persons/call_vehicles link rows (safe to DELETE).
-    // calls_for_service_ext / call_businesses / case_calls cascade on their own.
-    await execute(db, 'UPDATE units SET current_call_id = NULL WHERE current_call_id = ?', id);
-    await execute(db, 'UPDATE incidents SET call_id = NULL WHERE call_id = ?', id);
-    await execute(db, 'UPDATE radio_transmissions SET call_id = NULL WHERE call_id = ?', id);
-    await execute(db, 'DELETE FROM call_persons WHERE call_id = ?', id);
-    await execute(db, 'DELETE FROM call_vehicles WHERE call_id = ?', id);
-    await execute(db, 'DELETE FROM calls_for_service WHERE id = ?', id);
+
+    // Role guard — only senior roles may remove a call from the board.
+    const user = c.get('user') as { id: number; role: string } | undefined;
+    if (!user || !CALL_DELETE_ROLES.includes(user.role)) {
+      return c.json({ error: 'Forbidden' }, 403);
+    }
+
+    // Capture the call number for the audit detail before tombstoning.
+    const existing = await queryFirst<{ call_number: string | null }>(
+      db, 'SELECT call_number FROM calls_for_service WHERE id = ?', id,
+    );
+    if (!existing) return c.json({ error: 'Call not found' }, 404);
+
+    // Tombstone on the 1:1 overflow table — never delete the base row or the
+    // linked persons/vehicles. INSERT OR IGNORE guarantees an ext row exists,
+    // then stamp deleted_at.
+    await execute(db, 'INSERT OR IGNORE INTO calls_for_service_ext (id) VALUES (?)', id);
+    await execute(db, "UPDATE calls_for_service_ext SET deleted_at = datetime('now') WHERE id = ?", id);
+
+    // Free any assigned units — the call leaves the board, so step on-call
+    // statuses back to 'available' (never override off_duty/busy/out_of_service)
+    // and clear current_call_id. Mirrors the terminal-status free-units logic.
+    await execute(db,
+      `UPDATE units SET status = CASE WHEN status IN ('dispatched','enroute','onscene') THEN 'available' ELSE status END,
+                        current_call_id = NULL, last_status_change = datetime('now'), updated_at = datetime('now')
+       WHERE current_call_id = ?`, id);
+
+    // Audit the deletion (entity_type/id match the audit-trail GET filter).
+    try {
+      await execute(
+        db,
+        `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, created_at)
+         VALUES (?, 'DELETE', 'call', ?, ?, datetime('now'))`,
+        user.id, String(id), `Soft-deleted call ${existing.call_number ?? `#${id}`}`,
+      );
+    } catch (auditErr) {
+      console.warn('audit_log insert failed for call delete:', auditErr);
+    }
+
     return c.json({ message: 'Call deleted' });
   } catch (err) {
     // Surface the real reason (FK name, missing table) instead of an opaque 500.
@@ -923,6 +994,32 @@ calls.post('/:id/status', async (c) => {
         `UPDATE units SET status = CASE WHEN status IN ('dispatched','enroute','onscene') THEN 'available' ELSE status END,
                           current_call_id = NULL, last_status_change = datetime('now'), updated_at = datetime('now')
          WHERE current_call_id = ?`, id);
+
+      // Cascade-resolve panic state. A panic alarm spawns a P1 officer_assist
+      // CAD call (call_number PAN-…, source 'panic') and flips the officer's
+      // unit into the flashing-red EMERGENCY overlay. Closing that call without
+      // this left the panic_alerts row 'active' (still nagging dispatchers via
+      // AlertHubDO) and the unit stuck emergent on the map. If this call is
+      // panic-sourced — by number prefix, incident type, or an attached
+      // panic_alerts row — resolve the alert and clear the overlay. Best-effort:
+      // never fail the status change on this.
+      try {
+        const callMeta = await queryFirst<{ call_number: string | null; incident_type: string | null }>(
+          db, 'SELECT call_number, incident_type FROM calls_for_service WHERE id = ?', id,
+        );
+        const hasPanicRow = await queryFirst<{ n: number }>(
+          db, 'SELECT 1 as n FROM panic_alerts WHERE call_id = ? LIMIT 1', id,
+        );
+        const isPanicCall =
+          (typeof callMeta?.call_number === 'string' && callMeta.call_number.startsWith('PAN-')) ||
+          callMeta?.incident_type === 'officer_assist' ||
+          hasPanicRow != null;
+        if (isPanicCall) {
+          await resolvePanicForCall(db, id);
+        }
+      } catch (panicErr) {
+        console.warn('[dispatch] panic cascade-resolve on terminal status failed (non-fatal):', panicErr);
+      }
     }
 
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);

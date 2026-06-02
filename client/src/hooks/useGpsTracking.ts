@@ -385,11 +385,29 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
     isSendingRef.current = true;
 
     try {
-      // Merge any previously failed points from localStorage
+      // Merge any previously failed points from localStorage with the live
+      // queue, deduping by (timestamp, lat, lng). The failover queue and the
+      // in-memory queue can hold the SAME breadcrumb after a failed send (the
+      // catch below persists `allPoints` to localStorage AND re-queues the
+      // in-memory points), so a naive concat would re-insert duplicates on
+      // reconnect — compounding the double-insert this audit (GPS-3) fixes.
       const failoverPoints = loadFailoverQueue();
       const currentPoints = [...queueRef.current]; // snapshot copy, not reference
-      const allPoints = [...failoverPoints, ...currentPoints];
-      if (allPoints.length === 0) return;
+      const seen = new Set<string>();
+      const dedupeKey = (p: QueuedPoint) => `${p.timestamp}|${p.lat}|${p.lng}`;
+      const allPoints: QueuedPoint[] = [];
+      for (const p of [...failoverPoints, ...currentPoints]) {
+        const k = dedupeKey(p);
+        if (seen.has(k)) continue;
+        seen.add(k);
+        allPoints.push(p);
+      }
+      if (allPoints.length === 0) {
+        // Nothing to send — but stale failover entries may linger if every
+        // point was a duplicate already covered in-memory. Leave them; the
+        // catch path owns failover persistence.
+        return;
+      }
 
       // Clear — new points arriving during await go into fresh array
       queueRef.current = [];
@@ -446,6 +464,11 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
   }, []);
 
   // ─── Send single position immediately (for first fix) ────
+  // The caller (ingestPosition / watchPosition) has ALREADY pushed `point` onto
+  // queueRef before invoking this. On a successful immediate POST we therefore
+  // must REMOVE that exact point from the queue, or the next sendBatch re-sends
+  // it — every breadcrumb would land in gps_breadcrumbs twice (Audit GPS-3).
+  // On failure we leave it queued (it's already there) so the batch retries it.
   const sendImmediate = useCallback(async (point: QueuedPoint) => {
     // Read-only consumer — never upload.
     if (!uploadRef.current) return;
@@ -457,14 +480,26 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
         method: 'POST',
         body: JSON.stringify({ points: [point], device_type: IS_DESKTOP ? 'desktop' : 'mobile' }),
       });
+      // Sent exactly once — drop this point from the batch queue so sendBatch
+      // doesn't re-POST the same breadcrumb. Identity match by reference (the
+      // queued object IS this object), with a (timestamp,lat,lng) fallback in
+      // case the queue was sliced/copied between push and send.
+      queueRef.current = queueRef.current.filter(
+        (p) => p !== point && !(p.timestamp === point.timestamp && p.lat === point.lat && p.lng === point.lng),
+      );
       setState((prev) => ({
         ...prev,
         lastSentAt: new Date().toISOString(),
         error: null,
       }));
     } catch (err) {
-      console.warn('[useGpsTracking] Immediate GPS send failed, queuing for next batch:', err);
-      queueRef.current.push(point);
+      // Leave the point in the queue (the caller already pushed it) so the next
+      // batch retries it. Only re-push if it somehow isn't present anymore.
+      console.warn('[useGpsTracking] Immediate GPS send failed, will retry in next batch:', err);
+      const stillQueued = queueRef.current.some(
+        (p) => p === point || (p.timestamp === point.timestamp && p.lat === point.lat && p.lng === point.lng),
+      );
+      if (!stillQueued) queueRef.current.push(point);
     }
   }, []);
 

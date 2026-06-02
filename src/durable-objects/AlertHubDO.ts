@@ -156,8 +156,16 @@ export class AlertHubDO {
     }
   }
 
-  // Worker route handlers call this (via /emit) to fan an officer-safety
-  // event to the whole fleet and drive the forced-ack lifecycle.
+  // Worker route handlers call this (via /emit) to fan an event to the whole
+  // fleet. Two classes of caller:
+  //   • Officer-safety (type:'panic_alert')  — fanned out AND driven through the
+  //     forced-ack lifecycle below (persist + re-broadcast until acknowledged).
+  //   • Lightweight live updates (e.g. type:'unit_position', action:'gps_update'
+  //     from src/routes/dispatch/gps.ts) — fanned out fire-and-forget; the
+  //     lifecycle block is skipped (the `body.type !== 'panic_alert'` early
+  //     return). This is how the map gets live unit-pin/heading movement without
+  //     waiting on the ~7s board poll, since the rewrite's own /api/ws socket map
+  //     is empty (the live /api/ws lives on the legacy worker).
   private async handleEmit(body: { type?: string; action?: string; panic_id?: number; data?: Record<string, unknown> }): Promise<void> {
     const frame = { type: body.type, ...(body.data || {}) };
     // Always fan the event out immediately.

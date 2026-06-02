@@ -209,6 +209,28 @@ function isSpeechAvailable(): boolean {
     && typeof SpeechSynthesisUtterance !== 'undefined';
 }
 
+/** Whether Edge (Aura-2 server) TTS is the active engine — true unless the
+ *  user explicitly chose 'browser'. Mirrors edgeTTS.isEdgeTTSEnabled() so we
+ *  don't eagerly import that module (it's dynamically imported in speakPhrase).
+ *  When true, speech plays via the server /api/tts pipeline and DOES NOT need
+ *  window.speechSynthesis. */
+function isEdgeTTSEnabled(): boolean {
+  try { return localStorage.getItem('rmpg-voice-engine') !== 'browser'; }
+  catch { return true; }
+}
+
+/**
+ * Whether ANY playback path can produce audio right now. The real pipeline is
+ * speakPhrase → edgeTTS.speak() (server Aura-2 over /api/tts); browser
+ * SpeechSynthesis is only a last-resort FALLBACK. Gating announcements on
+ * window.speechSynthesis (isSpeechAvailable) wrongly silenced EVERYTHING —
+ * including PANIC — on devices that lack Web Speech but where server TTS works
+ * fine (GPS-4). This passes when Edge TTS is enabled OR Web Speech exists.
+ */
+function isAudioAvailable(): boolean {
+  return isEdgeTTSEnabled() || isSpeechAvailable();
+}
+
 function isVoiceEnabled(): boolean {
   return localStorage.getItem('rmpg-sound') !== 'false'
     && localStorage.getItem(VOICE_ALERTS_KEY) !== 'false';
@@ -626,7 +648,7 @@ function buildSafetyFlagSummary(call: CallFlags): string {
  * delay and sequential speech internally.
  */
 export function announceScreeningAlerts(result: ScreeningResult): void {
-  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+  if (!isVoiceEnabled() || !isAudioAvailable()) return;
   if (!result.hasWarnings) return;
 
   // Build a dedup key from the person names in the result
@@ -654,7 +676,7 @@ export async function announceCallAlerts(call: CallFlags & {
   location?: string;
   location_address?: string;
 }): Promise<void> {
-  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+  if (!isVoiceEnabled() || !isAudioAvailable()) return;
 
   const flagSummary = buildSafetyFlagSummary(call);
   if (!flagSummary) return;
@@ -681,7 +703,7 @@ export async function announceCallAlerts(call: CallFlags & {
  * "PANIC ALERT. OFFICER NEEDS IMMEDIATE ASSISTANCE. Officer Smith, unit S19. All units respond."
  */
 export async function announcePanicAlert(officerName?: string, location?: string, callSign?: string): Promise<void> {
-  if (!isVoiceEnabled() || !isSpeechAvailable() || !isEventEnabled('panic')) return;
+  if (!isVoiceEnabled() || !isAudioAvailable() || !isEventEnabled('panic')) return;
 
   const dedupKey = `panic:${officerName || 'unknown'}`;
   if (wasRecentlyAnnounced(dedupKey)) return;
@@ -724,7 +746,7 @@ export async function announceDispatchEvent(call: CallFlags & {
   city?: string;
   assigned_units?: string[];
 }): Promise<void> {
-  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+  if (!isVoiceEnabled() || !isAudioAvailable()) return;
 
   const dedupKey = `dispatch:${call.id || 'unknown'}:${call.call_number || ''}`;
   if (wasRecentlyAnnounced(dedupKey)) return;
@@ -794,7 +816,7 @@ export async function announceNewCall(call: CallFlags & {
   city?: string;
   description?: string;
 }): Promise<void> {
-  if (!isVoiceEnabled() || !isSpeechAvailable() || !isEventEnabled('new_call')) return;
+  if (!isVoiceEnabled() || !isAudioAvailable() || !isEventEnabled('new_call')) return;
 
   const dedupKey = `newcall:${call.id || 'unknown'}:${call.call_number || ''}`;
   if (wasRecentlyAnnounced(dedupKey)) return;
@@ -856,7 +878,7 @@ export async function announceNewCall(call: CallFlags & {
  * "Unit S19, clear from call 26-CFS00110. Disposition: Personal Service."
  */
 export async function announceStatusChange(callOrSign: string | { call_sign?: string; call_number?: string; location?: string; location_address?: string; disposition?: string; assigned_units?: string[] }, newStatus: string): Promise<void> {
-  if (!isVoiceEnabled() || !isSpeechAvailable() || !isEventEnabled('status')) return;
+  if (!isVoiceEnabled() || !isAudioAvailable() || !isEventEnabled('status')) return;
 
   // Support both simple callSign string and rich call object
   let callSign: string;
@@ -904,7 +926,7 @@ export async function announceStatusChange(callOrSign: string | { call_sign?: st
  * "Unit S19, dispatched to call 26-CFS00110. PSO Client Request at 3392 Mockingbird Way."
  */
 export async function announceUnitDispatched(callOrSign: string | { call_sign?: string; call_number?: string; incident_type?: string; location?: string; location_address?: string; assigned_units?: string[] }, callNumberOrUnits?: string | string[]): Promise<void> {
-  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+  if (!isVoiceEnabled() || !isAudioAvailable()) return;
 
   let callSign: string;
   let callNumber: string | undefined;
@@ -951,7 +973,7 @@ export async function announceUnitDispatched(callOrSign: string | { call_sign?: 
  * "Attention all units. Be on the lookout. [Title]. [Description]. Use caution."
  */
 export async function announceBolo(title: string, priority?: string, details?: { description?: string; vehicle_description?: string; suspect_description?: string; last_seen_location?: string; call_number?: string }): Promise<void> {
-  if (!isVoiceEnabled() || !isSpeechAvailable() || !isEventEnabled('bolo')) return;
+  if (!isVoiceEnabled() || !isAudioAvailable() || !isEventEnabled('bolo')) return;
   const dedupKey = `bolo:${title}`;
   if (wasRecentlyAnnounced(dedupKey)) return;
   markAnnounced(dedupKey);
@@ -981,7 +1003,7 @@ export async function announceBolo(title: string, priority?: string, details?: {
 
 /** Announce warrant hit */
 export async function announceWarrantHit(data: { person_name?: string; warrant_count?: number }): Promise<void> {
-  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+  if (!isVoiceEnabled() || !isAudioAvailable()) return;
   const name = data.person_name || 'unknown subject';
   const dedupKey = `warrant:${name}`;
   if (wasRecentlyAnnounced(dedupKey)) return;
@@ -995,7 +1017,7 @@ export async function announceWarrantHit(data: { person_name?: string; warrant_c
 
 /** Announce backup request */
 export async function announceBackupRequest(data: { officer_name?: string; location?: string; call_number?: string }): Promise<void> {
-  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+  if (!isVoiceEnabled() || !isAudioAvailable()) return;
   const who = data.officer_name || 'unknown';
   const dedupKey = `backup:${who}`;
   if (wasRecentlyAnnounced(dedupKey)) return;
@@ -1009,7 +1031,7 @@ export async function announceBackupRequest(data: { officer_name?: string; locat
 
 /** Announce pursuit */
 export async function announcePursuit(data: { officer_name?: string; location?: string; direction?: string; speed?: string }): Promise<void> {
-  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+  if (!isVoiceEnabled() || !isAudioAvailable()) return;
   const who = data.officer_name || 'unknown unit';
   const dedupKey = `pursuit:${who}`;
   if (wasRecentlyAnnounced(dedupKey)) return;
@@ -1024,7 +1046,7 @@ export async function announcePursuit(data: { officer_name?: string; location?: 
 
 /** Announce all-units broadcast */
 export async function announceAllUnits(message: string): Promise<void> {
-  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+  if (!isVoiceEnabled() || !isAudioAvailable()) return;
   const dedupKey = `allunits:${message.slice(0, 50)}`;
   if (wasRecentlyAnnounced(dedupKey)) return;
   markAnnounced(dedupKey);
@@ -1041,7 +1063,7 @@ export async function announceAllUnits(message: string): Promise<void> {
  * Called from DispatchPage timer logic — no internal setInterval.
  */
 export async function announceStatusCheck(callSign: string, location: string, minutes: number): Promise<void> {
-  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+  if (!isVoiceEnabled() || !isAudioAvailable()) return;
 
   const dedupKey = `statuscheck:${callSign}:${Math.floor(minutes / 5)}`;
   if (wasRecentlyAnnounced(dedupKey)) return;
@@ -1060,7 +1082,7 @@ export async function announceStatusCheck(callSign: string, location: string, mi
  * "Advisory. Unit 5820 is within 500 meters of Unit S19's active call at Mockingbird Way."
  */
 export async function announceProximityAlert(unit1: string, unit2: string, location: string): Promise<void> {
-  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+  if (!isVoiceEnabled() || !isAudioAvailable()) return;
 
   const dedupKey = `proximity:${unit1}:${unit2}`;
   if (wasRecentlyAnnounced(dedupKey)) return;
@@ -1079,7 +1101,7 @@ export async function announceProximityAlert(unit1: string, unit2: string, locat
  * "Attention. Shift change in 30 minutes. Active calls: 2. Units on scene: 1."
  */
 export async function announceShiftReminder(minutesLeft: number, activeCalls: number, unitsOnScene: number): Promise<void> {
-  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+  if (!isVoiceEnabled() || !isAudioAvailable()) return;
 
   const dedupKey = `shiftreminder:${minutesLeft}`;
   if (wasRecentlyAnnounced(dedupKey)) return;
@@ -1098,7 +1120,7 @@ export async function announceShiftReminder(minutesLeft: number, activeCalls: nu
  * "Priority escalation. Call 26-CFS00110 upgraded from P3 to P1. Weapons now involved."
  */
 export async function announceEscalation(callNumber: string, oldPriority: string, newPriority: string, reason?: string): Promise<void> {
-  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+  if (!isVoiceEnabled() || !isAudioAvailable()) return;
 
   const dedupKey = `escalation:${callNumber}:${newPriority}`;
   if (wasRecentlyAnnounced(dedupKey)) return;
@@ -1123,7 +1145,7 @@ export async function announceEscalation(callNumber: string, oldPriority: string
  * "Backup requested. Unit S19 requesting backup at 3392 Mockingbird Way. All available units respond."
  */
 export async function announceBackupRequestEnhanced(unit: string, location: string): Promise<void> {
-  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+  if (!isVoiceEnabled() || !isAudioAvailable()) return;
 
   const dedupKey = `backupreq:${unit}`;
   if (wasRecentlyAnnounced(dedupKey)) return;
@@ -1145,7 +1167,7 @@ export async function announceBackupRequestEnhanced(unit: string, location: stri
  * "Update on call 26-CFS00110. New note added by Dispatch."
  */
 export async function announceCallUpdate(callNumber: string, updateType: string, author?: string): Promise<void> {
-  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+  if (!isVoiceEnabled() || !isAudioAvailable()) return;
 
   const dedupKey = `callupdate:${callNumber}:${updateType}`;
   if (wasRecentlyAnnounced(dedupKey)) return;
@@ -1161,7 +1183,7 @@ export async function announceCallUpdate(callNumber: string, updateType: string,
  * "Unit S19 assigned to call 26-CFS00110."
  */
 export async function announceUnitAssignment(unitCallSign: string, callNumber: string): Promise<void> {
-  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+  if (!isVoiceEnabled() || !isAudioAvailable()) return;
 
   const dedupKey = `unitassign:${unitCallSign}:${callNumber}`;
   if (wasRecentlyAnnounced(dedupKey)) return;
@@ -1180,7 +1202,7 @@ export async function announceUnitAssignment(unitCallSign: string, callNumber: s
  * "Call 26-CFS00110 archived. Disposition: Personal Service. Response time: 18 minutes."
  */
 export async function announceCallArchived(callNumber: string, disposition?: string, responseTimeMin?: number): Promise<void> {
-  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+  if (!isVoiceEnabled() || !isAudioAvailable()) return;
 
   const dedupKey = `archived:${callNumber}`;
   if (wasRecentlyAnnounced(dedupKey)) return;
@@ -1203,7 +1225,7 @@ export async function announceCallArchived(callNumber: string, disposition?: str
  * "The current time is 14 thirty hours."
  */
 export async function announceTime(): Promise<void> {
-  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+  if (!isVoiceEnabled() || !isAudioAvailable()) return;
 
   const now = new Date();
   const h = now.getHours();
@@ -1220,7 +1242,7 @@ export async function announceTime(): Promise<void> {
  * "All clear. Call 26-CFS00110. Scene is secure."
  */
 export async function announceAllClear(callNumber: string): Promise<void> {
-  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+  if (!isVoiceEnabled() || !isAudioAvailable()) return;
 
   const dedupKey = `allclear:${callNumber}`;
   if (wasRecentlyAnnounced(dedupKey)) return;
@@ -1236,7 +1258,7 @@ export async function announceAllClear(callNumber: string): Promise<void> {
  * Just plays the info tone with a short "Copy" phrase.
  */
 export async function announceAcknowledgment(): Promise<void> {
-  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+  if (!isVoiceEnabled() || !isAudioAvailable()) return;
   await playToneAsync('info');
   await delay(100);
   await playToneAsync('info');
@@ -1249,7 +1271,7 @@ export async function announceAcknowledgment(): Promise<void> {
  * "Return visit scheduled. Call 26-CFS00110 queued for second attempt. Next window: 6PM to 9PM."
  */
 export async function announceReturnVisit(callNumber: string, attemptNumber: number, nextWindow?: string): Promise<void> {
-  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+  if (!isVoiceEnabled() || !isAudioAvailable()) return;
 
   const dedupKey = `returnvisit:${callNumber}:${attemptNumber}`;
   if (wasRecentlyAnnounced(dedupKey)) return;
@@ -1273,7 +1295,7 @@ export async function announceReturnVisit(callNumber: string, attemptNumber: num
  * "Service complete. Personal service on Alexis Sanchez at 3392 Mockingbird Way. Documents: Summons and Complaint. Attempt 1 of 3."
  */
 export async function announceServeComplete(name: string, address: string, docType: string, attempt: number, result: string): Promise<void> {
-  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+  if (!isVoiceEnabled() || !isAudioAvailable()) return;
 
   const dedupKey = `servecomplete:${name}:${attempt}`;
   if (wasRecentlyAnnounced(dedupKey)) return;
@@ -1297,7 +1319,7 @@ export async function announceServeComplete(name: string, address: string, docTy
  * "Advisory. 3 calls stacked at 15 South West Temple. Units S19, 5820 assigned."
  */
 export async function announceCallStack(count: number, address: string, units: string[]): Promise<void> {
-  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+  if (!isVoiceEnabled() || !isAudioAvailable()) return;
 
   const dedupKey = `callstack:${address}:${count}`;
   if (wasRecentlyAnnounced(dedupKey)) return;
@@ -1320,7 +1342,7 @@ export async function announceCallStack(count: number, address: string, units: s
  * "Speed advisory. Unit S19 traveling at 78 miles per hour on Interstate 15."
  */
 export async function announceSpeedAdvisory(callSign: string, speed: number, road?: string): Promise<void> {
-  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+  if (!isVoiceEnabled() || !isAudioAvailable()) return;
 
   const dedupKey = `speed:${callSign}:${Math.floor(speed / 10)}`;
   if (wasRecentlyAnnounced(dedupKey)) return;
@@ -1340,7 +1362,7 @@ export async function announceSpeedAdvisory(callSign: string, speed: number, roa
  * "Reminder. Serve deadline for case 2:25-CV-01053 expires in 4 hours. Property: Alexis Sanchez."
  */
 export async function announceCourtDeadline(caseNumber: string, hoursRemaining: number, property?: string): Promise<void> {
-  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+  if (!isVoiceEnabled() || !isAudioAvailable()) return;
 
   const dedupKey = `deadline:${caseNumber}:${Math.floor(hoursRemaining)}`;
   if (wasRecentlyAnnounced(dedupKey)) return;
@@ -1367,7 +1389,7 @@ export async function announceCourtDeadline(caseNumber: string, hoursRemaining: 
  * "Shift summary. 8 calls handled. 6 serves completed. 2 pending. Average response: 14 minutes. Total miles: 42.3."
  */
 export async function announceShiftSummary(stats: { calls: number; serves: number; pending: number; avgResponse: number; totalMiles: number }): Promise<void> {
-  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+  if (!isVoiceEnabled() || !isAudioAvailable()) return;
 
   const dedupKey = `shiftsummary:${Date.now()}`;
   markAnnounced(dedupKey);
@@ -1387,7 +1409,7 @@ export async function announceShiftSummary(stats: { calls: number; serves: numbe
  * "Attention Unit S19. Note from Dispatch on call 26-CFS00110: Please check rear entrance."
  */
 export async function announceDirectedNote(targetUnit: string, callNumber: string, noteText: string, author?: string): Promise<void> {
-  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+  if (!isVoiceEnabled() || !isAudioAvailable()) return;
 
   const dedupKey = `directednote:${targetUnit}:${callNumber}:${noteText.slice(0, 30)}`;
   if (wasRecentlyAnnounced(dedupKey)) return;
@@ -1409,7 +1431,7 @@ export async function announceDirectedNote(targetUnit: string, callNumber: strin
  * These fire only for the local user's own actions (not from WebSocket).
  */
 export async function announceLocalAction(actionType: 'call_created' | 'unit_dispatched' | 'call_closed' | 'note_added', detail: string): Promise<void> {
-  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+  if (!isVoiceEnabled() || !isAudioAvailable()) return;
 
   // No dedup for local actions — they are always intentional
   if (actionType === 'call_created') {
@@ -1546,8 +1568,11 @@ export const VOICE_ALERT_CATALOG = {
  * Groups are separated by a different tone type.
  */
 export async function demoAllVoiceAlerts(): Promise<void> {
-  if (!isSpeechAvailable()) {
-    console.warn('[VoiceAlerts] SpeechSynthesis not available');
+  // Demo routes through speakPhrase → Edge TTS (server), so gate on any audio
+  // path, not just Web Speech (GPS-4) — otherwise the demo is silent on
+  // Edge-only devices even though every real announcement would play.
+  if (!isAudioAvailable()) {
+    console.warn('[VoiceAlerts] No audio output available (Edge TTS disabled and SpeechSynthesis missing)');
     return;
   }
 

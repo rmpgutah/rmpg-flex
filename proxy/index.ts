@@ -607,6 +607,27 @@ const API_ROUTES: RouteRule[] = [
   // env.API. /api/geocode/search stays on its existing path.
   { kind: 'regex', value: /^\/api\/geocode\/reverse(\?|$)/, methods: ['GET'] },
 
+  // ── Dispatch GPS breadcrumb write + reads (src/routes/dispatch/gps.ts) ──
+  // POST /api/dispatch/gps was NEVER routed here, so the unit-GPS ping fell
+  // through to env.LEGACY. The legacy handler (a) stamps units.gps_updated_at
+  // as Denver wall-clock mislabeled "+00:00" — i.e. ~6h in the past, so the
+  // dispatch board flags EVERY live unit as "GPS LOST" — and (b) never writes
+  // units.gps_heading / units.gps_speed (columns added in migration 0065), so
+  // the map nav-cursor arrow is stuck pointing north with no speed. The rewrite
+  // handler writes datetime('now') (UTC) AND mirrors heading/speed onto the
+  // unit row, fixing both. Route ONLY the three paths the rewrite implements:
+  //   POST /api/dispatch/gps           (breadcrumb write — the bug)
+  //   GET  /api/dispatch/gps/current   (latest position per unit)
+  //   GET  /api/dispatch/gps/my-unit   (caller's own unit row)
+  // The bare path is POST-only (the rewrite has no GET '/' handler) and the
+  // GET sub-paths are anchored to (current|my-unit). This deliberately does
+  // NOT match /api/dispatch/gps/speed-zones or /api/dispatch/gps/zone-speed-stats
+  // (both are STUBbed above and have no rewrite handler — routing them to
+  // env.API would 404). STUBS are evaluated before API_ROUTES, so those two are
+  // already short-circuited, but the tight anchors keep this rule honest.
+  { kind: 'regex', value: /^\/api\/dispatch\/gps\/?(\?.*)?$/, methods: ['POST'] },
+  { kind: 'regex', value: /^\/api\/dispatch\/gps\/(current|my-unit)(\?.*)?$/, methods: ['GET'] },
+
   // /api/dispatch/heatmap/enforcement — enforcement-activity clusters for the
   // Map "Enforcement" overlay (src/routes/dispatch/aggregates.ts). Legacy has
   // NO handler for it, so it fell through to env.LEGACY and 404'd (console
