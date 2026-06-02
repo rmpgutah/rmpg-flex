@@ -234,7 +234,13 @@
 //       neither centered nor zoomed to the address and the pin landed
 //       off-screen. Now a single flyTo({center,zoom:17}) pans+zooms as one
 //       move, bringing the gold search pin into view.
-const CACHE_NAME = 'rmpg-flex-v692';
+// v693: Geography overlay redesign — Area/Section/Zone/Beat now render as
+//       blended COLOR COVERAGE fills (their own boundary outlines removed),
+//       selectable one at a time or all together; County + Municipality
+//       become OUTLINE-ONLY neutral reference lines lifted above the
+//       coverage (fills killed). Boundary lines + level labels z-ordered on
+//       top of the fills.
+const CACHE_NAME = 'rmpg-flex-v693';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
