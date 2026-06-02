@@ -92,6 +92,7 @@ import type { MapUnit as Unit, ActiveCall, MapProperty as Property, MapStyleId }
 import { whenStyleReady } from './utils/safeAddSource';
 import { UNIT_STATUS_COLORS, UNIT_STATUS_LABELS, PRIORITY_COLORS, MAP_STYLE_LABELS, MAP_STYLE_DESCRIPTIONS, getIncidentCategory, isLightMapStyle, isSatelliteStyle } from './utils/mapConstants';
 import { buildUnitMarkerContent, buildIncidentMarkerContent, buildPropertyMarkerContent, buildSelfPositionMarker, injectKeyframes } from './utils/mapMarkerBuilders';
+import { roadLegendRows, propertyLegendRows } from './utils/landTypes';
 import { useMapPredictions } from './hooks/useMapPredictions';
 import { useMapIntelLayers } from './hooks/useMapIntelLayers';
 import { useMapClustering } from './hooks/useMapClustering';
@@ -195,6 +196,13 @@ const statusToColor = (status: string): string => {
     default:           return '#666666';
   }
 };
+
+// Left offset that clears the OPEN "Layers" panel. The panel is at left-4
+// (16px) with width clamp(208px,15vw,248px); floating panels docked to its
+// right share this so they can't drift from the panel's real width (the old
+// hardcoded clamp(160px,14vw,200px) under-shot it, tucking the legend +
+// search row underneath the panel and clipping their left edge).
+const LAYERS_PANEL_CLEAR_LEFT = 'calc(16px + clamp(208px, 15vw, 248px) + 8px)';
 
 // ============================================================
 // Main Component
@@ -544,16 +552,23 @@ export default function MapPage() {
   }, [choroLevel, choroSource]);
   const { measureResult, clearMeasure } = useMapMeasureDraw({ map: mapInstanceRef.current, mode: measureMode });
 
-  // Layer-visibility memory: persist which Statewide / hierarchy layers are on
-  // and restore them once the map is ready, so the operator's overlay setup
-  // survives a reload. Wrappers keep the persisted set in sync on each toggle.
-  const [savedStatewide, setSavedStatewide] = usePersistedState<string[]>('rmpg_statewide_on', []);
+  // Layer-visibility memory: persist the operator's overlay setup so it survives
+  // a reload. Hierarchy layers default OFF, so an "on-set" (list of ids turned
+  // on) models them correctly. Statewide layers are ALWAYS-ON by default in
+  // useVectorTileLayers, so an on-set can't represent "the operator turned this
+  // OFF" — turning a layer off would add it to the set and the restore could
+  // only ever turn layers back ON, so off never survived a reload. Statewide
+  // therefore persists an explicit visibility MAP (id → bool); a missing key
+  // means "never touched, keep the always-on default". New key so any stale
+  // string[] from the old model is simply ignored.
+  const [savedStatewideVis, setSavedStatewideVis] = usePersistedState<Record<string, boolean>>('rmpg_statewide_vis', {});
   const [savedHier, setSavedHier] = usePersistedState<string[]>('rmpg_hier_on', []);
   const restoredOverlaysRef = useRef(false);
   const handleToggleStatewide = useCallback((id: string) => {
+    const nextVisible = !vectorLayerStates[id]?.visible;
     toggleVectorLayer(id);
-    setSavedStatewide((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
-  }, [toggleVectorLayer, setSavedStatewide]);
+    setSavedStatewideVis((prev) => ({ ...prev, [id]: nextVisible }));
+  }, [toggleVectorLayer, setSavedStatewideVis, vectorLayerStates]);
   const handleToggleHier = useCallback((id: string) => {
     toggleHierarchyLayer(id as any);
     setSavedHier((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
@@ -561,7 +576,13 @@ export default function MapPage() {
   useEffect(() => {
     if (restoredOverlaysRef.current || !mapLoaded) return;
     restoredOverlaysRef.current = true;
-    for (const id of savedStatewide) if (!vectorLayerStates[id]?.visible) toggleVectorLayer(id);
+    // Reconcile each statewide layer to the operator's saved choice (both ON and
+    // OFF), so an explicit OFF persists. Untouched layers keep their default.
+    for (const cfg of vectorConfigs) {
+      const desired = savedStatewideVis[cfg.id];
+      if (desired === undefined) continue;
+      if (desired !== !!vectorLayerStates[cfg.id]?.visible) toggleVectorLayer(cfg.id);
+    }
     for (const id of savedHier) if (!hierarchyStates[id]?.visible) toggleHierarchyLayer(id as any);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapLoaded]);
@@ -4238,25 +4259,29 @@ export default function MapPage() {
                       </button>
                     );
                   })}
-                  {/* Statewide legend (first-class overlay integration) */}
+                  {/* Statewide legend — driven from the SHARED taxonomy
+                      (roadLegendRows / propertyLegendRows in landTypes) so the
+                      swatches always match the colors the map actually renders.
+                      The old hardcoded list had drifted (e.g. labeled #d4a017
+                      "Local" when the map paints that as "Major Road"). */}
                   {(vectorLayerStates['utah_roads']?.visible || vectorLayerStates['utah_addresses']?.visible) && (
                     <div className="px-2 pt-1 mt-0.5 border-t border-[#1a1a1a] space-y-0.5">
                       {vectorLayerStates['utah_roads']?.visible && (
                         <div className="flex items-center gap-1.5 flex-wrap">
-                          {[['Interstate', '#ef4444'], ['US Hwy', '#f59e0b'], ['State', '#e8b84b'], ['Local', '#d4a017']].map(([lbl, c]) => (
-                            <span key={lbl} className="flex items-center gap-1">
-                              <span className="inline-block w-3 h-0.5" style={{ background: c }} />
-                              <span className="text-[8px] text-rmpg-400">{lbl}</span>
+                          {roadLegendRows().map(({ label, color }) => (
+                            <span key={label} className="flex items-center gap-1">
+                              <span className="inline-block w-3 h-0.5" style={{ background: color }} />
+                              <span className="text-[8px] text-rmpg-400">{label}</span>
                             </span>
                           ))}
                         </div>
                       )}
                       {vectorLayerStates['utah_addresses']?.visible && (
                         <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                          {[['Residential', '#22c55e'], ['Commercial', '#f59e0b'], ['Industrial', '#ef4444'], ['Agric.', '#84cc16'], ['Mixed', '#14b8a6'], ['Other', '#e8b84b']].map(([l, c]) => (
-                            <span key={l} className="flex items-center gap-1">
-                              <span className="inline-block w-2 h-2 rounded-full" style={{ background: c, border: '1px solid #1a1a1a' }} />
-                              <span className="text-[8px] text-rmpg-400">{l}</span>
+                          {propertyLegendRows().map(({ code, label, color }) => (
+                            <span key={code} className="flex items-center gap-1" title={`${code} · ${label}`}>
+                              <span className="inline-block w-2 h-2 rounded-full" style={{ background: color, border: '1px solid #1a1a1a' }} />
+                              <span className="text-[8px] text-rmpg-400">{label}</span>
                             </span>
                           ))}
                         </div>
@@ -5007,7 +5032,7 @@ export default function MapPage() {
 
         {/* ── Predictions Panel (floating, desktop only) ── */}
         {!isMobile && showPredictions && (
-          <div className="absolute top-4 z-[1001]" style={{ left: layersPanelOpen ? 'calc(clamp(160px, 14vw, 200px) + 24px)' : 52 }}>
+          <div className="absolute top-4 z-[1001]" style={{ left: layersPanelOpen ? LAYERS_PANEL_CLEAR_LEFT : 52 }}>
             <PredictionsPanel
               hotspots={predictions.hotspots}
               loading={predictions.loading}
@@ -5145,7 +5170,7 @@ export default function MapPage() {
         {/* ── Stats Bar - Top Left (after layers panel, desktop only) ── */}
         {!isMobile && <div
           className="absolute top-2 z-[1000] transition-all"
-          style={{ left: layersPanelOpen ? 'calc(clamp(160px, 14vw, 200px) + 24px)' : 52 }}
+          style={{ left: layersPanelOpen ? LAYERS_PANEL_CLEAR_LEFT : 52 }}
         >
           <div
             className="backdrop-blur-md shadow-md"
@@ -5228,7 +5253,7 @@ export default function MapPage() {
             categorical={hierLegend}
             isLight={isLightMapStyle(mapStyle)}
             bottomPx={activeRoute ? 132 : 28}
-            leftCss={layersPanelOpen ? 'calc(clamp(160px, 14vw, 200px) + 24px)' : '12px'}
+            leftCss={layersPanelOpen ? LAYERS_PANEL_CLEAR_LEFT : '12px'}
           />
         )}
 
@@ -5238,7 +5263,7 @@ export default function MapPage() {
             style={{
               ...(isMobile
                 ? { top: 56, left: 8, right: 8 }
-                : { bottom: 48, left: layersPanelOpen ? 'calc(clamp(160px, 14vw, 200px) + 24px)' : 16, minWidth: 200 }),
+                : { bottom: 48, left: layersPanelOpen ? LAYERS_PANEL_CLEAR_LEFT : 16, minWidth: 200 }),
               background: isLightMapStyle(mapStyle) ? 'rgba(255,255,255,0.92)' : 'rgba(10,10,10,0.95)',
               border: isLightMapStyle(mapStyle) ? '1px solid rgba(136, 136, 136,0.3)' : '1px solid #88888850',
               padding: '8px 14px',
