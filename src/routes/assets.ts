@@ -306,7 +306,8 @@ assets.get('/stats', async (c) => {
   try {
     const db = getDb(c.env);
     const assetTable = await queryFirst<{ n: number }>(db, "SELECT COUNT(*) as n FROM sqlite_master WHERE type='table' AND name='asset_inventory'");
-    if (!assetTable?.n) return c.json({ total_assets: 0, assigned_assets: 0, available_assets: 0, total_weapons: 0, total_ammo: 0, active_k9: 0 });
+    // Match the happy-path camelCase keys the client reads (was snake_case → tiles blank).
+    if (!assetTable?.n) return c.json({ totalAssets: 0, issuedAssets: 0, totalWeapons: 0, activeK9: 0 });
     const totalAssets = (await queryFirst<{ count: number }>(db, 'SELECT COUNT(*) as count FROM asset_inventory'))?.count ?? 0;
     const issuedAssets = (await queryFirst<{ count: number }>(db, "SELECT COUNT(*) as count FROM asset_inventory WHERE status = 'issued'"))?.count ?? 0;
     const totalWeapons = (await queryFirst<{ count: number }>(db, 'SELECT COUNT(*) as count FROM weapon_inventory'))?.count ?? 0;

@@ -325,12 +325,34 @@ pt.get('/shift-summary', async (c) => {
        ORDER BY s.scanned_at ASC`,
     officerId, date,
   );
-  const breaks = await query(
+  const breaks = await query<any>(
     db,
     `SELECT * FROM patrol_breaks WHERE officer_id = ? AND shift_date = ? ORDER BY break_start ASC`,
     officerId, date,
   );
-  return c.json({ officer_id: officerId, date, scans, breaks, scan_count: scans.length });
+  // Derived fields the Shift Summary panel renders. Scan-based counts are exact;
+  // break minutes are summed from duration_minutes (or break_start/end diff).
+  const scans_total = scans.length;
+  const scans_on_time = scans.filter((s: any) => s.status === 'on_time').length;
+  const scans_late = scans.filter((s: any) => s.status === 'late').length;
+  let total_break_minutes = 0;
+  for (const b of breaks) {
+    if (b.duration_minutes != null) {
+      total_break_minutes += Number(b.duration_minutes) || 0;
+    } else if (b.break_start && b.break_end) {
+      const ms = new Date(b.break_end).getTime() - new Date(b.break_start).getTime();
+      if (ms > 0) total_break_minutes += Math.round(ms / 60000);
+    }
+  }
+  const properties_visited = Array.from(new Set(scans.map((s: any) => s.property_id).filter(Boolean)));
+  return c.json({
+    officer_id: officerId, date, scans, breaks, scan_count: scans.length,
+    scans_total, scans_on_time, scans_late, total_break_minutes,
+    properties_visited,
+    // Not yet computed server-side — surfaced as 0 so the panel renders cleanly
+    // rather than showing blanks (tracked as a follow-up enrichment).
+    incidents_count: 0, estimated_mileage: 0,
+  });
 });
 
 // ─────────────────────────────────────────────────────────────

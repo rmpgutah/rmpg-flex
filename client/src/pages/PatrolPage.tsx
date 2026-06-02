@@ -34,6 +34,7 @@ import { safeDateStr, safeTimeStr, parseTimestamp } from '../utils/dateUtils';
 import { initMapbox, mapboxgl, MAPBOX_STYLE_DARK, registerMapInstance, unregisterMapInstance } from '../utils/mapboxLoader';
 import { getMapboxAccessToken } from '../utils/mapboxApiKey';
 import { useToast } from '../components/ToastProvider';
+import { useAuth } from '../context/AuthContext';
 import { useFormDraft } from '../hooks/useFormDraft';
 import UnsavedChangesGuard from '../components/UnsavedChangesGuard';
 import FloatingSaveBar from '../components/FloatingSaveBar';
@@ -230,6 +231,7 @@ function PatrolMapView({ checkpoints, scans }: { checkpoints: Checkpoint[]; scan
 const PatrolPage: React.FC = () => {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
+  const { user } = useAuth();
 
   // Set document title
   useEffect(() => { document.title = 'Patrol Tracking \u2014 RMPG Flex'; }, []);
@@ -276,8 +278,9 @@ const PatrolPage: React.FC = () => {
   const [efficiency, setEfficiency] = useState<any>(null);
 
   const loadShiftSummary = async () => {
+    if (!user?.id) return; // handler requires officer_id, else 400
     try {
-      const data = await apiFetch<any>('/patrol/shift-summary');
+      const data = await apiFetch<any>(`/patrol/shift-summary?officer_id=${user.id}`);
       setShiftSummary(data);
     } catch { /* ignore */ }
   };
@@ -369,10 +372,11 @@ const PatrolPage: React.FC = () => {
   const loadScans = async () => {
     try {
       const params = new URLSearchParams();
-      if (scanFilters.checkpointId) params.append('checkpointId', scanFilters.checkpointId);
-      if (scanFilters.officerId) params.append('officerId', scanFilters.officerId);
-      if (scanFilters.startDate) params.append('startDate', scanFilters.startDate);
-      if (scanFilters.endDate) params.append('endDate', scanFilters.endDate);
+      // Handler reads snake_case (checkpoint_id/officer_id/from/to), not camelCase.
+      if (scanFilters.checkpointId) params.append('checkpoint_id', scanFilters.checkpointId);
+      if (scanFilters.officerId) params.append('officer_id', scanFilters.officerId);
+      if (scanFilters.startDate) params.append('from', scanFilters.startDate);
+      if (scanFilters.endDate) params.append('to', scanFilters.endDate);
 
       const data = await apiFetch<Scan[]>(`/patrol/scans?${params.toString()}`);
       setScans(data || []);
@@ -383,8 +387,9 @@ const PatrolPage: React.FC = () => {
 
   const loadCompliance = async () => {
     try {
-      const data = await apiFetch<Compliance[]>('/patrol/compliance');
-      setCompliance(data || []);
+      // Handler returns { days, checkpoints: [...] }, not a bare array.
+      const data = await apiFetch<{ days: number; checkpoints: Compliance[] }>('/patrol/compliance');
+      setCompliance(data?.checkpoints || []);
     } catch {
       setCompliance([]);
     }

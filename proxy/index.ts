@@ -122,20 +122,20 @@ const STUBS: StubRule[] = [
     body: { configured: false, last_sync: null },
     reason: 'no /api/iped mount in new worker',
   },
-  {
-    match: /^\/api\/iped\/hash-sets(\?.*)?$/,
-    methods: ['GET'],
-    body: [],
-    reason: 'no /api/iped mount in new worker',
-  },
+  // /api/iped/hash-sets stub REMOVED 2026-06-01: iped.ts GET /hash-sets now
+  // serves real rows from forensic_hash_sets (returns { sets:[...] }) and is
+  // routed to env.API. The stub was shadowing it → page showed no hash sets.
   // (2026-05-29 audit) Removed shadowing stubs for personnel /schedules,
   // /time, /deployments, /coverage-gaps (real handlers in personnel.ts over
   // shift_plans/time_entries/deployments/system_config) and reports
   // /incidents-summary, /crime-trends, /beat-activity, /citation-revenue
   // (real handlers in reports.ts; columns verified on live D1).
-  // /reports/schedules, /templates, /statute-analytics stubs KEPT below
-  // (schedules/templates return [] from a placeholder; statute-analytics'
-  // handler fix ships via deploy.yml — un-stub only after it lands).
+  // /reports/schedules, /templates stubs KEPT below (no handler yet —
+  // return [] from a placeholder). The /statute-analytics stub was REMOVED
+  // 2026-06-01: reports.ts GET /statute-analytics now serves it (aggregates
+  // over citations + utah_statutes, wrapped in try/catch) and is routed to
+  // env.API via API_ROUTES — the stub was shadowing it and forcing the
+  // Statute Analytics page permanently empty.
   {
     match: /^\/api\/reports\/schedules(\?.*)?$/,
     methods: ['GET'],
@@ -147,12 +147,6 @@ const STUBS: StubRule[] = [
     methods: ['GET'],
     body: [],
     reason: 'no /templates in stubs router',
-  },
-  {
-    match: /^\/api\/reports\/statute-analytics(\?.*)?$/,
-    methods: ['GET'],
-    body: { top_statutes: [], by_category: [] },
-    reason: 'no /statute-analytics in stubs router',
   },
   // ── Surfaces flagged in 2026-05-27 second-pass console log ────
   // (PR #667 was still open / unmerged when the user opened these pages.
@@ -170,15 +164,10 @@ const STUBS: StubRule[] = [
   // src/routes/crm.ts now serves real data. The fake-data stubs that used to
   // sit here were DELETED — leaving them would shadow the real handlers
   // (STUBS are checked before API_ROUTES). /api/crm now routes to env.API.
-  // /records/reports/approval-queue — ReportsPage opens this on mount.
-  // Was previously routed to env.API via the proxy (line ~152) but no
-  // handler exists in /src/routes/records.ts for /reports/approval-queue.
-  {
-    match: /^\/api\/records\/reports\/approval-queue(\?.*)?$/,
-    methods: ['GET'],
-    body: [],
-    reason: 'no approval-queue handler in /src/',
-  },
+  // /records/reports/approval-queue — ReportsPage 'Pending Approvals' tab.
+  // STUB REMOVED 2026-06-01: records.ts GET /reports/approval-queue now exists
+  // (try/catch-safe, returns [] on error) and is routed to env.API via
+  // API_ROUTES. The stub was shadowing it and forcing the tab permanently empty.
   //
   // ── 2026-05-27 batch — silence broken pages until real handlers land ──
   // Each of the entries below was sourced from a single prod console log
@@ -901,6 +890,12 @@ const API_ROUTES: RouteRule[] = [
   { kind: 'prefix', value: '/api/special-ops' },
   { kind: 'prefix', value: '/api/tasks' },
   { kind: 'prefix', value: '/api/training' },
+  // /api/voice/* HTTP endpoints (POST /dialogue, POST /read-aloud) are NEW
+  // rewrite handlers in src/routes/voice.ts — legacy 404s on them. The TRAILING
+  // SLASH is load-bearing: it routes /api/voice/dialogue + /api/voice/read-aloud
+  // to env.API while NOT matching /api/voice-ws (the realtime VoiceHubDO socket,
+  // which the client connects to directly and is handled ahead of this).
+  { kind: 'prefix', value: '/api/voice/' },
   // Comms BOLOs + message priority stats (legacy has /comms/messages
   // and /comms/bolos/active via stubs; the specific stats paths are new)
   { kind: 'prefix', value: '/api/comms/bolos' },

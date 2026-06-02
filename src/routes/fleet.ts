@@ -879,12 +879,32 @@ fleet.delete('/maintenance/:id', async (c) => {
 // SUB-RESOURCE: INSPECTIONS (Features 30-39)
 // ═══════════════════════════════════════════════════════════════
 
+// Normalize a fleet_inspections row to the shape the client expects:
+//  - mileage          <- mileage_at_inspection (numeric)
+//  - inspector_name   <- inspector (the typed name)
+//  - inspection_type  defaulted so TYPE_BADGE never indexes undefined (old rows)
+//  - items[]          <- parsed `checklist` JSON
+function mapInspectionRow(row: Record<string, unknown> | null): Record<string, unknown> | null {
+  if (!row) return row;
+  let items: unknown = [];
+  if (typeof row.checklist === 'string' && row.checklist) {
+    try { items = JSON.parse(row.checklist as string); } catch { items = []; }
+  }
+  return {
+    ...row,
+    mileage: row.mileage_at_inspection ?? null,
+    inspector_name: row.inspector ?? null,
+    inspection_type: row.inspection_type ?? 'pre_trip',
+    items,
+  };
+}
+
 fleet.get('/:id/inspections', async (c) => {
   try {
     const vehicleId = Number(c.req.param('id'));
     if (!Number.isInteger(vehicleId) || vehicleId <= 0) return c.json({ error: 'Invalid vehicle id' }, 400);
     const rows = await query<Record<string, unknown>>(getDb(c.env), 'SELECT * FROM fleet_inspections WHERE vehicle_id = ? ORDER BY inspection_date DESC', vehicleId);
-    return c.json(rows);
+    return c.json(rows.map((r) => mapInspectionRow(r)));
   } catch (err) { console.error('GET /fleet/:id/inspections failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
 });
 
@@ -896,9 +916,20 @@ fleet.post('/:id/inspections', async (c) => {
     const body = await c.req.json<Record<string, unknown>>();
     if (!body.inspection_date) return c.json({ error: 'inspection_date required' }, 400);
     const inspectorId = (c.get('user') as { id: number } | undefined)?.id;
-    const result = await execute(db, `INSERT INTO fleet_inspections (vehicle_id, inspection_date, overall_result, inspector_id, mileage_at_inspection, notes) VALUES (?,?,?,?,?,?)`, vehicleId, body.inspection_date, body.overall_result ?? 'pass', inspectorId ?? null, body.mileage_at_inspection ?? null, body.notes ?? null);
+    // Accept the client's field names: mileage->mileage_at_inspection,
+    // inspector_name->inspector, items[]->checklist(JSON), plus inspection_type.
+    const mileage = body.mileage_at_inspection ?? body.mileage ?? null;
+    const checklist = Array.isArray(body.items) ? JSON.stringify(body.items) : (body.checklist ?? null);
+    const result = await execute(
+      db,
+      `INSERT INTO fleet_inspections
+         (vehicle_id, inspection_date, inspection_type, overall_result, inspector_id, inspector, mileage_at_inspection, checklist, notes)
+       VALUES (?,?,?,?,?,?,?,?,?)`,
+      vehicleId, body.inspection_date, body.inspection_type ?? null, body.overall_result ?? 'pass',
+      inspectorId ?? null, body.inspector_name ?? null, mileage, checklist, body.notes ?? null,
+    );
     const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_inspections WHERE id = ?', result.meta.last_row_id);
-    return c.json(created, 201);
+    return c.json(mapInspectionRow(created), 201);
   } catch (err) { console.error('POST /fleet/:id/inspections failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
 });
 
@@ -908,14 +939,18 @@ fleet.put('/inspections/:id', async (c) => {
     if (!Number.isInteger(id) || id <= 0) return c.json({ error: 'Invalid inspection id' }, 400);
     const db = getDb(c.env);
     const body = await c.req.json<Record<string, unknown>>();
-    const cols = ['inspection_date', 'overall_result', 'mileage_at_inspection', 'notes'];
+    // Normalize client field names -> live columns before building the UPDATE.
+    if (body.mileage !== undefined && body.mileage_at_inspection === undefined) body.mileage_at_inspection = body.mileage;
+    if (body.inspector_name !== undefined && body.inspector === undefined) body.inspector = body.inspector_name;
+    if (Array.isArray(body.items) && body.checklist === undefined) body.checklist = JSON.stringify(body.items);
+    const cols = ['inspection_date', 'inspection_type', 'overall_result', 'inspector', 'mileage_at_inspection', 'checklist', 'notes'];
     const setCols: string[] = []; const bindings: unknown[] = [];
     for (const key of cols) { if (Object.prototype.hasOwnProperty.call(body, key)) { setCols.push(`${key} = ?`); bindings.push(body[key] === '' ? null : body[key]); } }
     if (setCols.length === 0) return c.json({ error: 'No fields to update' }, 400);
     bindings.push(id);
     await execute(db, `UPDATE fleet_inspections SET ${setCols.join(', ')} WHERE id = ?`, ...bindings);
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_inspections WHERE id = ?', id);
-    return c.json(updated);
+    return c.json(mapInspectionRow(updated));
   } catch (err) { console.error('PUT /fleet/inspections/:id failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
 });
 

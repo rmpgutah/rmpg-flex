@@ -39,16 +39,27 @@ offenderRegistry.get('/stats', async (c) => {
       SELECT COALESCE(severity, 'unknown') AS severity, COUNT(*) AS count
       FROM offender_alerts GROUP BY severity ORDER BY count DESC
     `);
+    // OffenderRegistryPage reads by_severity.<key> (an object), total_alerts,
+    // total_persons and expiring_soon — none of which the array shape provided,
+    // so every stat tile showed 0.
+    const bySeverityMap: Record<string, number> = {};
+    for (const r of bySeverity) bySeverityMap[String(r.severity)] = Number(r.count) || 0;
+    const personsRow = await queryFirst<{ n: number }>(
+      db, 'SELECT COUNT(DISTINCT person_id) AS n FROM offender_alerts',
+    );
 
     return c.json({
       data: {
         total: totals?.total ?? 0,
+        total_alerts: totals?.total ?? 0,
+        total_persons: personsRow?.n ?? 0,
         active: totals?.active ?? 0,
         expired: totals?.expired ?? 0,
         high_severity: totals?.high_severity ?? 0,
         non_compliant: totals?.non_compliant ?? 0,
+        expiring_soon: 0, // no expiry column on offender_alerts yet
         by_type: byType,
-        by_severity: bySeverity,
+        by_severity: bySeverityMap,
       },
     });
   } catch (err) {

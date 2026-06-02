@@ -7,7 +7,7 @@
 import jsPDF from 'jspdf';
 import QRCode from 'qrcode';
 import { isPast, isWithinDays, parseTimestamp } from './dateUtils';
-import { hasValue } from './sentinel';
+import { hasValue, toNum } from './sentinel';
 import { zoneLeaf, beatLeaf, sectionZoneBeatCombined } from './dispatchCodeParts';
 import {
   addConfidentialWatermark, openAutoSection, closeAutoSection, addFieldPair,
@@ -2491,7 +2491,10 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       try {
         timeStr = parseTimestamp(p.time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
       } catch { timeStr = p.time; }
-      let locationStr = `${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}`;
+      // Guard against non-numeric / missing coords — a single bad breadcrumb
+      // point must not crash the entire record PDF.
+      const latN = toNum(p.lat), lngN = toNum(p.lng);
+      let locationStr = (latN != null && lngN != null) ? `${latN.toFixed(5)}, ${lngN.toFixed(5)}` : '—';
       if (p.road_name) {
         locationStr = p.road_name;
         if (p.nearest_intersection) locationStr += ` / ${p.nearest_intersection}`;

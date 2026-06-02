@@ -32,7 +32,7 @@ accreditation.put('/standards/:id', async (c) => {
     const body = await c.req.json();
     if (!body || Object.keys(body).length === 0) return c.json({ error: "Request body required" }, 400);
     await execute(db,
-      'UPDATE accreditation_standards SET standard_number=?, standard_name=?, category=?, description=?, compliance_status=?, last_reviewed=?, next_review=?, proof_url=?, assigned_to=?, notes=?, updated_at=datetime(\'now\',\'localtime\') WHERE id=?',
+      'UPDATE accreditation_standards SET standard_number=?, standard_name=?, category=?, description=?, compliance_status=?, last_reviewed=?, next_review=?, proof_url=?, assigned_to=?, notes=?, updated_at=datetime(\'now\') WHERE id=?',
       (body.standard_number || (() => { throw new Error("standard_number required"); })()), (body.standard_name || (() => { throw new Error("standard_name required"); })()), body.category || null, body.description || null, body.compliance_status || 'pending', body.last_reviewed || null, body.next_review || null, body.proof_url || null, body.assigned_to || null, body.notes || null, id
     );
     return c.json({ success: true });

@@ -104,7 +104,20 @@ cases.get('/stats', async (c) => {
     const last30 = (await queryFirst<{ count: number }>(
       db, `SELECT COUNT(*) as count FROM cases WHERE opened_date >= date('now', '-30 days')`,
     ))?.count ?? 0;
-    return c.json({ total, open, byStatus, byPriority, last7, last30 });
+    // CaseManagementPage reads res.data.by_status.{open,active,...} (an object
+    // map) and res.data.avg_solvability. Provide the map + a {data} wrapper
+    // while keeping the arrays + top-level keys for any other consumer.
+    const byStatusMap: Record<string, number> = {};
+    for (const r of byStatus) byStatusMap[String((r as any).status)] = Number((r as any).count) || 0;
+    const byPriorityMap: Record<string, number> = {};
+    for (const r of byPriority) byPriorityMap[String((r as any).priority)] = Number((r as any).count) || 0;
+    const payload = {
+      total, open,
+      by_status: byStatusMap, by_priority: byPriorityMap,
+      byStatus, byPriority, last7, last30,
+      avg_solvability: null as number | null, // no solvability score column yet
+    };
+    return c.json({ data: payload, ...payload });
   } catch (err) {
     return c.json({ error: 'Failed to get case stats', code: 'STATS_ERROR' }, 500);
   }

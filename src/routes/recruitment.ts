@@ -32,8 +32,8 @@ recruitment.put('/candidates/:id', async (c) => {
   const body = await c.req.json();
     if (!body || Object.keys(body).length === 0) return c.json({ error: "Request body required" }, 400);
   await execute(db,
-    'UPDATE recruitment_candidates SET candidate_name=?, email=?, phone=?, position=?, stage=?, applied_date=?, notes=?, updated_at=datetime(\'now\',\'localtime\') WHERE id=?',
-    (body.candidate_name || (() => { throw new Error("candidate_name required"); })()), body.email || null, body.phone || null, body.position || null, body.stage || 'applied', body.applied_date, body.notes || null, id
+    'UPDATE recruitment_candidates SET candidate_name=?, email=?, phone=?, position=?, stage=?, applied_date=?, notes=?, updated_at=datetime(\'now\') WHERE id=?',
+    (body.candidate_name || (() => { throw new Error("candidate_name required"); })()), body.email || null, body.phone || null, body.position || null, body.stage || 'applied', body.applied_date || null, body.notes || null, id
   );
   return c.json({ success: true });
   } catch (err) { return c.json({ error: 'Failed' }, 500); }

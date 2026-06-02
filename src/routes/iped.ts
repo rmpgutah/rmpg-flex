@@ -60,9 +60,9 @@ iped.get('/status', async (c) => {
 
 // GET /hash-sets — list of loaded hash sets. Cap at 100 (NSRL +
 // ProjectVic + lab-custom is on the order of a dozen entries; a 100
-// cap is purely a defensive upper bound). Returns a bare array to
-// match the prior stub contract (`[]`) — callers already iterate the
-// response directly without a wrapper key.
+// cap is purely a defensive upper bound). IpedPage reads `data.sets`
+// and renders `hs.category`/`hs.count`, so wrap in { sets } and alias
+// set_type->category, hash_count->count.
 iped.get('/hash-sets', async (c) => {
   try {
     const db = getDb(c.env);
@@ -75,7 +75,9 @@ iped.get('/hash-sets', async (c) => {
          ORDER BY hs.updated_at DESC, hs.id DESC
          LIMIT 100`,
     );
-    return c.json(rows);
+    return c.json({
+      sets: rows.map((r) => ({ ...r, category: r.set_type, count: r.hash_count })),
+    });
   } catch (err) {
     return c.json({
       error: 'Failed to list hash sets',

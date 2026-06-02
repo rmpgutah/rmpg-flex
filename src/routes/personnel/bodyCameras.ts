@@ -423,4 +423,59 @@ bodycamVideosRouter.get('/:id', async (c) => {
   }
 });
 
+// PUT /:id — edit / reclassify video metadata. The proxy routes the whole
+// /api/personnel/bodycam-videos prefix to the rewrite, so without this handler
+// metadata edits 404'd silently.
+bodycamVideosRouter.put('/:id', async (c) => {
+  try {
+    const actor = getActor(c);
+    if (!actor) return c.json({ error: 'Authentication required' }, 401);
+    if (!WRITE_ROLES.has(actor.role)) return c.json({ error: 'Insufficient permissions' }, 403);
+    const id = Number(c.req.param('id'));
+    if (!Number.isInteger(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
+    const db = getDb(c.env);
+    const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM bodycam_videos WHERE id = ?', id);
+    if (!existing) return c.json({ error: 'Video not found' }, 404);
+    const body = await c.req.json<Record<string, unknown>>();
+    const editable = ['title', 'case_number', 'classification', 'retention_status', 'notes', 'recorded_at'];
+    const setCols: string[] = []; const bindings: unknown[] = [];
+    for (const key of editable) {
+      if (Object.prototype.hasOwnProperty.call(body, key)) { setCols.push(`${key} = ?`); bindings.push(body[key] === '' ? null : body[key]); }
+    }
+    if (setCols.length === 0) return c.json({ error: 'No fields to update' }, 400);
+    setCols.push("updated_at = datetime('now')");
+    bindings.push(id);
+    await execute(db, `UPDATE bodycam_videos SET ${setCols.join(', ')} WHERE id = ?`, ...bindings);
+    const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM bodycam_videos WHERE id = ?', id);
+    return c.json(updated);
+  } catch (err) {
+    console.error('PUT /personnel/bodycam-videos/:id failed:', err);
+    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+  }
+});
+
+// DELETE /:id — remove the R2 object (best-effort) then the metadata row.
+bodycamVideosRouter.delete('/:id', async (c) => {
+  try {
+    const actor = getActor(c);
+    if (!actor) return c.json({ error: 'Authentication required' }, 401);
+    if (!WRITE_ROLES.has(actor.role)) return c.json({ error: 'Insufficient permissions' }, 403);
+    const id = Number(c.req.param('id'));
+    if (!Number.isInteger(id) || id <= 0) return c.json({ error: 'Invalid id' }, 400);
+    const db = getDb(c.env);
+    const row = await queryFirst<{ id: number; file_path: string | null }>(db, 'SELECT id, file_path FROM bodycam_videos WHERE id = ?', id);
+    if (!row) return c.json({ error: 'Video not found' }, 404);
+    // Storage failure must not block the metadata delete.
+    if (row.file_path && (c.env as { UPLOADS?: R2Bucket }).UPLOADS) {
+      try { await (c.env as { UPLOADS: R2Bucket }).UPLOADS.delete(row.file_path); }
+      catch (e) { console.warn('bodycam R2 delete failed (non-fatal):', e); }
+    }
+    await execute(db, 'DELETE FROM bodycam_videos WHERE id = ?', id);
+    return c.json({ success: true });
+  } catch (err) {
+    console.error('DELETE /personnel/bodycam-videos/:id failed:', err);
+    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+  }
+});
+
 export { bodyCamerasRouter, bodycamVideosRouter, READ_ALL_ROLES, WRITE_ROLES, getActor };

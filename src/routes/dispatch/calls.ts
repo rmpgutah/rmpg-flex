@@ -292,12 +292,22 @@ calls.post('/', async (c) => {
     // writable on insert. Skip immutable cols (id, call_number,
     // created_at, dispatcher_id — set above).
     const skipOnCreate = new Set(['id', 'call_number', 'created_at', 'dispatcher_id']);
+    // PSO / process-service fields and the 9 tactical flags live on the 1:1
+    // calls_for_service_ext overflow table (base is at the D1 100-col cap).
+    // Collect them here and write them after the base INSERT succeeds, mirroring
+    // the PUT handler — otherwise every one of these fields is silently dropped
+    // on call creation.
+    const extCols: string[] = [];
+    const extColParams: unknown[] = [];
     for (const [key, val] of Object.entries(body)) {
       if (skipOnCreate.has(key)) continue;
       if (UPDATABLE_CALL_COLUMNS_BASE.has(key)) {
         cols.push(key);
         vals.push('?');
         bindParams.push(val ?? null);
+      } else if (UPDATABLE_CALL_COLUMNS_EXT.has(key)) {
+        extCols.push(key);
+        extColParams.push(val ?? null);
       }
     }
 
@@ -312,25 +322,32 @@ calls.post('/', async (c) => {
       const result = await execute(db, `INSERT INTO calls_for_service (${cols.join(',')}) VALUES (${vals.join(',')})`, ...bindParams);
       const callId = Number(result.meta.last_row_id);
 
-      // Record which run card was applied — to ext (PSO/process-service home).
+      // Write the PSO/process-service/tactical-flag overflow columns AND the
+      // applied run card to the ext table in one INSERT OR IGNORE + UPDATE.
       // INSERT OR IGNORE then UPDATE matches the rest of the ext write flow.
-      // Best-effort: never block call creation on the ext write.
+      // Best-effort: the base call row already committed, so never block call
+      // creation (or 500) on the ext write.
+      const extSet: string[] = extCols.map((col) => `${col} = ?`);
+      const extWriteParams: unknown[] = [...extColParams];
       if (rcResult.card) {
+        extSet.push('run_card_id = ?', 'run_card_applied_at = ?');
+        extWriteParams.push(rcResult.card.id, new Date().toISOString());
+      }
+      if (extSet.length > 0) {
         try {
           await execute(db, 'INSERT OR IGNORE INTO calls_for_service_ext (id) VALUES (?)', callId);
-          await execute(
-            db,
-            'UPDATE calls_for_service_ext SET run_card_id = ?, run_card_applied_at = ? WHERE id = ?',
-            rcResult.card.id,
-            new Date().toISOString(),
-            callId,
-          );
+          extWriteParams.push(callId);
+          await execute(db, `UPDATE calls_for_service_ext SET ${extSet.join(', ')} WHERE id = ?`, ...extWriteParams);
         } catch (extErr) {
-          console.warn('run_card ext write failed (non-fatal):', extErr);
+          console.warn('call ext write failed (non-fatal):', extErr);
         }
       }
 
-      const call = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', callId);
+      // Split fetch + merge to dodge D1's 100-column cap (base ~93 + ext 16 > 100),
+      // so the created call returned/broadcast includes the PSO/ext fields.
+      const callBase = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', callId);
+      const callExt = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service_ext WHERE id = ?', callId);
+      const call = { ...(callBase || {}), ...(callExt || {}) };
 
       // Audit trail entry — dispatch's Audit tab reads audit_log by
       // entity_type='call' + entity_id. Failure shouldn't block the create.

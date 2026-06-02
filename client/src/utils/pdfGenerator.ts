@@ -11,6 +11,7 @@ const _buildTime = typeof __BUILD_TIME__ !== 'undefined' ? __BUILD_TIME__ : '';
 void _buildTime;
 
 import jsPDF from 'jspdf';
+import { toNum } from './sentinel';
 import { getTypeCode, formatIncidentType, PDF_REPORT_LABELS, type PdfReportType } from './caseNumbers';
 import { zoneLeaf, beatLeaf, sectionZoneBeatCombined } from './dispatchCodeParts';
 import { loadSealBase64, loadLogoDarkBase64, FORM_NUMBERS, FORM_REVISION } from './pdfAssets';
@@ -2492,8 +2493,10 @@ function addGpsActivityLogSection(doc: jsPDF, data: IncidentData, y: number, pri
       try {
         timeStr = parseTimestamp(p.time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
       } catch { timeStr = p.time; }
-      // Prefer road name + nearest intersection, fall back to raw coordinates
-      let locationStr = `${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}`;
+      // Prefer road name + nearest intersection, fall back to raw coordinates.
+      // Guard coords so a single non-numeric point can't crash the whole PDF.
+      const latN = toNum(p.lat), lngN = toNum(p.lng);
+      let locationStr = (latN != null && lngN != null) ? `${latN.toFixed(5)}, ${lngN.toFixed(5)}` : '—';
       if (p.road_name) {
         locationStr = p.road_name;
         if (p.nearest_intersection) locationStr += ` / ${p.nearest_intersection}`;
@@ -2909,8 +2912,11 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
       y = Math.max(fy1, fy2);
       // Row 2: Latitude, Longitude, Section/Zone/Beat (slash form)
       const w3 = ffw / 3;
-      const latStr = data.latitude != null ? Number(data.latitude).toFixed(6) : '';
-      const lngStr = data.longitude != null ? Number(data.longitude).toFixed(6) : '';
+      // toNum rejects '' / 'None' / NaN — `!= null` alone let an empty-string
+      // sentinel coerce to a false 0.000000.
+      const latN = toNum(data.latitude); const lngN = toNum(data.longitude);
+      const latStr = latN != null ? latN.toFixed(6) : '';
+      const lngStr = lngN != null ? lngN.toFixed(6) : '';
       const fy3 = addFieldPair(doc, 'Latitude', latStr, lx, y, w3);
       const fy4 = addFieldPair(doc, 'Longitude', lngStr, lx + w3, y, w3);
       const fy5 = addFieldPair(doc, 'Section/Zone/Beat', sectionZoneBeatCombined(data.sector_id, data.zone_id, data.beat_id) || data.dispatch_code || '', lx + w3 * 2, y, w3);

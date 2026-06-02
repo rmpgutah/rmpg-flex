@@ -560,10 +560,22 @@ records.post('/businesses', async (c) => {
     const db = getDb(c.env);
     const body = await c.req.json<Record<string, unknown>>();
     if (!body.name || !body.business_type) return c.json({ error: 'name and business_type required' }, 400);
+    // Persist the full business profile (migration 0061 added these columns).
+    // Previously only name/address/type/phone/email/notes were written, so
+    // EIN/DBA/owner/contact/industry/revenue/status were silently dropped.
     const result = await execute(db,
-      `INSERT INTO properties (client_id, name, address, business_type, latitude, longitude, phone, email, notes, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
-      body.client_id || 1, body.name, body.address || '', body.business_type, body.latitude || null, body.longitude || null, body.phone || null, body.email || null, body.notes || null);
+      `INSERT INTO properties (
+         client_id, name, address, city, state, zip, business_type,
+         latitude, longitude, phone, email, notes,
+         dba_name, ein, license_number, website,
+         owner_name, owner_phone, contact_name, contact_phone, contact_email,
+         industry, employee_count, annual_revenue, status, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+      body.client_id || 1, body.name, body.address || '', body.city || null, body.state || null, body.zip || null,
+      body.business_type, body.latitude || null, body.longitude || null, body.phone || null, body.email || null, body.notes || null,
+      body.dba_name || null, body.ein || null, body.license_number || null, body.website || null,
+      body.owner_name || null, body.owner_phone || null, body.contact_name || null, body.contact_phone || null, body.contact_email || null,
+      body.industry || null, body.employee_count || null, body.annual_revenue || null, body.status || 'active');
     const created = await queryFirst(db, 'SELECT * FROM properties WHERE id = ?', Number(result.meta.last_row_id));
     return c.json(created, 201);
   } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
@@ -577,7 +589,11 @@ records.put('/businesses/:id', async (c) => {
     const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM properties WHERE id = ? AND business_type IS NOT NULL AND business_type != ?', id, '');
     if (!existing) return c.json({ error: 'Business not found' }, 404);
     const body = await c.req.json<Record<string, unknown>>();
-    const writable = new Set(['name', 'address', 'business_type', 'latitude', 'longitude', 'phone', 'email', 'notes', 'client_id', 'city', 'state', 'zip']);
+    const writable = new Set([
+      'name', 'address', 'business_type', 'latitude', 'longitude', 'phone', 'email', 'notes', 'client_id', 'city', 'state', 'zip',
+      'dba_name', 'ein', 'license_number', 'website', 'owner_name', 'owner_phone',
+      'contact_name', 'contact_phone', 'contact_email', 'industry', 'employee_count', 'annual_revenue', 'status',
+    ]);
     const cols: string[] = []; const params: unknown[] = [];
     for (const [key, val] of Object.entries(body)) { if (writable.has(key)) { cols.push(`${key} = ?`); params.push(val ?? null); } }
     if (cols.length === 0) return c.json({ message: 'No changes' });

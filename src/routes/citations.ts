@@ -438,7 +438,21 @@ citations.get('/:id/payments', async (c) => {
     const totalRow = await queryFirst<{ total: number }>(
       db, 'SELECT COALESCE(SUM(amount), 0) as total FROM citation_payments WHERE citation_id = ?', id,
     );
-    return c.json({ data: rows, total_paid: totalRow?.total ?? 0 });
+    const fineRow = await queryFirst<{ fine_amount: number | null }>(
+      db, 'SELECT fine_amount FROM citations WHERE id = ?', id,
+    );
+    const totalAmount = Number(fineRow?.fine_amount ?? 0) || 0;
+    const totalPaid = totalRow?.total ?? 0;
+    // CitationsPage reads res.data.payments / total_amount / total_paid / remaining;
+    // returning the bare rows as `data` crashed the Payment Tracking section.
+    return c.json({
+      data: {
+        payments: rows,
+        total_amount: totalAmount,
+        total_paid: totalPaid,
+        remaining: Math.max(0, totalAmount - totalPaid),
+      },
+    });
   } catch (err) {
     return c.json({ error: 'Failed to get payments', code: 'PAYMENTS_GET_ERROR' }, 500);
   }

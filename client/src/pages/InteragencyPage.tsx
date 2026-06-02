@@ -11,6 +11,9 @@ export default function InteragencyPage() {
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({ partners: 0, active_agreements: 0, total_exchanges: 0 });
   const [editingRecord, setEditingRecord] = useState<Record<string, any> | null>(null);
+  // Modal visibility is tracked independently of editingRecord — otherwise the
+  // "New Partner" path (editingRecord = null) could never open the form.
+  const [showForm, setShowForm] = useState(false);
   const [formData, setFormData] = useState<Record<string, any>>({});
   const [submitting, setSubmitting] = useState(false);
   const [deleteId, setDeleteId] = useState<number | null>(null);
@@ -27,8 +30,9 @@ export default function InteragencyPage() {
 
   useEffect(() => { fetchData().finally(() => setLoading(false)); }, [fetchData]);
 
-  const openNew = () => { setEditingRecord(null); setFormData({ agency_name: '', agency_type: '', jurisdiction: '', contact_name: '', contact_email: '', contact_phone: '', data_share_level: 'none' }); };
-  const openEdit = (rec: Record<string, any>) => { setEditingRecord(rec); setFormData({ ...rec }); };
+  const openNew = () => { setEditingRecord(null); setFormData({ agency_name: '', agency_type: '', jurisdiction: '', contact_name: '', contact_email: '', contact_phone: '', data_share_level: 'none' }); setShowForm(true); };
+  const openEdit = (rec: Record<string, any>) => { setEditingRecord(rec); setFormData({ ...rec }); setShowForm(true); };
+  const closeForm = () => { setShowForm(false); setEditingRecord(null); };
   const handleSave = async () => {
     setSubmitting(true);
     try {
@@ -37,7 +41,7 @@ export default function InteragencyPage() {
       } else {
         await apiFetch('/interagency/partners', { method: 'POST', body: JSON.stringify(formData) });
       }
-      setEditingRecord(null); fetchData(); addToast(editingRecord ? 'Updated' : 'Created', 'success');
+      closeForm(); fetchData(); addToast(editingRecord ? 'Updated' : 'Created', 'success');
     } catch (err) { addToast(err instanceof Error ? err.message : 'Failed', 'error'); }
     finally { setSubmitting(false); }
   };
@@ -47,7 +51,6 @@ export default function InteragencyPage() {
     catch (err) { addToast(err instanceof Error ? err.message : 'Delete failed', 'error'); }
   };
 
-  const showForm = editingRecord !== null;
   const columns = [
     { key: 'agency_name', label: 'Agency' }, { key: 'agency_type', label: 'Type' },
     { key: 'jurisdiction', label: 'Jurisdiction' }, { key: 'data_share_level', label: 'Share Level' }, { key: 'status', label: 'Status' },
@@ -72,7 +75,7 @@ export default function InteragencyPage() {
       </div>
       <DataTable columns={columns} data={partners} emptyMessage="No interagency partners found" onRowClick={(row) => openEdit(row)} />
       {showForm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={() => setEditingRecord(null)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={closeForm}>
           <div className="bg-surface-raised border border-[#333] p-6 max-w-lg w-full" style={{ borderRadius: 2 }} onClick={e => e.stopPropagation()}>
             <h3 className="text-sm font-bold text-white mb-4">{editingRecord ? 'Edit Partner' : 'New Partner'}</h3>
             <div className="space-y-3">
@@ -98,7 +101,7 @@ export default function InteragencyPage() {
                 </select></div>
             </div>
             <div className="flex justify-end gap-3 mt-4">
-              <button onClick={() => setEditingRecord(null)} className="toolbar-btn px-4" style={{ height: 28 }}>Cancel</button>
+              <button onClick={closeForm} className="toolbar-btn px-4" style={{ height: 28 }}>Cancel</button>
               <button onClick={handleSave} disabled={submitting} className="toolbar-btn-primary px-4" style={{ height: 28 }}>{submitting ? 'Saving...' : editingRecord ? 'Update' : 'Create'}</button>
             </div>
           </div>

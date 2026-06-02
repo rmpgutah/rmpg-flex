@@ -19,6 +19,14 @@ import { sendToUser, broadcastAll } from '../ws';
 
 const links = new Hono<Env>();
 
+// Live D1 stores literal "None"/"N/A"/"0" in flag columns rather than NULL, so a
+// naive truthiness check (flag?.gang_affiliation) fires a bogus officer-safety
+// alert on a subject with no flags. This guard treats those sentinels as absent.
+const FLAG_ABSENT = new Set(['', 'none', 'n/a', 'na', '0', 'false', 'no', 'null', 'undefined', '--']);
+function isFlagSet(v: unknown): boolean {
+  return v != null && !FLAG_ABSENT.has(String(v).trim().toLowerCase());
+}
+
 // ── Shared: officers assigned to the call, for targeted MDT push ──
 async function getOfficerUserIdsForCall(
   db: ReturnType<typeof getDb>,
@@ -108,7 +116,7 @@ links.post('/calls/:id/persons', async (c) => {
   const officerIds = await getOfficerUserIdsForCall(db, callId);
   if (officerIds.length > 0) {
     const flag = created as any;
-    const hasSafety = flag?.caution_flags || flag?.is_sex_offender || flag?.gang_affiliation;
+    const hasSafety = isFlagSet(flag?.caution_flags) || isFlagSet(flag?.is_sex_offender) || isFlagSet(flag?.gang_affiliation);
     const short = hasSafety
       ? `Subject added with caution flag: ${person.last_name}`
       : `Subject added: ${person.last_name}`;
@@ -242,7 +250,8 @@ links.post('/calls/:id/persons/quick-add', async (c) => {
     createdNew = true;
   }
 
-  // Reuse main's link insertion pattern (INSERT OR IGNORE + -6h MDT timestamp).
+  // Reuse main's link insertion pattern (INSERT OR IGNORE). Timestamps are UTC
+  // via datetime('now') — the old "-6h MDT" note was stale and wrong.
   const role = body.role || 'subject';
   await execute(
     db,
@@ -268,7 +277,7 @@ links.post('/calls/:id/persons/quick-add', async (c) => {
   const officerIds = await getOfficerUserIdsForCall(db, callId);
   if (officerIds.length > 0 && link) {
     const flag = link as any;
-    const hasSafety = flag?.caution_flags || flag?.is_sex_offender || flag?.gang_affiliation;
+    const hasSafety = isFlagSet(flag?.caution_flags) || isFlagSet(flag?.is_sex_offender) || isFlagSet(flag?.gang_affiliation);
     const short = hasSafety
       ? `Subject added with caution flag: ${flag?.last_name ?? ''}`
       : `Subject added: ${flag?.last_name ?? ''}`;

@@ -61,8 +61,11 @@ export function useLiveSync(
   const handleDataChanged = useCallback((message: WSMessage) => {
     if (optionsRef.current?.disabled) return;
 
-    const data = (message as any).data;
-    if (!data) return;
+    // broadcastAll() (src/routes/ws.ts) sends { type, ...data }, so module/entity
+    // arrive at the TOP LEVEL of the message — there is no `.data` wrapper. Fall
+    // back to the message itself (matching DispatchPage's `msg.data || msg`).
+    const data = (message as any).data || (message as any);
+    if (!data || !data.module) return;
 
     // Check if this change is for one of our watched modules
     if (!moduleList.includes(data.module)) return;

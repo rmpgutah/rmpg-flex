@@ -42,7 +42,11 @@ incidents.get('/', requireRole(...READ_ROLES), async (c) => {
       LEFT JOIN users s ON s.id = i.supervisor_id
       ${where} ORDER BY i.created_at DESC LIMIT ? OFFSET ?`,
       ...params, limitNum, offset);
-    return c.json(rows);
+    const totalRow = await queryFirst<{ n: number }>(db, `SELECT COUNT(*) AS n FROM incidents i ${where}`, ...params);
+    const total = totalRow?.n ?? rows.length;
+    // Client reads res.data / res.pagination (matches cases.ts list shape); a
+    // bare array silently emptied the incidents list.
+    return c.json({ data: rows, pagination: { page: pageNum, limit: limitNum, total, totalPages: Math.max(1, Math.ceil(total / limitNum)) } });
   } catch (err) {
     console.error('[incidents] list error', err);
     return c.json({ error: 'Failed to list incidents', code: 'INC_LIST_ERR' }, 500);
@@ -212,7 +216,8 @@ incidents.put('/:id/return', requireRole(...REVIEW_ROLES), async (c) => {
       return c.json({ error: 'Can only return submitted/under_review', code: 'INC_NOT_RETURNABLE' }, 400);
     }
     const body = await c.req.json().catch(() => ({} as any));
-    const reason = String(body.reason || '').trim();
+    // Client sends `comments`; accept both so Return doesn't 400.
+    const reason = String(body.reason ?? body.comments ?? '').trim();
     if (!reason) return c.json({ error: 'reason is required', code: 'INC_REASON_REQUIRED' }, 400);
     await execute(db, "UPDATE incidents SET status = 'returned', supervisor_id = ?, updated_at = datetime('now') WHERE id = ?", user.id, id);
     try {

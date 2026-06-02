@@ -1336,10 +1336,12 @@ export default function ServePage() {
                 onChange={e => handleFormChange('priority', e.target.value)}
                 className="w-full px-3 py-2 text-sm bg-[#0c0c0c] border border-[#2b2b2b] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
               >
-                <option value="low">Low</option>
+                {/* Values must match the serve_queue.priority CHECK
+                    (routine/normal/rush/urgent) — 'low'/'high' were rejected. */}
+                <option value="routine">Routine</option>
                 <option value="normal">Normal</option>
-                <option value="high">High</option>
                 <option value="rush">Rush</option>
+                <option value="urgent">Urgent</option>
               </select>
             </div>
           </div>

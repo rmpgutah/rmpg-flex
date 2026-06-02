@@ -41,6 +41,40 @@ const WS_MAX_RETRIES = 50;        // stop retrying after 50 consecutive failures
 const WS_HEARTBEAT_INTERVAL = 30000; // 30s ping interval
 const WS_PONG_TIMEOUT = 10000;       // 10s to receive pong before considering connection dead
 
+// Audible chime for an incoming high-priority (P1/P2) call. Extracted from the
+// inline onmessage handler so it can fire from the dispatch_update branch: the
+// live Worker delivers new calls as dispatch_update/call_created — it never
+// emits a 'calls:created' message type (see broadcastAll in src/routes/ws.ts),
+// so the previous type-keyed alert never played.
+function playPriorityChime(priority: string | undefined): void {
+  if (priority !== 'P1' && priority !== 'P2') return;
+  try {
+    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.type = priority === 'P1' ? 'square' : 'triangle';
+    osc.frequency.setValueAtTime(priority === 'P1' ? 880 : 660, ctx.currentTime);
+    gain.gain.setValueAtTime(0.15, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.5);
+    if (priority === 'P1') {
+      const osc2 = ctx.createOscillator();
+      const gain2 = ctx.createGain();
+      osc2.connect(gain2);
+      gain2.connect(ctx.destination);
+      osc2.type = 'square';
+      osc2.frequency.setValueAtTime(1100, ctx.currentTime + 0.15);
+      gain2.gain.setValueAtTime(0.15, ctx.currentTime + 0.15);
+      gain2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6);
+      osc2.start(ctx.currentTime + 0.15);
+      osc2.stop(ctx.currentTime + 0.6);
+    }
+  } catch { /* Audio not available */ }
+}
+
 export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   const { token, isAuthenticated } = useAuth();
   const wsRef = useRef<WebSocket | null>(null);
@@ -167,46 +201,21 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
             return;
           }
 
-          // Play alert tone for high-priority calls (P1/P2)
-          if ((message.type as string) === 'calls:created' || (message.type as string) === 'calls:updated') {
-            const payload = (message as any).data || (message as any).call || message;
-            const priority = payload?.priority;
-            if (priority === 'P1' || priority === 'P2') {
-              try {
-                const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-                const osc = ctx.createOscillator();
-                const gain = ctx.createGain();
-                osc.connect(gain);
-                gain.connect(ctx.destination);
-                osc.type = priority === 'P1' ? 'square' : 'triangle';
-                osc.frequency.setValueAtTime(priority === 'P1' ? 880 : 660, ctx.currentTime);
-                gain.gain.setValueAtTime(0.15, ctx.currentTime);
-                gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
-                osc.start(ctx.currentTime);
-                osc.stop(ctx.currentTime + 0.5);
-                if (priority === 'P1') {
-                  const osc2 = ctx.createOscillator();
-                  const gain2 = ctx.createGain();
-                  osc2.connect(gain2);
-                  gain2.connect(ctx.destination);
-                  osc2.type = 'square';
-                  osc2.frequency.setValueAtTime(1100, ctx.currentTime + 0.15);
-                  gain2.gain.setValueAtTime(0.15, ctx.currentTime + 0.15);
-                  gain2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6);
-                  osc2.start(ctx.currentTime + 0.15);
-                  osc2.stop(ctx.currentTime + 0.6);
-                }
-              } catch { /* Audio not available */ }
-            }
-          }
-
-          // Dispatcher Brain fan-in: any dispatch_update carries an
-          // action discriminator the brain uses to match rules. No-op
-          // when the per-user brain flag is off, so this is safe to
-          // wire unconditionally.
+          // Dispatcher Brain fan-in + high-priority call chime.
+          // broadcastAll() (src/routes/ws.ts) JSON-stringifies { type, ...data },
+          // so the action discriminator and call object live at the TOP LEVEL of
+          // the message — there is no `message.data` wrapper. Fall back to the
+          // message itself, matching the consumer pattern in DispatchPage
+          // (`const data = msg.data || msg`). Without this fallback the brain
+          // never fired, and the P1/P2 alert tone — previously keyed on a
+          // 'calls:created' message type the Worker never emits — never played.
           if ((message.type as string) === 'dispatch_update') {
-            const data = (message as any).data;
+            const data = (message as any).data || (message as any);
             if (data && typeof data.action === 'string') {
+              // Audible alert when a NEW high-priority call is created.
+              if (data.action === 'call_created') {
+                playPriorityChime(data.call?.priority);
+              }
               try {
                 handleDispatchEvent(data.action, data);
               } catch (err) {
