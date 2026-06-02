@@ -18,6 +18,14 @@ import { mapboxgl } from '../utils/mapboxLoader';
 import { booleanPointInPolygon } from '@turf/boolean-point-in-polygon';
 import { getTaggedBeats, getCountyFC, getMunicipalityFC, findBeatAt } from '../pages/map/utils/districtGeoData';
 import { apiFetch } from './useApi';
+import { toDisplayLabel } from '../utils/formatters';
+
+interface PremiseIntel {
+  callCount: number;
+  incidentCount: number;
+  calls?: { incident_type?: string; call_number?: string; created_at?: string }[];
+  incidents?: { incident_type?: string; incident_number?: string; created_at?: string }[];
+}
 
 function findContaining(fc: any, lng: number, lat: number): any | null {
   if (!fc || !Array.isArray(fc.features)) return null;
@@ -81,14 +89,18 @@ export function useWhatsHere({ map, popup, active }: Opts) {
       if (county) baseRows.push({ label: 'County', value: county.properties?.NAME || '—' });
       if (muni) baseRows.push({ label: 'Municipality', value: muni.properties?.NAME || '—' });
 
-      // Render with the nearest address resolved asynchronously from the
-      // statewide address DB (/api/geo/address-nearest) — works everywhere,
-      // independent of whether the address overlay is toggled on.
-      const render = (addr: string | null, dist: number | null, loading: boolean) => {
+      // Render: geography + nearest address (statewide DB) + premise intel
+      // (recent calls/incidents near the point — cross-system map<->dispatch).
+      const render = (
+        addr: string | null,
+        dist: number | null,
+        premise: PremiseIntel | null,
+        loading: boolean,
+      ) => {
         const rows = [...baseRows];
         if (addr) rows.push({ label: 'Nearest Addr', value: dist != null ? `${addr} (${dist} m)` : addr });
         else if (loading) rows.push({ label: 'Nearest Addr', value: '…' });
-        let html = `<div style="font-family:'Courier New',monospace;color:#d4d4d4;font-size:11px;min-width:190px;">`;
+        let html = `<div style="font-family:'Courier New',monospace;color:#d4d4d4;font-size:11px;min-width:200px;">`;
         html += `<div style="font-weight:bold;font-size:11px;color:#d4a017;margin-bottom:4px;border-bottom:1px solid #444;padding-bottom:3px;letter-spacing:0.5px;">WHAT'S HERE</div>`;
         if (rows.length === 0) {
           html += `<div style="color:#888;font-size:10px;">No geography at this point.</div>`;
@@ -98,20 +110,37 @@ export function useWhatsHere({ map, popup, active }: Opts) {
             html += `<div style="font-size:10px;color:#999;margin-top:2px;"><span style="color:#bbb;">${esc(r.label)}:</span> ${dot}<span style="color:#ddd;">${esc(r.value)}</span></div>`;
           }
         }
+        // Premise intelligence band.
+        if (premise && (premise.callCount > 0 || premise.incidentCount > 0)) {
+          html += `<div style="margin-top:6px;padding-top:4px;border-top:1px solid #2a2a2a;">`;
+          html += `<div style="font-size:8px;color:#888;text-transform:uppercase;letter-spacing:0.06em;margin-bottom:2px;">Premise History (≈275m)</div>`;
+          html += `<div style="font-size:10px;color:#e8b84b;font-weight:bold;">${premise.callCount} prior call${premise.callCount === 1 ? '' : 's'} · ${premise.incidentCount} incident${premise.incidentCount === 1 ? '' : 's'}</div>`;
+          const last = premise.calls?.[0];
+          if (last) {
+            const when = last.created_at ? String(last.created_at).slice(0, 10) : '';
+            const lastType = last.incident_type ? toDisplayLabel(String(last.incident_type)) : String(last.call_number || '');
+            html += `<div style="font-size:9px;color:#aaa;margin-top:2px;">Last: ${esc(lastType)}${when ? ' · ' + esc(when) : ''}</div>`;
+          }
+          html += `</div>`;
+        } else if (loading) {
+          html += `<div style="margin-top:6px;padding-top:4px;border-top:1px solid #2a2a2a;font-size:9px;color:#666;">Checking premise history…</div>`;
+        }
         html += `<div style="margin-top:5px;padding-top:3px;border-top:1px solid #2a2a2a;font-size:8px;color:#666;">${lat.toFixed(5)}, ${lng.toFixed(5)}</div>`;
         html += `</div>`;
         pop.setLngLat(e.lngLat).setHTML(html).addTo(map);
       };
 
       const myId = ++seqRef.current;
-      render(null, null, true);
-      apiFetch<{ results: { full_add: string; city: string; distance_m?: number }[] }>(`/geo/address-nearest?lat=${lat}&lng=${lng}`)
-        .then((d) => {
-          if (myId !== seqRef.current) return; // a newer click superseded this
-          const r = d?.results?.[0];
-          render(r ? `${r.full_add}${r.city ? ', ' + r.city : ''}` : null, r?.distance_m ?? null, false);
-        })
-        .catch(() => { if (myId === seqRef.current) render(null, null, false); });
+      render(null, null, null, true);
+      Promise.allSettled([
+        apiFetch<{ results: { full_add: string; city: string; distance_m?: number }[] }>(`/geo/address-nearest?lat=${lat}&lng=${lng}`),
+        apiFetch<PremiseIntel>(`/dispatch/geography/premise-intel?lat=${lat}&lng=${lng}`),
+      ]).then(([addrRes, premRes]) => {
+        if (myId !== seqRef.current) return; // a newer click superseded this
+        const r = addrRes.status === 'fulfilled' ? addrRes.value?.results?.[0] : undefined;
+        const premise = premRes.status === 'fulfilled' ? premRes.value : null;
+        render(r ? `${r.full_add}${r.city ? ', ' + r.city : ''}` : null, r?.distance_m ?? null, premise, false);
+      });
     };
     map.on('click', handler);
     return () => { map.off('click', handler); };
