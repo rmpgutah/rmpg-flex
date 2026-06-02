@@ -392,7 +392,12 @@
 //       Connections graph legend/node tooltips, the link picker chips, and the
 //       record-delete dialog; getEntityLabel delegates to it. (PDFs already
 //       title each record by its plain type.)
-// v719: Records/RMS audit — VehiclesTab no longer falsely flags non-stolen
+// v719: fix CrmPage hard crash — toDisplayLabel()/.replace on an undefined
+//       status/type/relationship/source field threw "Cannot read properties of
+//       undefined (reading 'replace')" and the ErrorBoundary took the whole
+//       /crm page down (live sweep 2026-06-02). Null-guarded the helper + the
+//       lead-source label.
+// v720: Records/RMS audit — VehiclesTab no longer falsely flags non-stolen
 //       vehicles as STOLEN. isActiveStolen() now matches ONLY a confirmed
 //       'Stolen' status (was flagging everything ≠ None/Recovered, so Not
 //       Stolen / Unknown / Cleared / Under Investigation all showed a false
@@ -400,7 +405,7 @@
 //       unified on the helper. (Pairs with worker-side records/nibrs fixes:
 //       person warrant lookups key on subject_person_id; evidence INSERT/PUT/
 //       search use real columns; NIBRS uses occurred_date.)
-const CACHE_NAME = 'rmpg-flex-v719';
+const CACHE_NAME = 'rmpg-flex-v720';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
