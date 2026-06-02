@@ -118,11 +118,17 @@ units.delete('/:id', requireRole('admin', 'manager'), async (c) => {
     if (unit.current_call_id != null) {
       return c.json({ error: 'Unit is assigned to an active call — clear it first', code: 'UNIT_ON_CALL' }, 409);
     }
+    // Same D1 FK trap as /dispose: units(id) is referenced by gps_breadcrumbs
+    // (NOT NULL → purge the location trail) and fleet_assignments (nullable →
+    // detach). Without this, a unit that ever logged GPS can never be deleted.
+    await execute(db, 'DELETE FROM gps_breadcrumbs WHERE unit_id = ?', id);
+    await execute(db, 'UPDATE fleet_assignments SET unit_id = NULL WHERE unit_id = ?', id);
     await execute(db, 'DELETE FROM units WHERE id = ?', id);
     try { broadcastAll('dispatch_update', { action: 'unit_deleted', unit_id: id }); } catch { /* never break the write */ }
     return c.json({ message: 'Unit deleted', id });
   } catch (err) {
-    return c.json({ error: 'Failed to delete unit' }, 500);
+    console.error('[dispatch] delete unit failed:', err);
+    return c.json({ error: 'Failed to delete unit', detail: (err as Error)?.message }, 500);
   }
 });
 
