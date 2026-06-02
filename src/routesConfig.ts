@@ -62,6 +62,9 @@ import ai from './routes/ai';
 import alerts from './routes/notifications';
 import assets from './routes/assets';
 import billing from './routes/billing';
+import invoices from './routes/invoices';
+import useOfForce from './routes/useOfForce';
+import notificationsInbox from './routes/notificationsInbox';
 import community from './routes/community';
 import interagency from './routes/interagency';
 import jail from './routes/jail';
@@ -327,6 +330,10 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/audit', router: audit, auth: 'required' },
   { prefix: '/api/billing', router: billing, auth: 'required',
     note: 'Financial/billing module: contracts, invoices, line items, payments, expenses' },
+  { prefix: '/api/invoices', router: invoices, auth: 'required',
+    note: 'InvoicesPage summary tile (/stats) over the invoices table. Full CRUD lives under /api/billing/invoices.' },
+  { prefix: '/api/use-of-force', router: useOfForce, auth: 'required',
+    note: 'Use-of-force reports (UseOfForcePage). Defensive over the minimal use_of_force table; legacy 500d on it.' },
   { prefix: '/api/community', router: community, auth: 'required',
     note: 'Community engagement: events, tips, watch groups, alerts' },
   { prefix: '/api/interagency', router: interagency, auth: 'required',
@@ -384,7 +391,10 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // All point at the same stubs router which fans out to its internal
   // paths (/, /preferences, /unread-count, /dashboard, etc).
   { prefix: '/api/user', router: stubs, auth: 'required' },
-  { prefix: '/api/notifications', router: stubs, auth: 'required' },
+  // Personal notification inbox (NotificationsPage) — real handlers over the
+  // notifications table. Replaced the stubs mount that only served
+  // /unread-count, leaving list/stats/categories/preferences 404'd.
+  { prefix: '/api/notifications', router: notificationsInbox, auth: 'required' },
   // Reports: real aggregations live in src/routes/reports.ts. Two stubs that
   // shared the same shape (/response-times) were moved into the reports
   // router so the stubs router doesn't also claim the prefix. /crime-analysis

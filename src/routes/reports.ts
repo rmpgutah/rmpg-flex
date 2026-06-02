@@ -318,4 +318,40 @@ reports.get('/statute-analytics', async (c) => {
 // calls_for_service status-timestamp columns. Return [] until then.
 reports.get('/response-times', (c) => c.json([]));
 
+// GET /api/reports/command-center — live ops KPI roll-up for CommandCenterPage.
+// The page reads data.kpis.* UNGUARDED, so kpis must always be a present object.
+// Each metric is computed independently and falls back to 0 on any schema drift,
+// so a single bad column can never 500 the whole block. Legacy had no handler
+// (live sweep 2026-06-02 → 404).
+reports.get('/command-center', async (c) => {
+  const db = getDb(c.env);
+  const one = async (sql: string): Promise<number> => {
+    try { const r = await queryFirst<{ n: number }>(db, sql); return r?.n ?? 0; } catch { return 0; }
+  };
+  const list = async <T = Record<string, unknown>>(sql: string): Promise<T[]> => {
+    try { return (await query<T>(db, sql)) || []; } catch { return []; }
+  };
+
+  const kpis = {
+    calls_today: await one("SELECT COUNT(*) AS n FROM calls_for_service WHERE date(created_at) = date('now','localtime')"),
+    active_calls: await one("SELECT COUNT(*) AS n FROM calls_for_service WHERE COALESCE(status,'') NOT IN ('cleared','closed','cancelled','archived','completed')"),
+    avg_response_min: 0,
+    units_available: await one("SELECT COUNT(*) AS n FROM units WHERE status = 'available'"),
+    units_total: await one('SELECT COUNT(*) AS n FROM units'),
+    active_bolos: await one("SELECT COUNT(*) AS n FROM bolos WHERE status = 'active'"),
+    anomaly_alerts: await one("SELECT COUNT(*) AS n FROM anomaly_alerts WHERE COALESCE(acknowledged, 0) = 0"),
+  };
+
+  const active_calls = await list(
+    "SELECT id, call_number, call_type, priority, status, address, created_at FROM calls_for_service WHERE COALESCE(status,'') NOT IN ('cleared','closed','cancelled','archived','completed') ORDER BY created_at DESC LIMIT 50",
+  );
+  const units = await list('SELECT id, unit_number, status, current_call_number FROM units ORDER BY unit_number LIMIT 200');
+  const calls_by_hour = await list(
+    "SELECT strftime('%H', created_at) AS hour, COUNT(*) AS count FROM calls_for_service WHERE date(created_at) = date('now','localtime') GROUP BY strftime('%H', created_at) ORDER BY hour",
+  );
+  const anomaly_alerts = await list('SELECT * FROM anomaly_alerts WHERE COALESCE(acknowledged, 0) = 0 ORDER BY created_at DESC LIMIT 20');
+
+  return c.json({ kpis, active_calls, units, calls_by_hour, anomaly_alerts });
+});
+
 export default reports;

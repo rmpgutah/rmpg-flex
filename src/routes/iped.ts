@@ -154,4 +154,39 @@ iped.get('/downloads', async (c) => {
   }
 });
 
+// GET /jobs?page=&limit=&filter= — IPED processing jobs. IpedPage reads
+// `data.jobs` + `data.total`. Each iped_imports row is a processing job
+// (case_link / findings / timeline / report / bookmarks / items). Legacy
+// had no /jobs handler → 404 (live sweep 2026-06-02).
+iped.get('/jobs', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const q = c.req.query.bind(c.req);
+    const page = Math.max(1, parseInt(q('page') || '1', 10) || 1);
+    const limit = Math.min(100, Math.max(1, parseInt(q('limit') || '20', 10) || 20));
+    const offset = (page - 1) * limit;
+    const conds: string[] = ['1=1'];
+    const params: unknown[] = [];
+    if (q('filter')) { conds.push('(ii.import_type = ? OR ii.iped_case_name LIKE ?)'); params.push(q('filter'), `%${q('filter')}%`); }
+    const where = `WHERE ${conds.join(' AND ')}`;
+    const total = (await queryFirst<{ c: number }>(db, `SELECT COUNT(*) AS c FROM iped_imports ii ${where}`, ...params))?.c ?? 0;
+    const rows = await query<Record<string, unknown>>(
+      db,
+      `SELECT ii.id, ii.forensic_case_id, ii.import_type, ii.iped_case_id,
+              ii.iped_case_name, ii.source_query, ii.item_count, ii.summary,
+              ii.imported_by, ii.imported_by_name, ii.created_at,
+              fc.lab_number
+         FROM iped_imports ii
+         LEFT JOIN forensic_cases fc ON ii.forensic_case_id = fc.id
+         ${where}
+         ORDER BY ii.created_at DESC, ii.id DESC
+         LIMIT ? OFFSET ?`,
+      ...params, limit, offset,
+    );
+    return c.json({ jobs: rows, total, page, limit });
+  } catch (err) {
+    return c.json({ jobs: [], total: 0, page: 1, limit: 20, detail: err instanceof Error ? err.message : String(err) });
+  }
+});
+
 export default iped;
