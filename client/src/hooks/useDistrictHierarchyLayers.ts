@@ -259,13 +259,18 @@ export function useDistrictHierarchyLayers({ map, popup }: Opts) {
     });
   }, [addLayer, setVis]);
 
-  // Basemap-switch / print resilience — setStyle wipes custom layers; re-add
-  // whatever was visible when the new style finishes loading.
+  // Basemap-switch / print resilience — setStyle() wipes custom sources +
+  // layers (so addedRef must be cleared to re-add them) but Mapbox RETAINS
+  // map-level delegated click/hover listeners across a style change. Do NOT
+  // clear clickBoundRef here: re-running addLayer would then bind a SECOND
+  // handler on the same fill id while the first is still attached, so each
+  // basemap switch stacked another duplicate popup (N switches → N popups).
+  // Keeping clickBoundRef means handlers bind exactly once per layer for the
+  // life of the map instance. (Same fix as useVectorTileLayers.)
   useEffect(() => {
     if (!map) return;
     const onLoad = () => {
       addedRef.current.clear();
-      clickBoundRef.current.clear();
       for (const c of HIERARCHY_CONFIGS) {
         if (statesRef.current[c.id]?.visible) {
           addLayer(c.id);

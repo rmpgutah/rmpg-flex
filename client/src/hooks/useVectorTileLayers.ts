@@ -18,6 +18,10 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { mapboxgl } from '../utils/mapboxLoader';
 import { whenStyleReady } from '../pages/map/utils/safeAddSource';
+import {
+  roadColorExpression, roadSortKeyExpression, ptTypeColorExpression,
+  classifyCartocode, classifyPtType,
+} from '../pages/map/utils/landTypes';
 
 export type VectorLayerKind = 'line' | 'point';
 
@@ -121,12 +125,6 @@ function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-// UGRC CARTOCODE road-class -> readable name (popup only).
-const CARTO_NAMES: Record<string, string> = {
-  '1': 'Interstate', '2': 'US Highway', '3': 'State Highway', '4': 'Ramp',
-  '5': 'Major Road', '6': 'Arterial', '7': 'Collector', '8': 'Local',
-  '9': 'Local', '10': 'Service', '11': 'Local Street', '12': 'Driveway',
-};
 
 export function useVectorTileLayers({ map, popup, isLight = false, onUseLocation }: UseVectorTileLayersOptions) {
   const [layerStates, setLayerStates] = useState<Record<string, VectorLayerState>>(() => {
@@ -161,11 +159,18 @@ export function useVectorTileLayers({ map, popup, isLight = false, onUseLocation
     const title = titleRaw != null && String(titleRaw).trim() !== '' ? String(titleRaw) : cfg.label;
     let html = `<div style="font-family:'Courier New',monospace;color:#d4d4d4;font-size:11px;min-width:150px;">`;
     html += `<div style="font-weight:bold;font-size:12px;color:${cfg.color};margin-bottom:3px;border-bottom:1px solid #444;padding-bottom:3px;">${escapeHtml(title)}</div>`;
-    html += `<div style="color:#888;font-size:9px;text-transform:uppercase;margin-bottom:4px;">${escapeHtml(cfg.label)}</div>`;
+    // Subtitle: layer label + (for address points) a colored property-type chip.
+    let subtitle = `<span style="color:#888;font-size:9px;text-transform:uppercase;">${escapeHtml(cfg.label)}</span>`;
+    if (cfg.kind === 'point') {
+      const pt = classifyPtType(props.PtType);
+      subtitle += ` <span style="display:inline-block;font-size:8px;font-weight:bold;letter-spacing:0.4px;color:#0a0a0a;background:${pt.color};border-radius:2px;padding:0 4px;margin-left:2px;">${pt.code} · ${escapeHtml(pt.label).toUpperCase()}</span>`;
+    }
+    html += `<div style="margin-bottom:4px;">${subtitle}</div>`;
     for (const d of cfg.detailProps) {
       let v = props[d.key];
       if (v === undefined || v === null || String(v).trim() === '') continue;
-      if (d.key === 'CARTOCODE') v = CARTO_NAMES[String(v)] || `Code ${v}`;
+      if (d.key === 'CARTOCODE') { const rc = classifyCartocode(v); v = rc.label; }
+      if (d.key === 'PtType') continue; // shown as the chip above
       html += `<div style="font-size:10px;color:#999;margin-top:2px;"><span style="color:#bbb;">${escapeHtml(d.label)}:</span> ${escapeHtml(String(v))}</div>`;
     }
     html += `</div>`;
@@ -203,13 +208,10 @@ export function useVectorTileLayers({ map, popup, isLight = false, onUseLocation
               minzoom: cfg.sourceMinzoom,
               layout: { visibility: 'none', 'line-join': 'round', 'line-cap': 'round' },
               paint: {
-                // Road-class color codes: Interstate red, US Hwy orange, State
-                // gold, Ramp light-gold, everything else muted gold.
-                'line-color': [
-                  'match', ['to-string', ['get', 'CARTOCODE']],
-                  '1', '#ef4444', '2', '#f59e0b', '3', '#e8b84b', '4', '#caa53a',
-                  cfg.color,
-                ] as any,
+                // Road-class color codes generated from the shared ROAD_CLASSES
+                // taxonomy (landTypes.ts) — Interstate red → driveway dark-gold —
+                // so the rendered network matches the legend exactly.
+                'line-color': roadColorExpression(cfg.color) as any,
                 'line-width': [
                   'interpolate', ['linear'], ['zoom'],
                   6, ['match', ['to-string', ['get', 'CARTOCODE']], '1', 1.2, '2', 0.9, '3', 0.6, 0.2],
@@ -242,7 +244,7 @@ export function useVectorTileLayers({ map, popup, isLight = false, onUseLocation
                 // Visual-harmony: major roads (lower sort key) win label
                 // collisions over local streets, and label slightly larger,
                 // so the network reads cleanly instead of as label soup.
-                'symbol-sort-key': ['match', ['to-string', ['get', 'CARTOCODE']], '1', 0, '2', 1, '3', 2, '4', 3, 9] as any,
+                'symbol-sort-key': roadSortKeyExpression() as any,
                 'text-size': ['match', ['to-string', ['get', 'CARTOCODE']], '1', 12, '2', 11.5, '3', 11, 10] as any,
                 'text-font': ['DIN Offc Pro Medium', 'Arial Unicode MS Regular'],
               },
@@ -266,18 +268,13 @@ export function useVectorTileLayers({ map, popup, isLight = false, onUseLocation
               minzoom: cfg.sourceMinzoom,
               layout: { visibility: 'none' },
               paint: {
-                'circle-radius': ['interpolate', ['linear'], ['zoom'], 10, 1.4, 14, 2.4, 18, 5] as any,
-                // Color-code by structure / property type for differentiation
-                // (PtType is mixed-case in UGRC data, so normalize with upcase).
-                'circle-color': [
-                  'match', ['upcase', ['to-string', ['get', 'PtType']]],
-                  'RESIDENTIAL', '#22c55e',
-                  'COMMERCIAL', '#f59e0b',
-                  'INDUSTRIAL', '#ef4444',
-                  'AGRICULTURAL', '#84cc16',
-                  'MIXED USE', '#14b8a6',
-                  cfg.color,
-                ] as any,
+                'circle-radius': ['interpolate', ['linear'], ['zoom'], 10, 1.4, 14, 2.6, 18, 5.5] as any,
+                // Full building/property-type color-coding generated from the
+                // shared PROPERTY_TYPES taxonomy (landTypes.ts): residential,
+                // commercial, industrial, agricultural, mixed, government,
+                // education, religious, medical, recreation, utility,
+                // transportation, vacant + Other. One source drives map+legend.
+                'circle-color': ptTypeColorExpression(cfg.color) as any,
                 'circle-opacity': 0.9,
                 'circle-stroke-color': '#0a0a0a',
                 'circle-stroke-width': 0.6,
