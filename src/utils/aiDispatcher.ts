@@ -94,6 +94,12 @@ export interface DispatcherTurn {
   awareness: string;
   /** Text OCR'd from an image the unit sent this turn, if any (see ocrImage). */
   ocrText?: string | null;
+  /**
+   * A CAD check the system ALREADY auto-ran from an OCR'd identifier (a plate,
+   * VIN, or name read off the image), as a terse facts string. When present the
+   * dispatcher reads this hit back instead of re-requesting the same check.
+   */
+  autoCheck?: string | null;
 }
 
 export interface DispatcherDecision {
@@ -187,13 +193,17 @@ You hear EVERY transmission on the channel and you acknowledge or respond to eac
 - An emergency / "shots fired" / "officer down" / "10-33" / "code 3" → respond with urgency, acknowledge, advise units to hold traffic, and that help is en route.
 - A record check the unit requests — you CAN run it. Set the "lookup" field and make "reply" a brief "stand by"; the result is read back automatically, and for a PLATE or PERSON hit the matching record file opens on the dispatcher's console (and on the requesting unit's own device). Supported lookup types: PLATE, PERSON (by name), WARRANT, PREMISE (alerts/hazards at an address), VIN (vehicle by VIN). For premise use {type:"premise", query:"<address>"}; for VIN {type:"vin", query:"<vin or last digits>"}.
 - A LOCATION or ETA question about the asking unit ITSELF — "where am I?", "what's my twenty?", "10-20", "what's my ETA?", "how far am I out?", "time to the scene?" — you CAN answer from the unit's live GPS. Set "lookup" type "unit_location" (where they are) or "eta" (drive time to their assigned call); leave "query" empty (the unit is identified by who's transmitting) and make "reply" a brief "stand by". The computed answer is read back automatically — do NOT guess a location, beat, distance, or time yourself.
+- A CALL STATUS question — "status on CFS26-0042", "what's the status of that call", "who's on <call>", "how's <call> going" — set "lookup" {type:"call_status", query:"<call number>"}; the live status/units/disposition is read back automatically.
+- A CLOSEST-UNIT question — "who's closest to <address>", "nearest unit to <place>", "what do I have near <intersection>" — set "lookup" {type:"closest_unit", query:"<address>"}; the system geocodes it and names the nearest available unit by GPS.
+- A "SAY AGAIN" to dispatch — "say again your last", "repeat your last", "10-9", "didn't copy your last" — set "lookup" {type:"last_dispatch", query:""}; dispatch's previous transmission is re-read automatically. Make "reply" a brief "stand by".
 - A CAD WRITE the unit requests — you CAN do data entry. Set the "action" field:
     • STATUS change — "10-8 / in service", "10-7 / out of service", "show me out / out at <place> / on scene / arrived", "en route", "tied up" — action {type:"set_unit_status", unit:"<call-sign>", status:"<what they said>", location:"<place if given>"}.
     • START / CREATE a call — action {type:"create_call", incident_type:"<short type>", priority:"<P1|P2|P3|P4>", location_address:"<address>", description:"<details>", caller_name:"<if given>"}; the call number is read back automatically.
     • CLEAR / CLOSE a call ("clear me from <call>", "show <call> cleared", "10-8 from <call>") — action {type:"clear_call", call_number:"<call number, e.g. CFS26-00042>", disposition:"<outcome if given>"}.
     • DISPATCH BACKUP ("start me another unit", "10-78", "need backup on <call>") — action {type:"dispatch_backup", unit:"<requesting call-sign if known>", call_number:"<call number if given>"}; the system picks the nearest available unit and you read back who's responding.
+    • ISSUE A BOLO ("put out a BOLO on …", "be on the lookout for …", "attempt to locate …") — action {type:"create_bolo", bolo_type:"person|vehicle|other", title:"<short headline>", subject_description:"<person details if any>", vehicle_description:"<vehicle details if any>", description:"<the rest>", priority:"<P1|P2|P3|P4>"}; the BOLO number is read back and it lands on the board for all units. The BOLO is issued under the REQUESTING unit's officer.
   Only set "action" when the unit clearly asked. If a required detail is missing, ask for it instead of guessing.
-- If you are given OCR TEXT read from an image the unit sent, treat it as facts you may read back or use to fill a lookup/action — but never invent fields the OCR didn't contain.
+- If you are given OCR TEXT read from an image the unit sent, treat it as facts you may read back or use to fill a lookup/action — but never invent fields the OCR didn't contain. If you are ALSO given a CAD AUTO-CHECK block, the system already ran the check on the plate/VIN/name in that image — read that result back to the unit (warrants, stolen flag, owner) and do NOT request the same check again.
 - Plain unit-to-unit chatter not directed at dispatch → a brief "copy" is enough.
 
 OFFICER SAFETY ASSESSMENT — on EVERY transmission, set the "safety" field reading the unit's stress/duress: {"stress":"normal|elevated|high","duress":true|false,"reason":"<short>"}. Use "high" stress for shouting, calls for help, "shots fired", "officer down", "10-33", panic, or a frantic/breathless delivery. Set "duress":true if the unit may be coerced, in danger, or covertly signaling distress. When stress is high or duress is true, your reply MUST be urgent: acknowledge immediately, confirm help is rolling, and tell other units to hold traffic. Default to {"stress":"normal","duress":false} for routine traffic.
@@ -203,8 +213,8 @@ Common 10-codes: 10-4 acknowledged, 10-8 in service, 10-7 out of service, 10-20 
 Never invent unit numbers, names, plates, warrants, call numbers, or facts you were not given in the snapshot or a lookup result. If you don't have a detail, ask for it briefly.`;
 
 const FORMAT_INSTRUCTION = `Respond with ONLY a JSON object, no prose around it:
-{"intent":"<status_update|out_at_location|backup_request|emergency|lookup_request|location_request|eta_request|data_entry|en_route|arrived|code4|chatter|unclear>","reply":"<exactly what dispatch says over the radio — one or two short sentences>","safety":{"stress":"normal|elevated|high","duress":false},"lookup":{"type":"plate|person|warrant|premise|vin|unit_location|eta","query":"<value; empty for unit_location/eta>"},"action":{"type":"set_unit_status|create_call|clear_call|dispatch_backup","unit":"<call-sign>","status":"<status>","location":"<place>","incident_type":"<type>","priority":"<P1|P2|P3|P4>","location_address":"<address>","description":"<details>","caller_name":"<name>","call_number":"<call #>","disposition":"<outcome>"}}
-ALWAYS include "safety". Include "lookup" for a record check (plate/person/warrant/premise/vin), OR for a unit_location/eta question about the asking unit (query empty). Include "action" ONLY for a status/call write; send only the fields that action type needs. Omit "lookup"/"action" otherwise.
+{"intent":"<status_update|out_at_location|backup_request|emergency|lookup_request|location_request|eta_request|call_status|closest_unit|say_again|data_entry|en_route|arrived|code4|chatter|unclear>","reply":"<exactly what dispatch says over the radio — one or two short sentences>","safety":{"stress":"normal|elevated|high","duress":false},"lookup":{"type":"plate|person|warrant|premise|vin|unit_location|eta|call_status|closest_unit|last_dispatch","query":"<value; empty for unit_location/eta/last_dispatch>"},"action":{"type":"set_unit_status|create_call|clear_call|dispatch_backup|create_bolo","unit":"<call-sign>","status":"<status>","location":"<place>","incident_type":"<type>","priority":"<P1|P2|P3|P4>","location_address":"<address>","description":"<details>","caller_name":"<name>","call_number":"<call #>","disposition":"<outcome>","bolo_type":"person|vehicle|other","title":"<bolo headline>","subject_description":"<person>","vehicle_description":"<vehicle>"}}
+ALWAYS include "safety". Include "lookup" for a record check (plate/person/warrant/premise/vin), a unit_location/eta question about the asking unit (query empty), a call_status (query = call number), a closest_unit (query = address), or a last_dispatch "say again" (query empty). Include "action" ONLY for a status/call write; send only the fields that action type needs. Omit "lookup"/"action" otherwise.
 If the transmission is unintelligible, set intent to "unclear" and reply asking the unit to repeat their last.`;
 
 // ─── Transcription ──────────────────────────────────────────
@@ -283,6 +293,123 @@ export async function ocrImage(ai: Ai, image: Uint8Array): Promise<string | null
   }
 }
 
+// ─── Structured OCR (detect doc type + pull key fields) ─────
+// The plain ocrImage() returns raw text the LLM *might* chain into a lookup.
+// This pulls the identifiers OUT deterministically — doc type + the fields a
+// dispatcher would actually run (plate, VIN, name/DOB, DL number) — so the
+// caller can AUTO-run the matching CAD check instead of hoping the model does.
+// One vision call; rawText is the same transcript ocrImage would return.
+
+export type OcrDocType =
+  | 'driver_license' | 'license_plate' | 'vehicle_registration' | 'document' | 'unknown';
+
+export interface OcrExtraction {
+  docType: OcrDocType;
+  /** All legible text (same shape ocrImage returns). */
+  rawText: string;
+  /** Identifiers a dispatcher would run a check on. Empty fields omitted. */
+  fields: {
+    name?: string; dob?: string;
+    dl_number?: string; dl_state?: string;
+    plate?: string; plate_state?: string;
+    vin?: string; make?: string; model?: string; year?: string;
+  };
+}
+
+const OCR_DOC_TYPES: OcrDocType[] = ['driver_license', 'license_plate', 'vehicle_registration', 'document', 'unknown'];
+
+function pickField(obj: Record<string, unknown>, ...keys: string[]): string | undefined {
+  for (const k of keys) {
+    const v = obj[k];
+    if (typeof v === 'string' && v.trim() && !/^(n\/?a|none|unknown|null)$/i.test(v.trim())) {
+      return v.trim();
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Read an image AND structure it: detect the document type and extract the
+ * runnable identifiers. Best-effort — returns null on any failure (caller falls
+ * back to plain ocrImage / skips). One vision-model call.
+ */
+export async function ocrExtractStructured(ai: Ai, image: Uint8Array): Promise<OcrExtraction | null> {
+  if (!image || image.byteLength === 0 || image.byteLength > MAX_OCR_BYTES) return null;
+  try {
+    const out = (await withAiTimeout(ai.run(VISION_MODEL, {
+      image: Array.from(image),
+      prompt:
+        'You are reading an image for a police dispatcher. Identify the document and extract its ' +
+        'key identifiers. Respond with ONLY a JSON object, no prose:\n' +
+        '{"doc_type":"driver_license|license_plate|vehicle_registration|document|unknown",' +
+        '"raw_text":"<ALL legible text, exactly as printed>",' +
+        '"name":"","dob":"","dl_number":"","dl_state":"","plate":"","plate_state":"",' +
+        '"vin":"","make":"","model":"","year":""}\n' +
+        'Fill only fields you can actually read; leave the rest empty strings. Never invent a value.',
+      max_tokens: 1024,
+      temperature: 0.1,
+    } as never), 'vision-ocr-structured')) as { response?: unknown; description?: unknown };
+
+    const raw = String(out?.response ?? out?.description ?? '').trim();
+    if (!raw) return null;
+
+    // Tolerant JSON extraction (the model may fence or pad it).
+    let parsed: Record<string, unknown> | null = null;
+    const start = raw.indexOf('{');
+    const end = raw.lastIndexOf('}');
+    if (start !== -1 && end > start) {
+      try { parsed = JSON.parse(raw.slice(start, end + 1)) as Record<string, unknown>; } catch { /* not JSON */ }
+    }
+    if (!parsed) {
+      // No JSON — treat the whole thing as raw OCR text, unstructured.
+      return { docType: 'unknown', rawText: raw, fields: {} };
+    }
+
+    const dtRaw = typeof parsed.doc_type === 'string' ? parsed.doc_type.toLowerCase().trim() : 'unknown';
+    const docType = (OCR_DOC_TYPES as string[]).includes(dtRaw) ? (dtRaw as OcrDocType) : 'unknown';
+    const rawText = pickField(parsed, 'raw_text', 'text') || '';
+    const fields: OcrExtraction['fields'] = {
+      name: pickField(parsed, 'name', 'full_name'),
+      dob: pickField(parsed, 'dob', 'date_of_birth'),
+      dl_number: pickField(parsed, 'dl_number', 'license_number', 'dl'),
+      dl_state: pickField(parsed, 'dl_state'),
+      plate: pickField(parsed, 'plate', 'plate_number', 'license_plate'),
+      plate_state: pickField(parsed, 'plate_state'),
+      vin: pickField(parsed, 'vin'),
+      make: pickField(parsed, 'make'),
+      model: pickField(parsed, 'model'),
+      year: pickField(parsed, 'year'),
+    };
+    // Drop undefined keys so callers can `if (fields.plate)` cleanly.
+    for (const k of Object.keys(fields) as (keyof typeof fields)[]) {
+      if (fields[k] == null) delete fields[k];
+    }
+    return { docType, rawText: rawText || raw, fields };
+  } catch (err) {
+    console.warn('[aiDispatcher] structured OCR failed:', (err as Error)?.message);
+    return null;
+  }
+}
+
+/**
+ * From a structured OCR result, pick the single best CAD lookup to auto-run.
+ * Most-specific identifier first: plate → VIN → person-by-name. Returns null
+ * when nothing runnable was extracted.
+ */
+export function lookupFromOcr(x: OcrExtraction): LookupRequest | null {
+  const f = x.fields;
+  if (f.plate && f.plate.replace(/[^A-Za-z0-9]/g, '').length >= 4) {
+    return { type: 'plate', query: f.plate };
+  }
+  if (f.vin && f.vin.replace(/[^A-Za-z0-9]/g, '').length >= 6) {
+    return { type: 'vin', query: f.vin };
+  }
+  if (f.name && (f.name.includes(' ') || f.name.trim().length >= 3)) {
+    return { type: 'person', query: f.name };
+  }
+  return null;
+}
+
 // ─── Reasoning + intent routing ─────────────────────────────
 
 // The Worker runs in UTC, so any time the dispatcher states must be converted
@@ -321,6 +448,12 @@ function buildUserPrompt(turn: DispatcherTurn): string {
     lines.push(turn.ocrText.trim());
     lines.push('===================================================');
   }
+  if (turn.autoCheck && turn.autoCheck.trim()) {
+    lines.push('=== CAD AUTO-CHECK (already run from the image) ===');
+    lines.push(turn.autoCheck.trim());
+    lines.push('Read THIS result back to the unit — do not re-request the same check.');
+    lines.push('===================================================');
+  }
   lines.push('');
   lines.push(`New transmission from ${turn.speaker || 'an unidentified unit'}:`);
   lines.push(`"${turn.transcript}"`);
@@ -329,11 +462,15 @@ function buildUserPrompt(turn: DispatcherTurn): string {
   return lines.join('\n');
 }
 
-const LOOKUP_TYPES = ['plate', 'person', 'warrant', 'premise', 'vin', 'unit_location', 'eta'] as const;
+const LOOKUP_TYPES = [
+  'plate', 'person', 'warrant', 'premise', 'vin', 'unit_location', 'eta',
+  'call_status', 'closest_unit', 'last_dispatch',
+] as const;
 
-// unit_location ("where am I") and eta ("what's my ETA") need no query — the
-// transmitting unit is the subject, resolved from the speaker by runLookup.
-const UNIT_CENTRIC_LOOKUPS = new Set(['unit_location', 'eta']);
+// Lookups that need NO query — the subject is the transmitting unit (where am I
+// / ETA) or the channel itself (say again). call_status / closest_unit DO need
+// a query (the call number / the address), so they're not in this set.
+const UNIT_CENTRIC_LOOKUPS = new Set(['unit_location', 'eta', 'last_dispatch']);
 
 function parseLookup(value: unknown): LookupRequest | undefined {
   if (!value || typeof value !== 'object') return undefined;
@@ -345,7 +482,7 @@ function parseLookup(value: unknown): LookupRequest | undefined {
   return { type: type as LookupRequest['type'], query: q };
 }
 
-const ACTION_TYPES = ['set_unit_status', 'create_call', 'clear_call', 'dispatch_backup'] as const;
+const ACTION_TYPES = ['set_unit_status', 'create_call', 'clear_call', 'dispatch_backup', 'create_bolo'] as const;
 
 // Pull a string field off a loose object (the model may emit '', null, or
 // the wrong type). Returns undefined for anything not a non-empty string.
@@ -377,6 +514,20 @@ function parseAction(value: unknown): ActionRequest | undefined {
     const call_number = str(obj, 'call_number');
     if (!unit && !call_number) return undefined;
     return { type: type as ActionType, unit, call_number };
+  }
+  if (type === 'create_bolo') {
+    const title = str(obj, 'title');
+    const description = str(obj, 'description');
+    const subject_description = str(obj, 'subject_description');
+    const vehicle_description = str(obj, 'vehicle_description');
+    // Need at least one piece of detail to issue a BOLO.
+    if (!title && !description && !subject_description && !vehicle_description) return undefined;
+    return {
+      type: type as ActionType,
+      bolo_type: str(obj, 'bolo_type'), // person|vehicle|other; mapped server-side
+      title, description, subject_description, vehicle_description,
+      priority: str(obj, 'priority'),
+    };
   }
   // create_call
   const incident_type = str(obj, 'incident_type');
@@ -702,8 +853,68 @@ const COMMON_WORDS = new Set([
   'ACTIVE', 'CLOSED', 'SEARCH', 'RECORDS', 'OFFICER',
 ]);
 
+// ── Phonetic readback (NATO + spoken digits) ────────────────
+// Dispatchers don't say "plate A-B-C-1-2-3" as run-together glyphs — they
+// read it phonetically ("Alpha Bravo Charlie, one two three") so it survives
+// a noisy P25 channel. We apply this to ALPHANUMERIC IDENTIFIERS only — never
+// to ordinary words — so a plate/DL/VIN/warrant/case number reads back the way
+// a real dispatcher voices it.
+const NATO: Record<string, string> = {
+  A: 'Alpha', B: 'Bravo', C: 'Charlie', D: 'Delta', E: 'Echo', F: 'Foxtrot',
+  G: 'Golf', H: 'Hotel', I: 'India', J: 'Juliet', K: 'Kilo', L: 'Lima',
+  M: 'Mike', N: 'November', O: 'Oscar', P: 'Papa', Q: 'Quebec', R: 'Romeo',
+  S: 'Sierra', T: 'Tango', U: 'Uniform', V: 'Victor', W: 'Whiskey',
+  X: 'X-ray', Y: 'Yankee', Z: 'Zulu',
+};
+// Spoken digits — "niner" for 9 is the radio convention (avoids confusion with
+// "five"/foreign "nein" on a degraded channel).
+const DIGIT_WORDS: Record<string, string> = {
+  '0': 'zero', '1': 'one', '2': 'two', '3': 'three', '4': 'four',
+  '5': 'five', '6': 'six', '7': 'seven', '8': 'eight', '9': 'niner',
+};
+
+/** Spell an alphanumeric identifier phonetically: letters→NATO, digits→spoken
+ *  (niner for 9), separators dropped. "ABC123" → "Alpha Bravo Charlie one two three". */
+export function spellAlnum(token: string): string {
+  const out: string[] = [];
+  for (const ch of token.toUpperCase()) {
+    if (NATO[ch]) out.push(NATO[ch]);
+    else if (DIGIT_WORDS[ch]) out.push(DIGIT_WORDS[ch]);
+    // hyphen / space / other separators are dropped — they're not voiced
+  }
+  return out.join(' ');
+}
+
+/** Spell a run of digits one at a time: "12" → "one two" (for call-sign prefixes). */
+function spellDigits(digits: string): string {
+  return digits.split('').map((d) => DIGIT_WORDS[d] || d).join(' ');
+}
+
+// Keywords that introduce an alphanumeric identifier a dispatcher spells out.
+// Deliberately EXCLUDES "unit" — call-signs are word-based ("12-Adam") and are
+// handled separately (digits spelled, the word kept).
+const ID_KEYWORD_RE =
+  /\b(plate|license|licence|dl|d\.l\.|vin|warrant|case|tag|registration|reg|id)\s+(?:number\s+|no\.?\s+|#\s*)?([A-Za-z0-9][A-Za-z0-9-]{1,11})\b/gi;
+
+// A standalone plate-like token: contains BOTH a letter and a digit, 4–8 chars,
+// and is NOT part of a hyphenated sequence (so a hyphenated call number like
+// "CFS26-00042" is left for the structured readback, not spelled glyph-by-glyph).
+const PLATE_LIKE_RE =
+  /(?<![A-Za-z0-9-])(?=[A-Za-z0-9]*[A-Za-z])(?=[A-Za-z0-9]*\d)[A-Za-z0-9]{4,8}(?![A-Za-z0-9-])/g;
+
+// A word-based call-sign with a numeric prefix: "12-Adam" → "one two Adam".
+const CALLSIGN_RE = /\b(\d{1,3})-([A-Z][a-z]+)\b/g;
+
 export function humanizeForSpeech(text: string): string {
   let s = text;
+
+  // 0. Phonetic identifiers FIRST, before acronym/abbrev steps could touch the
+  //    letter runs. Spell out plate/DL/VIN/warrant/case numbers the dispatcher
+  //    way. Keyword-introduced IDs are highest-precision; standalone plate-like
+  //    tokens catch a plate read without the keyword; call-signs keep their word.
+  s = s.replace(ID_KEYWORD_RE, (_m, kw, id) => `${kw} ${spellAlnum(id)}`);
+  s = s.replace(PLATE_LIKE_RE, (m) => spellAlnum(m));
+  s = s.replace(CALLSIGN_RE, (_m, d, w) => `${spellDigits(d)} ${w}`);
 
   // 1. Expand 10-codes
   s = s.replace(/\b10-\d{1,3}\b/g, (match) => {
@@ -735,8 +946,12 @@ export function humanizeForSpeech(text: string): string {
     return DIRECTIONS[match.toUpperCase()] || match;
   });
 
-  // 7. Normalize time formats: "HHMM" → "HH MM hours"
-  s = s.replace(/\b([01]\d|2[0-3])([0-5]\d)\b(?!\s*hours)/g, (_, hour, min) => {
+  // 7. Normalize CLOCK times: "14:32" → "14 32 hours". COLON-form only — the
+  //    dispatcher's stated times come from mountainTimeNow() as "HH:MM", so this
+  //    still voices them. The old bare-4-digit rule ("[01]\d[0-5]\d") also
+  //    matched YEARS, plate fragments, and street numbers ("2024" → "20 24
+  //    hours", "1200 block" → "12 00 hours block") — it's removed.
+  s = s.replace(/\b([01]?\d|2[0-3]):([0-5]\d)\b/g, (_, hour, min) => {
     return `${hour} ${min} hours`;
   });
 

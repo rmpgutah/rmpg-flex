@@ -387,7 +387,12 @@
 //       the Map UI ("What's Here").
 // v717: Statewide DB always-on — Utah roads + address points default visible
 //       (auto-enabled on map ready; toggleable in-session, returns at load).
-// v718: Records/RMS audit — VehiclesTab no longer falsely flags non-stolen
+// v718: Plain-language record TYPE is now mandatory output everywhere — shared
+//       recordTypeLabel() (map + humanize fallback, never a raw code) feeds the
+//       Connections graph legend/node tooltips, the link picker chips, and the
+//       record-delete dialog; getEntityLabel delegates to it. (PDFs already
+//       title each record by its plain type.)
+// v719: Records/RMS audit — VehiclesTab no longer falsely flags non-stolen
 //       vehicles as STOLEN. isActiveStolen() now matches ONLY a confirmed
 //       'Stolen' status (was flagging everything ≠ None/Recovered, so Not
 //       Stolen / Unknown / Cleared / Under Investigation all showed a false
@@ -395,7 +400,7 @@
 //       unified on the helper. (Pairs with worker-side records/nibrs fixes:
 //       person warrant lookups key on subject_person_id; evidence INSERT/PUT/
 //       search use real columns; NIBRS uses occurred_date.)
-const CACHE_NAME = 'rmpg-flex-v718';
+const CACHE_NAME = 'rmpg-flex-v719';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

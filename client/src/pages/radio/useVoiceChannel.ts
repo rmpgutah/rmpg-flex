@@ -165,6 +165,25 @@ export function useVoiceChannel(
             }
             break;
           }
+          case 'dispatch_action': {
+            // The AI dispatcher wrote to the CAD (created/cleared a call,
+            // changed a unit status, dispatched backup). Surface it live so the
+            // operator console / dispatch board can badge it without waiting for
+            // a poll. Emitted as a window event — non-invasive, any mounted view
+            // can listen. (The spoken confirmation also lands in the feed via
+            // dispatch_speak, so operators see it regardless.)
+            try {
+              window.dispatchEvent(new CustomEvent('rmpg:dispatch-action', {
+                detail: {
+                  channelId: msg.channel_id ?? null,
+                  unit: msg.unit ?? null,
+                  action: msg.action ?? null,
+                  summary: msg.summary ?? null,
+                },
+              }));
+            } catch { /* SSR / no-DOM */ }
+            break;
+          }
         }
       };
 
