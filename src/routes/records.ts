@@ -208,6 +208,16 @@ records.delete('/persons/:id', async (c) => {
     const id = c.req.param('id');
     const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM persons WHERE id = ?', id);
     if (!existing) return c.json({ error: 'Person not found' }, 404);
+    // D1 enforces FKs. persons(id) has RESTRICT children that block a bare
+    // DELETE; the CASCADE children (incident_persons, serve_queue_persons,
+    // case_person_links) clean themselves. Resolve the RESTRICT ones first:
+    //   call_persons          → junction rows; drop the person↔call links.
+    //   vehicles_records.owner → detach (NULL); the vehicle record survives.
+    // Also sweep the polymorphic record_links (no FK, so it would otherwise
+    // leave orphan edges in the Connections graph).
+    await execute(db, 'DELETE FROM call_persons WHERE person_id = ?', id);
+    await execute(db, 'UPDATE vehicles_records SET owner_person_id = NULL WHERE owner_person_id = ?', id);
+    await execute(db, "DELETE FROM record_links WHERE (source_type='person' AND source_id=?) OR (target_type='person' AND target_id=?)", id, id);
     await execute(db, 'DELETE FROM persons WHERE id = ?', id);
     return c.json({ success: true });
   } catch (err) {
@@ -424,9 +434,14 @@ records.delete('/vehicles/:id', async (c) => {
     const id = c.req.param('id');
     const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM vehicles_records WHERE id = ?', id);
     if (!existing) return c.json({ error: 'Vehicle not found' }, 404);
+    // FK children: call_vehicles is RESTRICT (blocks the delete); incident_vehicles
+    // and business_vehicles CASCADE on their own. Drop the junction rows + sweep
+    // orphan polymorphic record_links before removing the vehicle.
+    await execute(db, 'DELETE FROM call_vehicles WHERE vehicle_id = ?', id);
+    await execute(db, "DELETE FROM record_links WHERE (source_type='vehicle' AND source_id=?) OR (target_type='vehicle' AND target_id=?)", id, id);
     await execute(db, 'DELETE FROM vehicles_records WHERE id = ?', id);
     return c.json({ success: true });
-  } catch (err) { return c.json({ error: 'Failed to delete vehicle', detail: (err as Error)?.message }, 500); }
+  } catch (err) { console.error('DELETE /records/vehicles/:id failed:', err); return c.json({ error: 'Failed to delete vehicle', detail: (err as Error)?.message }, 500); }
 });
 
 // POST /records/vehicles/:id/archive — mark vehicle as archived in flags JSON.

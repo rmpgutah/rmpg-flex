@@ -638,6 +638,18 @@ const API_ROUTES: RouteRule[] = [
   // Regex covers GET/POST /links and DELETE /links/:id; matched on
   // pathname (no query), so no `\?` branch needed.
   { kind: 'regex', value: /^\/api\/records\/links(\/\d+)?$/ },
+  // DELETE /api/records/persons/:id and /api/records/vehicles/:id — hard-delete
+  // a record. The legacy handler issues a bare `DELETE FROM persons|vehicles_records`
+  // that 500s on D1 foreign-key children: call_persons / call_vehicles are
+  // RESTRICT (no ON DELETE), so any person on a call (12 live) or that vehicle
+  // (1 live) can never be deleted. The rewrite handler (src/routes/records.ts)
+  // clears the RESTRICT junctions, detaches owned-vehicle ownership (nullable),
+  // sweeps the orphan polymorphic record_links, then deletes — CASCADE children
+  // (incident_*, serve_queue_*, case_*_links) clean themselves. Anchored to the
+  // bare numeric id + DELETE only, so /archive, /unarchive, /history and the
+  // GET/POST/PUT person+vehicle endpoints stay on legacy.
+  { kind: 'regex', value: /^\/api\/records\/persons\/\d+$/, methods: ['DELETE'] },
+  { kind: 'regex', value: /^\/api\/records\/vehicles\/\d+$/, methods: ['DELETE'] },
 
   // ── Warrants watch (rewrite has /watch/runs, /watch/scan) ──
   { kind: 'prefix', value: '/api/warrants/watch' },
