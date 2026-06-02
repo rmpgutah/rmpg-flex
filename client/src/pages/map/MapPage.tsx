@@ -102,6 +102,7 @@ import { useMapEnforcementClusters } from './hooks/useMapEnforcementClusters';
 import { useMapFleetVehicles } from './hooks/useMapFleetVehicles';
 import { useMapPanicZone } from './hooks/useMapPanicZone';
 import { useMapDaylightOverlay } from './hooks/useMapDaylightOverlay';
+import { useMap3D } from './hooks/useMap3D';
 import { fetchMapConfig, type MapSettings } from './hooks/useMapConfig';
 import PredictionsPanel from './components/PredictionsPanel';
 import { useMapTactical } from './hooks/useMapTactical';
@@ -493,6 +494,7 @@ export default function MapPage() {
   );
 
   const [whatsHereActive, setWhatsHereActive] = usePersistedState<boolean>('rmpg_whatshere', false);
+  const [is3D, setIs3D] = usePersistedState<boolean>('rmpg_map_3d', false);
   const [choroLevel, setChoroLevel] = usePersistedState<ChoroLevel | null>('rmpg_choro_level', null);
   const [choroSource, setChoroSource] = usePersistedState<'calls' | 'incidents'>('rmpg_choro_source', 'calls');
   const [incidentPoints, setIncidentPoints] = useState<{ latitude: number | null; longitude: number | null }[]>([]);
@@ -501,6 +503,7 @@ export default function MapPage() {
   const [hierLegend, setHierLegend] = useState<{ label: string; color: string }[]>([]);
 
   useWhatsHere({ map: mapInstanceRef.current, popup: infoWindowRef.current, active: whatsHereActive });
+  useMap3D({ map: mapInstanceRef.current, enabled: is3D, mapLoaded, isLight: isLightMapStyle(mapStyle) });
   const { choroLegend } = useActivityChoropleth({
     map: mapInstanceRef.current,
     calls: choroSource === 'incidents' ? incidentPoints : calls,
@@ -3461,6 +3464,24 @@ export default function MapPage() {
                 <Minus className={`w-3.5 h-3.5 ${isLightMapStyle(mapStyle) ? 'text-gray-600' : 'text-white/70'}`} />
               </button>
             </div>
+            {/* 3D / 2D toggle — pitches the camera and renders terrain + sky +
+                extruded buildings (see useMap3D). */}
+            <button
+              onClick={() => setIs3D((v) => !v)}
+              className={`border backdrop-blur-md px-2 py-1.5 transition-colors font-mono text-[10px] font-bold tracking-wide ${
+                is3D
+                  ? 'bg-brand-600/40 border-brand-500/60 text-brand-200'
+                  : isLightMapStyle(mapStyle)
+                    ? 'bg-white/80 border-gray-300 text-gray-600 hover:bg-white/95'
+                    : 'bg-black/30 border-white/15 text-white/70 hover:bg-black/50'
+              }`}
+              style={{ borderRadius: 2 }}
+              title={is3D ? 'Switch to 2D (flat) view' : 'Switch to 3D view — terrain, sky & buildings'}
+              aria-label={is3D ? 'Switch to 2D view' : 'Switch to 3D view'}
+              aria-pressed={is3D}
+            >
+              {is3D ? '2D' : '3D'}
+            </button>
           </div>
         )}
 
