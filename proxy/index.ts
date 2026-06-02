@@ -587,6 +587,10 @@ const API_ROUTES: RouteRule[] = [
   // live: the rewrite handlers are deployed and back the same identifyBeat
   // that already geocodes geography on POST /api/dispatch/calls.
   { kind: 'prefix', value: '/api/dispatch/geography' },
+  // /api/dispatch/address-occupants — New Call modal officer-safety cross-ref
+  // (persons on file at the address + warrant/gang/caution flags). New rewrite
+  // handler in src/routes/dispatch/premiseHistory.ts; legacy never had it.
+  { kind: 'regex', value: /^\/api\/dispatch\/address-occupants(\?|$)/, methods: ['GET'] },
 
   // /api/dispatch/heatmap/enforcement — enforcement-activity clusters for the
   // Map "Enforcement" overlay (src/routes/dispatch/aggregates.ts). Legacy has

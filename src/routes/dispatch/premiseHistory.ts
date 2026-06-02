@@ -81,4 +81,61 @@ premise.get('/premise-history', async (c) => {
   });
 });
 
+// GET /dispatch/address-occupants?address=...
+// Officer-safety cross-reference for the New Call modal: who is on file at
+// this address, and is anyone flagged (active warrant / gang / caution). Prior
+// CALLS (premise-history) tell you what happened here; this tells you WHO is
+// here. Additive + separate from premise-history so it can't regress that
+// (still-legacy) endpoint. Best-effort throughout — a miss returns an empty
+// list, never an error that would block call creation.
+premise.get('/address-occupants', async (c) => {
+  const db = getDb(c.env);
+  const address = (c.req.query('address') || '').trim();
+  if (address.length < 5) return c.json({ occupants: [], occupant_count: 0, has_flagged: false });
+
+  const SENTINEL = new Set(['', 'none', 'n/a', 'na', '0', 'null', 'unknown']);
+  try {
+    const people = await query<any>(
+      db,
+      `SELECT p.id, p.first_name, p.last_name, p.dob, p.address, p.flags, p.gang_affiliation,
+              (SELECT COUNT(*) FROM warrants w
+                 WHERE w.person_id = p.id
+                   AND LOWER(COALESCE(w.status, '')) IN ('active', 'outstanding', 'confirmed')) AS active_warrants
+       FROM persons p
+       WHERE UPPER(p.address) LIKE ?
+       ORDER BY active_warrants DESC, p.last_name
+       LIMIT 25`,
+      `%${address.toUpperCase()}%`,
+    );
+    const occupants = people.map((p: any) => {
+      let flags: string[] = [];
+      try {
+        const parsed = JSON.parse(p.flags || '[]');
+        if (Array.isArray(parsed)) flags = parsed.map((x: any) => (typeof x === 'string' ? x : x?.type)).filter(Boolean);
+      } catch { /* flags free-form/absent */ }
+      const gangRaw = (p.gang_affiliation ?? '').toString().trim();
+      const gang = SENTINEL.has(gangRaw.toLowerCase()) ? null : gangRaw;
+      const warrants = Number(p.active_warrants) || 0;
+      const flaggedCaution = flags.some((t) => /caution|armed|violent|danger|weapon|gang/i.test(t));
+      return {
+        id: p.id,
+        name: `${p.first_name || ''} ${p.last_name || ''}`.trim() || `Person #${p.id}`,
+        dob: p.dob || null,
+        flags,
+        gang,
+        active_warrants: warrants,
+        caution: warrants > 0 || !!gang || flaggedCaution,
+      };
+    });
+    return c.json({
+      occupants,
+      occupant_count: occupants.length,
+      has_flagged: occupants.some((o) => o.caution),
+    });
+  } catch (err) {
+    console.error('[dispatch] address-occupants lookup failed:', err);
+    return c.json({ occupants: [], occupant_count: 0, has_flagged: false });
+  }
+});
+
 export default premise;
