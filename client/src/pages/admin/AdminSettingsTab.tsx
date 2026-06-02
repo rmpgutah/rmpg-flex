@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { apiFetch } from '../../hooks/useApi';
+import { loadSystemSettings } from '../../utils/systemSettings';
 import { useToast } from '../../components/ToastProvider';
 import { Settings, RotateCcw, Save, Check, Eye, ChevronDown, RefreshCw } from 'lucide-react';
 
@@ -69,6 +70,10 @@ export default function AdminSettingsTab(_props: Props) {
     setSaving(true);
     try {
       await apiFetch('/admin/settings', { method: 'PUT', body: JSON.stringify(editValues) });
+      // Refresh the org-wide system-settings cache so branding/display/
+      // localization changes apply immediately (re-applies Display to the
+      // document root) instead of only on next login.
+      await loadSystemSettings();
       addToast('Settings saved', 'success');
     } catch (err) { addToast('Failed to save settings', 'error'); }
     setSaving(false);
@@ -112,6 +117,14 @@ export default function AdminSettingsTab(_props: Props) {
         />
         <button onClick={resetAll} disabled={saving} className="btn-secondary btn-xs flex items-center gap-1"><RotateCcw size={10} />Reset</button>
         <button onClick={saveAll} disabled={saving} className="btn-gold btn-xs flex items-center gap-1"><Save size={10} />{saving ? 'Saving...' : 'Save All'}</button>
+      </div>
+
+      {/* Honesty note: which categories are wired to actually affect the app. */}
+      <div className="px-3 py-1.5 bg-[#0a0a0a] border-b border-[#1a1a1a] text-[9px] text-[#777] leading-relaxed">
+        <span className="text-[#d4a017] font-bold uppercase tracking-wider">Live-applied:</span>{' '}
+        Branding (agency name, colors, classification &amp; watermark on all reports/PDFs); Display &amp; Theme
+        (CRT scanline/vignette, animations, high-contrast, amber/green phosphor, grid lines, status bar, date/time format).
+        Other settings are saved but not yet consumed everywhere — wiring continues per release.
       </div>
 
       <div className="flex flex-1 overflow-hidden">

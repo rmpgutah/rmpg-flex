@@ -5,6 +5,7 @@
 // ============================================================
 
 import jsPDF from 'jspdf';
+import { getAgencyName } from './brandConfig';
 import {
   hexToRgb, openAutoSection, closeAutoSection, addFieldPair, addPageFooter,
   addConfidentialWatermark, addWrappedText, addTableWithShading, checkPageBreak,
@@ -105,7 +106,7 @@ export async function generateInvoicePdf(data: InvoicePdfData, options: InvoiceP
   // ── NIBRS-style Header ───────────────────────────────
   let y = drawNibrsHeader(doc, {
     stateIdentifier: 'STATE OF UTAH',
-    agencyName: 'ROCKY MOUNTAIN PROTECTIVE GROUP',
+    agencyName: getAgencyName(),
     formTitle: 'INVOICE',
     formNumber: FORM_NUMBERS.invoice || 'FORM PS-301',
     caseNumber: data.invoice_number,

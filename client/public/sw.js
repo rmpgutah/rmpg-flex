@@ -390,7 +390,10 @@
 // v718: Admin sweep — de-dup tabs, remove dead/retention/skiptracer-v1; build
 //       Departments + Announcements (+ officer banner) + Alert Rules engine +
 //       maintenance toggle + IPED config; make non-functional tabs real.
-const CACHE_NAME = 'rmpg-flex-v718';
+// v719: Settings bridge — Console Settings (system_settings) now actually feed
+//       the app: GET /api/settings.system + SystemSettingsProvider; branding
+//       wired into all PDFs, Display/Theme effects + date/time format applied.
+const CACHE_NAME = 'rmpg-flex-v719';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

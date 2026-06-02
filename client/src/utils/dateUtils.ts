@@ -16,9 +16,40 @@ const pad2 = (n: number) => String(n).padStart(2, '0');
 // conversion for time edits. All resolve the zone via displayTimeZone():
 // an IANA zone (e.g. America/Denver) or undefined = the device's local zone.
 import { displayTimeZone } from './timeZoneMode';
+import { getSystemSetting, getBoolSetting } from './systemSettings';
 export { MOUNTAIN_TIME_ZONE, getTimeZoneMode, setTimeZoneMode } from './timeZoneMode';
 
 interface ZoneParts { year: number; month: number; day: number; hour: number; minute: number; second: number; }
+
+const MONTHS_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+// ── Setting-aware part formatters ───────────────────────────
+// Honour Console Settings → Display (date_format / time_format) +
+// Localization (time_format_seconds). Defaults reproduce the previous
+// hardcoded MM/DD/YYYY + 24h behaviour, so unconfigured installs are
+// byte-identical to before.
+function formatDateParts(p: ZoneParts): string {
+  const MM = pad2(p.month), DD = pad2(p.day), YYYY = String(p.year);
+  switch (getSystemSetting('date_format', 'MM/DD/YYYY')) {
+    case 'DD/MM/YYYY': return `${DD}/${MM}/${YYYY}`;
+    case 'YYYY-MM-DD': return `${YYYY}-${MM}-${DD}`;
+    case 'DD-MMM-YYYY': return `${DD}-${MONTHS_ABBR[p.month - 1]}-${YYYY}`;
+    default: return `${MM}/${DD}/${YYYY}`;
+  }
+}
+
+function formatTimeParts(p: ZoneParts, withSeconds: boolean): string {
+  if (getSystemSetting('time_format', '24h') === '12h') {
+    let h = p.hour % 12; if (h === 0) h = 12;
+    const ampm = p.hour < 12 ? 'AM' : 'PM';
+    return withSeconds
+      ? `${h}:${pad2(p.minute)}:${pad2(p.second)} ${ampm}`
+      : `${h}:${pad2(p.minute)} ${ampm}`;
+  }
+  return withSeconds
+    ? `${pad2(p.hour)}:${pad2(p.minute)}:${pad2(p.second)}`
+    : `${pad2(p.hour)}:${pad2(p.minute)}`;
+}
 
 /** Wall-clock components of an instant in the active display zone (DST-aware). */
 function zoneParts(d: Date): ZoneParts {
@@ -129,28 +160,29 @@ export function formatShortTime(dateStr: string | null | undefined): string {
   if (!dateStr) return '';
   const d = parseTimestamp(dateStr);
   if (isNaN(d.getTime())) return '';
-  return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: displayTimeZone() });
+  return formatTimeParts(zoneParts(d), getBoolSetting('time_format_seconds', false));
 }
 
 /**
- * Format a server timestamp for display as MM/DD/YYYY HH:MM:SS (24h), Mountain Time.
- * Uses MT wall-clock parts (not device-local getters).
+ * Format a server timestamp for display as date + time in the active
+ * display zone. Layout follows Console Settings → Display (date_format /
+ * time_format); defaults to MM/DD/YYYY HH:MM:SS (24h).
  */
 export function formatDateTime(dateStr: string | null | undefined): string {
   const d = parseTimestamp(dateStr);
   if (isNaN(d.getTime())) return '';
   const p = zoneParts(d);
-  return `${pad2(p.month)}/${pad2(p.day)}/${p.year} ${pad2(p.hour)}:${pad2(p.minute)}:${pad2(p.second)}`;
+  return `${formatDateParts(p)} ${formatTimeParts(p, true)}`;
 }
 
 /**
- * Format a server timestamp as MM/DD/YYYY only (no time), Mountain Time.
+ * Format a server timestamp as date only, in the active display zone.
+ * Layout follows Console Settings → Display (date_format).
  */
 export function formatDate(dateStr: string | null | undefined): string {
   const d = parseTimestamp(dateStr);
   if (isNaN(d.getTime())) return '';
-  const p = zoneParts(d);
-  return `${pad2(p.month)}/${pad2(p.day)}/${p.year}`;
+  return formatDateParts(zoneParts(d));
 }
 
 /**

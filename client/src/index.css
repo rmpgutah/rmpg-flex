@@ -2759,17 +2759,46 @@ body.fx-noise::after {
   inset: 0;
   pointer-events: none;
   z-index: 5;
+  /* Scanline + vignette alphas are driven by Console Settings → Display
+     (scanline_intensity / vignette_intensity) via systemSettings.ts,
+     falling back to the original 0.16 / 0.45 when unset. */
   background:
     repeating-linear-gradient(
       0deg,
       rgba(0, 0, 0, 0) 0px,
       rgba(0, 0, 0, 0) 2px,
-      rgba(0, 0, 0, 0.16) 3px,
-      rgba(0, 0, 0, 0.16) 3px
+      rgba(0, 0, 0, var(--crt-scanline-alpha, 0.16)) 3px,
+      rgba(0, 0, 0, var(--crt-scanline-alpha, 0.16)) 3px
     ),
-    radial-gradient(120% 100% at 50% 0%, rgba(0, 0, 0, 0) 60%, rgba(0, 0, 0, 0.45) 100%);
+    radial-gradient(120% 100% at 50% 0%, rgba(0, 0, 0, 0) 60%, rgba(0, 0, 0, var(--crt-vignette-alpha, 0.45)) 100%);
   mix-blend-mode: multiply;
 }
+
+/* Console Settings → Display effect toggles (applied to <html> by
+   systemSettings.applyDisplaySettings). All org-level; no per-user
+   competing control, so they're safe to drive from settings. */
+html.crt-off .ncic-panel::after,
+html.crt-off .ncic-embedded::after { display: none; }
+
+html.no-animations *,
+html.no-animations *::before,
+html.no-animations *::after {
+  animation-duration: 0s !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0s !important;
+  scroll-behavior: auto !important;
+}
+
+html.high-contrast body { filter: contrast(1.25); }
+
+html.amber-phosphor body { filter: sepia(0.45) hue-rotate(-18deg) saturate(1.3); }
+html.green-phosphor body { filter: sepia(0.5) hue-rotate(60deg) saturate(1.2); }
+html.amber-phosphor.green-phosphor body { filter: none; } /* mutually exclusive — neither wins if both set */
+
+html.hide-grid-lines table th,
+html.hide-grid-lines table td { border-color: transparent !important; }
+
+html.hide-status-bar .status-bar { display: none !important; }
 
 .ncic-output::-webkit-scrollbar {
   width: 6px;
