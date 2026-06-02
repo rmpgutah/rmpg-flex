@@ -167,7 +167,12 @@
 //       (re-add on style.load), theme-aware labels (legible on light/
 //       satellite), and "Use This Location" popup action routes a clicked
 //       address/road into the existing address-search pan+zoom+marker flow.
-const CACHE_NAME = 'rmpg-flex-v680';
+// v681: pdfjs-dist 5→6 (Dependabot #880, was CI-failing). v6 removed
+//       PDFDocumentProxy.destroy() — the rmpg-pdf-engine pdfjs backend now
+//       owns the loading task and tears down via loadingTask.destroy()
+//       (version-agnostic). Worker (build/pdf.worker.min.mjs) + standard_fonts/
+//       cmaps asset paths unchanged; vite build + 563 tests green on v6.
+const CACHE_NAME = 'rmpg-flex-v681';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
