@@ -1,8 +1,15 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Link2, Search, UserCircle, Car, Building2, Package, Loader2, Check } from 'lucide-react';
+import { Link2, Search, Loader2, Check } from 'lucide-react';
 import FormModal from './FormModal';
 import { apiFetch } from '../hooks/useApi';
 import type { RecordEntityType } from '../types';
+import {
+  LINKABLE_TYPES,
+  ENTITY_META,
+  RELATIONSHIP_OPTIONS,
+  relationshipCode,
+  DEFAULT_RELATIONSHIP_CODE,
+} from '../utils/recordLinks';
 
 import RichTextArea from './RichTextArea';
 interface LinkRecordModalProps {
@@ -13,25 +20,11 @@ interface LinkRecordModalProps {
   onLinked: () => void;
 }
 
-const TYPE_OPTIONS: { type: RecordEntityType; label: string; icon: React.ElementType }[] = [
-  { type: 'person', label: 'Person', icon: UserCircle },
-  { type: 'vehicle', label: 'Vehicle', icon: Car },
-  { type: 'property', label: 'Property', icon: Building2 },
-  { type: 'evidence', label: 'Evidence', icon: Package },
-];
-
-const RELATIONSHIP_OPTIONS = [
-  'Associated',
-  'Owner',
-  'Resident',
-  'Employee',
-  'Witness',
-  'Suspect',
-  'Victim',
-  'Evidence Linked',
-  'Related',
-  'Other',
-];
+// Built from the shared registry so the picker offers EVERY linkable record
+// type (person, vehicle, property, business, evidence, incident, case,
+// warrant) — and can't drift from the display badges again.
+const TYPE_OPTIONS: { type: RecordEntityType; label: string; icon: React.ElementType }[] =
+  LINKABLE_TYPES.map((type) => ({ type, label: ENTITY_META[type].label, icon: ENTITY_META[type].icon }));
 
 const labelClass = 'block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1';
 
@@ -47,7 +40,7 @@ export default function LinkRecordModal({
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [searching, setSearching] = useState(false);
   const [selectedTarget, setSelectedTarget] = useState<{ id: string; label: string } | null>(null);
-  const [relationship, setRelationship] = useState('associated');
+  const [relationship, setRelationship] = useState(DEFAULT_RELATIONSHIP_CODE);
   const [notes, setNotes] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -59,7 +52,7 @@ export default function LinkRecordModal({
       setSearchQuery('');
       setSearchResults([]);
       setSelectedTarget(null);
-      setRelationship('associated');
+      setRelationship(DEFAULT_RELATIONSHIP_CODE);
       setNotes('');
       setError('');
     }
@@ -145,7 +138,7 @@ export default function LinkRecordModal({
       {/* Target Type Selector */}
       <div>
         <label className={labelClass}>Target Type</label>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {TYPE_OPTIONS.map(({ type, label, icon: TypeIcon }) => (
             <button
               key={type}
@@ -255,7 +248,7 @@ export default function LinkRecordModal({
           onChange={(e) => setRelationship(e.target.value)}
         >
           {RELATIONSHIP_OPTIONS.map((opt) => (
-            <option key={opt} value={opt.toLowerCase().replace(/ /g, '_')}>
+            <option key={opt} value={relationshipCode(opt)}>
               {opt}
             </option>
           ))}
