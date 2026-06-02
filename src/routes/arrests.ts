@@ -91,6 +91,44 @@ function csvEscape(v: unknown): string {
   return `"${s.replace(/"/g, '""')}"`;
 }
 
+// Surface the manually-linked person on arrest rows so the client can both
+// DISPLAY the link and UNLINK it (it needs the person id). Done as a single
+// extra batched query (not N+1) keyed on the arrest ids already fetched.
+// Adds `person_id` (number|null) and `linked_person` ({id,name}|null) to each
+// row, matching the ArrestRecord shape the client expects.
+async function enrichLinkedPersons<T extends { id?: number; person_id?: number | null }>(
+  db: ReturnType<typeof getDb>,
+  rows: T[],
+): Promise<T[]> {
+  const ids = rows.map((r) => r.id).filter((v): v is number => typeof v === 'number');
+  if (ids.length === 0) return rows.map((r) => ({ ...r, person_id: (r.person_id ?? null), linked_person: null }));
+  const placeholders = ids.map(() => '?').join(',');
+  const links = await query<{ arrest_record_id: number; person_id: number; name: string }>(
+    db,
+    `SELECT acl.arrest_record_id,
+            acl.linked_id AS person_id,
+            TRIM(COALESCE(p.first_name, '') || ' ' || COALESCE(p.last_name, '')) AS name
+       FROM arrest_cross_links acl
+       JOIN persons p ON p.id = acl.linked_id
+      WHERE acl.linked_type = 'person' AND acl.arrest_record_id IN (${placeholders})
+      ORDER BY acl.created_at DESC`,
+    ...ids,
+  );
+  // Keep the most-recent link per arrest (rows arrive newest-first).
+  const byArrest = new Map<number, { person_id: number; name: string }>();
+  for (const l of links) {
+    if (!byArrest.has(l.arrest_record_id)) byArrest.set(l.arrest_record_id, { person_id: l.person_id, name: l.name });
+  }
+  return rows.map((r) => {
+    const link = typeof r.id === 'number' ? byArrest.get(r.id) : undefined;
+    return {
+      ...r,
+      person_id: link ? link.person_id : (r.person_id ?? null),
+      linked_person: link ? { id: link.person_id, name: link.name } : null,
+    };
+  });
+}
+
 // ── POST /manual — create booking record ────────────────────
 arrests.post('/manual', async (c) => {
   const denied = requireRole(c, 'admin', 'manager', 'officer', 'supervisor');
@@ -182,7 +220,8 @@ arrests.get('/manual/:id', async (c) => {
       db, 'SELECT * FROM arrest_records WHERE id = ?', id,
     );
     if (!row) return c.json({ error: 'Record not found', code: 'RECORD_NOT_FOUND' }, 404);
-    return c.json({ data: row });
+    const [enriched] = await enrichLinkedPersons(db, [row]);
+    return c.json({ data: enriched });
   } catch (err) {
     return c.json({ error: 'Failed to get arrest record', code: 'GET_ARREST_ERROR' }, 500);
   }
@@ -260,14 +299,27 @@ arrests.get('/recent', async (c) => {
   try {
     const db = getDb(c.env);
     const limit = Math.min(500, Math.max(1, parseInt(c.req.query('limit') || '50', 10) || 50));
-    const source = c.req.query('source'); // optional filter: 'manual' | 'jailbase'
-    const sql = source
-      ? `SELECT * FROM arrest_records WHERE entry_source = ? ORDER BY COALESCE(booking_date, fetched_at) DESC LIMIT ?`
-      : `SELECT * FROM arrest_records ORDER BY COALESCE(booking_date, fetched_at) DESC LIMIT ?`;
-    const rows = source
-      ? await query<Record<string, unknown>>(db, sql, source, limit)
-      : await query<Record<string, unknown>>(db, sql, limit);
-    return c.json({ data: rows });
+    const page = Math.max(1, parseInt(c.req.query('page') || '1', 10) || 1);
+    const offset = (page - 1) * limit;
+    const source = c.req.query('source');               // 'manual' | 'jailbase'
+    const county = c.req.query('source_id') || c.req.query('county'); // matches the `county` column
+    const status = c.req.query('status');
+    const where: string[] = [];
+    const params: unknown[] = [];
+    if (source) { where.push('entry_source = ?'); params.push(source); }
+    if (county) { where.push('county = ?'); params.push(county); }
+    if (status) { where.push('status = ?'); params.push(status); }
+    const whereSql = where.length ? `WHERE ${where.join(' AND ')}` : '';
+    const totalRow = await queryFirst<{ n: number }>(
+      db, `SELECT COUNT(*) AS n FROM arrest_records ${whereSql}`, ...params,
+    );
+    const rows = await query<Record<string, unknown>>(
+      db,
+      `SELECT * FROM arrest_records ${whereSql}
+       ORDER BY COALESCE(booking_date, fetched_at) DESC LIMIT ? OFFSET ?`,
+      ...params, limit, offset,
+    );
+    return c.json({ data: await enrichLinkedPersons(db, rows), total: totalRow?.n ?? rows.length });
   } catch (err) {
     return c.json({ error: 'Failed to list recent arrests', code: 'RECENT_ARRESTS_ERROR' }, 500);
   }
@@ -287,7 +339,7 @@ arrests.get('/search', async (c) => {
        ORDER BY COALESCE(booking_date, fetched_at) DESC LIMIT 100`,
       like, like, like, like,
     );
-    return c.json({ data: rows });
+    return c.json({ data: await enrichLinkedPersons(db, rows) });
   } catch (err) {
     return c.json({ error: 'Failed to search arrests', code: 'SEARCH_ARRESTS_ERROR' }, 500);
   }

@@ -277,20 +277,20 @@ export default function ArrestRecordsPage() {
         ...(statusFilter ? { status: statusFilter } : {}),
       });
 
+      // Handler returns { data: rows } for both /search and /recent.
       let data: any;
       if (searchTerm.trim()) {
-        const searchQs = new URLSearchParams({
-          name: searchTerm,
-          ...(sourceFilter ? { source: sourceFilter } : {}),
-          ...(countyFilter ? { source_id: countyFilter } : {}),
-        });
+        // /arrests/search reads the `q` query param (not `name`).
+        const searchQs = new URLSearchParams({ q: searchTerm });
         data = await apiFetch<any>(`/arrests/search?${searchQs}`);
-        setRecords(data.records || []);
-        setRecordsTotal(data.resultCount || data.records?.length || 0);
+        const rows = data.data || data.records || [];
+        setRecords(rows);
+        setRecordsTotal(data.total ?? rows.length);
       } else {
         data = await apiFetch<any>(`/arrests/recent?${qs}`);
-        setRecords(data.records || []);
-        setRecordsTotal(data.total || 0);
+        const rows = data.data || data.records || [];
+        setRecords(rows);
+        setRecordsTotal(data.total ?? rows.length);
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to load records';
@@ -305,20 +305,10 @@ export default function ArrestRecordsPage() {
   useLiveSync('arrests', () => { fetchRecords(recordsPage); fetchStats(); });
 
   // ── WebSocket live sync ─────────────────────────────────
-
-  useEffect(() => {
-    return subscribe('record_update', (msg) => {
-      const data = msg.data as any;
-      if (data?.type === 'arrest_created' || data?.type === 'arrest_updated') {
-        fetchRecords(recordsPage);
-        if (selectedRecord && data?.id === selectedRecord.id) {
-          apiFetch<ArrestRecord>(`/arrests/manual/${selectedRecord.id}`)
-            .then(fresh => setSelectedRecord(fresh))
-            .catch(() => { /* keep existing */ });
-        }
-      }
-    });
-  }, [subscribe, recordsPage, selectedRecord, fetchRecords]);
+  // Cross-device refresh is handled by useLiveSync('arrests') above, which
+  // fires on the server's liveBroadcast for /api/arrests/* mutations. The
+  // previous subscribe('record_update', ...) listener was dead — the Worker
+  // never emits a 'record_update' message type — so it was removed.
 
   // ── Person search (debounced) ───────────────────────────
 
@@ -357,8 +347,8 @@ export default function ArrestRecordsPage() {
       fetchRecords(recordsPage);
       if (selectedRecord?.id === arrestId) {
         try {
-          const fresh = await apiFetch<ArrestRecord>(`/arrests/manual/${arrestId}`);
-          setSelectedRecord(fresh);
+          const fresh = await apiFetch<{ data: ArrestRecord }>(`/arrests/manual/${arrestId}`);
+          setSelectedRecord(fresh.data);
         } catch { /* keep existing */ }
       }
       addToast('Person linked to arrest record', 'success');
@@ -370,9 +360,10 @@ export default function ArrestRecordsPage() {
     }
   };
 
-  const handleUnlinkPerson = async (arrestId: number) => {
+  const handleUnlinkPerson = async (arrestId: number, personId: number) => {
     try {
-      await apiFetch(`/arrests/${arrestId}/link-person`, { method: 'DELETE' });
+      // DELETE /:id/link-person requires the person_id query param.
+      await apiFetch(`/arrests/${arrestId}/link-person?person_id=${personId}`, { method: 'DELETE' });
       fetchRecords(recordsPage);
       if (selectedRecord?.id === arrestId) {
         setSelectedRecord(prev => prev ? { ...prev, linked_person: null, person_id: null } : null);
@@ -819,7 +810,7 @@ export default function ArrestRecordsPage() {
                 <span className="text-brand-300 font-bold">{rec.linked_person.name}</span>
                 <span className="text-rmpg-500">(ID: {rec.linked_person.id})</span>
                 <button type="button"
-                  onClick={() => handleUnlinkPerson(rec.id)}
+                  onClick={() => handleUnlinkPerson(rec.id, rec.linked_person!.id)}
                   className="text-[8px] text-red-400 hover:text-red-300 flex items-center gap-0.5 ml-2"
                 >
                   <Unlink className="w-2.5 h-2.5" /> Unlink

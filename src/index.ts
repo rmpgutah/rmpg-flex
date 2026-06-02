@@ -85,6 +85,40 @@ app.use('*', cors({
   credentials: true,
 }));
 
+// ─── Live-sync broadcast ─────────────────────────────────────
+// useLiveSync() on the client subscribes to a 'data_changed' WS event to
+// auto-refresh any open page when ANY device mutates data. The original VPS
+// stack emitted that event from a middleware that was never ported to the
+// Worker, so cross-device live refresh silently did nothing across ~38 pages.
+// This restores it: after any SUCCESSFUL mutating /api request, fan out a
+// single { module, entity } notification. The client debounces (500ms) and
+// only refetches if it is watching that module, so the cost is one small WS
+// frame per write. GETs and failed writes (status >= 400) broadcast nothing.
+//
+// Excluded modules (deliberate):
+//   - gps / presence: high-frequency pings (every ~1s) → refresh churn.
+//   - dispatch: already has surgical 'dispatch_update' realtime on the
+//     dispatch/map pages; a full-page refetch here would be redundant and
+//     heavier than the existing path.
+//   - auth / health / ws / voice-ws / map-data / tts: non-data or streaming.
+const LIVE_SYNC_SKIP = new Set([
+  'auth', 'health', 'ws', 'voice-ws', 'map-data', 'tts', 'gps', 'presence', 'dispatch',
+]);
+app.use('/api/*', async (c, next) => {
+  await next();
+  try {
+    const method = c.req.method;
+    if (method !== 'POST' && method !== 'PUT' && method !== 'PATCH' && method !== 'DELETE') return;
+    if (c.res.status >= 400) return;
+    const segs = new URL(c.req.url).pathname.replace(/^\/api\//, '').split('/').filter(Boolean);
+    const module = segs[0];
+    if (!module || LIVE_SYNC_SKIP.has(module)) return;
+    // second segment is the entity type unless it's a numeric id
+    const entity = segs[1] && !/^\d+$/.test(segs[1]) ? segs[1] : undefined;
+    broadcastAll('data_changed', { module, entity });
+  } catch { /* live-sync must never break a real response */ }
+});
+
 // Root probe — useful for "is the Worker even reachable" smoke checks
 app.get('/', (c) => c.json({ name: 'RMPG Flex API', version: '1.0.0', status: 'running' }));
 

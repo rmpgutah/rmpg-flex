@@ -352,15 +352,22 @@ hr.post('/leave/:id/deny', requireRole(...MANAGER_ROLES), async (c) => {
 // ── /disciplinary ───────────────────────────────────────────
 
 // GET /hr/disciplinary?officer_id=&status=
-hr.get('/disciplinary', requireRole(...MANAGER_ROLES), async (c) => {
+hr.get('/disciplinary', requireRole(...ALL_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
+    const user = c.get('user');
     const officerId = c.req.query('officer_id');
     const status = c.req.query('status');
 
     const where: string[] = [];
     const params: unknown[] = [];
-    if (officerId) { where.push('dr.officer_id = ?'); params.push(Number(officerId)); }
+    // Non-managers may only ever see their OWN disciplinary records (mirrors the
+    // /leave + /reviews self-scoping). Managers may filter by officer_id.
+    if (!isManager(user.role)) {
+      where.push('dr.officer_id = ?'); params.push(user.id);
+    } else if (officerId) {
+      where.push('dr.officer_id = ?'); params.push(Number(officerId));
+    }
     if (status && DISC_STATUSES.has(status)) { where.push('dr.status = ?'); params.push(status); }
 
     const sql = `

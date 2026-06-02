@@ -93,10 +93,17 @@ ct.get('/events', async (c) => {
   const db = getDb(c.env);
   const status = c.req.query('status');
   const type = c.req.query('type');
-  const from = c.req.query('from');
-  const to = c.req.query('to');
-  const search = c.req.query('q');
-  const limit = Math.min(parseInt(c.req.query('limit') || '200', 10), 1000);
+  // Accept the client's param names (date_from/date_to/search/page) with the
+  // older q/from/to as aliases. Previously only q/from/to were read and there
+  // was no pagination, so the client's text/date filters and paging were no-ops
+  // — and the bare-array response (no { data, pagination }) crashed both court
+  // pages, which read res.data / res.pagination.
+  const from = c.req.query('date_from') || c.req.query('from');
+  const to = c.req.query('date_to') || c.req.query('to');
+  const search = c.req.query('search') || c.req.query('q');
+  const limit = Math.min(parseInt(c.req.query('limit') || '200', 10) || 200, 1000);
+  const page = Math.max(1, parseInt(c.req.query('page') || '1', 10) || 1);
+  const offset = (page - 1) * limit;
 
   const where: string[] = [];
   const args: any[] = [];
@@ -108,11 +115,15 @@ ct.get('/events', async (c) => {
     where.push('(defendant_name LIKE ? OR court_case_number LIKE ? OR event_number LIKE ?)');
     args.push(`%${search}%`, `%${search}%`, `%${search}%`);
   }
-  const sql = `SELECT * FROM court_events
-               ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
-               ORDER BY event_date ASC, event_time ASC LIMIT ?`;
-  args.push(limit);
-  return c.json(await query(db, sql, ...args));
+  const whereSql = where.length ? 'WHERE ' + where.join(' AND ') : '';
+  const totalRow = await queryFirst<{ n: number }>(db, `SELECT COUNT(*) AS n FROM court_events ${whereSql}`, ...args);
+  const total = totalRow?.n ?? 0;
+  const rows = await query(
+    db,
+    `SELECT * FROM court_events ${whereSql} ORDER BY event_date ASC, event_time ASC LIMIT ? OFFSET ?`,
+    ...args, limit, offset,
+  );
+  return c.json({ data: rows, pagination: { page, limit, total, totalPages: Math.max(1, Math.ceil(total / limit)) } });
 });
 
 // ── GET /events/upcoming ────────────────────────────────────
