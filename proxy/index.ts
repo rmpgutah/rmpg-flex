@@ -1207,6 +1207,50 @@ function stubMatches(stub: StubRule, pathname: string, method: string): boolean 
   return stub.match.test(pathname);
 }
 
+// ============================================================
+// Durable Object stub classes — DO NOT DELETE without a delete-class migration
+// ============================================================
+// These empty classes exist ONLY to keep the `rmpg-api-proxy` Worker
+// deployable. They are NOT used by this router (no `durable_objects.bindings`
+// in proxy/wrangler.toml, and nothing here ever instantiates them).
+//
+// Why they're here — the 2026-06-02 name-collision incident:
+//   PR #937 (a cloudflare-workers-and-pages[bot] dashboard commit) renamed the
+//   ROOT wrangler.toml `name` rmpg-flex-api → rmpg-api-proxy. deploy.yml's
+//   "Deploy Worker" step then published the REWRITE (src/index.ts, which DOES
+//   declare WelfareWatchDO/VoiceHubDO/AlertHubDO/PdfToolsContainer via its DO
+//   migrations) ONTO the `rmpg-api-proxy` worker. That registered four DO
+//   namespaces on this worker. PR #945 reverted the name, but the namespaces
+//   remain. Cloudflare now rejects any new `rmpg-api-proxy` version that does
+//   not EXPORT those four classes with error 10064 ("does not export class
+//   'WelfareWatchDO' which is depended on by existing Durable Objects").
+//
+// Re-exporting the classes (even as empty stubs) satisfies 10064 WITHOUT a
+// migration — per Cloudflare docs, "updating the code for an existing DO class
+// does not require a migration." This is the deliberately NON-DESTRUCTIVE fix:
+// it preserves whatever DO instances may have been created on this worker
+// during the #937 window (e.g. an in-flight officer welfare-check escalation),
+// rather than wiping them with a `deleted_classes` migration. The canonical,
+// live instances of these DOs live on `rmpg-flex-api` (where welfare/voice/
+// alert traffic is actually routed) and are untouched by any of this.
+//
+// Cleanup path (later, once the rmpg-api-proxy namespaces are confirmed empty
+// in the dashboard): add a `deleted_classes` migration to proxy/wrangler.toml
+// for all four classes, deploy, then delete this block. See LEGACY.md +
+// memory project-auth-outage-name-collision.
+class InertDurableObject {
+  constructor(_state: unknown, _env: unknown) {}
+  async fetch(): Promise<Response> {
+    // Should never be reached — the proxy has no DO bindings and never
+    // routes to these. If it ever is, fail loud rather than silent.
+    return new Response('rmpg-api-proxy is a router and does not implement Durable Objects', { status: 410 });
+  }
+}
+export class WelfareWatchDO extends InertDurableObject {}
+export class VoiceHubDO extends InertDurableObject {}
+export class AlertHubDO extends InertDurableObject {}
+export class PdfToolsContainer extends InertDurableObject {}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);

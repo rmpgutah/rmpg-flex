@@ -1,3 +1,17 @@
+# ⚠️  DO NOT rename this worker to "rmpg-api-proxy".
+# This is the REWRITE worker (main = src/index.ts) and MUST stay
+# `rmpg-flex-api`. The thin routing proxy in proxy/wrangler.toml is the
+# one named `rmpg-api-proxy`. They are two different workers.
+#
+# 2026-06-02 incident: PR #937 (a cloudflare-workers-and-pages[bot]
+# dashboard "Update wrangler config name to match deployed Worker" commit)
+# renamed this to `rmpg-api-proxy`. deploy.yml then published the rewrite
+# onto the `rmpg-api-proxy` worker, the "Deploy proxy" step failed with
+# Cloudflare error 10064, and the strangler proxy could no longer redeploy —
+# a total login outage. Reverted in PR #945. If a bot opens this rename
+# again, CLOSE it and fix the dashboard Workers Build target instead (it
+# should build proxy/, named rmpg-api-proxy — NOT this root config).
+# See memory project-auth-outage-name-collision.
 name = "rmpg-flex-api"
 main = "src/index.ts"
 compatibility_date = "2026-05-01"
