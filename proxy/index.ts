@@ -652,6 +652,14 @@ const API_ROUTES: RouteRule[] = [
   // it, so the POST 404'd and the tab threw an unhandled rejection.
   { kind: 'prefix', value: '/api/warrants/search-all' },
   { kind: 'regex', value: /^\/api\/warrants\/person\/\d+\/profile$/, methods: ['GET'] },
+  // /api/warrants/dashboard/* (stats, feed, priority) + /api/warrants/expiring
+  // — the DASHBOARD tab widgets. Legacy served these against the empty manual
+  // `warrants` table, so every card read 0 while the Watch List showed real
+  // Utah hits. Ported to src/routes/warrants.ts where they aggregate
+  // utah_warrants (confirmed vs unverified by linked-person DOB) + manual
+  // warrants + warrant_scraper_config. Route to env.API.
+  { kind: 'prefix', value: '/api/warrants/dashboard' },
+  { kind: 'regex', value: /^\/api\/warrants\/expiring$/, methods: ['GET'] },
   // /api/warrants/scrapers* — Sources tab + Layout header badge + per-source
   // trigger/reset-circuit buttons. Legacy `rmpg-flex` had /scrapers handlers
   // but they queried columns that don't exist on live D1 (`source_key`,
