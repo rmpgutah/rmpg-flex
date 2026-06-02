@@ -442,7 +442,11 @@
 // v735: Admin audit waves — crash guards across admin tabs + AI panels
 //       (asArray erosion), Health early-return flash, Arrests edit data-loss,
 //       ClientFormModal focus-wipe, /admin/config column fix + array-guard CI.
-const CACHE_NAME = 'rmpg-flex-v736';
+// v737: Serve Intake — pre-upload file details (size/pages/date) in the loaded
+//       list + live upload progress (% + ETA) and an analyzing phase.
+// v738: Serve Intake — pre-upload size/count guards (block + name the file),
+//       friendly server-error messages, and a Cancel button mid-upload.
+const CACHE_NAME = 'rmpg-flex-v738';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
