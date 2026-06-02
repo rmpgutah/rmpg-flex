@@ -8,7 +8,7 @@ import jsPDF from 'jspdf';
 import QRCode from 'qrcode';
 import { isPast, isWithinDays, parseTimestamp } from './dateUtils';
 import { hasValue, toNum } from './sentinel';
-import { zoneLeaf, beatLeaf, sectionZoneBeatCombined } from './dispatchCodeParts';
+import { sectionZoneBeatCombined } from './dispatchCodeParts';
 import { humanizeRelationship } from './recordLinks';
 import {
   addConfidentialWatermark, openAutoSection, closeAutoSection, addFieldPair,
@@ -381,23 +381,14 @@ function drawDistrictBar(
   // produced visually duplicative noise like SECTION=SL1, AREA=SL.
   // CONTRACT ID was geographically misplaced; it now lives in the
   // PSO Client Request Details section where it belongs.
-  const sectionRaw = data.sector_id || data.sector_name || '';
-  const zoneRaw = zoneLeaf(data.zone_id) || data.zone_name || '';
-  const beatRaw = beatLeaf(data.beat_id) || data.beat_name || '';
-  const combined = sectionZoneBeatCombined(data.sector_id, data.zone_id, data.beat_id) || data.dispatch_code || '';
-  const hasRealArea = !!(data.area_name || data.area_id);
+  // Dispatch printouts present the SHORT CODE only (e.g. "SLA-A2") — the full
+  // Area / Section / Zone / Beat names are presented on the Map UI, not on
+  // dispatch call surfaces. Prefer the stored dispatch_code / zone_beat; fall
+  // back to the composite leaf code only if neither is set.
+  const shortCode = data.dispatch_code || data.zone_beat
+    || sectionZoneBeatCombined(data.sector_id, data.zone_id, data.beat_id) || '';
   const distFields: { label: string; value: string }[] = [];
-  if (hasRealArea) distFields.push({ label: 'AREA', value: data.area_name || data.area_id });
-  // Suppress empty SECTION / ZONE / BEAT cells rather than padding them
-  // with "N/A" — when only the beat is set (e.g. SLC-UNINC for an
-  // un-sectored unincorporated address), the bar previously showed
-  // SECTION N/A · ZONE N/A · BEAT SLC-UNINC · CODE SLC/UNINC, with
-  // the two empty columns just diluting the readable cells. Empty
-  // cells now collapse, and the remaining cells expand to fill width.
-  if (sectionRaw) distFields.push({ label: 'SECTION', value: sectionRaw });
-  if (zoneRaw)    distFields.push({ label: 'ZONE',    value: zoneRaw });
-  if (beatRaw)    distFields.push({ label: 'BEAT',    value: beatRaw });
-  if (combined)   distFields.push({ label: 'CODE',    value: combined });
+  if (shortCode) distFields.push({ label: 'DISPATCH CODE', value: shortCode });
   if (distFields.length === 0) return barY; // safety: nothing to draw
 
   // ── Cell layout ───────────────────────────────────────────
@@ -1303,6 +1294,7 @@ export interface CitationPdfData {
   zone_id?: string;
   beat_id?: string;
   zone_beat?: string;
+  dispatch_code?: string;
   latitude?: number;
   longitude?: number;
   // Violation
@@ -1791,13 +1783,11 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
 
   y = drawDistrictBar(doc, y, data as any);
 
-  // Classification — includes Section / Zone / Beat / Code per Spillman convention
-  // The district bar above gives a compact at-a-glance display; these labeled fields
-  // provide the detailed audit-ready record.
+  // Classification — dispatch surfaces present the SHORT dispatch code only
+  // (the district bar above shows it at-a-glance, this is the labeled record
+  // copy). The full Area/Section/Zone/Beat names live on the Map UI, so the
+  // verbose Section/Zone/Beat rows are intentionally omitted here.
   { const sec = openAutoSection(doc, 'Classification', y); y = sec.contentY;
-    const zone = zoneLeaf(data.zone_id) || data.zone_name || '';
-    const beat = beatLeaf(data.beat_id) || data.beat_name || '';
-    const combined = sectionZoneBeatCombined(data.sector_id, data.zone_id, data.beat_id) || data.zone_beat || '';
     y = addThreeColumnFields(doc, [
       { label: 'Call Number', value: data.call_number },
       { label: 'Incident Type', value: formatEnumValue(data.incident_type) },
@@ -1805,10 +1795,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       { label: 'Status', value: displayStatus(data.status || '') },
       { label: 'Source', value: formatEnumValue(data.source) },
       { label: 'Disposition', value: formatEnumValue(data.disposition) },
-      { label: 'Section', value: data.sector_name || data.sector_id || '' },
-      { label: 'Zone', value: zone },
-      { label: 'Beat', value: beat },
-      { label: 'Dispatch Code', value: data.dispatch_code || '' },
+      { label: 'Dispatch Code', value: data.dispatch_code || data.zone_beat || sectionZoneBeatCombined(data.sector_id, data.zone_id, data.beat_id) || '' },
       { label: 'Case Number', value: normalizeCaseNumber(data.case_number) },
       { label: 'Incident Number', value: data.incident_number || '' },
     ], y);
@@ -5755,15 +5742,14 @@ async function generateCitationReport(doc: jsPDF, data: CitationPdfData) {
   }
 
   // ── Location / Geography ──
-  if (data.sector_id || data.zone_id || data.beat_id) {
+  // Printouts present the SHORT dispatch code only; the full Section/Zone/Beat
+  // names live on the Map UI (see drawDistrictBar + the dispatch-code rule).
+  if (data.sector_id || data.zone_id || data.beat_id || data.dispatch_code) {
     y = checkPageBreak(doc, y, 10, prio);
     const sec = openAutoSection(doc, 'Location / Geography', y); y = sec.contentY;
-    const qw = ffw / 4;
-    const g1 = addFieldPair(doc, 'Section', data.sector_id || '', lx, y, qw);
-    const g2 = addFieldPair(doc, 'Zone', zoneLeaf(data.zone_id), lx + qw, y, qw);
-    const g3 = addFieldPair(doc, 'Beat', beatLeaf(data.beat_id), lx + 2 * qw, y, qw);
-    const g4 = addFieldPair(doc, 'Section/Zone/Beat', sectionZoneBeatCombined(data.sector_id, data.zone_id, data.beat_id) || data.zone_beat || '', lx + 3 * qw, y, qw);
-    y = Math.max(g1, g2, g3, g4);
+    const code = data.dispatch_code || data.zone_beat
+      || sectionZoneBeatCombined(data.sector_id, data.zone_id, data.beat_id) || '';
+    y = addFieldPair(doc, 'Dispatch Code', code, lx, y, ffw);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 

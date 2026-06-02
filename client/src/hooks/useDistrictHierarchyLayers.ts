@@ -3,10 +3,11 @@
 // ============================================================
 // Area, Section, and Zone have no geometry of their own — they are
 // groupings of the ~719 beat polygons (beat.geojson). This hook builds
-// each level as a selectable layer two ways at once (per the operator's
-// spec): a FILL that colors the shared beat geometry by that level, plus
-// a dissolved OUTLINE (via @turf/dissolve) that draws the merged boundary
-// for the level. Beat itself stays in useGeoJsonLayers.
+// each level as a selectable layer: a FILL that colors the shared beat
+// geometry by that level, plus a single text LABEL per level anchored on
+// the level's largest member beat. A/S/Z carry no outline of their own —
+// the County + Municipality overlays supply the reference boundaries.
+// Beat itself stays in useGeoJsonLayers.
 //
 // The Area›Section›Zone›Beat mapping comes from
 // /dispatch/geography/districts (dispatch_areas › sectors › zones › beats),
@@ -18,7 +19,6 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { mapboxgl } from '../utils/mapboxLoader';
 import { whenStyleReady } from '../pages/map/utils/safeAddSource';
 import { getTaggedBeats } from '../pages/map/utils/districtGeoData';
-import { dissolve } from '@turf/dissolve';
 
 export type HierarchyLevelId = 'area' | 'section' | 'zone';
 
@@ -69,10 +69,10 @@ export function useDistrictHierarchyLayers({ map, popup }: Opts) {
   useEffect(() => { statesRef.current = states; }, [states]);
 
   // Cached, built once: tagged beat FeatureCollection (a Promise so parallel
-  // toggles share the single fetch/parse), and per-level dissolved outlines.
+  // toggles share the single fetch/parse), and per-level label-anchor points.
   const dataPromiseRef = useRef<Promise<any> | null>(null);
   const taggedRef = useRef<any>(null);
-  const dissolvedRef = useRef<Record<string, any>>({});
+  const labelPtsRef = useRef<Record<string, any>>({});
   // Per-map add/click tracking — cleared on style switch so layers re-add.
   const addedRef = useRef<Set<string>>(new Set());
   const clickBoundRef = useRef<Set<string>>(new Set());
@@ -84,44 +84,68 @@ export function useDistrictHierarchyLayers({ map, popup }: Opts) {
     return dataPromiseRef.current;
   }, []);
 
-  // Merge adjacent beats sharing a level value into one boundary polygon.
-  // @turf/dissolve REJECTS the whole collection if any feature is a
-  // MultiPolygon (51 of the 719 beats are), so flatten every MultiPolygon
-  // into its component Polygons first. Falls back to null (fill-only, no
-  // outline) if dissolve still throws.
-  const ensureDissolved = useCallback((id: HierarchyLevelId) => {
-    if (dissolvedRef.current[id]) return dissolvedRef.current[id];
+  // One label anchor per level value (Area/Section/Zone), computed in O(n).
+  //
+  // This used to @turf/dissolve all ~770 beat polygons into merged boundaries
+  // purely to anchor a single label per level — a ~1–2s synchronous CPU burn
+  // that froze the main thread (Chrome "'setTimeout' handler took ~2000ms").
+  // Since A/S/Z render as fill COVERAGE with NO outline of their own, the
+  // dissolved geometry was never drawn — only its label position mattered.
+  // So we skip the merge entirely: group beats by the level key and drop one
+  // label Point on each group's largest member beat (guaranteed to sit on
+  // actual coverage). The fill layer still colors the real beat geometry.
+  const ensureLabelPoints = useCallback((id: HierarchyLevelId) => {
+    if (labelPtsRef.current[id]) return labelPtsRef.current[id];
     const tagged = taggedRef.current;
     if (!tagged) return null;
     const f = FIELD[id];
     try {
-      const flatFeats: any[] = [];
+      // Largest outer ring per level value (bbox area is a cheap size proxy).
+      const groups = new Map<any, { name: string; color: string; area: number; ring: number[][] | null }>();
+      const consider = (g: any, get: (key: string) => any, val: any) => {
+        let ring: number[][] | null = null;
+        let area = 0;
+        const tryRing = (coords: any) => {
+          const outer = coords?.[0];
+          if (!Array.isArray(outer) || outer.length < 3) return;
+          let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+          for (const c of outer) { const x = c[0], y = c[1]; if (x < minX) minX = x; if (x > maxX) maxX = x; if (y < minY) minY = y; if (y > maxY) maxY = y; }
+          const a = (maxX - minX) * (maxY - minY);
+          if (a > area) { area = a; ring = outer; }
+        };
+        if (g.type === 'Polygon') tryRing(g.coordinates);
+        else if (g.type === 'MultiPolygon') for (const poly of g.coordinates) tryRing(poly);
+        const prev = groups.get(val);
+        if (!prev || area > prev.area) {
+          groups.set(val, { name: get(f.name) || String(val), color: get(f.color) || '#d4a017', area, ring });
+        }
+      };
       for (const ft of tagged.features) {
         const g = ft.geometry;
         if (!g) continue;
-        if (g.type === 'Polygon') {
-          flatFeats.push(ft);
-        } else if (g.type === 'MultiPolygon') {
-          for (const poly of g.coordinates) {
-            flatFeats.push({ type: 'Feature', properties: ft.properties, geometry: { type: 'Polygon', coordinates: poly } });
-          }
-        }
+        const props = ft.properties || {};
+        const val = props[f.key];
+        if (val == null || val === '') continue;
+        consider(g, (k) => props[k], val);
       }
-      const merged: any = dissolve({ type: 'FeatureCollection', features: flatFeats } as any, { propertyName: f.key });
-      for (const mf of merged.features) {
-        const val = mf.properties?.[f.key];
-        const src = tagged.features.find((x: any) => x.properties[f.key] === val);
-        mf.properties = {
-          ...(mf.properties || {}),
-          _val: val,
-          _name: src?.properties?.[f.name] || val,
-          _color: src?.properties?.[f.color] || '#d4a017',
-        };
+      const features: any[] = [];
+      for (const [val, info] of groups) {
+        const ring = info.ring as number[][] | null;
+        if (!ring || !ring.length) continue;
+        // Simple vertex-average of the chosen ring — plenty accurate for a label.
+        let sx = 0, sy = 0;
+        for (const c of ring) { sx += c[0]; sy += c[1]; }
+        features.push({
+          type: 'Feature',
+          properties: { _val: val, _name: info.name, _color: info.color },
+          geometry: { type: 'Point', coordinates: [sx / ring.length, sy / ring.length] },
+        });
       }
-      dissolvedRef.current[id] = merged;
-      return merged;
+      const fc = { type: 'FeatureCollection', features };
+      labelPtsRef.current[id] = fc;
+      return fc;
     } catch (e) {
-      console.warn('[hierarchy] dissolve failed for', id, e);
+      console.warn('[hierarchy] label points failed for', id, e);
       return null;
     }
   }, []);
@@ -154,18 +178,17 @@ export function useDistrictHierarchyLayers({ map, popup }: Opts) {
           });
         }
 
-        // Outline + label: dissolved level boundary. The dissolve is ~1–2s of
-        // CPU, so defer it a tick — the fill is already on screen by then.
-        setTimeout(() => {
-          if (!map.getLayer(fillLayer(id))) return; // removed by a style switch mid-defer
-          const dissolved = ensureDissolved(id);
-          if (!dissolved) return;
-          try {
-            if (!map.getSource(dissolveSrc(id))) map.addSource(dissolveSrc(id), { type: 'geojson', data: dissolved });
-            // NOTE: A/S/Z/B render as color COVERAGE (fill) only — no boundary
-            // outline of their own. The boundary/reference role is filled by
-            // the County + Municipality outline-only overlays. We keep the
-            // dissolved source purely to anchor one label per level.
+        // Label: one symbol per level value, anchored on each group's largest
+        // beat. This is O(n) now (was a ~1–2s @turf/dissolve that blocked the
+        // main thread), so it runs inline right after the fill.
+        // NOTE: A/S/Z/B render as color COVERAGE (fill) only — no boundary
+        // outline of their own. The boundary/reference role is filled by the
+        // County + Municipality outline-only overlays. The point source exists
+        // purely to anchor one label per level.
+        try {
+          const labelPts = ensureLabelPoints(id);
+          if (labelPts) {
+            if (!map.getSource(dissolveSrc(id))) map.addSource(dissolveSrc(id), { type: 'geojson', data: labelPts });
             if (!map.getLayer(labelLayer(id))) {
               map.addLayer({
                 id: labelLayer(id),
@@ -181,14 +204,12 @@ export function useDistrictHierarchyLayers({ map, popup }: Opts) {
                 paint: { 'text-color': '#ffffff', 'text-halo-color': '#000000', 'text-halo-width': 1.4 },
               });
             }
-            // Match the level's current visibility (it may have been toggled
-            // on while the dissolve was still computing).
             const vis = statesRef.current[id]?.visible ? 'visible' : 'none';
             if (map.getLayer(labelLayer(id))) map.setLayoutProperty(labelLayer(id), 'visibility', vis);
-          } catch (err) {
-            console.warn('[hierarchy] label add failed', id, err);
           }
-        }, 0);
+        } catch (err) {
+          console.warn('[hierarchy] label add failed', id, err);
+        }
 
         if (!clickBoundRef.current.has(id)) {
           clickBoundRef.current.add(id);
@@ -217,7 +238,7 @@ export function useDistrictHierarchyLayers({ map, popup }: Opts) {
         console.error('[hierarchy] add failed', id, err);
       }
     });
-  }, [map, ensureData, ensureDissolved]);
+  }, [map, ensureData, ensureLabelPoints]);
 
   const setVis = useCallback((id: HierarchyLevelId, visible: boolean) => {
     if (!map) return;

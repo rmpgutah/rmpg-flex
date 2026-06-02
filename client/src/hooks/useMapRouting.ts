@@ -83,6 +83,17 @@ export interface UnitDriveTime {
 
 export type CongestionLevel = 'low' | 'moderate' | 'heavy' | 'severe' | 'unknown';
 
+/** Active route geometry, exposed for downstream corridor analysis
+ *  (e.g. hazard-ahead scanning in useNavGuidance). */
+export interface RouteGeom {
+  /** Route polyline as [lng, lat][]. */
+  coords: [number, number][];
+  /** Cumulative meters at each coordinate. */
+  cum: number[];
+  /** Total route length in meters. */
+  totalMeters: number;
+}
+
 /** One stop in an optimized multi-call patrol route. */
 export interface MultiStop {
   callNumber: string;
@@ -150,7 +161,7 @@ function makeProjector(refLat: number) {
 /** Snap a point to the nearest position along a polyline (route geometry).
  *  Returns the perpendicular distance to the line and the distance traveled
  *  *along* the line to that snap point — the basis for progress + off-route. */
-function snapToRoute(
+export function snapToRoute(
   coords: [number, number][], // [lng, lat][]
   cum: number[],              // cumulative meters at each coord
   lat: number,
@@ -242,6 +253,7 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
   const [activeRoute, setActiveRoute] = useState<RouteInfo | null>(null);
   const [routeLoading, setRouteLoading] = useState(false);
   const [routeProgress, setRouteProgress] = useState<RouteProgress | null>(null);
+  const [routeGeom, setRouteGeom] = useState<RouteGeom | null>(null);
   const [offRoute, setOffRoute] = useState(false);
   const [multiStopRoute, setMultiStopRoute] = useState<MultiStopRoute | null>(null);
   const [multiStopLoading, setMultiStopLoading] = useState(false);
@@ -352,6 +364,7 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
         for (const c of congestion) if (CONGESTION_RANK[c] > CONGESTION_RANK[worst]) worst = c;
 
         geomRef.current = { coords, cum, totalMeters: total, totalSec: duration };
+        setRouteGeom({ coords, cum, totalMeters: total });
         offRouteStreakRef.current = 0;
         setOffRoute(false);
 
@@ -459,6 +472,7 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
     clearRouteFromMap();
     setActiveRoute(null);
     setRouteProgress(null);
+    setRouteGeom(null);
     setOffRoute(false);
     geomRef.current = null;
     offRouteStreakRef.current = 0;
@@ -787,6 +801,7 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
     activeRoute,
     routeLoading,
     routeProgress,
+    routeGeom,
     offRoute,
     showRoute,
     clearRoute,

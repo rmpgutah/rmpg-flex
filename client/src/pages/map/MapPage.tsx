@@ -86,6 +86,7 @@ import { useEventPlanning, PLAN_COLORS, PLAN_TYPE_LABELS, type PlanItemType } fr
 import { useShiftPlanning, SHIFT_TYPES, type ShiftType } from '../../hooks/useShiftPlanning';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useMapRouting } from '../../hooks/useMapRouting';
+import { useNavGuidance, type NavHazard } from '../../hooks/useNavGuidance';
 import MobileBottomSheet from '../../components/mobile/MobileBottomSheet';
 import type { MapUnit as Unit, ActiveCall, MapProperty as Property, MapStyleId } from './utils/mapConstants';
 import { whenStyleReady } from './utils/safeAddSource';
@@ -326,7 +327,7 @@ export default function MapPage() {
   }, [setMapStyle]);
 
   // Routing
-  const { activeRoute, routeLoading, routeProgress, offRoute, showRoute, clearRoute, updateOrigin,
+  const { activeRoute, routeLoading, routeProgress, routeGeom, offRoute, showRoute, clearRoute, updateOrigin,
           multiStopRoute, multiStopLoading, showMultiStopRoute, clearMultiStop } = useMapRouting({ map: mapInstanceRef.current });
 
   // Multi-stop patrol route queue (PSO client requests, welfare checks, etc.)
@@ -359,6 +360,7 @@ export default function MapPage() {
   // turn-by-turn) or turn into a dispatch call.
   const [selectedAddr, setSelectedAddr] = useState<{ lat: number; lng: number; label: string } | null>(null);
   const [navActive, setNavActive] = useState(false);
+  const [navMuted, setNavMuted] = useState(() => localStorage.getItem('rmpg-nav-voice') === 'muted');
   const [showDispatchHere, setShowDispatchHere] = useState(false);
   const [dispatchIncidentType, setDispatchIncidentType] = useState('');
   const [dispatchPriority, setDispatchPriority] = useState('P3');
@@ -2939,6 +2941,58 @@ export default function MapPage() {
   // When the route is cleared, exit nav mode.
   useEffect(() => { if (!activeRoute) setNavActive(false); }, [activeRoute]);
 
+  // ── Advanced nav guidance (voice + hazard-ahead + arrival) ──
+  const toggleNavMute = useCallback(() => {
+    setNavMuted((m) => { const next = !m; localStorage.setItem('rmpg-nav-voice', next ? 'muted' : 'on'); return next; });
+  }, []);
+
+  // Active calls become route hazards: scanned against the path ahead so a
+  // unit driving anywhere gets a heads-up about live calls on their route.
+  const navHazards = useMemo<NavHazard[]>(() => {
+    return calls
+      .filter((c) => c.latitude != null && c.longitude != null
+        && (!c.status || !['closed', 'cleared', 'cancelled'].includes(c.status.toLowerCase())))
+      .map((c) => {
+        const p = (c.priority || '').toUpperCase();
+        const t = (c.incident_type || '').toLowerCase();
+        const officerSafety = /weapon|gun|knife|domestic|assault|shots?\b|robbery|pursuit|fight|hostage|armed|burglary in progress|shooting|stabbing/.test(t);
+        const severity: NavHazard['severity'] = (p === 'P1' || officerSafety) ? 'critical' : (p === 'P2' ? 'high' : 'normal');
+        const typeWords = (c.incident_type || 'call').replace(/_/g, ' ').toLowerCase();
+        const prio = p === 'P1' ? 'priority one ' : p === 'P2' ? 'priority two ' : '';
+        return {
+          id: String(c.id),
+          lat: c.latitude as number,
+          lng: c.longitude as number,
+          label: `${c.call_number} · ${c.incident_type}`,
+          kind: `${prio}${typeWords} call`,
+          severity,
+        };
+      });
+  }, [calls]);
+
+  // Don't warn a unit about the very call it's driving to.
+  const navDestExcludeId = useMemo(() => {
+    if (!activeRoute || activeRoute.unitCallSign === 'YOU') return undefined;
+    const match = calls.find((c) => c.call_number === activeRoute.callNumber);
+    return match ? String(match.id) : undefined;
+  }, [activeRoute, calls]);
+
+  const navGuidance = useNavGuidance({
+    active: navActive && !!activeRoute,
+    route: activeRoute,
+    progress: routeProgress,
+    geom: routeGeom,
+    position: (gps.latitude != null && gps.longitude != null)
+      ? { lat: gps.latitude as number, lng: gps.longitude as number } : null,
+    hazards: navHazards,
+    destLabel: activeRoute
+      ? (activeRoute.unitCallSign === 'YOU' ? activeRoute.callNumber : `call ${activeRoute.callNumber}`)
+      : '',
+    destExcludeId: navDestExcludeId,
+    muted: navMuted,
+    offRoute,
+  });
+
   // ── Dispatch a call at the selected address ─────────────────
   const createCallHere = useCallback(async () => {
     if (!selectedAddr || dispatchBusy) return;
@@ -5110,13 +5164,24 @@ export default function MapPage() {
               <span style={{ fontSize: 10, color: '#888888', fontWeight: 900, letterSpacing: '0.05em' }}>
                 {activeRoute.unitCallSign} → {activeRoute.callNumber}
               </span>
-              <button
-                onClick={clearRoute}
-                style={{ background: 'none', border: 'none', color: '#666666', cursor: 'pointer', fontSize: 12, padding: '0 0 0 8px' }}
-                title="Clear route"
-              >
-                ✕
-              </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <button
+                  onClick={toggleNavMute}
+                  style={{ background: 'none', border: 'none', color: navMuted ? '#666666' : '#d4a017', cursor: 'pointer', fontSize: 12, padding: '0 2px', lineHeight: 1 }}
+                  title={navMuted ? 'Voice guidance off — tap to enable' : 'Voice guidance on — tap to mute'}
+                  aria-label={navMuted ? 'Enable voice guidance' : 'Mute voice guidance'}
+                >
+                  {navMuted ? '🔇' : '🔊'}
+                </button>
+                <button
+                  onClick={clearRoute}
+                  style={{ background: 'none', border: 'none', color: '#666666', cursor: 'pointer', fontSize: 12, padding: '0 0 0 6px' }}
+                  title="Clear route"
+                  aria-label="Clear route"
+                >
+                  ✕
+                </button>
+              </div>
             </div>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
               {/* Live remaining ETA when the unit is en route; otherwise full-route ETA. */}
@@ -5143,26 +5208,42 @@ export default function MapPage() {
                 <div style={{ width: `${Math.round(routeProgress.fraction * 100)}%`, height: '100%', background: '#d4a017', transition: 'width 0.5s ease' }} />
               </div>
             )}
-            {/* Turn-by-turn: the next maneuver + distance to it, for drive-style
-                navigation (both unit→call and drive-to-address). */}
-            {(() => {
-              const steps = activeRoute.steps;
-              if (!steps || steps.length === 0) return null;
-              const total = activeRoute.distanceMeters;
-              const traveled = routeProgress ? Math.max(0, total - routeProgress.remainingMeters) : 0;
-              let acc = 0;
-              let step = steps[0];
-              let distTo = step.distanceMeters;
-              for (let i = 0; i < steps.length; i++) {
-                const end = acc + steps[i].distanceMeters;
-                if (traveled < end || i === steps.length - 1) { step = steps[i]; distTo = Math.max(0, end - traveled); break; }
-                acc = end;
-              }
-              const distTxt = distTo >= 1609 ? `${(distTo / 1609.34).toFixed(1)} mi` : `${Math.max(0, Math.round(distTo / 30.48) * 10)} ft`;
+            {/* Arrival banner — supersedes the maneuver card at the destination. */}
+            {navGuidance.arrived ? (
+              <div style={{ marginTop: 6, paddingTop: 6, borderTop: '1px solid rgba(136,136,136,0.18)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 16 }}>⚑</span>
+                <span style={{ fontSize: 11, fontWeight: 900, color: '#22c55e', letterSpacing: '0.04em' }}>ARRIVED AT DESTINATION</span>
+              </div>
+            ) : (
+              /* Turn-by-turn: the upcoming maneuver (arrow + distance) plus a
+                 "then …" preview of the maneuver after it. Driven by the
+                 useNavGuidance brain so the banner matches the spoken cues. */
+              navGuidance.next && (
+                <div style={{ marginTop: 6, paddingTop: 6, borderTop: '1px solid rgba(136,136,136,0.18)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 18, color: '#d4a017', minWidth: 22, textAlign: 'center', lineHeight: 1 }}>{navGuidance.next.arrow}</span>
+                    <span style={{ fontSize: 9, fontWeight: 900, color: '#d4a017', minWidth: 44 }}>{navGuidance.next.distanceText}</span>
+                    <span style={{ fontSize: 11, color: isLightMapStyle(mapStyle) ? '#222' : '#ddd', lineHeight: 1.25 }}>{navGuidance.next.instruction}</span>
+                  </div>
+                  {navGuidance.then && navGuidance.then.maneuverType !== 'arrive' && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 3, opacity: 0.62 }}>
+                      <span style={{ fontSize: 12, color: '#888888', minWidth: 22, textAlign: 'center' }}>{navGuidance.then.arrow}</span>
+                      <span style={{ fontSize: 8, color: '#888888', minWidth: 44 }}>then</span>
+                      <span style={{ fontSize: 9, color: isLightMapStyle(mapStyle) ? '#555' : '#aaa', lineHeight: 1.2 }}>{navGuidance.then.instruction}</span>
+                    </div>
+                  )}
+                </div>
+              )
+            )}
+            {/* Hazard-ahead: an active call on the path ahead (CAD-unique alert). */}
+            {navGuidance.hazardAhead && (() => {
+              const sev = navGuidance.hazardAhead.hazard.severity;
+              const col = sev === 'critical' ? '#ef4444' : sev === 'high' ? '#f97316' : '#eab308';
               return (
-                <div style={{ marginTop: 6, paddingTop: 6, borderTop: '1px solid rgba(136,136,136,0.18)', display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ fontSize: 9, fontWeight: 900, color: '#d4a017', minWidth: 44 }}>{distTxt}</span>
-                  <span style={{ fontSize: 11, color: isLightMapStyle(mapStyle) ? '#222' : '#ddd', lineHeight: 1.25 }}>{step.instruction}</span>
+                <div style={{ marginTop: 5, display: 'flex', alignItems: 'center', gap: 6, padding: '3px 6px', borderRadius: 2, background: `${col}1a`, border: `1px solid ${col}55` }}>
+                  <span style={{ fontSize: 11 }}>{sev === 'critical' ? '⚠' : '◆'}</span>
+                  <span style={{ fontSize: 8, fontWeight: 900, color: col, letterSpacing: '0.04em' }}>{navGuidance.hazardAhead.distanceText} AHEAD</span>
+                  <span style={{ fontSize: 9, color: isLightMapStyle(mapStyle) ? '#444' : '#ccc', lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{navGuidance.hazardAhead.hazard.label}</span>
                 </div>
               );
             })()}

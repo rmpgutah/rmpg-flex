@@ -343,7 +343,21 @@
 //       overflow so the panel is the single scroll owner for all tabs
 //       (Tires/Damage/Recalls already relied on it). SW bump also clears any
 //       stale cached bundle.
-const CACHE_NAME = 'rmpg-flex-v710';
+// v711: Dispatch surfaces (call cards, detail read-view, call PDF) now show
+//       the SHORT dispatch code only (e.g. "SLA-A2"); the full Area/Section/
+//       Zone/Beat names remain on the Map UI (What's Here + hierarchy labels).
+// v712: Advanced GPS navigation — the map directions module gains spoken
+//       turn-by-turn (distance-gated pre-alert + "now" cue), CAD-unique
+//       hazard-ahead alerts (active calls on the path ahead, voice + banner),
+//       arrival detection, audible reroute, a mute toggle, maneuver arrows,
+//       and a "then …" next-maneuver preview. New useNavGuidance hook +
+//       voiceAlerts nav phrases; useMapRouting now exposes route geometry.
+// v713: Map perf — eliminate the ~1–2s main-thread freeze (Chrome
+//       "'setTimeout' handler took ~2000ms") when toggling Area/Section/Zone
+//       layers. The hierarchy labels no longer @turf/dissolve all ~770 beat
+//       polygons (geometry that was never drawn); they now anchor one label
+//       per level on its largest member beat in O(n). Fill coverage unchanged.
+const CACHE_NAME = 'rmpg-flex-v713';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
