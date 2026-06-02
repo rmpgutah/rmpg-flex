@@ -9,6 +9,8 @@ import ConfirmDialog from '../../components/ConfirmDialog';
 import IconButton from '../../components/IconButton';
 import { safeDateTimeStr } from '../../utils/dateUtils';
 import AdminRadioSettings from './AdminRadioSettings';
+import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
+import { useMenuActions } from '../../utils/contextMenuActions';
 
 // ============================================================
 // Admin → Radio Channels
@@ -74,6 +76,10 @@ export default function AdminRadioTab() {
   const [submitting, setSubmitting] = useState(false);
   const [archiveTarget, setArchiveTarget] = useState<RadioChannel | null>(null);
   const [archiveBusy, setArchiveBusy] = useState(false);
+
+  // ── Right-click context menu ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
 
   const fetchChannels = useCallback(async () => {
     setLoading(true);
@@ -174,6 +180,22 @@ export default function AdminRadioTab() {
     } finally {
       setArchiveBusy(false);
     }
+  };
+
+  const buildChannelMenu = (ch: RadioChannel): ContextMenuItem[] => {
+    const isArchived = !!ch.archived_at;
+    return [
+      m.action('Edit channel', () => openEdit(ch), { icon: <Edit2 size={12} />, disabled: isArchived }),
+      m.separator(),
+      m.copy('Copy name', ch.name),
+      ...(ch.frequency ? [m.copy('Copy frequency', ch.frequency)] : []),
+      ...(ch.talkgroup ? [m.copy('Copy talkgroup', ch.talkgroup)] : []),
+      m.copyId(ch.id),
+      ...(isArchived ? [] : [
+        m.separator(),
+        m.action('Archive channel', () => setArchiveTarget(ch), { icon: <ArchiveIcon size={12} />, danger: true }),
+      ]),
+    ];
   };
 
   const filtered = useMemo(() => {
@@ -300,6 +322,7 @@ export default function AdminRadioTab() {
                 return (
                   <tr
                     key={ch.id}
+                    onContextMenu={(e) => openMenu(e, buildChannelMenu(ch))}
                     className={`border-b border-[#181818]/50 hover:bg-[#0c0c0c] ${isArchived ? 'opacity-50' : ''}`}
                   >
                     <td className="px-2 py-[2px]">

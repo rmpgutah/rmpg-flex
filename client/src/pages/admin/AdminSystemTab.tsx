@@ -25,6 +25,8 @@ import {
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import IconButton from '../../components/IconButton';
+import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
+import { useMenuActions } from '../../utils/contextMenuActions';
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
 import { INCIDENT_TYPE_CODES, INCIDENT_TYPE_CATEGORIES, type IncidentCategory } from '../../utils/caseNumbers';
 import { OffenseLevelBadge } from '../../components/StatuteLookup';
@@ -598,6 +600,15 @@ export default function AdminSystemTab({
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to add disposition code');
     }
+  };
+
+  // Start editing a disposition row (shared by the inline pencil + context menu).
+  const startEditDisposition = (item: ConfigItem) => {
+    let parsed = { code: '', description: '', color: '#888888' };
+    try { parsed = JSON.parse(item.config_value); } catch { /* ignore */ }
+    setEditingDispId(item.id);
+    setEditDispDesc(parsed.description);
+    setEditDispColor(parsed.color || '#888888');
   };
 
   const updateDispositionCode = async (id: number) => {
@@ -1174,6 +1185,61 @@ export default function AdminSystemTab({
   };
 
   // ============================================================
+  // Right-click context menus (record-row tables)
+  // ============================================================
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+
+  const buildUnitMenu = (unit: Unit): ContextMenuItem[] => [
+    m.action('Edit unit', () => startEditUnit(unit), { icon: <Edit size={12} /> }),
+    m.separator(),
+    m.copy('Copy call sign', unit.call_sign),
+    ...(unit.officer_name ? [m.copy('Copy officer', unit.officer_name)] : []),
+    m.copyId(unit.id, 'Copy unit ID'),
+    ...(!unit.current_call_id
+      ? [m.separator(), m.action('Delete unit', () => setDeletingUnitId(unit.id), { icon: <Trash2 size={12} />, danger: true })]
+      : []),
+  ];
+
+  const buildTemplateMenu = (tpl: CallTemplate): ContextMenuItem[] => [
+    m.action('Edit template', () => startEditTemplate(tpl), { icon: <Edit size={12} /> }),
+    m.separator(),
+    m.copy('Copy name', tpl.name),
+    m.copyId(tpl.id, 'Copy template ID'),
+    m.separator(),
+    m.action('Delete template', () => removeCallTemplate(tpl.id), { icon: <Trash2 size={12} />, danger: true }),
+  ];
+
+  const buildDispositionMenu = (item: ConfigItem): ContextMenuItem[] => {
+    let parsed = { code: '', description: '', color: '#888888' };
+    try { parsed = JSON.parse(item.config_value); } catch { /* ignore */ }
+    return [
+      m.action('Edit disposition', () => startEditDisposition(item), { icon: <Edit size={12} /> }),
+      m.separator(),
+      m.copy('Copy code', parsed.code),
+      m.copy('Copy description', parsed.description),
+      m.copyId(item.id, 'Copy config ID'),
+      m.separator(),
+      m.action('Delete disposition', () => removeConfigItem(item.id), { icon: <Trash2 size={12} />, danger: true }),
+    ];
+  };
+
+  const buildZoneMenu = (z: ZoneBeat): ContextMenuItem[] => [
+    m.action('Edit zone', () => startEditZone(z), { icon: <Edit size={12} /> }),
+    m.separator(),
+    m.copy('Copy code', z.code),
+    m.copy('Copy name', z.name),
+    m.separator(),
+    m.action('Delete zone', () => removeZone(z.code), { icon: <Trash2 size={12} />, danger: true }),
+  ];
+
+  const buildStatuteMenu = (s: any): ContextMenuItem[] => [
+    m.copy('Copy citation', s.citation),
+    m.copy('Copy title', s.short_title),
+    m.copyId(s.id, 'Copy statute ID'),
+  ];
+
+  // ============================================================
   // Render
   // ============================================================
 
@@ -1353,7 +1419,7 @@ export default function AdminSystemTab({
                       try { parsed = JSON.parse(item.config_value); } catch { /* ignore */ }
                       const isEditing = editingDispId === item.id;
                       return (
-                        <tr key={item.id}>
+                        <tr key={item.id} onContextMenu={(e) => openMenu(e, buildDispositionMenu(item))}>
                           <td>
                             {isEditing ? (
                               <input id="ff-adminsystemtab-1" type="color" value={editDispColor} onChange={(e) => setEditDispColor(e.target.value)} className="w-6 h-6 cursor-pointer border-0 p-0 bg-transparent" />
@@ -1389,7 +1455,7 @@ export default function AdminSystemTab({
                               ) : (
                                 <>
                                   <button type="button"
-                                    onClick={() => { setEditingDispId(item.id); setEditDispDesc(parsed.description); setEditDispColor(parsed.color || '#888888'); }}
+                                    onClick={() => startEditDisposition(item)}
                                     className="p-1 hover:bg-rmpg-700 text-rmpg-300 hover:text-brand-400"
                                     title="Edit"
                                   >
@@ -1687,7 +1753,7 @@ export default function AdminSystemTab({
                         </thead>
                         <tbody>
                           {adminUnits.map((unit) => (
-                            <tr key={unit.id}>
+                            <tr key={unit.id} onContextMenu={(e) => openMenu(e, buildUnitMenu(unit))}>
                               {editingAdminUnitId === unit.id ? (
                                 <>
                                   <td>
@@ -1803,7 +1869,7 @@ export default function AdminSystemTab({
                     </thead>
                     <tbody>
                       {zones.map((z) => (
-                        <tr key={z.code}>
+                        <tr key={z.code} onContextMenu={(e) => openMenu(e, buildZoneMenu(z))}>
                           {editingZoneCode === z.code ? (
                             <>
                               <td className="font-bold text-white font-mono">{z.code}</td>
@@ -1921,7 +1987,7 @@ export default function AdminSystemTab({
                         </thead>
                         <tbody>
                           {callTemplates.map((tpl) => (
-                            <tr key={tpl.id}>
+                            <tr key={tpl.id} onContextMenu={(e) => openMenu(e, buildTemplateMenu(tpl))}>
                               {editingTemplateId === tpl.id ? (
                                 <>
                                   <td>
@@ -2196,7 +2262,7 @@ export default function AdminSystemTab({
                       </thead>
                       <tbody>
                         {statutes.map((s: any) => (
-                          <tr key={s.id} className="border-t border-rmpg-700/30 hover:bg-rmpg-700/20">
+                          <tr key={s.id} className="border-t border-rmpg-700/30 hover:bg-rmpg-700/20" onContextMenu={(e) => openMenu(e, buildStatuteMenu(s))}>
                             <td className="px-2 py-1.5 font-mono text-brand-400 font-bold whitespace-nowrap">{s.citation}</td>
                             <td className="px-2 py-1.5 text-rmpg-200 max-w-[250px] truncate">{s.short_title}</td>
                             <td className="px-2 py-1.5">

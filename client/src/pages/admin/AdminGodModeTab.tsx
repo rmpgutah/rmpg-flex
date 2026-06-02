@@ -8,6 +8,8 @@ import {
   Activity, UserCheck, AlertTriangle, CheckCircle, Play, Archive, BarChart3,
   Loader2, Eye, Lock, Unlock, Merge, Terminal, Radio, Globe, Clock,
 } from 'lucide-react';
+import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
+import { useMenuActions } from '../../utils/contextMenuActions';
 
 const safeStr = (v: any): string => {
   try { return JSON.stringify(v)?.slice(0, 80) ?? ''; } catch { return ''; }
@@ -302,6 +304,34 @@ export default function AdminGodModeTab() {
 
   const formatNumber = (n: number) => n.toLocaleString();
 
+  // ── Right-click context menus ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+
+  const buildBackupMenu = (b: Backup): ContextMenuItem[] => [
+    m.copy('Copy filename', b.filename),
+    m.separator(),
+    m.action('Delete backup', () => handleDeleteBackup(b.filename), { icon: <Trash2 size={12} />, danger: true }),
+  ];
+
+  const buildWsClientMenu = (c: any): ContextMenuItem[] => [
+    m.copy('Copy username', c.username),
+    ...(c.ip ? [m.copy('Copy IP', c.ip)] : []),
+    m.copyId(c.userId, 'Copy user ID'),
+  ];
+
+  const buildPresenceMenu = (u: any): ContextMenuItem[] => [
+    m.copy('Copy username', u.username || u.full_name),
+    ...(u.role ? [m.copy('Copy role', u.role)] : []),
+    ...(u.id != null ? [m.copyId(u.id, 'Copy user ID')] : []),
+  ];
+
+  const buildActivityMenu = (a: any): ContextMenuItem[] => [
+    m.copy('Copy user', a.username || a.user),
+    ...(a.action ? [m.copy('Copy action', a.action)] : []),
+    ...(a.details ? [m.copy('Copy details', typeof a.details === 'string' ? a.details : safeStr(a.details))] : []),
+  ];
+
   return (
     <div className="space-y-4">
       {/* Header */}
@@ -383,7 +413,7 @@ export default function AdminGodModeTab() {
         ) : (
           <div className="space-y-1">
             {backups.map(b => (
-              <div key={b.filename} className="flex items-center justify-between bg-[#0c0c0c] px-2 py-1.5 rounded-sm">
+              <div key={b.filename} className="flex items-center justify-between bg-[#0c0c0c] px-2 py-1.5 rounded-sm" onContextMenu={(e) => openMenu(e, buildBackupMenu(b))}>
                 <div>
                   <div className="text-[11px] font-mono text-gray-300">{b.filename}</div>
                   <div className="text-[9px] text-gray-500">{b.size_mb} MB — {safeDateTimeStr(b.created_at)}</div>
@@ -508,7 +538,7 @@ export default function AdminGodModeTab() {
           {userPresence.users && userPresence.users.length > 0 && (
             <div className="bg-[#0c0c0c] rounded-sm p-2 max-h-40 overflow-y-auto">
               {userPresence.users.map((u: any, i: number) => (
-                <div key={i} className="flex items-center gap-2 py-0.5 border-b border-[#181818]/50 text-[11px]">
+                <div key={i} className="flex items-center gap-2 py-0.5 border-b border-[#181818]/50 text-[11px]" onContextMenu={(e) => openMenu(e, buildPresenceMenu(u))}>
                   <span className={`w-2 h-2 rounded-full ${u.status === 'online' ? 'bg-green-400' : u.status === 'idle' ? 'bg-yellow-400' : 'bg-[#2b2b2b]'}`} />
                   <span className="text-gray-300 font-mono">{u.username || u.full_name}</span>
                   <span className="text-gray-600 text-[9px]">{(u.role || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
@@ -539,7 +569,7 @@ export default function AdminGodModeTab() {
               </thead>
               <tbody>
                 {wsClients.map((c: any, i: number) => (
-                  <tr key={i} className="border-b border-[#181818]/50">
+                  <tr key={i} className="border-b border-[#181818]/50" onContextMenu={(e) => openMenu(e, buildWsClientMenu(c))}>
                     <td className="px-2 py-1 font-mono text-gray-400">{c.userId}</td>
                     <td className="px-2 py-1 text-white">{c.username}</td>
                     <td className="px-2 py-1 text-gray-400">{(c.role || '').replace(/_/g, ' ').replace(/\b\w/g, (ch: string) => ch.toUpperCase())}</td>
@@ -736,7 +766,7 @@ export default function AdminGodModeTab() {
         ) : (
           <div className="bg-[#0c0c0c] rounded-sm p-2 max-h-60 overflow-y-auto space-y-0.5">
             {activityFeed.map((a: any, i: number) => (
-              <div key={i} className="flex items-start gap-2 py-1 border-b border-[#181818]/50 text-[10px]">
+              <div key={i} className="flex items-start gap-2 py-1 border-b border-[#181818]/50 text-[10px]" onContextMenu={(e) => openMenu(e, buildActivityMenu(a))}>
                 <span className="text-gray-600 font-mono whitespace-nowrap min-w-[60px]">
                   {a.timestamp ? new Date(a.timestamp).toLocaleTimeString() : '—'}
                 </span>

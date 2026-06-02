@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Plus, Search, ClipboardList, MapPin, User, Clock, FileText,
-  ChevronDown, Archive, RotateCcw, X, Save, Loader2, Eye, AlertTriangle,
+  ChevronDown, Archive, RotateCcw, X, Save, Loader2, Eye, AlertTriangle, Trash2,
 } from 'lucide-react';
 import type { FieldInterview, FIContactReason, FIContactType, FIActionTaken } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -9,6 +9,8 @@ import IconButton from '../components/IconButton';
 import StatusBadge from '../components/StatusBadge';
 import EmptyState from '../components/EmptyState';
 import { apiFetch } from '../hooks/useApi';
+import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
+import { useMenuActions } from '../utils/contextMenuActions';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
 import ExportButton from '../components/ExportButton';
@@ -99,6 +101,8 @@ export default function FieldInterviewsPage() {
   const { errors: formErrors, validate: validateForm, clearAllErrors } = useFormValidation();
   const { sections: sectionOptions, sectionLabels, zoneLabels, zonesForSection, beatsForZone, getBeatLabel } = useDistrictOptions();
   const { identify: identifyDistrict } = useDistrictIdentify();
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
 
   // Data state
   const [fis, setFis] = useState<FieldInterview[]>([]);
@@ -317,6 +321,36 @@ export default function FieldInterviewsPage() {
     }));
   };
 
+  // Admin God Mode — permanently delete an FI card (shared by detail button + context menu)
+  const handleDelete = async (fi: FieldInterview) => {
+    if (!confirm(`Admin God Mode: Permanently delete FI ${fi.fi_number}?`)) return;
+    try {
+      await apiFetch(`/field-interviews/${fi.id}?hard=true`, { method: 'DELETE' });
+      addToast(`FI ${fi.fi_number} permanently deleted`, 'success');
+      if (selectedFi?.id === fi.id) setSelectedFi(null);
+      setFis(prev => prev.filter(f => f.id !== fi.id));
+    } catch (err: any) { addToast(err.message || 'Delete failed', 'error'); }
+  };
+
+  // ── Right-click context menu for FI list rows ──
+  const buildFiMenu = (fi: FieldInterview): ContextMenuItem[] => {
+    const subject = fi.subject_last_name
+      ? `${fi.subject_last_name}, ${fi.subject_first_name || ''}`.trim()
+      : 'Unknown Subject';
+    return [
+      m.action('Open FI card', () => setSelectedFi(fi), { icon: <Eye size={12} /> }),
+      m.action('Edit', () => handleEdit(fi), { icon: <FileText size={12} /> }),
+      m.separator(),
+      m.copy('Copy FI number', fi.fi_number),
+      m.copyId(fi.id),
+      m.separator(),
+      ...(fi.status === 'active'
+        ? [m.action('Archive', () => handleArchive(fi), { icon: <Archive size={12} /> })]
+        : [m.action('Restore', () => handleUnarchive(fi), { icon: <RotateCcw size={12} /> })]),
+      ...(isAdmin ? [m.action('Delete', () => handleDelete(fi), { icon: <Trash2 size={12} />, danger: true })] : []),
+    ];
+  };
+
   // Set document title
   useEffect(() => { document.title = 'Field Interviews \u2014 RMPG Flex'; }, []);
 
@@ -401,6 +435,7 @@ export default function FieldInterviewsPage() {
                 tabIndex={0}
                 onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedFi(fi); } }}
                 onClick={() => setSelectedFi(fi)}
+                onContextMenu={(e) => openMenu(e, buildFiMenu(fi))}
                 className={`px-3 ${isMobile ? 'py-3' : 'py-2'} cursor-pointer border-b border-rmpg-800 transition-all duration-150 hover:bg-surface-raised ${selectedFi?.id === fi.id ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : `border-l-2 border-l-transparent ${idx % 2 === 1 ? 'bg-rmpg-800/15' : ''}`}`}
                 style={isMobile ? { minHeight: 56 } : undefined}
                 aria-selected={selectedFi?.id === fi.id}
@@ -471,15 +506,7 @@ export default function FieldInterviewsPage() {
                   </button>
                 )}
                 {isAdmin && (
-                  <button type="button" onClick={async () => {
-                    if (!confirm(`Admin God Mode: Permanently delete FI ${selectedFi.fi_number}?`)) return;
-                    try {
-                      await apiFetch(`/field-interviews/${selectedFi.id}?hard=true`, { method: 'DELETE' });
-                      addToast(`FI ${selectedFi.fi_number} permanently deleted`, 'success');
-                      setSelectedFi(null);
-                      setFis(prev => prev.filter(f => f.id !== selectedFi.id));
-                    } catch (err: any) { addToast(err.message || 'Delete failed', 'error'); }
-                  }} className="toolbar-btn text-red-400 hover:text-red-300" style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined }}>
+                  <button type="button" onClick={() => handleDelete(selectedFi)} className="toolbar-btn text-red-400 hover:text-red-300" style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined }}>
                     <X style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> Delete
                   </button>
                 )}

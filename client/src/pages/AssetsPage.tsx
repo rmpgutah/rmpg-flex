@@ -4,9 +4,11 @@ import PanelTitleBar from '../components/PanelTitleBar';
 import DataTable from '../components/DataTable';
 import StatsCard from '../components/StatsCard';
 import { useToast } from '../components/ToastProvider';
+import { useMenuActions } from '../utils/contextMenuActions';
 import { Package, Wrench, Crosshair, Dog, Plus, Pencil, Trash2 } from 'lucide-react';
 
 export default function AssetsPage() {
+  const m = useMenuActions();
   const [assets, setAssets] = useState<Record<string, any>[]>([]);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({ totalAssets: 0, issuedAssets: 0, totalWeapons: 0, activeK9: 0 });
@@ -77,7 +79,18 @@ export default function AssetsPage() {
         <StatsCard icon={Crosshair} label="Weapons" value={stats.totalWeapons} />
         <StatsCard icon={Dog} label="K9 Units" value={stats.activeK9} />
       </div>
-      <DataTable columns={columns} data={assets} emptyMessage="No assets registered" onRowClick={(row) => openEdit(row)} />
+      <DataTable
+        columns={columns}
+        data={assets}
+        emptyMessage="No assets registered"
+        onRowClick={(row) => openEdit(row)}
+        rowContextMenu={(row) => [
+          m.action('Open / Edit', () => openEdit(row), { icon: <Pencil size={12} /> }),
+          m.separator(),
+          m.copyId((row as any).id),
+          m.action('Delete', () => setDeleteId((row as any).id), { danger: true, icon: <Trash2 size={12} /> }),
+        ]}
+      />
 
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={() => setEditingRecord(null)}>

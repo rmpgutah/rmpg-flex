@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback, useImperativeHandle, forwardRef } from 'react';
 import { useWebSocket } from '../../context/WebSocketContext';
+import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
+import { useMenuActions } from '../../utils/contextMenuActions';
 
 export interface LogEntry {
   id: number;
@@ -30,7 +32,15 @@ const TYPE_COLORS: Record<LogEntry['type'], string> = {
 
 const TransmissionLog = forwardRef<TransmissionLogHandle>(function TransmissionLog(_props, ref) {
   const { subscribe } = useWebSocket();
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
   const [entries, setEntries] = useState<LogEntry[]>([]);
+
+  const buildEntryMenu = (entry: LogEntry): ContextMenuItem[] => [
+    m.copy('Copy text', entry.text),
+    m.copy('Copy source', entry.source),
+    m.copy('Copy line', `[${entry.time}] [${entry.source}] ${entry.text}`),
+  ];
 
   const addEntry = useCallback((partial: Omit<LogEntry, 'id' | 'time'>) => {
     const entry: LogEntry = {
@@ -138,6 +148,7 @@ const TransmissionLog = forwardRef<TransmissionLogHandle>(function TransmissionL
               key={entry.id}
               className="flex items-start gap-1.5 py-px"
               style={{ fontFamily: 'monospace' }}
+              onContextMenu={(e) => openMenu(e, buildEntryMenu(entry))}
             >
               <span className="text-[10px] text-[#555555] tabular-nums shrink-0 whitespace-nowrap">
                 {entry.time}

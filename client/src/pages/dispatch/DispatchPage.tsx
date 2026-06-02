@@ -299,6 +299,24 @@ export default function DispatchPage() {
   const [templates, setTemplates] = useState<any[]>([]);
   const [showTemplateDropdown, setShowTemplateDropdown] = useState(false);
   const [templateInitialData, setTemplateInitialData] = useState<Record<string, any> | undefined>(undefined);
+
+  // Deep-link: /dispatch?newCall=1&location=...&description=... opens the New
+  // Call modal pre-seeded (used by record right-click "Create call here" /
+  // "Dispatch to address"). Strips the params after so it doesn't re-fire.
+  useEffect(() => {
+    const sp = new URLSearchParams(window.location.search);
+    if (sp.get('newCall') === '1') {
+      setTemplateInitialData({
+        location: sp.get('location') || '',
+        description: sp.get('description') || '',
+        source: 'dispatch',
+      });
+      setShowNewCallModal(true);
+      navigate(window.location.pathname, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Quick Template Dialog — minimal address-only dispatch
   const [quickTemplateData, setQuickTemplateData] = useState<{ name: string; incident_type: string; priority: string; description: string; source: string } | null>(null);
   const [quickTemplateAddress, setQuickTemplateAddress] = useState('');

@@ -18,6 +18,8 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import SplitPanel from '../components/SplitPanel';
 import type { GraphNode, GraphEdge, ConnectionGraph } from '../types';
 import { useToast } from '../components/ToastProvider';
+import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
+import { useMenuActions } from '../utils/contextMenuActions';
 
 // ── Constants ────────────────────────────────────────────────
 
@@ -627,6 +629,16 @@ function DetailPanel({ node, edges, allNodes, onExpandNode }: {
   onExpandNode: (type: string, id: number, label: string) => void;
 }) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+
+  // ── Right-click context menu for a connected-entity row ──
+  const buildConnectionMenu = (other: GraphNode): ContextMenuItem[] => [
+    m.action('Center on entity', () => onExpandNode(other.type, other.entityId, other.label), { icon: <RotateCcw size={12} /> }),
+    m.separator(),
+    m.copy('Copy label', other.label),
+    m.copyId(other.entityId),
+  ];
 
   if (!node) {
     return (
@@ -754,6 +766,7 @@ function DetailPanel({ node, edges, allNodes, onExpandNode }: {
                     <button type="button"
                       key={idx}
                       onClick={() => onExpandNode(otherNode.type, otherNode.entityId, otherNode.label)}
+                      onContextMenu={(e) => openMenu(e, buildConnectionMenu(otherNode))}
                       className="w-full flex items-center gap-2 px-3 py-1.5 hover:bg-rmpg-800/30 text-left transition-colors"
                     >
                       <GroupIcon className="w-3 h-3 shrink-0" style={{ color: groupColor }} />

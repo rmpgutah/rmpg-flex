@@ -10,7 +10,7 @@ import RichTextArea from '../components/RichTextArea';
 import {
   Search, Loader2, Plus, ChevronLeft, ChevronRight, X, ShieldAlert, ShieldCheck,
   ShieldOff, MapPin, Briefcase, Car, FileText, Clock, User, CheckCircle, XCircle,
-  Edit2, Link2, Save, Upload, UserX, Hash, Fingerprint,
+  Edit2, Link2, Save, Upload, UserX, Hash, Fingerprint, Eye,
 } from 'lucide-react';
 import type {
   SexOffenderRecord, SORAddress, SOROffense, SORVehicle, SORTier, SORStatus,
@@ -24,6 +24,8 @@ import { useToast } from '../components/ToastProvider';
 import { useAuth } from '../context/AuthContext';
 import ExportButton from '../components/ExportButton';
 import { parseTimestamp } from '../utils/dateUtils';
+import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
+import { useMenuActions } from '../utils/contextMenuActions';
 
 // Re-type apiFetch for raw Response access (needed for PUT/POST error handling)
 async function apiRaw(endpoint: string, options?: RequestInit): Promise<Response> {
@@ -270,6 +272,23 @@ export default function SexOffenderRegistryPage() {
     } catch { addToast('Import failed', 'error'); }
   };
 
+  // ── Right-click context menu ──
+  const { openMenu } = useContextMenu();
+  const menu = useMenuActions();
+  const buildRecordMenu = (r: SexOffenderRecord): ContextMenuItem[] => {
+    const fullName = `${r.first_name || ''} ${r.last_name || ''}`.trim();
+    return [
+      menu.action('Open record', () => setSelected(r), { icon: <Eye size={12} /> }),
+      menu.action('Edit entry', () => { setEditingRecord(r); setShowAddModal(true); }, { icon: <Edit2 size={12} /> }),
+      menu.separator(),
+      menu.copy('Copy name', fullName),
+      menu.copyId(r.id),
+      ...(r.registry_id ? [menu.copy('Copy registry ID', r.registry_id, <Hash size={12} />)] : []),
+      menu.separator(),
+      menu.action('Verify compliant', () => handleVerify(r), { icon: <CheckCircle size={12} /> }),
+    ];
+  };
+
   // ── Computed Values ───────────────────────────────────────
   const statTotal = stats?.total || 0;
   const statCompliant = stats?.by_status?.compliant || 0;
@@ -380,6 +399,7 @@ export default function SexOffenderRegistryPage() {
                 <button type="button"
                   key={r.id}
                   onClick={() => setSelected(r)}
+                  onContextMenu={(e) => openMenu(e, buildRecordMenu(r))}
                   className="w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-surface-raised/50"
                   style={{
                     background: isSelected ? 'rgba(42,42,42,0.6)' : undefined,

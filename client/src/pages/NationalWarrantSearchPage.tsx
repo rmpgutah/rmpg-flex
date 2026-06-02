@@ -9,6 +9,8 @@ import PanelTitleBar from '../components/PanelTitleBar';
 import { apiFetch } from '../hooks/useApi';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { formatDate } from '../utils/dateUtils';
+import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
+import { useMenuActions } from '../utils/contextMenuActions';
 
 // ── US States List ──────────────────────────────────────────
 const US_STATES = [
@@ -661,8 +663,24 @@ export default function NationalWarrantSearchPage() {
 
 // ── Warrant Result Row ──────────────────────────────────────
 function WarrantRow({ warrant }: { warrant: any }) {
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+
+  const buildWarrantMenu = (): ContextMenuItem[] => {
+    const fullName = `${warrant.last_name || ''}, ${warrant.first_name || ''}`.trim().replace(/^,\s*/, '');
+    return [
+      m.copy('Copy name', fullName),
+      ...(warrant.charges ? [m.copy('Copy charges', warrant.charges)] : []),
+      ...(warrant.court ? [m.copy('Copy court', warrant.court, <Gavel size={12} />)] : []),
+      ...(warrant.source ? [m.copy('Copy source', warrant.source)] : []),
+    ];
+  };
+
   return (
-    <div className="px-3 py-2 hover:bg-surface-sunken transition-colors flex items-start gap-3">
+    <div
+      className="px-3 py-2 hover:bg-surface-sunken transition-colors flex items-start gap-3"
+      onContextMenu={(e) => openMenu(e, buildWarrantMenu())}
+    >
       {/* Photo thumbnail */}
       {warrant.photo_url ? (
         <img

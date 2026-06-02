@@ -10,6 +10,8 @@ import { apiFetch } from '../../../hooks/useApi';
 import type { OfficerEquipment, EquipmentType } from '../../../types';
 import { EQUIPMENT_STATUS_COLORS, EQUIPMENT_CONDITION_COLORS } from '../utils/personnelConstants';
 import { parseTimestamp } from '../../../utils/dateUtils';
+import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
+import { useMenuActions } from '../../../utils/contextMenuActions';
 
 const EQUIPMENT_TYPES: { value: EquipmentType | 'all'; label: string }[] = [
   { value: 'all', label: 'All' },
@@ -99,6 +101,20 @@ export default function EquipmentTab({ equipment, onAddEquipment, onEditEquipmen
     { label: 'Lost / Damaged', value: stats.lostDamaged, color: 'text-red-400', bgClass: 'bg-surface-base', border: 'border-red-700/30', topBorder: 'border-t-red-500' },
     { label: 'Maintenance', value: stats.maintenance, color: 'text-gray-400', bgClass: 'bg-surface-base', border: 'border-gray-700/30', topBorder: 'border-t-gray-500' },
     { label: 'Retired', value: stats.retired, color: 'text-rmpg-400', bgClass: 'bg-surface-base', border: 'border-rmpg-700', topBorder: 'border-t-rmpg-600' },
+  ];
+
+  // Right-click context menu
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+  const buildRowMenu = (eq: OfficerEquipment): ContextMenuItem[] => [
+    m.action('Edit equipment', () => onEditEquipment(eq), { icon: <Edit3 size={12} /> }),
+    m.separator(),
+    m.copy('Copy serial #', eq.serial_number),
+    m.copy('Copy asset tag', eq.asset_tag),
+    m.copy('Copy officer', eq.officer_name),
+    m.copyId(eq.id),
+    m.separator(),
+    m.action('Delete equipment', () => onDeleteEquipment(eq.id), { icon: <Trash2 size={12} />, danger: true }),
   ];
 
   // Set document title
@@ -223,6 +239,7 @@ export default function EquipmentTab({ equipment, onAddEquipment, onEditEquipmen
                 <tr
                   key={eq.id}
                   className={eq.status === 'lost' || eq.status === 'damaged' ? 'bg-red-900/10' : ''}
+                  onContextMenu={(e) => openMenu(e, buildRowMenu(eq))}
                 >
                   <td>
                     <span className="text-xs text-rmpg-200">{eq.officer_name || '-'}</span>

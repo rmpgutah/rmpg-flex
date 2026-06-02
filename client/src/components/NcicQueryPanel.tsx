@@ -7,6 +7,8 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { X, Terminal, Loader2 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
+import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
+import { useMenuActions } from '../utils/contextMenuActions';
 import {
   formatPersonResponse,
   formatVehicleResponse,
@@ -106,6 +108,15 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const queryIdCounterRef = useRef(0);
+
+  // ── Right-click context menu (per result entry) ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+  const buildEntryMenu = (entry: QueryEntry): ContextMenuItem[] => [
+    m.copy('Copy command', entry.command),
+    m.copy('Copy response', entry.response),
+    m.copyId(entry.id),
+  ];
 
   // Auto-focus input when panel opens
   useEffect(() => {
@@ -810,7 +821,7 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
             </div>
           )}
           {entries.map(entry => (
-            <div key={entry.id} className="ncic-entry">
+            <div key={entry.id} className="ncic-entry" onContextMenu={(e) => openMenu(e, buildEntryMenu(entry))}>
               <div className="ncic-entry-cmd">
                 <span className="ncic-timestamp">[{entry.timestamp}]</span>
                 <span className="ncic-cmd-text">&gt; {entry.command}</span>
@@ -891,7 +902,7 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
           )}
 
           {entries.map(entry => (
-            <div key={entry.id} className="ncic-entry">
+            <div key={entry.id} className="ncic-entry" onContextMenu={(e) => openMenu(e, buildEntryMenu(entry))}>
               <div className="ncic-entry-cmd">
                 <span className="ncic-timestamp">[{entry.timestamp}]</span>
                 <span className="ncic-cmd-text">&gt; {entry.command}</span>

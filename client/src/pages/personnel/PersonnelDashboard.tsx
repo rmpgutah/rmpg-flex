@@ -10,10 +10,12 @@
 import { useMemo } from 'react';
 import {
   Users, UserCheck, Clock, ShieldAlert, AlertTriangle, MapPinned, Radio,
-  CalendarClock, ChevronRight,
+  CalendarClock, ChevronRight, Eye,
 } from 'lucide-react';
 import type { Credential, TimeEntry, TrainingRecord, Schedule, CoverageGap } from '../../types';
 import type { OfficerWithStatus } from './utils/personnelMappers';
+import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
+import { useMenuActions } from '../../utils/contextMenuActions';
 import type { MainTab } from './utils/personnelConstants';
 import OfficerAvatar from './components/OfficerAvatar';
 import { parseTimestamp, dateToLocalYMD } from '../../utils/dateUtils';
@@ -75,6 +77,20 @@ export default function PersonnelDashboard({
   officers, credentials, timeEntries, training, schedules, coverageGaps,
   onNavigate, onSelectOfficer,
 }: Props) {
+  // Right-click context menu for officer rows
+  const { openMenu } = useContextMenu();
+  const cm = useMenuActions();
+  const buildOfficerMenu = (officer: OfficerWithStatus): ContextMenuItem[] => {
+    const fullName = `${officer.first_name || ''} ${officer.last_name || ''}`.trim();
+    return [
+      cm.action('Open officer', () => onSelectOfficer(officer), { icon: <Eye size={12} /> }),
+      cm.separator(),
+      cm.copy('Copy name', fullName),
+      ...(officer.badge_number ? [cm.copy('Copy badge', officer.badge_number)] : []),
+      cm.copyId(officer.id),
+    ];
+  };
+
   const onDuty = officers.filter(o => o.status === 'on_duty');
   const clockedIn = timeEntries.filter(t => t.status === 'clocked_in').length;
   const totalHours = timeEntries.reduce((s, t) => s + (t.total_hours || 0), 0);
@@ -150,6 +166,7 @@ export default function PersonnelDashboard({
                     type="button"
                     key={officer.id}
                     onClick={() => onSelectOfficer(officer)}
+                    onContextMenu={(e) => openMenu(e, buildOfficerMenu(officer))}
                     className="w-full flex items-center gap-2.5 p-2 bg-surface-sunken hover:bg-surface-raised border-l-2 border-l-green-500 text-left transition-colors duration-150 focus:outline-none focus:ring-1 focus:ring-brand-500/50"
                   >
                     <OfficerAvatar officer={officer} size="sm" />

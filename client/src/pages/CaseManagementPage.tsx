@@ -11,7 +11,7 @@ import RichTextArea from '../components/RichTextArea';
 import {
   Briefcase, Search, Plus, User, X, Save, Loader2, AlertTriangle, Target,
   MessageSquare, ArrowRight, CheckCircle, FolderOpen, ShieldCheck, RotateCcw, Send,
-  Link,
+  Link, Eye, Trash2, Unlink,
 } from 'lucide-react';
 import type { Case, CaseNote, CaseFull, CaseStatus, CaseType, CasePriority } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -21,6 +21,8 @@ import EmptyState from '../components/EmptyState';
 import ExportButton from '../components/ExportButton';
 import { apiFetch } from '../hooks/useApi';
 import FileAttachments from '../components/FileAttachments';
+import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
+import { useMenuActions } from '../utils/contextMenuActions';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useToast } from '../components/ToastProvider';
@@ -109,6 +111,8 @@ function LinkedEntityPanel({
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [searching, setSearching] = useState(false);
   const { addToast } = useToast();
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
 
   const handleSearch = async () => {
     if (!searchQuery.trim()) return;
@@ -167,7 +171,13 @@ function LinkedEntityPanel({
             </thead>
             <tbody>
               {items.map((item: any, idx: number) => (
-                <tr key={item.id || idx} className="border-b border-rmpg-800 hover:bg-rmpg-800/30 transition-colors">
+                <tr key={item.id || idx} className="border-b border-rmpg-800 hover:bg-rmpg-800/30 transition-colors"
+                  onContextMenu={(e) => openMenu(e, [
+                    m.copyId(item.id),
+                    m.separator(),
+                    m.action(`Unlink ${entityType.slice(0, -1)}`, () => handleUnlink(item.id), { icon: <Unlink size={12} />, danger: true }),
+                  ])}
+                >
                   {columns.map(col => (
                     <td key={col.key} className="px-2 py-1.5 text-rmpg-300">
                       {col.render ? col.render(item[col.key], item) : (item[col.key] ?? '—')}
@@ -360,6 +370,8 @@ export default function CaseManagementPage() {
   const { addToast } = useToast();
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin'; // Admin God Mode — unrestricted access
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
 
   const [cases, setCases] = useState<Case[]>([]);
   const [selected, setSelected] = useState<Case | null>(null);
@@ -556,6 +568,27 @@ export default function CaseManagementPage() {
     finally { setReviewSubmitting(false); }
   };
 
+  // Admin God Mode — delete a case (shared by detail button + context menu)
+  const handleDeleteCase = async (c: Case) => {
+    if (!confirm(`Admin God Mode: Delete case ${c.case_number}? This cannot be undone.`)) return;
+    try {
+      await apiFetch(`/cases/${c.id}`, { method: 'DELETE' });
+      addToast(`Case ${c.case_number} deleted`, 'success');
+      if (selected?.id === c.id) setSelected(null);
+      fetchCases();
+    } catch (err: any) { addToast(err.message || 'Delete failed', 'error'); }
+  };
+
+  // ── Right-click context menu for case list rows ──
+  const buildCaseMenu = (c: Case): ContextMenuItem[] => [
+    m.action('Open case', () => { setSelected(c); setDetailTab('overview'); }, { icon: <Eye size={12} /> }),
+    m.separator(),
+    m.copy('Copy case number', c.case_number),
+    m.copyId(c.id),
+    ...(c.title ? [m.copy('Copy title', c.title)] : []),
+    ...(isAdmin ? [m.separator(), m.action('Delete', () => handleDeleteCase(c), { icon: <Trash2 size={12} />, danger: true })] : []),
+  ];
+
   // ── Link Person handlers ──
   const handlePersonSearch = async () => {
     if (!personSearchQuery.trim()) return;
@@ -690,6 +723,7 @@ export default function CaseManagementPage() {
               <button type="button"
                 key={c.id}
                 onClick={() => { setSelected(c); setDetailTab('overview'); }}
+                onContextMenu={(e) => openMenu(e, buildCaseMenu(c))}
                 className={`w-full text-left px-3 py-2 border-b border-rmpg-800 transition-colors ${
                   selected?.id === c.id ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : 'hover:bg-rmpg-800/40 border-l-2 border-l-transparent'
                 }`}
@@ -807,15 +841,7 @@ export default function CaseManagementPage() {
                   {isAdmin && (
                     <div className="panel-beveled p-3 border-red-900/30">
                       <button type="button"
-                        onClick={async () => {
-                          if (!confirm(`Admin God Mode: Delete case ${selected.case_number}? This cannot be undone.`)) return;
-                          try {
-                            await apiFetch(`/cases/${selected.id}`, { method: 'DELETE' });
-                            addToast(`Case ${selected.case_number} deleted`, 'success');
-                            setSelected(null);
-                            fetchCases();
-                          } catch (err: any) { addToast(err.message || 'Delete failed', 'error'); }
-                        }}
+                        onClick={() => handleDeleteCase(selected)}
                         className="toolbar-btn text-red-400 border-red-700/50 hover:bg-red-900/30 text-[10px]"
                       >
                         <X style={{ width: 11, height: 11 }} /> Delete Case (Admin)

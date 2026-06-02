@@ -4,6 +4,7 @@ import PanelTitleBar from '../components/PanelTitleBar';
 import DataTable from '../components/DataTable';
 import StatsCard from '../components/StatsCard';
 import { useToast } from '../components/ToastProvider';
+import { useMenuActions } from '../utils/contextMenuActions';
 import { Swords, Shield, Wrench, AlertTriangle, Plus, Pencil, Trash2 } from 'lucide-react';
 
 interface Callout { id: number; date: string; call_type: string; location: string; resolution: string; duration_minutes: number; team_size: number; notes: string; }
@@ -26,6 +27,7 @@ export default function SpecialOpsPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const { addToast } = useToast();
+  const m = useMenuActions();
 
   const fetchData = useCallback(async () => {
     try {
@@ -126,9 +128,32 @@ export default function SpecialOpsPage() {
       </div>
 
       {tab === 'callouts' ? (
-        <DataTable columns={calloutColumns} data={callouts} emptyMessage="No callouts recorded" onRowClick={openEdit} />
+        <DataTable
+          columns={calloutColumns}
+          data={callouts}
+          emptyMessage="No callouts recorded"
+          onRowClick={openEdit}
+          rowContextMenu={(row) => [
+            m.action('Open / Edit', () => openEdit(row), { icon: <Pencil size={12} /> }),
+            m.separator(),
+            m.copyId(row.id),
+            m.action('Delete', () => setDeleteId(row.id), { danger: true, icon: <Trash2 size={12} /> }),
+          ]}
+        />
       ) : (
-        <DataTable columns={equipmentColumns} data={equipment} emptyMessage="No equipment in inventory" onRowClick={openEdit} />
+        <DataTable
+          columns={equipmentColumns}
+          data={equipment}
+          emptyMessage="No equipment in inventory"
+          onRowClick={openEdit}
+          rowContextMenu={(row) => [
+            m.action('Open / Edit', () => openEdit(row), { icon: <Pencil size={12} /> }),
+            m.separator(),
+            m.copy('Copy serial #', row.serial_number),
+            m.copyId(row.id),
+            m.action('Delete', () => setDeleteId(row.id), { danger: true, icon: <Trash2 size={12} /> }),
+          ]}
+        />
       )}
 
       {formOpen && (

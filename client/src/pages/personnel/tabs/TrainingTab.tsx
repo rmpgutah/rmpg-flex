@@ -11,6 +11,8 @@ import type { TrainingRecord, TrainingRequirement, TrainingCategory } from '../.
 import type { OfficerWithStatus } from '../utils/personnelMappers';
 import { TRAINING_CATEGORY_COLORS } from '../utils/personnelConstants';
 import { parseTimestamp } from '../../../utils/dateUtils';
+import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
+import { useMenuActions } from '../../../utils/contextMenuActions';
 
 const CATEGORIES: TrainingCategory[] = [
   'firearms', 'defensive_tactics', 'first_aid', 'legal',
@@ -78,6 +80,17 @@ export default function TrainingTab({ training, requirements, officers, loading,
         return null;
     }
   };
+
+  // Right-click context menu
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+  const buildRowMenu = (record: TrainingRecord): ContextMenuItem[] => [
+    m.copy('Copy course', record.course_name),
+    m.copy('Copy officer', record.officer_name),
+    ...(record.certificate_number ? [m.copy('Copy certificate #', record.certificate_number)] : []),
+    m.separator(),
+    m.copyId(record.id),
+  ];
 
   // Set document title
   useEffect(() => { document.title = 'Personnel - Training \u2014 RMPG Flex'; }, []);
@@ -180,7 +193,7 @@ export default function TrainingTab({ training, requirements, officers, loading,
             </thead>
             <tbody>
               {filtered.map((record) => (
-                <tr key={record.id} className="border-t border-rmpg-700/50 hover:bg-surface-raised/50 transition-colors">
+                <tr key={record.id} className="border-t border-rmpg-700/50 hover:bg-surface-raised/50 transition-colors" onContextMenu={(e) => openMenu(e, buildRowMenu(record))}>
                   <td className="py-1.5 px-2 text-rmpg-100">{record.officer_name}</td>
                   <td className="py-1.5 px-2 text-rmpg-100 font-medium">{record.course_name}</td>
                   <td className="py-1.5 px-2">

@@ -4,7 +4,9 @@ import PanelTitleBar from '../components/PanelTitleBar';
 import DataTable from '../components/DataTable';
 import StatsCard from '../components/StatsCard';
 import { useToast } from '../components/ToastProvider';
-import { Award, CheckCircle, Clock, FileText, Plus, Pencil, Trash2 } from 'lucide-react';
+import { useMenuActions } from '../utils/contextMenuActions';
+import type { ContextMenuItem } from '../context/ContextMenuContext';
+import { Award, CheckCircle, Clock, FileText, Plus, Pencil, Trash2, Eye } from 'lucide-react';
 
 interface Standard { id: number; standard_number: string; standard_name: string; category: string; description: string; compliance_status: string; last_reviewed: string; next_review: string; notes: string; }
 interface AccStats { standardsTotal: number; standardsCompliant: number; compliancePct: number; nextAssessment: string; }
@@ -22,6 +24,7 @@ export default function AccreditationPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const { addToast } = useToast();
+  const m = useMenuActions();
 
   const fetchData = useCallback(async () => {
     try {
@@ -95,7 +98,20 @@ export default function AccreditationPage() {
         <StatsCard label="NEXT ASSESSMENT" value={stats.nextAssessment || 'N/A'} icon={Clock} />
       </div>
 
-      <DataTable columns={columns} data={standards} emptyMessage="No accreditation standards" onRowClick={openEdit} />
+      <DataTable
+        columns={columns}
+        data={standards}
+        emptyMessage="No accreditation standards"
+        onRowClick={openEdit}
+        enableContextMenu
+        rowContextMenu={(row: Standard): ContextMenuItem[] => [
+          m.action('Open', () => openEdit(row), { icon: <Eye size={12} /> }),
+          m.action('Edit', () => openEdit(row), { icon: <Pencil size={12} /> }),
+          m.separator(),
+          m.copyId(row.id),
+          m.action('Delete', () => setDeleteId(row.id), { danger: true, icon: <Trash2 size={12} /> }),
+        ]}
+      />
 
       {formOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={() => setFormOpen(false)}>

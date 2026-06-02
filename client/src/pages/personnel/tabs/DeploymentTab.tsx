@@ -9,6 +9,8 @@ import type { OfficerWithStatus } from '../utils/personnelMappers';
 import { DEPLOYMENT_STATUS_COLORS } from '../utils/personnelConstants';
 import { toDisplayLabel } from '../../../utils/formatters';
 import { parseTimestamp } from '../../../utils/dateUtils';
+import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
+import { useMenuActions } from '../../../utils/contextMenuActions';
 
 type StatusFilter = 'all' | DeploymentStatus;
 
@@ -56,6 +58,18 @@ export default function DeploymentTab({ deployments, coverageGaps, officers, loa
     { value: 'scheduled', label: 'Scheduled' },
     { value: 'completed', label: 'Completed' },
     { value: 'cancelled', label: 'Cancelled' },
+  ];
+
+  // ── Right-click context menu ──────────────────────────────
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+
+  const buildDeploymentMenu = (dep: Deployment): ContextMenuItem[] => [
+    m.copy('Copy officer', dep.officer_name),
+    m.copy('Copy property', dep.property_name),
+    ...(dep.client_name ? [m.copy('Copy client', dep.client_name)] : []),
+    m.separator(),
+    m.copyId(dep.id),
   ];
 
   if (loading) {
@@ -170,7 +184,7 @@ export default function DeploymentTab({ deployments, coverageGaps, officers, loa
             </thead>
             <tbody>
               {filtered.map((dep) => (
-                <tr key={dep.id} className="border-t border-rmpg-700/50 hover:bg-surface-raised/50 transition-colors">
+                <tr key={dep.id} className="border-t border-rmpg-700/50 hover:bg-surface-raised/50 transition-colors" onContextMenu={(e) => openMenu(e, buildDeploymentMenu(dep))}>
                   <td className="py-1.5 px-2 text-rmpg-100">{dep.officer_name}</td>
                   <td className="py-1.5 px-2 text-rmpg-100 font-medium">{dep.property_name}</td>
                   <td className="py-1.5 px-2 text-rmpg-400">{dep.client_name || '-'}</td>

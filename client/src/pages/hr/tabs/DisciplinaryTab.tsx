@@ -11,6 +11,8 @@ import {
 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { useToast } from '../../../components/ToastProvider';
+import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
+import { useMenuActions } from '../../../utils/contextMenuActions';
 import type {
   DisciplinaryRecord, DisciplinaryType, DisciplinarySeverity, DisciplinaryStatus,
 } from '../../../types';
@@ -80,6 +82,11 @@ function followUpStatus(date: string | null): 'none' | 'upcoming' | 'overdue' | 
 export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabProps) {
   const toast = useToast();
   const manager = isManagerPlus(userRole);
+  const isAdmin = isGodModeRole(userRole);
+
+  // ── Right-click context menu ──
+  const { openMenu } = useContextMenu();
+  const menu = useMenuActions();
 
   // Data
   const [records, setRecords] = useState<DisciplinaryRecord[]>([]);
@@ -201,6 +208,26 @@ export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabPro
     });
   };
 
+  const buildRecordMenu = (rec: DisciplinaryRecord): ContextMenuItem[] => [
+    ...(manager
+      ? [menu.action('Edit record', () => handleEdit(rec), { icon: <Pencil size={12} /> })]
+      : []),
+    menu.action(
+      expandedIds.has(rec.id) ? 'Collapse details' : 'Expand details',
+      () => toggleExpand(rec.id),
+      { icon: expandedIds.has(rec.id) ? <ChevronUp size={12} /> : <ChevronDown size={12} /> },
+    ),
+    menu.separator(),
+    ...(rec.officer_name ? [menu.copy('Copy officer name', rec.officer_name)] : []),
+    menu.copyId(rec.id),
+    ...(isAdmin
+      ? [
+          menu.separator(),
+          menu.action('Delete record', () => handleDelete(rec.id), { icon: <Trash2 size={12} />, danger: true }),
+        ]
+      : []),
+  ];
+
   // ─── Officer read-only view ──────────────────────────────
   // ─── Manager / Admin view ────────────────────────────────
   // Set document title
@@ -252,6 +279,7 @@ export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabPro
                     onToggle={() => toggleExpand(rec.id)}
                     manager={false}
                     isAdmin={false}
+                    onContextMenu={(e) => openMenu(e, buildRecordMenu(rec))}
                   />
                 ))}
               </div>
@@ -271,6 +299,7 @@ export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabPro
                     onToggle={() => toggleExpand(rec.id)}
                     manager={false}
                     isAdmin={false}
+                    onContextMenu={(e) => openMenu(e, buildRecordMenu(rec))}
                   />
                 ))}
               </div>
@@ -398,6 +427,7 @@ export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabPro
                   isAdmin={userRole === 'admin'}
                   onEdit={() => handleEdit(rec)}
                   onDelete={() => handleDelete(rec.id)}
+                  onContextMenu={(e) => openMenu(e, buildRecordMenu(rec))}
                 />
               ))}
             </div>
@@ -460,6 +490,7 @@ function RecordCard({
   isAdmin,
   onEdit,
   onDelete,
+  onContextMenu,
 }: {
   rec: DisciplinaryRecord;
   expanded: boolean;
@@ -468,6 +499,7 @@ function RecordCard({
   isAdmin: boolean;
   onEdit?: () => void;
   onDelete?: () => void;
+  onContextMenu?: (e: React.MouseEvent) => void;
 }) {
   const isComm = rec.type === 'commendation';
   const borderColor = isComm ? '#d4a017' : (SEVERITY_COLORS[rec.severity] ?? '#888888');
@@ -476,6 +508,7 @@ function RecordCard({
 
   return (
     <div
+      onContextMenu={onContextMenu}
       className={`rounded border border-rmpg-700 border-l-4 ${
         isComm ? 'bg-amber-950/10' : 'bg-surface-sunken'
       }`}

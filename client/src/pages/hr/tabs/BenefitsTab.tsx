@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { Heart, Plus, Loader2, Search } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { useToast } from '../../../components/ToastProvider';
+import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
+import { useMenuActions } from '../../../utils/contextMenuActions';
 
 interface Benefit {
   id: number;
@@ -37,6 +39,24 @@ export default function BenefitsTab({ userRole }: { userRole: string }) {
   const [form, setForm] = useState({ officer_id: '', benefit_type: 'health', plan_name: '', provider: '', coverage_level: 'individual', employee_cost: 0, employer_cost: 0, effective_date: '' });
 
   const isManager = ['admin', 'manager'].includes(userRole);
+
+  // ── Right-click context menu (read-only rows → copy-only) ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+
+  const buildBenefitMenu = (b: Benefit): ContextMenuItem[] => {
+    const typeLabel = b.benefit_type === '401k' ? '401(k)' : b.benefit_type === 'hsa' ? 'HSA' : b.benefit_type === 'fsa' ? 'FSA' : b.benefit_type;
+    return [
+      m.copy('Copy officer name', b.officer_name),
+      m.copy('Copy benefit type', typeLabel),
+      m.copy('Copy plan name', b.plan_name),
+      m.copy('Copy provider', b.provider),
+      m.separator(),
+      m.copy('Copy employee cost', `$${(b.employee_cost ?? 0).toFixed(2)}/mo`),
+      m.copy('Copy employer cost', `$${(b.employer_cost ?? 0).toFixed(2)}/mo`),
+      m.copyId(b.id),
+    ];
+  };
 
   const load = async () => {
     setLoading(true);
@@ -159,7 +179,7 @@ export default function BenefitsTab({ userRole }: { userRole: string }) {
               <h3 className="text-xs font-bold text-white mb-2">{name}</h3>
               <div className="space-y-1">
                 {bens.map(b => (
-                  <div key={b.id} className="flex items-center justify-between text-[10px] py-1.5 border-b border-rmpg-700 last:border-0 hover:bg-surface-raised/30 transition-colors duration-150">
+                  <div key={b.id} onContextMenu={(e) => openMenu(e, buildBenefitMenu(b))} className="flex items-center justify-between text-[10px] py-1.5 border-b border-rmpg-700 last:border-0 hover:bg-surface-raised/30 transition-colors duration-150">
                     <div className="flex items-center gap-3">
                       <span className="text-white font-bold uppercase">{b.benefit_type === '401k' ? '401(k)' : b.benefit_type === 'hsa' ? 'HSA' : b.benefit_type === 'fsa' ? 'FSA' : b.benefit_type}</span>
                       <span className="text-rmpg-300">{b.plan_name}</span>

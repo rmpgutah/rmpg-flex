@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
-import { FileText, Plus, Trash2, CheckCircle, Loader2, Search } from 'lucide-react';
+import { FileText, Plus, Trash2, CheckCircle, Loader2, Search, Eye } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { useToast } from '../../../components/ToastProvider';
 import { useAuth } from '../../../context/AuthContext';
+import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
+import { useMenuActions } from '../../../utils/contextMenuActions';
 
 import RichTextArea from '../../../components/RichTextArea';
 import { parseTimestamp } from '../../../utils/dateUtils';
@@ -41,6 +43,10 @@ export default function DocumentsTab({ userRole }: { userRole: string }) {
   const [searchQuery, setSearchQuery] = useState('');
 
   const isManager = ['admin', 'manager', 'supervisor'].includes(userRole);
+
+  // ── Right-click context menu ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
 
   const loadDocs = async () => {
     setLoading(true);
@@ -81,6 +87,16 @@ export default function DocumentsTab({ userRole }: { userRole: string }) {
   };
 
   const myAcks = new Set(acks.filter(a => a.officer_id === Number(user?.id)).map(a => a.document_id));
+
+  const buildDocMenu = (doc: HRDocument): ContextMenuItem[] => [
+    m.action('Open document', () => setSelectedDocId(doc.id), { icon: <Eye size={12} /> }),
+    ...(!myAcks.has(doc.id) ? [m.action('Acknowledge', () => handleAcknowledge(doc.id), { icon: <CheckCircle size={12} /> })] : []),
+    m.separator(),
+    m.copy('Copy title', doc.title),
+    m.copy('Copy category', doc.category),
+    m.copyId(doc.id),
+    ...(isManager ? [m.separator(), m.action('Delete', () => handleDelete(doc.id), { icon: <Trash2 size={12} />, danger: true })] : []),
+  ];
 
   return (
     <div className="p-4 space-y-4">
@@ -133,7 +149,7 @@ export default function DocumentsTab({ userRole }: { userRole: string }) {
             const q = searchQuery.toLowerCase();
             return doc.title.toLowerCase().includes(q) || doc.description?.toLowerCase().includes(q) || doc.category.toLowerCase().includes(q);
           }).map(doc => (
-            <div key={doc.id} role="listitem" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setSelectedDocId(doc.id); }} className={`panel-beveled p-3 cursor-pointer transition-all duration-150 hover:bg-surface-raised/30 hover:shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-500/40 ${selectedDocId === doc.id ? 'border-brand-500 shadow-sm' : ''}`} onClick={() => setSelectedDocId(doc.id)}>
+            <div key={doc.id} role="listitem" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setSelectedDocId(doc.id); }} className={`panel-beveled p-3 cursor-pointer transition-all duration-150 hover:bg-surface-raised/30 hover:shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-500/40 ${selectedDocId === doc.id ? 'border-brand-500 shadow-sm' : ''}`} onClick={() => setSelectedDocId(doc.id)} onContextMenu={(e) => openMenu(e, buildDocMenu(doc))}>
               <div className="flex items-center justify-between">
                 <div>
                   <div className="flex items-center gap-2">

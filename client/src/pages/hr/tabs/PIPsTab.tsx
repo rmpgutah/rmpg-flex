@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
-import { TrendingUp, Plus, CheckCircle, X, Clock, Loader2, Search } from 'lucide-react';
+import { TrendingUp, Plus, CheckCircle, X, Clock, Loader2, Search, RotateCcw, XCircle } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { useToast } from '../../../components/ToastProvider';
+import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
+import { useMenuActions } from '../../../utils/contextMenuActions';
 
 import RichTextArea from '../../../components/RichTextArea';
 import { parseTimestamp } from '../../../utils/dateUtils';
@@ -45,6 +47,10 @@ export default function PIPsTab({ userRole }: { userRole: string }) {
 
   const isManager = ['admin', 'manager', 'supervisor'].includes(userRole);
 
+  // ── Right-click context menu ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+
   const load = async () => {
     setLoading(true);
     try {
@@ -83,6 +89,20 @@ export default function PIPsTab({ userRole }: { userRole: string }) {
     const diff = parseTimestamp(endDate).getTime() - Date.now();
     return Math.ceil(diff / (1000 * 60 * 60 * 24));
   };
+
+  const buildPipMenu = (p: PIP): ContextMenuItem[] => [
+    ...(isManager && p.status === 'active'
+      ? [
+          m.action('Mark completed', () => updateStatus(p.id, 'completed'), { icon: <CheckCircle size={12} /> }),
+          m.action('Extend', () => updateStatus(p.id, 'extended'), { icon: <RotateCcw size={12} /> }),
+          m.action('Mark failed', () => updateStatus(p.id, 'failed'), { icon: <XCircle size={12} />, danger: true }),
+          m.separator(),
+        ]
+      : []),
+    m.copy('Copy officer name', p.officer_name),
+    ...(p.reason ? [m.copy('Copy reason', p.reason)] : []),
+    m.copyId(p.id),
+  ];
 
   const filtered = pips.filter(p => {
     if (filterStatus !== 'all' && p.status !== filterStatus) return false;
@@ -173,7 +193,7 @@ export default function PIPsTab({ userRole }: { userRole: string }) {
             const days = daysRemaining(p.end_date);
             const goalsCompleted = p.goals.filter(g => g.completed).length;
             return (
-              <div key={p.id} role="listitem" className="panel-beveled p-3 hover:bg-surface-raised/30 hover:shadow-sm hover:border-rmpg-500 transition-all duration-200">
+              <div key={p.id} role="listitem" onContextMenu={(e) => openMenu(e, buildPipMenu(p))} className="panel-beveled p-3 hover:bg-surface-raised/30 hover:shadow-sm hover:border-rmpg-500 transition-all duration-200">
                 <div className="flex items-start justify-between">
                   <div>
                     <div className="flex items-center gap-2 mb-1">

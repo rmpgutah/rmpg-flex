@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Plus, Search, ShieldBan, MapPin, User, Clock, Ban, Calendar,
   Archive, RotateCcw, X, Save, Loader2, CheckCircle, AlertTriangle,
+  Eye, Pencil, Trash2,
 } from 'lucide-react';
 import type { TrespassOrder, TrespassOrderType, TrespassOrderStatus } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -20,6 +21,8 @@ import FloatingSaveBar from '../components/FloatingSaveBar';
 import { useDistrictOptions } from '../hooks/useDistrictLookup';
 import { safeDateStr, safeDateTimeStr, parseTimestamp } from '../utils/dateUtils';
 import { formatAddressDisplay } from '../utils/statusLabels';
+import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
+import { useMenuActions } from '../utils/contextMenuActions';
 
 const ORDER_TYPES: { value: TrespassOrderType; label: string }[] = [
   { value: 'trespass_warning', label: 'Trespass Warning' },
@@ -340,6 +343,45 @@ export default function TrespassOrdersPage() {
     }));
   };
 
+  const handleDeleteOrder = async (order: TrespassOrder) => {
+    if (!confirm(`Admin God Mode: Delete trespass order ${order.order_number}?`)) return;
+    try {
+      await apiFetch(`/trespass-orders/${order.id}`, { method: 'DELETE' });
+      addToast(`Order ${order.order_number} deleted`, 'success');
+      if (selectedOrder?.id === order.id) setSelectedOrder(null);
+      fetchOrders();
+    } catch (err: any) { addToast(err.message || 'Delete failed', 'error'); }
+  };
+
+  // ── Right-click context menu ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+  const buildOrderMenu = (order: TrespassOrder): ContextMenuItem[] => {
+    const subject = `${order.subject_first_name || ''} ${order.subject_last_name || ''}`.trim();
+    return [
+      m.action('Open order', () => setSelectedOrder(order), { icon: <Eye size={12} /> }),
+      m.action('Edit order', () => handleEdit(order), { icon: <Pencil size={12} /> }),
+      m.separator(),
+      m.copy('Copy subject name', subject),
+      m.copy('Copy order #', order.order_number),
+      m.copyId(order.id),
+      ...(order.status === 'active' ? [
+        m.separator(),
+        m.action('Mark served', () => handleServe(order), { icon: <CheckCircle size={12} /> }),
+        m.action('Lift order', () => handleLift(order), { icon: <RotateCcw size={12} /> }),
+        m.action('Record violation', () => handleViolate(order), { icon: <AlertTriangle size={12} /> }),
+      ] : []),
+      ...((order.status === 'expired' || order.status === 'served') ? [
+        m.separator(),
+        m.action('Renew order', () => handleRenew(order), { icon: <RotateCcw size={12} /> }),
+      ] : []),
+      ...(isAdmin ? [
+        m.separator(),
+        m.action('Delete', () => handleDeleteOrder(order), { icon: <Trash2 size={12} />, danger: true }),
+      ] : []),
+    ];
+  };
+
   // Set document title
   useEffect(() => { document.title = 'Trespass Orders \u2014 RMPG Flex'; }, []);
 
@@ -478,6 +520,7 @@ export default function TrespassOrdersPage() {
           ) : (
             orders.map(order => (
               <div key={order.id} onClick={() => setSelectedOrder(order)}
+                onContextMenu={(e) => openMenu(e, buildOrderMenu(order))}
                 className={`px-3 ${isMobile ? 'py-3' : 'py-2'} cursor-pointer border-b border-rmpg-800 transition-colors hover:bg-surface-raised ${selectedOrder?.id === order.id ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : 'border-l-2 border-l-transparent'}`}
                 style={isMobile ? { minHeight: 56 } : undefined}
               >
@@ -553,15 +596,7 @@ export default function TrespassOrdersPage() {
                   </button>
                 )}
                 {isAdmin && (
-                  <button type="button" onClick={async () => {
-                    if (!confirm(`Admin God Mode: Delete trespass order ${selectedOrder.order_number}?`)) return;
-                    try {
-                      await apiFetch(`/trespass-orders/${selectedOrder.id}`, { method: 'DELETE' });
-                      addToast(`Order ${selectedOrder.order_number} deleted`, 'success');
-                      setSelectedOrder(null);
-                      fetchOrders();
-                    } catch (err: any) { addToast(err.message || 'Delete failed', 'error'); }
-                  }} className="toolbar-btn text-red-400 hover:text-red-300" style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined }}>
+                  <button type="button" onClick={() => handleDeleteOrder(selectedOrder)} className="toolbar-btn text-red-400 hover:text-red-300" style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined }}>
                     <X style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> Delete
                   </button>
                 )}

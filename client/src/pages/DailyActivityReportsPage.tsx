@@ -11,12 +11,14 @@ import { formatEnumValue } from '../utils/formatters';
 import RichTextArea from '../components/RichTextArea';
 import {
   ClipboardCheck, Search, Plus, User, X, Save, Loader2, CheckCircle,
-  AlertTriangle, Send, RotateCcw, Zap, Calendar, RefreshCw,
+  AlertTriangle, Send, RotateCcw, Zap, Calendar, RefreshCw, Eye,
 } from 'lucide-react';
 import type { DailyActivityReport, DARStatus } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
 import ExportButton from '../components/ExportButton';
+import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
+import { useMenuActions } from '../utils/contextMenuActions';
 import { apiFetch } from '../hooks/useApi';
 import { parseTimestamp } from '../utils/dateUtils';
 import { useLiveSync } from '../hooks/useLiveSync';
@@ -36,6 +38,8 @@ export default function DailyActivityReportsPage() {
   const isMobile = useIsMobile();
   const { user } = useAuth();
   const { addToast } = useToast();
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
   const isAdmin = user?.role === 'admin' || user?.role === 'manager';
   const isGodMode = user?.role === 'admin'; // Admin God Mode — unrestricted access
 
@@ -202,6 +206,14 @@ export default function DailyActivityReportsPage() {
     return Array.isArray(val) ? val : [];
   };
 
+  // ── Right-click context menu ──
+  const buildDarMenu = (dar: DailyActivityReport): ContextMenuItem[] => [
+    m.action('Open report', () => { setSelected(dar); setEditing(false); }, { icon: <Eye size={12} /> }),
+    m.separator(),
+    m.copy('Copy DAR number', dar.dar_number),
+    m.copyId(dar.id),
+  ];
+
   return (
     <div className={`h-full flex ${isMobile ? 'flex-col' : ''} bg-surface-base`}>
       {fetchError && (
@@ -257,6 +269,7 @@ export default function DailyActivityReportsPage() {
                 key={dar.id}
                 role="listitem"
                 onClick={() => { setSelected(dar); setEditing(false); }}
+                onContextMenu={(e) => openMenu(e, buildDarMenu(dar))}
                 className={`w-full text-left px-3 py-2.5 border-b border-rmpg-800 transition-all duration-150 ${
                   selected?.id === dar.id ? 'bg-brand-900/20 border-l-2 border-l-brand-500 shadow-sm' : 'hover:bg-rmpg-800/40 hover:shadow-sm border-l-2 border-l-transparent'
                 }`}

@@ -29,6 +29,8 @@ import {
   Flame,
   Eye,
   Link,
+  Pencil,
+  Copy,
 } from 'lucide-react';
 import type { Incident, IncidentType, CallPriority, IncidentStatus, IncidentPerson, IncidentVehicle } from '../types';
 import StatusBadge from '../components/StatusBadge';
@@ -59,6 +61,8 @@ import ExportButton from '../components/ExportButton';
 import RmpgLogo from '../components/RmpgLogo';
 import PrintButton from '../components/PrintButton';
 import { useToast } from '../components/ToastProvider';
+import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
+import { useMenuActions } from '../utils/contextMenuActions';
 import FloatingSaveBar from '../components/FloatingSaveBar';
 import { formatDate, formatDateTime, safeDateTimeStr, safeTimeStr, parseTimestamp } from '../utils/dateUtils';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -235,6 +239,10 @@ export default function IncidentsPage() {
   const isAdmin = user?.role === 'admin';
   const isGodMode = user?.role === 'admin'; // Admin God Mode — unrestricted access
   const isMobile = useIsMobile();
+
+  // ── Right-click context menu ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
 
   // ---------- data state ----------
   const [incidents, setIncidents] = useState<Incident[]>([]);
@@ -716,6 +724,26 @@ export default function IncidentsPage() {
   };
 
   // ============================================================
+  // Right-click context menu (per incident row)
+  // ============================================================
+
+  const buildIncidentMenu = (incident: Incident): ContextMenuItem[] => {
+    return [
+      m.action('Open incident', () => { setSelectedIncident(incident); setIsEditing(false); }, { icon: <Eye size={12} /> }),
+      m.action('Edit incident', () => { setEditingIncident(incident); setShowFormModal(true); }, { icon: <Pencil size={12} /> }),
+      m.action('Open in new window', () => openIncidentWindow(incident.id), { icon: <ExternalLink size={12} /> }),
+      m.separator(),
+      m.copy('Copy IR #', incident.incident_number, <Copy size={12} />),
+      m.copyId(incident.id),
+      m.separator(),
+      ...(showArchived
+        ? [m.action('Unarchive', () => handleUnarchiveIncident(incident), { icon: <RotateCcw size={12} /> })]
+        : [m.action('Archive', () => handleArchiveIncident(incident), { icon: <Archive size={12} /> })]),
+      m.action('Delete', () => setDeleteTarget(incident), { icon: <Trash2 size={12} />, danger: true }),
+    ];
+  };
+
+  // ============================================================
   // Supplement CRUD
   // ============================================================
 
@@ -1028,6 +1056,7 @@ export default function IncidentsPage() {
                     setSelectedIncident(inc);
                     setIsEditing(false);
                   }}
+                  onContextMenu={(e) => openMenu(e, buildIncidentMenu(inc))}
                   className={`cursor-pointer ${isMobile ? 'min-h-[48px]' : ''} ${
                     selectedIncident?.id === inc.id ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : ''
                   }`}

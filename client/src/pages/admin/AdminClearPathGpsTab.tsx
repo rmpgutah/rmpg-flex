@@ -7,6 +7,8 @@ import {
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { safeTimeStr, safeDateTimeStr } from '../../utils/dateUtils';
+import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
+import { useMenuActions } from '../../utils/contextMenuActions';
 
 interface Props {
   LoadingSpinner: React.FC;
@@ -145,6 +147,10 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
   const [mediaPollInterval, setMediaPollInterval] = useState(300);
   const [syncing, setSyncing] = useState(false);
   const [savingMedia, setSavingMedia] = useState(false);
+
+  // ── Right-click context menu ──
+  const { openMenu } = useContextMenu();
+  const cm = useMenuActions();
 
   // ── Fetch status ──
   const fetchStatus = useCallback(async () => {
@@ -432,6 +438,49 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
     return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
   };
 
+  // ── Context-menu builders (one per record list) ──
+  const buildMappingMenu = (mapping: CpgMapping): ContextMenuItem[] => [
+    cm.copy('Copy device ID', mapping.cpg_device_id, <Truck size={12} />),
+    ...(mapping.call_sign ? [cm.copy('Copy call sign', mapping.call_sign)] : []),
+    ...(mapping.license_plate ? [cm.copy('Copy plate', mapping.license_plate)] : []),
+    ...(mapping.vehicle_vin ? [cm.copy('Copy VIN', mapping.vehicle_vin)] : []),
+    cm.copyId(mapping.id, 'Copy mapping ID'),
+    cm.separator(),
+    cm.action('Remove mapping', () => handleRemoveMapping(mapping.id), { icon: <Unlink size={12} />, danger: true }),
+  ];
+
+  const buildDeviceMenu = (device: CpgDevice): ContextMenuItem[] => {
+    const devId = device.deviceId || device.gtsDeviceId;
+    const hasCoords = Number.isFinite(device.lastValidLatitude) && Number.isFinite(device.lastValidLongitude);
+    return [
+      cm.copy('Copy device ID', devId, <Truck size={12} />),
+      ...(device.displayName ? [cm.copy('Copy name', device.displayName)] : []),
+      ...(device.serialNumber ? [cm.copy('Copy serial number', device.serialNumber)] : []),
+      ...(device.licensePlate ? [cm.copy('Copy plate', device.licensePlate)] : []),
+      ...(device.vehicleID ? [cm.copy('Copy VIN', device.vehicleID)] : []),
+      ...(hasCoords ? [
+        cm.separator(),
+        cm.copyCoords(device.lastValidLatitude, device.lastValidLongitude),
+        cm.openExternal('Locate on Google Maps', `https://maps.google.com/?q=${device.lastValidLatitude},${device.lastValidLongitude}`, <Navigation size={12} />),
+      ] : []),
+    ];
+  };
+
+  const buildDashcamMenu = (evt: DashcamEvent): ContextMenuItem[] => {
+    const hasCoords = evt.latitude != null && evt.longitude != null;
+    return [
+      cm.copy('Copy event type', evt.event_type, <Camera size={12} />),
+      ...(evt.call_sign ? [cm.copy('Copy call sign', evt.call_sign)] : []),
+      ...(evt.address ? [cm.copy('Copy address', evt.address)] : []),
+      ...(hasCoords ? [cm.copyCoords(evt.latitude, evt.longitude)] : []),
+      cm.copyId(evt.id, 'Copy event ID'),
+      ...(hasCoords ? [
+        cm.separator(),
+        cm.openExternal('Locate on Google Maps', `https://maps.google.com/?q=${evt.latitude},${evt.longitude}`, <Navigation size={12} />),
+      ] : []),
+    ];
+  };
+
   // Set document title
   useEffect(() => { document.title = 'Admin - GPS \u2014 RMPG Flex'; }, []);
 
@@ -712,6 +761,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
                 return (
                   <div
                     key={m.id}
+                    onContextMenu={(e) => openMenu(e, buildMappingMenu(m))}
                     className="px-2 py-1.5 bg-surface-sunken rounded-sm text-[11px]"
                   >
                     <div className="flex items-center gap-2">
@@ -770,6 +820,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
                   return (
                     <div
                       key={devId}
+                      onContextMenu={(e) => openMenu(e, buildDeviceMenu(device))}
                       className="flex items-center gap-2 px-2 py-1.5 bg-surface-sunken rounded-sm text-[11px]"
                     >
                       <Truck className="w-3 h-3 text-rmpg-400 shrink-0" />
@@ -853,6 +904,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
                 return (
                   <div
                     key={evt.id}
+                    onContextMenu={(e) => openMenu(e, buildDashcamMenu(evt))}
                     className="flex items-center gap-2 px-2 py-1.5 bg-surface-sunken rounded-sm text-[11px]"
                   >
                     <Camera className="w-3 h-3 text-rmpg-400 shrink-0" />
