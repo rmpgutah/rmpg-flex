@@ -281,6 +281,18 @@ async function recordWarrant(
  * Used at end of runUtahWarrantScan to count warrants_cleared.
  *
  * Returns the number of rows that transitioned active → cleared.
+ *
+ * CRITICAL — datetime FORMAT NORMALISATION. `last_seen_at` is written by
+ * recordWarrant() via SQLite's `datetime('now')`, which yields the canonical
+ * `YYYY-MM-DD HH:MM:SS` form (SPACE separator). `runStartedAt` is a JS
+ * `new Date().toISOString()` string: `YYYY-MM-DDTHH:MM:SS.sssZ` (T separator
+ * + fractional seconds + Z). A raw `last_seen_at < ?` is a *lexicographic
+ * TEXT* compare — and at index 10 a space (0x20) always sorts before 'T'
+ * (0x54), so EVERY space-formatted row compared as "less than" ANY
+ * T-formatted start time, regardless of the real instant. That cleared every
+ * warrant on every run (the "found N / cleared N forever, all is_active=0"
+ * churn). Wrapping BOTH sides in datetime() reduces them to the same
+ * canonical form so the comparison is a true chronological one.
  */
 async function markClearedWarrants(
   db: D1Database,
@@ -291,7 +303,7 @@ async function markClearedWarrants(
     `UPDATE utah_warrants
         SET is_active = 0
       WHERE is_active = 1
-        AND last_seen_at < ?`,
+        AND datetime(last_seen_at) < datetime(?)`,
     runStartedAt,
   );
   return result.meta?.changes ?? 0;
