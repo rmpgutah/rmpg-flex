@@ -41,6 +41,16 @@ const WS_MAX_RETRIES = 50;        // stop retrying after 50 consecutive failures
 const WS_HEARTBEAT_INTERVAL = 30000; // 30s ping interval
 const WS_PONG_TIMEOUT = 10000;       // 10s to receive pong before considering connection dead
 
+// dispatch_update action discriminators that carry a unit (not a call). These
+// get re-fanned to the legacy 'unit_update' channel (see onmessage) so the map,
+// MDT, mobile unit card, and recommended-units panel — which subscribe to
+// 'unit_update' — receive live unit changes. The Worker only ever emits
+// 'dispatch_update'; without this bridge those four surfaces were dead.
+const UNIT_ACTIONS = new Set<string>([
+  'unit_status_changed', 'unit_position_update', 'unit_created', 'unit_updated',
+  'unit_deleted', 'unit_assigned', 'unit_unassigned', 'units_dispatched',
+]);
+
 // Audible chime for an incoming high-priority (P1/P2) call. Extracted from the
 // inline onmessage handler so it can fire from the dispatch_update branch: the
 // live Worker delivers new calls as dispatch_update/call_created — it never
@@ -220,6 +230,22 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
                 handleDispatchEvent(data.action, data);
               } catch (err) {
                 console.error('[Brain] handleDispatchEvent error:', err);
+              }
+
+              // Revive the legacy 'unit_update' channel. The live Worker emits
+              // ALL unit events under 'dispatch_update' (action discriminator),
+              // but the map, MDT, mobile unit card, and recommended-units panel
+              // subscribe to a 'unit_update' type the Worker never sends — so
+              // those surfaces never updated live (frozen pins, stale roster).
+              // Fan unit-action messages out to 'unit_update' subscribers too,
+              // passing the SAME top-level message (consumers read msg.data || msg).
+              if (UNIT_ACTIONS.has(data.action)) {
+                const unitHandlers = subscribersRef.current.get('unit_update' as WSMessageType);
+                if (unitHandlers) {
+                  unitHandlers.forEach((handler) => {
+                    try { handler(message); } catch (err) { console.error('WS unit_update fan-out error:', err); }
+                  });
+                }
               }
             }
           }

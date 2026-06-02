@@ -71,6 +71,7 @@ export default function TimeAttendanceTab({ timeEntries, officers, onEditTimeEnt
       <div className="flex items-center gap-2">
         <Clock className="w-4 h-4 text-brand-400" />
         <h2 className="text-sm font-bold text-rmpg-200 uppercase tracking-wider">Time & Attendance</h2>
+        <span className="text-[11px] font-mono text-rmpg-500">({timeEntries.length})</span>
       </div>
 
       {/* Summary Cards */}

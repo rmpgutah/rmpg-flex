@@ -101,7 +101,7 @@ recommendedUnits.get('/:id/recommended-units', requireRole(...READ_ROLES), async
              usr.full_name AS officer_name, usr.badge_number
       FROM units u
       LEFT JOIN users usr ON usr.id = u.officer_id
-      WHERE u.status IN ('available', 'on_patrol', 'dispatched')
+      WHERE u.status IN ('available', 'dispatched')
         AND u.latitude IS NOT NULL AND u.longitude IS NOT NULL
     `);
 
@@ -537,7 +537,11 @@ callWarnings.get('/:id/warnings', requireRole(...READ_ROLES), async (c) => {
 // PUT /api/dispatch/units/:id/status
 // =====================================================================
 export const unitStatus = new Hono<Env>();
-const VALID_UNIT_STATUSES = ['available', 'dispatched', 'enroute', 'onscene', 'busy', 'off_duty', 'out_of_service', 'on_patrol'];
+// Must match the live `units` CHECK constraint exactly. 'on_patrol' was listed
+// here (and in recommended-units) but the DB CHECK rejects it → a status change
+// to on_patrol 500'd, and the recommend filter was a dead predicate. Aligned to
+// the 7 statuses the schema actually allows.
+const VALID_UNIT_STATUSES = ['available', 'dispatched', 'enroute', 'onscene', 'busy', 'off_duty', 'out_of_service'];
 
 unitStatus.put('/:id/status', requireRole(...READ_ROLES), async (c) => {
   try {
@@ -563,6 +567,11 @@ unitStatus.put('/:id/status', requireRole(...READ_ROLES), async (c) => {
 
     await execute(db, "UPDATE units SET status = ?, last_status_change = datetime('now'), updated_at = datetime('now') WHERE id = ?", status, unitId);
     const updated = await queryFirst<any>(db, 'SELECT * FROM units WHERE id = ?', unitId);
+    // Live fan-out — this is THE unit-status path (mobile UnitStatusCard +
+    // MDT both call it). Without the broadcast an officer flipping their own
+    // status never reaches the dispatch board / map until a manual refresh.
+    // /dispatch is excluded from the generic data_changed sync (src/index.ts).
+    try { if (updated) broadcastAll('dispatch_update', { action: 'unit_status_changed', unit: updated }); } catch { /* never break the write */ }
     return c.json(updated);
   } catch (err) {
     console.error('[dispatch] unit status error', err);
@@ -1053,6 +1062,23 @@ autoAssign.post('/:id/auto-assign', requireRole(...WRITE_ROLES), async (c) => {
 
     const updated = await queryFirst<Record<string, unknown>>(
       db, 'SELECT * FROM calls_for_service WHERE id = ?', call.id);
+
+    // Live fan-out — same gap as the manual assign paths: without this the
+    // auto-assigned ("nearest available") unit + the call don't reach any other
+    // dispatcher's board or the map until a poll. /dispatch is excluded from the
+    // generic data_changed sync (src/index.ts). Best-effort.
+    try {
+      const assignedUnit = await queryFirst<Record<string, any>>(db, 'SELECT * FROM units WHERE id = ?', nearest.id);
+      broadcastAll('dispatch_update', {
+        action: 'unit_assigned',
+        unit: assignedUnit,
+        unit_id: nearest.id,
+        unit_call_sign: nearest.call_sign,
+        call_id: String(call.id),
+        call_number: call.call_number,
+      });
+      if (updated) broadcastAll('dispatch_update', { action: 'call_updated', call: updated });
+    } catch (err) { console.error('[dispatch] auto-assign broadcast:', err); }
 
     return c.json({
       ...(updated || {}),

@@ -21,7 +21,9 @@ export function mapDbCall(row: any): CallForService {
     }
   }
 
-  // assigned_unit_ids -> assigned_units (call signs)
+  // assigned_unit_ids (JSON array of numeric unit IDs) -> assigned_units as
+  // stringified IDs. NOTE: these are unit IDs, not call signs — the UI resolves
+  // them to call signs separately against the units list.
   let assignedUnits: string[] = [];
   if (row.assigned_unit_ids) {
     try {
@@ -182,7 +184,10 @@ export function mapDbUnit(row: any): Unit {
     badge_number: row.badge_number || undefined,
     status: row.status || 'available',
     current_call_id: row.current_call_id ? String(row.current_call_id) : undefined,
-    current_call_number: row.call_number || undefined,
+    // GET /dispatch/units aliases the joined call number as current_call_number
+    // (`c.call_number AS current_call_number`); reading row.call_number left the
+    // board's Assignment column permanently blank. Keep call_number as a fallback.
+    current_call_number: row.current_call_number || row.call_number || undefined,
     location: row.current_call_location || row.location || undefined,
     latitude: row.latitude,
     longitude: row.longitude,
