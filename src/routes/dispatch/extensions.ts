@@ -1063,6 +1063,23 @@ autoAssign.post('/:id/auto-assign', requireRole(...WRITE_ROLES), async (c) => {
     const updated = await queryFirst<Record<string, unknown>>(
       db, 'SELECT * FROM calls_for_service WHERE id = ?', call.id);
 
+    // Live fan-out — same gap as the manual assign paths: without this the
+    // auto-assigned ("nearest available") unit + the call don't reach any other
+    // dispatcher's board or the map until a poll. /dispatch is excluded from the
+    // generic data_changed sync (src/index.ts). Best-effort.
+    try {
+      const assignedUnit = await queryFirst<Record<string, any>>(db, 'SELECT * FROM units WHERE id = ?', nearest.id);
+      broadcastAll('dispatch_update', {
+        action: 'unit_assigned',
+        unit: assignedUnit,
+        unit_id: nearest.id,
+        unit_call_sign: nearest.call_sign,
+        call_id: String(call.id),
+        call_number: call.call_number,
+      });
+      if (updated) broadcastAll('dispatch_update', { action: 'call_updated', call: updated });
+    } catch (err) { console.error('[dispatch] auto-assign broadcast:', err); }
+
     return c.json({
       ...(updated || {}),
       auto_assigned_unit: nearest.call_sign,
