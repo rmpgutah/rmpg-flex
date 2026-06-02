@@ -70,6 +70,7 @@ import MenuBar from './MenuBar';
 // Sidebar removed — navigation moved to top icon toolbar
 import ErrorBoundary from './ErrorBoundary';
 import NotificationCenter from './NotificationCenter';
+import AnnouncementBanner from './AnnouncementBanner';
 import PanicButton from './PanicButton';
 import UserProfileModal from './UserProfileModal';
 import DispatcherTranscript from './DispatcherTranscript';
@@ -1515,6 +1516,9 @@ export default function Layout() {
         {/* Page Content (recessed panel) */}
         {/* 12: Main content area with subtle inset shadow for depth */}
         <main id="main-content" className="flex-1 overflow-auto min-h-0 panel-inset animate-page-enter scrollbar-dark" key={location.pathname} style={{ background: '#141414', boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.2)' }}>
+          {/* Officer-facing admin broadcasts (Admin → Announcements) */}
+          <AnnouncementBanner />
+
           {/* Feature 21: Password expiry warning banner */}
           {showPasswordExpiryWarning && (
             <div className="bg-amber-900/40 border-b border-amber-700/50 px-4 py-1.5 flex items-center gap-2">

@@ -387,7 +387,10 @@
 //       the Map UI ("What's Here").
 // v717: Statewide DB always-on — Utah roads + address points default visible
 //       (auto-enabled on map ready; toggleable in-session, returns at load).
-const CACHE_NAME = 'rmpg-flex-v717';
+// v718: Admin sweep — de-dup tabs, remove dead/retention/skiptracer-v1; build
+//       Departments + Announcements (+ officer banner) + Alert Rules engine +
+//       maintenance toggle + IPED config; make non-functional tabs real.
+const CACHE_NAME = 'rmpg-flex-v718';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
