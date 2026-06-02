@@ -457,6 +457,56 @@ const STUBS: StubRule[] = [
     reason: 'no zone speed analytics handler; MapPage tolerates empty zones array',
   },
 
+  // ── 2026-06-02 live-sweep batch — endpoints with NO backing table ─────
+  // Found by a logged-in page-by-page Network sweep. Each path below has no
+  // table on live D1 and no rewrite handler, so it 404/500'd from legacy.
+  // Shapes match exactly what the consuming page reads (verified against the
+  // component source) so the page renders its empty state instead of
+  // crashing/erroring. Remove a stub when its real backend lands.
+  //
+  // DashcamAiPage: reads evRes.events (array) + fleetRes.units (array) — set
+  // straight into state with no `?? []`, so the keys MUST be arrays.
+  {
+    match: /^\/api\/driving-events(\?.*)?$/,
+    methods: ['GET'],
+    body: { events: [], total: 0, limit: 200, offset: 0 },
+    reason: 'no driving_events table; DashcamAiPage tolerates empty events',
+  },
+  {
+    match: /^\/api\/driving-events\/fleet-health(\?.*)?$/,
+    methods: ['GET'],
+    body: { units: [] },
+    reason: 'no driving_events table; DashcamAiPage fleet-health tolerates empty units',
+  },
+  // WebResearchPage: reads data?.connected (coerced).
+  {
+    match: /^\/api\/web-research\/status(\?.*)?$/,
+    methods: ['GET'],
+    body: { connected: false },
+    reason: 'no web-research integration backend; page shows disconnected',
+  },
+  // ArrestRecordsPage: reads stats?.per_county (array) + population_summary.
+  {
+    match: /^\/api\/jail-roster\/statistics(\?.*)?$/,
+    methods: ['GET'],
+    body: { per_county: [], population_summary: { total_records: 0, total_active: 0, total_released: 0 } },
+    reason: 'no jail-roster aggregation backend; ArrestRecordsPage tolerates empty per_county',
+  },
+  // NationalWarrantSearchPage: every access optional-chained — {} is safe.
+  {
+    match: /^\/api\/warrants\/national-coverage(\?.*)?$/,
+    methods: ['GET'],
+    body: { sources: 0, states_covered: 0, active_warrants: 0, state_status: {}, state_sources: {}, state_warrants: {} },
+    reason: 'no national coverage data source; NationalWarrantSearchPage tolerates zeros',
+  },
+  // TrainingDocsPage: expects a BARE top-level array (setDocuments(data || [])).
+  {
+    match: /^\/api\/company-documents(\?.*)?$/,
+    methods: ['GET'],
+    body: [],
+    reason: 'no company_documents table; TrainingDocsPage tolerates empty array',
+  },
+
   //
   // History:
   //   2026-05-24: Added stub for /api/statutes/search after live D1
@@ -1052,6 +1102,45 @@ const API_ROUTES: RouteRule[] = [
   // were silently returning empty data anyway. A 404 is a more
   // honest signal until those tabs get real ports.
   { kind: 'prefix', value: '/api/hr' },
+
+  // ── 2026-06-02 live-sweep routing fixes ──────────────────────────────
+  // Each rewrite handler below ALREADY EXISTS (verified in src/routes/*) and
+  // its table exists on live D1, but the proxy never routed the namespace to
+  // env.API — so the request fell through to the legacy worker, which lacks
+  // the handler and 404/500'd. Found by a logged-in page-by-page Network
+  // sweep. Routing closes the strangler-fig seam.
+  //
+  // Shift planning — shiftPlans.ts (mounted at bare /api) serves ALL of these;
+  // legacy 404'd every one. The client calls the bare /api/shift-* paths.
+  { kind: 'prefix', value: '/api/shift-plans' },
+  { kind: 'prefix', value: '/api/shift-swaps' },
+  { kind: 'prefix', value: '/api/shift-overtime' },
+  { kind: 'prefix', value: '/api/staffing-levels' },
+  { kind: 'prefix', value: '/api/shift-notifications' },
+  // Personal notification inbox — notificationsInbox.ts over the notifications
+  // table (list/stats/categories/preferences/unread-count + read/delete/etc).
+  // Legacy served only /unread-count; the inbox paths 404'd.
+  { kind: 'prefix', value: '/api/notifications' },
+  // Use-of-force reports (useOfForce.ts) — new rewrite handler; legacy 500'd.
+  { kind: 'prefix', value: '/api/use-of-force' },
+  // ONLY /api/invoices/stats → env.API (the path that 500'd on legacy). The
+  // rest of /api/invoices/* (list, :id, create, status, payments, line-items)
+  // is full CRUD the LEGACY worker owns and works — must stay on legacy or the
+  // whole InvoicesPage breaks. Scoped regex, not a prefix.
+  { kind: 'regex', value: /^\/api\/invoices\/stats(\?.*)?$/, methods: ['GET'] },
+  // Document folders — documentFolders.ts serves /folders; legacy 404'd.
+  // Scoped to /folders only so the rest of /api/documents stays on legacy
+  // (the rewrite has no document file-list handler).
+  { kind: 'prefix', value: '/api/documents/folders' },
+  // Command center KPIs — reports.ts now has /command-center; legacy 404'd.
+  { kind: 'prefix', value: '/api/reports/command-center' },
+  // Security dashboard — auth.ts /security/* over login_attempts + sessions.
+  // login-history keeps its STUB (checked first); the rest reach env.API.
+  { kind: 'prefix', value: '/api/auth/security' },
+  // Evidence stats + locations — records.ts implements both; legacy lacks them
+  // (the base /evidence list + writes deliberately stay on legacy, since the
+  // rewrite's evidence POST/PUT reference columns absent from the live table).
+  { kind: 'regex', value: /^\/api\/records\/evidence\/(stats|locations)(\?.*)?$/, methods: ['GET'] },
 ];
 
 function matches(rule: RouteRule, pathname: string, method: string): boolean {

@@ -376,7 +376,13 @@
 //       now populated (was hardcoded []). Also: fuel-report PDF now includes
 //       an Odometer column per fill (was missing entirely; reads
 //       odometer_reading ?? raw odometer).
-const CACHE_NAME = 'rmpg-flex-v715';
+// v716: live-sweep 404/500/400 fixes — route shift-plans/notifications-inbox/
+//       use-of-force/invoices-stats/documents-folders/command-center/
+//       auth-security/evidence-stats+locations to the rewrite; fix tasks/stats
+//       Hono route ordering, billing cl.client_name column, add iped/jobs;
+//       honest stubs for driving-events/web-research/jail-roster/national-
+//       coverage/company-documents.
+const CACHE_NAME = 'rmpg-flex-v716';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
