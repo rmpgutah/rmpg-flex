@@ -297,7 +297,10 @@
 //       create; no-op until units on duty). (5) Activity choropleth gains a
 //       Calls/Incidents data source — Incidents source bins RMS incident
 //       points over the geography (fetched on demand). Map <-> Fleet/Dispatch/RMS.
-const CACHE_NAME = 'rmpg-flex-v704';
+// v705: Warrants — clean charge display (no raw JSON arrays), auto-save confirmed
+//       Utah pulls into canonical records, retain + archive on clear, and
+//       warrant_found/warrant_cleared notifications in the watch log.
+const CACHE_NAME = 'rmpg-flex-v705';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
