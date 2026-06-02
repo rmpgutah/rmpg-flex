@@ -20,10 +20,14 @@ import RecordHero from '../../components/records/RecordHero';
 import { recordPosture, toneStyle } from '../../components/records/recordVisuals';
 import type { Vehicle, RecordAlert, RecordEntityType } from '../../types';
 
-// Active-stolen check shared by the list badge + posture ring so they agree.
+// Active-stolen check shared by the list badge, counts, list ring + posture so
+// they agree. ONLY a confirmed 'Stolen' status is an active threat — the other
+// STOLEN_STATUS_OPTIONS (Not Stolen / Recovered / Cleared / Under Investigation
+// / Unknown) and the legacy 'None' sentinel must NOT trip the STOLEN badge. The
+// old check flagged everything ≠ None/Recovered, so 'Not Stolen'/'Unknown'/etc.
+// all showed a false STOLEN alert.
 function isActiveStolen(v: Vehicle): boolean {
-  const s = (v.stolen_status || '').toLowerCase();
-  return !!s && !['none', 'recovered', 'cleared', ''].includes(s);
+  return (v.stolen_status || '').trim().toLowerCase() === 'stolen';
 }
 // Posture-relevant flags for a vehicle (list ring + detail hero).
 function vehiclePostureFlags(v: Vehicle): Array<string | null | undefined> {
@@ -489,7 +493,7 @@ export function VehiclesTabList({ state }: { state: VehiclesTabState }) {
     let list = [...filteredVehicles];
     if (filterFlag) {
       list = list.filter(v => {
-        if (filterFlag === 'stolen') return v.stolen_status && v.stolen_status !== 'None' && v.stolen_status !== 'Recovered';
+        if (filterFlag === 'stolen') return isActiveStolen(v);
         if (filterFlag === 'towed') return v.tow_status && v.tow_status !== 'None';
         if (filterFlag === 'commercial') return v.commercial_vehicle;
         if (filterFlag === 'expired') return v.registration_expiry && parseTimestamp(v.registration_expiry) < new Date();
@@ -504,7 +508,7 @@ export function VehiclesTabList({ state }: { state: VehiclesTabState }) {
 
   const stats = React.useMemo(() => ({
     total: filteredVehicles.length,
-    stolen: filteredVehicles.filter(v => v.stolen_status && v.stolen_status !== 'None' && v.stolen_status !== 'Recovered').length,
+    stolen: filteredVehicles.filter(v => isActiveStolen(v)).length,
     towed: filteredVehicles.filter(v => v.tow_status && v.tow_status !== 'None').length,
     commercial: filteredVehicles.filter(v => v.commercial_vehicle).length,
   }), [filteredVehicles]);
@@ -590,7 +594,7 @@ export function VehiclesTabList({ state }: { state: VehiclesTabState }) {
             onClick={() => setSelectedVehicle(selectedVehicle?.id === v.id ? null : v)}
             className={`
               px-4 py-3 border-b border-rmpg-700/50 cursor-pointer transition-all duration-150
-              ${v.stolen_status && v.stolen_status !== 'None' && v.stolen_status !== 'Recovered'
+              ${isActiveStolen(v)
                 ? 'bg-red-950/30 border-l-2 border-l-red-500'
                 : selectedVehicle?.id === v.id
                   ? 'bg-brand-900/20 border-l-2 border-l-brand-500'
@@ -626,7 +630,7 @@ export function VehiclesTabList({ state }: { state: VehiclesTabState }) {
                       'bg-rmpg-700/50 text-rmpg-300 border-rmpg-600/50'
                     }`}>{v.plate_state}</span>
                   )}
-                  {v.stolen_status && v.stolen_status !== 'None' && v.stolen_status !== 'Recovered' && (
+                  {isActiveStolen(v) && (
                     <span className="px-1 py-0.5 text-[8px] font-bold bg-red-900/60 text-red-400 border border-red-700/50 animate-pulse">STOLEN</span>
                   )}
                   {v.tow_status && v.tow_status !== 'None' && (

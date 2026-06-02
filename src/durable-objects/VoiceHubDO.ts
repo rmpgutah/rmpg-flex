@@ -42,7 +42,7 @@ import {
   bytesToBase64,
   type DispatcherTurn,
 } from '../utils/aiDispatcher';
-import { gatherAwareness, runLookup, runAction, checkPremiseHazards, type RecordRef } from '../utils/dispatcherAwareness';
+import { gatherAwareness, runLookup, runAction, checkPremiseHazards, VERBATIM_LOOKUPS, type RecordRef } from '../utils/dispatcherAwareness';
 import { getRadioSettings, type RadioSettings } from '../utils/radioSettings';
 import type { DispatcherOptions } from '../utils/aiDispatcher';
 
@@ -457,13 +457,14 @@ export class VoiceHubDO {
     if (decision?.lookup) {
       const result = await runLookup(
         this.env as unknown as Bindings, db, decision.lookup,
-        { speaker: speaker?.unit_label ?? null },
+        { speaker: speaker?.unit_label ?? null, channelId: this.refId },
       ).catch(() => null);
       if (result) {
-        // unit_location / eta already speak a complete radio line — read them
-        // back verbatim. The record checks get re-phrased through the persona
-        // for radio brevity.
-        if (decision.lookup.type === 'unit_location' || decision.lookup.type === 'eta') {
+        // These lookups already speak a complete radio line (or, for
+        // last_dispatch, ARE the verbatim re-read) — read them back as-is. The
+        // record checks (plate/person/warrant/vin) get re-phrased through the
+        // persona for radio brevity.
+        if (VERBATIM_LOOKUPS.has(decision.lookup.type)) {
           replyText = result.text;
         } else {
           replyText = await phraseLookupReply(this.env.AI, turn, decision.lookup, result.text, opts);
@@ -479,6 +480,8 @@ export class VoiceHubDO {
     if (decision?.action) {
       const written = await runAction(
         this.env as unknown as Bindings, db, decision.action,
+        // The requesting officer is the BOLO issuer (bolos.issued_by FK).
+        { issuedBy: speaker?.user_id ?? null },
       ).catch(() => null);
       if (written) {
         replyText = written.spoken;
@@ -491,9 +494,26 @@ export class VoiceHubDO {
         // an honest correction so the unit knows to identify / repeat.
         replyText = decision.action.type === 'set_unit_status'
           ? `${speaker?.unit_label || 'Unit calling'}, dispatch did not catch your call-sign — say again your unit and status.`
-          : `${speaker?.unit_label || 'Unit calling'}, unable to start that call — say again the location and the nature.`;
+          : decision.action.type === 'create_bolo'
+            ? `${speaker?.unit_label || 'Unit calling'}, unable to put that BOLO out — say again the details.`
+            : `${speaker?.unit_label || 'Unit calling'}, unable to start that call — say again the location and the nature.`;
         actionIntent = `action_refused:${decision.action.type}`;
       }
+    }
+
+    // 3a-ter. LIVE BOARD — a successful CAD write is broadcast to the room so
+    // the radio operator console reflects what the AI dispatcher just did
+    // (created/cleared a call, changed a unit status, dispatched backup) the
+    // instant it happens, instead of waiting for the board's periodic poll.
+    if (actionIntent && !actionIntent.startsWith('action_refused')) {
+      this.broadcast({
+        type: 'dispatch_action',
+        channel_id: this.refId,
+        source_tx_id: sourceTxId,
+        unit: speaker?.unit_label ?? null,
+        action: decision?.action?.type ?? null,
+        summary: actionIntent, // e.g. "call_created:CFS26-0042" / "unit_status:12-Adam=onscene"
+      });
     }
 
     // 3c. PROACTIVE OFFICER SAFETY — when a unit logs out at a location (or a
