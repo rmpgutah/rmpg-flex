@@ -414,7 +414,11 @@
 //       (filesFromDrop). Raised the per-upload file cap 12→30 so a whole job
 //       packet (Field Sheet + Info Form + Court Docket + Summons + scanned-page
 //       rasters) goes through in one drop.
-const CACHE_NAME = 'rmpg-flex-v722';
+// v723: Serve Intake drop zone — gold drag-active highlight ("RELEASE TO ADD
+//       DOCUMENTS") so a drag gets a visible response, + window-level dragover/
+//       drop guard so a stray drop just outside the zone (common in the Electron
+//       shell) no longer navigates/loses the files.
+const CACHE_NAME = 'rmpg-flex-v723';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

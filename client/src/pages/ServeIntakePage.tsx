@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { Upload, FileText, CheckCircle, AlertTriangle, Loader2, MapPin, User, Building2, Phone, X, Camera, Edit3, Eye } from 'lucide-react';
 import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
@@ -158,8 +158,25 @@ export default function ServeIntakePage() {
   const [editingFields, setEditingFields] = useState<Record<string, string>>({});
   const [showOcrPreview, setShowOcrPreview] = useState(false);
   const [showAttemptModal, setShowAttemptModal] = useState(false);
+  const [dragActive, setDragActive] = useState(false);
   const dropRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Window-level drag/drop guard. Without this, a file/folder dropped even a
+  // few pixels OUTSIDE the drop zone makes the browser (and especially the
+  // Electron desktop shell) try to navigate to the dropped file — the page
+  // reloads or "nothing happens" and the drop is lost. We preventDefault at the
+  // window so stray drops are swallowed harmlessly; the drop zone's own handler
+  // stopPropagation()s, so in-zone drops still reach it normally.
+  useEffect(() => {
+    const stop = (e: DragEvent) => { e.preventDefault(); };
+    window.addEventListener('dragover', stop);
+    window.addEventListener('drop', stop);
+    return () => {
+      window.removeEventListener('dragover', stop);
+      window.removeEventListener('drop', stop);
+    };
+  }, []);
   const navigate = useNavigate();
 
   const extractPdfText = useCallback(async (file: File): Promise<string> => {
@@ -311,6 +328,7 @@ export default function ServeIntakePage() {
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    setDragActive(false);
     // Expand any dropped folders. filesFromDrop must read the entry list
     // before the first await (the DataTransfer is invalidated after), so we
     // hand it the event's dataTransfer synchronously and resolve async.
@@ -325,6 +343,15 @@ export default function ServeIntakePage() {
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    if (!dragActive) setDragActive(true);
+  }, [dragActive]);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    // Only clear when the pointer actually leaves the drop zone (dragleave also
+    // fires when crossing onto child elements — relatedTarget stays inside).
+    if (!dropRef.current?.contains(e.relatedTarget as Node)) setDragActive(false);
   }, []);
 
   const removeFile = (idx: number) => setFiles(prev => prev.filter((_, i) => i !== idx));
@@ -424,17 +451,23 @@ export default function ServeIntakePage() {
         ref={dropRef}
         onDrop={handleDrop}
         onDragOver={handleDragOver}
+        onDragEnter={handleDragOver}
+        onDragLeave={handleDragLeave}
         onClick={() => fileInputRef.current?.click()}
         onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInputRef.current?.click(); } }}
         role="button"
         tabIndex={0}
         aria-label="Upload documents: drag and drop or press Enter to browse"
-        className="border-2 border-dashed border-rmpg-600 rounded-sm p-8 text-center cursor-pointer hover:border-rmpg-400 hover:bg-surface-raised/50 focus:outline-none focus:border-rmpg-400 focus:ring-2 focus:ring-[#d4a017]/40 transition-all"
-        style={{ background: 'var(--surface-sunken)' }}
+        className={`border-2 border-dashed rounded-sm p-8 text-center cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#d4a017]/40 transition-all ${
+          dragActive
+            ? 'border-[#d4a017] bg-[#d4a017]/10 ring-2 ring-[#d4a017]/40'
+            : 'border-rmpg-600 hover:border-rmpg-400 hover:bg-surface-raised/50 focus:border-rmpg-400'
+        }`}
+        style={dragActive ? undefined : { background: 'var(--surface-sunken)' }}
       >
-        <Upload className="w-10 h-10 text-rmpg-500 mx-auto mb-3" />
-        <p className="text-sm font-bold text-rmpg-300">DRAG & DROP DOCUMENTS</p>
-        <p className="text-[10px] text-rmpg-500 mt-1">PDF or Images (Court Filing, Field Sheet, ID, Passport)</p>
+        <Upload className={`w-10 h-10 mx-auto mb-3 ${dragActive ? 'text-[#d4a017]' : 'text-rmpg-500'}`} />
+        <p className="text-sm font-bold text-rmpg-300">{dragActive ? 'RELEASE TO ADD DOCUMENTS' : 'DRAG & DROP DOCUMENTS'}</p>
+        <p className="text-[10px] text-rmpg-500 mt-1">PDF or Images — a whole job folder works too</p>
         <p className="text-[9px] text-rmpg-600 mt-2">or click to browse files</p>
         <input id="ff-serveintakepage-0"
           ref={fileInputRef}
