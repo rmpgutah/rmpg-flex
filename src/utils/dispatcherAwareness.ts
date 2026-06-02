@@ -26,6 +26,7 @@ import { query, queryFirst, execute } from './db';
 import { geocodeAddress, reverseGeocodeAddress } from '../routes/geocode';
 import { resolveDistrict } from './districtResolver';
 import { estimateEta } from './eta';
+import { withUniqueRetry } from './serveIntakeRecords';
 
 // Statuses that mean a call is no longer on the active board.
 const CLOSED_CALL_STATUSES = ['closed', 'cleared', 'archived', 'cancelled', 'canceled'];
@@ -768,26 +769,43 @@ async function createBolo(db: D1Database, req: ActionRequest, ctx: ActionContext
   if (!title) return null;
   const priority = mapPriority(req.priority);
 
-  // Mint a unique BOLO number in the board's format.
+  // Mint a unique BOLO number in the board's format. bolo_number is UNIQUE and
+  // the minter is a non-atomic SELECT MAX()+1, so a concurrent issue can collide
+  // — re-mint + retry on a UNIQUE violation instead of dropping the BOLO. The
+  // mint closure re-reads MAX() each attempt so a retry picks up the racer's row.
   const year = new Date().getFullYear().toString().slice(-2);
   const prefix = `BOLO${year}-`;
-  const [{ max }] = await query<{ max: string | null }>(
-    db, 'SELECT MAX(bolo_number) as max FROM bolos WHERE bolo_number LIKE ?', `${prefix}%`,
-  );
-  const seq = max ? String(parseInt(max.slice(prefix.length), 10) + 1).padStart(5, '0') : '00001';
-  const boloNumber = `${prefix}${seq}`;
+  const mintBolo = async (): Promise<string> => {
+    const [{ max }] = await query<{ max: string | null }>(
+      db, 'SELECT MAX(bolo_number) as max FROM bolos WHERE bolo_number LIKE ?', `${prefix}%`,
+    );
+    const seq = max ? String(parseInt(max.slice(prefix.length), 10) + 1).padStart(5, '0') : '00001';
+    return `${prefix}${seq}`;
+  };
 
-  const res = await execute(
-    db,
-    `INSERT INTO bolos (bolo_number, type, title, description, subject_description, vehicle_description,
-                        status, priority, issued_by, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, datetime('now'))`,
-    boloNumber, boloType, title,
-    req.description?.trim() || null,
-    req.subject_description?.trim() || null,
-    req.vehicle_description?.trim() || null,
-    priority, issuedBy,
-  );
+  let boloNumber: string;
+  let res: Awaited<ReturnType<typeof execute>>;
+  try {
+    const out = await withUniqueRetry(
+      mintBolo,
+      (boloNo) => execute(
+        db,
+        `INSERT INTO bolos (bolo_number, type, title, description, subject_description, vehicle_description,
+                            status, priority, issued_by, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, datetime('now'))`,
+        boloNo, boloType, title,
+        req.description?.trim() || null,
+        req.subject_description?.trim() || null,
+        req.vehicle_description?.trim() || null,
+        priority, issuedBy,
+      ),
+    );
+    boloNumber = out.value;
+    res = out.result;
+  } catch (err) {
+    console.warn('[awareness] BOLO insert failed:', (err as Error)?.message);
+    return null;
+  }
   if (!res.meta.last_row_id) return null;
   return {
     spoken: `Copy, BOLO is out — ${boloNumber}, ${priority}, ${title}. All units be on the lookout.`,
@@ -842,13 +860,19 @@ async function createCall(env: Bindings, db: D1Database, req: ActionRequest): Pr
 
   // Mint a call number in the same CFS{YY}-{NNNNN} format as the HTTP
   // create handler so radio-born calls share one sequence with the board.
+  // call_number is UNIQUE and the minter is a non-atomic SELECT MAX()+1, so a
+  // concurrent writer (HTTP create, intake, another radio call) can collide;
+  // the loser's INSERT throws and the call silently drops. Re-mint + retry on a
+  // UNIQUE violation. The mint closure re-reads MAX() each attempt. (Audit AI-4.)
   const year = new Date().getFullYear().toString().slice(-2);
   const prefix = `CFS${year}-`;
-  const [{ max }] = await query<{ max: string | null }>(
-    db, 'SELECT MAX(call_number) as max FROM calls_for_service WHERE call_number LIKE ?', `${prefix}%`,
-  );
-  const seq = max ? String(parseInt(max.slice(prefix.length), 10) + 1).padStart(5, '0') : '00001';
-  const callNumber = `${prefix}${seq}`;
+  const mintCallNumber = async (): Promise<string> => {
+    const [{ max }] = await query<{ max: string | null }>(
+      db, 'SELECT MAX(call_number) as max FROM calls_for_service WHERE call_number LIKE ?', `${prefix}%`,
+    );
+    const seq = max ? String(parseInt(max.slice(prefix.length), 10) + 1).padStart(5, '0') : '00001';
+    return `${prefix}${seq}`;
+  };
 
   // Geocode + district backfill so the call plots on the map and closest-unit
   // ranking works — same enrichment the HTTP path does. All best-effort.
@@ -860,27 +884,61 @@ async function createCall(env: Bindings, db: D1Database, req: ActionRequest): Pr
     district = await resolveDistrict(env, { lat, lng }).catch(() => null);
   }
 
-  const res = await execute(
-    db,
-    `INSERT INTO calls_for_service
-       (call_number, incident_type, priority, status, location_address, source,
-        description, caller_name, latitude, longitude,
-        sector_id, sector_name, zone_id, zone_name, beat_id, beat_name, dispatch_code,
-        created_at, updated_at)
-     VALUES (?, ?, ?, 'pending', ?, 'radio', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
-    callNumber,
-    incidentType.toLowerCase().replace(/\s+/g, '_'),
-    priority,
-    address,
-    req.description?.trim() || null,
-    req.caller_name?.trim() || null,
-    lat, lng,
-    district?.sector_id ?? null, district?.sector_name ?? null,
-    district?.zone_id ?? null, district?.zone_name ?? null,
-    district?.beat_id ?? null, district?.beat_name ?? null,
-    district?.dispatch_code ?? null,
-  );
+  let callNumber: string;
+  let res: Awaited<ReturnType<typeof execute>>;
+  try {
+    const out = await withUniqueRetry(
+      mintCallNumber,
+      (callNo) => execute(
+        db,
+        `INSERT INTO calls_for_service
+           (call_number, incident_type, priority, status, location_address, source,
+            description, caller_name, latitude, longitude,
+            sector_id, sector_name, zone_id, zone_name, beat_id, beat_name, dispatch_code,
+            created_at, updated_at)
+         VALUES (?, ?, ?, 'pending', ?, 'radio', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
+        callNo,
+        incidentType.toLowerCase().replace(/\s+/g, '_'),
+        priority,
+        address,
+        req.description?.trim() || null,
+        req.caller_name?.trim() || null,
+        lat, lng,
+        district?.sector_id ?? null, district?.sector_name ?? null,
+        district?.zone_id ?? null, district?.zone_name ?? null,
+        district?.beat_id ?? null, district?.beat_name ?? null,
+        district?.dispatch_code ?? null,
+      ),
+    );
+    callNumber = out.value;
+    res = out.result;
+  } catch (err) {
+    console.warn('[awareness] createCall insert failed:', (err as Error)?.message);
+    return null;
+  }
   if (!res.meta.last_row_id) return null;
+
+  // ── Area enrichment (AI-6) ────────────────────────────────────
+  // The base INSERT above writes sector/zone/beat (which exist on
+  // calls_for_service), but Area — the top of the A/S/Z/B hierarchy — lives on
+  // the 1:1 calls_for_service_ext overflow table (base is at the 100-col cap).
+  // Parity with serveIntakeRecords.createServiceCall: INSERT OR IGNORE the ext
+  // row, then UPDATE the area columns. Best-effort — a miss just leaves Area
+  // null, exactly as before; it must never abort the radio-born call.
+  if (district?.area_code != null || district?.area_name != null) {
+    try {
+      const callId = Number(res.meta.last_row_id);
+      await execute(db, 'INSERT OR IGNORE INTO calls_for_service_ext (id) VALUES (?)', callId);
+      await execute(
+        db,
+        'UPDATE calls_for_service_ext SET area_code = COALESCE(?, area_code), area_name = COALESCE(?, area_name) WHERE id = ?',
+        district.area_code ?? null, district.area_name ?? null, callId,
+      );
+    } catch (err) {
+      console.warn('[awareness] createCall area ext write skipped (non-fatal):', (err as Error)?.message);
+    }
+  }
+
   const beat = district?.beat_name ? ` in ${district.beat_name}` : '';
   return {
     spoken: `Copy, I've created ${callNumber}, ${priority}, ${incidentType} at ${address}${beat}.`,

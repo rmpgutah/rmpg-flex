@@ -28,6 +28,11 @@ const PDF_TOOLS_NAME = 'shared';
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 const INTAKE_ROLES = ['admin', 'manager', 'supervisor', 'dispatcher', 'officer'];
 
+// Minimum browser-extracted text length to trust a PDF as "born-digital" and
+// extract from the client-provided text directly instead of the container.
+// Mirrors serveIntake.ts MIN_CLIENT_TEXT_CHARS.
+const MIN_CLIENT_TEXT_CHARS = 200;
+
 // Per-call timeout ceilings — mirror serveIntake.ts so the in-page preview
 // path can't hang forever on a stalled Vision/PDF/LLM call (the "stuck on
 // upload" failure mode the commit pipeline already guards against). The
@@ -71,14 +76,61 @@ ocr.post('/scan-document', async (c) => {
     }
     if (file.type === 'application/pdf') {
       const bytes = new Uint8Array(await file.arrayBuffer());
-      const container = getContainer(c.env.PDF_TOOLS, PDF_TOOLS_NAME);
-      const txt = await withTimeout(extractTextFromPdf(container, bytes, file.name || 'doc.pdf'), CONTAINER_TIMEOUT_MS, 'PDF text extraction timed out');
-      const r = await withTimeout(extractFromText(c.env.AI, txt.text, c.env.SERVE_INTAKE_LORA), AI_TIMEOUT_MS, 'Text extraction timed out');
+      // Mirror the hardened /upload path: prefer the browser's pdfjs text
+      // (passed as the optional `client_text` field) for born-digital PDFs so
+      // we never touch the PDF Tools container, which is intentionally NOT
+      // rolled out in prod (--containers-rollout=none). Only genuinely empty
+      // scans fall through to the container.
+      const clientText = (() => {
+        const raw = form.get('client_text');
+        return typeof raw === 'string' ? raw.trim() : '';
+      })();
+
+      let text = clientText;
+      let pageCount = 0;
+      let ocrUsed = false;
+      let ocrEngine = 'pdfjs-client';
+
+      if (clientText.length < MIN_CLIENT_TEXT_CHARS) {
+        // Born-digital text insufficient — try the container, but race it
+        // against a timeout. The container is off in prod, so this almost
+        // always times out / errors; rather than hang to a 500, fall back.
+        try {
+          const container = getContainer(c.env.PDF_TOOLS, PDF_TOOLS_NAME);
+          const txt = await withTimeout(
+            extractTextFromPdf(container, bytes, file.name || 'doc.pdf'),
+            CONTAINER_TIMEOUT_MS, 'PDF Tools container timed out or unavailable',
+          );
+          text = txt.text; pageCount = txt.page_count; ocrUsed = txt.ocr_used;
+          ocrEngine = txt.ocr_used ? 'tesseract' : 'pdftotext';
+        } catch {
+          // Container unavailable AND no usable client text → this is a scanned
+          // PDF we can't OCR server-side. Return a clean 422 with actionable
+          // guidance instead of hanging to a 500. The client rasterizes the
+          // PDF to images and resends those (the Vision path below handles
+          // images and keeps working unchanged).
+          return c.json({
+            error: 'scanned_pdf_unsupported',
+            code: 'SCANNED_PDF',
+            message: 'Scanned PDF — rasterize the pages client-side and resend each as an image.',
+          }, 422);
+        }
+      }
+
+      if (text.trim().length < 20) {
+        // Even after the container, no readable text — a scan. 422, not 500.
+        return c.json({
+          error: 'scanned_pdf_unsupported',
+          code: 'SCANNED_PDF',
+          message: 'Scanned PDF — rasterize the pages client-side and resend each as an image.',
+        }, 422);
+      }
+
+      const r = await withTimeout(extractFromText(c.env.AI, text, c.env.SERVE_INTAKE_LORA), AI_TIMEOUT_MS, 'Text extraction timed out');
       return c.json({
         success: r.success, documentType: r.documentType, confidence: r.confidence,
         fields: r.fields, rawText: r.rawText, allDates: r.allDates,
-        pageCount: txt.page_count, ocrUsed: txt.ocr_used,
-        ocrEngine: txt.ocr_used ? 'tesseract' : 'pdftotext',
+        pageCount, ocrUsed, ocrEngine,
         model: r.model, extractionMs: r.ms, error: r.error,
       });
     }

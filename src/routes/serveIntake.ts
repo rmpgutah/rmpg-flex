@@ -153,6 +153,15 @@ async function scanDocumentHandler(c: any): Promise<Response> {
     return c.json({ error: `File size out of range (0 < n <= ${MAX_UPLOAD_BYTES})` }, 400);
   }
 
+  // Optional browser-extracted pdfjs text for born-digital PDFs. Mirrors the
+  // /upload path: prefer this over the PDF Tools container (which is NOT rolled
+  // out in prod — --containers-rollout=none — so a container fetch would hang
+  // the request the full CONTAINER_TIMEOUT_MS and then 500).
+  const clientText = (() => {
+    const raw = form.get('client_text');
+    return typeof raw === 'string' ? raw.trim() : '';
+  })();
+
   let extraction: ExtractionResult;
   let pageCount = 0;
   let ocrUsed = false;
@@ -161,16 +170,52 @@ async function scanDocumentHandler(c: any): Promise<Response> {
   try {
     if (isImage(file.type)) {
       const bytes = new Uint8Array(await file.arrayBuffer());
-      extraction = await extractFromImage(c.env.AI, bytes);
+      extraction = await withTimeout(
+        extractFromImage(c.env.AI, bytes), AI_TIMEOUT_MS, 'Vision OCR timed out',
+      );
       ocrEngine = 'workers-ai-vision';
     } else if (isPdf(file.type)) {
       const bytes = new Uint8Array(await file.arrayBuffer());
-      const container = getContainer(c.env.PDF_TOOLS, PDF_TOOLS_NAME);
-      const txt = await extractTextFromPdf(container, bytes, file.name || 'doc.pdf');
-      pageCount = txt.page_count;
-      ocrUsed = txt.ocr_used;
-      ocrEngine = ocrUsed ? 'tesseract' : 'pdftotext';
-      extraction = await extractFromText(c.env.AI, txt.text, c.env.SERVE_INTAKE_LORA);
+      let text = clientText;
+      ocrEngine = 'pdfjs-client';
+
+      if (clientText.length < MIN_CLIENT_TEXT_CHARS) {
+        // Insufficient born-digital text — race the (prod-disabled) container
+        // against its timeout rather than awaiting it bare. On timeout /
+        // unavailable AND no usable client text, this is a scanned PDF we
+        // cannot OCR server-side: return a clean 422 with guidance instead of
+        // hanging to a 500. The client rasterizes to images and resends those.
+        try {
+          const container = getContainer(c.env.PDF_TOOLS, PDF_TOOLS_NAME);
+          const txt = await withTimeout(
+            extractTextFromPdf(container, bytes, file.name || 'doc.pdf'),
+            CONTAINER_TIMEOUT_MS, 'PDF Tools container timed out or unavailable',
+          );
+          text = txt.text;
+          pageCount = txt.page_count;
+          ocrUsed = txt.ocr_used;
+          ocrEngine = ocrUsed ? 'tesseract' : 'pdftotext';
+        } catch {
+          return c.json({
+            error: 'scanned_pdf_unsupported',
+            code: 'SCANNED_PDF',
+            message: 'Scanned PDF — rasterize the pages client-side and resend each as an image.',
+          }, 422);
+        }
+      }
+
+      if (text.trim().length < 20) {
+        return c.json({
+          error: 'scanned_pdf_unsupported',
+          code: 'SCANNED_PDF',
+          message: 'Scanned PDF — rasterize the pages client-side and resend each as an image.',
+        }, 422);
+      }
+
+      extraction = await withTimeout(
+        extractFromText(c.env.AI, text, c.env.SERVE_INTAKE_LORA),
+        AI_TIMEOUT_MS, 'Text extraction timed out',
+      );
     } else {
       return c.json({ error: `Unsupported file type: ${file.type}` }, 400);
     }
