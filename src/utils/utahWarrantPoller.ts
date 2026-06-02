@@ -75,7 +75,7 @@ interface UtahApiWarrant {
 }
 
 /** Row we insert into utah_warrants — joins the upstream person + warrant data. */
-interface FetchedWarrant {
+export interface FetchedWarrant {
   utah_person_id: string;
   utah_warrant_id: string;
   first_name: string;
@@ -175,7 +175,7 @@ async function fetchWithTimeout(url: string, init: RequestInit): Promise<Respons
  * Earlier versions counted and discarded — see git blame for the count-only
  * implementation prior to migration 0035.
  */
-async function fetchWarrantsForPerson(person: PersonRow): Promise<FetchedWarrant[]> {
+export async function fetchWarrantsForPerson(person: PersonRow): Promise<FetchedWarrant[]> {
   const personsRes = await fetchWithTimeout(`${API_BASE}/persons`, {
     method: 'POST',
     headers: {

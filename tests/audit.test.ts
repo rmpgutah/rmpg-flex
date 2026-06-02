@@ -22,37 +22,7 @@ import { describe, it, expect } from 'vitest';
 import { Hono } from 'hono';
 import audit from '../src/routes/audit';
 import type { Env } from '../src/types';
-
-// ── Tiny D1 double ──────────────────────────────────────────
-// Pattern-matches SQL prefixes to canned results. Real handlers
-// compose SQL dynamically (WHERE clauses, LIMIT/OFFSET), so we
-// only match on a leading substring + return a fixed shape. The
-// goal is *shape* validation, not query validation.
-type CannedRow = Record<string, unknown>;
-function makeFakeDb(canned: { match: RegExp; rows: CannedRow[] }[]) {
-  function resultsFor(sql: string): CannedRow[] {
-    for (const c of canned) if (c.match.test(sql)) return c.rows;
-    return [];
-  }
-  const db = {
-    prepare(sql: string) {
-      let stored = sql;
-      const stmt: {
-        bind: (..._args: unknown[]) => typeof stmt;
-        all: <T = unknown>() => Promise<{ results: T[] }>;
-        first: <T = unknown>() => Promise<T | null>;
-        run: () => Promise<{ meta: { changes: number; last_row_id: number } }>;
-      } = {
-        bind: (..._args: unknown[]) => stmt,
-        all: async <T = unknown>() => ({ results: resultsFor(stored) as T[] }),
-        first: async <T = unknown>() => (resultsFor(stored)[0] as T) ?? null,
-        run: async () => ({ meta: { changes: 0, last_row_id: 0 } }),
-      };
-      return stmt;
-    },
-  };
-  return db as unknown as D1Database;
-}
+import { makeFakeDb } from './helpers/fakeD1';
 
 // ── Test harness ────────────────────────────────────────────
 // Wraps the audit router behind a middleware that injects a fake
