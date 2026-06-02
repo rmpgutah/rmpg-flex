@@ -114,15 +114,22 @@ function renderLeftPanel<T>(
   const prims = new Primitives(doc, layout);
 
   for (const section of schema.sections) {
-    if (typeof section === 'function') {
-      const ctx = makeRenderContext(doc, layout, prims, data);
-      (section as RenderCallback<T>)(ctx, data);
-    } else {
-      const s = section as SchemaSection<T>;
-      if (s.visibleIf && !s.visibleIf(data)) continue;
-      drawSectionHeader(doc, layout, s.title);
-      renderSectionFields(prims, layout, s, data);
-      closeSection(layout);
+    // Isolate each section: a single bad section (e.g. a throwing custom
+    // render callback) degrades to a skipped block instead of aborting the
+    // entire multi-copy document.
+    try {
+      if (typeof section === 'function') {
+        const ctx = makeRenderContext(doc, layout, prims, data);
+        (section as RenderCallback<T>)(ctx, data);
+      } else {
+        const s = section as SchemaSection<T>;
+        if (s.visibleIf && !s.visibleIf(data)) continue;
+        drawSectionHeader(doc, layout, s.title);
+        renderSectionFields(prims, layout, s, data);
+        closeSection(layout);
+      }
+    } catch (err) {
+      console.error('[pdf/v2] section render failed (skipped):', err);
     }
   }
 }

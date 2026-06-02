@@ -45,7 +45,8 @@ export async function loadSealBase64(): Promise<string | null> {
       reader.readAsDataURL(outBlob);
     });
 
-    // Strip data URL prefix to get raw base64
+    // Cache the full data URL — jsPDF addImage accepts it directly (the prior
+    // "strip prefix" comment was misleading; nothing is stripped).
     sealBase64 = dataUrl;
     return sealBase64;
   } catch {

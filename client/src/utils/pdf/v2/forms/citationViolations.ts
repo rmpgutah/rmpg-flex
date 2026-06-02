@@ -15,7 +15,10 @@ export function totalFine(violations: CitationViolation[]): number {
   );
 }
 
-const fmtFine = (n: number): string => `$${n.toFixed(2)}`;
+// Coerce + finite-guard: fine_amount can arrive as a sentinel string ("None"/
+// "N/A"/"") from live D1 — `n.toFixed` then threw (string) or printed $NaN,
+// aborting the whole citation PDF.
+const fmtFine = (n: unknown): string => { const x = Number(n); return `$${(Number.isFinite(x) ? x : 0).toFixed(2)}`; };
 
 // All field specs in this file use parameterless accessors that close
 // over `violations`, so the `data` arg primitives demand is unused. One

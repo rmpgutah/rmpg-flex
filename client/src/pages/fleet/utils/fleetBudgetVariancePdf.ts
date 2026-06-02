@@ -36,8 +36,12 @@ export function generateFleetBudgetVariancePdf({ summary, scopeLabel }: Args): v
 
   const { budget, period, spend, status } = summary;
   const overage = spend.pct_of_budget > 100 ? spend.pct_of_budget - 100 : 0;
-  const fmtCurrency = (n: number) =>
-    `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  // Coerce + finite-guard against undefined/sentinel summary members.
+  const fmtCurrency = (n: unknown) => {
+    const x = Number(n);
+    return `$${(Number.isFinite(x) ? x : 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  };
+  const num1 = (n: unknown) => { const x = Number(n); return (Number.isFinite(x) ? x : 0).toFixed(1); };
 
   // Status colour — matches the on-screen BudgetCard palette.
   const statusColors: Record<string, [number, number, number]> = {
@@ -136,10 +140,10 @@ export function generateFleetBudgetVariancePdf({ summary, scopeLabel }: Args): v
 
   const figures: [string, string][] = [
     ['Actual Spend (to date)', fmtCurrency(spend.actual)],
-    ['Percent of Budget',      `${spend.pct_of_budget.toFixed(1)}%${overage > 0 ? `  (${overage.toFixed(1)}% over)` : ''}`],
+    ['Percent of Budget',      `${num1(spend.pct_of_budget)}%${overage > 0 ? `  (${num1(overage)}% over)` : ''}`],
     ['Daily Burn Rate',        `${fmtCurrency(spend.daily_rate)} / day`],
     ['Projected End-of-Period', fmtCurrency(spend.forecast)],
-    ['Forecast Variance',      `${spend.variance_pct >= 0 ? '+' : ''}${spend.variance_pct.toFixed(1)}% vs. budget`],
+    ['Forecast Variance',      `${Number(spend.variance_pct) >= 0 ? '+' : ''}${num1(spend.variance_pct)}% vs. budget`],
     ['Days Elapsed',           `${period.days_elapsed} of ${period.days_total}`],
     ['Days Remaining',         `${period.days_remaining}`],
   ];

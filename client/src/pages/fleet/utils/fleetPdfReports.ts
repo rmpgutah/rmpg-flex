@@ -8,6 +8,7 @@
 // ═══════════════════════════════════════════════════════════════
 
 import jsPDF from 'jspdf';
+import { parseTimestamp } from '../../../utils/dateUtils';
 import type { FleetVehicle, FleetFuelLog, FleetFuelSummary, FleetMaintenance, FleetInspection, FleetAssignment, FleetInsurancePolicy, FleetAnalytics } from '../../../types';
 
 const RMPG_GOLD = '#d4a017';
@@ -221,7 +222,7 @@ export function generateFleetLifecycleReport(data: {
   const pageH = doc.internal.pageSize.getHeight();
   let y = headerStrip(doc, 'VEHICLE LIFECYCLE REPORT');
   y = vehicleSummaryBlock(doc, data.vehicle, y);
-  const totalPages = Math.ceil((data.fuelLogs.length + data.maintenanceRecords.length) / 40);
+  const totalPages = Math.max(1, Math.ceil((data.fuelLogs.length + data.maintenanceRecords.length) / 40));
   let page = 1;
 
   // Lifecycle summary boxes
@@ -310,10 +311,11 @@ export function generateFleetComplianceReport(data: {
 
   for (const v of data.vehicles) {
     if (y > pageH - 50) { footerStrip(doc, page, totalPages); doc.addPage(); page++; y = headerStrip(doc, 'FLEET COMPLIANCE REPORT (cont.)'); }
-    const vals = [v.vehicle_number, `${v.year} ${v.make ?? ''} ${v.model ?? ''}`.trim(), v.plate_number ?? '', v.status ?? '', v.insurance_expiry?.slice(0, 10) ?? '', v.registration_expiry?.slice(0, 10) ?? '', v.last_service_date?.slice(0, 10) ?? '', v.next_service_due?.slice(0, 10) ?? ''];
+    const vals = [v.vehicle_number, `${v.year ?? ''} ${v.make ?? ''} ${v.model ?? ''}`.trim(), v.plate_number ?? '', v.status ?? '', v.insurance_expiry?.slice(0, 10) ?? '', v.registration_expiry?.slice(0, 10) ?? '', v.last_service_date?.slice(0, 10) ?? '', v.next_service_due?.slice(0, 10) ?? ''];
     doc.setFont('helvetica', 'normal'); doc.setFontSize(8); cx = 40;
     vals.forEach((val, i) => {
-      const expired = (i === 4 || i === 5 || i === 7) && val && new Date(val) < new Date();
+      const expiredDate = (i === 4 || i === 5 || i === 7) && val ? parseTimestamp(val) : null;
+      const expired = !!expiredDate && !isNaN(expiredDate.getTime()) && expiredDate < new Date();
       if (expired) doc.setTextColor('#ef4444');
       doc.text(val, cx + 3, y + 12);
       if (expired) doc.setTextColor('#000');
@@ -351,7 +353,7 @@ export function generateFleetUtilizationReport(data: {
 
   for (const v of data.vehicles) {
     if (y > pageH - 50) { footerStrip(doc, page, totalPages); doc.addPage(); page++; y = headerStrip(doc, 'FLEET UTILIZATION REPORT (cont.)'); }
-    const vals = [v.vehicle_number, `${v.year} ${v.make ?? ''} ${v.model ?? ''}`.trim(), String(v.days_used ?? 0), String(v.miles_driven ?? 0), `$${Math.round(v.fuel_cost ?? 0)}`, String(v.daily_avg_miles ?? 0), v.status ?? ''];
+    const vals = [v.vehicle_number, `${v.year ?? ''} ${v.make ?? ''} ${v.model ?? ''}`.trim(), String(v.days_used ?? 0), String(v.miles_driven ?? 0), `$${Math.round(v.fuel_cost ?? 0)}`, String(v.daily_avg_miles ?? 0), v.status ?? ''];
     doc.setFont('helvetica', 'normal'); doc.setFontSize(8); cx = 40;
     vals.forEach((val, i) => { doc.text(val, cx + 3, y + 12); cx += colW[i]; });
     y += 15; rowIdx++;
@@ -398,7 +400,7 @@ export function generateFleetFuelConsumptionReport(data: {
   for (const v of data.vehicles) {
     if (y > pageH - 50) { footerStrip(doc, page, totalPages); doc.addPage(); page++; y = headerStrip(doc, 'FLEET FUEL CONSUMPTION (cont.)'); }
     const galPerMo = v.total_gallons ? Math.round((v.total_gallons / 12) * 10) / 10 : 0;
-    const vals = [v.vehicle_number, `${v.year} ${v.make ?? ''} ${v.model ?? ''}`.trim(), String(v.total_gallons ?? 0), String(Math.round(v.co2_kg ?? 0)), String(Math.round(v.co2_lbs ?? 0)), String(galPerMo)];
+    const vals = [v.vehicle_number, `${v.year ?? ''} ${v.make ?? ''} ${v.model ?? ''}`.trim(), String(v.total_gallons ?? 0), String(Math.round(v.co2_kg ?? 0)), String(Math.round(v.co2_lbs ?? 0)), String(galPerMo)];
     doc.setFont('helvetica', 'normal'); doc.setFontSize(8); cx = 40;
     vals.forEach((val, i) => { doc.text(val, cx + 3, y + 12); cx += colW[i]; });
     y += 15; rowIdx++;
@@ -525,7 +527,7 @@ export function generateFleetReplacementReport(data: {
 
   for (const v of sorted) {
     if (y > pageH - 50) { footerStrip(doc, page, totalPages); doc.addPage(); page++; y = headerStrip(doc, 'FLEET REPLACEMENT PLAN (cont.)'); }
-    const vals = [v.vehicle_number, `${v.year} ${v.make ?? ''} ${v.model ?? ''}`.trim(), String(v.current_mileage ?? ''), String(v.replacement_year ?? 'N/A'), v.rp_priority ?? 'N/A', v.estimated_replacement_cost ? `$${v.estimated_replacement_cost.toLocaleString()}` : 'N/A', (v.replacement_reason ?? '').slice(0, 35), v.rp_status ?? 'N/A'];
+    const vals = [v.vehicle_number, `${v.year ?? ''} ${v.make ?? ''} ${v.model ?? ''}`.trim(), String(v.current_mileage ?? ''), String(v.replacement_year ?? 'N/A'), v.rp_priority ?? 'N/A', v.estimated_replacement_cost ? `$${v.estimated_replacement_cost.toLocaleString()}` : 'N/A', (v.replacement_reason ?? '').slice(0, 35), v.rp_status ?? 'N/A'];
     if (v.rp_priority === 'critical') doc.setTextColor('#ef4444');
     else if (v.rp_priority === 'high') doc.setTextColor('#d4a017');
     doc.setFont('helvetica', 'normal'); doc.setFontSize(8); cx = 40;
@@ -573,7 +575,7 @@ export function generateFleetDepreciationReport(data: {
   for (const v of data.vehicles) {
     if (y > pageH - 50) { footerStrip(doc, page, totalPages); doc.addPage(); page++; y = headerStrip(doc, 'FLEET DEPRECIATION (cont.)'); }
     const d = v.depreciation;
-    const vals = [v.vehicle_number, `${v.year} ${v.make ?? ''} ${v.model ?? ''}`.trim(), d?.purchase_price ? `$${d.purchase_price.toLocaleString()}` : 'N/A', d?.salvage_value ? `$${d.salvage_value.toLocaleString()}` : '$0', String(d?.useful_life_months ?? 'N/A'), d?.monthly_depreciation ? `$${Math.round(d.monthly_depreciation)}` : 'N/A', d?.accumulated_depreciation ? `$${Math.round(d.accumulated_depreciation).toLocaleString()}` : 'N/A', d?.current_book_value ? `$${Math.round(d.current_book_value).toLocaleString()}` : 'N/A'];
+    const vals = [v.vehicle_number, `${v.year ?? ''} ${v.make ?? ''} ${v.model ?? ''}`.trim(), d?.purchase_price ? `$${d.purchase_price.toLocaleString()}` : 'N/A', d?.salvage_value ? `$${d.salvage_value.toLocaleString()}` : '$0', String(d?.useful_life_months ?? 'N/A'), d?.monthly_depreciation ? `$${Math.round(d.monthly_depreciation)}` : 'N/A', d?.accumulated_depreciation ? `$${Math.round(d.accumulated_depreciation).toLocaleString()}` : 'N/A', d?.current_book_value ? `$${Math.round(d.current_book_value).toLocaleString()}` : 'N/A'];
     doc.setFont('helvetica', 'normal'); doc.setFontSize(8); cx = 40;
     vals.forEach((val, i) => { doc.text(val, cx + 3, y + 12); cx += colW[i]; });
     y += 15; rowIdx++;
