@@ -514,22 +514,47 @@ export default function MapPage() {
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map) return;
-    // choro-fill is intentionally excluded — it owns a count-driven opacity
-    // expression that a flat value would clobber.
-    const fillIds = ['dh-area-fill', 'dh-section-fill', 'dh-zone-fill', 'geojson-county-fill', 'geojson-municipality-fill'];
-    for (const id of fillIds) {
+    // Police-geography (Area/Section/Zone/Beat) = COLOR COVERAGE fills, blended
+    // by alpha so one, several, or all can be on together. choro-fill is
+    // excluded — it owns a count-driven opacity expression.
+    for (const id of ['dh-area-fill', 'dh-section-fill', 'dh-zone-fill']) {
+      try { if (map.getLayer(id)) map.setPaintProperty(id, 'fill-opacity', 0.22 * overlayOpacity); } catch { /* */ }
+    }
+    // Beat (lives in useGeoJsonLayers) joins the coverage system: keep its
+    // city-colored fill, drop its outline so it reads as coverage too.
+    try { if (map.getLayer('geojson-beat-fill')) map.setPaintProperty('geojson-beat-fill', 'fill-opacity', 0.22 * overlayOpacity); } catch { /* */ }
+    try { if (map.getLayer('geojson-beat-line')) map.setPaintProperty('geojson-beat-line', 'line-opacity', 0); } catch { /* */ }
+    // County + Municipality = OUTLINE ONLY. Kill their fills so the A/S/Z/B
+    // color coverage shows through, and render their borders as neutral
+    // reference lines on top (zero-blue theme).
+    const boundaryLines: Record<string, [string, number, number]> = {
+      'geojson-county': ['#9a9a9a', 1.5, 0.75],
+      'geojson-municipality': ['#c9c9c9', 1.0, 0.6],
+    };
+    for (const base of Object.keys(boundaryLines)) {
+      const [color, width, op] = boundaryLines[base];
+      try { if (map.getLayer(`${base}-fill`)) map.setPaintProperty(`${base}-fill`, 'fill-opacity', 0); } catch { /* */ }
       try {
-        if (map.getLayer(id)) {
-          const base = id.startsWith('dh-') ? 0.18 : 0.15;
-          map.setPaintProperty(id, 'fill-opacity', base * overlayOpacity);
+        if (map.getLayer(`${base}-line`)) {
+          map.setPaintProperty(`${base}-line`, 'line-color', color);
+          map.setPaintProperty(`${base}-line`, 'line-width', width);
+          map.setPaintProperty(`${base}-line`, 'line-opacity', op * overlayOpacity);
         }
-      } catch { /* style not ready */ }
+      } catch { /* */ }
     }
     // Statewide overlays (first-class): scale their line/circle opacity too.
     try { if (map.getLayer('vt-utah_roads-line')) map.setPaintProperty('vt-utah_roads-line', 'line-opacity', 0.85 * overlayOpacity); } catch { /* */ }
     try { if (map.getLayer('vt-utah_roads-label')) map.setPaintProperty('vt-utah_roads-label', 'text-opacity', overlayOpacity); } catch { /* */ }
     try { if (map.getLayer('vt-utah_addresses-circle')) map.setPaintProperty('vt-utah_addresses-circle', 'circle-opacity', 0.9 * overlayOpacity); } catch { /* */ }
     try { if (map.getLayer('vt-utah_addresses-label')) map.setPaintProperty('vt-utah_addresses-label', 'text-opacity', overlayOpacity); } catch { /* */ }
+
+    // Z-order: lift the boundary outlines + level labels above the A/S/Z/B
+    // coverage fills (which may be added later than the default-on county),
+    // so the County/Municipality lines and the level labels stay visible on
+    // top of the colored coverage. (Still below DOM unit/call markers.)
+    for (const lid of ['geojson-county-line', 'geojson-municipality-line', 'dh-area-label', 'dh-section-label', 'dh-zone-label']) {
+      try { if (map.getLayer(lid)) map.moveLayer(lid); } catch { /* */ }
+    }
   }, [overlayOpacity, hierarchyStates, geoLayerStates, vectorLayerStates, choroLevel, mapLoaded]);
 
   // Event planning overlays
@@ -2775,8 +2800,12 @@ export default function MapPage() {
     const [lng, lat] = center;
     if (!isFinite(lng) || !isFinite(lat)) return;
 
-    map.panTo([lng, lat]);
-    map.setZoom(17);
+    // Single combined fly (pan + zoom together). The old panTo()+setZoom()
+    // were two competing animations, so the map neither centered on nor
+    // zoomed to the address — it stayed at the prior view and the pin landed
+    // off-screen. flyTo animates center + zoom as one move. essential:true so
+    // it still runs under prefers-reduced-motion.
+    map.flyTo({ center: [lng, lat], zoom: 17, speed: 1.6, curve: 1.4, essential: true });
 
     // Remove previous address marker
     if (addressMarkerRef.current) {
@@ -3806,7 +3835,6 @@ export default function MapPage() {
                       {state?.visible ? <Eye className="w-2.5 h-2.5 text-green-400" /> : <EyeOff className="w-2.5 h-2.5 text-rmpg-500" />}
                       <div className="w-2 h-2 rounded-sm" style={{ backgroundColor: HSWATCH[cfg.id], opacity: state?.visible ? 1 : 0.3 }} />
                       <span className="text-[9px] text-rmpg-200 flex-1">{cfg.label}</span>
-                      <span className="text-[8px] font-mono text-rmpg-600">z{cfg.minzoom}+</span>
                     </button>
                   );
                 };

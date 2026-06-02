@@ -25,10 +25,13 @@ export interface VectorTileLayerConfig {
   id: string;
   label: string;
   description: string;
-  /** PMTiles source URL (pmtiles:// protocol, relative same-origin /api path). */
-  url: string;
-  /** The vector source-layer name inside the PMTiles archive. */
+  /** Archive name under /api/tiles/<name>/{z}/{x}/{y}.mvt (server extracts from PMTiles). */
+  name: string;
+  /** The vector source-layer name inside the tiles. */
   sourceLayer: string;
+  /** Native vector source zoom range (the archive's own min/max). */
+  sourceMinzoom: number;
+  sourceMaxzoom: number;
   kind: VectorLayerKind;
   /** Don't draw below this zoom (statewide clutter control). */
   minzoom: number;
@@ -40,18 +43,24 @@ export interface VectorTileLayerConfig {
   detailProps: { key: string; label: string }[];
 }
 
-// pmtiles:// + relative same-origin path. In prod the SPA reaches the
-// Worker via same-origin /api/* (CSP connect-src 'self'); the tiles
-// route is served by the rewrite worker through the proxy.
-const TILE_BASE = 'pmtiles:///api/tiles';
+// Native XYZ tile template. Mapbox GL JS has no addProtocol (that's MapLibre),
+// so the Worker extracts individual MVT tiles from the PMTiles archive in R2
+// and serves them here; mapbox consumes this as a standard vector source.
+// Absolute origin so mapbox's worker-thread tile fetches resolve correctly.
+const TILE_ORIGIN = typeof window !== 'undefined' ? window.location.origin : '';
+function tilesUrl(name: string): string {
+  return `${TILE_ORIGIN}/api/tiles/${name}/{z}/{x}/{y}.mvt`;
+}
 
 export const VECTOR_TILE_CONFIGS: VectorTileLayerConfig[] = [
   {
     id: 'utah_roads',
     label: 'Utah Roads',
     description: 'Statewide road centerlines (UGRC)',
-    url: `${TILE_BASE}/utah-roads.pmtiles`,
+    name: 'utah-roads',
     sourceLayer: 'roads',
+    sourceMinzoom: 6,
+    sourceMaxzoom: 14,
     kind: 'line',
     minzoom: 9,
     color: '#d4a017',
@@ -67,8 +76,10 @@ export const VECTOR_TILE_CONFIGS: VectorTileLayerConfig[] = [
     id: 'utah_addresses',
     label: 'Utah Address Points',
     description: 'Statewide address points (UGRC)',
-    url: `${TILE_BASE}/utah-address-points.pmtiles`,
+    name: 'utah-address-points',
     sourceLayer: 'address_points',
+    sourceMinzoom: 10,
+    sourceMaxzoom: 15,
     kind: 'point',
     minzoom: 14,
     color: '#e8b84b',
@@ -172,7 +183,12 @@ export function useVectorTileLayers({ map, popup, isLight = false, onUseLocation
 
       try {
         if (!map.getSource(source)) {
-          map.addSource(source, { type: 'vector', url: cfg.url } as any);
+          map.addSource(source, {
+            type: 'vector',
+            tiles: [tilesUrl(cfg.name)],
+            minzoom: cfg.sourceMinzoom,
+            maxzoom: cfg.sourceMaxzoom,
+          } as any);
         }
 
         if (cfg.kind === 'line') {

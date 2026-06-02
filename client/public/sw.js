@@ -222,7 +222,34 @@
 //       pdfStaticMap.ts helper; BusinessTab gains a Print button (businesses
 //       render via the property generator). Best-effort — omitted silently if
 //       no coords/token/network.
-const CACHE_NAME = 'rmpg-flex-v691';
+// v691: FIX statewide overlays not rendering — root cause: Mapbox GL JS has
+//       NO addProtocol (MapLibre-only), so the pmtiles:// protocol silently
+//       never registered and Roads/Address Points loaded nothing despite
+//       showing toggled-on. Now the Worker extracts MVT tiles from the
+//       PMTiles archives in R2 and serves /api/tiles/<name>/{z}/{x}/{y}.mvt;
+//       client uses a NATIVE mapbox vector source (no protocol). Verified
+//       tile extraction against the real archives.
+// v692: FIX address-search zoom/focus/pin — handleAddressSelect used
+//       panTo()+setZoom() (two competing animations) so selecting a result
+//       neither centered nor zoomed to the address and the pin landed
+//       off-screen. Now a single flyTo({center,zoom:17}) pans+zooms as one
+//       move, bringing the gold search pin into view.
+// v693: Geography overlay redesign — Area/Section/Zone/Beat now render as
+//       blended COLOR COVERAGE fills (their own boundary outlines removed),
+//       selectable one at a time or all together; County + Municipality
+//       become OUTLINE-ONLY neutral reference lines lifted above the
+//       coverage (fills killed). Boundary lines + level labels z-ordered on
+//       top of the fills.
+// v694: A/S/Z/B no longer pop in/out while zooming — removed the minzoom
+//       gating on the Area/Section/Zone coverage fills + labels and dropped
+//       Beat's minZoom (the useGeoJsonLayers zoomend handler kept hiding it
+//       below z10). Once selected they stay visible at every zoom. Removed
+//       the now-inaccurate z7+/z8+/z9+ badges from the Police Geography rows.
+// v695: SECURITY — purge plaintext mapbox_password from system_config (deleted
+//       on live D1) and remove the Account Password field from the Mapbox
+//       integration UI so it can't be re-saved as a cleartext secret. The app
+//       only ever needs the public mapbox_access_token.
+const CACHE_NAME = 'rmpg-flex-v695';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

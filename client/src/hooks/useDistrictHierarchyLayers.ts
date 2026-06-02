@@ -147,7 +147,8 @@ export function useDistrictHierarchyLayers({ map, popup }: Opts) {
             id: fillLayer(id),
             type: 'fill',
             source: SRC_FILL,
-            minzoom: cfg.minzoom,
+            // No minzoom — once selected, A/S/Z/B coverage stays visible at
+            // every zoom (operator: must not pop in/out while zooming).
             layout: { visibility: 'none' },
             paint: { 'fill-color': ['get', f.color] as any, 'fill-opacity': 0.18 },
           });
@@ -161,26 +162,16 @@ export function useDistrictHierarchyLayers({ map, popup }: Opts) {
           if (!dissolved) return;
           try {
             if (!map.getSource(dissolveSrc(id))) map.addSource(dissolveSrc(id), { type: 'geojson', data: dissolved });
-            if (!map.getLayer(outlineLayer(id))) {
-              map.addLayer({
-                id: outlineLayer(id),
-                type: 'line',
-                source: dissolveSrc(id),
-                minzoom: cfg.minzoom,
-                layout: { visibility: 'none', 'line-join': 'round' },
-                paint: {
-                  'line-color': ['get', '_color'] as any,
-                  'line-width': ['interpolate', ['linear'], ['zoom'], cfg.minzoom, 1.5, 14, 3] as any,
-                  'line-opacity': 0.9,
-                },
-              });
-            }
+            // NOTE: A/S/Z/B render as color COVERAGE (fill) only — no boundary
+            // outline of their own. The boundary/reference role is filled by
+            // the County + Municipality outline-only overlays. We keep the
+            // dissolved source purely to anchor one label per level.
             if (!map.getLayer(labelLayer(id))) {
               map.addLayer({
                 id: labelLayer(id),
                 type: 'symbol',
                 source: dissolveSrc(id),
-                minzoom: cfg.minzoom,
+                // No minzoom — label rides with its coverage at all zooms.
                 layout: {
                   visibility: 'none',
                   'text-field': ['get', '_name'] as any,
@@ -193,10 +184,9 @@ export function useDistrictHierarchyLayers({ map, popup }: Opts) {
             // Match the level's current visibility (it may have been toggled
             // on while the dissolve was still computing).
             const vis = statesRef.current[id]?.visible ? 'visible' : 'none';
-            if (map.getLayer(outlineLayer(id))) map.setLayoutProperty(outlineLayer(id), 'visibility', vis);
             if (map.getLayer(labelLayer(id))) map.setLayoutProperty(labelLayer(id), 'visibility', vis);
           } catch (err) {
-            console.warn('[hierarchy] outline add failed', id, err);
+            console.warn('[hierarchy] label add failed', id, err);
           }
         }, 0);
 
