@@ -497,4 +497,55 @@ auth.get('/security/event-timeline', async (c) => {
   }
 });
 
+// ─── Profile image ────────────────────────────────────────
+// The client stores the avatar as a base64 data URL (resized 256×256 JPEG)
+// in users.profile_image. NOTE: the legacy handler used a different contract
+// — it expected { url } (an http(s) URL) and REJECTED data: URLs with a 400,
+// and only ever exposed avatar_url via /me — which is why uploads silently
+// failed and the topbar avatar never updated. These handlers own the
+// base64-data-URL contract; the proxy routes /api/auth/profile-image here.
+
+// GET /auth/profile-image — return the current user's stored avatar.
+auth.get('/profile-image', authMiddleware, async (c) => {
+  try {
+    const db = getDb(c.env);
+    const userId = c.get('userId');
+    const row = await queryFirst<{ profile_image: string | null }>(
+      db, 'SELECT profile_image FROM users WHERE id = ?', userId,
+    );
+    return c.json({ profile_image: row?.profile_image || null });
+  } catch (err) {
+    console.error('Get profile-image error:', err);
+    return c.json({ error: 'Failed to load profile image', code: 'GET_PROFILE_IMAGE_ERROR' }, 500);
+  }
+});
+
+// PUT /auth/profile-image — save (base64 data URL) or clear (null).
+auth.put('/profile-image', authMiddleware, async (c) => {
+  try {
+    const { profile_image } = await c.req.json<{ profile_image?: string | null }>();
+    if (profile_image !== null && profile_image !== undefined) {
+      if (typeof profile_image !== 'string' || !/^data:image\/(png|jpeg|jpg|webp);base64,/.test(profile_image)) {
+        return c.json({ error: 'profile_image must be a base64 image data URL or null', code: 'INVALID_PROFILE_IMAGE' }, 400);
+      }
+      // Client resizes to 256×256 JPEG (~10–40KB). Cap generously at ~1.5MB
+      // of base64 to reject anything pathological before it hits D1.
+      if (profile_image.length > 1_500_000) {
+        return c.json({ error: 'Image too large — must be under ~1MB', code: 'PROFILE_IMAGE_TOO_LARGE' }, 413);
+      }
+    }
+    const db = getDb(c.env);
+    const userId = c.get('userId');
+    await execute(
+      db,
+      `UPDATE users SET profile_image = ?, updated_at = datetime('now') WHERE id = ?`,
+      profile_image || null, userId,
+    );
+    return c.json({ success: true, profile_image: profile_image || null });
+  } catch (err) {
+    console.error('Save profile-image error:', err);
+    return c.json({ error: 'Failed to save profile image', code: 'SAVE_PROFILE_IMAGE_ERROR' }, 500);
+  }
+});
+
 export default auth;

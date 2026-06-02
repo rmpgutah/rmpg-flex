@@ -342,6 +342,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (res.ok) {
           const data = await res.json();
           setUser(data.user || data);
+          void mergeProfileImage(token); // hydrate app-wide avatar (not in /me)
           scheduleRefresh(token);
         } else if (res.status === 401) {
           // Access token expired on boot — refresh via the shared, cross-tab
@@ -938,6 +939,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  // The avatar shown app-wide (topbar, mobile drawer) reads user.profile_image,
+  // but /auth/me only returns avatar_url — the base64 avatar lives on a
+  // separate endpoint. Fetch it and merge so the avatar updates everywhere
+  // after an upload, not just inside the profile modal. Best-effort: a failure
+  // (offline / not set) leaves the user object untouched.
+  const mergeProfileImage = useCallback(async (currentToken: string) => {
+    try {
+      const res = await fetchWithTimeout('/api/auth/profile-image', {
+        headers: { Authorization: `Bearer ${currentToken}` },
+      });
+      if (!res.ok) return;
+      const { profile_image } = await res.json();
+      setUser(prev => (prev ? { ...prev, profile_image: profile_image || undefined } : prev));
+    } catch { /* offline / not set — keep existing user */ }
+  }, []);
+
   // Re-fetch user from /auth/me to pick up profile changes (name, email, etc.)
   const refreshUser = useCallback(async () => {
     const currentToken = localStorage.getItem(TOKEN_KEY);
@@ -949,9 +966,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (res.ok) {
         const data = await res.json();
         setUser(data.user || data);
+        void mergeProfileImage(currentToken);
       }
     } catch (err) { console.warn('[Auth] User refresh failed:', err); }
-  }, []);
+  }, [mergeProfileImage]);
 
    // Auto-signout mechanisms removed per user request
    // Session idle timeout and absolute session duration timer have been disabled

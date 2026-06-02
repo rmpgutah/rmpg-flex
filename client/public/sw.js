@@ -405,7 +405,7 @@
 //       unified on the helper. (Pairs with worker-side records/nibrs fixes:
 //       person warrant lookups key on subject_person_id; evidence INSERT/PUT/
 //       search use real columns; NIBRS uses occurred_date.)
-const CACHE_NAME = 'rmpg-flex-v720';
+const CACHE_NAME = 'rmpg-flex-v721';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

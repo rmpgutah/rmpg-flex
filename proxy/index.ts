@@ -841,6 +841,11 @@ const API_ROUTES: RouteRule[] = [
   { kind: 'prefix', value: '/api/admin/notification-rules' },
   // Auth security history
   { kind: 'prefix', value: '/api/auth/security/login-history' },
+  // Profile avatar (base64 data URL) — the rewrite owns the GET/PUT contract.
+  // Legacy expected { url } + rejected data: URLs with a 400, and /me never
+  // returned profile_image, so the upload silently failed. Exact-match so it
+  // never shadows /api/auth/profile (the PUT-profile name/email handler).
+  { kind: 'regex', value: /^\/api\/auth\/profile-image(\?.*)?$/ },
   // Offline-cache sync engine (browser IndexedDB) — entire namespace
   // lives on the new Worker: /sync/pull, /sync/push, /secrets,
   // /my-secret, /secrets/generate. Legacy never implemented any of
