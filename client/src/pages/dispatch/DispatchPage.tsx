@@ -15,6 +15,7 @@ import UnitStatusBoard from '../../components/UnitStatusBoard';
 import DispositionPrompt from '../../components/DispositionPrompt';
 import { dispositionGroupsForIncident, DEFAULT_DISPOSITION_CODES } from '../../constants/dispositionCodes';
 import { zoneLeaf, beatLeaf, sectionPrefix, sectionZoneBeatCombined } from '../../utils/dispatchCodeParts';
+import { parseLocationParts } from '../../utils/parseLocationParts';
 import DispatchMiniMap from '../../components/DispatchMiniMap';
 import BoloAlertBanner from '../../components/BoloAlertBanner';
 import StatusBadge from '../../components/StatusBadge';
@@ -1572,6 +1573,11 @@ export default function DispatchPage() {
         location_floor: callData.location_floor || null,
         location_room: callData.location_room || null,
         zone_beat: callData.zone_beat || null,
+        // Area — top of the A/S/Z/B hierarchy. The server also backfills this
+        // from coordinates, but sending what the form resolved keeps the value
+        // the dispatcher saw and covers manual Section picks made without coords.
+        area_code: callData.area_code || null,
+        area_name: callData.area_name || null,
         sector_id: callData.sector_id ?? null,
         zone_id: callData.zone_id ?? null,
         beat_id: callData.beat_id ?? null,
@@ -4127,6 +4133,10 @@ export default function DispatchPage() {
                           value={editData.location}
                           onChange={(val) => updateEditField('location', val)}
                           onSelect={async (addr: ParsedAddress) => {
+                            // Parse Building/Suite/Floor from the typed text (still
+                            // in editData.location) before it's replaced — the
+                            // geocoder strips sub-address tokens.
+                            const parts = parseLocationParts(editData.location || addr.formatted);
                             updateEditField('location', addr.formatted);
                             if (addr.latitude != null) {
                               // Location changed → recompute and OVERWRITE every
@@ -4143,25 +4153,42 @@ export default function DispatchPage() {
                                 beat_id: details.beat_id || prev.beat_id,
                                 dispatch_code: details.dispatch_code || prev.dispatch_code,
                                 cross_street: details.cross_street || prev.cross_street,
+                                // Bldg/Suite/Floor: fill-if-empty, never clobber.
+                                location_building: prev.location_building || parts.building,
+                                location_floor: prev.location_floor || parts.floor,
+                                location_room: prev.location_room || parts.suite,
+                              }));
+                            } else {
+                              setEditData(prev => ({
+                                ...prev,
+                                location_building: prev.location_building || parts.building,
+                                location_floor: prev.location_floor || parts.floor,
+                                location_room: prev.location_room || parts.suite,
                               }));
                             }
                           }}
                           // Typed an address without picking a suggestion →
                           // forward-geocode the freehand text and fill the same
                           // derived geo fields, so manual entries still get
-                          // cross-street + section/zone/beat.
+                          // cross-street + section/zone/beat. Bldg/Suite parse
+                          // from the text even when the geocode misses.
                           onResolveTyped={async (text) => {
+                            const parts = parseLocationParts(text);
                             const details = await resolveFromText(text);
-                            if (!details) return;
                             setEditData(prev => ({
                               ...prev,
-                              latitude: details.latitude ?? prev.latitude,
-                              longitude: details.longitude ?? prev.longitude,
-                              sector_id: details.sector_id || prev.sector_id,
-                              zone_id: details.zone_id || prev.zone_id,
-                              beat_id: details.beat_id || prev.beat_id,
-                              dispatch_code: details.dispatch_code || prev.dispatch_code,
-                              cross_street: details.cross_street || prev.cross_street,
+                              location_building: prev.location_building || parts.building,
+                              location_floor: prev.location_floor || parts.floor,
+                              location_room: prev.location_room || parts.suite,
+                              ...(details ? {
+                                latitude: details.latitude ?? prev.latitude,
+                                longitude: details.longitude ?? prev.longitude,
+                                sector_id: details.sector_id || prev.sector_id,
+                                zone_id: details.zone_id || prev.zone_id,
+                                beat_id: details.beat_id || prev.beat_id,
+                                dispatch_code: details.dispatch_code || prev.dispatch_code,
+                                cross_street: details.cross_street || prev.cross_street,
+                              } : {}),
                             }));
                           }}
                         />
