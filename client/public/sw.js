@@ -418,7 +418,14 @@
 //       DOCUMENTS") so a drag gets a visible response, + window-level dragover/
 //       drop guard so a stray drop just outside the zone (common in the Electron
 //       shell) no longer navigates/loses the files.
-const CACHE_NAME = 'rmpg-flex-v723';
+// v724: Dispatch address autofill for TYPED addresses. Previously cross-street
+//       + section/zone/beat only filled when you PICKED an autocomplete
+//       suggestion; typing an address and tabbing away left them blank. Now on
+//       blur the field resolves from the best Mapbox suggestion (or, if none, a
+//       normalized server geocode — "4974 S Redwood Rd" → "South Redwood Road")
+//       and fills coords + cross-street + A/S/Z/B. Wired in the dispatch call-
+//       edit panel and the New Call modal.
+const CACHE_NAME = 'rmpg-flex-v724';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

@@ -180,7 +180,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
   const [hasDraft, setHasDraft] = useState(false);
   const titleId = useId();
   const dialogRef = useRef<HTMLDivElement>(null);
-  const { resolve: resolveAddress } = useAddressAutofill();
+  const { resolve: resolveAddress, resolveFromText } = useAddressAutofill();
   const { sections, sectionLabels, zoneLabels, zonesForSection, beatsForZone, getBeatLabel } = useDistrictOptions();
 
   // Person/vehicle record search for linking
@@ -746,6 +746,21 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
                     cross_street: prev.cross_street || details.cross_street,
                   }));
                 }
+              }}
+              // Typed an address without picking a suggestion → forward-geocode
+              // the freehand text so section/zone/beat + cross-street still fill.
+              onResolveTyped={async (text) => {
+                const details = await resolveFromText(text);
+                if (!details) return;
+                setFormData((prev) => ({
+                  ...prev,
+                  latitude: (prev.latitude || details.latitude) as any,
+                  longitude: (prev.longitude || details.longitude) as any,
+                  sector_id: details.sector_id || prev.sector_id,
+                  zone_id: details.zone_id || prev.zone_id,
+                  beat_id: details.beat_id || prev.beat_id,
+                  cross_street: prev.cross_street || details.cross_street,
+                }));
               }}
               required
             />

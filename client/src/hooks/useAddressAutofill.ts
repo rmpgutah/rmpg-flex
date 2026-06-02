@@ -54,5 +54,59 @@ export function useAddressAutofill() {
     };
   }, [identify]);
 
-  return { resolve };
+  /**
+   * Resolve geo detail from a TYPED address string (no autocomplete pick). The
+   * dispatch call form lets operators type an address freehand; this forward-
+   * geocodes that text (same server Nominatim source + Utah bias the
+   * autocomplete uses) to get coordinates, then resolves district + cross
+   * street. Returns null on a geocode miss so the caller leaves fields alone.
+   */
+  const resolveFromText = useCallback(async (text: string): Promise<ResolvedAddressDetails | null> => {
+    const raw = (text || '').trim();
+    if (raw.length < 5) return null;
+    // The server geocode (Nominatim) is format-sensitive — "4974 S Redwood Rd"
+    // misses while "4974 South Redwood Road" hits. Expand directionals + street
+    // types and drop a trailing ZIP so the freehand fallback resolves.
+    const q = raw
+      .replace(/\./g, ' ')
+      .replace(/\b([NSEW])\b/gi, (_, d) => ({ N: 'North', S: 'South', E: 'East', W: 'West' } as any)[d.toUpperCase()])
+      .replace(/\bNE\b/gi, 'Northeast').replace(/\bNW\b/gi, 'Northwest')
+      .replace(/\bSE\b/gi, 'Southeast').replace(/\bSW\b/gi, 'Southwest')
+      .replace(/\bRd\b/gi, 'Road').replace(/\bSt\b/gi, 'Street').replace(/\bAve\b/gi, 'Avenue')
+      .replace(/\bDr\b/gi, 'Drive').replace(/\bLn\b/gi, 'Lane').replace(/\bBlvd\b/gi, 'Boulevard')
+      .replace(/\bCt\b/gi, 'Court').replace(/\bCir\b/gi, 'Circle').replace(/\bPkwy\b/gi, 'Parkway')
+      .replace(/\bHwy\b/gi, 'Highway').replace(/\bPl\b/gi, 'Place').replace(/\bTer\b/gi, 'Terrace')
+      .replace(/\s{2,}/g, ' ').trim();
+    try {
+      // /api/geocode is auth-gated — send the bearer token (the autocomplete
+      // normally uses Mapbox-direct so it never hit this fallback unauthed).
+      const token = localStorage.getItem('rmpg_token');
+      const res = await fetch(`/api/geocode/search?q=${encodeURIComponent(q)}&limit=1`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) return null;
+      const data = await res.json();
+      const r = (data?.results || [])[0];
+      const lat = r?.lat != null ? Number(r.lat) : null;
+      const lng = r?.lon != null ? Number(r.lon) : null;
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+      const a = r.address || {};
+      const street = [a.house_number, a.road || a.pedestrian || a.cycleway]
+        .filter(Boolean).join(' ') || String(r.display_name || q).split(',')[0]?.trim() || '';
+      return resolve({
+        formatted: r.display_name || q,
+        street,
+        city: a.city || a.town || a.village || a.hamlet || a.suburb || '',
+        state: a.state || '',
+        zip: a.postcode || '',
+        country: a.country || 'United States',
+        latitude: lat,
+        longitude: lng,
+      });
+    } catch {
+      return null;
+    }
+  }, [resolve]);
+
+  return { resolve, resolveFromText };
 }
