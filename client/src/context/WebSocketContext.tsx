@@ -98,6 +98,48 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   const [isConnected, setIsConnected] = useState(false);
   const [connectionLost, setConnectionLost] = useState(false);
 
+  // ── Second socket: the agency-wide Alert Hub ──────────────────────────
+  // The main socket above talks to /api/ws on the LEGACY worker. Rewrite-
+  // originated officer-safety events (panic, backup) can't reach it — they
+  // ride this dedicated socket to AlertHubDO on the rewrite worker, connected
+  // DIRECTLY at api.rmpgutah.us (like voice), bypassing the zone proxy. Its
+  // messages feed the SAME subscribe bus, so every existing
+  // subscribe('panic_alert') / subscribe('dispatch_update') consumer works
+  // unchanged. See src/durable-objects/AlertHubDO.ts.
+  const alertsRef = useRef<WebSocket | null>(null);
+  const alertsReconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const alertsDelayRef = useRef(WS_RECONNECT_DELAY);
+  const alertsHeartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Shared fan-in: dispatch a parsed WS frame to the brain, the priority
+  // chime, the legacy unit_update bridge, and the type-keyed subscribers.
+  // Called by BOTH sockets so an event delivered over either path behaves
+  // identically. Stable (reads refs/module-level helpers only).
+  const fanInMessage = useCallback((message: WSMessage) => {
+    if ((message.type as string) === 'dispatch_update') {
+      const data = (message as any).data || (message as any);
+      if (data && typeof data.action === 'string') {
+        if (data.action === 'call_created') playPriorityChime(data.call?.priority);
+        try { handleDispatchEvent(data.action, data); }
+        catch (err) { console.error('[Brain] handleDispatchEvent error:', err); }
+        if (UNIT_ACTIONS.has(data.action)) {
+          const unitHandlers = subscribersRef.current.get('unit_update' as WSMessageType);
+          if (unitHandlers) {
+            unitHandlers.forEach((handler) => {
+              try { handler(message); } catch (err) { console.error('WS unit_update fan-out error:', err); }
+            });
+          }
+        }
+      }
+    }
+    const handlers = subscribersRef.current.get(message.type);
+    if (handlers) {
+      handlers.forEach((handler) => {
+        try { handler(message); } catch (err) { console.error('WebSocket handler error:', err); }
+      });
+    }
+  }, []);
+
   const connect = useCallback(() => {
     if (!isAuthenticated || !token) return;
 
@@ -211,57 +253,10 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
             return;
           }
 
-          // Dispatcher Brain fan-in + high-priority call chime.
-          // broadcastAll() (src/routes/ws.ts) JSON-stringifies { type, ...data },
-          // so the action discriminator and call object live at the TOP LEVEL of
-          // the message — there is no `message.data` wrapper. Fall back to the
-          // message itself, matching the consumer pattern in DispatchPage
-          // (`const data = msg.data || msg`). Without this fallback the brain
-          // never fired, and the P1/P2 alert tone — previously keyed on a
-          // 'calls:created' message type the Worker never emits — never played.
-          if ((message.type as string) === 'dispatch_update') {
-            const data = (message as any).data || (message as any);
-            if (data && typeof data.action === 'string') {
-              // Audible alert when a NEW high-priority call is created.
-              if (data.action === 'call_created') {
-                playPriorityChime(data.call?.priority);
-              }
-              try {
-                handleDispatchEvent(data.action, data);
-              } catch (err) {
-                console.error('[Brain] handleDispatchEvent error:', err);
-              }
-
-              // Revive the legacy 'unit_update' channel. The live Worker emits
-              // ALL unit events under 'dispatch_update' (action discriminator),
-              // but the map, MDT, mobile unit card, and recommended-units panel
-              // subscribe to a 'unit_update' type the Worker never sends — so
-              // those surfaces never updated live (frozen pins, stale roster).
-              // Fan unit-action messages out to 'unit_update' subscribers too,
-              // passing the SAME top-level message (consumers read msg.data || msg).
-              if (UNIT_ACTIONS.has(data.action)) {
-                const unitHandlers = subscribersRef.current.get('unit_update' as WSMessageType);
-                if (unitHandlers) {
-                  unitHandlers.forEach((handler) => {
-                    try { handler(message); } catch (err) { console.error('WS unit_update fan-out error:', err); }
-                  });
-                }
-              }
-            }
-          }
-
-          // Broadcast to type-specific subscribers only — no global state update
-          // This avoids re-rendering every component on every WS message
-          const handlers = subscribersRef.current.get(message.type);
-          if (handlers) {
-            handlers.forEach((handler) => {
-              try {
-                handler(message);
-              } catch (err) {
-                console.error('WebSocket handler error:', err);
-              }
-            });
-          }
+          // Dispatcher Brain fan-in + high-priority chime + legacy unit_update
+          // bridge + type-keyed subscriber dispatch — shared with the alert
+          // socket so an event over either path behaves identically.
+          fanInMessage(message);
         } catch (err) {
           console.error('WebSocket message parse error:', err);
         }
@@ -309,18 +304,88 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
       console.warn('[WebSocket] Connection creation failed:', err);
       setIsConnected(false);
     }
-  }, [isAuthenticated, token]);
+  }, [isAuthenticated, token, fanInMessage]);
+
+  // Connect the agency-wide Alert Hub socket (rewrite worker, direct). Kept
+  // deliberately lean vs. the main socket: no UI connection state, light
+  // reconnect, a 30s keepalive ping so Cloudflare doesn't idle-close it. All
+  // inbound frames flow through the shared fanInMessage bus.
+  const connectAlerts = useCallback(() => {
+    if (!isAuthenticated || !token) return;
+    if (alertsReconnectRef.current) { clearTimeout(alertsReconnectRef.current); alertsReconnectRef.current = null; }
+    if (alertsRef.current) {
+      const old = alertsRef.current;
+      old.onclose = null; old.onmessage = null; old.onerror = null; old.onopen = null;
+      old.close();
+      alertsRef.current = null;
+    }
+    try {
+      const host = window.location.hostname;
+      const base = (host === 'localhost' || host === '127.0.0.1')
+        ? `ws://${host}:8787`        // wrangler dev
+        : 'wss://api.rmpgutah.us';   // rewrite worker, direct (CSP allows wss: + api.rmpgutah.us)
+      const ws = new WebSocket(`${base}/api/alerts-ws`);
+
+      ws.onopen = () => {
+        alertsDelayRef.current = WS_RECONNECT_DELAY;
+        try { ws.send(JSON.stringify({ type: 'authenticate', token })); } catch { /* retried on reconnect */ }
+        if (alertsHeartbeatRef.current) clearInterval(alertsHeartbeatRef.current);
+        alertsHeartbeatRef.current = setInterval(() => {
+          if (ws.readyState === WebSocket.OPEN) {
+            try { ws.send(JSON.stringify({ type: 'ping' })); } catch { /* ignore */ }
+          }
+        }, WS_HEARTBEAT_INTERVAL);
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const message: WSMessage = JSON.parse(event.data);
+          const t = message.type as string;
+          // Internal frames the hub speaks — not for the subscribe bus.
+          if (t === 'pong' || t === 'alerts_ready') return;
+          if (t === 'alerts_auth_error') { ws.close(); return; }
+          fanInMessage(message);
+        } catch (err) {
+          console.error('[AlertWS] message parse error:', err);
+        }
+      };
+
+      ws.onclose = () => {
+        if (alertsRef.current !== ws) return;
+        if (alertsHeartbeatRef.current) { clearInterval(alertsHeartbeatRef.current); alertsHeartbeatRef.current = null; }
+        alertsRef.current = null;
+        if (isAuthenticated) {
+          alertsReconnectRef.current = setTimeout(() => {
+            alertsDelayRef.current = Math.min(alertsDelayRef.current * 1.5, WS_MAX_RECONNECT_DELAY);
+            connectAlerts();
+          }, alertsDelayRef.current);
+        }
+      };
+
+      ws.onerror = () => { /* onclose handles reconnect */ };
+      alertsRef.current = ws;
+    } catch (err) {
+      console.warn('[AlertWS] Connection creation failed:', err);
+    }
+  }, [isAuthenticated, token, fanInMessage]);
 
   useEffect(() => {
     connect();
+    connectAlerts();
 
     // When tab becomes visible again, reset retry count and reconnect immediately
     // Patrol officers often switch between apps — instant reconnect on return is critical
     const handleVisibility = () => {
-      if (document.visibilityState === 'visible' && isAuthenticated && !wsRef.current) {
-        retryCountRef.current = 0;
-        reconnectDelayRef.current = WS_RECONNECT_DELAY;
-        connect();
+      if (document.visibilityState === 'visible' && isAuthenticated) {
+        if (!wsRef.current) {
+          retryCountRef.current = 0;
+          reconnectDelayRef.current = WS_RECONNECT_DELAY;
+          connect();
+        }
+        if (!alertsRef.current) {
+          alertsDelayRef.current = WS_RECONNECT_DELAY;
+          connectAlerts();
+        }
       }
     };
     document.addEventListener('visibilitychange', handleVisibility);
@@ -332,8 +397,11 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
       if (heartbeatRef.current) clearInterval(heartbeatRef.current);
       if (pongTimeoutRef.current) clearTimeout(pongTimeoutRef.current);
       if (wsRef.current) wsRef.current.close();
+      if (alertsReconnectRef.current) clearTimeout(alertsReconnectRef.current);
+      if (alertsHeartbeatRef.current) clearInterval(alertsHeartbeatRef.current);
+      if (alertsRef.current) alertsRef.current.close();
     };
-  }, [connect, isAuthenticated]);
+  }, [connect, connectAlerts, isAuthenticated]);
 
   const subscribe = useCallback((type: WSMessageType, handler: MessageHandler) => {
     if (!subscribersRef.current.has(type)) {

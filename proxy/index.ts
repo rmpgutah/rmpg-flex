@@ -562,6 +562,16 @@ const API_ROUTES: RouteRule[] = [
   // New rewrite handler (panic.ts); legacy never implemented it → 404.
   { kind: 'prefix', value: '/api/dispatch/request-backup' },
 
+  // /api/dispatch/panic[/*] — OFFICER-SAFETY. The whole panic lifecycle
+  // (create, list, acknowledge, resolve, cancel, false-alarm, audio) lives
+  // on the rewrite (panic.ts, same router as request-backup above). Its
+  // INSERT was written for the LIVE panic_alerts schema (officer_id NOT NULL,
+  // trigger_method col, no unit_id). The proxy never routed the namespace, so
+  // POST /panic fell through to env.LEGACY whose handler 500'd on every press
+  // — the panic button was dead in prod. Route the entire namespace to
+  // env.API so the working, schema-matched handler runs.
+  { kind: 'prefix', value: '/api/dispatch/panic' },
+
   // /api/dispatch/anomaly-alerts[/*] — AnomalyAlertBanner read + ack.
   // New rewrite feature (anomalies.ts + anomaly_alerts table + cron
   // detection); legacy never implemented it → the banner silently

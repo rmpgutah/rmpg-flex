@@ -34,6 +34,11 @@ export type Bindings = {
   // incident; the single shared hub that relays + records live voice.
   // See src/durable-objects/VoiceHubDO.ts.
   VOICE_HUB: DurableObjectNamespace;
+  // AlertHubDO namespace — ONE global instance (idFromName('global')) that
+  // every client holds an alert socket to. The shared bus for agency-wide
+  // officer-safety broadcasts (panic) + forced-ack. See
+  // src/durable-objects/AlertHubDO.ts + src/utils/alertHub.ts.
+  ALERT_HUB: DurableObjectNamespace;
   // PDF Tools sidecar — Cloudflare Container holding qpdf + pdftotext
   // + ocrmypdf. Worker proxies to it via getContainer(env.PDF_TOOLS,
   // 'shared').fetch(req). Parameterized so getContainer<T> narrows

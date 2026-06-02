@@ -447,6 +447,13 @@ export interface Unit {
    *  the latest breadcrumb (src/routes/dispatch/gps.ts). */
   gps_heading?: number | null;
   gps_speed?: number | null;
+  /** Spillman EMERGENCY overlay (panic activation). 1 = the officer has an
+   *  active panic — the unit flashes red on the Status Monitor / map until a
+   *  terminal panic transition clears it. Set/cleared server-side in
+   *  src/routes/dispatch/panic.ts. */
+  emergency_active?: number | boolean | null;
+  emergency_call_id?: number | string | null;
+  emergency_since?: string | null;
   created_at: string;
   updated_at: string;
 }

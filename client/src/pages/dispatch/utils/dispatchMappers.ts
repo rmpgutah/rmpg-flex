@@ -205,6 +205,11 @@ export function mapDbUnit(row: any): Unit {
     assigned_beat: row.assigned_beat || undefined,
     audio_mode: row.audio_mode || undefined,
     last_status_change: row.last_status_change || '',
+    // Spillman EMERGENCY overlay — drives the flashing-red Status Monitor row
+    // + map treatment. Normalized to a 0/1 number so isEmergency() is simple.
+    emergency_active: row.emergency_active ? 1 : 0,
+    emergency_call_id: row.emergency_call_id ?? null,
+    emergency_since: row.emergency_since ?? null,
     created_at: row.created_at || '',
     updated_at: row.updated_at || '',
   };

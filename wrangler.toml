@@ -46,6 +46,15 @@ class_name = "WelfareWatchDO"
 name = "VOICE_HUB"
 class_name = "VoiceHubDO"
 
+# AlertHubDO — ONE global instance (idFromName('global')) that every client
+# holds an alert socket to (/api/alerts-ws on this worker's custom domain).
+# The shared bus that lets rewrite route handlers broadcast officer-safety
+# events (panic, etc.) agency-wide — the rewrite's own per-isolate WS map is
+# dead because clients' main /api/ws socket lives on the legacy worker.
+[[durable_objects.bindings]]
+name = "ALERT_HUB"
+class_name = "AlertHubDO"
+
 [[migrations]]
 tag = "v1"
 # new_sqlite_classes (not new_classes) — free-plan compatible.
@@ -122,6 +131,13 @@ new_sqlite_classes = ["PdfToolsContainer"]
 [[migrations]]
 tag = "v2-voicehub"
 new_sqlite_classes = ["VoiceHubDO"]
+
+# AlertHubDO — APPENDED (same prefix rule as v2-voicehub above: live tags
+# must be a prefix of this list, so new DO migrations go at the END, never
+# mid-list). SQLite-backed for free-plan compatibility + storage.put/getAlarm.
+[[migrations]]
+tag = "v3-alerthub"
+new_sqlite_classes = ["AlertHubDO"]
 
 # ─── Workers AI ────────────────────────────────────────────
 # Used by /api/serve-intake/scan-document + /api/serve-intake/upload
