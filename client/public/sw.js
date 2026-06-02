@@ -172,11 +172,17 @@
 //       owns the loading task and tears down via loadingTask.destroy()
 //       (version-agnostic). Worker (build/pdf.worker.min.mjs) + standard_fonts/
 //       cmaps asset paths unchanged; vite build + 563 tests green on v6.
-// v682: systematic-audit wave 1 client fixes — WebSocketContext brain/alert +
+// v682: Spatial Layers reorganized into two groups — "Police Geography"
+//       (Area › Section › Zone › Beat) and "Boundaries" (Municipality,
+//       County). Area/Section/Zone are derived from beat geometry: fill
+//       colored by level + dissolved boundary outline (@turf/dissolve,
+//       MultiPolygons flattened first). State Boundary/Highways/Places
+//       dropped from the map sidebar.
+// v683: systematic-audit wave 1 client fixes — WebSocketContext brain/alert +
 //       useLiveSync payload, ArrestRecordsPage, PatrolPage, ReportsPage cards,
 //       HR tabs, CitationsPage/ServePage, sentinel toNum guards. Bump so users
 //       fetch the fixed hash-named bundles instead of stale cached chunks.
-const CACHE_NAME = 'rmpg-flex-v682';
+const CACHE_NAME = 'rmpg-flex-v683';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
