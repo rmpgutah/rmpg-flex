@@ -820,19 +820,23 @@ export default function ReportsPage() {
         const dateParams = new URLSearchParams({ startDate });
         if (endDate) dateParams.append('endDate', endDate);
 
-        // Fetch all endpoints in parallel
+        // Fetch all endpoints in parallel. Each is independently fault-tolerant
+        // — /reports/dashboard and /officer-activity fall through to legacy and
+        // may 404/500; without per-fetch .catch one failure rejected Promise.all
+        // and blanked the ENTIRE Reports page. Now a missing endpoint only leaves
+        // its own card empty.
         const [dashboard, incidents, responseTimes, officers] = await Promise.all([
-          apiFetch<DashboardData>('/reports/dashboard'),
-          apiFetch<IncidentsSummaryData>(`/reports/incidents-summary?groupBy=type&${dateParams.toString()}`),
-          apiFetch<ResponseTimesData>(`/reports/response-times?${dateParams.toString()}`),
-          apiFetch<OfficerActivityData[]>(`/reports/officer-activity?${dateParams.toString()}`),
+          apiFetch<DashboardData>('/reports/dashboard').catch(() => null),
+          apiFetch<IncidentsSummaryData>(`/reports/incidents-summary?groupBy=type&${dateParams.toString()}`).catch(() => null),
+          apiFetch<ResponseTimesData>(`/reports/response-times?${dateParams.toString()}`).catch(() => null),
+          apiFetch<OfficerActivityData[]>(`/reports/officer-activity?${dateParams.toString()}`).catch(() => null),
         ]);
 
         if (cancelled) return;
-        setDashboardData(dashboard);
-        setIncidentsData(incidents);
-        setResponseTimesData(responseTimes);
-        setOfficerActivity(officers);
+        if (dashboard) setDashboardData(dashboard);
+        if (incidents) setIncidentsData(incidents);
+        if (responseTimes) setResponseTimesData(responseTimes);
+        if (officers) setOfficerActivity(officers);
 
         // Upgrade: Fetch comparison data and schedules in background
         apiFetch<any>('/reports/comparison?period=week')
