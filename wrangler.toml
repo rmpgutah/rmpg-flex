@@ -1,4 +1,4 @@
-name = "rmpg-api-proxy"
+name = "rmpg-flex-api"
 main = "src/index.ts"
 compatibility_date = "2026-05-01"
 compatibility_flags = ["nodejs_compat"]
