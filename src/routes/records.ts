@@ -933,6 +933,54 @@ records.get('/search', async (c) => {
       }));
     }
 
+    if (type === 'evidence') {
+      const rows = await query<Record<string, unknown>>(db, `
+        SELECT * FROM evidence
+        WHERE evidence_number LIKE ? OR description LIKE ? OR case_number LIKE ?
+        ORDER BY evidence_number LIMIT 50
+      `, like, like, like);
+      return c.json(rows.map((r) => ({
+        ...r,
+        label: [r.evidence_number, r.description].filter(Boolean).join(' — ') || `Evidence #${r.id}`,
+      })));
+    }
+
+    if (type === 'incident') {
+      const rows = await query<Record<string, unknown>>(db, `
+        SELECT id, incident_number, incident_type, status, location_address, created_at FROM incidents
+        WHERE incident_number LIKE ? OR incident_type LIKE ? OR location_address LIKE ?
+        ORDER BY created_at DESC LIMIT 50
+      `, like, like, like);
+      return c.json(rows.map((r) => ({
+        ...r,
+        label: [r.incident_number, r.incident_type].filter(Boolean).join(' — ') || `Incident #${r.id}`,
+      })));
+    }
+
+    if (type === 'case') {
+      const rows = await query<Record<string, unknown>>(db, `
+        SELECT id, case_number, title, status, case_type, created_at FROM cases
+        WHERE case_number LIKE ? OR title LIKE ? OR case_type LIKE ?
+        ORDER BY created_at DESC LIMIT 50
+      `, like, like, like);
+      return c.json(rows.map((r) => ({
+        ...r,
+        label: [r.case_number, r.title].filter(Boolean).join(' — ') || `Case #${r.id}`,
+      })));
+    }
+
+    if (type === 'warrant') {
+      const rows = await query<Record<string, unknown>>(db, `
+        SELECT id, warrant_number, subject_name, charge_description, status, created_at FROM warrants
+        WHERE warrant_number LIKE ? OR subject_name LIKE ? OR charge_description LIKE ?
+        ORDER BY created_at DESC LIMIT 50
+      `, like, like, like);
+      return c.json(rows.map((r) => ({
+        ...r,
+        label: [r.warrant_number, r.subject_name].filter(Boolean).join(' — ') || `Warrant #${r.id}`,
+      })));
+    }
+
     // Unknown type — empty array keeps the client UI consistent (no error toast).
     return c.json([]);
   } catch (err) {
@@ -1009,21 +1057,77 @@ async function getRecordLabel(
           ? `${v.make || ''} ${v.model || ''} ${v.plate_number ? `(${v.plate_number})` : ''}`.trim() || `Vehicle #${id}`
           : `Vehicle #${id}`;
       }
-      case 'property': {
-        const pr = await queryFirst<{ name: string }>(
-          db, 'SELECT name FROM properties WHERE id = ?', id);
-        return pr?.name || `Property #${id}`;
+      case 'property':
+      case 'business': {
+        // property + business share the `properties` table (business = a
+        // property row with business_type populated).
+        const pr = await queryFirst<{ name: string; address: string }>(
+          db, 'SELECT name, address FROM properties WHERE id = ?', id);
+        const tLabel = type === 'business' ? 'Business' : 'Property';
+        return pr ? (pr.name || pr.address || `${tLabel} #${id}`) : `${tLabel} #${id}`;
       }
       case 'evidence': {
         const e = await queryFirst<{ evidence_number: string; description: string }>(
           db, 'SELECT evidence_number, description FROM evidence WHERE id = ?', id);
         return e ? `${e.evidence_number || ''} ${e.description || ''}`.trim() || `Evidence #${id}` : `Evidence #${id}`;
       }
+      case 'incident': {
+        const i = await queryFirst<{ incident_number: string; incident_type: string }>(
+          db, 'SELECT incident_number, incident_type FROM incidents WHERE id = ?', id);
+        return i ? `${i.incident_number || `Incident #${id}`}${i.incident_type ? ` — ${i.incident_type}` : ''}` : `Incident #${id}`;
+      }
+      case 'case': {
+        const cs = await queryFirst<{ case_number: string; title: string }>(
+          db, 'SELECT case_number, title FROM cases WHERE id = ?', id);
+        return cs ? `${cs.case_number || `Case #${id}`}${cs.title ? ` — ${cs.title}` : ''}` : `Case #${id}`;
+      }
+      case 'warrant': {
+        const w = await queryFirst<{ warrant_number: string; subject_name: string }>(
+          db, 'SELECT warrant_number, subject_name FROM warrants WHERE id = ?', id);
+        return w ? `${w.warrant_number || `Warrant #${id}`}${w.subject_name ? ` — ${w.subject_name}` : ''}` : `Warrant #${id}`;
+      }
       default:
         return `${type} #${id}`;
     }
   } catch {
     return `${type} #${id}`;
+  }
+}
+
+// Canonical map of linkable entity type → backing table. Single source of
+// truth for both existence validation and label resolution. Mirrors
+// LINKABLE_TYPES in client/src/utils/recordLinks.ts and RecordEntityType in
+// client/src/types/index.ts. `business` shares the `properties` table with
+// `property` (a business is a property row with business_type populated).
+// Values are a fixed whitelist — never interpolate caller input into SQL.
+const LINK_ENTITY_TABLE: Record<string, string> = {
+  person: 'persons',
+  vehicle: 'vehicles_records',
+  property: 'properties',
+  business: 'properties',
+  evidence: 'evidence',
+  incident: 'incidents',
+  case: 'cases',
+  warrant: 'warrants',
+};
+
+/** A type is linkable iff it maps to a known backing table. */
+function isLinkableType(type: string): boolean {
+  return Object.prototype.hasOwnProperty.call(LINK_ENTITY_TABLE, type);
+}
+
+/** True iff a record of this linkable type with this id actually exists.
+ *  Used to enforce the strict rule that a link's two endpoints must both be
+ *  real records — you cannot link to a record that isn't in the system. */
+async function recordExists(db: D1Database, type: string, id: string | number): Promise<boolean> {
+  const table = LINK_ENTITY_TABLE[type];
+  if (!table) return false;
+  try {
+    const row = await queryFirst<{ one: number }>(
+      db, `SELECT 1 AS one FROM ${table} WHERE id = ? LIMIT 1`, id);
+    return !!row;
+  } catch {
+    return false;
   }
 }
 
@@ -1102,6 +1206,30 @@ records.post('/links', async (c) => {
     }
     if (source_type === target_type && source_id === target_id) {
       return c.json({ error: 'Cannot link a record to itself' }, 400);
+    }
+
+    // Strict referential rule: both endpoints must be a KNOWN record type and
+    // an EXISTING record. A record is never linked to a non-existent ("non-
+    // linked") record — that would create a dangling link the connections
+    // graph and PDFs can't resolve.
+    if (!isLinkableType(source_type) || !isLinkableType(target_type)) {
+      return c.json({
+        error: `Unsupported record type. Linkable types: ${Object.keys(LINK_ENTITY_TABLE).join(', ')}.`,
+        code: 'LINK_TYPE_UNSUPPORTED',
+      }, 400);
+    }
+    const [srcOk, tgtOk] = await Promise.all([
+      recordExists(db, source_type, source_id),
+      recordExists(db, target_type, target_id),
+    ]);
+    if (!srcOk || !tgtOk) {
+      const missing: string[] = [];
+      if (!srcOk) missing.push(`source ${source_type} #${source_id}`);
+      if (!tgtOk) missing.push(`target ${target_type} #${target_id}`);
+      return c.json({
+        error: `Cannot create link — ${missing.join(' and ')} not found. A record can only be linked to an existing record.`,
+        code: 'LINK_ENDPOINT_NOT_FOUND',
+      }, 422);
     }
 
     let result;
