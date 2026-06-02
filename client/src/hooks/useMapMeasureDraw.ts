@@ -127,5 +127,17 @@ export function useMapMeasureDraw({ map, mode }: Opts) {
     return () => { map.off('style.load', onLoad); };
   }, [map, refresh]);
 
+  // Remove the measure source + layers on map change / unmount so teardown
+  // doesn't leak an orphaned source+layers (mirrors useMapboxResponseTime).
+  useEffect(() => {
+    if (!map) return;
+    return () => {
+      try {
+        [L_VERT, L_LINE, L_FILL].forEach((id) => { if (map.getLayer(id)) map.removeLayer(id); });
+        if (map.getSource(SRC)) map.removeSource(SRC);
+      } catch { /* style already torn down */ }
+    };
+  }, [map]);
+
   return { measureResult: result, clearMeasure };
 }
