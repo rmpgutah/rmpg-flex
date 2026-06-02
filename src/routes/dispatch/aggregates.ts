@@ -31,7 +31,7 @@ aggregates.get('/', async (c) => {
       SELECT
         COUNT(*) as total,
         SUM(CASE WHEN status = 'available' THEN 1 ELSE 0 END) as available,
-        SUM(CASE WHEN status IN ('dispatched','enroute','onscene') THEN 1 ELSE 0 END) as committed,
+        SUM(CASE WHEN status IN ('dispatched','enroute','onscene','busy') THEN 1 ELSE 0 END) as committed,
         SUM(CASE WHEN status = 'off_duty' THEN 1 ELSE 0 END) as off_duty
       FROM units
     `);
