@@ -1,0 +1,12 @@
+-- 0068_patrol_checkpoints_archived_at.sql
+-- POST /patrol/checkpoints/:id/archive and /unarchive do
+--   UPDATE patrol_checkpoints SET is_active = 0, archived_at = datetime('now') ...
+--   UPDATE patrol_checkpoints SET is_active = 1, archived_at = NULL ...
+-- (src/routes/patrol.ts:190,204) but the live table never had archived_at, so
+-- BOTH endpoints 500'd on the missing column — checkpoint archive/unarchive was
+-- fully broken. is_active already exists; add the timestamp column it pairs with.
+-- /api/patrol routes to the rewrite, so this is live.
+-- patrol_checkpoints is small (far under the 100-col D1 cap) — additive ALTER is safe.
+-- D1 has no IF NOT EXISTS on ADD COLUMN; re-apply failures are expected/ignored.
+-- Applied directly to live D1 (785de7ae) on 2026-06-02.
+ALTER TABLE patrol_checkpoints ADD COLUMN archived_at TEXT;

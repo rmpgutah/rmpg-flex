@@ -201,7 +201,7 @@ fleet.get('/analytics', async (c) => {
   }>(
     db,
     `SELECT strftime('%Y-%m', fuel_date) as month,
-            NULL as avg_mpg,
+            AVG(NULLIF(mpg, 0)) as avg_mpg,
             COALESCE(SUM(gallons), 0) as total_gallons,
             COALESCE(SUM(total_cost), 0) as total_cost
      FROM fleet_fuel_log
@@ -210,26 +210,67 @@ fleet.get('/analytics', async (c) => {
      ORDER BY month`,
   ), []);
 
-  // Aggregate summary — uses materialized totals on fleet_vehicles
-  // (total_maintenance_cost / total_fuel_cost / avg_mpg, added via
-  // addCol in the legacy schema). Falls back to 0 if those columns
-  // aren't populated yet for a given row.
-  const summary = await safe(() => queryFirst<{
-    total_vehicles: number;
-    avg_mileage: number;
-    avg_mpg: number | null;
-    total_maintenance_cost: number;
-    total_fuel_cost: number;
+  // Aggregate summary — computed LIVE from the source tables, NOT from
+  // materialized total_fuel_cost/total_maintenance_cost/avg_mpg columns on
+  // fleet_vehicles. Those rollup columns are never updated when fuel/
+  // maintenance is logged, so they reported $0 / -- MPG on the dashboard even
+  // with a fully-populated fleet_fuel_log (fixed 2026-06-02). Each stat is its
+  // own safe() so one missing table doesn't zero the others. All scoped to
+  // non-archived vehicles.
+  const vehStats = await safe(() => queryFirst<{ total_vehicles: number; avg_mileage: number }>(
+    db,
+    `SELECT COUNT(*) as total_vehicles, COALESCE(AVG(current_mileage), 0) as avg_mileage
+     FROM fleet_vehicles WHERE archived_at IS NULL`,
+  ), null);
+  const fuelStats = await safe(() => queryFirst<{ total_fuel_cost: number; avg_mpg: number | null }>(
+    db,
+    `SELECT COALESCE(SUM(total_cost), 0) as total_fuel_cost, AVG(NULLIF(mpg, 0)) as avg_mpg
+     FROM fleet_fuel_log
+     WHERE vehicle_id IN (SELECT id FROM fleet_vehicles WHERE archived_at IS NULL)`,
+  ), null);
+  const maintStats = await safe(() => queryFirst<{ total_maintenance_cost: number }>(
+    db,
+    `SELECT COALESCE(SUM(cost), 0) as total_maintenance_cost
+     FROM fleet_maintenance
+     WHERE vehicle_id IN (SELECT id FROM fleet_vehicles WHERE archived_at IS NULL)`,
+  ), null);
+  const summary = {
+    total_vehicles: vehStats?.total_vehicles ?? 0,
+    avg_mileage: vehStats?.avg_mileage ?? 0,
+    avg_mpg: fuelStats?.avg_mpg ?? null,
+    total_maintenance_cost: maintStats?.total_maintenance_cost ?? 0,
+    total_fuel_cost: fuelStats?.total_fuel_cost ?? 0,
+  };
+
+  // cost_per_mile_ranking ("Top Vehicles by Cost") — per-vehicle total spend
+  // (fuel + maintenance) and cost/mile. Was hardcoded [] which showed "No cost
+  // data available" even with real spend. Joins both cost sources per vehicle.
+  const cost_per_mile_ranking = await safe(() => query<{
+    id: number; vehicle_number: string; make: string | null; model: string | null;
+    current_mileage: number | null; total_cost: number;
   }>(
     db,
-    `SELECT COUNT(*) as total_vehicles,
-            COALESCE(AVG(current_mileage), 0) as avg_mileage,
-            AVG(NULLIF(avg_mpg, 0)) as avg_mpg,
-            COALESCE(SUM(total_maintenance_cost), 0) as total_maintenance_cost,
-            COALESCE(SUM(total_fuel_cost), 0) as total_fuel_cost
-     FROM fleet_vehicles
-     WHERE archived_at IS NULL`,
-  ), null);
+    `SELECT v.id, v.vehicle_number, v.make, v.model, v.current_mileage,
+            COALESCE(f.fuel, 0) + COALESCE(m.maint, 0) as total_cost
+     FROM fleet_vehicles v
+     LEFT JOIN (SELECT vehicle_id, SUM(total_cost) as fuel FROM fleet_fuel_log GROUP BY vehicle_id) f ON f.vehicle_id = v.id
+     LEFT JOIN (SELECT vehicle_id, SUM(cost) as maint FROM fleet_maintenance GROUP BY vehicle_id) m ON m.vehicle_id = v.id
+     WHERE v.archived_at IS NULL
+     ORDER BY total_cost DESC
+     LIMIT 10`,
+  ), []).then(rows => rows
+    .filter(r => (r.total_cost ?? 0) > 0)
+    .map(r => ({
+      id: r.id,
+      vehicle_number: r.vehicle_number,
+      make: r.make,
+      model: r.model,
+      total_cost: Math.round((r.total_cost ?? 0) * 100) / 100,
+      cost_per_mile: (r.current_mileage && r.current_mileage > 0)
+        ? Math.round(((r.total_cost ?? 0) / r.current_mileage) * 100) / 100
+        : null,
+    })),
+  );
 
   const vehicles_needing_service = (await safe(() => queryFirst<{ n: number }>(
     db,
@@ -260,10 +301,10 @@ fleet.get('/analytics', async (c) => {
       vehicles_needing_service,
       inspections_failing,
     },
+    cost_per_mile_ranking,
     // Fields the FleetAnalyticsTab destructures but whose endpoints
     // live in separate handlers. Return empty defaults so an unguarded
     // destructuring (pre-May-2026 client builds) never reads undefined.
-    cost_per_mile_ranking: [],
     service_compliance: { compliant: 0, overdue: 0, rate: 100 },
     inspection_pass_rate: { total: 0, passed: 0, failed: 0, rate: 100 },
     utilization: { assigned: 0, unassigned: 0, rate: 0 },
