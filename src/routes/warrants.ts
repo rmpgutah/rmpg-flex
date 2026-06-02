@@ -10,6 +10,7 @@ import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { requireRole } from '../middleware/auth';
 import { runUtahWarrantScan } from '../utils/utahWarrantPoller';
+import { runAllSourceScans } from '../utils/warrantSources/runScan';
 
 const warrants = new Hono<Env>();
 
@@ -53,7 +54,7 @@ warrants.get('/watch/runs', requireRole(...READ_ROLES), async (c) => {
 warrants.post('/watch/scan', requireRole(...SCAN_ROLES), async (c) => {
   const db = getDb(c.env);
   c.executionCtx.waitUntil(
-    runUtahWarrantScan(db).catch((err) => {
+    runAllSourceScans(db).catch((err) => {
       console.error('[warrants] manual scan failed:', err);
     }),
   );
