@@ -435,7 +435,11 @@
 //       cross street (Mapbox Tilequery), and raw coordinates — instead of just
 //       coords. Resolved + cached per ~11m grid (useUnitLocations) so a parked
 //       unit doesn't re-geocode and a moving one updates when it changes block.
-const CACHE_NAME = 'rmpg-flex-v733';
+// v734: Cross-module right-click follow-up (builds on #936's right-click
+//       system) — warrant → Run NCIC on subject; Show-on-map for geocoded
+//       incidents/citations; Person → Create BOLO via new
+//       /communications?newBolo seed reader.
+const CACHE_NAME = 'rmpg-flex-v734';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

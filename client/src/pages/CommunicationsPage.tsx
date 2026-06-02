@@ -284,6 +284,22 @@ export default function CommunicationsPage() {
   const [boloPhotoFile, setBoloPhotoFile] = useState<File | null>(null);
   const [boloPhotoPreview, setBoloPhotoPreview] = useState<string | null>(null);
 
+  // Deep-link: /communications?newBolo=1&title=&subject=&description= opens the
+  // BOLO panel with the create form pre-seeded (record right-click "Create BOLO").
+  useEffect(() => {
+    const sp = new URLSearchParams(window.location.search);
+    if (sp.get('newBolo') === '1') {
+      setActivePanel('bolos');
+      setShowNewBOLO(true);
+      setBoloType('person');
+      const title = sp.get('title'); if (title) setBoloTitle(title);
+      const subject = sp.get('subject'); if (subject) setBoloSubjectDescription(subject);
+      const description = sp.get('description'); if (description) setBoloDescription(description);
+      window.history.replaceState(null, '', window.location.pathname);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // BOLO resolve / cancel
   const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [cancelTarget, setCancelTarget] = useState<BOLO | null>(null);
