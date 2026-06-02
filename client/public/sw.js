@@ -452,7 +452,10 @@
 //       command mic now mutes during radio PTT via the voice-ws monitor; panic
 //       alarms auto-clear fleet-wide on ack/resolve/cancel/false-alarm by
 //       branching the single panic_alert frame on its `action` field.
-const CACHE_NAME = 'rmpg-flex-v742';
+// v743: HR Reviews + Disciplinary save buttons now surface a "Failed to …"
+//       error toast when the create/update API call fails (the handlers had a
+//       success toast but no catch, so a failed save looked like a dead button).
+const CACHE_NAME = 'rmpg-flex-v743';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
