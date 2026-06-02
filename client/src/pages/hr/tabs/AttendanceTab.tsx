@@ -3,6 +3,8 @@ import { ClipboardCheck, Plus, AlertTriangle, Loader2, Search } from 'lucide-rea
 import { apiFetch } from '../../../hooks/useApi';
 import { useToast } from '../../../components/ToastProvider';
 import { useAuth } from '../../../context/AuthContext';
+import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
+import { useMenuActions } from '../../../utils/contextMenuActions';
 import { localToday, parseTimestamp } from '../../../utils/dateUtils';
 
 interface AttendanceRecord {
@@ -47,6 +49,17 @@ export default function AttendanceTab({ userRole }: { userRole: string }) {
   const [searchQuery, setSearchQuery] = useState('');
 
   const isManager = ['admin', 'manager', 'supervisor'].includes(userRole);
+
+  // ── Right-click context menu (read-only rows → copy-only) ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+
+  const buildAttendanceMenu = (r: AttendanceRecord): ContextMenuItem[] => [
+    m.copy('Copy officer name', r.officer_name),
+    m.copy('Copy type', r.type.replace(/_/g, ' ')),
+    ...(r.reason ? [m.copy('Copy reason', r.reason)] : []),
+    m.copyId(r.id),
+  ];
 
   const load = async () => {
     setLoading(true);
@@ -179,7 +192,7 @@ export default function AttendanceTab({ userRole }: { userRole: string }) {
             }
             return true;
           }).map(r => (
-            <div key={r.id} role="listitem" className="panel-beveled p-2.5 flex items-center justify-between hover:bg-surface-raised/30 hover:shadow-sm transition-all duration-150">
+            <div key={r.id} role="listitem" onContextMenu={(e) => openMenu(e, buildAttendanceMenu(r))} className="panel-beveled p-2.5 flex items-center justify-between hover:bg-surface-raised/30 hover:shadow-sm transition-all duration-150">
               <div className="flex items-center gap-3">
                 <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-mono font-bold uppercase rounded-sm ${TYPE_COLORS[r.type] || TYPE_COLORS.absent}`}>{r.type.replace(/_/g, ' ')}</span>
                 <span className="text-xs text-white">{r.officer_name}</span>

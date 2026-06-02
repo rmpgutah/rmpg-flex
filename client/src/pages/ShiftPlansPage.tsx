@@ -9,11 +9,13 @@ import { useState, useMemo, useEffect } from 'react';
 import {
   Calendar, Plus, Trash2, Copy, Play, CheckCircle, Archive, Users, MapPin,
   ChevronRight, X, Shield, BarChart3, Save, AlertTriangle, ArrowRightLeft,
-  TrendingUp,
+  TrendingUp, Eye,
 } from 'lucide-react';
 import { useShiftPlanning, SHIFT_TYPES } from '../hooks/useShiftPlanning';
 import type { ShiftPlan, ShiftType, AreaAssignment } from '../hooks/useShiftPlanning';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
+import { useMenuActions } from '../utils/contextMenuActions';
 import StatusBadge from '../components/StatusBadge';
 import { useToast } from '../components/ToastProvider';
 import ExportButton from '../components/ExportButton';
@@ -59,6 +61,8 @@ export default function ShiftPlansPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
   const sp = useShiftPlanning();
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
   const [selectedDate, setSelectedDate] = useState(todayStr());
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [newPlanName, setNewPlanName] = useState('');
@@ -147,6 +151,34 @@ export default function ShiftPlansPage() {
       addToast('Failed to save shift plan', 'error');
     }
   };
+
+  // ── Build a shift-plan row context menu ──
+  const buildPlanMenu = (plan: ShiftPlan): ContextMenuItem[] => [
+    m.action('Open plan', () => sp.setActivePlanId(plan.id), { icon: <Eye size={12} /> }),
+    ...(plan.status === 'draft'
+      ? [m.action('Activate', () => sp.updatePlanStatus(plan.id, 'active'), { icon: <Play size={12} /> })]
+      : []),
+    ...(plan.status === 'active'
+      ? [m.action('Mark complete', () => sp.updatePlanStatus(plan.id, 'completed'), { icon: <CheckCircle size={12} /> })]
+      : []),
+    m.separator(),
+    m.action('Save to server', () => handleSave(plan.id), { icon: <Save size={12} /> }),
+    m.action('Duplicate to next day', () => handleDuplicate(plan.id), { icon: <Copy size={12} /> }),
+    m.copyId(plan.id),
+    m.separator(),
+    ...(plan.status !== 'archived'
+      ? [m.action('Archive', () => sp.updatePlanStatus(plan.id, 'archived'), { icon: <Archive size={12} /> })]
+      : []),
+    m.action('Delete', () => { if (confirm('Delete this shift plan?')) sp.deletePlan(plan.id); }, { icon: <Trash2 size={12} />, danger: true }),
+  ];
+
+  // ── Build an area-assignment row context menu ──
+  const buildAssignmentMenu = (a: AreaAssignment): ContextMenuItem[] => [
+    m.copy('Copy area', a.label),
+    m.copyId(a.id),
+    m.separator(),
+    m.action('Remove assignment', () => sp.removeAssignment(a.id), { icon: <X size={12} />, danger: true }),
+  ];
 
   // Set document title
   useEffect(() => { document.title = 'Shift Plans \u2014 RMPG Flex'; }, []);
@@ -306,6 +338,7 @@ export default function ShiftPlansPage() {
                   <div
                     key={plan.id}
                     onClick={() => sp.setActivePlanId(plan.id)}
+                    onContextMenu={(e) => openMenu(e, buildPlanMenu(plan))}
                     className="px-3 py-2.5 cursor-pointer transition-all duration-150 border-b border-rmpg-800/50 hover:brightness-110"
                     style={{
                       background: isSelected ? 'rgba(136, 136, 136,0.08)' : 'transparent',
@@ -459,6 +492,7 @@ export default function ShiftPlansPage() {
                       {sp.activePlan.assignments.map((a) => (
                         <tr
                           key={a.id}
+                          onContextMenu={(e) => openMenu(e, buildAssignmentMenu(a))}
                           className="border-b border-rmpg-700/30 hover:bg-surface-raised/30 transition-colors"
                         >
                           <td className="px-4 py-2">

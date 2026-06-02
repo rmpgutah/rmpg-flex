@@ -6,7 +6,7 @@ import {
   AlertTriangle, Plus, Search, Edit, Trash2, CheckCircle, XCircle, Clock,
   Loader2, Archive, RotateCcw, MapPin, User, Gavel, ChevronDown, X, Scale, Radar,
   PlayCircle, History, Globe, Shield, FileText, Activity, Zap, Printer, Download,
-  UserCheck,
+  UserCheck, Eye, Pencil,
 } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
@@ -40,6 +40,8 @@ import {
 import { buildWarrantPacketPdf } from '../utils/warrantPacket';
 import { displayUserName } from '../utils/userDisplay';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
+import { useMenuActions } from '../utils/contextMenuActions';
 import ScrapersTab from './warrants/ScrapersTab';
 
 // ============================================================
@@ -478,6 +480,8 @@ export default function WarrantsPage() {
   const isMobile = useIsMobile();
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
   const warrantFormTitleId = useId();
   const serveTitleId = useId();
 
@@ -1369,6 +1373,44 @@ export default function WarrantsPage() {
     }
   };
 
+  // ── Right-click context menu (shared by list + table rows) ──
+  const buildWarrantMenu = (w: Warrant): ContextMenuItem[] => {
+    const isActive = w.status === 'active';
+    const isArchived = !!w.archived_at;
+    return [
+      m.action('View warrant', () => fetchWarrantDetail(w.id), { icon: <Eye size={12} /> }),
+      ...(w.subject_person_id
+        ? [m.action('View subject', () => openPersonProfile(w.subject_person_id!), { icon: <User size={12} /> })]
+        : []),
+      ...(w.subject_name && !/^(none|n\/a)$/i.test(w.subject_name)
+        ? [m.go('Run NCIC on subject', `/ncic?type=person&q=${encodeURIComponent(w.subject_name)}`, <User size={12} />)]
+        : []),
+      m.action('Edit warrant', () => openEditForm(w), { icon: <Pencil size={12} /> }),
+      m.separator(),
+      ...(isActive
+        ? [
+            m.action('Mark served', () => handleUpdateStatus(w.id, 'served'), { icon: <CheckCircle size={12} /> }),
+            m.action('Recall', () => handleUpdateStatus(w.id, 'recalled'), { icon: <XCircle size={12} /> }),
+          ]
+        : []),
+      m.separator(),
+      m.copy('Copy warrant #', w.warrant_number),
+      m.copy('Copy subject', w.subject_name),
+      m.copyId(w.id),
+      ...(w.subject_person_id
+        ? [
+            m.go('Person record', `/records?tab=persons&personId=${w.subject_person_id}`, <FileText size={12} />),
+            m.go('Arrest history', `/records?tab=arrests&personId=${w.subject_person_id}`, <FileText size={12} />),
+          ]
+        : []),
+      m.separator(),
+      ...(isArchived
+        ? [m.action('Unarchive', () => handleUnarchive(w.id), { icon: <RotateCcw size={12} /> })]
+        : [m.action('Archive', () => handleArchive(w.id), { icon: <Archive size={12} /> })]),
+      m.action('Delete', () => setDeletingWarrant(w), { icon: <Trash2 size={12} />, danger: true }),
+    ];
+  };
+
   // ============================================================
   // COMPUTED
   // ============================================================
@@ -1964,6 +2006,7 @@ export default function WarrantsPage() {
                     <button type="button"
                       key={w.id}
                       onClick={() => fetchWarrantDetail(w.id)}
+                      onContextMenu={(e) => openMenu(e, buildWarrantMenu(w))}
                       className={`w-full text-left px-3 py-3 border-b border-rmpg-700/50 transition-colors hover:bg-surface-raised ${selectedWarrant?.id === w.id ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : 'border-l-2 border-l-transparent'}`}
                       style={{ minHeight: 56 }}
                     >
@@ -2031,6 +2074,7 @@ export default function WarrantsPage() {
                       <tr
                         key={w.id}
                         onClick={() => fetchWarrantDetail(w.id)}
+                        onContextMenu={(e) => openMenu(e, buildWarrantMenu(w))}
                         className={`cursor-pointer hover:bg-[#141414]/50 transition-colors ${selectedWarrant?.id === w.id ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : ''} ${batchSelected.has(w.id) ? 'bg-brand-900/10' : ''}`}
                       >
                         {(isGodMode || isAdminOrManager) && (

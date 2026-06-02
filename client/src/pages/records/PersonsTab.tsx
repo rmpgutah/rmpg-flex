@@ -27,6 +27,8 @@ import {
 import { apiFetch, authedImageUrl } from '../../hooks/useApi';
 import { useAuth } from '../../context/AuthContext';
 import { openRecordWindow } from '../../utils/windowManager';
+import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
+import { useMenuActions } from '../../utils/contextMenuActions';
 import { parseTimestamp } from '../../utils/dateUtils';
 import PersonFormModal from '../../components/PersonFormModal';
 import FileAttachments from '../../components/FileAttachments';
@@ -526,6 +528,35 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
     duplicateWarning, handleForceCreate, handleCancelDuplicate,
   } = state;
 
+  // ── Right-click context menu ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+  const canModify = !showArchived || user?.role === 'admin';
+
+  const buildPersonMenu = (person: Person): ContextMenuItem[] => {
+    const fullName = `${person.first_name || ''} ${person.last_name || ''}`.trim();
+    const addr = [person.address, person.city, person.state, person.zip].filter(Boolean).join(', ');
+    return [
+      m.action('Open record', () => { setSelectedPerson(person); setSSNRevealed(false); }, { icon: <Eye size={12} /> }),
+      ...(canModify ? [m.action('Edit person', () => openEditPerson(person), { icon: <Pencil size={12} /> })] : []),
+      m.action('Open in new window', () => openRecordWindow('person', person.id), { icon: <ExternalLink size={12} /> }),
+      m.separator(),
+      m.copy('Copy name', fullName),
+      m.copyId(person.id),
+      ...(person.phone ? [m.copy('Copy phone', person.phone, <Phone size={12} />)] : []),
+      ...(addr ? [m.openExternal('Navigate to address', `https://maps.google.com/?q=${encodeURIComponent(addr)}`, <Navigation size={12} />)] : []),
+      m.separator(),
+      m.go('Run NCIC query', `/ncic?type=person&q=${encodeURIComponent(fullName)}`, <Search size={12} />),
+      ...(addr ? [m.go('Dispatch to this address', `/dispatch?newCall=1&location=${encodeURIComponent(addr)}&description=${encodeURIComponent('Re: ' + fullName)}`, <MapPin size={12} />)] : []),
+      m.go('Create BOLO', `/communications?newBolo=1&title=${encodeURIComponent('BOLO: ' + fullName)}&subject=${encodeURIComponent(fullName)}`, <AlertTriangle size={12} />),
+      m.separator(),
+      ...(showArchived
+        ? (canModify ? [m.action('Unarchive', () => handleUnarchive('persons', person.id), { icon: <RotateCcw size={12} /> })] : [])
+        : [m.action('Archive', () => handleArchive('persons', person.id), { icon: <Archive size={12} /> })]),
+      ...(canModify ? [m.action('Delete', () => setDeleteTarget({ type: 'person', id: person.id, label: fullName }), { icon: <Trash2 size={12} />, danger: true })] : []),
+    ];
+  };
+
   // ── Local sort + filter state ──
   const [sortBy, setSortBy] = useState<'name' | 'dob' | 'newest'>('name');
   const [filterFlag, setFilterFlag] = useState<string | null>(null);
@@ -657,6 +688,7 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
             tabIndex={0}
             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedPerson(selectedPerson?.id === person.id ? null : person); setSSNRevealed(false); } }}
             onClick={() => { setSelectedPerson(selectedPerson?.id === person.id ? null : person); setSSNRevealed(false); }}
+            onContextMenu={(e) => openMenu(e, buildPersonMenu(person))}
             className={`
               px-4 py-3 border-b border-rmpg-700/50 cursor-pointer transition-all duration-150
               ${selectedPerson?.id === person.id

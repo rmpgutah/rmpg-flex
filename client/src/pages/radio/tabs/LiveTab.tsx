@@ -4,7 +4,7 @@
 // useVoiceChannel → VoiceHubDO. Recorded clips replay from R2.
 import type React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Search, Filter, Star, Volume2, Mic, Radio as RadioIcon, Play, Pause } from 'lucide-react';
+import { Search, Filter, Star, Volume2, Mic, Radio as RadioIcon, Play, Pause, Download } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { matchesSearch, COMPARE_DATE, ls, playBeep, isInQuietHours } from '../helpers';
 import { DATE_RANGES, DURATION_FILTERS } from '../constants';
@@ -12,6 +12,8 @@ import { FilterChip, SectionHeader, EmptyConsole, Waveform, Sep } from '../compo
 import { useVoiceChannel, type DispatchRecordRef } from '../useVoiceChannel';
 import DispatchRecordPanel from '../../../components/DispatchRecordPanel';
 import { RadioHazePlayer } from '../../../utils/radioProcessor';
+import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
+import { useMenuActions } from '../../../utils/contextMenuActions';
 import type { RadioChannel, RadioTransmission } from '../types';
 
 interface Props {
@@ -244,13 +246,42 @@ export default function LiveTab({ selectedChannelId, onSelectChannel }: Props) {
   );
 }
 
+// Shared one-at-a-time haze player for the context-menu "Play" action
+// (mirrors AudioPlayButton's DSP chain). Stops any prior clip first.
+let menuPlayer: RadioHazePlayer | null = null;
+function playTransmissionAudio(transmissionId: number) {
+  try { menuPlayer?.stop(); } catch { /* noop */ }
+  menuPlayer = new RadioHazePlayer();
+  menuPlayer.playUrl(transmissionAudioUrl(transmissionId)).catch((err) => {
+    console.error('[radio] haze playback failed', err);
+  });
+}
+
 function TxRow({ tx }: { tx: RadioTransmission }) {
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
   const time = useMemo(() => {
     try { return new Date(tx.transmitted_at).toLocaleTimeString('en-US', { hour12: false }); } catch { return tx.transmitted_at; }
   }, [tx.transmitted_at]);
   const isLive = tx.duration_seconds > 0 && Date.now() - new Date(tx.transmitted_at).getTime() < 10_000;
+
+  const buildTxMenu = (): ContextMenuItem[] => [
+    ...(tx.audio_url
+      ? [
+          m.action('Play recording', () => playTransmissionAudio(tx.id), { icon: <Play size={12} /> }),
+          m.openExternal('Download audio', transmissionAudioUrl(tx.id), <Download size={12} />),
+          m.separator(),
+        ]
+      : []),
+    m.copy('Copy transcript', tx.transcript),
+    m.copy('Copy unit', tx.unit_label || tx.user_name),
+    m.copy('Copy channel', tx.channel_name),
+    m.copyId(tx.id),
+  ];
+
   return (
-    <li className="flex items-start gap-2 px-3 py-1.5 text-[10px] font-mono hover:bg-black/30">
+    <li className="flex items-start gap-2 px-3 py-1.5 text-[10px] font-mono hover:bg-black/30"
+      onContextMenu={(e) => openMenu(e, buildTxMenu())}>
       <span className="tabular-nums" style={{ color: 'var(--rt-muted)', minWidth: 70 }}>{time}</span>
       {isLive ? <Waveform color="var(--rt-tx)" /> : <span style={{ width: 24 }} />}
       <span className="font-bold" style={{ color: 'var(--rt-accent)', minWidth: 80 }}>{tx.unit_label || tx.user_name || '—'}</span>

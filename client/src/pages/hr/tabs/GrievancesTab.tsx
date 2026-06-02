@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
-import { Plus, AlertOctagon, CheckCircle, Search, Loader2 } from 'lucide-react';
+import { Plus, AlertOctagon, CheckCircle, Search, Loader2, Eye, SearchCheck, XCircle } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { useToast } from '../../../components/ToastProvider';
 import { useAuth } from '../../../context/AuthContext';
+import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
+import { useMenuActions } from '../../../utils/contextMenuActions';
 import { useFormDraft } from '../../../hooks/useFormDraft';
 import UnsavedChangesGuard from '../../../components/UnsavedChangesGuard';
 import FloatingSaveBar from '../../../components/FloatingSaveBar';
@@ -73,6 +75,32 @@ export default function GrievancesTab() {
   });
 
   const isManager = ['admin', 'manager', 'supervisor'].includes(user?.role || '');
+
+  // ── Right-click context menu ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+
+  const buildGrievanceMenu = (g: Grievance): ContextMenuItem[] => {
+    const canAct = isManager && g.status !== 'resolved' && g.status !== 'dismissed';
+    return [
+      m.copy('Copy subject', g.subject),
+      m.copy('Copy officer name', g.officer_name),
+      m.copyId(g.id),
+      ...(canAct
+        ? [
+            m.separator(),
+            ...(g.status === 'filed'
+              ? [m.action('Mark under review', () => updateStatus(g.id, 'under_review'), { icon: <Eye size={12} /> })]
+              : []),
+            ...(g.status === 'under_review'
+              ? [m.action('Move to investigation', () => updateStatus(g.id, 'investigation'), { icon: <SearchCheck size={12} /> })]
+              : []),
+            m.action('Mark resolved', () => updateStatus(g.id, 'resolved'), { icon: <CheckCircle size={12} /> }),
+            m.action('Dismiss', () => updateStatus(g.id, 'dismissed'), { icon: <XCircle size={12} />, danger: true }),
+          ]
+        : []),
+    ];
+  };
 
   const load = async () => {
     setLoading(true);
@@ -194,7 +222,7 @@ export default function GrievancesTab() {
       ) : (
         <div className="space-y-2">
           {filtered.map(g => (
-            <div key={g.id} className="panel-beveled p-3 hover:bg-surface-raised/50 hover:shadow-sm transition-all duration-200 hover:border-rmpg-500" role="article" aria-label={`Grievance: ${g.subject}`}>
+            <div key={g.id} onContextMenu={(e) => openMenu(e, buildGrievanceMenu(g))} className="panel-beveled p-3 hover:bg-surface-raised/50 hover:shadow-sm transition-all duration-200 hover:border-rmpg-500" role="article" aria-label={`Grievance: ${g.subject}`}>
               <div className="flex items-start justify-between">
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-1">

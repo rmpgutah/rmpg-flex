@@ -4,7 +4,9 @@ import PanelTitleBar from '../components/PanelTitleBar';
 import DataTable from '../components/DataTable';
 import StatsCard from '../components/StatsCard';
 import { useToast } from '../components/ToastProvider';
-import { Share2, Building2, FileText, ArrowRightLeft, Plus, Pencil, Trash2 } from 'lucide-react';
+import { useMenuActions } from '../utils/contextMenuActions';
+import type { ContextMenuItem } from '../context/ContextMenuContext';
+import { Share2, Building2, FileText, ArrowRightLeft, Plus, Pencil, Trash2, Eye } from 'lucide-react';
 
 export default function InteragencyPage() {
   const [partners, setPartners] = useState<Record<string, any>[]>([]);
@@ -18,6 +20,7 @@ export default function InteragencyPage() {
   const [submitting, setSubmitting] = useState(false);
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const { addToast } = useToast();
+  const m = useMenuActions();
 
   const fetchData = useCallback(async () => {
     try {
@@ -73,7 +76,19 @@ export default function InteragencyPage() {
         <StatsCard icon={FileText} label="Active Agreements" value={stats.active_agreements} />
         <StatsCard icon={ArrowRightLeft} label="Data Exchanges" value={stats.total_exchanges} />
       </div>
-      <DataTable columns={columns} data={partners} emptyMessage="No interagency partners found" onRowClick={(row) => openEdit(row)} />
+      <DataTable
+        columns={columns}
+        data={partners}
+        emptyMessage="No interagency partners found"
+        onRowClick={(row) => openEdit(row)}
+        rowContextMenu={(row): ContextMenuItem[] => [
+          m.action('Open', () => openEdit(row), { icon: <Eye size={12} /> }),
+          m.action('Edit', () => openEdit(row), { icon: <Pencil size={12} /> }),
+          m.separator(),
+          m.copyId(row.id),
+          m.action('Delete', () => setDeleteId(row.id), { danger: true, icon: <Trash2 size={12} /> }),
+        ]}
+      />
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={closeForm}>
           <div className="bg-surface-raised border border-[#333] p-6 max-w-lg w-full" style={{ borderRadius: 2 }} onClick={e => e.stopPropagation()}>

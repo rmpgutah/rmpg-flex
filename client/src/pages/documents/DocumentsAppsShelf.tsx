@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FileText, FilePlus2, Sparkles, Clock } from 'lucide-react';
+import { FileText, FilePlus2, Sparkles, Clock, Eye } from 'lucide-react';
+import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
+import { useMenuActions } from '../../utils/contextMenuActions';
 
 // Documents Apps shelf — a row of integrated applications that operate
 // on the contents of the current folder. The PDF Editor is the first
@@ -29,8 +31,25 @@ interface RecentEntry {
 
 export default function DocumentsAppsShelf({ currentFolderId }: Props) {
   const navigate = useNavigate();
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
   const [recents, setRecents] = useState<RecentEntry[]>([]);
   const [creatingBlank, setCreatingBlank] = useState(false);
+
+  // Open a recent file in the PDF editor (shared by the chip onClick + its
+  // right-click "Open" menu action).
+  const openRecent = (r: RecentEntry) => {
+    const params = new URLSearchParams({ fileId: r.fileId, name: r.fileName });
+    if (r.folderId != null) params.set('folderId', String(r.folderId));
+    navigate(`/pdf-editor?${params.toString()}`);
+  };
+
+  const buildRecentMenu = (r: RecentEntry): ContextMenuItem[] => [
+    m.action('Open in editor', () => openRecent(r), { icon: <Eye size={12} /> }),
+    m.separator(),
+    m.copy('Copy file name', r.fileName),
+    m.copyId(r.fileId, 'Copy file ID'),
+  ];
 
   useEffect(() => {
     try {
@@ -110,11 +129,8 @@ export default function DocumentsAppsShelf({ currentFolderId }: Props) {
           <span className="text-rmpg-500 uppercase tracking-wider">Recent:</span>
           {recents.map(r => (
             <button key={r.fileId} type="button"
-              onClick={() => {
-                const params = new URLSearchParams({ fileId: r.fileId, name: r.fileName });
-                if (r.folderId != null) params.set('folderId', String(r.folderId));
-                navigate(`/pdf-editor?${params.toString()}`);
-              }}
+              onClick={() => openRecent(r)}
+              onContextMenu={(e) => openMenu(e, buildRecentMenu(r))}
               className="px-2 py-0.5 bg-[#0d0d0d] border border-[#222] hover:border-[#d4a017]/50 rounded-sm text-rmpg-300 hover:text-white truncate max-w-[200px]"
               title={r.fileName}>
               {r.fileName}

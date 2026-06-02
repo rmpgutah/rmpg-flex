@@ -2,12 +2,14 @@ import React, { useState, useEffect, useCallback } from 'react';
 import RichTextArea from '../components/RichTextArea';
 import {
   Gavel, Plus, Search, Loader2, ChevronDown, ChevronLeft, ChevronRight, Calendar,
-  User, FileText, Scale, X, AlertTriangle, CheckCircle, Clock, XCircle,
+  User, FileText, Scale, X, AlertTriangle, CheckCircle, Clock, XCircle, Eye,
 } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
 import EmptyState from '../components/EmptyState';
 import { apiFetch } from '../hooks/useApi';
 import { formatDate, formatDateTime } from '../utils/dateUtils';
+import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
+import { useMenuActions } from '../utils/contextMenuActions';
 
 // ============================================================
 // Types
@@ -240,6 +242,27 @@ export default function CourtRecordsPage() {
     setExpandedId(prev => prev === id ? null : id);
   };
 
+  // ── Right-click context menu ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+  const buildEventMenu = (ev: CourtEvent): ContextMenuItem[] => {
+    const displayName = ev.defendant_full_name || ev.defendant_name || '';
+    return [
+      m.action(expandedId === ev.id ? 'Collapse' : 'Expand details', () => toggleExpand(ev.id), { icon: <Eye size={12} /> }),
+      m.separator(),
+      m.copy('Copy event #', ev.event_number),
+      m.copyId(ev.id),
+      ...(displayName ? [m.copy('Copy defendant', displayName, <User size={12} />)] : []),
+      ...(ev.court_case_number ? [m.copy('Copy case #', ev.court_case_number, <FileText size={12} />)] : []),
+      ...(ev.status === 'scheduled' && !ev.outcome
+        ? [
+            m.separator(),
+            m.action('Record outcome', () => { setOutcomeData({ outcome: '', sentence: '', fine_amount: '', notes: ev.notes || '' }); setShowOutcomeModal(ev.id); }, { icon: <Scale size={12} /> }),
+          ]
+        : []),
+    ];
+  };
+
   // Set document title
   useEffect(() => { document.title = 'Court Records \u2014 RMPG Flex'; }, []);
 
@@ -394,6 +417,7 @@ export default function CourtRecordsPage() {
                   {/* Row */}
                   <div
                     onClick={() => toggleExpand(ev.id)}
+                    onContextMenu={(e) => openMenu(e, buildEventMenu(ev))}
                     className={`grid grid-cols-[100px_1fr_110px_130px_120px_90px_1fr] gap-px cursor-pointer transition-colors border-b border-[#2b2b2b]/50 ${
                       isExpanded ? 'bg-[#181818]' : 'bg-[#141414] hover:bg-[#181818]/60'
                     }`}

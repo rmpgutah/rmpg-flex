@@ -11,10 +11,13 @@ import {
   Building2,
   Archive,
   RotateCcw,
+  Eye,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { asArray } from '../../utils/asArray';
 import { toDisplayLabel, formatPhoneInput } from '../../utils/formatters';
+import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
+import { useMenuActions } from '../../utils/contextMenuActions';
 import type { Client } from '../../types';
 import AdminInvoiceTab from './AdminInvoiceTab';
 import { ClientPersonLinks } from '../../components/ClientPersonLinksSection';
@@ -186,6 +189,29 @@ export default function AdminClientsTab({
     }, 1500);
   };
 
+  // ── Right-click context menu ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+
+  const buildClientMenu = (client: Client & { property_count?: number }): ContextMenuItem[] => {
+    const isArchived = !!(client as any).archived_at;
+    return [
+      m.action('Open client', () => { setSelectedClient(client); setClientDetailTab('profile'); }, { icon: <Eye size={12} /> }),
+      m.action('Edit client', () => openEditClient(client), { icon: <Edit size={12} /> }),
+      m.separator(),
+      m.copy('Copy name', client.name),
+      ...(client.contact_name ? [m.copy('Copy contact', client.contact_name)] : []),
+      ...(client.contact_email ? [m.copy('Copy email', client.contact_email)] : []),
+      ...(client.contact_phone ? [m.copy('Copy phone', client.contact_phone)] : []),
+      m.copyId(client.id),
+      m.separator(),
+      ...(isArchived
+        ? [m.action('Unarchive', () => handleUnarchiveClient(client.id), { icon: <RotateCcw size={12} /> })]
+        : [m.action('Archive', () => handleArchiveClient(client.id), { icon: <Archive size={12} /> })]),
+      m.action('Delete client', () => openDeleteClient(client), { icon: <Trash2 size={12} />, danger: true }),
+    ];
+  };
+
   // Flush client save on unmount or tab switch
   useEffect(() => {
     return () => {
@@ -245,6 +271,7 @@ export default function AdminClientsTab({
               <div
                 key={client.id}
                 onClick={() => { setSelectedClient(selectedClient?.id === client.id ? null : client); setClientDetailTab('profile'); }}
+                onContextMenu={(e) => openMenu(e, buildClientMenu(client))}
                 role="button"
                 tabIndex={0}
                 onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedClient(selectedClient?.id === client.id ? null : client); setClientDetailTab('profile'); } }}

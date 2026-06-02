@@ -11,6 +11,8 @@ import DocumentsAppsShelf from './documents/DocumentsAppsShelf';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { useToast } from '../components/ToastProvider';
 import { useAuth } from '../context/AuthContext';
+import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
+import { useMenuActions } from '../utils/contextMenuActions';
 import { parseTimestamp } from '../utils/dateUtils';
 
 interface Folder {
@@ -58,6 +60,10 @@ export default function DocumentsPage() {
   const uploadInputRef = React.useRef<HTMLInputElement>(null);
   const dropZoneRef = React.useRef<HTMLDivElement>(null);
   const isAdmin = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'supervisor';
+
+  // ── Right-click context menu ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
 
   // Clear selection when navigating
   useEffect(() => { setSelectedFiles(new Set()); }, [currentFolderId]);
@@ -255,6 +261,46 @@ export default function DocumentsPage() {
     return list;
   }, [files, q, filterType, sortBy]);
 
+  // Open a file the same way the row buttons do: PDFs route through the
+  // internal pdf-editor viewer, other previewables open in a new tab.
+  const openFile = (file: FileItem) => {
+    if (file.mime_type === 'application/pdf') {
+      const params = new URLSearchParams({ fileId: file.file_id, name: file.original_name, view: '1' });
+      if (currentFolderId != null) params.set('folderId', String(currentFolderId));
+      navigate(`/pdf-editor?${params.toString()}`);
+    } else if (canPreview(file.mime_type)) {
+      window.open(authedImageUrl(`/api/uploads/${file.file_id}`), '_blank', 'noopener,noreferrer');
+    } else {
+      setInfoFile(file);
+    }
+  };
+
+  const buildFolderMenu = (folder: Folder): ContextMenuItem[] => [
+    m.action('Open', () => navigateTo(folder.id), { icon: <FolderOpen size={12} /> }),
+    ...(isAdmin ? [m.action('Rename', () => { setRenamingFolder(folder); setRenameValue(folder.name); }, { icon: <Pencil size={12} /> })] : []),
+    m.separator(),
+    m.copy('Copy name', folder.name),
+    m.copyId(folder.id),
+    ...(isAdmin ? [m.separator(), m.action('Delete', () => deleteFolder(folder), { icon: <Trash2 size={12} />, danger: true })] : []),
+  ];
+
+  const buildFileMenu = (file: FileItem): ContextMenuItem[] => [
+    m.action(canPreview(file.mime_type) ? 'Open' : 'File details', () => openFile(file), { icon: <Eye size={12} /> }),
+    ...(file.mime_type === 'application/pdf'
+      ? [m.action('Edit PDF', () => {
+          const params = new URLSearchParams({ fileId: file.file_id, name: file.original_name });
+          if (currentFolderId != null) params.set('folderId', String(currentFolderId));
+          navigate(`/pdf-editor?${params.toString()}`);
+        }, { icon: <Pencil size={12} /> })]
+      : []),
+    m.action('File details', () => setInfoFile(file), { icon: <Info size={12} /> }),
+    m.openExternal('Download', authedImageUrl(`/api/uploads/${file.file_id}/download`), <Download size={12} />),
+    m.separator(),
+    m.copy('Copy name', file.original_name),
+    m.copyId(file.file_id),
+    ...(isAdmin ? [m.separator(), m.action('Delete', () => deleteFile(file), { icon: <Trash2 size={12} />, danger: true })] : []),
+  ];
+
   return (
     <div className="h-full flex flex-col">
       <PanelTitleBar title="DOCUMENTS / UPLOAD RECORDS" icon={FolderOpen}>
@@ -383,6 +429,7 @@ export default function DocumentsPage() {
               <div key={folder.id}
                 className="flex items-center gap-3 px-3 py-2.5 hover:bg-rmpg-700/30 cursor-pointer transition-colors group border-b border-rmpg-800/30"
                 onClick={() => navigateTo(folder.id)}
+                onContextMenu={(e) => openMenu(e, buildFolderMenu(folder))}
                 onKeyDown={e => { if (e.key === 'Enter') navigateTo(folder.id); }}
                 tabIndex={0} role="button"
               >
@@ -432,6 +479,7 @@ export default function DocumentsPage() {
               <div key={file.file_id}
                 className={`panel-beveled p-3 flex flex-col items-center gap-2 cursor-pointer hover:bg-rmpg-700/30 transition-colors relative group ${selectedFiles.has(file.file_id) ? 'ring-1 ring-brand-500/50 bg-brand-900/10' : ''}`}
                 onClick={() => toggleSelect(file.file_id)}
+                onContextMenu={(e) => openMenu(e, buildFileMenu(file))}
               >
                 <span className="text-3xl">{getFileIcon(file.mime_type)}</span>
                 <span className="text-[10px] text-rmpg-200 text-center truncate w-full font-medium">{file.original_name}</span>
@@ -457,6 +505,7 @@ export default function DocumentsPage() {
               /* ── LIST VIEW ── */
               <div key={file.file_id}
                 className={`flex items-center gap-3 px-3 py-2 hover:bg-rmpg-700/20 transition-colors border-b border-rmpg-800/20 ${selectedFiles.has(file.file_id) ? 'bg-brand-900/10' : ''}`}
+                onContextMenu={(e) => openMenu(e, buildFileMenu(file))}
               >
                 <button type="button" onClick={() => toggleSelect(file.file_id)} className="flex-shrink-0 text-rmpg-500 hover:text-brand-400">
                   {selectedFiles.has(file.file_id) ? <CheckSquare className="w-4 h-4 text-brand-400" /> : <Square className="w-4 h-4" />}

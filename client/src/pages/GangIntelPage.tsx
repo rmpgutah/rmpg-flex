@@ -4,7 +4,9 @@ import PanelTitleBar from '../components/PanelTitleBar';
 import DataTable from '../components/DataTable';
 import StatsCard from '../components/StatsCard';
 import { useToast } from '../components/ToastProvider';
-import { ShieldAlert, Users, SprayCanIcon as Spray, TrendingUp, Plus, Pencil, Trash2 } from 'lucide-react';
+import { useMenuActions } from '../utils/contextMenuActions';
+import type { ContextMenuItem } from '../context/ContextMenuContext';
+import { ShieldAlert, Users, SprayCanIcon as Spray, TrendingUp, Plus, Pencil, Trash2, Eye } from 'lucide-react';
 
 interface GangMember { id: number; name: string; moniker: string; gang_name: string; status: string; threat_level: string; notes: string; }
 interface Gang { id: number; name: string; colors: string; member_count: number; threat_level: string; territory: string; notes: string; }
@@ -25,6 +27,7 @@ export default function GangIntelPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const { addToast } = useToast();
+  const m = useMenuActions();
 
   const fetchData = useCallback(async () => {
     try {
@@ -98,7 +101,19 @@ export default function GangIntelPage() {
         <StatsCard label="THREAT LEVEL" value="MEDIUM" icon={ShieldAlert} />
       </div>
 
-      <DataTable columns={memberColumns} data={members} emptyMessage="No gang members tracked" onRowClick={openEdit} />
+      <DataTable
+        columns={memberColumns}
+        data={members}
+        emptyMessage="No gang members tracked"
+        onRowClick={openEdit}
+        rowContextMenu={(r): ContextMenuItem[] => [
+          m.action('Open', () => openEdit(r), { icon: <Eye size={12} /> }),
+          m.action('Edit', () => openEdit(r), { icon: <Pencil size={12} /> }),
+          m.separator(),
+          m.copyId(r.id),
+          m.action('Delete', () => setDeleteId(r.id), { danger: true, icon: <Trash2 size={12} /> }),
+        ]}
+      />
 
       {formOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={() => setFormOpen(false)}>

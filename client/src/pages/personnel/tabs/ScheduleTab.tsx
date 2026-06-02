@@ -8,6 +8,8 @@ import type { Schedule } from '../../../types';
 import type { OfficerWithStatus } from '../utils/personnelMappers';
 import { DAYS, getWeekMonday, formatWeekLabel, dateToYMD } from '../utils/personnelFormatters';
 import { parseTimestamp } from '../../../utils/dateUtils';
+import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
+import { useMenuActions } from '../../../utils/contextMenuActions';
 
 interface Props {
   officers: OfficerWithStatus[];
@@ -89,6 +91,17 @@ export default function ScheduleTab({ officers, schedules, weekMonday, onWeekCha
     const hour = parseTimestamp(s.shift_start).getHours();
     return hour >= 18 || hour < 6;
   }
+
+  // ── Right-click context menu ──────────────────────────────
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+
+  const buildShiftMenu = (s: Schedule): ContextMenuItem[] => [
+    m.copy('Copy officer', s.officer_name),
+    ...(s.property_name ? [m.copy('Copy property', s.property_name)] : []),
+    m.separator(),
+    m.copyId(s.id),
+  ];
 
   return (
     <div className="flex-1 overflow-y-auto p-4 space-y-3">
@@ -186,6 +199,7 @@ export default function ScheduleTab({ officers, schedules, weekMonday, onWeekCha
                         return (
                           <div
                             key={s.id}
+                            onContextMenu={(e) => openMenu(e, buildShiftMenu(s))}
                             className={`panel-inset px-1.5 py-1 mb-0.5 border ${
                               night
                                 ? 'bg-purple-900/40 border-purple-700/30'

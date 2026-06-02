@@ -20,12 +20,15 @@ import {
   Globe,
   Clock,
   Users,
+  Eye,
 } from 'lucide-react';
 import type { User, UserRole } from '../../types';
 import { toDisplayLabel } from '../../utils/formatters';
 import { apiFetch } from '../../hooks/useApi';
 import { useToast } from '../../components/ToastProvider';
 import { safeDateTimeStr } from '../../utils/dateUtils';
+import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
+import { useMenuActions } from '../../utils/contextMenuActions';
 
 // ============================================================
 // Shared types
@@ -210,6 +213,37 @@ export default function AdminUsersTab({
     setSecurityActionLoading(null);
   };
 
+  // ── Right-click context menu ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+
+  const buildUserMenu = (user: User & { last_login_display?: string }): ContextMenuItem[] => {
+    const fullName = `${user.first_name || ''} ${user.last_name || ''}`.trim();
+    const rawStatus = ((user as any).raw_status || (user.is_active ? 'active' : 'inactive')) as UserStatus;
+    return [
+      m.action('Open user', () => { setSelectedUser(user); setUserDetailTab('profile'); }, { icon: <Eye size={12} /> }),
+      m.action('Edit user', () => openEditUser(user), { icon: <Edit size={12} /> }),
+      m.separator(),
+      m.copy('Copy name', fullName),
+      m.copy('Copy username', user.username),
+      m.copy('Copy email', user.email, <Globe size={12} />),
+      m.copyId(user.id),
+      m.separator(),
+      m.action('Force password change', () => handleForcePasswordChange(user.id), { icon: <KeyRound size={12} /> }),
+      m.action('Reset 2FA', () => handleReset2FA(user.id), { icon: <ShieldOff size={12} /> }),
+      m.action('Revoke all sessions', () => handleRevokeAllSessions(user.id), { icon: <LogOut size={12} /> }),
+      ...(onStatusChange
+        ? (rawStatus === 'active'
+            ? [m.action('Suspend user', () => onStatusChange(user.id, 'inactive'), { icon: <Ban size={12} /> })]
+            : rawStatus === 'inactive'
+              ? [m.action('Reactivate user', () => onStatusChange(user.id, 'active'), { icon: <UserCheck size={12} /> })]
+              : [])
+        : []),
+      m.separator(),
+      m.action('Terminate user', () => openDeleteUser(user), { icon: <Trash2 size={12} />, danger: true }),
+    ];
+  };
+
   return (
     <div className="flex h-full overflow-hidden">
       {/* Left: User List */}
@@ -254,6 +288,7 @@ export default function AdminUsersTab({
                 <div
                   key={user.id}
                   onClick={() => { setSelectedUser(selectedUser?.id === user.id ? null : user); setUserDetailTab('profile'); }}
+                  onContextMenu={(e) => openMenu(e, buildUserMenu(user))}
                   role="button"
                   tabIndex={0}
                   onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedUser(selectedUser?.id === user.id ? null : user); setUserDetailTab('profile'); } }}

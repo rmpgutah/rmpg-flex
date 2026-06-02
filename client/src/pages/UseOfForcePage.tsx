@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Shield, Plus, Search, Loader2, CheckCircle, XCircle } from 'lucide-react';
+import { Shield, Plus, Search, Loader2, CheckCircle, XCircle, Eye } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
 import SplitPanel from '../components/SplitPanel';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -8,6 +8,8 @@ import { apiFetch } from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { formatDate, formatDateTime } from '../utils/dateUtils';
+import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
+import { useMenuActions } from '../utils/contextMenuActions';
 
 import RichTextArea from '../components/RichTextArea';
 interface UofReport {
@@ -90,10 +92,11 @@ export default function UseOfForcePage() {
     finally { setSubmitting(false); }
   };
 
-  const handleReview = async (decision: 'approved' | 'returned') => {
-    if (!selected) return;
+  const handleReview = async (decision: 'approved' | 'returned', report?: UofReport) => {
+    const target = report || selected;
+    if (!target) return;
     try {
-      await apiFetch(`/use-of-force/${selected.id}/review`, { method: 'PUT', body: JSON.stringify({ decision }) });
+      await apiFetch(`/use-of-force/${target.id}/review`, { method: 'PUT', body: JSON.stringify({ decision }) });
       setReviewDialog(false);
       await fetchReports({ silent: true });
       fetchStats();
@@ -102,6 +105,26 @@ export default function UseOfForcePage() {
   };
 
   const isSuper = ['admin', 'manager', 'supervisor'].includes((user as any)?.role || '');
+
+  // ── Right-click context menu ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+  const buildReportMenu = (r: UofReport): ContextMenuItem[] => {
+    const officer = r.officer_name || '';
+    const subject = [r.subject_first_name, r.subject_last_name].filter(Boolean).join(' ');
+    return [
+      m.action('Open report', () => setSelected(r), { icon: <Eye size={12} /> }),
+      m.separator(),
+      ...(officer ? [m.copy('Copy officer', officer)] : []),
+      ...(subject ? [m.copy('Copy subject', subject)] : []),
+      m.copyId(r.id),
+      ...(isSuper && r.status === 'submitted' ? [
+        m.separator(),
+        m.action('Approve', () => handleReview('approved', r), { icon: <CheckCircle size={12} /> }),
+        m.action('Return', () => handleReview('returned', r), { icon: <XCircle size={12} />, danger: true }),
+      ] : []),
+    ];
+  };
 
   // ── List Panel ──────────────────────────────────────
   const listContent = (
@@ -150,6 +173,7 @@ export default function UseOfForcePage() {
             role="button"
             tabIndex={0}
             onClick={() => setSelected(r)}
+            onContextMenu={(e) => openMenu(e, buildReportMenu(r))}
             onKeyDown={(e) => {
               if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();

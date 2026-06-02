@@ -6,6 +6,8 @@ import {
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { asArray } from '../../utils/asArray';
+import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
+import { useMenuActions } from '../../utils/contextMenuActions';
 
 interface Props {
   LoadingSpinner: React.FC;
@@ -280,6 +282,18 @@ export default function AdminIPEDTab({ LoadingSpinner, error, setError }: Props)
       setError(err instanceof Error ? err.message : 'Failed to remove hash set');
     }
   };
+
+  // Right-click context menu for hash set rows (copy + remove).
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+
+  const buildHashSetMenu = (hs: HashSetInfo): ContextMenuItem[] => [
+    m.copy('Copy name', hs.name),
+    m.copy('Copy category', hs.category),
+    m.copy('Copy entry count', String(hs.count ?? 0), <Hash size={12} />),
+    m.separator(),
+    m.action('Remove hash set', () => handleRemoveHashSet(hs.name), { icon: <Trash2 size={12} />, danger: true }),
+  ];
 
   // Set document title
   useEffect(() => { document.title = 'Admin - IPED \u2014 RMPG Flex'; }, []);
@@ -599,7 +613,7 @@ export default function AdminIPEDTab({ LoadingSpinner, error, setError }: Props)
         {hashSets.length > 0 ? (
           <div className="space-y-0.5 max-h-40 overflow-y-auto">
             {hashSets.map(hs => (
-              <div key={hs.name} className="flex items-center justify-between px-2 py-1.5 bg-surface-sunken rounded-sm">
+              <div key={hs.name} onContextMenu={(e) => openMenu(e, buildHashSetMenu(hs))} className="flex items-center justify-between px-2 py-1.5 bg-surface-sunken rounded-sm">
                 <div className="flex-1 min-w-0">
                   <div className="text-[10px] font-medium text-rmpg-200">{hs.name}</div>
                   <div className="text-[9px] text-rmpg-500">{hs.category} • {(hs.count || 0).toLocaleString()} entries</div>

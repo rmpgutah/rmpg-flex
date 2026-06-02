@@ -3,10 +3,12 @@ import RichTextArea from '../../components/RichTextArea';
 import { formatPhoneInput } from '../../utils/formatters';
 import {
   Search, MapPin, Phone, Mail, Globe, Trash2, Pencil, X, Users, Briefcase,
-  ArrowUpDown, Filter, Shield, FileText,
+  ArrowUpDown, Filter, Shield, FileText, Eye, Navigation,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { useAuth } from '../../context/AuthContext';
+import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
+import { useMenuActions } from '../../utils/contextMenuActions';
 import FileAttachments from '../../components/FileAttachments';
 import LinkedRecordsSection from '../../components/LinkedRecordsSection';
 import CollapsibleSection from '../../components/CollapsibleSection';
@@ -196,6 +198,28 @@ export function BusinessTabList({ state }: { state: BusinessTabState }) {
   const { filteredBusinesses, selectedBusiness, setSelectedBusiness, searchQuery, setSearchQuery, showArchived, openEdit, setDeleteTarget, handleArchive, handleUnarchive, showFormModal, editingBusiness, formSubmitting, handleSubmit, setShowFormModal } = state;
   const isAdmin = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'supervisor';
 
+  // ── Right-click context menu ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+  const buildBusinessMenu = (b: Business): ContextMenuItem[] => {
+    const addr = [b.address, b.city, b.state, b.zip].filter(Boolean).join(', ');
+    return [
+      m.action('Open record', () => setSelectedBusiness(selectedBusiness?.id === b.id ? null : b), { icon: <Eye size={12} /> }),
+      ...(isAdmin ? [m.action('Edit business', () => openEdit(b), { icon: <Pencil size={12} /> })] : []),
+      m.separator(),
+      m.copy('Copy name', b.name),
+      m.copyId(b.id),
+      ...(b.phone ? [m.copy('Copy phone', b.phone, <Phone size={12} />)] : []),
+      ...(addr ? [m.openExternal('Navigate to address', `https://maps.google.com/?q=${encodeURIComponent(addr)}`, <Navigation size={12} />)] : []),
+      ...(isAdmin
+        ? [
+            m.separator(),
+            m.action('Delete', () => setDeleteTarget({ type: 'business', id: b.id, label: b.name }), { icon: <Trash2 size={12} />, danger: true }),
+          ]
+        : []),
+    ];
+  };
+
   const [sortBy, setSortBy] = useState<'name' | 'type' | 'newest'>('name');
   const [filterType, setFilterType] = useState<string | null>(null);
 
@@ -261,6 +285,7 @@ export function BusinessTabList({ state }: { state: BusinessTabState }) {
           <div key={b.id} role="listitem" tabIndex={0}
             onClick={() => setSelectedBusiness(selectedBusiness?.id === b.id ? null : b)}
             onKeyDown={e => { if (e.key === 'Enter') setSelectedBusiness(selectedBusiness?.id === b.id ? null : b); }}
+            onContextMenu={(e) => openMenu(e, buildBusinessMenu(b))}
             className={`px-4 py-3 border-b border-rmpg-700/50 cursor-pointer transition-all duration-150 ${selectedBusiness?.id === b.id ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : `hover:bg-rmpg-700/30 border-l-2 border-l-transparent ${idx % 2 === 1 ? 'bg-rmpg-800/20' : ''}`}`}>
             <div className="flex items-center gap-3">
               <div className="flex-shrink-0 w-9 h-9 rounded-sm flex items-center justify-center text-xs font-bold bg-purple-900/30 text-purple-400 border border-purple-700/50">

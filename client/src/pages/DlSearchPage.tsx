@@ -6,13 +6,15 @@
 // ============================================================
 
 import {useState, useCallback, useEffect, useRef} from 'react';
-import { Search, CreditCard, User, MapPin, ChevronRight, Shield, ShieldCheck, Calendar, Database, Wifi, Plus, AlertTriangle, Camera, Loader2, X } from 'lucide-react';
+import { Search, CreditCard, User, MapPin, ChevronRight, Shield, ShieldCheck, Calendar, Database, Wifi, Plus, AlertTriangle, Camera, Loader2, X, Eye } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { useIsMobile } from '../hooks/useIsMobile';
 import ManualDlEntryModal, { type ManualDlFormData } from '../components/ManualDlEntryModal';
 import { useToast } from '../components/ToastProvider';
 import { parseTimestamp } from '../utils/dateUtils';
+import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
+import { useMenuActions } from '../utils/contextMenuActions';
 
 const US_STATES = [
   'AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA','KS','KY',
@@ -60,6 +62,8 @@ interface DlSearchResponse {
 export default function DlSearchPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [dlNumber, setDlNumber] = useState('');
@@ -306,6 +310,18 @@ export default function DlSearchPage() {
     } catch { return d; }
   };
 
+  // ── Right-click context menu (result rows) ──
+  const buildDlMenu = (r: DlSubject): ContextMenuItem[] => {
+    const fullName = `${r.last_name || ''}, ${r.first_name || ''} ${r.middle_name || ''}`.trim().replace(/^,\s*/, '');
+    return [
+      m.action('View DL details', () => setSelected(r), { icon: <Eye size={12} /> }),
+      m.separator(),
+      m.copy('Copy name', fullName),
+      m.copy('Copy DL number', r.dl_number, <CreditCard size={12} />),
+      m.copyId(r.id),
+    ];
+  };
+
   // Desktop search bar
   const searchControls = (
     <div className="flex items-center gap-1.5 flex-wrap">
@@ -438,6 +454,7 @@ export default function DlSearchPage() {
             <button type="button"
               key={`${r.dl_number}-${r.dl_state}-${idx}`}
               onClick={() => setSelected(r)}
+              onContextMenu={(e) => openMenu(e, buildDlMenu(r))}
               className={`w-full text-left px-3 py-2 border-b border-rmpg-800/30 transition-all duration-150 ${
                 selected?.dl_number === r.dl_number && selected?.dl_state === r.dl_state ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : 'hover:bg-rmpg-800/20 border-l-2 border-l-transparent'
               }`}

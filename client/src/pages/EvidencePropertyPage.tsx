@@ -10,7 +10,7 @@ import RichTextArea from '../components/RichTextArea';
 import {
   Package, Search, Plus, MapPin, Clock, User, ArrowRightLeft, CheckCircle,
   AlertTriangle, X, Save, Loader2, Box, Warehouse, Tag, FileText, Video,
-  PackageOpen, PackagePlus, RefreshCw, FlaskConical, Trash2, Play, Shield, Camera,
+  PackageOpen, PackagePlus, RefreshCw, FlaskConical, Trash2, Play, Shield, Camera, Eye,
 } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
@@ -22,6 +22,8 @@ import { humanizeType, humanizeStatus } from '../utils/statusLabels';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useToast } from '../components/ToastProvider';
 import { useAuth } from '../context/AuthContext';
+import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
+import { useMenuActions } from '../utils/contextMenuActions';
 import type { BodyCamVideo } from '../types';
 import { parseTimestamp } from '../utils/dateUtils';
 
@@ -70,6 +72,8 @@ export default function EvidencePropertyPage() {
   const { addToast } = useToast();
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin'; // Admin God Mode — unrestricted access
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
 
   // Data
   const [items, setItems] = useState<any[]>([]);
@@ -111,6 +115,22 @@ export default function EvidencePropertyPage() {
 
   // Detail tab
   const [detailTab, setDetailTab] = useState<DetailTab>('info');
+
+  // ── Right-click context menu ──
+  // All mutating handlers (checkout/checkin/disposition/chain/release) operate
+  // on the currently-`selected` item, not on the row clicked. To avoid firing a
+  // mutation against stale state, the menu only navigates: it selects the row
+  // and opens the relevant detail tab, then copies identifiers. The user runs
+  // the actual action from the (now-loaded) panel.
+  const buildEvidenceMenu = (item: any): ContextMenuItem[] => [
+    m.action('Open item', () => { setSelected(item); setDetailTab('info'); }, { icon: <Eye size={12} /> }),
+    m.action('Chain of custody', () => { setSelected(item); setDetailTab('chain'); }, { icon: <ArrowRightLeft size={12} /> }),
+    m.action('Check out / in', () => { setSelected(item); setDetailTab('checkout'); }, { icon: <PackagePlus size={12} /> }),
+    m.separator(),
+    m.copy('Copy evidence #', item.evidence_number ?? `EV-${item.id}`),
+    m.copy('Copy description', item.description),
+    m.copyId(item.id),
+  ];
 
   // BWC footage
   const [bwcVideos, setBwcVideos] = useState<BodyCamVideo[]>([]);
@@ -559,6 +579,7 @@ export default function EvidencePropertyPage() {
                 key={item.id}
                 role="listitem"
                 onClick={() => { setSelected(item); setDetailTab('info'); }}
+                onContextMenu={(e) => openMenu(e, buildEvidenceMenu(item))}
                 className={`w-full text-left px-3 py-2.5 border-b border-rmpg-800/60 transition-all duration-150 ${
                   selected?.id === item.id
                     ? 'bg-brand-900/20 border-l-2 border-l-brand-500'

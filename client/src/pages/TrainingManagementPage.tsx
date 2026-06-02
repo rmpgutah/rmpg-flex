@@ -4,7 +4,8 @@ import PanelTitleBar from '../components/PanelTitleBar';
 import DataTable from '../components/DataTable';
 import StatsCard from '../components/StatsCard';
 import { useToast } from '../components/ToastProvider';
-import { GraduationCap, BookOpen, Award, Clock, Plus, Pencil, Trash2 } from 'lucide-react';
+import { useMenuActions } from '../utils/contextMenuActions';
+import { GraduationCap, BookOpen, Award, Clock, Plus, Pencil, Trash2, Eye } from 'lucide-react';
 
 export default function TrainingManagementPage() {
   const [courses, setCourses] = useState<Record<string, any>[]>([]);
@@ -15,6 +16,7 @@ export default function TrainingManagementPage() {
   const [submitting, setSubmitting] = useState(false);
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const { addToast } = useToast();
+  const m = useMenuActions();
 
   const fetchData = useCallback(async () => {
     try {
@@ -71,7 +73,20 @@ export default function TrainingManagementPage() {
         <StatsCard icon={Award} label="Active Certs" value={stats.active_certs} />
         <StatsCard icon={Clock} label="Expiring" value={stats.expiring_certs} />
       </div>
-      <DataTable columns={columns} data={courses} emptyMessage="No training courses found" onRowClick={(row) => openEdit(row)} />
+      <DataTable
+        columns={columns}
+        data={courses}
+        emptyMessage="No training courses found"
+        onRowClick={(row) => openEdit(row)}
+        rowContextMenu={(row) => [
+          m.action('Open / edit', () => openEdit(row), { icon: <Eye size={12} /> }),
+          m.separator(),
+          m.copy('Copy course', row.course_name),
+          m.copyId(row.id),
+          m.separator(),
+          m.action('Delete', () => setDeleteId(row.id), { danger: true, icon: <Trash2 size={12} /> }),
+        ]}
+      />
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={() => setEditingRecord(null)}>
           <div className="bg-surface-raised border border-[#333] p-6 max-w-lg w-full" style={{ borderRadius: 2 }} onClick={e => e.stopPropagation()}>

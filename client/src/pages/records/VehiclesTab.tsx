@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import {
   Search, Car, Shield, MapPin, Loader2, Trash2, Pencil, FileText, ExternalLink,
-  X, Phone, AlertTriangle, Hash, Calendar, Archive, RotateCcw, ArrowUpDown, Filter,
+  X, Phone, AlertTriangle, Hash, Calendar, Archive, RotateCcw, ArrowUpDown, Filter, Eye,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { useAuth } from '../../context/AuthContext';
+import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
+import { useMenuActions } from '../../utils/contextMenuActions';
 import { openRecordWindow } from '../../utils/windowManager';
 import { safeDateStr, parseTimestamp } from '../../utils/dateUtils';
 import VehicleFormModal from '../../components/VehicleFormModal';
@@ -485,6 +487,30 @@ export function VehiclesTabList({ state }: { state: VehiclesTabState }) {
     vehicleModalOpen, editingVehicle, vehicleSubmitting, vehicleSubmitError, handleVehicleSubmit, closeModal,
   } = state;
 
+  // ── Right-click context menu ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+  const canModify = !showArchived || user?.role === 'admin';
+
+  const buildVehicleMenu = (v: Vehicle): ContextMenuItem[] => {
+    const label = `${v.license_plate || 'NO PLATE'}${v.make || v.model ? ` ${v.make} ${v.model}`.trimEnd() : ''}`.trim();
+    return [
+      m.action('Open record', () => setSelectedVehicle(v), { icon: <Eye size={12} /> }),
+      ...(canModify ? [m.action('Edit vehicle', () => openEditVehicle(v), { icon: <Pencil size={12} /> })] : []),
+      m.action('Open in new window', () => openRecordWindow('vehicle', v.id), { icon: <ExternalLink size={12} /> }),
+      m.separator(),
+      m.copy('Copy plate', v.license_plate),
+      ...(v.vin ? [m.copy('Copy VIN', v.vin)] : []),
+      m.copyId(v.id),
+      ...(v.license_plate ? [m.go('Run plate (NCIC)', `/ncic?type=vehicle&q=${encodeURIComponent(v.license_plate)}`, <Search size={12} />)] : []),
+      m.separator(),
+      ...(showArchived
+        ? (canModify ? [m.action('Unarchive', () => handleUnarchive('vehicles', v.id), { icon: <RotateCcw size={12} /> })] : [])
+        : [m.action('Archive', () => handleArchive('vehicles', v.id), { icon: <Archive size={12} /> })]),
+      ...(canModify ? [m.action('Delete', () => setDeleteTarget({ type: 'vehicle', id: v.id, label }), { icon: <Trash2 size={12} />, danger: true })] : []),
+    ];
+  };
+
   // ── Sort + filter ──
   const [sortBy, setSortBy] = useState<'plate' | 'make' | 'newest'>('plate');
   const [filterFlag, setFilterFlag] = useState<string | null>(null);
@@ -592,6 +618,7 @@ export function VehiclesTabList({ state }: { state: VehiclesTabState }) {
             tabIndex={0}
             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedVehicle(selectedVehicle?.id === v.id ? null : v); } }}
             onClick={() => setSelectedVehicle(selectedVehicle?.id === v.id ? null : v)}
+            onContextMenu={(e) => openMenu(e, buildVehicleMenu(v))}
             className={`
               px-4 py-3 border-b border-rmpg-700/50 cursor-pointer transition-all duration-150
               ${isActiveStolen(v)

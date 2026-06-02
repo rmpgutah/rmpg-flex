@@ -7,6 +7,8 @@ import {
 import { apiFetch } from '../../hooks/useApi';
 import { asArray } from '../../utils/asArray';
 import { safeDateStr, safeDateTimeStr } from '../../utils/dateUtils';
+import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
+import { useMenuActions } from '../../utils/contextMenuActions';
 import type {
   SMIntegrationStatus, SMConnectionTestResult, SMSyncResult,
   SMSyncLogEntry, SMCachedJob, SMPaginatedResponse, SMCachedAttempt,
@@ -213,6 +215,20 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
       setPollerPolling(false);
     }
   };
+
+  // \u2500\u2500 Right-click context menu (jobs table) \u2500\u2500
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+
+  const buildJobMenu = (job: SMCachedJob): ContextMenuItem[] => [
+    m.action('Open job details', () => handleViewJob(job.id), { icon: <Eye size={12} /> }),
+    m.separator(),
+    m.copy('Copy job #', job.sm_job_number, <FileText size={12} />),
+    m.copyId(job.id),
+    ...(job.recipient_name ? [m.copy('Copy recipient', job.recipient_name)] : []),
+    ...(job.client_company_name ? [m.copy('Copy client', job.client_company_name)] : []),
+    ...(job.court_case_number ? [m.copy('Copy court case #', job.court_case_number)] : []),
+  ];
 
   // Set document title (must be before early return to preserve hook order)
   useEffect(() => { document.title = 'Admin - Serve Manager \u2014 RMPG Flex'; }, []);
@@ -603,6 +619,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
                     <tr
                       key={job.id}
                       onClick={() => handleViewJob(job.id)}
+                      onContextMenu={(e) => openMenu(e, buildJobMenu(job))}
                       className="border-b border-rmpg-800 hover:bg-[#181818]/60 cursor-pointer transition-all duration-100"
                     >
                       <td className="py-1 pr-2 font-mono text-brand-400">{job.sm_job_number}</td>

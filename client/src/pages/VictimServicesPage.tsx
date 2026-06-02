@@ -4,7 +4,8 @@ import PanelTitleBar from '../components/PanelTitleBar';
 import DataTable from '../components/DataTable';
 import StatsCard from '../components/StatsCard';
 import { useToast } from '../components/ToastProvider';
-import { Heart, Shield, Phone, FileText, Plus, Pencil, Trash2, Users } from 'lucide-react';
+import { useMenuActions } from '../utils/contextMenuActions';
+import { Heart, Shield, Phone, FileText, Plus, Pencil, Trash2, Users, Eye } from 'lucide-react';
 
 interface Victim { id: number; victim_name: string; case_number: string; crime_type: string; status: string; phone: string; email: string; safety_plan: number; protective_order: number; notes: string; }
 interface Stats { totalVictims: number; activeVictims: number; safetyPlans: number; }
@@ -22,6 +23,7 @@ export default function VictimServicesPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const { addToast } = useToast();
+  const m = useMenuActions();
 
   const fetchData = useCallback(async () => {
     try {
@@ -95,7 +97,21 @@ export default function VictimServicesPage() {
         <StatsCard label="STATUS" value="OPERATIONAL" icon={FileText} />
       </div>
 
-      <DataTable columns={columns} data={victims} emptyMessage="No victim records" onRowClick={openEdit} />
+      <DataTable
+        columns={columns}
+        data={victims}
+        emptyMessage="No victim records"
+        onRowClick={openEdit}
+        rowContextMenu={(row) => [
+          m.action('Open / edit', () => openEdit(row), { icon: <Eye size={12} /> }),
+          m.separator(),
+          m.copy('Copy name', row.victim_name),
+          m.copy('Copy phone', row.phone, <Phone size={12} />),
+          m.copyId(row.id),
+          m.separator(),
+          m.action('Delete', () => setDeleteId(row.id), { danger: true, icon: <Trash2 size={12} /> }),
+        ]}
+      />
 
       {formOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={() => setFormOpen(false)}>

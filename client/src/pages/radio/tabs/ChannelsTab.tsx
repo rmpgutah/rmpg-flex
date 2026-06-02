@@ -12,6 +12,8 @@ import { apiFetch } from '../../../hooks/useApi';
 import { useAuth } from '../../../context/AuthContext';
 import { ls } from '../helpers';
 import { SectionHeader, MiniToggle, ToolbarBtn } from '../components';
+import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
+import { useMenuActions } from '../../../utils/contextMenuActions';
 import type { RadioChannel } from '../types';
 
 const MANAGE_ROLES = new Set(['admin', 'manager', 'supervisor']);
@@ -24,6 +26,8 @@ interface Props {
 export default function ChannelsTab({ selectedChannelId, onSelectChannel }: Props) {
   const { user } = useAuth();
   const canManage = MANAGE_ROLES.has(user?.role || '');
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
   const [channels, setChannels] = useState<RadioChannel[]>([]);
   const [favorites, setFavorites] = useState<Set<string>>(() => ls.getSet('radio_favorites'));
   const [muted, setMuted] = useState<Set<string>>(() => ls.getSet('radio_muted_channels'));
@@ -72,6 +76,23 @@ export default function ChannelsTab({ selectedChannelId, onSelectChannel }: Prop
       await apiFetch(`/radio/channels/${id}`, { method: 'DELETE' });
       load();
     } catch (err) { console.error('[radio] archive', err); }
+  };
+
+  const buildChannelMenu = (c: RadioChannel): ContextMenuItem[] => {
+    const isFav = favorites.has(String(c.id));
+    const isMuted = muted.has(String(c.id));
+    const isArchived = c.archived_at != null;
+    return [
+      m.action('Open channel', () => onSelectChannel(c.id), { icon: <Radio size={12} /> }),
+      m.action(isFav ? 'Unfavorite' : 'Favorite', () => toggleFav(c.id), { icon: <Star size={12} /> }),
+      m.action(isMuted ? 'Unmute' : 'Mute', () => toggleMute(c.id), { icon: <VolumeX size={12} /> }),
+      m.separator(),
+      m.copy('Copy name', c.name),
+      m.copyId(c.id),
+      ...(!isArchived && canManage
+        ? [m.separator(), m.action('Archive', () => archive(c.id), { icon: <Archive size={12} />, danger: true })]
+        : []),
+    ];
   };
 
   return (
@@ -126,6 +147,7 @@ export default function ChannelsTab({ selectedChannelId, onSelectChannel }: Prop
             const isArchived = c.archived_at != null;
             return (
               <li key={c.id} className="flex items-center gap-2 px-3 py-1.5 text-[10px] font-mono hover:bg-black/30"
+                onContextMenu={(e) => openMenu(e, buildChannelMenu(c))}
                 style={{ background: isSelected ? 'rgba(212,160,23,0.10)' : 'transparent', opacity: isArchived ? 0.5 : 1 }}>
                 <MiniToggle onClick={() => toggleFav(c.id)} active={isFav} title="Favorite">
                   <Star className="w-3 h-3" />

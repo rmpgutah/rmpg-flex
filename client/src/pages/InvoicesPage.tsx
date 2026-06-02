@@ -30,6 +30,8 @@ import {
 import { apiFetch } from '../hooks/useApi';
 import IconButton from '../components/IconButton';
 import { useAuth } from '../context/AuthContext';
+import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
+import { useMenuActions } from '../utils/contextMenuActions';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { localToday, formatDate } from '../utils/dateUtils';
 
@@ -186,6 +188,10 @@ export default function InvoicesPage() {
   const { user } = useAuth();
   const isMobile = useIsMobile();
   const canEdit = user && ['admin', 'manager', 'contract_manager'].includes(user.role);
+
+  // ── Right-click context menu ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
 
   // List state
   const [invoices, setInvoices] = useState<Invoice[]>([]);
@@ -448,6 +454,31 @@ export default function InvoicesPage() {
   const backToList = () => {
     setMode('list');
     setSelectedInvoice(null);
+  };
+
+  // ── Row context menu ──────────────────────────────────────
+  const buildInvoiceMenu = (inv: Invoice): ContextMenuItem[] => {
+    const statusItems: ContextMenuItem[] = [];
+    if (canEdit) {
+      const s = inv.status;
+      if (s === 'sent' || s === 'overdue' || s === 'partial') {
+        statusItems.push(m.action('Mark paid', () => handleStatusChange(inv.id, 'paid'), { icon: <Check size={12} /> }));
+      }
+      if (s === 'draft') {
+        statusItems.push(m.action('Mark sent', () => handleStatusChange(inv.id, 'sent'), { icon: <Send size={12} /> }));
+        statusItems.push(m.action('Auto-generate items', () => handleGenerate(inv.id), { icon: <Zap size={12} /> }));
+      }
+      if (s !== 'void' && s !== 'cancelled' && s !== 'paid') {
+        statusItems.push(m.action('Void', () => handleStatusChange(inv.id, 'void'), { icon: <Ban size={12} />, danger: true }));
+      }
+    }
+    return [
+      m.action('Open', () => selectInvoice(inv), { icon: <Eye size={12} /> }),
+      ...(statusItems.length ? [m.separator(), ...statusItems] : []),
+      m.separator(),
+      m.copy('Copy invoice #', inv.invoice_number),
+      m.copyId(inv.id),
+    ];
   };
 
   // ── Debounced search ─────────────────────────────────────
@@ -975,6 +1006,7 @@ export default function InvoicesPage() {
     return (
       <tr
         onClick={() => selectInvoice(inv)}
+        onContextMenu={(e) => openMenu(e, buildInvoiceMenu(inv))}
         className={`cursor-pointer border-b border-[#2b2b2b]/40 transition-colors text-xs ${
           isSelected
             ? 'bg-brand-900/30 border-l-2 border-l-brand-500'
@@ -1054,6 +1086,7 @@ export default function InvoicesPage() {
                     <div
                       key={inv.id}
                       onClick={() => selectInvoice(inv)}
+                      onContextMenu={(e) => openMenu(e, buildInvoiceMenu(inv))}
                       className="p-2 hover:bg-[#181818]/60 cursor-pointer transition-colors"
                     >
                       <div className="flex items-center justify-between">

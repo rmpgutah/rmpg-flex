@@ -8,6 +8,8 @@ import {
 import { apiFetch } from '../../hooks/useApi';
 import { formatFileSize, formatDuration, toDisplayLabel } from '../../utils/formatters';
 import { safeDateStr, safeTimeStr } from '../../utils/dateUtils';
+import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
+import { useMenuActions } from '../../utils/contextMenuActions';
 
 // ============================================================
 // System Health & Monitoring Tab
@@ -122,6 +124,22 @@ export default function AdminHealthTab({ LoadingSpinner }: Props) {
     activeCalls: number; unitsOnDuty: number; pendingIncidents: number;
     activeBolos: number; activeSessions: number; todayActivity: number; todayCalls: number;
   } | null>(null);
+
+  // ── Right-click context menu (read-only health dashboard → copy-only) ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+
+  const buildUserActivityMenu = (u: any): ContextMenuItem[] => [
+    m.copy('Copy name', u.full_name),
+    ...(u.role ? [m.copy('Copy role', u.role)] : []),
+    m.copyId(u.id, 'Copy user ID'),
+  ];
+
+  const buildErrorMenu = (err: { id: string; action: string; details: string }): ContextMenuItem[] => [
+    m.copy('Copy action', err.action),
+    m.copy('Copy details', err.details),
+    m.copyId(err.id, 'Copy log ID'),
+  ];
 
   const fetchHealth = useCallback(async () => {
     setLoading(true);
@@ -310,7 +328,7 @@ export default function AdminHealthTab({ LoadingSpinner }: Props) {
               </thead>
               <tbody>
                 {usersActivity.data.slice(0, 10).map((u: any) => (
-                  <tr key={u.id} className="border-b border-rmpg-700/20 hover:bg-surface-raised">
+                  <tr key={u.id} className="border-b border-rmpg-700/20 hover:bg-surface-raised" onContextMenu={(e) => openMenu(e, buildUserActivityMenu(u))}>
                     <td className="py-1 px-2 text-white font-bold">{u.full_name}</td>
                     <td className="py-1 px-2 text-rmpg-400">{(u.role || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</td>
                     <td className="py-1 px-2 text-right font-mono text-brand-400">{u.recent_action_count}</td>
@@ -638,7 +656,7 @@ export default function AdminHealthTab({ LoadingSpinner }: Props) {
         ) : (
           <div className="space-y-1 max-h-40 overflow-y-auto">
             {h.recentErrors.map((err) => (
-              <div key={err.id} className="flex items-start gap-2 bg-red-950/20 border border-red-900/30 px-2 py-1 rounded-sm">
+              <div key={err.id} className="flex items-start gap-2 bg-red-950/20 border border-red-900/30 px-2 py-1 rounded-sm" onContextMenu={(e) => openMenu(e, buildErrorMenu(err))}>
                 <AlertTriangle className="w-3 h-3 text-red-400 mt-0.5 shrink-0" />
                 <div className="flex-1 min-w-0">
                   <span className="text-[10px] font-medium text-red-300">{err.action}</span>
