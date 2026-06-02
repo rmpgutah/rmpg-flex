@@ -72,7 +72,7 @@ export default function MileagePromptModal({
             <label className="text-[10px] text-brand-gold-500 block mb-1">
               {mode === 'starting' ? 'Odometer Reading (Start)' : 'Odometer Reading (End)'}
             </label>
-            <input
+            <input id="ff-mileagepromptmodal-0"
               ref={inputRef}
               type="number"
               min="0"
@@ -92,7 +92,7 @@ export default function MileagePromptModal({
                 {vehicleId}
               </div>
             ) : (
-              <input
+              <input id="ff-mileagepromptmodal-1"
                 type="text"
                 className="input-dark text-xs w-full"
                 placeholder="Vehicle ID or unit number"

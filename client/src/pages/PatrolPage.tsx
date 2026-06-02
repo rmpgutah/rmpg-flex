@@ -979,7 +979,7 @@ const PatrolPage: React.FC = () => {
                     <label className="block text-sm font-medium text-rmpg-200 mb-1">
                       Checkpoint:
                     </label>
-                    <select
+                    <select id="ff-patrolpage-0"
                       value={scanFilters.checkpointId}
                       onChange={(e) =>
                         setScanFilters(prev => ({ ...prev, checkpointId: e.target.value }))
@@ -998,7 +998,7 @@ const PatrolPage: React.FC = () => {
                     <label className="block text-sm font-medium text-rmpg-200 mb-1">
                       Start Date:
                     </label>
-                    <input
+                    <input id="ff-patrolpage-1"
                       type="datetime-local"
                       value={scanFilters.startDate}
                       onChange={(e) =>
@@ -1011,7 +1011,7 @@ const PatrolPage: React.FC = () => {
                     <label className="block text-sm font-medium text-rmpg-200 mb-1">
                       End Date:
                     </label>
-                    <input
+                    <input id="ff-patrolpage-2"
                       type="datetime-local"
                       value={scanFilters.endDate}
                       onChange={(e) =>
@@ -1293,7 +1293,7 @@ const PatrolPage: React.FC = () => {
                 <label className="block text-sm font-medium text-rmpg-200 mb-1">
                   Property: *
                 </label>
-                <select
+                <select id="ff-patrolpage-3"
                   value={formData.property_id}
                   onChange={(e) => setFormData(prev => ({ ...prev, property_id: e.target.value }))}
                   className="select-dark"
@@ -1312,7 +1312,7 @@ const PatrolPage: React.FC = () => {
                 <label className="block text-sm font-medium text-rmpg-200 mb-1">
                   Checkpoint Name: *
                 </label>
-                <input
+                <input id="ff-patrolpage-4"
                   type="text"
                   value={formData.name}
                   onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
@@ -1339,7 +1339,7 @@ const PatrolPage: React.FC = () => {
                 <label className="block text-sm font-medium text-rmpg-200 mb-1">
                   Scan Interval (minutes): *
                 </label>
-                <input
+                <input id="ff-patrolpage-5"
                   type="number"
                   value={formData.scan_required_interval_minutes}
                   onChange={(e) =>
@@ -1359,7 +1359,7 @@ const PatrolPage: React.FC = () => {
                   <label className="block text-sm font-medium text-rmpg-200 mb-1">
                     Latitude:
                   </label>
-                  <input
+                  <input id="ff-patrolpage-6"
                     type="number"
                     step="any"
                     value={formData.latitude}
@@ -1372,7 +1372,7 @@ const PatrolPage: React.FC = () => {
                   <label className="block text-sm font-medium text-rmpg-200 mb-1">
                     Longitude:
                   </label>
-                  <input
+                  <input id="ff-patrolpage-7"
                     type="number"
                     step="any"
                     value={formData.longitude}

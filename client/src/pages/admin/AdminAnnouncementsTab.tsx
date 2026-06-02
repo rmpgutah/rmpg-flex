@@ -204,7 +204,7 @@ export default function AdminAnnouncementsTab({ LoadingSpinner, error, setError 
         <div className="flex items-center gap-2">
           <div className="relative">
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" aria-hidden="true" />
-            <input
+            <input id="ff-adminannouncementstab-0"
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -291,7 +291,7 @@ export default function AdminAnnouncementsTab({ LoadingSpinner, error, setError 
             <div className="p-4 space-y-3">
               <div>
                 <label className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Title</label>
-                <input
+                <input id="ff-adminannouncementstab-1"
                   type="text"
                   value={form.title}
                   onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
@@ -311,7 +311,7 @@ export default function AdminAnnouncementsTab({ LoadingSpinner, error, setError 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Type</label>
-                  <select
+                  <select id="ff-adminannouncementstab-2"
                     value={form.type}
                     onChange={(e) => setForm((f) => ({ ...f, type: e.target.value as any }))}
                     className="select-dark w-full text-xs"
@@ -325,7 +325,7 @@ export default function AdminAnnouncementsTab({ LoadingSpinner, error, setError 
                 </div>
                 <div>
                   <label className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Priority</label>
-                  <select
+                  <select id="ff-adminannouncementstab-3"
                     value={form.priority}
                     onChange={(e) => setForm((f) => ({ ...f, priority: e.target.value as any }))}
                     className="select-dark w-full text-xs"
@@ -339,7 +339,7 @@ export default function AdminAnnouncementsTab({ LoadingSpinner, error, setError 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Starts At</label>
-                  <input
+                  <input id="ff-adminannouncementstab-4"
                     type="datetime-local"
                     value={form.starts_at}
                     onChange={(e) => setForm((f) => ({ ...f, starts_at: e.target.value }))}
@@ -348,7 +348,7 @@ export default function AdminAnnouncementsTab({ LoadingSpinner, error, setError 
                 </div>
                 <div>
                   <label className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Expires At</label>
-                  <input
+                  <input id="ff-adminannouncementstab-5"
                     type="datetime-local"
                     value={form.expires_at}
                     onChange={(e) => setForm((f) => ({ ...f, expires_at: e.target.value }))}

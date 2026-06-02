@@ -720,7 +720,7 @@ export default function AIDevChatPanel() {
         {showFileInput && (
           <div className="px-4 py-2 border-t border-[#303030] bg-[#141414] flex items-center gap-2">
             <FileCode className="w-4 h-4 text-gray-500" />
-            <input
+            <input id="ff-aidevchatpanel-0"
               type="text"
               value={fileContext}
               onChange={e => setFileContext(e.target.value)}

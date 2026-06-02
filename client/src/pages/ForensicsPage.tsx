@@ -134,7 +134,7 @@ function SeedSelector({ onSelect, loading }: {
         ) : (
           <Search className="w-3.5 h-3.5 text-rmpg-500 shrink-0" />
         )}
-        <input
+        <input id="ff-forensicspage-0"
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}

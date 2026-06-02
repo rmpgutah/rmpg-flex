@@ -531,7 +531,7 @@ export default function InvoicesPage() {
         {/* Client */}
         <div>
           <label className="block text-[10px] uppercase tracking-wider text-rmpg-400 mb-1">Client *</label>
-          <select
+          <select id="ff-invoicespage-0"
             value={createForm.client_id}
             onChange={e => setCreateForm(f => ({ ...f, client_id: e.target.value }))}
             className="w-full bg-[#0c0c0c] border border-[#2b2b2b] rounded-sm px-2 py-1.5 text-xs text-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500/30 focus:outline-none"
@@ -545,7 +545,7 @@ export default function InvoicesPage() {
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="block text-[10px] uppercase tracking-wider text-rmpg-400 mb-1">Period Start *</label>
-            <input
+            <input id="ff-invoicespage-1"
               type="date"
               value={createForm.period_start}
               onChange={e => setCreateForm(f => ({ ...f, period_start: e.target.value }))}
@@ -554,7 +554,7 @@ export default function InvoicesPage() {
           </div>
           <div>
             <label className="block text-[10px] uppercase tracking-wider text-rmpg-400 mb-1">Period End *</label>
-            <input
+            <input id="ff-invoicespage-2"
               type="date"
               value={createForm.period_end}
               onChange={e => setCreateForm(f => ({ ...f, period_end: e.target.value }))}
@@ -566,7 +566,7 @@ export default function InvoicesPage() {
         {/* Issue date */}
         <div>
           <label className="block text-[10px] uppercase tracking-wider text-rmpg-400 mb-1">Issue Date</label>
-          <input
+          <input id="ff-invoicespage-3"
             type="date"
             value={createForm.issue_date}
             onChange={e => setCreateForm(f => ({ ...f, issue_date: e.target.value }))}
@@ -724,7 +724,7 @@ export default function InvoicesPage() {
           {/* Add line item form */}
           {showLineItemForm && (
             <div className="mb-3 p-2 bg-[#0c0c0c] border border-[#2b2b2b] rounded-sm space-y-2">
-              <select
+              <select id="ff-invoicespage-4"
                 value={lineItemForm.line_type}
                 onChange={e => setLineItemForm(f => ({ ...f, line_type: e.target.value }))}
                 className="w-full bg-[#141414] border border-[#2b2b2b] rounded-sm px-2 py-1 text-xs text-white"
@@ -736,7 +736,7 @@ export default function InvoicesPage() {
                 <option value="late_fee">Late Fee</option>
                 <option value="discount">Discount</option>
               </select>
-              <input
+              <input id="ff-invoicespage-5"
                 type="text"
                 placeholder="Description"
                 value={lineItemForm.description}
@@ -744,14 +744,14 @@ export default function InvoicesPage() {
                 className="w-full bg-[#141414] border border-[#2b2b2b] rounded-sm px-2 py-1 text-xs text-white"
               />
               <div className="grid grid-cols-2 gap-2">
-                <input
+                <input id="ff-invoicespage-6"
                   type="number"
                   placeholder="Qty"
                   value={lineItemForm.quantity}
                   onChange={e => setLineItemForm(f => ({ ...f, quantity: e.target.value }))}
                   className="bg-[#141414] border border-[#2b2b2b] rounded-sm px-2 py-1 text-xs text-white"
                 />
-                <input
+                <input id="ff-invoicespage-7"
                   type="number"
                   placeholder="Unit Price"
                   value={lineItemForm.unit_price}
@@ -838,7 +838,7 @@ export default function InvoicesPage() {
           {showPaymentForm && (
             <div className="mb-3 p-2 bg-[#0c0c0c] border border-[#2b2b2b] rounded-sm space-y-2">
               <div className="grid grid-cols-2 gap-2">
-                <input
+                <input id="ff-invoicespage-8"
                   type="number"
                   placeholder="Amount"
                   step="0.01"
@@ -846,7 +846,7 @@ export default function InvoicesPage() {
                   onChange={e => setPaymentForm(f => ({ ...f, amount: e.target.value }))}
                   className="bg-[#141414] border border-[#2b2b2b] rounded-sm px-2 py-1 text-xs text-white"
                 />
-                <input
+                <input id="ff-invoicespage-9"
                   type="date"
                   value={paymentForm.payment_date}
                   onChange={e => setPaymentForm(f => ({ ...f, payment_date: e.target.value }))}
@@ -854,7 +854,7 @@ export default function InvoicesPage() {
                 />
               </div>
               <div className={`grid ${paymentForm.payment_method === 'check' ? 'grid-cols-3' : 'grid-cols-2'} gap-2`}>
-                <select
+                <select id="ff-invoicespage-10"
                   value={paymentForm.payment_method}
                   onChange={e => setPaymentForm(f => ({ ...f, payment_method: e.target.value }))}
                   className="bg-[#141414] border border-[#2b2b2b] rounded-sm px-2 py-1 text-xs text-white"
@@ -862,7 +862,7 @@ export default function InvoicesPage() {
                   {PAYMENT_METHODS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
                 </select>
                 {paymentForm.payment_method === 'check' && (
-                  <input
+                  <input id="ff-invoicespage-11"
                     type="text"
                     placeholder="Check #"
                     value={paymentForm.reference_number}
@@ -870,7 +870,7 @@ export default function InvoicesPage() {
                     className="bg-[#141414] border border-[#2b2b2b] rounded-sm px-2 py-1 text-xs text-white"
                   />
                 )}
-                <input
+                <input id="ff-invoicespage-12"
                   type="text"
                   placeholder={paymentForm.payment_method === 'check' ? 'Notes' : 'Reference #'}
                   value={paymentForm.payment_method === 'check' ? paymentForm.notes : paymentForm.reference_number}
@@ -884,7 +884,7 @@ export default function InvoicesPage() {
                   className="bg-[#141414] border border-[#2b2b2b] rounded-sm px-2 py-1 text-xs text-white"
                 />
               </div>
-              <input
+              <input id="ff-invoicespage-13"
                 type="text"
                 placeholder="Notes (optional)"
                 value={paymentForm.notes}
@@ -1012,7 +1012,7 @@ export default function InvoicesPage() {
               <div className="flex items-center gap-2">
                 <div className="flex-1 relative">
                   <Search size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500" />
-                  <input
+                  <input id="ff-invoicespage-14"
                     type="text"
                     placeholder="Search invoices..." aria-label="Search invoices..."
                     value={searchQuery}
@@ -1030,7 +1030,7 @@ export default function InvoicesPage() {
                 )}
               </div>
               <div className="flex items-center gap-2">
-                <select
+                <select id="ff-invoicespage-15"
                   value={filterStatus}
                   onChange={e => { setFilterStatus(e.target.value as any); setPage(1); }}
                   className="bg-[#0c0c0c] border border-[#2b2b2b] rounded-sm px-2 py-1 text-xs text-white"
@@ -1112,7 +1112,7 @@ export default function InvoicesPage() {
         <Filter size={10} className="text-rmpg-500" />
         <div className="relative flex-1 max-w-xs">
           <Search size={10} className="absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500" />
-          <input
+          <input id="ff-invoicespage-16"
             type="text"
             placeholder="Search..." aria-label="Search..."
             value={searchQuery}
@@ -1120,14 +1120,14 @@ export default function InvoicesPage() {
             className="w-full bg-[#141414] border border-[#2b2b2b] rounded-sm pl-6 pr-2 py-1 text-[11px] text-white focus:border-brand-500 focus:ring-1 focus:ring-brand-500/30 focus:outline-none"
           />
         </div>
-        <select
+        <select id="ff-invoicespage-17"
           value={filterStatus}
           onChange={e => { setFilterStatus(e.target.value as any); setPage(1); }}
           className="bg-[#141414] border border-[#2b2b2b] rounded-sm px-2 py-1 text-[11px] text-white focus:outline-none focus:border-brand-500 transition-colors"
         >
           {STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
         </select>
-        <select
+        <select id="ff-invoicespage-18"
           value={filterClientId}
           onChange={e => { setFilterClientId(e.target.value); setPage(1); }}
           className="bg-[#141414] border border-[#2b2b2b] rounded-sm px-2 py-1 text-[11px] text-white focus:outline-none focus:border-brand-500 transition-colors max-w-[160px]"
@@ -1135,14 +1135,14 @@ export default function InvoicesPage() {
           <option value="">All Clients</option>
           {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
-        <input
+        <input id="ff-invoicespage-19"
           type="date"
           value={dateFrom}
           onChange={e => { setDateFrom(e.target.value); setPage(1); }}
           placeholder="From"
           className="bg-[#141414] border border-[#2b2b2b] rounded-sm px-2 py-1 text-[11px] text-white focus:outline-none"
         />
-        <input
+        <input id="ff-invoicespage-20"
           type="date"
           value={dateTo}
           onChange={e => { setDateTo(e.target.value); setPage(1); }}

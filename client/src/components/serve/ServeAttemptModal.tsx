@@ -406,7 +406,7 @@ export default function ServeAttemptModal({
             {attemptType === 'failed' && (
               <div className="space-y-1">
                 <label className="block text-xs font-semibold text-rmpg-300 uppercase">Reason</label>
-                <select
+                <select id="ff-serveattemptmodal-0"
                   value={failedReason || ''}
                   onChange={(e) => setFailedReason(e.target.value as FailedReason)}
                   className="w-full bg-rmpg-800 border border-rmpg-600 rounded-[2px] px-3 py-2 text-sm text-rmpg-100 focus:outline-none focus:border-[#888888] focus:ring-1 focus:ring-[#888888]/40 transition-colors"
@@ -461,7 +461,7 @@ export default function ServeAttemptModal({
                 <span className="text-sm font-semibold">
                   {uploading ? 'Uploading...' : 'Take Photo'}
                 </span>
-                <input
+                <input id="ff-serveattemptmodal-1"
                   type="file"
                   accept="image/*"
                   capture="environment"
@@ -496,7 +496,7 @@ export default function ServeAttemptModal({
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-[10px] text-rmpg-400 uppercase mb-0.5">Age Range</label>
-                    <select
+                    <select id="ff-serveattemptmodal-2"
                       value={ageRange}
                       onChange={(e) => setAgeRange(e.target.value)}
                       className="w-full bg-rmpg-800 border border-rmpg-600 rounded-[2px] px-2 py-1.5 text-sm text-rmpg-100 focus:outline-none focus:border-[#888888] focus:ring-1 focus:ring-[#888888]/40 transition-colors"
@@ -507,7 +507,7 @@ export default function ServeAttemptModal({
                   </div>
                   <div>
                     <label className="block text-[10px] text-rmpg-400 uppercase mb-0.5">Hair Color</label>
-                    <select
+                    <select id="ff-serveattemptmodal-3"
                       value={hairColor}
                       onChange={(e) => setHairColor(e.target.value)}
                       className="w-full bg-rmpg-800 border border-rmpg-600 rounded-[2px] px-2 py-1.5 text-sm text-rmpg-100 focus:outline-none focus:border-[#888888] focus:ring-1 focus:ring-[#888888]/40 transition-colors"
@@ -518,7 +518,7 @@ export default function ServeAttemptModal({
                   </div>
                   <div>
                     <label className="block text-[10px] text-rmpg-400 uppercase mb-0.5">Height</label>
-                    <input
+                    <input id="ff-serveattemptmodal-4"
                       type="text"
                       value={height}
                       onChange={(e) => setHeight(e.target.value)}
@@ -528,7 +528,7 @@ export default function ServeAttemptModal({
                   </div>
                   <div>
                     <label className="block text-[10px] text-rmpg-400 uppercase mb-0.5">Weight</label>
-                    <input
+                    <input id="ff-serveattemptmodal-5"
                       type="text"
                       value={weight}
                       onChange={(e) => setWeight(e.target.value)}
@@ -539,7 +539,7 @@ export default function ServeAttemptModal({
                 </div>
                 <div>
                   <label className="block text-[10px] text-rmpg-400 uppercase mb-0.5">Clothing Description</label>
-                  <input
+                  <input id="ff-serveattemptmodal-6"
                     type="text"
                     value={clothing}
                     onChange={(e) => setClothing(e.target.value)}
@@ -558,7 +558,7 @@ export default function ServeAttemptModal({
                   <label className="block text-[10px] text-rmpg-400 uppercase mb-0.5">
                     Name <span className="text-red-400">*</span>
                   </label>
-                  <input
+                  <input id="ff-serveattemptmodal-7"
                     type="text"
                     value={personServedName}
                     onChange={(e) => setPersonServedName(e.target.value)}
@@ -569,7 +569,7 @@ export default function ServeAttemptModal({
                 </div>
                 <div>
                   <label className="block text-[10px] text-rmpg-400 uppercase mb-0.5">Relationship</label>
-                  <select
+                  <select id="ff-serveattemptmodal-8"
                     value={relationship}
                     onChange={(e) => setRelationship(e.target.value)}
                     className="w-full bg-rmpg-800 border border-rmpg-600 rounded-[2px] px-2 py-1.5 text-sm text-rmpg-100 focus:outline-none focus:border-[#888888] focus:ring-1 focus:ring-[#888888]/40 transition-colors"

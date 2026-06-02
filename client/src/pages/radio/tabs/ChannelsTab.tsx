@@ -96,14 +96,14 @@ export default function ChannelsTab({ selectedChannelId, onSelectChannel }: Prop
       {creating && canManage && (
         <div className="px-3 py-2 flex flex-col gap-2"
           style={{ background: 'var(--rt-panel)', borderBottom: '1px solid var(--rt-border)' }}>
-          <input
+          <input id="ff-channelstab-0"
             type="text" value={newName} onChange={(e) => setNewName(e.target.value)}
             placeholder="Channel name (e.g. Tac-2)"
             aria-label="New channel name"
             className="bg-transparent text-[11px] font-mono outline-none px-2 py-1"
             style={{ color: 'var(--rt-text)', border: '1px solid var(--rt-border)' }}
           />
-          <input
+          <input id="ff-channelstab-1"
             type="text" value={newDesc} onChange={(e) => setNewDesc(e.target.value)}
             placeholder="Description (optional)"
             aria-label="New channel description"

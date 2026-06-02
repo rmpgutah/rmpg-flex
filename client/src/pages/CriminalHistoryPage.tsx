@@ -197,7 +197,7 @@ export default function CriminalHistoryPage() {
       )}
       {!isMobile && <PanelTitleBar title="Criminal History" icon={Shield}>
         <div className="flex items-center gap-2">
-          <select
+          <select id="ff-criminalhistorypage-0"
             className="select-dark text-[10px] w-24 min-h-[36px]"
             value={searchType}
             onChange={(e) => setSearchType(e.target.value as any)}
@@ -208,7 +208,7 @@ export default function CriminalHistoryPage() {
           </select>
           <div className="relative">
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400" />
-            <input
+            <input id="ff-criminalhistorypage-1"
               type="text"
               className="input-dark pl-7 text-[11px] w-64 min-h-[36px]"
               placeholder={searchType === 'name' ? 'Last, First...' : searchType === 'dob' ? 'YYYY-MM-DD...' : 'DL Number...'}
@@ -229,14 +229,14 @@ export default function CriminalHistoryPage() {
       {/* Mobile search bar */}
       {isMobile && (
         <div className="flex items-center gap-1.5 px-3 py-2 flex-shrink-0" style={{ background: '#050505', borderBottom: '1px solid #2b2b2b' }}>
-          <select className="select-dark text-[10px] w-16 min-h-[36px]" value={searchType} onChange={(e) => setSearchType(e.target.value as any)}>
+          <select id="ff-criminalhistorypage-2" className="select-dark text-[10px] w-16 min-h-[36px]" value={searchType} onChange={(e) => setSearchType(e.target.value as any)}>
             <option value="name">Name</option>
             <option value="dob">DOB</option>
             <option value="dl">DL #</option>
           </select>
           <div className="relative flex-1">
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-400" />
-            <input
+            <input id="ff-criminalhistorypage-3"
               type="text"
               className="input-dark pl-6 text-[10px] w-full min-h-[36px]"
               placeholder={searchType === 'name' ? 'Last, First...' : searchType === 'dob' ? 'YYYY-MM-DD...' : 'DL Number...'}

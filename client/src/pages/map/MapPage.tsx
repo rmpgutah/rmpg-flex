@@ -3126,7 +3126,7 @@ export default function MapPage() {
             <div className="relative">
               <div className="relative flex items-center">
                 <Search className="absolute left-2.5 w-3.5 h-3.5 text-white/50 pointer-events-none" />
-                <input
+                <input id="ff-mappage-0"
                   type="text"
                   value={addressSearch}
                   onChange={(e) => handleAddressSearch(e.target.value)}
@@ -3191,7 +3191,7 @@ export default function MapPage() {
             <div className="relative">
               <div className="relative flex items-center">
                 <Search className="absolute left-2.5 w-3.5 h-3.5 text-rmpg-500 pointer-events-none" />
-                <input
+                <input id="ff-mappage-1"
                   type="text"
                   value={addressSearch}
                   onChange={(e) => handleAddressSearch(e.target.value)}
@@ -3271,7 +3271,7 @@ export default function MapPage() {
                   </div>
                   {showDispatchHere && (
                     <div className="space-y-1 pt-1 border-t border-[#1a1a1a]">
-                      <input
+                      <input id="ff-mappage-2"
                         value={dispatchIncidentType}
                         onChange={(e) => setDispatchIncidentType(e.target.value)}
                         placeholder="Incident type (e.g. Welfare Check)"
@@ -3439,7 +3439,7 @@ export default function MapPage() {
                   </div>
                   {/* Type filter dropdown */}
                   {heatmapMode === 'type' && (
-                    <select
+                    <select id="ff-mappage-3"
                       value={heatmapTypeFilter}
                       onChange={(e) => setHeatmapTypeFilter(e.target.value)}
                       className="w-full bg-surface-deep border border-rmpg-600 text-[9px] text-rmpg-200 px-1.5 py-0.5 font-mono focus:outline-none focus:border-red-600"
@@ -3569,7 +3569,7 @@ export default function MapPage() {
                     <div className="space-y-1 pt-0.5">
                       <div className="flex items-center gap-1">
                         <Play className="w-2.5 h-2.5 text-green-400" />
-                        <select
+                        <select id="ff-mappage-4"
                           value={playbackUnit ?? ''}
                           onChange={(e) => {
                             const val = e.target.value ? Number(e.target.value) : null;
@@ -3610,7 +3610,7 @@ export default function MapPage() {
                               >
                                 {isPlaying ? <Pause className="w-3 h-3 text-amber-400" /> : <Play className="w-3 h-3 text-green-400" />}
                               </button>
-                              <input
+                              <input id="ff-mappage-5"
                                 type="range"
                                 min={0}
                                 max={Math.max(totalPts - 1, 0)}
@@ -4159,7 +4159,7 @@ export default function MapPage() {
                   {/* Overlay opacity */}
                   <div className="px-2">
                     <div className="text-[8px] font-semibold uppercase tracking-wider text-[#888888] mb-0.5">Overlay Opacity — {Math.round(overlayOpacity * 100)}%</div>
-                    <input
+                    <input id="ff-mappage-6"
                       type="range" min={0} max={1} step={0.05} value={overlayOpacity}
                       onChange={(e) => setOverlayOpacity(parseFloat(e.target.value))}
                       aria-label="Overlay opacity"
@@ -4280,14 +4280,14 @@ export default function MapPage() {
                   {/* New plan form */}
                   <div className="space-y-1 px-1">
                     <div className="flex items-center gap-1">
-                      <input
+                      <input id="ff-mappage-7"
                         type="text"
                         value={newShiftPlanName}
                         onChange={(e) => setNewShiftPlanName(e.target.value)}
                         placeholder="Plan name..."
                         className="input-dark flex-1 px-1.5 py-0.5 text-[9px]"
                       />
-                      <input
+                      <input id="ff-mappage-8"
                         type="date"
                         value={newShiftPlanDate}
                         onChange={(e) => setNewShiftPlanDate(e.target.value)}
@@ -4404,7 +4404,7 @@ export default function MapPage() {
                                             : 'hover:bg-rmpg-800/50 text-rmpg-400'
                                         }`}
                                       >
-                                        <input
+                                        <input id="ff-mappage-9"
                                           type="checkbox"
                                           checked={assignOfficerIds.includes(officer.id)}
                                           onChange={(e) => {
@@ -4439,7 +4439,7 @@ export default function MapPage() {
                                               : 'hover:bg-rmpg-800/50 text-rmpg-400'
                                           }`}
                                         >
-                                          <input
+                                          <input id="ff-mappage-10"
                                             type="checkbox"
                                             checked={assignUnitIds.includes(unit.id)}
                                             onChange={(e) => {
@@ -4463,7 +4463,7 @@ export default function MapPage() {
 
                                 {/* Notes */}
                                 <div className="px-1">
-                                  <input
+                                  <input id="ff-mappage-11"
                                     type="text"
                                     value={assignNotes}
                                     onChange={(e) => setAssignNotes(e.target.value)}
@@ -4652,7 +4652,7 @@ export default function MapPage() {
 
                   {/* New plan input */}
                   <div className="flex items-center gap-1 px-1">
-                    <input
+                    <input id="ff-mappage-12"
                       type="text"
                       value={newPlanName}
                       onChange={(e) => setNewPlanName(e.target.value)}
@@ -5343,7 +5343,7 @@ export default function MapPage() {
             <div className="px-2 py-1.5" style={{ borderBottom: '1px solid #303030' }}>
               <div className="relative">
                 <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" />
-                <input
+                <input id="ff-mappage-13"
                   type="text"
                   className="input-dark w-full text-[10px] py-1 pl-6 pr-2"
                   placeholder={sidebarTab === 'units' ? 'SEARCH UNITS...' : 'SEARCH CALLS...'}

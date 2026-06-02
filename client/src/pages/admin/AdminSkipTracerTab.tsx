@@ -264,7 +264,7 @@ export default function AdminSkipTracerTab({ LoadingSpinner, error, setError }: 
               </label>
               <div className="flex gap-2">
                 <div className="relative flex-1">
-                  <input
+                  <input id="ff-adminskiptracertab-0"
                     type={showKey ? 'text' : 'password'}
                     value={apiKey}
                     onChange={(e) => setApiKey(e.target.value)}

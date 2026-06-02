@@ -339,7 +339,7 @@ export default function AdminMicrobiltTab({ LoadingSpinner, error, setError }: P
         {/* Client ID */}
         <div className="space-y-1.5">
           <label className="text-[10px] text-rmpg-400">Client ID</label>
-          <input
+          <input id="ff-adminmicrobilttab-0"
             type="text"
             value={clientId}
             onChange={(e) => setClientId(e.target.value)}
@@ -352,7 +352,7 @@ export default function AdminMicrobiltTab({ LoadingSpinner, error, setError }: P
         <div className="space-y-1.5">
           <label className="text-[10px] text-rmpg-400">Client Secret</label>
           <div className="relative">
-            <input
+            <input id="ff-adminmicrobilttab-1"
               type={showSecret ? 'text' : 'password'}
               value={clientSecret}
               onChange={(e) => setClientSecret(e.target.value)}
@@ -371,7 +371,7 @@ export default function AdminMicrobiltTab({ LoadingSpinner, error, setError }: P
         {/* Subscriber ID (optional) */}
         <div className="space-y-1.5">
           <label className="text-[10px] text-rmpg-400">Subscriber ID <span className="text-rmpg-600">(optional)</span></label>
-          <input
+          <input id="ff-adminmicrobilttab-2"
             type="text"
             value={subscriberId}
             onChange={(e) => setSubscriberId(e.target.value)}
@@ -439,7 +439,7 @@ export default function AdminMicrobiltTab({ LoadingSpinner, error, setError }: P
           </div>
           <div className="relative">
             <Search className="w-3 h-3 absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500" />
-            <input
+            <input id="ff-adminmicrobilttab-3"
               type="text"
               value={productSearch}
               onChange={(e) => setProductSearch(e.target.value)}

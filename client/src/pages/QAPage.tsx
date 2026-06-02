@@ -80,16 +80,16 @@ export default function QAPage() {
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Review Type <span className="text-red-500">*</span></label>
-                  <select className="select-dark mt-1" value={formData.review_type || 'call_audit'} onChange={e => setFormData({...formData, review_type: e.target.value})}>
+                  <select id="ff-qapage-0" className="select-dark mt-1" value={formData.review_type || 'call_audit'} onChange={e => setFormData({...formData, review_type: e.target.value})}>
                     {['call_audit','report_review','bodycam_audit','investigation_review','dispatch_audit','other'].map(t=><option key={t} value={t}>{t}</option>)}
                   </select></div>
                 <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Officer ID</label>
-                  <input className="input-dark mt-1" value={formData.reviewed_officer_id || ''} onChange={e => setFormData({...formData, reviewed_officer_id: e.target.value})} /></div>
+                  <input id="ff-qapage-1" className="input-dark mt-1" value={formData.reviewed_officer_id || ''} onChange={e => setFormData({...formData, reviewed_officer_id: e.target.value})} /></div>
               </div>
               <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Findings</label>
-                <textarea rows={3} className="input-dark mt-1" value={formData.findings || ''} onChange={e => setFormData({...formData, findings: e.target.value})} /></div>
+                <textarea id="ff-qapage-2" rows={3} className="input-dark mt-1" value={formData.findings || ''} onChange={e => setFormData({...formData, findings: e.target.value})} /></div>
               <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Recommendations</label>
-                <textarea rows={2} className="input-dark mt-1" value={formData.recommendations || ''} onChange={e => setFormData({...formData, recommendations: e.target.value})} /></div>
+                <textarea id="ff-qapage-3" rows={2} className="input-dark mt-1" value={formData.recommendations || ''} onChange={e => setFormData({...formData, recommendations: e.target.value})} /></div>
             </div>
             <div className="flex justify-end gap-3 mt-4">
               <button onClick={() => setEditingRecord(null)} className="toolbar-btn px-4" style={{ height: 28 }}>Cancel</button>

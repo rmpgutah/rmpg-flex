@@ -87,7 +87,7 @@ export default function AdminAuditTab({
       <div className="flex items-center gap-2 p-3 border-b border-[#242424] bg-surface-sunken flex-wrap" role="toolbar" aria-label="Audit log filters">
         <div className="flex items-center gap-1.5 px-2.5 py-1.5 panel-inset bg-surface-sunken relative">
           <Search className="w-3 h-3 text-rmpg-500 shrink-0" aria-hidden="true" />
-          <input
+          <input id="ff-adminaudittab-0"
             type="text"
             placeholder="Search logs..." aria-label="Search audit logs"
             value={searchQuery}
@@ -102,7 +102,7 @@ export default function AdminAuditTab({
             </button>
           )}
         </div>
-        <select
+        <select id="ff-adminaudittab-1"
           value={filterAction}
           onChange={e => setFilterAction(e.target.value)}
           className="text-[10px] bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-2.5 py-1.5 outline-none focus:border-brand-500 transition-colors cursor-pointer"
@@ -112,7 +112,7 @@ export default function AdminAuditTab({
           {uniqueActions.map(a => <option key={a} value={a}>{a}</option>)}
         </select>
         <div className="flex items-center gap-1.5">
-          <input
+          <input id="ff-adminaudittab-2"
             type="date"
             value={exportDateFrom}
             onChange={e => setExportDateFrom(e.target.value)}
@@ -120,7 +120,7 @@ export default function AdminAuditTab({
             aria-label="Export from date"
           />
           <span className="text-[9px] text-rmpg-600" aria-hidden="true">to</span>
-          <input
+          <input id="ff-adminaudittab-3"
             type="date"
             value={exportDateTo}
             onChange={e => setExportDateTo(e.target.value)}

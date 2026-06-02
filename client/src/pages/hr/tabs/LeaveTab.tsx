@@ -418,7 +418,7 @@ export default function LeaveTab() {
                   </p>
                 )}
                 <div className="flex items-center gap-2">
-                  <input
+                  <input id="ff-leavetab-0"
                     type="text"
                     placeholder="Notes (optional)"
                     value={reviewNotes[req.id] || ''}
@@ -508,7 +508,7 @@ export default function LeaveTab() {
 
         {/* Filter Bar */}
         <div className="flex items-center gap-2 flex-wrap">
-          <select
+          <select id="ff-leavetab-1"
             value={filterOfficer}
             onChange={e => setFilterOfficer(e.target.value)}
             className="bg-[#0c0c0c] border border-[#2b2b2b] text-white text-xs px-2 py-1.5 rounded-sm focus:outline-none focus:border-brand-500"
@@ -518,7 +518,7 @@ export default function LeaveTab() {
               <option key={o.id} value={o.id}>{o.name}</option>
             ))}
           </select>
-          <select
+          <select id="ff-leavetab-2"
             value={filterStatus}
             onChange={e => setFilterStatus(e.target.value)}
             className="bg-[#0c0c0c] border border-[#2b2b2b] text-white text-xs px-2 py-1.5 rounded-sm focus:outline-none focus:border-brand-500"
@@ -529,7 +529,7 @@ export default function LeaveTab() {
             <option value="denied">Denied</option>
             <option value="cancelled">Cancelled</option>
           </select>
-          <select
+          <select id="ff-leavetab-3"
             value={filterType}
             onChange={e => setFilterType(e.target.value)}
             className="bg-[#0c0c0c] border border-[#2b2b2b] text-white text-xs px-2 py-1.5 rounded-sm focus:outline-none focus:border-brand-500"

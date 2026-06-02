@@ -1496,7 +1496,7 @@ export default function WarrantsPage() {
             {/* Quick Search */}
             <div className="relative">
               <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-rmpg-500" />
-              <input
+              <input id="ff-warrantspage-0"
                 type="text"
                 className="input-dark w-full pl-9 text-xs min-h-[36px]"
                 placeholder="Quick search warrants by name, number, or charge..."
@@ -1527,7 +1527,7 @@ export default function WarrantsPage() {
               </button>
               {summaryReportOpen && (
                 <div className="flex items-center gap-2 bg-surface-sunken border border-surface-border rounded-sm px-2 py-1">
-                  <input
+                  <input id="ff-warrantspage-1"
                     type="date"
                     className="input-dark text-[10px] py-0.5 px-1 min-h-[22px] w-28"
                     value={summaryFrom}
@@ -1535,7 +1535,7 @@ export default function WarrantsPage() {
                     placeholder="From"
                   />
                   <span className="text-[10px] text-rmpg-500">to</span>
-                  <input
+                  <input id="ff-warrantspage-2"
                     type="date"
                     className="input-dark text-[10px] py-0.5 px-1 min-h-[22px] w-28"
                     value={summaryTo}
@@ -1659,7 +1659,7 @@ export default function WarrantsPage() {
                         {r}
                       </button>
                     ))}
-                    <select
+                    <select id="ff-warrantspage-3"
                       className="input-dark text-[9px] py-0 px-1 w-24 ml-1 min-h-[22px]"
                       value={feedEventFilter}
                       onChange={(e) => setFeedEventFilter(e.target.value)}
@@ -1794,7 +1794,7 @@ export default function WarrantsPage() {
             <div className={`flex ${isMobile ? 'flex-col gap-1.5' : 'items-center gap-2'} px-3 py-2 border-b border-rmpg-700 bg-surface-sunken`}>
               <div className="relative flex-1">
                 <Search className="w-3.5 h-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500" />
-                <input
+                <input id="ff-warrantspage-4"
                   type="text"
                   className={`input-dark w-full pl-7 ${searchQuery ? 'pr-7' : 'pr-2'} ${isMobile ? 'text-sm py-2.5' : 'text-xs'}`}
                   placeholder="Search by name, warrant #, or charge..." aria-label="Search by name, warrant #, or charge..."
@@ -1809,7 +1809,7 @@ export default function WarrantsPage() {
                 )}
               </div>
               <div className={`flex ${isMobile ? 'gap-1.5 flex-wrap' : 'gap-2'}`}>
-                <select
+                <select id="ff-warrantspage-5"
                   className={`input-dark ${isMobile ? 'flex-1 text-sm py-2' : 'text-xs w-24'}`}
                   value={filterStatus}
                   onChange={(e) => { setFilterStatus(e.target.value); setPage(1); }}
@@ -1820,7 +1820,7 @@ export default function WarrantsPage() {
                     <option key={s.value} value={s.value}>{s.label}</option>
                   ))}
                 </select>
-                <select
+                <select id="ff-warrantspage-6"
                   className={`input-dark ${isMobile ? 'flex-1 text-sm py-2' : 'text-xs w-24'}`}
                   value={filterType}
                   onChange={(e) => { setFilterType(e.target.value); setPage(1); }}
@@ -1831,7 +1831,7 @@ export default function WarrantsPage() {
                     <option key={t.value} value={t.value}>{t.label}</option>
                   ))}
                 </select>
-                <select
+                <select id="ff-warrantspage-7"
                   className={`input-dark ${isMobile ? 'flex-1 text-sm py-2' : 'text-xs w-28'}`}
                   value={filterSeverity}
                   onChange={(e) => { setFilterSeverity(e.target.value); setPage(1); }}
@@ -1843,7 +1843,7 @@ export default function WarrantsPage() {
                   ))}
                 </select>
                 {/* Court filter */}
-                <input
+                <input id="ff-warrantspage-8"
                   type="text"
                   className={`input-dark ${isMobile ? 'flex-1 text-sm py-2' : 'text-xs w-28'}`}
                   placeholder="Court..."
@@ -1852,7 +1852,7 @@ export default function WarrantsPage() {
                   style={isMobile ? { minHeight: 44 } : undefined}
                 />
                 {/* Source filter */}
-                <select
+                <select id="ff-warrantspage-9"
                   className={`input-dark ${isMobile ? 'flex-1 text-sm py-2' : 'text-xs w-24'}`}
                   value={filterSource}
                   onChange={(e) => { setFilterSource(e.target.value); setPage(1); }}
@@ -1872,7 +1872,7 @@ export default function WarrantsPage() {
               <FilterChip active={filterPriority} onClick={() => { setFilterPriority(v => !v); setPage(1); }}>High priority</FilterChip>
               <FilterChip active={filterSinceWeek} onClick={() => { setFilterSinceWeek(v => !v); setPage(1); }}>New this week</FilterChip>
               <FilterChip active={filterMatches} onClick={() => { setFilterMatches(v => !v); setPage(1); }}>Matches our person</FilterChip>
-              <select
+              <select id="ff-warrantspage-10"
                 value={filterStateChip}
                 onChange={(e) => { setFilterStateChip(e.target.value); setPage(1); }}
                 className="select-dark text-xs"
@@ -1914,7 +1914,7 @@ export default function WarrantsPage() {
             {batchSelected.size > 0 && (isGodMode || isAdminOrManager) && (
               <div className="flex flex-wrap items-center gap-2 px-3 py-1.5 bg-brand-900/20 border-b border-brand-700/50">
                 <span className="text-[10px] font-bold text-brand-300">{batchSelected.size} selected</span>
-                <select value={batchStatus} onChange={e => setBatchStatus(e.target.value)} className="text-[10px] bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-2 py-0.5 outline-none">
+                <select id="ff-warrantspage-11" value={batchStatus} onChange={e => setBatchStatus(e.target.value)} className="text-[10px] bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-2 py-0.5 outline-none">
                   <option value="">Set Status...</option>
                   <option value="served">Served</option>
                   <option value="recalled">Recalled</option>
@@ -1987,7 +1987,7 @@ export default function WarrantsPage() {
                     <tr>
                       {(isGodMode || isAdminOrManager) && (
                         <th style={{ width: 30 }}>
-                          <input type="checkbox" checked={batchSelected.size === warrants.length && warrants.length > 0} onChange={toggleSelectAll} className="accent-brand-500" />
+                          <input id="ff-warrantspage-12" type="checkbox" checked={batchSelected.size === warrants.length && warrants.length > 0} onChange={toggleSelectAll} className="accent-brand-500" />
                         </th>
                       )}
                       <th style={{ width: 28 }} className="text-center" title="Matches our person">★</th>
@@ -2022,7 +2022,7 @@ export default function WarrantsPage() {
                       >
                         {(isGodMode || isAdminOrManager) && (
                           <td onClick={e => e.stopPropagation()}>
-                            <input type="checkbox" checked={batchSelected.has(w.id)} onChange={() => toggleBatchSelect(w.id)} className="accent-brand-500" />
+                            <input id="ff-warrantspage-13" type="checkbox" checked={batchSelected.has(w.id)} onChange={() => toggleBatchSelect(w.id)} className="accent-brand-500" />
                           </td>
                         )}
                         <td className="text-center">
@@ -2446,7 +2446,7 @@ export default function WarrantsPage() {
                 <div className="flex gap-2 items-end flex-wrap mb-2 relative">
                   <div className="flex-1 min-w-[120px]">
                     <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">First Name</label>
-                    <input
+                    <input id="ff-warrantspage-14"
                       type="text"
                       className="input-dark w-full"
                       placeholder="First name..."
@@ -2460,7 +2460,7 @@ export default function WarrantsPage() {
                   </div>
                   <div className="flex-1 min-w-[120px]">
                     <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">Last Name</label>
-                    <input
+                    <input id="ff-warrantspage-15"
                       type="text"
                       className="input-dark w-full"
                       placeholder="Last name..."
@@ -2473,7 +2473,7 @@ export default function WarrantsPage() {
                   </div>
                   <div className="w-[140px]">
                     <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">DOB</label>
-                    <input
+                    <input id="ff-warrantspage-16"
                       type="date"
                       className="input-dark w-full"
                       value={uniSearchDob}
@@ -2511,7 +2511,7 @@ export default function WarrantsPage() {
                 <div className="flex gap-2 items-end flex-wrap mb-2">
                   <div className="flex-1 min-w-[120px]">
                     <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">Warrant #</label>
-                    <input
+                    <input id="ff-warrantspage-17"
                       type="text"
                       className="input-dark w-full"
                       placeholder="Warrant number..."
@@ -2521,7 +2521,7 @@ export default function WarrantsPage() {
                   </div>
                   <div className="flex-1 min-w-[120px]">
                     <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">Court</label>
-                    <input
+                    <input id="ff-warrantspage-18"
                       type="text"
                       className="input-dark w-full"
                       placeholder="Court name..."
@@ -2531,7 +2531,7 @@ export default function WarrantsPage() {
                   </div>
                   <div className="w-[160px]">
                     <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">Source</label>
-                    <select className="input-dark w-full" value={uniSearchSource} onChange={(e) => setUniSearchSource(e.target.value)}>
+                    <select id="ff-warrantspage-19" className="input-dark w-full" value={uniSearchSource} onChange={(e) => setUniSearchSource(e.target.value)}>
                       <option value="">All Sources</option>
                       <option value="local">Local System</option>
                       <option value="utah">Utah State API</option>
@@ -2553,33 +2553,33 @@ export default function WarrantsPage() {
                   <div className="flex gap-2 items-end flex-wrap mb-2 border-t border-surface-border pt-2">
                     <div className="w-[140px]">
                       <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">Date From</label>
-                      <input type="date" className="input-dark w-full" value={uniSearchDateFrom} onChange={(e) => setUniSearchDateFrom(e.target.value)} />
+                      <input id="ff-warrantspage-20" type="date" className="input-dark w-full" value={uniSearchDateFrom} onChange={(e) => setUniSearchDateFrom(e.target.value)} />
                     </div>
                     <div className="w-[140px]">
                       <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">Date To</label>
-                      <input type="date" className="input-dark w-full" value={uniSearchDateTo} onChange={(e) => setUniSearchDateTo(e.target.value)} />
+                      <input id="ff-warrantspage-21" type="date" className="input-dark w-full" value={uniSearchDateTo} onChange={(e) => setUniSearchDateTo(e.target.value)} />
                     </div>
                     <div className="w-[140px]">
                       <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">Offense Level</label>
-                      <select className="input-dark w-full" value={uniSearchOffenseLevel} onChange={(e) => setUniSearchOffenseLevel(e.target.value)}>
+                      <select id="ff-warrantspage-22" className="input-dark w-full" value={uniSearchOffenseLevel} onChange={(e) => setUniSearchOffenseLevel(e.target.value)}>
                         <option value="">Any</option>
                         {OFFENSE_LEVELS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                       </select>
                     </div>
                     <div className="flex-1 min-w-[120px]">
                       <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">Charge Keyword</label>
-                      <input type="text" className="input-dark w-full" placeholder="e.g. theft, DUI..." value={uniSearchCharge} onChange={(e) => setUniSearchCharge(e.target.value)} />
+                      <input id="ff-warrantspage-23" type="text" className="input-dark w-full" placeholder="e.g. theft, DUI..." value={uniSearchCharge} onChange={(e) => setUniSearchCharge(e.target.value)} />
                     </div>
                     <div className="w-[120px]">
                       <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">Status</label>
-                      <select className="input-dark w-full" value={uniSearchStatus} onChange={(e) => setUniSearchStatus(e.target.value)}>
+                      <select id="ff-warrantspage-24" className="input-dark w-full" value={uniSearchStatus} onChange={(e) => setUniSearchStatus(e.target.value)}>
                         <option value="">Any</option>
                         {WARRANT_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
                       </select>
                     </div>
                     <div className="w-[120px]">
                       <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">Type</label>
-                      <select className="input-dark w-full" value={uniSearchType} onChange={(e) => setUniSearchType(e.target.value)}>
+                      <select id="ff-warrantspage-25" className="input-dark w-full" value={uniSearchType} onChange={(e) => setUniSearchType(e.target.value)}>
                         <option value="">Any</option>
                         {WARRANT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                       </select>
@@ -3736,13 +3736,13 @@ export default function WarrantsPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="field-label">Warrant Type *</label>
-                  <select className="select-dark text-xs w-full" value={formData.type} onChange={(e) => setFormData(prev => ({ ...prev, type: e.target.value }))}>
+                  <select id="ff-warrantspage-26" className="select-dark text-xs w-full" value={formData.type} onChange={(e) => setFormData(prev => ({ ...prev, type: e.target.value }))}>
                     {WARRANT_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="field-label">Offense Level</label>
-                  <select className="select-dark text-xs w-full" value={formData.offense_level} onChange={(e) => setFormData(prev => ({ ...prev, offense_level: e.target.value }))}>
+                  <select id="ff-warrantspage-27" className="select-dark text-xs w-full" value={formData.offense_level} onChange={(e) => setFormData(prev => ({ ...prev, offense_level: e.target.value }))}>
                     <option value="">-- Select --</option>
                     {OFFENSE_LEVELS.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
                   </select>
@@ -3769,7 +3769,7 @@ export default function WarrantsPage() {
                   </div>
                 ) : (
                   <>
-                    <input
+                    <input id="ff-warrantspage-28"
                       type="text"
                       className="input-dark text-xs w-full min-h-[36px]"
                       placeholder="Search persons by name..." aria-label="Search persons by name..."
@@ -3844,11 +3844,11 @@ export default function WarrantsPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="field-label">Issuing Court</label>
-                  <input type="text" className="input-dark text-xs w-full min-h-[36px]" value={formData.issuing_court} onChange={(e) => setFormData(prev => ({ ...prev, issuing_court: e.target.value }))} placeholder="e.g. 3rd District Court" />
+                  <input id="ff-warrantspage-29" type="text" className="input-dark text-xs w-full min-h-[36px]" value={formData.issuing_court} onChange={(e) => setFormData(prev => ({ ...prev, issuing_court: e.target.value }))} placeholder="e.g. 3rd District Court" />
                 </div>
                 <div>
                   <label className="field-label">Issuing Judge</label>
-                  <input type="text" className="input-dark text-xs w-full min-h-[36px]" value={formData.issuing_judge} onChange={(e) => setFormData(prev => ({ ...prev, issuing_judge: e.target.value }))} placeholder="e.g. Hon. Smith" />
+                  <input id="ff-warrantspage-30" type="text" className="input-dark text-xs w-full min-h-[36px]" value={formData.issuing_judge} onChange={(e) => setFormData(prev => ({ ...prev, issuing_judge: e.target.value }))} placeholder="e.g. Hon. Smith" />
                 </div>
               </div>
 
@@ -3856,12 +3856,12 @@ export default function WarrantsPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="field-label">Bail Amount</label>
-                  <input type="number" step="0.01" className={`input-dark text-xs w-full ${formErrors.bail_amount ? '!border-red-500' : ''}`} value={formData.bail_amount} onChange={(e) => setFormData(prev => ({ ...prev, bail_amount: e.target.value }))} placeholder="0.00" />
+                  <input id="ff-warrantspage-31" type="number" step="0.01" className={`input-dark text-xs w-full ${formErrors.bail_amount ? '!border-red-500' : ''}`} value={formData.bail_amount} onChange={(e) => setFormData(prev => ({ ...prev, bail_amount: e.target.value }))} placeholder="0.00" />
                   {formErrors.bail_amount && <p className="text-red-400 text-[10px] mt-0.5">{formErrors.bail_amount}</p>}
                 </div>
                 <div>
                   <label className="field-label">Expires</label>
-                  <input type="date" className="input-dark text-xs w-full min-h-[36px]" value={formData.expires_at} onChange={(e) => setFormData(prev => ({ ...prev, expires_at: e.target.value }))} />
+                  <input id="ff-warrantspage-32" type="date" className="input-dark text-xs w-full min-h-[36px]" value={formData.expires_at} onChange={(e) => setFormData(prev => ({ ...prev, expires_at: e.target.value }))} />
                 </div>
               </div>
 
@@ -3907,7 +3907,7 @@ export default function WarrantsPage() {
               </p>
               <div>
                 <label className="field-label">Location Served (optional)</label>
-                <input
+                <input id="ff-warrantspage-33"
                   type="text"
                   className="input-dark text-xs w-full min-h-[36px]"
                   value={serveLocation}

@@ -80,23 +80,23 @@ export default function InteragencyPage() {
             <h3 className="text-sm font-bold text-white mb-4">{editingRecord ? 'Edit Partner' : 'New Partner'}</h3>
             <div className="space-y-3">
               <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Agency Name <span className="text-red-500">*</span></label>
-                <input className="input-dark mt-1" value={formData.agency_name || ''} onChange={e => setFormData({...formData, agency_name: e.target.value})} autoFocus /></div>
+                <input id="ff-interagencypage-0" className="input-dark mt-1" value={formData.agency_name || ''} onChange={e => setFormData({...formData, agency_name: e.target.value})} autoFocus /></div>
               <div className="grid grid-cols-2 gap-3">
                 <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Type</label>
-                  <input className="input-dark mt-1" value={formData.agency_type || ''} onChange={e => setFormData({...formData, agency_type: e.target.value})} placeholder="e.g. PD, Sheriff" /></div>
+                  <input id="ff-interagencypage-1" className="input-dark mt-1" value={formData.agency_type || ''} onChange={e => setFormData({...formData, agency_type: e.target.value})} placeholder="e.g. PD, Sheriff" /></div>
                 <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Jurisdiction</label>
-                  <input className="input-dark mt-1" value={formData.jurisdiction || ''} onChange={e => setFormData({...formData, jurisdiction: e.target.value})} /></div>
+                  <input id="ff-interagencypage-2" className="input-dark mt-1" value={formData.jurisdiction || ''} onChange={e => setFormData({...formData, jurisdiction: e.target.value})} /></div>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Contact Name</label>
-                  <input className="input-dark mt-1" value={formData.contact_name || ''} onChange={e => setFormData({...formData, contact_name: e.target.value})} /></div>
+                  <input id="ff-interagencypage-3" className="input-dark mt-1" value={formData.contact_name || ''} onChange={e => setFormData({...formData, contact_name: e.target.value})} /></div>
                 <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Contact Email</label>
-                  <input className="input-dark mt-1" value={formData.contact_email || ''} onChange={e => setFormData({...formData, contact_email: e.target.value})} /></div>
+                  <input id="ff-interagencypage-4" className="input-dark mt-1" value={formData.contact_email || ''} onChange={e => setFormData({...formData, contact_email: e.target.value})} /></div>
               </div>
               <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Phone</label>
-                <input className="input-dark mt-1" value={formData.contact_phone || ''} onChange={e => setFormData({...formData, contact_phone: e.target.value})} /></div>
+                <input id="ff-interagencypage-5" className="input-dark mt-1" value={formData.contact_phone || ''} onChange={e => setFormData({...formData, contact_phone: e.target.value})} /></div>
               <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Share Level</label>
-                <select className="select-dark mt-1" value={formData.data_share_level || 'none'} onChange={e => setFormData({...formData, data_share_level: e.target.value})}>
+                <select id="ff-interagencypage-6" className="select-dark mt-1" value={formData.data_share_level || 'none'} onChange={e => setFormData({...formData, data_share_level: e.target.value})}>
                   {['none','basic','partial','full'].map(l=><option key={l} value={l}>{l}</option>)}
                 </select></div>
             </div>

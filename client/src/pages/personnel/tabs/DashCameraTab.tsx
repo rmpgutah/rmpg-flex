@@ -227,7 +227,7 @@ export default function DashCameraTab({
       <div className="panel-inset p-2 flex items-center gap-2 flex-wrap">
         <div className="relative flex-1 min-w-[180px] max-w-[280px]">
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500 pointer-events-none" />
-          <input
+          <input id="ff-dashcameratab-0"
             type="text"
             value={search}
             onChange={e => setSearch(e.target.value)}

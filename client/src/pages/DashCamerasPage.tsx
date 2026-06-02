@@ -731,7 +731,7 @@ export default function DashCamerasPage() {
         {/* Search */}
         <div className="relative flex-1 min-w-[160px] max-w-[260px]">
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500 pointer-events-none" aria-hidden="true" />
-          <input type="text" value={search}
+          <input id="ff-dashcameraspage-0" type="text" value={search}
             onChange={e => { setSearch(e.target.value); setPage(0); }}
             placeholder="Search title, case #, unit..." aria-label="Search dash camera videos by title, case number, or unit"
             className="input-dark text-[10px] pl-7 pr-2 py-1 w-full min-h-[36px] focus:ring-1 focus:ring-brand-500/50 transition-shadow duration-150" />
@@ -759,7 +759,7 @@ export default function DashCamerasPage() {
         {eventTypes.length > 0 && (
           <>
             <span className="text-[8px] text-rmpg-500 uppercase font-bold">Event:</span>
-            <select value={eventTypeFilter}
+            <select id="ff-dashcameraspage-1" value={eventTypeFilter}
               onChange={e => { setEventTypeFilter(e.target.value); setPage(0); }}
               className="select-dark text-[10px] py-1 w-auto max-w-[150px]">
               <option value="all">All Events</option>

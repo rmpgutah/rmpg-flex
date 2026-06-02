@@ -334,7 +334,7 @@ export default function WebResearchPage() {
                   handleSearch();
                 }}
               >
-                <input
+                <input id="ff-webresearchpage-0"
                   type="text"
                   className="input-dark flex-1 min-h-[36px]"
                   placeholder="Search the web..." aria-label="Search the web..."
@@ -665,7 +665,7 @@ export default function WebResearchPage() {
             </div>
 
             {/* ID input */}
-            <input
+            <input id="ff-webresearchpage-1"
               type="number"
               className="input-dark w-full min-h-[36px]"
               placeholder={`${linkType.charAt(0).toUpperCase() + linkType.slice(1)} ID...`}

@@ -206,7 +206,7 @@ export default function AdminNotifRulesTab({ users, LoadingSpinner, error, setEr
         <div className="flex items-center gap-2">
           <div className="relative">
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" />
-            <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search rules..." aria-label="Search notification rules" autoComplete="off" className="input-dark text-[10px] pl-6 pr-2 py-1 w-40 min-h-[36px]" />
+            <input id="ff-adminnotifrulestab-0" type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search rules..." aria-label="Search notification rules" autoComplete="off" className="input-dark text-[10px] pl-6 pr-2 py-1 w-40 min-h-[36px]" />
           </div>
           <button type="button" onClick={openNew} className="toolbar-btn-primary text-[10px] flex items-center gap-1">
             <Plus className="w-3 h-3" />
@@ -289,16 +289,16 @@ export default function AdminNotifRulesTab({ users, LoadingSpinner, error, setEr
             <div className="p-4 space-y-3">
               <div>
                 <label className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Rule Name *</label>
-                <input type="text" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} className="input-dark w-full text-xs min-h-[36px]" placeholder="e.g. Alert supervisors on P1 calls" />
+                <input id="ff-adminnotifrulestab-1" type="text" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} className="input-dark w-full text-xs min-h-[36px]" placeholder="e.g. Alert supervisors on P1 calls" />
               </div>
               <div>
                 <label className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Description</label>
-                <input type="text" value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} className="input-dark w-full text-xs min-h-[36px]" placeholder="Optional description..." />
+                <input id="ff-adminnotifrulestab-2" type="text" value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} className="input-dark w-full text-xs min-h-[36px]" placeholder="Optional description..." />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Trigger Event *</label>
-                  <select value={form.trigger_event} onChange={(e) => setForm((f) => ({ ...f, trigger_event: e.target.value }))} className="select-dark w-full text-xs">
+                  <select id="ff-adminnotifrulestab-3" value={form.trigger_event} onChange={(e) => setForm((f) => ({ ...f, trigger_event: e.target.value }))} className="select-dark w-full text-xs">
                     {TRIGGER_EVENTS.map((t) => (
                       <option key={t.value} value={t.value}>{t.label}</option>
                     ))}
@@ -307,7 +307,7 @@ export default function AdminNotifRulesTab({ users, LoadingSpinner, error, setEr
                 </div>
                 <div>
                   <label className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Delivery Method</label>
-                  <select value={form.notification_type} onChange={(e) => setForm((f) => ({ ...f, notification_type: e.target.value as any }))} className="select-dark w-full text-xs">
+                  <select id="ff-adminnotifrulestab-4" value={form.notification_type} onChange={(e) => setForm((f) => ({ ...f, notification_type: e.target.value as any }))} className="select-dark w-full text-xs">
                     <option value="in_app">In-App Only</option>
                     <option value="email">Email Only</option>
                     <option value="both">In-App + Email</option>

@@ -253,7 +253,7 @@ export default function AdminRadioTab() {
       {/* Search */}
       <div className="bg-[#141414] border border-[#181818] rounded-sm p-2 flex items-center gap-2">
         <Search size={14} className="text-gray-500" />
-        <input
+        <input id="ff-adminradiotab-0"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Filter by name, description, frequency, talkgroup…"
@@ -380,7 +380,7 @@ export default function AdminRadioTab() {
             <div className="p-3 space-y-2.5">
               <div>
                 <label className="block text-[10px] uppercase text-gray-500 mb-0.5">Name *</label>
-                <input
+                <input id="ff-adminradiotab-1"
                   value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
                   placeholder="e.g. Dispatch Main"
@@ -390,7 +390,7 @@ export default function AdminRadioTab() {
               </div>
               <div>
                 <label className="block text-[10px] uppercase text-gray-500 mb-0.5">Description</label>
-                <input
+                <input id="ff-adminradiotab-2"
                   value={form.description}
                   onChange={(e) => setForm({ ...form, description: e.target.value })}
                   placeholder="What this channel is used for"
@@ -400,7 +400,7 @@ export default function AdminRadioTab() {
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="block text-[10px] uppercase text-gray-500 mb-0.5">Frequency</label>
-                  <input
+                  <input id="ff-adminradiotab-3"
                     value={form.frequency}
                     onChange={(e) => setForm({ ...form, frequency: e.target.value })}
                     placeholder="155.475 MHz"
@@ -409,7 +409,7 @@ export default function AdminRadioTab() {
                 </div>
                 <div>
                   <label className="block text-[10px] uppercase text-gray-500 mb-0.5">Talkgroup</label>
-                  <input
+                  <input id="ff-adminradiotab-4"
                     value={form.talkgroup}
                     onChange={(e) => setForm({ ...form, talkgroup: e.target.value })}
                     placeholder="TG-1234"
@@ -421,7 +421,7 @@ export default function AdminRadioTab() {
                 <div>
                   <label className="block text-[10px] uppercase text-gray-500 mb-0.5">Color</label>
                   <div className="flex items-center gap-1.5">
-                    <input
+                    <input id="ff-adminradiotab-5"
                       value={form.color}
                       onChange={(e) => setForm({ ...form, color: e.target.value })}
                       placeholder="#d4a017"
@@ -447,7 +447,7 @@ export default function AdminRadioTab() {
                 </div>
                 <div>
                   <label className="block text-[10px] uppercase text-gray-500 mb-0.5">Sort Order</label>
-                  <input
+                  <input id="ff-adminradiotab-6"
                     type="number"
                     value={form.sort_order}
                     onChange={(e) => setForm({ ...form, sort_order: parseInt(e.target.value, 10) || 0 })}
