@@ -1106,7 +1106,9 @@ export default function MapPage() {
       };
       map.on('moveend', savePosition);
 
-      infoWindowRef.current = new mapboxgl.Popup({ closeButton: true, closeOnClick: false });
+      // maxWidth must clear the 248px imagery + padding in the "What's Here"
+      // popup (Mapbox defaults to 240px, which would clip the street view).
+      infoWindowRef.current = new mapboxgl.Popup({ closeButton: true, closeOnClick: false, maxWidth: '290px' });
 
       // Mapbox does not have the Google Maps error overlay / dismissable
       // alertdialog that the old mutation observer was designed to handle.

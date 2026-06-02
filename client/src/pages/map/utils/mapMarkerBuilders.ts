@@ -624,9 +624,19 @@ export function injectKeyframes() {
     .rmpg-marker-hover { transform:scale(1.08); transition:transform 0.2s ease; }
     .rmpg-marker-selected { animation:marker-selected 1.5s ease-in-out infinite; }
     .rmpg-marker-enter { animation:marker-enter 0.3s ease-out forwards; }
-    .mapboxgl-popup-content { background:#0c0c0c !important; border:1px solid #2b2b2b !important; border-radius:4px !important; color:#e5e7eb !important; box-shadow:0 4px 24px rgba(0,0,0,0.6) !important; padding:0 !important; }
+    .mapboxgl-popup-content { background:#0c0c0c !important; border:1px solid #2b2b2b !important; border-radius:4px !important; color:#e5e7eb !important; box-shadow:0 4px 24px rgba(0,0,0,0.6) !important; padding:0 !important; max-height:72vh !important; overflow-y:auto !important; overscroll-behavior:contain; }
+    .mapboxgl-popup-content::-webkit-scrollbar { width:7px; }
+    .mapboxgl-popup-content::-webkit-scrollbar-thumb { background:#2e2e2e; border-radius:4px; }
     .mapboxgl-popup-content .mapboxgl-popup-close-button { color:#e5e7eb !important; font-size:18px !important; }
-    .mapboxgl-popup-tip { border-top-color:#0c0c0c !important; }
+    /* Tip color follows the anchor side so the triangle is dark in every direction. */
+    .mapboxgl-popup-anchor-top .mapboxgl-popup-tip,
+    .mapboxgl-popup-anchor-top-left .mapboxgl-popup-tip,
+    .mapboxgl-popup-anchor-top-right .mapboxgl-popup-tip { border-bottom-color:#0c0c0c !important; }
+    .mapboxgl-popup-anchor-bottom .mapboxgl-popup-tip,
+    .mapboxgl-popup-anchor-bottom-left .mapboxgl-popup-tip,
+    .mapboxgl-popup-anchor-bottom-right .mapboxgl-popup-tip { border-top-color:#0c0c0c !important; }
+    .mapboxgl-popup-anchor-left .mapboxgl-popup-tip { border-right-color:#0c0c0c !important; }
+    .mapboxgl-popup-anchor-right .mapboxgl-popup-tip { border-left-color:#0c0c0c !important; }
     @media (prefers-reduced-motion: reduce) { .rmpg-marker-enter, .rmpg-marker-selected, [style*=animation] { animation:none !important; } }
   `;
   document.head.appendChild(style);

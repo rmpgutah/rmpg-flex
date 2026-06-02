@@ -387,7 +387,10 @@
 //       the Map UI ("What's Here").
 // v717: Statewide DB always-on — Utah roads + address points default visible
 //       (auto-enabled on map ready; toggleable in-session, returns at load).
-const CACHE_NAME = 'rmpg-flex-v717';
+// v718: What's Here popup — guaranteed ground view (Mapbox oblique 3D
+//       perspective + facing-aware Mapillary), dark popup tip all directions,
+//       scrollable popup (no viewport clipping), wider maxWidth for imagery.
+const CACHE_NAME = 'rmpg-flex-v718';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
