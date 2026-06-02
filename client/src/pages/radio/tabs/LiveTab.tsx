@@ -19,6 +19,27 @@ interface Props {
   onSelectChannel: (id: number | null) => void;
 }
 
+// Render a VoiceHubDO `dispatch_action` summary as a human-readable line.
+// Summaries are "kind:value" — e.g. "call_created:CFS26-0042",
+// "unit_status:12-Adam=onscene", "bolo_created:BOLO26-0001".
+function describeDispatchAction(d: { unit?: string | null; summary?: string | null }): string {
+  const s = String(d?.summary || '');
+  if (!s) return '';
+  const i = s.indexOf(':');
+  const kind = i >= 0 ? s.slice(0, i) : s;
+  const val = i >= 0 ? s.slice(i + 1) : '';
+  switch (kind) {
+    case 'call_created': return `created call ${val}`;
+    case 'call_cleared': return `cleared ${val}`;
+    case 'call_clear_noop': return `${val} already cleared`;
+    case 'unit_status': { const [u, st] = val.split('='); return `set ${u} → ${st}`; }
+    case 'backup_dispatched': return `dispatched ${val} for backup`;
+    case 'backup_none': return 'no units available for backup';
+    case 'bolo_created': return `issued BOLO ${val}`;
+    default: return s;
+  }
+}
+
 export default function LiveTab({ selectedChannelId, onSelectChannel }: Props) {
   const [channels, setChannels] = useState<RadioChannel[]>([]);
   const [tx, setTx] = useState<RadioTransmission[]>([]);
@@ -30,6 +51,23 @@ export default function LiveTab({ selectedChannelId, onSelectChannel }: Props) {
   // Record file the AI dispatcher auto-opened (plate/person check) — shown in
   // the side panel beside the live feed. Null = panel closed.
   const [openRecord, setOpenRecord] = useState<DispatchRecordRef | null>(null);
+
+  // Live feed of CAD WRITES the AI dispatcher just made (created/cleared a call,
+  // changed a status, dispatched backup, issued a BOLO) — surfaced from the
+  // VoiceHubDO `dispatch_action` broadcast (re-emitted by useVoiceChannel as a
+  // window event). Each badge auto-expires so the strip stays current.
+  const [aiActions, setAiActions] = useState<{ id: number; text: string }[]>([]);
+  useEffect(() => {
+    const onAction = (e: Event) => {
+      const text = describeDispatchAction((e as CustomEvent).detail || {});
+      if (!text) return;
+      const id = Date.now() + Math.random();
+      setAiActions((prev) => [{ id, text }, ...prev].slice(0, 3));
+      setTimeout(() => setAiActions((prev) => prev.filter((a) => a.id !== id)), 12000);
+    };
+    window.addEventListener('rmpg:dispatch-action', onAction as EventListener);
+    return () => window.removeEventListener('rmpg:dispatch-action', onAction as EventListener);
+  }, []);
 
   // Highest transmission id seen so far. `null` until the first poll
   // lands so we never beep for the backlog that's already on screen
@@ -175,6 +213,20 @@ export default function LiveTab({ selectedChannelId, onSelectChannel }: Props) {
 
       {/* Push-to-talk bar — live voice for the selected channel */}
       <PttBar channelSelected={selectedChannelId != null} voice={voice} />
+
+      {/* AI dispatcher action strip — what the AI just wrote to the CAD, live */}
+      {aiActions.length > 0 && (
+        <div className="px-3 py-1 space-y-0.5"
+          style={{ borderBottom: '1px solid var(--rt-border)', background: 'var(--rt-panel)' }}>
+          {aiActions.map((a) => (
+            <div key={a.id} className="flex items-center gap-1.5 text-[10px] font-mono animate-fade-in"
+              style={{ color: 'var(--rt-accent)' }}>
+              <span className="tracking-[0.2em] text-[8px]" style={{ opacity: 0.7 }}>DISPATCH ▸</span>
+              <span>{a.text}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* TX list */}
       <div className="flex-1 min-h-0 overflow-auto">
