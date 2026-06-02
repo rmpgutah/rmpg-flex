@@ -270,7 +270,14 @@
 //       beat wins; -UNINC only as fallback) and is used by What's-Here +
 //       the activity choropleth. Tagged beats sorted so city fills draw on
 //       top of the catch-all coverage (no more unincorporated bleed).
-const CACHE_NAME = 'rmpg-flex-v698';
+// v699: FIX — CFS PDF process-service details didn't fill. "Process Service
+//       Details" (serve-to/address/result/attempts) + Visit History were
+//       gated to incident_type==='pso_client_request', but serve-intake
+//       creates calls as 'civil_paper_service' so those sections never
+//       rendered. Hoisted Process Service Details to a top-level section
+//       (self-gated by process data / service-type) and added
+//       'civil_paper_service' to the visit-history gate.
+const CACHE_NAME = 'rmpg-flex-v699';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

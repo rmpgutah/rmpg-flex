@@ -2088,8 +2088,22 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       );
     }
 
-    // Process Service sub-section (unchanged from prior version except for the deadline row)
-    if (data.pso_service_type === 'process_service' || data.process_service_type || data.process_served_to) {
+    // (Process Service Details is rendered as a top-level section below, so it
+    //  also appears for civil_paper_service / process_service calls — not only
+    //  pso_client_request. See the "Process Service Details" block after this.)
+  }
+
+  // ── Process Service Details ────────────────────────────────
+  // Top-level (not nested under pso_client_request): serve-intake creates
+  // calls as incident_type='civil_paper_service', so gating this under PSO
+  // hid the serve-to / result / attempts on every intake CFS. Render whenever
+  // there's process data OR the call is a service-type incident.
+  {
+    const isServiceCall =
+      data.incident_type === 'civil_paper_service' ||
+      data.incident_type === 'process_service' ||
+      data.pso_service_type === 'process_service';
+    if (isServiceCall || data.process_service_type || data.process_served_to) {
       y = checkPageBreak(doc, y, 18, prio);
       const psSec = openAutoSection(doc, 'Process Service Details', y); y = psSec.contentY;
       y = addThreeColumnFields(doc, [
@@ -2434,7 +2448,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
   // Visit History Timeline (PSO calls with return visits)
   // Both pso_client_request AND process_service calls accrue visit history on
   // re-dispatch (server attaches it for both — see src/routes/dispatch/calls.ts).
-  if (['pso_client_request', 'process_service'].includes(String(data.incident_type)) && Array.isArray(data.visit_history) && data.visit_history.length > 0) {
+  if (['pso_client_request', 'process_service', 'civil_paper_service'].includes(String(data.incident_type)) && Array.isArray(data.visit_history) && data.visit_history.length > 0) {
     y = checkPageBreak(doc, y, 25, prio);
     const sec = openAutoSection(doc, `Visit History -- ${data.visit_history.length} Prior ${data.visit_history.length === 1 ? 'Visit' : 'Visits'}`, y);
     y = sec.sectionY + SPACING.SECTION_HEADER_H;
