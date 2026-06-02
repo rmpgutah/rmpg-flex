@@ -1334,6 +1334,25 @@ export default function MapPage() {
 
   useEffect(() => {
     const map = mapInstanceRef.current;
+    // Opt-in diagnostics: load /map?mapdebug=1 to trace why dispatch markers
+    // (units/calls/properties) may not be rendering. Silent in normal use.
+    const MAP_DBG = typeof window !== 'undefined'
+      && new URLSearchParams(window.location.search).has('mapdebug');
+    if (MAP_DBG) {
+      // eslint-disable-next-line no-console
+      console.log('[mapdebug] marker effect run', {
+        hasMap: !!map,
+        mapLoaded,
+        layersUnits: layers.units,
+        layersIncidents: layers.incidents,
+        layersProperties: layers.properties,
+        unitsLen: units.length,
+        unitsWithCoords: units.filter((u) => u.latitude != null && u.longitude != null).length,
+        callsLen: calls.length,
+        propertiesLen: properties.length,
+        unitMarkersBefore: unitMarkersMapRef.current.size,
+      });
+    }
     if (!map || !mapLoaded) return;
 
     // Incremental updates: move/keep markers that didn't change instead of
@@ -1459,6 +1478,13 @@ export default function MapPage() {
     unitMarkersMapRef.current.forEach((m, id) => {
       if (!layers.units || !nextUnitIds.has(id)) { removeMarker(m); unitMarkersMapRef.current.delete(id); }
     });
+    if (MAP_DBG) {
+      // eslint-disable-next-line no-console
+      console.log('[mapdebug] after units block', {
+        nextUnitIds: Array.from(nextUnitIds),
+        unitMarkersAfter: unitMarkersMapRef.current.size,
+      });
+    }
 
     // ---- Call markers: rebuild only when calls / incidents-layer change ----
     const callsSig = layers.incidents
