@@ -2775,8 +2775,12 @@ export default function MapPage() {
     const [lng, lat] = center;
     if (!isFinite(lng) || !isFinite(lat)) return;
 
-    map.panTo([lng, lat]);
-    map.setZoom(17);
+    // Single combined fly (pan + zoom together). The old panTo()+setZoom()
+    // were two competing animations, so the map neither centered on nor
+    // zoomed to the address — it stayed at the prior view and the pin landed
+    // off-screen. flyTo animates center + zoom as one move. essential:true so
+    // it still runs under prefers-reduced-motion.
+    map.flyTo({ center: [lng, lat], zoom: 17, speed: 1.6, curve: 1.4, essential: true });
 
     // Remove previous address marker
     if (addressMarkerRef.current) {

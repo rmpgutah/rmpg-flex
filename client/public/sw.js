@@ -229,7 +229,12 @@
 //       PMTiles archives in R2 and serves /api/tiles/<name>/{z}/{x}/{y}.mvt;
 //       client uses a NATIVE mapbox vector source (no protocol). Verified
 //       tile extraction against the real archives.
-const CACHE_NAME = 'rmpg-flex-v691';
+// v692: FIX address-search zoom/focus/pin — handleAddressSelect used
+//       panTo()+setZoom() (two competing animations) so selecting a result
+//       neither centered nor zoomed to the address and the pin landed
+//       off-screen. Now a single flyTo({center,zoom:17}) pans+zooms as one
+//       move, bringing the gold search pin into view.
+const CACHE_NAME = 'rmpg-flex-v692';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
