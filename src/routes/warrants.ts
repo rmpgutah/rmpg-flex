@@ -8,6 +8,7 @@ import { Hono } from 'hono';
 import type { Context } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
+import { evaluateNotificationRules } from './notificationEngine';
 import { requireRole } from '../middleware/auth';
 import { runUtahWarrantScan } from '../utils/utahWarrantPoller';
 import { runAllSourceScans } from '../utils/warrantSources/runScan';
@@ -1436,6 +1437,16 @@ warrants.post('/', requireRole(...ROLES_CRUD_WRITE), async (c) => {
       `SELECT ${WARRANT_SELECT_COLS} ${WARRANT_FROM_JOINS} WHERE w.id = ?`,
       warrantId,
     );
+
+    // Alert Rules engine — fire 'warrant_created' so configured rules
+    // notify their targets. Best-effort; never blocks the create.
+    await evaluateNotificationRules(db, 'warrant_created', {
+      title: 'Warrant Created',
+      message: `${created?.warrant_number ?? 'New warrant'} — ${created?.subject_name ?? created?.charge_description ?? ''}`,
+      priority: 'normal',
+      entity_type: 'warrant',
+      entity_id: warrantId as number,
+    });
 
     return c.json(created, 201);
   } catch (err) {

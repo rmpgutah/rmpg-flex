@@ -823,6 +823,9 @@ const API_ROUTES: RouteRule[] = [
   { kind: 'prefix', value: '/api/admin/departments' },
   { kind: 'prefix', value: '/api/admin/notification-rules' },
   { kind: 'prefix', value: '/api/admin/announcements' },
+  // Officer-facing announcements reader (src/routes/announcements.ts).
+  // Legacy has no /api/announcements surface, so route to env.API.
+  { kind: 'prefix', value: '/api/announcements' },
   // Console Settings — real handler lives in src/routes/adminSettings.ts
   // (mounted at /api/admin/settings in routesConfig.ts) backed by the
   // system_settings table on live D1 (428 rows, rich schema). Legacy never

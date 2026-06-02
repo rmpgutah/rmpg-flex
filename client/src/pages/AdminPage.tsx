@@ -10,7 +10,6 @@ import {
   XCircle,
   Activity,
   Megaphone,
-  Archive,
   Network,
   Zap,
   Link2,
@@ -18,8 +17,6 @@ import {
   GraduationCap,
   WifiOff,
   DatabaseZap,
-  Lock,
-  Palette,
   Navigation,
   Fingerprint,
   Search,
@@ -49,7 +46,6 @@ import AdminSystemTab from './admin/AdminSystemTab';
 import AdminAuditTab from './admin/AdminAuditTab';
 import AdminHealthTab from './admin/AdminHealthTab';
 import AdminAnnouncementsTab from './admin/AdminAnnouncementsTab';
-import AdminRetentionTab from './admin/AdminRetentionTab';
 import AdminDepartmentsTab from './admin/AdminDepartmentsTab';
 import AdminNotifRulesTab from './admin/AdminNotifRulesTab';
 import AdminServeManagerTab from './admin/AdminServeManagerTab';
@@ -61,10 +57,7 @@ import AdminClearPathGpsTab from './admin/AdminClearPathGpsTab';
 import AdminArrestsTab from './admin/AdminArrestsTab';
 import AdminWarrantScrapersTab from './admin/AdminWarrantScrapersTab';
 import AdminIPEDTab from './admin/AdminIPEDTab';
-import AdminSkipTracerTab from './admin/AdminSkipTracerTab';
 import AdminSkipTracerV2Tab from './admin/AdminSkipTracerV2Tab';
-import AdminSecurityTab from './admin/AdminSecurityTab';
-import AdminBrandingTab from './admin/AdminBrandingTab';
 import AdminEmailTab from './admin/AdminEmailTab';
 import AdminIntegrationsTab from './admin/AdminIntegrationsTab';
 import AdminAISettingsTab from './admin/AdminAISettingsTab';
@@ -235,7 +228,7 @@ function mapAuditRow(row: AuditRow): AuditEntry {
 // Constants
 // ============================================================
 
-type TabId = 'users' | 'clients' | 'system' | 'settings' | 'audit' | 'health' | 'announcements' | 'retention' | 'departments' | 'notif_rules' | 'servemanager' | 'microbilt' | 'clearpathgps' | 'arrests' | 'warrant_scrapers' | 'skiptracer' | 'skiptracer_v2' | 'sessions' | 'training' | 'offline' | 'security' | 'branding' | 'email' | 'iped' | 'integrations' | 'ai_settings' | 'godmode' | 'map_settings' | 'radio';
+type TabId = 'users' | 'clients' | 'system' | 'settings' | 'audit' | 'health' | 'announcements' | 'departments' | 'notif_rules' | 'servemanager' | 'microbilt' | 'clearpathgps' | 'arrests' | 'warrant_scrapers' | 'skiptracer_v2' | 'sessions' | 'training' | 'offline' | 'email' | 'iped' | 'integrations' | 'ai_settings' | 'godmode' | 'map_settings' | 'radio';
 
 const LS_ADMIN_TAB = 'rmpg_admin_tab';
 
@@ -249,7 +242,7 @@ export default function AdminPage() {
   const clientEditPendingRef = useRef(false);
 
   // Restore active tab from URL ?tab= param or localStorage (default: 'users')
-  const VALID_TABS = ['users', 'clients', 'system', 'settings', 'audit', 'health', 'announcements', 'retention', 'departments', 'notif_rules', 'servemanager', 'microbilt', 'clearpathgps', 'arrests', 'warrant_scrapers', 'skiptracer', 'skiptracer_v2', 'sessions', 'training', 'offline', 'security', 'branding', 'email', 'iped', 'integrations', 'ai_settings', 'godmode', 'map_settings', 'radio'];
+  const VALID_TABS = ['users', 'clients', 'system', 'settings', 'audit', 'health', 'announcements', 'departments', 'notif_rules', 'servemanager', 'microbilt', 'clearpathgps', 'arrests', 'warrant_scrapers', 'skiptracer_v2', 'sessions', 'training', 'offline', 'email', 'iped', 'integrations', 'ai_settings', 'godmode', 'map_settings', 'radio'];
   const [activeTab, setActiveTabState] = useState<TabId>(() => {
     try {
       // URL ?tab= param takes priority (used by Help → Training link)
@@ -649,7 +642,7 @@ export default function AdminPage() {
         { id: 'clients', label: 'Clients', icon: Building2 },
         { id: 'departments', label: 'Departments', icon: Network },
         { id: 'sessions', label: 'Sessions', icon: Shield },
-        { id: 'security', label: 'Security Policy', icon: Lock },
+        // 'security' (Security Policy) consolidated into System Config → Security Policy sub-tab (2026-06-02)
       ],
     },
     {
@@ -659,8 +652,8 @@ export default function AdminPage() {
         { id: 'settings', label: 'Console Settings', icon: Settings },
         { id: 'map_settings', label: 'Map Settings', icon: Map },
         { id: 'health', label: 'System Health', icon: Activity },
-        { id: 'branding', label: 'Branding & Reports', icon: Palette },
-        { id: 'retention', label: 'Data Retention', icon: Archive },
+        // 'branding' (Branding & Reports) consolidated into System Config → Branding & Reports sub-tab (2026-06-02)
+        // 'retention' (Data Retention) removed 2026-06-02 — destructive auto-purge was never built; backend stayed a stub.
         { id: 'offline', label: 'Offline Mode', icon: WifiOff },
       ],
     },
@@ -687,8 +680,8 @@ export default function AdminPage() {
         // "Warrant Polling Status" (the term operators actually search for).
         { id: 'warrant_scrapers', label: 'Warrant Polling Status', icon: Shield },
         { id: 'arrests', label: 'Arrest Records', icon: Fingerprint },
-        { id: 'skiptracer', label: 'Skip Tracker', icon: Search },
-        { id: 'skiptracer_v2', label: 'Skip Tracer V2', icon: Search },
+        // 'skiptracer' (v1) retired in favor of Skip Tracer V2 (2026-06-02)
+        { id: 'skiptracer_v2', label: 'Skip Tracer', icon: Search },
         { id: 'servemanager', label: 'ServeManager', icon: Link2 },
         { id: 'microbilt', label: 'Microbilt', icon: DatabaseZap },
         { id: 'clearpathgps', label: 'ClearPathGPS', icon: Navigation },
@@ -913,14 +906,6 @@ export default function AdminPage() {
           />
         )}
 
-        {activeTab === 'retention' && (
-          <AdminRetentionTab
-            LoadingSpinner={LoadingSpinner}
-            error={error}
-            setError={setError}
-          />
-        )}
-
         {activeTab === 'departments' && (
           <AdminDepartmentsTab
             users={users}
@@ -987,14 +972,6 @@ export default function AdminPage() {
           />
         )}
 
-        {activeTab === 'skiptracer' && (
-          <AdminSkipTracerTab
-            LoadingSpinner={LoadingSpinner}
-            error={error}
-            setError={setError}
-          />
-        )}
-
         {activeTab === 'skiptracer_v2' && (
           <AdminSkipTracerV2Tab
             LoadingSpinner={LoadingSpinner}
@@ -1021,22 +998,6 @@ export default function AdminPage() {
 
         {activeTab === 'offline' && (
           <AdminOfflineTab
-            LoadingSpinner={LoadingSpinner}
-            error={error}
-            setError={setError}
-          />
-        )}
-
-        {activeTab === 'security' && (
-          <AdminSecurityTab
-            LoadingSpinner={LoadingSpinner}
-            error={error}
-            setError={setError}
-          />
-        )}
-
-        {activeTab === 'branding' && (
-          <AdminBrandingTab
             LoadingSpinner={LoadingSpinner}
             error={error}
             setError={setError}

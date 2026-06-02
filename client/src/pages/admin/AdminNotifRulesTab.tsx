@@ -36,20 +36,24 @@ interface Props {
   setError: (e: string | null) => void;
 }
 
+// `live: true` = a real event emitter in the Worker fires this trigger
+// today (see src/routes/notificationEngine.ts callers). Triggers without
+// it are valid to configure but won't fire until their emitter is wired —
+// the form labels them "(not yet active)" so rules aren't created blind.
 const TRIGGER_EVENTS = [
-  { value: 'call_created_p1', label: 'P1 Call Created', desc: 'When a Priority 1 call is created' },
-  { value: 'call_created_p2', label: 'P2 Call Created', desc: 'When a Priority 2 call is created' },
-  { value: 'warrant_created', label: 'Warrant Created', desc: 'When a new warrant is entered' },
-  { value: 'warrant_served', label: 'Warrant Served', desc: 'When a warrant is served' },
-  { value: 'credential_expiring', label: 'Credential Expiring', desc: 'When an officer credential is about to expire' },
-  { value: 'unit_panic', label: 'Panic Button', desc: 'When a unit activates panic' },
-  { value: 'shift_unattended', label: 'Shift Unattended', desc: 'When a scheduled shift has no clock-in' },
-  { value: 'invoice_overdue', label: 'Invoice Overdue', desc: 'When an invoice passes its due date' },
-  { value: 'incident_submitted', label: 'Incident Submitted', desc: 'When an incident report is submitted for review' },
-  { value: 'bolo_created', label: 'BOLO Created', desc: 'When a new BOLO is issued' },
-  { value: 'login_failed_threshold', label: 'Login Failures', desc: 'When login failures exceed threshold' },
-  { value: 'training_expiring', label: 'Training Expiring', desc: 'When training certification is about to expire' },
-  { value: 'vehicle_maintenance_due', label: 'Vehicle Service Due', desc: 'When a fleet vehicle needs maintenance' },
+  { value: 'call_created_p1', label: 'P1 Call Created', desc: 'When a Priority 1 call is created', live: true },
+  { value: 'call_created_p2', label: 'P2 Call Created', desc: 'When a Priority 2 call is created', live: true },
+  { value: 'unit_panic', label: 'Panic Button', desc: 'When a unit activates panic', live: true },
+  { value: 'warrant_created', label: 'Warrant Created', desc: 'When a new warrant is entered', live: true },
+  { value: 'warrant_served', label: 'Warrant Served', desc: 'When a warrant is served', live: false },
+  { value: 'credential_expiring', label: 'Credential Expiring', desc: 'When an officer credential is about to expire', live: false },
+  { value: 'shift_unattended', label: 'Shift Unattended', desc: 'When a scheduled shift has no clock-in', live: false },
+  { value: 'invoice_overdue', label: 'Invoice Overdue', desc: 'When an invoice passes its due date', live: false },
+  { value: 'incident_submitted', label: 'Incident Submitted', desc: 'When an incident report is submitted for review', live: false },
+  { value: 'bolo_created', label: 'BOLO Created', desc: 'When a new BOLO is issued', live: false },
+  { value: 'login_failed_threshold', label: 'Login Failures', desc: 'When login failures exceed threshold', live: false },
+  { value: 'training_expiring', label: 'Training Expiring', desc: 'When training certification is about to expire', live: false },
+  { value: 'vehicle_maintenance_due', label: 'Vehicle Service Due', desc: 'When a fleet vehicle needs maintenance', live: false },
 ];
 
 const ROLES = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher'];
@@ -300,10 +304,18 @@ export default function AdminNotifRulesTab({ users, LoadingSpinner, error, setEr
                   <label className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Trigger Event *</label>
                   <select id="ff-adminnotifrulestab-3" value={form.trigger_event} onChange={(e) => setForm((f) => ({ ...f, trigger_event: e.target.value }))} className="select-dark w-full text-xs">
                     {TRIGGER_EVENTS.map((t) => (
-                      <option key={t.value} value={t.value}>{t.label}</option>
+                      <option key={t.value} value={t.value}>{t.label}{t.live ? '' : ' (not yet active)'}</option>
                     ))}
                   </select>
-                  <p className="text-[9px] text-rmpg-500 mt-0.5">{TRIGGER_EVENTS.find((t) => t.value === form.trigger_event)?.desc}</p>
+                  {(() => {
+                    const t = TRIGGER_EVENTS.find((x) => x.value === form.trigger_event);
+                    return (
+                      <p className="text-[9px] mt-0.5 flex items-center gap-1">
+                        <span className={t?.live ? 'text-green-500' : 'text-amber-500'}>{t?.live ? '● Live' : '○ Not yet active'}</span>
+                        <span className="text-rmpg-500">— {t?.desc}</span>
+                      </p>
+                    );
+                  })()}
                 </div>
                 <div>
                   <label className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Delivery Method</label>

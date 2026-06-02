@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
+import { fireRule, type NotificationRuleRow } from './notificationEngine';
 
 const admin = new Hono<Env>();
 
@@ -186,10 +187,12 @@ admin.get('/realtime-stats', (c) => c.json({
 // endpoints (POST/PUT/DELETE) on these resources still 404 and
 // need real implementations when the features come online —
 // not in this PR's scope.
-admin.get('/departments', (c) => c.json([]));
+// Departments, Announcements and Notification Rules now have real CRUD —
+// handlers appended at the end of this file (2026-06-02). Retention stays a
+// read-only [] stub: the destructive auto-purge was intentionally not built
+// and the Data Retention tab was removed in the same pass.
 admin.get('/retention', (c) => c.json([]));
 admin.get('/retention/preview', (c) => c.json([]));
-admin.get('/announcements/all', (c) => c.json([]));
 
 // ── Admin observability stubs (AdminPage dashboard tiles) ────
 // All four 404'd in prod (no handler in either rewrite or legacy).
@@ -207,12 +210,293 @@ admin.get('/user-activity-heatmap', (c) => c.json({
 admin.get('/backup-status', (c) => c.json({
   last_backup_at: null, status: 'unknown', size_bytes: 0, location: null,
 }));
-admin.get('/maintenance-mode', (c) => c.json({
-  enabled: false, message: null, scheduled_at: null,
-}));
+// Maintenance-mode GET/PUT now persist to system_config — see appended block.
 
-// ── Notification rules (no rule-engine table yet) ────────────
-// AdminPage's notification settings tab tries to list rules on
-// mount. No backing schema, so respond with an empty list. POST
-// will continue to 404 until a real schema lands.
-admin.get('/notification-rules', (c) => c.json([]));
+// ============================================================
+// Real CRUD handlers (added 2026-06-02) — replaces the GET-[] stubs
+// that made these features look healthy while every write 404'd.
+// Tables created in migration 0070. Mounted under /api/admin via
+// routesConfig; proxy already routes these prefixes to env.API.
+// ============================================================
+
+// Small helper: build a partial UPDATE from a whitelist so toggle-style
+// PATCH-via-PUT calls (e.g. { is_active: 0 }) don't wipe other columns.
+function buildPartialUpdate(
+  body: Record<string, unknown>,
+  allowed: string[],
+): { setSql: string; values: unknown[] } | null {
+  const sets: string[] = [];
+  const values: unknown[] = [];
+  for (const col of allowed) {
+    if (Object.prototype.hasOwnProperty.call(body, col)) {
+      sets.push(`${col} = ?`);
+      values.push(body[col] ?? null);
+    }
+  }
+  if (sets.length === 0) return null;
+  sets.push(`updated_at = datetime('now','localtime')`);
+  return { setSql: sets.join(', '), values };
+}
+
+// ── Departments ─────────────────────────────────────────────
+admin.get('/departments', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(
+      db,
+      `SELECT d.*, p.name AS parent_name, u.full_name AS manager_name
+         FROM departments d
+         LEFT JOIN departments p ON d.parent_id = p.id
+         LEFT JOIN users u ON d.manager_id = u.id
+        ORDER BY d.name`,
+    );
+    return c.json(rows);
+  } catch (err) {
+    return c.json({ error: 'Failed to load departments', detail: String(err) }, 500);
+  }
+});
+
+admin.post('/departments', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const b = await c.req.json<Record<string, unknown>>();
+    const name = typeof b.name === 'string' ? b.name.trim() : '';
+    if (!name) return c.json({ error: 'Department name is required' }, 400);
+    const r = await execute(
+      db,
+      `INSERT INTO departments (name, code, description, parent_id, manager_id, is_active)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      name, b.code ?? null, b.description ?? null,
+      b.parent_id ?? null, b.manager_id ?? null, b.is_active === 0 ? 0 : 1,
+    );
+    return c.json({ success: true, id: r.meta.last_row_id }, 201);
+  } catch (err) {
+    return c.json({ error: 'Failed to create department', detail: String(err) }, 500);
+  }
+});
+
+admin.put('/departments/:id', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id'), 10);
+    if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+    const b = await c.req.json<Record<string, unknown>>();
+    // Never let a department become its own parent.
+    if (b.parent_id != null && Number(b.parent_id) === id) b.parent_id = null;
+    const upd = buildPartialUpdate(b, ['name', 'code', 'description', 'parent_id', 'manager_id', 'is_active']);
+    if (!upd) return c.json({ error: 'No fields to update' }, 400);
+    await execute(db, `UPDATE departments SET ${upd.setSql} WHERE id = ?`, ...upd.values, id);
+    return c.json({ success: true });
+  } catch (err) {
+    return c.json({ error: 'Failed to update department', detail: String(err) }, 500);
+  }
+});
+
+admin.delete('/departments/:id', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id'), 10);
+    if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+    await execute(db, `DELETE FROM departments WHERE id = ?`, id);
+    return c.json({ success: true });
+  } catch (err) {
+    return c.json({ error: 'Failed to delete department', detail: String(err) }, 500);
+  }
+});
+
+// ── Announcements (admin CRUD) ──────────────────────────────
+// The officer-facing reader lives in src/routes/announcements.ts
+// (GET /api/announcements — active + role-scoped + within window).
+admin.get('/announcements/all', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(
+      db, `SELECT * FROM announcements ORDER BY created_at DESC, id DESC`,
+    );
+    return c.json(rows);
+  } catch (err) {
+    return c.json({ error: 'Failed to load announcements', detail: String(err) }, 500);
+  }
+});
+
+admin.post('/announcements', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const u = c.get('user');
+    const b = await c.req.json<Record<string, unknown>>();
+    const title = typeof b.title === 'string' ? b.title.trim() : '';
+    if (!title) return c.json({ error: 'Title is required' }, 400);
+    const r = await execute(
+      db,
+      `INSERT INTO announcements (title, body, type, priority, target_roles, is_active, starts_at, expires_at, created_by, created_by_name)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      title, b.body ?? null, b.type ?? 'info', b.priority ?? 'normal',
+      typeof b.target_roles === 'string' ? b.target_roles : '[]',
+      b.is_active === 0 ? 0 : 1, b.starts_at ?? null, b.expires_at ?? null,
+      u?.id ?? null, u?.full_name ?? null,
+    );
+    return c.json({ success: true, id: r.meta.last_row_id }, 201);
+  } catch (err) {
+    return c.json({ error: 'Failed to create announcement', detail: String(err) }, 500);
+  }
+});
+
+admin.put('/announcements/:id', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id'), 10);
+    if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+    const b = await c.req.json<Record<string, unknown>>();
+    const upd = buildPartialUpdate(b, ['title', 'body', 'type', 'priority', 'target_roles', 'is_active', 'starts_at', 'expires_at']);
+    if (!upd) return c.json({ error: 'No fields to update' }, 400);
+    await execute(db, `UPDATE announcements SET ${upd.setSql} WHERE id = ?`, ...upd.values, id);
+    return c.json({ success: true });
+  } catch (err) {
+    return c.json({ error: 'Failed to update announcement', detail: String(err) }, 500);
+  }
+});
+
+admin.delete('/announcements/:id', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id'), 10);
+    if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+    await execute(db, `DELETE FROM announcements WHERE id = ?`, id);
+    return c.json({ success: true });
+  } catch (err) {
+    return c.json({ error: 'Failed to delete announcement', detail: String(err) }, 500);
+  }
+});
+
+// ── Notification rules (Alert Rules engine) ─────────────────
+admin.get('/notification-rules', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(
+      db, `SELECT * FROM notification_rules ORDER BY created_at DESC, id DESC`,
+    );
+    return c.json(rows);
+  } catch (err) {
+    return c.json({ error: 'Failed to load notification rules', detail: String(err) }, 500);
+  }
+});
+
+admin.post('/notification-rules', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const u = c.get('user');
+    const b = await c.req.json<Record<string, unknown>>();
+    const name = typeof b.name === 'string' ? b.name.trim() : '';
+    if (!name) return c.json({ error: 'Rule name is required' }, 400);
+    if (!b.trigger_event) return c.json({ error: 'Trigger event is required' }, 400);
+    const r = await execute(
+      db,
+      `INSERT INTO notification_rules
+         (name, description, trigger_event, conditions, target_roles, target_user_ids, notification_type, is_active, created_by, created_by_name)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      name, b.description ?? null, String(b.trigger_event),
+      typeof b.conditions === 'string' ? b.conditions : '{}',
+      typeof b.target_roles === 'string' ? b.target_roles : '[]',
+      typeof b.target_user_ids === 'string' ? b.target_user_ids : '[]',
+      b.notification_type ?? 'in_app', b.is_active === 0 ? 0 : 1,
+      u?.id ?? null, u?.full_name ?? null,
+    );
+    return c.json({ success: true, id: r.meta.last_row_id }, 201);
+  } catch (err) {
+    return c.json({ error: 'Failed to create rule', detail: String(err) }, 500);
+  }
+});
+
+admin.put('/notification-rules/:id', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id'), 10);
+    if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+    const b = await c.req.json<Record<string, unknown>>();
+    const upd = buildPartialUpdate(b, ['name', 'description', 'trigger_event', 'conditions', 'target_roles', 'target_user_ids', 'notification_type', 'is_active']);
+    if (!upd) return c.json({ error: 'No fields to update' }, 400);
+    await execute(db, `UPDATE notification_rules SET ${upd.setSql} WHERE id = ?`, ...upd.values, id);
+    return c.json({ success: true });
+  } catch (err) {
+    return c.json({ error: 'Failed to update rule', detail: String(err) }, 500);
+  }
+});
+
+admin.delete('/notification-rules/:id', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id'), 10);
+    if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+    await execute(db, `DELETE FROM notification_rules WHERE id = ?`, id);
+    return c.json({ success: true });
+  } catch (err) {
+    return c.json({ error: 'Failed to delete rule', detail: String(err) }, 500);
+  }
+});
+
+// POST /notification-rules/:id/test — fan a [TEST] notification to the
+// rule's real targets so the admin can confirm delivery end-to-end.
+admin.post('/notification-rules/:id/test', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id'), 10);
+    if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+    const rule = await queryFirst<NotificationRuleRow>(
+      db, `SELECT * FROM notification_rules WHERE id = ?`, id,
+    );
+    if (!rule) return c.json({ error: 'Rule not found' }, 404);
+    const notified = await fireRule(db, rule, {
+      title: `Test: ${rule.name}`,
+      message: rule.description || `Test notification for "${rule.name}"`,
+    }, { testPrefix: true });
+    return c.json({ success: true, notified });
+  } catch (err) {
+    return c.json({ error: 'Failed to send test notification', detail: String(err) }, 500);
+  }
+});
+
+// ── Maintenance mode (system_config-backed) ─────────────────
+const MAINT_KEY = 'maintenance_mode';
+const MAINT_DEFAULT = { enabled: false, message: null as string | null, scheduled_at: null as string | null };
+
+admin.get('/maintenance-mode', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const row = await queryFirst<{ config_value: string }>(
+      db, `SELECT config_value FROM system_config WHERE config_key = ? ORDER BY id DESC LIMIT 1`, MAINT_KEY,
+    );
+    if (!row) return c.json(MAINT_DEFAULT);
+    try { return c.json({ ...MAINT_DEFAULT, ...JSON.parse(row.config_value) }); }
+    catch { return c.json(MAINT_DEFAULT); }
+  } catch (err) {
+    return c.json({ ...MAINT_DEFAULT, error: String(err) });
+  }
+});
+
+admin.put('/maintenance-mode', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const b = await c.req.json<Record<string, unknown>>();
+    const value = JSON.stringify({
+      enabled: !!b.enabled,
+      message: b.message ?? null,
+      scheduled_at: b.scheduled_at ?? null,
+    });
+    // system_config has no UNIQUE(config_key) on live, so update-then-insert.
+    const r = await execute(
+      db,
+      `UPDATE system_config SET config_value = ?, updated_at = datetime('now','localtime') WHERE config_key = ?`,
+      value, MAINT_KEY,
+    );
+    if (!r.meta.changes) {
+      await execute(
+        db,
+        `INSERT INTO system_config (config_key, config_value, category) VALUES (?, ?, 'system')`,
+        MAINT_KEY, value,
+      );
+    }
+    return c.json({ success: true, ...JSON.parse(value) });
+  } catch (err) {
+    return c.json({ error: 'Failed to update maintenance mode', detail: String(err) }, 500);
+  }
+});
