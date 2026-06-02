@@ -445,7 +445,7 @@
 // v739: Citation PDF (v2) — render previously-dropped officer inputs (traffic
 //       speed/radar/BAC, vehicle year/make/model/VIN, court time/room/
 //       appearance, bond, condition flags). (Dispatch fix is worker-side.)
-const CACHE_NAME = 'rmpg-flex-v739';
+const CACHE_NAME = 'rmpg-flex-v740';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

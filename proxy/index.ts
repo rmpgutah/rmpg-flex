@@ -907,7 +907,16 @@ const API_ROUTES: RouteRule[] = [
   // handlers. /coverage-gaps is read-only by nature but listed under
   // the same GET filter for consistency.
   { kind: 'prefix', value: '/api/personnel/schedules', methods: ['GET'] },
+  // GET /api/personnel/time[/...] (roster/payroll read) → rewrite.
   { kind: 'prefix', value: '/api/personnel/time', methods: ['GET'] },
+  // POST /api/personnel/time (create) + PUT /api/personnel/time/:id (edit) →
+  // rewrite (src/routes/personnel.ts over time_entries + time_entry_edits).
+  // Dispatch creates/corrects officer time on radio request. These are anchored
+  // EXACTLY so the sibling clock-in/clock-out POSTs (handled only by legacy via
+  // the mobile ShiftCard) keep falling through to env.LEGACY — a broad prefix
+  // would have hijacked them to the rewrite, which has no clock-in/out handler.
+  { kind: 'regex', value: /^\/api\/personnel\/time\/?$/, methods: ['POST'] },
+  { kind: 'regex', value: /^\/api\/personnel\/time\/\d+$/, methods: ['PUT', 'DELETE'] },
   { kind: 'prefix', value: '/api/personnel/deployments', methods: ['GET'] },
   { kind: 'prefix', value: '/api/personnel/coverage-gaps', methods: ['GET'] },
   { kind: 'prefix', value: '/api/personnel/body-cameras' },
