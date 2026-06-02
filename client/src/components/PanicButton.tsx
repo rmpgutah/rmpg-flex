@@ -195,97 +195,98 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
     };
   }, [triggerHardwarePanic]);
 
-  // Listen for incoming panic alerts and status updates
+  // Listen for incoming panic alerts and their lifecycle updates.
+  //
+  // PANIC-1: the server (AlertHubDO via emitAlert) fans EVERY panic lifecycle
+  // event out as a single message type — `panic_alert` — discriminated by an
+  // `action` field (panic_activated / panic_acknowledged / panic_resolved /
+  // panic_cancelled / panic_false_alarm / panic_escalated), mirroring how
+  // dispatch_update carries an action. The old code subscribed to bespoke
+  // top-level types ('panic_resolved', …) that the server NEVER sends, so
+  // alarms never auto-cleared fleet-wide on ack/resolve/cancel. Consolidate
+  // into ONE subscription that branches on msg.action.
   useEffect(() => {
+    // Clear local alarm + overlay + voice room. Used by every terminal action.
+    const dismissLocal = () => {
+      setIncomingAlert(null);
+      alarmRef.current?.stop();
+      alarmRef.current = null;
+      panicAudio.stopListening?.();
+      setOwnPanicId(null);
+      setOwnPanicTime(null);
+      if (autoDismissTimerRef.current) { clearTimeout(autoDismissTimerRef.current); autoDismissTimerRef.current = null; }
+    };
+
     const unsub = subscribe('panic_alert', (msg: any) => {
-      const data = msg.data || msg.payload || msg;
-      // Don't show your own panic alert back to yourself
-      if (data.user_id && user?.id && String(data.user_id) === String(user.id)) return;
-      setIncomingAlert(data);
-      // Set the sender's user ID so the "Respond" talk-back button works
-      if (data.user_id) {
-        panicAudio.setSenderUserId?.(data.user_id);
+      // Broadcast frame: { type:'panic_alert', action, panic:{…full row…} }.
+      // Tolerate flatter/legacy shapes too (data/payload wrappers, fields
+      // hoisted to the top level).
+      const env = msg.data || msg.payload || msg;
+      const panic = env.panic || env;                       // the panic_alerts row
+      const action: string = msg.action || env.action || 'panic_activated';
+      const panicId = panic?.id ?? env.panic_id ?? env.id;
+
+      switch (action) {
+        case 'panic_acknowledged':
+          // Ack silences the alarm but keeps the unit emergent — update the
+          // overlay to show who acknowledged, stop the audible alarm.
+          setIncomingAlert(prev => prev ? {
+            ...prev,
+            acknowledged_by: panic?.acknowledged_by || panic?.user_name || env.user_name,
+            acknowledged_at: panic?.acknowledged_at || new Date().toISOString(),
+          } : prev);
+          alarmRef.current?.stop();
+          alarmRef.current = null;
+          break;
+
+        case 'panic_resolved':
+          dismissLocal();
+          addToast('Panic alert resolved', 'success', 5000);
+          break;
+
+        case 'panic_cancelled':
+          dismissLocal();
+          break;
+
+        case 'panic_false_alarm':
+          dismissLocal();
+          addToast('Panic marked as false alarm', 'info', 5000);
+          break;
+
+        case 'panic_escalated':
+          setIncomingAlert(prev => prev ? {
+            ...prev,
+            escalation_level: panic?.escalation_level ?? env.escalation_level,
+          } : prev);
+          break;
+
+        case 'panic_activated':
+        default: {
+          // New alarm. Don't show your own panic back to yourself.
+          const senderId = panic?.user_id ?? panic?.officer_id ?? env.user_id;
+          if (senderId && user?.id && String(senderId) === String(user.id)) return;
+          // Normalize to the PanicAlert overlay shape (panic row + panic_id).
+          setIncomingAlert({ ...panic, panic_id: panicId } as PanicAlert);
+          // Set the sender's user ID so the "Respond" talk-back button works.
+          if (senderId) panicAudio.setSenderUserId?.(Number(senderId));
+          // Open the panic voice room to hear the officer's distress audio live.
+          if (panicId != null) panicAudio.listen?.(Number(panicId));
+          // Audible alarm.
+          alarmRef.current = playPanicAlarm(8000);
+          // Auto-dismiss after 60s (tracked for cleanup).
+          if (autoDismissTimerRef.current) clearTimeout(autoDismissTimerRef.current);
+          autoDismissTimerRef.current = setTimeout(() => {
+            setIncomingAlert(null);
+            alarmRef.current?.stop();
+            panicAudio.stopListening?.();
+          }, 60000);
+          break;
+        }
       }
-      // Open the panic voice room to hear the officer's distress audio
-      // live (and enable talk-back). Tolerates both broadcast shapes:
-      // rewrite { panic: {id} } and any flatter legacy form.
-      const panicId = data.panic?.id ?? data.panic_id ?? data.id;
-      if (panicId != null) panicAudio.listen?.(Number(panicId));
-      // Play alarm
-      alarmRef.current = playPanicAlarm(8000);
-      // Auto-dismiss after 60 seconds (tracked for cleanup)
-      if (autoDismissTimerRef.current) clearTimeout(autoDismissTimerRef.current);
-      autoDismissTimerRef.current = setTimeout(() => {
-        setIncomingAlert(null);
-        alarmRef.current?.stop();
-        panicAudio.stopListening?.();
-      }, 60000);
-    });
-
-    // Panic acknowledged — update alert display
-    const unsubAck = subscribe('panic_acknowledged', (msg: any) => {
-      const data = msg.data || msg.payload || msg;
-      setIncomingAlert(prev => {
-        if (!prev) return prev;
-        return {
-          ...prev,
-          acknowledged_by: data.acknowledged_by || data.user_name,
-          acknowledged_at: data.acknowledged_at || new Date().toISOString(),
-        };
-      });
-      // Stop alarm sound on acknowledge
-      alarmRef.current?.stop();
-      alarmRef.current = null;
-    });
-
-    // Panic resolved — dismiss alert
-    const unsubResolved = subscribe('panic_resolved', (msg: any) => {
-      setIncomingAlert(null);
-      alarmRef.current?.stop();
-      alarmRef.current = null;
-      panicAudio.stopListening?.();
-      setOwnPanicId(null);
-      setOwnPanicTime(null);
-      addToast('Panic alert resolved', 'success', 5000);
-    });
-
-    // Panic cancelled — dismiss alert
-    const unsubCancelled = subscribe('panic_cancelled', (_msg: any) => {
-      setIncomingAlert(null);
-      alarmRef.current?.stop();
-      alarmRef.current = null;
-      panicAudio.stopListening?.();
-      setOwnPanicId(null);
-      setOwnPanicTime(null);
-    });
-
-    // Panic false alarm — dismiss alert
-    const unsubFalse = subscribe('panic_false_alarm', (_msg: any) => {
-      setIncomingAlert(null);
-      alarmRef.current?.stop();
-      alarmRef.current = null;
-      panicAudio.stopListening?.();
-      setOwnPanicId(null);
-      setOwnPanicTime(null);
-      addToast('Panic marked as false alarm', 'info', 5000);
-    });
-
-    // Panic escalated — update escalation level
-    const unsubEscalated = subscribe('panic_escalated', (msg: any) => {
-      const data = msg.data || msg.payload || msg;
-      setIncomingAlert(prev => {
-        if (!prev) return prev;
-        return { ...prev, escalation_level: data.escalation_level };
-      });
     });
 
     return () => {
       unsub();
-      unsubAck();
-      unsubResolved();
-      unsubCancelled();
-      unsubFalse();
-      unsubEscalated();
       if (autoDismissTimerRef.current) clearTimeout(autoDismissTimerRef.current);
     };
   }, [subscribe, user?.id, panicAudio, addToast]);

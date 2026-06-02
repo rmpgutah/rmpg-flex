@@ -445,10 +445,17 @@
 // v739: Citation PDF (v2) — render previously-dropped officer inputs (traffic
 //       speed/radar/BAC, vehicle year/make/model/VIN, court time/room/
 //       appearance, bond, condition flags). (Dispatch fix is worker-side.)
-// v742: Realtime — MapPage consumes the new 'unit_position' AlertHubDO frame
-//       (instant pin glide + heading-arrow + speed, no poll wait); radio-AI
-//       CAD writes now fan a live dispatch_update to the board.
-const CACHE_NAME = 'rmpg-flex-v742';
+// v742: GPS/voice/panic realtime fixes — stop GPS breadcrumb double-insert
+//       (sendImmediate de-queues the sent point + failover re-merge dedupes by
+//       timestamp/lat/lng); voice alerts (incl. PANIC) no longer suppressed on
+//       devices lacking Web Speech when server Edge TTS is enabled; voice-
+//       command mic now mutes during radio PTT via the voice-ws monitor; panic
+//       alarms auto-clear fleet-wide on ack/resolve/cancel/false-alarm by
+//       branching the single panic_alert frame on its `action` field.
+// v743: HR Reviews + Disciplinary save buttons now surface a "Failed to …"
+//       error toast when the create/update API call fails (the handlers had a
+//       success toast but no catch, so a failed save looked like a dead button).
+const CACHE_NAME = 'rmpg-flex-v743';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

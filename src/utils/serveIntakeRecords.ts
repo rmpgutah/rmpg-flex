@@ -71,6 +71,32 @@ function normName(s: string | null | undefined): string {
   return s.toLowerCase().replace(/[.,]/g, '').replace(/\s+/g, ' ').trim();
 }
 
+// A registered-agent string is only a real human name worth a `persons` row
+// when it (a) doesn't read as a role/department label and (b) actually has a
+// plausible two-token human name. Court packets routinely list the corporate
+// agent as generic boilerplate ("Medical Records Department", "Registered
+// Agent", "Custodian of Records", "Front Desk") — splitFullName() turns those
+// into junk rows like first="Medical"/last="Department". When the agent text
+// looks like a role rather than a person, we link the business only and skip
+// the person row.
+const AGENT_ROLE_PATTERN = /department|records|registered agent|authorized|custodian|front desk|reception|legal dept|hr\b/i;
+
+export function isPlausibleAgentPersonName(full: string | null | undefined): boolean {
+  const s = (full || '').trim();
+  if (!s) return false;
+  // Reject sentinel/placeholder noise the OCR sometimes emits.
+  if (/^(none|n\/?a|unknown|n\/a)$/i.test(s)) return false;
+  // Role/department label → not a person.
+  if (AGENT_ROLE_PATTERN.test(s)) return false;
+  // Require a plausible 2-token human name: at least two alphabetic tokens
+  // (allowing internal hyphens/apostrophes for names like "O'Brien" or
+  // "Smith-Jones"). A single token ("Reception") or a token soup of initials
+  // doesn't clear the bar.
+  const tokens = s.split(/\s+/).filter(Boolean);
+  const nameTokens = tokens.filter((t) => /^[A-Za-z][A-Za-z'’-]*$/.test(t));
+  return nameTokens.length >= 2;
+}
+
 // Split a corporate-style "First Middle Last" into a person row.
 // If the input is just "Joan Lind" → { first: 'Joan', last: 'Lind' }.
 // If it's "Joan", we still need last_name NOT NULL — fall back to '?'.
@@ -228,6 +254,42 @@ export async function nextCallNumber(db: D1Database): Promise<string> {
     ? String(parseInt(max.max.slice(prefix.length), 10) + 1).padStart(5, '0')
     : '00001';
   return `${prefix}${seq}`;
+}
+
+// ── UNIQUE-violation detection + retry ───────────────────────
+// call_number is UNIQUE on calls_for_service. The minter is a non-atomic
+// SELECT MAX()+1, so two writers racing (intake + dispatcher, or two intakes)
+// can mint the same number; the loser's INSERT throws SQLITE_CONSTRAINT and the
+// call silently drops. Detect that specific failure so we can re-mint + retry
+// instead of swallowing it.
+export function isUniqueViolation(err: unknown): boolean {
+  const msg = (err instanceof Error ? err.message : String(err ?? '')).toLowerCase();
+  return msg.includes('unique') || msg.includes('constraint failed') || msg.includes('2067') /* SQLITE_CONSTRAINT_UNIQUE */;
+}
+
+// Run an INSERT that may collide on a freshly-minted unique key. `mint` produces
+// a candidate value (re-minted each attempt so a retry picks up any rows the
+// racing writer just committed); `insert` performs the INSERT with it. On a
+// UNIQUE violation we re-mint + retry up to `attempts` times; any other error
+// (or exhausting the retries) rethrows so the caller's existing handling fires.
+export async function withUniqueRetry<T>(
+  mint: () => Promise<string>,
+  insert: (value: string) => Promise<T>,
+  attempts = 5,
+): Promise<{ value: string; result: T }> {
+  let lastErr: unknown;
+  for (let i = 0; i < attempts; i++) {
+    const value = await mint();
+    try {
+      const result = await insert(value);
+      return { value, result };
+    } catch (err) {
+      lastErr = err;
+      if (!isUniqueViolation(err)) throw err;
+      // Collision — loop re-mints against the now-advanced MAX and retries.
+    }
+  }
+  throw lastErr;
 }
 
 // ── Priority mapping (serve → CAD ladder) ────────────────────
@@ -517,7 +579,12 @@ export async function commitIntake(db: D1Database, input: CommitInput): Promise<
   let agentPerson: RecordRef = { id: 0, created: false };
 
   if (isBusiness) {
-    if (agentFullName) {
+    // Only create a person row for the registered agent when the agent text is
+    // a plausible human name. Generic role/department labels ("Medical Records
+    // Department", "Registered Agent", "Custodian of Records") create junk
+    // persons rows like first="Medical"/last="Department" — skip those and keep
+    // the business link as the sole record. (Audit AI-2.)
+    if (agentFullName && isPlausibleAgentPersonName(agentFullName)) {
       const parts = splitFullName(agentFullName);
       agentPerson = await findOrCreatePerson(db, {
         first_name: parts.first,
@@ -558,7 +625,6 @@ export async function commitIntake(db: D1Database, input: CommitInput): Promise<
   let callId: number | null = null;
   let callNumber: string | null = null;
   if (fullLocation || addr) {
-    const cn = await nextCallNumber(db);
     const caller_name = queueRow.client_name || queueRow.attorney_name;
     const caller_phone = get('attorney_phone') || null;
 
@@ -579,39 +645,45 @@ export async function commitIntake(db: D1Database, input: CommitInput): Promise<
     const description = briefing.descriptionPrefix + input.documentSummary;
 
     try {
-      const call = await createServiceCall(db, {
-        call_number: cn,
-        incident_type: 'civil_paper_service',
-        priority: cadPriority(queueRow.priority),
-        caller_name: caller_name || null,
-        caller_phone,
-        location_address: fullLocation || addr,
-        property_id: property.id || null,
-        latitude: coords?.lat ?? null,
-        longitude: coords?.lng ?? null,
-        description,
-        notes: briefing.notes.length ? JSON.stringify(briefing.notes) : null,
-        scene_safety: briefing.sceneSafety || null,
-        officer_safety_caution: briefing.officerSafetyCaution,
-        domestic_violence: briefing.domesticViolence,
-        dispatcher_id: userId,
-        // Geo enrichment — parity with a dispatcher-created call.
-        cross_street: crossStreet || null,
-        location_building: locParts.building || null,
-        location_floor: locParts.floor || null,
-        location_room: locParts.suite || null,
-        sector_id: district?.sector_id ?? null,
-        sector_name: district?.sector_name ?? null,
-        zone_id: district?.zone_id ?? null,
-        zone_name: district?.zone_name ?? null,
-        beat_id: district?.beat_id ?? null,
-        beat_name: district?.beat_name ?? null,
-        beat_descriptor: district?.beat_descriptor ?? null,
-        zone_beat: district?.zone_beat ?? null,
-        dispatch_code: district?.dispatch_code ?? null,
-        area_code: district?.area_code ?? null,
-        area_name: district?.area_name ?? null,
-      });
+      // call_number is UNIQUE — re-mint + retry on a collision so a concurrent
+      // writer racing the non-atomic SELECT MAX()+1 minter can't silently drop
+      // this call. (Audit AI-4.)
+      const { value: cn, result: call } = await withUniqueRetry(
+        () => nextCallNumber(db),
+        (callNo) => createServiceCall(db, {
+          call_number: callNo,
+          incident_type: 'civil_paper_service',
+          priority: cadPriority(queueRow.priority),
+          caller_name: caller_name || null,
+          caller_phone,
+          location_address: fullLocation || addr,
+          property_id: property.id || null,
+          latitude: coords?.lat ?? null,
+          longitude: coords?.lng ?? null,
+          description,
+          notes: briefing.notes.length ? JSON.stringify(briefing.notes) : null,
+          scene_safety: briefing.sceneSafety || null,
+          officer_safety_caution: briefing.officerSafetyCaution,
+          domestic_violence: briefing.domesticViolence,
+          dispatcher_id: userId,
+          // Geo enrichment — parity with a dispatcher-created call.
+          cross_street: crossStreet || null,
+          location_building: locParts.building || null,
+          location_floor: locParts.floor || null,
+          location_room: locParts.suite || null,
+          sector_id: district?.sector_id ?? null,
+          sector_name: district?.sector_name ?? null,
+          zone_id: district?.zone_id ?? null,
+          zone_name: district?.zone_name ?? null,
+          beat_id: district?.beat_id ?? null,
+          beat_name: district?.beat_name ?? null,
+          beat_descriptor: district?.beat_descriptor ?? null,
+          zone_beat: district?.zone_beat ?? null,
+          dispatch_code: district?.dispatch_code ?? null,
+          area_code: district?.area_code ?? null,
+          area_name: district?.area_name ?? null,
+        }),
+      );
       callId = call.id;
       callNumber = cn;
     } catch (err) {

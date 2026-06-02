@@ -45,15 +45,21 @@ gps.post('/', async (c) => {
       await execute(db,
         "UPDATE units SET latitude = ?, longitude = ?, gps_heading = ?, gps_speed = ?, gps_source = 'gps', gps_updated_at = datetime('now'), updated_at = datetime('now') WHERE id = ?",
         lastPt.latitude, lastPt.longitude, heading, speed, unit.id);
-      // Live fan-out so the map unit pin GLIDES (heading arrow rotates + speed
-      // label updates) the instant a fix lands — no 7s poll wait. This rides the
-      // global AlertHubDO bus (the cross-worker socket every client holds at
-      // /api/alerts-ws), NOT the per-isolate broadcastAll(): the live /api/ws is
-      // owned by the legacy worker, so a rewrite broadcastAll reaches an empty
-      // socket map (dead). `unit_position` is its OWN lightweight frame type
-      // (not dispatch_update) so a ~1 Hz GPS tick never runs the dispatcher-
-      // brain fan-in on the client. One small frame per fix; the poll stays the
-      // fallback. Best-effort: a fan-out failure must never break the write.
+      // Live fan-out so the map unit pin moves (and the arrow rotates) without a
+      // 7s poll, and recommended-units re-ranks on fresh GPS. /dispatch is
+      // excluded from the generic data_changed sync, and gps was previously
+      // silent — pins froze. One small frame per fix; consumers debounce.
+      //
+      // CRITICAL: this MUST go through AlertHubDO (the shared cross-worker bus),
+      // not broadcastAll(). The client's live socket is /api/alerts-ws on THIS
+      // (rewrite) worker via the global AlertHubDO; broadcastAll() only reaches
+      // routes/ws.ts's per-isolate map, which is empty because the main /api/ws
+      // socket lives on the LEGACY worker — so broadcastAll() delivered to 0
+      // clients (dead). emitAlert() fans out via env.ALERT_HUB exactly like
+      // panic, so every connected console/MDT actually receives the position.
+      // Message type 'unit_position' / action 'gps_update' (see report); the DO
+      // broadcasts any non-panic frame and skips the forced-ack lifecycle.
+      // Best-effort: a fan-out failure must never fail the breadcrumb write.
       try {
         await emitAlert(c.env, 'unit_position', {
           action: 'gps_update',
