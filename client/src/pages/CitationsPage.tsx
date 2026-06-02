@@ -32,6 +32,7 @@ import {
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { toDisplayLabel } from '../utils/formatters';
+import { toNum } from '../utils/sentinel';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useAuth } from '../context/AuthContext';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -1114,9 +1115,13 @@ export default function CitationsPage() {
                   </div>
                 )}
                 {(c as any).radar_type && <div><span className="text-rmpg-400">Radar/LIDAR:</span> <span className="text-rmpg-200">{(c as any).radar_type}</span></div>}
-                {(c as any).bac_level != null && (c as any).bac_level > 0 && (
-                  <div><span className="text-rmpg-400">BAC Level:</span> <span className={`font-bold font-mono ${(c as any).bac_level >= 0.08 ? 'text-red-400' : 'text-amber-400'}`}>{(c as any).bac_level.toFixed(3)}%</span></div>
-                )}
+                {(() => {
+                  // bac_level may arrive as a sentinel string ("0.08"/"None") from
+                  // live D1 — coerce before .toFixed() or the detail view crashes.
+                  const bac = toNum((c as any).bac_level);
+                  if (bac == null || bac <= 0) return null;
+                  return <div><span className="text-rmpg-400">BAC Level:</span> <span className={`font-bold font-mono ${bac >= 0.08 ? 'text-red-400' : 'text-amber-400'}`}>{bac.toFixed(3)}%</span></div>;
+                })()}
                 <div className="flex flex-wrap gap-2 mt-1">
                   {(c as any).school_zone ? <span className="text-[8px] font-bold text-amber-400 bg-amber-900/30 px-1.5 py-0.5 border border-amber-700/30">SCHOOL ZONE</span> : null}
                   {(c as any).construction_zone ? <span className="text-[8px] font-bold text-orange-400 bg-orange-900/30 px-1.5 py-0.5 border border-orange-700/30">CONSTRUCTION ZONE</span> : null}

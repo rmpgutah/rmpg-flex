@@ -11,6 +11,7 @@ const _buildTime = typeof __BUILD_TIME__ !== 'undefined' ? __BUILD_TIME__ : '';
 void _buildTime;
 
 import jsPDF from 'jspdf';
+import { toNum } from './sentinel';
 import { getTypeCode, formatIncidentType, PDF_REPORT_LABELS, type PdfReportType } from './caseNumbers';
 import { zoneLeaf, beatLeaf, sectionZoneBeatCombined } from './dispatchCodeParts';
 import { loadSealBase64, loadLogoDarkBase64, FORM_NUMBERS, FORM_REVISION } from './pdfAssets';
@@ -2492,8 +2493,10 @@ function addGpsActivityLogSection(doc: jsPDF, data: IncidentData, y: number, pri
       try {
         timeStr = parseTimestamp(p.time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
       } catch { timeStr = p.time; }
-      // Prefer road name + nearest intersection, fall back to raw coordinates
-      let locationStr = `${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}`;
+      // Prefer road name + nearest intersection, fall back to raw coordinates.
+      // Guard coords so a single non-numeric point can't crash the whole PDF.
+      const latN = toNum(p.lat), lngN = toNum(p.lng);
+      let locationStr = (latN != null && lngN != null) ? `${latN.toFixed(5)}, ${lngN.toFixed(5)}` : '—';
       if (p.road_name) {
         locationStr = p.road_name;
         if (p.nearest_intersection) locationStr += ` / ${p.nearest_intersection}`;

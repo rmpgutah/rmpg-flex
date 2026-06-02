@@ -122,12 +122,9 @@ const STUBS: StubRule[] = [
     body: { configured: false, last_sync: null },
     reason: 'no /api/iped mount in new worker',
   },
-  {
-    match: /^\/api\/iped\/hash-sets(\?.*)?$/,
-    methods: ['GET'],
-    body: [],
-    reason: 'no /api/iped mount in new worker',
-  },
+  // /api/iped/hash-sets stub REMOVED 2026-06-01: iped.ts GET /hash-sets now
+  // serves real rows from forensic_hash_sets (returns { sets:[...] }) and is
+  // routed to env.API. The stub was shadowing it → page showed no hash sets.
   // (2026-05-29 audit) Removed shadowing stubs for personnel /schedules,
   // /time, /deployments, /coverage-gaps (real handlers in personnel.ts over
   // shift_plans/time_entries/deployments/system_config) and reports
