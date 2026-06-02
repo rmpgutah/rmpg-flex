@@ -103,6 +103,8 @@ import { useMapFleetVehicles } from './hooks/useMapFleetVehicles';
 import { useMapPanicZone } from './hooks/useMapPanicZone';
 import { useMapDaylightOverlay } from './hooks/useMapDaylightOverlay';
 import { useMap3D } from './hooks/useMap3D';
+import StreetViewLightbox, { type StreetViewTarget } from './components/StreetViewLightbox';
+import GpsHud from './components/GpsHud';
 import { fetchMapConfig, type MapSettings } from './hooks/useMapConfig';
 import PredictionsPanel from './components/PredictionsPanel';
 import { useMapTactical } from './hooks/useMapTactical';
@@ -376,8 +378,9 @@ export default function MapPage() {
     };
   }, []);
 
-  // GPS own-position
-  const gps = useGpsTracking();
+  // GPS own-position. capture:true records an exportable session track for the
+  // GPS HUD (the always-on Layout tracker owns the upload; this is the map's).
+  const gps = useGpsTracking({ capture: true });
   // Keep the screen awake while the map is foregrounded — officers can't be
   // glancing down to wake the device mid-pursuit. Auto-released on unmount.
   useScreenWakeLock(true);
@@ -501,8 +504,28 @@ export default function MapPage() {
   const [measureMode, setMeasureMode] = useState<MeasureMode>(null);
   const [overlayOpacity, setOverlayOpacity] = usePersistedState<number>('rmpg_overlay_opacity', 1);
   const [hierLegend, setHierLegend] = useState<{ label: string; color: string }[]>([]);
+  const [streetViewTarget, setStreetViewTarget] = useState<StreetViewTarget | null>(null);
+  const [showGpsHud, setShowGpsHud] = usePersistedState<boolean>('rmpg_gps_hud', false);
 
-  useWhatsHere({ map: mapInstanceRef.current, popup: infoWindowRef.current, active: whatsHereActive });
+  // Download the captured GPS session track (CSV / GeoJSON) via a transient
+  // object-URL anchor — no server round-trip.
+  const handleExportTrack = useCallback((format: 'csv' | 'geojson') => {
+    const { filename, mime, content } = gps.exportTrack(format);
+    const blob = new Blob([content], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }, [gps]);
+
+  useWhatsHere({
+    map: mapInstanceRef.current,
+    popup: infoWindowRef.current,
+    active: whatsHereActive,
+    gps,
+    onOpenStreetView: setStreetViewTarget,
+  });
   useMap3D({ map: mapInstanceRef.current, enabled: is3D, mapLoaded, isLight: isLightMapStyle(mapStyle) });
   const { choroLegend } = useActivityChoropleth({
     map: mapInstanceRef.current,
@@ -2710,7 +2733,9 @@ export default function MapPage() {
           }
           const arrow = el.querySelector('[data-gps-arrow]') as HTMLElement | null;
           if (arrow) {
-            arrow.style.transform = `rotate(${gps.heading ?? 0}deg)`;
+            // Smoothed heading (course-over-ground fallback) — glides instead of
+            // snapping between noisy fixes.
+            arrow.style.transform = `rotate(${gps.headingSmoothed ?? gps.course ?? gps.heading ?? 0}deg)`;
           }
           const speedEl = el.querySelector('[data-gps-speed]') as HTMLElement | null;
           if (speedEl) {
@@ -2723,7 +2748,7 @@ export default function MapPage() {
         selfMarkerRef.current = createMarker({
           map,
           position: pos,
-          content: buildSelfPositionMarker(gps.accuracy, gps.heading, gps.speed),
+          content: buildSelfPositionMarker(gps.accuracy, gps.headingSmoothed ?? gps.course ?? gps.heading, gps.speed),
           zIndex: 9999,
           title: `Your Position${gps.unitCallSign ? ` (${gps.unitCallSign})` : ''}`,
         });
@@ -2741,7 +2766,7 @@ export default function MapPage() {
         selfMarkerRef.current = null;
       }
     }
-  }, [gps.isTracking, gps.latitude, gps.longitude, gps.accuracy, gps.heading, gps.unitCallSign, mapLoaded, createMarker, removeMarker]);
+  }, [gps.isTracking, gps.latitude, gps.longitude, gps.accuracy, gps.heading, gps.headingSmoothed, gps.unitCallSign, mapLoaded, createMarker, removeMarker]);
 
   // ============================================================
   // Layer Toggle
@@ -3482,6 +3507,35 @@ export default function MapPage() {
             >
               {is3D ? '2D' : '3D'}
             </button>
+            {/* Live GPS HUD toggle — heading/speed/accuracy/source + track export */}
+            <button
+              onClick={() => setShowGpsHud((v) => !v)}
+              className={`border backdrop-blur-md px-2 py-1.5 transition-colors flex items-center justify-center ${
+                showGpsHud
+                  ? 'bg-brand-600/40 border-brand-500/60 text-brand-200'
+                  : isLightMapStyle(mapStyle)
+                    ? 'bg-white/80 border-gray-300 text-gray-600 hover:bg-white/95'
+                    : 'bg-black/30 border-white/15 text-white/70 hover:bg-black/50'
+              }`}
+              style={{ borderRadius: 2 }}
+              title={showGpsHud ? 'Hide live GPS HUD' : 'Show live GPS HUD (heading, speed, track capture)'}
+              aria-label="Toggle GPS HUD"
+              aria-pressed={showGpsHud}
+            >
+              <Navigation2 className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+
+        {/* ── Live GPS HUD (desktop) ── */}
+        {!isMobile && showGpsHud && (
+          <div className="absolute bottom-16 left-2 z-[1000]">
+            <GpsHud
+              gps={gps}
+              onExport={handleExportTrack}
+              onClear={gps.clearCapturedTrack}
+              onClose={() => setShowGpsHud(false)}
+            />
           </div>
         )}
 
@@ -5927,6 +5981,9 @@ export default function MapPage() {
           </MobileBottomSheet>
         </>
       )}
+
+      {/* Interactive street-view lightbox (opened from What's Here popup) */}
+      <StreetViewLightbox target={streetViewTarget} onClose={() => setStreetViewTarget(null)} />
     </div>
   );
 }

@@ -106,10 +106,47 @@ export interface StreetImage {
   id: string;
   thumbUrl: string;
   capturedAt?: number;   // epoch ms
-  compassAngle?: number; // degrees
+  compassAngle?: number; // degrees the camera was facing (0=N)
   lng?: number;
   lat?: number;
   distanceM?: number;
+  /** Compass bearing (deg, 0=N) FROM the photo's location TO the clicked
+   *  address — i.e. the direction you'd look to see the address. Drives both
+   *  the "facing" label and the oblique-perspective fallback's camera bearing
+   *  so every view is aimed at the building, not down the street. */
+  bearingToAddress?: number;
+  /** Higher-res frame for the expandable street-view lightbox. */
+  fullUrl?: string;
+}
+
+/** The official Mapillary embeddable, INTERACTIVE street-view viewer for an
+ *  image id — pan/look-around in an iframe, no extra JS dependency. Returns ''
+ *  when the id is missing. The viewer opens centred on the captured image; we
+ *  can't force its initial yaw via the embed URL, so the caller pairs it with
+ *  a "look toward address" bearing hint in the UI. */
+export function getMapillaryViewerUrl(imageId: string | null | undefined): string {
+  const id = (imageId || '').trim();
+  if (!id) return '';
+  return `https://www.mapillary.com/embed?image_key=${encodeURIComponent(id)}&style=photo`;
+}
+
+/** 16-point compass label for a bearing (e.g. 47 → "NE"). Exported for the
+ *  What's-Here facing label and the live nav-to-point readout. */
+export function compassCardinal(deg: number): string {
+  const dirs = ['N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE', 'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW'];
+  return dirs[Math.round(((deg % 360) + 360) % 360 / 22.5) % 16];
+}
+
+/** Great-circle distance (m) + initial bearing (deg, 0=N) between two points.
+ *  Exported so the map popup can show a live "X m · NE" nav readout without
+ *  re-deriving the haversine math. */
+export function distanceAndBearing(
+  fromLng: number, fromLat: number, toLng: number, toLat: number,
+): { distanceM: number; bearing: number } {
+  return {
+    distanceM: haversineM(fromLng, fromLat, toLng, toLat),
+    bearing: bearingDeg(fromLng, fromLat, toLng, toLat),
+  };
 }
 
 function haversineM(lng1: number, lat1: number, lng2: number, lat2: number): number {
@@ -154,7 +191,7 @@ export async function findStreetImage(lng: number, lat: number, radiusM = 200, s
   const dLng = radiusM / (111320 * Math.max(0.1, Math.cos((lat * Math.PI) / 180)));
   const bbox = `${lng - dLng},${lat - dLat},${lng + dLng},${lat + dLat}`;
   const url = `https://graph.mapillary.com/images?access_token=${encodeURIComponent(MAPILLARY_TOKEN)}`
-    + `&fields=id,thumb_1024_url,captured_at,compass_angle,computed_geometry,geometry&bbox=${bbox}&limit=40`;
+    + `&fields=id,thumb_1024_url,thumb_2048_url,captured_at,compass_angle,computed_geometry,geometry&bbox=${bbox}&limit=40`;
   try {
     const res = await fetch(url, { signal });
     if (!res.ok) return null;
@@ -186,9 +223,12 @@ export async function findStreetImage(lng: number, lat: number, radiusM = 200, s
         best = {
           id: String(it.id),
           thumbUrl: it.thumb_1024_url,
+          fullUrl: it.thumb_2048_url || it.thumb_1024_url,
           capturedAt: typeof it.captured_at === 'number' ? it.captured_at : undefined,
           compassAngle: typeof it.compass_angle === 'number' ? it.compass_angle : undefined,
           lng: ilng, lat: ilat, distanceM: Math.round(d),
+          // Direction to look from the photo toward the clicked address.
+          bearingToAddress: bearingDeg(ilng, ilat, lng, lat),
         };
       }
     }
