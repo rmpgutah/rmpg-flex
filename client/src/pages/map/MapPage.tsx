@@ -70,6 +70,7 @@ import { isAndroidNative, navigateTo } from '../../utils/organicMapsNav';
 import { useToast } from '../../components/ToastProvider';
 import { localToday, dateToLocalYMD, safeDateTimeStr, parseTimestamp } from '../../utils/dateUtils';
 import { useGeoJsonLayers, GEO_LAYER_CONFIGS, getSectionColor, type BeatDistrictEntry } from '../../hooks/useGeoJsonLayers';
+import { useVectorTileLayers } from '../../hooks/useVectorTileLayers';
 import { useEventPlanning, PLAN_COLORS, PLAN_TYPE_LABELS, type PlanItemType } from '../../hooks/useEventPlanning';
 import { useShiftPlanning, SHIFT_TYPES, type ShiftType } from '../../hooks/useShiftPlanning';
 import { useIsMobile } from '../../hooks/useIsMobile';
@@ -423,6 +424,21 @@ export default function MapPage() {
   });
   const [showGeoPanel, setShowGeoPanel] = useState(false);
 
+  // Statewide vector-tile overlays (PMTiles: Utah roads + address points).
+  // isLight keeps labels legible across basemaps; onUseLocation routes a clicked
+  // address/road into the SAME pan+zoom+marker flow as the address search box,
+  // so the statewide data feeds the existing dispatch location workflow.
+  const { vectorLayerStates, toggleVectorLayer, vectorConfigs } = useVectorTileLayers({
+    map: mapInstanceRef.current,
+    popup: infoWindowRef.current,
+    isLight: isLightMapStyle(mapStyle),
+    onUseLocation: (info) => {
+      handleAddressSelect([info.lng, info.lat], info.label);
+      setAddressSearch(info.label);
+    },
+  });
+  const [showVectorPanel, setShowVectorPanel] = useState(false);
+
   // Event planning overlays
   const eventPlanning = useEventPlanning({
     map: mapInstanceRef.current,
@@ -617,6 +633,7 @@ export default function MapPage() {
       if (abortedRef.current) return;
       if (dataVersionRef.current !== v) return;
       setUnits(Array.isArray(data) ? data : []);
+      setError(null); // connectivity recovered — clear any stale "failed to load" banner
     } catch (err) {
       if (abortedRef.current) return;
       if (dataVersionRef.current !== v) return;
@@ -664,11 +681,40 @@ export default function MapPage() {
   // Initial Load & Auto-Refresh
   // ============================================================
 
+  // Skip background polls when the tab is hidden or the device is offline —
+  // otherwise a backgrounded/disconnected console silently spams failed
+  // fetches (and MapPage's catch sets a sticky "Failed to load" banner).
+  const pollEligible = () =>
+    (typeof document === 'undefined' || document.visibilityState === 'visible') &&
+    (typeof navigator === 'undefined' || navigator.onLine !== false);
+
   useEffect(() => {
     fetchAllData();
-    const interval = setInterval(() => { fetchAllData({ silent: true }); }, 30000);
+    const interval = setInterval(() => { if (pollEligible()) fetchAllData({ silent: true }); }, 30000);
     return () => clearInterval(interval);
   }, [fetchAllData]);
+
+  // Near-live unit positions without a WebSocket push.
+  // True real-time GPS push would require a server broadcast, but the dispatch
+  // socket (/api/ws) and the bare POST /api/dispatch/gps both live on the LEGACY
+  // worker, while broadcastAll() is per-isolate — so a push emitted from the
+  // rewrite worker can't reach these clients (see project-dispatch-ws memory).
+  // Instead we tighten the *consumer*: units.latitude/longitude IS freshened by
+  // the GPS POST (gps_source/gps_updated_at on the row), so a fast units-only
+  // poll makes the dots move in near-real-time. Adaptive on purpose — it only
+  // fetches when a unit is actually on duty (position can change); a fully
+  // parked fleet falls back to the 30s full poll above with no extra load.
+  useEffect(() => {
+    const LIVE_UNIT_POLL_MS = 7000;
+    const MOVING_STATUSES = new Set<string>(['available', 'dispatched', 'enroute', 'onscene', 'busy']);
+    const tick = () => {
+      if (!pollEligible()) return; // skip when tab hidden / offline
+      const anyOnDuty = unitsRef.current.some((u) => MOVING_STATUSES.has(u.status));
+      if (anyOnDuty) fetchUnits(); // light: /dispatch/units only, not the full fetch
+    };
+    const iv = setInterval(tick, LIVE_UNIT_POLL_MS);
+    return () => clearInterval(iv);
+  }, [fetchUnits]);
 
   // Live sync — auto-refresh map when dispatch data changes from any device (silent to avoid unmounting UI)
   const silentRefreshMap = useCallback(() => fetchAllData({ silent: true }), [fetchAllData]);
@@ -3643,6 +3689,46 @@ export default function MapPage() {
                             {state.featureCount}
                           </span>
                         )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* ── Statewide Data (Vector Tiles) Section ── */}
+            <div className="border-t border-rmpg-700 p-1.5">
+              <button
+                onClick={() => setShowVectorPanel(!showVectorPanel)}
+                className="flex items-center gap-2 w-full px-2 py-1.5 text-left transition-colors hover:bg-rmpg-800/50"
+              >
+                <Globe2 className="w-3 h-3 text-gray-400" />
+                <span className="text-[10px] text-rmpg-300 flex-1">Statewide Data</span>
+                <span className="text-[9px] text-rmpg-500">
+                  {Object.values(vectorLayerStates).filter((s) => s.visible).length}/{vectorConfigs.length}
+                </span>
+                {showVectorPanel ? <ChevronUp className="w-2.5 h-2.5 text-rmpg-500" /> : <ChevronDown className="w-2.5 h-2.5 text-rmpg-500" />}
+              </button>
+              {showVectorPanel && (
+                <div className="mt-1 space-y-0.5">
+                  {vectorConfigs.map((cfg) => {
+                    const state = vectorLayerStates[cfg.id];
+                    return (
+                      <button
+                        key={cfg.id}
+                        onClick={() => toggleVectorLayer(cfg.id)}
+                        className={`flex items-center gap-2 w-full px-2 py-1 text-left transition-colors ${
+                          state?.visible ? 'panel-inset bg-surface-deep' : 'opacity-40 hover:opacity-70 hover:bg-rmpg-800/50'
+                        }`}
+                        title={cfg.description}
+                      >
+                        {state?.visible ? <Eye className="w-2.5 h-2.5 text-green-400" /> : <EyeOff className="w-2.5 h-2.5 text-rmpg-500" />}
+                        <div className="w-2 h-2 rounded-sm" style={{ backgroundColor: cfg.color, opacity: state?.visible ? 1 : 0.3 }} />
+                        <div className="flex-1 min-w-0">
+                          <div className="text-[9px] text-rmpg-200 truncate">{cfg.label}</div>
+                          <div className="text-[8px] text-rmpg-500 truncate">{cfg.description}</div>
+                        </div>
+                        <span className="text-[8px] font-mono text-rmpg-600">z{cfg.minzoom}+</span>
                       </button>
                     );
                   })}

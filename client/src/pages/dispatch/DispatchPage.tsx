@@ -275,6 +275,11 @@ export default function DispatchPage() {
   useEffect(() => { callsRef.current = calls; }, [calls]);
   const recentlyCreatedIdsRef = useRef<Set<string | number>>(new Set()); // synchronous dedup for POST + WS race
   const [units, setUnits] = useState<Unit[]>([]);
+  // Mirror `units` into a ref so the mount-only adaptive GPS-poll effect (deps
+  // exclude `units` to avoid re-arming the interval on every position tick) can
+  // read current on-duty state.
+  const unitsRef = useRef<Unit[]>([]);
+  useEffect(() => { unitsRef.current = units; }, [units]);
   const [selectedCall, setSelectedCall] = useState<CallForService | null>(null);
   const [filterTab, setFilterTab] = usePersistedTab('rmpg_dispatch_tab', 'all' as FilterTab, ['all', 'pending', 'active', 'cleared', 'archived', 'serve', 'mine'] as const);
   const [showNewCallModal, setShowNewCallModal] = useState(false);
@@ -809,6 +814,50 @@ export default function DispatchPage() {
   const silentRefresh = useCallback(() => fetchData({ silent: true }), [fetchData]);
   useLiveSync('dispatch', silentRefresh, { debounceMs: 1500 });
 
+  // Near-live unit positions on the status board without a WebSocket push.
+  // The dispatch socket (/api/ws) and the bare POST /api/dispatch/gps both run
+  // on the LEGACY worker while broadcastAll() is per-isolate, so a push from the
+  // rewrite worker can't reach these clients (see project-dispatch-ws memory).
+  // But units.latitude/longitude IS freshened by the GPS POST, so a light
+  // units-only poll keeps the board's GPS column current. Adaptive on purpose:
+  // only fetch when a unit is on duty (position can change) — a parked fleet
+  // adds no load and rides the WS/action-driven updates. Mirrors MapPage.
+  const refreshUnitsLive = useCallback(async () => {
+    try {
+      const unitsRes = await apiFetch<any[]>('/dispatch/units');
+      setUnits((Array.isArray(unitsRes) ? unitsRes : []).map(mapDbUnit));
+    } catch { /* silent — transient poll miss; the next tick retries */ }
+  }, []);
+
+  // Skip background polls when the tab is hidden or the device is offline.
+  const pollEligible = useCallback(() =>
+    (typeof document === 'undefined' || document.visibilityState === 'visible') &&
+    (typeof navigator === 'undefined' || navigator.onLine !== false), []);
+
+  useEffect(() => {
+    const LIVE_UNIT_POLL_MS = 7000;
+    const MOVING_STATUSES = new Set<string>(['available', 'dispatched', 'enroute', 'onscene', 'busy']);
+    const iv = setInterval(() => {
+      if (!pollEligible()) return;
+      if (unitsRef.current.some((u) => MOVING_STATUSES.has(u.status))) refreshUnitsLive();
+    }, LIVE_UNIT_POLL_MS);
+    return () => clearInterval(iv);
+  }, [refreshUnitsLive, pollEligible]);
+
+  // Cross-device call/queue sync. The 'dispatch_update' WS net (useLiveSync above)
+  // is best-effort only — /api/ws is on the legacy worker but call mutations are
+  // served by the rewrite worker, so another dispatcher's new/edited call usually
+  // never reaches this client over the socket. Without a periodic refetch the
+  // queue would silently drift until a manual reload — unacceptable for a CAD.
+  // A 20s silent fetchData() guarantees convergence; it preserves in-progress
+  // edits (fetchData's setSelectedCall guards isEditingRef) and is skipped when
+  // the tab is hidden/offline.
+  useEffect(() => {
+    const CROSS_DEVICE_SYNC_MS = 20000;
+    const iv = setInterval(() => { if (pollEligible()) silentRefresh(); }, CROSS_DEVICE_SYNC_MS);
+    return () => clearInterval(iv);
+  }, [silentRefresh, pollEligible]);
+
   // Call-lifecycle state + handlers (extracted to keep this component below the
   // 6,500-line ceiling). The hook owns: 6 transient state items (delete/disposition/
   // mileage prompts, isGenerating, isBulkArchiving) and the 14 call-mutation
@@ -989,9 +1038,12 @@ export default function DispatchPage() {
       if (data.action === 'unit_status_changed' && data.unit) {
         setUnits((prev) => prev.map((u) => (String(u.id) === String(data.unit.id) ? { ...u, ...data.unit, id: String(data.unit.id) } : u)));
       } else if (data.action === 'unit_position_update' && data.unit) {
-        // Update unit position + speed_mph from GPS broadcast
+        // Update unit position from GPS broadcast. (speed_mph is intentionally
+        // NOT stored on the unit — no board UI reads it, and the 7s units poll
+        // round-trips through mapDbUnit which doesn't carry it, so writing it
+        // here only created a field that flickered in and out.)
         setUnits((prev) => prev.map((u) => (String(u.id) === String(data.unit.id)
-          ? { ...u, latitude: data.unit.latitude, longitude: data.unit.longitude, speed_mph: data.unit.speed_mph }
+          ? { ...u, latitude: data.unit.latitude, longitude: data.unit.longitude }
           : u)));
       } else if (data.action === 'unit_updated' && data.unit) {
         setUnits((prev) => prev.map((u) => (String(u.id) === String(data.unit.id) ? { ...u, ...data.unit, id: String(data.unit.id) } : u)));

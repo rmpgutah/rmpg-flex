@@ -33,6 +33,19 @@
 // references it) — no import needed.
 import type { LookupRequest, ActionRequest, ActionType } from './dispatcherAwareness';
 
+// App-level timeout for any Workers AI call. Without it a stalled model
+// (Whisper/Llama/Aura-2/melotts) hangs the runDispatcher tail until the
+// platform wall-clock fires, leaving the radio silent far longer than the
+// existing .catch() fallbacks would. 15s is generous enough not to clip a
+// legitimately slow turn; on reject the call's own fallback/catch degrades.
+const AI_RUN_TIMEOUT_MS = 15_000;
+function withAiTimeout<T>(p: Promise<T>, label: string, ms = AI_RUN_TIMEOUT_MS): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error(`AI timeout: ${label}`)), ms)),
+  ]);
+}
+
 const WHISPER_MODEL = '@cf/openai/whisper-large-v3-turbo';
 // Fallback transcriber — the stable base whisper. Both models were verified
 // (2026-05-29) to transcribe our recorded WebM/Opus; turbo is higher quality
@@ -218,7 +231,7 @@ export { bytesToBase64 };
 export async function transcribeTransmission(ai: Ai, audio: Uint8Array): Promise<string | null> {
   // Primary — whisper-large-v3-turbo (base64 string input).
   try {
-    const res = (await ai.run(WHISPER_MODEL, { audio: bytesToBase64(audio), language: 'en' } as never)) as { text?: string };
+    const res = (await withAiTimeout(ai.run(WHISPER_MODEL, { audio: bytesToBase64(audio), language: 'en' } as never), 'whisper-turbo')) as { text?: string };
     const text = (res?.text || '').trim();
     if (text) return text;
     console.warn('[aiDispatcher] turbo whisper returned empty — trying base whisper');
@@ -228,7 +241,7 @@ export async function transcribeTransmission(ai: Ai, audio: Uint8Array): Promise
 
   // Fallback — base whisper (classic array-of-bytes input).
   try {
-    const res = (await ai.run(TRANSCRIBE_FALLBACK_MODEL, { audio: Array.from(audio) } as never)) as { text?: string };
+    const res = (await withAiTimeout(ai.run(TRANSCRIBE_FALLBACK_MODEL, { audio: Array.from(audio) } as never), 'whisper-base')) as { text?: string };
     const text = (res?.text || '').trim();
     return text.length > 0 ? text : null;
   } catch (err) {
@@ -253,7 +266,7 @@ export async function transcribeTransmission(ai: Ai, audio: Uint8Array): Promise
 export async function ocrImage(ai: Ai, image: Uint8Array): Promise<string | null> {
   if (!image || image.byteLength === 0 || image.byteLength > MAX_OCR_BYTES) return null;
   try {
-    const out = (await ai.run(VISION_MODEL, {
+    const out = (await withAiTimeout(ai.run(VISION_MODEL, {
       image: Array.from(image),
       prompt:
         'You are reading an image for a police dispatcher. Transcribe ALL legible text exactly as printed — ' +
@@ -261,7 +274,7 @@ export async function ocrImage(ai: Ai, image: Uint8Array): Promise<string | null
         'Output ONLY the transcribed text, no commentary. If nothing is legible, output an empty string.',
       max_tokens: 1024,
       temperature: 0.1,
-    } as never)) as { response?: unknown; description?: unknown };
+    } as never), 'vision-ocr')) as { response?: unknown; description?: unknown };
     const text = String(out?.response ?? out?.description ?? '').trim();
     return text.length > 0 ? text : null;
   } catch (err) {
@@ -452,7 +465,7 @@ async function runLLM(
 ): Promise<unknown> {
   for (const model of [LLM_MODEL, LLM_FALLBACK_MODEL]) {
     try {
-      const res = (await ai.run(model, { messages, ...opts } as never)) as { response?: unknown };
+      const res = (await withAiTimeout(ai.run(model, { messages, ...opts } as never), `llm:${model}`)) as { response?: unknown };
       if (res?.response != null && res.response !== '') return res.response;
       console.warn(`[aiDispatcher] ${model} returned empty — trying next`);
     } catch (err) {
@@ -751,11 +764,11 @@ export async function synthesizeDispatcherVoice(
 
   // Primary — Deepgram Aura-2 (raw MP3 Response).
   try {
-    const resp = (await ai.run(
+    const resp = (await withAiTimeout(ai.run(
       TTS_PRIMARY_MODEL,
       { text: speech, speaker } as never,
       { returnRawResponse: true } as never,
-    )) as unknown as Response;
+    ), 'aura-tts')) as unknown as Response;
     const bytes = new Uint8Array(await resp.arrayBuffer());
     if (bytes.byteLength > 0) return bytes;
     console.warn('[aiDispatcher] aura returned empty — falling back to melotts');
@@ -765,7 +778,7 @@ export async function synthesizeDispatcherVoice(
 
   // Fallback — melotts ({audio} base64).
   try {
-    const res = (await ai.run(TTS_FALLBACK_MODEL, { prompt: speech, lang: 'en' } as never)) as { audio?: string };
+    const res = (await withAiTimeout(ai.run(TTS_FALLBACK_MODEL, { prompt: speech, lang: 'en' } as never), 'melotts')) as { audio?: string };
     const b64 = res?.audio;
     if (!b64) return null;
     const bytes = base64ToBytes(b64);

@@ -54,6 +54,7 @@ import type { Hono } from 'hono';
 import auth from './routes/auth';
 import health from './routes/health';
 import mapData from './routes/mapData';
+import tiles from './routes/tiles';
 import admin from './routes/admin';
 import affairs from './routes/affairs';
 import ai from './routes/ai';
@@ -180,6 +181,7 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/health', router: health, auth: 'public' },
   { prefix: '/api/auth', router: auth, auth: 'public' },
   { prefix: '/api/map-data', router: mapData, auth: 'public' },
+  { prefix: '/api/tiles', router: tiles, auth: 'public' },
 
   // ── Dispatch (longer-prefix routers first) ─────────────────
   // callLinks + panic + premiseHistory mount at /api/dispatch and

@@ -148,7 +148,31 @@
 //       Server side (same push): dispatch call DELETE now unlinks non-cascading
 //       FK refs before deleting (was 500), and /api/hr/dashboard has a real
 //       handler (was 404).
-const CACHE_NAME = 'rmpg-flex-v672';
+// v677: audit DO-FIRST map hardening — useMapboxResponseTime moves the 9MB
+//       beat.geojson fetch BEFORE the style-ready guard and wraps only the
+//       addSource/addLayer (idempotent) so a basemap switch mid-fetch can't
+//       throw "Style is not done loading"; useMapRouting bails on <2-coord
+//       routes before building a degenerate line-gradient. (Worker side same
+//       push: OCR/AI-dispatch timeout guards + VoiceHubDO never-silence broadcast.)
+// v678: audit item A — useGpsTracking.sendBatch no longer clears the failover
+//       queue on a 200-with-error body; it re-enqueues those breadcrumbs (was
+//       silent GPS data loss when /dispatch/gps 200s with {error}). (Worker
+//       same push: audit item B — geocodeAddress in the serve-intake commit is
+//       now 8s-time-boxed so a slow Nominatim can't stall the /upload response.)
+// v679: Statewide PMTiles overlays — Utah roads + address points vector
+//       tiles served from R2 via /api/tiles/* (Range-capable). New
+//       "Statewide Data" toggle section on the Map page. /api/* is already
+//       SW-bypassed, so PMTiles range requests pass straight to network.
+// v680: Statewide overlays made dynamic — survive basemap switch + print
+//       (re-add on style.load), theme-aware labels (legible on light/
+//       satellite), and "Use This Location" popup action routes a clicked
+//       address/road into the existing address-search pan+zoom+marker flow.
+// v681: pdfjs-dist 5→6 (Dependabot #880, was CI-failing). v6 removed
+//       PDFDocumentProxy.destroy() — the rmpg-pdf-engine pdfjs backend now
+//       owns the loading task and tears down via loadingTask.destroy()
+//       (version-agnostic). Worker (build/pdf.worker.min.mjs) + standard_fonts/
+//       cmaps asset paths unchanged; vite build + 563 tests green on v6.
+const CACHE_NAME = 'rmpg-flex-v681';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

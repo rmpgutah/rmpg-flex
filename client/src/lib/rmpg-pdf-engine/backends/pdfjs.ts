@@ -80,6 +80,7 @@ class PdfJsDocument implements RmpgPdfDocument {
   readonly backend = 'pdfjs' as const;
   constructor(
     private inner: pdfjs.PDFDocumentProxy,
+    private loadingTask: pdfjs.PDFDocumentLoadingTask,
     public backendReason: string,
   ) {}
 
@@ -91,7 +92,10 @@ class PdfJsDocument implements RmpgPdfDocument {
   }
 
   async destroy(): Promise<void> {
-    try { await this.inner.destroy(); } catch { /* ignore */ }
+    // pdfjs v6 removed PDFDocumentProxy.destroy() — the document lifecycle is
+    // owned by the loading task. loadingTask.destroy() tears down the document
+    // and its worker port (also valid on v5, so this is version-agnostic).
+    try { await this.loadingTask.destroy(); } catch { /* ignore */ }
   }
 }
 
@@ -107,7 +111,7 @@ export class PdfJsBackend implements RmpgPdfBackend {
       // throws on every PDF that references those fonts without embedding.
       // The assets are copied into client/public/pdfjs/ at build time by
       // scripts/copy-pdfjs-assets.mjs.
-      const inner = await pdfjs.getDocument({
+      const loadingTask = pdfjs.getDocument({
         data: bytes.slice(),
         standardFontDataUrl: '/pdfjs/standard_fonts/',
         cMapUrl: '/pdfjs/cmaps/',
@@ -124,8 +128,9 @@ export class PdfJsBackend implements RmpgPdfBackend {
         // Surface PDF.js warnings/errors at console level so they make
         // it into the diagnostic logs.
         verbosity: 1,
-      }).promise;
-      return new PdfJsDocument(inner, 'pdfjs backend (Mozilla, Apache 2.0)');
+      });
+      const inner = await loadingTask.promise;
+      return new PdfJsDocument(inner, loadingTask, 'pdfjs backend (Mozilla, Apache 2.0)');
     } catch (err) {
       throw new RmpgPdfError(`PDF.js failed to open document: ${err instanceof Error ? err.message : String(err)}`, err);
     }
