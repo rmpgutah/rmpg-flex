@@ -587,6 +587,10 @@ const API_ROUTES: RouteRule[] = [
   // live: the rewrite handlers are deployed and back the same identifyBeat
   // that already geocodes geography on POST /api/dispatch/calls.
   { kind: 'prefix', value: '/api/dispatch/geography' },
+  // /api/dispatch/address-occupants — New Call modal officer-safety cross-ref
+  // (persons on file at the address + warrant/gang/caution flags). New rewrite
+  // handler in src/routes/dispatch/premiseHistory.ts; legacy never had it.
+  { kind: 'regex', value: /^\/api\/dispatch\/address-occupants(\?|$)/, methods: ['GET'] },
 
   // /api/dispatch/heatmap/enforcement — enforcement-activity clusters for the
   // Map "Enforcement" overlay (src/routes/dispatch/aggregates.ts). Legacy has
@@ -666,6 +670,12 @@ const API_ROUTES: RouteRule[] = [
   // and /vehicles/search and returns empty `[]` instead) ──
   { kind: 'prefix', value: '/api/records/persons/search' },
   { kind: 'prefix', value: '/api/records/vehicles/search' },
+  // POST /api/records/vehicles/stolen-check — NCIC-style stolen-vehicle check.
+  // The handler exists in src/routes/records.ts but was never routed, so the
+  // path fell through to env.LEGACY which has no handler → 404 (VehiclesTab +
+  // DlSearchPage both call it, live 2026-06-02). Anchored exact-match so it
+  // can't be shadowed by the /vehicles/:id DELETE or /vehicles/:id/history rules.
+  { kind: 'regex', value: /^\/api\/records\/vehicles\/stolen-check$/, methods: ['POST'] },
   // /api/records/ncic-query?type=person|warrant|vehicle|phone|address — the
   // NCIC/NLETS terminal (QH/QV/QW/QT/QA + the QX cross-reference fan-out).
   // Ported to the rewrite (src/routes/records.ts) which fixes the legacy
@@ -844,6 +854,17 @@ const API_ROUTES: RouteRule[] = [
   { kind: 'prefix', value: '/api/admin/notification-rules' },
   // Auth security history
   { kind: 'prefix', value: '/api/auth/security/login-history' },
+  // Auth: profile photo + active sessions + MFA status — handlers in
+  // src/routes/auth.ts. Legacy serves login/refresh/me/signature, but these four
+  // newer paths have no legacy handler (404, live sweep 2026-06-02). They read
+  // only live-schema columns (users.profile_image/.totp_enabled/.totp_backup_codes,
+  // sessions.is_active/expires_at), so they run correctly on the rewrite — unlike
+  // login/refresh, whose handlers reference columns absent from live sessions.
+  // The /sessions prefix also carries DELETE /sessions/:id (the "Revoke" button).
+  { kind: 'prefix', value: '/api/auth/profile-image' },
+  { kind: 'prefix', value: '/api/auth/sessions' },
+  { kind: 'prefix', value: '/api/auth/totp/status' },
+  { kind: 'prefix', value: '/api/auth/2fa/status' },
   // Offline-cache sync engine (browser IndexedDB) — entire namespace
   // lives on the new Worker: /sync/pull, /sync/push, /secrets,
   // /my-secret, /secrets/generate. Legacy never implemented any of
@@ -1077,6 +1098,14 @@ const API_ROUTES: RouteRule[] = [
   // pipeline is what runs in prod. Legacy serve-intake is dead code
   // after this entry lands.
   { kind: 'prefix', value: '/api/serve-intake' },
+  // /api/process-server/{deadlines,success-rates} — the ServePage Deadlines
+  // panel + Success Rates view. Both 404'd on legacy because serve.ts declares
+  // them AFTER `/:id`, so Express matched `/deadlines` against `/:id` and never
+  // reached them. Ported to src/routes/processServer.ts (qualified columns,
+  // async D1) and routed here on their exact paths so they resolve. The rest of
+  // /api/process-server (list, attempts, affidavit, …) stays on legacy.
+  { kind: 'regex', value: /^\/api\/process-server\/deadlines$/, methods: ['GET'] },
+  { kind: 'regex', value: /^\/api\/process-server\/success-rates(\?|$)/, methods: ['GET'] },
   // /api/ocr/scan-document is the alias URL the ServeIntakePage client
   // already calls for its in-page image preview path. The handler is
   // src/routes/ocr.ts (delegates to the same extraction utility as

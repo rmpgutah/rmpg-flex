@@ -25,6 +25,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import type { RecordEntityType } from '../types';
+import { recordTypeLabel } from './recordTypeLabel';
 
 export interface EntityMeta {
   /** Singular human label shown in the picker + type badge ("Person"). */
@@ -92,9 +93,12 @@ export function getRecordTypeColor(type: string) {
   return getEntityMeta(type).color;
 }
 
-/** Title-case singular label for a type ("incident" → "Incident"). */
+/** Title-case singular label for a type ("incident" → "Incident").
+ *  Delegates to the shared mandatory formatter so the icon-registry's 8
+ *  linkable types and the broader record-type vocabulary never diverge, and
+ *  any type (even one with no ENTITY_META entry) still renders plain. */
 export function getEntityLabel(type: string): string {
-  return getEntityMeta(type).label;
+  return recordTypeLabel(type);
 }
 
 // ── Relationship vocabulary ──────────────────────────────────

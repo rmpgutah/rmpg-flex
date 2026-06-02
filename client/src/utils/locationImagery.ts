@@ -1,27 +1,38 @@
 // ============================================================
-// RMPG Flex — Location imagery (aerial + street-level)
+// RMPG Flex — Location imagery (street-level + perspective + aerial)
 // ============================================================
-// Powers the visual thumbnail in the map "What's Here" popup.
+// Powers the visual band in the map "What's Here" popup. Everything here
+// is Mapbox-native (no Google) — Mapillary is Mapbox-owned street imagery.
 //
-// Two sources, both best-effort and independent so the popup degrades
-// gracefully:
-//   1. AERIAL  — Mapbox Static Images API (satellite-streets). Built as a
-//      plain URL client-side from the already-loaded Mapbox token, so it
-//      needs no backend route and ALWAYS renders. This is the guaranteed
-//      visual.
-//   2. STREET  — Mapillary (Mapbox-owned crowdsourced street-level imagery).
-//      Optional: activates only when VITE_MAPILLARY_TOKEN is set at build
-//      time. Coverage is sparse in residential suburbs, so this is additive
-//      on top of the aerial, never a replacement.
+// Three sources, layered so a GROUND-LEVEL view ALWAYS appears on click:
+//   1. STREET      — Mapillary (Mapbox-owned crowdsourced street-level
+//      photos). The real ground-level photo when coverage exists. Activates
+//      when a Mapillary token is present (VITE_MAPILLARY_TOKEN at build, or
+//      one supplied at runtime via setMapillaryToken). Coverage is sparse in
+//      residential suburbs, so it is the *preferred* view, not the only one.
+//   2. PERSPECTIVE — Mapbox Static Images API rendered as an OBLIQUE view
+//      (high zoom + pitch), giving an angled, ground-ish 3D perspective of
+//      the property. Pure URL from the Mapbox token, so it ALWAYS renders —
+//      this is the guaranteed ground-perspective floor when Mapillary has no
+//      coverage.
+//   3. AERIAL      — Mapbox Static Images API top-down satellite. Kept as a
+//      small supporting context image.
 //
-// Mapbox GL JS has NO Google-style Street View; Mapillary is the closest
-// real street-level photo source available to the platform.
+// Mapbox GL JS has NO Google-style Street View; this stack is the closest
+// real ground view the platform supports.
 // ============================================================
 
 import { getCachedMapboxAccessToken, getMapboxAccessToken } from './mapboxApiKey';
 
-const MAPILLARY_TOKEN: string =
+let MAPILLARY_TOKEN: string =
   ((import.meta as any).env?.VITE_MAPILLARY_TOKEN as string | undefined)?.trim() || '';
+
+/** Supply a Mapillary token at runtime (e.g. fetched from the Worker) when it
+ *  wasn't baked into the build. No-op if a token is already present. */
+export function setMapillaryToken(token: string | null | undefined): void {
+  const t = (token || '').trim();
+  if (t) MAPILLARY_TOKEN = t;
+}
 
 export function hasMapillary(): boolean {
   return MAPILLARY_TOKEN.length > 0;
@@ -52,6 +63,40 @@ export function getAerialThumbUrl(lng: number, lat: number, opts: AerialThumbOpt
     + `?access_token=${encodeURIComponent(token)}&attribution=false&logo=false`;
 }
 
+export interface PerspectiveOptions {
+  zoom?: number;    // 18 ≈ building level
+  bearing?: number; // camera rotation (deg)
+  pitch?: number;   // 0-60; higher = more ground-level / oblique
+  width?: number;
+  height?: number;
+  /** mapbox style id without the leading `mapbox/`. */
+  style?: string;
+  /** Drop a gold pin at the point. */
+  pin?: boolean;
+}
+
+/**
+ * Build a Mapbox Static Images API URL for an OBLIQUE, ground-perspective view
+ * of a point — high zoom + camera pitch so the property is seen from an angle
+ * rather than straight down. This is the guaranteed ground-ish view (same token
+ * as the aerial) used when Mapillary has no real street photo at the location.
+ *
+ * Returns '' if no token is cached yet. Pure string construction — no network.
+ */
+export function getStreetPerspectiveUrl(lng: number, lat: number, opts: PerspectiveOptions = {}): string {
+  const token = getCachedMapboxAccessToken();
+  if (!token) return '';
+  const {
+    zoom = 18, bearing = 20, pitch = 60,
+    width = 240, height = 150, style = 'satellite-streets-v12', pin = true,
+  } = opts;
+  const overlay = pin ? `/pin-s+d4a017(${lng},${lat})` : '';
+  const p = Math.max(0, Math.min(60, pitch)); // Static API caps pitch at 60
+  // {lng},{lat},{zoom},{bearing},{pitch}
+  return `https://api.mapbox.com/styles/v1/mapbox/${style}/static${overlay}/${lng},${lat},${zoom},${bearing},${p}/${width}x${height}@2x`
+    + `?access_token=${encodeURIComponent(token)}&attribution=false&logo=false`;
+}
+
 /** Kick a token fetch so getAerialThumbUrl has something cached. Fire-and-forget. */
 export function warmImageryToken(): void {
   if (!getCachedMapboxAccessToken()) { getMapboxAccessToken().catch(() => {}); }
@@ -74,21 +119,42 @@ function haversineM(lng1: number, lat1: number, lng2: number, lat2: number): num
   return 2 * R * Math.asin(Math.min(1, Math.sqrt(a)));
 }
 
+/** Initial compass bearing (deg, 0=N) from point A to point B. */
+function bearingDeg(lng1: number, lat1: number, lng2: number, lat2: number): number {
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const φ1 = toRad(lat1), φ2 = toRad(lat2), Δλ = toRad(lng2 - lng1);
+  const y = Math.sin(Δλ) * Math.cos(φ2);
+  const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+  return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+}
+
+/** Smallest absolute angular difference between two compass bearings (0-180). */
+function angleDelta(a: number, b: number): number {
+  const d = Math.abs(((a - b) % 360 + 360) % 360);
+  return d > 180 ? 360 - d : d;
+}
+
 /**
- * Find the nearest Mapillary street-level image to a point. Returns null when
+ * Find the best Mapillary street-level image for a point. Returns null when
  * Mapillary isn't configured, nothing is in range, or the request fails — the
- * popup just shows the aerial in those cases.
+ * popup falls back to the Mapbox oblique perspective in those cases.
  *
- * @param radiusM search box half-extent in meters (default ~120 m).
+ * Selection isn't purely nearest: we score each candidate by distance AND by
+ * whether the camera was facing TOWARD the clicked point (compass_angle vs the
+ * bearing from the photo to the point). A photo taken right next to the address
+ * but pointing away down the street is useless; one slightly farther but aimed
+ * at the property is the real "ground view" the dispatcher wants.
+ *
+ * @param radiusM search box half-extent in meters (default ~200 m).
  */
-export async function findStreetImage(lng: number, lat: number, radiusM = 120, signal?: AbortSignal): Promise<StreetImage | null> {
+export async function findStreetImage(lng: number, lat: number, radiusM = 200, signal?: AbortSignal): Promise<StreetImage | null> {
   if (!MAPILLARY_TOKEN) return null;
   // meters → degrees (lat is ~111320 m/deg; lng shrinks by cos(lat)).
   const dLat = radiusM / 111320;
   const dLng = radiusM / (111320 * Math.max(0.1, Math.cos((lat * Math.PI) / 180)));
   const bbox = `${lng - dLng},${lat - dLat},${lng + dLng},${lat + dLat}`;
   const url = `https://graph.mapillary.com/images?access_token=${encodeURIComponent(MAPILLARY_TOKEN)}`
-    + `&fields=id,thumb_1024_url,captured_at,compass_angle,computed_geometry,geometry&bbox=${bbox}&limit=15`;
+    + `&fields=id,thumb_1024_url,captured_at,compass_angle,computed_geometry,geometry&bbox=${bbox}&limit=40`;
   try {
     const res = await fetch(url, { signal });
     if (!res.ok) return null;
@@ -96,13 +162,27 @@ export async function findStreetImage(lng: number, lat: number, radiusM = 120, s
     const items: any[] = Array.isArray(json?.data) ? json.data : [];
     if (!items.length) return null;
     let best: StreetImage | null = null;
+    let bestScore = Infinity;
     for (const it of items) {
       const coords = it?.computed_geometry?.coordinates || it?.geometry?.coordinates;
       if (!Array.isArray(coords) || coords.length < 2) continue;
+      if (!it.thumb_1024_url) continue;
       const [ilng, ilat] = coords;
       const d = haversineM(lng, lat, ilng, ilat);
-      if (!it.thumb_1024_url) continue;
-      if (!best || d < (best.distanceM ?? Infinity)) {
+      // Lower is better. Distance dominates; add a penalty (up to ~80 m) for a
+      // camera pointing away from the point so a facing photo can beat a closer
+      // back-facing one. Recency breaks near-ties.
+      let score = d;
+      if (typeof it.compass_angle === 'number') {
+        const toPoint = bearingDeg(ilng, ilat, lng, lat);
+        score += (angleDelta(it.compass_angle, toPoint) / 180) * 80;
+      }
+      if (typeof it.captured_at === 'number') {
+        const ageYears = Math.max(0, (Date.now() - it.captured_at) / (365 * 864e5));
+        score += Math.min(ageYears, 10) * 3; // mild freshness nudge
+      }
+      if (score < bestScore) {
+        bestScore = score;
         best = {
           id: String(it.id),
           thumbUrl: it.thumb_1024_url,

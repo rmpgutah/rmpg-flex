@@ -1591,11 +1591,19 @@ async function generateIncidentFromCall(c: Context<Env>, requireCleared: boolean
     np.push(`\n--- Officer narrative below ---\n`);
     const narrative = np.join('\n');
 
+    // Seed occurrence date/time from the call (on-scene if known, else created).
+    // Without it the generated incident fails the NIBRS submit gate ("Occurrence
+    // date is required") — incidents store occurrence as occurred_date (+
+    // occurred_time), not occurred_at.
+    const occSrc = String((call as any).onscene_at || call.created_at || '');
+    const occurredDate = occSrc ? occSrc.slice(0, 10) : null;
+    const occurredTime = occSrc.length > 10 ? occSrc.slice(11, 19) : null;
     const result = await execute(db,
-      `INSERT INTO incidents (incident_number, call_id, incident_type, priority, status, location_address, latitude, longitude, narrative, officer_id)
-       VALUES (?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?)`,
+      `INSERT INTO incidents (incident_number, call_id, incident_type, priority, status, location_address, latitude, longitude, narrative, officer_id, occurred_date, occurred_time)
+       VALUES (?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?)`,
       incidentNumber, id, call.incident_type, call.priority || 'P3',
-      call.location_address || null, call.latitude ?? null, call.longitude ?? null, narrative, userId);
+      call.location_address || null, call.latitude ?? null, call.longitude ?? null, narrative, userId,
+      occurredDate, occurredTime);
     const incidentId = result.meta.last_row_id;
 
     await execute(db,

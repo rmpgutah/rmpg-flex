@@ -387,10 +387,29 @@
 //       the Map UI ("What's Here").
 // v717: Statewide DB always-on — Utah roads + address points default visible
 //       (auto-enabled on map ready; toggleable in-session, returns at load).
-// v718: Admin sweep — de-dup tabs, remove dead/retention/skiptracer-v1; build
-//       Departments + Announcements (+ officer banner) + Alert Rules engine +
-//       maintenance toggle + IPED config; make non-functional tabs real.
-const CACHE_NAME = 'rmpg-flex-v718';
+// v718: Plain-language record TYPE is now mandatory output everywhere — shared
+//       recordTypeLabel() (map + humanize fallback, never a raw code) feeds the
+//       Connections graph legend/node tooltips, the link picker chips, and the
+//       record-delete dialog; getEntityLabel delegates to it. (PDFs already
+//       title each record by its plain type.)
+// v719: fix CrmPage hard crash — toDisplayLabel()/.replace on an undefined
+//       status/type/relationship/source field threw "Cannot read properties of
+//       undefined (reading 'replace')" and the ErrorBoundary took the whole
+//       /crm page down (live sweep 2026-06-02). Null-guarded the helper + the
+//       lead-source label.
+// v720: Records/RMS audit — VehiclesTab no longer falsely flags non-stolen
+//       vehicles as STOLEN. isActiveStolen() now matches ONLY a confirmed
+//       'Stolen' status (was flagging everything ≠ None/Recovered, so Not
+//       Stolen / Unknown / Cleared / Under Investigation all showed a false
+//       STOLEN badge + posture ring); list badge, counts, filter, and ring all
+//       unified on the helper. (Pairs with worker-side records/nibrs fixes:
+//       person warrant lookups key on subject_person_id; evidence INSERT/PUT/
+//       search use real columns; NIBRS uses occurred_date.)
+// v721: occupant cross-reference on the New Call premise check — PremiseHistory
+//       also fetches /dispatch/address-occupants and renders persons on file at
+//       the address with active-warrant / gang / caution flags, a blinking
+//       FLAGGED AT ADDRESS banner, and the alert tone.
+const CACHE_NAME = 'rmpg-flex-v721';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

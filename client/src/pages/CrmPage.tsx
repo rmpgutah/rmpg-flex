@@ -92,8 +92,12 @@ function formatDateTime(d?: string): string {
   return parseTimestamp(d).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
-function toDisplayLabel(s: string): string {
-  return s.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
+function toDisplayLabel(s: string | null | undefined): string {
+  // Guard against undefined/null fields (e.g. a task/activity/contact row whose
+  // status/type/relationship is missing) — calling .replace on undefined threw
+  // and took the whole CRM page down via the ErrorBoundary (live 2026-06-02).
+  if (s == null) return '';
+  return String(s).replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
 }
 
 // ── Priority badge colors ──────────────────────────────
@@ -759,7 +763,7 @@ export default function CrmPage() {
                   <div className="space-y-1">
                     {(sourceAnalytics.data || []).slice(0, 8).map((s: any) => (
                       <div key={s.source} className="flex items-center gap-2 text-[10px]">
-                        <span className="w-24 text-rmpg-300 truncate capitalize">{s.source.replace(/_/g, ' ')}</span>
+                        <span className="w-24 text-rmpg-300 truncate capitalize">{(s.source ?? '').replace(/_/g, ' ')}</span>
                         <div className="flex-1 bg-rmpg-700 h-2 overflow-hidden" style={{ borderRadius: '2px' }}>
                           <div className="h-full bg-brand-500 transition-all duration-300" style={{ width: `${Math.min(100, (s.total_leads / (sourceAnalytics.data[0]?.total_leads || 1)) * 100)}%`, borderRadius: '2px' }} />
                         </div>

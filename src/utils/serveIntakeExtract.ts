@@ -42,9 +42,18 @@ export const TARGET_FIELDS = [
   'plaintiff', 'defendant', 'case_number', 'court_name', 'jurisdiction',
   'document_type', 'document_subtype', 'filing_date', 'service_deadline',
   'hearing_date',
+  'recipient_county',                     // service_county on ServeManager exports
   // ── Counsel / hiring party ────────────────────────────────
   'attorney_name', 'attorney_phone', 'attorney_email', 'attorney_bar_number',
   'client_name', 'job_number', 'fee_amount',
+  // client_reference = the CLIENT's own job number (ServeManager
+  // "client_job_number", e.g. 880231), distinct from the larger ServeManager
+  // job_number in the page header (e.g. 13572468).
+  'client_reference',
+  // documents_to_serve = the full "Docs to Be Served" / document_titles
+  // string verbatim (e.g. "Summons and Complaint; Bilingual Notice"),
+  // kept alongside the single-value document_type enum.
+  'documents_to_serve',
   // ── Service mechanics ─────────────────────────────────────
   'process_type', 'service_windows', 'service_instructions',
   'server_name', 'priority',
@@ -77,15 +86,63 @@ const DOC_TYPES = [
   'identification', 'correspondence', 'other',
 ] as const;
 
-const SYSTEM_PROMPT = `You are an extraction system for legal process-service documents.
+const SYSTEM_PROMPT = `You are an extraction system for legal process-service (civil paper service) documents.
 You return STRICT JSON only — no commentary, no markdown fences.
+
 Confidence is your own per-field self-report on a 0..1 scale:
   • 1.0 — value is unambiguously printed in the document
   • 0.7 — value is present but partially obscured or inferred from context
   • 0.4 — best guess; reader should verify
   • 0.0 — field is not present; return empty string with confidence 0
 Never invent values. If unsure, return empty string with confidence 0.
-For dates use ISO format (YYYY-MM-DD); for phone numbers use digits only.`;
+For dates use ISO format (YYYY-MM-DD); for phone numbers use digits only.
+
+DOCUMENT FAMILIES you will see (a packet may contain several concatenated):
+A) ServeManager job export / Information Form — the AUTHORITATIVE intake page.
+   Layout cues: a "JOB" header with a large ServeManager job number then a
+   smaller client job number and a due date; "CLIENT" and "SERVER" blocks; a
+   "Recipient:" block with the party-to-serve name, "DOB:" and the service
+   address; a "Service Instructions" block; "Docs to Be Served"; and a "Court
+   Case" block (Plaintiff, Defendant, Court, Address, County, Case). It often
+   embeds an "Imported CSV Row" JSON with keys like recipient_name_party_to_serve,
+   service_address_1, service_city, service_state, service_postal_code, plaintiff,
+   defendant, court_case_number, client_job_number, due_date, document_titles,
+   service_instructions. When that JSON is present, TRUST IT as the primary source.
+B) Court forms — Summons (e.g. CA Judicial Council SUM-100), Complaint, Civil
+   Case Cover Sheet, Docket. Cues: "NOTICE TO DEFENDANT" / "AVISO AL DEMANDADO"
+   → defendant; "YOU ARE BEING SUED BY PLAINTIFF" / "LO ESTÁ DEMANDANDO EL
+   DEMANDANTE" → plaintiff; "CASE NUMBER" / "Número del Caso" → case_number;
+   "The name and address of the court is" → court_name; "plaintiff's attorney" →
+   attorney_name/phone.
+
+EXTRACTION RULES (learned from real packets):
+  • job_number = the ServeManager job number in the page header (the larger one).
+    client_reference = the client's own job number (smaller, secondary).
+  • Recipient name: split into first / middle / last. A single middle initial
+    ("John Q Sample") → middle="Q". Keep suffixes (Jr/Sr/III) with the last name.
+  • DOB frequently appears as a bare date after "DOB:" OR inside a free-text
+    "description"/"recipient_description" field (e.g. a description whose entire
+    value is a date like "03/04/1985"). Pull it into recipient_dob as ISO.
+  • Address: prefer the "Recipient:" service-address block; map street→
+    recipient_address, city→recipient_city (use the city shown directly under
+    the recipient, not a generic county seat), state→recipient_state (2-letter),
+    zip→recipient_zip, county→recipient_county.
+  • recipient_type: 'business' when the party is a company (LLC, Inc., Corp.,
+    Co., LLP, business entity) — put the company in recipient_business_name and,
+    if a registered agent / "authorized person" is named, put them in
+    registered_agent_name. Otherwise 'person'.
+  • document_type: the single best enum for the lead document (a "Summons and
+    Complaint" packet → 'summons'). documents_to_serve = the full title string
+    verbatim ("Summons and Complaint; Bilingual Notice").
+  • case_number is OFTEN BLANK on pre-filing summonses ("Civil No." empty,
+    "Case [not provided]"). Leave it empty rather than guessing.
+  • service_deadline: ONLY a concrete calendar date (e.g. a due date). A relative
+    answer window like "30 calendar days" / "21 days" is NOT a deadline — leave
+    service_deadline empty (capture the phrase in service_windows if useful).
+  • Bilingual documents (English + Spanish, etc.): extract from the ENGLISH text;
+    ignore the translated duplicate.
+  • Multiple defendants on a court form: list them in 'defendant'; do not force a
+    single recipient unless the ServeManager Recipient block names the party to serve.`;
 
 // Llama 3.3 70B has a 128K-token context. 24K chars (~6K tokens) was
 // far too conservative — a multi-document packet (e.g. a 47K-char court
@@ -95,13 +152,58 @@ For dates use ISO format (YYYY-MM-DD); for phone numbers use digits only.`;
 // virtually every real serve packet in one pass.
 const MAX_PROMPT_CHARS = 90_000;
 
+// A SYNTHETIC one-shot — fabricated names/addresses/numbers that mirror the
+// ServeManager Information-Form layout. It teaches the field LOCATIONS (header
+// job vs client job, DOB-in-recipient-block, city-under-recipient, pre-filing
+// blank case number, doc-titles string) without embedding any real case data.
+// Do NOT replace these with values from real packets.
+const FEWSHOT_INPUT = `JOB
+13572468 880231  6/15/26 G&A-Need Invoice
+CLIENT  Example Collections, PLLC      SERVER  ICU Investigations, LLC  (435) 555-0100
+Recipient: John Q Sample
+DOB: 03/04/1985
+742 W Sample Loop APT 3
+Midvale, UT 84047
+Service Instructions: Sub-serve on 1st attempt to any occupant 16+. Personal only at POE.
+Docs to Be Served 11 pages  Summons and Complaint; Bilingual Notice
+Court Case  Case [not provided]
+Plaintiff  Sample Bank, N.A.
+Defendant  John Q Sample
+Court  THIRD JUDICIAL DISTRICT COURT, STATE OF UTAH - MATHESON
+Address 450 S STATE ST, SALT LAKE CITY, UT 84114   County SALT LAKE`;
+
+const FEWSHOT_OUTPUT = JSON.stringify({
+  documentType: 'info_page',
+  confidence: 0.9,
+  allDates: ['03/04/1985', '6/15/26'],
+  fields: {
+    recipient_type: { value: 'person', confidence: 1 },
+    recipient_first_name: { value: 'John', confidence: 1 },
+    recipient_middle_name: { value: 'Q', confidence: 0.9 },
+    recipient_last_name: { value: 'Sample', confidence: 1 },
+    recipient_dob: { value: '1985-03-04', confidence: 1 },
+    recipient_address: { value: '742 W Sample Loop APT 3', confidence: 1 },
+    recipient_city: { value: 'Midvale', confidence: 1 },
+    recipient_state: { value: 'UT', confidence: 1 },
+    recipient_zip: { value: '84047', confidence: 1 },
+    recipient_county: { value: 'Salt Lake', confidence: 0.9 },
+    plaintiff: { value: 'Sample Bank, N.A.', confidence: 1 },
+    defendant: { value: 'John Q Sample', confidence: 1 },
+    case_number: { value: '', confidence: 0 },
+    court_name: { value: 'Third Judicial District Court, State of Utah - Matheson', confidence: 1 },
+    jurisdiction: { value: 'Salt Lake', confidence: 0.9 },
+    document_type: { value: 'summons', confidence: 0.8 },
+    documents_to_serve: { value: 'Summons and Complaint; Bilingual Notice', confidence: 1 },
+    client_name: { value: 'Example Collections, PLLC', confidence: 1 },
+    job_number: { value: '13572468', confidence: 1 },
+    client_reference: { value: '880231', confidence: 0.9 },
+    server_name: { value: 'ICU Investigations, LLC', confidence: 1 },
+    service_instructions: { value: 'Sub-serve on 1st attempt to any occupant 16+. Personal only at POE.', confidence: 1 },
+  },
+});
+
 function buildUserPrompt(text: string): string {
   return `Extract the fields below from this process-service document.
-
-Document text:
-"""
-${text.slice(0, MAX_PROMPT_CHARS)}
-"""
 
 Return JSON with EXACTLY this shape:
 {
@@ -111,7 +213,21 @@ Return JSON with EXACTLY this shape:
   "fields": {
     ${TARGET_FIELDS.map((f) => `"${f}": { "value": "...", "confidence": 0..1 }`).join(',\n    ')}
   }
-}`;
+}
+
+EXAMPLE (format illustration only — fabricated data; never copy these values):
+Input:
+"""
+${FEWSHOT_INPUT}
+"""
+Output:
+${FEWSHOT_OUTPUT}
+
+Now extract from the ACTUAL document below.
+Document text:
+"""
+${text.slice(0, MAX_PROMPT_CHARS)}
+"""`;
 }
 
 // ── Response schema (RETAINED FOR REFERENCE — NOT CURRENTLY USED) ──
@@ -162,6 +278,20 @@ const _RESPONSE_SCHEMA = {
 // contains one of these tokens (e.g. plaintiff "Capital One, N.A.").
 const PLACEHOLDER_VALUE = /^\[?\s*(not provided|none|n\/?a|unknown|tbd|pending|null|—|-{1,})\s*\]?$/i;
 
+// Deterministic DOB recovery for ServeManager exports, where the date of birth
+// often sits as a bare date after "DOB:" or alone inside a description field
+// rather than in a dedicated DOB field. Only runs when the model left
+// recipient_dob empty, so it never overrides a confidently-read value.
+function recoverDob(rawText: string): string | null {
+  const t = rawText || '';
+  const labeled = t.match(/\b(?:DOB|D\.O\.B\.?|date of birth|born)\b[:\s]*?(\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{1,2}-\d{1,2})/i);
+  if (labeled) { const iso = toIsoDate(labeled[1]); if (iso) return iso; }
+  // "recipient_description": "03/04/1985" — a description whose entire value is a date.
+  const desc = t.match(/"recipient_description"\s*:\s*"(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})"/i);
+  if (desc) { const iso = toIsoDate(desc[1]); if (iso) return iso; }
+  return null;
+}
+
 function normalize(parsed: any, rawText: string, model: string, ms: number): ExtractionResult {
   const fields: Record<string, ExtractedField> = {};
   const incoming = (parsed?.fields ?? {}) as Record<string, any>;
@@ -177,6 +307,11 @@ function normalize(parsed: any, rawText: string, model: string, ms: number): Ext
     } else {
       fields[f] = { value: '', confidence: 0 };
     }
+  }
+  // DOB safety net: only when the model didn't already supply one.
+  if (!fields.recipient_dob.value) {
+    const dob = recoverDob(rawText);
+    if (dob) fields.recipient_dob = { value: dob, confidence: 0.6 };
   }
   const filled = Object.values(fields).filter((f) => f.value && f.confidence > 0.3).length;
   const fallbackConfidence = Math.min(1, filled / 8);

@@ -20,7 +20,7 @@ import { getTaggedBeats, getCountyFC, getMunicipalityFC, findBeatAt } from '../p
 import { apiFetch } from './useApi';
 import { toDisplayLabel } from '../utils/formatters';
 import { classifyPtType, type PropertyType } from '../pages/map/utils/landTypes';
-import { getAerialThumbUrl, findStreetImage, warmImageryToken, type StreetImage } from '../utils/locationImagery';
+import { getAerialThumbUrl, getStreetPerspectiveUrl, findStreetImage, warmImageryToken, type StreetImage } from '../utils/locationImagery';
 
 interface PremiseIntel {
   callCount: number;
@@ -121,8 +121,11 @@ export function useWhatsHere({ map, popup, active }: Opts) {
         }
       } catch { /* layer not ready */ }
 
-      // Aerial thumbnail URL is pure string construction — render it instantly.
-      const aerialUrl = getAerialThumbUrl(lng, lat, { zoom: 17, width: 240, height: 150 });
+      // Both Mapbox image URLs are pure string construction — available
+      // instantly, no network. The oblique PERSPECTIVE is our guaranteed
+      // ground-level view; the AERIAL is supporting top-down context.
+      const perspectiveUrl = getStreetPerspectiveUrl(lng, lat, { width: 248, height: 150 });
+      const aerialUrl = getAerialThumbUrl(lng, lat, { zoom: 17, width: 248, height: 72 });
 
       // Render: visual (aerial + street-level) + geography + nearest address
       // (statewide DB) + premise intel (recent calls/incidents — map<->dispatch).
@@ -143,21 +146,26 @@ export function useWhatsHere({ map, popup, active }: Opts) {
           rows.push({ label: 'Nearest Addr', value: '…' });
         }
 
-        const hasImg = !!(street?.thumbUrl || aerialUrl);
-        let html = `<div style="font-family:'Courier New',monospace;color:#d4d4d4;font-size:11px;min-width:${hasImg ? 240 : 200}px;">`;
+        const hasImg = !!(street?.thumbUrl || perspectiveUrl || aerialUrl);
+        let html = `<div style="font-family:'Courier New',monospace;color:#d4d4d4;font-size:11px;min-width:${hasImg ? 248 : 200}px;padding:9px 10px 8px;">`;
         html += `<div style="font-weight:bold;font-size:11px;color:#d4a017;margin-bottom:4px;border-bottom:1px solid #444;padding-bottom:3px;letter-spacing:0.5px;">WHAT'S HERE</div>`;
 
-        // Visual band — street-level preferred (Mapillary), aerial always.
+        // Visual band — a GROUND view always leads:
+        //   • real Mapillary street photo if coverage exists (true ground level)
+        //   • else the Mapbox oblique 3D perspective (guaranteed)
+        // followed by the small top-down aerial for context.
         if (hasImg) {
           if (street?.thumbUrl) {
             const ago = street.capturedAt ? new Date(street.capturedAt).toISOString().slice(0, 10) : '';
             const meta = [ago, street.distanceM != null ? `${street.distanceM}m` : ''].filter(Boolean).join(' · ');
-            html += `<div style="margin-bottom:4px;"><img src="${esc(street.thumbUrl)}" alt="street-level" style="width:240px;height:150px;object-fit:cover;border-radius:2px;display:block;border:1px solid #333;" onerror="this.parentElement.style.display='none'"/>`
+            html += `<div style="margin-bottom:5px;"><img src="${esc(street.thumbUrl)}" alt="street-level" style="width:248px;height:150px;object-fit:cover;border-radius:2px;display:block;border:1px solid #333;" onerror="this.style.display='none';this.nextElementSibling.style.display='none'"/>`
               + `<div style="font-size:7px;color:#777;letter-spacing:0.06em;margin-top:1px;">STREET-LEVEL · MAPILLARY${meta ? ' · ' + esc(meta) : ''}</div></div>`;
+          } else if (perspectiveUrl) {
+            html += `<div style="margin-bottom:5px;"><img src="${esc(perspectiveUrl)}" alt="street perspective" style="width:248px;height:150px;object-fit:cover;border-radius:2px;display:block;border:1px solid #333;" onerror="this.style.display='none';this.nextElementSibling.style.display='none'"/>`
+              + `<div style="font-size:7px;color:#777;letter-spacing:0.06em;margin-top:1px;">STREET VIEW · 3D PERSPECTIVE${loading ? ' · CHECKING STREET PHOTO…' : ''}</div></div>`;
           }
           if (aerialUrl) {
-            const h = street?.thumbUrl ? 92 : 150;
-            html += `<div style="margin-bottom:5px;"><img src="${esc(aerialUrl)}" alt="aerial" style="width:240px;height:${h}px;object-fit:cover;border-radius:2px;display:block;border:1px solid #333;" onerror="this.parentElement.style.display='none'"/>`
+            html += `<div style="margin-bottom:5px;"><img src="${esc(aerialUrl)}" alt="aerial" style="width:248px;height:72px;object-fit:cover;border-radius:2px;display:block;border:1px solid #333;" onerror="this.style.display='none';this.nextElementSibling.style.display='none'"/>`
               + `<div style="font-size:7px;color:#777;letter-spacing:0.06em;margin-top:1px;">AERIAL · SATELLITE</div></div>`;
           }
         }
