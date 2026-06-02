@@ -286,7 +286,14 @@
 //       premise-intel, lat/lng bbox) and shows a premise-history band
 //       ("N prior calls · M incidents · Last: <type> <date>") with acronym-
 //       formatted incident types (toDisplayLabel). Map <-> Dispatch/RMS.
-const CACHE_NAME = 'rmpg-flex-v702';
+// v703: cache-invalidation catch-up. PR #893 (CSP eval fix + 1,984-control a11y
+//       id sweep) and PR #894 (warrants self-clear fix) both merged AFTER v702
+//       was already deployed, and #893's web-UI conflict resolution kept v702 —
+//       so clients holding the v702 cache would never pull the merged bundle
+//       (the <meta> CSP fix that unblocks eval, the form-field ids, the warrant
+//       fix). Bump forces every client onto the current code. No code change
+//       here beyond the version string.
+const CACHE_NAME = 'rmpg-flex-v703';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
