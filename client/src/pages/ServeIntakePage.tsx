@@ -26,7 +26,14 @@ interface UploadedFile {
   // (no text layer) PDF. The original PDF has no extractable text, so we
   // render its pages to images here and let the server's Vision OCR read
   // them. Carries the source PDF's filename for the UI to group under.
+  // These entries are NOT shown in the document list (they're internal OCR
+  // inputs) but DO ride along in the upload payload — see the render filter.
   derivedFrom?: string;
+  // Set on an ORIGINAL scanned PDF whose pages we rasterized for Vision OCR.
+  // Lets the list show a "Scan OCR" badge + a normal (non-error) status even
+  // though the PDF itself yielded no extractable text — the OCR happens on the
+  // derived images server-side on submit.
+  scanned?: boolean;
 }
 
 // A PDF whose pdfjs text layer yields fewer than this many characters is
@@ -269,6 +276,7 @@ export default function ServeIntakePage() {
       let text = '';
       let ocrResult: any = null;
       let type = 'info_page';
+      let scanned = false;
 
       if (isPdf) {
         text = await extractPdfText(file);
@@ -300,6 +308,10 @@ export default function ServeIntakePage() {
               derivedFrom: file.name,
             });
           }
+          // A scanned PDF that rasterized OK isn't an error — its OCR rides on
+          // the derived images. Mark it so the row shows "Scan OCR" + a green
+          // check instead of a misleading ⚠️ "no text" warning.
+          scanned = pages.length > 0;
         }
       } else if (isImage) {
         const scan = await ocrScanImage(file);
@@ -314,7 +326,8 @@ export default function ServeIntakePage() {
 
       newFiles.push({
         name: file.name, type, text,
-        status: text.length > 50 || ocrResult?.success ? 'extracted' : 'error',
+        status: text.length > 50 || ocrResult?.success || scanned ? 'extracted' : 'error',
+        scanned,
         ocrResult,
         file,
       });
@@ -354,7 +367,12 @@ export default function ServeIntakePage() {
     if (!dropRef.current?.contains(e.relatedTarget as Node)) setDragActive(false);
   }, []);
 
-  const removeFile = (idx: number) => setFiles(prev => prev.filter((_, i) => i !== idx));
+  // Remove the row AND, if it's a scanned PDF, its hidden rasterized OCR pages
+  // (derivedFrom === the removed file's name) so they don't upload orphaned.
+  const removeFile = (idx: number) => setFiles(prev => {
+    const target = prev[idx];
+    return prev.filter((f, i) => i !== idx && f.derivedFrom !== target?.name);
+  });
   const changeFileType = (idx: number, type: string) => setFiles(prev => prev.map((f, i) => i === idx ? { ...f, type } : f));
 
   const openOcrPreview = (file: UploadedFile) => {
@@ -479,24 +497,25 @@ export default function ServeIntakePage() {
         />
       </div>
 
-      {files.length > 0 && (
+      {files.some(f => !f.derivedFrom) && (
         <div className="space-y-1">
           <p className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider">
-            {files.length} Document{files.length > 1 ? 's' : ''} Loaded
+            {files.filter(f => !f.derivedFrom).length} Document{files.filter(f => !f.derivedFrom).length > 1 ? 's' : ''} Loaded
             <span className="text-rmpg-600 font-normal ml-2">(OCR confidence shown per document)</span>
           </p>
-          {files.map((f, i) => (
+          {/* Show only the files the user actually dropped. Rasterized scan
+              pages (derivedFrom) are internal Vision-OCR inputs — they still
+              ride along in the upload payload, but listing them made one
+              scanned PDF look like 5 separate documents. Keep the real index
+              for the row handlers. */}
+          {files.map((f, i) => ({ f, i })).filter(({ f }) => !f.derivedFrom).map(({ f, i }) => (
             <div key={i} className="flex items-center gap-2 px-3 py-2 panel-beveled bg-surface-raised text-xs">
-              {f.derivedFrom ? (
-                <Camera className="w-4 h-4 text-rmpg-400 flex-shrink-0" />
-              ) : (
-                <FileText className="w-4 h-4 text-rmpg-400 flex-shrink-0" />
-              )}
+              <FileText className="w-4 h-4 text-rmpg-400 flex-shrink-0" />
               <span className="text-white font-medium truncate flex-1">{f.name}</span>
-              {f.derivedFrom && (
+              {f.scanned && (
                 <span
                   className="text-[8px] font-bold uppercase px-1 py-0.5 rounded-sm border bg-rmpg-900/40 text-rmpg-300 border-rmpg-700/40 whitespace-nowrap"
-                  title={`Rasterized page from scanned PDF "${f.derivedFrom}" — read by Vision OCR on submit`}
+                  title="Scanned PDF — its pages are read by Vision OCR on submit"
                 >
                   Scan OCR
                 </span>
