@@ -5061,6 +5061,7 @@ export default function MapPage() {
             categorical={hierLegend}
             isLight={isLightMapStyle(mapStyle)}
             bottomPx={activeRoute ? 132 : 28}
+            leftCss={layersPanelOpen ? 'calc(clamp(160px, 14vw, 200px) + 24px)' : '12px'}
           />
         )}
 
@@ -5070,7 +5071,7 @@ export default function MapPage() {
             style={{
               ...(isMobile
                 ? { top: 56, left: 8, right: 8 }
-                : { bottom: 48, left: 16, minWidth: 200 }),
+                : { bottom: 48, left: layersPanelOpen ? 'calc(clamp(160px, 14vw, 200px) + 24px)' : 16, minWidth: 200 }),
               background: isLightMapStyle(mapStyle) ? 'rgba(255,255,255,0.92)' : 'rgba(10,10,10,0.95)',
               border: isLightMapStyle(mapStyle) ? '1px solid rgba(136, 136, 136,0.3)' : '1px solid #88888850',
               padding: '8px 14px',

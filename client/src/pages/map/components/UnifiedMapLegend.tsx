@@ -21,6 +21,8 @@ export interface UnifiedLegendProps {
   isLight: boolean;
   /** Distance from the map bottom (px) — raised when the nav banner is shown. */
   bottomPx?: number;
+  /** CSS left offset — shifts right of the LAYERS panel when it's open. */
+  leftCss?: string;
 }
 
 const HSWATCH: Record<string, string> = { area: '#d4a017', section: '#f59e0b', zone: '#22c55e', beat: '#4ade80' };
@@ -39,7 +41,7 @@ const Swatch = ({ color, line, dot }: { color: string; line?: boolean; dot?: boo
   />
 );
 
-export default function UnifiedMapLegend({ hierarchy, boundaries, statewide, choro, categorical, isLight, bottomPx = 28 }: UnifiedLegendProps) {
+export default function UnifiedMapLegend({ hierarchy, boundaries, statewide, choro, categorical, isLight, bottomPx = 28, leftCss = '12px' }: UnifiedLegendProps) {
   const [open, setOpen] = useState(true);
 
   const geoLevels = ([
@@ -57,7 +59,7 @@ export default function UnifiedMapLegend({ hierarchy, boundaries, statewide, cho
   return (
     <div
       className="absolute z-[900] backdrop-blur-md"
-      style={{ bottom: bottomPx, left: 12, minWidth: 150, maxWidth: 220, background: bg, border: '1px solid #88888840', borderRadius: 2, fontFamily: "'JetBrains Mono','Courier New',monospace" }}
+      style={{ bottom: bottomPx, left: leftCss, minWidth: 150, maxWidth: 220, background: bg, border: '1px solid #88888840', borderRadius: 2, fontFamily: "'JetBrains Mono','Courier New',monospace" }}
     >
       <button
         type="button"

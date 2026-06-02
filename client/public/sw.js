@@ -308,7 +308,13 @@
 //        gps_speed (migration 0065). Worker: PUT /units allowlist, dead
 //        /units/assign-unit removed, assign/dispatch prior-call cleanup +
 //        call-status + last_status_change, aggregates 'busy' committed count.
-const CACHE_NAME = 'rmpg-flex-v705';
+// v706: Fix bottom-left overlay collision — the unified Legend AND the
+//       turn-by-turn nav banner were pinned at left:12/16 and sat UNDER the
+//       open LAYERS panel. Both now shift right of the panel
+//       (clamp(160px,14vw,200px)+24) when it's open and return to the edge
+//       when collapsed, matching the other map overlays; they stack cleanly
+//       when navigation is active.
+const CACHE_NAME = 'rmpg-flex-v706';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
