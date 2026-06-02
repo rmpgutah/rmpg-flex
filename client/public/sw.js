@@ -245,7 +245,11 @@
 //       Beat's minZoom (the useGeoJsonLayers zoomend handler kept hiding it
 //       below z10). Once selected they stay visible at every zoom. Removed
 //       the now-inaccurate z7+/z8+/z9+ badges from the Police Geography rows.
-const CACHE_NAME = 'rmpg-flex-v694';
+// v695: SECURITY — purge plaintext mapbox_password from system_config (deleted
+//       on live D1) and remove the Account Password field from the Mapbox
+//       integration UI so it can't be re-saved as a cleartext secret. The app
+//       only ever needs the public mapbox_access_token.
+const CACHE_NAME = 'rmpg-flex-v695';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
