@@ -70,6 +70,7 @@ import { isAndroidNative, navigateTo } from '../../utils/organicMapsNav';
 import { useToast } from '../../components/ToastProvider';
 import { localToday, dateToLocalYMD, safeDateTimeStr, parseTimestamp } from '../../utils/dateUtils';
 import { useGeoJsonLayers, GEO_LAYER_CONFIGS, getSectionColor, type BeatDistrictEntry } from '../../hooks/useGeoJsonLayers';
+import { useVectorTileLayers } from '../../hooks/useVectorTileLayers';
 import { useEventPlanning, PLAN_COLORS, PLAN_TYPE_LABELS, type PlanItemType } from '../../hooks/useEventPlanning';
 import { useShiftPlanning, SHIFT_TYPES, type ShiftType } from '../../hooks/useShiftPlanning';
 import { useIsMobile } from '../../hooks/useIsMobile';
@@ -422,6 +423,13 @@ export default function MapPage() {
     beatDistrictMap,
   });
   const [showGeoPanel, setShowGeoPanel] = useState(false);
+
+  // Statewide vector-tile overlays (PMTiles: Utah roads + address points)
+  const { vectorLayerStates, toggleVectorLayer, vectorConfigs } = useVectorTileLayers({
+    map: mapInstanceRef.current,
+    popup: infoWindowRef.current,
+  });
+  const [showVectorPanel, setShowVectorPanel] = useState(false);
 
   // Event planning overlays
   const eventPlanning = useEventPlanning({
@@ -3673,6 +3681,46 @@ export default function MapPage() {
                             {state.featureCount}
                           </span>
                         )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* ── Statewide Data (Vector Tiles) Section ── */}
+            <div className="border-t border-rmpg-700 p-1.5">
+              <button
+                onClick={() => setShowVectorPanel(!showVectorPanel)}
+                className="flex items-center gap-2 w-full px-2 py-1.5 text-left transition-colors hover:bg-rmpg-800/50"
+              >
+                <Globe2 className="w-3 h-3 text-gray-400" />
+                <span className="text-[10px] text-rmpg-300 flex-1">Statewide Data</span>
+                <span className="text-[9px] text-rmpg-500">
+                  {Object.values(vectorLayerStates).filter((s) => s.visible).length}/{vectorConfigs.length}
+                </span>
+                {showVectorPanel ? <ChevronUp className="w-2.5 h-2.5 text-rmpg-500" /> : <ChevronDown className="w-2.5 h-2.5 text-rmpg-500" />}
+              </button>
+              {showVectorPanel && (
+                <div className="mt-1 space-y-0.5">
+                  {vectorConfigs.map((cfg) => {
+                    const state = vectorLayerStates[cfg.id];
+                    return (
+                      <button
+                        key={cfg.id}
+                        onClick={() => toggleVectorLayer(cfg.id)}
+                        className={`flex items-center gap-2 w-full px-2 py-1 text-left transition-colors ${
+                          state?.visible ? 'panel-inset bg-surface-deep' : 'opacity-40 hover:opacity-70 hover:bg-rmpg-800/50'
+                        }`}
+                        title={cfg.description}
+                      >
+                        {state?.visible ? <Eye className="w-2.5 h-2.5 text-green-400" /> : <EyeOff className="w-2.5 h-2.5 text-rmpg-500" />}
+                        <div className="w-2 h-2 rounded-sm" style={{ backgroundColor: cfg.color, opacity: state?.visible ? 1 : 0.3 }} />
+                        <div className="flex-1 min-w-0">
+                          <div className="text-[9px] text-rmpg-200 truncate">{cfg.label}</div>
+                          <div className="text-[8px] text-rmpg-500 truncate">{cfg.description}</div>
+                        </div>
+                        <span className="text-[8px] font-mono text-rmpg-600">z{cfg.minzoom}+</span>
                       </button>
                     );
                   })}

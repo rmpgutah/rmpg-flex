@@ -11,8 +11,32 @@
 
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
+import { Protocol } from 'pmtiles';
 
 mapboxgl.accessToken = '';
+
+// ── PMTiles protocol registration ─────────────────────────────
+// Registers a `pmtiles://` source protocol so Mapbox GL JS can read
+// single-file PMTiles archives via HTTP range requests. Our statewide
+// overlays (Utah address points + road centerlines) are served from R2
+// through /api/tiles/* and referenced as `pmtiles:///api/tiles/<file>`.
+// Registered once at module load — addProtocol is global to mapboxgl.
+let _pmtilesRegistered = false;
+export function registerPmtilesProtocol(): void {
+  if (_pmtilesRegistered) return;
+  try {
+    const protocol = new Protocol();
+    // @types/mapbox-gl (^3.5) doesn't declare addProtocol, though it exists
+    // at runtime in mapbox-gl v3. Cast to reach it.
+    (mapboxgl as any).addProtocol('pmtiles', protocol.tile);
+    _pmtilesRegistered = true;
+  } catch (err) {
+    // Double-registration (HMR / multiple imports) throws — treat as registered.
+    _pmtilesRegistered = true;
+    console.warn('[pmtiles] protocol registration skipped:', err);
+  }
+}
+registerPmtilesProtocol();
 
 let _mapboxInitialized = false;
 

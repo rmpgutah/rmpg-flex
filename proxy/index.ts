@@ -970,6 +970,13 @@ const API_ROUTES: RouteRule[] = [
   // so future OCR sub-paths come along automatically.
   { kind: 'prefix', value: '/api/ocr' },
 
+  // ── Vector tiles (PMTiles statewide overlays) ──
+  // New isolated namespace served by src/routes/tiles.ts from R2 with
+  // HTTP Range support (mandatory for PMTiles). Kept separate from
+  // /api/map-data (which intentionally stays on legacy). Range/206 pass
+  // through this proxy transparently via env.API.fetch(request).
+  { kind: 'prefix', value: '/api/tiles' },
+
   // ── HR module ──
   // New Worker owns the four ported sub-paths (/leave, /disciplinary,
   // /reviews, /benefits). Un-ported HR sub-paths under /api/hr/*

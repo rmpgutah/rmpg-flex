@@ -159,7 +159,11 @@
 //       silent GPS data loss when /dispatch/gps 200s with {error}). (Worker
 //       same push: audit item B — geocodeAddress in the serve-intake commit is
 //       now 8s-time-boxed so a slow Nominatim can't stall the /upload response.)
-const CACHE_NAME = 'rmpg-flex-v678';
+// v679: Statewide PMTiles overlays — Utah roads + address points vector
+//       tiles served from R2 via /api/tiles/* (Range-capable). New
+//       "Statewide Data" toggle section on the Map page. /api/* is already
+//       SW-bypassed, so PMTiles range requests pass straight to network.
+const CACHE_NAME = 'rmpg-flex-v679';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
