@@ -945,6 +945,26 @@ const API_ROUTES: RouteRule[] = [
   // to the rewrite. (unit status stays on legacy — its transition-guard
   // handler is solid and already working.)
   { kind: 'regex', value: /^\/api\/dispatch\/units\/\d+\/(audio-mode|mileage)$/ },
+  // Unit management → env.API (the rewrite's hardened units.ts):
+  //   POST   /units               create (honors status + setup fields:
+  //                               vehicle_id/capabilities/assigned_beat/audio_mode,
+  //                               which legacy dropped),
+  //   PUT    /units/:id           update (column-allowlisted),
+  //   DELETE /units/:id           delete (admin/manager; 409 if still on a call),
+  //   POST   /units/:id/dispose   admin disposal — force-clears a stuck call
+  //                               assignment then deletes (mode:'delete') or
+  //                               retires/out-of-services (mode:'retire').
+  // Legacy (the ~30-40% port) had no working DELETE, so admins could never
+  // remove units. GET /units and PUT /units/:id/status intentionally stay on
+  // legacy (its status transition-guard handler is solid + broadcasts on the
+  // legacy /api/ws socket the client listens on).
+  // GET is included so the board reads the rewrite's full `SELECT u.*` (all
+  // unit columns incl capabilities/assigned_beat/audio_mode) — the edit modal
+  // pre-fills from it, so a partial legacy row would otherwise blank those
+  // fields on save. Same live D1, so status-on-legacy stays consistent.
+  { kind: 'regex', value: /^\/api\/dispatch\/units$/, methods: ['GET', 'POST'] },
+  { kind: 'regex', value: /^\/api\/dispatch\/units\/\d+\/dispose$/, methods: ['POST'] },
+  { kind: 'regex', value: /^\/api\/dispatch\/units\/\d+$/, methods: ['PUT', 'DELETE'] },
 
   // ── Audit subsystem ──
   // Live D1 `audit_log` had only id+created_at columns (an unused stump)

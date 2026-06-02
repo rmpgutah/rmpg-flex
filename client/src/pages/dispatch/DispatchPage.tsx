@@ -671,11 +671,16 @@ export default function DispatchPage() {
     newUnitCallSign, setNewUnitCallSign,
     newUnitOfficerId, setNewUnitOfficerId,
     newUnitStatus, setNewUnitStatus,
+    newUnitVehicleId, setNewUnitVehicleId,
+    newUnitCapabilities, setNewUnitCapabilities,
+    newUnitBeat, setNewUnitBeat,
+    newUnitAudioMode, setNewUnitAudioMode,
+    resetUnitForm,
     unitCreating,
     deletingUnit, setDeletingUnit,
     unitDeleting,
     openEditUnit,
-    handleSaveUnit, handleDeleteUnit,
+    handleSaveUnit, handleDisposeUnit,
     handleAssignUnit, handleDragAssignUnit, handleUnassignUnit,
   } = useDispatchUnitActions({
     selectedCall, setSelectedCall,
@@ -5964,7 +5969,7 @@ export default function DispatchPage() {
               }}
               onCreateUnit={() => setShowCreateUnitModal(true)}
               onEditUnit={openEditUnit}
-              onDeleteUnit={(unit) => setDeletingUnit(unit)}
+              onDeleteUnit={isAdminOrManager ? (unit) => setDeletingUnit(unit) : undefined}
               selectedCallId={selectedCall?.id ?? null}
               assignedUnitIds={selectedCall?.assigned_units ?? []}
               onAssignUnit={selectedCall && !['cleared', 'closed', 'cancelled', 'archived'].includes(selectedCall.status) ? handleAssignUnit : undefined}
@@ -6262,7 +6267,7 @@ export default function DispatchPage() {
                 <Radio className="w-4 h-4 text-brand-400" />
                 <span id={unitModalTitleId} className="text-sm font-bold text-white tracking-wide">{editingUnit ? 'Edit Dispatch Unit' : 'Create Dispatch Unit'}</span>
               </div>
-              <button type="button" onClick={() => { setShowCreateUnitModal(false); setEditingUnit(null); setNewUnitCallSign(''); setNewUnitOfficerId(''); setNewUnitStatus('available'); }} className="toolbar-btn ml-auto">
+              <button type="button" onClick={() => { setShowCreateUnitModal(false); resetUnitForm(); }} className="toolbar-btn ml-auto">
                 <X style={{ width: 12, height: 12 }} />
               </button>
             </div>
@@ -6307,10 +6312,69 @@ export default function DispatchPage() {
                   {editingUnit && <option value="dispatched">Dispatched</option>}
                   {editingUnit && <option value="enroute">En Route</option>}
                   {editingUnit && <option value="onscene">On Scene</option>}
+                  {editingUnit && <option value="out_of_service">Out of Service</option>}
                 </select>
               </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="field-label">Vehicle</label>
+                  <input id="ff-dispatchpage-unit-vehicle"
+                    type="text"
+                    className="input-dark text-sm w-full mt-1"
+                    placeholder="Unit / plate #"
+                    value={newUnitVehicleId}
+                    onChange={(e) => setNewUnitVehicleId(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="field-label">Default Beat</label>
+                  <input id="ff-dispatchpage-unit-beat"
+                    type="text"
+                    className="input-dark text-sm w-full mt-1"
+                    placeholder="e.g. SL1-HER/C"
+                    value={newUnitBeat}
+                    onChange={(e) => setNewUnitBeat(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="field-label">Audio Mode</label>
+                <select id="ff-dispatchpage-unit-audio"
+                  className="select-dark text-sm w-full mt-1"
+                  value={newUnitAudioMode}
+                  onChange={(e) => setNewUnitAudioMode(e.target.value)}
+                >
+                  <option value="audible">Audible</option>
+                  <option value="silent">Silent</option>
+                  <option value="vibrate">Vibrate</option>
+                </select>
+              </div>
+              <div>
+                <label className="field-label">Capabilities</label>
+                <div className="flex flex-wrap gap-1.5 mt-1">
+                  {['K9', 'SWAT', 'Supervisor', 'FTO', 'Traffic', 'Detective', 'Patrol'].map((cap) => {
+                    const active = newUnitCapabilities.includes(cap);
+                    return (
+                      <button type="button"
+                        key={cap}
+                        onClick={() => setNewUnitCapabilities((prev) => active ? prev.filter((x) => x !== cap) : [...prev, cap])}
+                        className="text-[10px] font-bold uppercase px-2 py-1 tracking-wide transition-colors"
+                        style={{
+                          borderRadius: 2,
+                          border: `1px solid ${active ? '#d4a017' : '#2e2e2e'}`,
+                          background: active ? 'rgba(212,160,23,0.15)' : '#0a0a0a',
+                          color: active ? '#d4a017' : '#888888',
+                        }}
+                        aria-pressed={active}
+                      >
+                        {cap}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-600">
-                <button type="button" onClick={() => { setShowCreateUnitModal(false); setEditingUnit(null); setNewUnitCallSign(''); setNewUnitOfficerId(''); setNewUnitStatus('available'); }} className="toolbar-btn">
+                <button type="button" onClick={() => { setShowCreateUnitModal(false); resetUnitForm(); }} className="toolbar-btn">
                   Cancel
                 </button>
                 <button type="button"
@@ -6327,17 +6391,44 @@ export default function DispatchPage() {
         </div>
       )}
 
-      {/* Delete Unit Confirmation */}
-      <ConfirmDialog
-        isOpen={deletingUnit !== null}
-        onClose={() => setDeletingUnit(null)}
-        onConfirm={handleDeleteUnit}
-        title="Delete Dispatch Unit"
-        message={`Are you sure you want to permanently delete unit "${deletingUnit?.call_sign || ''}"? This action cannot be undone.`}
-        confirmLabel="Delete Unit"
-        confirmVariant="danger"
-        isLoading={unitDeleting}
-      />
+      {/* Dispose Unit — Retire (soft) or Delete (permanent). Both server-side
+          force-clear any stale call assignment, so a unit stuck on a call can
+          still be disposed (the plain DELETE refused those). */}
+      {deletingUnit && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" aria-label="Dispose unit" style={{ background: 'rgba(0,0,0,0.65)', WebkitBackdropFilter: 'blur(4px)', backdropFilter: 'blur(4px)' }}>
+          <div className="panel-beveled bg-surface-raised" style={{ width: '420px', border: '1px solid #2a2a2a', boxShadow: '0 12px 40px rgba(0,0,0,0.5)' }}>
+            <div className="panel-title-bar">
+              <div className="flex items-center gap-2">
+                <Trash2 className="w-4 h-4 text-red-400" />
+                <span className="text-sm font-bold text-white tracking-wide">Dispose Unit “{deletingUnit.call_sign}”</span>
+              </div>
+              <button type="button" onClick={() => !unitDeleting && setDeletingUnit(null)} className="toolbar-btn ml-auto" aria-label="Cancel">
+                <X style={{ width: 12, height: 12 }} />
+              </button>
+            </div>
+            <div className="p-4 space-y-3">
+              <p className="text-xs text-rmpg-300 leading-relaxed">
+                {deletingUnit.current_call_id
+                  ? <>This unit is still attached to a call — disposal will <span className="text-[#d4a017]">automatically clear that assignment</span> first.</>
+                  : 'Choose how to dispose of this unit.'}
+              </p>
+              <div className="space-y-2 text-[11px] text-rmpg-400">
+                <div><span className="text-amber-400 font-bold">Retire</span> — mark Out of Service and free it from any call. Keeps the unit + its history; reversible (set it back to Available later).</div>
+                <div><span className="text-red-400 font-bold">Delete</span> — permanently remove the unit row. Cannot be undone.</div>
+              </div>
+              <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-600">
+                <button type="button" onClick={() => setDeletingUnit(null)} disabled={unitDeleting} className="toolbar-btn">Cancel</button>
+                <button type="button" onClick={() => handleDisposeUnit('retire')} disabled={unitDeleting} className="toolbar-btn" style={{ borderColor: '#92710f', color: '#d4a017' }}>
+                  {unitDeleting ? <Loader2 style={{ width: 12, height: 12 }} className="animate-spin" /> : <Archive style={{ width: 12, height: 12 }} />} Retire
+                </button>
+                <button type="button" onClick={() => handleDisposeUnit('delete')} disabled={unitDeleting} className="toolbar-btn toolbar-btn-danger">
+                  {unitDeleting ? <Loader2 style={{ width: 12, height: 12 }} className="animate-spin" /> : <Trash2 style={{ width: 12, height: 12 }} />} Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Delete Call Confirmation */}
       <ConfirmDialog

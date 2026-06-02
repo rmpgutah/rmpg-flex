@@ -235,11 +235,11 @@ export default React.memo(function UnitStatusBoard({
                         <Edit className="w-3 h-3" />
                       </button>
                     )}
-                    {onDeleteUnit && !unit.current_call_id && (
+                    {onDeleteUnit && (
                       <button type="button"
                         onClick={(e) => { e.stopPropagation(); onDeleteUnit(unit); }}
                         className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center text-rmpg-400 hover:text-red-400 transition-colors"
-                        title={`Delete ${unit.call_sign}`}
+                        title={`Dispose ${unit.call_sign} (retire or delete)`}
                       >
                         <Trash2 className="w-3 h-3" />
                       </button>
