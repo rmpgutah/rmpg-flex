@@ -826,6 +826,12 @@ const API_ROUTES: RouteRule[] = [
   // legacy 404s / 500s on these. Route to env.API so the new handlers win.
   { kind: 'prefix', value: '/api/personnel/training' },
   { kind: 'prefix', value: '/api/personnel/duty-hours' },
+  // activity / fitness / commendations — handlers in src/routes/personnel.ts
+  // (audit_log+activity_log union; personnel_fitness; personnel_commendations).
+  // Legacy never implemented these → 404 before this route. GET + POST.
+  { kind: 'prefix', value: '/api/personnel/activity' },
+  { kind: 'prefix', value: '/api/personnel/fitness' },
+  { kind: 'prefix', value: '/api/personnel/commendations' },
   // Howen — handlers in src/routes/howen.ts (status, devices[/:id], events).
   { kind: 'prefix', value: '/api/howen/' },
   // Admin shift-swaps alias — handler in src/routes/shiftPlans.ts.
