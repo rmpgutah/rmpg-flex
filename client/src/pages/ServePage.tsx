@@ -22,6 +22,7 @@ import ServeAttemptModal from '../components/serve/ServeAttemptModal';
 import ServeRoutePlanner from '../components/serve/ServeRoutePlanner';
 import ServeSkipTracePanel from '../components/serve/ServeSkipTracePanel';
 import FormModal from '../components/FormModal';
+import AddressAutocomplete, { type ParsedAddress } from '../components/AddressAutocomplete';
 import type { ServeJob, ServeAttemptData, ServeSkipAddress } from '../types';
 import ExportButton from '../components/ExportButton';
 import { useFormDraft } from '../hooks/useFormDraft';
@@ -70,6 +71,10 @@ const EMPTY_FORM = {
   recipient_city: '',
   recipient_state: 'UT',
   recipient_zip: '',
+  // Coordinates from the address autocomplete pick. Sent to the create/update
+  // endpoint so it skips its own Nominatim backfill and uses the precise pin.
+  recipient_lat: null as number | null,
+  recipient_lng: null as number | null,
   document_type: 'Summons',
   case_number: '',
   court_name: '',
@@ -107,6 +112,8 @@ export default function ServePage() {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   // ── Officers for route planner ──────────────────────────────────────
   const [officers, setOfficers] = useState<{ id: number; name: string }[]>([]);
+  // ── Clients (hiring parties) for the Add Job form selector ──────────
+  const [clientsList, setClientsList] = useState<{ id: string; name: string }[]>([]);
   // ── Saved route state ───────────────────────────────────────────────
   const [savedRoute, setSavedRoute] = useState<any>(null);
 
@@ -258,6 +265,23 @@ export default function ServePage() {
     return () => { cancelled = true; };
   }, []);
 
+  // ── Fetch clients for the hiring-party selector on the Add Job form ──
+  // Mirrors the dispatch New Call form: picking a client fills the (free-text)
+  // Client Name so the hiring party is a known, standardized account.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await apiFetch<any[]>('/admin/clients');
+        if (cancelled) return;
+        setClientsList((Array.isArray(res) ? res : [])
+          .filter((c: any) => c.status === 'active')
+          .map((c: any) => ({ id: String(c.id), name: c.name })));
+      } catch { /* non-critical — selector just stays empty */ }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   // ── Fetch saved route for today ──────────────────────────────────
   const fetchSavedRoute = useCallback(async () => {
     if (!user?.id) return;
@@ -370,6 +394,8 @@ export default function ServePage() {
       recipient_city: job.recipient_city || '',
       recipient_state: job.recipient_state || 'UT',
       recipient_zip: job.recipient_zip || '',
+      recipient_lat: job.recipient_lat ?? null,
+      recipient_lng: job.recipient_lng ?? null,
       document_type: job.document_type,
       case_number: job.case_number || '',
       court_name: job.court_name || '',
@@ -1276,12 +1302,30 @@ export default function ServePage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="sm:col-span-2">
               <label className="block text-[11px] text-rmpg-400 mb-1">Address</label>
-              <input id="ff-servepage-3"
-                type="text"
+              <AddressAutocomplete
                 value={formData.recipient_address}
-                onChange={e => handleFormChange('recipient_address', e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-[#0c0c0c] border border-[#2b2b2b] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
+                onChange={val => handleFormChange('recipient_address', val)}
                 placeholder="Street address"
+                className="w-full px-3 py-2 text-sm bg-[#0c0c0c] border border-[#2b2b2b] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
+                // Picking a suggestion fills the split address fields + the
+                // precise pin. City/ZIP fill blanks only (never clobber a typed
+                // value); the pick's coordinates always win for the chosen
+                // address.
+                onSelect={(addr: ParsedAddress) => {
+                  setFormData(prev => ({
+                    ...prev,
+                    recipient_address: addr.street || addr.formatted || prev.recipient_address,
+                    recipient_city: prev.recipient_city || addr.city || '',
+                    // Only adopt a 2-letter state code — geocoders often return
+                    // the full name ("Utah") which doesn't fit this 2-char field,
+                    // so in that case keep the operator's value (defaults to UT).
+                    recipient_state: (addr.state && addr.state.trim().length === 2)
+                      ? addr.state.trim().toUpperCase() : prev.recipient_state,
+                    recipient_zip: prev.recipient_zip || addr.zip || '',
+                    recipient_lat: addr.latitude ?? prev.recipient_lat,
+                    recipient_lng: addr.longitude ?? prev.recipient_lng,
+                  }));
+                }}
               />
             </div>
             <div>
@@ -1407,11 +1451,28 @@ export default function ServePage() {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-[11px] text-rmpg-400 mb-1">Client Name</label>
+              {/* Hiring-party selector — picking a known client fills the
+                  free-text field below (which stays editable for ad-hoc names). */}
+              {clientsList.length > 0 && (
+                <select id="ff-servepage-client"
+                  value={clientsList.find(c => c.name === formData.client_name)?.id || ''}
+                  onChange={e => {
+                    const picked = clientsList.find(c => c.id === e.target.value);
+                    if (picked) handleFormChange('client_name', picked.name);
+                  }}
+                  className="w-full mb-1 px-3 py-2 text-sm bg-[#0c0c0c] border border-[#2b2b2b] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
+                  aria-label="Select client"
+                >
+                  <option value="">— Select client —</option>
+                  {clientsList.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              )}
               <input id="ff-servepage-14"
                 type="text"
                 value={formData.client_name}
                 onChange={e => handleFormChange('client_name', e.target.value)}
                 className="w-full px-3 py-2 text-sm bg-[#0c0c0c] border border-[#2b2b2b] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
+                placeholder="Or type a name"
               />
             </div>
             <div>
