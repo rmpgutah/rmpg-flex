@@ -470,6 +470,26 @@ export default function MapPage() {
 
   // ── Advanced overlay tools ──────────────────────────────────
   const [showAdvTools, setShowAdvTools] = useState(false);
+
+  // Collapsible LAYERS-panel groups (Intelligence / Analysis / Tactical) so
+  // the panel stays compact — persisted across sessions.
+  const [collapsedSections, setCollapsedSections] = usePersistedState<string[]>('rmpg_map_collapsed_sections', []);
+  const isSecCollapsed = (id: string) => collapsedSections.includes(id);
+  const toggleSec = useCallback((id: string) => {
+    setCollapsedSections((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
+  }, [setCollapsedSections]);
+  const sectionHeader = (id: string, label: string) => (
+    <button
+      type="button"
+      onClick={() => toggleSec(id)}
+      aria-expanded={!isSecCollapsed(id)}
+      className="w-full flex items-center justify-between px-1 mb-1.5 group"
+    >
+      <span className="text-[8px] text-rmpg-500 group-hover:text-rmpg-300 uppercase tracking-widest font-bold transition-colors">{label}</span>
+      {isSecCollapsed(id) ? <ChevronDown className="w-2.5 h-2.5 text-rmpg-600" /> : <ChevronUp className="w-2.5 h-2.5 text-rmpg-600" />}
+    </button>
+  );
+
   const [whatsHereActive, setWhatsHereActive] = usePersistedState<boolean>('rmpg_whatshere', false);
   const [choroLevel, setChoroLevel] = usePersistedState<ChoroLevel | null>('rmpg_choro_level', null);
   const [choroSource, setChoroSource] = usePersistedState<'calls' | 'incidents'>('rmpg_choro_source', 'calls');
@@ -3704,8 +3724,8 @@ export default function MapPage() {
 
             {/* ── Intelligence Layers ── */}
             <div className="border-t border-rmpg-700 p-1.5">
-              <div className="text-[8px] text-rmpg-500 uppercase tracking-widest font-bold mb-1.5 px-1">Intelligence</div>
-              {([
+              {sectionHeader('intelligence', 'Intelligence')}
+              {!isSecCollapsed('intelligence') && ([
                 { key: 'warrants' as const, label: 'Active Warrants', color: 'red' },
                 { key: 'trespass' as const, label: 'Trespass Orders', color: 'orange' },
                 { key: 'offenders' as const, label: 'Sex Offenders', color: 'purple' },
@@ -3729,8 +3749,8 @@ export default function MapPage() {
 
             {/* ── Analysis ── */}
             <div className="border-t border-rmpg-700 p-1.5">
-              <div className="text-[8px] text-rmpg-500 uppercase tracking-widest font-bold mb-1.5 px-1">Analysis</div>
-
+              {sectionHeader('analysis', 'Analysis')}
+              {!isSecCollapsed('analysis') && (<>
               {/* Predictions */}
               <button
                 onClick={() => setShowPredictions(!showPredictions)}
@@ -3761,12 +3781,13 @@ export default function MapPage() {
                   <Loader2 className="w-2.5 h-2.5 animate-spin" />
                 )}
               </button>
+              </>)}
             </div>
 
             {/* ── Tactical Layers ── */}
             <div className="border-t border-rmpg-700 p-1.5">
-              <div className="text-[8px] text-rmpg-500 uppercase tracking-widest font-bold mb-1.5 px-1">Tactical</div>
-
+              {sectionHeader('tactical', 'Tactical')}
+              {!isSecCollapsed('tactical') && (<>
               {/* Patrol Checkpoints */}
               <button
                 onClick={() => setShowPatrolCheckpoints(!showPatrolCheckpoints)}
@@ -3899,6 +3920,7 @@ export default function MapPage() {
                   <span className="text-[8px] font-mono text-yellow-400">{daylight.phase}</span>
                 )}
               </button>
+              </>)}
             </div>
 
             {/* ── Dispatch Mode ── */}
