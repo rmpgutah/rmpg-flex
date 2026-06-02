@@ -667,19 +667,15 @@ function BeatActivityCard() {
                   <th className="px-2 py-1.5 text-right text-rmpg-400 font-bold uppercase">Calls</th>
                   <th className="px-2 py-1.5 text-right text-rmpg-400 font-bold uppercase">Incidents</th>
                   <th className="px-2 py-1.5 text-right text-rmpg-400 font-bold uppercase">Citations</th>
-                  <th className="px-2 py-1.5 text-right text-rmpg-400 font-bold uppercase">Arrests</th>
-                  <th className="px-2 py-1.5 text-right text-rmpg-400 font-bold uppercase">Avg Resp</th>
                 </tr>
               </thead>
               <tbody>
                 {data.beats.map((b: any) => (
-                  <tr key={b.beat} className="border-b border-rmpg-700/50 hover:bg-surface-raised transition-colors">
-                    <td className="px-2 py-1.5 text-rmpg-200 font-mono font-bold">{b.beat}</td>
+                  <tr key={b.beat_code} className="border-b border-rmpg-700/50 hover:bg-surface-raised transition-colors">
+                    <td className="px-2 py-1.5 text-rmpg-200 font-mono font-bold">{b.beat_name || b.beat_code}</td>
                     <td className="px-2 py-1.5 text-right font-mono text-gray-400">{b.calls}</td>
                     <td className="px-2 py-1.5 text-right font-mono text-rmpg-200">{b.incidents}</td>
                     <td className="px-2 py-1.5 text-right font-mono text-rmpg-200">{b.citations}</td>
-                    <td className="px-2 py-1.5 text-right font-mono text-rmpg-200">{b.arrests}</td>
-                    <td className="px-2 py-1.5 text-right font-mono text-brand-400">{b.avg_response_min ? `${b.avg_response_min}m` : 'N/A'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -873,8 +869,10 @@ export default function ReportsPage() {
   };
 
   // Prepare chart data
-  const incidentsChartData = (Array.isArray(incidentsData?.data) ? incidentsData.data : []).map((item, i) => ({
-    name: formatGroupKey(item.group_key),
+  // Handler returns { by_type: [{ type, count }], ... } — not a `data`/`group_key`
+  // array. Read by_type so the incidents-by-type breakdown chart populates.
+  const incidentsChartData = (Array.isArray((incidentsData as any)?.by_type) ? (incidentsData as any).by_type : []).map((item: any, i: number) => ({
+    name: formatGroupKey(item.type),
     value: item.count,
     fill: PIE_COLORS[i % PIE_COLORS.length],
   }));
@@ -1099,7 +1097,7 @@ export default function ReportsPage() {
                         paddingAngle={3}
                         dataKey="value"
                       >
-                        {incidentsChartData.map((entry) => (
+                        {incidentsChartData.map((entry: { name: string; fill: string }) => (
                           <Cell key={entry.name} fill={entry.fill} />
                         ))}
                       </Pie>
@@ -1108,7 +1106,7 @@ export default function ReportsPage() {
                   </ResponsiveContainer>
                   {/* Legend */}
                   <div className={`${isMobile ? 'mt-2' : 'mt-2 flex-1'} space-y-1.5`}>
-                    {incidentsChartData.map((entry) => (
+                    {incidentsChartData.map((entry: { name: string; value: number; fill: string }) => (
                       <div key={entry.name} className="flex items-center gap-2 py-0.5 hover:bg-surface-raised/30 px-1 -mx-1 transition-colors rounded-sm">
                         <div className="w-2 h-2 rounded-sm flex-shrink-0" style={{ backgroundColor: entry.fill }} />
                         <span className="text-[10px] text-rmpg-200 truncate flex-1">{entry.name}</span>
