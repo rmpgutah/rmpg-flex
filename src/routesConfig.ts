@@ -79,6 +79,7 @@ import geocode from './routes/geocode';
 import warrants from './routes/warrants';
 import nibrs from './routes/nibrs';
 import incidentSupplements from './routes/incidentSupplements';
+import incidentSubresources from './routes/incidentSubresources';
 import incidentsRouter from './routes/incidents';
 import audit from './routes/audit';
 import arrests from './routes/arrests';
@@ -244,7 +245,10 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/nibrs', router: nibrs, auth: 'required' },
   { prefix: '/api/incidents', router: incidentsRouter, auth: 'required',
     note: 'BEFORE incidentSupplements — exact patterns /:id/{submit,approve,return} must match first' },
-  { prefix: '/api/incidents', router: incidentSupplements, auth: 'required' },
+  { prefix: '/api/incidents', router: incidentSupplements, auth: 'required',
+    note: 'BEFORE incidentSubresources — /:id/supplements/{dv,pursuit} string suffixes must match before the numeric /:id/supplements/:sid' },
+  { prefix: '/api/incidents', router: incidentSubresources, auth: 'required',
+    note: 'offenses/officers/links + generic supplements CRUD (numeric-id constrained)' },
 
   // ── RMS routes (Phase 1 ports) ─────────────────────────────
   // KEEP ALPHABETICAL BY PREFIX. New ports must be inserted at the

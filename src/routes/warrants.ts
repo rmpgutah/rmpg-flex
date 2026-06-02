@@ -935,6 +935,40 @@ function warrantNumberFor(prefix: 'WRN' | 'EXT', id: number | bigint): string {
   return `${prefix}-${new Date().getFullYear()}-${String(id).padStart(5, '0')}`;
 }
 
+// ── GET /warrants/check/:personId — advisory active-warrant check ──
+// Called by LinkPersonModal when a person is selected/created on an
+// incident, to flash an "ACTIVE WARRANTS" banner. Advisory only (the
+// client swallows errors), but legacy 404'd on it. Live `warrants`
+// carries BOTH person_id and subject_person_id columns (schema drift),
+// so we match either. Returns the shape the client's WarrantCheckResult
+// expects: { has_warrants, count, warrants: [...] }.
+warrants.get('/check/:personId{\\d+}', requireRole(...ROLES_CRUD_READ), async (c) => {
+  try {
+    const personId = parseInt(c.req.param('personId') || '', 10);
+    if (!Number.isFinite(personId) || personId <= 0) {
+      return c.json({ error: 'Invalid person id', code: 'INVALID_ID' }, 400);
+    }
+    const rows = await query<any>(getDb(c.env), `
+      SELECT id, warrant_number, COALESCE(warrant_type, type) AS warrant_type,
+             COALESCE(charge_description, offense_description, offense, description) AS charge_description,
+             status
+      FROM warrants
+      WHERE (person_id = ? OR subject_person_id = ?)
+        AND status = 'active' AND archived_at IS NULL
+      ORDER BY COALESCE(issued_date, created_at) DESC`,
+      personId, personId);
+    return c.json({
+      person_id: personId,
+      has_warrants: rows.length > 0,
+      count: rows.length,
+      warrants: rows,
+    });
+  } catch (err) {
+    console.error('[warrants] check error', err);
+    return c.json({ error: 'Failed to check warrants', code: 'WARRANT_CHECK_ERR' }, 500);
+  }
+});
+
 // ── GET /warrants — list with filters + pagination ──
 // Mirrors the legacy filter surface so the WarrantsPage useEffect that
 // passes ~16 query params keeps working unchanged. All optional filters
