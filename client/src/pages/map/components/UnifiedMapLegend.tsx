@@ -10,6 +10,7 @@
 import React, { useState } from 'react';
 import { List, ChevronDown, ChevronUp } from 'lucide-react';
 import type { ChoroLegend } from '../../../hooks/useActivityChoropleth';
+import { roadLegendRows, propertyLegendRows } from '../utils/landTypes';
 
 export interface UnifiedLegendProps {
   hierarchy: { area: boolean; section: boolean; zone: boolean; beat: boolean };
@@ -117,17 +118,22 @@ export default function UnifiedMapLegend({ hierarchy, boundaries, statewide, cho
               <div style={{ color: sub, fontSize: 7, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 2 }}>Statewide</div>
               {statewide.roads && (
                 <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                  {[['Interstate', '#ef4444'], ['US Hwy', '#f59e0b'], ['State', '#e8b84b'], ['Local', '#d4a017']].map(([l, col]) => (
-                    <span key={l} className="flex items-center gap-1"><Swatch color={col} line /><span style={{ fontSize: 8, color: fg }}>{l}</span></span>
+                  {/* Driven from the shared ROAD_CLASSES taxonomy so the legend
+                      always matches the rendered road colors. */}
+                  {roadLegendRows().map(({ label, color }) => (
+                    <span key={label} className="flex items-center gap-1"><Swatch color={color} line /><span style={{ fontSize: 8, color: fg }}>{label}</span></span>
                   ))}
                 </div>
               )}
               {statewide.addresses && (
                 <div className="mt-1">
-                  <div style={{ fontSize: 7, color: sub, marginBottom: 1 }}>Address points by type</div>
-                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
-                    {[['Residential', '#22c55e'], ['Commercial', '#f59e0b'], ['Industrial', '#ef4444'], ['Agricultural', '#84cc16'], ['Mixed', '#14b8a6'], ['Other', '#e8b84b']].map(([l, col]) => (
-                      <span key={l} className="flex items-center gap-1"><Swatch color={col} dot /><span style={{ fontSize: 8, color: fg }}>{l}</span></span>
+                  <div style={{ fontSize: 7, color: sub, marginBottom: 1 }}>Building / property type</div>
+                  {/* Full property taxonomy (same source as the map dots). */}
+                  <div className="grid grid-cols-2 gap-x-2 gap-y-0.5">
+                    {propertyLegendRows().map(({ code, label, color }) => (
+                      <span key={code} className="flex items-center gap-1 min-w-0" title={`${code} · ${label}`}>
+                        <Swatch color={color} dot /><span style={{ fontSize: 8, color: fg }} className="truncate">{label}</span>
+                      </span>
                     ))}
                   </div>
                 </div>
