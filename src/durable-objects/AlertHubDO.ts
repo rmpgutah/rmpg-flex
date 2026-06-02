@@ -147,7 +147,10 @@ export class AlertHubDO {
         meta.authenticated = true;
         this.send(ws, { type: 'alerts_ready' });
         // Mid-incident join: replay every still-active panic so a console
-        // that comes online during an emergency alarms immediately.
+        // that comes online during an emergency alarms immediately. Reconcile
+        // against D1 first, so a panic resolved by a direct DB write (which
+        // never fired the resolve emit) is evicted instead of replaying forever.
+        await this.reconcileActive();
         for (const a of this.active.values()) this.send(ws, a.payload);
       } catch {
         this.send(ws, { type: 'alerts_auth_error' });
@@ -199,6 +202,33 @@ export class AlertHubDO {
     await this.state.storage.put(STORAGE_KEY, obj);
   }
 
+  // Self-heal against D1 (the source of truth). A panic resolved/cancelled
+  // directly in the DB — bypassing the resolve emit that would have called
+  // handleEmit('panic_resolved') — leaves a "zombie" entry here that the
+  // mid-incident-join replay (and any future reminder) would re-send to every
+  // new console forever. Evict any persisted panic the DB no longer holds in an
+  // open ('active'|'acknowledged') state. Only evicts DB-confirmed-closed
+  // alerts, so a genuinely live emergency is never dropped.
+  private async reconcileActive(): Promise<void> {
+    if (this.active.size === 0) return;
+    let changed = false;
+    const db = getDb(this.env as any);
+    for (const id of [...this.active.keys()]) {
+      try {
+        const row = await queryFirst<{ status: string }>(
+          db, 'SELECT status FROM panic_alerts WHERE id = ?', id,
+        );
+        if (!row || (row.status !== 'active' && row.status !== 'acknowledged')) {
+          this.active.delete(id);
+          changed = true;
+        }
+      } catch {
+        // Transient DB error — keep the entry so we never drop a live alarm.
+      }
+    }
+    if (changed) await this.persist();
+  }
+
   // Schedule the next reminder sweep if any panic still needs nagging.
   private async armReminder(): Promise<void> {
     const needs = [...this.active.values()].some(a => !a.acked && (Date.now() - a.firstAt) < REMINDER_MAX_MS);
@@ -210,6 +240,8 @@ export class AlertHubDO {
   // DO alarm — re-broadcast every unacked, not-yet-expired panic so the
   // alarm persists agency-wide until a dispatcher acknowledges it.
   async alarm(): Promise<void> {
+    // Drop any panic the DB has since closed before nagging the fleet again.
+    await this.reconcileActive();
     let stillNagging = false;
     for (const a of this.active.values()) {
       if (a.acked) continue;
