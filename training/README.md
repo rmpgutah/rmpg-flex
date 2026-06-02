@@ -95,6 +95,29 @@ script with the advanced settings this task needs. (Cloudflare's
 is the no-code alternative, but the script gives you completion-only loss and
 the regularization knobs, which matter on a small set.)
 
+**Pre-flight first** — never train a set that would truncate:
+
+```bash
+npx tsx training/validate-dataset.ts   # exits non-zero on truncation/malformed targets
+```
+
+### Option A — one command on Modal (no GPU box to set up)
+
+```bash
+pip install modal && modal token new
+modal secret create huggingface HF_TOKEN=hf_xxx   # + accept the Llama-3.3-70B license on HF
+modal run training/train_modal.py                 # provisions H100, trains, downloads the adapter
+#   → training/adapter-v1/{adapter_model.safetensors, adapter_config.json}
+# Cheap 8B iterate:  modal run training/train_modal.py \
+#     --base meta-llama/Llama-3.1-8B-Instruct --cf-model @cf/meta/llama-3.1-8b-instruct-fast
+```
+
+[`train_modal.py`](train_modal.py) runs the SAME `train_lora.py` in the cloud and
+caches the 70B base on a Modal Volume (only the first run pays the download).
+Your `dist/*.jsonl` (PII) uploads to your own Modal compute for the run.
+
+### Option B — your own GPU box
+
 ```bash
 pip install -r training/requirements.txt
 python training/train_lora.py \
