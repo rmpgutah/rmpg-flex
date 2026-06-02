@@ -580,11 +580,14 @@ bolos.get('/', requireRole(...READ_ROLES), async (c) => {
     const db = getDb(c.env);
     const status = c.req.query('status');
     const type = c.req.query('type');
+    // Qualify every column with b. — the LEFT JOIN users brings in u.status
+    // (and a join could add other shared names), so a bare `status` / `type` in
+    // the WHERE is an "ambiguous column name" error that 500s the whole list.
     let where = 'WHERE 1=1';
     const params: unknown[] = [];
-    if (status) { where += ' AND status = ?'; params.push(status); }
-    else { where += " AND status = 'active'"; }
-    if (type) { where += ' AND type = ?'; params.push(type); }
+    if (status) { where += ' AND b.status = ?'; params.push(status); }
+    else { where += " AND b.status = 'active'"; }
+    if (type) { where += ' AND b.type = ?'; params.push(type); }
     const rows = await query<Record<string, unknown>>(db, `
       SELECT b.*, u.full_name AS issued_by_name
       FROM bolos b LEFT JOIN users u ON u.id = b.issued_by
