@@ -1382,6 +1382,9 @@ export default function WarrantsPage() {
       ...(w.subject_person_id
         ? [m.action('View subject', () => openPersonProfile(w.subject_person_id!), { icon: <User size={12} /> })]
         : []),
+      ...(w.subject_name && !/^(none|n\/a)$/i.test(w.subject_name)
+        ? [m.go('Run NCIC on subject', `/ncic?type=person&q=${encodeURIComponent(w.subject_name)}`, <User size={12} />)]
+        : []),
       m.action('Edit warrant', () => openEditForm(w), { icon: <Pencil size={12} /> }),
       m.separator(),
       ...(isActive

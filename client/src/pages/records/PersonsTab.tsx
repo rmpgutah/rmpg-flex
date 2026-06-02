@@ -548,6 +548,7 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
       m.separator(),
       m.go('Run NCIC query', `/ncic?type=person&q=${encodeURIComponent(fullName)}`, <Search size={12} />),
       ...(addr ? [m.go('Dispatch to this address', `/dispatch?newCall=1&location=${encodeURIComponent(addr)}&description=${encodeURIComponent('Re: ' + fullName)}`, <MapPin size={12} />)] : []),
+      m.go('Create BOLO', `/communications?newBolo=1&title=${encodeURIComponent('BOLO: ' + fullName)}&subject=${encodeURIComponent(fullName)}`, <AlertTriangle size={12} />),
       m.separator(),
       ...(showArchived
         ? (canModify ? [m.action('Unarchive', () => handleUnarchive('persons', person.id), { icon: <RotateCcw size={12} /> })] : [])

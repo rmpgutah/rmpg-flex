@@ -752,6 +752,9 @@ export default function CitationsPage() {
     m.copy('Copy citation #', c.citation_number, <Copy size={12} />),
     m.copy('Copy violator', c.person_name),
     m.copyId(c.id),
+    ...(c.latitude != null && c.longitude != null
+      ? [m.go('Show on map', `/map?flyto=${c.latitude},${c.longitude}`, <MapPin size={12} />)]
+      : []),
   ];
 
   // ── Statute category filter based on citation type ───────

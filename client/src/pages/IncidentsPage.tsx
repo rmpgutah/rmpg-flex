@@ -735,6 +735,9 @@ export default function IncidentsPage() {
       m.separator(),
       m.copy('Copy IR #', incident.incident_number, <Copy size={12} />),
       m.copyId(incident.id),
+      ...((incident as any).latitude != null && (incident as any).longitude != null
+        ? [m.go('Show on map', `/map?flyto=${(incident as any).latitude},${(incident as any).longitude}`, <MapPin size={12} />)]
+        : []),
       m.separator(),
       ...(showArchived
         ? [m.action('Unarchive', () => handleUnarchiveIncident(incident), { icon: <RotateCcw size={12} /> })]
