@@ -937,10 +937,28 @@ calls.post('/:id/assign-unit', async (c) => {
       db, 'SELECT assigned_unit_ids, call_number, latitude, longitude FROM calls_for_service WHERE id = ?', id
     );
     if (!call) return c.json({ error: 'Call not found' }, 404);
+    const callIdNum = parseInt(id, 10);
+
+    // Double-assign cleanup: if this unit is already on a DIFFERENT call, pull
+    // it out of that call's assigned_unit_ids first — otherwise the prior call
+    // shows a unit that's no longer working it (the unit row only tracks one
+    // current_call_id, so the stale membership would never self-heal).
+    const prior = await queryFirst<{ current_call_id: number | null }>(db, 'SELECT current_call_id FROM units WHERE id = ?', unit_id);
+    if (prior?.current_call_id != null && prior.current_call_id !== callIdNum) {
+      const priorCall = await queryFirst<{ assigned_unit_ids: string }>(db, 'SELECT assigned_unit_ids FROM calls_for_service WHERE id = ?', prior.current_call_id);
+      if (priorCall) {
+        const priorList = (JSON.parse(priorCall.assigned_unit_ids || '[]') as number[]).filter((u) => u !== unit_id);
+        await execute(db, 'UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?', JSON.stringify(priorList), prior.current_call_id);
+      }
+    }
+
     const assigned = JSON.parse(call.assigned_unit_ids || '[]') as number[];
     if (!assigned.includes(unit_id)) assigned.push(unit_id);
-    await execute(db, 'UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?', JSON.stringify(assigned), id);
-    await execute(db, "UPDATE units SET status = 'dispatched', current_call_id = ? WHERE id = ?", parseInt(id, 10), unit_id);
+    // Move the call out of 'pending' on first assignment (mirrors multi-unit
+    // /dispatch). A call with a dispatched unit but still 'pending' status is a
+    // contradiction the board/SLA timers can't reconcile.
+    await execute(db, "UPDATE calls_for_service SET assigned_unit_ids = ?, status = CASE WHEN status = 'pending' THEN 'dispatched' ELSE status END, dispatched_at = COALESCE(dispatched_at, datetime('now')) WHERE id = ?", JSON.stringify(assigned), id);
+    await execute(db, "UPDATE units SET status = 'dispatched', current_call_id = ?, last_status_change = datetime('now'), updated_at = datetime('now') WHERE id = ?", callIdNum, unit_id);
 
     // ── Premise auto-push (Spillman parity, DI-3) ──
     // Look up premise_alerts within 50m of the call's GPS, push to the
@@ -1025,7 +1043,7 @@ calls.post('/:id/unassign-unit', async (c) => {
     if (!call) return c.json({ error: 'Call not found' }, 404);
     const assigned = (JSON.parse(call.assigned_unit_ids || '[]') as number[]).filter(u => u !== unit_id);
     await execute(db, 'UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?', JSON.stringify(assigned), id);
-    await execute(db, "UPDATE units SET status = 'available', current_call_id = NULL WHERE id = ?", unit_id);
+    await execute(db, "UPDATE units SET status = 'available', current_call_id = NULL, last_status_change = datetime('now'), updated_at = datetime('now') WHERE id = ?", unit_id);
     // Return the full updated call row — the client (handleUnassignUnit) runs it
     // through mapDbCall() and replaces the selected call; a bare {message}
     // corrupts the call to a blank-id object. Mirrors /assign-unit.
@@ -1052,13 +1070,24 @@ calls.post('/:id/dispatch', async (c) => {
     const call = await queryFirst<{ assigned_unit_ids: string; call_number: string }>(db, 'SELECT assigned_unit_ids, call_number FROM calls_for_service WHERE id = ?', id);
     if (!call) return c.json({ error: 'Call not found' }, 404);
 
+    const callIdNum = parseInt(id, 10);
     const assigned = new Set(JSON.parse(call.assigned_unit_ids || '[]') as number[]);
     for (const uid of unit_ids) assigned.add(uid);
 
     await execute(db, "UPDATE calls_for_service SET assigned_unit_ids = ?, status = 'dispatched', dispatched_at = COALESCE(dispatched_at, datetime('now')) WHERE id = ?", JSON.stringify([...assigned]), id);
 
     for (const uid of unit_ids) {
-      await execute(db, "UPDATE units SET status = 'dispatched', current_call_id = ? WHERE id = ?", parseInt(id, 10), uid);
+      // Double-assign cleanup: pull each unit out of any prior different call
+      // (see single assign-unit) so the old call doesn't show a phantom unit.
+      const prior = await queryFirst<{ current_call_id: number | null }>(db, 'SELECT current_call_id FROM units WHERE id = ?', uid);
+      if (prior?.current_call_id != null && prior.current_call_id !== callIdNum) {
+        const priorCall = await queryFirst<{ assigned_unit_ids: string }>(db, 'SELECT assigned_unit_ids FROM calls_for_service WHERE id = ?', prior.current_call_id);
+        if (priorCall) {
+          const priorList = (JSON.parse(priorCall.assigned_unit_ids || '[]') as number[]).filter((u) => u !== uid);
+          await execute(db, 'UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?', JSON.stringify(priorList), prior.current_call_id);
+        }
+      }
+      await execute(db, "UPDATE units SET status = 'dispatched', current_call_id = ?, last_status_change = datetime('now'), updated_at = datetime('now') WHERE id = ?", callIdNum, uid);
     }
 
     // Return the updated call row, not a {message}. The client

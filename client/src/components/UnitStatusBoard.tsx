@@ -54,7 +54,6 @@ const STATUS_LED_CLASSES: Record<UnitStatus, string> = {
   busy: 'led-dot led-red animate-led-blink',
   off_duty: 'led-dot led-off',
   out_of_service: 'led-dot led-red',
-  on_patrol: 'led-dot led-green',
 };
 
 export default React.memo(function UnitStatusBoard({
@@ -72,9 +71,13 @@ export default React.memo(function UnitStatusBoard({
   const canAssign = !!selectedCallId && !!onAssignUnit;
   const hasActions = !!onEditUnit || !!onDeleteUnit;
   // Sort: on-duty first (available, dispatched, enroute, onscene, busy), then off_duty
-  const statusOrder: UnitStatus[] = ['onscene', 'enroute', 'dispatched', 'available', 'busy', 'off_duty'];
+  // Includes every live status. out_of_service was missing, so indexOf returned
+  // -1 and those units sorted ABOVE onscene (index 0) at the very top of the board.
+  const statusOrder: UnitStatus[] = ['onscene', 'enroute', 'dispatched', 'available', 'busy', 'off_duty', 'out_of_service'];
+  // Unknown/sentinel statuses sort last (rank after the known list) instead of -1.
+  const rank = (s: UnitStatus) => { const i = statusOrder.indexOf(s); return i === -1 ? statusOrder.length : i; };
   const sorted = [...units].sort(
-    (a, b) => statusOrder.indexOf(a.status) - statusOrder.indexOf(b.status)
+    (a, b) => rank(a.status) - rank(b.status)
   );
 
   const isDraggable = (unit: Unit) => unit.status !== 'off_duty';
@@ -152,7 +155,7 @@ export default React.memo(function UnitStatusBoard({
             >
               <td>
                 <div className="flex items-center gap-2">
-                  <span className={STATUS_LED_CLASSES[unit.status]} />
+                  <span className={STATUS_LED_CLASSES[unit.status] || 'led-dot led-off'} />
                   <span className="font-bold text-white font-mono">{unit.call_sign}</span>
                   {/* Feature 2: GPS stale indicator */}
                   {(() => {

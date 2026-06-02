@@ -277,13 +277,18 @@
 //       rendered. Hoisted Process Service Details to a top-level section
 //       (self-gated by process data / service-type) and added
 //       'civil_paper_service' to the visit-history gate.
-// v701 — Unit subsystem live-sync: revive the dead 'unit_update' WS channel
-//        (map/MDT/mobile-card/recommended panels subscribed to a type the
-//        Worker never emitted) by re-fanning dispatch_update unit actions;
-//        + add 'on_patrol' to UnitStatus union + all status maps (was undefined
-//        marker color/label). Pairs with Worker broadcasts on assign/unassign/
-//        dispatch/status/create/update/delete/GPS.
-const CACHE_NAME = 'rmpg-flex-v701';
+// v702 — Unit audit batch 2 (19 verified findings): align UnitStatus to the 7
+//        live-DB statuses (removed 'on_patrol', which the units CHECK rejects);
+//        UnitStatusBoard Assignment column (read current_call_number, not
+//        call_number), out_of_service sort + sentinel-status LED fallback;
+//        unitRecommendation hasGps sentinel/zero-coord coercion; map nav-cursor
+//        heading arrow + speed now backed by units.gps_heading/gps_speed
+//        (migration 0065). Pairs with Worker: PUT /units allowlist, dead
+//        /units/assign-unit removed, assign/dispatch prior-call cleanup +
+//        call-status + last_status_change, aggregates 'busy' committed count.
+// v701 — Unit subsystem live-sync: revive the dead 'unit_update' WS channel by
+//        re-fanning dispatch_update unit actions + Worker unit broadcasts.
+const CACHE_NAME = 'rmpg-flex-v702';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

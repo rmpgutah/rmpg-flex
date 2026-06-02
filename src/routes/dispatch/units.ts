@@ -34,8 +34,9 @@ units.post('/', async (c) => {
 
     // The create form (useDispatchUnitActions) sends a chosen status; it was
     // previously dropped (not in the INSERT), so a new unit always landed on
-    // the DB default. Honor it, defaulting to 'available'.
-    const VALID_UNIT_STATUSES = ['available', 'dispatched', 'enroute', 'onscene', 'busy', 'off_duty', 'out_of_service', 'on_patrol'];
+    // the DB default. Honor it, defaulting to 'available'. Must match the live
+    // `units` CHECK constraint (no 'on_patrol').
+    const VALID_UNIT_STATUSES = ['available', 'dispatched', 'enroute', 'onscene', 'busy', 'off_duty', 'out_of_service'];
     const { call_sign, officer_id, vehicle_id, capabilities } = body;
     const status = VALID_UNIT_STATUSES.includes(String(body.status || '').toLowerCase())
       ? String(body.status).toLowerCase() : 'available';
@@ -64,12 +65,26 @@ units.put('/:id', async (c) => {
     if (!existing) return c.json({ error: 'Unit not found' }, 404);
 
     const body = await c.req.json<Record<string, unknown>>();
+    // Allowlist the writable columns. The previous version interpolated EVERY
+    // body key straight into the SQL as a column name, which (1) 500'd the whole
+    // update if the payload carried any non-column key (e.g. unit_type, which
+    // does not exist on the live 17-col units table) and (2) was a column-name
+    // injection vector. Only these columns exist on live units and are safe to set.
+    const ALLOWED_COLS = new Set([
+      'call_sign', 'officer_id', 'status', 'vehicle_id', 'current_call_id',
+      'capabilities', 'latitude', 'longitude', 'gps_source', 'assigned_beat',
+      'mileage', 'audio_mode',
+    ]);
+    const VALID_UNIT_STATUSES = ['available', 'dispatched', 'enroute', 'onscene', 'busy', 'off_duty', 'out_of_service'];
     const sets: string[] = [];
     const params: unknown[] = [];
     for (const [k, v] of Object.entries(body)) {
-      if (['id', 'created_at'].includes(k)) continue;
+      if (!ALLOWED_COLS.has(k)) continue;
+      if (k === 'status' && !VALID_UNIT_STATUSES.includes(String(v || '').toLowerCase())) {
+        return c.json({ error: `status must be one of ${VALID_UNIT_STATUSES.join(', ')}`, code: 'INVALID_STATUS' }, 400);
+      }
       sets.push(`${k} = ?`);
-      params.push(v ?? null);
+      params.push(k === 'capabilities' && v != null && typeof v !== 'string' ? JSON.stringify(v) : (v ?? null));
     }
     if (!sets.length) return c.json({ message: 'No changes' });
     sets.push("updated_at = datetime('now')");
@@ -105,23 +120,10 @@ units.delete('/:id', requireRole('admin', 'manager'), async (c) => {
   }
 });
 
-// POST /dispatch/calls/:callId/assign-unit
-units.post('/assign-unit', async (c) => {
-  try {
-    const db = getDb(c.env);
-    const { call_id, unit_id } = await c.req.json<{ call_id: number; unit_id: number }>();
-    const call = await queryFirst<{ assigned_unit_ids: string }>(db, 'SELECT assigned_unit_ids FROM calls_for_service WHERE id = ?', call_id);
-    if (!call) return c.json({ error: 'Call not found' }, 404);
-    const assigned = new Set(JSON.parse(call.assigned_unit_ids || '[]') as number[]);
-    assigned.add(unit_id);
-    await execute(db, 'UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?', JSON.stringify([...assigned]), call_id);
-    await execute(db, "UPDATE units SET status = 'dispatched', current_call_id = ? WHERE id = ?", call_id, unit_id);
-    try {
-      const unit = await queryFirst<Record<string, any>>(db, 'SELECT * FROM units WHERE id = ?', unit_id);
-      broadcastAll('dispatch_update', { action: 'unit_assigned', unit, unit_id, unit_call_sign: unit?.call_sign, call_id });
-    } catch { /* never break the write */ }
-    return c.json({ message: 'Unit assigned' });
-  } catch (err) { return c.json({ error: 'Assign failed' }, 500); }
-});
+// NOTE: unit↔call assignment is owned by calls.ts (`POST /dispatch/calls/:id/
+// assign-unit`), which every client and the CAD command parser target. A
+// divergent duplicate previously lived here at `/dispatch/units/assign-unit`
+// (Set-dedup, no premise push, no double-assign cleanup, bare {message}
+// response) that no client ever reached — removed to prevent silent drift.
 
 export default units;

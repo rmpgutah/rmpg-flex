@@ -101,7 +101,7 @@ recommendedUnits.get('/:id/recommended-units', requireRole(...READ_ROLES), async
              usr.full_name AS officer_name, usr.badge_number
       FROM units u
       LEFT JOIN users usr ON usr.id = u.officer_id
-      WHERE u.status IN ('available', 'on_patrol', 'dispatched')
+      WHERE u.status IN ('available', 'dispatched')
         AND u.latitude IS NOT NULL AND u.longitude IS NOT NULL
     `);
 
@@ -537,7 +537,11 @@ callWarnings.get('/:id/warnings', requireRole(...READ_ROLES), async (c) => {
 // PUT /api/dispatch/units/:id/status
 // =====================================================================
 export const unitStatus = new Hono<Env>();
-const VALID_UNIT_STATUSES = ['available', 'dispatched', 'enroute', 'onscene', 'busy', 'off_duty', 'out_of_service', 'on_patrol'];
+// Must match the live `units` CHECK constraint exactly. 'on_patrol' was listed
+// here (and in recommended-units) but the DB CHECK rejects it → a status change
+// to on_patrol 500'd, and the recommend filter was a dead predicate. Aligned to
+// the 7 statuses the schema actually allows.
+const VALID_UNIT_STATUSES = ['available', 'dispatched', 'enroute', 'onscene', 'busy', 'off_duty', 'out_of_service'];
 
 unitStatus.put('/:id/status', requireRole(...READ_ROLES), async (c) => {
   try {

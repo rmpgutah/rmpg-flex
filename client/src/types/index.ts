@@ -416,12 +416,7 @@ export type UnitStatus =
   | 'onscene'
   | 'busy'
   | 'off_duty'
-  | 'out_of_service'
-  // Backend (VALID_UNIT_STATUSES in src/routes/dispatch/extensions.ts) allows
-  // 'on_patrol', and the recommended-units query filters on it — but it was
-  // missing here, so on_patrol units fell through every status map (undefined
-  // marker color / badge label). Keep this union in sync with the backend.
-  | 'on_patrol';
+  | 'out_of_service';
 
 export interface Unit {
   id: string;
@@ -439,6 +434,13 @@ export interface Unit {
   last_status_change: string;
   /** Feature 2: GPS timestamp for stale indicator */
   gps_updated_at?: string;
+  /** Source of the last fix ('gps' | 'manual'); drives the map source badge. */
+  gps_source?: string;
+  /** Heading (deg 0-360) + ground speed (m/s) of the last fix — drives the map
+   *  nav-cursor arrow rotation + speed label. Mirrored onto the unit row from
+   *  the latest breadcrumb (src/routes/dispatch/gps.ts). */
+  gps_heading?: number | null;
+  gps_speed?: number | null;
   created_at: string;
   updated_at: string;
 }
