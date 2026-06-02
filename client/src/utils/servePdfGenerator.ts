@@ -310,7 +310,10 @@ export async function generateAffidavitOfService(data: AffidavitOfServiceData): 
     const fy2 = addFieldPair(doc, '11. Time', data.serviceTime, rx, y, hfw);
     y = Math.max(fy1, fy2);
     const fy3 = addFieldPair(doc, '12. Method', methodLabel, lx, y, hfw);
-    const fy4 = addFieldPair(doc, '13. GPS', `${data.gpsLat.toFixed(6)}, ${data.gpsLng.toFixed(6)}`, rx, y, hfw);
+    const gpsText = (data.gpsLat != null && data.gpsLng != null)
+      ? `${Number(data.gpsLat).toFixed(6)}, ${Number(data.gpsLng).toFixed(6)}`
+      : 'N/A';
+    const fy4 = addFieldPair(doc, '13. GPS', gpsText, rx, y, hfw);
     y = Math.max(fy3, fy4);
     if (data.serviceMethod === 'substitute' && data.substituteInfo) {
       const fy5 = addFieldPair(doc, '14. Substitute Name', data.substituteInfo.name, lx, y, hfw);
@@ -464,7 +467,9 @@ export async function generateAffidavitOfNonService(data: AffidavitOfNonServiceD
       String(a.number),
       sanitizePdfText(a.date || '').toUpperCase(),
       sanitizePdfText(a.time || '').toUpperCase(),
-      `${a.gpsLat.toFixed(4)}, ${a.gpsLng.toFixed(4)}`,
+      (a.gpsLat != null && a.gpsLng != null)
+        ? `${Number(a.gpsLat).toFixed(4)}, ${Number(a.gpsLng).toFixed(4)}`
+        : 'N/A',
       sanitizePdfText(a.result || '').toUpperCase(),
       sanitizePdfText(a.notes || '').toUpperCase(),
     ]);

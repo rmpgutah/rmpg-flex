@@ -178,10 +178,10 @@
 //       colored by level + dissolved boundary outline (@turf/dissolve,
 //       MultiPolygons flattened first). State Boundary/Highways/Places
 //       dropped from the map sidebar.
-// v683: systematic-audit wave 1 client fixes — WebSocketContext brain/alert +
-//       useLiveSync payload, ArrestRecordsPage, PatrolPage, ReportsPage cards,
-//       HR tabs, CitationsPage/ServePage, sentinel toNum guards. Bump so users
-//       fetch the fixed hash-named bundles instead of stale cached chunks.
+// v683: PDF surface hardening — white-fill scanned-PDF canvas before Vision
+//       OCR rasterization (JPEG has no alpha); skip malformed-transform text
+//       items in engine backend + pdf-editor; null-guard serve-PDF GPS
+//       toFixed; Array.isArray guard on record-PDF violations.map.
 const CACHE_NAME = 'rmpg-flex-v683';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [

@@ -168,6 +168,12 @@ export default function ServeIntakePage() {
         canvas.height = Math.floor(viewport.height);
         const ctx = canvas.getContext('2d');
         if (!ctx) continue;
+        // White background before rasterizing: JPEG has no alpha, so a
+        // transparent-background scanned PDF would render its transparent
+        // regions as black and tank Vision-OCR contrast/recognition. Mirrors
+        // the engine backend's pre-render fill (rmpg-pdf-engine/backends/pdfjs.ts).
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
         await page.render({ canvas, canvasContext: ctx, viewport } as any).promise;
         const blob = await new Promise<Blob | null>((res) =>
           canvas.toBlob(res, 'image/jpeg', RASTER_JPEG_QUALITY));
