@@ -142,19 +142,19 @@ export default function PrintRecordButton({
       try {
         const links = await apiFetch<any[]>(`/records/links?source_type=person&source_id=${data.id}`);
         if (links && links.length > 0) {
-          enriched.linked_vehicles = links.filter((l: any) => l.target_type === 'vehicle').map((l: any) => ({
-            license_plate: l.target_label || l.target_name || '',
-            year: l.target_meta?.year || '',
-            make: l.target_meta?.make || '',
-            model: l.target_meta?.model || '',
-            color: l.target_meta?.color || '',
-            relationship: l.relationship || 'linked',
+          // The API enriches each row with the OTHER side as linked_type /
+          // linked_label (covering links where this record is source OR
+          // target). The vehicle label already reads "Make Model (PLATE)".
+          enriched.linked_vehicles = links.filter((l: any) => l.linked_type === 'vehicle').map((l: any) => ({
+            license_plate: l.linked_label || '',
+            relationship: l.relationship,
           }));
-          enriched.linked_properties = links.filter((l: any) => l.target_type === 'property').map((l: any) => ({
-            name: l.target_label || l.target_name || '',
-            address: l.target_meta?.address || '',
-            relationship: l.relationship || 'linked',
-          }));
+          enriched.linked_properties = links
+            .filter((l: any) => l.linked_type === 'property' || l.linked_type === 'business')
+            .map((l: any) => ({
+              name: l.linked_label || '',
+              relationship: l.relationship,
+            }));
         }
       } catch { /* non-fatal */ }
     }
@@ -178,17 +178,16 @@ export default function PrintRecordButton({
       try {
         const links = await apiFetch<any[]>(`/records/links?source_type=vehicle&source_id=${data.id}`);
         if (Array.isArray(links)) {
-          enriched.linked_persons = links.filter((l: any) => l.target_type === 'person').map((l: any) => ({
-            name: l.target_name || l.name || '',
-            dob: l.target_dob || l.dob,
-            flags: l.target_flags || l.flags,
+          enriched.linked_persons = links.filter((l: any) => l.linked_type === 'person').map((l: any) => ({
+            name: l.linked_label || '',
             relationship: l.relationship,
           }));
-          enriched.linked_properties = links.filter((l: any) => l.target_type === 'property').map((l: any) => ({
-            name: l.target_name || l.name || '',
-            address: l.target_address || l.address,
-            relationship: l.relationship,
-          }));
+          enriched.linked_properties = links
+            .filter((l: any) => l.linked_type === 'property' || l.linked_type === 'business')
+            .map((l: any) => ({
+              name: l.linked_label || '',
+              relationship: l.relationship,
+            }));
         }
       } catch { /* non-fatal — endpoint may be stubbed */ }
     }
@@ -219,18 +218,12 @@ export default function PrintRecordButton({
       try {
         const links = await apiFetch<any[]>(`/records/links?source_type=property&source_id=${data.id}`);
         if (Array.isArray(links)) {
-          enriched.linked_persons = links.filter((l: any) => l.target_type === 'person').map((l: any) => ({
-            name: l.target_name || l.name || '',
-            dob: l.target_dob || l.dob,
-            flags: l.target_flags || l.flags,
+          enriched.linked_persons = links.filter((l: any) => l.linked_type === 'person').map((l: any) => ({
+            name: l.linked_label || '',
             relationship: l.relationship,
           }));
-          enriched.linked_vehicles = links.filter((l: any) => l.target_type === 'vehicle').map((l: any) => ({
-            license_plate: l.target_plate || l.license_plate || '',
-            year: l.target_year || l.year,
-            make: l.target_make || l.make,
-            model: l.target_model || l.model,
-            color: l.target_color || l.color,
+          enriched.linked_vehicles = links.filter((l: any) => l.linked_type === 'vehicle').map((l: any) => ({
+            license_plate: l.linked_label || '',
             relationship: l.relationship,
           }));
         }

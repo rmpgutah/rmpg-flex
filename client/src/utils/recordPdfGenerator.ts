@@ -9,6 +9,7 @@ import QRCode from 'qrcode';
 import { isPast, isWithinDays, parseTimestamp } from './dateUtils';
 import { hasValue, toNum } from './sentinel';
 import { zoneLeaf, beatLeaf, sectionZoneBeatCombined } from './dispatchCodeParts';
+import { humanizeRelationship } from './recordLinks';
 import {
   addConfidentialWatermark, openAutoSection, closeAutoSection, addFieldPair,
   addCheckboxField, addStackedSignatures, addFlagBadges, addCautionBlock,
@@ -3409,7 +3410,7 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
       v.license_plate || 'N/A',
       [v.year, v.make, v.model].filter(Boolean).join(' ') || 'N/A',
       (v.color || '').toUpperCase(),
-      titleCase(v.relationship || 'linked'),
+      humanizeRelationship(v.relationship),
     ]);
     y = addTableWithShading(doc,
       [{ label: 'PLATE', x: lx }, { label: 'VEHICLE', x: lx + 35 }, { label: 'COLOR', x: lx + 110 }, { label: 'RELATIONSHIP', x: lx + 140 }],
@@ -3423,7 +3424,7 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     const propRows = data.linked_properties.map(p => [
       p.name || 'N/A',
       p.address || '',
-      titleCase(p.relationship || 'linked'),
+      humanizeRelationship(p.relationship),
     ]);
     y = addTableWithShading(doc,
       [{ label: 'PROPERTY', x: lx }, { label: 'ADDRESS', x: lx + 50 }, { label: 'RELATIONSHIP', x: lx + 140 }],
@@ -3716,7 +3717,7 @@ async function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
       p.name || 'N/A',
       fmtDate(p.dob),
       (p.flags || '').toUpperCase(),
-      titleCase(p.relationship || 'linked'),
+      humanizeRelationship(p.relationship),
     ]);
     y = addTableWithShading(doc,
       [{ label: 'NAME', x: lx }, { label: 'DOB', x: lx + 70 }, { label: 'FLAGS', x: lx + 105 }, { label: 'RELATIONSHIP', x: lx + 140 }],
@@ -3730,7 +3731,7 @@ async function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
     const propRows = data.linked_properties.map(p => [
       p.name || 'N/A',
       p.address || '',
-      titleCase(p.relationship || 'linked'),
+      humanizeRelationship(p.relationship),
     ]);
     y = addTableWithShading(doc,
       [{ label: 'PROPERTY', x: lx }, { label: 'ADDRESS', x: lx + 50 }, { label: 'RELATIONSHIP', x: lx + 140 }],
@@ -5507,7 +5508,7 @@ async function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
       p.name || 'N/A',
       fmtDate(p.dob),
       (p.flags || '').toUpperCase(),
-      titleCase(p.relationship || 'linked'),
+      humanizeRelationship(p.relationship),
     ]);
     y = addTableWithShading(doc,
       [{ label: 'NAME', x: lx }, { label: 'DOB', x: lx + 70 }, { label: 'FLAGS', x: lx + 105 }, { label: 'RELATIONSHIP', x: lx + 140 }],
@@ -5522,7 +5523,7 @@ async function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
       v.license_plate || 'N/A',
       [v.year, v.make, v.model].filter(Boolean).join(' ') || 'N/A',
       (v.color || '').toUpperCase(),
-      titleCase(v.relationship || 'linked'),
+      humanizeRelationship(v.relationship),
     ]);
     y = addTableWithShading(doc,
       [{ label: 'PLATE', x: lx }, { label: 'VEHICLE', x: lx + 35 }, { label: 'COLOR', x: lx + 110 }, { label: 'RELATIONSHIP', x: lx + 140 }],
