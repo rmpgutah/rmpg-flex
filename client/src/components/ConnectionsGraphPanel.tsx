@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Network, Loader2, Maximize2, Minimize2 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import CollapsibleSection from './CollapsibleSection';
+import { humanizeRelationship } from '../utils/recordLinks';
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -142,7 +143,9 @@ export default function ConnectionsGraphPanel({ personId, personName }: Props) {
         };
       });
       const newEdges: GraphEdge[] = (data?.edges || []).map(e => ({
-        source: e.source, target: e.target, label: (e.relationship || '').toUpperCase(),
+        // Plain-language edge tag: "evidence_linked" → "EVIDENCE LINKED"
+        // (the graph style uppercases; humanize first to drop the underscores).
+        source: e.source, target: e.target, label: humanizeRelationship(e.relationship).toUpperCase(),
       }));
       simulate(newNodes, newEdges);
 
