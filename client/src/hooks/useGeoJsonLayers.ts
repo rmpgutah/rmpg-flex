@@ -78,7 +78,8 @@ export const GEO_LAYER_CONFIGS: GeoLayerConfig[] = [
     labelProp: 'beat_code',
     featureKeyProp: 'beat_code',
     detailProps: ['city', 'beat_id', 'district_letter', 'beat_number'],
-    minZoom: 10,
+    // No minZoom — Beat is part of the A/S/Z/B coverage system and must stay
+    // visible at every zoom once selected (no pop in/out while zooming).
   },
   {
     id: 'highway',

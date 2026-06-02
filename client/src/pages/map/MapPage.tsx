@@ -3835,7 +3835,6 @@ export default function MapPage() {
                       {state?.visible ? <Eye className="w-2.5 h-2.5 text-green-400" /> : <EyeOff className="w-2.5 h-2.5 text-rmpg-500" />}
                       <div className="w-2 h-2 rounded-sm" style={{ backgroundColor: HSWATCH[cfg.id], opacity: state?.visible ? 1 : 0.3 }} />
                       <span className="text-[9px] text-rmpg-200 flex-1">{cfg.label}</span>
-                      <span className="text-[8px] font-mono text-rmpg-600">z{cfg.minzoom}+</span>
                     </button>
                   );
                 };
