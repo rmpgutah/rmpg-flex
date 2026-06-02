@@ -1383,7 +1383,13 @@ calls.post('/:id/redispatch', requireRole('admin', 'manager', 'supervisor', 'dis
     if (!['pso_client_request', 'process_service'].includes(String(parentBase.incident_type))) {
       return c.json({ error: 'Re-dispatch is only available for PSO Client Request and Process Service calls', code: 'REDISPATCH_TYPE_INVALID' }, 400);
     }
-    if (!['cleared', 'closed', 'cancelled', 'on_hold', 'archived'].includes(String(parentBase.status))) {
+    // Hold lives in calls_for_service_ext.held_at, NOT the base status enum —
+    // 'on_hold' is synthesized client-side (mapDbCall), so a HELD call's base
+    // status is still pending/dispatched and the literal 'on_hold' below could
+    // never match. The dispatcher sees the Re-dispatch button on a held call,
+    // clicks it, and used to hit this 400. Accept held_at as "inactive enough".
+    const parentHeld = parentExt?.held_at != null;
+    if (!['cleared', 'closed', 'cancelled', 'archived'].includes(String(parentBase.status)) && !parentHeld) {
       return c.json({ error: 'Call must be cleared, closed, cancelled, on hold, or archived to re-dispatch', code: 'CALL_MUST_BE_INACTIVE' }, 400);
     }
 
