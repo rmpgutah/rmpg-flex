@@ -251,6 +251,8 @@ calls.post('/', async (c) => {
               body[key] = value as any;
             }
           };
+          fill('area_code', district.area_code);
+          fill('area_name', district.area_name);
           fill('sector_id', district.sector_id);
           fill('sector_name', district.sector_name);
           fill('zone_id', district.zone_id);
@@ -666,6 +668,10 @@ const UPDATABLE_CALL_COLUMNS_EXT = new Set<string>([
   // because calls_for_service is at the D1 100-column cap — the legacy worker
   // writes calls_for_service.parent_call_id (no longer exists) and 500s.
   'parent_call_id',
+  // Area — top of the Area>Section>Zone>Beat hierarchy. Section/Zone/Beat live
+  // on the base table; Area overflowed to ext (base at the 100-col cap). Filled
+  // by the geofence/resolveDistrict backfill so every call captures full A/S/Z/B.
+  'area_code', 'area_name',
 ]);
 
 // PUT /dispatch/calls/:id - Update call

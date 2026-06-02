@@ -16,6 +16,7 @@ import { getDb, query, queryFirst, execute } from '../utils/db';
 import { requireRole } from '../middleware/auth';
 import { validateIncidentForNibrs } from './nibrs';
 import { geocodeAddress } from './geocode';
+import { resolveDistrict } from '../utils/districtResolver';
 
 const incidents = new Hono<Env>();
 
@@ -92,11 +93,20 @@ incidents.post('/', requireRole(...WRITE_ROLES), async (c) => {
     const seq = max ? String(parseInt(max.split('-RMP-')[1] || '0', 10) + 1).padStart(5, '0') : '00001';
     const incident_number = `${year}-RMP-${seq}`;
 
+    // Geofence: capture the full Area > Section > Zone > Beat from coordinates
+    // (best-effort — never block incident creation on a geo miss).
+    const geo = (lat != null && lng != null)
+      ? await resolveDistrict(c.env, { lat, lng }).catch(() => null)
+      : null;
+
     const result = await execute(db, `
-      INSERT INTO incidents (incident_number, incident_type, priority, status, call_id, location_address, latitude, longitude, narrative, officer_id)
-      VALUES (?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?)`,
+      INSERT INTO incidents (incident_number, incident_type, priority, status, call_id, location_address, latitude, longitude, narrative, officer_id,
+        sector_id, zone_id, beat_id, zone_beat, area_code, area_name)
+      VALUES (?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       incident_number, incident_type, priority || 'P3',
-      call_id ?? null, location_address, lat, lng, narrative || null, userId);
+      call_id ?? null, location_address, lat, lng, narrative || null, userId,
+      geo?.sector_id ?? null, geo?.zone_id ?? null, geo?.beat_id ?? null, geo?.zone_beat ?? null,
+      geo?.area_code ?? null, geo?.area_name ?? null);
     const created = await queryFirst(db, 'SELECT * FROM incidents WHERE id = ?', result.meta.last_row_id);
     return c.json(created, 201);
   } catch (err) {
