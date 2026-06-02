@@ -2912,8 +2912,11 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
       y = Math.max(fy1, fy2);
       // Row 2: Latitude, Longitude, Section/Zone/Beat (slash form)
       const w3 = ffw / 3;
-      const latStr = data.latitude != null ? Number(data.latitude).toFixed(6) : '';
-      const lngStr = data.longitude != null ? Number(data.longitude).toFixed(6) : '';
+      // toNum rejects '' / 'None' / NaN — `!= null` alone let an empty-string
+      // sentinel coerce to a false 0.000000.
+      const latN = toNum(data.latitude); const lngN = toNum(data.longitude);
+      const latStr = latN != null ? latN.toFixed(6) : '';
+      const lngStr = lngN != null ? lngN.toFixed(6) : '';
       const fy3 = addFieldPair(doc, 'Latitude', latStr, lx, y, w3);
       const fy4 = addFieldPair(doc, 'Longitude', lngStr, lx + w3, y, w3);
       const fy5 = addFieldPair(doc, 'Section/Zone/Beat', sectionZoneBeatCombined(data.sector_id, data.zone_id, data.beat_id) || data.dispatch_code || '', lx + w3 * 2, y, w3);

@@ -250,7 +250,8 @@ links.post('/calls/:id/persons/quick-add', async (c) => {
     createdNew = true;
   }
 
-  // Reuse main's link insertion pattern (INSERT OR IGNORE + -6h MDT timestamp).
+  // Reuse main's link insertion pattern (INSERT OR IGNORE). Timestamps are UTC
+  // via datetime('now') — the old "-6h MDT" note was stale and wrong.
   const role = body.role || 'subject';
   await execute(
     db,

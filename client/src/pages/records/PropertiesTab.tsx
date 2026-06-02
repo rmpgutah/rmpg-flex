@@ -573,11 +573,6 @@ export function PropertiesTabDetail({ state }: { state: PropertiesTabState }) {
           </CollapsibleSection>
         )}
 
-        {selectedProperty.notes && (
-          <CollapsibleSection title="Notes" icon={FileWarning}>
-            <p className="text-xs text-rmpg-200 leading-relaxed whitespace-pre-wrap">{selectedProperty.notes}</p>
-          </CollapsibleSection>
-        )}
 
         {/* ── Record Info ─────────────────────── */}
         <CollapsibleSection title="Record Info" icon={Calendar} defaultOpen={false}>

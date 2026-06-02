@@ -64,7 +64,7 @@ adminSettings.put('/:key', async (c) => {
     if (!existing) return c.json({ error: 'Setting not found' }, 404);
 
     await execute(db,
-      'UPDATE system_settings SET value = ?, updated_at = datetime(\'now\',\'localtime\') WHERE key = ?',
+      'UPDATE system_settings SET value = ?, updated_at = datetime(\'now\') WHERE key = ?',
       String(body.value), key);
     return c.json({ success: true, key, value: String(body.value) });
   } catch (err) { return c.json({ error: 'Failed to update setting' }, 500); }
@@ -78,7 +78,7 @@ adminSettings.put('/', async (c) => {
     if (!body || Object.keys(body).length === 0) return c.json({ error: 'No settings provided' }, 400);
 
     const stmt = db.prepare(
-      'UPDATE system_settings SET value = ?, updated_at = datetime(\'now\',\'localtime\') WHERE key = ?');
+      'UPDATE system_settings SET value = ?, updated_at = datetime(\'now\') WHERE key = ?');
     const batch: Promise<unknown>[] = [];
     for (const [key, value] of Object.entries(body)) {
       batch.push(stmt.bind(String(value), key).run());
@@ -92,7 +92,7 @@ adminSettings.put('/', async (c) => {
 adminSettings.post('/reset', async (c) => {
   try {
     const db = getDb(c.env);
-    await execute(db, 'UPDATE system_settings SET value = NULL, updated_at = datetime(\'now\',\'localtime\')');
+    await execute(db, 'UPDATE system_settings SET value = NULL, updated_at = datetime(\'now\')');
     return c.json({ success: true, message: 'All settings reset to defaults' });
   } catch (err) { return c.json({ error: 'Failed to reset settings' }, 500); }
 });
