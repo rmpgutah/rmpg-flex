@@ -445,7 +445,10 @@
 // v739: Citation PDF (v2) — render previously-dropped officer inputs (traffic
 //       speed/radar/BAC, vehicle year/make/model/VIN, court time/room/
 //       appearance, bond, condition flags). (Dispatch fix is worker-side.)
-const CACHE_NAME = 'rmpg-flex-v741';
+// v742: Realtime — MapPage consumes the new 'unit_position' AlertHubDO frame
+//       (instant pin glide + heading-arrow + speed, no poll wait); radio-AI
+//       CAD writes now fan a live dispatch_update to the board.
+const CACHE_NAME = 'rmpg-flex-v742';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

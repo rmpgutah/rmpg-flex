@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../../types';
 import { getDb, query, queryFirst, execute } from '../../utils/db';
-import { broadcastAll } from '../ws';
+import { emitAlert } from '../../utils/alertHub';
 
 const gps = new Hono<Env>();
 
@@ -15,9 +15,10 @@ gps.post('/', async (c) => {
     const points = 'points' in body ? body.points : [body];
     if (!points.length) return c.json({ error: 'No points' }, 400);
 
-    // Get user's unit info
-    const unit = await queryFirst<{ id: number; call_sign: string }>(db,
-      'SELECT id, call_sign FROM units WHERE officer_id = ? LIMIT 1', userId);
+    // Get user's unit info (status carried into the live frame so the map can
+    // color a freshly-rebuilt heading arrow without a second lookup).
+    const unit = await queryFirst<{ id: number; call_sign: string; status: string | null }>(db,
+      'SELECT id, call_sign, status FROM units WHERE officer_id = ? LIMIT 1', userId);
 
     if (!unit) return c.json({ error: 'No assigned unit' }, 400);
 
@@ -44,16 +45,25 @@ gps.post('/', async (c) => {
       await execute(db,
         "UPDATE units SET latitude = ?, longitude = ?, gps_heading = ?, gps_speed = ?, gps_source = 'gps', gps_updated_at = datetime('now'), updated_at = datetime('now') WHERE id = ?",
         lastPt.latitude, lastPt.longitude, heading, speed, unit.id);
-      // Live fan-out so the map unit pin moves (and the arrow rotates) without a
-      // 7s poll, and recommended-units re-ranks on fresh GPS. /dispatch is
-      // excluded from the generic data_changed sync, and gps was previously
-      // silent — pins froze. One small frame per fix; consumers debounce.
+      // Live fan-out so the map unit pin GLIDES (heading arrow rotates + speed
+      // label updates) the instant a fix lands — no 7s poll wait. This rides the
+      // global AlertHubDO bus (the cross-worker socket every client holds at
+      // /api/alerts-ws), NOT the per-isolate broadcastAll(): the live /api/ws is
+      // owned by the legacy worker, so a rewrite broadcastAll reaches an empty
+      // socket map (dead). `unit_position` is its OWN lightweight frame type
+      // (not dispatch_update) so a ~1 Hz GPS tick never runs the dispatcher-
+      // brain fan-in on the client. One small frame per fix; the poll stays the
+      // fallback. Best-effort: a fan-out failure must never break the write.
       try {
-        broadcastAll('dispatch_update', {
-          action: 'unit_position_update',
+        await emitAlert(c.env, 'unit_position', {
+          action: 'gps_update',
           unit_id: unit.id,
+          lat: lastPt.latitude,
+          lng: lastPt.longitude,
+          heading,
+          speed,
           unit: {
-            id: unit.id, call_sign: unit.call_sign,
+            id: unit.id, call_sign: unit.call_sign, status: unit.status,
             latitude: lastPt.latitude, longitude: lastPt.longitude,
             gps_heading: heading, gps_speed: speed, gps_source: 'gps',
           },
