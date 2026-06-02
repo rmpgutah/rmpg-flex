@@ -133,3 +133,28 @@ export function humanizeRelationship(code: string | null | undefined): string {
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
     .join(' ') || 'Associated';
 }
+
+// Role-style relationships read naturally as "<source> — <Rel> of <target>"
+// (Owner of, Resident of, Witness of…). Symmetric/associative ones don't take
+// "of", so they fall back to a neutral em-dash form. Used for the Connections
+// graph edge tooltip — a full plain-English description of the link.
+const ROLE_OF_RELATIONSHIPS = new Set([
+  'owner', 'resident', 'employee', 'registered_keeper',
+  'witness', 'suspect', 'victim', 'involved_party',
+]);
+
+/** Plain-English one-line description of a link, e.g.
+ *  "John Smith — Owner of 325 S Melrose Cir". Direction is source → target. */
+export function linkSentence(
+  sourceLabel: string,
+  relationshipCodeOrLabel: string | null | undefined,
+  targetLabel: string,
+): string {
+  const src = (sourceLabel || 'Record').trim();
+  const tgt = (targetLabel || 'Record').trim();
+  const rel = humanizeRelationship(relationshipCodeOrLabel);
+  const code = String(relationshipCodeOrLabel || '').trim().toLowerCase().replace(/\s+/g, '_');
+  return ROLE_OF_RELATIONSHIPS.has(code)
+    ? `${src} — ${rel} of ${tgt}`
+    : `${src} — ${rel} — ${tgt}`;
+}
