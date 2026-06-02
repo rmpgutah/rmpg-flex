@@ -40,10 +40,19 @@ jobs:
         # The warning is cosmetic; the check still passes and the GPL gate is
         # unchanged. Revisit only when a future major actually removes the
         # option (re-evaluate the upstream guidance in #997 at that point).
+        #
+        # `comment-summary-in-pr: on-failure` (was `always`): the summary
+        # comment is where that cosmetic deprecation warning surfaces, and at
+        # `always` it landed on every PR (noise that kept tripping CI review-
+        # comment monitors). At `on-failure` the comment is posted ONLY when the
+        # check actually fails (a blocked GPL license or a high-severity vuln),
+        # so clean PRs — the vast majority — get no comment and no warning. The
+        # denylist + fail-on-severity gate are unchanged; this only controls
+        # WHEN the result is mirrored into a PR comment. Failures still comment.
         uses: actions/dependency-review-action@v5
         with:
           # Block PRs that add dependencies with known critical/high vulns
           fail-on-severity: high
           # Block copyleft licenses that conflict with private software
           deny-licenses: GPL-2.0, GPL-3.0, AGPL-3.0
-          comment-summary-in-pr: always
+          comment-summary-in-pr: on-failure
