@@ -455,7 +455,12 @@
 // v743: HR Reviews + Disciplinary save buttons now surface a "Failed to …"
 //       error toast when the create/update API call fails (the handlers had a
 //       success toast but no catch, so a failed save looked like a dead button).
-const CACHE_NAME = 'rmpg-flex-v743';
+// v746: CRITICAL — completed calls no longer "vanish". The Cleared tab now has
+//       its own fetch (status=cleared,closed,cancelled); the default call list
+//       is active-only, so cleared/closed calls were never sent to the client
+//       and the Cleared tab was permanently empty — a closed call looked
+//       deleted. NO data was lost (rows are intact in D1, status='closed').
+const CACHE_NAME = 'rmpg-flex-v746';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
