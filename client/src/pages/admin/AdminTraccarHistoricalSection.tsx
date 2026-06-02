@@ -189,11 +189,11 @@ export default function AdminTraccarHistoricalSection() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <div>
             <label className="text-[9px] uppercase tracking-wider text-rmpg-500 block mb-1"><Calendar className="w-3 h-3 inline mr-1" />From</label>
-            <input type="datetime-local" value={from} onChange={e => setFrom(e.target.value)} className="w-full bg-[#0a0a0a] border border-[#222] text-xs text-white px-2 py-1.5 rounded-sm focus:outline-none focus:border-[#d4a017]" />
+            <input id="ff-admintraccarhistoricalsection-0" type="datetime-local" value={from} onChange={e => setFrom(e.target.value)} className="w-full bg-[#0a0a0a] border border-[#222] text-xs text-white px-2 py-1.5 rounded-sm focus:outline-none focus:border-[#d4a017]" />
           </div>
           <div>
             <label className="text-[9px] uppercase tracking-wider text-rmpg-500 block mb-1"><Calendar className="w-3 h-3 inline mr-1" />To</label>
-            <input type="datetime-local" value={to} onChange={e => setTo(e.target.value)} className="w-full bg-[#0a0a0a] border border-[#222] text-xs text-white px-2 py-1.5 rounded-sm focus:outline-none focus:border-[#d4a017]" />
+            <input id="ff-admintraccarhistoricalsection-1" type="datetime-local" value={to} onChange={e => setTo(e.target.value)} className="w-full bg-[#0a0a0a] border border-[#222] text-xs text-white px-2 py-1.5 rounded-sm focus:outline-none focus:border-[#d4a017]" />
           </div>
         </div>
 
@@ -208,7 +208,7 @@ export default function AdminTraccarHistoricalSection() {
               { k: 'geofences', label: 'Geofences', val: includeGeofences, set: setIncludeGeofences },
             ].map(o => (
               <label key={o.k} className="inline-flex items-center gap-1 cursor-pointer">
-                <input type="checkbox" checked={o.val} onChange={e => o.set(e.target.checked)} />{o.label}
+                <input id="ff-admintraccarhistoricalsection-2" type="checkbox" checked={o.val} onChange={e => o.set(e.target.checked)} />{o.label}
               </label>
             ))}
           </div>

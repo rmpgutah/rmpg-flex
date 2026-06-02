@@ -327,7 +327,7 @@ export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabPro
       {/* Filter bar (list view only) */}
       {viewMode === 'list' && (
         <div className="flex flex-wrap items-center gap-2">
-          <select
+          <select id="ff-disciplinarytab-0"
             value={filterOfficer}
             onChange={e => setFilterOfficer(e.target.value)}
             className="bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1 text-xs text-white"
@@ -339,7 +339,7 @@ export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabPro
               </option>
             ))}
           </select>
-          <select
+          <select id="ff-disciplinarytab-1"
             value={filterType}
             onChange={e => setFilterType(e.target.value)}
             className="bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1 text-xs text-white"
@@ -351,7 +351,7 @@ export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabPro
               </option>
             ))}
           </select>
-          <select
+          <select id="ff-disciplinarytab-2"
             value={filterSeverity}
             onChange={e => setFilterSeverity(e.target.value)}
             className="bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1 text-xs text-white"
@@ -362,7 +362,7 @@ export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabPro
             <option value="major">Major</option>
             <option value="critical">Critical</option>
           </select>
-          <select
+          <select id="ff-disciplinarytab-3"
             value={filterStatus}
             onChange={e => setFilterStatus(e.target.value)}
             className="bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1 text-xs text-white"
@@ -408,7 +408,7 @@ export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabPro
       {/* Timeline view */}
       {viewMode === 'timeline' && (
         <div className="space-y-4">
-          <select
+          <select id="ff-disciplinarytab-4"
             value={selectedOfficerId}
             onChange={e => setSelectedOfficerId(e.target.value)}
             className="bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1.5 text-sm text-white w-full sm:w-64"

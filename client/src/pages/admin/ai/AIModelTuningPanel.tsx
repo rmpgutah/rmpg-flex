@@ -198,7 +198,7 @@ export default function AIModelTuningPanel() {
                       <td className="py-2 pr-4 text-gray-300">{FEATURE_LABELS[feature]}</td>
                       {(['temperature', 'maxTokens', 'topP', 'repeatPenalty'] as const).map(key => (
                         <td key={key} className="py-2 px-2">
-                          <input
+                          <input id="ff-aimodeltuningpanel-0"
                             type="number"
                             step={key === 'maxTokens' ? 64 : 0.05}
                             value={(featureParams[feature] || {})[key] ?? ''}
@@ -271,7 +271,7 @@ export default function AIModelTuningPanel() {
         )}
 
         <div className="flex items-center gap-2 pt-2 border-t border-[#303030]">
-          <input
+          <input id="ff-aimodeltuningpanel-1"
             type="text"
             value={newPresetName}
             onChange={e => setNewPresetName(e.target.value)}
@@ -313,7 +313,7 @@ function Slider({ label, description, value, min, max, step, onChange }: {
         <label className="text-gray-300">{label}</label>
         <span className="text-gray-400 font-mono">{value}</span>
       </div>
-      <input type="range" min={min} max={max} step={step} value={value}
+      <input id="ff-aimodeltuningpanel-2" type="range" min={min} max={max} step={step} value={value}
         onChange={e => onChange(parseFloat(e.target.value))}
         className="w-full h-1.5 bg-[#303030] rounded appearance-none cursor-pointer accent-gray-500" />
       <p className="text-[10px] text-gray-600">{description}</p>

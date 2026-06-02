@@ -390,7 +390,7 @@ export default function ServeIntakePage() {
         <p className="text-sm font-bold text-rmpg-300">DRAG & DROP DOCUMENTS</p>
         <p className="text-[10px] text-rmpg-500 mt-1">PDF or Images (Court Filing, Field Sheet, ID, Passport)</p>
         <p className="text-[9px] text-rmpg-600 mt-2">or click to browse files</p>
-        <input
+        <input id="ff-serveintakepage-0"
           ref={fileInputRef}
           type="file"
           accept=".pdf,image/*"
@@ -422,7 +422,7 @@ export default function ServeIntakePage() {
                   Scan OCR
                 </span>
               )}
-              <select
+              <select id="ff-serveintakepage-1"
                 value={f.type}
                 onChange={e => changeFileType(i, e.target.value)}
                 onClick={e => e.stopPropagation()}
@@ -496,7 +496,7 @@ export default function ServeIntakePage() {
                         </span>
                       </div>
                       {editingFields[key] !== undefined ? (
-                        <input
+                        <input id="ff-serveintakepage-2"
                           type="text"
                           value={editingFields[key]}
                           onChange={e => setEditingFields(prev => ({ ...prev, [key]: e.target.value }))}

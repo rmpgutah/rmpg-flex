@@ -335,28 +335,28 @@ export default function NationalWarrantSearchPage() {
 
           {/* Row 1: Name, DOB, State, Search button */}
           <div className={`grid gap-2 ${isMobile ? 'grid-cols-1' : 'grid-cols-[1fr_1fr_120px_140px_auto]'}`}>
-            <input
+            <input id="ff-nationalwarrantsearchpage-0"
               type="text"
               placeholder="First Name"
               value={firstName}
               onChange={e => setFirstName(e.target.value)}
               className="input-dark text-xs"
             />
-            <input
+            <input id="ff-nationalwarrantsearchpage-1"
               type="text"
               placeholder="Last Name"
               value={lastName}
               onChange={e => setLastName(e.target.value)}
               className="input-dark text-xs"
             />
-            <input
+            <input id="ff-nationalwarrantsearchpage-2"
               type="date"
               placeholder="DOB"
               value={dob}
               onChange={e => setDob(e.target.value)}
               className="input-dark text-xs"
             />
-            <select
+            <select id="ff-nationalwarrantsearchpage-3"
               value={stateFilter}
               onChange={e => setStateFilter(e.target.value)}
               className="input-dark text-xs"
@@ -389,7 +389,7 @@ export default function NationalWarrantSearchPage() {
 
           {/* Row 2: Offense Level, Warrant Type, Charge Keyword */}
           <div className={`grid gap-2 ${isMobile ? 'grid-cols-1' : 'grid-cols-[140px_160px_1fr]'}`}>
-            <select
+            <select id="ff-nationalwarrantsearchpage-4"
               value={offenseLevel}
               onChange={e => setOffenseLevel(e.target.value)}
               className="input-dark text-xs"
@@ -398,7 +398,7 @@ export default function NationalWarrantSearchPage() {
                 <option key={o.code} value={o.code}>{o.label}</option>
               ))}
             </select>
-            <select
+            <select id="ff-nationalwarrantsearchpage-5"
               value={warrantType}
               onChange={e => setWarrantType(e.target.value)}
               className="input-dark text-xs"
@@ -407,7 +407,7 @@ export default function NationalWarrantSearchPage() {
                 <option key={t.code} value={t.code}>{t.label}</option>
               ))}
             </select>
-            <input
+            <input id="ff-nationalwarrantsearchpage-6"
               type="text"
               placeholder="Charge keyword (e.g., assault, DUI, theft)"
               value={chargeKeyword}

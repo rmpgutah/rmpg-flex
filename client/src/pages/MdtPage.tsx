@@ -193,7 +193,7 @@ function MdtMessagesPanel({ userId }: { userId?: string }) {
               {ch}
             </button>
           ))}
-          <select
+          <select id="ff-mdtpage-0"
             value={composePriority}
             onChange={(e) => setComposePriority(e.target.value as any)}
             className="text-[8px] bg-surface-base border border-rmpg-600 text-rmpg-300 px-1 py-0.5 ml-auto"
@@ -204,7 +204,7 @@ function MdtMessagesPanel({ userId }: { userId?: string }) {
           </select>
         </div>
         <div className="flex items-center gap-1">
-          <input
+          <input id="ff-mdtpage-1"
             type="text"
             value={composeText}
             onChange={(e) => setComposeText(e.target.value)}
@@ -659,21 +659,21 @@ export default function MdtPage() {
             {selectedCall && <span className="text-[8px] text-rmpg-400">Linked to {selectedCall.call_number}</span>}
           </div>
           <div className={`grid ${isMobile ? 'grid-cols-1' : 'grid-cols-4'} gap-2`}>
-            <input
+            <input id="ff-mdtpage-2"
               type="text"
               className="input-dark text-[10px] min-h-[36px]"
               placeholder="Subject Name *"
               value={fiData.subject_name}
               onChange={(e) => setFiData(prev => ({ ...prev, subject_name: e.target.value }))}
             />
-            <input
+            <input id="ff-mdtpage-3"
               type="text"
               className="input-dark text-[10px] min-h-[36px]"
               placeholder={gps.latitude ? `Location (auto: ${gps.latitude.toFixed(4)})` : 'Location'}
               value={fiData.location}
               onChange={(e) => setFiData(prev => ({ ...prev, location: e.target.value }))}
             />
-            <input
+            <input id="ff-mdtpage-4"
               type="text"
               className="input-dark text-[10px] min-h-[36px]"
               placeholder="Reason for contact"
@@ -681,7 +681,7 @@ export default function MdtPage() {
               onChange={(e) => setFiData(prev => ({ ...prev, reason: e.target.value }))}
             />
             <div className="flex items-center gap-1">
-              <input
+              <input id="ff-mdtpage-5"
                 type="text"
                 className="input-dark text-[10px] flex-1 min-h-[36px]"
                 placeholder="Brief narrative"

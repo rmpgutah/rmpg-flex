@@ -202,19 +202,19 @@ export default function FuelBudgetModal({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Period</label>
-              <select className="select-dark w-full text-[11px] min-h-[36px]" value={form.periodType}
+              <select id="ff-fuelbudgetmodal-0" className="select-dark w-full text-[11px] min-h-[36px]" value={form.periodType}
                 onChange={(e) => setForm(f => ({ ...f, periodType: e.target.value as FuelBudgetPeriod }))}>
                 {PERIODS.map(p => <option key={p.value} value={p.value}>{p.label} ({p.days})</option>)}
               </select>
             </div>
             <div>
               <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Budget Amount ($)</label>
-              <input className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="number" step="0.01" min="0"
+              <input id="ff-fuelbudgetmodal-1" className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="number" step="0.01" min="0"
                 value={form.amount} onChange={(e) => setForm(f => ({ ...f, amount: e.target.value }))} placeholder="e.g. 5000.00" />
             </div>
             <div>
               <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Alert Threshold (%)</label>
-              <input className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="number" step="1" min="0" max="100"
+              <input id="ff-fuelbudgetmodal-2" className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="number" step="1" min="0" max="100"
                 value={form.threshold} onChange={(e) => setForm(f => ({ ...f, threshold: e.target.value }))} />
               <div className="text-[8px] text-rmpg-500 mt-0.5">Amber when spending reaches this % of budget</div>
             </div>
@@ -222,21 +222,21 @@ export default function FuelBudgetModal({
               <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5 flex items-center gap-1">
                 <Calendar className="w-2.5 h-2.5" />Effective From
               </label>
-              <input className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="date"
+              <input id="ff-fuelbudgetmodal-3" className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="date"
                 value={form.effectiveFrom} onChange={(e) => setForm(f => ({ ...f, effectiveFrom: e.target.value }))} />
             </div>
             <div className="col-span-2">
               <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5 flex items-center gap-1">
                 <Calendar className="w-2.5 h-2.5" />Effective To <span className="text-rmpg-600 normal-case">(optional — open-ended when blank)</span>
               </label>
-              <input className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="date"
+              <input id="ff-fuelbudgetmodal-4" className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="date"
                 value={form.effectiveTo} onChange={(e) => setForm(f => ({ ...f, effectiveTo: e.target.value }))} />
             </div>
           </div>
 
           <div>
             <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Notes</label>
-            <textarea className="input-dark w-full text-[10px] h-14 resize-none min-h-[36px]" value={form.notes}
+            <textarea id="ff-fuelbudgetmodal-5" className="input-dark w-full text-[10px] h-14 resize-none min-h-[36px]" value={form.notes}
               onChange={(e) => setForm(f => ({ ...f, notes: e.target.value }))} maxLength={2000}
               placeholder="Approver, rationale, etc." />
           </div>

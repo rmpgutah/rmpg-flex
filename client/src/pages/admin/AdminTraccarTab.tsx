@@ -340,7 +340,7 @@ export default function AdminTraccarTab({ LoadingSpinner, error, setError }: Pro
           <label className="text-[10px] text-rmpg-400">Server URL</label>
           <div className="flex items-center gap-2">
             <Globe className="w-3.5 h-3.5 text-rmpg-500 shrink-0" />
-            <input
+            <input id="ff-admintraccartab-0"
               type="url"
               value={url}
               onChange={(e) => setUrl(e.target.value)}
@@ -353,7 +353,7 @@ export default function AdminTraccarTab({ LoadingSpinner, error, setError }: Pro
         {/* Email */}
         <div className="space-y-1.5">
           <label className="text-[10px] text-rmpg-400">Admin Email</label>
-          <input
+          <input id="ff-admintraccartab-1"
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
@@ -366,7 +366,7 @@ export default function AdminTraccarTab({ LoadingSpinner, error, setError }: Pro
         <div className="space-y-1.5">
           <label className="text-[10px] text-rmpg-400">Password</label>
           <div className="relative">
-            <input
+            <input id="ff-admintraccartab-2"
               type={showPassword ? 'text' : 'password'}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -454,7 +454,7 @@ export default function AdminTraccarTab({ LoadingSpinner, error, setError }: Pro
             <div className="flex items-center gap-2">
               <Clock className="w-3 h-3 text-rmpg-500" />
               <span className="text-[10px] text-rmpg-400">Poll every:</span>
-              <select
+              <select id="ff-admintraccartab-3"
                 value={pollInterval}
                 onChange={(e) => handlePollIntervalChange(parseInt(e.target.value, 10))}
                 className="bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-[10px] px-2 py-1 rounded-sm focus:border-brand-500 focus:outline-none"
@@ -595,7 +595,7 @@ export default function AdminTraccarTab({ LoadingSpinner, error, setError }: Pro
                           → {existingMapping.call_sign}
                         </span>
                       ) : (
-                        <select
+                        <select id="ff-admintraccartab-4"
                           defaultValue=""
                           onChange={(e) => {
                             if (e.target.value) {

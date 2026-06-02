@@ -516,7 +516,7 @@ export default function ScrapersTab() {
       <div className="flex flex-wrap items-center gap-2 panel-raised p-2">
         <div className="flex items-center gap-1 flex-1 min-w-[200px]">
           <Search size={14} className="text-rmpg-500" />
-          <input
+          <input id="ff-scraperstab-0"
             type="text"
             placeholder="Search sources..."
             value={search}
@@ -524,7 +524,7 @@ export default function ScrapersTab() {
             className="input-dark flex-1 text-xs"
           />
         </div>
-        <select
+        <select id="ff-scraperstab-1"
           value={stateFilter}
           onChange={(e) => setStateFilter(e.target.value)}
           className="select-dark text-xs"
@@ -536,7 +536,7 @@ export default function ScrapersTab() {
             </option>
           ))}
         </select>
-        <select
+        <select id="ff-scraperstab-2"
           value={gradeFilter}
           onChange={(e) => setGradeFilter(e.target.value as GradeFilter)}
           className="select-dark text-xs"

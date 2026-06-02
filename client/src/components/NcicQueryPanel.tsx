@@ -830,7 +830,7 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
         {/* Input bar */}
         <div className="ncic-input-row">
           <span className="ncic-prompt">&gt;</span>
-          <input
+          <input id="ff-ncicquerypanel-0"
             ref={inputRef}
             type="text"
             className="ncic-input"
@@ -913,7 +913,7 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
         {/* Input bar */}
         <div className="ncic-input-row">
           <span className="ncic-prompt">&gt;</span>
-          <input
+          <input id="ff-ncicquerypanel-1"
             ref={inputRef}
             type="text"
             className="ncic-input"

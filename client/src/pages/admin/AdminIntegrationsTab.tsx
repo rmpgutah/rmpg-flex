@@ -256,7 +256,7 @@ function ApiKeyPanel({ title, icon, keys: keyConfigs }: { title: string; icon: R
             </div>
             <div className="flex items-center gap-2">
               <div className="relative flex-1">
-                <input
+                <input id="ff-adminintegrationstab-0"
                   type={showKey[key] ? 'text' : 'password'}
                   value={values[key] || ''}
                   onChange={e => setValues(prev => ({ ...prev, [key]: e.target.value }))}
@@ -518,7 +518,7 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
               <div className="flex items-center gap-2">
                 <div className="flex items-center gap-1.5 flex-1 px-3 py-2 bg-[#0c0c0c] border border-[#2b2b2b] rounded-sm">
                   <Link2 className="w-3.5 h-3.5 text-rmpg-500" />
-                  <input
+                  <input id="ff-adminintegrationstab-1"
                     type="text"
                     value={svcUrlInput}
                     onChange={(e) => setSvcUrlInput(e.target.value)}
@@ -537,7 +537,7 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
               <div className="flex items-center gap-2">
                 <div className="flex items-center gap-1.5 flex-1 px-3 py-2 bg-[#0c0c0c] border border-[#2b2b2b] rounded-sm">
                   <Key className="w-3.5 h-3.5 text-rmpg-500" />
-                  <input
+                  <input id="ff-adminintegrationstab-2"
                     type={showSvcKey ? 'text' : 'password'}
                     value={svcApiKey}
                     onChange={(e) => setSvcApiKey(e.target.value)}
@@ -821,7 +821,7 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
                 <>
                   <div>
                     <label className="block text-xs text-rmpg-500 mb-1">Key Name</label>
-                    <input
+                    <input id="ff-adminintegrationstab-3"
                       type="text"
                       value={newKeyName}
                       onChange={(e) => setNewKeyName(e.target.value)}

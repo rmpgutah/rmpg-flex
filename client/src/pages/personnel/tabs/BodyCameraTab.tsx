@@ -308,7 +308,7 @@ export default function BodyCameraTab({
       <div className="panel-inset p-2 flex items-center gap-2 flex-wrap">
         <div className="relative flex-1 min-w-[180px] max-w-[280px]">
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500 pointer-events-none" />
-          <input
+          <input id="ff-bodycameratab-0"
             type="text"
             value={search}
             onChange={e => setSearch(e.target.value)}
@@ -345,7 +345,7 @@ export default function BodyCameraTab({
             <div className="h-4 w-px bg-rmpg-700" />
             <div className="flex items-center gap-1.5">
               <Clock className="w-3 h-3 text-rmpg-500" />
-              <input
+              <input id="ff-bodycameratab-1"
                 type="date"
                 className="input-dark text-[10px] py-1 px-2 w-[120px] min-h-[28px]"
                 value={videoDateFrom}
@@ -354,7 +354,7 @@ export default function BodyCameraTab({
                 title="Filter from date"
               />
               <span className="text-[9px] text-rmpg-500">to</span>
-              <input
+              <input id="ff-bodycameratab-2"
                 type="date"
                 className="input-dark text-[10px] py-1 px-2 w-[120px] min-h-[28px]"
                 value={videoDateTo}
@@ -430,7 +430,7 @@ export default function BodyCameraTab({
           )}
           {onBulkClassifyVideos && (
             <div className="flex items-center gap-1">
-              <select
+              <select id="ff-bodycameratab-3"
                 value={bulkClassification}
                 onChange={e => setBulkClassification(e.target.value as VideoClassification)}
                 className="select-dark text-[10px] py-1 px-2"

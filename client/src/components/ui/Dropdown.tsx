@@ -246,7 +246,7 @@ export default function Dropdown({
           {searchable && (
             <div className="relative border-b border-[#2a2a2a]">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500 pointer-events-none" />
-              <input
+              <input id="ff-dropdown-0"
                 ref={searchRef}
                 type="text"
                 value={search}

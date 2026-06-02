@@ -523,7 +523,7 @@ export default function ArrestRecordsPage() {
         {/* Search */}
         <div className="relative" role="search">
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500 pointer-events-none" />
-          <input
+          <input id="ff-arrestrecordspage-0"
             type="text"
             value={searchTerm}
             onChange={e => { setSearchTerm(e.target.value); setRecordsPage(1); }}
@@ -539,7 +539,7 @@ export default function ArrestRecordsPage() {
 
         {/* Filter row */}
         <div className="flex items-center gap-1 flex-wrap">
-          <select
+          <select id="ff-arrestrecordspage-1"
             value={countyFilter}
             onChange={e => { setCountyFilter(e.target.value); setRecordsPage(1); }}
             className="bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-[9px] px-1.5 py-1 rounded-sm flex-1 min-w-0"
@@ -550,7 +550,7 @@ export default function ArrestRecordsPage() {
             ))}
           </select>
 
-          <select
+          <select id="ff-arrestrecordspage-2"
             value={statusFilter}
             onChange={e => { setStatusFilter(e.target.value); setRecordsPage(1); }}
             className="bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-[9px] px-1.5 py-1 rounded-sm"
@@ -562,7 +562,7 @@ export default function ArrestRecordsPage() {
             <option value="bonded">Bonded</option>
           </select>
 
-          <select
+          <select id="ff-arrestrecordspage-3"
             value={sourceFilter}
             onChange={e => { setSourceFilter(e.target.value); setRecordsPage(1); }}
             className="bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-[9px] px-1.5 py-1 rounded-sm"
@@ -820,7 +820,7 @@ export default function ArrestRecordsPage() {
               <div className="space-y-1">
                 <div className="relative">
                   <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-2.5 h-2.5 text-rmpg-500" />
-                  <input
+                  <input id="ff-arrestrecordspage-4"
                     type="text"
                     value={personSearch}
                     onChange={e => setPersonSearch(e.target.value)}

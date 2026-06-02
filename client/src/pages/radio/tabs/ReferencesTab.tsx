@@ -37,7 +37,7 @@ export default function ReferencesTab() {
 
       <div className="flex items-center gap-2 px-3 py-1.5" style={{ borderBottom: '1px solid var(--rt-border)' }}>
         <Search className="w-3 h-3" style={{ color: 'var(--rt-muted)' }} />
-        <input
+        <input id="ff-referencestab-0"
           type="text" value={q} onChange={(e) => setQ(e.target.value)}
           placeholder="search 10-codes…"
           aria-label="Search ten codes"

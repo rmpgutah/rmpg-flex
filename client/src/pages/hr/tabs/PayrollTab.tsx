@@ -501,22 +501,22 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                 <div>
                   <label className="text-[10px] text-rmpg-400 block mb-1">Name (optional)</label>
-                  <input value={periodForm.name} onChange={e => setPeriodForm(p => ({ ...p, name: e.target.value }))}
+                  <input id="ff-payrolltab-0" value={periodForm.name} onChange={e => setPeriodForm(p => ({ ...p, name: e.target.value }))}
                     className="w-full bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-white" placeholder="e.g. March 1-15" />
                 </div>
                 <div>
                   <label className="text-[10px] text-rmpg-400 block mb-1">Start Date *</label>
-                  <input type="date" value={periodForm.start_date} onChange={e => setPeriodForm(p => ({ ...p, start_date: e.target.value }))}
+                  <input id="ff-payrolltab-1" type="date" value={periodForm.start_date} onChange={e => setPeriodForm(p => ({ ...p, start_date: e.target.value }))}
                     className="w-full bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-white" />
                 </div>
                 <div>
                   <label className="text-[10px] text-rmpg-400 block mb-1">End Date *</label>
-                  <input type="date" value={periodForm.end_date} onChange={e => setPeriodForm(p => ({ ...p, end_date: e.target.value }))}
+                  <input id="ff-payrolltab-2" type="date" value={periodForm.end_date} onChange={e => setPeriodForm(p => ({ ...p, end_date: e.target.value }))}
                     className="w-full bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-white" />
                 </div>
                 <div>
                   <label className="text-[10px] text-rmpg-400 block mb-1">Pay Date *</label>
-                  <input type="date" value={periodForm.pay_date} onChange={e => setPeriodForm(p => ({ ...p, pay_date: e.target.value }))}
+                  <input id="ff-payrolltab-3" type="date" value={periodForm.pay_date} onChange={e => setPeriodForm(p => ({ ...p, pay_date: e.target.value }))}
                     className="w-full bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-white" />
                 </div>
               </div>
@@ -614,7 +614,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 <div>
                   <label className="text-[10px] text-rmpg-400 block mb-1">Employee *</label>
-                  <select value={rateForm.user_id} onChange={e => setRateForm(r => ({ ...r, user_id: e.target.value }))}
+                  <select id="ff-payrolltab-4" value={rateForm.user_id} onChange={e => setRateForm(r => ({ ...r, user_id: e.target.value }))}
                     className="w-full bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-white">
                     <option value="">Select employee...</option>
                     {officers.map(o => <option key={o.id} value={o.id}>{o.full_name}</option>)}
@@ -622,7 +622,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                 </div>
                 <div>
                   <label className="text-[10px] text-rmpg-400 block mb-1">Pay Type</label>
-                  <select value={rateForm.pay_type} onChange={e => setRateForm(r => ({ ...r, pay_type: e.target.value }))}
+                  <select id="ff-payrolltab-5" value={rateForm.pay_type} onChange={e => setRateForm(r => ({ ...r, pay_type: e.target.value }))}
                     className="w-full bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-white">
                     <option value="hourly">Hourly</option>
                     <option value="salary">Salary</option>
@@ -631,22 +631,22 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                 </div>
                 <div>
                   <label className="text-[10px] text-rmpg-400 block mb-1">Rate ($/hr) *</label>
-                  <input type="number" step="0.01" value={rateForm.rate} onChange={e => setRateForm(r => ({ ...r, rate: e.target.value }))}
+                  <input id="ff-payrolltab-6" type="number" step="0.01" value={rateForm.rate} onChange={e => setRateForm(r => ({ ...r, rate: e.target.value }))}
                     className="w-full bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-white" placeholder="25.00" />
                 </div>
                 <div>
                   <label className="text-[10px] text-rmpg-400 block mb-1">OT Multiplier</label>
-                  <input type="number" step="0.1" value={rateForm.overtime_rate} onChange={e => setRateForm(r => ({ ...r, overtime_rate: e.target.value }))}
+                  <input id="ff-payrolltab-7" type="number" step="0.1" value={rateForm.overtime_rate} onChange={e => setRateForm(r => ({ ...r, overtime_rate: e.target.value }))}
                     className="w-full bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-white" />
                 </div>
                 <div>
                   <label className="text-[10px] text-rmpg-400 block mb-1">Holiday Multiplier</label>
-                  <input type="number" step="0.1" value={rateForm.holiday_rate} onChange={e => setRateForm(r => ({ ...r, holiday_rate: e.target.value }))}
+                  <input id="ff-payrolltab-8" type="number" step="0.1" value={rateForm.holiday_rate} onChange={e => setRateForm(r => ({ ...r, holiday_rate: e.target.value }))}
                     className="w-full bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-white" />
                 </div>
                 <div>
                   <label className="text-[10px] text-rmpg-400 block mb-1">Effective Date *</label>
-                  <input type="date" value={rateForm.effective_date} onChange={e => setRateForm(r => ({ ...r, effective_date: e.target.value }))}
+                  <input id="ff-payrolltab-9" type="date" value={rateForm.effective_date} onChange={e => setRateForm(r => ({ ...r, effective_date: e.target.value }))}
                     className="w-full bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-white" />
                 </div>
               </div>
@@ -708,7 +708,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
             <h3 className="text-sm font-semibold text-white flex items-center gap-2">
               <Clock size={15} className="text-brand-400" /> Timesheet
             </h3>
-            <select value={selectedPeriod?.id ?? ''} onChange={e => {
+            <select id="ff-payrolltab-10" value={selectedPeriod?.id ?? ''} onChange={e => {
               const p = periods.find(pp => pp.id === Number(e.target.value));
               setSelectedPeriod(p || null);
             }} className="bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1 text-xs text-white">
@@ -771,7 +771,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                           <>
                             {['regular_hours', 'overtime_hours', 'holiday_hours', 'pto_hours', 'sick_hours'].map(field => (
                               <td key={field} className="px-1 py-1">
-                                <input type="number" step="0.5" min="0"
+                                <input id="ff-payrolltab-11" type="number" step="0.5" min="0"
                                   value={editValues[field] ?? 0}
                                   onChange={e => setEditValues(v => ({ ...v, [field]: Number(e.target.value) }))}
                                   className="w-16 bg-surface-sunken border border-brand-500/40 rounded-sm px-1.5 py-0.5 text-xs text-white text-right font-mono" />
@@ -859,15 +859,15 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <div>
                   <label className="text-[9px] text-rmpg-400 uppercase">Date *</label>
-                  <input type="date" value={otForm.requested_date} onChange={e => setOtForm(p => ({ ...p, requested_date: e.target.value }))} className="w-full px-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
+                  <input id="ff-payrolltab-12" type="date" value={otForm.requested_date} onChange={e => setOtForm(p => ({ ...p, requested_date: e.target.value }))} className="w-full px-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
                 </div>
                 <div>
                   <label className="text-[9px] text-rmpg-400 uppercase">Hours *</label>
-                  <input type="number" step="0.5" value={otForm.hours_requested} onChange={e => setOtForm(p => ({ ...p, hours_requested: e.target.value }))} className="w-full px-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
+                  <input id="ff-payrolltab-13" type="number" step="0.5" value={otForm.hours_requested} onChange={e => setOtForm(p => ({ ...p, hours_requested: e.target.value }))} className="w-full px-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
                 </div>
                 <div>
                   <label className="text-[9px] text-rmpg-400 uppercase">Reason</label>
-                  <input value={otForm.reason} onChange={e => setOtForm(p => ({ ...p, reason: e.target.value }))} className="w-full px-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
+                  <input id="ff-payrolltab-14" value={otForm.reason} onChange={e => setOtForm(p => ({ ...p, reason: e.target.value }))} className="w-full px-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
                 </div>
               </div>
               <div className="flex gap-2 pt-1">

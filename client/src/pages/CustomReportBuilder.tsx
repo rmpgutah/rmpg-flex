@@ -228,7 +228,7 @@ export default function CustomReportBuilder() {
             <div className={`grid ${isMobile ? 'grid-cols-2' : 'grid-cols-4'} gap-2`}>
               {availableCols.map(col => (
                 <label key={col} className="flex items-center gap-2 panel-surface p-2 cursor-pointer hover:border-brand-500/50 transition-colors">
-                  <input
+                  <input id="ff-customreportbuilder-0"
                     type="checkbox"
                     checked={selectedCols.includes(col)}
                     onChange={() => toggleColumn(col)}
@@ -257,10 +257,10 @@ export default function CustomReportBuilder() {
             {filters.map((f, i) => (
               <div key={`${f.column}-${f.operator}-${i}`} className={`${isMobile ? 'flex flex-col gap-1.5' : 'flex items-center gap-2'} panel-surface p-2`}>
                 <div className="flex items-center gap-2">
-                  <select className={`select-dark text-[10px] ${isMobile ? 'flex-1' : 'w-40'}`} value={f.column} onChange={e => updateFilter(i, 'column', e.target.value)}>
+                  <select id="ff-customreportbuilder-1" className={`select-dark text-[10px] ${isMobile ? 'flex-1' : 'w-40'}`} value={f.column} onChange={e => updateFilter(i, 'column', e.target.value)}>
                     {availableCols.map(c => <option key={c} value={c}>{toDisplayLabel(c)}</option>)}
                   </select>
-                  <select className={`select-dark text-[10px] ${isMobile ? 'w-24' : 'w-28'}`} value={f.operator} onChange={e => updateFilter(i, 'operator', e.target.value as any)}>
+                  <select id="ff-customreportbuilder-2" className={`select-dark text-[10px] ${isMobile ? 'w-24' : 'w-28'}`} value={f.operator} onChange={e => updateFilter(i, 'operator', e.target.value as any)}>
                     <option value="eq">Equals</option>
                     <option value="contains">Contains</option>
                     <option value="gte">≥</option>
@@ -268,7 +268,7 @@ export default function CustomReportBuilder() {
                   </select>
                   <button type="button" onClick={() => removeFilter(i)} className="text-red-400 hover:text-red-300 text-xs">✕</button>
                 </div>
-                <input
+                <input id="ff-customreportbuilder-3"
                   type="text"
                   className="input-dark text-[10px] flex-1 min-h-[36px]"
                   placeholder="Value..."
@@ -282,18 +282,18 @@ export default function CustomReportBuilder() {
               <div className="flex items-center gap-2 flex-wrap">
                 <ArrowUpDown className="w-3 h-3 text-rmpg-400" />
                 <span className="text-[9px] text-rmpg-400 uppercase font-bold">Sort By:</span>
-                <select className={`select-dark text-[10px] ${isMobile ? 'flex-1' : 'w-40'}`} value={sortBy} onChange={e => setSortBy(e.target.value)}>
+                <select id="ff-customreportbuilder-4" className={`select-dark text-[10px] ${isMobile ? 'flex-1' : 'w-40'}`} value={sortBy} onChange={e => setSortBy(e.target.value)}>
                   <option value="">— None —</option>
                   {selectedCols.map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
-                <select className="select-dark text-[10px] w-20 min-h-[36px]" value={sortDir} onChange={e => setSortDir(e.target.value as any)}>
+                <select id="ff-customreportbuilder-5" className="select-dark text-[10px] w-20 min-h-[36px]" value={sortDir} onChange={e => setSortDir(e.target.value as any)}>
                   <option value="asc">ASC</option>
                   <option value="desc">DESC</option>
                 </select>
               </div>
               <div className="flex items-center gap-2">
                 <span className="text-[9px] text-rmpg-400 uppercase font-bold">Limit:</span>
-                <select className="select-dark text-[10px] w-20 min-h-[36px]" value={limit} onChange={e => setLimit(Number(e.target.value))}>
+                <select id="ff-customreportbuilder-6" className="select-dark text-[10px] w-20 min-h-[36px]" value={limit} onChange={e => setLimit(Number(e.target.value))}>
                   {[50, 100, 200, 500, 1000].map(n => <option key={n} value={n}>{n}</option>)}
                 </select>
               </div>

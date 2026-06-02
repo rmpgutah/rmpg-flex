@@ -322,7 +322,7 @@ export default function SexOffenderRegistryPage() {
       >
         <div className="relative flex-1 min-w-[140px]">
           <Search size={13} className="absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500" />
-          <input
+          <input id="ff-sexoffenderregistrypage-0"
             type="text"
             value={searchInput}
             onChange={e => setSearchInput(e.target.value)}
@@ -335,7 +335,7 @@ export default function SexOffenderRegistryPage() {
             </IconButton>
           )}
         </div>
-        <select
+        <select id="ff-sexoffenderregistrypage-1"
           value={tierFilter}
           onChange={e => { setTierFilter(e.target.value); setPage(1); }}
           className="text-[11px] bg-surface-sunken border border-rmpg-700 rounded-sm text-rmpg-300 px-1.5 py-1 focus:border-brand-500 focus:outline-none"
@@ -345,7 +345,7 @@ export default function SexOffenderRegistryPage() {
           <option value="2">Tier 2</option>
           <option value="3">Tier 3</option>
         </select>
-        <select
+        <select id="ff-sexoffenderregistrypage-2"
           value={statusFilter}
           onChange={e => { setStatusFilter(e.target.value); setPage(1); }}
           className="text-[11px] bg-surface-sunken border border-rmpg-700 rounded-sm text-rmpg-300 px-1.5 py-1 focus:border-brand-500 focus:outline-none"
@@ -862,7 +862,7 @@ export default function SexOffenderRegistryPage() {
               </p>
               <div className="relative">
                 <Search size={14} className="absolute left-2 top-2 text-rmpg-500" />
-                <input
+                <input id="ff-sexoffenderregistrypage-3"
                   value={linkSearch}
                   onChange={(e) => handleLinkPersonSearch(e.target.value)}
                   placeholder="Search persons by name..." aria-label="Search persons by name..."
@@ -1013,7 +1013,7 @@ function RecordFormModal({
             <FormField label="Registry ID" value={form.registry_id} onChange={v => set('registry_id', v)} placeholder="UT-SO-XXXXXXXX" />
             <div>
               <label className="block text-[10px] text-rmpg-500 mb-0.5 uppercase">Tier</label>
-              <select value={form.tier} onChange={e => set('tier', parseInt(e.target.value, 10))}
+              <select id="ff-sexoffenderregistrypage-4" value={form.tier} onChange={e => set('tier', parseInt(e.target.value, 10))}
                 className="w-full text-xs bg-surface-sunken border border-rmpg-700 rounded-sm text-white px-2 py-1.5 focus:border-brand-500 focus:outline-none">
                 <option value={1}>Tier 1 — Low</option>
                 <option value={2}>Tier 2 — Moderate</option>
@@ -1022,7 +1022,7 @@ function RecordFormModal({
             </div>
             <div>
               <label className="block text-[10px] text-rmpg-500 mb-0.5 uppercase">Risk Level</label>
-              <select value={form.risk_level} onChange={e => set('risk_level', e.target.value)}
+              <select id="ff-sexoffenderregistrypage-5" value={form.risk_level} onChange={e => set('risk_level', e.target.value)}
                 className="w-full text-xs bg-surface-sunken border border-rmpg-700 rounded-sm text-white px-2 py-1.5 focus:border-brand-500 focus:outline-none">
                 <option value="">— None —</option>
                 <option value="low">Low</option>
@@ -1052,7 +1052,7 @@ function RecordFormModal({
           <div className="grid grid-cols-3 gap-2">
             <div>
               <label className="block text-[10px] text-rmpg-500 mb-0.5 uppercase">Status</label>
-              <select value={form.registration_status} onChange={e => set('registration_status', e.target.value)}
+              <select id="ff-sexoffenderregistrypage-6" value={form.registration_status} onChange={e => set('registration_status', e.target.value)}
                 className="w-full text-xs bg-surface-sunken border border-rmpg-700 rounded-sm text-white px-2 py-1.5 focus:border-brand-500 focus:outline-none">
                 <option value="compliant">Compliant</option>
                 <option value="non_compliant">Non-Compliant</option>
@@ -1113,7 +1113,7 @@ function FormField({
         <RichTextArea value={value} onChange={e => onChange(e.target.value)} rows={2}
           className={cls} placeholder={placeholder} />
       ) : (
-        <input type={type} value={value} onChange={e => onChange(e.target.value)}
+        <input id="ff-sexoffenderregistrypage-7" type={type} value={value} onChange={e => onChange(e.target.value)}
           className={cls} placeholder={placeholder} />
       )}
     </div>

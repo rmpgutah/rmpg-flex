@@ -196,7 +196,7 @@ export default function AIPromptWorkshopPanel() {
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
               <label className="text-[10px] text-gray-500">Temp override:</label>
-              <input
+              <input id="ff-aipromptworkshoppanel-0"
                 type="range"
                 min={0} max={2} step={0.05}
                 value={tempOverride ?? 0.7}
@@ -265,7 +265,7 @@ export default function AIPromptWorkshopPanel() {
       <div className="bg-[#141414] border border-[#303030] rounded p-4 space-y-4">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold text-white">Template Library</h3>
-          <select
+          <select id="ff-aipromptworkshoppanel-1"
             value={categoryFilter}
             onChange={e => setCategoryFilter(e.target.value)}
             className="px-2 py-1 bg-[#0c0c0c] border border-[#303030] rounded text-xs text-gray-300 focus:outline-none focus:border-gray-500"
@@ -282,11 +282,11 @@ export default function AIPromptWorkshopPanel() {
               <div key={t.id} className="bg-[#0c0c0c] border border-[#303030] rounded p-3 space-y-2">
                 {editingId === t.id ? (
                   <div className="space-y-2">
-                    <input
+                    <input id="ff-aipromptworkshoppanel-2"
                       type="text" value={editName} onChange={e => setEditName(e.target.value)}
                       className="w-full px-2 py-1 bg-[#141414] border border-[#303030] rounded text-white text-xs focus:outline-none focus:border-gray-500"
                     />
-                    <select
+                    <select id="ff-aipromptworkshoppanel-3"
                       value={editCategory} onChange={e => setEditCategory(e.target.value)}
                       className="w-full px-2 py-1 bg-[#141414] border border-[#303030] rounded text-gray-300 text-xs focus:outline-none"
                     >
@@ -331,12 +331,12 @@ export default function AIPromptWorkshopPanel() {
         {/* Save as template */}
         {showSaveForm ? (
           <div className="flex items-center gap-2 pt-2 border-t border-[#303030]">
-            <input
+            <input id="ff-aipromptworkshoppanel-4"
               type="text" value={saveName} onChange={e => setSaveName(e.target.value)}
               placeholder="Template name..."
               className="flex-1 px-3 py-1.5 bg-[#0c0c0c] border border-[#303030] rounded text-white text-xs placeholder-gray-600 focus:outline-none focus:border-gray-500"
             />
-            <select
+            <select id="ff-aipromptworkshoppanel-5"
               value={saveCategory} onChange={e => setSaveCategory(e.target.value)}
               className="px-2 py-1.5 bg-[#0c0c0c] border border-[#303030] rounded text-gray-300 text-xs focus:outline-none"
             >

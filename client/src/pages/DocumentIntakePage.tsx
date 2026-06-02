@@ -89,7 +89,7 @@ export default function DocumentIntakePage() {
           <div className="text-[14px] font-semibold mb-1">
             Drop a PDF here, or
             <label className="ml-2 px-3 py-1 text-[11px] border border-[#d4a017] text-[#d4a017] hover:bg-[#d4a017] hover:text-black cursor-pointer inline-block uppercase" style={{ borderRadius: 2 }}>
-              <input type="file" accept="application/pdf" className="hidden" onChange={handlePick} />
+              <input id="ff-documentintakepage-0" type="file" accept="application/pdf" className="hidden" onChange={handlePick} />
               Choose File
             </label>
           </div>

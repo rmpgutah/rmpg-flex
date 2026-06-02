@@ -195,17 +195,17 @@ export default function AdminSecurityTab({ LoadingSpinner, error, setError }: Ad
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Minimum Password Length</label>
-            <input type="number" className="input-dark text-xs w-full min-h-[36px]" value={config.min_password_length} onChange={(e) => update('min_password_length', e.target.value)} min="6" max="32" />
+            <input id="ff-adminsecuritytab-0" type="number" className="input-dark text-xs w-full min-h-[36px]" value={config.min_password_length} onChange={(e) => update('min_password_length', e.target.value)} min="6" max="32" />
             <p className="text-[9px] text-rmpg-500 mt-0.5">Minimum characters required (6-32)</p>
           </div>
           <div>
             <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Password Expiry (days)</label>
-            <input type="number" className="input-dark text-xs w-full min-h-[36px]" value={config.password_expiry_days} onChange={(e) => update('password_expiry_days', e.target.value)} min="0" max="365" />
+            <input id="ff-adminsecuritytab-1" type="number" className="input-dark text-xs w-full min-h-[36px]" value={config.password_expiry_days} onChange={(e) => update('password_expiry_days', e.target.value)} min="0" max="365" />
             <p className="text-[9px] text-rmpg-500 mt-0.5">0 = passwords never expire</p>
           </div>
           <div>
             <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Password History</label>
-            <input type="number" className="input-dark text-xs w-full min-h-[36px]" value={config.password_history_count} onChange={(e) => update('password_history_count', e.target.value)} min="0" max="24" />
+            <input id="ff-adminsecuritytab-2" type="number" className="input-dark text-xs w-full min-h-[36px]" value={config.password_history_count} onChange={(e) => update('password_history_count', e.target.value)} min="0" max="24" />
             <p className="text-[9px] text-rmpg-500 mt-0.5">Prevent reuse of last N passwords</p>
           </div>
         </div>
@@ -234,7 +234,7 @@ export default function AdminSecurityTab({ LoadingSpinner, error, setError }: Ad
 
         <div>
           <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Require 2FA for Roles</label>
-          <input
+          <input id="ff-adminsecuritytab-3"
             type="text"
             className="input-dark text-xs w-full font-mono min-h-[36px]"
             value={config.totp_required_roles}
@@ -267,7 +267,7 @@ export default function AdminSecurityTab({ LoadingSpinner, error, setError }: Ad
 
         <div>
           <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Action on IP Change</label>
-          <select
+          <select id="ff-adminsecuritytab-4"
             className="input-dark text-xs w-full min-h-[36px]"
             value={config.ip_change_action}
             onChange={(e) => update('ip_change_action', e.target.value)}
@@ -290,12 +290,12 @@ export default function AdminSecurityTab({ LoadingSpinner, error, setError }: Ad
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Max Failed Login Attempts</label>
-            <input type="number" className="input-dark text-xs w-full min-h-[36px]" value={config.max_login_attempts} onChange={(e) => update('max_login_attempts', e.target.value)} min="1" max="20" />
+            <input id="ff-adminsecuritytab-5" type="number" className="input-dark text-xs w-full min-h-[36px]" value={config.max_login_attempts} onChange={(e) => update('max_login_attempts', e.target.value)} min="1" max="20" />
             <p className="text-[9px] text-rmpg-500 mt-0.5">Account locks after this many failed attempts</p>
           </div>
           <div>
             <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Lockout Duration (minutes)</label>
-            <input type="number" className="input-dark text-xs w-full min-h-[36px]" value={config.lockout_duration_minutes} onChange={(e) => update('lockout_duration_minutes', e.target.value)} min="1" max="1440" />
+            <input id="ff-adminsecuritytab-6" type="number" className="input-dark text-xs w-full min-h-[36px]" value={config.lockout_duration_minutes} onChange={(e) => update('lockout_duration_minutes', e.target.value)} min="1" max="1440" />
             <p className="text-[9px] text-rmpg-500 mt-0.5">How long the account stays locked</p>
           </div>
         </div>
@@ -318,12 +318,12 @@ export default function AdminSecurityTab({ LoadingSpinner, error, setError }: Ad
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Session Timeout (minutes)</label>
-            <input type="number" className="input-dark text-xs w-full min-h-[36px]" value={config.session_timeout_minutes} onChange={(e) => update('session_timeout_minutes', e.target.value)} min="5" max="1440" />
+            <input id="ff-adminsecuritytab-7" type="number" className="input-dark text-xs w-full min-h-[36px]" value={config.session_timeout_minutes} onChange={(e) => update('session_timeout_minutes', e.target.value)} min="5" max="1440" />
             <p className="text-[9px] text-rmpg-500 mt-0.5">Auto-logout after inactivity. Current: {Math.round(Number(config.session_timeout_minutes) / 60)}h {Number(config.session_timeout_minutes) % 60}m</p>
           </div>
           <div>
             <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Max Concurrent Sessions</label>
-            <input type="number" className="input-dark text-xs w-full min-h-[36px]" value={config.max_active_sessions} onChange={(e) => update('max_active_sessions', e.target.value)} min="1" max="10" />
+            <input id="ff-adminsecuritytab-8" type="number" className="input-dark text-xs w-full min-h-[36px]" value={config.max_active_sessions} onChange={(e) => update('max_active_sessions', e.target.value)} min="1" max="10" />
             <p className="text-[9px] text-rmpg-500 mt-0.5">Maximum simultaneous logins per user</p>
           </div>
         </div>

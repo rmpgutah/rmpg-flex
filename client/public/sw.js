@@ -277,18 +277,38 @@
 //       rendered. Hoisted Process Service Details to a top-level section
 //       (self-gated by process data / service-type) and added
 //       'civil_paper_service' to the visit-history gate.
-// v702 — Unit audit batch 2 (19 verified findings): align UnitStatus to the 7
-//        live-DB statuses (removed 'on_patrol', which the units CHECK rejects);
-//        UnitStatusBoard Assignment column (read current_call_number, not
-//        call_number), out_of_service sort + sentinel-status LED fallback;
-//        unitRecommendation hasGps sentinel/zero-coord coercion; map nav-cursor
-//        heading arrow + speed now backed by units.gps_heading/gps_speed
-//        (migration 0065). Pairs with Worker: PUT /units allowlist, dead
+// v701: Phase 2 — unified always-visible map Legend (bottom-left, collapsible)
+//       reflecting EVERY active overlay: geography coverage (Area/Section/
+//       Zone/Beat + compact categorical key), County/Muni outline boundaries,
+//       statewide road classes + address dot, and the activity-choropleth ramp.
+// v702: Phase 3 — Address/Premise Intelligence. "What's Here" now also pulls
+//       nearby prior calls + incidents (new GET /api/dispatch/geography/
+//       premise-intel, lat/lng bbox) and shows a premise-history band
+//       ("N prior calls · M incidents · Last: <type> <date>") with acronym-
+//       formatted incident types (toDisplayLabel). Map <-> Dispatch/RMS.
+// v703: cache-invalidation catch-up. PR #893 (CSP eval fix + 1,984-control a11y
+//       id sweep) and PR #894 (warrants self-clear fix) both merged AFTER v702
+//       was already deployed, and #893's web-UI conflict resolution kept v702 —
+//       so clients holding the v702 cache would never pull the merged bundle
+//       (the <meta> CSP fix that unblocks eval, the form-field ids, the warrant
+//       fix). Bump forces every client onto the current code.
+// v704: Phase 4+5 — (4) Dispatch Here gains "Assign nearest available unit"
+//       (auto-assigns closest unit via /dispatch/calls/:id/auto-assign after
+//       create; no-op until units on duty). (5) Activity choropleth gains a
+//       Calls/Incidents data source — Incidents source bins RMS incident
+//       points over the geography (fetched on demand). Map <-> Fleet/Dispatch/RMS.
+// v705 — Unit subsystem audit (PR #896): (1) live-sync — revive the dead
+//        'unit_update' WS channel by re-fanning dispatch_update unit actions +
+//        new Worker broadcasts on status/assign/unassign/dispatch/create/update/
+//        delete/GPS. (2) 19-bug audit — align UnitStatus to the 7 live-DB
+//        statuses (removed 'on_patrol', which the units CHECK rejects); board
+//        Assignment column (current_call_number alias); out_of_service sort +
+//        sentinel-status LED fallback; unitRecommendation hasGps sentinel/zero
+//        coercion; map nav-cursor heading arrow + speed via units.gps_heading/
+//        gps_speed (migration 0065). Worker: PUT /units allowlist, dead
 //        /units/assign-unit removed, assign/dispatch prior-call cleanup +
 //        call-status + last_status_change, aggregates 'busy' committed count.
-// v701 — Unit subsystem live-sync: revive the dead 'unit_update' WS channel by
-//        re-fanning dispatch_update unit actions + Worker unit broadcasts.
-const CACHE_NAME = 'rmpg-flex-v702';
+const CACHE_NAME = 'rmpg-flex-v705';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

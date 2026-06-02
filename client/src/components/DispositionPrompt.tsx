@@ -115,7 +115,7 @@ function DispositionPrompt({
 
       <div className="flex items-center gap-2">
         {/* 44: Focus ring on select input matching design system */}
-        <select
+        <select id="ff-dispositionprompt-0"
           value={selected}
           onChange={(e) => setSelected(e.target.value)}
           className="flex-1 bg-surface-base border border-rmpg-600 text-white text-[10px] px-2 py-1 font-mono focus:border-amber-500 focus:ring-1 focus:ring-amber-500/30 focus:outline-none transition-colors"
@@ -150,7 +150,7 @@ function DispositionPrompt({
 
       {/* Create Incident Report checkbox — Spillman Flex call promotion */}
       <label className="flex items-center gap-1.5 mt-2 cursor-pointer group">
-        <input
+        <input id="ff-dispositionprompt-1"
           type="checkbox"
           checked={createIncident}
           onChange={(e) => setCreateIncident(e.target.checked)}

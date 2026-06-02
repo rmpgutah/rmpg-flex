@@ -106,7 +106,7 @@ export default function BackupCodesDisplay({ codes, onAcknowledge }: Props) {
       {/* Acknowledge checkbox + button */}
       <div className="pt-2" style={{ borderTop: '1px solid #2b2b2b' }}>
         <label className="flex items-center gap-2 cursor-pointer mb-3">
-          <input
+          <input id="ff-backupcodesdisplay-0"
             type="checkbox"
             checked={acknowledged}
             onChange={(e) => setAcknowledged(e.target.checked)}

@@ -484,7 +484,7 @@ export default function ServeRoutePlanner({
             {officers && officers.length > 0 && (
               <div className="flex items-center gap-1.5 ml-3 pl-3 border-l border-[#2b2b2b]">
                 <User size={12} className="text-rmpg-400" />
-                <select
+                <select id="ff-serverouteplanner-0"
                   value={selectedOfficerId || ''}
                   onChange={e => { setSelectedOfficerId(Number(e.target.value)); setSavedRouteLoaded(false); }}
                   className="px-2 py-0.5 text-[11px] bg-[#0c0c0c] border border-[#2b2b2b] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"

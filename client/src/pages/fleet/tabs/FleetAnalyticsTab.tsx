@@ -1097,7 +1097,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
           <h4 className="text-[9px] text-[#d4a017] uppercase font-bold tracking-wider flex items-center gap-1.5">
             <Heart className="w-3 h-3" /> Vehicle Health Scores
           </h4>
-          <select
+          <select id="ff-fleetanalyticstab-0"
             value={healthSort}
             onChange={(e) => setHealthSort(e.target.value as 'score' | 'number' | 'age')}
             className="text-[9px] bg-[#0c0c0c] border border-[#2b2b2b] rounded-[2px] text-rmpg-300 px-2 py-1 font-mono"

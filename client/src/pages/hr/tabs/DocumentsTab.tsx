@@ -89,9 +89,9 @@ export default function DocumentsTab({ userRole }: { userRole: string }) {
         <div className="flex items-center gap-2">
           <div className="relative">
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500 pointer-events-none" aria-hidden="true" />
-            <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Search documents..." aria-label="Search HR documents by name, category, or officer" className="input-field text-xs py-1 pl-6 pr-2 w-48 focus:ring-1 focus:ring-brand-500/50 transition-shadow duration-150" />
+            <input id="ff-documentstab-0" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Search documents..." aria-label="Search HR documents by name, category, or officer" className="input-field text-xs py-1 pl-6 pr-2 w-48 focus:ring-1 focus:ring-brand-500/50 transition-shadow duration-150" />
           </div>
-          <select value={filterCat} onChange={e => setFilterCat(e.target.value)} className="input-field text-xs py-1 px-2">
+          <select id="ff-documentstab-1" value={filterCat} onChange={e => setFilterCat(e.target.value)} className="input-field text-xs py-1 px-2">
             <option value="all">All Categories</option>
             {CATEGORIES.map(c => <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>)}
           </select>
@@ -104,11 +104,11 @@ export default function DocumentsTab({ userRole }: { userRole: string }) {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="field-label">Title *</label>
-              <input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} className="input-field w-full text-xs" placeholder="Document title" maxLength={200} />
+              <input id="ff-documentstab-2" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} className="input-field w-full text-xs" placeholder="Document title" maxLength={200} />
             </div>
             <div>
               <label className="field-label">Category</label>
-              <select value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))} className="input-field w-full text-xs">
+              <select id="ff-documentstab-3" value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))} className="input-field w-full text-xs">
                 {CATEGORIES.map(c => <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>)}
               </select>
             </div>

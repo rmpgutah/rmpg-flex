@@ -798,7 +798,7 @@ export default function PersonFormModal({
           {/* ID Image Upload */}
           <div className="border-t border-rmpg-600 pt-3 mt-3">
             <label className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-2 block">ID Photo / Image</label>
-            <input
+            <input id="ff-personformmodal-0"
               ref={fileInputRef}
               type="file"
               accept="image/*"

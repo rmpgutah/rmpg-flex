@@ -258,7 +258,7 @@ export default function FileAttachments({
             }
           `}
         >
-          <input
+          <input id="ff-fileattachments-0"
             ref={fileInputRef}
             type="file"
             multiple

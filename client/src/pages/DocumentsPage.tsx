@@ -262,7 +262,7 @@ export default function DocumentsPage() {
           {uploading ? <Loader2 style={{ width: 10, height: 10 }} className="animate-spin" /> : <Upload style={{ width: 10, height: 10 }} />}
           {uploading ? 'Uploading...' : 'Upload Files'}
         </button>
-        <input ref={uploadInputRef} type="file" multiple className="hidden"
+        <input id="ff-documentspage-0" ref={uploadInputRef} type="file" multiple className="hidden"
           onChange={e => { if (e.target.files) handleFileUpload(e.target.files); e.target.value = ''; }} />
         {isAdmin && (
           <button type="button" onClick={() => setShowNewFolder(true)} className="toolbar-btn">
@@ -290,7 +290,7 @@ export default function DocumentsPage() {
       <div className="px-4 py-2 border-b border-rmpg-700">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400 pointer-events-none" />
-          <input type="text" className="input-dark pl-9 w-full text-[11px]" placeholder="Search folders and files..."
+          <input id="ff-documentspage-1" type="text" className="input-dark pl-9 w-full text-[11px]" placeholder="Search folders and files..."
             value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
           {searchQuery && (
             <button type="button" onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-400 hover:text-white">
@@ -540,7 +540,7 @@ export default function DocumentsPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
           <div className="panel-surface w-full max-w-sm mx-4 p-4 space-y-3">
             <h3 className="text-xs font-bold text-white uppercase">New Folder</h3>
-            <input type="text" className="input-dark text-xs w-full" placeholder="Folder name..."
+            <input id="ff-documentspage-2" type="text" className="input-dark text-xs w-full" placeholder="Folder name..."
               value={newFolderName} onChange={e => setNewFolderName(e.target.value)} autoFocus
               onKeyDown={e => { if (e.key === 'Enter') createFolder(); if (e.key === 'Escape') setShowNewFolder(false); }} />
             <div className="flex justify-end gap-2">
@@ -556,7 +556,7 @@ export default function DocumentsPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
           <div className="panel-surface w-full max-w-sm mx-4 p-4 space-y-3">
             <h3 className="text-xs font-bold text-white uppercase">Rename Folder</h3>
-            <input type="text" className="input-dark text-xs w-full" value={renameValue} onChange={e => setRenameValue(e.target.value)} autoFocus
+            <input id="ff-documentspage-3" type="text" className="input-dark text-xs w-full" value={renameValue} onChange={e => setRenameValue(e.target.value)} autoFocus
               onKeyDown={e => { if (e.key === 'Enter') renameFolder(); if (e.key === 'Escape') setRenamingFolder(null); }} />
             <div className="flex justify-end gap-2">
               <button type="button" onClick={() => setRenamingFolder(null)} className="toolbar-btn">Cancel</button>

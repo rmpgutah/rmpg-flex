@@ -171,7 +171,7 @@ export default function PersonIntelPanel() {
         <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
           <div>
             <label className="text-[9px] uppercase text-rmpg-400 font-bold">First Name *</label>
-            <input
+            <input id="ff-personintelpanel-0"
               type="text"
               className="input-dark w-full text-sm"
               value={firstName}
@@ -182,7 +182,7 @@ export default function PersonIntelPanel() {
           </div>
           <div>
             <label className="text-[9px] uppercase text-rmpg-400 font-bold">Last Name *</label>
-            <input
+            <input id="ff-personintelpanel-1"
               type="text"
               className="input-dark w-full text-sm"
               value={lastName}
@@ -193,7 +193,7 @@ export default function PersonIntelPanel() {
           </div>
           <div>
             <label className="text-[9px] uppercase text-rmpg-400 font-bold">DOB (optional)</label>
-            <input
+            <input id="ff-personintelpanel-2"
               type="date"
               className="input-dark w-full text-sm"
               value={dob}
@@ -397,7 +397,7 @@ export default function PersonIntelPanel() {
       <div className="mt-4 pt-4 border-t border-rmpg-600">
         <div className="text-xs font-bold text-rmpg-300 uppercase mb-2">Alias / AKA Search</div>
         <div className="flex gap-2">
-          <input
+          <input id="ff-personintelpanel-3"
             type="text"
             className="input-dark flex-1 text-xs"
             placeholder="Search by alias, nickname, AKA..."

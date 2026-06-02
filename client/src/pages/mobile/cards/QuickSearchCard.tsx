@@ -106,7 +106,7 @@ export default function QuickSearchCard() {
 
       <form onSubmit={handleSubmit} className="flex gap-2">
         <div className="relative flex-1">
-          <input
+          <input id="ff-quicksearchcard-0"
             type="search"
             inputMode="search"
             autoComplete="off"

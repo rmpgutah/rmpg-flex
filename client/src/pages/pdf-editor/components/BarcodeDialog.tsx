@@ -115,7 +115,7 @@ export default function BarcodeDialog({ open, onClose, onConfirm }: Props) {
           <div className="space-y-2">
             <div>
               <label className="text-[9px] uppercase tracking-wider text-rmpg-500 block mb-1">Format</label>
-              <select value={format} onChange={(e) => setFormat(e.target.value as BarcodeFormat)}
+              <select id="ff-barcodedialog-0" value={format} onChange={(e) => setFormat(e.target.value as BarcodeFormat)}
                 className="w-full bg-[#0a0a0a] border border-[#222] text-xs text-white px-2 py-1.5 rounded-sm focus:outline-none focus:border-[#d4a017]">
                 {FORMATS.map((f) => (
                   <option key={f.value} value={f.value}>{f.label} — {f.hint}</option>
@@ -126,7 +126,7 @@ export default function BarcodeDialog({ open, onClose, onConfirm }: Props) {
               <label className="text-[9px] uppercase tracking-wider text-rmpg-500 block mb-1">
                 {format === 'qrcode' ? 'Text or URL' : 'Value'}
               </label>
-              <input
+              <input id="ff-barcodedialog-1"
                 type="text"
                 value={value}
                 onChange={(e) => setValue(e.target.value)}
@@ -143,7 +143,7 @@ export default function BarcodeDialog({ open, onClose, onConfirm }: Props) {
             {format === 'qrcode' && (
               <div>
                 <label className="text-[9px] uppercase tracking-wider text-rmpg-500 block mb-1">Error correction</label>
-                <select value={errorCorrection} onChange={(e) => setErrorCorrection(e.target.value as typeof errorCorrection)}
+                <select id="ff-barcodedialog-2" value={errorCorrection} onChange={(e) => setErrorCorrection(e.target.value as typeof errorCorrection)}
                   className="w-full bg-[#0a0a0a] border border-[#222] text-xs text-white px-2 py-1.5 rounded-sm focus:outline-none focus:border-[#d4a017]">
                   <option value="L">Low (~7%) — densest</option>
                   <option value="M">Medium (~15%) — recommended</option>
@@ -154,7 +154,7 @@ export default function BarcodeDialog({ open, onClose, onConfirm }: Props) {
             )}
             {format !== 'qrcode' && (
               <label className="inline-flex items-center gap-2 text-[10px] text-rmpg-300">
-                <input type="checkbox" checked={showLabel} onChange={(e) => setShowLabel(e.target.checked)} />
+                <input id="ff-barcodedialog-3" type="checkbox" checked={showLabel} onChange={(e) => setShowLabel(e.target.checked)} />
                 Show readable text below
               </label>
             )}

@@ -131,7 +131,7 @@ export default function ForcePasswordChangeModal() {
             <div>
               <label className="field-label">Current Password <span className="text-red-500">*</span></label>
               <div className="relative">
-                <input
+                <input id="ff-forcepasswordchangemodal-0"
                   type={showCurrentPw ? 'text' : 'password'}
                   value={currentPassword}
                   onChange={e => setCurrentPassword(e.target.value)}
@@ -157,7 +157,7 @@ export default function ForcePasswordChangeModal() {
             <div>
               <label className="field-label">New Password <span className="text-red-500">*</span></label>
               <div className="relative">
-                <input
+                <input id="ff-forcepasswordchangemodal-1"
                   type={showNewPw ? 'text' : 'password'}
                   value={newPassword}
                   onChange={e => setNewPassword(e.target.value)}
@@ -181,7 +181,7 @@ export default function ForcePasswordChangeModal() {
             {/* Confirm Password */}
             <div>
               <label className="field-label">Confirm New Password <span className="text-red-500">*</span></label>
-              <input
+              <input id="ff-forcepasswordchangemodal-2"
                 type="password"
                 value={confirmPassword}
                 onChange={e => setConfirmPassword(e.target.value)}

@@ -217,7 +217,7 @@ export default function AdminUsersTab({
         <div className="px-4 py-3 flex items-center justify-between border-b border-[#242424] flex-shrink-0 bg-surface-sunken">
           <div className="relative w-64">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400" aria-hidden="true" />
-            <input
+            <input id="ff-adminuserstab-0"
               type="text"
               className="input-dark pl-9 text-xs min-h-[36px]"
               placeholder="Search users..." aria-label="Search users"
@@ -580,7 +580,7 @@ export default function AdminUsersTab({
                   </div>
                   {roleEditing && (
                     <div className="mt-3 flex items-center gap-2">
-                      <select
+                      <select id="ff-adminuserstab-1"
                         className="input-dark text-xs flex-1 min-h-[36px]"
                         value={pendingRole || selectedUser.role}
                         onChange={(e) => setPendingRole(e.target.value as UserRole)}

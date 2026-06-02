@@ -86,20 +86,20 @@ export default function AssetsPage() {
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Asset Tag <span className="text-red-500">*</span></label>
-                  <input className="input-dark mt-1" value={formData.asset_tag || ''} onChange={e => setFormData({...formData, asset_tag: e.target.value})} autoFocus /></div>
+                  <input id="ff-assetspage-0" className="input-dark mt-1" value={formData.asset_tag || ''} onChange={e => setFormData({...formData, asset_tag: e.target.value})} autoFocus /></div>
                 <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Type</label>
-                  <select className="select-dark mt-1" value={formData.asset_type || 'other'} onChange={e => setFormData({...formData, asset_type: e.target.value})}>
+                  <select id="ff-assetspage-1" className="select-dark mt-1" value={formData.asset_type || 'other'} onChange={e => setFormData({...formData, asset_type: e.target.value})}>
                     {['weapon','body_camera','radio','taser','computer','vehicle_accessory','uniform','ppe','k9_equipment','other'].map(t=><option key={t} value={t}>{t}</option>)}
                   </select></div>
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Make</label><input className="input-dark mt-1" value={formData.make || ''} onChange={e => setFormData({...formData, make: e.target.value})} /></div>
-                <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Model</label><input className="input-dark mt-1" value={formData.model || ''} onChange={e => setFormData({...formData, model: e.target.value})} /></div>
+                <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Make</label><input id="ff-assetspage-2" className="input-dark mt-1" value={formData.make || ''} onChange={e => setFormData({...formData, make: e.target.value})} /></div>
+                <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Model</label><input id="ff-assetspage-3" className="input-dark mt-1" value={formData.model || ''} onChange={e => setFormData({...formData, model: e.target.value})} /></div>
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Serial #</label><input className="input-dark mt-1" value={formData.serial_number || ''} onChange={e => setFormData({...formData, serial_number: e.target.value})} /></div>
+                <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Serial #</label><input id="ff-assetspage-4" className="input-dark mt-1" value={formData.serial_number || ''} onChange={e => setFormData({...formData, serial_number: e.target.value})} /></div>
                 <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Status</label>
-                  <select className="select-dark mt-1" value={formData.status || 'available'} onChange={e => setFormData({...formData, status: e.target.value})}>
+                  <select id="ff-assetspage-5" className="select-dark mt-1" value={formData.status || 'available'} onChange={e => setFormData({...formData, status: e.target.value})}>
                     {['available','issued','maintenance','retired','lost'].map(s=><option key={s} value={s}>{s}</option>)}
                   </select></div>
               </div>

@@ -107,7 +107,7 @@ export default function TimeEntryEditModal({
       <div className="panel-inset p-3 space-y-3">
         <div>
           <label className="field-label">Clock In <span className="text-red-400">*</span></label>
-          <input
+          <input id="ff-timeentryeditmodal-0"
             type="datetime-local"
             required
             value={form.clockIn}
@@ -117,7 +117,7 @@ export default function TimeEntryEditModal({
         </div>
         <div>
           <label className="field-label">Clock Out</label>
-          <input
+          <input id="ff-timeentryeditmodal-1"
             type="datetime-local"
             value={form.clockOut}
             onChange={e => setForm(f => ({ ...f, clockOut: e.target.value }))}

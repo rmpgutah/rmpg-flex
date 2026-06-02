@@ -907,7 +907,7 @@ export default function IncidentsPage() {
       <div className="px-4 py-2 border-b border-rmpg-600 flex-shrink-0">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-500 pointer-events-none" />
-          <input
+          <input id="ff-incidentspage-0"
             type="text"
             className={`input-dark pl-9 w-full focus:ring-1 focus:ring-brand-500/50 focus:border-brand-600 transition-shadow ${isMobile ? 'min-h-[44px] text-sm' : ''}`}
             placeholder={showArchived ? "Search archived incidents..." : "Search incidents..."}
@@ -2386,7 +2386,7 @@ export default function IncidentsPage() {
             <div className="p-4 space-y-3">
               <div>
                 <label className="block text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">Action</label>
-                <select
+                <select id="ff-incidentspage-1"
                   value={custodyAction}
                   onChange={(e) => setCustodyAction(e.target.value)}
                   className={`w-full px-2 ${isMobile ? 'py-2.5 text-sm min-h-[44px]' : 'py-1.5 text-xs'} bg-surface-sunken border border-rmpg-600 text-white`}
@@ -2403,7 +2403,7 @@ export default function IncidentsPage() {
               {custodyTransfer.currentLocation && (
                 <div>
                   <label className="block text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">From Location</label>
-                  <input
+                  <input id="ff-incidentspage-2"
                     value={custodyTransfer.currentLocation}
                     readOnly
                     className={`w-full px-2 ${isMobile ? 'py-2.5 text-sm min-h-[44px]' : 'py-1.5 text-xs'} bg-surface-sunken border border-rmpg-700 text-rmpg-400`}
@@ -2413,7 +2413,7 @@ export default function IncidentsPage() {
               )}
               <div>
                 <label className="block text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">To Location</label>
-                <input
+                <input id="ff-incidentspage-3"
                   value={custodyToLocation}
                   onChange={(e) => setCustodyToLocation(e.target.value)}
                   placeholder="Evidence room, lab, officer name..."

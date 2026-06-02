@@ -922,7 +922,7 @@ export default function ReportsPage() {
       {!isMobile && <PanelTitleBar title="REPORTS & ANALYTICS" icon={BarChart3}>
         <div className="flex items-center gap-2">
           <Calendar className="w-3.5 h-3.5 text-rmpg-300" />
-          <select
+          <select id="ff-reportspage-0"
             className="select-dark text-xs w-44"
             value={dateRange}
             onChange={(e) => setDateRange(e.target.value)}
@@ -939,7 +939,7 @@ export default function ReportsPage() {
           </select>
           {dateRange === 'custom' && (
             <div className="flex items-center gap-2 ml-1 pl-2 border-l border-rmpg-700">
-              <input
+              <input id="ff-reportspage-1"
                 type="date"
                 className="input-dark text-xs px-2 py-1 font-mono min-h-[36px]"
                 value={customStartDate}
@@ -947,7 +947,7 @@ export default function ReportsPage() {
                 style={{ colorScheme: 'dark' }}
               />
               <span className="text-rmpg-400 text-[10px] uppercase font-bold tracking-wide">to</span>
-              <input
+              <input id="ff-reportspage-2"
                 type="date"
                 className="input-dark text-xs px-2 py-1 font-mono min-h-[36px]"
                 value={customEndDate}
@@ -1396,7 +1396,7 @@ function PatrolTrackingCard() {
         {/* Unit selector */}
         <div className="flex items-center gap-1.5">
           <label className="text-[10px] text-rmpg-400 font-bold uppercase">Unit:</label>
-          <select
+          <select id="ff-reportspage-3"
             value={unitId}
             onChange={e => setUnitId(e.target.value)}
             className="select-dark text-[10px] w-28"
@@ -1414,7 +1414,7 @@ function PatrolTrackingCard() {
         {mode === 'hours' ? (
           <div className="flex items-center gap-1.5">
             <label className="text-[10px] text-rmpg-400 font-bold uppercase">Hours:</label>
-            <select
+            <select id="ff-reportspage-4"
               value={hours}
               onChange={e => setHours(parseInt(e.target.value, 10))}
               className="select-dark text-[10px] w-20"
@@ -1429,7 +1429,7 @@ function PatrolTrackingCard() {
           <>
             <div className="flex items-center gap-1.5">
               <label className="text-[10px] text-rmpg-400 font-bold uppercase">Start:</label>
-              <input
+              <input id="ff-reportspage-5"
                 type="date"
                 value={startDate}
                 onChange={e => setStartDate(e.target.value)}
@@ -1438,7 +1438,7 @@ function PatrolTrackingCard() {
             </div>
             <div className="flex items-center gap-1.5">
               <label className="text-[10px] text-rmpg-400 font-bold uppercase">End:</label>
-              <input
+              <input id="ff-reportspage-6"
                 type="date"
                 value={endDate}
                 onChange={e => setEndDate(e.target.value)}
@@ -1449,7 +1449,7 @@ function PatrolTrackingCard() {
         )}
 
         <label className="flex items-center gap-1.5 text-[10px] text-rmpg-400 cursor-pointer">
-          <input
+          <input id="ff-reportspage-7"
             type="checkbox"
             checked={includeGeocode}
             onChange={e => setIncludeGeocode(e.target.checked)}

@@ -104,7 +104,7 @@ export default function AICapabilitiesPanel({ config, setConfig, onSaved, setErr
               </div>
 
               {/* Provider override */}
-              <select
+              <select id="ff-aicapabilitiespanel-0"
                 value={override}
                 onChange={e => updateRouting(feat.key, e.target.value)}
                 className="bg-[#0b0b0b] border border-[#1c1c1c] text-white text-[10px] rounded px-2 py-1 focus:border-brand-500 focus:outline-none shrink-0"
