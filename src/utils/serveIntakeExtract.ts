@@ -736,6 +736,12 @@ export interface QueueRow {
   deadline: string | null;
   service_instructions: string | null;
   notes: string | null;
+  // Case parties + hearing date. These were extracted but previously dropped on
+  // commit; serve_queue has dedicated columns (plaintiff_name / defendant_name /
+  // court_date) the client PDF + court-records views already read.
+  plaintiff: string | null;
+  defendant: string | null;
+  court_date: string | null;
 }
 
 export function fieldsToQueueRow(fields: Record<string, ExtractedField>): QueueRow {
@@ -770,5 +776,9 @@ export function fieldsToQueueRow(fields: Record<string, ExtractedField>): QueueR
     deadline: normalizeDeadline(get('service_deadline') || ''),
     service_instructions: get('service_instructions'),
     notes: get('service_windows'),
+    plaintiff: get('plaintiff'),
+    defendant: get('defendant'),
+    // hearing date → court_date; only a real calendar date (same guard as deadline).
+    court_date: normalizeDeadline(get('hearing_date') || ''),
   };
 }
