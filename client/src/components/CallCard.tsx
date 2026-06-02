@@ -12,6 +12,7 @@ import { humanizePriority, getStatusTooltip, formatAddressDisplay } from '../uti
 // them as browser-local and skews every elapsed/age calc by the offset.
 import { parseTimestamp } from '../utils/dateUtils';
 import { callPosture } from '../utils/callThreat';
+import { sectionZoneBeatCombined } from '../utils/dispatchCodeParts';
 import { BADGE_TONES } from './records/recordVisuals';
 
 // Feature 15: Call Source Icons
@@ -486,14 +487,22 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
               {call.client_name || (call as any).pso_requestor_name}
             </div>
           )}
-          {/* Police-format geography: zone › beat names (the dispatch CODE is
-              already badged at top, so surface the human zone/beat context the
-              code alone doesn't convey). Zero extra requests — these fields ride
-              on the call record via LIST_VIEW_COLUMNS. */}
-          {/* Dispatch geography on the card is the SHORT CODE only (the
-              dispatch_code badge in the header, e.g. "SLA-A2"). The verbose
-              Section › Zone › Beat full-name line was removed — full names are
-              presented on the Map UI, not on dispatch call surfaces. */}
+          {/* Dispatch geography on the card is the SHORT CODE only — the
+              Section/Zone/Beat chart code (e.g. "SL1/HER/A1") via the parser,
+              NOT the long Area›Section›Zone›Beat names (those live on the Map UI
+              "What's Here"). Hidden when it would merely echo the dispatch_code
+              badge already shown in the header. Zero extra requests — the
+              sector/zone/beat ids ride on the call via LIST_VIEW_COLUMNS. */}
+          {(() => {
+            const szb = sectionZoneBeatCombined(call.sector_id, call.zone_id, call.beat_id);
+            if (!szb || szb === call.dispatch_code) return null;
+            return (
+              <div className="text-[9px] text-rmpg-400 truncate flex items-center gap-0.5 font-mono" title="Section / Zone / Beat (short code)">
+                <MapPin className="w-2.5 h-2.5 flex-shrink-0 text-rmpg-500" />
+                {szb}
+              </div>
+            );
+          })()}
         </div>
       </div>
 

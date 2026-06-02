@@ -7,6 +7,7 @@
 
 import { parseTimestamp } from './dateUtils';
 import { toDisplayLabel } from './formatters';
+import { DISPOSITION_DESCRIPTION_BY_CODE } from '../constants/dispositionCodes';
 
 // ── Call Status Labels ────────────────────────────────
 export const CALL_STATUS_LABELS: Record<string, string> = {
@@ -224,30 +225,31 @@ export const CASE_TYPE_LABELS: Record<string, string> = {
 };
 
 // ── Disposition Code Labels ───────────────────────────
+// Derives from the single source of truth (constants/dispositionCodes) so the
+// short-code chart and its descriptions never drift. Legacy codes (kept below)
+// remain mapped so dispositions already stored on historical calls still
+// humanize. New chart codes win on any key overlap. Values are description-only
+// (humanizeDisposition prepends/handles the code where needed).
 export const DISPOSITION_LABELS: Record<string, string> = {
-  'PS/05': 'PS/05 — Personal Service Completed',
-  'PS/06': 'PS/06 — Sub-Service Completed',
-  'NS/01': 'NS/01 — Not Served — Unable to Locate',
-  'NS/02': 'NS/02 — Not Served — Bad Address',
-  'NS/03': 'NS/03 — Not Served — Evading Service',
-  'NS/04': 'NS/04 — Not Served — Other',
-  'ADV': 'ADV — Advised / Information Given',
-  'ARR': 'ARR — Arrest Made',
-  'CIT': 'CIT — Citation Issued',
-  'GOA': 'GOA — Gone on Arrival',
-  'UTL': 'UTL — Unable to Locate',
-  'RPT': 'RPT — Report Taken',
-  'REF': 'REF — Referred to Other Agency',
-  'UNF': 'UNF — Unfounded',
-  'WAR': 'WAR — Warrant Issued',
-  'CLR': 'CLR — Cleared',
-  'CSL': 'CSL — Civil Standby',
-  'TPW': 'TPW — Trespass Warning Issued',
-  'FIA': 'FIA — Field Interview / Advisory',
-  'AST': 'AST — Assist Other Agency',
-  'MED': 'MED — Medical Transport / Aid',
-  'CAN': 'CAN — Cancelled',
-  'DUP': 'DUP — Duplicate Call',
+  // ── Legacy / historical codes (pre short-code chart) ──
+  'PS/05': 'Personal Service Completed',
+  'PS/06': 'Sub-Service Completed',
+  'NS/01': 'Not Served — Unable to Locate',
+  'NS/02': 'Not Served — Bad Address',
+  'NS/03': 'Not Served — Evading Service',
+  'NS/04': 'Not Served — Other',
+  'ADV': 'Advised / Information Given',
+  'RPT': 'Report Taken',
+  'WAR': 'Warrant Issued',
+  'CLR': 'Cleared',
+  'CSL': 'Civil Standby',
+  'TPW': 'Trespass Warning Issued',
+  'FIA': 'Field Interview / Advisory',
+  'MED': 'Medical Transport / Aid',
+  'CAN': 'Cancelled',
+  'DUP': 'Duplicate Call',
+  // ── Current short-code chart (canonical) ──
+  ...DISPOSITION_DESCRIPTION_BY_CODE,
 };
 
 // ── Solvability Factor Labels ─────────────────────────

@@ -17,6 +17,10 @@ export type Bindings = {
   // /updates/* routes. Contains .exe, .dmg, .apk, .zip, .blockmap, .yml.
   DOWNLOADS: R2Bucket;
   JWT_SECRET: string;
+  // Optional dedicated Ed25519 signing seed (base64 of 32 raw seed bytes) for
+  // PDF chain-of-custody signatures. When unset, /pdf-tools/sign-payload derives
+  // a stable seed from JWT_SECRET so signing still works (see pdfTools.ts).
+  PDF_SIGNING_KEY?: string;
   CORS_ORIGINS?: string;
   PRIMARY_DOMAIN?: string;
   // Mapbox access token (secret, optional). When set, the Worker can call

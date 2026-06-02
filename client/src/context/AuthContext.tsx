@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import type { User } from '../types';
 import { resetVoiceState } from '../utils/voiceAlerts';
+import { refreshAccessToken, onAuthEvent } from '../utils/tokenRefresh';
 
 export type LoginStep =
   | 'username'
@@ -217,74 +218,42 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (isRefreshingRef.current) return;
       isRefreshingRef.current = true;
 
-      try {
-        const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
-        if (!refreshToken) {
-          // No refresh token — force logout
-          isRefreshingRef.current = false;
-          clearTokens();
-          setToken(null);
-          setUser(null);
-          return;
-        }
+      // Delegate to the shared, cross-tab-coordinated refresher. It owns the
+      // /refresh request (single in-flight across all tabs via Web Locks),
+      // token persistence, and the cross-tab `token`/`logout` broadcast. This
+      // eliminates the rotation race that used to log officers out mid-shift:
+      // the worker rotates the refresh token on every call, and a background
+      // apiFetch refresh used to race this scheduled one — the loser got a 401
+      // and force-logged-out. See utils/tokenRefresh.ts.
+      const newToken = await refreshAccessToken();
 
-        // The live /api/auth/refresh is served by the legacy worker, which
-        // looks up `sessions WHERE session_id = ? AND refresh_token_hash = ?`.
-        // Omitting sessionId makes that WHERE clause match zero rows → 401 on
-        // every refresh → forced re-login every ~15 min mid-shift. Send it.
-        // (refresh_token spelling kept for the /src/ worker should it ever serve this.)
-        const sessionId = localStorage.getItem(SESSION_ID_KEY);
-        const res = await fetchWithTimeout('/api/auth/refresh', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-          body: JSON.stringify({ refreshToken, refresh_token: refreshToken, sessionId }),
-        });
+      if (newToken) {
+        // Shared module already persisted + broadcast; sync local React state.
+        setToken(newToken);
+        refreshFailCountRef.current = 0; // reset backoff on success
+        isRefreshingRef.current = false;
+        scheduleRefresh(newToken);
+        return;
+      }
 
-        if (res.ok) {
-          const data = await res.json();
-          safeSetItem(TOKEN_KEY, data.token);
-          safeSetItem(REFRESH_TOKEN_KEY, data.refreshToken);
-          setToken(data.token);
-          refreshFailCountRef.current = 0; // reset backoff on success
-          scheduleRefresh(data.token);
-        } else {
-          // Refresh failed — only force logout if we're online
-          // (when offline in Electron, keep the cached user session alive)
-          if (electron?.getOfflineState) {
-            try {
-              const state = await electron.getOfflineState();
-              if (!state.isOnline) {
-                // Offline — don't force logout, retry with backoff
-                refreshFailCountRef.current++;
-                const backoff = Math.min(Math.pow(2, refreshFailCountRef.current) * 1000, 30000);
-                refreshTimerRef.current = setTimeout(() => {
-                  isRefreshingRef.current = false;
-                  const ct = localStorage.getItem(TOKEN_KEY);
-                  if (ct) scheduleRefresh(ct);
-                }, backoff);
-                return;
-              }
-            } catch (err) { console.warn('[Auth] Token refresh retry failed:', err); /* fall through to logout */ }
-          }
-          clearTokens();
-          setToken(null);
-          setUser(null);
-        }
-      } catch (err) {
-        console.warn('[Auth] Token refresh failed, retrying with backoff:', err);
-        // Network/timeout error — retry with exponential backoff (1s, 2s, 4s, ... max 30s)
+      // No token returned. Two cases:
+      //  (a) Auth was cleared (genuine 401/403 while online) — the shared
+      //      module emitted a `logout` event; our onAuthEvent subscription
+      //      below tears down user state. Nothing to do here.
+      //  (b) Transient failure (offline / network / timeout / 5xx) — the token
+      //      is still in storage. Reschedule on it with exponential backoff so
+      //      a flaky-cellular blip doesn't end the shift.
+      const current = localStorage.getItem(TOKEN_KEY);
+      if (current) {
         refreshFailCountRef.current++;
         const backoff = Math.min(Math.pow(2, refreshFailCountRef.current) * 1000, 30000);
         refreshTimerRef.current = setTimeout(() => {
           isRefreshingRef.current = false;
-          const currentToken = localStorage.getItem(TOKEN_KEY);
-          if (currentToken) scheduleRefresh(currentToken);
+          const ct = localStorage.getItem(TOKEN_KEY);
+          if (ct) scheduleRefresh(ct);
         }, backoff);
-        // Note: isRefreshingRef stays true until the backoff timer fires,
-        // preventing duplicate concurrent refresh attempts during retry.
         return;
       }
-      // Only clear the flag when we're NOT scheduling a retry
       isRefreshingRef.current = false;
     }, refreshIn);
   }, []);
@@ -298,6 +267,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       refreshTimerRef.current = null;
     }
   }
+
+  // Mirror of the latest access token, so the cross-tab subscription below can
+  // cheaply skip events that merely echo this tab's own refresh.
+  const lastTokenRef = useRef(token);
+  useEffect(() => { lastTokenRef.current = token; }, [token]);
+
+  // ─── Cross-tab auth sync ────────────────────────────────────
+  // The shared refresher (utils/tokenRefresh.ts) emits an event whenever the
+  // access token is rotated or auth is cleared — in THIS tab or any other.
+  // Adopt those so a refresh performed by one tab (or a logout) is reflected
+  // everywhere, instead of each tab independently re-refreshing (and racing the
+  // worker's single-use rotation into a 401).
+  useEffect(() => {
+    const unsubscribe = onAuthEvent((e) => {
+      if (e.type === 'token') {
+        if (e.token && e.token !== lastTokenRef.current) {
+          lastTokenRef.current = e.token;
+          refreshFailCountRef.current = 0;
+          setToken(e.token);
+          scheduleRefresh(e.token); // reschedule on the freshly-rotated token's expiry
+        }
+      } else if (e.type === 'logout') {
+        if (lastTokenRef.current !== null) {
+          lastTokenRef.current = null;
+          clearTokens();
+          setToken(null);
+          setUser(null);
+        }
+      }
+    });
+    return unsubscribe;
+  }, [scheduleRefresh]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Monotonically-increasing "generation" counter.
   // Every time login/logout/mount kicks off an async load we bump this.
@@ -343,34 +344,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setUser(data.user || data);
           scheduleRefresh(token);
         } else if (res.status === 401) {
-          // Token expired — try refresh
-          const refreshToken = localStorage.getItem(REFRESH_TOKEN_KEY);
-          if (refreshToken) {
-            // legacy refresh requires sessionId in the WHERE clause (see the
-            // scheduled-refresh path above) — without it this 401s on boot
-            // and logs the user straight back out.
-            const sessionId = localStorage.getItem(SESSION_ID_KEY);
-            const refreshRes = await fetchWithTimeout('/api/auth/refresh', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-              body: JSON.stringify({ refreshToken, refresh_token: refreshToken, sessionId }),
-            });
+          // Access token expired on boot — refresh via the shared, cross-tab
+          // coordinated refresher (same single in-flight /refresh the scheduled
+          // path uses, so a returning multi-tab device can't race itself out).
+          const newToken = await refreshAccessToken();
 
-            if (gen !== generationRef.current) return; // stale
+          if (gen !== generationRef.current) return; // stale
 
-            if (refreshRes.ok) {
-              const data = await refreshRes.json();
-              safeSetItem(TOKEN_KEY, data.token);
-              safeSetItem(REFRESH_TOKEN_KEY, data.refreshToken);
-              setToken(data.token);
-              // setToken will re-trigger this effect — new generation will handle it
-              return;
-            } else {
-              clearTokens();
-              setToken(null);
-              setUser(null);
-            }
-          } else {
+          if (newToken) {
+            setToken(newToken);
+            // setToken re-triggers this effect — a new generation handles it.
+            return;
+          }
+          // Refresh returned null. If auth was genuinely cleared, the shared
+          // module emitted a `logout` event (handled by the subscription
+          // below) and TOKEN_KEY is gone → reflect logout. If a token is still
+          // present it was a transient failure; keep the optimistic user and
+          // let the scheduled refresh recover.
+          if (!localStorage.getItem(TOKEN_KEY)) {
             clearTokens();
             setToken(null);
             setUser(null);

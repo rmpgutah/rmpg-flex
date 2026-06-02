@@ -467,31 +467,12 @@ callWarnings.get('/:id/warnings', requireRole(...READ_ROLES), async (c) => {
       } catch { /* premise_alerts may not exist in dev */ }
     }
 
-    // ── Linked persons (call_persons AND incident_persons) ──
-    // Dispatch links people straight to the call via call_persons (callLinks.ts);
-    // reading only incident_persons missed every directly-linked subject (and
-    // their warrants) until an incident was generated. Union both sources.
-    try {
-      const linkedPersons = await query<any>(db, `
-        SELECT p.first_name, p.last_name
-        FROM persons p
-        WHERE p.id IN (
-          SELECT cp.person_id FROM call_persons cp WHERE cp.call_id = ?
-          UNION
-          SELECT ip.person_id FROM incident_persons ip JOIN incidents i ON ip.incident_id = i.id WHERE i.call_id = ?
-        )
-        LIMIT 100`, id, id);
-      // The lean persons table may not have caution_flags / is_sex_offender / etc.
-      // columns yet; surface presence as a soft hint only.
-      if (linkedPersons.length > 0) {
-        warnings.push({
-          type: 'LINKED_PERSONS',
-          label: `${linkedPersons.length} LINKED PERSON${linkedPersons.length !== 1 ? 'S' : ''}`,
-          severity: 'medium',
-          source: 'linked to call',
-        });
-      }
-    } catch { /* incidents may not be linked yet */ }
+    // NOTE: we intentionally do NOT raise a generic "N linked persons" caution.
+    // Merely linking a person to a call is not an officer-safety hazard, and a
+    // soft "linked person" banner is noise on every routine call. The ONLY
+    // person-derived caution is an ACTIVE WARRANT (below) — a real danger.
+    // (If/when the persons table carries caution_flags / RSO / gang / violent
+    // columns, add flag-specific warnings here — never a bare link count.)
 
     // ── Active warrants for any linked person ──
     try {

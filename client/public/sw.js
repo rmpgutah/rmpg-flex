@@ -376,12 +376,15 @@
 //       now populated (was hardcoded []). Also: fuel-report PDF now includes
 //       an Odometer column per fill (was missing entirely; reads
 //       odometer_reading ?? raw odometer).
-// v716: live-sweep 404/500/400 fixes — route shift-plans/notifications-inbox/
-//       use-of-force/invoices-stats/documents-folders/command-center/
-//       auth-security/evidence-stats+locations to the rewrite; fix tasks/stats
-//       Hono route ordering, billing cl.client_name column, add iped/jobs;
-//       honest stubs for driving-events/web-research/jail-roster/national-
-//       coverage/company-documents.
+// v716: Dispatch dispositions are now SHORT-CODED (detailed but terse) —
+//       general patrol dispositions use mnemonics (RTF/GOA/ARR/CIT…), process-
+//       service CFS use PS/### in increments of 5 (anchored on the live
+//       PS/055=Personal/Individual). Selection dropdowns show "CODE — Description";
+//       output surfaces show the CODE only (description on hover) with a chart
+//       color badge. Full 39-code chart seeded to system_config. Also restored
+//       A/S/Z/B as a SHORT-code Section/Zone/Beat chip (e.g. "SL1/HER/A1") on the
+//       CFS card + detail — long Area›Section›Zone›Beat NAMES remain strictly on
+//       the Map UI ("What's Here").
 const CACHE_NAME = 'rmpg-flex-v716';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
@@ -508,6 +511,16 @@ self.addEventListener('fetch', (event) => {
           if (cached) return cached;
           return fetch(event.request)
             .then((response) => {
+              // Poison guard: a deploy-removed chunk hash can come back as a
+              // 200 text/html SPA fallback (index.html). NEVER cache or return
+              // HTML for a JS/CSS request — that produces the "Expected a
+              // JavaScript-or-Wasm module … MIME type text/html" execution
+              // error and, if cached, persists it. Surface a 404 so the
+              // dynamic import rejects and lazyRetry reloads the fresh bundle.
+              const ct = response.headers.get('Content-Type') || '';
+              if (ct.includes('text/html')) {
+                return new Response('', { status: 404, statusText: 'Stale chunk (HTML fallback)' });
+              }
               if (response.ok) {
                 const clone = response.clone();
                 caches.open(CACHE_NAME).then((cache) => {
@@ -527,6 +540,14 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       fetch(event.request)
         .then((response) => {
+          // Same poison guard as the hashed branch — never cache/return HTML
+          // for a JS/CSS request (see v716 note).
+          const ct = response.headers.get('Content-Type') || '';
+          if (ct.includes('text/html')) {
+            return caches.match(event.request).then(
+              (cached) => cached || new Response('', { status: 404, statusText: 'Stale chunk (HTML fallback)' })
+            );
+          }
           if (response.ok) {
             const clone = response.clone();
             caches.open(CACHE_NAME).then((cache) => {

@@ -783,8 +783,9 @@ const API_ROUTES: RouteRule[] = [
   // /api/tts now synthesizes real audio via Workers AI (@cf/myshell-ai/melotts,
   // src/routes/tts.ts) and returns audio/mpeg the client decodes directly; on
   // any synth failure it returns 503 so the client falls back to browser
-  // SpeechSynthesis. /pdf-tools/sign-payload still returns 503 from the rewrite
-  // (configurable in a follow-up). Routing both to env.API.
+  // SpeechSynthesis. /pdf-tools/sign-payload now returns a real Ed25519
+  // signature from the rewrite (key derived from PDF_SIGNING_KEY or JWT_SECRET).
+  // Routing both to env.API.
   { kind: 'prefix', value: '/api/tts' },
   { kind: 'prefix', value: '/api/pdf-tools/sign-payload' },
 
