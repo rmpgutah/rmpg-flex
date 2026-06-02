@@ -319,7 +319,13 @@
 //       sessions (rmpg_map_collapsed_sections). Lets the operator keep the
 //       panel compact alongside the already-collapsible Map Style / Spatial
 //       Layers / Statewide Data / Advanced Tools sections.
-const CACHE_NAME = 'rmpg-flex-v707';
+// v708: Statewide data visual upgrade — (1) address points now color-coded by
+//       structure/property type (Residential/Commercial/Industrial/Agricultural/
+//       Mixed/Other via PtType); (2) roads keep class color codes (+ Ramp);
+//       (3) both ALWAYS load — gates lowered to the archive min zoom (roads z6,
+//       addresses z10) so they no longer vanish when zoomed out; legends
+//       updated. Click still populates full point detail.
+const CACHE_NAME = 'rmpg-flex-v708';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
