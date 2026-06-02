@@ -1,5 +1,10 @@
 name: Array Guard Check
 
+# Least-privilege GITHUB_TOKEN: this workflow only checks out code and runs a
+# static node script — it needs read access and nothing else.
+permissions:
+  contents: read
+
 on:
   pull_request:
     paths:
