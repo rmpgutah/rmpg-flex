@@ -330,6 +330,11 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
         const distance: number = route.distance;      // meters
         const geometry = route.geometry;              // GeoJSON LineString
         const coords: [number, number][] = geometry?.coordinates ?? [];
+        // A degenerate route (<2 points) can't form a line; rendering it would
+        // build a stop-less Mapbox `line-gradient` step expr and throw on
+        // addLayer. Bail before any source/layer work — the caller treats null
+        // as "no route".
+        if (coords.length < 2) return null;
 
         // Cumulative distance at each coordinate (for progress + gradient).
         const cum: number[] = [0];

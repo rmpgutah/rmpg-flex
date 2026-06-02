@@ -85,37 +85,46 @@ export function useMapboxResponseTime(map: mapboxgl.Map | null) {
       };
     });
 
-    m.addSource(SOURCE_ID, {
-      type: 'geojson',
-      data: { type: 'FeatureCollection', features },
-    });
-
-    // Fill layer with response time color ramp
-    m.addLayer({
-      id: FILL_LAYER_ID,
-      type: 'fill',
-      source: SOURCE_ID,
-      paint: {
-        'fill-color': ['interpolate', ['linear'], ['to-number', ['get', 'avg_response'], 99],
-          ...RESPONSE_COLORS.flatMap(([t, c]) => [t, c]),
-        ],
-        'fill-opacity': ['case',
-          ['has', 'avg_response'], 0.4,
-          0.05,
-        ],
-      },
-    });
-
-    // Outline
-    m.addLayer({
-      id: LINE_LAYER_ID,
-      type: 'line',
-      source: SOURCE_ID,
-      paint: {
-        'line-color': '#555555',
-        'line-width': 0.8,
-        'line-opacity': 0.4,
-      },
+    // Only the map mutations wait for style-ready. The 9 MB beat.geojson fetch
+    // above already completed, so nothing is awaited inside this guard — the
+    // bug was the OLD *outer* whenStyleReady (at the call site) wrapping the
+    // whole async fn, so a basemap switch / unmount during the fetch left
+    // addSource hitting an unready style ("Style is not done loading"). Re-check
+    // visibility in case the overlay was toggled off while the style loaded, and
+    // make source/layer adds idempotent so a re-render can't throw.
+    whenStyleReady(m, () => {
+      if (!visibleRef.current) return;
+      try {
+        const src = m.getSource(SOURCE_ID) as mapboxgl.GeoJSONSource | undefined;
+        if (src) {
+          src.setData({ type: 'FeatureCollection', features } as any);
+        } else {
+          m.addSource(SOURCE_ID, { type: 'geojson', data: { type: 'FeatureCollection', features } });
+        }
+        if (!m.getLayer(FILL_LAYER_ID)) {
+          m.addLayer({
+            id: FILL_LAYER_ID,
+            type: 'fill',
+            source: SOURCE_ID,
+            paint: {
+              'fill-color': ['interpolate', ['linear'], ['to-number', ['get', 'avg_response'], 99],
+                ...RESPONSE_COLORS.flatMap(([t, c]) => [t, c]),
+              ],
+              'fill-opacity': ['case', ['has', 'avg_response'], 0.4, 0.05],
+            },
+          });
+        }
+        if (!m.getLayer(LINE_LAYER_ID)) {
+          m.addLayer({
+            id: LINE_LAYER_ID,
+            type: 'line',
+            source: SOURCE_ID,
+            paint: { 'line-color': '#555555', 'line-width': 0.8, 'line-opacity': 0.4 },
+          });
+        }
+      } catch (e) {
+        console.warn('[useMapboxResponseTime] layer add failed:', (e as Error)?.message);
+      }
     });
   }, [clearFromMap]);
 
@@ -128,7 +137,10 @@ export function useMapboxResponseTime(map: mapboxgl.Map | null) {
       );
       const b = data?.beats || [];
       setBeats(b);
-      whenStyleReady(map, () => { void renderOnMap(b, map); });
+      // renderOnMap fetches first, then guards its OWN addSource/addLayer with
+      // whenStyleReady — no outer guard (it would wrap the async fetch and race
+      // the style). See the comment in renderOnMap.
+      void renderOnMap(b, map);
     } catch (err) {
       console.warn('[useMapboxResponseTime] fetch failed:', err);
     } finally {

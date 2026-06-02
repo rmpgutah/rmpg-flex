@@ -549,29 +549,53 @@ export class VoiceHubDO {
     // the R2 object by it so the serve route stays a pure id→key map. MP3
     // bytes under the .webm key replay fine (the client decodes by sniffing).
     const durationSec = estimateSpeechSeconds(replyText);
-    const res = await execute(
-      db,
-      `INSERT INTO radio_transmissions (channel_id, user_id, unit_label, transmitted_at, duration_seconds, transcript, tags)
-       VALUES (?, NULL, ?, datetime('now'), ?, ?, ?)`,
-      this.refId, settings.ai_dispatch_callsign || DISPATCH_CALLSIGN, durationSec, replyText,
-      `ai:${intent}${actionIntent ? `;${actionIntent}` : ''}${safetyTag ? `;${safetyTag}` : ''}`,
-    );
-    const dispId = Number(res.meta.last_row_id);
-    await this.env.UPLOADS.put(`radio-audio/${dispId}.webm`, audioBytes, {
-      httpMetadata: { contentType: 'audio/mpeg' },
-    });
-    await execute(
-      db, 'UPDATE radio_transmissions SET audio_url = ? WHERE id = ?',
-      `/api/radio/transmissions/${dispId}/audio`, dispId,
-    );
-
-    const row = await queryFirst(
-      db,
-      `SELECT t.*, ch.name AS channel_name, NULL AS user_name
-       FROM radio_transmissions t LEFT JOIN radio_channels ch ON ch.id = t.channel_id
-       WHERE t.id = ?`,
-      dispId,
-    );
+    // Persist (INSERT → R2 → audio_url UPDATE → re-read) is best-effort: if any
+    // step throws we MUST still broadcast the synthesized reply, or the channel
+    // hears silence — the one thing this function promises never to do. The
+    // inline `audio` field below plays regardless of the backing row, and the
+    // client's dispatch_speak handler already tolerates a null/rowless
+    // transmission (useVoiceChannel.ts: `if (msg.transmission)` + optional chaining).
+    let row: unknown = null;
+    try {
+      const res = await execute(
+        db,
+        `INSERT INTO radio_transmissions (channel_id, user_id, unit_label, transmitted_at, duration_seconds, transcript, tags)
+         VALUES (?, NULL, ?, datetime('now'), ?, ?, ?)`,
+        this.refId, settings.ai_dispatch_callsign || DISPATCH_CALLSIGN, durationSec, replyText,
+        `ai:${intent}${actionIntent ? `;${actionIntent}` : ''}${safetyTag ? `;${safetyTag}` : ''}`,
+      );
+      const dispId = Number(res.meta.last_row_id);
+      // D1 can omit last_row_id → NaN → an orphaned 'radio-audio/NaN.webm'. Treat
+      // it as a persist failure so we fall into the unpersisted-broadcast path.
+      if (!Number.isFinite(dispId)) throw new Error('dispatch transmission INSERT returned no last_row_id');
+      // Per-call .catch so a flaky R2 / UPDATE can't drop the broadcast once the
+      // row is minted — the live audio still plays even if replay-by-URL 404s.
+      await this.env.UPLOADS.put(`radio-audio/${dispId}.webm`, audioBytes, {
+        httpMetadata: { contentType: 'audio/mpeg' },
+      }).catch((e) => console.warn('[VoiceHubDO] dispatch audio R2 put failed:', (e as Error)?.message));
+      await execute(
+        db, 'UPDATE radio_transmissions SET audio_url = ? WHERE id = ?',
+        `/api/radio/transmissions/${dispId}/audio`, dispId,
+      ).catch((e) => console.warn('[VoiceHubDO] dispatch audio_url UPDATE failed:', (e as Error)?.message));
+      row = await queryFirst(
+        db,
+        `SELECT t.*, ch.name AS channel_name, NULL AS user_name
+         FROM radio_transmissions t LEFT JOIN radio_channels ch ON ch.id = t.channel_id
+         WHERE t.id = ?`,
+        dispId,
+      );
+    } catch (err) {
+      console.error('[VoiceHubDO] dispatch persist failed; broadcasting unpersisted reply:', (err as Error)?.message);
+      // Synthetic rowless transmission — the feed still shows the line; the
+      // inline base64 audio in the broadcast is what actually plays.
+      row = {
+        id: null, channel_id: this.refId,
+        unit_label: settings.ai_dispatch_callsign || DISPATCH_CALLSIGN,
+        transmitted_at: new Date().toISOString(), duration_seconds: durationSec,
+        transcript: replyText, audio_url: null,
+        tags: `ai:${intent}`, channel_name: null, user_name: null,
+      };
+    }
 
     // 6. Broadcast. dispatch_speak carries the inline reply audio so every
     // listener plays it immediately through the P25 radio-haze chain; it

@@ -28,6 +28,19 @@ const PDF_TOOLS_NAME = 'shared';
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;
 const INTAKE_ROLES = ['admin', 'manager', 'supervisor', 'dispatcher', 'officer'];
 
+// Per-call timeout ceilings — mirror serveIntake.ts so the in-page preview
+// path can't hang forever on a stalled Vision/PDF/LLM call (the "stuck on
+// upload" failure mode the commit pipeline already guards against). The
+// catch block below turns a thrown timeout into a clean HTTP 500.
+const AI_TIMEOUT_MS = 35_000;
+const CONTAINER_TIMEOUT_MS = 12_000;
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error(label)), ms)),
+  ]);
+}
+
 ocr.post('/scan-document', async (c) => {
   const user = c.get('user') as { id: number; role: string } | undefined;
   if (!user || !INTAKE_ROLES.includes(user.role)) {
@@ -48,7 +61,7 @@ ocr.post('/scan-document', async (c) => {
   try {
     if (file.type.startsWith('image/')) {
       const bytes = new Uint8Array(await file.arrayBuffer());
-      const r = await extractFromImage(c.env.AI, bytes);
+      const r = await withTimeout(extractFromImage(c.env.AI, bytes), AI_TIMEOUT_MS, 'Vision OCR timed out');
       return c.json({
         success: r.success, documentType: r.documentType, confidence: r.confidence,
         fields: r.fields, rawText: r.rawText, allDates: r.allDates,
@@ -59,8 +72,8 @@ ocr.post('/scan-document', async (c) => {
     if (file.type === 'application/pdf') {
       const bytes = new Uint8Array(await file.arrayBuffer());
       const container = getContainer(c.env.PDF_TOOLS, PDF_TOOLS_NAME);
-      const txt = await extractTextFromPdf(container, bytes, file.name || 'doc.pdf');
-      const r = await extractFromText(c.env.AI, txt.text);
+      const txt = await withTimeout(extractTextFromPdf(container, bytes, file.name || 'doc.pdf'), CONTAINER_TIMEOUT_MS, 'PDF text extraction timed out');
+      const r = await withTimeout(extractFromText(c.env.AI, txt.text), AI_TIMEOUT_MS, 'Text extraction timed out');
       return c.json({
         success: r.success, documentType: r.documentType, confidence: r.confidence,
         fields: r.fields, rawText: r.rawText, allDates: r.allDates,

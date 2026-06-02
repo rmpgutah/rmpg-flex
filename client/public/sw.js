@@ -148,7 +148,13 @@
 //       Server side (same push): dispatch call DELETE now unlinks non-cascading
 //       FK refs before deleting (was 500), and /api/hr/dashboard has a real
 //       handler (was 404).
-const CACHE_NAME = 'rmpg-flex-v676';
+// v677: audit DO-FIRST map hardening — useMapboxResponseTime moves the 9MB
+//       beat.geojson fetch BEFORE the style-ready guard and wraps only the
+//       addSource/addLayer (idempotent) so a basemap switch mid-fetch can't
+//       throw "Style is not done loading"; useMapRouting bails on <2-coord
+//       routes before building a degenerate line-gradient. (Worker side same
+//       push: OCR/AI-dispatch timeout guards + VoiceHubDO never-silence broadcast.)
+const CACHE_NAME = 'rmpg-flex-v677';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
