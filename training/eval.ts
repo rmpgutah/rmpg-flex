@@ -50,17 +50,34 @@ const EXACT_DATES = new Set<TargetField>([
 const EXACT_ID = new Set<TargetField>(['case_number']);
 //  ENUM — closed vocab; lowercase exact ('business' !== 'person').
 const ENUM = new Set<TargetField>(['recipient_type', 'document_type']);
-//  Everything else (names, city, court_name, plaintiff, defendant, address,
-//    instructions…) is free text where OCR/casing/punctuation noise is NOT a
-//    real error — so we match case-insensitively on collapsed, de-punctuated
-//    text. This avoids punishing a LoRA that's actually right ("Holladay" vs
-//    "holladay,"). It is intentionally NOT a fuzzy/Levenshtein match: a wrong
-//    NAME should still count as wrong, just not a wrong CASE.
+//  CONTAINS — long institutional / multi-word fields where a subset OR superset
+//    still counts as "read correctly." A court name legitimately appears as
+//    "Third Judicial District Court" or "…Court, State of Utah - Matheson"; a
+//    plaintiff as "Capital One, N.A." or its full "…successor by merger…" form.
+//    Penalizing those as wrong would understate a LoRA that's actually right.
+//    Guarded (shorter side ≥ 2 significant tokens) so a stray fragment can't
+//    match — a genuinely WRONG name is neither a subset nor a superset.
+const CONTAINS = new Set<TargetField>([
+  'court_name', 'plaintiff', 'defendant', 'client_name', 'attorney_name',
+  'recipient_business_name', 'documents_to_serve',
+]);
+//  Everything else (split names, city, address…) is free text where OCR/casing/
+//    punctuation noise is NOT a real error — match case-insensitively on
+//    collapsed, de-punctuated text. Intentionally NOT fuzzy/Levenshtein: a
+//    wrong NAME still counts as wrong, just not a wrong CASE.
 
 const digits = (s: string) => s.replace(/\D/g, '');
 const alnum = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, '');
 // collapse case, punctuation runs, and whitespace for fair text comparison.
 const norm = (s: string) => s.toLowerCase().replace(/[.,/#!$%^&*;:{}=_`~()'-]/g, ' ').replace(/\s+/g, ' ').trim();
+// substring-containment match for CONTAINS fields, with a min-token guard.
+function containsMatch(e: string, p: string): boolean {
+  const ne = norm(e), np = norm(p);
+  if (ne === np) return true;
+  const [short, long] = ne.length <= np.length ? [ne, np] : [np, ne];
+  const sigToks = short.split(' ').filter((t) => t.length > 1).length;
+  return sigToks >= 2 && long.includes(short);
+}
 
 export function scoreField(
   field: TargetField,
@@ -80,6 +97,7 @@ export function scoreField(
   else if (EXACT_DATES.has(field)) match = e === p;            // already ISO-normalized
   else if (EXACT_ID.has(field)) match = alnum(e) === alnum(p);
   else if (ENUM.has(field)) match = e.toLowerCase() === p.toLowerCase();
+  else if (CONTAINS.has(field)) match = containsMatch(e, p);   // subset/superset OK
   else match = norm(e) === norm(p);                            // free text
 
   return match ? 'correct' : 'wrong';
