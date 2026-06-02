@@ -5,6 +5,16 @@ import { fireRule, type NotificationRuleRow } from './notificationEngine';
 
 const admin = new Hono<Env>();
 
+// Admin mutations are reachable by any authenticated user once authMiddleware
+// passes (it verifies the JWT but does NOT enforce a role). Gate the writes to
+// admin + manager — the same inline-helper pattern used across the route layer
+// (arrests.ts, training.ts, radio.ts, …). Reads stay open to all signed-in users.
+function requireRole(c: { get: (k: 'user') => { role: string } | undefined }, ...roles: string[]): string | null {
+  const u = c.get('user');
+  if (!u || !roles.includes(u.role)) return 'Insufficient role';
+  return null;
+}
+
 // GET /admin/config
 // Returns flat key/value map from system_config + the structured
 // `dispositions` array DispatchPage and DispositionPrompt expect.
@@ -260,6 +270,8 @@ admin.get('/departments', async (c) => {
 });
 
 admin.post('/departments', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
   try {
     const db = getDb(c.env);
     const b = await c.req.json<Record<string, unknown>>();
@@ -279,6 +291,8 @@ admin.post('/departments', async (c) => {
 });
 
 admin.put('/departments/:id', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
@@ -296,6 +310,8 @@ admin.put('/departments/:id', async (c) => {
 });
 
 admin.delete('/departments/:id', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
@@ -323,6 +339,8 @@ admin.get('/announcements/all', async (c) => {
 });
 
 admin.post('/announcements', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
   try {
     const db = getDb(c.env);
     const u = c.get('user');
@@ -345,6 +363,8 @@ admin.post('/announcements', async (c) => {
 });
 
 admin.put('/announcements/:id', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
@@ -360,6 +380,8 @@ admin.put('/announcements/:id', async (c) => {
 });
 
 admin.delete('/announcements/:id', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
@@ -385,6 +407,8 @@ admin.get('/notification-rules', async (c) => {
 });
 
 admin.post('/notification-rules', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
   try {
     const db = getDb(c.env);
     const u = c.get('user');
@@ -411,6 +435,8 @@ admin.post('/notification-rules', async (c) => {
 });
 
 admin.put('/notification-rules/:id', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
@@ -426,6 +452,8 @@ admin.put('/notification-rules/:id', async (c) => {
 });
 
 admin.delete('/notification-rules/:id', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
@@ -440,6 +468,8 @@ admin.delete('/notification-rules/:id', async (c) => {
 // POST /notification-rules/:id/test — fan a [TEST] notification to the
 // rule's real targets so the admin can confirm delivery end-to-end.
 admin.post('/notification-rules/:id/test', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
@@ -477,6 +507,8 @@ admin.get('/maintenance-mode', async (c) => {
 });
 
 admin.put('/maintenance-mode', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
   try {
     const db = getDb(c.env);
     const b = await c.req.json<Record<string, unknown>>();
