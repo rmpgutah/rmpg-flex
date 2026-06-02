@@ -291,9 +291,13 @@
 //       was already deployed, and #893's web-UI conflict resolution kept v702 —
 //       so clients holding the v702 cache would never pull the merged bundle
 //       (the <meta> CSP fix that unblocks eval, the form-field ids, the warrant
-//       fix). Bump forces every client onto the current code. No code change
-//       here beyond the version string.
-const CACHE_NAME = 'rmpg-flex-v703';
+//       fix). Bump forces every client onto the current code.
+// v704: Phase 4+5 — (4) Dispatch Here gains "Assign nearest available unit"
+//       (auto-assigns closest unit via /dispatch/calls/:id/auto-assign after
+//       create; no-op until units on duty). (5) Activity choropleth gains a
+//       Calls/Incidents data source — Incidents source bins RMS incident
+//       points over the geography (fetched on demand). Map <-> Fleet/Dispatch/RMS.
+const CACHE_NAME = 'rmpg-flex-v704';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

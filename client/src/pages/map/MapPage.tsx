@@ -363,6 +363,7 @@ export default function MapPage() {
   const [dispatchIncidentType, setDispatchIncidentType] = useState('');
   const [dispatchPriority, setDispatchPriority] = useState('P3');
   const [dispatchBusy, setDispatchBusy] = useState(false);
+  const [autoAssignNearest, setAutoAssignNearest] = useState(false);
 
   // Clean up address search/dismiss timers on unmount
   useEffect(() => {
@@ -471,12 +472,28 @@ export default function MapPage() {
   const [showAdvTools, setShowAdvTools] = useState(false);
   const [whatsHereActive, setWhatsHereActive] = usePersistedState<boolean>('rmpg_whatshere', false);
   const [choroLevel, setChoroLevel] = usePersistedState<ChoroLevel | null>('rmpg_choro_level', null);
+  const [choroSource, setChoroSource] = usePersistedState<'calls' | 'incidents'>('rmpg_choro_source', 'calls');
+  const [incidentPoints, setIncidentPoints] = useState<{ latitude: number | null; longitude: number | null }[]>([]);
   const [measureMode, setMeasureMode] = useState<MeasureMode>(null);
   const [overlayOpacity, setOverlayOpacity] = usePersistedState<number>('rmpg_overlay_opacity', 1);
   const [hierLegend, setHierLegend] = useState<{ label: string; color: string }[]>([]);
 
   useWhatsHere({ map: mapInstanceRef.current, popup: infoWindowRef.current, active: whatsHereActive });
-  const { choroLegend } = useActivityChoropleth({ map: mapInstanceRef.current, calls, level: choroLevel });
+  const { choroLegend } = useActivityChoropleth({
+    map: mapInstanceRef.current,
+    calls: choroSource === 'incidents' ? incidentPoints : calls,
+    level: choroLevel,
+  });
+  // RMS source fetch: load incident points (with coords) when the choropleth
+  // is set to the Incidents source. Calls come from the live queue already.
+  useEffect(() => {
+    if (!choroLevel || choroSource !== 'incidents') return;
+    let cancelled = false;
+    apiFetch<{ latitude: number | null; longitude: number | null }[]>('/incidents?days=365&limit=1000')
+      .then((rows) => { if (!cancelled) setIncidentPoints(Array.isArray(rows) ? rows : []); })
+      .catch(() => { if (!cancelled) setIncidentPoints([]); });
+    return () => { cancelled = true; };
+  }, [choroLevel, choroSource]);
   const { measureResult, clearMeasure } = useMapMeasureDraw({ map: mapInstanceRef.current, mode: measureMode });
 
   // Layer-visibility memory: persist which Statewide / hierarchy layers are on
@@ -2909,7 +2926,7 @@ export default function MapPage() {
     if (!incident) return;
     setDispatchBusy(true);
     try {
-      await apiFetch('/dispatch/calls', {
+      const created = await apiFetch<{ id?: number }>('/dispatch/calls', {
         method: 'POST',
         body: JSON.stringify({
           incident_type: incident,
@@ -2920,6 +2937,19 @@ export default function MapPage() {
         }),
       });
       addToast(`Call created at ${selectedAddr.label.split(',')[0]}`, 'success');
+
+      // Optionally assign the nearest available unit by drive distance.
+      if (autoAssignNearest && created?.id) {
+        try {
+          await apiFetch(`/dispatch/calls/${created.id}/auto-assign`, { method: 'POST', body: '{}' });
+          addToast('Nearest available unit assigned', 'success');
+          await fetchUnits();
+        } catch (assignErr: any) {
+          // No units on duty / no GPS — informational, not a failure.
+          addToast(assignErr?.message || 'No nearby unit available to assign', 'info');
+        }
+      }
+
       setShowDispatchHere(false);
       setDispatchIncidentType('');
       await fetchCalls();
@@ -2928,7 +2958,7 @@ export default function MapPage() {
     } finally {
       setDispatchBusy(false);
     }
-  }, [selectedAddr, dispatchIncidentType, dispatchPriority, dispatchBusy, addToast, fetchCalls]);
+  }, [selectedAddr, dispatchIncidentType, dispatchPriority, dispatchBusy, autoAssignNearest, addToast, fetchCalls, fetchUnits]);
 
   // ============================================================
   // Keyboard Shortcuts for Map
@@ -3289,6 +3319,16 @@ export default function MapPage() {
                           >{p}</button>
                         ))}
                       </div>
+                      <button
+                        type="button"
+                        onClick={() => setAutoAssignNearest((v) => !v)}
+                        className="w-full flex items-center gap-1.5 px-1 py-0.5 text-[9px] text-rmpg-300 hover:text-white transition-colors"
+                      >
+                        <div className="w-3 h-3 shrink-0 flex items-center justify-center rounded-sm" style={{ border: '1px solid #d4a017', background: autoAssignNearest ? '#d4a017' : 'transparent' }}>
+                          {autoAssignNearest && <span style={{ fontSize: 8, color: '#0a0a0a', lineHeight: 1 }}>✓</span>}
+                        </div>
+                        Assign nearest available unit
+                      </button>
                       <button
                         onClick={createCallHere}
                         disabled={dispatchBusy || !dispatchIncidentType.trim()}
@@ -4092,7 +4132,19 @@ export default function MapPage() {
                   {/* Activity choropleth */}
                   <div>
                     <div className="px-2 text-[8px] font-semibold uppercase tracking-wider text-[#d4a017] flex items-center gap-1">
-                      <Gauge className="w-2.5 h-2.5" /> Call Activity
+                      <Gauge className="w-2.5 h-2.5" /> Activity Choropleth
+                    </div>
+                    {/* Data source: live Calls (queue) or Incidents (RMS) */}
+                    <div className="flex gap-0.5 px-2 mt-0.5">
+                      {(['calls', 'incidents'] as const).map((s) => (
+                        <button
+                          key={s}
+                          onClick={() => setChoroSource(s)}
+                          className={`flex-1 px-1 py-0.5 text-[8px] uppercase rounded-sm transition-colors ${
+                            choroSource === s ? 'bg-rmpg-700/60 text-brand-300' : 'text-rmpg-500 hover:bg-rmpg-800/50'
+                          }`}
+                        >{s}</button>
+                      ))}
                     </div>
                     <div className="flex gap-0.5 px-2 mt-0.5">
                       {(['off', 'beat', 'zone', 'section', 'area'] as const).map((l) => {
