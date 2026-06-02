@@ -240,7 +240,12 @@
 //       become OUTLINE-ONLY neutral reference lines lifted above the
 //       coverage (fills killed). Boundary lines + level labels z-ordered on
 //       top of the fills.
-const CACHE_NAME = 'rmpg-flex-v693';
+// v694: A/S/Z/B no longer pop in/out while zooming — removed the minzoom
+//       gating on the Area/Section/Zone coverage fills + labels and dropped
+//       Beat's minZoom (the useGeoJsonLayers zoomend handler kept hiding it
+//       below z10). Once selected they stay visible at every zoom. Removed
+//       the now-inaccurate z7+/z8+/z9+ badges from the Police Geography rows.
+const CACHE_NAME = 'rmpg-flex-v694';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

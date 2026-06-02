@@ -147,7 +147,8 @@ export function useDistrictHierarchyLayers({ map, popup }: Opts) {
             id: fillLayer(id),
             type: 'fill',
             source: SRC_FILL,
-            minzoom: cfg.minzoom,
+            // No minzoom — once selected, A/S/Z/B coverage stays visible at
+            // every zoom (operator: must not pop in/out while zooming).
             layout: { visibility: 'none' },
             paint: { 'fill-color': ['get', f.color] as any, 'fill-opacity': 0.18 },
           });
@@ -170,7 +171,7 @@ export function useDistrictHierarchyLayers({ map, popup }: Opts) {
                 id: labelLayer(id),
                 type: 'symbol',
                 source: dissolveSrc(id),
-                minzoom: cfg.minzoom,
+                // No minzoom — label rides with its coverage at all zooms.
                 layout: {
                   visibility: 'none',
                   'text-field': ['get', '_name'] as any,
