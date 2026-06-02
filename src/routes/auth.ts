@@ -504,31 +504,13 @@ auth.put('/profile', authMiddleware, async (c) => {
 // sessions.is_active/expires_at), so unlike the login/refresh handlers above
 // they run correctly on the rewrite. Routed to env.API in proxy/index.ts.
 
-// GET /auth/profile-image — current user's profile photo (data URL) or null.
-auth.get('/profile-image', authMiddleware, async (c) => {
-  const db = getDb(c.env);
-  const row = await queryFirst<{ profile_image: string | null }>(
-    db,
-    'SELECT profile_image FROM users WHERE id = ?',
-    c.get('userId'),
-  );
-  return c.json({ profile_image: row?.profile_image ?? null });
-});
-
-// PUT /auth/profile-image — set or clear the photo. Body: { profile_image: string | null }.
-// The client sends a 256×256 JPEG data URL (~tens of KB) or null to remove.
-auth.put('/profile-image', authMiddleware, async (c) => {
-  try {
-    const db = getDb(c.env);
-    const { profile_image } = await c.req.json<{ profile_image?: string | null }>();
-    const value = typeof profile_image === 'string' && profile_image.length > 0 ? profile_image : null;
-    await execute(db, 'UPDATE users SET profile_image = ? WHERE id = ?', value, c.get('userId'));
-    return c.json({ success: true, profile_image: value });
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    return c.json({ error: 'Failed to save profile image', detail: msg }, 500);
-  }
-});
+// NOTE: GET/PUT /auth/profile-image are defined ONCE, further below (search
+// "own the base64-data-URL contract"). An earlier un-validated duplicate lived
+// here and — because Hono runs the FIRST-registered handler for a duplicate
+// path — shadowed the validating pair, so the data-URL format check + ~1.5MB
+// size cap never ran (any authenticated user could write an unbounded blob to
+// users.profile_image). Removed; the canonical validated handlers below are the
+// only ones now.
 
 // GET /auth/sessions — active login sessions for the current user. The Sessions
 // tab reads session_id / ip_address / user_agent / last_used_at|created_at and
