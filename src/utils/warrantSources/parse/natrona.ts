@@ -153,6 +153,15 @@ export function parseNatrona(html: string): RawWarrantHit[] {
       let warrantId = `natrona:${slug(last)}-${slug(first)}-${age == null ? '' : age}`;
       // Guarantee uniqueness within this parse: if two distinct people collide
       // on name+age, append the row index. Rare; keeps the framework invariant.
+      // TODO(phase-2): the row-index suffix is POSITION-dependent, so the 2nd+
+      // member of a genuine name+age collision can get a different id if the
+      // upstream (paginated, unordered) listview reorders between scans —
+      // scraped_warrants keys its first_seen/last_seen lifecycle on warrant_id,
+      // so that row would re-insert as "new" and the prior id read as "cleared".
+      // Only the colliding tail is affected (first occurrence is always stable).
+      // The durable fix is the per-person detail-fetch phase (real source id);
+      // a cheaper order-independent stopgap is to fold race/gender into the
+      // discriminator instead of rowIndex.
       if (seenIds.has(warrantId)) {
         warrantId = `${warrantId}-${rowIndex}`;
       }
