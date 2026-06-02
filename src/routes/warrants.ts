@@ -1015,7 +1015,7 @@ warrants.get('/', requireRole(...ROLES_CRUD_READ), async (c) => {
     const sortMap: Record<string, string> = {
       priority: 'COALESCE(w.priority_score, 0)',
       age: "julianday('now') - julianday(COALESCE(w.issue_date, w.created_at))",
-      freshness: "julianday('now') - julianday(COALESCE(w.last_scraped_at, w.updated_at))",
+      freshness: "julianday('now') - julianday(COALESCE(w.last_checked_at, w.updated_at))",
       alpha: 'w.warrant_number',
       created_at: 'w.created_at',
     };

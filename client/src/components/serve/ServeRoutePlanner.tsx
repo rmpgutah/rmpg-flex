@@ -62,7 +62,14 @@ function timeWindowPriority(tw: ServeJob['time_window']): number {
 }
 
 function priorityWeight(p: ServeJob['priority']): number {
-  switch (p) { case 'rush': return 0; case 'high': return 1; case 'normal': return 2; case 'low': return 3; }
+  // Lower weight sorts first (most urgent). Matches serve_queue priority enum.
+  switch (p) {
+    case 'urgent': return 0;
+    case 'rush': return 1;
+    case 'normal': return 2;
+    case 'routine': return 3;
+    default: return 2;
+  }
 }
 
 // ─── Geographic Clustering for >25 Stops ────────────────────────────────
