@@ -10,8 +10,9 @@
     "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "migrate:local": "wrangler d1 migrations apply rmpg-flex --local",
-    "migrate:prod": "wrangler d1 migrations apply rmpg-flex --remote"
+    "migrate:local": "wrangler d1 execute rmpg-flex --local --file migrations/baseline/schema.sql && wrangler d1 migrations apply rmpg-flex --local",
+    "migrate:prod": "wrangler d1 migrations apply rmpg-flex --remote",
+    "baseline:build": "node scripts/build-baseline.mjs"
   },
   "dependencies": {
     "@cloudflare/containers": "^0.3.6",
