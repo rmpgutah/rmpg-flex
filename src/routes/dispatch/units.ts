@@ -183,6 +183,16 @@ units.post('/:id/dispose', requireRole('admin', 'manager'), async (c) => {
       return c.json({ message: 'Unit retired (out of service)', id, mode: 'retire', unit: updated });
     }
 
+    // D1 enforces foreign keys. Two child tables reference units(id) with no
+    // ON DELETE rule, so any child row makes `DELETE FROM units` fail with a FK
+    // constraint error. Resolve dependents first:
+    //   gps_breadcrumbs.unit_id is NOT NULL  → purge the unit's location trail.
+    //   fleet_assignments.unit_id is nullable → detach (NULL) to keep the
+    //     assignment-history row's call_sign/officer_name text intact.
+    // These must succeed for the DELETE to proceed, so let failures surface to
+    // the outer catch (logged) rather than swallowing them.
+    await execute(db, 'DELETE FROM gps_breadcrumbs WHERE unit_id = ?', id);
+    await execute(db, 'UPDATE fleet_assignments SET unit_id = NULL WHERE unit_id = ?', id);
     await execute(db, 'DELETE FROM units WHERE id = ?', id);
     try { broadcastAll('dispatch_update', { action: 'unit_deleted', unit_id: id }); } catch { /* never break the write */ }
     try {
@@ -192,6 +202,7 @@ units.post('/:id/dispose', requireRole('admin', 'manager'), async (c) => {
     } catch { /* audit is best-effort */ }
     return c.json({ message: 'Unit disposed (deleted)', id, mode: 'delete' });
   } catch (err) {
+    console.error('[dispatch] dispose unit failed:', err);
     return c.json({ error: 'Failed to dispose unit', code: 'UNIT_DISPOSE_ERROR' }, 500);
   }
 });

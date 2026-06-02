@@ -353,7 +353,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
   };
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 space-y-3">
+    <div className="p-4 space-y-3">
 
       {/* Period Filter */}
       <div className="flex items-center gap-1.5">

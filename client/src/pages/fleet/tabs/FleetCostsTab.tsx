@@ -120,7 +120,7 @@ export default function FleetCostsTab({
   const alerts = computeAlerts(insurance, loans, accessories, other);
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 space-y-3">
+    <div className="p-4 space-y-3">
       {/* ── Upcoming-renewals alerts strip (next 60 days) ──────── */}
       {alerts.length > 0 && (
         <div className="panel-beveled p-2 border border-amber-700/30 bg-amber-900/10 space-y-1">

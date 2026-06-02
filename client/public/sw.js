@@ -334,11 +334,30 @@
 //        capabilities (K9/SWAT/Supervisor/FTO/Traffic/Detective/Patrol), audio
 //        mode. Unit create/update/delete/dispose + GET now route to the
 //        rewrite (env.API) so the new fields persist + the hardened handlers run.
-// v710: Connections graph edges now carry a hover tooltip with the full
-//       plain-English link description ("John Smith — Owner of 325 S Melrose
-//       Cir") via shared linkSentence(); widened invisible hit-area so the
-//       thin dashed edge is easy to hover.
-const CACHE_NAME = 'rmpg-flex-v710';
+// v710: FIX — Fleet detail page wouldn't scroll. The vehicle-detail tab panel
+//       (FleetDetailPanel) is a single overflow-y-auto scroller, but 7 of the
+//       tabs (Overview/Fuel/Costs/Inspections/Assignments/Personnel/Analytics)
+//       also declared `flex-1 overflow-y-auto` on their own root — a nested
+//       zero-range scroll container that trapped trackpad gestures and never
+//       chained out to the real scroller. Stripped the redundant inner
+//       overflow so the panel is the single scroll owner for all tabs
+//       (Tires/Damage/Recalls already relied on it). SW bump also clears any
+//       stale cached bundle.
+// v711: Dispatch surfaces (call cards, detail read-view, call PDF) now show
+//       the SHORT dispatch code only (e.g. "SLA-A2"); the full Area/Section/
+//       Zone/Beat names remain on the Map UI (What's Here + hierarchy labels).
+// v712: Advanced GPS navigation — the map directions module gains spoken
+//       turn-by-turn (distance-gated pre-alert + "now" cue), CAD-unique
+//       hazard-ahead alerts (active calls on the path ahead, voice + banner),
+//       arrival detection, audible reroute, a mute toggle, maneuver arrows,
+//       and a "then …" next-maneuver preview. New useNavGuidance hook +
+//       voiceAlerts nav phrases; useMapRouting now exposes route geometry.
+// v713: Map perf — eliminate the ~1–2s main-thread freeze (Chrome
+//       "'setTimeout' handler took ~2000ms") when toggling Area/Section/Zone
+//       layers. The hierarchy labels no longer @turf/dissolve all ~770 beat
+//       polygons (geometry that was never drawn); they now anchor one label
+//       per level on its largest member beat in O(n). Fill coverage unchanged.
+const CACHE_NAME = 'rmpg-flex-v713';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

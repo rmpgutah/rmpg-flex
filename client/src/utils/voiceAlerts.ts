@@ -1429,6 +1429,58 @@ export async function announceLocalAction(actionType: 'call_created' | 'unit_dis
   enqueuePhrases([{ text: detail }]);
 }
 
+// ─── Turn-by-turn navigation voice ──────────────────────────
+// Spoken guidance for the live GPS directions module (useNavGuidance). These
+// gate ONLY on the global voice toggle — the nav banner owns a per-route mute
+// and simply doesn't call these when muted. They do NOT route through
+// isSpeechAvailable() (unlike older alerts) because speakPhrase prefers Edge
+// TTS, which works even where browser SpeechSynthesis is missing. Dedup is the
+// CALLER's responsibility (keyed per maneuver + phase), so these always speak.
+
+type NavTone = 'caution' | 'warning' | 'alarm';
+
+/** Speak the start of a drive: destination, ETA, distance, and traffic state. */
+export async function announceNavStart(
+  dest: string,
+  etaText: string,
+  distanceText: string,
+  congestion?: string,
+): Promise<void> {
+  if (!isVoiceEnabled()) return;
+  await playToneAsync('chirp');
+  const traffic = congestion && congestion !== 'unknown' && congestion !== 'low'
+    ? ` ${congestion} traffic ahead.` : '';
+  enqueuePhrases([{ text: `Starting navigation to ${dest}. ${etaText}, ${distanceText}.${traffic}` }]);
+}
+
+/** Speak one turn-by-turn maneuver. `imminent` uses a sharper tone for "now". */
+export async function announceManeuver(text: string, imminent = false): Promise<void> {
+  if (!isVoiceEnabled()) return;
+  await playToneAsync(imminent ? 'double_chirp' : 'chirp');
+  enqueuePhrases([{ text }]);
+}
+
+/** Officer-safety: an active hazard (call/incident) ahead on the route. */
+export async function announceHazardAhead(text: string, tone: NavTone = 'caution'): Promise<void> {
+  if (!isVoiceEnabled()) return;
+  await playToneAsync(tone);
+  enqueuePhrases([{ text }]);
+}
+
+/** Recalculating after the unit left the route corridor. */
+export async function announceReroute(): Promise<void> {
+  if (!isVoiceEnabled()) return;
+  await playToneAsync('descending');
+  enqueuePhrases([{ text: 'Recalculating route.' }]);
+}
+
+/** Arrival at the navigation destination. */
+export async function announceArrival(dest: string): Promise<void> {
+  if (!isVoiceEnabled()) return;
+  await playToneAsync('dispatch_bell');
+  enqueuePhrases([{ text: `You have arrived${dest ? ` at ${dest}` : ''}.` }]);
+}
+
 // ─── Demo / Test ─────────────────────────────────────────────
 
 /**

@@ -1038,10 +1038,26 @@ export default function DispatchPage() {
     // so this handler was previously dead (the roster never updated live).
     // subscribersRef is a Map<type, Set<handler>>, so this coexists with the
     // call handler above; each ignores the other's actions.
+    // Merge a raw broadcast unit row onto the existing MAPPED unit WITHOUT
+    // corrupting it: spreading the raw row drifted types (officer_id number,
+    // capabilities JSON string) and wiped joined fields the raw row lacks
+    // (officer_name, current_call_number). Coerce the volatile scalars and keep
+    // everything else from the already-mapped unit.
+    const applyUnitPatch = (u: any, raw: any) => ({
+      ...u,
+      id: String(raw.id),
+      status: raw.status ?? u.status,
+      latitude: raw.latitude ?? u.latitude,
+      longitude: raw.longitude ?? u.longitude,
+      officer_id: raw.officer_id != null ? String(raw.officer_id) : u.officer_id,
+      officer_name: raw.officer_name ?? u.officer_name,
+      current_call_id: 'current_call_id' in raw ? (raw.current_call_id != null ? String(raw.current_call_id) : undefined) : u.current_call_id,
+      current_call_number: raw.current_call_number ?? u.current_call_number,
+    });
     const unsubUnit = subscribe('dispatch_update', (msg: any) => {
       const data = msg.data || msg;
       if (data.action === 'unit_status_changed' && data.unit) {
-        setUnits((prev) => prev.map((u) => (String(u.id) === String(data.unit.id) ? { ...u, ...data.unit, id: String(data.unit.id) } : u)));
+        setUnits((prev) => prev.map((u) => (String(u.id) === String(data.unit.id) ? applyUnitPatch(u, data.unit) : u)));
       } else if (data.action === 'unit_position_update' && data.unit) {
         // Update unit position from GPS broadcast. (speed_mph is intentionally
         // NOT stored on the unit — no board UI reads it, and the 7s units poll
@@ -1051,7 +1067,7 @@ export default function DispatchPage() {
           ? { ...u, latitude: data.unit.latitude, longitude: data.unit.longitude }
           : u)));
       } else if (data.action === 'unit_updated' && data.unit) {
-        setUnits((prev) => prev.map((u) => (String(u.id) === String(data.unit.id) ? { ...u, ...data.unit, id: String(data.unit.id) } : u)));
+        setUnits((prev) => prev.map((u) => (String(u.id) === String(data.unit.id) ? applyUnitPatch(u, data.unit) : u)));
       } else if (data.action === 'unit_created' && data.unit) {
         setUnits((prev) => {
           if (prev.some((u) => String(u.id) === String(data.unit.id))) return prev;
@@ -2013,7 +2029,9 @@ export default function DispatchPage() {
     return workload;
   }, [calls]);
 
-  // Feature 14: Disposition statistics for current shift
+  // Feature 14: Disposition statistics (ALL-TIME cleared/closed calls — the
+  // /dispatch/disposition-stats query has no time bound; the "DISPS:" strip is
+  // labeled neutrally, not "shift", to match).
   const [dispositionStats, setDispositionStats] = useState<{disposition: string; count: number}[]>([]);
   useEffect(() => {
     apiFetch<any[]>('/dispatch/disposition-stats')
@@ -4663,28 +4681,11 @@ export default function DispatchPage() {
                             {selectedCall.dispatch_code}
                           </span>
                         )}
-                        {selectedCall.sector_id && (() => {
-                          const area = getArea(selectedCall.sector_id);
-                          return area ? <span className="text-rmpg-200" title="Dispatch Area — top of the geography hierarchy"><span className="text-rmpg-400">Area:</span> {[area.code, area.name].filter(Boolean).join(' — ')}</span> : null;
-                        })()}
-                        {selectedCall.sector_id && (() => {
-                          // Police format: show the Spillman sector code ("SL1"), not the
-                          // numeric dispatch_sectors.id row key. Fall back to the id only
-                          // if the districts lookup hasn't loaded / has no code.
-                          const code = getSectionCode(selectedCall.sector_id) || selectedCall.sector_id;
-                          const name = sectionLabels.get(String(selectedCall.sector_id)) || '';
-                          return <span className="text-rmpg-200" title="Spillman sector code"><span className="text-rmpg-400">Sec:</span> {[code, name].filter(Boolean).join(' — ')}</span>;
-                        })()}
-                        {selectedCall.zone_id && <span className="text-rmpg-200" title="Zone (within sector)"><span className="text-rmpg-400">Zone:</span> {[zoneLeaf(selectedCall.zone_id), zoneLabels.get(selectedCall.zone_id) || ''].filter(Boolean).join(' — ')}</span>}
-                        {selectedCall.beat_id && (() => {
-                          // Show the leaf beat code (e.g. "C", not "SL1-HER/C") prefixed
-                          // to its name. getBeatLabel falls back to the raw code, so guard
-                          // against an "C — C" echo. Lookups stay keyed by the full code.
-                          const code = beatLeaf(selectedCall.beat_id);
-                          const label = getBeatLabel(selectedCall.zone_id || '', selectedCall.beat_id);
-                          const text = label && label !== selectedCall.beat_id ? `${code} — ${label}` : code;
-                          return <span className="text-rmpg-200" title="Beat (within zone)"><span className="text-rmpg-400">Beat:</span> {text}</span>;
-                        })()}
+                        {/* Geography on dispatch surfaces is the SHORT CODE only —
+                            the dispatch_code badge above (e.g. "SLA-A2"). The verbose
+                            Area / Sec / Zone / Beat full-name lines were removed; the
+                            full Area›Section›Zone›Beat names are presented on the Map
+                            UI ("What's Here") instead. */}
                         {selectedCall.latitude != null && selectedCall.longitude != null && (
                           <span className="text-rmpg-400 font-mono text-[9px] tabular-nums select-all">
                             GPS: {Number(selectedCall.latitude).toFixed(5)}, {Number(selectedCall.longitude).toFixed(5)}
