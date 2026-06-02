@@ -131,7 +131,7 @@ export default function EquipmentFormModal({
       <div className="panel-inset p-3 space-y-3">
         <div>
           <label className="field-label">Officer <span className="text-red-400">*</span></label>
-          <select required value={form.officer_id} onChange={e => set('officer_id', e.target.value)} className="select-dark" disabled={mode === 'edit'}>
+          <select id="ff-equipmentformmodal-0" required value={form.officer_id} onChange={e => set('officer_id', e.target.value)} className="select-dark" disabled={mode === 'edit'}>
             <option value="">Select officer...</option>
             {officers.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
           </select>
@@ -139,13 +139,13 @@ export default function EquipmentFormModal({
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="field-label">Equipment Type <span className="text-red-400">*</span></label>
-            <select required value={form.equipment_type} onChange={e => set('equipment_type', e.target.value)} className="select-dark">
+            <select id="ff-equipmentformmodal-1" required value={form.equipment_type} onChange={e => set('equipment_type', e.target.value)} className="select-dark">
               {EQUIPMENT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
             </select>
           </div>
           <div>
             <label className="field-label">Status</label>
-            <select value={form.status} onChange={e => set('status', e.target.value)} className="select-dark">
+            <select id="ff-equipmentformmodal-2" value={form.status} onChange={e => set('status', e.target.value)} className="select-dark">
               {STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
             </select>
           </div>
@@ -161,21 +161,21 @@ export default function EquipmentFormModal({
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="field-label">Make</label>
-            <input type="text" value={form.make} onChange={e => set('make', e.target.value)} placeholder="e.g. Motorola" className="input-dark min-h-[36px]" />
+            <input id="ff-equipmentformmodal-3" type="text" value={form.make} onChange={e => set('make', e.target.value)} placeholder="e.g. Motorola" className="input-dark min-h-[36px]" />
           </div>
           <div>
             <label className="field-label">Model</label>
-            <input type="text" value={form.model} onChange={e => set('model', e.target.value)} placeholder="e.g. APX 8000" className="input-dark min-h-[36px]" />
+            <input id="ff-equipmentformmodal-4" type="text" value={form.model} onChange={e => set('model', e.target.value)} placeholder="e.g. APX 8000" className="input-dark min-h-[36px]" />
           </div>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="field-label">Serial Number</label>
-            <input type="text" value={form.serial_number} onChange={e => set('serial_number', e.target.value)} placeholder="Serial #" className="input-dark min-h-[36px]" />
+            <input id="ff-equipmentformmodal-5" type="text" value={form.serial_number} onChange={e => set('serial_number', e.target.value)} placeholder="Serial #" className="input-dark min-h-[36px]" />
           </div>
           <div>
             <label className="field-label">Asset Tag</label>
-            <input type="text" value={form.asset_tag} onChange={e => set('asset_tag', e.target.value)} placeholder="Asset tag #" className="input-dark min-h-[36px]" />
+            <input id="ff-equipmentformmodal-6" type="text" value={form.asset_tag} onChange={e => set('asset_tag', e.target.value)} placeholder="Asset tag #" className="input-dark min-h-[36px]" />
           </div>
         </div>
       </div>
@@ -189,17 +189,17 @@ export default function EquipmentFormModal({
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
           <div>
             <label className="field-label">Condition</label>
-            <select value={form.condition} onChange={e => set('condition', e.target.value)} className="select-dark">
+            <select id="ff-equipmentformmodal-7" value={form.condition} onChange={e => set('condition', e.target.value)} className="select-dark">
               {CONDITIONS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
             </select>
           </div>
           <div>
             <label className="field-label">Issued Date</label>
-            <input type="date" value={form.issued_date} onChange={e => set('issued_date', e.target.value)} className="input-dark min-h-[36px]" />
+            <input id="ff-equipmentformmodal-8" type="date" value={form.issued_date} onChange={e => set('issued_date', e.target.value)} className="input-dark min-h-[36px]" />
           </div>
           <div>
             <label className="field-label">Returned Date</label>
-            <input
+            <input id="ff-equipmentformmodal-9"
               type="date"
               value={form.returned_date}
               onChange={e => set('returned_date', e.target.value)}

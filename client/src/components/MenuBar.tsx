@@ -1133,7 +1133,7 @@ export default function MenuBar({
             </div>
             <div className="p-4 space-y-3">
               <label className="block text-xs text-rmpg-300">Duration (minutes)</label>
-              <input
+              <input id="ff-menubar-0"
                 ref={timerInputRef}
                 type="number"
                 min="1"
@@ -1313,7 +1313,7 @@ function LawBooksModal({ onClose }: { onClose: () => void }) {
           </div>
           <div className="flex-1 relative">
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500 pointer-events-none" />
-            <input
+            <input id="ff-menubar-1"
               type="text"
               value={search}
               onChange={e => setSearch(e.target.value)}

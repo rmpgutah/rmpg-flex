@@ -91,16 +91,16 @@ export default function FleetTiresTab({ vehicleId }: { vehicleId: number | strin
       {showForm && (
         <div className="panel-inset p-3 space-y-2">
           <div className="grid grid-cols-3 gap-2">
-            <select value={form.position} onChange={e => setForm(f => ({ ...f, position: e.target.value }))} className="input-field text-xs">
+            <select id="ff-fleettirestab-0" value={form.position} onChange={e => setForm(f => ({ ...f, position: e.target.value }))} className="input-field text-xs">
               {POSITIONS.map(p => <option key={p} value={p}>{POSITION_LABELS[p]}</option>)}
             </select>
-            <input value={form.brand} onChange={e => setForm(f => ({ ...f, brand: e.target.value }))} className="input-field text-xs" placeholder="Brand" />
-            <input value={form.size} onChange={e => setForm(f => ({ ...f, size: e.target.value }))} className="input-field text-xs" placeholder="Size" />
+            <input id="ff-fleettirestab-1" value={form.brand} onChange={e => setForm(f => ({ ...f, brand: e.target.value }))} className="input-field text-xs" placeholder="Brand" />
+            <input id="ff-fleettirestab-2" value={form.size} onChange={e => setForm(f => ({ ...f, size: e.target.value }))} className="input-field text-xs" placeholder="Size" />
           </div>
           <div className="grid grid-cols-3 gap-2">
-            <input value={form.model} onChange={e => setForm(f => ({ ...f, model: e.target.value }))} className="input-field text-xs" placeholder="Model" />
-            <input type="date" value={form.install_date} onChange={e => setForm(f => ({ ...f, install_date: e.target.value }))} className="input-field text-xs" />
-            <input type="number" step="0.1" value={form.tread_depth} onChange={e => setForm(f => ({ ...f, tread_depth: e.target.value }))} className="input-field text-xs" placeholder="Tread (32nds)" />
+            <input id="ff-fleettirestab-3" value={form.model} onChange={e => setForm(f => ({ ...f, model: e.target.value }))} className="input-field text-xs" placeholder="Model" />
+            <input id="ff-fleettirestab-4" type="date" value={form.install_date} onChange={e => setForm(f => ({ ...f, install_date: e.target.value }))} className="input-field text-xs" />
+            <input id="ff-fleettirestab-5" type="number" step="0.1" value={form.tread_depth} onChange={e => setForm(f => ({ ...f, tread_depth: e.target.value }))} className="input-field text-xs" placeholder="Tread (32nds)" />
           </div>
           <div className="flex gap-2">
             <button type="button" onClick={handleSubmit} disabled={!form.position || submitting} className="toolbar-btn toolbar-btn-success text-[9px] disabled:opacity-50">{submitting ? 'Saving...' : 'Save'}</button>

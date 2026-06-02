@@ -172,7 +172,7 @@ export default function LinkRecordModal({
             className="absolute left-2.5 top-1/2 -translate-y-1/2 text-rmpg-500"
             style={{ width: 13, height: 13 }}
           />
-          <input
+          <input id="ff-linkrecordmodal-0"
             type="text"
             className="input-dark w-full text-xs pl-8"
             placeholder={`Search for a ${targetType}...`}
@@ -249,7 +249,7 @@ export default function LinkRecordModal({
       {/* Relationship Dropdown */}
       <div>
         <label className={labelClass}>Relationship</label>
-        <select
+        <select id="ff-linkrecordmodal-1"
           className="input-dark w-full text-xs"
           value={relationship}
           onChange={(e) => setRelationship(e.target.value)}

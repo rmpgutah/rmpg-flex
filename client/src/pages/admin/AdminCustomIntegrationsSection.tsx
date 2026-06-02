@@ -218,7 +218,7 @@ export default function AdminCustomIntegrationsSection() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <label className="block">
                 <span className="text-[10px] font-semibold uppercase text-rmpg-400">Name</span>
-                <input
+                <input id="ff-admincustomintegrationssection-0"
                   type="text" value={form.name}
                   onChange={(e) => setForm({ ...form, name: e.target.value })}
                   className="w-full bg-[#0a0a0a] border border-[#222] rounded-sm px-2 py-1 text-xs text-white"
@@ -227,7 +227,7 @@ export default function AdminCustomIntegrationsSection() {
               </label>
               <label className="block">
                 <span className="text-[10px] font-semibold uppercase text-rmpg-400">Base URL</span>
-                <input
+                <input id="ff-admincustomintegrationssection-1"
                   type="url" value={form.base_url}
                   onChange={(e) => setForm({ ...form, base_url: e.target.value })}
                   className="w-full bg-[#0a0a0a] border border-[#222] rounded-sm px-2 py-1 text-xs text-white"
@@ -237,7 +237,7 @@ export default function AdminCustomIntegrationsSection() {
             </div>
             <label className="block">
               <span className="text-[10px] font-semibold uppercase text-rmpg-400">Description</span>
-              <input
+              <input id="ff-admincustomintegrationssection-2"
                 type="text" value={form.description}
                 onChange={(e) => setForm({ ...form, description: e.target.value })}
                 className="w-full bg-[#0a0a0a] border border-[#222] rounded-sm px-2 py-1 text-xs text-white"
@@ -247,7 +247,7 @@ export default function AdminCustomIntegrationsSection() {
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               <label className="block">
                 <span className="text-[10px] font-semibold uppercase text-rmpg-400">Auth Type</span>
-                <select
+                <select id="ff-admincustomintegrationssection-3"
                   value={form.auth_type}
                   onChange={(e) => setForm({ ...form, auth_type: e.target.value as FormState['auth_type'] })}
                   className="w-full bg-[#0a0a0a] border border-[#222] rounded-sm px-2 py-1 text-xs text-white"
@@ -262,7 +262,7 @@ export default function AdminCustomIntegrationsSection() {
               {(form.auth_type === 'api_key' || form.auth_type === 'header') && (
                 <label className="block">
                   <span className="text-[10px] font-semibold uppercase text-rmpg-400">Header Name</span>
-                  <input
+                  <input id="ff-admincustomintegrationssection-4"
                     type="text" value={form.auth_header_name}
                     onChange={(e) => setForm({ ...form, auth_header_name: e.target.value })}
                     className="w-full bg-[#0a0a0a] border border-[#222] rounded-sm px-2 py-1 text-xs text-white"
@@ -274,7 +274,7 @@ export default function AdminCustomIntegrationsSection() {
                 <span className="text-[10px] font-semibold uppercase text-rmpg-400">
                   {editing ? 'Credential (leave blank to keep existing)' : 'Credential'}
                 </span>
-                <input
+                <input id="ff-admincustomintegrationssection-5"
                   type="password" value={form.auth_value}
                   onChange={(e) => setForm({ ...form, auth_value: e.target.value })}
                   className="w-full bg-[#0a0a0a] border border-[#222] rounded-sm px-2 py-1 text-xs text-white font-mono"
@@ -288,7 +288,7 @@ export default function AdminCustomIntegrationsSection() {
               <span className="text-[10px] font-semibold uppercase text-rmpg-400">
                 Default Headers (JSON, applied to every call)
               </span>
-              <textarea
+              <textarea id="ff-admincustomintegrationssection-6"
                 value={form.default_headers}
                 onChange={(e) => setForm({ ...form, default_headers: e.target.value })}
                 rows={3}
@@ -297,7 +297,7 @@ export default function AdminCustomIntegrationsSection() {
               />
             </label>
             <label className="flex items-center gap-2 text-xs text-rmpg-300">
-              <input
+              <input id="ff-admincustomintegrationssection-7"
                 type="checkbox" checked={form.enabled}
                 onChange={(e) => setForm({ ...form, enabled: e.target.checked })}
               />

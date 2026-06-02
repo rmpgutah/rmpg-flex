@@ -463,7 +463,7 @@ const AuditLogPage: React.FC = () => {
           {/* Action Filter */}
           <div>
             <label className="block text-xs text-rmpg-300 mb-1">Action:</label>
-            <select
+            <select id="ff-auditlogpage-0"
               value={filters.action}
               onChange={(e) => handleFilterChange('action', e.target.value)}
               className="select-dark text-xs"
@@ -478,7 +478,7 @@ const AuditLogPage: React.FC = () => {
           {/* Entity Type Filter */}
           <div>
             <label className="block text-xs text-rmpg-300 mb-1">Entity Type:</label>
-            <select
+            <select id="ff-auditlogpage-1"
               value={filters.entityType}
               onChange={(e) => handleFilterChange('entityType', e.target.value)}
               className="select-dark text-xs"
@@ -493,7 +493,7 @@ const AuditLogPage: React.FC = () => {
           {/* User Filter */}
           <div>
             <label className="block text-xs text-rmpg-300 mb-1">User:</label>
-            <select
+            <select id="ff-auditlogpage-2"
               value={filters.userId}
               onChange={(e) => handleFilterChange('userId', e.target.value)}
               className="select-dark text-xs"
@@ -511,7 +511,7 @@ const AuditLogPage: React.FC = () => {
           <div>
             <label className="block text-xs text-rmpg-300 mb-1">Start Date:</label>
             <div className="relative">
-              <input
+              <input id="ff-auditlogpage-3"
                 type="date"
                 value={filters.startDate}
                 onChange={(e) => handleFilterChange('startDate', e.target.value)}
@@ -525,7 +525,7 @@ const AuditLogPage: React.FC = () => {
           <div>
             <label className="block text-xs text-rmpg-300 mb-1">End Date:</label>
             <div className="relative">
-              <input
+              <input id="ff-auditlogpage-4"
                 type="date"
                 value={filters.endDate}
                 onChange={(e) => handleFilterChange('endDate', e.target.value)}
@@ -539,7 +539,7 @@ const AuditLogPage: React.FC = () => {
           <div>
             <label className="block text-xs text-rmpg-300 mb-1">Search Details:</label>
             <div className="relative">
-              <input
+              <input id="ff-auditlogpage-5"
                 type="text"
                 value={filters.search}
                 onChange={(e) => handleFilterChange('search', e.target.value)}

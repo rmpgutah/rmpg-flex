@@ -106,7 +106,7 @@ export default function VideoEditModal({ isOpen, onClose, onSave, video, isSubmi
       {/* Title */}
       <div>
         <label className="field-label mb-1 block">Title *</label>
-        <input
+        <input id="ff-videoeditmodal-0"
           type="text"
           className="input-dark"
           value={form.title}
@@ -119,7 +119,7 @@ export default function VideoEditModal({ isOpen, onClose, onSave, video, isSubmi
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label className="field-label mb-1 block">Classification</label>
-          <select
+          <select id="ff-videoeditmodal-1"
             className="select-dark"
             value={form.classification}
             onChange={e => set('classification', e.target.value)}
@@ -131,7 +131,7 @@ export default function VideoEditModal({ isOpen, onClose, onSave, video, isSubmi
         </div>
         <div>
           <label className="field-label mb-1 block">Retention Status</label>
-          <select
+          <select id="ff-videoeditmodal-2"
             className="select-dark"
             value={form.retention_status}
             onChange={e => set('retention_status', e.target.value)}
@@ -147,7 +147,7 @@ export default function VideoEditModal({ isOpen, onClose, onSave, video, isSubmi
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label className="field-label mb-1 block">Case Number</label>
-          <input
+          <input id="ff-videoeditmodal-3"
             type="text"
             className="input-dark"
             value={form.case_number}
@@ -157,7 +157,7 @@ export default function VideoEditModal({ isOpen, onClose, onSave, video, isSubmi
         </div>
         <div>
           <label className="field-label mb-1 block">Recorded At</label>
-          <input
+          <input id="ff-videoeditmodal-4"
             type="datetime-local"
             className="input-dark"
             value={form.recorded_at}

@@ -1187,7 +1187,7 @@ export default function FleetPage() {
         {/* ---- LEFT PANEL: Vehicle List ---- */}
         <div className={`flex flex-col min-h-0 bg-surface-raised ${isMobile ? (selectedId ? 'hidden' : 'w-full') : ''}`} style={isMobile ? undefined : { width: '36%', minWidth: 300, maxWidth: 440 }}>
           <div className="flex items-center gap-2 px-2 py-1.5 border-b border-rmpg-700 bg-surface-base">
-            <select
+            <select id="ff-fleetpage-0"
               className="select-dark text-[10px] py-1 px-2 min-h-[36px]"
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value)}
@@ -1199,7 +1199,7 @@ export default function FleetPage() {
             </select>
             <div className="flex-1 relative">
               <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500 pointer-events-none" aria-hidden="true" />
-              <input
+              <input id="ff-fleetpage-1"
                 className="input-dark w-full text-[10px] py-1 pl-6 pr-2 min-h-[36px] focus:ring-1 focus:ring-brand-500/50 focus:border-brand-600 transition-shadow duration-150"
                 placeholder="Search vehicles..." aria-label="Search fleet vehicles by number, make, model, or plate"
                 value={searchQuery}
@@ -1534,7 +1534,7 @@ export default function FleetPage() {
                 { key: 'emergency_equipment_ok', label: 'Emergency Equipment' },
               ].map(item => (
                 <label key={item.key} className="flex items-center gap-3 p-2 bg-surface-base rounded cursor-pointer hover:bg-surface-raised">
-                  <input
+                  <input id="ff-fleetpage-2"
                     type="checkbox"
                     checked={(pretripForm as any)[item.key]}
                     onChange={e => setPretripForm(prev => ({ ...prev, [item.key]: e.target.checked }))}

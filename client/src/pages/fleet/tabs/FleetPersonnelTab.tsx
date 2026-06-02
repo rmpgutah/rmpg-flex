@@ -218,7 +218,7 @@ export default function FleetPersonnelTab({
             <UserPlus className="w-3 h-3" /> {isAssigned ? 'Reassign Vehicle' : 'Assign Vehicle to Unit'}
           </h4>
           <div className="flex items-center gap-2">
-            <select
+            <select id="ff-fleetpersonneltab-0"
               className="select-dark flex-1 text-[11px] min-h-[36px]"
               value={selectedUnitId}
               onChange={(e) => setSelectedUnitId(e.target.value)}

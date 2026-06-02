@@ -191,7 +191,7 @@ export default function AddLinkModal({ isOpen, onClose, incidentId, onLinked }: 
       {/* Record Type */}
       <div>
         <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Record Type</label>
-        <select
+        <select id="ff-addlinkmodal-0"
           className="select-dark mt-1 w-full"
           value={linkedType}
           onChange={(e) => setLinkedType(e.target.value)}
@@ -211,7 +211,7 @@ export default function AddLinkModal({ isOpen, onClose, incidentId, onLinked }: 
           </label>
           <div className="relative mt-1">
             <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-rmpg-500" />
-            <input
+            <input id="ff-addlinkmodal-1"
               ref={searchRef}
               type="text"
               className="input-dark w-full pl-8 pr-8"
@@ -280,7 +280,7 @@ export default function AddLinkModal({ isOpen, onClose, incidentId, onLinked }: 
       {selected && (
         <div>
           <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Link Reason (optional)</label>
-          <input
+          <input id="ff-addlinkmodal-2"
             type="text"
             className="input-dark mt-1 w-full"
             placeholder="e.g., Related suspect, Same location, Follow-up..."

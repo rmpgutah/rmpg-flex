@@ -204,7 +204,7 @@ export default function ReviewFormModal({
                 <span className="text-xs text-rmpg-400 mb-1 block">
                   Officer <span className="text-red-400">*</span>
                 </span>
-                <select
+                <select id="ff-reviewformmodal-0"
                   required
                   value={form.officer_id}
                   onChange={(e) => setForm(f => ({ ...f, officer_id: e.target.value }))}
@@ -223,7 +223,7 @@ export default function ReviewFormModal({
                 <span className="text-xs text-rmpg-400 mb-1 block">
                   Review Type
                 </span>
-                <select
+                <select id="ff-reviewformmodal-1"
                   value={form.type}
                   onChange={(e) => setForm(f => ({ ...f, type: e.target.value as ReviewType }))}
                   className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2.5 py-1.5 text-sm text-white focus:border-brand-500 focus:outline-none"
@@ -243,7 +243,7 @@ export default function ReviewFormModal({
                 <span className="text-xs text-rmpg-400 mb-1 block">
                   Period Start <span className="text-red-400">*</span>
                 </span>
-                <input
+                <input id="ff-reviewformmodal-2"
                   type="date"
                   required
                   value={form.period_start}
@@ -255,7 +255,7 @@ export default function ReviewFormModal({
                 <span className="text-xs text-rmpg-400 mb-1 block">
                   Period End <span className="text-red-400">*</span>
                 </span>
-                <input
+                <input id="ff-reviewformmodal-3"
                   type="date"
                   required
                   value={form.period_end}
@@ -269,7 +269,7 @@ export default function ReviewFormModal({
               <span className="text-xs text-rmpg-400 mb-1 block">
                 Review Date
               </span>
-              <input
+              <input id="ff-reviewformmodal-4"
                 type="date"
                 value={form.review_date}
                 onChange={(e) => setForm(f => ({ ...f, review_date: e.target.value }))}
@@ -331,7 +331,7 @@ export default function ReviewFormModal({
                 <span className="text-xs text-rmpg-400 mb-1 block">
                   Strengths
                 </span>
-                <textarea
+                <textarea id="ff-reviewformmodal-5"
                   value={form.strengths}
                   onChange={(e) => setForm(f => ({ ...f, strengths: e.target.value }))}
                   rows={3}
@@ -343,7 +343,7 @@ export default function ReviewFormModal({
                 <span className="text-xs text-rmpg-400 mb-1 block">
                   Areas for Improvement
                 </span>
-                <textarea
+                <textarea id="ff-reviewformmodal-6"
                   value={form.areas_for_improvement}
                   onChange={(e) => setForm(f => ({ ...f, areas_for_improvement: e.target.value }))}
                   rows={3}
@@ -353,7 +353,7 @@ export default function ReviewFormModal({
               </label>
               <label className="block">
                 <span className="text-xs text-rmpg-400 mb-1 block">Goals</span>
-                <textarea
+                <textarea id="ff-reviewformmodal-7"
                   value={form.goals}
                   onChange={(e) => setForm(f => ({ ...f, goals: e.target.value }))}
                   rows={3}

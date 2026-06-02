@@ -368,7 +368,7 @@ export default function ToolCard({ tool, disabled }: { tool: ToolDef; disabled: 
           return (
             <div key={arg.name} className="flex flex-col gap-1">
               <label className="text-[9px] text-[#888] uppercase tracking-wider">{arg.label}{arg.required && ' *'}</label>
-              <input
+              <input id="ff-toolcard-0"
                 type="text"
                 placeholder={arg.placeholder}
                 list={suggestions.length > 0 ? listId : undefined}

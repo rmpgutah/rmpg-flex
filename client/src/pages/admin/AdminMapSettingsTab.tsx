@@ -192,7 +192,7 @@ export default function AdminMapSettingsTab({ LoadingSpinner, error, setError }:
     <label className="flex items-center gap-2 text-[10px] text-rmpg-400">
       <span className="w-28 shrink-0">{label}</span>
       <div className="flex items-center gap-1">
-        <input
+        <input id="ff-adminmapsettingstab-0"
           type={type}
           value={value}
           onChange={e => onChange(type === 'number' ? parseFloat(e.target.value) || 0 : e.target.value)}
@@ -260,7 +260,7 @@ export default function AdminMapSettingsTab({ LoadingSpinner, error, setError }:
           <SectionLabel icon={Palette} label="Map Styles" />
           <div className="space-y-2">
             <label className="text-[10px] text-rmpg-400 block mb-1">Default Style</label>
-            <select
+            <select id="ff-adminmapsettingstab-1"
               value={settings.default_style}
               onChange={e => updateField('default_style', e.target.value)}
               className="input-dark text-[10px] w-full min-h-[32px]"
@@ -292,7 +292,7 @@ export default function AdminMapSettingsTab({ LoadingSpinner, error, setError }:
           </div>
           <div>
             <label className="text-[10px] text-rmpg-400 block mb-1">Custom Style URL (optional, overrides default)</label>
-            <input type="text" value={settings.custom_style_url}
+            <input id="ff-adminmapsettingstab-2" type="text" value={settings.custom_style_url}
               onChange={e => updateField('custom_style_url', e.target.value)}
               placeholder="mapbox://styles/..." className="input-dark text-[10px] w-full min-h-[32px] font-mono"
             />
@@ -344,12 +344,12 @@ export default function AdminMapSettingsTab({ LoadingSpinner, error, setError }:
             <InlineInput label="Fade Duration (ms)" value={settings.fade_duration} onChange={v => updateField('fade_duration', v)} min="0" max="5000" suffix="ms" />
             <InlineInput label="Click Tolerance (px)" value={settings.click_tolerance} onChange={v => updateField('click_tolerance', v)} min="0" max="20" suffix="px" />
             <label className="text-[10px] text-rmpg-400 block mt-2 mb-0.5">Language (BCP 47, e.g. 'es', 'fr')</label>
-            <input type="text" value={settings.language}
+            <input id="ff-adminmapsettingstab-3" type="text" value={settings.language}
               onChange={e => updateField('language', e.target.value)}
               placeholder="en" className="input-dark text-[10px] w-full min-h-[28px] font-mono"
             />
             <label className="text-[10px] text-rmpg-400 block mt-2 mb-0.5">Local Ideograph Font Family</label>
-            <input type="text" value={settings.local_ideograph_font_family}
+            <input id="ff-adminmapsettingstab-4" type="text" value={settings.local_ideograph_font_family}
               onChange={e => updateField('local_ideograph_font_family', e.target.value)}
               placeholder="sans-serif" className="input-dark text-[10px] w-full min-h-[28px] font-mono"
             />
@@ -439,7 +439,7 @@ export default function AdminMapSettingsTab({ LoadingSpinner, error, setError }:
           <SectionLabel icon={Save} label="Map Export & Screenshot" />
           <div className="space-y-2.5">
             <label className="text-[10px] text-rmpg-400 block mb-1">Screenshot Map Style</label>
-            <select value={settings.screenshot_style}
+            <select id="ff-adminmapsettingstab-5" value={settings.screenshot_style}
               onChange={e => updateField('screenshot_style', e.target.value)}
               className="input-dark text-[10px] w-full min-h-[32px]"
             >
@@ -501,10 +501,10 @@ function ColorInput({ label, value, onChange }: { label: string; value: string; 
   return (
     <label className="flex items-center gap-1.5 text-[10px] text-rmpg-400">
       <span className="w-14 shrink-0">{label}</span>
-      <input type="color" value={value} onChange={e => onChange(e.target.value)}
+      <input id="ff-adminmapsettingstab-6" type="color" value={value} onChange={e => onChange(e.target.value)}
         className="w-6 h-6 p-0 border border-[#333] bg-transparent cursor-pointer rounded-sm"
       />
-      <input type="text" value={value} onChange={e => onChange(e.target.value)}
+      <input id="ff-adminmapsettingstab-7" type="text" value={value} onChange={e => onChange(e.target.value)}
         className="input-dark text-[10px] w-20 text-center font-mono min-h-[24px]"
       />
     </label>
@@ -515,7 +515,7 @@ function OpacitySlider({ label, value, onChange }: { label: string; value: numbe
   return (
     <label className="flex items-center gap-1.5 text-[10px] text-rmpg-400">
       <span className="w-[72px] shrink-0">{label}</span>
-      <input type="range" min="0" max="1" step="0.01" value={value}
+      <input id="ff-adminmapsettingstab-8" type="range" min="0" max="1" step="0.01" value={value}
         onChange={e => onChange(parseFloat(e.target.value))}
         className="w-16 h-3 accent-brand-400 cursor-pointer"
       />

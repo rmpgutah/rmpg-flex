@@ -1313,7 +1313,7 @@ export default function AdminSystemTab({
                 })}
 
                 <div className="flex items-center gap-2 mt-3 pt-3 border-t border-rmpg-700">
-                  <input
+                  <input id="ff-adminsystemtab-0"
                     type="text"
                     className="input-dark text-xs w-64 min-h-[36px]"
                     placeholder="Custom type key (e.g. noise_complaint)"
@@ -1356,7 +1356,7 @@ export default function AdminSystemTab({
                         <tr key={item.id}>
                           <td>
                             {isEditing ? (
-                              <input type="color" value={editDispColor} onChange={(e) => setEditDispColor(e.target.value)} className="w-6 h-6 cursor-pointer border-0 p-0 bg-transparent" />
+                              <input id="ff-adminsystemtab-1" type="color" value={editDispColor} onChange={(e) => setEditDispColor(e.target.value)} className="w-6 h-6 cursor-pointer border-0 p-0 bg-transparent" />
                             ) : (
                               <div className="w-4 h-4 rounded-sm" style={{ backgroundColor: parsed.color || '#888888' }} />
                             )}
@@ -1364,7 +1364,7 @@ export default function AdminSystemTab({
                           <td className="font-bold text-white font-mono">{parsed.code}</td>
                           <td>
                             {isEditing ? (
-                              <input
+                              <input id="ff-adminsystemtab-2"
                                 type="text"
                                 className="input-dark text-xs w-full min-h-[36px]"
                                 value={editDispDesc}
@@ -1407,13 +1407,13 @@ export default function AdminSystemTab({
                     })}
                     <tr>
                       <td>
-                        <input type="color" value={newDispColor} onChange={(e) => setNewDispColor(e.target.value)} className="w-6 h-6 cursor-pointer border-0 p-0 bg-transparent" />
+                        <input id="ff-adminsystemtab-3" type="color" value={newDispColor} onChange={(e) => setNewDispColor(e.target.value)} className="w-6 h-6 cursor-pointer border-0 p-0 bg-transparent" />
                       </td>
                       <td>
-                        <input type="text" className="input-dark text-xs w-20 min-h-[36px]" placeholder="Code" value={newDispCode} onChange={(e) => setNewDispCode(e.target.value)} />
+                        <input id="ff-adminsystemtab-4" type="text" className="input-dark text-xs w-20 min-h-[36px]" placeholder="Code" value={newDispCode} onChange={(e) => setNewDispCode(e.target.value)} />
                       </td>
                       <td>
-                        <input
+                        <input id="ff-adminsystemtab-5"
                           type="text"
                           className="input-dark text-xs w-full min-h-[36px]"
                           placeholder="Description"
@@ -1447,7 +1447,7 @@ export default function AdminSystemTab({
                   {priorities.map((p, i) => (
                     <div key={p.level} className="p-3 bg-rmpg-900 border border-rmpg-600 space-y-2">
                       <div className="flex items-center gap-2">
-                        <input
+                        <input id="ff-adminsystemtab-6"
                           type="color"
                           value={p.color}
                           onChange={(e) => updatePriority(i, 'color', e.target.value)}
@@ -1457,7 +1457,7 @@ export default function AdminSystemTab({
                       </div>
                       <div>
                         <label className="text-[9px] text-rmpg-400 uppercase">Label</label>
-                        <input
+                        <input id="ff-adminsystemtab-7"
                           type="text"
                           className="input-dark text-xs w-full min-h-[36px]"
                           value={p.label}
@@ -1466,7 +1466,7 @@ export default function AdminSystemTab({
                       </div>
                       <div>
                         <label className="text-[9px] text-rmpg-400 uppercase">Response Target</label>
-                        <input
+                        <input id="ff-adminsystemtab-8"
                           type="text"
                           className="input-dark text-xs w-full min-h-[36px]"
                           value={p.target}
@@ -1502,7 +1502,7 @@ export default function AdminSystemTab({
                       <span className="text-xs text-rmpg-400 font-mono w-6 text-center">{i + 1}</span>
                       {editingCallSourceIdx === i ? (
                         <>
-                          <input
+                          <input id="ff-adminsystemtab-9"
                             type="text"
                             className="input-dark text-xs flex-1 min-h-[36px]"
                             value={editCallSourceVal}
@@ -1553,7 +1553,7 @@ export default function AdminSystemTab({
                   ))}
                 </div>
                 <div className="flex items-center gap-2">
-                  <input
+                  <input id="ff-adminsystemtab-10"
                     type="text"
                     className="input-dark text-xs w-48 min-h-[36px]"
                     placeholder="New source (e.g. social_media)"
@@ -1588,9 +1588,9 @@ export default function AdminSystemTab({
                     <div key={ut.type} className="flex items-center gap-2 p-2.5 bg-rmpg-900 border border-rmpg-600 hover:border-rmpg-500 transition-colors">
                       {editingUnitTypeKey === ut.type ? (
                         <>
-                          <input type="color" value={editUnitTypeColor} onChange={(e) => setEditUnitTypeColor(e.target.value)} className="w-5 h-5 cursor-pointer border-0 p-0 bg-transparent flex-shrink-0" />
+                          <input id="ff-adminsystemtab-11" type="color" value={editUnitTypeColor} onChange={(e) => setEditUnitTypeColor(e.target.value)} className="w-5 h-5 cursor-pointer border-0 p-0 bg-transparent flex-shrink-0" />
                           <div className="flex-1 min-w-0">
-                            <input
+                            <input id="ff-adminsystemtab-12"
                               type="text"
                               className="input-dark text-xs w-full min-h-[36px]"
                               value={editUnitTypeLabel}
@@ -1630,15 +1630,15 @@ export default function AdminSystemTab({
                   ))}
                 </div>
                 <div className="flex items-center gap-2 flex-wrap">
-                  <input type="color" value={newUnitColor} onChange={(e) => setNewUnitColor(e.target.value)} className="w-6 h-6 cursor-pointer border-0 p-0 bg-transparent" />
-                  <input
+                  <input id="ff-adminsystemtab-13" type="color" value={newUnitColor} onChange={(e) => setNewUnitColor(e.target.value)} className="w-6 h-6 cursor-pointer border-0 p-0 bg-transparent" />
+                  <input id="ff-adminsystemtab-14"
                     type="text"
                     className="input-dark text-xs w-32 min-h-[36px]"
                     placeholder="Key (e.g. k9)"
                     value={newUnitType}
                     onChange={(e) => setNewUnitType(e.target.value)}
                   />
-                  <input
+                  <input id="ff-adminsystemtab-15"
                     type="text"
                     className="input-dark text-xs w-40 min-h-[36px]"
                     placeholder="Label (e.g. K9 Unit)"
@@ -1691,10 +1691,10 @@ export default function AdminSystemTab({
                               {editingAdminUnitId === unit.id ? (
                                 <>
                                   <td>
-                                    <input type="text" className="input-dark text-xs w-full min-h-[36px]" value={editUnitCallSign} onChange={(e) => setEditUnitCallSign(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleUpdateUnit()} />
+                                    <input id="ff-adminsystemtab-16" type="text" className="input-dark text-xs w-full min-h-[36px]" value={editUnitCallSign} onChange={(e) => setEditUnitCallSign(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleUpdateUnit()} />
                                   </td>
                                   <td>
-                                    <select className="select-dark text-xs w-full" value={editUnitOfficerId} onChange={(e) => setEditUnitOfficerId(e.target.value)}>
+                                    <select id="ff-adminsystemtab-17" className="select-dark text-xs w-full" value={editUnitOfficerId} onChange={(e) => setEditUnitOfficerId(e.target.value)}>
                                       <option value="">-- None --</option>
                                       {activeOfficers.map((o) => (
                                         <option key={o.id} value={o.id}>{o.first_name} {o.last_name} {o.badge_number ? `(${o.badge_number})` : ''}</option>
@@ -1702,7 +1702,7 @@ export default function AdminSystemTab({
                                     </select>
                                   </td>
                                   <td>
-                                    <select className="select-dark text-xs w-full" value={editUnitStatus} onChange={(e) => setEditUnitStatus(e.target.value)}>
+                                    <select id="ff-adminsystemtab-18" className="select-dark text-xs w-full" value={editUnitStatus} onChange={(e) => setEditUnitStatus(e.target.value)}>
                                       {UNIT_STATUSES.map((s) => (
                                         <option key={s.value} value={s.value}>{s.label}</option>
                                       ))}
@@ -1760,14 +1760,14 @@ export default function AdminSystemTab({
                     )}
 
                     <div className="flex items-center gap-2 flex-wrap">
-                      <input type="text" className="input-dark text-xs w-28 min-h-[36px]" placeholder="Call Sign *" value={newUnitCallSign} onChange={(e) => setNewUnitCallSign(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleCreateUnit()} />
-                      <select className="select-dark text-xs w-44" value={newUnitOfficerId} onChange={(e) => setNewUnitOfficerId(e.target.value)}>
+                      <input id="ff-adminsystemtab-19" type="text" className="input-dark text-xs w-28 min-h-[36px]" placeholder="Call Sign *" value={newUnitCallSign} onChange={(e) => setNewUnitCallSign(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleCreateUnit()} />
+                      <select id="ff-adminsystemtab-20" className="select-dark text-xs w-44" value={newUnitOfficerId} onChange={(e) => setNewUnitOfficerId(e.target.value)}>
                         <option value="">-- Assign Officer --</option>
                         {activeOfficers.map((o) => (
                           <option key={o.id} value={o.id}>{o.first_name} {o.last_name} {o.badge_number ? `(${o.badge_number})` : ''}</option>
                         ))}
                       </select>
-                      <select className="select-dark text-xs w-28" value={newUnitStatusVal} onChange={(e) => setNewUnitStatusVal(e.target.value)}>
+                      <select id="ff-adminsystemtab-21" className="select-dark text-xs w-28" value={newUnitStatusVal} onChange={(e) => setNewUnitStatusVal(e.target.value)}>
                         {UNIT_STATUSES.map((s) => (
                           <option key={s.value} value={s.value}>{s.label}</option>
                         ))}
@@ -1808,10 +1808,10 @@ export default function AdminSystemTab({
                             <>
                               <td className="font-bold text-white font-mono">{z.code}</td>
                               <td>
-                                <input type="text" className="input-dark text-xs w-full min-h-[36px]" value={editZoneName} onChange={(e) => setEditZoneName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') saveEditZone(); if (e.key === 'Escape') cancelEditZone(); }} autoFocus />
+                                <input id="ff-adminsystemtab-22" type="text" className="input-dark text-xs w-full min-h-[36px]" value={editZoneName} onChange={(e) => setEditZoneName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') saveEditZone(); if (e.key === 'Escape') cancelEditZone(); }} autoFocus />
                               </td>
                               <td>
-                                <input type="text" className="input-dark text-xs w-full min-h-[36px]" value={editZoneDesc} onChange={(e) => setEditZoneDesc(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') saveEditZone(); if (e.key === 'Escape') cancelEditZone(); }} />
+                                <input id="ff-adminsystemtab-23" type="text" className="input-dark text-xs w-full min-h-[36px]" value={editZoneDesc} onChange={(e) => setEditZoneDesc(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') saveEditZone(); if (e.key === 'Escape') cancelEditZone(); }} />
                               </td>
                               <td>
                                 <div className="flex items-center gap-1">
@@ -1841,9 +1841,9 @@ export default function AdminSystemTab({
                   <div className="text-xs text-rmpg-500 mb-3 py-4 text-center border border-dashed border-rmpg-700">No sections/zones/beats configured. Add your first entry below.</div>
                 )}
                 <div className="flex items-center gap-2 flex-wrap">
-                  <input type="text" className="input-dark text-xs w-20 min-h-[36px]" placeholder="Code" value={newZoneCode} onChange={(e) => setNewZoneCode(e.target.value)} />
-                  <input type="text" className="input-dark text-xs w-40 min-h-[36px]" placeholder="Name" value={newZoneName} onChange={(e) => setNewZoneName(e.target.value)} />
-                  <input type="text" className="input-dark text-xs flex-1 min-w-[160px] min-h-[36px]" placeholder="Description (optional)" value={newZoneDesc} onChange={(e) => setNewZoneDesc(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addZone()} />
+                  <input id="ff-adminsystemtab-24" type="text" className="input-dark text-xs w-20 min-h-[36px]" placeholder="Code" value={newZoneCode} onChange={(e) => setNewZoneCode(e.target.value)} />
+                  <input id="ff-adminsystemtab-25" type="text" className="input-dark text-xs w-40 min-h-[36px]" placeholder="Name" value={newZoneName} onChange={(e) => setNewZoneName(e.target.value)} />
+                  <input id="ff-adminsystemtab-26" type="text" className="input-dark text-xs flex-1 min-w-[160px] min-h-[36px]" placeholder="Description (optional)" value={newZoneDesc} onChange={(e) => setNewZoneDesc(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addZone()} />
                   <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={addZone}><Plus className="w-3 h-3" /> Add Entry</button>
                   {zonesDirty && (
                     <button type="button" className="toolbar-btn toolbar-btn-primary ml-auto" onClick={saveZones}><Save className="w-3 h-3" /> Save</button>
@@ -1867,7 +1867,7 @@ export default function AdminSystemTab({
                     <div key={et} className="flex items-center gap-1.5 px-2.5 py-1.5 bg-rmpg-900 border border-rmpg-600 hover:border-rmpg-500 transition-colors">
                       {editingEvidenceIdx === i ? (
                         <>
-                          <input type="text" className="input-dark text-xs w-36 min-h-[36px]" value={editEvidenceVal} onChange={(e) => setEditEvidenceVal(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') saveEditEvidence(); if (e.key === 'Escape') cancelEditEvidence(); }} autoFocus />
+                          <input id="ff-adminsystemtab-27" type="text" className="input-dark text-xs w-36 min-h-[36px]" value={editEvidenceVal} onChange={(e) => setEditEvidenceVal(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') saveEditEvidence(); if (e.key === 'Escape') cancelEditEvidence(); }} autoFocus />
                           <IconButton onClick={saveEditEvidence} className="p-0.5 text-green-400 hover:text-green-300" title="Save" aria-label="Save evidence type"><CheckCircle className="w-3 h-3" /></IconButton>
                           <IconButton onClick={cancelEditEvidence} className="p-0.5 text-rmpg-400 hover:text-rmpg-200" title="Cancel" aria-label="Cancel edit"><XCircle className="w-3 h-3" /></IconButton>
                         </>
@@ -1883,7 +1883,7 @@ export default function AdminSystemTab({
                   ))}
                 </div>
                 <div className="flex items-center gap-2">
-                  <input type="text" className="input-dark text-xs w-48 min-h-[36px]" placeholder="New type (e.g. audio_recording)" value={newEvidenceType} onChange={(e) => setNewEvidenceType(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addEvidenceType()} />
+                  <input id="ff-adminsystemtab-28" type="text" className="input-dark text-xs w-48 min-h-[36px]" placeholder="New type (e.g. audio_recording)" value={newEvidenceType} onChange={(e) => setNewEvidenceType(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addEvidenceType()} />
                   <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={addEvidenceType}><Plus className="w-3 h-3" /> Add Type</button>
                   {evidenceTypesDirty && (
                     <button type="button" className="toolbar-btn toolbar-btn-primary ml-auto" onClick={saveEvidenceTypes}><Save className="w-3 h-3" /> Save Evidence Types</button>
@@ -1925,24 +1925,24 @@ export default function AdminSystemTab({
                               {editingTemplateId === tpl.id ? (
                                 <>
                                   <td>
-                                    <input type="text" className="input-dark text-xs w-full min-h-[36px]" value={editTemplateName} onChange={(e) => setEditTemplateName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') saveEditTemplate(); if (e.key === 'Escape') cancelEditTemplate(); }} autoFocus />
+                                    <input id="ff-adminsystemtab-29" type="text" className="input-dark text-xs w-full min-h-[36px]" value={editTemplateName} onChange={(e) => setEditTemplateName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') saveEditTemplate(); if (e.key === 'Escape') cancelEditTemplate(); }} autoFocus />
                                   </td>
                                   <td>
-                                    <select className="select-dark text-xs w-full" value={editTemplateType} onChange={(e) => setEditTemplateType(e.target.value)}>
+                                    <select id="ff-adminsystemtab-30" className="select-dark text-xs w-full" value={editTemplateType} onChange={(e) => setEditTemplateType(e.target.value)}>
                                       {Object.entries(INCIDENT_TYPE_CODES).map(([key, code]) => (
                                         <option key={key} value={key}>{code} - {key.split('_').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}</option>
                                       ))}
                                     </select>
                                   </td>
                                   <td>
-                                    <select className="select-dark text-xs" value={editTemplatePriority} onChange={(e) => setEditTemplatePriority(e.target.value)}>
+                                    <select id="ff-adminsystemtab-31" className="select-dark text-xs" value={editTemplatePriority} onChange={(e) => setEditTemplatePriority(e.target.value)}>
                                       {priorities.map((p) => (
                                         <option key={p.level} value={p.level}>{p.level}</option>
                                       ))}
                                     </select>
                                   </td>
                                   <td>
-                                    <input type="text" className="input-dark text-xs w-full min-h-[36px]" value={editTemplateDesc} onChange={(e) => setEditTemplateDesc(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') saveEditTemplate(); if (e.key === 'Escape') cancelEditTemplate(); }} />
+                                    <input id="ff-adminsystemtab-32" type="text" className="input-dark text-xs w-full min-h-[36px]" value={editTemplateDesc} onChange={(e) => setEditTemplateDesc(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') saveEditTemplate(); if (e.key === 'Escape') cancelEditTemplate(); }} />
                                   </td>
                                   <td>
                                     <div className="flex items-center gap-1">
@@ -1985,18 +1985,18 @@ export default function AdminSystemTab({
                     <div className="bg-rmpg-900 border border-rmpg-600 p-3 space-y-2">
                       <div className="text-[10px] text-rmpg-400 uppercase font-bold">Add Template</div>
                       <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
-                        <input type="text" className="input-dark text-xs min-h-[36px]" placeholder="Template name" value={newTemplateName} onChange={(e) => setNewTemplateName(e.target.value)} />
-                        <select className="select-dark text-xs" value={newTemplateType} onChange={(e) => setNewTemplateType(e.target.value)}>
+                        <input id="ff-adminsystemtab-33" type="text" className="input-dark text-xs min-h-[36px]" placeholder="Template name" value={newTemplateName} onChange={(e) => setNewTemplateName(e.target.value)} />
+                        <select id="ff-adminsystemtab-34" className="select-dark text-xs" value={newTemplateType} onChange={(e) => setNewTemplateType(e.target.value)}>
                           {Object.entries(INCIDENT_TYPE_CODES).map(([key, code]) => (
                             <option key={key} value={key}>{code} - {key.split('_').map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}</option>
                           ))}
                         </select>
-                        <select className="select-dark text-xs" value={newTemplatePriority} onChange={(e) => setNewTemplatePriority(e.target.value)}>
+                        <select id="ff-adminsystemtab-35" className="select-dark text-xs" value={newTemplatePriority} onChange={(e) => setNewTemplatePriority(e.target.value)}>
                           {priorities.map((p) => (
                             <option key={p.level} value={p.level}>{p.level} - {p.label}</option>
                           ))}
                         </select>
-                        <input type="text" className="input-dark text-xs min-h-[36px]" placeholder="Description template (optional)" value={newTemplateDesc} onChange={(e) => setNewTemplateDesc(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addCallTemplate()} />
+                        <input id="ff-adminsystemtab-36" type="text" className="input-dark text-xs min-h-[36px]" placeholder="Description template (optional)" value={newTemplateDesc} onChange={(e) => setNewTemplateDesc(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addCallTemplate()} />
                       </div>
                       <div className="flex justify-end">
                         <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={addCallTemplate}><Plus className="w-3 h-3" /> Add Template</button>
@@ -2022,11 +2022,11 @@ export default function AdminSystemTab({
                     <div className="text-[10px] text-rmpg-400 uppercase font-bold border-b border-rmpg-700 pb-1">Password Policy</div>
                     <div>
                       <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Minimum Password Length</label>
-                      <input type="number" className="input-dark text-xs w-full min-h-[36px]" value={securityConfig.min_password_length} onChange={(e) => updateSecuritySetting('min_password_length', e.target.value)} min="6" max="32" />
+                      <input id="ff-adminsystemtab-37" type="number" className="input-dark text-xs w-full min-h-[36px]" value={securityConfig.min_password_length} onChange={(e) => updateSecuritySetting('min_password_length', e.target.value)} min="6" max="32" />
                     </div>
                     <div>
                       <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Password Expiry (days, 0 = never)</label>
-                      <input type="number" className="input-dark text-xs w-full min-h-[36px]" value={securityConfig.password_expiry_days} onChange={(e) => updateSecuritySetting('password_expiry_days', e.target.value)} min="0" max="365" />
+                      <input id="ff-adminsystemtab-38" type="number" className="input-dark text-xs w-full min-h-[36px]" value={securityConfig.password_expiry_days} onChange={(e) => updateSecuritySetting('password_expiry_days', e.target.value)} min="0" max="365" />
                     </div>
                     <div className="space-y-2">
                       {[
@@ -2057,16 +2057,16 @@ export default function AdminSystemTab({
                     <div className="text-[10px] text-rmpg-400 uppercase font-bold border-b border-rmpg-700 pb-1">Lockout & Sessions</div>
                     <div>
                       <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Max Login Attempts</label>
-                      <input type="number" className="input-dark text-xs w-full min-h-[36px]" value={securityConfig.max_login_attempts} onChange={(e) => updateSecuritySetting('max_login_attempts', e.target.value)} min="1" max="20" />
+                      <input id="ff-adminsystemtab-39" type="number" className="input-dark text-xs w-full min-h-[36px]" value={securityConfig.max_login_attempts} onChange={(e) => updateSecuritySetting('max_login_attempts', e.target.value)} min="1" max="20" />
                       <p className="text-[9px] text-rmpg-500 mt-0.5">Account locks after this many failed attempts.</p>
                     </div>
                     <div>
                       <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Lockout Duration (minutes)</label>
-                      <input type="number" className="input-dark text-xs w-full min-h-[36px]" value={securityConfig.lockout_duration_minutes} onChange={(e) => updateSecuritySetting('lockout_duration_minutes', e.target.value)} min="1" max="1440" />
+                      <input id="ff-adminsystemtab-40" type="number" className="input-dark text-xs w-full min-h-[36px]" value={securityConfig.lockout_duration_minutes} onChange={(e) => updateSecuritySetting('lockout_duration_minutes', e.target.value)} min="1" max="1440" />
                     </div>
                     <div>
                       <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Max Active Sessions</label>
-                      <input type="number" className="input-dark text-xs w-full min-h-[36px]" value={securityConfig.max_active_sessions} onChange={(e) => updateSecuritySetting('max_active_sessions', e.target.value)} min="1" max="10" />
+                      <input id="ff-adminsystemtab-41" type="number" className="input-dark text-xs w-full min-h-[36px]" value={securityConfig.max_active_sessions} onChange={(e) => updateSecuritySetting('max_active_sessions', e.target.value)} min="1" max="10" />
                       <p className="text-[9px] text-rmpg-500 mt-0.5">Maximum concurrent sessions per user.</p>
                     </div>
                   </div>
@@ -2096,21 +2096,21 @@ export default function AdminSystemTab({
                       <div>
                         <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Primary</label>
                         <div className="flex items-center gap-2">
-                          <input type="color" value={brandingConfig.primary_color} onChange={(e) => updateBranding('primary_color', e.target.value)} className="w-8 h-8 cursor-pointer border-0 p-0 bg-transparent" />
+                          <input id="ff-adminsystemtab-42" type="color" value={brandingConfig.primary_color} onChange={(e) => updateBranding('primary_color', e.target.value)} className="w-8 h-8 cursor-pointer border-0 p-0 bg-transparent" />
                           <span className="text-[10px] text-rmpg-500 font-mono">{brandingConfig.primary_color}</span>
                         </div>
                       </div>
                       <div>
                         <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Accent</label>
                         <div className="flex items-center gap-2">
-                          <input type="color" value={brandingConfig.accent_color} onChange={(e) => updateBranding('accent_color', e.target.value)} className="w-8 h-8 cursor-pointer border-0 p-0 bg-transparent" />
+                          <input id="ff-adminsystemtab-43" type="color" value={brandingConfig.accent_color} onChange={(e) => updateBranding('accent_color', e.target.value)} className="w-8 h-8 cursor-pointer border-0 p-0 bg-transparent" />
                           <span className="text-[10px] text-rmpg-500 font-mono">{brandingConfig.accent_color}</span>
                         </div>
                       </div>
                       <div>
                         <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Header BG</label>
                         <div className="flex items-center gap-2">
-                          <input type="color" value={brandingConfig.header_bg_color} onChange={(e) => updateBranding('header_bg_color', e.target.value)} className="w-8 h-8 cursor-pointer border-0 p-0 bg-transparent" />
+                          <input id="ff-adminsystemtab-44" type="color" value={brandingConfig.header_bg_color} onChange={(e) => updateBranding('header_bg_color', e.target.value)} className="w-8 h-8 cursor-pointer border-0 p-0 bg-transparent" />
                           <span className="text-[10px] text-rmpg-500 font-mono">{brandingConfig.header_bg_color}</span>
                         </div>
                       </div>
@@ -2158,7 +2158,7 @@ export default function AdminSystemTab({
                 <div className="flex gap-2 mb-3">
                   <div className="relative flex-1">
                     <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400 pointer-events-none" />
-                    <input
+                    <input id="ff-adminsystemtab-45"
                       type="text"
                       className="input-dark text-xs w-full pl-8 min-h-[36px]"
                       placeholder="Search statutes (e.g. 76-5-102 or assault)..." aria-label="Search statutes (e.g. 76-5-102 or assault)..."
@@ -2166,7 +2166,7 @@ export default function AdminSystemTab({
                       onChange={(e) => { setStatuteSearch(e.target.value); setStatutePage(1); }}
                     />
                   </div>
-                  <select
+                  <select id="ff-adminsystemtab-46"
                     className="select-dark text-xs"
                     value={statuteCategory}
                     onChange={(e) => { setStatuteCategory(e.target.value as any); setStatutePage(1); }}
@@ -2256,15 +2256,15 @@ export default function AdminSystemTab({
                     <div className="text-[10px] text-rmpg-400 uppercase font-bold border-b border-rmpg-700 pb-1">Agency Information</div>
                     <div>
                       <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Agency Name</label>
-                      <input type="text" className="input-dark text-xs w-full min-h-[36px]" value={systemSettings.agency_name} onChange={(e) => updateSetting('agency_name', e.target.value)} placeholder="Used in PDF report headers" />
+                      <input id="ff-adminsystemtab-47" type="text" className="input-dark text-xs w-full min-h-[36px]" value={systemSettings.agency_name} onChange={(e) => updateSetting('agency_name', e.target.value)} placeholder="Used in PDF report headers" />
                     </div>
                     <div>
                       <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Agency ORI Number</label>
-                      <input type="text" className="input-dark text-xs w-full min-h-[36px]" value={systemSettings.agency_ori} onChange={(e) => updateSetting('agency_ori', e.target.value)} placeholder="e.g. UT0190000" />
+                      <input id="ff-adminsystemtab-48" type="text" className="input-dark text-xs w-full min-h-[36px]" value={systemSettings.agency_ori} onChange={(e) => updateSetting('agency_ori', e.target.value)} placeholder="e.g. UT0190000" />
                     </div>
                     <div>
                       <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Default Timezone</label>
-                      <select className="select-dark text-xs w-full" value={systemSettings.default_timezone} onChange={(e) => updateSetting('default_timezone', e.target.value)}>
+                      <select id="ff-adminsystemtab-49" className="select-dark text-xs w-full" value={systemSettings.default_timezone} onChange={(e) => updateSetting('default_timezone', e.target.value)}>
                         <option value="America/New_York">Eastern (America/New_York)</option>
                         <option value="America/Chicago">Central (America/Chicago)</option>
                         <option value="America/Denver">Mountain (America/Denver)</option>
@@ -2279,12 +2279,12 @@ export default function AdminSystemTab({
                     <div className="text-[10px] text-rmpg-400 uppercase font-bold border-b border-rmpg-700 pb-1">System Parameters</div>
                     <div>
                       <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Auto-Archive After (days)</label>
-                      <input type="number" className="input-dark text-xs w-full min-h-[36px]" value={systemSettings.auto_archive_days} onChange={(e) => updateSetting('auto_archive_days', e.target.value)} min="0" max="365" />
+                      <input id="ff-adminsystemtab-50" type="number" className="input-dark text-xs w-full min-h-[36px]" value={systemSettings.auto_archive_days} onChange={(e) => updateSetting('auto_archive_days', e.target.value)} min="0" max="365" />
                       <p className="text-[9px] text-rmpg-500 mt-0.5">Closed calls are auto-archived after this many days. 0 = disabled.</p>
                     </div>
                     <div>
                       <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Session Timeout (minutes)</label>
-                      <input type="number" className="input-dark text-xs w-full min-h-[36px]" value={systemSettings.session_timeout_minutes} onChange={(e) => updateSetting('session_timeout_minutes', e.target.value)} min="5" max="1440" />
+                      <input id="ff-adminsystemtab-51" type="number" className="input-dark text-xs w-full min-h-[36px]" value={systemSettings.session_timeout_minutes} onChange={(e) => updateSetting('session_timeout_minutes', e.target.value)} min="5" max="1440" />
                       <p className="text-[9px] text-rmpg-500 mt-0.5">Inactive sessions are logged out after this duration.</p>
                     </div>
                   </div>

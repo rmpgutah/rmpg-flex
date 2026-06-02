@@ -2526,7 +2526,7 @@ export default function DispatchPage() {
                         </span>
                         {editingTimestamp === ts.field ? (
                           <div className="flex items-center gap-1">
-                            <input
+                            <input id="ff-dispatchpage-0"
                               type="datetime-local"
                               step="1"
                               className="input-dark text-[10px] font-mono px-1 py-0.5 w-[175px]"
@@ -2633,7 +2633,7 @@ export default function DispatchPage() {
                   )}
                   {/* Add note input — mobile */}
                   <div className="flex gap-2">
-                    <input
+                    <input id="ff-dispatchpage-1"
                       type="text"
                       className="flex-1 bg-surface-sunken border border-rmpg-600 text-sm text-rmpg-200 px-3 rounded-sm"
                       style={{ minHeight: 44 }}
@@ -2661,7 +2661,7 @@ export default function DispatchPage() {
                       PSO Details
                       {(selectedCall.pso_attempt_number || 1) >= 1 && (
                         isAdminOrManager ? (
-                          <select
+                          <select id="ff-dispatchpage-2"
                             className="px-1 py-0 text-[9px] font-bold rounded-sm cursor-pointer"
                             style={{ background: '#f59e0b30', border: '1px solid #f59e0b50', color: '#fbbf24', appearance: 'auto' }}
                             value={selectedCall.pso_attempt_number || 1}
@@ -3064,7 +3064,7 @@ export default function DispatchPage() {
           )}
           <div className="relative flex items-center" style={{ minWidth: '100px', maxWidth: '170px' }}>
             <Search className="absolute left-2 w-3 h-3 text-[#545454] pointer-events-none" />
-            <input
+            <input id="ff-dispatchpage-3"
               type="text"
               placeholder="Search calls, address, district (SL1, Herriman)…"
               value={searchQuery}
@@ -3561,7 +3561,7 @@ export default function DispatchPage() {
                   {/* Case Number — editable by admin/manager */}
                   {(selectedCall.case_number || isAdminOrManager) && (
                     editingTimestamp === 'case_number' ? (
-                      <input
+                      <input id="ff-dispatchpage-4"
                         type="text"
                         className="input-dark text-[10px] font-mono font-bold px-1.5 py-0.5 w-[160px]"
                         defaultValue={selectedCall.case_number || ''}
@@ -3609,7 +3609,7 @@ export default function DispatchPage() {
                   {/* Incident Number — editable by admin/manager */}
                   {(selectedCall.incident_number || isAdminOrManager) && (
                     editingTimestamp === 'incident_number' ? (
-                      <input
+                      <input id="ff-dispatchpage-5"
                         type="text"
                         className="input-dark text-[10px] font-mono font-bold px-1.5 py-0.5 w-[160px]"
                         defaultValue={(selectedCall as any).incident_number || ''}
@@ -4079,7 +4079,7 @@ export default function DispatchPage() {
                     <div>
                       <label className="field-label">Type:</label>
                       {isEditing ? (
-                        <select className="select-dark text-xs mt-0.5" value={editData.incident_type} onChange={(e) => updateEditField('incident_type', e.target.value)}>
+                        <select id="ff-dispatchpage-6" className="select-dark text-xs mt-0.5" value={editData.incident_type} onChange={(e) => updateEditField('incident_type', e.target.value)}>
                           {Object.entries(INCIDENT_TYPE_CATEGORIES).map(([cat, types]) => (
                             <optgroup key={cat} label={cat}>{types.map((t) => (<option key={t.value} value={t.value}>{t.label}</option>))}</optgroup>
                           ))}
@@ -4145,7 +4145,7 @@ export default function DispatchPage() {
                       <label className="field-label">Description:</label>
                       {isEditing ? (
                         <>
-                          <textarea className="textarea-dark text-xs mt-0.5" rows={3} value={editData.description} onChange={(e) => updateEditField('description', e.target.value)} />
+                          <textarea id="ff-dispatchpage-7" className="textarea-dark text-xs mt-0.5" rows={3} value={editData.description} onChange={(e) => updateEditField('description', e.target.value)} />
                           <NarrativeAssist
                             notes={editData.description || ''}
                             incidentType={editData.incident_type || selectedCall.incident_type}
@@ -4162,7 +4162,7 @@ export default function DispatchPage() {
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                           <div>
                             <label className="field-label">Source:</label>
-                            <select className="select-dark text-xs mt-0.5" value={editData.source} onChange={(e) => updateEditField('source', e.target.value)}>
+                            <select id="ff-dispatchpage-8" className="select-dark text-xs mt-0.5" value={editData.source} onChange={(e) => updateEditField('source', e.target.value)}>
                               <option value="phone">Phone</option><option value="radio">Radio</option><option value="walk_in">Walk-In</option>
                               <option value="alarm">Alarm</option><option value="patrol">Patrol</option><option value="online">Online</option>
                               <option value="dispatch">Dispatch</option><option value="other">Other</option>
@@ -4170,7 +4170,7 @@ export default function DispatchPage() {
                           </div>
                           <div>
                             <label className="field-label">Priority:</label>
-                            <select className="select-dark text-xs mt-0.5" value={editData.priority} onChange={(e) => updateEditField('priority', e.target.value)}>
+                            <select id="ff-dispatchpage-9" className="select-dark text-xs mt-0.5" value={editData.priority} onChange={(e) => updateEditField('priority', e.target.value)}>
                               <option value="P1">P1 - Emergency</option><option value="P2">P2 - Urgent</option>
                               <option value="P3">P3 - Routine</option><option value="P4">P4 - Scheduled</option>
                             </select>
@@ -4179,7 +4179,7 @@ export default function DispatchPage() {
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                           <div>
                             <label className="field-label">Client:</label>
-                            <select className="select-dark text-xs mt-0.5" value={editData.client_id || ''} onChange={(e) => updateEditField('client_id', e.target.value)}>
+                            <select id="ff-dispatchpage-10" className="select-dark text-xs mt-0.5" value={editData.client_id || ''} onChange={(e) => updateEditField('client_id', e.target.value)}>
                               <option value="">— No Client —</option>
                               {clientsList.map((c) => (
                                 <option key={c.id} value={c.id}>{c.name}</option>
@@ -4188,7 +4188,7 @@ export default function DispatchPage() {
                           </div>
                           <div>
                             <label className="field-label">Property:</label>
-                            <select className="select-dark text-xs mt-0.5" value={editData.property_id || ''} onChange={(e) => updateEditField('property_id', e.target.value)}>
+                            <select id="ff-dispatchpage-11" className="select-dark text-xs mt-0.5" value={editData.property_id || ''} onChange={(e) => updateEditField('property_id', e.target.value)}>
                               <option value="">— No Property —</option>
                               {propertiesList.map((p) => (
                                 <option key={p.id} value={p.id}>{p.name}</option>
@@ -4198,7 +4198,7 @@ export default function DispatchPage() {
                         </div>
                         <div>
                           <label className="field-label">Disposition:</label>
-                          <select
+                          <select id="ff-dispatchpage-12"
                             className="select-dark text-xs mt-0.5"
                             value={editData.disposition || ''}
                             onChange={(e) => updateEditField('disposition', e.target.value)}
@@ -4256,8 +4256,8 @@ export default function DispatchPage() {
                       <label className="field-label">Caller:</label>
                       {isEditing ? (
                         <div className="space-y-1 mt-0.5">
-                          <input type="text" className="input-dark text-xs" placeholder="Caller name" value={editData.caller_name} onChange={(e) => updateEditField('caller_name', e.target.value)} />
-                          <input type="text" inputMode="tel" className="input-dark text-xs" placeholder="Caller phone" value={editData.caller_phone} onChange={(e) => updateEditField('caller_phone', formatPhoneInput(e.target.value))} />
+                          <input id="ff-dispatchpage-13" type="text" className="input-dark text-xs" placeholder="Caller name" value={editData.caller_name} onChange={(e) => updateEditField('caller_name', e.target.value)} />
+                          <input id="ff-dispatchpage-14" type="text" inputMode="tel" className="input-dark text-xs" placeholder="Caller phone" value={editData.caller_phone} onChange={(e) => updateEditField('caller_phone', formatPhoneInput(e.target.value))} />
                            <AddressAutocomplete
                              className="input-dark text-xs"
                              placeholder="Caller address"
@@ -4265,7 +4265,7 @@ export default function DispatchPage() {
                              onChange={(value) => updateEditField('caller_address', value)}
                              name="caller_address"
                            />
-                          <select className="select-dark text-xs" value={editData.caller_relationship} onChange={(e) => updateEditField('caller_relationship', e.target.value)}>
+                          <select id="ff-dispatchpage-15" className="select-dark text-xs" value={editData.caller_relationship} onChange={(e) => updateEditField('caller_relationship', e.target.value)}>
                             <option value="">-- Relationship --</option>
                             <option value="employee">Employee</option><option value="victim">Victim</option>
                             <option value="witness">Witness</option><option value="complainant">Complainant</option>
@@ -4315,7 +4315,7 @@ export default function DispatchPage() {
                             <span className="text-[#9ca3af] text-[10px]" style={{ minWidth: '66px' }}>{ts.label}</span>
                             {editingTimestamp === ts.field ? (
                               <div className="flex items-center gap-1">
-                                <input
+                                <input id="ff-dispatchpage-16"
                                   type="datetime-local"
                                   step="1"
                                   className="input-dark text-[10px] font-mono px-1 py-0.5 w-[175px]"
@@ -4440,7 +4440,7 @@ export default function DispatchPage() {
                           {/* Feature 19: Transfer button (only if a unit is assigned) */}
                           {(selectedCall.assigned_units || []).length > 0 && (
                             <div className="relative">
-                              <select
+                              <select id="ff-dispatchpage-17"
                                 className="input-dark text-[8px] py-0 px-1"
                                 style={{ maxWidth: 120 }}
                                 defaultValue=""
@@ -4531,11 +4531,11 @@ export default function DispatchPage() {
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-1">
                         <div>
                           <label className="text-[9px] text-brand-gold-500">Starting Mileage <span className="text-red-400">*</span></label>
-                          <input type="number" step="0.1" min="0" className="input-dark text-xs" placeholder="e.g. 45230" value={editData.starting_mileage} onChange={(e) => updateEditField('starting_mileage', e.target.value)} />
+                          <input id="ff-dispatchpage-18" type="number" step="0.1" min="0" className="input-dark text-xs" placeholder="e.g. 45230" value={editData.starting_mileage} onChange={(e) => updateEditField('starting_mileage', e.target.value)} />
                         </div>
                         <div>
                           <label className="text-[9px] text-brand-gold-500">Ending Mileage</label>
-                          <input type="number" step="0.1" min="0" className="input-dark text-xs" placeholder="e.g. 45256" value={editData.ending_mileage} onChange={(e) => updateEditField('ending_mileage', e.target.value)} />
+                          <input id="ff-dispatchpage-19" type="number" step="0.1" min="0" className="input-dark text-xs" placeholder="e.g. 45256" value={editData.ending_mileage} onChange={(e) => updateEditField('ending_mileage', e.target.value)} />
                         </div>
                       </div>
                     ) : (
@@ -4569,15 +4569,15 @@ export default function DispatchPage() {
                       return (
                         <div className="space-y-2 mt-1">
                           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                            <div><label className="text-[9px] text-brand-gold-500">Cross Street</label><input type="text" className="input-dark text-xs" value={editData.cross_street} onChange={(e) => updateEditField('cross_street', e.target.value)} /></div>
-                            <div><label className="text-[9px] text-brand-gold-500">Building</label><input type="text" className="input-dark text-xs" value={editData.location_building} onChange={(e) => updateEditField('location_building', e.target.value)} /></div>
-                            <div><label className="text-[9px] text-brand-gold-500">Floor</label><input type="text" className="input-dark text-xs" value={editData.location_floor} onChange={(e) => updateEditField('location_floor', e.target.value)} /></div>
-                            <div><label className="text-[9px] text-brand-gold-500">Room/Suite</label><input type="text" className="input-dark text-xs" value={editData.location_room} onChange={(e) => updateEditField('location_room', e.target.value)} /></div>
+                            <div><label className="text-[9px] text-brand-gold-500">Cross Street</label><input id="ff-dispatchpage-20" type="text" className="input-dark text-xs" value={editData.cross_street} onChange={(e) => updateEditField('cross_street', e.target.value)} /></div>
+                            <div><label className="text-[9px] text-brand-gold-500">Building</label><input id="ff-dispatchpage-21" type="text" className="input-dark text-xs" value={editData.location_building} onChange={(e) => updateEditField('location_building', e.target.value)} /></div>
+                            <div><label className="text-[9px] text-brand-gold-500">Floor</label><input id="ff-dispatchpage-22" type="text" className="input-dark text-xs" value={editData.location_floor} onChange={(e) => updateEditField('location_floor', e.target.value)} /></div>
+                            <div><label className="text-[9px] text-brand-gold-500">Room/Suite</label><input id="ff-dispatchpage-23" type="text" className="input-dark text-xs" value={editData.location_room} onChange={(e) => updateEditField('location_room', e.target.value)} /></div>
                           </div>
                           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                             <div>
                               <label className="text-[9px] text-brand-gold-500">Section</label>
-                              <select className="input-dark text-xs" value={editData.sector_id} onChange={(e) => {
+                              <select id="ff-dispatchpage-24" className="input-dark text-xs" value={editData.sector_id} onChange={(e) => {
                                 const val = e.target.value;
                                 setEditData(prev => ({ ...prev, sector_id: val, zone_id: '', beat_id: '', dispatch_code: '' }));
                               }}>
@@ -4591,7 +4591,7 @@ export default function DispatchPage() {
                             </div>
                             <div>
                               <label className="text-[9px] text-brand-gold-500">Zone</label>
-                              <select className="input-dark text-xs" value={editData.zone_id} onChange={(e) => {
+                              <select id="ff-dispatchpage-25" className="input-dark text-xs" value={editData.zone_id} onChange={(e) => {
                                 const val = e.target.value;
                                 setEditData(prev => ({ ...prev, zone_id: val, beat_id: '', dispatch_code: '' }));
                               }}>
@@ -4601,7 +4601,7 @@ export default function DispatchPage() {
                             </div>
                             <div>
                               <label className="text-[9px] text-brand-gold-500">Beat</label>
-                              <select className="input-dark text-xs" value={editData.beat_id} disabled={!editData.sector_id} onChange={(e) => {
+                              <select id="ff-dispatchpage-26" className="input-dark text-xs" value={editData.beat_id} disabled={!editData.sector_id} onChange={(e) => {
                                 const beatVal = e.target.value;
                                 if (!beatVal) { setEditData(prev => ({ ...prev, beat_id: '', dispatch_code: '' })); return; }
                                 // Resolve the district for this beat. If a Zone is
@@ -4634,7 +4634,7 @@ export default function DispatchPage() {
                             </div>
                             <div>
                               <label className="text-[9px] text-brand-gold-500">Dispatch Code</label>
-                              <input type="text" className="input-dark text-xs bg-rmpg-800 opacity-80" readOnly value={editData.dispatch_code || ''} />
+                              <input id="ff-dispatchpage-27" type="text" className="input-dark text-xs bg-rmpg-800 opacity-80" readOnly value={editData.dispatch_code || ''} />
                             </div>
                           </div>
                         </div>
@@ -4728,15 +4728,15 @@ export default function DispatchPage() {
                       return (
                       <div className="space-y-2 mt-1">
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                          <div><label className="text-[9px] text-brand-gold-500"># Subjects</label><input type="number" min="0" className="input-dark text-xs" value={editData.num_subjects} onChange={(e) => updateEditField('num_subjects', e.target.value)} /></div>
-                          <div><label className="text-[9px] text-brand-gold-500"># Victims</label><input type="number" min="0" className="input-dark text-xs" value={editData.num_victims} onChange={(e) => updateEditField('num_victims', e.target.value)} /></div>
+                          <div><label className="text-[9px] text-brand-gold-500"># Subjects</label><input id="ff-dispatchpage-28" type="number" min="0" className="input-dark text-xs" value={editData.num_subjects} onChange={(e) => updateEditField('num_subjects', e.target.value)} /></div>
+                          <div><label className="text-[9px] text-brand-gold-500"># Victims</label><input id="ff-dispatchpage-29" type="number" min="0" className="input-dark text-xs" value={editData.num_victims} onChange={(e) => updateEditField('num_victims', e.target.value)} /></div>
                           <div>
                             <label className="text-[9px] text-brand-gold-500">Weapons</label>
-                            <select className="input-dark text-xs" value={weaponsIsOther ? 'Other' : editData.weapons_involved} onChange={(e) => updateEditField('weapons_involved', e.target.value)}>
+                            <select id="ff-dispatchpage-30" className="input-dark text-xs" value={weaponsIsOther ? 'Other' : editData.weapons_involved} onChange={(e) => updateEditField('weapons_involved', e.target.value)}>
                               {WEAPONS_OPTIONS.map(w => <option key={w} value={w}>{w || '— Select —'}</option>)}
                             </select>
                             {(editData.weapons_involved === 'Other' || weaponsIsOther) && (
-                              <input type="text" className="input-dark text-xs mt-1" placeholder="Specify weapon..." value={weaponsIsOther ? editData.weapons_involved : ''} onChange={(e) => updateEditField('weapons_involved', e.target.value || 'Other')} />
+                              <input id="ff-dispatchpage-31" type="text" className="input-dark text-xs mt-1" placeholder="Specify weapon..." value={weaponsIsOther ? editData.weapons_involved : ''} onChange={(e) => updateEditField('weapons_involved', e.target.value || 'Other')} />
                             )}
                           </div>
                         </div>
@@ -4744,7 +4744,7 @@ export default function DispatchPage() {
                         <div>
                           <div className="flex items-center gap-2 mb-1">
                             <label className="text-[9px] text-brand-gold-500">Linked Persons</label>
-                            <select className="input-dark text-[9px] py-0 px-1 w-auto" value={linkPersonRole} onChange={(e) => setLinkPersonRole(e.target.value)}>
+                            <select id="ff-dispatchpage-32" className="input-dark text-[9px] py-0 px-1 w-auto" value={linkPersonRole} onChange={(e) => setLinkPersonRole(e.target.value)}>
                               <option value="suspect">Suspect</option>
                               <option value="victim">Victim</option>
                               <option value="witness">Witness</option>
@@ -4767,7 +4767,7 @@ export default function DispatchPage() {
                             </div>
                           )}
                           <div className="relative" ref={personDropdownRef}>
-                            <input type="text" className="input-dark text-xs" placeholder="Search person records to link..." value={editData.subject_description} onChange={(e) => { updateEditField('subject_description', e.target.value); searchPersons(e.target.value); }} onFocus={() => { if (personSearchResults.length > 0) setShowPersonDropdown(true); }} />
+                            <input id="ff-dispatchpage-33" type="text" className="input-dark text-xs" placeholder="Search person records to link..." value={editData.subject_description} onChange={(e) => { updateEditField('subject_description', e.target.value); searchPersons(e.target.value); }} onFocus={() => { if (personSearchResults.length > 0) setShowPersonDropdown(true); }} />
                             {showPersonDropdown && personSearchResults.length > 0 && (
                               <div className="absolute z-50 left-0 right-0 mt-0.5 max-h-40 overflow-y-auto border border-rmpg-500 bg-rmpg-800 rounded-sm shadow-lg">
                                 {personSearchResults.map((p: any) => (
@@ -4795,7 +4795,7 @@ export default function DispatchPage() {
                         <div>
                           <div className="flex items-center gap-2 mb-1">
                             <label className="text-[9px] text-brand-gold-500">Linked Vehicles</label>
-                            <select className="input-dark text-[9px] py-0 px-1 w-auto" value={linkVehicleRole} onChange={(e) => setLinkVehicleRole(e.target.value)}>
+                            <select id="ff-dispatchpage-34" className="input-dark text-[9px] py-0 px-1 w-auto" value={linkVehicleRole} onChange={(e) => setLinkVehicleRole(e.target.value)}>
                               <option value="suspect_vehicle">Suspect Vehicle</option>
                               <option value="victim_vehicle">Victim Vehicle</option>
                               <option value="witness_vehicle">Witness Vehicle</option>
@@ -4817,7 +4817,7 @@ export default function DispatchPage() {
                             </div>
                           )}
                           <div className="relative" ref={vehicleDropdownRef}>
-                            <input type="text" className="input-dark text-xs" placeholder="Search vehicle records to link..." value={editData.vehicle_description} onChange={(e) => { updateEditField('vehicle_description', e.target.value); searchVehicles(e.target.value); }} onFocus={() => { if (vehicleSearchResults.length > 0) setShowVehicleDropdown(true); }} />
+                            <input id="ff-dispatchpage-35" type="text" className="input-dark text-xs" placeholder="Search vehicle records to link..." value={editData.vehicle_description} onChange={(e) => { updateEditField('vehicle_description', e.target.value); searchVehicles(e.target.value); }} onFocus={() => { if (vehicleSearchResults.length > 0) setShowVehicleDropdown(true); }} />
                             {showVehicleDropdown && vehicleSearchResults.length > 0 && (
                               <div className="absolute z-50 left-0 right-0 mt-0.5 max-h-40 overflow-y-auto border border-rmpg-500 bg-rmpg-800 rounded-sm shadow-lg">
                                 {vehicleSearchResults.map((v: any) => (
@@ -4843,13 +4843,13 @@ export default function DispatchPage() {
                         </div>
                         <div>
                           <label className="text-[9px] text-brand-gold-500">Direction of Travel</label>
-                          <select className="input-dark text-xs" value={(DIRECTION_OPTIONS as readonly string[]).includes(editData.direction_of_travel) ? editData.direction_of_travel : ''} onChange={(e) => updateEditField('direction_of_travel', e.target.value)}>
+                          <select id="ff-dispatchpage-36" className="input-dark text-xs" value={(DIRECTION_OPTIONS as readonly string[]).includes(editData.direction_of_travel) ? editData.direction_of_travel : ''} onChange={(e) => updateEditField('direction_of_travel', e.target.value)}>
                             {DIRECTION_OPTIONS.map(d => <option key={d} value={d}>{d || '— Select —'}</option>)}
                           </select>
                         </div>
                         <div className="flex items-center gap-4 mt-1">
                           <label className="flex items-center gap-1 text-xs text-rmpg-300 cursor-pointer">
-                            <input type="checkbox" checked={editData.injuries_reported} onChange={(e) => updateEditField('injuries_reported', e.target.checked)} className="accent-red-500" />
+                            <input id="ff-dispatchpage-37" type="checkbox" checked={editData.injuries_reported} onChange={(e) => updateEditField('injuries_reported', e.target.checked)} className="accent-red-500" />
                             Injuries
                           </label>
                         </div>
@@ -4914,52 +4914,52 @@ export default function DispatchPage() {
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                           <div>
                             <label className="text-[9px] text-brand-gold-500">Scene Safety</label>
-                            <select className="input-dark text-xs" value={(SCENE_SAFETY_OPTIONS as readonly string[]).includes(editData.scene_safety) ? editData.scene_safety : ''} onChange={(e) => updateEditField('scene_safety', e.target.value)}>
+                            <select id="ff-dispatchpage-38" className="input-dark text-xs" value={(SCENE_SAFETY_OPTIONS as readonly string[]).includes(editData.scene_safety) ? editData.scene_safety : ''} onChange={(e) => updateEditField('scene_safety', e.target.value)}>
                               {SCENE_SAFETY_OPTIONS.map(s => <option key={s} value={s}>{s || '— Select —'}</option>)}
                             </select>
                           </div>
                           <div>
                             <label className="text-[9px] text-brand-gold-500">Weather</label>
-                            <select className="input-dark text-xs" value={(WEATHER_OPTIONS as readonly string[]).includes(editData.weather_conditions) ? editData.weather_conditions : ''} onChange={(e) => updateEditField('weather_conditions', e.target.value)}>
+                            <select id="ff-dispatchpage-39" className="input-dark text-xs" value={(WEATHER_OPTIONS as readonly string[]).includes(editData.weather_conditions) ? editData.weather_conditions : ''} onChange={(e) => updateEditField('weather_conditions', e.target.value)}>
                               {WEATHER_OPTIONS.map(w => <option key={w} value={w}>{w || '— Select —'}</option>)}
                             </select>
                           </div>
                           <div>
                             <label className="text-[9px] text-brand-gold-500">Lighting</label>
-                            <select className="input-dark text-xs" value={(LIGHTING_OPTIONS as readonly string[]).includes(editData.lighting_conditions) ? editData.lighting_conditions : ''} onChange={(e) => updateEditField('lighting_conditions', e.target.value)}>
+                            <select id="ff-dispatchpage-40" className="input-dark text-xs" value={(LIGHTING_OPTIONS as readonly string[]).includes(editData.lighting_conditions) ? editData.lighting_conditions : ''} onChange={(e) => updateEditField('lighting_conditions', e.target.value)}>
                               {LIGHTING_OPTIONS.map(l => <option key={l} value={l}>{l || '— Select —'}</option>)}
                             </select>
                           </div>
                         </div>
                         <div className="flex flex-wrap items-center gap-4">
-                          <label className="flex items-center gap-1 text-xs text-rmpg-300 cursor-pointer"><input type="checkbox" checked={editData.alcohol_involved} onChange={(e) => updateEditField('alcohol_involved', e.target.checked)} className="accent-amber-500" /> Alcohol</label>
-                          <label className="flex items-center gap-1 text-xs text-rmpg-300 cursor-pointer"><input type="checkbox" checked={editData.drugs_involved} onChange={(e) => updateEditField('drugs_involved', e.target.checked)} className="accent-red-500" /> Drugs</label>
-                          <label className="flex items-center gap-1 text-xs text-rmpg-300 cursor-pointer"><input type="checkbox" checked={editData.domestic_violence} onChange={(e) => updateEditField('domestic_violence', e.target.checked)} className="accent-red-500" /> DV</label>
-                          <label className="flex items-center gap-1 text-xs text-rmpg-300 cursor-pointer"><input type="checkbox" checked={editData.supervisor_notified} onChange={(e) => updateEditField('supervisor_notified', e.target.checked)} className="accent-brand-500" /> Supervisor Notified</label>
-                          <label className="flex items-center gap-1 text-xs text-rmpg-300 cursor-pointer"><input type="checkbox" checked={editData.le_notified} onChange={(e) => updateEditField('le_notified', e.target.checked)} className="accent-brand-500" /> LE Notified</label>
+                          <label className="flex items-center gap-1 text-xs text-rmpg-300 cursor-pointer"><input id="ff-dispatchpage-41" type="checkbox" checked={editData.alcohol_involved} onChange={(e) => updateEditField('alcohol_involved', e.target.checked)} className="accent-amber-500" /> Alcohol</label>
+                          <label className="flex items-center gap-1 text-xs text-rmpg-300 cursor-pointer"><input id="ff-dispatchpage-42" type="checkbox" checked={editData.drugs_involved} onChange={(e) => updateEditField('drugs_involved', e.target.checked)} className="accent-red-500" /> Drugs</label>
+                          <label className="flex items-center gap-1 text-xs text-rmpg-300 cursor-pointer"><input id="ff-dispatchpage-43" type="checkbox" checked={editData.domestic_violence} onChange={(e) => updateEditField('domestic_violence', e.target.checked)} className="accent-red-500" /> DV</label>
+                          <label className="flex items-center gap-1 text-xs text-rmpg-300 cursor-pointer"><input id="ff-dispatchpage-44" type="checkbox" checked={editData.supervisor_notified} onChange={(e) => updateEditField('supervisor_notified', e.target.checked)} className="accent-brand-500" /> Supervisor Notified</label>
+                          <label className="flex items-center gap-1 text-xs text-rmpg-300 cursor-pointer"><input id="ff-dispatchpage-45" type="checkbox" checked={editData.le_notified} onChange={(e) => updateEditField('le_notified', e.target.checked)} className="accent-brand-500" /> LE Notified</label>
                         </div>
                         {editData.le_notified && (
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                             <div>
                               <label className="text-[9px] text-brand-gold-500">LE Agency</label>
-                              <select className="input-dark text-xs" value={leIsOther ? 'Other — See Notes' : editData.le_agency} onChange={(e) => updateEditField('le_agency', e.target.value)}>
+                              <select id="ff-dispatchpage-46" className="input-dark text-xs" value={leIsOther ? 'Other — See Notes' : editData.le_agency} onChange={(e) => updateEditField('le_agency', e.target.value)}>
                                 {LE_AGENCY_OPTIONS.map(a => <option key={a} value={a}>{a || '— Select —'}</option>)}
                               </select>
                               {(editData.le_agency === 'Other — See Notes' || leIsOther) && (
-                                <input type="text" className="input-dark text-xs mt-1" placeholder="Specify agency..." value={leIsOther ? editData.le_agency : ''} onChange={(e) => updateEditField('le_agency', e.target.value || 'Other — See Notes')} />
+                                <input id="ff-dispatchpage-47" type="text" className="input-dark text-xs mt-1" placeholder="Specify agency..." value={leIsOther ? editData.le_agency : ''} onChange={(e) => updateEditField('le_agency', e.target.value || 'Other — See Notes')} />
                               )}
                             </div>
-                            <div><label className="text-[9px] text-brand-gold-500">LE Case #</label><input type="text" className="input-dark text-xs" value={editData.le_case_number} onChange={(e) => updateEditField('le_case_number', e.target.value)} /></div>
+                            <div><label className="text-[9px] text-brand-gold-500">LE Case #</label><input id="ff-dispatchpage-48" type="text" className="input-dark text-xs" value={editData.le_case_number} onChange={(e) => updateEditField('le_case_number', e.target.value)} /></div>
                           </div>
                         )}
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                          <div><label className="text-[9px] text-brand-gold-500">Damage Estimate ($)</label><input type="number" min="0" step="0.01" className="input-dark text-xs" value={editData.damage_estimate} onChange={(e) => updateEditField('damage_estimate', e.target.value)} /></div>
-                          <div><label className="text-[9px] text-brand-gold-500">Damage Description</label><input type="text" className="input-dark text-xs" value={editData.damage_description} onChange={(e) => updateEditField('damage_description', e.target.value)} /></div>
+                          <div><label className="text-[9px] text-brand-gold-500">Damage Estimate ($)</label><input id="ff-dispatchpage-49" type="number" min="0" step="0.01" className="input-dark text-xs" value={editData.damage_estimate} onChange={(e) => updateEditField('damage_estimate', e.target.value)} /></div>
+                          <div><label className="text-[9px] text-brand-gold-500">Damage Description</label><input id="ff-dispatchpage-50" type="text" className="input-dark text-xs" value={editData.damage_description} onChange={(e) => updateEditField('damage_description', e.target.value)} /></div>
                         </div>
-                        <div><label className="text-[9px] text-brand-gold-500">Action Taken</label><textarea className="textarea-dark text-xs" rows={2} value={editData.action_taken} onChange={(e) => updateEditField('action_taken', e.target.value)} /></div>
+                        <div><label className="text-[9px] text-brand-gold-500">Action Taken</label><textarea id="ff-dispatchpage-51" className="textarea-dark text-xs" rows={2} value={editData.action_taken} onChange={(e) => updateEditField('action_taken', e.target.value)} /></div>
                         <div>
                           <label className="text-[9px] text-brand-gold-500">Responding Officer</label>
-                          <select className="input-dark text-xs" value={editData.responding_officer} onChange={(e) => updateEditField('responding_officer', e.target.value)}>
+                          <select id="ff-dispatchpage-52" className="input-dark text-xs" value={editData.responding_officer} onChange={(e) => updateEditField('responding_officer', e.target.value)}>
                             <option value="">— Select Officer —</option>
                             {officers.map(o => (
                               <option key={o.id} value={`${o.full_name}${o.badge_number ? ` (#${o.badge_number})` : ''}`}>
@@ -4997,7 +4997,7 @@ export default function DispatchPage() {
                         <Building2 className="w-3 h-3" /> PSO Client Request Details
                         {(selectedCall.pso_attempt_number || 1) >= 1 && (
                           isAdminOrManager && !isEditing ? (
-                            <select
+                            <select id="ff-dispatchpage-53"
                               className="ml-1.5 px-1 py-0 text-[8px] font-bold rounded-sm cursor-pointer"
                               style={{ background: '#f59e0b30', border: '1px solid #f59e0b50', color: '#fbbf24', appearance: 'auto', minWidth: '90px' }}
                               value={selectedCall.pso_attempt_number || 1}
@@ -5080,14 +5080,14 @@ export default function DispatchPage() {
                     {isEditing ? (
                       <div className="space-y-2 mt-1">
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                          <div><label className="text-[9px] text-brand-gold-500">Requestor Name</label><input type="text" className="input-dark text-xs" placeholder="Requestor name" value={editData.pso_requestor_name} onChange={(e) => updateEditField('pso_requestor_name', e.target.value)} /></div>
-                          <div><label className="text-[9px] text-brand-gold-500">Requestor Phone</label><input type="text" inputMode="tel" className="input-dark text-xs" placeholder="Phone number" value={editData.pso_requestor_phone} onChange={(e) => updateEditField('pso_requestor_phone', formatPhoneInput(e.target.value))} /></div>
-                          <div><label className="text-[9px] text-brand-gold-500">Requestor Email</label><input type="text" className="input-dark text-xs" placeholder="Email address" value={editData.pso_requestor_email} onChange={(e) => updateEditField('pso_requestor_email', e.target.value)} /></div>
+                          <div><label className="text-[9px] text-brand-gold-500">Requestor Name</label><input id="ff-dispatchpage-54" type="text" className="input-dark text-xs" placeholder="Requestor name" value={editData.pso_requestor_name} onChange={(e) => updateEditField('pso_requestor_name', e.target.value)} /></div>
+                          <div><label className="text-[9px] text-brand-gold-500">Requestor Phone</label><input id="ff-dispatchpage-55" type="text" inputMode="tel" className="input-dark text-xs" placeholder="Phone number" value={editData.pso_requestor_phone} onChange={(e) => updateEditField('pso_requestor_phone', formatPhoneInput(e.target.value))} /></div>
+                          <div><label className="text-[9px] text-brand-gold-500">Requestor Email</label><input id="ff-dispatchpage-56" type="text" className="input-dark text-xs" placeholder="Email address" value={editData.pso_requestor_email} onChange={(e) => updateEditField('pso_requestor_email', e.target.value)} /></div>
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                           <div>
                             <label className="text-[9px] text-brand-gold-500">Service Type</label>
-                            <select className="input-dark text-xs" value={editData.pso_service_type} onChange={(e) => updateEditField('pso_service_type', e.target.value)}>
+                            <select id="ff-dispatchpage-57" className="input-dark text-xs" value={editData.pso_service_type} onChange={(e) => updateEditField('pso_service_type', e.target.value)}>
                               <option value="">— Select Service Type —</option>
                               <optgroup label="Process Service">
                                 <option value="process_service">Process Service (General)</option>
@@ -5137,11 +5137,11 @@ export default function DispatchPage() {
                               </optgroup>
                             </select>
                           </div>
-                          <div><label className="text-[9px] text-brand-gold-500">Billing Code</label><input type="text" className="input-dark text-xs" placeholder="Billing code" value={editData.pso_billing_code} onChange={(e) => updateEditField('pso_billing_code', e.target.value)} /></div>
-                          <div><label className="text-[9px] text-brand-gold-500">Authorization</label><input type="text" className="input-dark text-xs" placeholder="Authorization #" value={editData.pso_authorization} onChange={(e) => updateEditField('pso_authorization', e.target.value)} /></div>
+                          <div><label className="text-[9px] text-brand-gold-500">Billing Code</label><input id="ff-dispatchpage-58" type="text" className="input-dark text-xs" placeholder="Billing code" value={editData.pso_billing_code} onChange={(e) => updateEditField('pso_billing_code', e.target.value)} /></div>
+                          <div><label className="text-[9px] text-brand-gold-500">Authorization</label><input id="ff-dispatchpage-59" type="text" className="input-dark text-xs" placeholder="Authorization #" value={editData.pso_authorization} onChange={(e) => updateEditField('pso_authorization', e.target.value)} /></div>
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                          <div><label className="text-[9px] text-brand-gold-500">Contract ID</label><input type="text" className="input-dark text-xs" placeholder="Contract ID" value={editData.contract_id} onChange={(e) => updateEditField('contract_id', e.target.value)} /></div>
+                          <div><label className="text-[9px] text-brand-gold-500">Contract ID</label><input id="ff-dispatchpage-60" type="text" className="input-dark text-xs" placeholder="Contract ID" value={editData.contract_id} onChange={(e) => updateEditField('contract_id', e.target.value)} /></div>
                         </div>
                       </div>
                     ) : (
@@ -5275,7 +5275,7 @@ export default function DispatchPage() {
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                           <div>
                             <label className="text-[9px] text-amber-400">Document Type</label>
-                            <select className="input-dark text-xs" value={editData.process_service_type || ''} onChange={(e) => updateEditField('process_service_type', e.target.value)}>
+                            <select id="ff-dispatchpage-61" className="input-dark text-xs" value={editData.process_service_type || ''} onChange={(e) => updateEditField('process_service_type', e.target.value)}>
                               <option value="">— Select Document Type —</option>
                               <optgroup label="Civil Process — General">
                                 <option value="subpoena">Subpoena</option>
@@ -5374,25 +5374,25 @@ export default function DispatchPage() {
                           </div>
                           <div>
                             <label className="text-[9px] text-amber-400">Serve To (Name)</label>
-                            <input type="text" className="input-dark text-xs" placeholder="Person to be served" value={editData.process_served_to || ''} onChange={(e) => updateEditField('process_served_to', e.target.value)} />
+                            <input id="ff-dispatchpage-62" type="text" className="input-dark text-xs" placeholder="Person to be served" value={editData.process_served_to || ''} onChange={(e) => updateEditField('process_served_to', e.target.value)} />
                           </div>
                           <div>
                             <label className="text-[9px] text-amber-400">Attempts</label>
-                            <input type="number" className="input-dark text-xs" min="0" placeholder="0" value={editData.process_attempts ?? 0} onChange={(e) => updateEditField('process_attempts', e.target.value ? parseInt(e.target.value, 10) : 0)} />
+                            <input id="ff-dispatchpage-63" type="number" className="input-dark text-xs" min="0" placeholder="0" value={editData.process_attempts ?? 0} onChange={(e) => updateEditField('process_attempts', e.target.value ? parseInt(e.target.value, 10) : 0)} />
                           </div>
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                           <div className="sm:col-span-1">
                             <label className="text-[9px] text-amber-400">Service Address</label>
-                            <input type="text" className="input-dark text-xs w-full" placeholder="Address for service" value={editData.process_served_address || ''} onChange={(e) => updateEditField('process_served_address', e.target.value)} />
+                            <input id="ff-dispatchpage-64" type="text" className="input-dark text-xs w-full" placeholder="Address for service" value={editData.process_served_address || ''} onChange={(e) => updateEditField('process_served_address', e.target.value)} />
                           </div>
                           <div>
                             <label className="text-[9px] text-amber-400">Served At</label>
-                            <input type="datetime-local" step="1" className="input-dark text-xs" value={editData.process_served_at || ''} onChange={(e) => updateEditField('process_served_at', e.target.value)} />
+                            <input id="ff-dispatchpage-65" type="datetime-local" step="1" className="input-dark text-xs" value={editData.process_served_at || ''} onChange={(e) => updateEditField('process_served_at', e.target.value)} />
                           </div>
                           <div>
                             <label className="text-[9px] text-amber-400">Service Result</label>
-                            <select className="input-dark text-xs" value={editData.process_service_result || ''} onChange={(e) => updateEditField('process_service_result', e.target.value)}>
+                            <select id="ff-dispatchpage-66" className="input-dark text-xs" value={editData.process_service_result || ''} onChange={(e) => updateEditField('process_service_result', e.target.value)}>
                               <option value="">— Pending —</option>
                               <optgroup label="Successful Service">
                                 <option value="served">Personal Service</option>
@@ -5607,7 +5607,7 @@ export default function DispatchPage() {
                   </div>
                   {showAddTimeline && (
                     <div className="flex gap-2 mb-2">
-                      <input type="text" className="input-dark flex-1 text-xs" placeholder="New timeline entry..." spellCheck={true} value={newTimelineText}
+                      <input id="ff-dispatchpage-67" type="text" className="input-dark flex-1 text-xs" placeholder="New timeline entry..." spellCheck={true} value={newTimelineText}
                         onChange={(e) => setNewTimelineText(e.target.value)}
                         onKeyDown={(e) => { if (e.key === 'Enter') handleAddTimeline(); }}
                       />
@@ -5632,7 +5632,7 @@ export default function DispatchPage() {
                           </span>
                           {editingTimelineId === String(entry.id) ? (
                             <div className="flex-1 flex gap-1">
-                              <input type="text" className="input-dark text-xs flex-1" value={editTimelineText}
+                              <input id="ff-dispatchpage-68" type="text" className="input-dark text-xs flex-1" value={editTimelineText}
                                 onChange={(e) => setEditTimelineText(e.target.value)}
                                 onKeyDown={(e) => { if (e.key === 'Enter') handleEditTimeline(String(entry.id)); if (e.key === 'Escape') setEditingTimelineId(null); }}
                                 autoFocus
@@ -5693,7 +5693,7 @@ export default function DispatchPage() {
                         <span className="text-[#d4a017] font-bold whitespace-nowrap text-[10px]">{note.author || 'System'}</span>
                         {editingNoteId === note.id ? (
                           <div className="flex-1 min-w-0 flex flex-col gap-1">
-                            <textarea className="input-dark text-xs w-full" rows={2} value={editingNoteText} onChange={(e) => setEditingNoteText(e.target.value)} autoFocus />
+                            <textarea id="ff-dispatchpage-69" className="input-dark text-xs w-full" rows={2} value={editingNoteText} onChange={(e) => setEditingNoteText(e.target.value)} autoFocus />
                             <div className="flex gap-1">
                               <button type="button" className="toolbar-btn toolbar-btn-primary text-[9px] px-2 py-0.5" onClick={() => handleEditNote(note.id, editingNoteText)}>Save</button>
                               <button type="button" className="toolbar-btn text-[9px] px-2 py-0.5" onClick={() => { setEditingNoteId(null); setEditingNoteText(''); }}>Cancel</button>
@@ -5723,7 +5723,7 @@ export default function DispatchPage() {
                       <span className="text-[8px] text-[#545454] ml-2 font-mono select-none">Shift+Enter to submit</span>
                     </div>
                     <div className="flex gap-2">
-                      <textarea
+                      <textarea id="ff-dispatchpage-70"
                         ref={noteTextareaRef}
                         className="input-dark flex-1 text-xs resize-none"
                         rows={2}
@@ -5746,7 +5746,7 @@ export default function DispatchPage() {
                     {/* Feature 20: Broadcast Note to all assigned units */}
                     {(selectedCall.assigned_units || []).length > 0 && (
                       <div className="flex gap-2 mt-2 pt-2 border-t border-rmpg-700/50">
-                        <input
+                        <input id="ff-dispatchpage-71"
                           type="text"
                           className="input-dark flex-1 text-xs"
                           placeholder="Broadcast to all units on call..."
@@ -6269,7 +6269,7 @@ export default function DispatchPage() {
             <div className="p-4 space-y-3">
               <div>
                 <label className="field-label">Call Sign *</label>
-                <input
+                <input id="ff-dispatchpage-72"
                   type="text"
                   className="input-dark text-sm w-full mt-1"
                   placeholder="e.g. PATROL-01, K9-01, SUPER-01"
@@ -6281,7 +6281,7 @@ export default function DispatchPage() {
               </div>
               <div>
                 <label className="field-label">Assigned Officer</label>
-                <select
+                <select id="ff-dispatchpage-73"
                   className="select-dark text-sm w-full mt-1"
                   value={newUnitOfficerId}
                   onChange={(e) => setNewUnitOfficerId(e.target.value)}
@@ -6296,7 +6296,7 @@ export default function DispatchPage() {
               </div>
               <div>
                 <label className="field-label">Status</label>
-                <select
+                <select id="ff-dispatchpage-74"
                   className="select-dark text-sm w-full mt-1"
                   value={newUnitStatus}
                   onChange={(e) => setNewUnitStatus(e.target.value)}
@@ -6741,7 +6741,7 @@ export default function DispatchPage() {
                   {handoffMeta.updated_at && ` at ${safeDateTimeStr(handoffMeta.updated_at)}`}
                 </p>
               )}
-              <textarea
+              <textarea id="ff-dispatchpage-75"
                 value={handoffNotes}
                 onChange={e => setHandoffNotes(e.target.value)}
                 className="input-dark w-full h-48 text-sm resize-none"

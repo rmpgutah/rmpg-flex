@@ -288,7 +288,7 @@ export function PropertiesTabList({ state }: { state: PropertiesTabState }) {
         </div>
         <div className="ml-auto relative w-64" role="search">
           <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-400 pointer-events-none" />
-          <input
+          <input id="ff-propertiestab-0"
             type="text"
             className="input-dark pl-8 w-full text-[11px] py-1 min-h-[36px] focus:ring-1 focus:ring-brand-500/50 focus:border-brand-600 transition-shadow"
             placeholder="Search properties..." aria-label="Search properties..."

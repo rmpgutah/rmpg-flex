@@ -700,7 +700,7 @@ export default function CommunicationsPage() {
           <>
             <div className="flex items-center gap-1 px-2 py-0.5 panel-inset" style={{ background: '#050505' }}>
               <Search className="w-3 h-3 text-rmpg-500" />
-              <input
+              <input id="ff-communicationspage-0"
                 type="text"
                 placeholder="Search conversations..." aria-label="Search conversations"
                 autoComplete="off"
@@ -1088,11 +1088,11 @@ export default function CommunicationsPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="text-[10px] text-rmpg-300 uppercase font-semibold mb-1 block tracking-wider">Title:</label>
-                    <input type="text" className="input-dark min-h-[36px]" placeholder="BOLO title" value={boloTitle} onChange={(e) => setBoloTitle(e.target.value)} required />
+                    <input id="ff-communicationspage-1" type="text" className="input-dark min-h-[36px]" placeholder="BOLO title" value={boloTitle} onChange={(e) => setBoloTitle(e.target.value)} required />
                   </div>
                   <div>
                     <label className="text-[10px] text-rmpg-300 uppercase font-semibold mb-1 block">Type:</label>
-                    <select className="select-dark" value={boloType} onChange={(e) => setBoloType(e.target.value as BOLOType)}>
+                    <select id="ff-communicationspage-2" className="select-dark" value={boloType} onChange={(e) => setBoloType(e.target.value as BOLOType)}>
                       <option value="person">Person</option>
                       <option value="vehicle">Vehicle</option>
                       <option value="other">Other</option>
@@ -1100,7 +1100,7 @@ export default function CommunicationsPage() {
                   </div>
                   <div>
                     <label className="text-[10px] text-rmpg-300 uppercase font-semibold mb-1 block">Priority:</label>
-                    <select className="select-dark" value={boloPriority} onChange={(e) => setBoloPriority(e.target.value as CallPriority)}>
+                    <select id="ff-communicationspage-3" className="select-dark" value={boloPriority} onChange={(e) => setBoloPriority(e.target.value as CallPriority)}>
                       <option value="P1">P1 - Emergency</option>
                       <option value="P2">P2 - Urgent</option>
                       <option value="P3">P3 - Routine</option>
@@ -1108,11 +1108,11 @@ export default function CommunicationsPage() {
                   </div>
                   <div>
                     <label className="text-[10px] text-rmpg-300 uppercase font-semibold mb-1 block">Subject Description:</label>
-                    <input type="text" className="input-dark min-h-[36px]" placeholder="Subject description" value={boloSubjectDescription} onChange={(e) => setBoloSubjectDescription(e.target.value)} />
+                    <input id="ff-communicationspage-4" type="text" className="input-dark min-h-[36px]" placeholder="Subject description" value={boloSubjectDescription} onChange={(e) => setBoloSubjectDescription(e.target.value)} />
                   </div>
                   <div>
                     <label className="text-[10px] text-rmpg-300 uppercase font-semibold mb-1 block">Vehicle Description:</label>
-                    <input type="text" className="input-dark min-h-[36px]" placeholder="Vehicle description" value={boloVehicleDescription} onChange={(e) => setBoloVehicleDescription(e.target.value)} />
+                    <input id="ff-communicationspage-5" type="text" className="input-dark min-h-[36px]" placeholder="Vehicle description" value={boloVehicleDescription} onChange={(e) => setBoloVehicleDescription(e.target.value)} />
                   </div>
                   <div className="col-span-2">
                     <label className="text-[10px] text-rmpg-300 uppercase font-semibold mb-1 block">Description:</label>
@@ -1121,7 +1121,7 @@ export default function CommunicationsPage() {
                   <div className="col-span-2">
                     <label className="text-[10px] text-rmpg-300 uppercase font-semibold mb-1 block">Photo (optional):</label>
                     <div className="flex items-center gap-4">
-                      <input type="file" accept="image/*" className="text-xs text-rmpg-300 file:mr-3 file:py-1 file:px-3 file:border file:border-rmpg-600 file:bg-rmpg-700 file:text-rmpg-200 file:text-xs file:cursor-pointer hover:file:bg-rmpg-600" onChange={handleBoloPhotoChange} />
+                      <input id="ff-communicationspage-6" type="file" accept="image/*" className="text-xs text-rmpg-300 file:mr-3 file:py-1 file:px-3 file:border file:border-rmpg-600 file:bg-rmpg-700 file:text-rmpg-200 file:text-xs file:cursor-pointer hover:file:bg-rmpg-600" onChange={handleBoloPhotoChange} />
                       {boloPhotoPreview && (
                         <div className="relative">
                           <img src={boloPhotoPreview} alt="Preview" className="w-16 h-16 object-cover border border-rmpg-600" />
@@ -1331,7 +1331,7 @@ export default function CommunicationsPage() {
       >
         <div>
           <label className="text-[10px] text-rmpg-300 uppercase font-semibold mb-1 block">To:</label>
-          <select className="select-dark" value={composeTo} onChange={(e) => setComposeTo(e.target.value)} required>
+          <select id="ff-communicationspage-7" className="select-dark" value={composeTo} onChange={(e) => setComposeTo(e.target.value)} required>
             <option value="">Select recipient...</option>
             <option value="broadcast">All Units (Broadcast)</option>
             {officers.map((o) => (
@@ -1341,7 +1341,7 @@ export default function CommunicationsPage() {
         </div>
         <div>
           <label className="text-[10px] text-rmpg-300 uppercase font-semibold mb-1 block">Priority:</label>
-          <select className={`select-dark ${composePriority === 'emergency' ? 'border-red-500 text-red-400' : composePriority === 'urgent' ? 'border-amber-500 text-amber-400' : ''}`} value={composePriority} onChange={(e) => setComposePriority(e.target.value)}>
+          <select id="ff-communicationspage-8" className={`select-dark ${composePriority === 'emergency' ? 'border-red-500 text-red-400' : composePriority === 'urgent' ? 'border-amber-500 text-amber-400' : ''}`} value={composePriority} onChange={(e) => setComposePriority(e.target.value)}>
             <option value="routine">Normal</option>
             <option value="urgent">Urgent</option>
             <option value="emergency">Emergency</option>
@@ -1356,7 +1356,7 @@ export default function CommunicationsPage() {
         </div>
         <div>
           <label className="text-[10px] text-rmpg-300 uppercase font-semibold mb-1 block">Subject:</label>
-          <input type="text" className="input-dark min-h-[36px]" placeholder="Message subject..." value={composeSubject} onChange={(e) => setComposeSubject(e.target.value)} required />
+          <input id="ff-communicationspage-9" type="text" className="input-dark min-h-[36px]" placeholder="Message subject..." value={composeSubject} onChange={(e) => setComposeSubject(e.target.value)} required />
         </div>
         <div>
           <label className="text-[10px] text-rmpg-300 uppercase font-semibold mb-1 block">Message:</label>

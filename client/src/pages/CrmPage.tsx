@@ -501,18 +501,18 @@ export default function CrmPage() {
             <div className="p-4 space-y-3">
               <div>
                 <label className="field-label">Title</label>
-                <input className="input-dark w-full min-h-[36px]" value={taskForm.title || ''} onChange={e => setTaskForm(p => ({ ...p, title: e.target.value }))} />
+                <input id="ff-crmpage-0" className="input-dark w-full min-h-[36px]" value={taskForm.title || ''} onChange={e => setTaskForm(p => ({ ...p, title: e.target.value }))} />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="field-label">Type</label>
-                  <select className="input-dark w-full min-h-[36px]" value={taskForm.task_type || 'follow_up'} onChange={e => setTaskForm(p => ({ ...p, task_type: e.target.value as any }))}>
+                  <select id="ff-crmpage-1" className="input-dark w-full min-h-[36px]" value={taskForm.task_type || 'follow_up'} onChange={e => setTaskForm(p => ({ ...p, task_type: e.target.value as any }))}>
                     {TASK_TYPES.map(t => <option key={t} value={t}>{toDisplayLabel(t)}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="field-label">Priority</label>
-                  <select className="input-dark w-full min-h-[36px]" value={taskForm.priority || 'normal'} onChange={e => setTaskForm(p => ({ ...p, priority: e.target.value as any }))}>
+                  <select id="ff-crmpage-2" className="input-dark w-full min-h-[36px]" value={taskForm.priority || 'normal'} onChange={e => setTaskForm(p => ({ ...p, priority: e.target.value as any }))}>
                     {TASK_PRIORITIES.map(p => <option key={p} value={p}>{toDisplayLabel(p)}</option>)}
                   </select>
                 </div>
@@ -520,11 +520,11 @@ export default function CrmPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="field-label">Due Date</label>
-                  <input type="date" className="input-dark w-full min-h-[36px]" value={taskForm.due_date || ''} onChange={e => setTaskForm(p => ({ ...p, due_date: e.target.value }))} />
+                  <input id="ff-crmpage-3" type="date" className="input-dark w-full min-h-[36px]" value={taskForm.due_date || ''} onChange={e => setTaskForm(p => ({ ...p, due_date: e.target.value }))} />
                 </div>
                 <div>
                   <label className="field-label">Assign To</label>
-                  <select className="input-dark w-full min-h-[36px]" value={taskForm.assigned_to || ''} onChange={e => setTaskForm(p => ({ ...p, assigned_to: e.target.value }))}>
+                  <select id="ff-crmpage-4" className="input-dark w-full min-h-[36px]" value={taskForm.assigned_to || ''} onChange={e => setTaskForm(p => ({ ...p, assigned_to: e.target.value }))}>
                     <option value="">Unassigned</option>
                     {officers.map(o => <option key={o.id} value={o.id}>{o.full_name}</option>)}
                   </select>
@@ -532,7 +532,7 @@ export default function CrmPage() {
               </div>
               <div>
                 <label className="field-label">Client</label>
-                <select className="input-dark w-full min-h-[36px]" value={String(taskForm.client_id || '')} onChange={e => setTaskForm(p => ({ ...p, client_id: e.target.value ? Number(e.target.value) as any : undefined }))}>
+                <select id="ff-crmpage-5" className="input-dark w-full min-h-[36px]" value={String(taskForm.client_id || '')} onChange={e => setTaskForm(p => ({ ...p, client_id: e.target.value ? Number(e.target.value) as any : undefined }))}>
                   <option value="">No client</option>
                   {clients.filter(c => c.is_active !== false).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
@@ -544,7 +544,7 @@ export default function CrmPage() {
               {editingTask && (
                 <div>
                   <label className="field-label">Status</label>
-                  <select className="input-dark w-full min-h-[36px]" value={taskForm.status || 'pending'} onChange={e => setTaskForm(p => ({ ...p, status: e.target.value as any }))}>
+                  <select id="ff-crmpage-6" className="input-dark w-full min-h-[36px]" value={taskForm.status || 'pending'} onChange={e => setTaskForm(p => ({ ...p, status: e.target.value as any }))}>
                     {TASK_STATUSES.map(s => <option key={s} value={s}>{toDisplayLabel(s)}</option>)}
                   </select>
                 </div>
@@ -571,20 +571,20 @@ export default function CrmPage() {
             <div className="p-4 space-y-3">
               <div>
                 <label className="field-label">Client</label>
-                <select className="input-dark w-full min-h-[36px]" value={activityForm.client_id} onChange={e => setActivityForm(p => ({ ...p, client_id: e.target.value }))}>
+                <select id="ff-crmpage-7" className="input-dark w-full min-h-[36px]" value={activityForm.client_id} onChange={e => setActivityForm(p => ({ ...p, client_id: e.target.value }))}>
                   <option value="">Select client...</option>
                   {clients.filter(c => c.is_active !== false).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </div>
               <div>
                 <label className="field-label">Type</label>
-                <select className="input-dark w-full min-h-[36px]" value={activityForm.activity_type} onChange={e => setActivityForm(p => ({ ...p, activity_type: e.target.value }))}>
+                <select id="ff-crmpage-8" className="input-dark w-full min-h-[36px]" value={activityForm.activity_type} onChange={e => setActivityForm(p => ({ ...p, activity_type: e.target.value }))}>
                   {ACTIVITY_TYPES.map(t => <option key={t} value={t}>{toDisplayLabel(t)}</option>)}
                 </select>
               </div>
               <div>
                 <label className="field-label">Subject</label>
-                <input className="input-dark w-full min-h-[36px]" value={activityForm.subject} onChange={e => setActivityForm(p => ({ ...p, subject: e.target.value }))} />
+                <input id="ff-crmpage-9" className="input-dark w-full min-h-[36px]" value={activityForm.subject} onChange={e => setActivityForm(p => ({ ...p, subject: e.target.value }))} />
               </div>
               <div>
                 <label className="field-label">Details</label>
@@ -841,7 +841,7 @@ export default function CrmPage() {
         {/* Client List */}
         <div className="w-80 border-r border-rmpg-600 flex flex-col flex-shrink-0">
           <PanelTitleBar title="CLIENTS" icon={Building2}>
-            <input className="input-dark text-xs flex-1 min-h-[36px]" style={{ maxWidth: 120 }} placeholder="Search..." aria-label="Search..." value={clientSearch} onChange={e => setClientSearch(e.target.value)} />
+            <input id="ff-crmpage-10" className="input-dark text-xs flex-1 min-h-[36px]" style={{ maxWidth: 120 }} placeholder="Search..." aria-label="Search..." value={clientSearch} onChange={e => setClientSearch(e.target.value)} />
             <button type="button" onClick={() => { setEditingClient(null); setShowClientModal(true); }} className="toolbar-btn toolbar-btn-primary print:hidden">
               <Plus className="w-3 h-3" /> New
             </button>
@@ -1003,7 +1003,7 @@ export default function CrmPage() {
     return (
       <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
         <PanelTitleBar title="PROPERTIES" icon={MapPin}>
-          <input className="input-dark text-xs min-h-[36px]" style={{ maxWidth: 200 }} placeholder="Search properties..." aria-label="Search properties..." value={propertySearch} onChange={e => setPropertySearch(e.target.value)} />
+          <input id="ff-crmpage-11" className="input-dark text-xs min-h-[36px]" style={{ maxWidth: 200 }} placeholder="Search properties..." aria-label="Search properties..." value={propertySearch} onChange={e => setPropertySearch(e.target.value)} />
         </PanelTitleBar>
         <div className="p-4">
           {filteredProperties.length === 0 ? (
@@ -1042,8 +1042,8 @@ export default function CrmPage() {
     return (
       <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
         <PanelTitleBar title="CONTACTS" icon={Users}>
-          <input className="input-dark text-xs min-h-[36px]" style={{ maxWidth: 200 }} placeholder="Search contacts..." aria-label="Search contacts..." value={contactSearch} onChange={e => setContactSearch(e.target.value)} />
-          <select className="input-dark text-xs min-h-[36px]" style={{ maxWidth: 140 }} value={contactRelationship} onChange={e => setContactRelationship(e.target.value)}>
+          <input id="ff-crmpage-12" className="input-dark text-xs min-h-[36px]" style={{ maxWidth: 200 }} placeholder="Search contacts..." aria-label="Search contacts..." value={contactSearch} onChange={e => setContactSearch(e.target.value)} />
+          <select id="ff-crmpage-13" className="input-dark text-xs min-h-[36px]" style={{ maxWidth: 140 }} value={contactRelationship} onChange={e => setContactRelationship(e.target.value)}>
             <option value="">All Relationships</option>
             {RELATIONSHIP_TYPES.map(r => <option key={r} value={r}>{toDisplayLabel(r)}</option>)}
           </select>
@@ -1095,7 +1095,7 @@ export default function CrmPage() {
     return (
       <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
         <PanelTitleBar title="INVOICES" icon={FileText}>
-          <select className="input-dark text-xs min-h-[36px]" style={{ maxWidth: 140 }} value={invoiceFilter} onChange={e => setInvoiceFilter(e.target.value)}>
+          <select id="ff-crmpage-14" className="input-dark text-xs min-h-[36px]" style={{ maxWidth: 140 }} value={invoiceFilter} onChange={e => setInvoiceFilter(e.target.value)}>
             <option value="">All Statuses</option>
             <option value="draft">Draft</option>
             <option value="sent">Sent</option>
@@ -1152,7 +1152,7 @@ export default function CrmPage() {
     return (
       <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
         <PanelTitleBar title="TASKS" icon={CheckSquare}>
-          <select className="input-dark text-xs min-h-[36px]" style={{ maxWidth: 160 }} value={taskFilter} onChange={e => setTaskFilter(e.target.value)}>
+          <select id="ff-crmpage-15" className="input-dark text-xs min-h-[36px]" style={{ maxWidth: 160 }} value={taskFilter} onChange={e => setTaskFilter(e.target.value)}>
             <option value="pending,in_progress">Active</option>
             <option value="">All</option>
             <option value="pending">Pending</option>

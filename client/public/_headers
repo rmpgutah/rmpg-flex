@@ -1,12 +1,19 @@
 # Cloudflare Pages _headers
 # https://developers.cloudflare.com/pages/configuration/headers/
 #
-# CRITICAL: A header CSP overrides the index.html <meta http-equiv> CSP.
-# Previously this header was set in the Pages dashboard custom-headers
-# UI without `https://api.rmpgutah.us` in connect-src, which blocked
-# every cross-origin API call from the SPA to the Worker subdomain
-# (warrants, refresh, etc.). Defining the CSP here makes the source of
-# truth code-controlled instead of dashboard-controlled.
+# CRITICAL: A header CSP does NOT override the index.html <meta http-equiv>
+# CSP. Per the CSP spec, when a document carries multiple policies they are
+# ALL enforced and the effective policy is their INTERSECTION (most-restrictive
+# wins per directive). So this header and the <meta> in client/index.html MUST
+# stay in sync: any capability granted here but omitted from the <meta> (e.g.
+# 'unsafe-eval', media-src) is still blocked by the <meta>. (frame-ancestors,
+# report-uri/report-to are header-only — browsers ignore them in a <meta>.)
+#
+# This header was previously set in the Pages dashboard custom-headers UI
+# without `https://api.rmpgutah.us` in connect-src, which blocked every
+# cross-origin API call from the SPA to the Worker subdomain (warrants,
+# refresh, etc.). Defining the CSP here makes the source of truth
+# code-controlled instead of dashboard-controlled.
 
 /*
   Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https://api.mapbox.com https://js.arcgis.com https://*.arcgis.com https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://unpkg.com https://api.mapbox.com https://js.arcgis.com https://*.arcgis.com; img-src 'self' data: blob: https: http:; font-src 'self' data: https://*.gstatic.com https://js.arcgis.com https://*.arcgis.com; connect-src 'self' ws: wss: https://api.rmpgutah.us https://*.rmpgutah.us https://api.mapbox.com https://events.mapbox.com https://*.arcgis.com https://js.arcgis.com https://*.arcgisonline.com https://api.open-meteo.com https://basemaps.cartocdn.com https://*.basemaps.cartocdn.com https://*.cartocdn.com https://nominatim.openstreetmap.org https://api.fbi.gov https://photon.komoot.io https://static.cloudflareinsights.com; frame-src 'self' blob: https://*.arcgis.com; media-src 'self' blob: data:; worker-src 'self' blob:; child-src 'self' blob:; manifest-src 'self'; frame-ancestors 'self'; base-uri 'self'; form-action 'self'; object-src 'none'

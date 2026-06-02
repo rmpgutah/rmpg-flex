@@ -351,7 +351,7 @@ export default function SignaturePad({
               <div style={{ borderTop: '1px solid #ccc' }} />
             </div>
             {/* Input field */}
-            <input
+            <input id="ff-signaturepad-0"
               type="text"
               value={typedName}
               onChange={(e) => setTypedName(e.target.value)}

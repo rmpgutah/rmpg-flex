@@ -78,22 +78,22 @@ export default function TrainingManagementPage() {
             <h3 className="text-sm font-bold text-white mb-4">{editingRecord ? 'Edit Course' : 'New Course'}</h3>
             <div className="space-y-3">
               <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Course Name <span className="text-red-500">*</span></label>
-                <input className="input-dark mt-1" value={formData.course_name || ''} onChange={e => setFormData({...formData, course_name: e.target.value})} autoFocus /></div>
+                <input id="ff-trainingmanagementpage-0" className="input-dark mt-1" value={formData.course_name || ''} onChange={e => setFormData({...formData, course_name: e.target.value})} autoFocus /></div>
               <div className="grid grid-cols-2 gap-3">
                 <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Code</label>
-                  <input className="input-dark mt-1" value={formData.course_code || ''} onChange={e => setFormData({...formData, course_code: e.target.value})} /></div>
+                  <input id="ff-trainingmanagementpage-1" className="input-dark mt-1" value={formData.course_code || ''} onChange={e => setFormData({...formData, course_code: e.target.value})} /></div>
                 <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Category</label>
-                  <select className="select-dark mt-1" value={formData.category || 'other'} onChange={e => setFormData({...formData, category: e.target.value})}>
+                  <select id="ff-trainingmanagementpage-2" className="select-dark mt-1" value={formData.category || 'other'} onChange={e => setFormData({...formData, category: e.target.value})}>
                     {['firearms','defensive_tactics','legal','first_aid','de_escalation','professionalism','technical','other'].map(c=><option key={c} value={c}>{c}</option>)}
                   </select></div>
               </div>
               <div className="grid grid-cols-3 gap-3">
                 <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Duration (hrs)</label>
-                  <input className="input-dark mt-1" value={formData.duration_hours || ''} onChange={e => setFormData({...formData, duration_hours: e.target.value})} /></div>
+                  <input id="ff-trainingmanagementpage-3" className="input-dark mt-1" value={formData.duration_hours || ''} onChange={e => setFormData({...formData, duration_hours: e.target.value})} /></div>
                 <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Instructor ID</label>
-                  <input className="input-dark mt-1" value={formData.instructor_id || ''} onChange={e => setFormData({...formData, instructor_id: e.target.value})} /></div>
+                  <input id="ff-trainingmanagementpage-4" className="input-dark mt-1" value={formData.instructor_id || ''} onChange={e => setFormData({...formData, instructor_id: e.target.value})} /></div>
                 <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Location</label>
-                  <input className="input-dark mt-1" value={formData.location || ''} onChange={e => setFormData({...formData, location: e.target.value})} /></div>
+                  <input id="ff-trainingmanagementpage-5" className="input-dark mt-1" value={formData.location || ''} onChange={e => setFormData({...formData, location: e.target.value})} /></div>
               </div>
             </div>
             <div className="flex justify-end gap-3 mt-4">

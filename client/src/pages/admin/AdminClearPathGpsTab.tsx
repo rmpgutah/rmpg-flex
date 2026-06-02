@@ -489,7 +489,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
         {/* Email */}
         <div className="space-y-1.5">
           <label className="text-[10px] text-rmpg-400">Email</label>
-          <input
+          <input id="ff-adminclearpathgpstab-0"
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
@@ -502,7 +502,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
         <div className="space-y-1.5">
           <label className="text-[10px] text-rmpg-400">Password</label>
           <div className="relative">
-            <input
+            <input id="ff-adminclearpathgpstab-1"
               type={showPassword ? 'text' : 'password'}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -521,7 +521,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
         {/* Account ID */}
         <div className="space-y-1.5">
           <label className="text-[10px] text-rmpg-400">Account ID</label>
-          <input
+          <input id="ff-adminclearpathgpstab-2"
             type="text"
             value={accountId}
             onChange={(e) => setAccountId(e.target.value)}
@@ -635,7 +635,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
             <div className="flex items-center gap-2">
               <Clock className="w-3 h-3 text-rmpg-500" />
               <span className="text-[10px] text-rmpg-400">Poll every:</span>
-              <select
+              <select id="ff-adminclearpathgpstab-3"
                 value={pollInterval}
                 onChange={(e) => handlePollIntervalChange(parseInt(e.target.value, 10))}
                 className="bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-[10px] px-2 py-1 rounded-sm focus:border-brand-500 focus:outline-none"
@@ -785,7 +785,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
                           → {existingMapping.call_sign}
                         </span>
                       ) : (
-                        <select
+                        <select id="ff-adminclearpathgpstab-4"
                           defaultValue=""
                           onChange={(e) => {
                             if (e.target.value) {
@@ -921,7 +921,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
             <div className="flex items-center gap-1.5">
               <Clock className="w-3 h-3 text-rmpg-500" />
               <span className="text-[10px] text-rmpg-400">Check every:</span>
-              <select
+              <select id="ff-adminclearpathgpstab-5"
                 value={mediaPollInterval}
                 onChange={e => handleMediaPollIntervalChange(parseInt(e.target.value, 10))}
                 disabled={!mediaSyncEnabled || savingMedia}

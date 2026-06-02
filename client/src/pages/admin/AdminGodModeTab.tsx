@@ -400,7 +400,7 @@ export default function AdminGodModeTab() {
         <h3 className="text-xs font-bold text-yellow-400 uppercase mb-2 flex items-center gap-1.5"><UserCheck size={14} /> User Impersonation</h3>
         <p className="text-[10px] text-gray-500 mb-2">Generate a 30-minute token to act as another user. All actions are audit-logged under your admin account.</p>
         <div className="flex items-center gap-2">
-          <select
+          <select id="ff-admingodmodetab-0"
             value={impersonateUserId}
             onChange={e => setImpersonateUserId(e.target.value)}
             className="flex-1 bg-[#0c0c0c] border border-[#2a2a2a] rounded-sm px-2 py-1.5 text-[11px] text-white"
@@ -420,7 +420,7 @@ export default function AdminGodModeTab() {
       <div className="bg-[#141414] border border-[#181818] rounded-sm p-3">
         <h3 className="text-xs font-bold text-gray-400 uppercase mb-2 flex items-center gap-1.5"><Bell size={14} /> Broadcast Notification</h3>
         <div className="space-y-2">
-          <input
+          <input id="ff-admingodmodetab-1"
             type="text"
             value={broadcastTitle}
             onChange={e => setBroadcastTitle(e.target.value)}
@@ -438,7 +438,7 @@ export default function AdminGodModeTab() {
             <span className="text-[10px] text-gray-500">Target:</span>
             {['officer', 'dispatcher', 'supervisor', 'manager'].map(role => (
               <label key={role} className="flex items-center gap-1 text-[10px] text-gray-400">
-                <input
+                <input id="ff-admingodmodetab-2"
                   type="checkbox"
                   checked={broadcastRoles.includes(role)}
                   onChange={e => setBroadcastRoles(prev => e.target.checked ? [...prev, role] : prev.filter(r => r !== role))}
@@ -463,7 +463,7 @@ export default function AdminGodModeTab() {
             <div className="text-[10px] text-gray-400 mb-1">Activity Logs</div>
             <div className="flex items-center gap-1">
               <span className="text-[10px] text-gray-500">Keep</span>
-              <input type="number" value={purgeLogDays} onChange={e => setPurgeLogDays(Number(e.target.value))} min={1} max={365} className="w-16 bg-[#141414] border border-[#2a2a2a] rounded-sm px-1.5 py-1 text-[11px] text-white text-center" />
+              <input id="ff-admingodmodetab-3" type="number" value={purgeLogDays} onChange={e => setPurgeLogDays(Number(e.target.value))} min={1} max={365} className="w-16 bg-[#141414] border border-[#2a2a2a] rounded-sm px-1.5 py-1 text-[11px] text-white text-center" />
               <span className="text-[10px] text-gray-500">days</span>
               <button onClick={handlePurgeLogs} className="ml-auto px-2 py-1 bg-red-900/60 hover:bg-red-800/80 text-red-300 text-[10px] rounded-sm font-bold">Purge</button>
             </div>
@@ -472,7 +472,7 @@ export default function AdminGodModeTab() {
             <div className="text-[10px] text-gray-400 mb-1">Read Notifications</div>
             <div className="flex items-center gap-1">
               <span className="text-[10px] text-gray-500">Keep</span>
-              <input type="number" value={purgeNotifDays} onChange={e => setPurgeNotifDays(Number(e.target.value))} min={1} max={365} className="w-16 bg-[#141414] border border-[#2a2a2a] rounded-sm px-1.5 py-1 text-[11px] text-white text-center" />
+              <input id="ff-admingodmodetab-4" type="number" value={purgeNotifDays} onChange={e => setPurgeNotifDays(Number(e.target.value))} min={1} max={365} className="w-16 bg-[#141414] border border-[#2a2a2a] rounded-sm px-1.5 py-1 text-[11px] text-white text-center" />
               <span className="text-[10px] text-gray-500">days</span>
               <button onClick={handlePurgeNotifs} className="ml-auto px-2 py-1 bg-red-900/60 hover:bg-red-800/80 text-red-300 text-[10px] rounded-sm font-bold">Purge</button>
             </div>
@@ -567,7 +567,7 @@ export default function AdminGodModeTab() {
               rows={2}
               className="w-full bg-[#141414] border border-[#2a2a2a] rounded-sm px-2 py-1 text-[11px] text-white placeholder-gray-600 resize-none font-mono"
             />
-            <select
+            <select id="ff-admingodmodetab-5"
               value={reassignTargetId}
               onChange={e => setReassignTargetId(e.target.value)}
               className="w-full bg-[#141414] border border-[#2a2a2a] rounded-sm px-2 py-1.5 text-[11px] text-white"
@@ -584,7 +584,7 @@ export default function AdminGodModeTab() {
           {/* Force Close All */}
           <div className="bg-[#0c0c0c] p-2 rounded-sm space-y-2">
             <div className="text-[10px] text-gray-400 font-bold uppercase">Force Close All Open Calls</div>
-            <input
+            <input id="ff-admingodmodetab-6"
               type="text"
               value={closeDisposition}
               onChange={e => setCloseDisposition(e.target.value)}
@@ -665,7 +665,7 @@ export default function AdminGodModeTab() {
         </div>
         {!lockdownStatus?.active && (
           <div className="space-y-2 mb-3">
-            <input
+            <input id="ff-admingodmodetab-7"
               type="text"
               value={lockdownMessage}
               onChange={e => setLockdownMessage(e.target.value)}
@@ -673,7 +673,7 @@ export default function AdminGodModeTab() {
               className="w-full bg-[#0c0c0c] border border-[#2a2a2a] rounded-sm px-2 py-1.5 text-[11px] text-white placeholder-gray-600"
             />
             <label className="flex items-center gap-2 text-[10px] text-gray-400">
-              <input
+              <input id="ff-admingodmodetab-8"
                 type="checkbox"
                 checked={lockdownKickSessions}
                 onChange={e => setLockdownKickSessions(e.target.checked)}
@@ -695,7 +695,7 @@ export default function AdminGodModeTab() {
         <div className="flex items-center gap-2">
           <div className="flex-1">
             <label className="text-[9px] text-gray-500 uppercase">Keep (Primary ID)</label>
-            <input
+            <input id="ff-admingodmodetab-9"
               type="number"
               value={mergeKeepId}
               onChange={e => setMergeKeepId(e.target.value)}
@@ -705,7 +705,7 @@ export default function AdminGodModeTab() {
           </div>
           <div className="flex-1">
             <label className="text-[9px] text-gray-500 uppercase">Merge (Duplicate ID)</label>
-            <input
+            <input id="ff-admingodmodetab-10"
               type="number"
               value={mergeMergeId}
               onChange={e => setMergeMergeId(e.target.value)}

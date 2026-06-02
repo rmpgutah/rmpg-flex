@@ -120,7 +120,7 @@ export default function ShiftHandoffReport({ officerId }: ShiftHandoffProps) {
       <div className="flex items-center gap-3 flex-wrap print:hidden">
         <label className="text-rmpg-300 text-xs font-mono">
           Shift Start
-          <input
+          <input id="ff-shifthandoffreport-0"
             type="datetime-local"
             value={shiftStart}
             onChange={e => setShiftStart(e.target.value)}
@@ -129,7 +129,7 @@ export default function ShiftHandoffReport({ officerId }: ShiftHandoffProps) {
         </label>
         <label className="text-rmpg-300 text-xs font-mono">
           Shift End
-          <input
+          <input id="ff-shifthandoffreport-1"
             type="datetime-local"
             value={shiftEnd}
             onChange={e => setShiftEnd(e.target.value)}
@@ -246,7 +246,7 @@ export default function ShiftHandoffReport({ officerId }: ShiftHandoffProps) {
           ))}
           {/* Add note form — hidden in print */}
           <div className="flex gap-2 items-end print:hidden">
-            <select
+            <select id="ff-shifthandoffreport-2"
               value={noteCategory}
               onChange={e => setNoteCategory(e.target.value)}
               className="bg-[#050505] border border-rmpg-600 text-rmpg-200 text-xs px-2 py-1.5 rounded-[2px] font-mono"
@@ -256,7 +256,7 @@ export default function ShiftHandoffReport({ officerId }: ShiftHandoffProps) {
               <option value="followup">Follow-Up</option>
               <option value="equipment">Equipment</option>
             </select>
-            <input
+            <input id="ff-shifthandoffreport-3"
               type="text"
               placeholder="Add shift note..."
               value={noteText}

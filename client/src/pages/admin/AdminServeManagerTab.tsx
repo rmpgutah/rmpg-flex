@@ -248,7 +248,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
 
         <div className="flex items-center gap-2">
           <div className="relative flex-1">
-            <input
+            <input id="ff-adminservemanagertab-0"
               type={showKey ? 'text' : 'password'}
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
@@ -470,7 +470,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
             {/* Poll interval */}
             <div className="bg-surface-sunken p-2.5 rounded-[2px] space-y-1">
               <div className="text-[10px] font-bold text-rmpg-200">Poll Interval (seconds)</div>
-              <input
+              <input id="ff-adminservemanagertab-1"
                 type="number"
                 min={60}
                 max={1800}
@@ -484,7 +484,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
             {/* Target client */}
             <div className="bg-surface-sunken p-2.5 rounded-[2px] space-y-1">
               <div className="text-[10px] font-bold text-rmpg-200">Target Client</div>
-              <input
+              <input id="ff-adminservemanagertab-2"
                 type="text"
                 value={pollerTargetClient}
                 onChange={(e) => { setPollerTargetClient(e.target.value); setPollerDirty(true); }}
@@ -518,7 +518,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
             <div className="flex items-center gap-2">
               <div className="relative">
                 <Search className="w-3 h-3 absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500" />
-                <input
+                <input id="ff-adminservemanagertab-3"
                   type="text"
                   value={jobSearch}
                   onChange={(e) => { setJobSearch(e.target.value); setJobPage(1); }}

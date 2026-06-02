@@ -309,17 +309,17 @@ export default function DlSearchPage() {
   // Desktop search bar
   const searchControls = (
     <div className="flex items-center gap-1.5 flex-wrap">
-      <input className="input-dark text-[10px] w-28 min-h-[36px]" placeholder="Last Name" value={lastName}
+      <input id="ff-dlsearchpage-0" className="input-dark text-[10px] w-28 min-h-[36px]" placeholder="Last Name" value={lastName}
         onChange={(e) => setLastName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} />
-      <input className="input-dark text-[10px] w-28 min-h-[36px]" placeholder="First Name" value={firstName}
+      <input id="ff-dlsearchpage-1" className="input-dark text-[10px] w-28 min-h-[36px]" placeholder="First Name" value={firstName}
         onChange={(e) => setFirstName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} />
-      <input className="input-dark text-[10px] w-28 min-h-[36px]" placeholder="DL Number" value={dlNumber}
+      <input id="ff-dlsearchpage-2" className="input-dark text-[10px] w-28 min-h-[36px]" placeholder="DL Number" value={dlNumber}
         onChange={(e) => setDlNumber(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} />
-      <select className="select-dark text-[10px] w-16 min-h-[36px]" value={state} onChange={(e) => setState(e.target.value)}>
+      <select id="ff-dlsearchpage-3" className="select-dark text-[10px] w-16 min-h-[36px]" value={state} onChange={(e) => setState(e.target.value)}>
         <option value="">State</option>
         {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
       </select>
-      <input className="input-dark text-[10px] w-28 min-h-[36px]" type="date" placeholder="DOB" value={dob}
+      <input id="ff-dlsearchpage-4" className="input-dark text-[10px] w-28 min-h-[36px]" type="date" placeholder="DOB" value={dob}
         onChange={(e) => setDob(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} />
       <button type="button" onClick={handleSearch} disabled={loading} className="toolbar-btn toolbar-btn-primary text-[10px]">
         {loading ? 'Searching...' : 'Search'}
@@ -350,7 +350,7 @@ export default function DlSearchPage() {
   return (
     <div className="h-full flex flex-col bg-surface-base text-white overflow-hidden">
       {/* Hidden file input for DL OCR — always in DOM so toolbar button works */}
-      <input
+      <input id="ff-dlsearchpage-5"
         ref={fileInputRef}
         type="file"
         accept="image/*"
@@ -375,15 +375,15 @@ export default function DlSearchPage() {
       {isMobile && (
         <div className="flex flex-col gap-1.5 px-3 py-2 flex-shrink-0" style={{ background: '#050505', borderBottom: '1px solid #2b2b2b' }}>
           <div className="flex items-center gap-1.5">
-            <input className="input-dark text-[10px] flex-1 min-h-[36px]" placeholder="Last Name" value={lastName}
+            <input id="ff-dlsearchpage-6" className="input-dark text-[10px] flex-1 min-h-[36px]" placeholder="Last Name" value={lastName}
               onChange={(e) => setLastName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} />
-            <input className="input-dark text-[10px] flex-1 min-h-[36px]" placeholder="First Name" value={firstName}
+            <input id="ff-dlsearchpage-7" className="input-dark text-[10px] flex-1 min-h-[36px]" placeholder="First Name" value={firstName}
               onChange={(e) => setFirstName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} />
           </div>
           <div className="flex items-center gap-1.5">
-            <input className="input-dark text-[10px] flex-1 min-h-[36px]" placeholder="DL Number" value={dlNumber}
+            <input id="ff-dlsearchpage-8" className="input-dark text-[10px] flex-1 min-h-[36px]" placeholder="DL Number" value={dlNumber}
               onChange={(e) => setDlNumber(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} />
-            <select className="select-dark text-[10px] w-16 min-h-[36px]" value={state} onChange={(e) => setState(e.target.value)}>
+            <select id="ff-dlsearchpage-9" className="select-dark text-[10px] w-16 min-h-[36px]" value={state} onChange={(e) => setState(e.target.value)}>
               <option value="">State</option>
               {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
             </select>

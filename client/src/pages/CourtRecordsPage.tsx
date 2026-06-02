@@ -270,7 +270,7 @@ export default function CourtRecordsPage() {
           {/* Search */}
           <div className="relative flex-1 min-w-[180px] max-w-[280px]">
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" />
-            <input
+            <input id="ff-courtrecordspage-0"
               type="text"
               placeholder="Search event #, defendant, court..." aria-label="Search event #, defendant, court..."
               value={searchInput}
@@ -282,7 +282,7 @@ export default function CourtRecordsPage() {
           </div>
 
           {/* Status filter */}
-          <select
+          <select id="ff-courtrecordspage-1"
             value={statusFilter}
             onChange={e => setStatusFilter(e.target.value)}
             className="bg-[#0c0c0c] border border-[#2b2b2b] text-[10px] text-white px-2 py-1 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
@@ -294,7 +294,7 @@ export default function CourtRecordsPage() {
           </select>
 
           {/* Type filter */}
-          <select
+          <select id="ff-courtrecordspage-2"
             value={typeFilter}
             onChange={e => setTypeFilter(e.target.value)}
             className="bg-[#0c0c0c] border border-[#2b2b2b] text-[10px] text-white px-2 py-1 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
@@ -307,14 +307,14 @@ export default function CourtRecordsPage() {
 
           {/* Date range */}
           <div className="flex items-center gap-1">
-            <input
+            <input id="ff-courtrecordspage-3"
               type="date"
               value={dateFrom}
               onChange={e => setDateFrom(e.target.value)}
               className="bg-[#0c0c0c] border border-[#2b2b2b] text-[10px] text-white px-2 py-1 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
             />
             <span className="text-[9px] text-rmpg-500">to</span>
-            <input
+            <input id="ff-courtrecordspage-4"
               type="date"
               value={dateTo}
               onChange={e => setDateTo(e.target.value)}
@@ -553,7 +553,7 @@ export default function CourtRecordsPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-[9px] text-rmpg-400 font-bold uppercase mb-0.5">Event Type *</label>
-                  <select
+                  <select id="ff-courtrecordspage-5"
                     value={formData.event_type}
                     onChange={e => setFormData(p => ({ ...p, event_type: e.target.value }))}
                     className="w-full bg-[#0c0c0c] border border-[#2b2b2b] text-[10px] text-white px-2 py-1.5 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
@@ -566,7 +566,7 @@ export default function CourtRecordsPage() {
                 </div>
                 <div>
                   <label className="block text-[9px] text-rmpg-400 font-bold uppercase mb-0.5">Event Date *</label>
-                  <input
+                  <input id="ff-courtrecordspage-6"
                     type="date"
                     value={formData.event_date}
                     onChange={e => setFormData(p => ({ ...p, event_date: e.target.value }))}
@@ -579,7 +579,7 @@ export default function CourtRecordsPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-[9px] text-rmpg-400 font-bold uppercase mb-0.5">Event Time</label>
-                  <input
+                  <input id="ff-courtrecordspage-7"
                     type="time"
                     value={formData.event_time}
                     onChange={e => setFormData(p => ({ ...p, event_time: e.target.value }))}
@@ -588,7 +588,7 @@ export default function CourtRecordsPage() {
                 </div>
                 <div>
                   <label className="block text-[9px] text-rmpg-400 font-bold uppercase mb-0.5">Courtroom</label>
-                  <input
+                  <input id="ff-courtrecordspage-8"
                     type="text"
                     value={formData.courtroom}
                     onChange={e => setFormData(p => ({ ...p, courtroom: e.target.value }))}
@@ -602,7 +602,7 @@ export default function CourtRecordsPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-[9px] text-rmpg-400 font-bold uppercase mb-0.5">Court Name</label>
-                  <input
+                  <input id="ff-courtrecordspage-9"
                     type="text"
                     value={formData.court_name}
                     onChange={e => setFormData(p => ({ ...p, court_name: e.target.value }))}
@@ -612,7 +612,7 @@ export default function CourtRecordsPage() {
                 </div>
                 <div>
                   <label className="block text-[9px] text-rmpg-400 font-bold uppercase mb-0.5">Judge</label>
-                  <input
+                  <input id="ff-courtrecordspage-10"
                     type="text"
                     value={formData.judge_name}
                     onChange={e => setFormData(p => ({ ...p, judge_name: e.target.value }))}
@@ -626,7 +626,7 @@ export default function CourtRecordsPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-[9px] text-rmpg-400 font-bold uppercase mb-0.5">Court Case #</label>
-                  <input
+                  <input id="ff-courtrecordspage-11"
                     type="text"
                     value={formData.court_case_number}
                     onChange={e => setFormData(p => ({ ...p, court_case_number: e.target.value }))}
@@ -636,7 +636,7 @@ export default function CourtRecordsPage() {
                 </div>
                 <div>
                   <label className="block text-[9px] text-rmpg-400 font-bold uppercase mb-0.5">Defendant Name</label>
-                  <input
+                  <input id="ff-courtrecordspage-12"
                     type="text"
                     value={formData.defendant_name}
                     onChange={e => setFormData(p => ({ ...p, defendant_name: e.target.value }))}
@@ -650,7 +650,7 @@ export default function CourtRecordsPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-[9px] text-rmpg-400 font-bold uppercase mb-0.5">Prosecutor</label>
-                  <input
+                  <input id="ff-courtrecordspage-13"
                     type="text"
                     value={formData.prosecutor}
                     onChange={e => setFormData(p => ({ ...p, prosecutor: e.target.value }))}
@@ -660,7 +660,7 @@ export default function CourtRecordsPage() {
                 </div>
                 <div>
                   <label className="block text-[9px] text-rmpg-400 font-bold uppercase mb-0.5">Defense Attorney</label>
-                  <input
+                  <input id="ff-courtrecordspage-14"
                     type="text"
                     value={formData.defense_attorney}
                     onChange={e => setFormData(p => ({ ...p, defense_attorney: e.target.value }))}
@@ -715,7 +715,7 @@ export default function CourtRecordsPage() {
             <div className="p-4 space-y-3">
               <div>
                 <label className="block text-[9px] text-rmpg-400 font-bold uppercase mb-0.5">Outcome *</label>
-                <select
+                <select id="ff-courtrecordspage-15"
                   value={outcomeData.outcome}
                   onChange={e => setOutcomeData(p => ({ ...p, outcome: e.target.value }))}
                   className="w-full bg-[#0c0c0c] border border-[#2b2b2b] text-[10px] text-white px-2 py-1.5 focus:border-brand-blue focus:ring-1 focus:ring-brand-blue/30 focus:outline-none"
@@ -729,7 +729,7 @@ export default function CourtRecordsPage() {
 
               <div>
                 <label className="block text-[9px] text-rmpg-400 font-bold uppercase mb-0.5">Sentence</label>
-                <input
+                <input id="ff-courtrecordspage-16"
                   type="text"
                   value={outcomeData.sentence}
                   onChange={e => setOutcomeData(p => ({ ...p, sentence: e.target.value }))}
@@ -740,7 +740,7 @@ export default function CourtRecordsPage() {
 
               <div>
                 <label className="block text-[9px] text-rmpg-400 font-bold uppercase mb-0.5">Fine Amount ($)</label>
-                <input
+                <input id="ff-courtrecordspage-17"
                   type="number"
                   step="0.01"
                   value={outcomeData.fine_amount}

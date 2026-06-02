@@ -375,7 +375,7 @@ function BudgetEditor({ summary, onClose, onSave }: {
           {BUDGET_CATEGORIES.map((c) => (
             <div key={c.key} className="flex items-center gap-2">
               <label className="text-[10px] text-rmpg-400 w-28 uppercase">{c.label}</label>
-              <input type="number" step="0.01" min="0" className="input-dark flex-1 text-[11px] font-mono min-h-[32px]"
+              <input id="ff-fleetcoststab-0" type="number" step="0.01" min="0" className="input-dark flex-1 text-[11px] font-mono min-h-[32px]"
                 value={vals[c.key]} onChange={(e) => setVals({ ...vals, [c.key]: e.target.value })} placeholder="0.00" />
             </div>
           ))}

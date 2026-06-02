@@ -281,21 +281,21 @@ export default function CompetitorMonitorPanel() {
             <span className="text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider">Add Monitored URL</span>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            <input
+            <input id="ff-competitormonitorpanel-0"
               type="url"
               className="input-dark col-span-full"
               placeholder="https://competitor-website.com"
               value={addUrl}
               onChange={e => setAddUrl(e.target.value)}
             />
-            <input
+            <input id="ff-competitormonitorpanel-1"
               type="text"
               className="input-dark"
               placeholder="Label (optional)"
               value={addLabel}
               onChange={e => setAddLabel(e.target.value)}
             />
-            <select
+            <select id="ff-competitormonitorpanel-2"
               className="input-dark"
               value={addInterval}
               onChange={e => setAddInterval(e.target.value)}

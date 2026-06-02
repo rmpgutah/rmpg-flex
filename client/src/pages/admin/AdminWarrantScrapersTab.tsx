@@ -137,7 +137,7 @@ export default function AdminWarrantScrapersTab({ LoadingSpinner, error, setErro
           </span>
         </div>
         <div className="flex items-center gap-2">
-          <select
+          <select id="ff-adminwarrantscraperstab-0"
             value={stateFilter}
             onChange={(e) => setStateFilter(e.target.value)}
             className="select-dark text-xs"
@@ -183,7 +183,7 @@ export default function AdminWarrantScrapersTab({ LoadingSpinner, error, setErro
           >
             Reset Circuit
           </button>
-          <select
+          <select id="ff-adminwarrantscraperstab-1"
             onChange={(e) => {
               if (e.target.value) {
                 bulk('set_priority', parseInt(e.target.value, 10));

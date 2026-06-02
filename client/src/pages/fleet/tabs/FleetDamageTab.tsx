@@ -138,15 +138,15 @@ export default function FleetDamageTab({ vehicleId }: { vehicleId: number | stri
             </div>
           )}
           <div className="grid grid-cols-3 gap-2">
-            <input type="date" value={form.damage_date} onChange={e => setForm(f => ({ ...f, damage_date: e.target.value }))} className="input-field text-xs" />
-            <input value={form.damage_type} onChange={e => setForm(f => ({ ...f, damage_type: e.target.value }))} className="input-field text-xs" placeholder="Type (dent, scratch...)" />
-            <input value={form.location_on_vehicle} onChange={e => setForm(f => ({ ...f, location_on_vehicle: e.target.value }))} className="input-field text-xs" placeholder="Location on vehicle" />
+            <input id="ff-fleetdamagetab-0" type="date" value={form.damage_date} onChange={e => setForm(f => ({ ...f, damage_date: e.target.value }))} className="input-field text-xs" />
+            <input id="ff-fleetdamagetab-1" value={form.damage_type} onChange={e => setForm(f => ({ ...f, damage_type: e.target.value }))} className="input-field text-xs" placeholder="Type (dent, scratch...)" />
+            <input id="ff-fleetdamagetab-2" value={form.location_on_vehicle} onChange={e => setForm(f => ({ ...f, location_on_vehicle: e.target.value }))} className="input-field text-xs" placeholder="Location on vehicle" />
           </div>
           <div className="grid grid-cols-3 gap-2">
-            <select value={form.severity} onChange={e => setForm(f => ({ ...f, severity: e.target.value }))} className="input-field text-xs">
+            <select id="ff-fleetdamagetab-3" value={form.severity} onChange={e => setForm(f => ({ ...f, severity: e.target.value }))} className="input-field text-xs">
               <option value="minor">Minor</option><option value="moderate">Moderate</option><option value="major">Major</option><option value="totaled">Totaled</option>
             </select>
-            <input type="number" value={form.repair_estimate} onChange={e => setForm(f => ({ ...f, repair_estimate: e.target.value }))} className="input-field text-xs" placeholder="Repair estimate $" />
+            <input id="ff-fleetdamagetab-4" type="number" value={form.repair_estimate} onChange={e => setForm(f => ({ ...f, repair_estimate: e.target.value }))} className="input-field text-xs" placeholder="Repair estimate $" />
             <div />
           </div>
           <RichTextArea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className="input-field w-full text-xs" rows={2} placeholder="Description..." />
@@ -177,7 +177,7 @@ export default function FleetDamageTab({ vehicleId }: { vehicleId: number | stri
             <div className="flex items-center gap-1">
               <span className={`text-[9px] font-bold ${REPAIR_COLORS[r.repair_status] || 'text-rmpg-400'}`}>{toDisplayLabel(r.repair_status || '')}</span>
               {r.repair_status !== 'completed' && (
-                <select value={r.repair_status} onChange={e => updateRepairStatus(r.id, e.target.value)} className="input-field text-[9px] py-0.5 px-1">
+                <select id="ff-fleetdamagetab-5" value={r.repair_status} onChange={e => updateRepairStatus(r.id, e.target.value)} className="input-field text-[9px] py-0.5 px-1">
                   <option value="reported">Reported</option><option value="estimated">Estimated</option>
                   <option value="approved">Approved</option><option value="in_repair">In Repair</option>
                   <option value="completed">Completed</option><option value="insurance_claim">Insurance</option>

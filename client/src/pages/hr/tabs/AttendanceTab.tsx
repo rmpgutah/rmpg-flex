@@ -115,18 +115,18 @@ export default function AttendanceTab({ userRole }: { userRole: string }) {
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div>
               <label className="field-label">Officer</label>
-              <select value={form.officer_id} onChange={e => setForm(f => ({ ...f, officer_id: e.target.value }))} className="input-field w-full text-xs">
+              <select id="ff-attendancetab-0" value={form.officer_id} onChange={e => setForm(f => ({ ...f, officer_id: e.target.value }))} className="input-field w-full text-xs">
                 <option value="">Select officer...</option>
                 {officers.map(o => <option key={o.id} value={o.id}>{o.full_name}</option>)}
               </select>
             </div>
             <div>
               <label className="field-label">Date</label>
-              <input type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} className="input-field w-full text-xs" />
+              <input id="ff-attendancetab-1" type="date" value={form.date} onChange={e => setForm(f => ({ ...f, date: e.target.value }))} className="input-field w-full text-xs" />
             </div>
             <div>
               <label className="field-label">Type</label>
-              <select value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))} className="input-field w-full text-xs">
+              <select id="ff-attendancetab-2" value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))} className="input-field w-full text-xs">
                 <option value="absent">Absent</option>
                 <option value="tardy">Tardy</option>
                 <option value="early_departure">Early Departure</option>
@@ -135,16 +135,16 @@ export default function AttendanceTab({ userRole }: { userRole: string }) {
             </div>
             <div>
               <label className="field-label">Minutes Late</label>
-              <input type="number" min="0" max="480" value={form.minutes_late} onChange={e => setForm(f => ({ ...f, minutes_late: Number(e.target.value) }))} className="input-field w-full text-xs tabular-nums" />
+              <input id="ff-attendancetab-3" type="number" min="0" max="480" value={form.minutes_late} onChange={e => setForm(f => ({ ...f, minutes_late: Number(e.target.value) }))} className="input-field w-full text-xs tabular-nums" />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="field-label">Reason</label>
-              <input value={form.reason} onChange={e => setForm(f => ({ ...f, reason: e.target.value }))} className="input-field w-full text-xs" />
+              <input id="ff-attendancetab-4" value={form.reason} onChange={e => setForm(f => ({ ...f, reason: e.target.value }))} className="input-field w-full text-xs" />
             </div>
             <div className="flex items-center gap-2 pt-4">
-              <input type="checkbox" checked={form.excused} onChange={e => setForm(f => ({ ...f, excused: e.target.checked }))} className="w-3 h-3" />
+              <input id="ff-attendancetab-5" type="checkbox" checked={form.excused} onChange={e => setForm(f => ({ ...f, excused: e.target.checked }))} className="w-3 h-3" />
               <label className="text-xs text-rmpg-300">Excused</label>
             </div>
           </div>
@@ -159,9 +159,9 @@ export default function AttendanceTab({ userRole }: { userRole: string }) {
       <div className="flex items-center gap-2">
         <div className="relative">
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500 pointer-events-none" aria-hidden="true" />
-          <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Search records..." aria-label="Search attendance records by officer or reason" className="input-field text-xs py-1 pl-6 pr-2 w-48 focus:ring-1 focus:ring-brand-500/50 transition-shadow duration-150" />
+          <input id="ff-attendancetab-6" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Search records..." aria-label="Search attendance records by officer or reason" className="input-field text-xs py-1 pl-6 pr-2 w-48 focus:ring-1 focus:ring-brand-500/50 transition-shadow duration-150" />
         </div>
-        <select value={selectedOfficer ?? ''} onChange={e => setSelectedOfficer(e.target.value ? Number(e.target.value) : null)} className="input-field text-xs py-1 px-2">
+        <select id="ff-attendancetab-7" value={selectedOfficer ?? ''} onChange={e => setSelectedOfficer(e.target.value ? Number(e.target.value) : null)} className="input-field text-xs py-1 px-2">
           <option value="">All Officers</option>
           {officers.map(o => <option key={o.id} value={o.id}>{o.full_name}</option>)}
         </select>

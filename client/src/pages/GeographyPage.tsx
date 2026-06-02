@@ -796,7 +796,7 @@ function DetailPane({
             if (k === 'active') {
               return (
                 <label key={k} className="flex items-center gap-2 text-[11px]">
-                  <input
+                  <input id="ff-geographypage-0"
                     type="checkbox"
                     checked={v == null ? true : Boolean(v)}
                     onChange={(e) => onEditFieldChange(k, e.target.checked ? 1 : 0)}
@@ -813,7 +813,7 @@ function DetailPane({
                   <span className="text-[9px] text-[var(--text-muted)] uppercase w-[110px] flex-shrink-0 pt-1">
                     {label}
                   </span>
-                  <textarea
+                  <textarea id="ff-geographypage-1"
                     value={v == null ? '' : String(v)}
                     onChange={(e) => onEditFieldChange(k, e.target.value)}
                     className="input-dark text-[11px] flex-1 min-h-[48px] resize-y"
@@ -829,7 +829,7 @@ function DetailPane({
                   <span className="text-[9px] text-[var(--text-muted)] uppercase w-[110px] flex-shrink-0">
                     {label}
                   </span>
-                  <input
+                  <input id="ff-geographypage-2"
                     type="number"
                     value={v == null ? '' : String(v)}
                     onChange={(e) => onEditFieldChange(k, e.target.value === '' ? null : Number(e.target.value))}
@@ -844,7 +844,7 @@ function DetailPane({
                 <span className="text-[9px] text-[var(--text-muted)] uppercase w-[110px] flex-shrink-0">
                   {label}
                 </span>
-                <input
+                <input id="ff-geographypage-3"
                   type="text"
                   value={v == null ? '' : String(v)}
                   onChange={(e) => onEditFieldChange(k, e.target.value)}

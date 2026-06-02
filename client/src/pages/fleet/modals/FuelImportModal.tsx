@@ -203,7 +203,7 @@ export default function FuelImportModal({ isOpen, onClose, onImported, vehicles 
                 <span className="text-[11px] text-rmpg-300">Click to select a .csv file</span>
                 <span className="text-[9px] text-rmpg-500">Max 10 MB</span>
               </button>
-              <input
+              <input id="ff-fuelimportmodal-0"
                 ref={fileInputRef}
                 type="file"
                 accept=".csv,text/csv"
@@ -266,7 +266,7 @@ export default function FuelImportModal({ isOpen, onClose, onImported, vehicles 
                             {r.matched && r.vehicle_display ? (
                               <span className="text-green-400 flex items-center gap-1"><Car className="w-2.5 h-2.5" />{r.vehicle_display}</span>
                             ) : (
-                              <select className="select-dark text-[10px] py-0.5"
+                              <select id="ff-fuelimportmodal-1" className="select-dark text-[10px] py-0.5"
                                 value={r.vehicle_id ?? ''}
                                 onChange={(e) => {
                                   const vid = e.target.value ? Number(e.target.value) : null;

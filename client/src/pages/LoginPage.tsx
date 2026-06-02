@@ -710,7 +710,7 @@ export default function LoginPage() {
 
                 {/* Trust this device checkbox */}
                 <label className="flex items-center gap-2 cursor-pointer select-none py-1 group min-h-[44px]">
-                  <input
+                  <input id="ff-loginpage-0"
                     type="checkbox"
                     checked={trustThisDevice}
                     onChange={(e) => setTrustThisDevice(e.target.checked)}
@@ -822,7 +822,7 @@ export default function LoginPage() {
                   <p className="text-[9px]" style={{ color: '#666666' }}>Enter one of your single-use backup codes</p>
                 </div>
 
-                <input
+                <input id="ff-loginpage-1"
                   type="text"
                   className="input-dark login-input-glow h-9 sm:h-9 min-h-[44px] sm:min-h-0 text-center font-mono tracking-widest uppercase"
                   placeholder="XXXX-XXXX"
@@ -1158,7 +1158,7 @@ export default function LoginPage() {
                           Question {i + 1}
                         </label>
                         <p className="text-[10px] mb-1" style={{ color: '#aaaaaa' }}>{forgotQuestions[i]}</p>
-                        <input
+                        <input id="ff-loginpage-2"
                           type="text"
                           className="input-dark login-input-glow h-9 sm:h-9 min-h-[44px] sm:min-h-0"
                           placeholder="Your answer"

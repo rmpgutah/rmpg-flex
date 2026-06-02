@@ -210,7 +210,7 @@ export default function AdminRetentionTab({ LoadingSpinner, error, setError }: P
                     </div>
                   </td>
                   <td className="px-3 py-2 text-center">
-                    <input
+                    <input id="ff-adminretentiontab-0"
                       type="number"
                       min={7}
                       max={3650}

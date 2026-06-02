@@ -216,7 +216,7 @@ function ContactAutocompleteInput({
   return (
     <div ref={containerRef} className="relative">
       {label && <label className="text-[10px] text-rmpg-400 block mb-0.5">{label}</label>}
-      <input
+      <input id="ff-emailpage-0"
         ref={inputRef}
         value={value}
         onChange={handleInputChange}
@@ -380,9 +380,9 @@ function ScheduleSendModal({ onSchedule, onClose }: { onSchedule: (dateTime: str
           <div className="border-t border-border-subtle pt-3">
             <span className="text-[10px] text-rmpg-400 font-semibold uppercase tracking-wider block mb-2">Custom Date & Time</span>
             <div className="flex items-center gap-2">
-              <input type="date" value={date} onChange={e => setDate(e.target.value)}
+              <input id="ff-emailpage-1" type="date" value={date} onChange={e => setDate(e.target.value)}
                 className="input-dark text-xs flex-1 min-h-[36px]" min={localToday()} />
-              <input type="time" value={time} onChange={e => setTime(e.target.value)}
+              <input id="ff-emailpage-2" type="time" value={time} onChange={e => setTime(e.target.value)}
                 className="input-dark text-xs w-28 min-h-[36px]" />
             </div>
           </div>
@@ -549,23 +549,23 @@ function EmailIncidentLinks({ emailId, onSnackbar }: { emailId: string; onSnackb
       {showForm && (
         <div className="px-4 pb-2 space-y-1.5">
           <div className="flex items-center gap-1.5 flex-wrap">
-            <select value={linkTarget} onChange={e => setLinkTarget(e.target.value as any)}
+            <select id="ff-emailpage-3" value={linkTarget} onChange={e => setLinkTarget(e.target.value as any)}
               className="input-dark text-[10px] px-2 py-1 w-24 min-h-[36px]">
               <option value="incident">Incident</option>
               <option value="call">Call</option>
               <option value="warrant">Warrant</option>
               <option value="person">Person</option>
             </select>
-            <input value={linkId} onChange={e => setLinkId(e.target.value)} placeholder="ID #"
+            <input id="ff-emailpage-4" value={linkId} onChange={e => setLinkId(e.target.value)} placeholder="ID #"
               className="input-dark text-[10px] px-2 py-1 w-20 min-h-[36px]" type="number" />
-            <select value={linkRelation} onChange={e => setLinkRelation(e.target.value as any)}
+            <select id="ff-emailpage-5" value={linkRelation} onChange={e => setLinkRelation(e.target.value as any)}
               className="input-dark text-[10px] px-2 py-1 w-28 min-h-[36px]">
               <option value="related">Related</option>
               <option value="evidence">Evidence</option>
               <option value="notification">Notification</option>
               <option value="correspondence">Correspondence</option>
             </select>
-            <input value={linkNotes} onChange={e => setLinkNotes(e.target.value)} placeholder="Notes (optional)"
+            <input id="ff-emailpage-6" value={linkNotes} onChange={e => setLinkNotes(e.target.value)} placeholder="Notes (optional)"
               className="input-dark text-[10px] px-2 py-1 flex-1 min-h-[36px]"
               onKeyDown={e => { if (e.key === 'Enter') handleLink(); }} />
             <button type="button" onClick={handleLink} disabled={saving || !linkId.trim()} className="btn-primary text-[9px] px-2 py-1 disabled:opacity-40">
@@ -834,23 +834,23 @@ function SearchFilterPanel({
 
       <div>
         <label className="text-[9px] text-rmpg-500 block mb-0.5">From (sender)</label>
-        <input value={local.sender} onChange={e => setLocal(prev => ({ ...prev, sender: e.target.value }))}
+        <input id="ff-emailpage-7" value={local.sender} onChange={e => setLocal(prev => ({ ...prev, sender: e.target.value }))}
           className="input-dark w-full text-[10px] px-2 py-1 min-h-[36px]" placeholder="name or email" />
       </div>
 
       <div className="flex items-center gap-3">
         <label className="flex items-center gap-1.5 text-[10px] text-rmpg-300 cursor-pointer">
-          <input type="checkbox" checked={local.hasAttachments} onChange={e => setLocal(prev => ({ ...prev, hasAttachments: e.target.checked }))}
+          <input id="ff-emailpage-8" type="checkbox" checked={local.hasAttachments} onChange={e => setLocal(prev => ({ ...prev, hasAttachments: e.target.checked }))}
             className="w-3 h-3 rounded-sm border-border-subtle bg-surface-sunken accent-brand-500" />
           <Paperclip className="w-3 h-3 text-rmpg-500" /> Has attachments
         </label>
         <label className="flex items-center gap-1.5 text-[10px] text-rmpg-300 cursor-pointer">
-          <input type="checkbox" checked={local.isFlagged} onChange={e => setLocal(prev => ({ ...prev, isFlagged: e.target.checked }))}
+          <input id="ff-emailpage-9" type="checkbox" checked={local.isFlagged} onChange={e => setLocal(prev => ({ ...prev, isFlagged: e.target.checked }))}
             className="w-3 h-3 rounded-sm border-border-subtle bg-surface-sunken accent-brand-500" />
           <Flag className="w-3 h-3 text-rmpg-500" /> Flagged
         </label>
         <label className="flex items-center gap-1.5 text-[10px] text-rmpg-300 cursor-pointer">
-          <input type="checkbox" checked={local.unreadOnly} onChange={e => setLocal(prev => ({ ...prev, unreadOnly: e.target.checked }))}
+          <input id="ff-emailpage-10" type="checkbox" checked={local.unreadOnly} onChange={e => setLocal(prev => ({ ...prev, unreadOnly: e.target.checked }))}
             className="w-3 h-3 rounded-sm border-border-subtle bg-surface-sunken accent-brand-500" />
           <Mail className="w-3 h-3 text-rmpg-500" /> Unread only
         </label>
@@ -859,12 +859,12 @@ function SearchFilterPanel({
       <div className="flex items-center gap-2">
         <div className="flex-1">
           <label className="text-[9px] text-rmpg-500 block mb-0.5">From date</label>
-          <input type="date" value={local.dateFrom} onChange={e => setLocal(prev => ({ ...prev, dateFrom: e.target.value }))}
+          <input id="ff-emailpage-11" type="date" value={local.dateFrom} onChange={e => setLocal(prev => ({ ...prev, dateFrom: e.target.value }))}
             className="input-dark w-full text-[10px] px-2 py-1 min-h-[36px]" />
         </div>
         <div className="flex-1">
           <label className="text-[9px] text-rmpg-500 block mb-0.5">To date</label>
-          <input type="date" value={local.dateTo} onChange={e => setLocal(prev => ({ ...prev, dateTo: e.target.value }))}
+          <input id="ff-emailpage-12" type="date" value={local.dateTo} onChange={e => setLocal(prev => ({ ...prev, dateTo: e.target.value }))}
             className="input-dark w-full text-[10px] px-2 py-1 min-h-[36px]" />
         </div>
       </div>
@@ -1188,7 +1188,7 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
 
           <div className="flex items-center gap-2">
             <span className="text-[10px] text-rmpg-500 w-6 text-right flex-shrink-0">Sub</span>
-            <input value={subject} onChange={e => setSubject(e.target.value)} placeholder="Subject"
+            <input id="ff-emailpage-13" value={subject} onChange={e => setSubject(e.target.value)} placeholder="Subject"
               className="flex-1 bg-transparent text-xs text-white border-0 outline-none placeholder:text-rmpg-600 py-1" />
           </div>
         </div>
@@ -1208,7 +1208,7 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
             className="p-1.5 text-rmpg-500 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Attach file"><Paperclip className="w-3.5 h-3.5" /></button>
           <IconButton onClick={handleInlineImage}
             className="p-1.5 text-rmpg-500 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Insert inline image" aria-label="Insert inline image"><Image className="w-3.5 h-3.5" /></IconButton>
-          <input ref={fileInputRef} type="file" multiple className="hidden" onChange={handleFileSelect} />
+          <input id="ff-emailpage-14" ref={fileInputRef} type="file" multiple className="hidden" onChange={handleFileSelect} />
           <div className="flex-1" />
           <div className="relative">
             <button type="button" onClick={() => setShowTemplatePicker(!showTemplatePicker)}
@@ -2109,7 +2109,7 @@ export default function EmailPage() {
 
           {!folderCollapsed && (
             renamingFolder === f.id ? (
-              <input value={renameValue} onChange={e => setRenameValue(e.target.value)}
+              <input id="ff-emailpage-15" value={renameValue} onChange={e => setRenameValue(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter') handleRenameFolder(f.id); if (e.key === 'Escape') { setRenamingFolder(null); setRenameValue(''); } }}
                 onBlur={() => { setRenamingFolder(null); setRenameValue(''); }}
                 className="flex-1 bg-transparent text-xs text-white border-b border-brand-500 outline-none" autoFocus
@@ -2174,7 +2174,7 @@ export default function EmailPage() {
           <div className="px-2 py-1.5 border-t border-border-subtle">
             {showNewFolder ? (
               <div className="flex items-center gap-1">
-                <input value={newFolderName} onChange={e => setNewFolderName(e.target.value)}
+                <input id="ff-emailpage-16" value={newFolderName} onChange={e => setNewFolderName(e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter') handleCreateFolder(); if (e.key === 'Escape') { setShowNewFolder(false); setNewFolderName(''); } }}
                   className="flex-1 input-dark text-[10px] px-2 py-0.5 min-h-[36px]" placeholder="Folder name" autoFocus />
                 <button type="button" onClick={() => handleCreateFolder()} className="p-0.5 text-brand-400 hover:text-brand-300"><CheckCircle className="w-3.5 h-3.5" /></button>
@@ -2254,7 +2254,7 @@ export default function EmailPage() {
 
         {/* Mobile folder selector */}
         <div className="md:hidden flex items-center gap-1.5 px-2 py-1.5 border-b border-border-subtle bg-surface-base">
-          <select
+          <select id="ff-emailpage-17"
             value={selectedFolder}
             onChange={e => handleSelectFolder(e.target.value)}
             className="flex-1 text-xs bg-[#0c0c0c] border border-[#2b2b2b] rounded-sm px-2 py-1.5 text-white focus:border-brand-500 focus:outline-none"
@@ -2299,7 +2299,7 @@ export default function EmailPage() {
             <div className="flex items-center gap-1.5">
               <div className="flex-1 relative">
                 <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" />
-                <input value={searchInput} onChange={e => { setSearchInput(e.target.value); setSearchQuery(e.target.value); }} placeholder="Search emails (subject, body, from)..." aria-label="Search emails..."
+                <input id="ff-emailpage-18" value={searchInput} onChange={e => { setSearchInput(e.target.value); setSearchQuery(e.target.value); }} placeholder="Search emails (subject, body, from)..." aria-label="Search emails..."
                   className="input-dark w-full text-[11px] pl-7 pr-7 py-1 min-h-[36px]" />
                 {searchInput && (
                   <IconButton onClick={handleClearSearch} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-white" aria-label="Clear search" title="Clear"><X className="w-3 h-3" /></IconButton>

@@ -910,7 +910,7 @@ function MaintenanceModeToggle() {
           Maintenance mode is ACTIVE. Users will see a maintenance banner.
         </div>
       )}
-      <input
+      <input id="ff-adminhealthtab-0"
         value={message}
         onChange={e => setMessage(e.target.value)}
         placeholder="Maintenance message shown to users..."

@@ -227,26 +227,26 @@ export default function AdminRadioSettings() {
         <div className="text-[10px] text-gray-600 -mt-1">“all” answers every transmission; “addressed” only when a unit calls dispatch (or asks for a lookup/log).</div>
         <div className="flex items-center justify-between gap-3 py-1">
           <div className="text-[11px] text-gray-300">Dispatcher voice</div>
-          <select aria-label="Dispatcher voice" className={inputCls} value={settings.ai_voice} onChange={(e) => set('ai_voice', e.target.value)}>
+          <select id="ff-adminradiosettings-0" aria-label="Dispatcher voice" className={inputCls} value={settings.ai_voice} onChange={(e) => set('ai_voice', e.target.value)}>
             {options.ai_voice.map((v) => <option key={v.id} value={v.id}>{v.label}</option>)}
           </select>
         </div>
         <div className="flex items-center justify-between gap-3 py-1">
           <div className="text-[11px] text-gray-300">Dispatcher call-sign</div>
-          <input aria-label="Dispatcher call-sign" className={`${inputCls} w-40 font-mono`} value={settings.ai_dispatch_callsign} maxLength={32} onChange={(e) => set('ai_dispatch_callsign', e.target.value)} />
+          <input id="ff-adminradiosettings-1" aria-label="Dispatcher call-sign" className={`${inputCls} w-40 font-mono`} value={settings.ai_dispatch_callsign} maxLength={32} onChange={(e) => set('ai_dispatch_callsign', e.target.value)} />
         </div>
         <div className="flex items-center justify-between gap-3 py-1">
           <div className="text-[11px] text-gray-300">Reasoning temperature <span className="text-gray-600">({settings.ai_temperature.toFixed(2)})</span></div>
-          <input aria-label="Reasoning temperature" type="range" min={0} max={1} step={0.05} value={settings.ai_temperature} onChange={(e) => set('ai_temperature', Number(e.target.value))} className="w-40" />
+          <input id="ff-adminradiosettings-2" aria-label="Reasoning temperature" type="range" min={0} max={1} step={0.05} value={settings.ai_temperature} onChange={(e) => set('ai_temperature', Number(e.target.value))} className="w-40" />
         </div>
         <div className="flex items-center justify-between gap-3 py-1">
           <div className="text-[11px] text-gray-300">Max reply length (chars)</div>
-          <input aria-label="Max reply length" type="number" min={40} max={1200} className={`${inputCls} w-24 font-mono`} value={settings.ai_max_reply_chars} onChange={(e) => set('ai_max_reply_chars', parseInt(e.target.value, 10) || 0)} />
+          <input id="ff-adminradiosettings-3" aria-label="Max reply length" type="number" min={40} max={1200} className={`${inputCls} w-24 font-mono`} value={settings.ai_max_reply_chars} onChange={(e) => set('ai_max_reply_chars', parseInt(e.target.value, 10) || 0)} />
         </div>
         <Toggle label="Auto-open record files" hint="When a unit asks dispatch to run a plate or person, pop the matching record into the console's side panel. Dispatch reads it back on the radio either way." checked={settings.ai_auto_open_records} onChange={(v) => set('ai_auto_open_records', v)} />
         <div className="pt-1">
           <label className="block text-[11px] text-gray-300 mb-1">Persona / extra directives</label>
-          <textarea
+          <textarea id="ff-adminradiosettings-4"
             aria-label="Persona directives"
             className={`${inputCls} w-full h-24 resize-y leading-relaxed`}
             placeholder="Optional. Appended to the built-in dispatcher policy — e.g. 'Address units as Officer <name>. Always advise weather on Code 3 calls.'"
@@ -263,7 +263,7 @@ export default function AdminRadioSettings() {
         <Toggle label="Auto-transcribe (Whisper)" hint="Transcribe clips that arrive without a client transcript." checked={settings.auto_transcribe} onChange={(v) => set('auto_transcribe', v)} />
         <div className="flex items-center justify-between gap-3 py-1">
           <div className="text-[11px] text-gray-300">Recording retention <span className="text-gray-600">(days, 0 = forever)</span></div>
-          <input aria-label="Recording retention days" type="number" min={0} max={3650} className={`${inputCls} w-24 font-mono`} value={settings.recording_retention_days} onChange={(e) => set('recording_retention_days', parseInt(e.target.value, 10) || 0)} />
+          <input id="ff-adminradiosettings-5" aria-label="Recording retention days" type="number" min={0} max={3650} className={`${inputCls} w-24 font-mono`} value={settings.recording_retention_days} onChange={(e) => set('recording_retention_days', parseInt(e.target.value, 10) || 0)} />
         </div>
         <div className="text-[10px] text-gray-600 -mt-1">Old recordings + audio are purged on the 4-hourly cron.</div>
       </GroupCard>
@@ -274,7 +274,7 @@ export default function AdminRadioSettings() {
         <Toggle label="Voice stress / duress monitoring" hint="The AI rates stress on each transmission and escalates emergencies + flags the console." checked={settings.stress_monitoring_enabled} onChange={(v) => set('stress_monitoring_enabled', v)} />
         <div className="flex items-center justify-between gap-3 py-1">
           <div className="text-[11px] text-gray-300">Duress code phrase <span className="text-gray-600">(optional)</span></div>
-          <input aria-label="Duress code phrase" type="text" maxLength={64} placeholder="e.g. signal one hundred" className={`${inputCls} w-56`} value={settings.duress_code} onChange={(e) => set('duress_code', e.target.value)} />
+          <input id="ff-adminradiosettings-6" aria-label="Duress code phrase" type="text" maxLength={64} placeholder="e.g. signal one hundred" className={`${inputCls} w-56`} value={settings.duress_code} onChange={(e) => set('duress_code', e.target.value)} />
         </div>
         <div className="text-[10px] text-gray-600 -mt-1">If a unit speaks this phrase, dispatch silently flags a duress alert on the console without announcing it on-air.</div>
       </GroupCard>
@@ -283,7 +283,7 @@ export default function AdminRadioSettings() {
       <GroupCard icon={<SlidersHorizontal size={14} className="text-[#d4a017]" />} title="Channel Defaults & Operator UX">
         <div className="flex items-center justify-between gap-3 py-1">
           <div className="text-[11px] text-gray-300">Default channel</div>
-          <select aria-label="Default channel" className={inputCls} value={settings.default_channel_id ?? ''} onChange={(e) => set('default_channel_id', e.target.value ? Number(e.target.value) : null)}>
+          <select id="ff-adminradiosettings-7" aria-label="Default channel" className={inputCls} value={settings.default_channel_id ?? ''} onChange={(e) => set('default_channel_id', e.target.value ? Number(e.target.value) : null)}>
             <option value="">— none —</option>
             {channels.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
@@ -292,16 +292,16 @@ export default function AdminRadioSettings() {
         <Toggle label="Desktop notifications (default)" checked={settings.notif_enabled_default} onChange={(v) => set('notif_enabled_default', v)} />
         <div className="flex items-center justify-between gap-3 py-1">
           <div className="text-[11px] text-gray-300">Notification sound (default)</div>
-          <select aria-label="Default notification sound" className={inputCls} value={settings.notif_sound_default} onChange={(e) => set('notif_sound_default', e.target.value)}>
+          <select id="ff-adminradiosettings-8" aria-label="Default notification sound" className={inputCls} value={settings.notif_sound_default} onChange={(e) => set('notif_sound_default', e.target.value)}>
             {options.notif_sound_default.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
           </select>
         </div>
         <div className="flex items-center justify-between gap-3 py-1">
           <div className="text-[11px] text-gray-300">Quiet hours (default)</div>
           <div className="flex items-center gap-1">
-            <input aria-label="Quiet hours start" type="time" className={`${inputCls} font-mono`} value={settings.quiet_start_default} onChange={(e) => set('quiet_start_default', e.target.value)} />
+            <input id="ff-adminradiosettings-9" aria-label="Quiet hours start" type="time" className={`${inputCls} font-mono`} value={settings.quiet_start_default} onChange={(e) => set('quiet_start_default', e.target.value)} />
             <span className="text-gray-600 text-[10px]">to</span>
-            <input aria-label="Quiet hours end" type="time" className={`${inputCls} font-mono`} value={settings.quiet_end_default} onChange={(e) => set('quiet_end_default', e.target.value)} />
+            <input id="ff-adminradiosettings-10" aria-label="Quiet hours end" type="time" className={`${inputCls} font-mono`} value={settings.quiet_end_default} onChange={(e) => set('quiet_end_default', e.target.value)} />
           </div>
         </div>
         <div className="text-[10px] text-gray-600 -mt-1">Seed values for new devices — operators can still override locally on their console.</div>
@@ -313,7 +313,7 @@ export default function AdminRadioSettings() {
         <Segmented label="Haze intensity" value={settings.haze_intensity} options={options.haze_intensity} onChange={(v) => set('haze_intensity', v as RadioSettings['haze_intensity'])} />
         <div className="flex items-center justify-between gap-3 py-1">
           <div className="text-[11px] text-gray-300 flex items-center gap-1"><Volume2 size={11} className="text-gray-600" /> Noise-bed level <span className="text-gray-600">({Math.round(settings.noise_bed_level * 100)}%)</span></div>
-          <input aria-label="Noise bed level" type="range" min={0} max={1} step={0.05} value={settings.noise_bed_level} onChange={(e) => set('noise_bed_level', Number(e.target.value))} className="w-40" />
+          <input id="ff-adminradiosettings-11" aria-label="Noise bed level" type="range" min={0} max={1} step={0.05} value={settings.noise_bed_level} onChange={(e) => set('noise_bed_level', Number(e.target.value))} className="w-40" />
         </div>
       </GroupCard>
 
