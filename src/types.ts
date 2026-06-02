@@ -47,6 +47,12 @@ export type Bindings = {
   // Workers AI — vision-LLM OCR + structured field extraction for
   // process-service intake. See src/routes/serveIntake.ts.
   AI: Ai;
+  // Optional LoRA fine-tune name/id for the serve-intake field extractor.
+  // When set, extractFromText() applies this adapter on top of the 70B base
+  // (with raw:true). Created via `wrangler ai finetune create` from the
+  // adapter trained on training/data (see training/README.md). Unset → stock
+  // 70B, so the fine-tune is a safe, reversible opt-in via wrangler var/secret.
+  SERVE_INTAKE_LORA?: string;
 };
 
 export type Variables = {

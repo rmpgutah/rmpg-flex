@@ -170,7 +170,7 @@ async function scanDocumentHandler(c: any): Promise<Response> {
       pageCount = txt.page_count;
       ocrUsed = txt.ocr_used;
       ocrEngine = ocrUsed ? 'tesseract' : 'pdftotext';
-      extraction = await extractFromText(c.env.AI, txt.text);
+      extraction = await extractFromText(c.env.AI, txt.text, c.env.SERVE_INTAKE_LORA);
     } else {
       return c.json({ error: `Unsupported file type: ${file.type}` }, 400);
     }
@@ -325,7 +325,7 @@ si.post('/upload', async (c) => {
         }
         const ex = text.trim().length >= 20
           ? await withTimeout(
-              extractFromText(c.env.AI, text.slice(0, PER_DOC_CAP)),
+              extractFromText(c.env.AI, text.slice(0, PER_DOC_CAP), c.env.SERVE_INTAKE_LORA),
               AI_TIMEOUT_MS, 'Field extraction timed out',
             ).catch((e) => emptyExtraction(EXTRACT_MODEL, e instanceof Error ? e.message : String(e)))
           : emptyExtraction(EXTRACT_MODEL, 'Insufficient text to extract');
@@ -609,7 +609,7 @@ si.post('/intake', async (c) => {
   if (docs.length === 0) return c.json({ error: 'No documents in request' }, 400);
 
   const combined = docs.map((d) => `--- ${d.type || 'document'} ---\n${d.text || ''}`).join('\n\n');
-  const extraction = await extractFromText(c.env.AI, combined);
+  const extraction = await extractFromText(c.env.AI, combined, c.env.SERVE_INTAKE_LORA);
   // Same deterministic normalization the /upload path applies, so the
   // legacy single-call route produces equally clean field shapes.
   const normalized = normalizeFields(extraction.fields);

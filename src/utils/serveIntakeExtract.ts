@@ -86,7 +86,7 @@ const DOC_TYPES = [
   'identification', 'correspondence', 'other',
 ] as const;
 
-const SYSTEM_PROMPT = `You are an extraction system for legal process-service (civil paper service) documents.
+export const SYSTEM_PROMPT = `You are an extraction system for legal process-service (civil paper service) documents.
 You return STRICT JSON only — no commentary, no markdown fences.
 
 Confidence is your own per-field self-report on a 0..1 scale:
@@ -202,7 +202,7 @@ const FEWSHOT_OUTPUT = JSON.stringify({
   },
 });
 
-function buildUserPrompt(text: string): string {
+export function buildUserPrompt(text: string): string {
   return `Extract the fields below from this process-service document.
 
 Return JSON with EXACTLY this shape:
@@ -228,6 +228,21 @@ Document text:
 """
 ${text.slice(0, MAX_PROMPT_CHARS)}
 """`;
+}
+
+// CANONICAL chat-message shape for the extraction task. BOTH production
+// inference (extractFromText) AND the offline LoRA dataset builder
+// (training/build-dataset.ts) import this single function, so the prompt
+// the adapter is trained on is byte-identical to the prompt it sees in
+// prod. Diverging here silently degrades a fine-tune ("train/serve skew");
+// keeping it in one place makes that class of bug structurally impossible.
+export type ChatMessage = { role: 'system' | 'user' | 'assistant'; content: string };
+
+export function buildExtractionMessages(rawText: string): ChatMessage[] {
+  return [
+    { role: 'system', content: SYSTEM_PROMPT },
+    { role: 'user', content: buildUserPrompt(rawText.trim()) },
+  ];
 }
 
 // ── Response schema (RETAINED FOR REFERENCE — NOT CURRENTLY USED) ──
@@ -349,9 +364,27 @@ function tryParseModelJson(out: any): any {
   return {};
 }
 
+// Parse + normalize a raw Workers-AI text-generation response into the
+// canonical ExtractionResult. extractFromText() uses this internally; the
+// offline eval runner (training/run-eval.ts) calls it directly so its
+// scoring sees the EXACT post-processing prod applies — no reimplementation.
+export function normalizeModelOutput(
+  out: any,
+  rawText: string,
+  model: string = TEXT_MODEL,
+  ms: number = 0,
+): ExtractionResult {
+  return normalize(tryParseModelJson(out), rawText, model, ms);
+}
+
 export async function extractFromText(
   ai: Ai,
   rawText: string,
+  // Optional fine-tune. When set (from env SERVE_INTAKE_LORA), Workers AI
+  // applies the uploaded LoRA adapter and we pass raw:true so the model
+  // uses the chat template the adapter was trained on (the one emitted by
+  // training/build-dataset.ts) instead of the default. Unset → stock 70B.
+  lora?: string,
 ): Promise<ExtractionResult> {
   const trimmed = rawText.trim();
   if (trimmed.length < 20) {
@@ -379,12 +412,13 @@ export async function extractFromText(
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const out = await ai.run(TEXT_MODEL, {
-        messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
-          { role: 'user', content: buildUserPrompt(trimmed) },
-        ],
+        messages: buildExtractionMessages(trimmed),
         temperature: 0.1,
         max_tokens: 2048,
+        // raw:true ONLY with a LoRA — the adapter's training data carries the
+        // chat template, so we must not let Workers AI apply the default one
+        // on top. Without a LoRA we keep the default template (raw stays off).
+        ...(lora ? { lora, raw: true } : {}),
       } as any);
       const parsed = tryParseModelJson(out);
       const result = normalize(parsed, rawText, TEXT_MODEL, Date.now() - started);
