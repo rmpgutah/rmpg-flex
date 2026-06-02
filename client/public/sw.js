@@ -376,7 +376,7 @@
 //       now populated (was hardcoded []). Also: fuel-report PDF now includes
 //       an Odometer column per fill (was missing entirely; reads
 //       odometer_reading ?? raw odometer).
-const CACHE_NAME = 'rmpg-flex-v716';
+const CACHE_NAME = 'rmpg-flex-v717';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
