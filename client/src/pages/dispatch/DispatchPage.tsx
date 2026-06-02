@@ -4663,28 +4663,11 @@ export default function DispatchPage() {
                             {selectedCall.dispatch_code}
                           </span>
                         )}
-                        {selectedCall.sector_id && (() => {
-                          const area = getArea(selectedCall.sector_id);
-                          return area ? <span className="text-rmpg-200" title="Dispatch Area — top of the geography hierarchy"><span className="text-rmpg-400">Area:</span> {[area.code, area.name].filter(Boolean).join(' — ')}</span> : null;
-                        })()}
-                        {selectedCall.sector_id && (() => {
-                          // Police format: show the Spillman sector code ("SL1"), not the
-                          // numeric dispatch_sectors.id row key. Fall back to the id only
-                          // if the districts lookup hasn't loaded / has no code.
-                          const code = getSectionCode(selectedCall.sector_id) || selectedCall.sector_id;
-                          const name = sectionLabels.get(String(selectedCall.sector_id)) || '';
-                          return <span className="text-rmpg-200" title="Spillman sector code"><span className="text-rmpg-400">Sec:</span> {[code, name].filter(Boolean).join(' — ')}</span>;
-                        })()}
-                        {selectedCall.zone_id && <span className="text-rmpg-200" title="Zone (within sector)"><span className="text-rmpg-400">Zone:</span> {[zoneLeaf(selectedCall.zone_id), zoneLabels.get(selectedCall.zone_id) || ''].filter(Boolean).join(' — ')}</span>}
-                        {selectedCall.beat_id && (() => {
-                          // Show the leaf beat code (e.g. "C", not "SL1-HER/C") prefixed
-                          // to its name. getBeatLabel falls back to the raw code, so guard
-                          // against an "C — C" echo. Lookups stay keyed by the full code.
-                          const code = beatLeaf(selectedCall.beat_id);
-                          const label = getBeatLabel(selectedCall.zone_id || '', selectedCall.beat_id);
-                          const text = label && label !== selectedCall.beat_id ? `${code} — ${label}` : code;
-                          return <span className="text-rmpg-200" title="Beat (within zone)"><span className="text-rmpg-400">Beat:</span> {text}</span>;
-                        })()}
+                        {/* Geography on dispatch surfaces is the SHORT CODE only —
+                            the dispatch_code badge above (e.g. "SLA-A2"). The verbose
+                            Area / Sec / Zone / Beat full-name lines were removed; the
+                            full Area›Section›Zone›Beat names are presented on the Map
+                            UI ("What's Here") instead. */}
                         {selectedCall.latitude != null && selectedCall.longitude != null && (
                           <span className="text-rmpg-400 font-mono text-[9px] tabular-nums select-all">
                             GPS: {Number(selectedCall.latitude).toFixed(5)}, {Number(selectedCall.longitude).toFixed(5)}

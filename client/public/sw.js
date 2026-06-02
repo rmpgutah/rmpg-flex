@@ -343,7 +343,10 @@
 //       overflow so the panel is the single scroll owner for all tabs
 //       (Tires/Damage/Recalls already relied on it). SW bump also clears any
 //       stale cached bundle.
-const CACHE_NAME = 'rmpg-flex-v710';
+// v711: Dispatch surfaces (call cards, detail read-view, call PDF) now show
+//       the SHORT dispatch code only (e.g. "SLA-A2"); the full Area/Section/
+//       Zone/Beat names remain on the Map UI (What's Here + hierarchy labels).
+const CACHE_NAME = 'rmpg-flex-v711';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
