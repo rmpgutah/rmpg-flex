@@ -220,12 +220,16 @@ folders.put('/folders/:id', async (c) => {
       `UPDATE document_folders SET name = ?, folder_path = ?, updated_at = datetime('now') WHERE id = ?`,
       name, newPath, id,
     );
-    // Cascade rename to descendants via path-prefix REPLACE.
+    // Cascade rename to descendants by rewriting ONLY the leading path prefix.
+    // (SQLite REPLACE() swaps every occurrence in the string, which would
+    // corrupt paths where the old prefix recurs deeper in the tree.)
     await execute(
       db,
-      `UPDATE document_folders SET folder_path = REPLACE(folder_path, ?, ?), updated_at = datetime('now')
-       WHERE folder_path LIKE ?`,
-      oldPath + '/', newPath + '/', oldPath + '/%',
+      `UPDATE document_folders
+          SET folder_path = ? || substr(folder_path, length(?) + 1),
+              updated_at = datetime('now')
+        WHERE folder_path LIKE ?`,
+      newPath + '/', oldPath + '/', oldPath + '/%',
     );
 
     return c.json({ success: true });

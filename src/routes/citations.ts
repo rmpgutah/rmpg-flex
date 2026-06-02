@@ -144,11 +144,23 @@ citations.get('/payment-summary', async (c) => {
     );
     const total_assessed = row?.total_assessed ?? 0;
     const total_collected = row?.total_collected ?? 0;
+    const total_outstanding = Math.max(0, total_assessed - total_collected);
+    const pc = await queryFirst<{ n: number }>(db, 'SELECT COUNT(*) as n FROM citation_payments');
+    const collection_rate = total_assessed > 0 ? Math.round((total_collected / total_assessed) * 100) : 0;
+    // CitationsPage reads res.data.{payment_count,payment_total,outstanding_amount,collection_rate};
+    // keep the legacy top-level keys too for any other consumer.
     return c.json({
       total_assessed,
       total_collected,
-      total_outstanding: Math.max(0, total_assessed - total_collected),
+      total_outstanding,
       count_unpaid: row?.count_unpaid ?? 0,
+      data: {
+        payment_count: pc?.n ?? 0,
+        payment_total: total_collected,
+        total_collected,
+        outstanding_amount: total_outstanding,
+        collection_rate,
+      },
     });
   } catch (err) {
     return c.json({ error: 'Failed to get payment summary', code: 'PAYMENT_SUMMARY_ERROR' }, 500);
