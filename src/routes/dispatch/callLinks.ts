@@ -110,6 +110,28 @@ links.post('/calls/:id/persons', async (c) => {
     link: created,
   });
 
+  // OFFICER SAFETY: if the linked subject has active warrants, fire the
+  // call:warrant_alert the dispatch board + voice-alert hook subscribe to.
+  // This channel had NO producer, so the warrant-hit banner/voice never fired.
+  // Best-effort: a warrants-query failure must not break the link.
+  try {
+    const wc = await queryFirst<{ n: number }>(
+      db, "SELECT COUNT(*) AS n FROM warrants WHERE person_id = ? AND status = 'active'", body.person_id,
+    );
+    if ((wc?.n ?? 0) > 0) {
+      const subjectName = `${person.first_name ?? ''} ${person.last_name ?? ''}`.trim() || 'Unknown subject';
+      broadcastAll('call:warrant_alert', {
+        call_id: Number(callId),
+        person_id: body.person_id,
+        personName: subjectName,
+        subject_name: subjectName,
+        warrantCount: wc?.n ?? 0,
+      });
+    }
+  } catch (err) {
+    console.warn('warrant-alert check failed (non-fatal):', err);
+  }
+
   // Officer MDT voice — "Subject added: <last name>". Person flags
   // (caution / sex_offender / gang) deserve an officer-safety push,
   // not a generic "person added" prompt.
