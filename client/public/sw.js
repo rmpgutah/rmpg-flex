@@ -425,7 +425,12 @@
 //       normalized server geocode — "4974 S Redwood Rd" → "South Redwood Road")
 //       and fills coords + cross-street + A/S/Z/B. Wired in the dispatch call-
 //       edit panel and the New Call modal.
-const CACHE_NAME = 'rmpg-flex-v724';
+// v725: Unit status board "No GPS" fix — the location cell keyed off the
+//       optional text `location` field, so a unit reporting LIVE coordinates
+//       (browser/device GPS, no reverse-geocoded address) falsely showed
+//       "No GPS" even though it's on the map. Now shows the live coords (+ age)
+//       whenever lat/lng are present; "No GPS" only when there's truly no fix.
+const CACHE_NAME = 'rmpg-flex-v725';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
