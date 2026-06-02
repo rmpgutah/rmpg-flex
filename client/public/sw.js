@@ -438,7 +438,10 @@
 // v729: App-wide right-click context-menu system (ContextMenuProvider +
 //       useContextMenu) wired into records, dispatch units, map markers,
 //       evidence/citations/incidents/arrests, and all DataTable pages.
-const CACHE_NAME = 'rmpg-flex-v729';
+// v730: Cross-module right-click actions — Run NCIC (person/vehicle),
+//       Dispatch/Create-call-here + Show-on-map; adds /ncic?q&type (existing),
+//       /dispatch?newCall seed reader, and /map?flyto deep-link.
+const CACHE_NAME = 'rmpg-flex-v730';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

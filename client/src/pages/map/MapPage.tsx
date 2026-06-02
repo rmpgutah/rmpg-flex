@@ -398,6 +398,24 @@ export default function MapPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapLoaded]);
 
+  // Deep-link: /map?flyto=<lat>,<lng> centers the map on a point on load
+  // (used by record right-click "Show on map"). One-shot, on first map load.
+  const flewToRef = useRef(false);
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !mapLoaded || flewToRef.current) return;
+    const flyto = new URLSearchParams(window.location.search).get('flyto');
+    if (!flyto) return;
+    const [latS, lngS] = flyto.split(',');
+    const lat = parseFloat(latS);
+    const lng = parseFloat(lngS);
+    if (Number.isFinite(lat) && Number.isFinite(lng)) {
+      flewToRef.current = true;
+      map.flyTo({ center: [lng, lat], zoom: 17, essential: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mapLoaded]);
+
   // Multi-stop patrol route queue (PSO client requests, welfare checks, etc.)
   const [routeQueue, setRouteQueue] = useState<QueuedStop[]>([]);
   const [routeUnit, setRouteUnit] = useState<string | null>(null);

@@ -546,6 +546,9 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
       ...(person.phone ? [m.copy('Copy phone', person.phone, <Phone size={12} />)] : []),
       ...(addr ? [m.openExternal('Navigate to address', `https://maps.google.com/?q=${encodeURIComponent(addr)}`, <Navigation size={12} />)] : []),
       m.separator(),
+      m.go('Run NCIC query', `/ncic?type=person&q=${encodeURIComponent(fullName)}`, <Search size={12} />),
+      ...(addr ? [m.go('Dispatch to this address', `/dispatch?newCall=1&location=${encodeURIComponent(addr)}&description=${encodeURIComponent('Re: ' + fullName)}`, <MapPin size={12} />)] : []),
+      m.separator(),
       ...(showArchived
         ? (canModify ? [m.action('Unarchive', () => handleUnarchive('persons', person.id), { icon: <RotateCcw size={12} /> })] : [])
         : [m.action('Archive', () => handleArchive('persons', person.id), { icon: <Archive size={12} /> })]),

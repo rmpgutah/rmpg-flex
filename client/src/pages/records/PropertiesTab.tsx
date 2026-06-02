@@ -264,6 +264,9 @@ export function PropertiesTabList({ state }: { state: PropertiesTabState }) {
       ...(addr ? [m.copy('Copy address', addr, <MapPin size={12} />)] : []),
       ...(addr ? [m.openExternal('Navigate to address', `https://maps.google.com/?q=${encodeURIComponent(addr)}`, <Navigation size={12} />)] : []),
       m.separator(),
+      ...(prop.latitude != null && prop.longitude != null ? [m.go('Show on map', `/map?flyto=${prop.latitude},${prop.longitude}`, <Globe size={12} />)] : []),
+      ...(addr ? [m.go('Create call here', `/dispatch?newCall=1&location=${encodeURIComponent(addr)}&description=${encodeURIComponent(prop.name || '')}`, <MapPin size={12} />)] : []),
+      m.separator(),
       ...(showArchived
         ? (canModify ? [m.action('Unarchive', () => handleUnarchive('properties', prop.id), { icon: <RotateCcw size={12} /> })] : [])
         : [m.action('Archive', () => handleArchive('properties', prop.id), { icon: <Archive size={12} /> })]),

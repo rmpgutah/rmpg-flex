@@ -502,6 +502,7 @@ export function VehiclesTabList({ state }: { state: VehiclesTabState }) {
       m.copy('Copy plate', v.license_plate),
       ...(v.vin ? [m.copy('Copy VIN', v.vin)] : []),
       m.copyId(v.id),
+      ...(v.license_plate ? [m.go('Run plate (NCIC)', `/ncic?type=vehicle&q=${encodeURIComponent(v.license_plate)}`, <Search size={12} />)] : []),
       m.separator(),
       ...(showArchived
         ? (canModify ? [m.action('Unarchive', () => handleUnarchive('vehicles', v.id), { icon: <RotateCcw size={12} /> })] : [])
