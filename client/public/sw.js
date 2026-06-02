@@ -256,7 +256,14 @@
 //       the sync cached token + direct api.mapbox.com geocode (no apiFetch, no
 //       auth coupling) with AbortController timeouts. Map can no longer
 //       redirect, hang, or destabilize generation.
-const CACHE_NAME = 'rmpg-flex-v696';
+// v697: Drive-to-address navigation + dispatch-from-address. Selecting an
+//       address search result now shows Navigate / Dispatch actions:
+//       Navigate routes device GPS → address (reuses useMapRouting:
+//       traffic, congestion line, live re-route) with a turn-by-turn
+//       current-maneuver line added to the nav banner and live origin
+//       updates as you drive; Dispatch creates a call at the address
+//       (POST /dispatch/calls, incident type + priority, coords prefilled).
+const CACHE_NAME = 'rmpg-flex-v697';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

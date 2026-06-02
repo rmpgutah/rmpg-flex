@@ -54,6 +54,7 @@ import {
   Activity,
   Ruler,
   SlidersHorizontal,
+  Navigation,
 } from 'lucide-react';
 import type { UnitStatus } from '../../types';
 import RmpgLogo from '../../components/RmpgLogo';
@@ -351,6 +352,16 @@ export default function MapPage() {
   const addressDismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Zoom-bound flags so the +/- buttons dim + disable at the map's min/max.
   const [zoomBounds, setZoomBounds] = useState<{ atMin: boolean; atMax: boolean }>({ atMin: false, atMax: false });
+
+  // Drive-to-address navigation + dispatch-from-address. A selected search
+  // result becomes a destination you can navigate to (device GPS → address,
+  // turn-by-turn) or turn into a dispatch call.
+  const [selectedAddr, setSelectedAddr] = useState<{ lat: number; lng: number; label: string } | null>(null);
+  const [navActive, setNavActive] = useState(false);
+  const [showDispatchHere, setShowDispatchHere] = useState(false);
+  const [dispatchIncidentType, setDispatchIncidentType] = useState('');
+  const [dispatchPriority, setDispatchPriority] = useState('P3');
+  const [dispatchBusy, setDispatchBusy] = useState(false);
 
   // Clean up address search/dismiss timers on unmount
   useEffect(() => {
@@ -2845,12 +2856,78 @@ export default function MapPage() {
         addressMarkerRef.current = null;
       }
       setAddressSearch('');
+      setSelectedAddr(null);
+      setShowDispatchHere(false);
       addressDismissTimer.current = null;
     }, 30000);
 
     setAddressSearch(description.split(',')[0]);
     setShowAddressResults(false);
+    // Make this a navigable / dispatchable destination.
+    setSelectedAddr({ lat, lng, label: description });
+    setShowDispatchHere(false);
   }, [createMarker, removeMarker]);
+
+  // ── Drive-to-address navigation ─────────────────────────────
+  // Routes from the device's live GPS (fallback: map center) to the selected
+  // address using the existing routing engine, then keeps the origin updated
+  // as the device moves so it behaves like a turn-by-turn GPS.
+  const startAddressNav = useCallback(() => {
+    if (!selectedAddr) return;
+    // Keep the destination pin + route alive while navigating (don't let the
+    // 30s search auto-dismiss wipe them).
+    if (addressDismissTimer.current) { clearTimeout(addressDismissTimer.current); addressDismissTimer.current = null; }
+    const map = mapInstanceRef.current;
+    const hasGps = gps.latitude != null && gps.longitude != null;
+    const origin = hasGps
+      ? { lat: gps.latitude as number, lng: gps.longitude as number }
+      : (() => { const c = map?.getCenter(); return c ? { lat: c.lat, lng: c.lng } : null; })();
+    if (!origin) return;
+    const destLabel = selectedAddr.label.split(',')[0];
+    showRoute('YOU', destLabel, origin.lat, origin.lng, selectedAddr.lat, selectedAddr.lng);
+    setNavActive(true);
+    if (map) map.flyTo({ center: [selectedAddr.lng, selectedAddr.lat], zoom: 15, essential: true });
+  }, [selectedAddr, gps.latitude, gps.longitude, showRoute]);
+
+  // Live origin tracking while navigating to an address (unitCallSign 'YOU').
+  // updateOrigin throttles its own re-queries; the unit→call origin updater
+  // (keyed on units) ignores 'YOU' since no unit has that call sign.
+  useEffect(() => {
+    if (!navActive || activeRoute?.unitCallSign !== 'YOU') return;
+    if (gps.latitude == null || gps.longitude == null) return;
+    updateOrigin(gps.latitude, gps.longitude);
+  }, [navActive, activeRoute?.unitCallSign, gps.latitude, gps.longitude, updateOrigin]);
+
+  // When the route is cleared, exit nav mode.
+  useEffect(() => { if (!activeRoute) setNavActive(false); }, [activeRoute]);
+
+  // ── Dispatch a call at the selected address ─────────────────
+  const createCallHere = useCallback(async () => {
+    if (!selectedAddr || dispatchBusy) return;
+    const incident = dispatchIncidentType.trim();
+    if (!incident) return;
+    setDispatchBusy(true);
+    try {
+      await apiFetch('/dispatch/calls', {
+        method: 'POST',
+        body: JSON.stringify({
+          incident_type: incident,
+          priority: dispatchPriority,
+          location_address: selectedAddr.label,
+          latitude: selectedAddr.lat,
+          longitude: selectedAddr.lng,
+        }),
+      });
+      addToast(`Call created at ${selectedAddr.label.split(',')[0]}`, 'success');
+      setShowDispatchHere(false);
+      setDispatchIncidentType('');
+      await fetchCalls();
+    } catch (err: any) {
+      addToast(err?.message || 'Failed to create call', 'error');
+    } finally {
+      setDispatchBusy(false);
+    }
+  }, [selectedAddr, dispatchIncidentType, dispatchPriority, dispatchBusy, addToast, fetchCalls]);
 
   // ============================================================
   // Keyboard Shortcuts for Map
@@ -3055,7 +3132,7 @@ export default function MapPage() {
                   onFocus={() => addressResults.length > 0 && setShowAddressResults(true)}
                   onBlur={() => setTimeout(() => setShowAddressResults(false), 300)}
                   onKeyDown={(e) => {
-                    if (e.key === 'Escape') { setShowAddressResults(false); setAddressSearch(''); setAddressResults([]); }
+                    if (e.key === 'Escape') { setShowAddressResults(false); setAddressSearch(''); setAddressResults([]); setSelectedAddr(null); setShowDispatchHere(false); }
                   }}
                   placeholder="Search address..."
                   aria-label="Search address"
@@ -3068,6 +3145,8 @@ export default function MapPage() {
                       setAddressSearch('');
                       setAddressResults([]);
                       setShowAddressResults(false);
+                      setSelectedAddr(null);
+                      setShowDispatchHere(false);
                       if (addressMarkerRef.current) {
                         removeMarker(addressMarkerRef.current);
                         addressMarkerRef.current = null;
@@ -3118,7 +3197,7 @@ export default function MapPage() {
                   onFocus={() => addressResults.length > 0 && setShowAddressResults(true)}
                   onBlur={() => setTimeout(() => setShowAddressResults(false), 300)}
                   onKeyDown={(e) => {
-                    if (e.key === 'Escape') { setShowAddressResults(false); setAddressSearch(''); setAddressResults([]); }
+                    if (e.key === 'Escape') { setShowAddressResults(false); setAddressSearch(''); setAddressResults([]); setSelectedAddr(null); setShowDispatchHere(false); }
                   }}
                   placeholder="Search address..."
                   aria-label="Search address"
@@ -3135,6 +3214,8 @@ export default function MapPage() {
                       setAddressSearch('');
                       setAddressResults([]);
                       setShowAddressResults(false);
+                      setSelectedAddr(null);
+                      setShowDispatchHere(false);
                       if (addressMarkerRef.current) {
                         removeMarker(addressMarkerRef.current);
                         addressMarkerRef.current = null;
@@ -3162,6 +3243,61 @@ export default function MapPage() {
                       <span className="truncate">{r.description}</span>
                     </button>
                   ))}
+                </div>
+              )}
+              {/* Navigate / Dispatch action panel for a selected address */}
+              {selectedAddr && !showAddressResults && !navActive && (
+                <div className="absolute top-full left-0 mt-1 bg-[#0a0a0a]/95 border border-[#2e2e2e] shadow-md backdrop-blur-md p-2 space-y-1.5" style={{ borderRadius: 2, width: 240 }}>
+                  <div className="text-[9px] text-rmpg-300 truncate flex items-center gap-1">
+                    <MapPin className="w-3 h-3 text-brand-400 shrink-0" />
+                    <span className="truncate">{selectedAddr.label}</span>
+                  </div>
+                  <div className="flex gap-1">
+                    <button
+                      onClick={startAddressNav}
+                      className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wide bg-brand-600/30 text-brand-300 hover:bg-brand-600/50 transition-colors"
+                      style={{ borderRadius: 2 }}
+                    >
+                      <Navigation className="w-3 h-3" /> Navigate
+                    </button>
+                    <button
+                      onClick={() => setShowDispatchHere((v) => !v)}
+                      className={`flex-1 flex items-center justify-center gap-1 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wide transition-colors ${showDispatchHere ? 'bg-red-600/40 text-red-200' : 'bg-rmpg-700/40 text-rmpg-200 hover:bg-rmpg-700/70'}`}
+                      style={{ borderRadius: 2 }}
+                    >
+                      <Siren className="w-3 h-3" /> Dispatch
+                    </button>
+                  </div>
+                  {showDispatchHere && (
+                    <div className="space-y-1 pt-1 border-t border-[#1a1a1a]">
+                      <input
+                        value={dispatchIncidentType}
+                        onChange={(e) => setDispatchIncidentType(e.target.value)}
+                        placeholder="Incident type (e.g. Welfare Check)"
+                        aria-label="Incident type"
+                        className="w-full text-[10px] px-2 py-1 bg-black/40 border border-white/10 text-white placeholder:text-white/30 focus:outline-none focus:border-white/30"
+                        style={{ borderRadius: 2 }}
+                      />
+                      <div className="flex gap-0.5">
+                        {['P1', 'P2', 'P3', 'P4'].map((p) => (
+                          <button
+                            key={p}
+                            onClick={() => setDispatchPriority(p)}
+                            className={`flex-1 px-1 py-1 text-[9px] font-bold transition-colors ${dispatchPriority === p ? 'bg-brand-600/40 text-brand-200' : 'text-rmpg-500 hover:bg-rmpg-800/50'}`}
+                            style={{ borderRadius: 2 }}
+                          >{p}</button>
+                        ))}
+                      </div>
+                      <button
+                        onClick={createCallHere}
+                        disabled={dispatchBusy || !dispatchIncidentType.trim()}
+                        className="w-full px-2 py-1.5 text-[10px] font-bold uppercase tracking-wide bg-red-600/40 text-red-100 hover:bg-red-600/60 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                        style={{ borderRadius: 2 }}
+                      >
+                        {dispatchBusy ? 'Creating…' : 'Create Call'}
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -4903,6 +5039,29 @@ export default function MapPage() {
                 <div style={{ width: `${Math.round(routeProgress.fraction * 100)}%`, height: '100%', background: '#d4a017', transition: 'width 0.5s ease' }} />
               </div>
             )}
+            {/* Turn-by-turn: the next maneuver + distance to it, for drive-style
+                navigation (both unit→call and drive-to-address). */}
+            {(() => {
+              const steps = activeRoute.steps;
+              if (!steps || steps.length === 0) return null;
+              const total = activeRoute.distanceMeters;
+              const traveled = routeProgress ? Math.max(0, total - routeProgress.remainingMeters) : 0;
+              let acc = 0;
+              let step = steps[0];
+              let distTo = step.distanceMeters;
+              for (let i = 0; i < steps.length; i++) {
+                const end = acc + steps[i].distanceMeters;
+                if (traveled < end || i === steps.length - 1) { step = steps[i]; distTo = Math.max(0, end - traveled); break; }
+                acc = end;
+              }
+              const distTxt = distTo >= 1609 ? `${(distTo / 1609.34).toFixed(1)} mi` : `${Math.max(0, Math.round(distTo / 30.48) * 10)} ft`;
+              return (
+                <div style={{ marginTop: 6, paddingTop: 6, borderTop: '1px solid rgba(136,136,136,0.18)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span style={{ fontSize: 9, fontWeight: 900, color: '#d4a017', minWidth: 44 }}>{distTxt}</span>
+                  <span style={{ fontSize: 11, color: isLightMapStyle(mapStyle) ? '#222' : '#ddd', lineHeight: 1.25 }}>{step.instruction}</span>
+                </div>
+              );
+            })()}
             {offRoute && (
               <div style={{ fontSize: 8, color: '#ef4444', marginTop: 4, fontWeight: 900, letterSpacing: '0.05em' }}>⚠ OFF ROUTE — RECALCULATING</div>
             )}
