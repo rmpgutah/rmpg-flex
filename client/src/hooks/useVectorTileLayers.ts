@@ -129,7 +129,10 @@ function escapeHtml(s: string): string {
 export function useVectorTileLayers({ map, popup, isLight = false, onUseLocation }: UseVectorTileLayersOptions) {
   const [layerStates, setLayerStates] = useState<Record<string, VectorLayerState>>(() => {
     const init: Record<string, VectorLayerState> = {};
-    for (const cfg of VECTOR_TILE_CONFIGS) init[cfg.id] = { visible: false, loaded: false };
+    // Statewide DB is ALWAYS-ON: roads + address points default visible so the
+    // statewide data is present every session (auto-enabled on map ready below;
+    // still individually toggleable in-session, but returns on next load).
+    for (const cfg of VECTOR_TILE_CONFIGS) init[cfg.id] = { visible: true, loaded: false };
     return init;
   });
 
@@ -337,6 +340,20 @@ export function useVectorTileLayers({ map, popup, isLight = false, onUseLocation
           map.on('mouseleave', interactiveLayer, () => { map.getCanvas().style.cursor = ''; });
         }
 
+        // Apply the desired visibility now that the layers actually exist. The
+        // layers are created with visibility:'none', so for the always-on
+        // default (and basemap-switch restore) we must flip them on HERE —
+        // an external setLayoutProperty fired before whenStyleReady resolves
+        // would no-op against a not-yet-created layer and leave them stuck off.
+        if (layerStatesRef.current[cfg.id]?.visible) {
+          const visIds = cfg.kind === 'line'
+            ? [lineLayerId(cfg.id), labelLayerId(cfg.id)]
+            : [circleLayerId(cfg.id), labelLayerId(cfg.id)];
+          for (const id of visIds) {
+            try { if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', 'visible'); } catch { /* noop */ }
+          }
+        }
+
         addedRef.current.add(cfg.id);
         setLayerStates((prev) => ({ ...prev, [cfg.id]: { ...prev[cfg.id], loaded: true } }));
       } catch (err) {
@@ -399,6 +416,20 @@ export function useVectorTileLayers({ map, popup, isLight = false, onUseLocation
     map.on('style.load', onStyleLoad);
     return () => { map.off('style.load', onStyleLoad); };
   }, [map, addLayer, setLayerVisibility]);
+
+  // Always-on: auto-add every statewide layer once the map exists. addLayer
+  // defers internally until the style is ready and then applies the visible
+  // state (see above), so this reliably brings the statewide DB up on first
+  // load without the operator having to toggle it. Runs once per map instance.
+  const autoEnabledRef = useRef(false);
+  useEffect(() => {
+    if (!map) { autoEnabledRef.current = false; return; }
+    if (autoEnabledRef.current) return;
+    autoEnabledRef.current = true;
+    for (const cfg of VECTOR_TILE_CONFIGS) {
+      if (layerStatesRef.current[cfg.id]?.visible) addLayer(cfg);
+    }
+  }, [map, addLayer]);
 
   // Re-color labels live when the basemap light/dark theme changes (for layers
   // already on the map — newly added ones pick up the current theme in addLayer).

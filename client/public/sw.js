@@ -385,7 +385,9 @@
 //       A/S/Z/B as a SHORT-code Section/Zone/Beat chip (e.g. "SL1/HER/A1") on the
 //       CFS card + detail — long Area›Section›Zone›Beat NAMES remain strictly on
 //       the Map UI ("What's Here").
-const CACHE_NAME = 'rmpg-flex-v716';
+// v717: Statewide DB always-on — Utah roads + address points default visible
+//       (auto-enabled on map ready; toggleable in-session, returns at load).
+const CACHE_NAME = 'rmpg-flex-v717';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
