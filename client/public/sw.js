@@ -442,7 +442,10 @@
 // v735: Admin audit waves — crash guards across admin tabs + AI panels
 //       (asArray erosion), Health early-return flash, Arrests edit data-loss,
 //       ClientFormModal focus-wipe, /admin/config column fix + array-guard CI.
-const CACHE_NAME = 'rmpg-flex-v736';
+// v739: Citation PDF (v2) — render previously-dropped officer inputs (traffic
+//       speed/radar/BAC, vehicle year/make/model/VIN, court time/room/
+//       appearance, bond, condition flags). (Dispatch fix is worker-side.)
+const CACHE_NAME = 'rmpg-flex-v739';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

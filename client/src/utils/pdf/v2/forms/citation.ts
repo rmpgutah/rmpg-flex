@@ -38,12 +38,36 @@ export interface CitationData {
   vehicle_plate?: string | null;
   vehicle_state?: string | null;
   vehicle_description?: string | null;
+  // Spillman Flex traffic/vehicle detail fields — captured on the citation
+  // form but previously absent from this schema, so the engine silently
+  // dropped them from the printed PDF (they only appeared via the legacy
+  // generator). Now rendered below.
+  vehicle_vin?: string | null;
+  vehicle_year?: string | null;
+  vehicle_make?: string | null;
+  vehicle_model?: string | null;
+  vehicle_color?: string | null;
+  speed_recorded?: number | string | null;
+  speed_limit?: number | string | null;
+  radar_type?: string | null;
+  bac_level?: number | string | null;
+  is_warning?: boolean | null;
+  school_zone?: boolean | null;
+  construction_zone?: boolean | null;
+  accident_related?: boolean | null;
+  dui_related?: boolean | null;
+  commercial_vehicle?: boolean | null;
+  bond_amount?: number | string | null;
+  bond_type?: string | null;
   statute_citation?: string | null;
   fine_amount?: number | null;
   violation_description?: string | null;
   court_date?: string | null;
   court_name?: string | null;
   court_address?: string | null;
+  court_time?: string | null;
+  court_room?: string | null;
+  appearance_required?: boolean | null;
   notes?: string | null;
   issuing_officer_name?: string | null;
   badge_number?: string | null;
@@ -72,6 +96,18 @@ const enumFmt = (v: unknown): string => {
     .toLowerCase()
     .replace(/\b\w/g, (c) => c.toUpperCase());
 };
+// Non-empty check that treats sentinel strings ("None"/"N/A") and the literal
+// "0"/0 as absent, so conditional sections don't render for blank/sentinel data
+// ([[project-sentinel-none-strings]]). Booleans pass through as-is.
+const has = (v: unknown): boolean => {
+  if (v == null) return false;
+  if (typeof v === 'boolean') return v;
+  const s = String(v).trim().toLowerCase();
+  return s !== '' && s !== 'none' && s !== 'n/a' && s !== '0' && s !== '0.00';
+};
+const mphFmt = (v: unknown): string => (has(v) ? `${Number(v)} MPH` : '');
+const pctFmt = (v: unknown): string => (has(v) ? `${Number(v)}%` : '');
+const yesNo = (v: unknown): string => (v ? 'Yes' : 'No');
 
 function lf(
   label: string,
@@ -152,12 +188,55 @@ export const citationSchema: FormSchema<CitationData> = {
     },
     {
       kind: 'section', title: 'VEHICLE INFORMATION', columns: 2,
-      // Pair plate + state on row 1; vehicle description (free-text,
-      // longest field) on row 2 alone.
+      // Year+Make, Model+Color, Plate+State across three 2-col rows; VIN and
+      // free-text description each take their own full-width row.
       fields: [
+        lf('Year', 'vehicle_year'),
+        lf('Make', 'vehicle_make'),
+        lf('Model', 'vehicle_model'),
+        lf('Color', 'vehicle_color'),
         lf('License Plate', 'vehicle_plate'),
         lf('State', 'vehicle_state'),
+        lf('VIN', 'vehicle_vin'),
         lf('Vehicle Description', 'vehicle_description'),
+      ],
+    },
+    // TRAFFIC DETAILS — only rendered when radar/speed/BAC enforcement data is
+    // present, so non-traffic citations stay compact (mirrors the legacy
+    // generator's conditional section + keeps the form to one page). visibleIf
+    // (not a function section) so the fields still round-trip via the sidecar.
+    {
+      kind: 'section', title: 'TRAFFIC DETAILS', columns: 2,
+      visibleIf: (d) => has(d.speed_recorded) || has(d.speed_limit) || has(d.radar_type) || has(d.bac_level),
+      fields: [
+        lf('Speed Recorded', 'speed_recorded', (d) => mphFmt(d.speed_recorded)),
+        lf('Speed Limit', 'speed_limit', (d) => mphFmt(d.speed_limit)),
+        {
+          kind: 'labeled', label: 'Over Limit', editable: false,
+          accessor: (d) => (has(d.speed_recorded) && has(d.speed_limit)
+            ? `${Number(d.speed_recorded) - Number(d.speed_limit)} MPH` : ''),
+        },
+        lf('Radar Type', 'radar_type'),
+        lf('BAC Level', 'bac_level', (d) => pctFmt(d.bac_level)),
+      ],
+    },
+    // CONDITIONS & FLAGS — Is-Warning plus a compact line of only the flags that
+    // are set (rather than a Yes/No row per flag). Hidden when nothing is set.
+    {
+      kind: 'section', title: 'CONDITIONS & FLAGS', columns: 2,
+      visibleIf: (d) => !!(d.is_warning || d.school_zone || d.construction_zone || d.dui_related || d.accident_related || d.commercial_vehicle),
+      fields: [
+        lf('Is Warning', 'is_warning', (d) => yesNo(d.is_warning)),
+        {
+          kind: 'labeled', label: 'Flags', editable: false,
+          accessor: (d) => [
+            d.school_zone && 'School Zone',
+            d.construction_zone && 'Construction Zone',
+            d.dui_related && 'DUI Related',
+            d.accident_related && 'Accident Related',
+            d.commercial_vehicle && 'Commercial Vehicle',
+          ].filter(Boolean).join(', ') || '—',
+        },
       ],
     },
     // VIOLATIONS — multi-violation aware. Callback emits its own header.
@@ -178,14 +257,28 @@ export const citationSchema: FormSchema<CitationData> = {
         });
       }
     },
-    // Court info collapsed: date + name on row 1 (2-col), address on its
-    // own full-width row 2. Saves a redundant 'COURT ADDRESS' section.
+    // Court info collapsed into one 2-col section: Date+Name, Time+Room,
+    // Appearance Required alone, then Address full-width. Saves a redundant
+    // 'COURT ADDRESS' section.
     {
       kind: 'section', title: 'COURT', columns: 2,
       fields: [
         lf('Court Date', 'court_date'),
         lf('Court Name', 'court_name'),
+        lf('Court Time', 'court_time'),
+        lf('Court Room', 'court_room'),
+        lf('Appearance Required', 'appearance_required', (d) => yesNo(d.appearance_required)),
         lf('Court Address', 'court_address'),
+      ],
+    },
+    // BOND — only when a bond amount/type is set (mirrors the legacy Bond &
+    // Disposition section, scoped to the fields the citation form captures).
+    {
+      kind: 'section', title: 'BOND', columns: 2,
+      visibleIf: (d) => has(d.bond_amount) || has(d.bond_type),
+      fields: [
+        lf('Bond Amount', 'bond_amount', (d) => fineFmt(d.bond_amount ?? null)),
+        lf('Bond Type', 'bond_type', (d) => enumFmt(d.bond_type)),
       ],
     },
     // ISSUING OFFICER section removed — officer name + badge already

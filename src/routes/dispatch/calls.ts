@@ -359,6 +359,24 @@ calls.post('/', async (c) => {
       const callExt = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service_ext WHERE id = ?', callId);
       const call = { ...(callBase || {}), ...(callExt || {}) };
 
+      // Enrich with the same joined display names the LIST query provides
+      // (property/dispatcher/client). Without this, a freshly-created call is
+      // rendered optimistically — and broadcast over WS — with BLANK
+      // property/dispatcher/client cells until the next 20s poll re-runs the
+      // joined LIST query. Best-effort: a join miss must not block creation.
+      try {
+        const joined = await queryFirst<Record<string, unknown>>(db, `
+          SELECT p.name AS property_name, u.full_name AS dispatcher_name, cl.name AS client_name
+          FROM calls_for_service c
+          LEFT JOIN properties p ON c.property_id = p.id
+          LEFT JOIN users u ON c.dispatcher_id = u.id
+          LEFT JOIN clients cl ON COALESCE(c.client_id, p.client_id) = cl.id
+          WHERE c.id = ?`, callId);
+        if (joined) Object.assign(call, joined);
+      } catch (joinErr) {
+        console.warn('call join enrich failed (non-fatal):', joinErr);
+      }
+
       // Audit trail entry — dispatch's Audit tab reads audit_log by
       // entity_type='call' + entity_id. Failure shouldn't block the create.
       try {
