@@ -5,7 +5,7 @@ import { useCallback, useState, useEffect, useRef } from 'react';
 import type mapboxgl from 'mapbox-gl';
 import { apiFetch } from './useApi';
 import { whenStyleReady } from '../pages/map/utils/safeAddSource';
-import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
+import { getSourceSafe, hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
 
 interface HeatmapPoint {
   latitude: number;
@@ -142,7 +142,7 @@ export function useMapboxHeatmap(map: mapboxgl.Map | null) {
           geometry: { type: 'Point', coordinates: [p.longitude, p.latitude] },
         }));
 
-        const src = map.getSource(SOURCE_ID) as mapboxgl.GeoJSONSource | undefined;
+        const src = getSourceSafe<mapboxgl.GeoJSONSource>(map, SOURCE_ID);
         if (src) {
           src.setData({ type: 'FeatureCollection', features });
         }

@@ -4,7 +4,7 @@ import { apiFetch } from '../../../hooks/useApi';
 import { formatIncidentType } from '../../../utils/caseNumbers';
 import { useToast } from '../../../components/ToastProvider';
 import { whenStyleReady } from '../utils/safeAddSource';
-import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../../../utils/mapboxSafeLayer';
+import { getSourceSafe, hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../../../utils/mapboxSafeLayer';
 
 const MAX_HEATMAP_POINTS = 10000;
 
@@ -92,7 +92,7 @@ export function useMapHeatmap({ mapInstanceRef, mapLoaded }: UseMapHeatmapParams
         ];
 
     if (hasSource(map, heatmapSourceId)) {
-      (map.getSource(heatmapSourceId) as mapboxgl.GeoJSONSource).setData({
+      getSourceSafe<mapboxgl.GeoJSONSource>(map, heatmapSourceId)?.setData({
         type: 'FeatureCollection',
         features,
       });

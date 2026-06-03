@@ -12,7 +12,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { mapboxgl } from '../utils/mapboxLoader';
 import { whenStyleReady } from '../pages/map/utils/safeAddSource';
 import { getTaggedBeats, findBeatAt } from '../pages/map/utils/districtGeoData';
-import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
+import { getSourceSafe, hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
 
 export type ChoroLevel = 'beat' | 'zone' | 'section' | 'area';
 const LEVEL_PROP: Record<ChoroLevel, string> = { beat: 'beat_id', zone: '_zone', section: '_section', area: '_area' };
@@ -100,7 +100,7 @@ export function useActivityChoropleth({ map, calls, level }: Opts) {
     stops.forEach((s, i) => { fillColor.push(s, RAMP[Math.min(i + 1, RAMP.length - 1)]); });
 
     whenStyleReady(map, () => {
-      const src = map.getSource(SRC) as mapboxgl.GeoJSONSource | undefined;
+      const src = getSourceSafe<mapboxgl.GeoJSONSource>(map, SRC);
       if (src) src.setData(data as any);
       else map.addSource(SRC, { type: 'geojson', data: data as any });
       if (!hasLayer(map, FILL)) {
