@@ -121,6 +121,7 @@ import MultiStopRoutePanel, { type QueuedStop } from './components/MultiStopRout
 import MapExportMenu from './components/MapExportMenu';
 import { generateMapSituationReport } from '../../utils/mapSituationReportPdf';
 import { useAuth } from '../../context/AuthContext';
+import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../../utils/mapboxSafeLayer';
 
 // ============================================================
 // Constants
@@ -734,12 +735,12 @@ export default function MapPage() {
     // by alpha so one, several, or all can be on together. choro-fill is
     // excluded — it owns a count-driven opacity expression.
     for (const id of ['dh-area-fill', 'dh-section-fill', 'dh-zone-fill']) {
-      try { if (map.getLayer(id)) map.setPaintProperty(id, 'fill-opacity', 0.22 * overlayOpacity); } catch { /* */ }
+      try { if (hasLayer(map, id)) map.setPaintProperty(id, 'fill-opacity', 0.22 * overlayOpacity); } catch { /* */ }
     }
     // Beat (lives in useGeoJsonLayers) joins the coverage system: keep its
     // city-colored fill, drop its outline so it reads as coverage too.
-    try { if (map.getLayer('geojson-beat-fill')) map.setPaintProperty('geojson-beat-fill', 'fill-opacity', 0.22 * overlayOpacity); } catch { /* */ }
-    try { if (map.getLayer('geojson-beat-line')) map.setPaintProperty('geojson-beat-line', 'line-opacity', 0); } catch { /* */ }
+    try { if (hasLayer(map, 'geojson-beat-fill')) map.setPaintProperty('geojson-beat-fill', 'fill-opacity', 0.22 * overlayOpacity); } catch { /* */ }
+    try { if (hasLayer(map, 'geojson-beat-line')) map.setPaintProperty('geojson-beat-line', 'line-opacity', 0); } catch { /* */ }
     // County + Municipality = OUTLINE ONLY. Kill their fills so the A/S/Z/B
     // color coverage shows through, and render their borders as neutral
     // reference lines on top (zero-blue theme).
@@ -749,9 +750,9 @@ export default function MapPage() {
     };
     for (const base of Object.keys(boundaryLines)) {
       const [color, width, op] = boundaryLines[base];
-      try { if (map.getLayer(`${base}-fill`)) map.setPaintProperty(`${base}-fill`, 'fill-opacity', 0); } catch { /* */ }
+      try { if (hasLayer(map, `${base}-fill`)) map.setPaintProperty(`${base}-fill`, 'fill-opacity', 0); } catch { /* */ }
       try {
-        if (map.getLayer(`${base}-line`)) {
+        if (hasLayer(map, `${base}-line`)) {
           map.setPaintProperty(`${base}-line`, 'line-color', color);
           map.setPaintProperty(`${base}-line`, 'line-width', width);
           map.setPaintProperty(`${base}-line`, 'line-opacity', op * overlayOpacity);
@@ -759,17 +760,17 @@ export default function MapPage() {
       } catch { /* */ }
     }
     // Statewide overlays (first-class): scale their line/circle opacity too.
-    try { if (map.getLayer('vt-utah_roads-line')) map.setPaintProperty('vt-utah_roads-line', 'line-opacity', 0.85 * overlayOpacity); } catch { /* */ }
-    try { if (map.getLayer('vt-utah_roads-label')) map.setPaintProperty('vt-utah_roads-label', 'text-opacity', overlayOpacity); } catch { /* */ }
-    try { if (map.getLayer('vt-utah_addresses-circle')) map.setPaintProperty('vt-utah_addresses-circle', 'circle-opacity', 0.9 * overlayOpacity); } catch { /* */ }
-    try { if (map.getLayer('vt-utah_addresses-label')) map.setPaintProperty('vt-utah_addresses-label', 'text-opacity', overlayOpacity); } catch { /* */ }
+    try { if (hasLayer(map, 'vt-utah_roads-line')) map.setPaintProperty('vt-utah_roads-line', 'line-opacity', 0.85 * overlayOpacity); } catch { /* */ }
+    try { if (hasLayer(map, 'vt-utah_roads-label')) map.setPaintProperty('vt-utah_roads-label', 'text-opacity', overlayOpacity); } catch { /* */ }
+    try { if (hasLayer(map, 'vt-utah_addresses-circle')) map.setPaintProperty('vt-utah_addresses-circle', 'circle-opacity', 0.9 * overlayOpacity); } catch { /* */ }
+    try { if (hasLayer(map, 'vt-utah_addresses-label')) map.setPaintProperty('vt-utah_addresses-label', 'text-opacity', overlayOpacity); } catch { /* */ }
 
     // Z-order: lift the boundary outlines + level labels above the A/S/Z/B
     // coverage fills (which may be added later than the default-on county),
     // so the County/Municipality lines and the level labels stay visible on
     // top of the colored coverage. (Still below DOM unit/call markers.)
     for (const lid of ['geojson-county-line', 'geojson-municipality-line', 'dh-area-label', 'dh-section-label', 'dh-zone-label']) {
-      try { if (map.getLayer(lid)) map.moveLayer(lid); } catch { /* */ }
+      try { if (hasLayer(map, lid)) map.moveLayer(lid); } catch { /* */ }
     }
   }, [overlayOpacity, hierarchyStates, geoLayerStates, vectorLayerStates, choroLevel, mapLoaded]);
 
@@ -823,14 +824,14 @@ export default function MapPage() {
     for (const [layerId, ids] of Object.entries(LAYER_STYLE_MAP)) {
       const visible = cfg.default_visible_layers.includes(layerId);
 
-      if (ids.fillId && map.getLayer(ids.fillId)) {
+      if (ids.fillId && hasLayer(map, ids.fillId)) {
         map.setLayoutProperty(ids.fillId, 'visibility', visible ? 'visible' : 'none');
         const fillColor = (cfg as any)[`layer_${layerId}_fill`];
         const fillOpacity = (cfg as any)[`layer_${layerId}_fill_opacity`];
         if (fillColor) map.setPaintProperty(ids.fillId, 'fill-color', fillColor);
         if (fillOpacity != null) map.setPaintProperty(ids.fillId, 'fill-opacity', fillOpacity);
       }
-      if (ids.lineId && map.getLayer(ids.lineId)) {
+      if (ids.lineId && hasLayer(map, ids.lineId)) {
         map.setLayoutProperty(ids.lineId, 'visibility', visible ? 'visible' : 'none');
         const strokeColor = (cfg as any)[`layer_${layerId}_stroke`];
         const strokeOpacity = (cfg as any)[`layer_${layerId}_stroke_opacity`];
@@ -2230,8 +2231,8 @@ export default function MapPage() {
 
     // Clean up heatmap when toggled off
     if (!showHeatmap || heatmapData.length === 0) {
-      if (map.getLayer('rmpg-heatmap-layer')) map.removeLayer('rmpg-heatmap-layer');
-      if (map.getSource('rmpg-heatmap')) map.removeSource('rmpg-heatmap');
+      safeRemoveLayer(map, 'rmpg-heatmap-layer');
+      safeRemoveSource(map, 'rmpg-heatmap');
       heatmapLayerRef.current = null;
       return;
     }
@@ -2259,7 +2260,7 @@ export default function MapPage() {
       }
 
       whenStyleReady(map, () => {
-      if (map.getSource('rmpg-heatmap')) return;
+      if (hasSource(map, 'rmpg-heatmap')) return;
       map.addSource('rmpg-heatmap', {
         type: 'geojson',
         data: {
@@ -2316,8 +2317,8 @@ export default function MapPage() {
     }
 
     return () => {
-      if (map.getLayer('rmpg-heatmap-layer')) map.removeLayer('rmpg-heatmap-layer');
-      if (map.getSource('rmpg-heatmap')) map.removeSource('rmpg-heatmap');
+      safeRemoveLayer(map, 'rmpg-heatmap-layer');
+      safeRemoveSource(map, 'rmpg-heatmap');
       heatmapLayerRef.current = null;
     };
   }, [showHeatmap, heatmapData, heatmapMode, mapLoaded, mapStyle]);
@@ -2331,8 +2332,8 @@ export default function MapPage() {
     if (!map || !mapLoaded) return;
 
     if (!showTrackingLines) {
-      if (map.getLayer('rmpg-tracking-lines')) map.removeLayer('rmpg-tracking-lines');
-      if (map.getSource('rmpg-tracking-lines')) map.removeSource('rmpg-tracking-lines');
+      safeRemoveLayer(map, 'rmpg-tracking-lines');
+      safeRemoveSource(map, 'rmpg-tracking-lines');
       trackingLinesRef.current = [];
       setTrackingLineCount(0);
       return;
@@ -2372,8 +2373,8 @@ export default function MapPage() {
       if (existingSrc) {
         existingSrc.setData({ type: 'FeatureCollection', features: [] });
       } else {
-        if (map.getLayer('rmpg-tracking-lines')) map.removeLayer('rmpg-tracking-lines');
-        if (map.getSource('rmpg-tracking-lines')) map.removeSource('rmpg-tracking-lines');
+        safeRemoveLayer(map, 'rmpg-tracking-lines');
+        safeRemoveSource(map, 'rmpg-tracking-lines');
       }
       trackingLinesRef.current = [];
       setTrackingLineCount(0);
@@ -2389,7 +2390,7 @@ export default function MapPage() {
         setTrackingLineCount(features.length);
       } else {
         whenStyleReady(map, () => {
-          if (map.getSource('rmpg-tracking-lines')) return;
+          if (hasSource(map, 'rmpg-tracking-lines')) return;
           map.addSource('rmpg-tracking-lines', {
             type: 'geojson',
             data: geojsonData,
@@ -2590,10 +2591,10 @@ export default function MapPage() {
     // Clear existing breadcrumb visuals — dots & arrows use setData()
     // for efficient updates during interval refreshes.  Lines migrated to
     // setData as well (FIX 32) so we only tear them down on full cleanup.
-    if (map.getLayer(DOTS_LAYER_ID)) map.removeLayer(DOTS_LAYER_ID);
-    if (map.getSource(DOTS_SOURCE_ID)) map.removeSource(DOTS_SOURCE_ID);
-    if (map.getLayer(ARROWS_LAYER_ID)) map.removeLayer(ARROWS_LAYER_ID);
-    if (map.getSource(ARROWS_SOURCE_ID)) map.removeSource(ARROWS_SOURCE_ID);
+    safeRemoveLayer(map, DOTS_LAYER_ID);
+    safeRemoveSource(map, DOTS_SOURCE_ID);
+    safeRemoveLayer(map, ARROWS_LAYER_ID);
+    safeRemoveSource(map, ARROWS_SOURCE_ID);
     speedAlertKeyedRef.current.forEach((m) => m.remove());
     speedAlertKeyedRef.current.clear();
     breadcrumbTrailsRef.current = [];
@@ -2808,8 +2809,8 @@ export default function MapPage() {
                 map.addImage(ARROW_IMAGE_ID, ctx.getImageData(0, 0, S, S), { sdf: true });
               }
             }
-            if (!map.getSource(ARROWS_SOURCE_ID)) map.addSource(ARROWS_SOURCE_ID, { type: 'geojson', data: arrowsData });
-            if (!map.getLayer(ARROWS_LAYER_ID)) {
+            if (!hasSource(map, ARROWS_SOURCE_ID)) map.addSource(ARROWS_SOURCE_ID, { type: 'geojson', data: arrowsData });
+            if (!hasLayer(map, ARROWS_LAYER_ID)) {
               map.addLayer({
                 id: ARROWS_LAYER_ID,
                 type: 'symbol',
@@ -2863,12 +2864,12 @@ export default function MapPage() {
     return () => {
       clearInterval(interval);
       clearTimeout(retryTimeout);
-      if (map.getLayer('rmpg-breadcrumb-lines')) map.removeLayer('rmpg-breadcrumb-lines');
-      if (map.getSource('rmpg-breadcrumb-lines')) map.removeSource('rmpg-breadcrumb-lines');
-      if (map.getLayer(DOTS_LAYER_ID)) map.removeLayer(DOTS_LAYER_ID);
-      if (map.getSource(DOTS_SOURCE_ID)) map.removeSource(DOTS_SOURCE_ID);
-      if (map.getLayer(ARROWS_LAYER_ID)) map.removeLayer(ARROWS_LAYER_ID);
-      if (map.getSource(ARROWS_SOURCE_ID)) map.removeSource(ARROWS_SOURCE_ID);
+      safeRemoveLayer(map, 'rmpg-breadcrumb-lines');
+      safeRemoveSource(map, 'rmpg-breadcrumb-lines');
+      safeRemoveLayer(map, DOTS_LAYER_ID);
+      safeRemoveSource(map, DOTS_SOURCE_ID);
+      safeRemoveLayer(map, ARROWS_LAYER_ID);
+      safeRemoveSource(map, ARROWS_SOURCE_ID);
       breadcrumbTrailsRef.current = [];
       speedAlertKeyedRef.current.forEach((m) => m.remove());
       speedAlertKeyedRef.current.clear();

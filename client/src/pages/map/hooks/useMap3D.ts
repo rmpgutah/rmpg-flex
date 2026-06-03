@@ -25,6 +25,7 @@ import { useEffect, useRef } from 'react';
 import type mapboxgl from 'mapbox-gl';
 import { whenStyleReady } from '../utils/safeAddSource';
 import { devWarn } from '../../../utils/devLog';
+import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../../../utils/mapboxSafeLayer';
 
 const DEM_SOURCE = 'mapbox-dem';
 const SKY_LAYER = 'rmpg-sky';
@@ -112,7 +113,7 @@ function firstLabelLayerId(map: mapboxgl.Map): string | undefined {
 function apply3D(map: mapboxgl.Map, isLight: boolean): void {
   try {
     // Terrain (works on every style — it's an independent raster-dem source).
-    if (!map.getSource(DEM_SOURCE)) {
+    if (!hasSource(map, DEM_SOURCE)) {
       map.addSource(DEM_SOURCE, {
         type: 'raster-dem',
         url: 'mapbox://mapbox.mapbox-terrain-dem-v1',
@@ -123,7 +124,7 @@ function apply3D(map: mapboxgl.Map, isLight: boolean): void {
     map.setTerrain({ source: DEM_SOURCE, exaggeration: 1.15 });
 
     // Sky / atmospheric horizon.
-    if (!map.getLayer(SKY_LAYER)) {
+    if (!hasLayer(map, SKY_LAYER)) {
       map.addLayer({
         id: SKY_LAYER,
         type: 'sky',
@@ -142,7 +143,7 @@ function apply3D(map: mapboxgl.Map, isLight: boolean): void {
     map.setLight(sceneLight(isLight));
 
     // Extruded buildings — only where the vector building source-layer exists.
-    if (!map.getLayer(BUILDING_LAYER) && map.getSource('composite')) {
+    if (!hasLayer(map, BUILDING_LAYER) && hasSource(map, 'composite')) {
       map.addLayer(
         {
           id: BUILDING_LAYER,
@@ -190,9 +191,9 @@ function teardown3D(map: mapboxgl.Map): void {
     map.setTerrain(null);
     map.setFog(null);            // clear atmospheric haze
     map.setLight(DEFAULT_LIGHT); // restore the flat-map default lighting
-    if (map.getLayer(BUILDING_LAYER)) map.removeLayer(BUILDING_LAYER);
-    if (map.getLayer(SKY_LAYER)) map.removeLayer(SKY_LAYER);
-    if (map.getSource(DEM_SOURCE)) map.removeSource(DEM_SOURCE);
+    safeRemoveLayer(map, BUILDING_LAYER);
+    safeRemoveLayer(map, SKY_LAYER);
+    safeRemoveSource(map, DEM_SOURCE);
   } catch (err) {
     devWarn('[useMap3D] teardown3D:', (err as any)?.message || err);
   }
@@ -248,7 +249,7 @@ export function useMap3D({ map, enabled, mapLoaded, isLight }: Opts): void {
       map.setFog(sceneFog(isLight));
       map.setLight(sceneLight(isLight));
     } catch { /* style mid-swap; style.load reapply will cover it */ }
-    if (map.getLayer(BUILDING_LAYER)) {
+    if (hasLayer(map, BUILDING_LAYER)) {
       try {
         map.setPaintProperty(BUILDING_LAYER, 'fill-extrusion-color', buildingColorRamp(isLight));
         map.setPaintProperty(BUILDING_LAYER, 'fill-extrusion-opacity', isLight ? 0.9 : 0.82);

@@ -18,6 +18,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { mapboxgl } from '../utils/mapboxLoader';
 import { whenStyleReady } from '../pages/map/utils/safeAddSource';
+import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
 import {
   roadColorExpression, roadSortKeyExpression, ptTypeColorExpression,
   classifyCartocode, classifyPtType,
@@ -190,7 +191,7 @@ export function useVectorTileLayers({ map, popup, isLight = false, onUseLocation
       const lp = labelPaint(isLightRef.current);
 
       try {
-        if (!map.getSource(source)) {
+        if (!hasSource(map, source)) {
           map.addSource(source, {
             type: 'vector',
             tiles: [tilesUrl(cfg.name)],
@@ -200,7 +201,7 @@ export function useVectorTileLayers({ map, popup, isLight = false, onUseLocation
         }
 
         if (cfg.kind === 'line') {
-          if (!map.getLayer(lineLayerId(cfg.id))) {
+          if (!hasLayer(map, lineLayerId(cfg.id))) {
             map.addLayer({
               id: lineLayerId(cfg.id),
               type: 'line',
@@ -233,7 +234,7 @@ export function useVectorTileLayers({ map, popup, isLight = false, onUseLocation
             });
           }
           // Road name labels at high zoom.
-          if (!map.getLayer(labelLayerId(cfg.id))) {
+          if (!hasLayer(map, labelLayerId(cfg.id))) {
             map.addLayer({
               id: labelLayerId(cfg.id),
               type: 'symbol',
@@ -260,7 +261,7 @@ export function useVectorTileLayers({ map, popup, isLight = false, onUseLocation
           }
         } else {
           // Point layer — small gold dots + address labels at very high zoom.
-          if (!map.getLayer(circleLayerId(cfg.id))) {
+          if (!hasLayer(map, circleLayerId(cfg.id))) {
             map.addLayer({
               id: circleLayerId(cfg.id),
               type: 'circle',
@@ -284,7 +285,7 @@ export function useVectorTileLayers({ map, popup, isLight = false, onUseLocation
               },
             });
           }
-          if (!map.getLayer(labelLayerId(cfg.id))) {
+          if (!hasLayer(map, labelLayerId(cfg.id))) {
             map.addLayer({
               id: labelLayerId(cfg.id),
               type: 'symbol',
@@ -350,7 +351,7 @@ export function useVectorTileLayers({ map, popup, isLight = false, onUseLocation
             ? [lineLayerId(cfg.id), labelLayerId(cfg.id)]
             : [circleLayerId(cfg.id), labelLayerId(cfg.id)];
           for (const id of visIds) {
-            try { if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', 'visible'); } catch { /* noop */ }
+            try { if (hasLayer(map, id)) map.setLayoutProperty(id, 'visibility', 'visible'); } catch { /* noop */ }
           }
         }
 
@@ -369,7 +370,7 @@ export function useVectorTileLayers({ map, popup, isLight = false, onUseLocation
       ? [lineLayerId(cfg.id), labelLayerId(cfg.id)]
       : [circleLayerId(cfg.id), labelLayerId(cfg.id)];
     for (const id of ids) {
-      try { if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', vis); } catch { /* style not ready */ }
+      try { if (hasLayer(map, id)) map.setLayoutProperty(id, 'visibility', vis); } catch { /* style not ready */ }
     }
   }, [map]);
 
@@ -450,7 +451,7 @@ export function useVectorTileLayers({ map, popup, isLight = false, onUseLocation
         if (!layerStatesRef.current[cfg.id]?.visible) continue;
         const dataLayer = cfg.kind === 'line' ? lineLayerId(cfg.id) : circleLayerId(cfg.id);
         try {
-          if (!map.getLayer(dataLayer)) {
+          if (!hasLayer(map, dataLayer)) {
             // Layer absent (never added, or wiped by a style swap and not
             // re-added) — clear the add-guard and rebuild it.
             addedRef.current.delete(cfg.id);
@@ -472,7 +473,7 @@ export function useVectorTileLayers({ map, popup, isLight = false, onUseLocation
     for (const cfg of VECTOR_TILE_CONFIGS) {
       const id = labelLayerId(cfg.id);
       try {
-        if (map.getLayer(id)) {
+        if (hasLayer(map, id)) {
           map.setPaintProperty(id, 'text-color', lp.text);
           map.setPaintProperty(id, 'text-halo-color', lp.halo);
         }

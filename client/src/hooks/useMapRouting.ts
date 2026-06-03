@@ -14,6 +14,7 @@ import { useRef, useState, useCallback, useEffect } from 'react';
 import { mapboxgl } from '../utils/mapboxLoader';
 import { getMapboxAccessToken } from '../utils/mapboxApiKey';
 import { whenStyleReady } from '../pages/map/utils/safeAddSource';
+import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -279,9 +280,9 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
   const clearRouteFromMap = useCallback(() => {
     if (!map) return;
     try {
-      if (map.getLayer(TRAVELED_LAYER_ID)) map.removeLayer(TRAVELED_LAYER_ID);
-      if (map.getLayer(ROUTE_LAYER_ID)) map.removeLayer(ROUTE_LAYER_ID);
-      if (map.getSource(ROUTE_SOURCE_ID)) map.removeSource(ROUTE_SOURCE_ID);
+      safeRemoveLayer(map, TRAVELED_LAYER_ID);
+      safeRemoveLayer(map, ROUTE_LAYER_ID);
+      safeRemoveSource(map, ROUTE_SOURCE_ID);
     } catch { /* ignore cleanup errors */ }
   }, [map]);
 
@@ -496,7 +497,7 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
       const remainingSec = g.totalMeters > 0 ? Math.round(g.totalSec * (remainingMeters / g.totalMeters)) : 0;
 
       // Trim the traveled portion: dim everything up to `fraction`.
-      if (map?.getLayer(TRAVELED_LAYER_ID)) {
+      if (map && hasLayer(map, TRAVELED_LAYER_ID)) {
         try {
           map.setPaintProperty(TRAVELED_LAYER_ID, 'line-gradient', [
             'step', ['line-progress'],
@@ -621,9 +622,9 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
     multiMarkersRef.current = [];
     if (!map) return;
     try {
-      if (map.getLayer(MULTI_LAYER_ID)) map.removeLayer(MULTI_LAYER_ID);
-      if (map.getLayer(MULTI_CASING_LAYER_ID)) map.removeLayer(MULTI_CASING_LAYER_ID);
-      if (map.getSource(MULTI_SOURCE_ID)) map.removeSource(MULTI_SOURCE_ID);
+      safeRemoveLayer(map, MULTI_LAYER_ID);
+      safeRemoveLayer(map, MULTI_CASING_LAYER_ID);
+      safeRemoveSource(map, MULTI_SOURCE_ID);
     } catch { /* ignore cleanup errors */ }
   }, [map]);
 

@@ -33,6 +33,7 @@ import { useFormDraft } from '../hooks/useFormDraft';
 import UnsavedChangesGuard from '../components/UnsavedChangesGuard';
 import FloatingSaveBar from '../components/FloatingSaveBar';
 import { parseTimestamp } from '../utils/dateUtils';
+import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
 
 // ─── Constants ──────────────────────────────────────────────────────────
 
@@ -606,8 +607,8 @@ export default function ServePage() {
     // Clear old route source layer
     if (routeSourceRef.current) {
       try {
-        if (mapRef.current.getLayer(routeSourceRef.current)) mapRef.current.removeLayer(routeSourceRef.current);
-        if (mapRef.current.getSource(routeSourceRef.current)) mapRef.current.removeSource(routeSourceRef.current);
+        safeRemoveLayer(mapRef.current, routeSourceRef.current);
+        safeRemoveSource(mapRef.current, routeSourceRef.current);
       } catch { /* layer/source may not exist */ }
       routeSourceRef.current = null;
     }
