@@ -187,6 +187,92 @@ function StatTile({ label, value, accent, dim }: { label: string; value: string;
   );
 }
 
+// Tactical color for a unit's status (friendly contacts on the scope/board).
+function statusColor(s: string): string {
+  if (s === 'available') return '#22c55e';
+  if (s === 'onscene') return '#ef4444';
+  if (s === 'enroute' || s === 'dispatched') return '#f59e0b';
+  if (s === 'busy') return '#8b5cf6';
+  return '#888888';
+}
+
+interface ScopeContact { kind: 'call' | 'unit'; bearing: number; distMi: number; color: string; threat?: boolean; label: string }
+
+// ── Tactical proximity scope (PPI radar) ──
+// North-up situational-awareness scope: concentric range rings, cardinal ticks,
+// the unit at center with a live heading wedge, and nearby calls (diamonds) +
+// units (dots) plotted bearing-true and range-scaled. The core "what's around
+// me, and where" instrument — turns the screen from nav app into a tactical SA
+// display.
+function TacticalScope({ heading, contacts, maxRangeMi, size = 134 }: {
+  heading: number | null; contacts: ScopeContact[]; maxRangeMi: number; size?: number;
+}) {
+  const cc = size / 2;
+  const R = cc - 11;
+  const rings = [1 / 3, 2 / 3, 1];
+  const polar = (bearingDeg: number, rad: number) => {
+    const a = (bearingDeg - 90) * Math.PI / 180; // 0°=N=up, clockwise
+    return { x: cc + rad * Math.cos(a), y: cc + rad * Math.sin(a) };
+  };
+  const head = heading != null ? polar(heading, R) : null;
+  return (
+    <div className="relative shrink-0" style={{ width: size, height: size }} title="Proximity scope — nearby calls & units">
+      <svg viewBox={`0 0 ${size} ${size}`} className="absolute inset-0" aria-hidden="true">
+        <circle cx={cc} cy={cc} r={R} fill="rgba(34,197,94,0.035)" />
+        {rings.map((f, i) => (
+          <circle key={i} cx={cc} cy={cc} r={R * f} fill="none" stroke={i === rings.length - 1 ? '#2e2e2e' : '#1c1c1c'} strokeWidth="1" />
+        ))}
+        <line x1={cc} y1={cc - R} x2={cc} y2={cc + R} stroke="#161616" strokeWidth="1" />
+        <line x1={cc - R} y1={cc} x2={cc + R} y2={cc} stroke="#161616" strokeWidth="1" />
+        {head && (
+          <line x1={cc} y1={cc} x2={head.x} y2={head.y} stroke="#d4a017" strokeWidth="1.5" strokeOpacity="0.65" />
+        )}
+        {contacts.map((ct, i) => {
+          const r = Math.min(1, ct.distMi / maxRangeMi) * R;
+          const { x, y } = polar(ct.bearing, r);
+          if (ct.kind === 'call') {
+            return (
+              <rect key={i} x={x - 2.7} y={y - 2.7} width="5.4" height="5.4" transform={`rotate(45 ${x} ${y})`} fill={ct.color} stroke="#0a0a0a" strokeWidth="0.6">
+                {ct.threat && <animate attributeName="opacity" values="1;0.25;1" dur="1.1s" repeatCount="indefinite" />}
+              </rect>
+            );
+          }
+          return <circle key={i} cx={x} cy={y} r="2.6" fill={ct.color} stroke="#0a0a0a" strokeWidth="0.6" />;
+        })}
+        <circle cx={cc} cy={cc} r="2.6" fill="#d4a017" stroke="#0a0a0a" strokeWidth="0.9" />
+      </svg>
+      <span className="absolute top-0 left-1/2 -translate-x-1/2 text-[7px] font-bold text-rmpg-500">N</span>
+      <span className="absolute bottom-0 left-1/2 -translate-x-1/2 text-[7px] text-rmpg-700">S</span>
+      <span className="absolute left-0 top-1/2 -translate-y-1/2 text-[7px] text-rmpg-700">W</span>
+      <span className="absolute right-0 top-1/2 -translate-y-1/2 text-[7px] text-rmpg-700">E</span>
+      <span className="absolute bottom-0.5 right-0.5 text-[7px] font-mono text-rmpg-600">{maxRangeMi}mi</span>
+    </div>
+  );
+}
+
+// One tactical contact row — a heading-relative bearing arrow (points where the
+// contact is relative to where the unit is FACING), id/subtitle, range + bearing.
+function ContactRow({ id, sub, color, bearing, distMi, heading, threat }: {
+  id: string; sub: string; color: string; bearing: number; distMi: number; heading: number | null; threat?: boolean;
+}) {
+  const rel = heading != null ? ((bearing - heading) % 360 + 360) % 360 : bearing;
+  return (
+    <div className={`flex items-center gap-1.5 px-2 py-1 ${threat ? 'bg-red-500/10' : ''}`}>
+      <svg width="13" height="13" viewBox="0 0 12 12" className="shrink-0" style={{ transform: `rotate(${rel}deg)`, transition: 'transform 0.4s ease-out' }} aria-hidden="true">
+        <path d="M6 1 L9.5 10.5 L6 8 L2.5 10.5 Z" fill={color} />
+      </svg>
+      <div className="flex-1 min-w-0">
+        <div className="text-[10px] font-mono text-rmpg-100 truncate leading-tight">{id}</div>
+        <div className="text-[8px] text-rmpg-500 truncate leading-tight">{sub}</div>
+      </div>
+      <div className="text-right shrink-0 leading-tight">
+        <div className="text-[10px] font-mono text-brand-300">{distMi.toFixed(1)}mi</div>
+        <div className="text-[8px] font-mono text-rmpg-600">{String(Math.round(bearing)).padStart(3, '0')}°</div>
+      </div>
+    </div>
+  );
+}
+
 export default function NavigationPage() {
   const navigate = useNavigate();
   const gps = useGpsTracking({ capture: true });
@@ -243,7 +329,7 @@ export default function NavigationPage() {
   const accelRef = useRef<{ mph: number; t: number } | null>(null);
   const [gForce, setGForce] = useState(0);
   const destCoordsRef = useRef<{ lat: number; lng: number } | null>(null);
-  const [nearbyUnits, setNearbyUnits] = useState<{ call_sign: string; status: string; distMi: number }[]>([]);
+  const [nearbyUnits, setNearbyUnits] = useState<{ call_sign: string; status: string; lat: number; lng: number }[]>([]);
   const [, force] = useState(0);
 
   const dir = gps.headingSmoothed ?? gps.course ?? gps.heading;
@@ -405,22 +491,26 @@ export default function NavigationPage() {
 
   // Nearby active calls — situational awareness while driving. Ranks the active
   // board by straight-line distance from the live position; refreshes every 20s.
-  const [nearbyCalls, setNearbyCalls] = useState<{ call_number: string; incident_type: string; priority: string; distMi: number }[]>([]);
+  const [nearbyCalls, setNearbyCalls] = useState<{ call_number: string; incident_type: string; priority: string; lat: number; lng: number }[]>([]);
   useEffect(() => {
     let cancelled = false;
     const run = async () => {
-      if (gps.latitude == null || gps.longitude == null) return;
+      const mlat = gps.latitude, mlng = gps.longitude;
+      if (mlat == null || mlng == null) return;
       try {
         const res = await apiFetch<any>('/dispatch/calls?limit=100');
         const rows = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
+        // Store coords (not a frozen distance) and keep the nearest 8 — the scope
+        // recomputes range + bearing live from the moving unit each render.
         const near = rows
           .filter((c: any) => c.latitude != null && c.longitude != null)
           .map((c: any) => ({
             call_number: c.call_number || '', incident_type: c.incident_type || 'call', priority: c.priority || 'P3',
-            distMi: haversineMeters(gps.latitude!, gps.longitude!, Number(c.latitude), Number(c.longitude)) / 1609.34,
+            lat: Number(c.latitude), lng: Number(c.longitude),
           }))
-          .sort((a: { distMi: number }, b: { distMi: number }) => a.distMi - b.distMi)
-          .slice(0, 3);
+          .sort((a: { lat: number; lng: number }, b: { lat: number; lng: number }) =>
+            haversineMeters(mlat, mlng, a.lat, a.lng) - haversineMeters(mlat, mlng, b.lat, b.lng))
+          .slice(0, 8);
         if (!cancelled) setNearbyCalls(near);
       } catch { /* best-effort — situational extra, never blocks the drive view */ }
     };
@@ -431,21 +521,28 @@ export default function NavigationPage() {
   }, [gps.latitude != null]);
 
   // Nearby on-duty units — fellow officers ranked by distance from the unit.
+  // Excludes the operator's OWN unit (by id AND call sign) so it doesn't show
+  // up as a contact at 0.0mi on top of itself.
   useEffect(() => {
     let cancelled = false;
     const run = async () => {
-      if (gps.latitude == null || gps.longitude == null) return;
+      const mlat = gps.latitude, mlng = gps.longitude;
+      if (mlat == null || mlng == null) return;
       try {
         const res = await apiFetch<any>('/dispatch/units');
         const rows = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
         const near = rows
-          .filter((u: any) => u.latitude != null && u.longitude != null && u.call_sign !== gps.unitCallSign)
+          .filter((u: any) =>
+            u.latitude != null && u.longitude != null &&
+            (gps.unitId == null || Number(u.id) !== gps.unitId) &&
+            (!gps.unitCallSign || u.call_sign !== gps.unitCallSign))
           .map((u: any) => ({
             call_sign: u.call_sign || '?', status: u.status || 'unknown',
-            distMi: haversineMeters(gps.latitude!, gps.longitude!, Number(u.latitude), Number(u.longitude)) / 1609.34,
+            lat: Number(u.latitude), lng: Number(u.longitude),
           }))
-          .sort((a: { distMi: number }, b: { distMi: number }) => a.distMi - b.distMi)
-          .slice(0, 3);
+          .sort((a: { lat: number; lng: number }, b: { lat: number; lng: number }) =>
+            haversineMeters(mlat, mlng, a.lat, a.lng) - haversineMeters(mlat, mlng, b.lat, b.lng))
+          .slice(0, 6);
         if (!cancelled) setNearbyUnits(near);
       } catch { /* best-effort */ }
     };
@@ -466,6 +563,34 @@ export default function NavigationPage() {
     ? bearingTo(gps.latitude, gps.longitude, destCoordsRef.current.lat, destCoordsRef.current.lng) : null;
   const destCrowMi = (destCoordsRef.current && gps.latitude != null && gps.longitude != null)
     ? haversineMeters(gps.latitude, gps.longitude, destCoordsRef.current.lat, destCoordsRef.current.lng) / 1609.34 : null;
+
+  // ── Live tactical contacts ──
+  // The unit SET refreshes every 20s; each contact's range + bearing recompute
+  // from the CURRENT position every render so the scope/board stay live as the
+  // unit moves. Sorted nearest-first.
+  const myLat = gps.latitude, myLng = gps.longitude;
+  const callContacts = useMemo(() => {
+    if (myLat == null || myLng == null) return [];
+    return nearbyCalls
+      .map((c) => ({ ...c, distMi: haversineMeters(myLat, myLng, c.lat, c.lng) / 1609.34, bearing: bearingTo(myLat, myLng, c.lat, c.lng) }))
+      .sort((a, b) => a.distMi - b.distMi);
+  }, [nearbyCalls, myLat, myLng]);
+  const unitContacts = useMemo(() => {
+    if (myLat == null || myLng == null) return [];
+    return nearbyUnits
+      .map((u) => ({ ...u, distMi: haversineMeters(myLat, myLng, u.lat, u.lng) / 1609.34, bearing: bearingTo(myLat, myLng, u.lat, u.lng) }))
+      .sort((a, b) => a.distMi - b.distMi);
+  }, [nearbyUnits, myLat, myLng]);
+  // Scope outer ring auto-ranges to the farthest contact, clamped to a 2–10mi band.
+  const scopeMaxMi = useMemo(() => {
+    const far = Math.max(0, ...callContacts.map((c) => c.distMi), ...unitContacts.map((u) => u.distMi));
+    return Math.min(10, Math.max(2, Math.ceil(far || 2)));
+  }, [callContacts, unitContacts]);
+  const scopeContacts: ScopeContact[] = [
+    ...callContacts.map((c) => ({ kind: 'call' as const, bearing: c.bearing, distMi: c.distMi, color: PRIO_COLOR[c.priority] || '#888888', threat: c.priority === 'P1' || c.priority === 'P2', label: c.call_number })),
+    ...unitContacts.map((u) => ({ kind: 'unit' as const, bearing: u.bearing, distMi: u.distMi, color: statusColor(u.status), label: u.call_sign })),
+  ];
+  const threatCount = callContacts.filter((c) => c.priority === 'P1' || c.priority === 'P2').length;
 
   const step = useMemo(
     () => pickCurrentStep(activeRoute?.steps, routeProgress?.fraction ?? 0, activeRoute?.distanceMeters ?? 0),
@@ -502,6 +627,15 @@ export default function NavigationPage() {
           Map unavailable ({mapError}) — instruments live below
         </div>
       )}
+
+      {/* Tactical viewport framing — corner brackets (non-interactive) for a
+          command-display feel; sized to clear the header and dashboard. */}
+      <div className="absolute z-10 pointer-events-none" style={{ top: 44, bottom: 190, left: 6, right: 6 }}>
+        <div className="absolute top-0 left-0 border-t-2 border-l-2 border-brand-500/40" style={{ width: 16, height: 16 }} />
+        <div className="absolute top-0 right-0 border-t-2 border-r-2 border-brand-500/40" style={{ width: 16, height: 16 }} />
+        <div className="absolute bottom-0 left-0 border-b-2 border-l-2 border-brand-500/40" style={{ width: 16, height: 16 }} />
+        <div className="absolute bottom-0 right-0 border-b-2 border-r-2 border-brand-500/40" style={{ width: 16, height: 16 }} />
+      </div>
 
       {/* Header bar */}
       <div
@@ -605,45 +739,46 @@ export default function NavigationPage() {
         </div>
       )}
 
-      {/* Left data column: nearby calls + nearby units, ranked by distance. */}
-      {(nearbyCalls.length > 0 || nearbyUnits.length > 0) && (
-        <div className="absolute z-20 space-y-1.5" style={{ top: 96, left: 8, width: 190 }}>
-          {nearbyCalls.length > 0 && (
-            <div className="panel-beveled bg-surface-deep/90 backdrop-blur-md border border-rmpg-600 shadow-xl" style={{ borderRadius: 2 }}>
-              <div className="flex items-center gap-1 px-2 py-1 border-b border-rmpg-700">
-                <MapPin className="w-3 h-3 text-brand-400" />
-                <span className="text-[9px] font-bold uppercase tracking-wider text-rmpg-200 flex-1">Nearby Calls</span>
-                <span className="text-[9px] font-mono text-rmpg-500">{nearbyCalls.length}</span>
-              </div>
-              {nearbyCalls.map((c, i) => (
-                <div key={i} className={`flex items-center gap-1.5 px-2 py-1 ${i > 0 ? 'border-t border-rmpg-800/50' : ''}`}>
-                  <span className="text-[8px] font-bold px-1 py-0.5 shrink-0" style={{ background: PRIO_COLOR[c.priority] || '#666', color: '#0a0a0a', borderRadius: 2 }}>{c.priority}</span>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-[10px] text-rmpg-100 font-mono truncate">{c.call_number || '—'}</div>
-                    <div className="text-[8px] text-rmpg-500 truncate">{c.incident_type.replace(/_/g, ' ')}</div>
-                  </div>
-                  <span className="text-[10px] font-mono text-brand-300 shrink-0">{c.distMi.toFixed(1)}mi</span>
-                </div>
-              ))}
+      {/* ── Tactical CONTACTS board (top-left) ──
+          Live SA: nearby calls + units with heading-relative bearing arrows
+          (point where the contact is vs where the unit is facing), threat
+          coloring, and a pulsing P1/P2 threat tally. */}
+      {(callContacts.length > 0 || unitContacts.length > 0) && (
+        <div className="absolute z-20" style={{ top: 96, left: 8, width: 200 }}>
+          <div className="panel-beveled bg-surface-deep/92 backdrop-blur-md border border-rmpg-600 shadow-xl overflow-hidden" style={{ borderRadius: 2 }}>
+            <div className="relative flex items-center gap-1.5 px-2 py-1 border-b border-rmpg-700">
+              <div className="absolute bottom-0 inset-x-0 h-px" style={{ background: 'linear-gradient(90deg, rgba(212,160,23,0.5), transparent)' }} />
+              <Crosshair className="w-3 h-3 text-brand-400" />
+              <span className="text-[9px] font-bold uppercase tracking-widest text-rmpg-100 flex-1">Contacts</span>
+              {threatCount > 0 && (
+                <span className="flex items-center gap-0.5 text-[8px] font-bold px-1 py-0.5 text-red-300 animate-pulse" style={{ background: 'rgba(239,68,68,0.18)', borderRadius: 2 }}>
+                  <AlertTriangle className="w-2.5 h-2.5" /> {threatCount}
+                </span>
+              )}
             </div>
-          )}
-          {nearbyUnits.length > 0 && (
-            <div className="panel-beveled bg-surface-deep/90 backdrop-blur-md border border-rmpg-600 shadow-xl" style={{ borderRadius: 2 }}>
-              <div className="flex items-center gap-1 px-2 py-1 border-b border-rmpg-700">
-                <Navigation2 className="w-3 h-3 text-brand-400" />
-                <span className="text-[9px] font-bold uppercase tracking-wider text-rmpg-200 flex-1">Nearby Units</span>
-                <span className="text-[9px] font-mono text-rmpg-500">{nearbyUnits.length}</span>
-              </div>
-              {nearbyUnits.map((u, i) => (
-                <div key={i} className={`flex items-center gap-1.5 px-2 py-1 ${i > 0 ? 'border-t border-rmpg-800/50' : ''}`}>
-                  <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: u.status === 'available' ? '#22c55e' : u.status === 'onscene' ? '#ef4444' : (u.status === 'enroute' || u.status === 'dispatched') ? '#f59e0b' : u.status === 'busy' ? '#8b5cf6' : '#666' }} />
-                  <span className="flex-1 min-w-0 truncate text-[10px] text-rmpg-100 font-mono">{u.call_sign}</span>
-                  <span className="text-[8px] text-rmpg-500 uppercase shrink-0">{u.status.replace(/_/g, ' ')}</span>
-                  <span className="text-[10px] font-mono text-brand-300 shrink-0">{u.distMi.toFixed(1)}mi</span>
+            {callContacts.length > 0 && (
+              <>
+                <div className="flex items-center gap-1 px-2 pt-1 pb-0.5">
+                  <span className="text-[8px] font-bold uppercase tracking-wider text-rmpg-500 flex-1">Calls</span>
+                  <span className="text-[8px] font-mono text-rmpg-600">{callContacts.length}</span>
                 </div>
-              ))}
-            </div>
-          )}
+                {callContacts.slice(0, 4).map((c, i) => (
+                  <ContactRow key={`c${i}`} id={`${c.priority} · ${c.call_number || '—'}`} sub={c.incident_type.replace(/_/g, ' ')} color={PRIO_COLOR[c.priority] || '#888888'} bearing={c.bearing} distMi={c.distMi} heading={dir} threat={c.priority === 'P1' || c.priority === 'P2'} />
+                ))}
+              </>
+            )}
+            {unitContacts.length > 0 && (
+              <>
+                <div className="flex items-center gap-1 px-2 pt-1 pb-0.5 border-t border-rmpg-800/60">
+                  <span className="text-[8px] font-bold uppercase tracking-wider text-rmpg-500 flex-1">Units</span>
+                  <span className="text-[8px] font-mono text-rmpg-600">{unitContacts.length}</span>
+                </div>
+                {unitContacts.slice(0, 3).map((u, i) => (
+                  <ContactRow key={`u${i}`} id={u.call_sign} sub={u.status.replace(/_/g, ' ')} color={statusColor(u.status)} bearing={u.bearing} distMi={u.distMi} heading={dir} />
+                ))}
+              </>
+            )}
+          </div>
         </div>
       )}
 
@@ -691,7 +826,16 @@ export default function NavigationPage() {
             </div>
             <div className="w-px self-stretch my-1 bg-gradient-to-b from-transparent via-rmpg-700 to-transparent" />
 
-            {/* Bay 3 — speed area-chart + G-force */}
+            {/* Bay 3 — tactical proximity scope (situational awareness) */}
+            <div className="flex flex-col items-center justify-center px-2">
+              <div className="text-[7px] uppercase tracking-widest text-rmpg-600 mb-1 flex items-center gap-1">
+                <Crosshair className="w-2.5 h-2.5 text-brand-500" /> Proximity
+              </div>
+              <TacticalScope heading={dir} contacts={scopeContacts} maxRangeMi={scopeMaxMi} />
+            </div>
+            <div className="w-px self-stretch my-1 bg-gradient-to-b from-transparent via-rmpg-700 to-transparent" />
+
+            {/* Bay 4 — speed area-chart + G-force */}
             <div className="flex flex-col justify-center gap-1.5 px-3" style={{ width: 150 }}>
               <div>
                 <div className="text-[7px] uppercase tracking-wider text-rmpg-600 mb-0.5 flex items-center gap-1"><Gauge className="w-2.5 h-2.5" /> Speed · 60s</div>
