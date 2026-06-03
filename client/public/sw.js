@@ -532,7 +532,10 @@
 //       data-driven category filters/landing + statute/chapter PDF printing.
 // v777: citation authoring UI — multi-violation stack, live PDF preview (tri-mode),
 //       Combobox primitive replacing native <select> across CitationsPage + CitationAuthor.
-const CACHE_NAME = 'rmpg-flex-v778';
+// v779: map teardown-race hardening — getSourceSafe() guards the remaining
+//       getSource(...).setData() sites (twin of #1020's getLayer fix); prevents
+//       'getOwnSource' ErrorBoundary trip when a late callback fires post-remove().
+const CACHE_NAME = 'rmpg-flex-v779';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

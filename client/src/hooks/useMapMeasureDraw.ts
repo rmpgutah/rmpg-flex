@@ -14,7 +14,7 @@ import { mapboxgl } from '../utils/mapboxLoader';
 import { whenStyleReady } from '../pages/map/utils/safeAddSource';
 import { length as turfLength } from '@turf/length';
 import { area as turfArea } from '@turf/area';
-import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
+import { getSourceSafe, hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
 
 export type MeasureMode = 'distance' | 'area' | null;
 
@@ -72,7 +72,7 @@ export function useMapMeasureDraw({ map, mode }: Opts) {
     if (!map) return;
     ensureLayers();
     const data = buildData();
-    const src = map.getSource(SRC) as mapboxgl.GeoJSONSource | undefined;
+    const src = getSourceSafe<mapboxgl.GeoJSONSource>(map, SRC);
     if (src) src.setData(data as any);
     const pts = ptsRef.current;
     let dist = 0;

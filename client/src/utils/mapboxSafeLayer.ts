@@ -40,6 +40,24 @@ export function hasSource(map: MapboxLike | undefined | null, id: string): boole
   catch { return false; }
 }
 
+/**
+ * Fetch a source object, or `undefined` if the map/style is torn down or the
+ * source isn't registered. Use when you need the source itself — e.g. to call
+ * `.setData()` — where the boolean `hasSource` won't do. Same teardown-race
+ * guard as `hasLayer`/`hasSource`: the throw is inside `getSource` (reaching
+ * `this.style.getOwnSource`), so the `as GeoJSONSource | undefined` cast at the
+ * call site does NOT protect — only bailing on `!map.style` + try/catch does.
+ * Never throws.
+ */
+export function getSourceSafe<T = mapboxgl.GeoJSONSource>(
+  map: MapboxLike | undefined | null,
+  id: string,
+): T | undefined {
+  if (!map || !map.style) return undefined;
+  try { return (map.getSource(id) as unknown as T) ?? undefined; }
+  catch { return undefined; }
+}
+
 /** Remove a layer if present. Never throws. */
 export function safeRemoveLayer(map: MapboxLike | undefined | null, id: string): void {
   if (!hasLayer(map, id)) return;

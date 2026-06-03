@@ -121,7 +121,7 @@ import MultiStopRoutePanel, { type QueuedStop } from './components/MultiStopRout
 import MapExportMenu from './components/MapExportMenu';
 import { generateMapSituationReport } from '../../utils/mapSituationReportPdf';
 import { useAuth } from '../../context/AuthContext';
-import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../../utils/mapboxSafeLayer';
+import { getSourceSafe, hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../../utils/mapboxSafeLayer';
 
 // ============================================================
 // Constants
@@ -2253,7 +2253,7 @@ export default function MapPage() {
       }));
 
     try {
-      const existingSrc = map.getSource('rmpg-heatmap') as mapboxgl.GeoJSONSource | undefined;
+      const existingSrc = getSourceSafe<mapboxgl.GeoJSONSource>(map, 'rmpg-heatmap');
       if (existingSrc) {
         existingSrc.setData({ type: 'FeatureCollection', features: weightedFeatures });
         return;
@@ -2369,7 +2369,7 @@ export default function MapPage() {
     });
 
     if (features.length === 0) {
-      const existingSrc = map.getSource('rmpg-tracking-lines') as mapboxgl.GeoJSONSource | undefined;
+      const existingSrc = getSourceSafe<mapboxgl.GeoJSONSource>(map, 'rmpg-tracking-lines');
       if (existingSrc) {
         existingSrc.setData({ type: 'FeatureCollection', features: [] });
       } else {
@@ -2384,7 +2384,7 @@ export default function MapPage() {
     try {
       const geojsonData: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features };
 
-      const existingSrc = map.getSource('rmpg-tracking-lines') as mapboxgl.GeoJSONSource | undefined;
+      const existingSrc = getSourceSafe<mapboxgl.GeoJSONSource>(map, 'rmpg-tracking-lines');
       if (existingSrc) {
         existingSrc.setData(geojsonData);
         setTrackingLineCount(features.length);
@@ -2633,9 +2633,9 @@ export default function MapPage() {
           // Clear the dots source if no trails so leftover points from
           // previous refresh don't linger after a unit goes off-duty.
           breadcrumbTrailsRef.current = [];
-          const existingDotSrc = map.getSource(DOTS_SOURCE_ID) as mapboxgl.GeoJSONSource | undefined;
+          const existingDotSrc = getSourceSafe<mapboxgl.GeoJSONSource>(map, DOTS_SOURCE_ID);
           if (existingDotSrc) existingDotSrc.setData({ type: 'FeatureCollection', features: [] });
-          const existingArrowSrc = map.getSource(ARROWS_SOURCE_ID) as mapboxgl.GeoJSONSource | undefined;
+          const existingArrowSrc = getSourceSafe<mapboxgl.GeoJSONSource>(map, ARROWS_SOURCE_ID);
           if (existingArrowSrc) existingArrowSrc.setData({ type: 'FeatureCollection', features: [] });
           return;
         }
@@ -2734,7 +2734,7 @@ export default function MapPage() {
         // Create or update breadcrumb line source & layer via setData()
         // (same pattern as dots/arrows — avoids source-teardown blink).
         const linesData: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: lineFeatures };
-        const existingLineSrc = map.getSource('rmpg-breadcrumb-lines') as mapboxgl.GeoJSONSource | undefined;
+        const existingLineSrc = getSourceSafe<mapboxgl.GeoJSONSource>(map, 'rmpg-breadcrumb-lines');
         if (existingLineSrc) {
           existingLineSrc.setData(linesData);
         } else if (lineFeatures.length > 0) {
@@ -2760,7 +2760,7 @@ export default function MapPage() {
         // setData() is much cheaper than recreating the source — most refreshes
         // hit the update branch. The first refresh creates the source+layer.
         const dotsData: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: dotFeatures };
-        const existingDotSrc = map.getSource(DOTS_SOURCE_ID) as mapboxgl.GeoJSONSource | undefined;
+        const existingDotSrc = getSourceSafe<mapboxgl.GeoJSONSource>(map, DOTS_SOURCE_ID);
         if (existingDotSrc) {
           existingDotSrc.setData(dotsData);
         } else {
@@ -2786,7 +2786,7 @@ export default function MapPage() {
         // Heading arrows symbol layer. setData on refresh; first run registers
         // the SDF arrow icon (so `icon-color` tints per feature) + the layer.
         const arrowsData: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: arrowFeatures };
-        const existingArrowSrc = map.getSource(ARROWS_SOURCE_ID) as mapboxgl.GeoJSONSource | undefined;
+        const existingArrowSrc = getSourceSafe<mapboxgl.GeoJSONSource>(map, ARROWS_SOURCE_ID);
         if (existingArrowSrc) {
           existingArrowSrc.setData(arrowsData);
         } else {

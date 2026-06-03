@@ -12,7 +12,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { mapboxgl } from '../utils/mapboxLoader';
 import { whenStyleReady } from '../pages/map/utils/safeAddSource';
-import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
+import { getSourceSafe, hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -192,7 +192,7 @@ export function useEventPlanning({ map, popup }: UseEventPlanningOptions) {
         });
 
         if (hasLayer(map, layerId)) {
-          (map.getSource(sourceId) as any)?.setData?.(
+          getSourceSafe<any>(map, sourceId)?.setData?.(
             { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: drawPointsRef.current } }
           );
         } else {

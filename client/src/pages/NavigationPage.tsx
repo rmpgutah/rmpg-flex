@@ -39,7 +39,7 @@ import { installWebglContextRecovery, type MapCamera } from '../utils/webglRecov
 import { getMapboxAccessToken } from '../utils/mapboxApiKey';
 import { apiFetch } from '../hooks/useApi';
 import { compassCardinal } from '../utils/locationImagery';
-import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
+import { getSourceSafe, hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
 
 // ─── Helpers ────────────────────────────────────────────────
 
@@ -951,7 +951,7 @@ export default function NavigationPage() {
       })),
     };
     try {
-      const existing = map.getSource(SRC);
+      const existing = getSourceSafe<any>(map, SRC);
       if (existing) {
         existing.setData(fc);
       } else {
@@ -1006,7 +1006,7 @@ export default function NavigationPage() {
       })),
     };
     try {
-      const existing = map.getSource(SRC);
+      const existing = getSourceSafe<any>(map, SRC);
       if (existing) {
         (existing as any).setData(fc);
       } else {
@@ -1171,7 +1171,7 @@ export default function NavigationPage() {
       ? { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: coords } }
       : { type: 'FeatureCollection', features: [] };
     try {
-      const existing = map.getSource(SRC) as any;
+      const existing = getSourceSafe<any>(map, SRC);
       if (existing) {
         existing.setData(data);
       } else {
@@ -1441,7 +1441,7 @@ export default function NavigationPage() {
       })),
     };
     try {
-      const existing = map.getSource(SRC) as any;
+      const existing = getSourceSafe<any>(map, SRC);
       if (existing) {
         existing.setData(fc);
       } else {

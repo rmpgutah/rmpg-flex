@@ -5,7 +5,7 @@ import { useCallback, useState, useRef, useEffect } from 'react';
 import type mapboxgl from 'mapbox-gl';
 import { apiFetch } from './useApi';
 import { whenStyleReady } from '../pages/map/utils/safeAddSource';
-import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
+import { getSourceSafe, hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
 
 interface BeatActivity {
   beat: string;
@@ -99,7 +99,7 @@ export function useMapboxResponseTime(map: mapboxgl.Map | null) {
     whenStyleReady(m, () => {
       if (!visibleRef.current) return;
       try {
-        const src = m.getSource(SOURCE_ID) as mapboxgl.GeoJSONSource | undefined;
+        const src = getSourceSafe<mapboxgl.GeoJSONSource>(m, SOURCE_ID);
         if (src) {
           src.setData({ type: 'FeatureCollection', features } as any);
         } else {

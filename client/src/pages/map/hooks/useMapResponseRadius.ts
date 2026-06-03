@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { whenStyleReady } from '../utils/safeAddSource';
-import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../../../utils/mapboxSafeLayer';
+import { getSourceSafe, hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../../../utils/mapboxSafeLayer';
 
 interface UseMapResponseRadiusReturn {
   showRadiusAt: (lat: number, lng: number) => void;
@@ -136,7 +136,7 @@ export function useMapResponseRadius(
       const point: [number, number] = [e.clientX - rect.left, e.clientY - rect.top];
       const lngLat = map.unproject(point);
 
-      const source = map.getSource(cursorSourceId) as mapboxgl.GeoJSONSource | undefined;
+      const source = getSourceSafe<mapboxgl.GeoJSONSource>(map, cursorSourceId);
       if (source) {
         const updatedFeatures = CURSOR_RINGS.map((ring) => ({
           type: 'Feature' as const,
