@@ -29,7 +29,7 @@ const CATEGORIES: { key: CategoryKey; label: string }[] = [
   { key: 'all', label: 'All Law' },
   { key: 'criminal', label: 'Criminal (Title 76)' },
   { key: 'vehicle', label: 'Motor Vehicle (Title 41)' },
-  { key: 'licensing', label: 'Licensing (58 / 78B)' },
+  { key: 'licensing', label: 'Licensing & Rules' },
 ];
 
 const CATEGORY_LABEL: Record<string, string> = {
