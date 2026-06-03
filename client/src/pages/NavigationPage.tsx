@@ -111,6 +111,55 @@ function bearingTo(lat1: number, lng1: number, lat2: number, lng2: number): numb
   return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
 }
 
+// ── Route corridor hazard scan (routing-aware situational awareness) ──
+// A hazard the unit is about to drive INTO — an active call or a crime hot-spot
+// that snaps onto the planned route ahead of the unit's current progress.
+interface CorridorHazard {
+  kind: 'call' | 'crime';
+  label: string;
+  sub: string;
+  /** Distance ahead along the route to the hazard, miles. */
+  aheadMi: number;
+  color: string;
+  lat: number;
+  lng: number;
+  /** 1 = caution, 2 = elevated, 3 = critical — drives sort + map halo size. */
+  severity: number;
+}
+
+// Tuning knobs for the corridor scan. These are deliberately conservative — a
+// tight corridor + a high cluster threshold keep the panel signal, not noise.
+const CORRIDOR_HAZARD_M = 70;        // off-route slack: still "on the path"
+const CORRIDOR_LOOKAHEAD_M = 8047;   // scan up to ~5 mi down the route
+const CORRIDOR_MIN_AHEAD_M = 40;     // ignore hazards we're effectively on top of
+const CRIME_CLUSTER_BIN_M = 160;     // along-route bin width for crime clustering
+const CRIME_CLUSTER_MIN = 4;         // incidents in one bin to flag a hot segment
+
+/** Axis-aligned lat/lng bounds of a route polyline ([lng,lat][]) — a cheap
+ *  prefilter so we only snap crime points that could plausibly be in-corridor. */
+function routeBBox(coords: [number, number][]): { w: number; s: number; e: number; n: number } {
+  let w = Infinity, s = Infinity, e = -Infinity, n = -Infinity;
+  for (const [lng, lat] of coords) {
+    if (lng < w) w = lng; if (lng > e) e = lng;
+    if (lat < s) s = lat; if (lat > n) n = lat;
+  }
+  return { w, s, e, n };
+}
+
+/**
+ * Urgency score for a corridor hazard — HIGHER floats to the top of the panel
+ * and is what the operator sees first while driving.
+ *
+ * This is the one piece of domain judgment in the corridor scan, so it lives in
+ * its own function: tune it to match how your officers actually prioritize.
+ * The default weights severity heavily (a P1 call ahead matters even at range)
+ * and decays linearly with distance so an imminent hazard edges out a distant
+ * one of equal severity.
+ */
+function scoreCorridorHazard(h: CorridorHazard): number {
+  return h.severity * 100 - h.aheadMi * 10;
+}
+
 // ── Advanced instruments ─────────────────────────────────────────────────────
 // Ring speed gauge: a 3/4 dasharray ring (rotated so the gap sits at the bottom)
 // + a centered readout, color-ramped green→amber→red by speed band.
@@ -1051,6 +1100,24 @@ export default function NavigationPage() {
                   </div>
                 );
               })}
+            </div>
+          )}
+          {/* Route corridor hazards — what's ON THE PATH ahead */}
+          {corridorHazards.length > 0 && (
+            <div className="border-t" style={{ borderColor: corridorCritical > 0 ? 'rgba(239,68,68,0.4)' : 'rgba(245,158,11,0.35)' }}>
+              <div className="flex items-center gap-1.5 px-3 py-1" style={{ background: corridorCritical > 0 ? 'rgba(239,68,68,0.10)' : 'rgba(245,158,11,0.08)' }}>
+                <ShieldAlert className={`w-3.5 h-3.5 shrink-0 ${corridorCritical > 0 ? 'animate-pulse' : ''}`} style={{ color: corridorCritical > 0 ? '#ef4444' : '#f59e0b' }} />
+                <span className="text-[9px] font-bold uppercase tracking-widest flex-1" style={{ color: corridorCritical > 0 ? '#fca5a5' : '#fcd34d' }}>Ahead on route</span>
+                <span className="text-[9px] font-mono text-rmpg-400">{corridorHazards.length}</span>
+              </div>
+              {corridorHazards.slice(0, 4).map((h, i) => (
+                <div key={i} className={`flex items-center gap-2 px-3 py-1 ${i > 0 ? 'border-t border-rmpg-800/40' : ''}`}>
+                  <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: h.color, boxShadow: h.severity >= 3 ? `0 0 5px ${h.color}` : 'none' }} />
+                  <span className="text-[10px] font-mono shrink-0" style={{ color: h.color }}>{h.label}</span>
+                  <span className="flex-1 min-w-0 truncate text-[9px] text-rmpg-500">{h.sub}</span>
+                  <span className="text-[10px] font-mono font-bold text-brand-300 shrink-0">{h.aheadMi < 0.1 ? `${Math.round(h.aheadMi * 5280)} ft` : `${h.aheadMi.toFixed(1)} mi`}</span>
+                </div>
+              ))}
             </div>
           )}
         </div>
