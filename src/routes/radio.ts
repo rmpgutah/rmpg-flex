@@ -25,7 +25,6 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
-import { broadcastAll } from './ws';
 import {
   ocrImage,
   ocrExtractStructured,
@@ -98,7 +97,6 @@ rt.post('/channels', async (c) => {
   const id = Number(result.meta.last_row_id);
   // Broadcast so other dispatchers' channel pickers update without a refresh.
   const channel = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM radio_channels WHERE id = ?', id);
-  broadcastAll('radio_update', { action: 'channel_created', channel });
   return c.json({ success: true, id });
 });
 
@@ -118,7 +116,6 @@ rt.patch('/channels/:id', async (c) => {
   const db = getDb(c.env);
   await execute(db, `UPDATE radio_channels SET ${fields.join(', ')} WHERE id = ?`, ...args);
   const channel = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM radio_channels WHERE id = ?', id);
-  broadcastAll('radio_update', { action: 'channel_updated', channel });
   return c.json({ success: true });
 });
 
@@ -133,7 +130,6 @@ rt.delete('/channels/:id', async (c) => {
     "UPDATE radio_channels SET archived_at = datetime('now') WHERE id = ? AND archived_at IS NULL",
     id,
   );
-  broadcastAll('radio_update', { action: 'channel_archived', channel_id: id });
   return c.json({ success: true });
 });
 
@@ -202,7 +198,6 @@ rt.post('/transmissions', async (c) => {
        WHERE t.id = ?`,
     id,
   );
-  broadcastAll('radio_update', { action: 'transmission_logged', transmission });
   return c.json({ success: true, id });
 });
 
