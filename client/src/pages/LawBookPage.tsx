@@ -50,37 +50,80 @@ const LEVELS: { key: string; short: string; dot: string }[] = [
   { key: 'infraction', short: 'Infraction', dot: '#9ca3af' },
 ];
 
-// Indent depth for a statutory line, from its leading (1)/(a)/(i)/(A) marker.
-function lineDepth(line: string): number {
-  const m = line.match(/^\(([0-9a-zA-Z]{1,4})\)/);
-  if (!m) return -1; // continuation / prose
-  const tok = m[1];
+// Canonical Utah outline depth for a marker token: (1)→0  (a)→1  (i)→2  (A)→3  (I)→4
+function tokenDepth(tok: string): number {
   if (/^\d+$/.test(tok)) return 0;
-  if (/^[ivxl]{2,}$/.test(tok)) return 2;      // roman numerals (ii, iii, iv…)
-  if (/^[A-Z]+$/.test(tok)) return 3;          // (A), (B)…
-  if (/^[a-z]$/.test(tok)) return 1;           // single letter (a)…
-  if (/^[ivxl]$/.test(tok)) return 2;          // lone roman (i)
+  const isRoman = (s: string) => s.length > 0 && /^(x{0,3})(ix|iv|v?i{0,3})$/.test(s);
+  if (/^[a-z]+$/.test(tok)) return isRoman(tok) ? 2 : 1;          // (i)…→2, (a)…→1
+  if (/^[A-Z]+$/.test(tok)) return isRoman(tok.toLowerCase()) ? 4 : 3; // (I)…→4, (A)…→3
   return 1;
 }
 
+// Split a statute body into its nested outline. The stored text is a single run
+// with inline markers ("…arm.(b) Terms…(2) An actor…"), so we must tell a
+// STRUCTURAL marker (opens a subsection) apart from an inline cross-reference
+// like "Subsection (3)(b)". A marker is structural when it sits at the start, or
+// right after a sentence boundary (. : ; or/and), or chains off another
+// structural marker — references after a word ("Subsection (3)") are not.
+interface Seg { depth: number; marker: string; text: string }
+function parseOutline(text: string): Seg[] {
+  const matches = [...text.matchAll(/\(([0-9]{1,3}|[A-Za-z]{1,3})\)/g)];
+  if (matches.length === 0) return text.trim() ? [{ depth: 0, marker: '', text: text.trim() }] : [];
+
+  const idxOf = (mm: RegExpMatchArray) => mm.index ?? 0;
+  const endsAt = new Map<number, RegExpMatchArray>();
+  for (const mm of matches) endsAt.set(idxOf(mm) + mm[0].length, mm);
+  const structural = new Map<number, boolean>();
+  for (const mm of matches) {
+    const i = idxOf(mm);
+    let s: boolean;
+    if (i === 0) {
+      s = true;
+    } else if (text[i - 1] === ')') {                       // "(3)(b)" — chained, no space
+      const prev = endsAt.get(i);
+      s = prev ? !!structural.get(idxOf(prev)) : false;
+    } else if (text[i - 1] === ' ' && text[i - 2] === ')') { // "(1) (a)" — chained with space
+      const prev = endsAt.get(i - 1);
+      s = prev ? !!structural.get(idxOf(prev)) : false;
+    } else {
+      const before = text.slice(0, i).replace(/\s+$/, '');
+      s = /[.;:]$/.test(before) || /\b(or|and)$/i.test(before);
+    }
+    structural.set(i, s);
+  }
+
+  const open = matches.filter((mm) => structural.get(idxOf(mm)));
+  if (open.length === 0) return [{ depth: 0, marker: '', text: text.trim() }];
+  const segs: Seg[] = [];
+  const lead = text.slice(0, idxOf(open[0])).trim();
+  if (lead) segs.push({ depth: 0, marker: '', text: lead });
+  for (let k = 0; k < open.length; k++) {
+    const mm = open[k];
+    const start = idxOf(mm) + mm[0].length;
+    const end = k + 1 < open.length ? idxOf(open[k + 1]) : text.length;
+    segs.push({ depth: tokenDepth(mm[1]), marker: `(${mm[1]})`, text: text.slice(start, end).trim() });
+  }
+  return segs;
+}
+
 function StatuteBody({ text }: { text: string }) {
-  const lines = text.split('\n').filter((l) => l.trim());
-  let last = 0;
+  const segs = parseOutline(text);
   return (
-    <div className="space-y-1" style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}>
-      {lines.map((ln, i) => {
-        let d = lineDepth(ln);
-        if (d < 0) d = last; else last = d;
-        const marker = ln.match(/^(\([0-9a-zA-Z]{1,4}\)(\s*\([0-9a-zA-Z]{1,4}\))*)\s*/);
-        const head = marker ? marker[1] : '';
-        const rest = marker ? ln.slice(marker[0].length) : ln;
-        return (
-          <p key={i} className="text-[12.5px] text-rmpg-100 leading-relaxed" style={{ paddingLeft: d * 18 }}>
-            {head && <span className="font-mono text-brand-gold-500 mr-1.5">{head}</span>}
-            {rest}
-          </p>
-        );
-      })}
+    <div style={{ fontFamily: 'Georgia, "Times New Roman", serif' }}>
+      {segs.map((s, i) => (
+        <p
+          key={i}
+          className="text-[12.5px] text-rmpg-100 leading-relaxed"
+          style={{
+            paddingLeft: 16 + s.depth * 26,
+            textIndent: s.marker ? -16 : 0,        // hanging indent: marker hangs, wraps align under text
+            marginTop: s.depth === 0 && i > 0 ? 8 : 2,
+          }}
+        >
+          {s.marker && <span className="font-mono font-semibold text-brand-gold-500 mr-1.5">{s.marker}</span>}
+          {s.text}
+        </p>
+      ))}
     </div>
   );
 }
