@@ -502,7 +502,12 @@
 //       pure-black base (dark-v11 + black land/water recolor) so streets + crime
 //       pop; reverse-geocoded current STREET shown in the banner + dashboard
 //       footer; live "crime within ½mi" count in the legend.
-const CACHE_NAME = 'rmpg-flex-v761';
+// v762: NAVIGATE destination search — header search opens an address/place lookup
+//       (Utah-biased geocoder); selecting a result routes there via useMapRouting.
+//       Turn banner gains an external-nav button (Organic Maps / OSM web) + a
+//       clear-route button. Manual route claims the slot so the assigned-call
+//       auto-route can't clobber it.
+const CACHE_NAME = 'rmpg-flex-v762';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

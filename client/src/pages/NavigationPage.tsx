@@ -22,10 +22,11 @@ import {
   Navigation2, Satellite, Wifi, Globe, X, AlertTriangle, MapPin, Gauge,
   CornerUpLeft, CornerUpRight, ArrowUp, ArrowUpLeft, ArrowUpRight,
   Flag, Merge, RotateCw, RotateCcw, Clock, Box, Crosshair, Maximize, Minimize,
-  Flame, type LucideIcon,
+  Flame, Search, type LucideIcon,
 } from 'lucide-react';
 import { useGpsTracking } from '../hooks/useGpsTracking';
 import { useMapRouting } from '../hooks/useMapRouting';
+import { navigateTo } from '../utils/organicMapsNav';
 import { useMap3D } from './map/hooks/useMap3D';
 import { mapboxgl, initMapbox, MAPBOX_STYLE_DARK } from '../utils/mapboxLoader';
 import { getMapboxAccessToken } from '../utils/mapboxApiKey';
@@ -317,7 +318,7 @@ export default function NavigationPage() {
   const [mapReady, setMapReady] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
 
-  const { activeRoute, routeProgress, offRoute, showRoute, updateOrigin } = useMapRouting({
+  const { activeRoute, routeProgress, offRoute, showRoute, clearRoute, updateOrigin } = useMapRouting({
     map: mapReady ? mapInstanceRef.current : null,
   });
 
@@ -347,6 +348,12 @@ export default function NavigationPage() {
   const [crimeIncidents, setCrimeIncidents] = useState<CrimePoint[]>([]);
   const [currentStreet, setCurrentStreet] = useState<string | null>(null);
   const geoRef = useRef<{ lat: number; lng: number; t: number } | null>(null);
+  // Destination search (address/place → route there).
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<{ lat: number; lng: number; label: string }[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [destLabel, setDestLabel] = useState<string | null>(null);
   const [, force] = useState(0);
 
   const dir = gps.headingSmoothed ?? gps.course ?? gps.heading;
@@ -509,6 +516,54 @@ export default function NavigationPage() {
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapReady]);
+
+  // ── Destination search (address / place → route there) ──
+  // Debounced geocode against the Utah-biased server search; results carry
+  // coords so selecting one routes immediately.
+  useEffect(() => {
+    if (!searchOpen) return;
+    const q = searchQuery.trim();
+    if (q.length < 3) { setSearchResults([]); setSearching(false); return; }
+    setSearching(true);
+    let cancelled = false;
+    const t = setTimeout(async () => {
+      try {
+        const res = await apiFetch<{ results?: any[] }>(`/geocode/search?q=${encodeURIComponent(q)}&limit=6`);
+        if (cancelled) return;
+        const rows = (res?.results || [])
+          .map((r: any) => ({
+            lat: Number(r.lat), lng: Number(r.lon),
+            label: String(r.display_name || '').split(',').slice(0, 2).join(',').trim() || 'Result',
+          }))
+          .filter((r) => Number.isFinite(r.lat) && Number.isFinite(r.lng));
+        setSearchResults(rows);
+      } catch { if (!cancelled) setSearchResults([]); }
+      finally { if (!cancelled) setSearching(false); }
+    }, 350);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [searchQuery, searchOpen]);
+
+  const routeToDestination = async (lat: number, lng: number, label: string) => {
+    destCoordsRef.current = { lat, lng };
+    routedCallRef.current = -1; // claim the route so the assigned-call auto-route can't clobber it
+    setDestLabel(label);
+    setSearchOpen(false);
+    setSearchQuery('');
+    setSearchResults([]);
+    if (gps.latitude != null && gps.longitude != null) {
+      await showRoute('NAV', label, gps.latitude, gps.longitude, lat, lng).catch(() => {});
+    }
+  };
+  const clearDestination = () => {
+    clearRoute();
+    destCoordsRef.current = null;
+    setDestLabel(null);
+    routedCallRef.current = null;
+  };
+  const openExternalNav = () => {
+    const d = destCoordsRef.current;
+    if (d) navigateTo(d.lat, d.lng, destLabel || activeRoute?.callNumber || 'Destination').catch(() => {});
+  };
 
   // Tick once a second so session-duration + the clock re-render even when parked.
   useEffect(() => {
@@ -782,6 +837,15 @@ export default function NavigationPage() {
           <span className="text-[9px] uppercase text-rmpg-500">{gps.connectionType}</span>
         )}
         <button
+          onClick={() => setSearchOpen((v) => !v)}
+          className="toolbar-btn flex items-center justify-center"
+          style={{ color: searchOpen ? '#d4a017' : '#a0a0a0' }}
+          title="Search destination"
+          aria-label="Search destination"
+        >
+          <Search className="w-4 h-4" />
+        </button>
+        <button
           onClick={() => setCrimeOn((v) => !v)}
           className="toolbar-btn flex items-center gap-1 text-[10px] uppercase"
           style={{ color: crimeOn ? '#f59e0b' : '#666' }}
@@ -808,6 +872,44 @@ export default function NavigationPage() {
         </button>
       </div>
 
+      {/* Destination search panel */}
+      {searchOpen && (
+        <div className="absolute z-30 panel-beveled bg-surface-deep/95 backdrop-blur-md border border-rmpg-600 shadow-2xl" style={{ top: 40, left: 8, right: 8, borderRadius: 2 }}>
+          <div className="flex items-center gap-2 px-3 py-2 border-b border-rmpg-700">
+            <Search className="w-4 h-4 text-brand-400 shrink-0" />
+            <input
+              autoFocus
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search address or place…"
+              className="flex-1 bg-transparent outline-none text-[13px] text-rmpg-100 placeholder:text-rmpg-600"
+            />
+            {searching && <span className="text-[9px] text-rmpg-500 shrink-0">…</span>}
+            <button onClick={() => { setSearchOpen(false); setSearchQuery(''); setSearchResults([]); }} className="text-rmpg-500 hover:text-white shrink-0" aria-label="Close search">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          {searchResults.length > 0 && (
+            <div className="max-h-64 overflow-y-auto scrollbar-dark">
+              {searchResults.map((r, i) => (
+                <button
+                  key={i}
+                  onClick={() => routeToDestination(r.lat, r.lng, r.label)}
+                  className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-surface-raised/60 border-t border-rmpg-800/60"
+                >
+                  <MapPin className="w-3.5 h-3.5 text-rmpg-500 shrink-0" />
+                  <span className="flex-1 min-w-0 truncate text-[12px] text-rmpg-200">{r.label}</span>
+                  <span className="text-[9px] font-mono font-bold text-brand-300 shrink-0">ROUTE</span>
+                </button>
+              ))}
+            </div>
+          )}
+          {searchQuery.trim().length >= 3 && !searching && searchResults.length === 0 && (
+            <div className="px-3 py-2 text-[10px] text-rmpg-500">No matches in Utah.</div>
+          )}
+        </div>
+      )}
+
       {/* Turn-by-turn banner (top) */}
       {activeRoute && step && (
         <div className="absolute top-12 inset-x-2 z-20 panel-beveled bg-surface-deep/92 backdrop-blur-md border border-rmpg-600 shadow-xl" style={{ borderRadius: 2 }}>
@@ -815,7 +917,17 @@ export default function NavigationPage() {
             <StepIcon className="w-9 h-9 text-brand-400 shrink-0" />
             <div className="flex-1 min-w-0">
               <div className="text-rmpg-100 text-[15px] font-semibold leading-tight truncate" title={step.instruction}>{step.instruction}</div>
-              <div className="text-[10px] text-rmpg-500 uppercase">to {activeRoute.callNumber}</div>
+              <div className="text-[10px] text-rmpg-500 uppercase truncate">to {destLabel || activeRoute.callNumber}</div>
+            </div>
+            <div className="flex flex-col gap-1 shrink-0">
+              <button onClick={openExternalNav} title="Open in external navigation" aria-label="Open in external navigation"
+                className="p-1 border border-rmpg-700 text-rmpg-300 hover:text-white hover:border-brand-500" style={{ borderRadius: 2 }}>
+                <Navigation2 className="w-3.5 h-3.5" />
+              </button>
+              <button onClick={clearDestination} title="Clear route" aria-label="Clear route"
+                className="p-1 border border-rmpg-700 text-rmpg-300 hover:text-red-400 hover:border-red-500" style={{ borderRadius: 2 }}>
+                <X className="w-3.5 h-3.5" />
+              </button>
             </div>
             <div className="text-right shrink-0">
               <div className="font-mono font-bold text-brand-300 text-[17px] leading-none">{routeProgress ? routeProgress.remainingEta : activeRoute.eta}</div>
