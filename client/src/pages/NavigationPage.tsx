@@ -166,6 +166,27 @@ function GForceMeter({ g }: { g: number }) {
   );
 }
 
+// A single bordered instrument readout cell — a tiny gold-tracked label over a
+// bold mono value, with a thin gold top-rail. Turns the stat grid into a real
+// instrument panel instead of bare text floating in black.
+function StatTile({ label, value, accent, dim }: { label: string; value: string; accent?: string; dim?: boolean }) {
+  return (
+    <div
+      className="relative bg-surface-raised/60 border border-rmpg-800 px-2 py-1 min-w-0 overflow-hidden"
+      style={{ borderRadius: 2, boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.02)' }}
+    >
+      <div className="absolute top-0 left-0 right-0 h-px" style={{ background: 'linear-gradient(90deg, transparent, #d4a01733 40%, #d4a01755 60%, transparent)' }} />
+      <div className="text-[8px] uppercase tracking-wider text-rmpg-600 leading-none truncate">{label}</div>
+      <div
+        className="font-mono font-bold text-[13px] leading-tight mt-0.5 truncate tabular-nums"
+        style={{ color: accent || (dim ? '#6b6b6b' : '#d4d4d4') }}
+      >
+        {value}
+      </div>
+    </div>
+  );
+}
+
 export default function NavigationPage() {
   const navigate = useNavigate();
   const gps = useGpsTracking({ capture: true });
@@ -483,8 +504,12 @@ export default function NavigationPage() {
       )}
 
       {/* Header bar */}
-      <div className="absolute top-0 inset-x-0 flex items-center gap-2 px-3 py-2 bg-surface-deep/85 backdrop-blur-md border-b border-rmpg-700 z-20">
-        <Navigation2 className="w-4 h-4 text-brand-400" />
+      <div
+        className="absolute top-0 inset-x-0 flex items-center gap-2 px-3 py-2 backdrop-blur-md border-b border-rmpg-800 z-20"
+        style={{ background: 'linear-gradient(180deg, rgba(10,10,10,0.92) 0%, rgba(10,10,10,0.78) 100%)' }}
+      >
+        <div className="absolute bottom-0 inset-x-0 h-px pointer-events-none" style={{ background: 'linear-gradient(90deg, transparent 5%, rgba(212,160,23,0.4) 30%, #d4a017 50%, rgba(212,160,23,0.4) 70%, transparent 95%)' }} />
+        <Navigation2 className="w-4 h-4 text-brand-400" style={{ filter: 'drop-shadow(0 0 3px rgba(212,160,23,0.5))' }} />
         <span className="text-[11px] font-bold uppercase tracking-widest text-rmpg-100 flex-1">Navigation</span>
         <span className="font-mono text-[11px] text-rmpg-300 tabular-nums">{clock}</span>
         <span className="flex items-center gap-1 text-[10px] font-bold uppercase" style={{ color: src.color }}>
@@ -623,65 +648,82 @@ export default function NavigationPage() {
       )}
 
       {/* ── Advanced instrument dashboard (bottom) ── */}
-      <div className="absolute bottom-0 inset-x-0 z-20 bg-surface-deep/92 backdrop-blur-md border-t border-rmpg-700">
-        {/* HUD heading tape */}
-        <div className="px-3 pt-1.5 pb-0.5 border-b border-rmpg-800">
-          <HeadingTape heading={dir} />
-        </div>
-        <div className="flex items-stretch gap-3 px-3 py-2">
-          {/* Ring speed gauge */}
-          <SpeedGauge mph={hasFix ? mph : null} />
-
-          {/* Dual-needle compass: heading (gold) + bearing to the call (red). */}
-          <div className="relative shrink-0 self-center" style={{ width: 84, height: 84 }} title="Heading + bearing to call">
-            <div className="absolute inset-0 rounded-full border-2 border-rmpg-600" />
-            <span className="absolute top-0 left-1/2 -translate-x-1/2 text-[8px] text-rmpg-500">N</span>
-            <span className="absolute bottom-0 left-1/2 -translate-x-1/2 text-[8px] text-rmpg-700">S</span>
-            <span className="absolute left-0 top-1/2 -translate-y-1/2 text-[8px] text-rmpg-700">W</span>
-            <span className="absolute right-0 top-1/2 -translate-y-1/2 text-[8px] text-rmpg-700">E</span>
-            {destBearing != null && (
-              <div className="absolute inset-0 flex items-start justify-center" style={{ transform: `rotate(${destBearing}deg)`, transition: 'transform 0.4s ease-out' }} title="Bearing to assigned call">
-                <div style={{ width: 0, height: 0, borderLeft: '4px solid transparent', borderRight: '4px solid transparent', borderBottom: '13px solid #ef4444', marginTop: 5 }} />
-              </div>
-            )}
-            <Navigation2
-              className="absolute inset-0 m-auto w-9 h-9 text-brand-400"
-              style={{ transform: `rotate(${dir ?? 0}deg)`, transition: 'transform 0.3s ease-out' }}
-              fill={dir != null ? '#d4a017' : 'none'}
-            />
-            <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 text-[10px] font-bold text-brand-300 bg-surface-deep px-1">
-              {dir != null ? `${Math.round(dir)}° ${compassCardinal(dir)}` : '—'}
-            </span>
+      <div className="absolute bottom-0 inset-x-0 z-20">
+        {/* Gold accent riser — lifts the instrument panel off the map */}
+        <div className="h-px w-full" style={{ background: 'linear-gradient(90deg, transparent 5%, rgba(212,160,23,0.4) 28%, #d4a017 50%, rgba(212,160,23,0.4) 72%, transparent 95%)' }} />
+        <div
+          className="backdrop-blur-md border-t border-rmpg-800/80"
+          style={{ background: 'linear-gradient(180deg, rgba(10,10,10,0.80) 0%, rgba(8,8,8,0.96) 60%)' }}
+        >
+          {/* HUD heading tape */}
+          <div className="px-3 pt-1.5 pb-1 border-b border-rmpg-800/70">
+            <HeadingTape heading={dir} />
           </div>
-
-          {/* Speed area-chart + G-force */}
-          <div className="flex flex-col justify-center gap-1.5 shrink-0" style={{ width: 132 }}>
-            <div>
-              <div className="text-[7px] uppercase text-rmpg-600 mb-0.5 flex items-center gap-1"><Gauge className="w-2.5 h-2.5" /> Speed · 60s</div>
-              {spark.length > 1 ? (
-                <svg viewBox={`0 0 ${spark.length - 1} 24`} preserveAspectRatio="none" style={{ width: 132, height: 28 }} aria-hidden="true">
-                  <polyline points={`0,24 ${spark.map((v, i) => `${i},${24 - Math.min(24, (v / sparkMax) * 24)}`).join(' ')} ${spark.length - 1},24`} fill="#d4a01722" stroke="none" />
-                  <polyline points={spark.map((v, i) => `${i},${24 - Math.min(24, (v / sparkMax) * 24)}`).join(' ')} fill="none" stroke="#d4a017" strokeWidth="1.5" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
-                </svg>
-              ) : <div style={{ height: 28 }} />}
+          <div className="flex items-stretch px-2 py-2">
+            {/* Bay 1 — ring speed gauge */}
+            <div className="flex items-center justify-center px-1">
+              <SpeedGauge mph={hasFix ? mph : null} />
             </div>
-            <GForceMeter g={gForce} />
-          </div>
+            <div className="w-px self-stretch my-1 bg-gradient-to-b from-transparent via-rmpg-700 to-transparent" />
 
-          {/* Live readouts + session stats grid */}
-          <div className="flex-1 min-w-0 grid grid-cols-3 gap-x-3 gap-y-0.5 font-mono text-[11px] self-center">
-            <div><span className="text-rmpg-500 text-[9px] uppercase">Acc </span><span className="text-rmpg-200">{gps.accuracy != null ? `${Math.round(gps.accuracy)}m` : '—'}</span></div>
-            <div><span className="text-rmpg-500 text-[9px] uppercase">Max </span><span className="text-rmpg-200">{maxMph}</span></div>
-            <div><span className="text-rmpg-500 text-[9px] uppercase">Avg </span><span className="text-rmpg-200">{Math.round(avgMph)}</span></div>
-            <div><span className="text-rmpg-500 text-[9px] uppercase">Crs </span><span className="text-rmpg-200">{course != null ? `${Math.round(course)}°` : '—'}</span></div>
-            <div><span className="text-rmpg-500 text-[9px] uppercase">Dist </span><span className="text-rmpg-200">{distanceMi.toFixed(2)}mi</span></div>
-            <div><span className="text-rmpg-500 text-[9px] uppercase">Time </span><span className="text-rmpg-200">{fmtDuration(sessionMs)}</span></div>
-            <div><span className="text-rmpg-500 text-[9px] uppercase">Brg </span><span className="text-rmpg-200">{destBearing != null ? `${Math.round(destBearing)}°` : '—'}</span></div>
-            <div><span className="text-rmpg-500 text-[9px] uppercase">Dir </span><span className="text-rmpg-200">{destCrowMi != null ? `${destCrowMi.toFixed(1)}mi` : '—'}</span></div>
-            <div><span className="text-rmpg-500 text-[9px] uppercase">Src </span><span style={{ color: src.color }}>{src.label}</span></div>
-            <div className="col-span-3 text-[9px] text-rmpg-500 truncate">
-              {hasFix ? `${gps.latitude!.toFixed(6)}, ${gps.longitude!.toFixed(6)}` : 'Acquiring fix…'}
-              {gps.unitCallSign ? ` · UNIT ${gps.unitCallSign}` : ''}
+            {/* Bay 2 — dual-needle compass: heading (gold) + bearing to call (red) */}
+            <div className="flex items-center justify-center px-3">
+              <div className="relative shrink-0" style={{ width: 84, height: 84 }} title="Heading + bearing to call">
+                <div className="absolute inset-0 rounded-full border-2 border-rmpg-600" style={{ boxShadow: 'inset 0 0 12px rgba(0,0,0,0.65)' }} />
+                <span className="absolute top-0 left-1/2 -translate-x-1/2 text-[8px] text-rmpg-500">N</span>
+                <span className="absolute bottom-0 left-1/2 -translate-x-1/2 text-[8px] text-rmpg-700">S</span>
+                <span className="absolute left-0 top-1/2 -translate-y-1/2 text-[8px] text-rmpg-700">W</span>
+                <span className="absolute right-0 top-1/2 -translate-y-1/2 text-[8px] text-rmpg-700">E</span>
+                {destBearing != null && (
+                  <div className="absolute inset-0 flex items-start justify-center" style={{ transform: `rotate(${destBearing}deg)`, transition: 'transform 0.4s ease-out' }} title="Bearing to assigned call">
+                    <div style={{ width: 0, height: 0, borderLeft: '4px solid transparent', borderRight: '4px solid transparent', borderBottom: '13px solid #ef4444', marginTop: 5 }} />
+                  </div>
+                )}
+                <Navigation2
+                  className="absolute inset-0 m-auto w-9 h-9 text-brand-400"
+                  style={{ transform: `rotate(${dir ?? 0}deg)`, transition: 'transform 0.3s ease-out', filter: dir != null ? 'drop-shadow(0 0 4px rgba(212,160,23,0.5))' : 'none' }}
+                  fill={dir != null ? '#d4a017' : 'none'}
+                />
+                <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 text-[10px] font-bold text-brand-300 bg-surface-deep px-1" style={{ borderRadius: 2 }}>
+                  {dir != null ? `${Math.round(dir)}° ${compassCardinal(dir)}` : '—'}
+                </span>
+              </div>
+            </div>
+            <div className="w-px self-stretch my-1 bg-gradient-to-b from-transparent via-rmpg-700 to-transparent" />
+
+            {/* Bay 3 — speed area-chart + G-force */}
+            <div className="flex flex-col justify-center gap-1.5 px-3" style={{ width: 150 }}>
+              <div>
+                <div className="text-[7px] uppercase tracking-wider text-rmpg-600 mb-0.5 flex items-center gap-1"><Gauge className="w-2.5 h-2.5" /> Speed · 60s</div>
+                {spark.length > 1 ? (
+                  <svg viewBox={`0 0 ${spark.length - 1} 24`} preserveAspectRatio="none" style={{ width: 150, height: 30 }} aria-hidden="true">
+                    <polyline points={`0,24 ${spark.map((v, i) => `${i},${24 - Math.min(24, (v / sparkMax) * 24)}`).join(' ')} ${spark.length - 1},24`} fill="#d4a01722" stroke="none" />
+                    <polyline points={spark.map((v, i) => `${i},${24 - Math.min(24, (v / sparkMax) * 24)}`).join(' ')} fill="none" stroke="#d4a017" strokeWidth="1.5" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+                  </svg>
+                ) : <div className="flex items-center text-[8px] text-rmpg-700" style={{ height: 30 }}>awaiting speed…</div>}
+              </div>
+              <GForceMeter g={gForce} />
+            </div>
+            <div className="w-px self-stretch my-1 bg-gradient-to-b from-transparent via-rmpg-700 to-transparent" />
+
+            {/* Bay 4 — live readouts + session stats as instrument tiles */}
+            <div className="flex-1 min-w-0 self-center pl-3 pr-1">
+              <div className="grid grid-cols-3 gap-1.5">
+                <StatTile label="Accuracy" value={gps.accuracy != null ? `${Math.round(gps.accuracy)} m` : '—'} dim={gps.accuracy == null} />
+                <StatTile label="Max" value={`${maxMph} mph`} />
+                <StatTile label="Avg" value={`${Math.round(avgMph)} mph`} />
+                <StatTile label="Course" value={course != null ? `${Math.round(course)}°` : '—'} dim={course == null} />
+                <StatTile label="Distance" value={`${distanceMi.toFixed(2)} mi`} />
+                <StatTile label="Session" value={fmtDuration(sessionMs)} />
+                <StatTile label="Bearing" value={destBearing != null ? `${Math.round(destBearing)}°` : '—'} accent={destBearing != null ? '#ef4444' : undefined} dim={destBearing == null} />
+                <StatTile label="To Call" value={destCrowMi != null ? `${destCrowMi.toFixed(1)} mi` : '—'} dim={destCrowMi == null} />
+                <StatTile label="Source" value={src.label} accent={src.color} />
+              </div>
+              <div className="mt-1.5 flex items-center gap-2 text-[9px] font-mono text-rmpg-500">
+                <Crosshair className="w-2.5 h-2.5 text-rmpg-600 shrink-0" />
+                <span className="truncate">{hasFix ? `${gps.latitude!.toFixed(6)}, ${gps.longitude!.toFixed(6)}` : 'Acquiring fix…'}</span>
+                {gps.unitCallSign && <span className="ml-auto shrink-0 text-brand-300 font-bold">UNIT {gps.unitCallSign}</span>}
+              </div>
             </div>
           </div>
         </div>
