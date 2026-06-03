@@ -22,7 +22,7 @@ import {
   Navigation2, Satellite, Wifi, Globe, X, AlertTriangle, MapPin, Gauge,
   CornerUpLeft, CornerUpRight, ArrowUp, ArrowUpLeft, ArrowUpRight,
   Flag, Merge, RotateCw, RotateCcw, Clock, Box, Crosshair, Maximize, Minimize,
-  type LucideIcon,
+  Flame, type LucideIcon,
 } from 'lucide-react';
 import { useGpsTracking } from '../hooks/useGpsTracking';
 import { useMapRouting } from '../hooks/useMapRouting';
@@ -86,6 +86,19 @@ const SOURCE_META: Record<string, { icon: LucideIcon; color: string; label: stri
 };
 
 const PRIO_COLOR: Record<string, string> = { P1: '#ef4444', P2: '#f59e0b', P3: '#d4a017', P4: '#888888' };
+
+interface CrimePoint { id: string; source: 'slc' | 'local'; category: string; label: string; date: string | null; lat: number; lng: number }
+
+// Map color for a crime point. SLC public data is colored by crime class; our
+// own CFS is green so the two sources read apart. (No blue — house style.)
+function crimeColor(p: CrimePoint): string {
+  if (p.source === 'local') return '#22c55e';
+  const cat = (p.category || '').toLowerCase();
+  if (cat.includes('person')) return '#ef4444';
+  if (cat.includes('property')) return '#f59e0b';
+  if (cat.includes('society')) return '#a855f7';
+  return '#d4a017';
+}
 
 // Initial great-circle bearing (deg, 0=N) from A to B.
 function bearingTo(lat1: number, lng1: number, lat2: number, lng2: number): number {
@@ -330,6 +343,8 @@ export default function NavigationPage() {
   const [gForce, setGForce] = useState(0);
   const destCoordsRef = useRef<{ lat: number; lng: number } | null>(null);
   const [nearbyUnits, setNearbyUnits] = useState<{ call_sign: string; status: string; lat: number; lng: number }[]>([]);
+  const [crimeOn, setCrimeOn] = useState(true);
+  const [crimeIncidents, setCrimeIncidents] = useState<CrimePoint[]>([]);
   const [, force] = useState(0);
 
   const dir = gps.headingSmoothed ?? gps.course ?? gps.heading;
@@ -552,6 +567,82 @@ export default function NavigationPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gps.latitude != null]);
 
+  // ── Crime data layers ──
+  // Fetch BOTH sources (SLC public crime proxy + our own recent CFS), merge,
+  // refresh every 10 min. Best-effort: a failed source just yields fewer points.
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      try {
+        const [slc, local] = await Promise.all([
+          apiFetch<{ incidents?: CrimePoint[] }>('/crime/slc?days=60&limit=1500').catch(() => null),
+          apiFetch<{ incidents?: CrimePoint[] }>('/crime/local?days=60&limit=1000').catch(() => null),
+        ]);
+        if (cancelled) return;
+        setCrimeIncidents([...(slc?.incidents || []), ...(local?.incidents || [])]);
+      } catch { /* best-effort — crime overlay is supplemental */ }
+    };
+    run();
+    const iv = setInterval(run, 10 * 60 * 1000);
+    return () => { cancelled = true; clearInterval(iv); };
+  }, []);
+
+  // Render the crime layer onto the drive map: a density heatmap under colored
+  // incident dots, from one GeoJSON source. Adds the source/layers once, then
+  // setData on refresh; visibility follows the toggle. Best-effort (style may be
+  // mid-reload). The map is torn down on unmount, so no explicit layer cleanup.
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !mapReady) return;
+    const SRC = 'rmpg-crime';
+    const fc = {
+      type: 'FeatureCollection',
+      features: crimeIncidents.map((p) => ({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [p.lng, p.lat] },
+        properties: { color: crimeColor(p) },
+      })),
+    };
+    try {
+      const existing = map.getSource(SRC);
+      if (existing) {
+        existing.setData(fc);
+      } else {
+        map.addSource(SRC, { type: 'geojson', data: fc });
+        map.addLayer({
+          id: 'rmpg-crime-heat', type: 'heatmap', source: SRC,
+          paint: {
+            'heatmap-weight': 0.55,
+            'heatmap-intensity': ['interpolate', ['linear'], ['zoom'], 10, 0.7, 16, 1.1],
+            'heatmap-radius': ['interpolate', ['linear'], ['zoom'], 10, 12, 16, 28],
+            'heatmap-opacity': 0.45,
+            'heatmap-color': ['interpolate', ['linear'], ['heatmap-density'],
+              0, 'rgba(0,0,0,0)', 0.3, 'rgba(212,160,23,0.35)', 0.6, 'rgba(245,158,11,0.6)', 1, 'rgba(239,68,68,0.9)'],
+          },
+        });
+        map.addLayer({
+          id: 'rmpg-crime-pts', type: 'circle', source: SRC,
+          paint: {
+            'circle-radius': ['interpolate', ['linear'], ['zoom'], 12, 2.4, 17, 5],
+            'circle-color': ['get', 'color'],
+            'circle-opacity': 0.85,
+            'circle-stroke-width': 0.5,
+            'circle-stroke-color': '#0a0a0a',
+          },
+        });
+      }
+      const vis = crimeOn ? 'visible' : 'none';
+      if (map.getLayer('rmpg-crime-heat')) map.setLayoutProperty('rmpg-crime-heat', 'visibility', vis);
+      if (map.getLayer('rmpg-crime-pts')) map.setLayoutProperty('rmpg-crime-pts', 'visibility', vis);
+    } catch { /* style mid-reload — next data tick re-applies */ }
+  }, [crimeIncidents, crimeOn, mapReady]);
+
+  const crimeCounts = useMemo(() => {
+    let slc = 0, local = 0;
+    for (const p of crimeIncidents) { if (p.source === 'local') local++; else slc++; }
+    return { slc, local, total: crimeIncidents.length };
+  }, [crimeIncidents]);
+
   const sessionMs = startRef.current ? Date.now() - startRef.current : 0;
   const distanceMi = distanceRef.current / 1609.34;
   const avgMph = sessionMs > 60000 ? distanceMi / (sessionMs / 3600000) : 0;
@@ -653,6 +744,15 @@ export default function NavigationPage() {
           <span className="text-[9px] uppercase text-rmpg-500">{gps.connectionType}</span>
         )}
         <button
+          onClick={() => setCrimeOn((v) => !v)}
+          className="toolbar-btn flex items-center gap-1 text-[10px] uppercase"
+          style={{ color: crimeOn ? '#f59e0b' : '#666' }}
+          title={crimeOn ? 'Hide crime layer' : 'Show crime layer (SLC + RMPG)'}
+          aria-label={crimeOn ? 'Hide crime layer' : 'Show crime layer'}
+        >
+          <Flame className="w-4 h-4" /> Crime
+        </button>
+        <button
           onClick={toggleFullscreen}
           className="toolbar-btn flex items-center justify-center text-rmpg-300 hover:text-white"
           title={isFullscreen ? 'Exit full screen' : 'Full screen'}
@@ -733,6 +833,26 @@ export default function NavigationPage() {
           )}
         </div>
       </div>
+
+      {/* Crime layer legend (top-right, under the 3D inset) */}
+      {crimeOn && crimeCounts.total > 0 && (
+        <div className="absolute z-20 panel-beveled bg-surface-deep/90 backdrop-blur-md border border-rmpg-600 shadow-xl" style={{ top: 252, right: 8, width: 152, borderRadius: 2 }}>
+          <div className="flex items-center gap-1 px-2 py-1 border-b border-rmpg-700">
+            <Flame className="w-3 h-3" style={{ color: '#f59e0b' }} />
+            <span className="text-[9px] font-bold uppercase tracking-wider text-rmpg-200 flex-1">Crime · 60d</span>
+            <span className="text-[9px] font-mono text-rmpg-500">{crimeCounts.total}</span>
+          </div>
+          <div className="px-2 py-1 space-y-0.5">
+            {([['#ef4444', 'Person (SLC)'], ['#f59e0b', 'Property (SLC)'], ['#a855f7', 'Society (SLC)'], ['#22c55e', `RMPG CFS (${crimeCounts.local})`]] as const).map(([col, lbl]) => (
+              <div key={lbl} className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full shrink-0" style={{ background: col }} />
+                <span className="text-[9px] text-rmpg-300 truncate">{lbl}</span>
+              </div>
+            ))}
+            <div className="text-[8px] text-rmpg-600 pt-0.5">SLCPD public · {crimeCounts.slc} pts</div>
+          </div>
+        </div>
+      )}
       {!activeRoute && (
         <div className="absolute top-12 inset-x-2 z-20 panel-beveled bg-surface-deep/85 backdrop-blur-md border border-rmpg-700 px-3 py-1.5 text-[10px] uppercase text-rmpg-500 flex items-center gap-2" style={{ borderRadius: 2 }}>
           <MapPin className="w-3.5 h-3.5" /> No active route — following GPS

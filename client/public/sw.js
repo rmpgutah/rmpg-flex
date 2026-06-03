@@ -493,7 +493,12 @@
 //       board with heading-relative bearing arrows + threat tally/pulse, map
 //       corner-bracket viewport framing, and self-unit exclusion (own unit no
 //       longer shows as a 0.0mi contact). Contact range/bearing recompute live.
-const CACHE_NAME = 'rmpg-flex-v759';
+// v760: NAVIGATE crime layer — live crime overlay on the drive map from TWO
+//       sources: Salt Lake City PD public crime data (ArcGIS, cached via new
+//       Worker proxy /api/crime/slc) + our own recent CFS (/api/crime/local),
+//       rendered as a density heatmap + color-by-class incident dots with a
+//       toggle + legend. 60-day window.
+const CACHE_NAME = 'rmpg-flex-v760';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

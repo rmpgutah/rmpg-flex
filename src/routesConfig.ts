@@ -80,6 +80,7 @@ import records from './routes/records';
 import subjects from './routes/records/subjects';
 import properties from './routes/properties';
 import geocode from './routes/geocode';
+import crime from './routes/crime';
 import warrants from './routes/warrants';
 import nibrs from './routes/nibrs';
 import incidentSupplements from './routes/incidentSupplements';
@@ -190,6 +191,10 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/map-data', router: mapData, auth: 'public' },
   { prefix: '/api/tiles', router: tiles, auth: 'public' },
   { prefix: '/api/geo', router: geo, auth: 'public' },
+
+  // Crime layers for the NAVIGATE tactical map (SLC public data proxy + our
+  // own CFS). Auth-gated like the rest of the app; /local reads our DB.
+  { prefix: '/api/crime', router: crime, auth: 'required' },
 
   // ── Dispatch (longer-prefix routers first) ─────────────────
   // callLinks + panic + premiseHistory mount at /api/dispatch and
