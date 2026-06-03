@@ -486,7 +486,9 @@
 //       divider-separated bays (gauge | compass | chart | stats) with bordered
 //       gold-railed stat tiles (no more bare text floating in black), a gold
 //       accent riser, header gold underline + icon glow, and a richer compass.
-const CACHE_NAME = 'rmpg-flex-v757';
+// v758: caution-flag (call_status_for_officer) + property-hazard (dispatch_alert)
+//       MDT voice cues now reach the assigned officer via AlertHubDO + filter.
+const CACHE_NAME = 'rmpg-flex-v758';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

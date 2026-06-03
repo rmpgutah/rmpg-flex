@@ -1885,6 +1885,7 @@ export type WSMessageType =
   | 'message'
   | 'activity'
   | 'dispatch_alert'
+  | 'call_status_for_officer'
   | 'system_alert'
   | 'notification'
   | 'panic_alert'
