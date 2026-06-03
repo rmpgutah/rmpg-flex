@@ -19,8 +19,15 @@ export interface StatuteResult {
   /** Legal definition / elements of crime for law reference */
   definition?: string | null;
   offense_level: string | null;
-  category: 'criminal' | 'vehicle' | 'licensing';
+  /** Area of law: criminal | vehicle | licensing | procedure | public_safety
+   *  | juvenile | wildlife | alcohol | controlled | protective | … */
+  category: string;
   subcategory: string;
+  /** Plain-language ("basic language") fields — utah_statutes migration 0074 */
+  plain_summary?: string | null;
+  /** Key-point bullets; the API parses the stored JSON into a string[] */
+  plain_elements?: string[] | null;
+  summary_model?: string | null;
   /** Base fine amount for traffic citations / infractions */
   citation_fine?: number | null;
   /** Law-book fields (utah_statutes, migration 0073) */

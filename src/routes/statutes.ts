@@ -21,7 +21,8 @@ const statutes = new Hono<Env>();
 
 const COLS = `id, title, chapter, chapter_code, section, subsection, citation,
   short_title, description, offense_level, category, subcategory, part_name,
-  code_type, effective_date, source_url, citation_fine`;
+  code_type, effective_date, source_url, citation_fine,
+  plain_summary, plain_elements, summary_model`;
 
 // The StatuteLookup UI is multi-state aware but we only hold Utah law.
 function utahOnly(state?: string): boolean {
@@ -32,7 +33,16 @@ function utahOnly(state?: string): boolean {
 
 function shape(r: Record<string, unknown>) {
   // `state`/`state_name`/`definition` keep the legacy StatuteResult shape happy.
-  return { ...r, state: 'UT', state_name: 'Utah', definition: null };
+  // plain_elements is stored as a JSON array string — parse it so the client
+  // gets a real string[] (null/garbage degrades to []).
+  let plainElements: string[] = [];
+  if (typeof r.plain_elements === 'string' && r.plain_elements.trim()) {
+    try {
+      const parsed = JSON.parse(r.plain_elements);
+      if (Array.isArray(parsed)) plainElements = parsed.map((e) => String(e));
+    } catch { /* leave [] */ }
+  }
+  return { ...r, plain_elements: plainElements, state: 'UT', state_name: 'Utah', definition: null };
 }
 
 // GET /search — type-ahead + full-text over citation / title / body.
@@ -89,7 +99,8 @@ statutes.get('/toc', async (c) => {
               MIN(subcategory)  AS subcategory,
               MIN(code_type)    AS code_type,
               COUNT(*)          AS section_count,
-              SUM(CASE WHEN offense_level IS NOT NULL THEN 1 ELSE 0 END) AS offense_count
+              SUM(CASE WHEN offense_level IS NOT NULL THEN 1 ELSE 0 END) AS offense_count,
+              SUM(CASE WHEN plain_summary IS NOT NULL AND plain_summary != '' THEN 1 ELSE 0 END) AS summary_count
        FROM utah_statutes
        WHERE ${where.join(' AND ')}
        GROUP BY category, title, chapter_code

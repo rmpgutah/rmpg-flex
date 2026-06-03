@@ -1,26 +1,31 @@
 // ============================================================
 // RMPG Flex — Utah Law Book (advanced reference system)
-// A formally-formatted, browsable reference for the Utah Code offenses +
-// licensing law in utah_statutes (Title 76 Criminal, Title 41 Motor Vehicles,
-// Title 58 Security/PI licensing, Title 78B Process Server) and the matching
-// Administrative Code rules. Backed by /api/statutes (search / toc / chapter).
+// A formally-formatted, browsable reference for the Utah Code + Administrative
+// Code in utah_statutes. Covers the criminal/vehicle/licensing core PLUS the
+// LE-relevant expansion (Criminal Procedure, Public Safety, Juvenile Justice,
+// Wildlife, Alcohol, Controlled Substances, Protective Orders) and the matching
+// admin rules. Backed by /api/statutes (search / toc / chapter).
 //
-// Replaces the old MenuBar "Law Books" modal. Layout: a stats ribbon, color-
-// coded offense-level + category filters, a collapsible table-of-contents, a
-// category landing overview, and a premium statute reader that re-indents the
-// nested (1)(a)(i) legal outline.
+// Layout: a stats ribbon, data-driven category + offense-level filters, a
+// collapsible table-of-contents, a category landing overview, and a premium
+// statute reader that re-indents the nested (1)(a)(i) legal outline AND surfaces
+// the plain-language ("basic language and understanding") summary for each
+// section. Any section or whole chapter can be printed to a formatted PDF.
 // ============================================================
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   Scale, Search, ChevronRight, ChevronDown, ExternalLink, Loader2, BookOpen,
-  Gavel, Car, ShieldCheck, FileText, X, ArrowLeft, Layers,
+  Gavel, Car, ShieldCheck, FileText, X, ArrowLeft, Layers, Printer, Sparkles,
+  Pill, ShieldAlert, Users, Leaf, Wine, Shield, Banknote, type LucideIcon,
 } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { apiFetch } from '../hooks/useApi';
 import { OffenseLevelBadge, type StatuteResult } from '../components/StatuteLookup';
+import { parseOutline } from '../utils/statuteOutline';
+import { generateStatutePdf, printStatuteSection, printStatuteChapter } from '../utils/statutePdfGenerator';
 
 interface TocRow {
-  category: 'criminal' | 'vehicle' | 'licensing';
+  category: string;
   title: number;
   chapter: number;
   chapter_code: string;
@@ -28,15 +33,33 @@ interface TocRow {
   code_type: string;
   section_count: number;
   offense_count: number;
+  summary_count: number;
 }
 
-type CategoryKey = 'all' | 'criminal' | 'vehicle' | 'licensing';
+type CategoryKey = string; // 'all' | one of the CATEGORY_META keys
 
-const CATEGORY_META: Record<Exclude<CategoryKey, 'all'>, { label: string; blurb: string; icon: typeof Gavel; accent: string }> = {
-  criminal: { label: 'Criminal Code', blurb: 'Title 76 — offenses against persons, property, government & public order', icon: Gavel, accent: '#d4a017' },
-  vehicle: { label: 'Motor Vehicle & Traffic', blurb: 'Title 41 — traffic code, DUI, registration, equipment & licensing', icon: Car, accent: '#c08a13' },
-  licensing: { label: 'Security · PI · Process Server', blurb: 'Title 58/78B licensing statutes + the implementing administrative rules', icon: ShieldCheck, accent: '#9a6f0f' },
+interface CatMeta { label: string; short: string; blurb: string; icon: LucideIcon; accent: string }
+
+// Full category taxonomy. The filter bar + landing render only the categories
+// actually present in the data (derived from the TOC), so adding a scraped
+// title automatically surfaces here without further UI work.
+const CATEGORY_META: Record<string, CatMeta> = {
+  criminal:      { label: 'Criminal Code',          short: 'Criminal',   blurb: 'Title 76 — offenses against persons, property, government & public order',          icon: Gavel,       accent: '#ef4444' },
+  fraud:         { label: 'Fraud',                  short: 'Fraud',      blurb: 'Title 25 — Statute of Frauds, fraudulent transfers & related fraud law',           icon: Banknote,    accent: '#db2777' },
+  procedure:     { label: 'Criminal Procedure',     short: 'Procedure',  blurb: 'Title 77 — arrest, search & seizure, warrants, evidence & trial process',          icon: Scale,       accent: '#d4a017' },
+  vehicle:       { label: 'Motor Vehicle & Traffic',short: 'Vehicle',    blurb: 'Title 41 — traffic code, DUI, registration, equipment & licensing',                icon: Car,         accent: '#fb923c' },
+  controlled:    { label: 'Controlled Substances',  short: 'Drugs',      blurb: 'Title 58 ch 37 — schedules, possession, distribution & paraphernalia',             icon: Pill,        accent: '#f59e0b' },
+  public_safety: { label: 'Public Safety',          short: 'Pub Safety', blurb: 'Title 53 — peace officer standards (POST), highway patrol & emergency management',  icon: ShieldAlert, accent: '#22c55e' },
+  juvenile:      { label: 'Juvenile Justice',       short: 'Juvenile',   blurb: 'Title 80 — juvenile court, delinquency, custody & child welfare',                   icon: Users,       accent: '#a3e635' },
+  wildlife:      { label: 'Wildlife Resources',     short: 'Wildlife',   blurb: 'Title 23A — hunting, fishing, licensing & wildlife offenses',                       icon: Leaf,        accent: '#65a30d' },
+  alcohol:       { label: 'Alcoholic Beverage',     short: 'Alcohol',    blurb: 'Title 32B — alcohol control, licensing & related offenses',                        icon: Wine,        accent: '#b45309' },
+  protective:    { label: 'Protective Orders',      short: 'Protective', blurb: 'Title 78B ch 7 — protective orders, stalking injunctions & enforcement',            icon: Shield,      accent: '#e11d48' },
+  licensing:     { label: 'Security · PI · Process',short: 'Licensing',  blurb: 'Title 58/78B licensing statutes + implementing administrative rules',               icon: ShieldCheck, accent: '#9ca3af' },
 };
+const CATEGORY_ORDER = ['criminal', 'fraud', 'procedure', 'vehicle', 'controlled', 'public_safety', 'juvenile', 'wildlife', 'alcohol', 'protective', 'licensing'];
+function getCatMeta(cat: string): CatMeta {
+  return CATEGORY_META[cat] || { label: cat.replace(/_/g, ' '), short: cat, blurb: '', icon: Layers, accent: '#888888' };
+}
 
 // Offense-level filter chips, ordered most→least severe, color-coded.
 const LEVELS: { key: string; short: string; dot: string }[] = [
@@ -49,80 +72,6 @@ const LEVELS: { key: string; short: string; dot: string }[] = [
   { key: 'class_c_misdemeanor', short: 'Class C', dot: '#eab308' },
   { key: 'infraction', short: 'Infraction', dot: '#9ca3af' },
 ];
-
-// Canonical Utah outline depth for a marker token: (1)→0  (a)→1  (i)→2  (A)→3  (I)→4
-function tokenDepth(tok: string): number {
-  if (/^\d+$/.test(tok)) return 0;
-  const isRoman = (s: string) => s.length > 0 && /^(x{0,3})(ix|iv|v?i{0,3})$/.test(s);
-  if (/^[a-z]+$/.test(tok)) return isRoman(tok) ? 2 : 1;          // (i)…→2, (a)…→1
-  if (/^[A-Z]+$/.test(tok)) return isRoman(tok.toLowerCase()) ? 4 : 3; // (I)…→4, (A)…→3
-  return 1;
-}
-
-// Split a statute body into its nested outline. The stored text is a single run
-// with inline markers ("…arm.(b) Terms…(2) An actor…"), so we must tell a
-// STRUCTURAL marker (opens a subsection) apart from an inline cross-reference
-// like "Subsection (3)(b)". A marker is structural when it sits at the start, or
-// right after a sentence boundary (. : ; or/and), or chains off another
-// structural marker — references after a word ("Subsection (3)") are not.
-interface Seg { depth: number; marker: string; text: string }
-function parseOutline(text: string): Seg[] {
-  const matches = [...text.matchAll(/\(([0-9]{1,3}|[A-Za-z]{1,3})\)/g)];
-  if (matches.length === 0) return text.trim() ? [{ depth: 0, marker: '', text: text.trim() }] : [];
-
-  const idxOf = (mm: RegExpMatchArray) => mm.index ?? 0;
-  const endsAt = new Map<number, RegExpMatchArray>();
-  for (const mm of matches) endsAt.set(idxOf(mm) + mm[0].length, mm);
-  const structural = new Map<number, boolean>();
-  for (const mm of matches) {
-    const i = idxOf(mm);
-    let s: boolean;
-    if (i === 0) {
-      s = true;
-    } else if (text[i - 1] === ')') {                       // "(3)(b)" — chained, no space
-      const prev = endsAt.get(i);
-      s = prev ? !!structural.get(idxOf(prev)) : false;
-    } else if (text[i - 1] === ' ' && text[i - 2] === ')') { // "(1) (a)" — chained with space
-      const prev = endsAt.get(i - 1);
-      s = prev ? !!structural.get(idxOf(prev)) : false;
-    } else {
-      const before = text.slice(0, i).replace(/\s+$/, '');
-      s = /[.;:]$/.test(before) || /\b(or|and)$/i.test(before);
-    }
-    structural.set(i, s);
-  }
-
-  const open = matches.filter((mm) => structural.get(idxOf(mm)));
-  if (open.length === 0) return [{ depth: 0, marker: '', text: text.trim() }];
-
-  // One raw segment per structural marker, plus any lead prose before the first.
-  const raw: Seg[] = [];
-  const lead = text.slice(0, idxOf(open[0])).trim();
-  if (lead) raw.push({ depth: 0, marker: '', text: lead });
-  for (let k = 0; k < open.length; k++) {
-    const mm = open[k];
-    const start = idxOf(mm) + mm[0].length;
-    const end = k + 1 < open.length ? idxOf(open[k + 1]) : text.length;
-    raw.push({ depth: tokenDepth(mm[1]), marker: `(${mm[1]})`, text: text.slice(start, end).trim() });
-  }
-
-  // Fold "container" markers — a subsection like (3)(a)(i)… whose OWN text is
-  // empty because its content lives entirely in deeper children — onto that
-  // first child, so a pure container never lands on a line by itself ("(3)" /
-  // "(a)" blank rows). The official Utah Code prints these as one "(3)(a)(i)"
-  // lead; we keep the merged segment at the child's depth so real siblings
-  // (the following "(ii)") still align. A trailing empty container (no child to
-  // absorb it) is dropped — it carried no text to show.
-  const segs: Seg[] = [];
-  let prefix = '';
-  for (let k = 0; k < raw.length; k++) {
-    const seg = raw[k];
-    if (seg.marker && !seg.text) { if (raw[k + 1]) prefix += seg.marker; continue; }
-    segs.push({ ...seg, marker: prefix + seg.marker });
-    prefix = '';
-  }
-  return segs;
-}
 
 function StatuteBody({ text }: { text: string }) {
   const segs = parseOutline(text);
@@ -146,12 +95,41 @@ function StatuteBody({ text }: { text: string }) {
   );
 }
 
+// "Basic language and understanding" panel — the AI plain-language summary +
+// key-point bullets, shown above the verbatim statutory text in the reader.
+function PlainLanguagePanel({ s }: { s: StatuteResult }) {
+  if (!s.plain_summary) return null;
+  const els = Array.isArray(s.plain_elements) ? s.plain_elements : [];
+  return (
+    <div className="bg-surface-sunken border border-rmpg-800" style={{ borderRadius: 2, borderLeft: '2px solid #d4a017' }}>
+      <div className="flex items-center gap-1.5 px-3 pt-2">
+        <Sparkles className="w-3 h-3 text-brand-gold-500" />
+        <span className="text-[9px] font-bold uppercase tracking-wider text-brand-gold-500">Plain Language</span>
+        <span className="text-[8px] uppercase tracking-wider text-rmpg-600 border border-rmpg-700 px-1 py-px" style={{ borderRadius: 2 }}>AI summary</span>
+      </div>
+      <p className="px-3 pt-1.5 text-[12px] text-rmpg-100 leading-relaxed">{s.plain_summary}</p>
+      {els.length > 0 && (
+        <ul className="px-3 pt-1.5 pb-1 space-y-0.5">
+          {els.map((e, i) => (
+            <li key={i} className="text-[11px] text-rmpg-300 leading-snug flex gap-1.5">
+              <span className="text-brand-gold-500 shrink-0">•</span><span>{e}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      <div className="px-3 pb-2 pt-1 text-[8.5px] text-rmpg-600 italic">
+        AI-generated reference aid — verify against the verbatim text below.
+      </div>
+    </div>
+  );
+}
+
 export default function LawBookPage() {
   const [toc, setToc] = useState<TocRow[]>([]);
   const [tocLoading, setTocLoading] = useState(true);
   const [category, setCategory] = useState<CategoryKey>('all');
   const [level, setLevel] = useState<string | null>(null);
-  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({ criminal: true, vehicle: true, licensing: true });
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
 
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<StatuteResult[] | null>(null);
@@ -172,14 +150,22 @@ export default function LawBookPage() {
   }, []);
 
   const stats = useMemo(() => {
-    const s = { total: 0, criminal: 0, vehicle: 0, licensing: 0, rules: 0, offenses: 0 };
+    const cats = new Set<string>();
+    const s = { total: 0, rules: 0, offenses: 0, summaries: 0, chapters: toc.length };
     for (const r of toc) {
       s.total += r.section_count;
-      s[r.category] += r.section_count;
+      s.summaries += r.summary_count || 0;
       if (r.code_type === 'rule') s.rules += r.section_count;
       s.offenses += r.offense_count;
+      cats.add(r.category);
     }
-    return s;
+    return { ...s, areas: cats.size };
+  }, [toc]);
+
+  // Categories actually present, in the canonical order (unknowns appended).
+  const categoriesPresent = useMemo(() => {
+    const set = new Set(toc.map((r) => r.category));
+    return [...CATEGORY_ORDER.filter((c) => set.has(c)), ...[...set].filter((c) => !CATEGORY_ORDER.includes(c))];
   }, [toc]);
 
   const grouped = useMemo(() => {
@@ -226,6 +212,22 @@ export default function LawBookPage() {
 
   const resetToBrowse = () => { setChapter(null); setResults(null); setQuery(''); setLevel(null); setOpenSection(null); };
 
+  // Print whatever the reader is currently showing (a chapter, or search results).
+  const handlePrint = () => {
+    if (!visibleSections.length) return;
+    if (showingSearch) {
+      generateStatutePdf({
+        docTitle: 'Search Results',
+        subtitle: query.trim() ? `“${query.trim()}”${level ? ` · ${level.replace(/_/g, ' ')}` : ''}` : 'Filtered results',
+        sections: visibleSections,
+        fileName: 'RMPG-LawBook-Search',
+      });
+    } else if (chapter) {
+      const titleCode = visibleSections[0]?.citation.split('-')[0] || String(chapter.title);
+      printStatuteChapter(titleCode, chapter.code, chapter.name, visibleSections);
+    }
+  };
+
   return (
     <div className="p-4 space-y-3">
       <PanelTitleBar title="UTAH LAW BOOK" icon={Scale} />
@@ -234,9 +236,9 @@ export default function LawBookPage() {
       <div className="grid grid-cols-3 md:grid-cols-6 gap-2">
         {[
           { label: 'Sections', value: stats.total, accent: '#d4a017' },
-          { label: 'Criminal', value: stats.criminal, accent: '#ef4444' },
-          { label: 'Vehicle', value: stats.vehicle, accent: '#fb923c' },
-          { label: 'Licensing', value: stats.licensing, accent: '#22c55e' },
+          { label: 'Areas of Law', value: stats.areas, accent: '#ef4444' },
+          { label: 'Chapters', value: stats.chapters, accent: '#fb923c' },
+          { label: 'Plain-Language', value: stats.summaries, accent: '#22c55e' },
           { label: 'Admin Rules', value: stats.rules, accent: '#888888' },
           { label: 'Classified Offenses', value: stats.offenses, accent: '#fbbf24' },
         ].map((t) => (
@@ -250,22 +252,27 @@ export default function LawBookPage() {
       {/* ── Filter bar ── */}
       <div className="space-y-2">
         <div className="flex flex-wrap items-center gap-2">
-          {(['all', 'criminal', 'vehicle', 'licensing'] as CategoryKey[]).map((c) => (
-            <button key={c} type="button"
-              onClick={() => { setCategory(c); resetToBrowse(); }}
-              className="px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider border"
-              style={{
-                background: category === c ? '#d4a017' : '#141414',
-                color: category === c ? '#0a0a0a' : '#888888',
-                borderColor: category === c ? '#d4a017' : '#222222', borderRadius: 2,
-              }}>
-              {c === 'all' ? 'All Law' : CATEGORY_META[c].label}
-            </button>
-          ))}
+          <button type="button" onClick={() => { setCategory('all'); resetToBrowse(); }}
+            className="px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider border"
+            style={{ background: category === 'all' ? '#d4a017' : '#141414', color: category === 'all' ? '#0a0a0a' : '#888888', borderColor: category === 'all' ? '#d4a017' : '#222222', borderRadius: 2 }}>
+            All Law
+          </button>
+          {categoriesPresent.map((c) => {
+            const meta = getCatMeta(c);
+            const active = category === c;
+            return (
+              <button key={c} type="button"
+                onClick={() => { setCategory(c); resetToBrowse(); }}
+                className="px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider border"
+                style={{ background: active ? meta.accent : '#141414', color: active ? '#0a0a0a' : '#888888', borderColor: active ? meta.accent : '#222222', borderRadius: 2 }}>
+                {meta.short}
+              </button>
+            );
+          })}
           <div className="relative flex-1 min-w-[240px]">
             <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400 pointer-events-none" />
             <input value={query} onChange={(e) => setQuery(e.target.value)}
-              placeholder='Search — "76-5-102", "assault", "DUI", "security guard"…'
+              placeholder='Search — "76-5-102", "assault", "DUI", "arrest", "stalking"…'
               className="w-full pl-8 pr-8 py-2 text-xs bg-surface-sunken border border-rmpg-700 text-white placeholder:text-rmpg-500" style={{ borderRadius: 2 }} />
             {(query || level) && (
               <button type="button" onClick={resetToBrowse} aria-label="Clear search"
@@ -306,19 +313,22 @@ export default function LawBookPage() {
           ) : Object.keys(grouped).length === 0 ? (
             <div className="p-4 text-[10px] text-rmpg-500 text-center uppercase tracking-wider">No chapters</div>
           ) : (
-            Object.entries(grouped).map(([cat, rows]) => {
-              const meta = CATEGORY_META[cat as Exclude<CategoryKey, 'all'>];
-              const Icon = meta?.icon || Layers;
+            categoriesPresent.filter((c) => grouped[c]).map((cat) => {
+              const rows = grouped[cat];
+              const meta = getCatMeta(cat);
+              const Icon = meta.icon;
+              const open = openGroups[cat] ?? true;
               return (
                 <div key={cat}>
-                  <button type="button" onClick={() => setOpenGroups((g) => ({ ...g, [cat]: !g[cat] }))}
-                    className="w-full flex items-center gap-1.5 px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-brand-gold-500 hover:bg-surface-base border-b border-rmpg-900">
-                    {openGroups[cat] ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                  <button type="button" onClick={() => setOpenGroups((g) => ({ ...g, [cat]: !(g[cat] ?? true) }))}
+                    className="w-full flex items-center gap-1.5 px-3 py-2 text-[11px] font-bold uppercase tracking-wider hover:bg-surface-base border-b border-rmpg-900"
+                    style={{ color: meta.accent }}>
+                    {open ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
                     <Icon className="w-3 h-3" />
-                    {meta?.label || cat}
+                    {meta.label}
                     <span className="ml-auto text-rmpg-600 font-mono">{rows.length}</span>
                   </button>
-                  {openGroups[cat] && rows.map((r) => (
+                  {open && rows.map((r) => (
                     <button key={`${r.title}-${r.chapter_code}`} type="button"
                       onClick={() => loadChapter(r.title, r.chapter_code, r.subcategory)}
                       className="w-full text-left px-3 py-1.5 hover:bg-surface-base flex items-baseline gap-2 border-b border-rmpg-900"
@@ -347,14 +357,21 @@ export default function LawBookPage() {
                 ? `Search · ${visibleSections.length} result${visibleSections.length === 1 ? '' : 's'}`
                 : chapter ? `${chapter.title}-${chapter.code} · ${chapter.name}` : 'Browse the Utah Law Book'}
             </span>
+            {(chapter || showingSearch) && visibleSections.length > 0 && (
+              <button type="button" onClick={handlePrint}
+                className="ml-auto flex items-center gap-1 text-[9px] font-bold uppercase tracking-wider text-rmpg-400 hover:text-brand-gold-500 border border-rmpg-700 px-2 py-1"
+                style={{ borderRadius: 2 }} title="Print to PDF">
+                <Printer className="w-3 h-3" /> PDF
+              </button>
+            )}
           </div>
 
           {/* Landing overview */}
           {!showingSearch && !chapter ? (
-            <div className="p-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {(['criminal', 'vehicle', 'licensing'] as const).map((c) => {
-                const meta = CATEGORY_META[c]; const Icon = meta.icon;
-                const count = stats[c];
+            <div className="p-4 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+              {categoriesPresent.map((c) => {
+                const meta = getCatMeta(c); const Icon = meta.icon;
+                const count = toc.filter((r) => r.category === c).reduce((a, r) => a + r.section_count, 0);
                 return (
                   <button key={c} type="button" onClick={() => { setCategory(c); setOpenGroups((g) => ({ ...g, [c]: true })); }}
                     className="text-left border border-rmpg-800 bg-surface-base hover:bg-surface-sunken p-3 transition-colors"
@@ -362,13 +379,13 @@ export default function LawBookPage() {
                     <Icon className="w-5 h-5 mb-2" style={{ color: meta.accent }} />
                     <div className="text-[12px] font-bold text-white">{meta.label}</div>
                     <div className="text-[10px] text-rmpg-500 leading-snug mt-1">{meta.blurb}</div>
-                    <div className="text-[10px] font-mono text-brand-gold-500 mt-2">{count.toLocaleString()} sections →</div>
+                    <div className="text-[10px] font-mono mt-2" style={{ color: meta.accent }}>{count.toLocaleString()} sections →</div>
                   </button>
                 );
               })}
-              <div className="sm:col-span-3 text-[10px] text-rmpg-600 leading-relaxed pt-1">
+              <div className="sm:col-span-2 xl:col-span-3 text-[10px] text-rmpg-600 leading-relaxed pt-1">
                 <FileText className="w-3 h-3 inline mr-1 -mt-0.5" />
-                Scraped from le.utah.gov &amp; adminrules.utah.gov. Each section links back to the official source. Use the severity chips to list all offenses of a given class, or open a chapter to read it in full.
+                Verbatim text scraped from le.utah.gov &amp; adminrules.utah.gov; each section links back to the official source and carries a plain-language summary. Use the severity chips to list all offenses of a class, open a chapter to read it in full, or print any section or chapter to PDF.
               </div>
             </div>
           ) : sectionsLoading ? (
@@ -388,6 +405,7 @@ export default function LawBookPage() {
                       {open ? <ChevronDown className="w-3.5 h-3.5 text-rmpg-500 mt-0.5 shrink-0" /> : <ChevronRight className="w-3.5 h-3.5 text-rmpg-500 mt-0.5 shrink-0" />}
                       <span className="font-mono text-[11px] text-brand-gold-500 shrink-0 w-24">{s.citation}</span>
                       <span className="text-[12px] text-white leading-tight flex-1">{s.short_title}</span>
+                      {s.plain_summary && <Sparkles className="w-3 h-3 text-brand-gold-500/70 shrink-0 mt-0.5" aria-label="Has plain-language summary" />}
                       {s.code_type === 'rule' && (
                         <span className="text-[8px] font-bold uppercase px-1.5 py-0.5 border border-rmpg-600 text-rmpg-400 shrink-0" style={{ borderRadius: 2 }}>Rule</span>
                       )}
@@ -402,13 +420,20 @@ export default function LawBookPage() {
                           {s.subcategory && <span>{s.subcategory}{s.part_name ? ` · ${s.part_name}` : ''}</span>}
                           {s.effective_date && <span>Effective {s.effective_date}</span>}
                           {s.code_type === 'rule' && <span className="uppercase tracking-wider">Admin Rule</span>}
-                          {s.source_url && (
-                            <a href={s.source_url} target="_blank" rel="noopener noreferrer"
-                               className="inline-flex items-center gap-1 text-brand-gold-500 hover:underline ml-auto">
-                              Official source <ExternalLink className="w-3 h-3" />
-                            </a>
-                          )}
+                          <div className="ml-auto flex items-center gap-3">
+                            <button type="button" onClick={() => printStatuteSection(s)}
+                              className="inline-flex items-center gap-1 text-rmpg-400 hover:text-brand-gold-500" title="Print this section to PDF">
+                              <Printer className="w-3 h-3" /> PDF
+                            </button>
+                            {s.source_url && (
+                              <a href={s.source_url} target="_blank" rel="noopener noreferrer"
+                                 className="inline-flex items-center gap-1 text-brand-gold-500 hover:underline">
+                                Official source <ExternalLink className="w-3 h-3" />
+                              </a>
+                            )}
+                          </div>
                         </div>
+                        <PlainLanguagePanel s={s} />
                         <div className="border-l-2 border-brand-gold-500/30 pl-3">
                           {s.description ? <StatuteBody text={s.description} /> : <span className="text-[11px] text-rmpg-500 italic">No text on file for this section.</span>}
                         </div>

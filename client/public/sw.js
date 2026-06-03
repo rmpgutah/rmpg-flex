@@ -525,7 +525,12 @@
 // v771: NAVIGATE county-wide crime — multi-agency feed (West Valley/Sandy/UPD/
 //       U-of-U via LexisNexis) + SLC traffic-crash layer, travel-aware corridor
 //       crash scan, color-coded tokens, agency breakdown (#1011).
-const CACHE_NAME = 'rmpg-flex-v771';
+// v772: Law Book LE-relevant expansion — new titles (25 Fraud, 77 Criminal
+//       Procedure, 53 Public Safety, 80 Juvenile, 23A Wildlife, 32B Alcohol,
+//       58-37 Controlled Substances, 78B-7 Protective Orders), 76 & 77 refreshed
+//       to their 7/1/2026 versions, AI plain-language summaries on every section,
+//       data-driven category filters/landing + statute/chapter PDF printing.
+const CACHE_NAME = 'rmpg-flex-v772';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
