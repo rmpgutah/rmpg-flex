@@ -1,7 +1,9 @@
--- utah_statutes seed — Utah Code Title 76/41 + Title 58 (63,92) +
--- Title 78B Process Server Act, scraped from le.utah.gov.
+-- utah_statutes seed — Utah law book scraped from le.utah.gov +
+-- adminrules.utah.gov: Title 76 (Criminal), 41 (Motor Vehicles),
+-- 58-63 Security, 58-92 Private Investigation, 78B-8 Process Server,
+-- plus admin rules R156-63a/63b + R722-330 (code_type='rule').
 -- Apply AFTER migration 0073 (table rebuild). Idempotent: clears first.
--- 1633 rows, 58 INSERT statements.
+-- 1705 rows, 60 INSERT statements.
 
 DELETE FROM utah_statutes;
 
@@ -23778,5 +23780,876 @@ INSERT INTO utah_statutes (title,chapter,chapter_code,section,subsection,citatio
 (f) if the process server is a private investigator, legibly print the private investigator''s identification number on the return of service.',NULL,'licensing','Process Server Act','Process Server Act','statute','5/6/2026','https://le.utah.gov/xcode/Title78B/Chapter8/78B-8-S302.html',NULL,1),
 (78,8,'8','303',NULL,'78B-8-303','Recoverable rates','If the rates charged by private process servers exceed the rates established by law for service of process by individuals described in Section 78B-8-302, the excess charge may be recovered as costs of an action only if the court determines the service and charge were justifiable under the circumstances.',NULL,'licensing','Process Server Act','Process Server Act','statute','5/6/2026','https://le.utah.gov/xcode/Title78B/Chapter8/78B-8-S303.html',NULL,1),
 (78,8,'8','304',NULL,'78B-8-304','Violations of service of process authority','(1) It is a class A misdemeanor for a person serving process to falsify a return of service.
-(2) It is an infraction for a person to bill falsely for process service.','class_a_misdemeanor','licensing','Process Server Act','Process Server Act','statute','5/10/2016','https://le.utah.gov/xcode/Title78B/Chapter8/78B-8-S304.html',NULL,1);
+(2) It is an infraction for a person to bill falsely for process service.','class_a_misdemeanor','licensing','Process Server Act','Process Server Act','statute','5/10/2016','https://le.utah.gov/xcode/Title78B/Chapter8/78B-8-S304.html',NULL,1),
+(156,63,'63a','101',NULL,'R156-63a-101','Title','This rule is known as the "Security Personnel Licensing Act Contract Security Rule."',NULL,'licensing','Security Personnel Licensing Act Contract Security Rule',NULL,'rule','5/13/2019','https://adminrules.utah.gov/public/rule/R156-63a/Current%20Rules',NULL,1),
+(156,63,'63a','102',NULL,'R156-63a-102','Definitions','In addition to the definitions in Title 58, Chapters 1 and 63, as used in Title 58, Chapters 1 and 63 or this rule:
+(1) "Approved basic education and training program" means a basic education and training program that:
+(a) meets the standards and is approved by the Division as set forth in Section R156-63a-602; and
+(b) has the content required by Section R156-63a-603.
+(2) "Approved basic firearms training program" means a firearms education and training program that:
+(a) meets the standards and is approved by the Division as set forth in Section R156-63a-602; and
+(b) has the content required by Section R156-63a-604.
+(3) "Authorized emergency vehicle" is as defined in Subsection 41-6a-102(3).
+(4) "Contract security company" includes a peace officer who engages in providing security or guard services when acting in a capacity other than as an employee of the law enforcement agency by whom the peace officer is employed.
+(5) "Contract security company" does not include a company which hires as employees, individuals to provide security or guard services for the purpose of protecting tangible personal property, real property, or the life and well-being of personnel employed by, or animals owned by or under the responsibility of that company, as long as the security or guard services provided by the company do not benefit any person other than the employing company.
+(6) "Compensated", as used in Subsection 58-63-302(1)(c)(viii)(A), means remuneration in the form of W-2 wages unless the qualifying agent is an owner of a contract security or armored car company, in which case "compensated" means the owner''s profit distributions or dividends.
+(7) "Conviction" means criminal conduct where the filing of a criminal charge has resulted in:
+(a) a finding of guilt based on evidence presented to a judge or jury;
+(b) a guilty plea;
+(c) a plea of nolo contendere;
+(d) a plea of guilty or nolo contendere which is held in abeyance pending the successful completion of probation;
+(e) a pending diversion agreement; or
+(f) a conviction which has been reduced pursuant to Section 76-3-402.
+(8) "Corporate officer" as defined in Subsection 58-63-102(9), includes an individual who is on file with the Division of Corporations and Commercial Code as a limited liability company''s company officer or "governing person" as defined in Subsection 48-3a-102(7), or as a limited partnership''s "general partner" as defined in Subsection 48-2e-102(8).
+(9) "Employee" means an individual providing services in the security guard industry for compensation, when the amount of compensation is based directly upon the security guard services provided and upon which the employer is required under law to withhold federal and state taxes, and for whom the employer is required under law to provide worker''s compensation insurance coverage and pay unemployment insurance.
+(10) "Instructor" means a person who directly facilitates learning through means of live in-class lecture, group participation, practical exercise, or other means, who has fulfilled the instructor experience and training requirements set forth in Section R156-63a-602.
+(11) "Qualified continuing education" means continuing education that meets the standards set forth in Subsection R156-63a-304.
+(12) "Qualifying agent" means a natural person who meets all of the requirements set forth in Subsection 58-63- 302(1)(c).
+(13) "Soft uniform" means a business suit or a polo-type shirt with appropriate slacks. The coat or shirt has an embroidered badge or contract security company logo that clips on to or is placed over the front pocket.
+(14) "Supervision" means general supervision as defined in Subsection R156-1-102a(4)(c).
+(15) "Trainer" has the same meaning as "instructor".
+(16) "Unprofessional conduct," as defined in Title 58, Chapters 1 and 63, is further defined, in accordance with Subsection 58-1-203(1)(e), in Section R156-63a-502.',NULL,'licensing','Security Personnel Licensing Act Contract Security Rule',NULL,'rule','5/13/2019','https://adminrules.utah.gov/public/rule/R156-63a/Current%20Rules',NULL,1),
+(156,63,'63a','103',NULL,'R156-63a-103','Authority - Purpose','This rule is adopted by the Division under the authority of Subsection 58-1-106(1)(a) to enable the Division to administer Title 58, Chapter 63.',NULL,'licensing','Security Personnel Licensing Act Contract Security Rule',NULL,'rule','5/13/2019','https://adminrules.utah.gov/public/rule/R156-63a/Current%20Rules',NULL,1),
+(156,63,'63a','104',NULL,'R156-63a-104','Organization - Relationship to Rule R156-1','The organization of this rule and its relationship to Rule R156-1 is as described in Section R156-1-107.',NULL,'licensing','Security Personnel Licensing Act Contract Security Rule',NULL,'rule','5/13/2019','https://adminrules.utah.gov/public/rule/R156-63a/Current%20Rules',NULL,1),
+(156,63,'63a','201',NULL,'R156-63a-201','Advisory Peer Committee created - Membership - Duties','(1) There is created in accordance with Subsection 58-1-203(1)(f), the Education Advisory Committee to the Security Services Licensing Board, consisting of:
+(a) one member who is a corporate officer, director, manager or trainer of a contract security company;
+(b) one member who is a corporate officer, director, manager or trainer of an armored car company;
+(c) one member who is an armored car security officer or a contract security officer;
+(d) one member representing the general public; and
+(e) one member who is a trainer, and who is also, in order of preference:
+(i) a member of the Utah Peace Officers Association;
+(ii) a qualifying agent of a licensed security company that is in good standing with the Division; or
+(iii) a member of a security association that is in good standing wit the Utah Division of Corporations.
+(2) The Education Advisory Committee shall be appointed and serve in accordance with Section R156-1-205. The duties and responsibilities of the Education Advisory Committee shall include assisting the Division in collaboration with the Board in their duties, functions, and responsibilities regarding the acceptability of educational programs, requesting approvals from the Division, and periodically reviewing all approved basic education and training programs and approved basic firearms training programs regarding current curriculum requirements.
+(3) The Education Advisory Committee shall consider, when advising the Board of the acceptability of an education and training program:
+(a) whether in keeping with Subsections R156-63a-102(1) and (2), or Subsections R156-63b-102(1) and (2), a proposed basic education and training program meets:
+(i) the operating standards of Sections R156-63a-602 or R156-63b-602; and
+(ii) the content requirements of Sections R156-63a-603 or R156-63b-603; and
+(b) whether a proposed basic firearms training program meets:
+(i) the operating standards of Sections R156-63a-602 or R156-63b-602; and
+(ii) the content requirements of Sections R156-63a-604 or R156-63b-604.',NULL,'licensing','Security Personnel Licensing Act Contract Security Rule',NULL,'rule','5/13/2019','https://adminrules.utah.gov/public/rule/R156-63a/Current%20Rules',NULL,1),
+(156,63,'63a','302a',NULL,'R156-63a-302a','Qualifications for Licensure - Application Requirements','(1) An application for licensure as a contract security company shall be accompanied by:
+(a) two fingerprint cards for each of the applicant''s:
+(i) qualifying agent;
+(ii) corporate officers;
+(iii) directors;
+(iv) equity holders or shareholders owning more than 5% of the equity or outstanding shares;
+(v) partners;
+(vi) proprietors; and
+(vii) responsible management personnel; and
+(b) a fee established in accordance with Section 63J-1-504 equal to the cost of conducting a check of records of the Federal Bureau of Investigation, and the Bureau of Criminal Identification, Utah Department of Public Safety, for each of the persons required to provide a fingerprint card under Subsection (1)(a) above.
+(2) An application for licensure as an armed or unarmed private security officer shall be accompanied by:
+(a) two fingerprint cards for the applicant; and
+(b) a fee established in accordance with Section 63J-1-504 equal to the cost of conducting a check of records for the applicant with:
+(i) the Federal Bureau of Investigation; and
+(ii) the Bureau of Criminal Identification of the Utah Department of Public Safety.
+(3) Applications for change in licensure classification from unarmed to armed private security officer shall only require the following additional documentation:
+(a) successful completion of an approved basic firearms training program; and
+(b) an additional criminal history background check pursuant to Section 58-63-302 and Subsection R156-63a- 302a(2).',NULL,'licensing','Security Personnel Licensing Act Contract Security Rule',NULL,'rule','5/13/2019','https://adminrules.utah.gov/public/rule/R156-63a/Current%20Rules',NULL,1),
+(156,63,'63a','302b',NULL,'R156-63a-302b','Qualifications for Licensure - Basic Education and Training Requirements','(1) In accordance with Subsections 58-1-203(1)(b), 58-63-302(2)(g), and 58-63-302(2)(h), an applicant for licensure as an armed private security officer shall successfully complete:
+(a) an approved basic education and training program, as defined in Subsection R156-63a-102(1); and
+(b) an approved basic firearms training program, as defined in Subsection R156-63a-102(2).
+(2) In accordance with Subsections 58-1-203(1)(b) and 58-63-302(3)(f), an applicant for licensure as an unarmed private security officer shall successfully complete an approved basic education and training program, as defined in Subsection R156-63a-102(1).',NULL,'licensing','Security Personnel Licensing Act Contract Security Rule',NULL,'rule','5/13/2019','https://adminrules.utah.gov/public/rule/R156-63a/Current%20Rules',NULL,1),
+(156,63,'63a','302c',NULL,'R156-63a-302c','Qualifications for Licensure - Examination Requirements','In accordance with Subsections 58-1-203(1)(b) and 58-1-301(3), the examination requirements for licensure in Section 58-63-302 are defined, clarified, or established herein.
+(1) The qualifying agent for an applicant who is a contract security company shall obtain a passing score of at least 75% on the Utah Contract Security Company Qualifying Agent Examination.
+(2) An applicant for licensure as an armed private security officer or an unarmed private security officer shall obtain a score of at least 80% on the approved basic education and training program''s final examination.',NULL,'licensing','Security Personnel Licensing Act Contract Security Rule',NULL,'rule','5/13/2019','https://adminrules.utah.gov/public/rule/R156-63a/Current%20Rules',NULL,1),
+(156,63,'63a','302d',NULL,'R156-63a-302d','Qualification for Licensure - Liability Insurance for a Contract Security Company','In accordance with Subsections 58-1-203(1)(b) and 58-1-301(3), the insurance requirements for licensure as a contract security company in Subsection 58-63-302(1)(j)(i) are defined, clarified, or established herein.
+(1) An applicant shall file with the Division a "Certificate of Insurance" providing liability insurance for the following exposures:
+(a) general liability;
+(b) assault and battery;
+(c) personal injury;
+(d) false arrest;
+(e) libel and slander;
+(f) invasion of privacy;
+(g) broad form property damage;
+(h) damage to property in the care, custody or control of the contract security company; and
+(i) errors and omissions.
+(2) The required insurance shall provide liability limits in amounts not less than $300,000 for each incident and not less than $1,000,000 total aggregate for each annual term.
+(3) The insurance carrier must be an insurer which has a certificate of authority to do business in Utah, or is an authorized surplus lines insurer in Utah, or is authorized to do business under the laws of the state in which the corporate offices of foreign corporations are located.
+(4) All contract security companies shall have a current insurance certificate of coverage as defined in Subsection (1) on file at all times and available for immediate inspection by the Division during normal working hours.
+(5) All contract security companies shall notify the Division immediately upon cancellation of the insurance policy, whether such cancellation was initiated by the insurance company or the insured agency.',NULL,'licensing','Security Personnel Licensing Act Contract Security Rule',NULL,'rule','5/13/2019','https://adminrules.utah.gov/public/rule/R156-63a/Current%20Rules',NULL,1),
+(156,63,'63a','302e',NULL,'R156-63a-302e','Qualifications for Licensure - Age Requirement for Armed Private Security Officer','In accordance with Subsections 76-10-509(1) and 76-10-509.4, an armed private security officer must be 18 years of age or older at the time of submitting an application for licensure.',NULL,'licensing','Security Personnel Licensing Act Contract Security Rule',NULL,'rule','5/13/2019','https://adminrules.utah.gov/public/rule/R156-63a/Current%20Rules',NULL,1),
+(156,63,'63a','302f',NULL,'R156-63a-302f','Qualifications for Licensure - Good Moral Character - Disqualifying Convictions','(1) In accordance with Subsections 58-63-302(1)(h), (2)(c), and (3)(c), in addition to those criminal convictions prohibiting licensure, the following criminal convictions may disqualify an applicant or licensee from obtaining or holding an unarmed private security officer license, an armed private security officer license, or a contract security company license:
+(a) crimes against a person as defined in Title 76, Chapter 5, Part 1;
+(b) theft, including retail theft, as defined in Title 76;
+(c) larceny;
+(d) sex offenses as defined in Title 76, Chapter 5, Part 4;
+(e) any offense involving a controlled substance as defined in Subsection 58-37-2(1)(f);
+(f) fraud;
+(g) extortion;
+(h) treason;
+(i) forgery;
+(j) arson;
+(k) kidnapping;
+(l) perjury;
+(m) conspiracy to commit any of the offenses listed herein;
+(n) hijacking;
+(o) burglary;
+(p) escape from jail, prison, or custody;
+(q) false or bogus checks;
+(r) terrorist activities;
+(s) desertion;
+(t) pornography;
+(u) two or more convictions for driving under the influence of alcohol within the last three years; and
+(v) any attempt to commit any of the above offenses.
+(2) An applicant may not obtain initial licensure or license renewal as an armed private security officer or as a contract security company providing armed private security services, and the license of an armed private security officer or of a contract security company providing armed private security services shall be automatically revoked, if the applicant or licensee is in violation of any provision set forth in:
+(a) 18 U.S.C. Chapter 44, 922(g)1-9, concerning restrictions on firearms and ammunition transportation by certain persons; or
+(b) Utah Code Section 76-10-503, concerning restrictions on possession, purchase, transfer, or ownership of dangerous weapons by certain persons.
+(3) In accordance with Subsection 58-63-302(1), if the applicant or licensee is a contract security company, the background of the following individuals shall be considered:
+(a) corporate officer;
+(b) director;
+(c) any shareholder owning 5% or more of the outstanding stock of the company as described in Subsection 58-63- 302(1)(d)(ii);
+(d) partner;
+(e) proprietor;
+(f) qualifying agent; and
+(g) management personnel employed within Utah or having direct responsibility for managing operations of the company within Utah.
+(4) Criminal history and statutory violations that do not automatically disqualify an applicant under statute or rule shall be considered on a case-by-case basis in accordance with Section R156-1-302.',NULL,'licensing','Security Personnel Licensing Act Contract Security Rule',NULL,'rule','5/13/2019','https://adminrules.utah.gov/public/rule/R156-63a/Current%20Rules',NULL,1),
+(156,63,'63a','302g',NULL,'R156-63a-302g','Qualifications for Licensure - Immediate Issuance of an Interim Permit','In accordance with Section 58-63-310, upon receipt of a complete application for licensure as an unarmed private security officer or as an armed private security officer, the Division may immediately issue an interim permit to the applicant, if the applicant:
+(1)(a) submits with the applicant''s application an official criminal history report from the Bureau of Criminal Identification, Utah Department of Public Safety, showing "No Criminal Record Found";
+(b) has not answered "yes" to any question on the qualifying questionnaire section of the application; and
+(c) has not had a license to practice an occupation or profession denied, revoked, suspended, restricted, or placed on probation.
+(2) If an applicant''s application is denied, an interim permit issued under this section shall automatically expire.',NULL,'licensing','Security Personnel Licensing Act Contract Security Rule',NULL,'rule','5/13/2019','https://adminrules.utah.gov/public/rule/R156-63a/Current%20Rules',NULL,1),
+(156,63,'63a','303',NULL,'R156-63a-303','Renewal Cycle - Procedures','(1) In accordance with Subsection 58-1-308(1), the renewal date for the two-year renewal cycle applicable to licensees under Title 58, Chapter 63 is established by rule in Section R156-1-308a.
+(2) Renewal procedures shall be in accordance with Section R156-1-308c.',NULL,'licensing','Security Personnel Licensing Act Contract Security Rule',NULL,'rule','5/13/2019','https://adminrules.utah.gov/public/rule/R156-63a/Current%20Rules',NULL,1),
+(156,63,'63a','304',NULL,'R156-63a-304','Continuing Education for Armed and Unarmed Private Security Officers as a Condition of Renewal','In accordance with Subsections 58-1-203(1)(g) and 58-1-308(3)(b), the following continuing education requirements are established as a condition of renewal or reinstatement of licenses issued under Title 58, Chapter 63 in the classifications of armed private security officer and unarmed private security officer:
+(1) Armed and unarmed private security officers shall complete at least 32 hours of continuing education during each two-year renewal cycle. A minimum of 16 hours shall be core continuing education; the remaining hours may consist of professional continuing education or core continuing education.
+(a) "Core continuing education" is defined as education completed during a two-year renewal cycle, that covers each of the following topics:
+(i) company operational procedures manual;
+(ii) applicable state laws and rules;
+(iii) legal powers and limitations of private security officers;
+(iv) observation and reporting techniques;
+(v) ethics;
+(vi) management of aggressive behavior, use of force, de-escalation techniques;
+(vii) emergency techniques; and
+(viii) a recognized basic life saving course to obtain or maintain certification in:
+(A) cardiopulmonary resuscitation (CPR);
+(B) automated external defibrillator (AED);
+(C) first aid; or
+(D) any other recognized basic life-saving skills.
+(b) "Professional continuing education" is defined as education covering one or more of the following topics:
+(i) executive protection;
+(ii) basic self-defense;
+(iii) driving techniques for the security professional;
+(iv) escort techniques;
+(v) crowd control;
+(vi) access control and the use of electronic detection devices;
+(vii) use of defensive items and objects;
+(viii) homeland security involving bomb threats and anti-terrorism;
+(ix) Americans with Disabilities Act (ADA) compliance; or
+(x) any other topic relevant to the education of security professionals.
+(2) In addition to the 32 hours of core/professional continuing education, an armed private security officer shall complete at least 16 hours of continuing firearms education and training during each two-year renewal cycle. Continuing firearms education and training:
+(a) shall be completed in four-hour blocks every six months;
+(b) may not include any hours for the continuing education requirement in Subsection R156-63a-304(1); and
+(c) shall include at minimum:
+(i) live classroom instruction concerning:
+(A) the restrictions in the use of deadly force; and
+(B) firearms safety on duty, at home, and on the range; and
+(ii) a recognized practical pistol recertification course on which the licensee achieves a minimum score of 80% using regular or low light conditions.
+(3) Credit for continuing education shall be recognized as follows:
+(a) unlimited hours for core, professional, and firearm continuing education completed in blocks of time of not less than one hour in formally established classroom courses, seminars, or conferences;
+(b) unlimited hours for professional continuing education provided via the Internet, if the course provider verifies registration and participation in the course by means of an exam which demonstrates that the participant has learned the material presented;
+(c) two hours for each hour of lecturing, training, or instructing a course, if it is the first time the material has been taught during the preceding 12 months, up to a maximum of 12 hours during each two-year renewal period; the type of credit received - whether core, professional, or firearms education and training - shall be based on the subject taught; and
+(d) one professional continuing education hour for each hour of service on the Contract Security Services Licensing Board, a state or national security board, or the Contract Security Education Advisory Peer Committee, up to a maximum of six hours during each two-year renewal period.
+(4) Modification of Required Continuing Education Hours.
+(a) A licensee who fails to complete the required four hours of continuing firearms education and training within the appropriate six-month period shall complete one and one half times the number of hours the licensee was deficient for the reporting period ("penalty hours"). Penalty hours shall not satisfy in whole or in part any of the continuing firearms education and training hours required for subsequent renewal of the license.
+(b) If a renewal period is shortened or lengthened to effect a change of renewal cycle, the continuing education hours required for that renewal period shall be increased or decreased proportionately.
+(c) The Division may defer or waive continuing education requirements as provided in Section R156-1-308d.
+(5) A licensee shall maintain documentation showing compliance with the requirements of this section, such as certificates of completion or course handouts and materials, for a period of three years from the end of the renewal period for which the continuing education is due.
+(6) A contract security company licensed under this chapter shall:
+(a) review continuing education courses and approve for its employees only those courses that meet the requirements of this section;
+(b)(i) maintain accurate records of its approved continuing education courses and of each employee''s attendance and course completion; and
+(ii) make such records available for audit by representatives of the Division; and
+(c) ensure that each provider of its approved continuing education courses:
+(i) maintains accurate records of attendance and course completion, by individual licensee, that are available for review by the licensed company, the Division, and the licensee; and
+(ii) provides individuals completing the course a certificate identifying the:
+(A) name of the individual;
+(B) date the course was taken;
+(C) location where the course was taken or type of Internet course taken;
+(D) title of the course identifying its topic(s) as outlined in Subsection R156-63a-304(1);
+(E) name of the continuing education provider and instructor;
+(F) exam score for any exam taken; and
+(G) number of continuing education hours completed.
+(7) On a random basis, the Division may assign monitors at no charge to attend a continuing education course for the purpose of evaluating the course and the instructor.
+(8) The initial licensure education and training programs defined in Subsections R156-63a-102(1) and (2) may not be used to satisfy, in whole or in part, any of the continuing education requirements of this section.',NULL,'licensing','Security Personnel Licensing Act Contract Security Rule',NULL,'rule','5/13/2019','https://adminrules.utah.gov/public/rule/R156-63a/Current%20Rules',NULL,1),
+(156,63,'63a','305',NULL,'R156-63a-305','Criminal History Renewal and Reinstatement Requirement','(1) In accordance with Subsections 58-1-203(1)(g) and 58-1-308(3)(b) and R156-1-302, a criminal history background check is required for all applications for renewal and reinstatement.
+(2) The criminal history background check shall be performed by the Division and is not required to be submitted by the applicant.
+(3) If the criminal background check discloses a criminal background, the Division shall evaluate the criminal history in accordance with Sections 58-63-302 and R156-63a-302f to determine appropriate licensure action.',NULL,'licensing','Security Personnel Licensing Act Contract Security Rule',NULL,'rule','5/13/2019','https://adminrules.utah.gov/public/rule/R156-63a/Current%20Rules',NULL,1),
+(156,63,'63a','306',NULL,'R156-63a-306','Change of Qualifying Agent','Within 60 days after a qualifying agent for a licensed contract security company ceases employment with the licensee, or for any other reason is not qualified to be the licensee''s qualifier, the contract security company shall file with the Division an application for change of qualifier on forms provided by the Division, accompanied by a fee established in accordance with Section 63J-1-504.',NULL,'licensing','Security Personnel Licensing Act Contract Security Rule',NULL,'rule','5/13/2019','https://adminrules.utah.gov/public/rule/R156-63a/Current%20Rules',NULL,1),
+(156,63,'63a','502',NULL,'R156-63a-502','Unprofessional Conduct','"Unprofessional conduct" includes the following:
+(1) making any statement that would reasonably cause another person to believe that a private security officer functions as a law enforcement officer or other official of this state or any of its political subdivisions or any agency of the federal government;
+(2) utilizing a vehicle with markings, lighting, and/or signal devices that imply or suggest that the vehicle is an authorized emergency vehicle as defined in Subsection 41-6a-102(3) and Section 41-6a-310;
+(3) utilizing a vehicle with an emergency lighting system that violates the requirements of Section 41-6a-1616 of the Utah Motor Vehicle Code;
+(4) wearing a uniform, insignia, or badge that would lead a reasonable person to believe that the unarmed or armed private security officer is connected with a federal, state, or municipal law enforcement agency;
+(5) being incompetent or negligent as an unarmed private security officer, an armed private security officer, or a contract security company, so as to cause injury to a person or create an unreasonable risk that a person might be harmed;
+(6) failing as a contract security company or its officers, directors, partners, proprietors or responsible management personnel to adequately supervise employees so as to place the public health and safety at risk;
+(7) failing to immediately notify the Division of the cancellation of the contract security company''s insurance policy;
+(8) failing as a contract security company or an armed or unarmed private security officer to report a criminal offense pursuant to Section R156-63a-613;
+(9) pursuant to Subsection R156-63a-613(1), failing as a contract security company or an armed or unarmed private security officer to report to the Division a violation of:
+(a) any provision set forth in 18 U.S.C. Chapter 44, 922(g)1-9;
+(b) Utah Code Subsection 76-10-503(1); or
+(c) Utah Code Subsections 58-63-302(1)(h), (2)(c), or (3)(c);
+(10) wearing a uniform, insignia, or badge, or displaying a license, that would lead a reasonable person to believe that an individual is connected with a contract security company, when not employed as an armed or unarmed private security officer by a contract security company;
+(11) failing as an armed or unarmed private security officer to complete required continuing education hours, in violation of Section R156-63a-304; and
+(12) failing as a contract security company to comply with Subsection R156-63a-304(6) regarding continuing education courses or providers.',NULL,'licensing','Security Personnel Licensing Act Contract Security Rule',NULL,'rule','5/13/2019','https://adminrules.utah.gov/public/rule/R156-63a/Current%20Rules',NULL,1),
+(156,63,'63a','503',NULL,'R156-63a-503','Mandatory Sanctions - Administrative Penalties','(1) The license of a contract security company or an armed private security officer shall be suspended for a period of time determined by the Board if the licensee fails to report to the Division a violation of:
+(a) any provision set forth in 18 U.S.C. Chapter 44, 922(g)1-9;
+(b) Utah Code Subsection 76-10-503(1); or
+(c) Utah Code Subsections 58-63-302(1)(h), (2)(c), or (3)(c).
+(2) In accordance with Subsection 58-63-503, the following citation fine schedule shall apply to citations issued under Title 58, Chapter 63:
+TABLE
+FINE SCHEDULE
+FIRST OFFENSE
+Armed or Unarmed
+Violation Contract Security Company Security Officer
+58-63-501(1) $ 800.00 N/A
+58-63-501(4) $ 800.00 $ 500.00
+SECOND OFFENSE
+58-63-501(1) $1,600.00 $1,000.00
+58-63-501(4) $1,600.00 $1,000.00
+(3) Citations shall not be issued for third offenses, except in extraordinary circumstances approved by the investigative supervisor. If a citation is issued for a third offense, the fine is double the second offense amount, with a maximum amount not to exceed the maximum fine allowed under Subsection 58-63-503(3)(h)(iii).
+(4) If multiple offenses are cited on the same citation, the fine shall be determined by evaluating the most serious offense.
+(5) An investigative supervisor may authorize a deviation from the fine schedule based upon the aggravating or mitigating circumstances.
+(6) The presiding officer for a contested citation shall have the discretion, after a review of the aggravating and mitigating circumstances, to increase or decrease the fine amount imposed by an investigator based upon the evidence reviewed.',NULL,'licensing','Security Personnel Licensing Act Contract Security Rule',NULL,'rule','5/13/2019','https://adminrules.utah.gov/public/rule/R156-63a/Current%20Rules',NULL,1),
+(156,63,'63a','601',NULL,'R156-63a-601','Operating Standards - Firearms','(1) An armed private security officer shall carry only that firearm with which the officer has passed an approved basic firearms training program.
+(2) Shotguns and rifles owned and issued by the contract security company, may be used in situations where they would constitute an appropriate defense for the armed private security officer, if the officer has successfully completed an approved basic firearms training program in their use.
+(3) An armed private security officer shall not carry a firearm except when acting on official duty as an employee of a contract security company, unless the licensee is otherwise qualified under the laws of the state to carry a firearm.',NULL,'licensing','Security Personnel Licensing Act Contract Security Rule',NULL,'rule','5/13/2019','https://adminrules.utah.gov/public/rule/R156-63a/Current%20Rules',NULL,1),
+(156,63,'63a','602',NULL,'R156-63a-602','Division Approval and Operating Standards - Training Programs for Armed and Unarmed Private Security Officers','(1) To obtain Division approval of any training program for armed private security officers and unarmed private security officers, the program owner shall submit to the Division:
+(a) an application in a form prescribed by the Division;
+(b) a fee for the approval of the program; and
+(c) a written education and training manual which includes:
+(i) a course syllabus with an hourly breakdown of the course outline and training schedule;
+(ii) a course curriculum;
+(iii) a four-hour instructor training program;
+(iv) testing tools; and
+(v) if an online curriculum or multi-media learning tools are used, a copy of the original medium.
+(2) If any individual or entity uses an approved basic education and training program that the user does not own, the user shall submit to and maintain with the Division a current copy of the user''s written contract with the program owner, which identifies the duration allowed for use. The user shall promptly update this information in writing with the Division as necessary.
+(3) A course curriculum for armed private security officers shall include the content established in Sections R156- 63a-603 and R156-63a-604.
+(4) A course curriculum for unarmed private security officers shall include the content established in Section R156- 63a-603.
+(5) All instructors teaching an approved basic education and training program shall:
+(a) have at least three years of supervisory experience reasonably related to providing contract security services; and
+(b) have completed a four-hour instructor training program which shall include the following:
+(i) motivation and the learning process;
+(ii) teacher preparation and teaching methods;
+(iii) classroom management;
+(iv) testing; and
+(v) instructional evaluation.
+(6) All instructors teaching an approved basic firearms training program shall have the following qualifications:
+(a) current Peace Officers Standards and Training firearms instructor certification; or
+(b) current certification as a firearms instructor by:
+(i) the National Rifle Association;
+(ii) a Utah law enforcement agency;
+(iii) a Federal law enforcement agency;
+(iv) a branch of the United States military; or
+(v) other qualification or certification found by the Division, in collaboration with the Board, to be equivalent.
+(7) When an instructor for a Division-approved training program begins providing instruction, the user of the Division-approved training program shall report the instructor''s name to the Division, on a form supplied by the Division.
+(8) When an instructor for a Division-approved training program ceases to instruct for that program, or no longer meets instructor requirements, the user of the Division-approved training program shall report that information and the instructor''s name to the Division, on a form supplied by the Division.
+(9) All approved training programs shall maintain training records on each individual trained, including the dates of attendance at training, a copy of the instruction given, and the location of the training. These records shall be maintained in the program''s files for at least three years.
+(10) If an approved training program provider of basic education and training ceases to engage in business, the provider shall establish a method approved by the Division by which the records of the education and training shall continue to be available for a period of at least three years after the education and training is provided.',NULL,'licensing','Security Personnel Licensing Act Contract Security Rule',NULL,'rule','5/13/2019','https://adminrules.utah.gov/public/rule/R156-63a/Current%20Rules',NULL,1),
+(156,63,'63a','603',NULL,'R156-63a-603','Content of Approved Basic Education and Training Program for Armed and Unarmed Private Security Officers','In accordance with Subsection 58-63-302(2)(g), an approved basic education and training program for armed and unarmed private security officers shall have at least eight hours of classroom or online instruction, including:
+(1) the nature and role of private security, including a private security officer''s:
+(a) scope and limits of authority;
+(b) civil liability; and
+(c) role in today''s society;
+(2) state laws and rules applicable to private security;
+(3) the legal responsibilities of private security, including:
+(a) constitutional law;
+(b) search and seizure; and
+(c) other such topics;
+(4) situational response evaluations, including:
+(a) protecting and securing crime or accident scenes;
+(b) notifying internal and external agencies; and
+(c) controlling information;
+(5) security ethics;
+(6) the use of force, emphasizing the de-escalation of force and alternatives to using force;
+(7) documentation and report writing, including:
+(a) preparing witness statements;
+(b) performing log maintenance;
+(c) exercising control of information;
+(d) taking field notes;
+(e) organizing information into a report; and
+(f) performing basic writing;
+(8) patrol techniques, including:
+(a) mobile patrol versus fixed post;
+(b) accident prevention;
+(c) responding to calls and alarms;
+(d) security breaches;
+(e) monitoring potential safety hazards; and
+(f) police and community relations, including fundamental duties and personal appearance of security officers;
+(9) sexual harassment in the workplace; and
+(10) a final examination that:
+(a) competently examines the student on the subjects included in the eight hours of basic instruction; and
+(b) mandates a minimum pass score of 80%.',NULL,'licensing','Security Personnel Licensing Act Contract Security Rule',NULL,'rule','5/13/2019','https://adminrules.utah.gov/public/rule/R156-63a/Current%20Rules',NULL,1),
+(156,63,'63a','604',NULL,'R156-63a-604','Content of Approved Basic Firearms Training Program for Armed Private Security Officers','In accordance with Subsection 58-63-302(2)(h), an approved basic firearms training program for armed private security officers shall have the following components:
+(1) at least six hours of classroom firearms instruction to include the following:
+(a) the firearm and its ammunition;
+(b) care and cleaning of the firearm;
+(c) the prohibition against alterations of the firearm''s firing mechanism;
+(d) firearm inspection review procedures;
+(e) firearm safety on duty;
+(f) firearm safety at home;
+(g) firearm safety on the range;
+(h) legal and ethical restraints on firearms use;
+(i) explanation and discussion of target environment;
+(j) stop failure drills;
+(k) explanation and discussion of stance, draw stroke, cover and concealment, and other firearm fundamentals;
+(l) armed patrol techniques;
+(m) use of deadly force under Utah law and the provisions of Title 76, Chapter 2, Part 4, and a discussion of 18 USC 44 Section 922; and
+(n) instruction that an armed private security officer shall not fire the officer''s weapon unless there is an imminent threat to life, and at no time shall the weapon be drawn as a threat or means to force compliance with any verbal directive not involving imminent threat to life;
+(2) a final examination that demonstrates the competency of the participant on the subjects included in the six hours of classroom firearms instruction, with a passing score requirement of 80%; and
+(3) at least six hours of firearms range instruction to include the following:
+(a) basic firearms fundamentals and marksmanship;
+(b) demonstration and explanation of the difference between sight picture, sight alignment, and trigger control; and
+(c) a recognized practical pistol course on which the applicant achieves a minimum score of 80% using regular and low light conditions.',NULL,'licensing','Security Personnel Licensing Act Contract Security Rule',NULL,'rule','5/13/2019','https://adminrules.utah.gov/public/rule/R156-63a/Current%20Rules',NULL,1),
+(156,63,'63a','605',NULL,'R156-63a-605','Operating Standards - Uniform Requirements','(1) All unarmed and armed private security officers while on duty shall wear the uniform of their contract security company employer unless assigned to work undercover.
+(2) Each armed and unarmed private security officer wearing a soft uniform unless assigned to an undercover status shall at a minimum display on the outermost garment of the uniform the name of the contract security company under whom the armed and unarmed private security officer is employed, and the word "Security", "Contract Security", or "Security Officer".
+(3) The name of the contract security company and the word "Security" shall be of a size, style, shape, design and type which is clearly visible by a reasonable person under normal conditions.
+(4) Each armed and unarmed private security officer wearing a regular uniform shall display on the outermost garment of the uniform in a style, shape, design and type which is clearly visible by a reasonable person under normal conditions identification which contains:
+(a) the name or logo of the contract security company under whom the armed or unarmed private security officer is employed; and
+(b) the word "Security", "Contract Security", or "Security Officer".',NULL,'licensing','Security Personnel Licensing Act Contract Security Rule',NULL,'rule','5/13/2019','https://adminrules.utah.gov/public/rule/R156-63a/Current%20Rules',NULL,1),
+(156,63,'63a','606',NULL,'R156-63a-606','Operating Standards - Badges','(1) At the contract security company''s request, an unarmed or armed private security officer may, while in uniform and while on duty, wear a shield inscribed with the words "Security," or "Security Officer". The shield shall not contain the words "State of Utah" or the seal of the state of Utah.
+(2) The use of a star badge with any number of points on a uniform, in writing, advertising, letterhead, or other written communication is prohibited.',NULL,'licensing','Security Personnel Licensing Act Contract Security Rule',NULL,'rule','5/13/2019','https://adminrules.utah.gov/public/rule/R156-63a/Current%20Rules',NULL,1),
+(156,63,'63a','607',NULL,'R156-63a-607','Operating Standards - Notification and Prohibition of Criminal Status of Contract Security Company Corporate Officer, Director, Partner, Proprietor, Qualifying Agent, Private Security Officer, Manager, or Shareholder','(1) In accordance with Subsections 58-63-302(1)(h) and (i), 58-63-302(2)(c) and (d), 58-63-302(3)(c), and Section R156-63a-302f, this section applies to any contract security company:
+(a) corporate officer;
+(b) director;
+(c) partner;
+(d) proprietor;
+(e) qualifying agent;
+(f) private security officer;
+(g) management personnel employed within Utah having direct responsibility for managing operations of a contract security company within Utah; and
+(h) shareholder owning 5% or more as described in Subsection 58-63-302(1)(d)(ii).
+(2) A person identified in Subsection (1) shall not participate at any level or capacity in the management, operations, sales, or employment of a contract security company, and shall not own any part of a contract security company (except less than 5% under Subsection 58-63-302(1)(d)(ii), if the person fails to meet a licensing requirement set forth in:
+(a) Subsections 58-63-302(1)(h), or 58-63-302(2)(c) or (3)(c), for conviction of a felony, or of a misdemeanor involving moral turpitude, or a of a crime that when considered with the duties and responsibilities of the license by the Division and the Board indicates that the best interests of the public are not served by granting the license; or
+(b) Subsections 58-63-302(1)(h)(iii) or 58-63-302(2)(d), for conviction of violating any provision set forth in:
+(i) 18 U.S.C. Chapter 44, 922(g)1-9, concerning restrictions on firearms and ammunition transportation by certain persons; or
+(ii) Subsection 76-10-503, concerning restrictions on possession, purchase, transfer, or ownership of dangerous weapons by certain persons.
+(3) A contract security company shall:
+(a) within ten calendar days of occurrence, report to the Division in writing any event that occurs in regard to a person identified in Subsection (1), respecting:
+(i) any conviction listed under this Subsection (2) or Subsection R156-63b-302f(2) as a disqualifying criminal conviction; and
+(ii) any conviction listed under Subsection R156-63b-302f(1) as a potentially disqualifying criminal conviction; and
+(b) take appropriate steps to ensure that company ownership and operations comply with this Section.',NULL,'licensing','Security Personnel Licensing Act Contract Security Rule',NULL,'rule','5/13/2019','https://adminrules.utah.gov/public/rule/R156-63a/Current%20Rules',NULL,1),
+(156,63,'63a','608',NULL,'R156-63a-608','Operating Standards - Implying an Association with Public Law Enforcement Prohibited','(1) No contract security company shall use any name which implies intentionally or otherwise that the company is connected or associated with any public law enforcement agency.
+(2) No contract security company shall permit the use of the words "special police", "special officer", "cop", or any other words of a similar nature whether used orally or appearing in writing or on any uniform, badge, or cap.
+(3) No person licensed under this chapter shall use words or designations which would cause a reasonable person to believe he is associated with a public law enforcement agency.',NULL,'licensing','Security Personnel Licensing Act Contract Security Rule',NULL,'rule','5/13/2019','https://adminrules.utah.gov/public/rule/R156-63a/Current%20Rules',NULL,1),
+(156,63,'63a','609',NULL,'R156-63a-609','Operating Standards - Proper Identification of Private Security Officers','All armed and unarmed private security officers shall carry a valid security license together with a government-issued identification card or a current state-issued driver license whenever performing the duties of an armed or unarmed private security officer and shall exhibit said license and identification upon request.',NULL,'licensing','Security Personnel Licensing Act Contract Security Rule',NULL,'rule','5/13/2019','https://adminrules.utah.gov/public/rule/R156-63a/Current%20Rules',NULL,1),
+(156,63,'63a','610',NULL,'R156-63a-610','Operating Standards - Vehicles','(1) All contract security vehicles shall conform to the following requirements:
+(a) green, amber, and white are the only colors that may be used in roof mounted light bars facing forward on a contract security vehicle;
+(b) green, amber, and red are the only colors that may be used in roof mounted light bars facing rearward on a contract security vehicle;
+(c) light bars may only be operated on private property in which the company has a written contract;
+(d) light bars may be operated on public highways only when personally directed to do so by a peace officer; and
+(e) all contract security vehicles shall meet the requirements of Section 41-6a-1616.
+(2) A contract security company or its personnel may not utilize a vehicle whose marking, lighting and signal devices:
+(a) display any form of blue lighting;
+(b) use a siren in any manner;
+(c) display a star or star badge insignia; or
+(d) employ any wording that suggests they are connected with law enforcement.
+(3) A contract security company vehicle may have a public address system, an air horn, or both.
+(4) The word "Security", either alone or in conjunction with the company name, shall appear on each side and the rear of the company vehicle in letters no less than four inches in height and in a color contrasting with the color of the contract security company vehicle and shall be legible from a reasonable distance.',NULL,'licensing','Security Personnel Licensing Act Contract Security Rule',NULL,'rule','5/13/2019','https://adminrules.utah.gov/public/rule/R156-63a/Current%20Rules',NULL,1),
+(156,63,'63a','611',NULL,'R156-63a-611','Operating Standards - Operational Procedures Manual','(1) Each contract security company shall develop and maintain an operational procedures manual which includes the following topics:
+(a) detaining or arresting;
+(b) restraining, detaining, and search and seizure;
+(c) felony and misdemeanor definitions;
+(d) observing and reporting;
+(e) ingress and egress control;
+(f) natural disaster preparation;
+(g) alarm systems, locks, and keys;
+(h) radio and telephone communications;
+(i) crowd control;
+(j) public relations;
+(k) personal appearance and demeanor;
+(l) bomb threats;
+(m) fire prevention;
+(n) mental illness;
+(o) supervision;
+(p) criminal justice system;
+(q) code of ethics for private security officers;
+(r) sexual harassment in the workplace; and
+(s) hazardous chemical release.
+(2) The operations and procedures manual shall be immediately available to the Division upon request.',NULL,'licensing','Security Personnel Licensing Act Contract Security Rule',NULL,'rule','5/13/2019','https://adminrules.utah.gov/public/rule/R156-63a/Current%20Rules',NULL,1),
+(156,63,'63a','612',NULL,'R156-63a-612','Operating Standards - Display of License','The license issued to a contract security company shall be prominently displayed in the company''s principal place of business and a copy of the license shall be displayed prominently in all branch offices.',NULL,'licensing','Security Personnel Licensing Act Contract Security Rule',NULL,'rule','5/13/2019','https://adminrules.utah.gov/public/rule/R156-63a/Current%20Rules',NULL,1);
+
+INSERT INTO utah_statutes (title,chapter,chapter_code,section,subsection,citation,short_title,description,offense_level,category,subcategory,part_name,code_type,effective_date,source_url,citation_fine,is_active) VALUES
+(156,63,'63a','613',NULL,'R156-63a-613','Operating Standards - Notification of Criminal Arrest, Charge, Indictment, or Conviction - Notification of On-Duty Firearm Discharge','(1) In accordance with Subsection 58-63-302(2)(c) and (3)(c):
+(a) A licensed armed or unarmed private security officer shall notify the licensee''s employing contract security company, or if none, shall notify the Division, within 72 hours of being arrested, charged, indicted, or convicted for:
+(i) any criminal offense above the level of a Class C misdemeanor;
+(ii) any offense set forth in:
+(A) 18 U.S.C. Chapter 44, 922(g)1-9, concerning restrictions on firearms and ammunition transportation by certain persons;
+(B) Section 76-10-503, concerning restrictions on possession, purchase, transfer, or ownership of dangerous weapons by certain persons;
+(C) Subsections 58-63-302(2)(c), or (3)(c), concerning a felony, a misdemeanor involving moral turpitude, or a crime that when considered with the duties and responsibilities of a private security officer by the Division and the Board indicates that the best interests of the public are not served by granting the license; or
+(D) Subsection R156-63a-302f(1), concerning certain potentially disqualifying criminal offenses;
+(b) A contract security company shall notify the Division within 72 hours of receiving notification, or becoming aware, of any arrest, charge, indictment, or conviction of any of its licensed employees under this Subsection (1).
+(c) Notification under this Subsection (1)(b) shall be in writing, and include:
+(i) the employee''s name;
+(ii) the name of the court or arresting agency, if applicable;
+(iii) the court or agency case number or similar case identifier;
+(iv) the date of the arrest, charge, indictment, or conviction; and
+(v) the nature of the criminal offense or violation.
+(2) In accordance with Subsections 58-63-302(2) and 58-1-202(1)(d), the following notice and appearance standards shall apply to an on-duty discharge of a firearm by an armed private security officer:
+(a) Within 24 hours of the on-duty discharge, the armed private security officer shall notify the officer''s employing contract security company, or if none, then the armed private security officer shall notify the Division.
+(b) Within 72 hours of receiving notification, or becoming aware, of an on-duty firearm discharge by its employee, the employing contract security company shall notify the Division.
+(c) Notification under this Subsection (2) shall be in writing, and include:
+(i) the employee''s name;
+(ii) the date of the firearm discharge;
+(iii) the nature of the firearm discharge; and
+(iv) the physical location of the firearm discharge.
+(d) The Security Services Licensing Board shall require a mandatory appearance before the Board by the qualifying agent over that officer, to review the company policy and procedure for dealing with an on-duty discharge.',NULL,'licensing','Security Personnel Licensing Act Contract Security Rule',NULL,'rule','5/13/2019','https://adminrules.utah.gov/public/rule/R156-63a/Current%20Rules',NULL,1),
+(156,63,'63b','101',NULL,'R156-63b-101','Title','This rule is known as the "Security Personnel Licensing Act Armored Car Rule."',NULL,'licensing','Security Personnel Licensing Act Armored Car Rule',NULL,'rule','5/13/2019','https://adminrules.utah.gov/public/rule/R156-63b/Current%20Rules',NULL,1),
+(156,63,'63b','102',NULL,'R156-63b-102','Definitions','In addition to the definitions in Title 58, Chapters 1 and 63, as used in Title 58, Chapters 1 and 63 or this rule:
+(1) "Approved basic education and training program" means a basic education and training program that:
+(a) meets the standards and is approved by the Division as set forth in Section R156-63b-602; and
+(b) has the content required by Section R156-63b-603.
+(2) "Approved basic firearms training program" means a firearms education and training program that:
+(a) meets the standards and is approved by the Division as set forth in Section R156-63b-602; and
+(b) has the content required by Section R156-63b-604.
+(3) "Armored car company" includes a peace officer who engages in providing security or guard services when acting in a capacity other than as an employee of the law enforcement agency by whom the peace officer is employed.
+(4) "Armored car company" does not include a company which hires as employees, individuals to provide security or guard services for the purpose of protecting tangible property, currency, valuables, jewelry, SNAP benefits as defined in Section 35A-1-102, or other high value items that require secured delivery from one place to another and are owned by or under the responsibility of that company, as long as the security or guard services provided by the company do not benefit any person other than the employing company.
+(5) "Authorized emergency vehicle" is as defined in Subsection 41-6a-102(3).
+(6) "Compensated", as used in Subsection 58-63-302(1)(c)(viii)(A), means remuneration in the form of W-2 wages unless the qualifying agent is an owner of a contract security or armored car company, in which case "compensated" means the owner''s profit distributions or dividends.
+(7) "Conviction" means criminal conduct where the filing of a criminal charge has resulted in:
+(a) a finding of guilt based on evidence presented to a judge or jury;
+(b) a guilty plea;
+(c) a plea of nolo contendere;
+(d) a plea of guilty or nolo contendere which is held in abeyance pending the successful completion of probation;
+(e) a pending diversion agreement; or
+(f) a conviction which has been reduced pursuant to Section 76-3-402.
+(8) "Corporate officer" as defined in Subsection 58-63-102(9), includes an individual who is on file with the Division of Corporations and Commercial Code as a limited liability company''s company officer or "governing person" as defined in Subsection 48-3a-102(7), or as a limited partnership''s "general partner" as defined in Subsection 48-2e-102(8).
+(9) "Employee" means an individual providing services in the armored car industry for compensation when the amount of compensation is based directly upon the armored car services provided, and upon which the employer is required under law to withhold federal and state taxes, and for whom the employer is required under law to provide worker''s compensation insurance coverage and pay unemployment insurance.
+(10) "Instructor" means a person who directly facilitates learning through means of live in-class lecture, group participation, practical exercise, or other means, who has fulfilled the instructor experience and training requirements set forth in Section R156-63b-602.
+(11) "Qualified continuing education" means continuing education that meets the standards set forth in Subsection R156-63b-304.
+(12) "Qualifying agent" means a natural person who meets all of the requirements set forth in Subsection 58-63- 302(1)(c).
+(13) "Soft uniform" means a business suit or a polo-type shirt with appropriate slacks. The coat or shirt has an embroidered badge or armored car company logo that clips onto or is placed over the front pocket.
+(14) "Supervision" means general supervision as defined in Subsection R156-1-102a(4)(c).
+(15) "Trainer" has the same meaning as "instructor".
+(16) "Unprofessional conduct," as defined in Title 58, Chapters 1 and 63, is further defined, in accordance with Subsection 58-1-203(1)(e), in Section R156-63b-502.',NULL,'licensing','Security Personnel Licensing Act Armored Car Rule',NULL,'rule','5/13/2019','https://adminrules.utah.gov/public/rule/R156-63b/Current%20Rules',NULL,1),
+(156,63,'63b','103',NULL,'R156-63b-103','Authority - Purpose','This rule is adopted by the Division under the authority of Subsection 58-1-106(1)(a) to enable the Division to administer Title 58, Chapter 63.',NULL,'licensing','Security Personnel Licensing Act Armored Car Rule',NULL,'rule','5/13/2019','https://adminrules.utah.gov/public/rule/R156-63b/Current%20Rules',NULL,1),
+(156,63,'63b','104',NULL,'R156-63b-104','Organization - Relationship to Rule R156-1','The organization of this rule and its relationship to Rule R156-1 is as described in Section R156-1-107.',NULL,'licensing','Security Personnel Licensing Act Armored Car Rule',NULL,'rule','5/13/2019','https://adminrules.utah.gov/public/rule/R156-63b/Current%20Rules',NULL,1),
+(156,63,'63b','302a',NULL,'R156-63b-302a','Qualifications for Licensure - Application Requirements','(1) An application for licensure as an armored car company shall be accompanied by:
+(a) two fingerprint cards for each of the applicant''s:
+(i) qualifying agent;
+(ii) corporate officers;
+(iii) directors;
+(iv) equity holders or shareholders owning more than 5% of the equity or outstanding shares;
+(v) partners;
+(vi) proprietors; and
+(vii) responsible management personnel; and
+(b) a fee established in accordance with Section 63J-1-504 equal to the cost of conducting a check of records of the Federal Bureau of Investigation, and the Bureau of Criminal Identification, Utah Department of Public Safety, for each of the persons required to provide a fingerprint card under Subsection (1)(a) above.
+(2) An application for licensure as an armored car security officer shall be accompanied by:
+(a) two fingerprint cards for the applicant; and
+(b) a fee established in accordance with Section 63J-1-504 equal to the cost of conducting a check of records for the applicant with:
+(i) the Federal Bureau of Investigation; and
+(ii) the Bureau of Criminal Identification of the Utah Department of Public Safety.',NULL,'licensing','Security Personnel Licensing Act Armored Car Rule',NULL,'rule','5/13/2019','https://adminrules.utah.gov/public/rule/R156-63b/Current%20Rules',NULL,1),
+(156,63,'63b','302b',NULL,'R156-63b-302b','Qualifications for Licensure - Basic Education and Training Requirements','In accordance with Subsections 58-1-203(1)(b) and 58-63-302(4)(g), an applicant for licensure as an armored car security officer shall successfully complete an approved basic education and training program as defined in Subsection R156- 63b-102(1).',NULL,'licensing','Security Personnel Licensing Act Armored Car Rule',NULL,'rule','5/13/2019','https://adminrules.utah.gov/public/rule/R156-63b/Current%20Rules',NULL,1),
+(156,63,'63b','302c',NULL,'R156-63b-302c','Qualifications for Licensure - Firearm Training Requirements','In accordance with Subsections 58-1-203(1)(b) and 58-63-302(4)(h), an applicant for licensure as an armored car security officer shall successfully complete an approved basic firearms training program as defined in Subsection R156-63b- 102(2).',NULL,'licensing','Security Personnel Licensing Act Armored Car Rule',NULL,'rule','5/13/2019','https://adminrules.utah.gov/public/rule/R156-63b/Current%20Rules',NULL,1),
+(156,63,'63b','302d',NULL,'R156-63b-302d','Qualifications for Licensure - Examination Requirements','In accordance with Subsections 58-1-203(1)(b) and 58-1-301(3), the examination requirements for licensure in Section 58-63-302 are defined, clarified, or established herein.
+(1) The qualifying agent for an applicant who is an armored car company shall obtain a passing score of at least 75% on the Utah Armored Car Company Qualifying Agent Examination.
+(2) An applicant for licensure as an armored car security officer shall obtain a score of at least 80% on the approved basic education and training program''s final examination.',NULL,'licensing','Security Personnel Licensing Act Armored Car Rule',NULL,'rule','5/13/2019','https://adminrules.utah.gov/public/rule/R156-63b/Current%20Rules',NULL,1),
+(156,63,'63b','302e',NULL,'R156-63b-302e','Qualification for Licensure - Liability Insurance for a Armored Car Company','In accordance with Subsections 58-1-203(1)(b) and 58-1-301(3), the insurance requirements for licensure as an armored car company in Subsection 58-63-302(1)(j)(i) are defined, clarified, or established herein.
+(1) An applicant shall file with the Division a "Certificate of Insurance" providing liability insurance for the following exposures:
+(a) general liability;
+(b) assault and battery;
+(c) personal injury;
+(d) libel and slander;
+(e) broad form property damage;
+(f) damage to property in the care, custody or control of the armored car company; and
+(g) errors and omissions.
+(2) Said insurance shall provide liability limits in amounts not less than $500,000 for each incident and not less than $2,000,000 total aggregate for each annual term.
+(3) The insurance carrier must be an insurer which has a certificate of authority to do business in Utah, or is an authorized surplus lines insurer in Utah, or is authorized to do business under the laws of the state in which the corporate offices of foreign corporations are located.
+(4) All armored car companies shall have a current insurance certificate of coverage as defined in Subsection (1) on file at all times and available for immediate inspection by the Division during normal working hours.
+(5) All armored car companies shall notify the Division immediately upon cancellation of the insurance policy, whether such cancellation was initiated by the insurance company or the insured agency.',NULL,'licensing','Security Personnel Licensing Act Armored Car Rule',NULL,'rule','5/13/2019','https://adminrules.utah.gov/public/rule/R156-63b/Current%20Rules',NULL,1),
+(156,63,'63b','302f',NULL,'R156-63b-302f','Qualifications for Licensure - Age Requirement for Armored Car Security Officer','In accordance with Subsections 76-10-509(1) and 76-10-509.4, an armored car security officer must be 18 years of age or older at the time of submitting an application for licensure.',NULL,'licensing','Security Personnel Licensing Act Armored Car Rule',NULL,'rule','5/13/2019','https://adminrules.utah.gov/public/rule/R156-63b/Current%20Rules',NULL,1),
+(156,63,'63b','302g',NULL,'R156-63b-302g','Qualifications for Licensure - Good Moral Character - Disqualifying Convictions','(1) In accordance with Subsections 58-63-302(1)(h) and (4)(c), in addition to those criminal convictions prohibiting licensure, the following criminal convictions may disqualify an applicant or licensee from obtaining or holding an armored car security officer license, or an armored car company license:
+(a) crimes against a person as defined in Title 76, Chapter 5, Part 1;
+(b) theft, including retail theft, as defined in Title 76;
+(c) larceny;
+(d) sex offenses as defined in Title 76, Chapter 5, Part 4;
+(e) any offense involving a controlled substance as defined in Subsection 58-37-2(1)(f);
+(f) fraud;
+(g) extortion;
+(h) treason;
+(i) forgery;
+(j) arson;
+(k) kidnapping;
+(l) perjury;
+(m) conspiracy to commit any of the offenses listed herein;
+(n) hijacking;
+(o) burglary;
+(p) escape from jail, prison, or custody;
+(q) false or bogus checks;
+(r) terrorist activities;
+(s) desertion;
+(t) pornography;
+(u) two or more convictions for driving under the influence of alcohol within the last three years; and
+(v) any attempt to commit any of the above offenses.
+(2) An applicant may not obtain initial licensure or license renewal as an armored car security officer or as an armored car company, and the license of an armored car security officer or of an armored car company shall be automatically revoked, if the applicant or licensee is in violation of any provision set forth in:
+(a) 18 U.S.C. Chapter 44, 922(g)1-9, concerning restrictions on firearms and ammunition transportation by certain persons; or
+(b) Utah Code Section 76-10-503, concerning restrictions on possession, purchase, transfer, or ownership of dangerous weapons by certain persons.
+(3) In accordance with Subsection 58-63-302(1), if the applicant or licensee is an armored car company, the background of the following individuals shall be considered:
+(a) corporate officer;
+(b) director;
+(c) any shareholder owning 5% or more of the outstanding stock of the company as described in Subsection 58-63- 302(1)(d)(ii);
+(d) partner;
+(e) proprietor;
+(f) qualifying agent; and
+(g) management personnel employed within Utah or having direct responsibility for managing operations of the company within Utah.
+(4) Criminal history and statutory violations that do not automatically disqualify an applicant under statute or rule shall be considered on a case-by-case basis in accordance with Section R156-1-302.',NULL,'licensing','Security Personnel Licensing Act Armored Car Rule',NULL,'rule','5/13/2019','https://adminrules.utah.gov/public/rule/R156-63b/Current%20Rules',NULL,1),
+(156,63,'63b','302h',NULL,'R156-63b-302h','Qualifications for Licensure - Immediate Issuance of an Interim Permit','In accordance with Section 58-63-310, upon receipt of a complete application for licensure as an armored car security officer, the Division may immediately issue an interim permit to the applicant, if the applicant:
+(1)(a) submits with the application an official criminal history report from the Bureau of Criminal Identification, Utah Department of Public Safety, showing "No Criminal Record Found";
+(b) has not answered "yes" to any question on the qualifying questionnaire section of the application; and
+(c) has not had a license to practice an occupation or profession denied, revoked, suspended, restricted, or placed on probation.
+(2) If an applicant''s application is denied, an interim permit issued under this section shall automatically expire.',NULL,'licensing','Security Personnel Licensing Act Armored Car Rule',NULL,'rule','5/13/2019','https://adminrules.utah.gov/public/rule/R156-63b/Current%20Rules',NULL,1),
+(156,63,'63b','303',NULL,'R156-63b-303','Renewal Cycle - Procedures','(1) In accordance with Subsection 58-1-308(1), the renewal date for the two-year renewal cycle applicable to licensees under Title 58, Chapter 63 is established by rule in Section R156-1-308a.
+(2) Renewal procedures shall be in accordance with Section R156-1-308c.',NULL,'licensing','Security Personnel Licensing Act Armored Car Rule',NULL,'rule','5/13/2019','https://adminrules.utah.gov/public/rule/R156-63b/Current%20Rules',NULL,1),
+(156,63,'63b','304',NULL,'R156-63b-304','Continuing Education for Armored Car Security Officers as a Condition of Renewal','In accordance with Subsections 58-1-203(1)(g) and 58-1-308(3)(b), the following continuing education requirements are established as a condition of renewal or reinstatement of licenses issued under Title 58, Chapter 63 in the classifications of armored car security officer:
+(1) An armored car security officers shall complete at least 32 hours of continuing education during each two-year renewal cycle. A minimum of 16 hours shall be core continuing education; the remaining hours may consist of professional continuing education or core continuing education.
+(a) "Core continuing education" is defined as education completed during a two-year renewal cycle, that covers each of the following topics:
+(i) company operational procedures manual;
+(ii) applicable state laws and rules;
+(iii) legal powers and limitations of private security officers;
+(iv) observation and reporting techniques;
+(v) ethics;
+(vi) management of aggressive behavior, use of force, de-escalation techniques;
+(vii) emergency techniques; and
+(viii) a recognized basic life saving course to obtain or maintain certification in:
+(A) cardiopulmonary resuscitation(CPR);
+(B) automated external defibrillator (AED);
+(C) first aid; or
+(D) any other recognized basic life-saving skills.
+(b) "Professional continuing education" is defined as education covering one or more of the following topics:
+(i) executive protection;
+(ii) basic self-defense;
+(iii) driving techniques for the security professional;
+(iv) escort techniques;
+(v) crowd control;
+(vi) access control and the use of electronic detection devices;
+(vii) use of defensive items and objects;
+(viii) homeland security involving bomb threats and anti-terrorism;
+(ix) Americans with Disabilities Act (ADA) compliance; or
+(x) any other topic relevant to the education of armored car security professionals.
+(2) In addition to the 32 hours of core/professional continuing education, an armored car security officer shall complete at least 16 hours of continuing firearms education and training during each two-year renewal cycle. Continuing firearms education and training:
+(a) shall be completed in four-hour blocks every six months;
+(b) may not include any hours for the continuing education requirement in Subsection R156-63b-304(2);
+(c) shall comply with the provisions of Title 15, USC Chapter 85, the Armored Car Industry Reciprocity Act; and
+(d) shall include at minimum:
+(i) live classroom instruction concerning:
+(A) restrictions in the use of deadly force; and
+(B) firearms safety on duty, at home, and on the range; and
+(ii) a recognized practical pistol recertification course on which the licensee achieves a minimum score of 80% using regular or low light conditions.
+(3) Credit for continuing education shall be recognized as follows:
+(a) unlimited hours for core, professional, and firearm continuing education completed in blocks of time of not less than one hour in formally established classroom courses, seminars, or conferences;
+(b) unlimited hours for professional continuing education provided via the Internet, if the course provider verifies registration and participation in the courses by means of an exam which demonstrates that the participant has learned the material presented;
+(c) two hours for each hour of lecturing, training, or instructing a course, if it is the first time the material has been taught during the preceding 12 months, up to a maximum of 12 hours during each two-year renewal period; the type of credit received - whether core, professional, or firearms education and training - shall be based on the subject taught; and
+(d) one professional continuing education hour for each hour of service on the Contract Security Services Licensing Board, a state or national security board, or the Contract Security Education Advisory Peer Committee, up to a maximum of six hours during each two-year renewal period.
+(4) Modification of Required Continuing Education Hours.
+(a) A licensee who fails to complete the required four hours of continuing firearms education and training within the appropriate six-month period shall complete one and one half times the number of hours the licensee was deficient for the reporting period ("penalty" hours). Penalty hours shall not satisfy in whole or in part any of the continuing firearms education and training hours required for subsequent renewal of the license.
+(b) If a renewal period is shortened or lengthened to effect a change of renewal cycle, the continuing education hours required for that renewal period shall be increased or decreased proportionately.
+(c) The Division may defer or waive continuing education requirements as provided in Section R156-1-308d.
+(5) A licensee shall maintain documentation showing compliance with the requirements of this section, such as certificates of completion or course handouts and materials, for a period of three years from the end of the renewal period for which the continuing education is due.
+(6) An armored car security company licensed under this chapter shall:
+(a) review continuing education courses and approve for its employees only those courses that meet the requirements of this section;
+(b)(i) maintain accurate records of its approved continuing education courses and of each employee''s attendance and course completion; and
+(ii) make such records available for audit by representatives of the Division; and
+(c) ensure that each provider of its approved continuing education courses:
+(i) maintains accurate records of attendance and course completion, by individual licensee, that are available for review by the licensed company, the Division, and the licensee;
+(ii) provides individuals completing the course a certificate identifying the:
+(A) name of the individual;
+(B) date the course was taken;
+(C) location where the course was taken or type of Internet course taken;
+(D) title of the course identifying its topic(s) as outlined in Subsection R156-63b-304(1);
+(E) name of the continuing education provider and instructor;
+(F) exam score for any exam taken; and
+(G) number of continuing education hours completed.
+(7) On a random basis, the Division may assign monitors at no charge to attend a continuing education course for the purposes of evaluating the course and the instructor.
+(8) The initial licensure education and training programs defined in Subsections R156-63b-102(1) and (2) may not be used to satisfy, in whole or in part, any of the continuing education requirements of this section.',NULL,'licensing','Security Personnel Licensing Act Armored Car Rule',NULL,'rule','5/13/2019','https://adminrules.utah.gov/public/rule/R156-63b/Current%20Rules',NULL,1),
+(156,63,'63b','305',NULL,'R156-63b-305','Criminal History Renewal and Reinstatement Requirement','(1) In accordance with Subsections 58-1-203(1)(g) and 58-1-308(3)(b) and R156-1-302, a criminal history background check is required for all applications for renewal and reinstatement.
+(2) The criminal history background check shall be performed by the Division and is not required to be submitted by the applicant.
+(3) If the criminal background check discloses a criminal background, the Division shall evaluate the criminal history in accordance with Sections 58-63-302 and R156-63b-302g to determine appropriate licensure action.',NULL,'licensing','Security Personnel Licensing Act Armored Car Rule',NULL,'rule','5/13/2019','https://adminrules.utah.gov/public/rule/R156-63b/Current%20Rules',NULL,1),
+(156,63,'63b','306',NULL,'R156-63b-306','Change of Qualifying Agent','Within 60 days after a qualifying agent for a licensed armored car company ceases employment with the licensee, or for any other reason is not qualified to be the licensee''s qualifier, the armored car company shall file with the Division an application for change of qualifier on forms provided by the Division, accompanied by a fee established in accordance with Section 63J-1-504.',NULL,'licensing','Security Personnel Licensing Act Armored Car Rule',NULL,'rule','5/13/2019','https://adminrules.utah.gov/public/rule/R156-63b/Current%20Rules',NULL,1),
+(156,63,'63b','502',NULL,'R156-63b-502','Unprofessional Conduct','"Unprofessional conduct" includes the following:
+(1) making any statement that would reasonably cause another person to believe that an armored car security officer functions as a law enforcement officer or other official of this state or any of its political subdivisions or any agency of the federal government;
+(2) utilizing a vehicle with markings, lighting, and/or signal devices that imply or suggest that the vehicle is an authorized emergency vehicle as defined in Subsection 41-6a-102(3) and Section 41-6a-310;
+(3) utilizing a vehicle with an emergency lighting system that violates the requirements of Section 41-6a-1616 of the Utah Motor Vehicle Code;
+(4) wearing a uniform, insignia, or badge that would lead a reasonable person to believe that the armored car security officer is connected with a federal, state, or municipal law enforcement agency;
+(5) being incompetent or negligent as an armored car security officer or as an armored car company so as to cause injury to a person or create an unreasonable risk that a person might be harmed;
+(6) failing as an armored car company or its officers, directors, partners, proprietors or responsible management personnel to adequately supervise employees so as to place the public health and safety at risk;
+(7) failing to immediately notify the Division of the cancellation of the armored car company''s insurance policy;
+(8) failing as an armored car company or an armored car security officer to report a criminal offense pursuant to Section R156-63b-612;
+(9) pursuant to Subsection R156-63b-612(1), failing as an armored car company or an armored car security officer to report to the Division a violation of:
+(a) any provision set forth in 18 U.S.C. Chapter 44, 922(g)1-9;
+(b) Utah Code Subsection 76-10-503(1); or
+(c) Utah Code Subsection 58-63-302(1)(h), (2)(c), or (3)(c);
+(10) wearing a uniform, insignia, or badge, or displaying a license, that would lead a reasonable person to believe that an individual is connected with an armored car company, when not employed as an armored car security officer by an armored car company; and
+(11) failing as an armored car security officer to complete required continuing education hours, in violation of Section R156-63b-304; and
+(12) failing as an armored car security company to comply with R156-63b-304(6) regarding continuing education courses or providers.',NULL,'licensing','Security Personnel Licensing Act Armored Car Rule',NULL,'rule','5/13/2019','https://adminrules.utah.gov/public/rule/R156-63b/Current%20Rules',NULL,1),
+(156,63,'63b','503',NULL,'R156-63b-503','Mandatory Sanctions - Administrative Penalties','(1) The license of an armored car company or an armored car security officer shall be suspended for a period of time determined by the Board if the licensee fails to report to the Division a violation of:
+(a) any provision set forth in 18 U.S.C. chapter 44, 922(g)1-9;
+(b) Utah Code Subsection 76-10-503(1); or
+(c) Utah Code Subsections 58-63-302(1)(h), (2)(c), or (3)(c).
+(2) In accordance with Subsection 58-63-503, the following citation fine schedule shall apply to citations issued under Title 58, Chapter 63:
+TABLE
+FINE SCHEDULE
+FIRST OFFENSE
+Armed or Unarmed
+Armored Car
+Violation Armored Car Company Security Officer
+58-63-501(1) $ 800.00 N/A
+58-63-501(4) $ 800.00 $ 500.00
+SECOND OFFENSE
+58-63-501(1) $1,600.00 $1,000.00
+58-63-501(4) $1,600.00 $1,000.00
+(3) Citations shall not be issued for third offenses, except in extraordinary circumstances approved by the investigative supervisor. If a citation is issued for a third offense, the fine is double the second offense amount, with a maximum amount not to exceed the maximum fine allowed under Subsection 58-63-503(3)(h)(iii).
+(4) If multiple offenses are cited on the same citation, the fine shall be determined by evaluating the most serious offense.
+(5) An investigative supervisor may authorize a deviation from the fine schedule based upon the aggravating or mitigating circumstances.
+(6) The presiding officer for a contested citation shall have the discretion, after a review of the aggravating and mitigating circumstances, to increase or decrease the fine amount imposed by an investigator based upon the evidence reviewed.',NULL,'licensing','Security Personnel Licensing Act Armored Car Rule',NULL,'rule','5/13/2019','https://adminrules.utah.gov/public/rule/R156-63b/Current%20Rules',NULL,1),
+(156,63,'63b','601',NULL,'R156-63b-601','Operating Standards - Firearms','(1) An armored car security officer shall carry only that firearm with which the officer has passed an approved basic firearm training program.
+(2) Shotguns and rifles owned and issued by the armored car company, may be used in situations where they would constitute an appropriate defense for the armored car security officer, if the officer has successfully completed a firearms training program specific to shotgun or rifle use.
+(3) An armored car security officer shall not carry a firearm except when acting on official duty as an employee of an armored car company, unless the licensee is otherwise qualified under the laws of the state to carry a firearm.',NULL,'licensing','Security Personnel Licensing Act Armored Car Rule',NULL,'rule','5/13/2019','https://adminrules.utah.gov/public/rule/R156-63b/Current%20Rules',NULL,1),
+(156,63,'63b','602',NULL,'R156-63b-602','Division Approval and Operating Standards - Training Program for Armored Car Security Officers','(1) To obtain Division approval of a training program for armored car security officers, the program owner shall submit to the Division:
+(a) an application in a form prescribed by the Division;
+(b) a fee for the approval of the program; and
+(c) a written education and training manual which includes:
+(i) a course syllabus with an hourly breakdown of the course outline and training schedule;
+(ii) a course curriculum;
+(iii) a four-hour instructor training program;
+(iv) testing tools; and
+(v) if an online curriculum or multi-media learning tools are used, a copy of the original medium.
+(2) If any individual or entity uses a Division-approved training program that the user does not own, the user shall submit to and maintain with the Division a current copy of the user''s written contract with the program owner, which identifies the duration allowed for use. The user shall promptly update this information in writing with the Division as necessary.
+(3) A course curriculum shall include the following content:
+(a) for a basic education and training program, the content established in Section R156-63b-603; and
+(b) for a basic firearms training program, the content established in Section R156-63b-604.
+(4) All instructors teaching an approved basic education and training program shall:
+(a) have at least three years of supervisory experience reasonably related to providing armored car security services; and
+(b) have completed a four-hour instructor training program which shall include the following:
+(i) motivation and the learning process;
+(ii) teacher preparation and teaching methods;
+(iii) classroom management;
+(iv) testing; and
+(v) instructional evaluation.
+(5) All instructors teaching an approved basic firearms training program shall have the following qualifications:
+(a) current Peace Officers Standards and Training firearms instructor certification; or
+(b) current certification as a firearms instructor by:
+(i) the National Rifle Association;
+(ii) a Utah law enforcement agency;
+(iii) a Federal law enforcement agency;
+(iv) a branch of the United States military; or
+(v) other qualification or certification determined by the Division, in collaboration with the Board, to be equivalent.
+(6) When an instructor for a Division-approved training program begins providing instruction, the user of the Division-approved training program shall report the instructor''s name to the Division, on a form supplied by the Division.
+(7) When an instructor for a Division-approved training program ceases to instruct for that program, or no longer meets instructor requirements, the user of the Division-approved training program shall report that information and the instructor''s name to the Division, on a form supplied by the Division.
+(8) All approved training programs shall maintain training records on each individual trained, including the dates of attendance at training, a copy of the instruction given, and the location of the training. These records shall be maintained in the program''s files for at least three years.
+(9) If an approved training program provider ceases to engage in business, the provider shall establish a method approved by the Division by which the records of the education and training shall continue to be available for a period of at least three years after the education and training is provided.',NULL,'licensing','Security Personnel Licensing Act Armored Car Rule',NULL,'rule','5/13/2019','https://adminrules.utah.gov/public/rule/R156-63b/Current%20Rules',NULL,1),
+(156,63,'63b','603',NULL,'R156-63b-603','Content of Approved Basic Education and Training Program','In accordance with Subsection 58-63-302(4)(g), an approved basic education and training program for armored car security officers shall have at least eight hours of classroom or online instruction, including:
+(1) the nature and role of private security, including an armored car security officer''s:
+(a) scope and limits of authority;
+(b) civil liability;
+(c) role in today''s society;
+(2) state laws and rules applicable to armored car security officers;
+(3) legal responsibilities of armored car security officers, including:
+(a) constitutional law;
+(b) search and seizure; and
+(c) other such topics;
+(4) security ethics;
+(5) the use of force, emphasizing the de-escalation of force and alternatives to using force;
+(6) police and community relations, including fundamental duties and the personal appearance of an armored car security officer;
+(7) sexual harassment in the workplace;
+(8) driving policies and procedures, driver training and vehicle orientation;
+(9) emergency situation response, including:
+(a) terminal security;
+(b) traffic accidents;
+(c) robbery situations;
+(d) homeland security;
+(e) reducing risk potential through street procedures and tactics;
+(f) securing robbery scenes;
+(g) dealing with the media;
+(10) armored operations, including:
+(a) proper paperwork;
+(b) street control procedures;
+(c) vehicle transfers;
+(d) vault procedures;
+(e) other proper branch procedures; and
+(11) A final examination that:
+(a) competently examines the student on the subjects included in the eight hours of basic classroom instruction; and
+(b) mandates a minimum pass score of 80%.',NULL,'licensing','Security Personnel Licensing Act Armored Car Rule',NULL,'rule','5/13/2019','https://adminrules.utah.gov/public/rule/R156-63b/Current%20Rules',NULL,1),
+(156,63,'63b','604',NULL,'R156-63b-604','Content of Approved Basic Firearms Training Program','In accordance with Subsection 58-63-302(4)(h), an approved basic firearms training program for armored car security officers shall have the following components:
+(1) at least six hours of classroom firearms instruction, to include the following:
+(a) the firearm and its ammunition;
+(b) care and cleaning of the firearm;
+(c) the prohibition against alterations of the firearm''s firing mechanism;
+(d) firearm inspection review procedures;
+(e) firearm safety on duty;
+(f) firearm safety at home;
+(g) firearm safety on the range;
+(h) legal and ethical restraints on firearms use;
+(i) explanation and discussion of target environment;
+(j) stop failure drills;
+(k) explanation and discussion of stance, draw stroke, cover and concealment, and other firearm fundamentals;
+(l) armed patrol techniques;
+(m) use of deadly force under Utah law and the provisions of Title 76, Chapter 2, Part 4, and a discussion of 18 USC 44 Section 922; and
+(n) instruction that an armored car security officer shall not fire the officer''s weapon unless there is an imminent threat to life, and at no time shall the weapon be drawn as a threat or means to force compliance with any verbal directive not involving imminent threat to life;
+(2) a final examination that demonstrates the competency of the participant on the subjects included in the six hours of classroom firearms instruction, with a passing score requirement of 80%; and
+(3) at least six hours of firearms range instruction to include the following:
+(a) basic firearms fundamentals and marksmanship;
+(b) demonstration and explanation of the difference between sight picture, sight alignment, and trigger control; and
+(c) a recognized practical pistol course on which the applicant achieves a minimum score of 80% using regular and low light conditions.',NULL,'licensing','Security Personnel Licensing Act Armored Car Rule',NULL,'rule','5/13/2019','https://adminrules.utah.gov/public/rule/R156-63b/Current%20Rules',NULL,1),
+(156,63,'63b','605',NULL,'R156-63b-605','Operating Standards - Uniform Requirements','(1) All armored car security officers while on duty shall wear the uniform of their armored car company employer unless assigned to work undercover.
+(2) The name of the armored car company shall be of a size, style, shape, design and type which is clearly visible by a reasonable person under normal conditions.
+(3) Each armored car company officer wearing a regular uniform shall display on the outermost garment of the uniform in a style, shape, design and type which is clearly visible by a reasonable person under normal conditions identification which contains the name or logo of the armored car company under whom the armored car security officer is employed.',NULL,'licensing','Security Personnel Licensing Act Armored Car Rule',NULL,'rule','5/13/2019','https://adminrules.utah.gov/public/rule/R156-63b/Current%20Rules',NULL,1),
+(156,63,'63b','606',NULL,'R156-63b-606','Operating Standards - Badges','(1) At the armored car company''s request, an armored car security officer may, while in uniform and while on duty, wear a shield inscribed with the words "Security," or "Security Officer". The shield shall not contain the words "State of Utah" or the seal of the state of Utah.
+(2) The use of a star badge with any number of points on a uniform, in writing, advertising, letterhead, or other written communication is prohibited.',NULL,'licensing','Security Personnel Licensing Act Armored Car Rule',NULL,'rule','5/13/2019','https://adminrules.utah.gov/public/rule/R156-63b/Current%20Rules',NULL,1),
+(156,63,'63b','607',NULL,'R156-63b-607','Operating Standards - Notification and Prohibition of Criminal Status of Armored Car Company Corporate Officer, Director, Partner, Proprietor, Qualifying Agent, Armored Car Security Officer, Manager, or Shareholder','(1) In accordance with Subsections 58-63-302(1)(h) and (i), 58-63-302(4)(c) and (d), and Section R156-63b-302g, this section applies to any armored car company:
+(a) corporate officer;
+(b) director;
+(c) partner;
+(d) proprietor;
+(e) qualifying agent;
+(f) armored car security officer;
+(g) management personnel employed within Utah or having direct responsibility for managing operations of the armored car company within Utah; and
+(h) shareholder owning 5% or more as described in Subsection 58-63-302(1)(d)(ii).
+(2) A person identified in Subsection (1) shall not participate at any level or capacity in the management, operations, sales, or employment of an armored car company, and shall not own any part of an armored car company (except less than 5% as described in Subsection 58-63-302(1)(d)(ii)), if the person fails to meet a licensing requirement set forth in:
+(a) Subsections 58-63-302(1)(h) or 58-63-302(4)(c), for conviction of a felony, or of a misdemeanor involving moral turpitude, or of a crime that when considered with the duties and responsibilities of the license by the Division and the Board indicates that the best interests of the public are not served by granting the license; or
+(b) Subsections 58-63-302(1)(h)(iii) or 58-63-302(4)(d), for conviction of violating any provision set forth in:
+(i) 18 U.S.C. Chapter 44, 922(g)1-9, concerning restrictions on firearms and ammunition transportation by certain persons; or
+(ii) Subsection 76-10-503, concerning restrictions on possession, purchase, transfer, or ownership of dangerous weapons by certain persons.
+(3) An armored car company shall:
+(a) within ten calendar days of occurrence, report to the Division in writing any event that occurs in regard to a person identified in Subsection (1), respecting:
+(i) any conviction listed under this Subsection (2) or Subsection R156-63b-302g(2) as a disqualifying criminal conviction; and
+(ii) any conviction listed under Subsection R156-63b-302g(1) as a potentially disqualifying criminal conviction; and
+(b) take appropriate steps to ensure that company ownership and operations comply with this Section.',NULL,'licensing','Security Personnel Licensing Act Armored Car Rule',NULL,'rule','5/13/2019','https://adminrules.utah.gov/public/rule/R156-63b/Current%20Rules',NULL,1),
+(156,63,'63b','608',NULL,'R156-63b-608','Operating Standards - Implying an Association with Public Law Enforcement Prohibited','(1) No armored car company shall use any name which implies intentionally or otherwise that the company is connected or associated with any public law enforcement agency.
+(2) No armored car company shall permit the use of the words "special police", "special officer", "cop", or any other words of a similar nature whether used orally or appearing in writing or on any uniform, badge, or cap.
+(3) No person licensed under this chapter shall use words or designations which would cause a reasonable person to believe he is associated with a public law enforcement agency.',NULL,'licensing','Security Personnel Licensing Act Armored Car Rule',NULL,'rule','5/13/2019','https://adminrules.utah.gov/public/rule/R156-63b/Current%20Rules',NULL,1),
+(156,63,'63b','609',NULL,'R156-63b-609','Operating Standards - Proper Identification of Armored Car Security Officers','All armored car security officers shall carry a valid security license together with a government-issued identification card or a current state-issued driver license whenever performing the duties of an armored car security officer and shall exhibit said license and identification upon request.',NULL,'licensing','Security Personnel Licensing Act Armored Car Rule',NULL,'rule','5/13/2019','https://adminrules.utah.gov/public/rule/R156-63b/Current%20Rules',NULL,1),
+(156,63,'63b','610',NULL,'R156-63b-610','Operating Standards - Operational Procedures Manual','(1) Each armored car company shall develop and maintain an operational procedures manual which includes the following topics:
+(a) detaining or arresting;
+(b) restraining, detaining, and search and seizure;
+(c) felony and misdemeanor definitions;
+(d) observing and reporting;
+(e) ingress and egress control;
+(f) natural disaster preparation;
+(g) alarm systems, locks, and keys;
+(h) radio and telephone communications;
+(i) crowd control;
+(j) public relations;
+(k) personal appearance and demeanor;
+(l) bomb threats;
+(m) fire prevention;
+(n) mental illness;
+(o) supervision;
+(p) criminal justice system;
+(q) code of ethics for armored car security officers;
+(r) sexual harassment in the workplace; and
+(s) hazardous chemical release.
+(2) The operations and procedures manual shall be immediately available to the Division upon request.',NULL,'licensing','Security Personnel Licensing Act Armored Car Rule',NULL,'rule','5/13/2019','https://adminrules.utah.gov/public/rule/R156-63b/Current%20Rules',NULL,1),
+(156,63,'63b','611',NULL,'R156-63b-611','Operating Standards - Display of License','The license issued to an armored car company shall be prominently displayed in the company''s principal place of business and a copy of the license shall be displayed prominently in all branch offices.',NULL,'licensing','Security Personnel Licensing Act Armored Car Rule',NULL,'rule','5/13/2019','https://adminrules.utah.gov/public/rule/R156-63b/Current%20Rules',NULL,1),
+(156,63,'63b','612',NULL,'R156-63b-612','Operating Standards - Notification of Criminal Arrest, Charge, Indictment, or Conviction - Notification of On-Duty Firearm Discharge','(1) In accordance with Subsection 58-63-302(4)(c):
+(a) A licensed armored car security officer shall notify the licensee''s employing armored car company, or if none, shall notify the Division, within 72 hours of being arrested, charged, indicted, or convicted for:
+(i) any criminal offense above the level of a Class C misdemeanor;
+(ii) any offense set forth in:
+(A) 18 U.S.C. Chapter 44, 922(g)1-9, concerning restrictions on firearms and ammunition transportation by certain persons;
+(B) Section 76-10-503, concerning restrictions on possession, purchase, transfer, or ownership of dangerous weapons by certain persons;
+(C) Subsections 58-63-302(4)(c), concerning a felony, a misdemeanor involving moral turpitude, or a crime that when considered with the duties and responsibilities of an armored car security officer by the Division and the Board indicates that the best interests of the public are not served by granting the license; or
+(D) Subsection R156-63b-302g(1), concerning certain potentially disqualifying criminal offenses.
+(b) An armored car company shall notify the Division within 72 hours of receiving notification, or becoming aware, of any arrest, charge, indictment, or conviction of any of its licensed employees under this Subsection (1).
+(c) Notification under this Subsection (1)(b) shall be in writing, and include:
+(i) the employee''s name;
+(ii) the name of the court or arresting agency, if applicable;
+(iii) the court or agency case number or similar case identifier;
+(iv) the date of the arrest, charge, indictment, or conviction; and
+(v) the nature of the criminal offense or violation.
+(2) In accordance with Subsection 58-63-302(4) and 58-1-202(1)(d), the following notice and appearance standards shall apply to an on-duty discharge of a firearm by an armored car security officer:
+(a) Within 24 hours of the on-duty discharge, the armored car security officer shall notify the officer''s employing armored car company, or if none, then the armored car security officer shall notify the Division.
+(b) Within 72 hours of receiving notification, or becoming aware, of an on-duty firearm discharge by its employee, the employing armored car company shall notify the Division.
+(c) Notification under this Subsection (2) shall be in writing, and include:
+(i) the employee''s name;
+(ii) the date of the firearm discharge;
+(iii) the nature of the firearm discharge; and
+(iv) the physical location of the firearm discharge.
+(d) The Security Services Licensing Board shall require a mandatory appearance before the Board by the qualifying agent over that officer, to review the company policy and procedure for dealing with an on-duty discharge.',NULL,'licensing','Security Personnel Licensing Act Armored Car Rule',NULL,'rule','5/13/2019','https://adminrules.utah.gov/public/rule/R156-63b/Current%20Rules',NULL,1),
+(722,330,'330','1',NULL,'R722-330-1','Purpose','The purpose of this rule is to establish procedures for the licensing of private investigator agencies, registrants, and apprentices.',NULL,'licensing','Licensing of Private Investigators',NULL,'rule','12/9/2025','https://adminrules.utah.gov/public/rule/R722-330/Current%20Rules',NULL,1),
+(722,330,'330','10',NULL,'R722-330-10','Records Access','(1) Information gathered by the division in the course of investigating an application or complaint shall be considered protected information in accordance with Subsection 63G-2-305(10).
+(2) If information described in Subsection R722-330-10(1) is used as the basis for the denial, suspension, or revocation of a license, the applicant or licensee shall have access to the information contained in the bureau''s file and to all materials and information gathered in any investigation, to the extent permitted by law.',NULL,'licensing','Licensing of Private Investigators',NULL,'rule','12/9/2025','https://adminrules.utah.gov/public/rule/R722-330/Current%20Rules',NULL,1),
+(722,330,'330','11',NULL,'R722-330-11','Reinstatement of License or Permit','(1) An individual who has had their license or permit suspended may apply for renewal of the license or permit once the suspension period has ended.
+(2) An individual who has had their license or permit revoked may apply for reinstatement:
+(a) once the revocation period has ended; and
+(b) if the individual has not had their license or permit revoked more than one time in any jurisdiction.
+(3) An individual who applies for renewal of a license or permit following suspension or revocation shall:
+(a) pay a reinstatement fee; and
+(b) comply with the requirements under Section R722-330-7.',NULL,'licensing','Licensing of Private Investigators',NULL,'rule','12/9/2025','https://adminrules.utah.gov/public/rule/R722-330/Current%20Rules',NULL,1),
+(722,330,'330','2',NULL,'R722-330-2','Authority','This rule is authorized by Section 53-9-103.',NULL,'licensing','Licensing of Private Investigators',NULL,'rule','12/9/2025','https://adminrules.utah.gov/public/rule/R722-330/Current%20Rules',NULL,1),
+(722,330,'330','3',NULL,'R722-330-3','Definitions','(1) Terms used in this rule are defined in Section 53-9-102.
+(2) In addition:
+(a) "act involving moral turpitude" means conduct which:
+(i) is done knowingly contrary to justice, honesty, or good morals;
+(ii) has an element of falsification or fraud; or
+(iii) contains an element of harm or injury directed to another person or another''s property;
+(b) "FBI" means the Federal Bureau of Investigation;
+(c) "felony" means a crime under the laws of this state, any other state, the United States, or any district, possession, or territory of the United States for which the penalty is a term of imprisonment in excess of one year;
+(d) "legal resident of this state" means a person who has established a domicile in the state, as that term is defined in Section 41-1a-202;
+(e) "license" means a license for a private investigator agency, registrant, or apprentice;
+(f) "revocation" means the permanent deprivation of a private investigator license, however revocation of a private investigator license does not preclude an individual from applying for a new private investigator license if the reason for revocation no longer exists; and
+(g) "suspension" means the temporary deprivation, for a specified period, of a private investigator license.',NULL,'licensing','Licensing of Private Investigators',NULL,'rule','12/9/2025','https://adminrules.utah.gov/public/rule/R722-330/Current%20Rules',NULL,1),
+(722,330,'330','4',NULL,'R722-330-4','Application for Licensure','(1)(a) An applicant seeking to obtain a license shall submit a completed application packet to the bureau.
+(b) The application packet shall include:
+(i) a written application form provided by the bureau with the applicant''s residential or physical address and mailing or business address;
+(ii) one color photograph of passport quality, taken no more than 24 months before application, which contains the applicant''s name written on the back of the photograph;
+(iii) a photocopy of a driver license or state issued identification card;
+(iv) one completed FBI applicant fingerprint card, Form FD-258, with the applicant''s legible fingerprints; and
+(v) the non-refundable license and registration fee in the amount indicated in Section 53-9-111 and the FBI fingerprint processing fee, in the form of cash, check, money order, or credit card.
+(2) If an applicant is applying for an agency license, the applicant shall also provide:
+(a) the name under which the applicant intends to do business;
+(b) a completed and signed Verification of Investigative Experience Form which documents that the applicant has performed at least 5,000 hours of investigative experience as provided in Subsection 53-9-108(3);
+(c) a certificate of liability insurance for the applicant in an amount of not less than $500,000 as described in Subsection 53-9-109(3); and
+(d) a certificate of workers'' compensation insurance, if applicable.
+(3) If the applicant is applying for a registrant license, the applicant shall also provide:
+(a) the name of the licensed agency for which the applicant will be an employee or independent contractor;
+(b) authorization from a licensed agency indicating that the agency will employ or contract with the applicant;
+(c) a completed and signed Verification of Investigative Experience Form which documents that the applicant has performed at least 2,000 hours of investigative experience as provided in Subsection 53-9-108(3); and
+(d) a surety bond for the applicant in an amount of not less than $10,000 as described in Subsection 53-9-110(3).
+(4) If the applicant is applying for an apprentice license, the applicant shall also provide:
+(a) the name of the licensed agency for which the applicant will be an employee or independent contractor;
+(b) authorization from a licensed agency indicating that the agency will employ or contract with the applicant; and
+(c) a surety bond for the applicant in an amount of not less than $10,000 as described in Subsection 53-9-110(3).',NULL,'licensing','Licensing of Private Investigators',NULL,'rule','12/9/2025','https://adminrules.utah.gov/public/rule/R722-330/Current%20Rules',NULL,1),
+(722,330,'330','5',NULL,'R722-330-5','Verification of Investigative Experience','(1)(a) When completing the Verification of Investigative Experience Form for an agency or registrant license, the applicant shall describe, in detail, the number of hours and the type of investigative work which the applicant performed.
+(b) The investigative experience shall have been performed within ten years from the date of the application, while the applicant was working as a licensed private investigator or an investigator for a governmental entity.
+(c)(i) The Verification of Investigative Experience Form shall be certified by the private investigator or governmental employer for whom the applicant performed the investigative work.
+(ii) If the applicant cannot provide certification from a private investigator or governmental employer, the applicant may provide certification from the individual for whom the applicant performed the investigative work.
+(2) An applicant seeking to receive credit toward the investigative experience requirement for licensure under Subsection 53-9-108(5), shall provide written documentation of the degree or certification for which the applicant is seeking credit.',NULL,'licensing','Licensing of Private Investigators',NULL,'rule','12/9/2025','https://adminrules.utah.gov/public/rule/R722-330/Current%20Rules',NULL,1),
+(722,330,'330','6',NULL,'R722-330-6','Issuance of License','(1)(a) Upon receipt of a completed application packet, the bureau shall conduct a thorough background investigation to determine if the applicant meets the requirements for licensure.
+(b) The bureau shall submit the completed application packet to the board for review after completion of the background check, unless the application is for an apprentice license.
+(c)(i) The bureau shall review each application for apprentice licenses to determine whether the applicants meet the requirements for licensure.
+(ii) If the bureau finds that an applicant for an apprentice license does not meet the requirements for licensure, the bureau shall submit the application to the board.
+(2)(a) The board shall review each application packet submitted by the bureau to determine whether an applicant meets the requirements for licensure.
+(b) If the board determines that an applicant meets the requirements for licensure, the board shall direct the bureau to issue the license.
+(3) If the board determines that an applicant does not meet the qualifications for licensure the board shall deny the application.
+(4) If the applicant requests a hearing, the board shall conduct an informal hearing in accordance with Section R722- 330-9 during which the applicant may present evidence and testimony in response to evidence and testimony presented by the bureau.
+(5) An application may not be approved for any individual who has had any private investigator license or permit revoked more than one time in any jurisdiction.',NULL,'licensing','Licensing of Private Investigators',NULL,'rule','12/9/2025','https://adminrules.utah.gov/public/rule/R722-330/Current%20Rules',NULL,1);
+
+INSERT INTO utah_statutes (title,chapter,chapter_code,section,subsection,citation,short_title,description,offense_level,category,subcategory,part_name,code_type,effective_date,source_url,citation_fine,is_active) VALUES
+(722,330,'330','7',NULL,'R722-330-7','Renewal of a License','(1)(a) The bureau shall notify each licensee by email 90 days before the expiration date clearly printed on the identification card and license.
+(b) The bureau may send a renewal notice to a licensee at the last provided address, about 90 days before the expiration of the licensee''s license if there is not an e-mail address on file for the licensee.
+(2)(a) A licensee seeking to renew a license shall submit a completed renewal packet to the bureau.
+(b) The renewal packet shall include:
+(i) a written renewal form provided by the bureau with the licensee''s residential or physical address and mailing or business address;
+(ii) one color photograph of passport quality, taken no more than 24 months before application for renewal, which contains the licensee''s name written on the back of the photograph;
+(iii) a photocopy of a driver license or state-issued identification card; and
+(iv) a non-refundable processing fee in the form of cash, check, money order, or credit card in the amount required by Section 53-9-111.
+(3) If the licensee has an agency license, the licensee shall also provide evidence that the licensee has a valid certificate of:
+(a) liability insurance for the licensee in an amount of not less than $500,000 as described in Subsection 53-9-109(3); and
+(b) workers'' compensation insurance, if applicable.
+(4) If the licensee has a registrant or an apprentice license, the licensee shall provide evidence that the licensee has a valid surety bond for the licensee in an amount of not less than $10,000 as described in Subsection 53-9-110(3).
+(5) The licensee shall submit proof of completion of continuing education requirements, completed within two years before the date of application for renewal as described under Subsection 53-9-111(2), which shall include:
+(a) four hours of ethics education provided by a nationally recognized association or bureau-approved association;
+(b) four hours of education on Utah law, including Title 53, Chapter 9, Private Investigator Regulation Act; and
+(c) eight hours of education as approved by the bureau.
+(6) A licensee whose license has been expired for more than 180 days, shall reapply and meet each requirement found in Section R722-330-4.
+(7) If the licensee meets the qualifications for renewal, the bureau shall renew the license.
+(8)(a) If the bureau determines that the licensee does not meet the qualifications for renewal, the bureau shall deny the renewal.
+(b) The bureau''s written denial shall state the reasons why the renewal was denied and indicate that the licensee may request a hearing before the board by filing a written request within 30 calendar days from the date the bureau''s written denial was issued.
+(9) If the licensee requests review by the board, the board shall conduct an informal hearing in accordance with Section R722-330-9 during which the licensee may present evidence and testimony in response to evidence and testimony presented by the bureau.',NULL,'licensing','Licensing of Private Investigators',NULL,'rule','12/9/2025','https://adminrules.utah.gov/public/rule/R722-330/Current%20Rules',NULL,1),
+(722,330,'330','8',NULL,'R722-330-8','Suspension and Revocation of a License','(1) The bureau shall conduct an investigation, as provided in Section 53-9-117, if the bureau is made aware of an allegation that a licensee has engaged in conduct in violation of Section 53-9-118.
+(2) The bureau shall notify a licensee who is the subject of an investigation of the date and time of the board meeting where the board will consider the bureau''s investigative findings.
+(3) The bureau may recommend disciplinary action in accordance with Section 53-9-117.
+(4) The board shall conduct adjudicative proceedings in accordance with Section R722-330-9.',NULL,'licensing','Licensing of Private Investigators',NULL,'rule','12/9/2025','https://adminrules.utah.gov/public/rule/R722-330/Current%20Rules',NULL,1),
+(722,330,'330','9',NULL,'R722-330-9','Adjudicative Proceedings','(1) Adjudicative proceeding shall be informal in accordance with Sections 63G-4-202 and 63G-4-203.
+(2) The board shall conduct an informal hearing during which the licensee may present evidence and testimony in response to the bureau''s investigative findings and recommendations.
+(3) The board shall issue a written decision, within ten business days after the hearing, which states the reasons for the board''s decision, and indicates that the licensee may appeal to the commissioner by filing a written request within 15 calendar days from the date that the board''s written decision was issued.
+(4)(a) If the licensee requests review of the board''s decision, the commissioner or the commissioner''s designee shall review the materials in the bureau''s file, any materials submitted by the licensee, and the findings of the board.
+(b) The commissioner shall issue a written decision, within 30 calendar days from the date of the request for review, which states the reasons for the decision and indicates that the licensee may appeal to the district court by complying with the requirements found in Section 63G-4-402.',NULL,'licensing','Licensing of Private Investigators',NULL,'rule','12/9/2025','https://adminrules.utah.gov/public/rule/R722-330/Current%20Rules',NULL,1);
 
