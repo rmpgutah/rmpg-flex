@@ -268,7 +268,9 @@ billing.post('/payments', async (c) => {
       const total = await queryFirst<{ amt: number }>(db, 'SELECT COALESCE(SUM(amount),0) as amt FROM payments WHERE invoice_id = ?', b.invoice_id);
       const inv = await queryFirst<{ total_amount: number }>(db, 'SELECT total_amount FROM invoices WHERE id = ?', b.invoice_id);
       let status = 'partial';
-      if (inv && (total?.amt ?? 0) >= inv.total_amount) status = 'paid';
+      // Require a positive invoice total — a draft with total_amount = 0 would
+      // otherwise flip to 'paid' on ANY payment (amt >= 0 is always true).
+      if (inv && inv.total_amount > 0 && (total?.amt ?? 0) >= inv.total_amount) status = 'paid';
       await execute(db, 'UPDATE invoices SET paid_amount = ?, status = ? WHERE id = ?', total?.amt ?? 0, status, b.invoice_id);
     }
     const newId = Number(result.meta.last_row_id);

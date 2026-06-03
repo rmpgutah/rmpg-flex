@@ -16,16 +16,12 @@ import type { Env } from '../../types';
 import { LIST_VIEW_SELECT } from './calls';
 import { getDb, query, queryFirst, execute } from '../../utils/db';
 import { sendToUser, broadcastAll } from '../ws';
+// Live D1 stores literal "None"/"N/A"/"0" in flag columns rather than NULL, so a
+// naive truthiness check fires a bogus officer-safety alert on a subject with no
+// flags. isFlagSet() (shared) treats those sentinels as absent.
+import { isFlagSet } from '../../utils/sentinel';
 
 const links = new Hono<Env>();
-
-// Live D1 stores literal "None"/"N/A"/"0" in flag columns rather than NULL, so a
-// naive truthiness check (flag?.gang_affiliation) fires a bogus officer-safety
-// alert on a subject with no flags. This guard treats those sentinels as absent.
-const FLAG_ABSENT = new Set(['', 'none', 'n/a', 'na', '0', 'false', 'no', 'null', 'undefined', '--']);
-function isFlagSet(v: unknown): boolean {
-  return v != null && !FLAG_ABSENT.has(String(v).trim().toLowerCase());
-}
 
 // ── Shared: officers assigned to the call, for targeted MDT push ──
 async function getOfficerUserIdsForCall(

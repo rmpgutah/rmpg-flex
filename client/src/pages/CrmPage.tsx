@@ -264,8 +264,10 @@ export default function CrmPage() {
 
   const fetchInvoices = useCallback(async () => {
     try {
-      const res = await apiFetch<any[]>('/invoices');
-      setInvoices(Array.isArray(res) ? res : []);
+      // /invoices (legacy) returns { data, pagination }, not a bare array — the
+      // old Array.isArray check always failed, so the CRM Invoices tab was empty.
+      const res = await apiFetch<{ data?: any[] } | any[]>('/invoices');
+      setInvoices(Array.isArray(res) ? res : (res?.data ?? []));
     } catch { setInvoices([]); }
   }, []);
 

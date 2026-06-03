@@ -807,6 +807,24 @@ export default function DispatchPage() {
     }
   }, [addToast]);
 
+  // Load CLEARED/closed/cancelled calls when the Cleared tab is activated. The
+  // default call list forces status IN (active) server-side, so completed calls
+  // are NEVER in the `calls` array — without this dedicated fetch the Cleared
+  // tab was permanently empty and a closed call looked permanently deleted
+  // ("CFS delete upon completion"). The rows are intact in D1 (status='closed');
+  // this just surfaces them. Comma-status is supported by the list handler.
+  const [clearedCalls, setClearedCalls] = useState<CallForService[]>([]);
+  const fetchClearedCalls = useCallback(async () => {
+    try {
+      const res = await apiFetch<any>('/dispatch/calls?status=cleared,closed,cancelled&limit=500');
+      const raw = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
+      setClearedCalls(raw.map(mapDbCall));
+    } catch (err) {
+      console.error('Failed to load cleared calls:', err);
+      addToast('Failed to load cleared calls', 'error');
+    }
+  }, [addToast]);
+
   useEffect(() => {
     fetchData();
     // Fetch quick dispatch templates
@@ -1257,6 +1275,13 @@ export default function DispatchPage() {
     }
   }, [filterTab, archivedLoaded, fetchArchivedCalls]);
 
+  // When the Cleared tab is active, (re)fetch cleared/closed/cancelled calls.
+  // Refetched on every activation (not gated like archived) so a call cleared
+  // moments ago shows up the next time the dispatcher opens the tab.
+  useEffect(() => {
+    if (filterTab === 'cleared') fetchClearedCalls();
+  }, [filterTab, fetchClearedCalls]);
+
   // (Template fetch consolidated into the main init useEffect above — line 296)
 
   // Fetch all active personnel for unit assignment dropdown (any role)
@@ -1341,7 +1366,7 @@ export default function DispatchPage() {
   // to component scope so both the sort memo and the render (GEO dividers) share it.
   const sortMode = userPrefs?.dispatch_sort || localSort || 'priority';
 
-  const filteredCalls = useMemo(() => (filterTab === 'archived' ? archivedCalls : calls).filter((call) => {
+  const filteredCalls = useMemo(() => (filterTab === 'archived' ? archivedCalls : filterTab === 'cleared' ? clearedCalls : calls).filter((call) => {
     switch (filterTab) {
       case 'pending': return call.status === 'pending';
       case 'active': return ['dispatched', 'enroute', 'onscene', 'on_hold'].includes(call.status);
@@ -1425,7 +1450,7 @@ export default function DispatchPage() {
     const pDiff = (pOrder[a.priority] ?? 3) - (pOrder[b.priority] ?? 3);
     if (pDiff !== 0) return pDiff;
     return parseTimestamp(b.created_at).getTime() - parseTimestamp(a.created_at).getTime();
-  }), [calls, archivedCalls, filterTab, searchQuery, priorityFilter, typeFilter, signalFilter, knownSignalCodes, userPrefs?.dispatch_sort, localSort, userPrefs?.dispatch_show_cleared, user?.id]);
+  }), [calls, archivedCalls, clearedCalls, filterTab, searchQuery, priorityFilter, typeFilter, signalFilter, knownSignalCodes, userPrefs?.dispatch_sort, localSort, userPrefs?.dispatch_show_cleared, user?.id]);
 
   // Shortcut cheat-sheet overlay (toggled with "?").
   const [showShortcutHelp, setShowShortcutHelp] = useState(false);
@@ -2204,21 +2229,24 @@ export default function DispatchPage() {
   const tabCounts = useMemo(() => {
     const pending = calls.filter((c) => c.status === 'pending').length;
     const active = calls.filter((c) => ['dispatched', 'enroute', 'onscene', 'on_hold'].includes(c.status)).length;
-    const cleared = calls.filter((c) => ['cleared', 'closed', 'cancelled'].includes(c.status)).length;
+    // Cleared calls are NOT in the active-only `calls` array — count the
+    // separately-fetched clearedCalls for the badge. The in-`calls` figure
+    // (always 0) is still what the ALL math subtracts, which stays correct.
+    const clearedInActive = calls.filter((c) => ['cleared', 'closed', 'cancelled'].includes(c.status)).length;
     // ALL count: if user hides cleared calls, exclude them from the count to match the visible list
-    const allCount = userPrefs?.dispatch_show_cleared ? calls.length : calls.length - cleared;
+    const allCount = userPrefs?.dispatch_show_cleared ? calls.length : calls.length - clearedInActive;
     const myId = user?.id != null ? String(user.id) : null;
     const mine = myId ? calls.filter((c) => String((c as any).dispatcher_id ?? (c as any).created_by ?? '') === myId).length : 0;
     return {
       all: allCount,
       pending,
       active,
-      cleared,
+      cleared: clearedCalls.length,
       archived: archivedCalls.length,
       serve: calls.filter((c) => PSO_INCIDENT_TYPES.includes(c.incident_type)).length,
       mine,
     };
-  }, [calls, archivedCalls, userPrefs?.dispatch_show_cleared, user?.id]);
+  }, [calls, clearedCalls, archivedCalls, userPrefs?.dispatch_show_cleared, user?.id]);
 
   if (isLoading) {
     return (
