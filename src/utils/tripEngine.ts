@@ -1,0 +1,144 @@
+// src/utils/tripEngine.ts
+// Pure trip state machine. No D1, no Hono, no env — the route handlers (gps.ts,
+// calls.ts) and the cron sweep apply the returned intents. Kept pure so it can
+// later drop into a per-unit TripTrackerDO unchanged ("B-ready").
+
+import { haversineM, type IncomingFix } from './tripTelemetry';
+
+export type TripType = 'call_response' | 'patrol';
+export type CloseReason = 'onscene' | 'cleared' | 'idle_timeout' | 'off_duty' | 'redispatch' | 'stale' | 'manual';
+
+export interface ActiveTrip {
+  id: number;
+  trip_type: TripType;
+  call_id: number | null;
+  anchor_lat: number | null;
+  anchor_lng: number | null;
+  last_move_at: number | null; // epoch ms
+  last_fix_ts: number | null;  // epoch ms — idempotency
+}
+
+export type TripEvent =
+  | { kind: 'status'; status: string }
+  | { kind: 'gps'; fix: IncomingFix }
+  | { kind: 'sweep' };
+
+export interface EngineCtx {
+  now: number;
+  curLat: number | null;
+  curLng: number | null;
+  prevLat: number | null;
+  prevLng: number | null;
+  callId?: number | null;
+  callNumber?: string | null;
+  callType?: string | null;
+  stationaryRadiusM?: number;
+  idleMs?: number;
+  staleMs?: number;
+}
+
+export interface EngineDecision {
+  close?: { tripId: number; reason: CloseReason; endTs: number; endLat: number | null; endLng: number | null };
+  open?: { type: TripType; startTs: number; startLat: number | null; startLng: number | null;
+           callId?: number | null; callNumber?: string | null; callType?: string | null; prevTripId?: number | null };
+  append?: { tripId: number; fix: IncomingFix };
+  updateAnchor?: { lat: number; lng: number; at: number };
+}
+
+const MOVING_STATUSES = new Set(['enroute']);
+const ONSCENE = 'onscene';
+const TERMINAL = new Set(['cleared', 'closed', 'cancelled', 'archived']);
+const OFFLINE = new Set(['off_duty', 'out_of_service']);
+
+const RADIUS = (c: EngineCtx) => c.stationaryRadiusM ?? 30;
+const IDLE = (c: EngineCtx) => c.idleMs ?? 300_000;
+const STALE = (c: EngineCtx) => c.staleMs ?? 900_000;
+
+export function decide(event: TripEvent, active: ActiveTrip | null, ctx: EngineCtx): EngineDecision {
+  if (event.kind === 'status') return decideStatus(event.status, active, ctx);
+  if (event.kind === 'gps') return decideGps(event.fix, active, ctx);
+  return decideSweep(active, ctx);
+}
+
+function decideStatus(status: string, active: ActiveTrip | null, ctx: EngineCtx): EngineDecision {
+  const d: EngineDecision = {};
+  if (MOVING_STATUSES.has(status)) {
+    if (active) {
+      d.close = { tripId: active.id, reason: 'redispatch', endTs: ctx.now, endLat: ctx.curLat, endLng: ctx.curLng };
+    }
+    d.open = {
+      type: 'call_response', startTs: ctx.now, startLat: ctx.curLat, startLng: ctx.curLng,
+      callId: ctx.callId ?? null, callNumber: ctx.callNumber ?? null, callType: ctx.callType ?? null,
+      prevTripId: active?.id ?? null,
+    };
+    return d;
+  }
+  if (status === ONSCENE) {
+    if (active && active.trip_type === 'call_response') {
+      d.close = { tripId: active.id, reason: 'onscene', endTs: ctx.now, endLat: ctx.curLat, endLng: ctx.curLng };
+    }
+    return d;
+  }
+  if (TERMINAL.has(status)) {
+    if (active) d.close = { tripId: active.id, reason: 'cleared', endTs: ctx.now, endLat: ctx.curLat, endLng: ctx.curLng };
+    return d;
+  }
+  if (OFFLINE.has(status)) {
+    if (active) d.close = { tripId: active.id, reason: 'off_duty', endTs: ctx.now, endLat: ctx.curLat, endLng: ctx.curLng };
+    return d;
+  }
+  return d;
+}
+
+function decideGps(fix: IncomingFix, active: ActiveTrip | null, ctx: EngineCtx): EngineDecision {
+  const d: EngineDecision = {};
+
+  if (!active) {
+    const moved =
+      (fix.speed != null && fix.speed * 2.236936 > 2) ||
+      (ctx.prevLat != null && ctx.prevLng != null &&
+        haversineM(ctx.prevLat, ctx.prevLng, fix.lat, fix.lng) > RADIUS(ctx));
+    if (moved) {
+      d.open = { type: 'patrol', startTs: fix.ts, startLat: ctx.prevLat ?? fix.lat, startLng: ctx.prevLng ?? fix.lng };
+    }
+    return d;
+  }
+
+  if (active.last_fix_ts != null && fix.ts <= active.last_fix_ts) return d;
+
+  if (active.trip_type === 'call_response') {
+    d.append = { tripId: active.id, fix };
+    return d;
+  }
+
+  const withinRadius = active.anchor_lat != null && active.anchor_lng != null &&
+    haversineM(active.anchor_lat, active.anchor_lng, fix.lat, fix.lng) <= RADIUS(ctx);
+
+  if (withinRadius) {
+    if (active.last_move_at != null && ctx.now - active.last_move_at > IDLE(ctx)) {
+      d.close = { tripId: active.id, reason: 'idle_timeout', endTs: active.last_move_at,
+        endLat: active.anchor_lat, endLng: active.anchor_lng };
+      return d;
+    }
+    d.append = { tripId: active.id, fix };
+    return d;
+  }
+
+  d.append = { tripId: active.id, fix };
+  d.updateAnchor = { lat: fix.lat, lng: fix.lng, at: fix.ts };
+  return d;
+}
+
+function decideSweep(active: ActiveTrip | null, ctx: EngineCtx): EngineDecision {
+  const d: EngineDecision = {};
+  if (!active) return d;
+  if (active.trip_type === 'patrol' && active.last_move_at != null && ctx.now - active.last_move_at > IDLE(ctx)) {
+    d.close = { tripId: active.id, reason: 'idle_timeout', endTs: active.last_move_at,
+      endLat: active.anchor_lat, endLng: active.anchor_lng };
+    return d;
+  }
+  if (active.last_fix_ts != null && ctx.now - active.last_fix_ts > STALE(ctx)) {
+    d.close = { tripId: active.id, reason: 'stale', endTs: active.last_fix_ts, endLat: active.anchor_lat, endLng: active.anchor_lng };
+  }
+  return d;
+}
