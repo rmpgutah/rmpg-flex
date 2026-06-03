@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import type { Env } from '../../types';
 import { getDb, query, queryFirst, execute } from '../../utils/db';
 import { requireRole } from '../../middleware/auth';
-import { broadcastAll } from '../ws';
+import { emitAlert } from '../../utils/alertHub';
 
 const units = new Hono<Env>();
 
@@ -54,7 +54,7 @@ units.post('/', async (c) => {
     // Live fan-out so every open dispatch/map board adds the new unit without a
     // manual refresh. /dispatch is excluded from the generic data_changed sync
     // (src/index.ts), so these surgical broadcasts are the only live path.
-    try { if (unit) broadcastAll('dispatch_update', { action: 'unit_created', unit }); } catch { /* never break the write */ }
+    try { if (unit) await emitAlert(c.env, 'dispatch_update', { action: 'unit_created', unit }); } catch { /* never break the write */ }
     return c.json(unit, 201);
   } catch (err: any) {
     if (err?.message?.includes('UNIQUE')) return c.json({ error: 'Call sign already exists' }, 409);
@@ -97,7 +97,7 @@ units.put('/:id', async (c) => {
     params.push(id);
     await execute(db, `UPDATE units SET ${sets.join(', ')} WHERE id = ?`, ...params);
     const updated = await queryFirst(db, 'SELECT * FROM units WHERE id = ?', id);
-    try { if (updated) broadcastAll('dispatch_update', { action: 'unit_updated', unit: updated }); } catch { /* never break the write */ }
+    try { if (updated) await emitAlert(c.env, 'dispatch_update', { action: 'unit_updated', unit: updated }); } catch { /* never break the write */ }
     return c.json(updated);
   } catch (err) {
     return c.json({ error: 'Failed to update unit' }, 500);
@@ -124,7 +124,7 @@ units.delete('/:id', requireRole('admin', 'manager'), async (c) => {
     await execute(db, 'DELETE FROM gps_breadcrumbs WHERE unit_id = ?', id);
     await execute(db, 'UPDATE fleet_assignments SET unit_id = NULL WHERE unit_id = ?', id);
     await execute(db, 'DELETE FROM units WHERE id = ?', id);
-    try { broadcastAll('dispatch_update', { action: 'unit_deleted', unit_id: id }); } catch { /* never break the write */ }
+    try { await emitAlert(c.env, 'dispatch_update', { action: 'unit_deleted', unit_id: id }); } catch { /* never break the write */ }
     return c.json({ message: 'Unit deleted', id });
   } catch (err) {
     console.error('[dispatch] delete unit failed:', err);
@@ -177,8 +177,8 @@ units.post('/:id/dispose', requireRole('admin', 'manager'), async (c) => {
       const updated = await queryFirst<Record<string, any>>(db, 'SELECT * FROM units WHERE id = ?', id);
       try {
         if (updated) {
-          broadcastAll('dispatch_update', { action: 'unit_status_changed', unit: updated });
-          broadcastAll('dispatch_update', { action: 'unit_updated', unit: updated });
+          await emitAlert(c.env, 'dispatch_update', { action: 'unit_status_changed', unit: updated });
+          await emitAlert(c.env, 'dispatch_update', { action: 'unit_updated', unit: updated });
         }
       } catch { /* never break the write */ }
       try {
@@ -200,7 +200,7 @@ units.post('/:id/dispose', requireRole('admin', 'manager'), async (c) => {
     await execute(db, 'DELETE FROM gps_breadcrumbs WHERE unit_id = ?', id);
     await execute(db, 'UPDATE fleet_assignments SET unit_id = NULL WHERE unit_id = ?', id);
     await execute(db, 'DELETE FROM units WHERE id = ?', id);
-    try { broadcastAll('dispatch_update', { action: 'unit_deleted', unit_id: id }); } catch { /* never break the write */ }
+    try { await emitAlert(c.env, 'dispatch_update', { action: 'unit_deleted', unit_id: id }); } catch { /* never break the write */ }
     try {
       if (userId != null) await execute(db,
         "INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, 'unit_deleted', 'unit', ?, ?, ?)",

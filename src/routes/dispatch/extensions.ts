@@ -21,7 +21,7 @@ import type { Context } from 'hono';
 import type { Env } from '../../types';
 import { getDb, query, queryFirst, execute } from '../../utils/db';
 import { requireRole } from '../../middleware/auth';
-import { broadcastAll } from '../ws';
+import { emitAlert } from '../../utils/alertHub';
 import { geocodeAddress } from '../geocode';
 
 const READ_ROLES  = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher'];
@@ -559,7 +559,7 @@ unitStatus.put('/:id/status', requireRole(...READ_ROLES), async (c) => {
     // MDT both call it). Without the broadcast an officer flipping their own
     // status never reaches the dispatch board / map until a manual refresh.
     // /dispatch is excluded from the generic data_changed sync (src/index.ts).
-    try { if (updated) broadcastAll('dispatch_update', { action: 'unit_status_changed', unit: updated }); } catch { /* never break the write */ }
+    try { if (updated) await emitAlert(c.env, 'dispatch_update', { action: 'unit_status_changed', unit: updated }); } catch { /* never break the write */ }
     return c.json(updated);
   } catch (err) {
     console.error('[dispatch] unit status error', err);
@@ -1060,7 +1060,7 @@ autoAssign.post('/:id/auto-assign', requireRole(...WRITE_ROLES), async (c) => {
     // generic data_changed sync (src/index.ts). Best-effort.
     try {
       const assignedUnit = await queryFirst<Record<string, any>>(db, 'SELECT * FROM units WHERE id = ?', nearest.id);
-      broadcastAll('dispatch_update', {
+      await emitAlert(c.env, 'dispatch_update', {
         action: 'unit_assigned',
         unit: assignedUnit,
         unit_id: nearest.id,
@@ -1068,7 +1068,7 @@ autoAssign.post('/:id/auto-assign', requireRole(...WRITE_ROLES), async (c) => {
         call_id: String(call.id),
         call_number: call.call_number,
       });
-      if (updated) broadcastAll('dispatch_update', { action: 'call_updated', call: updated });
+      if (updated) await emitAlert(c.env, 'dispatch_update', { action: 'call_updated', call: updated });
     } catch (err) { console.error('[dispatch] auto-assign broadcast:', err); }
 
     return c.json({
@@ -1287,11 +1287,11 @@ callActions.post('/:id/revert-status', requireRole(...WRITE_ROLES), async (c) =>
     }
 
     const updated = await fetchCallRow(db, id);
-    broadcastAll('dispatch_update', { action: 'call_status_changed', call: updated, status: previousStatus });
+    await emitAlert(c.env, 'dispatch_update', { action: 'call_status_changed', call: updated, status: previousStatus });
     for (const unitId of revertedUnitIds) {
       const unit = await queryFirst<Record<string, unknown>>(db,
         `SELECT u.*, usr.full_name AS officer_name FROM units u LEFT JOIN users usr ON usr.id = u.officer_id WHERE u.id = ?`, unitId);
-      if (unit) broadcastAll('dispatch_update', { action: 'unit_status_changed', unit });
+      if (unit) await emitAlert(c.env, 'dispatch_update', { action: 'unit_status_changed', unit });
     }
     return c.json(updated);
   } catch (err) {
@@ -1338,7 +1338,7 @@ callActions.post('/:id/le-notification', requireRole(...READ_ROLES), async (c) =
     }
 
     const updated = await fetchCallRow(db, id);
-    broadcastAll('dispatch_update', { action: 'call_updated', call: updated });
+    await emitAlert(c.env, 'dispatch_update', { action: 'call_updated', call: updated });
     return c.json(updated);
   } catch (err) {
     console.error('[dispatch] le-notification error', err);
@@ -1387,11 +1387,11 @@ callActions.post('/:id/transfer', requireRole(...WRITE_ROLES), async (c) => {
     }
 
     const updated = await fetchCallRow(db, id);
-    broadcastAll('dispatch_update', { action: 'call_updated', call: updated });
+    await emitAlert(c.env, 'dispatch_update', { action: 'call_updated', call: updated });
     for (const unitId of [fromUnitId, toUnitId]) {
       const unit = await queryFirst<Record<string, unknown>>(db,
         `SELECT u.*, usr.full_name AS officer_name FROM units u LEFT JOIN users usr ON usr.id = u.officer_id WHERE u.id = ?`, unitId);
-      if (unit) broadcastAll('dispatch_update', { action: 'unit_status_changed', unit });
+      if (unit) await emitAlert(c.env, 'dispatch_update', { action: 'unit_status_changed', unit });
     }
     return c.json(updated);
   } catch (err) {
@@ -1425,8 +1425,8 @@ callActions.post('/:id/broadcast-note', requireRole(...WRITE_ROLES), async (c) =
 
     const updated = await fetchCallRow(db, id);
     const unitIds = safeJson<number[]>(call.assigned_unit_ids, []);
-    broadcastAll('dispatch_update', { action: 'call_updated', call: updated });
-    broadcastAll('dispatch_update', {
+    await emitAlert(c.env, 'dispatch_update', { action: 'call_updated', call: updated });
+    await emitAlert(c.env, 'dispatch_update', {
       action: 'dispatch_broadcast', call_id: id, call_number: call.call_number, message, unit_ids: unitIds,
     });
     return c.json(updated);
@@ -1461,7 +1461,7 @@ callActions.post('/:id/notes', requireRole(...WRITE_ROLES), async (c) => {
     notes.push({ id: `n-${Date.now()}`, author: String(body.author || 'Dispatch').slice(0, 120), text, timestamp: now });
     await execute(db, 'UPDATE calls_for_service SET notes = ?, updated_at = ? WHERE id = ?', JSON.stringify(notes), now, id);
     const updated = await fetchCallRow(db, id);
-    broadcastAll('dispatch_update', { action: 'call_updated', call: updated });
+    await emitAlert(c.env, 'dispatch_update', { action: 'call_updated', call: updated });
     return c.json(updated);
   } catch (err) {
     console.error('[dispatch] add-note error', err);
@@ -1494,7 +1494,7 @@ callActions.put('/:id/notes/:noteId', requireRole(...ADMIN_ROLES), async (c) => 
     await execute(db, 'UPDATE calls_for_service SET notes = ?, updated_at = ? WHERE id = ?', JSON.stringify(notes), now, id);
 
     const updated = await fetchCallRow(db, id);
-    broadcastAll('dispatch_update', { action: 'call_updated', call: updated });
+    await emitAlert(c.env, 'dispatch_update', { action: 'call_updated', call: updated });
     return c.json(updated);
   } catch (err) {
     console.error('[dispatch] edit note error', err);
@@ -1522,7 +1522,7 @@ callActions.delete('/:id/notes/:noteId', requireRole(...ADMIN_ROLES), async (c) 
     await execute(db, 'UPDATE calls_for_service SET notes = ?, updated_at = ? WHERE id = ?', JSON.stringify(notes), now, id);
 
     const updated = await fetchCallRow(db, id);
-    broadcastAll('dispatch_update', { action: 'call_updated', call: updated });
+    await emitAlert(c.env, 'dispatch_update', { action: 'call_updated', call: updated });
     return c.json(updated);
   } catch (err) {
     console.error('[dispatch] delete note error', err);

@@ -15,7 +15,6 @@ import { Hono } from 'hono';
 import type { Env } from '../../types';
 import { LIST_VIEW_SELECT } from './calls';
 import { getDb, query, queryFirst, execute } from '../../utils/db';
-import { broadcastAll } from '../ws';
 import { emitAlert } from '../../utils/alertHub';
 // Live D1 stores literal "None"/"N/A"/"0" in flag columns rather than NULL, so a
 // naive truthiness check fires a bogus officer-safety alert on a subject with no
@@ -101,7 +100,7 @@ links.post('/calls/:id/persons', async (c) => {
     callId, body.person_id, body.role || 'subject',
   );
 
-  broadcastAll('dispatch_update', {
+  await emitAlert(c.env, 'dispatch_update', {
     action: 'call_person_added',
     call_id: Number(callId),
     link: created,
@@ -168,7 +167,7 @@ links.delete('/calls/:id/persons/:linkId', async (c) => {
   // Scope by callId so callers can't delete a link from another call
   // by guessing IDs.
   await execute(db, 'DELETE FROM call_persons WHERE id = ? AND call_id = ?', linkId, callId);
-  broadcastAll('dispatch_update', {
+  await emitAlert(c.env, 'dispatch_update', {
     action: 'call_person_removed', call_id: Number(callId), link_id: Number(linkId),
   });
   return c.json({ success: true });
@@ -198,7 +197,7 @@ links.patch('/calls/:id/persons/:linkId', async (c) => {
      WHERE cp.id = ?`,
     linkId,
   );
-  broadcastAll('dispatch_update', {
+  await emitAlert(c.env, 'dispatch_update', {
     action: 'call_person_updated', call_id: Number(callId), link: updated,
   });
   return c.json(updated);
@@ -299,7 +298,7 @@ links.post('/calls/:id/persons/quick-add', async (c) => {
     callId, personId, role,
   );
 
-  broadcastAll('dispatch_update', {
+  await emitAlert(c.env, 'dispatch_update', {
     action: 'call_person_added', call_id: Number(callId), link,
   });
 
@@ -372,7 +371,7 @@ links.post('/calls/:id/vehicles', async (c) => {
     callId, body.vehicle_id, body.role || 'subject',
   );
 
-  broadcastAll('dispatch_update', {
+  await emitAlert(c.env, 'dispatch_update', {
     action: 'call_vehicle_added', call_id: Number(callId), link: created,
   });
 
@@ -398,7 +397,7 @@ links.delete('/calls/:id/vehicles/:linkId', async (c) => {
   const callId = c.req.param('id');
   const linkId = c.req.param('linkId');
   await execute(db, 'DELETE FROM call_vehicles WHERE id = ? AND call_id = ?', linkId, callId);
-  broadcastAll('dispatch_update', {
+  await emitAlert(c.env, 'dispatch_update', {
     action: 'call_vehicle_removed', call_id: Number(callId), link_id: Number(linkId),
   });
   return c.json({ success: true });
@@ -427,7 +426,7 @@ links.patch('/calls/:id/vehicles/:linkId', async (c) => {
      WHERE cv.id = ?`,
     linkId,
   );
-  broadcastAll('dispatch_update', {
+  await emitAlert(c.env, 'dispatch_update', {
     action: 'call_vehicle_updated', call_id: Number(callId), link: updated,
   });
   return c.json(updated);
@@ -521,7 +520,7 @@ links.post('/calls/:id/vehicles/quick-add', async (c) => {
     callId, vehicleId, role,
   );
 
-  broadcastAll('dispatch_update', {
+  await emitAlert(c.env, 'dispatch_update', {
     action: 'call_vehicle_added', call_id: Number(callId), link,
   });
 
@@ -599,7 +598,7 @@ links.put('/calls/:id/property', async (c) => {
     callId,
   );
 
-  broadcastAll('dispatch_update', {
+  await emitAlert(c.env, 'dispatch_update', {
     action: 'call_property_attached',
     call_id: Number(callId),
     property_id: body.property_id,
@@ -635,7 +634,7 @@ links.delete('/calls/:id/property', async (c) => {
     `UPDATE calls_for_service SET property_id = NULL, updated_at = datetime('now') WHERE id = ?`,
     callId,
   );
-  broadcastAll('dispatch_update', {
+  await emitAlert(c.env, 'dispatch_update', {
     action: 'call_property_detached', call_id: Number(callId),
   });
   return c.json({ success: true });

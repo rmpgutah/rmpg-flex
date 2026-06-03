@@ -5,7 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { getDb, query, queryFirst, execute } from '../../utils/db';
 import { authMiddleware, requireRole } from '../../middleware/auth';
 import { applyRunCard } from '../runCards';
-import { sendToUser, broadcastAll } from '../ws';
+import { sendToUser } from '../ws';
 import { emitAlert } from '../../utils/alertHub';
 import { geocodeAddress } from '../geocode';
 import { resolveDistrict } from '../../utils/districtResolver';
@@ -447,7 +447,7 @@ calls.post('/', async (c) => {
 
       // Broadcast to every connected dispatcher so rosters re-render
       // without a manual refresh. Matches the legacy POST behavior.
-      broadcastAll('dispatch_update', { action: 'call_created', call });
+      await emitAlert(c.env, 'dispatch_update', { action: 'call_created', call });
 
       // Alert Rules engine — fire P1/P2 call-created triggers so admin-
       // configured notification rules fan out to their target roles/users.
@@ -1054,7 +1054,7 @@ calls.post('/:id/status', async (c) => {
     try {
       for (const fu of freedUnits) {
         const unit = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM units WHERE id = ?', fu.id as number);
-        if (unit) broadcastAll('dispatch_update', { action: 'unit_status_changed', unit });
+        if (unit) await emitAlert(c.env, 'dispatch_update', { action: 'unit_status_changed', unit });
       }
     } catch (err) { console.error('[dispatch] free-units-on-clear broadcast:', err); }
 
@@ -1265,7 +1265,7 @@ calls.post('/:id/assign-unit', async (c) => {
     // call (assigned_unit_ids) explicitly. Best-effort; never break the write.
     try {
       const assignedUnit = await queryFirst<Record<string, any>>(db, 'SELECT * FROM units WHERE id = ?', unit_id);
-      broadcastAll('dispatch_update', {
+      await emitAlert(c.env, 'dispatch_update', {
         action: 'unit_assigned',
         unit: assignedUnit,
         unit_id,
@@ -1273,7 +1273,7 @@ calls.post('/:id/assign-unit', async (c) => {
         call_id: id,
         call_number: call.call_number,
       });
-      if (updated) broadcastAll('dispatch_update', { action: 'call_updated', call: updated });
+      if (updated) await emitAlert(c.env, 'dispatch_update', { action: 'call_updated', call: updated });
     } catch (err) { console.error('[dispatch] assign-unit broadcast:', err); }
 
     return c.json({ ...(updated || {}), premise_pushed });
@@ -1303,8 +1303,8 @@ calls.post('/:id/unassign-unit', async (c) => {
     // 'dispatched' on every other board until refresh.
     try {
       const freedUnit = await queryFirst<Record<string, any>>(db, 'SELECT * FROM units WHERE id = ?', unit_id);
-      broadcastAll('dispatch_update', { action: 'unit_unassigned', unit: freedUnit, unit_id, call_id: id });
-      if (updated) broadcastAll('dispatch_update', { action: 'call_updated', call: updated });
+      await emitAlert(c.env, 'dispatch_update', { action: 'unit_unassigned', unit: freedUnit, unit_id, call_id: id });
+      if (updated) await emitAlert(c.env, 'dispatch_update', { action: 'call_updated', call: updated });
     } catch (err) { console.error('[dispatch] unassign-unit broadcast:', err); }
     return c.json(updated || {});
   } catch (err) { return c.json({ error: 'Unassign failed' }, 500); }
@@ -1354,15 +1354,15 @@ calls.post('/:id/dispatch', async (c) => {
     try {
       const dispatched = await query<Record<string, any>>(db,
         `SELECT * FROM units WHERE id IN (${unit_ids.map(() => '?').join(',')})`, ...unit_ids);
-      broadcastAll('dispatch_update', {
+      await emitAlert(c.env, 'dispatch_update', {
         action: 'units_dispatched',
         unit_ids,
         unit_call_signs: dispatched.map((u) => u.call_sign).filter(Boolean),
         call_id: id,
         call_number: call.call_number,
       });
-      for (const u of dispatched) broadcastAll('dispatch_update', { action: 'unit_status_changed', unit: u });
-      if (updated) broadcastAll('dispatch_update', { action: 'call_updated', call: updated });
+      for (const u of dispatched) await emitAlert(c.env, 'dispatch_update', { action: 'unit_status_changed', unit: u });
+      if (updated) await emitAlert(c.env, 'dispatch_update', { action: 'call_updated', call: updated });
     } catch (err) { console.error('[dispatch] multi-dispatch broadcast:', err); }
     return c.json(updated);
   } catch (err) { return c.json({ error: 'Dispatch failed' }, 500); }
@@ -1521,8 +1521,8 @@ calls.post('/:id/redispatch', requireRole('admin', 'manager', 'supervisor', 'dis
     `, rootCallId, rootCallId);
 
     const newCall = { ...(newBase || {}), ...(newExt || {}) };
-    broadcastAll('dispatch_update', { action: 'call_created', call: newCall });
-    broadcastAll('dispatch_update', { action: 'call_updated', call: { ...parentBase, notes: JSON.stringify(parentNotes) } });
+    await emitAlert(c.env, 'dispatch_update', { action: 'call_created', call: newCall });
+    await emitAlert(c.env, 'dispatch_update', { action: 'call_updated', call: { ...parentBase, notes: JSON.stringify(parentNotes) } });
 
     return c.json({ ...newCall, chain, parent_call_number: parentBase.call_number }, 201);
   } catch (err) {
@@ -1584,8 +1584,8 @@ calls.post('/:id/undo-redispatch', requireRole('admin', 'manager', 'supervisor',
     const updatedBase = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', parentId);
     const updatedExt = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service_ext WHERE id = ?', parentId);
     const updated = { ...(updatedBase || {}), ...(updatedExt || {}) };
-    broadcastAll('dispatch_update', { action: 'call_deleted', call: { id: childId, call_number: childBase.call_number } });
-    broadcastAll('dispatch_update', { action: 'call_updated', call: updated });
+    await emitAlert(c.env, 'dispatch_update', { action: 'call_deleted', call: { id: childId, call_number: childBase.call_number } });
+    await emitAlert(c.env, 'dispatch_update', { action: 'call_updated', call: updated });
 
     return c.json({ success: true, parent: updated, deleted_call: childBase.call_number });
   } catch (err) {
