@@ -498,7 +498,14 @@
 //       Worker proxy /api/crime/slc) + our own recent CFS (/api/crime/local),
 //       rendered as a density heatmap + color-by-class incident dots with a
 //       toggle + legend. 60-day window.
-const CACHE_NAME = 'rmpg-flex-v760';
+// v764: RECOVERY — the #997/#998/#999 stacked merges raced across worktrees and
+//       left main's NavigationPage broken (search state decls + Search import
+//       dropped → didn't compile) and the alerts feature missing entirely. This
+//       restores the complete NavigationPage (tactical + crime + black map +
+//       data fields + destination search/route + Motorola proximity alert tones)
+//       and bumps the cache once for the whole accumulated NAVIGATE overhaul
+//       (the v761/v762/v763 bumps were lost in the race).
+const CACHE_NAME = 'rmpg-flex-v764';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

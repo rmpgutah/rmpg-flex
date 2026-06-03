@@ -22,11 +22,12 @@ import {
   Navigation2, Satellite, Wifi, Globe, X, AlertTriangle, MapPin, Gauge,
   CornerUpLeft, CornerUpRight, ArrowUp, ArrowUpLeft, ArrowUpRight,
   Flag, Merge, RotateCw, RotateCcw, Clock, Box, Crosshair, Maximize, Minimize,
-  Flame, Search, type LucideIcon,
+  Flame, Search, Bell, BellOff, type LucideIcon,
 } from 'lucide-react';
 import { useGpsTracking } from '../hooks/useGpsTracking';
 import { useMapRouting } from '../hooks/useMapRouting';
 import { navigateTo } from '../utils/organicMapsNav';
+import { playTone } from '../utils/dispatchTones';
 import { useMap3D } from './map/hooks/useMap3D';
 import { mapboxgl, initMapbox, MAPBOX_STYLE_DARK } from '../utils/mapboxLoader';
 import { getMapboxAccessToken } from '../utils/mapboxApiKey';
@@ -108,6 +109,55 @@ function bearingTo(lat1: number, lng1: number, lat2: number, lng2: number): numb
   const y = Math.sin(dLng) * Math.cos(toRad(lat2));
   const x = Math.cos(toRad(lat1)) * Math.sin(toRad(lat2)) - Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(dLng);
   return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+}
+
+// ── Route corridor hazard scan (routing-aware situational awareness) ──
+// A hazard the unit is about to drive INTO — an active call or a crime hot-spot
+// that snaps onto the planned route ahead of the unit's current progress.
+interface CorridorHazard {
+  kind: 'call' | 'crime';
+  label: string;
+  sub: string;
+  /** Distance ahead along the route to the hazard, miles. */
+  aheadMi: number;
+  color: string;
+  lat: number;
+  lng: number;
+  /** 1 = caution, 2 = elevated, 3 = critical — drives sort + map halo size. */
+  severity: number;
+}
+
+// Tuning knobs for the corridor scan. These are deliberately conservative — a
+// tight corridor + a high cluster threshold keep the panel signal, not noise.
+const CORRIDOR_HAZARD_M = 70;        // off-route slack: still "on the path"
+const CORRIDOR_LOOKAHEAD_M = 8047;   // scan up to ~5 mi down the route
+const CORRIDOR_MIN_AHEAD_M = 40;     // ignore hazards we're effectively on top of
+const CRIME_CLUSTER_BIN_M = 160;     // along-route bin width for crime clustering
+const CRIME_CLUSTER_MIN = 4;         // incidents in one bin to flag a hot segment
+
+/** Axis-aligned lat/lng bounds of a route polyline ([lng,lat][]) — a cheap
+ *  prefilter so we only snap crime points that could plausibly be in-corridor. */
+function routeBBox(coords: [number, number][]): { w: number; s: number; e: number; n: number } {
+  let w = Infinity, s = Infinity, e = -Infinity, n = -Infinity;
+  for (const [lng, lat] of coords) {
+    if (lng < w) w = lng; if (lng > e) e = lng;
+    if (lat < s) s = lat; if (lat > n) n = lat;
+  }
+  return { w, s, e, n };
+}
+
+/**
+ * Urgency score for a corridor hazard — HIGHER floats to the top of the panel
+ * and is what the operator sees first while driving.
+ *
+ * This is the one piece of domain judgment in the corridor scan, so it lives in
+ * its own function: tune it to match how your officers actually prioritize.
+ * The default weights severity heavily (a P1 call ahead matters even at range)
+ * and decays linearly with distance so an imminent hazard edges out a distant
+ * one of equal severity.
+ */
+function scoreCorridorHazard(h: CorridorHazard): number {
+  return h.severity * 100 - h.aheadMi * 10;
 }
 
 // ── Advanced instruments ─────────────────────────────────────────────────────
@@ -356,6 +406,21 @@ export default function NavigationPage() {
   const [nearbyUnits, setNearbyUnits] = useState<{ call_sign: string; status: string; lat: number; lng: number }[]>([]);
   const [crimeOn, setCrimeOn] = useState(true);
   const [crimeIncidents, setCrimeIncidents] = useState<CrimePoint[]>([]);
+  const [currentStreet, setCurrentStreet] = useState<string | null>(null);
+  const geoRef = useRef<{ lat: number; lng: number; t: number } | null>(null);
+  // Destination search (address/place → route there).
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<{ lat: number; lng: number; label: string }[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [destLabel, setDestLabel] = useState<string | null>(null);
+  // Proximity alert tones + transient warning banner (Motorola dispatch tones).
+  const [alertsOn, setAlertsOn] = useState(true);
+  const [navAlert, setNavAlert] = useState<{ text: string; color: string } | null>(null);
+  const alertedCallsRef = useRef<Set<string>>(new Set());
+  const crimeHotRef = useRef(false);
+  const approachFiredRef = useRef<string | null>(null);
+  const alertTimerRef = useRef<number | null>(null);
   const [, force] = useState(0);
 
   const dir = gps.headingSmoothed ?? gps.course ?? gps.heading;
@@ -716,6 +781,32 @@ export default function NavigationPage() {
     return { slc, local, total: crimeIncidents.length };
   }, [crimeIncidents]);
 
+  // Crime incidents within ~½ mile of the unit — a live "how hot is here" field
+  // (and the basis for the high-crime-area alert in the next phase).
+  const crimeNearby = useMemo(() => {
+    if (gps.latitude == null || gps.longitude == null) return 0;
+    let n = 0;
+    for (const p of crimeIncidents) { if (haversineMeters(gps.latitude, gps.longitude, p.lat, p.lng) <= 805) n++; }
+    return n;
+  }, [crimeIncidents, gps.latitude, gps.longitude]);
+
+  // ── Reverse-geocode the current position → street label ("more data fields") ──
+  // Throttled: only re-lookup after ~40m of movement or 20s, since the server
+  // KV-caches reverse lookups anyway. Best-effort; failures leave the last label.
+  useEffect(() => {
+    if (gps.latitude == null || gps.longitude == null) return;
+    const lat = gps.latitude, lng = gps.longitude;
+    const prev = geoRef.current, now = Date.now();
+    const moved = prev ? haversineMeters(prev.lat, prev.lng, lat, lng) : Infinity;
+    if (prev && moved < 40 && now - prev.t < 20000) return;
+    geoRef.current = { lat, lng, t: now };
+    let cancelled = false;
+    apiFetch<{ address: string | null }>(`/geocode/reverse?lat=${lat.toFixed(6)}&lng=${lng.toFixed(6)}`)
+      .then((r) => { if (!cancelled) setCurrentStreet(r?.address || null); })
+      .catch(() => { /* keep last known street */ });
+    return () => { cancelled = true; };
+  }, [gps.latitude, gps.longitude]);
+
   const sessionMs = startRef.current ? Date.now() - startRef.current : 0;
   const distanceMi = distanceRef.current / 1609.34;
   const avgMph = sessionMs > 60000 ? distanceMi / (sessionMs / 3600000) : 0;
@@ -755,6 +846,67 @@ export default function NavigationPage() {
     ...unitContacts.map((u) => ({ kind: 'unit' as const, bearing: u.bearing, distMi: u.distMi, color: statusColor(u.status), label: u.call_sign })),
   ];
   const threatCount = callContacts.filter((c) => c.priority === 'P1' || c.priority === 'P2').length;
+
+  // ── Proximity alert tones (Motorola dispatch tones) ──
+  // Plays an authentic Motorola tone (dispatchTones.ts) + flashes a transient
+  // warning banner. Respects the page Alerts toggle AND the global sound mute.
+  const fireAlert = (tone: Parameters<typeof playTone>[0], text: string, color: string) => {
+    if (!alertsOn) return;
+    playTone(tone);
+    setNavAlert({ text, color });
+    if (alertTimerRef.current) window.clearTimeout(alertTimerRef.current);
+    alertTimerRef.current = window.setTimeout(() => setNavAlert(null), 6000);
+  };
+
+  // 1) Nearby high-priority calls — P1/P2 within 1mi. Fires once per call as it
+  //    enters the ring (re-arms when it leaves). P1 → Priority-1 warble, P2 → Hi-Lo.
+  useEffect(() => {
+    if (!alertsOn) return;
+    const seen = alertedCallsRef.current;
+    const within = new Set<string>();
+    for (const c of callContacts) {
+      if ((c.priority === 'P1' || c.priority === 'P2') && c.distMi <= 1.0 && c.call_number) {
+        within.add(c.call_number);
+        if (!seen.has(c.call_number)) {
+          seen.add(c.call_number);
+          fireAlert(c.priority === 'P1' ? 'p1_alert' : 'warning',
+            `${c.priority} ${c.incident_type.replace(/_/g, ' ')} · ${c.distMi.toFixed(1)}mi ${String(Math.round(c.bearing)).padStart(3, '0')}°`,
+            '#ef4444');
+        }
+      }
+    }
+    for (const id of Array.from(seen)) if (!within.has(id)) seen.delete(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [callContacts, alertsOn]);
+
+  // 2) High-crime-area entry — crossing into ≥8 incidents within ½mi (P25 3-pip).
+  //    Hysteresis (re-arm below 5) so it doesn't chatter at the boundary.
+  useEffect(() => {
+    if (!alertsOn) return;
+    if (!crimeHotRef.current && crimeNearby >= 8) {
+      crimeHotRef.current = true;
+      fireAlert('alert', `High-crime area · ${crimeNearby} within ½mi (60d)`, '#f59e0b');
+    } else if (crimeHotRef.current && crimeNearby < 5) {
+      crimeHotRef.current = false;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [crimeNearby, alertsOn]);
+
+  // 3) Approaching the routed destination — within ~800 ft, once per destination
+  //    (dispatch bell). Re-arms when the destination changes or clears.
+  useEffect(() => {
+    if (!alertsOn) return;
+    const d = destCoordsRef.current;
+    if (destCrowMi == null || !d) { approachFiredRef.current = null; return; }
+    const key = `${d.lat.toFixed(4)},${d.lng.toFixed(4)}`;
+    if (approachFiredRef.current !== key && destCrowMi <= 0.15) {
+      approachFiredRef.current = key;
+      fireAlert('dispatch_bell', `Approaching ${destLabel || activeRoute?.callNumber || 'destination'} · ${Math.round(destCrowMi * 5280)} ft`, '#22c55e');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [destCrowMi, alertsOn]);
+
+  useEffect(() => () => { if (alertTimerRef.current) window.clearTimeout(alertTimerRef.current); }, []);
 
   const step = useMemo(
     () => pickCurrentStep(activeRoute?.steps, routeProgress?.fraction ?? 0, activeRoute?.distanceMeters ?? 0),
@@ -817,6 +969,24 @@ export default function NavigationPage() {
           <span className="text-[9px] uppercase text-rmpg-500">{gps.connectionType}</span>
         )}
         <button
+          onClick={() => setAlertsOn((v) => !v)}
+          className="toolbar-btn flex items-center justify-center"
+          style={{ color: alertsOn ? '#d4a017' : '#666' }}
+          title={alertsOn ? 'Proximity alert tones ON' : 'Proximity alert tones OFF'}
+          aria-label={alertsOn ? 'Mute proximity alerts' : 'Unmute proximity alerts'}
+        >
+          {alertsOn ? <Bell className="w-4 h-4" /> : <BellOff className="w-4 h-4" />}
+        </button>
+        <button
+          onClick={() => setSearchOpen((v) => !v)}
+          className="toolbar-btn flex items-center justify-center"
+          style={{ color: searchOpen ? '#d4a017' : '#a0a0a0' }}
+          title="Search destination"
+          aria-label="Search destination"
+        >
+          <Search className="w-4 h-4" />
+        </button>
+        <button
           onClick={() => setCrimeOn((v) => !v)}
           className="toolbar-btn flex items-center gap-1 text-[10px] uppercase"
           style={{ color: crimeOn ? '#f59e0b' : '#666' }}
@@ -842,6 +1012,17 @@ export default function NavigationPage() {
           <X className="w-4 h-4" /> Close
         </button>
       </div>
+
+      {/* Transient proximity-alert banner — flashes as the Motorola tone fires */}
+      {navAlert && (
+        <div
+          className="absolute z-40 left-1/2 -translate-x-1/2 flex items-center gap-2 px-3 py-1.5 shadow-2xl animate-pulse"
+          style={{ top: 46, background: 'rgba(8,8,8,0.96)', border: `1px solid ${navAlert.color}`, borderRadius: 2, maxWidth: '76%', boxShadow: `0 0 16px ${navAlert.color}66` }}
+        >
+          <AlertTriangle className="w-4 h-4 shrink-0" style={{ color: navAlert.color }} />
+          <span className="text-[12px] font-bold uppercase tracking-wide truncate" style={{ color: navAlert.color }}>{navAlert.text}</span>
+        </div>
+      )}
 
       {/* Destination search panel */}
       {searchOpen && (
@@ -935,6 +1116,24 @@ export default function NavigationPage() {
               })}
             </div>
           )}
+          {/* Route corridor hazards — what's ON THE PATH ahead */}
+          {corridorHazards.length > 0 && (
+            <div className="border-t" style={{ borderColor: corridorCritical > 0 ? 'rgba(239,68,68,0.4)' : 'rgba(245,158,11,0.35)' }}>
+              <div className="flex items-center gap-1.5 px-3 py-1" style={{ background: corridorCritical > 0 ? 'rgba(239,68,68,0.10)' : 'rgba(245,158,11,0.08)' }}>
+                <ShieldAlert className={`w-3.5 h-3.5 shrink-0 ${corridorCritical > 0 ? 'animate-pulse' : ''}`} style={{ color: corridorCritical > 0 ? '#ef4444' : '#f59e0b' }} />
+                <span className="text-[9px] font-bold uppercase tracking-widest flex-1" style={{ color: corridorCritical > 0 ? '#fca5a5' : '#fcd34d' }}>Ahead on route</span>
+                <span className="text-[9px] font-mono text-rmpg-400">{corridorHazards.length}</span>
+              </div>
+              {corridorHazards.slice(0, 4).map((h, i) => (
+                <div key={i} className={`flex items-center gap-2 px-3 py-1 ${i > 0 ? 'border-t border-rmpg-800/40' : ''}`}>
+                  <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: h.color, boxShadow: h.severity >= 3 ? `0 0 5px ${h.color}` : 'none' }} />
+                  <span className="text-[10px] font-mono shrink-0" style={{ color: h.color }}>{h.label}</span>
+                  <span className="flex-1 min-w-0 truncate text-[9px] text-rmpg-500">{h.sub}</span>
+                  <span className="text-[10px] font-mono font-bold text-brand-300 shrink-0">{h.aheadMi < 0.1 ? `${Math.round(h.aheadMi * 5280)} ft` : `${h.aheadMi.toFixed(1)} mi`}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -971,6 +1170,10 @@ export default function NavigationPage() {
               </div>
             ))}
             <div className="text-[8px] text-rmpg-600 pt-0.5">SLCPD public · {crimeCounts.slc} pts</div>
+            <div className="flex items-center gap-1 pt-0.5 border-t border-rmpg-800/60 mt-0.5">
+              <span className="text-[8px] uppercase tracking-wider text-rmpg-600 flex-1">Within ½mi</span>
+              <span className="text-[10px] font-mono font-bold" style={{ color: crimeNearby >= 8 ? '#ef4444' : crimeNearby >= 3 ? '#f59e0b' : '#22c55e' }}>{crimeNearby}</span>
+            </div>
           </div>
         </div>
       )}
