@@ -6,6 +6,7 @@ import { getDb, query, queryFirst, execute } from '../../utils/db';
 import { authMiddleware, requireRole } from '../../middleware/auth';
 import { applyRunCard } from '../runCards';
 import { sendToUser, broadcastAll } from '../ws';
+import { emitAlert } from '../../utils/alertHub';
 import { geocodeAddress } from '../geocode';
 import { resolveDistrict } from '../../utils/districtResolver';
 import { evaluateNotificationRules } from '../notificationEngine';
@@ -1229,13 +1230,21 @@ calls.post('/:id/assign-unit', async (c) => {
         if (within50m.length > 0) {
           const unit = await queryFirst<{ officer_id: number | null }>(db, 'SELECT officer_id FROM units WHERE id = ?', unit_id);
           if (unit?.officer_id) {
-            premise_pushed = sendToUser(unit.officer_id, 'premise_alert_for_unit', {
+            // Deliver via AlertHubDO (emitAlert), targeted to the assigned
+            // officer's MDT through target_user_id — PremiseAlertModal filters on
+            // it. The old sendToUser was per-isolate DEAD (the live /api/ws socket
+            // is on the legacy worker) AND the modal didn't filter, so this
+            // officer-safety hazard popup reached the officer NEVER (and would have
+            // popped on every console if naively broadcast).
+            await emitAlert(c.env, 'premise_alert_for_unit', {
+              target_user_id: unit.officer_id,
               call_id: id,
               call_number: call.call_number,
               unit_id,
               alerts: within50m,
               pushed_at: new Date().toISOString(),
             });
+            premise_pushed = within50m.length;
           }
         }
       }

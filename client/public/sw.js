@@ -482,6 +482,10 @@
 // v756: NAVIGATE drive screen is now TRUE full screen — moved to a standalone route
 //       OUTSIDE <Layout> (no top app toolbar, edge-to-edge viewport via fixed
 //       inset-0) plus a native Fullscreen-API toggle in the header for kiosk mode.
+// v757: NAVIGATE instrument-panel visual polish — bottom dashboard rebuilt as
+//       divider-separated bays (gauge | compass | chart | stats) with bordered
+//       gold-railed stat tiles (no more bare text floating in black), a gold
+//       accent riser, header gold underline + icon glow, and a richer compass.
 const CACHE_NAME = 'rmpg-flex-v757';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
