@@ -1901,6 +1901,12 @@ export type WSMessageType =
   // off 'dispatch_update' so a ~1 Hz breadcrumb never runs the dispatcher
   // brain fan-in — MapPage moves the marker / rotates the arrow directly.
   | 'unit_position'
+  // Trip lifecycle (unit_trips → AlertHubDO). Payload:
+  // { type:'trip_update', action:'opened'|'closed', unit_id, trip }.
+  // 'appended' is intentionally NOT broadcast — live distance/duration
+  // rollups come from polling /dispatch/trips/active; the socket only
+  // carries lifecycle (open/close). Feeds the board's current-trip badge.
+  | 'trip_update'
   | 'premise_alert_for_unit'
   // Live sync — auto-broadcast on data mutations
   | 'data_changed'
