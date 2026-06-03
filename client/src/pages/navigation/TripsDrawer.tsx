@@ -13,7 +13,7 @@
 import { useMemo, useState } from 'react';
 import {
   Route as RouteIcon, X, Loader2, Radio, ChevronRight, Gauge, Clock, MapPin,
-  TrendingUp, TrendingDown, CornerUpRight,
+  TrendingUp, TrendingDown, CornerUpRight, Printer,
 } from 'lucide-react';
 import MovementReportDrawer from './MovementReportDrawer';
 import { buildMovementReport, type FixPoint } from './vehicleTelemetry';
@@ -23,6 +23,7 @@ import {
   type Trip, type TripPoint,
 } from '../../hooks/useTrips';
 import { useActiveTripsLive } from '../../hooks/useActiveTripsLive';
+import { generateTripLogPdf } from '../../utils/tripLogPdf';
 
 interface Props {
   unitId?: number;
@@ -140,6 +141,7 @@ export default function TripsDrawer({ unitId, open, onClose }: Props) {
   const { trips, reload } = useUnitTrips(unitId);
   const { getTrip } = useActiveTripsLive();
   const [selectedTripId, setSelectedTripId] = useState<number | null>(null);
+  const [exporting, setExporting] = useState(false);
 
   const liveTrip = getTrip(unitId);
 
@@ -154,6 +156,25 @@ export default function TripsDrawer({ unitId, open, onClose }: Props) {
     }
     return rows;
   }, [trips, liveTrip]);
+
+  // EXPORT PDF — audit Trip Log for this unit's full chain (live + closed).
+  // Reuses the shared jsPDF generator (tripLogPdf.ts) — same engine/helpers
+  // as every other RMPG report. Unit/officer labels come from the trip data.
+  const handleExportPdf = async () => {
+    if (exporting || timeline.length === 0) return;
+    const tripsForPdf = timeline.map((r) => r.trip);
+    const unitLabel = unitId != null ? `Unit ${unitId}` : undefined;
+    const officerId = tripsForPdf.find((t) => t.officer_id != null)?.officer_id ?? null;
+    const officerLabel = officerId != null ? `Officer ${officerId}` : undefined;
+    try {
+      setExporting(true);
+      await generateTripLogPdf(tripsForPdf, { unitLabel, officerLabel });
+    } catch (err) {
+      console.error('[TripsDrawer] Trip Log PDF export failed:', err);
+    } finally {
+      setExporting(false);
+    }
+  };
 
   // Per-trip movement report — reuse the SAME drawer the live session uses.
   const detail = useTripDetail(selectedTripId ?? undefined);
@@ -217,6 +238,17 @@ export default function TripsDrawer({ unitId, open, onClose }: Props) {
         <RouteIcon className="w-4 h-4 text-brand-400" />
         <span className="text-[11px] font-bold uppercase tracking-widest text-rmpg-100 flex-1">Trips</span>
         <span className="text-[10px] font-mono text-rmpg-400">{timeline.length}</span>
+        <button
+          onClick={handleExportPdf}
+          disabled={exporting || timeline.length === 0}
+          className="flex items-center gap-1 text-[8px] font-bold uppercase tracking-wide px-1.5 py-0.5 border border-rmpg-700 text-brand-300 hover:border-brand-500 hover:text-white disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:border-rmpg-700 disabled:hover:text-brand-300"
+          style={{ borderRadius: 2 }}
+          aria-label="Export trip log PDF"
+          title="Export trip log PDF"
+        >
+          {exporting ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <Printer className="w-2.5 h-2.5" />}
+          Export PDF
+        </button>
         <button onClick={onClose} className="text-rmpg-500 hover:text-white" aria-label="Close trips"><X className="w-4 h-4" /></button>
       </div>
 

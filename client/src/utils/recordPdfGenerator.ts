@@ -42,6 +42,7 @@ import {
   type QuickRefBannerConfig,
 } from './pdfDetailHelpers';
 import { recordPosture } from '../components/records/recordVisuals';
+import { type Trip, tripMiles, tripDurationMin } from '../hooks/useTrips';
 import type { PdfImage, PdfSignatureData } from './pdfGenerator';
 import { convertToGrayscale, getActiveSectionStyle, setFieldNumberingEnabled, resetActiveFieldCounter } from './pdfGenerator';
 import { fetchLocationMapImage } from './pdfStaticMap';
@@ -599,6 +600,10 @@ export interface CallPdfData {
   starting_mileage?: number;
   ending_mileage?: number;
   responding_vehicle_id?: string;
+  // Telemetry — the logged call-response trip (drive to scene), if any.
+  // Fetched by the caller (PrintRecordButton) via /dispatch/trips?call_id=,
+  // rendered as a single audit line under Mileage.
+  response_trip?: Trip;
   // Timeline
   created_at?: string;
   dispatched_at?: string;
@@ -2303,6 +2308,26 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
     }
     y = maxY;
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // Response Trip — one-line audit summary of the logged drive-to-scene
+  // (call_response) trip, when telemetry captured it. Threaded in by the
+  // caller as data.response_trip (fetched via /dispatch/trips?call_id=).
+  {
+    const rt = data.response_trip;
+    if (rt && rt.trip_type === 'call_response') {
+      const unitTag = (data.assigned_units_detail?.[0]?.call_sign)
+        || (rt.unit_id != null ? `Unit ${rt.unit_id}` : 'Unit');
+      const dur = tripDurationMin(rt);
+      const durStr = dur != null ? `${dur} min` : 'N/A';
+      const miStr = `${tripMiles(rt).toFixed(1)} mi`;
+      const mileagePart = (rt.start_mileage != null && rt.end_mileage != null)
+        ? `, mileage ${Number(rt.start_mileage).toLocaleString()}->${Number(rt.end_mileage).toLocaleString()}`
+        : '';
+      const respLine = `${unitTag} -> scene in ${durStr} over ${miStr}${mileagePart}`;
+      y = checkPageBreak(doc, y, 10, prio);
+      y = addNarrativeField(doc, 'Response', respLine, lx, y, ffw);
+    }
   }
 
   // Linked Persons — route through the shared addTableWithShading helper
