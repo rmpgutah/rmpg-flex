@@ -42,6 +42,11 @@ CREATE TABLE IF NOT EXISTS unit_trips (
   last_fix_ts TEXT,
   speed_sum REAL NOT NULL DEFAULT 0,
   fix_count INTEGER NOT NULL DEFAULT 0,
+  -- accumulator continuity across stateless batches: the incremental telemetry
+  -- (longitudinal/lateral g) needs the previous fix's mph + bearing + position,
+  -- which would otherwise reset to zero every 5s batch boundary. last_fix_ts
+  -- doubles as prev_ts.
+  prev_lat REAL, prev_lng REAL, prev_mph REAL,
   prev_bearing REAL,
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
