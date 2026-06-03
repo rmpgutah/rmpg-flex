@@ -27,7 +27,7 @@ import {
 import { useGpsTracking } from '../hooks/useGpsTracking';
 import { useMapRouting } from '../hooks/useMapRouting';
 import { useMap3D } from './map/hooks/useMap3D';
-import { mapboxgl, initMapbox, MAPBOX_STYLE_NIGHT } from '../utils/mapboxLoader';
+import { mapboxgl, initMapbox, MAPBOX_STYLE_DARK } from '../utils/mapboxLoader';
 import { getMapboxAccessToken } from '../utils/mapboxApiKey';
 import { apiFetch } from '../hooks/useApi';
 import { compassCardinal } from '../utils/locationImagery';
@@ -364,7 +364,7 @@ export default function NavigationPage() {
         initMapbox(token);
         const map = new mapboxgl.Map({
           container: mapContainerRef.current!,
-          style: MAPBOX_STYLE_NIGHT,
+          style: MAPBOX_STYLE_DARK,
           center: [gps.longitude ?? -111.891, gps.latitude ?? 40.7608],
           zoom: 16.5,
           pitch: 55,
@@ -375,6 +375,16 @@ export default function NavigationPage() {
         map.on('load', () => {
           if (cancelled) { map.remove(); return; }
           mapInstanceRef.current = map;
+          // Push dark-v11 toward a pure-black tactical base — black land/background
+          // and near-black water — so streets + the crime overlay pop. Defensive:
+          // layer ids vary by style version, so guard every set.
+          try {
+            for (const ly of (map.getStyle()?.layers || [])) {
+              if (ly.type === 'background') map.setPaintProperty(ly.id, 'background-color', '#000000');
+              else if (/water/i.test(ly.id) && ly.type === 'fill') map.setPaintProperty(ly.id, 'fill-color', '#04070d');
+              else if (/(^|[-_])(land|landcover|landuse)/i.test(ly.id) && ly.type === 'fill') map.setPaintProperty(ly.id, 'fill-color', '#050505');
+            }
+          } catch { /* style recolor is cosmetic — never block the map */ }
           markerRef.current = new mapboxgl.Marker({ color: '#d4a017' })
             .setLngLat([gps.longitude ?? -111.891, gps.latitude ?? 40.7608])
             .addTo(map);
@@ -407,7 +417,7 @@ export default function NavigationPage() {
         if (cancelled || !token) return;
         const m = new mapboxgl.Map({
           container: insetContainerRef.current!,
-          style: MAPBOX_STYLE_NIGHT,
+          style: MAPBOX_STYLE_DARK,
           center: [gps.longitude!, gps.latitude!],
           zoom: 17.4, pitch: 70, bearing: dir ?? 0,
           attributionControl: false, interactive: false,
@@ -854,8 +864,10 @@ export default function NavigationPage() {
         </div>
       )}
       {!activeRoute && (
-        <div className="absolute top-12 inset-x-2 z-20 panel-beveled bg-surface-deep/85 backdrop-blur-md border border-rmpg-700 px-3 py-1.5 text-[10px] uppercase text-rmpg-500 flex items-center gap-2" style={{ borderRadius: 2 }}>
-          <MapPin className="w-3.5 h-3.5" /> No active route — following GPS
+        <div className="absolute top-12 inset-x-2 z-20 panel-beveled bg-surface-deep/85 backdrop-blur-md border border-rmpg-700 px-3 py-1.5 flex items-center gap-2" style={{ borderRadius: 2 }}>
+          <MapPin className="w-3.5 h-3.5 text-rmpg-500 shrink-0" />
+          <span className="text-[10px] uppercase text-rmpg-500 shrink-0">Following GPS</span>
+          {currentStreet && <span className="text-[11px] text-rmpg-200 truncate">· {currentStreet}</span>}
         </div>
       )}
 
@@ -983,9 +995,10 @@ export default function NavigationPage() {
                 <StatTile label="To Call" value={destCrowMi != null ? `${destCrowMi.toFixed(1)} mi` : '—'} dim={destCrowMi == null} />
                 <StatTile label="Source" value={src.label} accent={src.color} />
               </div>
-              <div className="mt-1.5 flex items-center gap-2 text-[9px] font-mono text-rmpg-500">
-                <Crosshair className="w-2.5 h-2.5 text-rmpg-600 shrink-0" />
-                <span className="truncate">{hasFix ? `${gps.latitude!.toFixed(6)}, ${gps.longitude!.toFixed(6)}` : 'Acquiring fix…'}</span>
+              <div className="mt-1.5 flex items-center gap-2 text-[9px] font-mono">
+                <MapPin className="w-2.5 h-2.5 text-brand-500 shrink-0" />
+                <span className="truncate text-rmpg-300">{currentStreet || (hasFix ? 'Locating street…' : 'Acquiring fix…')}</span>
+                <span className="shrink-0 text-rmpg-600">{hasFix ? `${gps.latitude!.toFixed(5)}, ${gps.longitude!.toFixed(5)}` : ''}</span>
                 {gps.unitCallSign && <span className="ml-auto shrink-0 text-brand-300 font-bold">UNIT {gps.unitCallSign}</span>}
               </div>
             </div>
