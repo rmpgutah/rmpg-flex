@@ -9,7 +9,8 @@
 // announcing if DispatchPage also triggers the same alert.
 // ============================================================
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
+import { useAuth } from '../context/AuthContext';
 import { useWebSocket } from '../context/WebSocketContext';
 import {
   announceNewCall,
@@ -91,8 +92,13 @@ export function useDispatchVoiceAlerts(options?: {
   voiceAlert?: (narrative: string, severity: 'minor' | 'moderate' | 'major') => void;
 }): void {
   const { subscribe } = useWebSocket();
+  const { user } = useAuth();
   const onAlert = options?.onAlert;
   const voiceAlert = options?.voiceAlert;
+  // Current user id, kept in a ref so targeted-alert filters read the latest
+  // value without re-running the (large) subscription effect on every auth tick.
+  const selfIdRef = useRef<string | number | null | undefined>(user?.id);
+  selfIdRef.current = user?.id;
 
   useEffect(() => {
     const unsubs: Array<() => void> = [];
@@ -291,6 +297,9 @@ export function useDispatchVoiceAlerts(options?: {
     unsubs.push(
       subscribe('welfare_check', (msg) => {
         const data = (msg.data || msg.payload || msg) as any;
+        // Targeted prompt — AlertHubDO broadcasts to all consoles, so only
+        // speak it on the intended officer's device (fail-open if no target).
+        if (data.target_user_id != null && String(data.target_user_id) !== String(selfIdRef.current)) return;
         const text = data.message || 'Status check. Are you code 4?';
         if (voiceAlert) {
           voiceAlert(text, 'moderate');

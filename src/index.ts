@@ -189,8 +189,13 @@ app.post('/__welfare-fire', async (c) => {
   }
   const { stage, watch } = await c.req.json<{ stage: 'prompt' | 'alert' | 'emergency'; watch: any }>();
   if (stage === 'prompt') {
-    sendToUser(watch.user_id, 'welfare_check', {
+    // Targeted to ONE officer's MDT — deliver via AlertHubDO with a
+    // target_user_id (WelfareCheckModal + the voice hook filter on it). The old
+    // sendToUser was per-isolate-dead, so the welfare-check prompt reached the
+    // officer never; a naive broadcast would pop the takeover on every console.
+    await emitAlert(c.env, 'welfare_check', {
       action: 'welfare_prompt',
+      target_user_id: watch.user_id,
       callSign: watch.call_sign,
       callId: watch.call_id,
       callNumber: watch.call_number,
