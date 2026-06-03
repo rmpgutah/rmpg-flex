@@ -268,6 +268,25 @@ const IS_ELECTRON = typeof window !== 'undefined' && !!(window as any).electron?
 const IS_WINDOWS_ELECTRON =
   IS_ELECTRON && (window as any).electron?.platform === 'win32';
 
+/** Normalize an assigned-unit payload into a real unit or null.
+ *
+ *  Two response sources feed this: GET /dispatch/gps/my-unit (the canonical
+ *  read) and the unit echo on POST /dispatch/gps (the write path). The canonical
+ *  read can be shadowed by the rmpg-premise-stub edge worker, which answers with
+ *  a hollow `{ unit: null }` (HTTP 200) — a TRUTHY object whose `.id` is
+ *  undefined. Reading `.id` off that silently set `unitId = undefined`, leaving
+ *  NAVIGATE/Trips stuck on "No unit assigned" while the unit actually exists.
+ *
+ *  Accept only a row carrying a numeric `id`; tolerate both the bare
+ *  `{ id, call_sign, ... }` shape and a defensive `{ unit: { ... } }` wrapper. */
+function pickUnit(resp: unknown): { id: number; call_sign?: string; gps_source?: string } | null {
+  if (!resp || typeof resp !== 'object') return null;
+  const obj = resp as Record<string, unknown>;
+  const u = ('unit' in obj ? obj.unit : obj) as Record<string, unknown> | null;
+  if (!u || typeof u !== 'object') return null;
+  return typeof u.id === 'number' ? (u as { id: number; call_sign?: string; gps_source?: string }) : null;
+}
+
 export function useGpsTracking(options?: UseGpsTrackingOptions) {
   const {
     batchIntervalMs = DEFAULT_BATCH_INTERVAL,
@@ -355,14 +374,18 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
    *  this gives the browser fallback room to fill the gap. */
   const INTERNAL_GPS_FRESH_MS = 15000;
 
-  // Fetch the user's assigned unit on mount
+  // Fetch the user's assigned unit on mount. The canonical read can be shadowed
+  // by an edge stub returning a hollow {unit:null}, so validate via pickUnit and
+  // let the POST /dispatch/gps echo (handled in sendBatch) recover the unit on
+  // the first successful breadcrumb upload when this read comes back empty.
   useEffect(() => {
     let cancelled = false;
-    apiFetch<{ id: number; call_sign: string; status: string; gps_source?: string } | null>('/dispatch/gps/my-unit')
-      .then((unit) => {
+    apiFetch<unknown>('/dispatch/gps/my-unit')
+      .then((resp) => {
+        const unit = pickUnit(resp);
         if (unit && !cancelled) {
           unitIdRef.current = unit.id;
-          setState((prev) => ({ ...prev, unitCallSign: unit.call_sign, unitId: unit.id }));
+          setState((prev) => ({ ...prev, unitCallSign: unit.call_sign ?? prev.unitCallSign, unitId: unit.id }));
           gpsSourceRef.current = unit.gps_source || 'browser';
         }
       })
@@ -413,7 +436,7 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
       queueRef.current = [];
 
       try {
-        const result = await apiFetch<{ error?: unknown } | null>('/dispatch/gps', {
+        const result = await apiFetch<{ error?: unknown; unit?: unknown } | null>('/dispatch/gps', {
           method: 'POST',
           body: JSON.stringify({ points: allPoints, device_type: IS_DESKTOP ? 'desktop' : 'mobile' }),
         });
@@ -430,19 +453,29 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
         clearFailoverQueue();
         // Check if we need to fetch unit info using ref (avoids stale closure from empty deps)
         const needsUnitFetch = !unitIdRef.current;
+        // Adopt the unit straight from the (non-stubbed) write response. The GET
+        // /gps/my-unit read is the canonical source but can be shadowed by the
+        // edge stub returning a hollow {unit:null}; the POST echo isn't, so this
+        // is what actually populates unitId for the NAVIGATE/Trips UI.
+        const postedUnit = needsUnitFetch ? pickUnit(result) : null;
         setState((prev) => ({
           ...prev,
           lastSentAt: new Date().toISOString(),
           error: null,
+          ...(postedUnit ? { unitId: postedUnit.id, unitCallSign: postedUnit.call_sign ?? prev.unitCallSign } : {}),
         }));
-        // If we didn't have a unit before, the server may have auto-created one.
-        // Re-fetch unit info so the status bar shows the call sign.
-        if (needsUnitFetch) {
-          apiFetch<{ id: number; call_sign: string; status: string } | null>('/dispatch/gps/my-unit')
-            .then((unit) => {
+        if (postedUnit) {
+          unitIdRef.current = postedUnit.id;
+          if (postedUnit.gps_source) gpsSourceRef.current = postedUnit.gps_source;
+        } else if (needsUnitFetch) {
+          // Older Worker (no unit echo yet) — fall back to re-fetching my-unit.
+          // pickUnit guards the stub's {unit:null} so it can't set unitId=undefined.
+          apiFetch<unknown>('/dispatch/gps/my-unit')
+            .then((resp) => {
+              const unit = pickUnit(resp);
               if (unit && mountedRef.current) {
                 unitIdRef.current = unit.id;
-                setState((p) => ({ ...p, unitCallSign: unit.call_sign, unitId: unit.id }));
+                setState((p) => ({ ...p, unitCallSign: unit.call_sign ?? p.unitCallSign, unitId: unit.id }));
               }
             })
             .catch((err) => { console.warn('[useGpsTracking] fetch my-unit failed:', err); });
