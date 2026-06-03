@@ -980,7 +980,13 @@ calls.post('/:id/status', async (c) => {
     const mileageParams: unknown[] = [];
     if (starting_mileage != null && Number.isFinite(sm) && sm > 0) { mileageSets.push('starting_mileage = ?'); mileageParams.push(sm); }
     if (ending_mileage != null && Number.isFinite(em) && em > 0) { mileageSets.push('ending_mileage = ?'); mileageParams.push(em); }
-    if (typeof responding_vehicle_id === 'string' && responding_vehicle_id.trim()) { mileageSets.push('responding_vehicle_id = ?'); mileageParams.push(responding_vehicle_id.trim()); }
+    // responding_vehicle_id is an INTEGER column (FK-ish to the fleet) — coerce
+    // the trimmed string and only write a finite number, so a stray non-numeric
+    // value isn't stored as text in an INTEGER column (downstream joins mismatch).
+    if (responding_vehicle_id != null && String(responding_vehicle_id).trim()) {
+      const rv = Number(String(responding_vehicle_id).trim());
+      if (Number.isFinite(rv)) { mileageSets.push('responding_vehicle_id = ?'); mileageParams.push(rv); }
+    }
     const mileageSql = mileageSets.length ? `, ${mileageSets.join(', ')}` : '';
 
     const params: unknown[] = [status];
