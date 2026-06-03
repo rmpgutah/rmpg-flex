@@ -22,7 +22,7 @@ import {
   Navigation2, Satellite, Wifi, Globe, X, AlertTriangle, MapPin, Gauge,
   CornerUpLeft, CornerUpRight, ArrowUp, ArrowUpLeft, ArrowUpRight,
   Flag, Merge, RotateCw, RotateCcw, Clock, Box, Crosshair, Maximize, Minimize,
-  Flame, Search, Bell, BellOff, ShieldAlert, Footprints, type LucideIcon,
+  Flame, Search, Bell, BellOff, ShieldAlert, Footprints, Car, Building2, type LucideIcon,
 } from 'lucide-react';
 import { useGpsTracking } from '../hooks/useGpsTracking';
 import { useMapRouting, snapToRoute } from '../hooks/useMapRouting';
@@ -89,10 +89,12 @@ const SOURCE_META: Record<string, { icon: LucideIcon; color: string; label: stri
 
 const PRIO_COLOR: Record<string, string> = { P1: '#ef4444', P2: '#f59e0b', P3: '#d4a017', P4: '#888888' };
 
-interface CrimePoint { id: string; source: 'slc' | 'local'; category: string; label: string; date: string | null; lat: number; lng: number; area?: string | null; ref?: string | null; division?: string | null }
+interface CrimePoint { id: string; source: 'slc' | 'local' | 'ccm' | 'crash'; category: string; label: string; date: string | null; lat: number; lng: number; area?: string | null; ref?: string | null; division?: string | null; agency?: string | null; kind?: 'crime' | 'crash' | 'cfs'; severity?: number | null }
 
-// Map color for a crime point. SLC public data is colored by crime class; our
-// own CFS is green so the two sources read apart. (No blue — house style.)
+// Map color for a crime point — colored by crime CLASS so the token's hue tells
+// the officer the threat type at a glance. Our own CFS is green so it reads apart
+// from agency crime. Multi-agency (ccm) data is bucketed server-side into the
+// same Person/Property/Society classes, so it colors identically. (No blue.)
 function crimeColor(p: CrimePoint): string {
   if (p.source === 'local') return '#22c55e';
   const cat = (p.category || '').toLowerCase();
@@ -100,6 +102,27 @@ function crimeColor(p: CrimePoint): string {
   if (cat.includes('property')) return '#f59e0b';
   if (cat.includes('society')) return '#a855f7';
   return '#d4a017';
+}
+
+// Trim verbose agency names for the narrow panel ("… Police Department" → "PD",
+// "… Department of Public Safety" → "DPS"). Keeps the city, drops the boilerplate.
+function shortAgency(name: string): string {
+  return (name || '')
+    .replace(/\bPolice Department\b/i, 'PD')
+    .replace(/\bDept of Public Safety\b/i, 'DPS')
+    .replace(/\bDepartment of Public Safety\b/i, 'DPS')
+    .replace(/\bSheriff'?s Office\b/i, 'SO')
+    .replace(/\bUniv(ersity)? of Utah\b/i, 'U of U')
+    .trim();
+}
+
+// Crash token color by SLC severity (0 = property-damage-only → up). Crashes
+// render as hollow rings (separate layer) so they never blur into crime dots.
+function crashColor(severity: number | null | undefined): string {
+  const s = Number(severity);
+  if (Number.isFinite(s) && s >= 3) return '#ef4444'; // serious / injury
+  if (Number.isFinite(s) && s >= 1) return '#f59e0b'; // minor injury
+  return '#e5e7eb';                                    // property damage only
 }
 
 // Coarse class bucket for the Salt Lake County overview rollup.
@@ -130,6 +153,12 @@ function escapeHtml(s: string): string {
 // Crime lookback window — wider than the original 60d for a fuller county
 // overview. Both sources honor `days`; SLC is capped at 2000 records upstream.
 const CRIME_WINDOW_DAYS = 90;
+// Multi-agency (LexisNexis) window — the upstream caps at 500/tile and is freshest
+// over a tight window, so 30d keeps it dense and current across all agencies.
+const CRIME_REGIONAL_DAYS = 30;
+// Crash window — the public crash dataset lags ~2-3 months, so a wide window is
+// what surfaces chronic crash hot-spots (dangerous intersections) for driving.
+const CRASH_WINDOW_DAYS = 365;
 
 // Initial great-circle bearing (deg, 0=N) from A to B.
 function bearingTo(lat1: number, lng1: number, lat2: number, lng2: number): number {
@@ -144,7 +173,7 @@ function bearingTo(lat1: number, lng1: number, lat2: number, lng2: number): numb
 // A hazard the unit is about to drive INTO — an active call or a crime hot-spot
 // that snaps onto the planned route ahead of the unit's current progress.
 interface CorridorHazard {
-  kind: 'call' | 'crime';
+  kind: 'call' | 'crime' | 'crash';
   label: string;
   sub: string;
   /** Distance ahead along the route to the hazard, miles. */
@@ -163,6 +192,7 @@ const CORRIDOR_LOOKAHEAD_M = 8047;   // scan up to ~5 mi down the route
 const CORRIDOR_MIN_AHEAD_M = 40;     // ignore hazards we're effectively on top of
 const CRIME_CLUSTER_BIN_M = 160;     // along-route bin width for crime clustering
 const CRIME_CLUSTER_MIN = 4;         // incidents in one bin to flag a hot segment
+const CRASH_CLUSTER_MIN = 5;         // crashes in one bin to flag a dangerous stretch
 
 /** Axis-aligned lat/lng bounds of a route polyline ([lng,lat][]) — a cheap
  *  prefilter so we only snap crime points that could plausibly be in-corridor. */
@@ -427,6 +457,11 @@ export default function NavigationPage() {
   const [nearbyUnits, setNearbyUnits] = useState<{ call_sign: string; status: string; lat: number; lng: number }[]>([]);
   const [crimeOn, setCrimeOn] = useState(true);
   const [crimeIncidents, setCrimeIncidents] = useState<CrimePoint[]>([]);
+  const [regionalAgencies, setRegionalAgencies] = useState<string[]>([]); // county agencies in the merged feed
+  const [crashOn, setCrashOn] = useState(true);          // SLC traffic-crash overlay (travel awareness)
+  const [crashes, setCrashes] = useState<CrimePoint[]>([]);
+  const crashPopupRef = useRef<any>(null);               // single open crash record card
+  const crashHotRef = useRef(false);                     // hysteresis for the crash-area alert
   const [trailOn, setTrailOn] = useState(true); // patrol breadcrumb trail (own GPS track)
   // Live turn-banner height — the side panels flow below it so they never
   // collide with a banner that grew (destination line + ETA + steps + hazards).
@@ -728,20 +763,30 @@ export default function NavigationPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gps.latitude != null]);
 
-  // ── Crime data layers ──
-  // Fetch BOTH sources (SLC public crime proxy + our own recent CFS), merge,
-  // refresh every 10 min. Best-effort: a failed source just yields fewer points.
+  // ── Crime + crash data layers ──
+  // Fetch ALL county sources and merge for a full Salt Lake County picture:
+  //   • /crime/slc      — Salt Lake City PD (its own ArcGIS feed)
+  //   • /crime/regional — every OTHER county agency (West Valley, Sandy, Murray,
+  //                       Unified PD, U of U DPS, …) via LexisNexis aggregation
+  //   • /crime/local    — our own dispatched CFS
+  //   • /crime/crashes  — SLC traffic crashes (kept on its own layer, travel-aware)
+  // Refresh every 10 min. Best-effort: any failed source just yields fewer points
+  // (each is KV-cached server-side, so this is cheap to poll).
   useEffect(() => {
     let cancelled = false;
     const run = async () => {
       try {
-        const [slc, local] = await Promise.all([
+        const [slc, regional, local, crash] = await Promise.all([
           apiFetch<{ incidents?: CrimePoint[] }>(`/crime/slc?days=${CRIME_WINDOW_DAYS}&limit=2000`).catch(() => null),
+          apiFetch<{ incidents?: CrimePoint[]; agencies?: string[] }>(`/crime/regional?days=${CRIME_REGIONAL_DAYS}`).catch(() => null),
           apiFetch<{ incidents?: CrimePoint[] }>(`/crime/local?days=${CRIME_WINDOW_DAYS}&limit=2000`).catch(() => null),
+          apiFetch<{ incidents?: CrimePoint[] }>(`/crime/crashes?days=${CRASH_WINDOW_DAYS}&limit=2500`).catch(() => null),
         ]);
         if (cancelled) return;
-        setCrimeIncidents([...(slc?.incidents || []), ...(local?.incidents || [])]);
-      } catch { /* best-effort — crime overlay is supplemental */ }
+        setCrimeIncidents([...(slc?.incidents || []), ...(regional?.incidents || []), ...(local?.incidents || [])]);
+        setRegionalAgencies(regional?.agencies || []);
+        setCrashes(crash?.incidents || []);
+      } catch { /* best-effort — crime/crash overlays are supplemental */ }
     };
     run();
     const iv = setInterval(run, 10 * 60 * 1000);
@@ -767,7 +812,7 @@ export default function NavigationPage() {
           color: crimeColor(p),
           source: p.source, category: p.category || '', label: p.label || '',
           date: p.date || '', area: p.area || '', ref: p.ref || '', division: p.division || '',
-          lat: p.lat, lng: p.lng,
+          agency: p.agency || '', lat: p.lat, lng: p.lng,
         },
       })),
     };
@@ -805,6 +850,49 @@ export default function NavigationPage() {
     } catch { /* style mid-reload — next data tick re-applies */ }
   }, [crimeIncidents, crimeOn, mapReady]);
 
+  // ── Traffic-crash layer (travel awareness) ──
+  // Crashes render as hollow rings (not solid dots) so they're instantly
+  // distinct from crime tokens, with the ring colored by severity. One GeoJSON
+  // source, added once then setData on refresh; visibility follows the toggle.
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !mapReady) return;
+    const SRC = 'rmpg-crash';
+    const fc = {
+      type: 'FeatureCollection',
+      features: crashes.map((p) => ({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [p.lng, p.lat] },
+        properties: {
+          scolor: crashColor(p.severity),
+          source: p.source, category: p.category || 'Crash', label: p.label || 'Crash',
+          date: p.date || '', area: p.area || '', ref: p.ref || '', severity: p.severity ?? '',
+          lat: p.lat, lng: p.lng,
+        },
+      })),
+    };
+    try {
+      const existing = map.getSource(SRC);
+      if (existing) {
+        (existing as any).setData(fc);
+      } else {
+        map.addSource(SRC, { type: 'geojson', data: fc });
+        map.addLayer({
+          id: 'rmpg-crash-pts', type: 'circle', source: SRC,
+          paint: {
+            'circle-radius': ['interpolate', ['linear'], ['zoom'], 12, 2.6, 17, 6],
+            'circle-color': 'rgba(0,0,0,0)',           // hollow center → reads as a ring
+            'circle-stroke-width': ['interpolate', ['linear'], ['zoom'], 12, 1, 17, 1.8],
+            'circle-stroke-color': ['get', 'scolor'],
+            'circle-opacity': 1,
+          },
+        });
+      }
+      const vis = crashOn ? 'visible' : 'none';
+      if (map.getLayer('rmpg-crash-pts')) map.setLayoutProperty('rmpg-crash-pts', 'visibility', vis);
+    } catch { /* style mid-reload — next data tick re-applies */ }
+  }, [crashes, crashOn, mapReady]);
+
   // ── Click a crime/CFS point → "DB visual" record card (Mapbox popup) ──
   // Registered ONCE on the layer id (Mapbox tolerates binding before the layer
   // exists). The whole record rides on the feature properties, so the handler
@@ -821,7 +909,12 @@ export default function NavigationPage() {
       const pr = f.properties || {};
       const lng = Number(pr.lng), lat = Number(pr.lat);
       const isLocal = pr.source === 'local';
+      const isCcm = pr.source === 'ccm';
       const accent = String(pr.color || '#d4a017');
+      // Source attribution: our CFS, SLC city, or a named county agency (ccm).
+      const srcTag = isLocal ? 'RMPG CFS · county'
+        : isCcm ? `${pr.agency || 'County agency'} · county`
+        : 'SLCPD · city';
       const me = myPosRef.current;
       let relHtml = '';
       if (me && Number.isFinite(lat) && Number.isFinite(lng)) {
@@ -835,12 +928,13 @@ export default function NavigationPage() {
         `<div class="rmpg-pop" style="--accent:${escapeHtml(accent)}">` +
           `<div class="rmpg-pop-head"><span class="rmpg-pop-dot"></span>` +
             `<span class="rmpg-pop-title">${escapeHtml(String(pr.label || 'Incident'))}</span></div>` +
-          `<div class="rmpg-pop-tag">${isLocal ? 'RMPG CFS · county' : 'SLCPD · city'} · ${escapeHtml(String(pr.category || ''))}</div>` +
+          `<div class="rmpg-pop-tag">${escapeHtml(srcTag)} · ${escapeHtml(String(pr.category || ''))}</div>` +
           row('Ref', pr.ref) +
           row(isLocal ? 'Priority' : 'Class', pr.category) +
+          (isCcm ? row('Agency', pr.agency) : '') +
           row('When', pr.date) +
-          row('Area', pr.area) +
-          (!isLocal && pr.division && pr.division !== pr.area ? row('Division', pr.division) : '') +
+          (!isCcm ? row('Area', pr.area) : '') +
+          (!isLocal && !isCcm && pr.division && pr.division !== pr.area ? row('Division', pr.division) : '') +
           (Number.isFinite(lat) && Number.isFinite(lng) ? row('Coords', `${lat.toFixed(5)}, ${lng.toFixed(5)}`) : '') +
           relHtml +
         `</div>`;
@@ -849,6 +943,63 @@ export default function NavigationPage() {
       // closeOnClick:false — we replace the prior popup ourselves, so the
       // map-level close can't race the layer-level open on an adjacent point.
       crimePopupRef.current = new mapboxgl.Popup({ closeButton: true, closeOnClick: false, maxWidth: '260px', className: 'rmpg-crime-popup', offset: 10 })
+        .setLngLat([Number.isFinite(lng) ? lng : e.lngLat.lng, Number.isFinite(lat) ? lat : e.lngLat.lat])
+        .setHTML(html)
+        .addTo(map);
+    };
+    const onEnter = () => { map.getCanvas().style.cursor = 'pointer'; };
+    const onLeave = () => { map.getCanvas().style.cursor = ''; };
+
+    map.on('click', LAYER, onClick);
+    map.on('mouseenter', LAYER, onEnter);
+    map.on('mouseleave', LAYER, onLeave);
+    return () => {
+      try {
+        map.off('click', LAYER, onClick);
+        map.off('mouseenter', LAYER, onEnter);
+        map.off('mouseleave', LAYER, onLeave);
+      } catch { /* map gone */ }
+    };
+  }, [mapReady]);
+
+  // ── Click a crash ring → crash record card (separate popup ref from crime) ──
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !mapReady) return;
+    const LAYER = 'rmpg-crash-pts';
+
+    const onClick = (e: any) => {
+      const f = e?.features?.[0];
+      if (!f) return;
+      const pr = f.properties || {};
+      const lng = Number(pr.lng), lat = Number(pr.lat);
+      const accent = String(pr.scolor || '#e5e7eb');
+      const me = myPosRef.current;
+      let relHtml = '';
+      if (me && Number.isFinite(lat) && Number.isFinite(lng)) {
+        const mi = haversineMeters(me.lat, me.lng, lat, lng) / 1609.34;
+        const brg = bearingTo(me.lat, me.lng, lat, lng);
+        relHtml = `<div class="rmpg-pop-rel">${mi.toFixed(2)} mi · ${String(Math.round(brg)).padStart(3, '0')}° ${compassCardinal(brg)} from unit</div>`;
+      }
+      const sevNum = Number(pr.severity);
+      const sevTxt = Number.isFinite(sevNum) ? (sevNum >= 3 ? `Serious (${sevNum})` : sevNum >= 1 ? `Injury (${sevNum})` : 'Property damage') : null;
+      const row = (k: string, v: string | null | undefined) =>
+        v ? `<div class="rmpg-pop-row"><span>${escapeHtml(k)}</span><b>${escapeHtml(String(v))}</b></div>` : '';
+      const html =
+        `<div class="rmpg-pop" style="--accent:${escapeHtml(accent)}">` +
+          `<div class="rmpg-pop-head"><span class="rmpg-pop-dot"></span>` +
+            `<span class="rmpg-pop-title">${escapeHtml(String(pr.label || 'Crash'))}</span></div>` +
+          `<div class="rmpg-pop-tag">SLC traffic crash · history</div>` +
+          row('Case', pr.ref) +
+          row('Severity', sevTxt) +
+          row('When', pr.date ? String(pr.date).slice(0, 10) : '') +
+          row('Location', pr.area) +
+          (Number.isFinite(lat) && Number.isFinite(lng) ? row('Coords', `${lat.toFixed(5)}, ${lng.toFixed(5)}`) : '') +
+          relHtml +
+        `</div>`;
+
+      try { crashPopupRef.current?.remove(); } catch { /* none open */ }
+      crashPopupRef.current = new mapboxgl.Popup({ closeButton: true, closeOnClick: false, maxWidth: '260px', className: 'rmpg-crime-popup', offset: 10 })
         .setLngLat([Number.isFinite(lng) ? lng : e.lngLat.lng, Number.isFinite(lat) ? lat : e.lngLat.lat])
         .setHTML(html)
         .addTo(map);
@@ -914,13 +1065,17 @@ export default function NavigationPage() {
   }, [trailPtsCount, trailOn, mapReady]);
 
   const crimeCounts = useMemo(() => {
-    let slc = 0, local = 0;
-    for (const p of crimeIncidents) { if (p.source === 'local') local++; else slc++; }
-    return { slc, local, total: crimeIncidents.length };
+    let slc = 0, ccm = 0, local = 0;
+    for (const p of crimeIncidents) {
+      if (p.source === 'local') local++;
+      else if (p.source === 'ccm') ccm++;
+      else slc++;
+    }
+    return { slc, ccm, local, total: crimeIncidents.length };
   }, [crimeIncidents]);
 
   // Crime incidents within ~½ mile of the unit — a live "how hot is here" field
-  // (and the basis for the high-crime-area alert in the next phase).
+  // (and the basis for the high-crime-area alert).
   const crimeNearby = useMemo(() => {
     if (gps.latitude == null || gps.longitude == null) return 0;
     let n = 0;
@@ -928,21 +1083,34 @@ export default function NavigationPage() {
     return n;
   }, [crimeIncidents, gps.latitude, gps.longitude]);
 
+  // Crashes within ~½ mile — drives the crash-area alert + the panel readout.
+  const crashNearby = useMemo(() => {
+    if (gps.latitude == null || gps.longitude == null) return 0;
+    let n = 0;
+    for (const p of crashes) { if (haversineMeters(gps.latitude, gps.longitude, p.lat, p.lng) <= 805) n++; }
+    return n;
+  }, [crashes, gps.latitude, gps.longitude]);
+
   // ── Salt Lake County crime overview rollup ──
-  // Class breakdown + busiest city neighborhoods, computed from the merged
-  // dataset already in memory. Areas come only from SLC (city) data — our CFS
-  // has no neighborhood tag — so the panel labels that scope honestly.
+  // Class breakdown + busiest agencies + busiest city neighborhoods, computed
+  // from the merged dataset already in memory. Areas come only from SLC (city)
+  // data; agency counts come from the multi-agency (ccm) feed — the panel labels
+  // each scope honestly so nothing is implied beyond what the data supports.
   const crimeOverview = useMemo(() => {
     const byClass: Record<CrimeClass, number> = { person: 0, property: 0, society: 0, cfs: 0, other: 0 };
     const areaCount = new Map<string, number>();
+    const agencyCount = new Map<string, number>();
     for (const p of crimeIncidents) {
       byClass[crimeClass(p)]++;
       const a = (p.area || '').trim();
       if (a && p.source === 'slc') areaCount.set(a, (areaCount.get(a) || 0) + 1);
+      const ag = (p.agency || '').trim();
+      if (ag && p.source === 'ccm') agencyCount.set(ag, (agencyCount.get(ag) || 0) + 1);
     }
     const topAreas = [...areaCount.entries()].sort((x, y) => y[1] - x[1]).slice(0, 3);
+    const topAgencies = [...agencyCount.entries()].sort((x, y) => y[1] - x[1]).slice(0, 4);
     const maxClass = Math.max(1, byClass.person, byClass.property, byClass.society, byClass.cfs);
-    return { byClass, topAreas, maxClass };
+    return { byClass, topAreas, topAgencies, maxClass };
   }, [crimeIncidents]);
 
   // ── Reverse-geocode the current position → street label ("more data fields") ──
@@ -1071,9 +1239,37 @@ export default function NavigationPage() {
       });
     }
 
+    // 3) Crash hot-segments — same binning over the crash layer. A stretch of road
+    // with repeated collisions ahead is a TRAVEL hazard worth a heads-up, distinct
+    // from crime. A serious crash in the bin bumps severity.
+    const crashBins = new Map<number, { count: number; along: number; lat: number; lng: number; serious: boolean }>();
+    for (const c of crashes) {
+      if (!nearBox(c.lat, c.lng)) continue;
+      const { offRouteMeters, distAlong } = snapToRoute(coords, cum, c.lat, c.lng);
+      if (aheadIfInCorridor(offRouteMeters, distAlong) == null) continue;
+      const key = Math.floor(distAlong / CRIME_CLUSTER_BIN_M);
+      const cur = crashBins.get(key);
+      const serious = Number(c.severity) >= 3;
+      if (cur) { cur.count += 1; cur.serious = cur.serious || serious; }
+      else crashBins.set(key, { count: 1, along: distAlong, lat: c.lat, lng: c.lng, serious });
+    }
+    for (const b of crashBins.values()) {
+      if (b.count < CRASH_CLUSTER_MIN) continue;
+      const severity = b.serious || b.count >= CRASH_CLUSTER_MIN * 2 ? 3 : 2;
+      hazards.push({
+        kind: 'crash',
+        label: 'CRASH',
+        sub: `${b.count} crashes · accident-prone`,
+        aheadMi: (b.along - myAlong) / 1609.34,
+        color: severity >= 3 ? '#ef4444' : '#f59e0b',
+        lat: b.lat, lng: b.lng,
+        severity,
+      });
+    }
+
     // Highest urgency first — the panel shows the top 4.
     return hazards.sort((a, b) => scoreCorridorHazard(b) - scoreCorridorHazard(a));
-  }, [routeGeom, nearbyCalls, crimeIncidents, myLat, myLng]);
+  }, [routeGeom, nearbyCalls, crimeIncidents, crashes, myLat, myLng]);
   const corridorCritical = corridorHazards.filter((h) => h.severity >= 3).length;
   // Scope outer ring auto-ranges to the farthest contact, clamped to a 2–10mi band.
   const scopeMaxMi = useMemo(() => {
@@ -1171,6 +1367,19 @@ export default function NavigationPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [crimeNearby, alertsOn]);
+
+  // 2b) Crash-prone area — entering ½mi with ≥10 historical crashes (accident
+  //     cluster). Hysteresis re-arms below 6. A softer "warning" tone than crime.
+  useEffect(() => {
+    if (!alertsOn || !crashOn) return;
+    if (!crashHotRef.current && crashNearby >= 10) {
+      crashHotRef.current = true;
+      fireAlert('warning', `Accident-prone area · ${crashNearby} crashes within ½mi`, '#e5e7eb');
+    } else if (crashHotRef.current && crashNearby < 6) {
+      crashHotRef.current = false;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [crashNearby, alertsOn, crashOn]);
 
   // 3) Approaching the routed destination — within ~800 ft, once per destination
   //    (dispatch bell). Re-arms when the destination changes or clears.
@@ -1293,6 +1502,15 @@ export default function NavigationPage() {
           aria-label={crimeOn ? 'Hide crime layer' : 'Show crime layer'}
         >
           <Flame className="w-4 h-4" /> Crime
+        </button>
+        <button
+          onClick={() => setCrashOn((v) => !v)}
+          className="toolbar-btn flex items-center gap-1 text-[10px] uppercase"
+          style={{ color: crashOn ? '#e5e7eb' : '#666' }}
+          title={crashOn ? 'Hide traffic-crash layer' : 'Show SLC traffic crashes (travel hazards)'}
+          aria-label={crashOn ? 'Hide traffic crashes' : 'Show traffic crashes'}
+        >
+          <Car className="w-4 h-4" /> Traffic
         </button>
         <button
           onClick={() => setTrailOn((v) => !v)}
@@ -1489,6 +1707,22 @@ export default function NavigationPage() {
                 );
               })}
             </div>
+            {/* Reporting agencies (multi-agency county feed) */}
+            {crimeOverview.topAgencies.length > 0 && (
+              <div className="pt-1 border-t border-rmpg-800/60">
+                <div className="flex items-center gap-1 mb-0.5">
+                  <Building2 className="w-2.5 h-2.5 text-rmpg-600 shrink-0" />
+                  <span className="text-[8px] uppercase tracking-wider text-rmpg-600 flex-1">Agencies · county</span>
+                  <span className="text-[8px] font-mono text-rmpg-600">{regionalAgencies.length}</span>
+                </div>
+                {crimeOverview.topAgencies.map(([name, n]) => (
+                  <div key={name} className="flex items-center gap-1.5">
+                    <span className="flex-1 min-w-0 truncate text-[9px] text-rmpg-300" title={name}>{shortAgency(name)}</span>
+                    <span className="text-[9px] font-mono text-rmpg-500 shrink-0">{n}</span>
+                  </div>
+                ))}
+              </div>
+            )}
             {/* Busiest city neighborhoods */}
             {crimeOverview.topAreas.length > 0 && (
               <div className="pt-1 border-t border-rmpg-800/60">
@@ -1503,12 +1737,22 @@ export default function NavigationPage() {
               </div>
             )}
             <div className="flex items-center gap-1 pt-1 border-t border-rmpg-800/60">
-              <span className="text-[8px] uppercase tracking-wider text-rmpg-600 flex-1">Within ½mi</span>
+              <span className="text-[8px] uppercase tracking-wider text-rmpg-600 flex-1">Crime ½mi</span>
               <span className="text-[10px] font-mono font-bold" style={{ color: crimeNearby >= 8 ? '#ef4444' : crimeNearby >= 3 ? '#f59e0b' : '#22c55e' }}>{crimeNearby}</span>
             </div>
+            {crashOn && crashes.length > 0 && (
+              <div className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full shrink-0 border" style={{ borderColor: '#e5e7eb', background: 'transparent' }} />
+                <span className="text-[8px] uppercase tracking-wider text-rmpg-600 flex-1">Crashes ½mi</span>
+                <span className="text-[10px] font-mono font-bold" style={{ color: crashNearby >= 10 ? '#ef4444' : crashNearby >= 4 ? '#f59e0b' : '#888' }}>{crashNearby}</span>
+              </div>
+            )}
             <div className="text-[8px] text-rmpg-600 leading-tight">
-              SLCPD city · {crimeCounts.slc} · RMPG county · {crimeCounts.local} · {CRIME_WINDOW_DAYS}d
+              SLC city · {crimeCounts.slc} · agencies · {crimeCounts.ccm} · CFS · {crimeCounts.local}
             </div>
+            {crashOn && crashes.length > 0 && (
+              <div className="text-[8px] text-rmpg-600 leading-tight">Crashes · {crashes.length} · 1yr history</div>
+            )}
             <div className="text-[8px] text-rmpg-700 leading-tight">Tap any point for the record</div>
           </div>
         </div>
