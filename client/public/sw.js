@@ -505,7 +505,10 @@
 //       data fields + destination search/route + Motorola proximity alert tones)
 //       and bumps the cache once for the whole accumulated NAVIGATE overhaul
 //       (the v761/v762/v763 bumps were lost in the race).
-const CACHE_NAME = 'rmpg-flex-v765';
+// v766: place /law-book across every nav surface — Layout (title map + Enforce
+//       group), MobileDrawer, windowManager (window sizing), HelpPage catalog —
+//       so the Law Book v2 is reachable consistently (was desktop-sidebar only).
+const CACHE_NAME = 'rmpg-flex-v766';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
