@@ -505,10 +505,6 @@
 //       data fields + destination search/route + Motorola proximity alert tones)
 //       and bumps the cache once for the whole accumulated NAVIGATE overhaul
 //       (the v761/v762/v763 bumps were lost in the race).
-// v765: Law Book v2 — advanced /law-book reference system (stats ribbon, color-
-//       coded severity + category filters, collapsible TOC, category landing,
-//       premium statute reader with re-indented (1)(a)(i) outline). Removed the
-//       old MenuBar "Law Books" modal (now broken by the /api/statutes cutover).
 const CACHE_NAME = 'rmpg-flex-v765';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
