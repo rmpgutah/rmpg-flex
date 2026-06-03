@@ -1037,16 +1037,34 @@ export default function MapPage() {
   // ============================================================
 
   useEffect(() => {
-    const unsubscribeUnit = subscribe('unit_update', (msg: any) => {
+    // The live worker broadcasts EVERY dispatch event under the single message
+    // type 'dispatch_update' with an `action` discriminator (units.ts + gps.ts
+    // emit unit_position_update / unit_status_changed / unit_updated /
+    // unit_created / unit_deleted; calls.ts emits the call_* actions). The old
+    // code subscribed unit handling to a separate 'unit_update' TYPE that the
+    // worker never emits, so unit pins only refreshed on the 7s/30s poll —
+    // stale "fallback" positions that never moved live. Handle unit AND call
+    // actions in one 'dispatch_update' subscription, matching DispatchPage.
+    const INACTIVE_STATUSES = new Set(['closed', 'completed', 'cleared', 'cancelled']);
+    const isInactive = (s: any) => typeof s === 'string' && INACTIVE_STATUSES.has(s.toLowerCase());
+
+    const unsubscribe = subscribe('dispatch_update', (msg: any) => {
       dataVersionRef.current++;
       const data = msg.data || msg;
-      if (data?.action === 'unit_deleted' && data.unit_id) {
-        setUnits((prev) => prev.filter((u) => u.id !== data.unit_id));
+      const action = data?.action;
+
+      // ── Unit events (live GPS move / status / add / delete) ──
+      // String()-compare ids — assigned unit ids are stored mixed string/number.
+      if (action === 'unit_deleted' && data.unit_id != null) {
+        setUnits((prev) => prev.filter((u) => String(u.id) !== String(data.unit_id)));
         return;
       }
-      if (data?.unit) {
+      if (
+        (action === 'unit_position_update' || action === 'unit_status_changed' ||
+          action === 'unit_updated' || action === 'unit_created') && data.unit
+      ) {
         setUnits((prev) => {
-          const index = prev.findIndex((u) => u.id === data.unit.id);
+          const index = prev.findIndex((u) => String(u.id) === String(data.unit.id));
           if (index >= 0) {
             const updated = [...prev];
             updated[index] = { ...updated[index], ...data.unit };
@@ -1054,60 +1072,41 @@ export default function MapPage() {
           }
           return [...prev, data.unit];
         });
-      }
-    });
-
-    // Server broadcasts 'dispatch_update' type for call events
-    // Unit state is now fully handled by 'unit_update' events (enriched with call details),
-    // so no need to re-fetch all units on every dispatch event.
-    // Statuses excluded from /dispatch/queue (the map's source-of-truth fetch) —
-    // keep this in sync with aggregates.ts queue endpoint's WHERE clause.
-    const INACTIVE_STATUSES = new Set(['closed', 'completed', 'cleared', 'cancelled']);
-    const isInactive = (s: any) => typeof s === 'string' && INACTIVE_STATUSES.has(s.toLowerCase());
-
-    const unsubscribeCall = subscribe('dispatch_update', (msg: any) => {
-      dataVersionRef.current++;
-      const evtData = msg.data || msg;
-
-      // Handle deletions explicitly — call_deleted broadcasts carry call_id, not call
-      if (evtData?.action === 'call_deleted') {
-        const deletedId = evtData.call_id ?? evtData.call?.id;
-        if (deletedId != null) {
-          setCalls((prev) => prev.filter((c) => c.id !== deletedId));
-        }
         return;
       }
 
-      // Bulk operations don't carry per-call data — fall back to a silent refresh
-      if (
-        evtData?.action === 'calls_bulk_updated' ||
-        evtData?.action === 'calls_bulk_archived' ||
-        evtData?.action === 'calls_auto_closed'
-      ) {
+      // ── Call events ──
+      // call_deleted broadcasts carry call_id, not the full call.
+      if (action === 'call_deleted') {
+        const deletedId = data.call_id ?? data.call?.id;
+        if (deletedId != null) setCalls((prev) => prev.filter((c) => c.id !== deletedId));
+        return;
+      }
+      // Bulk operations don't carry per-call data — fall back to a silent refresh.
+      if (action === 'calls_bulk_updated' || action === 'calls_bulk_archived' || action === 'calls_auto_closed') {
         fetchAllDataRef.current?.({ silent: true });
         return;
       }
-
-      if (evtData && evtData.call) {
+      if (data && data.call) {
         setCalls((prev) => {
-          const index = prev.findIndex((c) => c.id === evtData.call.id);
+          const index = prev.findIndex((c) => c.id === data.call.id);
           if (index >= 0) {
             const updated = [...prev];
-            updated[index] = { ...updated[index], ...evtData.call };
-            if (isInactive(evtData.call.status)) {
-              return updated.filter((c) => c.id !== evtData.call.id);
+            updated[index] = { ...updated[index], ...data.call };
+            if (isInactive(data.call.status)) {
+              return updated.filter((c) => c.id !== data.call.id);
             }
             return updated;
           }
-          if (!isInactive(evtData.call.status)) {
-            return [...prev, evtData.call];
+          if (!isInactive(data.call.status)) {
+            return [...prev, data.call];
           }
           return prev;
         });
       }
     });
 
-    return () => { unsubscribeUnit(); unsubscribeCall(); };
+    return () => { unsubscribe(); };
   }, [subscribe]);
 
   // ============================================================
