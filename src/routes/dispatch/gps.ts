@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import type { Env } from '../../types';
-import { getDb, query, queryFirst, execute } from '../../utils/db';
+import { getDb, query, queryFirst, execute, executeBatch } from '../../utils/db';
 import { emitAlert } from '../../utils/alertHub';
 
 const gps = new Hono<Env>();
@@ -12,8 +12,17 @@ gps.post('/', async (c) => {
     const userId = c.get('userId') as number;
     const body = await c.req.json<{ latitude: number; longitude: number; accuracy?: number; heading?: number; speed?: number } | { points: Array<{ latitude: number; longitude: number; accuracy?: number; heading?: number; speed?: number }> }>();
 
-    const points = 'points' in body ? body.points : [body];
-    if (!points.length) return c.json({ error: 'No points' }, 400);
+    const rawPoints = 'points' in body ? body.points : [body];
+    // Keep only the most recent MAX_POINTS valid fixes. After a long offline
+    // stretch the client replays a large failover backlog; bounding it keeps the
+    // single batched write below within the D1 batch / Workers subrequest budget
+    // so a big backlog can't 500 the whole upload (which froze the client's
+    // lastSentAt → the footer GPS LED stuck red).
+    const MAX_POINTS = 200;
+    const points = (Array.isArray(rawPoints) ? rawPoints : [])
+      .filter((p) => p && Number.isFinite(Number(p.latitude)) && Number.isFinite(Number(p.longitude)))
+      .slice(-MAX_POINTS);
+    if (!points.length) return c.json({ error: 'No valid points' }, 400);
 
     // Get user's unit info (status carried into the live frame so the map can
     // color a freshly-rebuilt heading arrow without a second lookup).
@@ -22,14 +31,21 @@ gps.post('/', async (c) => {
 
     if (!unit) return c.json({ error: 'No assigned unit' }, 400);
 
-    const inserted: number[] = [];
-    for (const pt of points) {
-      const result = await execute(db,
-        `INSERT INTO gps_breadcrumbs (unit_id, officer_id, latitude, longitude, accuracy, heading, speed, call_sign, recorded_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
-        unit.id, userId, pt.latitude, pt.longitude, pt.accuracy ?? null, pt.heading ?? null, pt.speed ?? null, unit.call_sign
-      );
-      inserted.push(Number(result.meta.last_row_id));
+    // Breadcrumb trail — ONE batched write (not N sequential round-trips), and
+    // BEST-EFFORT: this try/catch sits BEFORE the unit-row mirror below, so a
+    // trail failure can never skip the position write or the client's success
+    // ack. (The old per-point loop inside the same try as the mirror meant one
+    // failed insert 500'd the whole request and froze the unit position.)
+    let inserted = 0;
+    try {
+      await executeBatch(db, points.map((pt) => ({
+        sql: `INSERT INTO gps_breadcrumbs (unit_id, officer_id, latitude, longitude, accuracy, heading, speed, call_sign, recorded_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+        bindings: [unit.id, userId, pt.latitude, pt.longitude, pt.accuracy ?? null, pt.heading ?? null, pt.speed ?? null, unit.call_sign],
+      })));
+      inserted = points.length;
+    } catch (err) {
+      console.warn('[gps] breadcrumb batch failed (non-fatal — position mirror still runs):', err);
     }
 
     // Mirror the latest fix onto the unit row. The map filters officer pins by
@@ -77,7 +93,7 @@ gps.post('/', async (c) => {
       } catch { /* never break the write */ }
     }
 
-    return c.json({ inserted: inserted.length }, 201);
+    return c.json({ inserted, accepted: points.length }, 201);
   } catch (err) {
     return c.json({ error: 'GPS update failed' }, 500);
   }
