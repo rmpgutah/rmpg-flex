@@ -9,6 +9,7 @@
 import { useEffect, useState, useRef } from 'react';
 import { Activity, ShieldAlert, Clock } from 'lucide-react';
 import { useWebSocket } from '../context/WebSocketContext';
+import { useAuth } from '../context/AuthContext';
 import { apiFetch } from '../hooks/useApi';
 
 interface WelfarePayload {
@@ -21,6 +22,7 @@ interface WelfarePayload {
 
 export default function WelfareCheckModal() {
   const { subscribe } = useWebSocket();
+  const { user } = useAuth();
   const [active, setActive] = useState<WelfarePayload | null>(null);
   const [submitting, setSubmitting] = useState<null | 'ack' | 'help' | 'snooze'>(null);
   const [secondsOpen, setSecondsOpen] = useState(0);
@@ -30,11 +32,15 @@ export default function WelfareCheckModal() {
     const unsub = subscribe('welfare_check', (msg: any) => {
       const data: WelfarePayload | undefined = msg?.data || msg;
       if (!data) return;
+      // Targeted prompt — AlertHubDO broadcasts to every console, so only take
+      // over the intended officer's screen (fail-open when no target_user_id).
+      const target = (data as { target_user_id?: number | string | null }).target_user_id;
+      if (target != null && String(target) !== String(user?.id)) return;
       setActive(data);
       setSecondsOpen(0);
     });
     return () => { unsub(); };
-  }, [subscribe]);
+  }, [subscribe, user?.id]);
 
   useEffect(() => {
     if (active && !tickRef.current) {

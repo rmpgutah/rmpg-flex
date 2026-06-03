@@ -152,15 +152,19 @@ welfare.post('/prompt/:userId', requireRole('admin', 'manager', 'supervisor', 'd
       ? await queryFirst<any>(db, 'SELECT id, call_number FROM calls_for_service WHERE id = ?', unit.current_call_id)
       : null;
 
-    const delivered = sendToUser(targetUserId, 'welfare_check', {
+    // Targeted to ONE officer's MDT via AlertHubDO + target_user_id (the
+    // consumers filter on it). sendToUser was per-isolate-dead — the dispatcher
+    // prompt reached the officer never, and `delivered` was always 0 (a lie).
+    await emitAlert(c.env, 'welfare_check', {
       action: 'welfare_prompt',
+      target_user_id: targetUserId,
       callSign: unit?.call_sign || null,
       callId: callContext?.id ?? null,
       callNumber: callContext?.call_number ?? null,
       message: `Welfare check: ${unit?.call_sign || 'unit'}, are you code 4${callContext ? ` on call ${callContext.call_number}` : ''}?`,
     });
 
-    return c.json({ success: true, delivered, callSign: unit?.call_sign });
+    return c.json({ success: true, callSign: unit?.call_sign });
   } catch (err) {
     console.error('[welfare] prompt error', err);
     return c.json({ error: 'Failed to send welfare prompt', code: 'WELFARE_PROMPT_ERR' }, 500);
