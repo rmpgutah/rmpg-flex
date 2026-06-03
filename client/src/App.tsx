@@ -374,6 +374,11 @@ function AppRoutes() {
           <Route path="/detached/incident/:id" element={<ProtectedRoute><RouteErrorBoundary><IncidentDetailWindow /></RouteErrorBoundary></ProtectedRoute>} />
           <Route path="/detached/record/:type/:id" element={<ProtectedRoute><RouteErrorBoundary><RecordDetailWindow /></RouteErrorBoundary></ProtectedRoute>} />
 
+          {/* Full-screen in-vehicle drive HUD — intentionally OUTSIDE <Layout> so it
+              renders edge-to-edge with no top toolbar/chrome (kiosk-style). The
+              page's own header has a Close button back to /map. */}
+          <Route path="/navigation" element={<ProtectedRoute><RouteErrorBoundary><NavigationPage /></RouteErrorBoundary></ProtectedRoute>} />
+
           {/* Protected routes with Layout */}
           <Route
             element={
@@ -385,7 +390,6 @@ function AppRoutes() {
             <Route path="/" element={window.location.hostname === 'crm.rmpgutah.us' ? <Navigate to="/crm" replace /> : <DashboardPage />} />
             <Route path="/dispatch" element={<RouteErrorBoundary><DispatchPage /></RouteErrorBoundary>} />
             <Route path="/map" element={<RouteErrorBoundary><MapPage /></RouteErrorBoundary>} />
-            <Route path="/navigation" element={<RouteErrorBoundary><NavigationPage /></RouteErrorBoundary>} />
             <Route path="/geography" element={<RouteErrorBoundary><GeographyPage /></RouteErrorBoundary>} />
             <Route path="/incidents" element={<RouteErrorBoundary><IncidentsPage /></RouteErrorBoundary>} />
             <Route path="/records" element={<RouteErrorBoundary><RecordsPage /></RouteErrorBoundary>} />
