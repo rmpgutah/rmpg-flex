@@ -19,10 +19,18 @@ export interface StatuteResult {
   /** Legal definition / elements of crime for law reference */
   definition?: string | null;
   offense_level: string | null;
-  category: 'criminal' | 'vehicle';
+  category: 'criminal' | 'vehicle' | 'licensing';
   subcategory: string;
   /** Base fine amount for traffic citations / infractions */
   citation_fine?: number | null;
+  /** Law-book fields (utah_statutes, migration 0073) */
+  chapter_code?: string | null;
+  part_name?: string | null;
+  /** 'statute' (Utah Code) | 'rule' (Utah Administrative Code) */
+  code_type?: string | null;
+  effective_date?: string | null;
+  /** Canonical le.utah.gov / adminrules.utah.gov link */
+  source_url?: string | null;
 }
 
 const STATE_CODES = ['ALL', 'UT', 'CO', 'WY', 'ID', 'NV', 'AZ', 'NM'] as const;

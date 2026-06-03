@@ -493,7 +493,10 @@
 //       board with heading-relative bearing arrows + threat tally/pulse, map
 //       corner-bracket viewport framing, and self-unit exclusion (own unit no
 //       longer shows as a 0.0mi contact). Contact range/bearing recompute live.
-const CACHE_NAME = 'rmpg-flex-v759';
+// v760: Utah Law Book — new /law-book browser (TOC + search + statute reader)
+//       over the rebuilt utah_statutes (Title 76/41 + Security/PI/Process-Server
+//       licensing + admin rules, full text + offense levels + source links).
+const CACHE_NAME = 'rmpg-flex-v760';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
