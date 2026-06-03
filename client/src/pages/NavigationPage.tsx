@@ -22,10 +22,12 @@ import {
   Navigation2, Satellite, Wifi, Globe, X, AlertTriangle, MapPin, Gauge,
   CornerUpLeft, CornerUpRight, ArrowUp, ArrowUpLeft, ArrowUpRight,
   Flag, Merge, RotateCw, RotateCcw, Clock, Box, Crosshair, Maximize, Minimize,
-  Flame, Search, Bell, BellOff, ShieldAlert, Footprints, Car, Building2, Activity, History, type LucideIcon,
+  Flame, Search, Bell, BellOff, ShieldAlert, Footprints, Car, Building2, Activity, History,
+  Route as RouteIcon, type LucideIcon,
 } from 'lucide-react';
 import MovementReportDrawer from './navigation/MovementReportDrawer';
 import CallHistoryDrawer from './navigation/CallHistoryDrawer';
+import TripsDrawer from './navigation/TripsDrawer';
 import { buildMovementReport } from './navigation/vehicleTelemetry';
 import { useGpsTracking } from '../hooks/useGpsTracking';
 import { useMapRouting, snapToRoute } from '../hooks/useMapRouting';
@@ -484,7 +486,8 @@ export default function NavigationPage() {
   // Speed derived from position when the device reports none (cellular/WiFi
   // positioning has no speed-over-ground). Keeps the gauges live everywhere.
   const [derivedMph, setDerivedMph] = useState<number | null>(null);
-  const [tripOpen, setTripOpen] = useState(false); // MOVEMENT REPORT drawer
+  const [tripOpen, setTripOpen] = useState(false); // MOVEMENT REPORT drawer (live session)
+  const [tripsOpen, setTripsOpen] = useState(false); // TRIPS chain drawer (per-trip reports)
   const [logOpen, setLogOpen] = useState(false);   // CALL HISTORY drawer
   const destCoordsRef = useRef<{ lat: number; lng: number } | null>(null);
   const myPosRef = useRef<{ lat: number; lng: number } | null>(null); // live pos for raw map handlers
@@ -1628,7 +1631,7 @@ export default function NavigationPage() {
           <Footprints className="w-4 h-4" />
         </button>
         <button
-          onClick={() => { setTripOpen((v) => !v); if (!tripOpen) setLogOpen(false); }}
+          onClick={() => { setTripOpen((v) => !v); if (!tripOpen) { setLogOpen(false); setTripsOpen(false); } }}
           className="toolbar-btn flex items-center gap-1 text-[10px] uppercase"
           style={{ color: tripOpen ? '#d4a017' : '#666' }}
           title="Movement report (speed, g-force, driving events)"
@@ -1637,7 +1640,16 @@ export default function NavigationPage() {
           <Activity className="w-4 h-4" /> Trip
         </button>
         <button
-          onClick={() => { setLogOpen((v) => !v); if (!logOpen) setTripOpen(false); }}
+          onClick={() => { setTripsOpen((v) => !v); if (!tripsOpen) { setTripOpen(false); setLogOpen(false); } }}
+          className="toolbar-btn flex items-center gap-1 text-[10px] uppercase"
+          style={{ color: tripsOpen ? '#d4a017' : '#666' }}
+          title="Trip chain — per-trip movement reports for this unit"
+          aria-label="Toggle trips drawer"
+        >
+          <RouteIcon className="w-4 h-4" /> Trips
+        </button>
+        <button
+          onClick={() => { setLogOpen((v) => !v); if (!logOpen) { setTripOpen(false); setTripsOpen(false); } }}
           className="toolbar-btn flex items-center gap-1 text-[10px] uppercase"
           style={{ color: logOpen ? '#d4a017' : '#666' }}
           title="Call history log for this unit"
@@ -1945,6 +1957,9 @@ export default function NavigationPage() {
           onClose={() => setTripOpen(false)}
         />
       )}
+
+      {/* ── TRIPS drawer (right) — trip chain + per-trip Movement Report ── */}
+      <TripsDrawer unitId={gps.unitId ?? undefined} open={tripsOpen} onClose={() => setTripsOpen(false)} />
 
       {/* ── CALL HISTORY drawer (left) ── */}
       {logOpen && (
