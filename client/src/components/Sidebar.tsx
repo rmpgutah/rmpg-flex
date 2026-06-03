@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Radio, Map, Monitor, Terminal, Database, FileText,
   ClipboardList, Search, CreditCard, Package, Briefcase, AlertTriangle,
-  FileWarning, ShieldBan, Construction, Gavel, UserX, Users, Car, Video,
+  FileWarning, ShieldBan, Construction, Gavel, UserX, Users, Car, Video, Scale,
   MessageSquare, QrCode, BarChart3, Calendar, TrendingUp, ClipboardCheck,
   Settings, ScrollText, Network, ChevronLeft, ChevronRight, Camera, Mail,
   Upload, Building2, ShieldAlert, Megaphone, GraduationCap, CheckCircle,
@@ -56,6 +56,7 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
     items: [
       { path: '/warrants', icon: AlertTriangle, label: 'Warrants' },
       { path: '/citations', icon: FileWarning, label: 'Citations' },
+      { path: '/law-book', icon: Scale, label: 'Law Book' },
       { path: '/trespass-orders', icon: ShieldBan, label: 'Trespass Orders' },
       { path: '/code-enforcement', icon: Construction, label: 'Code Enforcement' },
       { path: '/court', icon: Gavel, label: 'Court Tracker' },

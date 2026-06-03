@@ -498,7 +498,10 @@
 //       Worker proxy /api/crime/slc) + our own recent CFS (/api/crime/local),
 //       rendered as a density heatmap + color-by-class incident dots with a
 //       toggle + legend. 60-day window.
-const CACHE_NAME = 'rmpg-flex-v760';
+// v761: Utah Law Book — new /law-book browser (TOC + search + statute reader)
+//       over the rebuilt utah_statutes (Title 76/41 + Security/PI/Process-Server
+//       licensing + admin rules, full text + offense levels + source links).
+const CACHE_NAME = 'rmpg-flex-v761';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
