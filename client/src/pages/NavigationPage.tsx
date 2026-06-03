@@ -16,12 +16,13 @@
 // dark backdrop, so the screen is never blank in a moving vehicle.
 // ============================================================
 
-import { useRef, useState, useEffect, useMemo } from 'react';
+import { useRef, useState, useEffect, useMemo, type ReactElement } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Navigation2, Satellite, Wifi, Globe, X, AlertTriangle, MapPin, Gauge,
   CornerUpLeft, CornerUpRight, ArrowUp, ArrowUpLeft, ArrowUpRight,
-  Flag, Merge, RotateCw, RotateCcw, Clock, Box, Crosshair, type LucideIcon,
+  Flag, Merge, RotateCw, RotateCcw, Clock, Box, Crosshair, Maximize, Minimize,
+  type LucideIcon,
 } from 'lucide-react';
 import { useGpsTracking } from '../hooks/useGpsTracking';
 import { useMapRouting } from '../hooks/useMapRouting';
@@ -86,9 +87,109 @@ const SOURCE_META: Record<string, { icon: LucideIcon; color: string; label: stri
 
 const PRIO_COLOR: Record<string, string> = { P1: '#ef4444', P2: '#f59e0b', P3: '#d4a017', P4: '#888888' };
 
+// Initial great-circle bearing (deg, 0=N) from A to B.
+function bearingTo(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLng = toRad(lng2 - lng1);
+  const y = Math.sin(dLng) * Math.cos(toRad(lat2));
+  const x = Math.cos(toRad(lat1)) * Math.sin(toRad(lat2)) - Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(dLng);
+  return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+}
+
+// ── Advanced instruments ─────────────────────────────────────────────────────
+// Ring speed gauge: a 3/4 dasharray ring (rotated so the gap sits at the bottom)
+// + a centered readout, color-ramped green→amber→red by speed band.
+function SpeedGauge({ mph, max = 120 }: { mph: number | null; max?: number }) {
+  const v = mph != null ? Math.max(0, Math.min(max, mph)) : 0;
+  const R = 42, C = 2 * Math.PI * R, sweep = 0.72;
+  const track = C * sweep;
+  const filled = track * (v / max);
+  const color = v > 80 ? '#ef4444' : v > 55 ? '#f59e0b' : '#22c55e';
+  return (
+    <div className="relative shrink-0" style={{ width: 116, height: 116 }} title="Speed">
+      <svg viewBox="0 0 100 100" className="absolute inset-0" style={{ transform: 'rotate(129deg)' }} aria-hidden="true">
+        <circle cx="50" cy="50" r={R} fill="none" stroke="#1c1c1c" strokeWidth="7" strokeDasharray={`${track} ${C}`} strokeLinecap="round" />
+        <circle cx="50" cy="50" r={R} fill="none" stroke={color} strokeWidth="7" strokeDasharray={`${filled} ${C}`} strokeLinecap="round" style={{ transition: 'stroke-dasharray 0.4s ease-out, stroke 0.4s' }} />
+      </svg>
+      <div className="absolute inset-0 flex flex-col items-center justify-center">
+        <span className="font-mono font-bold leading-none" style={{ fontSize: 34, color }}>{mph != null ? mph : '--'}</span>
+        <span className="text-[8px] uppercase tracking-widest text-rmpg-500">mph</span>
+      </div>
+    </div>
+  );
+}
+
+// HUD heading tape: a horizontal compass strip centered on the live heading,
+// ticks every 15° (cardinals gold-labeled) with a fixed center pointer.
+function HeadingTape({ heading }: { heading: number | null }) {
+  if (heading == null) return null;
+  const h = ((heading % 360) + 360) % 360;
+  const ticks: ReactElement[] = [];
+  for (let off = -75; off <= 75; off += 15) {
+    const deg = (((h + off) % 360) + 360) % 360;
+    const x = 50 + (off / 75) * 50;
+    const major = deg % 90 === 0;
+    const card = ['N', 'E', 'S', 'W'][deg / 90] || '';
+    ticks.push(
+      <div key={off} className="absolute top-0 flex flex-col items-center" style={{ left: `${x}%`, transform: 'translateX(-50%)' }}>
+        <div style={{ height: major ? 8 : 4, width: 1, background: major ? '#d4a017' : '#555' }} />
+        {major ? <span className="text-[8px] font-bold text-brand-300 leading-none mt-0.5">{card}</span>
+          : deg % 30 === 0 ? <span className="text-[7px] text-rmpg-500 leading-none mt-0.5">{deg}</span> : null}
+      </div>,
+    );
+  }
+  return (
+    <div className="relative h-5 w-full overflow-hidden">
+      {ticks}
+      <div className="absolute left-1/2 top-0 -translate-x-1/2" style={{ width: 0, height: 0, borderLeft: '4px solid transparent', borderRight: '4px solid transparent', borderTop: '6px solid #d4a017' }} />
+    </div>
+  );
+}
+
+// Longitudinal G-force bar (brake ← center → accel), color-ramped by magnitude.
+function GForceMeter({ g }: { g: number }) {
+  const clamped = Math.max(-1, Math.min(1, g));
+  const pct = ((clamped + 1) / 2) * 100;
+  const color = Math.abs(g) > 0.4 ? '#ef4444' : Math.abs(g) > 0.2 ? '#f59e0b' : '#22c55e';
+  return (
+    <div className="w-full">
+      <div className="flex items-center justify-between text-[7px] uppercase text-rmpg-600">
+        <span>brake</span>
+        <span className="font-mono" style={{ color }}>{g >= 0 ? '+' : ''}{g.toFixed(2)} g</span>
+        <span>accel</span>
+      </div>
+      <div className="relative h-1.5 bg-rmpg-800 overflow-hidden" style={{ borderRadius: 2 }}>
+        <div className="absolute top-0 bottom-0" style={{ left: '50%', width: 1, background: '#444' }} />
+        <div className="absolute top-0 bottom-0" style={{ left: `${Math.min(50, pct)}%`, width: `${Math.abs(pct - 50)}%`, background: color, transition: 'all 0.3s ease-out' }} />
+      </div>
+    </div>
+  );
+}
+
 export default function NavigationPage() {
   const navigate = useNavigate();
   const gps = useGpsTracking({ capture: true });
+
+  // ── Native full-screen (kiosk) toggle ──
+  // The page already renders edge-to-edge (no app toolbar — it's a standalone
+  // route outside <Layout>). This goes one step further into the browser/OS
+  // Fullscreen API so an in-vehicle Toughbook can run it true full-screen. The
+  // listener keeps the icon in sync with ESC-to-exit. Best-effort: request
+  // Fullscreen rejects without a user gesture or in some embedded webviews.
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  useEffect(() => {
+    const onFsChange = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', onFsChange);
+    return () => document.removeEventListener('fullscreenchange', onFsChange);
+  }, []);
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      rootRef.current?.requestFullscreen?.().catch(() => { /* gesture/permission denied */ });
+    } else {
+      document.exitFullscreen?.().catch(() => { /* already exited */ });
+    }
+  };
 
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<any>(null);
@@ -118,6 +219,10 @@ export default function NavigationPage() {
   const distanceRef = useRef(0);
   const [maxMph, setMaxMph] = useState(0);
   const speedHistRef = useRef<number[]>([]); // rolling mph samples for the sparkline
+  const accelRef = useRef<{ mph: number; t: number } | null>(null);
+  const [gForce, setGForce] = useState(0);
+  const destCoordsRef = useRef<{ lat: number; lng: number } | null>(null);
+  const [nearbyUnits, setNearbyUnits] = useState<{ call_sign: string; status: string; distMi: number }[]>([]);
   const [, force] = useState(0);
 
   const dir = gps.headingSmoothed ?? gps.course ?? gps.heading;
@@ -217,6 +322,12 @@ export default function NavigationPage() {
     if (mph != null && mph > maxMph) setMaxMph(mph);
     // Feed the rolling speed sparkline (last ~60 samples).
     if (mph != null) { const h = speedHistRef.current; h.push(mph); if (h.length > 60) h.shift(); }
+    // Longitudinal G-force from the speed delta (mph/s → g; 1 g ≈ 21.94 mph/s).
+    if (mph != null) {
+      const now = Date.now(); const prev = accelRef.current;
+      if (prev && now > prev.t) setGForce(((mph - prev.mph) / ((now - prev.t) / 1000)) / 21.94);
+      accelRef.current = { mph, t: now };
+    }
 
     const map = mapInstanceRef.current;
     if (map && mapReady) {
@@ -257,6 +368,7 @@ export default function NavigationPage() {
         const call = await apiFetch<{ call_number: string; latitude: number | null; longitude: number | null }>(`/dispatch/calls/${unit.current_call_id}`).catch(() => null);
         if (cancelled || !call || call.latitude == null || call.longitude == null) return;
         routedCallRef.current = unit.current_call_id;
+        destCoordsRef.current = { lat: call.latitude, lng: call.longitude };
         await showRoute(unit.call_sign, call.call_number, gps.latitude!, gps.longitude!, call.latitude, call.longitude);
       } catch { /* best-effort — drive screen still follows GPS without a route */ }
     })();
@@ -297,12 +409,42 @@ export default function NavigationPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gps.latitude != null]);
 
+  // Nearby on-duty units — fellow officers ranked by distance from the unit.
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      if (gps.latitude == null || gps.longitude == null) return;
+      try {
+        const res = await apiFetch<any>('/dispatch/units');
+        const rows = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
+        const near = rows
+          .filter((u: any) => u.latitude != null && u.longitude != null && u.call_sign !== gps.unitCallSign)
+          .map((u: any) => ({
+            call_sign: u.call_sign || '?', status: u.status || 'unknown',
+            distMi: haversineMeters(gps.latitude!, gps.longitude!, Number(u.latitude), Number(u.longitude)) / 1609.34,
+          }))
+          .sort((a: { distMi: number }, b: { distMi: number }) => a.distMi - b.distMi)
+          .slice(0, 3);
+        if (!cancelled) setNearbyUnits(near);
+      } catch { /* best-effort */ }
+    };
+    run();
+    const iv = setInterval(run, 20000);
+    return () => { cancelled = true; clearInterval(iv); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gps.latitude != null]);
+
   const sessionMs = startRef.current ? Date.now() - startRef.current : 0;
   const distanceMi = distanceRef.current / 1609.34;
   const avgMph = sessionMs > 60000 ? distanceMi / (sessionMs / 3600000) : 0;
   const clock = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit' });
   const spark = speedHistRef.current;
   const sparkMax = Math.max(60, maxMph, ...spark);
+  const course = gps.course ?? null;
+  const destBearing = (destCoordsRef.current && gps.latitude != null && gps.longitude != null)
+    ? bearingTo(gps.latitude, gps.longitude, destCoordsRef.current.lat, destCoordsRef.current.lng) : null;
+  const destCrowMi = (destCoordsRef.current && gps.latitude != null && gps.longitude != null)
+    ? haversineMeters(gps.latitude, gps.longitude, destCoordsRef.current.lat, destCoordsRef.current.lng) / 1609.34 : null;
 
   const step = useMemo(
     () => pickCurrentStep(activeRoute?.steps, routeProgress?.fraction ?? 0, activeRoute?.distanceMeters ?? 0),
@@ -331,7 +473,7 @@ export default function NavigationPage() {
   }, [activeRoute, routeProgress]);
 
   return (
-    <div className="relative w-full h-full bg-surface-deep overflow-hidden" style={{ minHeight: 0 }}>
+    <div ref={rootRef} className="fixed inset-0 bg-surface-deep overflow-hidden">
       {/* Map (or dark backdrop on failure) */}
       <div ref={mapContainerRef} className="absolute inset-0" />
       {mapError && (
@@ -351,6 +493,14 @@ export default function NavigationPage() {
         {gps.connectionType && gps.connectionType !== 'unknown' && (
           <span className="text-[9px] uppercase text-rmpg-500">{gps.connectionType}</span>
         )}
+        <button
+          onClick={toggleFullscreen}
+          className="toolbar-btn flex items-center justify-center text-rmpg-300 hover:text-white"
+          title={isFullscreen ? 'Exit full screen' : 'Full screen'}
+          aria-label={isFullscreen ? 'Exit full screen' : 'Full screen'}
+        >
+          {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
+        </button>
         <button
           onClick={() => navigate('/map')}
           className="toolbar-btn flex items-center gap-1 text-[10px] uppercase text-rmpg-300 hover:text-white"
@@ -430,56 +580,70 @@ export default function NavigationPage() {
         </div>
       )}
 
-      {/* Nearby active calls — ranked by straight-line distance from the unit. */}
-      {nearbyCalls.length > 0 && (
-        <div className="absolute z-20" style={{ top: 96, left: 8, width: 190 }}>
-          <div className="panel-beveled bg-surface-deep/90 backdrop-blur-md border border-rmpg-600 shadow-xl" style={{ borderRadius: 2 }}>
-            <div className="flex items-center gap-1 px-2 py-1 border-b border-rmpg-700">
-              <MapPin className="w-3 h-3 text-brand-400" />
-              <span className="text-[9px] font-bold uppercase tracking-wider text-rmpg-200 flex-1">Nearby Calls</span>
-              <span className="text-[9px] font-mono text-rmpg-500">{nearbyCalls.length}</span>
-            </div>
-            {nearbyCalls.map((c, i) => (
-              <div key={i} className={`flex items-center gap-1.5 px-2 py-1 ${i > 0 ? 'border-t border-rmpg-800/50' : ''}`}>
-                <span className="text-[8px] font-bold px-1 py-0.5 shrink-0" style={{ background: PRIO_COLOR[c.priority] || '#666', color: '#0a0a0a', borderRadius: 2 }}>{c.priority}</span>
-                <div className="flex-1 min-w-0">
-                  <div className="text-[10px] text-rmpg-100 font-mono truncate">{c.call_number || '—'}</div>
-                  <div className="text-[8px] text-rmpg-500 truncate">{c.incident_type.replace(/_/g, ' ')}</div>
-                </div>
-                <span className="text-[10px] font-mono text-brand-300 shrink-0">{c.distMi.toFixed(1)}mi</span>
+      {/* Left data column: nearby calls + nearby units, ranked by distance. */}
+      {(nearbyCalls.length > 0 || nearbyUnits.length > 0) && (
+        <div className="absolute z-20 space-y-1.5" style={{ top: 96, left: 8, width: 190 }}>
+          {nearbyCalls.length > 0 && (
+            <div className="panel-beveled bg-surface-deep/90 backdrop-blur-md border border-rmpg-600 shadow-xl" style={{ borderRadius: 2 }}>
+              <div className="flex items-center gap-1 px-2 py-1 border-b border-rmpg-700">
+                <MapPin className="w-3 h-3 text-brand-400" />
+                <span className="text-[9px] font-bold uppercase tracking-wider text-rmpg-200 flex-1">Nearby Calls</span>
+                <span className="text-[9px] font-mono text-rmpg-500">{nearbyCalls.length}</span>
               </div>
-            ))}
-          </div>
+              {nearbyCalls.map((c, i) => (
+                <div key={i} className={`flex items-center gap-1.5 px-2 py-1 ${i > 0 ? 'border-t border-rmpg-800/50' : ''}`}>
+                  <span className="text-[8px] font-bold px-1 py-0.5 shrink-0" style={{ background: PRIO_COLOR[c.priority] || '#666', color: '#0a0a0a', borderRadius: 2 }}>{c.priority}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[10px] text-rmpg-100 font-mono truncate">{c.call_number || '—'}</div>
+                    <div className="text-[8px] text-rmpg-500 truncate">{c.incident_type.replace(/_/g, ' ')}</div>
+                  </div>
+                  <span className="text-[10px] font-mono text-brand-300 shrink-0">{c.distMi.toFixed(1)}mi</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {nearbyUnits.length > 0 && (
+            <div className="panel-beveled bg-surface-deep/90 backdrop-blur-md border border-rmpg-600 shadow-xl" style={{ borderRadius: 2 }}>
+              <div className="flex items-center gap-1 px-2 py-1 border-b border-rmpg-700">
+                <Navigation2 className="w-3 h-3 text-brand-400" />
+                <span className="text-[9px] font-bold uppercase tracking-wider text-rmpg-200 flex-1">Nearby Units</span>
+                <span className="text-[9px] font-mono text-rmpg-500">{nearbyUnits.length}</span>
+              </div>
+              {nearbyUnits.map((u, i) => (
+                <div key={i} className={`flex items-center gap-1.5 px-2 py-1 ${i > 0 ? 'border-t border-rmpg-800/50' : ''}`}>
+                  <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: u.status === 'available' ? '#22c55e' : u.status === 'onscene' ? '#ef4444' : (u.status === 'enroute' || u.status === 'dispatched') ? '#f59e0b' : u.status === 'busy' ? '#8b5cf6' : '#666' }} />
+                  <span className="flex-1 min-w-0 truncate text-[10px] text-rmpg-100 font-mono">{u.call_sign}</span>
+                  <span className="text-[8px] text-rmpg-500 uppercase shrink-0">{u.status.replace(/_/g, ' ')}</span>
+                  <span className="text-[10px] font-mono text-brand-300 shrink-0">{u.distMi.toFixed(1)}mi</span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 
-      {/* Instrument cluster (bottom) */}
-      <div className="absolute bottom-0 inset-x-0 z-20 bg-surface-deep/88 backdrop-blur-md border-t border-rmpg-700">
+      {/* ── Advanced instrument dashboard (bottom) ── */}
+      <div className="absolute bottom-0 inset-x-0 z-20 bg-surface-deep/92 backdrop-blur-md border-t border-rmpg-700">
+        {/* HUD heading tape */}
+        <div className="px-3 pt-1.5 pb-0.5 border-b border-rmpg-800">
+          <HeadingTape heading={dir} />
+        </div>
         <div className="flex items-stretch gap-3 px-3 py-2">
-          {/* Speedometer */}
-          <div className="flex flex-col items-center justify-center shrink-0" style={{ width: 92 }}>
-            <div className="flex items-baseline gap-1">
-              <span className="font-mono font-bold text-brand-300" style={{ fontSize: 40, lineHeight: 1 }}>{hasFix && mph != null ? mph : '--'}</span>
-            </div>
-            <span className="text-[9px] uppercase tracking-widest text-rmpg-500 flex items-center gap-1"><Gauge className="w-3 h-3" /> mph</span>
-            {/* Rolling speed sparkline */}
-            {spark.length > 1 && (
-              <svg viewBox={`0 0 ${spark.length - 1} 18`} preserveAspectRatio="none" className="mt-1" style={{ width: 88, height: 16 }} aria-hidden="true">
-                <polyline
-                  points={spark.map((v, i) => `${i},${18 - Math.min(18, (v / sparkMax) * 18)}`).join(' ')}
-                  fill="none" stroke="#d4a017" strokeWidth="1.5" strokeLinejoin="round" vectorEffect="non-scaling-stroke"
-                />
-              </svg>
-            )}
-          </div>
+          {/* Ring speed gauge */}
+          <SpeedGauge mph={hasFix ? mph : null} />
 
-          {/* Compass */}
-          <div className="relative shrink-0 self-center" style={{ width: 72, height: 72 }} title="Heading">
+          {/* Dual-needle compass: heading (gold) + bearing to the call (red). */}
+          <div className="relative shrink-0 self-center" style={{ width: 84, height: 84 }} title="Heading + bearing to call">
             <div className="absolute inset-0 rounded-full border-2 border-rmpg-600" />
             <span className="absolute top-0 left-1/2 -translate-x-1/2 text-[8px] text-rmpg-500">N</span>
             <span className="absolute bottom-0 left-1/2 -translate-x-1/2 text-[8px] text-rmpg-700">S</span>
             <span className="absolute left-0 top-1/2 -translate-y-1/2 text-[8px] text-rmpg-700">W</span>
             <span className="absolute right-0 top-1/2 -translate-y-1/2 text-[8px] text-rmpg-700">E</span>
+            {destBearing != null && (
+              <div className="absolute inset-0 flex items-start justify-center" style={{ transform: `rotate(${destBearing}deg)`, transition: 'transform 0.4s ease-out' }} title="Bearing to assigned call">
+                <div style={{ width: 0, height: 0, borderLeft: '4px solid transparent', borderRight: '4px solid transparent', borderBottom: '13px solid #ef4444', marginTop: 5 }} />
+              </div>
+            )}
             <Navigation2
               className="absolute inset-0 m-auto w-9 h-9 text-brand-400"
               style={{ transform: `rotate(${dir ?? 0}deg)`, transition: 'transform 0.3s ease-out' }}
@@ -490,16 +654,34 @@ export default function NavigationPage() {
             </span>
           </div>
 
-          {/* Live readouts + session stats */}
-          <div className="flex-1 min-w-0 grid grid-cols-2 gap-x-3 gap-y-0.5 font-mono text-[11px] self-center">
-            <div><span className="text-rmpg-500 text-[9px] uppercase">Acc </span><span className="text-rmpg-200">{gps.accuracy != null ? `${Math.round(gps.accuracy)} m` : '—'}</span></div>
-            <div><span className="text-rmpg-500 text-[9px] uppercase">Max </span><span className="text-rmpg-200">{maxMph} mph</span></div>
-            <div><span className="text-rmpg-500 text-[9px] uppercase">Avg </span><span className="text-rmpg-200">{Math.round(avgMph)} mph</span></div>
-            <div><span className="text-rmpg-500 text-[9px] uppercase">Dist </span><span className="text-rmpg-200">{distanceMi.toFixed(2)} mi</span></div>
+          {/* Speed area-chart + G-force */}
+          <div className="flex flex-col justify-center gap-1.5 shrink-0" style={{ width: 132 }}>
+            <div>
+              <div className="text-[7px] uppercase text-rmpg-600 mb-0.5 flex items-center gap-1"><Gauge className="w-2.5 h-2.5" /> Speed · 60s</div>
+              {spark.length > 1 ? (
+                <svg viewBox={`0 0 ${spark.length - 1} 24`} preserveAspectRatio="none" style={{ width: 132, height: 28 }} aria-hidden="true">
+                  <polyline points={`0,24 ${spark.map((v, i) => `${i},${24 - Math.min(24, (v / sparkMax) * 24)}`).join(' ')} ${spark.length - 1},24`} fill="#d4a01722" stroke="none" />
+                  <polyline points={spark.map((v, i) => `${i},${24 - Math.min(24, (v / sparkMax) * 24)}`).join(' ')} fill="none" stroke="#d4a017" strokeWidth="1.5" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+                </svg>
+              ) : <div style={{ height: 28 }} />}
+            </div>
+            <GForceMeter g={gForce} />
+          </div>
+
+          {/* Live readouts + session stats grid */}
+          <div className="flex-1 min-w-0 grid grid-cols-3 gap-x-3 gap-y-0.5 font-mono text-[11px] self-center">
+            <div><span className="text-rmpg-500 text-[9px] uppercase">Acc </span><span className="text-rmpg-200">{gps.accuracy != null ? `${Math.round(gps.accuracy)}m` : '—'}</span></div>
+            <div><span className="text-rmpg-500 text-[9px] uppercase">Max </span><span className="text-rmpg-200">{maxMph}</span></div>
+            <div><span className="text-rmpg-500 text-[9px] uppercase">Avg </span><span className="text-rmpg-200">{Math.round(avgMph)}</span></div>
+            <div><span className="text-rmpg-500 text-[9px] uppercase">Crs </span><span className="text-rmpg-200">{course != null ? `${Math.round(course)}°` : '—'}</span></div>
+            <div><span className="text-rmpg-500 text-[9px] uppercase">Dist </span><span className="text-rmpg-200">{distanceMi.toFixed(2)}mi</span></div>
             <div><span className="text-rmpg-500 text-[9px] uppercase">Time </span><span className="text-rmpg-200">{fmtDuration(sessionMs)}</span></div>
-            <div className="col-span-2 text-[9px] text-rmpg-500 truncate">
+            <div><span className="text-rmpg-500 text-[9px] uppercase">Brg </span><span className="text-rmpg-200">{destBearing != null ? `${Math.round(destBearing)}°` : '—'}</span></div>
+            <div><span className="text-rmpg-500 text-[9px] uppercase">Dir </span><span className="text-rmpg-200">{destCrowMi != null ? `${destCrowMi.toFixed(1)}mi` : '—'}</span></div>
+            <div><span className="text-rmpg-500 text-[9px] uppercase">Src </span><span style={{ color: src.color }}>{src.label}</span></div>
+            <div className="col-span-3 text-[9px] text-rmpg-500 truncate">
               {hasFix ? `${gps.latitude!.toFixed(6)}, ${gps.longitude!.toFixed(6)}` : 'Acquiring fix…'}
-              {gps.unitCallSign ? ` · ${gps.unitCallSign}` : ''}
+              {gps.unitCallSign ? ` · UNIT ${gps.unitCallSign}` : ''}
             </div>
           </div>
         </div>

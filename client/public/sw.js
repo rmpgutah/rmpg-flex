@@ -471,7 +471,18 @@
 // v753: NAVIGATE drive screen — more live data: a rolling speed sparkline under
 //       the speedometer, average speed, a live clock, and a "Nearby Calls" panel
 //       ranking the active board by straight-line distance from the unit.
-const CACHE_NAME = 'rmpg-flex-v754';
+// v754: Navigation drive screen → full advanced instrument dashboard — HUD heading
+//       tape, ring speed gauge, dual-needle compass (heading + red bearing-to-call),
+//       speed area-chart, longitudinal G-force meter, nearby-units panel, and an
+//       expanded course/bearing/crow-distance/source stat grid.
+// v755: GPS "Track 0 pts" fix — the browser geolocation path never pushed accepted
+//       fixes into the exportable session track (only the Toughbook internal-GPS
+//       path did), so every cellular/WiFi device showed 0 captured points and an
+//       empty CSV/GeoJSON export despite healthy GPS. Browser path now captures too.
+// v756: NAVIGATE drive screen is now TRUE full screen — moved to a standalone route
+//       OUTSIDE <Layout> (no top app toolbar, edge-to-edge viewport via fixed
+//       inset-0) plus a native Fullscreen-API toggle in the header for kiosk mode.
+const CACHE_NAME = 'rmpg-flex-v756';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
