@@ -35,7 +35,9 @@ interface CrimeIncident {
   date: string | null;
   lat: number;
   lng: number;
-  area?: string | null;
+  area?: string | null;  // neighborhood (com_council) / division (SLC); null for local
+  ref?: string | null;   // case number (SLC) or call number (local) — the DB key
+  division?: string | null; // SLC police division, when distinct from area
 }
 
 function clampInt(v: string | undefined, def: number, min: number, max: number): number {
@@ -85,6 +87,8 @@ crime.get('/slc', async (c) => {
           lat: co[1],
           lng: co[0],
           area: p.com_council || p.division || null,
+          ref: p.case_nbr || null,
+          division: p.division || null,
         };
       })
       .filter((x: CrimeIncident | null): x is CrimeIncident => x !== null);
@@ -128,6 +132,7 @@ crime.get('/local', async (c) => {
           date: r.created_at || null,
           lat,
           lng,
+          ref: r.call_number || null,
         };
       })
       .filter((x: CrimeIncident | null): x is CrimeIncident => x !== null);

@@ -22,7 +22,7 @@ import {
   Navigation2, Satellite, Wifi, Globe, X, AlertTriangle, MapPin, Gauge,
   CornerUpLeft, CornerUpRight, ArrowUp, ArrowUpLeft, ArrowUpRight,
   Flag, Merge, RotateCw, RotateCcw, Clock, Box, Crosshair, Maximize, Minimize,
-  Flame, Search, Bell, BellOff, ShieldAlert, type LucideIcon,
+  Flame, Search, Bell, BellOff, ShieldAlert, Footprints, type LucideIcon,
 } from 'lucide-react';
 import { useGpsTracking } from '../hooks/useGpsTracking';
 import { useMapRouting, snapToRoute } from '../hooks/useMapRouting';
@@ -89,7 +89,7 @@ const SOURCE_META: Record<string, { icon: LucideIcon; color: string; label: stri
 
 const PRIO_COLOR: Record<string, string> = { P1: '#ef4444', P2: '#f59e0b', P3: '#d4a017', P4: '#888888' };
 
-interface CrimePoint { id: string; source: 'slc' | 'local'; category: string; label: string; date: string | null; lat: number; lng: number }
+interface CrimePoint { id: string; source: 'slc' | 'local'; category: string; label: string; date: string | null; lat: number; lng: number; area?: string | null; ref?: string | null; division?: string | null }
 
 // Map color for a crime point. SLC public data is colored by crime class; our
 // own CFS is green so the two sources read apart. (No blue — house style.)
@@ -101,6 +101,35 @@ function crimeColor(p: CrimePoint): string {
   if (cat.includes('society')) return '#a855f7';
   return '#d4a017';
 }
+
+// Coarse class bucket for the Salt Lake County overview rollup.
+type CrimeClass = 'person' | 'property' | 'society' | 'cfs' | 'other';
+function crimeClass(p: CrimePoint): CrimeClass {
+  if (p.source === 'local') return 'cfs';
+  const cat = (p.category || '').toLowerCase();
+  if (cat.includes('person')) return 'person';
+  if (cat.includes('property')) return 'property';
+  if (cat.includes('society')) return 'society';
+  return 'other';
+}
+const CLASS_META: Record<CrimeClass, { label: string; color: string }> = {
+  person: { label: 'Person', color: '#ef4444' },
+  property: { label: 'Property', color: '#f59e0b' },
+  society: { label: 'Society', color: '#a855f7' },
+  cfs: { label: 'RMPG CFS', color: '#22c55e' },
+  other: { label: 'Other', color: '#d4a017' },
+};
+
+// Escape agency/DB-sourced strings before injecting into popup HTML.
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (ch) => (
+    ch === '&' ? '&amp;' : ch === '<' ? '&lt;' : ch === '>' ? '&gt;' : ch === '"' ? '&quot;' : '&#39;'
+  ));
+}
+
+// Crime lookback window — wider than the original 60d for a fuller county
+// overview. Both sources honor `days`; SLC is capped at 2000 records upstream.
+const CRIME_WINDOW_DAYS = 90;
 
 // Initial great-circle bearing (deg, 0=N) from A to B.
 function bearingTo(lat1: number, lng1: number, lat2: number, lng2: number): number {
@@ -393,9 +422,16 @@ export default function NavigationPage() {
   const accelRef = useRef<{ mph: number; t: number } | null>(null);
   const [gForce, setGForce] = useState(0);
   const destCoordsRef = useRef<{ lat: number; lng: number } | null>(null);
+  const myPosRef = useRef<{ lat: number; lng: number } | null>(null); // live pos for raw map handlers
+  const crimePopupRef = useRef<any>(null);                            // single open crime "DB visual"
   const [nearbyUnits, setNearbyUnits] = useState<{ call_sign: string; status: string; lat: number; lng: number }[]>([]);
   const [crimeOn, setCrimeOn] = useState(true);
   const [crimeIncidents, setCrimeIncidents] = useState<CrimePoint[]>([]);
+  const [trailOn, setTrailOn] = useState(true); // patrol breadcrumb trail (own GPS track)
+  // Live turn-banner height — the side panels flow below it so they never
+  // collide with a banner that grew (destination line + ETA + steps + hazards).
+  const bannerRef = useRef<HTMLDivElement | null>(null);
+  const [bannerH, setBannerH] = useState(0);
   const [currentStreet, setCurrentStreet] = useState<string | null>(null);
   const geoRef = useRef<{ lat: number; lng: number; t: number } | null>(null);
   // Destination search (address/place → route there).
@@ -517,6 +553,7 @@ export default function NavigationPage() {
       if (d > 1 && d < 5000) distanceRef.current += d; // ignore jitter + teleports
     }
     lastPosRef.current = { lat: gps.latitude, lng: gps.longitude };
+    myPosRef.current = { lat: gps.latitude, lng: gps.longitude }; // for raw map click handlers
     if (mph != null && mph > maxMph) setMaxMph(mph);
     // Feed the rolling speed sparkline (last ~60 samples).
     if (mph != null) { const h = speedHistRef.current; h.push(mph); if (h.length > 60) h.shift(); }
@@ -699,8 +736,8 @@ export default function NavigationPage() {
     const run = async () => {
       try {
         const [slc, local] = await Promise.all([
-          apiFetch<{ incidents?: CrimePoint[] }>('/crime/slc?days=60&limit=1500').catch(() => null),
-          apiFetch<{ incidents?: CrimePoint[] }>('/crime/local?days=60&limit=1000').catch(() => null),
+          apiFetch<{ incidents?: CrimePoint[] }>(`/crime/slc?days=${CRIME_WINDOW_DAYS}&limit=2000`).catch(() => null),
+          apiFetch<{ incidents?: CrimePoint[] }>(`/crime/local?days=${CRIME_WINDOW_DAYS}&limit=2000`).catch(() => null),
         ]);
         if (cancelled) return;
         setCrimeIncidents([...(slc?.incidents || []), ...(local?.incidents || [])]);
@@ -724,7 +761,14 @@ export default function NavigationPage() {
       features: crimeIncidents.map((p) => ({
         type: 'Feature',
         geometry: { type: 'Point', coordinates: [p.lng, p.lat] },
-        properties: { color: crimeColor(p) },
+        // Carry the whole record so the click popup ("DB visual") can read it
+        // straight off the feature — no second lookup, no stale React closure.
+        properties: {
+          color: crimeColor(p),
+          source: p.source, category: p.category || '', label: p.label || '',
+          date: p.date || '', area: p.area || '', ref: p.ref || '', division: p.division || '',
+          lat: p.lat, lng: p.lng,
+        },
       })),
     };
     try {
@@ -761,6 +805,114 @@ export default function NavigationPage() {
     } catch { /* style mid-reload — next data tick re-applies */ }
   }, [crimeIncidents, crimeOn, mapReady]);
 
+  // ── Click a crime/CFS point → "DB visual" record card (Mapbox popup) ──
+  // Registered ONCE on the layer id (Mapbox tolerates binding before the layer
+  // exists). The whole record rides on the feature properties, so the handler
+  // reads it straight off the click — no second fetch, no stale React closure.
+  // Distance/bearing from the unit use myPosRef (the live position).
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !mapReady) return;
+    const LAYER = 'rmpg-crime-pts';
+
+    const onClick = (e: any) => {
+      const f = e?.features?.[0];
+      if (!f) return;
+      const pr = f.properties || {};
+      const lng = Number(pr.lng), lat = Number(pr.lat);
+      const isLocal = pr.source === 'local';
+      const accent = String(pr.color || '#d4a017');
+      const me = myPosRef.current;
+      let relHtml = '';
+      if (me && Number.isFinite(lat) && Number.isFinite(lng)) {
+        const mi = haversineMeters(me.lat, me.lng, lat, lng) / 1609.34;
+        const brg = bearingTo(me.lat, me.lng, lat, lng);
+        relHtml = `<div class="rmpg-pop-rel">${mi.toFixed(2)} mi · ${String(Math.round(brg)).padStart(3, '0')}° ${compassCardinal(brg)} from unit</div>`;
+      }
+      const row = (k: string, v: string | null | undefined) =>
+        v ? `<div class="rmpg-pop-row"><span>${escapeHtml(k)}</span><b>${escapeHtml(String(v))}</b></div>` : '';
+      const html =
+        `<div class="rmpg-pop" style="--accent:${escapeHtml(accent)}">` +
+          `<div class="rmpg-pop-head"><span class="rmpg-pop-dot"></span>` +
+            `<span class="rmpg-pop-title">${escapeHtml(String(pr.label || 'Incident'))}</span></div>` +
+          `<div class="rmpg-pop-tag">${isLocal ? 'RMPG CFS · county' : 'SLCPD · city'} · ${escapeHtml(String(pr.category || ''))}</div>` +
+          row('Ref', pr.ref) +
+          row(isLocal ? 'Priority' : 'Class', pr.category) +
+          row('When', pr.date) +
+          row('Area', pr.area) +
+          (!isLocal && pr.division && pr.division !== pr.area ? row('Division', pr.division) : '') +
+          (Number.isFinite(lat) && Number.isFinite(lng) ? row('Coords', `${lat.toFixed(5)}, ${lng.toFixed(5)}`) : '') +
+          relHtml +
+        `</div>`;
+
+      try { crimePopupRef.current?.remove(); } catch { /* none open */ }
+      // closeOnClick:false — we replace the prior popup ourselves, so the
+      // map-level close can't race the layer-level open on an adjacent point.
+      crimePopupRef.current = new mapboxgl.Popup({ closeButton: true, closeOnClick: false, maxWidth: '260px', className: 'rmpg-crime-popup', offset: 10 })
+        .setLngLat([Number.isFinite(lng) ? lng : e.lngLat.lng, Number.isFinite(lat) ? lat : e.lngLat.lat])
+        .setHTML(html)
+        .addTo(map);
+    };
+    const onEnter = () => { map.getCanvas().style.cursor = 'pointer'; };
+    const onLeave = () => { map.getCanvas().style.cursor = ''; };
+
+    map.on('click', LAYER, onClick);
+    map.on('mouseenter', LAYER, onEnter);
+    map.on('mouseleave', LAYER, onLeave);
+    return () => {
+      try {
+        map.off('click', LAYER, onClick);
+        map.off('mouseenter', LAYER, onEnter);
+        map.off('mouseleave', LAYER, onLeave);
+      } catch { /* map gone */ }
+    };
+  }, [mapReady]);
+
+  // ── Patrol breadcrumb trail (own GPS track, age-faded) — restored from #1001 ──
+  // Draw the unit's captured session track as ONE line whose color fades
+  // oldest→newest. `line-gradient` keyed on `line-progress` does the fade on the
+  // GPU (one layer, not N markers) — needs `lineMetrics: true`. Driven by
+  // `capturedCount`, which ticks on every accepted fix. Best-effort like crime.
+  const trailPtsCount = gps.capturedCount;
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !mapReady) return;
+    const SRC = 'rmpg-trail';
+    const pts = gps.getCapturedTrack();
+    const coords = pts.map((p) => [p.lng, p.lat] as [number, number]);
+    // A LineString needs ≥2 vertices; below that, feed an empty collection so the
+    // layer simply renders nothing rather than emitting invalid geometry.
+    const data: any = coords.length >= 2
+      ? { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: coords } }
+      : { type: 'FeatureCollection', features: [] };
+    try {
+      const existing = map.getSource(SRC) as any;
+      if (existing) {
+        existing.setData(data);
+      } else {
+        map.addSource(SRC, { type: 'geojson', lineMetrics: true, data });
+        map.addLayer({
+          id: 'rmpg-trail-line', type: 'line', source: SRC,
+          layout: { 'line-cap': 'round', 'line-join': 'round' },
+          paint: {
+            'line-width': ['interpolate', ['linear'], ['zoom'], 11, 2.5, 17, 4.5],
+            // Oldest end transparent → recent end bright gold (the "comet tail").
+            'line-gradient': ['interpolate', ['linear'], ['line-progress'],
+              0, 'rgba(212,160,23,0.0)',
+              0.55, 'rgba(212,160,23,0.30)',
+              0.9, 'rgba(212,160,23,0.75)',
+              1, 'rgba(255,209,102,0.95)'],
+          },
+        });
+      }
+      if (map.getLayer('rmpg-trail-line')) {
+        map.setLayoutProperty('rmpg-trail-line', 'visibility', trailOn ? 'visible' : 'none');
+      }
+    } catch { /* style mid-reload — next fix re-applies */ }
+    // gps.getCapturedTrack is a stable useCallback; trailPtsCount is the live trigger.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trailPtsCount, trailOn, mapReady]);
+
   const crimeCounts = useMemo(() => {
     let slc = 0, local = 0;
     for (const p of crimeIncidents) { if (p.source === 'local') local++; else slc++; }
@@ -775,6 +927,23 @@ export default function NavigationPage() {
     for (const p of crimeIncidents) { if (haversineMeters(gps.latitude, gps.longitude, p.lat, p.lng) <= 805) n++; }
     return n;
   }, [crimeIncidents, gps.latitude, gps.longitude]);
+
+  // ── Salt Lake County crime overview rollup ──
+  // Class breakdown + busiest city neighborhoods, computed from the merged
+  // dataset already in memory. Areas come only from SLC (city) data — our CFS
+  // has no neighborhood tag — so the panel labels that scope honestly.
+  const crimeOverview = useMemo(() => {
+    const byClass: Record<CrimeClass, number> = { person: 0, property: 0, society: 0, cfs: 0, other: 0 };
+    const areaCount = new Map<string, number>();
+    for (const p of crimeIncidents) {
+      byClass[crimeClass(p)]++;
+      const a = (p.area || '').trim();
+      if (a && p.source === 'slc') areaCount.set(a, (areaCount.get(a) || 0) + 1);
+    }
+    const topAreas = [...areaCount.entries()].sort((x, y) => y[1] - x[1]).slice(0, 3);
+    const maxClass = Math.max(1, byClass.person, byClass.property, byClass.society, byClass.cfs);
+    return { byClass, topAreas, maxClass };
+  }, [crimeIncidents]);
 
   // ── Reverse-geocode the current position → street label ("more data fields") ──
   // Throttled: only re-lookup after ~40m of movement or 20s, since the server
@@ -917,6 +1086,110 @@ export default function NavigationPage() {
   ];
   const threatCount = callContacts.filter((c) => c.priority === 'P1' || c.priority === 'P2').length;
 
+  // ── Route corridor hazard scan (restored from #1001) ──
+  // What's on the path AHEAD: active calls + crime hot-spots that snap onto the
+  // planned route within the corridor and lie ahead of the unit's progress. The
+  // bbox prefilter keeps the per-fix snap cost to the handful of points actually
+  // near the line, not the full ~2k-incident city dataset. Ranking lives in
+  // scoreCorridorHazard() (top of file) for operational tuning.
+  const corridorHazards = useMemo<CorridorHazard[]>(() => {
+    const g = routeGeom;
+    if (!g || g.coords.length < 2 || myLat == null || myLng == null) return [];
+    const currentAlong = Math.max(0, Math.min(1, routeProgress?.fraction ?? 0)) * g.totalMeters;
+    const minAlong = currentAlong + CORRIDOR_MIN_AHEAD_M;
+    const maxAlong = currentAlong + CORRIDOR_LOOKAHEAD_M;
+    const { w, s, e, n } = routeBBox(g.coords);
+    const pad = 0.01; // ~1 km lat margin around the route bbox for the prefilter
+    const out: CorridorHazard[] = [];
+
+    // 1) Active calls ahead on the corridor — the actionable hazards.
+    for (const c of nearbyCalls) {
+      if (c.lat < s - pad || c.lat > n + pad || c.lng < w - pad || c.lng > e + pad) continue;
+      const { offRouteMeters, distAlong } = snapToRoute(g.coords, g.cum, c.lat, c.lng);
+      if (offRouteMeters > CORRIDOR_HAZARD_M || distAlong < minAlong || distAlong > maxAlong) continue;
+      out.push({
+        kind: 'call',
+        label: `${c.priority} · ${c.call_number || '—'}`,
+        sub: c.incident_type.replace(/_/g, ' '),
+        aheadMi: (distAlong - currentAlong) / 1609.34,
+        color: PRIO_COLOR[c.priority] || '#888888',
+        lat: c.lat, lng: c.lng,
+        severity: c.priority === 'P1' ? 3 : c.priority === 'P2' ? 2 : 1,
+      });
+    }
+
+    // 2) Crime hot-spots ahead — bin in-corridor crime by along-route distance,
+    // flag any bin with enough incidents as one "high-incident segment" hazard.
+    const bins = new Map<number, { count: number; lat: number; lng: number; along: number }>();
+    for (const p of crimeIncidents) {
+      if (p.lat < s - pad || p.lat > n + pad || p.lng < w - pad || p.lng > e + pad) continue;
+      const { offRouteMeters, distAlong } = snapToRoute(g.coords, g.cum, p.lat, p.lng);
+      if (offRouteMeters > CORRIDOR_HAZARD_M || distAlong < minAlong || distAlong > maxAlong) continue;
+      const k = Math.floor(distAlong / CRIME_CLUSTER_BIN_M);
+      const b = bins.get(k);
+      if (b) b.count++;
+      else bins.set(k, { count: 1, lat: p.lat, lng: p.lng, along: distAlong });
+    }
+    for (const b of bins.values()) {
+      if (b.count < CRIME_CLUSTER_MIN) continue;
+      out.push({
+        kind: 'crime',
+        label: `Crime cluster · ${b.count}`,
+        sub: 'high-incident segment',
+        aheadMi: (b.along - currentAlong) / 1609.34,
+        color: b.count >= 8 ? '#ef4444' : '#f59e0b',
+        lat: b.lat, lng: b.lng,
+        severity: b.count >= 8 ? 3 : b.count >= 6 ? 2 : 1,
+      });
+    }
+
+    out.sort((a, b) => scoreCorridorHazard(b) - scoreCorridorHazard(a));
+    return out.slice(0, 6);
+  }, [routeGeom, routeProgress, nearbyCalls, crimeIncidents, myLat, myLng]);
+
+  const corridorCritical = corridorHazards.filter((h) => h.severity >= 2).length;
+
+  // ── Map halo for corridor hazards (restored from #1001) ──
+  // Ring each on-route hazard with a colored halo so it's obvious on the map,
+  // not just in the panel. Two circle layers: a soft fill halo + a crisp ring
+  // (circle-opacity 0 + a stroke). Severity scales the radius. Best-effort.
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !mapReady) return;
+    const SRC = 'rmpg-corridor';
+    const fc = {
+      type: 'FeatureCollection',
+      features: corridorHazards.map((h) => ({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [h.lng, h.lat] },
+        properties: { color: h.color, r: 8 + h.severity * 4 },
+      })),
+    };
+    try {
+      const existing = map.getSource(SRC) as any;
+      if (existing) {
+        existing.setData(fc);
+      } else {
+        map.addSource(SRC, { type: 'geojson', data: fc });
+        map.addLayer({
+          id: 'rmpg-corridor-halo', type: 'circle', source: SRC,
+          paint: {
+            'circle-radius': ['+', ['get', 'r'], 9],
+            'circle-color': ['get', 'color'], 'circle-opacity': 0.14, 'circle-blur': 0.6,
+          },
+        });
+        map.addLayer({
+          id: 'rmpg-corridor-ring', type: 'circle', source: SRC,
+          paint: {
+            'circle-radius': ['get', 'r'],
+            'circle-color': ['get', 'color'], 'circle-opacity': 0,
+            'circle-stroke-width': 2, 'circle-stroke-color': ['get', 'color'], 'circle-stroke-opacity': 0.95,
+          },
+        });
+      }
+    } catch { /* style mid-reload — next scan re-applies */ }
+  }, [corridorHazards, mapReady]);
+
   // ── Proximity alert tones (Motorola dispatch tones) ──
   // Plays an authentic Motorola tone (dispatchTones.ts) + flashes a transient
   // warning banner. Respects the page Alerts toggle AND the global sound mute.
@@ -983,6 +1256,25 @@ export default function NavigationPage() {
     [activeRoute, routeProgress],
   );
   const StepIcon = step ? maneuverIcon(step.maneuverType, step.modifier) : ArrowUp;
+
+  // Measure the live turn-banner height so the corner panels can flow below it.
+  // ResizeObserver catches every content change (added steps, off-route row,
+  // corridor hazards); we re-attach when the banner mounts/unmounts.
+  const bannerShown = !!(activeRoute && step);
+  useEffect(() => {
+    const el = bannerRef.current;
+    if (!bannerShown || !el) { setBannerH(0); return; }
+    setBannerH(el.offsetHeight);
+    const ro = new ResizeObserver((entries) => {
+      for (const e of entries) setBannerH(e.contentRect.height);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [bannerShown]);
+
+  // Corner panels (contacts / 3D inset / crime overview) drop below the banner's
+  // real bottom (top-12 = 48px + measured height + 8px gap); else the default 96.
+  const sideTop = bannerShown && bannerH ? Math.round(48 + bannerH + 8) : 96;
 
   // Upcoming maneuvers (the next few after the current one) + a wall-clock
   // arrival estimate, for a richer directions panel.
@@ -1066,6 +1358,15 @@ export default function NavigationPage() {
           <Flame className="w-4 h-4" /> Crime
         </button>
         <button
+          onClick={() => setTrailOn((v) => !v)}
+          className="toolbar-btn flex items-center justify-center"
+          style={{ color: trailOn ? '#d4a017' : '#666' }}
+          title={trailOn ? `Hide patrol trail (${trailPtsCount} pts)` : 'Show patrol breadcrumb trail'}
+          aria-label={trailOn ? 'Hide patrol trail' : 'Show patrol trail'}
+        >
+          <Footprints className="w-4 h-4" />
+        </button>
+        <button
           onClick={toggleFullscreen}
           className="toolbar-btn flex items-center justify-center text-rmpg-300 hover:text-white"
           title={isFullscreen ? 'Exit full screen' : 'Full screen'}
@@ -1134,7 +1435,7 @@ export default function NavigationPage() {
 
       {/* Turn-by-turn banner (top) */}
       {activeRoute && step && (
-        <div className="absolute top-12 inset-x-2 z-20 panel-beveled bg-surface-deep/92 backdrop-blur-md border border-rmpg-600 shadow-xl" style={{ borderRadius: 2 }}>
+        <div ref={bannerRef} className="absolute top-12 inset-x-2 z-20 panel-beveled bg-surface-deep/92 backdrop-blur-md border border-rmpg-600 shadow-xl" style={{ borderRadius: 2 }}>
           <div className="flex items-center gap-3 px-3 py-2">
             <StepIcon className="w-9 h-9 text-brand-400 shrink-0" />
             <div className="flex-1 min-w-0">
@@ -1209,7 +1510,7 @@ export default function NavigationPage() {
 
       {/* 3D chase-cam inset (corner) — a steep-pitch, tighter 3D view of the
           block ahead, mirroring the device position + heading. */}
-      <div className="absolute z-20" style={{ top: 96, right: 8, width: 196, height: 148 }}>
+      <div className="absolute z-20" style={{ top: sideTop, right: 8, width: 196, height: 148 }}>
         <div className="relative w-full h-full panel-beveled border border-rmpg-600 overflow-hidden shadow-xl" style={{ borderRadius: 2 }}>
           <div ref={insetContainerRef} className="absolute inset-0" />
           <div className="absolute top-1 left-1 flex items-center gap-1 px-1 py-0.5 bg-surface-deep/80 backdrop-blur-sm" style={{ borderRadius: 2 }}>
@@ -1224,26 +1525,54 @@ export default function NavigationPage() {
         </div>
       </div>
 
-      {/* Crime layer legend (top-right, under the 3D inset) */}
+      {/* Salt Lake County crime OVERVIEW (top-right, under the 3D inset) */}
       {crimeOn && crimeCounts.total > 0 && (
-        <div className="absolute z-20 panel-beveled bg-surface-deep/90 backdrop-blur-md border border-rmpg-600 shadow-xl" style={{ top: 252, right: 8, width: 152, borderRadius: 2 }}>
-          <div className="flex items-center gap-1 px-2 py-1 border-b border-rmpg-700">
+        <div className="absolute z-20 panel-beveled bg-surface-deep/92 backdrop-blur-md border border-rmpg-600 shadow-xl" style={{ top: sideTop + 156, right: 8, width: 190, borderRadius: 2 }}>
+          <div className="relative flex items-center gap-1 px-2 py-1 border-b border-rmpg-700">
+            <div className="absolute bottom-0 inset-x-0 h-px" style={{ background: 'linear-gradient(90deg, transparent, rgba(212,160,23,0.5))' }} />
             <Flame className="w-3 h-3" style={{ color: '#f59e0b' }} />
-            <span className="text-[9px] font-bold uppercase tracking-wider text-rmpg-200 flex-1">Crime · 60d</span>
-            <span className="text-[9px] font-mono text-rmpg-500">{crimeCounts.total}</span>
+            <span className="text-[9px] font-bold uppercase tracking-widest text-rmpg-100 flex-1">SL County · Crime</span>
+            <span className="text-[9px] font-mono text-brand-300">{crimeCounts.total}</span>
           </div>
-          <div className="px-2 py-1 space-y-0.5">
-            {([['#ef4444', 'Person (SLC)'], ['#f59e0b', 'Property (SLC)'], ['#a855f7', 'Society (SLC)'], ['#22c55e', `RMPG CFS (${crimeCounts.local})`]] as const).map(([col, lbl]) => (
-              <div key={lbl} className="flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full shrink-0" style={{ background: col }} />
-                <span className="text-[9px] text-rmpg-300 truncate">{lbl}</span>
+          <div className="px-2 py-1.5 space-y-1.5">
+            {/* Class breakdown bars */}
+            <div className="space-y-1">
+              {(['person', 'property', 'society', 'cfs'] as CrimeClass[]).map((k) => {
+                const n = crimeOverview.byClass[k];
+                const meta = CLASS_META[k];
+                return (
+                  <div key={k} className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full shrink-0" style={{ background: meta.color }} />
+                    <span className="text-[9px] text-rmpg-300 w-12 shrink-0 truncate">{meta.label}</span>
+                    <div className="flex-1 h-1.5 bg-rmpg-800 overflow-hidden" style={{ borderRadius: 2 }}>
+                      <div className="h-full" style={{ width: `${Math.round((n / crimeOverview.maxClass) * 100)}%`, background: meta.color, transition: 'width 0.4s ease-out' }} />
+                    </div>
+                    <span className="text-[9px] font-mono text-rmpg-400 w-6 text-right shrink-0">{n}</span>
+                  </div>
+                );
+              })}
+            </div>
+            {/* Busiest city neighborhoods */}
+            {crimeOverview.topAreas.length > 0 && (
+              <div className="pt-1 border-t border-rmpg-800/60">
+                <div className="text-[8px] uppercase tracking-wider text-rmpg-600 mb-0.5">Top areas · city</div>
+                {crimeOverview.topAreas.map(([name, n]) => (
+                  <div key={name} className="flex items-center gap-1.5">
+                    <MapPin className="w-2.5 h-2.5 text-rmpg-600 shrink-0" />
+                    <span className="flex-1 min-w-0 truncate text-[9px] text-rmpg-300" title={name}>{name}</span>
+                    <span className="text-[9px] font-mono text-rmpg-500 shrink-0">{n}</span>
+                  </div>
+                ))}
               </div>
-            ))}
-            <div className="text-[8px] text-rmpg-600 pt-0.5">SLCPD public · {crimeCounts.slc} pts</div>
-            <div className="flex items-center gap-1 pt-0.5 border-t border-rmpg-800/60 mt-0.5">
+            )}
+            <div className="flex items-center gap-1 pt-1 border-t border-rmpg-800/60">
               <span className="text-[8px] uppercase tracking-wider text-rmpg-600 flex-1">Within ½mi</span>
               <span className="text-[10px] font-mono font-bold" style={{ color: crimeNearby >= 8 ? '#ef4444' : crimeNearby >= 3 ? '#f59e0b' : '#22c55e' }}>{crimeNearby}</span>
             </div>
+            <div className="text-[8px] text-rmpg-600 leading-tight">
+              SLCPD city · {crimeCounts.slc} · RMPG county · {crimeCounts.local} · {CRIME_WINDOW_DAYS}d
+            </div>
+            <div className="text-[8px] text-rmpg-700 leading-tight">Tap any point for the record</div>
           </div>
         </div>
       )}
@@ -1260,7 +1589,7 @@ export default function NavigationPage() {
           (point where the contact is vs where the unit is facing), threat
           coloring, and a pulsing P1/P2 threat tally. */}
       {(callContacts.length > 0 || unitContacts.length > 0) && (
-        <div className="absolute z-20" style={{ top: 96, left: 8, width: 200 }}>
+        <div className="absolute z-20" style={{ top: sideTop, left: 8, width: 200 }}>
           <div className="panel-beveled bg-surface-deep/92 backdrop-blur-md border border-rmpg-600 shadow-xl overflow-hidden" style={{ borderRadius: 2 }}>
             <div className="relative flex items-center gap-1.5 px-2 py-1 border-b border-rmpg-700">
               <div className="absolute bottom-0 inset-x-0 h-px" style={{ background: 'linear-gradient(90deg, rgba(212,160,23,0.5), transparent)' }} />

@@ -9903,3 +9903,32 @@ td.sparkline-cell {
 .action-log .log-entry { padding: 3px 0; border-bottom: 1px solid var(--border-subtle); display: flex; gap: 8px; font-size: 10px; }
 .action-log .log-timestamp { color: #555555; flex-shrink: 0; font-family: 'Consolas', monospace; }
 .action-log .log-user { color: var(--brand-gold); font-weight: 600; flex-shrink: 0; }
+
+/* ── NAVIGATE crime "DB visual" popup (Spillman pure-black/gold) ──────────
+   Default Mapbox popups ship white chrome + a white tip; repaint the whole
+   shell black-on-gold for the drive-screen crime/CFS record card. */
+.rmpg-crime-popup .mapboxgl-popup-content {
+  background: #050505;
+  border: 1px solid var(--border-strong, #2e2e2e);
+  border-radius: 2px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.7);
+  padding: 0;
+  overflow: hidden;
+}
+.rmpg-crime-popup .mapboxgl-popup-close-button {
+  color: #888888; font-size: 15px; padding: 0 5px; background: transparent;
+}
+.rmpg-crime-popup .mapboxgl-popup-close-button:hover { color: #ffffff; background: transparent; }
+.rmpg-crime-popup.mapboxgl-popup-anchor-top .mapboxgl-popup-tip { border-bottom-color: #050505; }
+.rmpg-crime-popup.mapboxgl-popup-anchor-bottom .mapboxgl-popup-tip { border-top-color: #050505; }
+.rmpg-crime-popup.mapboxgl-popup-anchor-left .mapboxgl-popup-tip { border-right-color: #050505; }
+.rmpg-crime-popup.mapboxgl-popup-anchor-right .mapboxgl-popup-tip { border-left-color: #050505; }
+.rmpg-pop { font-family: 'JetBrains Mono', monospace; min-width: 168px; }
+.rmpg-pop-head { display: flex; align-items: center; gap: 6px; padding: 7px 9px 4px; }
+.rmpg-pop-dot { width: 8px; height: 8px; border-radius: 9999px; background: var(--accent, #d4a017); box-shadow: 0 0 6px var(--accent, #d4a017); flex-shrink: 0; }
+.rmpg-pop-title { font-size: 12px; font-weight: 700; color: #ededed; line-height: 1.15; text-transform: capitalize; }
+.rmpg-pop-tag { font-size: 8px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--accent, #d4a017); padding: 0 9px 6px; border-bottom: 1px solid var(--border-subtle, #1a1a1a); }
+.rmpg-pop-row { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding: 3px 9px; font-size: 10px; border-top: 1px solid rgba(255,255,255,0.03); }
+.rmpg-pop-row span { color: #777777; text-transform: uppercase; letter-spacing: 0.04em; font-size: 8px; flex-shrink: 0; }
+.rmpg-pop-row b { color: #cfcfcf; font-weight: 600; text-align: right; word-break: break-word; }
+.rmpg-pop-rel { padding: 5px 9px; font-size: 9px; font-weight: 700; color: #d4a017; background: rgba(212,160,23,0.07); border-top: 1px solid var(--border-subtle, #1a1a1a); text-align: center; }
