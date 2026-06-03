@@ -48,6 +48,7 @@ import {
   type ExtractedField,
 } from '../utils/serveIntakeExtract';
 import { commitIntake, type CommitResult } from '../utils/serveIntakeRecords';
+import { emitAlert } from '../utils/alertHub';
 
 const si = new Hono<Env>();
 
@@ -557,6 +558,17 @@ si.post('/upload', async (c) => {
     warning = `Entry created, but ${failedDocs.length} document(s) didn't extract (${failedDocs.join(', ')}). Some fields may be missing — review those documents.`;
   }
 
+  // Intake can spawn a CAD call (createServiceCall writes calls_for_service
+  // directly, bypassing the calls.ts POST broadcast). Fan it to every dispatch
+  // console via AlertHubDO so the new call lands on the board live, not only on
+  // the next 20s poll. Best-effort — never blocks the response.
+  if (commit.call_id) {
+    try {
+      const newCall = await queryFirst(db, 'SELECT * FROM calls_for_service WHERE id = ?', commit.call_id);
+      if (newCall) await emitAlert(c.env, 'dispatch_update', { action: 'call_created', call: newCall });
+    } catch (err) { console.warn('[serveIntake] call_created broadcast skipped (non-fatal):', err); }
+  }
+
   return c.json({
     success: commit.serve_queue_id != null || commit.call_id != null,
     warning,
@@ -692,6 +704,15 @@ si.post('/intake', async (c) => {
   // weather/lighting/lat/lng remain null (those need a geocode step
   // — not in this PR; the geocode route at /api/geocode handles it
   // post-intake when the queue entry is opened in the route planner).
+  // Same live-board fan-out as /upload: surface an intake-spawned CAD call on
+  // every dispatch console immediately (best-effort).
+  if (commit.call_id) {
+    try {
+      const newCall = await queryFirst(getDb(c.env), 'SELECT * FROM calls_for_service WHERE id = ?', commit.call_id);
+      if (newCall) await emitAlert(c.env, 'dispatch_update', { action: 'call_created', call: newCall });
+    } catch (err) { console.warn('[serveIntake] call_created broadcast skipped (non-fatal):', err); }
+  }
+
   return c.json({
     success: extraction.success && (commit.serve_queue_id !== null || commit.call_id !== null),
     person_id: commit.person_id,

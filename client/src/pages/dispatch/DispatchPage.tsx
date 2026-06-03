@@ -1125,6 +1125,17 @@ export default function DispatchPage() {
         }
         // Refresh the full list to keep unit assignments in sync
         fetchData({ silent: true });
+      } else if (data.action === 'backup_requested') {
+        // OFFICER-SAFETY: an officer hit "request backup" (RadialMenu →
+        // /api/dispatch/request-backup → panic.ts emitAlert). This action had
+        // NO consumer here, so the request was silent on the dispatch console.
+        // Surface it loudly: alarm tone (unless muted) + a persistent toast.
+        if (!soundAlertsMutedRef.current) playTone('alarm');
+        const who = data.call_sign || data.officer_name || 'An officer';
+        const extra = data.message && data.message !== 'Backup requested' ? ` — ${data.message}` : '';
+        addToast(`BACKUP REQUESTED: ${who}${extra}`, 'error', 12000);
+        // Pull the latest roster/calls so the requesting unit's state is current.
+        fetchData({ silent: true });
       } else if (data.action === 'ai_analysis' && data.call_id && data.analysis) {
         setAiAnalyses(prev => ({ ...prev, [data.call_id]: data.analysis }));
         setShowAiSidebar(true);

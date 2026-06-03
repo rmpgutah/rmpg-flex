@@ -9,7 +9,7 @@ import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, queryFirst, execute } from '../utils/db';
 import { requireRole } from '../middleware/auth';
-import { sendToUser, broadcastAll } from './ws';
+import { sendToUser } from './ws';
 import { emitAlert } from '../utils/alertHub';
 
 // Helper: get the WelfareWatchDO stub for a given officer
@@ -34,7 +34,7 @@ welfare.post('/ack', requireRole(...ALL_ROLES), async (c) => {
     } catch { /* non-fatal */ }
     // Tell the DO to clear the watch
     try { await getDO(c.env, userId).fetch('https://do/ack', { method: 'POST' }); } catch { /* non-fatal */ }
-    broadcastAll('dispatch_update', { action: 'welfare_cleared', user_id: userId, at: new Date().toISOString() });
+    await emitAlert(c.env, 'dispatch_update', { action: 'welfare_cleared', user_id: userId, at: new Date().toISOString() });
     return c.json({ success: true, message: 'Code 4 ack received.' });
   } catch (err) {
     console.error('[welfare] ack error', err);
