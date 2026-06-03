@@ -84,6 +84,8 @@ const SOURCE_META: Record<string, { icon: LucideIcon; color: string; label: stri
   unknown: { icon: Globe, color: '#666', label: '—' },
 };
 
+const PRIO_COLOR: Record<string, string> = { P1: '#ef4444', P2: '#f59e0b', P3: '#d4a017', P4: '#888888' };
+
 export default function NavigationPage() {
   const navigate = useNavigate();
   const gps = useGpsTracking({ capture: true });
@@ -115,6 +117,7 @@ export default function NavigationPage() {
   const lastPosRef = useRef<{ lat: number; lng: number } | null>(null);
   const distanceRef = useRef(0);
   const [maxMph, setMaxMph] = useState(0);
+  const speedHistRef = useRef<number[]>([]); // rolling mph samples for the sparkline
   const [, force] = useState(0);
 
   const dir = gps.headingSmoothed ?? gps.course ?? gps.heading;
@@ -212,6 +215,8 @@ export default function NavigationPage() {
     }
     lastPosRef.current = { lat: gps.latitude, lng: gps.longitude };
     if (mph != null && mph > maxMph) setMaxMph(mph);
+    // Feed the rolling speed sparkline (last ~60 samples).
+    if (mph != null) { const h = speedHistRef.current; h.push(mph); if (h.length > 60) h.shift(); }
 
     const map = mapInstanceRef.current;
     if (map && mapReady) {
@@ -259,14 +264,45 @@ export default function NavigationPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapReady]);
 
-  // Tick once a second so session-duration re-renders even when parked.
+  // Tick once a second so session-duration + the clock re-render even when parked.
   useEffect(() => {
     const iv = setInterval(() => force((n) => n + 1), 1000);
     return () => clearInterval(iv);
   }, []);
 
+  // Nearby active calls — situational awareness while driving. Ranks the active
+  // board by straight-line distance from the live position; refreshes every 20s.
+  const [nearbyCalls, setNearbyCalls] = useState<{ call_number: string; incident_type: string; priority: string; distMi: number }[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      if (gps.latitude == null || gps.longitude == null) return;
+      try {
+        const res = await apiFetch<any>('/dispatch/calls?limit=100');
+        const rows = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
+        const near = rows
+          .filter((c: any) => c.latitude != null && c.longitude != null)
+          .map((c: any) => ({
+            call_number: c.call_number || '', incident_type: c.incident_type || 'call', priority: c.priority || 'P3',
+            distMi: haversineMeters(gps.latitude!, gps.longitude!, Number(c.latitude), Number(c.longitude)) / 1609.34,
+          }))
+          .sort((a: { distMi: number }, b: { distMi: number }) => a.distMi - b.distMi)
+          .slice(0, 3);
+        if (!cancelled) setNearbyCalls(near);
+      } catch { /* best-effort — situational extra, never blocks the drive view */ }
+    };
+    run();
+    const iv = setInterval(run, 20000);
+    return () => { cancelled = true; clearInterval(iv); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gps.latitude != null]);
+
   const sessionMs = startRef.current ? Date.now() - startRef.current : 0;
   const distanceMi = distanceRef.current / 1609.34;
+  const avgMph = sessionMs > 60000 ? distanceMi / (sessionMs / 3600000) : 0;
+  const clock = new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit' });
+  const spark = speedHistRef.current;
+  const sparkMax = Math.max(60, maxMph, ...spark);
 
   const step = useMemo(
     () => pickCurrentStep(activeRoute?.steps, routeProgress?.fraction ?? 0, activeRoute?.distanceMeters ?? 0),
@@ -308,6 +344,7 @@ export default function NavigationPage() {
       <div className="absolute top-0 inset-x-0 flex items-center gap-2 px-3 py-2 bg-surface-deep/85 backdrop-blur-md border-b border-rmpg-700 z-20">
         <Navigation2 className="w-4 h-4 text-brand-400" />
         <span className="text-[11px] font-bold uppercase tracking-widest text-rmpg-100 flex-1">Navigation</span>
+        <span className="font-mono text-[11px] text-rmpg-300 tabular-nums">{clock}</span>
         <span className="flex items-center gap-1 text-[10px] font-bold uppercase" style={{ color: src.color }}>
           <src.icon className="w-3.5 h-3.5" /> {src.label}
         </span>
@@ -393,6 +430,29 @@ export default function NavigationPage() {
         </div>
       )}
 
+      {/* Nearby active calls — ranked by straight-line distance from the unit. */}
+      {nearbyCalls.length > 0 && (
+        <div className="absolute z-20" style={{ top: 96, left: 8, width: 190 }}>
+          <div className="panel-beveled bg-surface-deep/90 backdrop-blur-md border border-rmpg-600 shadow-xl" style={{ borderRadius: 2 }}>
+            <div className="flex items-center gap-1 px-2 py-1 border-b border-rmpg-700">
+              <MapPin className="w-3 h-3 text-brand-400" />
+              <span className="text-[9px] font-bold uppercase tracking-wider text-rmpg-200 flex-1">Nearby Calls</span>
+              <span className="text-[9px] font-mono text-rmpg-500">{nearbyCalls.length}</span>
+            </div>
+            {nearbyCalls.map((c, i) => (
+              <div key={i} className={`flex items-center gap-1.5 px-2 py-1 ${i > 0 ? 'border-t border-rmpg-800/50' : ''}`}>
+                <span className="text-[8px] font-bold px-1 py-0.5 shrink-0" style={{ background: PRIO_COLOR[c.priority] || '#666', color: '#0a0a0a', borderRadius: 2 }}>{c.priority}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="text-[10px] text-rmpg-100 font-mono truncate">{c.call_number || '—'}</div>
+                  <div className="text-[8px] text-rmpg-500 truncate">{c.incident_type.replace(/_/g, ' ')}</div>
+                </div>
+                <span className="text-[10px] font-mono text-brand-300 shrink-0">{c.distMi.toFixed(1)}mi</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Instrument cluster (bottom) */}
       <div className="absolute bottom-0 inset-x-0 z-20 bg-surface-deep/88 backdrop-blur-md border-t border-rmpg-700">
         <div className="flex items-stretch gap-3 px-3 py-2">
@@ -402,6 +462,15 @@ export default function NavigationPage() {
               <span className="font-mono font-bold text-brand-300" style={{ fontSize: 40, lineHeight: 1 }}>{hasFix && mph != null ? mph : '--'}</span>
             </div>
             <span className="text-[9px] uppercase tracking-widest text-rmpg-500 flex items-center gap-1"><Gauge className="w-3 h-3" /> mph</span>
+            {/* Rolling speed sparkline */}
+            {spark.length > 1 && (
+              <svg viewBox={`0 0 ${spark.length - 1} 18`} preserveAspectRatio="none" className="mt-1" style={{ width: 88, height: 16 }} aria-hidden="true">
+                <polyline
+                  points={spark.map((v, i) => `${i},${18 - Math.min(18, (v / sparkMax) * 18)}`).join(' ')}
+                  fill="none" stroke="#d4a017" strokeWidth="1.5" strokeLinejoin="round" vectorEffect="non-scaling-stroke"
+                />
+              </svg>
+            )}
           </div>
 
           {/* Compass */}
@@ -425,6 +494,7 @@ export default function NavigationPage() {
           <div className="flex-1 min-w-0 grid grid-cols-2 gap-x-3 gap-y-0.5 font-mono text-[11px] self-center">
             <div><span className="text-rmpg-500 text-[9px] uppercase">Acc </span><span className="text-rmpg-200">{gps.accuracy != null ? `${Math.round(gps.accuracy)} m` : '—'}</span></div>
             <div><span className="text-rmpg-500 text-[9px] uppercase">Max </span><span className="text-rmpg-200">{maxMph} mph</span></div>
+            <div><span className="text-rmpg-500 text-[9px] uppercase">Avg </span><span className="text-rmpg-200">{Math.round(avgMph)} mph</span></div>
             <div><span className="text-rmpg-500 text-[9px] uppercase">Dist </span><span className="text-rmpg-200">{distanceMi.toFixed(2)} mi</span></div>
             <div><span className="text-rmpg-500 text-[9px] uppercase">Time </span><span className="text-rmpg-200">{fmtDuration(sessionMs)}</span></div>
             <div className="col-span-2 text-[9px] text-rmpg-500 truncate">
