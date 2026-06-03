@@ -53,6 +53,13 @@
   --desktop-shell-accent-shadow: rgba(0, 0, 0, 0.25);
   --desktop-shell-subtle-text: #b7b7b7;
   --desktop-shell-icon: #8c8c8c;
+  /* Spillman module-bar (F-key nav) — beveled-tile states. Translucent so the
+     sunken/raised look adapts to any shell background (black or legacy blue). */
+  --toolbar-nav-text: #9a9a9a;
+  --toolbar-nav-text-hover: #dcdcdc;
+  --toolbar-nav-text-active: var(--brand-gold);
+  --toolbar-nav-hover: rgba(255, 255, 255, 0.05);
+  --toolbar-nav-active: rgba(0, 0, 0, 0.38);
   /* Panel bevel highlight + title bar gradient — theme-aware. */
   --bevel-highlight: #3a3a3a;
   --titlebar-gradient: linear-gradient(180deg, #0b0b0b 0%, #060606 50%, #0b0b0b 100%);
@@ -1578,7 +1585,7 @@ body.fx-noise::after {
     align-self: center;
   }
 
-  /* --- Toolbar Nav (F-key navigation bar) --- */
+  /* --- Toolbar Nav (F-key navigation bar) — Spillman beveled module tile --- */
   .toolbar-nav-btn {
     display: inline-flex;
     align-items: center;
@@ -1592,20 +1599,33 @@ body.fx-noise::after {
     background: transparent;
     border: 1px solid transparent;
     border-bottom: 2px solid transparent;
+    border-radius: 2px; /* brand radius — never rounded-lg */
     cursor: pointer;
-    transition: background 0.1s, color 0.1s, border-color 0.1s;
+    transition: background 0.12s, color 0.12s, border-color 0.12s, box-shadow 0.12s;
     white-space: nowrap;
     flex-shrink: 0;
     position: relative;
   }
+  /* Hover: tile lifts off the shell (raised bevel) */
   .toolbar-nav-btn:hover {
     background: var(--toolbar-nav-hover);
     color: var(--toolbar-nav-text-hover);
+    border-color: rgba(255, 255, 255, 0.08);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.06),
+      0 1px 2px rgba(0, 0, 0, 0.45);
   }
-  .toolbar-nav-btn.active {
+  /* Active module: tile is pressed/sunken into the shell with a gold-lit base */
+  .toolbar-nav-btn.active,
+  .toolbar-nav-btn.active:hover {
     background: var(--toolbar-nav-active);
     color: var(--toolbar-nav-text-active);
-    border-bottom-color: #d4a017;
+    border-color: rgba(0, 0, 0, 0.55);
+    border-bottom-color: var(--brand-gold);
+    box-shadow:
+      inset 0 2px 4px rgba(0, 0, 0, 0.75),
+      inset 0 0 0 1px rgba(212, 160, 23, 0.12),
+      inset 0 -3px 6px -2px rgba(212, 160, 23, 0.4);
   }
   .toolbar-nav-btn.flex-col {
     display: inline-flex;

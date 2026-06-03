@@ -56,6 +56,28 @@ import {
   CheckCircle,
   DollarSign,
   Share2,
+  // Spillman module-bar: distinct per-module glyphs (no more duplicate Shields)
+  Siren,
+  ScanEye,
+  LifeBuoy,
+  Fingerprint,
+  ScanSearch,
+  FileSignature,
+  Webcam,
+  PieChart,
+  LayoutTemplate,
+  Boxes,
+  HeartHandshake,
+  ListTodo,
+  AlertOctagon,
+  UsersRound,
+  Pill,
+  Crosshair,
+  HeartPulse,
+  HandHeart,
+  BellRing,
+  Award,
+  UserPlus,
 } from 'lucide-react';
 import { Navigation2, Sun, Moon } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -195,15 +217,15 @@ const TOOLBAR_NAV: NavItem[] = [
     { path: '/incidents', icon: FileText, label: 'Incidents' },
     { path: '/records', icon: Database, label: 'Records' },
     { path: '/field-interviews', icon: ClipboardList, label: 'Field Interviews' },
-    { path: '/criminal-history', icon: Search, label: 'Criminal History' },
+    { path: '/criminal-history', icon: Fingerprint, label: 'Criminal History' },
     { path: '/dl-search', icon: CreditCard, label: 'DL Search' },
-    { path: '/microbilt', icon: Search, label: 'MicroBilt' },
+    { path: '/microbilt', icon: ScanSearch, label: 'MicroBilt' },
     { path: '/evidence', icon: Package, label: 'Evidence / Property' },
     { path: '/forensic-lab', icon: Microscope, label: 'Forensic Lab' },
     { path: '/forensics', icon: Network, label: 'Connections' },
     { path: '/cases', icon: Briefcase, label: 'Case Management' },
   ]},
-  { path: '/warrants', icon: AlertTriangle, label: 'Enforce', group: 'records', shortcut: 'F7', children: [
+  { path: '/warrants', icon: Siren, label: 'Enforce', group: 'records', shortcut: 'F7', children: [
     { path: '/warrants', icon: AlertTriangle, label: 'Warrants' },
     { path: '/citations', icon: FileWarning, label: 'Citations' },
     { path: '/law-book', icon: Scale, label: 'Law Book' },
@@ -211,7 +233,7 @@ const TOOLBAR_NAV: NavItem[] = [
     { path: '/code-enforcement', icon: Construction, label: 'Code Enforcement' },
     { path: '/court', icon: Gavel, label: 'Court Tracker' },
     { path: '/offender-registry', icon: UserX, label: 'Offender Registry' },
-    { path: '/serve', icon: Briefcase, label: 'Process Server' },
+    { path: '/serve', icon: FileSignature, label: 'Process Server' },
   ]},
   { path: '/personnel', icon: Users, label: 'Personnel', group: 'records', shortcut: 'F8', children: [
     { path: '/personnel', icon: Users, label: 'Personnel' },
@@ -219,7 +241,7 @@ const TOOLBAR_NAV: NavItem[] = [
     { path: '/fleet', icon: Car, label: 'Fleet' },
     { path: '/body-cameras', icon: Video, label: 'Body Cameras' },
     { path: '/dash-cameras', icon: Camera, label: 'Dash Cameras' },
-    { path: '/dashcams', icon: Camera, label: 'Dashcam System' },
+    { path: '/dashcams', icon: Webcam, label: 'Dashcam System' },
   ]},
   { path: '/communications', icon: MessageSquare, label: 'Comms', group: 'comms', shortcut: 'F9', children: [
     { path: '/communications', icon: MessageSquare, label: 'Comms' },
@@ -230,35 +252,35 @@ const TOOLBAR_NAV: NavItem[] = [
   { path: '/reports', icon: BarChart3, label: 'Reports', group: 'analysis', shortcut: 'F10', children: [
     { path: '/reports', icon: BarChart3, label: 'Reports' },
     { path: '/shift-plans', icon: Calendar, label: 'Shift Plans' },
-    { path: '/statute-analytics', icon: BarChart3, label: 'Statute Analytics' },
-    { path: '/reports/custom', icon: Database, label: 'Report Builder' },
+    { path: '/statute-analytics', icon: PieChart, label: 'Statute Analytics' },
+    { path: '/reports/custom', icon: LayoutTemplate, label: 'Report Builder' },
     { path: '/crime-analysis', icon: TrendingUp, label: 'Crime Analysis' },
     { path: '/dar', icon: ClipboardCheck, label: 'Daily Activity' },
   ]},
-  { path: '/crm', icon: Briefcase, label: 'Overwatch', group: 'analysis' },
+  { path: '/crm', icon: ScanEye, label: 'Overwatch', group: 'analysis' },
   { path: '/training', icon: GraduationCap, label: 'Training', group: 'analysis' },
   { path: '/forensics', icon: Network, label: 'Connections', group: 'analysis', adminOnly: true },
   { path: '/jail', icon: Building2, label: 'Jail/IA', group: 'support', children: [
     { path: '/jail', icon: Building2, label: 'Jail Management' },
     { path: '/affairs', icon: ShieldAlert, label: 'Internal Affairs' },
-    { path: '/assets', icon: Package, label: 'Asset Management' },
+    { path: '/assets', icon: Boxes, label: 'Asset Management' },
   ]},
-  { path: '/billing', icon: DollarSign, label: 'Services', group: 'support', children: [
+  { path: '/billing', icon: LifeBuoy, label: 'Services', group: 'support', children: [
     { path: '/billing', icon: DollarSign, label: 'Billing' },
-    { path: '/community', icon: Users, label: 'Community' },
-    { path: '/tasks', icon: ClipboardList, label: 'Task Management' },
+    { path: '/community', icon: HeartHandshake, label: 'Community' },
+    { path: '/tasks', icon: ListTodo, label: 'Task Management' },
     { path: '/alerts', icon: Megaphone, label: 'Notifications' },
     { path: '/qa', icon: CheckCircle, label: 'QA' },
-    { path: '/risk', icon: Shield, label: 'Risk Management' },
+    { path: '/risk', icon: AlertOctagon, label: 'Risk Management' },
     { path: '/interagency', icon: Share2, label: 'Interagency' },
-    { path: '/gang-intel', icon: Shield, label: 'Gang Intel' },
-    { path: '/narcotics', icon: Shield, label: 'Narcotics' },
-    { path: '/special-ops', icon: Shield, label: 'Special Ops' },
-    { path: '/crisis-response', icon: Shield, label: 'Crisis Response' },
-    { path: '/victim-services', icon: Shield, label: 'Victim Services' },
-    { path: '/alarms', icon: Shield, label: 'Alarm Management' },
-    { path: '/accreditation', icon: Shield, label: 'Accreditation' },
-    { path: '/recruitment', icon: Shield, label: 'Recruitment' },
+    { path: '/gang-intel', icon: UsersRound, label: 'Gang Intel' },
+    { path: '/narcotics', icon: Pill, label: 'Narcotics' },
+    { path: '/special-ops', icon: Crosshair, label: 'Special Ops' },
+    { path: '/crisis-response', icon: HeartPulse, label: 'Crisis Response' },
+    { path: '/victim-services', icon: HandHeart, label: 'Victim Services' },
+    { path: '/alarms', icon: BellRing, label: 'Alarm Management' },
+    { path: '/accreditation', icon: Award, label: 'Accreditation' },
+    { path: '/recruitment', icon: UserPlus, label: 'Recruitment' },
   ]},
   { path: '/audit', icon: ScrollText, label: 'Audit', group: 'system', shortcut: 'F11', adminOnly: true },
   { path: '/admin', icon: Settings, label: 'Admin', group: 'system', shortcut: 'F12', adminOnly: true },
@@ -1314,7 +1336,7 @@ export default function Layout() {
                     aria-label={`Open ${item.label} in new window`}
                     style={{ height: 44, padding: '2px 6px' }}
                   >
-                    <Icon style={{ width: 16, height: 16, color: '#666666', marginBottom: 1 }} />
+                    <Icon style={{ width: 16, height: 16, color: 'currentColor', marginBottom: 1 }} />
                     <span className="font-medium leading-none" style={{ fontSize: 9, letterSpacing: '0.02em' }}>{item.label}</span>
                   </button>
                 </React.Fragment>
@@ -1359,7 +1381,9 @@ export default function Layout() {
                       style={{
                         width: 16,
                         height: 16,
-                        color: isActive ? '#999999' : '#666666',
+                        // Inherit the button's currentColor so active (gold) + hover
+                        // states drive the glyph automatically — see .toolbar-nav-btn CSS.
+                        color: 'currentColor',
                         marginBottom: 1,
                       }}
                     />
@@ -1392,7 +1416,7 @@ export default function Layout() {
                           fontSize: 7,
                           top: 2,
                           right: 3,
-                          color: isActive ? '#999999' : '#3a3a3a',
+                          color: isActive ? 'var(--brand-gold)' : '#3a3a3a',
                         }}
                       >
                         {item.shortcut}
@@ -1406,7 +1430,7 @@ export default function Layout() {
                           position: 'absolute',
                           bottom: 2,
                           right: 2,
-                          color: '#3a3a3a',
+                          color: isActive ? 'var(--brand-gold)' : '#3a3a3a',
                           transform: isDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)',
                           transition: 'transform 0.15s',
                         }}
