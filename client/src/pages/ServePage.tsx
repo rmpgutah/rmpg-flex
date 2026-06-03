@@ -18,6 +18,7 @@ import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useAuth } from '../context/AuthContext';
 import { initMapbox, getMapboxInstance, mapboxgl, MAPBOX_STYLE_DARK } from '../utils/mapboxLoader';
+import { installWebglContextRecovery } from '../utils/webglRecovery';
 import { getMapboxAccessToken } from '../utils/mapboxApiKey';
 import { toDisplayLabel } from '../utils/formatters';
 import ServeJobCard from '../components/serve/ServeJobCard';
@@ -191,6 +192,9 @@ export default function ServePage() {
   const popupRef = useRef<mapboxgl.Popup | null>(null);
   const routeSourceRef = useRef<string | null>(null);
   const [mapReady, setMapReady] = useState(false);
+  // WebGL context-loss recovery (rebuilds the map after a GPU context drop).
+  const [serveMapRecoverNonce, setServeMapRecoverNonce] = useState(0);
+  const serveMapRecoveryCleanupRef = useRef<(() => void) | null>(null);
 
   // ── Route state ────────────────────────────────────────────────────
   const [routeData, setRouteData] = useState<{
@@ -540,6 +544,23 @@ export default function ServePage() {
       mapRef.current = map;
       popupRef.current = new mapboxgl.Popup({ offset: 25, closeButton: false });
 
+      // Rebuild in place if the GPU drops the context. updateMapMarkers re-runs
+      // (keyed on mapReady) and re-adds the markers + route layer to the new map.
+      serveMapRecoveryCleanupRef.current = installWebglContextRecovery(map, {
+        label: 'ServePage',
+        onRebuild: () => {
+          if (serveMapRecoveryCleanupRef.current) { serveMapRecoveryCleanupRef.current(); serveMapRecoveryCleanupRef.current = null; }
+          markersRef.current.forEach((m) => { try { m.remove(); } catch { /* gone */ } });
+          markersRef.current = [];
+          try { popupRef.current?.remove(); } catch { /* gone */ }
+          popupRef.current = null;
+          routeSourceRef.current = null;
+          if (mapRef.current) { try { mapRef.current.remove(); } catch { /* gone */ } mapRef.current = null; }
+          setMapReady(false);
+          setServeMapRecoverNonce((n) => n + 1);
+        },
+      });
+
       map.on('load', () => {
         if (cancelled) return;
         setMapReady(true);
@@ -561,7 +582,18 @@ export default function ServePage() {
     return () => {
       cancelled = true;
     };
-  }, [activeTab]);
+  }, [activeTab, serveMapRecoverNonce]);
+
+  // Dispose the map + recovery listener on unmount (kept out of the init
+  // effect's cleanup so a tab switch doesn't tear down the persisted map).
+  useEffect(() => () => {
+    if (serveMapRecoveryCleanupRef.current) { serveMapRecoveryCleanupRef.current(); serveMapRecoveryCleanupRef.current = null; }
+    markersRef.current.forEach((m) => { try { m.remove(); } catch { /* gone */ } });
+    markersRef.current = [];
+    try { popupRef.current?.remove(); } catch { /* gone */ }
+    popupRef.current = null;
+    if (mapRef.current) { try { mapRef.current.remove(); } catch { /* gone */ } mapRef.current = null; }
+  }, []);
 
   // Update markers when jobs change or map becomes ready
   const updateMapMarkers = useCallback(() => {

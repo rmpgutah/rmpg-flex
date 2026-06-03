@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { initMapbox, resolveMapboxAccessToken, mapboxgl, MAPBOX_STYLE_DARK, MAPBOX_STYLE_NIGHT, MAPBOX_STYLE_SATELLITE, MAPBOX_STYLE_STREETS, MAPBOX_STYLE_OUTDOORS, registerMapInstance, unregisterMapInstance, updateMapStyle, monitorTileLoading } from '../../utils/mapboxLoader';
 import { devLog, devWarn } from '../../utils/devLog';
+import { installWebglContextRecovery, type MapCamera } from '../../utils/webglRecovery';
 import {
   Layers,
   AlertTriangle,
@@ -228,9 +229,20 @@ export default function MapPage() {
   const [mapError, setMapError] = useState<string | null>(null);
   const [mapRetry, setMapRetry] = useState(0);
   const [tilesStalled, setTilesStalled] = useState(false);
+  // WebGL context loss recovery — true while the map is being rebuilt after the
+  // GPU dropped its context (see installWebglContextRecovery wiring below).
+  const [mapRecovering, setMapRecovering] = useState(false);
+  // True after the loop-guard gives up (too many GPU drops in a short window) —
+  // shows a blocking "reload recommended" prompt instead of thrashing.
+  const [mapRecoveryFailed, setMapRecoveryFailed] = useState(false);
 
   const isAuthError = mapError != null;
   const tileMonitorCleanupRef = useRef<(() => void) | null>(null);
+  // Camera (center/zoom/bearing/pitch) captured at the instant of a WebGL
+  // context loss, so the rebuilt map reopens at the dispatcher's exact view
+  // instead of jumping back to the saved/default center.
+  const recoverCameraRef = useRef<MapCamera | null>(null);
+  const webglRecoveryCleanupRef = useRef<(() => void) | null>(null);
 
   // Fix 28: restore layer toggle states from localStorage on mount
   const [layers, setLayers] = useState(() => {
@@ -1206,6 +1218,14 @@ export default function MapPage() {
 
     // Clear any previous error when retrying
     setMapError(null);
+    setMapRecoveryFailed(false);
+    // Re-arm data fetching on (re)init. abortedRef is latched true by THIS
+    // effect's cleanup; without resetting it, any re-init (manual Retry or a
+    // WebGL-loss rebuild) would rebuild the map but leave unit/call/property
+    // fetches permanently short-circuited (they early-return on abortedRef).
+    abortedRef.current = false;
+    // Detach the previous map's WebGL recovery listener before we (re)create.
+    if (webglRecoveryCleanupRef.current) { webglRecoveryCleanupRef.current(); webglRecoveryCleanupRef.current = null; }
 
     let cancelled = false;
     let unsubOnline = () => {};
@@ -1231,6 +1251,8 @@ export default function MapPage() {
       // Fix 31: restore map center/zoom from localStorage
       let savedCenter = { lat: cfg.default_center_lat, lng: cfg.default_center_lng };
       let savedZoom = cfg.default_zoom;
+      let savedBearing = cfg.default_bearing;
+      let savedPitch = cfg.default_pitch;
       try {
         const sc = localStorage.getItem('rmpg_map_center');
         const sz = localStorage.getItem('rmpg_map_zoom');
@@ -1238,13 +1260,26 @@ export default function MapPage() {
         if (sz) savedZoom = parseInt(sz, 10) || cfg.default_zoom;
       } catch { /* use defaults */ }
 
+      // WebGL-loss rebuild: reopen at the EXACT view captured at the instant of
+      // loss — including bearing/pitch, which the localStorage save (moveend)
+      // never persists — so the dispatcher doesn't lose their pan/zoom/rotation.
+      // One-shot: cleared after use so normal retries use the saved view.
+      const recoverCam = recoverCameraRef.current;
+      if (recoverCam) {
+        recoverCameraRef.current = null;
+        savedCenter = { lng: recoverCam.center[0], lat: recoverCam.center[1] };
+        savedZoom = recoverCam.zoom;
+        savedBearing = recoverCam.bearing;
+        savedPitch = recoverCam.pitch;
+      }
+
       const mapOptions: mapboxgl.MapboxOptions = {
         container: mapRef.current!,
         style: cfg.custom_style_url || MAPBOX_STYLE_DARK,
         center: [savedCenter.lng, savedCenter.lat],
         zoom: savedZoom,
-        pitch: cfg.default_pitch,
-        bearing: cfg.default_bearing,
+        pitch: savedPitch,
+        bearing: savedBearing,
         minZoom: cfg.min_zoom,
         maxZoom: cfg.max_zoom,
         minPitch: cfg.min_pitch,
@@ -1293,6 +1328,29 @@ export default function MapPage() {
       mapInstanceRef.current = map;
       registerMapInstance(map);
 
+      // WebGL context-loss recovery. On a long shift the GPU can reclaim the
+      // map's WebGL context (Toughbook GPU pressure, device sleep/wake, driver
+      // reset), blanking the map until a full reload. We watch for that and
+      // rebuild in place at the dispatcher's exact view. Bumping mapRetry re-
+      // runs THIS effect (cleanup tears down the dead map, then a fresh one is
+      // built); flipping mapLoaded false→true makes every [mapLoaded]-keyed
+      // layer/marker effect re-attach to the new map. The loop-guard escalates
+      // a physically failing GPU to a manual reload instead of thrashing.
+      webglRecoveryCleanupRef.current = installWebglContextRecovery(map, {
+        label: 'MapPage',
+        onContextLost: () => setMapRecovering(true),
+        onContextRestored: () => setMapRecovering(false),
+        onRebuild: (camera) => {
+          recoverCameraRef.current = camera;
+          setMapLoaded(false);
+          setMapRetry((n) => n + 1);
+        },
+        onGiveUp: () => {
+          setMapRecovering(false);
+          setMapRecoveryFailed(true);
+        },
+      });
+
       // Fix 30: save map center/zoom to localStorage on moveend (debounced to skip animation frames)
       const savePosition = () => {
         if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
@@ -1336,6 +1394,8 @@ export default function MapPage() {
       });
 
       if (!authFailed) setMapLoaded(true);
+      // The rebuilt map is live again — clear the "reconnecting" badge.
+      setMapRecovering(false);
     }
 
     let mapConfig: MapSettings | null = null;
@@ -1418,6 +1478,7 @@ export default function MapPage() {
       cancelled = true;
       abortedRef.current = true;
       unsubOnline();
+      if (webglRecoveryCleanupRef.current) { webglRecoveryCleanupRef.current(); webglRecoveryCleanupRef.current = null; }
       if (tileMonitorCleanupRef.current) { tileMonitorCleanupRef.current(); tileMonitorCleanupRef.current = null; }
       if (mapInstanceRef.current) unregisterMapInstance(mapInstanceRef.current);
       markersRef.current.forEach((m) => {
@@ -1429,6 +1490,14 @@ export default function MapPage() {
       if (playbackMarkerRef.current) { playbackMarkerRef.current.remove(); playbackMarkerRef.current = null; }
       if (playbackSpeedLabelRef.current) { playbackSpeedLabelRef.current.remove(); playbackSpeedLabelRef.current = null; }
       if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
+      // Actually destroy the map: free its WebGL context, stop its render loop,
+      // and drop its canvas from the container. Without this, every visit to
+      // /map leaked a GL context — and the browser's ~16-context cap means a
+      // leaked context eventually gets force-killed, which surfaces as a
+      // `webglcontextlost` on the live map (a root cause of the "map drops mid-
+      // shift" report). It is also required for the rebuild path: re-creating a
+      // map in a container that still holds the old canvas would stack two.
+      if (mapInstanceRef.current) { try { mapInstanceRef.current.remove(); } catch { /* already torn down */ } }
       mapInstanceRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -3325,6 +3394,71 @@ export default function MapPage() {
           role="application"
           aria-label="Tactical Map"
         />
+
+        {/* WebGL recovery badge — non-blocking. Shows for the ~1s rebuild after
+            the GPU dropped the map's WebGL context. Centered up top so the
+            dispatcher knows the map momentarily reset (situational awareness)
+            without it being mistaken for the cached/offline tile badge. */}
+        {mapRecovering && !mapRecoveryFailed && (
+          <div
+            className="absolute left-1/2 -translate-x-1/2 top-3 z-[1100] flex items-center gap-2 px-3 py-2"
+            style={{
+              background: 'rgba(10,10,10,0.96)',
+              border: '1px solid #d4a01755',
+              WebkitBackdropFilter: 'blur(4px)',
+              backdropFilter: 'blur(4px)',
+              borderRadius: 2,
+            }}
+            role="status"
+            aria-live="polite"
+          >
+            <Loader2 style={{ width: 14, height: 14, color: '#d4a017' }} className="animate-spin" aria-hidden="true" />
+            <div className="flex flex-col">
+              <span className="text-[10px] text-[#d4a017] font-bold uppercase tracking-wider font-mono leading-none">
+                Map Reconnecting
+              </span>
+              <span className="text-[8px] text-rmpg-500 font-mono leading-none mt-0.5">
+                GPU context restored · Restoring your view
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* WebGL recovery FAILED — blocking. The loop-guard gave up after
+            repeated GPU drops in a short window (likely failing hardware or a
+            stuck driver). Tell the dispatcher plainly and offer one-click recovery. */}
+        {mapRecoveryFailed && (
+          <div className="absolute inset-0 z-[2100] flex items-center justify-center bg-black/80 backdrop-blur-sm">
+            <div className="bg-surface-overlay/95 border border-amber-600 p-8 shadow-xl max-w-lg text-center" style={{ borderRadius: 2 }}>
+              <AlertTriangle className="w-8 h-8 text-amber-400 mx-auto mb-3" />
+              <h3 className="text-white text-sm font-bold mb-2">Map GPU Unstable</h3>
+              <p className="text-rmpg-300 text-xs leading-relaxed mb-4">
+                The map repeatedly lost its GPU connection and could not stay recovered.
+                This usually means the device is low on graphics memory or a display driver
+                is stuck. Reload the page to get a fresh map; if it keeps happening, restart
+                the workstation.
+              </p>
+              <div className="flex gap-3 justify-center">
+                <button
+                  type="button"
+                  onClick={() => { setMapRecoveryFailed(false); setMapRetry((n) => n + 1); }}
+                  className="px-4 py-1.5 bg-brand-600 hover:bg-brand-500 text-white text-xs font-bold uppercase tracking-wider transition-colors"
+                  style={{ borderRadius: 2 }}
+                >
+                  Try Again
+                </button>
+                <button
+                  type="button"
+                  onClick={() => window.location.reload()}
+                  className="px-4 py-1.5 bg-surface-deep hover:bg-surface-overlay text-rmpg-300 text-xs font-bold uppercase tracking-wider border border-rmpg-600 transition-colors"
+                  style={{ borderRadius: 2 }}
+                >
+                  Reload Page
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Tile stall badge — non-blocking indicator.
             Offline tiles now render through the map canvas (ImageMapType), so the
