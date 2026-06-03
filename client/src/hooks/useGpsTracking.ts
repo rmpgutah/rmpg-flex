@@ -917,6 +917,26 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
         }
         queueRef.current.push(point);
 
+        // ── Exportable session track (PARITY FIX) ──
+        // `capturedCount` drives the HUD's "Track N pts" readout and the
+        // CSV/GeoJSON export. ingestPosition (the Toughbook internal-GPS path)
+        // pushes every accepted fix into captureRef — but THIS browser
+        // watchPosition path predated that feature and never did. Result: every
+        // non-Toughbook device (cellular/WiFi geolocation — the common case)
+        // showed "Track 0 pts" forever even while GPS was healthy and uploading.
+        // Mirror the capture here. Skip while a Toughbook's internal GPS is
+        // delivering fresh fixes (it already captured this moment) so the
+        // secondary browser fallback can't double-count the same point.
+        const internalGpsFresh = useInternalGpsRef.current &&
+          (Date.now() - lastInternalGpsAtRef.current < INTERNAL_GPS_FRESH_MS);
+        if (captureEnabledRef.current && !internalGpsFresh) {
+          if (captureRef.current.length >= MAX_CAPTURE) captureRef.current.shift();
+          captureRef.current.push(point);
+          setState((prev) => prev.capturedCount === captureRef.current.length
+            ? prev
+            : { ...prev, capturedCount: captureRef.current.length });
+        }
+
         // Send first position immediately for real-time map icon
         if (!firstPositionSentRef.current) {
           firstPositionSentRef.current = true;
