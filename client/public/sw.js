@@ -507,7 +507,7 @@
 //       Turn banner gains an external-nav button (Organic Maps / OSM web) + a
 //       clear-route button. Manual route claims the slot so the assigned-call
 //       auto-route can't clobber it.
-const CACHE_NAME = 'rmpg-flex-v762';
+const CACHE_NAME = 'rmpg-flex-v763';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

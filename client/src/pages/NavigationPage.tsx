@@ -22,10 +22,10 @@ import {
   Navigation2, Satellite, Wifi, Globe, X, AlertTriangle, MapPin, Gauge,
   CornerUpLeft, CornerUpRight, ArrowUp, ArrowUpLeft, ArrowUpRight,
   Flag, Merge, RotateCw, RotateCcw, Clock, Box, Crosshair, Maximize, Minimize,
-  Flame, Search, type LucideIcon,
+  Flame, Search, Footprints, ShieldAlert, type LucideIcon,
 } from 'lucide-react';
 import { useGpsTracking } from '../hooks/useGpsTracking';
-import { useMapRouting } from '../hooks/useMapRouting';
+import { useMapRouting, snapToRoute } from '../hooks/useMapRouting';
 import { navigateTo } from '../utils/organicMapsNav';
 import { useMap3D } from './map/hooks/useMap3D';
 import { mapboxgl, initMapbox, MAPBOX_STYLE_DARK } from '../utils/mapboxLoader';
@@ -108,6 +108,55 @@ function bearingTo(lat1: number, lng1: number, lat2: number, lng2: number): numb
   const y = Math.sin(dLng) * Math.cos(toRad(lat2));
   const x = Math.cos(toRad(lat1)) * Math.sin(toRad(lat2)) - Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(dLng);
   return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+}
+
+// ── Route corridor hazard scan (routing-aware situational awareness) ──
+// A hazard the unit is about to drive INTO — an active call or a crime hot-spot
+// that snaps onto the planned route ahead of the unit's current progress.
+interface CorridorHazard {
+  kind: 'call' | 'crime';
+  label: string;
+  sub: string;
+  /** Distance ahead along the route to the hazard, miles. */
+  aheadMi: number;
+  color: string;
+  lat: number;
+  lng: number;
+  /** 1 = caution, 2 = elevated, 3 = critical — drives sort + map halo size. */
+  severity: number;
+}
+
+// Tuning knobs for the corridor scan. These are deliberately conservative — a
+// tight corridor + a high cluster threshold keep the panel signal, not noise.
+const CORRIDOR_HAZARD_M = 70;        // off-route slack: still "on the path"
+const CORRIDOR_LOOKAHEAD_M = 8047;   // scan up to ~5 mi down the route
+const CORRIDOR_MIN_AHEAD_M = 40;     // ignore hazards we're effectively on top of
+const CRIME_CLUSTER_BIN_M = 160;     // along-route bin width for crime clustering
+const CRIME_CLUSTER_MIN = 4;         // incidents in one bin to flag a hot segment
+
+/** Axis-aligned lat/lng bounds of a route polyline ([lng,lat][]) — a cheap
+ *  prefilter so we only snap crime points that could plausibly be in-corridor. */
+function routeBBox(coords: [number, number][]): { w: number; s: number; e: number; n: number } {
+  let w = Infinity, s = Infinity, e = -Infinity, n = -Infinity;
+  for (const [lng, lat] of coords) {
+    if (lng < w) w = lng; if (lng > e) e = lng;
+    if (lat < s) s = lat; if (lat > n) n = lat;
+  }
+  return { w, s, e, n };
+}
+
+/**
+ * Urgency score for a corridor hazard — HIGHER floats to the top of the panel
+ * and is what the operator sees first while driving.
+ *
+ * This is the one piece of domain judgment in the corridor scan, so it lives in
+ * its own function: tune it to match how your officers actually prioritize.
+ * The default weights severity heavily (a P1 call ahead matters even at range)
+ * and decays linearly with distance so an imminent hazard edges out a distant
+ * one of equal severity.
+ */
+function scoreCorridorHazard(h: CorridorHazard): number {
+  return h.severity * 100 - h.aheadMi * 10;
 }
 
 // ── Advanced instruments ─────────────────────────────────────────────────────
@@ -318,7 +367,7 @@ export default function NavigationPage() {
   const [mapReady, setMapReady] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
 
-  const { activeRoute, routeProgress, offRoute, showRoute, clearRoute, updateOrigin } = useMapRouting({
+  const { activeRoute, routeProgress, routeGeom, offRoute, showRoute, clearRoute, updateOrigin } = useMapRouting({
     map: mapReady ? mapInstanceRef.current : null,
   });
 
@@ -346,6 +395,7 @@ export default function NavigationPage() {
   const [nearbyUnits, setNearbyUnits] = useState<{ call_sign: string; status: string; lat: number; lng: number }[]>([]);
   const [crimeOn, setCrimeOn] = useState(true);
   const [crimeIncidents, setCrimeIncidents] = useState<CrimePoint[]>([]);
+  const [trailOn, setTrailOn] = useState(true); // patrol breadcrumb trail (own GPS track)
   const [currentStreet, setCurrentStreet] = useState<string | null>(null);
   const geoRef = useRef<{ lat: number; lng: number; t: number } | null>(null);
   // Destination search (address/place → route there).
@@ -704,6 +754,51 @@ export default function NavigationPage() {
     } catch { /* style mid-reload — next data tick re-applies */ }
   }, [crimeIncidents, crimeOn, mapReady]);
 
+  // ── Patrol breadcrumb trail (own GPS track, age-faded) ──
+  // Draw the unit's captured session track as ONE line whose color fades
+  // oldest→newest. `line-gradient` keyed on `line-progress` does the fade on the
+  // GPU (one layer, not N markers) — needs `lineMetrics: true`. Driven by
+  // `capturedCount`, which ticks on every accepted fix. Best-effort like crime.
+  const trailPtsCount = gps.capturedCount;
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !mapReady) return;
+    const SRC = 'rmpg-trail';
+    const pts = gps.getCapturedTrack();
+    const coords = pts.map((p) => [p.lng, p.lat] as [number, number]);
+    // A LineString needs ≥2 vertices; below that, feed an empty collection so the
+    // layer simply renders nothing rather than emitting invalid geometry.
+    const data: any = coords.length >= 2
+      ? { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: coords } }
+      : { type: 'FeatureCollection', features: [] };
+    try {
+      const existing = map.getSource(SRC) as any;
+      if (existing) {
+        existing.setData(data);
+      } else {
+        map.addSource(SRC, { type: 'geojson', lineMetrics: true, data });
+        map.addLayer({
+          id: 'rmpg-trail-line', type: 'line', source: SRC,
+          layout: { 'line-cap': 'round', 'line-join': 'round' },
+          paint: {
+            'line-width': ['interpolate', ['linear'], ['zoom'], 11, 2.5, 17, 4.5],
+            // Oldest end transparent → recent end bright gold (the "comet tail").
+            'line-gradient': ['interpolate', ['linear'], ['line-progress'],
+              0, 'rgba(212,160,23,0.0)',
+              0.55, 'rgba(212,160,23,0.30)',
+              0.9, 'rgba(212,160,23,0.75)',
+              1, 'rgba(255,209,102,0.95)'],
+          },
+        });
+      }
+      if (map.getLayer('rmpg-trail-line')) {
+        map.setLayoutProperty('rmpg-trail-line', 'visibility', trailOn ? 'visible' : 'none');
+      }
+    } catch { /* style mid-reload — next fix re-applies */ }
+    // gps.getCapturedTrack is a stable useCallback; trailPtsCount is the live trigger.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trailPtsCount, trailOn, mapReady]);
+
   const crimeCounts = useMemo(() => {
     let slc = 0, local = 0;
     for (const p of crimeIncidents) { if (p.source === 'local') local++; else slc++; }
@@ -775,6 +870,114 @@ export default function NavigationPage() {
     ...unitContacts.map((u) => ({ kind: 'unit' as const, bearing: u.bearing, distMi: u.distMi, color: statusColor(u.status), label: u.call_sign })),
   ];
   const threatCount = callContacts.filter((c) => c.priority === 'P1' || c.priority === 'P2').length;
+
+  // ── Route corridor hazard scan ──
+  // What's on the path AHEAD: active calls + crime hot-spots that snap onto the
+  // planned route within the corridor and lie ahead of the unit's progress. The
+  // bbox prefilter keeps the per-fix snap cost to the handful of points actually
+  // near the line, not the full ~1.5k-incident city dataset.
+  //
+  // LEARNING HAND-OFF: the ranking here is intentionally simple — sort purely by
+  // distance-ahead. `scoreCorridorHazard()` (below) is where domain judgment
+  // belongs: should a P1 call 2 mi out outrank a crime cluster 0.3 mi out? Tune
+  // that one function to shape what floats to the top of the panel.
+  const corridorHazards = useMemo<CorridorHazard[]>(() => {
+    const g = routeGeom;
+    if (!g || g.coords.length < 2 || myLat == null || myLng == null) return [];
+    const currentAlong = Math.max(0, Math.min(1, routeProgress?.fraction ?? 0)) * g.totalMeters;
+    const minAlong = currentAlong + CORRIDOR_MIN_AHEAD_M;
+    const maxAlong = currentAlong + CORRIDOR_LOOKAHEAD_M;
+    const { w, s, e, n } = routeBBox(g.coords);
+    const pad = 0.01; // ~1 km lat margin around the route bbox for the prefilter
+    const out: CorridorHazard[] = [];
+
+    // 1) Active calls ahead on the corridor — the actionable hazards.
+    for (const c of nearbyCalls) {
+      if (c.lat < s - pad || c.lat > n + pad || c.lng < w - pad || c.lng > e + pad) continue;
+      const { offRouteMeters, distAlong } = snapToRoute(g.coords, g.cum, c.lat, c.lng);
+      if (offRouteMeters > CORRIDOR_HAZARD_M || distAlong < minAlong || distAlong > maxAlong) continue;
+      out.push({
+        kind: 'call',
+        label: `${c.priority} · ${c.call_number || '—'}`,
+        sub: c.incident_type.replace(/_/g, ' '),
+        aheadMi: (distAlong - currentAlong) / 1609.34,
+        color: PRIO_COLOR[c.priority] || '#888888',
+        lat: c.lat, lng: c.lng,
+        severity: c.priority === 'P1' ? 3 : c.priority === 'P2' ? 2 : 1,
+      });
+    }
+
+    // 2) Crime hot-spots ahead — bin in-corridor crime by along-route distance,
+    // flag any bin with enough incidents as one "high-incident segment" hazard.
+    const bins = new Map<number, { count: number; lat: number; lng: number; along: number }>();
+    for (const p of crimeIncidents) {
+      if (p.lat < s - pad || p.lat > n + pad || p.lng < w - pad || p.lng > e + pad) continue;
+      const { offRouteMeters, distAlong } = snapToRoute(g.coords, g.cum, p.lat, p.lng);
+      if (offRouteMeters > CORRIDOR_HAZARD_M || distAlong < minAlong || distAlong > maxAlong) continue;
+      const k = Math.floor(distAlong / CRIME_CLUSTER_BIN_M);
+      const b = bins.get(k);
+      if (b) b.count++;
+      else bins.set(k, { count: 1, lat: p.lat, lng: p.lng, along: distAlong });
+    }
+    for (const b of bins.values()) {
+      if (b.count < CRIME_CLUSTER_MIN) continue;
+      out.push({
+        kind: 'crime',
+        label: `Crime cluster · ${b.count}`,
+        sub: 'high-incident segment',
+        aheadMi: (b.along - currentAlong) / 1609.34,
+        color: b.count >= 8 ? '#ef4444' : '#f59e0b',
+        lat: b.lat, lng: b.lng,
+        severity: b.count >= 8 ? 3 : b.count >= 6 ? 2 : 1,
+      });
+    }
+
+    out.sort((a, b) => scoreCorridorHazard(b) - scoreCorridorHazard(a));
+    return out.slice(0, 6);
+  }, [routeGeom, routeProgress, nearbyCalls, crimeIncidents, myLat, myLng]);
+
+  const corridorCritical = corridorHazards.filter((h) => h.severity >= 2).length;
+
+  // ── Map halo for corridor hazards ──
+  // Ring each on-route hazard with a colored halo so it's obvious on the map,
+  // not just in the panel. Two circle layers: a soft fill halo + a crisp ring
+  // (circle-opacity 0 + a stroke). Severity scales the radius. Best-effort.
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !mapReady) return;
+    const SRC = 'rmpg-corridor';
+    const fc = {
+      type: 'FeatureCollection',
+      features: corridorHazards.map((h) => ({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [h.lng, h.lat] },
+        properties: { color: h.color, r: 8 + h.severity * 4 },
+      })),
+    };
+    try {
+      const existing = map.getSource(SRC) as any;
+      if (existing) {
+        existing.setData(fc);
+      } else {
+        map.addSource(SRC, { type: 'geojson', data: fc });
+        map.addLayer({
+          id: 'rmpg-corridor-halo', type: 'circle', source: SRC,
+          paint: {
+            'circle-radius': ['+', ['get', 'r'], 9],
+            'circle-color': ['get', 'color'], 'circle-opacity': 0.14, 'circle-blur': 0.6,
+          },
+        });
+        map.addLayer({
+          id: 'rmpg-corridor-ring', type: 'circle', source: SRC,
+          paint: {
+            'circle-radius': ['get', 'r'],
+            'circle-color': ['get', 'color'], 'circle-opacity': 0,
+            'circle-stroke-width': 2, 'circle-stroke-color': ['get', 'color'], 'circle-stroke-opacity': 0.95,
+          },
+        });
+      }
+    } catch { /* style mid-reload — next scan re-applies */ }
+  }, [corridorHazards, mapReady]);
 
   const step = useMemo(
     () => pickCurrentStep(activeRoute?.steps, routeProgress?.fraction ?? 0, activeRoute?.distanceMeters ?? 0),
@@ -853,6 +1056,15 @@ export default function NavigationPage() {
           aria-label={crimeOn ? 'Hide crime layer' : 'Show crime layer'}
         >
           <Flame className="w-4 h-4" /> Crime
+        </button>
+        <button
+          onClick={() => setTrailOn((v) => !v)}
+          className="toolbar-btn flex items-center justify-center"
+          style={{ color: trailOn ? '#d4a017' : '#666' }}
+          title={trailOn ? `Hide patrol trail (${trailPtsCount} pts)` : 'Show patrol breadcrumb trail'}
+          aria-label={trailOn ? 'Hide patrol trail' : 'Show patrol trail'}
+        >
+          <Footprints className="w-4 h-4" />
         </button>
         <button
           onClick={toggleFullscreen}
@@ -962,6 +1174,24 @@ export default function NavigationPage() {
                   </div>
                 );
               })}
+            </div>
+          )}
+          {/* Route corridor hazards — what's ON THE PATH ahead */}
+          {corridorHazards.length > 0 && (
+            <div className="border-t" style={{ borderColor: corridorCritical > 0 ? 'rgba(239,68,68,0.4)' : 'rgba(245,158,11,0.35)' }}>
+              <div className="flex items-center gap-1.5 px-3 py-1" style={{ background: corridorCritical > 0 ? 'rgba(239,68,68,0.10)' : 'rgba(245,158,11,0.08)' }}>
+                <ShieldAlert className={`w-3.5 h-3.5 shrink-0 ${corridorCritical > 0 ? 'animate-pulse' : ''}`} style={{ color: corridorCritical > 0 ? '#ef4444' : '#f59e0b' }} />
+                <span className="text-[9px] font-bold uppercase tracking-widest flex-1" style={{ color: corridorCritical > 0 ? '#fca5a5' : '#fcd34d' }}>Ahead on route</span>
+                <span className="text-[9px] font-mono text-rmpg-400">{corridorHazards.length}</span>
+              </div>
+              {corridorHazards.slice(0, 4).map((h, i) => (
+                <div key={i} className={`flex items-center gap-2 px-3 py-1 ${i > 0 ? 'border-t border-rmpg-800/40' : ''}`}>
+                  <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ background: h.color, boxShadow: h.severity >= 3 ? `0 0 5px ${h.color}` : 'none' }} />
+                  <span className="text-[10px] font-mono shrink-0" style={{ color: h.color }}>{h.label}</span>
+                  <span className="flex-1 min-w-0 truncate text-[9px] text-rmpg-500">{h.sub}</span>
+                  <span className="text-[10px] font-mono font-bold text-brand-300 shrink-0">{h.aheadMi < 0.1 ? `${Math.round(h.aheadMi * 5280)} ft` : `${h.aheadMi.toFixed(1)} mi`}</span>
+                </div>
+              ))}
             </div>
           )}
         </div>
