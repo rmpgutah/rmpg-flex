@@ -42,8 +42,8 @@ gps.post('/', async (c) => {
     // color a freshly-rebuilt heading arrow without a second lookup).
     const unit = await queryFirst<{ id: number; call_sign: string; status: string | null;
       latitude: number | null; longitude: number | null; officer_id: number | null;
-      vehicle_id: number | null }>(db,
-      'SELECT id, call_sign, status, latitude, longitude, officer_id, vehicle_id FROM units WHERE officer_id = ? LIMIT 1', userId);
+      vehicle_id: number | null; gps_source: string | null }>(db,
+      'SELECT id, call_sign, status, latitude, longitude, officer_id, vehicle_id, gps_source FROM units WHERE officer_id = ? LIMIT 1', userId);
 
     if (!unit) return c.json({ error: 'No assigned unit' }, 400);
     // Capture the prior position BEFORE the unit-row mirror UPDATE below
@@ -159,7 +159,21 @@ gps.post('/', async (c) => {
         unit.id, unit.id);
     } catch (e) { console.warn('[gps] trip engine non-fatal:', e); }
 
-    return c.json({ inserted, accepted: points.length }, 201);
+    // Echo the caller's resolved unit back on the (non-stubbed) write path so
+    // the client can learn "which unit am I?" without relying on GET
+    // /dispatch/gps/my-unit — a path an edge stub (rmpg-premise-stub) can shadow
+    // with a hollow {unit:null}, which otherwise leaves the NAVIGATE/Trips UI
+    // stuck on "No unit assigned" even though the unit exists and GPS is flowing.
+    return c.json({
+      inserted,
+      accepted: points.length,
+      unit: {
+        id: unit.id,
+        call_sign: unit.call_sign,
+        status: unit.status,
+        gps_source: unit.gps_source ?? 'gps',
+      },
+    }, 201);
   } catch (err) {
     return c.json({ error: 'GPS update failed' }, 500);
   }

@@ -535,7 +535,7 @@
 // v779: map teardown-race hardening — getSourceSafe() guards the remaining
 //       getSource(...).setData() sites (twin of #1020's getLayer fix); prevents
 //       'getOwnSource' ErrorBoundary trip when a late callback fires post-remove().
-const CACHE_NAME = 'rmpg-flex-v779';
+const CACHE_NAME = 'rmpg-flex-v780';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
