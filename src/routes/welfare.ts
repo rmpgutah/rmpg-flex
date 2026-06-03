@@ -10,6 +10,7 @@ import type { Env } from '../types';
 import { getDb, queryFirst, execute } from '../utils/db';
 import { requireRole } from '../middleware/auth';
 import { sendToUser, broadcastAll } from './ws';
+import { emitAlert } from '../utils/alertHub';
 
 // Helper: get the WelfareWatchDO stub for a given officer
 function getDO(env: any, userId: number) {
@@ -97,6 +98,7 @@ welfare.post('/help', requireRole(...ALL_ROLES), async (c) => {
       latitude: callContext?.latitude ?? null,
       longitude: callContext?.longitude ?? null,
       triggered_by: 'mdt_button',
+      message: `WELFARE EMERGENCY — ${userRow?.full_name || unit?.call_sign || 'officer'} requesting help${callContext?.call_number ? ' on ' + callContext.call_number : ''}. All units respond.`,
       at: new Date().toISOString(),
     };
 
@@ -111,7 +113,11 @@ welfare.post('/help', requireRole(...ALL_ROLES), async (c) => {
 
     // Tell the DO this officer escalated to emergency
     try { await getDO(c.env, userId).fetch('https://do/help', { method: 'POST', body: JSON.stringify({}) }); } catch { /* non-fatal */ }
-    broadcastAll('dispatch_update', payload);
+    // Deliver via AlertHubDO under the DISCRETE 'welfare_emergency' type the
+    // voice-alert hook subscribes to. broadcastAll fires in the dead rewrite
+    // isolate (live /api/ws is on legacy) AND the client never subscribes to a
+    // 'dispatch_update' welfare action — so this escalation reached NO dispatcher.
+    await emitAlert(c.env, 'welfare_emergency', payload);
     return c.json({ success: true, broadcast: payload });
   } catch (err) {
     console.error('[welfare] help error', err);
@@ -187,6 +193,7 @@ welfare.post('/escalate', requireRole(...ALL_ROLES), async (c) => {
       latitude: callContext?.latitude ?? null,
       longitude: callContext?.longitude ?? null,
       triggered_by: 'auto_escalation',
+      message: `WELFARE EMERGENCY — ${userRow?.full_name || unit?.call_sign || 'officer'} unresponsive (missed welfare checks)${callContext?.call_number ? ' on ' + callContext.call_number : ''}. All units respond.`,
       at: new Date().toISOString(),
     };
 
@@ -201,7 +208,11 @@ welfare.post('/escalate', requireRole(...ALL_ROLES), async (c) => {
 
     // Tell the DO this officer escalated to emergency, then broadcast.
     try { await getDO(c.env, userId).fetch('https://do/help', { method: 'POST', body: JSON.stringify({}) }); } catch { /* non-fatal */ }
-    broadcastAll('dispatch_update', payload);
+    // Deliver via AlertHubDO under the DISCRETE 'welfare_emergency' type the
+    // voice-alert hook subscribes to. broadcastAll fires in the dead rewrite
+    // isolate (live /api/ws is on legacy) AND the client never subscribes to a
+    // 'dispatch_update' welfare action — so this escalation reached NO dispatcher.
+    await emitAlert(c.env, 'welfare_emergency', payload);
     return c.json({ success: true, broadcast: payload });
   } catch (err) {
     console.error('[welfare] escalate error', err);
