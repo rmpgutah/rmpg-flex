@@ -92,16 +92,32 @@ class InternalGps extends EventEmitter {
     this.pending = { lat: null, lng: null, accuracy: null, heading: null, speed: null };
     this.reconnectTimer = null;
     this.portPath = null;
-    this.baudRate = 4800; // u-blox default; some Toughbooks use 9600
+    // Baud ladder. The FZ-55's u-blox NEO-M8 module defaults to 9600, NOT 4800
+    // — the old hard-coded 4800 produced garbage/no NMEA on stock units, so no
+    // fix ever arrived and the renderer silently fell back to WiFi. We probe the
+    // common rates (9600 first) and lock onto the first that yields a
+    // checksum-valid NMEA sentence (see _startBaudProbe / _tryNextBaud).
+    this.baudCandidates = [9600, 4800, 38400, 115200];
+    this.baudIndex = 0;
+    this.baudRate = this.baudCandidates[0];
+    this.gotValidData = false;
+    this.baudProbeTimer = null;
   }
 
-  async start(portPath, baudRate = 4800) {
+  async start(portPath, baudRate) {
     if (!SerialPort) {
       this.emit('error', new Error('serialport module unavailable on this platform'));
       return false;
     }
     this.portPath = portPath;
-    this.baudRate = baudRate;
+    // If the caller pins a baud, probe it FIRST, then fall through the rest of
+    // the ladder if it yields no valid NMEA. Otherwise use the default ladder.
+    if (baudRate) {
+      this.baudCandidates = [baudRate, ...this.baudCandidates.filter((b) => b !== baudRate)];
+    }
+    this.baudIndex = 0;
+    this.baudRate = this.baudCandidates[0];
+    this.gotValidData = false;
     return this._openPort();
   }
 
@@ -127,6 +143,7 @@ class InternalGps extends EventEmitter {
         }
         console.log('[INTERNAL-GPS] Reading from', this.portPath, '@', this.baudRate);
         this.emit('open');
+        this._startBaudProbe();
       });
       return true;
     } catch (err) {
@@ -144,9 +161,44 @@ class InternalGps extends EventEmitter {
     }, 5000);
   }
 
+  // Baud auto-detect. If no checksum-valid NMEA arrives within the probe window
+  // at the current rate, the baud is probably wrong — advance the ladder. Once
+  // a good sentence lands, _handleLine clears this and we stay locked.
+  _startBaudProbe() {
+    if (this.gotValidData) return; // already locked — nothing to probe
+    if (this.baudProbeTimer) clearTimeout(this.baudProbeTimer);
+    this.baudProbeTimer = setTimeout(() => {
+      this.baudProbeTimer = null;
+      if (!this.gotValidData) this._tryNextBaud();
+    }, 6000);
+  }
+
+  _tryNextBaud() {
+    if (this.gotValidData || this.baudCandidates.length <= 1) return;
+    this.baudIndex = (this.baudIndex + 1) % this.baudCandidates.length;
+    const next = this.baudCandidates[this.baudIndex];
+    console.log(`[INTERNAL-GPS] No valid NMEA at ${this.baudRate} baud — retrying at ${next}`);
+    this.baudRate = next;
+    // Close and let the existing close → _scheduleReconnect path reopen at the
+    // new baud (no manual reopen here → avoids a double-open race). _openPort
+    // re-arms the probe, so the ladder keeps cycling until a sentence locks.
+    if (this.port && this.port.isOpen) {
+      this.port.close(() => { /* reopen handled by close → _scheduleReconnect */ });
+    } else {
+      this._scheduleReconnect();
+    }
+  }
+
   _handleLine(line) {
     if (!line || !line.startsWith('$')) return;
     if (!checksumOk(line)) return;
+    // First checksum-valid sentence means this baud is correct — lock it in and
+    // cancel the baud-probe ladder so we don't keep cycling.
+    if (!this.gotValidData) {
+      this.gotValidData = true;
+      if (this.baudProbeTimer) { clearTimeout(this.baudProbeTimer); this.baudProbeTimer = null; }
+      console.log('[INTERNAL-GPS] Locked NMEA stream @', this.baudRate, 'baud');
+    }
     const body = line.split('*')[0];
     const fields = body.split(',');
     const tag = fields[0];
@@ -194,6 +246,10 @@ class InternalGps extends EventEmitter {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
+    if (this.baudProbeTimer) {
+      clearTimeout(this.baudProbeTimer);
+      this.baudProbeTimer = null;
+    }
     if (this.port && this.port.isOpen) {
       this.port.close(() => { /* swallow — closing on shutdown */ });
     }
@@ -212,19 +268,46 @@ async function findGpsPort() {
   if (!SerialPort) return null;
   try {
     const ports = await SerialPort.list();
-    const candidates = ports.filter((p) => {
-      const mfg = (p.manufacturer || '').toLowerCase();
-      const friendly = (p.friendlyName || '').toLowerCase();
+    // Log EVERY enumerated port so a field tech can see exactly what the
+    // Toughbook exposes when detection still misses — paste this from the
+    // Electron console (Ctrl+Shift+I) and the right VID/name can be added.
+    try {
+      console.log('[INTERNAL-GPS] Serial ports:', JSON.stringify(ports.map((p) => ({
+        path: p.path, manufacturer: p.manufacturer, friendlyName: p.friendlyName,
+        vendorId: p.vendorId, productId: p.productId, pnpId: p.pnpId,
+      }))));
+    } catch { /* logging only */ }
+
+    // Known GNSS-module vendor IDs (lowercase hex, no 0x):
+    //   1546 u-blox · 067b Prolific (SiRF/GPS bridges) · 0e8d MediaTek ·
+    //   1199 Sierra · 10c4 SiLabs CP210x UART bridge · 0403 FTDI
+    // CP210x/FTDI/Prolific are also used by plain serial adapters, so those
+    // VIDs only qualify when paired with a GNSS-looking name (avoids grabbing
+    // an unrelated COM port). A u-blox VID is definitive on its own.
+    const GNSS_BRIDGE_VIDS = new Set(['067b', '0e8d', '1199', '10c4', '0403']);
+    const looksGnss = (s) => /u-?blox|gnss|gps|nmea|navsat|glonass|location\s*sensor/i.test(s || '');
+
+    const score = (p) => {
       const vid = (p.vendorId || '').toLowerCase();
-      return (
-        mfg.includes('u-blox') ||
-        mfg.includes('ublox') ||
-        friendly.includes('gps') ||
-        friendly.includes('gnss') ||
-        vid === '1546'
-      );
-    });
-    if (candidates.length > 0) return candidates[0].path;
+      const pnp = (p.pnpId || '').toLowerCase();
+      const text = `${p.manufacturer || ''} ${p.friendlyName || ''} ${p.pnpId || ''}`;
+      const nameGnss = looksGnss(text);
+      if (vid === '1546' || pnp.includes('vid_1546')) return 100;      // u-blox — definitive
+      if (nameGnss && GNSS_BRIDGE_VIDS.has(vid)) return 70;            // GNSS name + bridge VID
+      if (nameGnss) return 50;                                         // GNSS name alone
+      return 0;                                                        // bare serial adapter — ignore
+    };
+
+    const ranked = ports
+      .map((p) => ({ p, s: score(p) }))
+      .filter((x) => x.s > 0)
+      .sort((a, b) => b.s - a.s);
+
+    if (ranked.length > 0) {
+      console.log('[INTERNAL-GPS] Selected GPS port:', ranked[0].p.path, '(score', ranked[0].s + ')');
+      return ranked[0].p.path;
+    }
+    console.warn('[INTERNAL-GPS] No GPS COM port matched among', ports.length, 'enumerated port(s)');
     return null;
   } catch (err) {
     console.warn('[INTERNAL-GPS] Port enumeration failed:', err.message);

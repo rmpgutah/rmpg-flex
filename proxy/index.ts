@@ -558,6 +558,15 @@ const API_ROUTES: RouteRule[] = [
   // sub-tree to the rewrite makes the round-trip self-consistent.
   { kind: 'regex', value: /^\/api\/dispatch\/calls\/\d+\/(persons|vehicles)(\/.*)?$/ },
 
+  // /api/dispatch/calls/:id/property (PUT/DELETE) — single-property attach/clear
+  // for a call. The rewrite (callLinks.ts) owns it and inherits the property's
+  // address onto the call; legacy never implemented the write, so the call
+  // property panel's attach/clear silently fell through to env.LEGACY and the
+  // change never persisted ("save then vanish"). Sibling of persons|vehicles
+  // above — same router, just left out of that alternation. GET stays with the
+  // dispatchCalls detail payload.
+  { kind: 'regex', value: /^\/api\/dispatch\/calls\/\d+\/property$/, methods: ['PUT', 'DELETE'] },
+
   // /api/dispatch/request-backup — officer backup request (RadialMenu).
   // New rewrite handler (panic.ts); legacy never implemented it → 404.
   { kind: 'prefix', value: '/api/dispatch/request-backup' },

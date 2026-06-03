@@ -2185,10 +2185,29 @@ async function detectToughbook() {
     // matched — no live RMPG hardware predates the 2008 rename.
     const mfg = manufacturer.toLowerCase();
     const mdl = model.toLowerCase();
-    const isToughbook = mfg.includes('panasonic') && mdl.includes('fz-55');
 
-    const portPath = isToughbook ? await findGpsPort() : null;
-    console.log(`[INTERNAL-GPS] Detect: mfg="${manufacturer}" model="${model}" toughbook=${isToughbook} port=${portPath}`);
+    // Normalize the model so hyphen / spacing / case / SKU-suffix variants of
+    // the order code all match. WMI reports the FZ-55 inconsistently across
+    // BIOS/SKUs: "FZ-55", "FZ55", "FZ-55C", "FZ-55F MK2", "Toughbook FZ-55", …
+    // The old exact `mdl.includes('fz-55')` (hyphen, lowercase) missed every
+    // variant that lacked that precise hyphen → isToughbook=false → the unit
+    // silently fell back to navigator.geolocation (WiFi/IP).
+    //   ▶ Confirmed live 2026-06-02: an in-fleet FZ-55 was recording
+    //     gps_source='browser_desktop' (the IP fallback) for exactly this reason.
+    const mdlNorm = mdl.replace(/[^a-z0-9]/g, '');     // "FZ-55C" → "fz55c"
+    const mfgIsPanasonic = mfg.includes('panasonic');
+    const modelLooksFz55 = mdlNorm.includes('fz55');
+
+    // Detect by HARDWARE PRESENCE, not just the model string: enumerate serial
+    // ports up front and treat any Panasonic machine exposing a u-blox/GNSS COM
+    // port as a GPS-equipped Toughbook even when its model code doesn't parse as
+    // FZ-55. A Panasonic CF-33 with no GPS module finds no port → still excluded
+    // (preserves the original intent of keeping non-GPS Panasonic gear on
+    // navigator.geolocation), so this only ever ADDS correctly-detected units.
+    const portPath = mfgIsPanasonic ? await findGpsPort() : null;
+    const isToughbook = mfgIsPanasonic && (modelLooksFz55 || portPath != null);
+
+    console.log(`[INTERNAL-GPS] Detect: mfg="${manufacturer}" model="${model}" panasonic=${mfgIsPanasonic} fz55=${modelLooksFz55} port=${portPath || 'none'} -> toughbook=${isToughbook}`);
     return { isToughbook, manufacturer, model, portPath };
   } catch (err) {
     console.warn('[INTERNAL-GPS] Detection failed:', err.message);
@@ -2216,7 +2235,9 @@ ipcMain.handle('geo:internal-gps-start', async (_event, { portPath, baudRate } =
       mainWindow.webContents.send('geo:internal-gps-error', { message: err.message });
     }
   });
-  const ok = await internalGpsReader.start(portPath, baudRate || 4800);
+  // No baud default here — let InternalGps probe its 9600-first ladder
+  // (u-blox NEO-M8 ships at 9600; the old 4800 default never locked).
+  const ok = await internalGpsReader.start(portPath, baudRate);
   return { ok, portPath };
 });
 
