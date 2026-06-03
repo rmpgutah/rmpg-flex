@@ -5,6 +5,7 @@ import { useCallback, useState, useRef, useEffect } from 'react';
 import type mapboxgl from 'mapbox-gl';
 import { apiFetch } from './useApi';
 import { whenStyleReady } from '../pages/map/utils/safeAddSource';
+import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
 
 interface BeatActivity {
   beat: string;
@@ -40,8 +41,8 @@ export function useMapboxResponseTime(map: mapboxgl.Map | null) {
     return () => {
       if (!map) return;
       try {
-        [FILL_LAYER_ID, LINE_LAYER_ID].forEach((id) => { if (map.getLayer(id)) map.removeLayer(id); });
-        if (map.getSource(SOURCE_ID)) map.removeSource(SOURCE_ID);
+        [FILL_LAYER_ID, LINE_LAYER_ID].forEach((id) => { safeRemoveLayer(map, id); });
+        safeRemoveSource(map, SOURCE_ID);
       } catch { /* ignore */ }
     };
   }, [map]);
@@ -49,8 +50,8 @@ export function useMapboxResponseTime(map: mapboxgl.Map | null) {
   const clearFromMap = useCallback(() => {
     if (!map) return;
     visibleRef.current = false;
-    try { if (map.getLayer(FILL_LAYER_ID)) map.removeLayer(FILL_LAYER_ID); } catch { /* */ }
-    try { if (map.getLayer(LINE_LAYER_ID)) map.removeLayer(LINE_LAYER_ID); } catch { /* */ }
+    safeRemoveLayer(map, FILL_LAYER_ID);
+    safeRemoveLayer(map, LINE_LAYER_ID);
   }, [map]);
 
   const renderOnMap = useCallback(async (beatData: BeatActivity[], m: mapboxgl.Map) => {
@@ -104,7 +105,7 @@ export function useMapboxResponseTime(map: mapboxgl.Map | null) {
         } else {
           m.addSource(SOURCE_ID, { type: 'geojson', data: { type: 'FeatureCollection', features } });
         }
-        if (!m.getLayer(FILL_LAYER_ID)) {
+        if (!hasLayer(m, FILL_LAYER_ID)) {
           m.addLayer({
             id: FILL_LAYER_ID,
             type: 'fill',
@@ -117,7 +118,7 @@ export function useMapboxResponseTime(map: mapboxgl.Map | null) {
             },
           });
         }
-        if (!m.getLayer(LINE_LAYER_ID)) {
+        if (!hasLayer(m, LINE_LAYER_ID)) {
           m.addLayer({
             id: LINE_LAYER_ID,
             type: 'line',

@@ -3,6 +3,7 @@ import { useRef, useCallback, useState } from 'react';
 import type mapboxgl from 'mapbox-gl';
 import { getMatrix, type MatrixResult } from '../utils/mapboxServices';
 import { whenStyleReady } from '../pages/map/utils/safeAddSource';
+import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
 
 export interface UnitEta {
   unitId: number;
@@ -32,8 +33,8 @@ export function useMapboxMatrix(map: mapboxgl.Map | null) {
     if (!map) return;
     if (routeSourceRef.current) {
       try {
-        if (map.getLayer('rmpg-matrix-route')) map.removeLayer('rmpg-matrix-route');
-        if (map.getSource(routeSourceRef.current)) map.removeSource(routeSourceRef.current);
+        safeRemoveLayer(map, 'rmpg-matrix-route');
+        safeRemoveSource(map, routeSourceRef.current);
       } catch { /* ignore */ }
     }
     routeSourceRef.current = null;

@@ -8,6 +8,7 @@ import { localToday, safeDateTimeStr, parseTimestamp } from '../../utils/dateUti
 import { escapeHtml } from '../../utils/sanitize';
 import { mapboxgl } from '../../utils/mapboxLoader';
 import { whenStyleReady } from './utils/safeAddSource';
+import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../../utils/mapboxSafeLayer';
 
 // ============================================================
 // Types
@@ -120,8 +121,8 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
   const clearMapObjects = useCallback(() => {
     if (!map) return;
     for (const id of sourceIdsRef.current) {
-      try { if (map.getLayer(id)) map.removeLayer(id); } catch {}
-      try { if (map.getSource(id)) map.removeSource(id); } catch {}
+      safeRemoveLayer(map, id);
+      safeRemoveSource(map, id);
     }
     sourceIdsRef.current = [];
     if (playbackMarkerRef.current) {

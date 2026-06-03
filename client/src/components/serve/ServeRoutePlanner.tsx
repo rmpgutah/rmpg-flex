@@ -9,6 +9,7 @@ import { getMapboxAccessToken } from '../../utils/mapboxApiKey';
 import { whenStyleReady } from '../../pages/map/utils/safeAddSource';
 import { apiFetch } from '../../hooks/useApi';
 import type { ServeJob } from '../../types';
+import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../../utils/mapboxSafeLayer';
 
 // ─── Types ──────────────────────────────────────────────────────────────
 
@@ -370,8 +371,8 @@ export default function ServeRoutePlanner({
     if (!mapRef.current) return;
     const srcId = routeSourceIdRef.current;
     if (srcId) {
-      try { if (mapRef.current.getLayer(srcId)) mapRef.current.removeLayer(srcId); } catch {}
-      try { if (mapRef.current.getSource(srcId)) mapRef.current.removeSource(srcId); } catch {}
+      safeRemoveLayer(mapRef.current, srcId);
+      safeRemoveSource(mapRef.current, srcId);
       routeSourceIdRef.current = null;
     }
   }, []);

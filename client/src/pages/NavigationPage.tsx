@@ -39,6 +39,7 @@ import { installWebglContextRecovery, type MapCamera } from '../utils/webglRecov
 import { getMapboxAccessToken } from '../utils/mapboxApiKey';
 import { apiFetch } from '../hooks/useApi';
 import { compassCardinal } from '../utils/locationImagery';
+import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
 
 // ─── Helpers ────────────────────────────────────────────────
 
@@ -978,8 +979,8 @@ export default function NavigationPage() {
         });
       }
       const vis = crimeOn ? 'visible' : 'none';
-      if (map.getLayer('rmpg-crime-heat')) map.setLayoutProperty('rmpg-crime-heat', 'visibility', vis);
-      if (map.getLayer('rmpg-crime-pts')) map.setLayoutProperty('rmpg-crime-pts', 'visibility', vis);
+      if (hasLayer(map, 'rmpg-crime-heat')) map.setLayoutProperty('rmpg-crime-heat', 'visibility', vis);
+      if (hasLayer(map, 'rmpg-crime-pts')) map.setLayoutProperty('rmpg-crime-pts', 'visibility', vis);
     } catch { /* style mid-reload — next data tick re-applies */ }
   }, [crimeIncidents, crimeOn, mapReady]);
 
@@ -1022,7 +1023,7 @@ export default function NavigationPage() {
         });
       }
       const vis = crashOn ? 'visible' : 'none';
-      if (map.getLayer('rmpg-crash-pts')) map.setLayoutProperty('rmpg-crash-pts', 'visibility', vis);
+      if (hasLayer(map, 'rmpg-crash-pts')) map.setLayoutProperty('rmpg-crash-pts', 'visibility', vis);
     } catch { /* style mid-reload — next data tick re-applies */ }
   }, [crashes, crashOn, mapReady]);
 
@@ -1189,7 +1190,7 @@ export default function NavigationPage() {
           },
         });
       }
-      if (map.getLayer('rmpg-trail-line')) {
+      if (hasLayer(map, 'rmpg-trail-line')) {
         map.setLayoutProperty('rmpg-trail-line', 'visibility', trailOn ? 'visible' : 'none');
       }
     } catch { /* style mid-reload — next fix re-applies */ }

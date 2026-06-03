@@ -22,6 +22,7 @@ import { toDisplayLabel } from '../utils/formatters';
 import { classifyPtType, type PropertyType } from '../pages/map/utils/landTypes';
 import { getAerialThumbUrl, getStreetPerspectiveUrl, findStreetImage, findNearestRoadBearing, warmImageryToken, compassCardinal, distanceAndBearing, type StreetImage } from '../utils/locationImagery';
 import type { StreetViewTarget } from '../pages/map/components/StreetViewLightbox';
+import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
 
 /** Live device position the popup uses for the nav-to-point readout. */
 export interface WhatsHereGps { latitude: number | null; longitude: number | null; speed: number | null; }
@@ -183,7 +184,7 @@ export function useWhatsHere({ map, popup, active, gps, onOpenStreetView }: Opts
       // rendered at this zoom — exactly when the operator wants structure detail.
       let ptType: PropertyType | null = null;
       try {
-        if (map.getLayer(ADDRESS_POINT_LAYER)) {
+        if (hasLayer(map, ADDRESS_POINT_LAYER)) {
           const box: [mapboxgl.PointLike, mapboxgl.PointLike] = [
             [e.point.x - 6, e.point.y - 6], [e.point.x + 6, e.point.y + 6],
           ];
