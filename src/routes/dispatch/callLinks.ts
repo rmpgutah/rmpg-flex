@@ -15,7 +15,7 @@ import { Hono } from 'hono';
 import type { Env } from '../../types';
 import { LIST_VIEW_SELECT } from './calls';
 import { getDb, query, queryFirst, execute } from '../../utils/db';
-import { sendToUser, broadcastAll } from '../ws';
+import { broadcastAll } from '../ws';
 import { emitAlert } from '../../utils/alertHub';
 // Live D1 stores literal "None"/"N/A"/"0" in flag columns rather than NULL, so a
 // naive truthiness check fires a bogus officer-safety alert on a subject with no
@@ -149,8 +149,11 @@ links.post('/calls/:id/persons', async (c) => {
       ? `Subject added with caution flag: ${person.last_name}`
       : `Subject added: ${person.last_name}`;
     for (const uid of officerIds) {
-      sendToUser(uid, 'call_status_for_officer', {
-        action: 'note_added', call_id: Number(callId), short,
+      // Targeted to the assigned officer's MDT via AlertHubDO + target_user_id
+      // (the voice hook filters on it). sendToUser was per-isolate-dead, so this
+      // caution-flag voice cue reached the officer never.
+      await emitAlert(c.env, 'call_status_for_officer', {
+        action: 'note_added', call_id: Number(callId), target_user_id: uid, short,
       });
     }
   }
@@ -310,8 +313,11 @@ links.post('/calls/:id/persons/quick-add', async (c) => {
       ? `Subject added with caution flag: ${flag?.last_name ?? ''}`
       : `Subject added: ${flag?.last_name ?? ''}`;
     for (const uid of officerIds) {
-      sendToUser(uid, 'call_status_for_officer', {
-        action: 'note_added', call_id: Number(callId), short,
+      // Targeted to the assigned officer's MDT via AlertHubDO + target_user_id
+      // (the voice hook filters on it). sendToUser was per-isolate-dead, so this
+      // caution-flag voice cue reached the officer never.
+      await emitAlert(c.env, 'call_status_for_officer', {
+        action: 'note_added', call_id: Number(callId), target_user_id: uid, short,
       });
     }
   }
@@ -376,8 +382,11 @@ links.post('/calls/:id/vehicles', async (c) => {
       ? `Vehicle added: plate ${vehicle.plate_number}`
       : (`Vehicle added: ${vehicle.make || ''} ${vehicle.model || ''}`.trim() || 'Vehicle added');
     for (const uid of officerIds) {
-      sendToUser(uid, 'call_status_for_officer', {
-        action: 'note_added', call_id: Number(callId), short,
+      // Targeted to the assigned officer's MDT via AlertHubDO + target_user_id
+      // (the voice hook filters on it). sendToUser was per-isolate-dead, so this
+      // caution-flag voice cue reached the officer never.
+      await emitAlert(c.env, 'call_status_for_officer', {
+        action: 'note_added', call_id: Number(callId), target_user_id: uid, short,
       });
     }
   }
@@ -523,8 +532,11 @@ links.post('/calls/:id/vehicles/quick-add', async (c) => {
       ? `Vehicle added: plate ${v.plate_number}`
       : (`Vehicle added: ${v.make || ''} ${v.model || ''}`.trim() || 'Vehicle added');
     for (const uid of officerIds) {
-      sendToUser(uid, 'call_status_for_officer', {
-        action: 'note_added', call_id: Number(callId), short,
+      // Targeted to the assigned officer's MDT via AlertHubDO + target_user_id
+      // (the voice hook filters on it). sendToUser was per-isolate-dead, so this
+      // caution-flag voice cue reached the officer never.
+      await emitAlert(c.env, 'call_status_for_officer', {
+        action: 'note_added', call_id: Number(callId), target_user_id: uid, short,
       });
     }
   }
@@ -599,8 +611,10 @@ links.put('/calls/:id/property', async (c) => {
   if ((updated as any)?.hazard_notes) {
     const officerIds = await getOfficerUserIdsForCall(db, callId);
     for (const uid of officerIds) {
-      sendToUser(uid, 'dispatch_alert', {
+      await emitAlert(c.env, 'dispatch_alert', {
         call_id: Number(callId),
+        target_user_id: uid,
+        message: `PROPERTY HAZARD ON FILE${prop.name ? ` — ${prop.name}` : ''}`,
         warnings: [{
           type: 'HAZARD',
           label: 'PROPERTY HAZARD ON FILE',

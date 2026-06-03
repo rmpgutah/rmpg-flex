@@ -310,6 +310,32 @@ export function useDispatchVoiceAlerts(options?: {
       })
     );
 
+    // ── Officer MDT note: subject/vehicle added to YOUR call (caution-flag aware) ──
+    // Targeted to the assigned officer via target_user_id; the server (callLinks)
+    // emits this when a person/vehicle is linked, with a caution-flag-aware `short`.
+    unsubs.push(
+      subscribe('call_status_for_officer', (msg) => {
+        const data = (msg.data || msg.payload || msg) as any;
+        if (data.target_user_id != null && String(data.target_user_id) !== String(selfIdRef.current)) return;
+        const text = String(data.short || 'Call updated.');
+        const severity: AlertSeverity = /caution|warrant|armed|weapon|gang|violent/i.test(text) ? 'major' : 'minor';
+        if (voiceAlert) { voiceAlert(text, severity); } else { announceWithSeverity(text, severity); }
+        onAlert?.({ id: nextAlertId(), severity, title: 'CALL UPDATE', message: text, timestamp: Date.now() });
+      })
+    );
+
+    // ── Property hazard on the assigned officer's call (officer safety) ──
+    unsubs.push(
+      subscribe('dispatch_alert', (msg) => {
+        const data = (msg.data || msg.payload || msg) as any;
+        if (data.target_user_id != null && String(data.target_user_id) !== String(selfIdRef.current)) return;
+        const w = Array.isArray(data.warnings) ? data.warnings[0] : null;
+        const text = String(data.message || w?.label || 'Officer safety alert on this call.');
+        if (voiceAlert) { voiceAlert(text, 'major'); } else { announceWithSeverity(text, 'major'); }
+        onAlert?.({ id: nextAlertId(), severity: 'major', title: 'OFFICER SAFETY', message: text, timestamp: Date.now() });
+      })
+    );
+
     // ── Welfare emergency (all units) ──
     unsubs.push(
       subscribe('welfare_emergency', (msg) => {
