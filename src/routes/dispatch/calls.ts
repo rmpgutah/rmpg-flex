@@ -11,6 +11,7 @@ import { geocodeAddress } from '../geocode';
 import { resolveDistrict } from '../../utils/districtResolver';
 import { evaluateNotificationRules } from '../notificationEngine';
 import { resolvePanicForCall } from './panic';
+import { applyTripEvent } from '../../utils/tripStore';
 
 const calls = new Hono<Env>();
 
@@ -996,6 +997,27 @@ calls.post('/:id/status', async (c) => {
     params.push(...mileageParams);
     params.push(id);
     await execute(db, `UPDATE calls_for_service SET status = ?, status_changed_at = datetime('now'), updated_at = datetime('now')${timeSql}${dispSql}${notesSql}${mileageSql} WHERE id = ?`, ...params);
+
+    // Trip segmentation on call-status transition: enroute → open CALL_RESPONSE;
+    // onscene → close (the On-Scene point); terminal → close. Best-effort.
+    // Runs BEFORE the terminal-status free-units block nulls current_call_id,
+    // so `WHERE current_call_id = ?` still finds the units working this call.
+    try {
+      const tripUnits = await query<{ id: number; officer_id: number | null; vehicle_id: number | null; latitude: number | null; longitude: number | null }>(
+        db, 'SELECT id, officer_id, vehicle_id, latitude, longitude FROM units WHERE current_call_id = ?', id);
+      const tripCallMeta = await queryFirst<{ call_number: string | null; incident_type: string | null }>(
+        db, 'SELECT call_number, incident_type FROM calls_for_service WHERE id = ?', id);
+      for (const u of tripUnits) {
+        await applyTripEvent({
+          db, env: c.env, unitId: u.id, officerId: u.officer_id, vehicleId: u.vehicle_id,
+          event: { kind: 'status', status },
+          ctx: { curLat: u.latitude, curLng: u.longitude, prevLat: u.latitude, prevLng: u.longitude,
+                 callId: Number(id), callNumber: tripCallMeta?.call_number ?? null, callType: tripCallMeta?.incident_type ?? null },
+          startMileage: Number.isFinite(sm) && sm > 0 ? sm : null,
+          endMileage: Number.isFinite(em) && em > 0 ? em : null,
+        });
+      }
+    } catch (e) { console.warn('[calls] trip engine non-fatal:', e); }
 
     // Mirror the latest odometer reading onto the unit(s) working this call so
     // the unit board's mileage stays current (ending preferred over starting).

@@ -80,8 +80,11 @@ export async function applyTripEvent(args: ApplyArgs): Promise<void> {
   }
 
   if (d.append) {
+    // No broadcast here: the gps path loops every fix in a batch, so a per-fix
+    // broadcast would add an awaited Durable-Object round-trip per fix to a hot
+    // endpoint. Open/close broadcasts (rare) stay; the dispatch badge polls for
+    // live rollups. broadcastTrip is still used by the open/close branches.
     await applyAppend(db, d.append.tripId, d.append.fix, d.updateAnchor);
-    await broadcastTrip(env, db, d.append.tripId, 'appended');
   }
 }
 
