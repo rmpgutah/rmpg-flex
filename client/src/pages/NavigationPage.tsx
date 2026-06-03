@@ -272,22 +272,38 @@ function HeadingTape({ heading }: { heading: number | null }) {
   );
 }
 
-// Longitudinal G-force bar (brake ← center → accel), color-ramped by magnitude.
-function GForceMeter({ g }: { g: number }) {
-  const clamped = Math.max(-1, Math.min(1, g));
-  const pct = ((clamped + 1) / 2) * 100;
-  const color = Math.abs(g) > 0.4 ? '#ef4444' : Math.abs(g) > 0.2 ? '#f59e0b' : '#22c55e';
+// Live 2-axis G-force ball — longitudinal load (accel ↑ / brake ↓) plotted
+// against lateral/cornering load (left ↔ right) on a friction circle, with a
+// dim gold session peak-hold ring. The most information-dense driving-dynamics
+// instrument on the panel: one glance shows how hard the vehicle is loaded AND
+// in which direction, right now — and the peak ring shows the worst of the run.
+function GForceBall({ longG, latG, peak, size = 66 }: {
+  longG: number; latG: number; peak: { accel: number; brake: number; lat: number }; size?: number;
+}) {
+  const c = size / 2, R = c - 9; // 1.0 g = R
+  const toPx = (g: number) => Math.max(-1.15, Math.min(1.15, g)) * R;
+  const mag = Math.hypot(longG, latG);
+  const col = mag > 0.55 ? '#ef4444' : mag > 0.32 ? '#f59e0b' : '#22c55e';
+  const peakMag = Math.min(1.15, Math.hypot(Math.max(peak.accel, peak.brake), peak.lat));
   return (
-    <div className="w-full">
-      <div className="flex items-center justify-between text-[7px] uppercase text-rmpg-600">
-        <span>brake</span>
-        <span className="font-mono" style={{ color }}>{g >= 0 ? '+' : ''}{g.toFixed(2)} g</span>
-        <span>accel</span>
-      </div>
-      <div className="relative h-1.5 bg-rmpg-800 overflow-hidden" style={{ borderRadius: 2 }}>
-        <div className="absolute top-0 bottom-0" style={{ left: '50%', width: 1, background: '#444' }} />
-        <div className="absolute top-0 bottom-0" style={{ left: `${Math.min(50, pct)}%`, width: `${Math.abs(pct - 50)}%`, background: color, transition: 'all 0.3s ease-out' }} />
-      </div>
+    <div className="relative shrink-0" style={{ width: size, height: size }} title="Live G-force — longitudinal vs lateral load · gold ring = session peak">
+      <svg viewBox={`0 0 ${size} ${size}`} className="absolute inset-0" aria-hidden="true">
+        {[0.5, 1.0].map((g) => (
+          <circle key={g} cx={c} cy={c} r={g * R} fill="none" stroke={g === 1 ? '#2e2e2e' : '#1a1a1a'} strokeWidth="1" />
+        ))}
+        <line x1={c} y1={c - R} x2={c} y2={c + R} stroke="#181818" strokeWidth="1" />
+        <line x1={c - R} y1={c} x2={c + R} y2={c} stroke="#181818" strokeWidth="1" />
+        {peakMag > 0.05 && (
+          <circle cx={c} cy={c} r={peakMag * R} fill="none" stroke="#d4a017" strokeOpacity="0.42" strokeWidth="1" strokeDasharray="2 2" />
+        )}
+        {/* live load vector + dot */}
+        <line x1={c} y1={c} x2={c + toPx(latG)} y2={c - toPx(longG)} stroke={col} strokeWidth="1.25" strokeOpacity="0.55" />
+        <circle cx={c + toPx(latG)} cy={c - toPx(longG)} r="3.2" fill={col} stroke="#0a0a0a" strokeWidth="1" style={{ transition: 'cx 0.25s ease-out, cy 0.25s ease-out' }} />
+      </svg>
+      <span className="absolute top-0 left-1/2 -translate-x-1/2 text-[6px] text-rmpg-600">A</span>
+      <span className="absolute bottom-0 left-1/2 -translate-x-1/2 text-[6px] text-rmpg-600">B</span>
+      <span className="absolute left-0 top-1/2 -translate-y-1/2 text-[6px] text-rmpg-700">L</span>
+      <span className="absolute right-0 top-1/2 -translate-y-1/2 text-[6px] text-rmpg-700">R</span>
     </div>
   );
 }
@@ -455,6 +471,16 @@ export default function NavigationPage() {
   const speedHistRef = useRef<number[]>([]); // rolling mph samples for the sparkline
   const accelRef = useRef<{ mph: number; t: number } | null>(null);
   const [gForce, setGForce] = useState(0);
+  // Live lateral (cornering) G + a session peak-hold envelope for the G-ball.
+  const [latGLive, setLatGLive] = useState(0);
+  const peakGRef = useRef({ accel: 0, brake: 0, lat: 0 });
+  const headingForLatRef = useRef<{ dir: number; t: number } | null>(null);
+  // Terrain-derived instruments (fed by the 3D DEM): live ground elevation +
+  // cumulative session ascent. Null until DEM tiles load near the unit.
+  const [elevFt, setElevFt] = useState<number | null>(null);
+  const [climbFt, setClimbFt] = useState(0);
+  const climbRef = useRef(0);
+  const climbBaseRef = useRef<number | null>(null); // hysteresis reference for total-ascent
   // Speed derived from position when the device reports none (cellular/WiFi
   // positioning has no speed-over-ground). Keeps the gauges live everywhere.
   const [derivedMph, setDerivedMph] = useState<number | null>(null);
@@ -617,8 +643,35 @@ export default function NavigationPage() {
     // Longitudinal G-force from the speed delta (mph/s → g; 1 g ≈ 21.94 mph/s).
     if (effMph != null) {
       const p2 = accelRef.current;
-      if (p2 && now > p2.t) setGForce(((effMph - p2.mph) / ((now - p2.t) / 1000)) / 21.94);
+      if (p2 && now > p2.t) {
+        const g = ((effMph - p2.mph) / ((now - p2.t) / 1000)) / 21.94;
+        setGForce(g);
+        if (g > 0) peakGRef.current.accel = Math.max(peakGRef.current.accel, g);
+        else if (g < 0) peakGRef.current.brake = Math.max(peakGRef.current.brake, -g);
+      }
       accelRef.current = { mph: effMph, t: now };
+    }
+    // Live lateral (cornering) G from turn-rate × speed — mirrors the TRIP
+    // report's math but live, so the bottom-bar G-ball shows cornering load
+    // without opening the drawer. Course-over-ground heading is steadier than
+    // device heading and the >8 mph gate kills standstill heading jitter.
+    if (dir != null && effMph != null && effMph > 8) {
+      const hp = headingForLatRef.current;
+      if (hp && now > hp.t) {
+        let dd = (dir - hp.dir) % 360; if (dd > 180) dd -= 360; if (dd < -180) dd += 360;
+        const dts = (now - hp.t) / 1000;
+        if (dts > 0.05 && dts < 10) {
+          const omega = (dd / dts) * Math.PI / 180;     // rad/s, signed (+right / −left)
+          let lg = (omega * (effMph / 2.237)) / 9.80665; // ω·v / g
+          if (!Number.isFinite(lg) || Math.abs(lg) > 2) lg = 0; // clamp GPS noise
+          setLatGLive(lg);
+          peakGRef.current.lat = Math.max(peakGRef.current.lat, Math.abs(lg));
+        }
+      }
+      headingForLatRef.current = { dir, t: now };
+    } else if (effMph != null && effMph <= 8) {
+      setLatGLive(0);
+      if (dir != null) headingForLatRef.current = { dir, t: now };
     }
 
     const map = mapInstanceRef.current;
@@ -632,6 +685,19 @@ export default function NavigationPage() {
       });
       // Recompute route progress / off-route from the live position.
       updateOrigin(gps.latitude, gps.longitude);
+      // Terrain-derived instruments: sample TRUE ground elevation from the 3D
+      // DEM (exaggerated:false → real meters, not the 1.15× visual lift) and
+      // accumulate session ascent with a 1.5 ft deadband so DEM noise / minor
+      // dips don't inflate the climb total.
+      const elM = map.queryTerrainElevation([gps.longitude, gps.latitude], { exaggerated: false });
+      if (elM != null && Number.isFinite(elM)) {
+        const ft = elM * 3.28084;
+        setElevFt(ft);
+        const base = climbBaseRef.current;
+        if (base == null) climbBaseRef.current = ft;
+        else if (ft > base + 1.5) { climbRef.current += ft - base; setClimbFt(climbRef.current); climbBaseRef.current = ft; }
+        else if (ft < base) climbBaseRef.current = ft; // descending → lower the trough for the next climb
+      }
     }
     // Mirror onto the corner chase inset (steeper + tighter, snappier follow).
     const inset = insetMapRef.current;
@@ -1167,8 +1233,6 @@ export default function NavigationPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [tripOpen, gps.capturedCount],
   );
-  const liveLatG = movementReport && movementReport.series.length
-    ? movementReport.series[movementReport.series.length - 1].latG : 0;
   const destBearing = (destCoordsRef.current && gps.latitude != null && gps.longitude != null)
     ? bearingTo(gps.latitude, gps.longitude, destCoordsRef.current.lat, destCoordsRef.current.lng) : null;
   const destCrowMi = (destCoordsRef.current && gps.latitude != null && gps.longitude != null)
@@ -1874,8 +1938,10 @@ export default function NavigationPage() {
           report={movementReport}
           liveMph={hasFix ? displayMph : null}
           liveLongG={gForce}
-          liveLatG={liveLatG}
+          liveLatG={latGLive}
           sessionMs={sessionMs}
+          climbFt={climbFt}
+          elevFt={elevFt}
           onClose={() => setTripOpen(false)}
         />
       )}
@@ -1945,18 +2011,38 @@ export default function NavigationPage() {
             </div>
             <div className="w-px self-stretch my-1 bg-gradient-to-b from-transparent via-rmpg-700 to-transparent" />
 
-            {/* Bay 4 — speed area-chart + G-force */}
-            <div className="flex flex-col justify-center gap-1.5 px-3" style={{ width: 150 }}>
+            {/* Bay 4 — speed area-chart + live 2-axis G-force ball */}
+            <div className="flex flex-col justify-center gap-1.5 px-3" style={{ width: 186 }}>
               <div>
                 <div className="text-[7px] uppercase tracking-wider text-rmpg-600 mb-0.5 flex items-center gap-1"><Gauge className="w-2.5 h-2.5" /> Speed · 60s</div>
                 {spark.length > 1 ? (
-                  <svg viewBox={`0 0 ${spark.length - 1} 24`} preserveAspectRatio="none" style={{ width: 150, height: 30 }} aria-hidden="true">
+                  <svg viewBox={`0 0 ${spark.length - 1} 24`} preserveAspectRatio="none" style={{ width: 162, height: 28 }} aria-hidden="true">
                     <polyline points={`0,24 ${spark.map((v, i) => `${i},${24 - Math.min(24, (v / sparkMax) * 24)}`).join(' ')} ${spark.length - 1},24`} fill="#d4a01722" stroke="none" />
                     <polyline points={spark.map((v, i) => `${i},${24 - Math.min(24, (v / sparkMax) * 24)}`).join(' ')} fill="none" stroke="#d4a017" strokeWidth="1.5" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
                   </svg>
-                ) : <div className="flex items-center text-[8px] text-rmpg-700" style={{ height: 30 }}>awaiting speed…</div>}
+                ) : <div className="flex items-center text-[8px] text-rmpg-700" style={{ height: 28 }}>awaiting speed…</div>}
               </div>
-              <GForceMeter g={gForce} />
+              <div className="flex items-center gap-2">
+                <GForceBall longG={gForce} latG={latGLive} peak={peakGRef.current} />
+                <div className="flex-1 min-w-0 flex flex-col gap-1.5">
+                  <div className="leading-none">
+                    <div className="flex items-center justify-between text-[7px] uppercase tracking-wider text-rmpg-600">
+                      <span>Long</span><span className="font-mono text-rmpg-500">pk {Math.max(peakGRef.current.accel, peakGRef.current.brake).toFixed(2)}</span>
+                    </div>
+                    <div className="font-mono font-bold text-[13px] tabular-nums" style={{ color: Math.abs(gForce) > 0.4 ? '#ef4444' : Math.abs(gForce) > 0.2 ? '#f59e0b' : '#22c55e' }}>
+                      {gForce >= 0 ? '+' : '−'}{Math.abs(gForce).toFixed(2)}<span className="text-[8px] text-rmpg-600 ml-0.5">g</span>
+                    </div>
+                  </div>
+                  <div className="leading-none">
+                    <div className="flex items-center justify-between text-[7px] uppercase tracking-wider text-rmpg-600">
+                      <span>Lat</span><span className="font-mono text-rmpg-500">pk {peakGRef.current.lat.toFixed(2)}</span>
+                    </div>
+                    <div className="font-mono font-bold text-[13px] tabular-nums" style={{ color: Math.abs(latGLive) > 0.4 ? '#ef4444' : Math.abs(latGLive) > 0.2 ? '#f59e0b' : '#22c55e' }}>
+                      {Math.abs(latGLive) < 0.02 ? '·' : latGLive >= 0 ? 'R' : 'L'} {Math.abs(latGLive).toFixed(2)}<span className="text-[8px] text-rmpg-600 ml-0.5">g</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
             <div className="w-px self-stretch my-1 bg-gradient-to-b from-transparent via-rmpg-700 to-transparent" />
 
@@ -1969,6 +2055,8 @@ export default function NavigationPage() {
                 <StatTile label="Course" value={course != null ? `${Math.round(course)}°` : '—'} dim={course == null} />
                 <StatTile label="Distance" value={`${distanceMi.toFixed(2)} mi`} />
                 <StatTile label="Session" value={fmtDuration(sessionMs)} />
+                <StatTile label="Elev" value={elevFt != null ? `${Math.round(elevFt).toLocaleString()} ft` : '—'} dim={elevFt == null} />
+                <StatTile label="Climb" value={`${Math.round(climbFt).toLocaleString()} ft`} accent={climbFt > 0 ? '#22c55e' : undefined} dim={climbFt === 0} />
                 <StatTile label="Bearing" value={destBearing != null ? `${Math.round(destBearing)}°` : '—'} accent={destBearing != null ? '#ef4444' : undefined} dim={destBearing == null} />
                 <StatTile label="To Call" value={destCrowMi != null ? `${destCrowMi.toFixed(1)} mi` : '—'} dim={destCrowMi == null} />
                 <StatTile label="Source" value={src.label} accent={src.color} />

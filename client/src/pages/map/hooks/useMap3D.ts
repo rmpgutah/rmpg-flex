@@ -31,6 +31,40 @@ const SKY_LAYER = 'rmpg-sky';
 const BUILDING_LAYER = 'rmpg-3d-buildings';
 const PITCH_3D = 60;
 
+// Mapbox's documented default light — what a flat (3D-off) map expects. We
+// restore this on teardown so disabling 3D doesn't leave the basemap oddly lit.
+const DEFAULT_LIGHT: mapboxgl.LightSpecification = {
+  anchor: 'viewport', color: '#ffffff', intensity: 0.5, position: [1.15, 210, 30],
+};
+
+// ── Directional key light ────────────────────────────────────────────────────
+// Without this, every extruded face is the SAME flat shade and the skyline reads
+// as a gray smear. A single low key light makes each face catch light at a
+// different angle, so building massing actually reads in 3D. anchor:'viewport'
+// keeps the lit side stable as the follow-cam rotates to heading — an
+// instrument-steady look rather than a sun that swings every time you turn.
+// position is [radial, azimuth°, polar°]; polar 78 = a low, raking light that
+// throws long facade shadows. Cool moonlight on the dark theme, warm key on light.
+export function sceneLight(isLight: boolean): mapboxgl.LightSpecification {
+  return {
+    anchor: 'viewport',
+    color: isLight ? '#fff4e0' : '#c8d4ff',
+    intensity: isLight ? 0.5 : 0.34,
+    position: [1.5, 205, 78],
+  };
+}
+
+// ── Atmospheric fog ──────────────────────────────────────────────────────────
+// Gives the pitched scene real depth: distant terrain + towers fade into haze
+// instead of floating on a flat black void, and the horizon gains a graded sky
+// dome. Tuned to the pure-black Spillman theme (near-black near-haze, faint
+// stars overhead); a pale daylight blue on light/satellite basemaps.
+export function sceneFog(isLight: boolean): mapboxgl.FogSpecification {
+  return isLight
+    ? { range: [1, 14], color: '#d4dbe7', 'high-color': '#a9c1e2', 'space-color': '#5d7cb0', 'horizon-blend': 0.05, 'star-intensity': 0 }
+    : { range: [1.2, 13], color: '#0b0e15', 'high-color': '#11151f', 'space-color': '#05070d', 'horizon-blend': 0.07, 'star-intensity': 0.1 };
+}
+
 interface Opts {
   map: mapboxgl.Map | null;
   enabled: boolean;
@@ -101,6 +135,12 @@ function apply3D(map: mapboxgl.Map, isLight: boolean): void {
       });
     }
 
+    // Atmospheric depth + a directional key light. Both are scene-wide (not
+    // layers), so they're set every apply and reset on teardown. Together they
+    // turn the flat extrusions into a lit, hazy skyline with real perspective.
+    map.setFog(sceneFog(isLight));
+    map.setLight(sceneLight(isLight));
+
     // Extruded buildings — only where the vector building source-layer exists.
     if (!map.getLayer(BUILDING_LAYER) && map.getSource('composite')) {
       map.addLayer(
@@ -125,6 +165,13 @@ function apply3D(map: mapboxgl.Map, isLight: boolean): void {
               15.05, ['get', 'min_height'],
             ],
             'fill-extrusion-opacity': isLight ? 0.9 : 0.82,
+            // Realism stack: a top→bottom face gradient (so walls aren't flat
+            // fills) plus ambient occlusion — soft contact shadows where walls
+            // meet the ground and each other. This is what makes the massing
+            // read as solid volumes instead of colored cardboard.
+            'fill-extrusion-vertical-gradient': true,
+            'fill-extrusion-ambient-occlusion-intensity': isLight ? 0.3 : 0.45,
+            'fill-extrusion-ambient-occlusion-radius': 3.2,
           },
         },
         firstLabelLayerId(map),
@@ -141,6 +188,8 @@ function apply3D(map: mapboxgl.Map, isLight: boolean): void {
 function teardown3D(map: mapboxgl.Map): void {
   try {
     map.setTerrain(null);
+    map.setFog(null);            // clear atmospheric haze
+    map.setLight(DEFAULT_LIGHT); // restore the flat-map default lighting
     if (map.getLayer(BUILDING_LAYER)) map.removeLayer(BUILDING_LAYER);
     if (map.getLayer(SKY_LAYER)) map.removeLayer(SKY_LAYER);
     if (map.getSource(DEM_SOURCE)) map.removeSource(DEM_SOURCE);
@@ -190,13 +239,20 @@ export function useMap3D({ map, enabled, mapLoaded, isLight }: Opts): void {
   }, [enabled, map, mapLoaded]);
 
   // Live re-tint if the basemap brightness changes while 3D stays on (e.g.
-  // dark → satellite without toggling 3D off).
+  // dark → satellite without toggling 3D off). Re-applies the whole realism
+  // stack — color/opacity/AO on the buildings plus the scene fog + light — so
+  // a brightness swap doesn't leave dark-tuned haze over bright imagery.
   useEffect(() => {
     if (!map || !mapLoaded || !enabled) return;
+    try {
+      map.setFog(sceneFog(isLight));
+      map.setLight(sceneLight(isLight));
+    } catch { /* style mid-swap; style.load reapply will cover it */ }
     if (map.getLayer(BUILDING_LAYER)) {
       try {
         map.setPaintProperty(BUILDING_LAYER, 'fill-extrusion-color', buildingColorRamp(isLight));
         map.setPaintProperty(BUILDING_LAYER, 'fill-extrusion-opacity', isLight ? 0.9 : 0.82);
+        map.setPaintProperty(BUILDING_LAYER, 'fill-extrusion-ambient-occlusion-intensity', isLight ? 0.3 : 0.45);
       } catch { /* layer not ready; style.load reapply will cover it */ }
     }
   }, [isLight, map, mapLoaded, enabled]);
