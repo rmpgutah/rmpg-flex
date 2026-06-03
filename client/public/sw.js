@@ -511,6 +511,9 @@
 //       "DB visual" record card (case#/call#, class, scope, area, coords, live
 //       distance+bearing). Legend replaced by a Salt Lake County crime overview
 //       (class-breakdown bars + busiest city neighborhoods); window 60d → 90d.
+//       Also: corner panels (contacts / 3D inset / crime overview) now flow
+//       below the MEASURED turn-banner height (ResizeObserver) instead of a
+//       fixed top:96, fixing the banner/3D-inset overlap when a route is active.
 const CACHE_NAME = 'rmpg-flex-v766';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [

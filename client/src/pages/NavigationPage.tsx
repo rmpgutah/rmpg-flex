@@ -428,6 +428,10 @@ export default function NavigationPage() {
   const [crimeOn, setCrimeOn] = useState(true);
   const [crimeIncidents, setCrimeIncidents] = useState<CrimePoint[]>([]);
   const [trailOn, setTrailOn] = useState(true); // patrol breadcrumb trail (own GPS track)
+  // Live turn-banner height — the side panels flow below it so they never
+  // collide with a banner that grew (destination line + ETA + steps + hazards).
+  const bannerRef = useRef<HTMLDivElement | null>(null);
+  const [bannerH, setBannerH] = useState(0);
   const [currentStreet, setCurrentStreet] = useState<string | null>(null);
   const geoRef = useRef<{ lat: number; lng: number; t: number } | null>(null);
   // Destination search (address/place → route there).
@@ -1172,6 +1176,25 @@ export default function NavigationPage() {
   );
   const StepIcon = step ? maneuverIcon(step.maneuverType, step.modifier) : ArrowUp;
 
+  // Measure the live turn-banner height so the corner panels can flow below it.
+  // ResizeObserver catches every content change (added steps, off-route row,
+  // corridor hazards); we re-attach when the banner mounts/unmounts.
+  const bannerShown = !!(activeRoute && step);
+  useEffect(() => {
+    const el = bannerRef.current;
+    if (!bannerShown || !el) { setBannerH(0); return; }
+    setBannerH(el.offsetHeight);
+    const ro = new ResizeObserver((entries) => {
+      for (const e of entries) setBannerH(e.contentRect.height);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [bannerShown]);
+
+  // Corner panels (contacts / 3D inset / crime overview) drop below the banner's
+  // real bottom (top-12 = 48px + measured height + 8px gap); else the default 96.
+  const sideTop = bannerShown && bannerH ? Math.round(48 + bannerH + 8) : 96;
+
   // Upcoming maneuvers (the next few after the current one) + a wall-clock
   // arrival estimate, for a richer directions panel.
   const { upcomingSteps, arrivalClock } = useMemo(() => {
@@ -1331,7 +1354,7 @@ export default function NavigationPage() {
 
       {/* Turn-by-turn banner (top) */}
       {activeRoute && step && (
-        <div className="absolute top-12 inset-x-2 z-20 panel-beveled bg-surface-deep/92 backdrop-blur-md border border-rmpg-600 shadow-xl" style={{ borderRadius: 2 }}>
+        <div ref={bannerRef} className="absolute top-12 inset-x-2 z-20 panel-beveled bg-surface-deep/92 backdrop-blur-md border border-rmpg-600 shadow-xl" style={{ borderRadius: 2 }}>
           <div className="flex items-center gap-3 px-3 py-2">
             <StepIcon className="w-9 h-9 text-brand-400 shrink-0" />
             <div className="flex-1 min-w-0">
@@ -1406,7 +1429,7 @@ export default function NavigationPage() {
 
       {/* 3D chase-cam inset (corner) — a steep-pitch, tighter 3D view of the
           block ahead, mirroring the device position + heading. */}
-      <div className="absolute z-20" style={{ top: 96, right: 8, width: 196, height: 148 }}>
+      <div className="absolute z-20" style={{ top: sideTop, right: 8, width: 196, height: 148 }}>
         <div className="relative w-full h-full panel-beveled border border-rmpg-600 overflow-hidden shadow-xl" style={{ borderRadius: 2 }}>
           <div ref={insetContainerRef} className="absolute inset-0" />
           <div className="absolute top-1 left-1 flex items-center gap-1 px-1 py-0.5 bg-surface-deep/80 backdrop-blur-sm" style={{ borderRadius: 2 }}>
@@ -1423,7 +1446,7 @@ export default function NavigationPage() {
 
       {/* Salt Lake County crime OVERVIEW (top-right, under the 3D inset) */}
       {crimeOn && crimeCounts.total > 0 && (
-        <div className="absolute z-20 panel-beveled bg-surface-deep/92 backdrop-blur-md border border-rmpg-600 shadow-xl" style={{ top: 252, right: 8, width: 190, borderRadius: 2 }}>
+        <div className="absolute z-20 panel-beveled bg-surface-deep/92 backdrop-blur-md border border-rmpg-600 shadow-xl" style={{ top: sideTop + 156, right: 8, width: 190, borderRadius: 2 }}>
           <div className="relative flex items-center gap-1 px-2 py-1 border-b border-rmpg-700">
             <div className="absolute bottom-0 inset-x-0 h-px" style={{ background: 'linear-gradient(90deg, transparent, rgba(212,160,23,0.5))' }} />
             <Flame className="w-3 h-3" style={{ color: '#f59e0b' }} />
@@ -1485,7 +1508,7 @@ export default function NavigationPage() {
           (point where the contact is vs where the unit is facing), threat
           coloring, and a pulsing P1/P2 threat tally. */}
       {(callContacts.length > 0 || unitContacts.length > 0) && (
-        <div className="absolute z-20" style={{ top: 96, left: 8, width: 200 }}>
+        <div className="absolute z-20" style={{ top: sideTop, left: 8, width: 200 }}>
           <div className="panel-beveled bg-surface-deep/92 backdrop-blur-md border border-rmpg-600 shadow-xl overflow-hidden" style={{ borderRadius: 2 }}>
             <div className="relative flex items-center gap-1.5 px-2 py-1 border-b border-rmpg-700">
               <div className="absolute bottom-0 inset-x-0 h-px" style={{ background: 'linear-gradient(90deg, rgba(212,160,23,0.5), transparent)' }} />
