@@ -532,7 +532,7 @@
 //       data-driven category filters/landing + statute/chapter PDF printing.
 // v777: citation authoring UI — multi-violation stack, live PDF preview (tri-mode),
 //       Combobox primitive replacing native <select> across CitationsPage + CitationAuthor.
-const CACHE_NAME = 'rmpg-flex-v777';
+const CACHE_NAME = 'rmpg-flex-v778';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
