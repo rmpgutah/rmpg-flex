@@ -1227,6 +1227,17 @@ const API_ROUTES: RouteRule[] = [
   // /api/serve-intake/scan-document). Bare /api/ocr is the full prefix
   // so future OCR sub-paths come along automatically.
   { kind: 'prefix', value: '/api/ocr' },
+  // ── Document Intake (classify + anchor-extract LE documents) ──
+  // /api/document-intake/extract: the rewrite (src/routes/documentIntake.ts +
+  // documentIntakeExtract.ts) classifies a document and pulls structured
+  // fields deterministically from client-extracted pdfjs text — NO container,
+  // NO AI. Previously this whole namespace fell to legacy (which 404s: every
+  // /api/document-intake/* call returned "API endpoint not found"), so the
+  // DocumentIntakePage was dead in prod. The router was already registered in
+  // routesConfig.ts; it just had no proxy route. Route the prefix to env.API.
+  // (The container-backed /extract-text + /health on this prefix are unused by
+  // any client — only /extract is called.)
+  { kind: 'prefix', value: '/api/document-intake' },
 
   // ── Geo address service (statewide UGRC address points) ──
   // src/routes/geo.ts, backed by the dedicated rmpg-geo D1 (GEO_DB binding).

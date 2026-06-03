@@ -11,9 +11,14 @@
 
 import { useCallback, useState } from 'react';
 import { Upload, Loader2, FileText } from 'lucide-react';
+import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist';
+import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import PanelTitleBar from '../components/PanelTitleBar';
 import DocumentIntakeReviewer, { type DocumentExtraction } from '../components/DocumentIntakeReviewer';
 import { useToast } from '../components/ToastProvider';
+import { apiFetch } from '../hooks/useApi';
+
+GlobalWorkerOptions.workerSrc = workerUrl;
 
 type State =
   | { kind: 'idle' }
@@ -31,23 +36,29 @@ export default function DocumentIntakePage() {
       return;
     }
     setState({ kind: 'processing', filename: file.name });
-    const form = new FormData();
-    form.append('pdf', file);
     try {
-      // Manual fetch — apiFetch JSON-stringifies bodies, but multipart
-      // needs the browser to set the boundary. We attach the bearer
-      // token from localStorage directly (same key apiFetch uses).
-      const token = localStorage.getItem('rmpg_token');
-      const res = await fetch('/api/document-intake/extract', {
-        method: 'POST',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        body: form,
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: 'Upload failed' }));
-        throw new Error(err.error || `HTTP ${res.status}`);
+      // Extract the PDF text layer in-browser via pdfjs. The server's
+      // PDF_TOOLS container is off in prod (project-pdf-tools-container-off),
+      // so the worker classifies + anchor-extracts from the text we send it —
+      // the same born-digital path serve-intake uses. Scanned PDFs with no
+      // text layer aren't supported here (use Serve Intake for those).
+      const arrayBuffer = await file.arrayBuffer();
+      const pdf = await getDocument({ data: arrayBuffer, verbosity: 0 }).promise;
+      const pageCount = pdf.numPages;
+      const pageTexts: string[] = [];
+      for (let i = 1; i <= pageCount; i++) {
+        const page = await pdf.getPage(i);
+        const content = await page.getTextContent();
+        pageTexts.push(content.items.map((it: any) => it.str).join(' '));
       }
-      const extraction = (await res.json()) as DocumentExtraction;
+      const text = pageTexts.join('\n');
+      if (!text.trim()) {
+        throw new Error('No text layer found — this looks like a scanned PDF. OCR is not enabled for document intake.');
+      }
+      const extraction = await apiFetch<DocumentExtraction>('/document-intake/extract', {
+        method: 'POST',
+        body: JSON.stringify({ filename: file.name, text, page_count: pageCount, used_ocr: false }),
+      });
       setState({ kind: 'review', extraction, filename: file.name });
     } catch (err: any) {
       toast.addToast(err?.message || 'Document extraction failed', 'error');
@@ -112,8 +123,8 @@ export default function DocumentIntakePage() {
             Extracting fields from <span className="font-mono text-[#d4a017]">{state.filename}</span>…
           </div>
           <div className="text-[10px] text-[#666] mt-2">
-            Running pdftotext, falling through to OCR if the PDF has no text layer.
-            This can take up to 90 seconds for scanned multi-page documents.
+            Reading the PDF text layer in-browser, then classifying the document
+            and pulling structured fields. Born-digital PDFs only (no OCR).
           </div>
         </div>
       )}

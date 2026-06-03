@@ -530,7 +530,7 @@
 //       58-37 Controlled Substances, 78B-7 Protective Orders), 76 & 77 refreshed
 //       to their 7/1/2026 versions, AI plain-language summaries on every section,
 //       data-driven category filters/landing + statute/chapter PDF printing.
-const CACHE_NAME = 'rmpg-flex-v774'; // Dispatch live-sync via AlertHubDO + intake→board broadcast + backup-requested consumer
+const CACHE_NAME = 'rmpg-flex-v775'; // Document Intake: client pdfjs text + deterministic /extract (classify + anchor fields)
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
