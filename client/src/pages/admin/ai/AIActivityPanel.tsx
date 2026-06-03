@@ -40,7 +40,7 @@ export default function AIActivityPanel() {
           Activity Log
         </h3>
 
-        <select
+        <select id="ff-aiactivitypanel-0"
           value={filter}
           onChange={e => setFilter(e.target.value)}
           className="ml-auto bg-[#0b0b0b] border border-[#1c1c1c] text-white text-xs rounded px-2 py-1 focus:border-brand-500 focus:outline-none"

@@ -10,6 +10,8 @@ import {
   MapPin,
   FileText,
   AlertTriangle,
+  Check,
+  RotateCcw,
 } from 'lucide-react';
 import {
   BarChart,
@@ -30,11 +32,13 @@ import {
 } from 'recharts';
 import { apiFetch } from '../hooks/useApi';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
+import { useMenuActions } from '../utils/contextMenuActions';
 import PanelTitleBar from '../components/PanelTitleBar';
 import RmpgLogo from '../components/RmpgLogo';
 import PrintButton from '../components/PrintButton';
 import { useToast } from '../components/ToastProvider';
-import { localToday, dateToLocalYMD } from '../utils/dateUtils';
+import { localToday, dateToLocalYMD, parseTimestamp } from '../utils/dateUtils';
 import { generatePatrolTrackingPdf } from '../utils/patrolTrackingPdfGenerator';
 import { formatIncidentType } from '../utils/caseNumbers';
 import { toDisplayLabel } from '../utils/formatters';
@@ -173,7 +177,7 @@ function formatGroupKey(key: string): string {
 }
 
 function formatDateLabel(dateStr: string): string {
-  const date = new Date(dateStr.includes('T') ? dateStr : dateStr + 'T00:00:00');
+  const date = parseTimestamp(dateStr);
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
@@ -264,6 +268,10 @@ function ReportApprovalQueue() {
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState<string | null>(null);
 
+  // ── Right-click context menu ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+
   const fetchQueue = useCallback(async () => {
     try {
       const data = await apiFetch<any[]>('/records/reports/approval-queue');
@@ -294,13 +302,21 @@ function ReportApprovalQueue() {
     finally { setProcessing(null); }
   };
 
+  const buildReportMenu = (r: any): ContextMenuItem[] => [
+    m.action('Approve', () => handleApprove(String(r.id)), { icon: <Check size={12} />, disabled: processing === String(r.id) }),
+    m.action('Return for revision', () => handleReturn(String(r.id)), { icon: <RotateCcw size={12} />, danger: true, disabled: processing === String(r.id) }),
+    m.separator(),
+    m.copy('Copy incident #', r.incident_number),
+    m.copyId(r.id),
+  ];
+
   if (loading) return <div className="flex items-center gap-2 text-[10px] text-rmpg-500"><Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> Loading queue...</div>;
   if (reports.length === 0) return <div className="text-[10px] text-rmpg-500 text-center py-4">No reports pending review</div>;
 
   return (
     <div className="space-y-2">
       {reports.map((r: any) => (
-        <div key={r.id} className="panel-beveled p-3 flex items-center gap-3">
+        <div key={r.id} className="panel-beveled p-3 flex items-center gap-3" onContextMenu={(e) => openMenu(e, buildReportMenu(r))}>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
               <span className="text-xs font-bold text-green-400 font-mono">{r.incident_number}</span>
@@ -310,7 +326,7 @@ function ReportApprovalQueue() {
             <div className="text-[9px] text-rmpg-400 mt-0.5">
               {r.officer_name && <span>{r.officer_name}</span>}
               {r.badge_number && <span className="ml-1">#{r.badge_number}</span>}
-              <span className="ml-2">{r.created_at ? new Date(r.created_at).toLocaleDateString() : ''}</span>
+              <span className="ml-2">{r.created_at ? parseTimestamp(r.created_at).toLocaleDateString() : ''}</span>
             </div>
             {r.narrative && <div className="text-[9px] text-rmpg-500 mt-0.5 truncate max-w-[300px]">{r.narrative.slice(0, 100)}</div>}
           </div>
@@ -486,7 +502,7 @@ function WeeklyDigestCard() {
               <ResponsiveContainer width="100%" height={120}>
                 <BarChart data={digest.byDay}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#2e2e2e" />
-                  <XAxis dataKey="day" tick={{ fill: '#888888', fontSize: 9 }} tickFormatter={(d: string) => new Date(d).toLocaleDateString('en-US', { weekday: 'short' })} />
+                  <XAxis dataKey="day" tick={{ fill: '#888888', fontSize: 9 }} tickFormatter={(d: string) => parseTimestamp(d).toLocaleDateString('en-US', { weekday: 'short' })} />
                   <YAxis tick={{ fill: '#888888', fontSize: 9 }} allowDecimals={false} />
                   <Tooltip {...CHART_TOOLTIP_STYLE} />
                   <Bar dataKey="count" fill="#888888" radius={[2, 2, 0, 0]} />
@@ -667,19 +683,15 @@ function BeatActivityCard() {
                   <th className="px-2 py-1.5 text-right text-rmpg-400 font-bold uppercase">Calls</th>
                   <th className="px-2 py-1.5 text-right text-rmpg-400 font-bold uppercase">Incidents</th>
                   <th className="px-2 py-1.5 text-right text-rmpg-400 font-bold uppercase">Citations</th>
-                  <th className="px-2 py-1.5 text-right text-rmpg-400 font-bold uppercase">Arrests</th>
-                  <th className="px-2 py-1.5 text-right text-rmpg-400 font-bold uppercase">Avg Resp</th>
                 </tr>
               </thead>
               <tbody>
                 {data.beats.map((b: any) => (
-                  <tr key={b.beat} className="border-b border-rmpg-700/50 hover:bg-surface-raised transition-colors">
-                    <td className="px-2 py-1.5 text-rmpg-200 font-mono font-bold">{b.beat}</td>
+                  <tr key={b.beat_code} className="border-b border-rmpg-700/50 hover:bg-surface-raised transition-colors">
+                    <td className="px-2 py-1.5 text-rmpg-200 font-mono font-bold">{b.beat_name || b.beat_code}</td>
                     <td className="px-2 py-1.5 text-right font-mono text-gray-400">{b.calls}</td>
                     <td className="px-2 py-1.5 text-right font-mono text-rmpg-200">{b.incidents}</td>
                     <td className="px-2 py-1.5 text-right font-mono text-rmpg-200">{b.citations}</td>
-                    <td className="px-2 py-1.5 text-right font-mono text-rmpg-200">{b.arrests}</td>
-                    <td className="px-2 py-1.5 text-right font-mono text-brand-400">{b.avg_response_min ? `${b.avg_response_min}m` : 'N/A'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -820,19 +832,23 @@ export default function ReportsPage() {
         const dateParams = new URLSearchParams({ startDate });
         if (endDate) dateParams.append('endDate', endDate);
 
-        // Fetch all endpoints in parallel
+        // Fetch all endpoints in parallel. Each is independently fault-tolerant
+        // — /reports/dashboard and /officer-activity fall through to legacy and
+        // may 404/500; without per-fetch .catch one failure rejected Promise.all
+        // and blanked the ENTIRE Reports page. Now a missing endpoint only leaves
+        // its own card empty.
         const [dashboard, incidents, responseTimes, officers] = await Promise.all([
-          apiFetch<DashboardData>('/reports/dashboard'),
-          apiFetch<IncidentsSummaryData>(`/reports/incidents-summary?groupBy=type&${dateParams.toString()}`),
-          apiFetch<ResponseTimesData>(`/reports/response-times?${dateParams.toString()}`),
-          apiFetch<OfficerActivityData[]>(`/reports/officer-activity?${dateParams.toString()}`),
+          apiFetch<DashboardData>('/reports/dashboard').catch(() => null),
+          apiFetch<IncidentsSummaryData>(`/reports/incidents-summary?groupBy=type&${dateParams.toString()}`).catch(() => null),
+          apiFetch<ResponseTimesData>(`/reports/response-times?${dateParams.toString()}`).catch(() => null),
+          apiFetch<OfficerActivityData[]>(`/reports/officer-activity?${dateParams.toString()}`).catch(() => null),
         ]);
 
         if (cancelled) return;
-        setDashboardData(dashboard);
-        setIncidentsData(incidents);
-        setResponseTimesData(responseTimes);
-        setOfficerActivity(officers);
+        if (dashboard) setDashboardData(dashboard);
+        if (incidents) setIncidentsData(incidents);
+        if (responseTimes) setResponseTimesData(responseTimes);
+        if (officers) setOfficerActivity(officers);
 
         // Upgrade: Fetch comparison data and schedules in background
         apiFetch<any>('/reports/comparison?period=week')
@@ -869,8 +885,10 @@ export default function ReportsPage() {
   };
 
   // Prepare chart data
-  const incidentsChartData = (Array.isArray(incidentsData?.data) ? incidentsData.data : []).map((item, i) => ({
-    name: formatGroupKey(item.group_key),
+  // Handler returns { by_type: [{ type, count }], ... } — not a `data`/`group_key`
+  // array. Read by_type so the incidents-by-type breakdown chart populates.
+  const incidentsChartData = (Array.isArray((incidentsData as any)?.by_type) ? (incidentsData as any).by_type : []).map((item: any, i: number) => ({
+    name: formatGroupKey(item.type),
     value: item.count,
     fill: PIE_COLORS[i % PIE_COLORS.length],
   }));
@@ -920,7 +938,7 @@ export default function ReportsPage() {
       {!isMobile && <PanelTitleBar title="REPORTS & ANALYTICS" icon={BarChart3}>
         <div className="flex items-center gap-2">
           <Calendar className="w-3.5 h-3.5 text-rmpg-300" />
-          <select
+          <select id="ff-reportspage-0"
             className="select-dark text-xs w-44"
             value={dateRange}
             onChange={(e) => setDateRange(e.target.value)}
@@ -937,7 +955,7 @@ export default function ReportsPage() {
           </select>
           {dateRange === 'custom' && (
             <div className="flex items-center gap-2 ml-1 pl-2 border-l border-rmpg-700">
-              <input
+              <input id="ff-reportspage-1"
                 type="date"
                 className="input-dark text-xs px-2 py-1 font-mono min-h-[36px]"
                 value={customStartDate}
@@ -945,7 +963,7 @@ export default function ReportsPage() {
                 style={{ colorScheme: 'dark' }}
               />
               <span className="text-rmpg-400 text-[10px] uppercase font-bold tracking-wide">to</span>
-              <input
+              <input id="ff-reportspage-2"
                 type="date"
                 className="input-dark text-xs px-2 py-1 font-mono min-h-[36px]"
                 value={customEndDate}
@@ -1006,7 +1024,11 @@ export default function ReportsPage() {
           </div>
 
           {/* Upgrade: Week-over-Week Comparison */}
-          {comparisonData && (
+          {/* Guard on responseTime specifically: a malformed/placeholder
+              comparison payload (e.g. the proxy stub's old {current,previous,
+              deltas} shape) lacks responseTime, and reading .current off it
+              threw and took down the whole page via the ErrorBoundary. */}
+          {comparisonData?.responseTime && (
             <div className="panel-beveled p-4 bg-surface-base">
               <div className="flex items-center gap-2 mb-3">
                 <TrendingUp className="w-4 h-4 text-brand-blue" />
@@ -1091,7 +1113,7 @@ export default function ReportsPage() {
                         paddingAngle={3}
                         dataKey="value"
                       >
-                        {incidentsChartData.map((entry) => (
+                        {incidentsChartData.map((entry: { name: string; fill: string }) => (
                           <Cell key={entry.name} fill={entry.fill} />
                         ))}
                       </Pie>
@@ -1100,7 +1122,7 @@ export default function ReportsPage() {
                   </ResponsiveContainer>
                   {/* Legend */}
                   <div className={`${isMobile ? 'mt-2' : 'mt-2 flex-1'} space-y-1.5`}>
-                    {incidentsChartData.map((entry) => (
+                    {incidentsChartData.map((entry: { name: string; value: number; fill: string }) => (
                       <div key={entry.name} className="flex items-center gap-2 py-0.5 hover:bg-surface-raised/30 px-1 -mx-1 transition-colors rounded-sm">
                         <div className="w-2 h-2 rounded-sm flex-shrink-0" style={{ backgroundColor: entry.fill }} />
                         <span className="text-[10px] text-rmpg-200 truncate flex-1">{entry.name}</span>
@@ -1390,7 +1412,7 @@ function PatrolTrackingCard() {
         {/* Unit selector */}
         <div className="flex items-center gap-1.5">
           <label className="text-[10px] text-rmpg-400 font-bold uppercase">Unit:</label>
-          <select
+          <select id="ff-reportspage-3"
             value={unitId}
             onChange={e => setUnitId(e.target.value)}
             className="select-dark text-[10px] w-28"
@@ -1408,7 +1430,7 @@ function PatrolTrackingCard() {
         {mode === 'hours' ? (
           <div className="flex items-center gap-1.5">
             <label className="text-[10px] text-rmpg-400 font-bold uppercase">Hours:</label>
-            <select
+            <select id="ff-reportspage-4"
               value={hours}
               onChange={e => setHours(parseInt(e.target.value, 10))}
               className="select-dark text-[10px] w-20"
@@ -1423,7 +1445,7 @@ function PatrolTrackingCard() {
           <>
             <div className="flex items-center gap-1.5">
               <label className="text-[10px] text-rmpg-400 font-bold uppercase">Start:</label>
-              <input
+              <input id="ff-reportspage-5"
                 type="date"
                 value={startDate}
                 onChange={e => setStartDate(e.target.value)}
@@ -1432,7 +1454,7 @@ function PatrolTrackingCard() {
             </div>
             <div className="flex items-center gap-1.5">
               <label className="text-[10px] text-rmpg-400 font-bold uppercase">End:</label>
-              <input
+              <input id="ff-reportspage-6"
                 type="date"
                 value={endDate}
                 onChange={e => setEndDate(e.target.value)}
@@ -1443,7 +1465,7 @@ function PatrolTrackingCard() {
         )}
 
         <label className="flex items-center gap-1.5 text-[10px] text-rmpg-400 cursor-pointer">
-          <input
+          <input id="ff-reportspage-7"
             type="checkbox"
             checked={includeGeocode}
             onChange={e => setIncludeGeocode(e.target.checked)}

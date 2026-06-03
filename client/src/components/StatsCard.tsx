@@ -44,7 +44,7 @@ const TREND_COLOR_MAP: Record<string, string> = {
   gray: 'text-rmpg-300',
 };
 
-export default function StatsCard({
+function StatsCard({
   icon: Icon,
   label,
   value,
@@ -105,3 +105,5 @@ export default function StatsCard({
     </div>
   );
 }
+
+export default React.memo(StatsCard);

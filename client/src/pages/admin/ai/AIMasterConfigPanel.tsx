@@ -146,7 +146,7 @@ export default function AIMasterConfigPanel({ setError }: Props) {
             return (
               <div key={task.key} className="flex items-center gap-3 px-4 py-2.5">
                 <span className="text-xs text-white flex-1">{task.label}</span>
-                <select
+                <select id="ff-aimasterconfigpanel-0"
                   value={current}
                   onChange={e => updateRouting(task.key, e.target.value)}
                   className="bg-[#0b0b0b] border border-[#1c1c1c] text-white text-xs rounded px-2 py-1.5 focus:border-brand-500 focus:outline-none"

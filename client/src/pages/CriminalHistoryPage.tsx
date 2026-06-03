@@ -5,13 +5,16 @@
 // ============================================================
 
 import {useState, useCallback, useEffect} from 'react';
-import { Search, AlertTriangle, User, Shield, Calendar, MapPin, FileText, ChevronRight, Scale, List, Clock, Loader2 } from 'lucide-react';
+import { Search, AlertTriangle, User, Shield, Calendar, MapPin, FileText, ChevronRight, Scale, List, Clock, Loader2, Eye } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { toDisplayLabel } from '../utils/formatters';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useToast } from '../components/ToastProvider';
 import { formatAddressDisplay } from '../utils/statusLabels';
+import { parseTimestamp } from '../utils/dateUtils';
+import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
+import { useMenuActions } from '../utils/contextMenuActions';
 
 interface PersonResult {
   id: string;
@@ -61,8 +64,17 @@ export default function CriminalHistoryPage() {
     setFetchError('');
     try {
       const params = new URLSearchParams({ [searchType]: searchQuery.trim() });
-      const data = await apiFetch<any[]>(`/records/persons?${params}`);
-      setPersons(data || []);
+      const data = await apiFetch<any>(`/records/persons?${params}`);
+      // `/records/persons` has no rewrite handler and falls through to legacy,
+      // which may return a bare array OR an envelope ({ data | results | persons: [...] }).
+      // Normalize to an array so `persons.map` can never throw "D.map is not a function".
+      const list = Array.isArray(data)
+        ? data
+        : Array.isArray(data?.data) ? data.data
+        : Array.isArray(data?.results) ? data.results
+        : Array.isArray(data?.persons) ? data.persons
+        : [];
+      setPersons(list);
       setSelectedPerson(null);
       setHistory([]);
     } catch (err: any) {
@@ -130,7 +142,7 @@ export default function CriminalHistoryPage() {
         });
       });
 
-      entries.sort((a, b) => (new Date(b.date || 0).getTime() || 0) - (new Date(a.date || 0).getTime() || 0));
+      entries.sort((a, b) => ((b.date ? parseTimestamp(b.date).getTime() : 0) || 0) - ((a.date ? parseTimestamp(a.date).getTime() : 0) || 0));
       setHistory(entries);
     } catch (err) {
       console.error('History fetch error:', err);
@@ -150,6 +162,21 @@ export default function CriminalHistoryPage() {
     const url = params.toString() ? `${base}?${params}` : base;
     window.open(url, '_blank', 'noopener,noreferrer');
   }, []);
+
+  // ── Right-click context menu ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+  const buildPersonMenu = (p: PersonResult): ContextMenuItem[] => {
+    const fullName = `${p.first_name || ''} ${p.last_name || ''}`.trim();
+    return [
+      m.action('View criminal history', () => selectPerson(p), { icon: <Eye size={12} /> }),
+      m.action('Search Utah Courts', () => openUtahCourts(p), { icon: <Scale size={12} /> }),
+      m.separator(),
+      m.copy('Copy name', fullName),
+      m.copyId(p.id),
+      ...(p.drivers_license ? [m.copy('Copy DL #', p.drivers_license)] : []),
+    ];
+  };
 
   const cautionFlags = selectedPerson?.caution_flags ? selectedPerson.caution_flags.split(',').map(f => f.trim()).filter(Boolean) : [];
 
@@ -187,7 +214,7 @@ export default function CriminalHistoryPage() {
       )}
       {!isMobile && <PanelTitleBar title="Criminal History" icon={Shield}>
         <div className="flex items-center gap-2">
-          <select
+          <select id="ff-criminalhistorypage-0"
             className="select-dark text-[10px] w-24 min-h-[36px]"
             value={searchType}
             onChange={(e) => setSearchType(e.target.value as any)}
@@ -198,7 +225,7 @@ export default function CriminalHistoryPage() {
           </select>
           <div className="relative">
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400" />
-            <input
+            <input id="ff-criminalhistorypage-1"
               type="text"
               className="input-dark pl-7 text-[11px] w-64 min-h-[36px]"
               placeholder={searchType === 'name' ? 'Last, First...' : searchType === 'dob' ? 'YYYY-MM-DD...' : 'DL Number...'}
@@ -219,14 +246,14 @@ export default function CriminalHistoryPage() {
       {/* Mobile search bar */}
       {isMobile && (
         <div className="flex items-center gap-1.5 px-3 py-2 flex-shrink-0" style={{ background: '#050505', borderBottom: '1px solid #2b2b2b' }}>
-          <select className="select-dark text-[10px] w-16 min-h-[36px]" value={searchType} onChange={(e) => setSearchType(e.target.value as any)}>
+          <select id="ff-criminalhistorypage-2" className="select-dark text-[10px] w-16 min-h-[36px]" value={searchType} onChange={(e) => setSearchType(e.target.value as any)}>
             <option value="name">Name</option>
             <option value="dob">DOB</option>
             <option value="dl">DL #</option>
           </select>
           <div className="relative flex-1">
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-400" />
-            <input
+            <input id="ff-criminalhistorypage-3"
               type="text"
               className="input-dark pl-6 text-[10px] w-full min-h-[36px]"
               placeholder={searchType === 'name' ? 'Last, First...' : searchType === 'dob' ? 'YYYY-MM-DD...' : 'DL Number...'}
@@ -252,10 +279,11 @@ export default function CriminalHistoryPage() {
               </div>
             </div>
           )}
-          {persons.map(p => (
+          {(Array.isArray(persons) ? persons : []).map(p => (
             <button type="button"
               key={p.id}
               onClick={() => selectPerson(p)}
+              onContextMenu={(e) => openMenu(e, buildPersonMenu(p))}
               className={`w-full text-left px-3 py-2 border-b border-rmpg-800/30 transition-all duration-150 ${
                 selectedPerson?.id === p.id ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : 'hover:bg-rmpg-800/20 border-l-2 border-l-transparent'
               }`}
@@ -386,7 +414,7 @@ export default function CriminalHistoryPage() {
                               {entry.type.replace(/_/g, ' ')}
                             </span>
                             <span className="text-[10px] font-mono font-bold text-rmpg-200">{entry.reference_number}</span>
-                            <span className="text-[9px] text-rmpg-500">{entry.date ? new Date(entry.date).toLocaleDateString() : ''}</span>
+                            <span className="text-[9px] text-rmpg-500">{entry.date ? parseTimestamp(entry.date).toLocaleDateString() : ''}</span>
                           </div>
                           <p className="text-[10px] text-rmpg-300 mt-0.5 truncate">{entry.description}</p>
                           <div className="flex items-center gap-3 mt-0.5 text-[9px] text-rmpg-500">
@@ -413,7 +441,7 @@ export default function CriminalHistoryPage() {
                           <div className={`absolute -left-[15px] top-1.5 w-2.5 h-2.5 rounded-full border-2 border-surface-base ${dotColor}`} />
                           {/* Date label */}
                           <div className="text-[9px] font-mono text-rmpg-500 mb-0.5">
-                            {entry.date ? new Date(entry.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Unknown date'}
+                            {entry.date ? parseTimestamp(entry.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Unknown date'}
                           </div>
                           {/* Card */}
                           <button type="button" onClick={() => setExpandedEntry(isExpanded ? null : `${entry.type}-${entry.id}`)}

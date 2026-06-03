@@ -21,6 +21,8 @@ import {
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
+import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
+import { useMenuActions } from '../utils/contextMenuActions';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { usePersistedTab } from '../hooks/usePersistedState';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -30,19 +32,20 @@ import PrintButton from '../components/PrintButton';
 import ExportButton from '../components/ExportButton';
 import TabBar from '../components/TabBar';
 import { useIsMobile } from '../hooks/useIsMobile';
-import { safeDateStr, safeTimeStr } from '../utils/dateUtils';
-import { loadGoogleMaps, DARK_MAP_STYLE, registerMapInstance, unregisterMapInstance, onOnlineRetryMaps } from '../utils/googleMapsLoader';
-import { getGoogleMapsApiKey } from '../utils/googleMapsApiKey';
+import { safeDateStr, safeTimeStr, parseTimestamp } from '../utils/dateUtils';
+import { initMapbox, mapboxgl, MAPBOX_STYLE_DARK, registerMapInstance, unregisterMapInstance } from '../utils/mapboxLoader';
+import { installWebglContextRecovery } from '../utils/webglRecovery';
+import { getMapboxAccessToken } from '../utils/mapboxApiKey';
 import { useToast } from '../components/ToastProvider';
+import { useAuth } from '../context/AuthContext';
+import { useFormDraft } from '../hooks/useFormDraft';
+import UnsavedChangesGuard from '../components/UnsavedChangesGuard';
+import FloatingSaveBar from '../components/FloatingSaveBar';
 
-// Add global google type for TypeScript
+// Add Mapbox type for TypeScript
 declare global {
   interface Window {
-    google: typeof google;
-  }
-  // eslint-disable-next-line @typescript-eslint/no-namespace
-  namespace google {
-    // The google.maps types are available globally when the Maps script is loaded.
+    mapboxgl: typeof mapboxgl;
   }
 }
 
@@ -92,56 +95,59 @@ type Property = {
 };
 
 // ── Patrol Map View ─────────────────────────────────────────
-// Shows checkpoint markers + scan route polylines on Google Maps.
+// Shows checkpoint markers + scan route polylines on Mapbox.
 
 function PatrolMapView({ checkpoints, scans }: { checkpoints: Checkpoint[]; scans: Scan[] }) {
-  const mapRef = React.useRef<HTMLDivElement>(null);
-  const mapInstanceRef = React.useRef<google.maps.Map | null>(null);
+  const mapContainerRef = React.useRef<HTMLDivElement>(null);
+  const mapInstanceRef = React.useRef<mapboxgl.Map | null>(null);
   const [mapReady, setMapReady] = React.useState(false);
+  // WebGL context-loss recovery (rebuilds the map after a GPU context drop).
+  const [recoverNonce, setRecoverNonce] = React.useState(0);
+  const recoveryCleanupRef = React.useRef<(() => void) | null>(null);
 
   React.useEffect(() => {
-    if (!mapRef.current) return;
+    if (!mapContainerRef.current) return;
 
     let cancelled = false;
 
     function initPatrolMap() {
-      if (cancelled || !mapRef.current || mapInstanceRef.current) return;
+      if (cancelled || !mapContainerRef.current || mapInstanceRef.current) return;
 
-      const map = new google.maps.Map(mapRef.current, {
-        center: { lat: 40.76, lng: -111.89 },
+      const map = new mapboxgl.Map({
+        container: mapContainerRef.current,
+        style: MAPBOX_STYLE_DARK,
+        center: [-111.89, 40.76],
         zoom: 12,
-        styles: DARK_MAP_STYLE,
-        disableDefaultUI: true,
-        zoomControl: true,
-        backgroundColor: '#171717',
-        gestureHandling: 'greedy',
+        attributionControl: false,
       });
       mapInstanceRef.current = map;
       registerMapInstance(map);
-      setMapReady(true);
+
+      // Rebuild in place if the GPU drops the context. The marker/route effect
+      // (keyed on mapReady) re-runs and re-fits bounds to the checkpoints.
+      recoveryCleanupRef.current = installWebglContextRecovery(map, {
+        label: 'PatrolMapView',
+        onRebuild: () => {
+          if (recoveryCleanupRef.current) { recoveryCleanupRef.current(); recoveryCleanupRef.current = null; }
+          if (mapInstanceRef.current) { unregisterMapInstance(mapInstanceRef.current); try { mapInstanceRef.current.remove(); } catch { /* gone */ } mapInstanceRef.current = null; }
+          setMapReady(false);
+          setRecoverNonce((n) => n + 1);
+        },
+      });
+
+      map.on('load', () => {
+        if (cancelled) return;
+        setMapReady(true);
+      });
     }
 
-    // Retry with backoff (3 attempts) for intermittent WiFi
-    function attemptLoad(apiKey: string, attempt: number) {
-      if (cancelled) return;
-      loadGoogleMaps(apiKey)
-        .then(() => initPatrolMap())
-        .catch(() => {
-          if (cancelled) return;
-          if (attempt < 3) {
-            setTimeout(() => attemptLoad(apiKey, attempt + 1), [3000, 6000, 12000][attempt]);
-          }
-        });
-    }
-    let unsubOnline = () => {};
     (async () => {
       try {
-        const apiKey = await getGoogleMapsApiKey();
+        const token = await getMapboxAccessToken();
         if (cancelled) return;
-        attemptLoad(apiKey, 0);
-        unsubOnline = onOnlineRetryMaps(apiKey, () => {
-          if (!cancelled && !mapInstanceRef.current) initPatrolMap();
-        });
+        initMapbox(token);
+        if (cancelled) return;
+        initPatrolMap();
       } catch {
         setMapReady(false);
       }
@@ -149,45 +155,38 @@ function PatrolMapView({ checkpoints, scans }: { checkpoints: Checkpoint[]; scan
 
     return () => {
       cancelled = true;
-      unsubOnline();
+      if (recoveryCleanupRef.current) { recoveryCleanupRef.current(); recoveryCleanupRef.current = null; }
       if (mapInstanceRef.current) unregisterMapInstance(mapInstanceRef.current);
     };
-  }, []);
+  }, [recoverNonce]);
 
   // Add markers + polylines when map is ready
   React.useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map || !mapReady) return;
 
-    const bounds = new google.maps.LatLngBounds();
+    const bounds = new mapboxgl.LngLatBounds();
     let hasPoints = false;
+    const markers: mapboxgl.Marker[] = [];
 
     // Checkpoint markers
     checkpoints.forEach(cp => {
       if (!cp.latitude || !cp.longitude) return;
-      const pos = { lat: cp.latitude, lng: cp.longitude };
-      bounds.extend(pos);
+      const lngLat: [number, number] = [cp.longitude, cp.latitude];
+      bounds.extend(lngLat);
       hasPoints = true;
 
-      const marker = new google.maps.Marker({
-        map,
-        position: pos,
-        title: cp.name,
-        icon: {
-          path: google.maps.SymbolPath.CIRCLE,
-          fillColor: cp.is_active ? '#22c55e' : '#666666',
-          fillOpacity: 0.9,
-          strokeColor: '#fff',
-          strokeWeight: 2,
-          scale: 8,
-        },
-      });
+      const el = document.createElement('div');
+      el.style.cssText = `width:16px;height:16px;border-radius:50%;background:${cp.is_active ? '#22c55e' : '#666666'};border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,0.4);`;
+      const marker = new mapboxgl.Marker({ element: el, anchor: 'center' })
+        .setLngLat(lngLat)
+        .addTo(map);
 
-      const info = new google.maps.InfoWindow({
-        content: `<div style="color:#000;font-size:12px;font-weight:bold">${cp.name}</div>
-          <div style="color:#666;font-size:10px">${cp.is_active ? 'Active' : 'Inactive'} • Every ${cp.scan_required_interval_minutes || '?'} min</div>`,
-      });
-      marker.addListener('click', () => info.open(map, marker));
+      const popup = new mapboxgl.Popup({ offset: 15 })
+        .setHTML(`<div style="color:#000;font-size:12px;font-weight:bold">${cp.name}</div>
+          <div style="color:#666;font-size:10px">${cp.is_active ? 'Active' : 'Inactive'} • Every ${cp.scan_required_interval_minutes || '?'} min</div>`);
+      marker.setPopup(popup);
+      markers.push(marker);
     });
 
     // Scan route polylines (group by date, draw chronological lines)
@@ -203,34 +202,43 @@ function PatrolMapView({ checkpoints, scans }: { checkpoints: Checkpoint[]; scan
     const colors = ['#888888', '#a855f7', '#f59e0b', '#ef4444', '#22c55e'];
     let colorIdx = 0;
     scansByDate.forEach((dayScans) => {
-      const sorted = dayScans.sort((a, b) => new Date(a.scanned_at).getTime() - new Date(b.scanned_at).getTime());
-      const path = sorted.map(s => {
-        const pos = { lat: s.latitude!, lng: s.longitude! };
-        bounds.extend(pos);
+      const sorted = dayScans.sort((a, b) => parseTimestamp(a.scanned_at).getTime() - parseTimestamp(b.scanned_at).getTime());
+      const coords: [number, number][] = [];
+      sorted.forEach(s => {
+        const lngLat: [number, number] = [s.longitude!, s.latitude!];
+        bounds.extend(lngLat);
         hasPoints = true;
-        return pos;
+        coords.push(lngLat);
       });
 
-      if (path.length > 1) {
-        new google.maps.Polyline({
-          map,
-          path,
-          strokeColor: colors[colorIdx % colors.length],
-          strokeOpacity: 0.7,
-          strokeWeight: 2,
+      if (coords.length > 1) {
+        const sourceId = `scan-line-${colorIdx}`;
+        map.addSource(sourceId, {
+          type: 'geojson',
+          data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: coords } },
+        });
+        map.addLayer({
+          id: sourceId,
+          type: 'line',
+          source: sourceId,
+          paint: {
+            'line-color': colors[colorIdx % colors.length],
+            'line-opacity': 0.7,
+            'line-width': 2,
+          },
         });
       }
       colorIdx++;
     });
 
     if (hasPoints) {
-      map.fitBounds(bounds, 50);
+      map.fitBounds(bounds, { padding: 50 });
     }
   }, [mapReady, checkpoints, scans]);
 
   return (
     <div className="relative w-full flex-1" style={{ minHeight: 400 }}>
-      <div ref={mapRef} className="absolute inset-0" />
+      <div ref={mapContainerRef} className="absolute inset-0" />
       <div className="absolute top-2 left-2 text-[9px] font-mono text-rmpg-400 bg-black/60 px-2 py-1 border border-rmpg-700">
         {checkpoints.filter(c => c.latitude != null && c.longitude != null).length} checkpoints •{' '}
         {scans.filter(s => s.latitude != null && s.longitude != null).length} scan points
@@ -242,6 +250,9 @@ function PatrolMapView({ checkpoints, scans }: { checkpoints: Checkpoint[]; scan
 const PatrolPage: React.FC = () => {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
+  const { user } = useAuth();
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
 
   // Set document title
   useEffect(() => { document.title = 'Patrol Tracking \u2014 RMPG Flex'; }, []);
@@ -260,7 +271,7 @@ const PatrolPage: React.FC = () => {
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
   const [selectedQrCode, setSelectedQrCode] = useState('');
   const [editingCheckpoint, setEditingCheckpoint] = useState<Checkpoint | null>(null);
-  const [formData, setFormData] = useState({
+  const EMPTY_CHECKPOINT_FORM = {
     property_id: '',
     name: '',
     description: '',
@@ -268,6 +279,18 @@ const PatrolPage: React.FC = () => {
     longitude: '',
     scan_required_interval_minutes: '',
     is_active: true
+  };
+  const {
+    form: formData,
+    setForm: setFormData,
+    isDirty: formIsDirty,
+    wasRestored: formWasRestored,
+    clearDraft: clearFormDraft,
+    snapshot: snapshotForm,
+  } = useFormDraft<typeof EMPTY_CHECKPOINT_FORM>({
+    storageKey: 'rmpg_checkpoint_form',
+    defaultValue: EMPTY_CHECKPOINT_FORM,
+    isActive: showCheckpointModal,
   });
 
   // ── Feature 11/13/15: Shift summary, break tracking, efficiency ──
@@ -276,8 +299,9 @@ const PatrolPage: React.FC = () => {
   const [efficiency, setEfficiency] = useState<any>(null);
 
   const loadShiftSummary = async () => {
+    if (!user?.id) return; // handler requires officer_id, else 400
     try {
-      const data = await apiFetch<any>('/patrol/shift-summary');
+      const data = await apiFetch<any>(`/patrol/shift-summary?officer_id=${user.id}`);
       setShiftSummary(data);
     } catch { /* ignore */ }
   };
@@ -369,10 +393,11 @@ const PatrolPage: React.FC = () => {
   const loadScans = async () => {
     try {
       const params = new URLSearchParams();
-      if (scanFilters.checkpointId) params.append('checkpointId', scanFilters.checkpointId);
-      if (scanFilters.officerId) params.append('officerId', scanFilters.officerId);
-      if (scanFilters.startDate) params.append('startDate', scanFilters.startDate);
-      if (scanFilters.endDate) params.append('endDate', scanFilters.endDate);
+      // Handler reads snake_case (checkpoint_id/officer_id/from/to), not camelCase.
+      if (scanFilters.checkpointId) params.append('checkpoint_id', scanFilters.checkpointId);
+      if (scanFilters.officerId) params.append('officer_id', scanFilters.officerId);
+      if (scanFilters.startDate) params.append('from', scanFilters.startDate);
+      if (scanFilters.endDate) params.append('to', scanFilters.endDate);
 
       const data = await apiFetch<Scan[]>(`/patrol/scans?${params.toString()}`);
       setScans(data || []);
@@ -383,8 +408,9 @@ const PatrolPage: React.FC = () => {
 
   const loadCompliance = async () => {
     try {
-      const data = await apiFetch<Compliance[]>('/patrol/compliance');
-      setCompliance(data || []);
+      // Handler returns { days, checkpoints: [...] }, not a bare array.
+      const data = await apiFetch<{ days: number; checkpoints: Compliance[] }>('/patrol/compliance');
+      setCompliance(data?.checkpoints || []);
     } catch {
       setCompliance([]);
     }
@@ -416,6 +442,7 @@ const PatrolPage: React.FC = () => {
       is_active: true
     });
     setShowCheckpointModal(true);
+    snapshotForm();
   };
 
   const handleEditCheckpoint = (checkpoint: Checkpoint) => {
@@ -430,6 +457,7 @@ const PatrolPage: React.FC = () => {
       is_active: checkpoint.is_active === 1
     });
     setShowCheckpointModal(true);
+    snapshotForm();
   };
 
   const handleSaveCheckpoint = async () => {
@@ -457,6 +485,7 @@ const PatrolPage: React.FC = () => {
       }
 
       setShowCheckpointModal(false);
+      clearFormDraft();
       loadCheckpoints();
       addToast(editingCheckpoint ? 'Checkpoint updated' : 'Checkpoint created', 'success');
     } catch (err: any) {
@@ -506,6 +535,31 @@ const PatrolPage: React.FC = () => {
     setShowQrModal(true);
   };
 
+  // ── Build a checkpoint row context menu ──
+  const buildCheckpointMenu = (cp: Checkpoint): ContextMenuItem[] => [
+    m.action('Show QR code', () => handleShowQr(cp.qr_code), { icon: <Eye size={12} /> }),
+    ...(cp.archived_at
+      ? [m.action('Unarchive', () => handleUnarchiveCheckpoint(cp.id), { icon: <RotateCcw size={12} /> })]
+      : [m.action('Edit checkpoint', () => handleEditCheckpoint(cp), { icon: <Pencil size={12} /> })]),
+    m.separator(),
+    m.copy('Copy name', cp.name),
+    m.copy('Copy QR code', cp.qr_code),
+    m.copyId(cp.id),
+    ...(cp.archived_at ? [] : [
+      m.separator(),
+      m.action('Archive', () => handleArchiveCheckpoint(cp.id), { icon: <Archive size={12} /> }),
+      m.action('Delete', () => setDeleteConfirmId(cp.id), { icon: <Trash2 size={12} />, danger: true }),
+    ]),
+  ];
+
+  // ── Build a scan-log row context menu (read-only log → copy actions) ──
+  const buildScanMenu = (scan: Scan): ContextMenuItem[] => [
+    m.copy('Copy checkpoint', scan.checkpoint_name),
+    m.copy('Copy officer', scan.officer_name),
+    m.copy('Copy property', scan.property_name),
+    m.copyId(scan.id),
+  ];
+
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'on_time':
@@ -539,7 +593,7 @@ const PatrolPage: React.FC = () => {
   };
 
   const formatDateTime = (dateString: string) => {
-    return new Date(dateString).toLocaleString('en-US', {
+    return parseTimestamp(dateString).toLocaleString('en-US', {
       month: 'short', day: 'numeric', year: 'numeric',
       hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
     });
@@ -547,7 +601,7 @@ const PatrolPage: React.FC = () => {
 
   const formatTimeAgo = (dateString: string | null) => {
     if (!dateString) return 'Never';
-    const date = new Date(dateString);
+    const date = parseTimestamp(dateString);
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();
     const diffMins = Math.floor(diffMs / 60000);
@@ -562,7 +616,7 @@ const PatrolPage: React.FC = () => {
 
   const isOverdue = (nextDue: string | null) => {
     if (!nextDue) return false;
-    return new Date(nextDue) < new Date();
+    return parseTimestamp(nextDue) < new Date();
   };
 
   // ── Feature 1: Route Optimization ──
@@ -632,7 +686,12 @@ const PatrolPage: React.FC = () => {
   return (
     <div className="flex flex-col h-full animate-fade-in">
       {/* Portal Header */}
-      {!isMobile && (
+      {isMobile ? (
+        <div className="flex items-center gap-2 px-3 py-2 bg-[#080808] border-b border-[#1a1a1a]">
+          <RmpgLogo height={24} />
+          <span className="text-[10px] font-bold uppercase tracking-wider text-[#888]">Patrol Operations</span>
+        </div>
+      ) : (
         <div className="panel-beveled bg-surface-base overflow-hidden">
           <div className="flex items-center gap-4 px-4 py-2.5 relative">
             <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #1a1a1a, #888888 30%, #888888 70%, #1a1a1a)' }} />
@@ -645,7 +704,18 @@ const PatrolPage: React.FC = () => {
         </div>
       )}
 
-      {!isMobile && <PanelTitleBar title="PATROL MANAGEMENT" icon={MapPin}>
+      {isMobile ? (
+        <div className="flex items-center gap-2 px-3 py-1.5 bg-[#060606] border-b border-[#1a1a1a]">
+          <span className="text-[9px] font-bold uppercase tracking-wider text-[#d4a017]">PATROL MANAGEMENT</span>
+          <div className="flex gap-1 ml-auto">
+            {activeTab === 'checkpoints' && (
+              <button type="button" onClick={handleCreateCheckpoint} className="btn-gold btn-xs" aria-label="Create checkpoint"><Plus className="w-3 h-3" /></button>
+            )}
+            <button type="button" onClick={loadCompliance} className="btn-secondary btn-xs" aria-label="Refresh compliance"><RefreshCw className="w-3 h-3" /></button>
+          </div>
+        </div>
+      ) : (
+      <PanelTitleBar title="PATROL MANAGEMENT" icon={MapPin}>
         <PrintButton />
         {activeTab === 'scans' && (
           <ExportButton exportUrl="/patrol/scans/export?format=csv" exportFilename="patrol_scans_export.csv" />
@@ -660,10 +730,11 @@ const PatrolPage: React.FC = () => {
             <RefreshCw className="w-3.5 h-3.5" /> Refresh
           </button>
         )}
-      </PanelTitleBar>}
+      </PanelTitleBar>)}
 
       {/* Tabs */}
       <TabBar
+        spillman
         tabs={patrolTabs}
         activeTab={activeTab}
         onTabChange={(id) => setActiveTab(id as 'checkpoints' | 'scans' | 'compliance' | 'map')}
@@ -699,7 +770,7 @@ const PatrolPage: React.FC = () => {
             <span className="text-gray-400 font-bold">
               {scans.filter(s => {
                 const today = new Date().toDateString();
-                return new Date(s.scanned_at).toDateString() === today;
+                return parseTimestamp(s.scanned_at).toDateString() === today;
               }).length}
             </span>
           </div>
@@ -854,7 +925,7 @@ const PatrolPage: React.FC = () => {
                 </thead>
                 <tbody>
                   {checkpoints.map((checkpoint) => (
-                    <tr key={checkpoint.id}>
+                    <tr key={checkpoint.id} onContextMenu={(e) => openMenu(e, buildCheckpointMenu(checkpoint))}>
                       <td>
                         <div className="flex items-center gap-2">
                           <span className={`led-dot ${checkpoint.is_active ? 'led-green' : 'led-off'}`} />
@@ -954,7 +1025,7 @@ const PatrolPage: React.FC = () => {
                     <label className="block text-sm font-medium text-rmpg-200 mb-1">
                       Checkpoint:
                     </label>
-                    <select
+                    <select id="ff-patrolpage-0"
                       value={scanFilters.checkpointId}
                       onChange={(e) =>
                         setScanFilters(prev => ({ ...prev, checkpointId: e.target.value }))
@@ -973,7 +1044,7 @@ const PatrolPage: React.FC = () => {
                     <label className="block text-sm font-medium text-rmpg-200 mb-1">
                       Start Date:
                     </label>
-                    <input
+                    <input id="ff-patrolpage-1"
                       type="datetime-local"
                       value={scanFilters.startDate}
                       onChange={(e) =>
@@ -986,7 +1057,7 @@ const PatrolPage: React.FC = () => {
                     <label className="block text-sm font-medium text-rmpg-200 mb-1">
                       End Date:
                     </label>
-                    <input
+                    <input id="ff-patrolpage-2"
                       type="datetime-local"
                       value={scanFilters.endDate}
                       onChange={(e) =>
@@ -1029,7 +1100,7 @@ const PatrolPage: React.FC = () => {
                   </thead>
                   <tbody>
                     {scans.map((scan) => (
-                      <tr key={scan.id}>
+                      <tr key={scan.id} onContextMenu={(e) => openMenu(e, buildScanMenu(scan))}>
                         <td className="text-xs text-rmpg-200 font-mono whitespace-nowrap">
                           {formatDateTime(scan.scanned_at)}
                         </td>
@@ -1237,16 +1308,38 @@ const PatrolPage: React.FC = () => {
       {showCheckpointModal && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" role="dialog" aria-modal="true" aria-labelledby={checkpointModalTitleId}>
           <div className="panel-beveled bg-surface-base p-6 max-w-md w-full mx-4">
-            <h2 id={checkpointModalTitleId} className="text-xl font-bold text-white mb-4">
-              {editingCheckpoint ? 'Edit Checkpoint' : 'Create Checkpoint'}
-            </h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 id={checkpointModalTitleId} className="text-xl font-bold text-white">
+                {editingCheckpoint ? 'Edit Checkpoint' : 'Create Checkpoint'}
+              </h2>
+              <div className="flex items-center gap-2">
+                {formIsDirty && (
+                  <span className="text-[8px] text-amber-400 font-bold uppercase tracking-wider">UNSAVED</span>
+                )}
+                <IconButton onClick={() => { clearFormDraft(); setShowCheckpointModal(false); }} className="text-rmpg-400 hover:text-white" aria-label="Close">
+                  <X className="w-5 h-5" />
+                </IconButton>
+              </div>
+            </div>
+
+            {formWasRestored && (
+              <div className="flex items-center justify-between px-3 py-2 rounded-sm border border-amber-500/30 mb-4" style={{ background: '#1a1500' }}>
+                <div className="flex items-center gap-2">
+                  <Clock size={14} className="text-amber-400" />
+                  <span className="text-xs text-amber-400 font-medium">Restored pending draft</span>
+                </div>
+                <button type="button" onClick={clearFormDraft} className="text-[10px] text-amber-400 underline hover:text-amber-300">
+                  Discard
+                </button>
+              </div>
+            )}
 
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-rmpg-200 mb-1">
                   Property: *
                 </label>
-                <select
+                <select id="ff-patrolpage-3"
                   value={formData.property_id}
                   onChange={(e) => setFormData(prev => ({ ...prev, property_id: e.target.value }))}
                   className="select-dark"
@@ -1265,7 +1358,7 @@ const PatrolPage: React.FC = () => {
                 <label className="block text-sm font-medium text-rmpg-200 mb-1">
                   Checkpoint Name: *
                 </label>
-                <input
+                <input id="ff-patrolpage-4"
                   type="text"
                   value={formData.name}
                   onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
@@ -1292,7 +1385,7 @@ const PatrolPage: React.FC = () => {
                 <label className="block text-sm font-medium text-rmpg-200 mb-1">
                   Scan Interval (minutes): *
                 </label>
-                <input
+                <input id="ff-patrolpage-5"
                   type="number"
                   value={formData.scan_required_interval_minutes}
                   onChange={(e) =>
@@ -1312,7 +1405,7 @@ const PatrolPage: React.FC = () => {
                   <label className="block text-sm font-medium text-rmpg-200 mb-1">
                     Latitude:
                   </label>
-                  <input
+                  <input id="ff-patrolpage-6"
                     type="number"
                     step="any"
                     value={formData.latitude}
@@ -1325,7 +1418,7 @@ const PatrolPage: React.FC = () => {
                   <label className="block text-sm font-medium text-rmpg-200 mb-1">
                     Longitude:
                   </label>
-                  <input
+                  <input id="ff-patrolpage-7"
                     type="number"
                     step="any"
                     value={formData.longitude}
@@ -1352,7 +1445,7 @@ const PatrolPage: React.FC = () => {
 
             <div className="flex gap-3 mt-6">
               <button type="button"
-                onClick={() => setShowCheckpointModal(false)}
+                onClick={() => { clearFormDraft(); setShowCheckpointModal(false); }}
                 className="toolbar-btn flex-1 justify-center"
               >
                 Cancel
@@ -1421,6 +1514,14 @@ const PatrolPage: React.FC = () => {
         message="Are you sure you want to delete this checkpoint? This action cannot be undone."
         confirmLabel="Delete"
         confirmVariant="danger"
+      />
+      <UnsavedChangesGuard hasUnsavedChanges={showCheckpointModal && formIsDirty} />
+      <FloatingSaveBar
+        visible={showCheckpointModal && formIsDirty}
+        onSave={handleSaveCheckpoint}
+        onCancel={() => { clearFormDraft(); setShowCheckpointModal(false); }}
+        isSaving={false}
+        saveLabel={editingCheckpoint ? 'Update Checkpoint' : 'Create Checkpoint'}
       />
     </div>
   );

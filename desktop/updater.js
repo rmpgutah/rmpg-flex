@@ -35,12 +35,19 @@ class AppUpdater {
     autoUpdater.allowDowngrade = false;
     autoUpdater.allowPrerelease = false;
 
-    // Point at GitHub Releases for auto-updates
-    // electron-updater will fetch latest.yml / latest-mac.yml from GitHub
+    // Point at the RMPG Flex VPS for auto-updates.
+    // The GitHub repo is private — GitHub Releases asset URLs return 404
+    // to unauthenticated requests, and embedding a PAT in the shipped
+    // app would leak access to anyone who decompiles the .asar. So we
+    // host `latest-mac.yml` + `*.dmg` + `*.blockmap` on the VPS at
+    // /opt/rmpg-releases/ (kept outside /opt/rmpg-flex/ so deploy
+    // rsync --delete doesn't wipe them — see CLAUDE.md gotcha #48),
+    // served by nginx at https://rmpgutah.us/releases/.
+    // electron-updater's 'generic' provider just GETs <url>/latest-mac.yml
+    // and follows the path/sha512 it finds — no auth, no third party.
     autoUpdater.setFeedURL({
-      provider: 'github',
-      owner: 'rmpgutah',
-      repo: 'rmpg-flex',
+      provider: 'generic',
+      url: 'https://rmpgutah.us/releases/',
     });
 
     // ─── Event handlers ───────────────────────────────

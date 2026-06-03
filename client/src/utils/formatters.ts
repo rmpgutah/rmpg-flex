@@ -5,6 +5,8 @@
 // These do NOT validate — use validate.ts for input checking.
 // ============================================================
 
+import { parseTimestamp } from './dateUtils';
+
 /**
  * Normalize a snake_case / lowercase enum value for display.
  *
@@ -85,6 +87,18 @@ export function formatCurrency(
   });
   const sign = amount < 0 ? '-' : options?.showSign && amount > 0 ? '+' : '';
   return `${sign}$${formatted}`;
+}
+
+/**
+ * Format a cost compactly for dense tables: `$4.2k` at/above $1,000,
+ * `$840` below. Null/undefined/NaN render as `$0`. Use this instead of
+ * hand-rolling `amount >= 1000 ? `${(amount/1000).toFixed(1)}k` : amount.toFixed(0)`
+ * — that pattern crashes on undefined and was guarded inconsistently across the
+ * fleet tables.
+ */
+export function formatCostAbbrev(amount: number | null | undefined): string {
+  const n = amount == null || isNaN(amount) ? 0 : amount;
+  return n >= 1000 ? `$${(n / 1000).toFixed(1)}k` : `$${n.toFixed(0)}`;
 }
 
 /**
@@ -191,7 +205,7 @@ export function formatAddress(
  */
 export function formatDOBWithAge(dob: string | null | undefined): string {
   if (!dob) return '';
-  const d = new Date(dob + 'T00:00:00');
+  const d = parseTimestamp(dob);
   if (isNaN(d.getTime())) return dob;
   const formatted = d.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
   const today = new Date();
@@ -212,19 +226,46 @@ export function truncate(str: string, maxLength: number): string {
 }
 
 /**
- * Convert a string to title case: "hello world" → "Hello World"
+ * Convert a string to title case: "hello world" → "Hello World".
+ * Acronym-aware ("pso" → "PSO") and preserves inner caps for names
+ * ("McDonald" stays "McDonald").
  */
 export function toTitleCase(str: string): string {
   if (!str) return '';
-  return str.replace(/\b\w/g, (c) => c.toUpperCase());
+  return str.replace(/\b[A-Za-z0-9]+\b/g, (word) =>
+    ACRONYMS.has(word.toLowerCase())
+      ? word.toUpperCase()
+      : word.charAt(0).toUpperCase() + word.slice(1),
+  );
 }
 
-/** Common law-enforcement / system acronyms that should remain ALL-CAPS */
-const ACRONYMS = new Set([
+/**
+ * Common law-enforcement / system acronyms that must render ALL-CAPS in
+ * visual labels (never "Pso") and be SPELLED OUT letter-by-letter when
+ * spoken aloud ("P. S. O.", not the word "Pso"). This is the single source
+ * of truth — extend it here and every acronym-aware formatter below picks
+ * it up, so labels stay proper for current AND future enum values.
+ *
+ * DEPRECATED for speech: use normalizeForSpeech() from speechNormalizer.ts
+ * for TTS output. This set remains for visual display labels only.
+ */
+export const ACRONYMS = new Set([
   'pso', 'cfs', 'dv', 'ems', 'leo', 'ncic', 'bolo', 'atl', 'mdt',
   'sla', 'id', 'dui', 'dwi', 'hoa', 'llc', 'eta', 'rmpg', 'gps',
   'ip', 'pdf', 'api', 'url', 'vpn', 'opr', 'le', 'sop',
 ]);
+
+/**
+ * Title-case ONE word, keeping a known acronym ALL-CAPS. The shared atom
+ * behind every label formatter — this is what prevents "PSO" from ever
+ * degrading to the weak lowercase "Pso".
+ */
+export function titleCaseWord(word: string): string {
+  if (!word) return word;
+  return ACRONYMS.has(word.toLowerCase())
+    ? word.toUpperCase()
+    : word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+}
 
 /**
  * Convert snake_case or kebab-case to a display label:
@@ -236,11 +277,33 @@ export function toDisplayLabel(str: string): string {
   if (!str) return '';
   return str
     .replace(/[_-]/g, ' ')
-    .replace(/\b\w+/g, (word) =>
+    .replace(/\b[A-Za-z0-9]+\b/g, titleCaseWord);
+}
+
+/**
+ * Spoken form of a label for TTS / voice announcements: known acronyms are
+ * spelled out so the voice says the LETTERS, not a mangled word.
+ * "pso_client_request" → "P. S. O. Client Request"
+ * "dv_in_progress"     → "D. V. In Progress"
+ * Use this anywhere a label is handed to speech synthesis.
+ *
+ * DEPRECATED for TTS: normalizeForSpeech() from speechNormalizer.ts now
+ * handles all speech normalization centrally. This function is retained
+ * for voiceAlerts.ts backward compatibility but the edgeTTS speak() path
+ * will apply a second pass of normalization via normalizeForSpeech()
+ * which is harmless (idempotent for already-expanded text).
+ */
+export function toSpokenLabel(str: string): string {
+  if (!str) return '';
+  return str
+    .replace(/[_-]/g, ' ')
+    .replace(/\b[A-Za-z0-9]+\b/g, (word) =>
       ACRONYMS.has(word.toLowerCase())
-        ? word.toUpperCase()
-        : word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
-    );
+        ? word.toUpperCase().split('').join('. ') + '.'
+        : titleCaseWord(word)
+    )
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 /**
@@ -282,7 +345,7 @@ export function formatLabel(value: string | null | undefined): string {
   if (!value) return '';
   return value
     .split('_')
-    .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .map(titleCaseWord)
     .join(' ');
 }
 

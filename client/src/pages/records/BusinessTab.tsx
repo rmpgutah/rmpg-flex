@@ -3,13 +3,22 @@ import RichTextArea from '../../components/RichTextArea';
 import { formatPhoneInput } from '../../utils/formatters';
 import {
   Search, MapPin, Phone, Mail, Globe, Trash2, Pencil, X, Users, Briefcase,
-  ArrowUpDown, Filter, Shield,
+  ArrowUpDown, Filter, Shield, FileText, Eye, Navigation,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { useAuth } from '../../context/AuthContext';
+import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
+import { useMenuActions } from '../../utils/contextMenuActions';
 import FileAttachments from '../../components/FileAttachments';
 import LinkedRecordsSection from '../../components/LinkedRecordsSection';
 import CollapsibleSection from '../../components/CollapsibleSection';
+import RecordField from '../../components/records/RecordField';
+import FieldGrid from '../../components/records/FieldGrid';
+import RecordBadge from '../../components/records/RecordBadge';
+import RecordHero from '../../components/records/RecordHero';
+import PrintRecordButton from '../../components/PrintRecordButton';
+import FormSection from '../../components/records/FormSection';
+import FormField from '../../components/records/FormField';
 import type { RecordEntityType } from '../../types';
 
 // ── Types ──────────────────────────────────────
@@ -189,6 +198,28 @@ export function BusinessTabList({ state }: { state: BusinessTabState }) {
   const { filteredBusinesses, selectedBusiness, setSelectedBusiness, searchQuery, setSearchQuery, showArchived, openEdit, setDeleteTarget, handleArchive, handleUnarchive, showFormModal, editingBusiness, formSubmitting, handleSubmit, setShowFormModal } = state;
   const isAdmin = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'supervisor';
 
+  // ── Right-click context menu ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+  const buildBusinessMenu = (b: Business): ContextMenuItem[] => {
+    const addr = [b.address, b.city, b.state, b.zip].filter(Boolean).join(', ');
+    return [
+      m.action('Open record', () => setSelectedBusiness(selectedBusiness?.id === b.id ? null : b), { icon: <Eye size={12} /> }),
+      ...(isAdmin ? [m.action('Edit business', () => openEdit(b), { icon: <Pencil size={12} /> })] : []),
+      m.separator(),
+      m.copy('Copy name', b.name),
+      m.copyId(b.id),
+      ...(b.phone ? [m.copy('Copy phone', b.phone, <Phone size={12} />)] : []),
+      ...(addr ? [m.openExternal('Navigate to address', `https://maps.google.com/?q=${encodeURIComponent(addr)}`, <Navigation size={12} />)] : []),
+      ...(isAdmin
+        ? [
+            m.separator(),
+            m.action('Delete', () => setDeleteTarget({ type: 'business', id: b.id, label: b.name }), { icon: <Trash2 size={12} />, danger: true }),
+          ]
+        : []),
+    ];
+  };
+
   const [sortBy, setSortBy] = useState<'name' | 'type' | 'newest'>('name');
   const [filterType, setFilterType] = useState<string | null>(null);
 
@@ -213,7 +244,7 @@ export function BusinessTabList({ state }: { state: BusinessTabState }) {
       <div className="p-3 border-b border-rmpg-600" role="search">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400 pointer-events-none" />
-          <input type="text" className="input-dark pl-9 w-full text-[11px] min-h-[36px]" placeholder="Search businesses by name, DBA, address, EIN..."
+          <input id="ff-businesstab-0" type="text" className="input-dark pl-9 w-full text-[11px] min-h-[36px]" placeholder="Search businesses by name, DBA, address, EIN..."
             value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
           {searchQuery && <button type="button" onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-400 hover:text-white"><X className="w-3 h-3" /></button>}
         </div>
@@ -254,6 +285,7 @@ export function BusinessTabList({ state }: { state: BusinessTabState }) {
           <div key={b.id} role="listitem" tabIndex={0}
             onClick={() => setSelectedBusiness(selectedBusiness?.id === b.id ? null : b)}
             onKeyDown={e => { if (e.key === 'Enter') setSelectedBusiness(selectedBusiness?.id === b.id ? null : b); }}
+            onContextMenu={(e) => openMenu(e, buildBusinessMenu(b))}
             className={`px-4 py-3 border-b border-rmpg-700/50 cursor-pointer transition-all duration-150 ${selectedBusiness?.id === b.id ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : `hover:bg-rmpg-700/30 border-l-2 border-l-transparent ${idx % 2 === 1 ? 'bg-rmpg-800/20' : ''}`}`}>
             <div className="flex items-center gap-3">
               <div className="flex-shrink-0 w-9 h-9 rounded-sm flex items-center justify-center text-xs font-bold bg-purple-900/30 text-purple-400 border border-purple-700/50">
@@ -279,7 +311,7 @@ export function BusinessTabList({ state }: { state: BusinessTabState }) {
               </div>
               <div className="flex items-center gap-1">
                 {b.phone && <a href={`tel:${b.phone}`} onClick={e => e.stopPropagation()} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-green-400"><Phone className="w-3 h-3" /></a>}
-                {b.email && <a href={`mailto:${b.email}`} onClick={e => e.stopPropagation()} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-blue-400"><Mail className="w-3 h-3" /></a>}
+                {b.email && <a href={`mailto:${b.email}`} onClick={e => e.stopPropagation()} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-rmpg-400"><Mail className="w-3 h-3" /></a>}
                 {b.website && <a href={b.website.startsWith('http') ? b.website : `https://${b.website}`} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-brand-400"><Globe className="w-3 h-3" /></a>}
                 {isAdmin && <button type="button" onClick={e => { e.stopPropagation(); openEdit(b); }} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-brand-400"><Pencil className="w-3 h-3" /></button>}
                 {isAdmin && <button type="button" onClick={e => { e.stopPropagation(); setDeleteTarget({ type: 'business', id: b.id, label: b.name }); }} className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-red-400"><Trash2 className="w-3 h-3" /></button>}
@@ -317,48 +349,88 @@ export function BusinessTabDetail({ state }: { state: BusinessTabState }) {
 
   const b = selectedBusiness;
   return (
-    <div className="h-full overflow-auto p-4 space-y-3">
-      {/* Header */}
-      <div className="flex items-center gap-3 mb-3">
-        <div className="w-12 h-12 rounded-sm flex items-center justify-center text-lg font-bold bg-purple-900/30 text-purple-400 border border-purple-700/50">
-          {(b.name || '')[0]?.toUpperCase()}
-        </div>
-        <div>
-          <h2 className="text-lg font-bold text-white">{b.name}</h2>
-          {b.dba_name && <p className="text-[10px] text-amber-400">DBA: {b.dba_name}</p>}
-          <p className="text-[10px] text-rmpg-400">{b.business_type?.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())} · {b.industry || 'N/A'}</p>
-        </div>
+    <div className="h-full flex flex-col overflow-hidden">
+      {/* Hero identity band */}
+      <div className="border-b border-rmpg-600 bg-surface-sunken flex-shrink-0">
+        <RecordHero
+          name={b.name || 'BUSINESS'}
+          subtitle={
+            <span className="flex flex-col gap-0.5">
+              {b.dba_name && <span className="text-amber-400">DBA: {b.dba_name}</span>}
+              <span>{b.business_type?.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())} · {b.industry || 'N/A'}</span>
+            </span>
+          }
+          flags={b.flags}
+          tone="gold"
+        >
+          {b.status && (
+            <RecordBadge tone={b.status === 'active' ? 'green' : 'gray'} glow={false}>
+              {b.status.toUpperCase()}
+            </RecordBadge>
+          )}
+          {/* Business PDF — rendered by the property generator (businesses are
+              property-shaped). Includes a satellite site map of the address.
+              No `id` on the data → the property cross-ref enrichment (which keys
+              off a property id) is skipped so it can't pull the wrong links. */}
+          <PrintRecordButton
+            recordType="property"
+            recordData={{
+              name: b.name,
+              property_type: 'commercial',
+              business_type: b.business_type,
+              structure_type: b.industry,
+              address: b.address,
+              city: b.city,
+              state: b.state,
+              zip: b.zip,
+              owner_name: b.owner_name,
+              key_holder_name: b.contact_name,
+              key_holder_phone: b.contact_phone || b.phone,
+              contact_email: b.contact_email || b.email,
+              notes: b.notes,
+              flags: b.flags,
+              created_at: b.created_at,
+              updated_at: b.updated_at,
+            }}
+            identifier={b.name}
+            entityType="business"
+            entityId={b.id}
+            iconOnly
+            title="Print business record"
+          />
+        </RecordHero>
       </div>
 
+      <div className="flex-1 overflow-auto p-4 space-y-3">
       <CollapsibleSection title="Business Information" icon={Briefcase} defaultOpen>
-        <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-          <div><span className="text-rmpg-500">EIN:</span> <span className="text-rmpg-200">{b.ein || '—'}</span></div>
-          <div><span className="text-rmpg-500">License #:</span> <span className="text-rmpg-200">{b.license_number || '—'}</span></div>
-          <div><span className="text-rmpg-500">Type:</span> <span className="text-rmpg-200">{b.business_type || '—'}</span></div>
-          <div><span className="text-rmpg-500">Industry:</span> <span className="text-rmpg-200">{b.industry || '—'}</span></div>
-          <div><span className="text-rmpg-500">Employees:</span> <span className="text-rmpg-200">{b.employee_count || '—'}</span></div>
-          <div><span className="text-rmpg-500">Revenue:</span> <span className="text-rmpg-200">{b.annual_revenue || '—'}</span></div>
-          <div><span className="text-rmpg-500">Status:</span> <span className={b.status === 'active' ? 'text-green-400' : 'text-rmpg-400'}>{(b.status || 'N/A').toUpperCase()}</span></div>
-        </div>
+        <FieldGrid cols={2}>
+          <RecordField label="EIN" value={b.ein} mono copyable showEmpty />
+          <RecordField label="License #" value={b.license_number} mono copyable showEmpty />
+          <RecordField label="Type" value={b.business_type} showEmpty />
+          <RecordField label="Industry" value={b.industry} showEmpty />
+          <RecordField label="Employees" value={b.employee_count} showEmpty />
+          <RecordField label="Revenue" value={b.annual_revenue} showEmpty />
+          <RecordField label="Status" value={(b.status || 'N/A').toUpperCase()} valueColor={b.status === 'active' ? '#4ade80' : undefined} />
+        </FieldGrid>
       </CollapsibleSection>
 
       <CollapsibleSection title="Contact & Address" icon={Phone} defaultOpen>
-        <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-          <div><span className="text-rmpg-500">Phone:</span> <span className="text-rmpg-200">{b.phone || '—'}</span></div>
-          <div><span className="text-rmpg-500">Email:</span> <span className="text-rmpg-200">{b.email || '—'}</span></div>
-          <div><span className="text-rmpg-500">Website:</span> <span className="text-rmpg-200">{b.website || '—'}</span></div>
-          <div className="col-span-2"><span className="text-rmpg-500">Address:</span> <span className="text-rmpg-200">{[b.address, b.city, b.state, b.zip].filter(Boolean).join(', ') || '—'}</span></div>
-        </div>
+        <FieldGrid cols={2}>
+          <RecordField label="Phone" value={b.phone} copyable showEmpty />
+          <RecordField label="Email" value={b.email} copyable showEmpty />
+          <RecordField label="Website" value={b.website} copyable showEmpty />
+          <RecordField label="Address" value={[b.address, b.city, b.state, b.zip].filter(Boolean).join(', ')} copyable showEmpty className="col-span-2" />
+        </FieldGrid>
       </CollapsibleSection>
 
       <CollapsibleSection title="Owner & Key Contact" icon={Users}>
-        <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-          <div><span className="text-rmpg-500">Owner:</span> <span className="text-rmpg-200">{b.owner_name || '—'}</span></div>
-          <div><span className="text-rmpg-500">Owner Phone:</span> <span className="text-rmpg-200">{b.owner_phone || '—'}</span></div>
-          <div><span className="text-rmpg-500">Contact:</span> <span className="text-rmpg-200">{b.contact_name || '—'}</span></div>
-          <div><span className="text-rmpg-500">Contact Phone:</span> <span className="text-rmpg-200">{b.contact_phone || '—'}</span></div>
-          <div className="col-span-2"><span className="text-rmpg-500">Contact Email:</span> <span className="text-rmpg-200">{b.contact_email || '—'}</span></div>
-        </div>
+        <FieldGrid cols={2}>
+          <RecordField label="Owner" value={b.owner_name} showEmpty />
+          <RecordField label="Owner Phone" value={b.owner_phone} copyable showEmpty />
+          <RecordField label="Contact" value={b.contact_name} showEmpty />
+          <RecordField label="Contact Phone" value={b.contact_phone} copyable showEmpty />
+          <RecordField label="Contact Email" value={b.contact_email} copyable showEmpty className="col-span-2" />
+        </FieldGrid>
       </CollapsibleSection>
 
       {b.notes && (
@@ -371,6 +443,7 @@ export function BusinessTabDetail({ state }: { state: BusinessTabState }) {
 
       <div className="panel-beveled p-3 bg-surface-base">
         <FileAttachments entityType="business" entityId={b.id} />
+      </div>
       </div>
     </div>
   );
@@ -410,42 +483,52 @@ function BusinessForm({ initial, onSubmit, onCancel, submitting }: {
   const set = (key: string, value: string) => setForm(prev => ({ ...prev, [key]: value }));
 
   return (
-    <div className="space-y-3">
-      <div className="grid grid-cols-2 gap-2">
-        <div><label className="text-[10px] text-rmpg-400 uppercase block mb-1">Business Name *</label><input className="input-dark text-xs w-full" value={form.name} onChange={e => set('name', e.target.value)} /></div>
-        <div><label className="text-[10px] text-rmpg-400 uppercase block mb-1">DBA Name</label><input className="input-dark text-xs w-full" value={form.dba_name} onChange={e => set('dba_name', e.target.value)} /></div>
-      </div>
-      <div className="grid grid-cols-3 gap-2">
-        <div><label className="text-[10px] text-rmpg-400 uppercase block mb-1">Business Type</label><input className="input-dark text-xs w-full" value={form.business_type} onChange={e => set('business_type', e.target.value)} placeholder="LLC, Corp, Sole Prop..." /></div>
-        <div><label className="text-[10px] text-rmpg-400 uppercase block mb-1">EIN</label><input className="input-dark text-xs w-full" value={form.ein} onChange={e => set('ein', e.target.value)} placeholder="XX-XXXXXXX" /></div>
-        <div><label className="text-[10px] text-rmpg-400 uppercase block mb-1">License #</label><input className="input-dark text-xs w-full" value={form.license_number} onChange={e => set('license_number', e.target.value)} /></div>
-      </div>
-      <div><label className="text-[10px] text-rmpg-400 uppercase block mb-1">Address</label><input className="input-dark text-xs w-full" value={form.address} onChange={e => set('address', e.target.value)} /></div>
-      <div className="grid grid-cols-3 gap-2">
-        <div><label className="text-[10px] text-rmpg-400 uppercase block mb-1">City</label><input className="input-dark text-xs w-full" value={form.city} onChange={e => set('city', e.target.value)} /></div>
-        <div><label className="text-[10px] text-rmpg-400 uppercase block mb-1">State</label><input className="input-dark text-xs w-full" value={form.state} onChange={e => set('state', e.target.value)} /></div>
-        <div><label className="text-[10px] text-rmpg-400 uppercase block mb-1">ZIP</label><input className="input-dark text-xs w-full" value={form.zip} onChange={e => set('zip', e.target.value)} /></div>
-      </div>
-      <div className="grid grid-cols-3 gap-2">
-        <div><label className="text-[10px] text-rmpg-400 uppercase block mb-1">Phone</label><input type="tel" className="input-dark text-xs w-full" value={form.phone} onChange={e => set('phone', formatPhoneInput(e.target.value))} placeholder="(801) 555-1234" /></div>
-        <div><label className="text-[10px] text-rmpg-400 uppercase block mb-1">Email</label><input className="input-dark text-xs w-full" value={form.email} onChange={e => set('email', e.target.value)} /></div>
-        <div><label className="text-[10px] text-rmpg-400 uppercase block mb-1">Website</label><input className="input-dark text-xs w-full" value={form.website} onChange={e => set('website', e.target.value)} /></div>
-      </div>
-      <div className="grid grid-cols-2 gap-2">
-        <div><label className="text-[10px] text-rmpg-400 uppercase block mb-1">Owner Name</label><input className="input-dark text-xs w-full" value={form.owner_name} onChange={e => set('owner_name', e.target.value)} /></div>
-        <div><label className="text-[10px] text-rmpg-400 uppercase block mb-1">Owner Phone</label><input type="tel" className="input-dark text-xs w-full" value={form.owner_phone} onChange={e => set('owner_phone', formatPhoneInput(e.target.value))} placeholder="(801) 555-1234" /></div>
-      </div>
-      <div className="grid grid-cols-3 gap-2">
-        <div><label className="text-[10px] text-rmpg-400 uppercase block mb-1">Contact Name</label><input className="input-dark text-xs w-full" value={form.contact_name} onChange={e => set('contact_name', e.target.value)} /></div>
-        <div><label className="text-[10px] text-rmpg-400 uppercase block mb-1">Contact Phone</label><input type="tel" className="input-dark text-xs w-full" value={form.contact_phone} onChange={e => set('contact_phone', formatPhoneInput(e.target.value))} placeholder="(801) 555-1234" /></div>
-        <div><label className="text-[10px] text-rmpg-400 uppercase block mb-1">Contact Email</label><input className="input-dark text-xs w-full" value={form.contact_email} onChange={e => set('contact_email', e.target.value)} /></div>
-      </div>
-      <div className="grid grid-cols-2 gap-2">
-        <div><label className="text-[10px] text-rmpg-400 uppercase block mb-1">Industry</label><input className="input-dark text-xs w-full" value={form.industry} onChange={e => set('industry', e.target.value)} /></div>
-        <div><label className="text-[10px] text-rmpg-400 uppercase block mb-1">Employees</label><input className="input-dark text-xs w-full" value={form.employee_count} onChange={e => set('employee_count', e.target.value)} /></div>
-      </div>
-      <div><label className="text-[10px] text-rmpg-400 uppercase block mb-1">Notes</label><RichTextArea className="input-dark text-xs w-full min-h-[48px]" rows={2} value={form.notes} onChange={e => set('notes', e.target.value)} /></div>
-      <div className="flex justify-end gap-2 pt-2">
+    <div className="space-y-2.5">
+      <FormSection title="Business Information" icon={Briefcase}>
+        <div className="grid grid-cols-2 gap-2.5">
+          <FormField label="Business Name" required><input id="ff-businesstab-1" className="input-dark text-xs w-full" value={form.name} onChange={e => set('name', e.target.value)} /></FormField>
+          <FormField label="DBA Name"><input id="ff-businesstab-2" className="input-dark text-xs w-full" value={form.dba_name} onChange={e => set('dba_name', e.target.value)} /></FormField>
+          <FormField label="Business Type"><input id="ff-businesstab-3" className="input-dark text-xs w-full" value={form.business_type} onChange={e => set('business_type', e.target.value)} placeholder="LLC, Corp, Sole Prop..." /></FormField>
+          <FormField label="EIN"><input id="ff-businesstab-4" className="input-dark text-xs w-full" value={form.ein} onChange={e => set('ein', e.target.value)} placeholder="XX-XXXXXXX" /></FormField>
+          <FormField label="License #" className="col-span-2"><input id="ff-businesstab-5" className="input-dark text-xs w-full" value={form.license_number} onChange={e => set('license_number', e.target.value)} /></FormField>
+        </div>
+      </FormSection>
+
+      <FormSection title="Contact & Address" icon={Phone}>
+        <div className="grid grid-cols-6 gap-2.5">
+          <FormField label="Address" className="col-span-6"><input id="ff-businesstab-6" className="input-dark text-xs w-full" value={form.address} onChange={e => set('address', e.target.value)} /></FormField>
+          <FormField label="City" className="col-span-3"><input id="ff-businesstab-7" className="input-dark text-xs w-full" value={form.city} onChange={e => set('city', e.target.value)} /></FormField>
+          <FormField label="State" className="col-span-1"><input id="ff-businesstab-8" className="input-dark text-xs w-full" value={form.state} onChange={e => set('state', e.target.value)} /></FormField>
+          <FormField label="ZIP" className="col-span-2"><input id="ff-businesstab-9" className="input-dark text-xs w-full" value={form.zip} onChange={e => set('zip', e.target.value)} /></FormField>
+          <FormField label="Phone" className="col-span-2"><input id="ff-businesstab-10" type="tel" className="input-dark text-xs w-full" value={form.phone} onChange={e => set('phone', formatPhoneInput(e.target.value))} placeholder="(801) 555-1234" /></FormField>
+          <FormField label="Email" className="col-span-2"><input id="ff-businesstab-11" className="input-dark text-xs w-full" value={form.email} onChange={e => set('email', e.target.value)} /></FormField>
+          <FormField label="Website" className="col-span-2"><input id="ff-businesstab-12" className="input-dark text-xs w-full" value={form.website} onChange={e => set('website', e.target.value)} /></FormField>
+        </div>
+      </FormSection>
+
+      <FormSection title="Owner & Key Contact" icon={Users}>
+        <div className="grid grid-cols-2 gap-2.5">
+          <FormField label="Owner Name"><input id="ff-businesstab-13" className="input-dark text-xs w-full" value={form.owner_name} onChange={e => set('owner_name', e.target.value)} /></FormField>
+          <FormField label="Owner Phone"><input id="ff-businesstab-14" type="tel" className="input-dark text-xs w-full" value={form.owner_phone} onChange={e => set('owner_phone', formatPhoneInput(e.target.value))} placeholder="(801) 555-1234" /></FormField>
+          <FormField label="Contact Name"><input id="ff-businesstab-15" className="input-dark text-xs w-full" value={form.contact_name} onChange={e => set('contact_name', e.target.value)} /></FormField>
+          <FormField label="Contact Phone"><input id="ff-businesstab-16" type="tel" className="input-dark text-xs w-full" value={form.contact_phone} onChange={e => set('contact_phone', formatPhoneInput(e.target.value))} placeholder="(801) 555-1234" /></FormField>
+          <FormField label="Contact Email" className="col-span-2"><input id="ff-businesstab-17" className="input-dark text-xs w-full" value={form.contact_email} onChange={e => set('contact_email', e.target.value)} /></FormField>
+        </div>
+      </FormSection>
+
+      <FormSection title="Operations" icon={Briefcase}>
+        <div className="grid grid-cols-3 gap-2.5">
+          <FormField label="Industry"><input id="ff-businesstab-18" className="input-dark text-xs w-full" value={form.industry} onChange={e => set('industry', e.target.value)} /></FormField>
+          <FormField label="Employees"><input id="ff-businesstab-19" className="input-dark text-xs w-full" value={form.employee_count} onChange={e => set('employee_count', e.target.value)} /></FormField>
+          <FormField label="Annual Revenue"><input id="ff-businesstab-20" className="input-dark text-xs w-full" value={form.annual_revenue} onChange={e => set('annual_revenue', e.target.value)} placeholder="$" /></FormField>
+        </div>
+      </FormSection>
+
+      <FormSection title="Notes" icon={FileText}>
+        <RichTextArea className="input-dark text-xs w-full min-h-[48px]" rows={2} value={form.notes} onChange={e => set('notes', e.target.value)} />
+      </FormSection>
+
+      <div className="flex justify-end gap-2 pt-1">
         <button type="button" onClick={onCancel} className="toolbar-btn">Cancel</button>
         <button type="button" onClick={() => onSubmit(form)} disabled={!form.name || submitting} className="toolbar-btn toolbar-btn-primary">
           {submitting ? 'Saving...' : initial ? 'Update' : 'Create'}

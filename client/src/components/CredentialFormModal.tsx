@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Award } from 'lucide-react';
 import FormModal from './FormModal';
-import { useFormDirty } from '../hooks/useFormDirty';
+import { useFormDraft } from '../hooks/useFormDraft';
 
 import RichTextArea from './RichTextArea';
 export interface CredentialFormData {
@@ -68,8 +68,18 @@ export default function CredentialFormModal({
   initialData,
   mode = 'create',
 }: CredentialFormModalProps) {
-  const [form, setForm] = useState<CredentialFormData>(EMPTY_FORM);
-  const { isDirty, snapshot } = useFormDirty(form, isOpen);
+  const {
+    form,
+    setForm,
+    isDirty,
+    wasRestored,
+    clearDraft,
+    snapshot,
+  } = useFormDraft<CredentialFormData>({
+    storageKey: 'rmpg_credential_form',
+    defaultValue: EMPTY_FORM,
+    isActive: isOpen,
+  });
 
   useEffect(() => {
     if (isOpen && initialData) {
@@ -83,10 +93,10 @@ export default function CredentialFormModal({
         notes: initialData.notes || '',
       };
       setForm(initial);
-      snapshot(initial);
+      snapshot();
     } else if (isOpen && !initialData) {
       setForm(EMPTY_FORM);
-      snapshot(EMPTY_FORM);
+      snapshot();
     }
   }, [isOpen, initialData]);
 
@@ -96,7 +106,7 @@ export default function CredentialFormModal({
   };
 
   const handleClose = () => {
-    setForm(EMPTY_FORM);
+    clearDraft();
     onClose();
   };
 
@@ -110,13 +120,15 @@ export default function CredentialFormModal({
       submitLabel={mode === 'edit' ? 'Update Credential' : 'Add Credential'}
       isSubmitting={isSubmitting}
       isDirty={isDirty}
+      draftRestored={wasRestored}
+      onDiscardDraft={clearDraft}
     >
       {/* Officer */}
       <div>
         <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">
           Officer <span className="text-red-400">*</span>
         </label>
-        <select
+        <select id="ff-credentialformmodal-0"
           required
           value={form.officer_id}
           onChange={(e) => setForm((prev) => ({ ...prev, officer_id: e.target.value }))}
@@ -135,7 +147,7 @@ export default function CredentialFormModal({
         <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">
           Credential Type <span className="text-red-400">*</span>
         </label>
-        <select
+        <select id="ff-credentialformmodal-1"
           required
           value={form.credential_type}
           onChange={(e) => setForm((prev) => ({ ...prev, credential_type: e.target.value }))}
@@ -154,7 +166,7 @@ export default function CredentialFormModal({
           <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">
             Credential Number
           </label>
-          <input
+          <input id="ff-credentialformmodal-2"
             type="text"
             value={form.credential_number}
             onChange={(e) => setForm((prev) => ({ ...prev, credential_number: e.target.value }))}
@@ -166,7 +178,7 @@ export default function CredentialFormModal({
           <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">
             Issuing Authority
           </label>
-          <input
+          <input id="ff-credentialformmodal-3"
             type="text"
             value={form.issuing_authority}
             onChange={(e) => setForm((prev) => ({ ...prev, issuing_authority: e.target.value }))}
@@ -182,7 +194,7 @@ export default function CredentialFormModal({
           <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">
             Issued Date
           </label>
-          <input
+          <input id="ff-credentialformmodal-4"
             type="date"
             value={form.issued_date}
             onChange={(e) => setForm((prev) => ({ ...prev, issued_date: e.target.value }))}
@@ -193,7 +205,7 @@ export default function CredentialFormModal({
           <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">
             Expiry Date
           </label>
-          <input
+          <input id="ff-credentialformmodal-5"
             type="date"
             value={form.expiry_date}
             onChange={(e) => setForm((prev) => ({ ...prev, expiry_date: e.target.value }))}

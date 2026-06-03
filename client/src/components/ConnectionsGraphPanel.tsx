@@ -2,6 +2,8 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { Network, Loader2, Maximize2, Minimize2 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import CollapsibleSection from './CollapsibleSection';
+import { humanizeRelationship, linkSentence } from '../utils/recordLinks';
+import { recordTypeLabel } from '../utils/recordTypeLabel';
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -10,6 +12,8 @@ interface GraphNode {
   type: 'person' | 'vehicle' | 'property' | 'evidence' | 'case' | 'incident'
       | 'warrant' | 'citation' | 'arrest' | 'field_interview' | 'trespass_order' | 'serve_job';
   label: string;
+  /** Original-case label for prose (label itself is uppercased for the node). */
+  rawLabel?: string;
   subLabel?: string;
   x: number;
   y: number;
@@ -22,6 +26,8 @@ interface GraphEdge {
   source: string;
   target: string;
   label?: string;
+  /** Humanized relationship ("Owner") for the edge tooltip sentence. */
+  relationship?: string;
 }
 
 // ── Color map per node type ──────────────────────────────────
@@ -32,7 +38,7 @@ const NODE_COLORS: Record<string, string> = {
   vehicle: '#10b981',
   property: '#8b5cf6',
   evidence: '#ef4444',
-  case: '#3b82f6',
+  case: '#d4a017',
   warrant: '#dc2626',
   citation: '#fbbf24',
   arrest: '#ef4444',
@@ -128,12 +134,13 @@ export default function ConnectionsGraphPanel({ personId, personName }: Props) {
         `/connections/graph?type=person&id=${personId}&depth=1`
       );
       const centerX = 300, centerY = 200;
-      const newNodes: GraphNode[] = data.nodes.map((n, i) => {
+      const newNodes: GraphNode[] = (data?.nodes || []).map((n, i) => {
         const isSeed = n.type === 'person' && String(n.entityId) === String(personId);
         return {
           id: n.id,
           type: n.type,
           label: (n.label || '').toUpperCase(),
+          rawLabel: n.label || '',
           subLabel: n.metadata?.status || n.metadata?.incident_type || '',
           x: isSeed ? centerX : centerX + Math.cos(i) * 140 + Math.random() * 20,
           y: isSeed ? centerY : centerY + Math.sin(i) * 140 + Math.random() * 20,
@@ -141,8 +148,12 @@ export default function ConnectionsGraphPanel({ personId, personName }: Props) {
           pinned: isSeed,
         };
       });
-      const newEdges: GraphEdge[] = data.edges.map(e => ({
-        source: e.source, target: e.target, label: (e.relationship || '').toUpperCase(),
+      const newEdges: GraphEdge[] = (data?.edges || []).map(e => ({
+        // Plain-language edge tag: "evidence_linked" → "EVIDENCE LINKED"
+        // (the graph style uppercases; humanize first to drop the underscores).
+        source: e.source, target: e.target,
+        label: humanizeRelationship(e.relationship).toUpperCase(),
+        relationship: e.relationship,
       }));
       simulate(newNodes, newEdges);
 
@@ -214,14 +225,24 @@ export default function ConnectionsGraphPanel({ personId, personName }: Props) {
               if (!src || !tgt) return null;
               const mx = (src.x + tgt.x) / 2;
               const my = (src.y + tgt.y) / 2;
+              // Full plain-English description, shown as the native hover
+              // tooltip on the edge: "John Smith — Owner of 325 S Melrose Cir".
+              const sentence = linkSentence(src.rawLabel || src.label, e.relationship, tgt.rawLabel || tgt.label);
               return (
                 <g key={`edge-${i}`}>
+                  <title>{sentence}</title>
+                  {/* Invisible wide hit-area so the thin dashed line is easy to hover */}
+                  <line
+                    x1={src.x} y1={src.y} x2={tgt.x} y2={tgt.y}
+                    stroke="transparent" strokeWidth={10}
+                  />
                   <line
                     x1={src.x} y1={src.y} x2={tgt.x} y2={tgt.y}
                     stroke="#333" strokeWidth={1.5} strokeDasharray="4,3"
                   />
                   {e.label && (
                     <text x={mx} y={my - 4} textAnchor="middle" fontSize={7} fill="#666" fontFamily="monospace">
+                      <title>{sentence}</title>
                       {e.label}
                     </text>
                   )}
@@ -241,6 +262,9 @@ export default function ConnectionsGraphPanel({ personId, personName }: Props) {
                   onMouseLeave={() => setHoveredNode(null)}
                   style={{ cursor: 'pointer' }}
                 >
+                  {/* Plain-language type + name on hover (node shows only a
+                      type initial/icon; this guarantees the type is legible). */}
+                  <title>{`${recordTypeLabel(n.type)} — ${n.rawLabel || n.label}`}</title>
                   {/* Glow on hover */}
                   {isHovered && (
                     <circle cx={n.x} cy={n.y} r={r + 4} fill="none" stroke={color} strokeWidth={2} opacity={0.4} />
@@ -284,7 +308,7 @@ export default function ConnectionsGraphPanel({ personId, personName }: Props) {
                 <g key={`legend-${t}`} transform={`translate(10, ${viewH - 14 - (types.length - 1 - i) * 14})`}>
                   <circle cx={6} cy={0} r={4} fill={NODE_COLORS[t]} />
                   <text x={14} y={3} fontSize={8} fill="#888" fontFamily="monospace">
-                    {t.toUpperCase()}
+                    {recordTypeLabel(t).toUpperCase()}
                   </text>
                 </g>
               ));

@@ -14,6 +14,9 @@ import { DASHCAM_EVENT_COLORS } from '../utils/personnelConstants';
 import PrintButton from '../../../components/PrintButton';
 import ExportButton from '../../../components/ExportButton';
 import RmpgLogo from '../../../components/RmpgLogo';
+import { parseTimestamp } from '../../../utils/dateUtils';
+import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
+import { useMenuActions } from '../../../utils/contextMenuActions';
 
 // ── Filters ──────────────────────────────────────────────────
 
@@ -107,7 +110,7 @@ export default function DashCameraTab({
 
   function formatDateTime(dateStr?: string): string {
     if (!dateStr) return '-';
-    return new Date(dateStr.includes('T') ? dateStr : dateStr + 'T00:00:00').toLocaleString('en-US', {
+    return parseTimestamp(dateStr).toLocaleString('en-US', {
       month: 'short', day: 'numeric', year: 'numeric',
       hour: '2-digit', minute: '2-digit',
     });
@@ -115,7 +118,7 @@ export default function DashCameraTab({
 
   function formatDate(dateStr?: string | null): string {
     if (!dateStr) return '-';
-    return new Date(dateStr.includes('T') ? dateStr : dateStr + 'T00:00:00').toLocaleDateString('en-US', {
+    return parseTimestamp(dateStr).toLocaleDateString('en-US', {
       year: 'numeric', month: 'short', day: 'numeric',
     });
   }
@@ -137,6 +140,30 @@ export default function DashCameraTab({
     { label: 'Hard Brakes', value: stats.hardBrakes, color: 'text-red-400', bgClass: 'bg-surface-base', border: 'border-red-700/30', topBorder: 'border-t-red-500' },
     { label: 'Speeding', value: stats.speeding, color: 'text-amber-400', bgClass: 'bg-surface-base', border: 'border-amber-700/30', topBorder: 'border-t-amber-500' },
     { label: 'Video Clips', value: stats.videoEvents, color: 'text-purple-400', bgClass: 'bg-surface-base', border: 'border-purple-700/30', topBorder: 'border-t-purple-500' },
+  ];
+
+  // ── Right-click context menus ─────────────────────────────
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+
+  const buildDeviceMenu = (dev: CpgDeviceMapping): ContextMenuItem[] => [
+    ...(onSelectOfficer && dev.officer_id
+      ? [m.action('Open officer', () => onSelectOfficer(String(dev.officer_id)), { icon: <Car size={12} /> }), m.separator()]
+      : []),
+    m.copy('Copy serial', dev.cpg_serial_number),
+    m.copy('Copy call sign', dev.call_sign),
+    m.copy('Copy device name', dev.cpg_display_name),
+    m.copyId(dev.id),
+  ];
+
+  const buildEventMenu = (evt: DashcamEvent): ContextMenuItem[] => [
+    ...(onSelectOfficer && evt.officer_id
+      ? [m.action('Open officer', () => onSelectOfficer(String(evt.officer_id)), { icon: <Car size={12} /> }), m.separator()]
+      : []),
+    m.copy('Copy call sign', evt.call_sign),
+    m.copy('Copy address', evt.address),
+    m.copyCoords(evt.latitude, evt.longitude),
+    m.copyId(evt.id),
   ];
 
   // ── Render ───────────────────────────────────────────────
@@ -226,7 +253,7 @@ export default function DashCameraTab({
       <div className="panel-inset p-2 flex items-center gap-2 flex-wrap">
         <div className="relative flex-1 min-w-[180px] max-w-[280px]">
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500 pointer-events-none" />
-          <input
+          <input id="ff-dashcameratab-0"
             type="text"
             value={search}
             onChange={e => setSearch(e.target.value)}
@@ -290,6 +317,7 @@ export default function DashCameraTab({
                   <tr
                     key={dev.id}
                     className="cursor-pointer hover:bg-surface-hover"
+                    onContextMenu={(e) => openMenu(e, buildDeviceMenu(dev))}
                     onClick={() => {
                       // Find the officer for this unit — if available in mappings
                       if (dev.officer_name && onSelectOfficer) {
@@ -391,6 +419,7 @@ export default function DashCameraTab({
                         evt.event_type === 'impact' ? 'bg-red-900/10' :
                         evt.event_type === 'speeding' ? 'bg-amber-900/5' : ''
                       }`}
+                      onContextMenu={(e) => openMenu(e, buildEventMenu(evt))}
                     >
                       <td>
                         <span className="text-xs font-mono text-rmpg-300 flex items-center gap-1">

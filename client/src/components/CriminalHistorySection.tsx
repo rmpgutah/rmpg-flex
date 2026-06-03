@@ -4,6 +4,7 @@
 // ============================================================
 
 import { useState, useEffect, useCallback } from 'react';
+import { parseTimestamp } from '../utils/dateUtils';
 import RichTextArea from './RichTextArea';
 import {
   Plus, Trash2, Pencil, ChevronDown, ChevronRight, Loader2, Save, X, Gavel,
@@ -90,7 +91,7 @@ const OFFENSE_LEVEL_CLASSES: Record<string, string> = {
 function formatDate(dateStr: string | null | undefined): string {
   if (!dateStr) return '--';
   try {
-    return new Date(dateStr.includes('T') ? dateStr : dateStr + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+    return parseTimestamp(dateStr).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
   } catch { return dateStr; }
 }
 
@@ -252,7 +253,7 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <div>
                   <label className="text-[9px] text-rmpg-400 uppercase font-bold">Record Type</label>
-                  <select
+                  <select id="ff-criminalhistorysection-0"
                     value={form.record_type}
                     onChange={e => setForm(prev => ({ ...prev, record_type: e.target.value }))}
                     className="input-dark w-full text-xs mt-0.5"
@@ -262,7 +263,7 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
                 </div>
                 <div>
                   <label className="text-[9px] text-rmpg-400 uppercase font-bold">Offense Level</label>
-                  <select
+                  <select id="ff-criminalhistorysection-1"
                     value={form.offense_level}
                     onChange={e => setForm(prev => ({ ...prev, offense_level: e.target.value }))}
                     className="input-dark w-full text-xs mt-0.5"
@@ -272,7 +273,7 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
                 </div>
                 <div>
                   <label className="text-[9px] text-rmpg-400 uppercase font-bold">Offense Date</label>
-                  <input
+                  <input id="ff-criminalhistorysection-2"
                     type="date"
                     value={form.offense_date}
                     onChange={e => setForm(prev => ({ ...prev, offense_date: e.target.value }))}
@@ -283,7 +284,7 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
 
               <div>
                 <label className="text-[9px] text-rmpg-400 uppercase font-bold">Offense / Charge *</label>
-                <input
+                <input id="ff-criminalhistorysection-3"
                   type="text"
                   value={form.offense}
                   onChange={e => setForm(prev => ({ ...prev, offense: e.target.value }))}
@@ -295,7 +296,7 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <div>
                   <label className="text-[9px] text-rmpg-400 uppercase font-bold">Statute / Code</label>
-                  <input
+                  <input id="ff-criminalhistorysection-4"
                     type="text"
                     value={form.statute}
                     onChange={e => setForm(prev => ({ ...prev, statute: e.target.value }))}
@@ -305,7 +306,7 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
                 </div>
                 <div>
                   <label className="text-[9px] text-rmpg-400 uppercase font-bold">Case Number</label>
-                  <input
+                  <input id="ff-criminalhistorysection-5"
                     type="text"
                     value={form.case_number}
                     onChange={e => setForm(prev => ({ ...prev, case_number: e.target.value }))}
@@ -314,7 +315,7 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
                 </div>
                 <div>
                   <label className="text-[9px] text-rmpg-400 uppercase font-bold">Agency</label>
-                  <input
+                  <input id="ff-criminalhistorysection-6"
                     type="text"
                     value={form.agency}
                     onChange={e => setForm(prev => ({ ...prev, agency: e.target.value }))}
@@ -327,7 +328,7 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <div>
                   <label className="text-[9px] text-rmpg-400 uppercase font-bold">Jurisdiction</label>
-                  <input
+                  <input id="ff-criminalhistorysection-7"
                     type="text"
                     value={form.jurisdiction}
                     onChange={e => setForm(prev => ({ ...prev, jurisdiction: e.target.value }))}
@@ -337,7 +338,7 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
                 </div>
                 <div>
                   <label className="text-[9px] text-rmpg-400 uppercase font-bold">Disposition</label>
-                  <input
+                  <input id="ff-criminalhistorysection-8"
                     type="text"
                     value={form.disposition}
                     onChange={e => setForm(prev => ({ ...prev, disposition: e.target.value }))}
@@ -347,7 +348,7 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
                 </div>
                 <div>
                   <label className="text-[9px] text-rmpg-400 uppercase font-bold">Disposition Date</label>
-                  <input
+                  <input id="ff-criminalhistorysection-9"
                     type="date"
                     value={form.disposition_date}
                     onChange={e => setForm(prev => ({ ...prev, disposition_date: e.target.value }))}
@@ -359,7 +360,7 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <div>
                   <label className="text-[9px] text-rmpg-400 uppercase font-bold">Sentence</label>
-                  <input
+                  <input id="ff-criminalhistorysection-10"
                     type="text"
                     value={form.sentence}
                     onChange={e => setForm(prev => ({ ...prev, sentence: e.target.value }))}
@@ -369,7 +370,7 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
                 </div>
                 <div>
                   <label className="text-[9px] text-rmpg-400 uppercase font-bold">Source</label>
-                  <input
+                  <input id="ff-criminalhistorysection-11"
                     type="text"
                     value={form.source}
                     onChange={e => setForm(prev => ({ ...prev, source: e.target.value }))}

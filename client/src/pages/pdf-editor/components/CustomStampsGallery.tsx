@@ -38,6 +38,17 @@ interface Props {
   onPick: (pick: StampPick) => void;
 }
 
+// Strict allowlist for the image data: URL we render in <img src>. Custom
+// stamps live in localStorage and may also arrive via the JSON template
+// import path, so we cannot trust the string blindly — without this guard
+// a crafted entry like `data:text/html,<script>...` or `javascript:...`
+// would round-trip into the DOM and execute when assigned to img.src.
+const SAFE_IMAGE_DATA_URL = /^data:image\/(png|jpeg|jpg|gif|webp|svg\+xml);base64,[A-Za-z0-9+/=]+$/i;
+function safeImageSrc(src: string | undefined | null): string {
+  if (typeof src !== 'string') return '';
+  return SAFE_IMAGE_DATA_URL.test(src) ? src : '';
+}
+
 export function loadCustomStamps(): CustomStamp[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -139,7 +150,7 @@ export default function CustomStampsGallery({ open, onClose, onPick }: Props) {
           {PRESETS.map(label => (
             <button key={label} type="button"
               onClick={() => { onPick({ kind: 'preset', label }); onClose(); }}
-              className="bg-[#0d0d0d] hover:bg-[#1a1a1a] border-2 border-[#c62828]/70 hover:border-[#c62828] rounded-sm py-2 px-3 text-[#c62828] font-bold text-sm tracking-wider">
+              className="bg-[#0d0d0d] hover:bg-[#1a1a1a] border-2 border-[#555555]/70 hover:border-[#555555] rounded-sm py-2 px-3 text-[#555555] font-bold text-sm tracking-wider">
               {label}
             </button>
           ))}
@@ -147,7 +158,7 @@ export default function CustomStampsGallery({ open, onClose, onPick }: Props) {
 
         <div className="flex items-center justify-between mb-2">
           <div className="text-[9px] uppercase tracking-wider text-[#d4a017] font-semibold">Custom uploads ({stamps.length})</div>
-          <input ref={fileInputRef} type="file" accept="image/png,image/jpeg" className="hidden"
+          <input id="ff-customstampsgallery-0" ref={fileInputRef} type="file" accept="image/png,image/jpeg" className="hidden"
             onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUpload(f); e.target.value = ''; }} />
           <button type="button" onClick={() => fileInputRef.current?.click()}
             className="btn-secondary inline-flex items-center gap-1 text-[10px]">
@@ -166,10 +177,10 @@ export default function CustomStampsGallery({ open, onClose, onPick }: Props) {
                 <button type="button"
                   onClick={() => { onPick({ kind: 'custom', stamp: s }); onClose(); }}
                   className="block w-full bg-white rounded-sm overflow-hidden mb-1.5 aspect-[4/3] flex items-center justify-center">
-                  <img src={s.imageData} alt={s.name} className="max-w-full max-h-full object-contain" />
+                  <img src={safeImageSrc(s.imageData)} alt={s.name} className="max-w-full max-h-full object-contain" />
                 </button>
                 <div className="flex items-center gap-1">
-                  <input type="text" value={s.name}
+                  <input id="ff-customstampsgallery-1" type="text" value={s.name}
                     onChange={(e) => handleRename(s.id, e.target.value.slice(0, 40))}
                     className="flex-1 bg-transparent text-[10px] text-rmpg-200 border-b border-transparent hover:border-[#222] focus:outline-none focus:border-[#d4a017]" />
                   <button type="button" onClick={() => { onPick({ kind: 'custom', stamp: s }); onClose(); }}

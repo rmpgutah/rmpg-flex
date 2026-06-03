@@ -7,6 +7,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from './PanelTitleBar';
 import StatusBadge from './StatusBadge';
+import { safeDateTimeStr } from '../utils/dateUtils';
 import {
   FileText, Printer, Radio, AlertTriangle, StickyNote,
   MapPin, BarChart3, Plus, Clock, Car,
@@ -119,7 +120,7 @@ export default function ShiftHandoffReport({ officerId }: ShiftHandoffProps) {
       <div className="flex items-center gap-3 flex-wrap print:hidden">
         <label className="text-rmpg-300 text-xs font-mono">
           Shift Start
-          <input
+          <input id="ff-shifthandoffreport-0"
             type="datetime-local"
             value={shiftStart}
             onChange={e => setShiftStart(e.target.value)}
@@ -128,7 +129,7 @@ export default function ShiftHandoffReport({ officerId }: ShiftHandoffProps) {
         </label>
         <label className="text-rmpg-300 text-xs font-mono">
           Shift End
-          <input
+          <input id="ff-shifthandoffreport-1"
             type="datetime-local"
             value={shiftEnd}
             onChange={e => setShiftEnd(e.target.value)}
@@ -218,7 +219,7 @@ export default function ShiftHandoffReport({ officerId }: ShiftHandoffProps) {
                   <div className="flex items-center gap-2 mb-1">
                     <span className="text-brand-400 font-bold uppercase">{b.type}</span>
                     <StatusBadge status={b.priority} type="priority" size="sm" />
-                    <span className="text-rmpg-400 ml-auto">{new Date(b.issued_at).toLocaleString()}</span>
+                    <span className="text-rmpg-400 ml-auto">{safeDateTimeStr(b.issued_at)}</span>
                   </div>
                   <p className="text-rmpg-200">{b.description}</p>
                 </div>
@@ -238,14 +239,14 @@ export default function ShiftHandoffReport({ officerId }: ShiftHandoffProps) {
                 <span className="bg-brand-900/40 text-brand-400 px-1.5 py-0.5 rounded-[2px] text-[10px] uppercase font-bold">
                   {n.category}
                 </span>
-                <span className="ml-auto">{new Date(n.created_at).toLocaleString()}</span>
+                <span className="ml-auto">{safeDateTimeStr(n.created_at)}</span>
               </div>
               <p className="text-rmpg-200">{n.content}</p>
             </div>
           ))}
           {/* Add note form — hidden in print */}
           <div className="flex gap-2 items-end print:hidden">
-            <select
+            <select id="ff-shifthandoffreport-2"
               value={noteCategory}
               onChange={e => setNoteCategory(e.target.value)}
               className="bg-[#050505] border border-rmpg-600 text-rmpg-200 text-xs px-2 py-1.5 rounded-[2px] font-mono"
@@ -255,7 +256,7 @@ export default function ShiftHandoffReport({ officerId }: ShiftHandoffProps) {
               <option value="followup">Follow-Up</option>
               <option value="equipment">Equipment</option>
             </select>
-            <input
+            <input id="ff-shifthandoffreport-3"
               type="text"
               placeholder="Add shift note..."
               value={noteText}

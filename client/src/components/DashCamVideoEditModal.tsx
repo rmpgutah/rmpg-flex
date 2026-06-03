@@ -8,7 +8,8 @@
 import React, { useState, useEffect } from 'react';
 import { Car } from 'lucide-react';
 import FormModal from './FormModal';
-import { useFormDirty } from '../hooks/useFormDirty';
+import { useFormDraft } from '../hooks/useFormDraft';
+import AddressAutocomplete from './AddressAutocomplete';
 import type { DashCamVideo, VideoClassification } from '../types';
 
 import RichTextArea from './RichTextArea';
@@ -50,8 +51,18 @@ const EMPTY: DashCamVideoEditData = {
 };
 
 export default function DashCamVideoEditModal({ isOpen, onClose, onSave, video, isSubmitting }: Props) {
-  const [form, setForm] = useState<DashCamVideoEditData>(EMPTY);
-  const { isDirty, snapshot } = useFormDirty(form, isOpen);
+  const {
+    form,
+    setForm,
+    isDirty,
+    wasRestored,
+    clearDraft,
+    snapshot,
+  } = useFormDraft<DashCamVideoEditData>({
+    storageKey: 'rmpg_dashcam_video_edit_form',
+    defaultValue: EMPTY,
+    isActive: isOpen,
+  });
 
   useEffect(() => {
     if (isOpen && video) {
@@ -66,7 +77,7 @@ export default function DashCamVideoEditModal({ isOpen, onClose, onSave, video, 
         notes: video.notes || '',
       };
       setForm(init);
-      snapshot(init);
+      snapshot();
     }
   }, [isOpen, video, snapshot]);
 
@@ -89,12 +100,14 @@ export default function DashCamVideoEditModal({ isOpen, onClose, onSave, video, 
       submitLabel="Save Changes"
       isSubmitting={isSubmitting}
       isDirty={isDirty}
+      draftRestored={wasRestored}
+      onDiscardDraft={clearDraft}
       maxWidth="max-w-lg"
     >
       {/* Title */}
       <div>
         <label className="field-label mb-1 block">Title *</label>
-        <input
+        <input id="ff-dashcamvideoeditmodal-0"
           type="text"
           className="input-dark"
           value={form.title}
@@ -107,7 +120,7 @@ export default function DashCamVideoEditModal({ isOpen, onClose, onSave, video, 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label className="field-label mb-1 block">Classification</label>
-          <select
+          <select id="ff-dashcamvideoeditmodal-1"
             className="select-dark"
             value={form.classification}
             onChange={e => set('classification', e.target.value)}
@@ -119,7 +132,7 @@ export default function DashCamVideoEditModal({ isOpen, onClose, onSave, video, 
         </div>
         <div>
           <label className="field-label mb-1 block">Case Number</label>
-          <input
+          <input id="ff-dashcamvideoeditmodal-2"
             type="text"
             className="input-dark"
             value={form.case_number}
@@ -133,7 +146,7 @@ export default function DashCamVideoEditModal({ isOpen, onClose, onSave, video, 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label className="field-label mb-1 block">Speed (MPH)</label>
-          <input
+          <input id="ff-dashcamvideoeditmodal-3"
             type="number"
             className="input-dark"
             value={form.speed_mph}
@@ -144,23 +157,28 @@ export default function DashCamVideoEditModal({ isOpen, onClose, onSave, video, 
             step="1"
           />
         </div>
-        <div>
-          <label className="field-label mb-1 block">Address</label>
-          <input
-            type="text"
-            className="input-dark"
-            value={form.address}
-            onChange={e => set('address', e.target.value)}
-            placeholder="e.g. 1200 N Main St, Vernal"
-          />
-        </div>
+         <div>
+           <label className="field-label mb-1 block">Address</label>
+           <AddressAutocomplete
+             value={form.address}
+             onChange={(value) => set('address', value)}
+             placeholder="Enter address..."
+             className="input-dark"
+             name="address"
+             onSelect={(addr) => {
+               set('address', addr.formatted);
+               set('latitude', addr.latitude != null ? String(addr.latitude) : '');
+               set('longitude', addr.longitude != null ? String(addr.longitude) : '');
+             }}
+           />
+         </div>
       </div>
 
       {/* Latitude + Longitude */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label className="field-label mb-1 block">Latitude</label>
-          <input
+          <input id="ff-dashcamvideoeditmodal-4"
             type="number"
             className="input-dark"
             value={form.latitude}
@@ -171,7 +189,7 @@ export default function DashCamVideoEditModal({ isOpen, onClose, onSave, video, 
         </div>
         <div>
           <label className="field-label mb-1 block">Longitude</label>
-          <input
+          <input id="ff-dashcamvideoeditmodal-5"
             type="number"
             className="input-dark"
             value={form.longitude}

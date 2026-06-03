@@ -23,8 +23,11 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { parseTimestamp, safeDateTimeStr } from '../../utils/dateUtils';
 import { useWebSocket } from '../../context/WebSocketContext';
 import { useToast } from '../../components/ToastProvider';
+import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
+import { useMenuActions } from '../../utils/contextMenuActions';
 import type {
   ScraperSource,
   ScraperHealthSummary,
@@ -259,7 +262,7 @@ function ScraperLiveFeed({ entries }: { entries: LiveFeedEntry[] }) {
         ) : (
           entries.map((entry) => {
             const display = formatLiveFeedEvent(entry.event);
-            const time = new Date(entry.timestamp).toLocaleTimeString().slice(0, 8);
+            const time = parseTimestamp(entry.timestamp).toLocaleTimeString().slice(0, 8);
             return (
               <div key={entry.id} className="flex items-start gap-2">
                 <span className="text-rmpg-600 w-14 flex-shrink-0">{time}</span>
@@ -286,6 +289,8 @@ function ScraperSourceCard({
 }) {
   const [expanded, setExpanded] = useState(false);
   const { addToast } = useToast();
+  const { openMenu } = useContextMenu();
+  const menu = useMenuActions();
   const grade = source.metrics_24h?.health_grade || 'F';
   const m = source.metrics_24h;
 
@@ -313,10 +318,20 @@ function ScraperSourceCard({
     }
   };
 
+  const buildMenu = (): ContextMenuItem[] => [
+    menu.action(expanded ? 'Collapse' : 'Expand details', () => setExpanded((v) => !v), { icon: <Eye size={12} /> }),
+    menu.action('Trigger scrape', () => { void trigger(); }, { icon: <Zap size={12} /> }),
+    menu.action('Reset circuit', () => { void reset(); }, { icon: <RotateCw size={12} /> }),
+    ...(source.source_url ? [menu.openExternal('View source', source.source_url)] : []),
+    menu.separator(),
+    menu.copyId(source.source_key, 'Copy source key'),
+  ];
+
   return (
     <div className="panel-raised">
       <button
         onClick={() => setExpanded(!expanded)}
+        onContextMenu={(e) => openMenu(e, buildMenu())}
         className="w-full p-2 flex items-center gap-2 hover:bg-rmpg-800/50 text-left"
       >
         <span className="text-[9px] font-mono font-bold px-1.5 py-0.5 bg-rmpg-900 text-rmpg-400 border border-rmpg-700 w-12 text-center">
@@ -351,9 +366,7 @@ function ScraperSourceCard({
             <div>
               <span className="text-rmpg-500">Last success: </span>
               <span className="text-white">
-                {source.last_success_at
-                  ? new Date(source.last_success_at).toLocaleString()
-                  : 'never'}
+                {safeDateTimeStr(source.last_success_at, 'never')}
               </span>
             </div>
             <div>
@@ -471,7 +484,7 @@ export default function ScrapersTab() {
       }
     };
 
-    const unsubscribe = subscribe('scraper_event', handler);
+    const unsubscribe = subscribe('scraper_events', handler); // Worker broadcasts the PLURAL type
     return () => unsubscribe();
   }, [subscribe, fetchAll]);
 
@@ -517,7 +530,7 @@ export default function ScrapersTab() {
       <div className="flex flex-wrap items-center gap-2 panel-raised p-2">
         <div className="flex items-center gap-1 flex-1 min-w-[200px]">
           <Search size={14} className="text-rmpg-500" />
-          <input
+          <input id="ff-scraperstab-0"
             type="text"
             placeholder="Search sources..."
             value={search}
@@ -525,7 +538,7 @@ export default function ScrapersTab() {
             className="input-dark flex-1 text-xs"
           />
         </div>
-        <select
+        <select id="ff-scraperstab-1"
           value={stateFilter}
           onChange={(e) => setStateFilter(e.target.value)}
           className="select-dark text-xs"
@@ -537,7 +550,7 @@ export default function ScrapersTab() {
             </option>
           ))}
         </select>
-        <select
+        <select id="ff-scraperstab-2"
           value={gradeFilter}
           onChange={(e) => setGradeFilter(e.target.value as GradeFilter)}
           className="select-dark text-xs"

@@ -5,6 +5,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import RichTextArea from '../RichTextArea';
+import { parseTimestamp } from '../../utils/dateUtils';
 import {
   Search, Plus, RefreshCw, X, ExternalLink, Save, Loader2, CheckSquare, Square,
   ArrowRight, UserPlus, XCircle, FileText, Phone, Mail, MapPin, Building2, Clock,
@@ -82,12 +83,12 @@ function formatCurrency(val: number | null | undefined): string {
 
 function formatDate(d?: string | null): string {
   if (!d) return '\u2014';
-  return new Date(d.includes('T') ? d : d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return parseTimestamp(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 function formatDateTime(d?: string | null): string {
   if (!d) return '\u2014';
-  return new Date(d.includes('T') ? d : d + 'T00:00:00').toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  return parseTimestamp(d).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
 function toDisplayLabel(s: string): string {
@@ -341,7 +342,7 @@ export default function LeadsTab() {
       <div className="flex items-center gap-2 flex-wrap px-3 py-2 bg-[#141414] border-b border-rmpg-700">
         <div className="relative flex-1 min-w-[200px] max-w-xs">
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400" />
-          <input
+          <input id="ff-leadstab-0"
             type="text"
             placeholder="Search leads..."
             value={filterSearch}
@@ -349,7 +350,7 @@ export default function LeadsTab() {
             className="w-full bg-[#0c0c0c] border border-rmpg-700 text-white text-sm pl-7 pr-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
           />
         </div>
-        <select
+        <select id="ff-leadstab-1"
           value={filterSource}
           onChange={e => setFilterSource(e.target.value)}
           className="bg-[#0c0c0c] border border-rmpg-700 text-white text-xs px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
@@ -368,7 +369,7 @@ export default function LeadsTab() {
           <option value="cfpb_complaints">CFPB Complaints</option>
           <option value="manual">Manual</option>
         </select>
-        <select
+        <select id="ff-leadstab-2"
           value={filterService}
           onChange={e => setFilterService(e.target.value)}
           className="bg-[#0c0c0c] border border-rmpg-700 text-white text-xs px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
@@ -378,7 +379,7 @@ export default function LeadsTab() {
           <option value="repo_security">Repo Security</option>
           <option value="skip_tracing">Skip Tracing</option>
         </select>
-        <select
+        <select id="ff-leadstab-3"
           value={filterStage}
           onChange={e => setFilterStage(e.target.value)}
           className="bg-[#0c0c0c] border border-rmpg-700 text-white text-xs px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
@@ -388,7 +389,7 @@ export default function LeadsTab() {
             <option key={s} value={s}>{toDisplayLabel(s)}</option>
           ))}
         </select>
-        <select
+        <select id="ff-leadstab-4"
           value={filterScoreMin}
           onChange={e => setFilterScoreMin(e.target.value)}
           className="bg-[#0c0c0c] border border-rmpg-700 text-white text-xs px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
@@ -560,7 +561,7 @@ export default function LeadsTab() {
               {/* Stage change */}
               <div>
                 <label className="text-[10px] text-rmpg-400 uppercase tracking-wider block mb-1">Move to Stage</label>
-                <select
+                <select id="ff-leadstab-5"
                   value={selectedLead.pipeline_stage}
                   onChange={e => handleStageChange(selectedLead.id, e.target.value as PipelineStage)}
                   className="w-full bg-[#0c0c0c] border border-rmpg-700 text-white text-xs px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
@@ -683,7 +684,7 @@ export default function LeadsTab() {
               {/* Add note */}
               <div className="panel-beveled p-2">
                 <div className="text-[10px] text-rmpg-400 uppercase tracking-wider mb-1">Add Activity Note</div>
-                <input
+                <input id="ff-leadstab-6"
                   type="text"
                   placeholder="Subject"
                   value={newNoteSubject}
@@ -777,7 +778,7 @@ export default function LeadsTab() {
             <form onSubmit={handleCreateLead} className="p-3 space-y-2">
               <div>
                 <label className="text-[10px] text-rmpg-400 uppercase tracking-wider block mb-0.5">Business Name *</label>
-                <input
+                <input id="ff-leadstab-7"
                   type="text"
                   required
                   value={createForm.business_name}
@@ -788,7 +789,7 @@ export default function LeadsTab() {
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="text-[10px] text-rmpg-400 uppercase tracking-wider block mb-0.5">Contact Name</label>
-                  <input
+                  <input id="ff-leadstab-8"
                     type="text"
                     value={createForm.contact_name}
                     onChange={e => setCreateForm(f => ({ ...f, contact_name: e.target.value }))}
@@ -797,7 +798,7 @@ export default function LeadsTab() {
                 </div>
                 <div>
                   <label className="text-[10px] text-rmpg-400 uppercase tracking-wider block mb-0.5">Business Type</label>
-                  <select
+                  <select id="ff-leadstab-9"
                     value={createForm.business_type}
                     onChange={e => setCreateForm(f => ({ ...f, business_type: e.target.value }))}
                     className="w-full bg-[#0c0c0c] border border-rmpg-700 text-white text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
@@ -819,7 +820,7 @@ export default function LeadsTab() {
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="text-[10px] text-rmpg-400 uppercase tracking-wider block mb-0.5">Email</label>
-                  <input
+                  <input id="ff-leadstab-10"
                     type="email"
                     value={createForm.contact_email}
                     onChange={e => setCreateForm(f => ({ ...f, contact_email: e.target.value }))}
@@ -828,7 +829,7 @@ export default function LeadsTab() {
                 </div>
                 <div>
                   <label className="text-[10px] text-rmpg-400 uppercase tracking-wider block mb-0.5">Phone</label>
-                  <input
+                  <input id="ff-leadstab-11"
                     type="tel"
                     value={createForm.contact_phone}
                     onChange={e => setCreateForm(f => ({ ...f, contact_phone: formatPhoneInput(e.target.value) }))}
@@ -838,7 +839,7 @@ export default function LeadsTab() {
               </div>
               <div>
                 <label className="text-[10px] text-rmpg-400 uppercase tracking-wider block mb-0.5">Address</label>
-                <input
+                <input id="ff-leadstab-12"
                   type="text"
                   value={createForm.address}
                   onChange={e => setCreateForm(f => ({ ...f, address: e.target.value }))}
@@ -848,7 +849,7 @@ export default function LeadsTab() {
               <div className="grid grid-cols-3 gap-2">
                 <div>
                   <label className="text-[10px] text-rmpg-400 uppercase tracking-wider block mb-0.5">City</label>
-                  <input
+                  <input id="ff-leadstab-13"
                     type="text"
                     value={createForm.city}
                     onChange={e => setCreateForm(f => ({ ...f, city: e.target.value }))}
@@ -857,7 +858,7 @@ export default function LeadsTab() {
                 </div>
                 <div>
                   <label className="text-[10px] text-rmpg-400 uppercase tracking-wider block mb-0.5">State</label>
-                  <input
+                  <input id="ff-leadstab-14"
                     type="text"
                     value={createForm.state}
                     onChange={e => setCreateForm(f => ({ ...f, state: e.target.value }))}
@@ -866,7 +867,7 @@ export default function LeadsTab() {
                 </div>
                 <div>
                   <label className="text-[10px] text-rmpg-400 uppercase tracking-wider block mb-0.5">ZIP</label>
-                  <input
+                  <input id="ff-leadstab-15"
                     type="text"
                     value={createForm.zip}
                     onChange={e => setCreateForm(f => ({ ...f, zip: e.target.value }))}
@@ -876,7 +877,7 @@ export default function LeadsTab() {
               </div>
               <div>
                 <label className="text-[10px] text-rmpg-400 uppercase tracking-wider block mb-0.5">Estimated Monthly Value</label>
-                <input
+                <input id="ff-leadstab-16"
                   type="number"
                   step="0.01"
                   value={createForm.estimated_value}

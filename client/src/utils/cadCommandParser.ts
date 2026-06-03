@@ -6,6 +6,7 @@
 // ============================================================
 
 import { apiFetch } from '../hooks/useApi';
+import { formatEnumValue } from './formatters';
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -509,7 +510,16 @@ export async function executeCommand(
         // Fetch current call to get existing notes, then append
         const current = await apiFetch<any>(`/dispatch/calls/${call.id}`);
         let existingNotes: any[] = [];
-        try { existingNotes = JSON.parse(current.notes || '[]'); } catch { /* start fresh */ }
+        try {
+          const parsed = JSON.parse(current.notes || '[]');
+          existingNotes = Array.isArray(parsed) ? parsed : [];
+        } catch { /* notes wasn't JSON — preserve below */ }
+        // If notes was a plain (non-JSON) string, DON'T discard it — seed the
+        // array with the existing text as a legacy note so adding a note never
+        // wipes prior free-text content.
+        if (existingNotes.length === 0 && typeof current.notes === 'string' && current.notes.trim()) {
+          existingNotes = [{ id: 'legacy', author: 'System', text: current.notes, timestamp: new Date().toISOString() }];
+        }
         existingNotes.push({
           id: String(Date.now()),
           author: ctx.currentUser || 'Dispatch',
@@ -602,9 +612,15 @@ export async function executeCommand(
         await apiFetch('/comms/bolos', {
           method: 'POST',
           body: JSON.stringify({
+            // type is REQUIRED (VALID_BOLO_TYPES = person|vehicle|other); a
+            // freeform BO line has no structured subject, so default to 'other'.
+            // Omitting it made the server return 400 and the command always failed.
+            type: 'other',
             title: `BOLO — ${description.substring(0, 50)}`,
             description,
-            priority: 'high',
+            // Priority uses the P-scheme (P1–P4), not legacy high/medium/low —
+            // the BOLO schema + sort expect P*; 'high' validated/sorted wrong.
+            priority: 'P3',
             status: 'active',
           }),
         });
@@ -964,7 +980,7 @@ export async function executeCommand(
           `/dispatch/geography/premise-alerts?address=${encodeURIComponent(address)}`
         );
         if (alerts && alerts.length > 0) {
-          const lines = alerts.map(a => `  ${a.alert_level === 'critical' ? '🔴' : a.alert_level === 'warning' ? '🟡' : '🔵'} ${a.title} (${a.alert_type})`).join('\n');
+          const lines = alerts.map(a => `  ${a.alert_level === 'critical' ? '🔴' : a.alert_level === 'warning' ? '🟡' : '🔵'} ${a.title} (${formatEnumValue(a.alert_type)})`).join('\n');
           return {
             success: true,
             message: `⚠ PREMISE ALERTS for "${address}":\n${lines}`,

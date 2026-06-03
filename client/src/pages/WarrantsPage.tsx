@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useCallback, useRef, useId } from 'react';
 import { formatEnumValue } from '../utils/formatters';
 import RichTextArea from '../components/RichTextArea';
+import { useToast } from '../components/ToastProvider';
 import {
   AlertTriangle, Plus, Search, Edit, Trash2, CheckCircle, XCircle, Clock,
   Loader2, Archive, RotateCcw, MapPin, User, Gavel, ChevronDown, X, Scale, Radar,
   PlayCircle, History, Globe, Shield, FileText, Activity, Zap, Printer, Download,
-  UserCheck,
+  UserCheck, Eye, Pencil,
 } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
@@ -21,8 +22,11 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import StatuteLookup, { OffenseLevelBadge } from '../components/StatuteLookup';
 import type { StatuteResult } from '../components/StatuteLookup';
 import { useFormValidation } from '../hooks/useFormValidation';
+import { useFormDraft } from '../hooks/useFormDraft';
 import EmptyState from '../components/EmptyState';
-import { formatDate, formatDateTime } from '../utils/dateUtils';
+import UnsavedChangesGuard from '../components/UnsavedChangesGuard';
+import FloatingSaveBar from '../components/FloatingSaveBar';
+import { formatDate, formatDateTime, parseTimestamp } from '../utils/dateUtils';
 import { useAuth } from '../context/AuthContext';
 import {
   downloadRecordPdf, generateBoloPdf, generateWarrantSummaryPdf,
@@ -34,8 +38,10 @@ import {
   stateFromSource,
 } from '../utils/warrantListHelpers';
 import { buildWarrantPacketPdf } from '../utils/warrantPacket';
+import { displayUserName } from '../utils/userDisplay';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { loadGoogleMaps, DARK_MAP_STYLE } from '../utils/googleMapsLoader';
+import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
+import { useMenuActions } from '../utils/contextMenuActions';
 import ScrapersTab from './warrants/ScrapersTab';
 
 // ============================================================
@@ -111,6 +117,9 @@ interface Person {
 // Dashboard types
 interface DashboardStats {
   activeWarrants: number;
+  // Utah hits attributed to DOB-less persons (name-only matches) — possible
+  // namesakes, kept OUT of activeWarrants and surfaced separately.
+  unverifiedWarrants?: number;
   hitsToday: number;
   personsFlagged: number;
   sourcesOnline: number;
@@ -142,6 +151,8 @@ interface PriorityWarrant {
   bail_amount: number | null;
   source: string | null;
   created_at: string;
+  // Utah lead matched on name only (DOB-less person) — possible namesake.
+  unverified?: boolean;
 }
 
 // Person profile (slide-out)
@@ -233,10 +244,13 @@ interface WatchPerson {
   address?: string;
   photo_url?: string | null;
   warrant_severity: string | null;
+  // True when the local person has no DOB, so the poller could not age-confirm
+  // the Utah match — these hits are possible namesakes, shown as leads.
+  unverified?: boolean;
   local_warrant_count: number;
   utah_hit_count: number;
   warrants: { id: number; warrant_number: string; type: string; status: string; charge_description: string; offense_level: string | null; bail_amount: number | null; issuing_court: string | null; source: string | null; created_at: string }[];
-  utahWarrants: { utah_warrant_id: string; charges: string; court_name: string; issue_date: string }[];
+  utahWarrants: { utah_warrant_id: string; charges: string; court_name: string; issue_date: string; city?: string | null; age?: number | null }[];
 }
 
 // Coverage / Sources
@@ -355,19 +369,34 @@ const FEED_RANGE_PARAMS: Record<FeedRange, string> = {
 // ============================================================
 
 function formatCurrency(amount: number | null): string {
-  if (amount == null) return '-';
-  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
+  const n = Number(amount);
+  if (amount == null || !Number.isFinite(n)) return '-'; // sentinel string → '-', never $NaN
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n);
 }
 
-function chargesFromJson(charges: string | null): string {
-  if (!charges) return '';
-  try { return JSON.parse(charges).join('; '); } catch { return charges; }
+const SENTINEL_TXT = new Set(['none', 'n/a', 'na', '0', 'null', '']);
+// Utah/scraped charges arrive as a JSON-stringified array ('["BATTERY"]').
+// Render the human form: parse the array and join, fall back to the raw
+// string for already-plain values. Guards against JSON.parse yielding a
+// non-array (number/object) which would throw on .join and leak the raw
+// brackets into the UI (the '["FAILURE TO REMAIN…"]' display bug).
+function chargesFromJson(charges: string | null | undefined): string {
+  if (!charges || SENTINEL_TXT.has(String(charges).trim().toLowerCase())) return '';
+  const raw = String(charges).trim();
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) return parsed.filter(Boolean).map(String).join('; ');
+    if (parsed == null) return '';
+    return String(parsed);
+  } catch {
+    return raw;
+  }
 }
 
 function computeDuration(start: string, end: string | null): string {
   if (!end) return 'In progress...';
   try {
-    const ms = new Date(end.replace(' ', 'T')).getTime() - new Date(start.replace(' ', 'T')).getTime();
+    const ms = parseTimestamp(end).getTime() - parseTimestamp(start).getTime();
     if (ms < 0) return '-';
     const secs = Math.floor(ms / 1000);
     if (secs < 60) return `${secs}s`;
@@ -380,7 +409,7 @@ function computeDuration(start: string, end: string | null): string {
 
 function relativeTime(dt: string): string {
   try {
-    const ms = Date.now() - new Date(dt.replace(' ', 'T')).getTime();
+    const ms = Date.now() - parseTimestamp(dt).getTime();
     if (ms < 0) return 'just now';
     const secs = Math.floor(ms / 1000);
     if (secs < 60) return `${secs}s ago`;
@@ -399,7 +428,7 @@ function relativeTime(dt: string): string {
 
 function CoverageSourceCard({ source }: { source: ScraperSource }) {
   const isRecent = source.last_scraped_at &&
-    (Date.now() - new Date(source.last_scraped_at.replace(' ', 'T')).getTime()) < 3 * 60 * 60 * 1000;
+    (Date.now() - parseTimestamp(source.last_scraped_at).getTime()) < 3 * 60 * 60 * 1000;
   return (
     <div className={`p-2 rounded-sm border ${
       !source.enabled
@@ -447,9 +476,12 @@ function FilterChip({ active, onClick, children }: { active: boolean; onClick: (
 }
 
 export default function WarrantsPage() {
+  const { addToast } = useToast();
   const isMobile = useIsMobile();
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
   const warrantFormTitleId = useId();
   const serveTitleId = useId();
 
@@ -561,7 +593,7 @@ export default function WarrantsPage() {
       setBatchSelected(new Set());
       setBatchStatus('');
       fetchWarrants({ silent: true });
-    } catch (err: any) { alert(err?.message || 'Batch update failed'); }
+    } catch (err: any) { addToast(err?.message || 'Batch update failed', 'error'); }
     finally { setBatchSubmitting(false); }
   };
 
@@ -574,11 +606,11 @@ export default function WarrantsPage() {
         method: 'POST',
         body: JSON.stringify({ warrant_ids: Array.from(batchSelected) }),
       });
-      alert(`Archived ${res.archived} warrant(s)${res.skipped ? `, skipped ${res.skipped} already-archived` : ''}`);
+      addToast(`Archived ${res.archived} warrant(s)${res.skipped ? `, skipped ${res.skipped} already-archived` : ''}`, 'success');
       setBatchSelected(new Set());
       fetchWarrants({ silent: true });
     } catch (err: any) {
-      alert(err?.message || 'Bulk archive failed');
+      addToast(err?.message || 'Bulk archive failed', 'error');
     }
   };
 
@@ -589,17 +621,17 @@ export default function WarrantsPage() {
         method: 'POST',
         body: JSON.stringify({ warrant_ids: Array.from(batchSelected) }),
       });
-      alert(`Marked ${res.reviewed} warrant(s) reviewed`);
+      addToast(`Marked ${res.reviewed} warrant(s) reviewed`, 'success');
       setBatchSelected(new Set());
       fetchWarrants({ silent: true });
     } catch (err: any) {
-      alert(err?.message || 'Bulk review failed');
+      addToast(err?.message || 'Bulk review failed', 'error');
     }
   };
 
   const handleBulkPrintPacket = async () => {
     if (!batchSelected.size) return;
-    if (batchSelected.size > 200) { alert('Packet print limited to 200 warrants'); return; }
+    if (batchSelected.size > 200) { addToast('Packet print limited to 200 warrants', 'error'); return; }
     if (batchSelected.size > 50 && !window.confirm(`Print ${batchSelected.size} warrants as a single packet? This may take 30+ seconds.`)) return;
     const ids = Array.from(batchSelected);
     try {
@@ -608,7 +640,7 @@ export default function WarrantsPage() {
         badge_number: user?.badge_number,
       });
     } catch (err: any) {
-      alert(err?.message || 'Packet generation failed');
+      addToast(err?.message || 'Packet generation failed', 'error');
     }
   };
 
@@ -617,25 +649,52 @@ export default function WarrantsPage() {
     try {
       const res = await apiFetch<any>(`/warrants/${id}`);
       const raw = (res && typeof res === 'object' && 'data' in res ? res.data : res) || {};
+
+      const printedByName = displayUserName(user);
+
       const data: any = {
         ...raw,
         subject_aliases: raw.subject_aliases
           ? (Array.isArray(raw.subject_aliases) ? raw.subject_aliases : [raw.subject_aliases])
           : undefined,
-        printed_by_name: user?.full_name,
+        printed_by_name: printedByName,
         printed_by_badge: user?.badge_number,
         printed_at: new Date().toISOString(),
       };
-      await downloadRecordPdf('warrant', data, `warrant-${data.warrant_number}.pdf`);
+
+      // Filename fallback ladder — warrant_number is often the literal
+      // sentinel "N/A" (the warrant create form defaults it that way for
+      // manually-entered warrants), so a naive `warrant-${warrant_number}`
+      // produced files named `warrant-N_A.pdf` / `N_A_warrant.pdf`
+      // depending on internal sanitization. Try real warrant_number first,
+      // then subject-name + local id, then bare id, so every download
+      // gets an operator-readable name.
+      const sentinelRe = /^(n\/a|none|null|undefined)$/i;
+      const rawWarrantNumber = typeof raw.warrant_number === 'string' ? raw.warrant_number.trim() : '';
+      const goodWarrantNumber = rawWarrantNumber && !sentinelRe.test(rawWarrantNumber) ? rawWarrantNumber : '';
+      const subjectSlug = [raw.subject_last_name, raw.subject_first_name]
+        .map((s: any) => (typeof s === 'string' ? s.trim() : ''))
+        .filter(Boolean)
+        .join('-');
+      const filenameStem =
+        goodWarrantNumber
+          || (subjectSlug ? `${subjectSlug}-${id}` : `warrant-${id}`);
+      // Sanitize: replace anything that would confuse a filesystem (path
+      // separators, control chars) with a hyphen. Allowed: word chars,
+      // hyphen, period, parens, space.
+      const safeStem = filenameStem.replace(/[^\w\-. ()]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+      const filename = `warrant-${safeStem || id}.pdf`;
+
+      await downloadRecordPdf('warrant', data, filename);
     } catch (err: any) {
-      alert(err?.message || 'Failed to print warrant PDF');
+      addToast(err?.message || 'Failed to print warrant PDF', 'error');
     }
   };
 
   // Form modal
   const [formOpen, setFormOpen] = useState(false);
   const [editingWarrant, setEditingWarrant] = useState<Warrant | null>(null);
-  const [formData, setFormData] = useState({
+  const EMPTY_FORM = {
     type: 'arrest',
     subject_person_id: '',
     issuing_court: '',
@@ -647,6 +706,18 @@ export default function WarrantsPage() {
     notes: '',
     statute_id: null as number | null,
     statute_citation: '',
+  };
+  const {
+    form: formData,
+    setForm: setFormData,
+    isDirty: formIsDirty,
+    wasRestored: formWasRestored,
+    clearDraft: clearFormDraft,
+    snapshot: snapshotForm,
+  } = useFormDraft<typeof EMPTY_FORM>({
+    storageKey: 'rmpg_warrant_form',
+    defaultValue: EMPTY_FORM,
+    isActive: formOpen,
   });
   const [submitting, setSubmitting] = useState(false);
   const { errors: formErrors, validate: validateForm, clearAllErrors } = useFormValidation();
@@ -847,7 +918,9 @@ export default function WarrantsPage() {
     if (formOpen) return; // Don't refresh list while editing
     fetchWarrants({ silent: true });
   }, [fetchWarrants, formOpen]);
-  useLiveSync('alerts', silentRefreshWarrants);
+  // 'warrants' matches the liveBroadcast module derived from /api/warrants/*
+  // mutations; 'alerts' never fired (no producer emits that module).
+  useLiveSync('warrants', silentRefreshWarrants);
 
   // Fetch warrant detail
   const fetchWarrantDetail = useCallback(async (id: number) => {
@@ -1050,8 +1123,20 @@ export default function WarrantsPage() {
   const fetchAutoPollStatus = useCallback(async () => {
     setAutoPollLoading(true);
     try {
-      const res = await apiFetch<AutoPollStatus>('/warrants/utah-search/auto-poll-status');
-      setAutoPollStatus(res);
+      const res = await apiFetch<Partial<AutoPollStatus>>('/warrants/utah-search/auto-poll-status');
+      // Normalize at the data boundary: the API contract has drifted (the CF
+      // port of /auto-poll-status can return a slim status object missing the
+      // watch-tab arrays). TS types don't validate runtime shape, so coerce to
+      // a complete AutoPollStatus here — this single guard protects every
+      // reader in the watch tab from `undefined.length` crashes.
+      setAutoPollStatus({
+        syncStatus: res?.syncStatus ?? { lastSync: null, warrantCount: 0, status: 'unknown', lastError: null },
+        blocked: res?.blocked ?? false,
+        runs: res?.runs ?? [],
+        flaggedPersons: res?.flaggedPersons ?? [],
+        recentHits: res?.recentHits ?? [],
+        totalPersons: res?.totalPersons ?? 0,
+      });
     } catch { /* error handled */ }
     finally { setAutoPollLoading(false); }
   }, []);
@@ -1068,8 +1153,8 @@ export default function WarrantsPage() {
   const fetchCoverage = useCallback(async () => {
     setCoverageLoading(true);
     try {
-      const res = await apiFetch<{ data: ScraperSource[] }>('/warrants/scraped/status');
-      setCoverageSources(res.data || []);
+      const res = await apiFetch<{ sources: ScraperSource[] }>('/warrants/scrapers');
+      setCoverageSources(res.sources || []);
     } catch { /* silent */ }
     finally { setCoverageLoading(false); }
   }, []);
@@ -1149,6 +1234,7 @@ export default function WarrantsPage() {
     setPersonSearch('');
     setSelectedPersonName('');
     setFormOpen(true);
+    snapshotForm();
   };
 
   const openEditForm = (w: Warrant) => {
@@ -1169,6 +1255,7 @@ export default function WarrantsPage() {
     setSelectedPersonName(w.subject_name || '');
     setPersonSearch('');
     setFormOpen(true);
+    snapshotForm();
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -1209,6 +1296,7 @@ export default function WarrantsPage() {
         await apiFetch('/warrants', { method: 'POST', body: JSON.stringify(body) });
         await fetchWarrants({ silent: true });
       }
+      clearFormDraft();
       setFormOpen(false);
     } catch (err: any) {
       setError(err?.message || 'Failed to save warrant');
@@ -1283,6 +1371,44 @@ export default function WarrantsPage() {
     } catch (err: any) {
       setError(err?.message || 'Failed to update status');
     }
+  };
+
+  // ── Right-click context menu (shared by list + table rows) ──
+  const buildWarrantMenu = (w: Warrant): ContextMenuItem[] => {
+    const isActive = w.status === 'active';
+    const isArchived = !!w.archived_at;
+    return [
+      m.action('View warrant', () => fetchWarrantDetail(w.id), { icon: <Eye size={12} /> }),
+      ...(w.subject_person_id
+        ? [m.action('View subject', () => openPersonProfile(w.subject_person_id!), { icon: <User size={12} /> })]
+        : []),
+      ...(w.subject_name && !/^(none|n\/a)$/i.test(w.subject_name)
+        ? [m.go('Run NCIC on subject', `/ncic?type=person&q=${encodeURIComponent(w.subject_name)}`, <User size={12} />)]
+        : []),
+      m.action('Edit warrant', () => openEditForm(w), { icon: <Pencil size={12} /> }),
+      m.separator(),
+      ...(isActive
+        ? [
+            m.action('Mark served', () => handleUpdateStatus(w.id, 'served'), { icon: <CheckCircle size={12} /> }),
+            m.action('Recall', () => handleUpdateStatus(w.id, 'recalled'), { icon: <XCircle size={12} /> }),
+          ]
+        : []),
+      m.separator(),
+      m.copy('Copy warrant #', w.warrant_number),
+      m.copy('Copy subject', w.subject_name),
+      m.copyId(w.id),
+      ...(w.subject_person_id
+        ? [
+            m.go('Person record', `/records?tab=persons&personId=${w.subject_person_id}`, <FileText size={12} />),
+            m.go('Arrest history', `/records?tab=arrests&personId=${w.subject_person_id}`, <FileText size={12} />),
+          ]
+        : []),
+      m.separator(),
+      ...(isArchived
+        ? [m.action('Unarchive', () => handleUnarchive(w.id), { icon: <RotateCcw size={12} /> })]
+        : [m.action('Archive', () => handleArchive(w.id), { icon: <Archive size={12} /> })]),
+      m.action('Delete', () => setDeletingWarrant(w), { icon: <Trash2 size={12} />, danger: true }),
+    ];
   };
 
   // ============================================================
@@ -1425,7 +1551,7 @@ export default function WarrantsPage() {
             {/* Quick Search */}
             <div className="relative">
               <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-rmpg-500" />
-              <input
+              <input id="ff-warrantspage-0"
                 type="text"
                 className="input-dark w-full pl-9 text-xs min-h-[36px]"
                 placeholder="Quick search warrants by name, number, or charge..."
@@ -1456,7 +1582,7 @@ export default function WarrantsPage() {
               </button>
               {summaryReportOpen && (
                 <div className="flex items-center gap-2 bg-surface-sunken border border-surface-border rounded-sm px-2 py-1">
-                  <input
+                  <input id="ff-warrantspage-1"
                     type="date"
                     className="input-dark text-[10px] py-0.5 px-1 min-h-[22px] w-28"
                     value={summaryFrom}
@@ -1464,7 +1590,7 @@ export default function WarrantsPage() {
                     placeholder="From"
                   />
                   <span className="text-[10px] text-rmpg-500">to</span>
-                  <input
+                  <input id="ff-warrantspage-2"
                     type="date"
                     className="input-dark text-[10px] py-0.5 px-1 min-h-[22px] w-28"
                     value={summaryTo}
@@ -1518,6 +1644,14 @@ export default function WarrantsPage() {
                   {dashStatsLoading ? <Loader2 className="w-5 h-5 animate-spin mx-auto" role="status" aria-label="Loading" /> : (dashStats?.activeWarrants ?? 0)}
                 </div>
                 <div className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mt-1">Active Warrants</div>
+                {!dashStatsLoading && (dashStats?.unverifiedWarrants ?? 0) > 0 && (
+                  <div
+                    className="text-[9px] font-bold text-amber-400 mt-0.5 inline-flex items-center gap-1"
+                    title="Utah hits matched on name only (no DOB on file) — possible namesakes. Not counted as confirmed active warrants."
+                  >
+                    <AlertTriangle className="w-2.5 h-2.5" />+{dashStats?.unverifiedWarrants} unverified
+                  </div>
+                )}
               </div>
               <div className={`panel-inset p-3 rounded-sm text-center ${(dashStats?.hitsToday || 0) > 0 ? 'bg-amber-900/20 border border-amber-900/40' : 'bg-surface-sunken'}`}>
                 <div className={`text-2xl font-bold font-mono tabular-nums ${(dashStats?.hitsToday || 0) > 0 ? 'text-amber-400' : 'text-white'}`}>
@@ -1580,7 +1714,7 @@ export default function WarrantsPage() {
                         {r}
                       </button>
                     ))}
-                    <select
+                    <select id="ff-warrantspage-3"
                       className="input-dark text-[9px] py-0 px-1 w-24 ml-1 min-h-[22px]"
                       value={feedEventFilter}
                       onChange={(e) => setFeedEventFilter(e.target.value)}
@@ -1672,6 +1806,14 @@ export default function WarrantsPage() {
                               }`}>
                                 {(pw.offense_level || pw.type || 'WARRANT').toUpperCase()}
                               </span>
+                              {pw.unverified && (
+                                <span
+                                  className="inline-flex items-center gap-0.5 px-1 py-0.5 text-[8px] font-bold rounded-sm border bg-amber-900/30 text-amber-300 border-amber-600/40"
+                                  title="No DOB on file — matched on name only, may be a namesake. Verify identity before acting."
+                                >
+                                  <AlertTriangle className="w-2 h-2" /> UNVERIFIED
+                                </span>
+                              )}
                             </div>
                             <div className="text-[10px] text-rmpg-300 truncate mt-0.5">{chargesFromJson(pw.charge_description)}</div>
                             <div className="flex items-center gap-2 mt-1 text-[9px] text-rmpg-400">
@@ -1707,7 +1849,7 @@ export default function WarrantsPage() {
             <div className={`flex ${isMobile ? 'flex-col gap-1.5' : 'items-center gap-2'} px-3 py-2 border-b border-rmpg-700 bg-surface-sunken`}>
               <div className="relative flex-1">
                 <Search className="w-3.5 h-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500" />
-                <input
+                <input id="ff-warrantspage-4"
                   type="text"
                   className={`input-dark w-full pl-7 ${searchQuery ? 'pr-7' : 'pr-2'} ${isMobile ? 'text-sm py-2.5' : 'text-xs'}`}
                   placeholder="Search by name, warrant #, or charge..." aria-label="Search by name, warrant #, or charge..."
@@ -1722,7 +1864,7 @@ export default function WarrantsPage() {
                 )}
               </div>
               <div className={`flex ${isMobile ? 'gap-1.5 flex-wrap' : 'gap-2'}`}>
-                <select
+                <select id="ff-warrantspage-5"
                   className={`input-dark ${isMobile ? 'flex-1 text-sm py-2' : 'text-xs w-24'}`}
                   value={filterStatus}
                   onChange={(e) => { setFilterStatus(e.target.value); setPage(1); }}
@@ -1733,7 +1875,7 @@ export default function WarrantsPage() {
                     <option key={s.value} value={s.value}>{s.label}</option>
                   ))}
                 </select>
-                <select
+                <select id="ff-warrantspage-6"
                   className={`input-dark ${isMobile ? 'flex-1 text-sm py-2' : 'text-xs w-24'}`}
                   value={filterType}
                   onChange={(e) => { setFilterType(e.target.value); setPage(1); }}
@@ -1744,7 +1886,7 @@ export default function WarrantsPage() {
                     <option key={t.value} value={t.value}>{t.label}</option>
                   ))}
                 </select>
-                <select
+                <select id="ff-warrantspage-7"
                   className={`input-dark ${isMobile ? 'flex-1 text-sm py-2' : 'text-xs w-28'}`}
                   value={filterSeverity}
                   onChange={(e) => { setFilterSeverity(e.target.value); setPage(1); }}
@@ -1756,7 +1898,7 @@ export default function WarrantsPage() {
                   ))}
                 </select>
                 {/* Court filter */}
-                <input
+                <input id="ff-warrantspage-8"
                   type="text"
                   className={`input-dark ${isMobile ? 'flex-1 text-sm py-2' : 'text-xs w-28'}`}
                   placeholder="Court..."
@@ -1765,7 +1907,7 @@ export default function WarrantsPage() {
                   style={isMobile ? { minHeight: 44 } : undefined}
                 />
                 {/* Source filter */}
-                <select
+                <select id="ff-warrantspage-9"
                   className={`input-dark ${isMobile ? 'flex-1 text-sm py-2' : 'text-xs w-24'}`}
                   value={filterSource}
                   onChange={(e) => { setFilterSource(e.target.value); setPage(1); }}
@@ -1785,7 +1927,7 @@ export default function WarrantsPage() {
               <FilterChip active={filterPriority} onClick={() => { setFilterPriority(v => !v); setPage(1); }}>High priority</FilterChip>
               <FilterChip active={filterSinceWeek} onClick={() => { setFilterSinceWeek(v => !v); setPage(1); }}>New this week</FilterChip>
               <FilterChip active={filterMatches} onClick={() => { setFilterMatches(v => !v); setPage(1); }}>Matches our person</FilterChip>
-              <select
+              <select id="ff-warrantspage-10"
                 value={filterStateChip}
                 onChange={(e) => { setFilterStateChip(e.target.value); setPage(1); }}
                 className="select-dark text-xs"
@@ -1827,7 +1969,7 @@ export default function WarrantsPage() {
             {batchSelected.size > 0 && (isGodMode || isAdminOrManager) && (
               <div className="flex flex-wrap items-center gap-2 px-3 py-1.5 bg-brand-900/20 border-b border-brand-700/50">
                 <span className="text-[10px] font-bold text-brand-300">{batchSelected.size} selected</span>
-                <select value={batchStatus} onChange={e => setBatchStatus(e.target.value)} className="text-[10px] bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-2 py-0.5 outline-none">
+                <select id="ff-warrantspage-11" value={batchStatus} onChange={e => setBatchStatus(e.target.value)} className="text-[10px] bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-2 py-0.5 outline-none">
                   <option value="">Set Status...</option>
                   <option value="served">Served</option>
                   <option value="recalled">Recalled</option>
@@ -1864,6 +2006,7 @@ export default function WarrantsPage() {
                     <button type="button"
                       key={w.id}
                       onClick={() => fetchWarrantDetail(w.id)}
+                      onContextMenu={(e) => openMenu(e, buildWarrantMenu(w))}
                       className={`w-full text-left px-3 py-3 border-b border-rmpg-700/50 transition-colors hover:bg-surface-raised ${selectedWarrant?.id === w.id ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : 'border-l-2 border-l-transparent'}`}
                       style={{ minHeight: 56 }}
                     >
@@ -1886,7 +2029,7 @@ export default function WarrantsPage() {
                       </div>
                       {/* UPGRADE 42: Expiration warning highlight */}
                       {w.expires_at && w.status === 'active' && (() => {
-                        const daysLeft = Math.ceil((new Date(w.expires_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+                        const daysLeft = Math.ceil((parseTimestamp(w.expires_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
                         if (daysLeft < 0) return <div className="text-[9px] text-red-400 font-bold mt-0.5 flex items-center gap-1"><AlertTriangle size={9} /> EXPIRED {Math.abs(daysLeft)}d ago</div>;
                         if (daysLeft <= 30) return <div className="text-[9px] text-amber-400 font-bold mt-0.5 flex items-center gap-1"><Clock size={9} /> Expires in {daysLeft}d</div>;
                         return null;
@@ -1900,7 +2043,7 @@ export default function WarrantsPage() {
                     <tr>
                       {(isGodMode || isAdminOrManager) && (
                         <th style={{ width: 30 }}>
-                          <input type="checkbox" checked={batchSelected.size === warrants.length && warrants.length > 0} onChange={toggleSelectAll} className="accent-brand-500" />
+                          <input id="ff-warrantspage-12" type="checkbox" checked={batchSelected.size === warrants.length && warrants.length > 0} onChange={toggleSelectAll} className="accent-brand-500" />
                         </th>
                       )}
                       <th style={{ width: 28 }} className="text-center" title="Matches our person">★</th>
@@ -1931,11 +2074,12 @@ export default function WarrantsPage() {
                       <tr
                         key={w.id}
                         onClick={() => fetchWarrantDetail(w.id)}
+                        onContextMenu={(e) => openMenu(e, buildWarrantMenu(w))}
                         className={`cursor-pointer hover:bg-[#141414]/50 transition-colors ${selectedWarrant?.id === w.id ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : ''} ${batchSelected.has(w.id) ? 'bg-brand-900/10' : ''}`}
                       >
                         {(isGodMode || isAdminOrManager) && (
                           <td onClick={e => e.stopPropagation()}>
-                            <input type="checkbox" checked={batchSelected.has(w.id)} onChange={() => toggleBatchSelect(w.id)} className="accent-brand-500" />
+                            <input id="ff-warrantspage-13" type="checkbox" checked={batchSelected.has(w.id)} onChange={() => toggleBatchSelect(w.id)} className="accent-brand-500" />
                           </td>
                         )}
                         <td className="text-center">
@@ -1957,7 +2101,7 @@ export default function WarrantsPage() {
                             {formatEnumValue(w.status)}
                           </span>
                           {w.expires_at && w.status === 'active' && (() => {
-                            const daysLeft = Math.ceil((new Date(w.expires_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+                            const daysLeft = Math.ceil((parseTimestamp(w.expires_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
                             if (daysLeft < 0) return <span className="ml-1 text-[8px] bg-red-900/50 text-red-400 border border-red-700/50 px-1 py-0.5 rounded-sm font-bold">EXPIRED</span>;
                             if (daysLeft <= 7) return <span className="ml-1 text-[8px] bg-amber-900/50 text-amber-400 border border-amber-700/50 px-1 py-0.5 rounded-sm font-bold">{daysLeft}d</span>;
                             return null;
@@ -2359,7 +2503,7 @@ export default function WarrantsPage() {
                 <div className="flex gap-2 items-end flex-wrap mb-2 relative">
                   <div className="flex-1 min-w-[120px]">
                     <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">First Name</label>
-                    <input
+                    <input id="ff-warrantspage-14"
                       type="text"
                       className="input-dark w-full"
                       placeholder="First name..."
@@ -2373,7 +2517,7 @@ export default function WarrantsPage() {
                   </div>
                   <div className="flex-1 min-w-[120px]">
                     <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">Last Name</label>
-                    <input
+                    <input id="ff-warrantspage-15"
                       type="text"
                       className="input-dark w-full"
                       placeholder="Last name..."
@@ -2386,7 +2530,7 @@ export default function WarrantsPage() {
                   </div>
                   <div className="w-[140px]">
                     <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">DOB</label>
-                    <input
+                    <input id="ff-warrantspage-16"
                       type="date"
                       className="input-dark w-full"
                       value={uniSearchDob}
@@ -2424,7 +2568,7 @@ export default function WarrantsPage() {
                 <div className="flex gap-2 items-end flex-wrap mb-2">
                   <div className="flex-1 min-w-[120px]">
                     <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">Warrant #</label>
-                    <input
+                    <input id="ff-warrantspage-17"
                       type="text"
                       className="input-dark w-full"
                       placeholder="Warrant number..."
@@ -2434,7 +2578,7 @@ export default function WarrantsPage() {
                   </div>
                   <div className="flex-1 min-w-[120px]">
                     <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">Court</label>
-                    <input
+                    <input id="ff-warrantspage-18"
                       type="text"
                       className="input-dark w-full"
                       placeholder="Court name..."
@@ -2444,7 +2588,7 @@ export default function WarrantsPage() {
                   </div>
                   <div className="w-[160px]">
                     <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">Source</label>
-                    <select className="input-dark w-full" value={uniSearchSource} onChange={(e) => setUniSearchSource(e.target.value)}>
+                    <select id="ff-warrantspage-19" className="input-dark w-full" value={uniSearchSource} onChange={(e) => setUniSearchSource(e.target.value)}>
                       <option value="">All Sources</option>
                       <option value="local">Local System</option>
                       <option value="utah">Utah State API</option>
@@ -2466,33 +2610,33 @@ export default function WarrantsPage() {
                   <div className="flex gap-2 items-end flex-wrap mb-2 border-t border-surface-border pt-2">
                     <div className="w-[140px]">
                       <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">Date From</label>
-                      <input type="date" className="input-dark w-full" value={uniSearchDateFrom} onChange={(e) => setUniSearchDateFrom(e.target.value)} />
+                      <input id="ff-warrantspage-20" type="date" className="input-dark w-full" value={uniSearchDateFrom} onChange={(e) => setUniSearchDateFrom(e.target.value)} />
                     </div>
                     <div className="w-[140px]">
                       <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">Date To</label>
-                      <input type="date" className="input-dark w-full" value={uniSearchDateTo} onChange={(e) => setUniSearchDateTo(e.target.value)} />
+                      <input id="ff-warrantspage-21" type="date" className="input-dark w-full" value={uniSearchDateTo} onChange={(e) => setUniSearchDateTo(e.target.value)} />
                     </div>
                     <div className="w-[140px]">
                       <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">Offense Level</label>
-                      <select className="input-dark w-full" value={uniSearchOffenseLevel} onChange={(e) => setUniSearchOffenseLevel(e.target.value)}>
+                      <select id="ff-warrantspage-22" className="input-dark w-full" value={uniSearchOffenseLevel} onChange={(e) => setUniSearchOffenseLevel(e.target.value)}>
                         <option value="">Any</option>
                         {OFFENSE_LEVELS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                       </select>
                     </div>
                     <div className="flex-1 min-w-[120px]">
                       <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">Charge Keyword</label>
-                      <input type="text" className="input-dark w-full" placeholder="e.g. theft, DUI..." value={uniSearchCharge} onChange={(e) => setUniSearchCharge(e.target.value)} />
+                      <input id="ff-warrantspage-23" type="text" className="input-dark w-full" placeholder="e.g. theft, DUI..." value={uniSearchCharge} onChange={(e) => setUniSearchCharge(e.target.value)} />
                     </div>
                     <div className="w-[120px]">
                       <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">Status</label>
-                      <select className="input-dark w-full" value={uniSearchStatus} onChange={(e) => setUniSearchStatus(e.target.value)}>
+                      <select id="ff-warrantspage-24" className="input-dark w-full" value={uniSearchStatus} onChange={(e) => setUniSearchStatus(e.target.value)}>
                         <option value="">Any</option>
                         {WARRANT_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
                       </select>
                     </div>
                     <div className="w-[120px]">
                       <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider block mb-1">Type</label>
-                      <select className="input-dark w-full" value={uniSearchType} onChange={(e) => setUniSearchType(e.target.value)}>
+                      <select id="ff-warrantspage-25" className="input-dark w-full" value={uniSearchType} onChange={(e) => setUniSearchType(e.target.value)}>
                         <option value="">Any</option>
                         {WARRANT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                       </select>
@@ -2604,7 +2748,7 @@ export default function WarrantsPage() {
                                 {w.age && <span className="text-[10px] text-rmpg-400">Age: {w.age}</span>}
                                 {w.city && <span className="text-[10px] text-rmpg-400">{w.city}</span>}
                               </div>
-                              <div className="text-xs text-rmpg-300 mt-1">{w.charges || w.charge_description || 'No charge description'}</div>
+                              <div className="text-xs text-rmpg-300 mt-1">{chargesFromJson(w.charges || w.charge_description) || 'No charge description'}</div>
                               <div className="flex items-center gap-3 mt-1.5 text-[10px] text-rmpg-400 flex-wrap">
                                 {w.court_name && <span>Court: {w.court_name}</span>}
                                 {w.case_id && <span>Case: {w.case_id}</span>}
@@ -2657,7 +2801,7 @@ export default function WarrantsPage() {
                                 <span className="text-sm font-bold text-white">{w.last_name}, {w.first_name}</span>
                                 {w.source_key && <span className="text-[9px] text-rmpg-400 bg-rmpg-700/30 px-1 rounded">{w.source_key}</span>}
                               </div>
-                              <div className="text-xs text-rmpg-300 mt-1">{w.charges || w.charge_description || '—'}</div>
+                              <div className="text-xs text-rmpg-300 mt-1">{chargesFromJson(w.charges || w.charge_description) || '—'}</div>
                               <div className="flex items-center gap-3 mt-1.5 text-[10px] text-rmpg-400 flex-wrap">
                                 {w.court_name && <span>Court: {w.court_name}</span>}
                                 {w.issue_date && <span>Issued: {w.issue_date}</span>}
@@ -2794,7 +2938,53 @@ export default function WarrantsPage() {
                         const branding = await fetchPdfBranding();
                         setActiveBranding(branding);
                         await loadPdfAssets();
-                        const subjects: BoloSubject[] = autoPollStatus.flaggedPersons.map(p => ({
+
+                        // Per-person augmentation: the auto-poll status endpoint
+                        // joins warrants by subject_person_id, but manually-entered
+                        // warrants frequently have NULL subject_person_id (the
+                        // ArrestFormModal links by name lookup, not FK) - Karl
+                        // Turley's BATTERY warrant is the canonical reproducer.
+                        // Fall back to a search-all-by-name query and merge any
+                        // additional active warrants we find. Dedup by warrant id.
+                        const augmented = await Promise.all(
+                          autoPollStatus.flaggedPersons.map(async (p) => {
+                            try {
+                              const res = await apiFetch<UnifiedSearchResults>('/warrants/search-all', {
+                                method: 'POST',
+                                body: JSON.stringify({
+                                  firstName: p.first_name,
+                                  lastName: p.last_name,
+                                  status: 'active',
+                                }),
+                              });
+                              const byName = (res?.local ?? []) as Array<Warrant & Record<string, any>>;
+                              const seen = new Set<number>(p.warrants.map(w => w.id));
+                              const merged = [...p.warrants];
+                              for (const w of byName) {
+                                if (typeof w.id === 'number' && !seen.has(w.id)) {
+                                  merged.push({
+                                    id: w.id,
+                                    warrant_number: String(w.warrant_number ?? ''),
+                                    type: String(w.type ?? 'arrest'),
+                                    status: String(w.status ?? 'active'),
+                                    charge_description: String(w.charge_description ?? ''),
+                                    offense_level: (w.offense_level ?? null) as string | null,
+                                    bail_amount: (w.bail_amount ?? null) as number | null,
+                                    issuing_court: (w.issuing_court ?? null) as string | null,
+                                    source: (w.source ?? null) as string | null,
+                                    created_at: String(w.created_at ?? ''),
+                                  });
+                                  seen.add(w.id);
+                                }
+                              }
+                              return { ...p, warrants: merged };
+                            } catch {
+                              return p;
+                            }
+                          })
+                           );
+
+                     const subjects: BoloSubject[] = augmented.map(p => ({
                           first_name: p.first_name,
                           last_name: p.last_name,
                           dob: p.dob,
@@ -2815,12 +3005,23 @@ export default function WarrantsPage() {
                             bail_amount: w.bail_amount,
                           })),
                         }));
-                        const pdf = generateBoloPdf(subjects);
+                        const pdf = generateBoloPdf(subjects, {
+                          printedBy: displayUserName(user),
+                          printedByBadge: user?.badge_number,
+                        });
                         const blob = pdf.output('blob');
                         const url = URL.createObjectURL(new Blob([blob], { type: 'application/pdf' }));
                         const a = document.createElement('a');
                         a.href = url;
-                        a.download = `BOLO_Packet_${new Date().toISOString().slice(0, 10)}.pdf`;
+                        // Single-subject packets get an operator-greppable
+                        // filename (BOLO_TURLEY_2026-05-30.pdf); multi-subject
+                        // packets stay generic.
+                        const date = new Date().toISOString().slice(0, 10);
+                        const safe = (s: string) => s.replace(/[^\w\-]/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
+                        const filename = subjects.length === 1 && subjects[0].last_name
+                          ? `BOLO_${safe(subjects[0].last_name.toUpperCase())}_${date}.pdf`
+                          : `BOLO_Packet_${date}.pdf`;
+                        a.download = filename;
                         document.body.appendChild(a);
                         a.click();
                         document.body.removeChild(a);
@@ -2920,11 +3121,24 @@ export default function WarrantsPage() {
                                     </span>
                                   )}
                                   {p.utah_hit_count > 0 && (
-                                    <span className="text-[9px] bg-red-900/30 text-red-400 border border-red-700/40 px-1.5 py-0.5 rounded">
+                                    <span className={`text-[9px] px-1.5 py-0.5 rounded border ${p.unverified ? 'bg-amber-900/30 text-amber-400 border-amber-700/40' : 'bg-red-900/30 text-red-400 border-red-700/40'}`}>
                                       {p.utah_hit_count} Utah
                                     </span>
                                   )}
+                                  {p.unverified && p.utah_hit_count > 0 && (
+                                    <span
+                                      className="text-[9px] font-bold uppercase bg-amber-900/30 text-amber-300 border border-amber-600/40 px-1.5 py-0.5 rounded inline-flex items-center gap-1"
+                                      title="No DOB on file — Utah hits matched on name only and may belong to a namesake. Verify identity before acting; add a DOB to confirm."
+                                    >
+                                      <AlertTriangle className="w-2.5 h-2.5" /> Unverified
+                                    </span>
+                                  )}
                                 </div>
+                                {p.unverified && p.utah_hit_count > 0 && (
+                                  <div className="text-[10px] text-amber-400/80 mt-0.5">
+                                    Name-only match (no DOB) — possible namesake. Confirm identity before acting.
+                                  </div>
+                                )}
                                 {p.dob && <div className="text-[10px] text-rmpg-400 mt-0.5">DOB: {p.dob}</div>}
                                 {(() => {
                                   const descs = [p.gender, p.race, p.height, p.weight, p.hair_color ? `${p.hair_color} hair` : null, p.eye_color ? `${p.eye_color} eyes` : null].filter(Boolean);
@@ -2986,7 +3200,7 @@ export default function WarrantsPage() {
                                       {allUtah.map((uw, i) => (
                                         <div key={i} className="flex items-center gap-2 text-[10px] p-1.5 rounded bg-surface-sunken/50">
                                           <span className="font-mono text-rmpg-200">{uw.utah_warrant_id}</span>
-                                          <span className="text-rmpg-200 flex-1 truncate">{uw.charges}</span>
+                                          <span className="text-rmpg-200 flex-1 truncate">{chargesFromJson(uw.charges)}</span>
                                           <span className="text-rmpg-400 truncate">{uw.court_name}</span>
                                           <span className="text-rmpg-500">{uw.issue_date}</span>
                                         </div>
@@ -3075,7 +3289,7 @@ export default function WarrantsPage() {
                           <span className={`text-[10px] ${h.event === 'warrant_found' ? 'text-red-400' : 'text-green-400'}`}>
                             {h.event === 'warrant_found' ? 'WARRANT FOUND' : 'WARRANT CLEARED'}
                           </span>
-                          {h.charges && <span className="text-[10px] text-rmpg-400 truncate flex-1">{h.charges}</span>}
+                          {h.charges && <span className="text-[10px] text-rmpg-400 truncate flex-1">{chargesFromJson(h.charges)}</span>}
                           <span className="text-[10px] text-rmpg-500 flex-shrink-0 ml-auto">{formatDateTime(h.created_at)}</span>
                         </div>
                       ))}
@@ -3158,7 +3372,7 @@ export default function WarrantsPage() {
               const totalScraped = coverageSources.reduce((sum, s) => sum + s.total_warrants, 0);
               const recentlyScraped = coverageSources.filter(s => {
                 if (!s.last_scraped_at) return false;
-                const ago = Date.now() - new Date(s.last_scraped_at.replace(' ', 'T')).getTime();
+                const ago = Date.now() - parseTimestamp(s.last_scraped_at).getTime();
                 return ago < 3 * 60 * 60 * 1000;
               }).length;
 
@@ -3212,7 +3426,7 @@ export default function WarrantsPage() {
                         const enabled = sources.filter(s => s.enabled).length;
                         const hasErrors = sources.some(s => s.consecutive_failures > 0);
                         const lastScraped = sources.map(s => s.last_scraped_at).filter(Boolean).sort().pop();
-                        const isRecent = lastScraped && (Date.now() - new Date(lastScraped.replace(' ', 'T')).getTime()) < 3 * 60 * 60 * 1000;
+                        const isRecent = lastScraped && (Date.now() - parseTimestamp(lastScraped).getTime()) < 3 * 60 * 60 * 1000;
 
                         return (
                           <div
@@ -3555,21 +3769,37 @@ export default function WarrantsPage() {
         <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby={warrantFormTitleId}>
           <div className={`panel-beveled ${isMobile ? 'w-full h-full' : 'w-[550px] max-h-[85vh]'} overflow-auto bg-surface-base`}>
             <div className="flex items-center justify-between p-4 border-b border-rmpg-600">
-              <h2 id={warrantFormTitleId} className="text-sm font-bold text-white">{editingWarrant ? 'Edit Warrant' : 'New Warrant'}</h2>
-              <IconButton onClick={() => setFormOpen(false)} className="text-rmpg-400 hover:text-white" aria-label="Close form"><X className="w-4 h-4" /></IconButton>
+              <div className="flex items-center gap-2">
+                <h2 id={warrantFormTitleId} className="text-sm font-bold text-white">{editingWarrant ? 'Edit Warrant' : 'New Warrant'}</h2>
+                {formIsDirty && (
+                  <span className="text-[8px] text-amber-400 font-bold uppercase tracking-wider">UNSAVED</span>
+                )}
+              </div>
+              <IconButton onClick={() => { clearFormDraft(); setFormOpen(false); }} className="text-rmpg-400 hover:text-white" aria-label="Close form"><X className="w-4 h-4" /></IconButton>
             </div>
             <form onSubmit={handleSubmit} className="p-4 space-y-4">
+              {formWasRestored && (
+                <div className="flex items-center justify-between px-3 py-2 rounded-sm border border-amber-500/30" style={{ background: '#1a1500' }}>
+                  <div className="flex items-center gap-2">
+                    <Clock size={14} className="text-amber-400" />
+                    <span className="text-xs text-amber-400 font-medium">Restored pending draft</span>
+                  </div>
+                  <button type="button" onClick={clearFormDraft} className="text-[10px] text-amber-400 underline hover:text-amber-300">
+                    Discard
+                  </button>
+                </div>
+              )}
               {/* Type + Offense Level */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="field-label">Warrant Type *</label>
-                  <select className="select-dark text-xs w-full" value={formData.type} onChange={(e) => setFormData(prev => ({ ...prev, type: e.target.value }))}>
+                  <select id="ff-warrantspage-26" className="select-dark text-xs w-full" value={formData.type} onChange={(e) => setFormData(prev => ({ ...prev, type: e.target.value }))}>
                     {WARRANT_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="field-label">Offense Level</label>
-                  <select className="select-dark text-xs w-full" value={formData.offense_level} onChange={(e) => setFormData(prev => ({ ...prev, offense_level: e.target.value }))}>
+                  <select id="ff-warrantspage-27" className="select-dark text-xs w-full" value={formData.offense_level} onChange={(e) => setFormData(prev => ({ ...prev, offense_level: e.target.value }))}>
                     <option value="">-- Select --</option>
                     {OFFENSE_LEVELS.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
                   </select>
@@ -3596,7 +3826,7 @@ export default function WarrantsPage() {
                   </div>
                 ) : (
                   <>
-                    <input
+                    <input id="ff-warrantspage-28"
                       type="text"
                       className="input-dark text-xs w-full min-h-[36px]"
                       placeholder="Search persons by name..." aria-label="Search persons by name..."
@@ -3671,11 +3901,11 @@ export default function WarrantsPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="field-label">Issuing Court</label>
-                  <input type="text" className="input-dark text-xs w-full min-h-[36px]" value={formData.issuing_court} onChange={(e) => setFormData(prev => ({ ...prev, issuing_court: e.target.value }))} placeholder="e.g. 3rd District Court" />
+                  <input id="ff-warrantspage-29" type="text" className="input-dark text-xs w-full min-h-[36px]" value={formData.issuing_court} onChange={(e) => setFormData(prev => ({ ...prev, issuing_court: e.target.value }))} placeholder="e.g. 3rd District Court" />
                 </div>
                 <div>
                   <label className="field-label">Issuing Judge</label>
-                  <input type="text" className="input-dark text-xs w-full min-h-[36px]" value={formData.issuing_judge} onChange={(e) => setFormData(prev => ({ ...prev, issuing_judge: e.target.value }))} placeholder="e.g. Hon. Smith" />
+                  <input id="ff-warrantspage-30" type="text" className="input-dark text-xs w-full min-h-[36px]" value={formData.issuing_judge} onChange={(e) => setFormData(prev => ({ ...prev, issuing_judge: e.target.value }))} placeholder="e.g. Hon. Smith" />
                 </div>
               </div>
 
@@ -3683,12 +3913,12 @@ export default function WarrantsPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="field-label">Bail Amount</label>
-                  <input type="number" step="0.01" className={`input-dark text-xs w-full ${formErrors.bail_amount ? '!border-red-500' : ''}`} value={formData.bail_amount} onChange={(e) => setFormData(prev => ({ ...prev, bail_amount: e.target.value }))} placeholder="0.00" />
+                  <input id="ff-warrantspage-31" type="number" step="0.01" className={`input-dark text-xs w-full ${formErrors.bail_amount ? '!border-red-500' : ''}`} value={formData.bail_amount} onChange={(e) => setFormData(prev => ({ ...prev, bail_amount: e.target.value }))} placeholder="0.00" />
                   {formErrors.bail_amount && <p className="text-red-400 text-[10px] mt-0.5">{formErrors.bail_amount}</p>}
                 </div>
                 <div>
                   <label className="field-label">Expires</label>
-                  <input type="date" className="input-dark text-xs w-full min-h-[36px]" value={formData.expires_at} onChange={(e) => setFormData(prev => ({ ...prev, expires_at: e.target.value }))} />
+                  <input id="ff-warrantspage-32" type="date" className="input-dark text-xs w-full min-h-[36px]" value={formData.expires_at} onChange={(e) => setFormData(prev => ({ ...prev, expires_at: e.target.value }))} />
                 </div>
               </div>
 
@@ -3700,7 +3930,7 @@ export default function WarrantsPage() {
 
               {/* Actions */}
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-600">
-                <button type="button" onClick={() => setFormOpen(false)} className="toolbar-btn text-xs">Cancel</button>
+                <button type="button" onClick={() => { clearFormDraft(); setFormOpen(false); }} className="toolbar-btn text-xs">Cancel</button>
                 <button type="submit" disabled={submitting} className="toolbar-btn toolbar-btn-primary text-xs">
                   {submitting ? <Loader2 className="w-3 h-3 animate-spin mr-1" role="status" aria-label="Loading" /> : null}
                   {editingWarrant ? 'Update Warrant' : 'Create Warrant'}
@@ -3710,6 +3940,15 @@ export default function WarrantsPage() {
           </div>
         </div>
       )}
+
+      <UnsavedChangesGuard hasUnsavedChanges={formOpen && formIsDirty} />
+      <FloatingSaveBar
+        visible={formOpen && formIsDirty}
+        onSave={() => { const e = { preventDefault: () => {} } as React.FormEvent; handleSubmit(e); }}
+        onCancel={() => { clearFormDraft(); setFormOpen(false); }}
+        isSaving={submitting}
+        saveLabel={editingWarrant ? 'Update Warrant' : 'Create Warrant'}
+      />
 
       {/* SERVE MODAL */}
       {serveModalOpen && selectedWarrant && (
@@ -3725,7 +3964,7 @@ export default function WarrantsPage() {
               </p>
               <div>
                 <label className="field-label">Location Served (optional)</label>
-                <input
+                <input id="ff-warrantspage-33"
                   type="text"
                   className="input-dark text-xs w-full min-h-[36px]"
                   value={serveLocation}
@@ -3870,7 +4109,7 @@ export default function WarrantsPage() {
                   {(utahDetailWarrant.charges || utahDetailWarrant.charge_description) && (
                     <div className="mt-3">
                       <span className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider">Offense / Charges</span>
-                      <div className="font-mono text-white mt-0.5 text-xs whitespace-pre-wrap">{utahDetailWarrant.charges || utahDetailWarrant.charge_description}</div>
+                      <div className="font-mono text-white mt-0.5 text-xs whitespace-pre-wrap">{chargesFromJson(utahDetailWarrant.charges || utahDetailWarrant.charge_description) || '—'}</div>
                     </div>
                   )}
                 </div>

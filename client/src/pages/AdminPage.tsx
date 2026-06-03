@@ -10,17 +10,13 @@ import {
   XCircle,
   Activity,
   Megaphone,
-  Archive,
   Network,
   Zap,
   Link2,
   Shield,
   GraduationCap,
-  Radio,
   WifiOff,
   DatabaseZap,
-  Lock,
-  Palette,
   Navigation,
   Fingerprint,
   Search,
@@ -28,8 +24,8 @@ import {
   Plug,
   ClipboardList,
   Brain,
-  BarChart3,
-  Trophy,
+  Map,
+  Radio,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
@@ -43,35 +39,31 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import type { User, Client, UserRole } from '../types';
 
 // Tab components
+import AdminSettingsTab from './admin/AdminSettingsTab';
 import AdminUsersTab from './admin/AdminUsersTab';
 import AdminClientsTab from './admin/AdminClientsTab';
 import AdminSystemTab from './admin/AdminSystemTab';
 import AdminAuditTab from './admin/AdminAuditTab';
 import AdminHealthTab from './admin/AdminHealthTab';
 import AdminAnnouncementsTab from './admin/AdminAnnouncementsTab';
-import AdminRetentionTab from './admin/AdminRetentionTab';
 import AdminDepartmentsTab from './admin/AdminDepartmentsTab';
 import AdminNotifRulesTab from './admin/AdminNotifRulesTab';
 import AdminServeManagerTab from './admin/AdminServeManagerTab';
 import AdminSessionsTab from './admin/AdminSessionsTab';
 import AdminTrainingTab from './admin/AdminTrainingTab';
-import AdminRadioTab from './admin/AdminRadioTab';
 import AdminOfflineTab from './admin/AdminOfflineTab';
 import AdminMicrobiltTab from './admin/AdminMicrobiltTab';
 import AdminClearPathGpsTab from './admin/AdminClearPathGpsTab';
-import AdminEvidenceTab from './admin/AdminEvidenceTab';
 import AdminArrestsTab from './admin/AdminArrestsTab';
 import AdminWarrantScrapersTab from './admin/AdminWarrantScrapersTab';
 import AdminIPEDTab from './admin/AdminIPEDTab';
-import AdminSkipTracerTab from './admin/AdminSkipTracerTab';
-import AdminSecurityTab from './admin/AdminSecurityTab';
-import AdminBrandingTab from './admin/AdminBrandingTab';
+import AdminSkipTracerV2Tab from './admin/AdminSkipTracerV2Tab';
 import AdminEmailTab from './admin/AdminEmailTab';
 import AdminIntegrationsTab from './admin/AdminIntegrationsTab';
 import AdminAISettingsTab from './admin/AdminAISettingsTab';
 import AdminGodModeTab from './admin/AdminGodModeTab';
-import AdminDashboardTab from './admin/AdminDashboardTab';
-import AdminCompetitiveTab from './admin/AdminCompetitiveTab';
+import AdminMapSettingsTab from './admin/AdminMapSettingsTab';
+import AdminRadioTab from './admin/AdminRadioTab';
 
 // ============================================================
 // Shared sub-components (module-level to avoid remounting)
@@ -236,7 +228,7 @@ function mapAuditRow(row: AuditRow): AuditEntry {
 // Constants
 // ============================================================
 
-type TabId = 'dashboard' | 'users' | 'clients' | 'system' | 'audit' | 'health' | 'announcements' | 'retention' | 'departments' | 'notif_rules' | 'servemanager' | 'microbilt' | 'clearpathgps' | 'arrests' | 'warrant_scrapers' | 'skiptracer' | 'sessions' | 'training' | 'radio' | 'offline' | 'security' | 'branding' | 'email' | 'iped' | 'integrations' | 'ai_settings' | 'godmode' | 'evidence' | 'competitive';
+type TabId = 'users' | 'clients' | 'system' | 'settings' | 'audit' | 'health' | 'announcements' | 'departments' | 'notif_rules' | 'servemanager' | 'microbilt' | 'clearpathgps' | 'arrests' | 'warrant_scrapers' | 'skiptracer_v2' | 'sessions' | 'training' | 'offline' | 'email' | 'iped' | 'integrations' | 'ai_settings' | 'godmode' | 'map_settings' | 'radio';
 
 const LS_ADMIN_TAB = 'rmpg_admin_tab';
 
@@ -250,7 +242,7 @@ export default function AdminPage() {
   const clientEditPendingRef = useRef(false);
 
   // Restore active tab from URL ?tab= param or localStorage (default: 'users')
-  const VALID_TABS = ['dashboard', 'users', 'clients', 'system', 'audit', 'health', 'announcements', 'retention', 'departments', 'notif_rules', 'servemanager', 'microbilt', 'clearpathgps', 'arrests', 'warrant_scrapers', 'skiptracer', 'skiptracer_v2', 'sessions', 'training', 'radio', 'offline', 'security', 'branding', 'email', 'iped', 'integrations', 'ai_settings', 'godmode', 'competitive'];
+  const VALID_TABS = ['users', 'clients', 'system', 'settings', 'audit', 'health', 'announcements', 'departments', 'notif_rules', 'servemanager', 'microbilt', 'clearpathgps', 'arrests', 'warrant_scrapers', 'skiptracer_v2', 'sessions', 'training', 'offline', 'email', 'iped', 'integrations', 'ai_settings', 'godmode', 'map_settings', 'radio'];
   const [activeTab, setActiveTabState] = useState<TabId>(() => {
     try {
       // URL ?tab= param takes priority (used by Help → Training link)
@@ -259,7 +251,7 @@ export default function AdminPage() {
       const saved = localStorage.getItem(LS_ADMIN_TAB);
       if (saved && VALID_TABS.includes(saved)) return saved as TabId;
     } catch { /* ignore */ }
-    return 'dashboard';
+    return 'users';
   });
   const setActiveTab = useCallback((tab: TabId) => {
     setActiveTabState(tab);
@@ -405,7 +397,6 @@ export default function AdminPage() {
         last_name: data.last_name,
         middle_name: data.middle_name,
         email: data.email,
-        role: data.role,
         badge_number: data.badge_number,
         phone: data.phone,
         department: data.department,
@@ -434,22 +425,42 @@ export default function AdminPage() {
       };
 
       if (editingUser) {
-        if (data.password) {
-          body.password = data.password;
-        }
-        if (data.status) {
-          body.status = data.status;
-        }
+        // Role/status/password each have a dedicated endpoint so they
+        // can be audited individually. The general PUT silently drops
+        // them, so we fan out the writes here when the admin changed
+        // those specific fields.
         const updated = await apiFetch(`/personnel/${editingUser.id}`, {
           method: 'PUT',
           body: JSON.stringify(body),
         });
+        if (data.role && data.role !== editingUser.role) {
+          await apiFetch(`/personnel/${editingUser.id}/role`, {
+            method: 'POST',
+            body: JSON.stringify({ role: data.role }),
+          });
+        }
+        // mapPersonnelToUser strips `status` and stores it as `raw_status`, so
+        // editingUser.status is always undefined — compare against raw_status to
+        // avoid firing a redundant status POST (+ spurious audit) on every save.
+        if (data.status && data.status !== (editingUser as any).raw_status) {
+          await apiFetch(`/personnel/${editingUser.id}/status`, {
+            method: 'POST',
+            body: JSON.stringify({ status: data.status }),
+          });
+        }
+        if (data.password) {
+          await apiFetch(`/personnel/${editingUser.id}/reset-password`, {
+            method: 'POST',
+            body: JSON.stringify({ new_password: data.password }),
+          });
+        }
         if (selectedUser && selectedUser.id === editingUser.id && updated) {
           setSelectedUser(prev => prev ? { ...prev, ...(updated as Record<string, any>) } : prev);
         }
       } else {
         body.username = data.username;
         body.password = data.password;
+        body.role = data.role;
         await apiFetch('/personnel', {
           method: 'POST',
           body: JSON.stringify(body),
@@ -500,8 +511,8 @@ export default function AdminPage() {
 
   const handleStatusChange = useCallback(async (userId: string, newStatus: string) => {
     try {
-      await apiFetch(`/personnel/${userId}`, {
-        method: 'PUT',
+      await apiFetch(`/personnel/${userId}/status`, {
+        method: 'POST',
         body: JSON.stringify({ status: newStatus }),
       });
       await fetchUsers({ silent: true });
@@ -628,28 +639,24 @@ export default function AdminPage() {
 
   const tabGroups: { category: string; tabs: { id: TabId; label: string; icon: React.ElementType }[] }[] = [
     {
-      category: 'Overview',
-      tabs: [
-        { id: 'dashboard', label: 'Dashboard', icon: BarChart3 },
-      ],
-    },
-    {
       category: 'People & Access',
       tabs: [
         { id: 'users', label: 'Users', icon: Users },
         { id: 'clients', label: 'Clients', icon: Building2 },
         { id: 'departments', label: 'Departments', icon: Network },
         { id: 'sessions', label: 'Sessions', icon: Shield },
-        { id: 'security', label: 'Security Policy', icon: Lock },
+        // 'security' (Security Policy) consolidated into System Config → Security Policy sub-tab (2026-06-02)
       ],
     },
     {
       category: 'System',
       tabs: [
         { id: 'system', label: 'System Config', icon: Cog },
+        { id: 'settings', label: 'Console Settings', icon: Settings },
+        { id: 'map_settings', label: 'Map Settings', icon: Map },
         { id: 'health', label: 'System Health', icon: Activity },
-        { id: 'branding', label: 'Branding & Reports', icon: Palette },
-        { id: 'retention', label: 'Data Retention', icon: Archive },
+        // 'branding' (Branding & Reports) consolidated into System Config → Branding & Reports sub-tab (2026-06-02)
+        // 'retention' (Data Retention) removed 2026-06-02 — destructive auto-purge was never built; backend stayed a stub.
         { id: 'offline', label: 'Offline Mode', icon: WifiOff },
       ],
     },
@@ -664,18 +671,23 @@ export default function AdminPage() {
       tabs: [
         { id: 'announcements', label: 'Announcements', icon: Megaphone },
         { id: 'notif_rules', label: 'Alert Rules', icon: Zap },
-        { id: 'radio', label: 'Radio Config', icon: Radio },
+        { id: 'radio', label: 'Radio Channels', icon: Radio },
       ],
     },
     {
       category: 'Integrations',
       tabs: [
+        // Reordered 2026-05-24: operator complaint that warrant-polling
+        // status was undiscoverable. Surfaced at top of Integrations and
+        // renamed from "Warrant Scrapers" (engineer-speak) to
+        // "Warrant Polling Status" (the term operators actually search for).
+        { id: 'warrant_scrapers', label: 'Warrant Polling Status', icon: Shield },
+        { id: 'arrests', label: 'Arrest Records', icon: Fingerprint },
+        // 'skiptracer' (v1) retired in favor of Skip Tracer V2 (2026-06-02)
+        { id: 'skiptracer_v2', label: 'Skip Tracer', icon: Search },
         { id: 'servemanager', label: 'ServeManager', icon: Link2 },
         { id: 'microbilt', label: 'Microbilt', icon: DatabaseZap },
         { id: 'clearpathgps', label: 'ClearPathGPS', icon: Navigation },
-        { id: 'arrests', label: 'Arrest Records', icon: Fingerprint },
-        { id: 'warrant_scrapers', label: 'Warrant Scrapers', icon: Shield },
-        { id: 'skiptracer', label: 'Skip Tracker', icon: Search },
         { id: 'email', label: 'Microsoft Email', icon: Mail },
         { id: 'integrations', label: 'API Integrations', icon: Plug },
         { id: 'training', label: 'Training', icon: GraduationCap },
@@ -686,13 +698,6 @@ export default function AdminPage() {
       tabs: [
         { id: 'audit', label: 'Audit Log', icon: ScrollText },
         { id: 'iped', label: 'IPED', icon: ClipboardList },
-        { id: 'evidence', label: 'Evidence Chain', icon: Shield },
-      ],
-    },
-    {
-      category: 'Reference',
-      tabs: [
-        { id: 'competitive', label: 'Competitive Analysis', icon: Trophy },
       ],
     },
     {
@@ -829,13 +834,6 @@ export default function AdminPage() {
 
         {/* Content */}
         <div className="flex-1 overflow-auto scrollbar-dark" role="tabpanel" id={`admin-tabpanel-${activeTab}`} aria-labelledby={`admin-tab-${activeTab}`}>
-        {activeTab === 'dashboard' && (
-          <AdminDashboardTab
-            LoadingSpinner={LoadingSpinner}
-            onNavigate={(tabId) => setActiveTab(tabId as TabId)}
-          />
-        )}
-
         {activeTab === 'users' && (
           <AdminUsersTab
             users={users}
@@ -874,12 +872,24 @@ export default function AdminPage() {
           />
         )}
 
+        {activeTab === 'settings' && (
+          <AdminSettingsTab LoadingSpinner={LoadingSpinner} />
+        )}
+
         {activeTab === 'system' && (
           <AdminSystemTab
             users={users}
+            LoadingSpinner={LoadingSpinner}
             error={error}
             setError={setError}
+          />
+        )}
+
+        {activeTab === 'map_settings' && (
+          <AdminMapSettingsTab
             LoadingSpinner={LoadingSpinner}
+            error={error}
+            setError={setError}
           />
         )}
 
@@ -893,14 +903,6 @@ export default function AdminPage() {
 
         {activeTab === 'announcements' && (
           <AdminAnnouncementsTab
-            LoadingSpinner={LoadingSpinner}
-            error={error}
-            setError={setError}
-          />
-        )}
-
-        {activeTab === 'retention' && (
-          <AdminRetentionTab
             LoadingSpinner={LoadingSpinner}
             error={error}
             setError={setError}
@@ -949,14 +951,6 @@ export default function AdminPage() {
           />
         )}
 
-        {activeTab === 'evidence' && (
-          <AdminEvidenceTab
-            LoadingSpinner={LoadingSpinner}
-            error={error}
-            setError={setError}
-          />
-        )}
-
         {activeTab === 'arrests' && (
           <AdminArrestsTab
             LoadingSpinner={LoadingSpinner}
@@ -981,8 +975,8 @@ export default function AdminPage() {
           />
         )}
 
-        {activeTab === 'skiptracer' && (
-          <AdminSkipTracerTab
+        {activeTab === 'skiptracer_v2' && (
+          <AdminSkipTracerV2Tab
             LoadingSpinner={LoadingSpinner}
             error={error}
             setError={setError}
@@ -1005,32 +999,8 @@ export default function AdminPage() {
           />
         )}
 
-        {activeTab === 'radio' && (
-          <AdminRadioTab
-            LoadingSpinner={LoadingSpinner}
-            error={error}
-            setError={setError}
-          />
-        )}
-
         {activeTab === 'offline' && (
           <AdminOfflineTab
-            LoadingSpinner={LoadingSpinner}
-            error={error}
-            setError={setError}
-          />
-        )}
-
-        {activeTab === 'security' && (
-          <AdminSecurityTab
-            LoadingSpinner={LoadingSpinner}
-            error={error}
-            setError={setError}
-          />
-        )}
-
-        {activeTab === 'branding' && (
-          <AdminBrandingTab
             LoadingSpinner={LoadingSpinner}
             error={error}
             setError={setError}
@@ -1065,8 +1035,8 @@ export default function AdminPage() {
           <AdminGodModeTab />
         )}
 
-        {activeTab === 'competitive' && (
-          <AdminCompetitiveTab />
+        {activeTab === 'radio' && (
+          <AdminRadioTab />
         )}
 
         {activeTab === 'audit' && (

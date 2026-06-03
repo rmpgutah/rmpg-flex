@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import type { FleetPersonnelData, FleetPersonnelNote, FleetAssignment, Unit } from '../../../types';
+import { parseTimestamp } from '../../../utils/dateUtils';
 import { formatMilitary, daysUntilExpiry, expiryProgress } from '../utils/fleetFormatters';
 import { toDisplayLabel } from '../../../utils/formatters';
 
@@ -37,8 +38,8 @@ function credentialStatusColor(status: string): string {
 }
 
 function formatDuration(start: string, end?: string): string {
-  const s = new Date(start);
-  const e = end ? new Date(end) : new Date();
+  const s = parseTimestamp(start);
+  const e = end ? parseTimestamp(end) : new Date();
   const diffMs = e.getTime() - s.getTime();
   const days = Math.floor(diffMs / 86400000);
   const hours = Math.floor((diffMs % 86400000) / 3600000);
@@ -114,7 +115,7 @@ export default function FleetPersonnelTab({
   const dlProgress = officer?.dl_expiry ? expiryProgress(officer.dl_expiry) : 0;
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 space-y-3">
+    <div className="p-4 space-y-3">
 
       {/* ─── A) CURRENT ASSIGNMENT BANNER ─── */}
       {isAssigned ? (
@@ -217,7 +218,7 @@ export default function FleetPersonnelTab({
             <UserPlus className="w-3 h-3" /> {isAssigned ? 'Reassign Vehicle' : 'Assign Vehicle to Unit'}
           </h4>
           <div className="flex items-center gap-2">
-            <select
+            <select id="ff-fleetpersonneltab-0"
               className="select-dark flex-1 text-[11px] min-h-[36px]"
               value={selectedUnitId}
               onChange={(e) => setSelectedUnitId(e.target.value)}
@@ -461,7 +462,7 @@ export default function FleetPersonnelTab({
                     )}
                     <span className="text-[8px] text-rmpg-600 font-mono ml-auto">{formatMilitary(n.created_at)}</span>
                   </div>
-                  <p className="text-[10px] text-rmpg-300 mt-0.5">{n.note}</p>
+                  <p className="text-[10px] text-rmpg-300 mt-0.5">{n.note || (n as any).content}</p>
                 </div>
                 <button type="button"
                   className="flex-shrink-0 p-1 text-rmpg-600 hover:text-red-400 transition-colors"

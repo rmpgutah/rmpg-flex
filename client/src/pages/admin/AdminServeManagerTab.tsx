@@ -5,7 +5,10 @@ import {
   ChevronLeft, ChevronRight, FileText, Briefcase, MapPin, ToggleLeft, ToggleRight,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { asArray } from '../../utils/asArray';
 import { safeDateStr, safeDateTimeStr } from '../../utils/dateUtils';
+import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
+import { useMenuActions } from '../../utils/contextMenuActions';
 import type {
   SMIntegrationStatus, SMConnectionTestResult, SMSyncResult,
   SMSyncLogEntry, SMCachedJob, SMPaginatedResponse, SMCachedAttempt,
@@ -73,7 +76,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
   const fetchSyncLog = useCallback(async () => {
     try {
       const res = await apiFetch<{ data: SMSyncLogEntry[] }>('/servemanager/sync/log');
-      setSyncLog(res.data);
+      setSyncLog(asArray<SMSyncLogEntry>(res?.data));
     } catch (e) { console.error('Failed to fetch sync log:', e); }
   }, []);
 
@@ -83,7 +86,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
       const params = new URLSearchParams({ page: String(jobPage), per_page: '25' });
       if (jobSearch) params.set('q', jobSearch);
       const res = await apiFetch<SMPaginatedResponse<SMCachedJob>>(`/servemanager/jobs?${params}`);
-      setJobs(res.data);
+      setJobs(asArray<SMCachedJob>(res?.data));
       setJobTotal(res.pagination?.total || 0);
       setJobTotalPages(res.pagination?.totalPages || 0);
     } catch (err) {
@@ -213,6 +216,20 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
     }
   };
 
+  // \u2500\u2500 Right-click context menu (jobs table) \u2500\u2500
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+
+  const buildJobMenu = (job: SMCachedJob): ContextMenuItem[] => [
+    m.action('Open job details', () => handleViewJob(job.id), { icon: <Eye size={12} /> }),
+    m.separator(),
+    m.copy('Copy job #', job.sm_job_number, <FileText size={12} />),
+    m.copyId(job.id),
+    ...(job.recipient_name ? [m.copy('Copy recipient', job.recipient_name)] : []),
+    ...(job.client_company_name ? [m.copy('Copy client', job.client_company_name)] : []),
+    ...(job.court_case_number ? [m.copy('Copy court case #', job.court_case_number)] : []),
+  ];
+
   // Set document title (must be before early return to preserve hook order)
   useEffect(() => { document.title = 'Admin - Serve Manager \u2014 RMPG Flex'; }, []);
 
@@ -247,7 +264,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
 
         <div className="flex items-center gap-2">
           <div className="relative flex-1">
-            <input
+            <input id="ff-adminservemanagertab-0"
               type={showKey ? 'text' : 'password'}
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
@@ -469,7 +486,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
             {/* Poll interval */}
             <div className="bg-surface-sunken p-2.5 rounded-[2px] space-y-1">
               <div className="text-[10px] font-bold text-rmpg-200">Poll Interval (seconds)</div>
-              <input
+              <input id="ff-adminservemanagertab-1"
                 type="number"
                 min={60}
                 max={1800}
@@ -483,7 +500,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
             {/* Target client */}
             <div className="bg-surface-sunken p-2.5 rounded-[2px] space-y-1">
               <div className="text-[10px] font-bold text-rmpg-200">Target Client</div>
-              <input
+              <input id="ff-adminservemanagertab-2"
                 type="text"
                 value={pollerTargetClient}
                 onChange={(e) => { setPollerTargetClient(e.target.value); setPollerDirty(true); }}
@@ -517,7 +534,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
             <div className="flex items-center gap-2">
               <div className="relative">
                 <Search className="w-3 h-3 absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500" />
-                <input
+                <input id="ff-adminservemanagertab-3"
                   type="text"
                   value={jobSearch}
                   onChange={(e) => { setJobSearch(e.target.value); setJobPage(1); }}
@@ -602,6 +619,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
                     <tr
                       key={job.id}
                       onClick={() => handleViewJob(job.id)}
+                      onContextMenu={(e) => openMenu(e, buildJobMenu(job))}
                       className="border-b border-rmpg-800 hover:bg-[#181818]/60 cursor-pointer transition-all duration-100"
                     >
                       <td className="py-1 pr-2 font-mono text-brand-400">{job.sm_job_number}</td>

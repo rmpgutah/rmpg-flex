@@ -29,6 +29,8 @@ import {
   Flame,
   Eye,
   Link,
+  Pencil,
+  Copy,
 } from 'lucide-react';
 import type { Incident, IncidentType, CallPriority, IncidentStatus, IncidentPerson, IncidentVehicle } from '../types';
 import StatusBadge from '../components/StatusBadge';
@@ -59,8 +61,10 @@ import ExportButton from '../components/ExportButton';
 import RmpgLogo from '../components/RmpgLogo';
 import PrintButton from '../components/PrintButton';
 import { useToast } from '../components/ToastProvider';
+import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
+import { useMenuActions } from '../utils/contextMenuActions';
 import FloatingSaveBar from '../components/FloatingSaveBar';
-import { formatDate, formatDateTime } from '../utils/dateUtils';
+import { formatDate, formatDateTime, safeDateTimeStr, safeTimeStr, parseTimestamp } from '../utils/dateUtils';
 import { useIsMobile } from '../hooks/useIsMobile';
 import WarrantBadge from '../components/WarrantBadge';
 import NarrativeAssist from '../components/dispatch/NarrativeAssist';
@@ -176,7 +180,7 @@ function SortIcon({ colKey, sortKey, sortAsc }: { colKey: SortKey; sortKey: Sort
 
 const timeAgo = (date: string): string => {
   if (!date) return '—';
-  const parsed = new Date(date).getTime();
+  const parsed = parseTimestamp(date).getTime();
   if (Number.isNaN(parsed)) return '—';
   const ms = Date.now() - parsed;
   const mins = Math.floor(ms / 60000);
@@ -235,6 +239,10 @@ export default function IncidentsPage() {
   const isAdmin = user?.role === 'admin';
   const isGodMode = user?.role === 'admin'; // Admin God Mode — unrestricted access
   const isMobile = useIsMobile();
+
+  // ── Right-click context menu ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
 
   // ---------- data state ----------
   const [incidents, setIncidents] = useState<Incident[]>([]);
@@ -348,20 +356,35 @@ export default function IncidentsPage() {
   useEffect(() => { isEditingRef.current = isEditing; }, [isEditing]);
   useEffect(() => { selectedIncidentRef.current = selectedIncident; }, [selectedIncident]);
 
-  // Auto-save unsaved narrative on component unmount (SPA navigation)
+  // Auto-save unsaved narrative on component unmount (SPA navigation).
+  // Uses raw fetch + keepalive (matching DispatchPage's unmount cleanup
+  // pattern) rather than apiFetch. apiFetch's wrapper logic — token
+  // refresh on 401 which can redirect to /login, AbortController timeout,
+  // offline-router detours — is appropriate for normal requests but
+  // wrong for a fire-and-forget save during teardown: token-refresh
+  // failures during unmount could trigger a /login redirect on an
+  // unrelated route change, and offline routing could swallow the save.
+  // The browser's `keepalive` flag guarantees the request commits even
+  // as the page unloads (subject to a 64KB body limit, fine for a
+  // narrative field).
   useEffect(() => {
     return () => {
       if (!isEditingRef.current || !selectedIncidentRef.current) return;
       const narrative = narrativeRef.current?.value;
       if (narrative == null) return;
-      // Use apiFetch for proper token refresh handling; keepalive ensures
-      // the request completes even during page navigation
-      apiFetch(`/incidents/${selectedIncidentRef.current.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ narrative }),
-        keepalive: true,
-      }).catch(() => { /* best-effort save */ });
+      try {
+        const token = localStorage.getItem('rmpg_token');
+        fetch(`/api/incidents/${selectedIncidentRef.current.id}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({ narrative }),
+          keepalive: true,
+        });
+      } catch { /* best-effort save */ }
     };
   }, []);
 
@@ -403,12 +426,18 @@ export default function IncidentsPage() {
   const silentRefreshIncidents = useCallback(() => fetchIncidents({ silent: true }), [fetchIncidents]);
   useLiveSync('incidents', silentRefreshIncidents);
 
-  // Keep selectedIncident in sync after data refresh
+  // Keep selectedIncident in sync after live-sync refresh.
+  // MERGE the refreshed list-row into the existing selectedIncident
+  // instead of replacing it — the list query returns a thin shape
+  // (no linked_persons/vehicles/evidence/offenses/officers), which
+  // are populated by fetchIncidentDetail. A raw replace stripped those
+  // arrays back to undefined every refresh, blanking the detail tabs
+  // until the user re-selected the row.
   useEffect(() => {
     if (selectedIncident) {
       const updated = incidents.find((i) => i.id === selectedIncident.id);
       if (updated) {
-        setSelectedIncident(updated);
+        setSelectedIncident((prev) => prev ? { ...prev, ...updated } as any : updated);
       } else {
         setSelectedIncident(null);
       }
@@ -695,6 +724,29 @@ export default function IncidentsPage() {
   };
 
   // ============================================================
+  // Right-click context menu (per incident row)
+  // ============================================================
+
+  const buildIncidentMenu = (incident: Incident): ContextMenuItem[] => {
+    return [
+      m.action('Open incident', () => { setSelectedIncident(incident); setIsEditing(false); }, { icon: <Eye size={12} /> }),
+      m.action('Edit incident', () => { setEditingIncident(incident); setShowFormModal(true); }, { icon: <Pencil size={12} /> }),
+      m.action('Open in new window', () => openIncidentWindow(incident.id), { icon: <ExternalLink size={12} /> }),
+      m.separator(),
+      m.copy('Copy IR #', incident.incident_number, <Copy size={12} />),
+      m.copyId(incident.id),
+      ...((incident as any).latitude != null && (incident as any).longitude != null
+        ? [m.go('Show on map', `/map?flyto=${(incident as any).latitude},${(incident as any).longitude}`, <MapPin size={12} />)]
+        : []),
+      m.separator(),
+      ...(showArchived
+        ? [m.action('Unarchive', () => handleUnarchiveIncident(incident), { icon: <RotateCcw size={12} /> })]
+        : [m.action('Archive', () => handleArchiveIncident(incident), { icon: <Archive size={12} /> })]),
+      m.action('Delete', () => setDeleteTarget(incident), { icon: <Trash2 size={12} />, danger: true }),
+    ];
+  };
+
+  // ============================================================
   // Supplement CRUD
   // ============================================================
 
@@ -886,7 +938,7 @@ export default function IncidentsPage() {
       <div className="px-4 py-2 border-b border-rmpg-600 flex-shrink-0">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-500 pointer-events-none" />
-          <input
+          <input id="ff-incidentspage-0"
             type="text"
             className={`input-dark pl-9 w-full focus:ring-1 focus:ring-brand-500/50 focus:border-brand-600 transition-shadow ${isMobile ? 'min-h-[44px] text-sm' : ''}`}
             placeholder={showArchived ? "Search archived incidents..." : "Search incidents..."}
@@ -1007,6 +1059,7 @@ export default function IncidentsPage() {
                     setSelectedIncident(inc);
                     setIsEditing(false);
                   }}
+                  onContextMenu={(e) => openMenu(e, buildIncidentMenu(inc))}
                   className={`cursor-pointer ${isMobile ? 'min-h-[48px]' : ''} ${
                     selectedIncident?.id === inc.id ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : ''
                   }`}
@@ -1018,7 +1071,7 @@ export default function IncidentsPage() {
                     </span>
                     {/* Age indicator */}
                     {inc.occurred_at && (() => {
-                      const days = Math.floor((Date.now() - new Date(inc.occurred_at).getTime()) / 86400000);
+                      const days = Math.floor((Date.now() - parseTimestamp(inc.occurred_at).getTime()) / 86400000);
                       if (days > 30) return <span className="ml-1 text-[7px] text-red-400 font-normal">{days}d</span>;
                       if (days > 7) return <span className="ml-1 text-[7px] text-amber-400 font-normal">{days}d</span>;
                       return null;
@@ -1224,8 +1277,12 @@ export default function IncidentsPage() {
           if (callDetail.caller_phone) pdfData.caller_phone = callDetail.caller_phone;
           // Build call notes from dispatch notes
           if (callDetail.notes?.length > 0) {
+            // Use safeDateTimeStr — raw `new Date(x).toLocaleString()` parses
+            // "YYYY-MM-DD HH:MM:SS" inconsistently (Chrome=local, others=UTC),
+            // and the DB strings are MST-stamped. safeDateTimeStr applies the
+            // correct Mountain-Time offset before formatting.
             pdfData.call_notes = callDetail.notes.map((n: any) =>
-              `[${n.timestamp ? new Date(n.timestamp).toLocaleString() : ''}] ${n.author || 'System'}: ${n.text || ''}`
+              `[${n.timestamp ? safeDateTimeStr(n.timestamp, '') : ''}] ${n.author || 'System'}: ${n.text || ''}`
             ).join('\n');
           }
           // Inherit lat/lng from call if incident doesn't have them
@@ -1288,6 +1345,18 @@ export default function IncidentsPage() {
               const pdfData = await buildIncidentPdfData();
               pdfData._officerSignature = signature;
               await downloadPdfReport(reportType, pdfData);
+            }}
+            onMobilePrint={async (reportType) => {
+              try {
+                if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl);
+                const pdfData = await buildIncidentPdfData();
+                const blobUrl = await generatePdfReportBlobUrl(reportType, pdfData, { printTarget: 'mobile' });
+                setPdfBlobUrl(blobUrl);
+                setPdfViewerTitle(`${selectedIncident.incident_number} — ${reportType.replace(/_/g, ' ').toUpperCase()} (MOBILE)`);
+                setPdfViewerOpen(true);
+              } catch (err) {
+                console.error('[IncidentsPage] Mobile PDF preview failed:', err);
+              }
             }}
           />
         <button type="button"
@@ -1647,7 +1716,7 @@ export default function IncidentsPage() {
                   <div key={lp.id} className="flex items-center justify-between px-3 py-1.5 bg-surface-sunken border border-rmpg-700 group">
                     <div className="flex items-center gap-3">
                       <span className="px-1.5 py-0.5 bg-brand-900/40 text-brand-300 text-[10px] uppercase font-bold border border-brand-600/40">
-                        {lp.role.replace(/_/g, ' ')}
+                        {(lp.role || 'involved').replace(/_/g, ' ')}
                       </span>
                       <span className="text-sm text-white font-medium">{lp.last_name}, {lp.first_name}</span>
                       <WarrantBadge flags={lp.flags || '[]'} size="sm" />
@@ -1700,7 +1769,7 @@ export default function IncidentsPage() {
                 <div key={lv.id} className="flex items-center justify-between px-3 py-1.5 bg-surface-sunken border border-rmpg-700 group">
                   <div className="flex items-center gap-3">
                     <span className="px-1.5 py-0.5 bg-amber-900/40 text-amber-300 text-[10px] uppercase font-bold border border-amber-600/40">
-                      {lv.role.replace(/_/g, ' ')}
+                      {(lv.role || 'involved').replace(/_/g, ' ')}
                     </span>
                     <span className="text-sm text-white font-medium">
                       {lv.plate_number || 'No Plate'}{lv.state ? ` (${lv.state})` : ''}
@@ -1811,8 +1880,8 @@ export default function IncidentsPage() {
                   {officer.badge_number && <span className="text-[10px] font-mono text-rmpg-400">#{officer.badge_number}</span>}
                   {officer.call_sign && <span className="text-[10px] text-gray-400">{officer.call_sign}</span>}
                   {officer.rank && <span className="text-[10px] text-rmpg-500">{officer.rank}</span>}
-                  {officer.arrived_at && <span className="text-[9px] text-green-400 ml-auto">Arr: {new Date(officer.arrived_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</span>}
-                  {officer.departed_at && <span className="text-[9px] text-rmpg-400">Dep: {new Date(officer.departed_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</span>}
+                  {officer.arrived_at && <span className="text-[9px] text-green-400 ml-auto">Arr: {safeTimeStr(officer.arrived_at, '')}</span>}
+                  {officer.departed_at && <span className="text-[9px] text-rmpg-400">Dep: {safeTimeStr(officer.departed_at, '')}</span>}
                   {officer.action_taken && <span className="text-[9px] text-rmpg-400 truncate max-w-[120px]" title={officer.action_taken}>{officer.action_taken}</span>}
                   {(isAdmin || isGodMode) && (
                     <IconButton onClick={async () => {
@@ -2349,7 +2418,7 @@ export default function IncidentsPage() {
             <div className="p-4 space-y-3">
               <div>
                 <label className="block text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">Action</label>
-                <select
+                <select id="ff-incidentspage-1"
                   value={custodyAction}
                   onChange={(e) => setCustodyAction(e.target.value)}
                   className={`w-full px-2 ${isMobile ? 'py-2.5 text-sm min-h-[44px]' : 'py-1.5 text-xs'} bg-surface-sunken border border-rmpg-600 text-white`}
@@ -2366,7 +2435,7 @@ export default function IncidentsPage() {
               {custodyTransfer.currentLocation && (
                 <div>
                   <label className="block text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">From Location</label>
-                  <input
+                  <input id="ff-incidentspage-2"
                     value={custodyTransfer.currentLocation}
                     readOnly
                     className={`w-full px-2 ${isMobile ? 'py-2.5 text-sm min-h-[44px]' : 'py-1.5 text-xs'} bg-surface-sunken border border-rmpg-700 text-rmpg-400`}
@@ -2376,7 +2445,7 @@ export default function IncidentsPage() {
               )}
               <div>
                 <label className="block text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">To Location</label>
-                <input
+                <input id="ff-incidentspage-3"
                   value={custodyToLocation}
                   onChange={(e) => setCustodyToLocation(e.target.value)}
                   placeholder="Evidence room, lab, officer name..."

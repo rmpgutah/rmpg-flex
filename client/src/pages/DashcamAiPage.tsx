@@ -19,9 +19,11 @@ import {
   Shield, Signal, Video, Zap,
 } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
+import { formatEnumValue } from '../utils/formatters';
 import { apiFetch } from '../hooks/useApi';
 import usePersistedState from '../hooks/usePersistedState';
 import useLiveSync from '../hooks/useLiveSync';
+import { parseTimestamp } from '../utils/dateUtils';
 
 // ── Types ───────────────────────────────────────────────────
 
@@ -88,7 +90,7 @@ interface EventListResponse {
 
 const SOURCE_BADGE: Record<string, string> = {
   clearpathgps: 'bg-green-900/40 text-green-300 border-green-700/40',
-  traccar:      'bg-cyan-900/40  text-cyan-300  border-cyan-700/40',
+  traccar:      'bg-rmpg-900/40  text-rmpg-300  border-rmpg-700/40',
   freematics:   'bg-purple-900/40 text-purple-300 border-purple-700/40',
   flex_ai:      'bg-amber-900/40 text-amber-300 border-amber-700/40',
   manual:       'bg-rmpg-700/40 text-rmpg-300 border-rmpg-600/40',
@@ -110,7 +112,7 @@ const HEALTH_LED: Record<string, string> = {
 function formatLocalDate(s: string | null): string {
   if (!s) return '—';
   try {
-    return new Date(s.includes('T') ? s : s.replace(' ', 'T')).toLocaleString('en-US', {
+    return parseTimestamp(s).toLocaleString('en-US', {
       month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit',
     });
   } catch { return s; }
@@ -118,7 +120,7 @@ function formatLocalDate(s: string | null): string {
 
 function formatRelative(s: string | null): string {
   if (!s) return '—';
-  const ms = Date.now() - new Date(s.includes('T') ? s : s.replace(' ', 'T')).getTime();
+  const ms = Date.now() - parseTimestamp(s).getTime();
   if (ms < 0) return 'just now';
   if (ms < 60_000) return `${Math.floor(ms / 1000)}s ago`;
   if (ms < 3600_000) return `${Math.floor(ms / 60_000)}m ago`;
@@ -251,7 +253,7 @@ export default function DashcamAiPage(): React.ReactElement {
       {/* Filter bar */}
       <div className="px-3 py-2 border-b border-[#222] bg-surface-base flex flex-wrap items-center gap-2 text-[11px]">
         <Filter className="w-3 h-3 text-rmpg-500" aria-hidden="true" />
-        <select
+        <select id="ff-dashcamaipage-0"
           value={filters.source}
           onChange={e => setFilters({ ...filters, source: e.target.value })}
           className="bg-surface-sunken border border-[#222] px-2 py-1 text-rmpg-200"
@@ -264,7 +266,7 @@ export default function DashcamAiPage(): React.ReactElement {
           <option value="freematics">Freematics</option>
           <option value="manual">Manual</option>
         </select>
-        <select
+        <select id="ff-dashcamaipage-1"
           value={filters.severity}
           onChange={e => setFilters({ ...filters, severity: e.target.value })}
           className="bg-surface-sunken border border-[#222] px-2 py-1 text-rmpg-200"
@@ -276,7 +278,7 @@ export default function DashcamAiPage(): React.ReactElement {
           <option value="alert">Alert</option>
           <option value="critical">Critical</option>
         </select>
-        <select
+        <select id="ff-dashcamaipage-2"
           value={filters.event_type}
           onChange={e => setFilters({ ...filters, event_type: e.target.value })}
           className="bg-surface-sunken border border-[#222] px-2 py-1 text-rmpg-200"
@@ -298,7 +300,7 @@ export default function DashcamAiPage(): React.ReactElement {
           <option value="ignition_off">Ignition off</option>
           <option value="custom">Custom</option>
         </select>
-        <select
+        <select id="ff-dashcamaipage-3"
           value={filters.has_video}
           onChange={e => setFilters({ ...filters, has_video: e.target.value })}
           className="bg-surface-sunken border border-[#222] px-2 py-1 text-rmpg-200"
@@ -358,7 +360,7 @@ export default function DashcamAiPage(): React.ReactElement {
                       {ev.source}
                     </span>
                   </td>
-                  <td className="py-1 px-2 font-mono">{ev.event_type}</td>
+                  <td className="py-1 px-2 font-mono">{formatEnumValue(ev.event_type)}</td>
                   <td className="py-1 px-2">
                     <span className={`inline-block px-1.5 py-0.5 text-[10px] font-mono uppercase border ${SEVERITY_BADGE[ev.severity] ?? SEVERITY_BADGE.info}`}>
                       {ev.severity}
@@ -386,7 +388,7 @@ export default function DashcamAiPage(): React.ReactElement {
             <div className="p-3 border-b border-[#222] flex items-start justify-between">
               <div>
                 <div className="text-[10px] uppercase tracking-wider text-rmpg-500">Event #{selected.id}</div>
-                <div className="text-base font-mono text-[#d4a017] mt-0.5">{selected.event_type}</div>
+                <div className="text-base font-mono text-[#d4a017] mt-0.5">{formatEnumValue(selected.event_type)}</div>
                 <div className="text-[11px] text-rmpg-300 mt-0.5">{formatLocalDate(selected.event_timestamp)}</div>
               </div>
               <button

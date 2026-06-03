@@ -1,0 +1,291 @@
+// ============================================================
+// RMPG Flex — Worker entry
+// ============================================================
+// Almost-static after the route-registry refactor (PR introducing
+// src/routesConfig.ts). All HTTP route mounts live in ROUTE_REGISTRY;
+// this file owns:
+//   - Hono app construction + global middleware (logger, secureHeaders, cors)
+//   - Global error handler (with userId visibility for auth-gap diagnostics)
+//   - Auth middleware application (iterates ROUTE_REGISTRY)
+//   - Route mounting (iterates ROUTE_REGISTRY)
+//   - The /__welfare-fire internal callback for WelfareWatchDO
+//   - Default export: fetch + scheduled handlers + WebSocket dispatch
+//
+// Adding a new route: edit src/routesConfig.ts (one append to the
+// array + one import). Do NOT add new app.use/app.route here.
+// ============================================================
+
+import { Hono } from 'hono';
+import { cors } from 'hono/cors';
+import { logger } from 'hono/logger';
+import { secureHeaders } from 'hono/secure-headers';
+import { authMiddleware } from './middleware/auth';
+import { handleWebSocket, sendToUser, broadcastAll } from './routes/ws';
+import { emitAlert } from './utils/alertHub';
+import { WelfareWatchDO } from './durable-objects/WelfareWatchDO';
+import { VoiceHubDO } from './durable-objects/VoiceHubDO';
+import { AlertHubDO } from './durable-objects/AlertHubDO';
+import { PdfToolsContainer } from './containers/pdfToolsContainer';
+import { runAllSourceScans } from './utils/warrantSources/runScan';
+import { detectDispatchAnomalies } from './routes/dispatch/anomalies';
+import { getRadioSettings, purgeOldRecordings } from './utils/radioSettings';
+import type { Bindings, Variables } from './types';
+import { ROUTE_REGISTRY } from './routesConfig';
+
+// Export Durable Object classes so wrangler can find them at build time.
+// The Container subclass extends DurableObject and is configured by
+// [[containers]] + [[durable_objects.bindings]] in wrangler.toml.
+export { WelfareWatchDO, VoiceHubDO, AlertHubDO, PdfToolsContainer };
+
+// Exported so sub-routers that need to dispatch internal subrequests
+// (e.g. src/routes/offline.ts replaying queued offline writes through
+// the canonical handlers) can call `app.fetch(...)` without
+// duplicating route logic. Sub-routers must lazy-import this to avoid
+// the module-load cycle index.ts → routesConfig.ts → <subrouter> →
+// index.ts; at request time the cycle is fully resolved.
+export const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
+
+// Non-API paths served directly from the DOWNLOADS R2 bucket:
+// /download, /downloads/:filename, /updates/:filename,
+// /updates/latest.yml, /updates/latest-mac.yml, /rmpg-seal.png
+// These live outside the route registry because they don't carry
+// the /api/ prefix — they're meant to be linked from the public
+// download page and from electron-updater.
+import { serveDownloadFile, serveDownloadPage, serveRmpgSeal, serveUpdatesYaml } from './routes/downloads';
+
+const ALLOWED_DOWNLOAD_EXT = ['.dmg', '.exe', '.blockmap', '.yml', '.yaml', '.zip', '.apk'];
+
+app.get('/downloads/:filename', async (c) => {
+  const filename = c.req.param('filename');
+  const ext = filename.includes('.') ? '.' + filename.split('.').pop()?.toLowerCase() : '';
+  if (!ALLOWED_DOWNLOAD_EXT.includes(ext)) return c.json({ error: 'Forbidden file type' }, 403);
+  return serveDownloadFile(c.env.DOWNLOADS, filename, c);
+});
+
+app.get('/updates/:filename', async (c) => {
+  const filename = c.req.param('filename');
+  const ext = filename.includes('.') ? '.' + filename.split('.').pop()?.toLowerCase() : '';
+  if (!ALLOWED_DOWNLOAD_EXT.includes(ext)) return c.json({ error: 'Forbidden file type' }, 403);
+  return serveDownloadFile(c.env.DOWNLOADS, filename, c);
+});
+
+app.get('/download', async (c) => serveDownloadPage(c.env.DOWNLOADS, c));
+app.get('/rmpg-seal.png', async (c) => serveRmpgSeal(c.env.DOWNLOADS, c));
+app.get('/updates/latest.yml', async (c) => serveUpdatesYaml(c.env.DOWNLOADS, 'win', c));
+app.get('/updates/latest-mac.yml', async (c) => serveUpdatesYaml(c.env.DOWNLOADS, 'mac', c));
+
+// ─── Global middleware ───────────────────────────────────────
+app.use('*', logger());
+app.use('*', secureHeaders());
+app.use('*', cors({
+  origin: (origin: string, c: any) => {
+    const allowedOrigins = (c.env.CORS_ORIGINS || 'https://rmpgutah.us').split(',').map((s: string) => s.trim());
+    if (allowedOrigins.includes('*')) return origin;
+    if (!origin || allowedOrigins.includes(origin)) return origin;
+    return allowedOrigins[0];
+  },
+  credentials: true,
+}));
+
+// ─── Live-sync broadcast ─────────────────────────────────────
+// useLiveSync() on the client subscribes to a 'data_changed' WS event to
+// auto-refresh any open page when ANY device mutates data. The original VPS
+// stack emitted that event from a middleware that was never ported to the
+// Worker, so cross-device live refresh silently did nothing across ~38 pages.
+// This restores it: after any SUCCESSFUL mutating /api request, fan out a
+// single { module, entity } notification. The client debounces (500ms) and
+// only refetches if it is watching that module, so the cost is one small WS
+// frame per write. GETs and failed writes (status >= 400) broadcast nothing.
+//
+// Excluded modules (deliberate):
+//   - gps / presence: high-frequency pings (every ~1s) → refresh churn.
+//   - dispatch: already has surgical 'dispatch_update' realtime on the
+//     dispatch/map pages; a full-page refetch here would be redundant and
+//     heavier than the existing path.
+//   - auth / health / ws / voice-ws / map-data / tts: non-data or streaming.
+const LIVE_SYNC_SKIP = new Set([
+  'auth', 'health', 'ws', 'voice-ws', 'map-data', 'tts', 'gps', 'presence', 'dispatch',
+]);
+app.use('/api/*', async (c, next) => {
+  await next();
+  try {
+    const method = c.req.method;
+    if (method !== 'POST' && method !== 'PUT' && method !== 'PATCH' && method !== 'DELETE') return;
+    if (c.res.status >= 400) return;
+    const segs = new URL(c.req.url).pathname.replace(/^\/api\//, '').split('/').filter(Boolean);
+    const module = segs[0];
+    if (!module || LIVE_SYNC_SKIP.has(module)) return;
+    // second segment is the entity type unless it's a numeric id
+    const entity = segs[1] && !/^\d+$/.test(segs[1]) ? segs[1] : undefined;
+    broadcastAll('data_changed', { module, entity });
+  } catch { /* live-sync must never break a real response */ }
+});
+
+// Root probe — useful for "is the Worker even reachable" smoke checks
+app.get('/', (c) => c.json({ name: 'RMPG Flex API', version: '1.0.0', status: 'running' }));
+
+// ─── Global error handler ────────────────────────────────────
+// Surfaces the route + raw message for any uncaught throw inside a
+// route handler. Without this, Hono's default returns "Internal Server
+// Error" with no detail and we lose the actual D1 / SQL message.
+//
+// `userId` visibility flags auth-coverage gaps: if userId is undefined
+// here, the request reached the handler without going through auth —
+// likely a missing ROUTE_REGISTRY entry or a bug in applyAuthMiddleware
+// below. This was the root cause of the dispatcher_id NULL FK bug
+// fixed in PR #620.
+app.onError((err, c) => {
+  const method = c.req.method;
+  const path = new URL(c.req.url).pathname;
+  const route = `${method} ${path}`;
+  const detail = err instanceof Error ? err.message : String(err);
+  const userId = c.get('userId') as number | undefined;
+  console.error(`Unhandled in ${route} (userId=${userId}):`, err);
+  return c.json({
+    error: 'Internal server error',
+    code: 'UNHANDLED',
+    route,
+    detail,
+    auth: userId == null ? 'NO_AUTH' : `userId=${userId}`,
+  }, 500);
+});
+
+// ─── Apply route registry ────────────────────────────────────
+// Two passes so auth is declared exactly once per prefix even if
+// multiple routers mount at the same path (e.g. dispatchCallLinks +
+// dispatchPanic + dispatchPremiseHistory all at /api/dispatch).
+//
+// Each `auth: 'required'` prefix gets BOTH `app.use(prefix, ...)` and
+// `app.use(prefix/*, ...)`. Hono's path matcher treats `/path/*` as
+// matching `/path/X` for any X but NOT the bare `/path` itself — so
+// without the bare-prefix line, requests to the exact prefix slip
+// past auth entirely (silent — userId comes through as undefined).
+const authPrefixes = new Set<string>();
+for (const m of ROUTE_REGISTRY) {
+  if (m.auth === 'required') authPrefixes.add(m.prefix);
+}
+for (const prefix of authPrefixes) {
+  app.use(prefix, authMiddleware);
+  app.use(`${prefix}/*`, authMiddleware);
+}
+
+// Mount routers in declared order — Hono dispatches in registration
+// order, so the per-PR maintainer's job is to add entries to
+// ROUTE_REGISTRY at the right position relative to the ordering
+// invariants in that file's header comment.
+for (const m of ROUTE_REGISTRY) {
+  app.route(m.prefix, m.router);
+}
+
+// ─── Internal: WelfareWatchDO → Worker callback ──────────────
+// The DO's alarm() can't call sendToUser/broadcastAll directly
+// (those live in the Worker module's per-isolate state). Instead
+// it posts to /__welfare-fire authenticated by X-DO-Secret == JWT_SECRET.
+// Lives outside ROUTE_REGISTRY because it's an internal callback,
+// not an API endpoint.
+app.post('/__welfare-fire', async (c) => {
+  if (c.req.header('X-DO-Secret') !== c.env.JWT_SECRET) {
+    return c.json({ error: 'forbidden' }, 403);
+  }
+  const { stage, watch } = await c.req.json<{ stage: 'prompt' | 'alert' | 'emergency'; watch: any }>();
+  if (stage === 'prompt') {
+    // Targeted to ONE officer's MDT — deliver via AlertHubDO with a
+    // target_user_id (WelfareCheckModal + the voice hook filter on it). The old
+    // sendToUser was per-isolate-dead, so the welfare-check prompt reached the
+    // officer never; a naive broadcast would pop the takeover on every console.
+    await emitAlert(c.env, 'welfare_check', {
+      action: 'welfare_prompt',
+      target_user_id: watch.user_id,
+      callSign: watch.call_sign,
+      callId: watch.call_id,
+      callNumber: watch.call_number,
+      message: `Welfare check: ${watch.call_sign || 'unit'}, are you code 4${watch.call_number ? ` on call ${watch.call_number}` : ''}?`,
+    });
+  } else if (stage === 'alert') {
+    // Deliver via AlertHubDO under the DISCRETE 'welfare_alert' type the client's
+    // voice-alert hook subscribes to. The old broadcastAll('dispatch_update',…)
+    // was double-dead: wrong type (client subscribes to 'welfare_alert', not a
+    // dispatch_update action) AND per-isolate (the live /api/ws is on legacy).
+    await emitAlert(c.env, 'welfare_alert', {
+      user_id: watch.user_id, call_sign: watch.call_sign,
+      message: `Officer welfare alert — ${watch.call_sign || 'unit'} has not acknowledged a welfare check.`,
+      at: new Date().toISOString(),
+    });
+  } else if (stage === 'emergency') {
+    // CRITICAL officer-safety: the auto-escalation when an officer goes
+    // unresponsive to welfare checks. Same double-dead bug — route via
+    // AlertHubDO under 'welfare_emergency' so it reaches every dispatcher.
+    await emitAlert(c.env, 'welfare_emergency', {
+      user_id: watch.user_id, call_sign: watch.call_sign,
+      call_id: watch.call_id, call_number: watch.call_number,
+      triggered_by: 'automated_escalation',
+      message: `WELFARE EMERGENCY — ${watch.call_sign || 'unit'} unresponsive${watch.call_number ? ' on ' + watch.call_number : ''}. All units respond.`,
+      at: new Date().toISOString(),
+    });
+  }
+  return c.json({ success: true });
+});
+
+// ─── Worker export ───────────────────────────────────────────
+export default {
+  async fetch(request: Request, env: Bindings, ctx: ExecutionContext): Promise<Response> {
+    const url = new URL(request.url);
+    if (url.pathname === '/api/ws') {
+      return handleWebSocket(request, env);
+    }
+    // Dedicated voice socket → VoiceHubDO. This is a SEPARATE channel
+    // from /api/ws (which lives on the legacy worker and carries
+    // alerts/GPS/dispatch). Voice gets its own DO-backed hub here so
+    // real-time fan-out across units actually works. The client opens
+    // this straight at api.rmpgutah.us, bypassing the proxy. Room is in
+    // ?room=radio-<id> / panic-<id>; JWT auth happens inside the DO.
+    if (url.pathname === '/api/voice-ws') {
+      const room = url.searchParams.get('room') || '';
+      if (!/^(radio|panic)-\d+$/.test(room)) {
+        return new Response('Bad or missing room', { status: 400 });
+      }
+      const id = env.VOICE_HUB.idFromName(room);
+      return env.VOICE_HUB.get(id).fetch(request);
+    }
+    // Agency-wide officer-safety alert socket → the single global AlertHubDO.
+    // Every client holds one of these (connected straight at api.rmpgutah.us,
+    // bypassing the proxy, same as voice). It's how rewrite-originated panic
+    // broadcasts actually reach dispatchers — see src/durable-objects/AlertHubDO.ts.
+    if (url.pathname === '/api/alerts-ws') {
+      const id = env.ALERT_HUB.idFromName('global');
+      return env.ALERT_HUB.get(id).fetch(request);
+    }
+    return app.fetch(request, env, ctx);
+  },
+
+  // Cron-triggered Utah warrant scan. Schedule defined in
+  // wrangler.toml [[triggers]] crons. waitUntil ensures the scan
+  // finishes even though the scheduled handler returns immediately.
+  // Errors are swallowed inside runUtahWarrantScan so one bad run
+  // can't crash the cron loop.
+  async scheduled(event: ScheduledEvent, env: Bindings, ctx: ExecutionContext): Promise<void> {
+    ctx.waitUntil(
+      runAllSourceScans(env.DB).catch((err) => {
+        console.error('Multi-source warrant scheduled scan failed:', err);
+      }),
+    );
+    // Dispatch anomaly detection — populates anomaly_alerts for the
+    // AnomalyAlertBanner. Independent of the warrant scan; its own
+    // catch so a failure here can't abort the warrant scan or crash
+    // the cron loop.
+    ctx.waitUntil(
+      detectDispatchAnomalies(env.DB)
+        .then((r) => console.log(`[anomaly] raised/updated ${r.raised}, auto-resolved ${r.resolved}`))
+        .catch((err) => console.error('Dispatch anomaly detection failed:', err)),
+    );
+    // Radio recording retention — purge transmissions/audio older than the
+    // operator-set window (radio settings; 0 = keep forever). Own catch so a
+    // failure can't abort the other scans or crash the cron loop.
+    ctx.waitUntil(
+      getRadioSettings(env.DB)
+        .then((s) => purgeOldRecordings(env.DB, env.UPLOADS, s.recording_retention_days))
+        .then((r) => { if (r.deleted) console.log(`[radio] purged ${r.deleted} expired recording(s)`); })
+        .catch((err) => console.error('Radio retention purge failed:', err)),
+    );
+  },
+};

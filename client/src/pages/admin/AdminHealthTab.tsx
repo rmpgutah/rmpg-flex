@@ -8,6 +8,8 @@ import {
 import { apiFetch } from '../../hooks/useApi';
 import { formatFileSize, formatDuration, toDisplayLabel } from '../../utils/formatters';
 import { safeDateStr, safeTimeStr } from '../../utils/dateUtils';
+import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
+import { useMenuActions } from '../../utils/contextMenuActions';
 
 // ============================================================
 // System Health & Monitoring Tab
@@ -123,6 +125,22 @@ export default function AdminHealthTab({ LoadingSpinner }: Props) {
     activeBolos: number; activeSessions: number; todayActivity: number; todayCalls: number;
   } | null>(null);
 
+  // ── Right-click context menu (read-only health dashboard → copy-only) ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+
+  const buildUserActivityMenu = (u: any): ContextMenuItem[] => [
+    m.copy('Copy name', u.full_name),
+    ...(u.role ? [m.copy('Copy role', u.role)] : []),
+    m.copyId(u.id, 'Copy user ID'),
+  ];
+
+  const buildErrorMenu = (err: { id: string; action: string; details: string }): ContextMenuItem[] => [
+    m.copy('Copy action', err.action),
+    m.copy('Copy details', err.details),
+    m.copyId(err.id, 'Copy log ID'),
+  ];
+
   const fetchHealth = useCallback(async () => {
     setLoading(true);
     try {
@@ -202,27 +220,11 @@ export default function AdminHealthTab({ LoadingSpinner }: Props) {
     return 'bg-green-900/30 text-green-400 border-green-800/40';
   };
 
-  if (!h) return <div className="p-6 text-rmpg-400 text-xs">Failed to load health data.</div>;
+  // Order matters: `loading` starts true and `health` starts null, so the
+  // spinner must be checked BEFORE the failure state — otherwise every initial
+  // load flashes "Failed to load health data" while the fetch is still in flight.
   if (loading && !health) return <LoadingSpinner />;
-
-
   if (!h) return <div className="p-6 text-rmpg-400 text-xs">Failed to load health data.</div>;
-  if (loading && !health) return <LoadingSpinner />;
-
-
-
-  if (!h) return <div className="p-6 text-rmpg-400 text-xs">Failed to load health data.</div>;
-  if (loading && !health) return <LoadingSpinner />;
-
-
-
-  if (!h) return <div className="p-6 text-rmpg-400 text-xs">Failed to load health data.</div>;
-  if (loading && !health) return <LoadingSpinner />;
-
-
-
-  if (!h) return <div className="p-6 text-rmpg-400 text-xs">Failed to load health data.</div>;
-  if (loading && !health) return <LoadingSpinner />;
 
 
   return (
@@ -282,31 +284,31 @@ export default function AdminHealthTab({ LoadingSpinner }: Props) {
       )}
 
       {/* Upgrade: Enhanced DB Stats */}
-      {systemHealth && (
+      {systemHealth?.server && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           <div className="bg-surface-sunken p-2 panel-beveled">
             <div className="text-[10px] text-rmpg-400 uppercase">DB Size</div>
-            <div className="text-sm font-bold text-white font-mono">{systemHealth.database.sizeMB} MB</div>
+            <div className="text-sm font-bold text-white font-mono">{systemHealth.database?.sizeMB ?? '?'} MB</div>
           </div>
           <div className="bg-surface-sunken p-2 panel-beveled">
             <div className="text-[10px] text-rmpg-400 uppercase">Server Uptime</div>
-            <div className="text-sm font-bold text-white font-mono">{systemHealth.server.uptimeHours}h</div>
+            <div className="text-sm font-bold text-white font-mono">{systemHealth.server.uptimeHours ?? 0}h</div>
           </div>
           <div className="bg-surface-sunken p-2 panel-beveled">
             <div className="text-[10px] text-rmpg-400 uppercase">Heap Used</div>
-            <div className="text-sm font-bold text-white font-mono">{systemHealth.server.memoryUsageMB.heapUsed} MB</div>
+            <div className="text-sm font-bold text-white font-mono">{systemHealth.server.memoryUsageMB?.heapUsed ?? '?'} MB</div>
           </div>
           <div className="bg-surface-sunken p-2 panel-beveled">
             <div className="text-[10px] text-rmpg-400 uppercase">Recent Errors</div>
-            <div className={`text-sm font-bold font-mono ${systemHealth.activity.recentErrors > 0 ? 'text-red-400' : 'text-green-400'}`}>
-              {systemHealth.activity.recentErrors}
+            <div className={`text-sm font-bold font-mono ${(systemHealth.activity?.recentErrors ?? 0) > 0 ? 'text-red-400' : 'text-green-400'}`}>
+              {systemHealth.activity?.recentErrors ?? 0}
             </div>
           </div>
         </div>
       )}
 
       {/* Upgrade: Top Users by Activity (30d) */}
-      {usersActivity && usersActivity.data.length > 0 && (
+      {Array.isArray(usersActivity?.data) && usersActivity.data.length > 0 && (
         <div className="panel-beveled bg-surface-base p-3">
           <div className="flex items-center gap-2 mb-2 text-[10px] font-bold text-rmpg-300 uppercase tracking-wider">
             <Shield className="w-3.5 h-3.5 text-brand-400" />
@@ -326,7 +328,7 @@ export default function AdminHealthTab({ LoadingSpinner }: Props) {
               </thead>
               <tbody>
                 {usersActivity.data.slice(0, 10).map((u: any) => (
-                  <tr key={u.id} className="border-b border-rmpg-700/20 hover:bg-surface-raised">
+                  <tr key={u.id} className="border-b border-rmpg-700/20 hover:bg-surface-raised" onContextMenu={(e) => openMenu(e, buildUserActivityMenu(u))}>
                     <td className="py-1 px-2 text-white font-bold">{u.full_name}</td>
                     <td className="py-1 px-2 text-rmpg-400">{(u.role || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</td>
                     <td className="py-1 px-2 text-right font-mono text-brand-400">{u.recent_action_count}</td>
@@ -390,8 +392,8 @@ export default function AdminHealthTab({ LoadingSpinner }: Props) {
         <MetricCard
           icon={Server}
           label="Uptime"
-          value={formatDuration(h.server.uptime)}
-          sub={`Node ${h.server.nodeVersion}`}
+          value={formatDuration(h.server?.uptime ?? 0)}
+          sub={`Node ${h.server?.nodeVersion ?? '?'}`}
           color="text-gray-400"
         />
         <MetricCard
@@ -654,7 +656,7 @@ export default function AdminHealthTab({ LoadingSpinner }: Props) {
         ) : (
           <div className="space-y-1 max-h-40 overflow-y-auto">
             {h.recentErrors.map((err) => (
-              <div key={err.id} className="flex items-start gap-2 bg-red-950/20 border border-red-900/30 px-2 py-1 rounded-sm">
+              <div key={err.id} className="flex items-start gap-2 bg-red-950/20 border border-red-900/30 px-2 py-1 rounded-sm" onContextMenu={(e) => openMenu(e, buildErrorMenu(err))}>
                 <AlertTriangle className="w-3 h-3 text-red-400 mt-0.5 shrink-0" />
                 <div className="flex-1 min-w-0">
                   <span className="text-[10px] font-medium text-red-300">{err.action}</span>
@@ -910,7 +912,7 @@ function MaintenanceModeToggle() {
           Maintenance mode is ACTIVE. Users will see a maintenance banner.
         </div>
       )}
-      <input
+      <input id="ff-adminhealthtab-0"
         value={message}
         onChange={e => setMessage(e.target.value)}
         placeholder="Maintenance message shown to users..."

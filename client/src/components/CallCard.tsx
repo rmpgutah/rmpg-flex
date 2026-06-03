@@ -1,12 +1,19 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Clock, MapPin, Users, AlertTriangle, Phone, Radio, UserCheck, Globe, Layers, MessageSquare, ShieldAlert, Star } from 'lucide-react';
 import type { CallForService } from '../types';
+import type { DispatchCode } from '../hooks/useDispatchCodes';
 import StatusBadge from './StatusBadge';
 import { formatIncidentType } from '../utils/caseNumbers';
 import WarningTags from './WarningTags';
 import type { WarningTag } from './WarningTags';
 import { getTimerState, isActiveStatus } from '../utils/dispatchTimers';
 import { humanizePriority, getStatusTooltip, formatAddressDisplay } from '../utils/statusLabels';
+// Parse server timestamps as UTC (naive strings) — raw new Date() reads
+// them as browser-local and skews every elapsed/age calc by the offset.
+import { parseTimestamp } from '../utils/dateUtils';
+import { callPosture } from '../utils/callThreat';
+import { sectionZoneBeatCombined } from '../utils/dispatchCodeParts';
+import { BADGE_TONES } from './records/recordVisuals';
 
 // Feature 15: Call Source Icons
 const SOURCE_ICONS: Record<string, React.ElementType> = {
@@ -20,11 +27,14 @@ const SOURCE_ICONS: Record<string, React.ElementType> = {
 
 // Feature 3: Elapsed time formatter
 function formatCallDuration(createdAt: string, status?: string, archivedAt?: string): string {
-  // For archived/closed/cancelled calls, show the final duration (not a running timer)
-  if (status && ['archived', 'closed', 'cancelled'].includes(status)) {
+  // For terminal calls show the final duration, not a running timer. 'cleared'
+  // belongs here too — the call site passes cleared_at as the end time, and
+  // isActiveStatus already treats cleared as inactive; without it a cleared
+  // call's duration ticked up forever.
+  if (status && ['archived', 'closed', 'cancelled', 'cleared'].includes(status)) {
     const endTime = archivedAt || createdAt;
-    const start = new Date(createdAt).getTime();
-    const end = new Date(endTime).getTime();
+    const start = parseTimestamp(createdAt).getTime();
+    const end = parseTimestamp(endTime).getTime();
     const elapsed = end - start;
     if (elapsed <= 0 || !isFinite(elapsed)) return '0:00';
     const totalSec = Math.floor(elapsed / 1000);
@@ -34,7 +44,7 @@ function formatCallDuration(createdAt: string, status?: string, archivedAt?: str
     if (hrs > 0) return `${hrs}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
     return `${mins}:${String(secs).padStart(2, '0')}`;
   }
-  const elapsed = Date.now() - new Date(createdAt).getTime();
+  const elapsed = Date.now() - parseTimestamp(createdAt).getTime();
   if (elapsed < 0 || !isFinite(elapsed)) return '0:00';
   const totalSec = Math.floor(elapsed / 1000);
   const hrs = Math.floor(totalSec / 3600);
@@ -49,7 +59,7 @@ function calcResponseTime(call: CallForService): string | null {
   if (!call.dispatched_at || !call.created_at) return null;
   if (!['cleared', 'closed', 'archived'].includes(call.status) && !call.onscene_at) return null;
   const endTime = call.onscene_at || call.cleared_at || call.dispatched_at;
-  const diff = new Date(endTime).getTime() - new Date(call.created_at).getTime();
+  const diff = parseTimestamp(endTime).getTime() - parseTimestamp(call.created_at).getTime();
   if (diff < 0 || !isFinite(diff)) return null;
   const mins = Math.floor(diff / 60000);
   if (mins < 60) return `${mins}m`;
@@ -72,12 +82,18 @@ interface CallCardProps {
   hasActiveWarrant?: boolean;
   /** Toggle pinned-to-top flag */
   onTogglePin?: (callId: string, currentlyPinned: boolean) => void;
+  /** Resolved signal-code info for priority-colored badge */
+  signalInfo?: DispatchCode | null | undefined;
 }
 
 const NON_DROPPABLE_STATUSES = ['cleared', 'closed', 'cancelled', 'archived'];
 
-export default React.memo(function CallCard({ call, isSelected = false, onClick, onUnitDrop, onStatusChange, onContextMenu, warnings, stackCount, onQuickNote, hasActiveWarrant, onTogglePin }: CallCardProps) {
+export default React.memo(function CallCard({ call, isSelected = false, onClick, onUnitDrop, onStatusChange, onContextMenu, warnings, stackCount, onQuickNote, hasActiveWarrant, onTogglePin, signalInfo }: CallCardProps) {
   const isEmergency = call.priority === 'P1';
+  // Officer-safety threat posture from the call's own intrinsic flags (linked
+  // records aren't loaded per-queue-card). Drives a triage strip across the
+  // top edge so a dangerous call reads at a glance regardless of priority.
+  const threatPosture = useMemo(() => callPosture(call), [call]);
   const [isDragOver, setIsDragOver] = useState(false);
   const timerRef = useRef<HTMLSpanElement>(null);
   const barRef = useRef<HTMLDivElement>(null);
@@ -123,10 +139,15 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
         durationRef.current.textContent = formatCallDuration(call.created_at, call.status, (call as any).archived_at || call.cleared_at || call.closed_at);
       }
 
-      // Feature 12: Update hold timer
+      // Feature 12: Update hold timer — gated on the real held state. mapDbCall
+      // synthesizes status='on_hold' from calls_for_service_ext.held_at, so the
+      // badge must key off 'on_hold' (it previously keyed off pending+unassigned,
+      // which NEVER matched a held call and mislabeled every routine pending call
+      // as HOLD). Elapsed runs from held_at when present.
       if (holdTimerRef.current) {
-        if (call.status === 'pending' && !call.assigned_units?.length) {
-          const holdMs = Date.now() - new Date(call.created_at).getTime();
+        if (call.status === 'on_hold') {
+          const heldFrom = (call as any).held_at || call.created_at;
+          const holdMs = Date.now() - parseTimestamp(heldFrom).getTime();
           const holdMins = Math.floor(holdMs / 60000);
           holdTimerRef.current.textContent = `HOLD ${holdMins}m`;
           holdTimerRef.current.style.display = 'inline-flex';
@@ -136,7 +157,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
       }
 
       // Legacy escalation logic — guard against missing/invalid created_at
-      const createdTime = call.created_at ? new Date(call.created_at).getTime() : NaN;
+      const createdTime = call.created_at ? parseTimestamp(call.created_at).getTime() : NaN;
       const diffMin = Number.isFinite(createdTime) ? Math.floor((Date.now() - createdTime) / 60000) : -1;
       const isPending = call.status === 'pending';
       setShouldEscalate(isPending && (
@@ -226,6 +247,20 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
         } : {}),
       }}
     >
+      {/* Officer-safety triage strip — top edge glows by threat posture
+          (critical = red pulse, high = orange). Orthogonal to the left
+          priority border so urgency + danger read independently. */}
+      {(threatPosture.level === 'critical' || threatPosture.level === 'high') && (
+        <div
+          className={`absolute top-0 left-0 right-0 h-[2px] pointer-events-none ${threatPosture.pulse ? 'animate-led-pulse' : ''}`}
+          style={{
+            background: BADGE_TONES[threatPosture.tone].border,
+            color: BADGE_TONES[threatPosture.tone].glow,
+            boxShadow: `0 0 6px ${BADGE_TONES[threatPosture.tone].glow}`,
+          }}
+          aria-hidden="true"
+        />
+      )}
       {/* Timer progress bar (thin line at top) */}
       {isActiveStatus(call.status) && (
         <div className="timer-bar-track">
@@ -278,7 +313,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
           {call.incident_type === 'pso_client_request' && ['cleared', 'closed'].includes(call.status) && (() => {
             const terminalTime = call.closed_at || call.cleared_at;
             if (!terminalTime) return null;
-            const elapsed = Date.now() - new Date(terminalTime).getTime();
+            const elapsed = Date.now() - parseTimestamp(terminalTime).getTime();
             const hoursLeft = Math.max(0, 72 - elapsed / (60 * 60 * 1000));
             if (elapsed >= 72 * 60 * 60 * 1000) {
               return (
@@ -298,7 +333,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
           })()}
           {/* 72-hour deadline for active PSO calls (from creation time) */}
           {call.incident_type === 'pso_client_request' && !['cleared', 'closed', 'archived', 'cancelled'].includes(call.status) && call.created_at && (() => {
-            const deadline = new Date(new Date(call.created_at).getTime() + 72 * 3600000);
+            const deadline = new Date(parseTimestamp(call.created_at).getTime() + 72 * 3600000);
             const remaining = deadline.getTime() - Date.now();
             if (remaining <= 0) return (
               <span className="text-[8px] font-bold font-mono text-red-400 bg-red-900/40 border border-red-600/50 px-1 py-0 animate-pulse">
@@ -314,10 +349,36 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
             return null;
           })()}
           {call.dispatch_code && !(call.incident_type === 'pso_client_request' && call.pso_attempt_number) && (
-            <span className="text-[10px] font-bold font-mono text-amber-300 bg-amber-900/30 border border-amber-700/40 px-1 py-0">
+            <span className="text-[10px] font-bold font-mono text-amber-300 bg-amber-900/30 border border-amber-700/40 px-1 py-0" title={`Dispatch zone: ${call.dispatch_code}`}>
               {call.dispatch_code}
             </span>
           )}
+          {signalInfo && (() => {
+            const sp = signalInfo;
+            const pri = sp.priority || 'P3';
+            const priColors: Record<string, { text: string; bg: string; border: string }> = {
+              P1: { text: '#fca5a5', bg: 'rgba(220,38,38,0.3)', border: 'rgba(220,38,38,0.5)' },
+              P2: { text: '#fde68a', bg: 'rgba(245,158,11,0.25)', border: 'rgba(245,158,11,0.4)' },
+              P3: { text: '#9ca3af', bg: 'rgba(107,114,128,0.2)', border: 'rgba(107,114,128,0.35)' },
+              P4: { text: '#888888', bg: 'rgba(100,100,100,0.2)', border: 'rgba(100,100,100,0.35)' },
+            };
+            const c = priColors[pri] || priColors.P3;
+            const flags: string[] = [];
+            if (sp.requires_backup) flags.push('Backup required');
+            if (sp.officer_safety) flags.push('Officer safety risk');
+            if (sp.ems_needed) flags.push('EMS needed');
+            if (sp.fire_needed) flags.push('Fire response needed');
+            const tooltip = `Signal ${sp.code} — ${sp.description}\nCategory: ${sp.category} · Priority: ${sp.priority}${flags.length ? '\n' + flags.join('\n') : ''}`;
+            return (
+              <span
+                className="text-[10px] font-bold font-mono px-1 py-0 cursor-default border"
+                style={{ color: c.text, background: c.bg, borderColor: c.border }}
+                title={tooltip}
+              >
+                {sp.code}
+              </span>
+            );
+          })()}
         </div>
         <div className="flex items-center gap-1.5">
           <StatusBadge status={call.priority} type="priority" size="sm" title={humanizePriority(call.priority)} />
@@ -338,7 +399,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
           <span
             ref={holdTimerRef}
             className="text-[8px] font-bold font-mono text-yellow-400 bg-yellow-900/30 border border-yellow-700/50 px-1 py-0"
-            style={{ display: call.status === 'pending' && !call.assigned_units?.length ? 'inline-flex' : 'none' }}
+            style={{ display: call.status === 'on_hold' ? 'inline-flex' : 'none' }}
           >
             HOLD 0m
           </span>
@@ -393,7 +454,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
         {/* Source icon */}
         {call.source && (() => {
           const SourceIcon = SOURCE_ICONS[call.source] || Phone;
-          return <SourceIcon className="w-3 h-3 flex-shrink-0" title={call.source?.replace('_', ' ')} />;
+          return <SourceIcon className="w-3 h-3 flex-shrink-0" title={call.source?.replace(/_/g, ' ')} />;
         })()}
         {/* Feature 3: Call duration */}
         <span ref={durationRef} className="font-mono tabular-nums">{call.created_at ? formatCallDuration(call.created_at, call.status, (call as any).archived_at || call.cleared_at || call.closed_at) : ''}</span>
@@ -426,6 +487,22 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
               {call.client_name || (call as any).pso_requestor_name}
             </div>
           )}
+          {/* Dispatch geography on the card is the SHORT CODE only — the
+              Section/Zone/Beat chart code (e.g. "SL1/HER/A1") via the parser,
+              NOT the long Area›Section›Zone›Beat names (those live on the Map UI
+              "What's Here"). Hidden when it would merely echo the dispatch_code
+              badge already shown in the header. Zero extra requests — the
+              sector/zone/beat ids ride on the call via LIST_VIEW_COLUMNS. */}
+          {(() => {
+            const szb = sectionZoneBeatCombined(call.sector_id, call.zone_id, call.beat_id);
+            if (!szb || szb === call.dispatch_code) return null;
+            return (
+              <div className="text-[9px] text-rmpg-400 truncate flex items-center gap-0.5 font-mono" title="Section / Zone / Beat (short code)">
+                <MapPin className="w-2.5 h-2.5 flex-shrink-0 text-rmpg-500" />
+                {szb}
+              </div>
+            );
+          })()}
         </div>
       </div>
 
@@ -505,7 +582,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
       {showQuickNote && onQuickNote && (
         <div className="mt-1.5 pt-1 border-t border-rmpg-700/50 flex gap-1" onClick={(e) => e.stopPropagation()}>
           {/* 25: Focus ring on quick note input; 26: Transition on border color */}
-          <input
+          <input id="ff-callcard-0"
             type="text"
             className="flex-1 bg-surface-sunken border border-rmpg-600 text-[10px] text-rmpg-200 px-1.5 py-0.5 rounded-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500/30 focus:outline-none transition-colors"
             placeholder="Add note..."

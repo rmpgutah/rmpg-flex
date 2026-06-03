@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { MessageSquare, Plus, Trash2, Send, Loader2, FileCode, X, Bot, User, Circle } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
+import { asArray } from '../../../utils/asArray';
 
 import RichTextArea from '../../../components/RichTextArea';
 interface ChatMessage {
@@ -66,11 +67,11 @@ function generateThinkingSteps(query: string): ThinkStep[] {
       icon: '🗺️',
       detail: 'Accessing geospatial architecture knowledge base...\n' +
         'Key components identified:\n' +
-        '  ├─ Google Maps JS API (dark styled) — primary map provider\n' +
+        '  ├─ Mapbox GL JS (dark-v11 style) — primary map provider\n' +
         '  ├─ CartoDB dark_matter tiles — offline fallback layer\n' +
         '  ├─ GPS tracking via WebSocket (real-time unit positions)\n' +
         '  └─ Service Worker tile caching: Z7-Z15 coverage for SLC metro',
-      files: ['client/src/pages/map/MapPage.tsx', 'client/src/utils/googleMapsLoader.ts', 'server/src/utils/geocode.ts'],
+      files: ['client/src/pages/map/MapPage.tsx', 'client/src/utils/mapboxLoader.ts', 'server/src/utils/geocode.ts'],
     });
   } else if (q.includes('database') || q.includes('schema') || q.includes('table') || q.includes('sql') || q.includes('data')) {
     steps.push({
@@ -233,7 +234,7 @@ export default function AIDevChatPanel() {
   const fetchSessions = useCallback(async () => {
     try {
       const data = await apiFetch<ChatSession[]>('/ai/dev-chat/history');
-      setSessions(data);
+      setSessions(asArray<ChatSession>(data));
     } catch { /* ignore */ }
   }, []);
 
@@ -242,7 +243,7 @@ export default function AIDevChatPanel() {
     setActiveSession(sessionId);
     try {
       const data = await apiFetch<ChatMessage[]>(`/ai/dev-chat/history/${sessionId}`);
-      setMessages(data);
+      setMessages(asArray<ChatMessage>(data));
     } catch { /* ignore */ }
   }, []);
 
@@ -720,7 +721,7 @@ export default function AIDevChatPanel() {
         {showFileInput && (
           <div className="px-4 py-2 border-t border-[#303030] bg-[#141414] flex items-center gap-2">
             <FileCode className="w-4 h-4 text-gray-500" />
-            <input
+            <input id="ff-aidevchatpanel-0"
               type="text"
               value={fileContext}
               onChange={e => setFileContext(e.target.value)}

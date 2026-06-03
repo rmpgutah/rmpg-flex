@@ -250,7 +250,7 @@ export const DEFAULT_PREFERENCES: EditorPreferences = {
   snapToGrid: false,
   gridSize: 6,
   defaultTool: 'select',
-  recentColors: ['#0a0a0a', '#d4a017', '#c62828', '#1976d2', '#2e7d32'],
+  recentColors: ['#0a0a0a', '#555555', '#888888', '#aaaaaa', '#cccccc'],
   layerVisibility: {},
   showAnnotationsPanel: false,
   autoSaveDrafts: true,

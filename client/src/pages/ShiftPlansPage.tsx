@@ -9,21 +9,23 @@ import { useState, useMemo, useEffect } from 'react';
 import {
   Calendar, Plus, Trash2, Copy, Play, CheckCircle, Archive, Users, MapPin,
   ChevronRight, X, Shield, BarChart3, Save, AlertTriangle, ArrowRightLeft,
-  TrendingUp,
+  TrendingUp, Eye,
 } from 'lucide-react';
 import { useShiftPlanning, SHIFT_TYPES } from '../hooks/useShiftPlanning';
 import type { ShiftPlan, ShiftType, AreaAssignment } from '../hooks/useShiftPlanning';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
+import { useMenuActions } from '../utils/contextMenuActions';
 import StatusBadge from '../components/StatusBadge';
 import { useToast } from '../components/ToastProvider';
 import ExportButton from '../components/ExportButton';
 import { apiFetch } from '../hooks/useApi';
-import { localToday, dateToLocalYMD } from '../utils/dateUtils';
+import { localToday, dateToLocalYMD, safeDateTimeStr, parseTimestamp } from '../utils/dateUtils';
 
 // ── Date helpers ───────────────────────────────────────────
 
 function formatDate(dateStr: string) {
-  const d = new Date(dateStr.includes('T') ? dateStr : dateStr + 'T00:00:00');
+  const d = parseTimestamp(dateStr);
   return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
@@ -59,6 +61,8 @@ export default function ShiftPlansPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
   const sp = useShiftPlanning();
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
   const [selectedDate, setSelectedDate] = useState(todayStr());
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [newPlanName, setNewPlanName] = useState('');
@@ -77,12 +81,11 @@ export default function ShiftPlansPage() {
   const [overtimeLoading, setOvertimeLoading] = useState(true);
 
   useEffect(() => {
-    // Server mounts shiftPlanRoutes at /api/admin (see server/src/index.ts).
-    // Legacy paths under /api/shift-plans/* 404 because that prefix is not mounted.
-    apiFetch('/api/admin/shift-swaps?status=pending')
+    // shiftPlans router mounted at /api (see src/routesConfig.ts)
+    apiFetch('/shift-swaps?status=pending')
       .then(r => Array.isArray(r) ? setSwapRequests(r) : null)
       .catch((err: any) => addToast(err?.message || 'Failed to load swap requests', 'error'));
-    apiFetch('/api/admin/shift-notifications')
+    apiFetch('/shift-notifications')
       .then((r: any) => r?.notifications && setShiftNotifs(r.notifications))
       .catch((err: any) => addToast(err?.message || 'Failed to load shift notifications', 'error'));
   }, [addToast]);
@@ -91,15 +94,15 @@ export default function ShiftPlansPage() {
     setOvertimeLoading(true);
     let pending = 3;
     const done = () => { pending -= 1; if (pending === 0) setOvertimeLoading(false); };
-    apiFetch(`/api/admin/staffing-levels?date=${selectedDate}`)
+    apiFetch(`/staffing-levels?date=${selectedDate}`)
       .then((r: any) => r && setStaffingLevels(r))
       .catch((err: any) => addToast(err?.message || 'Failed to load staffing levels', 'error'))
       .finally(done);
-    apiFetch(`/api/admin/shift-plans/conflicts/${selectedDate}`)
+    apiFetch(`/shift-plans/conflicts/${selectedDate}`)
       .then((r: any) => r?.conflicts && setConflicts(r.conflicts))
       .catch((err: any) => addToast(err?.message || 'Failed to load conflicts', 'error'))
       .finally(done);
-    apiFetch(`/api/admin/shift-overtime?week_start=${selectedDate}`)
+    apiFetch(`/shift-overtime?week_start=${selectedDate}`)
       .then((r: any) => r && setOvertimeData(r))
       .catch((err: any) => addToast(err?.message || 'Failed to load overtime data', 'error'))
       .finally(done);
@@ -149,6 +152,34 @@ export default function ShiftPlansPage() {
     }
   };
 
+  // ── Build a shift-plan row context menu ──
+  const buildPlanMenu = (plan: ShiftPlan): ContextMenuItem[] => [
+    m.action('Open plan', () => sp.setActivePlanId(plan.id), { icon: <Eye size={12} /> }),
+    ...(plan.status === 'draft'
+      ? [m.action('Activate', () => sp.updatePlanStatus(plan.id, 'active'), { icon: <Play size={12} /> })]
+      : []),
+    ...(plan.status === 'active'
+      ? [m.action('Mark complete', () => sp.updatePlanStatus(plan.id, 'completed'), { icon: <CheckCircle size={12} /> })]
+      : []),
+    m.separator(),
+    m.action('Save to server', () => handleSave(plan.id), { icon: <Save size={12} /> }),
+    m.action('Duplicate to next day', () => handleDuplicate(plan.id), { icon: <Copy size={12} /> }),
+    m.copyId(plan.id),
+    m.separator(),
+    ...(plan.status !== 'archived'
+      ? [m.action('Archive', () => sp.updatePlanStatus(plan.id, 'archived'), { icon: <Archive size={12} /> })]
+      : []),
+    m.action('Delete', () => { if (confirm('Delete this shift plan?')) sp.deletePlan(plan.id); }, { icon: <Trash2 size={12} />, danger: true }),
+  ];
+
+  // ── Build an area-assignment row context menu ──
+  const buildAssignmentMenu = (a: AreaAssignment): ContextMenuItem[] => [
+    m.copy('Copy area', a.label),
+    m.copyId(a.id),
+    m.separator(),
+    m.action('Remove assignment', () => sp.removeAssignment(a.id), { icon: <X size={12} />, danger: true }),
+  ];
+
   // Set document title
   useEffect(() => { document.title = 'Shift Plans \u2014 RMPG Flex'; }, []);
 
@@ -177,7 +208,7 @@ export default function ShiftPlansPage() {
           >
             ◀
           </button>
-          <input
+          <input id="ff-shiftplanspage-0"
             type="date"
             value={selectedDate}
             onChange={(e) => setSelectedDate(e.target.value)}
@@ -247,7 +278,7 @@ export default function ShiftPlansPage() {
                   <X style={{ width: 10, height: 10 }} />
                 </button>
               </div>
-              <input
+              <input id="ff-shiftplanspage-1"
                 type="text"
                 value={newPlanName}
                 onChange={(e) => setNewPlanName(e.target.value)}
@@ -307,6 +338,7 @@ export default function ShiftPlansPage() {
                   <div
                     key={plan.id}
                     onClick={() => sp.setActivePlanId(plan.id)}
+                    onContextMenu={(e) => openMenu(e, buildPlanMenu(plan))}
                     className="px-3 py-2.5 cursor-pointer transition-all duration-150 border-b border-rmpg-800/50 hover:brightness-110"
                     style={{
                       background: isSelected ? 'rgba(136, 136, 136,0.08)' : 'transparent',
@@ -362,7 +394,7 @@ export default function ShiftPlansPage() {
                     </span>
                   </div>
                   <div className="text-[9px] text-rmpg-500 mt-0.5">
-                    Updated {new Date(sp.activePlan.updatedAt).toLocaleString()}
+                    Updated {safeDateTimeStr(sp.activePlan.updatedAt)}
                   </div>
                 </div>
 
@@ -460,6 +492,7 @@ export default function ShiftPlansPage() {
                       {sp.activePlan.assignments.map((a) => (
                         <tr
                           key={a.id}
+                          onContextMenu={(e) => openMenu(e, buildAssignmentMenu(a))}
                           className="border-b border-rmpg-700/30 hover:bg-surface-raised/30 transition-colors"
                         >
                           <td className="px-4 py-2">

@@ -19,10 +19,25 @@ export interface StatuteResult {
   /** Legal definition / elements of crime for law reference */
   definition?: string | null;
   offense_level: string | null;
-  category: 'criminal' | 'vehicle';
+  /** Area of law: criminal | vehicle | licensing | procedure | public_safety
+   *  | juvenile | wildlife | alcohol | controlled | protective | … */
+  category: string;
   subcategory: string;
+  /** Plain-language ("basic language") fields — utah_statutes migration 0074 */
+  plain_summary?: string | null;
+  /** Key-point bullets; the API parses the stored JSON into a string[] */
+  plain_elements?: string[] | null;
+  summary_model?: string | null;
   /** Base fine amount for traffic citations / infractions */
   citation_fine?: number | null;
+  /** Law-book fields (utah_statutes, migration 0073) */
+  chapter_code?: string | null;
+  part_name?: string | null;
+  /** 'statute' (Utah Code) | 'rule' (Utah Administrative Code) */
+  code_type?: string | null;
+  effective_date?: string | null;
+  /** Canonical le.utah.gov / adminrules.utah.gov link */
+  source_url?: string | null;
 }
 
 const STATE_CODES = ['ALL', 'UT', 'CO', 'WY', 'ID', 'NV', 'AZ', 'NM'] as const;
@@ -173,7 +188,7 @@ export default function StatuteLookup({
       {/* Search Input */}
       <div className="relative">
         <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400 pointer-events-none" />
-        <input
+        <input id="ff-statutelookup-0"
           type="text"
           className="input-dark text-xs w-full pl-8 pr-3"
           aria-label="Search statutes"

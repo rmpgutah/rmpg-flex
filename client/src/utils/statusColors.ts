@@ -52,11 +52,16 @@ export const UNIT_STATUS_ABBREV: Record<UnitStatus, string> = {
 
 // ── Call Priority ───────────────────────────────────────────
 
+// Priority palette is a heat scale (urgent→routine): red → amber → bronze →
+// muted gold. P3/P4 intentionally do NOT reuse the unit-status grays
+// (#888888 enroute / #666666 off_duty) — a gray dot was ambiguous between a
+// low-priority call and an en-route/off-duty unit. Keeping them in the warm
+// gold family disambiguates while staying on-theme (zero blue).
 export const PRIORITY_HEX: Record<string, string> = {
   P1: '#dc2626',
   P2: '#f59e0b',
-  P3: '#888888',
-  P4: '#666666',
+  P3: '#b8893a',
+  P4: '#7a6a3f',
 };
 
 export const PRIORITY_CLASSES: Record<CallPriority, string> = {

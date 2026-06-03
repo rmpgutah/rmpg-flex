@@ -8,21 +8,31 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import RichTextArea from '../components/RichTextArea';
 import {
   Plus, RefreshCw, MapPin, BarChart3, List, Map as MapIcon, Briefcase, Calendar,
-  Route, Navigation, Loader2, CheckCircle, Circle,
+  Route, Navigation, Loader2, CheckCircle, Circle, Eye, Pencil, ClipboardCheck,
+  Search as SearchIcon, AlertTriangle,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
+import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
+import { useMenuActions } from '../utils/contextMenuActions';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useAuth } from '../context/AuthContext';
-import { loadGoogleMaps, DARK_MAP_STYLE, onOnlineRetryMaps } from '../utils/googleMapsLoader';
-import { getGoogleMapsApiKey } from '../utils/googleMapsApiKey';
+import { initMapbox, getMapboxInstance, mapboxgl, MAPBOX_STYLE_DARK } from '../utils/mapboxLoader';
+import { installWebglContextRecovery } from '../utils/webglRecovery';
+import { getMapboxAccessToken } from '../utils/mapboxApiKey';
+import { toDisplayLabel } from '../utils/formatters';
 import ServeJobCard from '../components/serve/ServeJobCard';
 import ServeAttemptModal from '../components/serve/ServeAttemptModal';
 import ServeRoutePlanner from '../components/serve/ServeRoutePlanner';
 import ServeSkipTracePanel from '../components/serve/ServeSkipTracePanel';
 import FormModal from '../components/FormModal';
+import AddressAutocomplete, { type ParsedAddress } from '../components/AddressAutocomplete';
 import type { ServeJob, ServeAttemptData, ServeSkipAddress } from '../types';
 import ExportButton from '../components/ExportButton';
+import { useFormDraft } from '../hooks/useFormDraft';
+import UnsavedChangesGuard from '../components/UnsavedChangesGuard';
+import FloatingSaveBar from '../components/FloatingSaveBar';
+import { parseTimestamp } from '../utils/dateUtils';
 
 // ─── Constants ──────────────────────────────────────────────────────────
 
@@ -59,6 +69,30 @@ function formatDate(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
+const EMPTY_FORM = {
+  recipient_name: '',
+  recipient_address: '',
+  recipient_city: '',
+  recipient_state: 'UT',
+  recipient_zip: '',
+  // Coordinates from the address autocomplete pick. Sent to the create/update
+  // endpoint so it skips its own Nominatim backfill and uses the precise pin.
+  recipient_lat: null as number | null,
+  recipient_lng: null as number | null,
+  document_type: 'Summons',
+  case_number: '',
+  court_name: '',
+  jurisdiction: '',
+  client_name: '',
+  attorney_name: '',
+  priority: 'normal' as ServeJob['priority'],
+  time_window: 'anytime' as ServeJob['time_window'],
+  deadline: '',
+  max_attempts: 3,
+  service_instructions: '',
+  notes: '',
+};
+
 // ─── Stats Summary Type ─────────────────────────────────────────────────
 
 interface StatsSummary {
@@ -76,12 +110,17 @@ interface StatsSummary {
 export default function ServePage() {
   const isMobile = useIsMobile();
   const { user } = useAuth();
+  // ── Right-click context menu ──────────────────────────────────────────
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
   // ── Core state ──────────────────────────────────────────────────────
   const [selectedDate, setSelectedDate] = useState(() => formatDate(new Date()));
   const [activeTab, setActiveTab] = useState<Tab>('Queue');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   // ── Officers for route planner ──────────────────────────────────────
   const [officers, setOfficers] = useState<{ id: number; name: string }[]>([]);
+  // ── Clients (hiring parties) for the Add Job form selector ──────────
+  const [clientsList, setClientsList] = useState<{ id: string; name: string }[]>([]);
   // ── Saved route state ───────────────────────────────────────────────
   const [savedRoute, setSavedRoute] = useState<any>(null);
 
@@ -104,24 +143,17 @@ export default function ServePage() {
   const [editJob, setEditJob] = useState<ServeJob | null>(null);
 
   // ── Create/Edit form state ─────────────────────────────────────────
-  const [formData, setFormData] = useState({
-    recipient_name: '',
-    recipient_address: '',
-    recipient_city: '',
-    recipient_state: 'UT',
-    recipient_zip: '',
-    document_type: 'Summons',
-    case_number: '',
-    court_name: '',
-    jurisdiction: '',
-    client_name: '',
-    attorney_name: '',
-    priority: 'normal' as ServeJob['priority'],
-    time_window: 'anytime' as ServeJob['time_window'],
-    deadline: '',
-    max_attempts: 3,
-    service_instructions: '',
-    notes: '',
+  const {
+    form: formData,
+    setForm: setFormData,
+    isDirty: formIsDirty,
+    wasRestored: formWasRestored,
+    clearDraft: clearFormDraft,
+    snapshot: snapshotForm,
+  } = useFormDraft<typeof EMPTY_FORM>({
+    storageKey: 'rmpg_serve_job_form',
+    defaultValue: EMPTY_FORM,
+    isActive: createJobOpen,
   });
   const [formSubmitting, setFormSubmitting] = useState(false);
 
@@ -155,11 +187,14 @@ export default function ServePage() {
 
   // ── Map state ──────────────────────────────────────────────────────
   const mapContainerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<google.maps.Map | null>(null);
-  const markersRef = useRef<google.maps.Marker[]>([]);
-  const infoWindowRef = useRef<google.maps.InfoWindow | null>(null);
-  const polylineRef = useRef<google.maps.Polyline | null>(null);
+  const mapRef = useRef<mapboxgl.Map | null>(null);
+  const markersRef = useRef<mapboxgl.Marker[]>([]);
+  const popupRef = useRef<mapboxgl.Popup | null>(null);
+  const routeSourceRef = useRef<string | null>(null);
   const [mapReady, setMapReady] = useState(false);
+  // WebGL context-loss recovery (rebuilds the map after a GPU context drop).
+  const [serveMapRecoverNonce, setServeMapRecoverNonce] = useState(0);
+  const serveMapRecoveryCleanupRef = useRef<(() => void) | null>(null);
 
   // ── Route state ────────────────────────────────────────────────────
   const [routeData, setRouteData] = useState<{
@@ -190,7 +225,7 @@ export default function ServePage() {
             try {
               const call = await apiFetch(`/dispatch/calls/${j.call_id}`);
               if (call) callMap[j.id] = call;
-            } catch {}
+            } catch (err) { console.warn("[ServePage] operation failed:", err); }
           })
         );
         setLinkedCalls(callMap);
@@ -240,6 +275,23 @@ export default function ServePage() {
     return () => { cancelled = true; };
   }, []);
 
+  // ── Fetch clients for the hiring-party selector on the Add Job form ──
+  // Mirrors the dispatch New Call form: picking a client fills the (free-text)
+  // Client Name so the hiring party is a known, standardized account.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await apiFetch<any[]>('/admin/clients');
+        if (cancelled) return;
+        setClientsList((Array.isArray(res) ? res : [])
+          .filter((c: any) => c.status === 'active')
+          .map((c: any) => ({ id: String(c.id), name: c.name })));
+      } catch { /* non-critical — selector just stays empty */ }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   // ── Fetch saved route for today ──────────────────────────────────
   const fetchSavedRoute = useCallback(async () => {
     if (!user?.id) return;
@@ -272,7 +324,7 @@ export default function ServePage() {
     if (!job) return;
     if (job.recipient_lat != null && job.recipient_lng != null) {
       window.open(
-        `https://www.google.com/maps/dir/?api=1&destination=${job.recipient_lat},${job.recipient_lng}`,
+        `https://www.openstreetmap.org/directions?engine=graphhopper_car&to=${job.recipient_lat},${job.recipient_lng}`,
         '_blank',
         'noopener,noreferrer',
       );
@@ -280,7 +332,7 @@ export default function ServePage() {
       const addr = encodeURIComponent(
         `${job.recipient_address} ${job.recipient_city || ''} ${job.recipient_state || ''} ${job.recipient_zip || ''}`,
       );
-      window.open(`https://www.google.com/maps/dir/?api=1&destination=${addr}`, '_blank', 'noopener,noreferrer');
+      window.open(`https://www.openstreetmap.org/search?query=${addr}`, '_blank', 'noopener,noreferrer');
     }
   }, [jobs]);
 
@@ -335,21 +387,12 @@ export default function ServePage() {
 
   // ── Create / Edit Job ──────────────────────────────────────────────
 
-  const resetForm = useCallback(() => {
-    setFormData({
-      recipient_name: '', recipient_address: '', recipient_city: '',
-      recipient_state: 'UT', recipient_zip: '', document_type: 'Summons',
-      case_number: '', court_name: '', jurisdiction: '', client_name: '',
-      attorney_name: '', priority: 'normal', time_window: 'anytime',
-      deadline: '', max_attempts: 3, service_instructions: '', notes: '',
-    });
-  }, []);
-
   const openCreate = useCallback(() => {
-    resetForm();
     setEditJob(null);
+    setFormData({ ...EMPTY_FORM });
     setCreateJobOpen(true);
-  }, [resetForm]);
+    snapshotForm();
+  }, [setFormData, snapshotForm]);
 
   const openEdit = useCallback((jobId: number) => {
     const job = jobs.find(j => j.id === jobId);
@@ -361,6 +404,8 @@ export default function ServePage() {
       recipient_city: job.recipient_city || '',
       recipient_state: job.recipient_state || 'UT',
       recipient_zip: job.recipient_zip || '',
+      recipient_lat: job.recipient_lat ?? null,
+      recipient_lng: job.recipient_lng ?? null,
       document_type: job.document_type,
       case_number: job.case_number || '',
       court_name: job.court_name || '',
@@ -375,7 +420,8 @@ export default function ServePage() {
       notes: job.notes || '',
     });
     setCreateJobOpen(true);
-  }, [jobs]);
+    snapshotForm();
+  }, [jobs, setFormData, snapshotForm]);
 
   const handleFormSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
@@ -394,7 +440,7 @@ export default function ServePage() {
         });
       }
       setCreateJobOpen(false);
-      resetForm();
+      clearFormDraft();
       setEditJob(null);
       refreshJobs();
     } catch {
@@ -402,7 +448,7 @@ export default function ServePage() {
     } finally {
       setFormSubmitting(false);
     }
-  }, [formData, editJob, selectedDate, resetForm, refreshJobs]);
+  }, [formData, editJob, selectedDate, clearFormDraft, refreshJobs]);
 
   const handleFormChange = useCallback((field: string, value: string | number) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -456,7 +502,7 @@ export default function ServePage() {
         // Priority: overdue > no deadline is last
         const getUrgencyScore = (j: ServeJob) => {
           if (!j.deadline) return 999;
-          const daysLeft = (new Date(j.deadline).getTime() - Date.now()) / (1000 * 60 * 60 * 24);
+          const daysLeft = (parseTimestamp(j.deadline).getTime() - Date.now()) / (1000 * 60 * 60 * 24);
           if (daysLeft < 0) return -100 + daysLeft; // overdue: most negative first
           return daysLeft;
         };
@@ -475,42 +521,59 @@ export default function ServePage() {
     if (activeTab !== 'Map') return;
 
     let cancelled = false;
-    let unsubOnline = () => {};
 
     const initMap = () => {
       if (cancelled || !mapContainerRef.current) return;
 
-      // If map already exists, just update markers
       if (mapRef.current) {
         updateMapMarkers();
         return;
       }
 
-      const center = { lat: 40.7608, lng: -111.891 }; // SLC default
-      const map = new google.maps.Map(mapContainerRef.current, {
+      const center: [number, number] = [-111.891, 40.7608]; // SLC default [lng, lat]
+      const map = new mapboxgl.Map({
+        container: mapContainerRef.current,
+        style: MAPBOX_STYLE_DARK,
         center,
         zoom: 11,
-        styles: DARK_MAP_STYLE,
-        disableDefaultUI: true,
-        zoomControl: true,
-        mapTypeControl: false,
-        streetViewControl: false,
-        fullscreenControl: false,
+        attributionControl: false,
       });
 
+      map.addControl(new mapboxgl.NavigationControl(), 'top-right');
+
       mapRef.current = map;
-      infoWindowRef.current = new google.maps.InfoWindow();
-      setMapReady(true);
+      popupRef.current = new mapboxgl.Popup({ offset: 25, closeButton: false });
+
+      // Rebuild in place if the GPU drops the context. updateMapMarkers re-runs
+      // (keyed on mapReady) and re-adds the markers + route layer to the new map.
+      serveMapRecoveryCleanupRef.current = installWebglContextRecovery(map, {
+        label: 'ServePage',
+        onRebuild: () => {
+          if (serveMapRecoveryCleanupRef.current) { serveMapRecoveryCleanupRef.current(); serveMapRecoveryCleanupRef.current = null; }
+          markersRef.current.forEach((m) => { try { m.remove(); } catch { /* gone */ } });
+          markersRef.current = [];
+          try { popupRef.current?.remove(); } catch { /* gone */ }
+          popupRef.current = null;
+          routeSourceRef.current = null;
+          if (mapRef.current) { try { mapRef.current.remove(); } catch { /* gone */ } mapRef.current = null; }
+          setMapReady(false);
+          setServeMapRecoverNonce((n) => n + 1);
+        },
+      });
+
+      map.on('load', () => {
+        if (cancelled) return;
+        setMapReady(true);
+      });
     };
 
     (async () => {
       try {
-        const apiKey = await getGoogleMapsApiKey();
+        const token = await getMapboxAccessToken();
         if (cancelled) return;
-        await loadGoogleMaps(apiKey);
+        initMapbox(token);
         if (cancelled) return;
         initMap();
-        unsubOnline = onOnlineRetryMaps(apiKey, initMap);
       } catch {
         if (!cancelled) setMapReady(false);
       }
@@ -518,59 +581,66 @@ export default function ServePage() {
 
     return () => {
       cancelled = true;
-      unsubOnline();
     };
-  }, [activeTab]);
+  }, [activeTab, serveMapRecoverNonce]);
+
+  // Dispose the map + recovery listener on unmount (kept out of the init
+  // effect's cleanup so a tab switch doesn't tear down the persisted map).
+  useEffect(() => () => {
+    if (serveMapRecoveryCleanupRef.current) { serveMapRecoveryCleanupRef.current(); serveMapRecoveryCleanupRef.current = null; }
+    markersRef.current.forEach((m) => { try { m.remove(); } catch { /* gone */ } });
+    markersRef.current = [];
+    try { popupRef.current?.remove(); } catch { /* gone */ }
+    popupRef.current = null;
+    if (mapRef.current) { try { mapRef.current.remove(); } catch { /* gone */ } mapRef.current = null; }
+  }, []);
 
   // Update markers when jobs change or map becomes ready
   const updateMapMarkers = useCallback(() => {
     if (!mapRef.current) return;
 
     // Clear old markers
-    markersRef.current.forEach(m => m.setMap(null));
+    markersRef.current.forEach(m => m.remove());
     markersRef.current = [];
 
-    // Clear old polyline
-    if (polylineRef.current) {
-      polylineRef.current.setMap(null);
-      polylineRef.current = null;
+    // Clear old route source layer
+    if (routeSourceRef.current) {
+      try {
+        if (mapRef.current.getLayer(routeSourceRef.current)) mapRef.current.removeLayer(routeSourceRef.current);
+        if (mapRef.current.getSource(routeSourceRef.current)) mapRef.current.removeSource(routeSourceRef.current);
+      } catch { /* layer/source may not exist */ }
+      routeSourceRef.current = null;
     }
 
-    const bounds = new google.maps.LatLngBounds();
+    const bounds = new mapboxgl.LngLatBounds();
     let hasMarkers = false;
 
     jobs.forEach(job => {
       if (job.recipient_lat == null || job.recipient_lng == null) return;
       hasMarkers = true;
-      const pos = { lat: job.recipient_lat, lng: job.recipient_lng };
-      bounds.extend(pos);
+      const lngLat: [number, number] = [job.recipient_lng, job.recipient_lat];
+      bounds.extend(lngLat);
 
       const color = MARKER_COLORS[job.status] || MARKER_COLORS.pending;
-      const marker = new google.maps.Marker({
-        position: pos,
-        map: mapRef.current!,
-        icon: {
-          path: google.maps.SymbolPath.CIRCLE,
-          fillColor: color,
-          fillOpacity: 1,
-          strokeColor: '#ffffff',
-          strokeWeight: 1.5,
-          scale: 10,
-        },
-        title: job.recipient_name,
-      });
+      const el = document.createElement('div');
+      el.style.cssText = `width:12px;height:12px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,0.4);cursor:pointer;`;
+      const marker = new mapboxgl.Marker({ element: el, anchor: 'center' })
+        .setLngLat(lngLat)
+        .addTo(mapRef.current!);
 
-      marker.addListener('click', () => {
+      // Popup on click
+      el.addEventListener('click', () => {
         const fullAddr = [job.recipient_address, job.recipient_city, job.recipient_state, job.recipient_zip]
           .filter(Boolean).join(', ');
-        infoWindowRef.current?.setContent(`
-          <div style="color:#fff;background:#141414;padding:8px 12px;border-radius:4px;min-width:180px;font-family:system-ui;">
-            <div style="font-weight:600;font-size:13px;margin-bottom:4px;">${job.recipient_name}</div>
-            <div style="font-size:11px;color:#8a9aaa;">${fullAddr || 'No address'}</div>
-            <div style="font-size:10px;color:#6b7280;margin-top:4px;text-transform:uppercase;">${job.status.replace(/_/g, ' ')} &middot; ${(job.document_type || '').replace(/_/g, ' ')}</div>
-          </div>
-        `);
-        infoWindowRef.current?.open(mapRef.current!, marker);
+        if (popupRef.current) {
+          popupRef.current.setLngLat(lngLat).setHTML(`
+            <div style="color:#fff;background:#141414;padding:8px 12px;border-radius:4px;min-width:180px;font-family:system-ui;">
+              <div style="font-weight:600;font-size:13px;margin-bottom:4px;">${job.recipient_name}</div>
+              <div style="font-size:11px;color:#8a9aaa;">${fullAddr || 'No address'}</div>
+              <div style="font-size:10px;color:#6b7280;margin-top:4px;text-transform:uppercase;">${job.status.replace(/_/g, ' ')} &middot; ${(job.document_type || '').replace(/_/g, ' ')}</div>
+            </div>
+          `).addTo(mapRef.current!);
+        }
       });
 
       markersRef.current.push(marker);
@@ -578,25 +648,33 @@ export default function ServePage() {
 
     // Draw polyline if route planned
     if (routeData && routeData.orderedIds.length > 1) {
-      const path = routeData.orderedIds
+      const coords: [number, number][] = routeData.orderedIds
         .map(id => jobs.find(j => j.id === id))
         .filter((j): j is ServeJob => !!j && j.recipient_lat != null && j.recipient_lng != null)
-        .map(j => ({ lat: j.recipient_lat!, lng: j.recipient_lng! }));
+        .map(j => [j.recipient_lng!, j.recipient_lat!]);
 
-      if (path.length > 1) {
-        polylineRef.current = new google.maps.Polyline({
-          path,
-          geodesic: true,
-          strokeColor: '#888888',
-          strokeOpacity: 0.8,
-          strokeWeight: 3,
-          map: mapRef.current,
+      if (coords.length > 1) {
+        const sourceId = 'serve-route-line';
+        routeSourceRef.current = sourceId;
+        mapRef.current.addSource(sourceId, {
+          type: 'geojson',
+          data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: coords } },
+        });
+        mapRef.current.addLayer({
+          id: sourceId,
+          type: 'line',
+          source: sourceId,
+          paint: {
+            'line-color': '#888888',
+            'line-opacity': 0.8,
+            'line-width': 3,
+          },
         });
       }
     }
 
     if (hasMarkers) {
-      mapRef.current.fitBounds(bounds, 60);
+      mapRef.current.fitBounds(bounds, { padding: 60 });
     }
   }, [jobs, routeData]);
 
@@ -614,11 +692,30 @@ export default function ServePage() {
   // Keyboard shortcut: Escape to close modals
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { setCreateJobOpen(false); setEditJob(null); }
+      if (e.key === 'Escape') { setCreateJobOpen(false); setEditJob(null); clearFormDraft(); }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, []);
+
+  // ── Build a serve-job row context menu ──
+  const buildJobMenu = (job: ServeJob): ContextMenuItem[] => {
+    const addr = [job.recipient_address, job.recipient_city, job.recipient_state, job.recipient_zip]
+      .filter(Boolean).join(', ');
+    const isClosed = job.status === 'served' || job.status === 'failed' || job.status === 'archived';
+    return [
+      m.action('Open / expand', () => setExpandedJobId(prev => prev === job.id ? null : job.id), { icon: <Eye size={12} /> }),
+      m.action('Edit job', () => openEdit(job.id), { icon: <Pencil size={12} /> }),
+      ...(isClosed ? [] : [m.action('Log attempt', () => setAttemptJob(job), { icon: <ClipboardCheck size={12} /> })]),
+      m.action('Skip trace', () => setSkipTraceJob(job), { icon: <SearchIcon size={12} /> }),
+      m.separator(),
+      m.copy('Copy recipient', job.recipient_name),
+      m.copyId(job.id),
+      ...(addr ? [m.action('Navigate to address', () => handleNavigate(job.id), { icon: <Navigation size={12} /> })] : []),
+      m.separator(),
+      m.action('Flag bad address', () => handleFlagAddress(job.id), { icon: <AlertTriangle size={12} />, danger: true }),
+    ];
+  };
 
   return (
     <div className="flex flex-col h-full bg-surface-base" role="main">
@@ -639,7 +736,7 @@ export default function ServePage() {
         {/* Date picker + route stats */}
         <div className="flex items-center gap-1 ml-auto sm:ml-2">
           <Calendar size={14} className="text-rmpg-400" />
-          <input
+          <input id="ff-servepage-0"
             type="date"
             value={selectedDate}
             onChange={e => setSelectedDate(e.target.value)}
@@ -793,15 +890,15 @@ export default function ServePage() {
                   </div>
                   <p className="text-sm text-rmpg-400 font-medium">
                     {statusFilter !== 'all'
-                      ? `No ${statusFilter.replace('_', ' ')} jobs for this date.`
+                      ? `No ${statusFilter.replace(/_/g, ' ')} jobs for this date.`
                       : 'No jobs for today. Sync from ServeManager or add manually.'
                     }
                   </p>
                 </div>
               ) : (
                 filteredJobs.map(job => (
+                  <div key={job.id} onContextMenu={(e) => openMenu(e, buildJobMenu(job))}>
                   <ServeJobCard
-                    key={job.id}
                     job={job}
                     linkedCall={linkedCalls[job.id] || null}
                     onAttempt={(id) => {
@@ -818,6 +915,7 @@ export default function ServePage() {
                     isExpanded={expandedJobId === job.id}
                     onToggleExpand={() => setExpandedJobId(prev => prev === job.id ? null : job.id)}
                   />
+                  </div>
                 ))
               )}
             </div>
@@ -933,7 +1031,7 @@ export default function ServePage() {
                             color: isCompleted ? '#4ade80' : isFailed ? '#f87171' : job.status === 'in_progress' ? '#facc15' : '#aaaaaa',
                             border: `1px solid ${isCompleted ? '#22c55e30' : isFailed ? '#ef444430' : job.status === 'in_progress' ? '#eab30830' : '#88888830'}`,
                           }}>
-                            {job.status.replace('_', ' ')}
+                            {toDisplayLabel(job.status)}
                           </span>
                         </div>
                       );
@@ -952,12 +1050,12 @@ export default function ServePage() {
                     </button>
                     <button type="button"
                       onClick={() => {
-                        // Build Google Maps URL with all waypoints
+                        // Build navigation URL with all waypoints
                         const geocoded = routeJobs.filter(j => j.status !== 'served' && j.recipient_lat != null && j.recipient_lng != null);
                         if (geocoded.length === 0) return;
                         const dest = geocoded[geocoded.length - 1];
-                        const waypoints = geocoded.slice(0, -1).map(j => `${j.recipient_lat},${j.recipient_lng}`).join('|');
-                        const url = `https://www.google.com/maps/dir/?api=1&destination=${dest.recipient_lat},${dest.recipient_lng}${waypoints ? `&waypoints=${encodeURIComponent(waypoints)}` : ''}&travelmode=driving`;
+                        const waypoints = geocoded.slice(0, -1).map(j => `${j.recipient_lng},${j.recipient_lat}`).join(';');
+                        const url = `https://www.openstreetmap.org/directions?engine=graphhopper_car&to=${dest.recipient_lat},${dest.recipient_lng}${waypoints ? `&via=${encodeURIComponent(waypoints)}` : ''}`;
                         window.open(url, '_blank', 'noopener,noreferrer');
                       }}
                       className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-emerald-400 bg-emerald-900/20 hover:bg-emerald-900/40 border border-emerald-700/40 rounded-[2px] transition-all duration-150 hover:shadow-[0_0_8px_rgba(16,185,129,0.15)] focus:outline-none focus:ring-1 focus:ring-emerald-500/50"
@@ -1087,7 +1185,7 @@ export default function ServePage() {
             <div className="p-3 bg-[#141414] border border-[#2b2b2b] rounded-[2px]">
               <div className="text-[10px] text-[#d4a017] uppercase font-semibold tracking-wider mb-2">Job Cost Calculator</div>
               <div className="flex items-center gap-2">
-                <select
+                <select id="ff-servepage-1"
                   value={costJobId || ''}
                   onChange={e => { const v = parseInt(e.target.value, 10); if (v) handleLoadCostEstimate(v); }}
                   className="flex-1 px-2 py-1 text-xs bg-[#0c0c0c] border border-[#2b2b2b] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
@@ -1231,14 +1329,16 @@ export default function ServePage() {
       {/* Create / Edit Job Modal */}
       <FormModal
         isOpen={createJobOpen}
-        onClose={() => { setCreateJobOpen(false); setEditJob(null); resetForm(); }}
+        onClose={() => { setCreateJobOpen(false); setEditJob(null); clearFormDraft(); }}
         onSubmit={handleFormSubmit}
         title={editJob ? 'Edit Job' : 'Add Serve Job'}
         icon={Briefcase}
         submitLabel={editJob ? 'Update' : 'Create'}
         isSubmitting={formSubmitting}
         maxWidth="max-w-xl"
-        isDirty={formData.recipient_name.trim().length > 0}
+        isDirty={formIsDirty}
+        draftRestored={formWasRestored}
+        onDiscardDraft={clearFormDraft}
       >
         <div className="space-y-3">
           {/* Recipient */}
@@ -1246,7 +1346,7 @@ export default function ServePage() {
             <label className="block text-[11px] text-rmpg-400 mb-1">
               Recipient Name <span className="text-red-400">*</span>
             </label>
-            <input
+            <input id="ff-servepage-2"
               type="text"
               required
               value={formData.recipient_name}
@@ -1260,17 +1360,35 @@ export default function ServePage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="sm:col-span-2">
               <label className="block text-[11px] text-rmpg-400 mb-1">Address</label>
-              <input
-                type="text"
+              <AddressAutocomplete
                 value={formData.recipient_address}
-                onChange={e => handleFormChange('recipient_address', e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-[#0c0c0c] border border-[#2b2b2b] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
+                onChange={val => handleFormChange('recipient_address', val)}
                 placeholder="Street address"
+                className="w-full px-3 py-2 text-sm bg-[#0c0c0c] border border-[#2b2b2b] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
+                // Picking a suggestion fills the split address fields + the
+                // precise pin. City/ZIP fill blanks only (never clobber a typed
+                // value); the pick's coordinates always win for the chosen
+                // address.
+                onSelect={(addr: ParsedAddress) => {
+                  setFormData(prev => ({
+                    ...prev,
+                    recipient_address: addr.street || addr.formatted || prev.recipient_address,
+                    recipient_city: prev.recipient_city || addr.city || '',
+                    // Only adopt a 2-letter state code — geocoders often return
+                    // the full name ("Utah") which doesn't fit this 2-char field,
+                    // so in that case keep the operator's value (defaults to UT).
+                    recipient_state: (addr.state && addr.state.trim().length === 2)
+                      ? addr.state.trim().toUpperCase() : prev.recipient_state,
+                    recipient_zip: prev.recipient_zip || addr.zip || '',
+                    recipient_lat: addr.latitude ?? prev.recipient_lat,
+                    recipient_lng: addr.longitude ?? prev.recipient_lng,
+                  }));
+                }}
               />
             </div>
             <div>
               <label className="block text-[11px] text-rmpg-400 mb-1">City</label>
-              <input
+              <input id="ff-servepage-4"
                 type="text"
                 value={formData.recipient_city}
                 onChange={e => handleFormChange('recipient_city', e.target.value)}
@@ -1280,7 +1398,7 @@ export default function ServePage() {
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className="block text-[11px] text-rmpg-400 mb-1">State</label>
-                <input
+                <input id="ff-servepage-5"
                   type="text"
                   value={formData.recipient_state}
                   onChange={e => handleFormChange('recipient_state', e.target.value)}
@@ -1290,7 +1408,7 @@ export default function ServePage() {
               </div>
               <div>
                 <label className="block text-[11px] text-rmpg-400 mb-1">ZIP</label>
-                <input
+                <input id="ff-servepage-6"
                   type="text"
                   value={formData.recipient_zip}
                   onChange={e => handleFormChange('recipient_zip', e.target.value)}
@@ -1305,7 +1423,7 @@ export default function ServePage() {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-[11px] text-rmpg-400 mb-1">Document Type</label>
-              <select
+              <select id="ff-servepage-7"
                 value={formData.document_type}
                 onChange={e => handleFormChange('document_type', e.target.value)}
                 className="w-full px-3 py-2 text-sm bg-[#0c0c0c] border border-[#2b2b2b] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
@@ -1315,15 +1433,17 @@ export default function ServePage() {
             </div>
             <div>
               <label className="block text-[11px] text-rmpg-400 mb-1">Priority</label>
-              <select
+              <select id="ff-servepage-8"
                 value={formData.priority}
                 onChange={e => handleFormChange('priority', e.target.value)}
                 className="w-full px-3 py-2 text-sm bg-[#0c0c0c] border border-[#2b2b2b] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
               >
-                <option value="low">Low</option>
+                {/* Values must match the serve_queue.priority CHECK
+                    (routine/normal/rush/urgent) — 'low'/'high' were rejected. */}
+                <option value="routine">Routine</option>
                 <option value="normal">Normal</option>
-                <option value="high">High</option>
                 <option value="rush">Rush</option>
+                <option value="urgent">Urgent</option>
               </select>
             </div>
           </div>
@@ -1332,7 +1452,7 @@ export default function ServePage() {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-[11px] text-rmpg-400 mb-1">Time Window</label>
-              <select
+              <select id="ff-servepage-9"
                 value={formData.time_window}
                 onChange={e => handleFormChange('time_window', e.target.value)}
                 className="w-full px-3 py-2 text-sm bg-[#0c0c0c] border border-[#2b2b2b] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
@@ -1345,7 +1465,7 @@ export default function ServePage() {
             </div>
             <div>
               <label className="block text-[11px] text-rmpg-400 mb-1">Deadline</label>
-              <input
+              <input id="ff-servepage-10"
                 type="date"
                 value={formData.deadline}
                 onChange={e => handleFormChange('deadline', e.target.value)}
@@ -1358,7 +1478,7 @@ export default function ServePage() {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className="block text-[11px] text-rmpg-400 mb-1">Case Number</label>
-              <input
+              <input id="ff-servepage-11"
                 type="text"
                 value={formData.case_number}
                 onChange={e => handleFormChange('case_number', e.target.value)}
@@ -1367,7 +1487,7 @@ export default function ServePage() {
             </div>
             <div>
               <label className="block text-[11px] text-rmpg-400 mb-1">Court</label>
-              <input
+              <input id="ff-servepage-12"
                 type="text"
                 value={formData.court_name}
                 onChange={e => handleFormChange('court_name', e.target.value)}
@@ -1376,7 +1496,7 @@ export default function ServePage() {
             </div>
             <div>
               <label className="block text-[11px] text-rmpg-400 mb-1">Jurisdiction</label>
-              <input
+              <input id="ff-servepage-13"
                 type="text"
                 value={formData.jurisdiction}
                 onChange={e => handleFormChange('jurisdiction', e.target.value)}
@@ -1389,16 +1509,33 @@ export default function ServePage() {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-[11px] text-rmpg-400 mb-1">Client Name</label>
-              <input
+              {/* Hiring-party selector — picking a known client fills the
+                  free-text field below (which stays editable for ad-hoc names). */}
+              {clientsList.length > 0 && (
+                <select id="ff-servepage-client"
+                  value={clientsList.find(c => c.name === formData.client_name)?.id || ''}
+                  onChange={e => {
+                    const picked = clientsList.find(c => c.id === e.target.value);
+                    if (picked) handleFormChange('client_name', picked.name);
+                  }}
+                  className="w-full mb-1 px-3 py-2 text-sm bg-[#0c0c0c] border border-[#2b2b2b] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
+                  aria-label="Select client"
+                >
+                  <option value="">— Select client —</option>
+                  {clientsList.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              )}
+              <input id="ff-servepage-14"
                 type="text"
                 value={formData.client_name}
                 onChange={e => handleFormChange('client_name', e.target.value)}
                 className="w-full px-3 py-2 text-sm bg-[#0c0c0c] border border-[#2b2b2b] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
+                placeholder="Or type a name"
               />
             </div>
             <div>
               <label className="block text-[11px] text-rmpg-400 mb-1">Attorney Name</label>
-              <input
+              <input id="ff-servepage-15"
                 type="text"
                 value={formData.attorney_name}
                 onChange={e => handleFormChange('attorney_name', e.target.value)}
@@ -1411,7 +1548,7 @@ export default function ServePage() {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-[11px] text-rmpg-400 mb-1">Max Attempts</label>
-              <input
+              <input id="ff-servepage-16"
                 type="number"
                 min={1}
                 max={10}
@@ -1445,6 +1582,15 @@ export default function ServePage() {
           </div>
         </div>
       </FormModal>
+
+      <UnsavedChangesGuard hasUnsavedChanges={createJobOpen && formIsDirty} />
+      <FloatingSaveBar
+        visible={createJobOpen && formIsDirty}
+        onSave={() => { const e = { preventDefault: () => {} } as React.FormEvent; handleFormSubmit(e); }}
+        onCancel={() => { setCreateJobOpen(false); setEditJob(null); clearFormDraft(); }}
+        isSaving={formSubmitting}
+        saveLabel={editJob ? 'Update Job' : 'Create Job'}
+      />
     </div>
   );
 }

@@ -1,19 +1,44 @@
 import React, { useState, useEffect } from 'react';
 import {
   Search, Car, Shield, MapPin, Loader2, Trash2, Pencil, FileText, ExternalLink,
-  X, Phone, AlertTriangle, Hash, Calendar, Archive, RotateCcw, ArrowUpDown, Filter,
+  X, Phone, AlertTriangle, Hash, Calendar, Archive, RotateCcw, ArrowUpDown, Filter, Eye,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { useAuth } from '../../context/AuthContext';
+import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
+import { useMenuActions } from '../../utils/contextMenuActions';
 import { openRecordWindow } from '../../utils/windowManager';
-import { safeDateStr } from '../../utils/dateUtils';
+import { safeDateStr, parseTimestamp } from '../../utils/dateUtils';
 import VehicleFormModal from '../../components/VehicleFormModal';
 import FileAttachments from '../../components/FileAttachments';
 import StatusBadge from '../../components/StatusBadge';
 import AlertBanner from '../../components/AlertBanner';
 import LinkedRecordsSection from '../../components/LinkedRecordsSection';
 import CollapsibleSection from '../../components/CollapsibleSection';
+import RecordField from '../../components/records/RecordField';
+import FieldGrid from '../../components/records/FieldGrid';
+import RecordBadge from '../../components/records/RecordBadge';
+import RecordHero from '../../components/records/RecordHero';
+import { recordPosture, toneStyle } from '../../components/records/recordVisuals';
 import type { Vehicle, RecordAlert, RecordEntityType } from '../../types';
+
+// Active-stolen check shared by the list badge, counts, list ring + posture so
+// they agree. ONLY a confirmed 'Stolen' status is an active threat — the other
+// STOLEN_STATUS_OPTIONS (Not Stolen / Recovered / Cleared / Under Investigation
+// / Unknown) and the legacy 'None' sentinel must NOT trip the STOLEN badge. The
+// old check flagged everything ≠ None/Recovered, so 'Not Stolen'/'Unknown'/etc.
+// all showed a false STOLEN alert.
+function isActiveStolen(v: Vehicle): boolean {
+  return (v.stolen_status || '').trim().toLowerCase() === 'stolen';
+}
+// Posture-relevant flags for a vehicle (list ring + detail hero).
+function vehiclePostureFlags(v: Vehicle): Array<string | null | undefined> {
+  return [
+    ...v.flags.map((f) => (typeof f === 'object' ? f.type : f)),
+    v.hazmat ? 'hazmat' : null,
+    isActiveStolen(v) ? 'stolen' : null,
+  ];
+}
 import type { VehicleFormData } from '../../components/VehicleFormModal';
 import {
   titleCase, formatPhoneDisplay, formatAddressDisplay, humanizeType,
@@ -117,16 +142,11 @@ const FLAG_COLORS: Record<string, string> = {
 
 // ── Helpers ──────────────────────────────────────
 
+// Delegates to the shared RecordField primitive (hover highlight,
+// empty-state, consistent label hierarchy). See PersonsTab for the same pattern.
 function renderInfoRow(label: string, value?: string | null, icon?: React.ElementType) {
   if (!value) return null;
-  const Icon = icon;
-  return (
-    <div className="flex items-start gap-2 text-xs group">
-      {Icon && <Icon className="w-3 h-3 text-rmpg-400 mt-0.5 flex-shrink-0" />}
-      <span className="text-rmpg-400 min-w-[80px] select-none">{label}:</span>
-      <span className="text-rmpg-200 group-hover:text-white transition-colors">{value}</span>
-    </div>
-  );
+  return <RecordField label={label} value={value} icon={icon} />;
 }
 
 function safeVehicleDate(value?: string | null): string | null {
@@ -381,7 +401,7 @@ function PlateLookupPanel({ onAutoFill }: { onAutoFill?: (data: Partial<Vehicle>
       {expanded && (
         <div className="px-3 pb-2 space-y-2">
           <div className="flex gap-1.5">
-            <input
+            <input id="ff-vehiclestab-0"
               type="text"
               className="input-dark flex-1 text-[10px] min-h-[36px]"
               placeholder="Plate number..."
@@ -389,7 +409,7 @@ function PlateLookupPanel({ onAutoFill }: { onAutoFill?: (data: Partial<Vehicle>
               onChange={(e) => setPlate(e.target.value.toUpperCase())}
               onKeyDown={(e) => { if (e.key === 'Enter') handleLookup(); }}
             />
-            <input
+            <input id="ff-vehiclestab-1"
               type="text"
               className="input-dark text-[10px] min-h-[36px]"
               style={{ width: 40 }}
@@ -467,6 +487,30 @@ export function VehiclesTabList({ state }: { state: VehiclesTabState }) {
     vehicleModalOpen, editingVehicle, vehicleSubmitting, vehicleSubmitError, handleVehicleSubmit, closeModal,
   } = state;
 
+  // ── Right-click context menu ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+  const canModify = !showArchived || user?.role === 'admin';
+
+  const buildVehicleMenu = (v: Vehicle): ContextMenuItem[] => {
+    const label = `${v.license_plate || 'NO PLATE'}${v.make || v.model ? ` ${v.make} ${v.model}`.trimEnd() : ''}`.trim();
+    return [
+      m.action('Open record', () => setSelectedVehicle(v), { icon: <Eye size={12} /> }),
+      ...(canModify ? [m.action('Edit vehicle', () => openEditVehicle(v), { icon: <Pencil size={12} /> })] : []),
+      m.action('Open in new window', () => openRecordWindow('vehicle', v.id), { icon: <ExternalLink size={12} /> }),
+      m.separator(),
+      m.copy('Copy plate', v.license_plate),
+      ...(v.vin ? [m.copy('Copy VIN', v.vin)] : []),
+      m.copyId(v.id),
+      ...(v.license_plate ? [m.go('Run plate (NCIC)', `/ncic?type=vehicle&q=${encodeURIComponent(v.license_plate)}`, <Search size={12} />)] : []),
+      m.separator(),
+      ...(showArchived
+        ? (canModify ? [m.action('Unarchive', () => handleUnarchive('vehicles', v.id), { icon: <RotateCcw size={12} /> })] : [])
+        : [m.action('Archive', () => handleArchive('vehicles', v.id), { icon: <Archive size={12} /> })]),
+      ...(canModify ? [m.action('Delete', () => setDeleteTarget({ type: 'vehicle', id: v.id, label }), { icon: <Trash2 size={12} />, danger: true })] : []),
+    ];
+  };
+
   // ── Sort + filter ──
   const [sortBy, setSortBy] = useState<'plate' | 'make' | 'newest'>('plate');
   const [filterFlag, setFilterFlag] = useState<string | null>(null);
@@ -475,10 +519,10 @@ export function VehiclesTabList({ state }: { state: VehiclesTabState }) {
     let list = [...filteredVehicles];
     if (filterFlag) {
       list = list.filter(v => {
-        if (filterFlag === 'stolen') return v.stolen_status && v.stolen_status !== 'None' && v.stolen_status !== 'Recovered';
+        if (filterFlag === 'stolen') return isActiveStolen(v);
         if (filterFlag === 'towed') return v.tow_status && v.tow_status !== 'None';
         if (filterFlag === 'commercial') return v.commercial_vehicle;
-        if (filterFlag === 'expired') return v.registration_expiry && new Date(v.registration_expiry) < new Date();
+        if (filterFlag === 'expired') return v.registration_expiry && parseTimestamp(v.registration_expiry) < new Date();
         return true;
       });
     }
@@ -490,7 +534,7 @@ export function VehiclesTabList({ state }: { state: VehiclesTabState }) {
 
   const stats = React.useMemo(() => ({
     total: filteredVehicles.length,
-    stolen: filteredVehicles.filter(v => v.stolen_status && v.stolen_status !== 'None' && v.stolen_status !== 'Recovered').length,
+    stolen: filteredVehicles.filter(v => isActiveStolen(v)).length,
     towed: filteredVehicles.filter(v => v.tow_status && v.tow_status !== 'None').length,
     commercial: filteredVehicles.filter(v => v.commercial_vehicle).length,
   }), [filteredVehicles]);
@@ -501,7 +545,7 @@ export function VehiclesTabList({ state }: { state: VehiclesTabState }) {
       <div className="p-3 border-b border-rmpg-600" role="search">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400 pointer-events-none" />
-          <input
+          <input id="ff-vehiclestab-2"
             type="text"
             className="input-dark pl-9 w-full text-[11px] min-h-[36px] focus:ring-1 focus:ring-brand-500/50 focus:border-brand-600 transition-shadow"
             placeholder="Search by plate, make, model, VIN, owner..." aria-label="Search by plate, make, model, VIN, owner..."
@@ -574,9 +618,10 @@ export function VehiclesTabList({ state }: { state: VehiclesTabState }) {
             tabIndex={0}
             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedVehicle(selectedVehicle?.id === v.id ? null : v); } }}
             onClick={() => setSelectedVehicle(selectedVehicle?.id === v.id ? null : v)}
+            onContextMenu={(e) => openMenu(e, buildVehicleMenu(v))}
             className={`
               px-4 py-3 border-b border-rmpg-700/50 cursor-pointer transition-all duration-150
-              ${v.stolen_status && v.stolen_status !== 'None' && v.stolen_status !== 'Recovered'
+              ${isActiveStolen(v)
                 ? 'bg-red-950/30 border-l-2 border-l-red-500'
                 : selectedVehicle?.id === v.id
                   ? 'bg-brand-900/20 border-l-2 border-l-brand-500'
@@ -586,13 +631,22 @@ export function VehiclesTabList({ state }: { state: VehiclesTabState }) {
             aria-selected={selectedVehicle?.id === v.id}
           >
             <div className="flex items-center gap-3">
-              <div className={`flex-shrink-0 w-9 h-9 rounded-sm flex items-center justify-center text-[10px] font-bold font-mono border ${
-                v.stolen_status && v.stolen_status !== 'None' && v.stolen_status !== 'Recovered'
-                  ? 'bg-red-900/40 text-red-400 border-red-700/50'
-                  : 'bg-rmpg-700 text-rmpg-300 border-rmpg-600'
-              }`}>
-                {v.license_plate.slice(0, 4) || '----'}
-              </div>
+              {(() => {
+                // Plate-prefix tile, now ringed/glowing by threat posture so a
+                // stolen/hazmat vehicle reads from the list at a glance.
+                const posture = recordPosture(vehiclePostureFlags(v));
+                const ringed = posture.level !== 'clear';
+                return (
+                  <div
+                    className={`flex-shrink-0 w-9 h-9 rounded-[2px] flex items-center justify-center text-[10px] font-bold font-mono ${posture.pulse ? 'animate-led-pulse' : ''}`}
+                    style={ringed
+                      ? toneStyle(posture.tone, true)
+                      : { background: '#1f1f1f', color: '#cfcfcf', border: '1px solid #3a3a3a' }}
+                  >
+                    {v.license_plate.slice(0, 4) || '----'}
+                  </div>
+                );
+              })()}
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-bold text-white font-mono">{v.license_plate}</span>
@@ -603,7 +657,7 @@ export function VehiclesTabList({ state }: { state: VehiclesTabState }) {
                       'bg-rmpg-700/50 text-rmpg-300 border-rmpg-600/50'
                     }`}>{v.plate_state}</span>
                   )}
-                  {v.stolen_status && v.stolen_status !== 'None' && v.stolen_status !== 'Recovered' && (
+                  {isActiveStolen(v) && (
                     <span className="px-1 py-0.5 text-[8px] font-bold bg-red-900/60 text-red-400 border border-red-700/50 animate-pulse">STOLEN</span>
                   )}
                   {v.tow_status && v.tow_status !== 'None' && (
@@ -628,9 +682,7 @@ export function VehiclesTabList({ state }: { state: VehiclesTabState }) {
                     {v.flags.slice(0, 2).map((flag, i) => {
                       const label = typeof flag === 'object' ? (flag.type || 'FLAG') : flag;
                       return (
-                        <span key={`${label}-${i}`} className={`inline-flex items-center px-1.5 py-0.5 text-[9px] font-semibold border ${FLAG_COLORS[label] || 'bg-rmpg-700 text-rmpg-300 border-rmpg-600'}`}>
-                          {label}
-                        </span>
+                        <RecordBadge key={`${label}-${i}`} flag={label} glow={false}>{label}</RecordBadge>
                       );
                     })}
                   </div>
@@ -705,7 +757,7 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
     try {
       const data = await apiFetch<any>('/records/vehicles/stolen-check', {
         method: 'POST',
-        body: JSON.stringify({ plate_number: selectedVehicle.license_plate, vin: selectedVehicle.vin }),
+        body: JSON.stringify({ plate: selectedVehicle.license_plate, vin: selectedVehicle.vin }),
       });
       setStolenCheckResult(data?.data || data);
     } catch { /* ignore */ }
@@ -713,18 +765,34 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
 
   if (!selectedVehicle) return null;
 
+  const vehiclePosturalFlags = vehiclePostureFlags(selectedVehicle);
+  const vehicleSubtitle = (
+    <span className="flex items-center gap-3 flex-wrap">
+      <span>{selectedVehicle.year || '-'} {selectedVehicle.make} {selectedVehicle.model}</span>
+      <span>{selectedVehicle.color}{selectedVehicle.secondary_color ? ` / ${selectedVehicle.secondary_color}` : ''}</span>
+      {selectedVehicle.body_style && <span>{selectedVehicle.body_style}</span>}
+      {selectedVehicle.plate_state && <span>({selectedVehicle.plate_state})</span>}
+    </span>
+  );
+
   return (
     <div className="h-full flex flex-col overflow-hidden">
-      {/* Alert Banner + Status badges */}
-      <div className="px-4 pt-3 pb-2 border-b border-rmpg-600 bg-surface-sunken flex-shrink-0">
-        <AlertBanner alerts={vehicleAlerts} />
-        {/* Vehicle sub-header */}
-        <div className="flex items-center gap-3 text-[10px] text-rmpg-400">
-          <span>{selectedVehicle.year || '-'} {selectedVehicle.make} {selectedVehicle.model}</span>
-          <span>{selectedVehicle.color}{selectedVehicle.secondary_color ? ` / ${selectedVehicle.secondary_color}` : ''}</span>
-          {selectedVehicle.body_style && <span>{selectedVehicle.body_style}</span>}
-          <span>({selectedVehicle.plate_state})</span>
-        </div>
+      {/* Hero identity band + alerts/actions */}
+      <div className="border-b border-rmpg-600 bg-surface-sunken flex-shrink-0">
+        <RecordHero
+          name={selectedVehicle.license_plate || 'NO PLATE'}
+          subtitle={vehicleSubtitle}
+          flags={vehiclePosturalFlags}
+          tone="gold"
+        >
+          {selectedVehicle.flags.map((flag, i) => {
+            const label = typeof flag === 'object' ? (flag.type || 'FLAG') : flag;
+            return <RecordBadge key={`${label}-${i}`} flag={label}>{label}</RecordBadge>;
+          })}
+          {selectedVehicle.hazmat && <RecordBadge tone="red" pulse>HAZMAT</RecordBadge>}
+        </RecordHero>
+        <div className="px-4 pb-2">
+        {vehicleAlerts.length > 0 && <AlertBanner alerts={vehicleAlerts} />}
         {/* Feature 41+44 Action Buttons */}
         <div className="flex gap-1 mt-1">
           <button type="button" onClick={() => handleLoadHistory(selectedVehicle.id)} className="text-[9px] px-2 py-0.5 bg-gray-900/30 border border-gray-700/50 text-gray-400 hover:bg-gray-900/50">
@@ -735,12 +803,18 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
           </button>
         </div>
         {/* Feature 44: Stolen Check Result */}
-        {stolenCheckResult && (
-          <div className={`mt-1 p-1.5 text-[10px] border ${stolenCheckResult.status === 'HIT' ? 'bg-red-900/30 border-red-700/50 text-red-300' : 'bg-green-900/30 border-green-700/50 text-green-300'}`}>
-            <span className="font-bold">{stolenCheckResult.status}</span> — {stolenCheckResult.message}
+        {stolenCheckResult && (() => {
+          // Handler returns { checked, stolen: boolean, source, ... }.
+          const isHit = stolenCheckResult.stolen === true || stolenCheckResult.status === 'HIT';
+          const msg = stolenCheckResult.message
+            || (isHit ? 'Vehicle reported STOLEN' : `No stolen record (source: ${stolenCheckResult.source || 'local'})`);
+          return (
+          <div className={`mt-1 p-1.5 text-[10px] border ${isHit ? 'bg-red-900/30 border-red-700/50 text-red-300' : 'bg-green-900/30 border-green-700/50 text-green-300'}`}>
+            <span className="font-bold">{isHit ? 'HIT' : 'CLEAR'}</span> — {msg}
             <button type="button" onClick={() => setStolenCheckResult(null)} className="ml-2 text-rmpg-500">x</button>
           </div>
-        )}
+          );
+        })()}
         {/* Feature 41: History Panel */}
         {vehicleHistory && (
           <div className="mt-1 p-1.5 text-[10px] bg-gray-900/10 border border-gray-700/30">
@@ -753,19 +827,7 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
             {vehicleHistory.tows?.length > 0 && <div className="text-rmpg-400">{vehicleHistory.tows.length} tows</div>}
           </div>
         )}
-        {/* Flags */}
-        {selectedVehicle.flags.length > 0 && (
-          <div className="flex flex-wrap gap-2 mt-1">
-            {selectedVehicle.flags.map((flag, i) => {
-              const label = typeof flag === 'object' ? (flag.type || 'FLAG') : flag;
-              return (
-                <span key={`${label}-${i}`} className={`inline-flex items-center px-2 py-0.5 text-[10px] font-semibold border ${FLAG_COLORS[label] || 'bg-rmpg-700 text-rmpg-300 border-rmpg-600'}`}>
-                  {label}
-                </span>
-              );
-            })}
-          </div>
-        )}
+        </div>
       </div>
 
       {/* Scrollable Detail Sections */}
@@ -773,7 +835,7 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
 
         {/* ── Vehicle Details ─────────────────────── */}
         <CollapsibleSection title="Vehicle Details" icon={Car} defaultOpen>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+          <FieldGrid cols={3}>
             {renderInfoRow('Plate', selectedVehicle.license_plate)}
             {renderInfoRow('State', selectedVehicle.plate_state)}
             {renderInfoRow('Plate Type', selectedVehicle.plate_type)}
@@ -785,14 +847,14 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
             {renderInfoRow('Body Style', selectedVehicle.body_style)}
             {renderInfoRow('Doors', selectedVehicle.doors ? String(selectedVehicle.doors) : null)}
             {renderInfoRow('Owner', selectedVehicle.owner_name)}
-          </div>
+          </FieldGrid>
           {selectedVehicle.vin && (
-            <div className="mt-2 text-xs"><span className="text-rmpg-400">VIN:</span> <span className="text-rmpg-200 font-mono ml-1">{selectedVehicle.vin}</span></div>
+            <div className="mt-2"><RecordField label="VIN" value={selectedVehicle.vin} mono copyable /></div>
           )}
           {(selectedVehicle.commercial_vehicle || selectedVehicle.hazmat) && (
-            <div className="flex gap-2 mt-2">
-              {selectedVehicle.commercial_vehicle && <span className="px-2 py-0.5 text-[10px] font-bold bg-gray-900/50 text-gray-400 border border-gray-700/50">COMMERCIAL</span>}
-              {selectedVehicle.hazmat && <span className="px-2 py-0.5 text-[10px] font-bold bg-red-900/50 text-red-400 border border-red-700/50">HAZMAT</span>}
+            <div className="flex gap-1.5 mt-2">
+              {selectedVehicle.commercial_vehicle && <RecordBadge tone="gray" glow={false}>COMMERCIAL</RecordBadge>}
+              {selectedVehicle.hazmat && <RecordBadge tone="red" pulse>HAZMAT</RecordBadge>}
             </div>
           )}
         </CollapsibleSection>
@@ -800,39 +862,39 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
         {/* ── Mechanical (conditional) ─────────── */}
         {(selectedVehicle.engine_type || selectedVehicle.fuel_type || selectedVehicle.transmission || selectedVehicle.drive_type || selectedVehicle.odometer) && (
           <CollapsibleSection title="Mechanical" icon={Hash} defaultOpen={false}>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <FieldGrid cols={3}>
               {renderInfoRow('Engine', selectedVehicle.engine_type)}
               {renderInfoRow('Fuel', selectedVehicle.fuel_type)}
               {renderInfoRow('Transmission', selectedVehicle.transmission)}
               {renderInfoRow('Drive', selectedVehicle.drive_type)}
               {renderInfoRow('Odometer', selectedVehicle.odometer)}
-            </div>
+            </FieldGrid>
           </CollapsibleSection>
         )}
 
         {/* ── Registration & Insurance ────────── */}
         <CollapsibleSection title="Registration & Insurance" icon={Shield} defaultOpen>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <FieldGrid cols={2}>
             {renderInfoRow('Reg. Expiry', safeVehicleDate(selectedVehicle.registration_expiry), Calendar)}
             {renderInfoRow('Insurance', selectedVehicle.insurance_company)}
             {renderInfoRow('Policy #', selectedVehicle.insurance_policy, Hash)}
             {renderInfoRow('Lien Holder', selectedVehicle.lien_holder)}
             {renderInfoRow('Owner Address', selectedVehicle.owner_address ? formatAddressDisplay(selectedVehicle.owner_address) : undefined, MapPin)}
             {renderInfoRow('Owner Phone', selectedVehicle.owner_phone ? formatPhoneDisplay(selectedVehicle.owner_phone) : undefined, Phone)}
-          </div>
+          </FieldGrid>
         </CollapsibleSection>
 
         {/* ── Stolen / Tow Status (conditional) ── */}
         {(selectedVehicle.stolen_status || selectedVehicle.tow_status) && (
-          <CollapsibleSection title="Stolen / Tow Status" icon={AlertTriangle}>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          <CollapsibleSection title="Stolen / Tow Status" icon={AlertTriangle} accent="red">
+            <FieldGrid cols={3}>
               {renderInfoRow('Stolen Status', selectedVehicle.stolen_status)}
               {renderInfoRow('Stolen Date', safeVehicleDate(selectedVehicle.stolen_date), Calendar)}
               {renderInfoRow('Recovery Date', safeVehicleDate(selectedVehicle.recovery_date), Calendar)}
               {renderInfoRow('Tow Status', selectedVehicle.tow_status)}
               {renderInfoRow('Tow Company', selectedVehicle.tow_company)}
               {renderInfoRow('Tow Date', safeVehicleDate(selectedVehicle.tow_date), Calendar)}
-            </div>
+            </FieldGrid>
           </CollapsibleSection>
         )}
 

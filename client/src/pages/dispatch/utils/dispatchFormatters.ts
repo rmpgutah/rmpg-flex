@@ -3,31 +3,35 @@
 // ============================================================
 
 import { toDisplayLabel } from '../../../utils/formatters';
+import { parseTimestamp } from '../../../utils/dateUtils';
+import { displayTimeZone } from '../../../utils/timeZoneMode';
 
 /** Filter tab type for the dispatch call queue. */
 export type FilterTab = 'all' | 'pending' | 'active' | 'cleared' | 'archived' | 'serve' | 'mine';
 
 /**
- * Format a date string to MM/DD/YYYY @ HH:MM:SS (24-hour military time).
- * Example: 03/09/2026 @ 02:15:33 PM
+ * Format a server timestamp to MM/DD/YYYY @ HH:MM:SS (24-hour) in the active
+ * display zone (Mountain by default, or the device zone if the user opted in).
+ * Must go through parseTimestamp — server strings are naive UTC, and raw
+ * `new Date("2026-05-29 00:59:41")` parses as device-LOCAL in V8 (wrong instant).
  */
 export function formatTime(dateStr: string): string {
-  const d = new Date(dateStr);
+  if (!dateStr) return '--';
+  const d = parseTimestamp(dateStr);
   if (isNaN(d.getTime())) return '--';
-  const mm = String(d.getMonth() + 1).padStart(2, '0');
-  const dd = String(d.getDate()).padStart(2, '0');
-  const yyyy = d.getFullYear();
-  const hh = String(d.getHours()).padStart(2, '0');
-  const mi = String(d.getMinutes()).padStart(2, '0');
-  const ss = String(d.getSeconds()).padStart(2, '0');
-  return `${mm}/${dd}/${yyyy} @ ${hh}:${mi}:${ss}`;
+  const tz = displayTimeZone();
+  const date = d.toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit', timeZone: tz });
+  const time = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, timeZone: tz });
+  return `${date} @ ${time}`;
 }
 
 /**
- * Format a date string as elapsed time: "15m" or "2h 15m".
+ * Format a server timestamp as elapsed time: "15m" or "2h 15m".
+ * parseTimestamp (UTC-aware) — elapsed is timezone-independent but the parse
+ * must be correct, or a raw device-local parse skews it by the UTC offset.
  */
 export function formatElapsed(dateStr: string): string {
-  const diff = Date.now() - new Date(dateStr).getTime();
+  const diff = Date.now() - parseTimestamp(dateStr).getTime();
   if (isNaN(diff) || diff < 0) return '0m';
   const min = Math.floor(diff / 60000);
   if (min < 60) return `${min}m`;

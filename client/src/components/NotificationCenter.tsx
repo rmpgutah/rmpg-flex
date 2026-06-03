@@ -4,6 +4,7 @@
 // ============================================================
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { parseTimestamp } from '../utils/dateUtils';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { Bell, Check, Trash2, Radio, Shield, AlertTriangle, Mail, Clock, MapPin, Filter, Loader2 } from 'lucide-react';
@@ -45,7 +46,7 @@ const NOTIFICATION_TYPE_CONFIG: Record<NotificationType, NotificationTypeConfig>
 // ============================================================
 
 function formatTimestamp(dateStr: string): string {
-  const date = new Date(dateStr.includes('T') ? dateStr : dateStr + 'T00:00:00');
+  const date = parseTimestamp(dateStr);
   if (isNaN(date.getTime())) return 'UNKNOWN';
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
@@ -97,44 +98,40 @@ export default function NotificationCenter({ className = '' }: NotificationCente
   const navigate = useNavigate();
 
   // ----------------------------------------------------------
-  // Fetch unread count on mount
+  // Unread count: fetch on mount + poll every 30s (self-healing
+  // backstop) + refresh instantly on a live 'notification' frame.
   // ----------------------------------------------------------
-  useEffect(() => {
-    let cancelled = false;
-
-    async function fetchUnreadCount() {
-      try {
-        const data = await apiFetch<{ count: number }>('/notifications/unread-count');
-        if (!cancelled) {
-          setUnreadCount(data.count);
-        }
-      } catch {
-        // Silently fail — status bar still works
+  const unreadRef = useRef(0);
+  const refreshUnread = useCallback(async () => {
+    try {
+      const data = await apiFetch<{ count: number }>('/notifications/unread-count');
+      // Chime only on a real INCREASE for THIS user — the count endpoint is
+      // user-scoped, so a broadcast frame meant for someone else stays silent.
+      if (data.count > unreadRef.current && isNotificationSoundEnabled()) {
+        playNotificationTone('normal');
       }
+      unreadRef.current = data.count;
+      setUnreadCount(data.count);
+    } catch {
+      // Silently fail — status bar still works
     }
-
-    fetchUnreadCount();
-    return () => { cancelled = true; };
   }, []);
 
-  // ----------------------------------------------------------
-  // Subscribe to real-time notifications via WebSocket
-  // ----------------------------------------------------------
   useEffect(() => {
-    const unsubscribe = subscribe('notification', (message) => {
-      const incoming = message.data as Notification;
-      setNotifications((prev) => [incoming, ...prev]);
-      if (!incoming.is_read) {
-        setUnreadCount((prev) => prev + 1);
-        // Play notification sound based on priority
-        if (isNotificationSoundEnabled()) {
-          playNotificationTone((incoming as any).priority || 'normal');
-        }
-      }
-    });
+    refreshUnread();
+    const iv = setInterval(refreshUnread, 30000);
+    return () => clearInterval(iv);
+  }, [refreshUnread]);
 
+  // Live delivery: the rule engine emits a 'notification' frame over AlertHubDO
+  // when a rule fires. Refetch the authoritative per-user unread count (a frame
+  // targeting another user is a harmless no-op) — the old optimistic add relied
+  // on a frame shape nothing produced, so the badge only updated on reload. The
+  // list itself refreshes when the dropdown is opened.
+  useEffect(() => {
+    const unsubscribe = subscribe('notification', () => { refreshUnread(); });
     return unsubscribe;
-  }, [subscribe]);
+  }, [subscribe, refreshUnread]);
 
   // ----------------------------------------------------------
   // Fetch notifications when dropdown opens (reset to page 1)

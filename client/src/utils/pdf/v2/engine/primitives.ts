@@ -188,14 +188,44 @@ export class Primitives {
     this.doc.setTextColor(0, 0, 0);
 
     const bodyTop = this.layout.cursorY;
+
+    // Draw the outer rect + column dividers (+ optional below-header separator)
+    // for ONE page fragment. Tables that overflow a page get borders per
+    // fragment — the old single-rect pass spanned tableTop→bodyBottom and was
+    // skipped entirely once a page break reset cursorY below tableTop, leaving
+    // the table as gridless floating text on every page it touched.
+    const drawFragmentBorders = (top: number, bottom: number, withHeaderSep: boolean) => {
+      if (bottom <= top) return;
+      const h = bottom - top;
+      this.doc.setLineWidth(RULE_WEIGHTS.tableBorder);
+      this.doc.setDrawColor(0, 0, 0);
+      this.doc.rect(left, top, tableWidth, h);
+      if (withHeaderSep) this.doc.line(left, bodyTop, left + tableWidth, bodyTop);
+      for (let i = 1; i < spec.columns.length; i++) {
+        this.doc.line(colStarts[i], top, colStarts[i], top + h);
+      }
+    };
+
     if (rows.length === 0) {
       this.doc.setTextColor(150, 150, 150);
       this.doc.text('No records', left + 1, this.layout.cursorY + rowH - 1.5);
       this.layout.advance(rowH);
       this.doc.setTextColor(0, 0, 0);
+      drawFragmentBorders(tableTop, this.layout.cursorY, true);
     } else {
+      let fragTop = tableTop;      // first fragment includes the header band
+      let fragHasHeader = true;
       for (let r = 0; r < rows.length; r++) {
+        const yBefore = this.layout.cursorY;
         this.layout.pageBreakIfNeeded(rowH);
+        if (this.layout.cursorY < yBefore) {
+          // Page break: close the fragment on the page just left (from fragTop
+          // down to the last row's bottom), then start fresh on the new page
+          // top (continuation fragments carry no below-header separator).
+          drawFragmentBorders(fragTop, yBefore, fragHasHeader);
+          fragTop = this.layout.cursorY;
+          fragHasHeader = false;
+        }
         const row = rows[r];
         const yRow = this.layout.cursorY;
         if (r % 2 === 1) {
@@ -206,32 +236,12 @@ export class Primitives {
         spec.columns.forEach((c, i) => {
           const raw = (row as Record<string, unknown>)[c.key];
           const text = raw === null || raw === undefined ? '' : String(raw);
-          const maxLine = this.doc.splitTextToSize(text, colWidths[i] - 2)[0] ?? '';
+          const maxLine = this.doc.splitTextToSize(text, Math.max(colWidths[i] - 2, 1))[0] ?? '';
           this.doc.text(maxLine, colStarts[i] + 1, yRow + rowH - 1.5);
         });
         this.layout.advance(rowH);
       }
-    }
-
-    // ── Borders: 0.5pt black outer rect + column dividers + below-header line ──
-    // Skip the border pass when a page-break occurred mid-body — totalH would
-    // span the page break and produce an invalid rect that bleeds off-page.
-    // Detection: cursorY less than tableTop means the layout reset to a new
-    // page during the row loop. The header band on the new page is implicit
-    // (drawn by the renderer's page handler); body rows still got their zebra
-    // fills row-by-row; we just skip the broken outer-rect pass in this case.
-    const bodyBottom = this.layout.cursorY;
-    if (bodyBottom >= tableTop) {
-      const totalH = bodyBottom - tableTop;
-      this.doc.setLineWidth(RULE_WEIGHTS.tableBorder);
-      this.doc.setDrawColor(0, 0, 0);
-      this.doc.rect(left, tableTop, tableWidth, totalH);
-      // Below-header separator
-      this.doc.line(left, bodyTop, left + tableWidth, bodyTop);
-      // Column dividers (skip first edge)
-      for (let i = 1; i < spec.columns.length; i++) {
-        this.doc.line(colStarts[i], tableTop, colStarts[i], tableTop + totalH);
-      }
+      drawFragmentBorders(fragTop, this.layout.cursorY, fragHasHeader);
     }
 
     // Reset text + fill color for downstream callers — the body loop

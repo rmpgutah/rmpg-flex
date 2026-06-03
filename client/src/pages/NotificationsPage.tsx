@@ -7,7 +7,9 @@ import PanelTitleBar from '../components/PanelTitleBar';
 import { apiFetch } from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/ToastProvider';
-import { formatDateTime } from '../utils/dateUtils';
+import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
+import { useMenuActions } from '../utils/contextMenuActions';
+import { formatDateTime, parseTimestamp } from '../utils/dateUtils';
 
 interface Notification {
   id: number;
@@ -49,6 +51,8 @@ interface NotificationStats {
 export default function NotificationsPage() {
   const { user } = useAuth();
   const { addToast } = useToast();
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
 
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
@@ -212,6 +216,18 @@ export default function NotificationsPage() {
     return <Bell className="w-4 h-4 text-rmpg-400" />;
   };
 
+  // ── Right-click context menu ──
+  const buildNotificationMenu = (n: Notification): ContextMenuItem[] => [
+    ...(!n.is_read ? [m.action('Mark read', () => markRead(n.id), { icon: <Check size={12} /> })] : []),
+    m.action('Snooze 30 min', () => snoozeNotification(n.id, 30), { icon: <Clock size={12} /> }),
+    ...(n.priority !== 'normal' ? [m.action('Escalate', () => escalateNotification(n.id), { icon: <ArrowUpRight size={12} /> })] : []),
+    m.separator(),
+    m.copy('Copy title', n.title),
+    m.copyId(n.id),
+    m.separator(),
+    m.action('Delete', () => deleteNotification(n.id), { icon: <Trash2 size={12} />, danger: true }),
+  ];
+
   return (
     <div className="flex flex-col h-full animate-fade-in">
       <PanelTitleBar title="NOTIFICATIONS" icon={Bell}>
@@ -302,7 +318,7 @@ export default function NotificationsPage() {
               <div className="space-y-3">
                 {Object.entries(prefs).filter(([k]) => typeof (prefs as any)[k] === 'boolean').map(([key, value]) => (
                   <label key={key} className="flex items-center gap-3 text-xs text-rmpg-200 cursor-pointer">
-                    <input
+                    <input id="ff-notificationspage-0"
                       type="checkbox"
                       checked={value as boolean}
                       onChange={(e) => setPrefs(prev => prev ? { ...prev, [key]: e.target.checked } : prev)}
@@ -314,7 +330,7 @@ export default function NotificationsPage() {
                 <div className="grid grid-cols-2 gap-3 mt-4">
                   <div>
                     <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Quiet Hours Start</label>
-                    <input
+                    <input id="ff-notificationspage-1"
                       type="time"
                       value={prefs.quiet_hours_start || ''}
                       onChange={(e) => setPrefs(prev => prev ? { ...prev, quiet_hours_start: e.target.value || null } : prev)}
@@ -323,7 +339,7 @@ export default function NotificationsPage() {
                   </div>
                   <div>
                     <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Quiet Hours End</label>
-                    <input
+                    <input id="ff-notificationspage-2"
                       type="time"
                       value={prefs.quiet_hours_end || ''}
                       onChange={(e) => setPrefs(prev => prev ? { ...prev, quiet_hours_end: e.target.value || null } : prev)}
@@ -351,6 +367,7 @@ export default function NotificationsPage() {
               {notifications.map(n => (
                 <div
                   key={n.id}
+                  onContextMenu={(e) => openMenu(e, buildNotificationMenu(n))}
                   className={`flex items-start gap-3 px-4 py-3 transition-colors ${
                     n.is_read ? 'opacity-60 hover:opacity-80' : 'hover:bg-surface-raised'
                   } ${priorityColor(n.priority)} border-l-2`}
@@ -370,7 +387,7 @@ export default function NotificationsPage() {
                     <div className="flex items-center gap-2 mt-1 text-[9px] text-rmpg-500">
                       <span>{(n.type || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
                       <span title={formatDateTime(n.created_at)}>{(() => {
-                        const ms = Date.now() - new Date(n.created_at).getTime();
+                        const ms = Date.now() - parseTimestamp(n.created_at).getTime();
                         const mins = Math.floor(ms / 60000);
                         if (mins < 1) return 'just now';
                         if (mins < 60) return `${mins}m ago`;

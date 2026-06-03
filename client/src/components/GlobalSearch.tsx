@@ -357,7 +357,7 @@ export const GlobalSearch: React.FC = () => {
           ) : (
             <Search className="w-5 h-5 text-rmpg-300" />
           )}
-          <input
+          <input id="ff-globalsearch-0"
             ref={inputRef}
             type="text"
             value={query}

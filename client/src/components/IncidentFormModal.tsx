@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { FileText, Scale } from 'lucide-react';
 import FormModal from './FormModal';
-import { useFormDirty } from '../hooks/useFormDirty';
+import { useFormDraft } from '../hooks/useFormDraft';
 import type { Incident, CallPriority } from '../types';
 import { INCIDENT_TYPE_CATEGORIES, type IncidentType } from '../utils/caseNumbers';
 import RichTextArea from './RichTextArea';
@@ -16,6 +16,7 @@ import AddressAutocomplete, { type ParsedAddress } from './AddressAutocomplete';
 import { formatPhoneInput } from '../utils/formatters';
 import StatuteLookup, { type StatuteResult } from './StatuteLookup';
 import { useDistrictOptions, useDistrictIdentify } from '../hooks/useDistrictLookup';
+import Dropdown from './ui/Dropdown';
 
 interface IncidentFormModalProps {
   isOpen: boolean;
@@ -359,8 +360,18 @@ export default function IncidentFormModal({
   clients = [],
   defaultType = '',
 }: IncidentFormModalProps) {
-  const [formData, setFormData] = useState<IncidentFormData>(EMPTY_FORM);
-  const { isDirty, snapshot } = useFormDirty(formData, isOpen);
+  const {
+    form: formData,
+    setForm: setFormData,
+    isDirty,
+    wasRestored,
+    clearDraft,
+    snapshot,
+  } = useFormDraft<IncidentFormData>({
+    storageKey: 'rmpg_incident_form',
+    defaultValue: EMPTY_FORM,
+    isActive: isOpen,
+  });
   const [activeSection, setActiveSection] = useState<SectionId>('basic');
   const { sections: sectionOptions, sectionLabels, zoneLabels, zonesForSection, beatsForZone, getBeatLabel } = useDistrictOptions();
   const { identify: identifyDistrict } = useDistrictIdentify();
@@ -473,14 +484,14 @@ export default function IncidentFormModal({
           supervisor_notified: !!inc.supervisor_notified,
         };
         setFormData(initial);
-        snapshot(initial);
+        snapshot();
       } else {
         const initial: IncidentFormData = {
           ...EMPTY_FORM,
           ...(defaultType ? { incident_type: defaultType as IncidentType, priority: 'P1' as CallPriority } : {}),
         };
         setFormData(initial);
-        snapshot(initial);
+        snapshot();
       }
       setActiveSection(defaultType && USE_OF_FORCE_TYPES.includes(defaultType) ? 'use_of_force' : 'basic');
     }
@@ -510,6 +521,8 @@ export default function IncidentFormModal({
       isSubmitting={isSubmitting}
       maxWidth="max-w-4xl"
       isDirty={isDirty}
+      draftRestored={wasRestored}
+      onDiscardDraft={clearDraft}
     >
       {/* Section Tabs (dynamic based on incident type) */}
       <div className="flex gap-1 -mt-1 mb-2 flex-wrap">
@@ -536,28 +549,24 @@ export default function IncidentFormModal({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Incident Type</label>
-              <select
-                className="select-dark mt-1"
+              <Dropdown
+                groups={Object.entries(INCIDENT_TYPE_CATEGORIES).map(([category, types]) => ({
+                  label: category,
+                  options: types.map((t) => ({ value: t.value, label: t.label })),
+                }))}
                 value={formData.incident_type}
-                onChange={(e) => {
-                  update('incident_type', e.target.value);
-                  // Reset to basic tab if current sub-section no longer applies
-                  const newTabs = getSectionTabs(e.target.value);
+                onChange={(v) => {
+                  update('incident_type', v);
+                  const newTabs = getSectionTabs(v);
                   if (!newTabs.find((t) => t.id === activeSection)) {
                     setActiveSection('basic');
                   }
                 }}
                 required
-              >
-                <option value="" disabled>-- Select Type --</option>
-                {Object.entries(INCIDENT_TYPE_CATEGORIES).map(([category, types]) => (
-                  <optgroup key={category} label={category}>
-                    {types.map((t) => (
-                      <option key={t.value} value={t.value}>{t.label}</option>
-                    ))}
-                  </optgroup>
-                ))}
-              </select>
+                searchable
+                placeholder="-- Select Type --"
+                className="mt-1"
+              />
               {/* Feature 30: Incident Type Auto-suggest based on narrative keywords */}
               {formData.narrative && !formData.incident_type && (() => {
                 const text = formData.narrative.toLowerCase();
@@ -592,21 +601,21 @@ export default function IncidentFormModal({
             </div>
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Section ID</label>
-              <select className="select-dark mt-1" value={formData.sector_id} onChange={(e) => { update('sector_id', e.target.value); update('zone_id', ''); update('beat_id', ''); }}>
+              <select id="ff-incidentformmodal-0" className="select-dark mt-1" value={formData.sector_id} onChange={(e) => { update('sector_id', e.target.value); update('zone_id', ''); update('beat_id', ''); }}>
                 <option value="">-- Select --</option>
                 {sectionOptions.map((s) => <option key={s} value={s}>{s} — {sectionLabels.get(s) || s}</option>)}
               </select>
             </div>
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Zone ID</label>
-              <select className="select-dark mt-1" value={formData.zone_id} onChange={(e) => { update('zone_id', e.target.value); update('beat_id', ''); }}>
+              <select id="ff-incidentformmodal-1" className="select-dark mt-1" value={formData.zone_id} onChange={(e) => { update('zone_id', e.target.value); update('beat_id', ''); }}>
                 <option value="">-- Select --</option>
                 {zonesForSection(formData.sector_id).map((z) => <option key={z} value={z}>{z} — {zoneLabels.get(z) || z}</option>)}
               </select>
             </div>
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Beat ID</label>
-              <select className="select-dark mt-1" value={formData.beat_id} onChange={(e) => update('beat_id', e.target.value)}>
+              <select id="ff-incidentformmodal-2" className="select-dark mt-1" value={formData.beat_id} onChange={(e) => update('beat_id', e.target.value)}>
                 <option value="">-- Select --</option>
                 {beatsForZone(formData.zone_id).map((b) => <option key={b} value={b}>{b} — {getBeatLabel(formData.zone_id, b)}</option>)}
               </select>
@@ -668,7 +677,7 @@ export default function IncidentFormModal({
             {clients.length > 0 && (
               <div>
                 <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Client</label>
-                <select
+                <select id="ff-incidentformmodal-3"
                   className="select-dark mt-1"
                   value={formData.client_id}
                   onChange={(e) => update('client_id', e.target.value)}
@@ -682,7 +691,7 @@ export default function IncidentFormModal({
             )}
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Contract ID</label>
-              <input type="text" className="input-dark mt-1" placeholder="e.g. 15330838" value={formData.contract_id} onChange={(e) => update('contract_id', e.target.value)} />
+              <input id="ff-incidentformmodal-4" type="text" className="input-dark mt-1" placeholder="e.g. 15330838" value={formData.contract_id} onChange={(e) => update('contract_id', e.target.value)} />
             </div>
           </div>
 
@@ -690,26 +699,26 @@ export default function IncidentFormModal({
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Occurred Date</label>
-              <input type="date" className="input-dark mt-1" value={formData.occurred_date} onChange={(e) => update('occurred_date', e.target.value)} />
+              <input id="ff-incidentformmodal-5" type="date" className="input-dark mt-1" value={formData.occurred_date} onChange={(e) => update('occurred_date', e.target.value)} />
             </div>
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Occurred Time</label>
-              <input type="time" className="input-dark mt-1" value={formData.occurred_time} onChange={(e) => update('occurred_time', e.target.value)} />
+              <input id="ff-incidentformmodal-6" type="time" className="input-dark mt-1" value={formData.occurred_time} onChange={(e) => update('occurred_time', e.target.value)} />
             </div>
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">End Date</label>
-              <input type="date" className="input-dark mt-1" value={formData.end_date} onChange={(e) => update('end_date', e.target.value)} />
+              <input id="ff-incidentformmodal-7" type="date" className="input-dark mt-1" value={formData.end_date} onChange={(e) => update('end_date', e.target.value)} />
             </div>
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">End Time</label>
-              <input type="time" className="input-dark mt-1" value={formData.end_time} onChange={(e) => update('end_time', e.target.value)} />
+              <input id="ff-incidentformmodal-8" type="time" className="input-dark mt-1" value={formData.end_time} onChange={(e) => update('end_time', e.target.value)} />
             </div>
           </div>
 
           {/* Disposition */}
           <div>
             <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Disposition</label>
-            <select
+            <select id="ff-incidentformmodal-9"
               className="select-dark mt-1"
               value={formData.disposition}
               onChange={(e) => update('disposition', e.target.value)}
@@ -767,7 +776,7 @@ export default function IncidentFormModal({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Weather Conditions</label>
-              <select className="select-dark mt-1" value={formData.weather_conditions} onChange={(e) => update('weather_conditions', e.target.value)}>
+              <select id="ff-incidentformmodal-10" className="select-dark mt-1" value={formData.weather_conditions} onChange={(e) => update('weather_conditions', e.target.value)}>
                 {WEATHER_OPTIONS.map((w) => (
                   <option key={w} value={w}>{w || '-- Select --'}</option>
                 ))}
@@ -775,7 +784,7 @@ export default function IncidentFormModal({
             </div>
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Lighting Conditions</label>
-              <select className="select-dark mt-1" value={formData.lighting_conditions} onChange={(e) => update('lighting_conditions', e.target.value)}>
+              <select id="ff-incidentformmodal-11" className="select-dark mt-1" value={formData.lighting_conditions} onChange={(e) => update('lighting_conditions', e.target.value)}>
                 {LIGHTING_OPTIONS.map((l) => (
                   <option key={l} value={l}>{l || '-- Select --'}</option>
                 ))}
@@ -787,7 +796,7 @@ export default function IncidentFormModal({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Injuries</label>
-              <select className="select-dark mt-1" value={formData.injuries} onChange={(e) => update('injuries', e.target.value)}>
+              <select id="ff-incidentformmodal-12" className="select-dark mt-1" value={formData.injuries} onChange={(e) => update('injuries', e.target.value)}>
                 <option value="none">None</option>
                 <option value="minor">Minor</option>
                 <option value="major">Major</option>
@@ -797,7 +806,7 @@ export default function IncidentFormModal({
             </div>
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Injury Description</label>
-              <input
+              <input id="ff-incidentformmodal-13"
                 type="text"
                 className="input-dark mt-1"
                 placeholder="Describe injuries if applicable..."
@@ -811,7 +820,7 @@ export default function IncidentFormModal({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Damage Estimate ($)</label>
-              <input
+              <input id="ff-incidentformmodal-14"
                 type="text"
                 className="input-dark mt-1"
                 placeholder="e.g. 500.00 — separate items with + (100+250+150)"
@@ -838,7 +847,7 @@ export default function IncidentFormModal({
             </div>
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Damage Description</label>
-              <input
+              <input id="ff-incidentformmodal-15"
                 type="text"
                 className="input-dark mt-1"
                 placeholder="Broken window, graffiti, etc."
@@ -852,7 +861,7 @@ export default function IncidentFormModal({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Weapons Involved</label>
-              <select
+              <select id="ff-incidentformmodal-16"
                 className="input-dark mt-1"
                 value={formData.weapons_involved}
                 onChange={(e) => update('weapons_involved', e.target.value)}
@@ -867,7 +876,7 @@ export default function IncidentFormModal({
                   HAZARD_CODE_OPTIONS for consistency with dispatch
                   console hazard tagging. */}
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Hazard Code</label>
-              <select
+              <select id="ff-incidentformmodal-17"
                 className="input-dark mt-1"
                 value={formData.hazard_code}
                 onChange={(e) => update('hazard_code', e.target.value)}
@@ -886,7 +895,7 @@ export default function IncidentFormModal({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Road Conditions</label>
-              <select className="select-dark mt-1" value={formData.road_conditions} onChange={(e) => update('road_conditions', e.target.value)}>
+              <select id="ff-incidentformmodal-18" className="select-dark mt-1" value={formData.road_conditions} onChange={(e) => update('road_conditions', e.target.value)}>
                 <option value="">-- Select --</option>
                 <option value="dry">Dry</option>
                 <option value="wet">Wet</option>
@@ -900,7 +909,7 @@ export default function IncidentFormModal({
             </div>
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Traffic Control</label>
-              <select className="select-dark mt-1" value={formData.traffic_control} onChange={(e) => update('traffic_control', e.target.value)}>
+              <select id="ff-incidentformmodal-19" className="select-dark mt-1" value={formData.traffic_control} onChange={(e) => update('traffic_control', e.target.value)}>
                 <option value="">-- Select --</option>
                 <option value="none">None</option>
                 <option value="traffic_signal">Traffic Signal</option>
@@ -936,7 +945,7 @@ export default function IncidentFormModal({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Patient Status</label>
-              <select className="select-dark mt-1" value={formData.patient_status} onChange={(e) => update('patient_status', e.target.value)}>
+              <select id="ff-incidentformmodal-20" className="select-dark mt-1" value={formData.patient_status} onChange={(e) => update('patient_status', e.target.value)}>
                 <option value="">-- Select --</option>
                 <option value="conscious_alert">Conscious & Alert</option>
                 <option value="conscious_disoriented">Conscious, Disoriented</option>
@@ -949,7 +958,7 @@ export default function IncidentFormModal({
             </div>
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">EMS Transport</label>
-              <select className="select-dark mt-1" value={formData.ems_transport} onChange={(e) => update('ems_transport', e.target.value)}>
+              <select id="ff-incidentformmodal-21" className="select-dark mt-1" value={formData.ems_transport} onChange={(e) => update('ems_transport', e.target.value)}>
                 <option value="">-- Select --</option>
                 <option value="not_needed">Not Needed</option>
                 <option value="transport_hospital">Transported to Hospital</option>
@@ -976,7 +985,7 @@ export default function IncidentFormModal({
         <>
           <div className="flex items-center gap-3 p-3 bg-rmpg-800/50 border border-rmpg-600">
             <label className="flex items-center gap-2 cursor-pointer">
-              <input
+              <input id="ff-incidentformmodal-22"
                 type="checkbox"
                 checked={formData.trespass_warning_issued}
                 onChange={(e) => update('trespass_warning_issued', e.target.checked)}
@@ -988,11 +997,11 @@ export default function IncidentFormModal({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Effective Date</label>
-              <input type="date" className="input-dark mt-1" value={formData.trespass_effective_date} onChange={(e) => update('trespass_effective_date', e.target.value)} />
+              <input id="ff-incidentformmodal-23" type="date" className="input-dark mt-1" value={formData.trespass_effective_date} onChange={(e) => update('trespass_effective_date', e.target.value)} />
             </div>
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Expiry Date</label>
-              <input type="date" className="input-dark mt-1" value={formData.trespass_expiry_date} onChange={(e) => update('trespass_expiry_date', e.target.value)} />
+              <input id="ff-incidentformmodal-24" type="date" className="input-dark mt-1" value={formData.trespass_expiry_date} onChange={(e) => update('trespass_expiry_date', e.target.value)} />
             </div>
           </div>
           <div>
@@ -1007,7 +1016,7 @@ export default function IncidentFormModal({
         <>
           <div>
             <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Force Type / Level</label>
-            <select className="select-dark mt-1" value={formData.force_type} onChange={(e) => update('force_type', e.target.value)}>
+            <select id="ff-incidentformmodal-25" className="select-dark mt-1" value={formData.force_type} onChange={(e) => update('force_type', e.target.value)}>
               <option value="">-- Select --</option>
               <option value="verbal_commands">Verbal Commands</option>
               <option value="soft_hands">Soft Hands / Escort</option>
@@ -1032,11 +1041,11 @@ export default function IncidentFormModal({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Subject Injuries</label>
-              <input type="text" className="input-dark mt-1" placeholder="Describe injuries to subject..." value={formData.subject_injuries} onChange={(e) => update('subject_injuries', e.target.value)} />
+              <input id="ff-incidentformmodal-26" type="text" className="input-dark mt-1" placeholder="Describe injuries to subject..." value={formData.subject_injuries} onChange={(e) => update('subject_injuries', e.target.value)} />
             </div>
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Officer Injuries</label>
-              <input type="text" className="input-dark mt-1" placeholder="Describe injuries to officer..." value={formData.officer_injuries} onChange={(e) => update('officer_injuries', e.target.value)} />
+              <input id="ff-incidentformmodal-27" type="text" className="input-dark mt-1" placeholder="Describe injuries to officer..." value={formData.officer_injuries} onChange={(e) => update('officer_injuries', e.target.value)} />
             </div>
           </div>
         </>
@@ -1049,7 +1058,7 @@ export default function IncidentFormModal({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">PSO Service Type</label>
-              <select className="select-dark mt-1" value={formData.pso_service_type} onChange={(e) => update('pso_service_type', e.target.value)}>
+              <select id="ff-incidentformmodal-28" className="select-dark mt-1" value={formData.pso_service_type} onChange={(e) => update('pso_service_type', e.target.value)}>
                 <option value="">-- Select --</option>
                 <option value="patrol">Patrol</option>
                 <option value="standing_post">Standing Post</option>
@@ -1061,7 +1070,7 @@ export default function IncidentFormModal({
             </div>
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Process Service Type</label>
-              <select className="select-dark mt-1" value={formData.process_service_type} onChange={(e) => update('process_service_type', e.target.value)}>
+              <select id="ff-incidentformmodal-29" className="select-dark mt-1" value={formData.process_service_type} onChange={(e) => update('process_service_type', e.target.value)}>
                 <option value="">-- Select --</option>
                 <option value="subpoena">Subpoena</option>
                 <option value="summons">Summons</option>
@@ -1077,11 +1086,11 @@ export default function IncidentFormModal({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Billing Code / Contract ID</label>
-              <input type="text" className="input-dark mt-1" placeholder="Contract or billing code" value={formData.pso_billing_code} onChange={(e) => update('pso_billing_code', e.target.value)} />
+              <input id="ff-incidentformmodal-30" type="text" className="input-dark mt-1" placeholder="Contract or billing code" value={formData.pso_billing_code} onChange={(e) => update('pso_billing_code', e.target.value)} />
             </div>
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Authorization / PO Number</label>
-              <input type="text" className="input-dark mt-1" placeholder="Auth or PO number" value={formData.pso_authorization} onChange={(e) => update('pso_authorization', e.target.value)} />
+              <input id="ff-incidentformmodal-31" type="text" className="input-dark mt-1" placeholder="Auth or PO number" value={formData.pso_authorization} onChange={(e) => update('pso_authorization', e.target.value)} />
             </div>
           </div>
 
@@ -1091,15 +1100,15 @@ export default function IncidentFormModal({
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
                 <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Requestor Name</label>
-                <input type="text" className="input-dark mt-1" placeholder="Contact name" value={formData.pso_requestor_name} onChange={(e) => update('pso_requestor_name', e.target.value)} />
+                <input id="ff-incidentformmodal-32" type="text" className="input-dark mt-1" placeholder="Contact name" value={formData.pso_requestor_name} onChange={(e) => update('pso_requestor_name', e.target.value)} />
               </div>
               <div>
                 <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Phone</label>
-                <input type="tel" className="input-dark mt-1" placeholder="(801) 555-0000" value={formData.pso_requestor_phone} onChange={(e) => update('pso_requestor_phone', formatPhoneInput(e.target.value))} />
+                <input id="ff-incidentformmodal-33" type="tel" className="input-dark mt-1" placeholder="(801) 555-0000" value={formData.pso_requestor_phone} onChange={(e) => update('pso_requestor_phone', formatPhoneInput(e.target.value))} />
               </div>
               <div>
                 <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Email</label>
-                <input type="email" className="input-dark mt-1" placeholder="contact@example.com" value={formData.pso_requestor_email} onChange={(e) => update('pso_requestor_email', e.target.value)} />
+                <input id="ff-incidentformmodal-34" type="email" className="input-dark mt-1" placeholder="contact@example.com" value={formData.pso_requestor_email} onChange={(e) => update('pso_requestor_email', e.target.value)} />
               </div>
             </div>
           </div>
@@ -1110,29 +1119,35 @@ export default function IncidentFormModal({
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
                 <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Served To</label>
-                <input type="text" className="input-dark mt-1" placeholder="Name of person served" value={formData.process_served_to} onChange={(e) => update('process_served_to', e.target.value)} />
+                <input id="ff-incidentformmodal-35" type="text" className="input-dark mt-1" placeholder="Name of person served" value={formData.process_served_to} onChange={(e) => update('process_served_to', e.target.value)} />
               </div>
-              <div>
-                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Served Address</label>
-                <input type="text" className="input-dark mt-1" placeholder="Address where served" value={formData.process_served_address} onChange={(e) => update('process_served_address', e.target.value)} />
-              </div>
+               <div>
+                 <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Served Address</label>
+                 <AddressAutocomplete
+                   className="input-dark mt-1 w-full"
+                   placeholder="Address where served"
+                   value={formData.process_served_address}
+                   onChange={(value) => update('process_served_address', value)}
+                   name="process_served_address"
+                 />
+               </div>
               <div>
                 <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Served At</label>
-                <input type="datetime-local" className="input-dark mt-1" value={formData.process_served_at} onChange={(e) => update('process_served_at', e.target.value)} />
+                <input id="ff-incidentformmodal-36" type="datetime-local" className="input-dark mt-1" value={formData.process_served_at} onChange={(e) => update('process_served_at', e.target.value)} />
               </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
                 <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Attempt #</label>
-                <input type="number" min="1" className="input-dark mt-1" placeholder="1" value={formData.process_attempts} onChange={(e) => update('process_attempts', e.target.value)} />
+                <input id="ff-incidentformmodal-37" type="number" min="1" className="input-dark mt-1" placeholder="1" value={formData.process_attempts} onChange={(e) => update('process_attempts', e.target.value)} />
               </div>
               <div>
                 <label className="text-[10px] text-rmpg-400 uppercase font-semibold">PSO Attempt #</label>
-                <input type="number" min="1" className="input-dark mt-1" placeholder="1" value={formData.pso_attempt_number} onChange={(e) => update('pso_attempt_number', e.target.value)} />
+                <input id="ff-incidentformmodal-38" type="number" min="1" className="input-dark mt-1" placeholder="1" value={formData.pso_attempt_number} onChange={(e) => update('pso_attempt_number', e.target.value)} />
               </div>
               <div>
                 <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Service Result</label>
-                <select className="select-dark mt-1" value={formData.process_service_result} onChange={(e) => update('process_service_result', e.target.value)}>
+                <select id="ff-incidentformmodal-39" className="select-dark mt-1" value={formData.process_service_result} onChange={(e) => update('process_service_result', e.target.value)}>
                   <option value="">-- Select --</option>
                   <option value="served">Served</option>
                   <option value="not_served">Not Served</option>
@@ -1168,7 +1183,7 @@ export default function IncidentFormModal({
                 ['hazmat', 'HAZMAT'],
               ] as [keyof IncidentFormData, string][]).map(([key, label]) => (
                 <label key={key} className="flex items-center gap-2 p-2 bg-rmpg-800/50 border border-rmpg-600 cursor-pointer hover:border-rmpg-400 transition-colors">
-                  <input type="checkbox" checked={!!formData[key]} onChange={(e) => update(key, e.target.checked)} className="w-4 h-4 accent-red-500" />
+                  <input id="ff-incidentformmodal-40" type="checkbox" checked={!!formData[key]} onChange={(e) => update(key, e.target.checked)} className="w-4 h-4 accent-red-500" />
                   <span className="text-xs text-rmpg-200">{label}</span>
                 </label>
               ))}
@@ -1193,7 +1208,7 @@ export default function IncidentFormModal({
                 ['supervisor_notified', 'Supervisor Notified'],
               ] as [keyof IncidentFormData, string][]).map(([key, label]) => (
                 <label key={key} className="flex items-center gap-2 p-2 bg-rmpg-800/50 border border-rmpg-600 cursor-pointer hover:border-rmpg-400 transition-colors">
-                  <input type="checkbox" checked={!!formData[key]} onChange={(e) => update(key, e.target.checked)} className="w-4 h-4 accent-amber-500" />
+                  <input id="ff-incidentformmodal-41" type="checkbox" checked={!!formData[key]} onChange={(e) => update(key, e.target.checked)} className="w-4 h-4 accent-amber-500" />
                   <span className="text-xs text-rmpg-200">{label}</span>
                 </label>
               ))}
@@ -1204,7 +1219,7 @@ export default function IncidentFormModal({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Responding Agency</label>
-              <select
+              <select id="ff-incidentformmodal-42"
                 className="input-dark mt-1"
                 value={formData.responding_le_agency}
                 onChange={(e) => update('responding_le_agency', e.target.value)}
@@ -1215,7 +1230,7 @@ export default function IncidentFormModal({
             </div>
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">LE Case Number</label>
-              <input
+              <input id="ff-incidentformmodal-43"
                 type="text"
                 className="input-dark mt-1"
                 placeholder="e.g. 2025-SLC-001234"

@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Users, Search, X, Clock, AlertTriangle, Loader2, Plus, Archive } from 'lucide-react';
+import { Users, Search, X, Clock, AlertTriangle, Loader2, Plus, Archive, Eye, Pencil, Trash2, RotateCcw } from 'lucide-react';
+import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
+import { useMenuActions } from '../../utils/contextMenuActions';
 import type {
   Schedule, TimeEntry, Credential, TrainingRecord, TrainingRequirement,
   Deployment, CoverageGap, PersonnelAnalytics, OfficerEquipment, BodyCamera,
@@ -31,8 +33,9 @@ import OfficerAvatar from './components/OfficerAvatar';
 import CredentialProgressBar from './components/CredentialProgressBar';
 import { ROLE_COLORS } from './utils/personnelConstants';
 import { toDisplayLabel } from '../../utils/formatters';
+import { parseTimestamp } from '../../utils/dateUtils';
 import PersonnelDetailPanel from './PersonnelDetailPanel';
-import PersonnelAnalyticsDashboard from './PersonnelAnalyticsDashboard';
+import PersonnelDashboard from './PersonnelDashboard';
 import DutyBoardTab from './tabs/DutyBoardTab';
 import ScheduleTab from './tabs/ScheduleTab';
 import TimeAttendanceTab from './tabs/TimeAttendanceTab';
@@ -40,9 +43,6 @@ import CredentialsTab from './tabs/CredentialsTab';
 import TrainingTab from './tabs/TrainingTab';
 import EquipmentTab from './tabs/EquipmentTab';
 import DeploymentTab from './tabs/DeploymentTab';
-import AnalyticsTab from './tabs/AnalyticsTab';
-import DashCameraTab from './tabs/DashCameraTab';
-import CalendarTab from './tabs/CalendarTab';
 import TrainingFormModal from './modals/TrainingFormModal';
 import type { TrainingFormData } from './modals/TrainingFormModal';
 import EquipmentFormModal from './modals/EquipmentFormModal';
@@ -81,11 +81,15 @@ export default function PersonnelPage() {
   const { addToast } = useToast();
   const isMobile = useIsMobile();
 
+  // Right-click context menu
+  const { openMenu } = useContextMenu();
+  const cm = useMenuActions();
+
   // Tab state
   const [activeTab, setActiveTab] = usePersistedTab(
     'rmpg_personnel_tab',
-    'roster' as MainTab,
-    ['roster', 'duty_board', 'schedule', 'calendar', 'time', 'credentials', 'training', 'equipment', 'dash_cameras', 'deployment', 'analytics'] as const,
+    'command' as MainTab,
+    ['command', 'roster', 'duty_board', 'schedule', 'time', 'credentials', 'training', 'equipment', 'deployment'] as const,
   );
   const [detailTab, setDetailTab] = useState<DetailTab>('profile');
   const [searchQuery, setSearchQuery] = useState('');
@@ -215,6 +219,31 @@ export default function PersonnelPage() {
 
   // Lazy-load tab data
   useEffect(() => {
+    // Command dashboard needs training + deployments + coverage gaps to populate
+    // its alert/chart widgets. Each guard is independent so a tab visited earlier
+    // doesn't force a refetch here.
+    if (activeTab === 'command') {
+      if (training.length === 0 && !trainingLoading) {
+        setTrainingLoading(true);
+        apiFetch<any[]>('/personnel/training')
+          .then(raw => setTraining((Array.isArray(raw) ? raw : []).map(mapTraining)))
+          .catch(() => { /* dashboard degrades gracefully */ })
+          .finally(() => setTrainingLoading(false));
+      }
+      if (deployments.length === 0 && !deploymentsLoading) {
+        setDeploymentsLoading(true);
+        Promise.all([
+          apiFetch<any[]>('/personnel/deployments'),
+          apiFetch<any[]>('/personnel/coverage-gaps'),
+        ])
+          .then(([dRaw, gaps]) => {
+            setDeployments((Array.isArray(dRaw) ? dRaw : []).map(mapDeployment));
+            setCoverageGaps(Array.isArray(gaps) ? gaps : []);
+          })
+          .catch(() => { /* dashboard degrades gracefully */ })
+          .finally(() => setDeploymentsLoading(false));
+      }
+    }
     if (activeTab === 'training' && training.length === 0 && !trainingLoading) {
       setTrainingLoading(true);
       Promise.all([
@@ -248,6 +277,24 @@ export default function PersonnelPage() {
         .finally(() => setEquipmentLoading(false));
     }
   }, [activeTab]);
+
+  // Reset per-officer caches when switching officers. The detail-tab
+  // fetches below gate on `xxx.length === 0`; without this reset,
+  // switching from Officer A to Officer B would show Officer A's
+  // training/equipment/body_cameras/deployments data because the cached
+  // arrays are non-empty. The dashcam-events / device-mapping refs are
+  // also cleared so a brief flash of A's mapping doesn't show on B.
+  useEffect(() => {
+    if (!selectedOfficer) return;
+    setTraining([]);
+    setEquipment([]);
+    setBodyCameras([]);
+    setBodyCamVideos([]);
+    setDeployments([]);
+    setOfficerActivity([]);
+    setOfficerDashcamEvents([]);
+    setOfficerDeviceMapping(null);
+  }, [selectedOfficer?.id]);
 
   // Lazy-load detail tab data
   useEffect(() => {
@@ -293,10 +340,18 @@ export default function PersonnelPage() {
       ])
         .then(([events, mappings]) => {
           setOfficerDashcamEvents(Array.isArray(events) ? events : []);
-          // Find the mapping for this officer's unit
+          // Find the mapping for this officer's unit. Match by officer_id
+          // (stable) — the previous name-based match silently failed for
+          // officers with middle names, suffixes, or whitespace differences.
+          // Falls back to a trimmed-name match for older mappings that
+          // haven't had officer_id backfilled yet.
           const allMappings: CpgDeviceMapping[] = Array.isArray(mappings) ? mappings : [];
-          const match = allMappings.find(m => m.officer_name && selectedOfficer &&
-            m.officer_name === `${selectedOfficer.first_name} ${selectedOfficer.last_name}`);
+          const fullName = `${selectedOfficer.first_name} ${selectedOfficer.last_name}`.trim();
+          const match = allMappings.find(m => {
+            if (m.officer_id && String(m.officer_id) === String(selectedOfficer.id)) return true;
+            if (m.officer_name && m.officer_name.trim() === fullName) return true;
+            return false;
+          });
           setOfficerDeviceMapping(match || null);
         })
         .catch(() => addToast('Failed to load dash camera data', 'error'))
@@ -700,38 +755,41 @@ export default function PersonnelPage() {
     }
   };
 
-  const openEditOfficer = () => {
-    if (!selectedOfficer) return;
+  // Accepts an optional officer so the right-click menu can edit the
+  // right-clicked row; the header button passes nothing → edits the selection.
+  const openEditOfficer = (target?: OfficerWithStatus) => {
+    const o = target ?? selectedOfficer;
+    if (!o) return;
     setOfficerEditData({
-      id: selectedOfficer.id,
-      role: selectedOfficer.role,
-      full_name: selectedOfficer.full_name || '',
-      first_name: selectedOfficer.first_name,
-      last_name: selectedOfficer.last_name,
-      middle_name: selectedOfficer.middle_name || '',
-      date_of_birth: selectedOfficer.date_of_birth || '',
-      badge_number: selectedOfficer.badge_number || '',
-      rank: selectedOfficer.rank || '',
-      department: selectedOfficer.department || '',
-      hire_date: selectedOfficer.hire_date || '',
-      shift_preference: selectedOfficer.shift_preference || '',
-      employee_id: selectedOfficer.employee_id || '',
-      phone: selectedOfficer.phone || '',
-      email: selectedOfficer.email || '',
-      address: selectedOfficer.address || '',
-      city: selectedOfficer.city || '',
-      state: selectedOfficer.state || '',
-      zip: selectedOfficer.zip || '',
-      emergency_contact_name: selectedOfficer.emergency_contact_name || '',
-      emergency_contact_phone: selectedOfficer.emergency_contact_phone || '',
-      emergency_contact_relationship: selectedOfficer.emergency_contact_relationship || '',
-      blood_type: selectedOfficer.blood_type || '',
-      allergies: selectedOfficer.allergies || '',
-      uniform_size: selectedOfficer.uniform_size || '',
-      dl_number: selectedOfficer.dl_number || '',
-      dl_state: selectedOfficer.dl_state || '',
-      dl_expiry: selectedOfficer.dl_expiry || '',
-      notes: selectedOfficer.notes || '',
+      id: o.id,
+      role: o.role,
+      full_name: o.full_name || '',
+      first_name: o.first_name,
+      last_name: o.last_name,
+      middle_name: o.middle_name || '',
+      date_of_birth: o.date_of_birth || '',
+      badge_number: o.badge_number || '',
+      rank: o.rank || '',
+      department: o.department || '',
+      hire_date: o.hire_date || '',
+      shift_preference: o.shift_preference || '',
+      employee_id: o.employee_id || '',
+      phone: o.phone || '',
+      email: o.email || '',
+      address: o.address || '',
+      city: o.city || '',
+      state: o.state || '',
+      zip: o.zip || '',
+      emergency_contact_name: o.emergency_contact_name || '',
+      emergency_contact_phone: o.emergency_contact_phone || '',
+      emergency_contact_relationship: o.emergency_contact_relationship || '',
+      blood_type: o.blood_type || '',
+      allergies: o.allergies || '',
+      uniform_size: o.uniform_size || '',
+      dl_number: o.dl_number || '',
+      dl_state: o.dl_state || '',
+      dl_expiry: o.dl_expiry || '',
+      notes: o.notes || '',
       username: '', password: '',
     });
     setOfficerModalMode('edit');
@@ -849,7 +907,7 @@ export default function PersonnelPage() {
     try {
       await apiFetch(`/personnel/time/${data.id}`, {
         method: 'PUT',
-        body: JSON.stringify({ clock_in: data.clock_in, clock_out: data.clock_out || null }),
+        body: JSON.stringify({ clock_in: data.clock_in, clock_out: data.clock_out || null, reason: data.reason }),
       });
       setModal('none');
       setEditingTimeEntry(null);
@@ -872,6 +930,24 @@ export default function PersonnelPage() {
   // Roster List (Left Panel)
   // ----------------------------------------------------------
 
+  // Right-click menu for a roster row. Acts on the right-clicked officer.
+  const buildOfficerMenu = (officer: OfficerWithStatus): ContextMenuItem[] => {
+    const fullName = `${officer.first_name || ''} ${officer.last_name || ''}`.trim();
+    return [
+      cm.action('Open officer', () => { setSelectedOfficer(officer); setDetailTab('profile'); }, { icon: <Eye size={12} /> }),
+      cm.action('Edit officer', () => openEditOfficer(officer), { icon: <Pencil size={12} /> }),
+      cm.separator(),
+      cm.copy('Copy name', fullName),
+      ...(officer.badge_number ? [cm.copy('Copy badge', officer.badge_number)] : []),
+      cm.copyId(officer.id),
+      cm.separator(),
+      ...(showArchived
+        ? [cm.action('Unarchive', () => handleUnarchiveOfficer(officer.id), { icon: <RotateCcw size={12} /> })]
+        : [cm.action('Archive', () => handleArchiveOfficer(officer.id), { icon: <Archive size={12} /> })]),
+      cm.action('Terminate', () => setDeleteTarget(officer), { danger: true, icon: <Trash2 size={12} /> }),
+    ];
+  };
+
   const rosterList = (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Search + New Officer */}
@@ -879,7 +955,7 @@ export default function PersonnelPage() {
         <div className="flex items-center gap-2">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400 pointer-events-none" aria-hidden="true" />
-            <input
+            <input id="ff-personnelpage-0"
               type="text"
               className="input-dark pl-9 w-full text-[11px] min-h-[36px] focus:ring-1 focus:ring-brand-500/50 focus:border-brand-600 transition-shadow duration-150"
               placeholder="Search by name, badge, rank, department..." aria-label="Search personnel by name, badge, rank, or department"
@@ -912,13 +988,14 @@ export default function PersonnelPage() {
           const compliancePct = officerCreds.length > 0 ? Math.round((validCreds / officerCreds.length) * 100) : 100;
           const isSelected = selectedOfficer?.id === officer.id;
           const yrsOfService = officer.hire_date
-            ? Math.max(0, Math.floor((Date.now() - new Date(officer.hire_date).getTime()) / (365.25 * 86400000)))
+            ? Math.max(0, Math.floor((Date.now() - parseTimestamp(officer.hire_date).getTime()) / (365.25 * 86400000)))
             : null;
 
           return (
             <div
               key={officer.id}
               onClick={() => { setSelectedOfficer(officer); setDetailTab('profile'); }}
+              onContextMenu={(e) => openMenu(e, buildOfficerMenu(officer))}
               className={`panel-beveled mb-1 mx-2 p-3 cursor-pointer transition-all duration-200 border-l-3 focus-visible:ring-1 focus-visible:ring-brand-500/50 focus-visible:outline-none ${
                 isSelected
                   ? 'bg-brand-900/20 border-l-brand-500 shadow-md shadow-brand-900/20'
@@ -1053,13 +1130,33 @@ export default function PersonnelPage() {
       onClose={() => setSelectedOfficer(null)}
     />
   ) : (
-    <PersonnelAnalyticsDashboard
-      officers={officers}
-      credentials={credentials}
-      timeEntries={timeEntries}
-      training={training}
-    />
+    // Light prompt — at-a-glance analytics now live on the Command tab
+    <div className="flex-1 flex flex-col items-center justify-center p-8 text-center">
+      <div className="w-16 h-16 rounded-full border border-rmpg-700 flex items-center justify-center bg-surface-sunken mb-4">
+        <Users className="w-8 h-8 text-rmpg-600" />
+      </div>
+      <p className="text-sm text-rmpg-300 font-medium">Select an officer</p>
+      <p className="text-[11px] text-rmpg-500 mt-1 max-w-[260px]">
+        Choose someone from the roster to view their profile, credentials, schedule, and records.
+      </p>
+      <button type="button" onClick={() => setActiveTab('command')} className="toolbar-btn mt-4">
+        View Command Dashboard
+      </button>
+    </div>
   );
+
+  // Dashboard widget → drill-down navigation. When an officer is supplied,
+  // open them in the roster master-detail; otherwise just switch tabs.
+  const navigateTo = (tab: MainTab, officer?: OfficerWithStatus) => {
+    if (officer) {
+      setActiveTab('roster');
+      setSelectedOfficer(officer);
+      setDetailTab('profile');
+    } else {
+      setActiveTab(tab);
+      if (tab !== 'roster') setSelectedOfficer(null);
+    }
+  };
 
   // ----------------------------------------------------------
   // Render
@@ -1089,7 +1186,8 @@ export default function PersonnelPage() {
         <PrintButton />
       </PanelTitleBar>
 
-      {/* Command Status Strip — two-row layout */}
+      {/* Command Status Strip — hidden on the Command tab, whose dashboard owns the KPIs */}
+      {activeTab !== 'command' && (
       <div className="border-b border-rmpg-700" role="group" aria-label="Personnel statistics">
         {/* Row 1: Operational stats */}
         <div className={`panel-inset ${isMobile ? 'grid grid-cols-2 gap-px' : 'flex items-stretch'}`}>
@@ -1125,6 +1223,7 @@ export default function PersonnelPage() {
           </div>
         )}
       </div>
+      )}
 
       {/* Tab Navigation */}
       <div className="tab-bar overflow-x-auto scrollbar-dark" role="tablist" aria-label="Personnel management tabs" style={{ scrollbarWidth: 'none' }}>
@@ -1180,6 +1279,20 @@ export default function PersonnelPage() {
           </div>
         )}
 
+        {/* Command Dashboard — landing view */}
+        {!loading && !error && activeTab === 'command' && (
+          <PersonnelDashboard
+            officers={officers}
+            credentials={credentials}
+            timeEntries={timeEntries}
+            training={training}
+            schedules={schedules}
+            coverageGaps={coverageGaps}
+            onNavigate={navigateTo}
+            onSelectOfficer={officer => navigateTo('roster', officer)}
+          />
+        )}
+
         {/* Roster Tab with Split Panel */}
         {!loading && !error && activeTab === 'roster' && (
           <SplitPanel
@@ -1188,6 +1301,8 @@ export default function PersonnelPage() {
             minLeftPx={300}
             minRightPx={400}
             rightVisible={true}
+            leftLabel="Roster"
+            rightLabel="Officer"
             left={rosterList}
             right={detailPanel}
           />

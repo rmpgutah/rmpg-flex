@@ -1,3 +1,4 @@
+import React from "react";
 // ============================================================
 // RMPG Flex — Disposition Prompt
 // Compact inline panel that requires a disposition code before
@@ -7,6 +8,7 @@
 
 import { useState } from 'react';
 import { AlertTriangle, X, Check, FileText } from 'lucide-react';
+import { DEFAULT_DISPOSITIONS } from '../constants/dispositionCodes';
 
 interface DispositionCode {
   code: string;
@@ -21,7 +23,12 @@ interface DispositionPromptProps {
   onCancel: () => void;
 }
 
-export default function DispositionPrompt({
+// Built-in fallback when the admin-configured codes haven't loaded (or the
+// prop is empty). Uses the single short-coded source of truth so the Clear-call
+// dropdown matches the inline edit dropdown exactly (same codes + descriptions).
+const FALLBACK_DISPOSITIONS: DispositionCode[] = DEFAULT_DISPOSITIONS;
+
+function DispositionPrompt({
   callNumber,
   dispositionCodes,
   onConfirm,
@@ -29,6 +36,7 @@ export default function DispositionPrompt({
 }: DispositionPromptProps) {
   const [selected, setSelected] = useState('');
   const [createIncident, setCreateIncident] = useState(false);
+  const codes = dispositionCodes.length > 0 ? dispositionCodes : FALLBACK_DISPOSITIONS;
 
   // 39: role="alert" for screen reader announcement; 40: aria-live polite
   return (
@@ -63,7 +71,7 @@ export default function DispositionPrompt({
 
       <div className="flex items-center gap-2">
         {/* 44: Focus ring on select input matching design system */}
-        <select
+        <select id="ff-dispositionprompt-0"
           value={selected}
           onChange={(e) => setSelected(e.target.value)}
           className="flex-1 bg-surface-base border border-rmpg-600 text-white text-[10px] px-2 py-1 font-mono focus:border-amber-500 focus:ring-1 focus:ring-amber-500/30 focus:outline-none transition-colors"
@@ -71,7 +79,7 @@ export default function DispositionPrompt({
           autoFocus
         >
           <option value="">— Select Disposition Code —</option>
-          {dispositionCodes.map((d) => (
+          {codes.map((d) => (
             <option key={d.code} value={d.code}>
               {d.code} — {d.description}
             </option>
@@ -98,7 +106,7 @@ export default function DispositionPrompt({
 
       {/* Create Incident Report checkbox — Spillman Flex call promotion */}
       <label className="flex items-center gap-1.5 mt-2 cursor-pointer group">
-        <input
+        <input id="ff-dispositionprompt-1"
           type="checkbox"
           checked={createIncident}
           onChange={(e) => setCreateIncident(e.target.checked)}
@@ -112,3 +120,5 @@ export default function DispositionPrompt({
     </div>
   );
 }
+
+export default React.memo(DispositionPrompt);

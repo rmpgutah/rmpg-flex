@@ -7,6 +7,8 @@
 import React, { useState, useRef, useCallback, useEffect } from 'react';
 import { X, Terminal, Loader2 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
+import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
+import { useMenuActions } from '../utils/contextMenuActions';
 import {
   formatPersonResponse,
   formatVehicleResponse,
@@ -19,6 +21,7 @@ import {
   formatArrestResponse,
   formatSkipTracerResponse,
   formatNoRecord,
+  formatServiceUnavailable,
   getNcicLineClass,
   type NcicPerson,
   type NcicVehicle,
@@ -49,7 +52,7 @@ const QUICK_QUERIES = [
 interface NcicQueryPanelProps {
   isOpen: boolean;
   onClose: () => void;
-  initialQuery?: { type: 'person' | 'vehicle' | 'warrant'; query: string } | null;
+  initialQuery?: { type: 'person' | 'vehicle' | 'warrant' | 'xref' | 'phone' | 'address' | 'dl' | 'ofac'; query: string } | null;
   embedded?: boolean;
 }
 
@@ -106,6 +109,15 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
   const inputRef = useRef<HTMLInputElement>(null);
   const queryIdCounterRef = useRef(0);
 
+  // ── Right-click context menu (per result entry) ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+  const buildEntryMenu = (entry: QueryEntry): ContextMenuItem[] => [
+    m.copy('Copy command', entry.command),
+    m.copy('Copy response', entry.response),
+    m.copyId(entry.id),
+  ];
+
   // Auto-focus input when panel opens
   useEffect(() => {
     if (isOpen) {
@@ -116,7 +128,7 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
   // Process initial query from command line
   useEffect(() => {
     if (initialQuery && isOpen) {
-      const cmdMap: Record<string, string> = { person: 'QH', vehicle: 'QV', warrant: 'QW', dl: 'QD', ofac: 'QO' };
+      const cmdMap: Record<string, string> = { person: 'QH', vehicle: 'QV', warrant: 'QW', dl: 'QD', ofac: 'QO', xref: 'QX', phone: 'QT', address: 'QA' };
       const cmd = `${cmdMap[initialQuery.type] || 'QH'} ${initialQuery.query}`;
       runQuery(cmd);
     }
@@ -373,9 +385,11 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
             ), 'SKIP'),
           ]);
 
-          // Collect results, track errors
+          // Collect results, track errors. Local data sources (person/warrant/
+          // arrest) failing is a real ERROR; external services (DL/OFAC/skip-
+          // trace APIs) being unavailable is a soft SERVICE NOTE, not a fault.
           const xref: CrossReferenceResults = {
-            persons: [], directWarrants: [], dlSubjects: [], ofacSubjects: [], arrestRecords: [], skipTracerPeople: [], errors: [],
+            persons: [], directWarrants: [], dlSubjects: [], ofacSubjects: [], arrestRecords: [], skipTracerPeople: [], errors: [], serviceWarnings: [],
           };
 
           if (personResult.status === 'fulfilled') {
@@ -399,13 +413,13 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
           if (dlResult.status === 'fulfilled') {
             xref.dlSubjects = dlResult.value.subjects || [];
           } else {
-            xref.errors.push('DL QUERY FAILED');
+            xref.serviceWarnings!.push('DRIVER LICENSE SERVICE UNAVAILABLE');
           }
 
           if (ofacResult.status === 'fulfilled') {
             xref.ofacSubjects = ofacResult.value.subjects || [];
           } else {
-            xref.errors.push('OFAC QUERY FAILED');
+            xref.serviceWarnings!.push('OFAC SANCTIONS SERVICE UNAVAILABLE');
           }
 
           if (arrestResult.status === 'fulfilled') {
@@ -417,7 +431,7 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
           if (skipResult.status === 'fulfilled') {
             xref.skipTracerPeople = skipResult.value.PeopleDetails || [];
           } else {
-            xref.errors.push('SKIP TRACKER QUERY FAILED');
+            xref.serviceWarnings!.push('SKIP TRACER SERVICE UNAVAILABLE');
           }
 
           // ── Cross-load: enrich empty sections from person records ──
@@ -733,14 +747,27 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
         hasHit,
       }]);
     } catch (err: any) {
+      // External paid-API commands (skip-trace / DL / OFAC / background) being
+      // down or unconfigured is an advisory, not a system fault — render an
+      // amber SERVICE NOTE instead of a red ERROR. Local-DB commands still
+      // surface a real error.
+      const EXTERNAL_SOURCES: Record<string, string> = {
+        QS: 'SKIP TRACKER', QD: "DRIVER'S LICENSE", QL: "DRIVER'S LICENSE",
+        QO: 'OFAC SANCTIONS', QB: 'BACKGROUND CHECK',
+      };
+      const source = EXTERNAL_SOURCES[verb];
+      const reason = /timeout/i.test(err?.message || '') ? 'REQUEST TIMED OUT' : 'SERVICE UNAVAILABLE';
+      const response = source
+        ? formatServiceUnavailable(source, queryText, reason)
+        : `ERROR: ${err.message || 'Query failed'}`;
       setEntries(prev => [...prev, {
         id: ++queryIdCounterRef.current,
         timestamp,
         command,
-        response: `ERROR: ${err.message || 'Query failed'}`,
+        response,
         hasHit: false,
       }]);
-      playTone('error');
+      playTone(source ? 'info' : 'error');
     } finally {
       setLoading(false);
     }
@@ -794,7 +821,7 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
             </div>
           )}
           {entries.map(entry => (
-            <div key={entry.id} className="ncic-entry">
+            <div key={entry.id} className="ncic-entry" onContextMenu={(e) => openMenu(e, buildEntryMenu(entry))}>
               <div className="ncic-entry-cmd">
                 <span className="ncic-timestamp">[{entry.timestamp}]</span>
                 <span className="ncic-cmd-text">&gt; {entry.command}</span>
@@ -814,7 +841,7 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
         {/* Input bar */}
         <div className="ncic-input-row">
           <span className="ncic-prompt">&gt;</span>
-          <input
+          <input id="ff-ncicquerypanel-0"
             ref={inputRef}
             type="text"
             className="ncic-input"
@@ -875,7 +902,7 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
           )}
 
           {entries.map(entry => (
-            <div key={entry.id} className="ncic-entry">
+            <div key={entry.id} className="ncic-entry" onContextMenu={(e) => openMenu(e, buildEntryMenu(entry))}>
               <div className="ncic-entry-cmd">
                 <span className="ncic-timestamp">[{entry.timestamp}]</span>
                 <span className="ncic-cmd-text">&gt; {entry.command}</span>
@@ -897,7 +924,7 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
         {/* Input bar */}
         <div className="ncic-input-row">
           <span className="ncic-prompt">&gt;</span>
-          <input
+          <input id="ff-ncicquerypanel-1"
             ref={inputRef}
             type="text"
             className="ncic-input"

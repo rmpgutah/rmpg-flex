@@ -11,6 +11,8 @@
 import { useRef, useState, useEffect, useMemo, useCallback } from 'react';
 import { X, Maximize2, Minimize2, Edit2 } from 'lucide-react';
 import type { DashCamVideo } from '../types';
+import { mapboxgl } from '../utils/mapboxLoader';
+import { parseTimestamp } from '../utils/dateUtils';
 
 // ── GPS Track Types ─────────────────────────────────────────
 
@@ -109,7 +111,6 @@ export default function DashCamVideoPlayer({ isOpen, onClose, video, apiBase, ge
   const containerRef = useRef<HTMLDivElement>(null);
   const [liveAddress, setLiveAddress] = useState<string | null>(null);
   const lastGeocodedPos = useRef<{ lat: number; lng: number } | null>(null);
-  const geocoderRef = useRef<google.maps.Geocoder | null>(null);
   const geocodeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const gpsTrack = useMemo(() => parseGpsTrack(video?.cpg_gps_track), [video?.cpg_gps_track]);
@@ -121,21 +122,23 @@ export default function DashCamVideoPlayer({ isOpen, onClose, video, apiBase, ge
     const key = cacheKey(lat, lng);
     const cached = geocodeCache.get(key);
     if (cached) { setLiveAddress(cached); lastGeocodedPos.current = { lat, lng }; return; }
-    if (typeof google === 'undefined' || !google.maps) return;
-    if (!geocoderRef.current) geocoderRef.current = new google.maps.Geocoder();
-    geocoderRef.current.geocode({ location: { lat, lng } }, (results, status) => {
-      if (status === 'OK' && results?.[0]) {
-        const c = results[0].address_components;
-        const num = c?.find(x => x.types.includes('street_number'))?.short_name || '';
-        const route = c?.find(x => x.types.includes('route'))?.short_name || '';
-        const city = c?.find(x => x.types.includes('locality'))?.short_name || '';
-        let addr = num && route ? `${num} ${route}` : route || (results[0].formatted_address || '').split(',')[0];
-        if (city) addr += `, ${city}`;
-        geocodeCacheSet(key, addr);
-        setLiveAddress(addr);
-        lastGeocodedPos.current = { lat, lng };
-      }
-    });
+    const token = (mapboxgl as any)?.accessToken || '';
+    if (!token) return;
+    fetch(`https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?access_token=${token}&types=address&limit=1`)
+      .then(res => res.json())
+      .then(data => {
+        const feature = data.features?.[0];
+        if (feature) {
+          const addr = feature.place_name || feature.text || '';
+          const city = feature.context?.find((c: any) => c.id?.startsWith('place'))?.text || '';
+          let shortAddr = addr.split(',')[0];
+          if (city) shortAddr += `, ${city}`;
+          geocodeCacheSet(key, shortAddr);
+          setLiveAddress(shortAddr);
+          lastGeocodedPos.current = { lat, lng };
+        }
+      })
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -162,7 +165,7 @@ export default function DashCamVideoPlayer({ isOpen, onClose, video, apiBase, ge
   // ── Format helpers ──────────────────────────────────────────
 
   const formatHudTime = (seconds: number) => {
-    const d = video.recorded_at ? new Date(video.recorded_at) : new Date();
+    const d = video.recorded_at ? parseTimestamp(video.recorded_at) : new Date();
     const p = new Date(d.getTime() + seconds * 1000);
     return p.toLocaleString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).replace(',', '');
   };
@@ -379,7 +382,7 @@ export default function DashCamVideoPlayer({ isOpen, onClose, video, apiBase, ge
             <span className="px-2 text-[9px] font-mono uppercase tracking-wider ml-auto">
               <span className="text-white/15 mr-1">REC</span>
               <span className="text-white/50">
-                {video.recorded_at ? new Date(video.recorded_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '--'}
+                {video.recorded_at ? parseTimestamp(video.recorded_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '--'}
               </span>
             </span>
           </div>

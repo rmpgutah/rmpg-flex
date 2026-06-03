@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { useToast } from '../../../components/ToastProvider';
+import { parseTimestamp } from '../../../utils/dateUtils';
 
 interface DashboardData {
   total_active: number;
@@ -40,7 +41,10 @@ interface LeaveBalances {
   personal_used: number;
 }
 
-const MANAGER_ROLES = ['admin', 'manager', 'supervisor'];
+// Must match the server tier (hr.ts MANAGER_ROLES includes human_resources) —
+// omitting it gave HR users the officer view while the server returned
+// manager-scoped data.
+const MANAGER_ROLES = ['admin', 'manager', 'supervisor', 'human_resources'];
 
 function activityColor(type: string): string {
   switch (type) {
@@ -68,7 +72,7 @@ function activityIcon(type: string) {
 }
 
 function formatRelativeTime(dateStr: string): string {
-  const diff = Date.now() - new Date(dateStr).getTime();
+  const diff = Date.now() - parseTimestamp(dateStr).getTime();
   const mins = Math.floor(diff / 60000);
   if (mins < 1) return 'just now';
   if (mins < 60) return `${mins}m ago`;
@@ -260,8 +264,10 @@ function OfficerDashboard({
 
   useEffect(() => {
     const year = new Date().getFullYear();
-    apiFetch<LeaveBalances>(`/hr/leave/balances?year=${year}`)
-      .then(setBalances)
+    // /hr/leave/balances returns an ARRAY (one row per officer; one element for
+    // an officer's own view). Reading it as an object gave NaN balances.
+    apiFetch<LeaveBalances[]>(`/hr/leave/balances?year=${year}`)
+      .then((rows) => setBalances(Array.isArray(rows) ? (rows[0] ?? null) : rows))
       .catch(() => setBalances(null))
       .finally(() => setLoading(false));
   }, [userId]);

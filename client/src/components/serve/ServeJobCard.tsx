@@ -20,7 +20,7 @@ import {
   FileWarning,
 } from 'lucide-react';
 import type { ServeJob, ServeJobLinkedCall } from '../../types';
-import { safeDateStr } from '../../utils/dateUtils';
+import { safeDateStr, parseTimestamp } from '../../utils/dateUtils';
 
 interface ServeJobCardProps {
   job: ServeJob;
@@ -101,14 +101,14 @@ export default React.memo(function ServeJobCard({
 }: ServeJobCardProps) {
   const isDueSoon = useMemo(() => {
     if (!job.deadline) return false;
-    const deadlineMs = new Date(job.deadline).getTime();
+    const deadlineMs = parseTimestamp(job.deadline).getTime();
     const now = Date.now();
     return deadlineMs - now <= 48 * 60 * 60 * 1000 && deadlineMs > now;
   }, [job.deadline]);
 
   const isOverdue = useMemo(() => {
     if (!job.deadline) return false;
-    return new Date(job.deadline).getTime() <= Date.now();
+    return parseTimestamp(job.deadline).getTime() <= Date.now();
   }, [job.deadline]);
 
   const fullAddress = [job.recipient_address, job.recipient_city, job.recipient_state, job.recipient_zip]
@@ -186,7 +186,7 @@ export default React.memo(function ServeJobCard({
 
           {/* Enhancement 46: Deadline countdown */}
           {isDueSoon && job.deadline && (() => {
-            const msLeft = new Date(job.deadline).getTime() - Date.now();
+            const msLeft = parseTimestamp(job.deadline).getTime() - Date.now();
             const hrsLeft = Math.floor(msLeft / 3600000);
             const minsLeft = Math.floor((msLeft % 3600000) / 60000);
             return (
@@ -203,7 +203,7 @@ export default React.memo(function ServeJobCard({
 
           {/* Status label */}
           <span className="text-[9px] font-mono text-rmpg-400 ml-auto">
-            {job.status.replace('_', ' ').toUpperCase()}
+            {job.status.replace(/_/g, ' ').toUpperCase()}
           </span>
         </div>
       </div>
@@ -319,7 +319,7 @@ export default React.memo(function ServeJobCard({
                       {safeDateStr(attempt.attempt_at)}
                     </span>
                     <span className="text-[10px] font-mono text-amber-300 flex-shrink-0 w-14">
-                      {attempt.attempt_type}
+                      {formatEnumValue(attempt.attempt_type)}
                     </span>
                     <span className={`text-[10px] font-mono flex-shrink-0 ${
                       attempt.result === 'served' ? 'text-green-400' : 'text-red-400'
@@ -347,12 +347,12 @@ export default React.memo(function ServeJobCard({
 
       {/* Action buttons row */}
       <div className="flex items-center border-t border-rmpg-700/40 divide-x divide-rmpg-700/40">
-        {/* Enhancement 49: Google Maps directions link */}
+        {/* Directions link */}
         <button type="button"
-          onClick={(e) => { e.stopPropagation(); window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(fullAddress)}`, '_blank', 'noopener,noreferrer'); }}
+          onClick={(e) => { e.stopPropagation(); window.open(`https://www.openstreetmap.org/directions?to=${encodeURIComponent(fullAddress)}`, '_blank', 'noopener,noreferrer'); }}
           className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold text-amber-400 hover:bg-amber-900/30 transition-colors duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50 focus:bg-amber-900/20"
-          title="Open in Google Maps"
-          aria-label={`Open Google Maps to ${job.recipient_name}`}
+          title="Open in Maps"
+          aria-label={`Open Maps to ${job.recipient_name}`}
         >
           <MapPin className="w-3 h-3" />
           Map

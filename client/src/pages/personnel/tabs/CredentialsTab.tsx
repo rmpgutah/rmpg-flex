@@ -9,6 +9,9 @@ import {
 import type { Credential } from '../../../types';
 import { CREDENTIAL_STATUS_COLORS } from '../utils/personnelConstants';
 import { toDisplayLabel } from '../../../utils/formatters';
+import { parseTimestamp } from '../../../utils/dateUtils';
+import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
+import { useMenuActions } from '../../../utils/contextMenuActions';
 
 interface Props {
   credentials: Credential[];
@@ -29,7 +32,7 @@ export default function CredentialsTab({ credentials, onAddCredential, onEditCre
 
   function formatDate(dateStr?: string): string {
     if (!dateStr) return '-';
-    return new Date(dateStr.includes('T') ? dateStr : dateStr + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+    return parseTimestamp(dateStr).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
   }
 
   function statusLabel(status: string): string {
@@ -64,6 +67,19 @@ export default function CredentialsTab({ credentials, onAddCredential, onEditCre
     { label: 'Expired', value: stats.expired, color: 'text-red-400', bgClass: 'bg-surface-base', border: 'border-red-700/30', topBorder: 'border-t-red-500' },
   ];
 
+  // Right-click context menu
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+  const buildRowMenu = (cred: Credential): ContextMenuItem[] => [
+    m.action('Edit credential', () => onEditCredential(cred), { icon: <Edit3 size={12} /> }),
+    m.separator(),
+    m.copy('Copy credential #', cred.credential_number),
+    m.copy('Copy officer', cred.officer_name),
+    m.copyId(cred.id),
+    m.separator(),
+    m.action('Delete credential', () => onDeleteCredential(cred.id), { icon: <Trash2 size={12} />, danger: true }),
+  ];
+
   // Set document title
   useEffect(() => { document.title = 'Personnel - Credentials \u2014 RMPG Flex'; }, []);
 
@@ -74,6 +90,7 @@ export default function CredentialsTab({ credentials, onAddCredential, onEditCre
         <div className="flex items-center gap-2">
           <Award className="w-4 h-4 text-brand-400" />
           <h2 className="text-sm font-bold text-rmpg-200 uppercase tracking-wider">Credentials</h2>
+          <span className="text-[11px] font-mono text-rmpg-500">({credentials.length})</span>
         </div>
         <button type="button" onClick={onAddCredential} className="toolbar-btn-primary text-[10px] px-3 py-1.5 flex items-center gap-1.5">
           <Plus className="w-3 h-3" />
@@ -117,10 +134,10 @@ export default function CredentialsTab({ credentials, onAddCredential, onEditCre
       {(() => {
         const now = Date.now();
         const withExpiry = credentials.filter(c => c.expiry_date);
-        const expired = withExpiry.filter(c => new Date(c.expiry_date!).getTime() < now);
-        const in30 = withExpiry.filter(c => { const d = new Date(c.expiry_date!).getTime(); return d >= now && d <= now + 30*86400000; });
-        const in60 = withExpiry.filter(c => { const d = new Date(c.expiry_date!).getTime(); return d > now + 30*86400000 && d <= now + 60*86400000; });
-        const in90 = withExpiry.filter(c => { const d = new Date(c.expiry_date!).getTime(); return d > now + 60*86400000 && d <= now + 90*86400000; });
+        const expired = withExpiry.filter(c => parseTimestamp(c.expiry_date!).getTime() < now);
+        const in30 = withExpiry.filter(c => { const d = parseTimestamp(c.expiry_date!).getTime(); return d >= now && d <= now + 30*86400000; });
+        const in60 = withExpiry.filter(c => { const d = parseTimestamp(c.expiry_date!).getTime(); return d > now + 30*86400000 && d <= now + 60*86400000; });
+        const in90 = withExpiry.filter(c => { const d = parseTimestamp(c.expiry_date!).getTime(); return d > now + 60*86400000 && d <= now + 90*86400000; });
         if (expired.length === 0 && in30.length === 0 && in60.length === 0 && in90.length === 0) return null;
         return (
           <div className="panel-beveled p-3 bg-surface-base border-l-2 border-l-amber-500">
@@ -180,6 +197,7 @@ export default function CredentialsTab({ credentials, onAddCredential, onEditCre
                 <tr
                   key={cred.id}
                   className={cred.status === 'expired' ? 'bg-red-900/10' : ''}
+                  onContextMenu={(e) => openMenu(e, buildRowMenu(cred))}
                 >
                   <td>
                     <span className="text-xs text-rmpg-200">{cred.officer_name}</span>

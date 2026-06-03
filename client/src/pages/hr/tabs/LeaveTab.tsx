@@ -7,19 +7,23 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   CalendarDays, Plus, Loader2, X, Check, Clock,
-  Palmtree, Thermometer, User, Filter,
+  Palmtree, Thermometer, User, Filter, Pencil, Trash2,
 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { useToast } from '../../../components/ToastProvider';
 import { useAuth } from '../../../context/AuthContext';
+import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
+import { useMenuActions } from '../../../utils/contextMenuActions';
 import { LEAVE_TYPE_COLORS, LEAVE_STATUS_COLORS } from '../utils/hrConstants';
 import type { LeaveRequest, LeaveBalance } from '../../../types';
 import LeaveRequestModal, { type LeaveFormData } from '../modals/LeaveRequestModal';
 import ExportButton from '../../../components/ExportButton';
+import { parseTimestamp } from '../../../utils/dateUtils';
 
 // ─── Helpers ────────────────────────────────────────────────
 
-const MANAGER_ROLES = ['admin', 'manager', 'supervisor'];
+// Must match server tier (hr.ts MANAGER_ROLES includes human_resources).
+const MANAGER_ROLES = ['admin', 'manager', 'supervisor', 'human_resources'];
 
 const LEAVE_TYPE_LABELS: Record<string, string> = {
   vacation: 'Vacation',
@@ -32,13 +36,13 @@ const LEAVE_TYPE_LABELS: Record<string, string> = {
 
 function formatDate(dateStr: string): string {
   if (!dateStr) return '';
-  const d = new Date(dateStr.includes('T') ? dateStr : dateStr + 'T00:00:00');
+  const d = parseTimestamp(dateStr);
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 function formatDateTime(dateStr: string): string {
   if (!dateStr) return '';
-  const d = new Date(dateStr.includes('T') ? dateStr : dateStr + 'T00:00:00');
+  const d = parseTimestamp(dateStr);
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' ' +
     d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 }
@@ -118,6 +122,10 @@ export default function LeaveTab() {
   const userId = user?.id ?? '';
   const isManager = MANAGER_ROLES.includes(userRole);
   const isGodMode = userRole === 'admin'; // Admin God Mode — unrestricted access
+
+  // ── Right-click context menu ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
 
   const [requests, setRequests] = useState<LeaveRequest[]>([]);
   const [balances, setBalances] = useState<LeaveBalance[]>([]);
@@ -201,7 +209,7 @@ export default function LeaveTab() {
       await apiFetch(`/hr/leave/${id}/approve`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ review_notes: reviewNotes[id] || '' }),
+        body: JSON.stringify({}),
       });
       addToast('Leave request approved', 'success');
       setReviewNotes(prev => { const n = { ...prev }; delete n[id]; return n; });
@@ -216,7 +224,7 @@ export default function LeaveTab() {
       await apiFetch(`/hr/leave/${id}/deny`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ review_notes: reviewNotes[id] || '' }),
+        body: JSON.stringify({ denial_reason: reviewNotes[id] || '' }),
       });
       addToast('Leave request denied', 'success');
       setReviewNotes(prev => { const n = { ...prev }; delete n[id]; return n; });
@@ -224,6 +232,38 @@ export default function LeaveTab() {
     } catch (err: any) {
       addToast(err?.message || 'Failed to deny request', 'error');
     }
+  };
+
+  // Shared open-for-edit so row buttons and the right-click menu target the same request.
+  const openEditRequest = (req: LeaveRequest) => {
+    setEditRequest(req);
+    setModalOpen(true);
+  };
+
+  const buildLeaveMenu = (req: LeaveRequest): ContextMenuItem[] => {
+    const own = String(req.officer_id) === String(userId);
+    const isPending = req.status === 'pending';
+    const canEdit = isGodMode || (isPending && own);
+    const canCancel = isPending && (own || isGodMode);
+    const officerName = req.officer_name || `Officer #${req.officer_id}`;
+    return [
+      ...(isManager && isPending
+        ? [
+            m.action('Approve request', () => handleApprove(req.id), { icon: <Check size={12} /> }),
+            m.action('Deny request', () => handleDeny(req.id), { icon: <X size={12} />, danger: true }),
+            m.separator(),
+          ]
+        : []),
+      ...(canEdit ? [m.action('Edit request', () => openEditRequest(req), { icon: <Pencil size={12} /> })] : []),
+      m.copy('Copy officer name', officerName),
+      m.copyId(req.id),
+      ...(canCancel
+        ? [
+            m.separator(),
+            m.action('Cancel request', () => handleCancel(req.id), { icon: <Trash2 size={12} />, danger: true }),
+          ]
+        : []),
+    ];
   };
 
   // ─── Derived Data ───────────────────────────────────────
@@ -328,6 +368,7 @@ export default function LeaveTab() {
                 requests.map((req, i) => (
                   <tr
                     key={req.id}
+                    onContextMenu={(e) => openMenu(e, buildLeaveMenu(req))}
                     className={`border-b border-[#2b2b2b] transition-colors duration-150 hover:brightness-110 ${i % 2 === 0 ? 'bg-[#141414]' : 'bg-[#171717]'}`}
                   >
                     <td className="px-3 py-2 text-white"><TypePill type={req.type} /></td>
@@ -341,7 +382,7 @@ export default function LeaveTab() {
                       {(req.status === 'pending' || isGodMode) && (
                         <div className="flex items-center justify-end gap-1">
                           <button type="button"
-                            onClick={() => { setEditRequest(req); setModalOpen(true); }}
+                            onClick={() => openEditRequest(req)}
                             className="toolbar-btn text-xs"
                             title="Edit"
                           >
@@ -395,6 +436,7 @@ export default function LeaveTab() {
             {pendingRequests.map(req => (
               <div
                 key={req.id}
+                onContextMenu={(e) => openMenu(e, buildLeaveMenu(req))}
                 className="bg-[#141414] border border-[#2b2b2b] rounded-sm p-4 space-y-3"
               >
                 <div className="flex items-start justify-between">
@@ -416,7 +458,7 @@ export default function LeaveTab() {
                   </p>
                 )}
                 <div className="flex items-center gap-2">
-                  <input
+                  <input id="ff-leavetab-0"
                     type="text"
                     placeholder="Notes (optional)"
                     value={reviewNotes[req.id] || ''}
@@ -506,7 +548,7 @@ export default function LeaveTab() {
 
         {/* Filter Bar */}
         <div className="flex items-center gap-2 flex-wrap">
-          <select
+          <select id="ff-leavetab-1"
             value={filterOfficer}
             onChange={e => setFilterOfficer(e.target.value)}
             className="bg-[#0c0c0c] border border-[#2b2b2b] text-white text-xs px-2 py-1.5 rounded-sm focus:outline-none focus:border-brand-500"
@@ -516,7 +558,7 @@ export default function LeaveTab() {
               <option key={o.id} value={o.id}>{o.name}</option>
             ))}
           </select>
-          <select
+          <select id="ff-leavetab-2"
             value={filterStatus}
             onChange={e => setFilterStatus(e.target.value)}
             className="bg-[#0c0c0c] border border-[#2b2b2b] text-white text-xs px-2 py-1.5 rounded-sm focus:outline-none focus:border-brand-500"
@@ -527,7 +569,7 @@ export default function LeaveTab() {
             <option value="denied">Denied</option>
             <option value="cancelled">Cancelled</option>
           </select>
-          <select
+          <select id="ff-leavetab-3"
             value={filterType}
             onChange={e => setFilterType(e.target.value)}
             className="bg-[#0c0c0c] border border-[#2b2b2b] text-white text-xs px-2 py-1.5 rounded-sm focus:outline-none focus:border-brand-500"
@@ -573,6 +615,7 @@ export default function LeaveTab() {
                 requests.map((req, i) => (
                   <tr
                     key={req.id}
+                    onContextMenu={(e) => openMenu(e, buildLeaveMenu(req))}
                     className={`border-b border-[#2b2b2b] transition-colors duration-150 hover:brightness-110 ${i % 2 === 0 ? 'bg-[#141414]' : 'bg-[#171717]'}`}
                   >
                     <td className="px-3 py-2 text-white">{req.officer_name || `#${req.officer_id}`}</td>
@@ -587,7 +630,7 @@ export default function LeaveTab() {
                       <div className="flex items-center justify-end gap-1">
                         {isGodMode && (
                           <button type="button"
-                            onClick={() => { setEditRequest(req); setModalOpen(true); }}
+                            onClick={() => openEditRequest(req)}
                             className="toolbar-btn text-xs"
                             title="Admin: Edit leave request"
                           >

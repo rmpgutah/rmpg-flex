@@ -21,7 +21,9 @@ export function mapDbCall(row: any): CallForService {
     }
   }
 
-  // assigned_unit_ids -> assigned_units (call signs)
+  // assigned_unit_ids (JSON array of numeric unit IDs) -> assigned_units as
+  // stringified IDs. NOTE: these are unit IDs, not call signs — the UI resolves
+  // them to call signs separately against the units list.
   let assignedUnits: string[] = [];
   if (row.assigned_unit_ids) {
     try {
@@ -35,7 +37,15 @@ export function mapDbCall(row: any): CallForService {
     call_number: row.call_number || '',
     incident_type: row.incident_type || 'other',
     priority: row.priority || 'P3',
-    status: row.status || 'pending',
+    // Hold is stored server-side as calls_for_service_ext.held_at, NOT a status
+    // enum — the live `status` CHECK constraint has no 'on_hold' value (see
+    // src/routes/dispatch/calls.ts /:id/hold). The entire dispatch UI keys "held"
+    // off status === 'on_hold', so synthesize it here from held_at while the call
+    // is still active. A terminal call (cleared/closed/cancelled/archived) keeps
+    // its real status even if a stale held_at lingers.
+    status: (row.held_at && !['cleared', 'closed', 'cancelled', 'archived'].includes(row.status))
+      ? 'on_hold'
+      : (row.status || 'pending'),
     caller_name: row.caller_name || undefined,
     caller_phone: row.caller_phone || undefined,
     caller_relationship: row.caller_relationship || undefined,
@@ -45,6 +55,13 @@ export function mapDbCall(row: any): CallForService {
     longitude: row.longitude ?? null,
     property_id: row.property_id ? String(row.property_id) : undefined,
     property_name: row.property_name || undefined,
+    // Premise intel joined from the linked property (GET /dispatch/calls/:id).
+    // Surfaced to the PSO in the Info tab so post-orders / hazard warnings on
+    // the address are visible before arrival.
+    property_address: row.property_address || undefined,
+    gate_code: row.gate_code || undefined,
+    post_orders: row.post_orders || undefined,
+    hazard_notes: row.hazard_notes || undefined,
     client_id: row.client_id ? String(row.client_id) : undefined,
     client_name: row.client_name || undefined,
     description: row.description || '',
@@ -167,12 +184,32 @@ export function mapDbUnit(row: any): Unit {
     badge_number: row.badge_number || undefined,
     status: row.status || 'available',
     current_call_id: row.current_call_id ? String(row.current_call_id) : undefined,
-    current_call_number: row.call_number || undefined,
+    // GET /dispatch/units aliases the joined call number as current_call_number
+    // (`c.call_number AS current_call_number`); reading row.call_number left the
+    // board's Assignment column permanently blank. Keep call_number as a fallback.
+    current_call_number: row.current_call_number || row.call_number || undefined,
     location: row.current_call_location || row.location || undefined,
     latitude: row.latitude,
     longitude: row.longitude,
     vehicle: row.vehicle || row.vehicle_id || undefined,
+    // Setup fields. capabilities is a JSON-text column — parse defensively to
+    // an array so the edit modal can pre-fill the multi-select.
+    capabilities: (() => {
+      const raw = row.capabilities;
+      if (Array.isArray(raw)) return raw.map(String);
+      if (typeof raw === 'string' && raw.trim()) {
+        try { const p = JSON.parse(raw); return Array.isArray(p) ? p.map(String) : []; } catch { return []; }
+      }
+      return [];
+    })(),
+    assigned_beat: row.assigned_beat || undefined,
+    audio_mode: row.audio_mode || undefined,
     last_status_change: row.last_status_change || '',
+    // Spillman EMERGENCY overlay — drives the flashing-red Status Monitor row
+    // + map treatment. Normalized to a 0/1 number so isEmergency() is simple.
+    emergency_active: row.emergency_active ? 1 : 0,
+    emergency_call_id: row.emergency_call_id ?? null,
+    emergency_since: row.emergency_since ?? null,
     created_at: row.created_at || '',
     updated_at: row.updated_at || '',
   };

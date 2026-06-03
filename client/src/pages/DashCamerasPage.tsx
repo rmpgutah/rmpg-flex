@@ -9,7 +9,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Camera, Video, Upload, Search, Loader2, Trash2, Edit2, Link2, Filter, MapPin,
   FileText, ChevronLeft, ChevronRight, Plus, Grid, List, Film, HardDrive,
-  Maximize2, X, Zap, Car, Play,
+  Maximize2, X, Zap, Car, Play, Eye,
 } from 'lucide-react';
 import type { DashCamVideo } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -24,8 +24,11 @@ import DashCamLinkModal from '../components/DashCamLinkModal';
 import { apiFetch } from '../hooks/useApi';
 import { useToast } from '../components/ToastProvider';
 import { useAuth } from '../context/AuthContext';
+import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
+import { useMenuActions } from '../utils/contextMenuActions';
 import { useLiveSync } from '../hooks/useLiveSync';
 import usePersistedState from '../hooks/usePersistedState';
+import { parseTimestamp } from '../utils/dateUtils';
 
 const PAGE_SIZE = 25;
 
@@ -70,7 +73,7 @@ function channelBg(ch?: string): string {
 
 function formatDate(d?: string): string {
   if (!d) return '-';
-  return new Date(d.includes('T') ? d : d + 'T00:00:00').toLocaleDateString('en-US', {
+  return parseTimestamp(d).toLocaleDateString('en-US', {
     month: 'short', day: 'numeric', year: 'numeric',
     hour: '2-digit', minute: '2-digit',
   });
@@ -100,6 +103,10 @@ export default function DashCamerasPage() {
   const canManage = ['admin', 'manager', 'supervisor'].includes(user?.role || '');
   const isAdmin = user?.role === 'admin';
   const isGodMode = user?.role === 'admin'; // Admin God Mode — unrestricted access
+
+  // ── Right-click context menu ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
 
   // ── State ────────────────────────────────
   const [videos, setVideos] = useState<DashCamVideo[]>([]);
@@ -227,6 +234,21 @@ export default function DashCamerasPage() {
     } catch { addToast('Failed to update classification', 'error'); }
   };
 
+  // ── Row context menu ─────────────────────
+  const buildVideoMenu = (v: DashCamVideo): ContextMenuItem[] => [
+    m.action('Open', () => setSelectedVideo(v), { icon: <Eye size={12} /> }),
+    m.action('Play full screen', () => setPlayingVideo(v), { icon: <Play size={12} /> }),
+    ...(canManage ? [
+      m.separator(),
+      m.action('Edit', () => setEditingVideo(v), { icon: <Edit2 size={12} /> }),
+      m.action('Link case', () => setLinkingVideo(v), { icon: <Link2 size={12} /> }),
+    ] : []),
+    m.separator(),
+    m.copy('Copy title', v.title),
+    m.copyId(v.id),
+    ...(isAdmin ? [m.separator(), m.action('Delete', () => handleDelete(v.id), { icon: <Trash2 size={12} />, danger: true })] : []),
+  ];
+
   // ── Gallery View (Left Panel) ────────────
   const galleryView = (
     <div className="h-full overflow-y-auto scrollbar-dark p-2">
@@ -254,6 +276,7 @@ export default function DashCamerasPage() {
             <div
               key={v.id}
               onClick={() => setSelectedVideo(v)}
+              onContextMenu={(e) => openMenu(e, buildVideoMenu(v))}
               className={`panel-beveled cursor-pointer transition-all duration-200 hover:border-brand-400 hover:shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50 ${
                 selectedVideo?.id === v.id ? 'border-brand-400 ring-1 ring-brand-500/30' : ''
               }`}
@@ -364,6 +387,7 @@ export default function DashCamerasPage() {
             ) : filtered.map(v => (
               <tr key={v.id}
                 onClick={() => setSelectedVideo(v)}
+                onContextMenu={(e) => openMenu(e, buildVideoMenu(v))}
                 className={`hover:bg-surface-hover cursor-pointer transition-colors ${
                   selectedVideo?.id === v.id ? 'bg-brand-500/10 border-l-2 border-l-brand-400' : ''
                 }`}
@@ -730,7 +754,7 @@ export default function DashCamerasPage() {
         {/* Search */}
         <div className="relative flex-1 min-w-[160px] max-w-[260px]">
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500 pointer-events-none" aria-hidden="true" />
-          <input type="text" value={search}
+          <input id="ff-dashcameraspage-0" type="text" value={search}
             onChange={e => { setSearch(e.target.value); setPage(0); }}
             placeholder="Search title, case #, unit..." aria-label="Search dash camera videos by title, case number, or unit"
             className="input-dark text-[10px] pl-7 pr-2 py-1 w-full min-h-[36px] focus:ring-1 focus:ring-brand-500/50 transition-shadow duration-150" />
@@ -758,7 +782,7 @@ export default function DashCamerasPage() {
         {eventTypes.length > 0 && (
           <>
             <span className="text-[8px] text-rmpg-500 uppercase font-bold">Event:</span>
-            <select value={eventTypeFilter}
+            <select id="ff-dashcameraspage-1" value={eventTypeFilter}
               onChange={e => { setEventTypeFilter(e.target.value); setPage(0); }}
               className="select-dark text-[10px] py-1 w-auto max-w-[150px]">
               <option value="all">All Events</option>

@@ -1,0 +1,63 @@
+// Type-only import keeps types.ts free of runtime cycles — at compile
+// time the import is elided, so containers/pdfToolsContainer.ts → types.ts
+// stays one-way at runtime.
+import type { PdfToolsContainer } from './containers/pdfToolsContainer';
+
+export type Bindings = {
+  DB: D1Database;
+  // Dedicated statewide address-points DB (rmpg-geo). Optional so contexts
+  // without the binding don't break; geo routes guard on it.
+  GEO_DB?: D1Database;
+  KV: KVNamespace;
+  MAP_DATA: R2Bucket;
+  // User-uploaded files. PR-E uses the business-photos/ prefix; future
+  // R2-backed routes share this bucket with their own key prefixes.
+  UPLOADS: R2Bucket;
+  // Desktop/mobile installers R2 bucket. Served via /downloads/* and
+  // /updates/* routes. Contains .exe, .dmg, .apk, .zip, .blockmap, .yml.
+  DOWNLOADS: R2Bucket;
+  JWT_SECRET: string;
+  // Optional dedicated Ed25519 signing seed (base64 of 32 raw seed bytes) for
+  // PDF chain-of-custody signatures. When unset, /pdf-tools/sign-payload derives
+  // a stable seed from JWT_SECRET so signing still works (see pdfTools.ts).
+  PDF_SIGNING_KEY?: string;
+  CORS_ORIGINS?: string;
+  PRIMARY_DOMAIN?: string;
+  // Mapbox access token (secret, optional). When set, the Worker can call
+  // the Mapbox Directions API for true drive-time ETAs (see src/utils/eta.ts);
+  // the geocode route also hands it to the client. Absent → ETA falls back to
+  // a straight-line estimate and the client geocoder falls back to Nominatim.
+  MAPBOX_ACCESS_TOKEN?: string;
+  // WelfareWatchDO namespace — DI-4 automated escalation timer
+  WELFARE_WATCH: DurableObjectNamespace;
+  // VoiceHubDO namespace — one instance per radio channel / panic
+  // incident; the single shared hub that relays + records live voice.
+  // See src/durable-objects/VoiceHubDO.ts.
+  VOICE_HUB: DurableObjectNamespace;
+  // AlertHubDO namespace — ONE global instance (idFromName('global')) that
+  // every client holds an alert socket to. The shared bus for agency-wide
+  // officer-safety broadcasts (panic) + forced-ack. See
+  // src/durable-objects/AlertHubDO.ts + src/utils/alertHub.ts.
+  ALERT_HUB: DurableObjectNamespace;
+  // PDF Tools sidecar — Cloudflare Container holding qpdf + pdftotext
+  // + ocrmypdf. Worker proxies to it via getContainer(env.PDF_TOOLS,
+  // 'shared').fetch(req). Parameterized so getContainer<T> narrows
+  // the stub type correctly.
+  PDF_TOOLS: DurableObjectNamespace<PdfToolsContainer>;
+  // Workers AI — vision-LLM OCR + structured field extraction for
+  // process-service intake. See src/routes/serveIntake.ts.
+  AI: Ai;
+  // Optional LoRA fine-tune name/id for the serve-intake field extractor.
+  // When set, extractFromText() applies this adapter on top of the 70B base
+  // (with raw:true). Created via `wrangler ai finetune create` from the
+  // adapter trained on training/data (see training/README.md). Unset → stock
+  // 70B, so the fine-tune is a safe, reversible opt-in via wrangler var/secret.
+  SERVE_INTAKE_LORA?: string;
+};
+
+export type Variables = {
+  user: { id: number; username: string; role: string; full_name: string };
+  userId: number;
+};
+
+export type Env = { Bindings: Bindings; Variables: Variables };

@@ -1,15 +1,7 @@
-// ============================================================
-// RMPG Flex — useMapClustering Hook
-// Simple grid-based marker clustering at low zoom levels.
-// Hides individual call markers and shows cluster circles
-// at zoom < 14, restores individual markers at zoom >= 14.
-// ============================================================
-
 import { useEffect, useRef, useState, useCallback } from 'react';
+import mapboxgl from 'mapbox-gl';
 import { getOverlayMarkerClass } from '../utils/mapMarkerBuilders';
 import type { OverlayMarker } from '../utils/mapMarkerBuilders';
-
-// ─── Types ──────────────────────────────────────────────────
 
 interface ClusterGroup {
   lat: number;
@@ -19,7 +11,6 @@ interface ClusterGroup {
   markerIndices: number[];
 }
 
-// Priority colors: P1=red, P2=amber, P3=blue, P4=gray
 const PRIORITY_COLORS: Record<number, string> = {
   1: '#dc2626',
   2: '#f59e0b',
@@ -32,36 +23,29 @@ function getPriorityColor(priority: number): string {
 }
 
 const CLUSTER_ZOOM_THRESHOLD = 14;
-const GRID_SIZE_PX = 80; // pixels — markers within this distance are grouped
-
-// ─── Hook ───────────────────────────────────────────────────
+const GRID_SIZE_PX = 80;
 
 export function useMapClustering(
-  map: google.maps.Map | null,
+  map: mapboxgl.Map | null,
   enabled: boolean,
-  callMarkers: google.maps.marker.AdvancedMarkerElement[],
+  callMarkers: mapboxgl.Marker[],
 ): { clustered: boolean } {
   const [clustered, setClustered] = useState(false);
-  const clusterMarkersRef = useRef<(OverlayMarker & google.maps.OverlayView)[]>([]);
-  const hiddenMarkersRef = useRef<Set<google.maps.marker.AdvancedMarkerElement>>(new Set());
-
-  // ── Remove cluster markers ──────────────────────────────
+  const clusterMarkersRef = useRef<(OverlayMarker & { remove: () => void })[]>([]);
+  const hiddenMarkersRef = useRef<Set<mapboxgl.Marker>>(new Set());
 
   const clearClusters = useCallback(() => {
-    clusterMarkersRef.current.forEach((m) => m.setMap(null));
+    clusterMarkersRef.current.forEach((m) => m.remove());
     clusterMarkersRef.current = [];
 
-    // Restore hidden markers
     hiddenMarkersRef.current.forEach((m) => {
-      if (map) m.map = map;
+      if (map) m.addTo(map);
     });
     hiddenMarkersRef.current.clear();
   }, [map]);
 
-  // ── Build clusters ──────────────────────────────────────
-
   const buildClusters = useCallback(() => {
-    if (!map || !window.google?.maps || !enabled) return;
+    if (!map || !enabled) return;
 
     const zoom = map.getZoom();
     if (zoom == null || zoom >= CLUSTER_ZOOM_THRESHOLD) {
@@ -70,21 +54,8 @@ export function useMapClustering(
       return;
     }
 
-    // Project all marker positions to screen coordinates
-    const projection = map.getProjection();
-    if (!projection) {
-      clearClusters();
-      setClustered(false);
-      return;
-    }
-
-    const bounds = map.getBounds();
-    if (!bounds) return;
-
-    const scale = Math.pow(2, zoom);
-
     interface MarkerInfo {
-      marker: google.maps.marker.AdvancedMarkerElement;
+      marker: mapboxgl.Marker;
       px: number;
       py: number;
       priority: number;
@@ -93,25 +64,21 @@ export function useMapClustering(
     const markerInfos: MarkerInfo[] = [];
 
     callMarkers.forEach((marker) => {
-      const pos = marker.position;
+      const pos = marker.getLngLat();
       if (!pos) return;
 
-      const lat = typeof pos.lat === 'function' ? (pos as google.maps.LatLng).lat() : (pos as google.maps.LatLngLiteral).lat;
-      const lng = typeof pos.lng === 'function' ? (pos as google.maps.LatLng).lng() : (pos as google.maps.LatLngLiteral).lng;
+      const point = map.project([pos.lng, pos.lat]);
 
-      const worldPoint = projection.fromLatLngToPoint(new google.maps.LatLng(lat, lng));
-      if (!worldPoint) return;
-
-      // Extract priority from title or data attribute
       let priority = 4;
-      const title = marker.title || '';
+      const el = marker.getElement();
+      const title = el?.getAttribute('title') || '';
       const pMatch = title.match(/P(\d)/);
       if (pMatch) priority = parseInt(pMatch[1], 10);
 
       markerInfos.push({
         marker,
-        px: worldPoint.x * scale,
-        py: worldPoint.y * scale,
+        px: point.x,
+        py: point.y,
         priority,
       });
     });
@@ -122,7 +89,6 @@ export function useMapClustering(
       return;
     }
 
-    // Grid-based clustering
     const assigned = new Set<number>();
     const groups: ClusterGroup[] = [];
 
@@ -137,7 +103,6 @@ export function useMapClustering(
         markerIndices: [],
       };
 
-      // Find all markers within grid distance
       for (let j = i; j < markerInfos.length; j++) {
         if (assigned.has(j)) continue;
 
@@ -150,12 +115,10 @@ export function useMapClustering(
           group.markerIndices.push(j);
           group.count++;
 
-          const pos = markerInfos[j].marker.position;
+          const pos = markerInfos[j].marker.getLngLat();
           if (pos) {
-            const lat = typeof pos.lat === 'function' ? (pos as google.maps.LatLng).lat() : (pos as google.maps.LatLngLiteral).lat;
-            const lng = typeof pos.lng === 'function' ? (pos as google.maps.LatLng).lng() : (pos as google.maps.LatLngLiteral).lng;
-            group.lat += lat;
-            group.lng += lng;
+            group.lat += pos.lat;
+            group.lng += pos.lng;
           }
 
           if (markerInfos[j].priority < group.highestPriority) {
@@ -172,17 +135,14 @@ export function useMapClustering(
       groups.push(group);
     }
 
-    // Clear old clusters
-    clusterMarkersRef.current.forEach((m) => m.setMap(null));
+    clusterMarkersRef.current.forEach((m) => m.remove());
     clusterMarkersRef.current = [];
 
-    // Restore previously hidden markers
     hiddenMarkersRef.current.forEach((m) => {
-      if (map) m.map = map;
+      if (map) m.addTo(map);
     });
     hiddenMarkersRef.current.clear();
 
-    // Render cluster markers for groups with >1 marker
     let anyClustered = false;
 
     groups.forEach((group) => {
@@ -190,14 +150,12 @@ export function useMapClustering(
 
       anyClustered = true;
 
-      // Hide individual markers in this cluster
       group.markerIndices.forEach((idx) => {
         const m = markerInfos[idx].marker;
-        m.map = null;
+        m.remove();
         hiddenMarkersRef.current.add(m);
       });
 
-      // Create cluster marker element
       const color = getPriorityColor(group.highestPriority);
       const size = Math.min(24 + group.count * 2, 48);
 
@@ -229,27 +187,21 @@ export function useMapClustering(
           zIndex: 100,
           title: `${group.count} incidents`,
           onClick: () => {
-            const bounds = new google.maps.LatLngBounds();
-            group.markerIndices.forEach((idx) => {
-              const pos = markerInfos[idx].marker.position;
-              if (pos) {
-                const lat = typeof pos.lat === 'function' ? (pos as google.maps.LatLng).lat() : (pos as google.maps.LatLngLiteral).lat;
-                const lng = typeof pos.lng === 'function' ? (pos as google.maps.LatLng).lng() : (pos as google.maps.LatLngLiteral).lng;
-                bounds.extend(new google.maps.LatLng(lat, lng));
+            if (group.markerIndices.length > 0) {
+              const firstPos = markerInfos[group.markerIndices[0]].marker.getLngLat();
+              if (firstPos) {
+                map.flyTo({ center: [firstPos.lng, firstPos.lat], zoom: Math.min(map.getZoom() + 2, 18) });
               }
-            });
-            map.fitBounds(bounds);
+            }
           },
         });
 
-        clusterMarkersRef.current.push(clusterMarker as OverlayMarker & google.maps.OverlayView);
+        clusterMarkersRef.current.push(clusterMarker as OverlayMarker & { remove: () => void });
       }
     });
 
     setClustered(anyClustered);
   }, [map, enabled, callMarkers, clearClusters]);
-
-  // ── Listen for zoom changes ─────────────────────────────
 
   useEffect(() => {
     if (!map || !enabled) {
@@ -258,35 +210,26 @@ export function useMapClustering(
       return;
     }
 
-    // Initial build
     buildClusters();
 
-    // Rebuild on zoom change
-    const listener = map.addListener('zoom_changed', () => {
-      buildClusters();
-    });
+    const onZoom = () => { buildClusters(); };
+    map.on('zoomend', onZoom);
 
     return () => {
-      google.maps.event.removeListener(listener);
+      map.off('zoomend', onZoom);
       clearClusters();
       setClustered(false);
     };
   }, [map, enabled, buildClusters, clearClusters]);
-
-  // ── Rebuild when markers change ─────────────────────────
-  // NOTE: callMarkers array reference changes on every render (parent creates new array).
-  // This instability is accepted — clustering must rebuild when marker set changes.
 
   useEffect(() => {
     if (!map || !enabled) return;
     buildClusters();
   }, [callMarkers, buildClusters, map, enabled]);
 
-  // ── Cleanup on unmount ──────────────────────────────────
-
   useEffect(() => {
     return () => {
-      clusterMarkersRef.current.forEach((m) => m.setMap(null));
+      clusterMarkersRef.current.forEach((m) => m.remove());
       clusterMarkersRef.current = [];
       hiddenMarkersRef.current.clear();
     };

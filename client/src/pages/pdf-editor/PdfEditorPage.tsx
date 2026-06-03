@@ -23,6 +23,7 @@ import AnnotationContextMenu from './components/AnnotationContextMenu';
 import { Annotation, BatesConfig, DocumentMeta, EditorState, EditorPreferences, DEFAULT_PREFERENCES, PageCrop, PageMeta, RecentFile, StampLabel, Tool, WatermarkConfig, DEFAULT_RENDER_SCALE } from './types';
 import { buildPdfFromEditorState, extractPagesAsBytes, mergePdfFiles, saveToDocuments } from './save';
 import { authedImageUrl } from '../../hooks/useApi';
+import { parseTimestamp } from '../../utils/dateUtils';
 
 // PDF rendering goes through our company-owned engine facade
 // (client/src/lib/rmpg-pdf-engine). It tries our native backend first and
@@ -505,7 +506,7 @@ export default function PdfEditorPage() {
       const parsed = JSON.parse(raw) as { annotations?: Annotation[]; savedAt?: string };
       if (Array.isArray(parsed.annotations) && parsed.annotations.length > 0) {
         const ageMin = parsed.savedAt
-          ? Math.round((Date.now() - new Date(parsed.savedAt).getTime()) / 60000)
+          ? Math.round((Date.now() - parseTimestamp(parsed.savedAt).getTime()) / 60000)
           : -1;
         const restore = window.confirm(
           `Restore unsaved draft for this PDF? It contains ${parsed.annotations.length} annotation(s)` +
@@ -885,10 +886,10 @@ export default function PdfEditorPage() {
     <div className="p-3 flex flex-col h-[calc(100vh-140px)] min-h-[600px]">
       <PanelTitleBar title={viewOnly ? 'PDF VIEWER' : 'PDF EDITOR'} icon={FileText} />
 
-      <input ref={fileInputRef} type="file" accept="application/pdf,.pdf" className="hidden" onChange={handleOpenChange} />
-      <input ref={mergeInputRef} type="file" accept="application/pdf,.pdf" multiple className="hidden" onChange={handleMergeChange} />
-      <input ref={imageInputRef} type="file" accept="image/png,image/jpeg" className="hidden" onChange={handleImageChange} />
-      <input ref={jsonInputRef} type="file" accept="application/json" className="hidden"
+      <input id="ff-pdfeditorpage-0" ref={fileInputRef} type="file" accept="application/pdf,.pdf" className="hidden" onChange={handleOpenChange} />
+      <input id="ff-pdfeditorpage-1" ref={mergeInputRef} type="file" accept="application/pdf,.pdf" multiple className="hidden" onChange={handleMergeChange} />
+      <input id="ff-pdfeditorpage-2" ref={imageInputRef} type="file" accept="image/png,image/jpeg" className="hidden" onChange={handleImageChange} />
+      <input id="ff-pdfeditorpage-3" ref={jsonInputRef} type="file" accept="application/json" className="hidden"
         onChange={(e) => { const f = e.target.files?.[0]; if (f) importJson(f); e.target.value = ''; }} />
 
       {/* Find / Shortcuts / Preferences dialogs */}
@@ -1037,7 +1038,7 @@ export default function PdfEditorPage() {
           <button type="button" onClick={handlePrint} title="Print"
             className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><Printer className="w-3 h-3" /> Print</button>
           <div className="flex-1" />
-          <select value={prefs.viewMode} onChange={(e) => setPrefs({ ...prefs, viewMode: e.target.value as EditorPreferences['viewMode'] })}
+          <select id="ff-pdfeditorpage-4" value={prefs.viewMode} onChange={(e) => setPrefs({ ...prefs, viewMode: e.target.value as EditorPreferences['viewMode'] })}
             className="bg-[#0a0a0a] border border-[#222] text-[10px] text-rmpg-200 px-1.5 py-0.5 rounded-sm">
             <option value="continuous">Continuous</option>
             <option value="single">Single page</option>

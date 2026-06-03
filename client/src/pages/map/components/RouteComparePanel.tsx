@@ -64,7 +64,7 @@ export default function RouteComparePanel({
         right: 16,
         minWidth: 320,
         maxWidth: 380,
-        background: 'rgba(6,12,20,0.95)',
+        background: 'rgba(10,10,10,0.95)',
         border: '1px solid #d4a01780',
         padding: '8px 12px',
         fontFamily: "'JetBrains Mono', 'Courier New', monospace",
@@ -96,7 +96,7 @@ export default function RouteComparePanel({
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginBottom: 8 }}>
             <div>
               <div style={{ fontSize: 8, color: '#5a6e80', fontWeight: 900, marginBottom: 2 }}>UNIT A</div>
-              <select
+              <select id="ff-routecomparepanel-0"
                 value={unitAId == null ? '' : String(unitAId)}
                 onChange={(e) => onChangeA(e.target.value || null)}
                 style={{
@@ -121,7 +121,7 @@ export default function RouteComparePanel({
             </div>
             <div>
               <div style={{ fontSize: 8, color: '#5a6e80', fontWeight: 900, marginBottom: 2 }}>UNIT B</div>
-              <select
+              <select id="ff-routecomparepanel-1"
                 value={unitBId == null ? '' : String(unitBId)}
                 onChange={(e) => onChangeB(e.target.value || null)}
                 style={{

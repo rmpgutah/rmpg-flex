@@ -1,16 +1,88 @@
-import React, { useEffect, useCallback, useState, useRef } from 'react';
+import React, { useEffect, useCallback, useState, useRef, useMemo } from 'react';
+import { parseTimestamp } from '../utils/dateUtils';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
-  LayoutDashboard, Radio, Map, FileText, Database, Users, MessageSquare,
-  BarChart3, Settings, LogOut, Phone, QrCode, ScrollText, Search, Car,
-  AlertTriangle, FileWarning, Video, ClipboardList, ShieldBan, Monitor, User, Lock,
-  ChevronDown, Shield, X, Calendar, Briefcase, Package, TrendingUp, Construction,
-  ClipboardCheck, UserX, Gavel, Terminal, ExternalLink, CreditCard, Network,
-  Camera, ChevronLeft, ChevronRight, Mail, GraduationCap, Microscope, FolderOpen,
-  Upload,
+  LayoutDashboard,
+  Radio,
+  Map,
+  FileText,
+  Database,
+  Users,
+  MessageSquare,
+  BarChart3,
+  Settings,
+  LogOut,
+  Phone,
+  QrCode,
+  ScrollText,
+  Search,
+  Car,
+  AlertTriangle,
+  FileWarning,
+  Scale,
+  Video,
+  ClipboardList,
+  ShieldBan,
+  Monitor,
+  User,
+  Lock,
+  ChevronDown,
+  Shield,
+  Menu,
+  X,
+  Calendar,
+  Briefcase,
+  Package,
+  TrendingUp,
+  Landmark,
+  Construction,
+  Truck,
+  ClipboardCheck,
+  UserX,
+  Gavel,
+  Terminal,
+  ExternalLink,
+  CreditCard,
+  Network,
+  Camera,
+  ChevronLeft,
+  ChevronRight,
+  Mail,
+  GraduationCap,
+  Microscope,
+  Building2,
+  ShieldAlert,
+  Megaphone,
+  CheckCircle,
+  DollarSign,
+  Share2,
+  // Spillman module-bar: distinct per-module glyphs (no more duplicate Shields)
+  Siren,
+  ScanEye,
+  LifeBuoy,
+  Fingerprint,
+  ScanSearch,
+  FileSignature,
+  Webcam,
+  PieChart,
+  LayoutTemplate,
+  Boxes,
+  HeartHandshake,
+  ListTodo,
+  AlertOctagon,
+  UsersRound,
+  Pill,
+  Crosshair,
+  HeartPulse,
+  HandHeart,
+  BellRing,
+  Award,
+  UserPlus,
 } from 'lucide-react';
 import { Navigation2, Sun, Moon } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import PttController from './PttController';
+import { initSettingsSync } from '../utils/settingsSync';
 import { useWebSocket } from '../context/WebSocketContext';
 import { apiFetch, OfflineUnauthorizedError, authedImageUrl } from '../hooks/useApi';
 import { useGpsTracking } from '../hooks/useGpsTracking';
@@ -21,10 +93,12 @@ import MenuBar from './MenuBar';
 // Sidebar removed — navigation moved to top icon toolbar
 import ErrorBoundary from './ErrorBoundary';
 import NotificationCenter from './NotificationCenter';
+import AnnouncementBanner from './AnnouncementBanner';
 import PanicButton from './PanicButton';
 import UserProfileModal from './UserProfileModal';
 import DispatcherTranscript from './DispatcherTranscript';
 import UpdateBanner from './UpdateBanner';
+import CommandPalette from './CommandPalette';
 import OfflineStatusBar from './OfflineStatusBar';
 import PinEntryModal from './PinEntryModal';
 import ForcePasswordChangeModal from './ForcePasswordChangeModal';
@@ -39,11 +113,7 @@ import { openPageWindow, POPOUT_PAGES } from '../utils/windowManager';
 import LocationGate from './LocationGate';
 import DispatchAlertBanner, { type AlertBannerItem } from './DispatchAlertBanner';
 import { useDispatchVoiceAlerts } from '../hooks/useDispatchVoiceAlerts';
-import { useVoiceChannel } from '../hooks/useVoiceChannel';
-import VoiceChannelIndicator from './VoiceChannelIndicator';
 import { applyThemePreference } from '../utils/theme';
-// RadioConsole sidebar was removed; radio is accessed via the Comms > Radio menu.
-// Component still exists at ./radio/RadioConsole for use inside RadioPage.
 
 const PAGE_TITLES: Record<string, string> = {
   '/': 'Dashboard',
@@ -59,8 +129,8 @@ const PAGE_TITLES: Record<string, string> = {
   '/fleet': 'Fleet',
   '/warrants': 'Warrants',
   '/citations': 'Citations',
+  '/law-book': 'Law Book',
   '/field-interviews': 'Field Interviews',
-  '/document-intake': 'Document Intake',
   '/trespass-orders': 'Trespass Orders',
   '/mdt': 'MDT',
   '/ncic': 'NCIC Terminal',
@@ -85,9 +155,41 @@ const PAGE_TITLES: Record<string, string> = {
   '/training': 'Training Management',
   '/training-docs': 'Training Documents',
   '/serve': 'Process Server',
-  '/documents': 'Documents',
   '/hr': 'HR Console',
   '/admin': 'Admin',
+  '/use-of-force': 'Use of Force',
+  '/security-dashboard': 'Security Dashboard',
+  '/help': 'Help & About',
+  '/notifications': 'Notifications',
+  '/colorado-doc': 'Colorado DOC Search',
+  '/dashcams': 'Dashcam System',
+  '/command-center': 'Command Center',
+  '/geo-data-viewer': 'Geo Data Viewer',
+  '/invoices': 'Invoices',
+  '/iped': 'IPED Forensics',
+  '/national-warrant-search': 'National Warrant Search',
+  '/downloads': 'Downloads',
+  '/geography': 'Dispatch Geography',
+  '/connections': 'Connections',
+  '/skip-tracer': 'Skip Tracer',
+  '/arrest-records': 'Arrest Records',
+  '/serve-intake': 'Service Intake',
+  '/web-research': 'Web Research',
+  '/settings': 'Settings',
+  '/jail': 'Jail Management',
+  '/affairs': 'Internal Affairs',
+  '/assets': 'Asset Management',
+  '/community': 'Community Relations',
+  '/tasks': 'Task Management',
+  '/alerts': 'Alert Center',
+  '/training-mgmt': 'Training Admin',
+  '/qa': 'Quality Assurance',
+  '/billing': 'Billing',
+  '/risk': 'Risk Management',
+  '/interagency': 'Interagency',
+  '/body-cameras': 'Body Cameras',
+  '/dash-cameras': 'Dash Cameras',
+  '/microbilt': 'MicroBilt',
 };
 
 // Nav items — items with `children` render a dropdown menu in the toolbar
@@ -109,30 +211,29 @@ const TOOLBAR_NAV: NavItem[] = [
   { path: '/dispatch', icon: Radio, label: 'Dispatch', group: 'ops', shortcut: 'F2' },
   { path: '/map', icon: Map, label: 'Map', group: 'ops', shortcut: 'F3' },
   { path: '/mdt', icon: Monitor, label: 'MDT', group: 'ops', shortcut: 'F4' },
+  { path: '/navigation', icon: Navigation2, label: 'Navigate', group: 'ops' },
   { path: '/ncic', icon: Terminal, label: 'NCIC', group: 'ops', shortcut: 'F5' },
   { path: '/records', icon: Database, label: 'Records', group: 'records', shortcut: 'F6', children: [
     { path: '/incidents', icon: FileText, label: 'Incidents' },
     { path: '/records', icon: Database, label: 'Records' },
     { path: '/field-interviews', icon: ClipboardList, label: 'Field Interviews' },
-    { path: '/document-intake', icon: Upload, label: 'Document Intake' },
-    { path: '/criminal-history', icon: Search, label: 'Criminal History' },
+    { path: '/criminal-history', icon: Fingerprint, label: 'Criminal History' },
     { path: '/dl-search', icon: CreditCard, label: 'DL Search' },
-    { path: '/microbilt', icon: Search, label: 'MicroBilt' },
+    { path: '/microbilt', icon: ScanSearch, label: 'MicroBilt' },
     { path: '/evidence', icon: Package, label: 'Evidence / Property' },
     { path: '/forensic-lab', icon: Microscope, label: 'Forensic Lab' },
     { path: '/forensics', icon: Network, label: 'Connections' },
     { path: '/cases', icon: Briefcase, label: 'Case Management' },
   ]},
-  { path: '/warrants', icon: AlertTriangle, label: 'Enforce', group: 'records', shortcut: 'F7', children: [
+  { path: '/warrants', icon: Siren, label: 'Enforce', group: 'records', shortcut: 'F7', children: [
     { path: '/warrants', icon: AlertTriangle, label: 'Warrants' },
     { path: '/citations', icon: FileWarning, label: 'Citations' },
+    { path: '/law-book', icon: Scale, label: 'Law Book' },
     { path: '/trespass-orders', icon: ShieldBan, label: 'Trespass Orders' },
     { path: '/code-enforcement', icon: Construction, label: 'Code Enforcement' },
     { path: '/court', icon: Gavel, label: 'Court Tracker' },
     { path: '/offender-registry', icon: UserX, label: 'Offender Registry' },
-    { path: '/serve', icon: Briefcase, label: 'Process Server' },
-    { path: '/documents', icon: FolderOpen, label: 'Documents' },
-    { path: '/pdf-editor', icon: FileText, label: 'PDF Editor' },
+    { path: '/serve', icon: FileSignature, label: 'Process Server' },
   ]},
   { path: '/personnel', icon: Users, label: 'Personnel', group: 'records', shortcut: 'F8', children: [
     { path: '/personnel', icon: Users, label: 'Personnel' },
@@ -140,6 +241,7 @@ const TOOLBAR_NAV: NavItem[] = [
     { path: '/fleet', icon: Car, label: 'Fleet' },
     { path: '/body-cameras', icon: Video, label: 'Body Cameras' },
     { path: '/dash-cameras', icon: Camera, label: 'Dash Cameras' },
+    { path: '/dashcams', icon: Webcam, label: 'Dashcam System' },
   ]},
   { path: '/communications', icon: MessageSquare, label: 'Comms', group: 'comms', shortcut: 'F9', children: [
     { path: '/communications', icon: MessageSquare, label: 'Comms' },
@@ -150,14 +252,36 @@ const TOOLBAR_NAV: NavItem[] = [
   { path: '/reports', icon: BarChart3, label: 'Reports', group: 'analysis', shortcut: 'F10', children: [
     { path: '/reports', icon: BarChart3, label: 'Reports' },
     { path: '/shift-plans', icon: Calendar, label: 'Shift Plans' },
-    { path: '/statute-analytics', icon: BarChart3, label: 'Statute Analytics' },
-    { path: '/reports/custom', icon: Database, label: 'Report Builder' },
+    { path: '/statute-analytics', icon: PieChart, label: 'Statute Analytics' },
+    { path: '/reports/custom', icon: LayoutTemplate, label: 'Report Builder' },
     { path: '/crime-analysis', icon: TrendingUp, label: 'Crime Analysis' },
     { path: '/dar', icon: ClipboardCheck, label: 'Daily Activity' },
   ]},
-  { path: '/crm', icon: Briefcase, label: 'Overwatch', group: 'analysis' },
+  { path: '/crm', icon: ScanEye, label: 'Overwatch', group: 'analysis' },
   { path: '/training', icon: GraduationCap, label: 'Training', group: 'analysis' },
   { path: '/forensics', icon: Network, label: 'Connections', group: 'analysis', adminOnly: true },
+  { path: '/jail', icon: Building2, label: 'Jail/IA', group: 'support', children: [
+    { path: '/jail', icon: Building2, label: 'Jail Management' },
+    { path: '/affairs', icon: ShieldAlert, label: 'Internal Affairs' },
+    { path: '/assets', icon: Boxes, label: 'Asset Management' },
+  ]},
+  { path: '/billing', icon: LifeBuoy, label: 'Services', group: 'support', children: [
+    { path: '/billing', icon: DollarSign, label: 'Billing' },
+    { path: '/community', icon: HeartHandshake, label: 'Community' },
+    { path: '/tasks', icon: ListTodo, label: 'Task Management' },
+    { path: '/alerts', icon: Megaphone, label: 'Notifications' },
+    { path: '/qa', icon: CheckCircle, label: 'QA' },
+    { path: '/risk', icon: AlertOctagon, label: 'Risk Management' },
+    { path: '/interagency', icon: Share2, label: 'Interagency' },
+    { path: '/gang-intel', icon: UsersRound, label: 'Gang Intel' },
+    { path: '/narcotics', icon: Pill, label: 'Narcotics' },
+    { path: '/special-ops', icon: Crosshair, label: 'Special Ops' },
+    { path: '/crisis-response', icon: HeartPulse, label: 'Crisis Response' },
+    { path: '/victim-services', icon: HandHeart, label: 'Victim Services' },
+    { path: '/alarms', icon: BellRing, label: 'Alarm Management' },
+    { path: '/accreditation', icon: Award, label: 'Accreditation' },
+    { path: '/recruitment', icon: UserPlus, label: 'Recruitment' },
+  ]},
   { path: '/audit', icon: ScrollText, label: 'Audit', group: 'system', shortcut: 'F11', adminOnly: true },
   { path: '/admin', icon: Settings, label: 'Admin', group: 'system', shortcut: 'F12', adminOnly: true },
 ];
@@ -176,15 +300,12 @@ const CONTRACT_MANAGER_BLOCKED_PATHS = new Set([
 
 export default function Layout() {
   const { user, logout, refreshUser } = useAuth();
-  const { isConnected, connectionLost, subscribe } = useWebSocket();
+  const { isConnected, subscribe } = useWebSocket();
   const location = useLocation();
   const navigate = useNavigate();
 
   const gps = useGpsTracking();
   const presence = usePresence();
-
-  // ── Voice channel (unified voice I/O state machine) ──
-  const { alert: voiceAlert } = useVoiceChannel();
 
   // ── Dispatch voice alerts + visual banner state ──
   const [dispatchAlerts, setDispatchAlerts] = useState<AlertBannerItem[]>([]);
@@ -195,7 +316,7 @@ export default function Layout() {
     setDispatchAlerts(prev => prev.filter(a => a.id !== id));
   }, []);
   const dismissAllDispatchAlerts = useCallback(() => setDispatchAlerts([]), []);
-  useDispatchVoiceAlerts({ onAlert: addDispatchAlert, voiceAlert });
+  useDispatchVoiceAlerts({ onAlert: addDispatchAlert });
 
   const isAdmin = user?.role === 'admin' || user?.role === 'manager';
   const isClientViewer = user?.role === 'client_viewer';
@@ -318,7 +439,7 @@ export default function Layout() {
     const changedAt = user.passwordChangedAt || user.last_password_change;
     if (!changedAt) return;
     const EXPIRY_DAYS = 90; // 90-day password policy
-    const changed = new Date(changedAt).getTime();
+    const changed = parseTimestamp(changedAt).getTime();
     const expiresAt = changed + EXPIRY_DAYS * 86400000;
     const daysLeft = Math.ceil((expiresAt - Date.now()) / 86400000);
     if (daysLeft <= 7 && daysLeft > 0) {
@@ -335,31 +456,11 @@ export default function Layout() {
   // handled by AuthContext and show messages on the login page.
   const showSessionWarning = false;
 
-  // ── Feature 24: Auto-logout on idle ──
-  const lastActivityRef = useRef(Date.now());
-  const [showIdleDialog, setShowIdleDialog] = useState(false);
-  const IDLE_TIMEOUT_MS = 60 * 60 * 1000; // 60 minutes of no activity
-  const IDLE_WARNING_MS = 55 * 60 * 1000; // Warn at 55 minutes
-
-  useEffect(() => {
-    const resetActivity = () => { lastActivityRef.current = Date.now(); setShowIdleDialog(false); };
-    const events = ['mousedown', 'keydown', 'scroll', 'touchstart'];
-    events.forEach(ev => window.addEventListener(ev, resetActivity));
-
-    const checkIdle = setInterval(() => {
-      const idle = Date.now() - lastActivityRef.current;
-      if (idle >= IDLE_TIMEOUT_MS) {
-        logout();
-      } else if (idle >= IDLE_WARNING_MS) {
-        setShowIdleDialog(true);
-      }
-    }, 30000); // check every 30s
-
-    return () => {
-      events.forEach(ev => window.removeEventListener(ev, resetActivity));
-      clearInterval(checkIdle);
-    };
-  }, [logout]);
+  // ── Feature 24: Auto-logout on idle — REMOVED per operator request ──
+  // The idle backstop that signed a workstation out after 12h of zero
+  // user presence + zero network traffic has been removed. Sessions now
+  // persist until the user explicitly signs out (access tokens still
+  // auto-refresh via AuthContext, so the session simply stays alive).
 
   // Live header stats
   const [activeCallCount, setActiveCallCount] = useState(0);
@@ -447,9 +548,9 @@ export default function Layout() {
   const [showShortcutHelp, setShowShortcutHelp] = useState(false);
 
   // ── Command Palette (Ctrl+K / Cmd+K) ─────────────────────
+  // State lives here so the global Cmd+K handler can toggle it; the palette
+  // UI + search/nav logic is the self-contained <CommandPalette> component.
   const [showCommandPalette, setShowCommandPalette] = useState(false);
-  const [paletteQuery, setPaletteQuery] = useState('');
-  const paletteInputRef = useRef<HTMLInputElement>(null);
 
   // ── Unsaved Changes Warning ─────────────────────────────
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
@@ -473,7 +574,6 @@ export default function Layout() {
       if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
         e.preventDefault();
         setShowCommandPalette(prev => !prev);
-        setPaletteQuery('');
         return;
       }
       if (e.key === 'Escape' && showCommandPalette) {
@@ -509,28 +609,45 @@ export default function Layout() {
     return () => { delete (window as any).__rmpgSetUnsavedChanges; };
   }, []);
 
+  // Settings sync — pull this user's saved prefs (+ org defaults) once on
+  // login, then debounce-push local changes so they follow the user across
+  // devices. Lives here so it runs for the whole authenticated session.
+  useEffect(() => {
+    if (!user) return;
+    return initSettingsSync();
+  }, [user]);
+
   // Clear unsaved changes on navigation
   useEffect(() => {
     setHasUnsavedChanges(false);
   }, [location.pathname]);
 
   // Command palette search results
-  const paletteResults = paletteQuery.trim().length > 0
-    ? TOOLBAR_NAV.flatMap(item => {
-        const items: { path: string; label: string; icon: React.ElementType }[] = [];
-        if (item.label.toLowerCase().includes(paletteQuery.toLowerCase())) {
-          items.push({ path: item.path, label: item.label, icon: item.icon });
+  // Flattened, role-filtered navigation targets (parents + children) for the
+  // command palette. Mirrors the toolbar's role gating so the palette never
+  // surfaces a page the user can't open. De-duped by path.
+  const paletteNavTargets = useMemo(() => {
+    const seen = new Set<string>();
+    const targets: { path: string; label: string; icon: React.ElementType }[] = [];
+    const allow = (path: string, adminOnly?: boolean) => {
+      if (adminOnly && !isAdmin) return false;
+      if (isClientViewer && CLIENT_VIEWER_BLOCKED_PATHS.has(path)) return false;
+      return true;
+    };
+    for (const item of TOOLBAR_NAV) {
+      if (allow(item.path, item.adminOnly) && !seen.has(item.path)) {
+        seen.add(item.path);
+        targets.push({ path: item.path, label: item.label, icon: item.icon });
+      }
+      item.children?.forEach((child) => {
+        if (allow(child.path, child.adminOnly) && !seen.has(child.path)) {
+          seen.add(child.path);
+          targets.push({ path: child.path, label: child.label, icon: child.icon });
         }
-        if (item.children) {
-          item.children.forEach(child => {
-            if (child.label.toLowerCase().includes(paletteQuery.toLowerCase())) {
-              items.push({ path: child.path, label: child.label, icon: child.icon });
-            }
-          });
-        }
-        return items;
-      }).slice(0, 10)
-    : [];
+      });
+    }
+    return targets;
+  }, [isAdmin, isClientViewer]);
 
   // Mobile menu & responsive detection
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -635,28 +752,29 @@ export default function Layout() {
       }
     });
 
-    // Active call: listen for unit status changes to track assigned call
-    const unsubUnitStatus = subscribe('units:status', (msg: any) => {
+    // Active call: track the call number assigned to THIS unit. The live Worker
+    // broadcasts call lifecycle events under 'dispatch_update' (the old
+    // 'units:status' / 'calls:updated' channels are never emitted, so the mobile
+    // active-call bar never updated). The call payload is the raw call row, whose
+    // assigned units live in the comma-joined `unit_call_signs` field.
+    const unsubMobileActive = subscribe('dispatch_update', (msg: any) => {
       const data = msg.data || msg;
-      // Check if this status update is for our unit
-      if (data.call_sign === gps.unitCallSign) {
-        setMobileActiveCallNumber(data.active_call_number || null);
-      }
-    });
-    // Also listen for call updates
-    const unsubCallUpdate = subscribe('calls:updated', (msg: any) => {
-      const data = msg.data || msg;
-      // If a call has our unit assigned, track it
-      if (data.assigned_unit === gps.unitCallSign && data.status !== 'closed') {
-        setMobileActiveCallNumber(data.call_number || null);
+      const action = data.action;
+      if (!gps.unitCallSign) return;
+      if ((action === 'call_status_changed' || action === 'call_updated' || action === 'call_created') && data.call) {
+        const assigned = String(data.call.unit_call_signs || '')
+          .split(',').map((s: string) => s.trim()).filter(Boolean);
+        if (assigned.includes(gps.unitCallSign)) {
+          const done = ['cleared', 'closed', 'cancelled', 'archived'].includes(data.call.status);
+          setMobileActiveCallNumber(done ? null : (data.call.call_number || null));
+        }
       }
     });
 
     return () => {
       unsubRadioState();
       unsubRadioLeave();
-      unsubUnitStatus();
-      unsubCallUpdate();
+      unsubMobileActive();
     };
   }, [subscribe, user?.id, gps.unitCallSign]);
 
@@ -728,7 +846,7 @@ export default function Layout() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="field-label">First Name <span className="text-red-500">*</span></label>
-                <input
+                <input id="ff-layout-0"
                   type="text"
                   value={setupFirstName}
                   onChange={e => setSetupFirstName(e.target.value)}
@@ -739,7 +857,7 @@ export default function Layout() {
               </div>
               <div>
                 <label className="field-label">Last Name <span className="text-red-500">*</span></label>
-                <input
+                <input id="ff-layout-1"
                   type="text"
                   value={setupLastName}
                   onChange={e => setSetupLastName(e.target.value)}
@@ -1036,7 +1154,7 @@ export default function Layout() {
                   style={{ minWidth: 220, zIndex: 9995, boxShadow: '0 8px 32px rgba(0,0,0,0.5), 0 2px 8px rgba(0,0,0,0.3)' }}
                 >
                   {/* User info header */}
-                  <div className="px-3 py-2.5 border-b border-rmpg-700" style={{ background: 'rgba(13, 21, 32, 0.5)' }}>
+                  <div className="px-3 py-2.5 border-b border-rmpg-700" style={{ background: 'rgba(10,10,10, 0.5)' }}>
                     <div className="text-xs font-bold text-white">
                       {user?.first_name} {user?.last_name}
                     </div>
@@ -1161,7 +1279,7 @@ export default function Layout() {
           type="button"
           onClick={handleNavBack}
           disabled={!canGoBack}
-          className="toolbar-btn transition-colors duration-150 active:scale-[0.97] focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none"
+          className="toolbar-btn"
           title="Back (Alt+←)"
           aria-label="Navigate back"
           style={{ height: 36, width: 30, padding: '2px 4px', opacity: canGoBack ? 1 : 0.3 }}
@@ -1172,7 +1290,7 @@ export default function Layout() {
           type="button"
           onClick={handleNavForward}
           disabled={!canGoForward}
-          className="toolbar-btn transition-colors duration-150 active:scale-[0.97] focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none"
+          className="toolbar-btn"
           title="Forward (Alt+→)"
           aria-label="Navigate forward"
           style={{ height: 36, width: 30, padding: '2px 4px', opacity: canGoForward ? 1 : 0.3 }}
@@ -1213,12 +1331,12 @@ export default function Layout() {
                       window.open(url, '_blank', 'noopener,noreferrer');
                     }}
                     onMouseEnter={() => { if (openDropdown) setOpenDropdown(null); }}
-                    className="toolbar-btn transition-colors duration-150 active:scale-[0.97] focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none"
+                    className="toolbar-nav-btn"
                     title={`Open ${item.label}${item.shortcut ? ` (${item.shortcut})` : ''}`}
                     aria-label={`Open ${item.label} in new window`}
                     style={{ height: 44, padding: '2px 6px' }}
                   >
-                    <Icon style={{ width: 16, height: 16, color: '#666666', marginBottom: 1 }} />
+                    <Icon style={{ width: 16, height: 16, color: 'currentColor', marginBottom: 1 }} />
                     <span className="font-medium leading-none" style={{ fontSize: 9, letterSpacing: '0.02em' }}>{item.label}</span>
                   </button>
                 </React.Fragment>
@@ -1248,29 +1366,11 @@ export default function Layout() {
                         }
                       }
                     }}
-                    className="flex flex-col items-center justify-center transition-all duration-150 focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none active:scale-[0.97]"
+                    className={`toolbar-nav-btn flex-col items-center justify-center ${isActive || isDropdownOpen ? 'active' : ''}`}
                     style={{
-                      width: 52,
+                      minWidth: 52,
                       height: 42,
-                      padding: '2px 4px',
-                      background: isActive
-                        ? 'linear-gradient(180deg, rgba(42,42,42,0.75) 0%, rgba(30,30,30,0.75) 100%)'
-                        : isDropdownOpen
-                          ? 'rgba(255,255,255,0.05)'
-                          : 'transparent',
-                      borderBottom: isActive ? '2px solid #d4a017' : '2px solid transparent',
-                      color: isActive ? '#ffffff' : '#888888',
-                      cursor: 'pointer',
-                    }}
-                    onMouseEnter={(e) => {
-                      if (!isActive && !isDropdownOpen) {
-                        (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.04)';
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (!isActive && !isDropdownOpen) {
-                        (e.currentTarget as HTMLElement).style.background = 'transparent';
-                      }
+                      padding: '2px 7px',
                     }}
                     title={`${item.label}${item.shortcut ? ` (${item.shortcut})` : ''}`}
                     aria-label={`${item.label}${hasChildren ? ' menu' : ''}`}
@@ -1281,7 +1381,9 @@ export default function Layout() {
                       style={{
                         width: 16,
                         height: 16,
-                        color: isActive ? '#999999' : '#666666',
+                        // Inherit the button's currentColor so active (gold) + hover
+                        // states drive the glyph automatically — see .toolbar-nav-btn CSS.
+                        color: 'currentColor',
                         marginBottom: 1,
                       }}
                     />
@@ -1314,7 +1416,7 @@ export default function Layout() {
                           fontSize: 7,
                           top: 2,
                           right: 3,
-                          color: isActive ? '#999999' : '#3a3a3a',
+                          color: isActive ? 'var(--brand-gold)' : '#3a3a3a',
                         }}
                       >
                         {item.shortcut}
@@ -1328,7 +1430,7 @@ export default function Layout() {
                           position: 'absolute',
                           bottom: 2,
                           right: 2,
-                          color: '#3a3a3a',
+                          color: isActive ? 'var(--brand-gold)' : '#3a3a3a',
                           transform: isDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)',
                           transition: 'transform 0.15s',
                         }}
@@ -1340,15 +1442,12 @@ export default function Layout() {
                   {/* 10: Toolbar dropdown with stronger shadow + left-edge align fix */}
                   {hasChildren && isDropdownOpen && (
                     <div
-                      className="absolute top-full left-0 z-50 py-1 animate-dropdown-appear"
+                      className="menu-dropdown absolute top-full left-0 z-50 animate-dropdown-appear"
                       role="menu"
                       aria-label={`${item.label} submenu`}
                       style={{
                         minWidth: 210,
-                        background: '#141414',
-                        border: '1px solid #2a2a2a',
                         borderTop: '2px solid #888888',
-                        boxShadow: '0 12px 32px rgba(0,0,0,0.55), 0 4px 12px rgba(0,0,0,0.3)',
                       }}
                     >
                       {item.children!.filter(child => {
@@ -1370,23 +1469,11 @@ export default function Layout() {
                                 navigate(child.path);
                               }
                             }}
-                            className="flex items-center gap-2.5 w-full px-3 py-1.5 text-left transition-colors duration-150 hover:bg-white/[0.06] focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[#888888] focus-visible:outline-none"
+                            className={`menu-item w-full ${childActive ? 'active' : ''}`}
                             role="menuitem"
                             style={{
-                              color: childActive ? '#ffffff' : '#aaaaaa',
-                              background: childActive ? 'rgba(42,42,42,0.60)' : 'transparent',
-                            }}
-                            onMouseEnter={(e) => {
-                              if (!childActive) {
-                                (e.currentTarget as HTMLElement).style.background = 'linear-gradient(180deg, rgba(42,42,42,0.70) 0%, rgba(30,30,30,0.55) 100%)';
-                                (e.currentTarget as HTMLElement).style.color = '#ffffff';
-                              }
-                            }}
-                            onMouseLeave={(e) => {
-                              if (!childActive) {
-                                (e.currentTarget as HTMLElement).style.background = 'transparent';
-                                (e.currentTarget as HTMLElement).style.color = '#aaaaaa';
-                              }
+                              color: childActive ? '#ffffff' : undefined,
+                              background: childActive ? 'rgba(42,42,42,0.60)' : undefined,
                             }}
                           >
                             {/* 11: Slightly larger child icon + semibold label for active items */}
@@ -1421,6 +1508,9 @@ export default function Layout() {
         {/* Page Content (recessed panel) */}
         {/* 12: Main content area with subtle inset shadow for depth */}
         <main id="main-content" className="flex-1 overflow-auto min-h-0 panel-inset animate-page-enter scrollbar-dark" key={location.pathname} style={{ background: '#141414', boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.2)' }}>
+          {/* Officer-facing admin broadcasts (Admin → Announcements) */}
+          <AnnouncementBanner />
+
           {/* Feature 21: Password expiry warning banner */}
           {showPasswordExpiryWarning && (
             <div className="bg-amber-900/40 border-b border-amber-700/50 px-4 py-1.5 flex items-center gap-2">
@@ -1444,6 +1534,10 @@ export default function Layout() {
         </main>
       </div>
 
+      {/* Global Push-To-Talk — works on every page; every transmission is
+          relayed to the channel and recorded to Radio → Recordings. */}
+      <PttController />
+
       {/* Mobile Bottom Navigation */}
       {isMobile && (
         <MobileBottomNav
@@ -1455,7 +1549,6 @@ export default function Layout() {
       {!isMobile && (
         <StatusBar
           isConnected={isConnected}
-          connectionLost={connectionLost}
           user={user}
           activeCallCount={activeCallCount}
           callsByPriority={callsByPriority}
@@ -1488,25 +1581,6 @@ export default function Layout() {
 
       {/* Force 2FA Setup Modal — blocks UI until 2FA is enabled */}
       <Force2FASetupModal />
-
-      {/* Feature 24: Auto-logout idle warning dialog */}
-      {showIdleDialog && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Idle timeout warning">
-          {/* 13: Idle dialog with stronger visual hierarchy */}
-          <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-6 w-[350px] text-center animate-dropdown-appear" style={{ borderTop: '3px solid #d4a017', boxShadow: '0 16px 48px rgba(0,0,0,0.6)' }}>
-            <AlertTriangle className="w-10 h-10 text-amber-400 mx-auto mb-3" />
-            <h3 className="text-white font-bold text-base mb-2">Are you still there?</h3>
-            <p className="text-sm text-rmpg-300 mb-4">You will be logged out in 5 minutes due to inactivity.</p>
-            <button type="button"
-              onClick={() => { lastActivityRef.current = Date.now(); setShowIdleDialog(false); }}
-              className="px-4 py-2 text-sm font-bold text-white bg-brand-600 hover:bg-brand-500 rounded-sm transition-colors duration-150 active:scale-[0.97] focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none"
-              autoFocus
-            >
-              I'm still here
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* Keyboard Shortcut Help Modal */}
       {showShortcutHelp && (
@@ -1548,59 +1622,14 @@ export default function Layout() {
         </div>
       )}
 
-      {/* Command Palette */}
-      {showCommandPalette && (
-        <div className="fixed inset-0 z-[100] flex items-start justify-center pt-[15vh] bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Command palette" onClick={() => setShowCommandPalette(false)}>
-          {/* 15: Command palette with top accent and deeper shadow */}
-          <div className="bg-[#141414] border border-[#2b2b2b] rounded-sm w-full max-w-lg mx-4 animate-dropdown-appear" style={{ borderTop: '2px solid #888888', boxShadow: '0 16px 48px rgba(0,0,0,0.6), 0 4px 16px rgba(0,0,0,0.4)' }} onClick={e => e.stopPropagation()}>
-            <div className="flex items-center gap-2 px-4 py-3 border-b border-[#2b2b2b]">
-              <Search className="w-4 h-4 text-brand-400 flex-shrink-0" />
-              <input
-                ref={paletteInputRef}
-                autoFocus
-                value={paletteQuery}
-                onChange={e => setPaletteQuery(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter' && paletteResults.length > 0) {
-                    navigate(paletteResults[0].path);
-                    setShowCommandPalette(false);
-                  }
-                  if (e.key === 'Escape') setShowCommandPalette(false);
-                }}
-                placeholder="Search pages, modules..."
-                className="flex-1 bg-transparent text-sm text-white placeholder-rmpg-500 focus:outline-none"
-              />
-              <kbd className="px-1.5 py-0.5 text-[9px] font-mono bg-[#0c0c0c] border border-[#2a2a2a] text-rmpg-500 rounded-sm">ESC</kbd>
-            </div>
-            <div className="max-h-80 overflow-y-auto scrollbar-dark">
-              {paletteQuery.trim() === '' ? (
-                <div className="p-4 text-center text-rmpg-500 text-xs">Type to search pages and modules<span className="text-rmpg-600 ml-1">-- start typing</span></div>
-              ) : paletteResults.length === 0 ? (
-                <div className="p-4 text-center text-rmpg-500 text-xs">No results found</div>
-              ) : (
-                paletteResults.map((result, idx) => {
-                  const Icon = result.icon;
-                  return (
-                    <button type="button"
-                      key={`${result.path}-${idx}`}
-                      onClick={() => { navigate(result.path); setShowCommandPalette(false); }}
-                      className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-brand-500/10 transition-colors duration-150 border-b border-[#2b2b2b]/50 last:border-0 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[#888888] focus-visible:outline-none"
-                    >
-                      {/* 17: Command palette results with matched text style */}
-                      <Icon className="w-4 h-4 text-brand-400 flex-shrink-0" />
-                      <span className="text-sm text-white font-medium">{result.label}</span>
-                      <span className="text-[10px] text-rmpg-500 ml-auto font-mono">{result.path}</span>
-                    </button>
-                  );
-                })
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Command Palette (Cmd/Ctrl+K) — nav + live record search + NCIC quick-run */}
+      <CommandPalette
+        open={showCommandPalette}
+        onClose={() => setShowCommandPalette(false)}
+        navTargets={paletteNavTargets}
+      />
 
-      {/* Voice Channel floating indicator (mic button + state overlay) */}
-      <VoiceChannelIndicator />
+
     </div>
   );
 }

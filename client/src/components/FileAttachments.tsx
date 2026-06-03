@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { parseTimestamp } from '../utils/dateUtils';
 import {
   Paperclip,
   Upload,
@@ -50,16 +51,18 @@ const TOKEN_KEY = 'rmpg_token';
  * compatibility (but this is what caused TOKEN_EXPIRED errors).
  */
 export function authUrl(path: string, sig?: string, exp?: number): string {
-  const separator = path.includes('?') ? '&' : '?';
+  // Strip any existing token= param to prevent duplicates on re-render
+  const cleanPath = path.replace(/([?&])token=[^&]*&?/g, '$1').replace(/[?&]$/, '');
+  const separator = cleanPath.includes('?') ? '&' : '?';
 
   // Prefer HMAC signature — session-independent, 24h TTL
   if (sig && exp) {
-    return `${path}${separator}sig=${encodeURIComponent(sig)}&exp=${exp}`;
+    return `${cleanPath}${separator}sig=${encodeURIComponent(sig)}&exp=${exp}`;
   }
 
   // Fallback to JWT token (short-lived, same session only)
   const token = localStorage.getItem(TOKEN_KEY) || '';
-  return `${path}${separator}token=${encodeURIComponent(token)}`;
+  return `${cleanPath}${separator}token=${encodeURIComponent(token)}`;
 }
 
 /**
@@ -96,7 +99,7 @@ function getFileIcon(mime: string) {
 }
 
 function formatDate(dateStr: string): string {
-  return new Date(dateStr.includes('T') ? dateStr : dateStr + 'T00:00:00').toLocaleString('en-US', {
+  return parseTimestamp(dateStr).toLocaleString('en-US', {
     month: 'short',
     day: 'numeric',
     hour: '2-digit',
@@ -255,7 +258,7 @@ export default function FileAttachments({
             }
           `}
         >
-          <input
+          <input id="ff-fileattachments-0"
             ref={fileInputRef}
             type="file"
             multiple

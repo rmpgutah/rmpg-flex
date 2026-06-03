@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
+import { useToast } from '../../components/ToastProvider';
 
 import RichTextArea from '../../components/RichTextArea';
 type Call = {
@@ -42,6 +43,7 @@ function clearAuth(callId: number): void {
 }
 
 export default function MobilePsoCfsPage() {
+  const { addToast } = useToast();
   const { id } = useParams<{ id: string }>();
   const [searchParams] = useSearchParams();
   const callId = useMemo(() => parseInt(String(id || '0'), 10), [id]);
@@ -135,7 +137,7 @@ export default function MobilePsoCfsPage() {
       const data = await r.json();
       setCall(data.call);
     } catch (err: any) {
-      alert(`Status update failed: ${err.message || err}`);
+      addToast(`Status update failed: ${err.message || err}`, 'error');
     } finally {
       setStatusBusy(false);
     }
@@ -155,7 +157,7 @@ export default function MobilePsoCfsPage() {
       setNarrativeSaved(true);
       setTimeout(() => setNarrativeSaved(false), 2500);
     } catch (err: any) {
-      alert(`Narrative save failed: ${err.message || err}`);
+      addToast(`Narrative save failed: ${err.message || err}`, 'error');
     } finally {
       setBusy(false);
     }
@@ -192,7 +194,7 @@ export default function MobilePsoCfsPage() {
       setPsoSaved(true);
       setTimeout(() => setPsoSaved(false), 2500);
     } catch (err: any) {
-      alert(`PSO save failed: ${err.message || err}`);
+      addToast(`PSO save failed: ${err.message || err}`, 'error');
     } finally {
       setBusy(false);
     }
@@ -235,7 +237,7 @@ export default function MobilePsoCfsPage() {
           </div>
           <div className="bg-[#141414] border border-[#222] p-3 space-y-3">
             <label className="block text-[11px] font-bold text-gray-400 uppercase tracking-wider">Enter Your User ID</label>
-            <input
+            <input id="ff-mobilepsocfspage-0"
               type="number"
               inputMode="numeric"
               autoFocus
@@ -361,7 +363,7 @@ function LabeledInput({ label, value, onChange, type = 'text' }: { label: string
   return (
     <div>
       <label className="block text-[9px] font-bold text-gray-500 uppercase tracking-wider">{label}</label>
-      <input type={type} value={value} onChange={(e) => onChange(e.target.value)} className="w-full bg-[#050505] border border-[#333] text-white text-sm px-2 py-1.5 focus:border-[#d4a017] outline-none mt-1" />
+      <input id="ff-mobilepsocfspage-1" type={type} value={value} onChange={(e) => onChange(e.target.value)} className="w-full bg-[#050505] border border-[#333] text-white text-sm px-2 py-1.5 focus:border-[#d4a017] outline-none mt-1" />
     </div>
   );
 }
@@ -369,7 +371,7 @@ function LabeledSelect({ label, value, onChange, options }: { label: string; val
   return (
     <div>
       <label className="block text-[9px] font-bold text-gray-500 uppercase tracking-wider">{label}</label>
-      <select value={value} onChange={(e) => onChange(e.target.value)} className="w-full bg-[#050505] border border-[#333] text-white text-sm px-2 py-1.5 focus:border-[#d4a017] outline-none mt-1">
+      <select id="ff-mobilepsocfspage-2" value={value} onChange={(e) => onChange(e.target.value)} className="w-full bg-[#050505] border border-[#333] text-white text-sm px-2 py-1.5 focus:border-[#d4a017] outline-none mt-1">
         {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
       </select>
     </div>

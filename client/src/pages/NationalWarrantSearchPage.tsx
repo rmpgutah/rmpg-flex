@@ -9,6 +9,8 @@ import PanelTitleBar from '../components/PanelTitleBar';
 import { apiFetch } from '../hooks/useApi';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { formatDate } from '../utils/dateUtils';
+import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
+import { useMenuActions } from '../utils/contextMenuActions';
 
 // ── US States List ──────────────────────────────────────────
 const US_STATES = [
@@ -335,28 +337,28 @@ export default function NationalWarrantSearchPage() {
 
           {/* Row 1: Name, DOB, State, Search button */}
           <div className={`grid gap-2 ${isMobile ? 'grid-cols-1' : 'grid-cols-[1fr_1fr_120px_140px_auto]'}`}>
-            <input
+            <input id="ff-nationalwarrantsearchpage-0"
               type="text"
               placeholder="First Name"
               value={firstName}
               onChange={e => setFirstName(e.target.value)}
               className="input-dark text-xs"
             />
-            <input
+            <input id="ff-nationalwarrantsearchpage-1"
               type="text"
               placeholder="Last Name"
               value={lastName}
               onChange={e => setLastName(e.target.value)}
               className="input-dark text-xs"
             />
-            <input
+            <input id="ff-nationalwarrantsearchpage-2"
               type="date"
               placeholder="DOB"
               value={dob}
               onChange={e => setDob(e.target.value)}
               className="input-dark text-xs"
             />
-            <select
+            <select id="ff-nationalwarrantsearchpage-3"
               value={stateFilter}
               onChange={e => setStateFilter(e.target.value)}
               className="input-dark text-xs"
@@ -389,7 +391,7 @@ export default function NationalWarrantSearchPage() {
 
           {/* Row 2: Offense Level, Warrant Type, Charge Keyword */}
           <div className={`grid gap-2 ${isMobile ? 'grid-cols-1' : 'grid-cols-[140px_160px_1fr]'}`}>
-            <select
+            <select id="ff-nationalwarrantsearchpage-4"
               value={offenseLevel}
               onChange={e => setOffenseLevel(e.target.value)}
               className="input-dark text-xs"
@@ -398,7 +400,7 @@ export default function NationalWarrantSearchPage() {
                 <option key={o.code} value={o.code}>{o.label}</option>
               ))}
             </select>
-            <select
+            <select id="ff-nationalwarrantsearchpage-5"
               value={warrantType}
               onChange={e => setWarrantType(e.target.value)}
               className="input-dark text-xs"
@@ -407,7 +409,7 @@ export default function NationalWarrantSearchPage() {
                 <option key={t.code} value={t.code}>{t.label}</option>
               ))}
             </select>
-            <input
+            <input id="ff-nationalwarrantsearchpage-6"
               type="text"
               placeholder="Charge keyword (e.g., assault, DUI, theft)"
               value={chargeKeyword}
@@ -661,8 +663,24 @@ export default function NationalWarrantSearchPage() {
 
 // ── Warrant Result Row ──────────────────────────────────────
 function WarrantRow({ warrant }: { warrant: any }) {
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+
+  const buildWarrantMenu = (): ContextMenuItem[] => {
+    const fullName = `${warrant.last_name || ''}, ${warrant.first_name || ''}`.trim().replace(/^,\s*/, '');
+    return [
+      m.copy('Copy name', fullName),
+      ...(warrant.charges ? [m.copy('Copy charges', warrant.charges)] : []),
+      ...(warrant.court ? [m.copy('Copy court', warrant.court, <Gavel size={12} />)] : []),
+      ...(warrant.source ? [m.copy('Copy source', warrant.source)] : []),
+    ];
+  };
+
   return (
-    <div className="px-3 py-2 hover:bg-surface-sunken transition-colors flex items-start gap-3">
+    <div
+      className="px-3 py-2 hover:bg-surface-sunken transition-colors flex items-start gap-3"
+      onContextMenu={(e) => openMenu(e, buildWarrantMenu())}
+    >
       {/* Photo thumbnail */}
       {warrant.photo_url ? (
         <img
@@ -740,7 +758,7 @@ function WarrantRow({ warrant }: { warrant: any }) {
             Issued: {formatDate(warrant.issued_date)}
           </span>
         )}
-        {warrant.bond_amount && (
+        {Number.isFinite(Number(warrant.bond_amount)) && Number(warrant.bond_amount) > 0 && (
           <span className="text-[10px] text-amber-400 font-mono">
             Bond: ${Number(warrant.bond_amount).toLocaleString()}
           </span>

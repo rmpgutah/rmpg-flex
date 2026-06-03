@@ -19,6 +19,7 @@ import {
   Briefcase,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
+import { recordTypeLabel } from '../utils/recordTypeLabel';
 import { usePersistedTab } from '../hooks/usePersistedState';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -60,14 +61,19 @@ export default function RecordsPage() {
   const [showArchived, setShowArchived] = useState(false);
   const [showDuplicatesModal, setShowDuplicatesModal] = useState(false);
 
-  // Handle cross-module navigation params (?tab=persons&personId=X)
+  // Handle cross-module navigation params (?tab=persons&personId=X&q=smith).
+  // `q` pre-fills the search box (used by the Cmd+K command palette to land on
+  // a specific record's filtered list); `personId` is the legacy param.
   useEffect(() => {
     const tab = urlParams.get('tab');
     const personId = urlParams.get('personId');
+    const q = urlParams.get('q');
     if (tab && ['persons', 'vehicles', 'properties', 'businesses', 'evidence'].includes(tab)) {
       setActiveTab(tab as TabId);
     }
-    if (personId && tab === 'persons') {
+    if (q) {
+      setSearchQuery(q);
+    } else if (personId && tab === 'persons') {
       setSearchQuery(personId);
     }
   }, []); // Only on mount
@@ -648,7 +654,7 @@ export default function RecordsPage() {
         isOpen={deleteTarget !== null}
         onClose={() => setDeleteTarget(null)}
         onConfirm={handleDelete}
-        title={`Delete ${deleteTarget?.type ? deleteTarget.type.charAt(0).toUpperCase() + deleteTarget.type.slice(1) : 'Record'}`}
+        title={`Delete ${recordTypeLabel(deleteTarget?.type)}`}
         message={`Are you sure you want to delete "${deleteTarget?.label}"? This action cannot be undone.`}
         confirmLabel="Delete"
         confirmVariant="danger"

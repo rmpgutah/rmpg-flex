@@ -3,22 +3,17 @@
 // Global footer status bar with connection, operator, timestamp
 // ============================================================
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import RmpgLogo from './RmpgLogo';
 import BatteryIndicator from './BatteryIndicator';
-import StatusBarRadio from './StatusBarRadio';
-import { safeTimeStr } from '../utils/dateUtils';
+
+import { safeTimeStr, parseTimestamp } from '../utils/dateUtils';
 
 const APP_VERSION: string =
   typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.0.0';
 
 interface StatusBarProps {
   isConnected: boolean;
-  /**
-   * True only after the WebSocket has exhausted its reconnect budget
-   * (~25 min). Distinguishes "we're working on it" from "give up".
-   */
-  connectionLost?: boolean;
   user: { first_name: string; last_name: string; role: string; badge_number?: string } | null;
   activeCallCount: number;
   callsByPriority?: { priority: string; count: number }[];
@@ -29,9 +24,8 @@ interface StatusBarProps {
   gpsLastSent?: string | null;
 }
 
-export default function StatusBar({
+function StatusBar({
   isConnected,
-  connectionLost = false,
   user,
   activeCallCount,
   callsByPriority,
@@ -50,32 +44,12 @@ export default function StatusBar({
 
   return (
     <div className="status-bar">
-      {/* 26: Connection Status with uppercase tracking.
-          Three states: CONNECTED (green), RECONNECTING (amber, while
-          WS is auto-retrying), OFFLINE (red, after retries exhausted). */}
+      {/* 26: Connection Status with uppercase tracking */}
       <div className="status-bar-section" style={{ letterSpacing: '0.04em' }}>
-        {(() => {
-          let label = 'CONNECTED';
-          let color = '#22c55e';
-          let ledClass = 'led-green';
-          if (!isConnected) {
-            if (connectionLost) {
-              label = 'OFFLINE';
-              color = '#ef4444';
-              ledClass = 'led-red animate-led-blink';
-            } else {
-              label = 'RECONNECTING';
-              color = '#f59e0b';
-              ledClass = 'led-amber animate-led-blink';
-            }
-          }
-          return (
-            <>
-              <span className={`led-dot ${ledClass}`} />
-              <span style={{ color, fontWeight: 700 }}>{label}</span>
-            </>
-          );
-        })()}
+        <span className={`led-dot ${isConnected ? 'led-green' : 'led-red animate-led-blink'}`} />
+        <span style={{ color: isConnected ? '#22c55e' : '#ef4444', fontWeight: 700 }}>
+          {isConnected ? 'CONNECTED' : 'OFFLINE'}
+        </span>
       </div>
 
       {/* 27: Server version with logo */}
@@ -108,7 +82,7 @@ export default function StatusBar({
       {/* 30: GPS Status with tabular-nums for accuracy/time */}
       <div className="status-bar-section">
         {gpsTracking ? (() => {
-          const ageSec = gpsLastSent ? (Date.now() - new Date(gpsLastSent).getTime()) / 1000 : Infinity;
+          const ageSec = gpsLastSent ? (Date.now() - parseTimestamp(gpsLastSent).getTime()) / 1000 : Infinity;
           const isLost = ageSec > 600;     // >10 min
           const isStale = ageSec > 120;    // >2 min
           const ledClass = isLost ? 'led-red' : isStale ? 'led-amber' : 'led-green';
@@ -136,16 +110,6 @@ export default function StatusBar({
         )}
       </div>
 
-      {/* Shift Timer */}
-      <div className="status-bar-section">
-        <span style={{ color: '#888' }}>SHIFT: <span className="tabular-nums" style={{ color: '#d4a017' }}>{(() => {
-          const h = now.getHours();
-          if (h >= 6 && h < 14) return 'DAY';
-          if (h >= 14 && h < 22) return 'SWING';
-          return 'GRAVE';
-        })()}</span></span>
-      </div>
-
       {/* Operator */}
       <div className="status-bar-section">
         <span>
@@ -153,21 +117,10 @@ export default function StatusBar({
         </span>
       </div>
 
-      {/* Memory / Performance */}
-      <div className="status-bar-section">
-        <span style={{ color: '#3a3a3a' }}>FPS: <span className="tabular-nums" style={{ color: '#666' }}>60</span></span>
-      </div>
 
-      {/* Radio */}
-      <StatusBarRadio />
 
       {/* Battery */}
       <BatteryIndicator />
-
-      {/* Hotkey hints */}
-      <div className="status-bar-section" style={{ color: '#2a2a2a' }}>
-        <span>F2:DSP F3:MAP F5:NCIC F6:REC</span>
-      </div>
 
       {/* 31: Timestamp with tabular-nums for stable clock rendering */}
       <div className="status-bar-section">
@@ -185,3 +138,5 @@ export default function StatusBar({
     </div>
   );
 }
+
+export default React.memo(StatusBar);

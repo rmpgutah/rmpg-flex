@@ -10,7 +10,7 @@ import RichTextArea from '../components/RichTextArea';
 import {
   Search, Loader2, Plus, ChevronLeft, ChevronRight, X, ShieldAlert, ShieldCheck,
   ShieldOff, MapPin, Briefcase, Car, FileText, Clock, User, CheckCircle, XCircle,
-  Edit2, Link2, Save, Upload, UserX, Hash, Fingerprint,
+  Edit2, Link2, Save, Upload, UserX, Hash, Fingerprint, Eye,
 } from 'lucide-react';
 import type {
   SexOffenderRecord, SORAddress, SOROffense, SORVehicle, SORTier, SORStatus,
@@ -23,6 +23,9 @@ import { useLiveSync } from '../hooks/useLiveSync';
 import { useToast } from '../components/ToastProvider';
 import { useAuth } from '../context/AuthContext';
 import ExportButton from '../components/ExportButton';
+import { parseTimestamp } from '../utils/dateUtils';
+import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
+import { useMenuActions } from '../utils/contextMenuActions';
 
 // Re-type apiFetch for raw Response access (needed for PUT/POST error handling)
 async function apiRaw(endpoint: string, options?: RequestInit): Promise<Response> {
@@ -71,7 +74,7 @@ function parseJson<T>(raw: string | undefined | null, fallback: T[]): T[] {
 function formatDate(d?: string | null): string {
   if (!d) return '—';
   try {
-    const dt = new Date(d.includes('T') ? d : d + 'T00:00:00');
+    const dt = parseTimestamp(d);
     return dt.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
   } catch { return d; }
 }
@@ -79,7 +82,7 @@ function formatDate(d?: string | null): string {
 function calcAge(dob?: string | null): string {
   if (!dob) return '';
   try {
-    const birth = new Date(dob);
+    const birth = parseTimestamp(dob);
     const today = new Date();
     let age = today.getFullYear() - birth.getFullYear();
     if (today.getMonth() < birth.getMonth() || (today.getMonth() === birth.getMonth() && today.getDate() < birth.getDate())) age--;
@@ -269,6 +272,23 @@ export default function SexOffenderRegistryPage() {
     } catch { addToast('Import failed', 'error'); }
   };
 
+  // ── Right-click context menu ──
+  const { openMenu } = useContextMenu();
+  const menu = useMenuActions();
+  const buildRecordMenu = (r: SexOffenderRecord): ContextMenuItem[] => {
+    const fullName = `${r.first_name || ''} ${r.last_name || ''}`.trim();
+    return [
+      menu.action('Open record', () => setSelected(r), { icon: <Eye size={12} /> }),
+      menu.action('Edit entry', () => { setEditingRecord(r); setShowAddModal(true); }, { icon: <Edit2 size={12} /> }),
+      menu.separator(),
+      menu.copy('Copy name', fullName),
+      menu.copyId(r.id),
+      ...(r.registry_id ? [menu.copy('Copy registry ID', r.registry_id, <Hash size={12} />)] : []),
+      menu.separator(),
+      menu.action('Verify compliant', () => handleVerify(r), { icon: <CheckCircle size={12} /> }),
+    ];
+  };
+
   // ── Computed Values ───────────────────────────────────────
   const statTotal = stats?.total || 0;
   const statCompliant = stats?.by_status?.compliant || 0;
@@ -321,7 +341,7 @@ export default function SexOffenderRegistryPage() {
       >
         <div className="relative flex-1 min-w-[140px]">
           <Search size={13} className="absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500" />
-          <input
+          <input id="ff-sexoffenderregistrypage-0"
             type="text"
             value={searchInput}
             onChange={e => setSearchInput(e.target.value)}
@@ -334,7 +354,7 @@ export default function SexOffenderRegistryPage() {
             </IconButton>
           )}
         </div>
-        <select
+        <select id="ff-sexoffenderregistrypage-1"
           value={tierFilter}
           onChange={e => { setTierFilter(e.target.value); setPage(1); }}
           className="text-[11px] bg-surface-sunken border border-rmpg-700 rounded-sm text-rmpg-300 px-1.5 py-1 focus:border-brand-500 focus:outline-none"
@@ -344,7 +364,7 @@ export default function SexOffenderRegistryPage() {
           <option value="2">Tier 2</option>
           <option value="3">Tier 3</option>
         </select>
-        <select
+        <select id="ff-sexoffenderregistrypage-2"
           value={statusFilter}
           onChange={e => { setStatusFilter(e.target.value); setPage(1); }}
           className="text-[11px] bg-surface-sunken border border-rmpg-700 rounded-sm text-rmpg-300 px-1.5 py-1 focus:border-brand-500 focus:outline-none"
@@ -379,6 +399,7 @@ export default function SexOffenderRegistryPage() {
                 <button type="button"
                   key={r.id}
                   onClick={() => setSelected(r)}
+                  onContextMenu={(e) => openMenu(e, buildRecordMenu(r))}
                   className="w-full flex items-center gap-3 px-3 py-2.5 text-left transition-colors hover:bg-surface-raised/50"
                   style={{
                     background: isSelected ? 'rgba(42,42,42,0.6)' : undefined,
@@ -640,7 +661,7 @@ export default function SexOffenderRegistryPage() {
           <Field label="Last Verified" value={formatDate(selected.last_verification)} />
           <Field label="Next Due" value={
             selected.next_verification_due ? (
-              <span style={{ color: new Date(selected.next_verification_due) < new Date() ? '#f87171' : '#4ade80' }}>
+              <span style={{ color: parseTimestamp(selected.next_verification_due) < new Date() ? '#f87171' : '#4ade80' }}>
                 {formatDate(selected.next_verification_due)}
               </span>
             ) : '—'
@@ -861,7 +882,7 @@ export default function SexOffenderRegistryPage() {
               </p>
               <div className="relative">
                 <Search size={14} className="absolute left-2 top-2 text-rmpg-500" />
-                <input
+                <input id="ff-sexoffenderregistrypage-3"
                   value={linkSearch}
                   onChange={(e) => handleLinkPersonSearch(e.target.value)}
                   placeholder="Search persons by name..." aria-label="Search persons by name..."
@@ -1012,7 +1033,7 @@ function RecordFormModal({
             <FormField label="Registry ID" value={form.registry_id} onChange={v => set('registry_id', v)} placeholder="UT-SO-XXXXXXXX" />
             <div>
               <label className="block text-[10px] text-rmpg-500 mb-0.5 uppercase">Tier</label>
-              <select value={form.tier} onChange={e => set('tier', parseInt(e.target.value, 10))}
+              <select id="ff-sexoffenderregistrypage-4" value={form.tier} onChange={e => set('tier', parseInt(e.target.value, 10))}
                 className="w-full text-xs bg-surface-sunken border border-rmpg-700 rounded-sm text-white px-2 py-1.5 focus:border-brand-500 focus:outline-none">
                 <option value={1}>Tier 1 — Low</option>
                 <option value={2}>Tier 2 — Moderate</option>
@@ -1021,7 +1042,7 @@ function RecordFormModal({
             </div>
             <div>
               <label className="block text-[10px] text-rmpg-500 mb-0.5 uppercase">Risk Level</label>
-              <select value={form.risk_level} onChange={e => set('risk_level', e.target.value)}
+              <select id="ff-sexoffenderregistrypage-5" value={form.risk_level} onChange={e => set('risk_level', e.target.value)}
                 className="w-full text-xs bg-surface-sunken border border-rmpg-700 rounded-sm text-white px-2 py-1.5 focus:border-brand-500 focus:outline-none">
                 <option value="">— None —</option>
                 <option value="low">Low</option>
@@ -1051,7 +1072,7 @@ function RecordFormModal({
           <div className="grid grid-cols-3 gap-2">
             <div>
               <label className="block text-[10px] text-rmpg-500 mb-0.5 uppercase">Status</label>
-              <select value={form.registration_status} onChange={e => set('registration_status', e.target.value)}
+              <select id="ff-sexoffenderregistrypage-6" value={form.registration_status} onChange={e => set('registration_status', e.target.value)}
                 className="w-full text-xs bg-surface-sunken border border-rmpg-700 rounded-sm text-white px-2 py-1.5 focus:border-brand-500 focus:outline-none">
                 <option value="compliant">Compliant</option>
                 <option value="non_compliant">Non-Compliant</option>
@@ -1112,7 +1133,7 @@ function FormField({
         <RichTextArea value={value} onChange={e => onChange(e.target.value)} rows={2}
           className={cls} placeholder={placeholder} />
       ) : (
-        <input type={type} value={value} onChange={e => onChange(e.target.value)}
+        <input id="ff-sexoffenderregistrypage-7" type={type} value={value} onChange={e => onChange(e.target.value)}
           className={cls} placeholder={placeholder} />
       )}
     </div>

@@ -1,0 +1,22 @@
+name = "rmpg-api-proxy"
+main = "index.ts"
+compatibility_date = "2026-05-01"
+
+# Catches every request to rmpgutah.us/api/* before it reaches Pages.
+# The Pages app at rmpgutah.us serves the SPA at the root and used to
+# proxy /api/* through a Functions middleware; that middleware is now
+# dead code (this Worker intercepts at the zone first). See LEGACY.md.
+[[routes]]
+pattern = "rmpgutah.us/api/*"
+zone_name = "rmpgutah.us"
+
+# Service bindings — these let this Worker fetch() another Worker
+# directly inside the Cloudflare edge (no HTTP round-trip out, no
+# additional CORS dance, sub-ms latency).
+[[services]]
+binding = "API"
+service = "rmpg-flex-api"
+
+[[services]]
+binding = "LEGACY"
+service = "rmpg-flex"

@@ -7,9 +7,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { GraduationCap, AlertTriangle, CheckCircle, Clock } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { asArray } from '../../utils/asArray';
 import { useLiveSync } from '../../hooks/useLiveSync';
 import { toDisplayLabel } from '../../utils/formatters';
 import { useToast } from '../../components/ToastProvider';
+import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
+import { useMenuActions } from '../../utils/contextMenuActions';
 
 interface OfficerCompliance {
   user_id: number;
@@ -42,6 +45,16 @@ export default function AdminTrainingTab({ LoadingSpinner, error, setError }: Pr
   const [stats, setStats] = useState<TrainingStats | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // ── Right-click context menu (read-only compliance dashboard → copy-only) ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+
+  const buildOfficerMenu = (o: OfficerCompliance): ContextMenuItem[] => [
+    m.copy('Copy name', o.full_name),
+    ...(o.badge_number ? [m.copy('Copy badge', o.badge_number)] : []),
+    m.copyId(o.user_id, 'Copy user ID'),
+  ];
+
   const fetchData = useCallback(async () => {
     try {
       // Fetch training records + requirements and compute compliance
@@ -50,8 +63,11 @@ export default function AdminTrainingTab({ LoadingSpinner, error, setError }: Pr
         apiFetch<any[]>('/admin/users'),
       ]);
 
-      const activeUsers = (users || []).filter((u: any) => u.status === 'active' && ['officer', 'supervisor', 'admin', 'manager'].includes(u.role));
-      const trainingRecords = records || [];
+      // asArray() — endpoints may return {} from a stub instead of [].
+      // Without this guard, `users.filter` crashed the entire AdminPage
+      // with "u.map is not a function" (the minified `u` was `users`).
+      const activeUsers = asArray<any>(users).filter((u: any) => u.status === 'active' && ['officer', 'supervisor', 'admin', 'manager'].includes(u.role));
+      const trainingRecords = asArray<any>(records);
 
       // Group records by user
       const userRecords = new Map<number, any[]>();
@@ -231,7 +247,7 @@ export default function AdminTrainingTab({ LoadingSpinner, error, setError }: Pr
             const statusColor = o.overdue === 0 ? '#22c55e' : o.overdue <= 2 ? '#f59e0b' : '#ef4444';
             const statusLabel = o.overdue === 0 ? 'COMPLIANT' : `${o.overdue} OVERDUE`;
             return (
-              <tr key={o.user_id} className="border-b border-rmpg-800/30 hover:bg-surface-raised/30 transition-colors">
+              <tr key={o.user_id} className="border-b border-rmpg-800/30 hover:bg-surface-raised/30 transition-colors" onContextMenu={(e) => openMenu(e, buildOfficerMenu(o))}>
                 <td className="px-3 py-2 font-semibold text-white">{o.full_name}</td>
                 <td className="px-3 py-2 text-rmpg-400 font-mono">{o.badge_number || '—'}</td>
                 <td className="px-3 py-2 text-rmpg-400">{toDisplayLabel(o.role)}</td>

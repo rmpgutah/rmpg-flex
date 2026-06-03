@@ -1,0 +1,184 @@
+# DO NOT rename to "rmpg-api-proxy". This config deploys the rewrite app
+# (src/index.ts) and MUST target the worker `rmpg-flex-api`. The worker named
+# `rmpg-api-proxy` is the separate strangler dispatcher (proxy/wrangler.toml,
+# bound to rmpgutah.us/api/*) — it routes /api/auth/login to the legacy worker.
+# Renaming this to `rmpg-api-proxy` makes `wrangler deploy` overwrite the
+# dispatcher with this rewrite, which has NO `JWT_SECRET` secret of its own →
+# every login 500s on token signing (incident 2026-06-02, PRs #937/#946 →
+# reverted by #945 and this one). See [[project-auth-login-500-incident]].
+name = "rmpg-flex-api"
+main = "src/index.ts"
+compatibility_date = "2026-05-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Custom domain. Wrangler provisions the DNS record + zone hostname
+# mapping; the zone (rmpgutah.us) must already be on this Cloudflare
+# account.
+[[routes]]
+pattern = "api.rmpgutah.us"
+custom_domain = true
+
+# D1 Database — points at the LIVE production DB (the one bound to the legacy
+# rmpg-flex Worker that the rmpg-api-proxy falls back to). The `rmpg-flex-db`
+# (8893480a-…) created with this rewrite is EMPTY of production data; reading
+# from it caused every dispatch-panel endpoint routed through the proxy to
+# return "Call not found" / empty arrays on 2026-05-24. See
+# [[project-live-db-is-different]] memory for the dual-DB history. Schema
+# repairs needed to keep this rewrite happy against the live DB live in
+# migrations/live/L0001_*.sql + L0002_*.sql (applied manually via D1 MCP).
+[[d1_databases]]
+binding = "DB"
+database_name = "rmpg-flex"
+database_id = "785de7ae-3e7a-4e01-93bb-d24ddd813f6b"
+
+# Dedicated geo database — statewide UGRC address points (~1.48M rows) for
+# the map address search + snap-to-address. Kept SEPARATE from the production
+# CAD DB so the address index can't bloat or contend with live dispatch data.
+[[d1_databases]]
+binding = "GEO_DB"
+database_name = "rmpg-geo"
+database_id = "fbc33751-dce0-499a-bc45-93c0b7ee0da1"
+
+# ─── Durable Objects ─────────────────────────────────────
+# WelfareWatchDO — automated officer welfare escalation timer
+# (Spillman parity, DI-4 follow-up). One instance per officer
+# via env.WELFARE_WATCH.idFromName(`u-${userId}`).
+[[durable_objects.bindings]]
+name = "WELFARE_WATCH"
+class_name = "WelfareWatchDO"
+
+# VoiceHubDO — one instance per radio channel / panic incident; the
+# single shared hub that relays + records live voice (PTT + panic
+# audio). Reached via /api/voice-ws on this worker's custom domain.
+[[durable_objects.bindings]]
+name = "VOICE_HUB"
+class_name = "VoiceHubDO"
+
+# AlertHubDO — ONE global instance (idFromName('global')) that every client
+# holds an alert socket to (/api/alerts-ws on this worker's custom domain).
+# The shared bus that lets rewrite route handlers broadcast officer-safety
+# events (panic, etc.) agency-wide — the rewrite's own per-isolate WS map is
+# dead because clients' main /api/ws socket lives on the legacy worker.
+[[durable_objects.bindings]]
+name = "ALERT_HUB"
+class_name = "AlertHubDO"
+
+[[migrations]]
+tag = "v1"
+# new_sqlite_classes (not new_classes) — free-plan compatible.
+# SQLite-backed DO storage; same API surface for our use case.
+new_sqlite_classes = ["WelfareWatchDO"]
+
+# KV for sessions and caching
+[[kv_namespaces]]
+binding = "KV"
+id = "8e01c392038e4f76838ca9a1130c908e"
+preview_id = "8e01c392038e4f76838ca9a1130c908e"
+
+# R2 buckets
+[[r2_buckets]]
+binding = "MAP_DATA"
+bucket_name = "system-essentials"
+
+# UPLOADS — general-purpose user upload bucket.
+# Currently holds business-photos/ prefix (PR-E). Future R2-backed
+# routes (companyDocuments, dashcamVideos, attachments) can layer
+# their own prefixes under this same bucket to keep the binding
+# count low. Bucket was provisioned 2026-05-24.
+[[r2_buckets]]
+binding = "UPLOADS"
+bucket_name = "rmpg-flex-uploads"
+
+# DOWNLOADS — desktop + mobile installer artifacts for public download
+# and auto-update serving. Contains .exe, .dmg, .apk, .zip, .blockmap,
+# .yml manifests, and the download page index.html.
+[[r2_buckets]]
+binding = "DOWNLOADS"
+bucket_name = "rmpg-flex-downloads"
+
+# ─── Cloudflare Containers ─────────────────────────────────
+# PDF Tools sidecar (qpdf + pdftotext + ocrmypdf). The Worker
+# can't shell out to native binaries — this container holds
+# them and the Worker proxies via
+#   getContainer(env.PDF_TOOLS, "shared").fetch(req)
+# See containers/pdf-tools/ for the Dockerfile + FastAPI server.
+#
+# instance_type = "basic" → 1/4 vCPU, 1 GiB RAM, 4 GB disk.
+# "lite" (default, 256 MiB) is too tight for Tesseract on
+# multi-page PDFs. Bump to "standard-1" (4 GiB) if OCR
+# throughput is a bottleneck.
+#
+# Docker is required at deploy time — GitHub Actions runners
+# have Docker; local dry-runs need Docker Desktop running OR
+# pass --containers-rollout=none to skip the container build.
+[[containers]]
+class_name = "PdfToolsContainer"
+image = "./containers/pdf-tools/Dockerfile"
+max_instances = 3
+instance_type = "basic"
+
+[[durable_objects.bindings]]
+name = "PDF_TOOLS"
+class_name = "PdfToolsContainer"
+
+# new_sqlite_classes is required for container-enabled DOs
+# even though we don't actually use the storage — the Container
+# base class extends DurableObject and needs SQLite-backed
+# state for lifecycle bookkeeping (sleepAfter timer, etc).
+# Tag is namespaced so it doesn't collide with v1 above.
+[[migrations]]
+tag = "v1-pdftools"
+new_sqlite_classes = ["PdfToolsContainer"]
+
+# VoiceHubDO — MUST be the LAST migration. Cloudflare requires the
+# already-applied tags ([v1, v1-pdftools] on the live worker) to be a
+# prefix of this list, so new DO migrations are APPENDED, never inserted
+# mid-list. A prior insert between v1 and v1-pdftools failed deploy with
+# "class VoiceHubDO is not currently configured to implement Durable
+# Objects" [code 10061].
+[[migrations]]
+tag = "v2-voicehub"
+new_sqlite_classes = ["VoiceHubDO"]
+
+# AlertHubDO — APPENDED (same prefix rule as v2-voicehub above: live tags
+# must be a prefix of this list, so new DO migrations go at the END, never
+# mid-list). SQLite-backed for free-plan compatibility + storage.put/getAlarm.
+[[migrations]]
+tag = "v3-alerthub"
+new_sqlite_classes = ["AlertHubDO"]
+
+# ─── Workers AI ────────────────────────────────────────────
+# Used by /api/serve-intake/scan-document + /api/serve-intake/upload
+# for structured field extraction from OCR text and direct vision-LLM
+# OCR on uploaded images. Models in use:
+#   • @cf/meta/llama-3.3-70b-instruct-fp8-fast — structured field
+#     extraction over Tesseract output (legal-document JSON schema).
+#   • @cf/meta/llama-3.2-11b-vision-instruct — single-pass vision OCR
+#     for uploaded images (skips the Tesseract step entirely).
+[ai]
+binding = "AI"
+
+# Environment variables
+[vars]
+NODE_ENV = "production"
+PRIMARY_DOMAIN = "rmpgutah.us"
+CORS_ORIGINS = "https://rmpgutah.us,https://www.rmpgutah.us,http://localhost:5173"
+JWT_ACCESS_EXPIRY = "15m"
+JWT_REFRESH_EXPIRY = "7d"
+SERVER_TIMEZONE = "America/Denver"
+
+# Secrets (set via `npx wrangler secret put`)
+# JWT_SECRET (already set)
+# GOOGLE_MAPS_API_KEY
+
+# Scheduled cron triggers.
+# Utah warrant smoke poll runs every 4h, matching the legacy server's
+# scheduleUtahWarrantSync interval. Workers cron uses UTC; "0 */4 * * *"
+# means every 4 hours on the hour (00:00, 04:00, 08:00, ... UTC).
+[triggers]
+crons = ["0 */4 * * *"]
+
+# (Removed obsolete deleted_classes migration. The class is now properly
+# defined upstream (commit ccb3881b on main added src/durable-objects/
+# WelfareWatchDO.ts + the new_sqlite_classes migration above). Deleting
+# it after main creates it would defeat the whole point.)

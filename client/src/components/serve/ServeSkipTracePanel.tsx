@@ -192,7 +192,7 @@ export default function ServeSkipTracePanel({
           <div className="space-y-3">
             <div>
               <label className="block text-[11px] text-rmpg-400 mb-1">Name</label>
-              <input
+              <input id="ff-serveskiptracepanel-0"
                 type="text"
                 value={searchName}
                 onChange={e => setSearchName(e.target.value)}
@@ -202,7 +202,7 @@ export default function ServeSkipTracePanel({
             </div>
             <div>
               <label className="block text-[11px] text-rmpg-400 mb-1">Address</label>
-              <input
+              <input id="ff-serveskiptracepanel-1"
                 type="text"
                 value={searchAddress}
                 onChange={e => setSearchAddress(e.target.value)}

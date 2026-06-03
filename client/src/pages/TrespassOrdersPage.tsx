@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import RichTextArea from '../components/RichTextArea';
 import {
-  Plus, Search, ShieldBan, MapPin, User, Ban, Calendar, RotateCcw, X, Save,
-  Loader2, CheckCircle, AlertTriangle,
+  Plus, Search, ShieldBan, MapPin, User, Clock, Ban, Calendar,
+  Archive, RotateCcw, X, Save, Loader2, CheckCircle, AlertTriangle,
+  Eye, Pencil, Trash2,
 } from 'lucide-react';
 import type { TrespassOrder, TrespassOrderType, TrespassOrderStatus } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -15,9 +15,14 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import ExportButton from '../components/ExportButton';
 import { useToast } from '../components/ToastProvider';
 import { useFormValidation } from '../hooks/useFormValidation';
+import { useFormDraft } from '../hooks/useFormDraft';
+import UnsavedChangesGuard from '../components/UnsavedChangesGuard';
+import FloatingSaveBar from '../components/FloatingSaveBar';
 import { useDistrictOptions } from '../hooks/useDistrictLookup';
-import { safeDateStr, safeDateTimeStr } from '../utils/dateUtils';
+import { safeDateStr, safeDateTimeStr, parseTimestamp } from '../utils/dateUtils';
 import { formatAddressDisplay } from '../utils/statusLabels';
+import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
+import { useMenuActions } from '../utils/contextMenuActions';
 
 const ORDER_TYPES: { value: TrespassOrderType; label: string }[] = [
   { value: 'trespass_warning', label: 'Trespass Warning' },
@@ -50,6 +55,20 @@ const EMPTY_FORM = {
   sector_id: '', zone_id: '', beat_id: '',
 };
 
+const timeAgo = (date: string): string => {
+  if (!date) return '—';
+  const parsed = parseTimestamp(date).getTime();
+  if (Number.isNaN(parsed)) return '—';
+  const ms = Date.now() - parsed;
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
 export default function TrespassOrdersPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
@@ -73,7 +92,18 @@ export default function TrespassOrdersPage() {
 
   const [formOpen, setFormOpen] = useState(false);
   const [editingOrder, setEditingOrder] = useState<TrespassOrder | null>(null);
-  const [formData, setFormData] = useState({ ...EMPTY_FORM });
+  const {
+    form: formData,
+    setForm: setFormData,
+    isDirty: formIsDirty,
+    wasRestored: formWasRestored,
+    clearDraft: clearFormDraft,
+    snapshot: snapshotForm,
+  } = useFormDraft<typeof EMPTY_FORM>({
+    storageKey: 'rmpg_trespass_order_form',
+    defaultValue: EMPTY_FORM,
+    isActive: formOpen,
+  });
   const [submitting, setSubmitting] = useState(false);
 
   // Person search
@@ -172,6 +202,7 @@ export default function TrespassOrdersPage() {
     setPersonSearch('');
     clearAllErrors();
     setFormOpen(true);
+    snapshotForm();
   };
 
   const handleEdit = (order: TrespassOrder) => {
@@ -197,6 +228,7 @@ export default function TrespassOrdersPage() {
       beat_id: order.beat_id || '',
     });
     setFormOpen(true);
+    snapshotForm();
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -226,6 +258,7 @@ export default function TrespassOrdersPage() {
         await apiFetch('/trespass-orders', { method: 'POST', body: JSON.stringify(body) });
         addToast('Trespass order created', 'success');
       }
+      clearFormDraft();
       setFormOpen(false); setEditingOrder(null); await fetchOrders();
     } catch (err: any) { setError(err?.message || 'Operation failed'); } finally { setSubmitting(false); }
   };
@@ -278,7 +311,7 @@ export default function TrespassOrdersPage() {
   // Check if order expires within 30 days
   const isExpiringWithin30Days = (order: TrespassOrder): boolean => {
     if (!order.expiration_date) return false;
-    const exp = new Date(order.expiration_date);
+    const exp = parseTimestamp(order.expiration_date);
     const now = new Date();
     const thirtyDays = new Date();
     thirtyDays.setDate(thirtyDays.getDate() + 30);
@@ -308,6 +341,45 @@ export default function TrespassOrdersPage() {
       property_name: prop?.name || '',
       location: prop?.address ? `${prop.address}${prop.city ? ', ' + prop.city : ''}` : prev.location,
     }));
+  };
+
+  const handleDeleteOrder = async (order: TrespassOrder) => {
+    if (!confirm(`Admin God Mode: Delete trespass order ${order.order_number}?`)) return;
+    try {
+      await apiFetch(`/trespass-orders/${order.id}`, { method: 'DELETE' });
+      addToast(`Order ${order.order_number} deleted`, 'success');
+      if (selectedOrder?.id === order.id) setSelectedOrder(null);
+      fetchOrders();
+    } catch (err: any) { addToast(err.message || 'Delete failed', 'error'); }
+  };
+
+  // ── Right-click context menu ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+  const buildOrderMenu = (order: TrespassOrder): ContextMenuItem[] => {
+    const subject = `${order.subject_first_name || ''} ${order.subject_last_name || ''}`.trim();
+    return [
+      m.action('Open order', () => setSelectedOrder(order), { icon: <Eye size={12} /> }),
+      m.action('Edit order', () => handleEdit(order), { icon: <Pencil size={12} /> }),
+      m.separator(),
+      m.copy('Copy subject name', subject),
+      m.copy('Copy order #', order.order_number),
+      m.copyId(order.id),
+      ...(order.status === 'active' ? [
+        m.separator(),
+        m.action('Mark served', () => handleServe(order), { icon: <CheckCircle size={12} /> }),
+        m.action('Lift order', () => handleLift(order), { icon: <RotateCcw size={12} /> }),
+        m.action('Record violation', () => handleViolate(order), { icon: <AlertTriangle size={12} /> }),
+      ] : []),
+      ...((order.status === 'expired' || order.status === 'served') ? [
+        m.separator(),
+        m.action('Renew order', () => handleRenew(order), { icon: <RotateCcw size={12} /> }),
+      ] : []),
+      ...(isAdmin ? [
+        m.separator(),
+        m.action('Delete', () => handleDeleteOrder(order), { icon: <Trash2 size={12} />, danger: true }),
+      ] : []),
+    ];
   };
 
   // Set document title
@@ -377,9 +449,9 @@ export default function TrespassOrdersPage() {
           <div className="space-y-1 mb-2">
             {bulkPersons.map((p, i) => (
               <div key={i} className="flex gap-1">
-                <input className="input-dark flex-1 text-xs min-h-[36px]" placeholder="First name" value={p.first_name}
+                <input id="ff-trespassorderspage-0" className="input-dark flex-1 text-xs min-h-[36px]" placeholder="First name" value={p.first_name}
                   onChange={e => { const arr = [...bulkPersons]; arr[i] = { ...arr[i], first_name: e.target.value }; setBulkPersons(arr); }} />
-                <input className="input-dark flex-1 text-xs min-h-[36px]" placeholder="Last name" value={p.last_name}
+                <input id="ff-trespassorderspage-1" className="input-dark flex-1 text-xs min-h-[36px]" placeholder="Last name" value={p.last_name}
                   onChange={e => { const arr = [...bulkPersons]; arr[i] = { ...arr[i], last_name: e.target.value }; setBulkPersons(arr); }} />
                 <IconButton onClick={() => setBulkPersons(prev => prev.filter((_, j) => j !== i))} className="text-red-500 hover:text-red-300 px-1" aria-label={`Remove person ${i + 1}`}><X style={{ width: 10, height: 10 }} /></IconButton>
               </div>
@@ -396,7 +468,7 @@ export default function TrespassOrdersPage() {
       <div className={`flex ${isMobile ? 'flex-col gap-1.5' : 'items-center gap-2'} px-3 py-1.5 border-b border-rmpg-700`} style={{ background: '#0a0a0a' }}>
         <div className={`relative ${isMobile ? 'w-full' : 'flex-1 max-w-xs'}`}>
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" />
-          <input type="text" placeholder="Search orders..." aria-label="Search orders..." className={`input-dark pl-7 w-full ${isMobile ? 'text-sm py-2.5' : 'text-xs'}`}
+          <input id="ff-trespassorderspage-2" type="text" placeholder="Search orders..." aria-label="Search orders..." className={`input-dark pl-7 w-full ${isMobile ? 'text-sm py-2.5' : 'text-xs'}`}
             value={searchQuery} onChange={e => { setSearchQuery(e.target.value); setPage(1); }}
             style={isMobile ? { minHeight: 44 } : undefined} />
         </div>
@@ -418,7 +490,7 @@ export default function TrespassOrdersPage() {
           >
             {showActiveOnly ? 'ACTIVE ONLY' : 'ALL ORDERS'}
           </button>
-          <select className={`select-dark ${isMobile ? 'flex-1 text-sm py-2' : 'text-xs'}`} value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setShowActiveOnly(false); setPage(1); }} style={isMobile ? { minHeight: 44 } : undefined}>
+          <select id="ff-trespassorderspage-3" className={`select-dark ${isMobile ? 'flex-1 text-sm py-2' : 'text-xs'}`} value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setShowActiveOnly(false); setPage(1); }} style={isMobile ? { minHeight: 44 } : undefined}>
             <option value="">All Statuses</option>
             <option value="active">Active</option>
             <option value="served">Served</option>
@@ -427,7 +499,7 @@ export default function TrespassOrdersPage() {
             <option value="violated">Violated</option>
           </select>
           <label className={`flex items-center gap-1 ${isMobile ? 'text-xs' : 'text-[10px]'} text-rmpg-400 cursor-pointer`} style={isMobile ? { minHeight: 44 } : undefined}>
-            <input type="checkbox" checked={showArchived} onChange={e => { setShowArchived(e.target.checked); setPage(1); }} className="accent-brand-500" style={isMobile ? { width: 20, height: 20 } : undefined} /> Archived
+            <input id="ff-trespassorderspage-4" type="checkbox" checked={showArchived} onChange={e => { setShowArchived(e.target.checked); setPage(1); }} className="accent-brand-500" style={isMobile ? { width: 20, height: 20 } : undefined} /> Archived
           </label>
         </div>
       </div>
@@ -447,17 +519,8 @@ export default function TrespassOrdersPage() {
             />
           ) : (
             orders.map(order => (
-              <div
-                key={order.id}
-                role="button"
-                tabIndex={0}
-                onClick={() => setSelectedOrder(order)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    setSelectedOrder(order);
-                  }
-                }}
+              <div key={order.id} onClick={() => setSelectedOrder(order)}
+                onContextMenu={(e) => openMenu(e, buildOrderMenu(order))}
                 className={`px-3 ${isMobile ? 'py-3' : 'py-2'} cursor-pointer border-b border-rmpg-800 transition-colors hover:bg-surface-raised ${selectedOrder?.id === order.id ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : 'border-l-2 border-l-transparent'}`}
                 style={isMobile ? { minHeight: 56 } : undefined}
               >
@@ -533,15 +596,7 @@ export default function TrespassOrdersPage() {
                   </button>
                 )}
                 {isAdmin && (
-                  <button type="button" onClick={async () => {
-                    if (!confirm(`Admin God Mode: Delete trespass order ${selectedOrder.order_number}?`)) return;
-                    try {
-                      await apiFetch(`/trespass-orders/${selectedOrder.id}`, { method: 'DELETE' });
-                      addToast(`Order ${selectedOrder.order_number} deleted`, 'success');
-                      setSelectedOrder(null);
-                      fetchOrders();
-                    } catch (err: any) { addToast(err.message || 'Delete failed', 'error'); }
-                  }} className="toolbar-btn text-red-400 hover:text-red-300" style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined }}>
+                  <button type="button" onClick={() => handleDeleteOrder(selectedOrder)} className="toolbar-btn text-red-400 hover:text-red-300" style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined }}>
                     <X style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> Delete
                   </button>
                 )}
@@ -564,13 +619,13 @@ export default function TrespassOrdersPage() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-xs">
               <div><span className="text-rmpg-500 text-[10px] uppercase">Subject</span><div className="text-white font-medium">{selectedOrder.subject_last_name}, {selectedOrder.subject_first_name}</div></div>
-              <div><span className="text-rmpg-500 text-[10px] uppercase">DOB</span><div className="text-white">{selectedOrder.subject_dob ? new Date(selectedOrder.subject_dob).toLocaleDateString() : '—'}</div></div>
+              <div><span className="text-rmpg-500 text-[10px] uppercase">DOB</span><div className="text-white">{selectedOrder.subject_dob ? parseTimestamp(selectedOrder.subject_dob).toLocaleDateString() : '—'}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">Property</span><div className="text-white">{selectedOrder.property_name || '—'}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">Location</span><div className="text-white">{formatAddressDisplay(selectedOrder.location)}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">Order Type</span><div className="text-white capitalize">{selectedOrder.order_type.replace(/_/g, ' ')}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">Status</span><div className="text-white capitalize">{selectedOrder.status.replace(/_/g, ' ')}</div></div>
-              <div><span className="text-rmpg-500 text-[10px] uppercase">Effective</span><div className="text-white">{selectedOrder.effective_date ? new Date(selectedOrder.effective_date).toLocaleDateString() : '—'}</div></div>
-              <div><span className="text-rmpg-500 text-[10px] uppercase">Expires</span><div className="text-white">{selectedOrder.expiration_date ? new Date(selectedOrder.expiration_date).toLocaleDateString() : 'Permanent'}</div></div>
+              <div><span className="text-rmpg-500 text-[10px] uppercase">Effective</span><div className="text-white">{selectedOrder.effective_date ? parseTimestamp(selectedOrder.effective_date).toLocaleDateString() : '—'}</div></div>
+              <div><span className="text-rmpg-500 text-[10px] uppercase">Expires</span><div className="text-white">{selectedOrder.expiration_date ? parseTimestamp(selectedOrder.expiration_date).toLocaleDateString() : 'Permanent'}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">Issued By</span><div className="text-white">{selectedOrder.issued_by_name || selectedOrder.issued_by_display || '—'}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">Authorized By</span><div className="text-white">{selectedOrder.authorized_by || '—'}</div></div>
               {(selectedOrder.sector_id || selectedOrder.zone_id || selectedOrder.beat_id) && (
@@ -608,18 +663,34 @@ export default function TrespassOrdersPage() {
 
       {/* Form Modal */}
       {formOpen && (
-        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" onClick={() => setFormOpen(false)}>
+        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" onClick={() => { clearFormDraft(); setFormOpen(false); }}>
           <div className="bg-surface-raised border border-rmpg-600 w-full max-w-2xl max-h-[90vh] overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-2 border-b border-rmpg-700" style={{ background: '#0a0a0a' }}>
-              <span className="text-xs font-bold text-[#d4a017] uppercase tracking-wider">{editingOrder ? 'Edit' : 'New'} Trespass Order</span>
-              <IconButton onClick={() => setFormOpen(false)} className="text-rmpg-400 hover:text-white" aria-label="Close form"><X style={{ width: 14, height: 14 }} /></IconButton>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-[#d4a017] uppercase tracking-wider">{editingOrder ? 'Edit' : 'New'} Trespass Order</span>
+                {formIsDirty && (
+                  <span className="text-[8px] text-amber-400 font-bold uppercase tracking-wider">UNSAVED</span>
+                )}
+              </div>
+              <IconButton onClick={() => { clearFormDraft(); setFormOpen(false); }} className="text-rmpg-400 hover:text-white" aria-label="Close form"><X style={{ width: 14, height: 14 }} /></IconButton>
             </div>
             <form onSubmit={handleSubmit} className="p-4 space-y-3">
+              {formWasRestored && (
+                <div className="flex items-center justify-between px-3 py-2 rounded-sm border border-amber-500/30" style={{ background: '#1a1500' }}>
+                  <div className="flex items-center gap-2">
+                    <Clock size={14} className="text-amber-400" />
+                    <span className="text-xs text-amber-400 font-medium">Restored pending draft</span>
+                  </div>
+                  <button type="button" onClick={clearFormDraft} className="text-[10px] text-amber-400 underline hover:text-amber-300">
+                    Discard
+                  </button>
+                </div>
+              )}
               {/* Person search */}
               <div>
                 <label className="field-label">Link to Person Record (Optional)</label>
                 <div className="relative">
-                  <input type="text" className="input-dark text-xs w-full min-h-[36px]" placeholder="Search person records..." aria-label="Search person records..."
+                  <input id="ff-trespassorderspage-5" type="text" className="input-dark text-xs w-full min-h-[36px]" placeholder="Search person records..." aria-label="Search person records..."
                     value={personSearch} onChange={e => setPersonSearch(e.target.value)} />
                   {personResults.length > 0 && (
                     <div className="absolute z-10 w-full mt-1 bg-surface-raised border border-rmpg-600 max-h-40 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
@@ -639,24 +710,24 @@ export default function TrespassOrdersPage() {
               {/* Subject */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <div><label className="field-label">First Name *</label>
-                  <input className="input-dark text-xs w-full min-h-[36px]" value={formData.subject_first_name} onChange={e => update('subject_first_name', e.target.value)} />
+                  <input id="ff-trespassorderspage-6" className="input-dark text-xs w-full min-h-[36px]" value={formData.subject_first_name} onChange={e => update('subject_first_name', e.target.value)} />
                   {formErrors.subject_first_name && <p className="text-red-400 text-[10px] mt-0.5">{formErrors.subject_first_name}</p>}</div>
                 <div><label className="field-label">Last Name *</label>
-                  <input className="input-dark text-xs w-full min-h-[36px]" value={formData.subject_last_name} onChange={e => update('subject_last_name', e.target.value)} />
+                  <input id="ff-trespassorderspage-7" className="input-dark text-xs w-full min-h-[36px]" value={formData.subject_last_name} onChange={e => update('subject_last_name', e.target.value)} />
                   {formErrors.subject_last_name && <p className="text-red-400 text-[10px] mt-0.5">{formErrors.subject_last_name}</p>}</div>
                 <div><label className="field-label">DOB</label>
-                  <input type="date" className="input-dark text-xs w-full min-h-[36px]" value={formData.subject_dob} onChange={e => update('subject_dob', e.target.value)} /></div>
+                  <input id="ff-trespassorderspage-8" type="date" className="input-dark text-xs w-full min-h-[36px]" value={formData.subject_dob} onChange={e => update('subject_dob', e.target.value)} /></div>
               </div>
 
               {/* Property + Location */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <div><label className="field-label">Property</label>
-                  <select className="select-dark text-xs w-full" value={formData.property_id} onChange={e => selectProperty(e.target.value)}>
+                  <select id="ff-trespassorderspage-9" className="select-dark text-xs w-full" value={formData.property_id} onChange={e => selectProperty(e.target.value)}>
                     <option value="">— Select Property —</option>
                     {properties.map((p: any) => <option key={p.id} value={p.id}>{p.name}</option>)}
                   </select></div>
                 <div><label className="field-label">Location *</label>
-                  <input className="input-dark text-xs w-full min-h-[36px]" value={formData.location} onChange={e => update('location', e.target.value)} />
+                  <input id="ff-trespassorderspage-10" className="input-dark text-xs w-full min-h-[36px]" value={formData.location} onChange={e => update('location', e.target.value)} />
                   {formErrors.location && <p className="text-red-400 text-[10px] mt-0.5">{formErrors.location}</p>}</div>
               </div>
 
@@ -664,7 +735,7 @@ export default function TrespassOrdersPage() {
               <div className="grid grid-cols-3 gap-2">
                 <div>
                   <label className="block text-xs text-rmpg-400 mb-1">Section</label>
-                  <select className="w-full bg-[#181818] border border-[#2a2a2a] rounded-sm px-2 py-1.5 text-sm text-white"
+                  <select id="ff-trespassorderspage-11" className="w-full bg-[#181818] border border-[#2a2a2a] rounded-sm px-2 py-1.5 text-sm text-white"
                     value={formData.sector_id || ''} onChange={e => { update('sector_id', e.target.value); update('zone_id', ''); update('beat_id', ''); }}>
                     <option value="">—</option>
                     {sectionOptions.map(s => <option key={s} value={s}>{sectionLabels.get(s) || s}</option>)}
@@ -672,7 +743,7 @@ export default function TrespassOrdersPage() {
                 </div>
                 <div>
                   <label className="block text-xs text-rmpg-400 mb-1">Zone</label>
-                  <select className="w-full bg-[#181818] border border-[#2a2a2a] rounded-sm px-2 py-1.5 text-sm text-white"
+                  <select id="ff-trespassorderspage-12" className="w-full bg-[#181818] border border-[#2a2a2a] rounded-sm px-2 py-1.5 text-sm text-white"
                     value={formData.zone_id || ''} onChange={e => { update('zone_id', e.target.value); update('beat_id', ''); }}>
                     <option value="">—</option>
                     {zonesForSection(formData.sector_id).map(z => <option key={z} value={z}>{zoneLabels.get(z) || z}</option>)}
@@ -680,7 +751,7 @@ export default function TrespassOrdersPage() {
                 </div>
                 <div>
                   <label className="block text-xs text-rmpg-400 mb-1">Beat</label>
-                  <select className="w-full bg-[#181818] border border-[#2a2a2a] rounded-sm px-2 py-1.5 text-sm text-white"
+                  <select id="ff-trespassorderspage-13" className="w-full bg-[#181818] border border-[#2a2a2a] rounded-sm px-2 py-1.5 text-sm text-white"
                     value={formData.beat_id || ''} onChange={e => update('beat_id', e.target.value)}>
                     <option value="">—</option>
                     {beatsForZone(formData.zone_id).map(b => <option key={b} value={b}>{getBeatLabel(formData.zone_id, b)}</option>)}
@@ -691,35 +762,44 @@ export default function TrespassOrdersPage() {
               {/* Order details */}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <div><label className="field-label">Order Type</label>
-                  <select className="select-dark text-xs w-full" value={formData.order_type} onChange={e => update('order_type', e.target.value)}>
+                  <select id="ff-trespassorderspage-14" className="select-dark text-xs w-full" value={formData.order_type} onChange={e => update('order_type', e.target.value)}>
                     {ORDER_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                   </select></div>
                 <div><label className="field-label">Duration (days)</label>
-                  <input type="number" className="input-dark text-xs w-full min-h-[36px]" placeholder="Empty = permanent" value={formData.duration_days} onChange={e => update('duration_days', e.target.value)} /></div>
+                  <input id="ff-trespassorderspage-15" type="number" className="input-dark text-xs w-full min-h-[36px]" placeholder="Empty = permanent" value={formData.duration_days} onChange={e => update('duration_days', e.target.value)} /></div>
                 <div><label className="field-label">Authorized By</label>
-                  <input className="input-dark text-xs w-full min-h-[36px]" placeholder="Supervisor name" value={formData.authorized_by} onChange={e => update('authorized_by', e.target.value)} /></div>
+                  <input id="ff-trespassorderspage-16" className="input-dark text-xs w-full min-h-[36px]" placeholder="Supervisor name" value={formData.authorized_by} onChange={e => update('authorized_by', e.target.value)} /></div>
               </div>
 
               <div><label className="field-label">Reason</label>
-                <RichTextArea className="input-dark text-xs w-full min-h-[36px]" rows={2} value={formData.reason} onChange={e => update('reason', e.target.value)} /></div>
+                <textarea id="ff-trespassorderspage-17" className="input-dark text-xs w-full min-h-[36px]" rows={2} value={formData.reason} onChange={e => update('reason', e.target.value)} /></div>
 
               <div><label className="field-label">Conditions / Exceptions</label>
-                <RichTextArea className="input-dark text-xs w-full min-h-[36px]" rows={2} value={formData.conditions} onChange={e => update('conditions', e.target.value)} /></div>
+                <textarea id="ff-trespassorderspage-18" className="input-dark text-xs w-full min-h-[36px]" rows={2} value={formData.conditions} onChange={e => update('conditions', e.target.value)} /></div>
 
               <div><label className="field-label">Notes</label>
-                <RichTextArea className="input-dark text-xs w-full min-h-[36px]" rows={2} value={formData.notes} onChange={e => update('notes', e.target.value)} /></div>
+                <textarea id="ff-trespassorderspage-19" className="input-dark text-xs w-full min-h-[36px]" rows={2} value={formData.notes} onChange={e => update('notes', e.target.value)} /></div>
 
               <div className={`flex ${isMobile ? 'flex-col gap-2' : 'justify-end gap-2'} pt-2 border-t border-rmpg-700`}>
                 <button type="submit" disabled={submitting} className={`toolbar-btn ${isMobile ? 'w-full justify-center' : ''}`} style={{ background: 'rgba(212,160,23,0.25)', borderColor: 'rgba(212,160,23,0.5)', minHeight: isMobile ? 48 : undefined, fontSize: isMobile ? 14 : undefined }}>
                   {submitting ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Save style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} />}
                   {editingOrder ? 'Update' : 'Create'} Order
                 </button>
-                <button type="button" onClick={() => setFormOpen(false)} className={`toolbar-btn ${isMobile ? 'w-full justify-center' : ''}`} style={isMobile ? { minHeight: 48, fontSize: 14 } : undefined}>Cancel</button>
+                <button type="button" onClick={() => { clearFormDraft(); setFormOpen(false); }} className={`toolbar-btn ${isMobile ? 'w-full justify-center' : ''}`} style={isMobile ? { minHeight: 48, fontSize: 14 } : undefined}>Cancel</button>
               </div>
             </form>
           </div>
         </div>
       )}
+
+      <UnsavedChangesGuard hasUnsavedChanges={formOpen && formIsDirty} />
+      <FloatingSaveBar
+        visible={formOpen && formIsDirty}
+        onSave={() => { const e = { preventDefault: () => {} } as React.FormEvent; handleSubmit(e); }}
+        onCancel={() => { clearFormDraft(); setFormOpen(false); }}
+        isSaving={submitting}
+        saveLabel={editingOrder ? 'Update Order' : 'Create Order'}
+      />
     </div>
   );
 }

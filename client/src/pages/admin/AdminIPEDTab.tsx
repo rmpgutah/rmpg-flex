@@ -5,6 +5,9 @@ import {
   Database, Activity, FileSearch, RefreshCw, Server,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { asArray } from '../../utils/asArray';
+import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
+import { useMenuActions } from '../../utils/contextMenuActions';
 
 interface Props {
   LoadingSpinner: React.FC;
@@ -132,7 +135,7 @@ export default function AdminIPEDTab({ LoadingSpinner, error, setError }: Props)
   const fetchHashSets = useCallback(async () => {
     try {
       const data = await apiFetch<{ sets: HashSetInfo[] }>('/iped/hash-sets');
-      setHashSets(data.sets || []);
+      setHashSets(asArray<HashSetInfo>(data?.sets));
     } catch { /* non-critical */ }
   }, []);
 
@@ -280,6 +283,18 @@ export default function AdminIPEDTab({ LoadingSpinner, error, setError }: Props)
     }
   };
 
+  // Right-click context menu for hash set rows (copy + remove).
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+
+  const buildHashSetMenu = (hs: HashSetInfo): ContextMenuItem[] => [
+    m.copy('Copy name', hs.name),
+    m.copy('Copy category', hs.category),
+    m.copy('Copy entry count', String(hs.count ?? 0), <Hash size={12} />),
+    m.separator(),
+    m.action('Remove hash set', () => handleRemoveHashSet(hs.name), { icon: <Trash2 size={12} />, danger: true }),
+  ];
+
   // Set document title
   useEffect(() => { document.title = 'Admin - IPED \u2014 RMPG Flex'; }, []);
 
@@ -333,7 +348,7 @@ export default function AdminIPEDTab({ LoadingSpinner, error, setError }: Props)
         {/* IPED Install Path */}
         <div className="space-y-1.5">
           <label className="text-[10px] text-rmpg-400">IPED Installation Path</label>
-          <input
+          <input id="ff-adminipedtab-0"
             type="text"
             value={installPath}
             onChange={(e) => setInstallPath(e.target.value)}
@@ -348,7 +363,7 @@ export default function AdminIPEDTab({ LoadingSpinner, error, setError }: Props)
         {/* Java Home */}
         <div className="space-y-1.5">
           <label className="text-[10px] text-rmpg-400">Java Home <span className="text-rmpg-600">(JDK 11+ required)</span></label>
-          <input
+          <input id="ff-adminipedtab-1"
             type="text"
             value={javaHome}
             onChange={(e) => setJavaHome(e.target.value)}
@@ -539,14 +554,14 @@ export default function AdminIPEDTab({ LoadingSpinner, error, setError }: Props)
         <div className="space-y-1.5">
           <label className="text-[10px] text-rmpg-400">IPED Web API <span className="text-rmpg-600">(optional — for case browsing)</span></label>
           <div className="flex gap-2">
-            <input
+            <input id="ff-adminipedtab-2"
               type="text"
               value={webApiUrl}
               onChange={(e) => setWebApiUrl(e.target.value)}
               placeholder={status?.webApiUrl || 'http://localhost'}
               className="flex-1 bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-xs px-2.5 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none font-mono"
             />
-            <input
+            <input id="ff-adminipedtab-3"
               type="text"
               value={webApiPort}
               onChange={(e) => setWebApiPort(e.target.value)}
@@ -584,7 +599,7 @@ export default function AdminIPEDTab({ LoadingSpinner, error, setError }: Props)
           </div>
           <div className="flex items-center gap-2">
             <div className="space-y-1">
-              <input
+              <input id="ff-adminipedtab-4"
                 type="text"
                 value={hashSetsPath}
                 onChange={(e) => setHashSetsPath(e.target.value)}
@@ -598,7 +613,7 @@ export default function AdminIPEDTab({ LoadingSpinner, error, setError }: Props)
         {hashSets.length > 0 ? (
           <div className="space-y-0.5 max-h-40 overflow-y-auto">
             {hashSets.map(hs => (
-              <div key={hs.name} className="flex items-center justify-between px-2 py-1.5 bg-surface-sunken rounded-sm">
+              <div key={hs.name} onContextMenu={(e) => openMenu(e, buildHashSetMenu(hs))} className="flex items-center justify-between px-2 py-1.5 bg-surface-sunken rounded-sm">
                 <div className="flex-1 min-w-0">
                   <div className="text-[10px] font-medium text-rmpg-200">{hs.name}</div>
                   <div className="text-[9px] text-rmpg-500">{hs.category} • {(hs.count || 0).toLocaleString()} entries</div>

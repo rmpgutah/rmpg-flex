@@ -7,6 +7,9 @@ import { Clock, LogIn, LogOut, Coffee, Users, BarChart3, Pencil, Trash2 } from '
 import type { TimeEntry } from '../../../types';
 import type { OfficerWithStatus } from '../utils/personnelMappers';
 import ConfirmDialog from '../../../components/ConfirmDialog';
+import { parseTimestamp } from '../../../utils/dateUtils';
+import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
+import { useMenuActions } from '../../../utils/contextMenuActions';
 
 interface Props {
   timeEntries: TimeEntry[];
@@ -43,12 +46,12 @@ export default function TimeAttendanceTab({ timeEntries, officers, onEditTimeEnt
 
   function formatClockTime(dateStr?: string): string {
     if (!dateStr) return '-';
-    const d = new Date(dateStr);
+    const d = parseTimestamp(dateStr);
     return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
   }
 
   function getElapsedHours(clockIn: string): string {
-    const diff = Date.now() - new Date(clockIn).getTime();
+    const diff = Date.now() - parseTimestamp(clockIn).getTime();
     const hrs = (diff / 3600000).toFixed(1);
     return `${hrs}h`;
   }
@@ -61,6 +64,19 @@ export default function TimeAttendanceTab({ timeEntries, officers, onEditTimeEnt
     { label: 'Avg Hours/Officer', value: stats.avgHours, icon: BarChart3, color: 'text-brand-400', bgClass: 'bg-surface-base', border: 'border-brand-700/30', topBorder: 'border-t-brand-500' },
   ];
 
+  // Right-click context menu
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+  const buildRowMenu = (te: TimeEntry): ContextMenuItem[] => [
+    ...(onEditTimeEntry ? [m.action('Edit time entry', () => onEditTimeEntry(te), { icon: <Pencil size={12} /> })] : []),
+    ...(onEditTimeEntry ? [m.separator()] : []),
+    m.copy('Copy officer', te.officer_name),
+    m.copyId(te.id),
+    ...(onDeleteTimeEntry
+      ? [m.separator(), m.action('Delete time entry', () => setDeleteTarget(te.id), { icon: <Trash2 size={12} />, danger: true })]
+      : []),
+  ];
+
   // Set document title
   useEffect(() => { document.title = 'Personnel - Time \u2014 RMPG Flex'; }, []);
 
@@ -70,6 +86,7 @@ export default function TimeAttendanceTab({ timeEntries, officers, onEditTimeEnt
       <div className="flex items-center gap-2">
         <Clock className="w-4 h-4 text-brand-400" />
         <h2 className="text-sm font-bold text-rmpg-200 uppercase tracking-wider">Time & Attendance</h2>
+        <span className="text-[11px] font-mono text-rmpg-500">({timeEntries.length})</span>
       </div>
 
       {/* Summary Cards */}
@@ -140,7 +157,7 @@ export default function TimeAttendanceTab({ timeEntries, officers, onEditTimeEnt
               </tr>
             ) : (
               timeEntries.map((te) => (
-                <tr key={te.id}>
+                <tr key={te.id} onContextMenu={(e) => openMenu(e, buildRowMenu(te))}>
                   <td>
                     <div className="flex items-center gap-1.5">
                       {te.status === 'clocked_in' && <span className="led-dot led-green" />}

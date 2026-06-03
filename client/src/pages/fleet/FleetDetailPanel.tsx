@@ -1,9 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { parseTimestamp } from '../../utils/dateUtils';
 import {
   Car, Fuel, ClipboardCheck, Radio, BarChart3, Settings, Wrench, X, Clock, Users,
   Archive, RotateCcw, Trash2, Printer, ChevronDown, Circle, AlertTriangle, AlertOctagon,
+  DollarSign, Pencil, Tag,
 } from 'lucide-react';
+import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
+import { useMenuActions } from '../../utils/contextMenuActions';
 import type {
   FleetVehicle, FleetMaintenance, FleetFuelLog, FleetFuelSummary,
   FleetInspection, FleetAssignment, FleetAnalytics, FleetVehicleStatus,
@@ -18,12 +22,16 @@ import FleetAnalyticsTab from './tabs/FleetAnalyticsTab';
 import FleetTiresTab from './tabs/FleetTiresTab';
 import FleetDamageTab from './tabs/FleetDamageTab';
 import FleetRecallsTab from './tabs/FleetRecallsTab';
+import FleetCostsTab from './tabs/FleetCostsTab';
+import type { CostCategory } from './modals/FleetCostFormModal';
+import type { FleetLoan, FleetInsurancePolicy, FleetAccessory, FleetUtilityCost, FleetOtherCost, FleetCostSummary } from '../../types';
 import { formatMilitary } from './utils/fleetFormatters';
 import { generateFleetFuelReport } from './utils/fleetFuelReport';
 import { generateFlaggedAuditPdf } from './utils/flaggedAuditPdf';
 import PrintRecordButton from '../../components/PrintRecordButton';
 
-export type DetailTab = 'overview' | 'fuel' | 'inspections' | 'assignments' | 'personnel' | 'analytics' | 'tires' | 'damage' | 'recalls';
+export type DetailTab = 'overview' | 'fuel' | 'costs' | 'inspections' | 'assignments' | 'personnel' | 'analytics' | 'tires' | 'damage' | 'recalls';
+export type CostSubTab = 'loan' | 'insurance' | 'accessory' | 'utility' | 'other';
 
 const STATUS_LED: Record<FleetVehicleStatus, string> = {
   in_service: 'led-dot led-green', maintenance: 'led-dot led-amber',
@@ -40,9 +48,8 @@ const STATUS_COLOR: Record<FleetVehicleStatus, string> = {
 
 function getExpiryStatus(dateStr?: string): 'ok' | 'expiring' | 'expired' | 'none' {
   if (!dateStr) return 'none';
-  // Force local-time parse for date-only strings to avoid UTC timezone shift
-  const normalized = /^\d{4}-\d{2}-\d{2}$/.test(dateStr) ? `${dateStr}T00:00:00` : dateStr;
-  const exp = new Date(normalized);
+  // parseTimestamp reads naive timestamps as UTC and date-only strings as local
+  const exp = parseTimestamp(dateStr);
   const now = new Date();
   if (exp < now) return 'expired';
   const thirtyDays = new Date();
@@ -54,6 +61,7 @@ function getExpiryStatus(dateStr?: string): 'ok' | 'expiring' | 'expired' | 'non
 const TABS: { key: DetailTab; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { key: 'overview', label: 'Overview', icon: Car },
   { key: 'fuel', label: 'Fuel', icon: Fuel },
+  { key: 'costs', label: 'Costs', icon: DollarSign },
   { key: 'inspections', label: 'Inspections', icon: ClipboardCheck },
   { key: 'assignments', label: 'Assignments', icon: Radio },
   { key: 'personnel', label: 'Personnel', icon: Users },
@@ -82,6 +90,19 @@ interface Props {
   onNewInspection: () => void;
   onEditFuel?: (log: FleetFuelLog) => void;
   onDeleteFuel?: (log: FleetFuelLog) => void;
+  // Cost-of-ownership tab (Loan / Insurance / Accessory / Utility)
+  loans: FleetLoan[];
+  insurancePolicies: FleetInsurancePolicy[];
+  accessories: FleetAccessory[];
+  utilities: FleetUtilityCost[];
+  otherCosts: FleetOtherCost[];
+  costSummary: FleetCostSummary | null;
+  costSubTab: CostSubTab;
+  onCostSubTabChange: (t: CostSubTab) => void;
+  onAddCost: (category: CostCategory) => void;
+  onEditCost: (category: CostCategory, record: any) => void;
+  onDeleteCost: (category: CostCategory, record: any) => void;
+  onSaveBudgets?: (rows: { category: string; monthly_budget: number }[]) => Promise<void>;
   onEditMaintenance?: (record: FleetMaintenance) => void;
   onDeleteMaintenance?: (record: FleetMaintenance) => void;
   onEditInspection?: (inspection: FleetInspection) => void;
@@ -195,17 +216,38 @@ export default function FleetDetailPanel({
   analytics, analyticsLoading, personnelData, personnelLoading,
   activeTab, onTabChange,
   onEditVehicle, onLogMaintenance, onLogFuel, onNewInspection,
-  onEditFuel, onDeleteFuel, onEditMaintenance, onDeleteMaintenance, onEditInspection, onDeleteInspection,
+  onEditFuel, onDeleteFuel,
+  loans, insurancePolicies, accessories, utilities, otherCosts, costSummary, costSubTab, onCostSubTabChange, onAddCost, onEditCost, onDeleteCost, onSaveBudgets,
+  onEditMaintenance, onDeleteMaintenance, onEditInspection, onDeleteInspection,
   onAssignVehicle, onUnassignVehicle, onAddPersonnelNote, onDeletePersonnelNote, onRefreshPersonnel,
   onArchiveVehicle, onUnarchiveVehicle, onDeleteVehicle, isArchived,
   onClose,
 }: Props) {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin'; // Admin God Mode
+
+  // Right-click context menu for the vehicle header (acts on this record).
+  const { openMenu } = useContextMenu();
+  const cm = useMenuActions();
+  const buildVehicleMenu = (): ContextMenuItem[] => [
+    ...(!isArchived ? [cm.action('Edit vehicle', onEditVehicle, { icon: <Pencil size={12} /> })] : []),
+    cm.separator(),
+    cm.copy('Copy unit #', detail.vehicle_number),
+    ...(detail.plate_number ? [cm.copy('Copy plate', detail.plate_number, <Tag size={12} />)] : []),
+    ...(detail.vin ? [cm.copy('Copy VIN', detail.vin)] : []),
+    cm.copyId(detail.id),
+    ...((isArchived || isAdmin)
+      ? [cm.separator(), cm.action('Delete', onDeleteVehicle, { danger: true, icon: <Trash2 size={12} /> })]
+      : []),
+  ];
+
   return (
-    <div className="flex-1 flex flex-col overflow-hidden">
+    <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
       {/* Detail header */}
-      <div className="flex-shrink-0 px-4 py-3 border-b border-rmpg-700 flex items-start justify-between bg-surface-sunken transition-colors duration-200">
+      <div
+        className="flex-shrink-0 px-4 py-3 border-b border-rmpg-700 flex items-start justify-between bg-surface-sunken transition-colors duration-200"
+        onContextMenu={(e) => openMenu(e, buildVehicleMenu())}
+      >
         <div>
           <div className="flex items-center gap-3">
             <div className={`w-10 h-10 rounded-sm flex items-center justify-center border ${
@@ -367,6 +409,22 @@ export default function FleetDetailPanel({
                 to:   fuelLogs[0]?.fuel_date,
               },
             })}
+          />
+        )}
+        {activeTab === 'costs' && (
+          <FleetCostsTab
+            loans={loans}
+            insurance={insurancePolicies}
+            accessories={accessories}
+            utilities={utilities}
+            other={otherCosts}
+            summary={costSummary}
+            subTab={costSubTab}
+            onSubTabChange={onCostSubTabChange}
+            onAdd={onAddCost}
+            onEdit={onEditCost}
+            onDelete={onDeleteCost}
+            onSaveBudgets={onSaveBudgets}
           />
         )}
         {activeTab === 'inspections' && <FleetInspectionsTab inspections={inspections} onNewInspection={onNewInspection} onEditInspection={onEditInspection} onDeleteInspection={onDeleteInspection} />}

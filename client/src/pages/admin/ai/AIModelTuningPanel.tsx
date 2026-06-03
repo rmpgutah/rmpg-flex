@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Loader2, Save, Trash2, Check, ChevronDown, ChevronRight } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
+import { asArray } from '../../../utils/asArray';
 
 interface ModelParams {
   temperature: number;
@@ -58,14 +59,16 @@ export default function AIModelTuningPanel() {
         apiFetch<{ defaultParams: ModelParams; featureParams: Record<FeatureName, FeatureOverride> }>('/ai/model-params'),
         apiFetch<Preset[]>('/ai/presets'),
       ]);
-      setDefaults(paramsData.defaultParams);
-      if (paramsData.featureParams) {
+      // Only replace when present — a `{}`/partial /ai/model-params response
+      // would otherwise set `defaults` undefined and crash the first <Slider>.
+      if (paramsData?.defaultParams) setDefaults(paramsData.defaultParams);
+      if (paramsData?.featureParams) {
         // Merge with defaults so every feature key exists
         const merged: Record<string, FeatureOverride> = {};
         FEATURES.forEach(f => { merged[f] = paramsData.featureParams[f] || {}; });
         setFeatureParams(merged as Record<FeatureName, FeatureOverride>);
       }
-      setPresets(presetsData);
+      setPresets(asArray<Preset>(presetsData));
     } catch (err: any) {
       setError(err?.message || 'Failed to load model parameters');
     } finally {
@@ -198,7 +201,7 @@ export default function AIModelTuningPanel() {
                       <td className="py-2 pr-4 text-gray-300">{FEATURE_LABELS[feature]}</td>
                       {(['temperature', 'maxTokens', 'topP', 'repeatPenalty'] as const).map(key => (
                         <td key={key} className="py-2 px-2">
-                          <input
+                          <input id="ff-aimodeltuningpanel-0"
                             type="number"
                             step={key === 'maxTokens' ? 64 : 0.05}
                             value={(featureParams[feature] || {})[key] ?? ''}
@@ -271,7 +274,7 @@ export default function AIModelTuningPanel() {
         )}
 
         <div className="flex items-center gap-2 pt-2 border-t border-[#303030]">
-          <input
+          <input id="ff-aimodeltuningpanel-1"
             type="text"
             value={newPresetName}
             onChange={e => setNewPresetName(e.target.value)}
@@ -313,7 +316,7 @@ function Slider({ label, description, value, min, max, step, onChange }: {
         <label className="text-gray-300">{label}</label>
         <span className="text-gray-400 font-mono">{value}</span>
       </div>
-      <input type="range" min={min} max={max} step={step} value={value}
+      <input id="ff-aimodeltuningpanel-2" type="range" min={min} max={max} step={step} value={value}
         onChange={e => onChange(parseFloat(e.target.value))}
         className="w-full h-1.5 bg-[#303030] rounded appearance-none cursor-pointer accent-gray-500" />
       <p className="text-[10px] text-gray-600">{description}</p>

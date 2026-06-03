@@ -1,15 +1,46 @@
 import React, { useMemo } from 'react';
-import { Radio, MapPin, PlusCircle, Plus, Edit, Trash2, AlertTriangle } from 'lucide-react';
+import { Radio, MapPin, PlusCircle, Plus, Edit, Trash2, AlertTriangle, Activity, UserPlus, Eye, Pencil } from 'lucide-react';
 import type { Unit, UnitStatus } from '../types';
 import StatusBadge from './StatusBadge';
+import { parseTimestamp } from '../utils/dateUtils';
+import { useUnitLocations } from '../hooks/useUnitLocations';
+import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
+import { useMenuActions } from '../utils/contextMenuActions';
+
+// Spillman EMERGENCY overlay: an officer with an active panic. Truthy for
+// either the numeric (1) or boolean (true) shape the API may serialize.
+function isEmergency(unit: Unit): boolean {
+  const e = unit.emergency_active;
+  return e === 1 || e === true;
+}
 
 // Feature 2: GPS stale indicator thresholds
 function getGpsStaleStatus(unit: Unit): 'ok' | 'stale' | 'lost' {
   if (!unit.gps_updated_at || unit.status === 'off_duty') return 'ok';
-  const elapsed = Date.now() - new Date(unit.gps_updated_at).getTime();
+  const elapsed = Date.now() - parseTimestamp(unit.gps_updated_at).getTime();
   if (elapsed > 5 * 60 * 1000) return 'lost';  // >5 min = red (lost)
   if (elapsed > 2 * 60 * 1000) return 'stale'; // >2 min = amber (stale)
   return 'ok';
+}
+
+// Time-in-status: how long a unit has held its current status. Dispatchers
+// watch this to catch units stuck en route / dispatched without arriving.
+// Recomputed on each board render (same cadence as the GPS-age indicator above);
+// only shown for active statuses where dwell time is operationally meaningful.
+const STATUS_DWELL_THRESHOLDS: Partial<Record<UnitStatus, { amber: number; red: number }>> = {
+  dispatched: { amber: 5, red: 10 },   // should be moving / en route quickly
+  enroute: { amber: 10, red: 20 },     // long transit → check on the unit
+  onscene: { amber: 30, red: 60 },     // extended scene time → welfare/relief
+  busy: { amber: 20, red: 45 },
+};
+
+function statusDwell(unit: Unit): { mins: number; color: string } | null {
+  if (!unit.last_status_change || unit.status === 'off_duty' || unit.status === 'available') return null;
+  const mins = Math.floor((Date.now() - parseTimestamp(unit.last_status_change).getTime()) / 60000);
+  if (mins < 1) return null;
+  const t = STATUS_DWELL_THRESHOLDS[unit.status];
+  const color = t ? (mins >= t.red ? '#ef4444' : mins >= t.amber ? '#f59e0b' : '#888888') : '#888888';
+  return { mins, color };
 }
 
 interface UnitStatusBoardProps {
@@ -49,11 +80,52 @@ export default React.memo(function UnitStatusBoard({
 }: UnitStatusBoardProps) {
   const canAssign = !!selectedCallId && !!onAssignUnit;
   const hasActions = !!onEditUnit || !!onDeleteUnit;
+  // Live street address + cross street resolved from each unit's GPS, so the
+  // board always shows where a unit physically is — not just coordinates.
+  const unitLocations = useUnitLocations(units);
+
+  // ── Right-click context menu ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+
+  // All unit statuses, for the "Set status" submenu. Mirrors the UnitStatus union.
+  const STATUSES: UnitStatus[] = ['available', 'dispatched', 'enroute', 'onscene', 'busy', 'off_duty', 'out_of_service'];
+  const prettyStatus = (s: UnitStatus) => s.replace(/_/g, ' ').replace(/\b\w/g, (ch) => ch.toUpperCase());
+
+  const buildUnitMenu = (unit: Unit): ContextMenuItem[] => [
+    ...(onStatusChange
+      ? [{
+          label: 'Set status',
+          icon: <Activity size={12} />,
+          submenu: STATUSES.map((s) =>
+            m.action(prettyStatus(s), () => onStatusChange(unit.id, s), { disabled: unit.status === s }),
+          ),
+        } as ContextMenuItem]
+      : []),
+    ...(onAssignUnit ? [m.action('Assign to selected call', () => onAssignUnit(unit.id), { icon: <UserPlus size={12} /> })] : []),
+    m.action('View call', () => onUnitClick?.(unit), { icon: <Eye size={12} /> }),
+    m.separator(),
+    m.copy('Copy unit', unit.call_sign),
+    ...(unit.officer_name ? [m.copy('Copy officer', unit.officer_name)] : []),
+    m.copyId(unit.id),
+    m.separator(),
+    ...(onEditUnit ? [m.action('Edit unit', () => onEditUnit(unit), { icon: <Pencil size={12} /> })] : []),
+    ...(onDeleteUnit ? [m.action('Delete unit', () => onDeleteUnit(unit), { icon: <Trash2 size={12} />, danger: true })] : []),
+  ];
   // Sort: on-duty first (available, dispatched, enroute, onscene, busy), then off_duty
-  const statusOrder: UnitStatus[] = ['onscene', 'enroute', 'dispatched', 'available', 'busy', 'off_duty'];
-  const sorted = [...units].sort(
-    (a, b) => statusOrder.indexOf(a.status) - statusOrder.indexOf(b.status)
-  );
+  // Includes every live status. out_of_service was missing, so indexOf returned
+  // -1 and those units sorted ABOVE onscene (index 0) at the very top of the board.
+  const statusOrder: UnitStatus[] = ['onscene', 'enroute', 'dispatched', 'available', 'busy', 'off_duty', 'out_of_service'];
+  // Unknown/sentinel statuses sort last (rank after the known list) instead of -1.
+  const rank = (s: UnitStatus) => { const i = statusOrder.indexOf(s); return i === -1 ? statusOrder.length : i; };
+  // EMERGENCY units float to the very top of the board (Spillman Status
+  // Monitor behaviour) regardless of their underlying status; then by status.
+  const sorted = [...units].sort((a, b) => {
+    const ea = isEmergency(a) ? 0 : 1;
+    const eb = isEmergency(b) ? 0 : 1;
+    if (ea !== eb) return ea - eb;
+    return rank(a.status) - rank(b.status);
+  });
 
   const isDraggable = (unit: Unit) => unit.status !== 'off_duty';
 
@@ -86,6 +158,7 @@ export default React.memo(function UnitStatusBoard({
             onDragStart={(e) => handleDragStart(e, unit)}
             onDragEnd={handleDragEnd}
             onClick={() => onUnitClick?.(unit)}
+            onContextMenu={(e) => openMenu(e, buildUnitMenu(unit))}
             className={`flex items-center gap-2 p-1.5 panel-beveled cursor-pointer hover:bg-surface-raised transition-colors ${isDraggable(unit) ? 'cursor-grab active:cursor-grabbing' : ''}`}
             style={{ background: '#0a0a0a' }}
           >
@@ -126,12 +199,25 @@ export default React.memo(function UnitStatusBoard({
               onDragStart={(e) => handleDragStart(e, unit)}
               onDragEnd={handleDragEnd}
               onClick={() => onUnitClick?.(unit)}
-              className={`cursor-pointer ${isDraggable(unit) ? 'cursor-grab active:cursor-grabbing' : ''}`}
+              onContextMenu={(e) => openMenu(e, buildUnitMenu(unit))}
+              className={`cursor-pointer ${isDraggable(unit) ? 'cursor-grab active:cursor-grabbing' : ''} ${isEmergency(unit) ? 'animate-emergency-blink' : ''}`}
+              style={isEmergency(unit) ? { background: 'rgba(220,38,38,0.18)', boxShadow: 'inset 3px 0 0 #ff0000' } : undefined}
             >
               <td>
                 <div className="flex items-center gap-2">
-                  <span className={STATUS_LED_CLASSES[unit.status]} />
+                  <span className={STATUS_LED_CLASSES[unit.status] || 'led-dot led-off'} />
                   <span className="font-bold text-white font-mono">{unit.call_sign}</span>
+                  {/* Spillman EMERGENCY overlay — flashing red badge, floats this
+                      row to the top of the board (see sort above). */}
+                  {isEmergency(unit) && (
+                    <span
+                      className="inline-flex items-center gap-0.5 px-1 py-0 text-[8px] font-black uppercase tracking-wider text-white animate-emergency-blink"
+                      style={{ background: '#dc2626', letterSpacing: '1px' }}
+                      title="EMERGENCY — active panic activation"
+                    >
+                      <AlertTriangle className="w-2.5 h-2.5" /> EMER
+                    </span>
+                  )}
                   {/* Feature 2: GPS stale indicator */}
                   {(() => {
                     const gpsStatus = getGpsStaleStatus(unit);
@@ -144,25 +230,63 @@ export default React.memo(function UnitStatusBoard({
               {/* 29: Italic styling on unassigned officer for distinction */}
               <td className="text-rmpg-200">{unit.officer_name || <span className="text-rmpg-500 italic">Unassigned</span>}</td>
               <td>
-                <StatusBadge status={unit.status} type="unit_status" size="sm" />
+                <div className="flex items-center gap-1.5">
+                  <StatusBadge status={unit.status} type="unit_status" size="sm" />
+                  {(() => {
+                    const dwell = statusDwell(unit);
+                    return dwell ? (
+                      <span
+                        className="text-[9px] font-mono tabular-nums"
+                        style={{ color: dwell.color }}
+                        title={`In ${unit.status} for ${dwell.mins} min`}
+                      >
+                        {dwell.mins}m
+                      </span>
+                    ) : null;
+                  })()}
+                </div>
               </td>
               <td className="text-rmpg-300 text-xs font-mono">
                 {unit.current_call_number || <span className="text-rmpg-500 italic text-[10px]">Unassigned</span>}
               </td>
               <td>
-                {unit.location ? (
-                  <div className="flex items-center gap-1 text-xs text-rmpg-300">
-                    <MapPin className="w-3 h-3" />
-                    <span className="truncate max-w-[150px]">{unit.location}</span>
-                    {unit.gps_updated_at && unit.status !== 'off_duty' && (() => {
-                      const mins = Math.floor((Date.now() - new Date(unit.gps_updated_at).getTime()) / 60000);
-                      const color = mins > 10 ? '#ef4444' : mins > 5 ? '#f59e0b' : '#666666';
-                      return <span className="text-[8px] font-mono ml-1" style={{ color }}>{mins}m</span>;
-                    })()}
-                  </div>
-                ) : (
-                  <span className="text-rmpg-500 italic text-[10px]">No GPS</span>
-                )}
+                {(() => {
+                  const lat = Number(unit.latitude), lng = Number(unit.longitude);
+                  const hasCoords = unit.latitude != null && unit.longitude != null
+                    && Number.isFinite(lat) && Number.isFinite(lng);
+                  if (!unit.location && !hasCoords) {
+                    return <span className="text-rmpg-500 italic text-[10px]">No GPS</span>;
+                  }
+                  // Three-line live location: street address, cross street, and
+                  // coordinates — resolved from the unit's GPS (useUnitLocations).
+                  const loc = unitLocations[String(unit.id)];
+                  const street = unit.location || loc?.address || loc?.onStreet || null;
+                  const cross = loc?.crossStreet || null;
+                  const coords = hasCoords ? `${lat.toFixed(5)}, ${lng.toFixed(5)}` : null;
+                  return (
+                    <div className="flex flex-col gap-0.5 text-xs text-rmpg-300 max-w-[190px]">
+                      <div className="flex items-center gap-1">
+                        <MapPin className="w-3 h-3 flex-shrink-0" />
+                        <span className="truncate" title={street || coords || ''}>
+                          {street || coords || 'Locating…'}
+                        </span>
+                        {unit.gps_updated_at && unit.status !== 'off_duty' && (() => {
+                          const mins = Math.floor((Date.now() - parseTimestamp(unit.gps_updated_at).getTime()) / 60000);
+                          const color = mins > 10 ? '#ef4444' : mins > 5 ? '#f59e0b' : '#666666';
+                          return <span className="text-[8px] font-mono ml-1 flex-shrink-0" style={{ color }} title="GPS age">{mins}m</span>;
+                        })()}
+                      </div>
+                      {cross && (
+                        <span className="text-[9px] text-rmpg-500 truncate pl-4" title={`Cross street: ${loc?.onStreet ? loc.onStreet + ' & ' : ''}${cross}`}>
+                          &times; {loc?.onStreet ? `${loc.onStreet} & ` : ''}{cross}
+                        </span>
+                      )}
+                      {coords && street && (
+                        <span className="text-[8px] font-mono text-rmpg-600 pl-4 select-all" title="Live coordinates">{coords}</span>
+                      )}
+                    </div>
+                  );
+                })()}
               </td>
               {canAssign && (
                 <td>
@@ -196,11 +320,11 @@ export default React.memo(function UnitStatusBoard({
                         <Edit className="w-3 h-3" />
                       </button>
                     )}
-                    {onDeleteUnit && !unit.current_call_id && (
+                    {onDeleteUnit && (
                       <button type="button"
                         onClick={(e) => { e.stopPropagation(); onDeleteUnit(unit); }}
                         className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center text-rmpg-400 hover:text-red-400 transition-colors"
-                        title={`Delete ${unit.call_sign}`}
+                        title={`Dispose ${unit.call_sign} (retire or delete)`}
                       >
                         <Trash2 className="w-3 h-3" />
                       </button>

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { parseTimestamp } from '../utils/dateUtils';
 import { AlertTriangle, ShieldAlert, Radio, X, Check } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 
@@ -62,7 +63,7 @@ export default function AnomalyAlertBanner() {
       {visibleAlerts.slice(0, 3).map(alert => {
         const style = SEVERITY_STYLES[alert.severity] || SEVERITY_STYLES.medium;
         const Icon = ALERT_TYPE_ICONS[alert.alert_type] || AlertTriangle;
-        const elapsed = Math.round((Date.now() - new Date(alert.created_at).getTime()) / 60000);
+        const elapsed = Math.round((Date.now() - parseTimestamp(alert.created_at).getTime()) / 60000);
 
         return (
           <div

@@ -11,6 +11,9 @@ import DocumentsAppsShelf from './documents/DocumentsAppsShelf';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { useToast } from '../components/ToastProvider';
 import { useAuth } from '../context/AuthContext';
+import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
+import { useMenuActions } from '../utils/contextMenuActions';
+import { parseTimestamp } from '../utils/dateUtils';
 
 interface Folder {
   id: number;
@@ -57,6 +60,10 @@ export default function DocumentsPage() {
   const uploadInputRef = React.useRef<HTMLInputElement>(null);
   const dropZoneRef = React.useRef<HTMLDivElement>(null);
   const isAdmin = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'supervisor';
+
+  // ── Right-click context menu ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
 
   // Clear selection when navigating
   useEffect(() => { setSelectedFiles(new Set()); }, [currentFolderId]);
@@ -254,6 +261,46 @@ export default function DocumentsPage() {
     return list;
   }, [files, q, filterType, sortBy]);
 
+  // Open a file the same way the row buttons do: PDFs route through the
+  // internal pdf-editor viewer, other previewables open in a new tab.
+  const openFile = (file: FileItem) => {
+    if (file.mime_type === 'application/pdf') {
+      const params = new URLSearchParams({ fileId: file.file_id, name: file.original_name, view: '1' });
+      if (currentFolderId != null) params.set('folderId', String(currentFolderId));
+      navigate(`/pdf-editor?${params.toString()}`);
+    } else if (canPreview(file.mime_type)) {
+      window.open(authedImageUrl(`/api/uploads/${file.file_id}`), '_blank', 'noopener,noreferrer');
+    } else {
+      setInfoFile(file);
+    }
+  };
+
+  const buildFolderMenu = (folder: Folder): ContextMenuItem[] => [
+    m.action('Open', () => navigateTo(folder.id), { icon: <FolderOpen size={12} /> }),
+    ...(isAdmin ? [m.action('Rename', () => { setRenamingFolder(folder); setRenameValue(folder.name); }, { icon: <Pencil size={12} /> })] : []),
+    m.separator(),
+    m.copy('Copy name', folder.name),
+    m.copyId(folder.id),
+    ...(isAdmin ? [m.separator(), m.action('Delete', () => deleteFolder(folder), { icon: <Trash2 size={12} />, danger: true })] : []),
+  ];
+
+  const buildFileMenu = (file: FileItem): ContextMenuItem[] => [
+    m.action(canPreview(file.mime_type) ? 'Open' : 'File details', () => openFile(file), { icon: <Eye size={12} /> }),
+    ...(file.mime_type === 'application/pdf'
+      ? [m.action('Edit PDF', () => {
+          const params = new URLSearchParams({ fileId: file.file_id, name: file.original_name });
+          if (currentFolderId != null) params.set('folderId', String(currentFolderId));
+          navigate(`/pdf-editor?${params.toString()}`);
+        }, { icon: <Pencil size={12} /> })]
+      : []),
+    m.action('File details', () => setInfoFile(file), { icon: <Info size={12} /> }),
+    m.openExternal('Download', authedImageUrl(`/api/uploads/${file.file_id}/download`), <Download size={12} />),
+    m.separator(),
+    m.copy('Copy name', file.original_name),
+    m.copyId(file.file_id),
+    ...(isAdmin ? [m.separator(), m.action('Delete', () => deleteFile(file), { icon: <Trash2 size={12} />, danger: true })] : []),
+  ];
+
   return (
     <div className="h-full flex flex-col">
       <PanelTitleBar title="DOCUMENTS / UPLOAD RECORDS" icon={FolderOpen}>
@@ -261,7 +308,7 @@ export default function DocumentsPage() {
           {uploading ? <Loader2 style={{ width: 10, height: 10 }} className="animate-spin" /> : <Upload style={{ width: 10, height: 10 }} />}
           {uploading ? 'Uploading...' : 'Upload Files'}
         </button>
-        <input ref={uploadInputRef} type="file" multiple className="hidden"
+        <input id="ff-documentspage-0" ref={uploadInputRef} type="file" multiple className="hidden"
           onChange={e => { if (e.target.files) handleFileUpload(e.target.files); e.target.value = ''; }} />
         {isAdmin && (
           <button type="button" onClick={() => setShowNewFolder(true)} className="toolbar-btn">
@@ -289,7 +336,7 @@ export default function DocumentsPage() {
       <div className="px-4 py-2 border-b border-rmpg-700">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400 pointer-events-none" />
-          <input type="text" className="input-dark pl-9 w-full text-[11px]" placeholder="Search folders and files..."
+          <input id="ff-documentspage-1" type="text" className="input-dark pl-9 w-full text-[11px]" placeholder="Search folders and files..."
             value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
           {searchQuery && (
             <button type="button" onClick={() => setSearchQuery('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-400 hover:text-white">
@@ -382,6 +429,7 @@ export default function DocumentsPage() {
               <div key={folder.id}
                 className="flex items-center gap-3 px-3 py-2.5 hover:bg-rmpg-700/30 cursor-pointer transition-colors group border-b border-rmpg-800/30"
                 onClick={() => navigateTo(folder.id)}
+                onContextMenu={(e) => openMenu(e, buildFolderMenu(folder))}
                 onKeyDown={e => { if (e.key === 'Enter') navigateTo(folder.id); }}
                 tabIndex={0} role="button"
               >
@@ -431,6 +479,7 @@ export default function DocumentsPage() {
               <div key={file.file_id}
                 className={`panel-beveled p-3 flex flex-col items-center gap-2 cursor-pointer hover:bg-rmpg-700/30 transition-colors relative group ${selectedFiles.has(file.file_id) ? 'ring-1 ring-brand-500/50 bg-brand-900/10' : ''}`}
                 onClick={() => toggleSelect(file.file_id)}
+                onContextMenu={(e) => openMenu(e, buildFileMenu(file))}
               >
                 <span className="text-3xl">{getFileIcon(file.mime_type)}</span>
                 <span className="text-[10px] text-rmpg-200 text-center truncate w-full font-medium">{file.original_name}</span>
@@ -456,6 +505,7 @@ export default function DocumentsPage() {
               /* ── LIST VIEW ── */
               <div key={file.file_id}
                 className={`flex items-center gap-3 px-3 py-2 hover:bg-rmpg-700/20 transition-colors border-b border-rmpg-800/20 ${selectedFiles.has(file.file_id) ? 'bg-brand-900/10' : ''}`}
+                onContextMenu={(e) => openMenu(e, buildFileMenu(file))}
               >
                 <button type="button" onClick={() => toggleSelect(file.file_id)} className="flex-shrink-0 text-rmpg-500 hover:text-brand-400">
                   {selectedFiles.has(file.file_id) ? <CheckSquare className="w-4 h-4 text-brand-400" /> : <Square className="w-4 h-4" />}
@@ -463,7 +513,7 @@ export default function DocumentsPage() {
                 <span className="text-lg flex-shrink-0">{getFileIcon(file.mime_type)}</span>
                 <div className="flex-1 min-w-0">
                   <span className="text-xs font-medium text-rmpg-200 truncate block">{file.original_name}</span>
-                  <span className="text-[9px] text-rmpg-500">{formatSize(file.file_size)} · {new Date(file.created_at).toLocaleDateString()} · {file.mime_type?.split('/')[1]?.toUpperCase()}</span>
+                  <span className="text-[9px] text-rmpg-500">{formatSize(file.file_size)} · {parseTimestamp(file.created_at).toLocaleDateString()} · {file.mime_type?.split('/')[1]?.toUpperCase()}</span>
                 </div>
                 <div className="flex items-center gap-1">
                   <button type="button" onClick={() => setInfoFile(file)}
@@ -539,7 +589,7 @@ export default function DocumentsPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
           <div className="panel-surface w-full max-w-sm mx-4 p-4 space-y-3">
             <h3 className="text-xs font-bold text-white uppercase">New Folder</h3>
-            <input type="text" className="input-dark text-xs w-full" placeholder="Folder name..."
+            <input id="ff-documentspage-2" type="text" className="input-dark text-xs w-full" placeholder="Folder name..."
               value={newFolderName} onChange={e => setNewFolderName(e.target.value)} autoFocus
               onKeyDown={e => { if (e.key === 'Enter') createFolder(); if (e.key === 'Escape') setShowNewFolder(false); }} />
             <div className="flex justify-end gap-2">
@@ -555,7 +605,7 @@ export default function DocumentsPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
           <div className="panel-surface w-full max-w-sm mx-4 p-4 space-y-3">
             <h3 className="text-xs font-bold text-white uppercase">Rename Folder</h3>
-            <input type="text" className="input-dark text-xs w-full" value={renameValue} onChange={e => setRenameValue(e.target.value)} autoFocus
+            <input id="ff-documentspage-3" type="text" className="input-dark text-xs w-full" value={renameValue} onChange={e => setRenameValue(e.target.value)} autoFocus
               onKeyDown={e => { if (e.key === 'Enter') renameFolder(); if (e.key === 'Escape') setRenamingFolder(null); }} />
             <div className="flex justify-end gap-2">
               <button type="button" onClick={() => setRenamingFolder(null)} className="toolbar-btn">Cancel</button>
@@ -576,7 +626,7 @@ export default function DocumentsPage() {
         const category = isImage ? 'Image' : isVideo ? 'Video' : isAudio ? 'Audio' : isPdf ? 'PDF Document' : f.mime_type?.includes('word') ? 'Word Document' : f.mime_type?.includes('sheet') ? 'Spreadsheet' : 'File';
         const sizeKB = (f.file_size / 1024).toFixed(1);
         const sizeMB = (f.file_size / 1048576).toFixed(2);
-        const created = new Date(f.created_at);
+        const created = parseTimestamp(f.created_at);
 
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setInfoFile(null)}>

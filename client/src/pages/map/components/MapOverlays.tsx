@@ -4,9 +4,10 @@ import type { UnitStatus } from '../../../types';
 import { UNIT_STATUS_COLORS, UNIT_STATUS_LABELS, PRIORITY_COLORS, isLightMapStyle, isSatelliteStyle } from '../utils/mapConstants';
 import type { MapStyleId } from '../utils/mapConstants';
 import MapExportMenu from './MapExportMenu';
+import { mapboxgl } from '../../../utils/mapboxLoader';
 
 interface MapOverlaysProps {
-  mapInstanceRef: React.MutableRefObject<google.maps.Map | null>;
+  mapInstanceRef: React.MutableRefObject<mapboxgl.Map | null>;
   mapStyle: MapStyleId;
   isConnected: boolean;
   sidebarOpen: boolean;
@@ -21,7 +22,7 @@ interface MapOverlaysProps {
 
   // Tracking lines
   showTrackingLines: boolean;
-  trackingLinesRef: React.MutableRefObject<google.maps.Polyline[]>;
+  trackingLinesRef: React.MutableRefObject<mapboxgl.Map[] | null>;
 
   // Route (routing result from useMapRouting hook)
   activeRoute: { unitCallSign: string; callNumber: string; eta: string; distance: string } | null;
@@ -59,8 +60,8 @@ export default function MapOverlays({
           aria-label="Map legend"
           style={{
             borderRadius: 2,
-            background: isLightMapStyle(mapStyle) ? 'rgba(255,255,255,0.85)' : isSatelliteStyle(mapStyle) ? 'rgba(6,12,20,0.88)' : 'rgba(6,12,20,0.92)',
-            border: isLightMapStyle(mapStyle) ? '1px solid rgba(0,0,0,0.12)' : '1px solid rgba(30,48,72,0.5)',
+            background: isLightMapStyle(mapStyle) ? 'rgba(255,255,255,0.85)' : isSatelliteStyle(mapStyle) ? 'rgba(10,10,10,0.88)' : 'rgba(10,10,10,0.92)',
+            border: isLightMapStyle(mapStyle) ? '1px solid rgba(0,0,0,0.12)' : '1px solid rgba(43,43,43,0.5)',
             padding: '4px 8px',
           }}
         >
@@ -97,8 +98,8 @@ export default function MapOverlays({
           aria-label="Map statistics"
           style={{
             borderRadius: 2,
-            background: isLightMapStyle(mapStyle) ? 'rgba(255,255,255,0.88)' : isSatelliteStyle(mapStyle) ? 'rgba(6,12,20,0.92)' : 'rgba(6,12,20,0.95)',
-            border: isLightMapStyle(mapStyle) ? '1px solid rgba(0,0,0,0.15)' : '1px solid rgba(30,48,72,0.6)',
+            background: isLightMapStyle(mapStyle) ? 'rgba(255,255,255,0.88)' : isSatelliteStyle(mapStyle) ? 'rgba(10,10,10,0.92)' : 'rgba(10,10,10,0.95)',
+            border: isLightMapStyle(mapStyle) ? '1px solid rgba(0,0,0,0.15)' : '1px solid rgba(43,43,43,0.6)',
           }}
         >
           <div className="flex items-center gap-0.5 px-1.5 py-1">
@@ -135,7 +136,7 @@ export default function MapOverlays({
               </div>
             </div>
 
-            {showTrackingLines && trackingLinesRef.current.length > 0 && (
+            {showTrackingLines && trackingLinesRef.current && trackingLinesRef.current.length > 0 && (
               <div className="flex items-center gap-1 px-1.5">
                 <Navigation2 className="w-2.5 h-2.5 text-gray-400" />
                 <span className="text-gray-400 text-[8px] font-mono font-bold">{trackingLinesRef.current.length}</span>
@@ -155,7 +156,7 @@ export default function MapOverlays({
             ...(isMobile
               ? { top: 56, left: 8, right: 8 }
               : { bottom: 48, left: 16, minWidth: 200 }),
-            background: isLightMapStyle(mapStyle) ? 'rgba(255,255,255,0.92)' : 'rgba(6,12,20,0.95)',
+            background: isLightMapStyle(mapStyle) ? 'rgba(255,255,255,0.92)' : 'rgba(10,10,10,0.95)',
             border: isLightMapStyle(mapStyle) ? '1px solid rgba(136, 136, 136,0.3)' : '1px solid #88888850',
             padding: '8px 14px',
             fontFamily: "'JetBrains Mono', 'Courier New', monospace",
@@ -200,7 +201,7 @@ export default function MapOverlays({
             className="flex flex-col overflow-hidden"
             style={{
               borderRadius: 2,
-              background: 'rgba(13, 21, 32, 0.9)',
+              background: 'rgba(10, 10, 10, 0.9)',
               border: '1px solid #2b2b2b',
             }}
           >

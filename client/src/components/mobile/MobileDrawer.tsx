@@ -86,6 +86,7 @@ const NAV_GROUPS: NavGroup[] = [
       { path: '/serve', icon: Briefcase, label: 'Process Server' },
       { path: '/warrants', icon: AlertTriangle, label: 'Warrants' },
       { path: '/citations', icon: FileWarning, label: 'Citations' },
+      { path: '/law-book', icon: Scale, label: 'Law Book' },
       { path: '/trespass-orders', icon: ShieldBan, label: 'Trespass Orders' },
       { path: '/code-enforcement', icon: Construction, label: 'Code Enforcement' },
       { path: '/court', icon: Gavel, label: 'Court Tracker' },
@@ -106,7 +107,7 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { path: '/email', icon: MessageSquare, label: 'Email' },
       { path: '/communications', icon: MessageSquare, label: 'Comms' },
-      { path: '/radio', icon: Radio, label: 'Radio' },
+
       { path: '/patrol', icon: QrCode, label: 'Patrol' },
     ],
   },
@@ -137,7 +138,7 @@ const NAV_GROUPS: NavGroup[] = [
 // Paths blocked for client_viewer role
 const CLIENT_VIEWER_BLOCKED_PATHS = new Set([
   '/admin', '/audit', '/personnel', '/fleet', '/ncic',
-  '/radio', '/patrol', '/shift-plans', '/statute-analytics',
+  '/patrol', '/shift-plans', '/statute-analytics',
   '/reports/custom', '/crime-analysis', '/dar', '/hr',
   '/body-cameras', '/dash-cameras', '/dl-search', '/skip-tracer',
   '/arrest-records', '/forensic-lab', '/forensics', '/training-docs',

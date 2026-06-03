@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { Clock, LogIn, LogOut, Pencil, Coffee, Zap, Trash2 } from 'lucide-react';
 import type { TimeEntry } from '../../../types';
 import ConfirmDialog from '../../../components/ConfirmDialog';
+import { parseTimestamp } from '../../../utils/dateUtils';
 
 interface Props {
   timeEntries: TimeEntry[];
@@ -22,7 +23,7 @@ interface Props {
 
 function formatTime(dateStr: string): string {
   if (!dateStr) return '-';
-  return new Date(dateStr).toLocaleString('en-US', {
+  return parseTimestamp(dateStr).toLocaleString('en-US', {
     month: 'short',
     day: 'numeric',
     hour: '2-digit',
@@ -34,8 +35,8 @@ function formatTime(dateStr: string): string {
 function calcHours(entry: TimeEntry): string {
   if (entry.total_hours != null && Number.isFinite(Number(entry.total_hours))) return Number(entry.total_hours).toFixed(2);
   if (!entry.clock_in) return '-';
-  const start = new Date(entry.clock_in).getTime();
-  const end = entry.clock_out ? new Date(entry.clock_out).getTime() : Date.now();
+  const start = parseTimestamp(entry.clock_in).getTime();
+  const end = entry.clock_out ? parseTimestamp(entry.clock_out).getTime() : Date.now();
   if (isNaN(start) || isNaN(end)) return '-';
   const hrs = (end - start) / (1000 * 60 * 60);
   return hrs.toFixed(2);
@@ -60,7 +61,7 @@ export default function TimeLogDetailTab({
   const totalHours = timeEntries.reduce((sum, e) => {
     const h = e.total_hours ?? (
       e.clock_in
-        ? (((e.clock_out ? new Date(e.clock_out).getTime() : Date.now()) - new Date(e.clock_in).getTime()) / (1000 * 60 * 60))
+        ? (((e.clock_out ? parseTimestamp(e.clock_out).getTime() : Date.now()) - parseTimestamp(e.clock_in).getTime()) / (1000 * 60 * 60))
         : 0
     );
     return sum + h;

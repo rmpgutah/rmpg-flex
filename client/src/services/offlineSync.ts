@@ -103,7 +103,7 @@ export function startSyncSchedule(url: string, token?: string): void {
   serverUrl = url;
   if (token) authToken = token;
 
-  console.log('[SYNC] Starting pull schedule');
+  console.debug('[SYNC] Starting pull schedule');
 
   // Do an initial full pull
   pullAll().catch(err => console.error('[SYNC] Initial pull failed:', err?.message || err));
@@ -137,7 +137,7 @@ export function startSyncSchedule(url: string, token?: string): void {
 }
 
 export function stopSyncSchedule(): void {
-  console.log('[SYNC] Stopping pull schedule');
+  console.debug('[SYNC] Stopping pull schedule');
   for (const timer of Object.values(pullTimers)) {
     clearInterval(timer);
   }
@@ -164,7 +164,7 @@ export async function pullAll(): Promise<void> {
     }
 
     emit('sync-complete', { pulled: i, pushed: 0, errors: 0 });
-    console.log('[SYNC] Pull all complete');
+    console.debug('[SYNC] Pull all complete');
   } finally {
     releaseSyncLock();
   }
@@ -181,7 +181,7 @@ export async function pushAll(): Promise<void> {
       return;
     }
 
-    console.log(`[SYNC] Pushing ${queueDepthCount} queued items`);
+    console.debug(`[SYNC] Pushing ${queueDepthCount} queued items`);
     emit('sync-progress', { phase: 'push', table: 'sync_queue', current: 0, total: queueDepthCount });
 
     const pending = await getPendingQueue(100);
@@ -260,7 +260,7 @@ export async function pushAll(): Promise<void> {
 
     lastPushAt = new Date().toISOString();
     emit('sync-complete', { pulled: 0, pushed, errors });
-    console.log(`[SYNC] Push complete: ${pushed} synced, ${errors} errors`);
+    console.debug(`[SYNC] Push complete: ${pushed} synced, ${errors} errors`);
   } finally {
     releaseSyncLock();
   }
@@ -307,7 +307,7 @@ async function pullTable(table: string): Promise<void> {
       await deltaSync(table as StoreName, response.rows);
     }
 
-    console.log(`[SYNC] Pulled ${response.rows.length} rows for ${table}`);
+    console.debug(`[SYNC] Pulled ${response.rows.length} rows for ${table}`);
   } catch (err: any) {
     // Silently fail — will retry on next interval
     console.warn(`[SYNC] Pull ${table} failed:`, err?.message || err);
@@ -336,7 +336,7 @@ async function pullSecrets(): Promise<void> {
       await setConfig('my_offline_secret', response.secret);
     }
 
-    console.log('[SYNC] Offline secrets updated');
+    console.debug('[SYNC] Offline secrets updated');
   } catch (err: any) {
     console.warn('[SYNC] Secrets pull failed:', err?.message || err);
   }
@@ -374,7 +374,7 @@ async function pushGpsBreadcrumbs(): Promise<void> {
         }
       }
       await tx.done;
-      console.log(`[SYNC] Pushed ${batch.length} GPS breadcrumbs`);
+      console.debug(`[SYNC] Pushed ${batch.length} GPS breadcrumbs`);
     }
   } catch (err: any) {
     console.warn('[SYNC] GPS push failed:', err?.message || err);
@@ -439,13 +439,21 @@ async function serverFetch(endpoint: string, options: RequestInit = {}): Promise
  * Attempt to refresh the JWT token and retry the request.
  */
 async function refreshAndRetry(endpoint: string, options: RequestInit): Promise<any> {
-  const refreshToken = await getConfig('refresh_token');
+  // The /api/auth/refresh handler requires BOTH refreshToken AND sessionId
+  // (sessions lookup is WHERE session_id = ? AND refresh_token_hash = ?), so
+  // sending only refreshToken always 401'd — this is why "[SYNC] Pull …
+  // failed: Refresh failed" appeared for every table. Prefer the main app's
+  // localStorage tokens (which stay current through refresh-token rotation)
+  // over our IndexedDB copy, which can drift once apiFetch/AuthContext rotates.
+  const ls = typeof localStorage !== 'undefined' ? localStorage : null;
+  const refreshToken = ls?.getItem('rmpg_refresh_token') || (await getConfig('refresh_token'));
+  const sessionId = ls?.getItem('rmpg_session_id') || (await getConfig('session_id'));
   if (!refreshToken) throw new Error('No refresh token available');
 
   const refreshResponse = await fetch(`${serverUrl}/api/auth/refresh`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-    body: JSON.stringify({ refreshToken }),
+    body: JSON.stringify({ refreshToken, sessionId }),
   });
 
   if (!refreshResponse.ok) {

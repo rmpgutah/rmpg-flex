@@ -22,7 +22,7 @@ function getWindDirection(deg: number): string {
   return dirs[Math.round(deg / 22.5) % 16];
 }
 
-export default function WeatherWidget() {
+function WeatherWidget() {
   const [weather, setWeather] = useState<WeatherData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
@@ -118,3 +118,5 @@ export default function WeatherWidget() {
     </div>
   );
 }
+
+export default React.memo(WeatherWidget);

@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { GraduationCap } from 'lucide-react';
 import FormModal from '../../../components/FormModal';
-import { useFormDirty } from '../../../hooks/useFormDirty';
+import { useFormDraft } from '../../../hooks/useFormDraft';
 import type { TrainingCategory } from '../../../types';
 
 import RichTextArea from '../../../components/RichTextArea';
@@ -59,17 +59,27 @@ const EMPTY: TrainingFormData = {
 export default function TrainingFormModal({
   isOpen, onClose, onSubmit, isSubmitting, officers, initialData, mode = 'create',
 }: Props) {
-  const [form, setForm] = useState<TrainingFormData>(EMPTY);
-  const { isDirty, snapshot } = useFormDirty(form, isOpen);
+  const {
+    form,
+    setForm,
+    isDirty,
+    wasRestored,
+    clearDraft,
+    snapshot,
+  } = useFormDraft<TrainingFormData>({
+    storageKey: 'rmpg_personnel_training_form',
+    defaultValue: EMPTY,
+    isActive: isOpen,
+  });
 
   useEffect(() => {
     if (isOpen && initialData) {
       const initial = { ...EMPTY, ...initialData };
       setForm(initial);
-      snapshot(initial);
+      snapshot();
     } else if (isOpen) {
       setForm(EMPTY);
-      snapshot(EMPTY);
+      snapshot();
     }
   }, [isOpen, initialData]);
 
@@ -91,30 +101,32 @@ export default function TrainingFormModal({
       submitLabel={mode === 'edit' ? 'Update' : 'Add Training'}
       isSubmitting={isSubmitting}
       isDirty={isDirty}
+      draftRestored={wasRestored}
+      onDiscardDraft={clearDraft}
     >
       {/* Officer & Course */}
       <div className="panel-inset p-3 space-y-3">
         <div>
           <label className="field-label">Officer <span className="text-red-400">*</span></label>
-          <select required value={form.officer_id} onChange={e => set('officer_id', e.target.value)} className="select-dark" disabled={mode === 'edit'}>
+          <select id="ff-trainingformmodal-0" required value={form.officer_id} onChange={e => set('officer_id', e.target.value)} className="select-dark" disabled={mode === 'edit'}>
             <option value="">Select officer...</option>
             {officers.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}
           </select>
         </div>
         <div>
           <label className="field-label">Course Name <span className="text-red-400">*</span></label>
-          <input type="text" required value={form.course_name} onChange={e => set('course_name', e.target.value)} placeholder="e.g. Firearms Qualification" className="input-dark min-h-[36px]" />
+          <input id="ff-trainingformmodal-1" type="text" required value={form.course_name} onChange={e => set('course_name', e.target.value)} placeholder="e.g. Firearms Qualification" className="input-dark min-h-[36px]" />
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="field-label">Category</label>
-            <select value={form.category} onChange={e => set('category', e.target.value)} className="select-dark">
+            <select id="ff-trainingformmodal-2" value={form.category} onChange={e => set('category', e.target.value)} className="select-dark">
               {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
             </select>
           </div>
           <div>
             <label className="field-label">Status</label>
-            <select value={form.status} onChange={e => set('status', e.target.value)} className="select-dark">
+            <select id="ff-trainingformmodal-3" value={form.status} onChange={e => set('status', e.target.value)} className="select-dark">
               {STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
             </select>
           </div>
@@ -129,30 +141,30 @@ export default function TrainingFormModal({
       <div className="panel-inset p-3 space-y-3">
         <div>
           <label className="field-label">Provider</label>
-          <input type="text" value={form.provider} onChange={e => set('provider', e.target.value)} placeholder="Training provider or institution" className="input-dark min-h-[36px]" />
+          <input id="ff-trainingformmodal-4" type="text" value={form.provider} onChange={e => set('provider', e.target.value)} placeholder="Training provider or institution" className="input-dark min-h-[36px]" />
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
             <label className="field-label">Completed Date</label>
-            <input type="date" value={form.completed_date} onChange={e => set('completed_date', e.target.value)} className="input-dark min-h-[36px]" />
+            <input id="ff-trainingformmodal-5" type="date" value={form.completed_date} onChange={e => set('completed_date', e.target.value)} className="input-dark min-h-[36px]" />
           </div>
           <div>
             <label className="field-label">Expiry Date</label>
-            <input type="date" value={form.expiry_date} onChange={e => set('expiry_date', e.target.value)} className="input-dark min-h-[36px]" />
+            <input id="ff-trainingformmodal-6" type="date" value={form.expiry_date} onChange={e => set('expiry_date', e.target.value)} className="input-dark min-h-[36px]" />
           </div>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
           <div>
             <label className="field-label">Hours</label>
-            <input type="number" step="0.5" min="0" value={form.hours} onChange={e => set('hours', e.target.value)} placeholder="0" className="input-dark min-h-[36px]" />
+            <input id="ff-trainingformmodal-7" type="number" step="0.5" min="0" value={form.hours} onChange={e => set('hours', e.target.value)} placeholder="0" className="input-dark min-h-[36px]" />
           </div>
           <div>
             <label className="field-label">Score (%)</label>
-            <input type="number" min="0" max="100" value={form.score} onChange={e => set('score', e.target.value)} placeholder="Optional" className="input-dark min-h-[36px]" />
+            <input id="ff-trainingformmodal-8" type="number" min="0" max="100" value={form.score} onChange={e => set('score', e.target.value)} placeholder="Optional" className="input-dark min-h-[36px]" />
           </div>
           <div>
             <label className="field-label">Certificate #</label>
-            <input type="text" value={form.certificate_number} onChange={e => set('certificate_number', e.target.value)} placeholder="Cert number" className="input-dark min-h-[36px]" />
+            <input id="ff-trainingformmodal-9" type="text" value={form.certificate_number} onChange={e => set('certificate_number', e.target.value)} placeholder="Cert number" className="input-dark min-h-[36px]" />
           </div>
         </div>
       </div>

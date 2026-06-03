@@ -3,9 +3,11 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Radio, Map, Monitor, Terminal, Database, FileText,
   ClipboardList, Search, CreditCard, Package, Briefcase, AlertTriangle,
-  FileWarning, ShieldBan, Construction, Gavel, UserX, Users, Car, Video,
+  FileWarning, ShieldBan, Construction, Gavel, UserX, Users, Car, Video, Scale,
   MessageSquare, QrCode, BarChart3, Calendar, TrendingUp, ClipboardCheck,
   Settings, ScrollText, Network, ChevronLeft, ChevronRight, Camera, Mail,
+  Upload, Building2, ShieldAlert, Megaphone, GraduationCap, CheckCircle,
+  DollarSign, Shield, Share2, Swords, Brain, Heart, Bell, Pill, Award, UserPlus,
 } from 'lucide-react';
 
 // ─── Sidebar Navigation Structure ──────────────────────────────
@@ -54,10 +56,19 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
     items: [
       { path: '/warrants', icon: AlertTriangle, label: 'Warrants' },
       { path: '/citations', icon: FileWarning, label: 'Citations' },
+      { path: '/law-book', icon: Scale, label: 'Law Book' },
       { path: '/trespass-orders', icon: ShieldBan, label: 'Trespass Orders' },
       { path: '/code-enforcement', icon: Construction, label: 'Code Enforcement' },
       { path: '/court', icon: Gavel, label: 'Court Tracker' },
       { path: '/offender-registry', icon: UserX, label: 'Offender Registry' },
+    ],
+  },
+  {
+    id: 'serve',
+    label: 'Process Service',
+    items: [
+      { path: '/serve-intake', icon: Upload, label: 'Serve Intake' },
+      { path: '/serve', icon: Briefcase, label: 'Process Server' },
     ],
   },
   {
@@ -75,7 +86,7 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
     label: 'Communications',
     items: [
       { path: '/communications', icon: MessageSquare, label: 'Communications' },
-      { path: '/radio', icon: Radio, label: 'Radio' },
+
       { path: '/email', icon: Mail, label: 'Email' },
       { path: '/dar', icon: ClipboardCheck, label: 'Daily Activity' },
     ],
@@ -100,12 +111,37 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
       { path: '/admin', icon: Settings, label: 'Admin', adminOnly: true },
     ],
   },
+  {
+    id: 'support',
+    label: 'Support Services',
+    items: [
+      { path: '/jail', icon: Building2, label: 'Jail Management' },
+      { path: '/affairs', icon: ShieldAlert, label: 'Internal Affairs' },
+      { path: '/assets', icon: Package, label: 'Asset Management' },
+      { path: '/community', icon: Users, label: 'Community' },
+      { path: '/tasks', icon: ClipboardList, label: 'Tasks' },
+      { path: '/alerts', icon: Megaphone, label: 'Notifications' },
+      { path: '/training-mgmt', icon: GraduationCap, label: 'Training' },
+      { path: '/qa', icon: CheckCircle, label: 'QA' },
+      { path: '/billing', icon: DollarSign, label: 'Billing' },
+      { path: '/risk', icon: Shield, label: 'Risk Mgmt' },
+      { path: '/interagency', icon: Share2, label: 'Interagency' },
+      { path: '/gang-intel', icon: ShieldAlert, label: 'Gang Intel' },
+      { path: '/special-ops', icon: Swords, label: 'Special Ops' },
+      { path: '/crisis-response', icon: Brain, label: 'Crisis Response' },
+      { path: '/victim-services', icon: Heart, label: 'Victim Services' },
+      { path: '/alarms', icon: Bell, label: 'Alarm Mgmt' },
+      { path: '/narcotics', icon: Pill, label: 'Narcotics' },
+      { path: '/accreditation', icon: Award, label: 'Accreditation' },
+      { path: '/recruitment', icon: UserPlus, label: 'Recruitment' },
+    ],
+  },
 ];
 
 // Paths blocked for contract_manager role
 const CONTRACT_MANAGER_BLOCKED = new Set([
   '/admin', '/audit', '/personnel', '/fleet', '/ncic',
-  '/radio', '/patrol', '/shift-plans', '/statute-analytics',
+  '/patrol', '/shift-plans', '/statute-analytics',
   '/reports/custom', '/crime-analysis', '/dar',
 ]);
 

@@ -22,29 +22,31 @@ import {
   CheckCircle2,
   AlertTriangle,
   Shield,
+  Eye,
+  Pencil,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
-import { safeDateStr, safeDateTimeStr } from '../../utils/dateUtils';
+import { safeDateStr, safeDateTimeStr, parseTimestamp } from '../../utils/dateUtils';
 import { useAuth } from '../../context/AuthContext';
+import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
+import { useMenuActions } from '../../utils/contextMenuActions';
 import EvidenceFormModal from '../../components/EvidenceFormModal';
 import FileAttachments from '../../components/FileAttachments';
 import LinkedRecordsSection from '../../components/LinkedRecordsSection';
 import CollapsibleSection from '../../components/CollapsibleSection';
+import RecordField from '../../components/records/RecordField';
+import FieldGrid from '../../components/records/FieldGrid';
+import RecordBadge from '../../components/records/RecordBadge';
+import RecordHero from '../../components/records/RecordHero';
 import PrintRecordButton from '../../components/PrintRecordButton';
 import type { CustodyEntry, RecordEntityType } from '../../types';
 
 // ── Helpers ──────────────────────────────────────
 
+// Delegates to the shared RecordField primitive. See PersonsTab for the pattern.
 function renderInfoRow(label: string, value?: string | null, icon?: React.ElementType) {
   if (!value) return null;
-  const Icon = icon;
-  return (
-    <div className="flex items-start gap-2 text-xs group">
-      {Icon && <Icon className="w-3 h-3 text-rmpg-400 mt-0.5 flex-shrink-0" />}
-      <span className="text-rmpg-400 min-w-[80px] select-none">{label}:</span>
-      <span className="text-rmpg-200 group-hover:text-white transition-colors">{value}</span>
-    </div>
-  );
+  return <RecordField label={label} value={value} icon={icon} />;
 }
 
 // ── Props ──────────────────────────────────────────
@@ -193,13 +195,33 @@ export function EvidenceTabList({ state }: { state: EvidenceTabState }) {
     evidenceModalOpen, editingEvidence, setEvidenceModalOpen, setEditingEvidence, evidence,
   } = state;
 
+  // ── Right-click context menu ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+  const canModify = !showArchived || user?.role === 'admin';
+  const buildEvidenceMenu = (ev: any): ContextMenuItem[] => {
+    return [
+      m.action('Open record', () => setSelectedEvidence(selectedEvidence?.id === ev.id ? null : ev), { icon: <Eye size={12} /> }),
+      ...(canModify ? [m.action('Edit evidence', () => { setEditingEvidence(ev); setEvidenceModalOpen(true); }, { icon: <Pencil size={12} /> })] : []),
+      m.separator(),
+      m.copy('Copy evidence #', ev.evidence_number),
+      m.copyId(ev.id),
+      ...(ev.serial_number ? [m.copy('Copy serial #', ev.serial_number, <Hash size={12} />)] : []),
+      m.separator(),
+      ...(showArchived
+        ? (canModify ? [m.action('Unarchive', () => handleUnarchive('evidence', ev.id), { icon: <RotateCcw size={12} /> })] : [])
+        : [m.action('Archive', () => handleArchive('evidence', ev.id), { icon: <Archive size={12} /> })]),
+      ...(canModify ? [m.action('Delete', () => setDeleteTarget({ type: 'evidence', id: ev.id, label: ev.evidence_number }), { icon: <Trash2 size={12} />, danger: true })] : []),
+    ];
+  };
+
   return (
     <div className="h-full flex flex-col">
       {/* Search */}
       <div className="p-3 border-b border-rmpg-600" role="search">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400 pointer-events-none" />
-          <input
+          <input id="ff-evidencetab-0"
             type="text"
             className="input-dark pl-9 w-full text-[11px] min-h-[36px] focus:ring-1 focus:ring-brand-500/50 focus:border-brand-600 transition-shadow"
             placeholder="Search by evidence #, description, serial #, incident..." aria-label="Search by evidence #, description, serial #, incident..."
@@ -233,6 +255,7 @@ export function EvidenceTabList({ state }: { state: EvidenceTabState }) {
               tabIndex={0}
               onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedEvidence(selectedEvidence?.id === ev.id ? null : ev); } }}
               onClick={() => setSelectedEvidence(selectedEvidence?.id === ev.id ? null : ev)}
+              onContextMenu={(e) => openMenu(e, buildEvidenceMenu(ev))}
               className={`
                 px-4 py-3 border-b border-rmpg-700/50 cursor-pointer transition-all duration-150
                 ${selectedEvidence?.id === ev.id
@@ -502,10 +525,16 @@ export function EvidenceTabDetail({ state }: { state: EvidenceTabState }) {
 
   if (!selectedEvidence) return null;
 
+  const retentionOverdue = !!(
+    selectedEvidence.retention_until &&
+    parseTimestamp(selectedEvidence.retention_until) < new Date() &&
+    !selectedEvidence.disposition
+  );
+
   return (
     <div className="h-full flex flex-col overflow-hidden">
       {/* Feature 38: Retention overdue badge */}
-      {selectedEvidence.retention_until && new Date(selectedEvidence.retention_until) < new Date() && !selectedEvidence.disposition && (
+      {retentionOverdue && (
         <div className="px-4 py-2 bg-red-950/30 border-b border-red-800/40 flex items-center gap-2 text-[11px] text-red-400 font-bold flex-shrink-0">
           <AlertTriangle className="w-4 h-4 flex-shrink-0 animate-pulse" />
           RETENTION OVERDUE — Past retention date ({safeDateStr(selectedEvidence.retention_until)})
@@ -513,54 +542,38 @@ export function EvidenceTabDetail({ state }: { state: EvidenceTabState }) {
         </div>
       )}
 
-      {/* Status header */}
-      <div className="px-4 pt-3 pb-2 border-b border-rmpg-600 bg-surface-sunken flex-shrink-0">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3 text-[10px] text-rmpg-400 flex-1 min-w-0">
-            <span className="px-1.5 py-0.5 font-bold bg-purple-900/40 text-purple-300 border border-purple-600/40 uppercase">
-              {(selectedEvidence.evidence_type || 'physical').replace(/_/g, ' ')}
+      {/* Hero identity band + print action */}
+      <div className="border-b border-rmpg-600 bg-surface-sunken flex-shrink-0">
+        <RecordHero
+          name={selectedEvidence.evidence_number || 'EVIDENCE'}
+          subtitle={
+            <span className="flex items-center gap-2 flex-wrap">
+              <span className="uppercase font-semibold text-purple-300">{(selectedEvidence.evidence_type || 'physical').replace(/_/g, ' ')}</span>
+              {selectedEvidence.category && <span>· {selectedEvidence.category}</span>}
+              {selectedEvidence.incident_number && (
+                <span className="flex items-center gap-1"><Link2 className="w-3 h-3" />Incident <span className="font-mono text-white">{selectedEvidence.incident_number}</span></span>
+              )}
             </span>
-            {selectedEvidence.category && (
-              <span className="px-1.5 py-0.5 font-bold bg-rmpg-700 text-rmpg-300 border border-rmpg-600">
-                {selectedEvidence.category}
-              </span>
-            )}
-            {selectedEvidence.incident_number && (
-              <span className="flex items-center gap-1">
-                <Link2 className="w-3 h-3" />
-                Incident: <span className="font-mono text-white">{selectedEvidence.incident_number}</span>
-              </span>
-            )}
-          </div>
-          {/* Print / Preview / Sign & Export — generates the v1 evidence PDF
-              (already implemented in recordPdfGenerator.ts as a `RecordPdfType`).
-              Wires entityType so attachment images auto-fetch into the PDF. */}
-          <div className="flex items-center gap-1 flex-shrink-0 print:hidden">
-            <PrintRecordButton
-              recordType="evidence"
-              recordData={selectedEvidence}
-              identifier={selectedEvidence.evidence_number}
-              entityType="evidence"
-              entityId={selectedEvidence.id}
-              iconOnly
-            />
-          </div>
-        </div>
-        {/* Status badges */}
-        <div className="flex gap-2 mt-1.5">
-          {selectedEvidence.lab_submitted && (
-            <span className="px-2 py-0.5 text-[10px] font-bold bg-purple-900/50 text-purple-400 border border-purple-700/50 flex items-center gap-1">
-              <FlaskConical className="w-3 h-3" /> LAB SUBMITTED
-            </span>
-          )}
-          {selectedEvidence.disposal_method && (
-            <span className="px-2 py-0.5 text-[10px] font-bold bg-red-900/50 text-red-400 border border-red-700/50">
-              DISPOSED: {selectedEvidence.disposal_method}
-            </span>
-          )}
-          {selectedEvidence.photo_taken && (
-            <span className="px-2 py-0.5 text-[10px] font-bold bg-gray-900/50 text-gray-400 border border-gray-700/50">PHOTO ON FILE</span>
-          )}
+          }
+          flags={[retentionOverdue ? 'evidence hold' : null]}
+          tone="gold"
+        >
+          {selectedEvidence.lab_submitted && <RecordBadge tone="purple" icon={FlaskConical}>LAB SUBMITTED</RecordBadge>}
+          {selectedEvidence.disposal_method && <RecordBadge tone="red">DISPOSED: {selectedEvidence.disposal_method}</RecordBadge>}
+          {selectedEvidence.photo_taken && <RecordBadge tone="gray" glow={false}>PHOTO ON FILE</RecordBadge>}
+        </RecordHero>
+        {/* Print / Preview / Sign & Export — generates the v1 evidence PDF
+            (already implemented in recordPdfGenerator.ts as a `RecordPdfType`).
+            Wires entityType so attachment images auto-fetch into the PDF. */}
+        <div className="px-4 pb-2 flex items-center justify-end gap-1 print:hidden">
+          <PrintRecordButton
+            recordType="evidence"
+            recordData={selectedEvidence}
+            identifier={selectedEvidence.evidence_number}
+            entityType="evidence"
+            entityId={selectedEvidence.id}
+            iconOnly
+          />
         </div>
       </div>
 
@@ -574,60 +587,48 @@ export function EvidenceTabDetail({ state }: { state: EvidenceTabState }) {
 
         {/* ── Collection & Storage ──────────── */}
         <CollapsibleSection title="Collection & Storage" icon={Warehouse} defaultOpen>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          <FieldGrid cols={3}>
             {renderInfoRow('Collected By', selectedEvidence.collected_by_name)}
             {renderInfoRow('Date Collected', selectedEvidence.collected_date, Calendar)}
             {renderInfoRow('Storage Location', selectedEvidence.storage_location, MapPin)}
             {renderInfoRow('Packaging', selectedEvidence.packaging_type, Boxes)}
             {renderInfoRow('Condition', selectedEvidence.condition)}
             {renderInfoRow('Location Found', selectedEvidence.location_found, MapPin)}
-          </div>
+          </FieldGrid>
         </CollapsibleSection>
 
         {/* ── Item Details (conditional) ──────── */}
         {(selectedEvidence.serial_number || selectedEvidence.brand || selectedEvidence.estimated_value || selectedEvidence.dimensions || selectedEvidence.weight) && (
           <CollapsibleSection title="Item Details" icon={Package} defaultOpen>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-              {selectedEvidence.serial_number && (
-                <div className="text-xs"><span className="text-rmpg-400">Serial #:</span> <span className="text-rmpg-200 font-mono">{selectedEvidence.serial_number}</span></div>
-              )}
-              {selectedEvidence.brand && (
-                <div className="text-xs"><span className="text-rmpg-400">Brand/Model:</span> <span className="text-rmpg-200">{selectedEvidence.brand}{selectedEvidence.model ? ` ${selectedEvidence.model}` : ''}</span></div>
-              )}
-              {selectedEvidence.estimated_value && (
-                <div className="text-xs"><span className="text-rmpg-400">Est. Value:</span> <span className="text-green-400 font-bold">${Number(selectedEvidence.estimated_value).toLocaleString()}</span></div>
-              )}
-              {selectedEvidence.dimensions && (
-                <div className="text-xs"><span className="text-rmpg-400">Dimensions:</span> <span className="text-rmpg-200">{selectedEvidence.dimensions}</span></div>
-              )}
-              {selectedEvidence.weight && (
-                <div className="text-xs"><span className="text-rmpg-400">Weight:</span> <span className="text-rmpg-200">{selectedEvidence.weight}</span></div>
-              )}
-              {selectedEvidence.quantity && (
-                <div className="text-xs"><span className="text-rmpg-400">Quantity:</span> <span className="text-rmpg-200">{selectedEvidence.quantity}</span></div>
-              )}
-            </div>
+            <FieldGrid cols={3}>
+              <RecordField label="Serial #" value={selectedEvidence.serial_number} mono copyable />
+              <RecordField label="Brand/Model" value={selectedEvidence.brand ? `${selectedEvidence.brand}${selectedEvidence.model ? ` ${selectedEvidence.model}` : ''}` : undefined} />
+              <RecordField label="Est. Value" value={selectedEvidence.estimated_value ? `$${Number(selectedEvidence.estimated_value).toLocaleString()}` : undefined} valueColor="#4ade80" />
+              <RecordField label="Dimensions" value={selectedEvidence.dimensions} />
+              <RecordField label="Weight" value={selectedEvidence.weight} />
+              <RecordField label="Quantity" value={selectedEvidence.quantity} />
+            </FieldGrid>
           </CollapsibleSection>
         )}
 
         {/* ── Lab / Analysis (conditional) ────── */}
         {selectedEvidence.lab_submitted && (
           <CollapsibleSection title="Lab / Analysis" icon={FlaskConical}>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <FieldGrid cols={2}>
               {renderInfoRow('Lab Name', selectedEvidence.lab_name)}
               {renderInfoRow('Lab Case #', selectedEvidence.lab_case_number, Hash)}
-            </div>
+            </FieldGrid>
           </CollapsibleSection>
         )}
 
         {/* ── Disposal (conditional) ──────────── */}
         {selectedEvidence.disposal_method && (
           <CollapsibleSection title="Disposal" icon={Trash2}>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <FieldGrid cols={3}>
               {renderInfoRow('Method', selectedEvidence.disposal_method)}
               {renderInfoRow('Date', selectedEvidence.disposal_date, Calendar)}
               {renderInfoRow('Authorized By', selectedEvidence.disposal_authorized_by)}
-            </div>
+            </FieldGrid>
           </CollapsibleSection>
         )}
 

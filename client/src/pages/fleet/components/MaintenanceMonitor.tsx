@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Wrench, AlertTriangle, Clock, CheckCircle, ChevronRight, Loader2 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
+import { parseTimestamp } from '../../../utils/dateUtils';
 
 interface FleetVehicle {
   id: string;
@@ -21,7 +22,7 @@ interface Props {
 
 function daysUntil(dateStr: string | null): number | null {
   if (!dateStr) return null;
-  const target = new Date(dateStr + 'T00:00:00');
+  const target = parseTimestamp(dateStr);
   const now = new Date();
   return Math.ceil((target.getTime() - now.getTime()) / 86400000);
 }
@@ -29,7 +30,7 @@ function daysUntil(dateStr: string | null): number | null {
 function formatDate(d: string | null): string {
   if (!d) return '—';
   try {
-    return new Date(d.includes('T') ? d : d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    return parseTimestamp(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   } catch { return d; }
 }
 

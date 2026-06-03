@@ -59,7 +59,480 @@
 //       timeouts) into the production-deployed branch (2026-05-01).
 // ============================================================
 
-const CACHE_NAME = 'rmpg-flex-v557';
+// v601: auth-refresh fix — apiFetch + offlineSync now send sessionId on
+//       /api/auth/refresh (legacy handler requires session_id); was causing
+//       silent logout at every 15-min token expiry + the [SYNC] Refresh-failed
+//       warnings. Bump forces clients onto the fixed bundle.
+// v602: turn-by-turn driving directions panel on the dispatch map (useMapRouting
+//       now requests steps=true + parses maneuvers; DispatchMiniMap renders a
+//       scrollable point-by-point list for the unit→call route).
+// v603: turn-by-turn redesigned as a bottom nav banner (one direction at a time,
+//       ETA + miles above) with voice announcement of each direction as it
+//       becomes current (steps[0] from the live-origin recompute).
+// v604: fix assigned-unit matching on the dispatch map — assigned_units arrives
+//       as unit OBJECTS, but the code did assigned_units.includes(String(id))
+//       (always false) so the unit marker, route line, and turn-by-turn
+//       directions never appeared. Normalize to an id Set.
+// v627: police-format geography output on the call detail panel — render the
+//       Spillman sector code ("SL1") instead of the raw numeric sector_id,
+//       prefix the beat code to its name, and add the Area line. The codes
+//       were already on the wire from /districts; the client had discarded them.
+// v628: surface zone › beat names on the queue CallCard (under the address) —
+//       the dispatch code was badged but the human geography wasn't shown.
+// v629: use the existing zoneLeaf/beatLeaf parsers in the live geography output
+//       (detail panel + card) so Zone/Beat render as clean leaves ("HER", "C")
+//       instead of the redundant composite codes ("SL1-HER", "SL1-HER/C").
+// v630: click-to-copy the Spillman dispatch code + explanatory tooltips on the
+//       Area/Sec/Zone/Beat fields in the call detail panel.
+// v631: prepend the Spillman section code to the queue card geography line,
+//       derived from the composite zone_id via new sectionPrefix() parser
+//       (zero extra lookups). sector_name fallback for non-composite codes.
+// v632: geography filter + sort. Search box now matches district fields
+//       (Spillman code, zone/beat, place names). New GEO sort mode groups the
+//       queue by section › zone › beat. Sort mode now persists via localStorage
+//       (the /user/preferences backend is stubbed) — fixes the dead SORT toggle.
+// v633: police-format disposition in the call detail panel — "RTF — Report
+//       Taken" (code + label) via new formatDispositionCode(), instead of the
+//       label alone. Shared humanizeDisposition left untouched.
+// v634: copy-to-clipboard button on the call detail-panel Location field.
+// v635: unit status board now shows time-in-status (dwell) next to the status
+//       badge, color-escalating per status so dispatchers catch units stuck
+//       en route / with long scene times.
+// v636: call timeline now shows the elapsed delta between each populated stage
+//       (Created→Dispatched→Enroute→On Scene→Cleared→Closed) — the full
+//       response-time breakdown, not just dispatched→onscene.
+// v637: hint district search in the queue search placeholder; show the card
+//       geography line even when only a section is assigned (no zone/beat yet).
+// v638: merge origin/main (16 commits) into the dispatch geography/police-format
+//       batch; bump above both lineages (mine v637, main v632) for a clean
+//       cache invalidation on the combined deploy.
+// v639: stacked-calls panel in the call detail — lists other active calls at the
+//       same address (click to jump). Real D1-backed /user/preferences (no SW
+//       impact, listed here for the deploy log).
+// v640: GEO-sort section dividers — when the queue is sorted by district, render
+//       a sticky "SECTION · Name" header before each new section's calls.
+// v641: keyboard-shortcut cheat sheet overlay (toggle with "?") documenting the
+//       Spillman-style F-key + letter + nav shortcuts.
+// v642: busiest-district chip in the dispatch stats strip — active-call load
+//       per section (busiest first), full breakdown on hover. Click to filter
+//       the queue to that district (wires into the district-aware search).
+// v643: fix Beat picker in call edit — when a Section is chosen but no Zone,
+//       scope beats to that section (not all ~719) with zone-disambiguated
+//       names, backfill zone + dispatch_code on select, disable until a section
+//       is picked. Previously dumped every beat as a raw code.
+// v646: check for SW updates on tab focus/visibility (not just the 15-min
+//       poll), so a freshly-deployed bundle surfaces the moment an operator
+//       returns to the console instead of staying invisible for up to 15 min.
+// v647: normalize sector_id to string at the useDistrictLookup ingest boundary
+//       + coerce inputs in its lookup helpers, so number/string mismatches stop
+//       causing crashes (map #807, dispatch panel). Retires that class of bug at
+//       the shared chokepoint instead of per-call-site.
+// v667: force-evict stale chunks so the fleet/global scroll fix already in this
+//       bundle reaches operators pinned to a pre-fix cache (Fleet > Fuel tab
+//       couldn't scroll the fuel-log list). Layout source is correct; this is a
+//       cache-busting bump to retire the old bundle.
+// v668: Fleet Costs fixes + enhancements — (1) insurance/accessory GET now
+//       aliases premium/effective_date/expiry_date/warranty_expiry to the
+//       modal-native names so saved rows stop displaying blank ("saves then
+//       vanishes"); (2) MoneyInput thousands-formatting on all cost $ fields
+//       (no more mangled input); (3) per-category running totals; (4) carry-
+//       over auto-fill from the last fuel/cost entry.
+// v669: fix fleet record-PDF crash "equipment.map is not a function" — the
+//       live fleet_vehicles.equipment column is TEXT (JSON/CSV string), but the
+//       PDF generator assumed string[] and called .map(). Now coerced to a
+//       string[] in recordPdfGenerator.ts so Print fleet record works.
+// v670: fix dispatch map crash "line-gradient: Expected at least 4 arguments"
+//       (single-segment route built a stop-less step expr → invalid; now falls
+//       back to flat line-color), and harden PrintRecordButton breadcrumb fetch
+//       to require a numeric call id (stops GET /call-trail/undefined → 400).
+//       Server side (same push): dispatch call DELETE now unlinks non-cascading
+//       FK refs before deleting (was 500), and /api/hr/dashboard has a real
+//       handler (was 404).
+// v677: audit DO-FIRST map hardening — useMapboxResponseTime moves the 9MB
+//       beat.geojson fetch BEFORE the style-ready guard and wraps only the
+//       addSource/addLayer (idempotent) so a basemap switch mid-fetch can't
+//       throw "Style is not done loading"; useMapRouting bails on <2-coord
+//       routes before building a degenerate line-gradient. (Worker side same
+//       push: OCR/AI-dispatch timeout guards + VoiceHubDO never-silence broadcast.)
+// v678: audit item A — useGpsTracking.sendBatch no longer clears the failover
+//       queue on a 200-with-error body; it re-enqueues those breadcrumbs (was
+//       silent GPS data loss when /dispatch/gps 200s with {error}). (Worker
+//       same push: audit item B — geocodeAddress in the serve-intake commit is
+//       now 8s-time-boxed so a slow Nominatim can't stall the /upload response.)
+// v679: Statewide PMTiles overlays — Utah roads + address points vector
+//       tiles served from R2 via /api/tiles/* (Range-capable). New
+//       "Statewide Data" toggle section on the Map page. /api/* is already
+//       SW-bypassed, so PMTiles range requests pass straight to network.
+// v680: Statewide overlays made dynamic — survive basemap switch + print
+//       (re-add on style.load), theme-aware labels (legible on light/
+//       satellite), and "Use This Location" popup action routes a clicked
+//       address/road into the existing address-search pan+zoom+marker flow.
+// v681: pdfjs-dist 5→6 (Dependabot #880, was CI-failing). v6 removed
+//       PDFDocumentProxy.destroy() — the rmpg-pdf-engine pdfjs backend now
+//       owns the loading task and tears down via loadingTask.destroy()
+//       (version-agnostic). Worker (build/pdf.worker.min.mjs) + standard_fonts/
+//       cmaps asset paths unchanged; vite build + 563 tests green on v6.
+// v682: Spatial Layers reorganized into two groups — "Police Geography"
+//       (Area › Section › Zone › Beat) and "Boundaries" (Municipality,
+//       County). Area/Section/Zone are derived from beat geometry: fill
+//       colored by level + dissolved boundary outline (@turf/dissolve,
+//       MultiPolygons flattened first). State Boundary/Highways/Places
+//       dropped from the map sidebar.
+// v683: PDF surface hardening — white-fill scanned-PDF canvas before Vision
+//       OCR rasterization (JPEG has no alpha); skip malformed-transform text
+//       items in engine backend + pdf-editor; null-guard serve-PDF GPS
+//       toFixed; Array.isArray guard on record-PDF violations.map.
+// v684: Advanced overlay tools — (1) "What's Here" click-to-identify
+//       (Area/Section/Zone/Beat + County/Municipality + nearest address
+//       via turf PIP); (2) Activity choropleth coloring beats/zones/
+//       sections/areas by live call volume (calls binned via PIP); (3)
+//       overlay opacity slider + Area/Section legend + persisted tool
+//       state; (4) Measure (distance/area via @turf/length+area).
+// v685: PDF output crash-hardening sweep — Array.isArray guards on every
+//       DB-sourced array field across record/recordExt/invoice/serve/form PDF
+//       generators (~30 sites: linked_persons/vehicles/properties, warrants,
+//       incidents, citations, calls, criminal_records, visit_history, notes,
+//       attachment_images, fleet/personnel logs, line_items, payments, photos,
+//       skipTraces, distribution/checked) so a sentinel "None" string (truthy
+//       .length, no .map/.join) can no longer crash a PDF. Plus finite-guard
+//       on recordExt fine_amount ($NaN -> raw value).
+// v686: Statewide Data first-class integration (Phase A) — Roads/Addresses
+//       join the overlay opacity slider, get a legend (road classes +
+//       address dot), and persisted on/off visibility across reloads;
+//       road labels gain class-based collision priority (major roads win)
+//       so the network reads cleanly. Backend address search/snap next.
+// v687: Statewide address service (Phase B) — dedicated rmpg-geo D1 (1.48M
+//       UGRC address points + FTS) behind /api/geo. Map search box now
+//       returns authoritative statewide addresses first (Mapbox fills);
+//       "What's Here" resolves nearest address from the DB (works anywhere,
+//       no tile dependency).
+// v688: PDF META consistency — Created/Last Updated now fall back to "N/A"
+//       (matching the rest of the form) instead of rendering blank boxes when
+//       a record has no created_at/updated_at. Found via visual render+review
+//       of a fully-populated person record PDF.
+// v689: audit wave-3 — map-overlay fixes (vector-tile listener-leak dedup,
+//       choropleth strictly-ascending step stops, response-time no-data
+//       coloring, measure-tool unmount cleanup) + VoiceHubDO officer-safety
+//       alert gap. Bump so users get the fixed map hooks.
+// v690: Location-map snapshots on record PDFs — Call (CFS), Property, and
+//       Business reports now embed a static Mapbox map of the address with a
+//       gold marker pin (CFS: light streets @ z15; Property/Business:
+//       satellite-streets @ z17 to show the structure). Geocodes the address
+//       when a record has no stored lat/lng (e.g. businesses). New
+//       pdfStaticMap.ts helper; BusinessTab gains a Print button (businesses
+//       render via the property generator). Best-effort — omitted silently if
+//       no coords/token/network.
+// v691: FIX statewide overlays not rendering — root cause: Mapbox GL JS has
+//       NO addProtocol (MapLibre-only), so the pmtiles:// protocol silently
+//       never registered and Roads/Address Points loaded nothing despite
+//       showing toggled-on. Now the Worker extracts MVT tiles from the
+//       PMTiles archives in R2 and serves /api/tiles/<name>/{z}/{x}/{y}.mvt;
+//       client uses a NATIVE mapbox vector source (no protocol). Verified
+//       tile extraction against the real archives.
+// v692: FIX address-search zoom/focus/pin — handleAddressSelect used
+//       panTo()+setZoom() (two competing animations) so selecting a result
+//       neither centered nor zoomed to the address and the pin landed
+//       off-screen. Now a single flyTo({center,zoom:17}) pans+zooms as one
+//       move, bringing the gold search pin into view.
+// v693: Geography overlay redesign — Area/Section/Zone/Beat now render as
+//       blended COLOR COVERAGE fills (their own boundary outlines removed),
+//       selectable one at a time or all together; County + Municipality
+//       become OUTLINE-ONLY neutral reference lines lifted above the
+//       coverage (fills killed). Boundary lines + level labels z-ordered on
+//       top of the fills.
+// v694: A/S/Z/B no longer pop in/out while zooming — removed the minzoom
+//       gating on the Area/Section/Zone coverage fills + labels and dropped
+//       Beat's minZoom (the useGeoJsonLayers zoomend handler kept hiding it
+//       below z10). Once selected they stay visible at every zoom. Removed
+//       the now-inaccurate z7+/z8+/z9+ badges from the Police Geography rows.
+// v695: SECURITY — purge plaintext mapbox_password from system_config (deleted
+//       on live D1) and remove the Account Password field from the Mapbox
+//       integration UI so it can't be re-saved as a cleartext secret. The app
+//       only ever needs the public mapbox_access_token.
+// v696: FIX — CFS/Property/Business PDF "opens then goes blank". The v690 map
+//       helper used auth-coupled apiFetch (getMapboxAccessToken, forwardGeocode)
+//       inside PDF generation; a 401 there triggers apiFetch's token-refresh →
+//       window.location.href='/login', tearing down the open viewer. Now uses
+//       the sync cached token + direct api.mapbox.com geocode (no apiFetch, no
+//       auth coupling) with AbortController timeouts. Map can no longer
+//       redirect, hang, or destabilize generation.
+// v697: Drive-to-address navigation + dispatch-from-address. Selecting an
+//       address search result now shows Navigate / Dispatch actions:
+//       Navigate routes device GPS → address (reuses useMapRouting:
+//       traffic, congestion line, live re-route) with a turn-by-turn
+//       current-maneuver line added to the nav banner and live origin
+//       updates as you drive; Dispatch creates a call at the address
+//       (POST /dispatch/calls, incident type + priority, coords prefilled).
+// v698: FIX "Unincorporated" misclassification — the 29 county "<CITY>-UNINC"
+//       catch-all beats fully overlap the incorporated city beats, so the
+//       client first-match PIP reported e.g. Midvale as "SLC Unincorporated".
+//       New findBeatAt() mirrors the server geofence rule (incorporated city
+//       beat wins; -UNINC only as fallback) and is used by What's-Here +
+//       the activity choropleth. Tagged beats sorted so city fills draw on
+//       top of the catch-all coverage (no more unincorporated bleed).
+// v699: FIX — CFS PDF process-service details didn't fill. "Process Service
+//       Details" (serve-to/address/result/attempts) + Visit History were
+//       gated to incident_type==='pso_client_request', but serve-intake
+//       creates calls as 'civil_paper_service' so those sections never
+//       rendered. Hoisted Process Service Details to a top-level section
+//       (self-gated by process data / service-type) and added
+//       'civil_paper_service' to the visit-history gate.
+// v701: Phase 2 — unified always-visible map Legend (bottom-left, collapsible)
+//       reflecting EVERY active overlay: geography coverage (Area/Section/
+//       Zone/Beat + compact categorical key), County/Muni outline boundaries,
+//       statewide road classes + address dot, and the activity-choropleth ramp.
+// v702: Phase 3 — Address/Premise Intelligence. "What's Here" now also pulls
+//       nearby prior calls + incidents (new GET /api/dispatch/geography/
+//       premise-intel, lat/lng bbox) and shows a premise-history band
+//       ("N prior calls · M incidents · Last: <type> <date>") with acronym-
+//       formatted incident types (toDisplayLabel). Map <-> Dispatch/RMS.
+// v703: cache-invalidation catch-up. PR #893 (CSP eval fix + 1,984-control a11y
+//       id sweep) and PR #894 (warrants self-clear fix) both merged AFTER v702
+//       was already deployed, and #893's web-UI conflict resolution kept v702 —
+//       so clients holding the v702 cache would never pull the merged bundle
+//       (the <meta> CSP fix that unblocks eval, the form-field ids, the warrant
+//       fix). Bump forces every client onto the current code.
+// v704: Phase 4+5 — (4) Dispatch Here gains "Assign nearest available unit"
+//       (auto-assigns closest unit via /dispatch/calls/:id/auto-assign after
+//       create; no-op until units on duty). (5) Activity choropleth gains a
+//       Calls/Incidents data source — Incidents source bins RMS incident
+//       points over the geography (fetched on demand). Map <-> Fleet/Dispatch/RMS.
+// v705 — Unit subsystem audit (PR #896): (1) live-sync — revive the dead
+//        'unit_update' WS channel by re-fanning dispatch_update unit actions +
+//        new Worker broadcasts on status/assign/unassign/dispatch/create/update/
+//        delete/GPS. (2) 19-bug audit — align UnitStatus to the 7 live-DB
+//        statuses (removed 'on_patrol', which the units CHECK rejects); board
+//        Assignment column (current_call_number alias); out_of_service sort +
+//        sentinel-status LED fallback; unitRecommendation hasGps sentinel/zero
+//        coercion; map nav-cursor heading arrow + speed via units.gps_heading/
+//        gps_speed (migration 0065). Worker: PUT /units allowlist, dead
+//        /units/assign-unit removed, assign/dispatch prior-call cleanup +
+//        call-status + last_status_change, aggregates 'busy' committed count.
+// v706: Fix bottom-left overlay collision — the unified Legend AND the
+//       turn-by-turn nav banner were pinned at left:12/16 and sat UNDER the
+//       open LAYERS panel. Both now shift right of the panel
+//       (clamp(160px,14vw,200px)+24) when it's open and return to the edge
+//       when collapsed, matching the other map overlays; they stack cleanly
+//       when navigation is active.
+// v707: LAYERS panel — Intelligence / Analysis / Tactical groups are now
+//       collapsible (click the section header to fold), persisted across
+//       sessions (rmpg_map_collapsed_sections). Lets the operator keep the
+//       panel compact alongside the already-collapsible Map Style / Spatial
+//       Layers / Statewide Data / Advanced Tools sections.
+// v708: Statewide data visual upgrade — (1) address points now color-coded by
+//       structure/property type (Residential/Commercial/Industrial/Agricultural/
+//       Mixed/Other via PtType); (2) roads keep class color codes (+ Ramp);
+//       (3) both ALWAYS load — gates lowered to the archive min zoom (roads z6,
+//       addresses z10) so they no longer vanish when zoomed out; legends
+//       updated. Click still populates full point detail.
+// v709 — Unit management: admin can now DISPOSE units (retire = soft
+//        out-of-service keeping history, or delete = permanent) — both
+//        force-clear a stale call assignment server-side, so units stuck on a
+//        call (the old delete refused them) can finally be removed; the board
+//        dispose button shows for admins regardless of call state. Unit
+//        create/edit modal gains setup fields: vehicle, default beat,
+//        capabilities (K9/SWAT/Supervisor/FTO/Traffic/Detective/Patrol), audio
+//        mode. Unit create/update/delete/dispose + GET now route to the
+//        rewrite (env.API) so the new fields persist + the hardened handlers run.
+// v710: FIX — Fleet detail page wouldn't scroll. The vehicle-detail tab panel
+//       (FleetDetailPanel) is a single overflow-y-auto scroller, but 7 of the
+//       tabs (Overview/Fuel/Costs/Inspections/Assignments/Personnel/Analytics)
+//       also declared `flex-1 overflow-y-auto` on their own root — a nested
+//       zero-range scroll container that trapped trackpad gestures and never
+//       chained out to the real scroller. Stripped the redundant inner
+//       overflow so the panel is the single scroll owner for all tabs
+//       (Tires/Damage/Recalls already relied on it). SW bump also clears any
+//       stale cached bundle.
+// v711: Dispatch surfaces (call cards, detail read-view, call PDF) now show
+//       the SHORT dispatch code only (e.g. "SLA-A2"); the full Area/Section/
+//       Zone/Beat names remain on the Map UI (What's Here + hierarchy labels).
+// v712: Advanced GPS navigation — the map directions module gains spoken
+//       turn-by-turn (distance-gated pre-alert + "now" cue), CAD-unique
+//       hazard-ahead alerts (active calls on the path ahead, voice + banner),
+//       arrival detection, audible reroute, a mute toggle, maneuver arrows,
+//       and a "then …" next-maneuver preview. New useNavGuidance hook +
+//       voiceAlerts nav phrases; useMapRouting now exposes route geometry.
+// v713: Map perf — eliminate the ~1–2s main-thread freeze (Chrome
+//       "'setTimeout' handler took ~2000ms") when toggling Area/Section/Zone
+//       layers. The hierarchy labels no longer @turf/dissolve all ~770 beat
+//       polygons (geometry that was never drawn); they now anchor one label
+//       per level on its largest member beat in O(n). Fill coverage unchanged.
+// v714: FIX — auto-update force-reloaded the page mid-work, wiping unsaved
+//       edits ("changes lost / functions reset / app goes back"). The repo
+//       deploys many times/day; WebUpdateBanner reloaded unconditionally ~2s
+//       after detecting any new bundle, ignoring the hook's focused-field
+//       guard. Now reloads only when SAFE (no focused input/contenteditable,
+//       no open modal/dialog) and retries every 4s until safe — so updates
+//       still land within seconds of pausing, without clobbering in-progress
+//       data entry. Reload authority centralized in WebUpdateBanner (the hook
+//       no longer races it).
+// v715: FIX — Fleet Analytics showed $0 costs / "--" MPG / empty Fuel-Economy
+//       trend / "No cost data" despite real data. The /fleet/analytics summary
+//       read STALE materialized rollup columns (total_fuel_cost/avg_mpg) on
+//       fleet_vehicles that are never updated on fuel log; now aggregated LIVE
+//       from fleet_fuel_log + fleet_maintenance (verified: $3,200.35 fuel,
+//       13.5 MPG, $238.96 maint). fuel_economy_trend.avg_mpg computed per month
+//       (was hardcoded NULL); cost_per_mile_ranking ("Top Vehicles by Cost")
+//       now populated (was hardcoded []). Also: fuel-report PDF now includes
+//       an Odometer column per fill (was missing entirely; reads
+//       odometer_reading ?? raw odometer).
+// v716: Dispatch dispositions are now SHORT-CODED (detailed but terse) —
+//       general patrol dispositions use mnemonics (RTF/GOA/ARR/CIT…), process-
+//       service CFS use PS/### in increments of 5 (anchored on the live
+//       PS/055=Personal/Individual). Selection dropdowns show "CODE — Description";
+//       output surfaces show the CODE only (description on hover) with a chart
+//       color badge. Full 39-code chart seeded to system_config. Also restored
+//       A/S/Z/B as a SHORT-code Section/Zone/Beat chip (e.g. "SL1/HER/A1") on the
+//       CFS card + detail — long Area›Section›Zone›Beat NAMES remain strictly on
+//       the Map UI ("What's Here").
+// v717: Statewide DB always-on — Utah roads + address points default visible
+//       (auto-enabled on map ready; toggleable in-session, returns at load).
+// v718: Plain-language record TYPE is now mandatory output everywhere — shared
+//       recordTypeLabel() (map + humanize fallback, never a raw code) feeds the
+//       Connections graph legend/node tooltips, the link picker chips, and the
+//       record-delete dialog; getEntityLabel delegates to it. (PDFs already
+//       title each record by its plain type.)
+// v719: fix CrmPage hard crash — toDisplayLabel()/.replace on an undefined
+//       status/type/relationship/source field threw "Cannot read properties of
+//       undefined (reading 'replace')" and the ErrorBoundary took the whole
+//       /crm page down (live sweep 2026-06-02). Null-guarded the helper + the
+//       lead-source label.
+// v720: Records/RMS audit — VehiclesTab no longer falsely flags non-stolen
+//       vehicles as STOLEN. isActiveStolen() now matches ONLY a confirmed
+//       'Stolen' status (was flagging everything ≠ None/Recovered, so Not
+//       Stolen / Unknown / Cleared / Under Investigation all showed a false
+//       STOLEN badge + posture ring); list badge, counts, filter, and ring all
+//       unified on the helper. (Pairs with worker-side records/nibrs fixes:
+//       person warrant lookups key on subject_person_id; evidence INSERT/PUT/
+//       search use real columns; NIBRS uses occurred_date.)
+// v721: occupant cross-reference on the New Call premise check — PremiseHistory
+//       also fetches /dispatch/address-occupants and renders persons on file at
+//       the address with active-warrant / gang / caution flags, a blinking
+//       FLAGGED AT ADDRESS banner, and the alert tone.
+// v722: Serve Intake — folder drops now upload. dataTransfer.files is empty for
+//       a dropped FOLDER; read the contents via webkitGetAsEntry() recursively
+//       (filesFromDrop). Raised the per-upload file cap 12→30 so a whole job
+//       packet (Field Sheet + Info Form + Court Docket + Summons + scanned-page
+//       rasters) goes through in one drop.
+// v723: Serve Intake drop zone — gold drag-active highlight ("RELEASE TO ADD
+//       DOCUMENTS") so a drag gets a visible response, + window-level dragover/
+//       drop guard so a stray drop just outside the zone (common in the Electron
+//       shell) no longer navigates/loses the files.
+// v724: Dispatch address autofill for TYPED addresses. Previously cross-street
+//       + section/zone/beat only filled when you PICKED an autocomplete
+//       suggestion; typing an address and tabbing away left them blank. Now on
+//       blur the field resolves from the best Mapbox suggestion (or, if none, a
+//       normalized server geocode — "4974 S Redwood Rd" → "South Redwood Road")
+//       and fills coords + cross-street + A/S/Z/B. Wired in the dispatch call-
+//       edit panel and the New Call modal.
+// v725: Unit status board "No GPS" fix — the location cell keyed off the
+//       optional text `location` field, so a unit reporting LIVE coordinates
+//       (browser/device GPS, no reverse-geocoded address) falsely showed
+//       "No GPS" even though it's on the map. Now shows the live coords (+ age)
+//       whenever lat/lng are present; "No GPS" only when there's truly no fix.
+// v726: Unit board now shows each unit's LIVE location three ways — street
+//       address (reverse-geocoded from GPS via new /api/geocode/reverse),
+//       cross street (Mapbox Tilequery), and raw coordinates — instead of just
+//       coords. Resolved + cached per ~11m grid (useUnitLocations) so a parked
+//       unit doesn't re-geocode and a moving one updates when it changes block.
+// v734: Cross-module right-click follow-up (builds on #936's right-click
+//       system) — warrant → Run NCIC on subject; Show-on-map for geocoded
+//       incidents/citations; Person → Create BOLO via new
+//       /communications?newBolo seed reader.
+// v735: Admin audit waves — crash guards across admin tabs + AI panels
+//       (asArray erosion), Health early-return flash, Arrests edit data-loss,
+//       ClientFormModal focus-wipe, /admin/config column fix + array-guard CI.
+// v739: Citation PDF (v2) — render previously-dropped officer inputs (traffic
+//       speed/radar/BAC, vehicle year/make/model/VIN, court time/room/
+//       appearance, bond, condition flags). (Dispatch fix is worker-side.)
+// v742: GPS/voice/panic realtime fixes — stop GPS breadcrumb double-insert
+//       (sendImmediate de-queues the sent point + failover re-merge dedupes by
+//       timestamp/lat/lng); voice alerts (incl. PANIC) no longer suppressed on
+//       devices lacking Web Speech when server Edge TTS is enabled; voice-
+//       command mic now mutes during radio PTT via the voice-ws monitor; panic
+//       alarms auto-clear fleet-wide on ack/resolve/cancel/false-alarm by
+//       branching the single panic_alert frame on its `action` field.
+// v743: HR Reviews + Disciplinary save buttons now surface a "Failed to …"
+//       error toast when the create/update API call fails (the handlers had a
+//       success toast but no catch, so a failed save looked like a dead button).
+// v745: CRM Reports tab repaired — Lead Source ROI no longer crashes on
+//       undefined conversion_rate (worker returns leads/won/pipeline_value;
+//       client now derives the display fields); Monthly Revenue + Clients-by-
+//       Status charts realigned to the worker's actual shapes; CRM Invoices tab
+//       reads the {data} envelope. (v744 reserved for the dispatch wave-1 PR.)
+// v749: HR Leave/Disciplinary/Reviews "Export → CSV" now works (worker had no
+//       /export/csv handler → 404); an alert rule saved with no target role or
+//       user is now rejected (it would notify nobody).
+// v751: REGRESSION FIX — the alerts/panic WebSocket no longer hard-caps its
+//       reconnects (a cap added earlier could permanently deafen the agency-wide
+//       panic/alert socket on an always-foreground console after an outage). It
+//       now retries for the whole shift with ≤30s backoff + an 'online' handler
+//       that reconnects instantly when the network returns.
+// v753: NAVIGATE drive screen — more live data: a rolling speed sparkline under
+//       the speedometer, average speed, a live clock, and a "Nearby Calls" panel
+//       ranking the active board by straight-line distance from the unit.
+// v754: Navigation drive screen → full advanced instrument dashboard — HUD heading
+//       tape, ring speed gauge, dual-needle compass (heading + red bearing-to-call),
+//       speed area-chart, longitudinal G-force meter, nearby-units panel, and an
+//       expanded course/bearing/crow-distance/source stat grid.
+// v755: GPS "Track 0 pts" fix — the browser geolocation path never pushed accepted
+//       fixes into the exportable session track (only the Toughbook internal-GPS
+//       path did), so every cellular/WiFi device showed 0 captured points and an
+//       empty CSV/GeoJSON export despite healthy GPS. Browser path now captures too.
+// v756: NAVIGATE drive screen is now TRUE full screen — moved to a standalone route
+//       OUTSIDE <Layout> (no top app toolbar, edge-to-edge viewport via fixed
+//       inset-0) plus a native Fullscreen-API toggle in the header for kiosk mode.
+// v757: NAVIGATE instrument-panel visual polish — bottom dashboard rebuilt as
+//       divider-separated bays (gauge | compass | chart | stats) with bordered
+//       gold-railed stat tiles (no more bare text floating in black), a gold
+//       accent riser, header gold underline + icon glow, and a richer compass.
+// v758: caution-flag (call_status_for_officer) + property-hazard (dispatch_alert)
+//       MDT voice cues now reach the assigned officer via AlertHubDO + filter.
+// v759: NAVIGATE goes tactical/SA — new proximity scope (PPI radar plotting
+//       nearby calls + units bearing-true on range rings), tactical CONTACTS
+//       board with heading-relative bearing arrows + threat tally/pulse, map
+//       corner-bracket viewport framing, and self-unit exclusion (own unit no
+//       longer shows as a 0.0mi contact). Contact range/bearing recompute live.
+// v760: NAVIGATE crime layer — live crime overlay on the drive map from TWO
+//       sources: Salt Lake City PD public crime data (ArcGIS, cached via new
+//       Worker proxy /api/crime/slc) + our own recent CFS (/api/crime/local),
+//       rendered as a density heatmap + color-by-class incident dots with a
+//       toggle + legend. 60-day window.
+// v764: RECOVERY — the #997/#998/#999 stacked merges raced across worktrees and
+//       left main's NavigationPage broken (search state decls + Search import
+//       dropped → didn't compile) and the alerts feature missing entirely. This
+//       restores the complete NavigationPage (tactical + crime + black map +
+//       data fields + destination search/route + Motorola proximity alert tones)
+//       and bumps the cache once for the whole accumulated NAVIGATE overhaul
+//       (the v761/v762/v763 bumps were lost in the race).
+// v766: place /law-book across every nav surface — Layout (title map + Enforce
+//       group), MobileDrawer, windowManager (window sizing), HelpPage catalog —
+//       so the Law Book v2 is reachable consistently (was desktop-sidebar only).
+// v767: wire the #1001 route corridor hazard scan — the "Ahead on route" panel
+//       now populates from active calls + crime hot-spots on the planned route.
+// v768: Law Book statute reader now renders a true legal outline — each
+//       (1)/(a)/(i)/(A) subsection on its own line, tab-indented by nesting
+//       depth, with inline cross-refs ("Subsection (3)(b)") left intact.
+// v769: fix broken client build that blocked the v768 Pages deploy — the #1006
+//       "restore #1001 corridor" merge left a DUPLICATE corridorHazards/
+//       corridorCritical decl in NavigationPage (TS2451), failing `vite build`
+//       so the v768 Law Book outline never shipped. Removed the dup; the Law
+//       Book outline + corridor scan now both deploy.
+// v770: Law Book outline no longer emits "blank rows" — a container marker like
+//       (3)(a)(i)… whose own text is empty (content lives in deeper children)
+//       is now folded onto its first child as a combined "(3)(a)(i)" lead
+//       instead of rendering "(3)" / "(a)" alone on empty lines.
+// v771: NAVIGATE county-wide crime — multi-agency feed (West Valley/Sandy/UPD/
+//       U-of-U via LexisNexis) + SLC traffic-crash layer, travel-aware corridor
+//       crash scan, color-coded tokens, agency breakdown (#1011).
+// v772: Law Book LE-relevant expansion — new titles (25 Fraud, 77 Criminal
+//       Procedure, 53 Public Safety, 80 Juvenile, 23A Wildlife, 32B Alcohol,
+//       58-37 Controlled Substances, 78B-7 Protective Orders), 76 & 77 refreshed
+//       to their 7/1/2026 versions, AI plain-language summaries on every section,
+//       data-driven category filters/landing + statute/chapter PDF printing.
+// v777: citation authoring UI — multi-violation stack, live PDF preview (tri-mode),
+//       Combobox primitive replacing native <select> across CitationsPage + CitationAuthor.
+const CACHE_NAME = 'rmpg-flex-v777';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
@@ -185,6 +658,16 @@ self.addEventListener('fetch', (event) => {
           if (cached) return cached;
           return fetch(event.request)
             .then((response) => {
+              // Poison guard: a deploy-removed chunk hash can come back as a
+              // 200 text/html SPA fallback (index.html). NEVER cache or return
+              // HTML for a JS/CSS request — that produces the "Expected a
+              // JavaScript-or-Wasm module … MIME type text/html" execution
+              // error and, if cached, persists it. Surface a 404 so the
+              // dynamic import rejects and lazyRetry reloads the fresh bundle.
+              const ct = response.headers.get('Content-Type') || '';
+              if (ct.includes('text/html')) {
+                return new Response('', { status: 404, statusText: 'Stale chunk (HTML fallback)' });
+              }
               if (response.ok) {
                 const clone = response.clone();
                 caches.open(CACHE_NAME).then((cache) => {
@@ -204,6 +687,14 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       fetch(event.request)
         .then((response) => {
+          // Same poison guard as the hashed branch — never cache/return HTML
+          // for a JS/CSS request (see v716 note).
+          const ct = response.headers.get('Content-Type') || '';
+          if (ct.includes('text/html')) {
+            return caches.match(event.request).then(
+              (cached) => cached || new Response('', { status: 404, statusText: 'Stale chunk (HTML fallback)' })
+            );
+          }
           if (response.ok) {
             const clone = response.clone();
             caches.open(CACHE_NAME).then((cache) => {

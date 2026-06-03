@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { apiFetch } from '../../hooks/useApi';
+import { asArray } from '../../utils/asArray';
 import { safeDateTimeStr } from '../../utils/dateUtils';
 import RichTextArea from '../../components/RichTextArea';
 import {
@@ -7,6 +8,12 @@ import {
   Activity, UserCheck, AlertTriangle, CheckCircle, Play, Archive, BarChart3,
   Loader2, Eye, Lock, Unlock, Merge, Terminal, Radio, Globe, Clock,
 } from 'lucide-react';
+import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
+import { useMenuActions } from '../../utils/contextMenuActions';
+
+const safeStr = (v: any): string => {
+  try { return JSON.stringify(v)?.slice(0, 80) ?? ''; } catch { return ''; }
+};
 
 interface DbStats {
   database_size_mb: number;
@@ -106,8 +113,8 @@ export default function AdminGodModeTab() {
       ]);
       if (stats) setDbStats(stats);
       if (overview) setSystemOverview(overview);
-      setBackups(bk || []);
-      setUsers(userList || []);
+      setBackups(asArray<Backup>(bk));
+      setUsers(asArray<any>(userList));
 
       const [ws, presence, lockdown, feed] = await Promise.all([
         apiFetch<any>('/admin/websocket/clients').catch(() => ({ clients: [] })),
@@ -115,10 +122,10 @@ export default function AdminGodModeTab() {
         apiFetch<any>('/admin/system/lockdown').catch(() => null),
         apiFetch<any>('/admin/activity-feed?limit=20').catch(() => ({ actions: [] })),
       ]);
-      setWsClients(ws?.clients || []);
+      setWsClients(asArray<any>(ws?.clients));
       if (presence) setUserPresence(presence);
       if (lockdown) setLockdownStatus(lockdown);
-      setActivityFeed(feed?.actions || []);
+      setActivityFeed(asArray<any>(feed?.actions));
     } catch (err) {
       console.error('God Mode load error:', err);
     } finally {
@@ -139,7 +146,8 @@ export default function AdminGodModeTab() {
   const handleIntegrity = async () => {
     try {
       const result = await apiFetch<any>('/admin/database/integrity-check', { method: 'POST' });
-      showResult(result.healthy ? 'success' : 'error', result.healthy ? 'Database integrity: OK' : `Issues found: ${result.result.join(', ')}`);
+      const issues = Array.isArray(result.result) ? result.result.join(', ') : String(result.result ?? 'unknown');
+      showResult(result.healthy ? 'success' : 'error', result.healthy ? 'Database integrity: OK' : `Issues found: ${issues}`);
     } catch (err: any) { showResult('error', err.message); }
   };
 
@@ -295,7 +303,38 @@ export default function AdminGodModeTab() {
     } catch (err: any) { showResult('error', err.message); }
   };
 
-  const formatNumber = (n: number) => n.toLocaleString();
+  // Defensive: /admin/system-overview is an `any`-shaped fetch; a non-numeric
+  // value (null / string sentinel) reaching .toLocaleString() white-screens
+  // the whole admin page (no per-tab error boundary).
+  const formatNumber = (n: number) => (typeof n === 'number' && isFinite(n) ? n.toLocaleString() : '0');
+
+  // ── Right-click context menus ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+
+  const buildBackupMenu = (b: Backup): ContextMenuItem[] => [
+    m.copy('Copy filename', b.filename),
+    m.separator(),
+    m.action('Delete backup', () => handleDeleteBackup(b.filename), { icon: <Trash2 size={12} />, danger: true }),
+  ];
+
+  const buildWsClientMenu = (c: any): ContextMenuItem[] => [
+    m.copy('Copy username', c.username),
+    ...(c.ip ? [m.copy('Copy IP', c.ip)] : []),
+    m.copyId(c.userId, 'Copy user ID'),
+  ];
+
+  const buildPresenceMenu = (u: any): ContextMenuItem[] => [
+    m.copy('Copy username', u.username || u.full_name),
+    ...(u.role ? [m.copy('Copy role', u.role)] : []),
+    ...(u.id != null ? [m.copyId(u.id, 'Copy user ID')] : []),
+  ];
+
+  const buildActivityMenu = (a: any): ContextMenuItem[] => [
+    m.copy('Copy user', a.username || a.user),
+    ...(a.action ? [m.copy('Copy action', a.action)] : []),
+    ...(a.details ? [m.copy('Copy details', typeof a.details === 'string' ? a.details : safeStr(a.details))] : []),
+  ];
 
   return (
     <div className="space-y-4">
@@ -319,19 +358,19 @@ export default function AdminGodModeTab() {
       )}
 
       {/* System Overview */}
-      {systemOverview && (
+      {systemOverview?.server && (
         <div className="bg-[#141414] border border-[#181818] rounded-sm p-3">
           <h3 className="text-xs font-bold text-gray-400 uppercase mb-2 flex items-center gap-1.5"><Activity size={14} /> System Overview</h3>
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2">
-            <StatBox label="Uptime" value={systemOverview.server.uptime} />
-            <StatBox label="Node" value={systemOverview.server.node_version} />
-            <StatBox label="CPUs" value={String(systemOverview.server.cpus)} />
-            <StatBox label="Memory" value={`${systemOverview.server.free_memory_gb}/${systemOverview.server.total_memory_gb} GB`} />
-            <StatBox label="Load" value={systemOverview.server.load_average.join(' / ')} />
-            <StatBox label="Active Users (24h)" value={String(systemOverview.active_users_24h)} />
+            <StatBox label="Uptime" value={systemOverview.server.uptime ?? '—'} />
+            <StatBox label="Node" value={systemOverview.server.node_version ?? '?'} />
+            <StatBox label="CPUs" value={String(systemOverview.server.cpus ?? '?')} />
+            <StatBox label="Memory" value={`${systemOverview.server.free_memory_gb ?? 0}/${systemOverview.server.total_memory_gb ?? 0} GB`} />
+            <StatBox label="Load" value={systemOverview.server.load_average?.join(' / ') ?? '—'} />
+            <StatBox label="Active Users (24h)" value={String(systemOverview.active_users_24h ?? 0)} />
           </div>
           <div className="mt-2 grid grid-cols-3 md:grid-cols-5 lg:grid-cols-7 gap-1">
-            {Object.entries(systemOverview.record_counts).filter(([, v]) => v >= 0).map(([table, count]) => (
+            {Object.entries(systemOverview.record_counts ?? {}).filter(([, v]) => typeof v === 'number' && v >= 0).map(([table, count]) => (
               <div key={table} className="bg-[#0c0c0c] px-2 py-1 rounded-sm">
                 <div className="text-[9px] text-gray-500 uppercase truncate">{table.replace(/_/g, ' ')}</div>
                 <div className="text-[11px] font-mono text-white">{formatNumber(count)}</div>
@@ -360,7 +399,7 @@ export default function AdminGodModeTab() {
           {/* Top tables */}
           <div className="bg-[#0c0c0c] rounded-sm p-2 max-h-40 overflow-y-auto">
             <div className="text-[9px] text-gray-500 uppercase mb-1">Top Tables by Row Count</div>
-            {dbStats.tables.slice(0, 15).map(t => (
+            {asArray<{ name: string; row_count: number }>(dbStats.tables).slice(0, 15).map(t => (
               <div key={t.name} className="flex justify-between text-[11px] py-0.5 border-b border-[#181818]/50">
                 <span className="text-gray-300 font-mono">{t.name}</span>
                 <span className="text-white font-mono">{formatNumber(t.row_count)}</span>
@@ -378,7 +417,7 @@ export default function AdminGodModeTab() {
         ) : (
           <div className="space-y-1">
             {backups.map(b => (
-              <div key={b.filename} className="flex items-center justify-between bg-[#0c0c0c] px-2 py-1.5 rounded-sm">
+              <div key={b.filename} className="flex items-center justify-between bg-[#0c0c0c] px-2 py-1.5 rounded-sm" onContextMenu={(e) => openMenu(e, buildBackupMenu(b))}>
                 <div>
                   <div className="text-[11px] font-mono text-gray-300">{b.filename}</div>
                   <div className="text-[9px] text-gray-500">{b.size_mb} MB — {safeDateTimeStr(b.created_at)}</div>
@@ -395,7 +434,7 @@ export default function AdminGodModeTab() {
         <h3 className="text-xs font-bold text-yellow-400 uppercase mb-2 flex items-center gap-1.5"><UserCheck size={14} /> User Impersonation</h3>
         <p className="text-[10px] text-gray-500 mb-2">Generate a 30-minute token to act as another user. All actions are audit-logged under your admin account.</p>
         <div className="flex items-center gap-2">
-          <select
+          <select id="ff-admingodmodetab-0"
             value={impersonateUserId}
             onChange={e => setImpersonateUserId(e.target.value)}
             className="flex-1 bg-[#0c0c0c] border border-[#2a2a2a] rounded-sm px-2 py-1.5 text-[11px] text-white"
@@ -415,7 +454,7 @@ export default function AdminGodModeTab() {
       <div className="bg-[#141414] border border-[#181818] rounded-sm p-3">
         <h3 className="text-xs font-bold text-gray-400 uppercase mb-2 flex items-center gap-1.5"><Bell size={14} /> Broadcast Notification</h3>
         <div className="space-y-2">
-          <input
+          <input id="ff-admingodmodetab-1"
             type="text"
             value={broadcastTitle}
             onChange={e => setBroadcastTitle(e.target.value)}
@@ -433,7 +472,7 @@ export default function AdminGodModeTab() {
             <span className="text-[10px] text-gray-500">Target:</span>
             {['officer', 'dispatcher', 'supervisor', 'manager'].map(role => (
               <label key={role} className="flex items-center gap-1 text-[10px] text-gray-400">
-                <input
+                <input id="ff-admingodmodetab-2"
                   type="checkbox"
                   checked={broadcastRoles.includes(role)}
                   onChange={e => setBroadcastRoles(prev => e.target.checked ? [...prev, role] : prev.filter(r => r !== role))}
@@ -458,7 +497,7 @@ export default function AdminGodModeTab() {
             <div className="text-[10px] text-gray-400 mb-1">Activity Logs</div>
             <div className="flex items-center gap-1">
               <span className="text-[10px] text-gray-500">Keep</span>
-              <input type="number" value={purgeLogDays} onChange={e => setPurgeLogDays(Number(e.target.value))} min={1} max={365} className="w-16 bg-[#141414] border border-[#2a2a2a] rounded-sm px-1.5 py-1 text-[11px] text-white text-center" />
+              <input id="ff-admingodmodetab-3" type="number" value={purgeLogDays} onChange={e => setPurgeLogDays(Number(e.target.value))} min={1} max={365} className="w-16 bg-[#141414] border border-[#2a2a2a] rounded-sm px-1.5 py-1 text-[11px] text-white text-center" />
               <span className="text-[10px] text-gray-500">days</span>
               <button onClick={handlePurgeLogs} className="ml-auto px-2 py-1 bg-red-900/60 hover:bg-red-800/80 text-red-300 text-[10px] rounded-sm font-bold">Purge</button>
             </div>
@@ -467,7 +506,7 @@ export default function AdminGodModeTab() {
             <div className="text-[10px] text-gray-400 mb-1">Read Notifications</div>
             <div className="flex items-center gap-1">
               <span className="text-[10px] text-gray-500">Keep</span>
-              <input type="number" value={purgeNotifDays} onChange={e => setPurgeNotifDays(Number(e.target.value))} min={1} max={365} className="w-16 bg-[#141414] border border-[#2a2a2a] rounded-sm px-1.5 py-1 text-[11px] text-white text-center" />
+              <input id="ff-admingodmodetab-4" type="number" value={purgeNotifDays} onChange={e => setPurgeNotifDays(Number(e.target.value))} min={1} max={365} className="w-16 bg-[#141414] border border-[#2a2a2a] rounded-sm px-1.5 py-1 text-[11px] text-white text-center" />
               <span className="text-[10px] text-gray-500">days</span>
               <button onClick={handlePurgeNotifs} className="ml-auto px-2 py-1 bg-red-900/60 hover:bg-red-800/80 text-red-300 text-[10px] rounded-sm font-bold">Purge</button>
             </div>
@@ -503,7 +542,7 @@ export default function AdminGodModeTab() {
           {userPresence.users && userPresence.users.length > 0 && (
             <div className="bg-[#0c0c0c] rounded-sm p-2 max-h-40 overflow-y-auto">
               {userPresence.users.map((u: any, i: number) => (
-                <div key={i} className="flex items-center gap-2 py-0.5 border-b border-[#181818]/50 text-[11px]">
+                <div key={i} className="flex items-center gap-2 py-0.5 border-b border-[#181818]/50 text-[11px]" onContextMenu={(e) => openMenu(e, buildPresenceMenu(u))}>
                   <span className={`w-2 h-2 rounded-full ${u.status === 'online' ? 'bg-green-400' : u.status === 'idle' ? 'bg-yellow-400' : 'bg-[#2b2b2b]'}`} />
                   <span className="text-gray-300 font-mono">{u.username || u.full_name}</span>
                   <span className="text-gray-600 text-[9px]">{(u.role || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
@@ -534,7 +573,7 @@ export default function AdminGodModeTab() {
               </thead>
               <tbody>
                 {wsClients.map((c: any, i: number) => (
-                  <tr key={i} className="border-b border-[#181818]/50">
+                  <tr key={i} className="border-b border-[#181818]/50" onContextMenu={(e) => openMenu(e, buildWsClientMenu(c))}>
                     <td className="px-2 py-1 font-mono text-gray-400">{c.userId}</td>
                     <td className="px-2 py-1 text-white">{c.username}</td>
                     <td className="px-2 py-1 text-gray-400">{(c.role || '').replace(/_/g, ' ').replace(/\b\w/g, (ch: string) => ch.toUpperCase())}</td>
@@ -562,7 +601,7 @@ export default function AdminGodModeTab() {
               rows={2}
               className="w-full bg-[#141414] border border-[#2a2a2a] rounded-sm px-2 py-1 text-[11px] text-white placeholder-gray-600 resize-none font-mono"
             />
-            <select
+            <select id="ff-admingodmodetab-5"
               value={reassignTargetId}
               onChange={e => setReassignTargetId(e.target.value)}
               className="w-full bg-[#141414] border border-[#2a2a2a] rounded-sm px-2 py-1.5 text-[11px] text-white"
@@ -579,7 +618,7 @@ export default function AdminGodModeTab() {
           {/* Force Close All */}
           <div className="bg-[#0c0c0c] p-2 rounded-sm space-y-2">
             <div className="text-[10px] text-gray-400 font-bold uppercase">Force Close All Open Calls</div>
-            <input
+            <input id="ff-admingodmodetab-6"
               type="text"
               value={closeDisposition}
               onChange={e => setCloseDisposition(e.target.value)}
@@ -660,7 +699,7 @@ export default function AdminGodModeTab() {
         </div>
         {!lockdownStatus?.active && (
           <div className="space-y-2 mb-3">
-            <input
+            <input id="ff-admingodmodetab-7"
               type="text"
               value={lockdownMessage}
               onChange={e => setLockdownMessage(e.target.value)}
@@ -668,7 +707,7 @@ export default function AdminGodModeTab() {
               className="w-full bg-[#0c0c0c] border border-[#2a2a2a] rounded-sm px-2 py-1.5 text-[11px] text-white placeholder-gray-600"
             />
             <label className="flex items-center gap-2 text-[10px] text-gray-400">
-              <input
+              <input id="ff-admingodmodetab-8"
                 type="checkbox"
                 checked={lockdownKickSessions}
                 onChange={e => setLockdownKickSessions(e.target.checked)}
@@ -690,7 +729,7 @@ export default function AdminGodModeTab() {
         <div className="flex items-center gap-2">
           <div className="flex-1">
             <label className="text-[9px] text-gray-500 uppercase">Keep (Primary ID)</label>
-            <input
+            <input id="ff-admingodmodetab-9"
               type="number"
               value={mergeKeepId}
               onChange={e => setMergeKeepId(e.target.value)}
@@ -700,7 +739,7 @@ export default function AdminGodModeTab() {
           </div>
           <div className="flex-1">
             <label className="text-[9px] text-gray-500 uppercase">Merge (Duplicate ID)</label>
-            <input
+            <input id="ff-admingodmodetab-10"
               type="number"
               value={mergeMergeId}
               onChange={e => setMergeMergeId(e.target.value)}
@@ -731,14 +770,14 @@ export default function AdminGodModeTab() {
         ) : (
           <div className="bg-[#0c0c0c] rounded-sm p-2 max-h-60 overflow-y-auto space-y-0.5">
             {activityFeed.map((a: any, i: number) => (
-              <div key={i} className="flex items-start gap-2 py-1 border-b border-[#181818]/50 text-[10px]">
+              <div key={i} className="flex items-start gap-2 py-1 border-b border-[#181818]/50 text-[10px]" onContextMenu={(e) => openMenu(e, buildActivityMenu(a))}>
                 <span className="text-gray-600 font-mono whitespace-nowrap min-w-[60px]">
                   {a.timestamp ? new Date(a.timestamp).toLocaleTimeString() : '—'}
                 </span>
                 <span className="text-gray-400 font-bold min-w-[80px] truncate">{a.username || a.user || '—'}</span>
                 <span className="text-yellow-400 min-w-[60px]">{a.action || '—'}</span>
                 <span className="text-gray-500">{a.entity_type || ''}</span>
-                <span className="text-gray-600 truncate max-w-[300px]">{a.details ? (typeof a.details === 'string' ? a.details.slice(0, 80) : JSON.stringify(a.details).slice(0, 80)) : ''}</span>
+                <span className="text-gray-600 truncate max-w-[300px]">{a.details ? (typeof a.details === 'string' ? a.details.slice(0, 80) : safeStr(a.details)) : ''}</span>
               </div>
             ))}
           </div>

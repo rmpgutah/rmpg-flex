@@ -4,25 +4,32 @@ import {
   Plus, Send, Navigation, MapPin, Clock, Phone, User, MessageSquare, Radio, Eye,
   CheckCircle, XCircle, AlertTriangle, Loader2, FileText, ChevronDown, Link,
   Archive, RotateCcw, Edit3, Trash2, Save, X, PlusCircle, Shield, Thermometer,
-  Undo2, Pencil, Search, Building2, Terminal, Briefcase, Copy, Printer,
+  Undo2, Pencil, Search, Building2, Terminal, Briefcase, Copy, Printer, Layers, Hash,
 } from 'lucide-react';
 import type { CallForService, Unit, CallStatus, CallNote, UnitStatus } from '../../types';
+import { callPosture } from '../../utils/callThreat';
+import { BADGE_TONES } from '../../components/records/recordVisuals';
 import CallCard from '../../components/CallCard';
+import DuplicateCandidatesModal, { DuplicateCandidate } from '../../components/DuplicateCandidatesModal';
 import UnitStatusBoard from '../../components/UnitStatusBoard';
 import DispositionPrompt from '../../components/DispositionPrompt';
+import { dispositionGroupsForIncident, DEFAULT_DISPOSITION_CODES } from '../../constants/dispositionCodes';
+import { zoneLeaf, beatLeaf, sectionPrefix, sectionZoneBeatCombined } from '../../utils/dispatchCodeParts';
+import { parseLocationParts } from '../../utils/parseLocationParts';
 import DispatchMiniMap from '../../components/DispatchMiniMap';
 import BoloAlertBanner from '../../components/BoloAlertBanner';
 import StatusBadge from '../../components/StatusBadge';
 import NewCallModal from '../../components/NewCallModal';
 import AddressAutocomplete, { type ParsedAddress } from '../../components/AddressAutocomplete';
 import PanelTitleBar from '../../components/PanelTitleBar';
+import LiveClock from '../../components/LiveClock';
 import ExportButton from '../../components/ExportButton';
 import TabBar from '../../components/TabBar';
 import { apiFetch } from '../../hooks/useApi';
 import { useLiveSync } from '../../hooks/useLiveSync';
 import { usePersistedTab } from '../../hooks/usePersistedState';
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
-import { formatIncidentType, INCIDENT_TYPE_CATEGORIES } from '../../utils/caseNumbers';
+import { formatIncidentType, INCIDENT_TYPE_CATEGORIES, type IncidentType } from '../../utils/caseNumbers';
 import { formatPhoneInput } from '../../utils/formatters';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import RmpgLogo from '../../components/RmpgLogo';
@@ -36,12 +43,15 @@ import type { WarningTag } from '../../components/WarningTags';
 import FloatingSaveBar from '../../components/FloatingSaveBar';
 import CadCommandLine from '../../components/CadCommandLine';
 import NcicQueryPanel from '../../components/NcicQueryPanel';
+import MileagePromptModal from '../../components/MileagePromptModal';
 import UnitRecommendationPanel from '../../components/UnitRecommendationPanel';
+import RecommendedUnitsInline from '../../components/RecommendedUnitsInline';
 import type { CommandAction } from '../../utils/cadCommandParser';
 import { getTimerState, isActiveStatus } from '../../utils/dispatchTimers';
 import { playTone } from '../../utils/dispatchTones';
 import { announceTarget } from '../../utils/voiceChannel';
 import { useIsMobile } from '../../hooks/useIsMobile';
+import { useScreenWakeLock } from '../../hooks/useScreenWakeLock';
 import MobileCardList from '../../components/mobile/MobileCardList';
 import MobileDetailView from '../../components/mobile/MobileDetailView';
 import { mapDbCall, mapDbUnit } from './utils/dispatchMappers';
@@ -63,6 +73,7 @@ import {
 } from '../../utils/voiceAlerts';
 import { useAuth } from '../../context/AuthContext';
 import { useDistrictOptions } from '../../hooks/useDistrictLookup';
+import { useAddressAutofill } from '../../hooks/useAddressAutofill';
 import { useUserPreferences } from '../../context/UserPreferencesContext';
 import QuickPsoModal from '../../components/QuickPsoModal';
 import {
@@ -72,11 +83,14 @@ import {
 import PersonFormModal, { type PersonFormData } from '../../components/PersonFormModal';
 import VehicleFormModal, { type VehicleFormData } from '../../components/VehicleFormModal';
 import AIDispatchSidebar from '../../components/dispatch/AIDispatchSidebar';
+import DispatchCodeQuickPanel from '../../components/dispatch/DispatchCodeQuickPanel';
+import { useDispatchCodes } from '../../hooks/useDispatchCodes';
 import NarrativeAssist from '../../components/dispatch/NarrativeAssist';
 import FileAttachments from '../../components/FileAttachments';
+import { safeDateTimeStr, parseTimestamp, toDatetimeLocalValue, mtDatetimeLocalToUtc } from '../../utils/dateUtils';
 import {
-  humanizePriority, humanizeDisposition, getStatusTooltip, formatPhoneDisplay,
-  formatAddressDisplay, timeAgo,
+  humanizePriority, formatDispositionCode, humanizeDisposition, getStatusTooltip, formatPhoneDisplay,
+  formatAddressDisplay, timeAgo, humanizeStatus,
 } from '../../utils/statusLabels';
 
 // Label maps for human-readable display of stored values
@@ -244,21 +258,44 @@ export default function DispatchPage() {
   const { user } = useAuth();
   const isAdminOrManager = user?.role === 'admin' || user?.role === 'manager';
   const isGodMode = user?.role === 'admin'; // Admin God Mode — unrestricted access
+  // Only senior roles may remove (soft-delete) a call from the board — mirrors
+  // the server-side guard in src/routes/dispatch/calls.ts (CALL_DELETE_ROLES).
+  const canDeleteCall = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'supervisor';
   const unitModalTitleId = useId();
   const navigate = useNavigate();
   const { addToast } = useToast();
   const { subscribe } = useWebSocket();
   const isMobile = useIsMobile();
   const { prefs: userPrefs, reload: reloadPrefs } = useUserPreferences();
-  const { districts, sections, sectionLabels, zoneLabels, zonesForSection, beatsForZone, getBeatLabel } = useDistrictOptions();
+  const { districts, sections, sectionLabels, getSectionCode, getArea, zoneLabels, zonesForSection, beatsForZone, beatsForSection, districtForSectionBeat, getBeatLabel } = useDistrictOptions();
+  const { resolve: resolveAddress, resolveFromText } = useAddressAutofill();
+  const dispatchCodes = useDispatchCodes();
+  const signalLookup = useMemo(() => dispatchCodes.lookup, [dispatchCodes.lookup]);
+  const knownSignalCodes = useMemo(() => new Set(dispatchCodes.codes.map(c => c.code)), [dispatchCodes.codes]);
   const [calls, setCalls] = useState<CallForService[]>([]);
+  // Mirror `calls` into a ref so the mount-only WebSocket effect (deps exclude
+  // `calls` to avoid re-subscribing on every list change) can read current
+  // state — e.g. priority-escalation detection in the call_updated handler.
+  const callsRef = useRef<CallForService[]>([]);
+  useEffect(() => { callsRef.current = calls; }, [calls]);
   const recentlyCreatedIdsRef = useRef<Set<string | number>>(new Set()); // synchronous dedup for POST + WS race
   const [units, setUnits] = useState<Unit[]>([]);
+  // Mirror `units` into a ref so the mount-only adaptive GPS-poll effect (deps
+  // exclude `units` to avoid re-arming the interval on every position tick) can
+  // read current on-duty state.
+  const unitsRef = useRef<Unit[]>([]);
+  useEffect(() => { unitsRef.current = units; }, [units]);
   const [selectedCall, setSelectedCall] = useState<CallForService | null>(null);
   const [filterTab, setFilterTab] = usePersistedTab('rmpg_dispatch_tab', 'all' as FilterTab, ['all', 'pending', 'active', 'cleared', 'archived', 'serve', 'mine'] as const);
   const [showNewCallModal, setShowNewCallModal] = useState(false);
   const [showQuickPsoModal, setShowQuickPsoModal] = useState(false);
+  // Status-bar clock is rendered via the self-ticking <LiveClock/> component
+  // (bottom bar, below). It owns its own 1s interval so the per-second tick no
+  // longer re-renders this entire 6,300-line page — only the clock span.
   const [searchQuery, setSearchQuery] = useState('');
+  const [priorityFilter, setPriorityFilter] = useState<string | null>(null);
+  const [typeFilter, setTypeFilter] = useState<string | null>(null);
+  const [signalFilter, setSignalFilter] = useState<'signaled' | 'unsignaled' | null>(null);
   const noteTextareaRef = useRef<HTMLTextAreaElement>(null);
   const [onSceneElapsed, setOnSceneElapsed] = useState('');
   const [isLoading, setIsLoading] = useState(true);
@@ -266,6 +303,24 @@ export default function DispatchPage() {
   const [templates, setTemplates] = useState<any[]>([]);
   const [showTemplateDropdown, setShowTemplateDropdown] = useState(false);
   const [templateInitialData, setTemplateInitialData] = useState<Record<string, any> | undefined>(undefined);
+
+  // Deep-link: /dispatch?newCall=1&location=...&description=... opens the New
+  // Call modal pre-seeded (used by record right-click "Create call here" /
+  // "Dispatch to address"). Strips the params after so it doesn't re-fire.
+  useEffect(() => {
+    const sp = new URLSearchParams(window.location.search);
+    if (sp.get('newCall') === '1') {
+      setTemplateInitialData({
+        location: sp.get('location') || '',
+        description: sp.get('description') || '',
+        source: 'dispatch',
+      });
+      setShowNewCallModal(true);
+      navigate(window.location.pathname, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Quick Template Dialog — minimal address-only dispatch
   const [quickTemplateData, setQuickTemplateData] = useState<{ name: string; incident_type: string; priority: string; description: string; source: string } | null>(null);
   const [quickTemplateAddress, setQuickTemplateAddress] = useState('');
@@ -310,6 +365,13 @@ export default function DispatchPage() {
   // AI Dispatch analysis state
   const [aiAnalyses, setAiAnalyses] = useState<Record<string, any>>({});
   const [showAiSidebar, setShowAiSidebar] = useState(false);
+  const [showCodePanel, setShowCodePanel] = useState(false);
+
+  // Queue sort mode. The /user/preferences backend is currently a stub that
+  // doesn't persist dispatch_sort, so we keep the selection in localStorage
+  // (best-effort PUT to the API too, for when it becomes real). This makes the
+  // SORT toggle actually stick across reloads — it previously reverted every time.
+  const [localSort, setLocalSort] = useState<string>(() => localStorage.getItem('rmpg_dispatch_sort') || '');
 
   // ── Feature 1: Call priority sound alerts ──
   const [soundAlertsMuted, setSoundAlertsMuted] = useState(() => localStorage.getItem('rmpg_sound_alerts_muted') === 'true');
@@ -345,6 +407,27 @@ export default function DispatchPage() {
     } catch { addToast('Failed to save handoff notes', 'error'); }
     finally { setSavingHandoff(false); }
   }, [handoffNotes, addToast]);
+
+  const handleApplyCode = useCallback(async (code: string) => {
+    if (!selectedCall) {
+      addToast('Select a call first to apply code', 'warning');
+      return;
+    }
+    try {
+      await apiFetch(`/dispatch/calls/${selectedCall.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ incident_type: code }),
+      });
+      const updated: CallForService = { ...selectedCall!, incident_type: (code as unknown) as IncidentType };
+      setSelectedCall(updated);
+      setCalls(prev => prev.map(c => c.id === selectedCall.id ? updated : c));
+      const desc = signalLookup(code);
+      const label = desc ? `${code} (${desc.description})` : code;
+      addToast(`Signal set to ${label}`, 'success');
+    } catch {
+      addToast('Failed to apply code', 'error');
+    }
+  }, [selectedCall, addToast, signalLookup]);
 
   // Clean up search timers and abort controllers on unmount
   useEffect(() => {
@@ -460,51 +543,81 @@ export default function DispatchPage() {
     }
   }, []);
 
-  // Create new person from dispatch, auto-link to current call
-  const handleCreatePersonFromDispatch = useCallback(async (data: PersonFormData) => {
+  // Create-from-dispatch: uses the fused /quick-add endpoints so the server
+  // runs duplicate detection BEFORE creating a new persons / vehicles_records
+  // row. Stops MNI fragmentation from "John Doe DOB:1985" being re-created on
+  // every CFS. On 409 DUPLICATE_CANDIDATES the picker modal opens and the
+  // dispatcher either links the existing record (merge_into_id) or overrides
+  // with force_create:true. Form data is held in state so the resolution
+  // re-call sends the same fields the dispatcher originally typed.
+  const [personDupState, setPersonDupState] = useState<{ data: PersonFormData; candidates: DuplicateCandidate[] } | null>(null);
+  const [vehicleDupState, setVehicleDupState] = useState<{ data: VehicleFormData; candidates: DuplicateCandidate[] } | null>(null);
+
+  const submitPersonQuickAdd = useCallback(async (
+    data: PersonFormData,
+    opts?: { merge_into_id?: number; force_create?: boolean },
+  ) => {
     if (!selectedCall) return;
     setIsCreatingRecord(true);
     try {
-      const result = await apiFetch<{ id: number }>('/records/persons', {
+      const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}/persons/quick-add`, {
         method: 'POST',
-        body: JSON.stringify(data),
+        body: JSON.stringify({ ...data, role: linkPersonRole, ...(opts || {}) }),
       });
-      // Auto-link to current call
-      await linkPersonToCall(selectedCall.id, result.id, linkPersonRole);
-      // Update subject_description field
       const desc = `${data.last_name || ''}, ${data.first_name || ''}`.trim().replace(/^,\s*/, '').replace(/,\s*$/, '') + (data.dob ? ` DOB:${data.dob}` : '');
       setEditData(prev => ({ ...prev, subject_description: desc }));
       setShowCreatePersonModal(false);
-      addToast('Person created and linked', 'success');
+      setPersonDupState(null);
+      fetchCallPersons(selectedCall.id);
+      addToast(result?.created ? 'Person created and linked' : 'Existing person linked', 'success');
     } catch (err: any) {
-      addToast(err?.message || 'Failed to create person', 'error');
+      if (err?.code === 'DUPLICATE_CANDIDATES' && Array.isArray(err?.payload?.candidates)) {
+        setPersonDupState({ data, candidates: err.payload.candidates });
+      } else {
+        addToast(err?.message || 'Failed to create person', 'error');
+      }
     } finally {
       setIsCreatingRecord(false);
     }
-  }, [selectedCall, linkPersonToCall, linkPersonRole, addToast]);
+  }, [selectedCall, linkPersonRole, addToast, fetchCallPersons]);
 
-  // Create new vehicle from dispatch, auto-link to current call
-  const handleCreateVehicleFromDispatch = useCallback(async (data: VehicleFormData) => {
+  const handleCreatePersonFromDispatch = useCallback(
+    (data: PersonFormData) => submitPersonQuickAdd(data),
+    [submitPersonQuickAdd],
+  );
+
+  const submitVehicleQuickAdd = useCallback(async (
+    data: VehicleFormData,
+    opts?: { merge_into_id?: number; force_create?: boolean },
+  ) => {
     if (!selectedCall) return;
     setIsCreatingRecord(true);
     try {
-      const result = await apiFetch<{ id: number }>('/records/vehicles', {
+      const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}/vehicles/quick-add`, {
         method: 'POST',
-        body: JSON.stringify(data),
+        body: JSON.stringify({ ...data, role: linkVehicleRole, ...(opts || {}) }),
       });
-      // Auto-link to current call
-      await linkVehicleToCall(selectedCall.id, result.id, linkVehicleRole);
-      // Update vehicle_description field
       const desc = [data.color, data.year, data.make, data.model].filter(Boolean).join(' ') + (data.plate_number ? ` PLT:${data.plate_number}` : '') + (data.state ? `/${data.state}` : '');
       setEditData(prev => ({ ...prev, vehicle_description: desc }));
       setShowCreateVehicleModal(false);
-      addToast('Vehicle created and linked', 'success');
+      setVehicleDupState(null);
+      fetchCallVehicles(selectedCall.id);
+      addToast(result?.created ? 'Vehicle created and linked' : 'Existing vehicle linked', 'success');
     } catch (err: any) {
-      addToast(err?.message || 'Failed to create vehicle', 'error');
+      if (err?.code === 'DUPLICATE_CANDIDATES' && Array.isArray(err?.payload?.candidates)) {
+        setVehicleDupState({ data, candidates: err.payload.candidates });
+      } else {
+        addToast(err?.message || 'Failed to create vehicle', 'error');
+      }
     } finally {
       setIsCreatingRecord(false);
     }
-  }, [selectedCall, linkVehicleToCall, linkVehicleRole, addToast]);
+  }, [selectedCall, linkVehicleRole, addToast, fetchCallVehicles]);
+
+  const handleCreateVehicleFromDispatch = useCallback(
+    (data: VehicleFormData) => submitVehicleQuickAdd(data),
+    [submitVehicleQuickAdd],
+  );
 
   // Navigation guard — warn when editing unsaved changes
   useUnsavedChanges(isEditing);
@@ -526,70 +639,33 @@ export default function DispatchPage() {
     return () => window.removeEventListener('click', close);
   }, [contextMenu]);
 
-  // Fetch linked persons/vehicles when a call is selected
+  // Fetch linked persons/vehicles when a call is selected.
+  // `selectedCall?.id` can be the LITERAL STRING "undefined" when the call
+  // is hydrated from stale state — it passes `?.id &&` truthiness but blows
+  // up server-side as /dispatch/calls/undefined/persons → 500. See prod
+  // console 2026-05-27 ~10:10 UTC.
   useEffect(() => {
-    if (selectedCall?.id) {
-      fetchCallPersons(selectedCall.id);
-      fetchCallVehicles(selectedCall.id);
+    const cid = selectedCall?.id;
+    if (cid && cid !== ('undefined' as any) && cid !== ('null' as any) && cid !== '') {
+      fetchCallPersons(cid);
+      fetchCallVehicles(cid);
     } else {
       setCallPersons([]);
       setCallVehicles([]);
     }
   }, [selectedCall?.id, fetchCallPersons, fetchCallVehicles]);
 
-  // Auto-save unsaved call edits on component unmount (SPA navigation)
+  // Auto-save unsaved call edits on component unmount (SPA navigation).
+  // Shares the body assembly with the click-Save path via buildCallEditBody
+  // so PSO / process_service / contract_id / dispatch_code edits don't
+  // silently vanish here (previous bug — those fields were missing from
+  // the unmount body and only the in-page Save preserved them).
   useEffect(() => {
     return () => {
       if (!isEditingRef.current || !selectedCallRef.current) return;
       const token = localStorage.getItem('rmpg_token');
       const ed = editDataRef.current;
-      const body: Record<string, any> = {
-        incident_type: ed.incident_type,
-        priority: ed.priority,
-        client_id: ed.client_id || null,
-        property_id: ed.property_id || null,
-        caller_name: ed.caller_name,
-        caller_phone: ed.caller_phone,
-        caller_relationship: ed.caller_relationship,
-        caller_address: ed.caller_address,
-        location_address: ed.location,
-        latitude: (ed.location !== selectedCallRef.current?.location && ed.latitude === selectedCallRef.current?.latitude) ? null : (ed.latitude ?? null),
-        longitude: (ed.location !== selectedCallRef.current?.location && ed.longitude === selectedCallRef.current?.longitude) ? null : (ed.longitude ?? null),
-        description: ed.description,
-        source: ed.source,
-        disposition: ed.disposition,
-        cross_street: ed.cross_street,
-        location_building: ed.location_building,
-        location_floor: ed.location_floor,
-        location_room: ed.location_room,
-        zone_beat: ed.zone_beat,
-        sector_id: ed.sector_id,
-        zone_id: ed.zone_id,
-        beat_id: ed.beat_id,
-        weapons_involved: ed.weapons_involved,
-        injuries_reported: ed.injuries_reported,
-        num_subjects: ed.num_subjects ? Number(ed.num_subjects) : null,
-        num_victims: ed.num_victims ? Number(ed.num_victims) : null,
-        subject_description: ed.subject_description,
-        vehicle_description: ed.vehicle_description,
-        direction_of_travel: ed.direction_of_travel,
-        scene_safety: ed.scene_safety,
-        weather_conditions: ed.weather_conditions,
-        lighting_conditions: ed.lighting_conditions,
-        alcohol_involved: ed.alcohol_involved,
-        drugs_involved: ed.drugs_involved,
-        domestic_violence: ed.domestic_violence,
-        supervisor_notified: ed.supervisor_notified,
-        le_notified: ed.le_notified,
-        le_agency: ed.le_agency,
-        le_case_number: ed.le_case_number,
-        damage_estimate: ed.damage_estimate ? Number(ed.damage_estimate) : null,
-        damage_description: ed.damage_description,
-        action_taken: ed.action_taken,
-        responding_officer: ed.responding_officer,
-        starting_mileage: ed.starting_mileage ? Number(ed.starting_mileage) : null,
-        ending_mileage: ed.ending_mileage ? Number(ed.ending_mileage) : null,
-      };
+      const body = buildCallEditBody(ed, selectedCallRef.current);
       try {
         fetch(`/api/dispatch/calls/${selectedCallRef.current.id}`, {
           method: 'PUT',
@@ -618,11 +694,16 @@ export default function DispatchPage() {
     newUnitCallSign, setNewUnitCallSign,
     newUnitOfficerId, setNewUnitOfficerId,
     newUnitStatus, setNewUnitStatus,
+    newUnitVehicleId, setNewUnitVehicleId,
+    newUnitCapabilities, setNewUnitCapabilities,
+    newUnitBeat, setNewUnitBeat,
+    newUnitAudioMode, setNewUnitAudioMode,
+    resetUnitForm,
     unitCreating,
     deletingUnit, setDeletingUnit,
     unitDeleting,
     openEditUnit,
-    handleSaveUnit, handleDeleteUnit,
+    handleSaveUnit, handleDisposeUnit,
     handleAssignUnit, handleDragAssignUnit, handleUnassignUnit,
   } = useDispatchUnitActions({
     selectedCall, setSelectedCall,
@@ -726,6 +807,24 @@ export default function DispatchPage() {
     }
   }, [addToast]);
 
+  // Load CLEARED/closed/cancelled calls when the Cleared tab is activated. The
+  // default call list forces status IN (active) server-side, so completed calls
+  // are NEVER in the `calls` array — without this dedicated fetch the Cleared
+  // tab was permanently empty and a closed call looked permanently deleted
+  // ("CFS delete upon completion"). The rows are intact in D1 (status='closed');
+  // this just surfaces them. Comma-status is supported by the list handler.
+  const [clearedCalls, setClearedCalls] = useState<CallForService[]>([]);
+  const fetchClearedCalls = useCallback(async () => {
+    try {
+      const res = await apiFetch<any>('/dispatch/calls?status=cleared,closed,cancelled&limit=500');
+      const raw = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
+      setClearedCalls(raw.map(mapDbCall));
+    } catch (err) {
+      console.error('Failed to load cleared calls:', err);
+      addToast('Failed to load cleared calls', 'error');
+    }
+  }, [addToast]);
+
   useEffect(() => {
     fetchData();
     // Fetch quick dispatch templates
@@ -752,9 +851,58 @@ export default function DispatchPage() {
       .catch((err) => { console.warn('[DispatchPage] fetch properties list failed:', err); });
   }, [fetchData]);
 
-  // Live sync — auto-refresh when any device modifies dispatch data (silent to avoid unmounting UI)
+  // Live sync — auto-refresh when any device modifies dispatch data (silent to avoid unmounting UI).
+  // Each refresh refetches the active call list + units, so on a busy shift a
+  // burst of status changes from many units would otherwise fire a full refetch
+  // per event over cellular. A 1.5s debounce coalesces those bursts into a single
+  // refetch (the acting officer's own UI already updates optimistically; this
+  // path only mirrors *other* devices' changes, where ~1s latency is invisible).
   const silentRefresh = useCallback(() => fetchData({ silent: true }), [fetchData]);
-  useLiveSync('dispatch', silentRefresh);
+  useLiveSync('dispatch', silentRefresh, { debounceMs: 1500 });
+
+  // Near-live unit positions on the status board without a WebSocket push.
+  // The dispatch socket (/api/ws) and the bare POST /api/dispatch/gps both run
+  // on the LEGACY worker while broadcastAll() is per-isolate, so a push from the
+  // rewrite worker can't reach these clients (see project-dispatch-ws memory).
+  // But units.latitude/longitude IS freshened by the GPS POST, so a light
+  // units-only poll keeps the board's GPS column current. Adaptive on purpose:
+  // only fetch when a unit is on duty (position can change) — a parked fleet
+  // adds no load and rides the WS/action-driven updates. Mirrors MapPage.
+  const refreshUnitsLive = useCallback(async () => {
+    try {
+      const unitsRes = await apiFetch<any[]>('/dispatch/units');
+      setUnits((Array.isArray(unitsRes) ? unitsRes : []).map(mapDbUnit));
+    } catch { /* silent — transient poll miss; the next tick retries */ }
+  }, []);
+
+  // Skip background polls when the tab is hidden or the device is offline.
+  const pollEligible = useCallback(() =>
+    (typeof document === 'undefined' || document.visibilityState === 'visible') &&
+    (typeof navigator === 'undefined' || navigator.onLine !== false), []);
+
+  useEffect(() => {
+    const LIVE_UNIT_POLL_MS = 7000;
+    const MOVING_STATUSES = new Set<string>(['available', 'dispatched', 'enroute', 'onscene', 'busy']);
+    const iv = setInterval(() => {
+      if (!pollEligible()) return;
+      if (unitsRef.current.some((u) => MOVING_STATUSES.has(u.status))) refreshUnitsLive();
+    }, LIVE_UNIT_POLL_MS);
+    return () => clearInterval(iv);
+  }, [refreshUnitsLive, pollEligible]);
+
+  // Cross-device call/queue sync. The 'dispatch_update' WS net (useLiveSync above)
+  // is best-effort only — /api/ws is on the legacy worker but call mutations are
+  // served by the rewrite worker, so another dispatcher's new/edited call usually
+  // never reaches this client over the socket. Without a periodic refetch the
+  // queue would silently drift until a manual reload — unacceptable for a CAD.
+  // A 20s silent fetchData() guarantees convergence; it preserves in-progress
+  // edits (fetchData's setSelectedCall guards isEditingRef) and is skipped when
+  // the tab is hidden/offline.
+  useEffect(() => {
+    const CROSS_DEVICE_SYNC_MS = 20000;
+    const iv = setInterval(() => { if (pollEligible()) silentRefresh(); }, CROSS_DEVICE_SYNC_MS);
+    return () => clearInterval(iv);
+  }, [silentRefresh, pollEligible]);
 
   // Call-lifecycle state + handlers (extracted to keep this component below the
   // 6,500-line ceiling). The hook owns: 6 transient state items (delete/disposition/
@@ -767,7 +915,7 @@ export default function DispatchPage() {
     dispositionPromptCallId, setDispositionPromptCallId,
     isGenerating,
     isBulkArchiving,
-    handleStatusChange,
+    handleStatusChange: rawHandleStatusChange,
     handleHoldCall, handleResumeCall, handleRevertStatus,
     handleClearWithDisposition, handleConfirmClear,
     handleArchive, handleUnarchive, handleBulkArchive,
@@ -777,6 +925,69 @@ export default function DispatchPage() {
     selectedCall, setSelectedCall, setCalls, setArchivedCalls,
     setUnits, setArchivedLoaded, refetchAll: silentRefresh,
   });
+
+  // ── Mileage prompt on enroute / onscene (officer-requested) ───────────────
+  // Dispatch asks the officer's odometer when they go EN ROUTE (starting) and
+  // again ON SCENE (ending). Wrapping handleStatusChange here means EVERY entry
+  // point — call-detail buttons, keyboard shortcuts (F-keys), the status board,
+  // and the right-click context menu — funnels through the same prompt without
+  // editing each call site. The reading is persisted atomically with the status
+  // transition (POST /dispatch/calls/:id/status, extended to take mileage).
+  const [mileagePrompt, setMileagePrompt] = useState<{
+    callId: string;
+    callNumber: string;
+    vehicleId: string;
+    mode: 'starting' | 'ending';
+    startingMileage: number | null;
+    pendingStatus: CallStatus;
+  } | null>(null);
+
+  const handleStatusChange = useCallback((
+    callId: string,
+    newStatus: CallStatus,
+    extraBody?: Record<string, any>,
+  ) => {
+    if (newStatus === 'enroute' || newStatus === 'onscene') {
+      const call = calls.find((c) => c.id === callId)
+        || (selectedCall?.id === callId ? selectedCall : undefined);
+      // Responding vehicle: explicit field on the call, else the first assigned
+      // unit's vehicle id. Lets the prompt show/confirm the vehicle being driven.
+      const respondingVehicle = (() => {
+        const rv = (call as any)?.responding_vehicle_id;
+        if (rv) return String(rv);
+        const firstUnitId = call?.assigned_units?.[0];
+        const u = units.find((x) => String(x.id) === String(firstUnitId));
+        return u?.vehicle ? String(u.vehicle) : '';
+      })();
+      setMileagePrompt({
+        callId,
+        callNumber: call?.call_number || `#${callId}`,
+        vehicleId: respondingVehicle,
+        mode: newStatus === 'enroute' ? 'starting' : 'ending',
+        startingMileage: call?.starting_mileage != null ? Number(call.starting_mileage) : null,
+        pendingStatus: newStatus,
+      });
+      return;
+    }
+    return rawHandleStatusChange(callId, newStatus, extraBody);
+  }, [calls, units, selectedCall, rawHandleStatusChange]);
+
+  // Prompt submit: persist the reading (if any) with the transition. Calls the
+  // RAW handler directly so it doesn't re-open the prompt. "Skip" sends 0 →
+  // status changes with no mileage written (server ignores non-positive values).
+  const handleMileagePromptSubmit = useCallback((mileage: number, vehicleId: string) => {
+    setMileagePrompt((prompt) => {
+      if (!prompt) return null;
+      const extra: Record<string, any> = {};
+      if (mileage > 0) {
+        if (prompt.mode === 'starting') extra.starting_mileage = mileage;
+        else extra.ending_mileage = mileage;
+      }
+      if (vehicleId && vehicleId.trim()) extra.responding_vehicle_id = vehicleId.trim();
+      rawHandleStatusChange(prompt.callId, prompt.pendingStatus, extra);
+      return null;
+    });
+  }, [rawHandleStatusChange]);
 
   // Notes + timeline state + handlers (extracted alongside the unit/call
   // hooks). Owns 9 state items (note input + inline-edit, timeline input
@@ -845,8 +1056,9 @@ export default function DispatchPage() {
         }
       } else if (data.action === 'call_updated' && data.call) {
         const mapped = mapDbCall(data.call);
-        // Detect priority escalation before updating state
-        const prevCall = calls.find((c: any) => c.id === mapped.id);
+        // Detect priority escalation before updating state. Read from the ref —
+        // the plain `calls` here would be the stale mount-time snapshot.
+        const prevCall = callsRef.current.find((c: any) => c.id === mapped.id);
         if (prevCall && prevCall.priority !== mapped.priority) {
           const priorities = ['P1', 'P2', 'P3', 'P4'];
           if (priorities.indexOf(mapped.priority) < priorities.indexOf(prevCall.priority)) {
@@ -878,7 +1090,7 @@ export default function DispatchPage() {
         // Voice alert: announce archival with summary
         if (mapped.status === 'archived') {
           const responseMin = mapped.created_at && mapped.onscene_at
-            ? Math.floor((new Date(mapped.onscene_at).getTime() - new Date(mapped.created_at).getTime()) / 60000)
+            ? Math.floor((parseTimestamp(mapped.onscene_at).getTime() - parseTimestamp(mapped.created_at).getTime()) / 60000)
             : undefined;
           announceCallArchived(mapped.call_number, mapped.disposition, responseMin);
         }
@@ -892,6 +1104,15 @@ export default function DispatchPage() {
             assigned_units: mapped.assigned_units,
           }, mapped.status);
         }
+      } else if (data.action === 'call_deleted') {
+        // Server broadcasts this on undo-redispatch (the child call is deleted).
+        // mapDbCall stringifies ids, so compare as strings. Drop it from the
+        // queue and clear the detail pane if it was open.
+        const deletedId = data.call_id ?? data.call?.id;
+        if (deletedId != null) {
+          setCalls((prev) => prev.filter((c) => String(c.id) !== String(deletedId)));
+          setSelectedCall((prev) => (prev && String(prev.id) === String(deletedId) ? null : prev));
+        }
       } else if (data.action === 'units_dispatched' || data.action === 'unit_assigned' || data.action === 'unit_unassigned') {
         // Voice alert: announce unit assignment
         if (data.action === 'unit_assigned' && data.unit_call_sign && data.call_number) {
@@ -904,6 +1125,17 @@ export default function DispatchPage() {
         }
         // Refresh the full list to keep unit assignments in sync
         fetchData({ silent: true });
+      } else if (data.action === 'backup_requested') {
+        // OFFICER-SAFETY: an officer hit "request backup" (RadialMenu →
+        // /api/dispatch/request-backup → panic.ts emitAlert). This action had
+        // NO consumer here, so the request was silent on the dispatch console.
+        // Surface it loudly: alarm tone (unless muted) + a persistent toast.
+        if (!soundAlertsMutedRef.current) playTone('alarm');
+        const who = data.call_sign || data.officer_name || 'An officer';
+        const extra = data.message && data.message !== 'Backup requested' ? ` — ${data.message}` : '';
+        addToast(`BACKUP REQUESTED: ${who}${extra}`, 'error', 12000);
+        // Pull the latest roster/calls so the requesting unit's state is current.
+        fetchData({ silent: true });
       } else if (data.action === 'ai_analysis' && data.call_id && data.analysis) {
         setAiAnalyses(prev => ({ ...prev, [data.call_id]: data.analysis }));
         setShowAiSidebar(true);
@@ -915,18 +1147,42 @@ export default function DispatchPage() {
       }
     });
 
-    // Listen for unit updates (status changes, new units, deletions)
-    const unsubUnit = subscribe('unit_update', (msg: any) => {
+    // Listen for unit updates (status changes, GPS position pushes, etc.).
+    // The live Worker broadcasts ALL unit events under the 'dispatch_update'
+    // channel with an action discriminator — there is no 'unit_update' channel,
+    // so this handler was previously dead (the roster never updated live).
+    // subscribersRef is a Map<type, Set<handler>>, so this coexists with the
+    // call handler above; each ignores the other's actions.
+    // Merge a raw broadcast unit row onto the existing MAPPED unit WITHOUT
+    // corrupting it: spreading the raw row drifted types (officer_id number,
+    // capabilities JSON string) and wiped joined fields the raw row lacks
+    // (officer_name, current_call_number). Coerce the volatile scalars and keep
+    // everything else from the already-mapped unit.
+    const applyUnitPatch = (u: any, raw: any) => ({
+      ...u,
+      id: String(raw.id),
+      status: raw.status ?? u.status,
+      latitude: raw.latitude ?? u.latitude,
+      longitude: raw.longitude ?? u.longitude,
+      officer_id: raw.officer_id != null ? String(raw.officer_id) : u.officer_id,
+      officer_name: raw.officer_name ?? u.officer_name,
+      current_call_id: 'current_call_id' in raw ? (raw.current_call_id != null ? String(raw.current_call_id) : undefined) : u.current_call_id,
+      current_call_number: raw.current_call_number ?? u.current_call_number,
+    });
+    const unsubUnit = subscribe('dispatch_update', (msg: any) => {
       const data = msg.data || msg;
       if (data.action === 'unit_status_changed' && data.unit) {
-        setUnits((prev) => prev.map((u) => (String(u.id) === String(data.unit.id) ? { ...u, ...data.unit, id: String(data.unit.id) } : u)));
+        setUnits((prev) => prev.map((u) => (String(u.id) === String(data.unit.id) ? applyUnitPatch(u, data.unit) : u)));
       } else if (data.action === 'unit_position_update' && data.unit) {
-        // Update unit position + speed_mph from GPS broadcast
+        // Update unit position from GPS broadcast. (speed_mph is intentionally
+        // NOT stored on the unit — no board UI reads it, and the 7s units poll
+        // round-trips through mapDbUnit which doesn't carry it, so writing it
+        // here only created a field that flickered in and out.)
         setUnits((prev) => prev.map((u) => (String(u.id) === String(data.unit.id)
-          ? { ...u, latitude: data.unit.latitude, longitude: data.unit.longitude, speed_mph: data.unit.speed_mph }
+          ? { ...u, latitude: data.unit.latitude, longitude: data.unit.longitude }
           : u)));
       } else if (data.action === 'unit_updated' && data.unit) {
-        setUnits((prev) => prev.map((u) => (String(u.id) === String(data.unit.id) ? { ...u, ...data.unit, id: String(data.unit.id) } : u)));
+        setUnits((prev) => prev.map((u) => (String(u.id) === String(data.unit.id) ? applyUnitPatch(u, data.unit) : u)));
       } else if (data.action === 'unit_created' && data.unit) {
         setUnits((prev) => {
           if (prev.some((u) => String(u.id) === String(data.unit.id))) return prev;
@@ -937,11 +1193,18 @@ export default function DispatchPage() {
       }
     });
 
-    // Listen for panic alerts — play alarm tone + voice alert, switch to active tab
+    // Listen for panic alerts — play alarm tone + voice alert, switch to active
+    // tab, and immediately refetch so the auto-created P1 officer_assist call
+    // and the unit's EMERGENCY overlay flash appear at once (not on the 20s
+    // poll). Delivered live via the AlertHubDO socket (WebSocketContext).
     const unsubPanic = subscribe('panic_alert', (msg: any) => {
       const data = msg.data || msg;
       setFilterTab('active');
       announcePanicAlert(data.user_name || data.userName);
+      const action = data.action || data.panic?.action;
+      // Refresh on activation (new call + emergent unit) and on clears
+      // (unit returns to normal) so the board tracks the lifecycle.
+      if (action !== 'panic_acknowledged') fetchData({ silent: true });
     });
 
     // Listen for serve queue events — update gold serve status panel in real time
@@ -1003,7 +1266,7 @@ export default function DispatchPage() {
       return;
     }
     const update = () => {
-      const diff = Date.now() - new Date(selectedCall.onscene_at!).getTime();
+      const diff = Date.now() - parseTimestamp(selectedCall.onscene_at).getTime();
       if (diff < 0) { setOnSceneElapsed(''); return; }
       const totalSec = Math.floor(diff / 1000);
       const h = Math.floor(totalSec / 3600);
@@ -1022,6 +1285,13 @@ export default function DispatchPage() {
       fetchArchivedCalls();
     }
   }, [filterTab, archivedLoaded, fetchArchivedCalls]);
+
+  // When the Cleared tab is active, (re)fetch cleared/closed/cancelled calls.
+  // Refetched on every activation (not gated like archived) so a call cleared
+  // moments ago shows up the next time the dispatcher opens the tab.
+  useEffect(() => {
+    if (filterTab === 'cleared') fetchClearedCalls();
+  }, [filterTab, fetchClearedCalls]);
 
   // (Template fetch consolidated into the main init useEffect above — line 296)
 
@@ -1057,9 +1327,13 @@ export default function DispatchPage() {
     return () => { cancelled = true; };
   }, [selectedCall?.id, detailTab]);
 
-  // Fetch linked incidents and activity when a call is selected
+  // Fetch linked incidents and activity when a call is selected.
+  // Same string-"undefined" guard as the persons/vehicles effect above —
+  // see prod console 2026-05-27 ~10:10 UTC for the symptom.
   useEffect(() => {
-    if (!selectedCall) { setLinkedIncidents([]); setActivityEntries([]); setCallWarnings([]); setServeLink(null); setAuditTrail([]); return; }
+    const cid = selectedCall?.id;
+    const invalid = !selectedCall || !cid || cid === ('undefined' as any) || cid === ('null' as any) || cid === '';
+    if (invalid) { setLinkedIncidents([]); setActivityEntries([]); setCallWarnings([]); setServeLink(null); setAuditTrail([]); return; }
     let cancelled = false;
     setIsEditing(false);
     setShowAttachUnitDropdown(false);
@@ -1099,7 +1373,11 @@ export default function DispatchPage() {
 
   // Filter calls (defined before keyboard shortcuts so it's available)
   // Active calls (non-archived) are in `calls`, archived calls are in `archivedCalls`
-  const filteredCalls = useMemo(() => (filterTab === 'archived' ? archivedCalls : calls).filter((call) => {
+  // Effective queue sort mode (server pref → local fallback → default). Hoisted
+  // to component scope so both the sort memo and the render (GEO dividers) share it.
+  const sortMode = userPrefs?.dispatch_sort || localSort || 'priority';
+
+  const filteredCalls = useMemo(() => (filterTab === 'archived' ? archivedCalls : filterTab === 'cleared' ? clearedCalls : calls).filter((call) => {
     switch (filterTab) {
       case 'pending': return call.status === 'pending';
       case 'active': return ['dispatched', 'enroute', 'onscene', 'on_hold'].includes(call.status);
@@ -1121,8 +1399,27 @@ export default function DispatchPage() {
       (call.location || '').toLowerCase().includes(q) ||
       (call.incident_type || '').toLowerCase().includes(q) ||
       (call.description || '').toLowerCase().includes(q) ||
-      (call.caller_name || '').toLowerCase().includes(q)
+      (call.caller_name || '').toLowerCase().includes(q) ||
+      // Geography: let dispatchers filter the queue to a district by typing a
+      // Spillman code ("SL1", "SL1-HER/C") or a place name ("Herriman").
+      (call.dispatch_code || '').toLowerCase().includes(q) ||
+      (call.zone_beat || '').toLowerCase().includes(q) ||
+      (call.sector_name || '').toLowerCase().includes(q) ||
+      (call.zone_id || '').toLowerCase().includes(q) ||
+      (call.zone_name || '').toLowerCase().includes(q) ||
+      (call.beat_id || '').toLowerCase().includes(q) ||
+      (call.beat_name || '').toLowerCase().includes(q)
     );
+  }).filter((call) => {
+    if (priorityFilter && call.priority !== priorityFilter) return false;
+    return true;
+  }).filter((call) => {
+    if (typeFilter && call.incident_type !== typeFilter) return false;
+    return true;
+  }).filter((call) => {
+    if (signalFilter === 'signaled' && !knownSignalCodes.has(call.incident_type)) return false;
+    if (signalFilter === 'unsignaled' && knownSignalCodes.has(call.incident_type)) return false;
+    return true;
   }).filter((call) => {
     // Show cleared calls in 'all' tab if user preference is enabled
     if (filterTab === 'all' && userPrefs?.dispatch_show_cleared) return true;
@@ -1138,22 +1435,36 @@ export default function DispatchPage() {
     const bPin = b.pinned ? 1 : 0;
     if (aPin !== bPin) return bPin - aPin;
     // User-selectable sort for active tabs
-    const sortMode = userPrefs?.dispatch_sort || 'priority';
     if (sortMode === 'time') {
-      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      return parseTimestamp(b.created_at).getTime() - parseTimestamp(a.created_at).getTime();
     }
     if (sortMode === 'status') {
       const sOrder: Record<string, number> = { dispatched: 0, enroute: 1, onscene: 2, pending: 3, on_hold: 4, cleared: 5, closed: 6, cancelled: 7 };
       const sDiff = (sOrder[a.status] ?? 5) - (sOrder[b.status] ?? 5);
       if (sDiff !== 0) return sDiff;
-      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      return parseTimestamp(b.created_at).getTime() - parseTimestamp(a.created_at).getTime();
+    }
+    if (sortMode === 'geo') {
+      // Group the queue by district: section → zone → beat (natural/numeric
+      // order), so a dispatcher can work calls geographically. Calls with no
+      // geography sink to the bottom; priority then breaks ties within a beat.
+      const geoKey = (c: typeof a) => [c.sector_name || '￿', c.zone_id || '￿', c.beat_id || '￿'].join('|');
+      const gDiff = geoKey(a).localeCompare(geoKey(b), undefined, { numeric: true });
+      if (gDiff !== 0) return gDiff;
+      const pOrderGeo: Record<string, number> = { P1: 0, P2: 1, P3: 2, P4: 3 };
+      const pDiffGeo = (pOrderGeo[a.priority] ?? 3) - (pOrderGeo[b.priority] ?? 3);
+      if (pDiffGeo !== 0) return pDiffGeo;
+      return parseTimestamp(b.created_at).getTime() - parseTimestamp(a.created_at).getTime();
     }
     // Default: priority then newest first
     const pOrder: Record<string, number> = { P1: 0, P2: 1, P3: 2, P4: 3 };
     const pDiff = (pOrder[a.priority] ?? 3) - (pOrder[b.priority] ?? 3);
     if (pDiff !== 0) return pDiff;
-    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-  }), [calls, archivedCalls, filterTab, searchQuery, userPrefs?.dispatch_sort, userPrefs?.dispatch_show_cleared, user?.id]);
+    return parseTimestamp(b.created_at).getTime() - parseTimestamp(a.created_at).getTime();
+  }), [calls, archivedCalls, clearedCalls, filterTab, searchQuery, priorityFilter, typeFilter, signalFilter, knownSignalCodes, userPrefs?.dispatch_sort, localSort, userPrefs?.dispatch_show_cleared, user?.id]);
+
+  // Shortcut cheat-sheet overlay (toggled with "?").
+  const [showShortcutHelp, setShowShortcutHelp] = useState(false);
 
   // Keyboard shortcuts for dispatch power users — Spillman Flex F-key style
   useEffect(() => {
@@ -1171,19 +1482,26 @@ export default function DispatchPage() {
       }
       if (e.key === 'F3' && selectedCall && selectedCall.status === 'pending') {
         e.preventDefault();
-        handleStatusChange(selectedCall.id, 'dispatched');
+        handleStatusChangeRef.current(selectedCall.id, 'dispatched');
         return;
       }
       if (e.key === 'F4' && selectedCall) {
         e.preventDefault();
-        // Toggle edit mode on selected call
-        setIsEditing(prev => !prev);
+        // Toggle edit mode on selected call. Must go through the proper
+        // start/cancel handlers — the previous `setIsEditing(prev => !prev)`
+        // bypassed the fresh refetch + editData hydration, so F4 entering
+        // edit mode on a fresh selection showed empty form fields.
+        if (isEditingRef.current) {
+          cancelEditingRef.current();
+        } else {
+          startEditingRef.current();
+        }
         return;
       }
       if (e.key === 'F5') {
         e.preventDefault();
         if (selectedCall && selectedCall.status === 'dispatched') {
-          handleStatusChange(selectedCall.id, 'enroute');
+          handleStatusChangeRef.current(selectedCall.id, 'enroute');
         } else {
           fetchData(); // Refresh if no enroute action available
         }
@@ -1191,20 +1509,16 @@ export default function DispatchPage() {
       }
       if (e.key === 'F6' && selectedCall && selectedCall.status === 'enroute') {
         e.preventDefault();
-        handleStatusChange(selectedCall.id, 'onscene');
+        handleStatusChangeRef.current(selectedCall.id, 'onscene');
         return;
       }
       if (e.key === 'F7' && selectedCall && ['dispatched', 'enroute', 'onscene'].includes(selectedCall.status)) {
         e.preventDefault();
-        handleClearWithDisposition(selectedCall.id);
+        handleClearWithDispositionRef.current(selectedCall.id);
         return;
       }
-      // Shift+C — quick clear on selected call (mirrors F7, faster muscle memory)
-      if (e.shiftKey && (e.key === 'C' || e.key === 'c') && selectedCall && ['dispatched', 'enroute', 'onscene'].includes(selectedCall.status)) {
-        e.preventDefault();
-        handleClearWithDisposition(selectedCall.id);
-        return;
-      }
+      // Shift+C is handled below the input guard — see comment near `if (isInput) return`.
+      // Putting it here would fire on capital C in a note/narrative textarea.
       if (e.key === 'F8') {
         e.preventDefault();
         // Focus CAD command line
@@ -1214,7 +1528,7 @@ export default function DispatchPage() {
       }
       if (e.key === 'F9' && selectedCall && ['pending', 'dispatched', 'enroute', 'onscene'].includes(selectedCall.status)) {
         e.preventDefault();
-        handleHoldCall(selectedCall.id);
+        handleHoldCallRef.current(selectedCall.id);
         return;
       }
       if (e.key === 'F10') {
@@ -1231,6 +1545,22 @@ export default function DispatchPage() {
 
       // Don't process letter keys when typing in inputs
       if (isInput) return;
+
+      // ? — toggle the keyboard-shortcut cheat sheet.
+      if (e.key === '?') {
+        e.preventDefault();
+        setShowShortcutHelp((prev) => !prev);
+        return;
+      }
+
+      // Shift+C — quick clear on selected call (mirrors F7, faster muscle
+      // memory). MUST sit below the input guard above; otherwise typing a
+      // capital C in a note/narrative textarea pops the disposition modal.
+      if (e.shiftKey && (e.key === 'C' || e.key === 'c') && selectedCall && ['dispatched', 'enroute', 'onscene'].includes(selectedCall.status)) {
+        e.preventDefault();
+        handleClearWithDispositionRef.current(selectedCall.id);
+        return;
+      }
 
       // N - New call
       if (e.key === 'n' || e.key === 'N') {
@@ -1280,42 +1610,50 @@ export default function DispatchPage() {
       // D - Dispatch selected call
       if ((e.key === 'd' || e.key === 'D') && selectedCall && selectedCall.status === 'pending') {
         e.preventDefault();
-        handleStatusChange(selectedCall.id, 'dispatched');
+        handleStatusChangeRef.current(selectedCall.id, 'dispatched');
         return;
       }
 
       // E - Enroute
       if ((e.key === 'e' || e.key === 'E') && selectedCall && selectedCall.status === 'dispatched') {
         e.preventDefault();
-        handleStatusChange(selectedCall.id, 'enroute');
+        handleStatusChangeRef.current(selectedCall.id, 'enroute');
         return;
       }
 
       // O - On scene
       if ((e.key === 'o' || e.key === 'O') && selectedCall && selectedCall.status === 'enroute') {
         e.preventDefault();
-        handleStatusChange(selectedCall.id, 'onscene');
+        handleStatusChangeRef.current(selectedCall.id, 'onscene');
         return;
       }
 
       // C - Clear call (opens disposition prompt)
       if ((e.key === 'c' || e.key === 'C') && selectedCall && ['dispatched', 'enroute', 'onscene'].includes(selectedCall.status)) {
         e.preventDefault();
-        handleClearWithDisposition(selectedCall.id);
+        handleClearWithDispositionRef.current(selectedCall.id);
         return;
       }
 
       // H - Hold call
       if ((e.key === 'h' || e.key === 'H') && selectedCall && ['pending', 'dispatched', 'enroute', 'onscene'].includes(selectedCall.status)) {
         e.preventDefault();
-        handleHoldCall(selectedCall.id);
+        handleHoldCallRef.current(selectedCall.id);
         return;
       }
 
-      // Escape - close modal
+      // Escape - close any open modal / panel / inline prompt.
+      // Keep this list in sync with new modals — UX-inconsistent if some
+      // modals close on Esc and others don't.
       if (e.key === 'Escape') {
         setShowNewCallModal(false);
         setShowQuickPsoModal(false);
+        setShowNcicPanel(false);
+        setShowHandoffNotes(false);
+        setShowCreateUnitModal(false);
+        setQuickTemplateData(null);
+        setDispositionPromptCallId(null);
+        setShowShortcutHelp(false);
         return;
       }
     };
@@ -1356,6 +1694,11 @@ export default function DispatchPage() {
         location_floor: callData.location_floor || null,
         location_room: callData.location_room || null,
         zone_beat: callData.zone_beat || null,
+        // Area — top of the A/S/Z/B hierarchy. The server also backfills this
+        // from coordinates, but sending what the form resolved keeps the value
+        // the dispatcher saw and covers manual Section picks made without coords.
+        area_code: callData.area_code || null,
+        area_name: callData.area_name || null,
         sector_id: callData.sector_id ?? null,
         zone_id: callData.zone_id ?? null,
         beat_id: callData.beat_id ?? null,
@@ -1442,14 +1785,25 @@ export default function DispatchPage() {
   // ── Admin timeline edit handler ──
   const handleTimelineEdit = useCallback(async (field: string, value: string | null) => {
     if (!selectedCall || !isAdminOrManager) return;
+    const callId = selectedCall.id;
     try {
-      const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}`, {
+      const result = await apiFetch<any>(`/dispatch/calls/${callId}`, {
         method: 'PUT',
         body: JSON.stringify({ [field]: value || null }),
       });
-      const updated = mapDbCall(result);
-      setCalls(prev => prev.map(c => c.id === selectedCall.id ? updated : c));
-      setSelectedCall(updated);
+      // DEFENSIVE: only adopt the server response if it's actually a full
+      // call row. Some backends return an error/"no changes" body for a
+      // single-field PUT (e.g. the legacy worker rejects timeline-timestamp
+      // edits with {error:'No fields to update'}); blindly running
+      // mapDbCall() on that produced a blank 'Other' call that wiped the
+      // real one from the UI ("editing time destructs the call"). When the
+      // response isn't a full row, patch just the edited field locally —
+      // the DB write already succeeded (or the catch below fires).
+      const looksLikeFullRow = result && (result.incident_type || result.call_number);
+      const apply = (c: typeof selectedCall) =>
+        looksLikeFullRow ? mapDbCall(result) : ({ ...c, [field]: value || null } as typeof c);
+      setCalls(prev => prev.map(c => (c.id === callId ? apply(c) : c)));
+      setSelectedCall(prev => (prev && prev.id === callId ? apply(prev) : prev));
       addToast(`Timeline updated: ${field.replace(/_at$/, '').replace(/_/g, ' ')}`, 'success');
     } catch (err) {
       console.error('Failed to update timeline:', err);
@@ -1520,6 +1874,85 @@ export default function DispatchPage() {
   // the edit form. Guards against stale in-memory data from list-endpoint
   // caching / older client bundles that silently dropped fields. The fetched
   // row also replaces selectedCall so the non-edit view re-renders correctly.
+  // Build the PUT body from the in-progress editData + the call we started
+  // editing against. Used by BOTH the click-Save path AND the unmount
+  // auto-save path — without this helper the two used to drift (PSO,
+  // process_service, contract_id, and dispatch_code edits silently
+  // vanished on unmount because the auto-save body forgot them).
+  //
+  // `selectedFor*` is what the user opened the editor against — needed
+  // for the "did the user change location?" → clear lat/lng heuristic.
+  // Pass `selectedCall` from saveEditing and `selectedCallRef.current`
+  // from the unmount cleanup.
+  const buildCallEditBody = (ed: Record<string, any>, selectedFor: { location?: string | null; latitude?: number | null; longitude?: number | null } | null): Record<string, any> => {
+    const sameLoc = ed.location === selectedFor?.location;
+    return {
+      incident_type: ed.incident_type,
+      priority: ed.priority,
+      client_id: ed.client_id || null,
+      property_id: ed.property_id || null,
+      caller_name: ed.caller_name,
+      caller_phone: ed.caller_phone,
+      caller_relationship: ed.caller_relationship,
+      caller_address: ed.caller_address,
+      location_address: ed.location,
+      // If location changed from original and user didn't pick a new autocomplete
+      // result (lat/lng still hold old values), clear them to trigger server re-geocode.
+      latitude: (!sameLoc && ed.latitude === selectedFor?.latitude) ? null : (ed.latitude ?? null),
+      longitude: (!sameLoc && ed.longitude === selectedFor?.longitude) ? null : (ed.longitude ?? null),
+      description: ed.description,
+      source: ed.source,
+      disposition: ed.disposition,
+      cross_street: ed.cross_street,
+      location_building: ed.location_building,
+      location_floor: ed.location_floor,
+      location_room: ed.location_room,
+      zone_beat: ed.zone_beat,
+      sector_id: ed.sector_id,
+      zone_id: ed.zone_id,
+      beat_id: ed.beat_id,
+      dispatch_code: ed.dispatch_code,
+      weapons_involved: ed.weapons_involved,
+      injuries_reported: ed.injuries_reported,
+      num_subjects: ed.num_subjects ? Number(ed.num_subjects) : null,
+      num_victims: ed.num_victims ? Number(ed.num_victims) : null,
+      subject_description: ed.subject_description,
+      vehicle_description: ed.vehicle_description,
+      direction_of_travel: ed.direction_of_travel,
+      scene_safety: ed.scene_safety,
+      weather_conditions: ed.weather_conditions,
+      lighting_conditions: ed.lighting_conditions,
+      alcohol_involved: ed.alcohol_involved,
+      drugs_involved: ed.drugs_involved,
+      domestic_violence: ed.domestic_violence,
+      supervisor_notified: ed.supervisor_notified,
+      le_notified: ed.le_notified,
+      le_agency: ed.le_agency,
+      le_case_number: ed.le_case_number,
+      // 0 is a valid damage estimate; falsy guard would wrongly drop it.
+      damage_estimate: ed.damage_estimate !== '' && ed.damage_estimate != null ? Number(ed.damage_estimate) : null,
+      damage_description: ed.damage_description,
+      action_taken: ed.action_taken,
+      responding_officer: ed.responding_officer,
+      starting_mileage: ed.starting_mileage ? Number(ed.starting_mileage) : null,
+      ending_mileage: ed.ending_mileage ? Number(ed.ending_mileage) : null,
+      pso_requestor_name: ed.pso_requestor_name || null,
+      pso_requestor_phone: ed.pso_requestor_phone || null,
+      pso_requestor_email: ed.pso_requestor_email || null,
+      pso_service_type: ed.pso_service_type || null,
+      pso_billing_code: ed.pso_billing_code || null,
+      pso_authorization: ed.pso_authorization || null,
+      contract_id: ed.contract_id || null,
+      // Process Service fields
+      process_service_type: ed.process_service_type || null,
+      process_served_to: ed.process_served_to || null,
+      process_served_address: ed.process_served_address || null,
+      process_attempts: ed.process_attempts ? Number(ed.process_attempts) : 0,
+      process_served_at: ed.process_served_at || null,
+      process_service_result: ed.process_service_result || null,
+    };
+  };
+
   const startEditing = async () => {
     if (!selectedCall) return;
     let source: any = selectedCall;
@@ -1609,70 +2042,7 @@ export default function DispatchPage() {
     if (!selectedCall) return;
     setIsSaving(true);
     try {
-      const body: Record<string, any> = {
-        incident_type: editData.incident_type,
-        priority: editData.priority,
-        client_id: editData.client_id || null,
-        property_id: editData.property_id || null,
-        caller_name: editData.caller_name,
-        caller_phone: editData.caller_phone,
-        caller_relationship: editData.caller_relationship,
-        caller_address: editData.caller_address,
-        location_address: editData.location,
-        // If location changed from original and user didn't pick a new autocomplete
-        // result (lat/lng still hold old values), clear them to trigger server re-geocode
-        latitude: (editData.location !== selectedCall.location && editData.latitude === selectedCall.latitude) ? null : (editData.latitude ?? null),
-        longitude: (editData.location !== selectedCall.location && editData.longitude === selectedCall.longitude) ? null : (editData.longitude ?? null),
-        description: editData.description,
-        source: editData.source,
-        disposition: editData.disposition,
-        cross_street: editData.cross_street,
-        location_building: editData.location_building,
-        location_floor: editData.location_floor,
-        location_room: editData.location_room,
-        zone_beat: editData.zone_beat,
-        sector_id: editData.sector_id,
-        zone_id: editData.zone_id,
-        beat_id: editData.beat_id,
-        dispatch_code: editData.dispatch_code,
-        weapons_involved: editData.weapons_involved,
-        injuries_reported: editData.injuries_reported,
-        num_subjects: editData.num_subjects ? Number(editData.num_subjects) : null,
-        num_victims: editData.num_victims ? Number(editData.num_victims) : null,
-        subject_description: editData.subject_description,
-        vehicle_description: editData.vehicle_description,
-        direction_of_travel: editData.direction_of_travel,
-        scene_safety: editData.scene_safety,
-        weather_conditions: editData.weather_conditions,
-        lighting_conditions: editData.lighting_conditions,
-        alcohol_involved: editData.alcohol_involved,
-        drugs_involved: editData.drugs_involved,
-        domestic_violence: editData.domestic_violence,
-        supervisor_notified: editData.supervisor_notified,
-        le_notified: editData.le_notified,
-        le_agency: editData.le_agency,
-        le_case_number: editData.le_case_number,
-        damage_estimate: editData.damage_estimate !== '' && editData.damage_estimate != null ? Number(editData.damage_estimate) : null,
-        damage_description: editData.damage_description,
-        action_taken: editData.action_taken,
-        responding_officer: editData.responding_officer,
-        starting_mileage: editData.starting_mileage ? Number(editData.starting_mileage) : null,
-        ending_mileage: editData.ending_mileage ? Number(editData.ending_mileage) : null,
-        pso_requestor_name: editData.pso_requestor_name || null,
-        pso_requestor_phone: editData.pso_requestor_phone || null,
-        pso_requestor_email: editData.pso_requestor_email || null,
-        pso_service_type: editData.pso_service_type || null,
-        pso_billing_code: editData.pso_billing_code || null,
-        pso_authorization: editData.pso_authorization || null,
-        contract_id: editData.contract_id || null,
-        // Process Service fields
-        process_service_type: editData.process_service_type || null,
-        process_served_to: editData.process_served_to || null,
-        process_served_address: editData.process_served_address || null,
-        process_attempts: editData.process_attempts ? Number(editData.process_attempts) : 0,
-        process_served_at: editData.process_served_at || null,
-        process_service_result: editData.process_service_result || null,
-      };
+      const body = buildCallEditBody(editData, selectedCall);
       const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}`, {
         method: 'PUT',
         body: JSON.stringify(body),
@@ -1725,6 +2095,31 @@ export default function DispatchPage() {
     return counts;
   }, [calls]);
 
+  // Active-call load per district (section), busiest first — situational
+  // awareness of where the workload is concentrated. Keyed by the Spillman
+  // section code (from the composite zone_id) with sector_name fallback.
+  const districtLoad = useMemo(() => {
+    const counts = new Map<string, number>();
+    calls.filter(c => ['pending', 'dispatched', 'enroute', 'onscene', 'on_hold'].includes(c.status)).forEach(c => {
+      const key = sectionPrefix(c.zone_id) || c.sector_name || '';
+      if (key) counts.set(key, (counts.get(key) || 0) + 1);
+    });
+    return [...counts.entries()].sort((a, b) => b[1] - a[1]);
+  }, [calls]);
+
+  // Other active calls at the SAME address as the selected call — surfaces the
+  // stack the queue card already counts, so a dispatcher seeing one call knows
+  // about the others at that location (officer-safety + dedupe).
+  const stackedCallsForSelected = useMemo(() => {
+    if (!selectedCall?.location) return [];
+    const loc = selectedCall.location.toLowerCase().trim();
+    return calls.filter(c =>
+      c.id !== selectedCall.id &&
+      ['pending', 'dispatched', 'enroute', 'onscene', 'on_hold'].includes(c.status) &&
+      (c.location || '').toLowerCase().trim() === loc
+    );
+  }, [calls, selectedCall?.id, selectedCall?.location]);
+
   // Toggle pinned-to-top flag on a call
   const handleTogglePin = useCallback(async (callId: string, currentlyPinned: boolean) => {
     const next = !currentlyPinned;
@@ -1768,7 +2163,9 @@ export default function DispatchPage() {
     return workload;
   }, [calls]);
 
-  // Feature 14: Disposition statistics for current shift
+  // Feature 14: Disposition statistics (ALL-TIME cleared/closed calls — the
+  // /dispatch/disposition-stats query has no time bound; the "DISPS:" strip is
+  // labeled neutrally, not "shift", to match).
   const [dispositionStats, setDispositionStats] = useState<{disposition: string; count: number}[]>([]);
   useEffect(() => {
     apiFetch<any[]>('/dispatch/disposition-stats')
@@ -1780,12 +2177,32 @@ export default function DispatchPage() {
   // Feature 17: Auto-archive cleared calls after 5 minutes
   const handleArchiveRef = useRef(handleArchive);
   useEffect(() => { handleArchiveRef.current = handleArchive; }, [handleArchive]);
+
+  // ── Refs for keydown-called handlers ───────────────────────────
+  // The F-key / letter shortcut effect (line ~1192) binds once-ish and
+  // captures handler references via closure. Without refs, the captured
+  // function is whatever existed at last bind — a stale `handleStatusChange`
+  // can fire against an out-of-date `selectedCall.id` if React batches a
+  // call-swap concurrent with a keystroke. Routing through refs that we
+  // update every render guarantees the shortcut always invokes the latest
+  // closure with fresh selectedCall in scope. Same pattern as
+  // handleArchiveRef above.
+  const handleStatusChangeRef = useRef(handleStatusChange);
+  useEffect(() => { handleStatusChangeRef.current = handleStatusChange; }, [handleStatusChange]);
+  const handleClearWithDispositionRef = useRef(handleClearWithDisposition);
+  useEffect(() => { handleClearWithDispositionRef.current = handleClearWithDisposition; }, [handleClearWithDisposition]);
+  const handleHoldCallRef = useRef(handleHoldCall);
+  useEffect(() => { handleHoldCallRef.current = handleHoldCall; }, [handleHoldCall]);
+  const startEditingRef = useRef(startEditing);
+  useEffect(() => { startEditingRef.current = startEditing; }, [startEditing]);
+  const cancelEditingRef = useRef(cancelEditing);
+  useEffect(() => { cancelEditingRef.current = cancelEditing; }, [cancelEditing]);
   useEffect(() => {
     const checkAutoArchive = () => {
       const now = Date.now();
       const fiveMinMs = 5 * 60 * 1000;
       calls.filter(c => ['cleared'].includes(c.status) && c.cleared_at).forEach(c => {
-        const clearedTime = new Date(c.cleared_at!).getTime();
+        const clearedTime = parseTimestamp(c.cleared_at).getTime();
         if (now - clearedTime > fiveMinMs) {
           handleArchiveRef.current(c.id).catch(() => {});
         }
@@ -1823,21 +2240,24 @@ export default function DispatchPage() {
   const tabCounts = useMemo(() => {
     const pending = calls.filter((c) => c.status === 'pending').length;
     const active = calls.filter((c) => ['dispatched', 'enroute', 'onscene', 'on_hold'].includes(c.status)).length;
-    const cleared = calls.filter((c) => ['cleared', 'closed', 'cancelled'].includes(c.status)).length;
+    // Cleared calls are NOT in the active-only `calls` array — count the
+    // separately-fetched clearedCalls for the badge. The in-`calls` figure
+    // (always 0) is still what the ALL math subtracts, which stays correct.
+    const clearedInActive = calls.filter((c) => ['cleared', 'closed', 'cancelled'].includes(c.status)).length;
     // ALL count: if user hides cleared calls, exclude them from the count to match the visible list
-    const allCount = userPrefs?.dispatch_show_cleared ? calls.length : calls.length - cleared;
+    const allCount = userPrefs?.dispatch_show_cleared ? calls.length : calls.length - clearedInActive;
     const myId = user?.id != null ? String(user.id) : null;
     const mine = myId ? calls.filter((c) => String((c as any).dispatcher_id ?? (c as any).created_by ?? '') === myId).length : 0;
     return {
       all: allCount,
       pending,
       active,
-      cleared,
+      cleared: clearedCalls.length,
       archived: archivedCalls.length,
       serve: calls.filter((c) => PSO_INCIDENT_TYPES.includes(c.incident_type)).length,
       mine,
     };
-  }, [calls, archivedCalls, userPrefs?.dispatch_show_cleared, user?.id]);
+  }, [calls, clearedCalls, archivedCalls, userPrefs?.dispatch_show_cleared, user?.id]);
 
   if (isLoading) {
     return (
@@ -1848,7 +2268,7 @@ export default function DispatchPage() {
             <div className="absolute inset-0 rounded-sm" style={{ boxShadow: '0 0 16px 3px rgba(212,160,23,0.25)' }} />
           </div>
           <div className="flex flex-col items-center gap-1">
-            <span className="text-[10px] font-mono uppercase tracking-[0.15em] text-[#6b7280] animate-pulse">Loading Dispatch Console</span>
+            <span className="text-[10px] font-mono uppercase tracking-[0.15em] text-[#888888] animate-pulse">Loading Dispatch Console</span>
             <span className="text-[8px] font-mono text-[#545454]">Connecting to dispatch services...</span>
           </div>
         </div>
@@ -1968,13 +2388,13 @@ export default function DispatchPage() {
                   <span className="text-rmpg-200 font-bold">
                     {(() => {
                       const endTime = ['cleared', 'closed', 'cancelled', 'archived'].includes(selectedCall.status) ? (selectedCall.cleared_at || (selectedCall as any).closed_at || selectedCall.created_at) : null;
-                      const elapsed = (endTime ? new Date(endTime).getTime() : Date.now()) - new Date(selectedCall.created_at).getTime();
+                      const elapsed = (endTime ? parseTimestamp(endTime).getTime() : Date.now()) - parseTimestamp(selectedCall.created_at).getTime();
                       return formatCallDuration(elapsed);
                     })()}
                   </span>
                 </div>
                 {selectedCall.dispatched_at && selectedCall.onscene_at && (() => {
-                  const diff = new Date(selectedCall.onscene_at).getTime() - new Date(selectedCall.dispatched_at).getTime();
+                  const diff = parseTimestamp(selectedCall.onscene_at).getTime() - parseTimestamp(selectedCall.dispatched_at).getTime();
                   if (diff <= 0 || !isFinite(diff)) return null;
                   return (
                     <div className="flex items-center gap-1">
@@ -1985,7 +2405,7 @@ export default function DispatchPage() {
                 })()}
                 {selectedCall.onscene_at && (() => {
                   const endTime = selectedCall.cleared_at || (selectedCall as any).closed_at || (selectedCall.status === 'archived' ? selectedCall.archived_at : null);
-                  const diff = (endTime ? new Date(endTime).getTime() : Date.now()) - new Date(selectedCall.onscene_at).getTime();
+                  const diff = (endTime ? parseTimestamp(endTime).getTime() : Date.now()) - parseTimestamp(selectedCall.onscene_at).getTime();
                   if (diff <= 0 || !isFinite(diff)) return null;
                   return (
                     <div className="flex items-center gap-1">
@@ -2001,7 +2421,7 @@ export default function DispatchPage() {
                 const flags: Array<{ label: string; color: string }> = [];
                 if (selectedCall.weapons_involved && selectedCall.weapons_involved !== 'None') flags.push({ label: 'ARMED', color: '#fca5a5' });
                 if ((selectedCall as any).domestic_violence) flags.push({ label: 'DV', color: '#fde047' });
-                if ((selectedCall as any).mental_health_crisis) flags.push({ label: 'MH', color: '#c4b5fd' });
+                if ((selectedCall as any).mental_health_crisis) flags.push({ label: 'MH', color: '#c084fc' });
                 if ((selectedCall as any).officer_safety_caution) flags.push({ label: 'SAFETY', color: '#ef4444' });
                 if ((selectedCall as any).vehicle_pursuit || (selectedCall as any).foot_pursuit) flags.push({ label: 'PURSUIT', color: '#fb923c' });
                 if (flags.length === 0) return null;
@@ -2064,7 +2484,7 @@ export default function DispatchPage() {
                     <button type="button"
                       onClick={() => handleStatusChange(selectedCall.id, 'cancelled')}
                       className="flex items-center justify-center gap-2 px-4 py-3 text-xs font-bold rounded-sm"
-                      style={{ minHeight: 48, minWidth: 80, background: '#dc262620', border: '1px solid #dc262650', color: '#ef7a7a', touchAction: 'manipulation' }}
+                      style={{ minHeight: 48, minWidth: 80, background: '#ef444420', border: '1px solid #ef444450', color: '#f87171', touchAction: 'manipulation' }}
                     >
                       <XCircle style={{ width: 16, height: 16 }} /> Cancel
                     </button>
@@ -2154,10 +2574,46 @@ export default function DispatchPage() {
               {/* Key info fields */}
               <div className="space-y-2">
                 <div className="panel-inset p-3">
-                  <div className="field-label mb-1">Location</div>
+                  <div className="field-label mb-1 flex items-center justify-between">
+                    <span>Location</span>
+                    {selectedCall.location && (
+                      <button
+                        type="button"
+                        title="Copy address"
+                        aria-label="Copy address"
+                        onClick={(e) => { e.stopPropagation(); navigator.clipboard?.writeText(selectedCall.location || ''); addToast('Address copied', 'success'); }}
+                        className="text-rmpg-500 hover:text-brand-gold-500 transition-colors"
+                      >
+                        <Copy className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
                   <div className="text-sm text-rmpg-200">{selectedCall.location || 'Not specified'}</div>
                   {selectedCall.cross_street && (
                     <div className="text-xs text-rmpg-400 mt-0.5">Near: {selectedCall.cross_street}</div>
+                  )}
+                  {/* Other active calls at this same address — click to jump. */}
+                  {stackedCallsForSelected.length > 0 && (
+                    <div className="mt-2 pt-2 border-t border-rmpg-700/30">
+                      <div className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-wide text-amber-400 mb-1">
+                        <Layers className="w-3 h-3" />
+                        {stackedCallsForSelected.length} other call{stackedCallsForSelected.length !== 1 ? 's' : ''} at this location
+                      </div>
+                      <div className="flex flex-wrap gap-1">
+                        {stackedCallsForSelected.map(c => (
+                          <button
+                            key={c.id}
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); setSelectedCall(c); }}
+                            title={`${formatIncidentType(c.incident_type)} — ${humanizeStatus(c.status, 'call')}`}
+                            className="flex items-center gap-1 px-1.5 py-0.5 text-[10px] font-mono border border-rmpg-700/50 hover:border-amber-600/60 hover:bg-amber-900/20 transition-colors"
+                          >
+                            <span className="font-bold text-green-400">{c.call_number}</span>
+                            <StatusBadge status={c.priority} type="priority" size="sm" />
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   )}
                 </div>
 
@@ -2175,6 +2631,36 @@ export default function DispatchPage() {
                   <div className="panel-inset p-3">
                     <div className="field-label mb-1">Description</div>
                     <div className="text-sm text-rmpg-200 whitespace-pre-wrap">{selectedCall.description}</div>
+                  </div>
+                )}
+
+                {/* Premise intel — joined from the linked property. hazard_notes
+                    renders as a red officer-safety banner; post_orders/gate_code
+                    as standard premise instructions. Only shown when present, so
+                    non-property calls don't get an empty block. */}
+                {(selectedCall.hazard_notes || selectedCall.post_orders || selectedCall.gate_code) && (
+                  <div className="panel-inset p-3 space-y-2">
+                    <div className="field-label mb-1">Premise / Officer Safety</div>
+                    {selectedCall.hazard_notes && (
+                      <div className="flex items-start gap-1.5 px-2 py-1.5 rounded-sm border border-red-700/50 bg-red-950/30">
+                        <AlertTriangle className="w-3.5 h-3.5 text-red-400 flex-shrink-0 mt-0.5" />
+                        <div>
+                          <div className="text-[9px] font-bold uppercase text-red-400 tracking-wide">Hazard</div>
+                          <div className="text-xs text-red-200 whitespace-pre-wrap">{selectedCall.hazard_notes}</div>
+                        </div>
+                      </div>
+                    )}
+                    {selectedCall.post_orders && (
+                      <div>
+                        <div className="text-[9px] font-bold uppercase text-rmpg-400 tracking-wide mb-0.5">Post Orders</div>
+                        <div className="text-xs text-rmpg-200 whitespace-pre-wrap">{selectedCall.post_orders}</div>
+                      </div>
+                    )}
+                    {selectedCall.gate_code && (
+                      <div className="text-xs text-rmpg-300">
+                        <span className="text-rmpg-500">Gate code:</span> <span className="font-mono text-brand-400">{selectedCall.gate_code}</span>
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -2200,18 +2686,18 @@ export default function DispatchPage() {
                         </span>
                         {editingTimestamp === ts.field ? (
                           <div className="flex items-center gap-1">
-                            <input
+                            <input id="ff-dispatchpage-0"
                               type="datetime-local"
                               step="1"
                               className="input-dark text-[10px] font-mono px-1 py-0.5 w-[175px]"
-                              defaultValue={ts.value ? new Date(new Date(ts.value).getTime() - new Date(ts.value).getTimezoneOffset() * 60000).toISOString().slice(0, 19) : ''}
+                              defaultValue={toDatetimeLocalValue(ts.value)}
                               autoFocus
                               onKeyDown={(e) => {
-                                if (e.key === 'Enter') handleTimelineEdit(ts.field, new Date((e.target as HTMLInputElement).value).toISOString());
+                                if (e.key === 'Enter') handleTimelineEdit(ts.field, mtDatetimeLocalToUtc((e.target as HTMLInputElement).value));
                                 if (e.key === 'Escape') setEditingTimestamp(null);
                               }}
                               onBlur={(e) => {
-                                if (e.target.value) handleTimelineEdit(ts.field, new Date(e.target.value).toISOString());
+                                if (e.target.value) handleTimelineEdit(ts.field, mtDatetimeLocalToUtc(e.target.value));
                                 else setEditingTimestamp(null);
                               }}
                             />
@@ -2222,19 +2708,40 @@ export default function DispatchPage() {
                             )}
                           </div>
                         ) : (
-                          <span
-                            className={`font-mono text-rmpg-200 tabular-nums ${isAdminOrManager ? 'cursor-pointer hover:text-[#d4a017] group-hover:underline transition-colors' : ''}`}
-                            onClick={() => isAdminOrManager && setEditingTimestamp(ts.field)}
-                            title={isAdminOrManager ? 'Click to edit timestamp' : undefined}
-                          >
-                            {ts.value ? formatTime(ts.value) : <span className="text-rmpg-600 italic">—</span>}
+                          <span className="flex items-center gap-1.5">
+                            <span
+                              className={`font-mono text-rmpg-200 tabular-nums ${isAdminOrManager ? 'cursor-pointer hover:text-[#d4a017] group-hover:underline transition-colors' : ''}`}
+                              onClick={() => isAdminOrManager && setEditingTimestamp(ts.field)}
+                              title={isAdminOrManager ? 'Click to edit timestamp' : undefined}
+                            >
+                              {ts.value ? formatTime(ts.value) : <span className="text-rmpg-600 italic">—</span>}
+                            </span>
+                            {/* Elapsed since the previous populated stage — the response
+                                breakdown (Created→Dispatched→Enroute→On Scene→…). */}
+                            {ts.value && (() => {
+                              const prevChain: Record<string, string[]> = {
+                                dispatched_at: ['created_at'],
+                                enroute_at: ['dispatched_at', 'created_at'],
+                                onscene_at: ['enroute_at', 'dispatched_at', 'created_at'],
+                                cleared_at: ['onscene_at', 'enroute_at', 'dispatched_at', 'created_at'],
+                                closed_at: ['cleared_at', 'onscene_at', 'enroute_at', 'dispatched_at', 'created_at'],
+                              };
+                              const chain = prevChain[ts.field];
+                              const prevField = chain?.find(f => (selectedCall as any)[f]);
+                              if (!prevField) return null;
+                              const d = parseTimestamp(ts.value).getTime() - parseTimestamp((selectedCall as any)[prevField]).getTime();
+                              if (!isFinite(d) || d <= 0) return null;
+                              const m = Math.floor(d / 60000);
+                              const s = Math.floor((d % 60000) / 1000);
+                              return <span className="text-rmpg-500 font-mono text-[9px] tabular-nums" title={`+${m}m ${s}s since ${prevField.replace(/_at$/, '').replace(/_/g, ' ')}`}>(+{m > 0 ? `${m}m ` : ''}{s}s)</span>;
+                            })()}
                           </span>
                         )}
                       </div>
                     ))}
                     {/* Enhancement 26: Response time (dispatched → onscene) */}
                     {selectedCall.dispatched_at && selectedCall.onscene_at && (() => {
-                      const diff = new Date(selectedCall.onscene_at).getTime() - new Date(selectedCall.dispatched_at).getTime();
+                      const diff = parseTimestamp(selectedCall.onscene_at).getTime() - parseTimestamp(selectedCall.dispatched_at).getTime();
                       if (diff <= 0 || !isFinite(diff)) return null;
                       const mins = Math.floor(diff / 60000);
                       const secs = Math.floor((diff % 60000) / 1000);
@@ -2286,7 +2793,7 @@ export default function DispatchPage() {
                   )}
                   {/* Add note input — mobile */}
                   <div className="flex gap-2">
-                    <input
+                    <input id="ff-dispatchpage-1"
                       type="text"
                       className="flex-1 bg-surface-sunken border border-rmpg-600 text-sm text-rmpg-200 px-3 rounded-sm"
                       style={{ minHeight: 44 }}
@@ -2314,7 +2821,7 @@ export default function DispatchPage() {
                       PSO Details
                       {(selectedCall.pso_attempt_number || 1) >= 1 && (
                         isAdminOrManager ? (
-                          <select
+                          <select id="ff-dispatchpage-2"
                             className="px-1 py-0 text-[9px] font-bold rounded-sm cursor-pointer"
                             style={{ background: '#f59e0b30', border: '1px solid #f59e0b50', color: '#fbbf24', appearance: 'auto' }}
                             value={selectedCall.pso_attempt_number || 1}
@@ -2343,7 +2850,7 @@ export default function DispatchPage() {
                       {selectedCall.pso_requestor_phone && <div><span className="text-rmpg-400">Phone:</span> {formatPhoneDisplay(selectedCall.pso_requestor_phone)}</div>}
                       {selectedCall.pso_billing_code && <div><span className="text-rmpg-400">Billing:</span> {selectedCall.pso_billing_code}</div>}
                       {selectedCall.pso_authorization && <div><span className="text-rmpg-400">Auth:</span> {selectedCall.pso_authorization}</div>}
-                      {selectedCall.disposition && <div><span className="text-rmpg-400">Disposition:</span> {humanizeDisposition(selectedCall.disposition)}</div>}
+                      {selectedCall.disposition && <div><span className="text-rmpg-400">Disposition:</span> <span title={humanizeDisposition(selectedCall.disposition)}>{selectedCall.disposition}</span></div>}
                     </div>
 
                     {/* Serve Queue Integration — Gold Status Panel */}
@@ -2391,7 +2898,7 @@ export default function DispatchPage() {
                                 className="text-[10px] font-bold font-mono px-1.5 py-0.5 rounded-[2px] uppercase"
                                 style={{
                                   background: serveLink.status === 'served' ? '#22c55e20'
-                                    : serveLink.status === 'failed' ? '#dc262620'
+                                    : serveLink.status === 'failed' ? '#ef444420'
                                     : serveLink.status === 'in_progress' ? '#eab30820'
                                     : '#f59e0b20',
                                   color: serveLink.status === 'served' ? '#4ade80'
@@ -2400,7 +2907,7 @@ export default function DispatchPage() {
                                     : '#fbbf24',
                                   border: `1px solid ${
                                     serveLink.status === 'served' ? '#22c55e40'
-                                    : serveLink.status === 'failed' ? '#dc262640'
+                                    : serveLink.status === 'failed' ? '#ef444440'
                                     : serveLink.status === 'in_progress' ? '#eab30840'
                                     : '#f59e0b40'
                                   }`,
@@ -2432,9 +2939,9 @@ export default function DispatchPage() {
                           <button type="button"
                             className="w-full py-2 px-3 text-xs font-semibold rounded-[2px] flex items-center justify-center gap-2 transition-colors"
                             style={{
-                              background: sendingToServe ? '#444444' : '#7c3aed20',
-                              border: '1px solid #7c3aed50',
-                              color: sendingToServe ? '#999999' : '#a78bfa',
+                              background: sendingToServe ? '#444444' : '#a855f720',
+                              border: '1px solid #a855f750',
+                              color: sendingToServe ? '#999999' : '#c084fc',
                             }}
                             disabled={sendingToServe}
                             onClick={async () => {
@@ -2519,8 +3026,8 @@ export default function DispatchPage() {
                               { key: 'weekend', label: 'Weekend', met: windows.weekend },
                             ] as const).map(({ key, label, met }) => (
                               <div key={key} className="flex items-center gap-1.5 text-[10px] py-0.5 px-1.5 rounded-sm" style={{
-                                background: met ? '#22c55e10' : '#dc262610',
-                                border: `1px solid ${met ? '#22c55e30' : '#dc262630'}`,
+                                background: met ? '#22c55e10' : '#ef444410',
+                                border: `1px solid ${met ? '#22c55e30' : '#ef444430'}`,
                               }}>
                                 <span style={{ color: met ? '#4ade80' : '#ef4444' }}>{met ? '✓' : '✗'}</span>
                                 <span style={{ color: met ? '#86efac' : '#fca5a5' }}>{label}</span>
@@ -2540,11 +3047,11 @@ export default function DispatchPage() {
                     {['cleared', 'closed'].includes(selectedCall.status) && (() => {
                       const terminalTime = selectedCall.closed_at || selectedCall.cleared_at;
                       if (!terminalTime) return null;
-                      const elapsed = Date.now() - new Date(terminalTime).getTime();
+                      const elapsed = Date.now() - parseTimestamp(terminalTime).getTime();
                       const hoursLeft = Math.max(0, 72 - elapsed / 3600000);
                       if (elapsed >= 72 * 3600000) {
                         return (
-                          <div className="mt-2 p-2 rounded-sm text-center text-xs font-bold animate-pulse" style={{ background: '#dc262630', border: '1px solid #dc262650', color: '#f87171' }}>
+                          <div className="mt-2 p-2 rounded-sm text-center text-xs font-bold animate-pulse" style={{ background: '#ef444430', border: '1px solid #ef444450', color: '#f87171' }}>
                             72-HOUR DEADLINE PASSED — RE-DISPATCH REQUIRED
                           </div>
                         );
@@ -2630,8 +3137,8 @@ export default function DispatchPage() {
           aria-label="Quick PSO"
           style={{
             right: '80px',
-            background: 'linear-gradient(180deg, #7c3aed 0%, #6b21a8 100%)',
-            borderColor: '#7c3aed',
+            background: 'linear-gradient(180deg, #a855f7 0%, #6b21a8 100%)',
+            borderColor: '#a855f7',
           }}
         >
           <Shield style={{ width: 20, height: 20 }} />
@@ -2693,6 +3200,15 @@ export default function DispatchPage() {
             <Briefcase style={{ width: 10, height: 10 }} />
             Handoff
           </button>
+          {/* Dispatch Code Quick Panel toggle */}
+          <button type="button"
+            onClick={() => setShowCodePanel(prev => !prev)}
+            className={`toolbar-btn ${showCodePanel ? 'text-brand-400 border-brand-700/40 bg-brand-900/20' : ''}`}
+            title={showCodePanel ? 'Close code browser' : 'Open code browser'}
+          >
+            <Hash style={{ width: 10, height: 10 }} />
+            Codes
+          </button>
           <ExportButton exportUrl="/dispatch/calls/export?format=csv" exportFilename="dispatch_calls_export.csv" />
           <PrintButton />
           {tabCounts.cleared > 0 && (
@@ -2708,9 +3224,9 @@ export default function DispatchPage() {
           )}
           <div className="relative flex items-center" style={{ minWidth: '100px', maxWidth: '170px' }}>
             <Search className="absolute left-2 w-3 h-3 text-[#545454] pointer-events-none" />
-            <input
+            <input id="ff-dispatchpage-3"
               type="text"
-              placeholder="Search calls..."
+              placeholder="Search calls, address, district (SL1, Herriman)…"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="input-dark text-xs w-full pl-6 pr-6"
@@ -2718,7 +3234,7 @@ export default function DispatchPage() {
             {searchQuery && (
               <button type="button"
                 onClick={() => setSearchQuery('')}
-                className="absolute right-1.5 w-4 h-4 flex items-center justify-center text-[#6b7280] hover:text-white transition-colors"
+                className="absolute right-1.5 w-4 h-4 flex items-center justify-center text-[#888888] hover:text-white transition-colors"
                 title="Clear search"
               >
                 <X style={{ width: 10, height: 10 }} />
@@ -2796,8 +3312,8 @@ export default function DispatchPage() {
             className="toolbar-btn"
             title="Quick PSO Client Request (P)"
             style={{
-              background: 'linear-gradient(180deg, #7c3aed 0%, #6b21a8 100%)',
-              borderColor: '#7c3aed',
+              background: 'linear-gradient(180deg, #a855f7 0%, #6b21a8 100%)',
+              borderColor: '#a855f7',
               borderBottomColor: '#212121',
               borderRightColor: '#212121',
               color: '#ffffff',
@@ -2808,6 +3324,7 @@ export default function DispatchPage() {
           </button>
         </PanelTitleBar>
         <TabBar
+          spillman
           tabs={[
             { id: 'all', label: 'All', count: tabCounts.all },
             { id: 'mine', label: 'Mine', count: tabCounts.mine },
@@ -2858,31 +3375,51 @@ export default function DispatchPage() {
                   }
                   return null;
                 })()}
+                {/* Busiest district — active-call load concentration. Full
+                    per-section breakdown on hover. */}
+                {districtLoad.length > 0 && (() => {
+                  const [topSection] = districtLoad[0];
+                  const active = searchQuery.trim() === topSection;
+                  return (
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery(active ? '' : topSection)}
+                      className="flex items-center gap-1 px-1.5 py-0.5 font-bold text-[9px] rounded-sm hover:brightness-125 transition-all"
+                      style={{ background: active ? 'rgba(212,160,23,0.3)' : 'rgba(212,160,23,0.12)', color: '#d4a017', border: '1px solid rgba(212,160,23,0.3)' }}
+                      title={`Active calls by district — ${districtLoad.map(([k, n]) => `${k}: ${n}`).join(' · ')}\nClick to ${active ? 'clear' : 'filter to'} ${topSection}`}
+                    >
+                      <MapPin className="w-2.5 h-2.5" /> {topSection}: {districtLoad[0][1]}
+                    </button>
+                  );
+                })()}
                 {/* Feature 4: Unit availability counter — extended breakdown */}
-                <span className="flex items-center gap-2 text-[#6b7280]" title={`${unitAvailability.available} available · ${unitAvailability.enroute} enroute/dispatched · ${unitAvailability.onscene} on-scene · ${unitAvailability.oos} out-of-service`}>
+                <span className="flex items-center gap-2 text-[#888888]" title={`${unitAvailability.available} available · ${unitAvailability.enroute} enroute/dispatched · ${unitAvailability.onscene} on-scene · ${unitAvailability.oos} out-of-service`}>
                   <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: unitAvailability.available > 0 ? '#22c55e' : '#ef4444', boxShadow: `0 0 4px ${unitAvailability.available > 0 ? '#22c55e80' : '#ef444480'}` }} />
                   <span style={{ color: unitAvailability.available > 0 ? '#4ade80' : '#f87171' }}><strong>{unitAvailability.available}</strong> AVAIL</span>
                   {unitAvailability.enroute > 0 && <span className="text-amber-400"><strong>{unitAvailability.enroute}</strong> ENR</span>}
-                  {unitAvailability.onscene > 0 && <span className="text-blue-300"><strong>{unitAvailability.onscene}</strong> OS</span>}
+                  {unitAvailability.onscene > 0 && <span className="text-purple-400"><strong>{unitAvailability.onscene}</strong> OS</span>}
                   {unitAvailability.oos > 0 && <span className="text-rmpg-500"><strong>{unitAvailability.oos}</strong> OOS</span>}
                 </span>
                 {/* Sort mode toggle — cycle priority → time → status */}
                 {(() => {
-                  const current = (userPrefs?.dispatch_sort || 'priority') as 'priority' | 'time' | 'status';
-                  const next: Record<string, 'priority' | 'time' | 'status'> = { priority: 'time', time: 'status', status: 'priority' };
-                  const labels: Record<string, string> = { priority: 'PRI', time: 'NEW', status: 'STA' };
+                  const current = (userPrefs?.dispatch_sort || localSort || 'priority') as 'priority' | 'time' | 'status' | 'geo';
+                  const next: Record<string, 'priority' | 'time' | 'status' | 'geo'> = { priority: 'time', time: 'status', status: 'geo', geo: 'priority' };
+                  const labels: Record<string, string> = { priority: 'PRI', time: 'NEW', status: 'STA', geo: 'GEO' };
+                  const titles: Record<string, string> = { priority: 'priority', time: 'newest', status: 'status', geo: 'district (section › zone › beat)' };
                   return (
                     <button
                       type="button"
-                      title={`Sort: ${current.toUpperCase()} (click to cycle)`}
-                      onClick={async () => {
-                        try {
-                          await apiFetch('/user/preferences', {
-                            method: 'PUT',
-                            body: JSON.stringify({ dispatch_sort: next[current] }),
-                          });
-                          reloadPrefs();
-                        } catch { addToast('Failed to update sort', 'error'); }
+                      title={`Sort: ${titles[current]} (click to cycle)`}
+                      onClick={() => {
+                        const target = next[current];
+                        // Persist locally (backend pref is stubbed) so it survives reloads.
+                        setLocalSort(target);
+                        localStorage.setItem('rmpg_dispatch_sort', target);
+                        // Best-effort server persist for when /user/preferences is real.
+                        apiFetch('/user/preferences', {
+                          method: 'PUT',
+                          body: JSON.stringify({ dispatch_sort: target }),
+                        }).then(() => reloadPrefs()).catch(() => { /* stubbed today; local state already applied */ });
                       }}
                       className="flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold border border-rmpg-700/50 hover:brightness-125 transition-all"
                       style={{ background: '#0d0d0d', color: '#d4a017' }}
@@ -2897,7 +3434,7 @@ export default function DispatchPage() {
                   const now = Date.now();
                   calls.forEach(c => {
                     if (!c.created_at) return;
-                    const t = new Date(c.created_at).getTime();
+                    const t = parseTimestamp(c.created_at).getTime();
                     const ageMin = (now - t) / 60000;
                     if (ageMin < 0 || ageMin > 60) return;
                     const idx = Math.min(11, Math.floor(ageMin / 5));
@@ -2930,7 +3467,7 @@ export default function DispatchPage() {
         {(() => {
           const todayCalls = calls.filter(c => {
             if (!c.created_at) return false;
-            const d = new Date(c.created_at);
+            const d = parseTimestamp(c.created_at);
             const now = new Date();
             return d.toDateString() === now.toDateString();
           });
@@ -2938,13 +3475,13 @@ export default function DispatchPage() {
           // Avg response time (created → onscene) for calls with onscene_at today
           const responseTimes = todayCalls
             .filter(c => c.onscene_at && c.created_at)
-            .map(c => (new Date(c.onscene_at!).getTime() - new Date(c.created_at!).getTime()) / 60000)
+            .map(c => (parseTimestamp(c.onscene_at).getTime() - parseTimestamp(c.created_at).getTime()) / 60000)
             .filter(m => m > 0 && m < 480);
           const avgResponse = responseTimes.length > 0 ? Math.round(responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length) : null;
           // Oldest pending call age
           const pendingCalls = calls.filter(c => c.status === 'pending');
           const oldestPending = pendingCalls.length > 0
-            ? Math.round((Date.now() - Math.min(...pendingCalls.map(c => new Date(c.created_at || 0).getTime()))) / 60000)
+            ? Math.round((Date.now() - Math.min(...pendingCalls.map(c => parseTimestamp(c.created_at).getTime()))) / 60000)
             : null;
 
           return (
@@ -2968,21 +3505,46 @@ export default function DispatchPage() {
                   OLDEST WAIT: <strong>{oldestPending}m</strong>
                 </span>
               )}
-              {/* Priority quick filters */}
+              {/* Priority quick filters — clickable to toggle filter */}
               <div className="ml-auto flex items-center gap-0.5">
                 <span className="text-[8px] text-rmpg-600 mr-1">PRIORITY</span>
                 {(['P1', 'P2', 'P3', 'P4'] as const).map(p => {
                   const count = calls.filter(c => c.priority === p && !['cleared', 'closed', 'archived', 'cancelled'].includes(c.status)).length;
+                  const active = priorityFilter === p;
                   const colors: Record<string, string> = {
-                    P1: 'bg-red-900/40 text-red-400 border-red-700/50',
-                    P2: 'bg-amber-900/40 text-amber-400 border-amber-700/50',
-                    P3: 'bg-gray-900/40 text-gray-400 border-gray-700/50',
-                    P4: 'bg-green-900/40 text-green-400 border-green-700/50',
+                    P1: `bg-red-900/${active ? '60' : '40'} text-red-400 border-red-700/${active ? '60' : '50'}`,
+                    P2: `bg-amber-900/${active ? '60' : '40'} text-amber-400 border-amber-700/${active ? '60' : '50'}`,
+                    P3: `bg-gray-900/${active ? '60' : '40'} text-gray-400 border-gray-700/${active ? '60' : '50'}`,
+                    P4: `bg-green-900/${active ? '60' : '40'} text-green-400 border-green-700/${active ? '60' : '50'}`,
                   };
                   return (
-                    <span key={p} className={`px-1.5 py-0.5 text-[8px] font-bold border ${colors[p]} ${count > 0 ? '' : 'opacity-30'}`}>
+                    <button
+                      key={p}
+                      type="button"
+                      onClick={() => setPriorityFilter(active ? null : p)}
+                      className={`px-1.5 py-0.5 text-[8px] font-bold border cursor-pointer hover:brightness-125 transition-all ${colors[p]} ${count > 0 ? '' : 'opacity-30'}`}
+                      title={`${active ? 'Clear' : 'Filter to'} ${p} calls`}
+                    >
                       {p}:{count}
-                    </span>
+                    </button>
+                  );
+                })}
+                {/* Signal filter toggle */}
+                {(['signaled', 'unsignaled'] as const).map(mode => {
+                  const active = signalFilter === mode;
+                  const count = mode === 'signaled'
+                    ? calls.filter(c => knownSignalCodes.has(c.incident_type) && !['cleared', 'closed', 'archived', 'cancelled'].includes(c.status)).length
+                    : calls.filter(c => !knownSignalCodes.has(c.incident_type) && !['cleared', 'closed', 'archived', 'cancelled'].includes(c.status)).length;
+                  return (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => setSignalFilter(active ? null : mode)}
+                      className={`px-1.5 py-0.5 text-[8px] font-bold border cursor-pointer hover:brightness-125 transition-all ${active ? 'bg-purple-900/60 text-purple-300 border-purple-700/60' : 'bg-purple-900/30 text-purple-400/70 border-purple-700/40'} ${count > 0 ? '' : 'opacity-30'}`}
+                      title={active ? 'Clear signal filter' : `Show only ${mode === 'signaled' ? 'calls with a signal code' : 'calls missing a signal code'}`}
+                    >
+                      {mode === 'signaled' ? '✓' : '✗'}SIG:{count}
+                    </button>
                   );
                 })}
               </div>
@@ -2990,22 +3552,29 @@ export default function DispatchPage() {
           );
         })()}
 
-        {/* Feature 9: Call Type Statistics Bar */}
+        {/* Feature 9: Call Type Statistics Bar — clickable to toggle filter */}
         {callTypeStats.length > 0 && (
           <div className="px-3 py-1 border-b border-[#2b2b2b] flex items-center gap-2 flex-shrink-0" style={{ background: '#0c0c0c80' }}>
             {callTypeStats.map(({ type, count }) => {
               const total = callTypeStats.reduce((sum, s) => sum + s.count, 0);
               const pct = total > 0 ? (count / total * 100) : 0;
+              const active = typeFilter === type;
               return (
-                <div key={type} className="flex items-center gap-0.5" title={`${formatIncidentType(type)}: ${count}`}>
+                <button
+                  key={type}
+                  type="button"
+                  onClick={() => setTypeFilter(active ? null : type)}
+                  className={`flex items-center gap-0.5 cursor-pointer hover:brightness-125 transition-all ${active ? 'px-1 py-0.5 rounded-sm bg-brand-900/30 border border-brand-700/50' : ''}`}
+                  title={`${formatIncidentType(type)}: ${count} — ${active ? 'Clear filter' : 'Filter to this type'}`}
+                >
                   <div
                     className="h-2 rounded-sm bg-brand-500"
-                    style={{ width: `${Math.max(pct * 0.8, 4)}px`, minWidth: 4, opacity: 0.7 + pct * 0.003 }}
+                    style={{ width: `${Math.max(pct * 0.8, 4)}px`, minWidth: 4, opacity: active ? 1 : 0.7 + pct * 0.003 }}
                   />
-                  <span className="text-[7px] font-mono text-rmpg-400 truncate max-w-[80px] tabular-nums" title={formatIncidentType(type)}>
+                  <span className={`text-[7px] font-mono tabular-nums truncate max-w-[80px] ${active ? 'text-brand-300' : 'text-rmpg-400'}`} title={formatIncidentType(type)}>
                     {formatIncidentType(type).slice(0, 12)} {count}
                   </span>
-                </div>
+                </button>
               );
             })}
           </div>
@@ -3023,16 +3592,54 @@ export default function DispatchPage() {
           </div>
         )}
 
+        {/* Active filter tags */}
+        {(priorityFilter || typeFilter || signalFilter) && (
+          <div className="px-3 py-1 border-b border-[#2b2b2b] flex items-center gap-1.5 flex-shrink-0" style={{ background: '#0a0a0a' }}>
+            <span className="text-[8px] text-rmpg-500 font-semibold uppercase tracking-wider mr-0.5">Filters:</span>
+            {priorityFilter && (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold border rounded-sm"
+                style={{ background: priorityFilter === 'P1' ? 'rgba(239,68,68,0.25)' : priorityFilter === 'P2' ? 'rgba(217,119,6,0.25)' : priorityFilter === 'P3' ? 'rgba(107,114,128,0.25)' : 'rgba(34,197,94,0.25)', borderColor: priorityFilter === 'P1' ? '#ef444480' : priorityFilter === 'P2' ? '#d9770680' : priorityFilter === 'P3' ? '#6b728080' : '#22c55e80', color: priorityFilter === 'P1' ? '#ef4444' : priorityFilter === 'P2' ? '#d97706' : priorityFilter === 'P3' ? '#9ca3af' : '#22c55e' }}
+              >
+                Priority: {priorityFilter}
+                <button type="button" onClick={() => setPriorityFilter(null)} className="ml-0.5 hover:text-white transition-colors">&times;</button>
+              </span>
+            )}
+            {typeFilter && (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold border rounded-sm text-brand-300 border-brand-700/50 bg-brand-900/20">
+                Type: {formatIncidentType(typeFilter)}
+                <button type="button" onClick={() => setTypeFilter(null)} className="ml-0.5 hover:text-white transition-colors">&times;</button>
+              </span>
+            )}
+            {signalFilter && (
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold border rounded-sm text-purple-300 border-purple-700/50 bg-purple-900/20">
+                Signal: {signalFilter === 'signaled' ? 'Has code' : 'No code'}
+                <button type="button" onClick={() => setSignalFilter(null)} className="ml-0.5 hover:text-white transition-colors">&times;</button>
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={() => { setPriorityFilter(null); setTypeFilter(null); setSignalFilter(null); }}
+              className="ml-auto text-[8px] text-rmpg-500 hover:text-rmpg-300 transition-colors underline"
+            >
+              Clear All
+            </button>
+          </div>
+        )}
+
         {/* Call List */}
         <div className="flex-1 overflow-y-auto p-2 space-y-1" style={{ scrollbarGutter: 'stable', scrollSnapType: 'y proximity', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain' } as React.CSSProperties}>
           {filteredCalls.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16 text-[#6b7280]">
+            <div className="flex flex-col items-center justify-center py-16 text-[#888888]">
               <div className="p-3.5 rounded-sm mb-3" style={{ background: '#0c0c0c50', border: '1px solid #2b2b2b30' }}>
                 <Phone className="w-7 h-7" style={{ opacity: 0.35 }} />
               </div>
-              <p className="text-[11px] font-semibold uppercase tracking-wider mb-1.5">No calls in this category</p>
-              <p className="text-[10px] text-[#545454] max-w-[200px] text-center leading-relaxed">
-                {filterTab === 'pending' ? 'All pending calls have been dispatched' :
+              <p className="text-[11px] font-semibold uppercase tracking-wider mb-1.5">
+                {(priorityFilter || typeFilter || signalFilter) ? 'No calls match active filters' : 'No calls in this category'}
+              </p>
+              <p className="text-[10px] text-[#545454] max-w-[240px] text-center leading-relaxed">
+                {(priorityFilter || typeFilter || signalFilter) ? (
+                  <button type="button" onClick={() => { setPriorityFilter(null); setTypeFilter(null); setSignalFilter(null); }} className="underline hover:text-rmpg-300 transition-colors">Clear filters</button>
+                ) : filterTab === 'pending' ? 'All pending calls have been dispatched' :
                  filterTab === 'active' ? 'No units are currently on active calls' :
                  filterTab === 'cleared' ? 'No cleared calls to review' :
                  filterTab === 'archived' ? 'No archived calls found' :
@@ -3049,21 +3656,39 @@ export default function DispatchPage() {
               )}
             </div>
           ) : (
-            filteredCalls.map((call) => (
-              <CallCard
-                key={call.id}
-                call={call}
-                isSelected={selectedCall?.id === call.id}
-                onClick={setSelectedCall}
-                onUnitDrop={handleDragAssignUnit}
-                onStatusChange={(callId, newStatus) => handleStatusChange(callId, newStatus as CallStatus)}
-                onContextMenu={(e, c) => setContextMenu({ x: e.clientX, y: e.clientY, call: c })}
-                stackCount={call.location ? stackedCallCounts.get(call.location.toLowerCase().trim()) : undefined}
-                onQuickNote={handleQuickNote}
-                hasActiveWarrant={!!(call as any).has_active_warrant}
-                onTogglePin={handleTogglePin}
-              />
-            ))
+            filteredCalls.map((call, i) => {
+              // GEO sort groups calls by section → zone → beat; render a sticky
+              // district header before the first call of each new section so a
+              // dispatcher can scan and work one district at a time.
+              const showSectionDivider =
+                sortMode === 'geo' &&
+                (i === 0 || (filteredCalls[i - 1]?.sector_name || '') !== (call.sector_name || ''));
+              const sectionCode = sectionPrefix(call.zone_id);
+              const sectionLabel = call.sector_name || 'Unassigned';
+              return (
+                <React.Fragment key={call.id}>
+                  {showSectionDivider && (
+                    <div className="sticky top-0 z-10 flex items-center gap-1.5 px-2 py-0.5 bg-[#0d0d0d] border-y border-amber-900/30 text-[9px] font-bold uppercase tracking-wider text-amber-400/90">
+                      <MapPin className="w-3 h-3" />
+                      {sectionCode ? `${sectionCode} · ${sectionLabel}` : sectionLabel}
+                    </div>
+                  )}
+                  <CallCard
+                    call={call}
+                    isSelected={selectedCall?.id === call.id}
+                    onClick={setSelectedCall}
+                    onUnitDrop={handleDragAssignUnit}
+                    onStatusChange={(callId, newStatus) => handleStatusChange(callId, newStatus as CallStatus)}
+                    onContextMenu={(e, c) => setContextMenu({ x: e.clientX, y: e.clientY, call: c })}
+                    stackCount={call.location ? stackedCallCounts.get(call.location.toLowerCase().trim()) : undefined}
+                    onQuickNote={handleQuickNote}
+                    hasActiveWarrant={!!(call as any).has_active_warrant}
+                    onTogglePin={handleTogglePin}
+                    signalInfo={signalLookup(call.incident_type || '') || null}
+                  />
+                </React.Fragment>
+              );
+            })
           )}
         </div>
       </div>
@@ -3096,7 +3721,7 @@ export default function DispatchPage() {
                   {/* Case Number — editable by admin/manager */}
                   {(selectedCall.case_number || isAdminOrManager) && (
                     editingTimestamp === 'case_number' ? (
-                      <input
+                      <input id="ff-dispatchpage-4"
                         type="text"
                         className="input-dark text-[10px] font-mono font-bold px-1.5 py-0.5 w-[160px]"
                         defaultValue={selectedCall.case_number || ''}
@@ -3144,7 +3769,7 @@ export default function DispatchPage() {
                   {/* Incident Number — editable by admin/manager */}
                   {(selectedCall.incident_number || isAdminOrManager) && (
                     editingTimestamp === 'incident_number' ? (
-                      <input
+                      <input id="ff-dispatchpage-5"
                         type="text"
                         className="input-dark text-[10px] font-mono font-bold px-1.5 py-0.5 w-[160px]"
                         defaultValue={(selectedCall as any).incident_number || ''}
@@ -3201,7 +3826,7 @@ export default function DispatchPage() {
                   {selectedCall.created_at && !['cleared', 'closed', 'archived', 'cancelled'].includes(selectedCall.status) && (
                     <span className={`${onSceneElapsed ? '' : 'ml-auto'} flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold font-mono whitespace-nowrap tabular-nums ${
                       (() => {
-                        const mins = Math.round((Date.now() - new Date(selectedCall.created_at).getTime()) / 60000);
+                        const mins = Math.round((Date.now() - parseTimestamp(selectedCall.created_at).getTime()) / 60000);
                         if (mins > 60) return 'text-red-400 bg-red-900/20 border border-red-700/30';
                         if (mins > 30) return 'text-amber-400 bg-amber-900/20 border border-amber-700/30';
                         return 'text-rmpg-400 bg-rmpg-900/20 border border-rmpg-700/30';
@@ -3209,7 +3834,7 @@ export default function DispatchPage() {
                     }`} title="Total call duration">
                       <Clock style={{ width: 9, height: 9 }} />
                       {(() => {
-                        const mins = Math.round((Date.now() - new Date(selectedCall.created_at).getTime()) / 60000);
+                        const mins = Math.round((Date.now() - parseTimestamp(selectedCall.created_at).getTime()) / 60000);
                         return mins >= 60 ? `${Math.floor(mins / 60)}h ${mins % 60}m` : `${mins}m`;
                       })()}
                     </span>
@@ -3367,7 +3992,7 @@ export default function DispatchPage() {
                     {selectedCall.incident_type === 'pso_client_request' && !serveLink && (
                       <button type="button"
                         className="toolbar-btn"
-                        style={{ background: '#7c3aed20', borderColor: '#7c3aed50', color: '#a78bfa' }}
+                        style={{ background: '#a855f720', borderColor: '#a855f750', color: '#c084fc' }}
                         disabled={sendingToServe}
                         onClick={async () => {
                           setSendingToServe(true);
@@ -3426,7 +4051,7 @@ export default function DispatchPage() {
                         <button type="button" onClick={() => handleHoldCall(selectedCall.id)} className="toolbar-btn" style={{ color: '#f59e0b' }}>
                           ⏸ Hold
                         </button>
-                        <button type="button" onClick={() => handleStatusChange(selectedCall.id, 'cancelled')} className="toolbar-btn" style={{ color: '#ef7a7a' }}>
+                        <button type="button" onClick={() => handleStatusChange(selectedCall.id, 'cancelled')} className="toolbar-btn" style={{ color: '#f87171' }}>
                           <XCircle style={{ width: 10, height: 10 }} /> Cancel
                         </button>
                       </>
@@ -3476,10 +4101,10 @@ export default function DispatchPage() {
                         <RotateCcw style={{ width: 10, height: 10 }} /> Restore
                       </button>
                     )}
-                    {/* Delete — available on any call */}
-                    {!isEditing && (
-                      <button type="button" onClick={() => setDeleteCallTarget(selectedCall)} className="toolbar-btn text-red-400 hover:text-red-300" title="Delete this call permanently">
-                        <Trash2 style={{ width: 10, height: 10 }} /> Delete
+                    {/* Remove — soft-delete (archive); senior roles only */}
+                    {!isEditing && canDeleteCall && (
+                      <button type="button" onClick={() => setDeleteCallTarget(selectedCall)} className="toolbar-btn text-red-400 hover:text-red-300" title="Remove this call from the board (archived, admin-recoverable)">
+                        <Trash2 style={{ width: 10, height: 10 }} /> Remove
                       </button>
                     )}
                   </div>
@@ -3505,14 +4130,14 @@ export default function DispatchPage() {
                     <span className="text-rmpg-200 font-bold">
                       {(() => {
                         const endTime = selectedCall.status === 'archived' ? (selectedCall.archived_at || selectedCall.cleared_at || (selectedCall as any).closed_at) : ['cleared', 'closed', 'cancelled'].includes(selectedCall.status) ? (selectedCall.cleared_at || (selectedCall as any).closed_at || selectedCall.created_at) : null;
-                        const elapsed = (endTime ? new Date(endTime).getTime() : Date.now()) - new Date(selectedCall.created_at).getTime();
+                        const elapsed = (endTime ? parseTimestamp(endTime).getTime() : Date.now()) - parseTimestamp(selectedCall.created_at).getTime();
                         return formatCallDuration(elapsed);
                       })()}
                     </span>
                   </div>
                   {/* Response time — dispatched to on scene */}
                   {selectedCall.dispatched_at && selectedCall.onscene_at && (() => {
-                    const diff = new Date(selectedCall.onscene_at).getTime() - new Date(selectedCall.dispatched_at).getTime();
+                    const diff = parseTimestamp(selectedCall.onscene_at).getTime() - parseTimestamp(selectedCall.dispatched_at).getTime();
                     if (diff <= 0 || !isFinite(diff)) return null;
                     return (
                       <div className="flex items-center gap-1.5 text-[10px] font-mono tabular-nums">
@@ -3525,7 +4150,7 @@ export default function DispatchPage() {
                   {/* On-scene time — onscene to cleared (or live if still on scene) */}
                   {selectedCall.onscene_at && (() => {
                     const endTime = selectedCall.cleared_at || (selectedCall as any).closed_at || (selectedCall.status === 'archived' ? selectedCall.archived_at : null);
-                    const diff = (endTime ? new Date(endTime).getTime() : Date.now()) - new Date(selectedCall.onscene_at).getTime();
+                    const diff = (endTime ? parseTimestamp(endTime).getTime() : Date.now()) - parseTimestamp(selectedCall.onscene_at).getTime();
                     if (diff <= 0 || !isFinite(diff)) return null;
                     return (
                       <div className="flex items-center gap-1.5 text-[10px] font-mono tabular-nums">
@@ -3551,7 +4176,7 @@ export default function DispatchPage() {
                       <div className="flex items-center gap-1 ml-auto">
                         <AlertTriangle style={{ width: 10, height: 10 }} className="text-red-400" />
                         {flags.map(f => (
-                          <span key={f} className="text-[8px] font-bold font-mono px-1 py-0" style={{ color: f === 'ARMED' || f === 'FELONY' ? '#fca5a5' : f === 'DV' ? '#fde047' : f === 'MH' ? '#c4b5fd' : f === 'PURSUIT' ? '#fb923c' : f === 'SAFETY' ? '#ef4444' : '#aaaaaa', background: 'rgba(220,38,38,0.1)', border: '1px solid rgba(220,38,38,0.25)' }}>
+                          <span key={f} className="text-[8px] font-bold font-mono px-1 py-0" style={{ color: f === 'ARMED' || f === 'FELONY' ? '#fca5a5' : f === 'DV' ? '#fde047' : f === 'MH' ? '#c084fc' : f === 'PURSUIT' ? '#fb923c' : f === 'SAFETY' ? '#ef4444' : '#aaaaaa', background: 'rgba(220,38,38,0.1)', border: '1px solid rgba(220,38,38,0.25)' }}>
                             {f}
                           </span>
                         ))}
@@ -3614,7 +4239,7 @@ export default function DispatchPage() {
                     <div>
                       <label className="field-label">Type:</label>
                       {isEditing ? (
-                        <select className="select-dark text-xs mt-0.5" value={editData.incident_type} onChange={(e) => updateEditField('incident_type', e.target.value)}>
+                        <select id="ff-dispatchpage-6" className="select-dark text-xs mt-0.5" value={editData.incident_type} onChange={(e) => updateEditField('incident_type', e.target.value)}>
                           {Object.entries(INCIDENT_TYPE_CATEGORIES).map(([cat, types]) => (
                             <optgroup key={cat} label={cat}>{types.map((t) => (<option key={t.value} value={t.value}>{t.label}</option>))}</optgroup>
                           ))}
@@ -3626,7 +4251,71 @@ export default function DispatchPage() {
                     <div>
                       <label className="field-label">Location:</label>
                       {isEditing ? (
-                        <input type="text" className="input-dark text-xs mt-0.5" value={editData.location} onChange={(e) => updateEditField('location', e.target.value)} />
+                        <AddressAutocomplete
+                          className="input-dark text-xs mt-0.5"
+                          placeholder="123 Main St, Salt Lake City, UT"
+                          value={editData.location}
+                          onChange={(val) => updateEditField('location', val)}
+                          onSelect={async (addr: ParsedAddress) => {
+                            // Parse Building/Suite/Floor from the typed text (still
+                            // in editData.location) before it's replaced — the
+                            // geocoder strips sub-address tokens.
+                            const parts = parseLocationParts(editData.location || addr.formatted);
+                            updateEditField('location', addr.formatted);
+                            if (addr.latitude != null) {
+                              // Location changed → recompute and OVERWRITE every
+                              // derived geo field (coords, district, cross street).
+                              // Fall back to the prior value when a lookup misses
+                              // so a Mapbox hiccup never blanks good data.
+                              const details = await resolveAddress(addr);
+                              setEditData(prev => ({
+                                ...prev,
+                                latitude: details.latitude,
+                                longitude: details.longitude,
+                                sector_id: details.sector_id || prev.sector_id,
+                                zone_id: details.zone_id || prev.zone_id,
+                                beat_id: details.beat_id || prev.beat_id,
+                                dispatch_code: details.dispatch_code || prev.dispatch_code,
+                                cross_street: details.cross_street || prev.cross_street,
+                                // Bldg/Suite/Floor: fill-if-empty, never clobber.
+                                location_building: prev.location_building || parts.building,
+                                location_floor: prev.location_floor || parts.floor,
+                                location_room: prev.location_room || parts.suite,
+                              }));
+                            } else {
+                              setEditData(prev => ({
+                                ...prev,
+                                location_building: prev.location_building || parts.building,
+                                location_floor: prev.location_floor || parts.floor,
+                                location_room: prev.location_room || parts.suite,
+                              }));
+                            }
+                          }}
+                          // Typed an address without picking a suggestion →
+                          // forward-geocode the freehand text and fill the same
+                          // derived geo fields, so manual entries still get
+                          // cross-street + section/zone/beat. Bldg/Suite parse
+                          // from the text even when the geocode misses.
+                          onResolveTyped={async (text) => {
+                            const parts = parseLocationParts(text);
+                            const details = await resolveFromText(text);
+                            setEditData(prev => ({
+                              ...prev,
+                              location_building: prev.location_building || parts.building,
+                              location_floor: prev.location_floor || parts.floor,
+                              location_room: prev.location_room || parts.suite,
+                              ...(details ? {
+                                latitude: details.latitude ?? prev.latitude,
+                                longitude: details.longitude ?? prev.longitude,
+                                sector_id: details.sector_id || prev.sector_id,
+                                zone_id: details.zone_id || prev.zone_id,
+                                beat_id: details.beat_id || prev.beat_id,
+                                dispatch_code: details.dispatch_code || prev.dispatch_code,
+                                cross_street: details.cross_street || prev.cross_street,
+                              } : {}),
+                            }));
+                          }}
+                        />
                       ) : (
                         <div className="flex items-center gap-1.5">
                           <MapPin className="w-3.5 h-3.5 text-rmpg-300" />
@@ -3655,7 +4344,7 @@ export default function DispatchPage() {
                       <label className="field-label">Description:</label>
                       {isEditing ? (
                         <>
-                          <textarea className="textarea-dark text-xs mt-0.5" rows={3} value={editData.description} onChange={(e) => updateEditField('description', e.target.value)} />
+                          <textarea id="ff-dispatchpage-7" className="textarea-dark text-xs mt-0.5" rows={3} value={editData.description} onChange={(e) => updateEditField('description', e.target.value)} />
                           <NarrativeAssist
                             notes={editData.description || ''}
                             incidentType={editData.incident_type || selectedCall.incident_type}
@@ -3672,7 +4361,7 @@ export default function DispatchPage() {
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                           <div>
                             <label className="field-label">Source:</label>
-                            <select className="select-dark text-xs mt-0.5" value={editData.source} onChange={(e) => updateEditField('source', e.target.value)}>
+                            <select id="ff-dispatchpage-8" className="select-dark text-xs mt-0.5" value={editData.source} onChange={(e) => updateEditField('source', e.target.value)}>
                               <option value="phone">Phone</option><option value="radio">Radio</option><option value="walk_in">Walk-In</option>
                               <option value="alarm">Alarm</option><option value="patrol">Patrol</option><option value="online">Online</option>
                               <option value="dispatch">Dispatch</option><option value="other">Other</option>
@@ -3680,7 +4369,7 @@ export default function DispatchPage() {
                           </div>
                           <div>
                             <label className="field-label">Priority:</label>
-                            <select className="select-dark text-xs mt-0.5" value={editData.priority} onChange={(e) => updateEditField('priority', e.target.value)}>
+                            <select id="ff-dispatchpage-9" className="select-dark text-xs mt-0.5" value={editData.priority} onChange={(e) => updateEditField('priority', e.target.value)}>
                               <option value="P1">P1 - Emergency</option><option value="P2">P2 - Urgent</option>
                               <option value="P3">P3 - Routine</option><option value="P4">P4 - Scheduled</option>
                             </select>
@@ -3689,7 +4378,7 @@ export default function DispatchPage() {
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                           <div>
                             <label className="field-label">Client:</label>
-                            <select className="select-dark text-xs mt-0.5" value={editData.client_id || ''} onChange={(e) => updateEditField('client_id', e.target.value)}>
+                            <select id="ff-dispatchpage-10" className="select-dark text-xs mt-0.5" value={editData.client_id || ''} onChange={(e) => updateEditField('client_id', e.target.value)}>
                               <option value="">— No Client —</option>
                               {clientsList.map((c) => (
                                 <option key={c.id} value={c.id}>{c.name}</option>
@@ -3698,7 +4387,7 @@ export default function DispatchPage() {
                           </div>
                           <div>
                             <label className="field-label">Property:</label>
-                            <select className="select-dark text-xs mt-0.5" value={editData.property_id || ''} onChange={(e) => updateEditField('property_id', e.target.value)}>
+                            <select id="ff-dispatchpage-11" className="select-dark text-xs mt-0.5" value={editData.property_id || ''} onChange={(e) => updateEditField('property_id', e.target.value)}>
                               <option value="">— No Property —</option>
                               {propertiesList.map((p) => (
                                 <option key={p.id} value={p.id}>{p.name}</option>
@@ -3708,52 +4397,68 @@ export default function DispatchPage() {
                         </div>
                         <div>
                           <label className="field-label">Disposition:</label>
-                          <select
+                          <select id="ff-dispatchpage-12"
                             className="select-dark text-xs mt-0.5"
                             value={editData.disposition || ''}
                             onChange={(e) => updateEditField('disposition', e.target.value)}
                           >
                             <option value="">— Select Disposition —</option>
-                            {/* Feature 2: Common disposition quick-picks (always available) */}
-                            <optgroup label="Common Dispositions">
-                              <option value="Report Taken">Report Taken</option>
-                              <option value="Unfounded">Unfounded</option>
-                              <option value="GOA">Gone on Arrival</option>
-                              <option value="Referred">Referred</option>
-                              <option value="No Action">No Action Required</option>
-                              <option value="Arrest">Arrest</option>
-                              <option value="Warning">Warning Issued</option>
-                              <option value="Citation">Citation Issued</option>
-                              <option value="Trespass Warning">Trespass Warning</option>
-                              <option value="Civil Matter">Civil Matter</option>
-                            </optgroup>
-                            {dispositionCodes.length > 0 && (
-                              <optgroup label="Custom Codes">
-                                {dispositionCodes.map((d) => (
-                                  <option key={d.code} value={d.code}>
-                                    {d.code} — {d.description}
-                                  </option>
+                            {/* Built-in dispositions from the shared source of
+                                truth (constants/dispositionCodes). For PSO /
+                                process_service calls the Process Service group is
+                                hoisted to the top so those codes are immediately
+                                reachable. */}
+                            {dispositionGroupsForIncident(selectedCall.incident_type).map((g) => (
+                              <optgroup key={g.label} label={g.label}>
+                                {/* Selection shows CODE — Description so the
+                                    dispatcher picks the right code; only the
+                                    code is stored + shown on output surfaces. */}
+                                {g.codes.map((d) => (
+                                  <option key={d.code} value={d.code}>{d.code} — {d.description}</option>
                                 ))}
                               </optgroup>
-                            )}
+                            ))}
+                            {/* Admin-defined custom codes from /admin/config that
+                                aren't already built in. The live worker returns
+                                none today; the rewrite worker will. */}
+                            {(() => {
+                              const customs = dispositionCodes.filter((d) => !DEFAULT_DISPOSITION_CODES.has(d.code));
+                              return customs.length > 0 ? (
+                                <optgroup label="Custom Codes">
+                                  {customs.map((d) => (
+                                    <option key={d.code} value={d.code}>{d.code} — {d.description}</option>
+                                  ))}
+                                </optgroup>
+                              ) : null;
+                            })()}
                           </select>
                         </div>
                       </>
                     )}
-                    {!isEditing && selectedCall.disposition && (
-                      <div>
-                        <label className="field-label">Disposition:</label>
-                        <p className="text-sm text-rmpg-200">
-                          <span className="inline-block px-2 py-0.5 bg-brand-900/40 text-brand-300 text-[11px] uppercase font-bold border border-brand-600/40 mr-1.5 rounded-sm tracking-wide">
-                            {selectedCall.disposition}
-                          </span>
-                          {(() => {
-                            const match = dispositionCodes.find((d) => d.code === selectedCall.disposition);
-                            return match ? <span className="text-rmpg-300">{match.description}</span> : null;
-                          })()}
-                        </p>
-                      </div>
-                    )}
+                    {!isEditing && selectedCall.disposition && (() => {
+                      // OUTPUT = code only (per the short-code contract). The
+                      // description rides along as a hover tooltip for
+                      // discoverability but is not shown inline. Badge color
+                      // comes from the chart when the code is known.
+                      const match = dispositionCodes.find((d) => d.code === selectedCall.disposition);
+                      const color = (match as any)?.color as string | undefined;
+                      return (
+                        <div>
+                          <label className="field-label">Disposition:</label>
+                          <p className="text-sm text-rmpg-200">
+                            <span
+                              className="inline-block px-2 py-0.5 text-[11px] uppercase font-bold border mr-1.5 rounded-sm tracking-wide"
+                              title={match?.description || selectedCall.disposition || ''}
+                              style={color
+                                ? { color, borderColor: `${color}66`, background: `${color}1a` }
+                                : undefined}
+                            >
+                              {selectedCall.disposition}
+                            </span>
+                          </p>
+                        </div>
+                      );
+                    })()}
                   </div>
 
                   {/* Right Column: Caller, Timeline, Units */}
@@ -3763,10 +4468,16 @@ export default function DispatchPage() {
                       <label className="field-label">Caller:</label>
                       {isEditing ? (
                         <div className="space-y-1 mt-0.5">
-                          <input type="text" className="input-dark text-xs" placeholder="Caller name" value={editData.caller_name} onChange={(e) => updateEditField('caller_name', e.target.value)} />
-                          <input type="text" inputMode="tel" className="input-dark text-xs" placeholder="Caller phone" value={editData.caller_phone} onChange={(e) => updateEditField('caller_phone', formatPhoneInput(e.target.value))} />
-                          <input type="text" className="input-dark text-xs" placeholder="Caller address" value={editData.caller_address} onChange={(e) => updateEditField('caller_address', e.target.value)} />
-                          <select className="select-dark text-xs" value={editData.caller_relationship} onChange={(e) => updateEditField('caller_relationship', e.target.value)}>
+                          <input id="ff-dispatchpage-13" type="text" className="input-dark text-xs" placeholder="Caller name" value={editData.caller_name} onChange={(e) => updateEditField('caller_name', e.target.value)} />
+                          <input id="ff-dispatchpage-14" type="text" inputMode="tel" className="input-dark text-xs" placeholder="Caller phone" value={editData.caller_phone} onChange={(e) => updateEditField('caller_phone', formatPhoneInput(e.target.value))} />
+                           <AddressAutocomplete
+                             className="input-dark text-xs"
+                             placeholder="Caller address"
+                             value={editData.caller_address}
+                             onChange={(value) => updateEditField('caller_address', value)}
+                             name="caller_address"
+                           />
+                          <select id="ff-dispatchpage-15" className="select-dark text-xs" value={editData.caller_relationship} onChange={(e) => updateEditField('caller_relationship', e.target.value)}>
                             <option value="">-- Relationship --</option>
                             <option value="employee">Employee</option><option value="victim">Victim</option>
                             <option value="witness">Witness</option><option value="complainant">Complainant</option>
@@ -3816,18 +4527,18 @@ export default function DispatchPage() {
                             <span className="text-[#9ca3af] text-[10px]" style={{ minWidth: '66px' }}>{ts.label}</span>
                             {editingTimestamp === ts.field ? (
                               <div className="flex items-center gap-1">
-                                <input
+                                <input id="ff-dispatchpage-16"
                                   type="datetime-local"
                                   step="1"
                                   className="input-dark text-[10px] font-mono px-1 py-0.5 w-[175px]"
-                                  defaultValue={ts.value ? new Date(new Date(ts.value).getTime() - new Date(ts.value).getTimezoneOffset() * 60000).toISOString().slice(0, 19) : ''}
+                                  defaultValue={toDatetimeLocalValue(ts.value)}
                                   autoFocus
                                   onKeyDown={(e) => {
-                                    if (e.key === 'Enter') handleTimelineEdit(ts.field, new Date((e.target as HTMLInputElement).value).toISOString());
+                                    if (e.key === 'Enter') handleTimelineEdit(ts.field, mtDatetimeLocalToUtc((e.target as HTMLInputElement).value));
                                     if (e.key === 'Escape') setEditingTimestamp(null);
                                   }}
                                   onBlur={(e) => {
-                                    if (e.target.value) handleTimelineEdit(ts.field, new Date(e.target.value).toISOString());
+                                    if (e.target.value) handleTimelineEdit(ts.field, mtDatetimeLocalToUtc(e.target.value));
                                     else setEditingTimestamp(null);
                                   }}
                                 />
@@ -3855,7 +4566,7 @@ export default function DispatchPage() {
                         ))}
                         {/* Enhancement 26: Response time (dispatched → onscene) */}
                         {selectedCall.dispatched_at && selectedCall.onscene_at && (() => {
-                          const diff = new Date(selectedCall.onscene_at).getTime() - new Date(selectedCall.dispatched_at).getTime();
+                          const diff = parseTimestamp(selectedCall.onscene_at).getTime() - parseTimestamp(selectedCall.dispatched_at).getTime();
                           if (diff <= 0 || !isFinite(diff)) return null;
                           const mins = Math.floor(diff / 60000);
                           const secs = Math.floor((diff % 60000) / 1000);
@@ -3906,6 +4617,19 @@ export default function DispatchPage() {
                           </div>
                         )}
                       </div>
+                      {/* DI-2: Persistent closest-unit recommendation (server-authoritative GPS) */}
+                      {!isEditing && (isGodMode || !['cleared', 'closed', 'cancelled', 'archived'].includes(selectedCall.status)) && (
+                        <div className="mt-1 mb-1">
+                          <RecommendedUnitsInline
+                            callId={selectedCall.id}
+                            limit={3}
+                            onAssign={(callSign) => {
+                              const u = units.find((x) => x.call_sign === callSign);
+                              if (u) handleAssignUnit(u.id);
+                            }}
+                          />
+                        </div>
+                      )}
                       {/* Feature 11: Auto-assign + Feature 18: Multi-unit buttons */}
                       {!isEditing && (isGodMode || !['cleared', 'closed', 'cancelled', 'archived'].includes(selectedCall.status)) && (
                         <div className="flex gap-1 mt-1 mb-1">
@@ -3928,7 +4652,7 @@ export default function DispatchPage() {
                           {/* Feature 19: Transfer button (only if a unit is assigned) */}
                           {(selectedCall.assigned_units || []).length > 0 && (
                             <div className="relative">
-                              <select
+                              <select id="ff-dispatchpage-17"
                                 className="input-dark text-[8px] py-0 px-1"
                                 style={{ maxWidth: 120 }}
                                 defaultValue=""
@@ -4000,7 +4724,7 @@ export default function DispatchPage() {
                             <Navigation style={{ width: 9, height: 9 }} /> ETA
                           </span>
                           <span className="text-[11px] font-mono font-bold text-white tabular-nums">{routeInfo.eta}</span>
-                          <span className="text-[9px] font-mono text-[#6b7280] tabular-nums">{routeInfo.distance}</span>
+                          <span className="text-[9px] font-mono text-[#888888] tabular-nums">{routeInfo.distance}</span>
                           <span className="text-[8px] font-mono text-[#545454] ml-auto">{routeInfo.unitCallSign}</span>
                         </div>
                       )}
@@ -4009,7 +4733,8 @@ export default function DispatchPage() {
                 </div>
 
                 {/* ── MILEAGE (primary unit) — Info tab ─── */}
-                {detailTab === 'info' && (isEditing || selectedCall.starting_mileage || selectedCall.ending_mileage) && (
+                {/* Boolean() — numeric mileage 0 would otherwise render "0". */}
+                {detailTab === 'info' && Boolean(isEditing || selectedCall.starting_mileage || selectedCall.ending_mileage) && (
                   <div className="border-t border-[#2b2b2b] pt-3 mb-3">
                     <label className="field-label !flex items-center gap-1.5 mb-2" style={{ color: '#d4a017', fontSize: '9px', letterSpacing: '0.05em' }}>
                       <MapPin className="w-3 h-3" /> Primary Unit Mileage
@@ -4018,11 +4743,11 @@ export default function DispatchPage() {
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-1">
                         <div>
                           <label className="text-[9px] text-brand-gold-500">Starting Mileage <span className="text-red-400">*</span></label>
-                          <input type="number" step="0.1" min="0" className="input-dark text-xs" placeholder="e.g. 45230" value={editData.starting_mileage} onChange={(e) => updateEditField('starting_mileage', e.target.value)} />
+                          <input id="ff-dispatchpage-18" type="number" step="0.1" min="0" className="input-dark text-xs" placeholder="e.g. 45230" value={editData.starting_mileage} onChange={(e) => updateEditField('starting_mileage', e.target.value)} />
                         </div>
                         <div>
                           <label className="text-[9px] text-brand-gold-500">Ending Mileage</label>
-                          <input type="number" step="0.1" min="0" className="input-dark text-xs" placeholder="e.g. 45256" value={editData.ending_mileage} onChange={(e) => updateEditField('ending_mileage', e.target.value)} />
+                          <input id="ff-dispatchpage-19" type="number" step="0.1" min="0" className="input-dark text-xs" placeholder="e.g. 45256" value={editData.ending_mileage} onChange={(e) => updateEditField('ending_mileage', e.target.value)} />
                         </div>
                       </div>
                     ) : (
@@ -4047,29 +4772,38 @@ export default function DispatchPage() {
                     </label>
                     {isEditing ? (() => {
                       const filteredZones = zonesForSection(editData.sector_id);
-                      const filteredBeats = beatsForZone(editData.zone_id);
+                      // Scope the Beat list to the Zone when chosen, else to the
+                      // Section (short, relevant list) — never the full ~719 beats.
+                      const sectionScopedBeats = !editData.zone_id;
+                      const filteredBeats = editData.zone_id
+                        ? beatsForZone(editData.zone_id)
+                        : beatsForSection(editData.sector_id);
                       return (
                         <div className="space-y-2 mt-1">
                           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                            <div><label className="text-[9px] text-brand-gold-500">Cross Street</label><input type="text" className="input-dark text-xs" value={editData.cross_street} onChange={(e) => updateEditField('cross_street', e.target.value)} /></div>
-                            <div><label className="text-[9px] text-brand-gold-500">Building</label><input type="text" className="input-dark text-xs" value={editData.location_building} onChange={(e) => updateEditField('location_building', e.target.value)} /></div>
-                            <div><label className="text-[9px] text-brand-gold-500">Floor</label><input type="text" className="input-dark text-xs" value={editData.location_floor} onChange={(e) => updateEditField('location_floor', e.target.value)} /></div>
-                            <div><label className="text-[9px] text-brand-gold-500">Room/Suite</label><input type="text" className="input-dark text-xs" value={editData.location_room} onChange={(e) => updateEditField('location_room', e.target.value)} /></div>
+                            <div><label className="text-[9px] text-brand-gold-500">Cross Street</label><input id="ff-dispatchpage-20" type="text" className="input-dark text-xs" value={editData.cross_street} onChange={(e) => updateEditField('cross_street', e.target.value)} /></div>
+                            <div><label className="text-[9px] text-brand-gold-500">Building</label><input id="ff-dispatchpage-21" type="text" className="input-dark text-xs" value={editData.location_building} onChange={(e) => updateEditField('location_building', e.target.value)} /></div>
+                            <div><label className="text-[9px] text-brand-gold-500">Floor</label><input id="ff-dispatchpage-22" type="text" className="input-dark text-xs" value={editData.location_floor} onChange={(e) => updateEditField('location_floor', e.target.value)} /></div>
+                            <div><label className="text-[9px] text-brand-gold-500">Room/Suite</label><input id="ff-dispatchpage-23" type="text" className="input-dark text-xs" value={editData.location_room} onChange={(e) => updateEditField('location_room', e.target.value)} /></div>
                           </div>
                           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                             <div>
                               <label className="text-[9px] text-brand-gold-500">Section</label>
-                              <select className="input-dark text-xs" value={editData.sector_id} onChange={(e) => {
+                              <select id="ff-dispatchpage-24" className="input-dark text-xs" value={editData.sector_id} onChange={(e) => {
                                 const val = e.target.value;
                                 setEditData(prev => ({ ...prev, sector_id: val, zone_id: '', beat_id: '', dispatch_code: '' }));
                               }}>
                                 <option value="">— Select —</option>
-                                {sections.map(s => <option key={s} value={s}>{sectionLabels.get(s) || s}</option>)}
+                                {sections.map(s => {
+                                  const code = getSectionCode(s);
+                                  const name = sectionLabels.get(s) || s;
+                                  return <option key={s} value={s}>{code ? `${code} — ${name}` : name}</option>;
+                                })}
                               </select>
                             </div>
                             <div>
                               <label className="text-[9px] text-brand-gold-500">Zone</label>
-                              <select className="input-dark text-xs" value={editData.zone_id} onChange={(e) => {
+                              <select id="ff-dispatchpage-25" className="input-dark text-xs" value={editData.zone_id} onChange={(e) => {
                                 const val = e.target.value;
                                 setEditData(prev => ({ ...prev, zone_id: val, beat_id: '', dispatch_code: '' }));
                               }}>
@@ -4079,21 +4813,40 @@ export default function DispatchPage() {
                             </div>
                             <div>
                               <label className="text-[9px] text-brand-gold-500">Beat</label>
-                              <select className="input-dark text-xs" value={editData.beat_id} onChange={(e) => {
+                              <select id="ff-dispatchpage-26" className="input-dark text-xs" value={editData.beat_id} disabled={!editData.sector_id} onChange={(e) => {
                                 const beatVal = e.target.value;
-                                // Auto-resolve dispatch code when beat is selected
-                                const match = beatVal && editData.sector_id && editData.zone_id
-                                  ? districts.find(d => d.sector_id === editData.sector_id && d.zone_id === editData.zone_id && d.beat_id === beatVal)
-                                  : null;
-                                setEditData(prev => ({ ...prev, beat_id: beatVal, dispatch_code: match?.dispatch_code || '' }));
+                                if (!beatVal) { setEditData(prev => ({ ...prev, beat_id: '', dispatch_code: '' })); return; }
+                                // Resolve the district for this beat. If a Zone is
+                                // already chosen, match within it; otherwise resolve
+                                // by (section, beat) and BACKFILL the zone too.
+                                const match = editData.zone_id
+                                  ? districts.find(d => d.sector_id === String(editData.sector_id) && d.zone_id === editData.zone_id && d.beat_id === beatVal)
+                                  : districtForSectionBeat(editData.sector_id, beatVal);
+                                setEditData(prev => ({
+                                  ...prev,
+                                  beat_id: beatVal,
+                                  zone_id: prev.zone_id || match?.zone_id || '',
+                                  dispatch_code: match?.dispatch_code || '',
+                                }));
                               }}>
-                                <option value="">— Select —</option>
-                                {filteredBeats.map(b => <option key={b} value={b}>{getBeatLabel(editData.zone_id, b)}</option>)}
+                                <option value="">{editData.sector_id ? '— Select —' : '— Pick a section first —'}</option>
+                                {filteredBeats.map(b => {
+                                  // When scoped to the whole section, the zone isn't known
+                                  // yet — resolve each beat's own zone for an accurate,
+                                  // zone-disambiguated label ("HER · B2 — name").
+                                  if (sectionScopedBeats) {
+                                    const d = districtForSectionBeat(editData.sector_id, b);
+                                    const label = getBeatLabel(d?.zone_id || '', b);
+                                    const zoneTag = d?.zone_id ? zoneLeaf(d.zone_id) : '';
+                                    return <option key={b} value={b}>{zoneTag ? `${zoneTag} · ${label}` : label}</option>;
+                                  }
+                                  return <option key={b} value={b}>{getBeatLabel(editData.zone_id, b)}</option>;
+                                })}
                               </select>
                             </div>
                             <div>
                               <label className="text-[9px] text-brand-gold-500">Dispatch Code</label>
-                              <input type="text" className="input-dark text-xs bg-rmpg-800 opacity-80" readOnly value={editData.dispatch_code || ''} />
+                              <input id="ff-dispatchpage-27" type="text" className="input-dark text-xs bg-rmpg-800 opacity-80" readOnly value={editData.dispatch_code || ''} />
                             </div>
                           </div>
                         </div>
@@ -4105,13 +4858,39 @@ export default function DispatchPage() {
                         {selectedCall.location_floor && <span className="text-rmpg-200"><span className="text-rmpg-400">Floor:</span> {selectedCall.location_floor}</span>}
                         {selectedCall.location_room && <span className="text-rmpg-200"><span className="text-rmpg-400">Rm:</span> {selectedCall.location_room}</span>}
                         {selectedCall.dispatch_code && (
-                          <span className="text-[10px] font-bold font-mono text-amber-300 bg-amber-900/30 border border-amber-700/40 px-2 py-0.5 rounded-sm tracking-wider tabular-nums" style={{ textShadow: '0 0 6px rgba(251,191,36,0.15)' }}>
+                          <span
+                            role="button"
+                            tabIndex={0}
+                            title="Dispatch zone code — click to copy"
+                            onClick={() => { try { navigator.clipboard?.writeText(selectedCall.dispatch_code || ''); } catch { /* clipboard unavailable */ } }}
+                            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); try { navigator.clipboard?.writeText(selectedCall.dispatch_code || ''); } catch { /* clipboard unavailable */ } } }}
+                            className="cursor-pointer hover:brightness-110 text-[10px] font-bold font-mono text-amber-300 bg-amber-900/30 border border-amber-700/40 px-2 py-0.5 rounded-sm tracking-wider tabular-nums"
+                            style={{ textShadow: '0 0 6px rgba(251,191,36,0.15)' }}
+                          >
                             {selectedCall.dispatch_code}
                           </span>
                         )}
-                        {selectedCall.sector_id && <span className="text-rmpg-200"><span className="text-rmpg-400">Sec:</span> {selectedCall.sector_id} — {sectionLabels.get(selectedCall.sector_id) || ''}</span>}
-                        {selectedCall.zone_id && <span className="text-rmpg-200"><span className="text-rmpg-400">Zone:</span> {selectedCall.zone_id} — {zoneLabels.get(selectedCall.zone_id) || ''}</span>}
-                        {selectedCall.beat_id && <span className="text-rmpg-200"><span className="text-rmpg-400">Beat:</span> {getBeatLabel(selectedCall.zone_id || '', selectedCall.beat_id)}</span>}
+                        {/* Section/Zone/Beat in SHORT-CODE form (e.g. "SL1/HER/A1")
+                            via the chart-code parser — NO long names. Dispatch shows
+                            short codes only; the full Area›Section›Zone›Beat NAMES are
+                            presented on the Map UI ("What's Here") instead. Hidden
+                            when it would merely echo the dispatch_code badge. */}
+                        {(() => {
+                          const szb = sectionZoneBeatCombined(selectedCall.sector_id, selectedCall.zone_id, selectedCall.beat_id);
+                          if (!szb || szb === selectedCall.dispatch_code) return null;
+                          return (
+                            <span
+                              role="button"
+                              tabIndex={0}
+                              title="Section / Zone / Beat (short code) — click to copy"
+                              onClick={() => { try { navigator.clipboard?.writeText(szb); } catch { /* clipboard unavailable */ } }}
+                              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); try { navigator.clipboard?.writeText(szb); } catch { /* clipboard unavailable */ } } }}
+                              className="cursor-pointer hover:brightness-110 text-[10px] font-bold font-mono text-rmpg-300 bg-rmpg-800/60 border border-rmpg-600/50 px-2 py-0.5 rounded-sm tracking-wider"
+                            >
+                              <span className="text-rmpg-500 mr-1">S/Z/B</span>{szb}
+                            </span>
+                          );
+                        })()}
                         {selectedCall.latitude != null && selectedCall.longitude != null && (
                           <span className="text-rmpg-400 font-mono text-[9px] tabular-nums select-all">
                             GPS: {Number(selectedCall.latitude).toFixed(5)}, {Number(selectedCall.longitude).toFixed(5)}
@@ -4123,25 +4902,52 @@ export default function DispatchPage() {
                 )}
 
                 {/* ── SUBJECT/THREAT INFO — Persons tab ─── */}
-                {(detailTab === 'info' || detailTab === 'persons') && (isEditing || (selectedCall.weapons_involved && selectedCall.weapons_involved !== 'None') || selectedCall.injuries_reported || selectedCall.num_subjects || selectedCall.subject_description || selectedCall.vehicle_description || selectedCall.direction_of_travel || callPersons.length > 0 || callVehicles.length > 0) && (
+                {/* Boolean() — num_subjects/num_victims 0 would otherwise leak as "0". */}
+                {(detailTab === 'info' || detailTab === 'persons') && Boolean(isEditing || (selectedCall.weapons_involved && selectedCall.weapons_involved !== 'None') || selectedCall.injuries_reported || selectedCall.num_subjects || selectedCall.subject_description || selectedCall.vehicle_description || selectedCall.direction_of_travel || callPersons.length > 0 || callVehicles.length > 0) && (
                   <div className="border-t border-[#2b2b2b] pt-3 mb-3">
                     <label className="field-label !flex items-center gap-1.5 mb-2" style={{ color: '#d4a017', fontSize: '9px', letterSpacing: '0.05em' }}>
                       <Shield className="w-3 h-3" /> Subject / Threat Info
                     </label>
+                    {/* Aggregate threat posture — rolls the call's own flags +
+                        every linked person/vehicle flag (warrants, RSO, gang,
+                        stolen) into one officer-safety read so a unit sees the
+                        danger before responding. */}
+                    {(() => {
+                      const p = callPosture(selectedCall, callPersons, callVehicles);
+                      if (p.level === 'clear') return null;
+                      const t = BADGE_TONES[p.tone];
+                      const linked = [
+                        callPersons.length ? `${callPersons.length} subject${callPersons.length === 1 ? '' : 's'}` : '',
+                        callVehicles.length ? `${callVehicles.length} vehicle${callVehicles.length === 1 ? '' : 's'}` : '',
+                      ].filter(Boolean).join(' · ');
+                      return (
+                        <div
+                          className={`flex items-center gap-2 px-2 py-1 mb-2 rounded-[2px] ${p.pulse ? 'animate-led-pulse' : ''}`}
+                          style={{ color: t.text, background: t.bg, border: `1px solid ${t.border}`, boxShadow: p.level === 'critical' ? `0 0 8px ${t.glow}` : undefined }}
+                          title="Aggregate officer-safety posture from this call + its linked subjects/vehicles"
+                        >
+                          <Shield className="w-3.5 h-3.5 flex-shrink-0" />
+                          <span className="text-[10px] font-bold uppercase tracking-wider">
+                            {p.label}{p.level === 'critical' ? ' — EXERCISE CAUTION' : ''}
+                          </span>
+                          {linked && <span className="text-[9px] opacity-80 ml-auto whitespace-nowrap">{linked} linked</span>}
+                        </div>
+                      );
+                    })()}
                     {isEditing ? (() => {
                       const weaponsIsOther = editData.weapons_involved && !(WEAPONS_OPTIONS as readonly string[]).includes(editData.weapons_involved);
                       return (
                       <div className="space-y-2 mt-1">
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                          <div><label className="text-[9px] text-brand-gold-500"># Subjects</label><input type="number" min="0" className="input-dark text-xs" value={editData.num_subjects} onChange={(e) => updateEditField('num_subjects', e.target.value)} /></div>
-                          <div><label className="text-[9px] text-brand-gold-500"># Victims</label><input type="number" min="0" className="input-dark text-xs" value={editData.num_victims} onChange={(e) => updateEditField('num_victims', e.target.value)} /></div>
+                          <div><label className="text-[9px] text-brand-gold-500"># Subjects</label><input id="ff-dispatchpage-28" type="number" min="0" className="input-dark text-xs" value={editData.num_subjects} onChange={(e) => updateEditField('num_subjects', e.target.value)} /></div>
+                          <div><label className="text-[9px] text-brand-gold-500"># Victims</label><input id="ff-dispatchpage-29" type="number" min="0" className="input-dark text-xs" value={editData.num_victims} onChange={(e) => updateEditField('num_victims', e.target.value)} /></div>
                           <div>
                             <label className="text-[9px] text-brand-gold-500">Weapons</label>
-                            <select className="input-dark text-xs" value={weaponsIsOther ? 'Other' : editData.weapons_involved} onChange={(e) => updateEditField('weapons_involved', e.target.value)}>
+                            <select id="ff-dispatchpage-30" className="input-dark text-xs" value={weaponsIsOther ? 'Other' : editData.weapons_involved} onChange={(e) => updateEditField('weapons_involved', e.target.value)}>
                               {WEAPONS_OPTIONS.map(w => <option key={w} value={w}>{w || '— Select —'}</option>)}
                             </select>
                             {(editData.weapons_involved === 'Other' || weaponsIsOther) && (
-                              <input type="text" className="input-dark text-xs mt-1" placeholder="Specify weapon..." value={weaponsIsOther ? editData.weapons_involved : ''} onChange={(e) => updateEditField('weapons_involved', e.target.value || 'Other')} />
+                              <input id="ff-dispatchpage-31" type="text" className="input-dark text-xs mt-1" placeholder="Specify weapon..." value={weaponsIsOther ? editData.weapons_involved : ''} onChange={(e) => updateEditField('weapons_involved', e.target.value || 'Other')} />
                             )}
                           </div>
                         </div>
@@ -4149,7 +4955,7 @@ export default function DispatchPage() {
                         <div>
                           <div className="flex items-center gap-2 mb-1">
                             <label className="text-[9px] text-brand-gold-500">Linked Persons</label>
-                            <select className="input-dark text-[9px] py-0 px-1 w-auto" value={linkPersonRole} onChange={(e) => setLinkPersonRole(e.target.value)}>
+                            <select id="ff-dispatchpage-32" className="input-dark text-[9px] py-0 px-1 w-auto" value={linkPersonRole} onChange={(e) => setLinkPersonRole(e.target.value)}>
                               <option value="suspect">Suspect</option>
                               <option value="victim">Victim</option>
                               <option value="witness">Witness</option>
@@ -4162,7 +4968,7 @@ export default function DispatchPage() {
                             <div className="flex flex-wrap gap-1 mb-1">
                               {callPersons.map((cp: any) => (
                                 <span key={cp.id} className="inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-mono bg-rmpg-700 border border-rmpg-500 rounded-sm text-rmpg-200">
-                                  <span className="text-brand-gold-500 uppercase text-[7px] font-black">{(cp.role || '').replace('_', ' ')}</span>
+                                  <span className="text-brand-gold-500 uppercase text-[7px] font-black">{(cp.role || '').replace(/_/g, ' ')}</span>
                                   {cp.last_name}, {cp.first_name}
                                   <WarrantBadge flags={cp.flags} size="sm" />
                                   {cp.dob && <span className="text-rmpg-500">DOB:{cp.dob}</span>}
@@ -4172,7 +4978,7 @@ export default function DispatchPage() {
                             </div>
                           )}
                           <div className="relative" ref={personDropdownRef}>
-                            <input type="text" className="input-dark text-xs" placeholder="Search person records to link..." value={editData.subject_description} onChange={(e) => { updateEditField('subject_description', e.target.value); searchPersons(e.target.value); }} onFocus={() => { if (personSearchResults.length > 0) setShowPersonDropdown(true); }} />
+                            <input id="ff-dispatchpage-33" type="text" className="input-dark text-xs" placeholder="Search person records to link..." value={editData.subject_description} onChange={(e) => { updateEditField('subject_description', e.target.value); searchPersons(e.target.value); }} onFocus={() => { if (personSearchResults.length > 0) setShowPersonDropdown(true); }} />
                             {showPersonDropdown && personSearchResults.length > 0 && (
                               <div className="absolute z-50 left-0 right-0 mt-0.5 max-h-40 overflow-y-auto border border-rmpg-500 bg-rmpg-800 rounded-sm shadow-lg">
                                 {personSearchResults.map((p: any) => (
@@ -4200,7 +5006,7 @@ export default function DispatchPage() {
                         <div>
                           <div className="flex items-center gap-2 mb-1">
                             <label className="text-[9px] text-brand-gold-500">Linked Vehicles</label>
-                            <select className="input-dark text-[9px] py-0 px-1 w-auto" value={linkVehicleRole} onChange={(e) => setLinkVehicleRole(e.target.value)}>
+                            <select id="ff-dispatchpage-34" className="input-dark text-[9px] py-0 px-1 w-auto" value={linkVehicleRole} onChange={(e) => setLinkVehicleRole(e.target.value)}>
                               <option value="suspect_vehicle">Suspect Vehicle</option>
                               <option value="victim_vehicle">Victim Vehicle</option>
                               <option value="witness_vehicle">Witness Vehicle</option>
@@ -4222,7 +5028,7 @@ export default function DispatchPage() {
                             </div>
                           )}
                           <div className="relative" ref={vehicleDropdownRef}>
-                            <input type="text" className="input-dark text-xs" placeholder="Search vehicle records to link..." value={editData.vehicle_description} onChange={(e) => { updateEditField('vehicle_description', e.target.value); searchVehicles(e.target.value); }} onFocus={() => { if (vehicleSearchResults.length > 0) setShowVehicleDropdown(true); }} />
+                            <input id="ff-dispatchpage-35" type="text" className="input-dark text-xs" placeholder="Search vehicle records to link..." value={editData.vehicle_description} onChange={(e) => { updateEditField('vehicle_description', e.target.value); searchVehicles(e.target.value); }} onFocus={() => { if (vehicleSearchResults.length > 0) setShowVehicleDropdown(true); }} />
                             {showVehicleDropdown && vehicleSearchResults.length > 0 && (
                               <div className="absolute z-50 left-0 right-0 mt-0.5 max-h-40 overflow-y-auto border border-rmpg-500 bg-rmpg-800 rounded-sm shadow-lg">
                                 {vehicleSearchResults.map((v: any) => (
@@ -4248,13 +5054,13 @@ export default function DispatchPage() {
                         </div>
                         <div>
                           <label className="text-[9px] text-brand-gold-500">Direction of Travel</label>
-                          <select className="input-dark text-xs" value={(DIRECTION_OPTIONS as readonly string[]).includes(editData.direction_of_travel) ? editData.direction_of_travel : ''} onChange={(e) => updateEditField('direction_of_travel', e.target.value)}>
+                          <select id="ff-dispatchpage-36" className="input-dark text-xs" value={(DIRECTION_OPTIONS as readonly string[]).includes(editData.direction_of_travel) ? editData.direction_of_travel : ''} onChange={(e) => updateEditField('direction_of_travel', e.target.value)}>
                             {DIRECTION_OPTIONS.map(d => <option key={d} value={d}>{d || '— Select —'}</option>)}
                           </select>
                         </div>
                         <div className="flex items-center gap-4 mt-1">
                           <label className="flex items-center gap-1 text-xs text-rmpg-300 cursor-pointer">
-                            <input type="checkbox" checked={editData.injuries_reported} onChange={(e) => updateEditField('injuries_reported', e.target.checked)} className="accent-red-500" />
+                            <input id="ff-dispatchpage-37" type="checkbox" checked={editData.injuries_reported} onChange={(e) => updateEditField('injuries_reported', e.target.checked)} className="accent-red-500" />
                             Injuries
                           </label>
                         </div>
@@ -4319,52 +5125,52 @@ export default function DispatchPage() {
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                           <div>
                             <label className="text-[9px] text-brand-gold-500">Scene Safety</label>
-                            <select className="input-dark text-xs" value={(SCENE_SAFETY_OPTIONS as readonly string[]).includes(editData.scene_safety) ? editData.scene_safety : ''} onChange={(e) => updateEditField('scene_safety', e.target.value)}>
+                            <select id="ff-dispatchpage-38" className="input-dark text-xs" value={(SCENE_SAFETY_OPTIONS as readonly string[]).includes(editData.scene_safety) ? editData.scene_safety : ''} onChange={(e) => updateEditField('scene_safety', e.target.value)}>
                               {SCENE_SAFETY_OPTIONS.map(s => <option key={s} value={s}>{s || '— Select —'}</option>)}
                             </select>
                           </div>
                           <div>
                             <label className="text-[9px] text-brand-gold-500">Weather</label>
-                            <select className="input-dark text-xs" value={(WEATHER_OPTIONS as readonly string[]).includes(editData.weather_conditions) ? editData.weather_conditions : ''} onChange={(e) => updateEditField('weather_conditions', e.target.value)}>
+                            <select id="ff-dispatchpage-39" className="input-dark text-xs" value={(WEATHER_OPTIONS as readonly string[]).includes(editData.weather_conditions) ? editData.weather_conditions : ''} onChange={(e) => updateEditField('weather_conditions', e.target.value)}>
                               {WEATHER_OPTIONS.map(w => <option key={w} value={w}>{w || '— Select —'}</option>)}
                             </select>
                           </div>
                           <div>
                             <label className="text-[9px] text-brand-gold-500">Lighting</label>
-                            <select className="input-dark text-xs" value={(LIGHTING_OPTIONS as readonly string[]).includes(editData.lighting_conditions) ? editData.lighting_conditions : ''} onChange={(e) => updateEditField('lighting_conditions', e.target.value)}>
+                            <select id="ff-dispatchpage-40" className="input-dark text-xs" value={(LIGHTING_OPTIONS as readonly string[]).includes(editData.lighting_conditions) ? editData.lighting_conditions : ''} onChange={(e) => updateEditField('lighting_conditions', e.target.value)}>
                               {LIGHTING_OPTIONS.map(l => <option key={l} value={l}>{l || '— Select —'}</option>)}
                             </select>
                           </div>
                         </div>
                         <div className="flex flex-wrap items-center gap-4">
-                          <label className="flex items-center gap-1 text-xs text-rmpg-300 cursor-pointer"><input type="checkbox" checked={editData.alcohol_involved} onChange={(e) => updateEditField('alcohol_involved', e.target.checked)} className="accent-amber-500" /> Alcohol</label>
-                          <label className="flex items-center gap-1 text-xs text-rmpg-300 cursor-pointer"><input type="checkbox" checked={editData.drugs_involved} onChange={(e) => updateEditField('drugs_involved', e.target.checked)} className="accent-red-500" /> Drugs</label>
-                          <label className="flex items-center gap-1 text-xs text-rmpg-300 cursor-pointer"><input type="checkbox" checked={editData.domestic_violence} onChange={(e) => updateEditField('domestic_violence', e.target.checked)} className="accent-red-500" /> DV</label>
-                          <label className="flex items-center gap-1 text-xs text-rmpg-300 cursor-pointer"><input type="checkbox" checked={editData.supervisor_notified} onChange={(e) => updateEditField('supervisor_notified', e.target.checked)} className="accent-brand-500" /> Supervisor Notified</label>
-                          <label className="flex items-center gap-1 text-xs text-rmpg-300 cursor-pointer"><input type="checkbox" checked={editData.le_notified} onChange={(e) => updateEditField('le_notified', e.target.checked)} className="accent-brand-500" /> LE Notified</label>
+                          <label className="flex items-center gap-1 text-xs text-rmpg-300 cursor-pointer"><input id="ff-dispatchpage-41" type="checkbox" checked={editData.alcohol_involved} onChange={(e) => updateEditField('alcohol_involved', e.target.checked)} className="accent-amber-500" /> Alcohol</label>
+                          <label className="flex items-center gap-1 text-xs text-rmpg-300 cursor-pointer"><input id="ff-dispatchpage-42" type="checkbox" checked={editData.drugs_involved} onChange={(e) => updateEditField('drugs_involved', e.target.checked)} className="accent-red-500" /> Drugs</label>
+                          <label className="flex items-center gap-1 text-xs text-rmpg-300 cursor-pointer"><input id="ff-dispatchpage-43" type="checkbox" checked={editData.domestic_violence} onChange={(e) => updateEditField('domestic_violence', e.target.checked)} className="accent-red-500" /> DV</label>
+                          <label className="flex items-center gap-1 text-xs text-rmpg-300 cursor-pointer"><input id="ff-dispatchpage-44" type="checkbox" checked={editData.supervisor_notified} onChange={(e) => updateEditField('supervisor_notified', e.target.checked)} className="accent-brand-500" /> Supervisor Notified</label>
+                          <label className="flex items-center gap-1 text-xs text-rmpg-300 cursor-pointer"><input id="ff-dispatchpage-45" type="checkbox" checked={editData.le_notified} onChange={(e) => updateEditField('le_notified', e.target.checked)} className="accent-brand-500" /> LE Notified</label>
                         </div>
                         {editData.le_notified && (
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                             <div>
                               <label className="text-[9px] text-brand-gold-500">LE Agency</label>
-                              <select className="input-dark text-xs" value={leIsOther ? 'Other — See Notes' : editData.le_agency} onChange={(e) => updateEditField('le_agency', e.target.value)}>
+                              <select id="ff-dispatchpage-46" className="input-dark text-xs" value={leIsOther ? 'Other — See Notes' : editData.le_agency} onChange={(e) => updateEditField('le_agency', e.target.value)}>
                                 {LE_AGENCY_OPTIONS.map(a => <option key={a} value={a}>{a || '— Select —'}</option>)}
                               </select>
                               {(editData.le_agency === 'Other — See Notes' || leIsOther) && (
-                                <input type="text" className="input-dark text-xs mt-1" placeholder="Specify agency..." value={leIsOther ? editData.le_agency : ''} onChange={(e) => updateEditField('le_agency', e.target.value || 'Other — See Notes')} />
+                                <input id="ff-dispatchpage-47" type="text" className="input-dark text-xs mt-1" placeholder="Specify agency..." value={leIsOther ? editData.le_agency : ''} onChange={(e) => updateEditField('le_agency', e.target.value || 'Other — See Notes')} />
                               )}
                             </div>
-                            <div><label className="text-[9px] text-brand-gold-500">LE Case #</label><input type="text" className="input-dark text-xs" value={editData.le_case_number} onChange={(e) => updateEditField('le_case_number', e.target.value)} /></div>
+                            <div><label className="text-[9px] text-brand-gold-500">LE Case #</label><input id="ff-dispatchpage-48" type="text" className="input-dark text-xs" value={editData.le_case_number} onChange={(e) => updateEditField('le_case_number', e.target.value)} /></div>
                           </div>
                         )}
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                          <div><label className="text-[9px] text-brand-gold-500">Damage Estimate ($)</label><input type="number" min="0" step="0.01" className="input-dark text-xs" value={editData.damage_estimate} onChange={(e) => updateEditField('damage_estimate', e.target.value)} /></div>
-                          <div><label className="text-[9px] text-brand-gold-500">Damage Description</label><input type="text" className="input-dark text-xs" value={editData.damage_description} onChange={(e) => updateEditField('damage_description', e.target.value)} /></div>
+                          <div><label className="text-[9px] text-brand-gold-500">Damage Estimate ($)</label><input id="ff-dispatchpage-49" type="number" min="0" step="0.01" className="input-dark text-xs" value={editData.damage_estimate} onChange={(e) => updateEditField('damage_estimate', e.target.value)} /></div>
+                          <div><label className="text-[9px] text-brand-gold-500">Damage Description</label><input id="ff-dispatchpage-50" type="text" className="input-dark text-xs" value={editData.damage_description} onChange={(e) => updateEditField('damage_description', e.target.value)} /></div>
                         </div>
-                        <div><label className="text-[9px] text-brand-gold-500">Action Taken</label><textarea className="textarea-dark text-xs" rows={2} value={editData.action_taken} onChange={(e) => updateEditField('action_taken', e.target.value)} /></div>
+                        <div><label className="text-[9px] text-brand-gold-500">Action Taken</label><textarea id="ff-dispatchpage-51" className="textarea-dark text-xs" rows={2} value={editData.action_taken} onChange={(e) => updateEditField('action_taken', e.target.value)} /></div>
                         <div>
                           <label className="text-[9px] text-brand-gold-500">Responding Officer</label>
-                          <select className="input-dark text-xs" value={editData.responding_officer} onChange={(e) => updateEditField('responding_officer', e.target.value)}>
+                          <select id="ff-dispatchpage-52" className="input-dark text-xs" value={editData.responding_officer} onChange={(e) => updateEditField('responding_officer', e.target.value)}>
                             <option value="">— Select Officer —</option>
                             {officers.map(o => (
                               <option key={o.id} value={`${o.full_name}${o.badge_number ? ` (#${o.badge_number})` : ''}`}>
@@ -4402,7 +5208,7 @@ export default function DispatchPage() {
                         <Building2 className="w-3 h-3" /> PSO Client Request Details
                         {(selectedCall.pso_attempt_number || 1) >= 1 && (
                           isAdminOrManager && !isEditing ? (
-                            <select
+                            <select id="ff-dispatchpage-53"
                               className="ml-1.5 px-1 py-0 text-[8px] font-bold rounded-sm cursor-pointer"
                               style={{ background: '#f59e0b30', border: '1px solid #f59e0b50', color: '#fbbf24', appearance: 'auto', minWidth: '90px' }}
                               value={selectedCall.pso_attempt_number || 1}
@@ -4436,11 +5242,11 @@ export default function DispatchPage() {
                       {!isEditing && selectedCall.incident_type === 'pso_client_request' && ['cleared', 'closed'].includes(selectedCall.status) && (() => {
                         const terminalTime = selectedCall.closed_at || selectedCall.cleared_at;
                         if (!terminalTime) return null;
-                        const elapsed = Date.now() - new Date(terminalTime).getTime();
+                        const elapsed = Date.now() - parseTimestamp(terminalTime).getTime();
                         const hoursLeft = Math.max(0, 72 - elapsed / (3600000));
                         if (elapsed >= 72 * 3600000) {
                           return (
-                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-sm animate-pulse" style={{ background: '#dc262640', border: '1px solid #dc262660', color: '#f87171' }}>
+                            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-sm animate-pulse" style={{ background: '#ef444440', border: '1px solid #ef444460', color: '#f87171' }}>
                               72HR OVERDUE — RE-DISPATCH REQUIRED
                             </span>
                           );
@@ -4485,14 +5291,14 @@ export default function DispatchPage() {
                     {isEditing ? (
                       <div className="space-y-2 mt-1">
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                          <div><label className="text-[9px] text-brand-gold-500">Requestor Name</label><input type="text" className="input-dark text-xs" placeholder="Requestor name" value={editData.pso_requestor_name} onChange={(e) => updateEditField('pso_requestor_name', e.target.value)} /></div>
-                          <div><label className="text-[9px] text-brand-gold-500">Requestor Phone</label><input type="text" inputMode="tel" className="input-dark text-xs" placeholder="Phone number" value={editData.pso_requestor_phone} onChange={(e) => updateEditField('pso_requestor_phone', formatPhoneInput(e.target.value))} /></div>
-                          <div><label className="text-[9px] text-brand-gold-500">Requestor Email</label><input type="text" className="input-dark text-xs" placeholder="Email address" value={editData.pso_requestor_email} onChange={(e) => updateEditField('pso_requestor_email', e.target.value)} /></div>
+                          <div><label className="text-[9px] text-brand-gold-500">Requestor Name</label><input id="ff-dispatchpage-54" type="text" className="input-dark text-xs" placeholder="Requestor name" value={editData.pso_requestor_name} onChange={(e) => updateEditField('pso_requestor_name', e.target.value)} /></div>
+                          <div><label className="text-[9px] text-brand-gold-500">Requestor Phone</label><input id="ff-dispatchpage-55" type="text" inputMode="tel" className="input-dark text-xs" placeholder="Phone number" value={editData.pso_requestor_phone} onChange={(e) => updateEditField('pso_requestor_phone', formatPhoneInput(e.target.value))} /></div>
+                          <div><label className="text-[9px] text-brand-gold-500">Requestor Email</label><input id="ff-dispatchpage-56" type="text" className="input-dark text-xs" placeholder="Email address" value={editData.pso_requestor_email} onChange={(e) => updateEditField('pso_requestor_email', e.target.value)} /></div>
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                           <div>
                             <label className="text-[9px] text-brand-gold-500">Service Type</label>
-                            <select className="input-dark text-xs" value={editData.pso_service_type} onChange={(e) => updateEditField('pso_service_type', e.target.value)}>
+                            <select id="ff-dispatchpage-57" className="input-dark text-xs" value={editData.pso_service_type} onChange={(e) => updateEditField('pso_service_type', e.target.value)}>
                               <option value="">— Select Service Type —</option>
                               <optgroup label="Process Service">
                                 <option value="process_service">Process Service (General)</option>
@@ -4542,11 +5348,11 @@ export default function DispatchPage() {
                               </optgroup>
                             </select>
                           </div>
-                          <div><label className="text-[9px] text-brand-gold-500">Billing Code</label><input type="text" className="input-dark text-xs" placeholder="Billing code" value={editData.pso_billing_code} onChange={(e) => updateEditField('pso_billing_code', e.target.value)} /></div>
-                          <div><label className="text-[9px] text-brand-gold-500">Authorization</label><input type="text" className="input-dark text-xs" placeholder="Authorization #" value={editData.pso_authorization} onChange={(e) => updateEditField('pso_authorization', e.target.value)} /></div>
+                          <div><label className="text-[9px] text-brand-gold-500">Billing Code</label><input id="ff-dispatchpage-58" type="text" className="input-dark text-xs" placeholder="Billing code" value={editData.pso_billing_code} onChange={(e) => updateEditField('pso_billing_code', e.target.value)} /></div>
+                          <div><label className="text-[9px] text-brand-gold-500">Authorization</label><input id="ff-dispatchpage-59" type="text" className="input-dark text-xs" placeholder="Authorization #" value={editData.pso_authorization} onChange={(e) => updateEditField('pso_authorization', e.target.value)} /></div>
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                          <div><label className="text-[9px] text-brand-gold-500">Contract ID</label><input type="text" className="input-dark text-xs" placeholder="Contract ID" value={editData.contract_id} onChange={(e) => updateEditField('contract_id', e.target.value)} /></div>
+                          <div><label className="text-[9px] text-brand-gold-500">Contract ID</label><input id="ff-dispatchpage-60" type="text" className="input-dark text-xs" placeholder="Contract ID" value={editData.contract_id} onChange={(e) => updateEditField('contract_id', e.target.value)} /></div>
                         </div>
                       </div>
                     ) : (
@@ -4569,7 +5375,7 @@ export default function DispatchPage() {
                             </span>
                           )}
                           {selectedCall.contract_id && (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded-sm" style={{ background: '#8b5cf615', border: '1px solid #8b5cf635', color: '#c4b5fd' }}>
+                            <span className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded-sm" style={{ background: '#a855f715', border: '1px solid #a855f735', color: '#c084fc' }}>
                               Contract: {selectedCall.contract_id}
                             </span>
                           )}
@@ -4582,7 +5388,7 @@ export default function DispatchPage() {
                         </div>
                         {/* 72-hour deadline countdown for active PSO calls */}
                         {selectedCall.incident_type === 'pso_client_request' && selectedCall.created_at && !['archived'].includes(selectedCall.status) && (() => {
-                          const deadline = new Date(new Date(selectedCall.created_at).getTime() + 72 * 3600000);
+                          const deadline = new Date(parseTimestamp(selectedCall.created_at).getTime() + 72 * 3600000);
                           const remaining = deadline.getTime() - Date.now();
                           if (remaining <= 0) return (
                             <div className="text-[10px] font-mono font-bold animate-pulse" style={{ color: '#f87171' }}>
@@ -4632,8 +5438,8 @@ export default function DispatchPage() {
                               { key: 'weekend', label: 'Weekend', met: windows.weekend },
                             ] as const).map(({ key, label, met }) => (
                               <span key={key} className="inline-flex items-center gap-1 text-[9px] py-0.5 px-2 rounded-sm font-mono" style={{
-                                background: met ? '#22c55e10' : '#dc262610',
-                                border: `1px solid ${met ? '#22c55e30' : '#dc262630'}`,
+                                background: met ? '#22c55e10' : '#ef444410',
+                                border: `1px solid ${met ? '#22c55e30' : '#ef444430'}`,
                                 color: met ? '#86efac' : '#fca5a5',
                               }}>
                                 <span style={{ color: met ? '#4ade80' : '#ef4444', fontSize: '8px' }}>{met ? '●' : '○'}</span>
@@ -4648,7 +5454,10 @@ export default function DispatchPage() {
                 )}
 
                 {/* ── PROCESS SERVICE DETAILS — Info tab (always visible for PSO/process calls) ─── */}
-                {detailTab === 'info' && (isEditing
+                {/* Boolean() coerces the numeric process_attempts=0 case to false
+                    so React doesn't render a bare "0" when the OR chain falls
+                    through to a falsy number. */}
+                {detailTab === 'info' && Boolean(isEditing
                   ? ['pso_client_request', 'process_service'].includes(editData.incident_type || selectedCall.incident_type)
                   : (['pso_client_request', 'process_service'].includes(selectedCall.incident_type) || selectedCall.process_service_type || selectedCall.process_served_to || selectedCall.process_attempts)
                 ) && (
@@ -4677,7 +5486,7 @@ export default function DispatchPage() {
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                           <div>
                             <label className="text-[9px] text-amber-400">Document Type</label>
-                            <select className="input-dark text-xs" value={editData.process_service_type || ''} onChange={(e) => updateEditField('process_service_type', e.target.value)}>
+                            <select id="ff-dispatchpage-61" className="input-dark text-xs" value={editData.process_service_type || ''} onChange={(e) => updateEditField('process_service_type', e.target.value)}>
                               <option value="">— Select Document Type —</option>
                               <optgroup label="Civil Process — General">
                                 <option value="subpoena">Subpoena</option>
@@ -4776,25 +5585,25 @@ export default function DispatchPage() {
                           </div>
                           <div>
                             <label className="text-[9px] text-amber-400">Serve To (Name)</label>
-                            <input type="text" className="input-dark text-xs" placeholder="Person to be served" value={editData.process_served_to || ''} onChange={(e) => updateEditField('process_served_to', e.target.value)} />
+                            <input id="ff-dispatchpage-62" type="text" className="input-dark text-xs" placeholder="Person to be served" value={editData.process_served_to || ''} onChange={(e) => updateEditField('process_served_to', e.target.value)} />
                           </div>
                           <div>
                             <label className="text-[9px] text-amber-400">Attempts</label>
-                            <input type="number" className="input-dark text-xs" min="0" placeholder="0" value={editData.process_attempts ?? 0} onChange={(e) => updateEditField('process_attempts', e.target.value ? parseInt(e.target.value, 10) : 0)} />
+                            <input id="ff-dispatchpage-63" type="number" className="input-dark text-xs" min="0" placeholder="0" value={editData.process_attempts ?? 0} onChange={(e) => updateEditField('process_attempts', e.target.value ? parseInt(e.target.value, 10) : 0)} />
                           </div>
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                           <div className="sm:col-span-1">
                             <label className="text-[9px] text-amber-400">Service Address</label>
-                            <input type="text" className="input-dark text-xs w-full" placeholder="Address for service" value={editData.process_served_address || ''} onChange={(e) => updateEditField('process_served_address', e.target.value)} />
+                            <input id="ff-dispatchpage-64" type="text" className="input-dark text-xs w-full" placeholder="Address for service" value={editData.process_served_address || ''} onChange={(e) => updateEditField('process_served_address', e.target.value)} />
                           </div>
                           <div>
                             <label className="text-[9px] text-amber-400">Served At</label>
-                            <input type="datetime-local" step="1" className="input-dark text-xs" value={editData.process_served_at || ''} onChange={(e) => updateEditField('process_served_at', e.target.value)} />
+                            <input id="ff-dispatchpage-65" type="datetime-local" step="1" className="input-dark text-xs" value={editData.process_served_at || ''} onChange={(e) => updateEditField('process_served_at', e.target.value)} />
                           </div>
                           <div>
                             <label className="text-[9px] text-amber-400">Service Result</label>
-                            <select className="input-dark text-xs" value={editData.process_service_result || ''} onChange={(e) => updateEditField('process_service_result', e.target.value)}>
+                            <select id="ff-dispatchpage-66" className="input-dark text-xs" value={editData.process_service_result || ''} onChange={(e) => updateEditField('process_service_result', e.target.value)}>
                               <option value="">— Pending —</option>
                               <optgroup label="Successful Service">
                                 <option value="served">Personal Service</option>
@@ -4867,7 +5676,7 @@ export default function DispatchPage() {
                 )}
 
                 {/* ── VISIT HISTORY TIMELINE — PSO calls, Info tab ─── */}
-                {detailTab === 'info' && !isEditing && selectedCall.incident_type === 'pso_client_request' && selectedCall.visit_history && selectedCall.visit_history.length > 0 && (
+                {detailTab === 'info' && !isEditing && ['pso_client_request', 'process_service'].includes(String(selectedCall.incident_type)) && selectedCall.visit_history && selectedCall.visit_history.length > 0 && (
                   <div className="border-t border-[#2b2b2b] pt-3 mb-3">
                     <label className="field-label !flex items-center gap-1.5 mb-2" style={{ color: '#d4a017', fontSize: '9px', letterSpacing: '0.05em' }}>
                       <Clock className="w-3 h-3" /> Visit History
@@ -4968,14 +5777,23 @@ export default function DispatchPage() {
                             }
                             onClick={async () => {
                               const newVal = !isOn;
+                              // Functional setState — rapid-fire flag toggles
+                              // would otherwise stomp each other: each closure
+                              // captured the selectedCall snapshot at render time
+                              // and spread it, reverting any flag toggled mid-flight.
+                              // Updating from `prev` keeps every prior toggle.
+                              const callId = selectedCall.id;
                               try {
-                                await apiFetch(`/dispatch/calls/${selectedCall.id}`, {
+                                await apiFetch(`/dispatch/calls/${callId}`, {
                                   method: 'PUT',
                                   body: JSON.stringify({ [field]: newVal }),
                                 });
-                                const updated = { ...selectedCall, [field]: newVal ? 1 : 0 };
-                                setSelectedCall(updated);
-                                setCalls(prev => prev.map(c => c.id === selectedCall.id ? updated : c));
+                                setSelectedCall(prev => prev && prev.id === callId
+                                  ? { ...prev, [field]: newVal ? 1 : 0 }
+                                  : prev);
+                                setCalls(prev => prev.map(c =>
+                                  c.id === callId ? { ...c, [field]: newVal ? 1 : 0 } : c
+                                ));
                               } catch { addToast(`Failed to update ${label}`, 'error'); }
                             }}
                             title={`Toggle ${label}`}
@@ -5000,7 +5818,7 @@ export default function DispatchPage() {
                   </div>
                   {showAddTimeline && (
                     <div className="flex gap-2 mb-2">
-                      <input type="text" className="input-dark flex-1 text-xs" placeholder="New timeline entry..." spellCheck={true} value={newTimelineText}
+                      <input id="ff-dispatchpage-67" type="text" className="input-dark flex-1 text-xs" placeholder="New timeline entry..." spellCheck={true} value={newTimelineText}
                         onChange={(e) => setNewTimelineText(e.target.value)}
                         onKeyDown={(e) => { if (e.key === 'Enter') handleAddTimeline(); }}
                       />
@@ -5020,12 +5838,12 @@ export default function DispatchPage() {
                         <div key={entry.id} className="group flex items-start gap-2 text-xs hover:bg-[#18181820] px-1.5 py-1 transition-colors relative" style={{ borderLeft: '2px solid #2b2b2b' }}>
                           {/* Step connector dot */}
                           <div className="absolute -left-[5px] top-[7px] w-2 h-2 rounded-full flex-shrink-0" style={{ background: actionColor, border: '2px solid #0c0c0c' }} />
-                          <span className="text-[#6b7280] font-mono whitespace-nowrap pl-1.5 tabular-nums" style={{ fontSize: '9px', minWidth: '60px' }} title={entry.created_at ? timeAgo(entry.created_at) : ''}>
+                          <span className="text-[#888888] font-mono whitespace-nowrap pl-1.5 tabular-nums" style={{ fontSize: '9px', minWidth: '60px' }} title={entry.created_at ? timeAgo(entry.created_at) : ''}>
                             {entry.created_at ? `${formatTime(entry.created_at)} (${timeAgo(entry.created_at)})` : '--'}
                           </span>
                           {editingTimelineId === String(entry.id) ? (
                             <div className="flex-1 flex gap-1">
-                              <input type="text" className="input-dark text-xs flex-1" value={editTimelineText}
+                              <input id="ff-dispatchpage-68" type="text" className="input-dark text-xs flex-1" value={editTimelineText}
                                 onChange={(e) => setEditTimelineText(e.target.value)}
                                 onKeyDown={(e) => { if (e.key === 'Enter') handleEditTimeline(String(entry.id)); if (e.key === 'Escape') setEditingTimelineId(null); }}
                                 autoFocus
@@ -5041,10 +5859,10 @@ export default function DispatchPage() {
                             <>
                               <span className="text-[#e5e7eb] flex-1">{formatActivityDetails(entry.details || entry.description || '')}</span>
                               <div className="opacity-0 group-hover:opacity-100 flex items-center gap-0.5 transition-opacity">
-                                <button type="button" onClick={() => { setEditingTimelineId(String(entry.id)); setEditTimelineText(entry.details || entry.description || ''); }} className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center hover:text-[#4a9ede] text-[#6b7280] transition-colors" title="Edit">
+                                <button type="button" onClick={() => { setEditingTimelineId(String(entry.id)); setEditTimelineText(entry.details || entry.description || ''); }} className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center hover:text-[#d4a017] text-[#888888] transition-colors" title="Edit">
                                   <Edit3 style={{ width: 9, height: 9 }} />
                                 </button>
-                                <button type="button" onClick={() => handleDeleteTimeline(String(entry.id))} className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center hover:text-red-400 text-[#6b7280] transition-colors" title="Delete">
+                                <button type="button" onClick={() => handleDeleteTimeline(String(entry.id))} className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center hover:text-red-400 text-[#888888] transition-colors" title="Delete">
                                   <Trash2 style={{ width: 9, height: 9 }} />
                                 </button>
                               </div>
@@ -5082,11 +5900,11 @@ export default function DispatchPage() {
                     ) : (
                       (Array.isArray(selectedCall.notes) ? selectedCall.notes : []).map((note) => (
                       <div key={note.id} className="group flex items-start gap-2 text-xs px-2 py-1.5 rounded-sm transition-colors hover:bg-[#18181820]" style={{ borderLeft: '2px solid #88888840' }}>
-                        <span className="text-[#6b7280] font-mono whitespace-nowrap tabular-nums" style={{ fontSize: '9px', minWidth: '54px' }}>{formatTime(note.timestamp)}</span>
+                        <span className="text-[#888888] font-mono whitespace-nowrap tabular-nums" style={{ fontSize: '9px', minWidth: '54px' }}>{formatTime(note.timestamp)}</span>
                         <span className="text-[#d4a017] font-bold whitespace-nowrap text-[10px]">{note.author || 'System'}</span>
                         {editingNoteId === note.id ? (
                           <div className="flex-1 min-w-0 flex flex-col gap-1">
-                            <textarea className="input-dark text-xs w-full" rows={2} value={editingNoteText} onChange={(e) => setEditingNoteText(e.target.value)} autoFocus />
+                            <textarea id="ff-dispatchpage-69" className="input-dark text-xs w-full" rows={2} value={editingNoteText} onChange={(e) => setEditingNoteText(e.target.value)} autoFocus />
                             <div className="flex gap-1">
                               <button type="button" className="toolbar-btn toolbar-btn-primary text-[9px] px-2 py-0.5" onClick={() => handleEditNote(note.id, editingNoteText)}>Save</button>
                               <button type="button" className="toolbar-btn text-[9px] px-2 py-0.5" onClick={() => { setEditingNoteId(null); setEditingNoteText(''); }}>Cancel</button>
@@ -5097,8 +5915,8 @@ export default function DispatchPage() {
                             <span className="text-[#e5e7eb] leading-relaxed flex-1 min-w-0">{renderFormattedText(note.text || '')}{note.edited_at && <span className="text-[#545454] text-[8px] ml-1">(edited)</span>}</span>
                             {isAdminOrManager && (
                               <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-0.5 shrink-0">
-                                <button type="button" className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center text-[#6b7280] hover:text-[#a0a0a0] transition-colors" title="Edit note" onClick={() => { setEditingNoteId(note.id); setEditingNoteText(note.text || ''); }}><Pencil className="w-3 h-3" /></button>
-                                <button type="button" className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center text-[#6b7280] hover:text-[#ef4444] transition-colors" title="Delete note" onClick={() => handleDeleteNote(note.id)}><Trash2 className="w-3 h-3" /></button>
+                                <button type="button" aria-label="Edit note" className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center text-[#888888] hover:text-[#a0a0a0] transition-colors" title="Edit note" onClick={() => { setEditingNoteId(note.id); setEditingNoteText(note.text || ''); }}><Pencil className="w-3 h-3" /></button>
+                                <button type="button" aria-label="Delete note" className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center text-[#888888] hover:text-[#ef4444] transition-colors" title="Delete note" onClick={() => handleDeleteNote(note.id)}><Trash2 className="w-3 h-3" /></button>
                               </div>
                             )}
                           </>
@@ -5116,7 +5934,7 @@ export default function DispatchPage() {
                       <span className="text-[8px] text-[#545454] ml-2 font-mono select-none">Shift+Enter to submit</span>
                     </div>
                     <div className="flex gap-2">
-                      <textarea
+                      <textarea id="ff-dispatchpage-70"
                         ref={noteTextareaRef}
                         className="input-dark flex-1 text-xs resize-none"
                         rows={2}
@@ -5139,7 +5957,7 @@ export default function DispatchPage() {
                     {/* Feature 20: Broadcast Note to all assigned units */}
                     {(selectedCall.assigned_units || []).length > 0 && (
                       <div className="flex gap-2 mt-2 pt-2 border-t border-rmpg-700/50">
-                        <input
+                        <input id="ff-dispatchpage-71"
                           type="text"
                           className="input-dark flex-1 text-xs"
                           placeholder="Broadcast to all units on call..."
@@ -5152,7 +5970,7 @@ export default function DispatchPage() {
                           onClick={handleBroadcastNote}
                           className="toolbar-btn self-end"
                           disabled={!broadcastNoteText.trim()}
-                          style={{ background: '#7c3aed20', borderColor: '#7c3aed50', color: '#a78bfa', padding: '2px 8px', fontSize: '9px' }}
+                          style={{ background: '#a855f720', borderColor: '#a855f750', color: '#c084fc', padding: '2px 8px', fontSize: '9px' }}
                           title="Send note to all assigned unit officers"
                         >
                           <Radio style={{ width: 9, height: 9 }} /> Broadcast
@@ -5250,7 +6068,7 @@ export default function DispatchPage() {
 
             </>
           ) : (
-            <div className="flex-1 flex items-center justify-center text-[#6b7280]">
+            <div className="flex-1 flex items-center justify-center text-[#888888]">
               <div className="text-center">
                 <div className="mx-auto mb-4 w-14 h-14 flex items-center justify-center rounded-sm" style={{ background: '#0c0c0c60', border: '1px solid #2b2b2b40' }}>
                   <Radio className="w-7 h-7" style={{ opacity: 0.3 }} />
@@ -5259,15 +6077,15 @@ export default function DispatchPage() {
                 <p className="text-[10px] text-[#545454] max-w-[220px] mx-auto leading-relaxed">Click a call card or use arrow keys to navigate</p>
                 <div className="flex items-center justify-center gap-4 mt-4 text-[9px] font-mono text-[#545454]">
                   <div className="flex items-center gap-1.5">
-                    <kbd className="px-1.5 py-0.5 border border-[#2b2b2b] rounded-sm bg-[#0c0c0c40] text-[#6b7280]">N</kbd>
+                    <kbd className="px-1.5 py-0.5 border border-[#2b2b2b] rounded-sm bg-[#0c0c0c40] text-[#888888]">N</kbd>
                     <span>New Call</span>
                   </div>
                   <div className="flex items-center gap-1.5">
-                    <kbd className="px-1.5 py-0.5 border border-[#2b2b2b] rounded-sm bg-[#0c0c0c40] text-[#6b7280]">P</kbd>
+                    <kbd className="px-1.5 py-0.5 border border-[#2b2b2b] rounded-sm bg-[#0c0c0c40] text-[#888888]">P</kbd>
                     <span>Quick PSO</span>
                   </div>
                   <div className="flex items-center gap-1.5">
-                    <kbd className="px-1.5 py-0.5 border border-[#2b2b2b] rounded-sm bg-[#0c0c0c40] text-[#6b7280]">R</kbd>
+                    <kbd className="px-1.5 py-0.5 border border-[#2b2b2b] rounded-sm bg-[#0c0c0c40] text-[#888888]">R</kbd>
                     <span>Refresh</span>
                   </div>
                 </div>
@@ -5294,6 +6112,14 @@ export default function DispatchPage() {
                 } catch { addToast(`Failed to set flag`, 'error'); }
               }}
               onDismiss={() => setShowAiSidebar(false)}
+            />
+          )}
+
+          {/* Dispatch Code Quick Panel (conditionally shown between detail and map) */}
+          {showCodePanel && (
+            <DispatchCodeQuickPanel
+              onApplyCode={handleApplyCode}
+              onDismiss={() => setShowCodePanel(false)}
             />
           )}
 
@@ -5349,7 +6175,7 @@ export default function DispatchPage() {
               }}
               onCreateUnit={() => setShowCreateUnitModal(true)}
               onEditUnit={openEditUnit}
-              onDeleteUnit={(unit) => setDeletingUnit(unit)}
+              onDeleteUnit={isAdminOrManager ? (unit) => setDeletingUnit(unit) : undefined}
               selectedCallId={selectedCall?.id ?? null}
               assignedUnitIds={selectedCall?.assigned_units ?? []}
               onAssignUnit={selectedCall && !['cleared', 'closed', 'cancelled', 'archived'].includes(selectedCall.status) ? handleAssignUnit : undefined}
@@ -5357,6 +6183,56 @@ export default function DispatchPage() {
           </div>
         </div>
       </div>
+
+      {/* Keyboard-shortcut cheat sheet (toggle with "?") */}
+      {showShortcutHelp && (
+        <div
+          className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70"
+          onClick={() => setShowShortcutHelp(false)}
+        >
+          <div
+            className="bg-[#0a0a0a] border border-[#2e2e2e] rounded-sm max-w-2xl w-[92%] max-h-[85vh] overflow-auto scrollbar-dark"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-4 py-2 border-b border-[#2e2e2e] sticky top-0 bg-[#0a0a0a]">
+              <div className="flex items-center gap-2 text-[#d4a017] text-xs font-bold uppercase tracking-wider">
+                <Terminal className="w-3.5 h-3.5" /> Keyboard Shortcuts
+              </div>
+              <button type="button" aria-label="Close" onClick={() => setShowShortcutHelp(false)} className="text-rmpg-400 hover:text-white">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-4 grid grid-cols-1 sm:grid-cols-3 gap-4">
+              {([
+                { group: 'Selected Call', items: [
+                  ['F3 / D', 'Dispatch (pending)'], ['F5 / E', 'En route'], ['F6 / O', 'On scene'],
+                  ['F7 / ⇧C', 'Clear + disposition'], ['F9 / H', 'Hold / resume'], ['F4', 'Edit call'],
+                ] },
+                { group: 'Create / Panels', items: [
+                  ['F2 / N', 'New call'], ['F10 / P', 'Quick PSO request'], ['F8', 'Focus CAD command line'],
+                  ['F12', 'Toggle NCIC panel'], ['R', 'Refresh'],
+                ] },
+                { group: 'Navigate / Filter', items: [
+                  ['↑ / k', 'Previous call'], ['↓ / j', 'Next call'], ['1–6', 'Filter tabs'],
+                  ['Esc', 'Close modals'], ['?', 'This help'],
+                ] },
+              ] as const).map(({ group, items }) => (
+                <div key={group}>
+                  <div className="text-[9px] font-bold uppercase tracking-wide text-rmpg-400 mb-1.5">{group}</div>
+                  <div className="space-y-1">
+                    {items.map(([keys, desc]) => (
+                      <div key={keys} className="flex items-center justify-between gap-2 text-[11px]">
+                        <kbd className="font-mono text-amber-300 bg-amber-900/20 border border-amber-700/30 px-1 py-0 rounded-sm whitespace-nowrap">{keys}</kbd>
+                        <span className="text-rmpg-300 text-right">{desc}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Right-Click Context Menu */}
       {contextMenu && (
@@ -5417,7 +6293,7 @@ export default function DispatchPage() {
               {(['P1', 'P2', 'P3', 'P4'] as const).map(pri => (
                 <button key={pri} type="button" onClick={() => { handlePriorityChange(contextMenu.call.id, pri); setContextMenu(null); }}
                   className={`text-[9px] font-bold px-1.5 py-0.5 rounded-sm ${contextMenu.call.priority === pri ? 'ring-1 ring-white' : 'opacity-60 hover:opacity-100'}`}
-                  style={{ background: pri === 'P1' ? '#dc2626' : pri === 'P2' ? '#d97706' : pri === 'P3' ? '#888888' : '#555555', color: '#fff' }}>
+                  style={{ background: pri === 'P1' ? '#ef4444' : pri === 'P2' ? '#d97706' : pri === 'P3' ? '#888888' : '#555555', color: '#fff' }}>
                   {pri}
                 </button>
               ))}
@@ -5449,10 +6325,14 @@ export default function DispatchPage() {
                 <Copy style={{ width: 12, height: 12 }} /> Duplicate as New
               </button>
             )}
-            <div className="border-t border-rmpg-600 my-1" />
-            <button type="button" className="context-menu-item text-red-400" onClick={() => { setDeleteCallTarget(contextMenu.call); setContextMenu(null); }}>
-              <Trash2 style={{ width: 12, height: 12 }} /> Delete
-            </button>
+            {canDeleteCall && (
+              <>
+                <div className="border-t border-rmpg-600 my-1" />
+                <button type="button" className="context-menu-item text-red-400" onClick={() => { setDeleteCallTarget(contextMenu.call); setContextMenu(null); }}>
+                  <Trash2 style={{ width: 12, height: 12 }} /> Remove
+                </button>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -5597,14 +6477,14 @@ export default function DispatchPage() {
                 <Radio className="w-4 h-4 text-brand-400" />
                 <span id={unitModalTitleId} className="text-sm font-bold text-white tracking-wide">{editingUnit ? 'Edit Dispatch Unit' : 'Create Dispatch Unit'}</span>
               </div>
-              <button type="button" onClick={() => { setShowCreateUnitModal(false); setEditingUnit(null); setNewUnitCallSign(''); setNewUnitOfficerId(''); setNewUnitStatus('available'); }} className="toolbar-btn ml-auto">
+              <button type="button" onClick={() => { setShowCreateUnitModal(false); resetUnitForm(); }} className="toolbar-btn ml-auto">
                 <X style={{ width: 12, height: 12 }} />
               </button>
             </div>
             <div className="p-4 space-y-3">
               <div>
                 <label className="field-label">Call Sign *</label>
-                <input
+                <input id="ff-dispatchpage-72"
                   type="text"
                   className="input-dark text-sm w-full mt-1"
                   placeholder="e.g. PATROL-01, K9-01, SUPER-01"
@@ -5616,7 +6496,7 @@ export default function DispatchPage() {
               </div>
               <div>
                 <label className="field-label">Assigned Officer</label>
-                <select
+                <select id="ff-dispatchpage-73"
                   className="select-dark text-sm w-full mt-1"
                   value={newUnitOfficerId}
                   onChange={(e) => setNewUnitOfficerId(e.target.value)}
@@ -5631,7 +6511,7 @@ export default function DispatchPage() {
               </div>
               <div>
                 <label className="field-label">Status</label>
-                <select
+                <select id="ff-dispatchpage-74"
                   className="select-dark text-sm w-full mt-1"
                   value={newUnitStatus}
                   onChange={(e) => setNewUnitStatus(e.target.value)}
@@ -5642,10 +6522,69 @@ export default function DispatchPage() {
                   {editingUnit && <option value="dispatched">Dispatched</option>}
                   {editingUnit && <option value="enroute">En Route</option>}
                   {editingUnit && <option value="onscene">On Scene</option>}
+                  {editingUnit && <option value="out_of_service">Out of Service</option>}
                 </select>
               </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="field-label">Vehicle</label>
+                  <input id="ff-dispatchpage-unit-vehicle"
+                    type="text"
+                    className="input-dark text-sm w-full mt-1"
+                    placeholder="Unit / plate #"
+                    value={newUnitVehicleId}
+                    onChange={(e) => setNewUnitVehicleId(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="field-label">Default Beat</label>
+                  <input id="ff-dispatchpage-unit-beat"
+                    type="text"
+                    className="input-dark text-sm w-full mt-1"
+                    placeholder="e.g. SL1-HER/C"
+                    value={newUnitBeat}
+                    onChange={(e) => setNewUnitBeat(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="field-label">Audio Mode</label>
+                <select id="ff-dispatchpage-unit-audio"
+                  className="select-dark text-sm w-full mt-1"
+                  value={newUnitAudioMode}
+                  onChange={(e) => setNewUnitAudioMode(e.target.value)}
+                >
+                  <option value="audible">Audible</option>
+                  <option value="silent">Silent</option>
+                  <option value="vibrate">Vibrate</option>
+                </select>
+              </div>
+              <div>
+                <label className="field-label">Capabilities</label>
+                <div className="flex flex-wrap gap-1.5 mt-1">
+                  {['K9', 'SWAT', 'Supervisor', 'FTO', 'Traffic', 'Detective', 'Patrol'].map((cap) => {
+                    const active = newUnitCapabilities.includes(cap);
+                    return (
+                      <button type="button"
+                        key={cap}
+                        onClick={() => setNewUnitCapabilities((prev) => active ? prev.filter((x) => x !== cap) : [...prev, cap])}
+                        className="text-[10px] font-bold uppercase px-2 py-1 tracking-wide transition-colors"
+                        style={{
+                          borderRadius: 2,
+                          border: `1px solid ${active ? '#d4a017' : '#2e2e2e'}`,
+                          background: active ? 'rgba(212,160,23,0.15)' : '#0a0a0a',
+                          color: active ? '#d4a017' : '#888888',
+                        }}
+                        aria-pressed={active}
+                      >
+                        {cap}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-600">
-                <button type="button" onClick={() => { setShowCreateUnitModal(false); setEditingUnit(null); setNewUnitCallSign(''); setNewUnitOfficerId(''); setNewUnitStatus('available'); }} className="toolbar-btn">
+                <button type="button" onClick={() => { setShowCreateUnitModal(false); resetUnitForm(); }} className="toolbar-btn">
                   Cancel
                 </button>
                 <button type="button"
@@ -5662,26 +6601,53 @@ export default function DispatchPage() {
         </div>
       )}
 
-      {/* Delete Unit Confirmation */}
-      <ConfirmDialog
-        isOpen={deletingUnit !== null}
-        onClose={() => setDeletingUnit(null)}
-        onConfirm={handleDeleteUnit}
-        title="Delete Dispatch Unit"
-        message={`Are you sure you want to permanently delete unit "${deletingUnit?.call_sign || ''}"? This action cannot be undone.`}
-        confirmLabel="Delete Unit"
-        confirmVariant="danger"
-        isLoading={unitDeleting}
-      />
+      {/* Dispose Unit — Retire (soft) or Delete (permanent). Both server-side
+          force-clear any stale call assignment, so a unit stuck on a call can
+          still be disposed (the plain DELETE refused those). */}
+      {deletingUnit && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" aria-label="Dispose unit" style={{ background: 'rgba(0,0,0,0.65)', WebkitBackdropFilter: 'blur(4px)', backdropFilter: 'blur(4px)' }}>
+          <div className="panel-beveled bg-surface-raised" style={{ width: '420px', border: '1px solid #2a2a2a', boxShadow: '0 12px 40px rgba(0,0,0,0.5)' }}>
+            <div className="panel-title-bar">
+              <div className="flex items-center gap-2">
+                <Trash2 className="w-4 h-4 text-red-400" />
+                <span className="text-sm font-bold text-white tracking-wide">Dispose Unit “{deletingUnit.call_sign}”</span>
+              </div>
+              <button type="button" onClick={() => !unitDeleting && setDeletingUnit(null)} className="toolbar-btn ml-auto" aria-label="Cancel">
+                <X style={{ width: 12, height: 12 }} />
+              </button>
+            </div>
+            <div className="p-4 space-y-3">
+              <p className="text-xs text-rmpg-300 leading-relaxed">
+                {deletingUnit.current_call_id
+                  ? <>This unit is still attached to a call — disposal will <span className="text-[#d4a017]">automatically clear that assignment</span> first.</>
+                  : 'Choose how to dispose of this unit.'}
+              </p>
+              <div className="space-y-2 text-[11px] text-rmpg-400">
+                <div><span className="text-amber-400 font-bold">Retire</span> — mark Out of Service and free it from any call. Keeps the unit + its history; reversible (set it back to Available later).</div>
+                <div><span className="text-red-400 font-bold">Delete</span> — permanently remove the unit row. Cannot be undone.</div>
+              </div>
+              <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-600">
+                <button type="button" onClick={() => setDeletingUnit(null)} disabled={unitDeleting} className="toolbar-btn">Cancel</button>
+                <button type="button" onClick={() => handleDisposeUnit('retire')} disabled={unitDeleting} className="toolbar-btn" style={{ borderColor: '#92710f', color: '#d4a017' }}>
+                  {unitDeleting ? <Loader2 style={{ width: 12, height: 12 }} className="animate-spin" /> : <Archive style={{ width: 12, height: 12 }} />} Retire
+                </button>
+                <button type="button" onClick={() => handleDisposeUnit('delete')} disabled={unitDeleting} className="toolbar-btn toolbar-btn-danger">
+                  {unitDeleting ? <Loader2 style={{ width: 12, height: 12 }} className="animate-spin" /> : <Trash2 style={{ width: 12, height: 12 }} />} Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Delete Call Confirmation */}
       <ConfirmDialog
         isOpen={deleteCallTarget !== null}
         onClose={() => setDeleteCallTarget(null)}
         onConfirm={handleDeleteAnyCall}
-        title="Delete Call"
-        message={`Are you sure you want to permanently delete call "${deleteCallTarget?.call_number || ''}"? This will also free any assigned units. This action cannot be undone.`}
-        confirmLabel="Delete Call"
+        title="Remove Call"
+        message={`Remove call "${deleteCallTarget?.call_number || ''}" from the board? It will be archived and recoverable by an admin. Any assigned units will be freed.`}
+        confirmLabel="Remove Call"
         confirmVariant="danger"
         isLoading={isDeletingCall}
       />
@@ -5911,7 +6877,7 @@ export default function DispatchPage() {
                 if (call) {
                   const terminalTime = (call as any).closed_at || (call as any).cleared_at;
                   if (terminalTime) {
-                    const elapsed = Date.now() - new Date(terminalTime).getTime();
+                    const elapsed = Date.now() - parseTimestamp(terminalTime).getTime();
                     const hoursLeft = Math.max(0, 72 - elapsed / 3600000);
                     const caseNum = call.case_number || call.call_number;
                     announceCourtDeadline(caseNum, hoursLeft, (call as any).process_served_to || (call as any).caller_name);
@@ -5982,6 +6948,19 @@ export default function DispatchPage() {
         initialQuery={ncicInitialQuery}
       />
 
+      {/* Mileage prompt on enroute (starting) / onscene (ending). Cancel aborts
+          the transition; Skip proceeds with no reading. */}
+      {mileagePrompt && (
+        <MileagePromptModal
+          mode={mileagePrompt.mode}
+          callNumber={mileagePrompt.callNumber}
+          vehicleId={mileagePrompt.vehicleId}
+          startingMileage={mileagePrompt.startingMileage}
+          onSubmit={handleMileagePromptSubmit}
+          onCancel={() => setMileagePrompt(null)}
+        />
+      )}
+
       {/* Create Person from Dispatch */}
       <PersonFormModal
         isOpen={showCreatePersonModal}
@@ -5996,6 +6975,66 @@ export default function DispatchPage() {
         onClose={() => setShowCreateVehicleModal(false)}
         onSubmit={handleCreateVehicleFromDispatch}
         isSubmitting={isCreatingRecord}
+      />
+
+      {/* Duplicate-candidate pickers — opened when /quick-add returns 409 DUPLICATE_CANDIDATES */}
+      <DuplicateCandidatesModal
+        isOpen={!!personDupState}
+        title="Possible existing person"
+        entityLabel="person"
+        candidates={personDupState?.candidates ?? []}
+        isSubmitting={isCreatingRecord}
+        renderRow={(c) => (
+          <div>
+            <div className="font-bold text-rmpg-100">
+              {c.last_name}, {c.first_name}
+              {c.dob && <span className="ml-2 text-amber-300 font-mono text-[10px]">DOB:{c.dob}</span>}
+            </div>
+            <div className="text-[10px] text-rmpg-400 mt-0.5">
+              {[c.address, c.phone].filter(Boolean).join(' · ') || 'No address / phone on file'}
+            </div>
+            {(c.caution_flags || c.is_sex_offender || c.gang_affiliation) && (
+              <div className="text-[10px] text-red-400 font-bold mt-0.5">
+                {c.caution_flags && `⚠ ${c.caution_flags} `}
+                {c.is_sex_offender && '⚠ SEX OFFENDER '}
+                {c.gang_affiliation && `⚠ GANG: ${c.gang_affiliation}`}
+              </div>
+            )}
+          </div>
+        )}
+        onClose={() => setPersonDupState(null)}
+        onResolve={(r) => {
+          if (!personDupState) return;
+          if (r.action === 'merge') submitPersonQuickAdd(personDupState.data, { merge_into_id: r.id });
+          else submitPersonQuickAdd(personDupState.data, { force_create: true });
+        }}
+      />
+
+      <DuplicateCandidatesModal
+        isOpen={!!vehicleDupState}
+        title="Possible existing vehicle"
+        entityLabel="vehicle"
+        candidates={vehicleDupState?.candidates ?? []}
+        isSubmitting={isCreatingRecord}
+        renderRow={(c) => (
+          <div>
+            <div className="font-bold text-rmpg-100">
+              {[c.year, c.color, c.make, c.model].filter(Boolean).join(' ') || 'Unknown vehicle'}
+              {c.plate_number && (
+                <span className="ml-2 text-amber-300 font-mono text-[10px]">
+                  PLT:{c.plate_number}{c.state ? `/${c.state}` : ''}
+                </span>
+              )}
+            </div>
+            {c.vin && <div className="text-[10px] text-rmpg-400 mt-0.5">VIN: {c.vin}</div>}
+          </div>
+        )}
+        onClose={() => setVehicleDupState(null)}
+        onResolve={(r) => {
+          if (!vehicleDupState) return;
+          if (r.action === 'merge') submitVehicleQuickAdd(vehicleDupState.data, { merge_into_id: r.id });
+          else submitVehicleQuickAdd(vehicleDupState.data, { force_create: true });
+        }}
       />
 
       {/* Feature 5: Shift Handoff Notes Modal */}
@@ -6013,10 +7052,10 @@ export default function DispatchPage() {
               {handoffMeta.updated_by && (
                 <p className="text-[10px] text-rmpg-400 mb-2">
                   Last updated by <span className="text-amber-400">{handoffMeta.updated_by}</span>
-                  {handoffMeta.updated_at && ` at ${new Date(handoffMeta.updated_at).toLocaleString()}`}
+                  {handoffMeta.updated_at && ` at ${safeDateTimeStr(handoffMeta.updated_at)}`}
                 </p>
               )}
-              <textarea
+              <textarea id="ff-dispatchpage-75"
                 value={handoffNotes}
                 onChange={e => setHandoffNotes(e.target.value)}
                 className="input-dark w-full h-48 text-sm resize-none"
@@ -6037,7 +7076,7 @@ export default function DispatchPage() {
       {/* ═══════════════════════════════════════════════════════════ */}
       {/* DISPATCH STATUS BAR — Fixed bottom footer                   */}
       {/* ═══════════════════════════════════════════════════════════ */}
-      <div className="hidden md:flex items-center justify-between px-3 h-[22px] flex-shrink-0 border-t select-none fixed bottom-0 left-0 right-0 z-[90]"
+      <div className="hidden md:flex items-center justify-between px-3 h-[22px] flex-shrink-0 border-t select-none fixed bottom-0 left-0 right-0 z-[40]"
         style={{ background: '#050505', borderColor: '#141414', fontFamily: "JetBrains Mono, Courier New, monospace" }}>
         {/* Left: Call metrics */}
         <div className="flex items-center gap-3 text-[9px] tabular-nums">
@@ -6080,7 +7119,7 @@ export default function DispatchPage() {
             <span style={{ color: '#86efac' }}>AVAIL: {units.filter(u => u.status === 'available').length}</span>
           </span>
           <span style={{ color: '#aaaaaa' }}>DISP: {units.filter(u => u.status === 'dispatched').length}</span>
-          <span style={{ color: '#a78bfa' }}>ENR: {units.filter(u => u.status === 'enroute').length}</span>
+          <span style={{ color: '#c084fc' }}>ENR: {units.filter(u => u.status === 'enroute').length}</span>
           <span style={{ color: '#c084fc' }}>ONS: {units.filter(u => u.status === 'onscene').length}</span>
           <span style={{ color: '#666666' }}>OFF: {units.filter(u => u.status === 'off_duty').length}</span>
           <span style={{ color: '#666666' }}>|</span>
@@ -6099,7 +7138,7 @@ export default function DispatchPage() {
           <span style={{ color: '#555555' }}>F8:CMD</span>
           <span style={{ color: '#555555' }}>F12:NCIC</span>
           <span style={{ color: '#444444' }}>|</span>
-          <span style={{ color: '#999999' }}>{new Date().toLocaleTimeString('en-US', { hour12: false })}</span>
+          <LiveClock style={{ color: '#999999' }} />
         </div>
       </div>
     </div>

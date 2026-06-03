@@ -11,8 +11,9 @@ import { sanitizePdfText, wordWrapText, getActiveSectionStyle } from './pdfGener
 import {
   COLOR, FONT, BORDER, SPACING, LAYOUT,
   PDF_VALUE_FONT,
-  getGridStartX, getGridContentWidth,
+  getGridStartX, getGridContentWidth, getCapHeight,
   CLASSIFICATION,
+  topHeaderY,
   type RGBColor,
   type ClassificationLevel,
 } from './pdfTokens';
@@ -118,11 +119,12 @@ export function drawFormCell(
     const cbSize = 3.0;
     const cbX = x + pad;
     const cbY = valueAreaTop + (valueAreaH - cbSize) / 2;
-    doc.setDrawColor(80, 80, 85);
+    doc.setDrawColor(80, 80, 80); // neutralized 2026-05-30
     doc.setLineWidth(0.3);
     doc.rect(cbX, cbY, cbSize, cbSize);
-    if (cell.checked) {
-      doc.setFillColor(230, 245, 230);
+
+    if (cell.value && cell.value !== '' && cell.value !== '0') {
+      doc.setFillColor(235, 235, 235); // neutralized 2026-05-30
       doc.rect(cbX + 0.15, cbY + 0.15, cbSize - 0.3, cbSize - 0.3, 'F');
       doc.setDrawColor(20, 20, 20);
       doc.setLineWidth(0.7);
@@ -442,22 +444,18 @@ export function drawFormSection(
   const sectionStartY = curY;
 
   if (useBanner) {
-    // ── Draw horizontal banner (matches openAutoSection header style) ──
-    // Dark fill (#2e2e2e equivalent) matching CFS section headers
-    const bgColor = config.sideTab.color || COLOR.BG_SECTION_HDR;
-    doc.setFillColor(...bgColor);
-    doc.rect(gridX, curY, gridW, bannerH, 'F');
-    // Clean border around header
-    doc.setDrawColor(...COLOR.BORDER_SECTION);
-    doc.setLineWidth(BORDER.SECTION_OUTER);
-    doc.rect(gridX, curY, gridW, bannerH);
-    // White text, vertically centered
+    // ── Flat section banner (matches openAutoSection flat style) ──
+    // Black title + thin full-width rule below — no dark fill bar.
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(FONT.SIZE_SECTION_TITLE);
-    doc.setTextColor(...COLOR.TEXT_INVERTED);
-    const bannerCapH = FONT.SIZE_SECTION_TITLE * 0.35;
-    const textY = curY + (bannerH + bannerCapH) / 2;
-    doc.text(sanitizePdfText(config.sideTab.label.toUpperCase()), gridX + SPACING.CONTENT_INSET + 1, textY);
+    doc.setTextColor(...COLOR.TEXT_PRIMARY);
+    const textY = curY + getCapHeight(FONT.SIZE_SECTION_TITLE) + 0.6;
+    doc.text(sanitizePdfText(config.sideTab.label.toUpperCase()), gridX + SPACING.CONTENT_INSET, textY);
+    const bannerRuleY = curY + bannerH - 0.6;
+    doc.setDrawColor(...COLOR.TEXT_PRIMARY);
+    doc.setLineWidth(BORDER.SECTION_OUTER);
+    doc.line(gridX, bannerRuleY, gridX + gridW, bannerRuleY);
+    doc.setTextColor(...COLOR.TEXT_PRIMARY);
     curY += bannerH + SPACING.SM; // tight gap between banner and first grid row
   }
 
@@ -508,7 +506,7 @@ export function drawNibrsHeader(
   const pageW = doc.internal.pageSize.getWidth();
   const margin = LAYOUT.PAGE_MARGIN;
   const contentW = pageW - 2 * margin;
-  let y = LAYOUT.HEADER_TOP;
+  let y = topHeaderY(doc);
 
   // Header style follows the active section style (set per-generator).
   // Default 'dark' = charcoal bar + white text (legacy NIBRS look).
@@ -751,8 +749,8 @@ export function drawGeographyStrip(
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
     const val = String(values[i]).toUpperCase();
     // Truncate to fit cell
-    const maxChars = Math.floor((cellW - 3) / 1.5);
-    const displayVal = val.length > maxChars ? val.slice(0, maxChars - 1) + '…' : val;
+    const maxChars = Math.max(1, Math.floor((cellW - 3) / 1.5)); // clamp: narrow cells gave a negative slice
+    const displayVal = val.length > maxChars ? val.slice(0, Math.max(1, maxChars - 1)) + '…' : val;
     doc.text(displayVal, cellX + 1.5, y + 5.5);
   }
 
@@ -984,7 +982,7 @@ export function drawCautionFlagStrip(
   // Yellow warning triangle on left
   const triX = margin + 2.5;
   const triY = y + h / 2;
-  doc.setFillColor(255, 210, 40);
+  doc.setFillColor(180, 180, 180); // neutralized 2026-05-30 (was yellow)
   doc.setDrawColor(0, 0, 0);
   doc.setLineWidth(0.3);
   // Equilateral triangle pointing up
@@ -1117,6 +1115,14 @@ export interface TimelineEvent {
   label: string;   // "RECEIVED", "DISPATCHED", "EN ROUTE", "ON SCENE", "CLEARED"
   time?: string;   // "14:23:07"
   elapsed?: string; // "+00:02:14" — delta from previous stage
+  // Lifecycle state — drives status-aware rendering of stages that have no
+  // timestamp yet (an open call). 'done' = has a time; 'active' = the NEXT
+  // expected stage (rendered "PENDING" in amber with a tinted header cell so
+  // a reviewer instantly sees where the call is in its lifecycle); 'future' =
+  // a later stage not yet reached (rendered as a faint placeholder rather than
+  // the old "--:--:--" dash-soup that made open calls look broken). Omit for
+  // legacy callers — empty cells then fall back to a single clean placeholder.
+  state?: 'done' | 'active' | 'pending' | 'future';
 }
 
 /**
@@ -1146,8 +1152,21 @@ export function drawDispatchTimelineStrip(
   doc.setFillColor(...COLOR.BG_TABLE_HDR);
   doc.rect(margin, y, w, headerH, 'F');
 
+  const ACTIVE_AMBER: [number, number, number] = [100, 100, 100]; // neutralized 2026-05-30 (was amber)
   for (let i = 0; i < events.length; i++) {
+    const ev = events[i];
     const cellX = margin + i * cellW;
+    const isActive = ev.state === 'active';
+    const isFuture = ev.state === 'future';
+
+    // Active-stage header cell — overpaint the dark header strip for this one
+    // cell in amber so the "where is this call right now?" stage is the first
+    // thing the eye lands on.
+    if (isActive) {
+      doc.setFillColor(ACTIVE_AMBER[0], ACTIVE_AMBER[1], ACTIVE_AMBER[2]);
+      doc.rect(cellX, y, cellW, headerH, 'F');
+    }
+
     // Vertical divider
     if (i > 0) {
       doc.setDrawColor(...COLOR.BORDER_COLUMN);
@@ -1160,41 +1179,64 @@ export function drawDispatchTimelineStrip(
     doc.setFontSize(FONT.SIZE_TIMELINE_LABEL);
     doc.setTextColor(...COLOR.TEXT_INVERTED);
     doc.text(
-      sanitizePdfText(events[i].label.toUpperCase()),
+      sanitizePdfText(ev.label.toUpperCase()),
       cellX + cellW / 2,
       y + 1.9,
       { align: 'center' },
     );
 
-    // Timestamp (bold courier, center)
+    // Timestamp / status (bold courier, center). Stages with a time render it
+    // normally; the active stage reads "PENDING" in amber; future stages get a
+    // faint single placeholder instead of the old "--:--:--" dash-soup.
+    let stageText: string;
+    let stageColor: readonly [number, number, number];
+    if (ev.time) {
+      stageText = ev.time;
+      stageColor = COLOR.TEXT_PRIMARY;
+    } else if (isActive) {
+      stageText = 'PENDING';
+      stageColor = ACTIVE_AMBER;
+    } else if (isFuture) {
+      stageText = '-';
+      stageColor = COLOR.TEXT_TERTIARY;
+    } else {
+      // Legacy callers (no state) — clean single placeholder.
+      stageText = '-';
+      stageColor = COLOR.TEXT_TERTIARY;
+    }
     doc.setFont(PDF_VALUE_FONT, 'bold');
-    doc.setFontSize(FONT.SIZE_TIMELINE_VALUE);
-    doc.setTextColor(...COLOR.TEXT_PRIMARY);
+    doc.setFontSize(stageText === 'PENDING' ? FONT.SIZE_TIMELINE_LABEL : FONT.SIZE_TIMELINE_VALUE);
+    doc.setTextColor(stageColor[0], stageColor[1], stageColor[2]);
     doc.text(
-      sanitizePdfText(events[i].time || '--:--:--'),
+      sanitizePdfText(stageText),
       cellX + cellW / 2,
       y + headerH + 3.2,
       { align: 'center' },
     );
 
     // Elapsed delta
-    if (events[i].elapsed) {
+    if (ev.elapsed) {
       doc.setFont(PDF_VALUE_FONT, 'normal');
       doc.setFontSize(FONT.SIZE_TIMELINE_LABEL);
       doc.setTextColor(...COLOR.TEXT_SECONDARY);
       doc.text(
-        sanitizePdfText(events[i].elapsed!),
+        sanitizePdfText(ev.elapsed!),
         cellX + cellW / 2,
         y + h - 1.1,
         { align: 'center' },
       );
     }
 
-    // Progress LED between stages
-    if (i < events.length - 1 && events[i].time) {
+    // Progress LED between stages — green up to the last completed stage,
+    // amber on the active stage to mark the live edge of the lifecycle.
+    if (i < events.length - 1 && (ev.time || isActive)) {
       const ledX = cellX + cellW - 1.5;
       const ledY = y + headerH + 1.5;
-      doc.setFillColor(60, 180, 80);
+      if (isActive && !ev.time) {
+        doc.setFillColor(ACTIVE_AMBER[0], ACTIVE_AMBER[1], ACTIVE_AMBER[2]);
+      } else {
+        doc.setFillColor(80, 80, 80); // neutralized 2026-05-30 (was green)
+      }
       doc.circle(ledX, ledY, 0.5, 'F');
     }
   }
@@ -1239,15 +1281,18 @@ export function drawChainOfCustodyTable(
   let curY = y;
   if (opts?.itemNumber || opts?.itemDescription) {
     const stripH = 4;
-    doc.setFillColor(...COLOR.BG_SECTION_HDR);
-    doc.rect(x, curY, w, stripH, 'F');
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(FONT.SIZE_SECTION_TITLE);
-    doc.setTextColor(...COLOR.TEXT_INVERTED);
+    doc.setTextColor(...COLOR.TEXT_PRIMARY);
     const lbl = `CHAIN OF CUSTODY` +
       (opts.itemNumber ? `  |  ITEM #${sanitizePdfText(opts.itemNumber)}` : '') +
       (opts.itemDescription ? `  |  ${sanitizePdfText(opts.itemDescription).toUpperCase()}` : '');
-    doc.text(lbl, x + 1.5, curY + 2.8);
+    doc.text(lbl, x + SPACING.CONTENT_INSET, curY + getCapHeight(FONT.SIZE_SECTION_TITLE) + 0.6);
+    const cocRuleY = curY + stripH - 0.6;
+    doc.setDrawColor(...COLOR.TEXT_PRIMARY);
+    doc.setLineWidth(BORDER.SECTION_OUTER);
+    doc.line(x, cocRuleY, x + w, cocRuleY);
+    doc.setTextColor(...COLOR.TEXT_PRIMARY);
     curY += stripH;
   }
 
@@ -1385,14 +1430,16 @@ export function drawOfficerCertificationBlock(
     'knowledge and was prepared in the regular course of law enforcement duties. ' +
     'Falsification of this report is a Class A misdemeanor.';
 
-  // Heading bar
+  // Flat heading: black title + thin rule below.
   const headH = 4;
-  doc.setFillColor(...COLOR.BG_SECTION_HDR);
-  doc.rect(x, y, w, headH, 'F');
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_SECTION_TITLE);
-  doc.setTextColor(...COLOR.TEXT_INVERTED);
-  doc.text(heading, x + 1.5, y + headH - 1.3);
+  doc.setTextColor(...COLOR.TEXT_PRIMARY);
+  doc.text(heading, x + SPACING.CONTENT_INSET, y + getCapHeight(FONT.SIZE_SECTION_TITLE) + 0.6);
+  const certRuleY = y + headH - 0.6;
+  doc.setDrawColor(...COLOR.TEXT_PRIMARY);
+  doc.setLineWidth(BORDER.SECTION_OUTER);
+  doc.line(x, certRuleY, x + w, certRuleY);
   let curY = y + headH;
 
   // Certification paragraph box
@@ -1445,7 +1492,7 @@ function drawSignatureSlot(
   h: number,
 ): void {
   // Role label strip at top
-  doc.setFillColor(245, 245, 248);
+  doc.setFillColor(246, 246, 246); // neutralized 2026-05-30
   doc.rect(x, y, w, 3, 'F');
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_BADGE_LABEL);
@@ -1857,7 +1904,7 @@ export function drawMugshotFrame(
   // Bottom metadata caption (arrest date / booking #)
   const botY = y + capH + h;
   const metaH = 6;
-  doc.setFillColor(245, 245, 248);
+  doc.setFillColor(246, 246, 246); // neutralized 2026-05-30
   doc.rect(x, botY, w, metaH, 'F');
   doc.setDrawColor(...COLOR.MUGSHOT_RULE);
   doc.setLineWidth(BORDER.MUGSHOT_FRAME);
@@ -1915,7 +1962,7 @@ export function drawEnhancedNibrsHeader(
   const pageW = doc.internal.pageSize.getWidth();
   const margin = LAYOUT.PAGE_MARGIN;
   const contentW = pageW - 2 * margin;
-  let y = LAYOUT.HEADER_TOP;
+  let y = topHeaderY(doc);
 
   const headerH = LAYOUT.HEADER_HEIGHT + 4; // taller to fit tri-line + officer block
 
@@ -2046,7 +2093,7 @@ export function drawEnhancedNibrsHeader(
   // ── Metadata strip (form# | revision | distribution | report date) ──
   if (config.formNumber || config.reportDate || config.distribution) {
     const metaH = 5;
-    doc.setFillColor(245, 245, 248);
+    doc.setFillColor(246, 246, 246); // neutralized 2026-05-30
     doc.rect(margin, y, contentW, metaH, 'F');
     doc.setDrawColor(...COLOR.BORDER_SECTION);
     doc.setLineWidth(0.3);
@@ -2170,8 +2217,8 @@ export function drawDistributionFooter(
   const lineY = y + 3.2;
 
   // Left: distribution checkboxes
-  const dist = data.distribution || ['PATROL', 'RECORDS', 'DETECTIVES', 'DA', 'COURT'];
-  const checked = new Set((data.checked || []).map((s) => s.toUpperCase()));
+  const dist = Array.isArray(data.distribution) ? data.distribution : ['PATROL', 'RECORDS', 'DETECTIVES', 'DA', 'COURT'];
+  const checked = new Set((Array.isArray(data.checked) ? data.checked : []).map((s) => s.toUpperCase()));
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_FOOTER_PRIMARY);
   doc.setTextColor(...COLOR.TEXT_SECONDARY);
@@ -2231,11 +2278,12 @@ export function drawDistributionFooter(
 export type WatermarkVariant = 'DRAFT' | 'COPY' | 'SEALED' | 'VOIDED' | 'UNOFFICIAL' | 'CONFIDENTIAL';
 
 const WATERMARK_STYLES: Record<WatermarkVariant, { color: RGBColor; opacity: number; angle: number; sub?: string }> = {
+  // Neutralized 2026-05-30: all watermark colors are neutral grays
   DRAFT:        { color: [120, 120, 120], opacity: 0.08, angle: 45 },
-  COPY:         { color: [70, 100, 140],  opacity: 0.07, angle: 45 },
-  SEALED:       { color: [180, 20, 20],   opacity: 0.10, angle: 45, sub: 'BY ORDER OF COURT' },
-  VOIDED:       { color: [180, 20, 20],   opacity: 0.18, angle: -20 },
-  UNOFFICIAL:   { color: [150, 80, 20],   opacity: 0.08, angle: 45 },
+  COPY:         { color: [100, 100, 100], opacity: 0.07, angle: 45 },
+  SEALED:       { color: [60, 60, 60],    opacity: 0.10, angle: 45, sub: 'BY ORDER OF COURT' },
+  VOIDED:       { color: [60, 60, 60],    opacity: 0.18, angle: -20 },
+  UNOFFICIAL:   { color: [90, 90, 90],    opacity: 0.08, angle: 45 },
   CONFIDENTIAL: { color: [80, 80, 80],    opacity: 0.07, angle: 45 },
 };
 

@@ -1,132 +1,120 @@
-name: "Deploy to Production"
+name: Deploy to Cloudflare
 
-# ─── Manual-only trigger ─────────────────────────────────────────
-# This workflow is intentionally NOT auto-triggered on push to main.
-#
-# The canonical deploy path is the local script `bash deploy/deploy.sh`
-# (see CLAUDE.md), which uses the developer's SSH key directly against
-# the VPS. The GitHub Actions deploy requires a valid `VPS_SSH_KEY`
-# secret to be configured in repo settings — as of now, the secret is
-# either missing or malformed, which caused every push to main to
-# produce a red-X deploy failure and drown real issues in noise.
-#
-# To re-enable auto-deploy:
-#   1. On the VPS, run: ssh-keygen -t ed25519 -f rmpg_deploy -N ''
-#   2. Append rmpg_deploy.pub to /root/.ssh/authorized_keys on the VPS
-#   3. Paste the PRIVATE key (rmpg_deploy file content) into the
-#      VPS_SSH_KEY repository secret at Settings → Secrets and variables
-#   4. Add `push: { branches: [main] }` back to the `on:` section below
-# ──────────────────────────────────────────────────────────────────
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
-    inputs:
-      include_installers:
-        description: "Include desktop installers (--all flag)"
-        required: false
-        default: "false"
-        type: boolean
+
+concurrency:
+  group: cf-deploy-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   deploy:
-    name: Deploy to Hostinger VPS
     runs-on: ubuntu-latest
-    environment: production
-    permissions:
-      contents: read
-
+    timeout-minutes: 10
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
+      - uses: actions/checkout@v6
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
+      - uses: actions/setup-node@v6
         with:
-          node-version: "22"
-          cache: "npm"
-          cache-dependency-path: |
-            client/package-lock.json
-            server/package-lock.json
+          node-version: 22
+          cache: npm
 
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      # Apply D1 migrations to live (`rmpg-flex` DB, 785de7ae-…).
+      #
+      # `continue-on-error: true` (restored 2026-05-31). A non-blocking
+      # apply was the long-standing posture; it was tightened to blocking
+      # on 2026-05-27 on the assumption that only clean new migrations
+      # remained. That assumption was wrong: two pre-existing seed
+      # migrations (0049_admin_settings.sql / 0050_advanced_settings.sql)
+      # contain a malformed multi-row INSERT ("all VALUES must have the
+      # same number of terms") that has NEVER applied. Because wrangler
+      # applies migrations in order and aborts on the first failure, that
+      # one broken seed blocked the ENTIRE pipeline — including the Worker
+      # deploy and the `client` Pages build — for every push since. The
+      # net effect: shipped commits (e.g. the fleet toFixed crash fix)
+      # never reached prod; the live bundle silently lagged main for days.
+      #
+      # A broken *seed* migration must not be able to gate code deploys.
+      # The Worker reconciles required columns at boot, and genuinely new
+      # schema is applied directly to live D1 + checked into migrations/
+      # (see 0057_fleet_schema_alignment.sql). After deploy, verify any
+      # new table/column landed by querying sqlite_master directly rather
+      # than trusting the migration log (see CLAUDE.md gotcha #4).
+      - name: Apply D1 migrations (remote)
+        continue-on-error: true
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: d1 migrations apply rmpg-flex --remote
+
+      - name: Deploy Worker
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # --containers-rollout=none skips the Cloudflare Containers
+          # rollout. Without this, every Worker deploy fails at the
+          # container image push step with a bare `Unauthorized` (the
+          # image builds fine via Docker on the runner, but the push
+          # to Cloudflare's registry is rejected).
+          #
+          # Probed 2026-05-24 with a freshly issued Account token that
+          # included every Workers/D1/KV/R2/Pages scope — still
+          # Unauthorized on registry push. The required permission
+          # isn't surfaced by name in wrangler's error message and
+          # didn't show up under any "Containers" / "Workers" scope
+          # in the Cloudflare token UI at the time. Until that's
+          # sorted, every route still ships; only the PdfToolsContainer
+          # sidecar stays inactive (/api/pdf-tools/* will 500 if called).
+          command: deploy --containers-rollout=none
+
+      # Client SPA build + deploy to Cloudflare Pages.
+      # Without these steps the Worker (API) ships but the React app
+      # at https://rmpgutah.us stays stuck on whatever bundle was
+      # last pushed manually. Incident 2026-05-24: SW v321 lived in
+      # prod for weeks while source moved to v563 because deploy.yml
+      # only ran the Worker step. All UI fixes silently rotted.
       - name: Install client dependencies
-        working-directory: client
-        run: npm ci
-
-      - name: Install server dependencies
-        working-directory: server
-        run: npm ci
-
-      - name: TypeScript check
-        working-directory: client
-        run: npx tsc --noEmit || true
-
-      - name: Run server tests
-        working-directory: server
-        run: npx vitest run
+        run: cd client && npm ci
 
       - name: Build client
-        working-directory: client
-        run: npx vite build
+        run: cd client && npm run build
 
-      - name: Set up SSH key
-        env:
-          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
-        run: |
-          mkdir -p ~/.ssh
-          # Strip CRLF (Windows line endings) and ensure trailing newline —
-          # common cause of "Load key: error in libcrypto" on GitHub Actions
-          printf '%s\n' "$VPS_SSH_KEY" | tr -d '\r' > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          # Sanity check: verify the key is parseable before attempting to use it
-          if ! ssh-keygen -y -f ~/.ssh/id_rsa > /dev/null 2>&1; then
-            echo "::error::VPS_SSH_KEY secret is not a valid OpenSSH private key."
-            echo "::error::Regenerate: ssh-keygen -t ed25519 -f rmpg_deploy -N ''"
-            echo "::error::Paste the PRIVATE key (rmpg_deploy file) into the VPS_SSH_KEY secret."
-            exit 1
-          fi
-          ssh-keyscan -H 194.113.64.90 >> ~/.ssh/known_hosts
+      - name: Deploy client to Pages
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy client/dist --project-name=rmpg-flex --branch=main --commit-dirty=true
 
-      - name: Rsync code to Hostinger VPS
-        run: |
-          rsync -az --delete \
-            --exclude='node_modules' \
-            --exclude='.git' \
-            --exclude='server/data' \
-            --exclude='server/certs' \
-            --exclude='server/.env' \
-            --exclude='server/uploads' \
-            --exclude='client/.env' \
-            --exclude='desktop' \
-            --exclude='.DS_Store' \
-            --exclude='.claude' \
-            --exclude='client/android' \
-            ./ root@194.113.64.90:/opt/rmpg-flex/
-
-      - name: Deploy on VPS (install deps, restart service)
-        run: |
-          ssh root@194.113.64.90 bash << 'REMOTEEOF'
-            set -e
-            APP_DIR="/opt/rmpg-flex"
-            cd "$APP_DIR"
-
-            echo ">>> Installing server dependencies..."
-            cd server && npm install --production --legacy-peer-deps 2>&1 | tail -5 && cd ..
-
-            echo ">>> Restarting RMPG Flex service..."
-            systemctl restart rmpg-flex
-
-            echo ">>> Waiting for service to start..."
-            sleep 3
-
-            if systemctl is-active --quiet rmpg-flex; then
-              echo "✓ rmpg-flex service is running"
-            else
-              echo "✗ rmpg-flex service failed to start"
-              journalctl -u rmpg-flex --no-pager -n 30
-              exit 1
-            fi
-          REMOTEEOF
-
-      - name: Health check
-        run: |
-          sleep 5
-          curl -sf https://rmpgutah.us/api/health || (echo "Health check failed!" && exit 1)
+      # Deploy the routing proxy (rmpg-api-proxy) LAST. It dispatches
+      # rmpgutah.us/api/* to the rewrite (env.API = rmpg-flex-api) or legacy
+      # (env.LEGACY = rmpg-flex); both service-binding targets are already
+      # deployed above by the time this runs.
+      #
+      # BLOCKING again (no continue-on-error): the 2026-06-02 hedge was added
+      # because the deployed rmpg-api-proxy had orphan Durable Object namespaces
+      # (WelfareWatchDO/VoiceHubDO/AlertHubDO/PdfToolsContainer) left by the #937
+      # name-collision, so every proxy deploy hit Cloudflare error 10064. PR #947
+      # cleared that by exporting inert stub DO classes from proxy/index.ts, so
+      # the proxy deploys cleanly now. This step is sequenced LAST specifically so
+      # a genuine proxy failure fails the run loudly WITHOUT skipping the
+      # worker/client/Pages deploys above (the regression #943's continue-on-error
+      # was guarding against). If this 10064s again, do NOT re-add
+      # continue-on-error — confirm proxy/index.ts still exports those four stub
+      # classes. See memory project-auth-outage-name-collision.
+      - name: Deploy proxy
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: proxy
+          command: deploy

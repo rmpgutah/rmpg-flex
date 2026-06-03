@@ -9,7 +9,8 @@
 // announcing if DispatchPage also triggers the same alert.
 // ============================================================
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
+import { useAuth } from '../context/AuthContext';
 import { useWebSocket } from '../context/WebSocketContext';
 import {
   announceNewCall,
@@ -34,6 +35,7 @@ import {
   composePursuitNarrative,
 } from '../utils/narrativeComposer';
 import type { AlertBannerItem } from '../components/DispatchAlertBanner';
+import { getLocalAudioMode, vibrateForSeverity } from '../utils/audioMode';
 
 /**
  * Normalize DB column names to voice system field names.
@@ -90,15 +92,26 @@ export function useDispatchVoiceAlerts(options?: {
   voiceAlert?: (narrative: string, severity: 'minor' | 'moderate' | 'major') => void;
 }): void {
   const { subscribe } = useWebSocket();
+  const { user } = useAuth();
   const onAlert = options?.onAlert;
   const voiceAlert = options?.voiceAlert;
+  // Current user id, kept in a ref so targeted-alert filters read the latest
+  // value without re-running the (large) subscription effect on every auth tick.
+  const selfIdRef = useRef<string | number | null | undefined>(user?.id);
+  selfIdRef.current = user?.id;
 
   useEffect(() => {
     const unsubs: Array<() => void> = [];
 
-    // Route TTS through voice channel when active, otherwise direct
+    // Route TTS through voice channel when active, otherwise direct.
+    // DI-5: gate on per-unit audio_mode. 'silent' suppresses all TTS
+    // entirely (visual banner still fires via onAlert). 'vibrate' fires
+    // the Web Vibration API and skips TTS. 'audible' is the default.
     type AlertSeverity = 'minor' | 'moderate' | 'major';
     const speak = (text: string, severity: AlertSeverity) => {
+      const mode = getLocalAudioMode();
+      if (mode === 'silent') return;
+      if (mode === 'vibrate') { vibrateForSeverity(severity); return; }
       if (voiceAlert) {
         voiceAlert(text, severity);
       } else {
@@ -284,6 +297,9 @@ export function useDispatchVoiceAlerts(options?: {
     unsubs.push(
       subscribe('welfare_check', (msg) => {
         const data = (msg.data || msg.payload || msg) as any;
+        // Targeted prompt — AlertHubDO broadcasts to all consoles, so only
+        // speak it on the intended officer's device (fail-open if no target).
+        if (data.target_user_id != null && String(data.target_user_id) !== String(selfIdRef.current)) return;
         const text = data.message || 'Status check. Are you code 4?';
         if (voiceAlert) {
           voiceAlert(text, 'moderate');
@@ -291,6 +307,32 @@ export function useDispatchVoiceAlerts(options?: {
           announceWithSeverity(text, 'moderate');
         }
         onAlert?.({ id: nextAlertId(), severity: 'moderate', title: 'WELFARE CHECK', message: text, timestamp: Date.now() });
+      })
+    );
+
+    // ── Officer MDT note: subject/vehicle added to YOUR call (caution-flag aware) ──
+    // Targeted to the assigned officer via target_user_id; the server (callLinks)
+    // emits this when a person/vehicle is linked, with a caution-flag-aware `short`.
+    unsubs.push(
+      subscribe('call_status_for_officer', (msg) => {
+        const data = (msg.data || msg.payload || msg) as any;
+        if (data.target_user_id != null && String(data.target_user_id) !== String(selfIdRef.current)) return;
+        const text = String(data.short || 'Call updated.');
+        const severity: AlertSeverity = /caution|warrant|armed|weapon|gang|violent/i.test(text) ? 'major' : 'minor';
+        if (voiceAlert) { voiceAlert(text, severity); } else { announceWithSeverity(text, severity); }
+        onAlert?.({ id: nextAlertId(), severity, title: 'CALL UPDATE', message: text, timestamp: Date.now() });
+      })
+    );
+
+    // ── Property hazard on the assigned officer's call (officer safety) ──
+    unsubs.push(
+      subscribe('dispatch_alert', (msg) => {
+        const data = (msg.data || msg.payload || msg) as any;
+        if (data.target_user_id != null && String(data.target_user_id) !== String(selfIdRef.current)) return;
+        const w = Array.isArray(data.warnings) ? data.warnings[0] : null;
+        const text = String(data.message || w?.label || 'Officer safety alert on this call.');
+        if (voiceAlert) { voiceAlert(text, 'major'); } else { announceWithSeverity(text, 'major'); }
+        onAlert?.({ id: nextAlertId(), severity: 'major', title: 'OFFICER SAFETY', message: text, timestamp: Date.now() });
       })
     );
 

@@ -5,6 +5,7 @@ import { hasActiveSession } from '../services/offlinePin';
 import { isLikelyOnline } from '../services/connectivityMonitor';
 import { uploadWithProgress } from '../utils/uploadWithProgress';
 import type { UploadProgress } from '../utils/uploadWithProgress';
+import { refreshAccessToken } from '../utils/tokenRefresh';
 
 // ─── Offline Error Classes ───────────────────────────────────
 // Thrown when an offline write is attempted without PIN authorization.
@@ -118,35 +119,33 @@ export function authedImageUrl(url: string | null | undefined): string {
   if (url.includes('/api/uploads') || url.startsWith('/api/')) {
     const token = localStorage.getItem('rmpg_token');
     if (!token) return url;
-    const sep = url.includes('?') ? '&' : '?';
-    return `${url}${sep}token=${encodeURIComponent(token)}`;
+    // Strip any existing token= param to prevent duplicates
+    const cleanUrl = url.replace(/([?&])token=[^&]*&?/g, '$1').replace(/[?&]$/, '');
+    const sep = cleanUrl.includes('?') ? '&' : '?';
+    return `${cleanUrl}${sep}token=${encodeURIComponent(token)}`;
   }
   return url;
 }
 
 // ─── Mutation deduplication (prevent rapid double-click) ────
 const inflightMutations = new Map<string, { promise: Promise<Response>; ts: number }>();
-const DEDUP_WINDOW_MS = 500; // 500ms dedup window
+const DEDUP_WINDOW_MS = 500;
 
 // ─── Retry config for 502/503 (server restart recovery) ────
-// When nginx returns 502/503 during a deploy restart, the request never
-// reached Express. Safe to retry ALL methods (including POST/PUT/DELETE)
-// because the server never processed the original request.
 const RETRY_STATUS_CODES = [502, 503];
 const MAX_RETRIES = 3;
-const RETRY_DELAY_MS = 2000; // 2 seconds between retries
+const RETRY_DELAY_MS = 2000;
 
 async function fetchWithRetry(
   url: string,
   init: RequestInit & { timeoutMs?: number },
   retries = MAX_RETRIES,
 ): Promise<Response> {
-  // Skip retries for large bodies (file uploads) — re-sending large payloads is wasteful
   const bodySize = init.body instanceof Blob ? init.body.size
-    : init.body instanceof FormData ? Infinity  // FormData is always large-ish
+    : init.body instanceof FormData ? Infinity
     : typeof init.body === 'string' ? init.body.length
     : 0;
-  if (bodySize > 1_000_000) retries = 0; // 1MB threshold
+  if (bodySize > 1_000_000) retries = 0;
 
   // Mutation deduplication — return existing in-flight promise for same URL+method.
   // Each caller gets a fresh .clone() of the underlying Response so they can each
@@ -164,7 +163,6 @@ async function fetchWithRetry(
     }
   }
 
-  // Track in-flight mutations for deduplication
   const isMutation = ['POST', 'PUT', 'DELETE', 'PATCH'].includes(method.toUpperCase());
   const dedupKey = isMutation ? `${method}:${url}` : '';
 
@@ -176,17 +174,14 @@ async function fetchWithRetry(
         // attempt hangs for `timeoutMs`, abort it and try again.
         const res = await fetchWithTimeout(url, init);
         if (RETRY_STATUS_CODES.includes(res.status) && attempt < retries) {
-          // Server is restarting — wait with exponential backoff and retry
-          const delay = RETRY_DELAY_MS * Math.pow(2, attempt); // 2s → 4s → 8s
+          const delay = RETRY_DELAY_MS * Math.pow(2, attempt);
           console.warn(`[API] ${init.method || 'GET'} ${url} → ${res.status}, retrying in ${delay / 1000}s (${attempt + 1}/${retries})...`);
           await new Promise(r => setTimeout(r, delay));
           continue;
         }
         return res;
       } catch (err) {
-        // Don't retry intentional aborts (component unmount, navigation, etc.)
         if (err instanceof DOMException && err.name === 'AbortError') throw err;
-        // Network error (connection refused / failed to fetch) — retry with backoff
         lastError = err instanceof Error ? err : new Error(String(err));
         if (attempt < retries) {
           const delay = RETRY_DELAY_MS * Math.pow(2, attempt);
@@ -319,85 +314,52 @@ export function useApi<T = unknown>(options?: UseApiOptions) {
   };
 }
 
-// ─── Token-refresh lock (shared across concurrent apiFetch calls) ────
-let _refreshPromise: Promise<string | null> | null = null;
-const REFRESH_TIMEOUT_MS = 15_000; // 15s — prevent infinite lock if refresh hangs
-
-async function tryRefreshToken(): Promise<string | null> {
-  // If a refresh is already in-flight, wait for it
-  if (_refreshPromise) return _refreshPromise;
-
-  _refreshPromise = (async () => {
-    try {
-      const refreshToken = localStorage.getItem('rmpg_refresh_token');
-      if (!refreshToken) {
-        // No refresh token = effectively logged out. Don't silently spin —
-        // clear residual access token and bounce to login so the user can
-        // re-authenticate (only when actually online).
-        localStorage.removeItem('rmpg_token');
-        localStorage.removeItem('rmpg_session_id');
-        if (isLikelyOnline() && !window.location.pathname.startsWith('/login')) {
-          window.location.href = '/login';
-        }
-        return null;
-      }
-
-      // AbortController timeout prevents infinite lock on hung requests
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), REFRESH_TIMEOUT_MS);
-
-      const res = await fetch('/api/auth/refresh', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-        body: JSON.stringify({ refreshToken }),
-        signal: controller.signal,
-      }).finally(() => clearTimeout(timeout));
-
-      if (res.ok) {
-        const data = await res.json();
-        try { localStorage.setItem('rmpg_token', data.token); } catch { /* quota exceeded */ }
-        try { localStorage.setItem('rmpg_refresh_token', data.refreshToken); } catch { /* quota exceeded */ }
-        return data.token as string;
-      }
-
-      // Refresh failed — clear tokens and redirect to login
-      // (but NOT if we're offline — stay on current page).
-      // Uses the connectivity monitor's authoritative state (falls back to
-      // navigator.onLine pre-bootstrap) so we don't wrongly redirect during
-      // a false-offline window, and don't wrongly suppress the redirect
-      // when navigator.onLine lies `false` while the server is reachable.
-      if (!isLikelyOnline()) return null;
-      if (electron?.getOfflineState) {
-        try {
-          const state = await electron.getOfflineState();
-          if (!state.isOnline) return null;
-        } catch { /* fall through */ }
-      }
-      localStorage.removeItem('rmpg_token');
-      localStorage.removeItem('rmpg_refresh_token');
-      localStorage.removeItem('rmpg_session_id');
-      window.location.href = '/login';
-      return null;
-    } catch (err) {
-      console.warn('[useApi] Token refresh network error:', err);
-      return null;
-    } finally {
-      _refreshPromise = null;
-    }
-  })();
-
-  return _refreshPromise;
+// ─── Token refresh ──────────────────────────────────────────
+// Delegates to the shared, cross-tab-coordinated refresher. apiFetch's
+// transparent 401-retry and AuthContext's scheduled refresh now share ONE
+// in-flight /refresh across every tab (Web Locks API) — essential because the
+// live worker rotates the refresh token on each call, so two uncoordinated
+// refreshers would race one of them into a 401 logout. On a genuine auth
+// failure the shared module clears tokens and emits a cross-tab `logout`
+// event, which AuthContext turns into a route to /login (no hard redirect
+// here — React Router owns navigation). See utils/tokenRefresh.ts.
+function tryRefreshToken(): Promise<string | null> {
+  return refreshAccessToken();
 }
 
 // Standalone fetch helper for one-off requests.
 // Automatically retries once with a refreshed token on 401.
 // When running in Electron and offline, routes through local SQLite via IPC.
+//
+// All /api/* requests use RELATIVE URLs (same-origin to rmpgutah.us).
+// Cloudflare Pages proxies /api/* → https://api.rmpgutah.us/api/* via
+// client/public/_redirects, so the browser never makes a cross-origin
+// request and connect-src 'self' is enough — no Transform Rule update
+// required for the SPA to reach the Worker.
+//
+// Previously this file injected an absolute CF_WORKER_BASE prefix for a
+// curated allowlist of "ported" routes. That worked only when the zone
+// Transform Rule kept api.rmpgutah.us in connect-src; a single dashboard
+// edit silently broke every dispatch call. The Pages proxy makes the
+// path immune to that failure mode.
+function maybeRedirectToCfWorker(url: string): string {
+  return url;
+}
+
 export async function apiFetch<T>(
   endpoint: string,
   options?: RequestInit & { timeoutMs?: number }
 ): Promise<T> {
-  const url = endpoint.startsWith('/api') ? endpoint : `/api${endpoint}`;
+  const relativeUrl = endpoint.startsWith('/api') ? endpoint : `/api${endpoint}`;
+  const url = maybeRedirectToCfWorker(relativeUrl);
   const method = options?.method || 'GET';
+
+  // Network = activity. Signal the idle backstop (Layout.tsx Feature 24) on
+  // every API call so a monitoring-only screen — live polling, live-sync —
+  // never trips the shift-length idle logout while data is still flowing.
+  if (typeof window !== 'undefined') {
+    try { window.dispatchEvent(new Event('rmpg:activity')); } catch { /* SSR / no-DOM */ }
+  }
 
   // ─── Offline interception (Electron desktop only) ──────
   if (electron?.localApi && electron?.getOfflineState) {
@@ -503,7 +465,24 @@ export async function apiFetch<T>(
 
   if (!res.ok) {
     const errData = await res.json().catch(() => ({}));
-    throw new Error(errData.error || errData.message || `Request failed with status ${res.status}`);
+    // Append server-side `details`/`detail` diagnostic when present — otherwise
+    // every 500 looks identical to the user even when the server told us
+    // exactly what failed (e.g. SQL "no such column: foo"). See dispatch
+    // PUT /calls/:id, which returns `details: <real error>` but historically
+    // got rendered as just "Failed to update call".
+    const base = errData.error || errData.message || `Request failed with status ${res.status}`;
+    const diag = errData.details || errData.detail;
+    // Attach status / payload / code so structured error handling (e.g.
+    // 409 DUPLICATE_CANDIDATES from /quick-add) can branch on err.code
+    // instead of regex-matching err.message. Additive — existing
+    // err.message readers are unaffected.
+    const error = new Error(diag ? `${base}: ${diag}` : base) as Error & {
+      status?: number; payload?: any; code?: string;
+    };
+    error.status = res.status;
+    error.payload = errData;
+    error.code = errData.code;
+    throw error;
   }
 
   return res.json();

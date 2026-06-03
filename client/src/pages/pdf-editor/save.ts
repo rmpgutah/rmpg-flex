@@ -73,11 +73,12 @@ async function drawAnnotation(ctx: PageContext, ann: Annotation): Promise<void> 
       return;
     }
     case 'highlight': {
-      const fc = hexToRgb(ann.fillColor ?? '#fff050', [1, 0.94, 0.31]);
+      // Highlight rendered as a neutral gray overlay — no color splash.
+      // Without ExtGState we can't do true alpha; use a light gray fill.
+      const fc = hexToRgb(ann.fillColor ?? '#999999', [0.6, 0.6, 0.6]);
       builder.drawOnPage(pageIdx, (csb) => {
         csb.saveState();
         csb.setFillRgb(fc[0], fc[1], fc[2]);
-        // Highlight is alpha-less in PDF without ExtGState; emulate with paler tone.
         csb.fillRect(px, py - ph, pw, ph);
         csb.restoreState();
       });
@@ -185,7 +186,7 @@ async function drawAnnotation(ctx: PageContext, ann: Annotation): Promise<void> 
       return;
     }
     case 'stamp': {
-      const stampColor: [number, number, number] = [0.78, 0.1, 0.12];
+      const stampColor: [number, number, number] = [0.45, 0.45, 0.45]; // Neutral gray stamp — no red splash
       const text = String(ann.label).toUpperCase();
       const fontSize = Math.max(10, ph * 0.45);
       builder.drawOnPage(pageIdx, (csb, useFont) => {
@@ -458,7 +459,7 @@ async function buildPdfFromEditorStateViaPdfLib(state: EditorState): Promise<Uin
       if (a.type === 'text') {
         page.drawText(a.text, { x: px, y: py - a.fontSize, size: a.fontSize, font: a.bold ? helvBold : helv, color: rgb(c[0], c[1], c[2]) });
       } else if (a.type === 'highlight') {
-        page.drawRectangle({ x: px, y: py - ph, width: pw, height: ph, color: rgb(1, 0.94, 0.31), opacity: 0.4 });
+        page.drawRectangle({ x: px, y: py - ph, width: pw, height: ph, color: rgb(0.6, 0.6, 0.6), opacity: 0.3 });
       } else if (a.type === 'redact') {
         page.drawRectangle({ x: px, y: py - ph, width: pw, height: ph, color: rgb(0, 0, 0) });
       } else if (a.type === 'rect') {

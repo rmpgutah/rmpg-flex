@@ -261,6 +261,11 @@ export interface CallForService {
   longitude?: number | null;
   property_id?: string;
   property_name?: string;
+  // Premise intel joined from the linked property (call detail GET).
+  property_address?: string;
+  gate_code?: string;
+  post_orders?: string;
+  hazard_notes?: string;
   client_id?: string;
   client_name?: string;
   description: string;
@@ -426,9 +431,29 @@ export interface Unit {
   latitude?: number | null;
   longitude?: number | null;
   vehicle?: string;
+  /** Unit setup fields (admin create/edit). capabilities is parsed from the
+   *  units.capabilities JSON text column; assigned_beat is a default patrol
+   *  beat; audio_mode is the MDT default (audible | silent | vibrate). */
+  capabilities?: string[];
+  assigned_beat?: string;
+  audio_mode?: string;
   last_status_change: string;
   /** Feature 2: GPS timestamp for stale indicator */
   gps_updated_at?: string;
+  /** Source of the last fix ('gps' | 'manual'); drives the map source badge. */
+  gps_source?: string;
+  /** Heading (deg 0-360) + ground speed (m/s) of the last fix — drives the map
+   *  nav-cursor arrow rotation + speed label. Mirrored onto the unit row from
+   *  the latest breadcrumb (src/routes/dispatch/gps.ts). */
+  gps_heading?: number | null;
+  gps_speed?: number | null;
+  /** Spillman EMERGENCY overlay (panic activation). 1 = the officer has an
+   *  active panic — the unit flashes red on the Status Monitor / map until a
+   *  terminal panic transition clears it. Set/cleared server-side in
+   *  src/routes/dispatch/panic.ts. */
+  emergency_active?: number | boolean | null;
+  emergency_call_id?: number | string | null;
+  emergency_since?: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -1133,7 +1158,7 @@ export interface LeaveRequest {
   reviewed_by: number | null;
   reviewer_name?: string;
   reviewed_at: string | null;
-  review_notes: string | null;
+  denial_reason: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -1453,6 +1478,12 @@ export interface FleetFuelLog {
   // Optional backend-attached fields (not always present on every log row)
   flags?: string;              // JSON-encoded flag array, e.g. '["outlier:mpg"]'
   driver_officer_id?: string;  // officer who filled the tank (if tracked)
+  // Enhanced capture (2026-05-31)
+  is_full_tank?: number | boolean; // 1/0 from D1; gates MPG attribution
+  payment_method?: string;
+  driver_name?: string;
+  location?: string;
+  odometer?: number;           // live column name (FleetFuelLog also exposes odometer_reading)
 }
 
 export interface FleetFuelSummary {
@@ -1466,6 +1497,7 @@ export interface FleetFuelSummary {
   total_distance?: number | null;
   cost_per_mile?: number | null;
   fuel_cost_per_day?: number | null;
+  full_tank_count?: number;
 }
 
 // --- Fuel Analytics + Budget + Cost types (deploy-unblock placeholders) ---
@@ -1545,8 +1577,54 @@ export interface FleetUtilityCost {
   [key: string]: any;
 }
 
+export interface FleetOtherCost {
+  id?: number;
+  vehicle_id?: number;
+  cost_type?: string;
+  provider?: string;
+  amount?: number;
+  frequency?: string;
+  incurred_date?: string;
+  period_end?: string;
+  status?: string;
+  notes?: string;
+  [key: string]: any;
+}
+
+export interface FleetCostBudget {
+  id?: number;
+  vehicle_id?: number;
+  category?: string;
+  monthly_budget?: number;
+  notes?: string;
+  updated_at?: string;
+  [key: string]: any;
+}
+
 export interface FleetCostSummary {
   total?: number;
+  total_lifetime?: number;
+  cost_per_mile?: number;
+  categories?: {
+    fuel?: number;
+    maintenance?: number;
+    loans?: number;
+    insurance?: number;
+    accessories?: number;
+    utilities?: number;
+    other?: number;
+    [key: string]: number | undefined;
+  };
+  monthly_commitment?: {
+    loan?: number;
+    insurance?: number;
+    utility?: number;
+    other?: number;
+    total?: number;
+    [key: string]: number | undefined;
+  };
+  projected_annual?: number;
+  budgets?: Record<string, { budget: number; actual: number; over: boolean }>;
   [key: string]: any;
 }
 
@@ -1807,6 +1885,7 @@ export type WSMessageType =
   | 'message'
   | 'activity'
   | 'dispatch_alert'
+  | 'call_status_for_officer'
   | 'system_alert'
   | 'notification'
   | 'panic_alert'
@@ -1818,6 +1897,11 @@ export type WSMessageType =
   | 'panic_false_alarm'
   | 'panic_escalated'
   | 'dispatch_update'
+  // High-frequency GPS pin glide (gps.ts → AlertHubDO). Its OWN type, kept
+  // off 'dispatch_update' so a ~1 Hz breadcrumb never runs the dispatcher
+  // brain fan-in — MapPage moves the marker / rotates the arrow directly.
+  | 'unit_position'
+  | 'premise_alert_for_unit'
   // Live sync — auto-broadcast on data mutations
   | 'data_changed'
   | 'record_update'
@@ -1834,6 +1918,10 @@ export type WSMessageType =
   | 'radio_channel_join'
   | 'radio_channel_leave'
   | 'radio_channel_state'
+  // Radio backend (src/routes/radio.ts) — channel CRUD + new transmissions.
+  // Payload: { action: 'channel_created' | 'channel_updated' |
+  // 'channel_archived' | 'transmission_logged', channel?, channel_id?, transmission? }
+  | 'radio_update'
   // MDC Selcall — unit paging, emergency override, channel scanning
   | 'selcall_page'
   | 'selcall_page_sent'
@@ -1880,7 +1968,7 @@ export type WSMessageType =
   | 'warrants_updated'
   | 'warrant_served'
   | 'warrant_recalled'
-  | 'scraper_event'
+  | 'scraper_events'
   // Trespass orders
   | 'trespass_order_violated'
   | 'trespass_order_created'
@@ -3016,7 +3104,8 @@ export interface ServeJob {
   jurisdiction: string | null;
   client_name: string | null;
   attorney_name: string | null;
-  priority: 'low' | 'normal' | 'high' | 'rush';
+  // Matches the serve_queue.priority CHECK constraint.
+  priority: 'routine' | 'normal' | 'rush' | 'urgent';
   time_window: 'morning' | 'afternoon' | 'evening' | 'anytime';
   deadline: string | null;
   attempt_count: number;

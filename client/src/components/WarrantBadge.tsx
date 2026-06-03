@@ -1,14 +1,20 @@
+import React from "react";
 interface WarrantBadgeProps {
   flags: string | any[];
   size?: 'sm' | 'md';
   onClick?: () => void;
 }
 
-export default function WarrantBadge({ flags, size = 'sm', onClick }: WarrantBadgeProps) {
+function WarrantBadge({ flags, size = 'sm', onClick }: WarrantBadgeProps) {
   let parsed: any[] = [];
   try {
     parsed = typeof flags === 'string' ? JSON.parse(flags || '[]') : (flags || []);
-  } catch { return null; }
+  } catch {
+    // Malformed flags JSON: fall back to substring detection so a real
+    // ACTIVE_WARRANT flag stored as a raw/garbled string still badges instead
+    // of silently rendering nothing (officer-safety signal must not vanish).
+    parsed = typeof flags === 'string' && flags.includes('ACTIVE_WARRANT') ? ['ACTIVE_WARRANT'] : [];
+  }
 
   const warrantFlag = parsed.find((f: any) => f?.type === 'ACTIVE_WARRANT' || f === 'ACTIVE_WARRANT');
   if (!warrantFlag) return null;
@@ -35,3 +41,5 @@ export default function WarrantBadge({ flags, size = 'sm', onClick }: WarrantBad
     </span>
   );
 }
+
+export default React.memo(WarrantBadge);

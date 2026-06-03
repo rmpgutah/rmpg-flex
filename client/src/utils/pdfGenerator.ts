@@ -11,9 +11,11 @@ const _buildTime = typeof __BUILD_TIME__ !== 'undefined' ? __BUILD_TIME__ : '';
 void _buildTime;
 
 import jsPDF from 'jspdf';
+import { toNum } from './sentinel';
 import { getTypeCode, formatIncidentType, PDF_REPORT_LABELS, type PdfReportType } from './caseNumbers';
 import { zoneLeaf, beatLeaf, sectionZoneBeatCombined } from './dispatchCodeParts';
 import { loadSealBase64, loadLogoDarkBase64, FORM_NUMBERS, FORM_REVISION } from './pdfAssets';
+import { parseTimestamp } from './dateUtils';
 // Document hashing infrastructure (pdfIntegrity.ts, pdfSigner.ts) is
 // dormant as of 2026-05-04 per user request. The trailer page +
 // per-page footer hash prefix are removed; payload-hash computation +
@@ -28,8 +30,17 @@ import {
 import {
   COLOR, FONT, BORDER, SPACING, LAYOUT, PDF_VALUE_FONT, getContentWidth,
   getFullFieldWidth, getLeftX, getRightColumnX, getHalfFieldWidth, getThirdWidth,
-  getGridStartX, getGridContentWidth, formatEnumValue,
+  getGridStartX, getGridContentWidth, formatEnumValue, getCapHeight,
+  applyPrintTarget, topMarginY, topHeaderY, type PrintTarget,
 } from './pdfTokens';
+
+/** Public PDF generation options. Threading `printTarget` to the
+ *  big v1 incident-report generator engages the +6mm Brother PJ-700
+ *  leading-edge offset across the entire output (header chrome,
+ *  every per-page top y, continuation headers, post-addPage resets). */
+export interface PdfReportOptions {
+  printTarget?: PrintTarget;
+}
 import {
   drawNibrsHeader, drawEnhancedNibrsHeader, drawClassificationBar,
   applyClassificationToAllPages, drawCautionFlagStrip, drawPriorityBar,
@@ -117,8 +128,8 @@ export const DEFAULT_PDF_BRANDING: PdfBranding = {
   report_header_text: 'ROCKY MOUNTAIN PROTECTIVE GROUP',
   report_subheader_text: 'PRIVATE SECURITY & LAW ENFORCEMENT',
   primary_color: '#888888',
-  accent_color: '#d4a017',
-  header_bg_color: '#232832',
+  accent_color: '#555555', // neutralized 2026-05-30 (was gold #d4a017)
+  header_bg_color: '#333333', // neutralized 2026-05-30 (was dark blue #232832)
   // section_accent_color is intentionally LEFT UNSET so the
   // thematic per-section palette in resolveSectionAccentColor
   // becomes the default (burgundy for hazards, green for resolution,
@@ -173,11 +184,12 @@ export const CLASSIFICATION_BAR_HEIGHT = LAYOUT.CLASSIF_BAR_H;
 
 // Priority color mapping
 export const PRIORITY_COLORS: Record<string, { bg: [number, number, number]; text: [number, number, number]; label: string }> = {
-  critical: { bg: [220, 38, 38], text: [255, 255, 255], label: 'PRIORITY: CRITICAL' },
-  high: { bg: [220, 80, 20], text: [255, 255, 255], label: 'PRIORITY: HIGH' },
-  medium: { bg: [212, 160, 23], text: [0, 0, 0], label: 'PRIORITY: MEDIUM' },
-  low: { bg: [60, 130, 80], text: [255, 255, 255], label: 'PRIORITY: LOW' },
-  routine: { bg: [80, 120, 180], text: [255, 255, 255], label: 'PRIORITY: ROUTINE' },
+  // Neutralized 2026-05-30: luminance gradient replaces red/orange/gold/green/blue
+  critical: { bg: [45, 45, 45], text: [255, 255, 255], label: 'PRIORITY: CRITICAL' },
+  high:      { bg: [70, 70, 70], text: [255, 255, 255], label: 'PRIORITY: HIGH' },
+  medium:    { bg: [100, 100, 100], text: [255, 255, 255], label: 'PRIORITY: MEDIUM' },
+  low:       { bg: [130, 130, 130], text: [255, 255, 255], label: 'PRIORITY: LOW' },
+  routine:   { bg: [160, 160, 160], text: [0, 0, 0],       label: 'PRIORITY: ROUTINE' },
 };
 
 // Generation timestamp captured once per report
@@ -237,13 +249,22 @@ export function sanitizePdfText(text: string): string {
     // "BANKRUPTCY -&GT;" surfacing as literal "&GT;" in serve-intake
     // notes, caught 2026-05-04). Decoding common entities before the
     // toUpperCase() pass keeps rendered output clean.
-    .replace(/&amp;/gi, '&')
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>')
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;/g,  "'")
-    .replace(/&apos;/gi, "'")
-    .replace(/&nbsp;/gi, ' ')
+    // Single-pass HTML entity decode — avoids double-unescaping (e.g. an
+     // input "&amp;lt;" becoming "<" through sequential replaces). Each
+     // entity in the source string is matched at most once.
+    .replace(/&(amp|lt|gt|quot|apos|nbsp|#39);/gi, (_m, ent) => {
+      const e = String(ent).toLowerCase();
+      switch (e) {
+        case 'amp':  return '&';
+        case 'lt':   return '<';
+        case 'gt':   return '>';
+        case 'quot': return '"';
+        case 'apos': return "'";
+        case '#39':  return "'";
+        case 'nbsp': return ' ';
+        default:     return _m;
+      }
+    })
     // Strip unmatched markdown emphasis markers — narrative text from
     // upstream rich-text editors / serve-intake imports occasionally
     // contains opening "**" with no closing pair (e.g. "**DUE DATE:
@@ -448,7 +469,7 @@ export function addDraftWatermark(doc: jsPDF) {
   // @ts-expect-error jsPDF GState
   doc.setGState(new doc.GState({ opacity: 0.12 }));
   doc.setFont(PDF_VALUE_FONT, 'bold');
-  doc.setTextColor(220, 38, 38); // Red
+  doc.setTextColor(120, 120, 120); // neutralized 2026-05-30 (was red)
 
   const cx = pageWidth / 2;
   const cy = pageHeight / 2;
@@ -456,7 +477,7 @@ export function addDraftWatermark(doc: jsPDF) {
   doc.text('DRAFT', cx, cy, { align: 'center', angle: 45 });
 
   // Add border warning
-  doc.setDrawColor(220, 38, 38);
+  doc.setDrawColor(120, 120, 120); // neutralized 2026-05-30 (was red)
   doc.setLineWidth(BORDER.BANNER);
   doc.rect(10, 10, pageWidth - 20, pageHeight - 20);
 
@@ -499,6 +520,9 @@ export function addReportHeader(
   const primaryRgb = hexToRgb(brand.primary_color);
   const caseBoxLabel = headerOptions?.caseBoxLabel || 'CASE NUMBER';
   const useLogo = headerOptions?.useLogo ?? true;
+  // Header top-edge y, mobile-printer-aware. Replaces every literal
+  // headerY in this drawer in one shot.
+  const headerY = topHeaderY(doc);
 
   // Store case number for continuation headers
   activeCaseNumber = caseNumber;
@@ -512,17 +536,17 @@ export function addReportHeader(
   // Detect if header background is light or dark to choose text colors
   const bgLuminance = (headerBg[0] * 0.299 + headerBg[1] * 0.587 + headerBg[2] * 0.114);
   const isLightBg = bgLuminance > 140;
-  const headerTextColor: [number, number, number] = isLightBg ? [30, 30, 35] : [255, 255, 255];
-  const headerMetaColor: [number, number, number] = isLightBg ? [100, 100, 110] : [150, 150, 150];
+  const headerTextColor: [number, number, number] = isLightBg ? [30, 30, 30] : [255, 255, 255]; // neutralized 2026-05-30
+  const headerMetaColor: [number, number, number] = isLightBg ? [100, 100, 100] : [150, 150, 150]; // neutralized 2026-05-30
   const subheaderColor: [number, number, number] = isLightBg ? primaryRgb : [accentRgb[0], accentRgb[1], accentRgb[2]];
 
   // ── Header background bar (no top outline — clean edge) ─
   doc.setFillColor(headerBg[0], headerBg[1], headerBg[2]);
-  doc.rect(LAYOUT.PAGE_MARGIN, LAYOUT.HEADER_TOP, cw, LAYOUT.HEADER_HEIGHT, 'F');
+  doc.rect(LAYOUT.PAGE_MARGIN, headerY, cw, LAYOUT.HEADER_HEIGHT, 'F');
 
   // ── Seal / Logo image (left) ───────────────────────────
   const sealX = LAYOUT.PAGE_MARGIN + SPACING.SM + 0.5;
-  const sealY = LAYOUT.HEADER_TOP + (LAYOUT.HEADER_HEIGHT - LAYOUT.SEAL_SIZE) / 2;
+  const sealY = headerY + (LAYOUT.HEADER_HEIGHT - LAYOUT.SEAL_SIZE) / 2;
   let textStartX = LAYOUT.PAGE_MARGIN + SPACING.XL;
 
   const imageToUse = useLogo && cachedLogoDark ? cachedLogoDark : cachedSeal;
@@ -540,13 +564,13 @@ export function addReportHeader(
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_HEADER_TITLE);
   doc.setTextColor(headerTextColor[0], headerTextColor[1], headerTextColor[2]);
-  doc.text(agencyName || brand.report_header_text, textStartX, LAYOUT.HEADER_TOP + 6.5);
+  doc.text(agencyName || brand.report_header_text, textStartX, headerY + 6.5);
 
   // ── Line 2: Subheader ──────────────────────────────────
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_SUBHEADER);
   doc.setTextColor(subheaderColor[0], subheaderColor[1], subheaderColor[2]);
-  doc.text(brand.report_subheader_text, textStartX, LAYOUT.HEADER_TOP + 11);
+  doc.text(brand.report_subheader_text, textStartX, headerY + 11);
 
   // ── Line 3: Report type | form# | rev | date ──────────
   const formNum = FORM_NUMBERS[activeFormKey] || '';
@@ -559,7 +583,7 @@ export function addReportHeader(
   doc.setFont(PDF_VALUE_FONT, 'normal');
   doc.setFontSize(FONT.SIZE_SMALL_META);
   doc.setTextColor(headerMetaColor[0], headerMetaColor[1], headerMetaColor[2]);
-  doc.text(metaParts.join('  |  '), textStartX, LAYOUT.HEADER_TOP + 15);
+  doc.text(metaParts.join('  |  '), textStartX, headerY + 15);
 
   // ── Priority badge (inline, "P4 - Low" format) ─────────
   const prioKey = priority?.toLowerCase() || '';
@@ -579,7 +603,7 @@ export function addReportHeader(
     doc.setFontSize(5);
     const prioW = doc.getTextWidth(prioLabelText) + 4;
     const prioX = textStartX;
-    const prioY = LAYOUT.HEADER_TOP + 16.5;
+    const prioY = headerY + 16.5;
     doc.setFillColor(prio.bg[0], prio.bg[1], prio.bg[2]);
     doc.roundedRect(prioX, prioY, prioW, 3, 0.5, 0.5, 'F');
     doc.setTextColor(prio.text[0], prio.text[1], prio.text[2]);
@@ -589,7 +613,7 @@ export function addReportHeader(
   // ── Case number box (right) ────────────────────────────
   const caseBoxH = LAYOUT.HEADER_HEIGHT - 2;
   const caseBoxX = pageWidth - LAYOUT.PAGE_MARGIN - LAYOUT.CASE_BOX_W - SPACING.SM;
-  const caseBoxY = LAYOUT.HEADER_TOP + 1;
+  const caseBoxY = headerY + 1;
 
   doc.setFillColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
   doc.rect(caseBoxX, caseBoxY, LAYOUT.CASE_BOX_W, caseBoxH, 'F');
@@ -610,7 +634,7 @@ export function addReportHeader(
   doc.text(caseNumber, caseBoxX + LAYOUT.CASE_BOX_W / 2, caseBoxY + 12, { align: 'center' });
 
   // ── Thin accent line below header (primary color only) ─
-  const stripY = LAYOUT.HEADER_TOP + LAYOUT.HEADER_HEIGHT;
+  const stripY = headerY + LAYOUT.HEADER_HEIGHT;
   doc.setFillColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
   doc.rect(LAYOUT.PAGE_MARGIN, stripY, cw, LAYOUT.ACCENT_STRIP_H, 'F');
 
@@ -678,51 +702,37 @@ function resolveSectionAccentColor(title: string): readonly [number, number, num
 export function openAutoSection(doc: jsPDF, title: string, y: number): { contentY: number; sectionY: number; sectionPage: number } {
   const cw = getContentWidth(doc);
 
+  // Keep the header and its first content row on the same page. Reserve
+  // the header bar + content pad + one field row (~14mm) so a section
+  // opened near the page bottom moves WHOLE to the next page rather than
+  // stranding an orphan header.
+  const FIRST_ROW_RESERVE = SPACING.SECTION_HEADER_H + SPACING.SECTION_CONTENT_PAD + 14;
+  y = checkPageBreak(doc, y, FIRST_ROW_RESERVE);
+
   // Ensure full opacity (safety reset after watermark GState)
   // @ts-expect-error jsPDF GState
   doc.setGState(new doc.GState({ opacity: 1.0 }));
 
-  // Left-accent strip — thematic per-section color (see
-  // resolveSectionAccentColor for palette rationale). Branding override
-  // wins; otherwise the title keyword maps to one of five colors.
-  const accentW = BORDER.ACCENT_SECTION;
-  const sectionAccentRgb = resolveSectionAccentColor(title);
-  doc.setFillColor(sectionAccentRgb[0], sectionAccentRgb[1], sectionAccentRgb[2]);
-  doc.rect(LAYOUT.PAGE_MARGIN, y, accentW, SPACING.SECTION_HEADER_H, 'F');
+  // Spillman Flex / LexisNexis convention:
+  // Solid black header band across the full content width, white UPPERCASE
+  // bold text. No accent strip, no tint — pure black-and-white police form.
+  const sectionY = y;
+  const sectionPage = doc.getNumberOfPages();
+  const barH = SPACING.SECTION_HEADER_H;
 
-  if (activeSectionStyle === 'light') {
-    // Dark header bar with white text (2026-05-05 darker-shading pass).
-    // Field bodies BELOW the header stay white; only the header BAR
-    // itself goes dark for strong contrast that scans like a real
-    // police-form section divider. Previously this branch used a
-    // cream tint with dark text.
-    doc.setFillColor(...COLOR.BG_SECTION_HDR);
-    doc.rect(LAYOUT.PAGE_MARGIN + accentW, y, cw - accentW, SPACING.SECTION_HEADER_H, 'F');
+  doc.setFillColor(0, 0, 0);
+  doc.rect(LAYOUT.PAGE_MARGIN, y, cw, barH, 'F');
 
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(FONT.SIZE_SECTION_TITLE);
-    doc.setTextColor(...COLOR.TEXT_INVERTED);
-  } else {
-    // Dark default: charcoal fill + white text (original style).
-    doc.setFillColor(...COLOR.BG_SECTION_HDR);
-    doc.rect(LAYOUT.PAGE_MARGIN + accentW, y, cw - accentW, SPACING.SECTION_HEADER_H, 'F');
-
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(FONT.SIZE_SECTION_TITLE);
-    doc.setTextColor(...COLOR.TEXT_INVERTED);
-  }
-
-  // Vertically centered in header bar
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(FONT.SIZE_SECTION_TITLE);
+  doc.setTextColor(255, 255, 255);
   const capH = FONT.SIZE_SECTION_TITLE * 0.35;
-  const sectionTextY = y + (SPACING.SECTION_HEADER_H + capH) / 2;
-  doc.text(sanitizePdfText(title.toUpperCase()), LAYOUT.PAGE_MARGIN + accentW + SPACING.CONTENT_INSET + 1, sectionTextY);
+  const textY = y + (barH + capH) / 2;
+  doc.text(sanitizePdfText(title.toUpperCase()), LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, textY);
 
-  // Reset text color to primary (black) — prevents white text leaking into content
+  // Reset text to black for content
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
-  doc.setFont(PDF_VALUE_FONT, 'normal');
-
-  // Content starts after header bar + content padding (not tight against bar)
-  return { contentY: y + SPACING.SECTION_HEADER_H + SPACING.SECTION_CONTENT_PAD, sectionY: y, sectionPage: doc.getNumberOfPages() };
+  return { contentY: y + barH + SPACING.SECTION_CONTENT_PAD, sectionY, sectionPage };
 }
 
 /**
@@ -760,32 +770,22 @@ export function closeAutoSection(doc: jsPDF, sectionY: number, contentEndY: numb
 export function addFieldPair(doc: jsPDF, label: string, value: string, x: number, y: number, width: number, maxLinesOverride?: number): number {
   // @ts-expect-error jsPDF GState — ensure full opacity
   doc.setGState(new doc.GState({ opacity: 1.0 }));
-  // Height reserved for label above value. Bumped 2.3 → 3.2mm so label
-  // and value don't hug each other — e.g. "INCIDENT NUMBER" → ~1mm gap →
-  // "RKY26-#####-CRM" value. The 0.9mm increase propagates to every
-  // field across every PDF form via this single tokenized constant.
-  const labelH = 3.2;
+  // Height reserved for label above value. 2.7mm keeps the label clear of
+  // the value without the airy gap the old 3.2mm produced — e.g.
+  // "INCIDENT NUMBER" → ~0.6mm gap → "RKY26-#####-CRM" value. Condensed
+  // 2026-05-31 (3.2 → 2.7); propagates to every field across every PDF form.
+  const labelH = 2.7;
   const innerPad = 0.8;      // Horizontal padding
   const maxW = width - 2 * innerPad;
   // Auto-detect long text fields: if value > 200 chars or full-width field, allow more lines
   const isLongText = (value || '').length > 200 || width > 160;
   const maxLines = maxLinesOverride ?? (isLongText ? 20 : 8);
 
-  // Floating label above the box. When field-numbering is enabled,
-  // applyFieldNumber prepends a sequential "N." prefix so the form
-  // reads like a real police-form box grid ("1. CALL NUMBER",
-  // "2. INCIDENT TYPE", …). Counter increments per visible field
-  // call so 3-column rows naturally get sequential numbers.
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(FONT.SIZE_FIELD_LABEL);
-  doc.setTextColor(...COLOR.TEXT_SECONDARY);
-  doc.text(applyFieldNumber(label).toUpperCase(), x + innerPad, y + 2);
-
   const sanitized = sanitizePdfText(value);
   const isEmpty = !sanitized || sanitized.trim() === '';
   const useReadableText = !isEmpty && isNarrativeLikePdfText(sanitized, width);
   const lineStep = getPdfTextLineHeight(FONT.SIZE_FIELD_VALUE, useReadableText);
-  const baseBoxH = useReadableText ? 3.2 : 2.6;
+  const baseBoxH = useReadableText ? 2.8 : 2.3;  // condensed 2026-05-31 (3.2/2.6 → 2.8/2.3)
   const displayText = isEmpty ? 'N/A' : sanitized.toUpperCase();
   doc.setFont(PDF_VALUE_FONT, 'normal');
   doc.setFontSize(FONT.SIZE_FIELD_VALUE);
@@ -806,14 +806,31 @@ export function addFieldPair(doc: jsPDF, label: string, value: string, x: number
     ? lines.length * lineStep + 0.8
     : baseBoxH;
 
-  // Page break if field won't fit on current page
+  // Page break if field won't fit on current page. This MUST run before
+  // the label is drawn — otherwise a label placed at the old `y` is
+  // stranded at the page bottom while the value jumps to the next page
+  // (the orphaned-field bug that left 3 near-blank pages on PS-202
+  // record PDFs, caught 2026-05-30). Measure first, break, then paint.
   const totalFieldH = labelH + boxH + 1;
   y = checkPageBreak(doc, y, totalFieldH);
+
+  // Floating label above the box (now at the corrected, post-break y).
+  // When field-numbering is enabled, applyFieldNumber prepends a
+  // sequential "N." prefix so the form reads like a real police-form box
+  // grid ("1. CALL NUMBER", "2. INCIDENT TYPE", …). Counter increments
+  // per visible field call so 3-column rows get sequential numbers.
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(FONT.SIZE_FIELD_LABEL);
+  doc.setTextColor(...COLOR.TEXT_SECONDARY);
+  doc.text(applyFieldNumber(label).toUpperCase(), x + innerPad, y + 2);
 
   // Value area — border drawn by section container, not individual fields
   const boxY = y + labelH;
 
-  // Value text — vertically centered in box
+  // Value text — vertically centered in box. Re-assert the value font
+  // (the label above just switched to bold helvetica).
+  doc.setFont(PDF_VALUE_FONT, 'normal');
+  doc.setFontSize(FONT.SIZE_FIELD_VALUE);
   const valColor = isEmpty ? COLOR.TEXT_TERTIARY : COLOR.TEXT_PRIMARY;
   doc.setTextColor(valColor[0], valColor[1], valColor[2]);
 
@@ -837,7 +854,7 @@ export function addFieldPair(doc: jsPDF, label: string, value: string, x: number
   // Reset text color
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
 
-  return fieldBottomY + 0.6; // field bottom + row gap
+  return fieldBottomY + 0.4; // field bottom + row gap (condensed 2026-05-31: 0.6 → 0.4)
 }
 
 /**
@@ -859,13 +876,13 @@ export function addCheckboxField(doc: jsPDF, label: string, checked: boolean, x:
   const boxY = y - 1.8;
 
   // Outer border (always drawn for checkbox shape)
-  doc.setDrawColor(80, 80, 85);
+  doc.setDrawColor(80, 80, 80); // neutralized 2026-05-30
   doc.setLineWidth(0.3);
   doc.rect(x, boxY, boxSize, boxSize);
 
   if (checked) {
     // Light fill + bold dark checkmark
-    doc.setFillColor(230, 245, 230);
+    doc.setFillColor(235, 235, 235); // neutralized 2026-05-30
     doc.rect(x + 0.15, boxY + 0.15, boxSize - 0.3, boxSize - 0.3, 'F');
     doc.setDrawColor(20, 20, 20);
     doc.setLineWidth(0.7);
@@ -924,63 +941,65 @@ export function addFlagBadges(
   const fontSize = 6;
   const cornerR = 1.2;      // Rounded corner radius
 
-  // Flag → color mapping (red for danger, amber for warnings, gray for info)
+  // Flag → color mapping — neutralized 2026-05-30: all hue-based urgency
+  // distinctions (red → danger, amber → warning, green → ok) replaced with
+  // luminance-graded grays. The flag label text carries the semantic meaning.
   const flagColors: Record<string, [number, number, number]> = {
-    'PRIORITY 1': [180, 20, 20],
-    'ACTIVE WARRANT': [180, 20, 20],
-    'ARMED & DANGEROUS': [180, 20, 20],
-    'VIOLENT': [180, 20, 20],
-    'FLIGHT RISK': [180, 20, 20],
-    'STOLEN': [180, 20, 20],
-    'WARRANT': [180, 20, 20],
-    'SEX OFFENDER': [180, 20, 20],
-    'GANG MEMBER': [180, 20, 20],
-    'WEAPONS': [180, 20, 20],
-    'EXPIRED': [180, 20, 20],
-    'USE OF FORCE': [180, 20, 20],
-    'SERVICE OVERDUE': [180, 20, 20],
-    'REGISTRATION EXPIRED': [180, 20, 20],
-    'INSURANCE EXPIRED': [180, 20, 20],
-    'BOLO': [200, 80, 10],
-    'CAUTION': [200, 80, 10],
-    'SUICIDAL': [200, 80, 10],
-    'MENTAL HEALTH': [200, 80, 10],
-    'DOMESTIC VIOLENCE': [200, 80, 10],
-    'INJURIES': [200, 80, 10],
-    'JUVENILE': [200, 80, 10],
-    'DRUG USER': [200, 80, 10],
-    'OFFICER SAFETY': [200, 80, 10],
-    'EMS REQUESTED': [200, 80, 10],
-    'FIRE REQUESTED': [200, 80, 10],
-    'ACCIDENT': [200, 80, 10],
-    'EXPIRING SOON': [200, 80, 10],
-    'SERVICE DUE': [200, 80, 10],
-    'REGISTRATION EXPIRING': [200, 80, 10],
-    'LICENSE EXPIRED': [200, 80, 10],
-    'LICENSE EXPIRING': [200, 80, 10],
-    'INACTIVE SITE': [200, 80, 10],
-    'K9 REQUESTED': [70, 75, 88],
-    'LE NOTIFIED': [70, 75, 88],
-    'PROCESS SERVICE': [70, 75, 88],
-    'DISPATCH LINK': [70, 75, 88],
-    'CLIENT CONTRACT': [70, 75, 88],
-    'LAB SUBMITTED': [70, 75, 88],
-    'CHAIN OF CUSTODY': [70, 75, 88],
-    'MAINTENANCE': [70, 75, 88],
-    'FUEL LOGS': [70, 75, 88],
-    'MILEAGE SUMMARY': [70, 75, 88],
-    'CONTROLLED ACCESS': [70, 75, 88],
-    'COURT DATE': [70, 75, 88],
-    'FINE ASSESSED': [70, 75, 88],
-    'PHOTO TAKEN': [70, 75, 88],
-    'DISPOSED': [70, 75, 88],
-    'VERIFIED': [70, 75, 88],
-    'SEPARATED': [70, 75, 88],
-    'ACTIVE SITE': [60, 130, 80],
-    'SERVED': [60, 130, 80],
-    'RESTRICTED': [120, 80, 160],
+    'PRIORITY 1': [50, 50, 50],
+    'ACTIVE WARRANT': [50, 50, 50],
+    'ARMED & DANGEROUS': [50, 50, 50],
+    'VIOLENT': [50, 50, 50],
+    'FLIGHT RISK': [50, 50, 50],
+    'STOLEN': [50, 50, 50],
+    'WARRANT': [50, 50, 50],
+    'SEX OFFENDER': [50, 50, 50],
+    'GANG MEMBER': [50, 50, 50],
+    'WEAPONS': [50, 50, 50],
+    'EXPIRED': [50, 50, 50],
+    'USE OF FORCE': [50, 50, 50],
+    'SERVICE OVERDUE': [50, 50, 50],
+    'REGISTRATION EXPIRED': [50, 50, 50],
+    'INSURANCE EXPIRED': [50, 50, 50],
+    'BOLO': [75, 75, 75],
+    'CAUTION': [75, 75, 75],
+    'SUICIDAL': [75, 75, 75],
+    'MENTAL HEALTH': [75, 75, 75],
+    'DOMESTIC VIOLENCE': [75, 75, 75],
+    'INJURIES': [75, 75, 75],
+    'JUVENILE': [75, 75, 75],
+    'DRUG USER': [75, 75, 75],
+    'OFFICER SAFETY': [75, 75, 75],
+    'EMS REQUESTED': [75, 75, 75],
+    'FIRE REQUESTED': [75, 75, 75],
+    'ACCIDENT': [75, 75, 75],
+    'EXPIRING SOON': [75, 75, 75],
+    'SERVICE DUE': [75, 75, 75],
+    'REGISTRATION EXPIRING': [75, 75, 75],
+    'LICENSE EXPIRED': [75, 75, 75],
+    'LICENSE EXPIRING': [75, 75, 75],
+    'INACTIVE SITE': [100, 100, 100],
+    'K9 REQUESTED': [100, 100, 100],
+    'LE NOTIFIED': [100, 100, 100],
+    'PROCESS SERVICE': [100, 100, 100],
+    'DISPATCH LINK': [100, 100, 100],
+    'CLIENT CONTRACT': [100, 100, 100],
+    'LAB SUBMITTED': [100, 100, 100],
+    'CHAIN OF CUSTODY': [100, 100, 100],
+    'MAINTENANCE': [100, 100, 100],
+    'FUEL LOGS': [100, 100, 100],
+    'MILEAGE SUMMARY': [100, 100, 100],
+    'CONTROLLED ACCESS': [100, 100, 100],
+    'COURT DATE': [100, 100, 100],
+    'FINE ASSESSED': [100, 100, 100],
+    'PHOTO TAKEN': [100, 100, 100],
+    'DISPOSED': [100, 100, 100],
+    'VERIFIED': [100, 100, 100],
+    'SEPARATED': [100, 100, 100],
+    'ACTIVE SITE': [120, 120, 120],
+    'SERVED': [120, 120, 120],
+    'RESTRICTED': [90, 90, 90],
   };
-  const defaultColor: [number, number, number] = [70, 75, 88]; // Slate for unrecognized
+  const defaultColor: [number, number, number] = [85, 85, 85]; // neutralized 2026-05-30
 
   doc.setFont(PDF_VALUE_FONT, 'bold');
   doc.setFontSize(fontSize);
@@ -1004,8 +1023,31 @@ export function addFlagBadges(
     // Pick color based on flag content (partial match)
     const upperFlag = text;
     let bg = defaultColor;
+    let matched = false;
     for (const [key, color] of Object.entries(flagColors)) {
-      if (upperFlag.includes(key)) { bg = color; break; }
+      if (upperFlag.includes(key)) { bg = color; matched = true; break; }
+    }
+    // Severity fallback — mirrors the on-screen classifyFlag() so a NOVEL
+    // flag the exact-key map doesn't list ("ESCAPE RISK", "BIOHAZARD",
+    // "UNINSURED", "TRESPASS WARNING") still renders in a meaningful
+    // severity color instead of dropping to flat slate. Keeps the report
+    // chips consistent with the records UI badges.
+    // Neutralized 2026-05-30: severity fallback uses luminance-graded grays
+    // instead of red/orange/pink/blue/amber/green. The regex patterns remain
+    // for backward compatibility but all resolve to neutral values.
+    if (!matched) {
+      const RED    = /ARMED|WEAPON|VIOLENT|WARRANT|WANTED|WATCHLIST|OFAC|ESCAPE|STOLEN|HAZMAT|HAZARD|OFFICER SAFETY/;
+      const ORANGE = /FELONY|OFFENDER|PURSUIT|GANG|PAROLE|PROBATION|SUPERVISION|IMPOUND|UNINSURED|NO INSURANCE|SUSPENDED/;
+      const PINK   = /SUICID|SELF.?HARM|BIOHAZARD|OVERDOSE|MEDICAL/;
+      const BLUE   = /MENTAL|PSYCH|CRISIS|5150/;
+      const AMBER  = /TRESPASS|BOLO|PARKING|NO CONTACT|RESTRAIN|EXPIR|HOLD|EVIDENCE/;
+      const GREEN  = /CLEARED|VERIFIED|COOPERATIVE|RELEASED|RETURNED|SERVED/;
+      if (RED.test(upperFlag))         bg = [50, 50, 50];
+      else if (PINK.test(upperFlag))   bg = [65, 65, 65];
+      else if (BLUE.test(upperFlag))   bg = [80, 80, 80];
+      else if (ORANGE.test(upperFlag)) bg = [65, 65, 65];
+      else if (GREEN.test(upperFlag))  bg = [100, 100, 100];
+      else if (AMBER.test(upperFlag))  bg = [80, 80, 80];
     }
 
     // Draw pill background
@@ -1059,8 +1101,8 @@ export function addCautionBlock(
   // Orange left accent bar
   doc.setFillColor(...COLOR.CAUTION_ACCENT);
   doc.rect(x, y, 2, boxH, 'F');
-  // Border
-  doc.setDrawColor(200, 160, 80);
+  // Border — neutralized 2026-05-30 (was amber)
+  doc.setDrawColor(120, 120, 120);
   doc.setLineWidth(0.3);
   doc.rect(x, y, width, boxH);
 
@@ -1073,7 +1115,7 @@ export function addCautionBlock(
   // Text content
   doc.setFont(PDF_VALUE_FONT, 'normal');
   doc.setFontSize(FONT.SIZE_FIELD_VALUE);
-  doc.setTextColor(80, 40, 0);
+  doc.setTextColor(80, 80, 80); // neutralized 2026-05-30 (was brown)
   let textY = y + 6;
   for (const line of lines) {
     doc.text(line, x + innerPad + 2, textY);
@@ -1781,35 +1823,20 @@ export function addNarrativeSection(
   }
   const estimatedH = totalLines * lineH + Math.max(0, paraCount - 1) * paragraphGap + SPACING.SM + 2;
 
-  // Draw background tint sized to actual content (subtle light gray) — first page only
-  const cw = getContentWidth(doc);
-  const pageH = doc.internal.pageSize.getHeight();
-  const maxTintH = Math.min(estimatedH, pageH - y - LAYOUT.FOOTER_HEIGHT - 4);
-  doc.setFillColor(...COLOR.BG_SECTION_TINT);
-  doc.rect(LAYOUT.PAGE_MARGIN, y - 1, cw, maxTintH, 'F');
-
-  // Page break callback: draw section continuation sub-header + fresh tint
+  // Page break callback: draw section continuation sub-header
   const contTitle = title.toUpperCase() + ' -- CONTINUED';
   const narrativePageBreak = (newY: number): number => {
-    // Draw section sub-header bar
+    // Draw section continuation sub-header — Spillman black band + white text
     const cw = getContentWidth(doc);
-    doc.setFillColor(...COLOR.BG_SECTION_HDR);
+    doc.setFillColor(0, 0, 0);
     doc.rect(LAYOUT.PAGE_MARGIN, newY, cw, SPACING.SECTION_HEADER_H, 'F');
-    doc.setDrawColor(...COLOR.BORDER_SECTION);
-    doc.setLineWidth(BORDER.SECTION_OUTER);
-    doc.rect(LAYOUT.PAGE_MARGIN, newY, cw, SPACING.SECTION_HEADER_H);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(FONT.SIZE_SECTION_TITLE);
-    doc.setTextColor(...COLOR.TEXT_INVERTED);
+    doc.setTextColor(255, 255, 255);
     const secCapH = FONT.SIZE_SECTION_TITLE * 0.35;
     const textYpos = newY + (SPACING.SECTION_HEADER_H + secCapH) / 2;
     doc.text(contTitle, LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, textYpos);
     const contentStartY = newY + SPACING.SECTION_HEADER_H + SPACING.SECTION_CONTENT_PAD + 2;
-    // Draw fresh background tint for remaining text on this page
-    const cw2 = getContentWidth(doc);
-    const remainH = pageH - contentStartY - LAYOUT.FOOTER_HEIGHT - 4;
-    doc.setFillColor(...COLOR.BG_SECTION_TINT);
-    doc.rect(LAYOUT.PAGE_MARGIN, contentStartY - 1, cw2, remainH, 'F');
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
     doc.setFont(PDF_VALUE_FONT, 'normal');
     doc.setFontSize(fontSize);
@@ -1857,17 +1884,15 @@ function addSupplementsSection(doc: jsPDF, data: IncidentData, y: number): numbe
       const contTitle = supTitle.toUpperCase() + ' -- CONTINUED';
       const supPageBreak = (newY: number): number => {
         const cw = getContentWidth(doc);
-        doc.setFillColor(...COLOR.BG_SECTION_HDR);
-        doc.rect(LAYOUT.PAGE_MARGIN, newY, cw, SPACING.SECTION_HEADER_H, 'F');
-        doc.setDrawColor(...COLOR.BORDER_SECTION);
-        doc.setLineWidth(BORDER.SECTION_OUTER);
-        doc.rect(LAYOUT.PAGE_MARGIN, newY, cw, SPACING.SECTION_HEADER_H);
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(FONT.SIZE_SECTION_TITLE);
-        doc.setTextColor(...COLOR.TEXT_INVERTED);
-        const capH = FONT.SIZE_SECTION_TITLE * 0.35;
-        const textYpos = newY + (SPACING.SECTION_HEADER_H + capH) / 2;
-        doc.text(sanitizePdfText(contTitle), LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, textYpos);
+        doc.setTextColor(...COLOR.TEXT_PRIMARY);
+        const textYpos = newY + getCapHeight(FONT.SIZE_SECTION_TITLE) + 0.6;
+        doc.text(sanitizePdfText(contTitle), LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET, textYpos);
+        const supRuleY = newY + SPACING.SECTION_HEADER_H - 0.6;
+        doc.setDrawColor(...COLOR.TEXT_PRIMARY);
+        doc.setLineWidth(BORDER.SECTION_OUTER);
+        doc.line(LAYOUT.PAGE_MARGIN, supRuleY, LAYOUT.PAGE_MARGIN + cw, supRuleY);
         const contentStartY = newY + SPACING.SECTION_HEADER_H + SPACING.SECTION_CONTENT_PAD + 2;
         doc.setTextColor(...COLOR.TEXT_PRIMARY);
         doc.setFont(PDF_VALUE_FONT, 'normal');
@@ -2009,46 +2034,24 @@ export function checkPageBreak(doc: jsPDF, y: number, needed: number, priority?:
     const pageWidth = doc.internal.pageSize.getWidth();
     const cw = getContentWidth(doc);
 
-    const contY = 4;
-    const contH = SPACING.SECTION_HEADER_H; // Compact continuation header
-    // Style flips with the active section style — light mode (Person PDF
-    // 2026-05-04) renders gold accent + cream tint + dark text so it
-    // matches the page-1 company header. Dark mode keeps the legacy
-    // charcoal continuation bar.
-    const contIsLight = activeSectionStyle === 'light';
-    const contAccentW = BORDER.ACCENT_SECTION;
-    if (contIsLight) {
-      doc.setFillColor(COLOR.ACCENT_GOLD[0], COLOR.ACCENT_GOLD[1], COLOR.ACCENT_GOLD[2]);
-      doc.rect(LAYOUT.PAGE_MARGIN, contY, contAccentW, contH, 'F');
-      doc.setFillColor(...COLOR.BG_SECTION_TINT);
-      doc.rect(LAYOUT.PAGE_MARGIN + contAccentW, contY, cw - contAccentW, contH, 'F');
-      doc.setDrawColor(...COLOR.BORDER_SECTION);
-      doc.setLineWidth(BORDER.SECTION_OUTER);
-      doc.rect(LAYOUT.PAGE_MARGIN + contAccentW, contY, cw - contAccentW, contH);
-    } else {
-      doc.setFillColor(...COLOR.BG_SECTION_HDR);
-      doc.rect(LAYOUT.PAGE_MARGIN, contY, cw, contH, 'F');
-      // Bottom border for definition
-      doc.setDrawColor(...COLOR.BORDER_SECTION);
-      doc.setLineWidth(BORDER.SECTION_OUTER);
-      doc.line(LAYOUT.PAGE_MARGIN, contY + contH, LAYOUT.PAGE_MARGIN + cw, contY + contH);
-    }
+    // Continuation header sits 1mm above HEADER_TOP in office mode.
+    // Mobile mode pushes it past the PJ-700 6mm leading-edge dead zone.
+    const contY = 4 + (((doc as any).__printTarget === 'mobile') ? LAYOUT.MOBILE_PRINTER_TOP_OFFSET : 0);
+    const contH = SPACING.SECTION_HEADER_H;
 
-    // Text vertically centered in continuation header
-    const contCapH = FONT.SIZE_FIELD_LABEL * 0.35;
+    // Spillman black-band continuation header — solid black bar, white text
+    doc.setFillColor(0, 0, 0);
+    doc.rect(LAYOUT.PAGE_MARGIN, contY, cw, contH, 'F');
+
+    // Text centered in the black bar
+    const contCapH = FONT.SIZE_SECTION_TITLE * 0.35;
     const contTextY = contY + (contH + contCapH) / 2;
-    // Mutable tuple so it can be spread into setTextColor (see same
-    // pattern in pdfFormHelpers.ts drawNibrsHeader).
-    const contTextColor: [number, number, number] = contIsLight
-      ? [COLOR.TEXT_PRIMARY[0], COLOR.TEXT_PRIMARY[1], COLOR.TEXT_PRIMARY[2]]
-      : [COLOR.TEXT_INVERTED[0], COLOR.TEXT_INVERTED[1], COLOR.TEXT_INVERTED[2]];
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(FONT.SIZE_FIELD_LABEL);
-    doc.setTextColor(...contTextColor);
-    const contInset = (contIsLight ? contAccentW : 0) + SPACING.CONTENT_INSET + 1;
-    doc.text(sanitizePdfText(`${activeBranding.report_header_text} -- CONTINUED`), LAYOUT.PAGE_MARGIN + contInset, contTextY);
+    doc.setFontSize(FONT.SIZE_SECTION_TITLE);
+    doc.setTextColor(255, 255, 255);
+    doc.text(sanitizePdfText(`${activeBranding.report_header_text} -- CONTINUED`), LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, contTextY);
 
-    // Form number + case number on right (also vertically centered)
+    // Form number + case number on right
     const rightParts: string[] = [];
     const formNum = FORM_NUMBERS[activeFormKey] || '';
     if (formNum) rightParts.push(formNum);
@@ -2057,16 +2060,16 @@ export function checkPageBreak(doc: jsPDF, y: number, needed: number, priority?:
       doc.text(rightParts.join('  |  '), pageWidth - LAYOUT.PAGE_MARGIN - SPACING.CONTENT_INSET, contTextY, { align: 'right' });
     }
 
+    // Thin full-width rule just below the continuation title.
+    const contRuleY = contY + contH - 0.6;
+    doc.setDrawColor(...COLOR.TEXT_PRIMARY);
+    doc.setLineWidth(BORDER.SECTION_OUTER);
+    doc.line(LAYOUT.PAGE_MARGIN, contRuleY, LAYOUT.PAGE_MARGIN + cw, contRuleY);
+
     doc.setFont(PDF_VALUE_FONT, 'normal');
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
-    doc.setDrawColor(...COLOR.TEXT_PRIMARY);
 
-    // Content starts below continuation header. The extra 2.5mm past
-    // SECTION_GAP accounts for text baseline offset — jsPDF draws text with
-    // the BASELINE at the given Y, so without this buffer the first line's
-    // ascenders overlap the header bar's bottom edge (caught on FORM PS-201
-    // page 3, where 6pt timestamp rows sat right under the continuation
-    // bar). Any first-line baseline fits cleanly inside this gap.
+    // Content starts below continuation header.
     return contY + contH + SPACING.SECTION_GAP + 2.5;
   }
   return y;
@@ -2095,8 +2098,8 @@ export function addTableWithShading(
   doc.setGState(new doc.GState({ opacity: 1.0 }));
   const cw = getContentWidth(doc);
   const pageW = doc.internal.pageSize.getWidth();
-  const minRowH = 5.5;
-  const cellLineH = 3.4;      // Line height within table cells
+  const minRowH = 4.6;        // condensed 2026-05-31 (5.5 → 4.6)
+  const cellLineH = 3.0;      // Line height within table cells (condensed 2026-05-31: 3.4 → 3.0)
   const cellPad = 1.5;        // Padding inside cells
   const maxCellLines = 50;    // Show full note text without truncation
 
@@ -2110,7 +2113,7 @@ export function addTableWithShading(
   // Helper to draw header row — dark blocky style (or light field-pair style)
   // atY = top of header rect; text is vertically centered within
   const lightHdr = opts?.lightHeader === true;
-  const headerRowH = 5;
+  const headerRowH = 4.6;  // condensed 2026-05-31 (5 → 4.6)
   const drawHeaders = (atY: number): number => {
     if (lightHdr) {
       // Light header: white background, thin border, uppercase label (field-pair style)
@@ -2193,18 +2196,23 @@ export function addTableWithShading(
       if (opts?.sectionTitle) {
         y -= SPACING.SECTION_GAP;
         const subBarH = SPACING.SECTION_HEADER_H;
-        doc.setFillColor(...COLOR.BG_SECTION_HDR);
-        doc.rect(LAYOUT.PAGE_MARGIN, y, cw, subBarH, 'F');
+        // Flat section-title continuation band: black title + thin rule
+        // below. The table column-header row that follows (drawHeaders)
+        // stays dark.
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(FONT.SIZE_SECTION_TITLE);
-        doc.setTextColor(...COLOR.TEXT_INVERTED);
-        const subCapH = FONT.SIZE_SECTION_TITLE * 0.35;
-        const subTextY = y + (subBarH + subCapH) / 2;
+        doc.setTextColor(...COLOR.TEXT_PRIMARY);
+        const subTextY = y + getCapHeight(FONT.SIZE_SECTION_TITLE) + 0.6;
         doc.text(
           sanitizePdfText(`${opts.sectionTitle.toUpperCase()} -- CONTINUED`),
-          LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1,
+          LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET,
           subTextY,
         );
+        const subRuleY = y + subBarH - 0.6;
+        doc.setDrawColor(...COLOR.TEXT_PRIMARY);
+        doc.setLineWidth(BORDER.SECTION_OUTER);
+        doc.line(LAYOUT.PAGE_MARGIN, subRuleY, LAYOUT.PAGE_MARGIN + cw, subRuleY);
+        doc.setTextColor(...COLOR.TEXT_PRIMARY);
         y += subBarH;
       }
       y = drawHeaders(y);
@@ -2483,10 +2491,12 @@ function addGpsActivityLogSection(doc: jsPDF, data: IncidentData, y: number, pri
     const tableRows = sampled.map(p => {
       let timeStr = '';
       try {
-        timeStr = new Date(p.time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+        timeStr = parseTimestamp(p.time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
       } catch { timeStr = p.time; }
-      // Prefer road name + nearest intersection, fall back to raw coordinates
-      let locationStr = `${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}`;
+      // Prefer road name + nearest intersection, fall back to raw coordinates.
+      // Guard coords so a single non-numeric point can't crash the whole PDF.
+      const latN = toNum(p.lat), lngN = toNum(p.lng);
+      let locationStr = (latN != null && lngN != null) ? `${latN.toFixed(5)}, ${lngN.toFixed(5)}` : '—';
       if (p.road_name) {
         locationStr = p.road_name;
         if (p.nearest_intersection) locationStr += ` / ${p.nearest_intersection}`;
@@ -2902,8 +2912,11 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
       y = Math.max(fy1, fy2);
       // Row 2: Latitude, Longitude, Section/Zone/Beat (slash form)
       const w3 = ffw / 3;
-      const latStr = data.latitude != null ? Number(data.latitude).toFixed(6) : '';
-      const lngStr = data.longitude != null ? Number(data.longitude).toFixed(6) : '';
+      // toNum rejects '' / 'None' / NaN — `!= null` alone let an empty-string
+      // sentinel coerce to a false 0.000000.
+      const latN = toNum(data.latitude); const lngN = toNum(data.longitude);
+      const latStr = latN != null ? latN.toFixed(6) : '';
+      const lngStr = lngN != null ? lngN.toFixed(6) : '';
       const fy3 = addFieldPair(doc, 'Latitude', latStr, lx, y, w3);
       const fy4 = addFieldPair(doc, 'Longitude', lngStr, lx + w3, y, w3);
       const fy5 = addFieldPair(doc, 'Section/Zone/Beat', sectionZoneBeatCombined(data.sector_id, data.zone_id, data.beat_id) || data.dispatch_code || '', lx + w3 * 2, y, w3);
@@ -3194,16 +3207,14 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
     // Page break callback with continuation header
     const narrativeBreak = (newY: number): number => {
       const nCw = getContentWidth(doc);
-      doc.setFillColor(...COLOR.BG_SECTION_HDR);
-      doc.rect(LAYOUT.PAGE_MARGIN, newY, nCw, SPACING.SECTION_HEADER_H, 'F');
-      doc.setDrawColor(...COLOR.BORDER_TABLE);
-      doc.setLineWidth(BORDER.TABLE_ROW);
-      doc.rect(LAYOUT.PAGE_MARGIN, newY, nCw, SPACING.SECTION_HEADER_H);
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(FONT.SIZE_SECTION_TITLE);
-      doc.setTextColor(...COLOR.TEXT_INVERTED);
-      const capH2 = FONT.SIZE_SECTION_TITLE * 0.35;
-      doc.text('NARRATIVE / SERVICE NOTES -- CONTINUED', LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, newY + (SPACING.SECTION_HEADER_H + capH2) / 2);
+      doc.setTextColor(...COLOR.TEXT_PRIMARY);
+      doc.text('NARRATIVE / SERVICE NOTES -- CONTINUED', LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET, newY + getCapHeight(FONT.SIZE_SECTION_TITLE) + 0.6);
+      const nRuleY = newY + SPACING.SECTION_HEADER_H - 0.6;
+      doc.setDrawColor(...COLOR.TEXT_PRIMARY);
+      doc.setLineWidth(BORDER.SECTION_OUTER);
+      doc.line(LAYOUT.PAGE_MARGIN, nRuleY, LAYOUT.PAGE_MARGIN + nCw, nRuleY);
       doc.setFont(PDF_VALUE_FONT, 'normal');
       doc.setFontSize(FONT.SIZE_FIELD_VALUE);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
@@ -4062,8 +4073,9 @@ function generateProcessServiceReport(doc: jsPDF, data: IncidentData) {
 
 // ── Public API ───────────────────────────────────────────────
 
-export function generatePdfReport(reportType: PdfReportType, data: IncidentData): jsPDF {
+export function generatePdfReport(reportType: PdfReportType, data: IncidentData, options: PdfReportOptions = {}): jsPDF {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
+  applyPrintTarget(doc, options.printTarget ?? 'office');
 
   setActiveFormKey(reportType);
   setActiveCaseNumber(data.incident_number);
@@ -4162,7 +4174,7 @@ export function generatePdfReport(reportType: PdfReportType, data: IncidentData)
 }
 
 /** Download PDF — async to fetch admin branding + seal before generating */
-export async function downloadPdfReport(reportType: PdfReportType, data: IncidentData) {
+export async function downloadPdfReport(reportType: PdfReportType, data: IncidentData, options: PdfReportOptions = {}) {
   try {
     const branding = await fetchPdfBranding();
     setActiveBranding(branding);
@@ -4181,9 +4193,10 @@ export async function downloadPdfReport(reportType: PdfReportType, data: Inciden
     }
 
     // Document hashing + signing removed 2026-05-04 per user request.
-    const doc = generatePdfReport(reportType, data);
+    const doc = generatePdfReport(reportType, data, options);
     setActiveOfficerSig(undefined);
-    const filename = `${data.incident_number || 'report'}_${reportType}.pdf`;
+    const targetSuffix = options.printTarget === 'mobile' ? '_mobile' : '';
+    const filename = `${data.incident_number || 'report'}_${reportType}${targetSuffix}.pdf`;
     doc.save(filename);
   } catch (err) {
     setActiveOfficerSig(undefined);
@@ -4193,7 +4206,7 @@ export async function downloadPdfReport(reportType: PdfReportType, data: Inciden
 }
 
 /** Generate incident report PDF and return a blob URL for in-app preview */
-export async function generatePdfReportBlobUrl(reportType: PdfReportType, data: IncidentData): Promise<string> {
+export async function generatePdfReportBlobUrl(reportType: PdfReportType, data: IncidentData, options: PdfReportOptions = {}): Promise<string> {
   try {
     const branding = await fetchPdfBranding();
     setActiveBranding(branding);
@@ -4212,7 +4225,7 @@ export async function generatePdfReportBlobUrl(reportType: PdfReportType, data: 
     }
 
     // Document hashing + signing removed 2026-05-04 per user request.
-    const doc = generatePdfReport(reportType, data);
+    const doc = generatePdfReport(reportType, data, options);
     setActiveOfficerSig(undefined);
     const blob = doc.output('blob');
     return URL.createObjectURL(blob);

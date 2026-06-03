@@ -4,7 +4,7 @@ import {
   Phone, Users, FileText, Clock, AlertTriangle, Plus, Activity, Shield, Loader2,
   Radio, MapPin, Eye, ArrowRight, TrendingUp, Gavel, Briefcase, Target,
   CheckCircle, XCircle, Sun, Cloud, CloudRain, CloudSnow, CloudLightning,
-  CloudDrizzle, CloudFog, Snowflake, Timer, Navigation, Mail, Zap,
+  CloudDrizzle, CloudFog, Snowflake, Timer, Navigation, Mail, Zap, RefreshCw,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
@@ -23,6 +23,7 @@ import { apiFetch } from '../hooks/useApi';
 import { useToast } from '../components/ToastProvider';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { parseTimestamp } from '../utils/dateUtils';
 
 // ─── Backend Response Types ──────────────────────────────
 
@@ -295,6 +296,44 @@ function formatCountdown(totalSeconds: number): string {
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
+// ─── Warrant-polling freshness helpers ───────────────────
+// The Utah Warrant Watch scheduler runs every 4h. A poll that's <90min old
+// is unambiguously fresh (green); 90min-5h is "expected staleness" (gray);
+// 5h+ means the scheduler missed at least one cycle (amber warning); the
+// run failed = red. These thresholds intentionally bracket the 4h interval
+// so a healthy system displays gray, NOT a constant misleading "stale" amber.
+function pollFreshnessText(p: {
+  completed_at: string | null;
+  status: 'running' | 'completed' | 'failed';
+} | null): string {
+  if (!p) return '—';
+  if (p.status === 'running') return 'NOW';
+  if (p.status === 'failed') return 'FAIL';
+  const completed = p.completed_at ? parseTimestamp(p.completed_at).getTime() : NaN;
+  if (Number.isNaN(completed)) return '—';
+  const minutesAgo = Math.floor((Date.now() - completed) / 60_000);
+  if (minutesAgo < 1) return '<1m';
+  if (minutesAgo < 60) return `${minutesAgo}m`;
+  const hoursAgo = Math.floor(minutesAgo / 60);
+  if (hoursAgo < 24) return `${hoursAgo}h`;
+  return `${Math.floor(hoursAgo / 24)}d`;
+}
+
+function pollFreshnessColor(p: {
+  completed_at: string | null;
+  status: 'running' | 'completed' | 'failed';
+} | null): string {
+  if (!p) return 'text-rmpg-400';
+  if (p.status === 'failed') return 'text-red-400';
+  if (p.status === 'running') return 'text-brand-400';
+  const completed = p.completed_at ? parseTimestamp(p.completed_at).getTime() : NaN;
+  if (Number.isNaN(completed)) return 'text-rmpg-400';
+  const hoursAgo = (Date.now() - completed) / 3_600_000;
+  if (hoursAgo < 1.5) return 'text-green-400';   // within freshness window
+  if (hoursAgo < 5)   return 'text-rmpg-300';    // expected staleness mid-cycle
+  return 'text-amber-400';                       // overdue — at least one cycle missed
+}
+
 // ─── Component ───────────────────────────────────────────
 
 export default function DashboardPage() {
@@ -315,6 +354,19 @@ export default function DashboardPage() {
   const { addToast } = useToast();
   const [showNewCallModal, setShowNewCallModal] = useState(false);
   const [showIncidentModal, setShowIncidentModal] = useState(false);
+
+  // Warrant polling status (added 2026-05-24 — operator complaint that the
+  // 4h Utah warrant watch was invisible). Sourced from /api/warrants/watch/runs
+  // which is also what /warrants → Sources tab uses, so the dashboard widget
+  // and the deeper view agree on the same data.
+  const [latestWarrantPoll, setLatestWarrantPoll] = useState<{
+    started_at: string;
+    completed_at: string | null;
+    status: 'running' | 'completed' | 'failed';
+    persons_checked: number;
+    new_warrants_found: number;
+    warrants_cleared: number;
+  } | null>(null);
 
   // ═══ Dashboard widget states (Features 31-43) ═══
   const [shiftComparison, setShiftComparison] = useState<any>(null);
@@ -406,7 +458,7 @@ export default function DashboardPage() {
       const sixtyDaysOut = new Date(now.getTime() + 60 * 24 * 60 * 60 * 1000);
       const expiring = (Array.isArray(data) ? data : []).filter((c: any) => {
         if (!c.expiry_date) return false;
-        const exp = new Date(c.expiry_date);
+        const exp = parseTimestamp(c.expiry_date);
         return exp <= sixtyDaysOut;
       });
       setExpiringCredentials(expiring);
@@ -489,6 +541,23 @@ export default function DashboardPage() {
 
   // Set document title
   useEffect(() => { document.title = 'Dashboard \u2014 RMPG Flex'; }, []);
+
+  // Poll latest warrant-watch run. 60s interval is fine \u2014 the scheduled
+  // upstream scan only fires every 4h, so 60s is responsive enough for
+  // operators to see freshness without hammering the API.
+  useEffect(() => {
+    let cancelled = false;
+    const fetchLatestPoll = async () => {
+      try {
+        const res = await apiFetch<{ data: any[] }>('/warrants/watch/runs?limit=1');
+        if (cancelled) return;
+        setLatestWarrantPoll(res?.data?.[0] ?? null);
+      } catch { /* silent \u2014 widget shows 'no data' on failure */ }
+    };
+    fetchLatestPoll();
+    const id = setInterval(fetchLatestPoll, 60_000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, []);
 
   // Keyboard shortcut: Escape to close modals (must be before early return to preserve hook order)
   useEffect(() => {
@@ -613,14 +682,35 @@ export default function DashboardPage() {
         />
       </div>
 
-      {/* Secondary Stats Row */}
-      <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2'}`} role="region" aria-label="Record statistics">
+      {/* Secondary Stats Row — expanded to 5 cols 2026-05-24 to add Warrant Poll card */}
+      <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2'}`} role="region" aria-label="Record statistics">
         <div className="panel-beveled bg-surface-base p-2 cursor-pointer hover:bg-surface-raised transition-colors" onClick={() => navigate('/warrants')}>
           <div className="flex items-center gap-2">
             <Gavel className="w-4 h-4 text-red-400" />
             <div>
               <div className="text-lg font-bold font-mono tabular-nums text-white">{stats.active_warrants || 0}</div>
               <div className="text-[9px] text-rmpg-400 uppercase font-bold">Active Warrants</div>
+            </div>
+          </div>
+        </div>
+        {/* Warrant Polling status card — surfaces the 4h Utah Warrant Watch
+            scan freshness + last-run counts. Green/amber/red coloring based on
+            staleness so an operator can tell at a glance whether polling is
+            healthy without navigating to /warrants → Sources. */}
+        <div
+          className="panel-beveled bg-surface-base p-2 cursor-pointer hover:bg-surface-raised transition-colors"
+          onClick={() => navigate('/warrants')}
+          title={latestWarrantPoll
+            ? `Last poll: ${latestWarrantPoll.status} — ${latestWarrantPoll.persons_checked} checked, ${latestWarrantPoll.new_warrants_found} new, ${latestWarrantPoll.warrants_cleared} cleared`
+            : 'No warrant-watch run recorded yet'}
+        >
+          <div className="flex items-center gap-2">
+            <RefreshCw className={`w-4 h-4 ${pollFreshnessColor(latestWarrantPoll)}`} />
+            <div>
+              <div className={`text-lg font-bold font-mono tabular-nums ${pollFreshnessColor(latestWarrantPoll)}`}>
+                {pollFreshnessText(latestWarrantPoll)}
+              </div>
+              <div className="text-[9px] text-rmpg-400 uppercase font-bold">Warrant Poll</div>
             </div>
           </div>
         </div>
@@ -1297,7 +1387,7 @@ export default function DashboardPage() {
                 {upcomingCourt.upcoming.map((c: any, i: number) => (
                   <div key={i} className="flex items-center gap-2 panel-beveled bg-surface-sunken p-2 hover:bg-surface-raised transition-colors duration-150">
                     <div className="text-[10px] font-mono text-brand-400 font-bold w-16 flex-shrink-0 tabular-nums">
-                      {c.date ? new Date(c.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}
+                      {c.date ? parseTimestamp(c.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="text-[10px] text-rmpg-200 truncate font-medium">{c.case_number || c.description || 'Court Appearance'}</div>
@@ -1581,7 +1671,7 @@ export default function DashboardPage() {
                 <tbody>
                   {expiringCredentials.map((cred: any, idx: number) => {
                     const now = new Date();
-                    const exp = new Date(cred.expiry_date);
+                    const exp = parseTimestamp(cred.expiry_date);
                     const daysLeft = Math.ceil((exp.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
                     const isExpired = daysLeft < 0;
                     const isUrgent = daysLeft <= 30;

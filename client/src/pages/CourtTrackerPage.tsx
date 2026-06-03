@@ -14,10 +14,12 @@ import { formatPhoneInput, formatEnumValue} from '../utils/formatters';
 import {
   Gavel, Search, Plus, Calendar, Clock, User, X, Save, Loader2, AlertTriangle,
   CheckCircle, FileText, Scale, ChevronLeft, ChevronRight, Shield, DollarSign,
-  BookOpen, AlertCircle, Check, RefreshCw, Users,
+  BookOpen, AlertCircle, Check, RefreshCw, Users, Eye, Copy,
 } from 'lucide-react';
 import type { CourtEvent, CourtEventType, CourtEventStatus, CourtOutcome } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';
+import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
+import { useMenuActions } from '../utils/contextMenuActions';
 import IconButton from '../components/IconButton';
 import EmptyState from '../components/EmptyState';
 import { apiFetch } from '../hooks/useApi';
@@ -25,8 +27,11 @@ import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useToast } from '../components/ToastProvider';
 import { useFormValidation } from '../hooks/useFormValidation';
+import { useFormDraft } from '../hooks/useFormDraft';
+import UnsavedChangesGuard from '../components/UnsavedChangesGuard';
+import FloatingSaveBar from '../components/FloatingSaveBar';
 import { isValidDate } from '../utils/validate';
-import { formatDate, localToday } from '../utils/dateUtils';
+import { formatDate, localToday, parseTimestamp } from '../utils/dateUtils';
 import { useAuth } from '../context/AuthContext';
 
 const EVENT_TYPES: { value: CourtEventType; label: string }[] = [
@@ -96,7 +101,18 @@ export default function CourtTrackerPage() {
 
   // Form
   const [formOpen, setFormOpen] = useState(false);
-  const [formData, setFormData] = useState({ ...EMPTY_FORM });
+  const {
+    form: formData,
+    setForm: setFormData,
+    isDirty: formIsDirty,
+    wasRestored: formWasRestored,
+    clearDraft: clearFormDraft,
+    snapshot: snapshotForm,
+  } = useFormDraft<typeof EMPTY_FORM>({
+    storageKey: 'rmpg_court_event_form',
+    defaultValue: EMPTY_FORM,
+    isActive: formOpen,
+  });
   const [submitting, setSubmitting] = useState(false);
 
   // Outcome modal
@@ -211,6 +227,22 @@ export default function CourtTrackerPage() {
     } catch (err: any) { addToast(err?.message || 'Clone failed', 'error'); }
   };
 
+  // ── Right-click context menu ──
+  const { openMenu } = useContextMenu();
+  const menu = useMenuActions();
+  const buildEventMenu = (evt: CourtEvent): ContextMenuItem[] => {
+    return [
+      menu.action('Open record', () => setSelected(evt), { icon: <Eye size={12} /> }),
+      menu.separator(),
+      menu.copy('Copy event #', evt.event_number),
+      menu.copyId(evt.id),
+      ...(evt.defendant_name ? [menu.copy('Copy defendant', evt.defendant_name, <User size={12} />)] : []),
+      ...(evt.court_case_number ? [menu.copy('Copy case #', evt.court_case_number, <FileText size={12} />)] : []),
+      menu.separator(),
+      menu.action('Clone for continuance', () => handleCloneEvent(parseInt(String(evt.id))), { icon: <Copy size={12} /> }),
+    ];
+  };
+
   // Feature 6: Generate 24h reminders
   const handleGenerateReminders = async () => {
     try {
@@ -310,6 +342,7 @@ export default function CourtTrackerPage() {
     try {
       await apiFetch('/court/events', { method: 'POST', body: JSON.stringify(formData) });
       addToast('Court event created', 'success');
+      clearFormDraft();
       setFormOpen(false);
       setFormData({ ...EMPTY_FORM });
       fetchEvents({ silent: true }); fetchUpcoming();
@@ -399,7 +432,7 @@ export default function CourtTrackerPage() {
 
   // Feature 9: Deadline countdown with urgency colors
   const daysUntil = (dateStr: string) => {
-    const d = Math.ceil((new Date(dateStr).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+    const d = Math.ceil((parseTimestamp(dateStr).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
     if (isNaN(d)) return { text: '-', color: 'text-rmpg-500' };
     if (d < 0) return { text: 'PAST', color: 'text-red-500' };
     if (d === 0) return { text: 'TODAY', color: 'text-red-400 animate-pulse' };
@@ -436,12 +469,12 @@ export default function CourtTrackerPage() {
   return (
     <div className={`h-full flex ${isMobile ? 'flex-col' : ''}`}>
       {/* Left Panel */}
-      <div className={`flex flex-col ${isMobile ? 'h-1/2' : 'w-[400px]'} border-r border-rmpg-700`}>
+      <div className={`flex flex-col min-h-0 ${isMobile ? 'h-1/2' : 'w-[400px]'} border-r border-rmpg-700`}>
         <PanelTitleBar title="Court / Legal Tracker" icon={Gavel}>
           <button type="button" onClick={() => setCitationSearchOpen(true)} className="toolbar-btn text-[10px]">
             <FileText style={{ width: 11, height: 11 }} /> From Citation
           </button>
-          <button type="button" onClick={() => { clearAllErrors(); setFormOpen(true); setFormData({ ...EMPTY_FORM }); }} className="toolbar-btn toolbar-btn-primary print:hidden">
+          <button type="button" onClick={() => { clearAllErrors(); setFormData({ ...EMPTY_FORM }); setFormOpen(true); snapshotForm(); }} className="toolbar-btn toolbar-btn-primary print:hidden">
             <Plus style={{ width: 11, height: 11 }} /> New
           </button>
         </PanelTitleBar>
@@ -476,9 +509,9 @@ export default function CourtTrackerPage() {
           <div className="flex gap-1 p-1.5 border-b border-rmpg-700 bg-surface-base">
             <div className="flex-1 relative">
               <Search className="absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500" style={{ width: 12, height: 12 }} />
-              <input value={searchQuery} onChange={e => { setSearchQuery(e.target.value); setPage(1); }} placeholder="Search events..." aria-label="Search events..." className="w-full pl-7 pr-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-white placeholder-rmpg-500 focus:border-brand-600 focus:ring-1 focus:ring-brand-600/30 outline-none" />
+              <input id="ff-courttrackerpage-0" value={searchQuery} onChange={e => { setSearchQuery(e.target.value); setPage(1); }} placeholder="Search events..." aria-label="Search events..." className="w-full pl-7 pr-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-white placeholder-rmpg-500 focus:border-brand-600 focus:ring-1 focus:ring-brand-600/30 outline-none" />
             </div>
-            <select value={filterType} onChange={e => { setFilterType(e.target.value); setPage(1); }} className="text-[10px] bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-1 outline-none">
+            <select id="ff-courttrackerpage-1" value={filterType} onChange={e => { setFilterType(e.target.value); setPage(1); }} className="text-[10px] bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-1 outline-none">
               <option value="">All Types</option>
               {EVENT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
             </select>
@@ -590,7 +623,7 @@ export default function CourtTrackerPage() {
                   {(stats.byType || []).map((r: any) => (
                     <div key={r.event_type} className="flex items-center justify-between py-1 border-b border-rmpg-800 last:border-0">
                       <span className={`text-[10px] px-1.5 py-0.5 border ${EVENT_TYPE_COLORS[r.event_type] || ''}`}>
-                        {r.event_type}
+                        {formatEnumValue(r.event_type)}
                       </span>
                       <span className="text-[10px] font-bold text-white">{r.count}</span>
                     </div>
@@ -613,7 +646,7 @@ export default function CourtTrackerPage() {
                 icon={Scale}
                 title="No events found"
                 description="Create a new court event to get started."
-                action={{ label: 'New Event', onClick: () => { clearAllErrors(); setFormOpen(true); setFormData({ ...EMPTY_FORM }); } }}
+                action={{ label: 'New Event', onClick: () => { clearAllErrors(); setFormData({ ...EMPTY_FORM }); setFormOpen(true); snapshotForm(); } }}
               />
             ) : (
               displayEvents.map(evt => {
@@ -622,6 +655,7 @@ export default function CourtTrackerPage() {
                   <button type="button"
                     key={evt.id}
                     onClick={() => setSelected(evt)}
+                    onContextMenu={(e) => openMenu(e, buildEventMenu(evt))}
                     aria-label={`Court event ${evt.event_number}`}
                     className={`w-full text-left px-3 py-2 border-b border-rmpg-800 transition-colors ${
                       selected?.id === evt.id ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : 'hover:bg-rmpg-800/40 border-l-2 border-l-transparent'
@@ -978,57 +1012,73 @@ export default function CourtTrackerPage() {
         <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="New Court Event">
           <div className="panel-surface w-full max-w-lg mx-4">
             <PanelTitleBar title="New Court Event" icon={Plus}>
-              <IconButton onClick={() => setFormOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></IconButton>
+              <div className="flex items-center gap-2">
+                {formIsDirty && (
+                  <span className="text-[8px] text-amber-400 font-bold uppercase tracking-wider">UNSAVED</span>
+                )}
+                <IconButton onClick={() => { clearFormDraft(); setFormOpen(false); }} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></IconButton>
+              </div>
             </PanelTitleBar>
             <div className="p-4 space-y-3">
+              {formWasRestored && (
+                <div className="flex items-center justify-between px-3 py-2 rounded-sm border border-amber-500/30" style={{ background: '#1a1500' }}>
+                  <div className="flex items-center gap-2">
+                    <Clock size={14} className="text-amber-400" />
+                    <span className="text-xs text-amber-400 font-medium">Restored pending draft</span>
+                  </div>
+                  <button type="button" onClick={clearFormDraft} className="text-[10px] text-amber-400 underline hover:text-amber-300">
+                    Discard
+                  </button>
+                </div>
+              )}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="field-label">Type</label>
-                  <select value={formData.event_type} onChange={e => setFormData(p => ({ ...p, event_type: e.target.value as CourtEventType }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600">
+                  <select id="ff-courttrackerpage-2" value={formData.event_type} onChange={e => setFormData(p => ({ ...p, event_type: e.target.value as CourtEventType }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600">
                     {EVENT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="field-label">Date *</label>
-                  <input type="date" value={formData.event_date} onChange={e => setFormData(p => ({ ...p, event_date: e.target.value }))} className={`w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border text-white outline-none ${formErrors.event_date ? 'border-red-500' : 'border-rmpg-700'}`} />
+                  <input id="ff-courttrackerpage-3" type="date" value={formData.event_date} onChange={e => setFormData(p => ({ ...p, event_date: e.target.value }))} className={`w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border text-white outline-none ${formErrors.event_date ? 'border-red-500' : 'border-rmpg-700'}`} />
                   {formErrors.event_date && <p className="text-red-400 text-[10px] mt-0.5">{formErrors.event_date}</p>}
                 </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
                 <div>
                   <label className="field-label">Time</label>
-                  <input type="time" value={formData.event_time} onChange={e => setFormData(p => ({ ...p, event_time: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
+                  <input id="ff-courttrackerpage-4" type="time" value={formData.event_time} onChange={e => setFormData(p => ({ ...p, event_time: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
                 </div>
                 <div>
                   <label className="field-label">Court *</label>
-                  <input value={formData.court_name} onChange={e => setFormData(p => ({ ...p, court_name: e.target.value }))} className={`w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border text-white outline-none ${formErrors.court_name ? 'border-red-500' : 'border-rmpg-700'}`} />
+                  <input id="ff-courttrackerpage-5" value={formData.court_name} onChange={e => setFormData(p => ({ ...p, court_name: e.target.value }))} className={`w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border text-white outline-none ${formErrors.court_name ? 'border-red-500' : 'border-rmpg-700'}`} />
                   {formErrors.court_name && <p className="text-red-400 text-[10px] mt-0.5">{formErrors.court_name}</p>}
                 </div>
                 <div>
                   <label className="field-label">Courtroom</label>
-                  <input value={formData.courtroom} onChange={e => setFormData(p => ({ ...p, courtroom: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
+                  <input id="ff-courttrackerpage-6" value={formData.courtroom} onChange={e => setFormData(p => ({ ...p, courtroom: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
                 </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="field-label">Defendant Name</label>
-                  <input value={formData.defendant_name} onChange={e => setFormData(p => ({ ...p, defendant_name: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
+                  <input id="ff-courttrackerpage-7" value={formData.defendant_name} onChange={e => setFormData(p => ({ ...p, defendant_name: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
                 </div>
                 <div>
                   <label className="field-label">Judge</label>
-                  <input value={formData.judge_name} onChange={e => setFormData(p => ({ ...p, judge_name: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
+                  <input id="ff-courttrackerpage-8" value={formData.judge_name} onChange={e => setFormData(p => ({ ...p, judge_name: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
                 </div>
                 <div>
                   <label className="field-label">Prosecutor</label>
-                  <input value={formData.prosecutor} onChange={e => setFormData(p => ({ ...p, prosecutor: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
+                  <input id="ff-courttrackerpage-9" value={formData.prosecutor} onChange={e => setFormData(p => ({ ...p, prosecutor: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
                 </div>
                 <div>
                   <label className="field-label">Defense Attorney</label>
-                  <input value={formData.defense_attorney} onChange={e => setFormData(p => ({ ...p, defense_attorney: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
+                  <input id="ff-courttrackerpage-10" value={formData.defense_attorney} onChange={e => setFormData(p => ({ ...p, defense_attorney: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
                 </div>
               </div>
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">
-                <button type="button" onClick={() => setFormOpen(false)} className="toolbar-btn">Cancel</button>
+                <button type="button" onClick={() => { clearFormDraft(); setFormOpen(false); }} className="toolbar-btn">Cancel</button>
                 <button type="button" onClick={handleCreate} disabled={submitting} className="toolbar-btn toolbar-btn-primary print:hidden">
                   {submitting ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Save style={{ width: 11, height: 11 }} />}
                   Create Event
@@ -1049,7 +1099,7 @@ export default function CourtTrackerPage() {
             <div className="p-4 space-y-3">
               <div>
                 <label className="field-label">Outcome *</label>
-                <select value={outcomeData.outcome} onChange={e => setOutcomeData(p => ({ ...p, outcome: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600">
+                <select id="ff-courttrackerpage-11" value={outcomeData.outcome} onChange={e => setOutcomeData(p => ({ ...p, outcome: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600">
                   <option value="">Select outcome...</option>
                   {OUTCOME_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
@@ -1060,7 +1110,7 @@ export default function CourtTrackerPage() {
               </div>
               <div>
                 <label className="field-label">Fine Amount ($)</label>
-                <input value={outcomeData.fine_amount} onChange={e => setOutcomeData(p => ({ ...p, fine_amount: e.target.value }))} type="number" className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
+                <input id="ff-courttrackerpage-12" value={outcomeData.fine_amount} onChange={e => setOutcomeData(p => ({ ...p, fine_amount: e.target.value }))} type="number" className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
               </div>
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">
                 <button type="button" onClick={() => setOutcomeOpen(false)} className="toolbar-btn">Cancel</button>
@@ -1089,11 +1139,11 @@ export default function CourtTrackerPage() {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="field-label">New Date</label>
-                  <input type="date" value={continuanceData.new_date} onChange={e => setContinuanceData(p => ({ ...p, new_date: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
+                  <input id="ff-courttrackerpage-13" type="date" value={continuanceData.new_date} onChange={e => setContinuanceData(p => ({ ...p, new_date: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
                 </div>
                 <div>
                   <label className="field-label">New Time</label>
-                  <input type="time" value={continuanceData.new_time} onChange={e => setContinuanceData(p => ({ ...p, new_time: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
+                  <input id="ff-courttrackerpage-14" type="time" value={continuanceData.new_time} onChange={e => setContinuanceData(p => ({ ...p, new_time: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
                 </div>
               </div>
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">
@@ -1118,11 +1168,11 @@ export default function CourtTrackerPage() {
             <div className="p-4 space-y-3">
               <div>
                 <label className="field-label">Bail Amount ($)</label>
-                <input type="number" value={bailData.bail_amount} onChange={e => setBailData(p => ({ ...p, bail_amount: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
+                <input id="ff-courttrackerpage-15" type="number" value={bailData.bail_amount} onChange={e => setBailData(p => ({ ...p, bail_amount: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
               </div>
               <div>
                 <label className="field-label">Bond Status</label>
-                <select value={bailData.bond_status} onChange={e => setBailData(p => ({ ...p, bond_status: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600">
+                <select id="ff-courttrackerpage-16" value={bailData.bond_status} onChange={e => setBailData(p => ({ ...p, bond_status: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600">
                   <option value="">Select...</option>
                   <option value="posted">Posted</option>
                   <option value="cash">Cash Bond</option>
@@ -1134,7 +1184,7 @@ export default function CourtTrackerPage() {
               </div>
               <div>
                 <label className="field-label">Surety Info</label>
-                <input value={bailData.surety_info} onChange={e => setBailData(p => ({ ...p, surety_info: e.target.value }))} placeholder="Bonding company, etc." className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
+                <input id="ff-courttrackerpage-17" value={bailData.surety_info} onChange={e => setBailData(p => ({ ...p, surety_info: e.target.value }))} placeholder="Bonding company, etc." className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
               </div>
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">
                 <button type="button" onClick={() => setBailOpen(false)} className="toolbar-btn">Cancel</button>
@@ -1178,11 +1228,11 @@ export default function CourtTrackerPage() {
             </PanelTitleBar>
             <div className="p-4 space-y-3">
               <div><label className="field-label">Name</label>
-                <input value={prosecutorData.prosecutor_name} onChange={e => setProsecutorData(p => ({ ...p, prosecutor_name: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" /></div>
+                <input id="ff-courttrackerpage-18" value={prosecutorData.prosecutor_name} onChange={e => setProsecutorData(p => ({ ...p, prosecutor_name: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" /></div>
               <div><label className="field-label">Phone</label>
-                <input value={prosecutorData.prosecutor_phone} onChange={e => setProsecutorData(p => ({ ...p, prosecutor_phone: formatPhoneInput(e.target.value) }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" placeholder="(555) 123-4567" /></div>
+                <input id="ff-courttrackerpage-19" value={prosecutorData.prosecutor_phone} onChange={e => setProsecutorData(p => ({ ...p, prosecutor_phone: formatPhoneInput(e.target.value) }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" placeholder="(555) 123-4567" /></div>
               <div><label className="field-label">Email</label>
-                <input type="email" value={prosecutorData.prosecutor_email} onChange={e => setProsecutorData(p => ({ ...p, prosecutor_email: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" /></div>
+                <input id="ff-courttrackerpage-20" type="email" value={prosecutorData.prosecutor_email} onChange={e => setProsecutorData(p => ({ ...p, prosecutor_email: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" /></div>
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">
                 <button type="button" onClick={() => setProsecutorOpen(false)} className="toolbar-btn">Cancel</button>
                 <button type="button" onClick={handleSaveProsecutor} disabled={prosecutorSubmitting} className="toolbar-btn toolbar-btn-primary print:hidden">
@@ -1203,11 +1253,11 @@ export default function CourtTrackerPage() {
             </PanelTitleBar>
             <div className="p-4 space-y-3">
               <div><label className="field-label">Filing Fee ($)</label>
-                <input type="number" step="0.01" value={feeData.filing_fee} onChange={e => setFeeData(p => ({ ...p, filing_fee: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" /></div>
+                <input id="ff-courttrackerpage-21" type="number" step="0.01" value={feeData.filing_fee} onChange={e => setFeeData(p => ({ ...p, filing_fee: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" /></div>
               <div><label className="field-label">Service Fee ($)</label>
-                <input type="number" step="0.01" value={feeData.service_fee} onChange={e => setFeeData(p => ({ ...p, service_fee: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" /></div>
+                <input id="ff-courttrackerpage-22" type="number" step="0.01" value={feeData.service_fee} onChange={e => setFeeData(p => ({ ...p, service_fee: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" /></div>
               <div><label className="field-label">Other Fees ($)</label>
-                <input type="number" step="0.01" value={feeData.other_fees} onChange={e => setFeeData(p => ({ ...p, other_fees: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" /></div>
+                <input id="ff-courttrackerpage-23" type="number" step="0.01" value={feeData.other_fees} onChange={e => setFeeData(p => ({ ...p, other_fees: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" /></div>
               <div><label className="field-label">Notes</label>
                 <RichTextArea value={feeData.fee_notes} onChange={e => setFeeData(p => ({ ...p, fee_notes: e.target.value }))} rows={2} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600 resize-none" /></div>
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">
@@ -1233,8 +1283,8 @@ export default function CourtTrackerPage() {
                 {witnesses.map((w, i) => (
                   <div key={i} className="panel-beveled p-2 space-y-1">
                     <div className="flex gap-2">
-                      <input value={w.name} onChange={e => setWitnesses(ws => ws.map((ww, j) => j === i ? { ...ww, name: e.target.value } : ww))} placeholder="Name" className="flex-1 px-2 py-1 w-full text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
-                      <select value={w.contact_status} onChange={e => setWitnesses(ws => ws.map((ww, j) => j === i ? { ...ww, contact_status: e.target.value } : ww))} className="px-2 py-1 w-full text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600">
+                      <input id="ff-courttrackerpage-24" value={w.name} onChange={e => setWitnesses(ws => ws.map((ww, j) => j === i ? { ...ww, name: e.target.value } : ww))} placeholder="Name" className="flex-1 px-2 py-1 w-full text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
+                      <select id="ff-courttrackerpage-25" value={w.contact_status} onChange={e => setWitnesses(ws => ws.map((ww, j) => j === i ? { ...ww, contact_status: e.target.value } : ww))} className="px-2 py-1 w-full text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600">
                         <option value="pending">Pending</option>
                         <option value="contacted">Contacted</option>
                         <option value="confirmed">Confirmed</option>
@@ -1243,9 +1293,9 @@ export default function CourtTrackerPage() {
                       <IconButton onClick={() => setWitnesses(ws => ws.filter((_, j) => j !== i))} className="text-red-400 hover:text-red-300" aria-label={`Remove witness ${i + 1}`}><X style={{ width: 12, height: 12 }} /></IconButton>
                     </div>
                     <div className="flex gap-2">
-                      <input value={w.phone || ''} onChange={e => setWitnesses(ws => ws.map((ww, j) => j === i ? { ...ww, phone: formatPhoneInput(e.target.value) } : ww))} placeholder="Phone" className="flex-1 px-2 py-1 w-full text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
-                      <input value={w.email || ''} onChange={e => setWitnesses(ws => ws.map((ww, j) => j === i ? { ...ww, email: e.target.value } : ww))} placeholder="Email" className="flex-1 px-2 py-1 w-full text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
-                      <input value={w.role || ''} onChange={e => setWitnesses(ws => ws.map((ww, j) => j === i ? { ...ww, role: e.target.value } : ww))} placeholder="Role" className="w-24 px-2 py-1 w-full text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
+                      <input id="ff-courttrackerpage-26" value={w.phone || ''} onChange={e => setWitnesses(ws => ws.map((ww, j) => j === i ? { ...ww, phone: formatPhoneInput(e.target.value) } : ww))} placeholder="Phone" className="flex-1 px-2 py-1 w-full text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
+                      <input id="ff-courttrackerpage-27" value={w.email || ''} onChange={e => setWitnesses(ws => ws.map((ww, j) => j === i ? { ...ww, email: e.target.value } : ww))} placeholder="Email" className="flex-1 px-2 py-1 w-full text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
+                      <input id="ff-courttrackerpage-28" value={w.role || ''} onChange={e => setWitnesses(ws => ws.map((ww, j) => j === i ? { ...ww, role: e.target.value } : ww))} placeholder="Role" className="w-24 px-2 py-1 w-full text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
                     </div>
                   </div>
                 ))}
@@ -1273,7 +1323,7 @@ export default function CourtTrackerPage() {
             </PanelTitleBar>
             <div className="p-4 space-y-3">
               <div className="flex gap-2">
-                <input value={citationSearchQ} onChange={e => setCitationSearchQ(e.target.value)}
+                <input id="ff-courttrackerpage-29" value={citationSearchQ} onChange={e => setCitationSearchQ(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && handleSearchCitations()}
                   placeholder="Search by citation number, name, or statute..." aria-label="Search by citation number, name, or statute..."
                   className="flex-1 px-2 py-1.5 w-full text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
@@ -1304,6 +1354,15 @@ export default function CourtTrackerPage() {
           </div>
         </div>
       )}
+
+      <UnsavedChangesGuard hasUnsavedChanges={formOpen && formIsDirty} />
+      <FloatingSaveBar
+        visible={formOpen && formIsDirty}
+        onSave={handleCreate}
+        onCancel={() => { clearFormDraft(); setFormOpen(false); }}
+        isSaving={submitting}
+        saveLabel="Create Event"
+      />
     </div>
   );
 }

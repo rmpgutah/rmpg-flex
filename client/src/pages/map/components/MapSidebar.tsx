@@ -1,6 +1,8 @@
-import { useMemo } from 'react';
-import { Shield, AlertTriangle, Search, ChevronDown, AlertCircle, Radio, PhoneOff } from 'lucide-react';
+import React, { useMemo } from 'react';
+import { Shield, AlertTriangle, Search, ChevronUp, ChevronDown, AlertCircle, Radio, PhoneOff } from 'lucide-react';
 import { formatIncidentType } from '../../../utils/caseNumbers';
+import { parseTimestamp } from '../../../utils/dateUtils';
+import type { UnitStatus } from '../../../types';
 import { UNIT_STATUS_COLORS, UNIT_STATUS_LABELS, PRIORITY_COLORS, getIncidentCategory } from '../utils/mapConstants';
 import type { MapUnit as Unit, ActiveCall } from '../utils/mapConstants';
 
@@ -121,9 +123,9 @@ export default function MapSidebar({
           <div className="px-2 py-1.5" style={{ borderBottom: '1px solid #2b2b2b' }}>
             <div className="relative">
               <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500 pointer-events-none" />
-              <input
+              <input id="ff-mapsidebar-0"
                 type="text"
-                className="input-dark w-full text-[10px] py-1 pl-6 pr-6 focus:ring-1 focus:ring-[#888888] focus:border-[#888888] placeholder:text-[#5a6e80] transition-shadow duration-150"
+                className="input-dark w-full text-[10px] py-1 pl-6 pr-6 focus:ring-1 focus:ring-[#888888] focus:border-[#888888] placeholder:text-[#6b6b6b] transition-shadow duration-150"
                 placeholder={sidebarTab === 'units' ? 'SEARCH UNITS...' : 'SEARCH CALLS...'}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -146,7 +148,7 @@ export default function MapSidebar({
                   const statusColor = UNIT_STATUS_COLORS[unit.status];
                   // Fix 100: visual indicator for stale unit positions
                   const isStale = hasCoords && (unit as any).gps_updated_at
-                    ? (Date.now() - new Date((unit as any).gps_updated_at).getTime()) > GPS_STALE_THRESHOLD_MS
+                    ? (Date.now() - parseTimestamp((unit as any).gps_updated_at).getTime()) > GPS_STALE_THRESHOLD_MS
                     : false;
                   return (
                     <button type="button"

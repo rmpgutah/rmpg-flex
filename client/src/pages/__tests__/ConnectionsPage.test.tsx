@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import ConnectionsPage from '../ConnectionsPage';
+import { ToastProvider } from '../../components/ToastProvider';
 
 const mockFetch = vi.fn();
 vi.mock('../../hooks/useApi', () => ({
@@ -12,17 +13,17 @@ describe('ConnectionsPage', () => {
   beforeEach(() => { mockFetch.mockReset(); });
 
   it('renders the page title', () => {
-    render(<MemoryRouter><ConnectionsPage /></MemoryRouter>);
+    render(<ToastProvider><MemoryRouter><ConnectionsPage /></MemoryRouter></ToastProvider>);
     expect(screen.getByText(/CONNECTIONS ANALYST/i)).toBeInTheDocument();
   });
 
   it('renders the seed search input', () => {
-    render(<MemoryRouter><ConnectionsPage /></MemoryRouter>);
+    render(<ToastProvider><MemoryRouter><ConnectionsPage /></MemoryRouter></ToastProvider>);
     expect(screen.getByLabelText(/Seed search/i)).toBeInTheDocument();
   });
 
   it('renders the empty canvas', () => {
-    render(<MemoryRouter><ConnectionsPage /></MemoryRouter>);
+    render(<ToastProvider><MemoryRouter><ConnectionsPage /></MemoryRouter></ToastProvider>);
     expect(screen.getByTestId('graph-canvas')).toBeInTheDocument();
   });
 });
@@ -32,7 +33,7 @@ describe('ConnectionsPage - search', () => {
 
   it('calls /connections/search when user types', async () => {
     mockFetch.mockResolvedValue([]);
-    render(<MemoryRouter><ConnectionsPage /></MemoryRouter>);
+    render(<ToastProvider><MemoryRouter><ConnectionsPage /></MemoryRouter></ToastProvider>);
     const input = screen.getByLabelText(/Seed search/i);
     fireEvent.change(input, { target: { value: 'jones' } });
     await waitFor(() => {
@@ -45,7 +46,7 @@ describe('ConnectionsPage - search', () => {
       { id: 42, type: 'person', label: 'Jane Doe' },
       { id: 17, type: 'incident', label: 'I-0001 Burglary' },
     ]);
-    render(<MemoryRouter><ConnectionsPage /></MemoryRouter>);
+    render(<ToastProvider><MemoryRouter><ConnectionsPage /></MemoryRouter></ToastProvider>);
     const input = screen.getByLabelText(/Seed search/i);
     fireEvent.change(input, { target: { value: 'jones' } });
     await waitFor(() => {
@@ -56,7 +57,7 @@ describe('ConnectionsPage - search', () => {
 
   it('clicking a result sets it as the seed and hides the dropdown', async () => {
     mockFetch.mockResolvedValue([{ id: 42, type: 'person', label: 'Jane Doe' }]);
-    render(<MemoryRouter><ConnectionsPage /></MemoryRouter>);
+    render(<ToastProvider><MemoryRouter><ConnectionsPage /></MemoryRouter></ToastProvider>);
     const input = screen.getByLabelText(/Seed search/i);
     fireEvent.change(input, { target: { value: 'jones' } });
     await waitFor(() => expect(screen.getByText('Jane Doe')).toBeInTheDocument());
@@ -70,7 +71,7 @@ describe('ConnectionsPage - search', () => {
 
   it('does not call search for input < 2 chars (avoids noise)', async () => {
     mockFetch.mockResolvedValue([]);
-    render(<MemoryRouter><ConnectionsPage /></MemoryRouter>);
+    render(<ToastProvider><MemoryRouter><ConnectionsPage /></MemoryRouter></ToastProvider>);
     const input = screen.getByLabelText(/Seed search/i);
     fireEvent.change(input, { target: { value: 'j' } });
     await new Promise(r => setTimeout(r, 400));
@@ -94,7 +95,7 @@ describe('ConnectionsPage - graph fetch & render', () => {
         ],
       });
 
-    render(<MemoryRouter><ConnectionsPage /></MemoryRouter>);
+    render(<ToastProvider><MemoryRouter><ConnectionsPage /></MemoryRouter></ToastProvider>);
     fireEvent.change(screen.getByLabelText(/Seed search/i), { target: { value: 'jones' } });
     await waitFor(() => screen.getByText('Jane Doe'));
     fireEvent.click(screen.getByText('Jane Doe'));
@@ -121,7 +122,7 @@ describe('ConnectionsPage - graph fetch & render', () => {
         ],
       });
 
-    const { container } = render(<MemoryRouter><ConnectionsPage /></MemoryRouter>);
+    const { container } = render(<ToastProvider><MemoryRouter><ConnectionsPage /></MemoryRouter></ToastProvider>);
     fireEvent.change(screen.getByLabelText(/Seed search/i), { target: { value: 'jones' } });
     await waitFor(() => screen.getByText('Jane Doe'));
     fireEvent.click(screen.getByText('Jane Doe'));
@@ -143,7 +144,7 @@ describe('ConnectionsPage - graph fetch & render', () => {
         setTimeout(() => resolve({ nodes: [], edges: [] }), 10000);
       }));
 
-    render(<MemoryRouter><ConnectionsPage /></MemoryRouter>);
+    render(<ToastProvider><MemoryRouter><ConnectionsPage /></MemoryRouter></ToastProvider>);
     fireEvent.change(screen.getByLabelText(/Seed search/i), { target: { value: 'j' } });
     fireEvent.change(screen.getByLabelText(/Seed search/i), { target: { value: 'jones' } });
     await waitFor(() => screen.getByText('Jane Doe'));
@@ -161,7 +162,7 @@ describe('ConnectionsPage - graph fetch & render', () => {
         edges: [],
       });
 
-    render(<MemoryRouter><ConnectionsPage /></MemoryRouter>);
+    render(<ToastProvider><MemoryRouter><ConnectionsPage /></MemoryRouter></ToastProvider>);
     fireEvent.change(screen.getByLabelText(/Seed search/i), { target: { value: 'lon' } });
     await waitFor(() => screen.getByText('Lonely'));
     fireEvent.click(screen.getByText('Lonely'));
@@ -185,7 +186,7 @@ describe('ConnectionsPage - pan/zoom', () => {
         edges: [{ source: 'person-42', target: 'incident-1', relationship: 'suspect', sourceTable: 'incident_persons' }],
       });
 
-    const { container } = render(<MemoryRouter><ConnectionsPage /></MemoryRouter>);
+    const { container } = render(<ToastProvider><MemoryRouter><ConnectionsPage /></MemoryRouter></ToastProvider>);
     fireEvent.change(screen.getByLabelText(/Seed search/i), { target: { value: 'jones' } });
     await waitFor(() => screen.getByText('Jane Doe'));
     fireEvent.click(screen.getByText('Jane Doe'));
@@ -204,7 +205,7 @@ describe('ConnectionsPage - pan/zoom', () => {
         edges: [],
       });
 
-    render(<MemoryRouter><ConnectionsPage /></MemoryRouter>);
+    render(<ToastProvider><MemoryRouter><ConnectionsPage /></MemoryRouter></ToastProvider>);
     fireEvent.change(screen.getByLabelText(/Seed search/i), { target: { value: 'jones' } });
     await waitFor(() => screen.getByText('Jane Doe'));
     fireEvent.click(screen.getByText('Jane Doe'));
@@ -234,7 +235,7 @@ describe('ConnectionsPage - type filter', () => {
         ],
       });
 
-    render(<MemoryRouter><ConnectionsPage /></MemoryRouter>);
+    render(<ToastProvider><MemoryRouter><ConnectionsPage /></MemoryRouter></ToastProvider>);
     fireEvent.change(screen.getByLabelText(/Seed search/i), { target: { value: 'jones' } });
     await waitFor(() => screen.getByText('Jane Doe'));
     fireEvent.click(screen.getByText('Jane Doe'));
@@ -261,7 +262,7 @@ describe('ConnectionsPage - type filter', () => {
         ],
       });
 
-    const { container } = render(<MemoryRouter><ConnectionsPage /></MemoryRouter>);
+    const { container } = render(<ToastProvider><MemoryRouter><ConnectionsPage /></MemoryRouter></ToastProvider>);
     fireEvent.change(screen.getByLabelText(/Seed search/i), { target: { value: 'jones' } });
     await waitFor(() => screen.getByText('Jane Doe'));
     fireEvent.click(screen.getByText('Jane Doe'));
@@ -291,7 +292,7 @@ describe('ConnectionsPage - type filter', () => {
         ],
       });
 
-    const { container } = render(<MemoryRouter><ConnectionsPage /></MemoryRouter>);
+    const { container } = render(<ToastProvider><MemoryRouter><ConnectionsPage /></MemoryRouter></ToastProvider>);
     fireEvent.change(screen.getByLabelText(/Seed search/i), { target: { value: 'jones' } });
     await waitFor(() => screen.getByText('Jane Doe'));
     fireEvent.click(screen.getByText('Jane Doe'));
@@ -317,7 +318,7 @@ describe('ConnectionsPage - depth slider', () => {
         nodes: [{ id: 'person-42', type: 'person', entityId: 42, label: 'Jane', metadata: {}, depth: 0 }],
         edges: [],
       });
-    render(<MemoryRouter><ConnectionsPage /></MemoryRouter>);
+    render(<ToastProvider><MemoryRouter><ConnectionsPage /></MemoryRouter></ToastProvider>);
     fireEvent.change(screen.getByLabelText(/Seed search/i), { target: { value: 'jan' } });
     await waitFor(() => screen.getByText('Jane'));
     fireEvent.click(screen.getByText('Jane'));
@@ -340,7 +341,7 @@ describe('ConnectionsPage - depth slider', () => {
         edges: [],
       });
 
-    render(<MemoryRouter><ConnectionsPage /></MemoryRouter>);
+    render(<ToastProvider><MemoryRouter><ConnectionsPage /></MemoryRouter></ToastProvider>);
     fireEvent.change(screen.getByLabelText(/Seed search/i), { target: { value: 'jan' } });
     await waitFor(() => screen.getByText('Jane'));
     fireEvent.click(screen.getByText('Jane'));
@@ -370,7 +371,7 @@ describe('ConnectionsPage - shortest path', () => {
         edges: [{ source: 'person-42', target: 'incident-1', relationship: 'suspect', sourceTable: 'incident_persons' }],
       });
 
-    const { container } = render(<MemoryRouter><ConnectionsPage /></MemoryRouter>);
+    const { container } = render(<ToastProvider><MemoryRouter><ConnectionsPage /></MemoryRouter></ToastProvider>);
     fireEvent.change(screen.getByLabelText(/Seed search/i), { target: { value: 'jon' } });
     await waitFor(() => screen.getByText('Jane Doe'));
     fireEvent.click(screen.getByText('Jane Doe'));
@@ -411,7 +412,7 @@ describe('ConnectionsPage - shortest path', () => {
         ],
       });
 
-    const { container } = render(<MemoryRouter><ConnectionsPage /></MemoryRouter>);
+    const { container } = render(<ToastProvider><MemoryRouter><ConnectionsPage /></MemoryRouter></ToastProvider>);
     fireEvent.change(screen.getByLabelText(/Seed search/i), { target: { value: 'j' } });
     fireEvent.change(screen.getByLabelText(/Seed search/i), { target: { value: 'jon' } });
     await waitFor(() => screen.getByText('Jane Doe'));
@@ -451,7 +452,7 @@ describe('ConnectionsPage - shortest path', () => {
         edges: [{ source: 'person-42', target: 'incident-1', relationship: 'suspect', sourceTable: 'incident_persons' }],
       });
 
-    const { container } = render(<MemoryRouter><ConnectionsPage /></MemoryRouter>);
+    const { container } = render(<ToastProvider><MemoryRouter><ConnectionsPage /></MemoryRouter></ToastProvider>);
     fireEvent.change(screen.getByLabelText(/Seed search/i), { target: { value: 'jon' } });
     await waitFor(() => screen.getByText('Jane Doe'));
     fireEvent.click(screen.getByText('Jane Doe'));
@@ -474,7 +475,7 @@ describe('ConnectionsPage - save investigation', () => {
   beforeEach(() => { mockFetch.mockReset(); });
 
   it('shows SAVE INVESTIGATION button that is disabled without a seed', () => {
-    render(<MemoryRouter><ConnectionsPage /></MemoryRouter>);
+    render(<ToastProvider><MemoryRouter><ConnectionsPage /></MemoryRouter></ToastProvider>);
     const btn = screen.getByRole('button', { name: /save investigation/i });
     expect(btn).toBeDisabled();
   });
@@ -490,7 +491,7 @@ describe('ConnectionsPage - save investigation', () => {
         edges: [{ source: 'person-42', target: 'incident-1', relationship: 'suspect', sourceTable: 'incident_persons' }],
       });
 
-    render(<MemoryRouter><ConnectionsPage /></MemoryRouter>);
+    render(<ToastProvider><MemoryRouter><ConnectionsPage /></MemoryRouter></ToastProvider>);
     fireEvent.change(screen.getByLabelText(/Seed search/i), { target: { value: 'jon' } });
     await waitFor(() => screen.getByText('Jane Doe'));
     fireEvent.click(screen.getByText('Jane Doe'));
@@ -516,7 +517,7 @@ describe('ConnectionsPage - save investigation', () => {
       })
       .mockResolvedValueOnce({ id: 77, user_id: 1, name: 'Jones case' });
 
-    render(<MemoryRouter><ConnectionsPage /></MemoryRouter>);
+    render(<ToastProvider><MemoryRouter><ConnectionsPage /></MemoryRouter></ToastProvider>);
     fireEvent.change(screen.getByLabelText(/Seed search/i), { target: { value: 'jon' } });
     await waitFor(() => screen.getByText('Jane Doe'));
     fireEvent.click(screen.getByText('Jane Doe'));
@@ -544,7 +545,7 @@ describe('ConnectionsPage - save investigation', () => {
       })
       .mockResolvedValueOnce({ id: 77, user_id: 1, name: 'X' });
 
-    render(<MemoryRouter><ConnectionsPage /></MemoryRouter>);
+    render(<ToastProvider><MemoryRouter><ConnectionsPage /></MemoryRouter></ToastProvider>);
     fireEvent.change(screen.getByLabelText(/Seed search/i), { target: { value: 'jon' } });
     await waitFor(() => screen.getByText('Jane Doe'));
     fireEvent.click(screen.getByText('Jane Doe'));
@@ -567,7 +568,7 @@ describe('ConnectionsPage - save investigation', () => {
         edges: [],
       });
 
-    render(<MemoryRouter><ConnectionsPage /></MemoryRouter>);
+    render(<ToastProvider><MemoryRouter><ConnectionsPage /></MemoryRouter></ToastProvider>);
     fireEvent.change(screen.getByLabelText(/Seed search/i), { target: { value: 'jon' } });
     await waitFor(() => screen.getByText('Jane Doe'));
     fireEvent.click(screen.getByText('Jane Doe'));
@@ -591,7 +592,7 @@ describe('ConnectionsPage - load investigation', () => {
         { id: 2, user_id: 1, name: 'Smith burglary', description: 'repeat offender', seed_nodes: '[{"type":"person","id":99}]', pinned_layout: null, annotations: null, shared_user_ids: '[]' },
       ]);
 
-    render(<MemoryRouter><ConnectionsPage /></MemoryRouter>);
+    render(<ToastProvider><MemoryRouter><ConnectionsPage /></MemoryRouter></ToastProvider>);
     fireEvent.click(screen.getByRole('button', { name: /load investigation/i }));
     await waitFor(() => {
       expect(screen.getByText(/Jones case/i)).toBeInTheDocument();
@@ -616,7 +617,7 @@ describe('ConnectionsPage - load investigation', () => {
         edges: [],
       });
 
-    render(<MemoryRouter><ConnectionsPage /></MemoryRouter>);
+    render(<ToastProvider><MemoryRouter><ConnectionsPage /></MemoryRouter></ToastProvider>);
     fireEvent.click(screen.getByRole('button', { name: /load investigation/i }));
     await waitFor(() => screen.getByText(/Jones case/i));
     fireEvent.click(screen.getByText(/Jones case/i));
@@ -651,7 +652,7 @@ describe('ConnectionsPage - load investigation', () => {
         edges: [{ source: 'person-42', target: 'incident-1', relationship: 'suspect', sourceTable: 'incident_persons' }],
       });
 
-    const { container } = render(<MemoryRouter><ConnectionsPage /></MemoryRouter>);
+    const { container } = render(<ToastProvider><MemoryRouter><ConnectionsPage /></MemoryRouter></ToastProvider>);
     fireEvent.click(screen.getByRole('button', { name: /load investigation/i }));
     await waitFor(() => screen.getByText(/Pinned case/i));
     fireEvent.click(screen.getByText(/Pinned case/i));
@@ -687,7 +688,7 @@ describe('ConnectionsPage - annotations', () => {
         edges: [{ source: 'person-42', target: 'incident-1', relationship: 'suspect', sourceTable: 'incident_persons' }],
       });
 
-    const { container } = render(<MemoryRouter><ConnectionsPage /></MemoryRouter>);
+    const { container } = render(<ToastProvider><MemoryRouter><ConnectionsPage /></MemoryRouter></ToastProvider>);
     fireEvent.change(screen.getByLabelText(/Seed search/i), { target: { value: 'jon' } });
     await waitFor(() => screen.getByText('Jane Doe'));
     fireEvent.click(screen.getByText('Jane Doe'));
@@ -719,7 +720,7 @@ describe('ConnectionsPage - annotations', () => {
         edges: [{ source: 'person-42', target: 'incident-1', relationship: 'suspect', sourceTable: 'incident_persons' }],
       });
 
-    const { container } = render(<MemoryRouter><ConnectionsPage /></MemoryRouter>);
+    const { container } = render(<ToastProvider><MemoryRouter><ConnectionsPage /></MemoryRouter></ToastProvider>);
     fireEvent.change(screen.getByLabelText(/Seed search/i), { target: { value: 'ja' } });
     await waitFor(() => screen.getByText('Jane'));
     fireEvent.click(screen.getByText('Jane'));
@@ -745,7 +746,7 @@ describe('ConnectionsPage - annotations', () => {
       })
       .mockResolvedValueOnce({ id: 100, user_id: 1, name: 'test' });
 
-    render(<MemoryRouter><ConnectionsPage /></MemoryRouter>);
+    render(<ToastProvider><MemoryRouter><ConnectionsPage /></MemoryRouter></ToastProvider>);
     fireEvent.change(screen.getByLabelText(/Seed search/i), { target: { value: 'ja' } });
     await waitFor(() => screen.getByText('Jane'));
     fireEvent.click(screen.getByText('Jane'));
@@ -794,7 +795,7 @@ describe('ConnectionsPage - annotations', () => {
         edges: [],
       });
 
-    const { container } = render(<MemoryRouter><ConnectionsPage /></MemoryRouter>);
+    const { container } = render(<ToastProvider><MemoryRouter><ConnectionsPage /></MemoryRouter></ToastProvider>);
     fireEvent.click(screen.getByRole('button', { name: /load investigation/i }));
     await waitFor(() => screen.getByText(/WithNote/i));
     fireEvent.click(screen.getByText(/WithNote/i));
@@ -810,7 +811,7 @@ describe('ConnectionsPage - PNG export', () => {
   beforeEach(() => { mockFetch.mockReset(); });
 
   it('EXPORT PNG button is disabled without a seed', () => {
-    render(<MemoryRouter><ConnectionsPage /></MemoryRouter>);
+    render(<ToastProvider><MemoryRouter><ConnectionsPage /></MemoryRouter></ToastProvider>);
     expect(screen.getByRole('button', { name: /export png/i })).toBeDisabled();
   });
 
@@ -822,7 +823,7 @@ describe('ConnectionsPage - PNG export', () => {
         edges: [],
       });
 
-    render(<MemoryRouter><ConnectionsPage /></MemoryRouter>);
+    render(<ToastProvider><MemoryRouter><ConnectionsPage /></MemoryRouter></ToastProvider>);
     fireEvent.change(screen.getByLabelText(/Seed search/i), { target: { value: 'ja' } });
     await waitFor(() => screen.getByText('Jane'));
     fireEvent.click(screen.getByText('Jane'));
@@ -836,7 +837,7 @@ describe('ConnectionsPage - PDF export', () => {
   beforeEach(() => { mockFetch.mockReset(); });
 
   it('EXPORT PDF button is disabled without a seed', () => {
-    render(<MemoryRouter><ConnectionsPage /></MemoryRouter>);
+    render(<ToastProvider><MemoryRouter><ConnectionsPage /></MemoryRouter></ToastProvider>);
     expect(screen.getByRole('button', { name: /export pdf/i })).toBeDisabled();
   });
 
@@ -848,7 +849,7 @@ describe('ConnectionsPage - PDF export', () => {
         edges: [],
       });
 
-    render(<MemoryRouter><ConnectionsPage /></MemoryRouter>);
+    render(<ToastProvider><MemoryRouter><ConnectionsPage /></MemoryRouter></ToastProvider>);
     fireEvent.change(screen.getByLabelText(/Seed search/i), { target: { value: 'ja' } });
     await waitFor(() => screen.getByText('Jane'));
     fireEvent.click(screen.getByText('Jane'));

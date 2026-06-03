@@ -66,7 +66,7 @@ export default function SearchInput({
         size={14}
         className="absolute left-2.5 text-rmpg-500 pointer-events-none"
       />
-      <input
+      <input id="ff-searchinput-0"
         ref={inputRef}
         type="text"
         value={localValue}

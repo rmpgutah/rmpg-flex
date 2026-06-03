@@ -3,10 +3,13 @@
 // ============================================================
 
 import { useState, useMemo } from 'react';
-import { Radio, Clock, AlertTriangle } from 'lucide-react';
+import { Radio, Clock, AlertTriangle, Eye } from 'lucide-react';
 import type { TimeEntry, Credential } from '../../../types';
 import type { OfficerWithStatus } from '../utils/personnelMappers';
 import OfficerAvatar from '../components/OfficerAvatar';
+import { parseTimestamp } from '../../../utils/dateUtils';
+import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
+import { useMenuActions } from '../../../utils/contextMenuActions';
 
 type DutyFilter = 'all' | 'on_duty' | 'off_duty';
 
@@ -52,7 +55,7 @@ export default function DutyBoardTab({ officers, timeEntries, credentials, onOff
   const lastUpdated = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
 
   function getElapsedHours(clockIn: string): string {
-    const diff = Date.now() - new Date(clockIn).getTime();
+    const diff = Date.now() - parseTimestamp(clockIn).getTime();
     if (isNaN(diff) || diff < 0) return '0h 0m';
     const hrs = Math.floor(diff / 3600000);
     const mins = Math.floor((diff % 3600000) / 60000);
@@ -63,6 +66,18 @@ export default function DutyBoardTab({ officers, timeEntries, credentials, onOff
     { value: 'all', label: 'All', count: officers.length },
     { value: 'on_duty', label: 'On Duty', count: onDutyCount },
     { value: 'off_duty', label: 'Off Duty', count: offDutyCount },
+  ];
+
+  // ── Right-click context menu ──────────────────────────────
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+
+  const buildOfficerMenu = (officer: OfficerWithStatus): ContextMenuItem[] => [
+    m.action('Open officer', () => onOfficerClick(officer), { icon: <Eye size={12} /> }),
+    m.separator(),
+    m.copy('Copy name', `${officer.last_name}, ${officer.first_name}`),
+    ...(officer.badge_number ? [m.copy('Copy badge #', officer.badge_number)] : []),
+    m.copyId(officer.id),
   ];
 
   return (
@@ -113,6 +128,7 @@ export default function DutyBoardTab({ officers, timeEntries, credentials, onOff
                 key={officer.id}
                 role="listitem"
                 onClick={() => onOfficerClick(officer)}
+                onContextMenu={(e) => openMenu(e, buildOfficerMenu(officer))}
                 className={`panel-beveled p-3 text-left transition-all duration-200 hover:brightness-110 hover:shadow-lg border-l-2 border-t-2 focus:outline-none focus:ring-1 focus:ring-brand-500/50 ${
                   isOnDuty
                     ? 'border-l-green-500 border-t-green-500 bg-[#0a1a0a]'

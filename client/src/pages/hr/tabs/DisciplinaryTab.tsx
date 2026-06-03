@@ -11,20 +11,23 @@ import {
 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { useToast } from '../../../components/ToastProvider';
+import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
+import { useMenuActions } from '../../../utils/contextMenuActions';
 import type {
   DisciplinaryRecord, DisciplinaryType, DisciplinarySeverity, DisciplinaryStatus,
 } from '../../../types';
 import { SEVERITY_COLORS, DISCIPLINARY_TYPE_LABELS } from '../utils/hrConstants';
 import DisciplinaryFormModal from '../modals/DisciplinaryFormModal';
 import ExportButton from '../../../components/ExportButton';
-import { safeDateStr } from '../../../utils/dateUtils';
+import { safeDateStr, parseTimestamp } from '../../../utils/dateUtils';
 
 interface DisciplinaryTabProps {
   userRole: string;
   userId: number;
 }
 
-const MANAGER_ROLES = ['admin', 'manager', 'supervisor'];
+// Must match server tier (hr.ts MANAGER_ROLES includes human_resources).
+const MANAGER_ROLES = ['admin', 'manager', 'supervisor', 'human_resources'];
 const isGodModeRole = (role: string) => role === 'admin'; // Admin God Mode — unrestricted access
 
 function isManagerPlus(role: string) {
@@ -66,7 +69,7 @@ function statusBadge(status: DisciplinaryStatus) {
 
 function followUpStatus(date: string | null): 'none' | 'upcoming' | 'overdue' | 'past' {
   if (!date) return 'none';
-  const d = new Date(date);
+  const d = parseTimestamp(date);
   const now = new Date();
   const diff = d.getTime() - now.getTime();
   const days = diff / (1000 * 60 * 60 * 24);
@@ -79,6 +82,11 @@ function followUpStatus(date: string | null): 'none' | 'upcoming' | 'overdue' | 
 export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabProps) {
   const toast = useToast();
   const manager = isManagerPlus(userRole);
+  const isAdmin = isGodModeRole(userRole);
+
+  // ── Right-click context menu ──
+  const { openMenu } = useContextMenu();
+  const menu = useMenuActions();
 
   // Data
   const [records, setRecords] = useState<DisciplinaryRecord[]>([]);
@@ -174,22 +182,29 @@ export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabPro
   };
 
   const handleSubmit = async (data: any) => {
-    if (editRecord) {
-      await apiFetch(`/hr/disciplinary/${editRecord.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-      });
-      toast.addToast('Record updated', 'success');
-    } else {
-      await apiFetch('/hr/disciplinary', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-      });
-      toast.addToast('Record created', 'success');
+    try {
+      if (editRecord) {
+        await apiFetch(`/hr/disciplinary/${editRecord.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data),
+        });
+        toast.addToast('Record updated', 'success');
+      } else {
+        await apiFetch('/hr/disciplinary', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data),
+        });
+        toast.addToast('Record created', 'success');
+      }
+      fetchRecords();
+    } catch (err) {
+      // Surface the failure so the Save button doesn't look dead. Rethrow keeps
+      // the modal open (DisciplinaryFormModal's `await onSubmit` rejects, skipping onClose).
+      toast.addToast(`Failed to ${editRecord ? 'update' : 'create'} record`, 'error');
+      throw err;
     }
-    fetchRecords();
   };
 
   const toggleExpand = (id: number) => {
@@ -199,6 +214,26 @@ export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabPro
       return next;
     });
   };
+
+  const buildRecordMenu = (rec: DisciplinaryRecord): ContextMenuItem[] => [
+    ...(manager
+      ? [menu.action('Edit record', () => handleEdit(rec), { icon: <Pencil size={12} /> })]
+      : []),
+    menu.action(
+      expandedIds.has(rec.id) ? 'Collapse details' : 'Expand details',
+      () => toggleExpand(rec.id),
+      { icon: expandedIds.has(rec.id) ? <ChevronUp size={12} /> : <ChevronDown size={12} /> },
+    ),
+    menu.separator(),
+    ...(rec.officer_name ? [menu.copy('Copy officer name', rec.officer_name)] : []),
+    menu.copyId(rec.id),
+    ...(isAdmin
+      ? [
+          menu.separator(),
+          menu.action('Delete record', () => handleDelete(rec.id), { icon: <Trash2 size={12} />, danger: true }),
+        ]
+      : []),
+  ];
 
   // ─── Officer read-only view ──────────────────────────────
   // ─── Manager / Admin view ────────────────────────────────
@@ -251,6 +286,7 @@ export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabPro
                     onToggle={() => toggleExpand(rec.id)}
                     manager={false}
                     isAdmin={false}
+                    onContextMenu={(e) => openMenu(e, buildRecordMenu(rec))}
                   />
                 ))}
               </div>
@@ -270,6 +306,7 @@ export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabPro
                     onToggle={() => toggleExpand(rec.id)}
                     manager={false}
                     isAdmin={false}
+                    onContextMenu={(e) => openMenu(e, buildRecordMenu(rec))}
                   />
                 ))}
               </div>
@@ -326,7 +363,7 @@ export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabPro
       {/* Filter bar (list view only) */}
       {viewMode === 'list' && (
         <div className="flex flex-wrap items-center gap-2">
-          <select
+          <select id="ff-disciplinarytab-0"
             value={filterOfficer}
             onChange={e => setFilterOfficer(e.target.value)}
             className="bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1 text-xs text-white"
@@ -338,7 +375,7 @@ export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabPro
               </option>
             ))}
           </select>
-          <select
+          <select id="ff-disciplinarytab-1"
             value={filterType}
             onChange={e => setFilterType(e.target.value)}
             className="bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1 text-xs text-white"
@@ -350,7 +387,7 @@ export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabPro
               </option>
             ))}
           </select>
-          <select
+          <select id="ff-disciplinarytab-2"
             value={filterSeverity}
             onChange={e => setFilterSeverity(e.target.value)}
             className="bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1 text-xs text-white"
@@ -361,7 +398,7 @@ export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabPro
             <option value="major">Major</option>
             <option value="critical">Critical</option>
           </select>
-          <select
+          <select id="ff-disciplinarytab-3"
             value={filterStatus}
             onChange={e => setFilterStatus(e.target.value)}
             className="bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1 text-xs text-white"
@@ -397,6 +434,7 @@ export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabPro
                   isAdmin={userRole === 'admin'}
                   onEdit={() => handleEdit(rec)}
                   onDelete={() => handleDelete(rec.id)}
+                  onContextMenu={(e) => openMenu(e, buildRecordMenu(rec))}
                 />
               ))}
             </div>
@@ -407,7 +445,7 @@ export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabPro
       {/* Timeline view */}
       {viewMode === 'timeline' && (
         <div className="space-y-4">
-          <select
+          <select id="ff-disciplinarytab-4"
             value={selectedOfficerId}
             onChange={e => setSelectedOfficerId(e.target.value)}
             className="bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1.5 text-sm text-white w-full sm:w-64"
@@ -459,6 +497,7 @@ function RecordCard({
   isAdmin,
   onEdit,
   onDelete,
+  onContextMenu,
 }: {
   rec: DisciplinaryRecord;
   expanded: boolean;
@@ -467,6 +506,7 @@ function RecordCard({
   isAdmin: boolean;
   onEdit?: () => void;
   onDelete?: () => void;
+  onContextMenu?: (e: React.MouseEvent) => void;
 }) {
   const isComm = rec.type === 'commendation';
   const borderColor = isComm ? '#d4a017' : (SEVERITY_COLORS[rec.severity] ?? '#888888');
@@ -475,6 +515,7 @@ function RecordCard({
 
   return (
     <div
+      onContextMenu={onContextMenu}
       className={`rounded border border-rmpg-700 border-l-4 ${
         isComm ? 'bg-amber-950/10' : 'bg-surface-sunken'
       }`}

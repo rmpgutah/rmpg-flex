@@ -22,6 +22,10 @@ import { mapDbCall } from './dispatch/utils/dispatchMappers';
 import StatusBadge from '../components/StatusBadge';
 import PremiseHistory from '../components/PremiseHistory';
 import NcicQueryPanel from '../components/NcicQueryPanel';
+import PremiseAlertModal from '../components/PremiseAlertModal';
+import WelfareCheckModal from '../components/WelfareCheckModal';
+import { Volume2, VolumeX, Vibrate } from 'lucide-react';
+import { type AudioMode, getLocalAudioMode, persistAudioMode, syncAudioModeFromServer } from '../utils/audioMode';
 import { formatDateTime, localToday, safeTimeStr } from '../utils/dateUtils';
 import { useToast } from '../components/ToastProvider';
 
@@ -189,7 +193,7 @@ function MdtMessagesPanel({ userId }: { userId?: string }) {
               {ch}
             </button>
           ))}
-          <select
+          <select id="ff-mdtpage-0"
             value={composePriority}
             onChange={(e) => setComposePriority(e.target.value as any)}
             className="text-[8px] bg-surface-base border border-rmpg-600 text-rmpg-300 px-1 py-0.5 ml-auto"
@@ -200,7 +204,7 @@ function MdtMessagesPanel({ userId }: { userId?: string }) {
           </select>
         </div>
         <div className="flex items-center gap-1">
-          <input
+          <input id="ff-mdtpage-1"
             type="text"
             value={composeText}
             onChange={(e) => setComposeText(e.target.value)}
@@ -228,6 +232,30 @@ export default function MdtPage() {
   const { addToast } = useToast();
   const gps = useGpsTracking();
   const [myUnit, setMyUnit] = useState<Unit | null>(null);
+  // DI-5: per-unit audio mode (silent dispatch). Source of truth = server,
+  // localStorage mirror keeps the voice hook gate latency-free.
+  const [audioMode, setAudioMode] = useState<AudioMode>(getLocalAudioMode());
+  useEffect(() => {
+    syncAudioModeFromServer().then(setAudioMode).catch(() => { /* keep local */ });
+    const onChange = (e: Event) => {
+      const ce = e as CustomEvent<AudioMode>;
+      if (ce.detail) setAudioMode(ce.detail);
+    };
+    window.addEventListener('rmpg:audio-mode-changed', onChange);
+    return () => window.removeEventListener('rmpg:audio-mode-changed', onChange);
+  }, []);
+  const cycleAudioMode = useCallback(async () => {
+    if (!myUnit) return;
+    const next: AudioMode = audioMode === 'audible' ? 'silent' : audioMode === 'silent' ? 'vibrate' : 'audible';
+    try {
+      await persistAudioMode(myUnit.id, next);
+      setAudioMode(next);
+      addToast(`Audio mode: ${next.toUpperCase()}`, 'success');
+    } catch (err) {
+      console.error('[MDT] audio mode change failed', err);
+      addToast('Failed to change audio mode', 'error');
+    }
+  }, [audioMode, myUnit, addToast]);
   const [myCalls, setMyCalls] = useState<CallForService[]>([]);
   const [pendingCalls, setPendingCalls] = useState<CallForService[]>([]);
   const [selectedCall, setSelectedCall] = useState<CallForService | null>(null);
@@ -385,11 +413,29 @@ export default function MdtPage() {
       // Pending calls (available for self-dispatch)
       setPendingCalls(allCalls.filter(c => c.status === 'pending'));
 
-      // Keep selectedCall fresh — update from new data if still exists
+      // Keep selectedCall fresh — update from new data if still in the
+      // page-1 list. If the call has dropped off the list (could be a
+      // paged-out result, a transient filter hiccup, or a real delete),
+      // refetch it by id rather than blindly nulling. The previous
+      // behavior was nulling the open call any time it slipped past
+      // ?limit=100 — disorienting for the officer mid-view.
       setSelectedCall(prev => {
         if (!prev) return null;
         const fresh = allCalls.find(c => c.id === prev.id);
-        return fresh || null;
+        if (fresh) return fresh;
+        // Fire-and-forget refetch; clear on 404, keep on success.
+        // We return prev to avoid a flash of empty state during the
+        // refetch — if the call IS deleted, the next render clears it.
+        apiFetch<any>(`/dispatch/calls/${prev.id}`)
+          .then((detail) => {
+            if (detail && detail.id != null) {
+              setSelectedCall(mapDbCall(detail));
+            } else {
+              setSelectedCall(null);
+            }
+          })
+          .catch(() => setSelectedCall(null));
+        return prev;
       });
 
     } catch (err) {
@@ -406,13 +452,17 @@ export default function MdtPage() {
   // ── Real-time WebSocket subscriptions for dispatch events ──
   const { subscribe } = useWebSocket();
   useEffect(() => {
-    // When dispatch assigns/unassigns units or changes call status, refresh immediately
-    const unsubDispatch = subscribe('dispatch_update', () => {
+    // When dispatch assigns/unassigns units or changes call status, refresh
+    // immediately — but skip high-frequency GPS position pushes (every ~1s),
+    // which the MDT doesn't display and which would refetch on every tick.
+    const unsubDispatch = subscribe('dispatch_update', (msg: any) => {
+      if ((msg?.data || msg)?.action === 'unit_position_update') return;
       fetchData();
     });
     // When any unit status changes (dispatched, enroute, onscene, available)
     const unsubUnit = subscribe('unit_update', (msg: any) => {
       const data = msg.data || msg;
+      if (data?.action === 'unit_position_update') return;
       if (data?.unit && gps.unitId && data.unit.id === gps.unitId) {
         // Our unit was updated — refresh to pick up status/call changes
         fetchData();
@@ -498,6 +548,10 @@ export default function MdtPage() {
 
   return (
     <div className="h-full flex flex-col bg-surface-base text-white overflow-hidden animate-fade-in">
+      {/* DI-3: Premise alert auto-push modal — listens for premise_alert_for_unit WS event */}
+      <PremiseAlertModal />
+      {/* DI-4: Welfare-check ack modal — listens for welfare_check WS event */}
+      <WelfareCheckModal />
       {/* ── Error Toast ── */}
       {errorToast && (
         <div className="absolute top-2 right-2 z-50 flex items-center gap-2 px-3 py-2 bg-red-900/90 border border-red-700 text-red-200 text-[10px] font-bold shadow-lg"
@@ -548,6 +602,28 @@ export default function MdtPage() {
           >
             FI
           </button>
+          {/* DI-5: Silent dispatch toggle (3-way cycle: audible → silent → vibrate) */}
+          <button type="button"
+            onClick={cycleAudioMode}
+            disabled={!myUnit}
+            aria-label={`Audio mode: ${audioMode}. Click to cycle.`}
+            className={`px-2 py-1 text-[9px] font-bold uppercase tracking-wider transition-colors border mr-0.5 flex items-center gap-1 ${
+              audioMode === 'silent' ? 'border-red-500 text-red-400 bg-red-900/20'
+              : audioMode === 'vibrate' ? 'border-amber-500 text-amber-400 bg-amber-900/20'
+              : 'border-green-600 text-green-400'
+            }`}
+            title={
+              audioMode === 'silent' ? 'SILENT — TTS suppressed. Click for vibrate.'
+              : audioMode === 'vibrate' ? 'VIBRATE — Haptic only. Click for audible.'
+              : 'AUDIBLE — Full TTS. Click for silent.'
+            }
+            style={{ opacity: myUnit ? 1 : 0.4 }}
+          >
+            {audioMode === 'silent' ? <VolumeX style={{ width: 10, height: 10 }} />
+              : audioMode === 'vibrate' ? <Vibrate style={{ width: 10, height: 10 }} />
+              : <Volume2 style={{ width: 10, height: 10 }} />}
+            <span>{audioMode === 'silent' ? 'SIL' : audioMode === 'vibrate' ? 'VIB' : 'AUD'}</span>
+          </button>
           <button type="button"
             onClick={handleGenerateShiftReport}
             disabled={generatingReport}
@@ -583,21 +659,21 @@ export default function MdtPage() {
             {selectedCall && <span className="text-[8px] text-rmpg-400">Linked to {selectedCall.call_number}</span>}
           </div>
           <div className={`grid ${isMobile ? 'grid-cols-1' : 'grid-cols-4'} gap-2`}>
-            <input
+            <input id="ff-mdtpage-2"
               type="text"
               className="input-dark text-[10px] min-h-[36px]"
               placeholder="Subject Name *"
               value={fiData.subject_name}
               onChange={(e) => setFiData(prev => ({ ...prev, subject_name: e.target.value }))}
             />
-            <input
+            <input id="ff-mdtpage-3"
               type="text"
               className="input-dark text-[10px] min-h-[36px]"
               placeholder={gps.latitude ? `Location (auto: ${gps.latitude.toFixed(4)})` : 'Location'}
               value={fiData.location}
               onChange={(e) => setFiData(prev => ({ ...prev, location: e.target.value }))}
             />
-            <input
+            <input id="ff-mdtpage-4"
               type="text"
               className="input-dark text-[10px] min-h-[36px]"
               placeholder="Reason for contact"
@@ -605,7 +681,7 @@ export default function MdtPage() {
               onChange={(e) => setFiData(prev => ({ ...prev, reason: e.target.value }))}
             />
             <div className="flex items-center gap-1">
-              <input
+              <input id="ff-mdtpage-5"
                 type="text"
                 className="input-dark text-[10px] flex-1 min-h-[36px]"
                 placeholder="Brief narrative"

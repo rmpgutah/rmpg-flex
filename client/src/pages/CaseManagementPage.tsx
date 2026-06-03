@@ -11,7 +11,7 @@ import RichTextArea from '../components/RichTextArea';
 import {
   Briefcase, Search, Plus, User, X, Save, Loader2, AlertTriangle, Target,
   MessageSquare, ArrowRight, CheckCircle, FolderOpen, ShieldCheck, RotateCcw, Send,
-  Link,
+  Link, Eye, Trash2, Unlink,
 } from 'lucide-react';
 import type { Case, CaseNote, CaseFull, CaseStatus, CaseType, CasePriority } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -21,11 +21,14 @@ import EmptyState from '../components/EmptyState';
 import ExportButton from '../components/ExportButton';
 import { apiFetch } from '../hooks/useApi';
 import FileAttachments from '../components/FileAttachments';
+import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
+import { useMenuActions } from '../utils/contextMenuActions';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useToast } from '../components/ToastProvider';
 import { useAuth } from '../context/AuthContext';
 import { humanizeCaseType, humanizeSolvabilityFactor } from '../utils/statusLabels';
+import { safeDateTimeStr, parseTimestamp } from '../utils/dateUtils';
 
 const STATUS_OPTIONS: { value: CaseStatus; label: string; color: string }[] = [
   { value: 'open', label: 'Open', color: 'bg-gray-900/50 text-gray-400 border-gray-700/50' },
@@ -108,6 +111,8 @@ function LinkedEntityPanel({
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [searching, setSearching] = useState(false);
   const { addToast } = useToast();
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
 
   const handleSearch = async () => {
     if (!searchQuery.trim()) return;
@@ -166,7 +171,13 @@ function LinkedEntityPanel({
             </thead>
             <tbody>
               {items.map((item: any, idx: number) => (
-                <tr key={item.id || idx} className="border-b border-rmpg-800 hover:bg-rmpg-800/30 transition-colors">
+                <tr key={item.id || idx} className="border-b border-rmpg-800 hover:bg-rmpg-800/30 transition-colors"
+                  onContextMenu={(e) => openMenu(e, [
+                    m.copyId(item.id),
+                    m.separator(),
+                    m.action(`Unlink ${entityType.slice(0, -1)}`, () => handleUnlink(item.id), { icon: <Unlink size={12} />, danger: true }),
+                  ])}
+                >
                   {columns.map(col => (
                     <td key={col.key} className="px-2 py-1.5 text-rmpg-300">
                       {col.render ? col.render(item[col.key], item) : (item[col.key] ?? '—')}
@@ -195,7 +206,7 @@ function LinkedEntityPanel({
             </PanelTitleBar>
             <div className="p-4 space-y-3">
               <div className="flex gap-2">
-                <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
+                <input id="ff-casemanagementpage-0" value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && handleSearch()}
                   placeholder={`Search ${entityType}...`} aria-label={`Search ${entityType}`}
                   className="flex-1 px-2 py-1.5 w-full text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
@@ -359,6 +370,8 @@ export default function CaseManagementPage() {
   const { addToast } = useToast();
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin'; // Admin God Mode — unrestricted access
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
 
   const [cases, setCases] = useState<Case[]>([]);
   const [selected, setSelected] = useState<Case | null>(null);
@@ -555,6 +568,27 @@ export default function CaseManagementPage() {
     finally { setReviewSubmitting(false); }
   };
 
+  // Admin God Mode — delete a case (shared by detail button + context menu)
+  const handleDeleteCase = async (c: Case) => {
+    if (!confirm(`Admin God Mode: Delete case ${c.case_number}? This cannot be undone.`)) return;
+    try {
+      await apiFetch(`/cases/${c.id}`, { method: 'DELETE' });
+      addToast(`Case ${c.case_number} deleted`, 'success');
+      if (selected?.id === c.id) setSelected(null);
+      fetchCases();
+    } catch (err: any) { addToast(err.message || 'Delete failed', 'error'); }
+  };
+
+  // ── Right-click context menu for case list rows ──
+  const buildCaseMenu = (c: Case): ContextMenuItem[] => [
+    m.action('Open case', () => { setSelected(c); setDetailTab('overview'); }, { icon: <Eye size={12} /> }),
+    m.separator(),
+    m.copy('Copy case number', c.case_number),
+    m.copyId(c.id),
+    ...(c.title ? [m.copy('Copy title', c.title)] : []),
+    ...(isAdmin ? [m.separator(), m.action('Delete', () => handleDeleteCase(c), { icon: <Trash2 size={12} />, danger: true })] : []),
+  ];
+
   // ── Link Person handlers ──
   const handlePersonSearch = async () => {
     if (!personSearchQuery.trim()) return;
@@ -612,7 +646,7 @@ export default function CaseManagementPage() {
   return (
     <div className={`h-full flex ${isMobile ? 'flex-col' : ''}`}>
       {/* ── Left: Case List ── */}
-      <div className={`flex flex-col ${isMobile ? 'h-1/2' : 'w-[400px]'} border-r border-rmpg-700`}>
+      <div className={`flex flex-col min-h-0 ${isMobile ? 'h-1/2' : 'w-[400px]'} border-r border-rmpg-700`}>
         <PanelTitleBar title="Case Management" icon={Briefcase}>
           <ExportButton exportUrl="/api/cases/export/csv" exportFilename="cases_export.csv" />
           <button type="button" onClick={() => { setFormOpen(true); setFormData({ ...EMPTY_FORM }); }} className="toolbar-btn toolbar-btn-primary print:hidden">
@@ -651,7 +685,7 @@ export default function CaseManagementPage() {
         <div className="flex flex-wrap gap-1 p-1.5 border-b border-rmpg-700 bg-surface-base">
           <div className="flex-1 min-w-[120px] relative">
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500 pointer-events-none" style={{ width: 12, height: 12 }} />
-            <input
+            <input id="ff-casemanagementpage-1"
               value={searchQuery}
               onChange={e => { setSearchQuery(e.target.value); setPage(1); }}
               placeholder="Search cases..." aria-label="Search cases..."
@@ -663,18 +697,18 @@ export default function CaseManagementPage() {
               </IconButton>
             )}
           </div>
-          <select value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setPage(1); }} className="text-[10px] bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-1 py-1 outline-none">
+          <select id="ff-casemanagementpage-2" value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setPage(1); }} className="text-[10px] bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-1 py-1 outline-none">
             <option value="">All Status</option>
             {STATUS_OPTIONS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
           </select>
-          <select value={filterType} onChange={e => { setFilterType(e.target.value); setPage(1); }} className="text-[10px] bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-1 py-1 outline-none">
+          <select id="ff-casemanagementpage-3" value={filterType} onChange={e => { setFilterType(e.target.value); setPage(1); }} className="text-[10px] bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-1 py-1 outline-none">
             <option value="">All Types</option>
             {TYPE_OPTIONS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
           </select>
         </div>
 
         {/* Case List */}
-        <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
+        <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
           {loading ? (
             <div className="flex flex-col items-center justify-center h-32 gap-2"><Loader2 className="w-5 h-5 animate-spin text-brand-400" role="status" aria-label="Loading" /><span className="text-[10px] text-rmpg-500 font-mono uppercase tracking-wider animate-pulse">Loading cases...</span></div>
           ) : cases.length === 0 ? (
@@ -689,6 +723,7 @@ export default function CaseManagementPage() {
               <button type="button"
                 key={c.id}
                 onClick={() => { setSelected(c); setDetailTab('overview'); }}
+                onContextMenu={(e) => openMenu(e, buildCaseMenu(c))}
                 className={`w-full text-left px-3 py-2 border-b border-rmpg-800 transition-colors ${
                   selected?.id === c.id ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : 'hover:bg-rmpg-800/40 border-l-2 border-l-transparent'
                 }`}
@@ -725,7 +760,7 @@ export default function CaseManagementPage() {
       </div>
 
       {/* ── Right: Detail ── */}
-      <div className="flex-1 flex flex-col bg-surface-base">
+      <div className="flex-1 min-h-0 flex flex-col bg-surface-base">
         {selected ? (
           <>
             <PanelTitleBar title={`${selected.case_number} — ${selected.title}`} icon={Briefcase}>
@@ -752,7 +787,7 @@ export default function CaseManagementPage() {
               })}
             </div>
 
-            <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent p-4">
+            <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent p-4">
               {detailTab === 'overview' && (
                 <div className="space-y-4">
                   {/* Status + Priority badges */}
@@ -806,15 +841,7 @@ export default function CaseManagementPage() {
                   {isAdmin && (
                     <div className="panel-beveled p-3 border-red-900/30">
                       <button type="button"
-                        onClick={async () => {
-                          if (!confirm(`Admin God Mode: Delete case ${selected.case_number}? This cannot be undone.`)) return;
-                          try {
-                            await apiFetch(`/cases/${selected.id}`, { method: 'DELETE' });
-                            addToast(`Case ${selected.case_number} deleted`, 'success');
-                            setSelected(null);
-                            fetchCases();
-                          } catch (err: any) { addToast(err.message || 'Delete failed', 'error'); }
-                        }}
+                        onClick={() => handleDeleteCase(selected)}
                         className="toolbar-btn text-red-400 border-red-700/50 hover:bg-red-900/30 text-[10px]"
                       >
                         <X style={{ width: 11, height: 11 }} /> Delete Case (Admin)
@@ -887,9 +914,9 @@ export default function CaseManagementPage() {
                       ['Case Number', selected.case_number],
                       ['Type', humanizeCaseType(selected.case_type)],
                       ['Lead Investigator', selected.lead_investigator_name || '—'],
-                      ['Opened', selected.opened_date ? new Date(selected.opened_date).toLocaleDateString() : '—'],
-                      ['Due Date', selected.due_date ? new Date(selected.due_date).toLocaleDateString() : '—'],
-                      ['Closed', selected.closed_date ? new Date(selected.closed_date).toLocaleDateString() : '—'],
+                      ['Opened', selected.opened_date ? parseTimestamp(selected.opened_date).toLocaleDateString() : '—'],
+                      ['Due Date', selected.due_date ? parseTimestamp(selected.due_date).toLocaleDateString() : '—'],
+                      ['Closed', selected.closed_date ? parseTimestamp(selected.closed_date).toLocaleDateString() : '—'],
                     ].map(([label, value]) => (
                       <div key={label as string}>
                         <div className="text-[9px] font-mono text-rmpg-500 uppercase">{label}</div>
@@ -923,7 +950,7 @@ export default function CaseManagementPage() {
                     { key: 'priority', label: 'Priority', render: (v) => <span className="font-bold uppercase">{v || '—'}</span> },
                     { key: 'status', label: 'Status' },
                     { key: 'location', label: 'Location' },
-                    { key: 'created_at', label: 'Date', render: (v) => v ? new Date(v).toLocaleDateString() : '—' },
+                    { key: 'created_at', label: 'Date', render: (v) => v ? parseTimestamp(v).toLocaleDateString() : '—' },
                   ]}
                   entityType="calls"
                   caseId={selected.id}
@@ -941,7 +968,7 @@ export default function CaseManagementPage() {
                     { key: 'incident_type', label: 'Type' },
                     { key: 'status', label: 'Status' },
                     { key: 'location', label: 'Location' },
-                    { key: 'created_at', label: 'Date', render: (v) => v ? new Date(v).toLocaleDateString() : '—' },
+                    { key: 'created_at', label: 'Date', render: (v) => v ? parseTimestamp(v).toLocaleDateString() : '—' },
                   ]}
                   entityType="incidents"
                   caseId={selected.id}
@@ -956,7 +983,7 @@ export default function CaseManagementPage() {
                   items={caseFull?.persons || []}
                   columns={[
                     { key: 'last_name', label: 'Name', render: (_v, row) => <span className="font-bold text-white">{row.last_name}, {row.first_name}</span> },
-                    { key: 'date_of_birth', label: 'DOB', render: (v) => v ? new Date(v).toLocaleDateString() : '—' },
+                    { key: 'date_of_birth', label: 'DOB', render: (v) => v ? parseTimestamp(v).toLocaleDateString() : '—' },
                     { key: 'role', label: 'Role', render: (v) => <span className="text-[9px] px-1 border border-rmpg-700 bg-rmpg-800/50">{v || 'involved'}</span> },
                     { key: 'phone', label: 'Phone' },
                   ]}
@@ -1031,7 +1058,7 @@ export default function CaseManagementPage() {
                     { key: 'warrant_type', label: 'Type' },
                     { key: 'status', label: 'Status' },
                     { key: 'subject_name', label: 'Subject' },
-                    { key: 'issued_date', label: 'Issued', render: (v) => v ? new Date(v).toLocaleDateString() : '—' },
+                    { key: 'issued_date', label: 'Issued', render: (v) => v ? parseTimestamp(v).toLocaleDateString() : '—' },
                   ]}
                   entityType="warrants"
                   caseId={selected.id}
@@ -1049,7 +1076,7 @@ export default function CaseManagementPage() {
                     { key: 'violation', label: 'Violation' },
                     { key: 'status', label: 'Status' },
                     { key: 'violator_name', label: 'Violator' },
-                    { key: 'issued_date', label: 'Issued', render: (v) => v ? new Date(v).toLocaleDateString() : '—' },
+                    { key: 'issued_date', label: 'Issued', render: (v) => v ? parseTimestamp(v).toLocaleDateString() : '—' },
                   ]}
                   entityType="citations"
                   caseId={selected.id}
@@ -1072,11 +1099,11 @@ export default function CaseManagementPage() {
                         ...(caseFull?.incidents || []).map((i: any) => ({ date: i.created_at, type: 'Incident', label: `${i.incident_number || '#' + i.id} — ${i.incident_type || 'Unknown'}`, color: '#f59e0b' })),
                         ...(caseFull?.notes || []).map((n: any) => ({ date: n.created_at, type: 'Note', label: n.content?.substring(0, 80) || 'Note', color: '#8b5cf6' })),
                       ]
-                        .sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime())
+                        .sort((a, b) => (b.date ? parseTimestamp(b.date).getTime() : 0) - (a.date ? parseTimestamp(a.date).getTime() : 0))
                         .map((event, idx) => (
                           <div key={idx} className="relative">
                             <div className="absolute -left-[21px] w-2.5 h-2.5 rounded-full border-2 border-surface-base" style={{ background: event.color }} />
-                            <div className="text-[9px] font-mono text-rmpg-500">{event.date ? new Date(event.date).toLocaleString() : '—'}</div>
+                            <div className="text-[9px] font-mono text-rmpg-500">{safeDateTimeStr(event.date)}</div>
                             <div className="text-[10px] text-rmpg-300">
                               <span className="font-bold text-white mr-1" style={{ color: event.color }}>[{event.type}]</span>
                               {event.label}
@@ -1113,7 +1140,7 @@ export default function CaseManagementPage() {
                       <div className="flex items-center justify-between mb-1">
                         <span className="text-[10px] font-bold text-white">{note.author_name || 'Unknown'}</span>
                         <span className="text-[9px] font-mono text-rmpg-500">
-                          {note.created_at ? new Date(note.created_at).toLocaleString() : ''}
+                          {safeDateTimeStr(note.created_at, '')}
                         </span>
                       </div>
                       <div className="text-xs text-rmpg-300 whitespace-pre-wrap">{note.content}</div>
@@ -1137,7 +1164,7 @@ export default function CaseManagementPage() {
                     <div className="space-y-2">
                       {SOLVABILITY_FACTORS.map(f => (
                         <label key={f.key} className="flex items-center gap-3 cursor-pointer">
-                          <input
+                          <input id="ff-casemanagementpage-4"
                             type="checkbox"
                             checked={!!solvFactors[f.key]}
                             onChange={e => setSolvFactors(prev => ({ ...prev, [f.key]: e.target.checked }))}
@@ -1214,7 +1241,7 @@ export default function CaseManagementPage() {
             </PanelTitleBar>
             <div className="p-4 space-y-3">
               <div className="flex gap-2">
-                <input value={personSearchQuery} onChange={e => setPersonSearchQuery(e.target.value)}
+                <input id="ff-casemanagementpage-5" value={personSearchQuery} onChange={e => setPersonSearchQuery(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && handlePersonSearch()}
                   placeholder="Search by name, phone, email..." aria-label="Search by name, phone, email..."
                   className="flex-1 px-2 py-1.5 w-full text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
@@ -1253,24 +1280,24 @@ export default function CaseManagementPage() {
             <div className="p-4 space-y-3">
               <div>
                 <label className="field-label">Title *</label>
-                <input value={formData.title} onChange={e => setFormData(p => ({ ...p, title: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
+                <input id="ff-casemanagementpage-6" value={formData.title} onChange={e => setFormData(p => ({ ...p, title: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
                   <label className="field-label">Type</label>
-                  <select value={formData.case_type} onChange={e => setFormData(p => ({ ...p, case_type: e.target.value as CaseType }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none">
+                  <select id="ff-casemanagementpage-7" value={formData.case_type} onChange={e => setFormData(p => ({ ...p, case_type: e.target.value as CaseType }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none">
                     {TYPE_OPTIONS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="field-label">Priority</label>
-                  <select value={formData.priority} onChange={e => setFormData(p => ({ ...p, priority: e.target.value as CasePriority }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none">
+                  <select id="ff-casemanagementpage-8" value={formData.priority} onChange={e => setFormData(p => ({ ...p, priority: e.target.value as CasePriority }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none">
                     {PRIORITY_OPTIONS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="field-label">Lead Investigator</label>
-                  <select value={formData.lead_investigator_id} onChange={e => setFormData(p => ({ ...p, lead_investigator_id: e.target.value }))} disabled={personnelLoading} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none disabled:opacity-60">
+                  <select id="ff-casemanagementpage-9" value={formData.lead_investigator_id} onChange={e => setFormData(p => ({ ...p, lead_investigator_id: e.target.value }))} disabled={personnelLoading} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none disabled:opacity-60">
                     {personnelLoading ? (
                       <option value="">Loading…</option>
                     ) : (

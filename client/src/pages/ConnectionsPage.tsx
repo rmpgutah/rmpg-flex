@@ -1,12 +1,15 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { Network, Loader2 } from 'lucide-react';
+import { Network, Loader2, Eye, Pencil, Route } from 'lucide-react';
 import { forceSimulation, forceManyBody, forceLink, forceCenter, forceCollide, Simulation } from 'd3-force';
 import { zoom, zoomIdentity, ZoomBehavior } from 'd3-zoom';
 import { select } from 'd3-selection';
 import PanelTitleBar from '../components/PanelTitleBar';
+import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
+import { useMenuActions } from '../utils/contextMenuActions';
 import { apiFetch } from '../hooks/useApi';
 import { svgElementToPngDataUrl, downloadDataUrl } from '../utils/graphToPng';
 import { exportGraphToPdf } from '../utils/graphToPdf';
+import { useToast } from '../components/ToastProvider';
 
 import RichTextArea from '../components/RichTextArea';
 interface SearchResult { id: number; type: string; label: string; }
@@ -44,7 +47,7 @@ const NODE_COLORS: Record<string, string> = {
   vehicle: '#10b981',
   property: '#8b5cf6',
   evidence: '#ef4444',
-  case: '#3b82f6',
+  case: '#d4a017',
   incident: '#f59e0b',
   warrant: '#dc2626',
   citation: '#fbbf24',
@@ -52,12 +55,15 @@ const NODE_COLORS: Record<string, string> = {
   field_interview: '#64748b',
   trespass_order: '#a855f7',
   serve_job: '#14b8a6',
+  call: '#22d3ee',
+  report: '#ec4899',
 };
 
 const NODE_RADIUS: Record<string, number> = {
   person: 28, vehicle: 18, property: 18, evidence: 16,
   case: 18, incident: 20, warrant: 18, citation: 16,
   arrest: 18, field_interview: 14, trespass_order: 16, serve_job: 16,
+  call: 20, report: 14,
 };
 
 const VIEW_W = 1000;
@@ -66,6 +72,9 @@ const DEBOUNCE_MS = 250;
 const MIN_QUERY_LEN = 2;
 
 export default function ConnectionsPage() {
+  const { addToast } = useToast();
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
   const [searchQuery, setSearchQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [searching, setSearching] = useState(false);
@@ -274,7 +283,7 @@ export default function ConnectionsPage() {
         setPathEdges(new Set(data.edges.map(e => `${e.source}|${e.target}`)));
       } catch (err) {
         console.error('Path fetch error:', err);
-        alert('No path found between those nodes (within 6 hops).');
+        addToast('No path found between those nodes (within 6 hops).', 'info');
       }
       setPathFrom(null);
       return;
@@ -339,7 +348,7 @@ export default function ConnectionsPage() {
       setSelectedNodeId(null);
     } catch (err) {
       console.error('load investigation err:', err);
-      alert('Failed to load investigation — the saved data may be corrupted. See console for details.');
+      addToast('Failed to load investigation — the saved data may be corrupted. See console for details.', 'error');
     }
   }
 
@@ -352,7 +361,7 @@ export default function ConnectionsPage() {
       downloadDataUrl(dataUrl, name);
     } catch (err) {
       console.error('PNG export failed:', err);
-      alert('PNG export failed — see console for details.');
+      addToast('PNG export failed — see console for details.', 'error');
     }
   }
 
@@ -387,7 +396,7 @@ export default function ConnectionsPage() {
       }
     } catch (err) {
       console.error('PDF export failed:', err);
-      alert('PDF export failed — see console for details.');
+      addToast('PDF export failed — see console for details.', 'error');
     }
   }
 
@@ -399,13 +408,23 @@ export default function ConnectionsPage() {
     });
   }
 
+  // ── Right-click context menu for graph nodes ──
+  const buildNodeMenu = (n: SimNode): ContextMenuItem[] => [
+    m.action('Select node', () => setSelectedNodeId(n.id), { icon: <Eye size={12} /> }),
+    m.action('Start path from here', () => setPathFrom({ type: n.type, id: n.entityId, label: n.label }), { icon: <Route size={12} /> }),
+    m.action(annotations[n.id] ? 'Edit note' : 'Add note', () => { setEditingAnnotationFor(n.id); setAnnotationDraft(annotations[n.id] || ''); }, { icon: <Pencil size={12} /> }),
+    m.separator(),
+    m.copy('Copy label', n.label),
+    m.copyId(n.entityId),
+  ];
+
   return (
     <div className="p-4 space-y-4 h-full flex flex-col">
       <PanelTitleBar title="CONNECTIONS ANALYST" icon={Network} />
 
       <div className="relative">
         <div className="flex items-center gap-2">
-          <input
+          <input id="ff-connectionspage-0"
             type="text"
             placeholder="Search for a person, vehicle, case, incident..."
             className="flex-1 bg-surface-raised border border-[#222222] px-3 py-2 text-sm text-gray-200 placeholder-gray-500 focus:border-[#d4a017] focus:outline-none"
@@ -606,6 +625,7 @@ export default function ConnectionsPage() {
                 <g
                   key={n.id}
                   onClick={() => handleNodeClick(n)}
+                  onContextMenu={(e) => openMenu(e, buildNodeMenu(n))}
                   onMouseEnter={() => setHoveredNodeId(n.id)}
                   onMouseLeave={() => setHoveredNodeId(prev => (prev === n.id ? null : prev))}
                   data-has-annotation={annotations[n.id] ? 'true' : 'false'}
@@ -670,6 +690,7 @@ export default function ConnectionsPage() {
                 <g
                   key={`label-${n.id}`}
                   onClick={() => handleNodeClick(n)}
+                  onContextMenu={(e) => openMenu(e, buildNodeMenu(n))}
                   onMouseEnter={() => setHoveredNodeId(n.id)}
                   onMouseLeave={() => setHoveredNodeId(prev => (prev === n.id ? null : prev))}
                   style={{ cursor: 'pointer', opacity: dim ? 0.35 : 1 }}
@@ -780,7 +801,7 @@ export default function ConnectionsPage() {
               key={t}
               className="flex items-center gap-2 text-xs text-gray-300 cursor-pointer hover:text-[#d4a017]"
             >
-              <input
+              <input id="ff-connectionspage-1"
                 type="checkbox"
                 checked={!hiddenTypes.has(t)}
                 onChange={() => toggleType(t)}
@@ -867,7 +888,7 @@ export default function ConnectionsPage() {
 
             <label className="block text-xs text-gray-300">
               Name
-              <input
+              <input id="ff-connectionspage-2"
                 type="text"
                 className="mt-1 w-full bg-surface-sunken border border-[#222222] px-2 py-1.5 text-sm text-gray-200 focus:border-[#d4a017] focus:outline-none"
                 style={{ borderRadius: 2 }}

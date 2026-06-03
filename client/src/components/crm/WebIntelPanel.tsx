@@ -5,6 +5,7 @@
 // ============================================================
 
 import { useState, useEffect, useCallback } from 'react';
+import { parseTimestamp } from '../../utils/dateUtils';
 import {
   Globe,
   Search,
@@ -242,7 +243,7 @@ export default function WebIntelPanel() {
 
   // ── Relative time helper ──────────────────────────────────
   function relativeTime(dateStr: string): string {
-    const diff = Date.now() - new Date(dateStr).getTime();
+    const diff = Date.now() - parseTimestamp(dateStr).getTime();
     const mins = Math.floor(diff / 60000);
     if (mins < 1) return 'just now';
     if (mins < 60) return `${mins}m ago`;
@@ -337,7 +338,7 @@ export default function WebIntelPanel() {
             handleSearch();
           }}
         >
-          <input
+          <input id="ff-webintelpanel-0"
             type="text"
             className="input-dark flex-1"
             placeholder="Search the web for leads..."
@@ -370,7 +371,7 @@ export default function WebIntelPanel() {
         {/* Save template inline form */}
         {showSaveForm && (
           <div className="flex items-center gap-2 mt-2 pt-2 border-t border-rmpg-700">
-            <input
+            <input id="ff-webintelpanel-1"
               type="text"
               className="input-dark flex-1"
               placeholder="Template name..."

@@ -12,6 +12,7 @@ import { X, Video, Shield, Maximize2, Minimize2, Edit2 } from 'lucide-react';
 import type { BodyCamVideo, VideoClassification } from '../types';
 import { VIDEO_CLASSIFICATION_COLORS } from '../pages/personnel/utils/personnelConstants';
 import VideoHudOverlay from './VideoHudOverlay';
+import { parseTimestamp } from '../utils/dateUtils';
 
 interface Props {
   isOpen: boolean;
@@ -42,7 +43,7 @@ export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHe
   if (!isOpen || !video) return null;
 
   const formatHudTime = (seconds: number) => {
-    const d = video.recorded_at ? new Date(video.recorded_at) : new Date();
+    const d = video.recorded_at ? parseTimestamp(video.recorded_at) : new Date();
     const playback = new Date(d.getTime() + seconds * 1000);
     return playback.toLocaleString('en-US', {
       month: '2-digit', day: '2-digit', year: 'numeric',
@@ -67,7 +68,7 @@ export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHe
 
   const formatDate = (d?: string) => {
     if (!d) return '-';
-    return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    return parseTimestamp(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   };
 
   const classLabel = (cls: string) => cls.replace(/_/g, ' ').toUpperCase();

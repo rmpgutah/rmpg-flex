@@ -5,12 +5,10 @@
 // ban zones, watch lists, and alert trigger workflows.
 // ============================================================
 
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { formatEnumValue } from '../utils/formatters';
-import RichTextArea from '../components/RichTextArea';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  UserX, Search, Plus, AlertTriangle, Shield, MapPin, User, X, Save, Loader2,
-  Ban, ShieldAlert, ShieldCheck,
+  UserX, Search, Plus, AlertTriangle, Shield, MapPin, Clock, User,
+  X, Save, Loader2, Eye, Ban, ShieldAlert, ShieldCheck,
 } from 'lucide-react';
 import type { OffenderAlert, OffenderAlertType, AlertSeverity } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -21,7 +19,13 @@ import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useToast } from '../components/ToastProvider';
 import { useFormValidation } from '../hooks/useFormValidation';
-import { getGoogleMapsApiKey } from '../utils/googleMapsApiKey';
+import { useFormDraft } from '../hooks/useFormDraft';
+import UnsavedChangesGuard from '../components/UnsavedChangesGuard';
+import FloatingSaveBar from '../components/FloatingSaveBar';
+import { getMapboxAccessToken } from '../utils/mapboxApiKey';
+import { safeDateTimeStr, parseTimestamp } from '../utils/dateUtils';
+import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
+import { useMenuActions } from '../utils/contextMenuActions';
 
 const ALERT_TYPES: { value: OffenderAlertType; label: string }[] = [
   { value: 'ban_zone', label: 'Ban Zone' }, { value: 'watch_list', label: 'Watch List' },
@@ -94,14 +98,14 @@ function CdocSearchPanel() {
       <div className="px-3 py-2 border-b border-rmpg-700 bg-surface-sunken">
         <div className="text-[9px] font-mono text-[#d4a017] uppercase tracking-wider tracking-wider mb-2">Colorado DOC Offender Search</div>
         <div className="flex gap-1">
-          <input
+          <input id="ff-offenderregistrypage-0"
             value={lastName}
             onChange={e => setLastName(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && searchCdoc()}
             placeholder="Last name *"
             className="flex-1 px-2 py-1 w-full text-xs bg-surface-sunken border border-rmpg-700 text-white placeholder-rmpg-500 outline-none focus:border-brand-600"
           />
-          <input
+          <input id="ff-offenderregistrypage-1"
             value={firstName}
             onChange={e => setFirstName(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && searchCdoc()}
@@ -127,14 +131,14 @@ function CdocSearchPanel() {
               <div className="flex-1">
                 <div className="text-sm font-bold text-white">{selectedOffender.last_name}, {selectedOffender.first_name}</div>
                 <div className="text-[10px] text-rmpg-400 font-mono">DOC# {selectedOffender.doc_number}</div>
-                {selectedOffender.dob && <div className="text-[10px] text-rmpg-400">DOB: {new Date(selectedOffender.dob).toLocaleDateString()}</div>}
+                {selectedOffender.dob && <div className="text-[10px] text-rmpg-400">DOB: {parseTimestamp(selectedOffender.dob).toLocaleDateString()}</div>}
                 {selectedOffender.status && (
                   <span className={`inline-block mt-1 text-[9px] px-1.5 py-0.5 font-bold border ${
                     selectedOffender.status.toLowerCase().includes('incarcerat') ? 'bg-red-900/50 text-red-300 border-red-700/50' :
                     selectedOffender.status.toLowerCase().includes('parol') ? 'bg-amber-900/50 text-amber-400 border-amber-700/50' :
                     'bg-gray-900/40 text-gray-400 border-gray-700/40'
                   }`}>
-                    {formatEnumValue(selectedOffender.status)}
+                    {selectedOffender.status.toUpperCase()}
                   </span>
                 )}
               </div>
@@ -176,7 +180,7 @@ function CdocSearchPanel() {
                     r.status.toLowerCase().includes('parol') ? 'bg-amber-900/50 text-amber-400 border-amber-700/50' :
                     'bg-rmpg-700 text-rmpg-300 border-rmpg-600'
                   }`}>
-                    {formatEnumValue(r.status)}
+                    {r.status.toUpperCase()}
                   </span>
                 )}
               </div>
@@ -203,6 +207,20 @@ function CdocSearchPanel() {
   );
 }
 
+const timeAgo = (date: string): string => {
+  if (!date) return '—';
+  const parsed = parseTimestamp(date).getTime();
+  if (Number.isNaN(parsed)) return '—';
+  const ms = Date.now() - parsed;
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
 export default function OffenderRegistryPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
@@ -225,7 +243,18 @@ export default function OffenderRegistryPage() {
 
   // Form
   const [formOpen, setFormOpen] = useState(false);
-  const [formData, setFormData] = useState({ ...EMPTY_FORM });
+  const {
+    form: formData,
+    setForm: setFormData,
+    isDirty: formIsDirty,
+    wasRestored: formWasRestored,
+    clearDraft: clearFormDraft,
+    snapshot: snapshotForm,
+  } = useFormDraft<typeof EMPTY_FORM>({
+    storageKey: 'rmpg_offender_form',
+    defaultValue: EMPTY_FORM,
+    isActive: formOpen,
+  });
   const [submitting, setSubmitting] = useState(false);
 
   // Person search
@@ -289,9 +318,9 @@ export default function OffenderRegistryPage() {
 
   useEffect(() => {
     let cancelled = false;
-    getGoogleMapsApiKey()
-      .then((apiKey) => {
-        if (!cancelled) setStaticMapApiKey(apiKey);
+    getMapboxAccessToken()
+      .then((token) => {
+        if (!cancelled) setStaticMapApiKey(token);
       })
       .catch(() => {
         if (!cancelled) setStaticMapApiKey('');
@@ -324,6 +353,7 @@ export default function OffenderRegistryPage() {
     try {
       await apiFetch('/offender-registry', { method: 'POST', body: JSON.stringify(formData) });
       addToast('Offender alert created', 'success');
+      clearFormDraft();
       setFormOpen(false);
       setFormData({ ...EMPTY_FORM });
       setSelectedPerson(null);
@@ -350,6 +380,22 @@ export default function OffenderRegistryPage() {
     }
   };
 
+  // ── Right-click context menu ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+  const buildAlertMenu = (alert: OffenderAlert): ContextMenuItem[] => {
+    const name = alert.person_name || `Person #${alert.person_id}`;
+    return [
+      m.action('Open alert', () => setSelected(alert), { icon: <Eye size={12} /> }),
+      m.action('Risk assessment', () => { setSelected(alert); handleRiskAssessment(alert.id); }, { icon: <ShieldAlert size={12} /> }),
+      m.separator(),
+      m.copy('Copy name', name),
+      m.copyId(alert.id),
+      m.separator(),
+      m.action('Clear alert', () => handleClear(alert.id), { icon: <ShieldCheck size={12} />, danger: true }),
+    ];
+  };
+
   // Set document title
   useEffect(() => { document.title = 'Offender Registry \u2014 RMPG Flex'; }, []);
 
@@ -371,10 +417,10 @@ export default function OffenderRegistryPage() {
         </div>
       )}
       {/* ── Left Panel ── */}
-      <div className={`flex flex-col ${isMobile ? 'h-1/2' : 'w-[400px]'} border-r border-rmpg-700`}>
+      <div className={`flex flex-col min-h-0 ${isMobile ? 'h-1/2' : 'w-[400px]'} border-r border-rmpg-700`}>
         <PanelTitleBar title="Known Offender Registry" icon={UserX}>
           <ExportButton exportUrl="/api/offender-registry/export/csv" exportFilename="offender_alerts_export.csv" />
-          <button type="button" onClick={() => { clearAllErrors(); setFormOpen(true); setFormData({ ...EMPTY_FORM }); setSelectedPerson(null); setPersonSearch(''); }} className="toolbar-btn toolbar-btn-primary print:hidden">
+          <button type="button" onClick={() => { clearAllErrors(); setFormData({ ...EMPTY_FORM }); setSelectedPerson(null); setPersonSearch(''); setFormOpen(true); snapshotForm(); }} className="toolbar-btn toolbar-btn-primary print:hidden">
             <Plus style={{ width: 11, height: 11 }} /> New Alert
           </button>
         </PanelTitleBar>
@@ -405,18 +451,18 @@ export default function OffenderRegistryPage() {
         <div className="flex gap-1 p-1.5 border-b border-rmpg-700 bg-surface-base">
           <div className="flex-1 relative">
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500" style={{ width: 12, height: 12 }} />
-            <input value={searchQuery} onChange={e => { setSearchQuery(e.target.value); setPage(1); }} placeholder="Search alerts..." aria-label="Search alerts..." className="w-full pl-7 pr-7 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-white placeholder-rmpg-500 focus:border-brand-600 outline-none" />
+            <input id="ff-offenderregistrypage-2" value={searchQuery} onChange={e => { setSearchQuery(e.target.value); setPage(1); }} placeholder="Search alerts..." aria-label="Search alerts..." className="w-full pl-7 pr-7 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-white placeholder-rmpg-500 focus:border-brand-600 outline-none" />
             {searchQuery && (
               <IconButton onClick={() => { setSearchQuery(''); setPage(1); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-300" aria-label="Clear search">
                 <X style={{ width: 12, height: 12 }} />
               </IconButton>
             )}
           </div>
-          <select value={filterType} onChange={e => { setFilterType(e.target.value); setPage(1); }} className="text-[10px] bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-1 outline-none focus:border-brand-600">
+          <select id="ff-offenderregistrypage-3" value={filterType} onChange={e => { setFilterType(e.target.value); setPage(1); }} className="text-[10px] bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-1 outline-none focus:border-brand-600">
             <option value="">All Types</option>
             {ALERT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
           </select>
-          <select value={filterSeverity} onChange={e => { setFilterSeverity(e.target.value); setPage(1); }} className="text-[10px] bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-1 outline-none focus:border-brand-600">
+          <select id="ff-offenderregistrypage-4" value={filterSeverity} onChange={e => { setFilterSeverity(e.target.value); setPage(1); }} className="text-[10px] bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-1 outline-none focus:border-brand-600">
             <option value="">All Severity</option>
             <option value="danger">Danger</option>
             <option value="warning">Warning</option>
@@ -440,6 +486,7 @@ export default function OffenderRegistryPage() {
               <button type="button"
                 key={alert.id}
                 onClick={() => setSelected(alert)}
+                onContextMenu={(e) => openMenu(e, buildAlertMenu(alert))}
                 className={`w-full text-left px-3 py-2 border-b border-rmpg-700/50 transition-colors ${
                   selected?.id === alert.id ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : 'hover:bg-surface-raised/50 border-l-2 border-l-transparent'
                 } ${alert.severity === 'danger' ? 'border-l-red-600' : ''}`}
@@ -452,7 +499,7 @@ export default function OffenderRegistryPage() {
                     </span>
                   </div>
                   <span className={`text-[9px] px-1.5 py-0.5 border ${SEVERITY_COLORS[alert.severity] || ''}`}>
-                    {formatEnumValue(alert.severity)}
+                    {alert.severity.toUpperCase()}
                   </span>
                 </div>
                 <div className="flex items-center gap-2 mt-1 text-[9px] text-rmpg-500">
@@ -489,7 +536,7 @@ export default function OffenderRegistryPage() {
               {/* Badges */}
               <div className="flex items-center gap-2 flex-wrap">
                 <span className={`text-[10px] px-2 py-1 border rounded-sm font-bold ${SEVERITY_COLORS[selected.severity] || ''}`}>
-                  {formatEnumValue(selected.severity)}
+                  {selected.severity.toUpperCase()}
                 </span>
                 <span className={`text-[10px] px-2 py-1 border rounded-sm font-bold ${TYPE_COLORS[selected.alert_type] || ''}`}>
                   {selected.alert_type.replace(/_/g, ' ').toUpperCase()}
@@ -501,7 +548,7 @@ export default function OffenderRegistryPage() {
                 <div className="text-[9px] font-mono text-[#d4a017] uppercase tracking-wider mb-2">Person Information</div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div><span className="text-[9px] text-rmpg-500">Name:</span> <span className="text-xs text-white font-bold">{selected.person_name || '—'}</span></div>
-                  <div><span className="text-[9px] text-rmpg-500">DOB:</span> <span className="text-xs text-white">{selected.dob ? new Date(selected.dob).toLocaleDateString() : '—'}</span></div>
+                  <div><span className="text-[9px] text-rmpg-500">DOB:</span> <span className="text-xs text-white">{selected.dob ? parseTimestamp(selected.dob).toLocaleDateString() : '—'}</span></div>
                   {selected.is_sex_offender && (
                     <span className="text-[9px] px-1.5 py-0.5 bg-purple-900/50 text-purple-300 border border-purple-600/50 col-span-2 w-fit">SEX OFFENDER</span>
                   )}
@@ -521,7 +568,7 @@ export default function OffenderRegistryPage() {
                   <div className="h-40 bg-[#0c0c0c] relative">
                     {staticMapApiKey ? (
                       <img
-                        src={`https://maps.googleapis.com/maps/api/staticmap?center=${selected.location_lat},${selected.location_lng}&zoom=15&size=600x200&maptype=roadmap&markers=color:red%7C${selected.location_lat},${selected.location_lng}&key=${staticMapApiKey}&style=feature:all|element:geometry|color:0x121212&style=feature:all|element:labels.text.fill|color:0x8a8a8a`}
+                        src={`https://api.mapbox.com/styles/v1/mapbox/dark-v11/static/pin-l+ef4444(${selected.location_lng},${selected.location_lat})/${selected.location_lng},${selected.location_lat},15/600x200?access_token=${staticMapApiKey}`}
                         alt="Ban zone map"
                         className="w-full h-full object-cover"
                         onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
@@ -547,10 +594,10 @@ export default function OffenderRegistryPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {[
                   ['Description', selected.description],
-                  ['Effective Date', selected.effective_date ? new Date(selected.effective_date).toLocaleDateString() : '—'],
-                  ['Expiration Date', selected.expiration_date ? new Date(selected.expiration_date).toLocaleDateString() : 'No expiration'],
+                  ['Effective Date', selected.effective_date ? parseTimestamp(selected.effective_date).toLocaleDateString() : '—'],
+                  ['Expiration Date', selected.expiration_date ? parseTimestamp(selected.expiration_date).toLocaleDateString() : 'No expiration'],
                   ['Restriction Radius', selected.restriction_radius_ft ? `${selected.restriction_radius_ft} ft` : '—'],
-                  ['Created', selected.created_at ? new Date(selected.created_at).toLocaleString() : '—'],
+                  ['Created', safeDateTimeStr(selected.created_at)],
                 ].map(([label, value]) => (
                   <div key={label as string}>
                     <div className="text-[9px] font-mono text-[#d4a017] uppercase tracking-wider">{label}</div>
@@ -580,9 +627,25 @@ export default function OffenderRegistryPage() {
         <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true">
           <div className="panel-surface w-full max-w-lg mx-4">
             <PanelTitleBar title="New Offender Alert" icon={Plus}>
-              <IconButton onClick={() => setFormOpen(false)} className="toolbar-btn" aria-label="Close form"><X style={{ width: 12, height: 12 }} /></IconButton>
+              <div className="flex items-center gap-2">
+                {formIsDirty && (
+                  <span className="text-[8px] text-amber-400 font-bold uppercase tracking-wider">UNSAVED</span>
+                )}
+                <IconButton onClick={() => { clearFormDraft(); setFormOpen(false); }} className="toolbar-btn" aria-label="Close form"><X style={{ width: 12, height: 12 }} /></IconButton>
+              </div>
             </PanelTitleBar>
             <div className="p-4 space-y-3">
+              {formWasRestored && (
+                <div className="flex items-center justify-between px-3 py-2 rounded-sm border border-amber-500/30" style={{ background: '#1a1500' }}>
+                  <div className="flex items-center gap-2">
+                    <Clock size={14} className="text-amber-400" />
+                    <span className="text-xs text-amber-400 font-medium">Restored pending draft</span>
+                  </div>
+                  <button type="button" onClick={clearFormDraft} className="text-[10px] text-amber-400 underline hover:text-amber-300">
+                    Discard
+                  </button>
+                </div>
+              )}
               {/* Person search */}
               <div>
                 <label className="field-label">Person *</label>
@@ -596,7 +659,7 @@ export default function OffenderRegistryPage() {
                   </div>
                 ) : (
                   <div className="relative">
-                    <input value={personSearch} onChange={e => setPersonSearch(e.target.value)} placeholder="Search by name..." aria-label="Search by name..." className={`w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border text-white placeholder-rmpg-500 outline-none ${formErrors.person_id ? 'border-red-500' : 'border-rmpg-700'}`} />
+                    <input id="ff-offenderregistrypage-5" value={personSearch} onChange={e => setPersonSearch(e.target.value)} placeholder="Search by name..." aria-label="Search by name..." className={`w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border text-white placeholder-rmpg-500 outline-none ${formErrors.person_id ? 'border-red-500' : 'border-rmpg-700'}`} />
                     {formErrors.person_id && <p className="text-red-400 text-[10px] mt-0.5">{formErrors.person_id}</p>}
                     {personResults.length > 0 && (
                       <div className="absolute z-10 top-full left-0 right-0 bg-surface-base border border-rmpg-700 max-h-40 overflow-y-auto">
@@ -606,7 +669,7 @@ export default function OffenderRegistryPage() {
                             onClick={() => { setSelectedPerson(p); setFormData(prev => ({ ...prev, person_id: String(p.id) })); setPersonResults([]); }}
                             className="w-full text-left px-3 py-1.5 text-xs text-rmpg-300 hover:bg-rmpg-700/40 hover:text-white border-b border-rmpg-800"
                           >
-                            {p.first_name} {p.last_name} {p.dob ? `(${new Date(p.dob).toLocaleDateString()})` : ''}
+                            {p.first_name} {p.last_name} {p.dob ? `(${parseTimestamp(p.dob).toLocaleDateString()})` : ''}
                           </button>
                         ))}
                       </div>
@@ -618,13 +681,13 @@ export default function OffenderRegistryPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="field-label">Alert Type</label>
-                  <select value={formData.alert_type} onChange={e => setFormData(p => ({ ...p, alert_type: e.target.value as OffenderAlertType }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600">
+                  <select id="ff-offenderregistrypage-6" value={formData.alert_type} onChange={e => setFormData(p => ({ ...p, alert_type: e.target.value as OffenderAlertType }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600">
                     {ALERT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="field-label">Severity</label>
-                  <select value={formData.severity} onChange={e => setFormData(p => ({ ...p, severity: e.target.value as AlertSeverity }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600">
+                  <select id="ff-offenderregistrypage-7" value={formData.severity} onChange={e => setFormData(p => ({ ...p, severity: e.target.value as AlertSeverity }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600">
                     <option value="info">Info</option><option value="caution">Caution</option><option value="warning">Warning</option><option value="danger">Danger</option>
                   </select>
                 </div>
@@ -632,17 +695,17 @@ export default function OffenderRegistryPage() {
 
               <div>
                 <label className="field-label">Description *</label>
-                <RichTextArea value={formData.description} onChange={e => setFormData(p => ({ ...p, description: e.target.value }))} rows={3} className={`w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border text-white outline-none resize-none ${formErrors.description ? 'border-red-500' : 'border-rmpg-700'}`} />
+                <textarea id="ff-offenderregistrypage-8" value={formData.description} onChange={e => setFormData(p => ({ ...p, description: e.target.value }))} rows={3} className={`w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border text-white outline-none resize-none ${formErrors.description ? 'border-red-500' : 'border-rmpg-700'}`} />
                 {formErrors.description && <p className="text-red-400 text-[10px] mt-0.5">{formErrors.description}</p>}
               </div>
 
               <div>
                 <label className="field-label">Expiration Date</label>
-                <input type="date" value={formData.expiration_date} onChange={e => setFormData(p => ({ ...p, expiration_date: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
+                <input id="ff-offenderregistrypage-9" type="date" value={formData.expiration_date} onChange={e => setFormData(p => ({ ...p, expiration_date: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
               </div>
 
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">
-                <button type="button" onClick={() => setFormOpen(false)} className="toolbar-btn">Cancel</button>
+                <button type="button" onClick={() => { clearFormDraft(); setFormOpen(false); }} className="toolbar-btn">Cancel</button>
                 <button type="button" onClick={handleCreate} disabled={submitting} className="toolbar-btn toolbar-btn-primary print:hidden disabled:opacity-40">
                   {submitting ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Save style={{ width: 11, height: 11 }} />}
                   Create Alert
@@ -652,6 +715,15 @@ export default function OffenderRegistryPage() {
           </div>
         </div>
       )}
+
+      <UnsavedChangesGuard hasUnsavedChanges={formOpen && formIsDirty} />
+      <FloatingSaveBar
+        visible={formOpen && formIsDirty}
+        onSave={handleCreate}
+        onCancel={() => { clearFormDraft(); setFormOpen(false); }}
+        isSaving={submitting}
+        saveLabel="Create Alert"
+      />
     </div>
   );
 }

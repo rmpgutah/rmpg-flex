@@ -16,7 +16,10 @@ import DashCamVideoEditModal, { type DashCamVideoEditData } from '../components/
 import { apiFetch } from '../hooks/useApi';
 import { useToast } from '../components/ToastProvider';
 import { useAuth } from '../context/AuthContext';
-import { DARK_MAP_STYLE } from '../utils/googleMapsLoader';
+import { initMapbox, getMapboxInstance, mapboxgl, MAPBOX_STYLE_DARK } from '../utils/mapboxLoader';
+import { installWebglContextRecovery } from '../utils/webglRecovery';
+import { getMapboxAccessToken } from '../utils/mapboxApiKey';
+import { parseTimestamp } from '../utils/dateUtils';
 
 // ── GPS Track Types ─────────────────────────────────────────
 
@@ -106,7 +109,7 @@ function formatDuration(sec?: number): string {
 
 function formatTimestamp(isoStr: string | undefined, offsetSec: number): string {
   if (!isoStr) return '--:--:--';
-  const base = new Date(isoStr.includes('T') ? isoStr : isoStr + 'T00:00:00');
+  const base = parseTimestamp(isoStr);
   const d = new Date(base.getTime() + offsetSec * 1000);
   const mm = String(d.getMonth() + 1).padStart(2, '0');
   const dd = String(d.getDate()).padStart(2, '0');
@@ -119,7 +122,7 @@ function formatTimestamp(isoStr: string | undefined, offsetSec: number): string 
 
 function formatDate(d?: string): string {
   if (!d) return '-';
-  return new Date(d.includes('T') ? d : d + 'T00:00:00').toLocaleDateString('en-US', {
+  return parseTimestamp(d).toLocaleDateString('en-US', {
     month: 'short', day: 'numeric', year: 'numeric',
     hour: '2-digit', minute: '2-digit',
   });
@@ -255,9 +258,8 @@ export default function DashCamDetailPage() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const animFrameRef = useRef<number>(0);
   const mapContainerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<google.maps.Map | null>(null);
-  const markerRef = useRef<google.maps.Marker | null>(null);
-  const polylineRef = useRef<google.maps.Polyline | null>(null);
+  const mapRef = useRef<mapboxgl.Map | null>(null);
+  const markerRef = useRef<mapboxgl.Marker | null>(null);
 
   // State
   const [video, setVideo] = useState<any>(null);
@@ -278,6 +280,9 @@ export default function DashCamDetailPage() {
   const [linkCopied, setLinkCopied] = useState(false);
   const [mapSectionOpen, setMapSectionOpen] = useState(false);
   const [mapReady, setMapReady] = useState(false);
+  // WebGL context-loss recovery (rebuilds the map after a GPU context drop).
+  const [mapRecoverNonce, setMapRecoverNonce] = useState(0);
+  const mapRecoveryCleanupRef = useRef<(() => void) | null>(null);
 
   // Section open states
   const [sections, setSections] = useState({
@@ -305,7 +310,7 @@ export default function DashCamDetailPage() {
   // ── Data Fetching ────────────────────────────
 
   const fetchVideo = useCallback(async () => {
-    if (!id) return;
+    if (!id) { setError('Invalid camera ID'); setLoading(false); return; }
     setLoading(true);
     setError(null);
     try {
@@ -387,83 +392,117 @@ export default function DashCamDetailPage() {
     return () => vid.removeEventListener('seeked', onSeeked);
   }, [video]);
 
-  // ── Google Map ───────────────────────────────
+  // ── Mapbox Map ───────────────────────────────
 
   useEffect(() => {
     if (!mapSectionOpen || !mapContainerRef.current || mapRef.current) return;
-    if (!window.google?.maps) return;
+    if (!mapboxgl || !mapboxgl.accessToken) return;
 
-    const center = telemetry
-      ? { lat: telemetry.lat, lng: telemetry.lng }
-      : video?.latitude && video?.longitude
-        ? { lat: video.latitude, lng: video.longitude }
-        : { lat: 40.76, lng: -111.89 };
+    const centerLng = telemetry
+      ? telemetry.lng
+      : video?.longitude
+        ? video.longitude
+        : -111.89;
+    const centerLat = telemetry
+      ? telemetry.lat
+      : video?.latitude
+        ? video.latitude
+        : 40.76;
 
-    const map = new google.maps.Map(mapContainerRef.current, {
-      center,
+    const map = new mapboxgl.Map({
+      container: mapContainerRef.current,
+      style: MAPBOX_STYLE_DARK,
+      center: [centerLng, centerLat],
       zoom: 15,
-      renderingType: 'RASTER' as any,
-      disableDefaultUI: true,
-      zoomControl: true,
-      styles: DARK_MAP_STYLE,
-      backgroundColor: '#171717',
     });
+
     mapRef.current = map;
 
-    // Marker
-    const marker = new google.maps.Marker({
-      position: center,
-      map,
-      icon: {
-        path: google.maps.SymbolPath.CIRCLE,
-        scale: 7,
-        fillColor: '#888888',
-        fillOpacity: 1,
-        strokeColor: '#cccccc',
-        strokeWeight: 2,
+    // Rebuild in place if the GPU drops the context. The load handler below
+    // re-adds the marker + GPS-track layer, so a rebuild fully restores.
+    mapRecoveryCleanupRef.current = installWebglContextRecovery(map, {
+      label: 'DashCamDetail',
+      onRebuild: () => {
+        if (mapRecoveryCleanupRef.current) { mapRecoveryCleanupRef.current(); mapRecoveryCleanupRef.current = null; }
+        try { markerRef.current?.remove(); } catch { /* gone */ }
+        markerRef.current = null;
+        if (mapRef.current) { try { mapRef.current.remove(); } catch { /* gone */ } mapRef.current = null; }
+        setMapReady(false);
+        setMapRecoverNonce((n) => n + 1);
       },
     });
-    markerRef.current = marker;
 
-    // Route polyline from GPS track
-    if (gpsTrack && gpsTrack.length > 1) {
-      const path = gpsTrack.map(p => ({ lat: p.latitude, lng: p.longitude }));
-      const polyline = new google.maps.Polyline({
-        path,
-        strokeColor: '#888888',
-        strokeOpacity: 0.5,
-        strokeWeight: 2,
-        map,
-      });
-      polylineRef.current = polyline;
+    map.on('load', () => {
+      // Marker
+      const marker = new mapboxgl.Marker({
+        color: '#888888',
+      })
+        .setLngLat([centerLng, centerLat])
+        .addTo(map);
+      markerRef.current = marker;
 
-      // Fit bounds to track
-      const bounds = new google.maps.LatLngBounds();
-      path.forEach(p => bounds.extend(p));
-      map.fitBounds(bounds, 20);
-    }
+      // Route polyline from GPS track
+      if (gpsTrack && gpsTrack.length > 1) {
+        const coords = gpsTrack.map(p => [p.longitude, p.latitude] as [number, number]);
+        map.addSource('gps-track', {
+          type: 'geojson',
+          data: {
+            type: 'Feature',
+            properties: {},
+            geometry: { type: 'LineString', coordinates: coords },
+          },
+        });
+        map.addLayer({
+          id: 'gps-track-line',
+          type: 'line',
+          source: 'gps-track',
+          paint: {
+            'line-color': '#888888',
+            'line-opacity': 0.5,
+            'line-width': 2,
+          },
+        });
 
-    setMapReady(true);
-  }, [mapSectionOpen, video, gpsTrack]);
+        // Fit bounds to track
+        const bounds = new mapboxgl.LngLatBounds();
+        coords.forEach(c => bounds.extend(c));
+        map.fitBounds(bounds, { padding: 20 });
+      }
 
-  // Cleanup Google Maps on unmount to prevent memory leak
+      setMapReady(true);
+    });
+  }, [mapSectionOpen, video, gpsTrack, mapRecoverNonce]);
+
+  // Tear down the map + recovery listener on unmount (kept separate so a
+  // video/gpsTrack change doesn't destroy the persisted map instance above).
+  useEffect(() => () => {
+    if (mapRecoveryCleanupRef.current) { mapRecoveryCleanupRef.current(); mapRecoveryCleanupRef.current = null; }
+    try { markerRef.current?.remove(); } catch { /* gone */ }
+    markerRef.current = null;
+    if (mapRef.current) { try { mapRef.current.remove(); } catch { /* gone */ } mapRef.current = null; }
+  }, []);
+
+  // Cleanup Mapbox on unmount
   useEffect(() => {
     return () => {
-      markerRef.current?.setMap(null);
-      polylineRef.current?.setMap(null);
-      markerRef.current = null;
-      polylineRef.current = null;
-      mapRef.current = null;
+      if (markerRef.current) {
+        markerRef.current.remove();
+        markerRef.current = null;
+      }
+      if (mapRef.current) {
+        mapRef.current.remove();
+        mapRef.current = null;
+      }
     };
   }, []);
 
   // Update marker position during playback
   useEffect(() => {
     if (!mapReady || !markerRef.current || !telemetry) return;
-    const pos = { lat: telemetry.lat, lng: telemetry.lng };
-    markerRef.current.setPosition(pos);
+    const lngLat: [number, number] = [telemetry.lng, telemetry.lat];
+    markerRef.current.setLngLat(lngLat);
     if (isPlaying) {
-      mapRef.current?.panTo(pos);
+      mapRef.current?.panTo(lngLat);
     }
   }, [telemetry, mapReady, isPlaying]);
 
@@ -833,7 +872,7 @@ export default function DashCamDetailPage() {
               ? <VolumeX className="w-4 h-4" />
               : <Volume2 className="w-4 h-4" />}
           </button>
-          <input type="range" min="0" max="1" step="0.05"
+          <input id="ff-dashcamdetailpage-0" type="range" min="0" max="1" step="0.05"
             value={isMuted ? 0 : volume}
             onChange={handleVolumeChange}
             className="w-16 h-1 accent-brand-500 cursor-pointer"
@@ -968,7 +1007,7 @@ export default function DashCamDetailPage() {
               <div ref={mapContainerRef}
                 className="w-full rounded-sm"
                 style={{ height: 200, background: '#050505' }}>
-                {!window.google?.maps && (
+                {!mapboxgl?.accessToken && (
                   <div className="flex items-center justify-center h-full">
                     <span className="text-[9px] text-rmpg-500">Maps unavailable</span>
                   </div>

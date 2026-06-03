@@ -11,9 +11,11 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Database, Search, X, Loader2, UserPlus, UserX, Shield, BarChart3, Eye, Plus,
   Link2, Unlink, AlertTriangle, RefreshCw, Download, Pencil, Trash2, ArrowUpDown,
-  FileText, ShieldAlert, Calendar, Scale,
+  FileText, ShieldAlert, Calendar, Scale, Copy,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
+import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
+import { useMenuActions } from '../utils/contextMenuActions';
 import { useLiveSync } from '../hooks/useLiveSync';
 import PanelTitleBar from '../components/PanelTitleBar';
 import EmptyState from '../components/EmptyState';
@@ -22,7 +24,7 @@ import CollapsibleSection from '../components/CollapsibleSection';
 import CriminalHistorySection from '../components/CriminalHistorySection';
 import ArrestFormModal from '../components/ArrestFormModal';
 import type { ArrestFormData } from '../components/ArrestFormModal';
-import { localToday } from '../utils/dateUtils';
+import { localToday, parseTimestamp } from '../utils/dateUtils';
 import { useWebSocket } from '../context/WebSocketContext';
 import { useToast } from '../components/ToastProvider';
 import { useAuth } from '../context/AuthContext';
@@ -143,7 +145,7 @@ function fmtDate(d: string | null | undefined): string {
 
 function calcAge(dob: string | null | undefined): string {
   if (!dob) return '';
-  const birth = new Date(dob);
+  const birth = parseTimestamp(dob);
   if (isNaN(birth.getTime())) return '';
   const today = new Date();
   let age = today.getFullYear() - birth.getFullYear();
@@ -205,6 +207,10 @@ export default function ArrestRecordsPage() {
   const { addToast } = useToast();
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin'; // Admin God Mode — unrestricted access
+
+  // Right-click context menu (reusable global system)
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
 
   // Statistics
   const [stats, setStats] = useState<{
@@ -277,20 +283,20 @@ export default function ArrestRecordsPage() {
         ...(statusFilter ? { status: statusFilter } : {}),
       });
 
+      // Handler returns { data: rows } for both /search and /recent.
       let data: any;
       if (searchTerm.trim()) {
-        const searchQs = new URLSearchParams({
-          name: searchTerm,
-          ...(sourceFilter ? { source: sourceFilter } : {}),
-          ...(countyFilter ? { source_id: countyFilter } : {}),
-        });
+        // /arrests/search reads the `q` query param (not `name`).
+        const searchQs = new URLSearchParams({ q: searchTerm });
         data = await apiFetch<any>(`/arrests/search?${searchQs}`);
-        setRecords(data.records || []);
-        setRecordsTotal(data.resultCount || data.records?.length || 0);
+        const rows = data.data || data.records || [];
+        setRecords(rows);
+        setRecordsTotal(data.total ?? rows.length);
       } else {
         data = await apiFetch<any>(`/arrests/recent?${qs}`);
-        setRecords(data.records || []);
-        setRecordsTotal(data.total || 0);
+        const rows = data.data || data.records || [];
+        setRecords(rows);
+        setRecordsTotal(data.total ?? rows.length);
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to load records';
@@ -305,20 +311,10 @@ export default function ArrestRecordsPage() {
   useLiveSync('arrests', () => { fetchRecords(recordsPage); fetchStats(); });
 
   // ── WebSocket live sync ─────────────────────────────────
-
-  useEffect(() => {
-    return subscribe('record_update', (msg) => {
-      const data = msg.data as any;
-      if (data?.type === 'arrest_created' || data?.type === 'arrest_updated') {
-        fetchRecords(recordsPage);
-        if (selectedRecord && data?.id === selectedRecord.id) {
-          apiFetch<ArrestRecord>(`/arrests/manual/${selectedRecord.id}`)
-            .then(fresh => setSelectedRecord(fresh))
-            .catch(() => { /* keep existing */ });
-        }
-      }
-    });
-  }, [subscribe, recordsPage, selectedRecord, fetchRecords]);
+  // Cross-device refresh is handled by useLiveSync('arrests') above, which
+  // fires on the server's liveBroadcast for /api/arrests/* mutations. The
+  // previous subscribe('record_update', ...) listener was dead — the Worker
+  // never emits a 'record_update' message type — so it was removed.
 
   // ── Person search (debounced) ───────────────────────────
 
@@ -357,8 +353,8 @@ export default function ArrestRecordsPage() {
       fetchRecords(recordsPage);
       if (selectedRecord?.id === arrestId) {
         try {
-          const fresh = await apiFetch<ArrestRecord>(`/arrests/manual/${arrestId}`);
-          setSelectedRecord(fresh);
+          const fresh = await apiFetch<{ data: ArrestRecord }>(`/arrests/manual/${arrestId}`);
+          setSelectedRecord(fresh.data);
         } catch { /* keep existing */ }
       }
       addToast('Person linked to arrest record', 'success');
@@ -370,9 +366,10 @@ export default function ArrestRecordsPage() {
     }
   };
 
-  const handleUnlinkPerson = async (arrestId: number) => {
+  const handleUnlinkPerson = async (arrestId: number, personId: number) => {
     try {
-      await apiFetch(`/arrests/${arrestId}/link-person`, { method: 'DELETE' });
+      // DELETE /:id/link-person requires the person_id query param.
+      await apiFetch(`/arrests/${arrestId}/link-person?person_id=${personId}`, { method: 'DELETE' });
       fetchRecords(recordsPage);
       if (selectedRecord?.id === arrestId) {
         setSelectedRecord(prev => prev ? { ...prev, linked_person: null, person_id: null } : null);
@@ -443,6 +440,33 @@ export default function ArrestRecordsPage() {
     setEditingRecord(undefined);
     setFormError(null);
     setFormOpen(true);
+  };
+
+  // ── Right-click row menu ────────────────────────────────
+  // Edit/Delete mirror the detail-panel gate (manual record OR admin);
+  // scraper/CSV-imported records are read-only for non-admins.
+
+  const buildArrestMenu = (rec: ArrestRecord): ContextMenuItem[] => {
+    const name =
+      rec.linked_person?.name ||
+      (rec.full_name && rec.full_name.trim()) ||
+      `${rec.first_name ?? ''} ${rec.last_name ?? ''}`.trim();
+    const canModify = isManualRecord(rec) || isAdmin;
+    return [
+      m.action('Open record', () => setSelectedRecord(rec), { icon: <Eye size={12} /> }),
+      ...(canModify
+        ? [m.action('Edit record', () => openEdit(rec), { icon: <Pencil size={12} /> })]
+        : []),
+      m.separator(),
+      m.copy('Copy name', name, <Copy size={12} />),
+      m.copyId(rec.id),
+      ...(canModify
+        ? [
+            m.separator(),
+            m.action('Delete', () => setDeleteConfirm(rec.id), { icon: <Trash2 size={12} />, danger: true }),
+          ]
+        : []),
+    ];
   };
 
   // ── Sort ────────────────────────────────────────────────
@@ -532,7 +556,7 @@ export default function ArrestRecordsPage() {
         {/* Search */}
         <div className="relative" role="search">
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500 pointer-events-none" />
-          <input
+          <input id="ff-arrestrecordspage-0"
             type="text"
             value={searchTerm}
             onChange={e => { setSearchTerm(e.target.value); setRecordsPage(1); }}
@@ -548,7 +572,7 @@ export default function ArrestRecordsPage() {
 
         {/* Filter row */}
         <div className="flex items-center gap-1 flex-wrap">
-          <select
+          <select id="ff-arrestrecordspage-1"
             value={countyFilter}
             onChange={e => { setCountyFilter(e.target.value); setRecordsPage(1); }}
             className="bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-[9px] px-1.5 py-1 rounded-sm flex-1 min-w-0"
@@ -559,7 +583,7 @@ export default function ArrestRecordsPage() {
             ))}
           </select>
 
-          <select
+          <select id="ff-arrestrecordspage-2"
             value={statusFilter}
             onChange={e => { setStatusFilter(e.target.value); setRecordsPage(1); }}
             className="bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-[9px] px-1.5 py-1 rounded-sm"
@@ -571,7 +595,7 @@ export default function ArrestRecordsPage() {
             <option value="bonded">Bonded</option>
           </select>
 
-          <select
+          <select id="ff-arrestrecordspage-3"
             value={sourceFilter}
             onChange={e => { setSourceFilter(e.target.value); setRecordsPage(1); }}
             className="bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-[9px] px-1.5 py-1 rounded-sm"
@@ -633,6 +657,7 @@ export default function ArrestRecordsPage() {
                       : 'bg-surface-sunken hover:bg-rmpg-800/40 border-l-2 border-transparent'
                   }`}
                   onClick={() => setSelectedRecord(rec)}
+                  onContextMenu={(e) => openMenu(e, buildArrestMenu(rec))}
                   aria-selected={isSelected}
                 >
                   {/* County color indicator */}
@@ -819,7 +844,7 @@ export default function ArrestRecordsPage() {
                 <span className="text-brand-300 font-bold">{rec.linked_person.name}</span>
                 <span className="text-rmpg-500">(ID: {rec.linked_person.id})</span>
                 <button type="button"
-                  onClick={() => handleUnlinkPerson(rec.id)}
+                  onClick={() => handleUnlinkPerson(rec.id, rec.linked_person!.id)}
                   className="text-[8px] text-red-400 hover:text-red-300 flex items-center gap-0.5 ml-2"
                 >
                   <Unlink className="w-2.5 h-2.5" /> Unlink
@@ -829,7 +854,7 @@ export default function ArrestRecordsPage() {
               <div className="space-y-1">
                 <div className="relative">
                   <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-2.5 h-2.5 text-rmpg-500" />
-                  <input
+                  <input id="ff-arrestrecordspage-4"
                     type="text"
                     value={personSearch}
                     onChange={e => setPersonSearch(e.target.value)}

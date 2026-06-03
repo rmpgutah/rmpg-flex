@@ -23,8 +23,10 @@ import PanelTitleBar from '../components/PanelTitleBar';
 import RmpgLogo from '../components/RmpgLogo';
 import PrintButton from '../components/PrintButton';
 import ExportButton from '../components/ExportButton';
-import { localToday } from '../utils/dateUtils';
+import { localToday, parseTimestamp } from '../utils/dateUtils';
 import { useToast } from '../components/ToastProvider';
+import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
+import { useMenuActions } from '../utils/contextMenuActions';
 
 interface AuditLogEntry {
   id: number;
@@ -71,6 +73,8 @@ const getActionIcon = (action: string): React.ElementType => {
 
 const AuditLogPage: React.FC = () => {
   const { addToast } = useToast();
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
 
   // Set document title
   useEffect(() => { document.title = 'Audit Log \u2014 RMPG Flex'; }, []);
@@ -235,7 +239,7 @@ const AuditLogPage: React.FC = () => {
 
   // Format timestamp
   const formatTimestamp = (timestamp: string): string => {
-    const date = new Date(timestamp);
+    const date = parseTimestamp(timestamp);
     return date.toLocaleString('en-US', {
       year: 'numeric',
       month: '2-digit',
@@ -245,6 +249,24 @@ const AuditLogPage: React.FC = () => {
       second: '2-digit',
       hour12: false
     });
+  };
+
+  // ── Right-click context menu (read-only log rows) ──
+  const buildLogMenu = (log: AuditLogEntry): ContextMenuItem[] => {
+    const entry = [
+      formatTimestamp(log.created_at),
+      log.user_name || 'System',
+      log.action,
+      [log.entity_type, log.entity_id].filter(Boolean).join(' '),
+      log.details,
+    ].filter(Boolean).join(' | ');
+    return [
+      m.copy('Copy entry', entry),
+      ...(log.details ? [m.copy('Copy details', log.details)] : []),
+      ...(log.entity_id ? [m.copy('Copy entity ID', log.entity_id)] : []),
+      m.separator(),
+      m.copyId(log.id),
+    ];
   };
 
   // Clear all filters
@@ -463,7 +485,7 @@ const AuditLogPage: React.FC = () => {
           {/* Action Filter */}
           <div>
             <label className="block text-xs text-rmpg-300 mb-1">Action:</label>
-            <select
+            <select id="ff-auditlogpage-0"
               value={filters.action}
               onChange={(e) => handleFilterChange('action', e.target.value)}
               className="select-dark text-xs"
@@ -478,7 +500,7 @@ const AuditLogPage: React.FC = () => {
           {/* Entity Type Filter */}
           <div>
             <label className="block text-xs text-rmpg-300 mb-1">Entity Type:</label>
-            <select
+            <select id="ff-auditlogpage-1"
               value={filters.entityType}
               onChange={(e) => handleFilterChange('entityType', e.target.value)}
               className="select-dark text-xs"
@@ -493,7 +515,7 @@ const AuditLogPage: React.FC = () => {
           {/* User Filter */}
           <div>
             <label className="block text-xs text-rmpg-300 mb-1">User:</label>
-            <select
+            <select id="ff-auditlogpage-2"
               value={filters.userId}
               onChange={(e) => handleFilterChange('userId', e.target.value)}
               className="select-dark text-xs"
@@ -511,7 +533,7 @@ const AuditLogPage: React.FC = () => {
           <div>
             <label className="block text-xs text-rmpg-300 mb-1">Start Date:</label>
             <div className="relative">
-              <input
+              <input id="ff-auditlogpage-3"
                 type="date"
                 value={filters.startDate}
                 onChange={(e) => handleFilterChange('startDate', e.target.value)}
@@ -525,7 +547,7 @@ const AuditLogPage: React.FC = () => {
           <div>
             <label className="block text-xs text-rmpg-300 mb-1">End Date:</label>
             <div className="relative">
-              <input
+              <input id="ff-auditlogpage-4"
                 type="date"
                 value={filters.endDate}
                 onChange={(e) => handleFilterChange('endDate', e.target.value)}
@@ -539,7 +561,7 @@ const AuditLogPage: React.FC = () => {
           <div>
             <label className="block text-xs text-rmpg-300 mb-1">Search Details:</label>
             <div className="relative">
-              <input
+              <input id="ff-auditlogpage-5"
                 type="text"
                 value={filters.search}
                 onChange={(e) => handleFilterChange('search', e.target.value)}
@@ -597,7 +619,7 @@ const AuditLogPage: React.FC = () => {
               </thead>
               <tbody>
                 {logs.map((log) => (
-                  <tr key={log.id} className="hover:bg-surface-raised">
+                  <tr key={log.id} className="hover:bg-surface-raised" onContextMenu={(e) => openMenu(e, buildLogMenu(log))}>
                     <td className="px-3 py-1.5 whitespace-nowrap font-mono">
                       <div className="flex items-center gap-1.5">
                         <Clock className="w-3.5 h-3.5 text-rmpg-400" />

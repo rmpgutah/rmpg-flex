@@ -28,6 +28,24 @@ contextBridge.exposeInMainWorld('electron', {
   // navigator.geolocation fails (common on desktop without GPS)
   getIpLocation: () => ipcRenderer.invoke('geo:ip-locate'),
 
+  // ─── Internal GPS (Panasonic Toughbook) ────────────
+  // Reads raw NMEA from the Toughbook's internal u-blox module
+  // via serial port. Used instead of navigator.geolocation when
+  // running on Toughbook + Windows.
+  detectInternalGps: () => ipcRenderer.invoke('geo:internal-gps-detect'),
+  startInternalGps: (opts) => ipcRenderer.invoke('geo:internal-gps-start', opts || {}),
+  stopInternalGps: () => ipcRenderer.invoke('geo:internal-gps-stop'),
+  onInternalGpsUpdate: (callback) => {
+    const handler = (_e, pos) => callback(pos);
+    ipcRenderer.on('geo:internal-gps-update', handler);
+    return () => ipcRenderer.removeListener('geo:internal-gps-update', handler);
+  },
+  onInternalGpsError: (callback) => {
+    const handler = (_e, err) => callback(err);
+    ipcRenderer.on('geo:internal-gps-error', handler);
+    return () => ipcRenderer.removeListener('geo:internal-gps-error', handler);
+  },
+
   // ─── Auto-Update API ────────────────────────────────
   // Listen for update status events from the main process
   onUpdateStatus: (callback) => {

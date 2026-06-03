@@ -1,7 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Eye, Copy } from 'lucide-react';
+import { parseTimestamp } from '../../../utils/dateUtils';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch } from '../../../hooks/useApi';
 import { useWebSocket } from '../../../context/WebSocketContext';
+import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
+import { copyToClipboard, separator } from '../../../utils/contextMenuActions';
+
+// See BolosCard for why we build menus inline (useMenuActions throws without
+// ToastProvider/Router, which the bare-render tests don't mount).
 
 // Endpoint: GET /api/comms/messages?limit=5
 // Response shape: { data: [{ id, from_name, body, channel, created_at, read_at, ... }], unreadCount }
@@ -21,7 +28,7 @@ interface MessageRow {
 
 function relativeTime(iso: string): string {
   if (!iso) return '';
-  const s = (Date.now() - new Date(iso).getTime()) / 1000;
+  const s = (Date.now() - parseTimestamp(iso).getTime()) / 1000;
   if (isNaN(s)) return '';
   if (s < 60) return 'now';
   if (s < 3600) return `${Math.floor(s / 60)}m ago`;
@@ -32,6 +39,7 @@ function relativeTime(iso: string): string {
 export default function MessagesCard() {
   const navigate = useNavigate();
   const { subscribe } = useWebSocket();
+  const { openMenu } = useContextMenu();
 
   const [messages, setMessages] = useState<MessageRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -79,12 +87,41 @@ export default function MessagesCard() {
 
   const topThree = useMemo(() => {
     const sorted = [...messages].sort((a, b) => {
-      const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
-      const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
+      const ta = a.created_at ? parseTimestamp(a.created_at).getTime() : 0;
+      const tb = b.created_at ? parseTimestamp(b.created_at).getTime() : 0;
       return tb - ta;
     });
     return sorted.slice(0, 3);
   }, [messages]);
+
+  // Right-click menu for a message row. 'Open' reuses the inbox navigation
+  // (no per-message route exists); copy items use the standalone clipboard
+  // helper (no toast).
+  const buildMessageMenu = (m: MessageRow): ContextMenuItem[] => {
+    const sender = m.from_name || m.sender_name || 'Unknown';
+    const bodyText = (m.text || m.body || '').toString();
+    const items: ContextMenuItem[] = [
+      {
+        label: 'Open inbox',
+        icon: <Eye size={12} />,
+        onClick: () => navigate('/communications?inbox=me'),
+      },
+      separator(),
+      {
+        label: 'Copy sender',
+        icon: <Copy size={12} />,
+        onClick: () => { void copyToClipboard(sender); },
+      },
+    ];
+    if (bodyText) {
+      items.push({
+        label: 'Copy message',
+        icon: <Copy size={12} />,
+        onClick: () => { void copyToClipboard(bodyText); },
+      });
+    }
+    return items;
+  };
 
   if (loading) {
     return (
@@ -137,7 +174,7 @@ export default function MessagesCard() {
               isUnread ? 'border-l-2 border-l-[#d4a017] pl-2' : '',
             ].join(' ');
             return (
-              <li key={m.id} className={rowClass}>
+              <li key={m.id} className={rowClass} onContextMenu={(e) => openMenu(e, buildMessageMenu(m))}>
                 <div className="flex items-baseline">
                   <span className="font-bold">{m.from_name || m.sender_name || 'Unknown'}</span>
                   <span className="text-gray-500 text-[11px] ml-2">
