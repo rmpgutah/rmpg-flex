@@ -1896,6 +1896,10 @@ export type WSMessageType =
   | 'panic_false_alarm'
   | 'panic_escalated'
   | 'dispatch_update'
+  // High-frequency GPS pin glide (gps.ts → AlertHubDO). Its OWN type, kept
+  // off 'dispatch_update' so a ~1 Hz breadcrumb never runs the dispatcher
+  // brain fan-in — MapPage moves the marker / rotates the arrow directly.
+  | 'unit_position'
   | 'premise_alert_for_unit'
   // Live sync — auto-broadcast on data mutations
   | 'data_changed'

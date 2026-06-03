@@ -18,8 +18,9 @@
 //     active users with that role.
 // ============================================================
 
-import type { D1Database } from '@cloudflare/workers-types';
+import type { D1Database, DurableObjectNamespace } from '@cloudflare/workers-types';
 import { query, execute } from '../utils/db';
+import { emitAlert } from '../utils/alertHub';
 
 export interface NotifyContext {
   title?: string;
@@ -50,6 +51,10 @@ export async function evaluateNotificationRules(
   db: D1Database,
   triggerEvent: string,
   context: NotifyContext = {},
+  // Pass c.env so matched notifications fan out LIVE via AlertHubDO (the shared
+  // cross-worker bus). Optional so existing/test callers still work — they just
+  // skip the live push and the row still lands (poll/reload picks it up).
+  env?: { ALERT_HUB?: DurableObjectNamespace },
 ): Promise<{ rulesMatched: number; notified: number }> {
   let rulesMatched = 0;
   let notified = 0;
@@ -62,7 +67,7 @@ export async function evaluateNotificationRules(
     for (const rule of rules) {
       if (!matchesConditions(rule.conditions, context)) continue;
       rulesMatched++;
-      notified += await fireRule(db, rule, context);
+      notified += await fireRule(db, rule, context, {}, env);
     }
   } catch {
     // Swallow — the engine must never break the event that triggered it.
@@ -80,6 +85,7 @@ export async function fireRule(
   rule: NotificationRuleRow,
   context: NotifyContext = {},
   opts: { testPrefix?: boolean } = {},
+  env?: { ALERT_HUB?: DurableObjectNamespace },
 ): Promise<number> {
   const userIds = await resolveTargets(db, rule.target_roles, rule.target_user_ids);
   if (userIds.length === 0) return 0;
@@ -103,6 +109,18 @@ export async function fireRule(
     `UPDATE notification_rules SET last_fired_at = datetime('now','localtime'), fire_count = fire_count + 1 WHERE id = ?`,
     rule.id,
   );
+
+  // LIVE delivery — nudge every targeted user's notification bell over the
+  // shared AlertHubDO bus. broadcastAll() is per-isolate-dead here (the client's
+  // main socket is on the legacy worker), so without this a rule notification
+  // only surfaced on a full page reload. The frame carries the target ids; the
+  // client refetches its own user-scoped unread count, so a frame meant for
+  // someone else is a harmless no-op. Best-effort — never break the trigger.
+  if (env?.ALERT_HUB) {
+    try {
+      await emitAlert(env, 'notification', { action: 'notification_created', user_ids: userIds });
+    } catch { /* fan-out failure must not break the triggering event */ }
+  }
   return userIds.length;
 }
 

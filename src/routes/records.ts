@@ -130,6 +130,11 @@ records.post('/persons/merge', async (c) => {
     // so the generic loop above never re-points them — do it explicitly, or the
     // merged person's warrants orphan when the row is deleted below.
     try { await execute(db, 'UPDATE warrants SET subject_person_id = ? WHERE subject_person_id = ?', keep_id, merge_id); } catch { /* subject link optional */ }
+    // serve_queue.recipient_person_id is a BARE column with NO FK constraint on
+    // live D1 — D1 never cascades it. The generic loop above only touches tables
+    // keyed on `person_id`, so without this the merged person's serve_queue rows
+    // dangle at a deleted id after the DELETE below. Re-point to keep_id.
+    try { await execute(db, 'UPDATE serve_queue SET recipient_person_id = ? WHERE recipient_person_id = ?', keep_id, merge_id); } catch { /* serve_queue optional */ }
     await execute(db, 'DELETE FROM persons WHERE id = ?', merge_id);
     return c.json({ success: true, keep_id });
   } catch (err) { return c.json({ error: 'Merge failed', detail: (err as Error)?.message }, 500); }
@@ -213,8 +218,8 @@ records.delete('/persons/:id', async (c) => {
     const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM persons WHERE id = ?', id);
     if (!existing) return c.json({ error: 'Person not found' }, 404);
     // D1 enforces FKs. persons(id) has RESTRICT children that block a bare
-    // DELETE; the CASCADE children (incident_persons, serve_queue_persons,
-    // case_person_links) clean themselves. Resolve the RESTRICT ones first:
+    // DELETE; the CASCADE children (incident_persons, case_person_links) clean
+    // themselves. Resolve the RESTRICT ones first:
     //   call_persons          → junction rows; drop the person↔call links.
     //   vehicles_records.owner → detach (NULL); the vehicle record survives.
     // Also sweep the polymorphic record_links (no FK, so it would otherwise
@@ -222,6 +227,11 @@ records.delete('/persons/:id', async (c) => {
     await execute(db, 'DELETE FROM call_persons WHERE person_id = ?', id);
     await execute(db, 'UPDATE vehicles_records SET owner_person_id = NULL WHERE owner_person_id = ?', id);
     await execute(db, "DELETE FROM record_links WHERE (source_type='person' AND source_id=?) OR (target_type='person' AND target_id=?)", id, id);
+    // serve_queue.recipient_person_id is a BARE column with NO FK on live D1
+    // (there is no serve_queue_persons cascade — the earlier comment was wrong),
+    // so D1 never nulls it on delete. Detach explicitly or the serve_queue row
+    // dangles at a deleted id (ghost recipient on the queue / route planner).
+    try { await execute(db, 'UPDATE serve_queue SET recipient_person_id = NULL WHERE recipient_person_id = ?', id); } catch { /* serve_queue optional */ }
     // Detach (not delete) the person from records that should survive: a warrant
     // and its citations are real records that must not vanish with the person,
     // but they also must not dangle at a deleted id (ghost nodes in Connections).

@@ -33,6 +33,30 @@ async function clearUnitEmergency(db: ReturnType<typeof getDb>, panicRow: Record
   ).catch((err) => console.error('[panic] clear unit emergency failed (non-fatal)', err));
 }
 
+// Cascade-resolve a panic when its underlying CAD call reaches a terminal
+// status (cleared/closed/cancelled/archived). Reused by the call-status handler
+// (calls.ts) so closing a panic call also (a) resolves any still-active
+// panic_alerts row tied to it and (b) clears the EMERGENCY overlay on whatever
+// unit is flashing red for this call. Best-effort: callers wrap this and never
+// let a failure block the status change.
+export async function resolvePanicForCall(
+  db: ReturnType<typeof getDb>,
+  callId: number | string,
+): Promise<void> {
+  await execute(
+    db,
+    `UPDATE panic_alerts SET status = 'resolved', resolved_at = datetime('now'), updated_at = datetime('now')
+     WHERE call_id = ? AND status = 'active'`,
+    callId,
+  );
+  await execute(
+    db,
+    `UPDATE units SET emergency_active = 0, emergency_call_id = NULL, emergency_since = NULL
+     WHERE emergency_call_id = ?`,
+    callId,
+  );
+}
+
 // GET /dispatch/panic — list panic alerts, default active only
 panic.get('/panic', async (c) => {
   const db = getDb(c.env);
@@ -65,20 +89,44 @@ panic.post('/panic', async (c) => {
     trigger_method?: string; source?: string; message?: string; call_id?: number;
   }>().catch(() => ({} as Record<string, never>));
 
-  const lat = Number.isFinite(Number(body.latitude)) ? Number(body.latitude) : null;
-  const lng = Number.isFinite(Number(body.longitude)) ? Number(body.longitude) : null;
+  // Treat a non-finite OR zero coordinate as "no fix" — phones that fail to get
+  // a lock frequently post (0,0) or null, and a panic at the equator/prime-
+  // meridian is not a real scenario for an SLC security operation.
+  const rawLat = Number(body.latitude);
+  const rawLng = Number(body.longitude);
+  let lat = Number.isFinite(rawLat) && rawLat !== 0 ? rawLat : null;
+  let lng = Number.isFinite(rawLng) && rawLng !== 0 ? rawLng : null;
   const triggerMethod = body.trigger_method ?? body.source ?? 'ui_button';
-  const locationAddress = body.location_address
-    ?? (lat != null && lng != null ? `GPS: ${lat.toFixed(5)}, ${lng.toFixed(5)}` : 'Unknown location');
 
   // Officer identity (for the CAD description + dispatcher voice) and the
-  // officer's current unit (so we can assign it to the panic call).
+  // officer's current unit (so we can assign it to the panic call). The unit's
+  // last-known GPS is the officer-safety fallback when the panic payload has no
+  // coordinates (button mashed before a fix, indoors, etc.).
   const officer = await queryFirst<{ full_name: string; badge_number: string | null }>(
     db, 'SELECT full_name, badge_number FROM users WHERE id = ? LIMIT 1', userId,
   );
-  const unit = await queryFirst<{ id: number; call_sign: string; current_call_id: number | null }>(
-    db, 'SELECT id, call_sign, current_call_id FROM units WHERE officer_id = ? LIMIT 1', userId,
+  const unit = await queryFirst<{ id: number; call_sign: string; current_call_id: number | null; latitude: number | null; longitude: number | null }>(
+    db, 'SELECT id, call_sign, current_call_id, latitude, longitude FROM units WHERE officer_id = ? LIMIT 1', userId,
   );
+
+  // GPS fallback: if the client sent no usable coordinates, plot the panic at
+  // the officer's unit's last-known position so dispatch still has a location to
+  // roll backup to (better than "Unknown location"). Same zero/non-finite guard.
+  let usedUnitGps = false;
+  if (lat == null || lng == null) {
+    const uLat = Number(unit?.latitude);
+    const uLng = Number(unit?.longitude);
+    if (Number.isFinite(uLat) && uLat !== 0 && Number.isFinite(uLng) && uLng !== 0) {
+      lat = uLat;
+      lng = uLng;
+      usedUnitGps = true;
+    }
+  }
+
+  const locationAddress = body.location_address
+    ?? (lat != null && lng != null
+      ? `GPS: ${lat.toFixed(5)}, ${lng.toFixed(5)}${usedUnitGps ? ' (last-known unit position)' : ''}`
+      : 'Unknown location');
 
   // ── Auto-create the P1 officer_assist CAD call (parity with the original
   // handler). The panic must produce a dispatchable incident, not just an
@@ -181,7 +229,7 @@ panic.post('/panic', async (c) => {
       priority: 'critical',
       entity_type: 'panic_alert',
       entity_id: panicId,
-    });
+    }, c.env);
   } catch (err) {
     console.error('[panic] post-insert fan-out failed (non-fatal)', err);
   }

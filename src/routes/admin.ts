@@ -481,7 +481,7 @@ admin.post('/notification-rules/:id/test', async (c) => {
     const notified = await fireRule(db, rule, {
       title: `Test: ${rule.name}`,
       message: rule.description || `Test notification for "${rule.name}"`,
-    }, { testPrefix: true });
+    }, { testPrefix: true }, c.env);
     return c.json({ success: true, notified });
   } catch (err) {
     return c.json({ error: 'Failed to send test notification', detail: String(err) }, 500);
