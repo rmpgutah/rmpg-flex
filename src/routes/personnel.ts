@@ -497,14 +497,19 @@ personnel.put('/time/:id', async (c) => {
     }
 
     const totalHours = computeTotalHours(newClockIn, newClockOut, newBreak);
+    // An edit that CLEARS clock_out re-opens the shift — it's genuinely active
+    // again, so it must not stay 'edited' (the Currently-Active panel filters on
+    // clocked_in/on_break and would hide a live, running shift). The edit is
+    // still fully audited via the time_entry_edits rows + edited_by/edited_at.
+    const newStatus = newClockOut ? 'edited' : 'active';
 
     await execute(
       db,
       `UPDATE time_entries
           SET clock_in = ?, clock_out = ?, break_minutes = ?, total_hours = ?, notes = ?,
-              status = 'edited', edit_reason = ?, edited_by = ?, edited_at = datetime('now','localtime')
+              status = ?, edit_reason = ?, edited_by = ?, edited_at = datetime('now','localtime')
         WHERE id = ?`,
-      newClockIn, newClockOut, newBreak, totalHours, newNotes, reason, actor?.id ?? null, id,
+      newClockIn, newClockOut, newBreak, totalHours, newNotes, newStatus, reason, actor?.id ?? null, id,
     );
 
     const editorName = actor?.full_name || actor?.username || 'Unknown';

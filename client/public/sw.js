@@ -460,7 +460,11 @@
 //       client now derives the display fields); Monthly Revenue + Clients-by-
 //       Status charts realigned to the worker's actual shapes; CRM Invoices tab
 //       reads the {data} envelope. (v744 reserved for the dispatch wave-1 PR.)
-const CACHE_NAME = 'rmpg-flex-v746';
+// v750: LOW-severity cleanup — mileage prompt rejects an ending reading below
+//       the start (was clamped to 0, hiding the typo); re-opening a time entry
+//       (clearing clock_out) now marks it 'active' so it shows in Currently
+//       Active; responding_vehicle_id coerced to a number for its INTEGER column.
+const CACHE_NAME = 'rmpg-flex-v750';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
