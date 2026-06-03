@@ -498,16 +498,7 @@
 //       Worker proxy /api/crime/slc) + our own recent CFS (/api/crime/local),
 //       rendered as a density heatmap + color-by-class incident dots with a
 //       toggle + legend. 60-day window.
-// v761: NAVIGATE black tactical map + more data fields — drive map switched to a
-//       pure-black base (dark-v11 + black land/water recolor) so streets + crime
-//       pop; reverse-geocoded current STREET shown in the banner + dashboard
-//       footer; live "crime within ½mi" count in the legend.
-// v762: NAVIGATE destination search — header search opens an address/place lookup
-//       (Utah-biased geocoder); selecting a result routes there via useMapRouting.
-//       Turn banner gains an external-nav button (Organic Maps / OSM web) + a
-//       clear-route button. Manual route claims the slot so the assigned-call
-//       auto-route can't clobber it.
-const CACHE_NAME = 'rmpg-flex-v762';
+const CACHE_NAME = 'rmpg-flex-v760';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

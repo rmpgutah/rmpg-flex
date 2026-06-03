@@ -22,7 +22,7 @@ import {
   Navigation2, Satellite, Wifi, Globe, X, AlertTriangle, MapPin, Gauge,
   CornerUpLeft, CornerUpRight, ArrowUp, ArrowUpLeft, ArrowUpRight,
   Flag, Merge, RotateCw, RotateCcw, Clock, Box, Crosshair, Maximize, Minimize,
-  Flame, Search, type LucideIcon,
+  Flame, type LucideIcon,
 } from 'lucide-react';
 import { useGpsTracking } from '../hooks/useGpsTracking';
 import { useMapRouting } from '../hooks/useMapRouting';
@@ -346,14 +346,6 @@ export default function NavigationPage() {
   const [nearbyUnits, setNearbyUnits] = useState<{ call_sign: string; status: string; lat: number; lng: number }[]>([]);
   const [crimeOn, setCrimeOn] = useState(true);
   const [crimeIncidents, setCrimeIncidents] = useState<CrimePoint[]>([]);
-  const [currentStreet, setCurrentStreet] = useState<string | null>(null);
-  const geoRef = useRef<{ lat: number; lng: number; t: number } | null>(null);
-  // Destination search (address/place → route there).
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<{ lat: number; lng: number; label: string }[]>([]);
-  const [searching, setSearching] = useState(false);
-  const [destLabel, setDestLabel] = useState<string | null>(null);
   const [, force] = useState(0);
 
   const dir = gps.headingSmoothed ?? gps.course ?? gps.heading;
@@ -710,32 +702,6 @@ export default function NavigationPage() {
     return { slc, local, total: crimeIncidents.length };
   }, [crimeIncidents]);
 
-  // Crime incidents within ~½ mile of the unit — a live "how hot is here" field
-  // (and the basis for the high-crime-area alert in the next phase).
-  const crimeNearby = useMemo(() => {
-    if (gps.latitude == null || gps.longitude == null) return 0;
-    let n = 0;
-    for (const p of crimeIncidents) { if (haversineMeters(gps.latitude, gps.longitude, p.lat, p.lng) <= 805) n++; }
-    return n;
-  }, [crimeIncidents, gps.latitude, gps.longitude]);
-
-  // ── Reverse-geocode the current position → street label ("more data fields") ──
-  // Throttled: only re-lookup after ~40m of movement or 20s, since the server
-  // KV-caches reverse lookups anyway. Best-effort; failures leave the last label.
-  useEffect(() => {
-    if (gps.latitude == null || gps.longitude == null) return;
-    const lat = gps.latitude, lng = gps.longitude;
-    const prev = geoRef.current, now = Date.now();
-    const moved = prev ? haversineMeters(prev.lat, prev.lng, lat, lng) : Infinity;
-    if (prev && moved < 40 && now - prev.t < 20000) return;
-    geoRef.current = { lat, lng, t: now };
-    let cancelled = false;
-    apiFetch<{ address: string | null }>(`/geocode/reverse?lat=${lat.toFixed(6)}&lng=${lng.toFixed(6)}`)
-      .then((r) => { if (!cancelled) setCurrentStreet(r?.address || null); })
-      .catch(() => { /* keep last known street */ });
-    return () => { cancelled = true; };
-  }, [gps.latitude, gps.longitude]);
-
   const sessionMs = startRef.current ? Date.now() - startRef.current : 0;
   const distanceMi = distanceRef.current / 1609.34;
   const avgMph = sessionMs > 60000 ? distanceMi / (sessionMs / 3600000) : 0;
@@ -836,15 +802,6 @@ export default function NavigationPage() {
         {gps.connectionType && gps.connectionType !== 'unknown' && (
           <span className="text-[9px] uppercase text-rmpg-500">{gps.connectionType}</span>
         )}
-        <button
-          onClick={() => setSearchOpen((v) => !v)}
-          className="toolbar-btn flex items-center justify-center"
-          style={{ color: searchOpen ? '#d4a017' : '#a0a0a0' }}
-          title="Search destination"
-          aria-label="Search destination"
-        >
-          <Search className="w-4 h-4" />
-        </button>
         <button
           onClick={() => setCrimeOn((v) => !v)}
           className="toolbar-btn flex items-center gap-1 text-[10px] uppercase"
@@ -1000,10 +957,6 @@ export default function NavigationPage() {
               </div>
             ))}
             <div className="text-[8px] text-rmpg-600 pt-0.5">SLCPD public · {crimeCounts.slc} pts</div>
-            <div className="flex items-center gap-1 pt-0.5 border-t border-rmpg-800/60 mt-0.5">
-              <span className="text-[8px] uppercase tracking-wider text-rmpg-600 flex-1">Within ½mi</span>
-              <span className="text-[10px] font-mono font-bold" style={{ color: crimeNearby >= 8 ? '#ef4444' : crimeNearby >= 3 ? '#f59e0b' : '#22c55e' }}>{crimeNearby}</span>
-            </div>
           </div>
         </div>
       )}
