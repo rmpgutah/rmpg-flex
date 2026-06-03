@@ -475,7 +475,11 @@
 //       tape, ring speed gauge, dual-needle compass (heading + red bearing-to-call),
 //       speed area-chart, longitudinal G-force meter, nearby-units panel, and an
 //       expanded course/bearing/crow-distance/source stat grid.
-const CACHE_NAME = 'rmpg-flex-v754';
+// v756: NAVIGATE drive screen is now TRUE full screen — moved to a standalone route
+//       OUTSIDE <Layout> (no top app toolbar, edge-to-edge viewport via fixed
+//       inset-0) plus a native Fullscreen-API toggle in the header for kiosk mode.
+//       (v755 reserved for the parallel GPS "Track 0 pts" capture fix PR.)
+const CACHE_NAME = 'rmpg-flex-v756';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
