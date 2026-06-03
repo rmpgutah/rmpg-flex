@@ -54,6 +54,13 @@ import FloatingSaveBar from '../components/FloatingSaveBar';
 import AddressAutocomplete from '../components/AddressAutocomplete';
 import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
 import { useMenuActions } from '../utils/contextMenuActions';
+import { ViolationStack } from '../components/ViolationStack';
+import { newDraft, type ViolationDraft, type OffenseLevel } from '../components/violationStackHelpers';
+import type { StatuteRow } from '../components/statuteAutofill';
+import { CitationPdfPreview } from '../components/CitationPdfPreview';
+import { formToData } from '../components/citationFormAdapter';
+import { usePersistedPreviewMode } from '../hooks/usePersistedPreviewMode';
+import { Combobox } from '../components/Combobox';
 
 // ── Types ──────────────────────────────────────────────────
 
@@ -234,6 +241,47 @@ const US_STATES = [
   'NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','VT','VA','WA','WV','WI','WY',
 ];
 
+const STATE_OPTIONS: { value: string; label: string }[] = US_STATES.map(s => ({ value: s, label: s }));
+const TYPE_FILTER_OPTIONS: { value: CitationType | ''; label: string }[] = [
+  { value: '', label: 'All Types' },
+  ...CITATION_TYPES.map(t => ({ value: t.value as CitationType | '', label: t.label })),
+];
+const STATUS_FILTER_OPTIONS: { value: CitationStatus | ''; label: string }[] = [
+  { value: '', label: 'All Statuses' },
+  ...CITATION_STATUSES.map(s => ({ value: s.value as CitationStatus | '', label: s.label })),
+];
+const PAYMENT_METHOD_OPTIONS: { value: string; label: string }[] = [
+  { value: 'cash', label: 'Cash' },
+  { value: 'check', label: 'Check' },
+  { value: 'card', label: 'Card' },
+  { value: 'money_order', label: 'Money Order' },
+  { value: 'other', label: 'Other' },
+];
+
+function normalizeOffenseLevel(s: string | null | undefined): OffenseLevel {
+  const t = String(s ?? '').toLowerCase();
+  if (t.startsWith('fel')) return 'Felony';
+  if (t.startsWith('mis')) return 'Misdemeanor';
+  return 'Infraction';
+}
+
+async function statuteFetcher(q: string): Promise<StatuteRow[]> {
+  if (!q || q.length < 2) return [];
+  try {
+    const res = await apiFetch<{ data: any[] }>(`/citations/statutes/lookup?q=${encodeURIComponent(q)}`);
+    return (res.data || []).map(r => ({
+      id: Number(r.id),
+      citation_code: String(r.citation_code ?? ''),
+      title: String(r.title ?? ''),
+      offense_level: String(r.offense_level ?? ''),
+      default_fine: Number(r.default_fine) || 0,
+      description: String(r.description ?? ''),
+    }));
+  } catch {
+    return [];
+  }
+}
+
 const EMPTY_FORM: CitationForm = {
   type: 'traffic',
   status: 'issued',
@@ -340,6 +388,15 @@ export default function CitationsPage() {
     defaultValue: EMPTY_FORM,
     isActive: mode !== 'list',
   });
+
+  // Violations (multi-violation authoring)
+  const [violations, setViolations] = useState<ViolationDraft[]>(() => [newDraft()]);
+  const violationsCleanRef = useRef<string>(JSON.stringify([newDraft()].map(({ id, ...rest }) => rest)));
+  const violationsDirty = mode !== 'list'
+    && JSON.stringify(violations.map(({ id, ...rest }) => rest)) !== violationsCleanRef.current;
+
+  // Live PDF preview mode (modal / side / full)
+  const [previewMode, setPreviewMode] = usePersistedPreviewMode();
 
   // Duplicate detection
   const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
@@ -572,6 +629,10 @@ export default function CitationsPage() {
     });
   };
 
+  const snapshotViolations = (next: ViolationDraft[]) => {
+    violationsCleanRef.current = JSON.stringify(next.map(({ id, ...rest }) => rest));
+  };
+
   const handleNewCitation = () => {
     setForm({
       ...EMPTY_FORM,
@@ -580,6 +641,9 @@ export default function CitationsPage() {
       issuing_officer_name: (user as any)?.full_name || (user as any)?.username || '',
       badge_number: (user as any)?.badge_number || '',
     });
+    const initialViolations = [newDraft()];
+    setViolations(initialViolations);
+    snapshotViolations(initialViolations);
     setPersonSearch('');
     setSaveError('');
     setSaveSuccess(false);
@@ -589,60 +653,92 @@ export default function CitationsPage() {
     setSelectedCitation(null);
   };
 
-  const handleEditCitation = (c: Citation) => {
+  const handleEditCitation = async (c: Citation) => {
+    // Fetch full record (includes violations[]) before populating form.
+    // Falls back to the row-only data if /full fails — form still usable.
+    let full: any = c;
+    let serverViolations: any[] = [];
+    try {
+      const res = await apiFetch<any>(`/citations/${c.id}/full`);
+      full = res || c;
+      serverViolations = Array.isArray(res?.violations) ? res.violations : [];
+    } catch { /* fall back to row */ }
+    const rehydrated: ViolationDraft[] = serverViolations.length > 0
+      ? serverViolations.map((sv: any) => {
+          const base = newDraft();
+          return {
+            id: base.id,
+            statute_id: sv.statute_id != null ? Number(sv.statute_id) : undefined,
+            statute_citation: String(sv.statute_citation ?? ''),
+            description: String(sv.violation_description ?? sv.description ?? ''),
+            offense_level: normalizeOffenseLevel(sv.offense_level),
+            fine_amount: Number(sv.fine_amount) || 0,
+          };
+        })
+      : [{
+          ...newDraft(),
+          statute_id: full.statute_id != null ? Number(full.statute_id) : undefined,
+          statute_citation: full.statute_citation || '',
+          description: full.violation_description || '',
+          offense_level: normalizeOffenseLevel(full.offense_level),
+          fine_amount: Number(full.fine_amount) || 0,
+        }];
+    setViolations(rehydrated);
+    snapshotViolations(rehydrated);
+    const c0: Citation = full as Citation;
     setForm({
-      type: c.type,
-      status: c.status,
-      person_id: c.person_id ? String(c.person_id) : '',
-      person_name: c.person_name || '',
-      person_dob: c.person_dob || '',
-      person_dl: c.person_dl || '',
-      person_address: c.person_address || '',
-      vehicle_description: c.vehicle_description || '',
-      vehicle_plate: c.vehicle_plate || '',
-      vehicle_state: c.vehicle_state || 'UT',
-      statute_id: c.statute_id ? String(c.statute_id) : '',
-      statute_citation: c.statute_citation || '',
-      violation_description: c.violation_description || '',
-      offense_level: c.offense_level || '',
-      fine_amount: c.fine_amount != null ? String(c.fine_amount) : '',
-      violation_date: c.violation_date || '',
-      violation_time: c.violation_time || '',
-      location: c.location || '',
-      issuing_officer_name: c.issuing_officer_name || '',
-      badge_number: c.badge_number || '',
-      court_date: c.court_date || '',
-      court_name: c.court_name || '',
-      court_address: c.court_address || '',
-      notes: c.notes || '',
-      section_id: c.section_id || '',
-      zone_id: c.zone_id || '',
-      beat_id: c.beat_id || '',
-      zone_beat: c.zone_beat || '',
-      latitude: c.latitude ?? null,
-      longitude: c.longitude ?? null,
-      vehicle_vin: (c as any).vehicle_vin || '',
-      vehicle_year: (c as any).vehicle_year || '',
-      vehicle_make: (c as any).vehicle_make || '',
-      vehicle_model: (c as any).vehicle_model || '',
-      vehicle_color: (c as any).vehicle_color || '',
-      speed_recorded: (c as any).speed_recorded != null ? String((c as any).speed_recorded) : '',
-      speed_limit: (c as any).speed_limit != null ? String((c as any).speed_limit) : '',
-      radar_type: (c as any).radar_type || '',
-      bac_level: (c as any).bac_level != null ? String((c as any).bac_level) : '',
-      bond_amount: (c as any).bond_amount != null ? String((c as any).bond_amount) : '',
-      bond_type: (c as any).bond_type || '',
-      is_warning: !!(c as any).is_warning,
-      school_zone: !!(c as any).school_zone,
-      construction_zone: !!(c as any).construction_zone,
-      accident_related: !!(c as any).accident_related,
-      dui_related: !!(c as any).dui_related,
-      commercial_vehicle: !!(c as any).commercial_vehicle,
-      court_time: (c as any).court_time || '',
-      court_room: (c as any).court_room || '',
-      appearance_required: !!(c as any).appearance_required,
+      type: c0.type,
+      status: c0.status,
+      person_id: c0.person_id ? String(c0.person_id) : '',
+      person_name: c0.person_name || '',
+      person_dob: c0.person_dob || '',
+      person_dl: c0.person_dl || '',
+      person_address: c0.person_address || '',
+      vehicle_description: c0.vehicle_description || '',
+      vehicle_plate: c0.vehicle_plate || '',
+      vehicle_state: c0.vehicle_state || 'UT',
+      statute_id: c0.statute_id ? String(c0.statute_id) : '',
+      statute_citation: c0.statute_citation || '',
+      violation_description: c0.violation_description || '',
+      offense_level: c0.offense_level || '',
+      fine_amount: c0.fine_amount != null ? String(c0.fine_amount) : '',
+      violation_date: c0.violation_date || '',
+      violation_time: c0.violation_time || '',
+      location: c0.location || '',
+      issuing_officer_name: c0.issuing_officer_name || '',
+      badge_number: c0.badge_number || '',
+      court_date: c0.court_date || '',
+      court_name: c0.court_name || '',
+      court_address: c0.court_address || '',
+      notes: c0.notes || '',
+      section_id: c0.section_id || '',
+      zone_id: c0.zone_id || '',
+      beat_id: c0.beat_id || '',
+      zone_beat: c0.zone_beat || '',
+      latitude: c0.latitude ?? null,
+      longitude: c0.longitude ?? null,
+      vehicle_vin: (c0 as any).vehicle_vin || '',
+      vehicle_year: (c0 as any).vehicle_year || '',
+      vehicle_make: (c0 as any).vehicle_make || '',
+      vehicle_model: (c0 as any).vehicle_model || '',
+      vehicle_color: (c0 as any).vehicle_color || '',
+      speed_recorded: (c0 as any).speed_recorded != null ? String((c0 as any).speed_recorded) : '',
+      speed_limit: (c0 as any).speed_limit != null ? String((c0 as any).speed_limit) : '',
+      radar_type: (c0 as any).radar_type || '',
+      bac_level: (c0 as any).bac_level != null ? String((c0 as any).bac_level) : '',
+      bond_amount: (c0 as any).bond_amount != null ? String((c0 as any).bond_amount) : '',
+      bond_type: (c0 as any).bond_type || '',
+      is_warning: !!(c0 as any).is_warning,
+      school_zone: !!(c0 as any).school_zone,
+      construction_zone: !!(c0 as any).construction_zone,
+      accident_related: !!(c0 as any).accident_related,
+      dui_related: !!(c0 as any).dui_related,
+      commercial_vehicle: !!(c0 as any).commercial_vehicle,
+      court_time: (c0 as any).court_time || '',
+      court_room: (c0 as any).court_room || '',
+      appearance_required: !!(c0 as any).appearance_required,
     });
-    setPersonSearch(c.person_name || '');
+    setPersonSearch(c0.person_name || '');
     setSaveError('');
     setSaveSuccess(false);
     clearFormErrors();
@@ -672,18 +768,28 @@ export default function CitationsPage() {
     setSaveSuccess(false);
 
     try {
+      // Strip client-side draft ids; server expects {statute_id?, statute_citation,
+      // description, offense_level, fine_amount}. Server back-fills the flat
+      // statute_citation/violation_description/offense_level/fine_amount columns
+      // from violations[0] on POST (see legacy/server-vps/src/routes/citations.ts),
+      // so we still send the form's flat fields too for back-compat.
+      const violationsPayload = violations
+        .filter(v => v.statute_citation.trim() || v.description.trim() || v.fine_amount > 0)
+        .map(({ id: _id, ...rest }) => rest);
       const payload: any = {
         ...form,
         person_id: form.person_id ? parseInt(form.person_id, 10) : null,
         statute_id: form.statute_id ? parseInt(form.statute_id, 10) : null,
         fine_amount: form.fine_amount ? parseFloat(form.fine_amount) : null,
         issuing_officer_id: (user as any)?.userId || null,
+        violations: violationsPayload,
       };
 
       if (mode === 'create') {
         const res = await apiFetch<{ data: Citation }>('/citations', { method: 'POST', body: JSON.stringify(payload) });
         setSelectedCitation(res.data);
         setSaveSuccess(true);
+        snapshotViolations(violations);
         clearFormDraft();
         setTimeout(() => {
           setMode('list');
@@ -695,6 +801,7 @@ export default function CitationsPage() {
         const res = await apiFetch<{ data: Citation }>(`/citations/${selectedCitation.id}`, { method: 'PUT', body: JSON.stringify(payload) });
         setSelectedCitation(res.data);
         setSaveSuccess(true);
+        snapshotViolations(violations);
         clearFormDraft();
         setTimeout(() => {
           setMode('list');
@@ -833,14 +940,26 @@ export default function CitationsPage() {
         {/* Filter row */}
         <div className={`flex items-center ${isMobile ? 'flex-col gap-1.5' : 'gap-2 flex-wrap'}`}>
           {!isMobile && <Filter size={10} className="text-rmpg-500" />}
-          <select id="ff-citationspage-1" value={filterType} onChange={e => { setFilterType(e.target.value as any); setPage(1); }} className={`input-dark px-2 ${isMobile ? 'w-full py-2 text-xs' : 'py-1 text-[10px]'}`} style={isMobile ? { minHeight: 44 } : undefined}>
-            <option value="">All Types</option>
-            {CITATION_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-          </select>
-          <select id="ff-citationspage-2" value={filterStatus} onChange={e => { setFilterStatus(e.target.value as any); setPage(1); }} className={`input-dark px-2 ${isMobile ? 'w-full py-2 text-xs' : 'py-1 text-[10px]'}`} style={isMobile ? { minHeight: 44 } : undefined}>
-            <option value="">All Statuses</option>
-            {CITATION_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
-          </select>
+          <div className={isMobile ? 'w-full' : 'min-w-[140px]'}>
+            <Combobox<{ value: CitationType | ''; label: string }>
+              value={TYPE_FILTER_OPTIONS.find(o => o.value === filterType) ?? null}
+              onChange={(opt) => { setFilterType((opt?.value ?? '') as any); setPage(1); }}
+              options={TYPE_FILTER_OPTIONS}
+              getLabel={(o) => o.label}
+              getKey={(o) => o.value || '__all__'}
+              placeholder="All Types"
+            />
+          </div>
+          <div className={isMobile ? 'w-full' : 'min-w-[160px]'}>
+            <Combobox<{ value: CitationStatus | ''; label: string }>
+              value={STATUS_FILTER_OPTIONS.find(o => o.value === filterStatus) ?? null}
+              onChange={(opt) => { setFilterStatus((opt?.value ?? '') as any); setPage(1); }}
+              options={STATUS_FILTER_OPTIONS}
+              getLabel={(o) => o.label}
+              getKey={(o) => o.value || '__all__'}
+              placeholder="All Statuses"
+            />
+          </div>
         </div>
       </div>
 
@@ -1049,9 +1168,14 @@ export default function CitationsPage() {
                     </div>
                     <div className="grid grid-cols-2 gap-2">
                       <div><label className="text-[9px] text-rmpg-400 uppercase">Method</label>
-                        <select id="ff-citationspage-5" className="input-dark text-xs w-full min-h-[36px]" value={paymentForm.payment_method} onChange={e => setPaymentForm(p => ({ ...p, payment_method: e.target.value }))}>
-                          <option value="cash">Cash</option><option value="check">Check</option><option value="card">Card</option><option value="money_order">Money Order</option><option value="other">Other</option>
-                        </select></div>
+                        <Combobox<{ value: string; label: string }>
+                          value={PAYMENT_METHOD_OPTIONS.find(o => o.value === paymentForm.payment_method) ?? null}
+                          onChange={(opt) => setPaymentForm(p => ({ ...p, payment_method: opt?.value || 'cash' }))}
+                          options={PAYMENT_METHOD_OPTIONS}
+                          getLabel={(o) => o.label}
+                          getKey={(o) => o.value}
+                          placeholder="Method"
+                        /></div>
                       <div><label className="text-[9px] text-rmpg-400 uppercase">Reference #</label>
                         <input id="ff-citationspage-6" className="input-dark text-xs w-full min-h-[36px]" value={paymentForm.reference_number} onChange={e => setPaymentForm(p => ({ ...p, reference_number: e.target.value }))} /></div>
                     </div>
@@ -1276,13 +1400,20 @@ export default function CitationsPage() {
           <h2 className="text-xs font-bold uppercase tracking-wider text-rmpg-300">
             {isEdit ? `Edit Citation ${selectedCitation?.citation_number || ''}` : 'New Citation / Summons'}
           </h2>
-          {formIsDirty && (
+          {(formIsDirty || violationsDirty) && (
             <span className="text-[8px] text-amber-400 font-bold uppercase tracking-wider">UNSAVED</span>
           )}
         </div>
-        <button type="button" onClick={handleCancelForm} className="text-rmpg-400 hover:text-rmpg-200 transition-colors">
-          <X size={18} />
-        </button>
+        <div className="flex items-center gap-2">
+          <CitationPdfPreview
+            form={formToData(form as any, violations)}
+            mode={previewMode}
+            onModeChange={setPreviewMode}
+          />
+          <button type="button" onClick={handleCancelForm} className="text-rmpg-400 hover:text-rmpg-200 transition-colors">
+            <X size={18} />
+          </button>
+        </div>
       </div>
 
       {/* Scrollable body */}
@@ -1340,22 +1471,47 @@ export default function CitationsPage() {
         {isEdit && (
           <section>
             <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2">Status</h3>
-            <select id="ff-citationspage-7" value={form.status} onChange={e => updateField('status', e.target.value)} className="input-dark w-full py-2 text-xs min-h-[36px]">
-              {CITATION_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
-            </select>
+            <Combobox<{ value: CitationStatus; label: string }>
+              value={CITATION_STATUSES.find(s => s.value === form.status) ?? null}
+              onChange={(opt) => updateField('status', opt?.value || 'issued')}
+              options={CITATION_STATUSES}
+              getLabel={(o) => o.label}
+              getKey={(o) => o.value}
+              placeholder="Status"
+            />
           </section>
         )}
 
-        {/* Violation */}
+        {/* Violations — multi-violation authoring */}
         <section>
           <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2 flex items-center gap-1.5">
-            <Scale size={12} /> Violation
+            <Scale size={12} /> Violations
           </h3>
           <div className="space-y-3">
             <div>
-              <label className="field-label">Statute Search</label>
+              <label className="field-label">Quick Statute Search (autofills first violation)</label>
               <StatuteLookup
-                onSelect={handleStatuteSelect}
+                onSelect={(statute) => {
+                  // Keep legacy flat form fields in sync for back-compat (server
+                  // back-fills these from violations[0] anyway, but other UI
+                  // surfaces (detail view, list) still read the flat columns).
+                  handleStatuteSelect(statute);
+                  // Also push into violations[0] so the ViolationStack reflects it.
+                  setViolations(prev => {
+                    if (prev.length === 0) return [newDraft()];
+                    const first = prev[0];
+                    const next = [...prev];
+                    next[0] = {
+                      ...first,
+                      statute_id: Number(statute.id),
+                      statute_citation: statute.citation,
+                      description: first.description || statute.short_title || '',
+                      offense_level: normalizeOffenseLevel(statute.offense_level),
+                      fine_amount: first.fine_amount > 0 ? first.fine_amount : Number(statute.citation_fine) || 0,
+                    };
+                    return next;
+                  });
+                }}
                 value={form.statute_citation || undefined}
                 onClear={clearStatute}
                 categoryFilter={statuteCategoryFilter}
@@ -1363,34 +1519,30 @@ export default function CitationsPage() {
                 showStateFilter
               />
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="field-label">Statute Citation</label>
-                <input id="ff-citationspage-8" type="text" value={form.statute_citation} onChange={e => updateField('statute_citation', e.target.value)} placeholder="e.g. 41-6a-601" className="input-dark w-full py-2 text-xs font-mono min-h-[36px]" />
-              </div>
-              <div>
-                <label className="field-label">Offense Level</label>
-                <input id="ff-citationspage-9" type="text" value={form.offense_level} onChange={e => updateField('offense_level', e.target.value)} placeholder="e.g. infraction" className="input-dark w-full py-2 text-xs capitalize min-h-[36px]" />
-              </div>
-            </div>
-            <div>
-              <label className="field-label">Violation Description *</label>
-              <input id="ff-citationspage-10"
-                type="text"
-                value={form.violation_description}
-                onChange={e => updateField('violation_description', e.target.value)}
-                placeholder="Describe the violation..."
-                className={`input-dark w-full py-2 text-xs ${formErrors.violation_description ? 'border-red-500' : ''}`}
-              />
-              {formErrors.violation_description && <p className="text-red-400 text-[10px] mt-1">{formErrors.violation_description}</p>}
-            </div>
-            <div>
-              <label className="field-label">Fine Amount ($)</label>
-              <div className="relative">
-                <DollarSign size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-rmpg-400" />
-                <input id="ff-citationspage-11" type="number" step="0.01" min="0" value={form.fine_amount} onChange={e => updateField('fine_amount', e.target.value)} placeholder="0.00" className="input-dark w-full py-2 pl-8 text-xs min-h-[36px]" />
-              </div>
-            </div>
+            <ViolationStack
+              value={violations}
+              onChange={(next) => {
+                setViolations(next);
+                // Mirror the first violation into the flat form fields so the
+                // existing validation, duplicate-detection, and back-compat
+                // detail view keep working.
+                const first = next[0];
+                if (first) {
+                  setForm(prev => ({
+                    ...prev,
+                    statute_citation: first.statute_citation,
+                    statute_id: first.statute_id != null ? String(first.statute_id) : '',
+                    violation_description: first.description,
+                    offense_level: first.offense_level,
+                    fine_amount: first.fine_amount > 0 ? String(first.fine_amount) : '',
+                  }));
+                }
+              }}
+              statuteFetcher={statuteFetcher}
+            />
+            {formErrors.violation_description && (
+              <p className="text-red-400 text-[10px] mt-1">{formErrors.violation_description}</p>
+            )}
           </div>
         </section>
 
@@ -1504,9 +1656,14 @@ export default function CitationsPage() {
                 </div>
                 <div>
                   <label className="field-label">State</label>
-                  <select id="ff-citationspage-18" value={form.vehicle_state} onChange={e => updateField('vehicle_state', e.target.value)} className="input-dark w-full py-2 text-xs min-h-[36px]">
-                    {US_STATES.map(st => <option key={st} value={st}>{st}</option>)}
-                  </select>
+                  <Combobox<{ value: string; label: string }>
+                    value={STATE_OPTIONS.find(o => o.value === form.vehicle_state) ?? null}
+                    onChange={(opt) => updateField('vehicle_state', opt?.value || 'UT')}
+                    options={STATE_OPTIONS}
+                    getLabel={(o) => o.label}
+                    getKey={(o) => o.value}
+                    placeholder="State"
+                  />
                 </div>
               </div>
             </div>
@@ -1719,9 +1876,9 @@ export default function CitationsPage() {
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      <UnsavedChangesGuard hasUnsavedChanges={mode !== 'list' && formIsDirty} />
+      <UnsavedChangesGuard hasUnsavedChanges={mode !== 'list' && (formIsDirty || violationsDirty)} />
       <FloatingSaveBar
-        visible={mode !== 'list' && formIsDirty}
+        visible={mode !== 'list' && (formIsDirty || violationsDirty)}
         onSave={handleSave}
         onCancel={handleCancelForm}
         isSaving={saving}
