@@ -522,7 +522,13 @@
 //       (3)(a)(i)… whose own text is empty (content lives in deeper children)
 //       is now folded onto its first child as a combined "(3)(a)(i)" lead
 //       instead of rendering "(3)" / "(a)" alone on empty lines.
-const CACHE_NAME = 'rmpg-flex-v770';
+// v771: NAVIGATE tactical upgrade — building realism (directional moonlight key
+//       light + atmospheric fog depth + ambient-occlusion contact shadows +
+//       vertical face gradient on the 3D extrusions, on both the drive map and
+//       the chase-cam inset) plus new telemetry visuals: a live 2-axis G-force
+//       ball (long+lateral load with session peak-hold ring) and terrain-fed
+//       ELEV / CLIMB instruments (queryTerrainElevation off the new DEM).
+const CACHE_NAME = 'rmpg-flex-v771';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

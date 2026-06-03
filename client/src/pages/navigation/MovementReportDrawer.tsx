@@ -124,10 +124,14 @@ interface Props {
   liveLongG: number;
   liveLatG: number;
   sessionMs: number;
+  /** Cumulative session ascent (ft), sampled from the 3D terrain DEM. */
+  climbFt?: number;
+  /** Live ground elevation (ft) at the unit, or null until DEM tiles load. */
+  elevFt?: number | null;
   onClose: () => void;
 }
 
-export default function MovementReportDrawer({ report, liveMph, liveLongG, liveLatG, sessionMs, onClose }: Props) {
+export default function MovementReportDrawer({ report, liveMph, liveLongG, liveLatG, sessionMs, climbFt, elevFt, onClose }: Props) {
   const total = report.movingMs + report.idleMs;
   const movePct = total > 0 ? Math.round((report.movingMs / total) * 100) : 0;
 
@@ -149,7 +153,7 @@ export default function MovementReportDrawer({ report, liveMph, liveLongG, liveL
 
       <div className="flex-1 overflow-y-auto scrollbar-dark px-3 py-2.5 space-y-3">
         {/* live speed + session */}
-        <div className="flex items-end gap-3">
+        <div className="flex items-center gap-3">
           <div className="flex flex-col">
             <span className="font-mono font-bold leading-none tabular-nums" style={{ fontSize: 40, color: liveMph != null ? '#d4a017' : '#555' }}>
               {liveMph != null ? liveMph : '--'}
@@ -159,6 +163,8 @@ export default function MovementReportDrawer({ report, liveMph, liveLongG, liveL
           <div className="flex-1 grid grid-cols-2 gap-1.5">
             <Stat label="Session" value={fmtDur(sessionMs)} />
             <Stat label="Distance" value={`${report.totalMi.toFixed(2)} mi`} accent="#d4a017" />
+            <Stat label="Climb" value={`${Math.round(climbFt ?? 0).toLocaleString()} ft`} accent={climbFt && climbFt > 0 ? '#22c55e' : undefined} />
+            <Stat label="Elevation" value={elevFt != null ? `${Math.round(elevFt).toLocaleString()} ft` : '—'} />
           </div>
         </div>
 
