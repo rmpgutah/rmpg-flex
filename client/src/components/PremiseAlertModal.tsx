@@ -8,6 +8,7 @@
 import { useEffect, useState } from 'react';
 import { AlertTriangle, ShieldAlert, MapPin, X } from 'lucide-react';
 import { useWebSocket } from '../context/WebSocketContext';
+import { useAuth } from '../context/AuthContext';
 
 export interface PremiseAlertItem {
   id: number;
@@ -26,6 +27,9 @@ interface PremiseAlertPayload {
   call_id: number | string;
   call_number: string;
   unit_id: number | string;
+  /** The officer this push is for — AlertHubDO broadcasts to all consoles, so
+   *  only the assigned officer's MDT should pop. */
+  target_user_id?: number | string | null;
   alerts: PremiseAlertItem[];
   pushed_at: string;
 }
@@ -42,12 +46,16 @@ function styleFor(level: string) {
 
 export default function PremiseAlertModal() {
   const { subscribe } = useWebSocket();
+  const { user } = useAuth();
   const [queue, setQueue] = useState<PremiseAlertPayload[]>([]);
 
   useEffect(() => {
     const unsub = subscribe('premise_alert_for_unit', (msg: any) => {
       const data: PremiseAlertPayload | undefined = msg?.data || msg;
       if (!data || !Array.isArray(data.alerts) || data.alerts.length === 0) return;
+      // emitAlert broadcasts to every console — only pop on the assigned
+      // officer's MDT. (Legacy null target_user_id → no filter, fail-open.)
+      if (data.target_user_id != null && String(data.target_user_id) !== String(user?.id)) return;
       setQueue((prev) => {
         // De-dup by call_id — same call shouldn't pop twice if dispatched in succession
         if (prev.some((p) => String(p.call_id) === String(data.call_id))) return prev;
@@ -55,7 +63,7 @@ export default function PremiseAlertModal() {
       });
     });
     return () => { unsub(); };
-  }, [subscribe]);
+  }, [subscribe, user?.id]);
 
   if (queue.length === 0) return null;
 
