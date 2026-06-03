@@ -1,13 +1,16 @@
 import { totalFineOf, newDraft, type ViolationDraft, type OffenseLevel } from './violationStackHelpers';
+import { Combobox } from './Combobox';
+import { applyStatuteAutofill, type StatuteRow } from './statuteAutofill';
 
 interface Props {
   value: ViolationDraft[];
   onChange: (next: ViolationDraft[]) => void;
+  statuteFetcher?: (q: string) => Promise<StatuteRow[]>;
 }
 
 const LEVELS: OffenseLevel[] = ['Infraction', 'Misdemeanor', 'Felony'];
 
-export function ViolationStack({ value, onChange }: Props) {
+export function ViolationStack({ value, onChange, statuteFetcher }: Props) {
   const patch = (id: string, partial: Partial<ViolationDraft>) =>
     onChange(value.map((v) => (v.id === id ? { ...v, ...partial } : v)));
 
@@ -25,13 +28,46 @@ export function ViolationStack({ value, onChange }: Props) {
               × Remove
             </button>
           </div>
-          <input
-            type="text"
-            placeholder="Statute / Code (e.g. UCA 41-6a-601)"
-            value={v.statute_citation}
-            onChange={(e) => patch(v.id, { statute_citation: e.target.value })}
-            className="input-dark w-full py-2 text-xs mb-2 min-h-[44px]"
-          />
+          {statuteFetcher ? (
+            <div className="mb-2">
+              <Combobox<StatuteRow>
+                value={v.statute_id != null && v.statute_citation ? {
+                  id: v.statute_id,
+                  citation_code: v.statute_citation,
+                  title: '',
+                  offense_level: v.offense_level,
+                  default_fine: v.fine_amount,
+                  description: v.description,
+                } : null}
+                onChange={(picked) => {
+                  if (!picked) {
+                    patch(v.id, { statute_id: undefined, statute_citation: '' });
+                    return;
+                  }
+                  const patched = applyStatuteAutofill(v, picked);
+                  onChange(value.map((x) => (x.id === v.id ? patched : x)));
+                }}
+                fetcher={statuteFetcher}
+                getLabel={(s) => s.citation_code}
+                getKey={(s) => s.id}
+                renderOption={(s) => (
+                  <div>
+                    <div className="text-xs font-bold">{s.citation_code}</div>
+                    {s.title && <div className="text-[10px] text-[#888]">{s.title}</div>}
+                  </div>
+                )}
+                placeholder="Statute / Code (e.g. UCA 41-6a-601)"
+              />
+            </div>
+          ) : (
+            <input
+              type="text"
+              placeholder="Statute / Code (e.g. UCA 41-6a-601)"
+              value={v.statute_citation}
+              onChange={(e) => patch(v.id, { statute_citation: e.target.value })}
+              className="input-dark w-full py-2 text-xs mb-2 min-h-[44px]"
+            />
+          )}
           <input
             type="text"
             placeholder="Violation description"
