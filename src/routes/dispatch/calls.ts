@@ -13,6 +13,25 @@ import { resolvePanicForCall } from './panic';
 
 const calls = new Hono<Env>();
 
+// assigned_unit_ids is a JSON array on calls_for_service that has historically
+// held MIXED types — strings AND numbers (live data shows ["1"] and even
+// ["1",1]) — because legacy/older writes stored string ids while the rewrite
+// coerces to Number. Comparing a numeric unit_id against a string element
+// (1 !== "1") silently breaks includes()/filter()/Set dedup: a unit gets
+// double-added (duplicate pin, can't be unassigned) and the detail GET returns
+// the same unit twice. ALWAYS normalize a stored array to a DEDUPED list of
+// positive finite numbers before any membership/dedup op. Tolerant of a
+// malformed value (returns [] instead of throwing → no 500 on the detail GET).
+function parseUnitIds(raw: unknown): number[] {
+  try {
+    const arr = JSON.parse(String(raw ?? '[]'));
+    if (!Array.isArray(arr)) return [];
+    return [...new Set(arr.map((v) => Number(v)).filter((n) => Number.isFinite(n) && n > 0))];
+  } catch {
+    return [];
+  }
+}
+
 // D1 caps a result set at 100 columns. calls_for_service has been pushed to
 // ~100 cols (see memory project-live-d1-schema-patches), so `SELECT c.* +
 // any JOIN columns` exceeds the cap and returns SQLITE_ERROR 7500
@@ -648,7 +667,7 @@ calls.get('/:id', async (c) => {
       LEFT JOIN clients cl ON cl.id = COALESCE(ck.client_id, p.client_id)
     `, call.property_id ?? null, call.dispatcher_id ?? null, call.client_id ?? null), null);
 
-    const assignedIds = JSON.parse(String(call.assigned_unit_ids || '[]')) as number[];
+    const assignedIds = parseUnitIds(call.assigned_unit_ids);
     const assignedUnits = assignedIds.length === 0 ? [] : await soft(() => query<Record<string, unknown>>(db, `
       SELECT u.*, usr.full_name as officer_name, usr.badge_number
       FROM units u LEFT JOIN users usr ON u.officer_id = usr.id
@@ -1156,7 +1175,7 @@ calls.post('/:id/assign-unit', async (c) => {
     if (prior?.current_call_id != null && prior.current_call_id !== callIdNum) {
       const priorCall = await queryFirst<{ assigned_unit_ids: string }>(db, 'SELECT assigned_unit_ids FROM calls_for_service WHERE id = ?', prior.current_call_id);
       if (priorCall) {
-        const priorList = (JSON.parse(priorCall.assigned_unit_ids || '[]') as number[]).filter((u) => u !== unit_id);
+        const priorList = parseUnitIds(priorCall.assigned_unit_ids).filter((u) => u !== unit_id);
         await execute(db, 'UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?', JSON.stringify(priorList), prior.current_call_id);
         // If that was the prior call's LAST unit, it's now an ACTIVE call with
         // nobody on it. The clear-path only frees units when the CALL goes
@@ -1175,7 +1194,7 @@ calls.post('/:id/assign-unit', async (c) => {
       }
     }
 
-    const assigned = JSON.parse(call.assigned_unit_ids || '[]') as number[];
+    const assigned = parseUnitIds(call.assigned_unit_ids);
     if (!assigned.includes(unit_id)) assigned.push(unit_id);
     // Move the call out of 'pending' on first assignment (mirrors multi-unit
     // /dispatch). A call with a dispatched unit but still 'pending' status is a
@@ -1264,7 +1283,7 @@ calls.post('/:id/unassign-unit', async (c) => {
     if (!Number.isFinite(unit_id) || unit_id <= 0) return c.json({ error: 'Invalid unit_id' }, 400);
     const call = await queryFirst<{ assigned_unit_ids: string }>(db, 'SELECT assigned_unit_ids FROM calls_for_service WHERE id = ?', id);
     if (!call) return c.json({ error: 'Call not found' }, 404);
-    const assigned = (JSON.parse(call.assigned_unit_ids || '[]') as number[]).filter(u => u !== unit_id);
+    const assigned = parseUnitIds(call.assigned_unit_ids).filter(u => u !== unit_id);
     await execute(db, 'UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?', JSON.stringify(assigned), id);
     await execute(db, "UPDATE units SET status = 'available', current_call_id = NULL, last_status_change = datetime('now'), updated_at = datetime('now') WHERE id = ?", unit_id);
     // Return the full updated call row — the client (handleUnassignUnit) runs it
@@ -1294,19 +1313,22 @@ calls.post('/:id/dispatch', async (c) => {
     if (!call) return c.json({ error: 'Call not found' }, 404);
 
     const callIdNum = parseInt(id, 10);
-    const assigned = new Set(JSON.parse(call.assigned_unit_ids || '[]') as number[]);
-    for (const uid of unit_ids) assigned.add(uid);
+    const assigned = new Set(parseUnitIds(call.assigned_unit_ids));
+    // Coerce the incoming ids to numbers too — a string uid would slip past the
+    // numeric Set and re-introduce the mixed-type corruption.
+    const unitIdNums = unit_ids.map((u) => Number(u)).filter((n) => Number.isFinite(n) && n > 0);
+    for (const uid of unitIdNums) assigned.add(uid);
 
     await execute(db, "UPDATE calls_for_service SET assigned_unit_ids = ?, status = 'dispatched', dispatched_at = COALESCE(dispatched_at, datetime('now')) WHERE id = ?", JSON.stringify([...assigned]), id);
 
-    for (const uid of unit_ids) {
+    for (const uid of unitIdNums) {
       // Double-assign cleanup: pull each unit out of any prior different call
       // (see single assign-unit) so the old call doesn't show a phantom unit.
       const prior = await queryFirst<{ current_call_id: number | null }>(db, 'SELECT current_call_id FROM units WHERE id = ?', uid);
       if (prior?.current_call_id != null && prior.current_call_id !== callIdNum) {
         const priorCall = await queryFirst<{ assigned_unit_ids: string }>(db, 'SELECT assigned_unit_ids FROM calls_for_service WHERE id = ?', prior.current_call_id);
         if (priorCall) {
-          const priorList = (JSON.parse(priorCall.assigned_unit_ids || '[]') as number[]).filter((u) => u !== uid);
+          const priorList = parseUnitIds(priorCall.assigned_unit_ids).filter((u) => u !== uid);
           await execute(db, 'UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?', JSON.stringify(priorList), prior.current_call_id);
         }
       }

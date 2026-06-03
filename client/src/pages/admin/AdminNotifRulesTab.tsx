@@ -121,6 +121,13 @@ export default function AdminNotifRulesTab({ users, LoadingSpinner, error, setEr
 
   const handleSubmit = async () => {
     if (!form.name.trim()) { setError('Rule name is required'); return; }
+    // Guard the no-target rule (notifies nobody) on the client too, so the
+    // admin gets an inline message instead of the server's 400. Covers both
+    // create and edit (PUT) since they share this form.
+    const arr = (v: string) => { try { const a = JSON.parse(v || '[]'); return Array.isArray(a) ? a : []; } catch { return []; } };
+    if (arr(form.target_roles).length === 0 && arr(form.target_user_ids).length === 0) {
+      setError('Select at least one target role or user'); return;
+    }
     setSubmitting(true);
     try {
       if (editing) {

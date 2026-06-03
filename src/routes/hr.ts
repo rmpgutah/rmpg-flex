@@ -144,6 +144,79 @@ hr.get('/leave', requireRole(...ALL_ROLES), async (c) => {
   }
 });
 
+// ── CSV exports (Leave / Disciplinary / Reviews tabs' "Export → CSV") ──
+// The three HR tabs hit /api/hr/{leave|disciplinary|reviews}/export/csv via
+// <ExportButton>, which 404'd (no handler) → "Export failed with status 404".
+// These re-run each list query (no UI filters) and stream a CSV download. The
+// joins are copied verbatim from the corresponding list handlers so no guessed
+// column 500s the export. GET /…/export/csv is 3 segments — never shadows the
+// 2-segment GET /…/:id.
+function rowsToCsv(rows: Record<string, unknown>[]): string {
+  if (!rows.length) return '';
+  const cols = Object.keys(rows[0]);
+  const esc = (v: unknown) => {
+    const s = v == null ? '' : String(v);
+    return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  return [cols.join(','), ...rows.map((r) => cols.map((c) => esc(r[c])).join(','))].join('\n');
+}
+function csvResponse(csv: string, filename: string): Response {
+  return new Response(csv, {
+    headers: {
+      'Content-Type': 'text/csv; charset=utf-8',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+    },
+  });
+}
+
+hr.get('/leave/export/csv', requireRole(...ALL_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(db, `
+      SELECT lr.*, o.full_name AS officer_name, r.full_name AS reviewer_name
+      FROM leave_requests lr
+      LEFT JOIN users o ON o.id = lr.officer_id
+      LEFT JOIN users r ON r.id = lr.reviewed_by
+      ORDER BY lr.created_at DESC LIMIT 5000`);
+    return csvResponse(rowsToCsv(rows), 'leave_requests.csv');
+  } catch (err) {
+    console.error('[hr] GET /leave/export/csv', err);
+    return c.json({ error: 'Export failed' }, 500);
+  }
+});
+
+hr.get('/disciplinary/export/csv', requireRole(...ALL_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(db, `
+      SELECT dr.*, o.full_name AS officer_name, i.full_name AS issuer_name
+      FROM disciplinary_records dr
+      LEFT JOIN users o ON o.id = dr.officer_id
+      LEFT JOIN users i ON i.id = dr.issued_by
+      ORDER BY dr.incident_date DESC, dr.id DESC LIMIT 5000`);
+    return csvResponse(rowsToCsv(rows), 'disciplinary_records.csv');
+  } catch (err) {
+    console.error('[hr] GET /disciplinary/export/csv', err);
+    return c.json({ error: 'Export failed' }, 500);
+  }
+});
+
+hr.get('/reviews/export/csv', requireRole(...ALL_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(db, `
+      SELECT pr.*, o.full_name AS officer_name, r.full_name AS reviewer_name
+      FROM performance_reviews pr
+      LEFT JOIN users o ON o.id = pr.officer_id
+      LEFT JOIN users r ON r.id = pr.reviewer_id
+      ORDER BY pr.review_period_end DESC, pr.id DESC LIMIT 5000`);
+    return csvResponse(rowsToCsv(rows), 'performance_reviews.csv');
+  } catch (err) {
+    console.error('[hr] GET /reviews/export/csv', err);
+    return c.json({ error: 'Export failed' }, 500);
+  }
+});
+
 // GET /hr/leave/balances?year=YYYY — synthesized from POLICY_TOTALS
 // plus summed approved leave_requests.hours_requested per type.
 hr.get('/leave/balances', requireRole(...ALL_ROLES), async (c) => {
