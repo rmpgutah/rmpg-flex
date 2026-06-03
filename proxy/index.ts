@@ -610,6 +610,12 @@ const API_ROUTES: RouteRule[] = [
   // (persons on file at the address + warrant/gang/caution flags). New rewrite
   // handler in src/routes/dispatch/premiseHistory.ts; legacy never had it.
   { kind: 'regex', value: /^\/api\/dispatch\/address-occupants(\?|$)/, methods: ['GET'] },
+  // /api/dispatch/premise-history — New Call modal premise-history panel
+  // (PremiseHistory.tsx → {hasWarnings,total,entries}). Sibling of
+  // address-occupants above; the rewrite handler (premiseHistory.ts) was left
+  // out of that routing fix, so it fell through to env.LEGACY. Officer-safety
+  // (premise warnings) — route to the rewrite so the panel actually loads.
+  { kind: 'regex', value: /^\/api\/dispatch\/premise-history(\?|$)/, methods: ['GET'] },
   // /api/geocode/reverse — reverse-geocode a unit's live GPS to a street label
   // for the dispatch unit board. New rewrite handler (src/routes/geocode.ts,
   // KV-cached Nominatim); legacy never had it, so route it explicitly to
@@ -645,11 +651,32 @@ const API_ROUTES: RouteRule[] = [
   // to /enforcement ONLY — sibling /api/dispatch/heatmap/timelapse stays on
   // env.LEGACY (which DOES serve it; the rewrite has no timelapse handler).
   { kind: 'prefix', value: '/api/dispatch/heatmap/enforcement' },
+  // /api/dispatch/heatmap/predictions — predicted-hotspots overlay (MapPage
+  // useMapPredictions). Sibling of /enforcement; the rewrite handler
+  // (aggregates.ts) is fully defensive (degrades to {hotspots:[]}). Route to
+  // env.API so the overlay reflects the intended 90-day model rather than the
+  // legacy fallback. (/heatmap/timelapse still stays on legacy — no rewrite handler.)
+  { kind: 'prefix', value: '/api/dispatch/heatmap/predictions', methods: ['GET'] },
+  // /api/dispatch/disposition-stats — DispatchPage "DISPS:" strip. The rewrite
+  // handler (aggregates.ts) normalizes sentinel dispositions and is all-time
+  // (the client is written/labeled for all-time); the legacy fallback windows to
+  // 12h and mislabels it. Route to env.API for the correct, defensive version.
+  { kind: 'regex', value: /^\/api\/dispatch\/disposition-stats(\?.*)?$/, methods: ['GET'] },
+  // /api/dispatch/analysis/summary — MapPage Analysis overlay (useAnalysisSummary).
+  // The rewrite handler (aggregates.ts) is fully defensive (every sub-query
+  // .catch-degrades); legacy is the dead-code fallback. Route to env.API.
+  { kind: 'regex', value: /^\/api\/dispatch\/analysis\/summary(\?.*)?$/, methods: ['GET'] },
 
   // /api/dispatch/calls/check-duplicate — rewrite has correct route ordering
   // (literal /check-duplicate registered before parametric /:id). Legacy
   // hits the /:id handler first and 500s on NaN cast.
   { kind: 'prefix', value: '/api/dispatch/calls/check-duplicate' },
+  // GET /api/dispatch/calls/export — DispatchPage CSV export (ExportButton).
+  // The rewrite handler (calls.ts) emits MT-localized CSV with a 50k-row cap and
+  // the LIST_VIEW projection that dodges the D1 100-column cap the legacy
+  // `SELECT *` export hits. Literal path — placed before /calls/:id and the bare
+  // list rules so it can't be swallowed by either.
+  { kind: 'regex', value: /^\/api\/dispatch\/calls\/export(\?.*)?$/, methods: ['GET'] },
 
   // GET/PUT/DELETE /api/dispatch/calls/{id} (exact match, no trailing segment)
   // — rewrite avoids the D1 100-column-cap that 500s the legacy GET handler.
@@ -709,7 +736,19 @@ const API_ROUTES: RouteRule[] = [
   { kind: 'regex', value: /^\/api\/dispatch\/calls\/\d+\/status$/, methods: ['POST'] },
   // Single-call archive — rewrite writes archived_at in UTC; legacy mislabels MST.
   { kind: 'regex', value: /^\/api\/dispatch\/calls\/\d+\/archive$/, methods: ['POST'] },
+  // POST /api/dispatch/calls/:id/unarchive — restore an archived call (the
+  // archived-list "unarchive" action, useDispatchCallActions). Rewrite handler
+  // (calls.ts) sets status back to closed; the /archive rule above is anchored
+  // /archive$ so it does NOT match unarchive, which fell through to env.LEGACY.
+  { kind: 'regex', value: /^\/api\/dispatch\/calls\/\d+\/unarchive$/, methods: ['POST'] },
   { kind: 'regex', value: /^\/api\/dispatch\/calls\/archive-bulk$/, methods: ['POST'] },
+
+  // /api/dispatch/run-cards[/*] — Spillman-style canned dispatch templates
+  // (RunCardPreview on the New Call form + the run-card admin editor). The whole
+  // runCards router (GET list/by-type/:id + POST/PUT/DELETE) lives ONLY on the
+  // rewrite (src/routes/runCards.ts over dispatch_run_cards); legacy never had
+  // it, so every run-card read/write fell through to env.LEGACY.
+  { kind: 'prefix', value: '/api/dispatch/run-cards' },
 
   // ── Records search (rewrite has all three; legacy is missing /search
   // and /vehicles/search and returns empty `[]` instead) ──

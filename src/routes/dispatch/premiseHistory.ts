@@ -67,12 +67,19 @@ premise.get('/premise-history', async (c) => {
     ...params,
   );
 
-  // hasWarnings reflects the officer-safety signal — present rows
-  // with weapons / DV / injuries / caution flag should make the
-  // modal play the alert tone (PremiseHistory.tsx checks this).
-  const hasWarnings = rows.some(
-    (r) => r.weapons_involved || r.domestic_violence || r.injuries_reported || r.officer_safety_caution,
-  );
+  // hasWarnings reflects the officer-safety signal — present rows with weapons /
+  // DV / injuries / caution flag should make the modal play the alert tone
+  // (PremiseHistory.tsx checks this). NOTE weapons_involved is a TEXT column that
+  // stores literal sentinel strings ("None"/"N/A"/"0"/"") not NULL, so a naive
+  // truthiness check fires a FALSE alert tone on a no-weapon premise. Guard it;
+  // the others (domestic_violence/injuries_reported/officer_safety_caution) are
+  // integer flags and are safe as-is.
+  const WEAP_SENTINEL = new Set(['', 'none', 'n/a', 'na', '0', 'null', 'unknown', 'unk']);
+  const hasWarnings = rows.some((r) => {
+    const weap = (r.weapons_involved ?? '').toString().trim().toLowerCase();
+    const weaponReal = weap.length > 0 && !WEAP_SENTINEL.has(weap);
+    return weaponReal || r.domestic_violence || r.injuries_reported || r.officer_safety_caution;
+  });
 
   return c.json({
     hasWarnings,
@@ -99,7 +106,7 @@ premise.get('/address-occupants', async (c) => {
       db,
       `SELECT p.id, p.first_name, p.last_name, p.dob, p.address, p.flags, p.gang_affiliation,
               (SELECT COUNT(*) FROM warrants w
-                 WHERE w.person_id = p.id
+                 WHERE (w.subject_person_id = p.id OR w.person_id = p.id)
                    AND LOWER(COALESCE(w.status, '')) IN ('active', 'outstanding', 'confirmed')) AS active_warrants
        FROM persons p
        WHERE UPPER(p.address) LIKE ?
