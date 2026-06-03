@@ -1167,7 +1167,7 @@ export default function MapPage() {
       });
     });
 
-    return () => { unsubscribeUnit(); unsubscribeCall(); unsubscribePos(); };
+    return () => { unsubscribe(); unsubscribePos(); };
   }, [subscribe]);
 
   // ============================================================

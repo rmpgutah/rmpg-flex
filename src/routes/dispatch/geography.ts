@@ -74,6 +74,65 @@ geography.get('/codes', async (c) => {
   }
 });
 
+// GET /dispatch/geography/codes/lookup/:code — single dispatch-code lookup for
+// the CAD command bar (cadCommandParser "CODE 10-71"). The client calls this
+// path (the bare /codes handler above doesn't match it), so without this route
+// it routed to env.API and 404'd. Case-insensitive exact match; returns
+// { found:false } (HTTP 200) on a miss so the command bar shows "not found".
+geography.get('/codes/lookup/:code', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const raw = decodeURIComponent(c.req.param('code') || '').trim();
+    if (!raw) return c.json({ found: false });
+    const row = await queryFirst<Record<string, unknown>>(
+      db, 'SELECT * FROM dispatch_codes WHERE UPPER(code) = UPPER(?) AND COALESCE(active, 1) = 1', raw);
+    if (!row) return c.json({ found: false });
+    return c.json({ found: true, ...row });
+  } catch (err) {
+    console.error('GET /dispatch/geography/codes/lookup failed:', err);
+    return c.json({ found: false });
+  }
+});
+
+// GET /dispatch/geography/premise-alerts — active premise alerts by address
+// (usePremiseAlerts.checkAddress), by coordinate proximity (checkCoords), or all
+// active (BolosCard). The premise_alerts CRUD router is mounted at the separate
+// /api/dispatch/premise-alerts path, but the client reads via THIS geography
+// path — which routed to env.API and 404'd (no handler). Serve the read here.
+// Always filtered to active + unexpired. flags is returned as the raw string the
+// client's PremiseAlert type expects.
+geography.get('/premise-alerts', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const address = (c.req.query('address') || '').trim();
+    const lat = Number.parseFloat(c.req.query('lat') ?? '');
+    const lng = Number.parseFloat(c.req.query('lng') ?? '');
+    let where = "WHERE active = 1 AND (expires_at IS NULL OR expires_at >= datetime('now'))";
+    const params: unknown[] = [];
+    if (address.length >= 3) {
+      where += ' AND UPPER(address) LIKE ?';
+      params.push(`%${address.toUpperCase()}%`);
+    } else if (Number.isFinite(lat) && Number.isFinite(lng)) {
+      // ~0.003 deg ≈ 330 m proximity box.
+      where += ' AND latitude BETWEEN ? AND ? AND longitude BETWEEN ? AND ?';
+      params.push(lat - 0.003, lat + 0.003, lng - 0.003, lng + 0.003);
+    }
+    const rows = await query<Record<string, unknown>>(
+      db,
+      `SELECT id, address, latitude, longitude, alert_type, alert_level, title,
+              description, flags, expires_at, active
+       FROM premise_alerts ${where}
+       ORDER BY alert_level = 'critical' DESC, alert_level = 'warning' DESC, created_at DESC
+       LIMIT 50`,
+      ...params,
+    );
+    return c.json(rows);
+  } catch (err) {
+    console.error('GET /dispatch/geography/premise-alerts failed:', err);
+    return c.json([]);
+  }
+});
+
 // GET /dispatch/districts
 geography.get('/districts', async (c) => {
   try {

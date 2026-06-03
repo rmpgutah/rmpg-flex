@@ -161,4 +161,68 @@ welfare.post('/prompt/:userId', requireRole('admin', 'manager', 'supervisor', 'd
   }
 });
 
+// POST /api/dispatch/welfare/escalate — the client-side welfare timer hit the
+// missed-checkin threshold and auto-escalated (useOfficerSafety). Mirrors /help
+// (emergency broadcast + DO escalate) but flagged triggered_by:'auto_escalation'.
+// Body { unitId, callId } is advisory — the officer is resolved from the JWT.
+// Previously 404'd on env.API (no handler) → the auto-escalation silently no-op'd.
+welfare.post('/escalate', requireRole(...ALL_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const userId = c.get('userId') as number;
+    const userRow = await queryFirst<any>(db, 'SELECT id, full_name FROM users WHERE id = ?', userId);
+    const unit = await queryFirst<any>(db, 'SELECT id, call_sign, current_call_id FROM units WHERE officer_id = ?', userId);
+    const callContext = unit?.current_call_id
+      ? await queryFirst<any>(db, 'SELECT id, call_number, incident_type, location_address, latitude, longitude FROM calls_for_service WHERE id = ?', unit.current_call_id)
+      : null;
+
+    const payload = {
+      action: 'welfare_emergency',
+      user_id: userId,
+      officer_name: userRow?.full_name || 'Unknown officer',
+      call_sign: unit?.call_sign || null,
+      call_id: callContext?.id ?? null,
+      call_number: callContext?.call_number ?? null,
+      location_address: callContext?.location_address ?? null,
+      latitude: callContext?.latitude ?? null,
+      longitude: callContext?.longitude ?? null,
+      triggered_by: 'auto_escalation',
+      at: new Date().toISOString(),
+    };
+
+    try {
+      await execute(db, `
+        INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, ip_address)
+        VALUES (?, 'welfare_auto_escalation', 'user', ?, ?, ?)`,
+        userId, userId,
+        `Welfare auto-escalation (missed check-ins)${callContext ? ' on call ' + callContext.call_number : ''}`,
+        c.req.header('cf-connecting-ip') || 'unknown');
+    } catch { /* non-fatal */ }
+
+    // Tell the DO this officer escalated to emergency, then broadcast.
+    try { await getDO(c.env, userId).fetch('https://do/help', { method: 'POST', body: JSON.stringify({}) }); } catch { /* non-fatal */ }
+    broadcastAll('dispatch_update', payload);
+    return c.json({ success: true, broadcast: payload });
+  } catch (err) {
+    console.error('[welfare] escalate error', err);
+    return c.json({ error: 'Failed to escalate welfare check', code: 'WELFARE_ESCALATE_ERR' }, 500);
+  }
+});
+
+// POST /api/dispatch/welfare/checkin/:unitId — officer confirmed welfare (resets
+// the watch timer). Functionally identical to /activity; the :unitId path param
+// is advisory (the watch is keyed on the JWT officer). Previously 404'd on
+// env.API → the check-in silently failed to reset the timer.
+welfare.post('/checkin/:unitId', requireRole(...ALL_ROLES), async (c) => {
+  try {
+    const userId = c.get('userId') as number;
+    const result = await getDO(c.env, userId).fetch('https://do/activity', { method: 'POST' });
+    const out = await result.json().catch(() => ({}));
+    return c.json({ success: true, ...(out as object) });
+  } catch (err) {
+    console.error('[welfare] checkin error', err);
+    return c.json({ error: 'Failed to record check-in', code: 'WELFARE_CHECKIN_ERR' }, 500);
+  }
+});
+
 export default welfare;
