@@ -94,14 +94,32 @@ function parseOutline(text: string): Seg[] {
 
   const open = matches.filter((mm) => structural.get(idxOf(mm)));
   if (open.length === 0) return [{ depth: 0, marker: '', text: text.trim() }];
-  const segs: Seg[] = [];
+
+  // One raw segment per structural marker, plus any lead prose before the first.
+  const raw: Seg[] = [];
   const lead = text.slice(0, idxOf(open[0])).trim();
-  if (lead) segs.push({ depth: 0, marker: '', text: lead });
+  if (lead) raw.push({ depth: 0, marker: '', text: lead });
   for (let k = 0; k < open.length; k++) {
     const mm = open[k];
     const start = idxOf(mm) + mm[0].length;
     const end = k + 1 < open.length ? idxOf(open[k + 1]) : text.length;
-    segs.push({ depth: tokenDepth(mm[1]), marker: `(${mm[1]})`, text: text.slice(start, end).trim() });
+    raw.push({ depth: tokenDepth(mm[1]), marker: `(${mm[1]})`, text: text.slice(start, end).trim() });
+  }
+
+  // Fold "container" markers — a subsection like (3)(a)(i)… whose OWN text is
+  // empty because its content lives entirely in deeper children — onto that
+  // first child, so a pure container never lands on a line by itself ("(3)" /
+  // "(a)" blank rows). The official Utah Code prints these as one "(3)(a)(i)"
+  // lead; we keep the merged segment at the child's depth so real siblings
+  // (the following "(ii)") still align. A trailing empty container (no child to
+  // absorb it) is dropped — it carried no text to show.
+  const segs: Seg[] = [];
+  let prefix = '';
+  for (let k = 0; k < raw.length; k++) {
+    const seg = raw[k];
+    if (seg.marker && !seg.text) { if (raw[k + 1]) prefix += seg.marker; continue; }
+    segs.push({ ...seg, marker: prefix + seg.marker });
+    prefix = '';
   }
   return segs;
 }

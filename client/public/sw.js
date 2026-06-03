@@ -518,7 +518,11 @@
 //       corridorCritical decl in NavigationPage (TS2451), failing `vite build`
 //       so the v768 Law Book outline never shipped. Removed the dup; the Law
 //       Book outline + corridor scan now both deploy.
-const CACHE_NAME = 'rmpg-flex-v769';
+// v770: Law Book outline no longer emits "blank rows" — a container marker like
+//       (3)(a)(i)… whose own text is empty (content lives in deeper children)
+//       is now folded onto its first child as a combined "(3)(a)(i)" lead
+//       instead of rendering "(3)" / "(a)" alone on empty lines.
+const CACHE_NAME = 'rmpg-flex-v770';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
