@@ -508,7 +508,9 @@
 // v766: place /law-book across every nav surface — Layout (title map + Enforce
 //       group), MobileDrawer, windowManager (window sizing), HelpPage catalog —
 //       so the Law Book v2 is reachable consistently (was desktop-sidebar only).
-const CACHE_NAME = 'rmpg-flex-v766';
+// v767: wire the #1001 route corridor hazard scan — the "Ahead on route" panel
+//       now populates from active calls + crime hot-spots on the planned route.
+const CACHE_NAME = 'rmpg-flex-v767';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
