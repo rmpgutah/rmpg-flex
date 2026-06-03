@@ -129,6 +129,7 @@ import stubs from './routes/stubs';
 // Dispatch domain
 import dispatchCalls from './routes/dispatch/calls';
 import dispatchUnits from './routes/dispatch/units';
+import dispatchDuty from './routes/dispatch/duty';
 import dispatchGps from './routes/dispatch/gps';
 import dispatchTrips from './routes/dispatch/trips';
 import dispatchGeography from './routes/dispatch/geography';
@@ -202,6 +203,10 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // callLinks + panic + premiseHistory mount at /api/dispatch and
   // own paths like /calls/:id/persons, /panic, /premise-history.
   // MUST come before dispatchCalls so the longer-prefix patterns win.
+  // Officer shift lifecycle (clock-on + on-duty + fleet vehicle, integrated).
+  // BEFORE the bare /api/dispatch routers so /duty/* wins its prefix.
+  { prefix: '/api/dispatch/duty', router: dispatchDuty, auth: 'required',
+    note: 'Start/End Shift — clock-in/out + units.status + fleet assign in one atomic action' },
   { prefix: '/api/dispatch', router: dispatchCallLinks, auth: 'required',
     note: 'BEFORE dispatchCalls — handles /calls/:id/{persons,vehicles,property}' },
   { prefix: '/api/dispatch', router: dispatchPanic, auth: 'required' },

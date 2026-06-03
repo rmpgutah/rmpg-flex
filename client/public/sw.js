@@ -535,7 +535,12 @@
 // v779: map teardown-race hardening — getSourceSafe() guards the remaining
 //       getSource(...).setData() sites (twin of #1020's getLayer fix); prevents
 //       'getOwnSource' ErrorBoundary trip when a late callback fires post-remove().
-const CACHE_NAME = 'rmpg-flex-v780';
+// v781: integrated officer Start/End Shift — clock-on + on-duty + fleet vehicle
+//       in one action (ShiftCard → new /api/dispatch/duty API). Going on duty
+//       clocks the officer in, puts the unit in service, and assigns the take-
+//       home vehicle (else prompts to pick from the in-service pool); off duty
+//       reverses all three. Fleet assign hardened (no more stale open rows).
+const CACHE_NAME = 'rmpg-flex-v781';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

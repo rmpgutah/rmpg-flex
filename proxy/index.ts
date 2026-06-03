@@ -1139,6 +1139,11 @@ const API_ROUTES: RouteRule[] = [
   { kind: 'prefix', value: '/api/reports/templates' },
   { kind: 'prefix', value: '/api/reports/statute-analytics' },
   { kind: 'prefix', value: '/api/reports/crime-analysis' },
+  // Officer shift lifecycle → env.API (rewrite dispatch/duty.ts). The
+  // integrated "Start/End Shift" clocks the officer in/out, flips units.status
+  // in-service↔off-duty, and assigns/releases the fleet vehicle in one atomic
+  // action — it lives on the rewrite because that's where fleet management is.
+  { kind: 'prefix', value: '/api/dispatch/duty' },
   // MDT page calls this on first render
   { kind: 'prefix', value: '/api/dispatch/units/mine/audio-mode' },
   // /api/dispatch/units/:id/{audio-mode,mileage} — rewrite implements both
