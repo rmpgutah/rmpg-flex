@@ -892,6 +892,22 @@ try {
 ```
 > Place this for ALL transitions (the engine no-ops on statuses it doesn't care about). For terminal statuses, run it **before** the `current_call_id = NULL` UPDATE at line 1019 (otherwise `WHERE current_call_id = ?` finds no units). Easiest: compute `tripUnits` from `freedUnits` already collected at line 1018, OR move this block above line 1017.
 
+### 5b-2 — unit-status endpoint (the C1 follow-through)
+
+**File:** Modify the unit-status handler (the `unitStatus` router — `grep -rn "unitStatus\|/units" src/routesConfig.ts` then open the file it imports; it's mounted at `/api/dispatch/units`).
+
+A unit can change status **without** a call event — a dispatcher flips it to `available`/`off_duty`/`out_of_service` on the status monitor. `calls.ts` (5b) only fires on call transitions, so these direct unit changes must ALSO feed the engine, or an active trip leaks until the stale sweep. After the status UPDATE in that handler, add (best-effort):
+```ts
+try {
+  await applyTripEvent({
+    db, env: c.env, unitId: <the unit id>, officerId: <unit.officer_id>, vehicleId: <unit.vehicle_id>,
+    event: { kind: 'status', status: <new unit status> },
+    ctx: { curLat: <unit.latitude>, curLng: <unit.longitude>, prevLat: <unit.latitude>, prevLng: <unit.longitude> },
+  });
+} catch (e) { console.warn('[units] trip engine non-fatal:', e); }
+```
+The engine treats `available` as "close an active CALL_RESPONSE, leave a PATROL running" and `off_duty`/`out_of_service` as "close any active trip" (Task 3 fix C1). Feeding both call- and unit-status events is **safe** — a redundant close is a no-op because the engine only closes when a trip is active.
+
 ### 5c — Cron sweep + second cron expression
 
 **File:** Modify `wrangler.toml` line 179:
