@@ -288,8 +288,12 @@ personnel.get('/schedules', async (c) => {
 });
 
 // ── GET /personnel/time?start_date=...&end_date=...&officer_id=... ─
+// Read gate = WRITE roles (includes dispatcher): a dispatcher can POST/PUT/DELETE
+// time entries, and the client re-fetches this list right after every mutation.
+// Gating the read to MANAGER_ROLES (no dispatcher) 403'd that refresh, so a
+// dispatcher's edit looked half-broken (write OK, table stale + error toast).
 personnel.get('/time', async (c) => {
-  const denied = requireManager(c);
+  const denied = requireTimeWriter(c);
   if (denied) return denied;
 
   try {

@@ -441,7 +441,7 @@ calls.post('/', async (c) => {
           entity_type: 'call',
           entity_id: callId as number,
           incident_type: normalizedIncidentType,
-        });
+        }, c.env);
       }
 
       return c.json({ ...call, runCard: rcResult.card }, 201);

@@ -183,15 +183,20 @@ export default function EvidencePropertyPage() {
 
   const fetchStats = useCallback(async () => {
     try {
-      const res = await apiFetch<{ data: any }>('/records/evidence/stats');
-      setStats(res.data);
+      // The endpoint returns a BARE object { total, collected, stored, closed }
+      // (no {data} wrapper) — reading res.data left stats null and the whole
+      // stats row never rendered.
+      const res = await apiFetch<any>('/records/evidence/stats');
+      setStats(res?.data ?? res ?? null);
     } catch { /* silent */ }
   }, []);
 
   const fetchLocations = useCallback(async () => {
     try {
-      const res = await apiFetch<{ data: any[] }>('/records/evidence/locations');
-      setLocations(res.data || []);
+      // Bare array of { storage_location, count }; the dropdowns key on `name`.
+      const res = await apiFetch<any>('/records/evidence/locations');
+      const rows = Array.isArray(res) ? res : (res?.data ?? []);
+      setLocations(rows.map((r: any) => ({ name: r.storage_location ?? r.name, count: r.count })));
     } catch { /* silent */ }
   }, []);
 
@@ -458,10 +463,10 @@ export default function EvidencePropertyPage() {
         {stats && (
           <div className="flex gap-3 px-3 py-2 border-b border-rmpg-700 bg-surface-sunken">
             {[
-              { label: 'TOTAL', value: stats.total_items || 0, color: 'text-white' },
-              { label: 'IN STORAGE', value: stats.by_status?.in_storage || 0, color: 'text-gray-400' },
-              { label: 'CHECKED OUT', value: stats.by_status?.checked_out || 0, color: 'text-amber-400' },
-              { label: 'PENDING', value: stats.pending_disposition || 0, color: 'text-orange-400' },
+              { label: 'TOTAL', value: stats.total || 0, color: 'text-white' },
+              { label: 'COLLECTED', value: stats.collected || 0, color: 'text-gray-400' },
+              { label: 'IN STORAGE', value: stats.stored || 0, color: 'text-amber-400' },
+              { label: 'CLOSED', value: stats.closed || 0, color: 'text-orange-400' },
             ].map(s => (
               <div key={s.label} className="panel-beveled px-3 py-1.5 text-center min-w-0">
                 <div className="text-[9px] font-mono text-rmpg-500 tracking-wider">{s.label}</div>
