@@ -22,11 +22,12 @@ import {
   Navigation2, Satellite, Wifi, Globe, X, AlertTriangle, MapPin, Gauge,
   CornerUpLeft, CornerUpRight, ArrowUp, ArrowUpLeft, ArrowUpRight,
   Flag, Merge, RotateCw, RotateCcw, Clock, Box, Crosshair, Maximize, Minimize,
-  Flame, Search, type LucideIcon,
+  Flame, Search, Bell, BellOff, type LucideIcon,
 } from 'lucide-react';
 import { useGpsTracking } from '../hooks/useGpsTracking';
 import { useMapRouting } from '../hooks/useMapRouting';
 import { navigateTo } from '../utils/organicMapsNav';
+import { playTone } from '../utils/dispatchTones';
 import { useMap3D } from './map/hooks/useMap3D';
 import { mapboxgl, initMapbox, MAPBOX_STYLE_DARK } from '../utils/mapboxLoader';
 import { getMapboxAccessToken } from '../utils/mapboxApiKey';
@@ -354,6 +355,13 @@ export default function NavigationPage() {
   const [searchResults, setSearchResults] = useState<{ lat: number; lng: number; label: string }[]>([]);
   const [searching, setSearching] = useState(false);
   const [destLabel, setDestLabel] = useState<string | null>(null);
+  // Proximity alert tones + transient warning banner (Motorola dispatch tones).
+  const [alertsOn, setAlertsOn] = useState(true);
+  const [navAlert, setNavAlert] = useState<{ text: string; color: string } | null>(null);
+  const alertedCallsRef = useRef<Set<string>>(new Set());
+  const crimeHotRef = useRef(false);
+  const approachFiredRef = useRef<string | null>(null);
+  const alertTimerRef = useRef<number | null>(null);
   const [, force] = useState(0);
 
   const dir = gps.headingSmoothed ?? gps.course ?? gps.heading;
@@ -776,6 +784,67 @@ export default function NavigationPage() {
   ];
   const threatCount = callContacts.filter((c) => c.priority === 'P1' || c.priority === 'P2').length;
 
+  // ── Proximity alert tones (Motorola dispatch tones) ──
+  // Plays an authentic Motorola tone (dispatchTones.ts) + flashes a transient
+  // warning banner. Respects the page Alerts toggle AND the global sound mute.
+  const fireAlert = (tone: Parameters<typeof playTone>[0], text: string, color: string) => {
+    if (!alertsOn) return;
+    playTone(tone);
+    setNavAlert({ text, color });
+    if (alertTimerRef.current) window.clearTimeout(alertTimerRef.current);
+    alertTimerRef.current = window.setTimeout(() => setNavAlert(null), 6000);
+  };
+
+  // 1) Nearby high-priority calls — P1/P2 within 1mi. Fires once per call as it
+  //    enters the ring (re-arms when it leaves). P1 → Priority-1 warble, P2 → Hi-Lo.
+  useEffect(() => {
+    if (!alertsOn) return;
+    const seen = alertedCallsRef.current;
+    const within = new Set<string>();
+    for (const c of callContacts) {
+      if ((c.priority === 'P1' || c.priority === 'P2') && c.distMi <= 1.0 && c.call_number) {
+        within.add(c.call_number);
+        if (!seen.has(c.call_number)) {
+          seen.add(c.call_number);
+          fireAlert(c.priority === 'P1' ? 'p1_alert' : 'warning',
+            `${c.priority} ${c.incident_type.replace(/_/g, ' ')} · ${c.distMi.toFixed(1)}mi ${String(Math.round(c.bearing)).padStart(3, '0')}°`,
+            '#ef4444');
+        }
+      }
+    }
+    for (const id of Array.from(seen)) if (!within.has(id)) seen.delete(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [callContacts, alertsOn]);
+
+  // 2) High-crime-area entry — crossing into ≥8 incidents within ½mi (P25 3-pip).
+  //    Hysteresis (re-arm below 5) so it doesn't chatter at the boundary.
+  useEffect(() => {
+    if (!alertsOn) return;
+    if (!crimeHotRef.current && crimeNearby >= 8) {
+      crimeHotRef.current = true;
+      fireAlert('alert', `High-crime area · ${crimeNearby} within ½mi (60d)`, '#f59e0b');
+    } else if (crimeHotRef.current && crimeNearby < 5) {
+      crimeHotRef.current = false;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [crimeNearby, alertsOn]);
+
+  // 3) Approaching the routed destination — within ~800 ft, once per destination
+  //    (dispatch bell). Re-arms when the destination changes or clears.
+  useEffect(() => {
+    if (!alertsOn) return;
+    const d = destCoordsRef.current;
+    if (destCrowMi == null || !d) { approachFiredRef.current = null; return; }
+    const key = `${d.lat.toFixed(4)},${d.lng.toFixed(4)}`;
+    if (approachFiredRef.current !== key && destCrowMi <= 0.15) {
+      approachFiredRef.current = key;
+      fireAlert('dispatch_bell', `Approaching ${destLabel || activeRoute?.callNumber || 'destination'} · ${Math.round(destCrowMi * 5280)} ft`, '#22c55e');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [destCrowMi, alertsOn]);
+
+  useEffect(() => () => { if (alertTimerRef.current) window.clearTimeout(alertTimerRef.current); }, []);
+
   const step = useMemo(
     () => pickCurrentStep(activeRoute?.steps, routeProgress?.fraction ?? 0, activeRoute?.distanceMeters ?? 0),
     [activeRoute, routeProgress],
@@ -837,6 +906,15 @@ export default function NavigationPage() {
           <span className="text-[9px] uppercase text-rmpg-500">{gps.connectionType}</span>
         )}
         <button
+          onClick={() => setAlertsOn((v) => !v)}
+          className="toolbar-btn flex items-center justify-center"
+          style={{ color: alertsOn ? '#d4a017' : '#666' }}
+          title={alertsOn ? 'Proximity alert tones ON' : 'Proximity alert tones OFF'}
+          aria-label={alertsOn ? 'Mute proximity alerts' : 'Unmute proximity alerts'}
+        >
+          {alertsOn ? <Bell className="w-4 h-4" /> : <BellOff className="w-4 h-4" />}
+        </button>
+        <button
           onClick={() => setSearchOpen((v) => !v)}
           className="toolbar-btn flex items-center justify-center"
           style={{ color: searchOpen ? '#d4a017' : '#a0a0a0' }}
@@ -871,6 +949,17 @@ export default function NavigationPage() {
           <X className="w-4 h-4" /> Close
         </button>
       </div>
+
+      {/* Transient proximity-alert banner — flashes as the Motorola tone fires */}
+      {navAlert && (
+        <div
+          className="absolute z-40 left-1/2 -translate-x-1/2 flex items-center gap-2 px-3 py-1.5 shadow-2xl animate-pulse"
+          style={{ top: 46, background: 'rgba(8,8,8,0.96)', border: `1px solid ${navAlert.color}`, borderRadius: 2, maxWidth: '76%', boxShadow: `0 0 16px ${navAlert.color}66` }}
+        >
+          <AlertTriangle className="w-4 h-4 shrink-0" style={{ color: navAlert.color }} />
+          <span className="text-[12px] font-bold uppercase tracking-wide truncate" style={{ color: navAlert.color }}>{navAlert.text}</span>
+        </div>
+      )}
 
       {/* Destination search panel */}
       {searchOpen && (
