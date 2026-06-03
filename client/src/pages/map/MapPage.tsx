@@ -1167,7 +1167,7 @@ export default function MapPage() {
       });
     });
 
-    return () => { unsubscribeUnit(); unsubscribeCall(); unsubscribePos(); };
+    return () => { unsubscribe(); unsubscribePos(); };
   }, [subscribe]);
 
   // ============================================================
@@ -3702,6 +3702,7 @@ export default function MapPage() {
           <div className="absolute bottom-16 left-2 z-[1000]">
             <GpsHud
               gps={gps}
+              nav={{ activeRoute, routeProgress, offRoute }}
               onExport={handleExportTrack}
               onClear={gps.clearCapturedTrack}
               onClose={() => setShowGpsHud(false)}
