@@ -86,6 +86,7 @@ const NAV_GROUPS: NavGroup[] = [
       { path: '/serve', icon: Briefcase, label: 'Process Server' },
       { path: '/warrants', icon: AlertTriangle, label: 'Warrants' },
       { path: '/citations', icon: FileWarning, label: 'Citations' },
+      { path: '/law-book', icon: Scale, label: 'Law Book' },
       { path: '/trespass-orders', icon: ShieldBan, label: 'Trespass Orders' },
       { path: '/code-enforcement', icon: Construction, label: 'Code Enforcement' },
       { path: '/court', icon: Gavel, label: 'Court Tracker' },

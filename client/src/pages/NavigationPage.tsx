@@ -440,9 +440,6 @@ export default function NavigationPage() {
   const [searchResults, setSearchResults] = useState<{ lat: number; lng: number; label: string }[]>([]);
   const [searching, setSearching] = useState(false);
   const [destLabel, setDestLabel] = useState<string | null>(null);
-  // Route corridor hazard scan now lives as a useMemo lower down (needs
-  // nearbyCalls + the live myLat/myLng, declared after the effects). See
-  // `corridorHazards` / `corridorCritical` near the tactical-contacts block.
   // Proximity alert tones + transient warning banner (Motorola dispatch tones).
   const [alertsOn, setAlertsOn] = useState(true);
   const [navAlert, setNavAlert] = useState<{ text: string; color: string } | null>(null);
@@ -994,6 +991,90 @@ export default function NavigationPage() {
       .map((u) => ({ ...u, distMi: haversineMeters(myLat, myLng, u.lat, u.lng) / 1609.34, bearing: bearingTo(myLat, myLng, u.lat, u.lng) }))
       .sort((a, b) => a.distMi - b.distMi);
   }, [nearbyUnits, myLat, myLng]);
+
+  // ── Route corridor hazard scan (#1001) ──
+  // What the unit is about to drive INTO: active calls + crime hot-spots that
+  // snap onto the planned route AHEAD of the unit's current progress. #1001
+  // shipped the CorridorHazard type, tuning constants, scoreCorridorHazard(),
+  // and the "Ahead on route" panel UI but never wired the scan — done here over
+  // routeGeom + nearbyCalls + crimeIncidents (empty → panel hidden, no route).
+  const corridorHazards = useMemo<CorridorHazard[]>(() => {
+    const geom = routeGeom;
+    if (!geom || geom.coords.length < 2 || myLat == null || myLng == null) return [];
+    const { coords, cum } = geom;
+
+    // The unit's own distance along the route — only hazards ahead of this count.
+    const myAlong = snapToRoute(coords, cum, myLat, myLng).distAlong;
+
+    // Coarse bbox prefilter (generous pad) so the precise snap only runs on
+    // points that could plausibly be in-corridor; snapToRoute does the exact
+    // off-route + along-route test.
+    const bb = routeBBox(coords);
+    const pad = 0.0015; // ~165 m — comfortably covers the 70 m corridor either axis
+    const nearBox = (lat: number, lng: number) =>
+      lat >= bb.s - pad && lat <= bb.n + pad && lng >= bb.w - pad && lng <= bb.e + pad;
+
+    // On the path (within corridor width) AND ahead of us, up to the lookahead
+    // (not one we're already on top of). Returns meters-ahead, or null.
+    const aheadIfInCorridor = (offM: number, along: number): number | null => {
+      if (offM > CORRIDOR_HAZARD_M) return null;
+      const ahead = along - myAlong;
+      if (ahead < CORRIDOR_MIN_AHEAD_M || ahead > CORRIDOR_LOOKAHEAD_M) return null;
+      return ahead;
+    };
+
+    const hazards: CorridorHazard[] = [];
+
+    // 1) Active calls ahead — each is its own hazard, severity by priority.
+    for (const call of nearbyCalls) {
+      if (!nearBox(call.lat, call.lng)) continue;
+      const { offRouteMeters, distAlong } = snapToRoute(coords, cum, call.lat, call.lng);
+      const ahead = aheadIfInCorridor(offRouteMeters, distAlong);
+      if (ahead == null) continue;
+      const p = (call.priority || '').toUpperCase();
+      const severity = p === 'P1' ? 3 : p === 'P2' ? 2 : 1;
+      hazards.push({
+        kind: 'call',
+        label: p || 'CALL',
+        sub: [call.incident_type, call.call_number].filter(Boolean).join(' · '),
+        aheadMi: ahead / 1609.34,
+        color: severity >= 3 ? '#ef4444' : severity === 2 ? '#f59e0b' : '#fbbf24',
+        lat: call.lat, lng: call.lng,
+        severity,
+      });
+    }
+
+    // 2) Crime hot-segments — bin in-corridor crimes by along-route distance and
+    // flag a bin only when it clusters (>= CRIME_CLUSTER_MIN). A lone incident is
+    // noise; a tight cluster is a hot stretch worth the heads-up.
+    const bins = new Map<number, { count: number; along: number; lat: number; lng: number; label: string }>();
+    for (const c of crimeIncidents) {
+      if (!nearBox(c.lat, c.lng)) continue;
+      const { offRouteMeters, distAlong } = snapToRoute(coords, cum, c.lat, c.lng);
+      if (aheadIfInCorridor(offRouteMeters, distAlong) == null) continue;
+      const key = Math.floor(distAlong / CRIME_CLUSTER_BIN_M);
+      const cur = bins.get(key);
+      if (cur) cur.count += 1;
+      else bins.set(key, { count: 1, along: distAlong, lat: c.lat, lng: c.lng, label: c.label || c.category });
+    }
+    for (const b of bins.values()) {
+      if (b.count < CRIME_CLUSTER_MIN) continue;
+      const severity = b.count >= CRIME_CLUSTER_MIN * 2 ? 3 : 2;
+      hazards.push({
+        kind: 'crime',
+        label: 'CRIME',
+        sub: `${b.count} incidents · ${b.label}`,
+        aheadMi: (b.along - myAlong) / 1609.34,
+        color: severity >= 3 ? '#ef4444' : '#f59e0b',
+        lat: b.lat, lng: b.lng,
+        severity,
+      });
+    }
+
+    // Highest urgency first — the panel shows the top 4.
+    return hazards.sort((a, b) => scoreCorridorHazard(b) - scoreCorridorHazard(a));
+  }, [routeGeom, nearbyCalls, crimeIncidents, myLat, myLng]);
+  const corridorCritical = corridorHazards.filter((h) => h.severity >= 3).length;
   // Scope outer ring auto-ranges to the farthest contact, clamped to a 2–10mi band.
   const scopeMaxMi = useMemo(() => {
     const far = Math.max(0, ...callContacts.map((c) => c.distMi), ...unitContacts.map((u) => u.distMi));

@@ -177,6 +177,13 @@ const MODULES: ModuleInfo[] = [
     features: ['Citation entry', 'Multiple violations', 'Fine calculation', 'Court tracking', 'Batch operations'],
   },
   {
+    name: 'Law Book',
+    icon: BookOpen,
+    path: '/law-book',
+    description: 'Full Utah Code reference — criminal (Title 76), motor-vehicle (Title 41), and security/PI/process-server licensing statutes plus administrative rules, with offense levels and official source links.',
+    features: ['Statute & citation search', 'Browse by chapter', 'Severity filters', 'Full statutory text', 'le.utah.gov source links'],
+  },
+  {
     name: 'Process Service',
     icon: Send,
     path: '/serve',

@@ -19,6 +19,7 @@ import {
   Car,
   AlertTriangle,
   FileWarning,
+  Scale,
   Video,
   ClipboardList,
   ShieldBan,
@@ -106,6 +107,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/fleet': 'Fleet',
   '/warrants': 'Warrants',
   '/citations': 'Citations',
+  '/law-book': 'Law Book',
   '/field-interviews': 'Field Interviews',
   '/trespass-orders': 'Trespass Orders',
   '/mdt': 'MDT',
@@ -204,6 +206,7 @@ const TOOLBAR_NAV: NavItem[] = [
   { path: '/warrants', icon: AlertTriangle, label: 'Enforce', group: 'records', shortcut: 'F7', children: [
     { path: '/warrants', icon: AlertTriangle, label: 'Warrants' },
     { path: '/citations', icon: FileWarning, label: 'Citations' },
+    { path: '/law-book', icon: Scale, label: 'Law Book' },
     { path: '/trespass-orders', icon: ShieldBan, label: 'Trespass Orders' },
     { path: '/code-enforcement', icon: Construction, label: 'Code Enforcement' },
     { path: '/court', icon: Gavel, label: 'Court Tracker' },

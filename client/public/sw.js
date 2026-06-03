@@ -505,16 +505,12 @@
 //       data fields + destination search/route + Motorola proximity alert tones)
 //       and bumps the cache once for the whole accumulated NAVIGATE overhaul
 //       (the v761/v762/v763 bumps were lost in the race).
-// v766: RESTORE #1001's corridor hazard scan + patrol breadcrumb trail (the
-//       v764 recovery had stubbed corridorHazards=[] and dropped the trail), AND
-//       make the crime layer clickable — tapping a crime/CFS point opens a themed
-//       "DB visual" record card (case#/call#, class, scope, area, coords, live
-//       distance+bearing). Legend replaced by a Salt Lake County crime overview
-//       (class-breakdown bars + busiest city neighborhoods); window 60d → 90d.
-//       Also: corner panels (contacts / 3D inset / crime overview) now flow
-//       below the MEASURED turn-banner height (ResizeObserver) instead of a
-//       fixed top:96, fixing the banner/3D-inset overlap when a route is active.
-const CACHE_NAME = 'rmpg-flex-v766';
+// v766: place /law-book across every nav surface — Layout (title map + Enforce
+//       group), MobileDrawer, windowManager (window sizing), HelpPage catalog —
+//       so the Law Book v2 is reachable consistently (was desktop-sidebar only).
+// v767: wire the #1001 route corridor hazard scan — the "Ahead on route" panel
+//       now populates from active calls + crime hot-spots on the planned route.
+const CACHE_NAME = 'rmpg-flex-v767';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
