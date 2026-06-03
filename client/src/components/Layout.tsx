@@ -78,6 +78,7 @@ import {
   BellRing,
   Award,
   UserPlus,
+  Smartphone,
 } from 'lucide-react';
 import { Navigation2, Sun, Moon } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -133,6 +134,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/field-interviews': 'Field Interviews',
   '/trespass-orders': 'Trespass Orders',
   '/mdt': 'MDT',
+  '/mobile': 'Mobile',
   '/ncic': 'NCIC Terminal',
   '/dl-search': 'DL Search',
   '/shift-plans': 'Shift Plans',
@@ -211,6 +213,7 @@ const TOOLBAR_NAV: NavItem[] = [
   { path: '/dispatch', icon: Radio, label: 'Dispatch', group: 'ops', shortcut: 'F2' },
   { path: '/map', icon: Map, label: 'Map', group: 'ops', shortcut: 'F3' },
   { path: '/mdt', icon: Monitor, label: 'MDT', group: 'ops', shortcut: 'F4' },
+  { path: '/mobile', icon: Smartphone, label: 'Mobile', group: 'ops' },
   { path: '/navigation', icon: Navigation2, label: 'Navigate', group: 'ops' },
   { path: '/ncic', icon: Terminal, label: 'NCIC', group: 'ops', shortcut: 'F5' },
   { path: '/records', icon: Database, label: 'Records', group: 'records', shortcut: 'F6', children: [

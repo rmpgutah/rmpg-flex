@@ -540,7 +540,14 @@
 //       clocks the officer in, puts the unit in service, and assigns the take-
 //       home vehicle (else prompts to pick from the in-service pool); off duty
 //       reverses all three. Fleet assign hardened (no more stale open rows).
-const CACHE_NAME = 'rmpg-flex-v781';
+// v782: MDT duty buttons unified with the shift API — "OFF" ends the shift
+//       (clock out + release vehicle) and "AVAIL" from off-duty starts it
+//       (clock in + assign vehicle); operational statuses stay on the legacy
+//       unit-status path. ALSO: routed the mobile dashboard (MobileHomePage,
+//       which hosts the integrated ShiftCard) at /mobile + nav entries — it was
+//       orphaned (never routed), so the officer Start/End Shift control with
+//       vehicle picker was previously unreachable.
+const CACHE_NAME = 'rmpg-flex-v782';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

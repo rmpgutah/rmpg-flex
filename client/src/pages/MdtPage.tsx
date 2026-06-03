@@ -472,17 +472,36 @@ export default function MdtPage() {
   }, [subscribe, fetchData, gps.unitId]);
 
   // ── Unit Status Change ──
+  // Duty BOUNDARIES (off_duty, and going available FROM off_duty) run through
+  // the integrated shift API so they clock the officer out/in AND release/assign
+  // the fleet vehicle — matching the ShiftCard. Operational statuses
+  // (enroute/onscene/busy, or going available mid-shift) stay on the legacy
+  // unit-status path, which owns the live /api/ws broadcast + transition guard.
   const handleUnitStatus = async (newStatus: string) => {
     if (!myUnit) return;
     try {
-      await apiFetch(`/dispatch/units/${myUnit.id}/status`, {
-        method: 'PUT',
-        body: JSON.stringify({ status: newStatus }),
-      });
+      if (newStatus === 'off_duty') {
+        await apiFetch('/dispatch/duty/end', { method: 'POST', body: JSON.stringify({ unit_id: myUnit.id }) });
+        addToast('Shift ended — clocked out, vehicle released', 'success');
+      } else if (newStatus === 'available' && myUnit.status === 'off_duty') {
+        await apiFetch('/dispatch/duty/start', { method: 'POST', body: JSON.stringify({ unit_id: myUnit.id }) });
+        addToast('On duty — clocked in, vehicle assigned', 'success');
+      } else {
+        await apiFetch(`/dispatch/units/${myUnit.id}/status`, {
+          method: 'PUT',
+          body: JSON.stringify({ status: newStatus }),
+        });
+      }
       fetchData();
-    } catch (err) {
-      console.error('Status change failed:', err);
-      addToast('Failed to change unit status', 'error');
+    } catch (err: any) {
+      if (err?.code === 'NEEDS_VEHICLE') {
+        addToast('No take-home vehicle set — pick one on the Shift card to go on duty', 'warning');
+      } else if (err?.code === 'NO_UNIT') {
+        addToast('No unit assigned — ask dispatch to assign you a unit', 'error');
+      } else {
+        console.error('Status change failed:', err);
+        addToast('Failed to change unit status', 'error');
+      }
     }
   };
 

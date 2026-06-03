@@ -67,6 +67,7 @@ const LawBookPage = lazyRetry(() => import('./pages/LawBookPage'));
 const FieldInterviewsPage = lazyRetry(() => import('./pages/FieldInterviewsPage'));
 const TrespassOrdersPage = lazyRetry(() => import('./pages/TrespassOrdersPage'));
 const MdtPage = lazyRetry(() => import('./pages/MdtPage'));
+const MobileHomePage = lazyRetry(() => import('./pages/mobile/MobileHomePage'));
 const NavigationPage = lazyRetry(() => import('./pages/NavigationPage'));
 const ShiftPlansPage = lazyRetry(() => import('./pages/ShiftPlansPage'));
 const StatuteAnalyticsPage = lazyRetry(() => import('./pages/StatuteAnalyticsPage'));
@@ -408,6 +409,7 @@ function AppRoutes() {
             <Route path="/field-interviews" element={<RouteErrorBoundary><FieldInterviewsPage /></RouteErrorBoundary>} />
             <Route path="/trespass-orders" element={<RouteErrorBoundary><TrespassOrdersPage /></RouteErrorBoundary>} />
             <Route path="/mdt" element={<RouteErrorBoundary><MdtPage /></RouteErrorBoundary>} />
+            <Route path="/mobile" element={<RouteErrorBoundary><MobileHomePage /></RouteErrorBoundary>} />
             <Route path="/shift-plans" element={<RouteErrorBoundary><ShiftPlansPage /></RouteErrorBoundary>} />
             <Route path="/statute-analytics" element={<RouteErrorBoundary><StatuteAnalyticsPage /></RouteErrorBoundary>} />
             <Route path="/reports/custom" element={<RouteErrorBoundary><CustomReportBuilder /></RouteErrorBoundary>} />

@@ -12,7 +12,7 @@ import {
   Navigation2, Briefcase, Package, TrendingUp, Construction, Gavel, ClipboardCheck,
   UserX, X, ChevronRight, Terminal, Monitor, Search, ClipboardList, Calendar,
   ShieldBan, UserCog, Video, Camera, IdCard, Crosshair, ShieldAlert, Microscope,
-  BookOpen, Scale, Contact, Siren,
+  BookOpen, Scale, Contact, Siren, Smartphone,
 } from 'lucide-react';
 import RmpgLogo from '../RmpgLogo';
 import { toDisplayLabel } from '../../utils/formatters';
@@ -58,6 +58,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'Operations',
     items: [
       { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
+      { path: '/mobile', icon: Smartphone, label: 'Shift / Mobile' },
       { path: '/dispatch', icon: Radio, label: 'Dispatch' },
       { path: '/map', icon: Map, label: 'Map' },
       { path: '/mdt', icon: Monitor, label: 'MDT' },
