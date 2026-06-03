@@ -416,6 +416,12 @@ admin.post('/notification-rules', async (c) => {
     const name = typeof b.name === 'string' ? b.name.trim() : '';
     if (!name) return c.json({ error: 'Rule name is required' }, 400);
     if (!b.trigger_event) return c.json({ error: 'Trigger event is required' }, 400);
+    // A rule with neither roles nor users notifies NOBODY — reject rather than
+    // silently accept a dead rule on (often officer-safety) triggers.
+    const parseArr = (v: unknown) => { try { const a = JSON.parse(typeof v === 'string' ? v : '[]'); return Array.isArray(a) ? a : []; } catch { return []; } };
+    if (parseArr(b.target_roles).length === 0 && parseArr(b.target_user_ids).length === 0) {
+      return c.json({ error: 'Select at least one target role or user', code: 'NO_TARGETS' }, 400);
+    }
     const r = await execute(
       db,
       `INSERT INTO notification_rules
