@@ -4,6 +4,7 @@ import {
   Loader2, Navigation, Clock, DollarSign, Gauge, User,
 } from 'lucide-react';
 import { initMapbox, mapboxgl, MAPBOX_STYLE_DARK } from '../../utils/mapboxLoader';
+import { installWebglContextRecovery } from '../../utils/webglRecovery';
 import { getMapboxAccessToken } from '../../utils/mapboxApiKey';
 import { whenStyleReady } from '../../pages/map/utils/safeAddSource';
 import { apiFetch } from '../../hooks/useApi';
@@ -187,6 +188,9 @@ export default function ServeRoutePlanner({
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<mapboxgl.Marker[]>([]);
+  // WebGL context-loss recovery (rebuilds the map after a GPU context drop).
+  const [routeMapRecoverNonce, setRouteMapRecoverNonce] = useState(0);
+  const routeMapRecoveryCleanupRef = useRef<(() => void) | null>(null);
   const currentLocMarkerRef = useRef<mapboxgl.Marker | null>(null);
   const routeSourceIdRef = useRef<string | null>(null);
 
@@ -267,6 +271,20 @@ export default function ServeRoutePlanner({
       });
       mapRef.current = map;
       setMapReady(true);
+
+      // Rebuild in place if the GPU drops the context. The marker effect
+      // (keyed on mapReady) re-runs and re-fits bounds to the stops.
+      routeMapRecoveryCleanupRef.current = installWebglContextRecovery(map, {
+        label: 'ServeRoutePlanner',
+        onRebuild: () => {
+          if (routeMapRecoveryCleanupRef.current) { routeMapRecoveryCleanupRef.current(); routeMapRecoveryCleanupRef.current = null; }
+          markersRef.current.forEach((m) => { try { m.remove(); } catch { /* gone */ } });
+          markersRef.current = [];
+          if (mapRef.current) { try { mapRef.current.remove(); } catch { /* gone */ } mapRef.current = null; }
+          setMapReady(false);
+          setRouteMapRecoverNonce((n) => n + 1);
+        },
+      });
     };
 
     (async () => {
@@ -281,8 +299,15 @@ export default function ServeRoutePlanner({
       }
     })();
 
-    return () => { cancelled = true; setMapReady(false); };
-  }, [isOpen]);
+    return () => {
+      cancelled = true;
+      setMapReady(false);
+      if (routeMapRecoveryCleanupRef.current) { routeMapRecoveryCleanupRef.current(); routeMapRecoveryCleanupRef.current = null; }
+      markersRef.current.forEach((m) => { try { m.remove(); } catch { /* gone */ } });
+      markersRef.current = [];
+      if (mapRef.current) { try { mapRef.current.remove(); } catch { /* gone */ } mapRef.current = null; }
+    };
+  }, [isOpen, routeMapRecoverNonce]);
 
   // Update markers when stops change
   useEffect(() => {

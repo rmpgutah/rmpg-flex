@@ -34,6 +34,7 @@ import TabBar from '../components/TabBar';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { safeDateStr, safeTimeStr, parseTimestamp } from '../utils/dateUtils';
 import { initMapbox, mapboxgl, MAPBOX_STYLE_DARK, registerMapInstance, unregisterMapInstance } from '../utils/mapboxLoader';
+import { installWebglContextRecovery } from '../utils/webglRecovery';
 import { getMapboxAccessToken } from '../utils/mapboxApiKey';
 import { useToast } from '../components/ToastProvider';
 import { useAuth } from '../context/AuthContext';
@@ -100,6 +101,9 @@ function PatrolMapView({ checkpoints, scans }: { checkpoints: Checkpoint[]; scan
   const mapContainerRef = React.useRef<HTMLDivElement>(null);
   const mapInstanceRef = React.useRef<mapboxgl.Map | null>(null);
   const [mapReady, setMapReady] = React.useState(false);
+  // WebGL context-loss recovery (rebuilds the map after a GPU context drop).
+  const [recoverNonce, setRecoverNonce] = React.useState(0);
+  const recoveryCleanupRef = React.useRef<(() => void) | null>(null);
 
   React.useEffect(() => {
     if (!mapContainerRef.current) return;
@@ -118,6 +122,18 @@ function PatrolMapView({ checkpoints, scans }: { checkpoints: Checkpoint[]; scan
       });
       mapInstanceRef.current = map;
       registerMapInstance(map);
+
+      // Rebuild in place if the GPU drops the context. The marker/route effect
+      // (keyed on mapReady) re-runs and re-fits bounds to the checkpoints.
+      recoveryCleanupRef.current = installWebglContextRecovery(map, {
+        label: 'PatrolMapView',
+        onRebuild: () => {
+          if (recoveryCleanupRef.current) { recoveryCleanupRef.current(); recoveryCleanupRef.current = null; }
+          if (mapInstanceRef.current) { unregisterMapInstance(mapInstanceRef.current); try { mapInstanceRef.current.remove(); } catch { /* gone */ } mapInstanceRef.current = null; }
+          setMapReady(false);
+          setRecoverNonce((n) => n + 1);
+        },
+      });
 
       map.on('load', () => {
         if (cancelled) return;
@@ -139,9 +155,10 @@ function PatrolMapView({ checkpoints, scans }: { checkpoints: Checkpoint[]; scan
 
     return () => {
       cancelled = true;
+      if (recoveryCleanupRef.current) { recoveryCleanupRef.current(); recoveryCleanupRef.current = null; }
       if (mapInstanceRef.current) unregisterMapInstance(mapInstanceRef.current);
     };
-  }, []);
+  }, [recoverNonce]);
 
   // Add markers + polylines when map is ready
   React.useEffect(() => {

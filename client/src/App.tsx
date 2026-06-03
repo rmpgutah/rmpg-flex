@@ -488,21 +488,35 @@ function AppRoutes() {
 }
 
 export default function App() {
+  // TWO nested boundaries by design (defense in depth):
+  //  • OUTER — sits above every context provider. A render/effect throw inside
+  //    AuthProvider, WebSocketProvider, UserPreferencesProvider, ToastProvider,
+  //    or ContextMenuProvider propagates ABOVE the inner boundary (a boundary
+  //    can only catch its descendants), so without this the whole tree unmounts
+  //    to a blank white page. A long-shift WebSocket reconnect that throws was
+  //    white-screening the app and forcing a reload; this converts that into the
+  //    recovery card (which also auto-reports to /api/admin/health/client-error).
+  //    ErrorBoundary reads the auth token straight from localStorage, so it is
+  //    safe to mount above AuthProvider.
+  //  • INNER — catches page/route crashes WITHOUT tearing down the providers,
+  //    so the WebSocket + auth session survive a single page blowing up.
   return (
-    <AuthProvider>
-      <WebSocketProvider>
-        <UserPreferencesProvider>
-          <ToastProvider>
-            <ContextMenuProvider>
-              <ErrorBoundary>
-                <WebUpdateBanner />
-                <AndroidUpdateChecker />
-                <AppRoutes />
-              </ErrorBoundary>
-            </ContextMenuProvider>
-          </ToastProvider>
-        </UserPreferencesProvider>
-      </WebSocketProvider>
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <WebSocketProvider>
+          <UserPreferencesProvider>
+            <ToastProvider>
+              <ContextMenuProvider>
+                <ErrorBoundary>
+                  <WebUpdateBanner />
+                  <AndroidUpdateChecker />
+                  <AppRoutes />
+                </ErrorBoundary>
+              </ContextMenuProvider>
+            </ToastProvider>
+          </UserPreferencesProvider>
+        </WebSocketProvider>
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }

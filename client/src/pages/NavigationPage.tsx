@@ -35,6 +35,7 @@ import { navigateTo } from '../utils/organicMapsNav';
 import { playTone } from '../utils/dispatchTones';
 import { useMap3D } from './map/hooks/useMap3D';
 import { mapboxgl, initMapbox, MAPBOX_STYLE_DARK } from '../utils/mapboxLoader';
+import { installWebglContextRecovery, type MapCamera } from '../utils/webglRecovery';
 import { getMapboxAccessToken } from '../utils/mapboxApiKey';
 import { apiFetch } from '../hooks/useApi';
 import { compassCardinal } from '../utils/locationImagery';
@@ -458,6 +459,15 @@ export default function NavigationPage() {
   const insetMarkerRef = useRef<any>(null);
   const [insetReady, setInsetReady] = useState(false);
 
+  // WebGL context-loss recovery for both maps. In-vehicle Toughbooks run two GL
+  // contexts (main drive map + 3D inset) for a whole shift, so a GPU reclaim is
+  // likely; each map rebuilds itself in place at its captured view.
+  const [navRecoverNonce, setNavRecoverNonce] = useState(0);
+  const [insetRecoverNonce, setInsetRecoverNonce] = useState(0);
+  const navRecoverCamRef = useRef<MapCamera | null>(null);
+  const navRecoveryCleanupRef = useRef<(() => void) | null>(null);
+  const insetRecoveryCleanupRef = useRef<(() => void) | null>(null);
+
   // 3D terrain + sky + extruded buildings on BOTH the main drive map and the
   // corner inset (reuses the map page's 3D hook). The main view becomes a true
   // pitched 3D scene; the inset is a tighter, steeper chase view of the block.
@@ -539,19 +549,36 @@ export default function NavigationPage() {
         if (cancelled) return;
         if (!token) { setMapError('Mapbox token unavailable'); return; }
         initMapbox(token);
+        // A WebGL-loss rebuild reopens at the captured view; otherwise start at
+        // the current fix (the follow effect re-centers within ~1s regardless).
+        const rc = navRecoverCamRef.current;
+        navRecoverCamRef.current = null;
         const map = new mapboxgl.Map({
           container: mapContainerRef.current!,
           style: MAPBOX_STYLE_DARK,
-          center: [gps.longitude ?? -111.891, gps.latitude ?? 40.7608],
-          zoom: 16.5,
-          pitch: 55,
-          bearing: 0,
+          center: rc ? rc.center : [gps.longitude ?? -111.891, gps.latitude ?? 40.7608],
+          zoom: rc ? rc.zoom : 16.5,
+          pitch: rc ? rc.pitch : 55,
+          bearing: rc ? rc.bearing : 0,
           attributionControl: false,
           interactive: true,
         });
         map.on('load', () => {
           if (cancelled) { map.remove(); return; }
           mapInstanceRef.current = map;
+          // Rebuild this map in place if the GPU drops its context.
+          navRecoveryCleanupRef.current = installWebglContextRecovery(map, {
+            label: 'NavigationPage.main',
+            onRebuild: (camera) => {
+              navRecoverCamRef.current = camera;
+              if (navRecoveryCleanupRef.current) { navRecoveryCleanupRef.current(); navRecoveryCleanupRef.current = null; }
+              try { markerRef.current?.remove(); } catch { /* gone */ }
+              markerRef.current = null;
+              if (mapInstanceRef.current) { try { mapInstanceRef.current.remove(); } catch { /* gone */ } mapInstanceRef.current = null; }
+              setMapReady(false);
+              setNavRecoverNonce((n) => n + 1);
+            },
+          });
           // Push dark-v11 toward a pure-black tactical base — black land/background
           // and near-black water — so streets + the crime overlay pop. Defensive:
           // layer ids vary by style version, so guard every set.
@@ -574,11 +601,12 @@ export default function NavigationPage() {
     })();
     return () => {
       cancelled = true;
+      if (navRecoveryCleanupRef.current) { navRecoveryCleanupRef.current(); navRecoveryCleanupRef.current = null; }
       const m = mapInstanceRef.current;
       if (m) { try { m.remove(); } catch { /* already gone */ } mapInstanceRef.current = null; }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [navRecoverNonce]);
 
   // ── Corner 3D inset: a small, non-interactive steep-pitch chase map. Created
   // lazily once the main map is up AND we have a fix, so two GL contexts don't
@@ -602,6 +630,19 @@ export default function NavigationPage() {
         m.on('load', () => {
           if (cancelled) { m.remove(); return; }
           insetMapRef.current = m;
+          // Rebuild the inset if its GPU context drops (it follows GPS, so it
+          // re-centers on the next fix — no camera capture needed).
+          insetRecoveryCleanupRef.current = installWebglContextRecovery(m, {
+            label: 'NavigationPage.inset',
+            onRebuild: () => {
+              if (insetRecoveryCleanupRef.current) { insetRecoveryCleanupRef.current(); insetRecoveryCleanupRef.current = null; }
+              try { insetMarkerRef.current?.remove(); } catch { /* gone */ }
+              insetMarkerRef.current = null;
+              if (insetMapRef.current) { try { insetMapRef.current.remove(); } catch { /* gone */ } insetMapRef.current = null; }
+              setInsetReady(false);
+              setInsetRecoverNonce((n) => n + 1);
+            },
+          });
           insetMarkerRef.current = new mapboxgl.Marker({ color: '#d4a017' })
             .setLngLat([gps.longitude!, gps.latitude!]).addTo(m);
           setInsetReady(true);
@@ -611,11 +652,12 @@ export default function NavigationPage() {
     })();
     return () => {
       cancelled = true;
+      if (insetRecoveryCleanupRef.current) { insetRecoveryCleanupRef.current(); insetRecoveryCleanupRef.current = null; }
       const m = insetMapRef.current;
       if (m) { try { m.remove(); } catch { /* gone */ } insetMapRef.current = null; }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapReady, gps.latitude != null]);
+  }, [mapReady, gps.latitude != null, insetRecoverNonce]);
 
   // ── Follow the device: recenter + rotate to heading, update marker + route ──
   useEffect(() => {

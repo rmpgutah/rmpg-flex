@@ -17,6 +17,7 @@ import { apiFetch } from '../hooks/useApi';
 import { useToast } from '../components/ToastProvider';
 import { useAuth } from '../context/AuthContext';
 import { initMapbox, getMapboxInstance, mapboxgl, MAPBOX_STYLE_DARK } from '../utils/mapboxLoader';
+import { installWebglContextRecovery } from '../utils/webglRecovery';
 import { getMapboxAccessToken } from '../utils/mapboxApiKey';
 import { parseTimestamp } from '../utils/dateUtils';
 
@@ -279,6 +280,9 @@ export default function DashCamDetailPage() {
   const [linkCopied, setLinkCopied] = useState(false);
   const [mapSectionOpen, setMapSectionOpen] = useState(false);
   const [mapReady, setMapReady] = useState(false);
+  // WebGL context-loss recovery (rebuilds the map after a GPU context drop).
+  const [mapRecoverNonce, setMapRecoverNonce] = useState(0);
+  const mapRecoveryCleanupRef = useRef<(() => void) | null>(null);
 
   // Section open states
   const [sections, setSections] = useState({
@@ -414,6 +418,20 @@ export default function DashCamDetailPage() {
 
     mapRef.current = map;
 
+    // Rebuild in place if the GPU drops the context. The load handler below
+    // re-adds the marker + GPS-track layer, so a rebuild fully restores.
+    mapRecoveryCleanupRef.current = installWebglContextRecovery(map, {
+      label: 'DashCamDetail',
+      onRebuild: () => {
+        if (mapRecoveryCleanupRef.current) { mapRecoveryCleanupRef.current(); mapRecoveryCleanupRef.current = null; }
+        try { markerRef.current?.remove(); } catch { /* gone */ }
+        markerRef.current = null;
+        if (mapRef.current) { try { mapRef.current.remove(); } catch { /* gone */ } mapRef.current = null; }
+        setMapReady(false);
+        setMapRecoverNonce((n) => n + 1);
+      },
+    });
+
     map.on('load', () => {
       // Marker
       const marker = new mapboxgl.Marker({
@@ -453,7 +471,16 @@ export default function DashCamDetailPage() {
 
       setMapReady(true);
     });
-  }, [mapSectionOpen, video, gpsTrack]);
+  }, [mapSectionOpen, video, gpsTrack, mapRecoverNonce]);
+
+  // Tear down the map + recovery listener on unmount (kept separate so a
+  // video/gpsTrack change doesn't destroy the persisted map instance above).
+  useEffect(() => () => {
+    if (mapRecoveryCleanupRef.current) { mapRecoveryCleanupRef.current(); mapRecoveryCleanupRef.current = null; }
+    try { markerRef.current?.remove(); } catch { /* gone */ }
+    markerRef.current = null;
+    if (mapRef.current) { try { mapRef.current.remove(); } catch { /* gone */ } mapRef.current = null; }
+  }, []);
 
   // Cleanup Mapbox on unmount
   useEffect(() => {
