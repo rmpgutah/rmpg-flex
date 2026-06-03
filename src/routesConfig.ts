@@ -130,6 +130,7 @@ import stubs from './routes/stubs';
 import dispatchCalls from './routes/dispatch/calls';
 import dispatchUnits from './routes/dispatch/units';
 import dispatchGps from './routes/dispatch/gps';
+import dispatchTrips from './routes/dispatch/trips';
 import dispatchGeography from './routes/dispatch/geography';
 import dispatchAggregates from './routes/dispatch/aggregates';
 import dispatchPremiseHistory from './routes/dispatch/premiseHistory';
@@ -227,6 +228,7 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/dispatch/calls', router: dispatchCalls, auth: 'required' },
   { prefix: '/api/dispatch/units', router: dispatchUnits, auth: 'required' },
   { prefix: '/api/dispatch/gps', router: dispatchGps, auth: 'required' },
+  { prefix: '/api/dispatch/trips', router: dispatchTrips, auth: 'required' },
   { prefix: '/api/dispatch/geography', router: dispatchGeography, auth: 'required' },
   { prefix: '/api/dispatch', router: dispatchAggregates, auth: 'required' },
   { prefix: '/api/dispatch/run-cards', router: runCards, auth: 'required' },
