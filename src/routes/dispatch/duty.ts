@@ -28,7 +28,11 @@ const duty = new Hono<Env>();
 // Dispatch-tier roles may start/end a shift on another officer's behalf.
 const ON_BEHALF_ROLES = new Set(['admin', 'manager', 'supervisor', 'dispatcher']);
 
-interface UnitRow { id: number; call_sign: string; officer_id: number | null; status: string; vehicle_id: number | null; current_call_id: number | null; }
+// NOTE: units.vehicle_id is a TEXT column holding the vehicle_NUMBER string
+// (e.g. "PS-D19"), NOT the fleet_vehicles.id. The authoritative unit↔vehicle
+// link is fleet_vehicles.assigned_unit_id → units.id; units.vehicle_id is a
+// denormalized display field. (Verified on live data.)
+interface UnitRow { id: number; call_sign: string; officer_id: number | null; status: string; vehicle_id: string | null; current_call_id: number | null; }
 interface VehicleRow { id: number; vehicle_number: string | null; vehicle_name: string | null; make: string | null; model: string | null; status: string; assigned_unit_id: number | null; is_take_home: number | null; }
 
 // ISO timestamp matching the stored time_entries format ("…+00:00", no millis).
@@ -70,6 +74,10 @@ const VEH_COLS = `id, vehicle_number, vehicle_name, make, model, status, assigne
 function vehicleById(db: any, id: number | null | undefined) {
   return id ? queryFirst<VehicleRow>(db, `SELECT ${VEH_COLS} FROM fleet_vehicles WHERE id = ?`, id) : Promise.resolve(null);
 }
+// The unit's currently-assigned vehicle via the authoritative link.
+function currentVehicleForUnit(db: any, unitId: number) {
+  return queryFirst<VehicleRow>(db, `SELECT ${VEH_COLS} FROM fleet_vehicles WHERE assigned_unit_id = ? LIMIT 1`, unitId);
+}
 // In-service vehicles free to take (unassigned, or already on this unit).
 function availableVehicles(db: any, unitId: number | null) {
   return query<VehicleRow>(db,
@@ -93,18 +101,19 @@ async function releaseUnitVehicle(db: any, unitId: number) {
 // Assign a vehicle to a unit. Idempotent: closes the unit's + the vehicle's
 // prior OPEN assignment rows first (prevents the stale-open-row leak), then
 // writes the fresh audit row + both directional links.
-async function assignUnitVehicle(db: any, unitId: number, callSign: string | null, officerName: string | null, vehicleId: number) {
+async function assignUnitVehicle(db: any, unitId: number, callSign: string | null, officerName: string | null, vehicleId: number, vehicleNumber: string | null) {
   await execute(db, `UPDATE fleet_assignments SET unassigned_at = datetime('now') WHERE (unit_id = ? OR vehicle_id = ?) AND unassigned_at IS NULL`, unitId, vehicleId);
   await execute(db, `UPDATE fleet_vehicles SET assigned_unit_id = NULL, updated_at = datetime('now') WHERE assigned_unit_id = ? AND id != ?`, unitId, vehicleId);
   await execute(db, `INSERT INTO fleet_assignments (vehicle_id, unit_id, unit_call_sign, officer_name, assigned_at) VALUES (?,?,?,?,datetime('now'))`, vehicleId, unitId, callSign, officerName);
   await execute(db, `UPDATE fleet_vehicles SET assigned_unit_id = ?, updated_at = datetime('now') WHERE id = ?`, unitId, vehicleId);
-  await execute(db, `UPDATE units SET vehicle_id = ? WHERE id = ?`, vehicleId, unitId);
+  // units.vehicle_id is the denormalized vehicle_NUMBER string (not the id).
+  await execute(db, `UPDATE units SET vehicle_id = ? WHERE id = ?`, vehicleNumber, unitId);
 }
 
 async function stateFor(db: any, officerId: number) {
   const unit = await officerUnit(db, officerId);
   const entry = await openEntry(db, officerId);
-  const vehicle = unit ? await vehicleById(db, unit.vehicle_id) : null;
+  const vehicle = unit ? await currentVehicleForUnit(db, unit.id) : null;
   const takeHome = unit ? await takeHomeVehicle(db, unit.id) : null;
   const vehicles = await availableVehicles(db, unit?.id ?? null);
   return {
@@ -152,7 +161,7 @@ duty.post('/start', async (c) => {
       if (vehicle.status !== 'in_service') return c.json({ error: `Vehicle ${vehicle.vehicle_number ?? vehicle.id} is ${vehicle.status}, not in service`, code: 'VEHICLE_NOT_IN_SERVICE' }, 409);
       if (vehicle.assigned_unit_id && vehicle.assigned_unit_id !== unit.id) return c.json({ error: 'That vehicle is already assigned to another unit', code: 'VEHICLE_TAKEN' }, 409);
     } else {
-      vehicle = await takeHomeVehicle(db, unit.id) || await vehicleById(db, unit.vehicle_id);
+      vehicle = await takeHomeVehicle(db, unit.id) || await currentVehicleForUnit(db, unit.id);
       if (vehicle && vehicle.status !== 'in_service') vehicle = null;
       if (!vehicle) {
         return c.json({ needs_vehicle: true, code: 'NEEDS_VEHICLE', available_vehicles: await availableVehicles(db, unit.id) }, 409);
@@ -171,13 +180,14 @@ duty.post('/start', async (c) => {
       await execute(db, `UPDATE time_entries SET unit_id = ?, vehicle_id = ? WHERE id = ?`, unit.id, vehicle.id, entry.id);
     }
 
-    // 2) Unit in service, claimed by this officer, linked to the car.
+    // 2) Unit in service, claimed by this officer, linked to the car
+    //    (units.vehicle_id = the denormalized vehicle_NUMBER string).
     await execute(db,
       `UPDATE units SET status = 'available', officer_id = ?, vehicle_id = ?, last_status_change = datetime('now'), updated_at = datetime('now') WHERE id = ?`,
-      officerId, vehicle.id, unit.id);
+      officerId, vehicle.vehicle_number, unit.id);
 
     // 3) Fleet assignment (idempotent — closes any stale open rows first).
-    await assignUnitVehicle(db, unit.id, unit.call_sign, officerName, vehicle.id);
+    await assignUnitVehicle(db, unit.id, unit.call_sign, officerName, vehicle.id, vehicle.vehicle_number);
 
     const fresh = await queryFirst(db, `SELECT * FROM units WHERE id = ?`, unit.id);
     try { if (fresh) await emitAlert(c.env, 'dispatch_update', { action: 'unit_updated', unit: fresh }); } catch { /* never break the write */ }

@@ -1119,13 +1119,14 @@ fleet.put('/:id/assign', async (c) => {
       await execute(db, `UPDATE fleet_vehicles SET assigned_unit_id = NULL, updated_at = datetime('now') WHERE assigned_unit_id = ? AND id != ?`, uid, vehicleId);
       await execute(db, `INSERT INTO fleet_assignments (vehicle_id, unit_id, unit_call_sign, officer_name, assigned_at) VALUES (?,?,?,?,datetime('now'))`, vehicleId, uid, unit_call_sign ?? null, officer_name ?? null);
       await execute(db, `UPDATE fleet_vehicles SET assigned_unit_id = ?, updated_at = datetime('now') WHERE id = ?`, uid, vehicleId);
-      await execute(db, `UPDATE units SET vehicle_id = ? WHERE id = ?`, vehicleId, uid);
+      // units.vehicle_id is the denormalized vehicle_NUMBER string (not the id).
+      await execute(db, `UPDATE units SET vehicle_id = (SELECT vehicle_number FROM fleet_vehicles WHERE id = ?) WHERE id = ?`, vehicleId, uid);
     } else {
       // Unassign: close open rows for this vehicle + clear both directional links.
       const prev = await queryFirst<{ assigned_unit_id: number | null }>(db, `SELECT assigned_unit_id FROM fleet_vehicles WHERE id = ?`, vehicleId);
       await execute(db, `UPDATE fleet_assignments SET unassigned_at = datetime('now') WHERE vehicle_id = ? AND unassigned_at IS NULL`, vehicleId);
       await execute(db, `UPDATE fleet_vehicles SET assigned_unit_id = NULL, updated_at = datetime('now') WHERE id = ?`, vehicleId);
-      if (prev?.assigned_unit_id) await execute(db, `UPDATE units SET vehicle_id = NULL WHERE id = ? AND vehicle_id = ?`, prev.assigned_unit_id, vehicleId);
+      if (prev?.assigned_unit_id) await execute(db, `UPDATE units SET vehicle_id = NULL WHERE id = ?`, prev.assigned_unit_id);
     }
     const updated = await queryFirst<Record<string, unknown>>(db, `SELECT v.*, u.call_sign as assigned_unit_call_sign FROM fleet_vehicles v LEFT JOIN units u ON u.id = v.assigned_unit_id WHERE v.id = ?`, vehicleId);
     return c.json(updated);
