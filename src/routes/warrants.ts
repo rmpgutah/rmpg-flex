@@ -1446,7 +1446,7 @@ warrants.post('/', requireRole(...ROLES_CRUD_WRITE), async (c) => {
       priority: 'normal',
       entity_type: 'warrant',
       entity_id: warrantId as number,
-    });
+    }, c.env);
 
     return c.json(created, 201);
   } catch (err) {

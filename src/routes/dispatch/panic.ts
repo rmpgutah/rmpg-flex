@@ -229,7 +229,7 @@ panic.post('/panic', async (c) => {
       priority: 'critical',
       entity_type: 'panic_alert',
       entity_id: panicId,
-    });
+    }, c.env);
   } catch (err) {
     console.error('[panic] post-insert fan-out failed (non-fatal)', err);
   }
