@@ -468,7 +468,10 @@
 //       panic/alert socket on an always-foreground console after an outage). It
 //       now retries for the whole shift with ≤30s backoff + an 'online' handler
 //       that reconnects instantly when the network returns.
-const CACHE_NAME = 'rmpg-flex-v751';
+// v753: NAVIGATE drive screen — more live data: a rolling speed sparkline under
+//       the speedometer, average speed, a live clock, and a "Nearby Calls" panel
+//       ranking the active board by straight-line distance from the unit.
+const CACHE_NAME = 'rmpg-flex-v753';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
