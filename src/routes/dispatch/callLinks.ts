@@ -16,6 +16,7 @@ import type { Env } from '../../types';
 import { LIST_VIEW_SELECT } from './calls';
 import { getDb, query, queryFirst, execute } from '../../utils/db';
 import { sendToUser, broadcastAll } from '../ws';
+import { emitAlert } from '../../utils/alertHub';
 // Live D1 stores literal "None"/"N/A"/"0" in flag columns rather than NULL, so a
 // naive truthiness check fires a bogus officer-safety alert on a subject with no
 // flags. isFlagSet() (shared) treats those sentinels as absent.
@@ -119,7 +120,13 @@ links.post('/calls/:id/persons', async (c) => {
     );
     if ((wc?.n ?? 0) > 0) {
       const subjectName = `${person.first_name ?? ''} ${person.last_name ?? ''}`.trim() || 'Unknown subject';
-      broadcastAll('call:warrant_alert', {
+      // Deliver via AlertHubDO (emitAlert), NOT broadcastAll: the live /api/ws
+      // socket is served by the legacy worker, so broadcastAll() fans out in an
+      // EMPTY rewrite isolate and the warrant-hit banner/voice NEVER reached any
+      // dispatcher in prod — a wanted subject linked to a call silently raised no
+      // alarm. emitAlert routes through the /api/alerts-ws DO the client also
+      // subscribes to (same pattern panic.ts uses).
+      await emitAlert(c.env, 'call:warrant_alert', {
         call_id: Number(callId),
         person_id: body.person_id,
         personName: subjectName,
