@@ -468,7 +468,7 @@
 //       panic/alert socket on an always-foreground console after an outage). It
 //       now retries for the whole shift with ≤30s backoff + an 'online' handler
 //       that reconnects instantly when the network returns.
-const CACHE_NAME = 'rmpg-flex-v751';
+const CACHE_NAME = 'rmpg-flex-v752';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

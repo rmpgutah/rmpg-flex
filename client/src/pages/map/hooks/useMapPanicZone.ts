@@ -182,23 +182,52 @@ export function useMapPanicZone(
       return;
     }
 
-    const unsubAlert = subscribe('panic_alert', (message) => {
-      const data = (message.data || message.payload) as any;
-      if (!data) return;
+    // The worker emits the ENTIRE panic lifecycle as ONE message type,
+    // 'panic_alert', discriminated by msg.action (panic_activated /
+    // panic_acknowledged / panic_resolved / panic_cancelled / panic_false_alarm)
+    // — the same contract PanicButton consumes. The old code subscribed to
+    // discrete 'panic_acknowledged'/'panic_resolved'/'panic_cancelled'/
+    // 'panic_false_alarm' TYPES the worker NEVER emits, so the map panic zone was
+    // drawn on activation but NEVER cleared/updated when the panic was
+    // resolved/cancelled (a stuck officer-safety overlay). It also read
+    // message.data/payload + data.latitude, but the frame is flat with the row
+    // under .panic — so the zone could fail to draw at all. Fix: one 'panic_alert'
+    // subscription that reads the row like PanicButton and branches on action.
+    const unsub = subscribe('panic_alert', (msg: any) => {
+      const env = (msg.data || msg.payload || msg) as any;
+      const panic = env.panic || env;                       // the panic_alerts row
+      const action: string = msg.action || env.action || 'panic_activated';
 
-      const lat = Number(data.latitude);
-      const lng = Number(data.longitude);
+      if (action === 'panic_cancelled' || action === 'panic_false_alarm') {
+        clearOverlays();
+        setActivePanic(null);
+        return;
+      }
+      if (action === 'panic_acknowledged') {
+        setActivePanic(prev => prev ? { ...prev, status: 'acknowledged' } : prev);
+        updateCircleStatus('acknowledged');
+        return;
+      }
+      if (action === 'panic_resolved') {
+        setActivePanic(prev => prev ? { ...prev, status: 'resolved' } : prev);
+        updateCircleStatus('resolved');
+        return;
+      }
+
+      // panic_activated (or any unrecognized action): draw/refresh the zone.
+      const lat = Number(panic.latitude ?? env.latitude);
+      const lng = Number(panic.longitude ?? env.longitude);
       if (isNaN(lat) || isNaN(lng) || (lat === 0 && lng === 0)) return;
 
       const panicData: PanicData = {
-        callSign: data.unit_call_sign || data.badge_number || 'Unknown',
+        callSign: panic.unit_call_sign || panic.call_sign || panic.badge_number || env.unit_call_sign || 'Unknown',
         lat,
         lng,
-        timestamp: data.triggered_at || new Date().toISOString(),
-        userName: data.user_name,
-        callNumber: data.call_number,
-        locationAddress: data.location_address,
-        panicId: data.panic_id,
+        timestamp: panic.triggered_at || panic.created_at || env.triggered_at || new Date().toISOString(),
+        userName: panic.user_name ?? env.user_name,
+        callNumber: panic.call_number ?? env.call_number,
+        locationAddress: panic.location_address ?? env.location_address,
+        panicId: panic.id ?? env.panic_id ?? env.id,
         status: 'active',
       };
 
@@ -208,32 +237,8 @@ export function useMapPanicZone(
       }
     });
 
-    const unsubAck = subscribe('panic_acknowledged', () => {
-      setActivePanic(prev => prev ? { ...prev, status: 'acknowledged' } : prev);
-      updateCircleStatus('acknowledged');
-    });
-
-    const unsubResolved = subscribe('panic_resolved', () => {
-      setActivePanic(prev => prev ? { ...prev, status: 'resolved' } : prev);
-      updateCircleStatus('resolved');
-    });
-
-    const unsubCancelled = subscribe('panic_cancelled', () => {
-      clearOverlays();
-      setActivePanic(null);
-    });
-
-    const unsubFalse = subscribe('panic_false_alarm', () => {
-      clearOverlays();
-      setActivePanic(null);
-    });
-
     return () => {
-      unsubAlert();
-      unsubAck();
-      unsubResolved();
-      unsubCancelled();
-      unsubFalse();
+      unsub();
     };
   }, [enabled, subscribe, map, drawPanicZone, clearOverlays, updateCircleStatus]);
 
