@@ -122,6 +122,7 @@ import settings from './routes/settings';
 import adminSettings from './routes/adminSettings';
 import recruitment from './routes/recruitment';
 import reports from './routes/reports';
+import statutes from './routes/statutes';
 import specialOps from './routes/specialOps';
 import victimServices from './routes/victimServices';
 import stubs from './routes/stubs';
@@ -315,6 +316,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Special operations: SWAT callouts, tactical planning, equipment inventory' },
   { prefix: '/api/settings', router: settings, auth: 'required',
     note: 'Per-user + org-wide preference blobs for cross-device sync (migrations/0045)' },
+  { prefix: '/api/statutes', router: statutes, auth: 'required',
+    note: 'Utah law book (search/toc/chapter/section) over utah_statutes. Cutover from legacy /statutes/search — same {data:[]} contract, richer fields. Needs the matching proxy rule routing /api/statutes/* to env.API.' },
   { prefix: '/api/serve-intake', router: serveIntake, auth: 'required',
     note: 'Upload + OCR (Tesseract container) + Workers-AI field extraction; commits to serve_queue + serve_intake_documents' },
   { prefix: '/api/process-server', router: processServer, auth: 'required',

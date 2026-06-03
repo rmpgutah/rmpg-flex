@@ -1194,6 +1194,16 @@ const API_ROUTES: RouteRule[] = [
   // env.LEGACY and 404s, so cross-device sync + org defaults silently no-op.
   { kind: 'prefix', value: '/api/settings' },
 
+  // ── Utah law book (statutes + admin rules) ──
+  // Cutover of /api/statutes/* from legacy to the new Worker (src/routes/
+  // statutes.ts over utah_statutes, rebuilt by migration 0073 + seeded from
+  // le.utah.gov). search/toc/chapter/section all live on env.API now; the
+  // richer rows (full text, offense level, source links, licensing law) the
+  // legacy /statutes/search never returned. The more-specific
+  // /api/statutes/analytics/top-charged STUB above is checked first, so it
+  // stays stubbed.
+  { kind: 'prefix', value: '/api/statutes' },
+
   // ── Serve Intake (upload + OCR + LLM extraction) ──
   // The new Worker owns /scan-document, /upload, /intake, /:id/documents,
   // and /documents/:docId/file (R2-backed). The legacy `rmpg-flex`
