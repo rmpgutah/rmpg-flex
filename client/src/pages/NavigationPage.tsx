@@ -21,10 +21,11 @@ import { useNavigate } from 'react-router-dom';
 import {
   Navigation2, Satellite, Wifi, Globe, X, AlertTriangle, MapPin, Gauge,
   CornerUpLeft, CornerUpRight, ArrowUp, ArrowUpLeft, ArrowUpRight,
-  Flag, Merge, RotateCw, RotateCcw, type LucideIcon,
+  Flag, Merge, RotateCw, RotateCcw, Clock, Box, Crosshair, type LucideIcon,
 } from 'lucide-react';
 import { useGpsTracking } from '../hooks/useGpsTracking';
 import { useMapRouting } from '../hooks/useMapRouting';
+import { useMap3D } from './map/hooks/useMap3D';
 import { mapboxgl, initMapbox, MAPBOX_STYLE_NIGHT } from '../utils/mapboxLoader';
 import { getMapboxAccessToken } from '../utils/mapboxApiKey';
 import { apiFetch } from '../hooks/useApi';
@@ -97,6 +98,18 @@ export default function NavigationPage() {
     map: mapReady ? mapInstanceRef.current : null,
   });
 
+  // ── 3D corner inset ("chase-cam" perspective map) ──
+  const insetContainerRef = useRef<HTMLDivElement | null>(null);
+  const insetMapRef = useRef<any>(null);
+  const insetMarkerRef = useRef<any>(null);
+  const [insetReady, setInsetReady] = useState(false);
+
+  // 3D terrain + sky + extruded buildings on BOTH the main drive map and the
+  // corner inset (reuses the map page's 3D hook). The main view becomes a true
+  // pitched 3D scene; the inset is a tighter, steeper chase view of the block.
+  useMap3D({ map: mapReady ? mapInstanceRef.current : null, enabled: true, mapLoaded: mapReady, isLight: false });
+  useMap3D({ map: insetReady ? insetMapRef.current : null, enabled: true, mapLoaded: insetReady, isLight: false });
+
   // Movement accumulators (session distance / duration / max speed).
   const startRef = useRef<number | null>(null);
   const lastPosRef = useRef<{ lat: number; lng: number } | null>(null);
@@ -150,6 +163,43 @@ export default function NavigationPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // ── Corner 3D inset: a small, non-interactive steep-pitch chase map. Created
+  // lazily once the main map is up AND we have a fix, so two GL contexts don't
+  // spin up at once on an in-vehicle Toughbook. Degrades silently — the main
+  // view + instruments are unaffected if it can't init. ──
+  useEffect(() => {
+    if (!mapReady || !insetContainerRef.current || insetMapRef.current) return;
+    if (gps.latitude == null || gps.longitude == null) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const token = await getMapboxAccessToken();
+        if (cancelled || !token) return;
+        const m = new mapboxgl.Map({
+          container: insetContainerRef.current!,
+          style: MAPBOX_STYLE_NIGHT,
+          center: [gps.longitude!, gps.latitude!],
+          zoom: 17.4, pitch: 70, bearing: dir ?? 0,
+          attributionControl: false, interactive: false,
+        });
+        m.on('load', () => {
+          if (cancelled) { m.remove(); return; }
+          insetMapRef.current = m;
+          insetMarkerRef.current = new mapboxgl.Marker({ color: '#d4a017' })
+            .setLngLat([gps.longitude!, gps.latitude!]).addTo(m);
+          setInsetReady(true);
+        });
+        m.on('error', () => { /* tile/style hiccups are non-fatal */ });
+      } catch { /* inset is optional */ }
+    })();
+    return () => {
+      cancelled = true;
+      const m = insetMapRef.current;
+      if (m) { try { m.remove(); } catch { /* gone */ } insetMapRef.current = null; }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mapReady, gps.latitude != null]);
+
   // ── Follow the device: recenter + rotate to heading, update marker + route ──
   useEffect(() => {
     if (gps.latitude == null || gps.longitude == null) return;
@@ -175,8 +225,19 @@ export default function NavigationPage() {
       // Recompute route progress / off-route from the live position.
       updateOrigin(gps.latitude, gps.longitude);
     }
+    // Mirror onto the corner chase inset (steeper + tighter, snappier follow).
+    const inset = insetMapRef.current;
+    if (inset && insetReady) {
+      insetMarkerRef.current?.setLngLat([gps.longitude, gps.latitude]);
+      inset.easeTo({
+        center: [gps.longitude, gps.latitude],
+        bearing: dir ?? inset.getBearing(),
+        duration: 600,
+        essential: true,
+      });
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gps.latitude, gps.longitude, dir, mapReady]);
+  }, [gps.latitude, gps.longitude, dir, mapReady, insetReady]);
 
   // ── Auto-route to the unit's assigned call, once the map is ready ──
   const routedCallRef = useRef<number | null>(null);
@@ -212,6 +273,26 @@ export default function NavigationPage() {
     [activeRoute, routeProgress],
   );
   const StepIcon = step ? maneuverIcon(step.maneuverType, step.modifier) : ArrowUp;
+
+  // Upcoming maneuvers (the next few after the current one) + a wall-clock
+  // arrival estimate, for a richer directions panel.
+  const { upcomingSteps, arrivalClock } = useMemo(() => {
+    const steps = activeRoute?.steps ?? [];
+    const doneMeters = Math.max(0, Math.min(1, routeProgress?.fraction ?? 0)) * (activeRoute?.distanceMeters ?? 0);
+    let acc = 0, idx = 0;
+    for (let i = 0; i < steps.length; i++) { acc += steps[i].distanceMeters; idx = i; if (acc >= doneMeters) break; }
+    const upcoming = steps.slice(idx + 1, idx + 4);
+    // Arrival = now + remaining ETA, parsed loosely from the formatted string
+    // ("Xh Ym" / "X min" / "M:SS").
+    const etaStr = routeProgress?.remainingEta ?? activeRoute?.eta ?? '';
+    let mins = 0;
+    const hM = etaStr.match(/(\d+)\s*h/); const mM = etaStr.match(/(\d+)\s*m(?:in)?/);
+    if (hM) mins += parseInt(hM[1], 10) * 60;
+    if (mM) mins += parseInt(mM[1], 10);
+    if (!hM && !mM) { const cM = etaStr.match(/^(\d+):(\d{2})$/); if (cM) mins = parseInt(cM[1], 10) + (parseInt(cM[2], 10) >= 30 ? 1 : 0); }
+    const arrivalClock = mins > 0 ? new Date(Date.now() + mins * 60000).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : null;
+    return { upcomingSteps: upcoming, arrivalClock };
+  }, [activeRoute, routeProgress]);
 
   return (
     <div className="relative w-full h-full bg-surface-deep overflow-hidden" style={{ minHeight: 0 }}>
@@ -255,6 +336,11 @@ export default function NavigationPage() {
             <div className="text-right shrink-0">
               <div className="font-mono font-bold text-brand-300 text-[17px] leading-none">{routeProgress ? routeProgress.remainingEta : activeRoute.eta}</div>
               <div className="font-mono text-[10px] text-rmpg-400">{routeProgress ? routeProgress.remainingDistance : activeRoute.distance}</div>
+              {arrivalClock && (
+                <div className="font-mono text-[9px] text-rmpg-500 flex items-center justify-end gap-0.5">
+                  <Clock className="w-2.5 h-2.5" />{arrivalClock}
+                </div>
+              )}
             </div>
           </div>
           {routeProgress && (
@@ -267,8 +353,40 @@ export default function NavigationPage() {
               <AlertTriangle className="w-3 h-3" /> Off route — recalculating
             </div>
           )}
+          {/* Upcoming maneuvers (the next few turns) */}
+          {upcomingSteps.length > 0 && (
+            <div className="border-t border-rmpg-800">
+              {upcomingSteps.map((s, i) => {
+                const Icon = maneuverIcon(s.maneuverType, s.modifier);
+                return (
+                  <div key={i} className={`flex items-center gap-2 px-3 py-1 ${i > 0 ? 'border-t border-rmpg-800/50' : ''}`}>
+                    <Icon className="w-3.5 h-3.5 text-rmpg-400 shrink-0" />
+                    <span className="flex-1 min-w-0 truncate text-[10px] text-rmpg-300" title={s.instruction}>{s.instruction}</span>
+                    <span className="text-[8px] font-mono text-rmpg-500 shrink-0">{s.distanceText}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
+
+      {/* 3D chase-cam inset (corner) — a steep-pitch, tighter 3D view of the
+          block ahead, mirroring the device position + heading. */}
+      <div className="absolute z-20" style={{ top: 96, right: 8, width: 196, height: 148 }}>
+        <div className="relative w-full h-full panel-beveled border border-rmpg-600 overflow-hidden shadow-xl" style={{ borderRadius: 2 }}>
+          <div ref={insetContainerRef} className="absolute inset-0" />
+          <div className="absolute top-1 left-1 flex items-center gap-1 px-1 py-0.5 bg-surface-deep/80 backdrop-blur-sm" style={{ borderRadius: 2 }}>
+            <Box className="w-3 h-3 text-brand-400" />
+            <span className="text-[8px] font-bold uppercase tracking-wider text-rmpg-200">3D</span>
+          </div>
+          {!insetReady && (
+            <div className="absolute inset-0 flex items-center justify-center text-[9px] text-rmpg-600">
+              <Crosshair className="w-3 h-3 mr-1 animate-pulse" /> 3D view…
+            </div>
+          )}
+        </div>
+      </div>
       {!activeRoute && (
         <div className="absolute top-12 inset-x-2 z-20 panel-beveled bg-surface-deep/85 backdrop-blur-md border border-rmpg-700 px-3 py-1.5 text-[10px] uppercase text-rmpg-500 flex items-center gap-2" style={{ borderRadius: 2 }}>
           <MapPin className="w-3.5 h-3.5" /> No active route — following GPS
