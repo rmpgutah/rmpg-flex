@@ -460,7 +460,7 @@
 //       client now derives the display fields); Monthly Revenue + Clients-by-
 //       Status charts realigned to the worker's actual shapes; CRM Invoices tab
 //       reads the {data} envelope. (v744 reserved for the dispatch wave-1 PR.)
-const CACHE_NAME = 'rmpg-flex-v746';
+const CACHE_NAME = 'rmpg-flex-v747';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
