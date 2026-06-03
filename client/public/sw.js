@@ -522,7 +522,10 @@
 //       (3)(a)(i)… whose own text is empty (content lives in deeper children)
 //       is now folded onto its first child as a combined "(3)(a)(i)" lead
 //       instead of rendering "(3)" / "(a)" alone on empty lines.
-const CACHE_NAME = 'rmpg-flex-v770';
+// v771: NAVIGATE county-wide crime — multi-agency feed (West Valley/Sandy/UPD/
+//       U-of-U via LexisNexis) + SLC traffic-crash layer, travel-aware corridor
+//       crash scan, color-coded tokens, agency breakdown (#1011).
+const CACHE_NAME = 'rmpg-flex-v771';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
