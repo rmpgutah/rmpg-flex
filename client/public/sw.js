@@ -530,7 +530,9 @@
 //       58-37 Controlled Substances, 78B-7 Protective Orders), 76 & 77 refreshed
 //       to their 7/1/2026 versions, AI plain-language summaries on every section,
 //       data-driven category filters/landing + statute/chapter PDF printing.
-const CACHE_NAME = 'rmpg-flex-v781'; // Trip-log review fixes: enroute idempotency + no call-less response + marker time fallback
+// v777: citation authoring UI — multi-violation stack, live PDF preview (tri-mode),
+//       Combobox primitive replacing native <select> across CitationsPage + CitationAuthor.
+const CACHE_NAME = 'rmpg-flex-v777';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

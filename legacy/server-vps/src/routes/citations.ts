@@ -306,7 +306,26 @@ router.post('/', (req: Request, res: Response) => {
       case_id,
     } = req.body;
 
-    if (!violation_description?.trim()) {
+    // Optional multi-violation array — when provided, the first violation's
+    // description back-fills the legacy single-violation column so existing
+    // displays still render.
+    const violationsInput: any[] = Array.isArray(req.body.violations) ? req.body.violations : [];
+    let effectiveViolationDescription = violation_description;
+    let effectiveStatuteCitation = statute_citation;
+    let effectiveOffenseLevel = offense_level;
+    let effectiveFineAmount = fine_amount;
+    if (violationsInput.length > 0) {
+      const first = violationsInput[0] || {};
+      if (!effectiveViolationDescription?.toString().trim()) effectiveViolationDescription = first.description ?? '';
+      if (!effectiveStatuteCitation) effectiveStatuteCitation = first.statute_citation ?? null;
+      if (!effectiveOffenseLevel) effectiveOffenseLevel = first.offense_level ?? null;
+      if (effectiveFineAmount == null) {
+        const sum = violationsInput.reduce((acc, v) => acc + (Number(v?.fine_amount) || 0), 0);
+        effectiveFineAmount = sum;
+      }
+    }
+
+    if (!effectiveViolationDescription?.toString().trim()) {
       res.status(400).json({ error: 'Violation description is required', code: 'MISSING_DESCRIPTION' });
       return;
     }
@@ -357,7 +376,7 @@ router.post('/', (req: Request, res: Response) => {
       auditLog(req, 'ADMIN_OVERRIDE', 'citation', 0, `Admin God Mode: overrode created_at to ${req.body.created_at} on new citation`);
     }
 
-    const result = db.prepare(`
+    const insertCitation = db.prepare(`
       INSERT INTO citations (
         citation_number, type, status,
         person_id, person_name, person_dob, person_dl, person_address,
@@ -393,44 +412,70 @@ router.post('/', (req: Request, res: Response) => {
         ?, ?, ?, ?, ?, ?,
         ?, ?, ?, ?
       )
-    `).run(
-      citation_number, type, status,
-      person_id || null, person_name || null, person_dob || null, person_dl || null, person_address || null,
-      vehicle_description || null, vehicle_plate || null, vehicle_state || null,
-      statute_id || null, statute_citation || null, violation_description || null, offense_level || null, fine_amount ?? null,
-      violation_date, violation_time || null, location || null,
-      incident_id || null, call_id || null,
-      issuing_officer_id || null, issuing_officer_name || null, badge_number || null,
-      court_date || null, court_name || null, court_address || null,
-      notes || null, created_at, now,
-      // Prefer section_id (form sends this); fall back to legacy sector_id alias
-      section_id || sector_id || null, zone_id || null, beat_id || null, zone_beat || null, latitude ?? null, longitude ?? null,
-      vehicle_vin || null, vehicle_year || null, vehicle_make || null, vehicle_model || null, vehicle_color || null, vehicle_id || null,
-      speed_recorded ?? null, speed_limit ?? null, radar_type || null, bac_level ?? null,
-      bond_amount ?? null, bond_type || null,
-      is_warning ? 1 : 0, is_equipment_violation ? 1 : 0, weather_conditions || null, road_conditions || null,
-      school_zone ? 1 : 0, construction_zone ? 1 : 0, accident_related ? 1 : 0, dui_related ? 1 : 0, commercial_vehicle ? 1 : 0, hazmat ? 1 : 0,
-      court_time || null, court_room || null, appearance_required ? 1 : 0, case_id || null
-    );
+    `);
 
-    // Activity log
-    db.prepare(`
+    const insertViolation = db.prepare(`INSERT INTO citation_violations
+      (citation_id, statute_id, statute_citation, violation_description, offense_level, fine_amount, violation_number)
+      VALUES (?, ?, ?, ?, ?, ?, ?)`);
+
+    const insertActivity = db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
       VALUES (?, 'citation_created', 'citation', ?, ?, ?)
-    `).run(
-      req.user!.userId,
-      result.lastInsertRowid,
-      `Created citation ${citation_number}${person_name ? ` for ${person_name}` : ''}`,
-      req.ip || 'unknown'
-    );
+    `);
 
-    const created = db.prepare('SELECT * FROM citations WHERE id = ?').get(result.lastInsertRowid);
-    broadcastCitationUpdate({ type: 'citation_created', id: result.lastInsertRowid, citation_number });
+    const txn = db.transaction(() => {
+      const result = insertCitation.run(
+        citation_number, type, status,
+        person_id || null, person_name || null, person_dob || null, person_dl || null, person_address || null,
+        vehicle_description || null, vehicle_plate || null, vehicle_state || null,
+        statute_id || null, effectiveStatuteCitation || null, effectiveViolationDescription || null, effectiveOffenseLevel || null, effectiveFineAmount ?? null,
+        violation_date, violation_time || null, location || null,
+        incident_id || null, call_id || null,
+        issuing_officer_id || null, issuing_officer_name || null, badge_number || null,
+        court_date || null, court_name || null, court_address || null,
+        notes || null, created_at, now,
+        // Prefer section_id (form sends this); fall back to legacy sector_id alias
+        section_id || sector_id || null, zone_id || null, beat_id || null, zone_beat || null, latitude ?? null, longitude ?? null,
+        vehicle_vin || null, vehicle_year || null, vehicle_make || null, vehicle_model || null, vehicle_color || null, vehicle_id || null,
+        speed_recorded ?? null, speed_limit ?? null, radar_type || null, bac_level ?? null,
+        bond_amount ?? null, bond_type || null,
+        is_warning ? 1 : 0, is_equipment_violation ? 1 : 0, weather_conditions || null, road_conditions || null,
+        school_zone ? 1 : 0, construction_zone ? 1 : 0, accident_related ? 1 : 0, dui_related ? 1 : 0, commercial_vehicle ? 1 : 0, hazmat ? 1 : 0,
+        court_time || null, court_room || null, appearance_required ? 1 : 0, case_id || null
+      );
+      const newId = result.lastInsertRowid as number | bigint;
+
+      violationsInput.forEach((v, idx) => {
+        insertViolation.run(
+          newId,
+          v?.statute_id ?? null,
+          String(v?.statute_citation ?? ''),
+          String(v?.description ?? ''),
+          String(v?.offense_level ?? 'Infraction'),
+          Number(v?.fine_amount ?? 0),
+          idx + 1,
+        );
+      });
+
+      insertActivity.run(
+        req.user!.userId,
+        newId,
+        `Created citation ${citation_number}${person_name ? ` for ${person_name}` : ''}`,
+        req.ip || 'unknown'
+      );
+
+      return newId;
+    });
+
+    const citationId = txn() as number | bigint;
+
+    const created = db.prepare('SELECT * FROM citations WHERE id = ?').get(citationId);
+    broadcastCitationUpdate({ type: 'citation_created', id: citationId, citation_number });
     broadcastDispatchUpdate({
       action: 'citation_issued',
-      citation: { id: result.lastInsertRowid, citation_number, subject_name: person_name, violation: violation_description, officer_name: issuing_officer_name },
+      citation: { id: citationId, citation_number, subject_name: person_name, violation: effectiveViolationDescription, officer_name: issuing_officer_name },
     });
-    res.status(201).json({ data: created });
+    res.status(201).json({ id: Number(citationId), data: created });
   } catch (error: any) {
     console.error('Create citation error:', error);
     res.status(500).json({ error: 'Failed to create citation', code: 'CREATE_CITATION_ERROR' });
@@ -535,19 +580,50 @@ router.put('/:id', (req: Request, res: Response) => {
     // Admin can override timestamps
     const effectiveUpdatedAt = (req.user?.role === 'admin' && req.body.updated_at) ? req.body.updated_at : localNow();
 
-    if (fields.length > 0) {
-      fields.push('updated_at = ?');
-      values.push(effectiveUpdatedAt);
-      values.push(req.params.id);
-      db.prepare(`UPDATE citations SET ${fields.join(', ')} WHERE id = ?`).run(...values);
-      if (req.user?.role === 'admin' && req.body.updated_at) {
-        auditLog(req, 'ADMIN_OVERRIDE', 'citation', id, `Admin God Mode: overrode updated_at to ${req.body.updated_at}`);
-      }
-    }
+    // Optional violations[] replacement — when provided (even empty array),
+    // wipes existing violations and re-inserts. When undefined, untouched.
+    const violationsInput: any[] | undefined = Array.isArray(req.body.violations) ? req.body.violations : undefined;
 
-    // Admin can override citation_number
+    const updateTxn = db.transaction(() => {
+      if (fields.length > 0) {
+        const localFields = fields.slice();
+        const localValues = values.slice();
+        localFields.push('updated_at = ?');
+        localValues.push(effectiveUpdatedAt);
+        localValues.push(req.params.id);
+        db.prepare(`UPDATE citations SET ${localFields.join(', ')} WHERE id = ?`).run(...localValues);
+      }
+
+      // Admin can override citation_number
+      if (req.user?.role === 'admin' && req.body.citation_number) {
+        db.prepare('UPDATE citations SET citation_number = ? WHERE id = ?').run(req.body.citation_number, id);
+      }
+
+      if (violationsInput !== undefined) {
+        db.prepare('DELETE FROM citation_violations WHERE citation_id = ?').run(id);
+        const insertViolation = db.prepare(`INSERT INTO citation_violations
+          (citation_id, statute_id, statute_citation, violation_description, offense_level, fine_amount, violation_number)
+          VALUES (?, ?, ?, ?, ?, ?, ?)`);
+        violationsInput.forEach((v, idx) => {
+          insertViolation.run(
+            id,
+            v?.statute_id ?? null,
+            String(v?.statute_citation ?? ''),
+            String(v?.description ?? ''),
+            String(v?.offense_level ?? 'Infraction'),
+            Number(v?.fine_amount ?? 0),
+            idx + 1,
+          );
+        });
+      }
+    });
+
+    updateTxn();
+
+    if (fields.length > 0 && req.user?.role === 'admin' && req.body.updated_at) {
+      auditLog(req, 'ADMIN_OVERRIDE', 'citation', id, `Admin God Mode: overrode updated_at to ${req.body.updated_at}`);
+    }
     if (req.user?.role === 'admin' && req.body.citation_number) {
-      db.prepare('UPDATE citations SET citation_number = ? WHERE id = ?').run(req.body.citation_number, id);
       auditLog(req, 'ADMIN_OVERRIDE', 'citation', id, `Admin God Mode: overrode citation_number to ${req.body.citation_number}`);
     }
 
