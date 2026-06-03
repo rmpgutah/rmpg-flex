@@ -30,7 +30,10 @@ gps.post('/', async (c) => {
         heading: p?.heading ?? null,
         speed: p?.speed ?? null,
       }))
-      .filter((p) => Number.isFinite(p.latitude) && Number.isFinite(p.longitude));
+      .filter((p) => Number.isFinite(p.latitude) && Number.isFinite(p.longitude))
+      // Cap to the most-recent N — a large post-offline backlog replayed at once
+      // could otherwise exceed the D1 batch / Workers subrequest budget.
+      .slice(-200);
     if (!points.length) return c.json({ error: 'No valid GPS points' }, 400);
 
     // Get user's unit info (status carried into the live frame so the map can
@@ -40,14 +43,22 @@ gps.post('/', async (c) => {
 
     if (!unit) return c.json({ error: 'No assigned unit' }, 400);
 
-    const inserted: number[] = [];
-    for (const pt of points) {
-      const result = await execute(db,
-        `INSERT INTO gps_breadcrumbs (unit_id, officer_id, latitude, longitude, accuracy, heading, speed, call_sign, recorded_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
-        unit.id, userId, pt.latitude, pt.longitude, pt.accuracy, pt.heading, pt.speed, unit.call_sign
-      );
-      inserted.push(Number(result.meta.last_row_id));
+    // Breadcrumb trail — ONE batched write, BEST-EFFORT. This try/catch sits
+    // BEFORE the unit-row mirror below, so a trail failure can never skip the
+    // position write or the client's 200 success ack (which advances
+    // lastSentAt → clears the red GPS LED). The old per-point loop inside the
+    // outer try meant one failed insert 500'd the whole request and froze the
+    // unit position. (Restores the #978 hardening dropped in the #977×#978 merge.)
+    let inserted = 0;
+    try {
+      await executeBatch(db, points.map((pt) => ({
+        sql: `INSERT INTO gps_breadcrumbs (unit_id, officer_id, latitude, longitude, accuracy, heading, speed, call_sign, recorded_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+        bindings: [unit.id, userId, pt.latitude, pt.longitude, pt.accuracy, pt.heading, pt.speed, unit.call_sign],
+      })));
+      inserted = points.length;
+    } catch (err) {
+      console.warn('[gps] breadcrumb batch failed (non-fatal — position mirror still runs):', err);
     }
 
     // Mirror the latest fix onto the unit row. The map filters officer pins by

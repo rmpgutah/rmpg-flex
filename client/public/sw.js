@@ -463,11 +463,12 @@
 // v749: HR Leave/Disciplinary/Reviews "Export → CSV" now works (worker had no
 //       /export/csv handler → 404); an alert rule saved with no target role or
 //       user is now rejected (it would notify nobody).
-// v752: Navigation (MY GPS) drive screen upgraded — main map now renders true 3D
-//       (terrain + extruded buildings), a steep-pitch 3D "chase-cam" inset in the
-//       corner follows the unit, the directions panel shows upcoming turns + a
-//       wall-clock arrival time. (v751 = the alerts-socket reconnect fix PR.)
-const CACHE_NAME = 'rmpg-flex-v752';
+// v751: REGRESSION FIX — the alerts/panic WebSocket no longer hard-caps its
+//       reconnects (a cap added earlier could permanently deafen the agency-wide
+//       panic/alert socket on an always-foreground console after an outage). It
+//       now retries for the whole shift with ≤30s backoff + an 'online' handler
+//       that reconnects instantly when the network returns.
+const CACHE_NAME = 'rmpg-flex-v751';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
