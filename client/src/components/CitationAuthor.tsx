@@ -22,6 +22,7 @@ import {
   X,
 } from 'lucide-react';
 import RichTextArea from './RichTextArea';
+import { Combobox } from './Combobox';
 import StatuteLookup, { type StatuteResult } from './StatuteLookup';
 import { ViolationStack } from './ViolationStack';
 import { CitationPdfPreview } from './CitationPdfPreview';
@@ -126,6 +127,8 @@ const US_STATES = [
   'KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM',
   'NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','VT','VA','WA','WV','WI','WY',
 ];
+
+const US_STATE_OPTIONS: { value: string; label: string }[] = US_STATES.map(s => ({ value: s, label: s }));
 
 const EMPTY_FORM: CitationAuthorForm = {
   type: 'traffic',
@@ -540,9 +543,14 @@ export default function CitationAuthor({
         {isEdit && (
           <section>
             <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2">Status</h3>
-            <select value={form.status} onChange={e => updateField('status', e.target.value)} className="input-dark w-full py-2 text-xs min-h-[36px]">
-              {CITATION_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
-            </select>
+            <Combobox
+              value={CITATION_STATUSES.find(s => s.value === form.status) ?? null}
+              onChange={(opt) => updateField('status', opt?.value ?? 'issued')}
+              options={CITATION_STATUSES}
+              getLabel={(o) => o.label}
+              getKey={(o) => o.value}
+              placeholder="Status…"
+            />
           </section>
         )}
 
@@ -678,9 +686,14 @@ export default function CitationAuthor({
                 </div>
                 <div>
                   <label className="field-label">State</label>
-                  <select value={form.vehicle_state} onChange={e => updateField('vehicle_state', e.target.value)} className="input-dark w-full py-2 text-xs min-h-[36px]">
-                    {US_STATES.map(st => <option key={st} value={st}>{st}</option>)}
-                  </select>
+                  <Combobox
+                    value={US_STATE_OPTIONS.find(o => o.value === form.vehicle_state) ?? null}
+                    onChange={(opt) => updateField('vehicle_state', opt?.value ?? 'UT')}
+                    options={US_STATE_OPTIONS}
+                    getLabel={(o) => o.label}
+                    getKey={(o) => o.value}
+                    placeholder="State…"
+                  />
                 </div>
               </div>
             </div>
@@ -714,30 +727,48 @@ export default function CitationAuthor({
               <input type="text" value={form.location} onChange={e => updateField('location', e.target.value)} placeholder="Address or intersection" className="input-dark w-full py-2 text-xs min-h-[36px]" />
             </div>
             <div className="grid grid-cols-3 gap-2">
-              <div>
-                <label className="block text-xs text-rmpg-400 mb-1">Section</label>
-                <select className="w-full bg-[#181818] border border-[#2a2a2a] rounded-sm px-2 py-1.5 text-sm text-white"
-                  value={form.section_id || ''} onChange={(e) => { updateField('section_id', e.target.value); updateField('zone_id', ''); updateField('beat_id', ''); }}>
-                  <option value="">—</option>
-                  {sectionOptions.map(s => <option key={s} value={s}>{sectionLabels.get(s) || s}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs text-rmpg-400 mb-1">Zone</label>
-                <select className="w-full bg-[#181818] border border-[#2a2a2a] rounded-sm px-2 py-1.5 text-sm text-white"
-                  value={form.zone_id || ''} onChange={(e) => { updateField('zone_id', e.target.value); updateField('beat_id', ''); }}>
-                  <option value="">—</option>
-                  {zonesForSection(form.section_id).map(z => <option key={z} value={z}>{zoneLabels.get(z) || z}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs text-rmpg-400 mb-1">Beat</label>
-                <select className="w-full bg-[#181818] border border-[#2a2a2a] rounded-sm px-2 py-1.5 text-sm text-white"
-                  value={form.beat_id || ''} onChange={(e) => updateField('beat_id', e.target.value)}>
-                  <option value="">—</option>
-                  {beatsForZone(form.zone_id).map(b => <option key={b} value={b}>{getBeatLabel(form.zone_id, b)}</option>)}
-                </select>
-              </div>
+              {(() => {
+                const sectionOpts = [{ value: '', label: '—' }, ...sectionOptions.map(s => ({ value: s, label: sectionLabels.get(s) || s }))];
+                const zoneOpts = [{ value: '', label: '—' }, ...zonesForSection(form.section_id).map(z => ({ value: z, label: zoneLabels.get(z) || z }))];
+                const beatOpts = [{ value: '', label: '—' }, ...beatsForZone(form.zone_id).map(b => ({ value: b, label: getBeatLabel(form.zone_id, b) }))];
+                return (
+                  <>
+                    <div>
+                      <label className="block text-xs text-rmpg-400 mb-1">Section</label>
+                      <Combobox
+                        value={sectionOpts.find(o => o.value === (form.section_id || '')) ?? sectionOpts[0]}
+                        onChange={(opt) => { updateField('section_id', opt?.value ?? ''); updateField('zone_id', ''); updateField('beat_id', ''); }}
+                        options={sectionOpts}
+                        getLabel={(o) => o.label}
+                        getKey={(o) => o.value || '__none__'}
+                        placeholder="Section…"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-rmpg-400 mb-1">Zone</label>
+                      <Combobox
+                        value={zoneOpts.find(o => o.value === (form.zone_id || '')) ?? zoneOpts[0]}
+                        onChange={(opt) => { updateField('zone_id', opt?.value ?? ''); updateField('beat_id', ''); }}
+                        options={zoneOpts}
+                        getLabel={(o) => o.label}
+                        getKey={(o) => o.value || '__none__'}
+                        placeholder="Zone…"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-rmpg-400 mb-1">Beat</label>
+                      <Combobox
+                        value={beatOpts.find(o => o.value === (form.beat_id || '')) ?? beatOpts[0]}
+                        onChange={(opt) => updateField('beat_id', opt?.value ?? '')}
+                        options={beatOpts}
+                        getLabel={(o) => o.label}
+                        getKey={(o) => o.value || '__none__'}
+                        placeholder="Beat…"
+                      />
+                    </div>
+                  </>
+                );
+              })()}
             </div>
           </div>
         </section>

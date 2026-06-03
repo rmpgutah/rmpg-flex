@@ -36,6 +36,7 @@ import CitationAuthor from '../components/CitationAuthor';
 import type { CitationPdfData } from '../utils/recordPdfGenerator';
 import { localToday, formatDate } from '../utils/dateUtils';
 import ExportButton from '../components/ExportButton';
+import { Combobox } from '../components/Combobox';
 import { formatAddressDisplay } from '../utils/statusLabels';
 
 // ── Types ──────────────────────────────────────────────────
@@ -136,6 +137,24 @@ const CITATION_STATUSES: { value: CitationStatus; label: string }[] = [
   { value: 'dismissed', label: 'Dismissed' },
   { value: 'warrant_issued', label: 'Warrant Issued' },
   { value: 'voided', label: 'Voided' },
+];
+
+const FILTER_TYPE_OPTIONS: { value: CitationType | ''; label: string }[] = [
+  { value: '', label: 'All Types' },
+  ...CITATION_TYPES,
+];
+
+const FILTER_STATUS_OPTIONS: { value: CitationStatus | ''; label: string }[] = [
+  { value: '', label: 'All Statuses' },
+  ...CITATION_STATUSES,
+];
+
+const PAYMENT_METHOD_OPTIONS: { value: string; label: string }[] = [
+  { value: 'cash', label: 'Cash' },
+  { value: 'check', label: 'Check' },
+  { value: 'card', label: 'Card' },
+  { value: 'money_order', label: 'Money Order' },
+  { value: 'other', label: 'Other' },
 ];
 
 const STATUS_BADGE: Record<string, string> = {
@@ -414,14 +433,26 @@ export default function CitationsPage() {
         {/* Filter row */}
         <div className={`flex items-center ${isMobile ? 'flex-col gap-1.5' : 'gap-2 flex-wrap'}`}>
           {!isMobile && <Filter size={10} className="text-rmpg-500" />}
-          <select value={filterType} onChange={e => { setFilterType(e.target.value as any); setPage(1); }} className={`input-dark px-2 ${isMobile ? 'w-full py-2 text-xs' : 'py-1 text-[10px]'}`} style={isMobile ? { minHeight: 44 } : undefined}>
-            <option value="">All Types</option>
-            {CITATION_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-          </select>
-          <select value={filterStatus} onChange={e => { setFilterStatus(e.target.value as any); setPage(1); }} className={`input-dark px-2 ${isMobile ? 'w-full py-2 text-xs' : 'py-1 text-[10px]'}`} style={isMobile ? { minHeight: 44 } : undefined}>
-            <option value="">All Statuses</option>
-            {CITATION_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
-          </select>
+          <div className={isMobile ? 'w-full' : 'w-44'}>
+            <Combobox
+              value={FILTER_TYPE_OPTIONS.find(o => o.value === filterType) ?? FILTER_TYPE_OPTIONS[0]}
+              onChange={(opt) => { setFilterType((opt?.value ?? '') as CitationType | ''); setPage(1); }}
+              options={FILTER_TYPE_OPTIONS}
+              getLabel={(o) => o.label}
+              getKey={(o) => String(o.value)}
+              placeholder="Filter type…"
+            />
+          </div>
+          <div className={isMobile ? 'w-full' : 'w-48'}>
+            <Combobox
+              value={FILTER_STATUS_OPTIONS.find(o => o.value === filterStatus) ?? FILTER_STATUS_OPTIONS[0]}
+              onChange={(opt) => { setFilterStatus((opt?.value ?? '') as CitationStatus | ''); setPage(1); }}
+              options={FILTER_STATUS_OPTIONS}
+              getLabel={(o) => o.label}
+              getKey={(o) => String(o.value)}
+              placeholder="Filter status…"
+            />
+          </div>
         </div>
       </div>
 
@@ -629,9 +660,14 @@ export default function CitationsPage() {
                     </div>
                     <div className="grid grid-cols-2 gap-2">
                       <div><label className="text-[9px] text-rmpg-400 uppercase">Method</label>
-                        <select className="input-dark text-xs w-full min-h-[36px]" value={paymentForm.payment_method} onChange={e => setPaymentForm(p => ({ ...p, payment_method: e.target.value }))}>
-                          <option value="cash">Cash</option><option value="check">Check</option><option value="card">Card</option><option value="money_order">Money Order</option><option value="other">Other</option>
-                        </select></div>
+                        <Combobox
+                          value={PAYMENT_METHOD_OPTIONS.find(o => o.value === paymentForm.payment_method) ?? PAYMENT_METHOD_OPTIONS[0]}
+                          onChange={(opt) => setPaymentForm(p => ({ ...p, payment_method: opt?.value ?? 'cash' }))}
+                          options={PAYMENT_METHOD_OPTIONS}
+                          getLabel={(o) => o.label}
+                          getKey={(o) => o.value}
+                          placeholder="Method…"
+                        /></div>
                       <div><label className="text-[9px] text-rmpg-400 uppercase">Reference #</label>
                         <input className="input-dark text-xs w-full min-h-[36px]" value={paymentForm.reference_number} onChange={e => setPaymentForm(p => ({ ...p, reference_number: e.target.value }))} /></div>
                     </div>
