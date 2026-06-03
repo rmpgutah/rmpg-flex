@@ -463,7 +463,7 @@
 // v749: HR Leave/Disciplinary/Reviews "Export → CSV" now works (worker had no
 //       /export/csv handler → 404); an alert rule saved with no target role or
 //       user is now rejected (it would notify nobody).
-const CACHE_NAME = 'rmpg-flex-v749';
+const CACHE_NAME = 'rmpg-flex-v750';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

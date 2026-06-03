@@ -3699,10 +3699,14 @@ export default function MapPage() {
 
         {/* ── Live GPS HUD (desktop) ── */}
         {!isMobile && showGpsHud && (
-          <div className="absolute bottom-16 left-2 z-[1000]">
+          // The GPS HUD is position/heading/speed ONLY. Turn-by-turn lives in the
+          // nav banner below (and the full /navigation drive screen) — passing
+          // `nav` here rendered a SECOND turn-by-turn that overlapped the banner.
+          // Also lift the HUD above the banner (bottom:48) when a route is active
+          // so the two panels never collide.
+          <div className="absolute left-2 z-[1000]" style={{ bottom: activeRoute ? 144 : 64 }}>
             <GpsHud
               gps={gps}
-              nav={{ activeRoute, routeProgress, offRoute }}
               onExport={handleExportTrack}
               onClear={gps.clearCapturedTrack}
               onClose={() => setShowGpsHud(false)}
