@@ -16,14 +16,17 @@
 // dark backdrop, so the screen is never blank in a moving vehicle.
 // ============================================================
 
-import { useRef, useState, useEffect, useMemo, type ReactElement } from 'react';
+import { useRef, useState, useEffect, useLayoutEffect, useMemo, type ReactElement } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Navigation2, Satellite, Wifi, Globe, X, AlertTriangle, MapPin, Gauge,
   CornerUpLeft, CornerUpRight, ArrowUp, ArrowUpLeft, ArrowUpRight,
   Flag, Merge, RotateCw, RotateCcw, Clock, Box, Crosshair, Maximize, Minimize,
-  Flame, Search, Bell, BellOff, ShieldAlert, Footprints, type LucideIcon,
+  Flame, Search, Bell, BellOff, ShieldAlert, Footprints, Activity, History, type LucideIcon,
 } from 'lucide-react';
+import MovementReportDrawer from './navigation/MovementReportDrawer';
+import CallHistoryDrawer from './navigation/CallHistoryDrawer';
+import { buildMovementReport } from './navigation/vehicleTelemetry';
 import { useGpsTracking } from '../hooks/useGpsTracking';
 import { useMapRouting, snapToRoute } from '../hooks/useMapRouting';
 import { navigateTo } from '../utils/organicMapsNav';
@@ -416,11 +419,17 @@ export default function NavigationPage() {
   // Movement accumulators (session distance / duration / max speed).
   const startRef = useRef<number | null>(null);
   const lastPosRef = useRef<{ lat: number; lng: number } | null>(null);
+  const lastPosTimeRef = useRef<number | null>(null); // for position-derived speed
   const distanceRef = useRef(0);
   const [maxMph, setMaxMph] = useState(0);
   const speedHistRef = useRef<number[]>([]); // rolling mph samples for the sparkline
   const accelRef = useRef<{ mph: number; t: number } | null>(null);
   const [gForce, setGForce] = useState(0);
+  // Speed derived from position when the device reports none (cellular/WiFi
+  // positioning has no speed-over-ground). Keeps the gauges live everywhere.
+  const [derivedMph, setDerivedMph] = useState<number | null>(null);
+  const [tripOpen, setTripOpen] = useState(false); // MOVEMENT REPORT drawer
+  const [logOpen, setLogOpen] = useState(false);   // CALL HISTORY drawer
   const destCoordsRef = useRef<{ lat: number; lng: number } | null>(null);
   const myPosRef = useRef<{ lat: number; lng: number } | null>(null); // live pos for raw map handlers
   const crimePopupRef = useRef<any>(null);                            // single open crime "DB visual"
@@ -451,6 +460,8 @@ export default function NavigationPage() {
 
   const dir = gps.headingSmoothed ?? gps.course ?? gps.heading;
   const mph = gps.speed != null ? Math.round(gps.speed * 2.237) : null;
+  // Shown on the gauges: device speed when available, else position-derived.
+  const displayMph = mph ?? derivedMph;
   const hasFix = gps.latitude != null && gps.longitude != null;
   const src = SOURCE_META[gps.positionSource] || SOURCE_META.unknown;
 
@@ -547,21 +558,32 @@ export default function NavigationPage() {
     if (gps.latitude == null || gps.longitude == null) return;
     // Movement accumulators.
     if (startRef.current == null) startRef.current = Date.now();
+    const now = Date.now();
     const prev = lastPosRef.current;
+    // Effective speed: device value when present, else derived from how far we
+    // moved since the last fix (cellular/WiFi positioning reports no speed, so
+    // the gauges would otherwise sit at "awaiting speed" in most vehicles).
+    let effMph = mph;
     if (prev) {
       const d = haversineMeters(prev.lat, prev.lng, gps.latitude, gps.longitude);
       if (d > 1 && d < 5000) distanceRef.current += d; // ignore jitter + teleports
+      if (effMph == null && lastPosTimeRef.current != null) {
+        const dt = (now - lastPosTimeRef.current) / 1000;
+        if (dt > 0.4) { let v = (d / dt) * 2.237; if (v > 120) v = 0; effMph = Math.round(v); }
+      }
     }
     lastPosRef.current = { lat: gps.latitude, lng: gps.longitude };
+    lastPosTimeRef.current = now;
     myPosRef.current = { lat: gps.latitude, lng: gps.longitude }; // for raw map click handlers
-    if (mph != null && mph > maxMph) setMaxMph(mph);
+    setDerivedMph(mph == null ? effMph : null); // surface the derived value only when the device gives none
+    if (effMph != null && effMph > maxMph) setMaxMph(effMph);
     // Feed the rolling speed sparkline (last ~60 samples).
-    if (mph != null) { const h = speedHistRef.current; h.push(mph); if (h.length > 60) h.shift(); }
+    if (effMph != null) { const h = speedHistRef.current; h.push(effMph); if (h.length > 60) h.shift(); }
     // Longitudinal G-force from the speed delta (mph/s → g; 1 g ≈ 21.94 mph/s).
-    if (mph != null) {
-      const now = Date.now(); const prev = accelRef.current;
-      if (prev && now > prev.t) setGForce(((mph - prev.mph) / ((now - prev.t) / 1000)) / 21.94);
-      accelRef.current = { mph, t: now };
+    if (effMph != null) {
+      const p2 = accelRef.current;
+      if (p2 && now > p2.t) setGForce(((effMph - p2.mph) / ((now - p2.t) / 1000)) / 21.94);
+      accelRef.current = { mph: effMph, t: now };
     }
 
     const map = mapInstanceRef.current;
@@ -969,6 +991,16 @@ export default function NavigationPage() {
   const spark = speedHistRef.current;
   const sparkMax = Math.max(60, maxMph, ...spark);
   const course = gps.course ?? null;
+  // Rich movement telemetry for the TRIP drawer — built from the captured GPS
+  // track (so it works without device speed). Rebuilt only while the drawer is
+  // open, retriggered as fixes accrue (capturedCount ticks ~1/sec).
+  const movementReport = useMemo(
+    () => (tripOpen ? buildMovementReport(gps.getCapturedTrack()) : null),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [tripOpen, gps.capturedCount],
+  );
+  const liveLatG = movementReport && movementReport.series.length
+    ? movementReport.series[movementReport.series.length - 1].latG : 0;
   const destBearing = (destCoordsRef.current && gps.latitude != null && gps.longitude != null)
     ? bearingTo(gps.latitude, gps.longitude, destCoordsRef.current.lat, destCoordsRef.current.lng) : null;
   const destCrowMi = (destCoordsRef.current && gps.latitude != null && gps.longitude != null)
@@ -1197,14 +1229,24 @@ export default function NavigationPage() {
   // Measure the live turn-banner height so the corner panels can flow below it.
   // ResizeObserver catches every content change (added steps, off-route row,
   // corridor hazards); we re-attach when the banner mounts/unmounts.
+  //
+  // useLayoutEffect (not useEffect): this must measure + commit sideTop BEFORE
+  // the browser paints. As a passive effect it was deferred behind the heavy
+  // Mapbox/3D-inset render on this screen, so the first frame of a new route
+  // painted the tall banner on top of the corner panels (sideTop still at the
+  // 96 fallback) until the effect finally ran. Measuring pre-paint closes that
+  // window. SPA-only (no SSR), so there's no hydration concern.
+  //
+  // Always read el.offsetHeight (border-box) — both on attach AND inside the
+  // observer. ResizeObserver's contentRect is the *content box*, which excludes
+  // the 1px .panel-beveled border, so it under-reported the banner by ~2px and
+  // quietly ate into the 8px clearance gap below.
   const bannerShown = !!(activeRoute && step);
-  useEffect(() => {
+  useLayoutEffect(() => {
     const el = bannerRef.current;
     if (!bannerShown || !el) { setBannerH(0); return; }
     setBannerH(el.offsetHeight);
-    const ro = new ResizeObserver((entries) => {
-      for (const e of entries) setBannerH(e.contentRect.height);
-    });
+    const ro = new ResizeObserver(() => setBannerH(el.offsetHeight));
     ro.observe(el);
     return () => ro.disconnect();
   }, [bannerShown]);
@@ -1302,6 +1344,24 @@ export default function NavigationPage() {
           aria-label={trailOn ? 'Hide patrol trail' : 'Show patrol trail'}
         >
           <Footprints className="w-4 h-4" />
+        </button>
+        <button
+          onClick={() => { setTripOpen((v) => !v); if (!tripOpen) setLogOpen(false); }}
+          className="toolbar-btn flex items-center gap-1 text-[10px] uppercase"
+          style={{ color: tripOpen ? '#d4a017' : '#666' }}
+          title="Movement report (speed, g-force, driving events)"
+          aria-label="Toggle movement report"
+        >
+          <Activity className="w-4 h-4" /> Trip
+        </button>
+        <button
+          onClick={() => { setLogOpen((v) => !v); if (!logOpen) setTripOpen(false); }}
+          className="toolbar-btn flex items-center gap-1 text-[10px] uppercase"
+          style={{ color: logOpen ? '#d4a017' : '#666' }}
+          title="Call history log for this unit"
+          aria-label="Toggle call history log"
+        >
+          <History className="w-4 h-4" /> Log
         </button>
         <button
           onClick={toggleFullscreen}
@@ -1564,6 +1624,30 @@ export default function NavigationPage() {
         </div>
       )}
 
+      {/* ── MOVEMENT REPORT drawer (right) ── */}
+      {tripOpen && movementReport && (
+        <MovementReportDrawer
+          report={movementReport}
+          liveMph={hasFix ? displayMph : null}
+          liveLongG={gForce}
+          liveLatG={liveLatG}
+          sessionMs={sessionMs}
+          onClose={() => setTripOpen(false)}
+        />
+      )}
+
+      {/* ── CALL HISTORY drawer (left) ── */}
+      {logOpen && (
+        <CallHistoryDrawer
+          unitId={gps.unitId}
+          unitCallSign={gps.unitCallSign}
+          myLat={gps.latitude}
+          myLng={gps.longitude}
+          onRouteToCall={(lat, lng, label) => { routeToDestination(lat, lng, label); setLogOpen(false); }}
+          onClose={() => setLogOpen(false)}
+        />
+      )}
+
       {/* ── Advanced instrument dashboard (bottom) ── */}
       <div className="absolute bottom-0 inset-x-0 z-20">
         {/* Gold accent riser — lifts the instrument panel off the map */}
@@ -1579,7 +1663,7 @@ export default function NavigationPage() {
           <div className="flex items-stretch px-2 py-2">
             {/* Bay 1 — ring speed gauge */}
             <div className="flex items-center justify-center px-1">
-              <SpeedGauge mph={hasFix ? mph : null} />
+              <SpeedGauge mph={hasFix ? displayMph : null} />
             </div>
             <div className="w-px self-stretch my-1 bg-gradient-to-b from-transparent via-rmpg-700 to-transparent" />
 
