@@ -350,6 +350,10 @@ export default function NavigationPage() {
   const dir = gps.headingSmoothed ?? gps.course ?? gps.heading;
   const mph = gps.speed != null ? Math.round(gps.speed * 2.237) : null;
   const hasFix = gps.latitude != null && gps.longitude != null;
+  // Reverse-geocoded street name for the "Following GPS" banner. Not yet wired
+  // to a geocoder, so it's null today (the UI falls back to "Locating street…").
+  // Restores the client typecheck that referenced this before it was declared.
+  const currentStreet: string | null = null;
   const src = SOURCE_META[gps.positionSource] || SOURCE_META.unknown;
 
   // ── One-time Mapbox init (defensive — degrade to instruments-only) ──
