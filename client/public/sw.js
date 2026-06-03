@@ -530,7 +530,7 @@
 //       58-37 Controlled Substances, 78B-7 Protective Orders), 76 & 77 refreshed
 //       to their 7/1/2026 versions, AI plain-language summaries on every section,
 //       data-driven category filters/landing + statute/chapter PDF printing.
-const CACHE_NAME = 'rmpg-flex-v777'; // Navigation TRIPS drawer (trip chain + per-trip Movement Report reuse)
+const CACHE_NAME = 'rmpg-flex-v778'; // Map trip selector + replay via existing PlaybackTrail scrubber
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
