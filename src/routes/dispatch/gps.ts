@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import type { Env } from '../../types';
-import { getDb, query, queryFirst, execute } from '../../utils/db';
+import { getDb, query, queryFirst, execute, executeBatch } from '../../utils/db';
 import { emitAlert } from '../../utils/alertHub';
 
 const gps = new Hono<Env>();
@@ -95,7 +95,7 @@ gps.post('/', async (c) => {
       } catch { /* never break the write */ }
     }
 
-    return c.json({ inserted: inserted.length }, 201);
+    return c.json({ inserted, accepted: points.length }, 201);
   } catch (err) {
     return c.json({ error: 'GPS update failed' }, 500);
   }
