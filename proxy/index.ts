@@ -990,9 +990,16 @@ const API_ROUTES: RouteRule[] = [
   { kind: 'prefix', value: '/api/personnel/coverage-gaps', methods: ['GET'] },
   { kind: 'prefix', value: '/api/personnel/body-cameras' },
   { kind: 'prefix', value: '/api/personnel/bodycam-videos' },
-  // training* and duty-hours: handlers now live in src/routes/personnel.ts;
-  // legacy 404s / 500s on these. Route to env.API so the new handlers win.
-  { kind: 'prefix', value: '/api/personnel/training' },
+  // training reads + duty-hours: GET handlers live in src/routes/personnel.ts.
+  // The rewrite implements ONLY GET /training, /training-requirements,
+  // /training-completion — NOT the writes (POST/PUT/DELETE /training,
+  // /training-bulk-assign) nor /training/{academy,compliance,lesson-plans}. The
+  // old broad `prefix /api/personnel/training` (all methods) routed those to the
+  // rewrite too, where they 404'd — the Training page's create/edit/delete +
+  // academy/compliance/lesson-plans tabs broke. Route ONLY the three real GETs
+  // to env.API; everything else under /training* falls through to the legacy
+  // app's full Training backend (strictly not-worse than a guaranteed rewrite 404).
+  { kind: 'regex', value: /^\/api\/personnel\/training(-requirements|-completion)?(\?.*)?$/, methods: ['GET'] },
   { kind: 'prefix', value: '/api/personnel/duty-hours' },
   // activity / fitness / commendations — handlers in src/routes/personnel.ts
   // (audit_log+activity_log union; personnel_fitness; personnel_commendations).
