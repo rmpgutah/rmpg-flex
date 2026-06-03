@@ -123,18 +123,27 @@ gps.post('/', async (c) => {
     // never fail the breadcrumb write or the client's success ack.
     try {
       const nowMs = Date.now();
-      const tsList = points.map((p) => Date.parse(String(p.timestamp ?? '')));
+      // Bound the per-fix engine work: each fix is ~3-5 awaited D1 queries, and a
+      // post-offline replay (batch ≤200) could otherwise blow the Workers subrequest
+      // budget and silently drop ALL segmentation. Process the freshest fixes; the
+      // breadcrumb write above still persists every point.
+      const ENGINE_MAX = 60;
+      const enginePoints = points.length > ENGINE_MAX ? points.slice(-ENGINE_MAX) : points;
+      if (enginePoints.length < points.length) {
+        console.warn(`[gps] trip engine processed last ${enginePoints.length}/${points.length} fixes (offline-replay cap)`);
+      }
+      const tsList = enginePoints.map((p) => Date.parse(String(p.timestamp ?? '')));
       const lastTs = tsList[tsList.length - 1];
       const lastValid = Number.isFinite(lastTs);
       const fixTs = (i: number): number => {
         const ti = tsList[i];
         if (lastValid && Number.isFinite(ti)) return nowMs - (lastTs - ti);
-        return nowMs - (points.length - 1 - i) * 1000; // fallback: assume ~1s spacing
+        return nowMs - (enginePoints.length - 1 - i) * 1000; // fallback: assume ~1s spacing
       };
       let pLat = prevLat0;
       let pLng = prevLng0;
-      for (let i = 0; i < points.length; i++) {
-        const pt = points[i];
+      for (let i = 0; i < enginePoints.length; i++) {
+        const pt = enginePoints[i];
         await applyTripEvent({
           db, env: c.env, unitId: unit.id, officerId: unit.officer_id, vehicleId: unit.vehicle_id,
           event: { kind: 'gps', fix: { lat: pt.latitude, lng: pt.longitude, speed: pt.speed, heading: pt.heading, ts: fixTs(i) } },

@@ -46,6 +46,23 @@ describe('tripEngine.decide — status events', () => {
     const d = decide({ kind: 'status', status: 'off_duty' }, patrol(), baseCtx());
     expect(d.close?.reason).toBe('off_duty');
   });
+
+  it('a repeat enroute on the SAME active call is a no-op (no fragmentation)', () => {
+    const active: ActiveTrip = { ...patrol(), trip_type: 'call_response', call_id: 42 };
+    const d = decide({ kind: 'status', status: 'enroute' }, active, baseCtx({ callId: 42, callNumber: '24-0613' }));
+    expect(d.close).toBeUndefined();
+    expect(d.open).toBeUndefined();
+  });
+  it('a call-less enroute does NOT open a phantom CALL_RESPONSE', () => {
+    const d = decide({ kind: 'status', status: 'enroute' }, null, baseCtx({ callId: null }));
+    expect(d.open).toBeUndefined();
+  });
+  it('enroute to a DIFFERENT call while on one closes (redispatch) and opens the new one', () => {
+    const active: ActiveTrip = { ...patrol(), trip_type: 'call_response', call_id: 42 };
+    const d = decide({ kind: 'status', status: 'enroute' }, active, baseCtx({ callId: 43, callNumber: '24-0614' }));
+    expect(d.close?.reason).toBe('redispatch');
+    expect(d.open?.callId).toBe(43);
+  });
 });
 
 describe('tripEngine.decide — gps events', () => {

@@ -3067,7 +3067,7 @@ export default function MapPage() {
       const mA = createMarker({
         map,
         position: [startLng, startLat],
-        content: buildFlag('A', accent, safeDateTimeStr(tripDetail.start_time) || 'START'),
+        content: buildFlag('A', accent, safeDateTimeStr(tripDetail.start_time, 'START')),
         zIndex: 950,
         title: `Trip start — ${safeDateTimeStr(tripDetail.start_time) || ''}`,
       });
@@ -3077,7 +3077,7 @@ export default function MapPage() {
       const mB = createMarker({
         map,
         position: [endLng, endLat],
-        content: buildFlag('B', '#e5e5e5', safeDateTimeStr(tripDetail.end_time) || 'ACTIVE'),
+        content: buildFlag('B', '#e5e5e5', safeDateTimeStr(tripDetail.end_time, 'ACTIVE')),
         zIndex: 950,
         title: `Trip end — ${safeDateTimeStr(tripDetail.end_time) || 'in progress'}`,
       });

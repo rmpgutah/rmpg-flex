@@ -75,6 +75,18 @@ export function decide(event: TripEvent, active: ActiveTrip | null, ctx: EngineC
 function decideStatus(status: string, active: ActiveTrip | null, ctx: EngineCtx): EngineDecision {
   const d: EngineDecision = {};
   if (MOVING_STATUSES.has(status)) {
+    // Idempotent: a repeat/duplicate enroute for the SAME call must not close +
+    // reopen (which would fragment one response into spurious near-zero trips).
+    if (active && active.trip_type === 'call_response' && active.call_id === (ctx.callId ?? null)) {
+      return d;
+    }
+    // A call-less enroute (e.g. a direct unit-status flip with no call context)
+    // must NOT open a phantom CALL_RESPONSE with call_id=NULL. Only a real call
+    // (callId present) opens a response trip; otherwise leave any active trip be
+    // (a PATROL keeps running; the gps path opens one on movement).
+    if (ctx.callId == null) {
+      return d;
+    }
     if (active) {
       d.close = { tripId: active.id, reason: 'redispatch', endTs: ctx.now, endLat: ctx.curLat, endLng: ctx.curLng };
     }
