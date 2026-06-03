@@ -113,3 +113,21 @@ describe('tripEngine.decide — sweep', () => {
     expect(d.close?.reason).toBe('stale');
   });
 });
+
+describe('tripEngine.decide — available + guards', () => {
+  it('available closes an active CALL_RESPONSE (call ended)', () => {
+    const active = { id: 7, trip_type: 'call_response' as const, call_id: 42,
+      anchor_lat: 40.76, anchor_lng: -111.89, last_move_at: 1_000_000, last_fix_ts: 999_000 };
+    const d = decide({ kind: 'status', status: 'available' }, active, baseCtx());
+    expect(d.close?.reason).toBe('cleared');
+  });
+  it('available does NOT close an active PATROL (a patrol unit is already available)', () => {
+    const d = decide({ kind: 'status', status: 'available' }, patrol(), baseCtx());
+    expect(d.close).toBeUndefined();
+  });
+  it('a non-finite gps fix is a no-op (no trip opened on NaN coords)', () => {
+    const d = decide({ kind: 'gps', fix: { lat: NaN, lng: -111.89, speed: 10, heading: null, ts: 1_000_000 } },
+      null, baseCtx());
+    expect(d.open).toBeUndefined();
+  });
+});

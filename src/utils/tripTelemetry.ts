@@ -83,6 +83,13 @@ export function accumulate(agg: TripAgg, fix: IncomingFix): TripAgg {
   const { lat, lng, ts } = fix;
   if (!Number.isFinite(lat) || !Number.isFinite(lng) || !Number.isFinite(ts)) return a;
 
+  // Idempotency: never fold a replayed / out-of-order fix. This guards the
+  // count-based fields (fix_count/speed_sum/max_speed) which are incremented
+  // OUTSIDE the `ts > prev_ts` block below. The engine's last_fix_ts gate does
+  // not cover the first-fix-of-trip or no-active-trip paths, so the accumulator
+  // must be idempotent on its own — a duplicate must not skew avg_speed/fix_count.
+  if (a.prev_ts != null && fix.ts <= a.prev_ts) return a;
+
   let mph: number;
   if (fix.speed != null && Number.isFinite(fix.speed) && fix.speed >= 0) {
     mph = fix.speed * MPS_TO_MPH;

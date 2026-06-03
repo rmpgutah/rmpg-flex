@@ -2,6 +2,17 @@
 // Pure trip state machine. No D1, no Hono, no env — the route handlers (gps.ts,
 // calls.ts) and the cron sweep apply the returned intents. Kept pure so it can
 // later drop into a per-unit TripTrackerDO unchanged ("B-ready").
+//
+// CALLER WRITE CONTRACT (the apply-layer MUST persist these after each intent):
+//   • open:    INSERT the trip; seed anchor_lat/lng = start_lat/lng,
+//              last_move_at = startTs, last_fix_ts = startTs.
+//   • append:  set last_fix_ts = fix.ts (advances the idempotency gate); fold the
+//              fix into the telemetry aggregate.
+//   • updateAnchor (only emitted alongside append when a patrol moves beyond the
+//              radius): set anchor_lat/lng = {lat,lng} and last_move_at = at.
+//   • close:   set status='closed', end_time=endTs, end_lat/lng, close_reason.
+// The engine READS last_fix_ts / last_move_at / anchor_* but only mutates them via
+// these intents — a caller that skips them will re-append forever or never idle-close.
 
 import { haversineM, type IncomingFix } from './tripTelemetry';
 
@@ -47,6 +58,7 @@ export interface EngineDecision {
 
 const MOVING_STATUSES = new Set(['enroute']);
 const ONSCENE = 'onscene';
+const AVAILABLE = 'available';
 const TERMINAL = new Set(['cleared', 'closed', 'cancelled', 'archived']);
 const OFFLINE = new Set(['off_duty', 'out_of_service']);
 
@@ -79,6 +91,15 @@ function decideStatus(status: string, active: ActiveTrip | null, ctx: EngineCtx)
     }
     return d;
   }
+  if (status === AVAILABLE) {
+    // Unit freed from a call → close an active CALL_RESPONSE (the call ended).
+    // A PATROL unit is *already* 'available' (available + moving = patrolling),
+    // so a redundant 'available' must NOT close an active patrol.
+    if (active && active.trip_type === 'call_response') {
+      d.close = { tripId: active.id, reason: 'cleared', endTs: ctx.now, endLat: ctx.curLat, endLng: ctx.curLng };
+    }
+    return d;
+  }
   if (TERMINAL.has(status)) {
     if (active) d.close = { tripId: active.id, reason: 'cleared', endTs: ctx.now, endLat: ctx.curLat, endLng: ctx.curLng };
     return d;
@@ -92,6 +113,11 @@ function decideStatus(status: string, active: ActiveTrip | null, ctx: EngineCtx)
 
 function decideGps(fix: IncomingFix, active: ActiveTrip | null, ctx: EngineCtx): EngineDecision {
   const d: EngineDecision = {};
+
+  // Never open/append a trip on a non-finite fix — a NaN start coordinate would
+  // persist into a court-facing trip row. (The accumulator also validates, but
+  // the engine must not even open a trip on garbage.)
+  if (!Number.isFinite(fix.lat) || !Number.isFinite(fix.lng) || !Number.isFinite(fix.ts)) return {};
 
   if (!active) {
     const moved =
