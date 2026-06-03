@@ -1086,69 +1086,6 @@ export default function NavigationPage() {
   ];
   const threatCount = callContacts.filter((c) => c.priority === 'P1' || c.priority === 'P2').length;
 
-  // ── Route corridor hazard scan (restored from #1001) ──
-  // What's on the path AHEAD: active calls + crime hot-spots that snap onto the
-  // planned route within the corridor and lie ahead of the unit's progress. The
-  // bbox prefilter keeps the per-fix snap cost to the handful of points actually
-  // near the line, not the full ~2k-incident city dataset. Ranking lives in
-  // scoreCorridorHazard() (top of file) for operational tuning.
-  const corridorHazards = useMemo<CorridorHazard[]>(() => {
-    const g = routeGeom;
-    if (!g || g.coords.length < 2 || myLat == null || myLng == null) return [];
-    const currentAlong = Math.max(0, Math.min(1, routeProgress?.fraction ?? 0)) * g.totalMeters;
-    const minAlong = currentAlong + CORRIDOR_MIN_AHEAD_M;
-    const maxAlong = currentAlong + CORRIDOR_LOOKAHEAD_M;
-    const { w, s, e, n } = routeBBox(g.coords);
-    const pad = 0.01; // ~1 km lat margin around the route bbox for the prefilter
-    const out: CorridorHazard[] = [];
-
-    // 1) Active calls ahead on the corridor — the actionable hazards.
-    for (const c of nearbyCalls) {
-      if (c.lat < s - pad || c.lat > n + pad || c.lng < w - pad || c.lng > e + pad) continue;
-      const { offRouteMeters, distAlong } = snapToRoute(g.coords, g.cum, c.lat, c.lng);
-      if (offRouteMeters > CORRIDOR_HAZARD_M || distAlong < minAlong || distAlong > maxAlong) continue;
-      out.push({
-        kind: 'call',
-        label: `${c.priority} · ${c.call_number || '—'}`,
-        sub: c.incident_type.replace(/_/g, ' '),
-        aheadMi: (distAlong - currentAlong) / 1609.34,
-        color: PRIO_COLOR[c.priority] || '#888888',
-        lat: c.lat, lng: c.lng,
-        severity: c.priority === 'P1' ? 3 : c.priority === 'P2' ? 2 : 1,
-      });
-    }
-
-    // 2) Crime hot-spots ahead — bin in-corridor crime by along-route distance,
-    // flag any bin with enough incidents as one "high-incident segment" hazard.
-    const bins = new Map<number, { count: number; lat: number; lng: number; along: number }>();
-    for (const p of crimeIncidents) {
-      if (p.lat < s - pad || p.lat > n + pad || p.lng < w - pad || p.lng > e + pad) continue;
-      const { offRouteMeters, distAlong } = snapToRoute(g.coords, g.cum, p.lat, p.lng);
-      if (offRouteMeters > CORRIDOR_HAZARD_M || distAlong < minAlong || distAlong > maxAlong) continue;
-      const k = Math.floor(distAlong / CRIME_CLUSTER_BIN_M);
-      const b = bins.get(k);
-      if (b) b.count++;
-      else bins.set(k, { count: 1, lat: p.lat, lng: p.lng, along: distAlong });
-    }
-    for (const b of bins.values()) {
-      if (b.count < CRIME_CLUSTER_MIN) continue;
-      out.push({
-        kind: 'crime',
-        label: `Crime cluster · ${b.count}`,
-        sub: 'high-incident segment',
-        aheadMi: (b.along - currentAlong) / 1609.34,
-        color: b.count >= 8 ? '#ef4444' : '#f59e0b',
-        lat: b.lat, lng: b.lng,
-        severity: b.count >= 8 ? 3 : b.count >= 6 ? 2 : 1,
-      });
-    }
-
-    out.sort((a, b) => scoreCorridorHazard(b) - scoreCorridorHazard(a));
-    return out.slice(0, 6);
-  }, [routeGeom, routeProgress, nearbyCalls, crimeIncidents, myLat, myLng]);
-
-  const corridorCritical = corridorHazards.filter((h) => h.severity >= 2).length;
-
   // ── Map halo for corridor hazards (restored from #1001) ──
   // Ring each on-route hazard with a colored halo so it's obvious on the map,
   // not just in the panel. Two circle layers: a soft fill halo + a crisp ring

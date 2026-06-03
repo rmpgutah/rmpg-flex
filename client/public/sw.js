@@ -513,7 +513,12 @@
 // v768: Law Book statute reader now renders a true legal outline — each
 //       (1)/(a)/(i)/(A) subsection on its own line, tab-indented by nesting
 //       depth, with inline cross-refs ("Subsection (3)(b)") left intact.
-const CACHE_NAME = 'rmpg-flex-v768';
+// v769: fix broken client build that blocked the v768 Pages deploy — the #1006
+//       "restore #1001 corridor" merge left a DUPLICATE corridorHazards/
+//       corridorCritical decl in NavigationPage (TS2451), failing `vite build`
+//       so the v768 Law Book outline never shipped. Removed the dup; the Law
+//       Book outline + corridor scan now both deploy.
+const CACHE_NAME = 'rmpg-flex-v769';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
