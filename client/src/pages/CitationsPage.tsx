@@ -7,20 +7,17 @@
 // ============================================================
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import RichTextArea from '../components/RichTextArea';
 import {
   FileWarning,
   Plus,
   Search,
   Filter,
-  X,
   Loader2,
   AlertTriangle,
   Check,
   Scale,
   User,
   Car,
-  Calendar,
   DollarSign,
   Clock,
   Hash,
@@ -34,13 +31,10 @@ import { toDisplayLabel } from '../utils/formatters';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useAuth } from '../context/AuthContext';
 import { useIsMobile } from '../hooks/useIsMobile';
-import StatuteLookup, { type StatuteResult } from '../components/StatuteLookup';
 import PrintRecordButton from '../components/PrintRecordButton';
+import CitationAuthor from '../components/CitationAuthor';
 import type { CitationPdfData } from '../utils/recordPdfGenerator';
 import { localToday, formatDate } from '../utils/dateUtils';
-import { useFormValidation } from '../hooks/useFormValidation';
-import { isValidDate, isValidPlate, isValidState } from '../utils/validate';
-import { useDistrictOptions, useDistrictIdentify } from '../hooks/useDistrictLookup';
 import ExportButton from '../components/ExportButton';
 import { formatAddressDisplay } from '../utils/statusLabels';
 
@@ -125,58 +119,6 @@ interface CitationStats {
   today_count: number;
 }
 
-interface CitationForm {
-  type: CitationType;
-  status: CitationStatus;
-  person_id: string;
-  person_name: string;
-  person_dob: string;
-  person_dl: string;
-  person_address: string;
-  vehicle_description: string;
-  vehicle_plate: string;
-  vehicle_state: string;
-  statute_id: string;
-  statute_citation: string;
-  violation_description: string;
-  offense_level: string;
-  fine_amount: string;
-  violation_date: string;
-  violation_time: string;
-  location: string;
-  issuing_officer_name: string;
-  badge_number: string;
-  court_date: string;
-  court_name: string;
-  court_address: string;
-  notes: string;
-  section_id: string;
-  zone_id: string;
-  beat_id: string;
-  zone_beat: string;
-  // Spillman Flex traffic fields
-  vehicle_vin: string;
-  vehicle_year: string;
-  vehicle_make: string;
-  vehicle_model: string;
-  vehicle_color: string;
-  speed_recorded: string;
-  speed_limit: string;
-  radar_type: string;
-  bac_level: string;
-  bond_amount: string;
-  bond_type: string;
-  is_warning: boolean;
-  school_zone: boolean;
-  construction_zone: boolean;
-  accident_related: boolean;
-  dui_related: boolean;
-  commercial_vehicle: boolean;
-  court_time: string;
-  court_room: string;
-  appearance_required: boolean;
-}
-
 // ── Constants ──────────────────────────────────────────────
 
 const CITATION_TYPES: { value: CitationType; label: string }[] = [
@@ -213,63 +155,6 @@ const TYPE_BADGE: Record<string, string> = {
   warning: 'bg-amber-900/40 text-amber-300 border-amber-700/50',
 };
 
-const US_STATES = [
-  'UT','AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA',
-  'KS','KY','LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM',
-  'NY','NC','ND','OH','OK','OR','PA','RI','SC','SD','TN','TX','VT','VA','WA','WV','WI','WY',
-];
-
-const EMPTY_FORM: CitationForm = {
-  type: 'traffic',
-  status: 'issued',
-  person_id: '',
-  person_name: '',
-  person_dob: '',
-  person_dl: '',
-  person_address: '',
-  vehicle_description: '',
-  vehicle_plate: '',
-  vehicle_state: 'UT',
-  statute_id: '',
-  statute_citation: '',
-  violation_description: '',
-  offense_level: '',
-  fine_amount: '',
-  violation_date: localToday(),
-  violation_time: new Date().toTimeString().slice(0, 5),
-  location: '',
-  issuing_officer_name: '',
-  badge_number: '',
-  court_date: '',
-  court_name: '',
-  court_address: '',
-  notes: '',
-  section_id: '',
-  zone_id: '',
-  beat_id: '',
-  zone_beat: '',
-  vehicle_vin: '',
-  vehicle_year: '',
-  vehicle_make: '',
-  vehicle_model: '',
-  vehicle_color: '',
-  speed_recorded: '',
-  speed_limit: '',
-  radar_type: '',
-  bac_level: '',
-  bond_amount: '',
-  bond_type: '',
-  is_warning: false,
-  school_zone: false,
-  construction_zone: false,
-  accident_related: false,
-  dui_related: false,
-  commercial_vehicle: false,
-  court_time: '',
-  court_room: '',
-  appearance_required: false,
-};
-
 // formatDate imported from ../utils/dateUtils
 
 function formatCurrency(n: number | null | undefined): string {
@@ -283,8 +168,6 @@ export default function CitationsPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin'; // Admin God Mode — unrestricted access
   const isMobile = useIsMobile();
-  const { sections: sectionOptions, sectionLabels, zoneLabels, zonesForSection, beatsForZone, getBeatLabel } = useDistrictOptions();
-  const { identify: identifyDistrict } = useDistrictIdentify();
 
   // List state
   const [citations, setCitations] = useState<Citation[]>([]);
@@ -303,15 +186,6 @@ export default function CitationsPage() {
 
   // Form state
   const [mode, setMode] = useState<'list' | 'create' | 'edit'>('list');
-  const [form, setForm] = useState<CitationForm>({ ...EMPTY_FORM });
-  const [saving, setSaving] = useState(false);
-  const [saveError, setSaveError] = useState('');
-  const [saveSuccess, setSaveSuccess] = useState(false);
-  const { errors: formErrors, validate: runValidation, clearAllErrors: clearFormErrors } = useFormValidation();
-
-  // Duplicate detection
-  const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
-  const dupCheckTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   // Data completeness
   const [completeness, setCompleteness] = useState<{ score: number; grade: string; missing_required: string[]; missing_recommended: string[] } | null>(null);
@@ -324,14 +198,6 @@ export default function CitationsPage() {
   const [showPaymentForm, setShowPaymentForm] = useState(false);
   const [paymentForm, setPaymentForm] = useState({ amount: '', payment_date: localToday(), payment_method: 'cash', reference_number: '', notes: '' });
   const [paymentSubmitting, setPaymentSubmitting] = useState(false);
-
-  // Person search state
-  const [personSearch, setPersonSearch] = useState('');
-  const [personResults, setPersonResults] = useState<any[]>([]);
-  const [personSearching, setPersonSearching] = useState(false);
-  const [showPersonDropdown, setShowPersonDropdown] = useState(false);
-  const personDropdownRef = useRef<HTMLDivElement>(null);
-  const personSearchTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   // ── Data fetching ────────────────────────────────────────
 
@@ -375,61 +241,6 @@ export default function CitationsPage() {
   // Live sync — auto-refresh when any device modifies citations (silent to avoid unmounting UI)
   const silentRefreshCitations = useCallback(() => fetchCitations({ silent: true }), [fetchCitations]);
   useLiveSync('citations', silentRefreshCitations);
-
-  // Close person dropdown on outside click
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (personDropdownRef.current && !personDropdownRef.current.contains(e.target as Node)) {
-        setShowPersonDropdown(false);
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
-
-  // ── Person search ────────────────────────────────────────
-
-  const handlePersonSearchChange = (val: string) => {
-    setPersonSearch(val);
-    if (personSearchTimer.current) clearTimeout(personSearchTimer.current);
-    if (val.length < 2) {
-      setPersonResults([]);
-      setShowPersonDropdown(false);
-      return;
-    }
-    setPersonSearching(true);
-    personSearchTimer.current = setTimeout(async () => {
-      try {
-        const res = await apiFetch<{ data: any[] }>(`/records/persons/search?q=${encodeURIComponent(val)}&limit=10`);
-        setPersonResults(res.data || []);
-        setShowPersonDropdown(true);
-      } catch {
-        setPersonResults([]);
-      } finally {
-        setPersonSearching(false);
-      }
-    }, 300);
-  };
-
-  const selectPerson = (p: any) => {
-    setForm(prev => ({
-      ...prev,
-      person_id: String(p.id),
-      person_name: [p.last_name, p.first_name].filter(Boolean).join(', '),
-      person_dob: p.dob || '',
-      person_dl: p.dl_number || '',
-      person_address: [p.address, p.city, p.state, p.zip].filter(Boolean).join(', '),
-    }));
-    setPersonSearch([p.last_name, p.first_name].filter(Boolean).join(', '));
-    setShowPersonDropdown(false);
-  };
-
-  const clearPerson = () => {
-    setForm(prev => ({
-      ...prev, person_id: '', person_name: '', person_dob: '', person_dl: '', person_address: '',
-    }));
-    setPersonSearch('');
-  };
 
   // ── Fetch payments when citation selected ──────────────
   useEffect(() => {
@@ -480,195 +291,26 @@ export default function CitationsPage() {
     finally { setPaymentSubmitting(false); }
   };
 
-  // ── Duplicate detection ─────────────────────────────────
-  useEffect(() => {
-    if (mode !== 'create' && mode !== 'edit') { setDuplicateWarning(null); return; }
-    const name = form.person_name?.trim();
-    const statute = form.statute_citation?.trim();
-    if (!name || name.length < 3 || !statute || statute.length < 2) { setDuplicateWarning(null); return; }
-    if (dupCheckTimer.current) clearTimeout(dupCheckTimer.current);
-    dupCheckTimer.current = setTimeout(async () => {
-      try {
-        const res = await apiFetch<{ data: Citation[] }>(`/citations/search?q=${encodeURIComponent(name)}`);
-        const matches = (res.data || []).filter(
-          c => c.statute_citation?.toLowerCase() === statute.toLowerCase()
-            && c.person_name?.toLowerCase().includes(name.toLowerCase())
-            && (mode !== 'edit' || c.id !== selectedCitation?.id)
-        );
-        if (matches.length > 0) {
-          const m = matches[0];
-          setDuplicateWarning(
-            `Similar citation exists for ${m.person_name} — ${m.statute_citation} on ${formatDate(m.violation_date || m.created_at)}`
-          );
-        } else {
-          setDuplicateWarning(null);
-        }
-      } catch { setDuplicateWarning(null); }
-    }, 500);
-    return () => { if (dupCheckTimer.current) clearTimeout(dupCheckTimer.current); };
-  }, [form.person_name, form.statute_citation, mode, selectedCitation?.id]);
-
-  // ── Statute lookup ───────────────────────────────────────
-
-  const handleStatuteSelect = (statute: StatuteResult) => {
-    setForm(prev => ({
-      ...prev,
-      statute_id: String(statute.id),
-      statute_citation: statute.citation,
-      violation_description: prev.violation_description || statute.short_title,
-      offense_level: statute.offense_level || prev.offense_level,
-      fine_amount: statute.citation_fine ? String(statute.citation_fine) : prev.fine_amount,
-    }));
-  };
-
-  const clearStatute = () => {
-    setForm(prev => ({ ...prev, statute_id: '', statute_citation: '', offense_level: '' }));
-  };
-
-  // ── Form helpers ─────────────────────────────────────────
-
-  const updateField = (key: keyof CitationForm, value: any) => {
-    setForm(prev => {
-      const next = { ...prev, [key]: value };
-      // Auto-compute zone_beat when zone or beat changes
-      if (key === 'zone_id' || key === 'beat_id') {
-        const z = key === 'zone_id' ? value : prev.zone_id;
-        const b = key === 'beat_id' ? value : prev.beat_id;
-        next.zone_beat = (z && b) ? `${z}-${b}` : '';
-      }
-      return next;
-    });
-  };
+  // ── Form launchers ───────────────────────────────────────
 
   const handleNewCitation = () => {
-    setForm({
-      ...EMPTY_FORM,
-      violation_date: localToday(),
-      violation_time: new Date().toTimeString().slice(0, 5),
-      issuing_officer_name: (user as any)?.full_name || (user as any)?.username || '',
-      badge_number: (user as any)?.badge_number || '',
-    });
-    setPersonSearch('');
-    setSaveError('');
-    setSaveSuccess(false);
-    clearFormErrors();
-    setMode('create');
     setSelectedCitation(null);
+    setMode('create');
   };
 
-  const handleEditCitation = (c: Citation) => {
-    setForm({
-      type: c.type,
-      status: c.status,
-      person_id: c.person_id ? String(c.person_id) : '',
-      person_name: c.person_name || '',
-      person_dob: c.person_dob || '',
-      person_dl: c.person_dl || '',
-      person_address: c.person_address || '',
-      vehicle_description: c.vehicle_description || '',
-      vehicle_plate: c.vehicle_plate || '',
-      vehicle_state: c.vehicle_state || 'UT',
-      statute_id: c.statute_id ? String(c.statute_id) : '',
-      statute_citation: c.statute_citation || '',
-      violation_description: c.violation_description || '',
-      offense_level: c.offense_level || '',
-      fine_amount: c.fine_amount != null ? String(c.fine_amount) : '',
-      violation_date: c.violation_date || '',
-      violation_time: c.violation_time || '',
-      location: c.location || '',
-      issuing_officer_name: c.issuing_officer_name || '',
-      badge_number: c.badge_number || '',
-      court_date: c.court_date || '',
-      court_name: c.court_name || '',
-      court_address: c.court_address || '',
-      notes: c.notes || '',
-      section_id: c.section_id || '',
-      zone_id: c.zone_id || '',
-      beat_id: c.beat_id || '',
-      zone_beat: c.zone_beat || '',
-      vehicle_vin: (c as any).vehicle_vin || '',
-      vehicle_year: (c as any).vehicle_year || '',
-      vehicle_make: (c as any).vehicle_make || '',
-      vehicle_model: (c as any).vehicle_model || '',
-      vehicle_color: (c as any).vehicle_color || '',
-      speed_recorded: (c as any).speed_recorded != null ? String((c as any).speed_recorded) : '',
-      speed_limit: (c as any).speed_limit != null ? String((c as any).speed_limit) : '',
-      radar_type: (c as any).radar_type || '',
-      bac_level: (c as any).bac_level != null ? String((c as any).bac_level) : '',
-      bond_amount: (c as any).bond_amount != null ? String((c as any).bond_amount) : '',
-      bond_type: (c as any).bond_type || '',
-      is_warning: !!(c as any).is_warning,
-      school_zone: !!(c as any).school_zone,
-      construction_zone: !!(c as any).construction_zone,
-      accident_related: !!(c as any).accident_related,
-      dui_related: !!(c as any).dui_related,
-      commercial_vehicle: !!(c as any).commercial_vehicle,
-      court_time: (c as any).court_time || '',
-      court_room: (c as any).court_room || '',
-      appearance_required: !!(c as any).appearance_required,
-    });
-    setPersonSearch(c.person_name || '');
-    setSaveError('');
-    setSaveSuccess(false);
-    clearFormErrors();
+  const handleEditCitation = (_c: Citation) => {
+    // selectedCitation is already set; CitationAuthor hydrates from it.
     setMode('edit');
   };
 
   const handleCancelForm = () => {
     setMode('list');
-    clearFormErrors();
-    setSaveError('');
-    setSaveSuccess(false);
   };
 
-  const handleSave = async () => {
-    const isValid = runValidation(form, {
-      violation_description: { required: true, minLength: 3 },
-      violation_date: { required: true, custom: isValidDate, customMessage: 'Valid date required' },
-      person_name: { required: true },
-      vehicle_plate: { custom: (v) => !v || isValidPlate(v), customMessage: 'Invalid plate format (2–8 alphanumeric)' },
-      vehicle_state: { custom: (v) => !v || isValidState(v), customMessage: 'Invalid US state abbreviation' },
-    });
-    if (!isValid) return;
-    setSaving(true);
-    setSaveError('');
-    setSaveSuccess(false);
-
-    try {
-      const payload: any = {
-        ...form,
-        person_id: form.person_id ? parseInt(form.person_id, 10) : null,
-        statute_id: form.statute_id ? parseInt(form.statute_id, 10) : null,
-        fine_amount: form.fine_amount ? parseFloat(form.fine_amount) : null,
-        issuing_officer_id: (user as any)?.userId || null,
-      };
-
-      if (mode === 'create') {
-        const res = await apiFetch<{ data: Citation }>('/citations', { method: 'POST', body: JSON.stringify(payload) });
-        setSelectedCitation(res.data);
-        setSaveSuccess(true);
-        setTimeout(() => {
-          setMode('list');
-          setSaveSuccess(false);
-          fetchCitations({ silent: true });
-          fetchStats();
-        }, 1200);
-      } else if (mode === 'edit' && selectedCitation) {
-        const res = await apiFetch<{ data: Citation }>(`/citations/${selectedCitation.id}`, { method: 'PUT', body: JSON.stringify(payload) });
-        setSelectedCitation(res.data);
-        setSaveSuccess(true);
-        setTimeout(() => {
-          setMode('list');
-          setSaveSuccess(false);
-          fetchCitations({ silent: true });
-          fetchStats();
-        }, 1200);
-      }
-    } catch (err: any) {
-      setSaveError(err.message || 'Failed to save citation');
-    } finally {
-      setSaving(false);
-    }
+  const handleAuthorSaved = (_id: number) => {
+    setMode('list');
+    fetchCitations({ silent: true });
+    fetchStats();
   };
 
   // ── Void ─────────────────────────────────────────────────
@@ -699,10 +341,6 @@ export default function CitationsPage() {
       setDetailLoading(false);
     }
   };
-
-  // ── Statute category filter based on citation type ───────
-
-  const statuteCategoryFilter = form.type === 'traffic' || form.type === 'parking' ? 'vehicle' as const : undefined;
 
   // ============================================================
   // Stats bar
@@ -1199,365 +837,22 @@ export default function CitationsPage() {
     );
   };
 
-  // ============================================================
-  // Form (create / edit)
-  // ============================================================
-
-  const showVehicleSection = form.type === 'traffic' || form.type === 'parking';
-  const isEdit = mode === 'edit';
-
-  const renderForm = () => (
-    <div className="flex flex-col h-full overflow-hidden">
-      {/* Form header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-rmpg-700">
-        <h2 className="text-xs font-bold uppercase tracking-wider text-rmpg-300">
-          {isEdit ? `Edit Citation ${selectedCitation?.citation_number || ''}` : 'New Citation / Summons'}
-        </h2>
-        <button type="button" onClick={handleCancelForm} className="text-rmpg-400 hover:text-rmpg-200 transition-colors">
-          <X size={18} />
-        </button>
-      </div>
-
-      {/* Scrollable body */}
-      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent p-4 space-y-5">
-        {saveError && (
-          <div className="bg-red-900/40 border border-red-700/50 px-3 py-2 text-xs text-red-300 flex items-center gap-2">
-            <AlertTriangle size={14} /> {saveError}
-          </div>
-        )}
-        {saveSuccess && (
-          <div className="bg-green-900/40 border border-green-700/50 px-3 py-2 text-xs text-green-300 flex items-center gap-2">
-            <Check size={14} /> Citation saved successfully
-          </div>
-        )}
-        {duplicateWarning && (
-          <div className="bg-amber-900/40 border border-amber-700/50 px-3 py-2 text-xs text-amber-300 flex items-center gap-2">
-            <AlertTriangle size={14} className="flex-shrink-0" /> {duplicateWarning}
-          </div>
-        )}
-
-        {/* Type selector */}
-        <section>
-          <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2">Citation Type</h3>
-          <div className={`flex ${isMobile ? 'flex-col' : 'flex-wrap'} gap-2`}>
-            {CITATION_TYPES.map(t => (
-              <button
-                key={t.value}
-                type="button"
-                onClick={() => updateField('type', t.value)}
-                className={`px-3 ${isMobile ? 'py-3 text-sm' : 'py-1.5 text-xs'} font-bold uppercase transition-colors border ${
-                  form.type === t.value
-                    ? TYPE_BADGE[t.value] + ' ring-1 ring-brand-500/50'
-                    : 'border-rmpg-600 text-rmpg-400 bg-rmpg-800/40 hover:bg-rmpg-700/50'
-                }`}
-                style={isMobile ? { minHeight: 48 } : undefined}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
-        </section>
-
-        {/* Status (edit only) */}
-        {isEdit && (
-          <section>
-            <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2">Status</h3>
-            <select value={form.status} onChange={e => updateField('status', e.target.value)} className="input-dark w-full py-2 text-xs min-h-[36px]">
-              {CITATION_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
-            </select>
-          </section>
-        )}
-
-        {/* Violation */}
-        <section>
-          <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2 flex items-center gap-1.5">
-            <Scale size={12} /> Violation
-          </h3>
-          <div className="space-y-3">
-            <div>
-              <label className="field-label">Statute Search</label>
-              <StatuteLookup
-                onSelect={handleStatuteSelect}
-                value={form.statute_citation || undefined}
-                onClear={clearStatute}
-                categoryFilter={statuteCategoryFilter}
-                placeholder="Search statute code or description..." aria-label="Search statute code or description..."
-                showStateFilter
-              />
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="field-label">Statute Citation</label>
-                <input type="text" value={form.statute_citation} onChange={e => updateField('statute_citation', e.target.value)} placeholder="e.g. 41-6a-601" className="input-dark w-full py-2 text-xs font-mono min-h-[36px]" />
-              </div>
-              <div>
-                <label className="field-label">Offense Level</label>
-                <input type="text" value={form.offense_level} onChange={e => updateField('offense_level', e.target.value)} placeholder="e.g. infraction" className="input-dark w-full py-2 text-xs capitalize min-h-[36px]" />
-              </div>
-            </div>
-            <div>
-              <label className="field-label">Violation Description *</label>
-              <input
-                type="text"
-                value={form.violation_description}
-                onChange={e => updateField('violation_description', e.target.value)}
-                placeholder="Describe the violation..."
-                className={`input-dark w-full py-2 text-xs ${formErrors.violation_description ? 'border-red-500' : ''}`}
-              />
-              {formErrors.violation_description && <p className="text-red-400 text-[10px] mt-1">{formErrors.violation_description}</p>}
-            </div>
-            <div>
-              <label className="field-label">Fine Amount ($)</label>
-              <div className="relative">
-                <DollarSign size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-rmpg-400" />
-                <input type="number" step="0.01" min="0" value={form.fine_amount} onChange={e => updateField('fine_amount', e.target.value)} placeholder="0.00" className="input-dark w-full py-2 pl-8 text-xs min-h-[36px]" />
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* Subject */}
-        <section>
-          <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2 flex items-center gap-1.5">
-            <User size={12} /> Subject
-          </h3>
-          <div className="space-y-3">
-            <div ref={personDropdownRef} className="relative">
-              <label className="field-label">Search Existing Person</label>
-              <div className="relative">
-                <Search size={12} className="absolute left-3 top-1/2 -translate-y-1/2 text-rmpg-400" />
-                <input
-                  type="text"
-                  value={personSearch}
-                  onChange={e => handlePersonSearchChange(e.target.value)}
-                  onFocus={() => { if (personResults.length > 0) setShowPersonDropdown(true); }}
-                  placeholder="Search by name or DL..." aria-label="Search by name or driver's license"
-                  autoComplete="off"
-                  className="input-dark w-full py-2 pl-8 pr-8 text-xs min-h-[36px]"
-                />
-                {personSearching && <Loader2 size={12} className="absolute right-3 top-1/2 -translate-y-1/2 text-rmpg-400 animate-spin" />}
-                {form.person_id && (
-                  <button type="button" onClick={clearPerson} className="absolute right-3 top-1/2 -translate-y-1/2 text-rmpg-400 hover:text-rmpg-200">
-                    <X size={12} />
-                  </button>
-                )}
-              </div>
-              {showPersonDropdown && personResults.length > 0 && (
-                <div className="absolute z-50 mt-1 w-full bg-rmpg-800 border border-rmpg-600 shadow-xl max-h-48 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
-                  {personResults.map((p: any) => (
-                    <button type="button"
-                      key={p.id}
-                      onClick={() => selectPerson(p)}
-                      className="w-full text-left px-3 py-2 text-xs hover:bg-rmpg-700/50 border-b border-rmpg-700/50 last:border-b-0 transition-colors"
-                    >
-                      <div className="font-semibold text-rmpg-200">{p.last_name}, {p.first_name}</div>
-                      <div className="text-[10px] text-rmpg-400">
-                        {p.dob ? `DOB: ${formatDate(p.dob)}` : ''} {p.dl_number ? `DL: ${p.dl_number}` : ''}
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {form.person_id && (
-              <div className="text-[10px] text-brand-300 bg-brand-900/20 px-2 py-1 flex items-center gap-1">
-                <Check size={10} /> Linked to person record #{form.person_id}
-              </div>
-            )}
-
-            <div>
-              <label className="field-label">Full Name *</label>
-              <input
-                type="text"
-                value={form.person_name}
-                onChange={e => updateField('person_name', e.target.value)}
-                placeholder="Last, First Middle"
-                autoComplete="off"
-                className={`input-dark w-full py-2 text-xs ${formErrors.person_name ? 'border-red-500' : ''}`}
-              />
-              {formErrors.person_name && <p className="text-red-400 text-[10px] mt-1">{formErrors.person_name}</p>}
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="field-label">Date of Birth</label>
-                <input type="date" value={form.person_dob} onChange={e => updateField('person_dob', e.target.value)} className="input-dark w-full py-2 text-xs min-h-[36px]" />
-              </div>
-              <div>
-                <label className="field-label">Driver License #</label>
-                <input type="text" value={form.person_dl} onChange={e => updateField('person_dl', e.target.value)} placeholder="DL number" className="input-dark w-full py-2 text-xs font-mono min-h-[36px]" />
-              </div>
-            </div>
-
-            <div>
-              <label className="field-label">Address</label>
-              <input type="text" value={form.person_address} onChange={e => updateField('person_address', e.target.value)} placeholder="Street, City, State ZIP" className="input-dark w-full py-2 text-xs min-h-[36px]" />
-            </div>
-          </div>
-        </section>
-
-        {/* Vehicle (traffic/parking only) */}
-        {showVehicleSection && (
-          <section>
-            <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2 flex items-center gap-1.5">
-              <Car size={12} /> Vehicle Information
-            </h3>
-            <div className="space-y-3">
-              <div>
-                <label className="field-label">Vehicle Description</label>
-                <input type="text" value={form.vehicle_description} onChange={e => updateField('vehicle_description', e.target.value)} placeholder="Year Make Model Color" className="input-dark w-full py-2 text-xs min-h-[36px]" />
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="field-label">License Plate</label>
-                  <input type="text" value={form.vehicle_plate} onChange={e => updateField('vehicle_plate', e.target.value.toUpperCase())} placeholder="ABC1234" className="input-dark w-full py-2 text-xs font-mono uppercase min-h-[36px]" />
-                </div>
-                <div>
-                  <label className="field-label">State</label>
-                  <select value={form.vehicle_state} onChange={e => updateField('vehicle_state', e.target.value)} className="input-dark w-full py-2 text-xs min-h-[36px]">
-                    {US_STATES.map(st => <option key={st} value={st}>{st}</option>)}
-                  </select>
-                </div>
-              </div>
-            </div>
-          </section>
-        )}
-
-        {/* Location & Time */}
-        <section>
-          <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2 flex items-center gap-1.5">
-            <Calendar size={12} /> Location & Time
-          </h3>
-          <div className="space-y-3">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="field-label">Violation Date *</label>
-                <input
-                  type="date"
-                  value={form.violation_date}
-                  onChange={e => updateField('violation_date', e.target.value)}
-                  className={`input-dark w-full py-2 text-xs ${formErrors.violation_date ? 'border-red-500' : ''}`}
-                />
-                {formErrors.violation_date && <p className="text-red-400 text-[10px] mt-1">{formErrors.violation_date}</p>}
-              </div>
-              <div>
-                <label className="field-label">Violation Time</label>
-                <input type="time" value={form.violation_time} onChange={e => updateField('violation_time', e.target.value)} className="input-dark w-full py-2 text-xs min-h-[36px]" />
-              </div>
-            </div>
-            <div>
-              <label className="field-label">Location</label>
-              <input type="text" value={form.location} onChange={e => updateField('location', e.target.value)} placeholder="Address or intersection" className="input-dark w-full py-2 text-xs min-h-[36px]" />
-            </div>
-            {/* Section / Zone / Beat — cascading */}
-            <div className="grid grid-cols-3 gap-2">
-              <div>
-                <label className="block text-xs text-rmpg-400 mb-1">Section</label>
-                <select className="w-full bg-[#181818] border border-[#2a2a2a] rounded-sm px-2 py-1.5 text-sm text-white"
-                  value={form.section_id || ''} onChange={(e) => { updateField('section_id', e.target.value); updateField('zone_id', ''); updateField('beat_id', ''); }}>
-                  <option value="">—</option>
-                  {sectionOptions.map(s => <option key={s} value={s}>{sectionLabels.get(s) || s}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs text-rmpg-400 mb-1">Zone</label>
-                <select className="w-full bg-[#181818] border border-[#2a2a2a] rounded-sm px-2 py-1.5 text-sm text-white"
-                  value={form.zone_id || ''} onChange={(e) => { updateField('zone_id', e.target.value); updateField('beat_id', ''); }}>
-                  <option value="">—</option>
-                  {zonesForSection(form.section_id).map(z => <option key={z} value={z}>{zoneLabels.get(z) || z}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs text-rmpg-400 mb-1">Beat</label>
-                <select className="w-full bg-[#181818] border border-[#2a2a2a] rounded-sm px-2 py-1.5 text-sm text-white"
-                  value={form.beat_id || ''} onChange={(e) => updateField('beat_id', e.target.value)}>
-                  <option value="">—</option>
-                  {beatsForZone(form.zone_id).map(b => <option key={b} value={b}>{getBeatLabel(form.zone_id, b)}</option>)}
-                </select>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        {/* Officer */}
-        <section>
-          <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2 flex items-center gap-1.5">
-            <User size={12} /> Issuing Officer
-          </h3>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="field-label">Officer Name</label>
-              <input type="text" value={form.issuing_officer_name} onChange={e => updateField('issuing_officer_name', e.target.value)} className="input-dark w-full py-2 text-xs min-h-[36px]" />
-            </div>
-            <div>
-              <label className="field-label">Badge #</label>
-              <input type="text" value={form.badge_number} onChange={e => updateField('badge_number', e.target.value)} className="input-dark w-full py-2 text-xs font-mono min-h-[36px]" />
-            </div>
-          </div>
-        </section>
-
-        {/* Court */}
-        <section>
-          <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2 flex items-center gap-1.5">
-            <Scale size={12} /> Court Information
-          </h3>
-          <div className="space-y-3">
-            <div>
-              <label className="field-label">Court Date</label>
-              <input type="date" value={form.court_date} onChange={e => updateField('court_date', e.target.value)} className="input-dark w-full py-2 text-xs min-h-[36px]" />
-            </div>
-            <div>
-              <label className="field-label">Court Name</label>
-              <input type="text" value={form.court_name} onChange={e => updateField('court_name', e.target.value)} placeholder="e.g. Provo Justice Court" className="input-dark w-full py-2 text-xs min-h-[36px]" />
-            </div>
-            <div>
-              <label className="field-label">Court Address</label>
-              <input type="text" value={form.court_address} onChange={e => updateField('court_address', e.target.value)} placeholder="Street, City, State ZIP" className="input-dark w-full py-2 text-xs min-h-[36px]" />
-            </div>
-          </div>
-        </section>
-
-        {/* Notes */}
-        <section>
-          <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2">Notes</h3>
-          <RichTextArea
-            value={form.notes}
-            onChange={e => updateField('notes', e.target.value)}
-            placeholder="Additional notes or remarks..."
-            rows={4}
-            className="input-dark w-full py-2 text-xs resize-none min-h-[36px]"
-          />
-        </section>
-      </div>
-
-      {/* Footer */}
-      <div className={`flex items-center ${isMobile ? 'flex-col gap-2' : 'justify-end gap-3'} px-4 py-3 border-t border-rmpg-700`}>
-        <button type="button"
-          onClick={handleSave}
-          disabled={saving}
-          className={`toolbar-btn toolbar-btn-primary disabled:opacity-50 disabled:cursor-not-allowed ${isMobile ? 'w-full justify-center' : ''}`}
-          style={isMobile ? { minHeight: 48, fontSize: 14 } : undefined}
-        >
-          {saving ? (
-            <><Loader2 size={14} className="animate-spin" /> Saving...</>
-          ) : (
-            <><Check size={14} /> {isEdit ? 'Save Changes' : 'Create Citation'}</>
-          )}
-        </button>
-        <button type="button" onClick={handleCancelForm} className={`px-4 py-2 text-xs font-bold uppercase text-rmpg-300 hover:text-rmpg-100 transition-colors ${isMobile ? 'w-full text-center' : ''}`} style={isMobile ? { minHeight: 48 } : undefined}>
-          Cancel
-        </button>
-      </div>
-    </div>
-  );
 
   // ============================================================
   // Right panel switcher
   // ============================================================
 
   const renderRightPanel = () => {
-    if (mode === 'create' || mode === 'edit') return renderForm();
+    if (mode === 'create' || mode === 'edit') {
+      return (
+        <CitationAuthor
+          mode={mode}
+          initialData={mode === 'edit' ? selectedCitation : undefined}
+          onSaved={handleAuthorSaved}
+          onCancel={handleCancelForm}
+        />
+      );
+    }
 
     if (detailLoading) {
       return (
