@@ -475,7 +475,11 @@
 //       tape, ring speed gauge, dual-needle compass (heading + red bearing-to-call),
 //       speed area-chart, longitudinal G-force meter, nearby-units panel, and an
 //       expanded course/bearing/crow-distance/source stat grid.
-const CACHE_NAME = 'rmpg-flex-v754';
+// v755: GPS "Track 0 pts" fix — the browser geolocation path never pushed accepted
+//       fixes into the exportable session track (only the Toughbook internal-GPS
+//       path did), so every cellular/WiFi device showed 0 captured points and an
+//       empty CSV/GeoJSON export despite healthy GPS. Browser path now captures too.
+const CACHE_NAME = 'rmpg-flex-v755';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
