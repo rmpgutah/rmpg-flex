@@ -176,7 +176,7 @@ SERVER_TIMEZONE = "America/Denver"
 # scheduleUtahWarrantSync interval. Workers cron uses UTC; "0 */4 * * *"
 # means every 4 hours on the hour (00:00, 04:00, 08:00, ... UTC).
 [triggers]
-crons = ["0 */4 * * *"]
+crons = ["0 */4 * * *", "* * * * *"]
 
 # (Removed obsolete deleted_classes migration. The class is now properly
 # defined upstream (commit ccb3881b on main added src/durable-objects/

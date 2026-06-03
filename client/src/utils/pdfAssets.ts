@@ -166,6 +166,7 @@ export const FORM_NUMBERS: Record<string, string> = {
   'FORM PS-206-DMG': 'FORM PS-206-DMG',  // Damage Report
   // Tracking & Analytics (PS-2xx cont.)
   patrol_tracking: 'FORM PS-210',
+  trip_log: 'FORM PS-211',
   // Serve / Process Service (PS-3xx)
   serve_affidavit:   'FORM PS-311',
   serve_non_service: 'FORM PS-312',

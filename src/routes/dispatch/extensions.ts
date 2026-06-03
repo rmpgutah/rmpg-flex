@@ -23,6 +23,7 @@ import { getDb, query, queryFirst, execute } from '../../utils/db';
 import { requireRole } from '../../middleware/auth';
 import { emitAlert } from '../../utils/alertHub';
 import { geocodeAddress } from '../geocode';
+import { applyTripEvent } from '../../utils/tripStore';
 
 const READ_ROLES  = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher'];
 const WRITE_ROLES = ['admin', 'manager', 'supervisor', 'dispatcher'];
@@ -554,6 +555,23 @@ unitStatus.put('/:id/status', requireRole(...READ_ROLES), async (c) => {
     }
 
     await execute(db, "UPDATE units SET status = ?, last_status_change = datetime('now'), updated_at = datetime('now') WHERE id = ?", status, unitId);
+
+    // Trip segmentation: a direct unit-status change (no call event) must also
+    // reach the engine — e.g. available closes an active CALL_RESPONSE, off_duty
+    // closes any active trip. Best-effort. Re-SELECT (NEW status) for a
+    // consistent unit-id + officer/vehicle/position source.
+    try {
+      const tu = await queryFirst<{ id: number; officer_id: number | null; vehicle_id: number | null; latitude: number | null; longitude: number | null; status: string | null }>(
+        db, 'SELECT id, officer_id, vehicle_id, latitude, longitude, status FROM units WHERE id = ?', unitId);
+      if (tu) {
+        await applyTripEvent({
+          db, env: c.env, unitId: tu.id, officerId: tu.officer_id, vehicleId: tu.vehicle_id,
+          event: { kind: 'status', status: tu.status ?? '' },
+          ctx: { curLat: tu.latitude, curLng: tu.longitude, prevLat: tu.latitude, prevLng: tu.longitude },
+        });
+      }
+    } catch (e) { console.warn('[units] trip engine non-fatal:', e); }
+
     const updated = await queryFirst<any>(db, 'SELECT * FROM units WHERE id = ?', unitId);
     // Live fan-out — this is THE unit-status path (mobile UnitStatusCard +
     // MDT both call it). Without the broadcast an officer flipping their own
