@@ -21,7 +21,8 @@ import { useNavigate } from 'react-router-dom';
 import {
   Navigation2, Satellite, Wifi, Globe, X, AlertTriangle, MapPin, Gauge,
   CornerUpLeft, CornerUpRight, ArrowUp, ArrowUpLeft, ArrowUpRight,
-  Flag, Merge, RotateCw, RotateCcw, Clock, Box, Crosshair, type LucideIcon,
+  Flag, Merge, RotateCw, RotateCcw, Clock, Box, Crosshair, Maximize, Minimize,
+  type LucideIcon,
 } from 'lucide-react';
 import { useGpsTracking } from '../hooks/useGpsTracking';
 import { useMapRouting } from '../hooks/useMapRouting';
@@ -168,6 +169,27 @@ function GForceMeter({ g }: { g: number }) {
 export default function NavigationPage() {
   const navigate = useNavigate();
   const gps = useGpsTracking({ capture: true });
+
+  // ── Native full-screen (kiosk) toggle ──
+  // The page already renders edge-to-edge (no app toolbar — it's a standalone
+  // route outside <Layout>). This goes one step further into the browser/OS
+  // Fullscreen API so an in-vehicle Toughbook can run it true full-screen. The
+  // listener keeps the icon in sync with ESC-to-exit. Best-effort: request
+  // Fullscreen rejects without a user gesture or in some embedded webviews.
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  useEffect(() => {
+    const onFsChange = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', onFsChange);
+    return () => document.removeEventListener('fullscreenchange', onFsChange);
+  }, []);
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      rootRef.current?.requestFullscreen?.().catch(() => { /* gesture/permission denied */ });
+    } else {
+      document.exitFullscreen?.().catch(() => { /* already exited */ });
+    }
+  };
 
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<any>(null);
@@ -451,7 +473,7 @@ export default function NavigationPage() {
   }, [activeRoute, routeProgress]);
 
   return (
-    <div className="relative w-full h-full bg-surface-deep overflow-hidden" style={{ minHeight: 0 }}>
+    <div ref={rootRef} className="fixed inset-0 bg-surface-deep overflow-hidden">
       {/* Map (or dark backdrop on failure) */}
       <div ref={mapContainerRef} className="absolute inset-0" />
       {mapError && (
@@ -471,6 +493,14 @@ export default function NavigationPage() {
         {gps.connectionType && gps.connectionType !== 'unknown' && (
           <span className="text-[9px] uppercase text-rmpg-500">{gps.connectionType}</span>
         )}
+        <button
+          onClick={toggleFullscreen}
+          className="toolbar-btn flex items-center justify-center text-rmpg-300 hover:text-white"
+          title={isFullscreen ? 'Exit full screen' : 'Full screen'}
+          aria-label={isFullscreen ? 'Exit full screen' : 'Full screen'}
+        >
+          {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
+        </button>
         <button
           onClick={() => navigate('/map')}
           className="toolbar-btn flex items-center gap-1 text-[10px] uppercase text-rmpg-300 hover:text-white"

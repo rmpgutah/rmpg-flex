@@ -21,6 +21,7 @@ import { logger } from 'hono/logger';
 import { secureHeaders } from 'hono/secure-headers';
 import { authMiddleware } from './middleware/auth';
 import { handleWebSocket, sendToUser, broadcastAll } from './routes/ws';
+import { emitAlert } from './utils/alertHub';
 import { WelfareWatchDO } from './durable-objects/WelfareWatchDO';
 import { VoiceHubDO } from './durable-objects/VoiceHubDO';
 import { AlertHubDO } from './durable-objects/AlertHubDO';
@@ -196,9 +197,26 @@ app.post('/__welfare-fire', async (c) => {
       message: `Welfare check: ${watch.call_sign || 'unit'}, are you code 4${watch.call_number ? ` on call ${watch.call_number}` : ''}?`,
     });
   } else if (stage === 'alert') {
-    broadcastAll('dispatch_update', { action: 'welfare_alert', user_id: watch.user_id, call_sign: watch.call_sign, at: new Date().toISOString() });
+    // Deliver via AlertHubDO under the DISCRETE 'welfare_alert' type the client's
+    // voice-alert hook subscribes to. The old broadcastAll('dispatch_update',…)
+    // was double-dead: wrong type (client subscribes to 'welfare_alert', not a
+    // dispatch_update action) AND per-isolate (the live /api/ws is on legacy).
+    await emitAlert(c.env, 'welfare_alert', {
+      user_id: watch.user_id, call_sign: watch.call_sign,
+      message: `Officer welfare alert — ${watch.call_sign || 'unit'} has not acknowledged a welfare check.`,
+      at: new Date().toISOString(),
+    });
   } else if (stage === 'emergency') {
-    broadcastAll('dispatch_update', { action: 'welfare_emergency', user_id: watch.user_id, call_sign: watch.call_sign, call_id: watch.call_id, call_number: watch.call_number, triggered_by: 'automated_escalation', at: new Date().toISOString() });
+    // CRITICAL officer-safety: the auto-escalation when an officer goes
+    // unresponsive to welfare checks. Same double-dead bug — route via
+    // AlertHubDO under 'welfare_emergency' so it reaches every dispatcher.
+    await emitAlert(c.env, 'welfare_emergency', {
+      user_id: watch.user_id, call_sign: watch.call_sign,
+      call_id: watch.call_id, call_number: watch.call_number,
+      triggered_by: 'automated_escalation',
+      message: `WELFARE EMERGENCY — ${watch.call_sign || 'unit'} unresponsive${watch.call_number ? ' on ' + watch.call_number : ''}. All units respond.`,
+      at: new Date().toISOString(),
+    });
   }
   return c.json({ success: true });
 });
