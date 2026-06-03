@@ -10,10 +10,28 @@ gps.post('/', async (c) => {
   try {
     const db = getDb(c.env);
     const userId = c.get('userId') as number;
-    const body = await c.req.json<{ latitude: number; longitude: number; accuracy?: number; heading?: number; speed?: number } | { points: Array<{ latitude: number; longitude: number; accuracy?: number; heading?: number; speed?: number }> }>();
+    const body = await c.req.json<any>();
 
-    const points = 'points' in body ? body.points : [body];
-    if (!points.length) return c.json({ error: 'No points' }, 400);
+    // ── Coordinate field normalization (CRITICAL) ──
+    // The client (useGpsTracking) sends each breadcrumb as { lat, lng, … }; some
+    // callers use { latitude, longitude }. This handler previously read ONLY
+    // latitude/longitude, so once POST /api/dispatch/gps was routed to THIS
+    // (rewrite) worker off the legacy worker, every point's coords resolved to
+    // undefined → D1 rejects an `undefined` bind → the handler threw 500
+    // "GPS update failed". Breadcrumbs never persisted and units vanished from
+    // the dispatch map FLEET-WIDE. Accept both names and drop any point without
+    // finite coords so one bad point can't 500 the whole batch.
+    const rawPoints: any[] = Array.isArray(body?.points) ? body.points : [body];
+    const points = rawPoints
+      .map((p: any) => ({
+        latitude: Number(p?.lat ?? p?.latitude),
+        longitude: Number(p?.lng ?? p?.longitude),
+        accuracy: p?.accuracy ?? null,
+        heading: p?.heading ?? null,
+        speed: p?.speed ?? null,
+      }))
+      .filter((p) => Number.isFinite(p.latitude) && Number.isFinite(p.longitude));
+    if (!points.length) return c.json({ error: 'No valid GPS points' }, 400);
 
     // Get user's unit info (status carried into the live frame so the map can
     // color a freshly-rebuilt heading arrow without a second lookup).
@@ -27,7 +45,7 @@ gps.post('/', async (c) => {
       const result = await execute(db,
         `INSERT INTO gps_breadcrumbs (unit_id, officer_id, latitude, longitude, accuracy, heading, speed, call_sign, recorded_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
-        unit.id, userId, pt.latitude, pt.longitude, pt.accuracy ?? null, pt.heading ?? null, pt.speed ?? null, unit.call_sign
+        unit.id, userId, pt.latitude, pt.longitude, pt.accuracy, pt.heading, pt.speed, unit.call_sign
       );
       inserted.push(Number(result.meta.last_row_id));
     }
@@ -37,11 +55,11 @@ gps.post('/', async (c) => {
     // longitude/gps_updated_at — breadcrumbs alone never updated the unit, so
     // pins never plotted and proximity logic saw no position.
     const lastPt = points[points.length - 1];
-    if (lastPt && lastPt.latitude != null && lastPt.longitude != null) {
+    if (lastPt) {
       // Mirror heading/speed too (the map's nav-cursor arrow + speed label read
       // unit.gps_heading / unit.gps_speed; columns added in migration 0065).
-      const heading = lastPt.heading ?? null;
-      const speed = lastPt.speed ?? null;
+      const heading = lastPt.heading;
+      const speed = lastPt.speed;
       await execute(db,
         "UPDATE units SET latitude = ?, longitude = ?, gps_heading = ?, gps_speed = ?, gps_source = 'gps', gps_updated_at = datetime('now'), updated_at = datetime('now') WHERE id = ?",
         lastPt.latitude, lastPt.longitude, heading, speed, unit.id);
