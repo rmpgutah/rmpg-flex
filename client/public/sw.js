@@ -488,7 +488,12 @@
 //       accent riser, header gold underline + icon glow, and a richer compass.
 // v758: caution-flag (call_status_for_officer) + property-hazard (dispatch_alert)
 //       MDT voice cues now reach the assigned officer via AlertHubDO + filter.
-const CACHE_NAME = 'rmpg-flex-v758';
+// v759: NAVIGATE goes tactical/SA — new proximity scope (PPI radar plotting
+//       nearby calls + units bearing-true on range rings), tactical CONTACTS
+//       board with heading-relative bearing arrows + threat tally/pulse, map
+//       corner-bracket viewport framing, and self-unit exclusion (own unit no
+//       longer shows as a 0.0mi contact). Contact range/bearing recompute live.
+const CACHE_NAME = 'rmpg-flex-v759';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
