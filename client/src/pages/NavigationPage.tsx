@@ -368,6 +368,16 @@ export default function NavigationPage() {
   const [mapReady, setMapReady] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
 
+  // ── Destination search state (address/place → route there) ──
+  // Declared here to back the search effect + UI added with the destination-
+  // search feature; these were referenced but never declared (the page threw a
+  // ReferenceError calling the undefined setters, and tsc was red).
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<{ lat: number; lng: number; label: string }[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [destLabel, setDestLabel] = useState<string | null>(null);
+
   const { activeRoute, routeProgress, offRoute, showRoute, clearRoute, updateOrigin } = useMapRouting({
     map: mapReady ? mapInstanceRef.current : null,
   });
@@ -416,6 +426,10 @@ export default function NavigationPage() {
   const dir = gps.headingSmoothed ?? gps.course ?? gps.heading;
   const mph = gps.speed != null ? Math.round(gps.speed * 2.237) : null;
   const hasFix = gps.latitude != null && gps.longitude != null;
+  // Reverse-geocoded street name for the "Following GPS" banner. Not yet wired
+  // to a geocoder, so it's null today (the UI falls back to "Locating street…").
+  // Restores the client typecheck that referenced this before it was declared.
+  const currentStreet: string | null = null;
   const src = SOURCE_META[gps.positionSource] || SOURCE_META.unknown;
 
   // ── One-time Mapbox init (defensive — degrade to instruments-only) ──
