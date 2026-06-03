@@ -522,6 +522,11 @@ const STUBS: StubRule[] = [
 ];
 
 const API_ROUTES: RouteRule[] = [
+  // ── Crime layers (new in rewrite) ──
+  // /api/crime/slc (cached SLCPD public-crime proxy) + /api/crime/local (our
+  // own recent CFS). Only the rewrite has these handlers; legacy 404s.
+  { kind: 'prefix', value: '/api/crime' },
+
   // ── DL records CRUD (new in rewrite) ──
   // /api/dl-records (bare) + /api/dl-records/:id (numeric) → env.API.
   // The legacy port of POST /dl-records 500s on live D1 (manual saves
