@@ -56,6 +56,7 @@ import {
   Ruler,
   SlidersHorizontal,
   Navigation,
+  Flag,
 } from 'lucide-react';
 import type { UnitStatus } from '../../types';
 import RmpgLogo from '../../components/RmpgLogo';
@@ -65,6 +66,7 @@ import { usePersistedTab } from '../../hooks/usePersistedState';
 import { useUserPreferences } from '../../context/UserPreferencesContext';
 import { useWebSocket } from '../../context/WebSocketContext';
 import { useGpsTracking } from '../../hooks/useGpsTracking';
+import { useUnitTrips, useTripDetail, tripLabel, tripMiles, type Trip } from '../../hooks/useTrips';
 import { useScreenWakeLock } from '../../hooks/useScreenWakeLock';
 import { formatIncidentType } from '../../utils/caseNumbers';
 import { generatePatrolTrackingPdf } from '../../utils/patrolTrackingPdfGenerator';
@@ -119,6 +121,7 @@ import MultiStopRoutePanel, { type QueuedStop } from './components/MultiStopRout
 import MapExportMenu from './components/MapExportMenu';
 import { generateMapSituationReport } from '../../utils/mapSituationReportPdf';
 import { useAuth } from '../../context/AuthContext';
+import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../../utils/mapboxSafeLayer';
 
 // ============================================================
 // Constants
@@ -126,6 +129,15 @@ import { useAuth } from '../../context/AuthContext';
 
 // Unit colors for breadcrumb trails — cycle through distinct colors per unit
 const TRAIL_COLORS = ['#22c55e', '#a78bfa', '#f472b6', '#34d399', '#fbbf24', '#f87171', '#aaaaaa', '#c084fc'];
+
+// Sentinel unit_id for a SELECTED-trip replay trail injected into playbackTrails.
+// Negative so it can never collide with a real (positive) unit id from the
+// live breadcrumb feed. The existing playback scrubber keys on unit_id, so the
+// trip replay rides the same machinery by registering under this id.
+const TRIP_REPLAY_UNIT_ID = -777;
+// trip_type → polyline color (response gold / patrol gray) for the A/B markers.
+const tripTypeColor = (t?: string | null): string =>
+  t === 'call_response' ? '#d4a017' : '#888888';
 
 // Static Tailwind class lookups — avoids dynamic class generation that Tailwind can't purge
 const INTEL_LAYER_CLASSES: Record<string, { active: string; }> = {
@@ -316,6 +328,15 @@ export default function MapPage() {
   const playbackMarkerRef = useRef<mapboxgl.Marker | null>(null);
   const playbackAnimRef = useRef<number | null>(null);
   const playbackSpeedLabelRef = useRef<mapboxgl.Popup | null>(null);
+
+  // ── Trip Replay: pick a unit → pick one of its recent trips → replay it
+  //    through the EXISTING playback scrubber (registered under
+  //    TRIP_REPLAY_UNIT_ID in playbackTrails). A/B markers flag start/end.
+  const [tripUnitId, setTripUnitId] = useState<number | null>(null);
+  const [tripSelId, setTripSelId] = useState<number | null>(null);
+  const { trips: unitTrips } = useUnitTrips(tripUnitId ?? undefined);
+  const tripDetail = useTripDetail(tripSelId ?? undefined);
+  const tripAbMarkersRef = useRef<mapboxgl.Marker[]>([]);
 
   // Layers panel (left) collapsed/expanded
   const [layersPanelOpen, setLayersPanelOpen] = useState(true);
@@ -714,12 +735,12 @@ export default function MapPage() {
     // by alpha so one, several, or all can be on together. choro-fill is
     // excluded — it owns a count-driven opacity expression.
     for (const id of ['dh-area-fill', 'dh-section-fill', 'dh-zone-fill']) {
-      try { if (map.getLayer(id)) map.setPaintProperty(id, 'fill-opacity', 0.22 * overlayOpacity); } catch { /* */ }
+      try { if (hasLayer(map, id)) map.setPaintProperty(id, 'fill-opacity', 0.22 * overlayOpacity); } catch { /* */ }
     }
     // Beat (lives in useGeoJsonLayers) joins the coverage system: keep its
     // city-colored fill, drop its outline so it reads as coverage too.
-    try { if (map.getLayer('geojson-beat-fill')) map.setPaintProperty('geojson-beat-fill', 'fill-opacity', 0.22 * overlayOpacity); } catch { /* */ }
-    try { if (map.getLayer('geojson-beat-line')) map.setPaintProperty('geojson-beat-line', 'line-opacity', 0); } catch { /* */ }
+    try { if (hasLayer(map, 'geojson-beat-fill')) map.setPaintProperty('geojson-beat-fill', 'fill-opacity', 0.22 * overlayOpacity); } catch { /* */ }
+    try { if (hasLayer(map, 'geojson-beat-line')) map.setPaintProperty('geojson-beat-line', 'line-opacity', 0); } catch { /* */ }
     // County + Municipality = OUTLINE ONLY. Kill their fills so the A/S/Z/B
     // color coverage shows through, and render their borders as neutral
     // reference lines on top (zero-blue theme).
@@ -729,9 +750,9 @@ export default function MapPage() {
     };
     for (const base of Object.keys(boundaryLines)) {
       const [color, width, op] = boundaryLines[base];
-      try { if (map.getLayer(`${base}-fill`)) map.setPaintProperty(`${base}-fill`, 'fill-opacity', 0); } catch { /* */ }
+      try { if (hasLayer(map, `${base}-fill`)) map.setPaintProperty(`${base}-fill`, 'fill-opacity', 0); } catch { /* */ }
       try {
-        if (map.getLayer(`${base}-line`)) {
+        if (hasLayer(map, `${base}-line`)) {
           map.setPaintProperty(`${base}-line`, 'line-color', color);
           map.setPaintProperty(`${base}-line`, 'line-width', width);
           map.setPaintProperty(`${base}-line`, 'line-opacity', op * overlayOpacity);
@@ -739,17 +760,17 @@ export default function MapPage() {
       } catch { /* */ }
     }
     // Statewide overlays (first-class): scale their line/circle opacity too.
-    try { if (map.getLayer('vt-utah_roads-line')) map.setPaintProperty('vt-utah_roads-line', 'line-opacity', 0.85 * overlayOpacity); } catch { /* */ }
-    try { if (map.getLayer('vt-utah_roads-label')) map.setPaintProperty('vt-utah_roads-label', 'text-opacity', overlayOpacity); } catch { /* */ }
-    try { if (map.getLayer('vt-utah_addresses-circle')) map.setPaintProperty('vt-utah_addresses-circle', 'circle-opacity', 0.9 * overlayOpacity); } catch { /* */ }
-    try { if (map.getLayer('vt-utah_addresses-label')) map.setPaintProperty('vt-utah_addresses-label', 'text-opacity', overlayOpacity); } catch { /* */ }
+    try { if (hasLayer(map, 'vt-utah_roads-line')) map.setPaintProperty('vt-utah_roads-line', 'line-opacity', 0.85 * overlayOpacity); } catch { /* */ }
+    try { if (hasLayer(map, 'vt-utah_roads-label')) map.setPaintProperty('vt-utah_roads-label', 'text-opacity', overlayOpacity); } catch { /* */ }
+    try { if (hasLayer(map, 'vt-utah_addresses-circle')) map.setPaintProperty('vt-utah_addresses-circle', 'circle-opacity', 0.9 * overlayOpacity); } catch { /* */ }
+    try { if (hasLayer(map, 'vt-utah_addresses-label')) map.setPaintProperty('vt-utah_addresses-label', 'text-opacity', overlayOpacity); } catch { /* */ }
 
     // Z-order: lift the boundary outlines + level labels above the A/S/Z/B
     // coverage fills (which may be added later than the default-on county),
     // so the County/Municipality lines and the level labels stay visible on
     // top of the colored coverage. (Still below DOM unit/call markers.)
     for (const lid of ['geojson-county-line', 'geojson-municipality-line', 'dh-area-label', 'dh-section-label', 'dh-zone-label']) {
-      try { if (map.getLayer(lid)) map.moveLayer(lid); } catch { /* */ }
+      try { if (hasLayer(map, lid)) map.moveLayer(lid); } catch { /* */ }
     }
   }, [overlayOpacity, hierarchyStates, geoLayerStates, vectorLayerStates, choroLevel, mapLoaded]);
 
@@ -803,14 +824,14 @@ export default function MapPage() {
     for (const [layerId, ids] of Object.entries(LAYER_STYLE_MAP)) {
       const visible = cfg.default_visible_layers.includes(layerId);
 
-      if (ids.fillId && map.getLayer(ids.fillId)) {
+      if (ids.fillId && hasLayer(map, ids.fillId)) {
         map.setLayoutProperty(ids.fillId, 'visibility', visible ? 'visible' : 'none');
         const fillColor = (cfg as any)[`layer_${layerId}_fill`];
         const fillOpacity = (cfg as any)[`layer_${layerId}_fill_opacity`];
         if (fillColor) map.setPaintProperty(ids.fillId, 'fill-color', fillColor);
         if (fillOpacity != null) map.setPaintProperty(ids.fillId, 'fill-opacity', fillOpacity);
       }
-      if (ids.lineId && map.getLayer(ids.lineId)) {
+      if (ids.lineId && hasLayer(map, ids.lineId)) {
         map.setLayoutProperty(ids.lineId, 'visibility', visible ? 'visible' : 'none');
         const strokeColor = (cfg as any)[`layer_${layerId}_stroke`];
         const strokeOpacity = (cfg as any)[`layer_${layerId}_stroke_opacity`];
@@ -2210,8 +2231,8 @@ export default function MapPage() {
 
     // Clean up heatmap when toggled off
     if (!showHeatmap || heatmapData.length === 0) {
-      if (map.getLayer('rmpg-heatmap-layer')) map.removeLayer('rmpg-heatmap-layer');
-      if (map.getSource('rmpg-heatmap')) map.removeSource('rmpg-heatmap');
+      safeRemoveLayer(map, 'rmpg-heatmap-layer');
+      safeRemoveSource(map, 'rmpg-heatmap');
       heatmapLayerRef.current = null;
       return;
     }
@@ -2239,7 +2260,7 @@ export default function MapPage() {
       }
 
       whenStyleReady(map, () => {
-      if (map.getSource('rmpg-heatmap')) return;
+      if (hasSource(map, 'rmpg-heatmap')) return;
       map.addSource('rmpg-heatmap', {
         type: 'geojson',
         data: {
@@ -2296,8 +2317,8 @@ export default function MapPage() {
     }
 
     return () => {
-      if (map.getLayer('rmpg-heatmap-layer')) map.removeLayer('rmpg-heatmap-layer');
-      if (map.getSource('rmpg-heatmap')) map.removeSource('rmpg-heatmap');
+      safeRemoveLayer(map, 'rmpg-heatmap-layer');
+      safeRemoveSource(map, 'rmpg-heatmap');
       heatmapLayerRef.current = null;
     };
   }, [showHeatmap, heatmapData, heatmapMode, mapLoaded, mapStyle]);
@@ -2311,8 +2332,8 @@ export default function MapPage() {
     if (!map || !mapLoaded) return;
 
     if (!showTrackingLines) {
-      if (map.getLayer('rmpg-tracking-lines')) map.removeLayer('rmpg-tracking-lines');
-      if (map.getSource('rmpg-tracking-lines')) map.removeSource('rmpg-tracking-lines');
+      safeRemoveLayer(map, 'rmpg-tracking-lines');
+      safeRemoveSource(map, 'rmpg-tracking-lines');
       trackingLinesRef.current = [];
       setTrackingLineCount(0);
       return;
@@ -2352,8 +2373,8 @@ export default function MapPage() {
       if (existingSrc) {
         existingSrc.setData({ type: 'FeatureCollection', features: [] });
       } else {
-        if (map.getLayer('rmpg-tracking-lines')) map.removeLayer('rmpg-tracking-lines');
-        if (map.getSource('rmpg-tracking-lines')) map.removeSource('rmpg-tracking-lines');
+        safeRemoveLayer(map, 'rmpg-tracking-lines');
+        safeRemoveSource(map, 'rmpg-tracking-lines');
       }
       trackingLinesRef.current = [];
       setTrackingLineCount(0);
@@ -2369,7 +2390,7 @@ export default function MapPage() {
         setTrackingLineCount(features.length);
       } else {
         whenStyleReady(map, () => {
-          if (map.getSource('rmpg-tracking-lines')) return;
+          if (hasSource(map, 'rmpg-tracking-lines')) return;
           map.addSource('rmpg-tracking-lines', {
             type: 'geojson',
             data: geojsonData,
@@ -2570,10 +2591,10 @@ export default function MapPage() {
     // Clear existing breadcrumb visuals — dots & arrows use setData()
     // for efficient updates during interval refreshes.  Lines migrated to
     // setData as well (FIX 32) so we only tear them down on full cleanup.
-    if (map.getLayer(DOTS_LAYER_ID)) map.removeLayer(DOTS_LAYER_ID);
-    if (map.getSource(DOTS_SOURCE_ID)) map.removeSource(DOTS_SOURCE_ID);
-    if (map.getLayer(ARROWS_LAYER_ID)) map.removeLayer(ARROWS_LAYER_ID);
-    if (map.getSource(ARROWS_SOURCE_ID)) map.removeSource(ARROWS_SOURCE_ID);
+    safeRemoveLayer(map, DOTS_LAYER_ID);
+    safeRemoveSource(map, DOTS_SOURCE_ID);
+    safeRemoveLayer(map, ARROWS_LAYER_ID);
+    safeRemoveSource(map, ARROWS_SOURCE_ID);
     speedAlertKeyedRef.current.forEach((m) => m.remove());
     speedAlertKeyedRef.current.clear();
     breadcrumbTrailsRef.current = [];
@@ -2618,7 +2639,13 @@ export default function MapPage() {
           if (existingArrowSrc) existingArrowSrc.setData({ type: 'FeatureCollection', features: [] });
           return;
         }
-        setPlaybackTrails(trails);
+        // Preserve any active Trip-Replay trail (registered under
+        // TRIP_REPLAY_UNIT_ID) across the 15s live-breadcrumb refresh — the
+        // refresh only owns the real per-unit trails.
+        setPlaybackTrails((prev) => {
+          const replay = prev.filter((t) => t.unit_id === TRIP_REPLAY_UNIT_ID);
+          return [...trails, ...replay];
+        });
         breadcrumbTrailsRef.current = trails;
 
         const lineFeatures: any[] = [];
@@ -2782,8 +2809,8 @@ export default function MapPage() {
                 map.addImage(ARROW_IMAGE_ID, ctx.getImageData(0, 0, S, S), { sdf: true });
               }
             }
-            if (!map.getSource(ARROWS_SOURCE_ID)) map.addSource(ARROWS_SOURCE_ID, { type: 'geojson', data: arrowsData });
-            if (!map.getLayer(ARROWS_LAYER_ID)) {
+            if (!hasSource(map, ARROWS_SOURCE_ID)) map.addSource(ARROWS_SOURCE_ID, { type: 'geojson', data: arrowsData });
+            if (!hasLayer(map, ARROWS_LAYER_ID)) {
               map.addLayer({
                 id: ARROWS_LAYER_ID,
                 type: 'symbol',
@@ -2837,12 +2864,12 @@ export default function MapPage() {
     return () => {
       clearInterval(interval);
       clearTimeout(retryTimeout);
-      if (map.getLayer('rmpg-breadcrumb-lines')) map.removeLayer('rmpg-breadcrumb-lines');
-      if (map.getSource('rmpg-breadcrumb-lines')) map.removeSource('rmpg-breadcrumb-lines');
-      if (map.getLayer(DOTS_LAYER_ID)) map.removeLayer(DOTS_LAYER_ID);
-      if (map.getSource(DOTS_SOURCE_ID)) map.removeSource(DOTS_SOURCE_ID);
-      if (map.getLayer(ARROWS_LAYER_ID)) map.removeLayer(ARROWS_LAYER_ID);
-      if (map.getSource(ARROWS_SOURCE_ID)) map.removeSource(ARROWS_SOURCE_ID);
+      safeRemoveLayer(map, 'rmpg-breadcrumb-lines');
+      safeRemoveSource(map, 'rmpg-breadcrumb-lines');
+      safeRemoveLayer(map, DOTS_LAYER_ID);
+      safeRemoveSource(map, DOTS_SOURCE_ID);
+      safeRemoveLayer(map, ARROWS_LAYER_ID);
+      safeRemoveSource(map, ARROWS_SOURCE_ID);
       breadcrumbTrailsRef.current = [];
       speedAlertKeyedRef.current.forEach((m) => m.remove());
       speedAlertKeyedRef.current.clear();
@@ -2946,6 +2973,137 @@ export default function MapPage() {
       }
     }
   }, [playbackUnit]);
+
+  // ============================================================
+  // Trip Replay — load a SELECTED historical trip into the existing scrubber
+  // ============================================================
+  // When a trip's detail arrives, map its TripPoint[] into the PlaybackTrail
+  // point shape and register it in playbackTrails under TRIP_REPLAY_UNIT_ID,
+  // then drive the SAME playback scrubber (playbackUnit / playbackIdx). A/B
+  // markers flag the trip start/end with their timestamps.
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+
+    // Always clear any prior A/B markers first.
+    tripAbMarkersRef.current.forEach((m) => removeMarker(m));
+    tripAbMarkersRef.current = [];
+
+    if (!tripDetail || !Array.isArray(tripDetail.points) || tripDetail.points.length === 0) {
+      // Trip deselected (or empty): tear down the synthetic replay trail and
+      // stop playback if it was the active unit.
+      setPlaybackTrails((prev) => prev.filter((t) => t.unit_id !== TRIP_REPLAY_UNIT_ID));
+      if (playbackUnit === TRIP_REPLAY_UNIT_ID) {
+        setPlaybackUnit(null);
+        setPlaybackIdx(0);
+        setIsPlaying(false);
+      }
+      return;
+    }
+
+    // Map TripPoint → PlaybackTrail point. trip-level call fields are filled
+    // across every point so the per-dot popup / status read still works; per
+    // the PlaybackTrail contract status is a string and road_name/intersection
+    // are nullable.
+    const callSign =
+      units.find((u) => Number(u.id) === tripDetail.unit_id)?.call_sign || `UNIT ${tripDetail.unit_id}`;
+    const points = tripDetail.points.map((p) => ({
+      lat: p.lat,
+      lng: p.lng,
+      accuracy: p.accuracy,
+      heading: p.heading,
+      speed: p.speed,
+      status: tripDetail.status === 'active' ? 'enroute' : 'available',
+      call_number: tripDetail.call_number,
+      call_type: tripDetail.call_type,
+      time: p.time,
+      road_name: null,
+      intersection: null,
+    }));
+
+    const replayTrail: PlaybackTrail = {
+      unit_id: TRIP_REPLAY_UNIT_ID,
+      call_sign: `${callSign} • ${tripLabel(tripDetail)}`,
+      officer_name: '',
+      badge_number: '',
+      points,
+    };
+
+    // Swap the replay trail into playbackTrails (replace any prior one), arm
+    // the existing scrubber on it, and reset to the start.
+    setPlaybackTrails((prev) => [
+      ...prev.filter((t) => t.unit_id !== TRIP_REPLAY_UNIT_ID),
+      replayTrail,
+    ]);
+    setIsPlaying(false);
+    setPlaybackIdx(0);
+    setPlaybackUnit(TRIP_REPLAY_UNIT_ID);
+
+    if (!map || !mapLoaded) return;
+
+    // A (start) / B (end) flag markers with start/end timestamps.
+    const accent = tripTypeColor(tripDetail.trip_type);
+    const startLat = tripDetail.start_lat ?? points[0].lat;
+    const startLng = tripDetail.start_lng ?? points[0].lng;
+    const endLat = tripDetail.end_lat ?? points[points.length - 1].lat;
+    const endLng = tripDetail.end_lng ?? points[points.length - 1].lng;
+    const buildFlag = (letter: 'A' | 'B', bg: string, label: string) => {
+      const el = document.createElement('div');
+      el.style.cssText = 'display:flex;flex-direction:column;align-items:center;font-family:monospace;line-height:1;';
+      const badge = document.createElement('div');
+      badge.style.cssText =
+        `width:18px;height:18px;border-radius:2px;background:${bg};color:#0a0a0a;` +
+        `font-size:11px;font-weight:900;display:flex;align-items:center;justify-content:center;` +
+        `border:1px solid #0a0a0a;box-shadow:0 0 4px rgba(0,0,0,.8)`;
+      badge.textContent = letter;
+      const cap = document.createElement('div');
+      cap.style.cssText =
+        `margin-top:1px;font-size:8px;font-weight:700;color:#e5e5e5;background:#0d0d0d;` +
+        `padding:1px 3px;border-radius:2px;border:1px solid #282828;white-space:nowrap`;
+      cap.textContent = label;
+      el.appendChild(badge);
+      el.appendChild(cap);
+      return el;
+    };
+    if (isFinite(startLng) && isFinite(startLat)) {
+      const mA = createMarker({
+        map,
+        position: [startLng, startLat],
+        content: buildFlag('A', accent, safeDateTimeStr(tripDetail.start_time, 'START')),
+        zIndex: 950,
+        title: `Trip start — ${safeDateTimeStr(tripDetail.start_time) || ''}`,
+      });
+      if (mA) tripAbMarkersRef.current.push(mA);
+    }
+    if (isFinite(endLng) && isFinite(endLat)) {
+      const mB = createMarker({
+        map,
+        position: [endLng, endLat],
+        content: buildFlag('B', '#e5e5e5', safeDateTimeStr(tripDetail.end_time, 'ACTIVE')),
+        zIndex: 950,
+        title: `Trip end — ${safeDateTimeStr(tripDetail.end_time) || 'in progress'}`,
+      });
+      if (mB) tripAbMarkersRef.current.push(mB);
+    }
+
+    // Frame the whole trip.
+    try {
+      const bounds = new mapboxgl.LngLatBounds();
+      let any = false;
+      points.forEach((p) => {
+        if (isFinite(p.lng) && isFinite(p.lat)) { bounds.extend([p.lng, p.lat]); any = true; }
+      });
+      if (any) map.fitBounds(bounds, { padding: { top: 60, right: 60, bottom: 60, left: layersPanelOpen ? 240 : 70 }, maxZoom: 16 });
+    } catch { /* noop */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tripDetail, mapLoaded]);
+
+  // Clean up trip A/B markers on unmount.
+  useEffect(() => {
+    return () => {
+      tripAbMarkersRef.current.forEach((m) => removeMarker(m));
+      tripAbMarkersRef.current = [];
+    };
+  }, [removeMarker]);
 
   // ============================================================
   // GPS Self-Position Marker
@@ -4074,6 +4232,62 @@ export default function MapPage() {
                       ))}
                     </div>
                   )}
+                  {/* Trip Replay — pick a unit, then one of its recent trips.
+                       The selected trip is loaded into the EXISTING playback
+                       scrubber below (under TRIP_REPLAY_UNIT_ID). */}
+                  <div className="space-y-1 pt-0.5 border-t border-rmpg-800/60">
+                    <div className="flex items-center gap-1">
+                      <Flag className="w-2.5 h-2.5 text-brand-400" />
+                      <span className="text-[8px] font-mono font-bold text-rmpg-400 uppercase tracking-wide">Trip Replay</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <select id="ff-mappage-trip-unit"
+                        value={tripUnitId ?? ''}
+                        onChange={(e) => {
+                          const val = e.target.value ? Number(e.target.value) : null;
+                          setTripUnitId(val);
+                          setTripSelId(null);
+                        }}
+                        className="flex-1 bg-surface-deep border border-rmpg-600 text-[9px] text-rmpg-200 px-1 py-0.5 font-mono focus:outline-none focus:border-brand-600"
+                        style={{ borderRadius: 2 }}
+                      >
+                        <option value="">Select unit...</option>
+                        {units.map((u) => (
+                          <option key={u.id} value={u.id}>
+                            {u.call_sign}{u.officer_name ? ` — ${u.officer_name}` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    {tripUnitId != null && (
+                      <div className="flex items-center gap-1">
+                        <select id="ff-mappage-trip-sel"
+                          value={tripSelId ?? ''}
+                          onChange={(e) => setTripSelId(e.target.value ? Number(e.target.value) : null)}
+                          className="flex-1 bg-surface-deep border border-rmpg-600 text-[9px] text-rmpg-200 px-1 py-0.5 font-mono focus:outline-none focus:border-brand-600"
+                          style={{ borderRadius: 2 }}
+                        >
+                          <option value="">{unitTrips.length ? 'Select trip...' : 'No recent trips'}</option>
+                          {unitTrips.map((t: Trip) => (
+                            <option key={t.id} value={t.id}>
+                              {tripLabel(t)} · {safeDateTimeStr(t.start_time) || ''} · {tripMiles(t).toFixed(1)} mi
+                            </option>
+                          ))}
+                        </select>
+                        {tripSelId != null && (
+                          <button
+                            onClick={() => setTripSelId(null)}
+                            className="p-0.5 rounded-sm hover:bg-rmpg-800/50 transition-colors"
+                            title="Clear trip replay"
+                            aria-label="Clear trip replay"
+                          >
+                            <X className="w-3 h-3 text-rmpg-500" />
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
                   {/* Playback controls */}
                   {playbackTrails.length > 0 && (
                     <div className="space-y-1 pt-0.5">

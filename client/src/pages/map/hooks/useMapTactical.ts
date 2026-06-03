@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { whenStyleReady } from '../utils/safeAddSource';
+import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../../../utils/mapboxSafeLayer';
 
 interface LatLng {
   lat: number;
@@ -84,15 +85,15 @@ export function useMapTactical(map: mapboxgl.Map | null): UseMapTacticalReturn {
 
   const clearSource = useCallback((id: string) => {
     if (!map) return;
-    if (map.getLayer(id)) map.removeLayer(id);
-    if (map.getSource(id)) map.removeSource(id);
+    safeRemoveLayer(map, id);
+    safeRemoveSource(map, id);
   }, [map]);
 
   useEffect(() => {
     return () => {
       [rallySourceId, commandRingsSourceId, k9SourceId, hospitalSourceId, fireSourceId, entrySourceId].forEach(id => {
-        if (map?.getLayer(id)) map.removeLayer(id);
-        if (map?.getSource(id)) map.removeSource(id);
+        safeRemoveLayer(map, id);
+        safeRemoveSource(map, id);
       });
       if (popupRef.current) { popupRef.current.remove(); popupRef.current = null; }
     };

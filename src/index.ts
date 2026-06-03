@@ -29,6 +29,7 @@ import { PdfToolsContainer } from './containers/pdfToolsContainer';
 import { runAllSourceScans } from './utils/warrantSources/runScan';
 import { detectDispatchAnomalies } from './routes/dispatch/anomalies';
 import { getRadioSettings, purgeOldRecordings } from './utils/radioSettings';
+import { sweepTrips } from './utils/tripStore';
 import type { Bindings, Variables } from './types';
 import { ROUTE_REGISTRY } from './routesConfig';
 
@@ -264,6 +265,15 @@ export default {
   // Errors are swallowed inside runUtahWarrantScan so one bad run
   // can't crash the cron loop.
   async scheduled(event: ScheduledEvent, env: Bindings, ctx: ExecutionContext): Promise<void> {
+    if (event.cron === '* * * * *') {
+      // Per-minute trip idle/stale sweep — backstop for units that go dark while
+      // stationary (lazy-on-gps-write handles the common case).
+      ctx.waitUntil(
+        sweepTrips(env.DB, env).then((n) => { if (n) console.log(`[trips] sweep closed ${n}`); })
+          .catch((err) => console.error('[trips] sweep failed:', err)),
+      );
+      return;
+    }
     ctx.waitUntil(
       runAllSourceScans(env.DB).catch((err) => {
         console.error('Multi-source warrant scheduled scan failed:', err);

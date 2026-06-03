@@ -13,6 +13,7 @@ import { downloadRecordPdf, generateRecordPdfBlobUrl, type RecordPdfType } from 
 import { tryV2Dispatch, tryV2DispatchBlobUrl } from '../utils/pdf/v2DispatchAdapter';
 import { fetchEntityImages, fetchImageFromUrl } from '../utils/pdfImageHelpers';
 import { apiFetch } from '../hooks/useApi';
+import { type Trip } from '../hooks/useTrips';
 import { useAuth } from '../context/AuthContext';
 import DocumentViewer from './DocumentViewer';
 import SignaturePad from './SignaturePad';
@@ -244,6 +245,17 @@ export default function PrintRecordButton({
         }
       } catch (err) {
         console.warn('[PrintRecordButton] Breadcrumb trail fetch failed, proceeding without GPS data:', err);
+      }
+      // Response trip — the logged call_response drive-to-scene leg, rendered
+      // as a one-line audit summary under Mileage in the call PDF.
+      try {
+        const callTrips = await apiFetch<Trip[]>(`/dispatch/trips?call_id=${callId}`);
+        const responseTrip = Array.isArray(callTrips)
+          ? callTrips.find((t) => t.trip_type === 'call_response')
+          : undefined;
+        if (responseTrip) enriched.response_trip = responseTrip;
+      } catch (err) {
+        console.warn('[PrintRecordButton] Response trip fetch failed, proceeding without it:', err);
       }
     }
 

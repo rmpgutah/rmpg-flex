@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import type { Env } from '../../types';
 import { getDb, query, queryFirst, execute, executeBatch } from '../../utils/db';
 import { emitAlert } from '../../utils/alertHub';
+import { applyTripEvent } from '../../utils/tripStore';
 
 const gps = new Hono<Env>();
 
@@ -29,6 +30,7 @@ gps.post('/', async (c) => {
         accuracy: p?.accuracy ?? null,
         heading: p?.heading ?? null,
         speed: p?.speed ?? null,
+        timestamp: p?.timestamp ?? null,   // ADD — client ISO ts, for intra-batch dt
       }))
       .filter((p) => Number.isFinite(p.latitude) && Number.isFinite(p.longitude))
       // Cap to the most-recent N — a large post-offline backlog replayed at once
@@ -38,10 +40,17 @@ gps.post('/', async (c) => {
 
     // Get user's unit info (status carried into the live frame so the map can
     // color a freshly-rebuilt heading arrow without a second lookup).
-    const unit = await queryFirst<{ id: number; call_sign: string; status: string | null }>(db,
-      'SELECT id, call_sign, status FROM units WHERE officer_id = ? LIMIT 1', userId);
+    const unit = await queryFirst<{ id: number; call_sign: string; status: string | null;
+      latitude: number | null; longitude: number | null; officer_id: number | null;
+      vehicle_id: number | null }>(db,
+      'SELECT id, call_sign, status, latitude, longitude, officer_id, vehicle_id FROM units WHERE officer_id = ? LIMIT 1', userId);
 
     if (!unit) return c.json({ error: 'No assigned unit' }, 400);
+    // Capture the prior position BEFORE the unit-row mirror UPDATE below
+    // overwrites units.latitude/longitude — the trip engine needs the real
+    // pre-batch position as the running `prev` for the first fix.
+    const prevLat0 = unit.latitude;
+    const prevLng0 = unit.longitude;
 
     // Breadcrumb trail — ONE batched write, BEST-EFFORT. This try/catch sits
     // BEFORE the unit-row mirror below, so a trail failure can never skip the
@@ -105,6 +114,50 @@ gps.post('/', async (c) => {
         });
       } catch { /* never break the write */ }
     }
+
+    // Trip segmentation — feed every fix in the batch to the pure engine: opens a
+    // PATROL on movement, appends + rolls up telemetry, lazy-closes an idle PATROL.
+    // Timestamps are SERVER-anchored (newest fix = server now) with intra-batch
+    // spacing taken from the client timestamps, so trip bounds stay authoritative
+    // while per-fix dt (speed/accel) is real. Best-effort: a trip failure must
+    // never fail the breadcrumb write or the client's success ack.
+    try {
+      const nowMs = Date.now();
+      // Bound the per-fix engine work: each fix is ~3-5 awaited D1 queries, and a
+      // post-offline replay (batch ≤200) could otherwise blow the Workers subrequest
+      // budget and silently drop ALL segmentation. Process the freshest fixes; the
+      // breadcrumb write above still persists every point.
+      const ENGINE_MAX = 60;
+      const enginePoints = points.length > ENGINE_MAX ? points.slice(-ENGINE_MAX) : points;
+      if (enginePoints.length < points.length) {
+        console.warn(`[gps] trip engine processed last ${enginePoints.length}/${points.length} fixes (offline-replay cap)`);
+      }
+      const tsList = enginePoints.map((p) => Date.parse(String(p.timestamp ?? '')));
+      const lastTs = tsList[tsList.length - 1];
+      const lastValid = Number.isFinite(lastTs);
+      const fixTs = (i: number): number => {
+        const ti = tsList[i];
+        if (lastValid && Number.isFinite(ti)) return nowMs - (lastTs - ti);
+        return nowMs - (enginePoints.length - 1 - i) * 1000; // fallback: assume ~1s spacing
+      };
+      let pLat = prevLat0;
+      let pLng = prevLng0;
+      for (let i = 0; i < enginePoints.length; i++) {
+        const pt = enginePoints[i];
+        await applyTripEvent({
+          db, env: c.env, unitId: unit.id, officerId: unit.officer_id, vehicleId: unit.vehicle_id,
+          event: { kind: 'gps', fix: { lat: pt.latitude, lng: pt.longitude, speed: pt.speed, heading: pt.heading, ts: fixTs(i) } },
+          ctx: { curLat: pt.latitude, curLng: pt.longitude, prevLat: pLat, prevLng: pLng },
+        });
+        pLat = pt.latitude;
+        pLng = pt.longitude;
+      }
+      // Tag the breadcrumbs just written with the now-active trip (for replay).
+      await execute(db,
+        `UPDATE gps_breadcrumbs SET trip_id = (SELECT id FROM unit_trips WHERE unit_id = ? AND status = 'active' ORDER BY start_time DESC LIMIT 1)
+         WHERE unit_id = ? AND trip_id IS NULL AND recorded_at >= datetime('now','-60 seconds')`,
+        unit.id, unit.id);
+    } catch (e) { console.warn('[gps] trip engine non-fatal:', e); }
 
     return c.json({ inserted, accepted: points.length }, 201);
   } catch (err) {

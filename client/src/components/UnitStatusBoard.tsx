@@ -4,6 +4,8 @@ import type { Unit, UnitStatus } from '../types';
 import StatusBadge from './StatusBadge';
 import { parseTimestamp } from '../utils/dateUtils';
 import { useUnitLocations } from '../hooks/useUnitLocations';
+import { useActiveTripsLive } from '../hooks/useActiveTripsLive';
+import { tripLabel, tripMiles, tripDurationMin, type Trip } from '../hooks/useTrips';
 import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
 import { useMenuActions } from '../utils/contextMenuActions';
 
@@ -41,6 +43,28 @@ function statusDwell(unit: Unit): { mins: number; color: string } | null {
   const t = STATUS_DWELL_THRESHOLDS[unit.status];
   const color = t ? (mins >= t.red ? '#ef4444' : mins >= t.amber ? '#f59e0b' : '#888888') : '#888888';
   return { mins, color };
+}
+
+// Live "current trip" badge for the Assignment column. Driven by the live
+// trip map (poll-seeded, socket-kept). call_response → brand gold; patrol →
+// neutral gray; no active trip → nothing. Format: "▶ RESPONSE 24-0613 · 2.1 mi · 4m".
+function TripBadge({ trip }: { trip: Trip }) {
+  const isResponse = trip.trip_type === 'call_response';
+  const color = isResponse ? '#d4a017' : '#888888';
+  const miles = tripMiles(trip);
+  const mins = tripDurationMin(trip);
+  const parts: string[] = [tripLabel(trip)];
+  if (Number.isFinite(miles)) parts.push(`${miles.toFixed(1)} mi`);
+  if (mins != null) parts.push(`${mins}m`);
+  return (
+    <span
+      className="inline-flex items-center text-[9px] font-mono font-bold tabular-nums truncate max-w-[180px]"
+      style={{ color }}
+      title={`Active trip — ${parts.join(' · ')}`}
+    >
+      &#9654;&nbsp;{parts.join(' · ')}
+    </span>
+  );
 }
 
 interface UnitStatusBoardProps {
@@ -83,6 +107,9 @@ export default React.memo(function UnitStatusBoard({
   // Live street address + cross street resolved from each unit's GPS, so the
   // board always shows where a unit physically is — not just coordinates.
   const unitLocations = useUnitLocations(units);
+  // Live current-trip-by-unit map (poll-seeded + 'trip_update' socket). Drives
+  // the per-row trip badge in the Assignment column.
+  const { getTrip } = useActiveTripsLive();
 
   // ── Right-click context menu ──
   const { openMenu } = useContextMenu();
@@ -247,7 +274,15 @@ export default React.memo(function UnitStatusBoard({
                 </div>
               </td>
               <td className="text-rmpg-300 text-xs font-mono">
-                {unit.current_call_number || <span className="text-rmpg-500 italic text-[10px]">Unassigned</span>}
+                <div className="flex flex-col gap-0.5">
+                  <span>
+                    {unit.current_call_number || <span className="text-rmpg-500 italic text-[10px]">Unassigned</span>}
+                  </span>
+                  {(() => {
+                    const trip = getTrip(unit.id);
+                    return trip ? <TripBadge trip={trip} /> : null;
+                  })()}
+                </div>
               </td>
               <td>
                 {(() => {
