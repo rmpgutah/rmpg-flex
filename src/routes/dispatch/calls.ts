@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import type { Env } from '../../types';
 import { z } from 'zod';
 import { v4 as uuidv4 } from 'uuid';
-import { getDb, query, queryFirst, execute, columnExists } from '../../utils/db';
+import { getDb, query, queryFirst, execute } from '../../utils/db';
 import { authMiddleware, requireRole } from '../../middleware/auth';
 import { applyRunCard } from '../runCards';
 import { sendToUser } from '../ws';
@@ -85,7 +85,7 @@ export const LIST_VIEW_COLUMNS = [
   // LE coordination
   'le_agency', 'le_case_number', 'le_notified', 'supervisor_notified',
   // Mileage + overdue + pinned
-  'starting_mileage', 'ending_mileage', 'overdue_notified', 'pinned',
+  'starting_mileage', 'ending_mileage', 'overdue_notified',
 ] as const;
 
 // Pre-built `c.col1, c.col2, ...` fragment used in every list query.
@@ -128,13 +128,8 @@ calls.get('/', async (c) => {
       where += " AND c.status IN ('dispatched','enroute','onscene','pending','open')";
     }
 
-    // Soft-delete filter (migration 0072). Disabled until migration 0072
-    // successfully lands — the columnExists() guard proved unreliable on
-    // D1 (pragma_table_info as a TVF is not consistently supported).
-    // Re-enable by uncommenting below once the migration is confirmed applied.
-    // if (await columnExists(db, 'calls_for_service_ext', 'deleted_at')) {
-    //   where += ' AND NOT EXISTS (SELECT 1 FROM calls_for_service_ext xd WHERE xd.id = c.id AND xd.deleted_at IS NOT NULL)';
-    // }
+    // Soft-delete filter — migration 0072 confirmed applied to live D1.
+    where += ' AND NOT EXISTS (SELECT 1 FROM calls_for_service_ext xd WHERE xd.id = c.id AND xd.deleted_at IS NOT NULL)';
 
     const pageNum = Math.max(1, parseInt(page || '1', 10));
     const limitNum = Math.min(1000, Math.max(1, parseInt(limit || '200', 10)));
@@ -164,7 +159,7 @@ calls.get('/', async (c) => {
       LEFT JOIN clients cl ON COALESCE(c.client_id, p.client_id) = cl.id
       LEFT JOIN calls_for_service_ext cfe ON cfe.id = c.id
       ${where}
-      ORDER BY COALESCE(c.pinned, 0) DESC, c.priority_score IS NOT NULL, c.priority_score DESC, c.created_at DESC
+      ORDER BY COALESCE(cfe.pinned, 0) DESC, c.priority_score IS NOT NULL, c.priority_score DESC, c.created_at DESC
       LIMIT ? OFFSET ?
     `, ...params, limitNum, offset);
 
