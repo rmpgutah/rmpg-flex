@@ -1039,11 +1039,14 @@ const API_ROUTES: RouteRule[] = [
   // PUT/DELETE only so GET keeps flowing to legacy until the rewrite
   // has a read handler.
   { kind: 'regex', value: /^\/api\/personnel\/\d+$/, methods: ['PUT', 'DELETE'] },
-  // POST /api/personnel — rewrite implements create handler
-  // (manager-only, case-insensitive username dedup, must_change_password
-  // defaults on). Bare /api/personnel kept routing to legacy for GET
-  // (list endpoint with org-context filters legacy still owns).
-  { kind: 'regex', value: /^\/api\/personnel\/?$/, methods: ['POST'] },
+  // GET + POST /api/personnel — both on the rewrite now. POST is the create
+  // handler (manager-only, case-insensitive username dedup, must_change_password
+  // defaults). GET is the officer list: the rewrite handler returns the FULL
+  // record set (contact/HR/DL + unit_call_sign) the detail panel reads, and
+  // honors ?status= so the PersonnelPage Archives view (status=inactive) and
+  // active view (status=active) populate server-side instead of the dead
+  // ?archived= param legacy ignored.
+  { kind: 'regex', value: /^\/api\/personnel\/?$/, methods: ['GET', 'POST'] },
   // Dedicated audited surfaces for role/password/status changes — rewrite-only.
   // Each is locked to a tighter role tier than the general PUT (admin-only
   // for role and password; manager-tier for status). See src/routes/personnel.ts.

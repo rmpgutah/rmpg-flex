@@ -75,16 +75,30 @@ const SELF_EDITABLE: readonly string[] = [
   'profile_image',
 ];
 
-// GET /personnel
+// GET /personnel[?status=&role=]
+// Returns the FULL officer record set the client consumes, not just a thin
+// summary: PersonnelPage feeds each list row straight into the detail panel's
+// Profile tab (it does NOT refetch /personnel/:id), so the list must carry
+// contact/HR/DL fields or the profile view goes blank. unit_call_sign is
+// resolved via a correlated subquery (one unit per officer) to avoid row
+// multiplication. ?status= drives the active/archived split (mapped to
+// users.status active|inactive). Column count (~33) is well under the D1 cap.
 personnel.get('/', async (c) => {
   try {
     const db = getDb(c.env);
     const { status, role } = c.req.query();
-    let sql = 'SELECT id, username, full_name, role, badge_number, phone, email, status FROM users WHERE 1=1';
+    let sql = `SELECT u.id, u.username, u.full_name, u.first_name, u.last_name, u.middle_name,
+                      u.role, u.badge_number, u.phone, u.email, u.status, u.rank, u.department,
+                      u.address, u.city, u.state, u.zip, u.date_of_birth, u.hire_date, u.termination_date,
+                      u.shift_preference, u.dl_number, u.dl_state, u.dl_expiry, u.blood_type, u.allergies,
+                      u.uniform_size, u.emergency_contact_name, u.emergency_contact_phone,
+                      u.emergency_contact_relationship, u.created_at, u.updated_at,
+                      (SELECT call_sign FROM units WHERE officer_id = u.id LIMIT 1) AS unit_call_sign
+               FROM users u WHERE 1=1`;
     const params: unknown[] = [];
-    if (status) { sql += ' AND status = ?'; params.push(status); }
-    if (role) { sql += ' AND role = ?'; params.push(role); }
-    sql += ' ORDER BY full_name';
+    if (status) { sql += ' AND u.status = ?'; params.push(status); }
+    if (role) { sql += ' AND u.role = ?'; params.push(role); }
+    sql += ' ORDER BY u.full_name';
     const rows = await query<Record<string, unknown>>(db, sql, ...params);
     return c.json(rows);
   } catch (err) {
