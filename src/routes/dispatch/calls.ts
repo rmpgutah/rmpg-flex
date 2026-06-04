@@ -128,14 +128,13 @@ calls.get('/', async (c) => {
       where += " AND c.status IN ('dispatched','enroute','onscene','pending','open')";
     }
 
-    // Soft-delete filter: exclude tombstoned calls (migration 0072 adds
-    // deleted_at to calls_for_service_ext). Applied conditionally —
-    // if the column doesn't exist yet on D1, the filter is silently
-    // skipped (no 500). Once migration 0072 lands, soft-deleted calls
-    // automatically disappear from the board.
-    if (await columnExists(db, 'calls_for_service_ext', 'deleted_at')) {
-      where += ' AND NOT EXISTS (SELECT 1 FROM calls_for_service_ext xd WHERE xd.id = c.id AND xd.deleted_at IS NOT NULL)';
-    }
+    // Soft-delete filter (migration 0072). Disabled until migration 0072
+    // successfully lands — the columnExists() guard proved unreliable on
+    // D1 (pragma_table_info as a TVF is not consistently supported).
+    // Re-enable by uncommenting below once the migration is confirmed applied.
+    // if (await columnExists(db, 'calls_for_service_ext', 'deleted_at')) {
+    //   where += ' AND NOT EXISTS (SELECT 1 FROM calls_for_service_ext xd WHERE xd.id = c.id AND xd.deleted_at IS NOT NULL)';
+    // }
 
     const pageNum = Math.max(1, parseInt(page || '1', 10));
     const limitNum = Math.min(1000, Math.max(1, parseInt(limit || '200', 10)));
