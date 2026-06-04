@@ -142,7 +142,6 @@ const DocumentsPage = lazyRetry(() => import('./pages/DocumentsPage'));
 const ForgotPasswordPage = lazyRetry(() => import('./pages/ForgotPasswordPage'));
 const ReconConnectPage = lazyRetry(() => import('./pages/ReconConnectPage'));
 const ResetPasswordPage = lazyRetry(() => import('./pages/ResetPasswordPage'));
-const NavigationPage = lazyRetry(() => import('./pages/NavigationPage'));
 
 
 /** Branded loading splash — matches login page design language */

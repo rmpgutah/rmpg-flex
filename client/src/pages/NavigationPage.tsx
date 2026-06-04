@@ -23,7 +23,7 @@ import {
   CornerUpLeft, CornerUpRight, ArrowUp, ArrowUpLeft, ArrowUpRight,
   Flag, Merge, RotateCw, RotateCcw, Clock, Box, Crosshair, Maximize, Minimize,
   Flame, Search, Bell, BellOff, ShieldAlert, Footprints, Car, Building2, Activity, History,
-  Route as RouteIcon, type LucideIcon,
+  Route as RouteIcon, Grid3X3, type LucideIcon,
 } from 'lucide-react';
 import MovementReportDrawer from './navigation/MovementReportDrawer';
 import CallHistoryDrawer from './navigation/CallHistoryDrawer';
@@ -40,6 +40,7 @@ import { getMapboxAccessToken } from '../utils/mapboxApiKey';
 import { apiFetch } from '../hooks/useApi';
 import { compassCardinal } from '../utils/locationImagery';
 import { getSourceSafe, hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
+import ModuleDirectoryPage from './ModuleDirectoryPage';
 
 // ─── Helpers ────────────────────────────────────────────────
 
@@ -422,6 +423,7 @@ function ContactRow({ id, sub, color, bearing, distMi, heading, threat }: {
 export default function NavigationPage() {
   const navigate = useNavigate();
   const gps = useGpsTracking({ capture: true });
+  const [viewMode, setViewMode] = useState<'drive' | 'modules'>('drive');
 
   // ── Native full-screen (kiosk) toggle ──
   // The page already renders edge-to-edge (no app toolbar — it's a standalone
@@ -1600,7 +1602,11 @@ export default function NavigationPage() {
     return { upcomingSteps: upcoming, arrivalClock };
   }, [activeRoute, routeProgress]);
 
-  return (
+  return viewMode === 'modules' ? (
+    <div className="fixed inset-0 bg-surface-deep overflow-hidden" style={{ zIndex: 40 }}>
+      <ModuleDirectoryPage />
+    </div>
+  ) : (
     <div ref={rootRef} className="fixed inset-0 bg-surface-deep overflow-hidden">
       {/* Map (or dark backdrop on failure) */}
       <div ref={mapContainerRef} className="absolute inset-0" />
@@ -1626,7 +1632,27 @@ export default function NavigationPage() {
       >
         <div className="absolute bottom-0 inset-x-0 h-px pointer-events-none" style={{ background: 'linear-gradient(90deg, transparent 5%, rgba(212,160,23,0.4) 30%, #d4a017 50%, rgba(212,160,23,0.4) 70%, transparent 95%)' }} />
         <Navigation2 className="w-4 h-4 text-brand-400" style={{ filter: 'drop-shadow(0 0 3px rgba(212,160,23,0.5))' }} />
-        <span className="text-[11px] font-bold uppercase tracking-widest text-rmpg-100 flex-1">Navigation</span>
+        <span className="text-[11px] font-bold uppercase tracking-widest text-rmpg-100">Navigation</span>
+        <div className="flex items-center gap-0.5 ml-2">
+          <button
+            type="button"
+            onClick={() => setViewMode('drive')}
+            className="text-[8px] font-bold uppercase px-1.5 py-0.5 text-brand-400"
+            style={{ border: '1px solid rgba(212,160,23,0.3)', background: 'rgba(212,160,23,0.1)' }}
+          >
+            Drive
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewMode('modules')}
+            className="text-[8px] font-bold uppercase px-1.5 py-0.5 text-rmpg-500 hover:text-rmpg-300 transition-colors"
+            style={{ border: '1px solid transparent' }}
+          >
+            <Grid3X3 className="w-2.5 h-2.5 inline-block -mt-0.5 mr-0.5" />
+            Modules
+          </button>
+        </div>
+        <span className="flex-1" />
         <span className="font-mono text-[11px] text-rmpg-300 tabular-nums">{clock}</span>
         <span className="flex items-center gap-1 text-[10px] font-bold uppercase" style={{ color: src.color }}>
           <src.icon className="w-3.5 h-3.5" /> {src.label}
