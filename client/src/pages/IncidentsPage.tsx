@@ -1840,7 +1840,7 @@ export default function IncidentsPage() {
                   {(isAdmin || isGodMode) && (
                     <IconButton onClick={async () => {
                       if (!confirm('Remove this offense?')) return;
-                      await apiFetch(`/incidents/${selectedIncident.id}/offenses/${offense.id}`, { method: 'DELETE' });
+                      try { await apiFetch(`/incidents/${selectedIncident.id}/offenses/${offense.id}`, { method: 'DELETE' }); } catch { return; }
                       fetchIncidentDetail(selectedIncident.id);
                     }} className="p-0.5 text-rmpg-500 hover:text-red-400 print:hidden" aria-label="Remove offense"><Trash2 className="w-3 h-3" /></IconButton>
                   )}
@@ -1886,7 +1886,7 @@ export default function IncidentsPage() {
                   {(isAdmin || isGodMode) && (
                     <IconButton onClick={async () => {
                       if (!confirm('Remove this officer?')) return;
-                      await apiFetch(`/incidents/${selectedIncident.id}/officers/${officer.id}`, { method: 'DELETE' });
+                      try { await apiFetch(`/incidents/${selectedIncident.id}/officers/${officer.id}`, { method: 'DELETE' }); } catch { return; }
                       fetchIncidentDetail(selectedIncident.id);
                     }} className="p-0.5 text-rmpg-500 hover:text-red-400 print:hidden" aria-label="Remove officer"><Trash2 className="w-3 h-3" /></IconButton>
                   )}
@@ -1935,7 +1935,7 @@ export default function IncidentsPage() {
                     {(isAdmin || isGodMode) && (
                       <IconButton onClick={async () => {
                         if (!confirm('Remove this link?')) return;
-                        await apiFetch(`/incidents/${selectedIncident.id}/links/${link.id}`, { method: 'DELETE' });
+                        try { await apiFetch(`/incidents/${selectedIncident.id}/links/${link.id}`, { method: 'DELETE' }); } catch { return; }
                         fetchIncidentDetail(selectedIncident.id);
                       }} className="p-0.5 text-rmpg-500 hover:text-red-400 print:hidden" aria-label="Remove link"><Trash2 className="w-3 h-3" /></IconButton>
                     )}

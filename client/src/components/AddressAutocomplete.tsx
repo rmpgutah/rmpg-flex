@@ -192,6 +192,7 @@ export default function AddressAutocomplete({
   // True for a brief window right after a suggestion is picked, so the input's
   // blur handler doesn't ALSO re-resolve the same address.
   const justSelectedRef = useRef(false);
+  const reqIdRef = useRef(0);
 
   // Fetch Mapbox token on mount + on tab-visible.
   // Previous behavior: token was tried once on mount; if the endpoint
@@ -243,12 +244,14 @@ export default function AddressAutocomplete({
   }, []);
 
   // Geocode query via Mapbox or Nominatim fallback
-  const fetchSuggestions = useCallback(async (query: string) => {
+  const fetchSuggestions = useCallback(async (query: string, reqId?: number) => {
     if (!query || query.length < 3) {
       setSuggestions([]);
       setShowDropdown(false);
       return;
     }
+
+    const isStale = () => reqId != null && reqId !== reqIdRef.current;
 
     try {
       if (useNominatim) {
@@ -262,9 +265,7 @@ export default function AddressAutocomplete({
           source: 'nominatim',
           raw: r,
         }));
-        setSuggestions(mapped);
-        setShowDropdown(mapped.length > 0);
-        setSelectedIdx(-1);
+        if (!isStale()) { setSuggestions(mapped); setShowDropdown(mapped.length > 0); setSelectedIdx(-1); }
         return;
       }
 
@@ -285,11 +286,13 @@ export default function AddressAutocomplete({
 
       const res = await fetch(url);
       if (!res.ok) {
-        setUseNominatim(true);
+        if (!isStale()) setUseNominatim(true);
         return;
       }
 
       const mapData = await res.json();
+      if (isStale()) return;
+
       const features: MapboxFeature[] = mapData.features || [];
 
       const mapped: Suggestion[] = features.map((f: MapboxFeature) => ({
@@ -299,11 +302,9 @@ export default function AddressAutocomplete({
         raw: f,
       }));
 
-      setSuggestions(mapped);
-      setShowDropdown(mapped.length > 0);
-      setSelectedIdx(-1);
+      if (!isStale()) { setSuggestions(mapped); setShowDropdown(mapped.length > 0); setSelectedIdx(-1); }
     } catch {
-      setUseNominatim(true);
+      if (!isStale()) setUseNominatim(true);
     }
   }, [country, addressOnly, useNominatim]);
 
@@ -311,8 +312,9 @@ export default function AddressAutocomplete({
   useEffect(() => {
     if (!tokenReady && !useNominatim) return;
     if (debounceRef.current) clearTimeout(debounceRef.current);
+    const reqId = ++reqIdRef.current;
     debounceRef.current = setTimeout(() => {
-      fetchSuggestions(value);
+      fetchSuggestions(value, reqId);
     }, 300);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [value, tokenReady, useNominatim, fetchSuggestions]);

@@ -111,6 +111,7 @@ export default function StatuteLookup({
   const [showDefinition, setShowDefinition] = useState<number | null>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reqIdRef = useRef(0);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -124,7 +125,7 @@ export default function StatuteLookup({
   }, []);
 
   // Debounced search
-  const doSearch = useCallback(async (searchQuery: string, cat: string, st: string) => {
+  const doSearch = useCallback(async (searchQuery: string, cat: string, st: string, reqId: number) => {
     if (searchQuery.length < 2) {
       setResults([]);
       return;
@@ -134,11 +135,11 @@ export default function StatuteLookup({
       const catParam = cat !== 'all' ? `&category=${cat}` : '';
       const stateParam = st && st !== 'ALL' ? `&state=${st}` : '';
       const res = await apiFetch<{ data: StatuteResult[] }>(`/statutes/search?q=${encodeURIComponent(searchQuery)}${catParam}${stateParam}&limit=20`);
-      setResults(res.data || []);
+      if (reqId === reqIdRef.current) setResults(res.data || []);
     } catch {
-      setResults([]);
+      if (reqId === reqIdRef.current) setResults([]);
     } finally {
-      setLoading(false);
+      if (reqId === reqIdRef.current) setLoading(false);
     }
   }, []);
 
@@ -148,8 +149,9 @@ export default function StatuteLookup({
       setResults([]);
       return;
     }
+    const reqId = ++reqIdRef.current;
     timerRef.current = setTimeout(() => {
-      doSearch(query, activeCategory, activeState);
+      doSearch(query, activeCategory, activeState, reqId);
     }, 300);
     return () => { if (timerRef.current) clearTimeout(timerRef.current); };
   }, [query, activeCategory, activeState, doSearch]);
