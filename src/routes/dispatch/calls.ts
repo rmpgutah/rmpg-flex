@@ -84,8 +84,8 @@ export const LIST_VIEW_COLUMNS = [
   'officer_safety_caution', 'k9_requested', 'ems_requested',
   // LE coordination
   'le_agency', 'le_case_number', 'le_notified', 'supervisor_notified',
-  // Mileage + overdue
-  'starting_mileage', 'ending_mileage', 'overdue_notified',
+  // Mileage + overdue + pinned
+  'starting_mileage', 'ending_mileage', 'overdue_notified', 'pinned',
 ] as const;
 
 // Pre-built `c.col1, c.col2, ...` fragment used in every list query.
@@ -157,13 +157,6 @@ calls.get('/', async (c) => {
         p.name as property_name, u.full_name as dispatcher_name,
         cl.name as client_name,
         cfe.held_at,
-        COALESCE(cfe.pinned, 0) as pinned,
-        cfe.pso_requestor_name, cfe.pso_requestor_phone, cfe.pso_requestor_email,
-        cfe.pso_service_type, cfe.pso_billing_code, cfe.pso_authorization,
-        cfe.pso_72hr_deadline, cfe.pso_72hr_notified,
-        cfe.pso_service_windows, cfe.pso_attempt_number,
-        cfe.process_service_type, cfe.process_served_to, cfe.process_served_address,
-        cfe.process_attempts, cfe.process_served_at, cfe.process_service_result,
         cfe.parent_call_id
       FROM calls_for_service c
       LEFT JOIN properties p ON c.property_id = p.id
@@ -171,7 +164,7 @@ calls.get('/', async (c) => {
       LEFT JOIN clients cl ON COALESCE(c.client_id, p.client_id) = cl.id
       LEFT JOIN calls_for_service_ext cfe ON cfe.id = c.id
       ${where}
-      ORDER BY COALESCE(cfe.pinned, 0) DESC, c.priority_score IS NOT NULL, c.priority_score DESC, c.created_at DESC
+      ORDER BY COALESCE(c.pinned, 0) DESC, c.priority_score IS NOT NULL, c.priority_score DESC, c.created_at DESC
       LIMIT ? OFFSET ?
     `, ...params, limitNum, offset);
 
