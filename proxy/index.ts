@@ -54,18 +54,10 @@ const STUBS: StubRule[] = [
   // (removed 2026-05-29) /api/warrants/utah-search/auto-poll-status stub —
   // the rewrite now serves a real status handler (src/routes/warrants.ts,
   // buildUtahStatus). Routed to env.API below.
-  // /api/personnel/equipment — no equipment table or handler in either backend.
-  // PersonnelPage's Equipment tab issues this GET on mount; without a stub
-  // it 404s and produces visible console noise. Return [] (callsites do
-  // `apiFetch<any[]>('/personnel/equipment')`). Sub-routes (/equipment/:id,
-  // /equipment/:id/checkout, etc.) are user-triggered, not background, so they
-  // stay 404 until a real implementation lands.
-  {
-    match: /^\/api\/personnel\/equipment$/,
-    methods: ['GET'],
-    body: [],
-    reason: 'no equipment table/handler; empty list silences dashboard polling',
-  },
+  // /api/personnel/equipment — REAL implementation landed (src/routes/personnel.ts
+  // over officer_equipment + equipment_checkout_log, routed to env.API in
+  // API_ROUTES). The old GET [] stub is removed so the list + writes + checkout
+  // log reach the rewrite instead of being faked empty.
   // /api/hr/benefits — no hr_benefits table on live D1 (HR rewrite only
   // patched leave_requests / disciplinary_records / review_cycles in
   // PR #660). BenefitsTab GETs this on mount; without a stub it 500s
@@ -1016,6 +1008,18 @@ const API_ROUTES: RouteRule[] = [
   { kind: 'prefix', value: '/api/personnel/activity' },
   { kind: 'prefix', value: '/api/personnel/fitness' },
   { kind: 'prefix', value: '/api/personnel/commendations' },
+  // Credentials (certs/licenses) — GET/POST /credentials + PUT/DELETE
+  // /credentials/:id, all in src/routes/personnel.ts over officer_credentials
+  // (migration 0076). Previously GET returned a hardcoded [] and the writes had
+  // no route → fell to legacy (missing table) or premise-stub fake-200.
+  { kind: 'regex', value: /^\/api\/personnel\/credentials\/?(\?.*)?$/, methods: ['GET', 'POST'] },
+  { kind: 'regex', value: /^\/api\/personnel\/credentials\/\d+$/, methods: ['PUT', 'DELETE'] },
+  // Officer equipment (issue / return / checkout-log) — handlers in
+  // src/routes/personnel.ts over officer_equipment + equipment_checkout_log.
+  // The bare GET /equipment stub above is removed so these reach the rewrite.
+  { kind: 'prefix', value: '/api/personnel/equipment-log' },
+  { kind: 'regex', value: /^\/api\/personnel\/equipment(\/.*)?$/ },
+  { kind: 'regex', value: /^\/api\/personnel\/\d+\/equipment$/, methods: ['POST'] },
   // Howen — handlers in src/routes/howen.ts (status, devices[/:id], events).
   { kind: 'prefix', value: '/api/howen/' },
   // Admin shift-swaps alias — handler in src/routes/shiftPlans.ts.
@@ -1035,11 +1039,14 @@ const API_ROUTES: RouteRule[] = [
   // PUT/DELETE only so GET keeps flowing to legacy until the rewrite
   // has a read handler.
   { kind: 'regex', value: /^\/api\/personnel\/\d+$/, methods: ['PUT', 'DELETE'] },
-  // POST /api/personnel — rewrite implements create handler
-  // (manager-only, case-insensitive username dedup, must_change_password
-  // defaults on). Bare /api/personnel kept routing to legacy for GET
-  // (list endpoint with org-context filters legacy still owns).
-  { kind: 'regex', value: /^\/api\/personnel\/?$/, methods: ['POST'] },
+  // GET + POST /api/personnel — both on the rewrite now. POST is the create
+  // handler (manager-only, case-insensitive username dedup, must_change_password
+  // defaults). GET is the officer list: the rewrite handler returns the FULL
+  // record set (contact/HR/DL + unit_call_sign) the detail panel reads, and
+  // honors ?status= so the PersonnelPage Archives view (status=inactive) and
+  // active view (status=active) populate server-side instead of the dead
+  // ?archived= param legacy ignored.
+  { kind: 'regex', value: /^\/api\/personnel\/?$/, methods: ['GET', 'POST'] },
   // Dedicated audited surfaces for role/password/status changes — rewrite-only.
   // Each is locked to a tighter role tier than the general PUT (admin-only
   // for role and password; manager-tier for status). See src/routes/personnel.ts.
@@ -1139,6 +1146,10 @@ const API_ROUTES: RouteRule[] = [
   { kind: 'prefix', value: '/api/reports/templates' },
   { kind: 'prefix', value: '/api/reports/statute-analytics' },
   { kind: 'prefix', value: '/api/reports/crime-analysis' },
+  // /api/reports/shift-activity/:officerId → env.API (rewrite reports.ts).
+  // Officer end-of-shift report (MDT). Use [^/]+ for the id segment — the
+  // client sends localStorage rmpg_user_id, which may be non-numeric.
+  { kind: 'regex', value: /^\/api\/reports\/shift-activity\/[^/]+(\?.*)?$/, methods: ['GET'] },
   // Officer shift lifecycle → env.API (rewrite dispatch/duty.ts). The
   // integrated "Start/End Shift" clocks the officer in/out, flips units.status
   // in-service↔off-duty, and assigns/releases the fleet vehicle in one atomic
