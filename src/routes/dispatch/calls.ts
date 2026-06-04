@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import type { Env } from '../../types';
 import { z } from 'zod';
 import { v4 as uuidv4 } from 'uuid';
-import { getDb, query, queryFirst, execute, columnExists } from '../../utils/db';
+import { getDb, query, queryFirst, execute } from '../../utils/db';
 import { authMiddleware, requireRole } from '../../middleware/auth';
 import { applyRunCard } from '../runCards';
 import { sendToUser } from '../ws';
@@ -58,8 +58,7 @@ export const LIST_VIEW_COLUMNS = [
   'location_address', 'latitude', 'longitude',
   'cross_street', 'location_building', 'location_floor', 'location_room',
   // Caller / contact
-  'caller_name', 'caller_phone', 'caller_relationship', 'caller_address',
-  'contact_method',
+  'caller_name', 'caller_phone', 'contact_method',
   // Foreign refs (names come from JOINs below)
   'dispatcher_id', 'property_id', 'client_id',
   'case_id', 'case_number', 'contract_id',
@@ -70,22 +69,15 @@ export const LIST_VIEW_COLUMNS = [
   // Geography
   'sector_id', 'sector_name', 'zone_id', 'zone_name', 'zone_beat',
   'beat_id', 'beat_name', 'beat_descriptor',
-  // Scene
-  'scene_safety', 'weather_conditions', 'lighting_conditions',
-  'num_subjects', 'num_victims', 'subject_description', 'vehicle_description',
-  'direction_of_travel', 'responding_officer', 'responding_vehicle_id',
-  // Response
-  'damage_estimate', 'damage_description',
-  // Safety flags — expanded to include all base-table tactical flags so the
-  // dispatch panel shows flag state accurately without requiring a detail GET.
+  // Safety flags (most-read by dispatcher; the rest live on the detail GET).
+  // Intentionally excluded: `pinned` and `officer_safety_caution` — both are
+  // in UPDATABLE_CALL_COLUMNS_BASE but not in any /migrations/ file (live D1
+  // patched directly per memory project-live-d1-schema-patches). Including
+  // them risks `no such column` 500s on prod if the patch was never applied.
+  // Re-add once a migration backfills them.
   'weapons_involved', 'injuries_reported', 'domestic_violence',
-  'alcohol_involved', 'drugs_involved',
-  'mental_health_crisis', 'juvenile_involved', 'felony_in_progress',
-  'officer_safety_caution', 'k9_requested', 'ems_requested',
-  // LE coordination
-  'le_agency', 'le_case_number', 'le_notified', 'supervisor_notified',
-  // Mileage + overdue + pinned
-  'starting_mileage', 'ending_mileage', 'overdue_notified', 'pinned',
+  // Mileage + overdue
+  'starting_mileage', 'ending_mileage', 'overdue_notified',
 ] as const;
 
 // Pre-built `c.col1, c.col2, ...` fragment used in every list query.
@@ -128,14 +120,13 @@ calls.get('/', async (c) => {
       where += " AND c.status IN ('dispatched','enroute','onscene','pending','open')";
     }
 
-    // Soft-delete filter: exclude tombstoned calls (migration 0072 adds
-    // deleted_at to calls_for_service_ext). Applied conditionally —
-    // if the column doesn't exist yet on D1, the filter is silently
-    // skipped (no 500). Once migration 0072 lands, soft-deleted calls
-    // automatically disappear from the board.
-    if (await columnExists(db, 'calls_for_service_ext', 'deleted_at')) {
-      where += ' AND NOT EXISTS (SELECT 1 FROM calls_for_service_ext xd WHERE xd.id = c.id AND xd.deleted_at IS NOT NULL)';
-    }
+    // Exclude soft-deleted calls from every list/queue/active view. A non-NULL
+    // calls_for_service_ext.deleted_at means the call was removed from the board
+    // (admin-recoverable). Expressed as a correlated subquery (not a join
+    // condition) so it applies identically to the COUNT query below — which does
+    // NOT join the ext table — and the row query. The single-call GET (/:id)
+    // intentionally still returns soft-deleted calls so they can be recovered.
+    where += ' AND NOT EXISTS (SELECT 1 FROM calls_for_service_ext xd WHERE xd.id = c.id AND xd.deleted_at IS NOT NULL)';
 
     const pageNum = Math.max(1, parseInt(page || '1', 10));
     const limitNum = Math.min(1000, Math.max(1, parseInt(limit || '200', 10)));
@@ -145,20 +136,15 @@ calls.get('/', async (c) => {
 
     // Narrow projection — see LIST_VIEW_COLUMNS comment for the D1 100-col
     // result-set cap. SELECT c.* + JOIN columns 500s; this stays under ~60.
-    // cfe.pinned + cfe.held_at are TWO explicit columns off the ext table —
-    // safe under the result-set cap (the cap problem is SELECT c.*, not a few
-    // joined cols). Sorted pinned-first so a dispatcher's pinned calls stay on
-    // top across refreshes (PATCH /:id/pin writes cfe.pinned).
-    //   NOTE: a parallel PR added the `cfe.held_at` join with alias `cfe`
-    //   while #728 had added pinning with alias `cfse`; the squash kept
-    //   `cfse` in the ORDER BY but only the `cfe` join, 500ing the queue.
-    //   Both now use the single `cfe` alias.
+    // c.pinned lives on calls_for_service (migration 0003); reading from
+    // cfe.pinned (calls_for_service_ext) is fragile because that column was
+    // added via a direct D1 patch (not a migration) and may not survive a
+    // D1 restore / fork. Reference the definitely-present column.
     const rows = await query<Record<string, unknown>>(db, `
       SELECT ${LIST_VIEW_SELECT},
         p.name as property_name, u.full_name as dispatcher_name,
-        cl.name as client_name,
-        cfe.held_at,
-        cfe.parent_call_id
+        cl.name as client_name, cfe.held_at,
+        COALESCE(c.pinned, 0) as pinned
       FROM calls_for_service c
       LEFT JOIN properties p ON c.property_id = p.id
       LEFT JOIN users u ON c.dispatcher_id = u.id

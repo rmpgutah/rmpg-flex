@@ -925,8 +925,8 @@ const utcNow = () => new Date().toISOString().replace('T', ' ').slice(0, 19);
 async function fetchCallRow(db: D1Database, id: number) {
   const base = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
   if (!base) return base;
-  const ext = await queryFirst<Record<string, unknown>>(db, 'SELECT held_at, pinned FROM calls_for_service_ext WHERE id = ?', id);
-  return { ...base, held_at: ext?.held_at ?? null, pinned: ext?.pinned ?? 0 };
+  const ext = await queryFirst<Record<string, unknown>>(db, 'SELECT held_at FROM calls_for_service_ext WHERE id = ?', id);
+  return { ...base, held_at: ext?.held_at ?? null, pinned: base?.pinned ? 1 : 0 };
 }
 
 // =====================================================================
@@ -1735,6 +1735,7 @@ callActions.patch('/:id/pin', requireRole('admin', 'manager', 'supervisor', 'dis
 
     await execute(db, 'INSERT OR IGNORE INTO calls_for_service_ext (id) VALUES (?)', id);
     await execute(db, 'UPDATE calls_for_service_ext SET pinned = ? WHERE id = ?', pinned, id);
+    await execute(db, 'UPDATE calls_for_service SET pinned = ? WHERE id = ?', pinned, id);
     return c.json({ success: true, id, pinned: Boolean(pinned) });
   } catch (err) {
     console.error('[dispatch] pin error', err);
