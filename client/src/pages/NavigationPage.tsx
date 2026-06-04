@@ -766,8 +766,14 @@ export default function NavigationPage() {
     let cancelled = false;
     (async () => {
       try {
-        const unit = await apiFetch<{ id: number; call_sign: string; current_call_id: number | null } | null>('/dispatch/gps/my-unit').catch(() => null);
-        if (cancelled || !unit?.current_call_id) return;
+        // The /dispatch/gps/my-unit read can be shadowed by the edge stub
+        // returning a hollow {unit:null} (HTTP 200) — a TRUTHY object whose
+        // .current_call_id is undefined. Unwrap a possible {unit} wrapper and
+        // require a real numeric id before trusting the payload (mirrors the
+        // pickUnit guard in useGpsTracking.ts).
+        const resp = await apiFetch<any>('/dispatch/gps/my-unit').catch(() => null);
+        const unit = resp && typeof resp === 'object' ? ('unit' in resp ? resp.unit : resp) : null;
+        if (cancelled || !unit || typeof unit.id !== 'number' || !unit.current_call_id) return;
         if (routedCallRef.current === unit.current_call_id) return; // already routed
         const call = await apiFetch<{ call_number: string; latitude: number | null; longitude: number | null }>(`/dispatch/calls/${unit.current_call_id}`).catch(() => null);
         if (cancelled || !call || call.latitude == null || call.longitude == null) return;

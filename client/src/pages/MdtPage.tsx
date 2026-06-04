@@ -303,17 +303,17 @@ export default function MdtPage() {
         `Date: ${data.date}  Unit: ${myUnit?.call_sign || 'N/A'}`,
         '',
         `───── SUMMARY ─────────────────────────────────────────`,
-        `Calls Handled: ${data.summary.totalCalls}`,
-        `Incidents Filed: ${data.summary.totalIncidents}`,
-        `Patrol Scans: ${data.summary.totalScans}`,
-        `Citations: ${data.summary.totalCitations}`,
-        `Field Interviews: ${data.summary.totalFieldInterviews}`,
+        `Calls Handled: ${data.summary?.totalCalls ?? 0}`,
+        `Incidents Filed: ${data.summary?.totalIncidents ?? 0}`,
+        `Patrol Scans: ${data.summary?.totalScans ?? 0}`,
+        `Citations: ${data.summary?.totalCitations ?? 0}`,
+        `Field Interviews: ${data.summary?.totalFieldInterviews ?? 0}`,
         '',
       ];
 
-      if (data.calls.length > 0) {
+      if ((data.calls || []).length > 0) {
         lines.push('───── CALLS FOR SERVICE ────────────────────────────────');
-        data.calls.forEach((c: any) => {
+        (data.calls as any[]).forEach((c: any) => {
           lines.push(`  ${c.call_number}  ${(c.incident_type || 'UNKNOWN').toUpperCase()}  ${c.priority || ''}  ${c.status || ''}`);
           lines.push(`    Location: ${c.location_address || 'N/A'}`);
           lines.push(`    Time: ${safeTimeStr(c.created_at)}`);
@@ -321,18 +321,18 @@ export default function MdtPage() {
         });
       }
 
-      if (data.incidents.length > 0) {
+      if ((data.incidents || []).length > 0) {
         lines.push('───── INCIDENT REPORTS ─────────────────────────────────');
-        data.incidents.forEach((i: any) => {
+        (data.incidents as any[]).forEach((i: any) => {
           lines.push(`  ${i.incident_number}  ${(i.incident_type || '').replace(/_/g, ' ').toUpperCase()}  ${(i.status || '').replace(/_/g, ' ').toUpperCase()}`);
           lines.push(`    Location: ${i.location_address || 'N/A'}`);
           lines.push('');
         });
       }
 
-      if (data.scans.length > 0) {
+      if ((data.scans || []).length > 0) {
         lines.push('───── PATROL SCANS ────────────────────────────────────');
-        data.scans.forEach((s: any) => {
+        (data.scans as any[]).forEach((s: any) => {
           lines.push(`  ${safeTimeStr(s.scanned_at)}  ${s.checkpoint_name || 'Unknown'}`);
         });
         lines.push('');

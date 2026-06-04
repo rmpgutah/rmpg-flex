@@ -77,6 +77,22 @@ interface ActivityEntry {
 // RMPG Flex — Personnel Management Page (Redesigned)
 // ============================================================
 
+// Several personnel reads (schedules/time/deployments/coverage-gaps) can be
+// shadowed by an edge stub that returns a WRAPPER object ({entries:[]},
+// {schedules:[]}, {data:[]}, ...) instead of a bare array. Unwrap a single
+// array-valued property so a wrapped-but-populated payload still surfaces.
+// NOTE: this does NOT recover a stub that returns empty arrays — that requires
+// removing the stub's zone route (see PR notes / infra handoff).
+function asArray(raw: any): any[] {
+  if (Array.isArray(raw)) return raw;
+  if (raw && typeof raw === 'object') {
+    for (const k of ['data', 'results', 'schedules', 'entries', 'deployments', 'gaps', 'items']) {
+      if (Array.isArray(raw[k])) return raw[k];
+    }
+  }
+  return [];
+}
+
 export default function PersonnelPage() {
   const { addToast } = useToast();
   const isMobile = useIsMobile();
@@ -177,7 +193,7 @@ export default function PersonnelPage() {
     }
     try {
       const [usersRes, schedulesRes, timeRes, credentialsRes, propsRes] = await Promise.allSettled([
-        apiFetch<any[]>(`/personnel?archived=${showArchived}`),
+        apiFetch<any[]>(`/personnel?status=${showArchived ? 'inactive' : 'active'}`),
         apiFetch<any[]>('/personnel/schedules'),
         apiFetch<any[]>('/personnel/time'),
         apiFetch<any[]>('/personnel/credentials'),
@@ -190,11 +206,12 @@ export default function PersonnelPage() {
       const credentialsRaw = credentialsRes.status === 'fulfilled' ? credentialsRes.value : [];
       const propsRaw = propsRes.status === 'fulfilled' ? propsRes.value : [];
 
-      // Guard: ensure all values are arrays
+      // Guard: ensure all values are arrays (asArray also unwraps stub wrapper
+      // objects like {schedules:[]} / {entries:[]} for the shadow-prone reads).
       setOfficers((Array.isArray(usersRaw) ? usersRaw : []).map(mapUser));
-      setSchedules((Array.isArray(schedulesRaw) ? schedulesRaw : []).map(mapSchedule));
-      setTimeEntries((Array.isArray(timeRaw) ? timeRaw : []).map(mapTimeEntry));
-      setCredentials((Array.isArray(credentialsRaw) ? credentialsRaw : []).map(mapCredential));
+      setSchedules(asArray(schedulesRaw).map(mapSchedule));
+      setTimeEntries(asArray(timeRaw).map(mapTimeEntry));
+      setCredentials(asArray(credentialsRaw).map(mapCredential));
       setAllProperties((Array.isArray(propsRaw) ? propsRaw : []).map((p: any) => ({ id: String(p.id), name: p.name })));
 
       // If the primary users call failed, show an error (only on non-silent loads)
@@ -237,8 +254,8 @@ export default function PersonnelPage() {
           apiFetch<any[]>('/personnel/coverage-gaps'),
         ])
           .then(([dRaw, gaps]) => {
-            setDeployments((Array.isArray(dRaw) ? dRaw : []).map(mapDeployment));
-            setCoverageGaps(Array.isArray(gaps) ? gaps : []);
+            setDeployments(asArray(dRaw).map(mapDeployment));
+            setCoverageGaps(asArray(gaps));
           })
           .catch(() => { /* dashboard degrades gracefully */ })
           .finally(() => setDeploymentsLoading(false));
@@ -371,6 +388,10 @@ export default function PersonnelPage() {
   // ----------------------------------------------------------
 
   const filteredOfficers = officers.filter(o => {
+    // Active view hides archived (inactive/terminated) officers; the Archives
+    // view shows only them. Enforced client-side off is_active because the
+    // list endpoint stays on legacy and may not honor the status query param.
+    if (showArchived ? o.is_active : !o.is_active) return false;
     if (!searchQuery) return true;
     const q = searchQuery.toLowerCase();
     return (
@@ -816,9 +837,13 @@ export default function PersonnelPage() {
   // Archive / Unarchive Officer
   // ----------------------------------------------------------
 
+  // Archive == set employment status 'inactive' (there is no /archive handler;
+  // POST /:id/status is the real, audited, proxy-routed write). Unarchive
+  // restores 'active'. The active/archived split is enforced client-side via
+  // is_active (see filteredOfficers) because the list endpoint stays on legacy.
   const handleArchiveOfficer = async (officerId: string) => {
     try {
-      await apiFetch(`/personnel/${officerId}/archive`, { method: 'POST' });
+      await apiFetch(`/personnel/${officerId}/status`, { method: 'POST', body: JSON.stringify({ status: 'inactive' }) });
       addToast('Officer archived', 'success');
       if (selectedOfficer?.id === officerId) setSelectedOfficer(null);
       await fetchCoreData({ silent: true });
@@ -829,7 +854,7 @@ export default function PersonnelPage() {
 
   const handleUnarchiveOfficer = async (officerId: string) => {
     try {
-      await apiFetch(`/personnel/${officerId}/unarchive`, { method: 'POST' });
+      await apiFetch(`/personnel/${officerId}/status`, { method: 'POST', body: JSON.stringify({ status: 'active' }) });
       addToast('Officer unarchived', 'success');
       if (selectedOfficer?.id === officerId) setSelectedOfficer(null);
       await fetchCoreData({ silent: true });

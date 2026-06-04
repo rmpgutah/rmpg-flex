@@ -2588,6 +2588,124 @@ fleet.get('/fuel/analytics/by-card', async (c) => {
   } catch (err) { console.error('GET /fleet/fuel/analytics/by-card failed:', err); return c.json({ data: [] }); }
 });
 
+// ── Fuel analytics: overview + by-officer ──────────────────────────────────
+// FuelAnalyticsPage fires three requests in parallel; previously only the
+// by-card handler above existed, so /overview and /by-officer 404'd and (via
+// the page's old Promise.all) blanked the WHOLE dashboard. These two handlers
+// aggregate ONLY from columns proven present on live D1: fleet_fuel_log
+// (gallons, total_cost/cost, cost_per_gallon, odometer, mpg, station, location,
+// driver_name, fuel_date) joined to fleet_vehicles. A "flagged" fill is one
+// that is oversized/expensive or lacks an odometer reading (can't validate MPG)
+// — the same heuristic used for both flag_rate and the flagged leaderboard.
+const FUEL_FLAG = `(COALESCE(f.gallons,0) > 50 OR COALESCE(f.total_cost, f.cost, 0) > 200 OR f.odometer IS NULL)`;
+
+fleet.get('/fuel/analytics/overview', async (c) => {
+  try {
+    const db = getDb(c.env);
+    // Clamp days to a sane integer — it is interpolated into the date() window.
+    const days = Math.max(1, Math.min(3650, Math.floor(Number(c.req.query('days')) || 90)));
+    const since = `f.fuel_date >= date('now', '-${days} days')`;
+
+    const totals = await queryFirst<Record<string, number>>(db,
+      `SELECT COUNT(*) AS fill_count,
+              COALESCE(SUM(f.gallons),0) AS total_gallons,
+              COALESCE(SUM(COALESCE(f.total_cost, f.cost)),0) AS total_cost,
+              SUM(CASE WHEN ${FUEL_FLAG} THEN 1 ELSE 0 END) AS flagged
+       FROM fleet_fuel_log f WHERE ${since}`);
+    const fillCount = Number(totals?.fill_count || 0);
+    const totalGallons = Number(totals?.total_gallons || 0);
+    const totalCost = Number(totals?.total_cost || 0);
+    const flagged = Number(totals?.flagged || 0);
+
+    const monthly = await query<Record<string, unknown>>(db,
+      `SELECT strftime('%Y-%m', f.fuel_date) AS month,
+              COALESCE(SUM(COALESCE(f.total_cost, f.cost)),0) AS cost,
+              COALESCE(SUM(f.gallons),0) AS gallons,
+              COUNT(*) AS fills
+       FROM fleet_fuel_log f WHERE ${since} AND f.fuel_date IS NOT NULL
+       GROUP BY month ORDER BY month ASC`);
+
+    const vehicles = await query<Record<string, unknown>>(db,
+      `SELECT v.id, v.vehicle_number, v.year, v.make, v.model,
+              COUNT(f.id) AS fill_count,
+              COALESCE(SUM(f.gallons),0) AS total_gallons,
+              COALESCE(SUM(COALESCE(f.total_cost, f.cost)),0) AS total_cost,
+              AVG(NULLIF(f.mpg,0)) AS avg_mpg,
+              ROUND(100.0 * SUM(CASE WHEN ${FUEL_FLAG} THEN 1 ELSE 0 END) / NULLIF(COUNT(f.id),0), 1) AS flag_rate
+       FROM fleet_vehicles v
+       LEFT JOIN fleet_fuel_log f ON f.vehicle_id = v.id AND ${since}
+       WHERE v.archived_at IS NULL
+       GROUP BY v.id ORDER BY total_cost DESC`);
+
+    const stations = await query<Record<string, unknown>>(db,
+      `SELECT COALESCE(NULLIF(TRIM(f.station),''), NULLIF(TRIM(f.location),''), '(unknown)') AS station,
+              COUNT(*) AS fill_count,
+              COALESCE(SUM(COALESCE(f.total_cost, f.cost)),0) AS total_spent,
+              CASE WHEN SUM(f.gallons) > 0 THEN SUM(COALESCE(f.total_cost, f.cost)) / SUM(f.gallons) ELSE NULL END AS avg_cpg
+       FROM fleet_fuel_log f WHERE ${since}
+       GROUP BY station ORDER BY total_spent DESC LIMIT 15`);
+
+    const flaggedLeaders = await query<Record<string, unknown>>(db,
+      `SELECT v.id, v.vehicle_number, v.make, v.model,
+              SUM(CASE WHEN ${FUEL_FLAG} THEN 1 ELSE 0 END) AS flagged_count
+       FROM fleet_vehicles v JOIN fleet_fuel_log f ON f.vehicle_id = v.id AND ${since}
+       WHERE v.archived_at IS NULL
+       GROUP BY v.id HAVING flagged_count > 0 ORDER BY flagged_count DESC LIMIT 10`);
+
+    return c.json({
+      totals: {
+        fill_count: fillCount,
+        total_gallons: totalGallons,
+        total_cost: totalCost,
+        avg_cpg: totalGallons > 0 ? totalCost / totalGallons : null,
+        flag_rate: fillCount > 0 ? (flagged / fillCount) * 100 : null,
+      },
+      monthly_trend: monthly.map((m) => ({
+        month: m.month,
+        cost: Number(m.cost || 0),
+        gallons: Number(m.gallons || 0),
+        fills: Number(m.fills || 0),
+      })),
+      vehicles,
+      top_stations: stations,
+      flagged_leaderboard: flaggedLeaders,
+      period_days: days,
+    });
+  } catch (err) {
+    console.error('GET /fleet/fuel/analytics/overview failed:', err);
+    return c.json({
+      totals: { fill_count: 0, total_gallons: 0, total_cost: 0, avg_cpg: null, flag_rate: null },
+      monthly_trend: [], vehicles: [], top_stations: [], flagged_leaderboard: [],
+    });
+  }
+});
+
+fleet.get('/fuel/analytics/by-officer', async (c) => {
+  try {
+    const db = getDb(c.env);
+    // fleet_fuel_log has no officer FK — attribute via driver_name, resolving
+    // an officer_id when the name matches a user (else officer_id stays null,
+    // and the page tags the row "(no driver recorded)").
+    const sinceDate = c.req.query('since') || '1970-01-01';
+    const rows = await query<Record<string, unknown>>(db,
+      `SELECT u.id AS officer_id,
+              COALESCE(NULLIF(TRIM(f.driver_name),''), 'Unattributed') AS display_name,
+              COUNT(f.id) AS fill_count,
+              COALESCE(SUM(f.gallons),0) AS total_gallons,
+              COALESCE(SUM(COALESCE(f.total_cost, f.cost)),0) AS total_cost,
+              AVG(NULLIF(f.mpg,0)) AS avg_mpg,
+              ROUND(100.0 * SUM(CASE WHEN ${FUEL_FLAG} THEN 1 ELSE 0 END) / NULLIF(COUNT(f.id),0), 1) AS flag_rate
+       FROM fleet_fuel_log f
+       LEFT JOIN users u ON u.full_name = f.driver_name
+       WHERE f.fuel_date >= ?
+       GROUP BY display_name, u.id ORDER BY total_cost DESC`, sinceDate);
+    return c.json({ data: rows });
+  } catch (err) {
+    console.error('GET /fleet/fuel/analytics/by-officer failed:', err);
+    return c.json({ data: [] });
+  }
+});
+
 // POST /fuel/import/preview — parse an uploaded CSV into reviewable rows.
 // Accepts multipart/form-data (file=...) OR raw text/csv body. Maps common
 // column-header aliases to the canonical PreviewRow shape the client edits.

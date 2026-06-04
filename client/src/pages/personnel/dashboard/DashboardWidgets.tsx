@@ -228,8 +228,9 @@ export function HoursTrendCard({ timeEntries }: { timeEntries: TimeEntry[] }) {
 
 // ── Live: Duty Hours (14-day) — self-fetching, renders null when empty ──
 interface DutyHoursData {
-  officers: { officer_id: number; officer_name: string; total_hours: number; total_overtime: number; shift_count: number }[];
-  flagged_excessive_hours: { officer_id: number; officer_name: string; total_hours: number }[];
+  entries: { officer_id: number; officer_name: string; total_hours: number; total_overtime: number; shifts_completed: number }[];
+  totals?: { totalHours: number; totalOfficers: number };
+  flagged_excessive_hours?: { officer_id: number; officer_name: string; total_hours: number }[];
 }
 
 export function DutyHoursPanel() {
@@ -239,7 +240,7 @@ export function DutyHoursPanel() {
       .then((d) => d && setData(d))
       .catch((err) => console.warn('[Personnel] Duty hours fetch failed:', err?.message));
   }, []);
-  if (!data?.officers?.length) return null;
+  if (!data?.entries?.length) return null;
   const flagged = data.flagged_excessive_hours || [];
   return (
     <div className="panel-beveled p-3">
@@ -250,12 +251,12 @@ export function DutyHoursPanel() {
         )}
       </h4>
       <div className="space-y-0.5 max-h-[140px] overflow-y-auto scrollbar-dark">
-        {data.officers.slice(0, 10).map((o) => (
+        {data.entries.slice(0, 10).map((o) => (
           <div key={o.officer_id} className="flex items-center justify-between px-2 py-0.5 bg-surface-sunken rounded text-[9px]">
             <span className="text-rmpg-200 flex-1 truncate">{o.officer_name}</span>
             <span className="font-mono text-gray-400 w-12 text-right">{o.total_hours}h</span>
             <span className="font-mono text-amber-400 w-14 text-right">{o.total_overtime}h OT</span>
-            <span className="text-rmpg-500 w-14 text-right">{o.shift_count} shifts</span>
+            <span className="text-rmpg-500 w-14 text-right">{o.shifts_completed} shifts</span>
           </div>
         ))}
       </div>
