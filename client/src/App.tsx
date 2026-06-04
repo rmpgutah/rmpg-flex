@@ -142,6 +142,7 @@ const DocumentsPage = lazyRetry(() => import('./pages/DocumentsPage'));
 const ForgotPasswordPage = lazyRetry(() => import('./pages/ForgotPasswordPage'));
 const ReconConnectPage = lazyRetry(() => import('./pages/ReconConnectPage'));
 const ResetPasswordPage = lazyRetry(() => import('./pages/ResetPasswordPage'));
+const NavigationPage = lazyRetry(() => import('./pages/NavigationPage'));
 
 
 /** Branded loading splash — matches login page design language */
@@ -477,6 +478,7 @@ function AppRoutes() {
             <Route path="/narcotics" element={<RouteErrorBoundary><NarcoticsPage /></RouteErrorBoundary>} />
             <Route path="/accreditation" element={<RouteErrorBoundary><AccreditationPage /></RouteErrorBoundary>} />
             <Route path="/recruitment" element={<RouteErrorBoundary><RecruitmentPage /></RouteErrorBoundary>} />
+            <Route path="/navigation" element={<RouteErrorBoundary><NavigationPage /></RouteErrorBoundary>} />
             {/* 404 within layout */}
             <Route path="*" element={<NotFoundPage />} />
           </Route>
