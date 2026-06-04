@@ -372,6 +372,26 @@ fleet.get('/analytics', async (c) => {
       : null,
   })));
 
+  // daily_usage — GPS telematics derived from gps_breadcrumbs.
+  const periodParam = c.req.query('period') || '90d';
+  const dayRange = periodParam === '30d' ? '-30 days'
+    : periodParam === '1y' ? '-365 days'
+    : periodParam === 'all' ? '-3650 days'
+    : '-90 days';
+  const daily_usage = await safe(async () => {
+    const rows = await db.prepare(
+      `SELECT date(recorded_at) as date,
+              COUNT(DISTINCT unit_id) as active_vehicles,
+              COUNT(*) as total_pings,
+              COALESCE(SUM(CASE WHEN speed IS NOT NULL AND speed > 0 THEN 1 ELSE 0 END), 0) as moving_pings
+       FROM gps_breadcrumbs
+       WHERE recorded_at >= datetime('now', ?)
+       GROUP BY date(recorded_at)
+       ORDER BY date`,
+    ).bind(dayRange).all();
+    return (rows.results ?? []) as Array<{ date: string; active_vehicles: number; total_pings: number; moving_pings: number }>;
+  }, []);
+
   return c.json({
     maintenance_cost_trend,
     mileage_distribution,
@@ -393,9 +413,7 @@ fleet.get('/analytics', async (c) => {
     maintenance_forecast,
     oldest_vehicle_year,
     avg_daily_miles,
-    // daily_usage is GPS-telematics derived (active vehicles per day); it stays
-    // empty until GPS breadcrumb data exists — the UI shows "No GPS usage data".
-    daily_usage: [],
+    daily_usage,
     top_issues: [],
   });
 });

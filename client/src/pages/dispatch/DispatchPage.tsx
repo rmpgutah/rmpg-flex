@@ -1139,6 +1139,18 @@ export default function DispatchPage() {
       } else if (data.action === 'ai_analysis' && data.call_id && data.analysis) {
         setAiAnalyses(prev => ({ ...prev, [data.call_id]: data.analysis }));
         setShowAiSidebar(true);
+      } else if (/^call_(person|vehicle|property)_/.test(data.action || '')) {
+        // call_person_*, call_vehicle_*, call_property_* from callLinks.ts.
+        // If the action affects the currently-selected call, refresh its linked
+        // data so the detail pane stays current without a full queue refetch.
+        const cid = data.call_id ?? data.call?.id;
+        if (cid && selectedCallRef.current && String(selectedCallRef.current.id) === String(cid)) {
+          if ((data.action || '').startsWith('call_person_')) {
+            apiFetch<any[]>(`/dispatch/calls/${cid}/persons`).then(r => setCallPersons(Array.isArray(r) ? r : [])).catch(() => {});
+          } else if ((data.action || '').startsWith('call_vehicle_')) {
+            apiFetch<any[]>(`/dispatch/calls/${cid}/vehicles`).then(r => setCallVehicles(Array.isArray(r) ? r : [])).catch(() => {});
+          }
+        }
       }
       } catch (err) {
         console.error('[Dispatch] Error processing WS dispatch_update:', err);

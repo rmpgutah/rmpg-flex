@@ -138,6 +138,7 @@ import dispatchPremiseHistory from './routes/dispatch/premiseHistory';
 import dispatchPanic from './routes/dispatch/panic';
 import dispatchAnomalies from './routes/dispatch/anomalies';
 import dispatchCallLinks from './routes/dispatch/callLinks';
+import dispatchShiftHandoff from './routes/dispatch/shiftHandoff';
 import runCards from './routes/runCards';
 import welfare from './routes/welfare';
 import {
@@ -432,5 +433,5 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/email', router: stubs, auth: 'required' },
   { prefix: '/api/integrations', router: stubs, auth: 'required' },
   { prefix: '/api/dispatch/stats', router: stubs, auth: 'required' },
-  { prefix: '/api/dispatch/shift-handoff', router: stubs, auth: 'required' },
+  { prefix: '/api/dispatch/shift-handoff', router: dispatchShiftHandoff, auth: 'required' },
 ];

@@ -1652,12 +1652,29 @@ callActions.post('/:id/generate-incident', requireRole('admin', 'manager', 'supe
 callActions.post('/:id/promote-to-incident', requireRole('admin', 'manager', 'supervisor', 'officer'),
   (c) => generateIncidentFromCall(c, false));
 
+// GET /:id/serve-link — read the serve_queue entry linked to a call.
+// The client calls this on PSO call detail load (DispatchPage) and on
+// serve:attempt WS refresh. Returns the row or 404 if none exists.
+callActions.get('/:id/serve-link', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id') || '', 10);
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid call id', code: 'INVALID_ID' }, 400);
+    const row = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM serve_queue WHERE call_id = ?', id);
+    if (!row) return c.json({ error: 'No serve link', code: 'NOT_FOUND' }, 404);
+    return c.json(row);
+  } catch (err) {
+    console.error('[dispatch] GET serve-link error', err);
+    return c.json({ error: 'Failed to read serve link', code: 'SERVE_LINK_ERR' }, 500);
+  }
+});
+
 // POST /:id/send-to-serve — seed a serve_queue entry from a dispatch call
 // (DispatchPage "Send to Serve Queue" button). The create-side mirror of
-// legacy's GET /:id/serve-link, which reads the same row back. Dedups on
-// call_id so a double-click doesn't create two jobs. Neither backend
-// implemented this before → the button 404'd. Returns the serve_queue row
-// (the client stores it as `serveLink`).
+// GET /:id/serve-link, which reads the same row back. Dedups on call_id
+// so a double-click doesn't create two jobs. Neither backend implemented
+// this before → the button 404'd. Returns the serve_queue row (the client
+// stores it as `serveLink`).
 callActions.post('/:id/send-to-serve', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (c) => {
   try {
     const db = getDb(c.env);

@@ -543,7 +543,7 @@ const API_ROUTES: RouteRule[] = [
   // repurposed for premise visits. The rewrite stores the chain link on
   // calls_for_service_ext.parent_call_id (migration 0044) and reconstructs
   // visit history from the chain. MUST route here, not fall through to legacy.
-  { kind: 'regex', value: /^\/api\/dispatch\/calls\/\d+\/(recommended-units|closest-unit|auto-assign|timeline|warnings|audit-trail|generate-incident|promote-to-incident|send-to-serve|pin|redispatch|undo-redispatch)(\/.*)?$/ },
+  { kind: 'regex', value: /^\/api\/dispatch\/calls\/\d+\/(recommended-units|closest-unit|auto-assign|timeline|warnings|audit-trail|generate-incident|promote-to-incident|send-to-serve|serve-link|pin|redispatch|undo-redispatch)(\/.*)?$/ },
 
   // /api/dispatch/calls/:id/{persons,vehicles}[/...] — rewrite implements
   // POST/DELETE/PATCH plus the quick-add fast-path; legacy implements ONLY
@@ -1155,6 +1155,10 @@ const API_ROUTES: RouteRule[] = [
   // in-service↔off-duty, and assigns/releases the fleet vehicle in one atomic
   // action — it lives on the rewrite because that's where fleet management is.
   { kind: 'prefix', value: '/api/dispatch/duty' },
+  // /api/dispatch/shift-handoff — shift handoff notes. Rewrite-only handler
+  // (shiftHandoff.ts) backed by a real table (migration 0077). Previously a
+  // stub that acknowledged writes but never persisted.
+  { kind: 'prefix', value: '/api/dispatch/shift-handoff' },
   // MDT page calls this on first render
   { kind: 'prefix', value: '/api/dispatch/units/mine/audio-mode' },
   // /api/dispatch/units/:id/{audio-mode,mileage} — rewrite implements both
