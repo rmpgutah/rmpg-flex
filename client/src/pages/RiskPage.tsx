@@ -15,16 +15,18 @@ export default function RiskPage() {
   const [formData, setFormData] = useState<Record<string, any>>({});
   const [submitting, setSubmitting] = useState(false);
   const [deleteId, setDeleteId] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const { addToast } = useToast();
   const m = useMenuActions();
 
   const fetchData = useCallback(async () => {
     try {
+      setError(null);
       const r = await apiFetch<{ data: Record<string, any>[] }>('/risk/assessments');
       setAssessments(r.data || []);
       const s = await apiFetch<{ active_assessments: number; pending_inspections: number; open_claims: number }>('/risk/stats');
       setStats(s);
-    } catch { /* */ }
+    } catch { setError("Failed to load data"); }
   }, []);
 
   useEffect(() => { fetchData().finally(() => setLoading(false)); }, [fetchData]);
@@ -68,6 +70,7 @@ export default function RiskPage() {
       <PanelTitleBar title="RISK MANAGEMENT" icon={Shield}>
         <button onClick={openNew} className="toolbar-btn flex items-center gap-1.5" style={{ height: 28, padding: '0 10px' }}><Plus size={13} /> New Assessment</button>
       </PanelTitleBar>
+      {error && <div className="border border-red-700/40 bg-red-900/20 text-red-400 text-[11px] px-3 py-2 mb-3" role="alert">{error}</div>}
       <div className="grid grid-cols-3 gap-3">
         <StatsCard icon={AlertTriangle} label="Active Assessments" value={stats.active_assessments} />
         <StatsCard icon={ClipboardCheck} label="Pending Inspections" value={stats.pending_inspections} />

@@ -12,7 +12,8 @@ import {
   Navigation2, Briefcase, Package, TrendingUp, Construction, Gavel, ClipboardCheck,
   UserX, X, ChevronRight, Terminal, Monitor, Search, ClipboardList, Calendar,
   ShieldBan, UserCog, Video, Camera, IdCard, Crosshair, ShieldAlert, Microscope,
-  BookOpen, Scale, Contact, Siren, Smartphone,
+  BookOpen, Scale, Contact, Siren, Smartphone, Globe, HelpCircle, Shield, GraduationCap,
+  MapPin, DollarSign, Megaphone, Bell, CheckCircle, Share2, Building2, UserCheck, Route,
 } from 'lucide-react';
 import RmpgLogo from '../RmpgLogo';
 import { toDisplayLabel } from '../../utils/formatters';
@@ -59,10 +60,13 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
       { path: '/mobile', icon: Smartphone, label: 'Shift / Mobile' },
+      { path: '/command-center', icon: Map, label: 'Command Center' },
+      { path: '/navigation', icon: Route, label: 'Navigation' },
       { path: '/dispatch', icon: Radio, label: 'Dispatch' },
       { path: '/map', icon: Map, label: 'Map' },
       { path: '/mdt', icon: Monitor, label: 'MDT' },
       { path: '/ncic', icon: Terminal, label: 'NCIC' },
+      { path: '/geography', icon: MapPin, label: 'Geography' },
       { path: '/body-cameras', icon: Video, label: 'Body Cameras' },
       { path: '/dash-cameras', icon: Camera, label: 'Dash Cameras' },
     ],
@@ -79,20 +83,26 @@ const NAV_GROUPS: NavGroup[] = [
       { path: '/cases', icon: Briefcase, label: 'Cases' },
       { path: '/dl-search', icon: IdCard, label: 'DL Search' },
       { path: '/microbilt', icon: Crosshair, label: 'MicroBilt' },
+      { path: '/web-research', icon: Globe, label: 'Web Research' },
+      { path: '/documents', icon: FileText, label: 'Documents' },
     ],
   },
   {
     label: 'Enforcement',
     items: [
       { path: '/serve', icon: Briefcase, label: 'Process Server' },
+      { path: '/serve-intake', icon: FileText, label: 'Serve Intake' },
       { path: '/warrants', icon: AlertTriangle, label: 'Warrants' },
       { path: '/citations', icon: FileWarning, label: 'Citations' },
       { path: '/law-book', icon: Scale, label: 'Law Book' },
       { path: '/trespass-orders', icon: ShieldBan, label: 'Trespass Orders' },
       { path: '/code-enforcement', icon: Construction, label: 'Code Enforcement' },
       { path: '/court', icon: Gavel, label: 'Court Tracker' },
+      { path: '/court-records', icon: FileText, label: 'Court Records' },
       { path: '/offender-registry', icon: UserX, label: 'Offender Registry' },
       { path: '/sex-offender-registry', icon: ShieldAlert, label: 'Sex Offender Registry' },
+      { path: '/national-warrant-search', icon: Globe, label: 'National Warrant Search' },
+      { path: '/use-of-force', icon: AlertTriangle, label: 'Use of Force' },
     ],
   },
   {
@@ -101,6 +111,10 @@ const NAV_GROUPS: NavGroup[] = [
       { path: '/personnel', icon: Users, label: 'Personnel' },
       { path: '/hr', icon: UserCog, label: 'HR Console' },
       { path: '/fleet', icon: Car, label: 'Fleet' },
+      { path: '/dashcams', icon: Camera, label: 'Dashcam System' },
+      { path: '/dashcam-ai', icon: Camera, label: 'Dashcam AI' },
+      { path: '/training', icon: GraduationCap, label: 'Training' },
+      { path: '/training-docs', icon: BookOpen, label: 'Training Docs' },
     ],
   },
   {
@@ -108,8 +122,10 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { path: '/email', icon: MessageSquare, label: 'Email' },
       { path: '/communications', icon: MessageSquare, label: 'Comms' },
-
+      { path: '/radio', icon: Radio, label: 'Radio' },
       { path: '/patrol', icon: QrCode, label: 'Patrol' },
+      { path: '/alerts', icon: Bell, label: 'Alert Center' },
+      { path: '/notifications', icon: Megaphone, label: 'Notifications' },
     ],
   },
   {
@@ -119,12 +135,28 @@ const NAV_GROUPS: NavGroup[] = [
       { path: '/shift-plans', icon: Calendar, label: 'Shift Plans' },
       { path: '/crime-analysis', icon: TrendingUp, label: 'Crime Analysis' },
       { path: '/dar', icon: ClipboardCheck, label: 'Daily Activity' },
+      { path: '/statute-analytics', icon: Scale, label: 'Statute Analytics' },
+      { path: '/reports/custom', icon: BarChart3, label: 'Report Builder' },
       { path: '/forensic-lab', icon: Microscope, label: 'Forensic Lab' },
       { path: '/forensics', icon: Search, label: 'Forensics' },
-      { path: '/training', icon: ClipboardCheck, label: 'Training' },
-      { path: '/training-docs', icon: BookOpen, label: 'Training Docs' },
-      { path: '/statute-analytics', icon: Scale, label: 'Statute Analytics' },
-      { path: '/crm', icon: Contact, label: 'CRM' },
+      { path: '/iped', icon: Microscope, label: 'IPED Forensics' },
+      { path: '/crm', icon: Contact, label: 'Overwatch' },
+      { path: '/security-dashboard', icon: Shield, label: 'Security Dashboard' },
+    ],
+  },
+  {
+    label: 'Support',
+    items: [
+      { path: '/jail', icon: Building2, label: 'Jail Management' },
+      { path: '/affairs', icon: ShieldAlert, label: 'Internal Affairs' },
+      { path: '/assets', icon: Package, label: 'Asset Management' },
+      { path: '/tasks', icon: ClipboardList, label: 'Task Management' },
+      { path: '/qa', icon: CheckCircle, label: 'QA' },
+      { path: '/risk', icon: Shield, label: 'Risk Management' },
+      { path: '/billing', icon: DollarSign, label: 'Billing' },
+      { path: '/community', icon: Users, label: 'Community' },
+      { path: '/invoices', icon: DollarSign, label: 'Invoices' },
+      { path: '/interagency', icon: Share2, label: 'Interagency' },
     ],
   },
   {
@@ -132,6 +164,8 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { path: '/audit', icon: ScrollText, label: 'Audit Log', adminOnly: true },
       { path: '/admin', icon: Settings, label: 'Admin', adminOnly: true },
+      { path: '/help', icon: HelpCircle, label: 'Help & About' },
+      { path: '/settings', icon: Settings, label: 'Settings' },
     ],
   },
 ];

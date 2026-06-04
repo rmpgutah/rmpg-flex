@@ -16,15 +16,17 @@ export default function CommunityPage() {
   const [formData, setFormData] = useState<Record<string, any>>({});
   const [submitting, setSubmitting] = useState(false);
   const [deleteId, setDeleteId] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const { addToast } = useToast();
 
   const fetchData = useCallback(async () => {
     try {
+      setError(null);
       const r = await apiFetch<{ data: Record<string, any>[] }>('/community/events');
       setEvents(r.data || []);
       const s = await apiFetch<{ events: number; tips: number; watch_groups: number; alerts: number }>('/community/stats');
       setStats(s);
-    } catch { /* */ }
+    } catch { setError("Failed to load data"); }
   }, []);
 
   useEffect(() => { fetchData().finally(() => setLoading(false)); }, [fetchData]);
@@ -65,6 +67,7 @@ export default function CommunityPage() {
   return (
     <div className="p-4 space-y-4">
       <PanelTitleBar title="COMMUNITY ENGAGEMENT" icon={Users}>
+      {error && <div className="border border-red-700/40 bg-red-900/20 text-red-400 text-[11px] px-3 py-2 mb-3" role="alert">{error}</div>}
         <button onClick={openNew} className="toolbar-btn flex items-center gap-1.5" style={{ height: 28, padding: '0 10px' }}><Plus size={13} /> New Event</button>
       </PanelTitleBar>
       <div className="grid grid-cols-4 gap-3">

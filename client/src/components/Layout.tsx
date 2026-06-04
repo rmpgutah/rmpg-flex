@@ -79,8 +79,17 @@ import {
   Award,
   UserPlus,
   Smartphone,
+  Navigation2,
+  Sun,
+  Moon,
+  MapPin,
+  BookOpen,
+  UserCheck,
+  Globe,
+  HelpCircle,
+  Route,
+  List,
 } from 'lucide-react';
-import { Navigation2, Sun, Moon } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import PttController from './PttController';
 import { initSettingsSync } from '../utils/settingsSync';
@@ -178,6 +187,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/serve-intake': 'Service Intake',
   '/web-research': 'Web Research',
   '/settings': 'Settings',
+  '/navigation': 'Navigation & Route Planning',
   '/jail': 'Jail Management',
   '/affairs': 'Internal Affairs',
   '/assets': 'Asset Management',
@@ -187,6 +197,9 @@ const PAGE_TITLES: Record<string, string> = {
   '/training-mgmt': 'Training Admin',
   '/qa': 'Quality Assurance',
   '/billing': 'Billing',
+  '/court-records': 'Court Records',
+  '/documents': 'Documents',
+  '/dashcam-ai': 'Dashcam AI Console',
   '/risk': 'Risk Management',
   '/interagency': 'Interagency',
   '/body-cameras': 'Body Cameras',
@@ -210,13 +223,37 @@ interface NavItem {
 }
 
 const TOOLBAR_NAV: NavItem[] = [
-  { path: '/', icon: LayoutDashboard, label: 'Dashboard', group: 'ops', shortcut: 'F1' },
-  { path: '/dispatch', icon: Radio, label: 'Dispatch', group: 'ops', shortcut: 'F2' },
-  { path: '/map', icon: Map, label: 'Map', group: 'ops', shortcut: 'F3' },
+  { path: '/', icon: LayoutDashboard, label: 'Dashboard', group: 'ops', shortcut: 'F1', children: [
+    { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
+    { path: '/command-center', icon: Crosshair, label: 'Command Center' },
+    { path: '/security-dashboard', icon: Shield, label: 'Security Dashboard' },
+    { path: '/help', icon: HelpCircle, label: 'Help & About' },
+  ]},
+  { path: '/dispatch', icon: Radio, label: 'Dispatch', group: 'ops', shortcut: 'F2', children: [
+    { path: '/dispatch', icon: Radio, label: 'Dispatch Board' },
+    { path: '/mdt', icon: Monitor, label: 'MDT Terminal' },
+    { path: '/geography', icon: MapPin, label: 'Geography / Zones' },
+    { path: '/shift-plans', icon: Calendar, label: 'Shift Plans' },
+    { path: '/dar', icon: ClipboardCheck, label: 'Daily Activity' },
+    { path: '/arrest-records', icon: Siren, label: 'Arrest Records' },
+  ]},
+  { path: '/map', icon: Map, label: 'Map', group: 'ops', shortcut: 'F3', children: [
+    { path: '/map', icon: Map, label: 'Live Map' },
+    { path: '/navigation', icon: Route, label: 'Navigation & Route Planning' },
+    { path: '/geo-data-viewer', icon: MapPin, label: 'Geo Data Viewer' },
+    { path: '/command-center', icon: Crosshair, label: 'Command Center' },
+  ]},
   { path: '/mdt', icon: Monitor, label: 'MDT', group: 'ops', shortcut: 'F4' },
   { path: '/mobile', icon: Smartphone, label: 'Mobile', group: 'ops' },
   { path: '/navigation', icon: Navigation2, label: 'Navigate', group: 'ops' },
-  { path: '/ncic', icon: Terminal, label: 'NCIC', group: 'ops', shortcut: 'F5' },
+  { path: '/ncic', icon: Terminal, label: 'NCIC', group: 'ops', shortcut: 'F5', children: [
+    { path: '/ncic', icon: Terminal, label: 'NCIC Terminal' },
+    { path: '/dl-search', icon: CreditCard, label: 'DL Search' },
+    { path: '/criminal-history', icon: Search, label: 'Criminal History' },
+    { path: '/national-warrant-search', icon: Globe, label: 'National Warrant Search' },
+    { path: '/colorado-doc', icon: UserCheck, label: 'Colorado DOC Search' },
+    { path: '/sex-offender-registry', icon: UserCheck, label: 'Sex Offender Registry' },
+  ]},
   { path: '/records', icon: Database, label: 'Records', group: 'records', shortcut: 'F6', children: [
     { path: '/incidents', icon: FileText, label: 'Incidents' },
     { path: '/records', icon: Database, label: 'Records' },
@@ -228,6 +265,9 @@ const TOOLBAR_NAV: NavItem[] = [
     { path: '/forensic-lab', icon: Microscope, label: 'Forensic Lab' },
     { path: '/forensics', icon: Network, label: 'Connections' },
     { path: '/cases', icon: Briefcase, label: 'Case Management' },
+    { path: '/arrest-records', icon: Siren, label: 'Arrest Records' },
+    { path: '/web-research', icon: Globe, label: 'Web Research' },
+    { path: '/documents', icon: FileText, label: 'Documents' },
   ]},
   { path: '/warrants', icon: Siren, label: 'Enforce', group: 'records', shortcut: 'F7', children: [
     { path: '/warrants', icon: AlertTriangle, label: 'Warrants' },
@@ -236,8 +276,14 @@ const TOOLBAR_NAV: NavItem[] = [
     { path: '/trespass-orders', icon: ShieldBan, label: 'Trespass Orders' },
     { path: '/code-enforcement', icon: Construction, label: 'Code Enforcement' },
     { path: '/court', icon: Gavel, label: 'Court Tracker' },
+    { path: '/court-records', icon: Gavel, label: 'Court Records' },
     { path: '/offender-registry', icon: UserX, label: 'Offender Registry' },
+    { path: '/sex-offender-registry', icon: UserCheck, label: 'Sex Offender Registry' },
     { path: '/serve', icon: FileSignature, label: 'Process Server' },
+    { path: '/serve-intake', icon: FileText, label: 'Serve Intake' },
+    { path: '/use-of-force', icon: Shield, label: 'Use of Force' },
+    { path: '/national-warrant-search', icon: Globe, label: 'National Warrant Search' },
+    { path: '/arrest-records', icon: Siren, label: 'Arrest Records' },
   ]},
   { path: '/personnel', icon: Users, label: 'Personnel', group: 'records', shortcut: 'F8', children: [
     { path: '/personnel', icon: Users, label: 'Personnel' },
@@ -246,12 +292,17 @@ const TOOLBAR_NAV: NavItem[] = [
     { path: '/body-cameras', icon: Video, label: 'Body Cameras' },
     { path: '/dash-cameras', icon: Camera, label: 'Dash Cameras' },
     { path: '/dashcams', icon: Webcam, label: 'Dashcam System' },
+    { path: '/dashcam-ai', icon: Camera, label: 'Dashcam AI Console' },
+    { path: '/training', icon: GraduationCap, label: 'Training' },
+    { path: '/training-docs', icon: BookOpen, label: 'Training Docs' },
   ]},
   { path: '/communications', icon: MessageSquare, label: 'Comms', group: 'comms', shortcut: 'F9', children: [
     { path: '/communications', icon: MessageSquare, label: 'Comms' },
     { path: '/radio', icon: Radio, label: 'Radio' },
     { path: '/email', icon: Mail, label: 'Email' },
     { path: '/patrol', icon: QrCode, label: 'Patrol' },
+    { path: '/notifications', icon: Megaphone, label: 'Alert Center' },
+    { path: '/alerts', icon: AlertTriangle, label: 'Notifications' },
   ]},
   { path: '/reports', icon: BarChart3, label: 'Reports', group: 'analysis', shortcut: 'F10', children: [
     { path: '/reports', icon: BarChart3, label: 'Reports' },
@@ -260,6 +311,23 @@ const TOOLBAR_NAV: NavItem[] = [
     { path: '/reports/custom', icon: LayoutTemplate, label: 'Report Builder' },
     { path: '/crime-analysis', icon: TrendingUp, label: 'Crime Analysis' },
     { path: '/dar', icon: ClipboardCheck, label: 'Daily Activity' },
+    { path: '/forensic-lab', icon: Microscope, label: 'Forensic Lab' },
+    { path: '/forensics', icon: Network, label: 'Connections' },
+    { path: '/invoices', icon: DollarSign, label: 'Invoices' },
+  ]},
+  { path: '/crm', icon: Briefcase, label: 'Overwatch', group: 'analysis', children: [
+    { path: '/crm', icon: Briefcase, label: 'Overwatch' },
+    { path: '/community', icon: Users, label: 'Community' },
+  ]},
+  { path: '/training', icon: GraduationCap, label: 'Training', group: 'analysis', children: [
+    { path: '/training', icon: GraduationCap, label: 'Training' },
+    { path: '/training-docs', icon: BookOpen, label: 'Training Docs' },
+    { path: '/training-mgmt', icon: ClipboardCheck, label: 'Training Admin' },
+  ]},
+  { path: '/forensics', icon: Network, label: 'Connections', group: 'analysis', adminOnly: true, children: [
+    { path: '/forensics', icon: Network, label: 'Connection Analysis' },
+    { path: '/forensic-lab', icon: Microscope, label: 'Forensic Lab' },
+    { path: '/iped', icon: Microscope, label: 'IPED Forensics' },
   ]},
   { path: '/crm', icon: ScanEye, label: 'Overwatch', group: 'analysis' },
   { path: '/training', icon: GraduationCap, label: 'Training', group: 'analysis' },
@@ -285,6 +353,8 @@ const TOOLBAR_NAV: NavItem[] = [
     { path: '/alarms', icon: BellRing, label: 'Alarm Management' },
     { path: '/accreditation', icon: Award, label: 'Accreditation' },
     { path: '/recruitment', icon: UserPlus, label: 'Recruitment' },
+    { path: '/invoices', icon: DollarSign, label: 'Invoices' },
+    { path: '/command-center', icon: Crosshair, label: 'Command Center' },
   ]},
   { path: '/audit', icon: ScrollText, label: 'Audit', group: 'system', shortcut: 'F11', adminOnly: true },
   { path: '/admin', icon: Settings, label: 'Admin', group: 'system', shortcut: 'F12', adminOnly: true },
@@ -1068,7 +1138,7 @@ export default function Layout() {
                   const isLight = html.classList.contains('theme-light');
                   applyThemePreference(isLight ? 'dark' : 'light');
                   // Persist via API
-                  try { apiFetch('/user/preferences', { method: 'PUT', body: JSON.stringify({ theme_preference: isLight ? 'dark' : 'light' }) }); } catch {}
+                  apiFetch('/user/preferences', { method: 'PUT', body: JSON.stringify({ theme_preference: isLight ? 'dark' : 'light' }) }).catch(() => {});
                 }}
                 className="toolbar-btn transition-colors duration-150 hover:text-brand-400 active:scale-[0.97]"
                 title="Toggle Light/Dark Theme"

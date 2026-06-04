@@ -832,7 +832,7 @@ export default function WarrantsPage() {
     if (activeTab !== 'dashboard') return;
     fetchDashStats();
     fetchPriority();
-    apiFetch<{ count: number }>('/warrants/expiring?days=30').then(r => setExpiringCount(r.count)).catch(() => {});
+    apiFetch<{ count: number }>('/warrants/expiring?days=30').then(r => { if (r) setExpiringCount(r.count); }).catch(() => {});
     const interval = setInterval(fetchDashStats, 30_000);
     return () => clearInterval(interval);
   }, [activeTab, fetchDashStats, fetchPriority]);
@@ -936,15 +936,16 @@ export default function WarrantsPage() {
       setPersonResults([]);
       return;
     }
+    let cancelled = false;
     const timer = setTimeout(async () => {
       setPersonSearchLoading(true);
       try {
         const res = await apiFetch<Person[]>(`/records/persons/search?q=${encodeURIComponent(personSearch)}`);
-        setPersonResults(Array.isArray(res) ? res.slice(0, 10) : []);
-      } catch { setPersonResults([]); }
-      finally { setPersonSearchLoading(false); }
+        if (!cancelled) setPersonResults(Array.isArray(res) ? res.slice(0, 10) : []);
+      } catch { if (!cancelled) setPersonResults([]); }
+      finally { if (!cancelled) setPersonSearchLoading(false); }
     }, 300);
-    return () => clearTimeout(timer);
+    return () => { clearTimeout(timer); cancelled = true; };
   }, [personSearch]);
 
   // ============================================================
@@ -981,13 +982,15 @@ export default function WarrantsPage() {
   // ============================================================
 
   // ── Unified Search ──
-  const runUnifiedSearch = useCallback(async () => {
-    if (!uniSearchFirst.trim() && !uniSearchLast.trim() && !uniSearchWarrantNum.trim()) return;
+  const runUnifiedSearch = useCallback(async (firstOverride?: string, lastOverride?: string) => {
+    const first = firstOverride ?? uniSearchFirst;
+    const last = lastOverride ?? uniSearchLast;
+    if (!first.trim() && !last.trim() && !uniSearchWarrantNum.trim()) return;
     setUniSearching(true);
     try {
       const body: Record<string, string> = {};
-      if (uniSearchFirst.trim()) body.firstName = uniSearchFirst.trim();
-      if (uniSearchLast.trim()) body.lastName = uniSearchLast.trim();
+      if (first.trim()) body.firstName = first.trim();
+      if (last.trim()) body.lastName = last.trim();
       if (uniSearchDob.trim()) body.dob = uniSearchDob.trim();
       if (uniSearchWarrantNum.trim()) body.warrantNumber = uniSearchWarrantNum.trim();
       if (uniSearchCourt.trim()) body.court = uniSearchCourt.trim();
@@ -1004,10 +1007,10 @@ export default function WarrantsPage() {
         body: JSON.stringify(body),
       });
       setUniResults(res);
-      if (uniSearchFirst.trim() && uniSearchLast.trim()) {
+      if (first.trim() && last.trim()) {
         setUniSearchHistory(prev => [
-          { first: uniSearchFirst.trim(), last: uniSearchLast.trim(), hits: res.meta.totalHits, at: new Date().toISOString() },
-          ...prev.filter(h => !(h.first === uniSearchFirst.trim() && h.last === uniSearchLast.trim())),
+          { first: first.trim(), last: last.trim(), hits: res.meta.totalHits, at: new Date().toISOString() },
+          ...prev.filter(h => !(h.first === first.trim() && h.last === last.trim())),
         ].slice(0, 10));
       }
     } finally { setUniSearching(false); }
@@ -1021,14 +1024,15 @@ export default function WarrantsPage() {
     if (typeaheadTimer.current) clearTimeout(typeaheadTimer.current);
     const query = `${uniSearchFirst} ${uniSearchLast}`.trim();
     if (query.length < 2) { setNameTypeahead([]); return; }
+    let cancelled = false;
     typeaheadTimer.current = setTimeout(async () => {
       setNameTypeaheadLoading(true);
       try {
         const res = await apiFetch<Person[]>(`/records/persons/search?q=${encodeURIComponent(query)}`);
-        setNameTypeahead(Array.isArray(res) ? res.slice(0, 8) : []);
-      } finally { setNameTypeaheadLoading(false); }
+        if (!cancelled) setNameTypeahead(Array.isArray(res) ? res.slice(0, 8) : []);
+      } catch { if (!cancelled) setNameTypeahead([]); } finally { if (!cancelled) setNameTypeaheadLoading(false); }
     }, 300);
-    return () => { if (typeaheadTimer.current) clearTimeout(typeaheadTimer.current); };
+    return () => { if (typeaheadTimer.current) clearTimeout(typeaheadTimer.current); cancelled = true; };
   }, [uniSearchFirst, uniSearchLast]);
 
   // ── Utah Warrant Detail Modal Handlers ──
@@ -1111,12 +1115,13 @@ export default function WarrantsPage() {
 
   const handleCheckPerson = useCallback(() => {
     if (!utahDetailWarrant) return;
-    // Switch to unified search with this person's name
-    setUniSearchFirst(utahDetailWarrant.first_name);
-    setUniSearchLast(utahDetailWarrant.last_name);
+    const first = utahDetailWarrant.first_name;
+    const last = utahDetailWarrant.last_name;
+    setUniSearchFirst(first);
+    setUniSearchLast(last);
     setUtahDetailWarrant(null);
     setActiveTab('search-all');
-    setTimeout(() => runUnifiedSearch(), 100);
+    runUnifiedSearch(first, last);
   }, [utahDetailWarrant, runUnifiedSearch]);
 
   // ── Auto-Poll Status ──

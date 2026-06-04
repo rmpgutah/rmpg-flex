@@ -23,16 +23,18 @@ export default function AffairsPage() {
   const [formSubmitting, setFormSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const { addToast } = useToast();
   const m = useMenuActions();
 
   const fetchData = useCallback(async () => {
     try {
+      setError(null);
       const r = await apiFetch<{ data: Complaint[] }>('/affairs/complaints');
       setComplaints(r.data || []);
       const s = await apiFetch<{ total_complaints: number; open_complaints: number; unresolved_flags: number }>('/affairs/stats');
       setStats(s);
-    } catch { /* */ }
+    } catch { setError("Failed to load data"); }
   }, []);
 
   useEffect(() => { fetchData().finally(() => setLoading(false)); }, [fetchData]);
@@ -86,6 +88,7 @@ export default function AffairsPage() {
   return (
     <div className="p-4 space-y-4">
       <PanelTitleBar title="INTERNAL AFFAIRS" icon={ShieldAlert}>
+      {error && <div className="border border-red-700/40 bg-red-900/20 text-red-400 text-[11px] px-3 py-2 mb-3" role="alert">{error}</div>}
         <button onClick={openNew} className="toolbar-btn flex items-center gap-1.5" style={{ height: 28, padding: '0 10px' }}>
           <Plus size={13} /> New Complaint
         </button>
