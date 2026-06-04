@@ -113,7 +113,6 @@ const NationalWarrantSearchPage = lazyRetry(() => import('./pages/NationalWarran
 const SettingsPage = lazyRetry(() => import('./pages/SettingsPage'));
 const DashcamPage = lazyRetry(() => import('./pages/DashcamPage'));
 const RadioPage = lazyRetry(() => import('./pages/radio'));
-const NavigationPage = lazyRetry(() => import('./pages/NavigationPage'));
 const JailPage = lazyRetry(() => import('./pages/JailPage'));
 const AffairsPage = lazyRetry(() => import('./pages/AffairsPage'));
 const AssetsPage = lazyRetry(() => import('./pages/AssetsPage'));
@@ -439,7 +438,6 @@ function AppRoutes() {
             <Route path="/serve" element={<RouteErrorBoundary><ServePage /></RouteErrorBoundary>} />
             <Route path="/serve-intake" element={<RouteErrorBoundary><ServeIntakePage /></RouteErrorBoundary>} />
             <Route path="/web-research" element={<RouteErrorBoundary><WebResearchPage /></RouteErrorBoundary>} />
-            <Route path="/navigation" element={<RouteErrorBoundary><NavigationPage /></RouteErrorBoundary>} />
             <Route path="/hr" element={<RouteErrorBoundary><HRPage /></RouteErrorBoundary>} />
             <Route path="/admin" element={<AdminRoute><RouteErrorBoundary><AdminPage /></RouteErrorBoundary></AdminRoute>} />
             <Route path="/dashcams" element={<RouteErrorBoundary><DashcamPage /></RouteErrorBoundary>} />
