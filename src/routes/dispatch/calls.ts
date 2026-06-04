@@ -164,9 +164,6 @@ calls.get('/', async (c) => {
         cfe.pso_service_windows, cfe.pso_attempt_number,
         cfe.process_service_type, cfe.process_served_to, cfe.process_served_address,
         cfe.process_attempts, cfe.process_served_at, cfe.process_service_result,
-        cfe.fire_requested, cfe.hazmat, cfe.gang_related,
-        cfe.evidence_collected, cfe.body_camera_active, cfe.photos_taken,
-        cfe.trespass_issued, cfe.vehicle_pursuit, cfe.foot_pursuit,
         cfe.parent_call_id
       FROM calls_for_service c
       LEFT JOIN properties p ON c.property_id = p.id
