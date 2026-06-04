@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import type { Env } from '../../types';
 import { z } from 'zod';
 import { v4 as uuidv4 } from 'uuid';
-import { getDb, query, queryFirst, execute } from '../../utils/db';
+import { getDb, query, queryFirst, execute, columnExists } from '../../utils/db';
 import { authMiddleware, requireRole } from '../../middleware/auth';
 import { applyRunCard } from '../runCards';
 import { sendToUser } from '../ws';
@@ -128,13 +128,14 @@ calls.get('/', async (c) => {
       where += " AND c.status IN ('dispatched','enroute','onscene','pending','open')";
     }
 
-    // Exclude soft-deleted calls from every list/queue/active view. A non-NULL
-    // calls_for_service_ext.deleted_at means the call was removed from the board
-    // (admin-recoverable). Expressed as a correlated subquery (not a join
-    // condition) so it applies identically to the COUNT query below — which does
-    // NOT join the ext table — and the row query. The single-call GET (/:id)
-    // intentionally still returns soft-deleted calls so they can be recovered.
-    where += ' AND NOT EXISTS (SELECT 1 FROM calls_for_service_ext xd WHERE xd.id = c.id AND xd.deleted_at IS NOT NULL)';
+    // Soft-delete filter: exclude tombstoned calls (migration 0072 adds
+    // deleted_at to calls_for_service_ext). Applied conditionally —
+    // if the column doesn't exist yet on D1, the filter is silently
+    // skipped (no 500). Once migration 0072 lands, soft-deleted calls
+    // automatically disappear from the board.
+    if (await columnExists(db, 'calls_for_service_ext', 'deleted_at')) {
+      where += ' AND NOT EXISTS (SELECT 1 FROM calls_for_service_ext xd WHERE xd.id = c.id AND xd.deleted_at IS NOT NULL)';
+    }
 
     const pageNum = Math.max(1, parseInt(page || '1', 10));
     const limitNum = Math.min(1000, Math.max(1, parseInt(limit || '200', 10)));
