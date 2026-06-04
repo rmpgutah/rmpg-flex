@@ -547,7 +547,7 @@
 //       which hosts the integrated ShiftCard) at /mobile + nav entries — it was
 //       orphaned (never routed), so the officer Start/End Shift control with
 //       vehicle picker was previously unreachable.
-const CACHE_NAME = 'rmpg-flex-v782';
+const CACHE_NAME = 'rmpg-flex-v783';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
