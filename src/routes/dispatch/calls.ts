@@ -58,7 +58,8 @@ export const LIST_VIEW_COLUMNS = [
   'location_address', 'latitude', 'longitude',
   'cross_street', 'location_building', 'location_floor', 'location_room',
   // Caller / contact
-  'caller_name', 'caller_phone', 'contact_method',
+  'caller_name', 'caller_phone', 'caller_relationship', 'caller_address',
+  'contact_method',
   // Foreign refs (names come from JOINs below)
   'dispatcher_id', 'property_id', 'client_id',
   'case_id', 'case_number', 'contract_id',
@@ -69,13 +70,20 @@ export const LIST_VIEW_COLUMNS = [
   // Geography
   'sector_id', 'sector_name', 'zone_id', 'zone_name', 'zone_beat',
   'beat_id', 'beat_name', 'beat_descriptor',
-  // Safety flags (most-read by dispatcher; the rest live on the detail GET).
-  // Intentionally excluded: `pinned` and `officer_safety_caution` — both are
-  // in UPDATABLE_CALL_COLUMNS_BASE but not in any /migrations/ file (live D1
-  // patched directly per memory project-live-d1-schema-patches). Including
-  // them risks `no such column` 500s on prod if the patch was never applied.
-  // Re-add once a migration backfills them.
+  // Scene
+  'scene_safety', 'weather_conditions', 'lighting_conditions',
+  'num_subjects', 'num_victims', 'subject_description', 'vehicle_description',
+  'direction_of_travel', 'responding_officer', 'responding_vehicle_id',
+  // Response
+  'damage_estimate', 'damage_description',
+  // Safety flags — expanded to include all base-table tactical flags so the
+  // dispatch panel shows flag state accurately without requiring a detail GET.
   'weapons_involved', 'injuries_reported', 'domestic_violence',
+  'alcohol_involved', 'drugs_involved',
+  'mental_health_crisis', 'juvenile_involved', 'felony_in_progress',
+  'officer_safety_caution', 'k9_requested', 'ems_requested',
+  // LE coordination
+  'le_agency', 'le_case_number', 'le_notified', 'supervisor_notified',
   // Mileage + overdue
   'starting_mileage', 'ending_mileage', 'overdue_notified',
 ] as const;
@@ -147,8 +155,19 @@ calls.get('/', async (c) => {
     const rows = await query<Record<string, unknown>>(db, `
       SELECT ${LIST_VIEW_SELECT},
         p.name as property_name, u.full_name as dispatcher_name,
-        cl.name as client_name, cfe.held_at,
-        COALESCE(cfe.pinned, 0) as pinned
+        cl.name as client_name,
+        cfe.held_at,
+        COALESCE(cfe.pinned, 0) as pinned,
+        cfe.pso_requestor_name, cfe.pso_requestor_phone, cfe.pso_requestor_email,
+        cfe.pso_service_type, cfe.pso_billing_code, cfe.pso_authorization,
+        cfe.pso_72hr_deadline, cfe.pso_72hr_notified,
+        cfe.pso_service_windows, cfe.pso_attempt_number,
+        cfe.process_service_type, cfe.process_served_to, cfe.process_served_address,
+        cfe.process_attempts, cfe.process_served_at, cfe.process_service_result,
+        cfe.fire_requested, cfe.hazmat, cfe.gang_related,
+        cfe.evidence_collected, cfe.body_camera_active, cfe.photos_taken,
+        cfe.trespass_issued, cfe.vehicle_pursuit, cfe.foot_pursuit,
+        cfe.parent_call_id
       FROM calls_for_service c
       LEFT JOIN properties p ON c.property_id = p.id
       LEFT JOIN users u ON c.dispatcher_id = u.id

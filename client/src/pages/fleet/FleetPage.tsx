@@ -97,7 +97,7 @@ export default function FleetPage() {
   const [searchQuery, setSearchQuery] = useState('');
 
   // Tab & modal state
-  const [activeTab, setActiveTab] = usePersistedTab('rmpg_fleet_tab', 'overview' as DetailTab, ['overview', 'fuel', 'costs', 'inspections', 'assignments', 'personnel', 'tires', 'damage', 'recalls', 'analytics'] as const);
+  const [activeTab, setActiveTab] = usePersistedTab('rmpg_fleet_tab', 'overview' as DetailTab, ['overview', 'fuel', 'costs', 'inspections', 'assignments', 'personnel', 'tires', 'damage', 'recalls', 'analytics', 'dashcam', 'fuel_cards'] as const);
   const [modal, setModal] = useState<ModalMode>('none');
   const v = useFormDraft<VehicleFormState>({
     storageKey: 'rmpg_fleet_vehicle_form',
@@ -259,12 +259,19 @@ export default function FleetPage() {
     setAssignments([]);
     setAnalytics(null);
     setPersonnelData(null);
+    setLoans([]);
+    setInsurancePolicies([]);
+    setAccessories([]);
+    setUtilities([]);
+    setOtherCosts([]);
+    setCostSummary(null);
   }, [selectedId]);
 
   // Lazy-load tab data
   useEffect(() => {
     if (!selectedId) return;
     if (activeTab === 'fuel') fetchFuelLogs(selectedId);
+    if (activeTab === 'costs') fetchCosts(selectedId);
     if (activeTab === 'inspections') fetchInspections(selectedId);
     if (activeTab === 'assignments') fetchAssignments(selectedId);
     if (activeTab === 'analytics') fetchVehicleAnalytics();

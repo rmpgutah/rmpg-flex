@@ -1544,9 +1544,11 @@ fleet.put('/insurance/:id', async (c) => {
     if (setCols.length === 0) return c.json({ error: 'No fields to update' }, 400);
     bindings.push(id);
     await execute(db, `UPDATE fleet_insurance SET ${setCols.join(', ')} WHERE id = ?`, ...bindings);
-    return c.json({ success: true });
+    const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_insurance WHERE id = ?', id);
+    return c.json(updated ?? { success: true });
   } catch (err) { console.error('PUT /fleet/insurance/:id failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
 });
+
 
 fleet.delete('/insurance/:id', async (c) => {
   try { const id = Number(c.req.param('id')); await execute(getDb(c.env), 'DELETE FROM fleet_insurance WHERE id = ?', id); return c.json({ success: true }); }
@@ -1639,7 +1641,8 @@ fleet.put('/loans/:id', async (c) => {
     if (setCols.length === 0) return c.json({ error: 'No fields to update' }, 400);
     bindings.push(id);
     await execute(db, `UPDATE fleet_loans SET ${setCols.join(', ')} WHERE id = ?`, ...bindings);
-    return c.json({ success: true });
+    const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_loans WHERE id = ?', id);
+    return c.json(updated ?? { success: true });
   } catch (err) { console.error('PUT /fleet/loans/:id failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
 });
 
@@ -1699,7 +1702,8 @@ fleet.put('/accessories/:id', async (c) => {
     if (setCols.length === 0) return c.json({ error: 'No fields to update' }, 400);
     bindings.push(id);
     await execute(db, `UPDATE fleet_accessories SET ${setCols.join(', ')} WHERE id = ?`, ...bindings);
-    return c.json({ success: true });
+    const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_accessories WHERE id = ?', id);
+    return c.json(updated ?? { success: true });
   } catch (err) { console.error('PUT /fleet/accessories/:id failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
 });
 
@@ -1739,7 +1743,8 @@ fleet.put('/utilities/:id', async (c) => {
     if (setCols.length === 0) return c.json({ error: 'No fields to update' }, 400);
     bindings.push(id);
     await execute(db, `UPDATE fleet_utility_costs SET ${setCols.join(', ')} WHERE id = ?`, ...bindings);
-    return c.json({ success: true });
+    const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_utility_costs WHERE id = ?', id);
+    return c.json(updated ?? { success: true });
   } catch (err) { console.error('PUT /fleet/utilities/:id failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
 });
 
@@ -1779,7 +1784,8 @@ fleet.put('/other-costs/:id', async (c) => {
     if (setCols.length === 0) return c.json({ error: 'No fields to update' }, 400);
     bindings.push(id);
     await execute(db, `UPDATE fleet_other_costs SET ${setCols.join(', ')} WHERE id = ?`, ...bindings);
-    return c.json({ success: true });
+    const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM fleet_other_costs WHERE id = ?', id);
+    return c.json(updated ?? { success: true });
   } catch (err) { console.error('PUT /fleet/other-costs/:id failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
 });
 
@@ -2785,17 +2791,19 @@ fleet.post('/fuel/import/preview', async (c) => {
 fleet.post('/fuel/import/commit', async (c) => {
   try {
     const db = getDb(c.env);
-    // Client (FuelImportModal) sends { rows: [...] }; accept legacy `entries` too.
     const body = await c.req.json<{ rows?: Array<Record<string, unknown>>; entries?: Array<Record<string, unknown>> }>();
     const rows = body.rows || body.entries || [];
     let inserted = 0; const errors: any[] = [];
     for (const e of rows) {
       try {
         const odometer = e.odometer ?? e.odometer_reading ?? null;
+        const isFullTank = e.is_full_tank == null ? 1 : (e.is_full_tank ? 1 : 0);
         await execute(
           db,
-          'INSERT INTO fleet_fuel_log (vehicle_id, fuel_date, gallons, total_cost, cost_per_gallon, station, odometer, notes) VALUES (?,?,?,?,?,?,?,?)',
-          e.vehicle_id, e.fuel_date, e.gallons, e.total_cost ?? null, e.cost_per_gallon ?? null, e.station ?? null, odometer, e.notes ?? null,
+          `INSERT INTO fleet_fuel_log (vehicle_id, fuel_date, gallons, total_cost, cost_per_gallon, fuel_type, station, odometer, notes, is_full_tank, payment_method, driver_name, location, mpg) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+          e.vehicle_id, e.fuel_date, e.gallons, e.total_cost ?? null, e.cost_per_gallon ?? null,
+          e.fuel_type ?? null, e.station ?? null, odometer, e.notes ?? null, isFullTank,
+          e.payment_method ?? null, e.driver_name ?? null, e.location ?? null, e.mpg ?? null,
         );
         inserted++;
       } catch (e2) { errors.push({ entry: e, error: (e2 as Error).message }); }

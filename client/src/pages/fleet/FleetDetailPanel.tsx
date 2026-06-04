@@ -4,7 +4,7 @@ import { parseTimestamp } from '../../utils/dateUtils';
 import {
   Car, Fuel, ClipboardCheck, Radio, BarChart3, Settings, Wrench, X, Clock, Users,
   Archive, RotateCcw, Trash2, Printer, ChevronDown, Circle, AlertTriangle, AlertOctagon,
-  DollarSign, Pencil, Tag,
+  DollarSign, Pencil, Tag, Video, CreditCard,
 } from 'lucide-react';
 import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
 import { useMenuActions } from '../../utils/contextMenuActions';
@@ -23,6 +23,8 @@ import FleetTiresTab from './tabs/FleetTiresTab';
 import FleetDamageTab from './tabs/FleetDamageTab';
 import FleetRecallsTab from './tabs/FleetRecallsTab';
 import FleetCostsTab from './tabs/FleetCostsTab';
+import FleetDashCamTab from './tabs/FleetDashCamTab';
+import FleetFuelCardsTab from './tabs/FleetFuelCardsTab';
 import type { CostCategory } from './modals/FleetCostFormModal';
 import type { FleetLoan, FleetInsurancePolicy, FleetAccessory, FleetUtilityCost, FleetOtherCost, FleetCostSummary } from '../../types';
 import { formatMilitary } from './utils/fleetFormatters';
@@ -30,7 +32,7 @@ import { generateFleetFuelReport } from './utils/fleetFuelReport';
 import { generateFlaggedAuditPdf } from './utils/flaggedAuditPdf';
 import PrintRecordButton from '../../components/PrintRecordButton';
 
-export type DetailTab = 'overview' | 'fuel' | 'costs' | 'inspections' | 'assignments' | 'personnel' | 'analytics' | 'tires' | 'damage' | 'recalls';
+export type DetailTab = 'overview' | 'fuel' | 'costs' | 'inspections' | 'assignments' | 'personnel' | 'analytics' | 'tires' | 'damage' | 'recalls' | 'dashcam' | 'fuel_cards';
 export type CostSubTab = 'loan' | 'insurance' | 'accessory' | 'utility' | 'other';
 
 const STATUS_LED: Record<FleetVehicleStatus, string> = {
@@ -69,6 +71,8 @@ const TABS: { key: DetailTab; label: string; icon: React.ComponentType<{ classNa
   { key: 'damage', label: 'Damage', icon: AlertTriangle },
   { key: 'recalls', label: 'Recalls', icon: AlertOctagon },
   { key: 'analytics', label: 'Analytics', icon: BarChart3 },
+  { key: 'dashcam', label: 'Dash Cam', icon: Video },
+  { key: 'fuel_cards', label: 'Fuel Cards', icon: CreditCard },
 ];
 
 interface Props {
@@ -446,6 +450,8 @@ export default function FleetDetailPanel({
         {activeTab === 'damage' && <FleetDamageTab vehicleId={detail.id} />}
         {activeTab === 'recalls' && <FleetRecallsTab vehicleId={detail.id} />}
         {activeTab === 'analytics' && <FleetAnalyticsTab analytics={analytics} loading={analyticsLoading} />}
+        {activeTab === 'dashcam' && <FleetDashCamTab vehicleId={detail.id} />}
+        {activeTab === 'fuel_cards' && <FleetFuelCardsTab />}
       </div>
     </div>
   );

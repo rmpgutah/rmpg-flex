@@ -23,6 +23,47 @@ records.get('/properties', async (c) => {
   } catch (err) { return c.json({ error: 'Failed' }, 500); }
 });
 
+// All writable columns on the persons table, sourced from the legacy
+// database.ts addCol() calls + initial CREATE TABLE. Covers the full
+// PersonFormData interface (~80 fields) so no field is silently dropped
+// on create or edit. Excludes legal-entity fields (role_tag, entity_type,
+// bar_number, firm_name) which are stored in the same table but managed
+// by the legal module. BOOLEAN-ish columns (is_sex_offender, is_veteran)
+// are coerced to 0/1 integers.
+const PERSON_WRITABLE_COLUMNS = new Set([
+  'first_name', 'last_name', 'middle_name', 'alias_nickname', 'suffix',
+  'dob', 'gender', 'sex', 'race', 'nationality', 'aliases',
+  'height', 'height_feet', 'height_inches', 'weight',
+  'build', 'complexion', 'hair_color', 'hair_length', 'hair_style',
+  'eye_color', 'facial_hair', 'glasses', 'shoe_size',
+  'scars_marks_tattoos', 'clothing_description',
+  'address', 'city', 'state', 'zip', 'phone', 'phone_secondary',
+  'home_phone', 'work_phone', 'email', 'email_secondary',
+  'dl_number', 'dl_state', 'dl_expiry', 'dl_class',
+  'ssn_last4', 'ssn_full',
+  'photo_url', 'photo', 'id_image_url',
+  'id_type', 'id_number', 'id_state', 'id_expiry',
+  'employer', 'occupation',
+  'emergency_contact_name', 'emergency_contact_phone', 'emergency_contact_relationship',
+  'language', 'gang_affiliation',
+  'is_sex_offender', 'is_veteran',
+  'place_of_birth', 'citizenship', 'marital_status',
+  'probation_parole', 'probation_parole_officer',
+  'known_associates', 'social_media',
+  'caution_flags', 'flags', 'notes',
+  'ncic_number', 'sor_number', 'fbi_number',
+  'state_id_number', 'passport_number', 'passport_country',
+  'immigration_status', 'disability_flags', 'mental_health_flags',
+  'substance_abuse', 'medication_notes',
+  'education_level', 'military_branch', 'military_status',
+  'tribal_affiliation',
+  'tattoo_description', 'scar_description', 'piercing_description',
+  'distinguishing_features', 'identifying_marks_location',
+  'date_last_seen', 'location_last_seen', 'alias_dob',
+  'watchlist_match', 'watchlist_checked_at',
+  'voice_description', 'religion', 'dietary_restrictions',
+]);
+
 // POST /records/persons
 records.post('/persons', async (c) => {
   try {
@@ -32,16 +73,34 @@ records.post('/persons', async (c) => {
     // Normalize DOB to ISO at the write boundary so age-matching + display
     // get a consistent format. normalizeDob returns null for unparseable
     // input (honest) rather than a guessed-wrong date.
-    const dob = normalizeDob(typeof body.dob === 'string' ? body.dob : null);
+    const normalizedDob = normalizeDob(typeof body.dob === 'string' ? body.dob : null);
+
+    const cols: string[] = ['dob', 'created_at'];
+    const vals: string[] = ['?', "datetime('now')"];
+    const params: unknown[] = [normalizedDob];
+
+    for (const [key, val] of Object.entries(body)) {
+      if (key === 'dob' || key === 'created_at' || key === 'updated_at') continue;
+      if (PERSON_WRITABLE_COLUMNS.has(key)) {
+        cols.push(key);
+        vals.push('?');
+        // Coerce boolean-ish fields to integer
+        if (key === 'is_sex_offender' || key === 'is_veteran') {
+          params.push(val ? 1 : 0);
+        } else {
+          params.push(val ?? null);
+        }
+      }
+    }
+
     const result = await execute(db,
-      'INSERT INTO persons (first_name, last_name, dob, gender, race, height, weight, hair_color, eye_color, address, phone, email, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      body.first_name, body.last_name, dob, body.gender || null, body.race || null,
-      body.height || null, body.weight || null, body.hair_color || null, body.eye_color || null,
-      body.address || null, body.phone || null, body.email || null, body.notes || null
-    );
+      `INSERT INTO persons (${cols.join(', ')}) VALUES (${vals.join(', ')})`, ...params);
     const person = await queryFirst(db, 'SELECT * FROM persons WHERE id = ?', Number(result.meta.last_row_id));
     return c.json(person, 201);
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    console.error('POST /records/persons failed:', err);
+    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+  }
 });
 
 // GET /records/persons/search
@@ -184,16 +243,16 @@ records.put('/persons/:id', async (c) => {
     const cols: string[] = [];
     const params: unknown[] = [];
 
-    const writable = new Set([
-      'first_name', 'last_name', 'dob', 'gender', 'race', 'height', 'weight',
-      'hair_color', 'eye_color', 'scars_marks_tattoos', 'address', 'phone',
-      'email', 'photo_url', 'flags', 'notes',
-    ]);
-
     for (const [key, val] of Object.entries(body)) {
-      if (writable.has(key)) {
+      if (key === 'id' || key === 'created_at' || key === 'updated_at') continue;
+      if (PERSON_WRITABLE_COLUMNS.has(key)) {
         cols.push(`${key} = ?`);
-        params.push(val ?? null);
+        // Coerce boolean-ish fields to integer
+        if (key === 'is_sex_offender' || key === 'is_veteran') {
+          params.push(val ? 1 : 0);
+        } else {
+          params.push(val ?? null);
+        }
       }
     }
 
@@ -385,20 +444,57 @@ records.get('/persons/:id/clients', async (c) => {
   } catch (err) { return c.json([]); }
 });
 
+// All writable columns on vehicles_records sourced from legacy addCol() calls.
+// Covers the full VehicleFormData interface (~50 fields).
+const VEHICLE_WRITABLE_COLUMNS = new Set([
+  'plate_number', 'state', 'registration_state', 'plate_type',
+  'make', 'model', 'year', 'trim', 'color', 'secondary_color',
+  'body_style', 'doors', 'vin', 'engine_type', 'fuel_type',
+  'transmission', 'drive_type', 'odometer',
+  'insurance_company', 'insurance_policy', 'insurance_expiry',
+  'registration_expiry', 'owner_person_id',
+  'owner_name', 'owner_address', 'owner_phone', 'owner_dl_number', 'owner_dob',
+  'registered_owner', 'primary_driver_name', 'lien_holder',
+  'commercial_vehicle', 'hazmat', 'vehicle_use',
+  'stolen_status', 'stolen_date', 'recovery_date', 'ncic_entry_number',
+  'tow_status', 'tow_company', 'tow_location', 'tow_date',
+  'title_status', 'exterior_condition', 'interior_condition',
+  'estimated_value', 'window_tint', 'modifications', 'equipment_notes',
+  'damage_description', 'distinguishing_features',
+  'flags', 'notes',
+]);
+
 // POST /records/vehicles
 records.post('/vehicles', async (c) => {
   try {
     const db = getDb(c.env);
     const body = await c.req.json<Record<string, unknown>>();
     if (!body.plate_number) return c.json({ error: 'plate_number required' }, 400);
+    const cols: string[] = [];
+    const vals: string[] = [];
+    const params: unknown[] = [];
+    for (const [key, val] of Object.entries(body)) {
+      if (key === 'created_at' || key === 'updated_at') continue;
+      if (VEHICLE_WRITABLE_COLUMNS.has(key)) {
+        cols.push(key);
+        vals.push('?');
+        if (key === 'commercial_vehicle' || key === 'hazmat') {
+          params.push(val ? 1 : 0);
+        } else {
+          params.push(val ?? null);
+        }
+      }
+    }
+    cols.push('created_at');
+    vals.push("datetime('now')");
     const result = await execute(db,
-      'INSERT INTO vehicles_records (plate_number, state, make, model, year, color, vin, owner_person_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-      body.plate_number, body.state || null, body.make || null, body.model || null,
-      body.year || null, body.color || null, body.vin || null, body.owner_person_id || null
-    );
+      `INSERT INTO vehicles_records (${cols.join(', ')}) VALUES (${vals.join(', ')})`, ...params);
     const vehicle = await queryFirst(db, 'SELECT * FROM vehicles_records WHERE id = ?', Number(result.meta.last_row_id));
     return c.json(vehicle, 201);
-  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+  } catch (err) {
+    console.error('POST /records/vehicles failed:', err);
+    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+  }
 });
 
 // GET /records/vehicles/search
@@ -438,13 +534,25 @@ records.put('/vehicles/:id', async (c) => {
     const body = await c.req.json<Record<string, unknown>>();
     const cols: string[] = [];
     const params: unknown[] = [];
-    const writable = new Set(['plate_number', 'state', 'make', 'model', 'year', 'color', 'vin', 'owner_person_id', 'flags', 'notes']);
-    for (const [key, val] of Object.entries(body)) { if (writable.has(key)) { cols.push(`${key} = ?`); params.push(val ?? null); } }
+    for (const [key, val] of Object.entries(body)) {
+      if (key === 'id' || key === 'created_at' || key === 'updated_at') continue;
+      if (VEHICLE_WRITABLE_COLUMNS.has(key)) {
+        cols.push(`${key} = ?`);
+        if (key === 'commercial_vehicle' || key === 'hazmat') {
+          params.push(val ? 1 : 0);
+        } else {
+          params.push(val ?? null);
+        }
+      }
+    }
     if (cols.length === 0) return c.json({ message: 'No changes' });
     await execute(db, `UPDATE vehicles_records SET ${cols.join(', ')} WHERE id = ?`, ...params, id);
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT v.*, p.first_name, p.last_name FROM vehicles_records v LEFT JOIN persons p ON v.owner_person_id = p.id WHERE v.id = ?', id);
     return c.json(updated);
-  } catch (err) { return c.json({ error: 'Failed to update vehicle', detail: (err as Error)?.message }, 500); }
+  } catch (err) {
+    console.error('PUT /records/vehicles/:id failed:', err);
+    return c.json({ error: 'Failed to update vehicle', detail: (err as Error)?.message }, 500);
+  }
 });
 
 // DELETE /records/vehicles/:id
@@ -706,27 +814,83 @@ records.get('/evidence/:id', async (c) => {
   } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
 });
 
+// All writable columns on the evidence table, sourced from legacy addCol()
+// calls. Covers the full EvidenceFormData interface (~30 fields).
+// NOTE: live D1 uses `evidence_type` (not `type`). The handlers map `type`
+// from the client to `evidence_type` before iterating this set.
+const EVIDENCE_WRITABLE_COLUMNS = new Set([
+  'evidence_number', 'incident_id', 'case_id', 'evidence_type',
+  'description', 'location_found', 'collected_by', 'collected_date',
+  'storage_location', 'chain_of_custody', 'status',
+  'category', 'packaging_type', 'serial_number', 'brand', 'model',
+  'estimated_value', 'dimensions', 'weight',
+  'photo_taken', 'lab_submitted', 'lab_case_number', 'lab_name',
+  'disposal_method', 'disposal_date', 'disposal_authorized_by',
+  'condition', 'quantity',
+  'is_biological', 'narcotics_flag', 'temperature_sensitive',
+  'collection_context', 'court_hold_reference',
+  'checked_out_by', 'checked_out_at', 'checkout_reason',
+  'expected_return_date', 'condition_on_return',
+  'release_status', 'release_requested_by', 'release_requested_at',
+  'release_to', 'release_reason', 'release_approved_by', 'release_approved_at',
+  'storage_temperature', 'location_detail',
+  'retention_until', 'disposition',
+  'notes', 'flags',
+]);
+
+function coerceBooleanField(key: string, val: unknown): unknown {
+  if (key === 'photo_taken' || key === 'lab_submitted' || key === 'is_biological' || key === 'narcotics_flag' || key === 'temperature_sensitive') {
+    return val ? 1 : 0;
+  }
+  return val ?? null;
+}
+
 // POST /records/evidence — create evidence.
 records.post('/evidence', async (c) => {
   try {
     const db = getDb(c.env);
     const body = await c.req.json<Record<string, unknown>>();
-    if (!body.type || !body.description) return c.json({ error: 'type and description required' }, 400);
+    // Live D1 uses `evidence_type` not `type` — accept either client field.
+    if (body.type != null && body.evidence_type == null) body.evidence_type = body.type;
+    delete body.type;
+    if (!body.evidence_type || !body.description) return c.json({ error: 'evidence_type and description required' }, 400);
     const user = c.get('user') as { id: number } | undefined;
-    const collected_by = body.collected_by ?? user?.id ?? null;
-    // Live `evidence` has `evidence_type` (not `type`) and NO `case_id`/`case_number`
-    // — the old INSERT named both and 500'd every create. Map type→evidence_type
-    // (accept either client field name) and persist the rich fields the form sends.
+    const cols: string[] = [];
+    const vals: string[] = [];
+    const params: unknown[] = [];
+    cols.push('created_at');
+    vals.push("datetime('now')");
+    for (const [key, val] of Object.entries(body)) {
+      if (key === 'created_at' || key === 'updated_at') continue;
+      if (EVIDENCE_WRITABLE_COLUMNS.has(key)) {
+        cols.push(key);
+        vals.push('?');
+        params.push(coerceBooleanField(key, val));
+      }
+    }
+    if (!body.collected_by && user?.id) {
+      cols.push('collected_by');
+      vals.push('?');
+      params.push(user.id);
+    }
+    if (!body.evidence_number) {
+      cols.push('evidence_number');
+      vals.push('?');
+      params.push(`E${Date.now()}`);
+    }
+    if (!body.chain_of_custody) {
+      cols.push('chain_of_custody');
+      vals.push('?');
+      params.push('[]');
+    }
     const result = await execute(db,
-      'INSERT INTO evidence (evidence_number, incident_id, evidence_type, description, location_found, collected_by, storage_location, chain_of_custody, status, category, quantity, condition, serial_number, brand, model, estimated_value, notes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime(\'now\'))',
-      body.evidence_number || `E${Date.now()}`, body.incident_id || null,
-      body.evidence_type ?? body.type ?? null, body.description, body.location_found || null, collected_by,
-      body.storage_location || null, body.chain_of_custody || '[]', body.status || 'collected',
-      body.category ?? null, body.quantity ?? null, body.condition ?? null, body.serial_number ?? null,
-      body.brand ?? null, body.model ?? null, body.estimated_value ?? null, body.notes ?? null);
+      `INSERT INTO evidence (${cols.join(', ')}) VALUES (${vals.join(', ')})`, ...params);
     const created = await queryFirst(db, 'SELECT e.*, u.full_name as collected_by_name FROM evidence e LEFT JOIN users u ON e.collected_by = u.id WHERE e.id = ?', Number(result.meta.last_row_id));
     return c.json(created, 201);
-  } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) {
+    console.error('POST /records/evidence failed:', err);
+    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+  }
 });
 
 // PUT /records/evidence/:id
@@ -737,18 +901,26 @@ records.put('/evidence/:id', async (c) => {
     const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM evidence WHERE id = ?', id);
     if (!existing) return c.json({ error: 'Evidence not found' }, 404);
     const body = await c.req.json<Record<string, unknown>>();
-    // Real live evidence columns (no case_id/type — those 500'd updates and
-    // dropped the rich fields the client sends).
-    const writable = new Set(['evidence_number', 'incident_id', 'evidence_type', 'description', 'location_found', 'collected_by', 'storage_location', 'chain_of_custody', 'status', 'category', 'quantity', 'condition', 'packaging_type', 'dimensions', 'weight', 'serial_number', 'brand', 'model', 'estimated_value', 'notes', 'lab_submitted', 'lab_case_number', 'lab_name', 'disposition', 'retention_until', 'is_biological']);
-    // Accept the legacy `type` field name as an alias for evidence_type.
+    // Live D1 uses `evidence_type` not `type` — accept either client field.
     if (body.type != null && body.evidence_type == null) body.evidence_type = body.type;
-    const cols: string[] = []; const params: unknown[] = [];
-    for (const [key, val] of Object.entries(body)) { if (writable.has(key)) { cols.push(`${key} = ?`); params.push(val ?? null); } }
+    delete body.type;
+    const cols: string[] = [];
+    const params: unknown[] = [];
+    for (const [key, val] of Object.entries(body)) {
+      if (key === 'id' || key === 'created_at' || key === 'updated_at') continue;
+      if (EVIDENCE_WRITABLE_COLUMNS.has(key)) {
+        cols.push(`${key} = ?`);
+        params.push(coerceBooleanField(key, val));
+      }
+    }
     if (cols.length === 0) return c.json({ message: 'No changes' });
     await execute(db, `UPDATE evidence SET ${cols.join(', ')} WHERE id = ?`, ...params, id);
     const updated = await queryFirst(db, 'SELECT e.*, u.full_name as collected_by_name FROM evidence e LEFT JOIN users u ON e.collected_by = u.id WHERE e.id = ?', id);
     return c.json(updated);
-  } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+  } catch (err) {
+    console.error('PUT /records/evidence/:id failed:', err);
+    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+  }
 });
 
 // DELETE /records/evidence/:id
@@ -1033,6 +1205,80 @@ records.get('/search', async (c) => {
     console.error('GET /records/search failed:', err);
     return c.json({ error: 'Search failed', detail: (err as Error)?.message }, 500);
   }
+});
+
+// ── Records Retention ──────────────────────────────────────────
+
+const RETENTION_SCHEDULE: Record<string, number> = {
+  evidence: 365 * 99,
+  incidents: 365 * 10,
+  persons: 0,
+  vehicles: 0,
+  properties: 0,
+};
+
+// POST /records/retention/enforce — admin-only. Archives/purges records
+// that have exceeded their retention period. Only affects record types
+// with a non-zero retention schedule.
+records.post('/retention/enforce', async (c) => {
+  const user = c.get('user');
+  if (!user || (user as any).role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+  try {
+    const db = getDb(c.env);
+    const results: Record<string, number> = {};
+    for (const [recordType, days] of Object.entries(RETENTION_SCHEDULE)) {
+      if (days <= 0) continue;
+      let count = 0;
+      if (recordType === 'evidence') {
+        const expired = await query<{ id: number }>(db,
+          `SELECT id FROM evidence WHERE status IN ('stored','collected')
+           AND datetime(created_at) < datetime('now',?) LIMIT 500`, `-${days} days`);
+        if (expired.length > 0) {
+          const ids = expired.map((r: any) => r.id);
+          const ps = ids.map(() => '?').join(',');
+          await execute(db, `UPDATE evidence SET status='destroyed' WHERE id IN (${ps})`, ...ids);
+          count = ids.length;
+        }
+      } else if (recordType === 'incidents') {
+        const expired = await query<{ id: number }>(db,
+          `SELECT id FROM incidents WHERE status IN ('closed','approved')
+           AND datetime(created_at) < datetime('now',?) LIMIT 500`, `-${days} days`);
+        if (expired.length > 0) {
+          const ids = expired.map((r: any) => r.id);
+          const ps = ids.map(() => '?').join(',');
+          await execute(db,
+            `UPDATE incidents SET status='archived',updated_at=datetime('now') WHERE id IN (${ps})`,
+            ...ids);
+          count = ids.length;
+        }
+      }
+      if (count > 0) results[recordType] = count;
+    }
+    const ip = c.req.header('CF-Connecting-IP') || c.req.header('X-Forwarded-For') || 'unknown';
+    try {
+      await execute(db,
+        `INSERT INTO audit_log (user_id,action,entity_type,entity_id,details,ip_address,created_at)
+         VALUES (?,'records_retention_enforced','records',0,?,datetime('now'))`,
+        (user as any).id ?? 0, JSON.stringify(results));
+    } catch { /* non-fatal */ }
+    return c.json({ enforced: true, results });
+  } catch (err) {
+    return c.json({ error: 'Failed to enforce retention', detail: (err as Error)?.message }, 500);
+  }
+});
+
+// GET /records/retention/policy — current retention policy.
+records.get('/retention/policy', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const reportDays = await queryFirst<{ config_value: string }>(db,
+      `SELECT config_value FROM system_config
+       WHERE config_key='report_retention_days' AND category='reports'`);
+    return c.json({
+      schedule: RETENTION_SCHEDULE,
+      report_retention_days: reportDays ? parseInt(reportDays.config_value,10)||365 : 365,
+    });
+  } catch { return c.json({ error: 'Failed' }, 500); }
 });
 
 // GET /api/records/reports/approval-queue — ReportsPage Pending Approvals tab.

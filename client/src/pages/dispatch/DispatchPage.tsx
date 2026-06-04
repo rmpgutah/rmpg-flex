@@ -1955,6 +1955,25 @@ export default function DispatchPage() {
       pso_billing_code: ed.pso_billing_code || null,
       pso_authorization: ed.pso_authorization || null,
       contract_id: ed.contract_id || null,
+      // Tactical flags — mirrored from Quick Flags so a form save preserves
+      // flag state when the user edits both form fields and flags before saving.
+      // Previously omitted, causing Quick Flag toggles to appear lost if the
+      // user hit Save in the edit form immediately after a toggle.
+      mental_health_crisis: ed.mental_health_crisis ?? false,
+      juvenile_involved: ed.juvenile_involved ?? false,
+      felony_in_progress: ed.felony_in_progress ?? false,
+      officer_safety_caution: ed.officer_safety_caution ?? false,
+      k9_requested: ed.k9_requested ?? false,
+      ems_requested: ed.ems_requested ?? false,
+      fire_requested: ed.fire_requested ?? false,
+      hazmat: ed.hazmat ?? false,
+      gang_related: ed.gang_related ?? false,
+      evidence_collected: ed.evidence_collected ?? false,
+      body_camera_active: ed.body_camera_active ?? false,
+      photos_taken: ed.photos_taken ?? false,
+      trespass_issued: ed.trespass_issued ?? false,
+      vehicle_pursuit: ed.vehicle_pursuit ?? false,
+      foot_pursuit: ed.foot_pursuit ?? false,
       // Process Service fields
       process_service_type: ed.process_service_type || null,
       process_served_to: ed.process_served_to || null,
@@ -2034,6 +2053,23 @@ export default function DispatchPage() {
       pso_billing_code: selectedCallForEdit.pso_billing_code || '',
       pso_authorization: selectedCallForEdit.pso_authorization || '',
       contract_id: selectedCallForEdit.contract_id || '',
+      // Tactical flags — mirror Quick Flags fields so the edit form
+      // initializes with their current state and the save body includes them.
+      mental_health_crisis: !!selectedCallForEdit.mental_health_crisis,
+      juvenile_involved: !!selectedCallForEdit.juvenile_involved,
+      felony_in_progress: !!selectedCallForEdit.felony_in_progress,
+      officer_safety_caution: !!selectedCallForEdit.officer_safety_caution,
+      k9_requested: !!selectedCallForEdit.k9_requested,
+      ems_requested: !!selectedCallForEdit.ems_requested,
+      fire_requested: !!selectedCallForEdit.fire_requested,
+      hazmat: !!selectedCallForEdit.hazmat,
+      gang_related: !!selectedCallForEdit.gang_related,
+      evidence_collected: !!selectedCallForEdit.evidence_collected,
+      body_camera_active: !!selectedCallForEdit.body_camera_active,
+      photos_taken: !!selectedCallForEdit.photos_taken,
+      trespass_issued: !!selectedCallForEdit.trespass_issued,
+      vehicle_pursuit: !!selectedCallForEdit.vehicle_pursuit,
+      foot_pursuit: !!selectedCallForEdit.foot_pursuit,
       // Process Service fields
       process_service_type: selectedCallForEdit.process_service_type || '',
       process_served_to: selectedCallForEdit.process_served_to || '',

@@ -84,6 +84,31 @@ export default function PrintRecordButton({
     }
   }, [signatureChecked]);
 
+  /** Fetch fresh record data from the API before generating the PDF, preventing
+   *  stale/truncated data (e.g. from list-view refresh) from reaching the PDF.
+   *  Falls back to the passed-in recordData if the fetch fails. */
+  const fetchFreshRecordData = useCallback(async (data: any): Promise<any> => {
+    if (!entityType || !entityId) return data;
+    try {
+      let endpoint = '';
+      switch (entityType) {
+        case 'call': endpoint = `/dispatch/calls/${entityId}`; break;
+        case 'person': endpoint = `/records/persons/${entityId}`; break;
+        case 'vehicle': endpoint = `/records/vehicles/${entityId}`; break;
+        case 'property': endpoint = `/records/properties/${entityId}`; break;
+        case 'evidence': endpoint = `/records/evidence/${entityId}`; break;
+        default: return data;
+      }
+      const fresh = await apiFetch<any>(endpoint);
+      if (fresh && (fresh.id || fresh.call_number || fresh.first_name)) {
+        return fresh;
+      }
+    } catch (err) {
+      console.warn('[PrintRecordButton] Fresh data fetch failed, using passed-in data:', err);
+    }
+    return data;
+  }, [entityType, entityId]);
+
   /** Merge attachment images and system history into recordData before PDF generation */
   const enrichWithImages = useCallback(async (data: any, signatureOverride?: string | null): Promise<any> => {
     const enriched = { ...data };
@@ -294,7 +319,8 @@ export default function PrintRecordButton({
     try {
       setLoading(true);
       if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl);
-      const enrichedData = await enrichWithImages(recordData);
+      const freshData = await fetchFreshRecordData(recordData);
+      const enrichedData = await enrichWithImages(freshData);
       const v2BlobUrl = await tryV2DispatchBlobUrl({ recordType, recordData: enrichedData, identifier });
       const blobUrl = v2BlobUrl ?? await generateRecordPdfBlobUrl(recordType, enrichedData);
       setPdfBlobUrl(blobUrl);
@@ -304,7 +330,7 @@ export default function PrintRecordButton({
     } finally {
       setLoading(false);
     }
-  }, [recordType, recordData, identifier, enrichWithImages, pdfBlobUrl]);
+  }, [recordType, recordData, identifier, enrichWithImages, pdfBlobUrl, fetchFreshRecordData]);
 
   /** Mobile Print: Brother PJ-700/800 in-vehicle thermal printer.
    *  Adds +6mm top offset so leading-edge content doesn't get clipped
@@ -325,7 +351,8 @@ export default function PrintRecordButton({
     try {
       setLoading(true);
       if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl);
-      const enrichedData = await enrichWithImages(recordData);
+      const freshData = await fetchFreshRecordData(recordData);
+      const enrichedData = await enrichWithImages(freshData);
       // v2 dispatch path doesn't yet honor printTarget — fall through
       // directly to the legacy generator (which IS mobile-aware) for
       // the blob URL. Citations lose v2 sidecar attestation under
@@ -338,7 +365,7 @@ export default function PrintRecordButton({
     } finally {
       setLoading(false);
     }
-  }, [recordType, recordData, identifier, enrichWithImages, pdfBlobUrl]);
+  }, [recordType, recordData, identifier, enrichWithImages, pdfBlobUrl, fetchFreshRecordData]);
 
   const handlePreview = useCallback(async () => {
     if (!recordData) return;
@@ -346,7 +373,8 @@ export default function PrintRecordButton({
       setLoading(true);
       // Revoke previous blob URL if one exists
       if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl);
-      const enrichedData = await enrichWithImages(recordData);
+      const freshData = await fetchFreshRecordData(recordData);
+      const enrichedData = await enrichWithImages(freshData);
       // v2 sidecar engine handles migrated types (citation today); falls
       // back to the legacy generator for everything else.
       const v2BlobUrl = await tryV2DispatchBlobUrl({ recordType, recordData: enrichedData, identifier });
@@ -358,7 +386,7 @@ export default function PrintRecordButton({
     } finally {
       setLoading(false);
     }
-  }, [recordType, recordData, identifier, pdfBlobUrl, enrichWithImages]);
+  }, [recordType, recordData, identifier, pdfBlobUrl, enrichWithImages, fetchFreshRecordData]);
 
   /** Sign & Export: if user has no saved signature, show the sign pad; otherwise generate with saved sig */
   const handleSignAndExport = useCallback(async () => {
@@ -367,7 +395,8 @@ export default function PrintRecordButton({
       // Already have a signature — generate immediately
       try {
         setLoading(true);
-        const enrichedData = await enrichWithImages(recordData, savedSignature);
+        const freshData = await fetchFreshRecordData(recordData);
+        const enrichedData = await enrichWithImages(freshData, savedSignature);
         const handled = await tryV2Dispatch({ recordType, recordData: enrichedData, identifier });
         if (!handled) await downloadRecordPdf(recordType, enrichedData, identifier);
       } catch (err) {
@@ -379,7 +408,7 @@ export default function PrintRecordButton({
       // No saved signature — open the sign pad modal
       setSignModalOpen(true);
     }
-  }, [recordData, savedSignature, enrichWithImages, recordType, identifier]);
+  }, [recordData, savedSignature, enrichWithImages, recordType, identifier, fetchFreshRecordData]);
 
   /** Called when user signs in the quick-sign modal */
   const handleQuickSign = useCallback(async (dataUrl: string | null) => {
@@ -398,7 +427,8 @@ export default function PrintRecordButton({
     // Generate the PDF with the fresh signature
     try {
       setLoading(true);
-      const enrichedData = await enrichWithImages(recordData, dataUrl);
+      const freshData = await fetchFreshRecordData(recordData);
+      const enrichedData = await enrichWithImages(freshData, dataUrl);
       const handled = await tryV2Dispatch({ recordType, recordData: enrichedData, identifier });
       if (!handled) await downloadRecordPdf(recordType, enrichedData, identifier);
     } catch (err) {
@@ -406,7 +436,7 @@ export default function PrintRecordButton({
     } finally {
       setLoading(false);
     }
-  }, [recordData, enrichWithImages, recordType, identifier]);
+  }, [recordData, enrichWithImages, recordType, identifier, fetchFreshRecordData]);
 
   const handleCloseViewer = useCallback(() => {
     setViewerOpen(false);
