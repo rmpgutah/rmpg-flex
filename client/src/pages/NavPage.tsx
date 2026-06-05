@@ -66,7 +66,7 @@ export default function NavPage() {
     fetchCurrentTrip,
   } = useNavTripDetection({
     position: gps.latitude && gps.longitude
-      ? { latitude: gps.latitude, longitude: gps.longitude, accuracy: gps.accuracy }
+      ? { latitude: gps.latitude, longitude: gps.longitude, accuracy: gps.accuracy ?? undefined }
       : null,
     isTracking: gps.isTracking,
     isForeground: true,
@@ -98,13 +98,13 @@ export default function NavPage() {
   // ── Manual start ──────────────────────────────────────────
   const handleManualStart = () => {
     if (gps.latitude && gps.longitude) {
-      startManualTrip(gps.latitude, gps.longitude, gps.accuracy);
+      startManualTrip(gps.latitude, gps.longitude, gps.accuracy ?? undefined);
     }
   };
 
   // ── End trip ──────────────────────────────────────────────
   const handleEndTrip = () => {
-    endCurrentTrip(gps.latitude, gps.longitude);
+    endCurrentTrip(gps.latitude ?? undefined, gps.longitude ?? undefined);
   };
 
   const activeTrip = currentTripLocal || (detection.pendingTripId ? currentTrip : null);
@@ -118,7 +118,7 @@ export default function NavPage() {
         <span style={{ color: gps.isTracking ? '#22c55e' : '#ef4444' }}>
           {gps.isTracking ? 'GPS ON' : 'GPS OFF'}
         </span>
-        {gps.latitude && (
+        {gps.latitude && gps.longitude && (
           <span className="text-rmpg-400">
             {gps.latitude.toFixed(5)}, {gps.longitude.toFixed(5)}
           </span>
