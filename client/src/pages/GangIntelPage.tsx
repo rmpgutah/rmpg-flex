@@ -4,7 +4,9 @@ import PanelTitleBar from '../components/PanelTitleBar';
 import DataTable from '../components/DataTable';
 import StatsCard from '../components/StatsCard';
 import { useToast } from '../components/ToastProvider';
-import { ShieldAlert, Users, SprayCanIcon as Spray, TrendingUp, Plus, Pencil, Trash2 } from 'lucide-react';
+import { useMenuActions } from '../utils/contextMenuActions';
+import type { ContextMenuItem } from '../context/ContextMenuContext';
+import { ShieldAlert, Users, SprayCanIcon as Spray, TrendingUp, Plus, Pencil, Trash2, Eye } from 'lucide-react';
 
 interface GangMember { id: number; name: string; moniker: string; gang_name: string; status: string; threat_level: string; notes: string; }
 interface Gang { id: number; name: string; colors: string; member_count: number; threat_level: string; territory: string; notes: string; }
@@ -25,6 +27,7 @@ export default function GangIntelPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const { addToast } = useToast();
+  const m = useMenuActions();
 
   const fetchData = useCallback(async () => {
     try {
@@ -98,7 +101,19 @@ export default function GangIntelPage() {
         <StatsCard label="THREAT LEVEL" value="MEDIUM" icon={ShieldAlert} />
       </div>
 
-      <DataTable columns={memberColumns} data={members} emptyMessage="No gang members tracked" onRowClick={openEdit} />
+      <DataTable
+        columns={memberColumns}
+        data={members}
+        emptyMessage="No gang members tracked"
+        onRowClick={openEdit}
+        rowContextMenu={(r): ContextMenuItem[] => [
+          m.action('Open', () => openEdit(r), { icon: <Eye size={12} /> }),
+          m.action('Edit', () => openEdit(r), { icon: <Pencil size={12} /> }),
+          m.separator(),
+          m.copyId(r.id),
+          m.action('Delete', () => setDeleteId(r.id), { danger: true, icon: <Trash2 size={12} /> }),
+        ]}
+      />
 
       {formOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={() => setFormOpen(false)}>
@@ -106,13 +121,13 @@ export default function GangIntelPage() {
             <h3 className="text-sm font-bold text-rmpg-100 mb-4">{editingRecord ? 'Edit Member' : 'New Member'}</h3>
             {formError && <div className="text-xs text-red-400 mb-2">{formError}</div>}
             <div className="grid grid-cols-2 gap-3">
-              <div><label className="text-[9px] text-rmpg-400 uppercase font-bold">Name *</label><input value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="input-dark w-full mt-1 text-xs" /></div>
-              <div><label className="text-[9px] text-rmpg-400 uppercase font-bold">Moniker</label><input value={formData.moniker} onChange={e => setFormData({...formData, moniker: e.target.value})} className="input-dark w-full mt-1 text-xs" /></div>
-              <div><label className="text-[9px] text-rmpg-400 uppercase font-bold">Gang</label><input value={formData.gang_name} onChange={e => setFormData({...formData, gang_name: e.target.value})} className="input-dark w-full mt-1 text-xs" /></div>
-              <div><label className="text-[9px] text-rmpg-400 uppercase font-bold">Status</label><select value={formData.status} onChange={e => setFormData({...formData, status: e.target.value})} className="input-dark w-full mt-1 text-xs"><option value="active">Active</option><option value="inactive">Inactive</option><option value="incarcerated">Incarcerated</option><option value="deceased">Deceased</option></select></div>
-              <div><label className="text-[9px] text-rmpg-400 uppercase font-bold">Threat Level</label><select value={formData.threat_level} onChange={e => setFormData({...formData, threat_level: e.target.value})} className="input-dark w-full mt-1 text-xs"><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="critical">Critical</option></select></div>
+              <div><label className="text-[9px] text-rmpg-400 uppercase font-bold">Name *</label><input id="ff-gangintelpage-0" value={formData.name} onChange={e => setFormData({...formData, name: e.target.value})} className="input-dark w-full mt-1 text-xs" /></div>
+              <div><label className="text-[9px] text-rmpg-400 uppercase font-bold">Moniker</label><input id="ff-gangintelpage-1" value={formData.moniker} onChange={e => setFormData({...formData, moniker: e.target.value})} className="input-dark w-full mt-1 text-xs" /></div>
+              <div><label className="text-[9px] text-rmpg-400 uppercase font-bold">Gang</label><input id="ff-gangintelpage-2" value={formData.gang_name} onChange={e => setFormData({...formData, gang_name: e.target.value})} className="input-dark w-full mt-1 text-xs" /></div>
+              <div><label className="text-[9px] text-rmpg-400 uppercase font-bold">Status</label><select id="ff-gangintelpage-3" value={formData.status} onChange={e => setFormData({...formData, status: e.target.value})} className="input-dark w-full mt-1 text-xs"><option value="active">Active</option><option value="inactive">Inactive</option><option value="incarcerated">Incarcerated</option><option value="deceased">Deceased</option></select></div>
+              <div><label className="text-[9px] text-rmpg-400 uppercase font-bold">Threat Level</label><select id="ff-gangintelpage-4" value={formData.threat_level} onChange={e => setFormData({...formData, threat_level: e.target.value})} className="input-dark w-full mt-1 text-xs"><option value="low">Low</option><option value="medium">Medium</option><option value="high">High</option><option value="critical">Critical</option></select></div>
             </div>
-            <div className="mt-3"><label className="text-[9px] text-rmpg-400 uppercase font-bold">Notes</label><textarea value={formData.notes} onChange={e => setFormData({...formData, notes: e.target.value})} className="input-dark w-full mt-1 text-xs" rows={3} /></div>
+            <div className="mt-3"><label className="text-[9px] text-rmpg-400 uppercase font-bold">Notes</label><textarea id="ff-gangintelpage-5" value={formData.notes} onChange={e => setFormData({...formData, notes: e.target.value})} className="input-dark w-full mt-1 text-xs" rows={3} /></div>
             <div className="flex justify-end gap-3 mt-4">
               <button onClick={() => setFormOpen(false)} className="toolbar-btn px-4" style={{ height: 28 }}>Cancel</button>
               <button onClick={handleSave} disabled={formSubmitting || !formData.name} className="toolbar-btn-primary px-4" style={{ height: 28 }}>{formSubmitting ? 'Saving...' : 'Save'}</button>

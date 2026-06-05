@@ -76,19 +76,6 @@ jobs:
           # sidecar stays inactive (/api/pdf-tools/* will 500 if called).
           command: deploy --containers-rollout=none
 
-      # Deploy the routing proxy (rmpg-api-proxy) AFTER the API Worker is up.
-      # The proxy has service bindings to rmpg-flex-api and rmpg-flex; if we
-      # deployed it before rmpg-flex-api here the binding would point at the
-      # previous script for the few seconds until rmpg-flex-api finishes its
-      # rollout. Sequencing keeps the strangler seam consistent across deploys.
-      - name: Deploy proxy
-        uses: cloudflare/wrangler-action@v4
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          workingDirectory: proxy
-          command: deploy
-
       # Client SPA build + deploy to Cloudflare Pages.
       # Without these steps the Worker (API) ships but the React app
       # at https://rmpgutah.us stays stuck on whatever bundle was
@@ -107,3 +94,27 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: pages deploy client/dist --project-name=rmpg-flex --branch=main --commit-dirty=true
+
+      # Deploy the routing proxy (rmpg-api-proxy) LAST. It dispatches
+      # rmpgutah.us/api/* to the rewrite (env.API = rmpg-flex-api) or legacy
+      # (env.LEGACY = rmpg-flex); both service-binding targets are already
+      # deployed above by the time this runs.
+      #
+      # BLOCKING again (no continue-on-error): the 2026-06-02 hedge was added
+      # because the deployed rmpg-api-proxy had orphan Durable Object namespaces
+      # (WelfareWatchDO/VoiceHubDO/AlertHubDO/PdfToolsContainer) left by the #937
+      # name-collision, so every proxy deploy hit Cloudflare error 10064. PR #947
+      # cleared that by exporting inert stub DO classes from proxy/index.ts, so
+      # the proxy deploys cleanly now. This step is sequenced LAST specifically so
+      # a genuine proxy failure fails the run loudly WITHOUT skipping the
+      # worker/client/Pages deploys above (the regression #943's continue-on-error
+      # was guarding against). If this 10064s again, do NOT re-add
+      # continue-on-error — confirm proxy/index.ts still exports those four stub
+      # classes. See memory project-auth-outage-name-collision.
+      - name: Deploy proxy
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: proxy
+          command: deploy

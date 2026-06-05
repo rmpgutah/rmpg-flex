@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
-import { FileText, Plus, Trash2, CheckCircle, Loader2, Search } from 'lucide-react';
+import { FileText, Plus, Trash2, CheckCircle, Loader2, Search, Eye } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { useToast } from '../../../components/ToastProvider';
 import { useAuth } from '../../../context/AuthContext';
+import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
+import { useMenuActions } from '../../../utils/contextMenuActions';
 
 import RichTextArea from '../../../components/RichTextArea';
 import { parseTimestamp } from '../../../utils/dateUtils';
@@ -41,6 +43,10 @@ export default function DocumentsTab({ userRole }: { userRole: string }) {
   const [searchQuery, setSearchQuery] = useState('');
 
   const isManager = ['admin', 'manager', 'supervisor'].includes(userRole);
+
+  // ── Right-click context menu ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
 
   const loadDocs = async () => {
     setLoading(true);
@@ -82,6 +88,16 @@ export default function DocumentsTab({ userRole }: { userRole: string }) {
 
   const myAcks = new Set(acks.filter(a => a.officer_id === Number(user?.id)).map(a => a.document_id));
 
+  const buildDocMenu = (doc: HRDocument): ContextMenuItem[] => [
+    m.action('Open document', () => setSelectedDocId(doc.id), { icon: <Eye size={12} /> }),
+    ...(!myAcks.has(doc.id) ? [m.action('Acknowledge', () => handleAcknowledge(doc.id), { icon: <CheckCircle size={12} /> })] : []),
+    m.separator(),
+    m.copy('Copy title', doc.title),
+    m.copy('Copy category', doc.category),
+    m.copyId(doc.id),
+    ...(isManager ? [m.separator(), m.action('Delete', () => handleDelete(doc.id), { icon: <Trash2 size={12} />, danger: true })] : []),
+  ];
+
   return (
     <div className="p-4 space-y-4">
       <div className="flex items-center justify-between">
@@ -89,9 +105,9 @@ export default function DocumentsTab({ userRole }: { userRole: string }) {
         <div className="flex items-center gap-2">
           <div className="relative">
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500 pointer-events-none" aria-hidden="true" />
-            <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Search documents..." aria-label="Search HR documents by name, category, or officer" className="input-field text-xs py-1 pl-6 pr-2 w-48 focus:ring-1 focus:ring-brand-500/50 transition-shadow duration-150" />
+            <input id="ff-documentstab-0" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Search documents..." aria-label="Search HR documents by name, category, or officer" className="input-field text-xs py-1 pl-6 pr-2 w-48 focus:ring-1 focus:ring-brand-500/50 transition-shadow duration-150" />
           </div>
-          <select value={filterCat} onChange={e => setFilterCat(e.target.value)} className="input-field text-xs py-1 px-2">
+          <select id="ff-documentstab-1" value={filterCat} onChange={e => setFilterCat(e.target.value)} className="input-field text-xs py-1 px-2">
             <option value="all">All Categories</option>
             {CATEGORIES.map(c => <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>)}
           </select>
@@ -104,11 +120,11 @@ export default function DocumentsTab({ userRole }: { userRole: string }) {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="field-label">Title *</label>
-              <input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} className="input-field w-full text-xs" placeholder="Document title" maxLength={200} />
+              <input id="ff-documentstab-2" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} className="input-field w-full text-xs" placeholder="Document title" maxLength={200} />
             </div>
             <div>
               <label className="field-label">Category</label>
-              <select value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))} className="input-field w-full text-xs">
+              <select id="ff-documentstab-3" value={form.category} onChange={e => setForm(f => ({ ...f, category: e.target.value }))} className="input-field w-full text-xs">
                 {CATEGORIES.map(c => <option key={c} value={c}>{c.charAt(0).toUpperCase() + c.slice(1)}</option>)}
               </select>
             </div>
@@ -133,7 +149,7 @@ export default function DocumentsTab({ userRole }: { userRole: string }) {
             const q = searchQuery.toLowerCase();
             return doc.title.toLowerCase().includes(q) || doc.description?.toLowerCase().includes(q) || doc.category.toLowerCase().includes(q);
           }).map(doc => (
-            <div key={doc.id} role="listitem" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setSelectedDocId(doc.id); }} className={`panel-beveled p-3 cursor-pointer transition-all duration-150 hover:bg-surface-raised/30 hover:shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-500/40 ${selectedDocId === doc.id ? 'border-brand-500 shadow-sm' : ''}`} onClick={() => setSelectedDocId(doc.id)}>
+            <div key={doc.id} role="listitem" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') setSelectedDocId(doc.id); }} className={`panel-beveled p-3 cursor-pointer transition-all duration-150 hover:bg-surface-raised/30 hover:shadow-sm focus:outline-none focus:ring-1 focus:ring-brand-500/40 ${selectedDocId === doc.id ? 'border-brand-500 shadow-sm' : ''}`} onClick={() => setSelectedDocId(doc.id)} onContextMenu={(e) => openMenu(e, buildDocMenu(doc))}>
               <div className="flex items-center justify-between">
                 <div>
                   <div className="flex items-center gap-2">

@@ -363,7 +363,7 @@ function AddClientPersonLinkForm({ personId, clientId, onLinked, onCancel }: Add
       {!selectedId ? (
         <div className="relative">
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" />
-          <input
+          <input id="ff-clientpersonlinkssection-0"
             type="text"
             placeholder={`Search ${searchingFor}...`}
             className="input-dark pl-7 text-xs"
@@ -411,7 +411,7 @@ function AddClientPersonLinkForm({ personId, clientId, onLinked, onCancel }: Add
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <div>
               <label className="text-[9px] text-rmpg-400 uppercase font-semibold">Relationship</label>
-              <select className="select-dark mt-0.5 text-xs" value={relationship} onChange={(e) => setRelationship(e.target.value)}>
+              <select id="ff-clientpersonlinkssection-1" className="select-dark mt-0.5 text-xs" value={relationship} onChange={(e) => setRelationship(e.target.value)}>
                 {RELATIONSHIP_OPTIONS.map((r) => (
                   <option key={r.value} value={r.value}>{r.label}</option>
                 ))}
@@ -419,7 +419,7 @@ function AddClientPersonLinkForm({ personId, clientId, onLinked, onCancel }: Add
             </div>
             <div>
               <label className="text-[9px] text-rmpg-400 uppercase font-semibold">Title / Role</label>
-              <input
+              <input id="ff-clientpersonlinkssection-2"
                 type="text"
                 className="input-dark mt-0.5 text-xs"
                 placeholder="e.g. Property Manager"
@@ -430,7 +430,7 @@ function AddClientPersonLinkForm({ personId, clientId, onLinked, onCancel }: Add
           </div>
           <div>
             <label className="text-[9px] text-rmpg-400 uppercase font-semibold">Notes</label>
-            <input
+            <input id="ff-clientpersonlinkssection-3"
               type="text"
               className="input-dark mt-0.5 text-xs"
               placeholder="Optional notes about this link"
@@ -440,7 +440,7 @@ function AddClientPersonLinkForm({ personId, clientId, onLinked, onCancel }: Add
           </div>
           <div className="flex items-center justify-between">
             <label className="flex items-center gap-1.5 text-[10px] text-rmpg-300 cursor-pointer">
-              <input
+              <input id="ff-clientpersonlinkssection-4"
                 type="checkbox"
                 checked={isPrimary}
                 onChange={(e) => setIsPrimary(e.target.checked)}

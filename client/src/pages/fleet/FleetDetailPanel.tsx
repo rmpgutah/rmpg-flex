@@ -4,8 +4,10 @@ import { parseTimestamp } from '../../utils/dateUtils';
 import {
   Car, Fuel, ClipboardCheck, Radio, BarChart3, Settings, Wrench, X, Clock, Users,
   Archive, RotateCcw, Trash2, Printer, ChevronDown, Circle, AlertTriangle, AlertOctagon,
-  DollarSign,
+  DollarSign, Pencil, Tag, Video, CreditCard, MapPin, RefreshCw,
 } from 'lucide-react';
+import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
+import { useMenuActions } from '../../utils/contextMenuActions';
 import type {
   FleetVehicle, FleetMaintenance, FleetFuelLog, FleetFuelSummary,
   FleetInspection, FleetAssignment, FleetAnalytics, FleetVehicleStatus,
@@ -21,6 +23,8 @@ import FleetTiresTab from './tabs/FleetTiresTab';
 import FleetDamageTab from './tabs/FleetDamageTab';
 import FleetRecallsTab from './tabs/FleetRecallsTab';
 import FleetCostsTab from './tabs/FleetCostsTab';
+import FleetDashCamTab from './tabs/FleetDashCamTab';
+import FleetFuelCardsTab from './tabs/FleetFuelCardsTab';
 import type { CostCategory } from './modals/FleetCostFormModal';
 import type { FleetLoan, FleetInsurancePolicy, FleetAccessory, FleetUtilityCost, FleetOtherCost, FleetCostSummary } from '../../types';
 import { formatMilitary } from './utils/fleetFormatters';
@@ -28,7 +32,7 @@ import { generateFleetFuelReport } from './utils/fleetFuelReport';
 import { generateFlaggedAuditPdf } from './utils/flaggedAuditPdf';
 import PrintRecordButton from '../../components/PrintRecordButton';
 
-export type DetailTab = 'overview' | 'fuel' | 'costs' | 'inspections' | 'assignments' | 'personnel' | 'analytics' | 'tires' | 'damage' | 'recalls';
+export type DetailTab = 'overview' | 'fuel' | 'costs' | 'inspections' | 'assignments' | 'personnel' | 'analytics' | 'tires' | 'damage' | 'recalls' | 'dashcam' | 'fuel_cards';
 export type CostSubTab = 'loan' | 'insurance' | 'accessory' | 'utility' | 'other';
 
 const STATUS_LED: Record<FleetVehicleStatus, string> = {
@@ -67,6 +71,8 @@ const TABS: { key: DetailTab; label: string; icon: React.ComponentType<{ classNa
   { key: 'damage', label: 'Damage', icon: AlertTriangle },
   { key: 'recalls', label: 'Recalls', icon: AlertOctagon },
   { key: 'analytics', label: 'Analytics', icon: BarChart3 },
+  { key: 'dashcam', label: 'Dash Cam', icon: Video },
+  { key: 'fuel_cards', label: 'Fuel Cards', icon: CreditCard },
 ];
 
 interface Props {
@@ -114,6 +120,11 @@ interface Props {
   onUnarchiveVehicle: () => void;
   onDeleteVehicle: () => void;
   isArchived: boolean;
+  // GPS mileage
+  gpsMileage: any;
+  gpsMileageLoading: boolean;
+  onFetchGpsMileage: (days?: number) => void;
+  onSyncGpsMileage: () => void;
   onClose: () => void;
 }
 
@@ -219,14 +230,34 @@ export default function FleetDetailPanel({
   onEditMaintenance, onDeleteMaintenance, onEditInspection, onDeleteInspection,
   onAssignVehicle, onUnassignVehicle, onAddPersonnelNote, onDeletePersonnelNote, onRefreshPersonnel,
   onArchiveVehicle, onUnarchiveVehicle, onDeleteVehicle, isArchived,
+  gpsMileage, gpsMileageLoading, onFetchGpsMileage, onSyncGpsMileage,
   onClose,
 }: Props) {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin'; // Admin God Mode
+
+  // Right-click context menu for the vehicle header (acts on this record).
+  const { openMenu } = useContextMenu();
+  const cm = useMenuActions();
+  const buildVehicleMenu = (): ContextMenuItem[] => [
+    ...(!isArchived ? [cm.action('Edit vehicle', onEditVehicle, { icon: <Pencil size={12} /> })] : []),
+    cm.separator(),
+    cm.copy('Copy unit #', detail.vehicle_number),
+    ...(detail.plate_number ? [cm.copy('Copy plate', detail.plate_number, <Tag size={12} />)] : []),
+    ...(detail.vin ? [cm.copy('Copy VIN', detail.vin)] : []),
+    cm.copyId(detail.id),
+    ...((isArchived || isAdmin)
+      ? [cm.separator(), cm.action('Delete', onDeleteVehicle, { danger: true, icon: <Trash2 size={12} /> })]
+      : []),
+  ];
+
   return (
     <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
       {/* Detail header */}
-      <div className="flex-shrink-0 px-4 py-3 border-b border-rmpg-700 flex items-start justify-between bg-surface-sunken transition-colors duration-200">
+      <div
+        className="flex-shrink-0 px-4 py-3 border-b border-rmpg-700 flex items-start justify-between bg-surface-sunken transition-colors duration-200"
+        onContextMenu={(e) => openMenu(e, buildVehicleMenu())}
+      >
         <div>
           <div className="flex items-center gap-3">
             <div className={`w-10 h-10 rounded-sm flex items-center justify-center border ${
@@ -285,6 +316,39 @@ export default function FleetDetailPanel({
               }
               return null;
             })()}
+          </div>
+
+          {/* GPS-derived mileage section */}
+          <div className="flex items-center gap-2 mt-2 flex-wrap">
+            <button type="button"
+              className={`toolbar-btn text-[9px] ${gpsMileageLoading ? 'opacity-50' : ''}`}
+              onClick={() => onFetchGpsMileage()}
+              disabled={gpsMileageLoading}
+              title="Compute GPS-derived mileage from dispatch breadcrumbs">
+              <MapPin className="w-3 h-3" />
+              {gpsMileageLoading ? 'Computing...' : gpsMileage ? 'GPS Mileage ▼' : 'Get GPS Mileage'}
+            </button>
+            {gpsMileage && !gpsMileage.error && (
+              <>
+                <span className="text-[9px] text-rmpg-400 font-mono">
+                  <span className="text-green-400 font-bold">{gpsMileage.total_miles?.toFixed(1)}</span> mi
+                  ({gpsMileage.valid_segments} segments, {gpsMileage.time_span_hours?.toFixed(0)}h)
+                </span>
+                {gpsMileage.unit_call_sign && (
+                  <span className="text-[9px] text-rmpg-500 font-mono">via {gpsMileage.unit_call_sign}</span>
+                )}
+                <button type="button"
+                  className="toolbar-btn toolbar-btn-primary text-[9px]"
+                  onClick={onSyncGpsMileage}
+                  disabled={gpsMileageLoading}
+                  title="Add GPS-calculated miles to the vehicle odometer">
+                  <RefreshCw className="w-3 h-3" /> Sync Odo
+                </button>
+              </>
+            )}
+            {gpsMileage?.error && (
+              <span className="text-[9px] text-rmpg-500 italic font-mono">{gpsMileage.error}</span>
+            )}
           </div>
 
           {/* Timestamps row */}
@@ -425,6 +489,8 @@ export default function FleetDetailPanel({
         {activeTab === 'damage' && <FleetDamageTab vehicleId={detail.id} />}
         {activeTab === 'recalls' && <FleetRecallsTab vehicleId={detail.id} />}
         {activeTab === 'analytics' && <FleetAnalyticsTab analytics={analytics} loading={analyticsLoading} />}
+        {activeTab === 'dashcam' && <FleetDashCamTab vehicleId={detail.id} />}
+        {activeTab === 'fuel_cards' && <FleetFuelCardsTab />}
       </div>
     </div>
   );

@@ -115,7 +115,7 @@ export default function FleetPersonnelTab({
   const dlProgress = officer?.dl_expiry ? expiryProgress(officer.dl_expiry) : 0;
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 space-y-3">
+    <div className="p-4 space-y-3">
 
       {/* ─── A) CURRENT ASSIGNMENT BANNER ─── */}
       {isAssigned ? (
@@ -218,7 +218,7 @@ export default function FleetPersonnelTab({
             <UserPlus className="w-3 h-3" /> {isAssigned ? 'Reassign Vehicle' : 'Assign Vehicle to Unit'}
           </h4>
           <div className="flex items-center gap-2">
-            <select
+            <select id="ff-fleetpersonneltab-0"
               className="select-dark flex-1 text-[11px] min-h-[36px]"
               value={selectedUnitId}
               onChange={(e) => setSelectedUnitId(e.target.value)}

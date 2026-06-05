@@ -130,7 +130,7 @@ export default function PinGeneratorModal({ isOpen, onClose, users }: PinGenerat
           {/* Employee selector */}
           <div>
             <label className="field-label">Employee</label>
-            <select
+            <select id="ff-pingeneratormodal-0"
               value={selectedUserId}
               onChange={e => {
                 setSelectedUserId(e.target.value);

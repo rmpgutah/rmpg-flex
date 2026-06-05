@@ -75,3 +75,7 @@ client/RMPG-Dispatch-Guide-*.pdf
 # Dispatch-guide screenshot working dirs (sources for dispatchGuideShots.ts)
 client/.guide-shots/
 .shots/
+
+# Audit workflow tracker artifacts (local only)
+.audit-*.json
+.audit-*.md

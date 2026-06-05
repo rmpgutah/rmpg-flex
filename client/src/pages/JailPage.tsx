@@ -5,7 +5,9 @@ import DataTable from '../components/DataTable';
 import StatsCard from '../components/StatsCard';
 import JailFormModal, { JailFormData } from '../components/JailFormModal';
 import { useToast } from '../components/ToastProvider';
-import { Building2, Users, DoorOpen, ClipboardList, Plus, Pencil, Trash2 } from 'lucide-react';
+import { useMenuActions } from '../utils/contextMenuActions';
+import type { ContextMenuItem } from '../context/ContextMenuContext';
+import { Building2, Users, DoorOpen, ClipboardList, Plus, Pencil, Trash2, Eye } from 'lucide-react';
 
 interface Inmate {
   id: number; booking_number: string; last_name: string; first_name: string;
@@ -22,6 +24,7 @@ export default function JailPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const { addToast } = useToast();
+  const m = useMenuActions();
 
   const fetchInmates = useCallback(async () => {
     try {
@@ -110,7 +113,19 @@ export default function JailPage() {
         <StatsCard icon={DoorOpen} label="Currently Housed" value={stats.housed} />
         <StatsCard icon={ClipboardList} label="Booked (Intake)" value={stats.booked} />
       </div>
-      <DataTable columns={columns} data={inmates} emptyMessage="No inmates in custody" onRowClick={(row) => openEdit(row)} />
+      <DataTable
+        columns={columns}
+        data={inmates}
+        emptyMessage="No inmates in custody"
+        onRowClick={(row) => openEdit(row)}
+        rowContextMenu={(row): ContextMenuItem[] => [
+          m.action('Open', () => openEdit(row), { icon: <Eye size={12} /> }),
+          m.action('Edit', () => openEdit(row), { icon: <Pencil size={12} /> }),
+          m.separator(),
+          m.copyId(row.id),
+          m.action('Delete', () => setDeleteId(row.id), { danger: true, icon: <Trash2 size={12} /> }),
+        ]}
+      />
 
       <JailFormModal isOpen={formOpen} onClose={() => { setFormOpen(false); setEditingRecord(undefined); }}
         onSubmit={handleFormSubmit} isSubmitting={formSubmitting}

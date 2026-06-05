@@ -103,7 +103,7 @@ export default function ScheduleFormModal({
         <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">
           Officer <span className="text-red-400">*</span>
         </label>
-        <select
+        <select id="ff-scheduleformmodal-0"
           required
           value={form.officer_id}
           onChange={(e) => set('officer_id', e.target.value)}
@@ -123,7 +123,7 @@ export default function ScheduleFormModal({
         <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">
           Property
         </label>
-        <select
+        <select id="ff-scheduleformmodal-1"
           value={form.property_id}
           onChange={(e) => set('property_id', e.target.value)}
           className="w-full bg-surface-sunken border border-rmpg-600 text-sm text-white px-3 py-2 focus:outline-none focus:border-brand-500"
@@ -142,7 +142,7 @@ export default function ScheduleFormModal({
         <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">
           Shift Date <span className="text-red-400">*</span>
         </label>
-        <input
+        <input id="ff-scheduleformmodal-2"
           type="date"
           required
           value={form.shift_date}
@@ -157,7 +157,7 @@ export default function ScheduleFormModal({
           <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">
             Start Time <span className="text-red-400">*</span>
           </label>
-          <input
+          <input id="ff-scheduleformmodal-3"
             type="time"
             required
             value={form.start_time}
@@ -169,7 +169,7 @@ export default function ScheduleFormModal({
           <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">
             End Time <span className="text-red-400">*</span>
           </label>
-          <input
+          <input id="ff-scheduleformmodal-4"
             type="time"
             required
             value={form.end_time}
@@ -184,7 +184,7 @@ export default function ScheduleFormModal({
         <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">
           Notes
         </label>
-        <textarea
+        <textarea id="ff-scheduleformmodal-5"
           value={form.notes}
           onChange={(e) => set('notes', e.target.value)}
           rows={3}

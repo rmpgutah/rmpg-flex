@@ -172,24 +172,24 @@ export default function InspectionFormModal({ isOpen, mode = 'create', form, onC
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div>
               <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Type *</label>
-              <select className="select-dark w-full text-[11px] min-h-[36px]" value={form.inspection_type}
+              <select id="ff-inspectionformmodal-0" className="select-dark w-full text-[11px] min-h-[36px]" value={form.inspection_type}
                 onChange={(e) => setField('inspection_type', e.target.value)}>
                 {INSPECTION_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
               </select>
             </div>
             <div>
               <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Inspector *</label>
-              <input className="input-dark w-full text-[11px] min-h-[36px]" value={form.inspector_name}
+              <input id="ff-inspectionformmodal-1" className="input-dark w-full text-[11px] min-h-[36px]" value={form.inspector_name}
                 onChange={(e) => setField('inspector_name', e.target.value)} />
             </div>
             <div>
               <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Date / Time *</label>
-              <input className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="datetime-local" step="1" value={form.inspection_date}
+              <input id="ff-inspectionformmodal-2" className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="datetime-local" step="1" value={form.inspection_date}
                 onChange={(e) => setField('inspection_date', e.target.value)} />
             </div>
             <div>
               <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Mileage</label>
-              <input className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="number" value={form.mileage}
+              <input id="ff-inspectionformmodal-3" className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="number" value={form.mileage}
                 onChange={(e) => setField('mileage', e.target.value)} />
             </div>
           </div>
@@ -206,14 +206,14 @@ export default function InspectionFormModal({ isOpen, mode = 'create', form, onC
                   return (
                     <div key={index} className="flex items-center gap-2 px-3 py-1.5">
                       <span className="text-[10px] text-rmpg-300 flex-1 min-w-0">{item.item}</span>
-                      <select
+                      <select id="ff-inspectionformmodal-4"
                         className={`select-dark text-[10px] py-0.5 px-1.5 w-24 ${STATUS_COLORS[item.status]}`}
                         value={item.status}
                         onChange={(e) => updateItem(index, 'status', e.target.value)}
                       >
                         {ITEM_STATUSES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
                       </select>
-                      <input
+                      <input id="ff-inspectionformmodal-5"
                         className="input-dark text-[9px] py-0.5 px-1.5 w-40 min-h-[36px]"
                         placeholder="Notes..."
                         value={item.notes || ''}
@@ -229,7 +229,7 @@ export default function InspectionFormModal({ isOpen, mode = 'create', form, onC
           {/* Overall notes */}
           <div>
             <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Additional Notes</label>
-            <textarea className="input-dark w-full text-[10px] h-16 resize-none min-h-[36px]" value={form.notes}
+            <textarea id="ff-inspectionformmodal-6" className="input-dark w-full text-[10px] h-16 resize-none min-h-[36px]" value={form.notes}
               onChange={(e) => setField('notes', e.target.value)} maxLength={3000} />
             <div className="text-[8px] text-rmpg-500 text-right mt-0.5">{form.notes.length}/3000</div>
           </div>

@@ -237,7 +237,7 @@ export default function MobilePsoCfsPage() {
           </div>
           <div className="bg-[#141414] border border-[#222] p-3 space-y-3">
             <label className="block text-[11px] font-bold text-gray-400 uppercase tracking-wider">Enter Your User ID</label>
-            <input
+            <input id="ff-mobilepsocfspage-0"
               type="number"
               inputMode="numeric"
               autoFocus
@@ -363,7 +363,7 @@ function LabeledInput({ label, value, onChange, type = 'text' }: { label: string
   return (
     <div>
       <label className="block text-[9px] font-bold text-gray-500 uppercase tracking-wider">{label}</label>
-      <input type={type} value={value} onChange={(e) => onChange(e.target.value)} className="w-full bg-[#050505] border border-[#333] text-white text-sm px-2 py-1.5 focus:border-[#d4a017] outline-none mt-1" />
+      <input id="ff-mobilepsocfspage-1" type={type} value={value} onChange={(e) => onChange(e.target.value)} className="w-full bg-[#050505] border border-[#333] text-white text-sm px-2 py-1.5 focus:border-[#d4a017] outline-none mt-1" />
     </div>
   );
 }
@@ -371,7 +371,7 @@ function LabeledSelect({ label, value, onChange, options }: { label: string; val
   return (
     <div>
       <label className="block text-[9px] font-bold text-gray-500 uppercase tracking-wider">{label}</label>
-      <select value={value} onChange={(e) => onChange(e.target.value)} className="w-full bg-[#050505] border border-[#333] text-white text-sm px-2 py-1.5 focus:border-[#d4a017] outline-none mt-1">
+      <select id="ff-mobilepsocfspage-2" value={value} onChange={(e) => onChange(e.target.value)} className="w-full bg-[#050505] border border-[#333] text-white text-sm px-2 py-1.5 focus:border-[#d4a017] outline-none mt-1">
         {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
       </select>
     </div>

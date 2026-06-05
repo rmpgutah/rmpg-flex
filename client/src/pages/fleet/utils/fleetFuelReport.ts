@@ -252,12 +252,13 @@ export function generateFleetFuelReport({ vehicle, fuelLogs, summary, periodLabe
   // "YYYY-MM-DD HH:MM" timestamp (16 chars at 7pt Helvetica ≈ 75pt) fits
   // with breathing room — fixes the long-standing date-cropped bug.
   const colDate    = marginX;
-  const colGal     = marginX + 110;
-  const colPpg     = marginX + 160;
-  const colTotal   = marginX + 210;
-  const colMpg     = marginX + 260;
-  const colStation = marginX + 305;
-  const colFlags   = marginX + 450;
+  const colGal     = marginX + 100;
+  const colPpg     = marginX + 148;
+  const colTotal   = marginX + 196;
+  const colMpg     = marginX + 244;
+  const colOdo     = marginX + 288;
+  const colStation = marginX + 344;
+  const colFlags   = marginX + 462;
 
   doc.setFontSize(8);
   const drawHeader = (yy: number) => {
@@ -267,6 +268,7 @@ export function generateFleetFuelReport({ vehicle, fuelLogs, summary, periodLabe
     doc.text('$/Gal',   colPpg, yy);
     doc.text('Total',   colTotal, yy);
     doc.text('MPG',     colMpg, yy);
+    doc.text('Odometer', colOdo, yy);
     doc.text('Station', colStation, yy);
     doc.text('Flags',   colFlags, yy);
     doc.setFont('helvetica', 'normal');
@@ -297,7 +299,15 @@ export function generateFleetFuelReport({ vehicle, fuelLogs, summary, periodLabe
     doc.text(log.cost_per_gallon != null ? log.cost_per_gallon.toFixed(3) : '-', colPpg, y);
     doc.text(log.total_cost != null ? `$${log.total_cost.toFixed(2)}` : '-', colTotal, y);
     doc.text(log.mpg != null ? log.mpg.toFixed(1) : '-', colMpg, y);
-    doc.text(truncate(log.station || '', 24), colStation, y);
+    // Odometer reading per fill. The client type calls it `odometer_reading`
+    // but the API returns the raw DB column `odometer` — read both so the
+    // value actually renders (it was missing from the report entirely).
+    const odoRaw = log.odometer_reading ?? (log as { odometer?: number | string }).odometer;
+    const odoNum = typeof odoRaw === 'number'
+      ? odoRaw
+      : (odoRaw != null && odoRaw !== '' && !isNaN(Number(odoRaw)) ? Number(odoRaw) : null);
+    doc.text(odoNum != null ? Math.round(odoNum).toLocaleString() : '-', colOdo, y);
+    doc.text(truncate(log.station || '', 20), colStation, y);
     if (flagStr) {
       doc.setTextColor(200, 120, 0); // amber for flagged entries
       doc.text(flagStr, colFlags, y);

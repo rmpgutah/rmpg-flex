@@ -296,7 +296,7 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
         <div className="grid grid-cols-1 gap-2">
           <div>
             <label className="block text-[10px] text-rmpg-400 mb-0.5">Application (Client) ID</label>
-            <input
+            <input id="ff-adminemailtab-0"
               type="text"
               value={clientId}
               onChange={e => setClientId(e.target.value)}
@@ -307,7 +307,7 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
           <div>
             <label className="block text-[10px] text-rmpg-400 mb-0.5">Client Secret</label>
             <div className="relative">
-              <input
+              <input id="ff-adminemailtab-1"
                 type={showSecret ? 'text' : 'password'}
                 value={clientSecret}
                 onChange={e => setClientSecret(e.target.value)}
@@ -322,7 +322,7 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
           </div>
           <div>
             <label className="block text-[10px] text-rmpg-400 mb-0.5">Directory (Tenant) ID</label>
-            <input
+            <input id="ff-adminemailtab-2"
               type="text"
               value={tenantId}
               onChange={e => setTenantId(e.target.value)}
@@ -407,7 +407,7 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
 
           <div className="flex items-center gap-3">
             <label className="text-[10px] text-rmpg-400">Poll Interval:</label>
-            <select
+            <select id="ff-adminemailtab-3"
               value={pollInterval}
               onChange={e => handlePollIntervalChange(Number(e.target.value))}
               className="select-dark text-[10px] px-2 py-0.5"
@@ -448,7 +448,7 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
         </p>
         <div className="flex items-center gap-2">
           <div className="relative flex-1">
-            <input
+            <input id="ff-adminemailtab-4"
               type={showSmtpPassword ? 'text' : 'password'}
               value={smtpPassword}
               onChange={e => setSmtpPassword(e.target.value)}

@@ -158,7 +158,7 @@ export default function CustomStampsGallery({ open, onClose, onPick }: Props) {
 
         <div className="flex items-center justify-between mb-2">
           <div className="text-[9px] uppercase tracking-wider text-[#d4a017] font-semibold">Custom uploads ({stamps.length})</div>
-          <input ref={fileInputRef} type="file" accept="image/png,image/jpeg" className="hidden"
+          <input id="ff-customstampsgallery-0" ref={fileInputRef} type="file" accept="image/png,image/jpeg" className="hidden"
             onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUpload(f); e.target.value = ''; }} />
           <button type="button" onClick={() => fileInputRef.current?.click()}
             className="btn-secondary inline-flex items-center gap-1 text-[10px]">
@@ -180,7 +180,7 @@ export default function CustomStampsGallery({ open, onClose, onPick }: Props) {
                   <img src={safeImageSrc(s.imageData)} alt={s.name} className="max-w-full max-h-full object-contain" />
                 </button>
                 <div className="flex items-center gap-1">
-                  <input type="text" value={s.name}
+                  <input id="ff-customstampsgallery-1" type="text" value={s.name}
                     onChange={(e) => handleRename(s.id, e.target.value.slice(0, 40))}
                     className="flex-1 bg-transparent text-[10px] text-rmpg-200 border-b border-transparent hover:border-[#222] focus:outline-none focus:border-[#d4a017]" />
                   <button type="button" onClick={() => { onPick({ kind: 'custom', stamp: s }); onClose(); }}

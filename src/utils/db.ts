@@ -33,6 +33,13 @@ export async function execute(
   return await (bindings.length > 0 ? stmt.bind(...bindings) : stmt).run();
 }
 
+export async function columnExists(db: D1Database, table: string, column: string): Promise<boolean> {
+  const row = await db.prepare(
+    `SELECT 1 FROM pragma_table_info(?) WHERE name = ?`
+  ).bind(table, column).first();
+  return row !== null;
+}
+
 export async function executeBatch(
   db: D1Database,
   statements: { sql: string; bindings?: unknown[] }[]

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Loader2, Play, GitCompare, Save, Pencil, Trash2, ArrowDownToLine } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
+import { asArray } from '../../../utils/asArray';
 
 import RichTextArea from '../../../components/RichTextArea';
 interface Template {
@@ -40,7 +41,7 @@ export default function AIPromptWorkshopPanel() {
   const fetchTemplates = useCallback(async () => {
     try {
       const data = await apiFetch<Template[]>('/ai/templates');
-      setTemplates(data);
+      setTemplates(asArray<Template>(data));
     } catch (err: any) {
       setError(err?.message || 'Failed to load templates');
     } finally {
@@ -196,7 +197,7 @@ export default function AIPromptWorkshopPanel() {
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
               <label className="text-[10px] text-gray-500">Temp override:</label>
-              <input
+              <input id="ff-aipromptworkshoppanel-0"
                 type="range"
                 min={0} max={2} step={0.05}
                 value={tempOverride ?? 0.7}
@@ -265,7 +266,7 @@ export default function AIPromptWorkshopPanel() {
       <div className="bg-[#141414] border border-[#303030] rounded p-4 space-y-4">
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-semibold text-white">Template Library</h3>
-          <select
+          <select id="ff-aipromptworkshoppanel-1"
             value={categoryFilter}
             onChange={e => setCategoryFilter(e.target.value)}
             className="px-2 py-1 bg-[#0c0c0c] border border-[#303030] rounded text-xs text-gray-300 focus:outline-none focus:border-gray-500"
@@ -282,11 +283,11 @@ export default function AIPromptWorkshopPanel() {
               <div key={t.id} className="bg-[#0c0c0c] border border-[#303030] rounded p-3 space-y-2">
                 {editingId === t.id ? (
                   <div className="space-y-2">
-                    <input
+                    <input id="ff-aipromptworkshoppanel-2"
                       type="text" value={editName} onChange={e => setEditName(e.target.value)}
                       className="w-full px-2 py-1 bg-[#141414] border border-[#303030] rounded text-white text-xs focus:outline-none focus:border-gray-500"
                     />
-                    <select
+                    <select id="ff-aipromptworkshoppanel-3"
                       value={editCategory} onChange={e => setEditCategory(e.target.value)}
                       className="w-full px-2 py-1 bg-[#141414] border border-[#303030] rounded text-gray-300 text-xs focus:outline-none"
                     >
@@ -305,7 +306,7 @@ export default function AIPromptWorkshopPanel() {
                       <span className="text-sm font-medium text-white truncate flex-1">{t.name}</span>
                       <span className="text-[10px] px-1.5 py-0.5 bg-[#303030] text-gray-400 rounded shrink-0">{(t.category || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
                     </div>
-                    <p className="text-[10px] text-gray-600 line-clamp-2">{t.system_prompt.slice(0, 80)}{t.system_prompt.length > 80 ? '...' : ''}</p>
+                    <p className="text-[10px] text-gray-600 line-clamp-2">{(t.system_prompt || '').slice(0, 80)}{(t.system_prompt || '').length > 80 ? '...' : ''}</p>
                     <div className="flex gap-2 pt-1">
                       <button onClick={() => loadTemplate(t)} className="flex items-center gap-1 px-2 py-1 text-[10px] bg-gray-600/20 text-gray-400 rounded hover:bg-gray-600/30">
                         <ArrowDownToLine className="w-3 h-3" /> Load
@@ -331,12 +332,12 @@ export default function AIPromptWorkshopPanel() {
         {/* Save as template */}
         {showSaveForm ? (
           <div className="flex items-center gap-2 pt-2 border-t border-[#303030]">
-            <input
+            <input id="ff-aipromptworkshoppanel-4"
               type="text" value={saveName} onChange={e => setSaveName(e.target.value)}
               placeholder="Template name..."
               className="flex-1 px-3 py-1.5 bg-[#0c0c0c] border border-[#303030] rounded text-white text-xs placeholder-gray-600 focus:outline-none focus:border-gray-500"
             />
-            <select
+            <select id="ff-aipromptworkshoppanel-5"
               value={saveCategory} onChange={e => setSaveCategory(e.target.value)}
               className="px-2 py-1.5 bg-[#0c0c0c] border border-[#303030] rounded text-gray-300 text-xs focus:outline-none"
             >

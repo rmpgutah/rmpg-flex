@@ -28,10 +28,18 @@ export interface GpsState {
   longitude: number | null;
   /** Accuracy in meters */
   accuracy: number | null;
-  /** Heading in degrees (0-360, null if unavailable) */
+  /** Heading in degrees (0-360, null if unavailable) — raw device heading. */
   heading: number | null;
+  /** Heading smoothed with a circular low-pass + course-over-ground fallback,
+   *  so the directional arrow doesn't jitter when stationary or heading is null. */
+  headingSmoothed: number | null;
+  /** Course over ground (deg) derived from consecutive fixes when the device
+   *  actually moved — independent of the (often-null) device compass heading. */
+  course: number | null;
   /** Speed in m/s (null if unavailable) */
   speed: number | null;
+  /** Number of fixes captured into the exportable session track (0 when capture off). */
+  capturedCount: number;
   /** Last time we successfully sent position to server */
   lastSentAt: string | null;
   /** Error message if something went wrong */
@@ -71,6 +79,13 @@ interface UseGpsTrackingOptions {
    * e.g. live turn-by-turn nav — so we don't double-POST GPS. Default: true.
    */
   upload?: boolean;
+  /**
+   * Record every accepted fix into an in-memory session track that can be
+   * exported (CSV / GeoJSON). Off by default so the always-on Layout tracker
+   * doesn't accumulate; the map opts in so the operator can capture/export the
+   * track they drove. Default: false.
+   */
+  capture?: boolean;
 }
 
 // ─── Constants ──────────────────────────────────────────────
@@ -142,6 +157,24 @@ function inferPositionSource(accuracy: number | null, connType: ConnectionType):
   if (accuracy <= 50) return 'gps';
   if (accuracy <= 300) return 'wifi';
   return 'ip';
+}
+
+// ─── Heading math (course-over-ground + smoothing) ──────────
+/** Initial great-circle bearing (deg, 0=N) from point 1 to point 2. */
+function bearingBetween(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const φ1 = toRad(lat1), φ2 = toRad(lat2), Δλ = toRad(lng2 - lng1);
+  const y = Math.sin(Δλ) * Math.cos(φ2);
+  const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+  return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+}
+
+/** Circular low-pass: nudge `prev` toward `next` by `alpha` along the SHORTEST
+ *  arc, so 350°→10° crosses through 0° instead of sweeping backward. */
+function blendAngle(prev: number | null, next: number, alpha: number): number {
+  if (prev == null || !isFinite(prev)) return next;
+  const diff = ((next - prev + 540) % 360) - 180; // shortest signed delta
+  return (((prev + alpha * diff) % 360) + 360) % 360;
 }
 
 // ─── Haversine Distance (meters) ────────────────────────────
@@ -237,6 +270,25 @@ const IS_ELECTRON = typeof window !== 'undefined' && !!(window as any).electron?
 const IS_WINDOWS_ELECTRON =
   IS_ELECTRON && (window as any).electron?.platform === 'win32';
 
+/** Normalize an assigned-unit payload into a real unit or null.
+ *
+ *  Two response sources feed this: GET /dispatch/gps/my-unit (the canonical
+ *  read) and the unit echo on POST /dispatch/gps (the write path). The canonical
+ *  read can be shadowed by the rmpg-premise-stub edge worker, which answers with
+ *  a hollow `{ unit: null }` (HTTP 200) — a TRUTHY object whose `.id` is
+ *  undefined. Reading `.id` off that silently set `unitId = undefined`, leaving
+ *  NAVIGATE/Trips stuck on "No unit assigned" while the unit actually exists.
+ *
+ *  Accept only a row carrying a numeric `id`; tolerate both the bare
+ *  `{ id, call_sign, ... }` shape and a defensive `{ unit: { ... } }` wrapper. */
+function pickUnit(resp: unknown): { id: number; call_sign?: string; gps_source?: string } | null {
+  if (!resp || typeof resp !== 'object') return null;
+  const obj = resp as Record<string, unknown>;
+  const u = ('unit' in obj ? obj.unit : obj) as Record<string, unknown> | null;
+  if (!u || typeof u !== 'object') return null;
+  return typeof u.id === 'number' ? (u as { id: number; call_sign?: string; gps_source?: string }) : null;
+}
+
 export function useGpsTracking(options?: UseGpsTrackingOptions) {
   const {
     batchIntervalMs = DEFAULT_BATCH_INTERVAL,
@@ -244,12 +296,15 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
     maxAccuracyMeters = DEFAULT_MAX_ACCURACY,
     maxSpeedMs = DEFAULT_MAX_SPEED,
     upload = true,
+    capture = false,
   } = options || {};
 
   // Read in the POST helpers (empty-deps useCallbacks) so a read-only consumer
   // never uploads. Kept in a ref so toggling the option doesn't re-create them.
   const uploadRef = useRef(upload);
   uploadRef.current = upload;
+  const captureEnabledRef = useRef(capture);
+  captureEnabledRef.current = capture;
 
   // GPS is ALWAYS tracking — mandatory for all users
   const [isTracking, setIsTracking] = useState<boolean>(false);
@@ -259,7 +314,10 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
     longitude: null,
     accuracy: null,
     heading: null,
+    headingSmoothed: null,
+    course: null,
     speed: null,
+    capturedCount: 0,
     lastSentAt: null,
     error: null,
     isSupported: typeof navigator !== 'undefined' && 'geolocation' in navigator,
@@ -291,6 +349,11 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
   const lastAcceptedRef = useRef<{ lat: number; lng: number; time: number } | null>(null);
   // Keep the latest position for UI display (real-time dot on map)
   const latestPositionRef = useRef<QueuedPoint | null>(null);
+  // Exportable session track (opt-in via `capture`). Capped ring buffer.
+  const captureRef = useRef<QueuedPoint[]>([]);
+  const MAX_CAPTURE = 10000;
+  // Last smoothed heading for the circular low-pass filter.
+  const smoothedHeadingRef = useRef<number | null>(null);
   // Flag: send first position immediately for real-time icon placement
   const firstPositionSentRef = useRef(false);
   // Track unitId via ref so sendBatch (empty deps) can read the latest value
@@ -314,19 +377,26 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
    *  this gives the browser fallback room to fill the gap. */
   const INTERNAL_GPS_FRESH_MS = 15000;
 
-  // Fetch the user's assigned unit on mount
+  // Fetch the user's assigned unit on mount. The canonical read can be shadowed
+  // by an edge stub returning a hollow {unit:null}, so validate via pickUnit and
+  // let the POST /dispatch/gps echo (handled in sendBatch) recover the unit on
+  // the first successful breadcrumb upload when this read comes back empty.
   useEffect(() => {
     let cancelled = false;
-    apiFetch<{ id: number; call_sign: string; status: string; gps_source?: string; take_home?: boolean } | null>('/dispatch/gps/my-unit')
-      .then((unit) => {
+    apiFetch<unknown>('/dispatch/gps/my-unit')
+      .then((resp) => {
+        const unit = pickUnit(resp);
         if (unit && !cancelled) {
           unitIdRef.current = unit.id;
           setState((prev) => ({
             ...prev,
-            unitCallSign: unit.call_sign,
+            unitCallSign: unit.call_sign ?? prev.unitCallSign,
             unitId: unit.id,
-            hasTakeHome: unit.take_home === true,
+            hasTakeHome: (resp as Record<string, unknown>)?.take_home === true,
           }));
+        } else if (!unit && (resp as Record<string, unknown>)?.take_home === true) {
+          setState((prev) => ({ ...prev, hasTakeHome: true }));
+        }
           gpsSourceRef.current = unit.gps_source || 'browser';
         }
       })
@@ -349,17 +419,35 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
     isSendingRef.current = true;
 
     try {
-      // Merge any previously failed points from localStorage
+      // Merge any previously failed points from localStorage with the live
+      // queue, deduping by (timestamp, lat, lng). The failover queue and the
+      // in-memory queue can hold the SAME breadcrumb after a failed send (the
+      // catch below persists `allPoints` to localStorage AND re-queues the
+      // in-memory points), so a naive concat would re-insert duplicates on
+      // reconnect — compounding the double-insert this audit (GPS-3) fixes.
       const failoverPoints = loadFailoverQueue();
       const currentPoints = [...queueRef.current]; // snapshot copy, not reference
-      const allPoints = [...failoverPoints, ...currentPoints];
-      if (allPoints.length === 0) return;
+      const seen = new Set<string>();
+      const dedupeKey = (p: QueuedPoint) => `${p.timestamp}|${p.lat}|${p.lng}`;
+      const allPoints: QueuedPoint[] = [];
+      for (const p of [...failoverPoints, ...currentPoints]) {
+        const k = dedupeKey(p);
+        if (seen.has(k)) continue;
+        seen.add(k);
+        allPoints.push(p);
+      }
+      if (allPoints.length === 0) {
+        // Nothing to send — but stale failover entries may linger if every
+        // point was a duplicate already covered in-memory. Leave them; the
+        // catch path owns failover persistence.
+        return;
+      }
 
       // Clear — new points arriving during await go into fresh array
       queueRef.current = [];
 
       try {
-        const result = await apiFetch<{ error?: unknown } | null>('/dispatch/gps', {
+        const result = await apiFetch<{ error?: unknown; unit?: unknown } | null>('/dispatch/gps', {
           method: 'POST',
           body: JSON.stringify({ points: allPoints, device_type: IS_DESKTOP ? 'desktop' : 'mobile' }),
         });
@@ -376,19 +464,29 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
         clearFailoverQueue();
         // Check if we need to fetch unit info using ref (avoids stale closure from empty deps)
         const needsUnitFetch = !unitIdRef.current;
+        // Adopt the unit straight from the (non-stubbed) write response. The GET
+        // /gps/my-unit read is the canonical source but can be shadowed by the
+        // edge stub returning a hollow {unit:null}; the POST echo isn't, so this
+        // is what actually populates unitId for the NAVIGATE/Trips UI.
+        const postedUnit = needsUnitFetch ? pickUnit(result) : null;
         setState((prev) => ({
           ...prev,
           lastSentAt: new Date().toISOString(),
           error: null,
+          ...(postedUnit ? { unitId: postedUnit.id, unitCallSign: postedUnit.call_sign ?? prev.unitCallSign } : {}),
         }));
-        // If we didn't have a unit before, the server may have auto-created one.
-        // Re-fetch unit info so the status bar shows the call sign.
-        if (needsUnitFetch) {
-          apiFetch<{ id: number; call_sign: string; status: string } | null>('/dispatch/gps/my-unit')
-            .then((unit) => {
+        if (postedUnit) {
+          unitIdRef.current = postedUnit.id;
+          if (postedUnit.gps_source) gpsSourceRef.current = postedUnit.gps_source;
+        } else if (needsUnitFetch) {
+          // Older Worker (no unit echo yet) — fall back to re-fetching my-unit.
+          // pickUnit guards the stub's {unit:null} so it can't set unitId=undefined.
+          apiFetch<unknown>('/dispatch/gps/my-unit')
+            .then((resp) => {
+              const unit = pickUnit(resp);
               if (unit && mountedRef.current) {
                 unitIdRef.current = unit.id;
-                setState((p) => ({ ...p, unitCallSign: unit.call_sign, unitId: unit.id }));
+                setState((p) => ({ ...p, unitCallSign: unit.call_sign ?? p.unitCallSign, unitId: unit.id }));
               }
             })
             .catch((err) => { console.warn('[useGpsTracking] fetch my-unit failed:', err); });
@@ -410,6 +508,11 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
   }, []);
 
   // ─── Send single position immediately (for first fix) ────
+  // The caller (ingestPosition / watchPosition) has ALREADY pushed `point` onto
+  // queueRef before invoking this. On a successful immediate POST we therefore
+  // must REMOVE that exact point from the queue, or the next sendBatch re-sends
+  // it — every breadcrumb would land in gps_breadcrumbs twice (Audit GPS-3).
+  // On failure we leave it queued (it's already there) so the batch retries it.
   const sendImmediate = useCallback(async (point: QueuedPoint) => {
     // Read-only consumer — never upload.
     if (!uploadRef.current) return;
@@ -421,14 +524,26 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
         method: 'POST',
         body: JSON.stringify({ points: [point], device_type: IS_DESKTOP ? 'desktop' : 'mobile' }),
       });
+      // Sent exactly once — drop this point from the batch queue so sendBatch
+      // doesn't re-POST the same breadcrumb. Identity match by reference (the
+      // queued object IS this object), with a (timestamp,lat,lng) fallback in
+      // case the queue was sliced/copied between push and send.
+      queueRef.current = queueRef.current.filter(
+        (p) => p !== point && !(p.timestamp === point.timestamp && p.lat === point.lat && p.lng === point.lng),
+      );
       setState((prev) => ({
         ...prev,
         lastSentAt: new Date().toISOString(),
         error: null,
       }));
     } catch (err) {
-      console.warn('[useGpsTracking] Immediate GPS send failed, queuing for next batch:', err);
-      queueRef.current.push(point);
+      // Leave the point in the queue (the caller already pushed it) so the next
+      // batch retries it. Only re-push if it somehow isn't present anymore.
+      console.warn('[useGpsTracking] Immediate GPS send failed, will retry in next batch:', err);
+      const stillQueued = queueRef.current.some(
+        (p) => p === point || (p.timestamp === point.timestamp && p.lat === point.lat && p.lng === point.lng),
+      );
+      if (!stillQueued) queueRef.current.push(point);
     }
   }, []);
 
@@ -608,44 +723,76 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
     // Internal NMEA is always 'gps' regardless of network type
     const source = coords.sourceHint ?? inferPositionSource(accuracy, connType);
 
+    // ── Directional output: course-over-ground + smoothed heading ──
+    // Device compass `heading` is frequently null (desktop/WiFi) and noisy at
+    // low speed. Derive course from movement between accepted fixes, prefer the
+    // device heading only while genuinely moving, and run the result through a
+    // circular low-pass so the on-screen arrow glides instead of snapping.
+    const prevAccepted = lastAcceptedRef.current;
+    let course: number | null = null;
+    if (prevAccepted) {
+      const movedM = haversineMeters(prevAccepted.lat, prevAccepted.lng, latitude, longitude);
+      if (movedM >= 3) course = bearingBetween(prevAccepted.lat, prevAccepted.lng, latitude, longitude);
+    }
+    const moving = speed != null && speed > 1.5;
+    const headingCandidate = heading != null && (moving || course == null) ? heading : (course ?? heading);
+    const headingSmoothed = headingCandidate != null
+      ? blendAngle(smoothedHeadingRef.current, headingCandidate, 0.35)
+      : smoothedHeadingRef.current;
+    smoothedHeadingRef.current = headingSmoothed;
+
+    const accepted = shouldAcceptPoint(latitude, longitude, accuracy);
+    let capturedCountNext = captureRef.current.length;
+
+    if (accepted) {
+      const point: QueuedPoint = {
+        lat: latitude,
+        lng: longitude,
+        accuracy,
+        heading,
+        speed,
+        timestamp: new Date().toISOString(),
+        source,
+      };
+
+      lastAcceptedRef.current = { lat: latitude, lng: longitude, time: Date.now() };
+      latestPositionRef.current = point;
+
+      if (queueRef.current.length >= MAX_QUEUE_SIZE) {
+        queueRef.current = queueRef.current.slice(-Math.floor(MAX_QUEUE_SIZE / 2));
+      }
+      queueRef.current.push(point);
+
+      // Opt-in exportable session track (separate from the upload queue, which
+      // gets drained on every batch send).
+      if (captureEnabledRef.current) {
+        if (captureRef.current.length >= MAX_CAPTURE) captureRef.current.shift();
+        captureRef.current.push(point);
+        capturedCountNext = captureRef.current.length;
+      }
+
+      if (!firstPositionSentRef.current) {
+        firstPositionSentRef.current = true;
+        sendImmediate(point);
+      }
+    }
+
     setState((prev) => ({
       ...prev,
       latitude,
       longitude,
       accuracy,
       heading,
+      headingSmoothed,
+      course,
       speed,
+      capturedCount: capturedCountNext,
       error: null,
       permissionDenied: false,
       permissionPending: false,
       connectionType: connType,
       positionSource: source,
     }));
-
-    if (!shouldAcceptPoint(latitude, longitude, accuracy)) return;
-
-    const point: QueuedPoint = {
-      lat: latitude,
-      lng: longitude,
-      accuracy,
-      heading,
-      speed,
-      timestamp: new Date().toISOString(),
-      source,
-    };
-
-    lastAcceptedRef.current = { lat: latitude, lng: longitude, time: Date.now() };
-    latestPositionRef.current = point;
-
-    if (queueRef.current.length >= MAX_QUEUE_SIZE) {
-      queueRef.current = queueRef.current.slice(-Math.floor(MAX_QUEUE_SIZE / 2));
-    }
-    queueRef.current.push(point);
-
-    if (!firstPositionSentRef.current) {
-      firstPositionSentRef.current = true;
-      sendImmediate(point);
-    }
   }, [shouldAcceptPoint, sendImmediate]);
 
   // ─── Toughbook internal GPS subscription ─────────────────
@@ -813,6 +960,26 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
           queueRef.current = queueRef.current.slice(-Math.floor(MAX_QUEUE_SIZE / 2));
         }
         queueRef.current.push(point);
+
+        // ── Exportable session track (PARITY FIX) ──
+        // `capturedCount` drives the HUD's "Track N pts" readout and the
+        // CSV/GeoJSON export. ingestPosition (the Toughbook internal-GPS path)
+        // pushes every accepted fix into captureRef — but THIS browser
+        // watchPosition path predated that feature and never did. Result: every
+        // non-Toughbook device (cellular/WiFi geolocation — the common case)
+        // showed "Track 0 pts" forever even while GPS was healthy and uploading.
+        // Mirror the capture here. Skip while a Toughbook's internal GPS is
+        // delivering fresh fixes (it already captured this moment) so the
+        // secondary browser fallback can't double-count the same point.
+        const internalGpsFresh = useInternalGpsRef.current &&
+          (Date.now() - lastInternalGpsAtRef.current < INTERNAL_GPS_FRESH_MS);
+        if (captureEnabledRef.current && !internalGpsFresh) {
+          if (captureRef.current.length >= MAX_CAPTURE) captureRef.current.shift();
+          captureRef.current.push(point);
+          setState((prev) => prev.capturedCount === captureRef.current.length
+            ? prev
+            : { ...prev, capturedCount: captureRef.current.length });
+        }
 
         // Send first position immediately for real-time map icon
         if (!firstPositionSentRef.current) {
@@ -1133,11 +1300,45 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
     };
   }, []);
 
+  // ─── Captured-track accessors / export ───────────────────
+  const getCapturedTrack = useCallback((): QueuedPoint[] => captureRef.current.slice(), []);
+  const clearCapturedTrack = useCallback(() => {
+    captureRef.current = [];
+    setState((prev) => ({ ...prev, capturedCount: 0 }));
+  }, []);
+  /** Serialise the captured session track to a downloadable file payload.
+   *  CSV for spreadsheets/evidence, GeoJSON for re-import onto a map. */
+  const exportTrack = useCallback((format: 'csv' | 'geojson'): { filename: string; mime: string; content: string } => {
+    const pts = captureRef.current;
+    const stamp = pts.length ? pts[pts.length - 1].timestamp.replace(/[:.]/g, '-').slice(0, 19) : 'empty';
+    if (format === 'geojson') {
+      const fc = {
+        type: 'FeatureCollection',
+        features: pts.map((p) => ({
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: [p.lng, p.lat] },
+          properties: { timestamp: p.timestamp, heading: p.heading, speed_ms: p.speed, accuracy_m: p.accuracy, source: p.source },
+        })),
+      };
+      return { filename: `rmpg-track-${stamp}.geojson`, mime: 'application/geo+json', content: JSON.stringify(fc, null, 2) };
+    }
+    const header = 'timestamp,latitude,longitude,heading_deg,speed_ms,speed_mph,accuracy_m,source';
+    const rows = pts.map((p) => [
+      p.timestamp, p.lat, p.lng,
+      p.heading ?? '', p.speed ?? '', p.speed != null ? (p.speed * 2.237).toFixed(1) : '',
+      p.accuracy ?? '', p.source,
+    ].join(','));
+    return { filename: `rmpg-track-${stamp}.csv`, mime: 'text/csv', content: [header, ...rows].join('\n') };
+  }, []);
+
   return {
     ...state,
     isTracking,
     startTracking,
     stopTracking,
     toggleTracking,
+    getCapturedTrack,
+    clearCapturedTrack,
+    exportTrack,
   };
 }

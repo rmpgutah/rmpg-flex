@@ -2,9 +2,12 @@
 // Rules are evaluated by the poller on every new inbound message.
 
 import { useEffect, useState } from 'react';
+import { Pencil, Trash2 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { asArray } from '../../utils/asArray';
 import { useToast } from '../../components/ToastProvider';
+import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
+import { useMenuActions } from '../../utils/contextMenuActions';
 
 import RichTextArea from '../../components/RichTextArea';
 interface Rule {
@@ -98,6 +101,19 @@ export default function AdminEmailRulesTab() {
     }
   }
 
+  // ── Right-click context menu (per rule row) ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+
+  const buildRuleMenu = (r: Rule): ContextMenuItem[] => [
+    m.action('Edit rule', () => { setTestResult(null); setEditing(r); }, { icon: <Pencil size={12} /> }),
+    m.separator(),
+    m.copy('Copy name', r.name),
+    m.copyId(r.id),
+    m.separator(),
+    m.action('Delete rule', () => remove(r.id), { icon: <Trash2 size={12} />, danger: true }),
+  ];
+
   return (
     <div className="p-4 space-y-4">
       <div className="flex justify-between items-center">
@@ -124,7 +140,7 @@ export default function AdminEmailRulesTab() {
         </thead>
         <tbody>
           {rules.map(r => (
-            <tr key={r.id} className="border-t border-[#222]">
+            <tr key={r.id} onContextMenu={(e) => openMenu(e, buildRuleMenu(r))} className="border-t border-[#222]">
               <td className="py-1">{r.name}</td>
               <td className="py-1">{r.priority}</td>
               <td className="py-1">{r.enabled ? 'YES' : 'NO'}</td>
@@ -159,13 +175,13 @@ export default function AdminEmailRulesTab() {
 
       {editing && (
         <div className="border border-[#222] p-3 space-y-2 bg-[#141414]">
-          <input
+          <input id="ff-adminemailrulestab-0"
             placeholder="Rule name"
             value={editing.name || ''}
             onChange={e => setEditing({ ...editing, name: e.target.value })}
             className="w-full bg-black text-white px-2 py-1"
           />
-          <input
+          <input id="ff-adminemailrulestab-1"
             type="number"
             placeholder="Priority"
             value={editing.priority ?? 100}
@@ -185,7 +201,7 @@ export default function AdminEmailRulesTab() {
             className="w-full bg-black text-white px-2 py-1 h-20 font-mono text-xs"
           />
           <label className="flex items-center gap-2 text-xs">
-            <input
+            <input id="ff-adminemailrulestab-2"
               type="checkbox"
               checked={!!editing.enabled}
               onChange={e => setEditing({ ...editing, enabled: e.target.checked ? 1 : 0 })}

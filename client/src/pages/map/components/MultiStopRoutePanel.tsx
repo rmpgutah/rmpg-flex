@@ -112,7 +112,7 @@ export default function MultiStopRoutePanel({
         {routableUnits.length === 0 ? (
           <div style={{ fontSize: 9, color: '#ef4444' }}>No units with GPS available</div>
         ) : (
-          <select
+          <select id="ff-multistoproutepanel-0"
             value={selectedUnit ?? ''}
             onChange={(e) => onSelectUnit(e.target.value)}
             style={{

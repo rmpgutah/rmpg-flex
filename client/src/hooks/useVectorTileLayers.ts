@@ -18,6 +18,11 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { mapboxgl } from '../utils/mapboxLoader';
 import { whenStyleReady } from '../pages/map/utils/safeAddSource';
+import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
+import {
+  roadColorExpression, roadSortKeyExpression, ptTypeColorExpression,
+  classifyCartocode, classifyPtType,
+} from '../pages/map/utils/landTypes';
 
 export type VectorLayerKind = 'line' | 'point';
 
@@ -121,17 +126,14 @@ function escapeHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-// UGRC CARTOCODE road-class -> readable name (popup only).
-const CARTO_NAMES: Record<string, string> = {
-  '1': 'Interstate', '2': 'US Highway', '3': 'State Highway', '4': 'Ramp',
-  '5': 'Major Road', '6': 'Arterial', '7': 'Collector', '8': 'Local',
-  '9': 'Local', '10': 'Service', '11': 'Local Street', '12': 'Driveway',
-};
 
 export function useVectorTileLayers({ map, popup, isLight = false, onUseLocation }: UseVectorTileLayersOptions) {
   const [layerStates, setLayerStates] = useState<Record<string, VectorLayerState>>(() => {
     const init: Record<string, VectorLayerState> = {};
-    for (const cfg of VECTOR_TILE_CONFIGS) init[cfg.id] = { visible: false, loaded: false };
+    // Statewide DB is ALWAYS-ON: roads + address points default visible so the
+    // statewide data is present every session (auto-enabled on map ready below;
+    // still individually toggleable in-session, but returns on next load).
+    for (const cfg of VECTOR_TILE_CONFIGS) init[cfg.id] = { visible: true, loaded: false };
     return init;
   });
 
@@ -161,11 +163,18 @@ export function useVectorTileLayers({ map, popup, isLight = false, onUseLocation
     const title = titleRaw != null && String(titleRaw).trim() !== '' ? String(titleRaw) : cfg.label;
     let html = `<div style="font-family:'Courier New',monospace;color:#d4d4d4;font-size:11px;min-width:150px;">`;
     html += `<div style="font-weight:bold;font-size:12px;color:${cfg.color};margin-bottom:3px;border-bottom:1px solid #444;padding-bottom:3px;">${escapeHtml(title)}</div>`;
-    html += `<div style="color:#888;font-size:9px;text-transform:uppercase;margin-bottom:4px;">${escapeHtml(cfg.label)}</div>`;
+    // Subtitle: layer label + (for address points) a colored property-type chip.
+    let subtitle = `<span style="color:#888;font-size:9px;text-transform:uppercase;">${escapeHtml(cfg.label)}</span>`;
+    if (cfg.kind === 'point') {
+      const pt = classifyPtType(props.PtType);
+      subtitle += ` <span style="display:inline-block;font-size:8px;font-weight:bold;letter-spacing:0.4px;color:#0a0a0a;background:${pt.color};border-radius:2px;padding:0 4px;margin-left:2px;">${pt.code} · ${escapeHtml(pt.label).toUpperCase()}</span>`;
+    }
+    html += `<div style="margin-bottom:4px;">${subtitle}</div>`;
     for (const d of cfg.detailProps) {
       let v = props[d.key];
       if (v === undefined || v === null || String(v).trim() === '') continue;
-      if (d.key === 'CARTOCODE') v = CARTO_NAMES[String(v)] || `Code ${v}`;
+      if (d.key === 'CARTOCODE') { const rc = classifyCartocode(v); v = rc.label; }
+      if (d.key === 'PtType') continue; // shown as the chip above
       html += `<div style="font-size:10px;color:#999;margin-top:2px;"><span style="color:#bbb;">${escapeHtml(d.label)}:</span> ${escapeHtml(String(v))}</div>`;
     }
     html += `</div>`;
@@ -182,7 +191,7 @@ export function useVectorTileLayers({ map, popup, isLight = false, onUseLocation
       const lp = labelPaint(isLightRef.current);
 
       try {
-        if (!map.getSource(source)) {
+        if (!hasSource(map, source)) {
           map.addSource(source, {
             type: 'vector',
             tiles: [tilesUrl(cfg.name)],
@@ -192,33 +201,40 @@ export function useVectorTileLayers({ map, popup, isLight = false, onUseLocation
         }
 
         if (cfg.kind === 'line') {
-          if (!map.getLayer(lineLayerId(cfg.id))) {
+          if (!hasLayer(map, lineLayerId(cfg.id))) {
             map.addLayer({
               id: lineLayerId(cfg.id),
               type: 'line',
               source,
               'source-layer': cfg.sourceLayer,
-              minzoom: cfg.minzoom,
+              // Always load regardless of zoom — gate only at the archive's own
+              // min zoom (z6) so roads appear statewide, not just zoomed in.
+              minzoom: cfg.sourceMinzoom,
               layout: { visibility: 'none', 'line-join': 'round', 'line-cap': 'round' },
               paint: {
-                // Major classes (interstate/US/state) draw brighter + wider.
-                'line-color': [
-                  'match', ['to-string', ['get', 'CARTOCODE']],
-                  '1', '#ef4444', '2', '#f59e0b', '3', '#e8b84b',
-                  cfg.color,
-                ] as any,
+                // Road-class color codes generated from the shared ROAD_CLASSES
+                // taxonomy (landTypes.ts) — Interstate red → driveway dark-gold —
+                // so the rendered network matches the legend exactly.
+                'line-color': roadColorExpression(cfg.color) as any,
                 'line-width': [
                   'interpolate', ['linear'], ['zoom'],
+                  6, ['match', ['to-string', ['get', 'CARTOCODE']], '1', 1.2, '2', 0.9, '3', 0.6, 0.2],
                   9, ['match', ['to-string', ['get', 'CARTOCODE']], '1', 2, '2', 1.6, '3', 1.2, 0.4],
                   14, ['match', ['to-string', ['get', 'CARTOCODE']], '1', 4, '2', 3, '3', 2.4, 1.2],
                   18, ['match', ['to-string', ['get', 'CARTOCODE']], '1', 7, '2', 6, '3', 5, 3],
                 ] as any,
-                'line-opacity': ['interpolate', ['linear'], ['zoom'], 9, 0.45, 14, 0.85] as any,
+                // Below z9, only major roads carry visible opacity so the
+                // statewide view isn't a solid web of local streets.
+                'line-opacity': [
+                  'interpolate', ['linear'], ['zoom'],
+                  6, ['match', ['to-string', ['get', 'CARTOCODE']], '1', 0.7, '2', 0.55, '3', 0.4, 0.12],
+                  9, 0.45, 14, 0.85,
+                ] as any,
               },
             });
           }
           // Road name labels at high zoom.
-          if (!map.getLayer(labelLayerId(cfg.id))) {
+          if (!hasLayer(map, labelLayerId(cfg.id))) {
             map.addLayer({
               id: labelLayerId(cfg.id),
               type: 'symbol',
@@ -232,7 +248,7 @@ export function useVectorTileLayers({ map, popup, isLight = false, onUseLocation
                 // Visual-harmony: major roads (lower sort key) win label
                 // collisions over local streets, and label slightly larger,
                 // so the network reads cleanly instead of as label soup.
-                'symbol-sort-key': ['match', ['to-string', ['get', 'CARTOCODE']], '1', 0, '2', 1, '3', 2, '4', 3, 9] as any,
+                'symbol-sort-key': roadSortKeyExpression() as any,
                 'text-size': ['match', ['to-string', ['get', 'CARTOCODE']], '1', 12, '2', 11.5, '3', 11, 10] as any,
                 'text-font': ['DIN Offc Pro Medium', 'Arial Unicode MS Regular'],
               },
@@ -245,24 +261,31 @@ export function useVectorTileLayers({ map, popup, isLight = false, onUseLocation
           }
         } else {
           // Point layer — small gold dots + address labels at very high zoom.
-          if (!map.getLayer(circleLayerId(cfg.id))) {
+          if (!hasLayer(map, circleLayerId(cfg.id))) {
             map.addLayer({
               id: circleLayerId(cfg.id),
               type: 'circle',
               source,
               'source-layer': cfg.sourceLayer,
-              minzoom: cfg.minzoom,
+              // Always load regardless of zoom — gate at the archive's own min
+              // (z10) so address points appear well before street level.
+              minzoom: cfg.sourceMinzoom,
               layout: { visibility: 'none' },
               paint: {
-                'circle-radius': ['interpolate', ['linear'], ['zoom'], 14, 2, 18, 5] as any,
-                'circle-color': cfg.color,
+                'circle-radius': ['interpolate', ['linear'], ['zoom'], 10, 1.4, 14, 2.6, 18, 5.5] as any,
+                // Full building/property-type color-coding generated from the
+                // shared PROPERTY_TYPES taxonomy (landTypes.ts): residential,
+                // commercial, industrial, agricultural, mixed, government,
+                // education, religious, medical, recreation, utility,
+                // transportation, vacant + Other. One source drives map+legend.
+                'circle-color': ptTypeColorExpression(cfg.color) as any,
                 'circle-opacity': 0.9,
-                'circle-stroke-color': '#1a1a1a',
+                'circle-stroke-color': '#0a0a0a',
                 'circle-stroke-width': 0.6,
               },
             });
           }
-          if (!map.getLayer(labelLayerId(cfg.id))) {
+          if (!hasLayer(map, labelLayerId(cfg.id))) {
             map.addLayer({
               id: labelLayerId(cfg.id),
               type: 'symbol',
@@ -318,6 +341,20 @@ export function useVectorTileLayers({ map, popup, isLight = false, onUseLocation
           map.on('mouseleave', interactiveLayer, () => { map.getCanvas().style.cursor = ''; });
         }
 
+        // Apply the desired visibility now that the layers actually exist. The
+        // layers are created with visibility:'none', so for the always-on
+        // default (and basemap-switch restore) we must flip them on HERE —
+        // an external setLayoutProperty fired before whenStyleReady resolves
+        // would no-op against a not-yet-created layer and leave them stuck off.
+        if (layerStatesRef.current[cfg.id]?.visible) {
+          const visIds = cfg.kind === 'line'
+            ? [lineLayerId(cfg.id), labelLayerId(cfg.id)]
+            : [circleLayerId(cfg.id), labelLayerId(cfg.id)];
+          for (const id of visIds) {
+            try { if (hasLayer(map, id)) map.setLayoutProperty(id, 'visibility', 'visible'); } catch { /* noop */ }
+          }
+        }
+
         addedRef.current.add(cfg.id);
         setLayerStates((prev) => ({ ...prev, [cfg.id]: { ...prev[cfg.id], loaded: true } }));
       } catch (err) {
@@ -333,7 +370,7 @@ export function useVectorTileLayers({ map, popup, isLight = false, onUseLocation
       ? [lineLayerId(cfg.id), labelLayerId(cfg.id)]
       : [circleLayerId(cfg.id), labelLayerId(cfg.id)];
     for (const id of ids) {
-      try { if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', vis); } catch { /* style not ready */ }
+      try { if (hasLayer(map, id)) map.setLayoutProperty(id, 'visibility', vis); } catch { /* style not ready */ }
     }
   }, [map]);
 
@@ -381,6 +418,53 @@ export function useVectorTileLayers({ map, popup, isLight = false, onUseLocation
     return () => { map.off('style.load', onStyleLoad); };
   }, [map, addLayer, setLayerVisibility]);
 
+  // Always-on: auto-add every statewide layer once the map exists. addLayer
+  // defers internally until the style is ready and then applies the visible
+  // state (see above), so this reliably brings the statewide DB up on first
+  // load without the operator having to toggle it. Runs once per map instance.
+  const autoEnabledRef = useRef(false);
+  useEffect(() => {
+    if (!map) { autoEnabledRef.current = false; return; }
+    if (autoEnabledRef.current) return;
+    autoEnabledRef.current = true;
+    for (const cfg of VECTOR_TILE_CONFIGS) {
+      if (layerStatesRef.current[cfg.id]?.visible) addLayer(cfg);
+    }
+  }, [map, addLayer]);
+
+  // ── Self-healing safety net ──────────────────────────────────────────────
+  // Every other add path hangs off a SINGLE one-shot signal (whenStyleReady's
+  // immediate call or the next 'style.load'). If that signal is missed — the
+  // style finished before the listener attached, a setStyle() wipe + re-add
+  // raced, the source errored once, or a slow/throttled edge stalled the style
+  // so style.load never fired — the layers are never added and nothing retries,
+  // so the statewide overlays silently never appear (confirmed live: a fully
+  // built basemap with zero vt-* layers/sources). 'idle' fires whenever the map
+  // settles after any render/interaction; we use it as an idempotent re-assert:
+  // for each layer that SHOULD be visible, if its layer is missing from the
+  // style, re-add it. addLayer is guarded by addedRef + getLayer/getSource
+  // checks, so this is a no-op once everything is present.
+  useEffect(() => {
+    if (!map) return;
+    const ensure = () => {
+      for (const cfg of VECTOR_TILE_CONFIGS) {
+        if (!layerStatesRef.current[cfg.id]?.visible) continue;
+        const dataLayer = cfg.kind === 'line' ? lineLayerId(cfg.id) : circleLayerId(cfg.id);
+        try {
+          if (!hasLayer(map, dataLayer)) {
+            // Layer absent (never added, or wiped by a style swap and not
+            // re-added) — clear the add-guard and rebuild it.
+            addedRef.current.delete(cfg.id);
+            addLayer(cfg);
+            setLayerVisibility(cfg, true);
+          }
+        } catch { /* style mid-swap; next idle retries */ }
+      }
+    };
+    map.on('idle', ensure);
+    return () => { map.off('idle', ensure); };
+  }, [map, addLayer, setLayerVisibility]);
+
   // Re-color labels live when the basemap light/dark theme changes (for layers
   // already on the map — newly added ones pick up the current theme in addLayer).
   useEffect(() => {
@@ -389,7 +473,7 @@ export function useVectorTileLayers({ map, popup, isLight = false, onUseLocation
     for (const cfg of VECTOR_TILE_CONFIGS) {
       const id = labelLayerId(cfg.id);
       try {
-        if (map.getLayer(id)) {
+        if (hasLayer(map, id)) {
           map.setPaintProperty(id, 'text-color', lp.text);
           map.setPaintProperty(id, 'text-halo-color', lp.halo);
         }

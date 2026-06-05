@@ -4,12 +4,12 @@
 
 import {
   Users, Radio, Calendar, Clock, Award, GraduationCap, Package, MapPinned,
-  User, Activity, Video, Car,
+  User, Activity, Video, Car, LayoutDashboard,
 } from 'lucide-react';
 import type React from 'react';
 
 // Main tabs
-export type MainTab = 'roster' | 'duty_board' | 'schedule' | 'time' | 'credentials' | 'training' | 'equipment' | 'deployment';
+export type MainTab = 'command' | 'roster' | 'duty_board' | 'schedule' | 'time' | 'credentials' | 'training' | 'equipment' | 'deployment';
 
 export type DetailTab = 'profile' | 'credentials' | 'schedule' | 'time' | 'activity' | 'training' | 'equipment' | 'body_cameras' | 'dash_cameras' | 'deployment' | 'fitness';
 
@@ -32,6 +32,7 @@ export type ModalMode =
   | 'upload_video';
 
 export const MAIN_TABS: { id: MainTab; label: string; icon: React.ElementType }[] = [
+  { id: 'command', label: 'Command', icon: LayoutDashboard },
   { id: 'roster', label: 'Roster', icon: Users },
   { id: 'duty_board', label: 'Duty Board', icon: Radio },
   { id: 'schedule', label: 'Schedule', icon: Calendar },

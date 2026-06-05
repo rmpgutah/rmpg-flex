@@ -81,7 +81,7 @@ export default function ShiftScorecard({ officerId }: ShiftScorecardProps) {
   return (
     <div className="panel-beveled" style={{ background: '#0a0a0a' }}>
       <PanelTitleBar title="Shift Scorecard" icon={Award}>
-        <input
+        <input id="ff-shiftscorecard-0"
           type="date"
           value={shiftDate}
           onChange={(e) => setShiftDate(e.target.value)}

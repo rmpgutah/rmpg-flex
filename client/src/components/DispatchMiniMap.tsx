@@ -9,12 +9,14 @@
 // ============================================================
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Maximize2, MapPin, RefreshCw } from 'lucide-react';
+import { Maximize2, MapPin, RefreshCw, Car } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { initMapbox, mapboxgl, MAPBOX_STYLE_DARK, registerMapInstance, unregisterMapInstance } from '../utils/mapboxLoader';
+import { installWebglContextRecovery, type MapCamera } from '../utils/webglRecovery';
 import { getMapboxAccessToken, getMapboxTokenErrorMessage } from '../utils/mapboxApiKey';
 import { useMapRouting } from '../hooks/useMapRouting';
 import { useGpsTracking } from '../hooks/useGpsTracking';
+import { apiFetch } from '../hooks/useApi';
 import { speak } from '../utils/edgeTTS';
 import ManeuverArrow from './ManeuverArrow';
 import type { CallForService, Unit } from '../types';
@@ -60,6 +62,24 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
   // below would stay bound to map=null forever and queryRoute would bail before
   // ever fetching the Directions API — no route line, no turn-by-turn banner.
   const [mapReady, setMapReady] = useState(false);
+  // WebGL context-loss recovery (see installWebglContextRecovery below).
+  const [recovering, setRecovering] = useState(false);
+  const [recoverNonce, setRecoverNonce] = useState(0);
+  const recoverCamRef = useRef<MapCamera | null>(null);
+  const webglRecoveryCleanupRef = useRef<(() => void) | null>(null);
+
+  // Always-visible assigned vehicle (independent of dispatch)
+  interface AssignedVehicle {
+    id: number;
+    vehicle_number: string;
+    plate_number: string | null;
+    gps_lat: number | null;
+    gps_lon: number | null;
+    status: string;
+    current_mileage: number | null;
+  }
+  const [assignedVehicle, setAssignedVehicle] = useState<AssignedVehicle | null>(null);
+  const assignedVehicleMarkerRef = useRef<mapboxgl.Marker | null>(null);
 
   // Classify error: auth/config vs connectivity
   const isAuthError = error != null && (error.includes('token') || error.includes('configured'));
@@ -107,21 +127,50 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
     if (!loaded || !mapContainerRef.current) return;
 
     const hasCallLoc = call?.latitude != null && call?.longitude != null;
-    const center: [number, number] = hasCallLoc
-      ? [call!.longitude!, call!.latitude!]
-      : DEFAULT_CENTER;
+    // A WebGL-loss rebuild reopens at the captured view; otherwise center on the
+    // call (or the SLC fallback). One-shot: cleared after the new map is built.
+    const recoverCam = recoverCamRef.current;
+    const center: [number, number] = recoverCam
+      ? recoverCam.center
+      : hasCallLoc
+        ? [call!.longitude!, call!.latitude!]
+        : DEFAULT_CENTER;
+    const zoom = recoverCam ? recoverCam.zoom : MINI_ZOOM;
 
     if (!mapRef.current) {
+      recoverCamRef.current = null;
       const map = new mapboxgl.Map({
         container: mapContainerRef.current,
         style: MAPBOX_STYLE_DARK,
         center,
-        zoom: MINI_ZOOM,
+        zoom,
         attributionControl: false,
       });
       mapRef.current = map;
       registerMapInstance(map);
       setMapReady(true); // re-render so useMapRouting picks up the real map instance
+      setRecovering(false);
+
+      // WebGL context-loss recovery: rebuild this map in place if the GPU drops
+      // its context (long shift / Toughbook GPU pressure / sleep-wake). We null
+      // mapRef + bump recoverNonce so THIS effect re-creates the map; the marker
+      // and routing effects (keyed on mapReady) re-attach to the new instance.
+      webglRecoveryCleanupRef.current = installWebglContextRecovery(map, {
+        label: 'DispatchMiniMap',
+        onContextLost: () => setRecovering(true),
+        onContextRestored: () => setRecovering(false),
+        onRebuild: (camera) => {
+          recoverCamRef.current = camera;
+          if (webglRecoveryCleanupRef.current) { webglRecoveryCleanupRef.current(); webglRecoveryCleanupRef.current = null; }
+          callMarkerRef.current?.remove(); callMarkerRef.current = null;
+          unitMarkersRef.current.forEach((m) => m.remove()); unitMarkersRef.current.clear();
+          if (mapRef.current) { unregisterMapInstance(mapRef.current); mapRef.current.remove(); mapRef.current = null; }
+          setMapReady(false);
+          setRecovering(true);
+          setRecoverNonce((n) => n + 1);
+        },
+        onGiveUp: () => setRecovering(false),
+      });
 
       // Monitor tile loading
       map.on('idle', () => setTilesStalled(false));
@@ -157,7 +206,57 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
       callMarkerRef.current.remove();
       callMarkerRef.current = null;
     }
-  }, [loaded, call?.id, call?.latitude, call?.longitude]);
+  }, [loaded, call?.id, call?.latitude, call?.longitude, recoverNonce]);
+
+  // Fetch assigned vehicle — always visible, independent of dispatch
+  useEffect(() => {
+    let cancelled = false;
+    const fetchAssignedVehicle = () => {
+      apiFetch<AssignedVehicle | null>('/dispatch/gps/my-vehicle')
+        .then((v) => {
+          if (cancelled || !v) return;
+          setAssignedVehicle(v);
+        })
+        .catch(() => { /* no assigned vehicle — normal */ });
+    };
+    fetchAssignedVehicle();
+    const interval = setInterval(fetchAssignedVehicle, 60_000); // refresh every 60s
+    return () => { cancelled = true; clearInterval(interval); };
+  }, []);
+
+  // Render assigned vehicle marker on map (always visible)
+  useEffect(() => {
+    if (!loaded || !mapReady || !mapRef.current) return;
+    const map = mapRef.current;
+    const av = assignedVehicle;
+
+    // Remove existing marker if vehicle info changed or GPS lost
+    if (assignedVehicleMarkerRef.current) {
+      assignedVehicleMarkerRef.current.remove();
+      assignedVehicleMarkerRef.current = null;
+    }
+
+    if (!av || av.gps_lat == null || av.gps_lon == null) return;
+
+    const el = document.createElement('div');
+    el.style.cssText =
+      'background:#111827;color:#d4a017;font-size:8px;font-weight:900;' +
+      "padding:2px 4px;border:1.5px solid #d4a017;white-space:nowrap;" +
+      "font-family:'JetBrains Mono',monospace;border-radius:2px;" +
+      'box-shadow:0 0 6px rgba(212,160,23,0.4), 0 2px 6px rgba(0,0,0,0.5);';
+    el.textContent = av.vehicle_number || 'V';
+    const marker = new mapboxgl.Marker({ element: el, anchor: 'bottom' })
+      .setLngLat([av.gps_lon, av.gps_lat])
+      .addTo(map);
+    assignedVehicleMarkerRef.current = marker;
+
+    return () => {
+      if (assignedVehicleMarkerRef.current) {
+        assignedVehicleMarkerRef.current.remove();
+        assignedVehicleMarkerRef.current = null;
+      }
+    };
+  }, [loaded, mapReady, assignedVehicle?.gps_lat, assignedVehicle?.gps_lon, assignedVehicle?.vehicle_number]);
 
   // Assigned-unit markers — keyed by unit id and MOVED in place on each GPS
   // update so the pin glides to its new position instead of being destroyed and
@@ -299,6 +398,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
   // Cleanup: remove persistent markers + unregister map instance on unmount
   useEffect(() => {
     return () => {
+      if (webglRecoveryCleanupRef.current) { webglRecoveryCleanupRef.current(); webglRecoveryCleanupRef.current = null; }
       callMarkerRef.current?.remove();
       callMarkerRef.current = null;
       unitMarkersRef.current.forEach((m) => m.remove());
@@ -419,6 +519,24 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
           background: '#0a0a0a',
         }}>
           <RefreshCw style={{ width: 14, height: 14, color: '#383838' }} className="animate-spin" />
+        </div>
+      )}
+
+      {/* WebGL recovery badge — map briefly rebuilding after a GPU context drop */}
+      {recovering && (
+        <div style={{
+          position: 'absolute', top: 4, left: '50%', transform: 'translateX(-50%)', zIndex: 12,
+          pointerEvents: 'none',
+        }}>
+          <div style={{
+            background: 'rgba(0,0,0,0.9)', border: '1px solid #d4a01755',
+            padding: '2px 6px', display: 'flex', alignItems: 'center', gap: 4,
+          }}>
+            <RefreshCw style={{ width: 8, height: 8, color: '#d4a017' }} className="animate-spin" />
+            <span style={{ fontSize: 8, color: '#d4a017', fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" }}>
+              RECONNECTING
+            </span>
+          </div>
         </div>
       )}
 

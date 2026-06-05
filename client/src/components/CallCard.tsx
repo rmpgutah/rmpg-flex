@@ -8,11 +8,11 @@ import WarningTags from './WarningTags';
 import type { WarningTag } from './WarningTags';
 import { getTimerState, isActiveStatus } from '../utils/dispatchTimers';
 import { humanizePriority, getStatusTooltip, formatAddressDisplay } from '../utils/statusLabels';
-import { beatLeaf, sectionPrefix } from '../utils/dispatchCodeParts';
 // Parse server timestamps as UTC (naive strings) — raw new Date() reads
 // them as browser-local and skews every elapsed/age calc by the offset.
 import { parseTimestamp } from '../utils/dateUtils';
 import { callPosture } from '../utils/callThreat';
+import { sectionZoneBeatCombined } from '../utils/dispatchCodeParts';
 import { BADGE_TONES } from './records/recordVisuals';
 
 // Feature 15: Call Source Icons
@@ -27,8 +27,11 @@ const SOURCE_ICONS: Record<string, React.ElementType> = {
 
 // Feature 3: Elapsed time formatter
 function formatCallDuration(createdAt: string, status?: string, archivedAt?: string): string {
-  // For archived/closed/cancelled calls, show the final duration (not a running timer)
-  if (status && ['archived', 'closed', 'cancelled'].includes(status)) {
+  // For terminal calls show the final duration, not a running timer. 'cleared'
+  // belongs here too — the call site passes cleared_at as the end time, and
+  // isActiveStatus already treats cleared as inactive; without it a cleared
+  // call's duration ticked up forever.
+  if (status && ['archived', 'closed', 'cancelled', 'cleared'].includes(status)) {
     const endTime = archivedAt || createdAt;
     const start = parseTimestamp(createdAt).getTime();
     const end = parseTimestamp(endTime).getTime();
@@ -136,10 +139,15 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
         durationRef.current.textContent = formatCallDuration(call.created_at, call.status, (call as any).archived_at || call.cleared_at || call.closed_at);
       }
 
-      // Feature 12: Update hold timer
+      // Feature 12: Update hold timer — gated on the real held state. mapDbCall
+      // synthesizes status='on_hold' from calls_for_service_ext.held_at, so the
+      // badge must key off 'on_hold' (it previously keyed off pending+unassigned,
+      // which NEVER matched a held call and mislabeled every routine pending call
+      // as HOLD). Elapsed runs from held_at when present.
       if (holdTimerRef.current) {
-        if (call.status === 'pending' && !call.assigned_units?.length) {
-          const holdMs = Date.now() - parseTimestamp(call.created_at).getTime();
+        if (call.status === 'on_hold') {
+          const heldFrom = (call as any).held_at || call.created_at;
+          const holdMs = Date.now() - parseTimestamp(heldFrom).getTime();
           const holdMins = Math.floor(holdMs / 60000);
           holdTimerRef.current.textContent = `HOLD ${holdMins}m`;
           holdTimerRef.current.style.display = 'inline-flex';
@@ -391,7 +399,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
           <span
             ref={holdTimerRef}
             className="text-[8px] font-bold font-mono text-yellow-400 bg-yellow-900/30 border border-yellow-700/50 px-1 py-0"
-            style={{ display: call.status === 'pending' && !call.assigned_units?.length ? 'inline-flex' : 'none' }}
+            style={{ display: call.status === 'on_hold' ? 'inline-flex' : 'none' }}
           >
             HOLD 0m
           </span>
@@ -479,25 +487,19 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
               {call.client_name || (call as any).pso_requestor_name}
             </div>
           )}
-          {/* Police-format geography: zone › beat names (the dispatch CODE is
-              already badged at top, so surface the human zone/beat context the
-              code alone doesn't convey). Zero extra requests — these fields ride
-              on the call record via LIST_VIEW_COLUMNS. */}
-          {(call.zone_name || call.beat_name || call.beat_id || call.zone_id || call.sector_name) && (() => {
-            // beatLeaf strips the redundant "SL1-HER/" parent context → just "C".
-            const beatLabel = [beatLeaf(call.beat_id), call.beat_name].filter(Boolean).join(' ');
-            const parts = [call.zone_name, beatLabel].filter(Boolean);
-            // Section code rides inside the composite zone_id ("SL1-HER" → "SL1"),
-            // so we surface it with zero extra lookups. sector_name is the fallback
-            // when the zone code isn't a composite.
-            const section = sectionPrefix(call.zone_id) || call.sector_name || '';
-            const geo = parts.join(' › ');
-            // Show even when only a section is assigned (no zone/beat yet).
-            if (!section && !geo) return null;
+          {/* Dispatch geography on the card is the SHORT CODE only — the
+              Section/Zone/Beat chart code (e.g. "SL1/HER/A1") via the parser,
+              NOT the long Area›Section›Zone›Beat names (those live on the Map UI
+              "What's Here"). Hidden when it would merely echo the dispatch_code
+              badge already shown in the header. Zero extra requests — the
+              sector/zone/beat ids ride on the call via LIST_VIEW_COLUMNS. */}
+          {(() => {
+            const szb = sectionZoneBeatCombined(call.sector_id, call.zone_id, call.beat_id);
+            if (!szb || szb === call.dispatch_code) return null;
             return (
-              <div className="text-[9px] text-rmpg-500 truncate" title={[section, geo].filter(Boolean).join(' · ')}>
-                {section && <span className="font-mono text-amber-300/70">{section}</span>}
-                {section && geo && ' · '}{geo}
+              <div className="text-[9px] text-rmpg-400 truncate flex items-center gap-0.5 font-mono" title="Section / Zone / Beat (short code)">
+                <MapPin className="w-2.5 h-2.5 flex-shrink-0 text-rmpg-500" />
+                {szb}
               </div>
             );
           })()}
@@ -580,7 +582,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
       {showQuickNote && onQuickNote && (
         <div className="mt-1.5 pt-1 border-t border-rmpg-700/50 flex gap-1" onClick={(e) => e.stopPropagation()}>
           {/* 25: Focus ring on quick note input; 26: Transition on border color */}
-          <input
+          <input id="ff-callcard-0"
             type="text"
             className="flex-1 bg-surface-sunken border border-rmpg-600 text-[10px] text-rmpg-200 px-1.5 py-0.5 rounded-sm focus:border-brand-500 focus:ring-1 focus:ring-brand-500/30 focus:outline-none transition-colors"
             placeholder="Add note..."

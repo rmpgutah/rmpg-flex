@@ -1,20 +1,33 @@
 import { useState, useRef, useEffect } from 'react';
-import { X } from 'lucide-react';
+import { X, ShieldAlert } from 'lucide-react';
+
+// ─── Guardrail constants ────────────────────────────────────
+const MAX_PLAUSIBLE_MILEAGE = 999999;
+const MAX_DELTA_WARNING = 500; // warn on >500 mi delta
+const MAX_DECREASE_ALLOWANCE = 5; // allow small negative deltas (odometer rounding)
 
 interface MileagePromptModalProps {
   mode: 'starting' | 'ending';
   callNumber: string;
   vehicleId: string;
   startingMileage?: number | null;
-  onSubmit: (mileage: number, vehicleId: string) => void;
+  /** Current known mileage (for guardrail validation) */
+  currentMileage?: number | null;
+  /** Whether the current user has admin/manager role for overrides */
+  isAdmin?: boolean;
+  onSubmit: (mileage: number, vehicleId: string, force?: boolean, reason?: string) => void;
   onCancel: () => void;
 }
 
 export default function MileagePromptModal({
-  mode, callNumber, vehicleId, startingMileage, onSubmit, onCancel,
+  mode, callNumber, vehicleId, startingMileage, currentMileage, isAdmin, onSubmit, onCancel,
 }: MileagePromptModalProps) {
   const [mileage, setMileage] = useState('');
   const [editVehicleId, setEditVehicleId] = useState(vehicleId || '');
+  const [warning, setWarning] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [forceOverride, setForceOverride] = useState(false);
+  const [overrideReason, setOverrideReason] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -23,15 +36,51 @@ export default function MileagePromptModal({
     return () => clearTimeout(timer);
   }, []);
 
+  // Guardrail: validate mileage value on every input change
+  useEffect(() => {
+    if (!mileage) { setWarning(null); setError(null); return; }
+    const val = parseFloat(mileage);
+    if (isNaN(val)) { setWarning(null); setError(null); return; }
+
+    // Out-of-bounds check
+    if (val < 0) {
+      setError('Mileage cannot be negative');
+      return;
+    }
+    if (val > MAX_PLAUSIBLE_MILEAGE) {
+      setError(`Mileage exceeds plausible max of ${MAX_PLAUSIBLE_MILEAGE.toLocaleString()}`);
+      return;
+    }
+
+    // Decreasing check (ending mode only, against starting mileage)
+    if (mode === 'ending' && startingMileage != null && val < startingMileage - MAX_DECREASE_ALLOWANCE) {
+      setWarning(`Ending mileage (${val.toFixed(1)}) is ${(startingMileage - val).toFixed(1)} mi below starting mileage (${startingMileage.toFixed(1)}). Use force override if correct.`);
+      if (isAdmin && forceOverride) setWarning(null);
+    } else {
+      setWarning(null);
+    }
+
+    // Delta check (against current known mileage)
+    if (currentMileage != null && Math.abs(val - currentMileage) > MAX_DELTA_WARNING) {
+      const delta = Math.abs(val - currentMileage);
+      setWarning((prev) => prev || `Mileage delta of ${delta.toFixed(0)} mi is unusually large. Verify reading.`);
+      if (isAdmin && forceOverride) setWarning(null);
+    }
+
+    setError(null);
+  }, [mileage, mode, startingMileage, currentMileage, isAdmin, forceOverride]);
+
   const handleSubmit = () => {
     const val = parseFloat(mileage);
-    if (isNaN(val) || val < 0) return;
-    onSubmit(val, editVehicleId);
+    if (isNaN(val) || val < 0 || val > MAX_PLAUSIBLE_MILEAGE) return;
+    // An ending reading below the start is rejected unless admin force override
+    if (mode === 'ending' && startingMileage != null && val < startingMileage && !forceOverride) return;
+    onSubmit(val, editVehicleId, forceOverride, overrideReason || undefined);
   };
 
   // Skip mileage — proceed with status change without entering mileage
   const handleSkip = () => {
-    onSubmit(0, editVehicleId);
+    onSubmit(0, editVehicleId, false);
   };
 
   return (
@@ -68,22 +117,73 @@ export default function MileagePromptModal({
             </div>
           )}
 
+          {currentMileage != null && (
+            <div className="text-[10px] text-rmpg-400">
+              Current known: <span className="text-rmpg-200 font-mono">{currentMileage.toLocaleString()}</span>
+            </div>
+          )}
+
           <div>
             <label className="text-[10px] text-brand-gold-500 block mb-1">
               {mode === 'starting' ? 'Odometer Reading (Start)' : 'Odometer Reading (End)'}
             </label>
-            <input
+            <input id="ff-mileagepromptmodal-0"
               ref={inputRef}
               type="number"
               min="0"
+              max={MAX_PLAUSIBLE_MILEAGE}
               step="0.1"
               className="input-dark text-sm w-full font-mono"
               placeholder="e.g. 45230"
               value={mileage}
-              onChange={(e) => setMileage(e.target.value)}
+              onChange={(e) => { setMileage(e.target.value); setForceOverride(false); }}
               onKeyDown={(e) => { if (e.key === 'Enter') handleSubmit(); if (e.key === 'Escape') onCancel(); }}
             />
           </div>
+
+          {/* Guardrail: error message (blocks submit) */}
+          {error && (
+            <div className="text-[10px] text-red-400 bg-red-900/20 border border-red-700/30 rounded-sm px-2 py-1 flex items-start gap-1">
+              <ShieldAlert className="w-3 h-3 mt-px shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
+
+          {/* Guardrail: warning message (advisory) */}
+          {warning && (
+            <div className="text-[10px] text-amber-400 bg-amber-900/20 border border-amber-700/30 rounded-sm px-2 py-1 flex items-start gap-1">
+              <ShieldAlert className="w-3 h-3 mt-px shrink-0" />
+              <span>{warning}</span>
+            </div>
+          )}
+
+          {/* Admin force-override: shown when guardrail fires and user is admin */}
+          {warning && isAdmin && (
+            <label className="flex items-center gap-2 text-[10px] text-rmpg-400 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={forceOverride}
+                onChange={(e) => setForceOverride(e.target.checked)}
+                className="w-3 h-3 rounded-sm accent-brand-gold-400"
+              />
+              <span className="text-brand-gold-400 font-bold">ADMIN FORCE OVERRIDE</span>
+            </label>
+          )}
+
+          {/* Override reason field (shown when force is checked) */}
+          {forceOverride && isAdmin && (
+            <div>
+              <label className="text-[10px] text-brand-gold-500 block mb-1">Override Reason (audited)</label>
+              <input
+                type="text"
+                className="input-dark text-xs w-full"
+                placeholder="Reason for override..."
+                value={overrideReason}
+                onChange={(e) => setOverrideReason(e.target.value)}
+                maxLength={200}
+              />
+            </div>
+          )}
 
           <div>
             <label className="text-[10px] text-brand-gold-500 block mb-1">Vehicle ID</label>
@@ -92,7 +192,7 @@ export default function MileagePromptModal({
                 {vehicleId}
               </div>
             ) : (
-              <input
+              <input id="ff-mileagepromptmodal-1"
                 type="text"
                 className="input-dark text-xs w-full"
                 placeholder="Vehicle ID or unit number"
@@ -103,11 +203,17 @@ export default function MileagePromptModal({
           </div>
 
           {mode === 'ending' && startingMileage != null && mileage && !isNaN(parseFloat(mileage)) && (
-            <div className="text-[10px] text-rmpg-400">
-              Total miles: <span className="text-green-400 font-mono font-bold">
-                {Math.max(0, parseFloat(mileage) - startingMileage).toFixed(1)}
-              </span>
-            </div>
+            parseFloat(mileage) < startingMileage ? (
+              <div className="text-[10px] text-red-400">
+                Ending mileage can't be below starting (<span className="font-mono font-bold">{startingMileage.toLocaleString()}</span>).
+              </div>
+            ) : (
+              <div className="text-[10px] text-rmpg-400">
+                Total miles: <span className="text-green-400 font-mono font-bold">
+                  {(parseFloat(mileage) - startingMileage).toFixed(1)}
+                </span>
+              </div>
+            )
           )}
         </div>
 
@@ -123,7 +229,7 @@ export default function MileagePromptModal({
             <button type="button" onClick={onCancel} className="toolbar-btn text-xs px-4 py-2 min-h-[44px] sm:min-h-0 flex-1 sm:flex-none">Cancel</button>
             <button type="button"
               onClick={handleSubmit}
-              disabled={!mileage || isNaN(parseFloat(mileage))}
+              disabled={!mileage || isNaN(parseFloat(mileage)) || !!error}
               className="toolbar-btn toolbar-btn-primary text-xs px-4 py-2 min-h-[44px] sm:min-h-0 flex-1 sm:flex-none"
             >
               {mode === 'starting' ? 'Go En Route' : 'Go On Scene'}

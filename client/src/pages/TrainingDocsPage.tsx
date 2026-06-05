@@ -173,7 +173,7 @@ export default function TrainingDocsPage() {
           {/* Search */}
           <div className="relative">
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" />
-            <input
+            <input id="ff-trainingdocspage-0"
               type="text"
               placeholder="Search documents..." aria-label="Search documents..."
               value={search}
@@ -463,7 +463,7 @@ function DocumentModal({ doc, onClose, onSaved }: ModalProps) {
           {/* Title */}
           <div>
             <label className="field-label mb-1 block">Title *</label>
-            <input
+            <input id="ff-trainingdocspage-1"
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
@@ -486,7 +486,7 @@ function DocumentModal({ doc, onClose, onSaved }: ModalProps) {
           {/* Category */}
           <div>
             <label className="field-label mb-1 block">Category</label>
-            <select
+            <select id="ff-trainingdocspage-2"
               value={category}
               onChange={(e) => setCategory(e.target.value as CompanyDocCategory)}
               className="input-dark w-full text-[11px] px-2 py-1.5 min-h-[36px]"
@@ -537,7 +537,7 @@ function DocumentModal({ doc, onClose, onSaved }: ModalProps) {
                 <span className="text-[11px] text-rmpg-400">
                   {file ? file.name : (doc?.file_name || 'Click to select file...')}
                 </span>
-                <input
+                <input id="ff-trainingdocspage-3"
                   type="file"
                   className="hidden"
                   onChange={(e) => setFile(e.target.files?.[0] || null)}
@@ -550,7 +550,7 @@ function DocumentModal({ doc, onClose, onSaved }: ModalProps) {
           ) : (
             <div>
               <label className="field-label mb-1 block">URL *</label>
-              <input
+              <input id="ff-trainingdocspage-4"
                 type="url"
                 value={externalUrl}
                 onChange={(e) => setExternalUrl(e.target.value)}
@@ -563,7 +563,7 @@ function DocumentModal({ doc, onClose, onSaved }: ModalProps) {
           {/* Toggles */}
           <div className="flex items-center gap-4">
             <label className="flex items-center gap-2 cursor-pointer">
-              <input
+              <input id="ff-trainingdocspage-5"
                 type="checkbox"
                 checked={isRequired}
                 onChange={(e) => setIsRequired(e.target.checked)}
@@ -572,7 +572,7 @@ function DocumentModal({ doc, onClose, onSaved }: ModalProps) {
               <span className="text-[11px] text-rmpg-300">Required Reading</span>
             </label>
             <label className="flex items-center gap-2 cursor-pointer">
-              <input
+              <input id="ff-trainingdocspage-6"
                 type="checkbox"
                 checked={published}
                 onChange={(e) => setPublished(e.target.checked)}

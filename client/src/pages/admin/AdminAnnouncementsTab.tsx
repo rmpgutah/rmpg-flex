@@ -8,6 +8,8 @@ import { apiFetch } from '../../hooks/useApi';
 import { asArray } from '../../utils/asArray';
 import { formatDateTime } from '../../utils/dateUtils';
 import ConfirmDialog from '../../components/ConfirmDialog';
+import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
+import { useMenuActions } from '../../utils/contextMenuActions';
 
 // ============================================================
 // System Announcements Management Tab
@@ -161,6 +163,20 @@ export default function AdminAnnouncementsTab({ LoadingSpinner, error, setError 
     }
   };
 
+  // ── Right-click context menu ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+
+  const buildAnnouncementMenu = (a: Announcement): ContextMenuItem[] => [
+    m.action('Edit announcement', () => openEdit(a), { icon: <Edit2 size={12} /> }),
+    m.action(a.is_active ? 'Deactivate' : 'Activate', () => toggleActive(a), { icon: a.is_active ? <EyeOff size={12} /> : <Eye size={12} /> }),
+    m.separator(),
+    m.copy('Copy title', a.title),
+    m.copyId(a.id),
+    m.separator(),
+    m.action('Delete announcement', () => setDeleteId(a.id), { icon: <Trash2 size={12} />, danger: true }),
+  ];
+
   const filtered = announcements.filter((a) =>
     !search || a.title.toLowerCase().includes(search.toLowerCase()) || a.body.toLowerCase().includes(search.toLowerCase())
   );
@@ -204,7 +220,7 @@ export default function AdminAnnouncementsTab({ LoadingSpinner, error, setError 
         <div className="flex items-center gap-2">
           <div className="relative">
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" aria-hidden="true" />
-            <input
+            <input id="ff-adminannouncementstab-0"
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
@@ -236,6 +252,7 @@ export default function AdminAnnouncementsTab({ LoadingSpinner, error, setError 
           return (
             <div
               key={a.id}
+              onContextMenu={(e) => openMenu(e, buildAnnouncementMenu(a))}
               className={`panel-beveled bg-surface-base p-3 border-l-[3px] ${a.is_active ? 'border-l-brand-500' : 'border-l-rmpg-700 opacity-60'}`}
             >
               <div className="flex items-start justify-between gap-3">
@@ -291,7 +308,7 @@ export default function AdminAnnouncementsTab({ LoadingSpinner, error, setError 
             <div className="p-4 space-y-3">
               <div>
                 <label className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Title</label>
-                <input
+                <input id="ff-adminannouncementstab-1"
                   type="text"
                   value={form.title}
                   onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
@@ -311,7 +328,7 @@ export default function AdminAnnouncementsTab({ LoadingSpinner, error, setError 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Type</label>
-                  <select
+                  <select id="ff-adminannouncementstab-2"
                     value={form.type}
                     onChange={(e) => setForm((f) => ({ ...f, type: e.target.value as any }))}
                     className="select-dark w-full text-xs"
@@ -325,7 +342,7 @@ export default function AdminAnnouncementsTab({ LoadingSpinner, error, setError 
                 </div>
                 <div>
                   <label className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Priority</label>
-                  <select
+                  <select id="ff-adminannouncementstab-3"
                     value={form.priority}
                     onChange={(e) => setForm((f) => ({ ...f, priority: e.target.value as any }))}
                     className="select-dark w-full text-xs"
@@ -339,7 +356,7 @@ export default function AdminAnnouncementsTab({ LoadingSpinner, error, setError 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Starts At</label>
-                  <input
+                  <input id="ff-adminannouncementstab-4"
                     type="datetime-local"
                     value={form.starts_at}
                     onChange={(e) => setForm((f) => ({ ...f, starts_at: e.target.value }))}
@@ -348,7 +365,7 @@ export default function AdminAnnouncementsTab({ LoadingSpinner, error, setError 
                 </div>
                 <div>
                   <label className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Expires At</label>
-                  <input
+                  <input id="ff-adminannouncementstab-5"
                     type="datetime-local"
                     value={form.expires_at}
                     onChange={(e) => setForm((f) => ({ ...f, expires_at: e.target.value }))}

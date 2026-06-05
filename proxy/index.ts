@@ -54,18 +54,10 @@ const STUBS: StubRule[] = [
   // (removed 2026-05-29) /api/warrants/utah-search/auto-poll-status stub —
   // the rewrite now serves a real status handler (src/routes/warrants.ts,
   // buildUtahStatus). Routed to env.API below.
-  // /api/personnel/equipment — no equipment table or handler in either backend.
-  // PersonnelPage's Equipment tab issues this GET on mount; without a stub
-  // it 404s and produces visible console noise. Return [] (callsites do
-  // `apiFetch<any[]>('/personnel/equipment')`). Sub-routes (/equipment/:id,
-  // /equipment/:id/checkout, etc.) are user-triggered, not background, so they
-  // stay 404 until a real implementation lands.
-  {
-    match: /^\/api\/personnel\/equipment$/,
-    methods: ['GET'],
-    body: [],
-    reason: 'no equipment table/handler; empty list silences dashboard polling',
-  },
+  // /api/personnel/equipment — REAL implementation landed (src/routes/personnel.ts
+  // over officer_equipment + equipment_checkout_log, routed to env.API in
+  // API_ROUTES). The old GET [] stub is removed so the list + writes + checkout
+  // log reach the rewrite instead of being faked empty.
   // /api/hr/benefits — no hr_benefits table on live D1 (HR rewrite only
   // patched leave_requests / disciplinary_records / review_cycles in
   // PR #660). BenefitsTab GETs this on mount; without a stub it 500s
@@ -457,6 +449,56 @@ const STUBS: StubRule[] = [
     reason: 'no zone speed analytics handler; MapPage tolerates empty zones array',
   },
 
+  // ── 2026-06-02 live-sweep batch — endpoints with NO backing table ─────
+  // Found by a logged-in page-by-page Network sweep. Each path below has no
+  // table on live D1 and no rewrite handler, so it 404/500'd from legacy.
+  // Shapes match exactly what the consuming page reads (verified against the
+  // component source) so the page renders its empty state instead of
+  // crashing/erroring. Remove a stub when its real backend lands.
+  //
+  // DashcamAiPage: reads evRes.events (array) + fleetRes.units (array) — set
+  // straight into state with no `?? []`, so the keys MUST be arrays.
+  {
+    match: /^\/api\/driving-events(\?.*)?$/,
+    methods: ['GET'],
+    body: { events: [], total: 0, limit: 200, offset: 0 },
+    reason: 'no driving_events table; DashcamAiPage tolerates empty events',
+  },
+  {
+    match: /^\/api\/driving-events\/fleet-health(\?.*)?$/,
+    methods: ['GET'],
+    body: { units: [] },
+    reason: 'no driving_events table; DashcamAiPage fleet-health tolerates empty units',
+  },
+  // WebResearchPage: reads data?.connected (coerced).
+  {
+    match: /^\/api\/web-research\/status(\?.*)?$/,
+    methods: ['GET'],
+    body: { connected: false },
+    reason: 'no web-research integration backend; page shows disconnected',
+  },
+  // ArrestRecordsPage: reads stats?.per_county (array) + population_summary.
+  {
+    match: /^\/api\/jail-roster\/statistics(\?.*)?$/,
+    methods: ['GET'],
+    body: { per_county: [], population_summary: { total_records: 0, total_active: 0, total_released: 0 } },
+    reason: 'no jail-roster aggregation backend; ArrestRecordsPage tolerates empty per_county',
+  },
+  // NationalWarrantSearchPage: every access optional-chained — {} is safe.
+  {
+    match: /^\/api\/warrants\/national-coverage(\?.*)?$/,
+    methods: ['GET'],
+    body: { sources: 0, states_covered: 0, active_warrants: 0, state_status: {}, state_sources: {}, state_warrants: {} },
+    reason: 'no national coverage data source; NationalWarrantSearchPage tolerates zeros',
+  },
+  // TrainingDocsPage: expects a BARE top-level array (setDocuments(data || [])).
+  {
+    match: /^\/api\/company-documents(\?.*)?$/,
+    methods: ['GET'],
+    body: [],
+    reason: 'no company_documents table; TrainingDocsPage tolerates empty array',
+  },
+
   //
   // History:
   //   2026-05-24: Added stub for /api/statutes/search after live D1
@@ -472,6 +514,11 @@ const STUBS: StubRule[] = [
 ];
 
 const API_ROUTES: RouteRule[] = [
+  // ── Crime layers (new in rewrite) ──
+  // /api/crime/slc (cached SLCPD public-crime proxy) + /api/crime/local (our
+  // own recent CFS). Only the rewrite has these handlers; legacy 404s.
+  { kind: 'prefix', value: '/api/crime' },
+
   // ── DL records CRUD (new in rewrite) ──
   // /api/dl-records (bare) + /api/dl-records/:id (numeric) → env.API.
   // The legacy port of POST /dl-records 500s on live D1 (manual saves
@@ -496,7 +543,7 @@ const API_ROUTES: RouteRule[] = [
   // repurposed for premise visits. The rewrite stores the chain link on
   // calls_for_service_ext.parent_call_id (migration 0044) and reconstructs
   // visit history from the chain. MUST route here, not fall through to legacy.
-  { kind: 'regex', value: /^\/api\/dispatch\/calls\/\d+\/(recommended-units|closest-unit|auto-assign|timeline|warnings|audit-trail|generate-incident|promote-to-incident|send-to-serve|pin|redispatch|undo-redispatch)(\/.*)?$/ },
+  { kind: 'regex', value: /^\/api\/dispatch\/calls\/\d+\/(recommended-units|closest-unit|auto-assign|timeline|warnings|audit-trail|generate-incident|promote-to-incident|send-to-serve|serve-link|pin|redispatch|undo-redispatch)(\/.*)?$/ },
 
   // /api/dispatch/calls/:id/{persons,vehicles}[/...] — rewrite implements
   // POST/DELETE/PATCH plus the quick-add fast-path; legacy implements ONLY
@@ -508,9 +555,28 @@ const API_ROUTES: RouteRule[] = [
   // sub-tree to the rewrite makes the round-trip self-consistent.
   { kind: 'regex', value: /^\/api\/dispatch\/calls\/\d+\/(persons|vehicles)(\/.*)?$/ },
 
+  // /api/dispatch/calls/:id/property (PUT/DELETE) — single-property attach/clear
+  // for a call. The rewrite (callLinks.ts) owns it and inherits the property's
+  // address onto the call; legacy never implemented the write, so the call
+  // property panel's attach/clear silently fell through to env.LEGACY and the
+  // change never persisted ("save then vanish"). Sibling of persons|vehicles
+  // above — same router, just left out of that alternation. GET stays with the
+  // dispatchCalls detail payload.
+  { kind: 'regex', value: /^\/api\/dispatch\/calls\/\d+\/property$/, methods: ['PUT', 'DELETE'] },
+
   // /api/dispatch/request-backup — officer backup request (RadialMenu).
   // New rewrite handler (panic.ts); legacy never implemented it → 404.
   { kind: 'prefix', value: '/api/dispatch/request-backup' },
+
+  // /api/dispatch/panic[/*] — OFFICER-SAFETY. The whole panic lifecycle
+  // (create, list, acknowledge, resolve, cancel, false-alarm, audio) lives
+  // on the rewrite (panic.ts, same router as request-backup above). Its
+  // INSERT was written for the LIVE panic_alerts schema (officer_id NOT NULL,
+  // trigger_method col, no unit_id). The proxy never routed the namespace, so
+  // POST /panic fell through to env.LEGACY whose handler 500'd on every press
+  // — the panic button was dead in prod. Route the entire namespace to
+  // env.API so the working, schema-matched handler runs.
+  { kind: 'prefix', value: '/api/dispatch/panic' },
 
   // /api/dispatch/anomaly-alerts[/*] — AnomalyAlertBanner read + ack.
   // New rewrite feature (anomalies.ts + anomaly_alerts table + cron
@@ -537,6 +603,46 @@ const API_ROUTES: RouteRule[] = [
   // live: the rewrite handlers are deployed and back the same identifyBeat
   // that already geocodes geography on POST /api/dispatch/calls.
   { kind: 'prefix', value: '/api/dispatch/geography' },
+  // /api/dispatch/trips[/*] — Navigation trip logging. ENTIRE namespace on the
+  // rewrite (new feature; no legacy handler). Without this it falls through to
+  // the legacy worker and 404s.
+  { kind: 'prefix', value: '/api/dispatch/trips' },
+  // /api/dispatch/address-occupants — New Call modal officer-safety cross-ref
+  // (persons on file at the address + warrant/gang/caution flags). New rewrite
+  // handler in src/routes/dispatch/premiseHistory.ts; legacy never had it.
+  { kind: 'regex', value: /^\/api\/dispatch\/address-occupants(\?|$)/, methods: ['GET'] },
+  // /api/dispatch/premise-history — New Call modal premise-history panel
+  // (PremiseHistory.tsx → {hasWarnings,total,entries}). Sibling of
+  // address-occupants above; the rewrite handler (premiseHistory.ts) was left
+  // out of that routing fix, so it fell through to env.LEGACY. Officer-safety
+  // (premise warnings) — route to the rewrite so the panel actually loads.
+  { kind: 'regex', value: /^\/api\/dispatch\/premise-history(\?|$)/, methods: ['GET'] },
+  // /api/geocode/reverse — reverse-geocode a unit's live GPS to a street label
+  // for the dispatch unit board. New rewrite handler (src/routes/geocode.ts,
+  // KV-cached Nominatim); legacy never had it, so route it explicitly to
+  // env.API. /api/geocode/search stays on its existing path.
+  { kind: 'regex', value: /^\/api\/geocode\/reverse(\?|$)/, methods: ['GET'] },
+
+  // ── Dispatch GPS breadcrumb write + reads (src/routes/dispatch/gps.ts) ──
+  // POST /api/dispatch/gps was NEVER routed here, so the unit-GPS ping fell
+  // through to env.LEGACY. The legacy handler (a) stamps units.gps_updated_at
+  // as Denver wall-clock mislabeled "+00:00" — i.e. ~6h in the past, so the
+  // dispatch board flags EVERY live unit as "GPS LOST" — and (b) never writes
+  // units.gps_heading / units.gps_speed (columns added in migration 0065), so
+  // the map nav-cursor arrow is stuck pointing north with no speed. The rewrite
+  // handler writes datetime('now') (UTC) AND mirrors heading/speed onto the
+  // unit row, fixing both. Route ONLY the three paths the rewrite implements:
+  //   POST /api/dispatch/gps           (breadcrumb write — the bug)
+  //   GET  /api/dispatch/gps/current   (latest position per unit)
+  //   GET  /api/dispatch/gps/my-unit   (caller's own unit row)
+  // The bare path is POST-only (the rewrite has no GET '/' handler) and the
+  // GET sub-paths are anchored to (current|my-unit). This deliberately does
+  // NOT match /api/dispatch/gps/speed-zones or /api/dispatch/gps/zone-speed-stats
+  // (both are STUBbed above and have no rewrite handler — routing them to
+  // env.API would 404). STUBS are evaluated before API_ROUTES, so those two are
+  // already short-circuited, but the tight anchors keep this rule honest.
+  { kind: 'regex', value: /^\/api\/dispatch\/gps\/?(\?.*)?$/, methods: ['POST'] },
+  { kind: 'regex', value: /^\/api\/dispatch\/gps\/(current|my-unit)(\?.*)?$/, methods: ['GET'] },
 
   // /api/dispatch/heatmap/enforcement — enforcement-activity clusters for the
   // Map "Enforcement" overlay (src/routes/dispatch/aggregates.ts). Legacy has
@@ -546,11 +652,32 @@ const API_ROUTES: RouteRule[] = [
   // to /enforcement ONLY — sibling /api/dispatch/heatmap/timelapse stays on
   // env.LEGACY (which DOES serve it; the rewrite has no timelapse handler).
   { kind: 'prefix', value: '/api/dispatch/heatmap/enforcement' },
+  // /api/dispatch/heatmap/predictions — predicted-hotspots overlay (MapPage
+  // useMapPredictions). Sibling of /enforcement; the rewrite handler
+  // (aggregates.ts) is fully defensive (degrades to {hotspots:[]}). Route to
+  // env.API so the overlay reflects the intended 90-day model rather than the
+  // legacy fallback. (/heatmap/timelapse still stays on legacy — no rewrite handler.)
+  { kind: 'prefix', value: '/api/dispatch/heatmap/predictions', methods: ['GET'] },
+  // /api/dispatch/disposition-stats — DispatchPage "DISPS:" strip. The rewrite
+  // handler (aggregates.ts) normalizes sentinel dispositions and is all-time
+  // (the client is written/labeled for all-time); the legacy fallback windows to
+  // 12h and mislabels it. Route to env.API for the correct, defensive version.
+  { kind: 'regex', value: /^\/api\/dispatch\/disposition-stats(\?.*)?$/, methods: ['GET'] },
+  // /api/dispatch/analysis/summary — MapPage Analysis overlay (useAnalysisSummary).
+  // The rewrite handler (aggregates.ts) is fully defensive (every sub-query
+  // .catch-degrades); legacy is the dead-code fallback. Route to env.API.
+  { kind: 'regex', value: /^\/api\/dispatch\/analysis\/summary(\?.*)?$/, methods: ['GET'] },
 
   // /api/dispatch/calls/check-duplicate — rewrite has correct route ordering
   // (literal /check-duplicate registered before parametric /:id). Legacy
   // hits the /:id handler first and 500s on NaN cast.
   { kind: 'prefix', value: '/api/dispatch/calls/check-duplicate' },
+  // GET /api/dispatch/calls/export — DispatchPage CSV export (ExportButton).
+  // The rewrite handler (calls.ts) emits MT-localized CSV with a 50k-row cap and
+  // the LIST_VIEW projection that dodges the D1 100-column cap the legacy
+  // `SELECT *` export hits. Literal path — placed before /calls/:id and the bare
+  // list rules so it can't be swallowed by either.
+  { kind: 'regex', value: /^\/api\/dispatch\/calls\/export(\?.*)?$/, methods: ['GET'] },
 
   // GET/PUT/DELETE /api/dispatch/calls/{id} (exact match, no trailing segment)
   // — rewrite avoids the D1 100-column-cap that 500s the legacy GET handler.
@@ -610,12 +737,30 @@ const API_ROUTES: RouteRule[] = [
   { kind: 'regex', value: /^\/api\/dispatch\/calls\/\d+\/status$/, methods: ['POST'] },
   // Single-call archive — rewrite writes archived_at in UTC; legacy mislabels MST.
   { kind: 'regex', value: /^\/api\/dispatch\/calls\/\d+\/archive$/, methods: ['POST'] },
+  // POST /api/dispatch/calls/:id/unarchive — restore an archived call (the
+  // archived-list "unarchive" action, useDispatchCallActions). Rewrite handler
+  // (calls.ts) sets status back to closed; the /archive rule above is anchored
+  // /archive$ so it does NOT match unarchive, which fell through to env.LEGACY.
+  { kind: 'regex', value: /^\/api\/dispatch\/calls\/\d+\/unarchive$/, methods: ['POST'] },
   { kind: 'regex', value: /^\/api\/dispatch\/calls\/archive-bulk$/, methods: ['POST'] },
+
+  // /api/dispatch/run-cards[/*] — Spillman-style canned dispatch templates
+  // (RunCardPreview on the New Call form + the run-card admin editor). The whole
+  // runCards router (GET list/by-type/:id + POST/PUT/DELETE) lives ONLY on the
+  // rewrite (src/routes/runCards.ts over dispatch_run_cards); legacy never had
+  // it, so every run-card read/write fell through to env.LEGACY.
+  { kind: 'prefix', value: '/api/dispatch/run-cards' },
 
   // ── Records search (rewrite has all three; legacy is missing /search
   // and /vehicles/search and returns empty `[]` instead) ──
   { kind: 'prefix', value: '/api/records/persons/search' },
   { kind: 'prefix', value: '/api/records/vehicles/search' },
+  // POST /api/records/vehicles/stolen-check — NCIC-style stolen-vehicle check.
+  // The handler exists in src/routes/records.ts but was never routed, so the
+  // path fell through to env.LEGACY which has no handler → 404 (VehiclesTab +
+  // DlSearchPage both call it, live 2026-06-02). Anchored exact-match so it
+  // can't be shadowed by the /vehicles/:id DELETE or /vehicles/:id/history rules.
+  { kind: 'regex', value: /^\/api\/records\/vehicles\/stolen-check$/, methods: ['POST'] },
   // /api/records/ncic-query?type=person|warrant|vehicle|phone|address — the
   // NCIC/NLETS terminal (QH/QV/QW/QT/QA + the QX cross-reference fan-out).
   // Ported to the rewrite (src/routes/records.ts) which fixes the legacy
@@ -638,6 +783,18 @@ const API_ROUTES: RouteRule[] = [
   // Regex covers GET/POST /links and DELETE /links/:id; matched on
   // pathname (no query), so no `\?` branch needed.
   { kind: 'regex', value: /^\/api\/records\/links(\/\d+)?$/ },
+  // DELETE /api/records/persons/:id and /api/records/vehicles/:id — hard-delete
+  // a record. The legacy handler issues a bare `DELETE FROM persons|vehicles_records`
+  // that 500s on D1 foreign-key children: call_persons / call_vehicles are
+  // RESTRICT (no ON DELETE), so any person on a call (12 live) or that vehicle
+  // (1 live) can never be deleted. The rewrite handler (src/routes/records.ts)
+  // clears the RESTRICT junctions, detaches owned-vehicle ownership (nullable),
+  // sweeps the orphan polymorphic record_links, then deletes — CASCADE children
+  // (incident_*, serve_queue_*, case_*_links) clean themselves. Anchored to the
+  // bare numeric id + DELETE only, so /archive, /unarchive, /history and the
+  // GET/POST/PUT person+vehicle endpoints stay on legacy.
+  { kind: 'regex', value: /^\/api\/records\/persons\/\d+$/, methods: ['DELETE'] },
+  { kind: 'regex', value: /^\/api\/records\/vehicles\/\d+$/, methods: ['DELETE'] },
 
   // ── Warrants watch (rewrite has /watch/runs, /watch/scan) ──
   { kind: 'prefix', value: '/api/warrants/watch' },
@@ -652,6 +809,14 @@ const API_ROUTES: RouteRule[] = [
   // it, so the POST 404'd and the tab threw an unhandled rejection.
   { kind: 'prefix', value: '/api/warrants/search-all' },
   { kind: 'regex', value: /^\/api\/warrants\/person\/\d+\/profile$/, methods: ['GET'] },
+  // /api/warrants/dashboard/* (stats, feed, priority) + /api/warrants/expiring
+  // — the DASHBOARD tab widgets. Legacy served these against the empty manual
+  // `warrants` table, so every card read 0 while the Watch List showed real
+  // Utah hits. Ported to src/routes/warrants.ts where they aggregate
+  // utah_warrants (confirmed vs unverified by linked-person DOB) + manual
+  // warrants + warrant_scraper_config. Route to env.API.
+  { kind: 'prefix', value: '/api/warrants/dashboard' },
+  { kind: 'regex', value: /^\/api\/warrants\/expiring$/, methods: ['GET'] },
   // /api/warrants/scrapers* — Sources tab + Layout header badge + per-source
   // trigger/reset-circuit buttons. Legacy `rmpg-flex` had /scrapers handlers
   // but they queried columns that don't exist on live D1 (`source_key`,
@@ -683,6 +848,11 @@ const API_ROUTES: RouteRule[] = [
   // /summary-report, /check/:id, /batch-update, /bulk-archive, /bulk-review,
   // /person-intel, /utah-search) are deliberately NOT matched here — they
   // continue to fall through to env.LEGACY until their own ports land.
+  // /api/warrants/check/:personId — advisory active-warrant lookup used by
+  // the incident LinkPersonModal. Ported to src/routes/warrants.ts (legacy
+  // 404'd). Two segments after /warrants so it never collides with the
+  // single-segment /warrants/:id CRUD regex below.
+  { kind: 'regex', value: /^\/api\/warrants\/check\/\d+$/, methods: ['GET'] },
   { kind: 'regex', value: /^\/api\/warrants\/ingest-utah$/, methods: ['POST'] },
   { kind: 'regex', value: /^\/api\/warrants\/\d+\/serve$/, methods: ['PUT'] },
   { kind: 'regex', value: /^\/api\/warrants\/\d+\/archive$/, methods: ['POST'] },
@@ -690,12 +860,27 @@ const API_ROUTES: RouteRule[] = [
   { kind: 'regex', value: /^\/api\/warrants\/\d+$/, methods: ['GET', 'PUT', 'DELETE'] },
   { kind: 'regex', value: /^\/api\/warrants\/?$/, methods: ['GET', 'POST'] },
 
+  // ── Incident NIBRS sub-resources — ported to src/routes/incidentSubresources.ts ──
+  // The IncidentsPage detail panels (Offenses / Responding Officers /
+  // Cross-References / Supplements) POST+GET these. Legacy 404'd (officers)
+  // or 500'd against a MINIMAL live schema (incident_offenses lacked
+  // ucr_code/nibrs_code/counts/...; incident_links omitted the NOT-NULL
+  // added_by; supplemental_reports lacked subject/status). Migration 0064
+  // widened the tables and these routes go to the rewrite's real handlers.
+  // ONLY the sub-resource paths are routed — base /api/incidents CRUD stays
+  // on legacy (deliberately, per its working-page note). The supplement
+  // regex also covers the dv/pursuit string suffixes served by
+  // incidentSupplements.ts so those reach env.API too.
+  { kind: 'regex', value: /^\/api\/incidents\/\d+\/(offenses|officers|links)(\/\d+)?$/ },
+  { kind: 'regex', value: /^\/api\/incidents\/\d+\/supplements(\/(dv|pursuit|\d+))?$/ },
+
   // ── TTS + PDF signing (rewrite ports of legacy/server-vps endpoints) ──
   // /api/tts now synthesizes real audio via Workers AI (@cf/myshell-ai/melotts,
   // src/routes/tts.ts) and returns audio/mpeg the client decodes directly; on
   // any synth failure it returns 503 so the client falls back to browser
-  // SpeechSynthesis. /pdf-tools/sign-payload still returns 503 from the rewrite
-  // (configurable in a follow-up). Routing both to env.API.
+  // SpeechSynthesis. /pdf-tools/sign-payload now returns a real Ed25519
+  // signature from the rewrite (key derived from PDF_SIGNING_KEY or JWT_SECRET).
+  // Routing both to env.API.
   { kind: 'prefix', value: '/api/tts' },
   { kind: 'prefix', value: '/api/pdf-tools/sign-payload' },
 
@@ -723,6 +908,9 @@ const API_ROUTES: RouteRule[] = [
   { kind: 'prefix', value: '/api/admin/departments' },
   { kind: 'prefix', value: '/api/admin/notification-rules' },
   { kind: 'prefix', value: '/api/admin/announcements' },
+  // Officer-facing announcements reader (src/routes/announcements.ts).
+  // Legacy has no /api/announcements surface, so route to env.API.
+  { kind: 'prefix', value: '/api/announcements' },
   // Console Settings — real handler lives in src/routes/adminSettings.ts
   // (mounted at /api/admin/settings in routesConfig.ts) backed by the
   // system_settings table on live D1 (428 rows, rich schema). Legacy never
@@ -751,6 +939,17 @@ const API_ROUTES: RouteRule[] = [
   { kind: 'prefix', value: '/api/admin/notification-rules' },
   // Auth security history
   { kind: 'prefix', value: '/api/auth/security/login-history' },
+  // Auth: profile photo + active sessions + MFA status — handlers in
+  // src/routes/auth.ts. Legacy serves login/refresh/me/signature, but these four
+  // newer paths have no legacy handler (404, live sweep 2026-06-02). They read
+  // only live-schema columns (users.profile_image/.totp_enabled/.totp_backup_codes,
+  // sessions.is_active/expires_at), so they run correctly on the rewrite — unlike
+  // login/refresh, whose handlers reference columns absent from live sessions.
+  // The /sessions prefix also carries DELETE /sessions/:id (the "Revoke" button).
+  { kind: 'prefix', value: '/api/auth/profile-image' },
+  { kind: 'prefix', value: '/api/auth/sessions' },
+  { kind: 'prefix', value: '/api/auth/totp/status' },
+  { kind: 'prefix', value: '/api/auth/2fa/status' },
   // Offline-cache sync engine (browser IndexedDB) — entire namespace
   // lives on the new Worker: /sync/pull, /sync/push, /secrets,
   // /my-secret, /secrets/generate. Legacy never implemented any of
@@ -778,15 +977,49 @@ const API_ROUTES: RouteRule[] = [
   // handlers. /coverage-gaps is read-only by nature but listed under
   // the same GET filter for consistency.
   { kind: 'prefix', value: '/api/personnel/schedules', methods: ['GET'] },
+  // GET /api/personnel/time[/...] (roster/payroll read) → rewrite.
   { kind: 'prefix', value: '/api/personnel/time', methods: ['GET'] },
+  // POST /api/personnel/time (create) + PUT /api/personnel/time/:id (edit) →
+  // rewrite (src/routes/personnel.ts over time_entries + time_entry_edits).
+  // Dispatch creates/corrects officer time on radio request. These are anchored
+  // EXACTLY so the sibling clock-in/clock-out POSTs (handled only by legacy via
+  // the mobile ShiftCard) keep falling through to env.LEGACY — a broad prefix
+  // would have hijacked them to the rewrite, which has no clock-in/out handler.
+  { kind: 'regex', value: /^\/api\/personnel\/time\/?$/, methods: ['POST'] },
+  { kind: 'regex', value: /^\/api\/personnel\/time\/\d+$/, methods: ['PUT', 'DELETE'] },
   { kind: 'prefix', value: '/api/personnel/deployments', methods: ['GET'] },
   { kind: 'prefix', value: '/api/personnel/coverage-gaps', methods: ['GET'] },
   { kind: 'prefix', value: '/api/personnel/body-cameras' },
   { kind: 'prefix', value: '/api/personnel/bodycam-videos' },
-  // training* and duty-hours: handlers now live in src/routes/personnel.ts;
-  // legacy 404s / 500s on these. Route to env.API so the new handlers win.
-  { kind: 'prefix', value: '/api/personnel/training' },
+  // training reads + duty-hours: GET handlers live in src/routes/personnel.ts.
+  // The rewrite implements ONLY GET /training, /training-requirements,
+  // /training-completion — NOT the writes (POST/PUT/DELETE /training,
+  // /training-bulk-assign) nor /training/{academy,compliance,lesson-plans}. The
+  // old broad `prefix /api/personnel/training` (all methods) routed those to the
+  // rewrite too, where they 404'd — the Training page's create/edit/delete +
+  // academy/compliance/lesson-plans tabs broke. Route ONLY the three real GETs
+  // to env.API; everything else under /training* falls through to the legacy
+  // app's full Training backend (strictly not-worse than a guaranteed rewrite 404).
+  { kind: 'regex', value: /^\/api\/personnel\/training(-requirements|-completion)?(\?.*)?$/, methods: ['GET'] },
   { kind: 'prefix', value: '/api/personnel/duty-hours' },
+  // activity / fitness / commendations — handlers in src/routes/personnel.ts
+  // (audit_log+activity_log union; personnel_fitness; personnel_commendations).
+  // Legacy never implemented these → 404 before this route. GET + POST.
+  { kind: 'prefix', value: '/api/personnel/activity' },
+  { kind: 'prefix', value: '/api/personnel/fitness' },
+  { kind: 'prefix', value: '/api/personnel/commendations' },
+  // Credentials (certs/licenses) — GET/POST /credentials + PUT/DELETE
+  // /credentials/:id, all in src/routes/personnel.ts over officer_credentials
+  // (migration 0076). Previously GET returned a hardcoded [] and the writes had
+  // no route → fell to legacy (missing table) or premise-stub fake-200.
+  { kind: 'regex', value: /^\/api\/personnel\/credentials\/?(\?.*)?$/, methods: ['GET', 'POST'] },
+  { kind: 'regex', value: /^\/api\/personnel\/credentials\/\d+$/, methods: ['PUT', 'DELETE'] },
+  // Officer equipment (issue / return / checkout-log) — handlers in
+  // src/routes/personnel.ts over officer_equipment + equipment_checkout_log.
+  // The bare GET /equipment stub above is removed so these reach the rewrite.
+  { kind: 'prefix', value: '/api/personnel/equipment-log' },
+  { kind: 'regex', value: /^\/api\/personnel\/equipment(\/.*)?$/ },
+  { kind: 'regex', value: /^\/api\/personnel\/\d+\/equipment$/, methods: ['POST'] },
   // Howen — handlers in src/routes/howen.ts (status, devices[/:id], events).
   { kind: 'prefix', value: '/api/howen/' },
   // Admin shift-swaps alias — handler in src/routes/shiftPlans.ts.
@@ -806,11 +1039,14 @@ const API_ROUTES: RouteRule[] = [
   // PUT/DELETE only so GET keeps flowing to legacy until the rewrite
   // has a read handler.
   { kind: 'regex', value: /^\/api\/personnel\/\d+$/, methods: ['PUT', 'DELETE'] },
-  // POST /api/personnel — rewrite implements create handler
-  // (manager-only, case-insensitive username dedup, must_change_password
-  // defaults on). Bare /api/personnel kept routing to legacy for GET
-  // (list endpoint with org-context filters legacy still owns).
-  { kind: 'regex', value: /^\/api\/personnel\/?$/, methods: ['POST'] },
+  // GET + POST /api/personnel — both on the rewrite now. POST is the create
+  // handler (manager-only, case-insensitive username dedup, must_change_password
+  // defaults). GET is the officer list: the rewrite handler returns the FULL
+  // record set (contact/HR/DL + unit_call_sign) the detail panel reads, and
+  // honors ?status= so the PersonnelPage Archives view (status=inactive) and
+  // active view (status=active) populate server-side instead of the dead
+  // ?archived= param legacy ignored.
+  { kind: 'regex', value: /^\/api\/personnel\/?$/, methods: ['GET', 'POST'] },
   // Dedicated audited surfaces for role/password/status changes — rewrite-only.
   // Each is locked to a tighter role tier than the general PUT (admin-only
   // for role and password; manager-tier for status). See src/routes/personnel.ts.
@@ -910,6 +1146,19 @@ const API_ROUTES: RouteRule[] = [
   { kind: 'prefix', value: '/api/reports/templates' },
   { kind: 'prefix', value: '/api/reports/statute-analytics' },
   { kind: 'prefix', value: '/api/reports/crime-analysis' },
+  // /api/reports/shift-activity/:officerId → env.API (rewrite reports.ts).
+  // Officer end-of-shift report (MDT). Use [^/]+ for the id segment — the
+  // client sends localStorage rmpg_user_id, which may be non-numeric.
+  { kind: 'regex', value: /^\/api\/reports\/shift-activity\/[^/]+(\?.*)?$/, methods: ['GET'] },
+  // Officer shift lifecycle → env.API (rewrite dispatch/duty.ts). The
+  // integrated "Start/End Shift" clocks the officer in/out, flips units.status
+  // in-service↔off-duty, and assigns/releases the fleet vehicle in one atomic
+  // action — it lives on the rewrite because that's where fleet management is.
+  { kind: 'prefix', value: '/api/dispatch/duty' },
+  // /api/dispatch/shift-handoff — shift handoff notes. Rewrite-only handler
+  // (shiftHandoff.ts) backed by a real table (migration 0077). Previously a
+  // stub that acknowledged writes but never persisted.
+  { kind: 'prefix', value: '/api/dispatch/shift-handoff' },
   // MDT page calls this on first render
   { kind: 'prefix', value: '/api/dispatch/units/mine/audio-mode' },
   // /api/dispatch/units/:id/{audio-mode,mileage} — rewrite implements both
@@ -918,6 +1167,26 @@ const API_ROUTES: RouteRule[] = [
   // to the rewrite. (unit status stays on legacy — its transition-guard
   // handler is solid and already working.)
   { kind: 'regex', value: /^\/api\/dispatch\/units\/\d+\/(audio-mode|mileage)$/ },
+  // Unit management → env.API (the rewrite's hardened units.ts):
+  //   POST   /units               create (honors status + setup fields:
+  //                               vehicle_id/capabilities/assigned_beat/audio_mode,
+  //                               which legacy dropped),
+  //   PUT    /units/:id           update (column-allowlisted),
+  //   DELETE /units/:id           delete (admin/manager; 409 if still on a call),
+  //   POST   /units/:id/dispose   admin disposal — force-clears a stuck call
+  //                               assignment then deletes (mode:'delete') or
+  //                               retires/out-of-services (mode:'retire').
+  // Legacy (the ~30-40% port) had no working DELETE, so admins could never
+  // remove units. GET /units and PUT /units/:id/status intentionally stay on
+  // legacy (its status transition-guard handler is solid + broadcasts on the
+  // legacy /api/ws socket the client listens on).
+  // GET is included so the board reads the rewrite's full `SELECT u.*` (all
+  // unit columns incl capabilities/assigned_beat/audio_mode) — the edit modal
+  // pre-fills from it, so a partial legacy row would otherwise blank those
+  // fields on save. Same live D1, so status-on-legacy stays consistent.
+  { kind: 'regex', value: /^\/api\/dispatch\/units$/, methods: ['GET', 'POST'] },
+  { kind: 'regex', value: /^\/api\/dispatch\/units\/\d+\/dispose$/, methods: ['POST'] },
+  { kind: 'regex', value: /^\/api\/dispatch\/units\/\d+$/, methods: ['PUT', 'DELETE'] },
 
   // ── Audit subsystem ──
   // Live D1 `audit_log` had only id+created_at columns (an unused stump)
@@ -949,6 +1218,16 @@ const API_ROUTES: RouteRule[] = [
   // env.LEGACY and 404s, so cross-device sync + org defaults silently no-op.
   { kind: 'prefix', value: '/api/settings' },
 
+  // ── Utah law book (statutes + admin rules) ──
+  // Cutover of /api/statutes/* from legacy to the new Worker (src/routes/
+  // statutes.ts over utah_statutes, rebuilt by migration 0073 + seeded from
+  // le.utah.gov). search/toc/chapter/section all live on env.API now; the
+  // richer rows (full text, offense level, source links, licensing law) the
+  // legacy /statutes/search never returned. The more-specific
+  // /api/statutes/analytics/top-charged STUB above is checked first, so it
+  // stays stubbed.
+  { kind: 'prefix', value: '/api/statutes' },
+
   // ── Serve Intake (upload + OCR + LLM extraction) ──
   // The new Worker owns /scan-document, /upload, /intake, /:id/documents,
   // and /documents/:docId/file (R2-backed). The legacy `rmpg-flex`
@@ -958,12 +1237,31 @@ const API_ROUTES: RouteRule[] = [
   // pipeline is what runs in prod. Legacy serve-intake is dead code
   // after this entry lands.
   { kind: 'prefix', value: '/api/serve-intake' },
+  // /api/process-server/{deadlines,success-rates} — the ServePage Deadlines
+  // panel + Success Rates view. Both 404'd on legacy because serve.ts declares
+  // them AFTER `/:id`, so Express matched `/deadlines` against `/:id` and never
+  // reached them. Ported to src/routes/processServer.ts (qualified columns,
+  // async D1) and routed here on their exact paths so they resolve. The rest of
+  // /api/process-server (list, attempts, affidavit, …) stays on legacy.
+  { kind: 'regex', value: /^\/api\/process-server\/deadlines$/, methods: ['GET'] },
+  { kind: 'regex', value: /^\/api\/process-server\/success-rates(\?|$)/, methods: ['GET'] },
   // /api/ocr/scan-document is the alias URL the ServeIntakePage client
   // already calls for its in-page image preview path. The handler is
   // src/routes/ocr.ts (delegates to the same extraction utility as
   // /api/serve-intake/scan-document). Bare /api/ocr is the full prefix
   // so future OCR sub-paths come along automatically.
   { kind: 'prefix', value: '/api/ocr' },
+  // ── Document Intake (classify + anchor-extract LE documents) ──
+  // /api/document-intake/extract: the rewrite (src/routes/documentIntake.ts +
+  // documentIntakeExtract.ts) classifies a document and pulls structured
+  // fields deterministically from client-extracted pdfjs text — NO container,
+  // NO AI. Previously this whole namespace fell to legacy (which 404s: every
+  // /api/document-intake/* call returned "API endpoint not found"), so the
+  // DocumentIntakePage was dead in prod. The router was already registered in
+  // routesConfig.ts; it just had no proxy route. Route the prefix to env.API.
+  // (The container-backed /extract-text + /health on this prefix are unused by
+  // any client — only /extract is called.)
+  { kind: 'prefix', value: '/api/document-intake' },
 
   // ── Geo address service (statewide UGRC address points) ──
   // src/routes/geo.ts, backed by the dedicated rmpg-geo D1 (GEO_DB binding).
@@ -987,6 +1285,45 @@ const API_ROUTES: RouteRule[] = [
   // were silently returning empty data anyway. A 404 is a more
   // honest signal until those tabs get real ports.
   { kind: 'prefix', value: '/api/hr' },
+
+  // ── 2026-06-02 live-sweep routing fixes ──────────────────────────────
+  // Each rewrite handler below ALREADY EXISTS (verified in src/routes/*) and
+  // its table exists on live D1, but the proxy never routed the namespace to
+  // env.API — so the request fell through to the legacy worker, which lacks
+  // the handler and 404/500'd. Found by a logged-in page-by-page Network
+  // sweep. Routing closes the strangler-fig seam.
+  //
+  // Shift planning — shiftPlans.ts (mounted at bare /api) serves ALL of these;
+  // legacy 404'd every one. The client calls the bare /api/shift-* paths.
+  { kind: 'prefix', value: '/api/shift-plans' },
+  { kind: 'prefix', value: '/api/shift-swaps' },
+  { kind: 'prefix', value: '/api/shift-overtime' },
+  { kind: 'prefix', value: '/api/staffing-levels' },
+  { kind: 'prefix', value: '/api/shift-notifications' },
+  // Personal notification inbox — notificationsInbox.ts over the notifications
+  // table (list/stats/categories/preferences/unread-count + read/delete/etc).
+  // Legacy served only /unread-count; the inbox paths 404'd.
+  { kind: 'prefix', value: '/api/notifications' },
+  // Use-of-force reports (useOfForce.ts) — new rewrite handler; legacy 500'd.
+  { kind: 'prefix', value: '/api/use-of-force' },
+  // ONLY /api/invoices/stats → env.API (the path that 500'd on legacy). The
+  // rest of /api/invoices/* (list, :id, create, status, payments, line-items)
+  // is full CRUD the LEGACY worker owns and works — must stay on legacy or the
+  // whole InvoicesPage breaks. Scoped regex, not a prefix.
+  { kind: 'regex', value: /^\/api\/invoices\/stats(\?.*)?$/, methods: ['GET'] },
+  // Document folders — documentFolders.ts serves /folders; legacy 404'd.
+  // Scoped to /folders only so the rest of /api/documents stays on legacy
+  // (the rewrite has no document file-list handler).
+  { kind: 'prefix', value: '/api/documents/folders' },
+  // Command center KPIs — reports.ts now has /command-center; legacy 404'd.
+  { kind: 'prefix', value: '/api/reports/command-center' },
+  // Security dashboard — auth.ts /security/* over login_attempts + sessions.
+  // login-history keeps its STUB (checked first); the rest reach env.API.
+  { kind: 'prefix', value: '/api/auth/security' },
+  // Evidence stats + locations — records.ts implements both; legacy lacks them
+  // (the base /evidence list + writes deliberately stay on legacy, since the
+  // rewrite's evidence POST/PUT reference columns absent from the live table).
+  { kind: 'regex', value: /^\/api\/records\/evidence\/(stats|locations)(\?.*)?$/, methods: ['GET'] },
 ];
 
 function matches(rule: RouteRule, pathname: string, method: string): boolean {
@@ -1004,6 +1341,50 @@ function stubMatches(stub: StubRule, pathname: string, method: string): boolean 
   if (stub.methods && !stub.methods.includes(method)) return false;
   return stub.match.test(pathname);
 }
+
+// ============================================================
+// Durable Object stub classes — DO NOT DELETE without a delete-class migration
+// ============================================================
+// These empty classes exist ONLY to keep the `rmpg-api-proxy` Worker
+// deployable. They are NOT used by this router (no `durable_objects.bindings`
+// in proxy/wrangler.toml, and nothing here ever instantiates them).
+//
+// Why they're here — the 2026-06-02 name-collision incident:
+//   PR #937 (a cloudflare-workers-and-pages[bot] dashboard commit) renamed the
+//   ROOT wrangler.toml `name` rmpg-flex-api → rmpg-api-proxy. deploy.yml's
+//   "Deploy Worker" step then published the REWRITE (src/index.ts, which DOES
+//   declare WelfareWatchDO/VoiceHubDO/AlertHubDO/PdfToolsContainer via its DO
+//   migrations) ONTO the `rmpg-api-proxy` worker. That registered four DO
+//   namespaces on this worker. PR #945 reverted the name, but the namespaces
+//   remain. Cloudflare now rejects any new `rmpg-api-proxy` version that does
+//   not EXPORT those four classes with error 10064 ("does not export class
+//   'WelfareWatchDO' which is depended on by existing Durable Objects").
+//
+// Re-exporting the classes (even as empty stubs) satisfies 10064 WITHOUT a
+// migration — per Cloudflare docs, "updating the code for an existing DO class
+// does not require a migration." This is the deliberately NON-DESTRUCTIVE fix:
+// it preserves whatever DO instances may have been created on this worker
+// during the #937 window (e.g. an in-flight officer welfare-check escalation),
+// rather than wiping them with a `deleted_classes` migration. The canonical,
+// live instances of these DOs live on `rmpg-flex-api` (where welfare/voice/
+// alert traffic is actually routed) and are untouched by any of this.
+//
+// Cleanup path (later, once the rmpg-api-proxy namespaces are confirmed empty
+// in the dashboard): add a `deleted_classes` migration to proxy/wrangler.toml
+// for all four classes, deploy, then delete this block. See LEGACY.md +
+// memory project-auth-outage-name-collision.
+class InertDurableObject {
+  constructor(_state: unknown, _env: unknown) {}
+  async fetch(): Promise<Response> {
+    // Should never be reached — the proxy has no DO bindings and never
+    // routes to these. If it ever is, fail loud rather than silent.
+    return new Response('rmpg-api-proxy is a router and does not implement Durable Objects', { status: 410 });
+  }
+}
+export class WelfareWatchDO extends InertDurableObject {}
+export class VoiceHubDO extends InertDurableObject {}
+export class AlertHubDO extends InertDurableObject {}
+export class PdfToolsContainer extends InertDurableObject {}
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {

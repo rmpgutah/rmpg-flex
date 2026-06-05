@@ -186,7 +186,7 @@ export function SettingCheckbox({ label, checked, onChange }: { label: string; c
   return (
     <label className="flex items-center gap-2 justify-between cursor-pointer">
       <span className="text-[10px] tracking-wider" style={{ color: 'var(--rt-muted)' }}>{label}</span>
-      <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="cursor-pointer" style={{ accentColor: 'var(--rt-accent)' }} />
+      <input id="ff-components-0" type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="cursor-pointer" style={{ accentColor: 'var(--rt-accent)' }} />
     </label>
   );
 }

@@ -5,6 +5,7 @@ import { parseTimestamp } from '../../../utils/dateUtils';
 import { getOverlayMarkerClass } from '../utils/mapMarkerBuilders';
 import { safeDateTimeStr } from '../../../utils/dateUtils';
 import { whenStyleReady } from '../utils/safeAddSource';
+import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../../../utils/mapboxSafeLayer';
 
 interface FleetVehicle {
   id: number;
@@ -85,8 +86,8 @@ export function useMapFleetVehicles(
 
   const clearMarkers = useCallback(() => {
     if (map) {
-      if (map.getLayer(sourceId)) map.removeLayer(sourceId);
-      if (map.getSource(sourceId)) map.removeSource(sourceId);
+      safeRemoveLayer(map, sourceId);
+      safeRemoveSource(map, sourceId);
     }
   }, [map]);
 

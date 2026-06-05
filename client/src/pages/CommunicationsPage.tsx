@@ -37,6 +37,8 @@ import ActivityFeed from '../components/ActivityFeed';
 import FormModal from '../components/FormModal';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { apiFetch, apiUploadFiles } from '../hooks/useApi';
+import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
+import { useMenuActions } from '../utils/contextMenuActions';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { usePersistedTab } from '../hooks/usePersistedState';
 import { formatShortTime, formatDateTime, parseTimestamp } from '../utils/dateUtils';
@@ -239,6 +241,8 @@ export default function CommunicationsPage() {
   const isMobile = useIsMobile();
   const { user } = useAuth();
   const { addToast } = useToast();
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
 
   // --- Panel state ---
   const [activePanel, setActivePanel] = usePersistedTab('rmpg_comms_tab', 'messages' as Panel, ['messages', 'bolos', 'activity'] as const);
@@ -279,6 +283,22 @@ export default function CommunicationsPage() {
   const [boloVehicleDescription, setBoloVehicleDescription] = useState('');
   const [boloPhotoFile, setBoloPhotoFile] = useState<File | null>(null);
   const [boloPhotoPreview, setBoloPhotoPreview] = useState<string | null>(null);
+
+  // Deep-link: /communications?newBolo=1&title=&subject=&description= opens the
+  // BOLO panel with the create form pre-seeded (record right-click "Create BOLO").
+  useEffect(() => {
+    const sp = new URLSearchParams(window.location.search);
+    if (sp.get('newBolo') === '1') {
+      setActivePanel('bolos');
+      setShowNewBOLO(true);
+      setBoloType('person');
+      const title = sp.get('title'); if (title) setBoloTitle(title);
+      const subject = sp.get('subject'); if (subject) setBoloSubjectDescription(subject);
+      const description = sp.get('description'); if (description) setBoloDescription(description);
+      window.history.replaceState(null, '', window.location.pathname);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // BOLO resolve / cancel
   const [resolvingId, setResolvingId] = useState<string | null>(null);
@@ -650,6 +670,30 @@ export default function CommunicationsPage() {
     { id: 'activity', label: 'Activity Feed', icon: Activity },
   ];
 
+  // ── Right-click context menus ──
+  const buildThreadMenu = (thread: MessageThread): ContextMenuItem[] => [
+    m.action('Open conversation', () => handleSelectThread(thread), { icon: <Reply size={12} /> }),
+    m.separator(),
+    m.copy('Copy subject', thread.subject),
+    m.copyId(thread.threadId),
+  ];
+
+  const buildBoloMenu = (bolo: BOLO): ContextMenuItem[] => [
+    ...(bolo.status === 'active'
+      ? [
+          m.action('Mark resolved', () => handleResolveBOLO(bolo.id), { icon: <CheckCircle size={12} /> }),
+          m.action('Archive', () => handleArchiveBOLO(bolo.id), { icon: <Archive size={12} /> }),
+        ]
+      : [m.action('Unarchive', () => handleUnarchiveBOLO(bolo.id), { icon: <RotateCcw size={12} /> })]),
+    m.separator(),
+    m.copy('Copy BOLO #', bolo.bolo_number),
+    m.copy('Copy title', bolo.title),
+    m.copyId(bolo.id),
+    ...(bolo.status === 'active'
+      ? [m.separator(), m.action('Cancel BOLO', () => setCancelTarget(bolo), { icon: <Trash2 size={12} />, danger: true })]
+      : []),
+  ];
+
   // ============================================================
   // Spinner helper
   // ============================================================
@@ -700,7 +744,7 @@ export default function CommunicationsPage() {
           <>
             <div className="flex items-center gap-1 px-2 py-0.5 panel-inset" style={{ background: '#050505' }}>
               <Search className="w-3 h-3 text-rmpg-500" />
-              <input
+              <input id="ff-communicationspage-0"
                 type="text"
                 placeholder="Search conversations..." aria-label="Search conversations"
                 autoComplete="off"
@@ -859,6 +903,7 @@ export default function CommunicationsPage() {
                         <div
                           key={thread.threadId}
                           onClick={() => handleSelectThread(thread)}
+                          onContextMenu={(e) => openMenu(e, buildThreadMenu(thread))}
                           className={`
                             px-3 py-2.5 border-b border-rmpg-600/30 cursor-pointer transition-colors
                             ${isSelected ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : 'border-l-2 border-l-transparent hover:bg-surface-raised'}
@@ -1088,11 +1133,11 @@ export default function CommunicationsPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="text-[10px] text-rmpg-300 uppercase font-semibold mb-1 block tracking-wider">Title:</label>
-                    <input type="text" className="input-dark min-h-[36px]" placeholder="BOLO title" value={boloTitle} onChange={(e) => setBoloTitle(e.target.value)} required />
+                    <input id="ff-communicationspage-1" type="text" className="input-dark min-h-[36px]" placeholder="BOLO title" value={boloTitle} onChange={(e) => setBoloTitle(e.target.value)} required />
                   </div>
                   <div>
                     <label className="text-[10px] text-rmpg-300 uppercase font-semibold mb-1 block">Type:</label>
-                    <select className="select-dark" value={boloType} onChange={(e) => setBoloType(e.target.value as BOLOType)}>
+                    <select id="ff-communicationspage-2" className="select-dark" value={boloType} onChange={(e) => setBoloType(e.target.value as BOLOType)}>
                       <option value="person">Person</option>
                       <option value="vehicle">Vehicle</option>
                       <option value="other">Other</option>
@@ -1100,7 +1145,7 @@ export default function CommunicationsPage() {
                   </div>
                   <div>
                     <label className="text-[10px] text-rmpg-300 uppercase font-semibold mb-1 block">Priority:</label>
-                    <select className="select-dark" value={boloPriority} onChange={(e) => setBoloPriority(e.target.value as CallPriority)}>
+                    <select id="ff-communicationspage-3" className="select-dark" value={boloPriority} onChange={(e) => setBoloPriority(e.target.value as CallPriority)}>
                       <option value="P1">P1 - Emergency</option>
                       <option value="P2">P2 - Urgent</option>
                       <option value="P3">P3 - Routine</option>
@@ -1108,11 +1153,11 @@ export default function CommunicationsPage() {
                   </div>
                   <div>
                     <label className="text-[10px] text-rmpg-300 uppercase font-semibold mb-1 block">Subject Description:</label>
-                    <input type="text" className="input-dark min-h-[36px]" placeholder="Subject description" value={boloSubjectDescription} onChange={(e) => setBoloSubjectDescription(e.target.value)} />
+                    <input id="ff-communicationspage-4" type="text" className="input-dark min-h-[36px]" placeholder="Subject description" value={boloSubjectDescription} onChange={(e) => setBoloSubjectDescription(e.target.value)} />
                   </div>
                   <div>
                     <label className="text-[10px] text-rmpg-300 uppercase font-semibold mb-1 block">Vehicle Description:</label>
-                    <input type="text" className="input-dark min-h-[36px]" placeholder="Vehicle description" value={boloVehicleDescription} onChange={(e) => setBoloVehicleDescription(e.target.value)} />
+                    <input id="ff-communicationspage-5" type="text" className="input-dark min-h-[36px]" placeholder="Vehicle description" value={boloVehicleDescription} onChange={(e) => setBoloVehicleDescription(e.target.value)} />
                   </div>
                   <div className="col-span-2">
                     <label className="text-[10px] text-rmpg-300 uppercase font-semibold mb-1 block">Description:</label>
@@ -1121,7 +1166,7 @@ export default function CommunicationsPage() {
                   <div className="col-span-2">
                     <label className="text-[10px] text-rmpg-300 uppercase font-semibold mb-1 block">Photo (optional):</label>
                     <div className="flex items-center gap-4">
-                      <input type="file" accept="image/*" className="text-xs text-rmpg-300 file:mr-3 file:py-1 file:px-3 file:border file:border-rmpg-600 file:bg-rmpg-700 file:text-rmpg-200 file:text-xs file:cursor-pointer hover:file:bg-rmpg-600" onChange={handleBoloPhotoChange} />
+                      <input id="ff-communicationspage-6" type="file" accept="image/*" className="text-xs text-rmpg-300 file:mr-3 file:py-1 file:px-3 file:border file:border-rmpg-600 file:bg-rmpg-700 file:text-rmpg-200 file:text-xs file:cursor-pointer hover:file:bg-rmpg-600" onChange={handleBoloPhotoChange} />
                       {boloPhotoPreview && (
                         <div className="relative">
                           <img src={boloPhotoPreview} alt="Preview" className="w-16 h-16 object-cover border border-rmpg-600" />
@@ -1211,6 +1256,7 @@ export default function CommunicationsPage() {
               bolos.map((bolo) => (
                 <div
                   key={bolo.id}
+                  onContextMenu={(e) => openMenu(e, buildBoloMenu(bolo))}
                   className={`panel-beveled p-4 bg-surface-base ${bolo.priority === 'P1' ? 'border-red-700/50 animate-emergency-pulse' : bolo.priority === 'P2' ? 'border-amber-700/40' : ''}`}
                   style={{ borderLeftWidth: '3px', borderLeftColor: bolo.priority === 'P1' ? '#ef4444' : bolo.priority === 'P2' ? '#f97316' : bolo.priority === 'P3' ? '#eab308' : '#22c55e' }}
                 >
@@ -1331,7 +1377,7 @@ export default function CommunicationsPage() {
       >
         <div>
           <label className="text-[10px] text-rmpg-300 uppercase font-semibold mb-1 block">To:</label>
-          <select className="select-dark" value={composeTo} onChange={(e) => setComposeTo(e.target.value)} required>
+          <select id="ff-communicationspage-7" className="select-dark" value={composeTo} onChange={(e) => setComposeTo(e.target.value)} required>
             <option value="">Select recipient...</option>
             <option value="broadcast">All Units (Broadcast)</option>
             {officers.map((o) => (
@@ -1341,7 +1387,7 @@ export default function CommunicationsPage() {
         </div>
         <div>
           <label className="text-[10px] text-rmpg-300 uppercase font-semibold mb-1 block">Priority:</label>
-          <select className={`select-dark ${composePriority === 'emergency' ? 'border-red-500 text-red-400' : composePriority === 'urgent' ? 'border-amber-500 text-amber-400' : ''}`} value={composePriority} onChange={(e) => setComposePriority(e.target.value)}>
+          <select id="ff-communicationspage-8" className={`select-dark ${composePriority === 'emergency' ? 'border-red-500 text-red-400' : composePriority === 'urgent' ? 'border-amber-500 text-amber-400' : ''}`} value={composePriority} onChange={(e) => setComposePriority(e.target.value)}>
             <option value="routine">Normal</option>
             <option value="urgent">Urgent</option>
             <option value="emergency">Emergency</option>
@@ -1356,7 +1402,7 @@ export default function CommunicationsPage() {
         </div>
         <div>
           <label className="text-[10px] text-rmpg-300 uppercase font-semibold mb-1 block">Subject:</label>
-          <input type="text" className="input-dark min-h-[36px]" placeholder="Message subject..." value={composeSubject} onChange={(e) => setComposeSubject(e.target.value)} required />
+          <input id="ff-communicationspage-9" type="text" className="input-dark min-h-[36px]" placeholder="Message subject..." value={composeSubject} onChange={(e) => setComposeSubject(e.target.value)} required />
         </div>
         <div>
           <label className="text-[10px] text-rmpg-300 uppercase font-semibold mb-1 block">Message:</label>

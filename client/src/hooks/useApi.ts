@@ -5,6 +5,7 @@ import { hasActiveSession } from '../services/offlinePin';
 import { isLikelyOnline } from '../services/connectivityMonitor';
 import { uploadWithProgress } from '../utils/uploadWithProgress';
 import type { UploadProgress } from '../utils/uploadWithProgress';
+import { refreshAccessToken } from '../utils/tokenRefresh';
 
 // ─── Offline Error Classes ───────────────────────────────────
 // Thrown when an offline write is attempted without PIN authorization.
@@ -313,86 +314,17 @@ export function useApi<T = unknown>(options?: UseApiOptions) {
   };
 }
 
-// ─── Token-refresh lock (shared across concurrent apiFetch calls) ────
-let _refreshPromise: Promise<string | null> | null = null;
-const REFRESH_TIMEOUT_MS = 15_000; // 15s — prevent infinite lock if refresh hangs
-
-async function tryRefreshToken(): Promise<string | null> {
-  // If a refresh is already in-flight, wait for it
-  if (_refreshPromise) return _refreshPromise;
-
-  _refreshPromise = (async () => {
-    try {
-      const refreshToken = localStorage.getItem('rmpg_refresh_token');
-      // The /api/auth/refresh handler (legacy worker) requires BOTH refreshToken
-      // AND sessionId — it looks up `sessions WHERE session_id = ? AND
-      // refresh_token_hash = ?`. Omitting sessionId made the lookup match
-      // nothing → 401 on every refresh → users were silently logged out at each
-      // 15-minute access-token expiry. AuthContext's refresh already sends it;
-      // this path (apiFetch — the main data path) did not. Login stores it as
-      // 'rmpg_session_id'.
-      const sessionId = localStorage.getItem('rmpg_session_id');
-      if (!refreshToken) {
-        // No refresh token = effectively logged out. Don't silently spin —
-        // clear residual access token and bounce to login so the user can
-        // re-authenticate (only when actually online).
-        localStorage.removeItem('rmpg_token');
-        localStorage.removeItem('rmpg_session_id');
-        if (isLikelyOnline() && !window.location.pathname.startsWith('/login')) {
-          window.location.href = '/login';
-        }
-        return null;
-      }
-
-      // AbortController timeout prevents infinite lock on hung requests
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), REFRESH_TIMEOUT_MS);
-
-      const res = await fetch('/api/auth/refresh', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-        // Send both spellings: legacy worker reads `refreshToken` (+ sessionId),
-        // the /src/ worker reads `refresh_token`. Including both makes the
-        // refresh succeed regardless of which worker serves the route, so a
-        // transient 401 self-heals instead of bouncing the user to /login.
-        body: JSON.stringify({ refreshToken, refresh_token: refreshToken, sessionId }),
-        signal: controller.signal,
-      }).finally(() => clearTimeout(timeout));
-
-      if (res.ok) {
-        const data = await res.json();
-        try { localStorage.setItem('rmpg_token', data.token); } catch { /* quota exceeded */ }
-        try { localStorage.setItem('rmpg_refresh_token', data.refreshToken); } catch { /* quota exceeded */ }
-        return data.token as string;
-      }
-
-      // Refresh failed — clear tokens and redirect to login
-      // (but NOT if we're offline — stay on current page).
-      // Uses the connectivity monitor's authoritative state (falls back to
-      // navigator.onLine pre-bootstrap) so we don't wrongly redirect during
-      // a false-offline window, and don't wrongly suppress the redirect
-      // when navigator.onLine lies `false` while the server is reachable.
-      if (!isLikelyOnline()) return null;
-      if (electron?.getOfflineState) {
-        try {
-          const state = await electron.getOfflineState();
-          if (!state.isOnline) return null;
-        } catch { /* fall through */ }
-      }
-      localStorage.removeItem('rmpg_token');
-      localStorage.removeItem('rmpg_refresh_token');
-      localStorage.removeItem('rmpg_session_id');
-      window.location.href = '/login';
-      return null;
-    } catch (err) {
-      console.warn('[useApi] Token refresh network error:', err);
-      return null;
-    } finally {
-      _refreshPromise = null;
-    }
-  })();
-
-  return _refreshPromise;
+// ─── Token refresh ──────────────────────────────────────────
+// Delegates to the shared, cross-tab-coordinated refresher. apiFetch's
+// transparent 401-retry and AuthContext's scheduled refresh now share ONE
+// in-flight /refresh across every tab (Web Locks API) — essential because the
+// live worker rotates the refresh token on each call, so two uncoordinated
+// refreshers would race one of them into a 401 logout. On a genuine auth
+// failure the shared module clears tokens and emits a cross-tab `logout`
+// event, which AuthContext turns into a route to /login (no hard redirect
+// here — React Router owns navigation). See utils/tokenRefresh.ts.
+function tryRefreshToken(): Promise<string | null> {
+  return refreshAccessToken();
 }
 
 // Standalone fetch helper for one-off requests.

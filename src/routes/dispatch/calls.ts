@@ -5,11 +5,34 @@ import { v4 as uuidv4 } from 'uuid';
 import { getDb, query, queryFirst, execute } from '../../utils/db';
 import { authMiddleware, requireRole } from '../../middleware/auth';
 import { applyRunCard } from '../runCards';
-import { sendToUser, broadcastAll } from '../ws';
+import { sendToUser } from '../ws';
+import { emitAlert } from '../../utils/alertHub';
 import { geocodeAddress } from '../geocode';
 import { resolveDistrict } from '../../utils/districtResolver';
+import { evaluateNotificationRules } from '../notificationEngine';
+import { resolvePanicForCall } from './panic';
+import { applyTripEvent } from '../../utils/tripStore';
 
 const calls = new Hono<Env>();
+
+// assigned_unit_ids is a JSON array on calls_for_service that has historically
+// held MIXED types — strings AND numbers (live data shows ["1"] and even
+// ["1",1]) — because legacy/older writes stored string ids while the rewrite
+// coerces to Number. Comparing a numeric unit_id against a string element
+// (1 !== "1") silently breaks includes()/filter()/Set dedup: a unit gets
+// double-added (duplicate pin, can't be unassigned) and the detail GET returns
+// the same unit twice. ALWAYS normalize a stored array to a DEDUPED list of
+// positive finite numbers before any membership/dedup op. Tolerant of a
+// malformed value (returns [] instead of throwing → no 500 on the detail GET).
+function parseUnitIds(raw: unknown): number[] {
+  try {
+    const arr = JSON.parse(String(raw ?? '[]'));
+    if (!Array.isArray(arr)) return [];
+    return [...new Set(arr.map((v) => Number(v)).filter((n) => Number.isFinite(n) && n > 0))];
+  } catch {
+    return [];
+  }
+}
 
 // D1 caps a result set at 100 columns. calls_for_service has been pushed to
 // ~100 cols (see memory project-live-d1-schema-patches), so `SELECT c.* +
@@ -35,7 +58,8 @@ export const LIST_VIEW_COLUMNS = [
   'location_address', 'latitude', 'longitude',
   'cross_street', 'location_building', 'location_floor', 'location_room',
   // Caller / contact
-  'caller_name', 'caller_phone', 'contact_method',
+  'caller_name', 'caller_phone', 'caller_relationship', 'caller_address',
+  'contact_method',
   // Foreign refs (names come from JOINs below)
   'dispatcher_id', 'property_id', 'client_id',
   'case_id', 'case_number', 'contract_id',
@@ -46,14 +70,21 @@ export const LIST_VIEW_COLUMNS = [
   // Geography
   'sector_id', 'sector_name', 'zone_id', 'zone_name', 'zone_beat',
   'beat_id', 'beat_name', 'beat_descriptor',
-  // Safety flags (most-read by dispatcher; the rest live on the detail GET).
-  // Intentionally excluded: `pinned` and `officer_safety_caution` — both are
-  // in UPDATABLE_CALL_COLUMNS_BASE but not in any /migrations/ file (live D1
-  // patched directly per memory project-live-d1-schema-patches). Including
-  // them risks `no such column` 500s on prod if the patch was never applied.
-  // Re-add once a migration backfills them.
+  // Scene
+  'scene_safety', 'weather_conditions', 'lighting_conditions',
+  'num_subjects', 'num_victims', 'subject_description', 'vehicle_description',
+  'direction_of_travel', 'responding_officer', 'responding_vehicle_id',
+  // Response
+  'damage_estimate', 'damage_description',
+  // Safety flags — expanded to include all base-table tactical flags so the
+  // dispatch panel shows flag state accurately without requiring a detail GET.
   'weapons_involved', 'injuries_reported', 'domestic_violence',
-  // Mileage + overdue
+  'alcohol_involved', 'drugs_involved',
+  'mental_health_crisis', 'juvenile_involved', 'felony_in_progress',
+  'officer_safety_caution', 'k9_requested', 'ems_requested',
+  // LE coordination
+  'le_agency', 'le_case_number', 'le_notified', 'supervisor_notified',
+  // Mileage + overdue + pinned
   'starting_mileage', 'ending_mileage', 'overdue_notified',
 ] as const;
 
@@ -86,9 +117,19 @@ calls.get('/', async (c) => {
     if (archived === 'true') where += " AND c.status = 'archived'";
     else if (archived !== 'all') where += " AND c.status != 'archived'";
 
-    if (active === 'true' || (!status && !archived)) {
-      where = "WHERE c.status IN ('dispatched','enroute','onscene','pending','open')";
+    // Default to active calls when the caller passed NO explicit filter. APPEND
+    // the clause (don't REPLACE `where`) — replacing it discarded the
+    // priority/search/date clauses while leaving their values in `params`, so a
+    // request like ?priority=P1&search=main hit a bind-count mismatch (D1 error)
+    // or silently dropped the filters. Appending a zero-placeholder clause keeps
+    // params aligned. Only force it when no narrowing filter was supplied.
+    const noExplicitFilter = !status && !archived && !priority && !search && !startDate && !endDate;
+    if (active === 'true' || noExplicitFilter) {
+      where += " AND c.status IN ('dispatched','enroute','onscene','pending','open')";
     }
+
+    // Soft-delete filter — migration 0072 confirmed applied to live D1.
+    where += ' AND NOT EXISTS (SELECT 1 FROM calls_for_service_ext xd WHERE xd.id = c.id AND xd.deleted_at IS NOT NULL)';
 
     const pageNum = Math.max(1, parseInt(page || '1', 10));
     const limitNum = Math.min(1000, Math.max(1, parseInt(limit || '200', 10)));
@@ -109,8 +150,9 @@ calls.get('/', async (c) => {
     const rows = await query<Record<string, unknown>>(db, `
       SELECT ${LIST_VIEW_SELECT},
         p.name as property_name, u.full_name as dispatcher_name,
-        cl.name as client_name, cfe.held_at,
-        COALESCE(cfe.pinned, 0) as pinned
+        cl.name as client_name,
+        cfe.held_at,
+        cfe.parent_call_id
       FROM calls_for_service c
       LEFT JOIN properties p ON c.property_id = p.id
       LEFT JOIN users u ON c.dispatcher_id = u.id
@@ -176,15 +218,23 @@ calls.post('/', async (c) => {
     // collide with the old sequence.
     const year = new Date().getFullYear().toString().slice(-2);
     const prefix = `CFS${year}-`;
-    const [{ max }] = await query<{ max: string | null }>(
-      db,
-      "SELECT MAX(call_number) as max FROM calls_for_service WHERE call_number LIKE ?",
-      `${prefix}%`,
-    );
-    const seq = max
-      ? String(parseInt(max.slice(prefix.length), 10) + 1).padStart(5, '0')
-      : '00001';
-    const callNumber = `${prefix}${seq}`;
+    // Mint the next call number from MAX(call_number)+1 for this year's prefix.
+    // Extracted so the INSERT below can re-mint and retry on a UNIQUE collision
+    // (two dispatchers creating a call in the same instant both read the same
+    // MAX → both build the same CFSYY-NNNNN → the second INSERT hits the
+    // `call_number TEXT UNIQUE` constraint). See the retry loop below.
+    const mintCallNumber = async (): Promise<string> => {
+      const [{ max }] = await query<{ max: string | null }>(
+        db,
+        "SELECT MAX(call_number) as max FROM calls_for_service WHERE call_number LIKE ?",
+        `${prefix}%`,
+      );
+      const seq = max
+        ? String(parseInt(max.slice(prefix.length), 10) + 1).padStart(5, '0')
+        : '00001';
+      return `${prefix}${seq}`;
+    };
+    let callNumber = await mintCallNumber();
 
     // FK guard — restored-pending-draft can carry a stale property_id
     // from localStorage that no longer exists in this database. If
@@ -251,6 +301,8 @@ calls.post('/', async (c) => {
               body[key] = value as any;
             }
           };
+          fill('area_code', district.area_code);
+          fill('area_name', district.area_name);
           fill('sector_id', district.sector_id);
           fill('sector_name', district.sector_name);
           fill('zone_id', district.zone_id);
@@ -319,7 +371,25 @@ calls.post('/', async (c) => {
     // succeeds (below) so the call row commits even if the ext write fails.
 
     try {
-      const result = await execute(db, `INSERT INTO calls_for_service (${cols.join(',')}) VALUES (${vals.join(',')})`, ...bindParams);
+      // Retry-on-collision: callNumber is bindParams[0] (pushed first). If the
+      // INSERT trips the `call_number TEXT UNIQUE` constraint — a concurrent
+      // create grabbed the same MAX()+1 — re-mint and retry up to 3x so the
+      // call isn't silently lost. Any non-UNIQUE error rethrows immediately.
+      const insertSql = `INSERT INTO calls_for_service (${cols.join(',')}) VALUES (${vals.join(',')})`;
+      let result: Awaited<ReturnType<typeof execute>> | null = null;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          result = await execute(db, insertSql, ...bindParams);
+          break;
+        } catch (insErr: any) {
+          const m = String(insErr?.message || insErr || '');
+          const isUnique = /UNIQUE|constraint failed: calls_for_service\.call_number/i.test(m);
+          if (!isUnique || attempt === 2) throw insErr;
+          callNumber = await mintCallNumber();
+          bindParams[0] = callNumber;
+        }
+      }
+      if (!result) throw new Error('Call INSERT produced no result');
       const callId = Number(result.meta.last_row_id);
 
       // Write the PSO/process-service/tactical-flag overflow columns AND the
@@ -349,6 +419,24 @@ calls.post('/', async (c) => {
       const callExt = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service_ext WHERE id = ?', callId);
       const call = { ...(callBase || {}), ...(callExt || {}) };
 
+      // Enrich with the same joined display names the LIST query provides
+      // (property/dispatcher/client). Without this, a freshly-created call is
+      // rendered optimistically — and broadcast over WS — with BLANK
+      // property/dispatcher/client cells until the next 20s poll re-runs the
+      // joined LIST query. Best-effort: a join miss must not block creation.
+      try {
+        const joined = await queryFirst<Record<string, unknown>>(db, `
+          SELECT p.name AS property_name, u.full_name AS dispatcher_name, cl.name AS client_name
+          FROM calls_for_service c
+          LEFT JOIN properties p ON c.property_id = p.id
+          LEFT JOIN users u ON c.dispatcher_id = u.id
+          LEFT JOIN clients cl ON COALESCE(c.client_id, p.client_id) = cl.id
+          WHERE c.id = ?`, callId);
+        if (joined) Object.assign(call, joined);
+      } catch (joinErr) {
+        console.warn('call join enrich failed (non-fatal):', joinErr);
+      }
+
       // Audit trail entry — dispatch's Audit tab reads audit_log by
       // entity_type='call' + entity_id. Failure shouldn't block the create.
       try {
@@ -364,7 +452,22 @@ calls.post('/', async (c) => {
 
       // Broadcast to every connected dispatcher so rosters re-render
       // without a manual refresh. Matches the legacy POST behavior.
-      broadcastAll('dispatch_update', { action: 'call_created', call });
+      await emitAlert(c.env, 'dispatch_update', { action: 'call_created', call });
+
+      // Alert Rules engine — fire P1/P2 call-created triggers so admin-
+      // configured notification rules fan out to their target roles/users.
+      // Best-effort; evaluateNotificationRules never throws into this path.
+      const prio = String(priority).toUpperCase();
+      if (prio === 'P1' || prio === 'P2') {
+        await evaluateNotificationRules(db, prio === 'P1' ? 'call_created_p1' : 'call_created_p2', {
+          title: `${prio} Call: ${normalizedIncidentType}`,
+          message: `${callNumber} — ${String(location_address)}`,
+          priority: prio === 'P1' ? 'critical' : 'high',
+          entity_type: 'call',
+          entity_id: callId as number,
+          incident_type: normalizedIncidentType,
+        }, c.env);
+      }
 
       return c.json({ ...call, runCard: rcResult.card }, 201);
     } catch (sqlErr: any) {
@@ -570,7 +673,7 @@ calls.get('/:id', async (c) => {
       LEFT JOIN clients cl ON cl.id = COALESCE(ck.client_id, p.client_id)
     `, call.property_id ?? null, call.dispatcher_id ?? null, call.client_id ?? null), null);
 
-    const assignedIds = JSON.parse(String(call.assigned_unit_ids || '[]')) as number[];
+    const assignedIds = parseUnitIds(call.assigned_unit_ids);
     const assignedUnits = assignedIds.length === 0 ? [] : await soft(() => query<Record<string, unknown>>(db, `
       SELECT u.*, usr.full_name as officer_name, usr.badge_number
       FROM units u LEFT JOIN users usr ON u.officer_id = usr.id
@@ -666,6 +769,10 @@ const UPDATABLE_CALL_COLUMNS_EXT = new Set<string>([
   // because calls_for_service is at the D1 100-column cap — the legacy worker
   // writes calls_for_service.parent_call_id (no longer exists) and 500s.
   'parent_call_id',
+  // Area — top of the Area>Section>Zone>Beat hierarchy. Section/Zone/Beat live
+  // on the base table; Area overflowed to ext (base at the 100-col cap). Filled
+  // by the geofence/resolveDistrict backfill so every call captures full A/S/Z/B.
+  'area_code', 'area_name',
 ]);
 
 // PUT /dispatch/calls/:id - Update call
@@ -775,22 +882,58 @@ calls.get('/:id/audit-trail', async (c) => {
 });
 
 // DELETE /dispatch/calls/:id
+// SOFT delete: the destructive physical DELETE (which cascaded into
+// call_persons/call_vehicles/_ext) destroyed 14 live calls because it had no
+// role guard and no audit. We now (1) gate the action to admin/manager/
+// supervisor, (2) tombstone the call on calls_for_service_ext.deleted_at
+// instead of removing any row, and (3) write an audit_log entry. The base row,
+// linked persons/vehicles, and ext detail are all preserved for admin recovery
+// (the single-call GET /:id still returns soft-deleted calls). The call simply
+// leaves the dispatch board (the list handler filters deleted_at IS NOT NULL).
+const CALL_DELETE_ROLES = ['admin', 'manager', 'supervisor'];
 calls.delete('/:id', async (c) => {
   try {
     const db = getDb(c.env);
     const id = c.req.param('id');
-    // Clear/unlink the non-cascading FK references before deleting, or the
-    // raw DELETE hits a FOREIGN KEY constraint and 500s. Tables that point at
-    // calls_for_service WITHOUT ON DELETE CASCADE: units.current_call_id,
-    // incidents.call_id, radio_transmissions.call_id (records — UNLINK, don't
-    // delete) and the call_persons/call_vehicles link rows (safe to DELETE).
-    // calls_for_service_ext / call_businesses / case_calls cascade on their own.
-    await execute(db, 'UPDATE units SET current_call_id = NULL WHERE current_call_id = ?', id);
-    await execute(db, 'UPDATE incidents SET call_id = NULL WHERE call_id = ?', id);
-    await execute(db, 'UPDATE radio_transmissions SET call_id = NULL WHERE call_id = ?', id);
-    await execute(db, 'DELETE FROM call_persons WHERE call_id = ?', id);
-    await execute(db, 'DELETE FROM call_vehicles WHERE call_id = ?', id);
-    await execute(db, 'DELETE FROM calls_for_service WHERE id = ?', id);
+
+    // Role guard — only senior roles may remove a call from the board.
+    const user = c.get('user') as { id: number; role: string } | undefined;
+    if (!user || !CALL_DELETE_ROLES.includes(user.role)) {
+      return c.json({ error: 'Forbidden' }, 403);
+    }
+
+    // Capture the call number for the audit detail before tombstoning.
+    const existing = await queryFirst<{ call_number: string | null }>(
+      db, 'SELECT call_number FROM calls_for_service WHERE id = ?', id,
+    );
+    if (!existing) return c.json({ error: 'Call not found' }, 404);
+
+    // Tombstone on the 1:1 overflow table — never delete the base row or the
+    // linked persons/vehicles. INSERT OR IGNORE guarantees an ext row exists,
+    // then stamp deleted_at.
+    await execute(db, 'INSERT OR IGNORE INTO calls_for_service_ext (id) VALUES (?)', id);
+    await execute(db, "UPDATE calls_for_service_ext SET deleted_at = datetime('now') WHERE id = ?", id);
+
+    // Free any assigned units — the call leaves the board, so step on-call
+    // statuses back to 'available' (never override off_duty/busy/out_of_service)
+    // and clear current_call_id. Mirrors the terminal-status free-units logic.
+    await execute(db,
+      `UPDATE units SET status = CASE WHEN status IN ('dispatched','enroute','onscene') THEN 'available' ELSE status END,
+                        current_call_id = NULL, last_status_change = datetime('now'), updated_at = datetime('now')
+       WHERE current_call_id = ?`, id);
+
+    // Audit the deletion (entity_type/id match the audit-trail GET filter).
+    try {
+      await execute(
+        db,
+        `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, created_at)
+         VALUES (?, 'DELETE', 'call', ?, ?, datetime('now'))`,
+        user.id, String(id), `Soft-deleted call ${existing.call_number ?? `#${id}`}`,
+      );
+    } catch (auditErr) {
+      console.warn('audit_log insert failed for call delete:', auditErr);
+    }
+
     return c.json({ message: 'Call deleted' });
   } catch (err) {
     // Surface the real reason (FK name, missing table) instead of an opaque 500.
@@ -806,7 +949,17 @@ calls.post('/:id/status', async (c) => {
     // The clear/close flow (client handleConfirmClear) sends { status, disposition }.
     // Persist disposition alongside the status transition — dropping it left the
     // call's outcome blank and the disposition column NULL after every clear.
-    const { status, disposition, notes } = await c.req.json<{ status: string; disposition?: string; notes?: string }>();
+    // starting_mileage/ending_mileage/responding_vehicle_id arrive with the
+    // enroute (starting) and onscene (ending) transitions — dispatch captures
+    // the officer's odometer reading over the radio via the mileage prompt and
+    // persists it atomically with the status change (no second request).
+    const { status, disposition, notes, starting_mileage, ending_mileage, responding_vehicle_id } =
+      await c.req.json<{
+        status: string; disposition?: string; notes?: string;
+        starting_mileage?: number | string | null;
+        ending_mileage?: number | string | null;
+        responding_vehicle_id?: string | null;
+      }>();
     // 'on_hold' is intentionally NOT a status value — hold is an orthogonal flag
     // in calls_for_service_ext.held_at (see /:id/hold). The live status CHECK
     // enum has no 'on_hold'.
@@ -824,12 +977,112 @@ calls.post('/:id/status', async (c) => {
     const dispSql = typeof disposition === 'string' && disposition.length > 0 ? ', disposition = ?' : '';
     const notesSql = typeof notes === 'string' && notes.length > 0 ? ', notes = ?' : '';
 
+    // Mileage capture (officer-requested on enroute/onscene). Only persist a
+    // positive, finite reading — a 0/blank means the dispatcher skipped the
+    // prompt, in which case the existing value is left untouched.
+    const sm = Number(starting_mileage);
+    const em = Number(ending_mileage);
+    const mileageSets: string[] = [];
+    const mileageParams: unknown[] = [];
+    if (starting_mileage != null && Number.isFinite(sm) && sm > 0) { mileageSets.push('starting_mileage = ?'); mileageParams.push(sm); }
+    if (ending_mileage != null && Number.isFinite(em) && em > 0) { mileageSets.push('ending_mileage = ?'); mileageParams.push(em); }
+    // responding_vehicle_id is an INTEGER column (FK-ish to the fleet) — coerce
+    // the trimmed string and only write a finite number, so a stray non-numeric
+    // value isn't stored as text in an INTEGER column (downstream joins mismatch).
+    if (responding_vehicle_id != null && String(responding_vehicle_id).trim()) {
+      const rv = Number(String(responding_vehicle_id).trim());
+      if (Number.isFinite(rv)) { mileageSets.push('responding_vehicle_id = ?'); mileageParams.push(rv); }
+    }
+    const mileageSql = mileageSets.length ? `, ${mileageSets.join(', ')}` : '';
+
     const params: unknown[] = [status];
     if (dispSql) params.push(disposition);
     if (notesSql) params.push(notes);
+    params.push(...mileageParams);
     params.push(id);
-    await execute(db, `UPDATE calls_for_service SET status = ?, status_changed_at = datetime('now'), updated_at = datetime('now')${timeSql}${dispSql}${notesSql} WHERE id = ?`, ...params);
+    await execute(db, `UPDATE calls_for_service SET status = ?, status_changed_at = datetime('now'), updated_at = datetime('now')${timeSql}${dispSql}${notesSql}${mileageSql} WHERE id = ?`, ...params);
+
+    // Trip segmentation on call-status transition: enroute → open CALL_RESPONSE;
+    // onscene → close (the On-Scene point); terminal → close. Best-effort.
+    // Runs BEFORE the terminal-status free-units block nulls current_call_id,
+    // so `WHERE current_call_id = ?` still finds the units working this call.
+    try {
+      const tripUnits = await query<{ id: number; officer_id: number | null; vehicle_id: number | null; latitude: number | null; longitude: number | null }>(
+        db, 'SELECT id, officer_id, vehicle_id, latitude, longitude FROM units WHERE current_call_id = ?', id);
+      const tripCallMeta = await queryFirst<{ call_number: string | null; incident_type: string | null }>(
+        db, 'SELECT call_number, incident_type FROM calls_for_service WHERE id = ?', id);
+      for (const u of tripUnits) {
+        await applyTripEvent({
+          db, env: c.env, unitId: u.id, officerId: u.officer_id, vehicleId: u.vehicle_id,
+          event: { kind: 'status', status },
+          ctx: { curLat: u.latitude, curLng: u.longitude, prevLat: u.latitude, prevLng: u.longitude,
+                 callId: Number(id), callNumber: tripCallMeta?.call_number ?? null, callType: tripCallMeta?.incident_type ?? null },
+          startMileage: Number.isFinite(sm) && sm > 0 ? sm : null,
+          endMileage: Number.isFinite(em) && em > 0 ? em : null,
+        });
+      }
+    } catch (e) { console.warn('[calls] trip engine non-fatal:', e); }
+
+    // Mirror the latest odometer reading onto the unit(s) working this call so
+    // the unit board's mileage stays current (ending preferred over starting).
+    const latestReading = (Number.isFinite(em) && em > 0) ? em : ((Number.isFinite(sm) && sm > 0) ? sm : null);
+    if (latestReading != null) {
+      try {
+        await execute(db, "UPDATE units SET mileage = ?, updated_at = datetime('now') WHERE current_call_id = ?", latestReading, id);
+      } catch (mErr) { console.warn('unit mileage mirror failed:', mErr); }
+    }
+
+    // Free the units working this call when it ends. Clearing/closing/cancelling
+    // a call previously left every assigned unit pinned (current_call_id set,
+    // status stuck 'dispatched'/'enroute'/'onscene') — so units never returned
+    // to 'available' on their own and accumulated as phantom assignments (live
+    // data showed units stuck on closed calls). Only step an on-call status back
+    // to 'available'; never override off_duty/busy/out_of_service.
+    const TERMINAL_STATUSES = ['cleared', 'closed', 'cancelled', 'archived'];
+    let freedUnits: Array<Record<string, unknown>> = [];
+    if (TERMINAL_STATUSES.includes(status)) {
+      freedUnits = await query<Record<string, unknown>>(db, 'SELECT id FROM units WHERE current_call_id = ?', id);
+      await execute(db,
+        `UPDATE units SET status = CASE WHEN status IN ('dispatched','enroute','onscene') THEN 'available' ELSE status END,
+                          current_call_id = NULL, last_status_change = datetime('now'), updated_at = datetime('now')
+         WHERE current_call_id = ?`, id);
+
+      // Cascade-resolve panic state. A panic alarm spawns a P1 officer_assist
+      // CAD call (call_number PAN-…, source 'panic') and flips the officer's
+      // unit into the flashing-red EMERGENCY overlay. Closing that call without
+      // this left the panic_alerts row 'active' (still nagging dispatchers via
+      // AlertHubDO) and the unit stuck emergent on the map. If this call is
+      // panic-sourced — by number prefix, incident type, or an attached
+      // panic_alerts row — resolve the alert and clear the overlay. Best-effort:
+      // never fail the status change on this.
+      try {
+        const callMeta = await queryFirst<{ call_number: string | null; incident_type: string | null }>(
+          db, 'SELECT call_number, incident_type FROM calls_for_service WHERE id = ?', id,
+        );
+        const hasPanicRow = await queryFirst<{ n: number }>(
+          db, 'SELECT 1 as n FROM panic_alerts WHERE call_id = ? LIMIT 1', id,
+        );
+        const isPanicCall =
+          (typeof callMeta?.call_number === 'string' && callMeta.call_number.startsWith('PAN-')) ||
+          callMeta?.incident_type === 'officer_assist' ||
+          hasPanicRow != null;
+        if (isPanicCall) {
+          await resolvePanicForCall(db, id);
+        }
+      } catch (panicErr) {
+        console.warn('[dispatch] panic cascade-resolve on terminal status failed (non-fatal):', panicErr);
+      }
+    }
+
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
+
+    // Surface the freed units so any open board reflects them (best-effort).
+    try {
+      for (const fu of freedUnits) {
+        const unit = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM units WHERE id = ?', fu.id as number);
+        if (unit) await emitAlert(c.env, 'dispatch_update', { action: 'unit_status_changed', unit });
+      }
+    } catch (err) { console.error('[dispatch] free-units-on-clear broadcast:', err); }
 
     // Audit trail — parity with the legacy handler this replaced (which wrote
     // a STATUS_CHANGE row). Without this the call's Audit tab showed nothing
@@ -851,7 +1104,15 @@ calls.post('/:id/status', async (c) => {
       console.warn('audit_log insert failed for status change:', auditErr);
     }
 
-    return c.json(updated);
+    // Return base + ext merged (mirrors PUT /:id, /hold, /resume). The client
+    // (handleStatusChange/handleConfirmClear) does setSelectedCall(mapDbCall(result))
+    // as a FULL replacement, and mapDbCall reads ext-only fields (held_at →
+    // on_hold synthesis, PSO process-service fields, parent_call_id, ext tactical
+    // flags). Returning the base row alone blanked all of those on the selected
+    // call until the next full GET. Best-effort ext fetch.
+    let ext: Record<string, unknown> | null = null;
+    try { ext = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service_ext WHERE id = ?', id); } catch { /* ext optional */ }
+    return c.json({ ...(updated || {}), ...(ext || {}) });
   } catch (err) {
     return c.json({ error: 'Failed to update status' }, 500);
   }
@@ -931,10 +1192,42 @@ calls.post('/:id/assign-unit', async (c) => {
       db, 'SELECT assigned_unit_ids, call_number, latitude, longitude FROM calls_for_service WHERE id = ?', id
     );
     if (!call) return c.json({ error: 'Call not found' }, 404);
-    const assigned = JSON.parse(call.assigned_unit_ids || '[]') as number[];
+    const callIdNum = parseInt(id, 10);
+
+    // Double-assign cleanup: if this unit is already on a DIFFERENT call, pull
+    // it out of that call's assigned_unit_ids first — otherwise the prior call
+    // shows a unit that's no longer working it (the unit row only tracks one
+    // current_call_id, so the stale membership would never self-heal).
+    const prior = await queryFirst<{ current_call_id: number | null }>(db, 'SELECT current_call_id FROM units WHERE id = ?', unit_id);
+    if (prior?.current_call_id != null && prior.current_call_id !== callIdNum) {
+      const priorCall = await queryFirst<{ assigned_unit_ids: string }>(db, 'SELECT assigned_unit_ids FROM calls_for_service WHERE id = ?', prior.current_call_id);
+      if (priorCall) {
+        const priorList = parseUnitIds(priorCall.assigned_unit_ids).filter((u) => u !== unit_id);
+        await execute(db, 'UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?', JSON.stringify(priorList), prior.current_call_id);
+        // If that was the prior call's LAST unit, it's now an ACTIVE call with
+        // nobody on it. The clear-path only frees units when the CALL goes
+        // terminal, so without this the orphan never self-heals — it sits
+        // dispatched/enroute/onscene with zero units, still counting against the
+        // board + SLA timers. Demote it back to 'pending' (held_at, timestamps,
+        // and history are untouched; a later re-assign flips it forward again).
+        if (priorList.length === 0) {
+          await execute(
+            db,
+            `UPDATE calls_for_service SET status = 'pending', updated_at = datetime('now')
+             WHERE id = ? AND status IN ('dispatched','enroute','onscene')`,
+            prior.current_call_id,
+          );
+        }
+      }
+    }
+
+    const assigned = parseUnitIds(call.assigned_unit_ids);
     if (!assigned.includes(unit_id)) assigned.push(unit_id);
-    await execute(db, 'UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?', JSON.stringify(assigned), id);
-    await execute(db, "UPDATE units SET status = 'dispatched', current_call_id = ? WHERE id = ?", parseInt(id, 10), unit_id);
+    // Move the call out of 'pending' on first assignment (mirrors multi-unit
+    // /dispatch). A call with a dispatched unit but still 'pending' status is a
+    // contradiction the board/SLA timers can't reconcile.
+    await execute(db, "UPDATE calls_for_service SET assigned_unit_ids = ?, status = CASE WHEN status = 'pending' THEN 'dispatched' ELSE status END, dispatched_at = COALESCE(dispatched_at, datetime('now')) WHERE id = ?", JSON.stringify(assigned), id);
+    await execute(db, "UPDATE units SET status = 'dispatched', current_call_id = ?, last_status_change = datetime('now'), updated_at = datetime('now') WHERE id = ?", callIdNum, unit_id);
 
     // ── Premise auto-push (Spillman parity, DI-3) ──
     // Look up premise_alerts within 50m of the call's GPS, push to the
@@ -963,13 +1256,21 @@ calls.post('/:id/assign-unit', async (c) => {
         if (within50m.length > 0) {
           const unit = await queryFirst<{ officer_id: number | null }>(db, 'SELECT officer_id FROM units WHERE id = ?', unit_id);
           if (unit?.officer_id) {
-            premise_pushed = sendToUser(unit.officer_id, 'premise_alert_for_unit', {
+            // Deliver via AlertHubDO (emitAlert), targeted to the assigned
+            // officer's MDT through target_user_id — PremiseAlertModal filters on
+            // it. The old sendToUser was per-isolate DEAD (the live /api/ws socket
+            // is on the legacy worker) AND the modal didn't filter, so this
+            // officer-safety hazard popup reached the officer NEVER (and would have
+            // popped on every console if naively broadcast).
+            await emitAlert(c.env, 'premise_alert_for_unit', {
+              target_user_id: unit.officer_id,
               call_id: id,
               call_number: call.call_number,
               unit_id,
               alerts: within50m,
               pushed_at: new Date().toISOString(),
             });
+            premise_pushed = within50m.length;
           }
         }
       }
@@ -981,6 +1282,26 @@ calls.post('/:id/assign-unit', async (c) => {
     // call that wipes the call out of the dispatch UI. Mirrors /dispatch,
     // /auto-assign, and /transfer, which all return the full row.
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
+
+    // Live fan-out. /dispatch is excluded from the generic data_changed sync
+    // (LIVE_SYNC_SKIP in src/index.ts) on the promise of "surgical
+    // dispatch_update realtime" — so an assign that emits nothing leaves every
+    // OTHER dispatcher's unit board + map pin stale until a manual refresh.
+    // Emit the unit assignment (board/map/MDT pick it up) and the refreshed
+    // call (assigned_unit_ids) explicitly. Best-effort; never break the write.
+    try {
+      const assignedUnit = await queryFirst<Record<string, any>>(db, 'SELECT * FROM units WHERE id = ?', unit_id);
+      await emitAlert(c.env, 'dispatch_update', {
+        action: 'unit_assigned',
+        unit: assignedUnit,
+        unit_id,
+        unit_call_sign: assignedUnit?.call_sign,
+        call_id: id,
+        call_number: call.call_number,
+      });
+      if (updated) await emitAlert(c.env, 'dispatch_update', { action: 'call_updated', call: updated });
+    } catch (err) { console.error('[dispatch] assign-unit broadcast:', err); }
+
     return c.json({ ...(updated || {}), premise_pushed });
   } catch (err) { return c.json({ error: 'Assign failed' }, 500); }
 });
@@ -997,13 +1318,20 @@ calls.post('/:id/unassign-unit', async (c) => {
     if (!Number.isFinite(unit_id) || unit_id <= 0) return c.json({ error: 'Invalid unit_id' }, 400);
     const call = await queryFirst<{ assigned_unit_ids: string }>(db, 'SELECT assigned_unit_ids FROM calls_for_service WHERE id = ?', id);
     if (!call) return c.json({ error: 'Call not found' }, 404);
-    const assigned = (JSON.parse(call.assigned_unit_ids || '[]') as number[]).filter(u => u !== unit_id);
+    const assigned = parseUnitIds(call.assigned_unit_ids).filter(u => u !== unit_id);
     await execute(db, 'UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?', JSON.stringify(assigned), id);
-    await execute(db, "UPDATE units SET status = 'available', current_call_id = NULL WHERE id = ?", unit_id);
+    await execute(db, "UPDATE units SET status = 'available', current_call_id = NULL, last_status_change = datetime('now'), updated_at = datetime('now') WHERE id = ?", unit_id);
     // Return the full updated call row — the client (handleUnassignUnit) runs it
     // through mapDbCall() and replaces the selected call; a bare {message}
     // corrupts the call to a blank-id object. Mirrors /assign-unit.
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
+    // Live fan-out (see assign-unit). Without this the freed unit stays
+    // 'dispatched' on every other board until refresh.
+    try {
+      const freedUnit = await queryFirst<Record<string, any>>(db, 'SELECT * FROM units WHERE id = ?', unit_id);
+      await emitAlert(c.env, 'dispatch_update', { action: 'unit_unassigned', unit: freedUnit, unit_id, call_id: id });
+      if (updated) await emitAlert(c.env, 'dispatch_update', { action: 'call_updated', call: updated });
+    } catch (err) { console.error('[dispatch] unassign-unit broadcast:', err); }
     return c.json(updated || {});
   } catch (err) { return c.json({ error: 'Unassign failed' }, 500); }
 });
@@ -1016,22 +1344,52 @@ calls.post('/:id/dispatch', async (c) => {
     const { unit_ids } = await c.req.json<{ unit_ids: number[] }>();
     if (!unit_ids?.length) return c.json({ error: 'No units specified' }, 400);
 
-    const call = await queryFirst<{ assigned_unit_ids: string }>(db, 'SELECT assigned_unit_ids FROM calls_for_service WHERE id = ?', id);
+    const call = await queryFirst<{ assigned_unit_ids: string; call_number: string }>(db, 'SELECT assigned_unit_ids, call_number FROM calls_for_service WHERE id = ?', id);
     if (!call) return c.json({ error: 'Call not found' }, 404);
 
-    const assigned = new Set(JSON.parse(call.assigned_unit_ids || '[]') as number[]);
-    for (const uid of unit_ids) assigned.add(uid);
+    const callIdNum = parseInt(id, 10);
+    const assigned = new Set(parseUnitIds(call.assigned_unit_ids));
+    // Coerce the incoming ids to numbers too — a string uid would slip past the
+    // numeric Set and re-introduce the mixed-type corruption.
+    const unitIdNums = unit_ids.map((u) => Number(u)).filter((n) => Number.isFinite(n) && n > 0);
+    for (const uid of unitIdNums) assigned.add(uid);
 
     await execute(db, "UPDATE calls_for_service SET assigned_unit_ids = ?, status = 'dispatched', dispatched_at = COALESCE(dispatched_at, datetime('now')) WHERE id = ?", JSON.stringify([...assigned]), id);
 
-    for (const uid of unit_ids) {
-      await execute(db, "UPDATE units SET status = 'dispatched', current_call_id = ? WHERE id = ?", parseInt(id, 10), uid);
+    for (const uid of unitIdNums) {
+      // Double-assign cleanup: pull each unit out of any prior different call
+      // (see single assign-unit) so the old call doesn't show a phantom unit.
+      const prior = await queryFirst<{ current_call_id: number | null }>(db, 'SELECT current_call_id FROM units WHERE id = ?', uid);
+      if (prior?.current_call_id != null && prior.current_call_id !== callIdNum) {
+        const priorCall = await queryFirst<{ assigned_unit_ids: string }>(db, 'SELECT assigned_unit_ids FROM calls_for_service WHERE id = ?', prior.current_call_id);
+        if (priorCall) {
+          const priorList = parseUnitIds(priorCall.assigned_unit_ids).filter((u) => u !== uid);
+          await execute(db, 'UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?', JSON.stringify(priorList), prior.current_call_id);
+        }
+      }
+      await execute(db, "UPDATE units SET status = 'dispatched', current_call_id = ?, last_status_change = datetime('now'), updated_at = datetime('now') WHERE id = ?", callIdNum, uid);
     }
 
     // Return the updated call row, not a {message}. The client
     // (handleMultiUnitDispatch) feeds this straight into mapDbCall() and splices
     // it into dispatch state — a bare message produced a blank-id corrupted call.
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
+    // Live fan-out: announce the multi-unit dispatch + flip each unit's board
+    // status + refresh the call. The call also went status='dispatched' above,
+    // which other boards otherwise wouldn't see until refresh.
+    try {
+      const dispatched = await query<Record<string, any>>(db,
+        `SELECT * FROM units WHERE id IN (${unit_ids.map(() => '?').join(',')})`, ...unit_ids);
+      await emitAlert(c.env, 'dispatch_update', {
+        action: 'units_dispatched',
+        unit_ids,
+        unit_call_signs: dispatched.map((u) => u.call_sign).filter(Boolean),
+        call_id: id,
+        call_number: call.call_number,
+      });
+      for (const u of dispatched) await emitAlert(c.env, 'dispatch_update', { action: 'unit_status_changed', unit: u });
+      if (updated) await emitAlert(c.env, 'dispatch_update', { action: 'call_updated', call: updated });
+    } catch (err) { console.error('[dispatch] multi-dispatch broadcast:', err); }
     return c.json(updated);
   } catch (err) { return c.json({ error: 'Dispatch failed' }, 500); }
 });
@@ -1102,7 +1460,13 @@ calls.post('/:id/redispatch', requireRole('admin', 'manager', 'supervisor', 'dis
     if (!['pso_client_request', 'process_service'].includes(String(parentBase.incident_type))) {
       return c.json({ error: 'Re-dispatch is only available for PSO Client Request and Process Service calls', code: 'REDISPATCH_TYPE_INVALID' }, 400);
     }
-    if (!['cleared', 'closed', 'cancelled', 'on_hold', 'archived'].includes(String(parentBase.status))) {
+    // Hold lives in calls_for_service_ext.held_at, NOT the base status enum —
+    // 'on_hold' is synthesized client-side (mapDbCall), so a HELD call's base
+    // status is still pending/dispatched and the literal 'on_hold' below could
+    // never match. The dispatcher sees the Re-dispatch button on a held call,
+    // clicks it, and used to hit this 400. Accept held_at as "inactive enough".
+    const parentHeld = parentExt?.held_at != null;
+    if (!['cleared', 'closed', 'cancelled', 'archived'].includes(String(parentBase.status)) && !parentHeld) {
       return c.json({ error: 'Call must be cleared, closed, cancelled, on hold, or archived to re-dispatch', code: 'CALL_MUST_BE_INACTIVE' }, 400);
     }
 
@@ -1183,8 +1547,8 @@ calls.post('/:id/redispatch', requireRole('admin', 'manager', 'supervisor', 'dis
     `, rootCallId, rootCallId);
 
     const newCall = { ...(newBase || {}), ...(newExt || {}) };
-    broadcastAll('dispatch_update', { action: 'call_created', call: newCall });
-    broadcastAll('dispatch_update', { action: 'call_updated', call: { ...parentBase, notes: JSON.stringify(parentNotes) } });
+    await emitAlert(c.env, 'dispatch_update', { action: 'call_created', call: newCall });
+    await emitAlert(c.env, 'dispatch_update', { action: 'call_updated', call: { ...parentBase, notes: JSON.stringify(parentNotes) } });
 
     return c.json({ ...newCall, chain, parent_call_number: parentBase.call_number }, 201);
   } catch (err) {
@@ -1246,8 +1610,8 @@ calls.post('/:id/undo-redispatch', requireRole('admin', 'manager', 'supervisor',
     const updatedBase = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', parentId);
     const updatedExt = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service_ext WHERE id = ?', parentId);
     const updated = { ...(updatedBase || {}), ...(updatedExt || {}) };
-    broadcastAll('dispatch_update', { action: 'call_deleted', call: { id: childId, call_number: childBase.call_number } });
-    broadcastAll('dispatch_update', { action: 'call_updated', call: updated });
+    await emitAlert(c.env, 'dispatch_update', { action: 'call_deleted', call: { id: childId, call_number: childBase.call_number } });
+    await emitAlert(c.env, 'dispatch_update', { action: 'call_updated', call: updated });
 
     return c.json({ success: true, parent: updated, deleted_call: childBase.call_number });
   } catch (err) {

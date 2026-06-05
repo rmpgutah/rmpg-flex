@@ -144,7 +144,7 @@ export default function DispatchCodeQuickPanel({ onApplyCode, onDismiss }: Dispa
       <div className="px-2 py-1.5 border-b" style={{ borderColor: '#1a1a1a' }}>
         <div className="relative">
           <Search className="absolute left-1.5 top-1/2 -translate-y-1/2 w-3 h-3 text-[#545454] pointer-events-none" />
-          <input
+          <input id="ff-dispatchcodequickpanel-0"
             type="text"
             placeholder="Search codes or descriptions…"
             value={searchQuery}

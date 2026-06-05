@@ -1,126 +1,136 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { parseTimestamp } from '../../../utils/dateUtils';
 import { apiFetch } from '../../../hooks/useApi';
-import { useAuth } from '../../../context/AuthContext';
 import { useWebSocket } from '../../../context/WebSocketContext';
 
-// GET: /api/personnel/:id — returns { ..., activeTimeEntry: { clock_in, ... } | null }
-// POST: /api/personnel/time/clock-in  (body: { officer_id? })
-// POST: /api/personnel/time/clock-out (body: { officer_id? })
-// Calls-handled is best-effort from /api/dispatch/units/workload?days=1 (filter by officer_name / officer_id).
-// No server-side shift_update WS event exists today; we subscribe defensively to 'time_entry_update'.
-// Tests mock apiFetch returning the spec shape { active, started_at, hours_today, calls_handled }
-// directly, so the component also accepts that shape unmodified.
+// Integrated officer shift control — clock-on + on-duty + fleet vehicle in one
+// "Start/End Shift" action, backed by the rewrite's /api/dispatch/duty API:
+//   GET  /api/dispatch/duty/me     → current shift state + vehicle options
+//   POST /api/dispatch/duty/start  → clock in + unit in-service + assign vehicle
+//                                     (auto take-home; 409 NEEDS_VEHICLE → pick)
+//   POST /api/dispatch/duty/end    → clock out + off-duty + release vehicle
+// Starting a shift assigns the officer's take-home car automatically; if none
+// is set the card shows the in-service pool to pick from.
 
-interface ShiftState {
-  active: boolean;
-  started_at: string | null;
-  hours_today: number;
-  calls_handled: number;
+interface DutyVehicle {
+  id: number;
+  vehicle_number: string | null;
+  vehicle_name: string | null;
+  make: string | null;
+  model: string | null;
+  status: string;
+  is_take_home: number | null;
+}
+interface DutyState {
+  on_shift: boolean;
+  time_entry: { clock_in: string } | null;
+  unit: { id: number; call_sign: string } | null;
+  vehicle: DutyVehicle | null;
+  take_home_vehicle: DutyVehicle | null;
+  available_vehicles: DutyVehicle[];
 }
 
 function hoursSince(iso: string | null): number {
   if (!iso) return 0;
   const t = parseTimestamp(iso).getTime();
   if (isNaN(t)) return 0;
-  const h = (Date.now() - t) / 3600000;
-  return Math.max(0, Math.round(h * 10) / 10);
+  return Math.max(0, Math.round(((Date.now() - t) / 3600000) * 10) / 10);
+}
+function vehicleLabel(v: DutyVehicle | null | undefined): string {
+  if (!v) return '';
+  return v.vehicle_number || v.vehicle_name || `${v.make ?? ''} ${v.model ?? ''}`.trim() || `#${v.id}`;
 }
 
 export default function ShiftCard() {
-  const { user } = useAuth();
   const { subscribe } = useWebSocket();
 
-  const [shift, setShift] = useState<ShiftState | null>(null);
+  const [state, setState] = useState<DutyState | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-
+  const [picking, setPicking] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const officerId = (user as any)?.officer_id ?? (user as any)?.id ?? null;
-
-  const fetchShift = useCallback(async () => {
+  const fetchState = useCallback(async () => {
     setError(null);
     try {
-      const endpoint = officerId ? `/api/personnel/${officerId}` : '/api/personnel/me';
-      const res: any = await apiFetch<any>(endpoint);
-
-      // Shape 1 (spec / test mock): { active, started_at, hours_today, calls_handled }
-      if (res && typeof res.active === 'boolean') {
-        setShift({
-          active: !!res.active,
-          started_at: res.started_at ?? null,
-          hours_today: Number(res.hours_today ?? 0),
-          calls_handled: Number(res.calls_handled ?? 0),
-        });
-        return;
-      }
-
-      // Shape 2 (real server): personnel record with activeTimeEntry
-      const active = !!res?.activeTimeEntry;
-      const startedAt = res?.activeTimeEntry?.clock_in ?? null;
-      setShift({
-        active,
-        started_at: startedAt,
-        hours_today: hoursSince(startedAt),
-        calls_handled: 0,
+      const res = await apiFetch<DutyState>('/dispatch/duty/me');
+      setState({
+        on_shift: !!res?.on_shift,
+        time_entry: res?.time_entry ?? null,
+        unit: res?.unit ?? null,
+        vehicle: res?.vehicle ?? null,
+        take_home_vehicle: res?.take_home_vehicle ?? null,
+        available_vehicles: Array.isArray(res?.available_vehicles) ? res.available_vehicles : [],
       });
     } catch (e: any) {
       setError(e?.message || 'Failed to load shift');
     } finally {
       setLoading(false);
     }
-  }, [officerId]);
+  }, []);
 
-  useEffect(() => {
-    fetchShift();
-  }, [fetchShift]);
+  useEffect(() => { fetchState(); }, [fetchState]);
 
   useEffect(() => {
     const trigger = () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
-      debounceRef.current = setTimeout(() => { fetchShift(); }, 250);
+      debounceRef.current = setTimeout(() => { fetchState(); }, 250);
     };
-    // No real shift_update event on server yet; defensive subscription.
     const unsub = subscribe('shift_update' as any, trigger);
-    return () => {
-      unsub();
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-    };
-  }, [subscribe, fetchShift]);
+    return () => { unsub(); if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [subscribe, fetchState]);
 
-  const clockIn = useCallback(async () => {
+  const startShift = useCallback(async (vehicleId?: number) => {
     if (busy) return;
     setBusy(true);
+    setError(null);
     try {
-      await apiFetch('/api/personnel/time/clock-in', {
+      await apiFetch('/dispatch/duty/start', {
         method: 'POST',
-        body: JSON.stringify({}),
+        body: JSON.stringify(vehicleId ? { vehicle_id: vehicleId } : {}),
       });
-      await fetchShift();
+      setPicking(false);
+      await fetchState();
     } catch (e: any) {
-      setError(e?.message || 'Clock in failed');
+      // Server safety-net: no take-home car resolved → let the officer pick.
+      if (e?.code === 'NEEDS_VEHICLE') {
+        if (Array.isArray(e?.payload?.available_vehicles)) {
+          setState((s) => (s ? { ...s, available_vehicles: e.payload.available_vehicles } : s));
+        }
+        setPicking(true);
+      } else if (e?.code === 'NO_UNIT') {
+        setError('No unit assigned — ask dispatch to assign you a unit first.');
+      } else {
+        setError(e?.message || 'Clock in failed');
+      }
     } finally {
       setBusy(false);
     }
-  }, [busy, fetchShift]);
+  }, [busy, fetchState]);
 
-  const clockOut = useCallback(async () => {
+  // Decide whether to auto-assign (take-home / standing car) or show the picker.
+  const onStartClick = useCallback(() => {
+    if (!state) return;
+    if (!state.unit) { setError('No unit assigned — ask dispatch to assign you a unit first.'); return; }
+    if (state.take_home_vehicle || state.vehicle) { startShift(); return; }
+    if (state.available_vehicles.length > 0) { setPicking(true); return; }
+    setError('No in-service vehicle available — see Fleet.');
+  }, [state, startShift]);
+
+  const endShift = useCallback(async () => {
     if (busy) return;
     setBusy(true);
+    setError(null);
     try {
-      await apiFetch('/api/personnel/time/clock-out', {
-        method: 'POST',
-        body: JSON.stringify({}),
-      });
-      await fetchShift();
+      await apiFetch('/dispatch/duty/end', { method: 'POST', body: JSON.stringify({}) });
+      await fetchState();
     } catch (e: any) {
       setError(e?.message || 'Clock out failed');
     } finally {
       setBusy(false);
     }
-  }, [busy, fetchShift]);
+  }, [busy, fetchState]);
 
   if (loading) {
     return (
@@ -131,77 +141,74 @@ export default function ShiftCard() {
     );
   }
 
-  if (error) {
-    return (
-      <section className="bg-[#141414] border border-[#222] p-3">
-        <h2 className="text-[#d4a017] text-[10px] font-bold tracking-widest mb-2">SHIFT</h2>
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-amber-400 text-xs">{error}</span>
-          <button
-            type="button"
-            onClick={() => { setLoading(true); fetchShift(); }}
-            className="min-h-[44px] h-11 px-3 bg-[#1a1a1a] border border-[#222] text-gray-300 text-xs uppercase tracking-widest"
-          >
-            Retry
-          </button>
-        </div>
-      </section>
-    );
-  }
-
-  const isActive = !!shift?.active;
-  const hours = shift?.hours_today ?? 0;
-  const calls = shift?.calls_handled ?? 0;
+  const isActive = !!state?.on_shift;
+  const hours = hoursSince(state?.time_entry?.clock_in ?? null);
+  const unit = state?.unit;
+  const vehicle = state?.vehicle;
 
   return (
     <section className="bg-[#141414] border border-[#222] p-3">
       <div className="flex items-center justify-between mb-2">
         <h2 className="text-[#d4a017] text-[10px] font-bold tracking-widest">SHIFT</h2>
-        {isActive ? (
-          <span className="text-[#d4a017] text-xs font-bold uppercase">On Shift</span>
-        ) : (
-          <span className="text-gray-500 text-xs uppercase">Off Shift</span>
-        )}
+        {isActive
+          ? <span className="text-[#d4a017] text-xs font-bold uppercase">On Duty</span>
+          : <span className="text-gray-500 text-xs uppercase">Off Duty</span>}
       </div>
 
+      {error && <div className="text-amber-400 text-[11px] mb-2 leading-snug">{error}</div>}
+
       {isActive && (
-        <div className="flex items-center justify-between mb-3 px-1">
+        <div className="grid grid-cols-3 gap-2 mb-3 px-1">
           <div className="flex flex-col">
-            <span className="text-gray-500 text-[10px] uppercase tracking-widest">Hours</span>
-            <span className="text-white text-lg font-bold font-mono">{hours.toFixed(1)}</span>
+            <span className="text-gray-500 text-[9px] uppercase tracking-widest">Hours</span>
+            <span className="text-white text-base font-bold font-mono">{hours.toFixed(1)}</span>
           </div>
-          <div className="flex flex-col items-end">
-            <span className="text-gray-500 text-[10px] uppercase tracking-widest">Calls</span>
-            <span className="text-white text-lg font-bold font-mono">{calls}</span>
+          <div className="flex flex-col">
+            <span className="text-gray-500 text-[9px] uppercase tracking-widest">Unit</span>
+            <span className="text-white text-base font-bold font-mono truncate">{unit?.call_sign ?? '—'}</span>
+          </div>
+          <div className="flex flex-col">
+            <span className="text-gray-500 text-[9px] uppercase tracking-widest">Vehicle</span>
+            <span className="text-white text-base font-bold font-mono truncate" title={vehicleLabel(vehicle)}>{vehicleLabel(vehicle) || '—'}</span>
           </div>
         </div>
       )}
 
-      {isActive ? (
-        <button
-          type="button"
-          disabled={busy}
-          onClick={clockOut}
-          className={[
-            'w-full h-11 bg-[#1a1a1a] border border-red-700 text-red-400 text-xs uppercase tracking-widest font-bold',
-            busy ? 'opacity-50' : '',
-          ].join(' ')}
-        >
-          Clock Out
-        </button>
-      ) : (
-        <button
-          type="button"
-          disabled={busy}
-          onClick={clockIn}
-          className={[
-            'w-full h-11 bg-[#1a1a1a] border border-[#d4a017] text-[#d4a017] text-xs uppercase tracking-widest font-bold',
-            busy ? 'opacity-50' : '',
-          ].join(' ')}
-        >
-          Clock In
-        </button>
+      {/* Vehicle picker — shown when no take-home car is set for the unit. */}
+      {!isActive && picking && (
+        <div className="mb-2 border border-[#222] bg-[#0d0d0d] p-2">
+          <div className="text-gray-400 text-[9px] uppercase tracking-widest mb-1">Select your vehicle</div>
+          {state && state.available_vehicles.length > 0 ? (
+            <div className="flex flex-col gap-1 max-h-[180px] overflow-y-auto">
+              {state.available_vehicles.map((v) => (
+                <button key={v.id} type="button" disabled={busy} onClick={() => startShift(v.id)}
+                  className="flex items-center justify-between min-h-[40px] px-2 bg-[#1a1a1a] border border-[#222] text-gray-200 text-xs hover:border-[#d4a017]">
+                  <span className="truncate">{vehicleLabel(v)}{v.make ? ` · ${v.make} ${v.model ?? ''}` : ''}</span>
+                  {v.is_take_home ? <span className="text-[#d4a017] text-[9px] uppercase shrink-0">Take-home</span> : null}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="text-gray-500 text-[11px]">No in-service vehicles available.</div>
+          )}
+          <button type="button" onClick={() => setPicking(false)}
+            className="mt-2 w-full h-9 bg-[#1a1a1a] border border-[#222] text-gray-400 text-[10px] uppercase tracking-widest">
+            Cancel
+          </button>
+        </div>
       )}
+
+      {isActive ? (
+        <button type="button" disabled={busy} onClick={endShift}
+          className={['w-full h-11 bg-[#1a1a1a] border border-red-700 text-red-400 text-xs uppercase tracking-widest font-bold', busy ? 'opacity-50' : ''].join(' ')}>
+          End Shift
+        </button>
+      ) : !picking ? (
+        <button type="button" disabled={busy} onClick={onStartClick}
+          className={['w-full h-11 bg-[#1a1a1a] border border-[#d4a017] text-[#d4a017] text-xs uppercase tracking-widest font-bold', busy ? 'opacity-50' : ''].join(' ')}>
+          Start Shift
+        </button>
+      ) : null}
     </section>
   );
 }

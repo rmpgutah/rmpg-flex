@@ -196,7 +196,7 @@ export default function BulkDefendantTable({ onSubmitted }: Props) {
                   <td className="px-1.5 py-1 text-rmpg-500 align-top">{idx + 1}</td>
                   {(['firstName', 'middleName', 'lastName', 'dob', 'sex', 'address', 'contractId', 'businessName'] as const).map((field) => (
                     <td key={field} className="px-0 py-0 align-top">
-                      <input
+                      <input id="ff-bulkdefendanttable-0"
                         type="text"
                         value={(r as any)[field]}
                         disabled={isBiz && (field === 'firstName' || field === 'middleName' || field === 'lastName' || field === 'dob' || field === 'sex')}

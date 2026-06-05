@@ -56,7 +56,9 @@ export default function AdminAISettingsTab({ LoadingSpinner, error, setError }: 
       ]);
       setConfig(cfg);
       setStats(st);
-      setProviderStatus(status.providers);
+      // Guard: child panels call providerStatus.find(...); an `/ai/status`
+      // response missing `providers` would set it undefined and white-screen.
+      setProviderStatus(Array.isArray(status?.providers) ? status.providers : []);
     } catch (err: any) {
       setError(err?.message || 'Failed to load AI configuration');
     } finally {

@@ -264,7 +264,10 @@ export function useDispatchCallActions(args: UseDispatchCallActionsArgs) {
     setDispositionPromptCallId(null);
   }, [dispositionPromptCallId, setCalls, setSelectedCall, refreshUnits, navigate, addToast]);
 
-  // ── Delete (any call) ─────────────────────────────────────
+  // ── Remove (soft-delete / archive a call) ─────────────────
+  // The server now soft-deletes (tombstones calls_for_service_ext.deleted_at)
+  // instead of physically deleting — the call leaves the board but stays
+  // recoverable by an admin. Gated to senior roles server-side (403 otherwise).
   const handleDeleteAnyCall = useCallback(async () => {
     if (!deleteCallTarget) return;
     const callNum = deleteCallTarget.call_number;
@@ -275,9 +278,9 @@ export function useDispatchCallActions(args: UseDispatchCallActionsArgs) {
       setArchivedCalls((prev) => prev.filter((c) => c.id !== deleteCallTarget.id));
       setSelectedCall((prev) => prev?.id === deleteCallTarget.id ? null : prev);
       setDeleteCallTarget(null);
-      addToast(`Call ${callNum} deleted`, 'success');
+      addToast(`Call ${callNum} removed (archived, admin-recoverable)`, 'success');
     } catch (err: any) {
-      addToast(err?.message || err?.error || 'Failed to delete call', 'error');
+      addToast(err?.message || err?.error || 'Failed to remove call', 'error');
     } finally {
       setIsDeletingCall(false);
     }
