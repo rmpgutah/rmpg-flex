@@ -243,6 +243,8 @@ const TOOLBAR_NAV: NavItem[] = [
     { path: '/command-center', icon: Crosshair, label: 'Command Center' },
   ]},
   { path: '/mdt', icon: Monitor, label: 'MDT', group: 'ops', shortcut: 'F4' },
+  { path: '/mdt', icon: Monitor, label: 'MDT', group: 'ops', shortcut: 'F4' },
+  { path: '/nav', icon: Navigation2, label: 'Nav', group: 'ops' },
   { path: '/mobile', icon: Smartphone, label: 'Mobile', group: 'ops' },
   { path: '/navigation', icon: Navigation2, label: 'Navigate', group: 'ops' },
   { path: '/ncic', icon: Terminal, label: 'NCIC', group: 'ops', shortcut: 'F5', children: [
@@ -1091,7 +1093,7 @@ export default function Layout() {
               <div
                 className="flex items-center gap-1 px-1.5 py-0.5 panel-inset"
                 style={{ background: gps.isTracking ? 'rgba(34, 197, 94, 0.1)' : '#050505' }}
-                title={gps.isTracking ? `GPS ON — ${gps.unitCallSign || 'no unit'}` : 'GPS acquiring...'}
+                title={gps.isTracking ? `GPS ON — ${gps.unitCallSign || (gps.hasTakeHome ? 'Take-Home Vehicle' : 'no unit')}` : 'GPS acquiring...'}
               >
                 <Navigation2 style={{ width: 9, height: 9, color: gps.isTracking ? '#22c55e' : '#666666', transform: gps.heading != null ? `rotate(${gps.heading}deg)` : undefined }} />
                 {gps.isTracking && <span className="led-dot led-green animate-led-blink" />}

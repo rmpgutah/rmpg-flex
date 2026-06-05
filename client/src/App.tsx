@@ -130,6 +130,7 @@ const CrisisResponsePage = lazyRetry(() => import('./pages/CrisisResponsePage'))
 const VictimServicesPage = lazyRetry(() => import('./pages/VictimServicesPage'));
 const AlarmManagementPage = lazyRetry(() => import('./pages/AlarmManagementPage'));
 const NarcoticsPage = lazyRetry(() => import('./pages/NarcoticsPage'));
+const NavPage = lazyRetry(() => import('./pages/NavPage'));
 const AccreditationPage = lazyRetry(() => import('./pages/AccreditationPage'));
 const RecruitmentPage = lazyRetry(() => import('./pages/RecruitmentPage'));
 const IncidentDetailWindow = lazyRetry(() => import('./pages/detached/IncidentDetailWindow'));
@@ -475,6 +476,7 @@ function AppRoutes() {
             <Route path="/victim-services" element={<RouteErrorBoundary><VictimServicesPage /></RouteErrorBoundary>} />
             <Route path="/alarms" element={<RouteErrorBoundary><AlarmManagementPage /></RouteErrorBoundary>} />
             <Route path="/narcotics" element={<RouteErrorBoundary><NarcoticsPage /></RouteErrorBoundary>} />
+            <Route path="/nav" element={<RouteErrorBoundary><NavPage /></RouteErrorBoundary>} />
             <Route path="/accreditation" element={<RouteErrorBoundary><AccreditationPage /></RouteErrorBoundary>} />
             <Route path="/recruitment" element={<RouteErrorBoundary><RecruitmentPage /></RouteErrorBoundary>} />
             <Route path="/navigation" element={<RouteErrorBoundary><NavigationPage /></RouteErrorBoundary>} />

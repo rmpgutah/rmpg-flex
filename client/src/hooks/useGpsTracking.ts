@@ -50,6 +50,8 @@ export interface GpsState {
   unitCallSign: string | null;
   /** The unit ID assigned to this user (if any) */
   unitId: number | null;
+  /** Whether the user has a take-home vehicle (bypasses unit requirement) */
+  hasTakeHome: boolean;
   /** Whether GPS permission was denied (blocks app usage) */
   permissionDenied: boolean;
   /** Whether we're still waiting for location permission */
@@ -321,6 +323,7 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
     isSupported: typeof navigator !== 'undefined' && 'geolocation' in navigator,
     unitCallSign: null,
     unitId: null,
+    hasTakeHome: false,
     permissionDenied: false,
     permissionPending: false,
     connectionType: getConnectionType(),
@@ -385,7 +388,15 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
         const unit = pickUnit(resp);
         if (unit && !cancelled) {
           unitIdRef.current = unit.id;
-          setState((prev) => ({ ...prev, unitCallSign: unit.call_sign ?? prev.unitCallSign, unitId: unit.id }));
+          setState((prev) => ({
+            ...prev,
+            unitCallSign: unit.call_sign ?? prev.unitCallSign,
+            unitId: unit.id,
+            hasTakeHome: (resp as Record<string, unknown>)?.take_home === true,
+          }));
+        } else if (!unit && (resp as Record<string, unknown>)?.take_home === true) {
+          setState((prev) => ({ ...prev, hasTakeHome: true }));
+        }
           gpsSourceRef.current = unit.gps_source || 'browser';
         }
       })

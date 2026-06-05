@@ -1430,6 +1430,7 @@ export interface FleetVehicle {
   insurance_expiry?: string;
   registration_expiry?: string;
   equipment: string[];
+  take_home?: number;
   notes?: string;
   created_at: string;
   updated_at: string;
@@ -3480,4 +3481,64 @@ export interface CpgpsAlert {
   triggered_at?: string;
   lat?: number;
   lon?: number;
+}
+
+// ── Nav Trip Log ─────────────────────────────────────────────
+
+export type NavTripStatus = 'pending' | 'active' | 'completed' | 'cancelled';
+
+export interface NavRoutePoint {
+  lat: number;
+  lng: number;
+  ts: string;
+  speed?: number;
+  heading?: number;
+}
+
+export interface NavTrip {
+  id: string;
+  officer_id: string;
+  vehicle_id?: string;
+  unit_id?: string;
+  start_lat: number;
+  start_lng: number;
+  start_accuracy?: number;
+  start_location?: string;
+  start_time: string;
+  end_lat?: number;
+  end_lng?: number;
+  end_accuracy?: number;
+  end_location?: string;
+  end_time?: string;
+  distance_miles?: number;
+  max_speed_mph?: number;
+  duration_seconds?: number;
+  route_points?: NavRoutePoint[];
+  status: NavTripStatus;
+  detected_by: 'auto' | 'manual';
+  purpose?: string;
+  device_type?: string;
+  notes?: string;
+  vehicle_number?: string;
+  make?: string;
+  model?: string;
+  plate_number?: string;
+  unit_call_sign?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface NavTripDetectionState {
+  loginPosition: { lat: number; lng: number; accuracy: number } | null;
+  loginTime: number | null;
+  movementConfirmed: boolean;
+  pendingTripId: string | null;
+  activeTripId: string | null;
+  lastMovementAt: number | null;
+  stationarySince: number | null;
+  bufferStartTime: number | null;
+  bufferPosition: { lat: number; lng: number } | null;
+  windowStartTime: number | null;
+  windowStartPosition: { lat: number; lng: number } | null;
+  windowMovementDetected: boolean;
 }

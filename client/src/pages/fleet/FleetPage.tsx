@@ -298,13 +298,14 @@ export default function FleetPage() {
     setUtilities([]);
     setOtherCosts([]);
     setCostSummary(null);
+    setGpsMileage(null);
   }, [selectedId]);
 
   // Lazy-load tab data
   useEffect(() => {
     if (!selectedId) return;
     if (activeTab === 'fuel') fetchFuelLogs(selectedId);
-    if (activeTab === 'costs') fetchCosts(selectedId);
+    if (activeTab === 'costs') { fetchCosts(selectedId); fetchFuelLogs(selectedId); }
     if (activeTab === 'inspections') fetchInspections(selectedId);
     if (activeTab === 'assignments') fetchAssignments(selectedId);
     if (activeTab === 'analytics') fetchVehicleAnalytics();

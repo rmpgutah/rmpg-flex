@@ -45,7 +45,33 @@ gps.post('/', async (c) => {
       vehicle_id: number | null; gps_source: string | null }>(db,
       'SELECT id, call_sign, status, latitude, longitude, officer_id, vehicle_id, gps_source FROM units WHERE officer_id = ? LIMIT 1', userId);
 
-    if (!unit) return c.json({ error: 'No assigned unit' }, 400);
+    // Take-home vehicle fallback: officers with a take-home vehicle don't need
+    // a dispatch unit assignment to send GPS breadcrumbs for trip logging.
+    if (!unit) {
+      const user = await queryFirst<{ take_home_vehicle_id: number | null }>(db,
+        'SELECT take_home_vehicle_id FROM users WHERE id = ?', userId);
+      if (user?.take_home_vehicle_id) {
+        // Take-home user — accept breadcrumbs without a unit (for nav trip logging).
+        // No trip engine, no emitAlert, no unit mirror — just persist breadcrumbs.
+        let inserted = 0;
+        try {
+          await executeBatch(db, points.map((pt) => ({
+            sql: `INSERT INTO gps_breadcrumbs (unit_id, officer_id, latitude, longitude, accuracy, heading, speed, call_sign, recorded_at)
+                  VALUES (NULL, ?, ?, ?, ?, ?, ?, 'take-home', datetime('now'))`,
+            bindings: [userId, pt.latitude, pt.longitude, pt.accuracy, pt.heading, pt.speed],
+          })));
+          inserted = points.length;
+        } catch (err) {
+          console.warn('[gps] take-home breadcrumb batch failed:', err);
+        }
+        return c.json({
+          inserted,
+          accepted: points.length,
+          unit: { id: null, call_sign: null, status: 'take_home', gps_source: 'browser', take_home: true },
+        }, 201);
+      }
+      return c.json({ error: 'No assigned unit' }, 400);
+    }
     // Capture the prior position BEFORE the unit-row mirror UPDATE below
     // overwrites units.latitude/longitude — the trip engine needs the real
     // pre-batch position as the running `prev` for the first fix.
@@ -70,10 +96,7 @@ gps.post('/', async (c) => {
       console.warn('[gps] breadcrumb batch failed (non-fatal — position mirror still runs):', err);
     }
 
-    // Mirror the latest fix onto the unit row. The map filters officer pins by
-    // `u.latitude != null` and closest-unit/anomaly logic reads u.latitude/
-    // longitude/gps_updated_at — breadcrumbs alone never updated the unit, so
-    // pins never plotted and proximity logic saw no position.
+    // Mirror the latest fix onto the unit row.
     const lastPt = points[points.length - 1];
     if (lastPt) {
       // Mirror heading/speed too (the map's nav-cursor arrow + speed label read
@@ -87,17 +110,6 @@ gps.post('/', async (c) => {
       // 7s poll, and recommended-units re-ranks on fresh GPS. /dispatch is
       // excluded from the generic data_changed sync, and gps was previously
       // silent — pins froze. One small frame per fix; consumers debounce.
-      //
-      // CRITICAL: this MUST go through AlertHubDO (the shared cross-worker bus),
-      // not broadcastAll(). The client's live socket is /api/alerts-ws on THIS
-      // (rewrite) worker via the global AlertHubDO; broadcastAll() only reaches
-      // routes/ws.ts's per-isolate map, which is empty because the main /api/ws
-      // socket lives on the LEGACY worker — so broadcastAll() delivered to 0
-      // clients (dead). emitAlert() fans out via env.ALERT_HUB exactly like
-      // panic, so every connected console/MDT actually receives the position.
-      // Message type 'unit_position' / action 'gps_update' (see report); the DO
-      // broadcasts any non-panic frame and skips the forced-ack lifecycle.
-      // Best-effort: a fan-out failure must never fail the breadcrumb write.
       try {
         await emitAlert(c.env, 'unit_position', {
           action: 'gps_update',
@@ -117,16 +129,8 @@ gps.post('/', async (c) => {
 
     // Trip segmentation — feed every fix in the batch to the pure engine: opens a
     // PATROL on movement, appends + rolls up telemetry, lazy-closes an idle PATROL.
-    // Timestamps are SERVER-anchored (newest fix = server now) with intra-batch
-    // spacing taken from the client timestamps, so trip bounds stay authoritative
-    // while per-fix dt (speed/accel) is real. Best-effort: a trip failure must
-    // never fail the breadcrumb write or the client's success ack.
     try {
       const nowMs = Date.now();
-      // Bound the per-fix engine work: each fix is ~3-5 awaited D1 queries, and a
-      // post-offline replay (batch ≤200) could otherwise blow the Workers subrequest
-      // budget and silently drop ALL segmentation. Process the freshest fixes; the
-      // breadcrumb write above still persists every point.
       const ENGINE_MAX = 60;
       const enginePoints = points.length > ENGINE_MAX ? points.slice(-ENGINE_MAX) : points;
       if (enginePoints.length < points.length) {
@@ -138,7 +142,7 @@ gps.post('/', async (c) => {
       const fixTs = (i: number): number => {
         const ti = tsList[i];
         if (lastValid && Number.isFinite(ti)) return nowMs - (lastTs - ti);
-        return nowMs - (enginePoints.length - 1 - i) * 1000; // fallback: assume ~1s spacing
+        return nowMs - (enginePoints.length - 1 - i) * 1000;
       };
       let pLat = prevLat0;
       let pLng = prevLng0;
@@ -152,7 +156,6 @@ gps.post('/', async (c) => {
         pLat = pt.latitude;
         pLng = pt.longitude;
       }
-      // Tag the breadcrumbs just written with the now-active trip (for replay).
       await execute(db,
         `UPDATE gps_breadcrumbs SET trip_id = (SELECT id FROM unit_trips WHERE unit_id = ? AND status = 'active' ORDER BY start_time DESC LIMIT 1)
          WHERE unit_id = ? AND trip_id IS NULL AND recorded_at >= datetime('now','-60 seconds')`,
@@ -206,7 +209,25 @@ gps.get('/my-unit', async (c) => {
     const userId = c.get('userId') as number;
     const unit = await queryFirst<Record<string, unknown>>(db,
       'SELECT u.*, usr.full_name as officer_name FROM units u LEFT JOIN users usr ON u.officer_id = usr.id WHERE u.officer_id = ? LIMIT 1', userId);
-    if (!unit) return c.json({ message: 'No unit assigned' }, 404);
+    // Take-home vehicle fallback: officers with a take-home vehicle don't need
+    // a dispatch unit assignment to log trips / send GPS breadcrumbs.
+    if (!unit) {
+      const user = await queryFirst<{ take_home_vehicle_id: number | null }>(db,
+        'SELECT take_home_vehicle_id FROM users WHERE id = ?', userId);
+      if (user?.take_home_vehicle_id) {
+        const veh = await queryFirst<Record<string, unknown>>(db,
+          `SELECT id, vehicle_number, make, model, plate_number, status, current_mileage
+           FROM fleet_vehicles WHERE id = ? AND take_home = 1`, user.take_home_vehicle_id);
+        if (veh) {
+          return c.json({
+            id: null, call_sign: null, status: 'take_home',
+            take_home: true, vehicle: veh,
+            message: 'Take-home vehicle — trip logging available',
+          });
+        }
+      }
+      return c.json({ message: 'No unit assigned' }, 404);
+    }
     return c.json(unit);
   } catch (err) {
     return c.json({ error: 'Failed' }, 500);

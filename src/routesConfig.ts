@@ -158,6 +158,7 @@ import howen from './routes/howen';
 import downloads from './routes/downloads';
 // Offender registry (stats only)
 import narcotics from './routes/narcotics';
+import nav from './routes/nav';
 import offenderRegistry from './routes/offenderRegistry';
 
 // Permissive Router alias — `Hono<any>` accepts every router shape
@@ -314,6 +315,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Read-only surface over forensic_hash_sets + forensic_hash_entries + iped_imports tables. GET /status, /hash-sets, /hash-sets/:id, /downloads.' },
   { prefix: '/api/narcotics', router: narcotics, auth: 'required',
     note: 'Narcotics & vice: investigations, CI management, buy/bust ops, drug trend analysis' },
+  { prefix: '/api/nav', router: nav, auth: 'required',
+    note: 'Nav trip logging: auto-detect vehicle movement, breadcrumb trails, take-home vehicle support' },
   { prefix: '/api/offline', router: offline, auth: 'required',
     note: 'Offline sync (push/pull + secrets). /sync/push dispatches allowlisted writes through the root app; see src/routes/offline.ts.' },
   { prefix: '/api/patrol', router: patrol, auth: 'required',
