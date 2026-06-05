@@ -394,10 +394,9 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
             unitId: unit.id,
             hasTakeHome: (resp as Record<string, unknown>)?.take_home === true,
           }));
+          gpsSourceRef.current = unit.gps_source || 'browser';
         } else if (!unit && (resp as Record<string, unknown>)?.take_home === true) {
           setState((prev) => ({ ...prev, hasTakeHome: true }));
-        }
-          gpsSourceRef.current = unit.gps_source || 'browser';
         }
       })
       .catch((err) => {

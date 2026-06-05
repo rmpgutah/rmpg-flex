@@ -189,6 +189,7 @@ export function useNavTripDetection(opts: UseNavTripDetectionOptions) {
             if (next.pendingTripId) {
               confirmTrip(next.pendingTripId)
                 .then((trip) => {
+                  if (!trip) return;
                   setCurrentTrip(trip);
                   onTripStarted?.(trip);
                   setDetection((p) => ({ ...p, activeTripId: trip.id, pendingTripId: null }));
@@ -197,6 +198,7 @@ export function useNavTripDetection(opts: UseNavTripDetectionOptions) {
             } else {
               startTrip(latitude, longitude, accuracy)
                 .then((trip) => {
+                  if (!trip) return;
                   setCurrentTrip(trip);
                   onTripStarted?.(trip);
                   setDetection((p) => ({ ...p, pendingTripId: trip.id }));
