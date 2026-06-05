@@ -2665,7 +2665,7 @@ export default function DispatchPage() {
                   <div className="panel-inset p-3">
                     <div className="field-label mb-2 flex items-center gap-2">
                       PSO Details
-                      {(selectedCall.pso_attempt_number || 1) >= 1 && (
+                      {(selectedCall.pso_attempt_number || 1) >= 1 && (selectedCall.pso_requestor_name || selectedCall.pso_service_type) && (
                         isAdminOrManager ? (
                           <select
                             className="px-1 py-0 text-[9px] font-bold rounded-sm cursor-pointer"
@@ -2850,8 +2850,10 @@ export default function DispatchPage() {
                         ? (() => { try { return JSON.parse(selectedCall.pso_service_windows); } catch { return null; } })()
                         : selectedCall.pso_service_windows;
                       const windows = { early_morning: !!w?.early_morning, daytime: !!w?.daytime, evening: !!w?.evening, weekend: !!w?.weekend };
-                      const allMet = windows.early_morning && windows.daytime && windows.evening && windows.weekend;
                       const metCount = [windows.early_morning, windows.daytime, windows.evening, windows.weekend].filter(Boolean).length;
+                      // Only show when at least one window is configured
+                      if (metCount === 0) return null;
+                      const allMet = windows.early_morning && windows.daytime && windows.evening && windows.weekend;
                       return (
                         <div className="mt-3 pt-2 border-t border-rmpg-600">
                           <div className="field-label mb-1.5 flex items-center gap-2">
