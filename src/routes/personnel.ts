@@ -1209,10 +1209,53 @@ personnel.put('/:id', async (c) => {
       return c.json({ error: 'User not found' }, 404);
     }
 
+    // ── Cross-integration guard (Claude Opus 4.8) ──
+    // users.assigned_unit_id is a mirror of units.officer_id. Writing
+    // one without the other leaves the dispatch list view
+    // (LEFT JOIN users ON users.id = units.officer_id) showing the
+    // wrong officer name for a unit, and the personnel detail panel
+    // showing the wrong unit for the officer. The dispatch duty flow
+    // keeps them in sync (assignUnitVehicle / duty.ts) but the
+    // personnel PUT handler bypasses it. Validate the unit id points
+    // at a real units row before persisting; on change, mirror the
+    // new officer onto units.officer_id AND clear the previous
+    // officer's units.officer_id if they had it.
+    const unitChange = body.assigned_unit_id;
+    if (unitChange !== undefined) {
+      const newUnitId = unitChange === '' || unitChange === null ? null : Number(unitChange);
+      if (newUnitId !== null && (!Number.isInteger(newUnitId) || newUnitId <= 0)) {
+        return c.json({ error: 'assigned_unit_id must be a positive integer or null', code: 'INVALID_ASSIGNED_UNIT' }, 400);
+      }
+      if (newUnitId !== null) {
+        const unitRow = await queryFirst<{ id: number }>(db, 'SELECT id FROM units WHERE id = ?', newUnitId);
+        if (!unitRow) return c.json({ error: `assigned_unit_id ${newUnitId} does not match a known unit`, code: 'UNIT_NOT_FOUND' }, 400);
+      }
+    }
+
     setCols.push('updated_at = CURRENT_TIMESTAMP');
     const sql = `UPDATE users SET ${setCols.join(', ')} WHERE id = ?`;
     bindings.push(targetId);
     await execute(db, sql, ...bindings);
+
+    // Mirror the assigned_unit_id write onto units.officer_id (the
+    // authoritative dispatch-side pointer). Only runs when the body
+    // actually touched assigned_unit_id, so a badge-number change
+    // alone doesn't yank a unit's officer. Same pre-clear pattern as
+    // dispatch/units.ts DELETE: any other unit that had this officer
+    // as their pointer gets cleared first, so a transfer doesn't
+    // leave two units pointing at the same person.
+    if (unitChange !== undefined) {
+      const newUnitId = unitChange === '' || unitChange === null ? null : Number(unitChange);
+      await execute(db,
+        `UPDATE units SET officer_id = NULL, updated_at = datetime('now')
+          WHERE officer_id = ? AND (? IS NULL OR id != ?)`,
+        targetId, newUnitId, newUnitId);
+      if (newUnitId != null) {
+        await execute(db,
+          `UPDATE units SET officer_id = ?, updated_at = datetime('now') WHERE id = ?`,
+          targetId, newUnitId);
+      }
+    }
 
     const updated = await queryFirst<Record<string, unknown>>(
       db,

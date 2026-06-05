@@ -73,7 +73,7 @@ export function useActivityChoropleth({ map, calls, level }: Opts) {
     for (const f of tagged.features) {
       const key = String(f.properties[prop] ?? '');
       const bid = String(f.properties.beat_id ?? f.properties.beat_code ?? '');
-      const c = lvl === 'beat' ? (countByBeat.get(bid) || 0) : (countByBeat.get(bid) || 0);
+      const c = countByBeat.get(bid) || 0;
       groupTotal.set(key, (groupTotal.get(key) || 0) + c);
     }
 

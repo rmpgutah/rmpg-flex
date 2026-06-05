@@ -67,7 +67,8 @@ export function generateFleetStatusReport(data: {
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   let y = headerStrip(doc, 'FLEET STATUS REPORT', `Total Units: ${data.vehicles.length}  •  Active: ${data.vehicles.filter(v => v.status === 'in_service').length}`);
-  const totalPages = Math.ceil(data.vehicles.length / 25);
+  // REGRESSION-GUARD: Math.max(1,...) prevents "Page 1 of 0" on an empty fleet
+  const totalPages = Math.max(1, Math.ceil(data.vehicles.length / 25));
   let page = 1;
   let rowIdx = 0;
 
@@ -282,7 +283,7 @@ export function generateFleetComplianceReport(data: {
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   let y = headerStrip(doc, 'FLEET COMPLIANCE REPORT', `Generated: ${new Date().toISOString().slice(0, 10)}`);
-  const totalPages = Math.ceil(data.vehicles.length / 20);
+  const totalPages = Math.max(1, Math.ceil(data.vehicles.length / 20));
   let page = 1; let rowIdx = 0;
 
   // Count compliance issues
@@ -340,7 +341,7 @@ export function generateFleetUtilizationReport(data: {
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   let y = headerStrip(doc, 'FLEET UTILIZATION REPORT', `Last ${data.days ?? 30} Days`);
-  const totalPages = Math.ceil(data.vehicles.length / 22);
+  const totalPages = Math.max(1, Math.ceil(data.vehicles.length / 22));
   let page = 1; let rowIdx = 0;
 
   const headers = ['Unit #', 'Yr/Make/Model', 'Days Used', 'Miles', 'Fuel Cost', 'Daily Avg Mi', 'Status'];
@@ -376,7 +377,7 @@ export function generateFleetFuelConsumptionReport(data: {
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   let y = headerStrip(doc, 'FLEET FUEL CONSUMPTION & EMISSIONS REPORT');
-  const totalPages = Math.ceil(data.vehicles.length / 22);
+  const totalPages = Math.max(1, Math.ceil(data.vehicles.length / 22));
   let page = 1; let rowIdx = 0;
 
   const boxes: [string, string][] = [
@@ -509,7 +510,7 @@ export function generateFleetReplacementReport(data: {
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   let y = headerStrip(doc, 'FLEET REPLACEMENT PLAN', `Projected Replacements`);
-  const totalPages = Math.ceil(data.vehicles.length / 20);
+  const totalPages = Math.max(1, Math.ceil(data.vehicles.length / 20));
   let page = 1; let rowIdx = 0;
 
   const headers = ['Unit #', 'Yr/Make/Model', 'Mileage', 'Repl Year', 'Priority', 'Est. Cost', 'Reason', 'Status'];
@@ -550,7 +551,7 @@ export function generateFleetDepreciationReport(data: {
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   let y = headerStrip(doc, 'FLEET DEPRECIATION SCHEDULE');
-  const totalPages = Math.ceil(data.vehicles.length / 20);
+  const totalPages = Math.max(1, Math.ceil(data.vehicles.length / 20));
   let page = 1; let rowIdx = 0;
 
   const totalBookValue = data.vehicles.reduce((s, v) => s + (v.depreciation?.current_book_value ?? 0), 0);
@@ -595,7 +596,7 @@ export function generateFleetKeyReport(data: {
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   let y = headerStrip(doc, 'FLEET KEY MANAGEMENT REPORT');
-  const totalPages = Math.ceil(data.keys.length / 25);
+  const totalPages = Math.max(1, Math.ceil(data.keys.length / 25));
   let page = 1; let rowIdx = 0;
 
   const checkedOut = data.keys.filter(k => k.status === 'checked_out').length;
