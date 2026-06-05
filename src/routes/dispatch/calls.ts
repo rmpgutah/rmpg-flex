@@ -865,7 +865,12 @@ calls.post('/:id/status', requireRole(...WRITE_ROLES), async (c) => {
       console.warn('audit_log insert failed for status change:', auditErr);
     }
 
-    return c.json(updated);
+    // CRITICAL FIX: Merge ext table data (PSO/process fields) into the response.
+    // Without this, the client's mapDbCall() produces a call object missing all
+    // PSO/process fields after a status change — the detail panel then shows
+    // "No PSO details entered yet" even when data exists.
+    const ext = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service_ext WHERE id = ?', id);
+    return c.json({ ...(updated || {}), ...(ext || {}) });
   } catch (err) {
     return c.json({ error: 'Failed to update status' }, 500);
   }
@@ -907,9 +912,11 @@ calls.post('/:id/hold', requireRole(...WRITE_ROLES), async (c) => {
     // Return the full row (not a bare {message}) incl. held_at so the client can
     // map it back to a real call object — mapDbCall derives the synthetic
     // 'on_hold' status from held_at. Returning {message} blanked the call card.
+    // CRITICAL FIX: Return full ext table data (PSO/process fields) so the client
+    // doesn't lose them after a hold operation.
     const row = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
-    const ext = await queryFirst<Record<string, unknown>>(db, 'SELECT held_at FROM calls_for_service_ext WHERE id = ?', id);
-    return c.json({ ...(row || {}), held_at: ext?.held_at ?? null });
+    const ext = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service_ext WHERE id = ?', id);
+    return c.json({ ...(row || {}), ...(ext || {}) });
   } catch (err) {
     return c.json({ error: 'Hold failed' }, 500);
   }

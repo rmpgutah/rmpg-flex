@@ -149,15 +149,17 @@ export function useDispatchCallActions(args: UseDispatchCallActionsArgs) {
       if (newStatus === 'cleared' || newStatus === 'closed' || newStatus === 'cancelled') {
         await refreshUnits();
       }
-      // Auto-archive on closed/cancelled to clear the "All" view.
-      if (newStatus === 'closed' || newStatus === 'cancelled') {
-        await handleArchive(callId);
-      }
+      // NOTE: Auto-archive on closed/cancelled was removed 2026-06-05. The
+      // previous behavior immediately archived the call after close/cancel,
+      // which set selectedCall to null and jarringly closed the detail panel
+      // mid-workflow. The 5-minute auto-archive timer (DispatchPage.tsx line
+      // ~2050) still handles stale cleared calls; manual archive is available
+      // via the Archive button for immediate cleanup.
     } catch (err) {
       console.error('Failed to update status:', err);
       addToast('Failed to update call status', 'error');
     }
-  }, [setCalls, setSelectedCall, refreshUnits, handleArchive, addToast]);
+  }, [setCalls, setSelectedCall, refreshUnits, addToast]);
 
   const handleHoldCall = useCallback(async (callId: string) => {
     try {
