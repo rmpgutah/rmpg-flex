@@ -5,6 +5,7 @@ import { useCallback, useState, useEffect, useRef } from 'react';
 import type mapboxgl from 'mapbox-gl';
 import { apiFetch } from './useApi';
 import { whenStyleReady } from '../pages/map/utils/safeAddSource';
+import { getSourceSafe, hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
 
 interface HeatmapPoint {
   latitude: number;
@@ -80,8 +81,8 @@ export function useMapboxHeatmap(map: mapboxgl.Map | null) {
     return () => {
       if (!map) return;
       try {
-        if (map.getLayer(HEATMAP_LAYER_ID)) map.removeLayer(HEATMAP_LAYER_ID);
-        if (map.getSource(SOURCE_ID)) map.removeSource(SOURCE_ID);
+        safeRemoveLayer(map, HEATMAP_LAYER_ID);
+        safeRemoveSource(map, SOURCE_ID);
       } catch { /* ignore */ }
     };
   }, [map]);
@@ -90,14 +91,14 @@ export function useMapboxHeatmap(map: mapboxgl.Map | null) {
     const p = PRESETS[preset] || PRESETS.default;
     const cs = COLOR_SCHEMES[scheme] || COLOR_SCHEMES.red;
 
-    if (!m.getSource(SOURCE_ID)) {
+    if (!hasSource(m, SOURCE_ID)) {
       m.addSource(SOURCE_ID, {
         type: 'geojson',
         data: { type: 'FeatureCollection', features: [] },
       });
     }
 
-    if (m.getLayer(HEATMAP_LAYER_ID)) m.removeLayer(HEATMAP_LAYER_ID);
+    safeRemoveLayer(m, HEATMAP_LAYER_ID);
 
     m.addLayer({
       id: HEATMAP_LAYER_ID,
@@ -141,7 +142,7 @@ export function useMapboxHeatmap(map: mapboxgl.Map | null) {
           geometry: { type: 'Point', coordinates: [p.longitude, p.latitude] },
         }));
 
-        const src = map.getSource(SOURCE_ID) as mapboxgl.GeoJSONSource | undefined;
+        const src = getSourceSafe<mapboxgl.GeoJSONSource>(map, SOURCE_ID);
         if (src) {
           src.setData({ type: 'FeatureCollection', features });
         }
@@ -159,8 +160,8 @@ export function useMapboxHeatmap(map: mapboxgl.Map | null) {
   const clear = useCallback(() => {
     if (!map) return;
     try {
-      if (map.getLayer(HEATMAP_LAYER_ID)) map.removeLayer(HEATMAP_LAYER_ID);
-      if (map.getSource(SOURCE_ID)) map.removeSource(SOURCE_ID);
+      safeRemoveLayer(map, HEATMAP_LAYER_ID);
+      safeRemoveSource(map, SOURCE_ID);
       layerRef.current = false;
     } catch { /* ignore */ }
     setPoints([]);

@@ -21,6 +21,8 @@ import {
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
+import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
+import { useMenuActions } from '../utils/contextMenuActions';
 import ConfirmDialog from '../components/ConfirmDialog';
 import { usePersistedTab } from '../hooks/usePersistedState';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -32,6 +34,7 @@ import TabBar from '../components/TabBar';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { safeDateStr, safeTimeStr, parseTimestamp } from '../utils/dateUtils';
 import { initMapbox, mapboxgl, MAPBOX_STYLE_DARK, registerMapInstance, unregisterMapInstance } from '../utils/mapboxLoader';
+import { installWebglContextRecovery } from '../utils/webglRecovery';
 import { getMapboxAccessToken } from '../utils/mapboxApiKey';
 import { useToast } from '../components/ToastProvider';
 import { useAuth } from '../context/AuthContext';
@@ -98,6 +101,9 @@ function PatrolMapView({ checkpoints, scans }: { checkpoints: Checkpoint[]; scan
   const mapContainerRef = React.useRef<HTMLDivElement>(null);
   const mapInstanceRef = React.useRef<mapboxgl.Map | null>(null);
   const [mapReady, setMapReady] = React.useState(false);
+  // WebGL context-loss recovery (rebuilds the map after a GPU context drop).
+  const [recoverNonce, setRecoverNonce] = React.useState(0);
+  const recoveryCleanupRef = React.useRef<(() => void) | null>(null);
 
   React.useEffect(() => {
     if (!mapContainerRef.current) return;
@@ -116,6 +122,18 @@ function PatrolMapView({ checkpoints, scans }: { checkpoints: Checkpoint[]; scan
       });
       mapInstanceRef.current = map;
       registerMapInstance(map);
+
+      // Rebuild in place if the GPU drops the context. The marker/route effect
+      // (keyed on mapReady) re-runs and re-fits bounds to the checkpoints.
+      recoveryCleanupRef.current = installWebglContextRecovery(map, {
+        label: 'PatrolMapView',
+        onRebuild: () => {
+          if (recoveryCleanupRef.current) { recoveryCleanupRef.current(); recoveryCleanupRef.current = null; }
+          if (mapInstanceRef.current) { unregisterMapInstance(mapInstanceRef.current); try { mapInstanceRef.current.remove(); } catch { /* gone */ } mapInstanceRef.current = null; }
+          setMapReady(false);
+          setRecoverNonce((n) => n + 1);
+        },
+      });
 
       map.on('load', () => {
         if (cancelled) return;
@@ -137,9 +155,10 @@ function PatrolMapView({ checkpoints, scans }: { checkpoints: Checkpoint[]; scan
 
     return () => {
       cancelled = true;
+      if (recoveryCleanupRef.current) { recoveryCleanupRef.current(); recoveryCleanupRef.current = null; }
       if (mapInstanceRef.current) unregisterMapInstance(mapInstanceRef.current);
     };
-  }, []);
+  }, [recoverNonce]);
 
   // Add markers + polylines when map is ready
   React.useEffect(() => {
@@ -232,6 +251,8 @@ const PatrolPage: React.FC = () => {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
   const { user } = useAuth();
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
 
   // Set document title
   useEffect(() => { document.title = 'Patrol Tracking \u2014 RMPG Flex'; }, []);
@@ -513,6 +534,31 @@ const PatrolPage: React.FC = () => {
     setSelectedQrCode(qrCode);
     setShowQrModal(true);
   };
+
+  // ── Build a checkpoint row context menu ──
+  const buildCheckpointMenu = (cp: Checkpoint): ContextMenuItem[] => [
+    m.action('Show QR code', () => handleShowQr(cp.qr_code), { icon: <Eye size={12} /> }),
+    ...(cp.archived_at
+      ? [m.action('Unarchive', () => handleUnarchiveCheckpoint(cp.id), { icon: <RotateCcw size={12} /> })]
+      : [m.action('Edit checkpoint', () => handleEditCheckpoint(cp), { icon: <Pencil size={12} /> })]),
+    m.separator(),
+    m.copy('Copy name', cp.name),
+    m.copy('Copy QR code', cp.qr_code),
+    m.copyId(cp.id),
+    ...(cp.archived_at ? [] : [
+      m.separator(),
+      m.action('Archive', () => handleArchiveCheckpoint(cp.id), { icon: <Archive size={12} /> }),
+      m.action('Delete', () => setDeleteConfirmId(cp.id), { icon: <Trash2 size={12} />, danger: true }),
+    ]),
+  ];
+
+  // ── Build a scan-log row context menu (read-only log → copy actions) ──
+  const buildScanMenu = (scan: Scan): ContextMenuItem[] => [
+    m.copy('Copy checkpoint', scan.checkpoint_name),
+    m.copy('Copy officer', scan.officer_name),
+    m.copy('Copy property', scan.property_name),
+    m.copyId(scan.id),
+  ];
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -879,7 +925,7 @@ const PatrolPage: React.FC = () => {
                 </thead>
                 <tbody>
                   {checkpoints.map((checkpoint) => (
-                    <tr key={checkpoint.id}>
+                    <tr key={checkpoint.id} onContextMenu={(e) => openMenu(e, buildCheckpointMenu(checkpoint))}>
                       <td>
                         <div className="flex items-center gap-2">
                           <span className={`led-dot ${checkpoint.is_active ? 'led-green' : 'led-off'}`} />
@@ -979,7 +1025,7 @@ const PatrolPage: React.FC = () => {
                     <label className="block text-sm font-medium text-rmpg-200 mb-1">
                       Checkpoint:
                     </label>
-                    <select
+                    <select id="ff-patrolpage-0"
                       value={scanFilters.checkpointId}
                       onChange={(e) =>
                         setScanFilters(prev => ({ ...prev, checkpointId: e.target.value }))
@@ -998,7 +1044,7 @@ const PatrolPage: React.FC = () => {
                     <label className="block text-sm font-medium text-rmpg-200 mb-1">
                       Start Date:
                     </label>
-                    <input
+                    <input id="ff-patrolpage-1"
                       type="datetime-local"
                       value={scanFilters.startDate}
                       onChange={(e) =>
@@ -1011,7 +1057,7 @@ const PatrolPage: React.FC = () => {
                     <label className="block text-sm font-medium text-rmpg-200 mb-1">
                       End Date:
                     </label>
-                    <input
+                    <input id="ff-patrolpage-2"
                       type="datetime-local"
                       value={scanFilters.endDate}
                       onChange={(e) =>
@@ -1054,7 +1100,7 @@ const PatrolPage: React.FC = () => {
                   </thead>
                   <tbody>
                     {scans.map((scan) => (
-                      <tr key={scan.id}>
+                      <tr key={scan.id} onContextMenu={(e) => openMenu(e, buildScanMenu(scan))}>
                         <td className="text-xs text-rmpg-200 font-mono whitespace-nowrap">
                           {formatDateTime(scan.scanned_at)}
                         </td>
@@ -1293,7 +1339,7 @@ const PatrolPage: React.FC = () => {
                 <label className="block text-sm font-medium text-rmpg-200 mb-1">
                   Property: *
                 </label>
-                <select
+                <select id="ff-patrolpage-3"
                   value={formData.property_id}
                   onChange={(e) => setFormData(prev => ({ ...prev, property_id: e.target.value }))}
                   className="select-dark"
@@ -1312,7 +1358,7 @@ const PatrolPage: React.FC = () => {
                 <label className="block text-sm font-medium text-rmpg-200 mb-1">
                   Checkpoint Name: *
                 </label>
-                <input
+                <input id="ff-patrolpage-4"
                   type="text"
                   value={formData.name}
                   onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
@@ -1339,7 +1385,7 @@ const PatrolPage: React.FC = () => {
                 <label className="block text-sm font-medium text-rmpg-200 mb-1">
                   Scan Interval (minutes): *
                 </label>
-                <input
+                <input id="ff-patrolpage-5"
                   type="number"
                   value={formData.scan_required_interval_minutes}
                   onChange={(e) =>
@@ -1359,7 +1405,7 @@ const PatrolPage: React.FC = () => {
                   <label className="block text-sm font-medium text-rmpg-200 mb-1">
                     Latitude:
                   </label>
-                  <input
+                  <input id="ff-patrolpage-6"
                     type="number"
                     step="any"
                     value={formData.latitude}
@@ -1372,7 +1418,7 @@ const PatrolPage: React.FC = () => {
                   <label className="block text-sm font-medium text-rmpg-200 mb-1">
                     Longitude:
                   </label>
-                  <input
+                  <input id="ff-patrolpage-7"
                     type="number"
                     step="any"
                     value={formData.longitude}

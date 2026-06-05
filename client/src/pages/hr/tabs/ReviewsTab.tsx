@@ -12,6 +12,8 @@ import {
 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { useToast } from '../../../components/ToastProvider';
+import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
+import { useMenuActions } from '../../../utils/contextMenuActions';
 import { REVIEW_CATEGORIES, RATING_LABELS } from '../utils/hrConstants';
 import ReviewFormModal from '../modals/ReviewFormModal';
 import ExportButton from '../../../components/ExportButton';
@@ -81,6 +83,10 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
   const isManager = MANAGER_ROLES.includes(userRole);
   const isGodMode = userRole === 'admin'; // Admin God Mode — unrestricted access
   const { addToast } = useToast();
+
+  // ── Right-click context menu ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
 
   const [reviews, setReviews] = useState<PerformanceReview[]>([]);
   const [officers, setOfficers] = useState<Array<{ id: number; full_name: string }>>([]);
@@ -165,25 +171,37 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
 
   // ── Handlers ──────────────────────────────────────────
   const handleCreate = async (data: any) => {
-    await apiFetch('/hr/reviews', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    });
-    addToast('Review created', 'success');
-    fetchReviews();
+    try {
+      await apiFetch('/hr/reviews', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      addToast('Review created', 'success');
+      fetchReviews();
+    } catch (err) {
+      // Surface the failure so the Save button doesn't look dead. Rethrow keeps
+      // the modal open (ReviewFormModal's `await onSubmit` rejects, skipping onClose).
+      addToast('Failed to create review', 'error');
+      throw err;
+    }
   };
 
   const handleUpdate = async (data: any) => {
     if (!editReview) return;
-    await apiFetch(`/hr/reviews/${editReview.id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    });
-    addToast('Review updated', 'success');
-    setEditReview(null);
-    fetchReviews();
+    try {
+      await apiFetch(`/hr/reviews/${editReview.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      addToast('Review updated', 'success');
+      setEditReview(null);
+      fetchReviews();
+    } catch (err) {
+      addToast('Failed to update review', 'error');
+      throw err;
+    }
   };
 
   const handleDelete = async (id: number) => {
@@ -195,6 +213,29 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
     } catch {
       addToast('Failed to delete review', 'error');
     }
+  };
+
+  // Shared open-for-edit so the row button and right-click menu target the same review.
+  const openEditReview = (review: PerformanceReview) => {
+    setEditReview(review);
+    setModalOpen(true);
+  };
+
+  const buildReviewMenu = (review: PerformanceReview): ContextMenuItem[] => {
+    const canEdit = review.status === 'draft' || review.status === 'submitted' || isGodMode;
+    const canDelete = userRole === 'admin' && (review.status === 'draft' || isGodMode);
+    const officerName = review.officer_name ?? `Officer #${review.officer_id}`;
+    return [
+      ...(canEdit ? [m.action('Edit review', () => openEditReview(review), { icon: <Pencil size={12} /> })] : []),
+      m.copy('Copy officer name', officerName),
+      m.copyId(review.id),
+      ...(canDelete
+        ? [
+            m.separator(),
+            m.action('Delete review', () => handleDelete(review.id), { icon: <Trash2 size={12} />, danger: true }),
+          ]
+        : []),
+    ];
   };
 
   const handleAcknowledge = async (reviewId: number) => {
@@ -461,7 +502,7 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
         <div className="flex items-center gap-1 text-rmpg-400">
           <Search size={14} />
         </div>
-        <select
+        <select id="ff-reviewstab-0"
           value={filterOfficer}
           onChange={(e) => setFilterOfficer(e.target.value)}
           className="bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1 text-xs text-white focus:border-brand-500 focus:outline-none"
@@ -473,7 +514,7 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
             </option>
           ))}
         </select>
-        <select
+        <select id="ff-reviewstab-1"
           value={filterType}
           onChange={(e) => setFilterType(e.target.value)}
           className="bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1 text-xs text-white focus:border-brand-500 focus:outline-none"
@@ -485,7 +526,7 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
             </option>
           ))}
         </select>
-        <select
+        <select id="ff-reviewstab-2"
           value={filterStatus}
           onChange={(e) => setFilterStatus(e.target.value)}
           className="bg-surface-sunken border border-rmpg-700 rounded-sm px-2 py-1 text-xs text-white focus:border-brand-500 focus:outline-none"
@@ -523,6 +564,7 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
           {reviews.map((review) => (
             <div
               key={review.id}
+              onContextMenu={(e) => openMenu(e, buildReviewMenu(review))}
               className="bg-surface-base border border-rmpg-700 rounded-sm p-3 flex items-start gap-3"
             >
               {/* Avatar initial */}
@@ -567,10 +609,7 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
               <div className="flex items-center gap-1 shrink-0">
                 {(review.status === 'draft' || review.status === 'submitted' || isGodMode) && (
                   <button type="button"
-                    onClick={() => {
-                      setEditReview(review);
-                      setModalOpen(true);
-                    }}
+                    onClick={() => openEditReview(review)}
                     className="p-1.5 text-rmpg-400 hover:text-white transition-colors"
                     title={isGodMode ? 'Admin: Edit review (any status)' : 'Edit'}
                   >

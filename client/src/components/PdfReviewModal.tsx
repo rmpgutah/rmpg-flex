@@ -306,7 +306,7 @@ function LabeledEditor<T extends Record<string, any>>({
           <span className="ml-1 text-amber-500/70" title={field.readOnlyReason}>ⓘ</span>
         )}
       </span>
-      <input
+      <input id="ff-pdfreviewmodal-0"
         aria-label={field.label}
         className="w-full bg-[#050505] text-white border border-[#2e2e2e] p-1 disabled:opacity-50"
         value={value}
@@ -327,7 +327,7 @@ function CheckboxEditor<T extends Record<string, any>>({
   const disabled = field.editable === false;
   return (
     <label className="flex items-center gap-2 mb-2 text-xs">
-      <input
+      <input id="ff-pdfreviewmodal-1"
         type="checkbox"
         aria-label={field.label}
         checked={checked}
@@ -360,7 +360,7 @@ function NarrativeEditor<T extends Record<string, any>>({
           <span className="ml-1 text-amber-500/70" title={field.readOnlyReason}>ⓘ</span>
         )}
       </span>
-      <textarea
+      <textarea id="ff-pdfreviewmodal-2"
         aria-label={field.label}
         rows={4}
         className="w-full bg-[#050505] text-white border border-[#2e2e2e] p-1 disabled:opacity-50"
@@ -439,7 +439,7 @@ function TableEditor<T extends Record<string, any>>({
             <tr key={i}>
               {field.columns.map((c) => (
                 <td key={c.key} className="py-1 pr-1">
-                  <input
+                  <input id="ff-pdfreviewmodal-3"
                     aria-label={`${field.label} row ${i + 1} ${c.header}`}
                     value={String((row as Record<string, unknown>)[c.key] ?? '')}
                     disabled={disabled}

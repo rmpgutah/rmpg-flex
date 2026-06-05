@@ -220,7 +220,7 @@ export default function ProposalsTab() {
     <div className="flex flex-col h-full">
       {/* ── Top bar ──────────────────────────────────── */}
       <div className="flex items-center gap-2 flex-wrap px-3 py-2 bg-[#141414] border-b border-rmpg-700">
-        <select
+        <select id="ff-proposalstab-0"
           value={filterStage}
           onChange={e => setFilterStage(e.target.value)}
           className="bg-[#0c0c0c] border border-rmpg-700 text-white text-xs px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
@@ -230,7 +230,7 @@ export default function ProposalsTab() {
             <option key={s} value={s}>{toDisplayLabel(s)}</option>
           ))}
         </select>
-        <select
+        <select id="ff-proposalstab-1"
           value={filterTemplate}
           onChange={e => setFilterTemplate(e.target.value)}
           className="bg-[#0c0c0c] border border-rmpg-700 text-white text-xs px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
@@ -382,7 +382,7 @@ export default function ProposalsTab() {
                     <div className="grid grid-cols-2 gap-2">
                       <div>
                         <label className="text-[10px] text-rmpg-500">Monthly Value</label>
-                        <input
+                        <input id="ff-proposalstab-2"
                           type="number"
                           value={editForm.monthly_value || ''}
                           onChange={e => setEditForm(f => ({ ...f, monthly_value: Number(e.target.value) }))}
@@ -391,7 +391,7 @@ export default function ProposalsTab() {
                       </div>
                       <div>
                         <label className="text-[10px] text-rmpg-500">Total Value</label>
-                        <input
+                        <input id="ff-proposalstab-3"
                           type="number"
                           value={editForm.total_value || ''}
                           onChange={e => setEditForm(f => ({ ...f, total_value: Number(e.target.value) }))}
@@ -401,7 +401,7 @@ export default function ProposalsTab() {
                     </div>
                     <div>
                       <label className="text-[10px] text-rmpg-500">Billing Frequency</label>
-                      <select
+                      <select id="ff-proposalstab-4"
                         value={editForm.billing_frequency || 'monthly'}
                         onChange={e => setEditForm(f => ({ ...f, billing_frequency: e.target.value }))}
                         className="w-full bg-[#0c0c0c] border border-rmpg-700 text-white text-xs px-2 py-1 rounded-sm focus:border-brand-500 focus:outline-none"
@@ -434,7 +434,7 @@ export default function ProposalsTab() {
                     <div className="grid grid-cols-2 gap-2">
                       <div>
                         <label className="text-[10px] text-rmpg-500">Start Date</label>
-                        <input
+                        <input id="ff-proposalstab-5"
                           type="date"
                           value={editForm.proposed_start || ''}
                           onChange={e => setEditForm(f => ({ ...f, proposed_start: e.target.value }))}
@@ -443,7 +443,7 @@ export default function ProposalsTab() {
                       </div>
                       <div>
                         <label className="text-[10px] text-rmpg-500">End Date</label>
-                        <input
+                        <input id="ff-proposalstab-6"
                           type="date"
                           value={editForm.proposed_end || ''}
                           onChange={e => setEditForm(f => ({ ...f, proposed_end: e.target.value }))}
@@ -454,7 +454,7 @@ export default function ProposalsTab() {
                     <div className="grid grid-cols-2 gap-2">
                       <div>
                         <label className="text-[10px] text-rmpg-500">Valid Until</label>
-                        <input
+                        <input id="ff-proposalstab-7"
                           type="date"
                           value={editForm.valid_until || ''}
                           onChange={e => setEditForm(f => ({ ...f, valid_until: e.target.value }))}
@@ -463,7 +463,7 @@ export default function ProposalsTab() {
                       </div>
                       <div>
                         <label className="text-[10px] text-rmpg-500">Contract Months</label>
-                        <input
+                        <input id="ff-proposalstab-8"
                           type="number"
                           value={editForm.contract_length_months || ''}
                           onChange={e => setEditForm(f => ({ ...f, contract_length_months: Number(e.target.value) }))}
@@ -574,7 +574,7 @@ export default function ProposalsTab() {
             <form onSubmit={handleCreate} className="p-3 space-y-2">
               <div>
                 <label className="text-[10px] text-rmpg-400 uppercase tracking-wider block mb-0.5">Title *</label>
-                <input
+                <input id="ff-proposalstab-9"
                   type="text"
                   required
                   value={form.title}
@@ -584,7 +584,7 @@ export default function ProposalsTab() {
               </div>
               <div>
                 <label className="text-[10px] text-rmpg-400 uppercase tracking-wider block mb-0.5">Template</label>
-                <select
+                <select id="ff-proposalstab-10"
                   value={form.template_type}
                   onChange={e => handleTemplateChange(e.target.value)}
                   className="w-full bg-[#0c0c0c] border border-rmpg-700 text-white text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
@@ -598,7 +598,7 @@ export default function ProposalsTab() {
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="text-[10px] text-rmpg-400 uppercase tracking-wider block mb-0.5">Link to Lead</label>
-                  <select
+                  <select id="ff-proposalstab-11"
                     value={form.lead_id}
                     onChange={e => setForm(f => ({ ...f, lead_id: e.target.value }))}
                     className="w-full bg-[#0c0c0c] border border-rmpg-700 text-white text-xs px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
@@ -611,7 +611,7 @@ export default function ProposalsTab() {
                 </div>
                 <div>
                   <label className="text-[10px] text-rmpg-400 uppercase tracking-wider block mb-0.5">Link to Client</label>
-                  <select
+                  <select id="ff-proposalstab-12"
                     value={form.client_id}
                     onChange={e => setForm(f => ({ ...f, client_id: e.target.value }))}
                     className="w-full bg-[#0c0c0c] border border-rmpg-700 text-white text-xs px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
@@ -644,7 +644,7 @@ export default function ProposalsTab() {
               <div className="grid grid-cols-3 gap-2">
                 <div>
                   <label className="text-[10px] text-rmpg-400 uppercase tracking-wider block mb-0.5">Monthly Value</label>
-                  <input
+                  <input id="ff-proposalstab-13"
                     type="number"
                     step="0.01"
                     value={form.monthly_value}
@@ -654,7 +654,7 @@ export default function ProposalsTab() {
                 </div>
                 <div>
                   <label className="text-[10px] text-rmpg-400 uppercase tracking-wider block mb-0.5">Total Value</label>
-                  <input
+                  <input id="ff-proposalstab-14"
                     type="number"
                     step="0.01"
                     value={form.total_value}
@@ -664,7 +664,7 @@ export default function ProposalsTab() {
                 </div>
                 <div>
                   <label className="text-[10px] text-rmpg-400 uppercase tracking-wider block mb-0.5">Billing</label>
-                  <select
+                  <select id="ff-proposalstab-15"
                     value={form.billing_frequency}
                     onChange={e => setForm(f => ({ ...f, billing_frequency: e.target.value }))}
                     className="w-full bg-[#0c0c0c] border border-rmpg-700 text-white text-sm px-2 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none"
@@ -679,7 +679,7 @@ export default function ProposalsTab() {
               <div className="grid grid-cols-3 gap-2">
                 <div>
                   <label className="text-[10px] text-rmpg-400 uppercase tracking-wider block mb-0.5">Start Date</label>
-                  <input
+                  <input id="ff-proposalstab-16"
                     type="date"
                     value={form.proposed_start}
                     onChange={e => setForm(f => ({ ...f, proposed_start: e.target.value }))}
@@ -688,7 +688,7 @@ export default function ProposalsTab() {
                 </div>
                 <div>
                   <label className="text-[10px] text-rmpg-400 uppercase tracking-wider block mb-0.5">End Date</label>
-                  <input
+                  <input id="ff-proposalstab-17"
                     type="date"
                     value={form.proposed_end}
                     onChange={e => setForm(f => ({ ...f, proposed_end: e.target.value }))}
@@ -697,7 +697,7 @@ export default function ProposalsTab() {
                 </div>
                 <div>
                   <label className="text-[10px] text-rmpg-400 uppercase tracking-wider block mb-0.5">Contract Months</label>
-                  <input
+                  <input id="ff-proposalstab-18"
                     type="number"
                     value={form.contract_length_months}
                     onChange={e => setForm(f => ({ ...f, contract_length_months: e.target.value }))}
@@ -707,7 +707,7 @@ export default function ProposalsTab() {
               </div>
               <div>
                 <label className="text-[10px] text-rmpg-400 uppercase tracking-wider block mb-0.5">Valid Until</label>
-                <input
+                <input id="ff-proposalstab-19"
                   type="date"
                   value={form.valid_until}
                   onChange={e => setForm(f => ({ ...f, valid_until: e.target.value }))}

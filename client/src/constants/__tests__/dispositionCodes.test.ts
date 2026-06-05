@@ -21,9 +21,27 @@ describe('disposition codes', () => {
     expect(DEFAULT_DISPOSITION_CODES.size).toBe(fromGroups.length);
   });
 
-  it('exposes the core process-service outcomes', () => {
-    for (const code of ['PS Served', 'PS Sub-Served', 'PS Posted', 'PS Non-Service']) {
+  it('exposes the short-coded process-service outcomes (PS/### in increments of 5)', () => {
+    // Anchored on the live-configured PS/055 = Personal/Individual.
+    for (const code of ['PS/055', 'PS/060', 'PS/065', 'PS/080']) {
       expect(DEFAULT_DISPOSITION_CODES.has(code)).toBe(true);
+    }
+  });
+
+  it('uses short mnemonic codes for general dispositions (not verbose phrases)', () => {
+    for (const code of ['RTF', 'GOA', 'ARR', 'CIT', 'UTL']) {
+      expect(DEFAULT_DISPOSITION_CODES.has(code)).toBe(true);
+    }
+    // The old verbose phrase-codes must be gone.
+    expect(DEFAULT_DISPOSITION_CODES.has('Report Taken')).toBe(false);
+    expect(DEFAULT_DISPOSITION_CODES.has('PS Served')).toBe(false);
+  });
+
+  it('every process-service code matches the PS/### pattern in increments of 5', () => {
+    const ps = DISPOSITION_GROUPS.find((g) => g.processService)!;
+    for (const d of ps.codes) {
+      expect(d.code).toMatch(/^PS\/\d{3}$/);
+      expect(Number(d.code.split('/')[1]) % 5).toBe(0);
     }
   });
 

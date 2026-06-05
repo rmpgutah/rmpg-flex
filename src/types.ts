@@ -17,6 +17,10 @@ export type Bindings = {
   // /updates/* routes. Contains .exe, .dmg, .apk, .zip, .blockmap, .yml.
   DOWNLOADS: R2Bucket;
   JWT_SECRET: string;
+  // Optional dedicated Ed25519 signing seed (base64 of 32 raw seed bytes) for
+  // PDF chain-of-custody signatures. When unset, /pdf-tools/sign-payload derives
+  // a stable seed from JWT_SECRET so signing still works (see pdfTools.ts).
+  PDF_SIGNING_KEY?: string;
   CORS_ORIGINS?: string;
   PRIMARY_DOMAIN?: string;
   // Mapbox access token (secret, optional). When set, the Worker can call
@@ -30,6 +34,11 @@ export type Bindings = {
   // incident; the single shared hub that relays + records live voice.
   // See src/durable-objects/VoiceHubDO.ts.
   VOICE_HUB: DurableObjectNamespace;
+  // AlertHubDO namespace — ONE global instance (idFromName('global')) that
+  // every client holds an alert socket to. The shared bus for agency-wide
+  // officer-safety broadcasts (panic) + forced-ack. See
+  // src/durable-objects/AlertHubDO.ts + src/utils/alertHub.ts.
+  ALERT_HUB: DurableObjectNamespace;
   // PDF Tools sidecar — Cloudflare Container holding qpdf + pdftotext
   // + ocrmypdf. Worker proxies to it via getContainer(env.PDF_TOOLS,
   // 'shared').fetch(req). Parameterized so getContainer<T> narrows
@@ -38,6 +47,12 @@ export type Bindings = {
   // Workers AI — vision-LLM OCR + structured field extraction for
   // process-service intake. See src/routes/serveIntake.ts.
   AI: Ai;
+  // Optional LoRA fine-tune name/id for the serve-intake field extractor.
+  // When set, extractFromText() applies this adapter on top of the 70B base
+  // (with raw:true). Created via `wrangler ai finetune create` from the
+  // adapter trained on training/data (see training/README.md). Unset → stock
+  // 70B, so the fine-tune is a safe, reversible opt-in via wrangler var/secret.
+  SERVE_INTAKE_LORA?: string;
 };
 
 export type Variables = {

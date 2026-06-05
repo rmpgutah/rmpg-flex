@@ -26,7 +26,7 @@ export default function PreferencesDialog({ open, prefs, onChange, onClose }: Pr
         <div className="space-y-3">
           <div>
             <label className={labelCls}>View mode</label>
-            <select value={prefs.viewMode} onChange={(e) => onChange({ ...prefs, viewMode: e.target.value as EditorPreferences['viewMode'] })} className={inputCls}>
+            <select id="ff-preferencesdialog-0" value={prefs.viewMode} onChange={(e) => onChange({ ...prefs, viewMode: e.target.value as EditorPreferences['viewMode'] })} className={inputCls}>
               <option value="continuous">Continuous (all pages stacked)</option>
               <option value="single">Single page</option>
               <option value="two-up">Two-up (side by side)</option>
@@ -35,7 +35,7 @@ export default function PreferencesDialog({ open, prefs, onChange, onClose }: Pr
 
           <div>
             <label className="inline-flex items-center gap-2 text-[10px] text-rmpg-300">
-              <input type="checkbox" checked={prefs.snapToGrid}
+              <input id="ff-preferencesdialog-1" type="checkbox" checked={prefs.snapToGrid}
                 onChange={(e) => onChange({ ...prefs, snapToGrid: e.target.checked })} />
               Snap drawing to grid
             </label>
@@ -44,7 +44,7 @@ export default function PreferencesDialog({ open, prefs, onChange, onClose }: Pr
           {prefs.snapToGrid && (
             <div>
               <label className={labelCls}>Grid size (PDF points)</label>
-              <input type="number" min={1} max={72} value={prefs.gridSize}
+              <input id="ff-preferencesdialog-2" type="number" min={1} max={72} value={prefs.gridSize}
                 onChange={(e) => onChange({ ...prefs, gridSize: Math.max(1, parseInt(e.target.value, 10) || 6) })}
                 className={inputCls} />
             </div>
@@ -52,7 +52,7 @@ export default function PreferencesDialog({ open, prefs, onChange, onClose }: Pr
 
           <div>
             <label className="inline-flex items-center gap-2 text-[10px] text-rmpg-300">
-              <input type="checkbox" checked={prefs.autoSaveDrafts}
+              <input id="ff-preferencesdialog-3" type="checkbox" checked={prefs.autoSaveDrafts}
                 onChange={(e) => onChange({ ...prefs, autoSaveDrafts: e.target.checked })} />
               Auto-save drafts to local storage
             </label>
@@ -60,7 +60,7 @@ export default function PreferencesDialog({ open, prefs, onChange, onClose }: Pr
 
           <div>
             <label className="inline-flex items-center gap-2 text-[10px] text-rmpg-300">
-              <input type="checkbox" checked={prefs.showAnnotationsPanel}
+              <input id="ff-preferencesdialog-4" type="checkbox" checked={prefs.showAnnotationsPanel}
                 onChange={(e) => onChange({ ...prefs, showAnnotationsPanel: e.target.checked })} />
               Show Annotations panel by default
             </label>

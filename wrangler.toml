@@ -1,3 +1,11 @@
+# DO NOT rename to "rmpg-api-proxy". This config deploys the rewrite app
+# (src/index.ts) and MUST target the worker `rmpg-flex-api`. The worker named
+# `rmpg-api-proxy` is the separate strangler dispatcher (proxy/wrangler.toml,
+# bound to rmpgutah.us/api/*) — it routes /api/auth/login to the legacy worker.
+# Renaming this to `rmpg-api-proxy` makes `wrangler deploy` overwrite the
+# dispatcher with this rewrite, which has NO `JWT_SECRET` secret of its own →
+# every login 500s on token signing (incident 2026-06-02, PRs #937/#946 →
+# reverted by #945 and this one). See [[project-auth-login-500-incident]].
 name = "rmpg-flex-api"
 main = "src/index.ts"
 compatibility_date = "2026-05-01"
@@ -45,6 +53,15 @@ class_name = "WelfareWatchDO"
 [[durable_objects.bindings]]
 name = "VOICE_HUB"
 class_name = "VoiceHubDO"
+
+# AlertHubDO — ONE global instance (idFromName('global')) that every client
+# holds an alert socket to (/api/alerts-ws on this worker's custom domain).
+# The shared bus that lets rewrite route handlers broadcast officer-safety
+# events (panic, etc.) agency-wide — the rewrite's own per-isolate WS map is
+# dead because clients' main /api/ws socket lives on the legacy worker.
+[[durable_objects.bindings]]
+name = "ALERT_HUB"
+class_name = "AlertHubDO"
 
 [[migrations]]
 tag = "v1"
@@ -123,6 +140,13 @@ new_sqlite_classes = ["PdfToolsContainer"]
 tag = "v2-voicehub"
 new_sqlite_classes = ["VoiceHubDO"]
 
+# AlertHubDO — APPENDED (same prefix rule as v2-voicehub above: live tags
+# must be a prefix of this list, so new DO migrations go at the END, never
+# mid-list). SQLite-backed for free-plan compatibility + storage.put/getAlarm.
+[[migrations]]
+tag = "v3-alerthub"
+new_sqlite_classes = ["AlertHubDO"]
+
 # ─── Workers AI ────────────────────────────────────────────
 # Used by /api/serve-intake/scan-document + /api/serve-intake/upload
 # for structured field extraction from OCR text and direct vision-LLM
@@ -152,7 +176,7 @@ SERVER_TIMEZONE = "America/Denver"
 # scheduleUtahWarrantSync interval. Workers cron uses UTC; "0 */4 * * *"
 # means every 4 hours on the hour (00:00, 04:00, 08:00, ... UTC).
 [triggers]
-crons = ["0 */4 * * *"]
+crons = ["0 */4 * * *", "* * * * *"]
 
 # (Removed obsolete deleted_classes migration. The class is now properly
 # defined upstream (commit ccb3881b on main added src/durable-objects/

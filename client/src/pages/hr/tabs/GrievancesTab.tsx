@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
-import { Plus, AlertOctagon, CheckCircle, Search, Loader2 } from 'lucide-react';
+import { Plus, AlertOctagon, CheckCircle, Search, Loader2, Eye, SearchCheck, XCircle } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { useToast } from '../../../components/ToastProvider';
 import { useAuth } from '../../../context/AuthContext';
+import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
+import { useMenuActions } from '../../../utils/contextMenuActions';
 import { useFormDraft } from '../../../hooks/useFormDraft';
 import UnsavedChangesGuard from '../../../components/UnsavedChangesGuard';
 import FloatingSaveBar from '../../../components/FloatingSaveBar';
@@ -74,6 +76,32 @@ export default function GrievancesTab() {
 
   const isManager = ['admin', 'manager', 'supervisor'].includes(user?.role || '');
 
+  // ── Right-click context menu ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+
+  const buildGrievanceMenu = (g: Grievance): ContextMenuItem[] => {
+    const canAct = isManager && g.status !== 'resolved' && g.status !== 'dismissed';
+    return [
+      m.copy('Copy subject', g.subject),
+      m.copy('Copy officer name', g.officer_name),
+      m.copyId(g.id),
+      ...(canAct
+        ? [
+            m.separator(),
+            ...(g.status === 'filed'
+              ? [m.action('Mark under review', () => updateStatus(g.id, 'under_review'), { icon: <Eye size={12} /> })]
+              : []),
+            ...(g.status === 'under_review'
+              ? [m.action('Move to investigation', () => updateStatus(g.id, 'investigation'), { icon: <SearchCheck size={12} /> })]
+              : []),
+            m.action('Mark resolved', () => updateStatus(g.id, 'resolved'), { icon: <CheckCircle size={12} /> }),
+            m.action('Dismiss', () => updateStatus(g.id, 'dismissed'), { icon: <XCircle size={12} />, danger: true }),
+          ]
+        : []),
+    ];
+  };
+
   const load = async () => {
     setLoading(true);
     try {
@@ -133,9 +161,9 @@ export default function GrievancesTab() {
         <div className="flex items-center gap-2">
           <div className="relative">
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500 pointer-events-none" aria-hidden="true" />
-            <input value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Search grievances..." aria-label="Search grievances by subject, officer, or type" className="input-field text-xs py-1 pl-6 pr-2 w-48 focus:ring-1 focus:ring-brand-500/50 transition-shadow duration-150" />
+            <input id="ff-grievancestab-0" value={searchQuery} onChange={e => setSearchQuery(e.target.value)} placeholder="Search grievances..." aria-label="Search grievances by subject, officer, or type" className="input-field text-xs py-1 pl-6 pr-2 w-48 focus:ring-1 focus:ring-brand-500/50 transition-shadow duration-150" />
           </div>
-          <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className="input-field text-xs py-1 px-2">
+          <select id="ff-grievancestab-1" value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className="input-field text-xs py-1 px-2">
             <option value="all">All Statuses</option>
             {Object.keys(STATUS_COLORS).map(s => <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>)}
           </select>
@@ -148,7 +176,7 @@ export default function GrievancesTab() {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="field-label">Type</label>
-              <select value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))} className="input-field w-full text-xs">
+              <select id="ff-grievancestab-2" value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))} className="input-field w-full text-xs">
                 <option value="general">General</option>
                 <option value="workplace">Workplace</option>
                 <option value="harassment">Harassment</option>
@@ -159,7 +187,7 @@ export default function GrievancesTab() {
             </div>
             <div>
               <label className="field-label">Priority</label>
-              <select value={form.priority} onChange={e => setForm(f => ({ ...f, priority: e.target.value }))} className="input-field w-full text-xs">
+              <select id="ff-grievancestab-3" value={form.priority} onChange={e => setForm(f => ({ ...f, priority: e.target.value }))} className="input-field w-full text-xs">
                 <option value="low">Low</option>
                 <option value="normal">Normal</option>
                 <option value="high">High</option>
@@ -169,7 +197,7 @@ export default function GrievancesTab() {
           </div>
           <div>
             <label className="field-label">Subject *</label>
-            <input value={form.subject} onChange={e => setForm(f => ({ ...f, subject: e.target.value }))} className="input-field w-full text-xs" placeholder="Brief subject line" maxLength={200} required autoComplete="off" onKeyDown={e => { if (e.key === 'Enter') e.preventDefault(); }} />
+            <input id="ff-grievancestab-4" value={form.subject} onChange={e => setForm(f => ({ ...f, subject: e.target.value }))} className="input-field w-full text-xs" placeholder="Brief subject line" maxLength={200} required autoComplete="off" onKeyDown={e => { if (e.key === 'Enter') e.preventDefault(); }} />
           </div>
           <div>
             <label className="field-label">Description *</label>
@@ -194,7 +222,7 @@ export default function GrievancesTab() {
       ) : (
         <div className="space-y-2">
           {filtered.map(g => (
-            <div key={g.id} className="panel-beveled p-3 hover:bg-surface-raised/50 hover:shadow-sm transition-all duration-200 hover:border-rmpg-500" role="article" aria-label={`Grievance: ${g.subject}`}>
+            <div key={g.id} onContextMenu={(e) => openMenu(e, buildGrievanceMenu(g))} className="panel-beveled p-3 hover:bg-surface-raised/50 hover:shadow-sm transition-all duration-200 hover:border-rmpg-500" role="article" aria-label={`Grievance: ${g.subject}`}>
               <div className="flex items-start justify-between">
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-1">

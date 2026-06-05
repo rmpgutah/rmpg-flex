@@ -8,13 +8,17 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import RichTextArea from '../components/RichTextArea';
 import {
   Plus, RefreshCw, MapPin, BarChart3, List, Map as MapIcon, Briefcase, Calendar,
-  Route, Navigation, Loader2, CheckCircle, Circle,
+  Route, Navigation, Loader2, CheckCircle, Circle, Eye, Pencil, ClipboardCheck,
+  Search as SearchIcon, AlertTriangle,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
+import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
+import { useMenuActions } from '../utils/contextMenuActions';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useAuth } from '../context/AuthContext';
 import { initMapbox, getMapboxInstance, mapboxgl, MAPBOX_STYLE_DARK } from '../utils/mapboxLoader';
+import { installWebglContextRecovery } from '../utils/webglRecovery';
 import { getMapboxAccessToken } from '../utils/mapboxApiKey';
 import { toDisplayLabel } from '../utils/formatters';
 import ServeJobCard from '../components/serve/ServeJobCard';
@@ -22,12 +26,14 @@ import ServeAttemptModal from '../components/serve/ServeAttemptModal';
 import ServeRoutePlanner from '../components/serve/ServeRoutePlanner';
 import ServeSkipTracePanel from '../components/serve/ServeSkipTracePanel';
 import FormModal from '../components/FormModal';
+import AddressAutocomplete, { type ParsedAddress } from '../components/AddressAutocomplete';
 import type { ServeJob, ServeAttemptData, ServeSkipAddress } from '../types';
 import ExportButton from '../components/ExportButton';
 import { useFormDraft } from '../hooks/useFormDraft';
 import UnsavedChangesGuard from '../components/UnsavedChangesGuard';
 import FloatingSaveBar from '../components/FloatingSaveBar';
 import { parseTimestamp } from '../utils/dateUtils';
+import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
 
 // ─── Constants ──────────────────────────────────────────────────────────
 
@@ -70,6 +76,10 @@ const EMPTY_FORM = {
   recipient_city: '',
   recipient_state: 'UT',
   recipient_zip: '',
+  // Coordinates from the address autocomplete pick. Sent to the create/update
+  // endpoint so it skips its own Nominatim backfill and uses the precise pin.
+  recipient_lat: null as number | null,
+  recipient_lng: null as number | null,
   document_type: 'Summons',
   case_number: '',
   court_name: '',
@@ -101,12 +111,17 @@ interface StatsSummary {
 export default function ServePage() {
   const isMobile = useIsMobile();
   const { user } = useAuth();
+  // ── Right-click context menu ──────────────────────────────────────────
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
   // ── Core state ──────────────────────────────────────────────────────
   const [selectedDate, setSelectedDate] = useState(() => formatDate(new Date()));
   const [activeTab, setActiveTab] = useState<Tab>('Queue');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   // ── Officers for route planner ──────────────────────────────────────
   const [officers, setOfficers] = useState<{ id: number; name: string }[]>([]);
+  // ── Clients (hiring parties) for the Add Job form selector ──────────
+  const [clientsList, setClientsList] = useState<{ id: string; name: string }[]>([]);
   // ── Saved route state ───────────────────────────────────────────────
   const [savedRoute, setSavedRoute] = useState<any>(null);
 
@@ -178,6 +193,9 @@ export default function ServePage() {
   const popupRef = useRef<mapboxgl.Popup | null>(null);
   const routeSourceRef = useRef<string | null>(null);
   const [mapReady, setMapReady] = useState(false);
+  // WebGL context-loss recovery (rebuilds the map after a GPU context drop).
+  const [serveMapRecoverNonce, setServeMapRecoverNonce] = useState(0);
+  const serveMapRecoveryCleanupRef = useRef<(() => void) | null>(null);
 
   // ── Route state ────────────────────────────────────────────────────
   const [routeData, setRouteData] = useState<{
@@ -254,6 +272,23 @@ export default function ServePage() {
         const list = Array.isArray(res) ? res : res?.data ?? [];
         setOfficers(list.map((u: any) => ({ id: u.id, name: u.full_name || `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.username })));
       } catch { /* non-critical */ }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  // ── Fetch clients for the hiring-party selector on the Add Job form ──
+  // Mirrors the dispatch New Call form: picking a client fills the (free-text)
+  // Client Name so the hiring party is a known, standardized account.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await apiFetch<any[]>('/admin/clients');
+        if (cancelled) return;
+        setClientsList((Array.isArray(res) ? res : [])
+          .filter((c: any) => c.status === 'active')
+          .map((c: any) => ({ id: String(c.id), name: c.name })));
+      } catch { /* non-critical — selector just stays empty */ }
     })();
     return () => { cancelled = true; };
   }, []);
@@ -370,6 +405,8 @@ export default function ServePage() {
       recipient_city: job.recipient_city || '',
       recipient_state: job.recipient_state || 'UT',
       recipient_zip: job.recipient_zip || '',
+      recipient_lat: job.recipient_lat ?? null,
+      recipient_lng: job.recipient_lng ?? null,
       document_type: job.document_type,
       case_number: job.case_number || '',
       court_name: job.court_name || '',
@@ -508,6 +545,23 @@ export default function ServePage() {
       mapRef.current = map;
       popupRef.current = new mapboxgl.Popup({ offset: 25, closeButton: false });
 
+      // Rebuild in place if the GPU drops the context. updateMapMarkers re-runs
+      // (keyed on mapReady) and re-adds the markers + route layer to the new map.
+      serveMapRecoveryCleanupRef.current = installWebglContextRecovery(map, {
+        label: 'ServePage',
+        onRebuild: () => {
+          if (serveMapRecoveryCleanupRef.current) { serveMapRecoveryCleanupRef.current(); serveMapRecoveryCleanupRef.current = null; }
+          markersRef.current.forEach((m) => { try { m.remove(); } catch { /* gone */ } });
+          markersRef.current = [];
+          try { popupRef.current?.remove(); } catch { /* gone */ }
+          popupRef.current = null;
+          routeSourceRef.current = null;
+          if (mapRef.current) { try { mapRef.current.remove(); } catch { /* gone */ } mapRef.current = null; }
+          setMapReady(false);
+          setServeMapRecoverNonce((n) => n + 1);
+        },
+      });
+
       map.on('load', () => {
         if (cancelled) return;
         setMapReady(true);
@@ -529,7 +583,18 @@ export default function ServePage() {
     return () => {
       cancelled = true;
     };
-  }, [activeTab]);
+  }, [activeTab, serveMapRecoverNonce]);
+
+  // Dispose the map + recovery listener on unmount (kept out of the init
+  // effect's cleanup so a tab switch doesn't tear down the persisted map).
+  useEffect(() => () => {
+    if (serveMapRecoveryCleanupRef.current) { serveMapRecoveryCleanupRef.current(); serveMapRecoveryCleanupRef.current = null; }
+    markersRef.current.forEach((m) => { try { m.remove(); } catch { /* gone */ } });
+    markersRef.current = [];
+    try { popupRef.current?.remove(); } catch { /* gone */ }
+    popupRef.current = null;
+    if (mapRef.current) { try { mapRef.current.remove(); } catch { /* gone */ } mapRef.current = null; }
+  }, []);
 
   // Update markers when jobs change or map becomes ready
   const updateMapMarkers = useCallback(() => {
@@ -542,8 +607,8 @@ export default function ServePage() {
     // Clear old route source layer
     if (routeSourceRef.current) {
       try {
-        if (mapRef.current.getLayer(routeSourceRef.current)) mapRef.current.removeLayer(routeSourceRef.current);
-        if (mapRef.current.getSource(routeSourceRef.current)) mapRef.current.removeSource(routeSourceRef.current);
+        safeRemoveLayer(mapRef.current, routeSourceRef.current);
+        safeRemoveSource(mapRef.current, routeSourceRef.current);
       } catch { /* layer/source may not exist */ }
       routeSourceRef.current = null;
     }
@@ -634,6 +699,25 @@ export default function ServePage() {
     return () => window.removeEventListener('keydown', handler);
   }, []);
 
+  // ── Build a serve-job row context menu ──
+  const buildJobMenu = (job: ServeJob): ContextMenuItem[] => {
+    const addr = [job.recipient_address, job.recipient_city, job.recipient_state, job.recipient_zip]
+      .filter(Boolean).join(', ');
+    const isClosed = job.status === 'served' || job.status === 'failed' || job.status === 'archived';
+    return [
+      m.action('Open / expand', () => setExpandedJobId(prev => prev === job.id ? null : job.id), { icon: <Eye size={12} /> }),
+      m.action('Edit job', () => openEdit(job.id), { icon: <Pencil size={12} /> }),
+      ...(isClosed ? [] : [m.action('Log attempt', () => setAttemptJob(job), { icon: <ClipboardCheck size={12} /> })]),
+      m.action('Skip trace', () => setSkipTraceJob(job), { icon: <SearchIcon size={12} /> }),
+      m.separator(),
+      m.copy('Copy recipient', job.recipient_name),
+      m.copyId(job.id),
+      ...(addr ? [m.action('Navigate to address', () => handleNavigate(job.id), { icon: <Navigation size={12} /> })] : []),
+      m.separator(),
+      m.action('Flag bad address', () => handleFlagAddress(job.id), { icon: <AlertTriangle size={12} />, danger: true }),
+    ];
+  };
+
   return (
     <div className="flex flex-col h-full bg-surface-base" role="main">
       {fetchError && (
@@ -653,7 +737,7 @@ export default function ServePage() {
         {/* Date picker + route stats */}
         <div className="flex items-center gap-1 ml-auto sm:ml-2">
           <Calendar size={14} className="text-rmpg-400" />
-          <input
+          <input id="ff-servepage-0"
             type="date"
             value={selectedDate}
             onChange={e => setSelectedDate(e.target.value)}
@@ -814,8 +898,8 @@ export default function ServePage() {
                 </div>
               ) : (
                 filteredJobs.map(job => (
+                  <div key={job.id} onContextMenu={(e) => openMenu(e, buildJobMenu(job))}>
                   <ServeJobCard
-                    key={job.id}
                     job={job}
                     linkedCall={linkedCalls[job.id] || null}
                     onAttempt={(id) => {
@@ -832,6 +916,7 @@ export default function ServePage() {
                     isExpanded={expandedJobId === job.id}
                     onToggleExpand={() => setExpandedJobId(prev => prev === job.id ? null : job.id)}
                   />
+                  </div>
                 ))
               )}
             </div>
@@ -1101,7 +1186,7 @@ export default function ServePage() {
             <div className="p-3 bg-[#141414] border border-[#2b2b2b] rounded-[2px]">
               <div className="text-[10px] text-[#d4a017] uppercase font-semibold tracking-wider mb-2">Job Cost Calculator</div>
               <div className="flex items-center gap-2">
-                <select
+                <select id="ff-servepage-1"
                   value={costJobId || ''}
                   onChange={e => { const v = parseInt(e.target.value, 10); if (v) handleLoadCostEstimate(v); }}
                   className="flex-1 px-2 py-1 text-xs bg-[#0c0c0c] border border-[#2b2b2b] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
@@ -1262,7 +1347,7 @@ export default function ServePage() {
             <label className="block text-[11px] text-rmpg-400 mb-1">
               Recipient Name <span className="text-red-400">*</span>
             </label>
-            <input
+            <input id="ff-servepage-2"
               type="text"
               required
               value={formData.recipient_name}
@@ -1276,17 +1361,35 @@ export default function ServePage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="sm:col-span-2">
               <label className="block text-[11px] text-rmpg-400 mb-1">Address</label>
-              <input
-                type="text"
+              <AddressAutocomplete
                 value={formData.recipient_address}
-                onChange={e => handleFormChange('recipient_address', e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-[#0c0c0c] border border-[#2b2b2b] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
+                onChange={val => handleFormChange('recipient_address', val)}
                 placeholder="Street address"
+                className="w-full px-3 py-2 text-sm bg-[#0c0c0c] border border-[#2b2b2b] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
+                // Picking a suggestion fills the split address fields + the
+                // precise pin. City/ZIP fill blanks only (never clobber a typed
+                // value); the pick's coordinates always win for the chosen
+                // address.
+                onSelect={(addr: ParsedAddress) => {
+                  setFormData(prev => ({
+                    ...prev,
+                    recipient_address: addr.street || addr.formatted || prev.recipient_address,
+                    recipient_city: prev.recipient_city || addr.city || '',
+                    // Only adopt a 2-letter state code — geocoders often return
+                    // the full name ("Utah") which doesn't fit this 2-char field,
+                    // so in that case keep the operator's value (defaults to UT).
+                    recipient_state: (addr.state && addr.state.trim().length === 2)
+                      ? addr.state.trim().toUpperCase() : prev.recipient_state,
+                    recipient_zip: prev.recipient_zip || addr.zip || '',
+                    recipient_lat: addr.latitude ?? prev.recipient_lat,
+                    recipient_lng: addr.longitude ?? prev.recipient_lng,
+                  }));
+                }}
               />
             </div>
             <div>
               <label className="block text-[11px] text-rmpg-400 mb-1">City</label>
-              <input
+              <input id="ff-servepage-4"
                 type="text"
                 value={formData.recipient_city}
                 onChange={e => handleFormChange('recipient_city', e.target.value)}
@@ -1296,7 +1399,7 @@ export default function ServePage() {
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className="block text-[11px] text-rmpg-400 mb-1">State</label>
-                <input
+                <input id="ff-servepage-5"
                   type="text"
                   value={formData.recipient_state}
                   onChange={e => handleFormChange('recipient_state', e.target.value)}
@@ -1306,7 +1409,7 @@ export default function ServePage() {
               </div>
               <div>
                 <label className="block text-[11px] text-rmpg-400 mb-1">ZIP</label>
-                <input
+                <input id="ff-servepage-6"
                   type="text"
                   value={formData.recipient_zip}
                   onChange={e => handleFormChange('recipient_zip', e.target.value)}
@@ -1321,7 +1424,7 @@ export default function ServePage() {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-[11px] text-rmpg-400 mb-1">Document Type</label>
-              <select
+              <select id="ff-servepage-7"
                 value={formData.document_type}
                 onChange={e => handleFormChange('document_type', e.target.value)}
                 className="w-full px-3 py-2 text-sm bg-[#0c0c0c] border border-[#2b2b2b] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
@@ -1331,7 +1434,7 @@ export default function ServePage() {
             </div>
             <div>
               <label className="block text-[11px] text-rmpg-400 mb-1">Priority</label>
-              <select
+              <select id="ff-servepage-8"
                 value={formData.priority}
                 onChange={e => handleFormChange('priority', e.target.value)}
                 className="w-full px-3 py-2 text-sm bg-[#0c0c0c] border border-[#2b2b2b] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
@@ -1350,7 +1453,7 @@ export default function ServePage() {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-[11px] text-rmpg-400 mb-1">Time Window</label>
-              <select
+              <select id="ff-servepage-9"
                 value={formData.time_window}
                 onChange={e => handleFormChange('time_window', e.target.value)}
                 className="w-full px-3 py-2 text-sm bg-[#0c0c0c] border border-[#2b2b2b] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
@@ -1363,7 +1466,7 @@ export default function ServePage() {
             </div>
             <div>
               <label className="block text-[11px] text-rmpg-400 mb-1">Deadline</label>
-              <input
+              <input id="ff-servepage-10"
                 type="date"
                 value={formData.deadline}
                 onChange={e => handleFormChange('deadline', e.target.value)}
@@ -1376,7 +1479,7 @@ export default function ServePage() {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
               <label className="block text-[11px] text-rmpg-400 mb-1">Case Number</label>
-              <input
+              <input id="ff-servepage-11"
                 type="text"
                 value={formData.case_number}
                 onChange={e => handleFormChange('case_number', e.target.value)}
@@ -1385,7 +1488,7 @@ export default function ServePage() {
             </div>
             <div>
               <label className="block text-[11px] text-rmpg-400 mb-1">Court</label>
-              <input
+              <input id="ff-servepage-12"
                 type="text"
                 value={formData.court_name}
                 onChange={e => handleFormChange('court_name', e.target.value)}
@@ -1394,7 +1497,7 @@ export default function ServePage() {
             </div>
             <div>
               <label className="block text-[11px] text-rmpg-400 mb-1">Jurisdiction</label>
-              <input
+              <input id="ff-servepage-13"
                 type="text"
                 value={formData.jurisdiction}
                 onChange={e => handleFormChange('jurisdiction', e.target.value)}
@@ -1407,16 +1510,33 @@ export default function ServePage() {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-[11px] text-rmpg-400 mb-1">Client Name</label>
-              <input
+              {/* Hiring-party selector — picking a known client fills the
+                  free-text field below (which stays editable for ad-hoc names). */}
+              {clientsList.length > 0 && (
+                <select id="ff-servepage-client"
+                  value={clientsList.find(c => c.name === formData.client_name)?.id || ''}
+                  onChange={e => {
+                    const picked = clientsList.find(c => c.id === e.target.value);
+                    if (picked) handleFormChange('client_name', picked.name);
+                  }}
+                  className="w-full mb-1 px-3 py-2 text-sm bg-[#0c0c0c] border border-[#2b2b2b] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
+                  aria-label="Select client"
+                >
+                  <option value="">— Select client —</option>
+                  {clientsList.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+              )}
+              <input id="ff-servepage-14"
                 type="text"
                 value={formData.client_name}
                 onChange={e => handleFormChange('client_name', e.target.value)}
                 className="w-full px-3 py-2 text-sm bg-[#0c0c0c] border border-[#2b2b2b] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
+                placeholder="Or type a name"
               />
             </div>
             <div>
               <label className="block text-[11px] text-rmpg-400 mb-1">Attorney Name</label>
-              <input
+              <input id="ff-servepage-15"
                 type="text"
                 value={formData.attorney_name}
                 onChange={e => handleFormChange('attorney_name', e.target.value)}
@@ -1429,7 +1549,7 @@ export default function ServePage() {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-[11px] text-rmpg-400 mb-1">Max Attempts</label>
-              <input
+              <input id="ff-servepage-16"
                 type="number"
                 min={1}
                 max={10}

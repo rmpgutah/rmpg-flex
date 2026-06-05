@@ -15,17 +15,13 @@ import { Hono } from 'hono';
 import type { Env } from '../../types';
 import { LIST_VIEW_SELECT } from './calls';
 import { getDb, query, queryFirst, execute } from '../../utils/db';
-import { sendToUser, broadcastAll } from '../ws';
+import { emitAlert } from '../../utils/alertHub';
+// Live D1 stores literal "None"/"N/A"/"0" in flag columns rather than NULL, so a
+// naive truthiness check fires a bogus officer-safety alert on a subject with no
+// flags. isFlagSet() (shared) treats those sentinels as absent.
+import { isFlagSet } from '../../utils/sentinel';
 
 const links = new Hono<Env>();
-
-// Live D1 stores literal "None"/"N/A"/"0" in flag columns rather than NULL, so a
-// naive truthiness check (flag?.gang_affiliation) fires a bogus officer-safety
-// alert on a subject with no flags. This guard treats those sentinels as absent.
-const FLAG_ABSENT = new Set(['', 'none', 'n/a', 'na', '0', 'false', 'no', 'null', 'undefined', '--']);
-function isFlagSet(v: unknown): boolean {
-  return v != null && !FLAG_ABSENT.has(String(v).trim().toLowerCase());
-}
 
 // ── Shared: officers assigned to the call, for targeted MDT push ──
 async function getOfficerUserIdsForCall(
@@ -104,11 +100,42 @@ links.post('/calls/:id/persons', async (c) => {
     callId, body.person_id, body.role || 'subject',
   );
 
-  broadcastAll('dispatch_update', {
+  await emitAlert(c.env, 'dispatch_update', {
     action: 'call_person_added',
     call_id: Number(callId),
     link: created,
   });
+
+  // OFFICER SAFETY: if the linked subject has active warrants, fire the
+  // call:warrant_alert the dispatch board + voice-alert hook subscribe to.
+  // This channel had NO producer, so the warrant-hit banner/voice never fired.
+  // Best-effort: a warrants-query failure must not break the link.
+  try {
+    // Live warrants store the subject on subject_person_id (person_id is NULL on
+    // every current row); query BOTH so the officer-safety alert is robust to
+    // that column drift instead of silently matching nothing.
+    const wc = await queryFirst<{ n: number }>(
+      db, "SELECT COUNT(*) AS n FROM warrants WHERE (subject_person_id = ? OR person_id = ?) AND status = 'active'", body.person_id, body.person_id,
+    );
+    if ((wc?.n ?? 0) > 0) {
+      const subjectName = `${person.first_name ?? ''} ${person.last_name ?? ''}`.trim() || 'Unknown subject';
+      // Deliver via AlertHubDO (emitAlert), NOT broadcastAll: the live /api/ws
+      // socket is served by the legacy worker, so broadcastAll() fans out in an
+      // EMPTY rewrite isolate and the warrant-hit banner/voice NEVER reached any
+      // dispatcher in prod — a wanted subject linked to a call silently raised no
+      // alarm. emitAlert routes through the /api/alerts-ws DO the client also
+      // subscribes to (same pattern panic.ts uses).
+      await emitAlert(c.env, 'call:warrant_alert', {
+        call_id: Number(callId),
+        person_id: body.person_id,
+        personName: subjectName,
+        subject_name: subjectName,
+        warrantCount: wc?.n ?? 0,
+      });
+    }
+  } catch (err) {
+    console.warn('warrant-alert check failed (non-fatal):', err);
+  }
 
   // Officer MDT voice — "Subject added: <last name>". Person flags
   // (caution / sex_offender / gang) deserve an officer-safety push,
@@ -121,8 +148,11 @@ links.post('/calls/:id/persons', async (c) => {
       ? `Subject added with caution flag: ${person.last_name}`
       : `Subject added: ${person.last_name}`;
     for (const uid of officerIds) {
-      sendToUser(uid, 'call_status_for_officer', {
-        action: 'note_added', call_id: Number(callId), short,
+      // Targeted to the assigned officer's MDT via AlertHubDO + target_user_id
+      // (the voice hook filters on it). sendToUser was per-isolate-dead, so this
+      // caution-flag voice cue reached the officer never.
+      await emitAlert(c.env, 'call_status_for_officer', {
+        action: 'note_added', call_id: Number(callId), target_user_id: uid, short,
       });
     }
   }
@@ -137,7 +167,7 @@ links.delete('/calls/:id/persons/:linkId', async (c) => {
   // Scope by callId so callers can't delete a link from another call
   // by guessing IDs.
   await execute(db, 'DELETE FROM call_persons WHERE id = ? AND call_id = ?', linkId, callId);
-  broadcastAll('dispatch_update', {
+  await emitAlert(c.env, 'dispatch_update', {
     action: 'call_person_removed', call_id: Number(callId), link_id: Number(linkId),
   });
   return c.json({ success: true });
@@ -167,7 +197,7 @@ links.patch('/calls/:id/persons/:linkId', async (c) => {
      WHERE cp.id = ?`,
     linkId,
   );
-  broadcastAll('dispatch_update', {
+  await emitAlert(c.env, 'dispatch_update', {
     action: 'call_person_updated', call_id: Number(callId), link: updated,
   });
   return c.json(updated);
@@ -268,7 +298,7 @@ links.post('/calls/:id/persons/quick-add', async (c) => {
     callId, personId, role,
   );
 
-  broadcastAll('dispatch_update', {
+  await emitAlert(c.env, 'dispatch_update', {
     action: 'call_person_added', call_id: Number(callId), link,
   });
 
@@ -282,8 +312,11 @@ links.post('/calls/:id/persons/quick-add', async (c) => {
       ? `Subject added with caution flag: ${flag?.last_name ?? ''}`
       : `Subject added: ${flag?.last_name ?? ''}`;
     for (const uid of officerIds) {
-      sendToUser(uid, 'call_status_for_officer', {
-        action: 'note_added', call_id: Number(callId), short,
+      // Targeted to the assigned officer's MDT via AlertHubDO + target_user_id
+      // (the voice hook filters on it). sendToUser was per-isolate-dead, so this
+      // caution-flag voice cue reached the officer never.
+      await emitAlert(c.env, 'call_status_for_officer', {
+        action: 'note_added', call_id: Number(callId), target_user_id: uid, short,
       });
     }
   }
@@ -338,7 +371,7 @@ links.post('/calls/:id/vehicles', async (c) => {
     callId, body.vehicle_id, body.role || 'subject',
   );
 
-  broadcastAll('dispatch_update', {
+  await emitAlert(c.env, 'dispatch_update', {
     action: 'call_vehicle_added', call_id: Number(callId), link: created,
   });
 
@@ -348,8 +381,11 @@ links.post('/calls/:id/vehicles', async (c) => {
       ? `Vehicle added: plate ${vehicle.plate_number}`
       : (`Vehicle added: ${vehicle.make || ''} ${vehicle.model || ''}`.trim() || 'Vehicle added');
     for (const uid of officerIds) {
-      sendToUser(uid, 'call_status_for_officer', {
-        action: 'note_added', call_id: Number(callId), short,
+      // Targeted to the assigned officer's MDT via AlertHubDO + target_user_id
+      // (the voice hook filters on it). sendToUser was per-isolate-dead, so this
+      // caution-flag voice cue reached the officer never.
+      await emitAlert(c.env, 'call_status_for_officer', {
+        action: 'note_added', call_id: Number(callId), target_user_id: uid, short,
       });
     }
   }
@@ -361,7 +397,7 @@ links.delete('/calls/:id/vehicles/:linkId', async (c) => {
   const callId = c.req.param('id');
   const linkId = c.req.param('linkId');
   await execute(db, 'DELETE FROM call_vehicles WHERE id = ? AND call_id = ?', linkId, callId);
-  broadcastAll('dispatch_update', {
+  await emitAlert(c.env, 'dispatch_update', {
     action: 'call_vehicle_removed', call_id: Number(callId), link_id: Number(linkId),
   });
   return c.json({ success: true });
@@ -390,7 +426,7 @@ links.patch('/calls/:id/vehicles/:linkId', async (c) => {
      WHERE cv.id = ?`,
     linkId,
   );
-  broadcastAll('dispatch_update', {
+  await emitAlert(c.env, 'dispatch_update', {
     action: 'call_vehicle_updated', call_id: Number(callId), link: updated,
   });
   return c.json(updated);
@@ -484,7 +520,7 @@ links.post('/calls/:id/vehicles/quick-add', async (c) => {
     callId, vehicleId, role,
   );
 
-  broadcastAll('dispatch_update', {
+  await emitAlert(c.env, 'dispatch_update', {
     action: 'call_vehicle_added', call_id: Number(callId), link,
   });
 
@@ -495,8 +531,11 @@ links.post('/calls/:id/vehicles/quick-add', async (c) => {
       ? `Vehicle added: plate ${v.plate_number}`
       : (`Vehicle added: ${v.make || ''} ${v.model || ''}`.trim() || 'Vehicle added');
     for (const uid of officerIds) {
-      sendToUser(uid, 'call_status_for_officer', {
-        action: 'note_added', call_id: Number(callId), short,
+      // Targeted to the assigned officer's MDT via AlertHubDO + target_user_id
+      // (the voice hook filters on it). sendToUser was per-isolate-dead, so this
+      // caution-flag voice cue reached the officer never.
+      await emitAlert(c.env, 'call_status_for_officer', {
+        action: 'note_added', call_id: Number(callId), target_user_id: uid, short,
       });
     }
   }
@@ -559,7 +598,7 @@ links.put('/calls/:id/property', async (c) => {
     callId,
   );
 
-  broadcastAll('dispatch_update', {
+  await emitAlert(c.env, 'dispatch_update', {
     action: 'call_property_attached',
     call_id: Number(callId),
     property_id: body.property_id,
@@ -571,8 +610,10 @@ links.put('/calls/:id/property', async (c) => {
   if ((updated as any)?.hazard_notes) {
     const officerIds = await getOfficerUserIdsForCall(db, callId);
     for (const uid of officerIds) {
-      sendToUser(uid, 'dispatch_alert', {
+      await emitAlert(c.env, 'dispatch_alert', {
         call_id: Number(callId),
+        target_user_id: uid,
+        message: `PROPERTY HAZARD ON FILE${prop.name ? ` — ${prop.name}` : ''}`,
         warnings: [{
           type: 'HAZARD',
           label: 'PROPERTY HAZARD ON FILE',
@@ -593,7 +634,7 @@ links.delete('/calls/:id/property', async (c) => {
     `UPDATE calls_for_service SET property_id = NULL, updated_at = datetime('now') WHERE id = ?`,
     callId,
   );
-  broadcastAll('dispatch_update', {
+  await emitAlert(c.env, 'dispatch_update', {
     action: 'call_property_detached', call_id: Number(callId),
   });
   return c.json({ success: true });

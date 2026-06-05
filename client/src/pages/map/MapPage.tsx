@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { initMapbox, resolveMapboxAccessToken, mapboxgl, MAPBOX_STYLE_DARK, MAPBOX_STYLE_NIGHT, MAPBOX_STYLE_SATELLITE, MAPBOX_STYLE_STREETS, MAPBOX_STYLE_OUTDOORS, registerMapInstance, unregisterMapInstance, updateMapStyle, monitorTileLoading } from '../../utils/mapboxLoader';
 import { devLog, devWarn } from '../../utils/devLog';
+import { installWebglContextRecovery, type MapCamera } from '../../utils/webglRecovery';
 import {
   Layers,
   AlertTriangle,
@@ -55,6 +56,7 @@ import {
   Ruler,
   SlidersHorizontal,
   Navigation,
+  Flag,
 } from 'lucide-react';
 import type { UnitStatus } from '../../types';
 import RmpgLogo from '../../components/RmpgLogo';
@@ -64,6 +66,7 @@ import { usePersistedTab } from '../../hooks/usePersistedState';
 import { useUserPreferences } from '../../context/UserPreferencesContext';
 import { useWebSocket } from '../../context/WebSocketContext';
 import { useGpsTracking } from '../../hooks/useGpsTracking';
+import { useUnitTrips, useTripDetail, tripLabel, tripMiles, type Trip } from '../../hooks/useTrips';
 import { useScreenWakeLock } from '../../hooks/useScreenWakeLock';
 import { formatIncidentType } from '../../utils/caseNumbers';
 import { generatePatrolTrackingPdf } from '../../utils/patrolTrackingPdfGenerator';
@@ -76,6 +79,7 @@ import { localToday, dateToLocalYMD, safeDateTimeStr, parseTimestamp } from '../
 import { useGeoJsonLayers, GEO_LAYER_CONFIGS, getSectionColor, type BeatDistrictEntry } from '../../hooks/useGeoJsonLayers';
 import { useVectorTileLayers } from '../../hooks/useVectorTileLayers';
 import { useDistrictHierarchyLayers } from '../../hooks/useDistrictHierarchyLayers';
+import UnifiedMapLegend from './components/UnifiedMapLegend';
 import { useWhatsHere } from '../../hooks/useWhatsHere';
 import { useActivityChoropleth, type ChoroLevel } from '../../hooks/useActivityChoropleth';
 import { useMapMeasureDraw, type MeasureMode } from '../../hooks/useMapMeasureDraw';
@@ -85,11 +89,15 @@ import { useEventPlanning, PLAN_COLORS, PLAN_TYPE_LABELS, type PlanItemType } fr
 import { useShiftPlanning, SHIFT_TYPES, type ShiftType } from '../../hooks/useShiftPlanning';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useMapRouting } from '../../hooks/useMapRouting';
+import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
+import { useMenuActions } from '../../utils/contextMenuActions';
+import { useNavGuidance, type NavHazard } from '../../hooks/useNavGuidance';
 import MobileBottomSheet from '../../components/mobile/MobileBottomSheet';
 import type { MapUnit as Unit, ActiveCall, MapProperty as Property, MapStyleId } from './utils/mapConstants';
 import { whenStyleReady } from './utils/safeAddSource';
 import { UNIT_STATUS_COLORS, UNIT_STATUS_LABELS, PRIORITY_COLORS, MAP_STYLE_LABELS, MAP_STYLE_DESCRIPTIONS, getIncidentCategory, isLightMapStyle, isSatelliteStyle } from './utils/mapConstants';
-import { buildUnitMarkerContent, buildIncidentMarkerContent, buildPropertyMarkerContent, buildSelfPositionMarker, injectKeyframes } from './utils/mapMarkerBuilders';
+import { buildUnitMarkerContent, buildIncidentMarkerContent, buildPropertyMarkerContent, buildSelfPositionMarker, buildDirectionArrow, injectKeyframes } from './utils/mapMarkerBuilders';
+import { roadLegendRows, propertyLegendRows } from './utils/landTypes';
 import { useMapPredictions } from './hooks/useMapPredictions';
 import { useMapIntelLayers } from './hooks/useMapIntelLayers';
 import { useMapClustering } from './hooks/useMapClustering';
@@ -100,6 +108,9 @@ import { useMapEnforcementClusters } from './hooks/useMapEnforcementClusters';
 import { useMapFleetVehicles } from './hooks/useMapFleetVehicles';
 import { useMapPanicZone } from './hooks/useMapPanicZone';
 import { useMapDaylightOverlay } from './hooks/useMapDaylightOverlay';
+import { useMap3D } from './hooks/useMap3D';
+import StreetViewLightbox, { type StreetViewTarget } from './components/StreetViewLightbox';
+import GpsHud from './components/GpsHud';
 import { fetchMapConfig, type MapSettings } from './hooks/useMapConfig';
 import PredictionsPanel from './components/PredictionsPanel';
 import { useMapTactical } from './hooks/useMapTactical';
@@ -110,6 +121,7 @@ import MultiStopRoutePanel, { type QueuedStop } from './components/MultiStopRout
 import MapExportMenu from './components/MapExportMenu';
 import { generateMapSituationReport } from '../../utils/mapSituationReportPdf';
 import { useAuth } from '../../context/AuthContext';
+import { getSourceSafe, hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../../utils/mapboxSafeLayer';
 
 // ============================================================
 // Constants
@@ -117,6 +129,15 @@ import { useAuth } from '../../context/AuthContext';
 
 // Unit colors for breadcrumb trails — cycle through distinct colors per unit
 const TRAIL_COLORS = ['#22c55e', '#a78bfa', '#f472b6', '#34d399', '#fbbf24', '#f87171', '#aaaaaa', '#c084fc'];
+
+// Sentinel unit_id for a SELECTED-trip replay trail injected into playbackTrails.
+// Negative so it can never collide with a real (positive) unit id from the
+// live breadcrumb feed. The existing playback scrubber keys on unit_id, so the
+// trip replay rides the same machinery by registering under this id.
+const TRIP_REPLAY_UNIT_ID = -777;
+// trip_type → polyline color (response gold / patrol gray) for the A/B markers.
+const tripTypeColor = (t?: string | null): string =>
+  t === 'call_response' ? '#d4a017' : '#888888';
 
 // Static Tailwind class lookups — avoids dynamic class generation that Tailwind can't purge
 const INTEL_LAYER_CLASSES: Record<string, { active: string; }> = {
@@ -191,6 +212,13 @@ const statusToColor = (status: string): string => {
   }
 };
 
+// Left offset that clears the OPEN "Layers" panel. The panel is at left-4
+// (16px) with width clamp(208px,15vw,248px); floating panels docked to its
+// right share this so they can't drift from the panel's real width (the old
+// hardcoded clamp(160px,14vw,200px) under-shot it, tucking the legend +
+// search row underneath the panel and clipping their left edge).
+const LAYERS_PANEL_CLEAR_LEFT = 'calc(16px + clamp(208px, 15vw, 248px) + 8px)';
+
 // ============================================================
 // Main Component
 // ============================================================
@@ -213,9 +241,20 @@ export default function MapPage() {
   const [mapError, setMapError] = useState<string | null>(null);
   const [mapRetry, setMapRetry] = useState(0);
   const [tilesStalled, setTilesStalled] = useState(false);
+  // WebGL context loss recovery — true while the map is being rebuilt after the
+  // GPU dropped its context (see installWebglContextRecovery wiring below).
+  const [mapRecovering, setMapRecovering] = useState(false);
+  // True after the loop-guard gives up (too many GPU drops in a short window) —
+  // shows a blocking "reload recommended" prompt instead of thrashing.
+  const [mapRecoveryFailed, setMapRecoveryFailed] = useState(false);
 
   const isAuthError = mapError != null;
   const tileMonitorCleanupRef = useRef<(() => void) | null>(null);
+  // Camera (center/zoom/bearing/pitch) captured at the instant of a WebGL
+  // context loss, so the rebuilt map reopens at the dispatcher's exact view
+  // instead of jumping back to the saved/default center.
+  const recoverCameraRef = useRef<MapCamera | null>(null);
+  const webglRecoveryCleanupRef = useRef<(() => void) | null>(null);
 
   // Fix 28: restore layer toggle states from localStorage on mount
   const [layers, setLayers] = useState(() => {
@@ -290,6 +329,15 @@ export default function MapPage() {
   const playbackAnimRef = useRef<number | null>(null);
   const playbackSpeedLabelRef = useRef<mapboxgl.Popup | null>(null);
 
+  // ── Trip Replay: pick a unit → pick one of its recent trips → replay it
+  //    through the EXISTING playback scrubber (registered under
+  //    TRIP_REPLAY_UNIT_ID in playbackTrails). A/B markers flag start/end.
+  const [tripUnitId, setTripUnitId] = useState<number | null>(null);
+  const [tripSelId, setTripSelId] = useState<number | null>(null);
+  const { trips: unitTrips } = useUnitTrips(tripUnitId ?? undefined);
+  const tripDetail = useTripDetail(tripSelId ?? undefined);
+  const tripAbMarkersRef = useRef<mapboxgl.Marker[]>([]);
+
   // Layers panel (left) collapsed/expanded
   const [layersPanelOpen, setLayersPanelOpen] = useState(true);
 
@@ -325,8 +373,92 @@ export default function MapPage() {
   }, [setMapStyle]);
 
   // Routing
-  const { activeRoute, routeLoading, routeProgress, offRoute, showRoute, clearRoute, updateOrigin,
+  const { activeRoute, routeLoading, routeProgress, routeGeom, offRoute, showRoute, clearRoute, updateOrigin,
           multiStopRoute, multiStopLoading, showMultiStopRoute, clearMultiStop } = useMapRouting({ map: mapInstanceRef.current });
+
+  // ── Right-click context menus (markers + empty map) ──
+  const { openMenu } = useContextMenu();
+  const cm = useMenuActions();
+
+  const centerOnPoint = (lng?: number | null, lat?: number | null) => {
+    const map = mapInstanceRef.current;
+    if (map && lng != null && lat != null) {
+      map.easeTo({ center: [lng, lat], zoom: Math.max(map.getZoom(), 16), duration: 600 });
+    }
+  };
+
+  const buildUnitMarkerMenu = (unit: Unit): ContextMenuItem[] => {
+    const call = calls.find((c) => String(c.id) === String(unit.current_call_id));
+    const canRoute = !!call && unit.latitude != null && unit.longitude != null && call.latitude != null && call.longitude != null;
+    return [
+      ...(canRoute
+        ? [cm.action('Route to assigned call', () => showRoute(unit.call_sign, call!.call_number, unit.latitude!, unit.longitude!, call!.latitude!, call!.longitude!), { icon: <Navigation size={12} /> })]
+        : []),
+      cm.action('Center on unit', () => centerOnPoint(unit.longitude, unit.latitude), { icon: <Target size={12} /> }),
+      cm.separator(),
+      cm.copy('Copy unit', unit.call_sign),
+      ...(unit.officer_name ? [cm.copy('Copy officer', unit.officer_name)] : []),
+      cm.copyCoords(unit.latitude, unit.longitude),
+    ];
+  };
+
+  const buildCallMarkerMenu = (call: ActiveCall): ContextMenuItem[] => [
+    cm.action('Center on call', () => centerOnPoint(call.longitude, call.latitude), { icon: <Target size={12} /> }),
+    ...(call.latitude != null && call.longitude != null
+      ? [cm.action('Navigate here', () => navigateTo(call.latitude as number, call.longitude as number, call.call_number), { icon: <Navigation size={12} /> })]
+      : []),
+    cm.separator(),
+    cm.copy('Copy call #', call.call_number),
+    cm.copy('Copy address', call.location_address),
+    cm.copyCoords(call.latitude, call.longitude),
+  ];
+
+  const buildPropertyMarkerMenu = (prop: { id: string | number; name: string; address?: string; latitude?: number | null; longitude?: number | null }): ContextMenuItem[] => [
+    cm.action('Center on property', () => centerOnPoint(prop.longitude, prop.latitude), { icon: <Target size={12} /> }),
+    ...(prop.latitude != null && prop.longitude != null
+      ? [cm.action('Navigate here', () => navigateTo(prop.latitude as number, prop.longitude as number, prop.name), { icon: <Navigation size={12} /> })]
+      : []),
+    cm.separator(),
+    cm.copy('Copy property', prop.name),
+    ...(prop.address ? [cm.copy('Copy address', prop.address)] : []),
+    cm.copyCoords(prop.latitude, prop.longitude),
+  ];
+
+  const buildMapPointMenu = (lat: number, lng: number): ContextMenuItem[] => [
+    cm.copyCoords(lat, lng),
+    cm.action('Center here', () => centerOnPoint(lng, lat), { icon: <Target size={12} /> }),
+    cm.action('Navigate here', () => navigateTo(lat, lng, 'Dropped pin'), { icon: <Navigation size={12} /> }),
+  ];
+
+  // Right-click on the empty map surface → coordinate / navigation actions.
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !mapLoaded) return;
+    const onCtx = (e: mapboxgl.MapMouseEvent) => {
+      openMenu(e.originalEvent, buildMapPointMenu(e.lngLat.lat, e.lngLat.lng));
+    };
+    map.on('contextmenu', onCtx);
+    return () => { map.off('contextmenu', onCtx); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mapLoaded]);
+
+  // Deep-link: /map?flyto=<lat>,<lng> centers the map on a point on load
+  // (used by record right-click "Show on map"). One-shot, on first map load.
+  const flewToRef = useRef(false);
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !mapLoaded || flewToRef.current) return;
+    const flyto = new URLSearchParams(window.location.search).get('flyto');
+    if (!flyto) return;
+    const [latS, lngS] = flyto.split(',');
+    const lat = parseFloat(latS);
+    const lng = parseFloat(lngS);
+    if (Number.isFinite(lat) && Number.isFinite(lng)) {
+      flewToRef.current = true;
+      map.flyTo({ center: [lng, lat], zoom: 17, essential: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mapLoaded]);
 
   // Multi-stop patrol route queue (PSO client requests, welfare checks, etc.)
   const [routeQueue, setRouteQueue] = useState<QueuedStop[]>([]);
@@ -358,10 +490,12 @@ export default function MapPage() {
   // turn-by-turn) or turn into a dispatch call.
   const [selectedAddr, setSelectedAddr] = useState<{ lat: number; lng: number; label: string } | null>(null);
   const [navActive, setNavActive] = useState(false);
+  const [navMuted, setNavMuted] = useState(() => localStorage.getItem('rmpg-nav-voice') === 'muted');
   const [showDispatchHere, setShowDispatchHere] = useState(false);
   const [dispatchIncidentType, setDispatchIncidentType] = useState('');
   const [dispatchPriority, setDispatchPriority] = useState('P3');
   const [dispatchBusy, setDispatchBusy] = useState(false);
+  const [autoAssignNearest, setAutoAssignNearest] = useState(false);
 
   // Clean up address search/dismiss timers on unmount
   useEffect(() => {
@@ -371,8 +505,9 @@ export default function MapPage() {
     };
   }, []);
 
-  // GPS own-position
-  const gps = useGpsTracking();
+  // GPS own-position. capture:true records an exportable session track for the
+  // GPS HUD (the always-on Layout tracker owns the upload; this is the map's).
+  const gps = useGpsTracking({ capture: true });
   // Keep the screen awake while the map is foregrounded — officers can't be
   // glancing down to wake the device mid-pursuit. Auto-released on unmount.
   useScreenWakeLock(true);
@@ -468,26 +603,91 @@ export default function MapPage() {
 
   // ── Advanced overlay tools ──────────────────────────────────
   const [showAdvTools, setShowAdvTools] = useState(false);
+
+  // Collapsible LAYERS-panel groups (Intelligence / Analysis / Tactical) so
+  // the panel stays compact — persisted across sessions.
+  const [collapsedSections, setCollapsedSections] = usePersistedState<string[]>('rmpg_map_collapsed_sections', []);
+  const isSecCollapsed = (id: string) => collapsedSections.includes(id);
+  const toggleSec = useCallback((id: string) => {
+    setCollapsedSections((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
+  }, [setCollapsedSections]);
+  const sectionHeader = (id: string, label: string) => (
+    <button
+      type="button"
+      onClick={() => toggleSec(id)}
+      aria-expanded={!isSecCollapsed(id)}
+      className="w-full flex items-center justify-between px-1 mb-1.5 group"
+    >
+      <span className="text-[8px] text-rmpg-500 group-hover:text-rmpg-300 uppercase tracking-widest font-bold transition-colors">{label}</span>
+      {isSecCollapsed(id) ? <ChevronDown className="w-2.5 h-2.5 text-rmpg-600" /> : <ChevronUp className="w-2.5 h-2.5 text-rmpg-600" />}
+    </button>
+  );
+
   const [whatsHereActive, setWhatsHereActive] = usePersistedState<boolean>('rmpg_whatshere', false);
+  const [is3D, setIs3D] = usePersistedState<boolean>('rmpg_map_3d', false);
   const [choroLevel, setChoroLevel] = usePersistedState<ChoroLevel | null>('rmpg_choro_level', null);
+  const [choroSource, setChoroSource] = usePersistedState<'calls' | 'incidents'>('rmpg_choro_source', 'calls');
+  const [incidentPoints, setIncidentPoints] = useState<{ latitude: number | null; longitude: number | null }[]>([]);
   const [measureMode, setMeasureMode] = useState<MeasureMode>(null);
   const [overlayOpacity, setOverlayOpacity] = usePersistedState<number>('rmpg_overlay_opacity', 1);
   const [hierLegend, setHierLegend] = useState<{ label: string; color: string }[]>([]);
+  const [streetViewTarget, setStreetViewTarget] = useState<StreetViewTarget | null>(null);
+  const [showGpsHud, setShowGpsHud] = usePersistedState<boolean>('rmpg_gps_hud', false);
 
-  useWhatsHere({ map: mapInstanceRef.current, popup: infoWindowRef.current, active: whatsHereActive });
-  const { choroLegend } = useActivityChoropleth({ map: mapInstanceRef.current, calls, level: choroLevel });
+  // Download the captured GPS session track (CSV / GeoJSON) via a transient
+  // object-URL anchor — no server round-trip.
+  const handleExportTrack = useCallback((format: 'csv' | 'geojson') => {
+    const { filename, mime, content } = gps.exportTrack(format);
+    const blob = new Blob([content], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }, [gps]);
+
+  useWhatsHere({
+    map: mapInstanceRef.current,
+    popup: infoWindowRef.current,
+    active: whatsHereActive,
+    gps,
+    onOpenStreetView: setStreetViewTarget,
+  });
+  useMap3D({ map: mapInstanceRef.current, enabled: is3D, mapLoaded, isLight: isLightMapStyle(mapStyle) });
+  const { choroLegend } = useActivityChoropleth({
+    map: mapInstanceRef.current,
+    calls: choroSource === 'incidents' ? incidentPoints : calls,
+    level: choroLevel,
+  });
+  // RMS source fetch: load incident points (with coords) when the choropleth
+  // is set to the Incidents source. Calls come from the live queue already.
+  useEffect(() => {
+    if (!choroLevel || choroSource !== 'incidents') return;
+    let cancelled = false;
+    apiFetch<{ latitude: number | null; longitude: number | null }[]>('/incidents?days=365&limit=1000')
+      .then((rows) => { if (!cancelled) setIncidentPoints(Array.isArray(rows) ? rows : []); })
+      .catch(() => { if (!cancelled) setIncidentPoints([]); });
+    return () => { cancelled = true; };
+  }, [choroLevel, choroSource]);
   const { measureResult, clearMeasure } = useMapMeasureDraw({ map: mapInstanceRef.current, mode: measureMode });
 
-  // Layer-visibility memory: persist which Statewide / hierarchy layers are on
-  // and restore them once the map is ready, so the operator's overlay setup
-  // survives a reload. Wrappers keep the persisted set in sync on each toggle.
-  const [savedStatewide, setSavedStatewide] = usePersistedState<string[]>('rmpg_statewide_on', []);
+  // Layer-visibility memory: persist the operator's overlay setup so it survives
+  // a reload. Hierarchy layers default OFF, so an "on-set" (list of ids turned
+  // on) models them correctly. Statewide layers are ALWAYS-ON by default in
+  // useVectorTileLayers, so an on-set can't represent "the operator turned this
+  // OFF" — turning a layer off would add it to the set and the restore could
+  // only ever turn layers back ON, so off never survived a reload. Statewide
+  // therefore persists an explicit visibility MAP (id → bool); a missing key
+  // means "never touched, keep the always-on default". New key so any stale
+  // string[] from the old model is simply ignored.
+  const [savedStatewideVis, setSavedStatewideVis] = usePersistedState<Record<string, boolean>>('rmpg_statewide_vis', {});
   const [savedHier, setSavedHier] = usePersistedState<string[]>('rmpg_hier_on', []);
   const restoredOverlaysRef = useRef(false);
   const handleToggleStatewide = useCallback((id: string) => {
+    const nextVisible = !vectorLayerStates[id]?.visible;
     toggleVectorLayer(id);
-    setSavedStatewide((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
-  }, [toggleVectorLayer, setSavedStatewide]);
+    setSavedStatewideVis((prev) => ({ ...prev, [id]: nextVisible }));
+  }, [toggleVectorLayer, setSavedStatewideVis, vectorLayerStates]);
   const handleToggleHier = useCallback((id: string) => {
     toggleHierarchyLayer(id as any);
     setSavedHier((prev) => prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]);
@@ -495,7 +695,13 @@ export default function MapPage() {
   useEffect(() => {
     if (restoredOverlaysRef.current || !mapLoaded) return;
     restoredOverlaysRef.current = true;
-    for (const id of savedStatewide) if (!vectorLayerStates[id]?.visible) toggleVectorLayer(id);
+    // Reconcile each statewide layer to the operator's saved choice (both ON and
+    // OFF), so an explicit OFF persists. Untouched layers keep their default.
+    for (const cfg of vectorConfigs) {
+      const desired = savedStatewideVis[cfg.id];
+      if (desired === undefined) continue;
+      if (desired !== !!vectorLayerStates[cfg.id]?.visible) toggleVectorLayer(cfg.id);
+    }
     for (const id of savedHier) if (!hierarchyStates[id]?.visible) toggleHierarchyLayer(id as any);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapLoaded]);
@@ -529,12 +735,12 @@ export default function MapPage() {
     // by alpha so one, several, or all can be on together. choro-fill is
     // excluded — it owns a count-driven opacity expression.
     for (const id of ['dh-area-fill', 'dh-section-fill', 'dh-zone-fill']) {
-      try { if (map.getLayer(id)) map.setPaintProperty(id, 'fill-opacity', 0.22 * overlayOpacity); } catch { /* */ }
+      try { if (hasLayer(map, id)) map.setPaintProperty(id, 'fill-opacity', 0.22 * overlayOpacity); } catch { /* */ }
     }
     // Beat (lives in useGeoJsonLayers) joins the coverage system: keep its
     // city-colored fill, drop its outline so it reads as coverage too.
-    try { if (map.getLayer('geojson-beat-fill')) map.setPaintProperty('geojson-beat-fill', 'fill-opacity', 0.22 * overlayOpacity); } catch { /* */ }
-    try { if (map.getLayer('geojson-beat-line')) map.setPaintProperty('geojson-beat-line', 'line-opacity', 0); } catch { /* */ }
+    try { if (hasLayer(map, 'geojson-beat-fill')) map.setPaintProperty('geojson-beat-fill', 'fill-opacity', 0.22 * overlayOpacity); } catch { /* */ }
+    try { if (hasLayer(map, 'geojson-beat-line')) map.setPaintProperty('geojson-beat-line', 'line-opacity', 0); } catch { /* */ }
     // County + Municipality = OUTLINE ONLY. Kill their fills so the A/S/Z/B
     // color coverage shows through, and render their borders as neutral
     // reference lines on top (zero-blue theme).
@@ -544,9 +750,9 @@ export default function MapPage() {
     };
     for (const base of Object.keys(boundaryLines)) {
       const [color, width, op] = boundaryLines[base];
-      try { if (map.getLayer(`${base}-fill`)) map.setPaintProperty(`${base}-fill`, 'fill-opacity', 0); } catch { /* */ }
+      try { if (hasLayer(map, `${base}-fill`)) map.setPaintProperty(`${base}-fill`, 'fill-opacity', 0); } catch { /* */ }
       try {
-        if (map.getLayer(`${base}-line`)) {
+        if (hasLayer(map, `${base}-line`)) {
           map.setPaintProperty(`${base}-line`, 'line-color', color);
           map.setPaintProperty(`${base}-line`, 'line-width', width);
           map.setPaintProperty(`${base}-line`, 'line-opacity', op * overlayOpacity);
@@ -554,17 +760,17 @@ export default function MapPage() {
       } catch { /* */ }
     }
     // Statewide overlays (first-class): scale their line/circle opacity too.
-    try { if (map.getLayer('vt-utah_roads-line')) map.setPaintProperty('vt-utah_roads-line', 'line-opacity', 0.85 * overlayOpacity); } catch { /* */ }
-    try { if (map.getLayer('vt-utah_roads-label')) map.setPaintProperty('vt-utah_roads-label', 'text-opacity', overlayOpacity); } catch { /* */ }
-    try { if (map.getLayer('vt-utah_addresses-circle')) map.setPaintProperty('vt-utah_addresses-circle', 'circle-opacity', 0.9 * overlayOpacity); } catch { /* */ }
-    try { if (map.getLayer('vt-utah_addresses-label')) map.setPaintProperty('vt-utah_addresses-label', 'text-opacity', overlayOpacity); } catch { /* */ }
+    try { if (hasLayer(map, 'vt-utah_roads-line')) map.setPaintProperty('vt-utah_roads-line', 'line-opacity', 0.85 * overlayOpacity); } catch { /* */ }
+    try { if (hasLayer(map, 'vt-utah_roads-label')) map.setPaintProperty('vt-utah_roads-label', 'text-opacity', overlayOpacity); } catch { /* */ }
+    try { if (hasLayer(map, 'vt-utah_addresses-circle')) map.setPaintProperty('vt-utah_addresses-circle', 'circle-opacity', 0.9 * overlayOpacity); } catch { /* */ }
+    try { if (hasLayer(map, 'vt-utah_addresses-label')) map.setPaintProperty('vt-utah_addresses-label', 'text-opacity', overlayOpacity); } catch { /* */ }
 
     // Z-order: lift the boundary outlines + level labels above the A/S/Z/B
     // coverage fills (which may be added later than the default-on county),
     // so the County/Municipality lines and the level labels stay visible on
     // top of the colored coverage. (Still below DOM unit/call markers.)
     for (const lid of ['geojson-county-line', 'geojson-municipality-line', 'dh-area-label', 'dh-section-label', 'dh-zone-label']) {
-      try { if (map.getLayer(lid)) map.moveLayer(lid); } catch { /* */ }
+      try { if (hasLayer(map, lid)) map.moveLayer(lid); } catch { /* */ }
     }
   }, [overlayOpacity, hierarchyStates, geoLayerStates, vectorLayerStates, choroLevel, mapLoaded]);
 
@@ -618,14 +824,14 @@ export default function MapPage() {
     for (const [layerId, ids] of Object.entries(LAYER_STYLE_MAP)) {
       const visible = cfg.default_visible_layers.includes(layerId);
 
-      if (ids.fillId && map.getLayer(ids.fillId)) {
+      if (ids.fillId && hasLayer(map, ids.fillId)) {
         map.setLayoutProperty(ids.fillId, 'visibility', visible ? 'visible' : 'none');
         const fillColor = (cfg as any)[`layer_${layerId}_fill`];
         const fillOpacity = (cfg as any)[`layer_${layerId}_fill_opacity`];
         if (fillColor) map.setPaintProperty(ids.fillId, 'fill-color', fillColor);
         if (fillOpacity != null) map.setPaintProperty(ids.fillId, 'fill-opacity', fillOpacity);
       }
-      if (ids.lineId && map.getLayer(ids.lineId)) {
+      if (ids.lineId && hasLayer(map, ids.lineId)) {
         map.setLayoutProperty(ids.lineId, 'visibility', visible ? 'visible' : 'none');
         const strokeColor = (cfg as any)[`layer_${layerId}_stroke`];
         const strokeOpacity = (cfg as any)[`layer_${layerId}_stroke_opacity`];
@@ -756,7 +962,15 @@ export default function MapPage() {
   // ============================================================
 
   const fetchUnits = useCallback(async () => {
-    const v = ++dataVersionRef.current;
+    // Capture (do NOT bump) the WS-invalidation epoch. dataVersionRef exists so
+    // a WebSocket update (which increments it at the subscribe handlers below)
+    // can discard a now-stale in-flight poll response. Incrementing it HERE made
+    // fetchUnits and fetchCalls — run concurrently via Promise.all in
+    // fetchAllData — invalidate each other: fetchUnits read v, fetchCalls then
+    // bumped the shared ref, so fetchUnits's post-await `current !== v` check
+    // always tripped and setUnits NEVER ran. Units stayed permanently empty on
+    // the map (and the on-duty-gated 7s poll never recovered). Read-only fixes it.
+    const v = dataVersionRef.current;
     try {
       const data = await apiFetch<Unit[]>('/dispatch/units');
       if (abortedRef.current) return;
@@ -772,7 +986,9 @@ export default function MapPage() {
   }, []);
 
   const fetchCalls = useCallback(async () => {
-    const v = ++dataVersionRef.current;
+    // Capture (do NOT bump) the epoch — see fetchUnits. Bumping here raced with
+    // the concurrent fetchUnits under Promise.all and silently dropped one set.
+    const v = dataVersionRef.current;
     try {
       const data = await apiFetch<ActiveCall[]>('/dispatch/queue');
       if (abortedRef.current) return;
@@ -854,16 +1070,34 @@ export default function MapPage() {
   // ============================================================
 
   useEffect(() => {
-    const unsubscribeUnit = subscribe('unit_update', (msg: any) => {
+    // The live worker broadcasts EVERY dispatch event under the single message
+    // type 'dispatch_update' with an `action` discriminator (units.ts + gps.ts
+    // emit unit_position_update / unit_status_changed / unit_updated /
+    // unit_created / unit_deleted; calls.ts emits the call_* actions). The old
+    // code subscribed unit handling to a separate 'unit_update' TYPE that the
+    // worker never emits, so unit pins only refreshed on the 7s/30s poll —
+    // stale "fallback" positions that never moved live. Handle unit AND call
+    // actions in one 'dispatch_update' subscription, matching DispatchPage.
+    const INACTIVE_STATUSES = new Set(['closed', 'completed', 'cleared', 'cancelled']);
+    const isInactive = (s: any) => typeof s === 'string' && INACTIVE_STATUSES.has(s.toLowerCase());
+
+    const unsubscribe = subscribe('dispatch_update', (msg: any) => {
       dataVersionRef.current++;
       const data = msg.data || msg;
-      if (data?.action === 'unit_deleted' && data.unit_id) {
-        setUnits((prev) => prev.filter((u) => u.id !== data.unit_id));
+      const action = data?.action;
+
+      // ── Unit events (live GPS move / status / add / delete) ──
+      // String()-compare ids — assigned unit ids are stored mixed string/number.
+      if (action === 'unit_deleted' && data.unit_id != null) {
+        setUnits((prev) => prev.filter((u) => String(u.id) !== String(data.unit_id)));
         return;
       }
-      if (data?.unit) {
+      if (
+        (action === 'unit_position_update' || action === 'unit_status_changed' ||
+          action === 'unit_updated' || action === 'unit_created') && data.unit
+      ) {
         setUnits((prev) => {
-          const index = prev.findIndex((u) => u.id === data.unit.id);
+          const index = prev.findIndex((u) => String(u.id) === String(data.unit.id));
           if (index >= 0) {
             const updated = [...prev];
             updated[index] = { ...updated[index], ...data.unit };
@@ -871,60 +1105,102 @@ export default function MapPage() {
           }
           return [...prev, data.unit];
         });
-      }
-    });
-
-    // Server broadcasts 'dispatch_update' type for call events
-    // Unit state is now fully handled by 'unit_update' events (enriched with call details),
-    // so no need to re-fetch all units on every dispatch event.
-    // Statuses excluded from /dispatch/queue (the map's source-of-truth fetch) —
-    // keep this in sync with aggregates.ts queue endpoint's WHERE clause.
-    const INACTIVE_STATUSES = new Set(['closed', 'completed', 'cleared', 'cancelled']);
-    const isInactive = (s: any) => typeof s === 'string' && INACTIVE_STATUSES.has(s.toLowerCase());
-
-    const unsubscribeCall = subscribe('dispatch_update', (msg: any) => {
-      dataVersionRef.current++;
-      const evtData = msg.data || msg;
-
-      // Handle deletions explicitly — call_deleted broadcasts carry call_id, not call
-      if (evtData?.action === 'call_deleted') {
-        const deletedId = evtData.call_id ?? evtData.call?.id;
-        if (deletedId != null) {
-          setCalls((prev) => prev.filter((c) => c.id !== deletedId));
-        }
         return;
       }
 
-      // Bulk operations don't carry per-call data — fall back to a silent refresh
-      if (
-        evtData?.action === 'calls_bulk_updated' ||
-        evtData?.action === 'calls_bulk_archived' ||
-        evtData?.action === 'calls_auto_closed'
-      ) {
+      // ── Call events ──
+      // call_deleted broadcasts carry call_id, not the full call.
+      if (action === 'call_deleted') {
+        const deletedId = data.call_id ?? data.call?.id;
+        if (deletedId != null) setCalls((prev) => prev.filter((c) => c.id !== deletedId));
+        return;
+      }
+      // Bulk operations don't carry per-call data — fall back to a silent refresh.
+      if (action === 'calls_bulk_updated' || action === 'calls_bulk_archived' || action === 'calls_auto_closed') {
         fetchAllDataRef.current?.({ silent: true });
         return;
       }
-
-      if (evtData && evtData.call) {
+      if (data && data.call) {
         setCalls((prev) => {
-          const index = prev.findIndex((c) => c.id === evtData.call.id);
+          const index = prev.findIndex((c) => c.id === data.call.id);
           if (index >= 0) {
             const updated = [...prev];
-            updated[index] = { ...updated[index], ...evtData.call };
-            if (isInactive(evtData.call.status)) {
-              return updated.filter((c) => c.id !== evtData.call.id);
+            updated[index] = { ...updated[index], ...data.call };
+            if (isInactive(data.call.status)) {
+              return updated.filter((c) => c.id !== data.call.id);
             }
             return updated;
           }
-          if (!isInactive(evtData.call.status)) {
-            return [...prev, evtData.call];
+          if (!isInactive(data.call.status)) {
+            return [...prev, data.call];
           }
           return prev;
         });
       }
     });
 
-    return () => { unsubscribeUnit(); unsubscribeCall(); };
+    // ── Instant unit-pin glide (gps.ts → AlertHubDO, type 'unit_position') ──
+    // High-frequency GPS breadcrumbs ride their OWN lightweight frame so a ~1 Hz
+    // fix never runs the dispatcher-brain fan-in or a setUnits() re-render storm.
+    // We move the EXISTING marker in place (glide), rotate its heading arrow,
+    // and update the mph label directly — no setUnits(), so the dataVersionRef
+    // poll epoch is untouched and the ~7s poll stays the fallback. A unit we
+    // haven't rendered yet is a no-op: the next poll creates the marker, then
+    // subsequent fixes glide it. (gps.ts also mirrors the fix onto units.lat/lng,
+    // so when the poll does run its position already matches — no rewind jitter.)
+    const unsubscribePos = subscribe('unit_position', (msg: any) => {
+      const data = msg.data || msg;
+      const unitId = data.unit_id ?? data.unit?.id;
+      if (unitId == null) return;
+      const lat = data.lat ?? data.unit?.latitude;
+      const lng = data.lng ?? data.unit?.longitude;
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+      const heading = data.heading ?? data.unit?.gps_heading ?? null;
+      const speed = data.speed ?? data.unit?.gps_speed ?? null;
+
+      const id = String(unitId);
+      const marker = unitMarkersMapRef.current.get(id);
+      if (!marker) return; // not on the map yet — the poll will create it
+
+      marker.setLngLat([lng, lat]);
+      const el = marker.getElement?.();
+      if (el) {
+        const arrow = el.querySelector('[data-unit-arrow]') as HTMLElement | null;
+        if (arrow) {
+          // Present (unit was moving when drawn): just re-aim it. The 0.45s CSS
+          // transition on the arrow's transform makes the turn glide.
+          if (Number.isFinite(heading)) arrow.style.transform = `rotate(${heading}deg)`;
+        } else if (Number.isFinite(heading)) {
+          // Absent: the unit was parked when first drawn (buildUnitMarkerContent
+          // omits the arrow for a stationary unit) and is now moving. Rebuild it
+          // so a unit that just pulled out shows direction immediately, not only
+          // after a full marker recreate. Insert into the wrapper (the element
+          // that holds the speed label); absolute positioning ignores order.
+          const wrap = (el.querySelector('[data-unit-speed]')?.parentElement as HTMLElement | null) || el;
+          const color = (UNIT_STATUS_COLORS as Record<string, string>)[data.unit?.status] || '#888888';
+          const rebuilt = buildDirectionArrow(color, heading, { speed, scale: 1, offsetTop: 13 });
+          if (rebuilt) { rebuilt.setAttribute('data-unit-arrow', ''); wrap.insertBefore(rebuilt, wrap.firstChild); }
+        }
+        const speedEl = el.querySelector('[data-unit-speed]') as HTMLElement | null;
+        if (speedEl) {
+          const mph = speed != null && Number.isFinite(speed) ? Math.round(speed * 2.237) : null;
+          speedEl.textContent = mph != null ? `${mph}` : '';
+        }
+      }
+
+      // Sync the marker-effect's change-detector so the next poll, whose units
+      // row gps.ts already updated to this same fix, sees no change and skips
+      // (avoids a redundant re-apply / brief rewind). Preserve last known status.
+      const prev = prevUnitStateRef.current.get(id);
+      prevUnitStateRef.current.set(id, {
+        lat, lng,
+        status: prev?.status ?? (data.unit?.status || 'available'),
+        heading: Number.isFinite(heading) ? heading : null,
+        speed: speed != null && Number.isFinite(speed) ? speed : null,
+      });
+    });
+
+    return () => { unsubscribe(); unsubscribePos(); };
   }, [subscribe]);
 
   // ============================================================
@@ -963,6 +1239,14 @@ export default function MapPage() {
 
     // Clear any previous error when retrying
     setMapError(null);
+    setMapRecoveryFailed(false);
+    // Re-arm data fetching on (re)init. abortedRef is latched true by THIS
+    // effect's cleanup; without resetting it, any re-init (manual Retry or a
+    // WebGL-loss rebuild) would rebuild the map but leave unit/call/property
+    // fetches permanently short-circuited (they early-return on abortedRef).
+    abortedRef.current = false;
+    // Detach the previous map's WebGL recovery listener before we (re)create.
+    if (webglRecoveryCleanupRef.current) { webglRecoveryCleanupRef.current(); webglRecoveryCleanupRef.current = null; }
 
     let cancelled = false;
     let unsubOnline = () => {};
@@ -988,6 +1272,8 @@ export default function MapPage() {
       // Fix 31: restore map center/zoom from localStorage
       let savedCenter = { lat: cfg.default_center_lat, lng: cfg.default_center_lng };
       let savedZoom = cfg.default_zoom;
+      let savedBearing = cfg.default_bearing;
+      let savedPitch = cfg.default_pitch;
       try {
         const sc = localStorage.getItem('rmpg_map_center');
         const sz = localStorage.getItem('rmpg_map_zoom');
@@ -995,13 +1281,26 @@ export default function MapPage() {
         if (sz) savedZoom = parseInt(sz, 10) || cfg.default_zoom;
       } catch { /* use defaults */ }
 
+      // WebGL-loss rebuild: reopen at the EXACT view captured at the instant of
+      // loss — including bearing/pitch, which the localStorage save (moveend)
+      // never persists — so the dispatcher doesn't lose their pan/zoom/rotation.
+      // One-shot: cleared after use so normal retries use the saved view.
+      const recoverCam = recoverCameraRef.current;
+      if (recoverCam) {
+        recoverCameraRef.current = null;
+        savedCenter = { lng: recoverCam.center[0], lat: recoverCam.center[1] };
+        savedZoom = recoverCam.zoom;
+        savedBearing = recoverCam.bearing;
+        savedPitch = recoverCam.pitch;
+      }
+
       const mapOptions: mapboxgl.MapboxOptions = {
         container: mapRef.current!,
         style: cfg.custom_style_url || MAPBOX_STYLE_DARK,
         center: [savedCenter.lng, savedCenter.lat],
         zoom: savedZoom,
-        pitch: cfg.default_pitch,
-        bearing: cfg.default_bearing,
+        pitch: savedPitch,
+        bearing: savedBearing,
         minZoom: cfg.min_zoom,
         maxZoom: cfg.max_zoom,
         minPitch: cfg.min_pitch,
@@ -1050,6 +1349,29 @@ export default function MapPage() {
       mapInstanceRef.current = map;
       registerMapInstance(map);
 
+      // WebGL context-loss recovery. On a long shift the GPU can reclaim the
+      // map's WebGL context (Toughbook GPU pressure, device sleep/wake, driver
+      // reset), blanking the map until a full reload. We watch for that and
+      // rebuild in place at the dispatcher's exact view. Bumping mapRetry re-
+      // runs THIS effect (cleanup tears down the dead map, then a fresh one is
+      // built); flipping mapLoaded false→true makes every [mapLoaded]-keyed
+      // layer/marker effect re-attach to the new map. The loop-guard escalates
+      // a physically failing GPU to a manual reload instead of thrashing.
+      webglRecoveryCleanupRef.current = installWebglContextRecovery(map, {
+        label: 'MapPage',
+        onContextLost: () => setMapRecovering(true),
+        onContextRestored: () => setMapRecovering(false),
+        onRebuild: (camera) => {
+          recoverCameraRef.current = camera;
+          setMapLoaded(false);
+          setMapRetry((n) => n + 1);
+        },
+        onGiveUp: () => {
+          setMapRecovering(false);
+          setMapRecoveryFailed(true);
+        },
+      });
+
       // Fix 30: save map center/zoom to localStorage on moveend (debounced to skip animation frames)
       const savePosition = () => {
         if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
@@ -1066,7 +1388,9 @@ export default function MapPage() {
       };
       map.on('moveend', savePosition);
 
-      infoWindowRef.current = new mapboxgl.Popup({ closeButton: true, closeOnClick: false });
+      // maxWidth must clear the 248px imagery + padding in the "What's Here"
+      // popup (Mapbox defaults to 240px, which would clip the street view).
+      infoWindowRef.current = new mapboxgl.Popup({ closeButton: true, closeOnClick: false, maxWidth: '290px' });
 
       // Mapbox does not have the Google Maps error overlay / dismissable
       // alertdialog that the old mutation observer was designed to handle.
@@ -1091,6 +1415,8 @@ export default function MapPage() {
       });
 
       if (!authFailed) setMapLoaded(true);
+      // The rebuilt map is live again — clear the "reconnecting" badge.
+      setMapRecovering(false);
     }
 
     let mapConfig: MapSettings | null = null;
@@ -1173,6 +1499,7 @@ export default function MapPage() {
       cancelled = true;
       abortedRef.current = true;
       unsubOnline();
+      if (webglRecoveryCleanupRef.current) { webglRecoveryCleanupRef.current(); webglRecoveryCleanupRef.current = null; }
       if (tileMonitorCleanupRef.current) { tileMonitorCleanupRef.current(); tileMonitorCleanupRef.current = null; }
       if (mapInstanceRef.current) unregisterMapInstance(mapInstanceRef.current);
       markersRef.current.forEach((m) => {
@@ -1184,6 +1511,14 @@ export default function MapPage() {
       if (playbackMarkerRef.current) { playbackMarkerRef.current.remove(); playbackMarkerRef.current = null; }
       if (playbackSpeedLabelRef.current) { playbackSpeedLabelRef.current.remove(); playbackSpeedLabelRef.current = null; }
       if (saveTimerRef.current) { clearTimeout(saveTimerRef.current); saveTimerRef.current = null; }
+      // Actually destroy the map: free its WebGL context, stop its render loop,
+      // and drop its canvas from the container. Without this, every visit to
+      // /map leaked a GL context — and the browser's ~16-context cap means a
+      // leaked context eventually gets force-killed, which surfaces as a
+      // `webglcontextlost` on the live map (a root cause of the "map drops mid-
+      // shift" report). It is also required for the rebuild path: re-creating a
+      // map in a container that still holds the old canvas would stack two.
+      if (mapInstanceRef.current) { try { mapInstanceRef.current.remove(); } catch { /* already torn down */ } }
       mapInstanceRef.current = null;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1339,14 +1674,14 @@ export default function MapPage() {
                     <span style="margin-left:auto;font-size:9px;text-transform:uppercase;color:${statusColor};font-weight:800;letter-spacing:1px;padding:1px 6px;background:${statusColor}20;border:1px solid ${statusColor}30;border-radius:2px;">${escapeHtml(unit.status.replace(/_/g, ' '))}</span>
                   </div>
                   <div style="font-size:11px;color:#d1d5db;margin-bottom:2px;">${escapeHtml(unit.officer_name)}</div>
-                  ${unit.vehicle ? `<div style="font-size:10px;color:#5a6e80;margin-bottom:6px;">Vehicle: ${escapeHtml(unit.vehicle)}</div>` : ''}
+                  ${unit.vehicle ? `<div style="font-size:10px;color:#8a8a8a;margin-bottom:6px;">Vehicle: ${escapeHtml(unit.vehicle)}</div>` : ''}
                   ${unit.call_number ? `
                     <div style="margin-top:6px;padding-top:6px;border-top:1px solid #2b2b2b;">
                       <div style="font-size:10px;color:#a0a0a0;font-weight:bold;">${escapeHtml(unit.call_number)}</div>
                       ${unit.current_call_type ? `<div style="font-size:10px;color:#d1d5db;">${escapeHtml(formatIncidentType(unit.current_call_type))}</div>` : ''}
-                      <div style="font-size:9px;color:#5a6e80;margin-top:2px;">${escapeHtml(location)}</div>
+                      <div style="font-size:9px;color:#8a8a8a;margin-top:2px;">${escapeHtml(location)}</div>
                     </div>
-                  ` : `<div style="font-size:9px;color:#5a6e80;margin-top:4px;">${escapeHtml(location)}</div>`}
+                  ` : `<div style="font-size:9px;color:#8a8a8a;margin-top:4px;">${escapeHtml(location)}</div>`}
                   ${routeBtnHtml}
                   ${omBtnHtml}
                 </div>
@@ -1397,6 +1732,7 @@ export default function MapPage() {
             (existing as any)._rmpgClick = makeUnitClick;
           } else {
             const content = buildUnitMarkerContent(unit.call_sign, unit.status, unit.gps_source, unit.gps_heading, unit.gps_speed);
+            content.addEventListener('contextmenu', (ev) => openMenu(ev, buildUnitMarkerMenu(unit)));
             const marker = createMarker({
               map,
               position: [unit.longitude, unit.latitude],
@@ -1432,6 +1768,7 @@ export default function MapPage() {
       calls.forEach((call) => {
         if (call.latitude != null && call.longitude != null) {
           const content = buildIncidentMarkerContent(call.priority, call.incident_type, call.call_number);
+          content.addEventListener('contextmenu', (ev) => openMenu(ev, buildCallMarkerMenu(call)));
           const pColor = PRIORITY_COLORS[call.priority] || '#666666';
 
           const marker = createMarker({
@@ -1445,7 +1782,7 @@ export default function MapPage() {
               let unitsHtml = '';
               if (assignedUnits.length > 0) {
                 unitsHtml = `<div style="margin-top:6px;padding-top:6px;border-top:1px solid #2b2b2b;">
-                  <div style="font-size:9px;color:#5a6e80;margin-bottom:4px;font-weight:bold;text-transform:uppercase;letter-spacing:1px;">ASSIGNED UNITS (${assignedUnits.length})</div>
+                  <div style="font-size:9px;color:#8a8a8a;margin-bottom:4px;font-weight:bold;text-transform:uppercase;letter-spacing:1px;">ASSIGNED UNITS (${assignedUnits.length})</div>
                   ${assignedUnits.map(u => {
                     const uc = UNIT_STATUS_COLORS[u.status] || '#666666';
                     const routeBtn = (u.latitude != null && u.longitude != null && call.latitude != null && call.longitude != null)
@@ -1474,7 +1811,7 @@ export default function MapPage() {
                   }).join('')}
                 </div>`;
               } else {
-                unitsHtml = `<div style="margin-top:6px;padding-top:6px;border-top:1px solid #2b2b2b;font-size:9px;color:#5a6e80;">No units assigned</div>`;
+                unitsHtml = `<div style="margin-top:6px;padding-top:6px;border-top:1px solid #2b2b2b;font-size:9px;color:#8a8a8a;">No units assigned</div>`;
               }
 
               infoWindowRef.current?.setHTML(`
@@ -1486,7 +1823,7 @@ export default function MapPage() {
                   <div style="font-size:12px;color:#a0a0a0;font-weight:bold;">${escapeHtml(call.call_number)}</div>
                   <div style="font-size:10px;margin-top:4px;color:#d1d5db;">${escapeHtml(call.location_address)}</div>
                   ${call.property_name ? `<div style="font-size:10px;margin-top:4px;color:#888888;">\u{1F3E2} ${escapeHtml(call.property_name)}</div>` : ''}
-                  <div style="font-size:9px;margin-top:6px;text-transform:uppercase;color:#5a6e80;letter-spacing:1px;font-weight:800;">${escapeHtml(call.status.replace(/_/g, ' '))}</div>
+                  <div style="font-size:9px;margin-top:6px;text-transform:uppercase;color:#8a8a8a;letter-spacing:1px;font-weight:800;">${escapeHtml(call.status.replace(/_/g, ' '))}</div>
                   ${unitsHtml}
                 </div>
               `);
@@ -1516,6 +1853,7 @@ export default function MapPage() {
       properties.forEach((prop) => {
         if (prop.latitude != null && prop.longitude != null) {
           const content = buildPropertyMarkerContent(prop.name, prop.address, prop.client_name || undefined);
+          content.addEventListener('contextmenu', (ev) => openMenu(ev, buildPropertyMarkerMenu(prop)));
 
           const marker = createMarker({
             map,
@@ -1893,8 +2231,8 @@ export default function MapPage() {
 
     // Clean up heatmap when toggled off
     if (!showHeatmap || heatmapData.length === 0) {
-      if (map.getLayer('rmpg-heatmap-layer')) map.removeLayer('rmpg-heatmap-layer');
-      if (map.getSource('rmpg-heatmap')) map.removeSource('rmpg-heatmap');
+      safeRemoveLayer(map, 'rmpg-heatmap-layer');
+      safeRemoveSource(map, 'rmpg-heatmap');
       heatmapLayerRef.current = null;
       return;
     }
@@ -1915,14 +2253,14 @@ export default function MapPage() {
       }));
 
     try {
-      const existingSrc = map.getSource('rmpg-heatmap') as mapboxgl.GeoJSONSource | undefined;
+      const existingSrc = getSourceSafe<mapboxgl.GeoJSONSource>(map, 'rmpg-heatmap');
       if (existingSrc) {
         existingSrc.setData({ type: 'FeatureCollection', features: weightedFeatures });
         return;
       }
 
       whenStyleReady(map, () => {
-      if (map.getSource('rmpg-heatmap')) return;
+      if (hasSource(map, 'rmpg-heatmap')) return;
       map.addSource('rmpg-heatmap', {
         type: 'geojson',
         data: {
@@ -1979,8 +2317,8 @@ export default function MapPage() {
     }
 
     return () => {
-      if (map.getLayer('rmpg-heatmap-layer')) map.removeLayer('rmpg-heatmap-layer');
-      if (map.getSource('rmpg-heatmap')) map.removeSource('rmpg-heatmap');
+      safeRemoveLayer(map, 'rmpg-heatmap-layer');
+      safeRemoveSource(map, 'rmpg-heatmap');
       heatmapLayerRef.current = null;
     };
   }, [showHeatmap, heatmapData, heatmapMode, mapLoaded, mapStyle]);
@@ -1994,8 +2332,8 @@ export default function MapPage() {
     if (!map || !mapLoaded) return;
 
     if (!showTrackingLines) {
-      if (map.getLayer('rmpg-tracking-lines')) map.removeLayer('rmpg-tracking-lines');
-      if (map.getSource('rmpg-tracking-lines')) map.removeSource('rmpg-tracking-lines');
+      safeRemoveLayer(map, 'rmpg-tracking-lines');
+      safeRemoveSource(map, 'rmpg-tracking-lines');
       trackingLinesRef.current = [];
       setTrackingLineCount(0);
       return;
@@ -2031,12 +2369,12 @@ export default function MapPage() {
     });
 
     if (features.length === 0) {
-      const existingSrc = map.getSource('rmpg-tracking-lines') as mapboxgl.GeoJSONSource | undefined;
+      const existingSrc = getSourceSafe<mapboxgl.GeoJSONSource>(map, 'rmpg-tracking-lines');
       if (existingSrc) {
         existingSrc.setData({ type: 'FeatureCollection', features: [] });
       } else {
-        if (map.getLayer('rmpg-tracking-lines')) map.removeLayer('rmpg-tracking-lines');
-        if (map.getSource('rmpg-tracking-lines')) map.removeSource('rmpg-tracking-lines');
+        safeRemoveLayer(map, 'rmpg-tracking-lines');
+        safeRemoveSource(map, 'rmpg-tracking-lines');
       }
       trackingLinesRef.current = [];
       setTrackingLineCount(0);
@@ -2046,13 +2384,13 @@ export default function MapPage() {
     try {
       const geojsonData: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features };
 
-      const existingSrc = map.getSource('rmpg-tracking-lines') as mapboxgl.GeoJSONSource | undefined;
+      const existingSrc = getSourceSafe<mapboxgl.GeoJSONSource>(map, 'rmpg-tracking-lines');
       if (existingSrc) {
         existingSrc.setData(geojsonData);
         setTrackingLineCount(features.length);
       } else {
         whenStyleReady(map, () => {
-          if (map.getSource('rmpg-tracking-lines')) return;
+          if (hasSource(map, 'rmpg-tracking-lines')) return;
           map.addSource('rmpg-tracking-lines', {
             type: 'geojson',
             data: geojsonData,
@@ -2253,10 +2591,10 @@ export default function MapPage() {
     // Clear existing breadcrumb visuals — dots & arrows use setData()
     // for efficient updates during interval refreshes.  Lines migrated to
     // setData as well (FIX 32) so we only tear them down on full cleanup.
-    if (map.getLayer(DOTS_LAYER_ID)) map.removeLayer(DOTS_LAYER_ID);
-    if (map.getSource(DOTS_SOURCE_ID)) map.removeSource(DOTS_SOURCE_ID);
-    if (map.getLayer(ARROWS_LAYER_ID)) map.removeLayer(ARROWS_LAYER_ID);
-    if (map.getSource(ARROWS_SOURCE_ID)) map.removeSource(ARROWS_SOURCE_ID);
+    safeRemoveLayer(map, DOTS_LAYER_ID);
+    safeRemoveSource(map, DOTS_SOURCE_ID);
+    safeRemoveLayer(map, ARROWS_LAYER_ID);
+    safeRemoveSource(map, ARROWS_SOURCE_ID);
     speedAlertKeyedRef.current.forEach((m) => m.remove());
     speedAlertKeyedRef.current.clear();
     breadcrumbTrailsRef.current = [];
@@ -2295,13 +2633,19 @@ export default function MapPage() {
           // Clear the dots source if no trails so leftover points from
           // previous refresh don't linger after a unit goes off-duty.
           breadcrumbTrailsRef.current = [];
-          const existingDotSrc = map.getSource(DOTS_SOURCE_ID) as mapboxgl.GeoJSONSource | undefined;
+          const existingDotSrc = getSourceSafe<mapboxgl.GeoJSONSource>(map, DOTS_SOURCE_ID);
           if (existingDotSrc) existingDotSrc.setData({ type: 'FeatureCollection', features: [] });
-          const existingArrowSrc = map.getSource(ARROWS_SOURCE_ID) as mapboxgl.GeoJSONSource | undefined;
+          const existingArrowSrc = getSourceSafe<mapboxgl.GeoJSONSource>(map, ARROWS_SOURCE_ID);
           if (existingArrowSrc) existingArrowSrc.setData({ type: 'FeatureCollection', features: [] });
           return;
         }
-        setPlaybackTrails(trails);
+        // Preserve any active Trip-Replay trail (registered under
+        // TRIP_REPLAY_UNIT_ID) across the 15s live-breadcrumb refresh — the
+        // refresh only owns the real per-unit trails.
+        setPlaybackTrails((prev) => {
+          const replay = prev.filter((t) => t.unit_id === TRIP_REPLAY_UNIT_ID);
+          return [...trails, ...replay];
+        });
         breadcrumbTrailsRef.current = trails;
 
         const lineFeatures: any[] = [];
@@ -2390,7 +2734,7 @@ export default function MapPage() {
         // Create or update breadcrumb line source & layer via setData()
         // (same pattern as dots/arrows — avoids source-teardown blink).
         const linesData: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: lineFeatures };
-        const existingLineSrc = map.getSource('rmpg-breadcrumb-lines') as mapboxgl.GeoJSONSource | undefined;
+        const existingLineSrc = getSourceSafe<mapboxgl.GeoJSONSource>(map, 'rmpg-breadcrumb-lines');
         if (existingLineSrc) {
           existingLineSrc.setData(linesData);
         } else if (lineFeatures.length > 0) {
@@ -2416,7 +2760,7 @@ export default function MapPage() {
         // setData() is much cheaper than recreating the source — most refreshes
         // hit the update branch. The first refresh creates the source+layer.
         const dotsData: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: dotFeatures };
-        const existingDotSrc = map.getSource(DOTS_SOURCE_ID) as mapboxgl.GeoJSONSource | undefined;
+        const existingDotSrc = getSourceSafe<mapboxgl.GeoJSONSource>(map, DOTS_SOURCE_ID);
         if (existingDotSrc) {
           existingDotSrc.setData(dotsData);
         } else {
@@ -2442,7 +2786,7 @@ export default function MapPage() {
         // Heading arrows symbol layer. setData on refresh; first run registers
         // the SDF arrow icon (so `icon-color` tints per feature) + the layer.
         const arrowsData: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: arrowFeatures };
-        const existingArrowSrc = map.getSource(ARROWS_SOURCE_ID) as mapboxgl.GeoJSONSource | undefined;
+        const existingArrowSrc = getSourceSafe<mapboxgl.GeoJSONSource>(map, ARROWS_SOURCE_ID);
         if (existingArrowSrc) {
           existingArrowSrc.setData(arrowsData);
         } else {
@@ -2465,8 +2809,8 @@ export default function MapPage() {
                 map.addImage(ARROW_IMAGE_ID, ctx.getImageData(0, 0, S, S), { sdf: true });
               }
             }
-            if (!map.getSource(ARROWS_SOURCE_ID)) map.addSource(ARROWS_SOURCE_ID, { type: 'geojson', data: arrowsData });
-            if (!map.getLayer(ARROWS_LAYER_ID)) {
+            if (!hasSource(map, ARROWS_SOURCE_ID)) map.addSource(ARROWS_SOURCE_ID, { type: 'geojson', data: arrowsData });
+            if (!hasLayer(map, ARROWS_LAYER_ID)) {
               map.addLayer({
                 id: ARROWS_LAYER_ID,
                 type: 'symbol',
@@ -2520,12 +2864,12 @@ export default function MapPage() {
     return () => {
       clearInterval(interval);
       clearTimeout(retryTimeout);
-      if (map.getLayer('rmpg-breadcrumb-lines')) map.removeLayer('rmpg-breadcrumb-lines');
-      if (map.getSource('rmpg-breadcrumb-lines')) map.removeSource('rmpg-breadcrumb-lines');
-      if (map.getLayer(DOTS_LAYER_ID)) map.removeLayer(DOTS_LAYER_ID);
-      if (map.getSource(DOTS_SOURCE_ID)) map.removeSource(DOTS_SOURCE_ID);
-      if (map.getLayer(ARROWS_LAYER_ID)) map.removeLayer(ARROWS_LAYER_ID);
-      if (map.getSource(ARROWS_SOURCE_ID)) map.removeSource(ARROWS_SOURCE_ID);
+      safeRemoveLayer(map, 'rmpg-breadcrumb-lines');
+      safeRemoveSource(map, 'rmpg-breadcrumb-lines');
+      safeRemoveLayer(map, DOTS_LAYER_ID);
+      safeRemoveSource(map, DOTS_SOURCE_ID);
+      safeRemoveLayer(map, ARROWS_LAYER_ID);
+      safeRemoveSource(map, ARROWS_SOURCE_ID);
       breadcrumbTrailsRef.current = [];
       speedAlertKeyedRef.current.forEach((m) => m.remove());
       speedAlertKeyedRef.current.clear();
@@ -2631,6 +2975,137 @@ export default function MapPage() {
   }, [playbackUnit]);
 
   // ============================================================
+  // Trip Replay — load a SELECTED historical trip into the existing scrubber
+  // ============================================================
+  // When a trip's detail arrives, map its TripPoint[] into the PlaybackTrail
+  // point shape and register it in playbackTrails under TRIP_REPLAY_UNIT_ID,
+  // then drive the SAME playback scrubber (playbackUnit / playbackIdx). A/B
+  // markers flag the trip start/end with their timestamps.
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+
+    // Always clear any prior A/B markers first.
+    tripAbMarkersRef.current.forEach((m) => removeMarker(m));
+    tripAbMarkersRef.current = [];
+
+    if (!tripDetail || !Array.isArray(tripDetail.points) || tripDetail.points.length === 0) {
+      // Trip deselected (or empty): tear down the synthetic replay trail and
+      // stop playback if it was the active unit.
+      setPlaybackTrails((prev) => prev.filter((t) => t.unit_id !== TRIP_REPLAY_UNIT_ID));
+      if (playbackUnit === TRIP_REPLAY_UNIT_ID) {
+        setPlaybackUnit(null);
+        setPlaybackIdx(0);
+        setIsPlaying(false);
+      }
+      return;
+    }
+
+    // Map TripPoint → PlaybackTrail point. trip-level call fields are filled
+    // across every point so the per-dot popup / status read still works; per
+    // the PlaybackTrail contract status is a string and road_name/intersection
+    // are nullable.
+    const callSign =
+      units.find((u) => Number(u.id) === tripDetail.unit_id)?.call_sign || `UNIT ${tripDetail.unit_id}`;
+    const points = tripDetail.points.map((p) => ({
+      lat: p.lat,
+      lng: p.lng,
+      accuracy: p.accuracy,
+      heading: p.heading,
+      speed: p.speed,
+      status: tripDetail.status === 'active' ? 'enroute' : 'available',
+      call_number: tripDetail.call_number,
+      call_type: tripDetail.call_type,
+      time: p.time,
+      road_name: null,
+      intersection: null,
+    }));
+
+    const replayTrail: PlaybackTrail = {
+      unit_id: TRIP_REPLAY_UNIT_ID,
+      call_sign: `${callSign} • ${tripLabel(tripDetail)}`,
+      officer_name: '',
+      badge_number: '',
+      points,
+    };
+
+    // Swap the replay trail into playbackTrails (replace any prior one), arm
+    // the existing scrubber on it, and reset to the start.
+    setPlaybackTrails((prev) => [
+      ...prev.filter((t) => t.unit_id !== TRIP_REPLAY_UNIT_ID),
+      replayTrail,
+    ]);
+    setIsPlaying(false);
+    setPlaybackIdx(0);
+    setPlaybackUnit(TRIP_REPLAY_UNIT_ID);
+
+    if (!map || !mapLoaded) return;
+
+    // A (start) / B (end) flag markers with start/end timestamps.
+    const accent = tripTypeColor(tripDetail.trip_type);
+    const startLat = tripDetail.start_lat ?? points[0].lat;
+    const startLng = tripDetail.start_lng ?? points[0].lng;
+    const endLat = tripDetail.end_lat ?? points[points.length - 1].lat;
+    const endLng = tripDetail.end_lng ?? points[points.length - 1].lng;
+    const buildFlag = (letter: 'A' | 'B', bg: string, label: string) => {
+      const el = document.createElement('div');
+      el.style.cssText = 'display:flex;flex-direction:column;align-items:center;font-family:monospace;line-height:1;';
+      const badge = document.createElement('div');
+      badge.style.cssText =
+        `width:18px;height:18px;border-radius:2px;background:${bg};color:#0a0a0a;` +
+        `font-size:11px;font-weight:900;display:flex;align-items:center;justify-content:center;` +
+        `border:1px solid #0a0a0a;box-shadow:0 0 4px rgba(0,0,0,.8)`;
+      badge.textContent = letter;
+      const cap = document.createElement('div');
+      cap.style.cssText =
+        `margin-top:1px;font-size:8px;font-weight:700;color:#e5e5e5;background:#0d0d0d;` +
+        `padding:1px 3px;border-radius:2px;border:1px solid #282828;white-space:nowrap`;
+      cap.textContent = label;
+      el.appendChild(badge);
+      el.appendChild(cap);
+      return el;
+    };
+    if (isFinite(startLng) && isFinite(startLat)) {
+      const mA = createMarker({
+        map,
+        position: [startLng, startLat],
+        content: buildFlag('A', accent, safeDateTimeStr(tripDetail.start_time, 'START')),
+        zIndex: 950,
+        title: `Trip start — ${safeDateTimeStr(tripDetail.start_time) || ''}`,
+      });
+      if (mA) tripAbMarkersRef.current.push(mA);
+    }
+    if (isFinite(endLng) && isFinite(endLat)) {
+      const mB = createMarker({
+        map,
+        position: [endLng, endLat],
+        content: buildFlag('B', '#e5e5e5', safeDateTimeStr(tripDetail.end_time, 'ACTIVE')),
+        zIndex: 950,
+        title: `Trip end — ${safeDateTimeStr(tripDetail.end_time) || 'in progress'}`,
+      });
+      if (mB) tripAbMarkersRef.current.push(mB);
+    }
+
+    // Frame the whole trip.
+    try {
+      const bounds = new mapboxgl.LngLatBounds();
+      let any = false;
+      points.forEach((p) => {
+        if (isFinite(p.lng) && isFinite(p.lat)) { bounds.extend([p.lng, p.lat]); any = true; }
+      });
+      if (any) map.fitBounds(bounds, { padding: { top: 60, right: 60, bottom: 60, left: layersPanelOpen ? 240 : 70 }, maxZoom: 16 });
+    } catch { /* noop */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tripDetail, mapLoaded]);
+
+  // Clean up trip A/B markers on unmount.
+  useEffect(() => {
+    return () => {
+      tripAbMarkersRef.current.forEach((m) => removeMarker(m));
+      tripAbMarkersRef.current = [];
+    };
+  }, [removeMarker]);
+
+  // ============================================================
   // GPS Self-Position Marker
   // ============================================================
 
@@ -2655,7 +3130,9 @@ export default function MapPage() {
           }
           const arrow = el.querySelector('[data-gps-arrow]') as HTMLElement | null;
           if (arrow) {
-            arrow.style.transform = `rotate(${gps.heading ?? 0}deg)`;
+            // Smoothed heading (course-over-ground fallback) — glides instead of
+            // snapping between noisy fixes.
+            arrow.style.transform = `rotate(${gps.headingSmoothed ?? gps.course ?? gps.heading ?? 0}deg)`;
           }
           const speedEl = el.querySelector('[data-gps-speed]') as HTMLElement | null;
           if (speedEl) {
@@ -2668,7 +3145,7 @@ export default function MapPage() {
         selfMarkerRef.current = createMarker({
           map,
           position: pos,
-          content: buildSelfPositionMarker(gps.accuracy, gps.heading, gps.speed),
+          content: buildSelfPositionMarker(gps.accuracy, gps.headingSmoothed ?? gps.course ?? gps.heading, gps.speed),
           zIndex: 9999,
           title: `Your Position${gps.unitCallSign ? ` (${gps.unitCallSign})` : ''}`,
         });
@@ -2686,7 +3163,7 @@ export default function MapPage() {
         selfMarkerRef.current = null;
       }
     }
-  }, [gps.isTracking, gps.latitude, gps.longitude, gps.accuracy, gps.heading, gps.unitCallSign, mapLoaded, createMarker, removeMarker]);
+  }, [gps.isTracking, gps.latitude, gps.longitude, gps.accuracy, gps.heading, gps.headingSmoothed, gps.unitCallSign, mapLoaded, createMarker, removeMarker]);
 
   // ============================================================
   // Layer Toggle
@@ -2901,6 +3378,58 @@ export default function MapPage() {
   // When the route is cleared, exit nav mode.
   useEffect(() => { if (!activeRoute) setNavActive(false); }, [activeRoute]);
 
+  // ── Advanced nav guidance (voice + hazard-ahead + arrival) ──
+  const toggleNavMute = useCallback(() => {
+    setNavMuted((m) => { const next = !m; localStorage.setItem('rmpg-nav-voice', next ? 'muted' : 'on'); return next; });
+  }, []);
+
+  // Active calls become route hazards: scanned against the path ahead so a
+  // unit driving anywhere gets a heads-up about live calls on their route.
+  const navHazards = useMemo<NavHazard[]>(() => {
+    return calls
+      .filter((c) => c.latitude != null && c.longitude != null
+        && (!c.status || !['closed', 'cleared', 'cancelled'].includes(c.status.toLowerCase())))
+      .map((c) => {
+        const p = (c.priority || '').toUpperCase();
+        const t = (c.incident_type || '').toLowerCase();
+        const officerSafety = /weapon|gun|knife|domestic|assault|shots?\b|robbery|pursuit|fight|hostage|armed|burglary in progress|shooting|stabbing/.test(t);
+        const severity: NavHazard['severity'] = (p === 'P1' || officerSafety) ? 'critical' : (p === 'P2' ? 'high' : 'normal');
+        const typeWords = (c.incident_type || 'call').replace(/_/g, ' ').toLowerCase();
+        const prio = p === 'P1' ? 'priority one ' : p === 'P2' ? 'priority two ' : '';
+        return {
+          id: String(c.id),
+          lat: c.latitude as number,
+          lng: c.longitude as number,
+          label: `${c.call_number} · ${c.incident_type}`,
+          kind: `${prio}${typeWords} call`,
+          severity,
+        };
+      });
+  }, [calls]);
+
+  // Don't warn a unit about the very call it's driving to.
+  const navDestExcludeId = useMemo(() => {
+    if (!activeRoute || activeRoute.unitCallSign === 'YOU') return undefined;
+    const match = calls.find((c) => c.call_number === activeRoute.callNumber);
+    return match ? String(match.id) : undefined;
+  }, [activeRoute, calls]);
+
+  const navGuidance = useNavGuidance({
+    active: navActive && !!activeRoute,
+    route: activeRoute,
+    progress: routeProgress,
+    geom: routeGeom,
+    position: (gps.latitude != null && gps.longitude != null)
+      ? { lat: gps.latitude as number, lng: gps.longitude as number } : null,
+    hazards: navHazards,
+    destLabel: activeRoute
+      ? (activeRoute.unitCallSign === 'YOU' ? activeRoute.callNumber : `call ${activeRoute.callNumber}`)
+      : '',
+    destExcludeId: navDestExcludeId,
+    muted: navMuted,
+    offRoute,
+  });
+
   // ── Dispatch a call at the selected address ─────────────────
   const createCallHere = useCallback(async () => {
     if (!selectedAddr || dispatchBusy) return;
@@ -2908,7 +3437,7 @@ export default function MapPage() {
     if (!incident) return;
     setDispatchBusy(true);
     try {
-      await apiFetch('/dispatch/calls', {
+      const created = await apiFetch<{ id?: number }>('/dispatch/calls', {
         method: 'POST',
         body: JSON.stringify({
           incident_type: incident,
@@ -2919,6 +3448,19 @@ export default function MapPage() {
         }),
       });
       addToast(`Call created at ${selectedAddr.label.split(',')[0]}`, 'success');
+
+      // Optionally assign the nearest available unit by drive distance.
+      if (autoAssignNearest && created?.id) {
+        try {
+          await apiFetch(`/dispatch/calls/${created.id}/auto-assign`, { method: 'POST', body: '{}' });
+          addToast('Nearest available unit assigned', 'success');
+          await fetchUnits();
+        } catch (assignErr: any) {
+          // No units on duty / no GPS — informational, not a failure.
+          addToast(assignErr?.message || 'No nearby unit available to assign', 'info');
+        }
+      }
+
       setShowDispatchHere(false);
       setDispatchIncidentType('');
       await fetchCalls();
@@ -2927,7 +3469,7 @@ export default function MapPage() {
     } finally {
       setDispatchBusy(false);
     }
-  }, [selectedAddr, dispatchIncidentType, dispatchPriority, dispatchBusy, addToast, fetchCalls]);
+  }, [selectedAddr, dispatchIncidentType, dispatchPriority, dispatchBusy, autoAssignNearest, addToast, fetchCalls, fetchUnits]);
 
   // ============================================================
   // Keyboard Shortcuts for Map
@@ -3010,6 +3552,71 @@ export default function MapPage() {
           role="application"
           aria-label="Tactical Map"
         />
+
+        {/* WebGL recovery badge — non-blocking. Shows for the ~1s rebuild after
+            the GPU dropped the map's WebGL context. Centered up top so the
+            dispatcher knows the map momentarily reset (situational awareness)
+            without it being mistaken for the cached/offline tile badge. */}
+        {mapRecovering && !mapRecoveryFailed && (
+          <div
+            className="absolute left-1/2 -translate-x-1/2 top-3 z-[1100] flex items-center gap-2 px-3 py-2"
+            style={{
+              background: 'rgba(10,10,10,0.96)',
+              border: '1px solid #d4a01755',
+              WebkitBackdropFilter: 'blur(4px)',
+              backdropFilter: 'blur(4px)',
+              borderRadius: 2,
+            }}
+            role="status"
+            aria-live="polite"
+          >
+            <Loader2 style={{ width: 14, height: 14, color: '#d4a017' }} className="animate-spin" aria-hidden="true" />
+            <div className="flex flex-col">
+              <span className="text-[10px] text-[#d4a017] font-bold uppercase tracking-wider font-mono leading-none">
+                Map Reconnecting
+              </span>
+              <span className="text-[8px] text-rmpg-500 font-mono leading-none mt-0.5">
+                GPU context restored · Restoring your view
+              </span>
+            </div>
+          </div>
+        )}
+
+        {/* WebGL recovery FAILED — blocking. The loop-guard gave up after
+            repeated GPU drops in a short window (likely failing hardware or a
+            stuck driver). Tell the dispatcher plainly and offer one-click recovery. */}
+        {mapRecoveryFailed && (
+          <div className="absolute inset-0 z-[2100] flex items-center justify-center bg-black/80 backdrop-blur-sm">
+            <div className="bg-surface-overlay/95 border border-amber-600 p-8 shadow-xl max-w-lg text-center" style={{ borderRadius: 2 }}>
+              <AlertTriangle className="w-8 h-8 text-amber-400 mx-auto mb-3" />
+              <h3 className="text-white text-sm font-bold mb-2">Map GPU Unstable</h3>
+              <p className="text-rmpg-300 text-xs leading-relaxed mb-4">
+                The map repeatedly lost its GPU connection and could not stay recovered.
+                This usually means the device is low on graphics memory or a display driver
+                is stuck. Reload the page to get a fresh map; if it keeps happening, restart
+                the workstation.
+              </p>
+              <div className="flex gap-3 justify-center">
+                <button
+                  type="button"
+                  onClick={() => { setMapRecoveryFailed(false); setMapRetry((n) => n + 1); }}
+                  className="px-4 py-1.5 bg-brand-600 hover:bg-brand-500 text-white text-xs font-bold uppercase tracking-wider transition-colors"
+                  style={{ borderRadius: 2 }}
+                >
+                  Try Again
+                </button>
+                <button
+                  type="button"
+                  onClick={() => window.location.reload()}
+                  className="px-4 py-1.5 bg-surface-deep hover:bg-surface-overlay text-rmpg-300 text-xs font-bold uppercase tracking-wider border border-rmpg-600 transition-colors"
+                  style={{ borderRadius: 2 }}
+                >
+                  Reload Page
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Tile stall badge — non-blocking indicator.
             Offline tiles now render through the map canvas (ImageMapType), so the
@@ -3125,7 +3732,7 @@ export default function MapPage() {
             <div className="relative">
               <div className="relative flex items-center">
                 <Search className="absolute left-2.5 w-3.5 h-3.5 text-white/50 pointer-events-none" />
-                <input
+                <input id="ff-mappage-0"
                   type="text"
                   value={addressSearch}
                   onChange={(e) => handleAddressSearch(e.target.value)}
@@ -3190,7 +3797,7 @@ export default function MapPage() {
             <div className="relative">
               <div className="relative flex items-center">
                 <Search className="absolute left-2.5 w-3.5 h-3.5 text-rmpg-500 pointer-events-none" />
-                <input
+                <input id="ff-mappage-1"
                   type="text"
                   value={addressSearch}
                   onChange={(e) => handleAddressSearch(e.target.value)}
@@ -3270,7 +3877,7 @@ export default function MapPage() {
                   </div>
                   {showDispatchHere && (
                     <div className="space-y-1 pt-1 border-t border-[#1a1a1a]">
-                      <input
+                      <input id="ff-mappage-2"
                         value={dispatchIncidentType}
                         onChange={(e) => setDispatchIncidentType(e.target.value)}
                         placeholder="Incident type (e.g. Welfare Check)"
@@ -3288,6 +3895,16 @@ export default function MapPage() {
                           >{p}</button>
                         ))}
                       </div>
+                      <button
+                        type="button"
+                        onClick={() => setAutoAssignNearest((v) => !v)}
+                        className="w-full flex items-center gap-1.5 px-1 py-0.5 text-[9px] text-rmpg-300 hover:text-white transition-colors"
+                      >
+                        <div className="w-3 h-3 shrink-0 flex items-center justify-center rounded-sm" style={{ border: '1px solid #d4a017', background: autoAssignNearest ? '#d4a017' : 'transparent' }}>
+                          {autoAssignNearest && <span style={{ fontSize: 8, color: '#0a0a0a', lineHeight: 1 }}>✓</span>}
+                        </div>
+                        Assign nearest available unit
+                      </button>
                       <button
                         onClick={createCallHere}
                         disabled={dispatchBusy || !dispatchIncidentType.trim()}
@@ -3334,6 +3951,58 @@ export default function MapPage() {
                 <Minus className={`w-3.5 h-3.5 ${isLightMapStyle(mapStyle) ? 'text-gray-600' : 'text-white/70'}`} />
               </button>
             </div>
+            {/* 3D / 2D toggle — pitches the camera and renders terrain + sky +
+                extruded buildings (see useMap3D). */}
+            <button
+              onClick={() => setIs3D((v) => !v)}
+              className={`border backdrop-blur-md px-2 py-1.5 transition-colors font-mono text-[10px] font-bold tracking-wide ${
+                is3D
+                  ? 'bg-brand-600/40 border-brand-500/60 text-brand-200'
+                  : isLightMapStyle(mapStyle)
+                    ? 'bg-white/80 border-gray-300 text-gray-600 hover:bg-white/95'
+                    : 'bg-black/30 border-white/15 text-white/70 hover:bg-black/50'
+              }`}
+              style={{ borderRadius: 2 }}
+              title={is3D ? 'Switch to 2D (flat) view' : 'Switch to 3D view — terrain, sky & buildings'}
+              aria-label={is3D ? 'Switch to 2D view' : 'Switch to 3D view'}
+              aria-pressed={is3D}
+            >
+              {is3D ? '2D' : '3D'}
+            </button>
+            {/* Live GPS HUD toggle — heading/speed/accuracy/source + track export */}
+            <button
+              onClick={() => setShowGpsHud((v) => !v)}
+              className={`border backdrop-blur-md px-2 py-1.5 transition-colors flex items-center justify-center ${
+                showGpsHud
+                  ? 'bg-brand-600/40 border-brand-500/60 text-brand-200'
+                  : isLightMapStyle(mapStyle)
+                    ? 'bg-white/80 border-gray-300 text-gray-600 hover:bg-white/95'
+                    : 'bg-black/30 border-white/15 text-white/70 hover:bg-black/50'
+              }`}
+              style={{ borderRadius: 2 }}
+              title={showGpsHud ? 'Hide live GPS HUD' : 'Show live GPS HUD (heading, speed, track capture)'}
+              aria-label="Toggle GPS HUD"
+              aria-pressed={showGpsHud}
+            >
+              <Navigation2 className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+
+        {/* ── Live GPS HUD (desktop) ── */}
+        {!isMobile && showGpsHud && (
+          // The GPS HUD is position/heading/speed ONLY. Turn-by-turn lives in the
+          // nav banner below (and the full /navigation drive screen) — passing
+          // `nav` here rendered a SECOND turn-by-turn that overlapped the banner.
+          // Also lift the HUD above the banner (bottom:48) when a route is active
+          // so the two panels never collide.
+          <div className="absolute left-2 z-[1000]" style={{ bottom: activeRoute ? 144 : 64 }}>
+            <GpsHud
+              gps={gps}
+              onExport={handleExportTrack}
+              onClear={gps.clearCapturedTrack}
+              onClose={() => setShowGpsHud(false)}
+            />
           </div>
         )}
 
@@ -3349,8 +4018,8 @@ export default function MapPage() {
               <PanelLeftOpen className="w-4 h-4" />
             </button>
           ) : (
-          <div className="panel-beveled bg-surface-deep border border-rmpg-600 shadow-md overflow-y-auto scrollbar-dark" style={{ width: 'clamp(160px, 14vw, 200px)', maxHeight: 'calc(100dvh - 96px)', borderRadius: 2, isolation: 'isolate', WebkitTransform: 'translateZ(0)', overscrollBehavior: 'contain' } as React.CSSProperties} role="region" aria-label="Map layer controls">
-            <div className="flex items-center gap-2 px-3 py-2 border-b border-rmpg-700">
+          <div className="panel-beveled bg-surface-deep border border-rmpg-600 shadow-md overflow-y-auto scrollbar-dark" style={{ width: 'clamp(208px, 15vw, 248px)', maxHeight: 'calc(100dvh - 96px)', borderRadius: 2, isolation: 'isolate', WebkitTransform: 'translateZ(0)', overscrollBehavior: 'contain' } as React.CSSProperties} role="region" aria-label="Map layer controls">
+            <div className="sticky top-0 z-10 flex items-center gap-2 px-3 py-2 border-b border-rmpg-700 bg-surface-deep">
               <Layers className="w-3.5 h-3.5 text-brand-400" />
               <span className="text-[10px] font-bold text-rmpg-300 uppercase tracking-widest flex-1">Layers</span>
               <div className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-green-400 animate-pulse' : 'bg-red-500'}`} />
@@ -3438,7 +4107,7 @@ export default function MapPage() {
                   </div>
                   {/* Type filter dropdown */}
                   {heatmapMode === 'type' && (
-                    <select
+                    <select id="ff-mappage-3"
                       value={heatmapTypeFilter}
                       onChange={(e) => setHeatmapTypeFilter(e.target.value)}
                       className="w-full bg-surface-deep border border-rmpg-600 text-[9px] text-rmpg-200 px-1.5 py-0.5 font-mono focus:outline-none focus:border-red-600"
@@ -3563,12 +4232,68 @@ export default function MapPage() {
                       ))}
                     </div>
                   )}
+                  {/* Trip Replay — pick a unit, then one of its recent trips.
+                       The selected trip is loaded into the EXISTING playback
+                       scrubber below (under TRIP_REPLAY_UNIT_ID). */}
+                  <div className="space-y-1 pt-0.5 border-t border-rmpg-800/60">
+                    <div className="flex items-center gap-1">
+                      <Flag className="w-2.5 h-2.5 text-brand-400" />
+                      <span className="text-[8px] font-mono font-bold text-rmpg-400 uppercase tracking-wide">Trip Replay</span>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <select id="ff-mappage-trip-unit"
+                        value={tripUnitId ?? ''}
+                        onChange={(e) => {
+                          const val = e.target.value ? Number(e.target.value) : null;
+                          setTripUnitId(val);
+                          setTripSelId(null);
+                        }}
+                        className="flex-1 bg-surface-deep border border-rmpg-600 text-[9px] text-rmpg-200 px-1 py-0.5 font-mono focus:outline-none focus:border-brand-600"
+                        style={{ borderRadius: 2 }}
+                      >
+                        <option value="">Select unit...</option>
+                        {units.map((u) => (
+                          <option key={u.id} value={u.id}>
+                            {u.call_sign}{u.officer_name ? ` — ${u.officer_name}` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    {tripUnitId != null && (
+                      <div className="flex items-center gap-1">
+                        <select id="ff-mappage-trip-sel"
+                          value={tripSelId ?? ''}
+                          onChange={(e) => setTripSelId(e.target.value ? Number(e.target.value) : null)}
+                          className="flex-1 bg-surface-deep border border-rmpg-600 text-[9px] text-rmpg-200 px-1 py-0.5 font-mono focus:outline-none focus:border-brand-600"
+                          style={{ borderRadius: 2 }}
+                        >
+                          <option value="">{unitTrips.length ? 'Select trip...' : 'No recent trips'}</option>
+                          {unitTrips.map((t: Trip) => (
+                            <option key={t.id} value={t.id}>
+                              {tripLabel(t)} · {safeDateTimeStr(t.start_time) || ''} · {tripMiles(t).toFixed(1)} mi
+                            </option>
+                          ))}
+                        </select>
+                        {tripSelId != null && (
+                          <button
+                            onClick={() => setTripSelId(null)}
+                            className="p-0.5 rounded-sm hover:bg-rmpg-800/50 transition-colors"
+                            title="Clear trip replay"
+                            aria-label="Clear trip replay"
+                          >
+                            <X className="w-3 h-3 text-rmpg-500" />
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
                   {/* Playback controls */}
                   {playbackTrails.length > 0 && (
                     <div className="space-y-1 pt-0.5">
                       <div className="flex items-center gap-1">
                         <Play className="w-2.5 h-2.5 text-green-400" />
-                        <select
+                        <select id="ff-mappage-4"
                           value={playbackUnit ?? ''}
                           onChange={(e) => {
                             const val = e.target.value ? Number(e.target.value) : null;
@@ -3609,7 +4334,7 @@ export default function MapPage() {
                               >
                                 {isPlaying ? <Pause className="w-3 h-3 text-amber-400" /> : <Play className="w-3 h-3 text-green-400" />}
                               </button>
-                              <input
+                              <input id="ff-mappage-5"
                                 type="range"
                                 min={0}
                                 max={Math.max(totalPts - 1, 0)}
@@ -3663,8 +4388,8 @@ export default function MapPage() {
 
             {/* ── Intelligence Layers ── */}
             <div className="border-t border-rmpg-700 p-1.5">
-              <div className="text-[8px] text-rmpg-500 uppercase tracking-widest font-bold mb-1.5 px-1">Intelligence</div>
-              {([
+              {sectionHeader('intelligence', 'Intelligence')}
+              {!isSecCollapsed('intelligence') && ([
                 { key: 'warrants' as const, label: 'Active Warrants', color: 'red' },
                 { key: 'trespass' as const, label: 'Trespass Orders', color: 'orange' },
                 { key: 'offenders' as const, label: 'Sex Offenders', color: 'purple' },
@@ -3688,8 +4413,8 @@ export default function MapPage() {
 
             {/* ── Analysis ── */}
             <div className="border-t border-rmpg-700 p-1.5">
-              <div className="text-[8px] text-rmpg-500 uppercase tracking-widest font-bold mb-1.5 px-1">Analysis</div>
-
+              {sectionHeader('analysis', 'Analysis')}
+              {!isSecCollapsed('analysis') && (<>
               {/* Predictions */}
               <button
                 onClick={() => setShowPredictions(!showPredictions)}
@@ -3720,12 +4445,13 @@ export default function MapPage() {
                   <Loader2 className="w-2.5 h-2.5 animate-spin" />
                 )}
               </button>
+              </>)}
             </div>
 
             {/* ── Tactical Layers ── */}
             <div className="border-t border-rmpg-700 p-1.5">
-              <div className="text-[8px] text-rmpg-500 uppercase tracking-widest font-bold mb-1.5 px-1">Tactical</div>
-
+              {sectionHeader('tactical', 'Tactical')}
+              {!isSecCollapsed('tactical') && (<>
               {/* Patrol Checkpoints */}
               <button
                 onClick={() => setShowPatrolCheckpoints(!showPatrolCheckpoints)}
@@ -3753,7 +4479,7 @@ export default function MapPage() {
                 <Target className="w-3 h-3" />
                 <span className="flex-1 text-left">Response Radius</span>
                 {showResponseRadius && responseRadius.activePoint && (
-                  <span className="led-dot led-indigo" style={{ width: 5, height: 5 }} />
+                  <span className="led-dot" style={{ width: 5, height: 5, background: '#9a9a9a', boxShadow: '0 0 4px rgba(154,154,154,0.5)' }} />
                 )}
               </button>
 
@@ -3842,7 +4568,7 @@ export default function MapPage() {
               >
                 <CircleDot className="w-3 h-3" />
                 <span className="flex-1 text-left">Cluster Calls</span>
-                {clusteringEnabled && clustering.clustered && <span className="led-dot led-blue" style={{ width: 5, height: 5 }} />}
+                {clusteringEnabled && clustering.clustered && <span className="led-dot" style={{ width: 5, height: 5, background: '#9a9a9a', boxShadow: '0 0 4px rgba(154,154,154,0.5)' }} />}
               </button>
 
               {/* Daylight Overlay */}
@@ -3858,6 +4584,7 @@ export default function MapPage() {
                   <span className="text-[8px] font-mono text-yellow-400">{daylight.phase}</span>
                 )}
               </button>
+              </>)}
             </div>
 
             {/* ── Dispatch Mode ── */}
@@ -3891,9 +4618,9 @@ export default function MapPage() {
             <div className="border-t border-rmpg-700 p-1.5">
               <button
                 onClick={() => setShowMapStyles(!showMapStyles)}
-                className="flex items-center gap-2 w-full px-2 py-1.5 text-left transition-colors hover:bg-rmpg-800/50"
+                className={`flex items-center gap-2 w-full px-2 py-1.5 text-left transition-colors ${showMapStyles ? 'panel-inset bg-surface-raised/60' : 'hover:bg-rmpg-800/50'}`}
               >
-                <MapIcon className="w-3 h-3 text-rmpg-400" />
+                <MapIcon className="w-3 h-3 text-gray-400" />
                 <span className="text-[10px] text-rmpg-300 flex-1">Map Style</span>
                 <span className="text-[9px] text-brand-400 font-bold">{MAP_STYLE_LABELS[mapStyle]}</span>
                 {showMapStyles ? <ChevronUp className="w-2.5 h-2.5 text-rmpg-500" /> : <ChevronDown className="w-2.5 h-2.5 text-rmpg-500" />}
@@ -3928,7 +4655,7 @@ export default function MapPage() {
             <div className="border-t border-rmpg-700 p-1.5">
               <button
                 onClick={() => setShowGeoPanel(!showGeoPanel)}
-                className="flex items-center gap-2 w-full px-2 py-1.5 text-left transition-colors hover:bg-rmpg-800/50"
+                className={`flex items-center gap-2 w-full px-2 py-1.5 text-left transition-colors ${showGeoPanel ? 'panel-inset bg-surface-raised/60' : 'hover:bg-rmpg-800/50'}`}
               >
                 <Globe2 className="w-3 h-3 text-gray-400" />
                 <span className="text-[10px] text-rmpg-300 flex-1">Spatial Layers</span>
@@ -3947,7 +4674,7 @@ export default function MapPage() {
                     <button
                       key={cfg.id}
                       onClick={() => toggleGeoLayer(cfg.id)}
-                      className={`flex items-center gap-2 w-full px-2 py-1 text-left transition-colors ${
+                      className={`flex items-center gap-2 w-full px-2 py-1.5 text-left transition-colors ${
                         state?.visible ? 'panel-inset bg-surface-deep' : 'opacity-40 hover:opacity-70 hover:bg-rmpg-800/50'
                       }`}
                     >
@@ -3964,7 +4691,7 @@ export default function MapPage() {
                       key={cfg.id}
                       onClick={() => handleToggleHier(cfg.id)}
                       title={cfg.description}
-                      className={`flex items-center gap-2 w-full px-2 py-1 text-left transition-colors ${
+                      className={`flex items-center gap-2 w-full px-2 py-1.5 text-left transition-colors ${
                         state?.visible ? 'panel-inset bg-surface-deep' : 'opacity-40 hover:opacity-70 hover:bg-rmpg-800/50'
                       }`}
                     >
@@ -4002,7 +4729,7 @@ export default function MapPage() {
             <div className="border-t border-rmpg-700 p-1.5">
               <button
                 onClick={() => setShowVectorPanel(!showVectorPanel)}
-                className="flex items-center gap-2 w-full px-2 py-1.5 text-left transition-colors hover:bg-rmpg-800/50"
+                className={`flex items-center gap-2 w-full px-2 py-1.5 text-left transition-colors ${showVectorPanel ? 'panel-inset bg-surface-raised/60' : 'hover:bg-rmpg-800/50'}`}
               >
                 <Globe2 className="w-3 h-3 text-gray-400" />
                 <span className="text-[10px] text-rmpg-300 flex-1">Statewide Data</span>
@@ -4019,7 +4746,7 @@ export default function MapPage() {
                       <button
                         key={cfg.id}
                         onClick={() => handleToggleStatewide(cfg.id)}
-                        className={`flex items-center gap-2 w-full px-2 py-1 text-left transition-colors ${
+                        className={`flex items-center gap-2 w-full px-2 py-1.5 text-left transition-colors ${
                           state?.visible ? 'panel-inset bg-surface-deep' : 'opacity-40 hover:opacity-70 hover:bg-rmpg-800/50'
                         }`}
                         title={cfg.description}
@@ -4034,23 +4761,31 @@ export default function MapPage() {
                       </button>
                     );
                   })}
-                  {/* Statewide legend (first-class overlay integration) */}
+                  {/* Statewide legend — driven from the SHARED taxonomy
+                      (roadLegendRows / propertyLegendRows in landTypes) so the
+                      swatches always match the colors the map actually renders.
+                      The old hardcoded list had drifted (e.g. labeled #d4a017
+                      "Local" when the map paints that as "Major Road"). */}
                   {(vectorLayerStates['utah_roads']?.visible || vectorLayerStates['utah_addresses']?.visible) && (
                     <div className="px-2 pt-1 mt-0.5 border-t border-[#1a1a1a] space-y-0.5">
                       {vectorLayerStates['utah_roads']?.visible && (
                         <div className="flex items-center gap-1.5 flex-wrap">
-                          {[['Interstate', '#ef4444'], ['US Hwy', '#f59e0b'], ['State', '#e8b84b'], ['Local', '#d4a017']].map(([lbl, c]) => (
-                            <span key={lbl} className="flex items-center gap-1">
-                              <span className="inline-block w-3 h-0.5" style={{ background: c }} />
-                              <span className="text-[8px] text-rmpg-400">{lbl}</span>
+                          {roadLegendRows().map(({ label, color }) => (
+                            <span key={label} className="flex items-center gap-1">
+                              <span className="inline-block w-3 h-0.5" style={{ background: color }} />
+                              <span className="text-[8px] text-rmpg-400">{label}</span>
                             </span>
                           ))}
                         </div>
                       )}
                       {vectorLayerStates['utah_addresses']?.visible && (
-                        <div className="flex items-center gap-1">
-                          <span className="inline-block w-2 h-2 rounded-full" style={{ background: '#e8b84b', border: '1px solid #1a1a1a' }} />
-                          <span className="text-[8px] text-rmpg-400">Address point</span>
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                          {propertyLegendRows().map(({ code, label, color }) => (
+                            <span key={code} className="flex items-center gap-1" title={`${code} · ${label}`}>
+                              <span className="inline-block w-2 h-2 rounded-full" style={{ background: color, border: '1px solid #1a1a1a' }} />
+                              <span className="text-[8px] text-rmpg-400">{label}</span>
+                            </span>
+                          ))}
                         </div>
                       )}
                     </div>
@@ -4063,7 +4798,7 @@ export default function MapPage() {
             <div className="border-t border-rmpg-700 p-1.5">
               <button
                 onClick={() => setShowAdvTools(!showAdvTools)}
-                className="flex items-center gap-2 w-full px-2 py-1.5 text-left transition-colors hover:bg-rmpg-800/50"
+                className={`flex items-center gap-2 w-full px-2 py-1.5 text-left transition-colors ${showAdvTools ? 'panel-inset bg-surface-raised/60' : 'hover:bg-rmpg-800/50'}`}
               >
                 <SlidersHorizontal className="w-3 h-3 text-gray-400" />
                 <span className="text-[10px] text-rmpg-300 flex-1">Advanced Tools</span>
@@ -4077,7 +4812,7 @@ export default function MapPage() {
                   {/* What's Here identify */}
                   <button
                     onClick={() => setWhatsHereActive((v) => !v)}
-                    className={`flex items-center gap-2 w-full px-2 py-1 text-left transition-colors ${
+                    className={`flex items-center gap-2 w-full px-2 py-1.5 text-left transition-colors ${
                       whatsHereActive ? 'panel-inset bg-surface-deep' : 'opacity-50 hover:opacity-80 hover:bg-rmpg-800/50'
                     }`}
                   >
@@ -4091,7 +4826,19 @@ export default function MapPage() {
                   {/* Activity choropleth */}
                   <div>
                     <div className="px-2 text-[8px] font-semibold uppercase tracking-wider text-[#d4a017] flex items-center gap-1">
-                      <Gauge className="w-2.5 h-2.5" /> Call Activity
+                      <Gauge className="w-2.5 h-2.5" /> Activity Choropleth
+                    </div>
+                    {/* Data source: live Calls (queue) or Incidents (RMS) */}
+                    <div className="flex gap-0.5 px-2 mt-0.5">
+                      {(['calls', 'incidents'] as const).map((s) => (
+                        <button
+                          key={s}
+                          onClick={() => setChoroSource(s)}
+                          className={`flex-1 px-1 py-0.5 text-[8px] uppercase rounded-sm transition-colors ${
+                            choroSource === s ? 'bg-rmpg-700/60 text-brand-300' : 'text-rmpg-500 hover:bg-rmpg-800/50'
+                          }`}
+                        >{s}</button>
+                      ))}
                     </div>
                     <div className="flex gap-0.5 px-2 mt-0.5">
                       {(['off', 'beat', 'zone', 'section', 'area'] as const).map((l) => {
@@ -4158,7 +4905,7 @@ export default function MapPage() {
                   {/* Overlay opacity */}
                   <div className="px-2">
                     <div className="text-[8px] font-semibold uppercase tracking-wider text-[#888888] mb-0.5">Overlay Opacity — {Math.round(overlayOpacity * 100)}%</div>
-                    <input
+                    <input id="ff-mappage-6"
                       type="range" min={0} max={1} step={0.05} value={overlayOpacity}
                       onChange={(e) => setOverlayOpacity(parseFloat(e.target.value))}
                       aria-label="Overlay opacity"
@@ -4279,14 +5026,14 @@ export default function MapPage() {
                   {/* New plan form */}
                   <div className="space-y-1 px-1">
                     <div className="flex items-center gap-1">
-                      <input
+                      <input id="ff-mappage-7"
                         type="text"
                         value={newShiftPlanName}
                         onChange={(e) => setNewShiftPlanName(e.target.value)}
                         placeholder="Plan name..."
                         className="input-dark flex-1 px-1.5 py-0.5 text-[9px]"
                       />
-                      <input
+                      <input id="ff-mappage-8"
                         type="date"
                         value={newShiftPlanDate}
                         onChange={(e) => setNewShiftPlanDate(e.target.value)}
@@ -4403,7 +5150,7 @@ export default function MapPage() {
                                             : 'hover:bg-rmpg-800/50 text-rmpg-400'
                                         }`}
                                       >
-                                        <input
+                                        <input id="ff-mappage-9"
                                           type="checkbox"
                                           checked={assignOfficerIds.includes(officer.id)}
                                           onChange={(e) => {
@@ -4438,7 +5185,7 @@ export default function MapPage() {
                                               : 'hover:bg-rmpg-800/50 text-rmpg-400'
                                           }`}
                                         >
-                                          <input
+                                          <input id="ff-mappage-10"
                                             type="checkbox"
                                             checked={assignUnitIds.includes(unit.id)}
                                             onChange={(e) => {
@@ -4462,7 +5209,7 @@ export default function MapPage() {
 
                                 {/* Notes */}
                                 <div className="px-1">
-                                  <input
+                                  <input id="ff-mappage-11"
                                     type="text"
                                     value={assignNotes}
                                     onChange={(e) => setAssignNotes(e.target.value)}
@@ -4651,7 +5398,7 @@ export default function MapPage() {
 
                   {/* New plan input */}
                   <div className="flex items-center gap-1 px-1">
-                    <input
+                    <input id="ff-mappage-12"
                       type="text"
                       value={newPlanName}
                       onChange={(e) => setNewPlanName(e.target.value)}
@@ -4787,7 +5534,7 @@ export default function MapPage() {
 
         {/* ── Predictions Panel (floating, desktop only) ── */}
         {!isMobile && showPredictions && (
-          <div className="absolute top-4 z-[1001]" style={{ left: layersPanelOpen ? 'calc(clamp(160px, 14vw, 200px) + 24px)' : 52 }}>
+          <div className="absolute top-4 z-[1001]" style={{ left: layersPanelOpen ? LAYERS_PANEL_CLEAR_LEFT : 52 }}>
             <PredictionsPanel
               hotspots={predictions.hotspots}
               loading={predictions.loading}
@@ -4925,7 +5672,7 @@ export default function MapPage() {
         {/* ── Stats Bar - Top Left (after layers panel, desktop only) ── */}
         {!isMobile && <div
           className="absolute top-2 z-[1000] transition-all"
-          style={{ left: layersPanelOpen ? 'calc(clamp(160px, 14vw, 200px) + 24px)' : 52 }}
+          style={{ left: layersPanelOpen ? LAYERS_PANEL_CLEAR_LEFT : 52 }}
         >
           <div
             className="backdrop-blur-md shadow-md"
@@ -4987,13 +5734,38 @@ export default function MapPage() {
         </div>}
 
         {/* ── Route Info Panel (bottom-left, top on mobile) ── */}
+        {/* Unified always-visible legend for every active overlay */}
+        {!isMobile && (
+          <UnifiedMapLegend
+            hierarchy={{
+              area: !!hierarchyStates.area?.visible,
+              section: !!hierarchyStates.section?.visible,
+              zone: !!hierarchyStates.zone?.visible,
+              beat: !!geoLayerStates.beat?.visible,
+            }}
+            boundaries={{
+              county: !!geoLayerStates.county?.visible,
+              municipality: !!geoLayerStates.municipality?.visible,
+            }}
+            statewide={{
+              roads: !!vectorLayerStates['utah_roads']?.visible,
+              addresses: !!vectorLayerStates['utah_addresses']?.visible,
+            }}
+            choro={choroLegend}
+            categorical={hierLegend}
+            isLight={isLightMapStyle(mapStyle)}
+            bottomPx={activeRoute ? 132 : 28}
+            leftCss={layersPanelOpen ? LAYERS_PANEL_CLEAR_LEFT : '12px'}
+          />
+        )}
+
         {activeRoute && (
           <div
             className="absolute z-[1000] backdrop-blur-md"
             style={{
               ...(isMobile
                 ? { top: 56, left: 8, right: 8 }
-                : { bottom: 48, left: 16, minWidth: 200 }),
+                : { bottom: 48, left: layersPanelOpen ? LAYERS_PANEL_CLEAR_LEFT : 16, minWidth: 200 }),
               background: isLightMapStyle(mapStyle) ? 'rgba(255,255,255,0.92)' : 'rgba(10,10,10,0.95)',
               border: isLightMapStyle(mapStyle) ? '1px solid rgba(136, 136, 136,0.3)' : '1px solid #88888850',
               padding: '8px 14px',
@@ -5006,13 +5778,24 @@ export default function MapPage() {
               <span style={{ fontSize: 10, color: '#888888', fontWeight: 900, letterSpacing: '0.05em' }}>
                 {activeRoute.unitCallSign} → {activeRoute.callNumber}
               </span>
-              <button
-                onClick={clearRoute}
-                style={{ background: 'none', border: 'none', color: '#666666', cursor: 'pointer', fontSize: 12, padding: '0 0 0 8px' }}
-                title="Clear route"
-              >
-                ✕
-              </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <button
+                  onClick={toggleNavMute}
+                  style={{ background: 'none', border: 'none', color: navMuted ? '#666666' : '#d4a017', cursor: 'pointer', fontSize: 12, padding: '0 2px', lineHeight: 1 }}
+                  title={navMuted ? 'Voice guidance off — tap to enable' : 'Voice guidance on — tap to mute'}
+                  aria-label={navMuted ? 'Enable voice guidance' : 'Mute voice guidance'}
+                >
+                  {navMuted ? '🔇' : '🔊'}
+                </button>
+                <button
+                  onClick={clearRoute}
+                  style={{ background: 'none', border: 'none', color: '#666666', cursor: 'pointer', fontSize: 12, padding: '0 0 0 6px' }}
+                  title="Clear route"
+                  aria-label="Clear route"
+                >
+                  ✕
+                </button>
+              </div>
             </div>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
               {/* Live remaining ETA when the unit is en route; otherwise full-route ETA. */}
@@ -5039,26 +5822,42 @@ export default function MapPage() {
                 <div style={{ width: `${Math.round(routeProgress.fraction * 100)}%`, height: '100%', background: '#d4a017', transition: 'width 0.5s ease' }} />
               </div>
             )}
-            {/* Turn-by-turn: the next maneuver + distance to it, for drive-style
-                navigation (both unit→call and drive-to-address). */}
-            {(() => {
-              const steps = activeRoute.steps;
-              if (!steps || steps.length === 0) return null;
-              const total = activeRoute.distanceMeters;
-              const traveled = routeProgress ? Math.max(0, total - routeProgress.remainingMeters) : 0;
-              let acc = 0;
-              let step = steps[0];
-              let distTo = step.distanceMeters;
-              for (let i = 0; i < steps.length; i++) {
-                const end = acc + steps[i].distanceMeters;
-                if (traveled < end || i === steps.length - 1) { step = steps[i]; distTo = Math.max(0, end - traveled); break; }
-                acc = end;
-              }
-              const distTxt = distTo >= 1609 ? `${(distTo / 1609.34).toFixed(1)} mi` : `${Math.max(0, Math.round(distTo / 30.48) * 10)} ft`;
+            {/* Arrival banner — supersedes the maneuver card at the destination. */}
+            {navGuidance.arrived ? (
+              <div style={{ marginTop: 6, paddingTop: 6, borderTop: '1px solid rgba(136,136,136,0.18)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontSize: 16 }}>⚑</span>
+                <span style={{ fontSize: 11, fontWeight: 900, color: '#22c55e', letterSpacing: '0.04em' }}>ARRIVED AT DESTINATION</span>
+              </div>
+            ) : (
+              /* Turn-by-turn: the upcoming maneuver (arrow + distance) plus a
+                 "then …" preview of the maneuver after it. Driven by the
+                 useNavGuidance brain so the banner matches the spoken cues. */
+              navGuidance.next && (
+                <div style={{ marginTop: 6, paddingTop: 6, borderTop: '1px solid rgba(136,136,136,0.18)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 18, color: '#d4a017', minWidth: 22, textAlign: 'center', lineHeight: 1 }}>{navGuidance.next.arrow}</span>
+                    <span style={{ fontSize: 9, fontWeight: 900, color: '#d4a017', minWidth: 44 }}>{navGuidance.next.distanceText}</span>
+                    <span style={{ fontSize: 11, color: isLightMapStyle(mapStyle) ? '#222' : '#ddd', lineHeight: 1.25 }}>{navGuidance.next.instruction}</span>
+                  </div>
+                  {navGuidance.then && navGuidance.then.maneuverType !== 'arrive' && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 3, opacity: 0.62 }}>
+                      <span style={{ fontSize: 12, color: '#888888', minWidth: 22, textAlign: 'center' }}>{navGuidance.then.arrow}</span>
+                      <span style={{ fontSize: 8, color: '#888888', minWidth: 44 }}>then</span>
+                      <span style={{ fontSize: 9, color: isLightMapStyle(mapStyle) ? '#555' : '#aaa', lineHeight: 1.2 }}>{navGuidance.then.instruction}</span>
+                    </div>
+                  )}
+                </div>
+              )
+            )}
+            {/* Hazard-ahead: an active call on the path ahead (CAD-unique alert). */}
+            {navGuidance.hazardAhead && (() => {
+              const sev = navGuidance.hazardAhead.hazard.severity;
+              const col = sev === 'critical' ? '#ef4444' : sev === 'high' ? '#f97316' : '#eab308';
               return (
-                <div style={{ marginTop: 6, paddingTop: 6, borderTop: '1px solid rgba(136,136,136,0.18)', display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ fontSize: 9, fontWeight: 900, color: '#d4a017', minWidth: 44 }}>{distTxt}</span>
-                  <span style={{ fontSize: 11, color: isLightMapStyle(mapStyle) ? '#222' : '#ddd', lineHeight: 1.25 }}>{step.instruction}</span>
+                <div style={{ marginTop: 5, display: 'flex', alignItems: 'center', gap: 6, padding: '3px 6px', borderRadius: 2, background: `${col}1a`, border: `1px solid ${col}55` }}>
+                  <span style={{ fontSize: 11 }}>{sev === 'critical' ? '⚠' : '◆'}</span>
+                  <span style={{ fontSize: 8, fontWeight: 900, color: col, letterSpacing: '0.04em' }}>{navGuidance.hazardAhead.distanceText} AHEAD</span>
+                  <span style={{ fontSize: 9, color: isLightMapStyle(mapStyle) ? '#444' : '#ccc', lineHeight: 1.2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{navGuidance.hazardAhead.hazard.label}</span>
                 </div>
               );
             })()}
@@ -5318,7 +6117,7 @@ export default function MapPage() {
             <div className="px-2 py-1.5" style={{ borderBottom: '1px solid #303030' }}>
               <div className="relative">
                 <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" />
-                <input
+                <input id="ff-mappage-13"
                   type="text"
                   className="input-dark w-full text-[10px] py-1 pl-6 pr-2"
                   placeholder={sidebarTab === 'units' ? 'SEARCH UNITS...' : 'SEARCH CALLS...'}
@@ -5709,6 +6508,9 @@ export default function MapPage() {
           </MobileBottomSheet>
         </>
       )}
+
+      {/* Interactive street-view lightbox (opened from What's Here popup) */}
+      <StreetViewLightbox target={streetViewTarget} onClose={() => setStreetViewTarget(null)} />
     </div>
   );
 }

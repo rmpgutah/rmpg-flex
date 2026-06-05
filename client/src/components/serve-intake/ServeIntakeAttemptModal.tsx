@@ -248,7 +248,7 @@ export default function ServeIntakeAttemptModal({
             {/* Notes */}
             <div>
               <div className="text-[10px] uppercase tracking-wider text-rmpg-400 font-bold mb-2">Notes</div>
-              <textarea
+              <textarea id="ff-serveintakeattemptmodal-0"
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 rows={3}

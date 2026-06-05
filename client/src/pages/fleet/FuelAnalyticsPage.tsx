@@ -106,16 +106,20 @@ export default function FuelAnalyticsPage() {
     setError('');
     try {
       const since = new Date(Date.now() - days * 86400_000).toISOString().slice(0, 10);
-      // Kick all three requests off in parallel — independent aggregates,
-      // no reason to serialize.
-      const [ov, officers, cards] = await Promise.all([
+      // Kick all three requests off in parallel — independent aggregates, no
+      // reason to serialize. Use allSettled (not all): these endpoints can fail
+      // independently, and a single rejection must NOT discard the other two
+      // datasets (the old Promise.all blanked the entire page when one 404'd).
+      const [ovR, offR, cardR] = await Promise.allSettled([
         apiFetch<FuelAnalyticsOverview>(`/fleet/fuel/analytics/overview?days=${days}`),
         apiFetch<{ data: FuelAnalyticsByOfficer[] }>(`/fleet/fuel/analytics/by-officer?since=${since}`),
         apiFetch<{ data: FuelAnalyticsByCard[] }>('/fleet/fuel/analytics/by-card'),
       ]);
-      setOverview(ov);
-      setByOfficer(officers.data || []);
-      setByCard(cards.data || []);
+      if (ovR.status === 'fulfilled') setOverview(ovR.value);
+      if (offR.status === 'fulfilled') setByOfficer(offR.value.data || []);
+      if (cardR.status === 'fulfilled') setByCard(cardR.value.data || []);
+      const failed = [ovR, offR, cardR].filter((r) => r.status === 'rejected').length;
+      if (failed) setError(`${failed} of 3 analytics sections failed to load`);
     } catch (e: any) {
       setError(e?.message || 'Failed to load analytics');
     } finally {
@@ -139,7 +143,7 @@ export default function FuelAnalyticsPage() {
         </div>
         <div className="flex items-center gap-1.5">
           <label className="text-[9px] text-rmpg-500 uppercase mr-1">Window</label>
-          <select className="select-dark text-[10px] min-h-[28px] py-0.5"
+          <select id="ff-fuelanalyticspage-0" className="select-dark text-[10px] min-h-[28px] py-0.5"
             value={windowDays} onChange={(e) => setWindowDays(Number(e.target.value))}>
             {WINDOW_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
           </select>

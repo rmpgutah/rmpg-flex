@@ -4,6 +4,7 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { WebSocketProvider } from './context/WebSocketContext';
 import { UserPreferencesProvider } from './context/UserPreferencesContext';
 import { ToastProvider } from './components/ToastProvider';
+import { ContextMenuProvider } from './context/ContextMenuContext';
 import { GlobalSearch } from './components/GlobalSearch';
 import { KeyboardShortcuts } from './components/KeyboardShortcuts';
 import Layout from './components/Layout';
@@ -27,16 +28,26 @@ const MapPage = lazyRetry(importMap);
 function lazyRetry<T extends React.ComponentType<any>>(
   factory: () => Promise<{ default: T }>,
 ): React.LazyExoticComponent<T> {
-  return lazy(() => factory().catch(() => {
-    // Force reload from server on chunk failure (once per session per module)
-    return new Promise<{ default: T }>((resolve, reject) => {
-      const reloaded = sessionStorage.getItem('rmpg_chunk_reload');
-      if (!reloaded || Date.now() - parseInt(reloaded) > 30000) {
-        sessionStorage.setItem('rmpg_chunk_reload', String(Date.now()));
-        window.location.reload();
-      }
-      reject(new Error('Chunk load failed — page will reload'));
-    });
+  return lazy(() => factory().catch((err) => {
+    // A lazy chunk failed to load — almost always a stale bundle after a
+    // deploy: this long-lived tab requests an old hash the server no longer
+    // serves. Reload ONCE per 30s to pick up the fresh index. On that first
+    // failure return a promise that NEVER settles, so React keeps rendering
+    // the Suspense fallback (spinner) while the reload navigates away —
+    // rejecting here instead would flash the ErrorBoundary's red error card
+    // for a frame (the exact "[ErrorBoundary] Chunk load failed — page will
+    // reload" noise seen in prod). If a second failure lands inside the 30s
+    // window the reload didn't help, so rethrow and let the ErrorBoundary show
+    // its recovery UI rather than reload-loop forever.
+    const KEY = 'rmpg_chunk_reload';
+    const last = sessionStorage.getItem(KEY);
+    const now = Date.now();
+    if (!last || now - parseInt(last) > 30000) {
+      sessionStorage.setItem(KEY, String(now));
+      window.location.reload();
+      return new Promise<{ default: T }>(() => { /* stay pending; reload in flight */ });
+    }
+    throw err instanceof Error ? err : new Error('Chunk load failed');
   }));
 }
 
@@ -52,9 +63,12 @@ const PatrolPage = lazyRetry(() => import('./pages/PatrolPage'));
 const FleetPage = lazyRetry(() => import('./pages/fleet'));
 const WarrantsPage = lazyRetry(() => import('./pages/WarrantsPage'));
 const CitationsPage = lazyRetry(() => import('./pages/CitationsPage'));
+const LawBookPage = lazyRetry(() => import('./pages/LawBookPage'));
 const FieldInterviewsPage = lazyRetry(() => import('./pages/FieldInterviewsPage'));
 const TrespassOrdersPage = lazyRetry(() => import('./pages/TrespassOrdersPage'));
 const MdtPage = lazyRetry(() => import('./pages/MdtPage'));
+const MobileHomePage = lazyRetry(() => import('./pages/mobile/MobileHomePage'));
+const NavigationPage = lazyRetry(() => import('./pages/NavigationPage'));
 const ShiftPlansPage = lazyRetry(() => import('./pages/ShiftPlansPage'));
 const StatuteAnalyticsPage = lazyRetry(() => import('./pages/StatuteAnalyticsPage'));
 const CustomReportBuilder = lazyRetry(() => import('./pages/CustomReportBuilder'));
@@ -362,6 +376,11 @@ function AppRoutes() {
           <Route path="/detached/incident/:id" element={<ProtectedRoute><RouteErrorBoundary><IncidentDetailWindow /></RouteErrorBoundary></ProtectedRoute>} />
           <Route path="/detached/record/:type/:id" element={<ProtectedRoute><RouteErrorBoundary><RecordDetailWindow /></RouteErrorBoundary></ProtectedRoute>} />
 
+          {/* Full-screen in-vehicle drive HUD — intentionally OUTSIDE <Layout> so it
+              renders edge-to-edge with no top toolbar/chrome (kiosk-style). The
+              page's own header has a Close button back to /map. */}
+          <Route path="/navigation" element={<ProtectedRoute><RouteErrorBoundary><NavigationPage /></RouteErrorBoundary></ProtectedRoute>} />
+
           {/* Protected routes with Layout */}
           <Route
             element={
@@ -386,9 +405,11 @@ function AppRoutes() {
             <Route path="/dash-cameras" element={<RouteErrorBoundary><DashCamerasPage /></RouteErrorBoundary>} />
             <Route path="/warrants" element={<RouteErrorBoundary><WarrantsPage /></RouteErrorBoundary>} />
             <Route path="/citations" element={<RouteErrorBoundary><CitationsPage /></RouteErrorBoundary>} />
+            <Route path="/law-book" element={<RouteErrorBoundary><LawBookPage /></RouteErrorBoundary>} />
             <Route path="/field-interviews" element={<RouteErrorBoundary><FieldInterviewsPage /></RouteErrorBoundary>} />
             <Route path="/trespass-orders" element={<RouteErrorBoundary><TrespassOrdersPage /></RouteErrorBoundary>} />
             <Route path="/mdt" element={<RouteErrorBoundary><MdtPage /></RouteErrorBoundary>} />
+            <Route path="/mobile" element={<RouteErrorBoundary><MobileHomePage /></RouteErrorBoundary>} />
             <Route path="/shift-plans" element={<RouteErrorBoundary><ShiftPlansPage /></RouteErrorBoundary>} />
             <Route path="/statute-analytics" element={<RouteErrorBoundary><StatuteAnalyticsPage /></RouteErrorBoundary>} />
             <Route path="/reports/custom" element={<RouteErrorBoundary><CustomReportBuilder /></RouteErrorBoundary>} />
@@ -456,6 +477,7 @@ function AppRoutes() {
             <Route path="/narcotics" element={<RouteErrorBoundary><NarcoticsPage /></RouteErrorBoundary>} />
             <Route path="/accreditation" element={<RouteErrorBoundary><AccreditationPage /></RouteErrorBoundary>} />
             <Route path="/recruitment" element={<RouteErrorBoundary><RecruitmentPage /></RouteErrorBoundary>} />
+            <Route path="/navigation" element={<RouteErrorBoundary><NavigationPage /></RouteErrorBoundary>} />
             {/* 404 within layout */}
             <Route path="*" element={<NotFoundPage />} />
           </Route>
@@ -469,19 +491,35 @@ function AppRoutes() {
 }
 
 export default function App() {
+  // TWO nested boundaries by design (defense in depth):
+  //  • OUTER — sits above every context provider. A render/effect throw inside
+  //    AuthProvider, WebSocketProvider, UserPreferencesProvider, ToastProvider,
+  //    or ContextMenuProvider propagates ABOVE the inner boundary (a boundary
+  //    can only catch its descendants), so without this the whole tree unmounts
+  //    to a blank white page. A long-shift WebSocket reconnect that throws was
+  //    white-screening the app and forcing a reload; this converts that into the
+  //    recovery card (which also auto-reports to /api/admin/health/client-error).
+  //    ErrorBoundary reads the auth token straight from localStorage, so it is
+  //    safe to mount above AuthProvider.
+  //  • INNER — catches page/route crashes WITHOUT tearing down the providers,
+  //    so the WebSocket + auth session survive a single page blowing up.
   return (
-    <AuthProvider>
-      <WebSocketProvider>
-        <UserPreferencesProvider>
-          <ToastProvider>
-            <ErrorBoundary>
-              <WebUpdateBanner />
-              <AndroidUpdateChecker />
-              <AppRoutes />
-            </ErrorBoundary>
-          </ToastProvider>
-        </UserPreferencesProvider>
-      </WebSocketProvider>
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <WebSocketProvider>
+          <UserPreferencesProvider>
+            <ToastProvider>
+              <ContextMenuProvider>
+                <ErrorBoundary>
+                  <WebUpdateBanner />
+                  <AndroidUpdateChecker />
+                  <AppRoutes />
+                </ErrorBoundary>
+              </ContextMenuProvider>
+            </ToastProvider>
+          </UserPreferencesProvider>
+        </WebSocketProvider>
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }

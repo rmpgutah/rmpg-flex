@@ -473,7 +473,7 @@ export default function GeoDataViewerPage() {
               {/* Search */}
               <div className="flex items-center gap-1.5 flex-1 min-w-0" style={{ maxWidth: 260 }}>
                 <Search style={{ width: 11, height: 11, color: '#555', flexShrink: 0 }} />
-                <input
+                <input id="ff-geodataviewerpage-0"
                   type="text"
                   placeholder="Search features..."
                   value={search}
@@ -505,7 +505,7 @@ export default function GeoDataViewerPage() {
               </button>
 
               {showFilter && (
-                <input
+                <input id="ff-geodataviewerpage-1"
                   type="text"
                   placeholder="Filter columns..."
                   value={columnFilter}

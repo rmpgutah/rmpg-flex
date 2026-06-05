@@ -22,10 +22,14 @@ import {
   CheckCircle2,
   AlertTriangle,
   Shield,
+  Eye,
+  Pencil,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { safeDateStr, safeDateTimeStr, parseTimestamp } from '../../utils/dateUtils';
 import { useAuth } from '../../context/AuthContext';
+import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
+import { useMenuActions } from '../../utils/contextMenuActions';
 import EvidenceFormModal from '../../components/EvidenceFormModal';
 import FileAttachments from '../../components/FileAttachments';
 import LinkedRecordsSection from '../../components/LinkedRecordsSection';
@@ -191,13 +195,33 @@ export function EvidenceTabList({ state }: { state: EvidenceTabState }) {
     evidenceModalOpen, editingEvidence, setEvidenceModalOpen, setEditingEvidence, evidence,
   } = state;
 
+  // ── Right-click context menu ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+  const canModify = !showArchived || user?.role === 'admin';
+  const buildEvidenceMenu = (ev: any): ContextMenuItem[] => {
+    return [
+      m.action('Open record', () => setSelectedEvidence(selectedEvidence?.id === ev.id ? null : ev), { icon: <Eye size={12} /> }),
+      ...(canModify ? [m.action('Edit evidence', () => { setEditingEvidence(ev); setEvidenceModalOpen(true); }, { icon: <Pencil size={12} /> })] : []),
+      m.separator(),
+      m.copy('Copy evidence #', ev.evidence_number),
+      m.copyId(ev.id),
+      ...(ev.serial_number ? [m.copy('Copy serial #', ev.serial_number, <Hash size={12} />)] : []),
+      m.separator(),
+      ...(showArchived
+        ? (canModify ? [m.action('Unarchive', () => handleUnarchive('evidence', ev.id), { icon: <RotateCcw size={12} /> })] : [])
+        : [m.action('Archive', () => handleArchive('evidence', ev.id), { icon: <Archive size={12} /> })]),
+      ...(canModify ? [m.action('Delete', () => setDeleteTarget({ type: 'evidence', id: ev.id, label: ev.evidence_number }), { icon: <Trash2 size={12} />, danger: true })] : []),
+    ];
+  };
+
   return (
     <div className="h-full flex flex-col">
       {/* Search */}
       <div className="p-3 border-b border-rmpg-600" role="search">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400 pointer-events-none" />
-          <input
+          <input id="ff-evidencetab-0"
             type="text"
             className="input-dark pl-9 w-full text-[11px] min-h-[36px] focus:ring-1 focus:ring-brand-500/50 focus:border-brand-600 transition-shadow"
             placeholder="Search by evidence #, description, serial #, incident..." aria-label="Search by evidence #, description, serial #, incident..."
@@ -231,6 +255,7 @@ export function EvidenceTabList({ state }: { state: EvidenceTabState }) {
               tabIndex={0}
               onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedEvidence(selectedEvidence?.id === ev.id ? null : ev); } }}
               onClick={() => setSelectedEvidence(selectedEvidence?.id === ev.id ? null : ev)}
+              onContextMenu={(e) => openMenu(e, buildEvidenceMenu(ev))}
               className={`
                 px-4 py-3 border-b border-rmpg-700/50 cursor-pointer transition-all duration-150
                 ${selectedEvidence?.id === ev.id

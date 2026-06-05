@@ -105,59 +105,59 @@ export default function VehicleFormModal({ isOpen, mode, form, onChange, onSave,
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Vehicle Number *</label>
-              <input className="input-dark w-full text-[11px] font-mono min-h-[36px]" value={form.vehicle_number}
+              <input id="ff-vehicleformmodal-0" className="input-dark w-full text-[11px] font-mono min-h-[36px]" value={form.vehicle_number}
                 onChange={(e) => setField('vehicle_number', e.target.value)} />
             </div>
             <div>
               <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Status</label>
-              <select className="select-dark w-full text-[11px] min-h-[36px]" value={form.status}
+              <select id="ff-vehicleformmodal-1" className="select-dark w-full text-[11px] min-h-[36px]" value={form.status}
                 onChange={(e) => setField('status', e.target.value)}>
                 {VEHICLE_STATUSES.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
               </select>
             </div>
             <div>
               <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Make</label>
-              <input className="input-dark w-full text-[11px] min-h-[36px]" value={form.make}
+              <input id="ff-vehicleformmodal-2" className="input-dark w-full text-[11px] min-h-[36px]" value={form.make}
                 onChange={(e) => setField('make', e.target.value)} />
             </div>
             <div>
               <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Model</label>
-              <input className="input-dark w-full text-[11px] min-h-[36px]" value={form.model}
+              <input id="ff-vehicleformmodal-3" className="input-dark w-full text-[11px] min-h-[36px]" value={form.model}
                 onChange={(e) => setField('model', e.target.value)} />
             </div>
             <div>
               <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Year</label>
-              <input className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="number" value={form.year}
+              <input id="ff-vehicleformmodal-4" className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="number" value={form.year}
                 onChange={(e) => setField('year', e.target.value)} />
             </div>
             <div>
               <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Color</label>
-              <input className="input-dark w-full text-[11px] min-h-[36px]" value={form.color}
+              <input id="ff-vehicleformmodal-5" className="input-dark w-full text-[11px] min-h-[36px]" value={form.color}
                 onChange={(e) => setField('color', e.target.value)} />
             </div>
             <div className="col-span-2">
               <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">VIN</label>
-              <input className="input-dark w-full text-[11px] font-mono uppercase min-h-[36px]" value={form.vin}
+              <input id="ff-vehicleformmodal-6" className="input-dark w-full text-[11px] font-mono uppercase min-h-[36px]" value={form.vin}
                 onChange={(e) => setField('vin', e.target.value)} maxLength={17} pattern="[A-HJ-NPR-Za-hj-npr-z0-9]{17}" title="17-character VIN (no I, O, or Q)" placeholder="17-character VIN" />
             </div>
             <div>
               <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Plate Number</label>
-              <input className="input-dark w-full text-[11px] font-mono min-h-[36px]" value={form.plate_number}
+              <input id="ff-vehicleformmodal-7" className="input-dark w-full text-[11px] font-mono min-h-[36px]" value={form.plate_number}
                 onChange={(e) => setField('plate_number', e.target.value)} />
             </div>
             <div>
               <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Plate State</label>
-              <input className="input-dark w-full text-[11px] min-h-[36px]" maxLength={2} value={form.plate_state}
+              <input id="ff-vehicleformmodal-8" className="input-dark w-full text-[11px] min-h-[36px]" maxLength={2} value={form.plate_state}
                 onChange={(e) => setField('plate_state', e.target.value.toUpperCase())} />
             </div>
             <div>
               <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Current Mileage</label>
-              <input className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="number" value={form.current_mileage}
+              <input id="ff-vehicleformmodal-9" className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="number" value={form.current_mileage}
                 onChange={(e) => setField('current_mileage', e.target.value)} />
             </div>
             <div>
               <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Next Service Mileage</label>
-              <input className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="number" value={form.next_service_mileage}
+              <input id="ff-vehicleformmodal-10" className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="number" value={form.next_service_mileage}
                 onChange={(e) => setField('next_service_mileage', e.target.value)}
                 placeholder="e.g. 50000" />
               {form.current_mileage && form.next_service_mileage && (
@@ -171,24 +171,24 @@ export default function VehicleFormModal({ isOpen, mode, form, onChange, onSave,
             </div>
             <div>
               <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Registration Expiry (Date/Time)</label>
-              <input className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="datetime-local" step="1" value={form.registration_expiry}
+              <input id="ff-vehicleformmodal-11" className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="datetime-local" step="1" value={form.registration_expiry}
                 onChange={(e) => setField('registration_expiry', e.target.value)} />
             </div>
             <div>
               <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Insurance Expiry (Date/Time)</label>
-              <input className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="datetime-local" step="1" value={form.insurance_expiry}
+              <input id="ff-vehicleformmodal-12" className="input-dark w-full text-[11px] font-mono min-h-[36px]" type="datetime-local" step="1" value={form.insurance_expiry}
                 onChange={(e) => setField('insurance_expiry', e.target.value)} />
             </div>
             <div />
             <div className="col-span-2">
               <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Equipment (comma-separated)</label>
-              <input className="input-dark w-full text-[10px] min-h-[36px]" value={form.equipment_str}
+              <input id="ff-vehicleformmodal-13" className="input-dark w-full text-[10px] min-h-[36px]" value={form.equipment_str}
                 onChange={(e) => setField('equipment_str', e.target.value)}
                 placeholder="e.g. Lightbar, MDT, Radar, Body Camera, Shotgun Rack" />
             </div>
             <div className="col-span-2">
               <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Notes</label>
-              <textarea className="input-dark w-full text-[10px] h-16 resize-none min-h-[36px]" value={form.notes}
+              <textarea id="ff-vehicleformmodal-14" className="input-dark w-full text-[10px] h-16 resize-none min-h-[36px]" value={form.notes}
                 onChange={(e) => setField('notes', e.target.value)} maxLength={3000} />
               <div className="text-[8px] text-rmpg-500 text-right mt-0.5">{form.notes.length}/3000</div>
             </div>

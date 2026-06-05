@@ -13,7 +13,8 @@ import {
   isVoiceChannelEnabled,
 } from '../utils/voiceChannel';
 import type { AlertSeverity } from '../utils/alertSeverity';
-import { useWebSocket } from '../context/WebSocketContext';
+import { voiceWsUrl } from '../utils/voiceWs';
+import { getPttPrefs, PTT_PREFS_EVENT } from '../utils/pttPreferences';
 
 export interface UseVoiceChannelResult {
   state: VoiceChannelState;
@@ -43,7 +44,6 @@ export function useVoiceChannel(): UseVoiceChannelResult {
   const [error, setError] = useState<string | null>(null);
   const [enabled] = useState(() => isVoiceChannelEnabled());
   const [stressDetected, setStressDetected] = useState(false);
-  const { subscribe } = useWebSocket();
 
   const channelRef = useRef<VoiceChannel | null>(null);
   const transcriptTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -89,24 +89,109 @@ export function useVoiceChannel(): UseVoiceChannelResult {
 
     channelRef.current = channel;
 
-    // Track radio PTT state for voice channel muting
-    const unsubRadioStart = subscribe('radio_transmit_start' as any, () => {
-      channelRef.current?.setRadioActive(true);
-    });
-    const unsubRadioEnd = subscribe('radio_transmit_end' as any, () => {
-      channelRef.current?.setRadioActive(false);
-    });
-
     return () => {
       channel.destroy();
       channelRef.current = null;
-      unsubRadioStart();
-      unsubRadioEnd();
       if (transcriptTimerRef.current) clearTimeout(transcriptTimerRef.current);
       if (commandTimerRef.current) clearTimeout(commandTimerRef.current);
       if (errorTimerRef.current) clearTimeout(errorTimerRef.current);
     };
-  }, [enabled, subscribe]);
+  }, [enabled]);
+
+  // ── Radio PTT muting source (GPS-5) ────────────────────────
+  // The voice-COMMAND mic must go quiet while someone is transmitting on the
+  // radio, or STT picks up the radio audio. `radio_transmit_start/end` are
+  // emitted ONLY by VoiceHubDO over the dedicated voice-ws (/api/voice-ws),
+  // NOT the main /api/ws context — subscribing via useWebSocket() (the old
+  // code) never fired, so the mic never muted. Open a monitor-only voice-ws
+  // to the active radio room and drive setRadioActive() from it.
+  //
+  // Monitor-only: we authenticate and listen for transmit start/end (and
+  // dispatch_speak, which also occupies the channel), but never capture mic
+  // or play audio — that's the radio console / PttController's job. The room
+  // follows the same channel resolution as the global PTT controller so the
+  // two agree on which channel is "live".
+  useEffect(() => {
+    if (!enabled) return;
+    if (typeof window === 'undefined' || typeof WebSocket === 'undefined') return;
+
+    let alive = true;
+    let ws: WebSocket | null = null;
+    let retry: ReturnType<typeof setTimeout> | null = null;
+    let attempts = 0;
+    let currentRoomChannel: number | null = null;
+
+    const resolveChannelId = (): number | null => getPttPrefs().channelId;
+
+    const close = () => {
+      if (retry) { clearTimeout(retry); retry = null; }
+      if (ws) { try { ws.close(); } catch { /* noop */ } ws = null; }
+      // Leaving the room — make sure we don't strand the mic in a muted state.
+      channelRef.current?.setRadioActive(false);
+    };
+
+    const open = () => {
+      const channelId = resolveChannelId();
+      if (channelId == null) { close(); return; }   // no radio channel → nothing to monitor
+      currentRoomChannel = channelId;
+      const token = localStorage.getItem('rmpg_token');
+      if (!token) return;
+      const sock = new WebSocket(voiceWsUrl(`radio-${channelId}`));
+      ws = sock;
+
+      sock.onopen = () => {
+        if (!alive) return;
+        attempts = 0;
+        try { sock.send(JSON.stringify({ type: 'authenticate', token })); } catch { /* in-flight */ }
+      };
+
+      sock.onmessage = (ev) => {
+        let msg: any;
+        try { msg = JSON.parse(ev.data); } catch { return; }
+        switch (msg.type) {
+          case 'radio_transmit_start':
+          case 'dispatch_speak':
+            // Channel occupied — mute the command mic.
+            channelRef.current?.setRadioActive(true);
+            break;
+          case 'radio_transmit_end':
+            channelRef.current?.setRadioActive(false);
+            break;
+        }
+      };
+
+      sock.onclose = () => {
+        if (!alive) return;
+        // Don't leave the mic muted if the monitor drops mid-transmission.
+        channelRef.current?.setRadioActive(false);
+        if (attempts < 6) {
+          attempts++;
+          retry = setTimeout(open, Math.min(1000 * attempts, 5000));
+        }
+      };
+      sock.onerror = () => { try { sock.close(); } catch { /* noop */ } };
+    };
+
+    // Reconnect to the right room if the operator changes their PTT channel.
+    const onPrefsChange = () => {
+      if (resolveChannelId() !== currentRoomChannel) {
+        close();
+        attempts = 0;
+        open();
+      }
+    };
+    window.addEventListener(PTT_PREFS_EVENT, onPrefsChange);
+    window.addEventListener('storage', onPrefsChange);
+
+    open();
+
+    return () => {
+      alive = false;
+      window.removeEventListener(PTT_PREFS_EVENT, onPrefsChange);
+      window.removeEventListener('storage', onPrefsChange);
+      close();
+    };
+  }, [enabled]);
 
   // The global V-key handler is owned by VoiceChannelIndicator now —
   // V held for 3 seconds opens the dispatch panel + auto-starts listening.

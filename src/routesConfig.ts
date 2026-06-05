@@ -57,11 +57,15 @@ import mapData from './routes/mapData';
 import tiles from './routes/tiles';
 import geo from './routes/geo';
 import admin from './routes/admin';
+import announcements from './routes/announcements';
 import affairs from './routes/affairs';
 import ai from './routes/ai';
 import alerts from './routes/notifications';
 import assets from './routes/assets';
 import billing from './routes/billing';
+import invoices from './routes/invoices';
+import useOfForce from './routes/useOfForce';
+import notificationsInbox from './routes/notificationsInbox';
 import community from './routes/community';
 import interagency from './routes/interagency';
 import jail from './routes/jail';
@@ -76,9 +80,11 @@ import records from './routes/records';
 import subjects from './routes/records/subjects';
 import properties from './routes/properties';
 import geocode from './routes/geocode';
+import crime from './routes/crime';
 import warrants from './routes/warrants';
 import nibrs from './routes/nibrs';
 import incidentSupplements from './routes/incidentSupplements';
+import incidentSubresources from './routes/incidentSubresources';
 import incidentsRouter from './routes/incidents';
 import audit from './routes/audit';
 import arrests from './routes/arrests';
@@ -111,23 +117,28 @@ import shiftPlans from './routes/shiftPlans';
 import court from './routes/court';
 import dlRecords from './routes/dlRecords';
 import serve from './routes/serve';
+import processServer from './routes/processServer';
 import settings from './routes/settings';
 import adminSettings from './routes/adminSettings';
 import recruitment from './routes/recruitment';
 import reports from './routes/reports';
+import statutes from './routes/statutes';
 import specialOps from './routes/specialOps';
 import victimServices from './routes/victimServices';
 import stubs from './routes/stubs';
 // Dispatch domain
 import dispatchCalls from './routes/dispatch/calls';
 import dispatchUnits from './routes/dispatch/units';
+import dispatchDuty from './routes/dispatch/duty';
 import dispatchGps from './routes/dispatch/gps';
+import dispatchTrips from './routes/dispatch/trips';
 import dispatchGeography from './routes/dispatch/geography';
 import dispatchAggregates from './routes/dispatch/aggregates';
 import dispatchPremiseHistory from './routes/dispatch/premiseHistory';
 import dispatchPanic from './routes/dispatch/panic';
 import dispatchAnomalies from './routes/dispatch/anomalies';
 import dispatchCallLinks from './routes/dispatch/callLinks';
+import dispatchShiftHandoff from './routes/dispatch/shiftHandoff';
 import runCards from './routes/runCards';
 import welfare from './routes/welfare';
 import {
@@ -187,10 +198,18 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/tiles', router: tiles, auth: 'public' },
   { prefix: '/api/geo', router: geo, auth: 'public' },
 
+  // Crime layers for the NAVIGATE tactical map (SLC public data proxy + our
+  // own CFS). Auth-gated like the rest of the app; /local reads our DB.
+  { prefix: '/api/crime', router: crime, auth: 'required' },
+
   // ── Dispatch (longer-prefix routers first) ─────────────────
   // callLinks + panic + premiseHistory mount at /api/dispatch and
   // own paths like /calls/:id/persons, /panic, /premise-history.
   // MUST come before dispatchCalls so the longer-prefix patterns win.
+  // Officer shift lifecycle (clock-on + on-duty + fleet vehicle, integrated).
+  // BEFORE the bare /api/dispatch routers so /duty/* wins its prefix.
+  { prefix: '/api/dispatch/duty', router: dispatchDuty, auth: 'required',
+    note: 'Start/End Shift — clock-in/out + units.status + fleet assign in one atomic action' },
   { prefix: '/api/dispatch', router: dispatchCallLinks, auth: 'required',
     note: 'BEFORE dispatchCalls — handles /calls/:id/{persons,vehicles,property}' },
   { prefix: '/api/dispatch', router: dispatchPanic, auth: 'required' },
@@ -219,6 +238,7 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/dispatch/gps', router: myVehicle, auth: 'required',
     note: 'BEFORE dispatchGps — handles /my-vehicle for always-visible Nav marker' },
   { prefix: '/api/dispatch/gps', router: dispatchGps, auth: 'required' },
+  { prefix: '/api/dispatch/trips', router: dispatchTrips, auth: 'required' },
   { prefix: '/api/dispatch/geography', router: dispatchGeography, auth: 'required' },
   { prefix: '/api/dispatch', router: dispatchAggregates, auth: 'required' },
   { prefix: '/api/dispatch/run-cards', router: runCards, auth: 'required' },
@@ -227,6 +247,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // ── Admin / personnel / presence ───────────────────────────
   { prefix: '/api/admin', router: admin, auth: 'required' },
   { prefix: '/api/admin/settings', router: adminSettings, auth: 'required' },
+  { prefix: '/api/announcements', router: announcements, auth: 'required',
+    note: 'Officer-facing reader for active/role-scoped broadcasts. Admin CRUD lives under /api/admin/announcements.' },
   { prefix: '/api/ai', router: ai, auth: 'required',
     note: 'AI dashboard stubs (config/stats/status/health/activity). Real provider wiring is Phase 2.' },
   { prefix: '/api/voice', router: voiceRoute, auth: 'required',
@@ -248,7 +270,10 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/nibrs', router: nibrs, auth: 'required' },
   { prefix: '/api/incidents', router: incidentsRouter, auth: 'required',
     note: 'BEFORE incidentSupplements — exact patterns /:id/{submit,approve,return} must match first' },
-  { prefix: '/api/incidents', router: incidentSupplements, auth: 'required' },
+  { prefix: '/api/incidents', router: incidentSupplements, auth: 'required',
+    note: 'BEFORE incidentSubresources — /:id/supplements/{dv,pursuit} string suffixes must match before the numeric /:id/supplements/:sid' },
+  { prefix: '/api/incidents', router: incidentSubresources, auth: 'required',
+    note: 'offenses/officers/links + generic supplements CRUD (numeric-id constrained)' },
 
   // ── RMS routes (Phase 1 ports) ─────────────────────────────
   // KEEP ALPHABETICAL BY PREFIX. New ports must be inserted at the
@@ -303,8 +328,12 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Special operations: SWAT callouts, tactical planning, equipment inventory' },
   { prefix: '/api/settings', router: settings, auth: 'required',
     note: 'Per-user + org-wide preference blobs for cross-device sync (migrations/0045)' },
+  { prefix: '/api/statutes', router: statutes, auth: 'required',
+    note: 'Utah law book (search/toc/chapter/section) over utah_statutes. Cutover from legacy /statutes/search — same {data:[]} contract, richer fields. Needs the matching proxy rule routing /api/statutes/* to env.API.' },
   { prefix: '/api/serve-intake', router: serveIntake, auth: 'required',
     note: 'Upload + OCR (Tesseract container) + Workers-AI field extraction; commits to serve_queue + serve_intake_documents' },
+  { prefix: '/api/process-server', router: processServer, auth: 'required',
+    note: 'Ported subset (deadlines + success-rates) the ServePage calls; rest of /process-server stays on legacy via proxy. Only proxy-routed paths reach this router.' },
   { prefix: '/api/ocr', router: ocr, auth: 'required',
     note: 'Alias of /api/serve-intake/scan-document — the client URL the OCR preview path already calls' },
   { prefix: '/api/skiptracer', router: skiptracer, auth: 'required',
@@ -327,6 +356,10 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/audit', router: audit, auth: 'required' },
   { prefix: '/api/billing', router: billing, auth: 'required',
     note: 'Financial/billing module: contracts, invoices, line items, payments, expenses' },
+  { prefix: '/api/invoices', router: invoices, auth: 'required',
+    note: 'InvoicesPage summary tile (/stats) over the invoices table. Full CRUD lives under /api/billing/invoices.' },
+  { prefix: '/api/use-of-force', router: useOfForce, auth: 'required',
+    note: 'Use-of-force reports (UseOfForcePage). Defensive over the minimal use_of_force table; legacy 500d on it.' },
   { prefix: '/api/community', router: community, auth: 'required',
     note: 'Community engagement: events, tips, watch groups, alerts' },
   { prefix: '/api/interagency', router: interagency, auth: 'required',
@@ -384,7 +417,10 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // All point at the same stubs router which fans out to its internal
   // paths (/, /preferences, /unread-count, /dashboard, etc).
   { prefix: '/api/user', router: stubs, auth: 'required' },
-  { prefix: '/api/notifications', router: stubs, auth: 'required' },
+  // Personal notification inbox (NotificationsPage) — real handlers over the
+  // notifications table. Replaced the stubs mount that only served
+  // /unread-count, leaving list/stats/categories/preferences 404'd.
+  { prefix: '/api/notifications', router: notificationsInbox, auth: 'required' },
   // Reports: real aggregations live in src/routes/reports.ts. Two stubs that
   // shared the same shape (/response-times) were moved into the reports
   // router so the stubs router doesn't also claim the prefix. /crime-analysis
@@ -401,5 +437,5 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/email', router: stubs, auth: 'required' },
   { prefix: '/api/integrations', router: stubs, auth: 'required' },
   { prefix: '/api/dispatch/stats', router: stubs, auth: 'required' },
-  { prefix: '/api/dispatch/shift-handoff', router: stubs, auth: 'required' },
+  { prefix: '/api/dispatch/shift-handoff', router: dispatchShiftHandoff, auth: 'required' },
 ];

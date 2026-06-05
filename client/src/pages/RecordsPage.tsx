@@ -19,6 +19,7 @@ import {
   Briefcase,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
+import { recordTypeLabel } from '../utils/recordTypeLabel';
 import { usePersistedTab } from '../hooks/usePersistedState';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -653,7 +654,7 @@ export default function RecordsPage() {
         isOpen={deleteTarget !== null}
         onClose={() => setDeleteTarget(null)}
         onConfirm={handleDelete}
-        title={`Delete ${deleteTarget?.type ? deleteTarget.type.charAt(0).toUpperCase() + deleteTarget.type.slice(1) : 'Record'}`}
+        title={`Delete ${recordTypeLabel(deleteTarget?.type)}`}
         message={`Are you sure you want to delete "${deleteTarget?.label}"? This action cannot be undone.`}
         confirmLabel="Delete"
         confirmVariant="danger"

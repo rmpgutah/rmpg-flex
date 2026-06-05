@@ -5,6 +5,7 @@ import { parseTimestamp } from '../../../utils/dateUtils';
 import { getOverlayMarkerClass } from '../utils/mapMarkerBuilders';
 import { safeDateTimeStr } from '../../../utils/dateUtils';
 import { whenStyleReady } from '../utils/safeAddSource';
+import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../../../utils/mapboxSafeLayer';
 
 interface CheckpointRecord {
   id: number;
@@ -162,10 +163,10 @@ export function useMapPatrolCheckpoints(
     markersRef.current.forEach((m) => m.remove());
     markersRef.current = [];
     if (map) {
-      if (map.getLayer(sourceId)) map.removeLayer(sourceId);
-      if (map.getSource(sourceId)) map.removeSource(sourceId);
-      if (map.getLayer(routeSourceId)) map.removeLayer(routeSourceId);
-      if (map.getSource(routeSourceId)) map.removeSource(routeSourceId);
+      safeRemoveLayer(map, sourceId);
+      safeRemoveSource(map, sourceId);
+      safeRemoveLayer(map, routeSourceId);
+      safeRemoveSource(map, routeSourceId);
     }
   }, [map]);
 

@@ -247,7 +247,7 @@ export default function SecurityKeyManager() {
       {/* Register new key */}
       {showNameInput ? (
         <div className="flex items-center gap-2">
-          <input
+          <input id="ff-securitykeymanager-0"
             type="text"
             value={newKeyName}
             onChange={(e) => setNewKeyName(e.target.value)}

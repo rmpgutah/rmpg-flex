@@ -158,7 +158,7 @@ export default function StatuteAnalyticsPage() {
       {/* Feature 36: Penalty Lookup Bar */}
       <div className="px-3 py-1.5 border-b border-rmpg-700/50 flex items-center gap-2 bg-surface-sunken flex-shrink-0">
         <Search className="w-3 h-3 text-rmpg-500" />
-        <input type="text" placeholder="Penalty lookup — enter statute (e.g. 76-5-102)" className="input-dark text-xs flex-1 max-w-xs min-h-[36px]"
+        <input id="ff-statuteanalyticspage-0" type="text" placeholder="Penalty lookup — enter statute (e.g. 76-5-102)" className="input-dark text-xs flex-1 max-w-xs min-h-[36px]"
           value={penaltySearch} onChange={e => setPenaltySearch(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && handlePenaltyLookup()} />
         <button type="button" onClick={handlePenaltyLookup} className="toolbar-btn text-[10px]">Lookup</button>
@@ -248,7 +248,7 @@ export default function StatuteAnalyticsPage() {
                 </div>
                 <div className="relative">
                   <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" />
-                  <input
+                  <input id="ff-statuteanalyticspage-1"
                     type="text"
                     className="bg-surface-base border border-rmpg-600 text-white text-[10px] pl-6 pr-2 py-1 w-48 focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500/30 transition-colors"
                     placeholder="Search statutes..." aria-label="Search statutes..."

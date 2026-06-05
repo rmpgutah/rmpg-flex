@@ -128,40 +128,40 @@ export default function ManualDlEntryModal({ isOpen, onClose, onSubmit, isSubmit
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <div>
             <label className="field-label">DL Number *</label>
-            <input className="input-dark w-full" value={form.dl_number} onChange={e => set('dl_number', e.target.value)} required />
+            <input id="ff-manualdlentrymodal-0" className="input-dark w-full" value={form.dl_number} onChange={e => set('dl_number', e.target.value)} required />
           </div>
           <div>
             <label className="field-label">State *</label>
-            <select className="select-dark w-full" value={form.dl_state} onChange={e => set('dl_state', e.target.value)} required>
+            <select id="ff-manualdlentrymodal-1" className="select-dark w-full" value={form.dl_state} onChange={e => set('dl_state', e.target.value)} required>
               {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>
           <div>
             <label className="field-label">Class</label>
-            <input className="input-dark w-full" value={form.dl_class} onChange={e => set('dl_class', e.target.value)} placeholder="D" />
+            <input id="ff-manualdlentrymodal-2" className="input-dark w-full" value={form.dl_class} onChange={e => set('dl_class', e.target.value)} placeholder="D" />
           </div>
           <div>
             <label className="field-label">Status</label>
-            <select className="select-dark w-full" value={form.dl_status} onChange={e => set('dl_status', e.target.value)}>
+            <select id="ff-manualdlentrymodal-3" className="select-dark w-full" value={form.dl_status} onChange={e => set('dl_status', e.target.value)}>
               <option value="">—</option>
               {DL_STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>
           <div>
             <label className="field-label">Expiration</label>
-            <input className="input-dark w-full" type="date" value={form.dl_expiration} onChange={e => set('dl_expiration', e.target.value)} />
+            <input id="ff-manualdlentrymodal-4" className="input-dark w-full" type="date" value={form.dl_expiration} onChange={e => set('dl_expiration', e.target.value)} />
           </div>
           <div>
             <label className="field-label">Issue Date</label>
-            <input className="input-dark w-full" type="date" value={form.dl_issue_date} onChange={e => set('dl_issue_date', e.target.value)} />
+            <input id="ff-manualdlentrymodal-5" className="input-dark w-full" type="date" value={form.dl_issue_date} onChange={e => set('dl_issue_date', e.target.value)} />
           </div>
           <div>
             <label className="field-label">Restrictions</label>
-            <input className="input-dark w-full" value={form.dl_restrictions} onChange={e => set('dl_restrictions', e.target.value)} placeholder="NONE" />
+            <input id="ff-manualdlentrymodal-6" className="input-dark w-full" value={form.dl_restrictions} onChange={e => set('dl_restrictions', e.target.value)} placeholder="NONE" />
           </div>
           <div>
             <label className="field-label">Endorsements</label>
-            <input className="input-dark w-full" value={form.dl_endorsements} onChange={e => set('dl_endorsements', e.target.value)} placeholder="NONE" />
+            <input id="ff-manualdlentrymodal-7" className="input-dark w-full" value={form.dl_endorsements} onChange={e => set('dl_endorsements', e.target.value)} placeholder="NONE" />
           </div>
         </div>
       </fieldset>
@@ -172,56 +172,56 @@ export default function ManualDlEntryModal({ isOpen, onClose, onSubmit, isSubmit
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <div>
             <label className="field-label">Last Name *</label>
-            <input className="input-dark w-full" value={form.last_name} onChange={e => set('last_name', e.target.value)} required />
+            <input id="ff-manualdlentrymodal-8" className="input-dark w-full" value={form.last_name} onChange={e => set('last_name', e.target.value)} required />
           </div>
           <div>
             <label className="field-label">First Name *</label>
-            <input className="input-dark w-full" value={form.first_name} onChange={e => set('first_name', e.target.value)} required />
+            <input id="ff-manualdlentrymodal-9" className="input-dark w-full" value={form.first_name} onChange={e => set('first_name', e.target.value)} required />
           </div>
           <div>
             <label className="field-label">Middle Name</label>
-            <input className="input-dark w-full" value={form.middle_name} onChange={e => set('middle_name', e.target.value)} />
+            <input id="ff-manualdlentrymodal-10" className="input-dark w-full" value={form.middle_name} onChange={e => set('middle_name', e.target.value)} />
           </div>
           <div>
             <label className="field-label">Suffix</label>
-            <input className="input-dark w-full" value={form.suffix} onChange={e => set('suffix', e.target.value)} placeholder="Jr, Sr, III" />
+            <input id="ff-manualdlentrymodal-11" className="input-dark w-full" value={form.suffix} onChange={e => set('suffix', e.target.value)} placeholder="Jr, Sr, III" />
           </div>
           <div>
             <label className="field-label">DOB</label>
-            <input className="input-dark w-full" type="date" value={form.date_of_birth} onChange={e => set('date_of_birth', e.target.value)} />
+            <input id="ff-manualdlentrymodal-12" className="input-dark w-full" type="date" value={form.date_of_birth} onChange={e => set('date_of_birth', e.target.value)} />
           </div>
           <div>
             <label className="field-label">Gender</label>
-            <select className="select-dark w-full" value={form.gender} onChange={e => set('gender', e.target.value)}>
+            <select id="ff-manualdlentrymodal-13" className="select-dark w-full" value={form.gender} onChange={e => set('gender', e.target.value)}>
               <option value="">—</option>
               {GENDER_OPTIONS.map(g => <option key={g.value} value={g.value}>{g.label}</option>)}
             </select>
           </div>
           <div>
             <label className="field-label">Height</label>
-            <input className="input-dark w-full" value={form.height} onChange={e => set('height', e.target.value)} placeholder="510" />
+            <input id="ff-manualdlentrymodal-14" className="input-dark w-full" value={form.height} onChange={e => set('height', e.target.value)} placeholder="510" />
           </div>
           <div>
             <label className="field-label">Weight</label>
-            <input className="input-dark w-full" value={form.weight} onChange={e => set('weight', e.target.value)} placeholder="180" />
+            <input id="ff-manualdlentrymodal-15" className="input-dark w-full" value={form.weight} onChange={e => set('weight', e.target.value)} placeholder="180" />
           </div>
           <div>
             <label className="field-label">Eye Color</label>
-            <select className="select-dark w-full" value={form.eye_color} onChange={e => set('eye_color', e.target.value)}>
+            <select id="ff-manualdlentrymodal-16" className="select-dark w-full" value={form.eye_color} onChange={e => set('eye_color', e.target.value)}>
               <option value="">—</option>
               {EYE_COLOR_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
           <div>
             <label className="field-label">Hair Color</label>
-            <select className="select-dark w-full" value={form.hair_color} onChange={e => set('hair_color', e.target.value)}>
+            <select id="ff-manualdlentrymodal-17" className="select-dark w-full" value={form.hair_color} onChange={e => set('hair_color', e.target.value)}>
               <option value="">—</option>
               {HAIR_COLOR_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
             </select>
           </div>
           <div>
             <label className="field-label">Race</label>
-            <select className="select-dark w-full" value={form.race} onChange={e => set('race', e.target.value)}>
+            <select id="ff-manualdlentrymodal-18" className="select-dark w-full" value={form.race} onChange={e => set('race', e.target.value)}>
               <option value="">—</option>
               {RACE_OPTIONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
             </select>
@@ -255,21 +255,21 @@ export default function ManualDlEntryModal({ isOpen, onClose, onSubmit, isSubmit
            </div>
            <div>
              <label className="field-label">Apt / Unit</label>
-             <input className="input-dark w-full" value={form.address2} onChange={e => set('address2', e.target.value)} />
+             <input id="ff-manualdlentrymodal-19" className="input-dark w-full" value={form.address2} onChange={e => set('address2', e.target.value)} />
            </div>
            <div>
              <label className="field-label">City</label>
-             <input className="input-dark w-full" value={form.city} onChange={e => set('city', e.target.value)} />
+             <input id="ff-manualdlentrymodal-20" className="input-dark w-full" value={form.city} onChange={e => set('city', e.target.value)} />
            </div>
            <div>
              <label className="field-label">State</label>
-             <select className="select-dark w-full" value={form.address_state} onChange={e => set('address_state', e.target.value)}>
+             <select id="ff-manualdlentrymodal-21" className="select-dark w-full" value={form.address_state} onChange={e => set('address_state', e.target.value)}>
                {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
              </select>
            </div>
            <div>
              <label className="field-label">ZIP</label>
-             <input className="input-dark w-full" value={form.postal_code} onChange={e => set('postal_code', e.target.value)} placeholder="84101" />
+             <input id="ff-manualdlentrymodal-22" className="input-dark w-full" value={form.postal_code} onChange={e => set('postal_code', e.target.value)} placeholder="84101" />
            </div>
          </div>
        </fieldset>

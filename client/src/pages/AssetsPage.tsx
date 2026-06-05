@@ -4,9 +4,11 @@ import PanelTitleBar from '../components/PanelTitleBar';
 import DataTable from '../components/DataTable';
 import StatsCard from '../components/StatsCard';
 import { useToast } from '../components/ToastProvider';
+import { useMenuActions } from '../utils/contextMenuActions';
 import { Package, Wrench, Crosshair, Dog, Plus, Pencil, Trash2 } from 'lucide-react';
 
 export default function AssetsPage() {
+  const m = useMenuActions();
   const [assets, setAssets] = useState<Record<string, any>[]>([]);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({ totalAssets: 0, issuedAssets: 0, totalWeapons: 0, activeK9: 0 });
@@ -14,15 +16,17 @@ export default function AssetsPage() {
   const [formData, setFormData] = useState<Record<string, any>>({});
   const [submitting, setSubmitting] = useState(false);
   const [deleteId, setDeleteId] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const { addToast } = useToast();
 
   const fetchData = useCallback(async () => {
     try {
+      setError(null);
       const r = await apiFetch<{ data: Record<string, any>[] }>('/assets/inventory');
       setAssets(r.data || []);
       const s = await apiFetch<{ totalAssets: number; issuedAssets: number; totalWeapons: number; activeK9: number }>('/assets/stats');
       setStats(s);
-    } catch { /* */ }
+    } catch { setError("Failed to load data"); }
   }, []);
 
   useEffect(() => { fetchData().finally(() => setLoading(false)); }, [fetchData]);
@@ -67,6 +71,7 @@ export default function AssetsPage() {
   return (
     <div className="p-4 space-y-4">
       <PanelTitleBar title="ASSET MANAGEMENT" icon={Package}>
+      {error && <div className="border border-red-700/40 bg-red-900/20 text-red-400 text-[11px] px-3 py-2 mb-3" role="alert">{error}</div>}
         <button onClick={openNew} className="toolbar-btn flex items-center gap-1.5" style={{ height: 28, padding: '0 10px' }}>
           <Plus size={13} /> New Asset
         </button>
@@ -77,7 +82,18 @@ export default function AssetsPage() {
         <StatsCard icon={Crosshair} label="Weapons" value={stats.totalWeapons} />
         <StatsCard icon={Dog} label="K9 Units" value={stats.activeK9} />
       </div>
-      <DataTable columns={columns} data={assets} emptyMessage="No assets registered" onRowClick={(row) => openEdit(row)} />
+      <DataTable
+        columns={columns}
+        data={assets}
+        emptyMessage="No assets registered"
+        onRowClick={(row) => openEdit(row)}
+        rowContextMenu={(row) => [
+          m.action('Open / Edit', () => openEdit(row), { icon: <Pencil size={12} /> }),
+          m.separator(),
+          m.copyId((row as any).id),
+          m.action('Delete', () => setDeleteId((row as any).id), { danger: true, icon: <Trash2 size={12} /> }),
+        ]}
+      />
 
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={() => setEditingRecord(null)}>
@@ -86,20 +102,20 @@ export default function AssetsPage() {
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Asset Tag <span className="text-red-500">*</span></label>
-                  <input className="input-dark mt-1" value={formData.asset_tag || ''} onChange={e => setFormData({...formData, asset_tag: e.target.value})} autoFocus /></div>
+                  <input id="ff-assetspage-0" className="input-dark mt-1" value={formData.asset_tag || ''} onChange={e => setFormData({...formData, asset_tag: e.target.value})} autoFocus /></div>
                 <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Type</label>
-                  <select className="select-dark mt-1" value={formData.asset_type || 'other'} onChange={e => setFormData({...formData, asset_type: e.target.value})}>
+                  <select id="ff-assetspage-1" className="select-dark mt-1" value={formData.asset_type || 'other'} onChange={e => setFormData({...formData, asset_type: e.target.value})}>
                     {['weapon','body_camera','radio','taser','computer','vehicle_accessory','uniform','ppe','k9_equipment','other'].map(t=><option key={t} value={t}>{t}</option>)}
                   </select></div>
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Make</label><input className="input-dark mt-1" value={formData.make || ''} onChange={e => setFormData({...formData, make: e.target.value})} /></div>
-                <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Model</label><input className="input-dark mt-1" value={formData.model || ''} onChange={e => setFormData({...formData, model: e.target.value})} /></div>
+                <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Make</label><input id="ff-assetspage-2" className="input-dark mt-1" value={formData.make || ''} onChange={e => setFormData({...formData, make: e.target.value})} /></div>
+                <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Model</label><input id="ff-assetspage-3" className="input-dark mt-1" value={formData.model || ''} onChange={e => setFormData({...formData, model: e.target.value})} /></div>
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Serial #</label><input className="input-dark mt-1" value={formData.serial_number || ''} onChange={e => setFormData({...formData, serial_number: e.target.value})} /></div>
+                <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Serial #</label><input id="ff-assetspage-4" className="input-dark mt-1" value={formData.serial_number || ''} onChange={e => setFormData({...formData, serial_number: e.target.value})} /></div>
                 <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Status</label>
-                  <select className="select-dark mt-1" value={formData.status || 'available'} onChange={e => setFormData({...formData, status: e.target.value})}>
+                  <select id="ff-assetspage-5" className="select-dark mt-1" value={formData.status || 'available'} onChange={e => setFormData({...formData, status: e.target.value})}>
                     {['available','issued','maintenance','retired','lost'].map(s=><option key={s} value={s}>{s}</option>)}
                   </select></div>
               </div>

@@ -193,7 +193,7 @@ function MdtMessagesPanel({ userId }: { userId?: string }) {
               {ch}
             </button>
           ))}
-          <select
+          <select id="ff-mdtpage-0"
             value={composePriority}
             onChange={(e) => setComposePriority(e.target.value as any)}
             className="text-[8px] bg-surface-base border border-rmpg-600 text-rmpg-300 px-1 py-0.5 ml-auto"
@@ -204,7 +204,7 @@ function MdtMessagesPanel({ userId }: { userId?: string }) {
           </select>
         </div>
         <div className="flex items-center gap-1">
-          <input
+          <input id="ff-mdtpage-1"
             type="text"
             value={composeText}
             onChange={(e) => setComposeText(e.target.value)}
@@ -303,17 +303,17 @@ export default function MdtPage() {
         `Date: ${data.date}  Unit: ${myUnit?.call_sign || 'N/A'}`,
         '',
         `───── SUMMARY ─────────────────────────────────────────`,
-        `Calls Handled: ${data.summary.totalCalls}`,
-        `Incidents Filed: ${data.summary.totalIncidents}`,
-        `Patrol Scans: ${data.summary.totalScans}`,
-        `Citations: ${data.summary.totalCitations}`,
-        `Field Interviews: ${data.summary.totalFieldInterviews}`,
+        `Calls Handled: ${data.summary?.totalCalls ?? 0}`,
+        `Incidents Filed: ${data.summary?.totalIncidents ?? 0}`,
+        `Patrol Scans: ${data.summary?.totalScans ?? 0}`,
+        `Citations: ${data.summary?.totalCitations ?? 0}`,
+        `Field Interviews: ${data.summary?.totalFieldInterviews ?? 0}`,
         '',
       ];
 
-      if (data.calls.length > 0) {
+      if ((data.calls || []).length > 0) {
         lines.push('───── CALLS FOR SERVICE ────────────────────────────────');
-        data.calls.forEach((c: any) => {
+        (data.calls as any[]).forEach((c: any) => {
           lines.push(`  ${c.call_number}  ${(c.incident_type || 'UNKNOWN').toUpperCase()}  ${c.priority || ''}  ${c.status || ''}`);
           lines.push(`    Location: ${c.location_address || 'N/A'}`);
           lines.push(`    Time: ${safeTimeStr(c.created_at)}`);
@@ -321,18 +321,18 @@ export default function MdtPage() {
         });
       }
 
-      if (data.incidents.length > 0) {
+      if ((data.incidents || []).length > 0) {
         lines.push('───── INCIDENT REPORTS ─────────────────────────────────');
-        data.incidents.forEach((i: any) => {
+        (data.incidents as any[]).forEach((i: any) => {
           lines.push(`  ${i.incident_number}  ${(i.incident_type || '').replace(/_/g, ' ').toUpperCase()}  ${(i.status || '').replace(/_/g, ' ').toUpperCase()}`);
           lines.push(`    Location: ${i.location_address || 'N/A'}`);
           lines.push('');
         });
       }
 
-      if (data.scans.length > 0) {
+      if ((data.scans || []).length > 0) {
         lines.push('───── PATROL SCANS ────────────────────────────────────');
-        data.scans.forEach((s: any) => {
+        (data.scans as any[]).forEach((s: any) => {
           lines.push(`  ${safeTimeStr(s.scanned_at)}  ${s.checkpoint_name || 'Unknown'}`);
         });
         lines.push('');
@@ -452,13 +452,17 @@ export default function MdtPage() {
   // ── Real-time WebSocket subscriptions for dispatch events ──
   const { subscribe } = useWebSocket();
   useEffect(() => {
-    // When dispatch assigns/unassigns units or changes call status, refresh immediately
-    const unsubDispatch = subscribe('dispatch_update', () => {
+    // When dispatch assigns/unassigns units or changes call status, refresh
+    // immediately — but skip high-frequency GPS position pushes (every ~1s),
+    // which the MDT doesn't display and which would refetch on every tick.
+    const unsubDispatch = subscribe('dispatch_update', (msg: any) => {
+      if ((msg?.data || msg)?.action === 'unit_position_update') return;
       fetchData();
     });
     // When any unit status changes (dispatched, enroute, onscene, available)
     const unsubUnit = subscribe('unit_update', (msg: any) => {
       const data = msg.data || msg;
+      if (data?.action === 'unit_position_update') return;
       if (data?.unit && gps.unitId && data.unit.id === gps.unitId) {
         // Our unit was updated — refresh to pick up status/call changes
         fetchData();
@@ -468,17 +472,36 @@ export default function MdtPage() {
   }, [subscribe, fetchData, gps.unitId]);
 
   // ── Unit Status Change ──
+  // Duty BOUNDARIES (off_duty, and going available FROM off_duty) run through
+  // the integrated shift API so they clock the officer out/in AND release/assign
+  // the fleet vehicle — matching the ShiftCard. Operational statuses
+  // (enroute/onscene/busy, or going available mid-shift) stay on the legacy
+  // unit-status path, which owns the live /api/ws broadcast + transition guard.
   const handleUnitStatus = async (newStatus: string) => {
     if (!myUnit) return;
     try {
-      await apiFetch(`/dispatch/units/${myUnit.id}/status`, {
-        method: 'PUT',
-        body: JSON.stringify({ status: newStatus }),
-      });
+      if (newStatus === 'off_duty') {
+        await apiFetch('/dispatch/duty/end', { method: 'POST', body: JSON.stringify({ unit_id: myUnit.id }) });
+        addToast('Shift ended — clocked out, vehicle released', 'success');
+      } else if (newStatus === 'available' && myUnit.status === 'off_duty') {
+        await apiFetch('/dispatch/duty/start', { method: 'POST', body: JSON.stringify({ unit_id: myUnit.id }) });
+        addToast('On duty — clocked in, vehicle assigned', 'success');
+      } else {
+        await apiFetch(`/dispatch/units/${myUnit.id}/status`, {
+          method: 'PUT',
+          body: JSON.stringify({ status: newStatus }),
+        });
+      }
       fetchData();
-    } catch (err) {
-      console.error('Status change failed:', err);
-      addToast('Failed to change unit status', 'error');
+    } catch (err: any) {
+      if (err?.code === 'NEEDS_VEHICLE') {
+        addToast('No take-home vehicle set — pick one on the Shift card to go on duty', 'warning');
+      } else if (err?.code === 'NO_UNIT') {
+        addToast('No unit assigned — ask dispatch to assign you a unit', 'error');
+      } else {
+        console.error('Status change failed:', err);
+        addToast('Failed to change unit status', 'error');
+      }
     }
   };
 
@@ -655,21 +678,21 @@ export default function MdtPage() {
             {selectedCall && <span className="text-[8px] text-rmpg-400">Linked to {selectedCall.call_number}</span>}
           </div>
           <div className={`grid ${isMobile ? 'grid-cols-1' : 'grid-cols-4'} gap-2`}>
-            <input
+            <input id="ff-mdtpage-2"
               type="text"
               className="input-dark text-[10px] min-h-[36px]"
               placeholder="Subject Name *"
               value={fiData.subject_name}
               onChange={(e) => setFiData(prev => ({ ...prev, subject_name: e.target.value }))}
             />
-            <input
+            <input id="ff-mdtpage-3"
               type="text"
               className="input-dark text-[10px] min-h-[36px]"
               placeholder={gps.latitude ? `Location (auto: ${gps.latitude.toFixed(4)})` : 'Location'}
               value={fiData.location}
               onChange={(e) => setFiData(prev => ({ ...prev, location: e.target.value }))}
             />
-            <input
+            <input id="ff-mdtpage-4"
               type="text"
               className="input-dark text-[10px] min-h-[36px]"
               placeholder="Reason for contact"
@@ -677,7 +700,7 @@ export default function MdtPage() {
               onChange={(e) => setFiData(prev => ({ ...prev, reason: e.target.value }))}
             />
             <div className="flex items-center gap-1">
-              <input
+              <input id="ff-mdtpage-5"
                 type="text"
                 className="input-dark text-[10px] flex-1 min-h-[36px]"
                 placeholder="Brief narrative"

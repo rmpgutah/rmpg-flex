@@ -8,7 +8,8 @@ import jsPDF from 'jspdf';
 import QRCode from 'qrcode';
 import { isPast, isWithinDays, parseTimestamp } from './dateUtils';
 import { hasValue, toNum } from './sentinel';
-import { zoneLeaf, beatLeaf, sectionZoneBeatCombined } from './dispatchCodeParts';
+import { sectionZoneBeatCombined } from './dispatchCodeParts';
+import { humanizeRelationship } from './recordLinks';
 import {
   addConfidentialWatermark, openAutoSection, closeAutoSection, addFieldPair,
   addCheckboxField, addStackedSignatures, addFlagBadges, addCautionBlock,
@@ -41,6 +42,7 @@ import {
   type QuickRefBannerConfig,
 } from './pdfDetailHelpers';
 import { recordPosture } from '../components/records/recordVisuals';
+import { type Trip, tripMiles, tripDurationMin } from '../hooks/useTrips';
 import type { PdfImage, PdfSignatureData } from './pdfGenerator';
 import { convertToGrayscale, getActiveSectionStyle, setFieldNumberingEnabled, resetActiveFieldCounter } from './pdfGenerator';
 import { fetchLocationMapImage } from './pdfStaticMap';
@@ -380,23 +382,14 @@ function drawDistrictBar(
   // produced visually duplicative noise like SECTION=SL1, AREA=SL.
   // CONTRACT ID was geographically misplaced; it now lives in the
   // PSO Client Request Details section where it belongs.
-  const sectionRaw = data.sector_id || data.sector_name || '';
-  const zoneRaw = zoneLeaf(data.zone_id) || data.zone_name || '';
-  const beatRaw = beatLeaf(data.beat_id) || data.beat_name || '';
-  const combined = sectionZoneBeatCombined(data.sector_id, data.zone_id, data.beat_id) || data.dispatch_code || '';
-  const hasRealArea = !!(data.area_name || data.area_id);
+  // Dispatch printouts present the SHORT CODE only (e.g. "SLA-A2") — the full
+  // Area / Section / Zone / Beat names are presented on the Map UI, not on
+  // dispatch call surfaces. Prefer the stored dispatch_code / zone_beat; fall
+  // back to the composite leaf code only if neither is set.
+  const shortCode = data.dispatch_code || data.zone_beat
+    || sectionZoneBeatCombined(data.sector_id, data.zone_id, data.beat_id) || '';
   const distFields: { label: string; value: string }[] = [];
-  if (hasRealArea) distFields.push({ label: 'AREA', value: data.area_name || data.area_id });
-  // Suppress empty SECTION / ZONE / BEAT cells rather than padding them
-  // with "N/A" — when only the beat is set (e.g. SLC-UNINC for an
-  // un-sectored unincorporated address), the bar previously showed
-  // SECTION N/A · ZONE N/A · BEAT SLC-UNINC · CODE SLC/UNINC, with
-  // the two empty columns just diluting the readable cells. Empty
-  // cells now collapse, and the remaining cells expand to fill width.
-  if (sectionRaw) distFields.push({ label: 'SECTION', value: sectionRaw });
-  if (zoneRaw)    distFields.push({ label: 'ZONE',    value: zoneRaw });
-  if (beatRaw)    distFields.push({ label: 'BEAT',    value: beatRaw });
-  if (combined)   distFields.push({ label: 'CODE',    value: combined });
+  if (shortCode) distFields.push({ label: 'DISPATCH CODE', value: shortCode });
   if (distFields.length === 0) return barY; // safety: nothing to draw
 
   // ── Cell layout ───────────────────────────────────────────
@@ -607,6 +600,10 @@ export interface CallPdfData {
   starting_mileage?: number;
   ending_mileage?: number;
   responding_vehicle_id?: string;
+  // Telemetry — the logged call-response trip (drive to scene), if any.
+  // Fetched by the caller (PrintRecordButton) via /dispatch/trips?call_id=,
+  // rendered as a single audit line under Mileage.
+  response_trip?: Trip;
   // Timeline
   created_at?: string;
   dispatched_at?: string;
@@ -1302,6 +1299,7 @@ export interface CitationPdfData {
   zone_id?: string;
   beat_id?: string;
   zone_beat?: string;
+  dispatch_code?: string;
   latitude?: number;
   longitude?: number;
   // Violation
@@ -1500,9 +1498,10 @@ function parseCharges(raw: unknown): string[] {
   return s.split(/\r?\n|;|,(?=\s)|,/).map(t => t.trim()).filter(Boolean);
 }
 
-function fmtCurrency(val?: number | null): string {
-  if (val == null) return EMPTY_FIELD;
-  return `$${val.toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
+function fmtCurrency(val?: number | null | string): string {
+  const n = typeof val === 'number' ? val : Number(String(val ?? '').trim());
+  if (val == null || !Number.isFinite(n)) return EMPTY_FIELD; // sentinel "None"/"" → blank, never "$None"
+  return `$${n.toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
 }
 
 /**
@@ -1789,13 +1788,11 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
 
   y = drawDistrictBar(doc, y, data as any);
 
-  // Classification — includes Section / Zone / Beat / Code per Spillman convention
-  // The district bar above gives a compact at-a-glance display; these labeled fields
-  // provide the detailed audit-ready record.
+  // Classification — dispatch surfaces present the SHORT dispatch code only
+  // (the district bar above shows it at-a-glance, this is the labeled record
+  // copy). The full Area/Section/Zone/Beat names live on the Map UI, so the
+  // verbose Section/Zone/Beat rows are intentionally omitted here.
   { const sec = openAutoSection(doc, 'Classification', y); y = sec.contentY;
-    const zone = zoneLeaf(data.zone_id) || data.zone_name || '';
-    const beat = beatLeaf(data.beat_id) || data.beat_name || '';
-    const combined = sectionZoneBeatCombined(data.sector_id, data.zone_id, data.beat_id) || data.zone_beat || '';
     y = addThreeColumnFields(doc, [
       { label: 'Call Number', value: data.call_number },
       { label: 'Incident Type', value: formatEnumValue(data.incident_type) },
@@ -1803,10 +1800,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       { label: 'Status', value: displayStatus(data.status || '') },
       { label: 'Source', value: formatEnumValue(data.source) },
       { label: 'Disposition', value: formatEnumValue(data.disposition) },
-      { label: 'Section', value: data.sector_name || data.sector_id || '' },
-      { label: 'Zone', value: zone },
-      { label: 'Beat', value: beat },
-      { label: 'Dispatch Code', value: data.dispatch_code || '' },
+      { label: 'Dispatch Code', value: data.dispatch_code || data.zone_beat || sectionZoneBeatCombined(data.sector_id, data.zone_id, data.beat_id) || '' },
       { label: 'Case Number', value: normalizeCaseNumber(data.case_number) },
       { label: 'Incident Number', value: data.incident_number || '' },
     ], y);
@@ -2172,14 +2166,18 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
 
   // CFS address-location map — static Mapbox snapshot with a marker pin at
   // the incident coordinates (geocodes data.location when lat/lng absent).
+  // Satellite-streets at close zoom 18 so the actual structure/lot is visible
+  // (a property-level view, not a several-blocks-wide z15 overview) while the
+  // hybrid style keeps the fronting road + street labels in frame. Matches the
+  // Property record's location map for a consistent aerial close-up.
   y = await addLocationMapSection(doc, {
     title: 'Incident Location Map',
     lat: data.latitude,
     lng: data.longitude,
     address: data.location || (data as any).location_address,
     caption: data.location || (data as any).location_address,
-    style: 'mapbox/streets-v12',
-    zoom: 15,
+    style: 'mapbox/satellite-streets-v12',
+    zoom: 18,
     priority: prio,
   }, y);
 
@@ -2310,6 +2308,26 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
     }
     y = maxY;
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // Response Trip — one-line audit summary of the logged drive-to-scene
+  // (call_response) trip, when telemetry captured it. Threaded in by the
+  // caller as data.response_trip (fetched via /dispatch/trips?call_id=).
+  {
+    const rt = data.response_trip;
+    if (rt && rt.trip_type === 'call_response') {
+      const unitTag = (data.assigned_units_detail?.[0]?.call_sign)
+        || (rt.unit_id != null ? `Unit ${rt.unit_id}` : 'Unit');
+      const dur = tripDurationMin(rt);
+      const durStr = dur != null ? `${dur} min` : 'N/A';
+      const miStr = `${tripMiles(rt).toFixed(1)} mi`;
+      const mileagePart = (rt.start_mileage != null && rt.end_mileage != null)
+        ? `, mileage ${Number(rt.start_mileage).toLocaleString()}->${Number(rt.end_mileage).toLocaleString()}`
+        : '';
+      const respLine = `${unitTag} -> scene in ${durStr} over ${miStr}${mileagePart}`;
+      y = checkPageBreak(doc, y, 10, prio);
+      y = addNarrativeField(doc, 'Response', respLine, lx, y, ffw);
+    }
   }
 
   // Linked Persons — route through the shared addTableWithShading helper
@@ -3408,7 +3426,7 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
       v.license_plate || 'N/A',
       [v.year, v.make, v.model].filter(Boolean).join(' ') || 'N/A',
       (v.color || '').toUpperCase(),
-      titleCase(v.relationship || 'linked'),
+      humanizeRelationship(v.relationship),
     ]);
     y = addTableWithShading(doc,
       [{ label: 'PLATE', x: lx }, { label: 'VEHICLE', x: lx + 35 }, { label: 'COLOR', x: lx + 110 }, { label: 'RELATIONSHIP', x: lx + 140 }],
@@ -3422,7 +3440,7 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     const propRows = data.linked_properties.map(p => [
       p.name || 'N/A',
       p.address || '',
-      titleCase(p.relationship || 'linked'),
+      humanizeRelationship(p.relationship),
     ]);
     y = addTableWithShading(doc,
       [{ label: 'PROPERTY', x: lx }, { label: 'ADDRESS', x: lx + 50 }, { label: 'RELATIONSHIP', x: lx + 140 }],
@@ -3715,7 +3733,7 @@ async function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
       p.name || 'N/A',
       fmtDate(p.dob),
       (p.flags || '').toUpperCase(),
-      titleCase(p.relationship || 'linked'),
+      humanizeRelationship(p.relationship),
     ]);
     y = addTableWithShading(doc,
       [{ label: 'NAME', x: lx }, { label: 'DOB', x: lx + 70 }, { label: 'FLAGS', x: lx + 105 }, { label: 'RELATIONSHIP', x: lx + 140 }],
@@ -3729,7 +3747,7 @@ async function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
     const propRows = data.linked_properties.map(p => [
       p.name || 'N/A',
       p.address || '',
-      titleCase(p.relationship || 'linked'),
+      humanizeRelationship(p.relationship),
     ]);
     y = addTableWithShading(doc,
       [{ label: 'PROPERTY', x: lx }, { label: 'ADDRESS', x: lx + 50 }, { label: 'RELATIONSHIP', x: lx + 140 }],
@@ -5340,9 +5358,11 @@ async function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // Property / business site map — satellite-streets at close zoom shows the
-  // actual structure + parking; geocodes the full address when lat/lng absent
-  // (business records store no coordinates).
+  // Property / business site map — satellite-streets at close zoom 18 frames
+  // the actual structure + parking/lot tight in view (a property-level close-up,
+  // not zoomed out), while the hybrid style keeps the fronting road + labels
+  // visible. Geocodes the full address when lat/lng absent (business records
+  // store no coordinates).
   y = await addLocationMapSection(doc, {
     title: 'Location Map',
     lat: data.latitude,
@@ -5350,7 +5370,7 @@ async function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
     address: `${data.address || ''}${data.city ? `, ${data.city}` : ''}${data.state ? `, ${data.state}` : ''} ${data.zip || ''}`.trim(),
     caption: data.address || data.name,
     style: 'mapbox/satellite-streets-v12',
-    zoom: 17,
+    zoom: 18,
   }, y);
 
   // ── Access & Security ──
@@ -5506,7 +5526,7 @@ async function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
       p.name || 'N/A',
       fmtDate(p.dob),
       (p.flags || '').toUpperCase(),
-      titleCase(p.relationship || 'linked'),
+      humanizeRelationship(p.relationship),
     ]);
     y = addTableWithShading(doc,
       [{ label: 'NAME', x: lx }, { label: 'DOB', x: lx + 70 }, { label: 'FLAGS', x: lx + 105 }, { label: 'RELATIONSHIP', x: lx + 140 }],
@@ -5521,7 +5541,7 @@ async function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
       v.license_plate || 'N/A',
       [v.year, v.make, v.model].filter(Boolean).join(' ') || 'N/A',
       (v.color || '').toUpperCase(),
-      titleCase(v.relationship || 'linked'),
+      humanizeRelationship(v.relationship),
     ]);
     y = addTableWithShading(doc,
       [{ label: 'PLATE', x: lx }, { label: 'VEHICLE', x: lx + 35 }, { label: 'COLOR', x: lx + 110 }, { label: 'RELATIONSHIP', x: lx + 140 }],
@@ -5753,15 +5773,14 @@ async function generateCitationReport(doc: jsPDF, data: CitationPdfData) {
   }
 
   // ── Location / Geography ──
-  if (data.sector_id || data.zone_id || data.beat_id) {
+  // Printouts present the SHORT dispatch code only; the full Section/Zone/Beat
+  // names live on the Map UI (see drawDistrictBar + the dispatch-code rule).
+  if (data.sector_id || data.zone_id || data.beat_id || data.dispatch_code) {
     y = checkPageBreak(doc, y, 10, prio);
     const sec = openAutoSection(doc, 'Location / Geography', y); y = sec.contentY;
-    const qw = ffw / 4;
-    const g1 = addFieldPair(doc, 'Section', data.sector_id || '', lx, y, qw);
-    const g2 = addFieldPair(doc, 'Zone', zoneLeaf(data.zone_id), lx + qw, y, qw);
-    const g3 = addFieldPair(doc, 'Beat', beatLeaf(data.beat_id), lx + 2 * qw, y, qw);
-    const g4 = addFieldPair(doc, 'Section/Zone/Beat', sectionZoneBeatCombined(data.sector_id, data.zone_id, data.beat_id) || data.zone_beat || '', lx + 3 * qw, y, qw);
-    y = Math.max(g1, g2, g3, g4);
+    const code = data.dispatch_code || data.zone_beat
+      || sectionZoneBeatCombined(data.sector_id, data.zone_id, data.beat_id) || '';
+    y = addFieldPair(doc, 'Dispatch Code', code, lx, y, ffw);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 

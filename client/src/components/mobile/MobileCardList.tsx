@@ -161,7 +161,7 @@ export default function MobileCardList<T>({
             }}
           >
             <Search style={{ width: 16, height: 16, color: '#666666', flexShrink: 0 }} />
-            <input
+            <input id="ff-mobilecardlist-0"
               type="text"
               value={searchValue}
               onChange={(e) => handleSearch(e.target.value)}

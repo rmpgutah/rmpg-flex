@@ -48,6 +48,7 @@ import {
   type ExtractedField,
 } from '../utils/serveIntakeExtract';
 import { commitIntake, type CommitResult } from '../utils/serveIntakeRecords';
+import { emitAlert } from '../utils/alertHub';
 
 const si = new Hono<Env>();
 
@@ -74,7 +75,13 @@ const ATTEMPT_RESULTS = new Set([
 
 // ── OCR + upload constants ──────────────────────────────────
 const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;   // 25 MB per file
-const MAX_FILES_PER_UPLOAD = 12;
+// A single job folder legitimately carries many documents — Field Sheet +
+// Information Form + Court Docket + Summons + Complaint + Cover Sheet + Notices
+// — and scanned PDFs each fan out to several rasterized page-images. 12 was too
+// low for a whole-folder drop; 30 covers a real packet. Extraction is per-doc,
+// parallel, and timeout-bounded, so the higher count doesn't lengthen any single
+// AI call (only widens the parallel fan-out).
+const MAX_FILES_PER_UPLOAD = 30;
 const PDF_TOOLS_NAME = 'shared';
 const INTAKE_ROLES = ['admin', 'manager', 'supervisor', 'dispatcher', 'officer'];
 
@@ -147,6 +154,15 @@ async function scanDocumentHandler(c: any): Promise<Response> {
     return c.json({ error: `File size out of range (0 < n <= ${MAX_UPLOAD_BYTES})` }, 400);
   }
 
+  // Optional browser-extracted pdfjs text for born-digital PDFs. Mirrors the
+  // /upload path: prefer this over the PDF Tools container (which is NOT rolled
+  // out in prod — --containers-rollout=none — so a container fetch would hang
+  // the request the full CONTAINER_TIMEOUT_MS and then 500).
+  const clientText = (() => {
+    const raw = form.get('client_text');
+    return typeof raw === 'string' ? raw.trim() : '';
+  })();
+
   let extraction: ExtractionResult;
   let pageCount = 0;
   let ocrUsed = false;
@@ -155,16 +171,52 @@ async function scanDocumentHandler(c: any): Promise<Response> {
   try {
     if (isImage(file.type)) {
       const bytes = new Uint8Array(await file.arrayBuffer());
-      extraction = await extractFromImage(c.env.AI, bytes);
+      extraction = await withTimeout(
+        extractFromImage(c.env.AI, bytes), AI_TIMEOUT_MS, 'Vision OCR timed out',
+      );
       ocrEngine = 'workers-ai-vision';
     } else if (isPdf(file.type)) {
       const bytes = new Uint8Array(await file.arrayBuffer());
-      const container = getContainer(c.env.PDF_TOOLS, PDF_TOOLS_NAME);
-      const txt = await extractTextFromPdf(container, bytes, file.name || 'doc.pdf');
-      pageCount = txt.page_count;
-      ocrUsed = txt.ocr_used;
-      ocrEngine = ocrUsed ? 'tesseract' : 'pdftotext';
-      extraction = await extractFromText(c.env.AI, txt.text);
+      let text = clientText;
+      ocrEngine = 'pdfjs-client';
+
+      if (clientText.length < MIN_CLIENT_TEXT_CHARS) {
+        // Insufficient born-digital text — race the (prod-disabled) container
+        // against its timeout rather than awaiting it bare. On timeout /
+        // unavailable AND no usable client text, this is a scanned PDF we
+        // cannot OCR server-side: return a clean 422 with guidance instead of
+        // hanging to a 500. The client rasterizes to images and resends those.
+        try {
+          const container = getContainer(c.env.PDF_TOOLS, PDF_TOOLS_NAME);
+          const txt = await withTimeout(
+            extractTextFromPdf(container, bytes, file.name || 'doc.pdf'),
+            CONTAINER_TIMEOUT_MS, 'PDF Tools container timed out or unavailable',
+          );
+          text = txt.text;
+          pageCount = txt.page_count;
+          ocrUsed = txt.ocr_used;
+          ocrEngine = ocrUsed ? 'tesseract' : 'pdftotext';
+        } catch {
+          return c.json({
+            error: 'scanned_pdf_unsupported',
+            code: 'SCANNED_PDF',
+            message: 'Scanned PDF — rasterize the pages client-side and resend each as an image.',
+          }, 422);
+        }
+      }
+
+      if (text.trim().length < 20) {
+        return c.json({
+          error: 'scanned_pdf_unsupported',
+          code: 'SCANNED_PDF',
+          message: 'Scanned PDF — rasterize the pages client-side and resend each as an image.',
+        }, 422);
+      }
+
+      extraction = await withTimeout(
+        extractFromText(c.env.AI, text, c.env.SERVE_INTAKE_LORA),
+        AI_TIMEOUT_MS, 'Text extraction timed out',
+      );
     } else {
       return c.json({ error: `Unsupported file type: ${file.type}` }, 400);
     }
@@ -319,7 +371,7 @@ si.post('/upload', async (c) => {
         }
         const ex = text.trim().length >= 20
           ? await withTimeout(
-              extractFromText(c.env.AI, text.slice(0, PER_DOC_CAP)),
+              extractFromText(c.env.AI, text.slice(0, PER_DOC_CAP), c.env.SERVE_INTAKE_LORA),
               AI_TIMEOUT_MS, 'Field extraction timed out',
             ).catch((e) => emptyExtraction(EXTRACT_MODEL, e instanceof Error ? e.message : String(e)))
           : emptyExtraction(EXTRACT_MODEL, 'Insufficient text to extract');
@@ -411,9 +463,11 @@ si.post('/upload', async (c) => {
 
   // ── Phase 3: persist a serve_intake_documents row per file ──
   const documents: any[] = [];
+  const failedDocs: string[] = [];   // docs that yielded no usable extraction
   for (const c2 of collected) {
     if (c2.error && !c2.text) {
       documents.push({ file_name: c2.file.name, status: 'failed', error: c2.error });
+      failedDocs.push(c2.file.name);
       continue;
     }
     // Per-document extraction now lives on c2.ex (Vision for images,
@@ -427,6 +481,7 @@ si.post('/upload', async (c) => {
     // Capture this doc's own extraction error (timeout / parse miss / AI
     // error) so a confidence=0 row is diagnosable instead of silent.
     const docError = c2.error ?? c2.ex.error ?? null;
+    if (docError) failedDocs.push(c2.file.name);   // extracted text but no fields → flag for the partial-failure warning
     const res = await execute(
       db,
       `INSERT INTO serve_intake_documents (
@@ -490,11 +545,29 @@ si.post('/upload', async (c) => {
   // instead of a silent partial success (doc rows but no queue entry).
   const noRecords = commit.serve_queue_id == null && commit.call_id == null;
   const hadText = collected.some((c2) => (c2.text || '').trim().length > 0);
-  const warning = noRecords
+  let warning: string | null = noRecords
     ? (hadText
         ? `Documents stored but no recipient could be extracted${combined.error ? ` (${combined.error})` : ''}. Review the documents and create the entry manually.`
         : 'No readable text found in the uploaded documents (likely scans). Nothing was extracted.')
     : null;
+  // Partial failure: the entry WAS created, but one or more documents didn't
+  // extract — fields that live only on those (e.g. attorney/case details from a
+  // Court Docket whose OCR timed out) may be missing. Previously this was
+  // silent; surface it so the user knows to review those documents.
+  if (!noRecords && failedDocs.length > 0) {
+    warning = `Entry created, but ${failedDocs.length} document(s) didn't extract (${failedDocs.join(', ')}). Some fields may be missing — review those documents.`;
+  }
+
+  // Intake can spawn a CAD call (createServiceCall writes calls_for_service
+  // directly, bypassing the calls.ts POST broadcast). Fan it to every dispatch
+  // console via AlertHubDO so the new call lands on the board live, not only on
+  // the next 20s poll. Best-effort — never blocks the response.
+  if (commit.call_id) {
+    try {
+      const newCall = await queryFirst(db, 'SELECT * FROM calls_for_service WHERE id = ?', commit.call_id);
+      if (newCall) await emitAlert(c.env, 'dispatch_update', { action: 'call_created', call: newCall });
+    } catch (err) { console.warn('[serveIntake] call_created broadcast skipped (non-fatal):', err); }
+  }
 
   return c.json({
     success: commit.serve_queue_id != null || commit.call_id != null,
@@ -603,7 +676,7 @@ si.post('/intake', async (c) => {
   if (docs.length === 0) return c.json({ error: 'No documents in request' }, 400);
 
   const combined = docs.map((d) => `--- ${d.type || 'document'} ---\n${d.text || ''}`).join('\n\n');
-  const extraction = await extractFromText(c.env.AI, combined);
+  const extraction = await extractFromText(c.env.AI, combined, c.env.SERVE_INTAKE_LORA);
   // Same deterministic normalization the /upload path applies, so the
   // legacy single-call route produces equally clean field shapes.
   const normalized = normalizeFields(extraction.fields);
@@ -631,6 +704,15 @@ si.post('/intake', async (c) => {
   // weather/lighting/lat/lng remain null (those need a geocode step
   // — not in this PR; the geocode route at /api/geocode handles it
   // post-intake when the queue entry is opened in the route planner).
+  // Same live-board fan-out as /upload: surface an intake-spawned CAD call on
+  // every dispatch console immediately (best-effort).
+  if (commit.call_id) {
+    try {
+      const newCall = await queryFirst(getDb(c.env), 'SELECT * FROM calls_for_service WHERE id = ?', commit.call_id);
+      if (newCall) await emitAlert(c.env, 'dispatch_update', { action: 'call_created', call: newCall });
+    } catch (err) { console.warn('[serveIntake] call_created broadcast skipped (non-fatal):', err); }
+  }
+
   return c.json({
     success: extraction.success && (commit.serve_queue_id !== null || commit.call_id !== null),
     person_id: commit.person_id,

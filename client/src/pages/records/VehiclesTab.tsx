@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import {
   Search, Car, Shield, MapPin, Loader2, Trash2, Pencil, FileText, ExternalLink,
-  X, Phone, AlertTriangle, Hash, Calendar, Archive, RotateCcw, ArrowUpDown, Filter,
+  X, Phone, AlertTriangle, Hash, Calendar, Archive, RotateCcw, ArrowUpDown, Filter, Eye,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { useAuth } from '../../context/AuthContext';
+import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
+import { useMenuActions } from '../../utils/contextMenuActions';
 import { openRecordWindow } from '../../utils/windowManager';
 import { safeDateStr, parseTimestamp } from '../../utils/dateUtils';
 import VehicleFormModal from '../../components/VehicleFormModal';
@@ -20,10 +22,14 @@ import RecordHero from '../../components/records/RecordHero';
 import { recordPosture, toneStyle } from '../../components/records/recordVisuals';
 import type { Vehicle, RecordAlert, RecordEntityType } from '../../types';
 
-// Active-stolen check shared by the list badge + posture ring so they agree.
+// Active-stolen check shared by the list badge, counts, list ring + posture so
+// they agree. ONLY a confirmed 'Stolen' status is an active threat — the other
+// STOLEN_STATUS_OPTIONS (Not Stolen / Recovered / Cleared / Under Investigation
+// / Unknown) and the legacy 'None' sentinel must NOT trip the STOLEN badge. The
+// old check flagged everything ≠ None/Recovered, so 'Not Stolen'/'Unknown'/etc.
+// all showed a false STOLEN alert.
 function isActiveStolen(v: Vehicle): boolean {
-  const s = (v.stolen_status || '').toLowerCase();
-  return !!s && !['none', 'recovered', 'cleared', ''].includes(s);
+  return (v.stolen_status || '').trim().toLowerCase() === 'stolen';
 }
 // Posture-relevant flags for a vehicle (list ring + detail hero).
 function vehiclePostureFlags(v: Vehicle): Array<string | null | undefined> {
@@ -395,7 +401,7 @@ function PlateLookupPanel({ onAutoFill }: { onAutoFill?: (data: Partial<Vehicle>
       {expanded && (
         <div className="px-3 pb-2 space-y-2">
           <div className="flex gap-1.5">
-            <input
+            <input id="ff-vehiclestab-0"
               type="text"
               className="input-dark flex-1 text-[10px] min-h-[36px]"
               placeholder="Plate number..."
@@ -403,7 +409,7 @@ function PlateLookupPanel({ onAutoFill }: { onAutoFill?: (data: Partial<Vehicle>
               onChange={(e) => setPlate(e.target.value.toUpperCase())}
               onKeyDown={(e) => { if (e.key === 'Enter') handleLookup(); }}
             />
-            <input
+            <input id="ff-vehiclestab-1"
               type="text"
               className="input-dark text-[10px] min-h-[36px]"
               style={{ width: 40 }}
@@ -481,6 +487,30 @@ export function VehiclesTabList({ state }: { state: VehiclesTabState }) {
     vehicleModalOpen, editingVehicle, vehicleSubmitting, vehicleSubmitError, handleVehicleSubmit, closeModal,
   } = state;
 
+  // ── Right-click context menu ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+  const canModify = !showArchived || user?.role === 'admin';
+
+  const buildVehicleMenu = (v: Vehicle): ContextMenuItem[] => {
+    const label = `${v.license_plate || 'NO PLATE'}${v.make || v.model ? ` ${v.make} ${v.model}`.trimEnd() : ''}`.trim();
+    return [
+      m.action('Open record', () => setSelectedVehicle(v), { icon: <Eye size={12} /> }),
+      ...(canModify ? [m.action('Edit vehicle', () => openEditVehicle(v), { icon: <Pencil size={12} /> })] : []),
+      m.action('Open in new window', () => openRecordWindow('vehicle', v.id), { icon: <ExternalLink size={12} /> }),
+      m.separator(),
+      m.copy('Copy plate', v.license_plate),
+      ...(v.vin ? [m.copy('Copy VIN', v.vin)] : []),
+      m.copyId(v.id),
+      ...(v.license_plate ? [m.go('Run plate (NCIC)', `/ncic?type=vehicle&q=${encodeURIComponent(v.license_plate)}`, <Search size={12} />)] : []),
+      m.separator(),
+      ...(showArchived
+        ? (canModify ? [m.action('Unarchive', () => handleUnarchive('vehicles', v.id), { icon: <RotateCcw size={12} /> })] : [])
+        : [m.action('Archive', () => handleArchive('vehicles', v.id), { icon: <Archive size={12} /> })]),
+      ...(canModify ? [m.action('Delete', () => setDeleteTarget({ type: 'vehicle', id: v.id, label }), { icon: <Trash2 size={12} />, danger: true })] : []),
+    ];
+  };
+
   // ── Sort + filter ──
   const [sortBy, setSortBy] = useState<'plate' | 'make' | 'newest'>('plate');
   const [filterFlag, setFilterFlag] = useState<string | null>(null);
@@ -489,7 +519,7 @@ export function VehiclesTabList({ state }: { state: VehiclesTabState }) {
     let list = [...filteredVehicles];
     if (filterFlag) {
       list = list.filter(v => {
-        if (filterFlag === 'stolen') return v.stolen_status && v.stolen_status !== 'None' && v.stolen_status !== 'Recovered';
+        if (filterFlag === 'stolen') return isActiveStolen(v);
         if (filterFlag === 'towed') return v.tow_status && v.tow_status !== 'None';
         if (filterFlag === 'commercial') return v.commercial_vehicle;
         if (filterFlag === 'expired') return v.registration_expiry && parseTimestamp(v.registration_expiry) < new Date();
@@ -504,7 +534,7 @@ export function VehiclesTabList({ state }: { state: VehiclesTabState }) {
 
   const stats = React.useMemo(() => ({
     total: filteredVehicles.length,
-    stolen: filteredVehicles.filter(v => v.stolen_status && v.stolen_status !== 'None' && v.stolen_status !== 'Recovered').length,
+    stolen: filteredVehicles.filter(v => isActiveStolen(v)).length,
     towed: filteredVehicles.filter(v => v.tow_status && v.tow_status !== 'None').length,
     commercial: filteredVehicles.filter(v => v.commercial_vehicle).length,
   }), [filteredVehicles]);
@@ -515,7 +545,7 @@ export function VehiclesTabList({ state }: { state: VehiclesTabState }) {
       <div className="p-3 border-b border-rmpg-600" role="search">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-400 pointer-events-none" />
-          <input
+          <input id="ff-vehiclestab-2"
             type="text"
             className="input-dark pl-9 w-full text-[11px] min-h-[36px] focus:ring-1 focus:ring-brand-500/50 focus:border-brand-600 transition-shadow"
             placeholder="Search by plate, make, model, VIN, owner..." aria-label="Search by plate, make, model, VIN, owner..."
@@ -588,9 +618,10 @@ export function VehiclesTabList({ state }: { state: VehiclesTabState }) {
             tabIndex={0}
             onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedVehicle(selectedVehicle?.id === v.id ? null : v); } }}
             onClick={() => setSelectedVehicle(selectedVehicle?.id === v.id ? null : v)}
+            onContextMenu={(e) => openMenu(e, buildVehicleMenu(v))}
             className={`
               px-4 py-3 border-b border-rmpg-700/50 cursor-pointer transition-all duration-150
-              ${v.stolen_status && v.stolen_status !== 'None' && v.stolen_status !== 'Recovered'
+              ${isActiveStolen(v)
                 ? 'bg-red-950/30 border-l-2 border-l-red-500'
                 : selectedVehicle?.id === v.id
                   ? 'bg-brand-900/20 border-l-2 border-l-brand-500'
@@ -626,7 +657,7 @@ export function VehiclesTabList({ state }: { state: VehiclesTabState }) {
                       'bg-rmpg-700/50 text-rmpg-300 border-rmpg-600/50'
                     }`}>{v.plate_state}</span>
                   )}
-                  {v.stolen_status && v.stolen_status !== 'None' && v.stolen_status !== 'Recovered' && (
+                  {isActiveStolen(v) && (
                     <span className="px-1 py-0.5 text-[8px] font-bold bg-red-900/60 text-red-400 border border-red-700/50 animate-pulse">STOLEN</span>
                   )}
                   {v.tow_status && v.tow_status !== 'None' && (

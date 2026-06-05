@@ -19,6 +19,7 @@ import {
   Car,
   AlertTriangle,
   FileWarning,
+  Scale,
   Video,
   ClipboardList,
   ShieldBan,
@@ -55,8 +56,40 @@ import {
   CheckCircle,
   DollarSign,
   Share2,
+  // Spillman module-bar: distinct per-module glyphs (no more duplicate Shields)
+  Siren,
+  ScanEye,
+  LifeBuoy,
+  Fingerprint,
+  ScanSearch,
+  FileSignature,
+  Webcam,
+  PieChart,
+  LayoutTemplate,
+  Boxes,
+  HeartHandshake,
+  ListTodo,
+  AlertOctagon,
+  UsersRound,
+  Pill,
+  Crosshair,
+  HeartPulse,
+  HandHeart,
+  BellRing,
+  Award,
+  UserPlus,
+  Smartphone,
+  Navigation2,
+  Sun,
+  Moon,
+  MapPin,
+  BookOpen,
+  UserCheck,
+  Globe,
+  HelpCircle,
+  Route,
+  List,
 } from 'lucide-react';
-import { Navigation2, Sun, Moon } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import PttController from './PttController';
 import { initSettingsSync } from '../utils/settingsSync';
@@ -70,6 +103,7 @@ import MenuBar from './MenuBar';
 // Sidebar removed — navigation moved to top icon toolbar
 import ErrorBoundary from './ErrorBoundary';
 import NotificationCenter from './NotificationCenter';
+import AnnouncementBanner from './AnnouncementBanner';
 import PanicButton from './PanicButton';
 import UserProfileModal from './UserProfileModal';
 import DispatcherTranscript from './DispatcherTranscript';
@@ -105,9 +139,11 @@ const PAGE_TITLES: Record<string, string> = {
   '/fleet': 'Fleet',
   '/warrants': 'Warrants',
   '/citations': 'Citations',
+  '/law-book': 'Law Book',
   '/field-interviews': 'Field Interviews',
   '/trespass-orders': 'Trespass Orders',
   '/mdt': 'MDT',
+  '/mobile': 'Mobile',
   '/ncic': 'NCIC Terminal',
   '/dl-search': 'DL Search',
   '/shift-plans': 'Shift Plans',
@@ -151,6 +187,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/serve-intake': 'Service Intake',
   '/web-research': 'Web Research',
   '/settings': 'Settings',
+  '/navigation': 'Navigation & Route Planning',
   '/jail': 'Jail Management',
   '/affairs': 'Internal Affairs',
   '/assets': 'Asset Management',
@@ -160,6 +197,9 @@ const PAGE_TITLES: Record<string, string> = {
   '/training-mgmt': 'Training Admin',
   '/qa': 'Quality Assurance',
   '/billing': 'Billing',
+  '/court-records': 'Court Records',
+  '/documents': 'Documents',
+  '/dashcam-ai': 'Dashcam AI Console',
   '/risk': 'Risk Management',
   '/interagency': 'Interagency',
   '/body-cameras': 'Body Cameras',
@@ -182,31 +222,67 @@ interface NavItem {
 }
 
 const TOOLBAR_NAV: NavItem[] = [
-  { path: '/', icon: LayoutDashboard, label: 'Dashboard', group: 'ops', shortcut: 'F1' },
-  { path: '/dispatch', icon: Radio, label: 'Dispatch', group: 'ops', shortcut: 'F2' },
-  { path: '/map', icon: Map, label: 'Map', group: 'ops', shortcut: 'F3' },
+  { path: '/', icon: LayoutDashboard, label: 'Dashboard', group: 'ops', shortcut: 'F1', children: [
+    { path: '/', icon: LayoutDashboard, label: 'Dashboard' },
+    { path: '/command-center', icon: Crosshair, label: 'Command Center' },
+    { path: '/security-dashboard', icon: Shield, label: 'Security Dashboard' },
+    { path: '/help', icon: HelpCircle, label: 'Help & About' },
+  ]},
+  { path: '/dispatch', icon: Radio, label: 'Dispatch', group: 'ops', shortcut: 'F2', children: [
+    { path: '/dispatch', icon: Radio, label: 'Dispatch Board' },
+    { path: '/mdt', icon: Monitor, label: 'MDT Terminal' },
+    { path: '/geography', icon: MapPin, label: 'Geography / Zones' },
+    { path: '/shift-plans', icon: Calendar, label: 'Shift Plans' },
+    { path: '/dar', icon: ClipboardCheck, label: 'Daily Activity' },
+    { path: '/arrest-records', icon: Siren, label: 'Arrest Records' },
+  ]},
+  { path: '/map', icon: Map, label: 'Map', group: 'ops', shortcut: 'F3', children: [
+    { path: '/map', icon: Map, label: 'Live Map' },
+    { path: '/navigation', icon: Route, label: 'Navigation & Route Planning' },
+    { path: '/geo-data-viewer', icon: MapPin, label: 'Geo Data Viewer' },
+    { path: '/command-center', icon: Crosshair, label: 'Command Center' },
+  ]},
   { path: '/mdt', icon: Monitor, label: 'MDT', group: 'ops', shortcut: 'F4' },
-  { path: '/ncic', icon: Terminal, label: 'NCIC', group: 'ops', shortcut: 'F5' },
+  { path: '/mobile', icon: Smartphone, label: 'Mobile', group: 'ops' },
+  { path: '/navigation', icon: Navigation2, label: 'Navigate', group: 'ops' },
+  { path: '/ncic', icon: Terminal, label: 'NCIC', group: 'ops', shortcut: 'F5', children: [
+    { path: '/ncic', icon: Terminal, label: 'NCIC Terminal' },
+    { path: '/dl-search', icon: CreditCard, label: 'DL Search' },
+    { path: '/criminal-history', icon: Search, label: 'Criminal History' },
+    { path: '/national-warrant-search', icon: Globe, label: 'National Warrant Search' },
+    { path: '/colorado-doc', icon: UserCheck, label: 'Colorado DOC Search' },
+    { path: '/sex-offender-registry', icon: UserCheck, label: 'Sex Offender Registry' },
+  ]},
   { path: '/records', icon: Database, label: 'Records', group: 'records', shortcut: 'F6', children: [
     { path: '/incidents', icon: FileText, label: 'Incidents' },
     { path: '/records', icon: Database, label: 'Records' },
     { path: '/field-interviews', icon: ClipboardList, label: 'Field Interviews' },
-    { path: '/criminal-history', icon: Search, label: 'Criminal History' },
+    { path: '/criminal-history', icon: Fingerprint, label: 'Criminal History' },
     { path: '/dl-search', icon: CreditCard, label: 'DL Search' },
-    { path: '/microbilt', icon: Search, label: 'MicroBilt' },
+    { path: '/microbilt', icon: ScanSearch, label: 'MicroBilt' },
     { path: '/evidence', icon: Package, label: 'Evidence / Property' },
     { path: '/forensic-lab', icon: Microscope, label: 'Forensic Lab' },
     { path: '/forensics', icon: Network, label: 'Connections' },
     { path: '/cases', icon: Briefcase, label: 'Case Management' },
+    { path: '/arrest-records', icon: Siren, label: 'Arrest Records' },
+    { path: '/web-research', icon: Globe, label: 'Web Research' },
+    { path: '/documents', icon: FileText, label: 'Documents' },
   ]},
-  { path: '/warrants', icon: AlertTriangle, label: 'Enforce', group: 'records', shortcut: 'F7', children: [
+  { path: '/warrants', icon: Siren, label: 'Enforce', group: 'records', shortcut: 'F7', children: [
     { path: '/warrants', icon: AlertTriangle, label: 'Warrants' },
     { path: '/citations', icon: FileWarning, label: 'Citations' },
+    { path: '/law-book', icon: Scale, label: 'Law Book' },
     { path: '/trespass-orders', icon: ShieldBan, label: 'Trespass Orders' },
     { path: '/code-enforcement', icon: Construction, label: 'Code Enforcement' },
     { path: '/court', icon: Gavel, label: 'Court Tracker' },
+    { path: '/court-records', icon: Gavel, label: 'Court Records' },
     { path: '/offender-registry', icon: UserX, label: 'Offender Registry' },
-    { path: '/serve', icon: Briefcase, label: 'Process Server' },
+    { path: '/sex-offender-registry', icon: UserCheck, label: 'Sex Offender Registry' },
+    { path: '/serve', icon: FileSignature, label: 'Process Server' },
+    { path: '/serve-intake', icon: FileText, label: 'Serve Intake' },
+    { path: '/use-of-force', icon: Shield, label: 'Use of Force' },
+    { path: '/national-warrant-search', icon: Globe, label: 'National Warrant Search' },
+    { path: '/arrest-records', icon: Siren, label: 'Arrest Records' },
   ]},
   { path: '/personnel', icon: Users, label: 'Personnel', group: 'records', shortcut: 'F8', children: [
     { path: '/personnel', icon: Users, label: 'Personnel' },
@@ -214,49 +290,74 @@ const TOOLBAR_NAV: NavItem[] = [
     { path: '/fleet', icon: Car, label: 'Fleet' },
     { path: '/body-cameras', icon: Video, label: 'Body Cameras' },
     { path: '/dash-cameras', icon: Camera, label: 'Dash Cameras' },
-    { path: '/dashcams', icon: Camera, label: 'Dashcam System' },
+    { path: '/dashcams', icon: Webcam, label: 'Dashcam System' },
+    { path: '/dashcam-ai', icon: Camera, label: 'Dashcam AI Console' },
+    { path: '/training', icon: GraduationCap, label: 'Training' },
+    { path: '/training-docs', icon: BookOpen, label: 'Training Docs' },
   ]},
   { path: '/communications', icon: MessageSquare, label: 'Comms', group: 'comms', shortcut: 'F9', children: [
     { path: '/communications', icon: MessageSquare, label: 'Comms' },
     { path: '/radio', icon: Radio, label: 'Radio' },
     { path: '/email', icon: Mail, label: 'Email' },
     { path: '/patrol', icon: QrCode, label: 'Patrol' },
+    { path: '/notifications', icon: Megaphone, label: 'Alert Center' },
+    { path: '/alerts', icon: AlertTriangle, label: 'Notifications' },
   ]},
   { path: '/reports', icon: BarChart3, label: 'Reports', group: 'analysis', shortcut: 'F10', children: [
     { path: '/reports', icon: BarChart3, label: 'Reports' },
     { path: '/shift-plans', icon: Calendar, label: 'Shift Plans' },
-    { path: '/statute-analytics', icon: BarChart3, label: 'Statute Analytics' },
-    { path: '/reports/custom', icon: Database, label: 'Report Builder' },
+    { path: '/statute-analytics', icon: PieChart, label: 'Statute Analytics' },
+    { path: '/reports/custom', icon: LayoutTemplate, label: 'Report Builder' },
     { path: '/crime-analysis', icon: TrendingUp, label: 'Crime Analysis' },
     { path: '/dar', icon: ClipboardCheck, label: 'Daily Activity' },
+    { path: '/forensic-lab', icon: Microscope, label: 'Forensic Lab' },
+    { path: '/forensics', icon: Network, label: 'Connections' },
+    { path: '/invoices', icon: DollarSign, label: 'Invoices' },
   ]},
-  { path: '/crm', icon: Briefcase, label: 'Overwatch', group: 'analysis' },
+  { path: '/crm', icon: Briefcase, label: 'Overwatch', group: 'analysis', children: [
+    { path: '/crm', icon: Briefcase, label: 'Overwatch' },
+    { path: '/community', icon: Users, label: 'Community' },
+  ]},
+  { path: '/training', icon: GraduationCap, label: 'Training', group: 'analysis', children: [
+    { path: '/training', icon: GraduationCap, label: 'Training' },
+    { path: '/training-docs', icon: BookOpen, label: 'Training Docs' },
+    { path: '/training-mgmt', icon: ClipboardCheck, label: 'Training Admin' },
+  ]},
+  { path: '/forensics', icon: Network, label: 'Connections', group: 'analysis', adminOnly: true, children: [
+    { path: '/forensics', icon: Network, label: 'Connection Analysis' },
+    { path: '/forensic-lab', icon: Microscope, label: 'Forensic Lab' },
+    { path: '/iped', icon: Microscope, label: 'IPED Forensics' },
+  ]},
+  { path: '/crm', icon: ScanEye, label: 'Overwatch', group: 'analysis' },
   { path: '/training', icon: GraduationCap, label: 'Training', group: 'analysis' },
   { path: '/forensics', icon: Network, label: 'Connections', group: 'analysis', adminOnly: true },
   { path: '/jail', icon: Building2, label: 'Jail/IA', group: 'support', children: [
     { path: '/jail', icon: Building2, label: 'Jail Management' },
     { path: '/affairs', icon: ShieldAlert, label: 'Internal Affairs' },
-    { path: '/assets', icon: Package, label: 'Asset Management' },
+    { path: '/assets', icon: Boxes, label: 'Asset Management' },
   ]},
-  { path: '/billing', icon: DollarSign, label: 'Services', group: 'support', children: [
+  { path: '/billing', icon: LifeBuoy, label: 'Services', group: 'support', children: [
     { path: '/billing', icon: DollarSign, label: 'Billing' },
-    { path: '/community', icon: Users, label: 'Community' },
-    { path: '/tasks', icon: ClipboardList, label: 'Task Management' },
+    { path: '/community', icon: HeartHandshake, label: 'Community' },
+    { path: '/tasks', icon: ListTodo, label: 'Task Management' },
     { path: '/alerts', icon: Megaphone, label: 'Notifications' },
     { path: '/qa', icon: CheckCircle, label: 'QA' },
-    { path: '/risk', icon: Shield, label: 'Risk Management' },
+    { path: '/risk', icon: AlertOctagon, label: 'Risk Management' },
     { path: '/interagency', icon: Share2, label: 'Interagency' },
-    { path: '/gang-intel', icon: Shield, label: 'Gang Intel' },
-    { path: '/narcotics', icon: Shield, label: 'Narcotics' },
-    { path: '/special-ops', icon: Shield, label: 'Special Ops' },
-    { path: '/crisis-response', icon: Shield, label: 'Crisis Response' },
-    { path: '/victim-services', icon: Shield, label: 'Victim Services' },
-    { path: '/alarms', icon: Shield, label: 'Alarm Management' },
-    { path: '/accreditation', icon: Shield, label: 'Accreditation' },
-    { path: '/recruitment', icon: Shield, label: 'Recruitment' },
+    { path: '/gang-intel', icon: UsersRound, label: 'Gang Intel' },
+    { path: '/narcotics', icon: Pill, label: 'Narcotics' },
+    { path: '/special-ops', icon: Crosshair, label: 'Special Ops' },
+    { path: '/crisis-response', icon: HeartPulse, label: 'Crisis Response' },
+    { path: '/victim-services', icon: HandHeart, label: 'Victim Services' },
+    { path: '/alarms', icon: BellRing, label: 'Alarm Management' },
+    { path: '/accreditation', icon: Award, label: 'Accreditation' },
+    { path: '/recruitment', icon: UserPlus, label: 'Recruitment' },
+    { path: '/invoices', icon: DollarSign, label: 'Invoices' },
+    { path: '/command-center', icon: Crosshair, label: 'Command Center' },
   ]},
   { path: '/audit', icon: ScrollText, label: 'Audit', group: 'system', shortcut: 'F11', adminOnly: true },
   { path: '/admin', icon: Settings, label: 'Admin', group: 'system', shortcut: 'F12', adminOnly: true },
+  { path: '/navigation', icon: Navigation2, label: 'Nav Index', group: 'system' },
 ];
 
 // Paths that client_viewer role is NOT allowed to see
@@ -429,47 +530,11 @@ export default function Layout() {
   // handled by AuthContext and show messages on the login page.
   const showSessionWarning = false;
 
-  // ── Feature 24: Auto-logout on idle ──
-  // This is a CJIS-style backstop for a genuinely abandoned workstation, NOT
-  // a productivity timer. A dispatcher monitoring a live incident — watching
-  // the map, on the radio, reading a long call — must never be logged out
-  // mid-shift. So the window is shift-length (12h) and "activity" counts:
-  //   • broad user input (move/click/key/scroll/touch/wheel), not just clicks
-  //   • the tab regaining visibility
-  //   • network traffic — every apiFetch dispatches `rmpg:activity`, so live
-  //     polling / live-sync keeps a monitoring-only screen alive.
-  // Net effect: the timer only fires if the app sits with zero user presence
-  // AND zero network traffic for a full 12 hours (i.e. truly walked away).
-  const lastActivityRef = useRef(Date.now());
-  const [showIdleDialog, setShowIdleDialog] = useState(false);
-  const IDLE_TIMEOUT_MS = 12 * 60 * 60 * 1000; // 12h — full shift backstop
-  const IDLE_WARNING_MS = IDLE_TIMEOUT_MS - 5 * 60 * 1000; // warn 5 min before
-
-  useEffect(() => {
-    const resetActivity = () => { lastActivityRef.current = Date.now(); setShowIdleDialog(false); };
-    // Visual activity: broad input set so passive monitoring (mouse drift,
-    // a glance-and-scroll) counts. Network activity: `rmpg:activity` from
-    // apiFetch. Tab focus: `visibilitychange` (fires on document).
-    const events = ['mousedown', 'mousemove', 'keydown', 'scroll', 'wheel', 'touchstart', 'rmpg:activity'];
-    events.forEach(ev => window.addEventListener(ev, resetActivity, { passive: true }));
-    const onVisible = () => { if (document.visibilityState === 'visible') resetActivity(); };
-    document.addEventListener('visibilitychange', onVisible);
-
-    const checkIdle = setInterval(() => {
-      const idle = Date.now() - lastActivityRef.current;
-      if (idle >= IDLE_TIMEOUT_MS) {
-        logout();
-      } else if (idle >= IDLE_WARNING_MS) {
-        setShowIdleDialog(true);
-      }
-    }, 30000); // check every 30s
-
-    return () => {
-      events.forEach(ev => window.removeEventListener(ev, resetActivity));
-      document.removeEventListener('visibilitychange', onVisible);
-      clearInterval(checkIdle);
-    };
-  }, [logout]);
+  // ── Feature 24: Auto-logout on idle — REMOVED per operator request ──
+  // The idle backstop that signed a workstation out after 12h of zero
+  // user presence + zero network traffic has been removed. Sessions now
+  // persist until the user explicitly signs out (access tokens still
+  // auto-refresh via AuthContext, so the session simply stays alive).
 
   // Live header stats
   const [activeCallCount, setActiveCallCount] = useState(0);
@@ -855,7 +920,7 @@ export default function Layout() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="field-label">First Name <span className="text-red-500">*</span></label>
-                <input
+                <input id="ff-layout-0"
                   type="text"
                   value={setupFirstName}
                   onChange={e => setSetupFirstName(e.target.value)}
@@ -866,7 +931,7 @@ export default function Layout() {
               </div>
               <div>
                 <label className="field-label">Last Name <span className="text-red-500">*</span></label>
-                <input
+                <input id="ff-layout-1"
                   type="text"
                   value={setupLastName}
                   onChange={e => setSetupLastName(e.target.value)}
@@ -1072,7 +1137,7 @@ export default function Layout() {
                   const isLight = html.classList.contains('theme-light');
                   applyThemePreference(isLight ? 'dark' : 'light');
                   // Persist via API
-                  try { apiFetch('/user/preferences', { method: 'PUT', body: JSON.stringify({ theme_preference: isLight ? 'dark' : 'light' }) }); } catch {}
+                  apiFetch('/user/preferences', { method: 'PUT', body: JSON.stringify({ theme_preference: isLight ? 'dark' : 'light' }) }).catch(() => {});
                 }}
                 className="toolbar-btn transition-colors duration-150 hover:text-brand-400 active:scale-[0.97]"
                 title="Toggle Light/Dark Theme"
@@ -1345,7 +1410,7 @@ export default function Layout() {
                     aria-label={`Open ${item.label} in new window`}
                     style={{ height: 44, padding: '2px 6px' }}
                   >
-                    <Icon style={{ width: 16, height: 16, color: '#666666', marginBottom: 1 }} />
+                    <Icon style={{ width: 16, height: 16, color: 'currentColor', marginBottom: 1 }} />
                     <span className="font-medium leading-none" style={{ fontSize: 9, letterSpacing: '0.02em' }}>{item.label}</span>
                   </button>
                 </React.Fragment>
@@ -1390,7 +1455,9 @@ export default function Layout() {
                       style={{
                         width: 16,
                         height: 16,
-                        color: isActive ? '#999999' : '#666666',
+                        // Inherit the button's currentColor so active (gold) + hover
+                        // states drive the glyph automatically — see .toolbar-nav-btn CSS.
+                        color: 'currentColor',
                         marginBottom: 1,
                       }}
                     />
@@ -1423,7 +1490,7 @@ export default function Layout() {
                           fontSize: 7,
                           top: 2,
                           right: 3,
-                          color: isActive ? '#999999' : '#3a3a3a',
+                          color: isActive ? 'var(--brand-gold)' : '#3a3a3a',
                         }}
                       >
                         {item.shortcut}
@@ -1437,7 +1504,7 @@ export default function Layout() {
                           position: 'absolute',
                           bottom: 2,
                           right: 2,
-                          color: '#3a3a3a',
+                          color: isActive ? 'var(--brand-gold)' : '#3a3a3a',
                           transform: isDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)',
                           transition: 'transform 0.15s',
                         }}
@@ -1515,6 +1582,9 @@ export default function Layout() {
         {/* Page Content (recessed panel) */}
         {/* 12: Main content area with subtle inset shadow for depth */}
         <main id="main-content" className="flex-1 overflow-auto min-h-0 panel-inset animate-page-enter scrollbar-dark" key={location.pathname} style={{ background: '#141414', boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.2)' }}>
+          {/* Officer-facing admin broadcasts (Admin → Announcements) */}
+          <AnnouncementBanner />
+
           {/* Feature 21: Password expiry warning banner */}
           {showPasswordExpiryWarning && (
             <div className="bg-amber-900/40 border-b border-amber-700/50 px-4 py-1.5 flex items-center gap-2">
@@ -1585,25 +1655,6 @@ export default function Layout() {
 
       {/* Force 2FA Setup Modal — blocks UI until 2FA is enabled */}
       <Force2FASetupModal />
-
-      {/* Feature 24: Auto-logout idle warning dialog */}
-      {showIdleDialog && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Idle timeout warning">
-          {/* 13: Idle dialog with stronger visual hierarchy */}
-          <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-6 w-[350px] text-center animate-dropdown-appear" style={{ borderTop: '3px solid #d4a017', boxShadow: '0 16px 48px rgba(0,0,0,0.6)' }}>
-            <AlertTriangle className="w-10 h-10 text-amber-400 mx-auto mb-3" />
-            <h3 className="text-white font-bold text-base mb-2">Still on shift?</h3>
-            <p className="text-sm text-rmpg-300 mb-4">This workstation has been idle for nearly 12 hours. For security, it will sign out in 5 minutes unless you confirm you're still here.</p>
-            <button type="button"
-              onClick={() => { lastActivityRef.current = Date.now(); setShowIdleDialog(false); }}
-              className="px-4 py-2 text-sm font-bold text-white bg-brand-600 hover:bg-brand-500 rounded-sm transition-colors duration-150 active:scale-[0.97] focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none"
-              autoFocus
-            >
-              I'm still here
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* Keyboard Shortcut Help Modal */}
       {showShortcutHelp && (

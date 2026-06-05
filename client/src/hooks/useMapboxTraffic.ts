@@ -4,6 +4,7 @@
 import { useEffect, useCallback, useState, useRef } from 'react';
 import type mapboxgl from 'mapbox-gl';
 import { whenStyleReady } from '../pages/map/utils/safeAddSource';
+import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
 
 const TRAFFIC_SOURCE_ID = 'rmpg-traffic-source';
 const TRAFFIC_LAYER_ID = 'rmpg-traffic-layer';
@@ -66,7 +67,7 @@ export function useMapboxTraffic(map: mapboxgl.Map | null) {
   useEffect(() => {
     if (!map || !addedRef.current) return;
     try {
-      if (map.getLayer(TRAFFIC_LAYER_ID)) {
+      if (hasLayer(map, TRAFFIC_LAYER_ID)) {
         map.setLayoutProperty(TRAFFIC_LAYER_ID, 'visibility', visible ? 'visible' : 'none');
       }
     } catch { /* layer may not exist yet */ }

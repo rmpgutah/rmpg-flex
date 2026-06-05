@@ -277,7 +277,7 @@ export default function TacticalToolsPanel({
           Entry / Exit Points
         </div>
         <div className="flex items-center gap-1">
-          <input
+          <input id="ff-tacticaltoolspanel-0"
             type="text"
             value={entryLabel}
             onChange={(e) => setEntryLabel(e.target.value)}

@@ -11,9 +11,11 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Database, Search, X, Loader2, UserPlus, UserX, Shield, BarChart3, Eye, Plus,
   Link2, Unlink, AlertTriangle, RefreshCw, Download, Pencil, Trash2, ArrowUpDown,
-  FileText, ShieldAlert, Calendar, Scale,
+  FileText, ShieldAlert, Calendar, Scale, Copy,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
+import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
+import { useMenuActions } from '../utils/contextMenuActions';
 import { useLiveSync } from '../hooks/useLiveSync';
 import PanelTitleBar from '../components/PanelTitleBar';
 import EmptyState from '../components/EmptyState';
@@ -205,6 +207,10 @@ export default function ArrestRecordsPage() {
   const { addToast } = useToast();
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin'; // Admin God Mode — unrestricted access
+
+  // Right-click context menu (reusable global system)
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
 
   // Statistics
   const [stats, setStats] = useState<{
@@ -436,6 +442,33 @@ export default function ArrestRecordsPage() {
     setFormOpen(true);
   };
 
+  // ── Right-click row menu ────────────────────────────────
+  // Edit/Delete mirror the detail-panel gate (manual record OR admin);
+  // scraper/CSV-imported records are read-only for non-admins.
+
+  const buildArrestMenu = (rec: ArrestRecord): ContextMenuItem[] => {
+    const name =
+      rec.linked_person?.name ||
+      (rec.full_name && rec.full_name.trim()) ||
+      `${rec.first_name ?? ''} ${rec.last_name ?? ''}`.trim();
+    const canModify = isManualRecord(rec) || isAdmin;
+    return [
+      m.action('Open record', () => setSelectedRecord(rec), { icon: <Eye size={12} /> }),
+      ...(canModify
+        ? [m.action('Edit record', () => openEdit(rec), { icon: <Pencil size={12} /> })]
+        : []),
+      m.separator(),
+      m.copy('Copy name', name, <Copy size={12} />),
+      m.copyId(rec.id),
+      ...(canModify
+        ? [
+            m.separator(),
+            m.action('Delete', () => setDeleteConfirm(rec.id), { icon: <Trash2 size={12} />, danger: true }),
+          ]
+        : []),
+    ];
+  };
+
   // ── Sort ────────────────────────────────────────────────
 
   const cycleSort = () => setSortIdx(i => (i + 1) % SORT_CYCLE.length);
@@ -523,7 +556,7 @@ export default function ArrestRecordsPage() {
         {/* Search */}
         <div className="relative" role="search">
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500 pointer-events-none" />
-          <input
+          <input id="ff-arrestrecordspage-0"
             type="text"
             value={searchTerm}
             onChange={e => { setSearchTerm(e.target.value); setRecordsPage(1); }}
@@ -539,7 +572,7 @@ export default function ArrestRecordsPage() {
 
         {/* Filter row */}
         <div className="flex items-center gap-1 flex-wrap">
-          <select
+          <select id="ff-arrestrecordspage-1"
             value={countyFilter}
             onChange={e => { setCountyFilter(e.target.value); setRecordsPage(1); }}
             className="bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-[9px] px-1.5 py-1 rounded-sm flex-1 min-w-0"
@@ -550,7 +583,7 @@ export default function ArrestRecordsPage() {
             ))}
           </select>
 
-          <select
+          <select id="ff-arrestrecordspage-2"
             value={statusFilter}
             onChange={e => { setStatusFilter(e.target.value); setRecordsPage(1); }}
             className="bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-[9px] px-1.5 py-1 rounded-sm"
@@ -562,7 +595,7 @@ export default function ArrestRecordsPage() {
             <option value="bonded">Bonded</option>
           </select>
 
-          <select
+          <select id="ff-arrestrecordspage-3"
             value={sourceFilter}
             onChange={e => { setSourceFilter(e.target.value); setRecordsPage(1); }}
             className="bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-[9px] px-1.5 py-1 rounded-sm"
@@ -624,6 +657,7 @@ export default function ArrestRecordsPage() {
                       : 'bg-surface-sunken hover:bg-rmpg-800/40 border-l-2 border-transparent'
                   }`}
                   onClick={() => setSelectedRecord(rec)}
+                  onContextMenu={(e) => openMenu(e, buildArrestMenu(rec))}
                   aria-selected={isSelected}
                 >
                   {/* County color indicator */}
@@ -820,7 +854,7 @@ export default function ArrestRecordsPage() {
               <div className="space-y-1">
                 <div className="relative">
                   <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-2.5 h-2.5 text-rmpg-500" />
-                  <input
+                  <input id="ff-arrestrecordspage-4"
                     type="text"
                     value={personSearch}
                     onChange={e => setPersonSearch(e.target.value)}

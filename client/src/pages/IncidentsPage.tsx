@@ -29,6 +29,8 @@ import {
   Flame,
   Eye,
   Link,
+  Pencil,
+  Copy,
 } from 'lucide-react';
 import type { Incident, IncidentType, CallPriority, IncidentStatus, IncidentPerson, IncidentVehicle } from '../types';
 import StatusBadge from '../components/StatusBadge';
@@ -59,6 +61,8 @@ import ExportButton from '../components/ExportButton';
 import RmpgLogo from '../components/RmpgLogo';
 import PrintButton from '../components/PrintButton';
 import { useToast } from '../components/ToastProvider';
+import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
+import { useMenuActions } from '../utils/contextMenuActions';
 import FloatingSaveBar from '../components/FloatingSaveBar';
 import { formatDate, formatDateTime, safeDateTimeStr, safeTimeStr, parseTimestamp } from '../utils/dateUtils';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -235,6 +239,10 @@ export default function IncidentsPage() {
   const isAdmin = user?.role === 'admin';
   const isGodMode = user?.role === 'admin'; // Admin God Mode — unrestricted access
   const isMobile = useIsMobile();
+
+  // ── Right-click context menu ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
 
   // ---------- data state ----------
   const [incidents, setIncidents] = useState<Incident[]>([]);
@@ -716,6 +724,29 @@ export default function IncidentsPage() {
   };
 
   // ============================================================
+  // Right-click context menu (per incident row)
+  // ============================================================
+
+  const buildIncidentMenu = (incident: Incident): ContextMenuItem[] => {
+    return [
+      m.action('Open incident', () => { setSelectedIncident(incident); setIsEditing(false); }, { icon: <Eye size={12} /> }),
+      m.action('Edit incident', () => { setEditingIncident(incident); setShowFormModal(true); }, { icon: <Pencil size={12} /> }),
+      m.action('Open in new window', () => openIncidentWindow(incident.id), { icon: <ExternalLink size={12} /> }),
+      m.separator(),
+      m.copy('Copy IR #', incident.incident_number, <Copy size={12} />),
+      m.copyId(incident.id),
+      ...((incident as any).latitude != null && (incident as any).longitude != null
+        ? [m.go('Show on map', `/map?flyto=${(incident as any).latitude},${(incident as any).longitude}`, <MapPin size={12} />)]
+        : []),
+      m.separator(),
+      ...(showArchived
+        ? [m.action('Unarchive', () => handleUnarchiveIncident(incident), { icon: <RotateCcw size={12} /> })]
+        : [m.action('Archive', () => handleArchiveIncident(incident), { icon: <Archive size={12} /> })]),
+      m.action('Delete', () => setDeleteTarget(incident), { icon: <Trash2 size={12} />, danger: true }),
+    ];
+  };
+
+  // ============================================================
   // Supplement CRUD
   // ============================================================
 
@@ -907,7 +938,7 @@ export default function IncidentsPage() {
       <div className="px-4 py-2 border-b border-rmpg-600 flex-shrink-0">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-500 pointer-events-none" />
-          <input
+          <input id="ff-incidentspage-0"
             type="text"
             className={`input-dark pl-9 w-full focus:ring-1 focus:ring-brand-500/50 focus:border-brand-600 transition-shadow ${isMobile ? 'min-h-[44px] text-sm' : ''}`}
             placeholder={showArchived ? "Search archived incidents..." : "Search incidents..."}
@@ -1028,6 +1059,7 @@ export default function IncidentsPage() {
                     setSelectedIncident(inc);
                     setIsEditing(false);
                   }}
+                  onContextMenu={(e) => openMenu(e, buildIncidentMenu(inc))}
                   className={`cursor-pointer ${isMobile ? 'min-h-[48px]' : ''} ${
                     selectedIncident?.id === inc.id ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : ''
                   }`}
@@ -1808,7 +1840,7 @@ export default function IncidentsPage() {
                   {(isAdmin || isGodMode) && (
                     <IconButton onClick={async () => {
                       if (!confirm('Remove this offense?')) return;
-                      await apiFetch(`/incidents/${selectedIncident.id}/offenses/${offense.id}`, { method: 'DELETE' });
+                      try { await apiFetch(`/incidents/${selectedIncident.id}/offenses/${offense.id}`, { method: 'DELETE' }); } catch { return; }
                       fetchIncidentDetail(selectedIncident.id);
                     }} className="p-0.5 text-rmpg-500 hover:text-red-400 print:hidden" aria-label="Remove offense"><Trash2 className="w-3 h-3" /></IconButton>
                   )}
@@ -1854,7 +1886,7 @@ export default function IncidentsPage() {
                   {(isAdmin || isGodMode) && (
                     <IconButton onClick={async () => {
                       if (!confirm('Remove this officer?')) return;
-                      await apiFetch(`/incidents/${selectedIncident.id}/officers/${officer.id}`, { method: 'DELETE' });
+                      try { await apiFetch(`/incidents/${selectedIncident.id}/officers/${officer.id}`, { method: 'DELETE' }); } catch { return; }
                       fetchIncidentDetail(selectedIncident.id);
                     }} className="p-0.5 text-rmpg-500 hover:text-red-400 print:hidden" aria-label="Remove officer"><Trash2 className="w-3 h-3" /></IconButton>
                   )}
@@ -1903,7 +1935,7 @@ export default function IncidentsPage() {
                     {(isAdmin || isGodMode) && (
                       <IconButton onClick={async () => {
                         if (!confirm('Remove this link?')) return;
-                        await apiFetch(`/incidents/${selectedIncident.id}/links/${link.id}`, { method: 'DELETE' });
+                        try { await apiFetch(`/incidents/${selectedIncident.id}/links/${link.id}`, { method: 'DELETE' }); } catch { return; }
                         fetchIncidentDetail(selectedIncident.id);
                       }} className="p-0.5 text-rmpg-500 hover:text-red-400 print:hidden" aria-label="Remove link"><Trash2 className="w-3 h-3" /></IconButton>
                     )}
@@ -2386,7 +2418,7 @@ export default function IncidentsPage() {
             <div className="p-4 space-y-3">
               <div>
                 <label className="block text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">Action</label>
-                <select
+                <select id="ff-incidentspage-1"
                   value={custodyAction}
                   onChange={(e) => setCustodyAction(e.target.value)}
                   className={`w-full px-2 ${isMobile ? 'py-2.5 text-sm min-h-[44px]' : 'py-1.5 text-xs'} bg-surface-sunken border border-rmpg-600 text-white`}
@@ -2403,7 +2435,7 @@ export default function IncidentsPage() {
               {custodyTransfer.currentLocation && (
                 <div>
                   <label className="block text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">From Location</label>
-                  <input
+                  <input id="ff-incidentspage-2"
                     value={custodyTransfer.currentLocation}
                     readOnly
                     className={`w-full px-2 ${isMobile ? 'py-2.5 text-sm min-h-[44px]' : 'py-1.5 text-xs'} bg-surface-sunken border border-rmpg-700 text-rmpg-400`}
@@ -2413,7 +2445,7 @@ export default function IncidentsPage() {
               )}
               <div>
                 <label className="block text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">To Location</label>
-                <input
+                <input id="ff-incidentspage-3"
                   value={custodyToLocation}
                   onChange={(e) => setCustodyToLocation(e.target.value)}
                   placeholder="Evidence room, lab, officer name..."

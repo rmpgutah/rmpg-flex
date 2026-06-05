@@ -102,17 +102,17 @@ export default function FleetFuelCardsTab() {
       {showForm && (
         <div className="panel-inset p-3 space-y-2">
           <div className="grid grid-cols-3 gap-2">
-            <input value={form.card_number} onChange={e => setForm(f => ({ ...f, card_number: e.target.value }))} className="input-field text-xs" placeholder="Card Number" />
-            <input value={form.provider} onChange={e => setForm(f => ({ ...f, provider: e.target.value }))} className="input-field text-xs" placeholder="Provider" />
-            <select value={form.vehicle_id} onChange={e => setForm(f => ({ ...f, vehicle_id: e.target.value }))} className="input-field text-xs">
+            <input id="ff-fleetfuelcardstab-0" value={form.card_number} onChange={e => setForm(f => ({ ...f, card_number: e.target.value }))} className="input-field text-xs" placeholder="Card Number" />
+            <input id="ff-fleetfuelcardstab-1" value={form.provider} onChange={e => setForm(f => ({ ...f, provider: e.target.value }))} className="input-field text-xs" placeholder="Provider" />
+            <select id="ff-fleetfuelcardstab-2" value={form.vehicle_id} onChange={e => setForm(f => ({ ...f, vehicle_id: e.target.value }))} className="input-field text-xs">
               <option value="">Unassigned</option>
               {vehicles.map(v => <option key={v.id} value={v.id}>{v.vehicle_number} ({v.make} {v.model})</option>)}
             </select>
           </div>
           <div className="grid grid-cols-3 gap-2">
-            <input type="number" min="0" value={form.monthly_limit} onChange={e => setForm(f => ({ ...f, monthly_limit: e.target.value }))} className="input-field text-xs tabular-nums" placeholder="Monthly Limit $" />
-            <input value={form.pin_last4} onChange={e => setForm(f => ({ ...f, pin_last4: e.target.value }))} maxLength={4} className="input-field text-xs font-mono" placeholder="PIN (last 4)" spellCheck={false} autoComplete="off" />
-            <input type="date" value={form.expiry_date} onChange={e => setForm(f => ({ ...f, expiry_date: e.target.value }))} className="input-field text-xs" />
+            <input id="ff-fleetfuelcardstab-3" type="number" min="0" value={form.monthly_limit} onChange={e => setForm(f => ({ ...f, monthly_limit: e.target.value }))} className="input-field text-xs tabular-nums" placeholder="Monthly Limit $" />
+            <input id="ff-fleetfuelcardstab-4" value={form.pin_last4} onChange={e => setForm(f => ({ ...f, pin_last4: e.target.value }))} maxLength={4} className="input-field text-xs font-mono" placeholder="PIN (last 4)" spellCheck={false} autoComplete="off" />
+            <input id="ff-fleetfuelcardstab-5" type="date" value={form.expiry_date} onChange={e => setForm(f => ({ ...f, expiry_date: e.target.value }))} className="input-field text-xs" />
           </div>
           <div className="flex gap-2">
             <button type="button" onClick={handleSubmit} disabled={submitting || !form.card_number.trim()} className="toolbar-btn toolbar-btn-success text-[9px] disabled:opacity-50">{submitting ? 'Saving...' : 'Save'}</button>

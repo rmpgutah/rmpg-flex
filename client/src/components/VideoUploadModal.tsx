@@ -424,7 +424,7 @@ export default function VideoUploadModal({
                 <span className="text-[9px] text-rmpg-600">MP4, MOV, AVI, WebM — Up to 10 GB</span>
               </button>
             )}
-            <input
+            <input id="ff-videouploadmodal-0"
               ref={fileRef}
               type="file"
               accept="video/mp4,video/quicktime,video/x-msvideo,video/webm,.mp4,.mov,.avi,.webm"
@@ -437,19 +437,19 @@ export default function VideoUploadModal({
           <div className="panel-inset p-3 space-y-3">
             <div>
               <label className="field-label">Title <span className="text-red-400">*</span></label>
-              <input type="text" value={title} onChange={e => setTitle(e.target.value)} required placeholder="Video title" className="input-dark" disabled={isUploading} />
+              <input id="ff-videouploadmodal-1" type="text" value={title} onChange={e => setTitle(e.target.value)} required placeholder="Video title" className="input-dark" disabled={isUploading} />
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="field-label">Camera <span className="text-red-400">*</span></label>
-                <select value={cameraId} onChange={e => setCameraId(e.target.value)} required className="select-dark" disabled={isUploading}>
+                <select id="ff-videouploadmodal-2" value={cameraId} onChange={e => setCameraId(e.target.value)} required className="select-dark" disabled={isUploading}>
                   <option value="">Select camera...</option>
                   {cameras.map(c => <option key={c.id} value={c.id}>{c.camera_id} — {[c.make, c.model].filter(Boolean).join(' ') || 'Unknown'}</option>)}
                 </select>
               </div>
               <div>
                 <label className="field-label">Classification</label>
-                <select value={classification} onChange={e => setClassification(e.target.value as VideoClassification)} className="select-dark" disabled={isUploading}>
+                <select id="ff-videouploadmodal-3" value={classification} onChange={e => setClassification(e.target.value as VideoClassification)} className="select-dark" disabled={isUploading}>
                   {CLASSIFICATIONS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
                 </select>
               </div>
@@ -457,16 +457,16 @@ export default function VideoUploadModal({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="field-label">Recorded Date</label>
-                <input type="datetime-local" value={recordedAt} onChange={e => setRecordedAt(e.target.value)} className="input-dark" disabled={isUploading} />
+                <input id="ff-videouploadmodal-4" type="datetime-local" value={recordedAt} onChange={e => setRecordedAt(e.target.value)} className="input-dark" disabled={isUploading} />
               </div>
               <div>
                 <label className="field-label">Case Number</label>
-                <input type="text" value={caseNumber} onChange={e => setCaseNumber(e.target.value)} placeholder="e.g. 2026-0001" className="input-dark" disabled={isUploading} />
+                <input id="ff-videouploadmodal-5" type="text" value={caseNumber} onChange={e => setCaseNumber(e.target.value)} placeholder="e.g. 2026-0001" className="input-dark" disabled={isUploading} />
               </div>
             </div>
             <div>
               <label className="field-label flex items-center gap-1"><Radio className="w-2.5 h-2.5" /> Activation Type</label>
-              <select value={eventType} onChange={e => setEventType(e.target.value)} className="select-dark">
+              <select id="ff-videouploadmodal-6" value={eventType} onChange={e => setEventType(e.target.value)} className="select-dark">
                 {ACTIVATION_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
               </select>
             </div>

@@ -10,6 +10,8 @@ import {
   MapPin,
   FileText,
   AlertTriangle,
+  Check,
+  RotateCcw,
 } from 'lucide-react';
 import {
   BarChart,
@@ -30,6 +32,8 @@ import {
 } from 'recharts';
 import { apiFetch } from '../hooks/useApi';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
+import { useMenuActions } from '../utils/contextMenuActions';
 import PanelTitleBar from '../components/PanelTitleBar';
 import RmpgLogo from '../components/RmpgLogo';
 import PrintButton from '../components/PrintButton';
@@ -264,6 +268,10 @@ function ReportApprovalQueue() {
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState<string | null>(null);
 
+  // ── Right-click context menu ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+
   const fetchQueue = useCallback(async () => {
     try {
       const data = await apiFetch<any[]>('/records/reports/approval-queue');
@@ -294,13 +302,21 @@ function ReportApprovalQueue() {
     finally { setProcessing(null); }
   };
 
+  const buildReportMenu = (r: any): ContextMenuItem[] => [
+    m.action('Approve', () => handleApprove(String(r.id)), { icon: <Check size={12} />, disabled: processing === String(r.id) }),
+    m.action('Return for revision', () => handleReturn(String(r.id)), { icon: <RotateCcw size={12} />, danger: true, disabled: processing === String(r.id) }),
+    m.separator(),
+    m.copy('Copy incident #', r.incident_number),
+    m.copyId(r.id),
+  ];
+
   if (loading) return <div className="flex items-center gap-2 text-[10px] text-rmpg-500"><Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> Loading queue...</div>;
   if (reports.length === 0) return <div className="text-[10px] text-rmpg-500 text-center py-4">No reports pending review</div>;
 
   return (
     <div className="space-y-2">
       {reports.map((r: any) => (
-        <div key={r.id} className="panel-beveled p-3 flex items-center gap-3">
+        <div key={r.id} className="panel-beveled p-3 flex items-center gap-3" onContextMenu={(e) => openMenu(e, buildReportMenu(r))}>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
               <span className="text-xs font-bold text-green-400 font-mono">{r.incident_number}</span>
@@ -922,7 +938,7 @@ export default function ReportsPage() {
       {!isMobile && <PanelTitleBar title="REPORTS & ANALYTICS" icon={BarChart3}>
         <div className="flex items-center gap-2">
           <Calendar className="w-3.5 h-3.5 text-rmpg-300" />
-          <select
+          <select id="ff-reportspage-0"
             className="select-dark text-xs w-44"
             value={dateRange}
             onChange={(e) => setDateRange(e.target.value)}
@@ -939,7 +955,7 @@ export default function ReportsPage() {
           </select>
           {dateRange === 'custom' && (
             <div className="flex items-center gap-2 ml-1 pl-2 border-l border-rmpg-700">
-              <input
+              <input id="ff-reportspage-1"
                 type="date"
                 className="input-dark text-xs px-2 py-1 font-mono min-h-[36px]"
                 value={customStartDate}
@@ -947,7 +963,7 @@ export default function ReportsPage() {
                 style={{ colorScheme: 'dark' }}
               />
               <span className="text-rmpg-400 text-[10px] uppercase font-bold tracking-wide">to</span>
-              <input
+              <input id="ff-reportspage-2"
                 type="date"
                 className="input-dark text-xs px-2 py-1 font-mono min-h-[36px]"
                 value={customEndDate}
@@ -1396,7 +1412,7 @@ function PatrolTrackingCard() {
         {/* Unit selector */}
         <div className="flex items-center gap-1.5">
           <label className="text-[10px] text-rmpg-400 font-bold uppercase">Unit:</label>
-          <select
+          <select id="ff-reportspage-3"
             value={unitId}
             onChange={e => setUnitId(e.target.value)}
             className="select-dark text-[10px] w-28"
@@ -1414,7 +1430,7 @@ function PatrolTrackingCard() {
         {mode === 'hours' ? (
           <div className="flex items-center gap-1.5">
             <label className="text-[10px] text-rmpg-400 font-bold uppercase">Hours:</label>
-            <select
+            <select id="ff-reportspage-4"
               value={hours}
               onChange={e => setHours(parseInt(e.target.value, 10))}
               className="select-dark text-[10px] w-20"
@@ -1429,7 +1445,7 @@ function PatrolTrackingCard() {
           <>
             <div className="flex items-center gap-1.5">
               <label className="text-[10px] text-rmpg-400 font-bold uppercase">Start:</label>
-              <input
+              <input id="ff-reportspage-5"
                 type="date"
                 value={startDate}
                 onChange={e => setStartDate(e.target.value)}
@@ -1438,7 +1454,7 @@ function PatrolTrackingCard() {
             </div>
             <div className="flex items-center gap-1.5">
               <label className="text-[10px] text-rmpg-400 font-bold uppercase">End:</label>
-              <input
+              <input id="ff-reportspage-6"
                 type="date"
                 value={endDate}
                 onChange={e => setEndDate(e.target.value)}
@@ -1449,7 +1465,7 @@ function PatrolTrackingCard() {
         )}
 
         <label className="flex items-center gap-1.5 text-[10px] text-rmpg-400 cursor-pointer">
-          <input
+          <input id="ff-reportspage-7"
             type="checkbox"
             checked={includeGeocode}
             onChange={e => setIncludeGeocode(e.target.checked)}

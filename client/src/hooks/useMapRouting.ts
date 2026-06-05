@@ -17,6 +17,7 @@ import { mapboxgl } from '../utils/mapboxLoader';
 import { getMapboxAccessToken } from '../utils/mapboxApiKey';
 import { whenStyleReady } from '../pages/map/utils/safeAddSource';
 import { useNavTravel } from './useNavTravel';
+import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -86,6 +87,17 @@ export interface UnitDriveTime {
 
 export type CongestionLevel = 'low' | 'moderate' | 'heavy' | 'severe' | 'unknown';
 
+/** Active route geometry, exposed for downstream corridor analysis
+ *  (e.g. hazard-ahead scanning in useNavGuidance). */
+export interface RouteGeom {
+  /** Route polyline as [lng, lat][]. */
+  coords: [number, number][];
+  /** Cumulative meters at each coordinate. */
+  cum: number[];
+  /** Total route length in meters. */
+  totalMeters: number;
+}
+
 /** One stop in an optimized multi-call patrol route. */
 export interface MultiStop {
   callNumber: string;
@@ -153,7 +165,7 @@ function makeProjector(refLat: number) {
 /** Snap a point to the nearest position along a polyline (route geometry).
  *  Returns the perpendicular distance to the line and the distance traveled
  *  *along* the line to that snap point — the basis for progress + off-route. */
-function snapToRoute(
+export function snapToRoute(
   coords: [number, number][], // [lng, lat][]
   cum: number[],              // cumulative meters at each coord
   lat: number,
@@ -272,6 +284,7 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
   const [activeRoute, setActiveRoute] = useState<RouteInfo | null>(null);
   const [routeLoading, setRouteLoading] = useState(false);
   const [routeProgress, setRouteProgress] = useState<RouteProgress | null>(null);
+  const [routeGeom, setRouteGeom] = useState<RouteGeom | null>(null);
   const [offRoute, setOffRoute] = useState(false);
   const [multiStopRoute, setMultiStopRoute] = useState<MultiStopRoute | null>(null);
   const [multiStopLoading, setMultiStopLoading] = useState(false);
@@ -300,9 +313,9 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
   const clearRouteFromMap = useCallback(() => {
     if (!map) return;
     try {
-      if (map.getLayer(TRAVELED_LAYER_ID)) map.removeLayer(TRAVELED_LAYER_ID);
-      if (map.getLayer(ROUTE_LAYER_ID)) map.removeLayer(ROUTE_LAYER_ID);
-      if (map.getSource(ROUTE_SOURCE_ID)) map.removeSource(ROUTE_SOURCE_ID);
+      safeRemoveLayer(map, TRAVELED_LAYER_ID);
+      safeRemoveLayer(map, ROUTE_LAYER_ID);
+      safeRemoveSource(map, ROUTE_SOURCE_ID);
     } catch { /* ignore cleanup errors */ }
   }, [map]);
 
@@ -385,6 +398,7 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
         for (const c of congestion) if (CONGESTION_RANK[c] > CONGESTION_RANK[worst]) worst = c;
 
         geomRef.current = { coords, cum, totalMeters: total, totalSec: duration };
+        setRouteGeom({ coords, cum, totalMeters: total });
         offRouteStreakRef.current = 0;
         setOffRoute(false);
 
@@ -503,6 +517,7 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
     clearRouteFromMap();
     setActiveRoute(null);
     setRouteProgress(null);
+    setRouteGeom(null);
     setOffRoute(false);
     geomRef.current = null;
     offRouteStreakRef.current = 0;
@@ -526,7 +541,7 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
       const remainingSec = g.totalMeters > 0 ? Math.round(g.totalSec * (remainingMeters / g.totalMeters)) : 0;
 
       // Trim the traveled portion: dim everything up to `fraction`.
-      if (map?.getLayer(TRAVELED_LAYER_ID)) {
+      if (map && hasLayer(map, TRAVELED_LAYER_ID)) {
         try {
           map.setPaintProperty(TRAVELED_LAYER_ID, 'line-gradient', [
             'step', ['line-progress'],
@@ -677,9 +692,9 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
     multiMarkersRef.current = [];
     if (!map) return;
     try {
-      if (map.getLayer(MULTI_LAYER_ID)) map.removeLayer(MULTI_LAYER_ID);
-      if (map.getLayer(MULTI_CASING_LAYER_ID)) map.removeLayer(MULTI_CASING_LAYER_ID);
-      if (map.getSource(MULTI_SOURCE_ID)) map.removeSource(MULTI_SOURCE_ID);
+      safeRemoveLayer(map, MULTI_LAYER_ID);
+      safeRemoveLayer(map, MULTI_CASING_LAYER_ID);
+      safeRemoveSource(map, MULTI_SOURCE_ID);
     } catch { /* ignore cleanup errors */ }
   }, [map]);
 
@@ -728,10 +743,21 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
         // Coord 0 = unit origin; coords 1..n = the calls (in queue order).
         const pts = [origin, ...valid];
         const coordStr = pts.map((p) => `${p.lng},${p.lat}`).join(';');
+        // Mapbox Optimization v1 only implements two (source,destination,roundtrip)
+        // combos: roundtrip=true (any endpoints), or roundtrip=false with BOTH
+        // source=first AND destination=last. The open-tour we actually want
+        // (unit pinned as start, end optimized freely) maps to the UNSUPPORTED
+        // roundtrip=false + destination=any — Mapbox answers HTTP 200 with
+        // {code:"NotImplemented"}, which surfaced as "[useMapRouting] Optimization
+        // query failed: Error: NotImplemented". So we solve it as a ROUNDTRIP
+        // (optimal visiting order, unit as the fixed start) and drop the final
+        // return-to-unit leg from the drawn line + ETA below — dispatch doesn't
+        // need the officer to loop back to where they started. steps=true gives
+        // per-leg geometry so the line can be rebuilt without that return leg.
         const url =
           `https://api.mapbox.com/optimized-trips/v1/mapbox/driving/${coordStr}` +
-          `?access_token=${token}&source=first&destination=any&roundtrip=false` +
-          `&geometries=geojson&overview=full&annotations=duration,distance`;
+          `?access_token=${token}&source=first&roundtrip=true` +
+          `&geometries=geojson&overview=full&steps=true&annotations=duration,distance`;
 
         const res = await fetch(url);
         if (!res.ok) throw new Error(`Optimization HTTP ${res.status}`);
@@ -739,7 +765,6 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
         if (data.code !== 'Ok' || !data.trips?.[0]) throw new Error(data.code || 'No trip');
 
         const trip = data.trips[0];
-        const geometry = trip.geometry; // GeoJSON LineString in optimized order
         const legs: any[] = trip.legs ?? [];
 
         // `waypoints[i].waypoint_index` = position of input coord i in the
@@ -755,6 +780,7 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
         // is the drive INTO optimized position k+1.
         const orderedStops: MultiStop[] = [];
         let cumSec = 0;
+        let cumMeters = 0;
         for (let pos = 1; pos < optimizedOrder.length; pos++) {
           const inputIdx = optimizedOrder[pos];
           const stop = pts[inputIdx] as typeof valid[number];
@@ -762,6 +788,7 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
           const legSec = typeof leg.duration === 'number' ? leg.duration : 0;
           const legMeters = typeof leg.distance === 'number' ? leg.distance : 0;
           cumSec += legSec;
+          cumMeters += legMeters;
           orderedStops.push({
             callNumber: stop.callNumber,
             lat: stop.lat,
@@ -775,6 +802,29 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
             cumEta: fmtEta(cumSec),
           });
         }
+
+        // Build the drawn line from ONLY the legs INTO the stops (legs 0..k-1),
+        // excluding the roundtrip's final return-to-unit leg (legs[k]). Each leg's
+        // geometry is the concatenation of its steps' geometries (steps=true),
+        // de-duping the vertex shared between consecutive steps. Falls back to the
+        // full trip geometry (the closed loop, incl. return) only if steps are
+        // missing — better a slightly-wrong line than none.
+        const usedLegCount = Math.max(0, optimizedOrder.length - 1);
+        const lineCoords: [number, number][] = [];
+        for (let i = 0; i < usedLegCount; i++) {
+          for (const step of legs[i]?.steps ?? []) {
+            const cs = step?.geometry?.coordinates;
+            if (!Array.isArray(cs)) continue;
+            for (const c of cs) {
+              const last = lineCoords[lineCoords.length - 1];
+              if (!last || last[0] !== c[0] || last[1] !== c[1]) lineCoords.push(c as [number, number]);
+            }
+          }
+        }
+        const geometry =
+          lineCoords.length >= 2
+            ? { type: 'LineString' as const, coordinates: lineCoords }
+            : trip.geometry; // fallback: full loop incl. the return leg
 
         // ── Render the optimized line + numbered markers ──
         clearMultiStopFromMap();
@@ -812,8 +862,10 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
           } catch { /* ignore marker failure */ }
         }
 
-        const totalSec = typeof trip.duration === 'number' ? trip.duration : cumSec;
-        const totalMeters = typeof trip.distance === 'number' ? trip.distance : 0;
+        // Totals are the sum of the kept (into-stop) legs, so they exclude the
+        // dropped return-to-unit leg — trip.duration/trip.distance would include it.
+        const totalSec = cumSec;
+        const totalMeters = cumMeters;
         const route: MultiStopRoute = {
           unitCallSign,
           stops: orderedStops,
@@ -857,6 +909,7 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
     activeRoute,
     routeLoading,
     routeProgress,
+    routeGeom,
     offRoute,
     showRoute,
     clearRoute,

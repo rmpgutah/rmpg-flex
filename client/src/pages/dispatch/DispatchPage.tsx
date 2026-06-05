@@ -14,7 +14,8 @@ import DuplicateCandidatesModal, { DuplicateCandidate } from '../../components/D
 import UnitStatusBoard from '../../components/UnitStatusBoard';
 import DispositionPrompt from '../../components/DispositionPrompt';
 import { dispositionGroupsForIncident, DEFAULT_DISPOSITION_CODES } from '../../constants/dispositionCodes';
-import { zoneLeaf, beatLeaf, sectionPrefix } from '../../utils/dispatchCodeParts';
+import { zoneLeaf, beatLeaf, sectionPrefix, sectionZoneBeatCombined } from '../../utils/dispatchCodeParts';
+import { parseLocationParts } from '../../utils/parseLocationParts';
 import DispatchMiniMap from '../../components/DispatchMiniMap';
 import BoloAlertBanner from '../../components/BoloAlertBanner';
 import StatusBadge from '../../components/StatusBadge';
@@ -42,6 +43,7 @@ import type { WarningTag } from '../../components/WarningTags';
 import FloatingSaveBar from '../../components/FloatingSaveBar';
 import CadCommandLine from '../../components/CadCommandLine';
 import NcicQueryPanel from '../../components/NcicQueryPanel';
+import MileagePromptModal from '../../components/MileagePromptModal';
 import UnitRecommendationPanel from '../../components/UnitRecommendationPanel';
 import RecommendedUnitsInline from '../../components/RecommendedUnitsInline';
 import type { CommandAction } from '../../utils/cadCommandParser';
@@ -87,7 +89,7 @@ import NarrativeAssist from '../../components/dispatch/NarrativeAssist';
 import FileAttachments from '../../components/FileAttachments';
 import { safeDateTimeStr, parseTimestamp, toDatetimeLocalValue, mtDatetimeLocalToUtc } from '../../utils/dateUtils';
 import {
-  humanizePriority, formatDispositionCode, getStatusTooltip, formatPhoneDisplay,
+  humanizePriority, formatDispositionCode, humanizeDisposition, getStatusTooltip, formatPhoneDisplay,
   formatAddressDisplay, timeAgo, humanizeStatus,
 } from '../../utils/statusLabels';
 
@@ -256,6 +258,9 @@ export default function DispatchPage() {
   const { user } = useAuth();
   const isAdminOrManager = user?.role === 'admin' || user?.role === 'manager';
   const isGodMode = user?.role === 'admin'; // Admin God Mode — unrestricted access
+  // Only senior roles may remove (soft-delete) a call from the board — mirrors
+  // the server-side guard in src/routes/dispatch/calls.ts (CALL_DELETE_ROLES).
+  const canDeleteCall = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'supervisor';
   const unitModalTitleId = useId();
   const navigate = useNavigate();
   const { addToast } = useToast();
@@ -263,7 +268,7 @@ export default function DispatchPage() {
   const isMobile = useIsMobile();
   const { prefs: userPrefs, reload: reloadPrefs } = useUserPreferences();
   const { districts, sections, sectionLabels, getSectionCode, getArea, zoneLabels, zonesForSection, beatsForZone, beatsForSection, districtForSectionBeat, getBeatLabel } = useDistrictOptions();
-  const { resolve: resolveAddress } = useAddressAutofill();
+  const { resolve: resolveAddress, resolveFromText } = useAddressAutofill();
   const dispatchCodes = useDispatchCodes();
   const signalLookup = useMemo(() => dispatchCodes.lookup, [dispatchCodes.lookup]);
   const knownSignalCodes = useMemo(() => new Set(dispatchCodes.codes.map(c => c.code)), [dispatchCodes.codes]);
@@ -298,6 +303,24 @@ export default function DispatchPage() {
   const [templates, setTemplates] = useState<any[]>([]);
   const [showTemplateDropdown, setShowTemplateDropdown] = useState(false);
   const [templateInitialData, setTemplateInitialData] = useState<Record<string, any> | undefined>(undefined);
+
+  // Deep-link: /dispatch?newCall=1&location=...&description=... opens the New
+  // Call modal pre-seeded (used by record right-click "Create call here" /
+  // "Dispatch to address"). Strips the params after so it doesn't re-fire.
+  useEffect(() => {
+    const sp = new URLSearchParams(window.location.search);
+    if (sp.get('newCall') === '1') {
+      setTemplateInitialData({
+        location: sp.get('location') || '',
+        description: sp.get('description') || '',
+        source: 'dispatch',
+      });
+      setShowNewCallModal(true);
+      navigate(window.location.pathname, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Quick Template Dialog — minimal address-only dispatch
   const [quickTemplateData, setQuickTemplateData] = useState<{ name: string; incident_type: string; priority: string; description: string; source: string } | null>(null);
   const [quickTemplateAddress, setQuickTemplateAddress] = useState('');
@@ -671,11 +694,16 @@ export default function DispatchPage() {
     newUnitCallSign, setNewUnitCallSign,
     newUnitOfficerId, setNewUnitOfficerId,
     newUnitStatus, setNewUnitStatus,
+    newUnitVehicleId, setNewUnitVehicleId,
+    newUnitCapabilities, setNewUnitCapabilities,
+    newUnitBeat, setNewUnitBeat,
+    newUnitAudioMode, setNewUnitAudioMode,
+    resetUnitForm,
     unitCreating,
     deletingUnit, setDeletingUnit,
     unitDeleting,
     openEditUnit,
-    handleSaveUnit, handleDeleteUnit,
+    handleSaveUnit, handleDisposeUnit,
     handleAssignUnit, handleDragAssignUnit, handleUnassignUnit,
   } = useDispatchUnitActions({
     selectedCall, setSelectedCall,
@@ -779,6 +807,24 @@ export default function DispatchPage() {
     }
   }, [addToast]);
 
+  // Load CLEARED/closed/cancelled calls when the Cleared tab is activated. The
+  // default call list forces status IN (active) server-side, so completed calls
+  // are NEVER in the `calls` array — without this dedicated fetch the Cleared
+  // tab was permanently empty and a closed call looked permanently deleted
+  // ("CFS delete upon completion"). The rows are intact in D1 (status='closed');
+  // this just surfaces them. Comma-status is supported by the list handler.
+  const [clearedCalls, setClearedCalls] = useState<CallForService[]>([]);
+  const fetchClearedCalls = useCallback(async () => {
+    try {
+      const res = await apiFetch<any>('/dispatch/calls?status=cleared,closed,cancelled&limit=500');
+      const raw = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
+      setClearedCalls(raw.map(mapDbCall));
+    } catch (err) {
+      console.error('Failed to load cleared calls:', err);
+      addToast('Failed to load cleared calls', 'error');
+    }
+  }, [addToast]);
+
   useEffect(() => {
     fetchData();
     // Fetch quick dispatch templates
@@ -869,7 +915,7 @@ export default function DispatchPage() {
     dispositionPromptCallId, setDispositionPromptCallId,
     isGenerating,
     isBulkArchiving,
-    handleStatusChange,
+    handleStatusChange: rawHandleStatusChange,
     handleHoldCall, handleResumeCall, handleRevertStatus,
     handleClearWithDisposition, handleConfirmClear,
     handleArchive, handleUnarchive, handleBulkArchive,
@@ -879,6 +925,69 @@ export default function DispatchPage() {
     selectedCall, setSelectedCall, setCalls, setArchivedCalls,
     setUnits, setArchivedLoaded, refetchAll: silentRefresh,
   });
+
+  // ── Mileage prompt on enroute / onscene (officer-requested) ───────────────
+  // Dispatch asks the officer's odometer when they go EN ROUTE (starting) and
+  // again ON SCENE (ending). Wrapping handleStatusChange here means EVERY entry
+  // point — call-detail buttons, keyboard shortcuts (F-keys), the status board,
+  // and the right-click context menu — funnels through the same prompt without
+  // editing each call site. The reading is persisted atomically with the status
+  // transition (POST /dispatch/calls/:id/status, extended to take mileage).
+  const [mileagePrompt, setMileagePrompt] = useState<{
+    callId: string;
+    callNumber: string;
+    vehicleId: string;
+    mode: 'starting' | 'ending';
+    startingMileage: number | null;
+    pendingStatus: CallStatus;
+  } | null>(null);
+
+  const handleStatusChange = useCallback((
+    callId: string,
+    newStatus: CallStatus,
+    extraBody?: Record<string, any>,
+  ) => {
+    if (newStatus === 'enroute' || newStatus === 'onscene') {
+      const call = calls.find((c) => c.id === callId)
+        || (selectedCall?.id === callId ? selectedCall : undefined);
+      // Responding vehicle: explicit field on the call, else the first assigned
+      // unit's vehicle id. Lets the prompt show/confirm the vehicle being driven.
+      const respondingVehicle = (() => {
+        const rv = (call as any)?.responding_vehicle_id;
+        if (rv) return String(rv);
+        const firstUnitId = call?.assigned_units?.[0];
+        const u = units.find((x) => String(x.id) === String(firstUnitId));
+        return u?.vehicle ? String(u.vehicle) : '';
+      })();
+      setMileagePrompt({
+        callId,
+        callNumber: call?.call_number || `#${callId}`,
+        vehicleId: respondingVehicle,
+        mode: newStatus === 'enroute' ? 'starting' : 'ending',
+        startingMileage: call?.starting_mileage != null ? Number(call.starting_mileage) : null,
+        pendingStatus: newStatus,
+      });
+      return;
+    }
+    return rawHandleStatusChange(callId, newStatus, extraBody);
+  }, [calls, units, selectedCall, rawHandleStatusChange]);
+
+  // Prompt submit: persist the reading (if any) with the transition. Calls the
+  // RAW handler directly so it doesn't re-open the prompt. "Skip" sends 0 →
+  // status changes with no mileage written (server ignores non-positive values).
+  const handleMileagePromptSubmit = useCallback((mileage: number, vehicleId: string) => {
+    setMileagePrompt((prompt) => {
+      if (!prompt) return null;
+      const extra: Record<string, any> = {};
+      if (mileage > 0) {
+        if (prompt.mode === 'starting') extra.starting_mileage = mileage;
+        else extra.ending_mileage = mileage;
+      }
+      if (vehicleId && vehicleId.trim()) extra.responding_vehicle_id = vehicleId.trim();
+      rawHandleStatusChange(prompt.callId, prompt.pendingStatus, extra);
+      return null;
+    });
+  }, [rawHandleStatusChange]);
 
   // Notes + timeline state + handlers (extracted alongside the unit/call
   // hooks). Owns 9 state items (note input + inline-edit, timeline input
@@ -1016,9 +1125,32 @@ export default function DispatchPage() {
         }
         // Refresh the full list to keep unit assignments in sync
         fetchData({ silent: true });
+      } else if (data.action === 'backup_requested') {
+        // OFFICER-SAFETY: an officer hit "request backup" (RadialMenu →
+        // /api/dispatch/request-backup → panic.ts emitAlert). This action had
+        // NO consumer here, so the request was silent on the dispatch console.
+        // Surface it loudly: alarm tone (unless muted) + a persistent toast.
+        if (!soundAlertsMutedRef.current) playTone('alarm');
+        const who = data.call_sign || data.officer_name || 'An officer';
+        const extra = data.message && data.message !== 'Backup requested' ? ` — ${data.message}` : '';
+        addToast(`BACKUP REQUESTED: ${who}${extra}`, 'error', 12000);
+        // Pull the latest roster/calls so the requesting unit's state is current.
+        fetchData({ silent: true });
       } else if (data.action === 'ai_analysis' && data.call_id && data.analysis) {
         setAiAnalyses(prev => ({ ...prev, [data.call_id]: data.analysis }));
         setShowAiSidebar(true);
+      } else if (/^call_(person|vehicle|property)_/.test(data.action || '')) {
+        // call_person_*, call_vehicle_*, call_property_* from callLinks.ts.
+        // If the action affects the currently-selected call, refresh its linked
+        // data so the detail pane stays current without a full queue refetch.
+        const cid = data.call_id ?? data.call?.id;
+        if (cid && selectedCallRef.current && String(selectedCallRef.current.id) === String(cid)) {
+          if ((data.action || '').startsWith('call_person_')) {
+            apiFetch<any[]>(`/dispatch/calls/${cid}/persons`).then(r => setCallPersons(Array.isArray(r) ? r : [])).catch(() => {});
+          } else if ((data.action || '').startsWith('call_vehicle_')) {
+            apiFetch<any[]>(`/dispatch/calls/${cid}/vehicles`).then(r => setCallVehicles(Array.isArray(r) ? r : [])).catch(() => {});
+          }
+        }
       }
       } catch (err) {
         console.error('[Dispatch] Error processing WS dispatch_update:', err);
@@ -1033,10 +1165,26 @@ export default function DispatchPage() {
     // so this handler was previously dead (the roster never updated live).
     // subscribersRef is a Map<type, Set<handler>>, so this coexists with the
     // call handler above; each ignores the other's actions.
+    // Merge a raw broadcast unit row onto the existing MAPPED unit WITHOUT
+    // corrupting it: spreading the raw row drifted types (officer_id number,
+    // capabilities JSON string) and wiped joined fields the raw row lacks
+    // (officer_name, current_call_number). Coerce the volatile scalars and keep
+    // everything else from the already-mapped unit.
+    const applyUnitPatch = (u: any, raw: any) => ({
+      ...u,
+      id: String(raw.id),
+      status: raw.status ?? u.status,
+      latitude: raw.latitude ?? u.latitude,
+      longitude: raw.longitude ?? u.longitude,
+      officer_id: raw.officer_id != null ? String(raw.officer_id) : u.officer_id,
+      officer_name: raw.officer_name ?? u.officer_name,
+      current_call_id: 'current_call_id' in raw ? (raw.current_call_id != null ? String(raw.current_call_id) : undefined) : u.current_call_id,
+      current_call_number: raw.current_call_number ?? u.current_call_number,
+    });
     const unsubUnit = subscribe('dispatch_update', (msg: any) => {
       const data = msg.data || msg;
       if (data.action === 'unit_status_changed' && data.unit) {
-        setUnits((prev) => prev.map((u) => (String(u.id) === String(data.unit.id) ? { ...u, ...data.unit, id: String(data.unit.id) } : u)));
+        setUnits((prev) => prev.map((u) => (String(u.id) === String(data.unit.id) ? applyUnitPatch(u, data.unit) : u)));
       } else if (data.action === 'unit_position_update' && data.unit) {
         // Update unit position from GPS broadcast. (speed_mph is intentionally
         // NOT stored on the unit — no board UI reads it, and the 7s units poll
@@ -1046,7 +1194,7 @@ export default function DispatchPage() {
           ? { ...u, latitude: data.unit.latitude, longitude: data.unit.longitude }
           : u)));
       } else if (data.action === 'unit_updated' && data.unit) {
-        setUnits((prev) => prev.map((u) => (String(u.id) === String(data.unit.id) ? { ...u, ...data.unit, id: String(data.unit.id) } : u)));
+        setUnits((prev) => prev.map((u) => (String(u.id) === String(data.unit.id) ? applyUnitPatch(u, data.unit) : u)));
       } else if (data.action === 'unit_created' && data.unit) {
         setUnits((prev) => {
           if (prev.some((u) => String(u.id) === String(data.unit.id))) return prev;
@@ -1057,11 +1205,18 @@ export default function DispatchPage() {
       }
     });
 
-    // Listen for panic alerts — play alarm tone + voice alert, switch to active tab
+    // Listen for panic alerts — play alarm tone + voice alert, switch to active
+    // tab, and immediately refetch so the auto-created P1 officer_assist call
+    // and the unit's EMERGENCY overlay flash appear at once (not on the 20s
+    // poll). Delivered live via the AlertHubDO socket (WebSocketContext).
     const unsubPanic = subscribe('panic_alert', (msg: any) => {
       const data = msg.data || msg;
       setFilterTab('active');
       announcePanicAlert(data.user_name || data.userName);
+      const action = data.action || data.panic?.action;
+      // Refresh on activation (new call + emergent unit) and on clears
+      // (unit returns to normal) so the board tracks the lifecycle.
+      if (action !== 'panic_acknowledged') fetchData({ silent: true });
     });
 
     // Listen for serve queue events — update gold serve status panel in real time
@@ -1142,6 +1297,13 @@ export default function DispatchPage() {
       fetchArchivedCalls();
     }
   }, [filterTab, archivedLoaded, fetchArchivedCalls]);
+
+  // When the Cleared tab is active, (re)fetch cleared/closed/cancelled calls.
+  // Refetched on every activation (not gated like archived) so a call cleared
+  // moments ago shows up the next time the dispatcher opens the tab.
+  useEffect(() => {
+    if (filterTab === 'cleared') fetchClearedCalls();
+  }, [filterTab, fetchClearedCalls]);
 
   // (Template fetch consolidated into the main init useEffect above — line 296)
 
@@ -1227,7 +1389,7 @@ export default function DispatchPage() {
   // to component scope so both the sort memo and the render (GEO dividers) share it.
   const sortMode = userPrefs?.dispatch_sort || localSort || 'priority';
 
-  const filteredCalls = useMemo(() => (filterTab === 'archived' ? archivedCalls : calls).filter((call) => {
+  const filteredCalls = useMemo(() => (filterTab === 'archived' ? archivedCalls : filterTab === 'cleared' ? clearedCalls : calls).filter((call) => {
     switch (filterTab) {
       case 'pending': return call.status === 'pending';
       case 'active': return ['dispatched', 'enroute', 'onscene', 'on_hold'].includes(call.status);
@@ -1311,7 +1473,7 @@ export default function DispatchPage() {
     const pDiff = (pOrder[a.priority] ?? 3) - (pOrder[b.priority] ?? 3);
     if (pDiff !== 0) return pDiff;
     return parseTimestamp(b.created_at).getTime() - parseTimestamp(a.created_at).getTime();
-  }), [calls, archivedCalls, filterTab, searchQuery, priorityFilter, typeFilter, signalFilter, knownSignalCodes, userPrefs?.dispatch_sort, localSort, userPrefs?.dispatch_show_cleared, user?.id]);
+  }), [calls, archivedCalls, clearedCalls, filterTab, searchQuery, priorityFilter, typeFilter, signalFilter, knownSignalCodes, userPrefs?.dispatch_sort, localSort, userPrefs?.dispatch_show_cleared, user?.id]);
 
   // Shortcut cheat-sheet overlay (toggled with "?").
   const [showShortcutHelp, setShowShortcutHelp] = useState(false);
@@ -1544,6 +1706,11 @@ export default function DispatchPage() {
         location_floor: callData.location_floor || null,
         location_room: callData.location_room || null,
         zone_beat: callData.zone_beat || null,
+        // Area — top of the A/S/Z/B hierarchy. The server also backfills this
+        // from coordinates, but sending what the form resolved keeps the value
+        // the dispatcher saw and covers manual Section picks made without coords.
+        area_code: callData.area_code || null,
+        area_name: callData.area_name || null,
         sector_id: callData.sector_id ?? null,
         zone_id: callData.zone_id ?? null,
         beat_id: callData.beat_id ?? null,
@@ -1788,6 +1955,25 @@ export default function DispatchPage() {
       pso_billing_code: ed.pso_billing_code || null,
       pso_authorization: ed.pso_authorization || null,
       contract_id: ed.contract_id || null,
+      // Tactical flags — mirrored from Quick Flags so a form save preserves
+      // flag state when the user edits both form fields and flags before saving.
+      // Previously omitted, causing Quick Flag toggles to appear lost if the
+      // user hit Save in the edit form immediately after a toggle.
+      mental_health_crisis: ed.mental_health_crisis ?? false,
+      juvenile_involved: ed.juvenile_involved ?? false,
+      felony_in_progress: ed.felony_in_progress ?? false,
+      officer_safety_caution: ed.officer_safety_caution ?? false,
+      k9_requested: ed.k9_requested ?? false,
+      ems_requested: ed.ems_requested ?? false,
+      fire_requested: ed.fire_requested ?? false,
+      hazmat: ed.hazmat ?? false,
+      gang_related: ed.gang_related ?? false,
+      evidence_collected: ed.evidence_collected ?? false,
+      body_camera_active: ed.body_camera_active ?? false,
+      photos_taken: ed.photos_taken ?? false,
+      trespass_issued: ed.trespass_issued ?? false,
+      vehicle_pursuit: ed.vehicle_pursuit ?? false,
+      foot_pursuit: ed.foot_pursuit ?? false,
       // Process Service fields
       process_service_type: ed.process_service_type || null,
       process_served_to: ed.process_served_to || null,
@@ -1867,6 +2053,23 @@ export default function DispatchPage() {
       pso_billing_code: selectedCallForEdit.pso_billing_code || '',
       pso_authorization: selectedCallForEdit.pso_authorization || '',
       contract_id: selectedCallForEdit.contract_id || '',
+      // Tactical flags — mirror Quick Flags fields so the edit form
+      // initializes with their current state and the save body includes them.
+      mental_health_crisis: !!selectedCallForEdit.mental_health_crisis,
+      juvenile_involved: !!selectedCallForEdit.juvenile_involved,
+      felony_in_progress: !!selectedCallForEdit.felony_in_progress,
+      officer_safety_caution: !!selectedCallForEdit.officer_safety_caution,
+      k9_requested: !!selectedCallForEdit.k9_requested,
+      ems_requested: !!selectedCallForEdit.ems_requested,
+      fire_requested: !!selectedCallForEdit.fire_requested,
+      hazmat: !!selectedCallForEdit.hazmat,
+      gang_related: !!selectedCallForEdit.gang_related,
+      evidence_collected: !!selectedCallForEdit.evidence_collected,
+      body_camera_active: !!selectedCallForEdit.body_camera_active,
+      photos_taken: !!selectedCallForEdit.photos_taken,
+      trespass_issued: !!selectedCallForEdit.trespass_issued,
+      vehicle_pursuit: !!selectedCallForEdit.vehicle_pursuit,
+      foot_pursuit: !!selectedCallForEdit.foot_pursuit,
       // Process Service fields
       process_service_type: selectedCallForEdit.process_service_type || '',
       process_served_to: selectedCallForEdit.process_served_to || '',
@@ -2008,7 +2211,9 @@ export default function DispatchPage() {
     return workload;
   }, [calls]);
 
-  // Feature 14: Disposition statistics for current shift
+  // Feature 14: Disposition statistics (ALL-TIME cleared/closed calls — the
+  // /dispatch/disposition-stats query has no time bound; the "DISPS:" strip is
+  // labeled neutrally, not "shift", to match).
   const [dispositionStats, setDispositionStats] = useState<{disposition: string; count: number}[]>([]);
   useEffect(() => {
     apiFetch<any[]>('/dispatch/disposition-stats')
@@ -2083,21 +2288,24 @@ export default function DispatchPage() {
   const tabCounts = useMemo(() => {
     const pending = calls.filter((c) => c.status === 'pending').length;
     const active = calls.filter((c) => ['dispatched', 'enroute', 'onscene', 'on_hold'].includes(c.status)).length;
-    const cleared = calls.filter((c) => ['cleared', 'closed', 'cancelled'].includes(c.status)).length;
+    // Cleared calls are NOT in the active-only `calls` array — count the
+    // separately-fetched clearedCalls for the badge. The in-`calls` figure
+    // (always 0) is still what the ALL math subtracts, which stays correct.
+    const clearedInActive = calls.filter((c) => ['cleared', 'closed', 'cancelled'].includes(c.status)).length;
     // ALL count: if user hides cleared calls, exclude them from the count to match the visible list
-    const allCount = userPrefs?.dispatch_show_cleared ? calls.length : calls.length - cleared;
+    const allCount = userPrefs?.dispatch_show_cleared ? calls.length : calls.length - clearedInActive;
     const myId = user?.id != null ? String(user.id) : null;
     const mine = myId ? calls.filter((c) => String((c as any).dispatcher_id ?? (c as any).created_by ?? '') === myId).length : 0;
     return {
       all: allCount,
       pending,
       active,
-      cleared,
+      cleared: clearedCalls.length,
       archived: archivedCalls.length,
       serve: calls.filter((c) => PSO_INCIDENT_TYPES.includes(c.incident_type)).length,
       mine,
     };
-  }, [calls, archivedCalls, userPrefs?.dispatch_show_cleared, user?.id]);
+  }, [calls, clearedCalls, archivedCalls, userPrefs?.dispatch_show_cleared, user?.id]);
 
   if (isLoading) {
     return (
@@ -2526,7 +2734,7 @@ export default function DispatchPage() {
                         </span>
                         {editingTimestamp === ts.field ? (
                           <div className="flex items-center gap-1">
-                            <input
+                            <input id="ff-dispatchpage-0"
                               type="datetime-local"
                               step="1"
                               className="input-dark text-[10px] font-mono px-1 py-0.5 w-[175px]"
@@ -2633,7 +2841,7 @@ export default function DispatchPage() {
                   )}
                   {/* Add note input — mobile */}
                   <div className="flex gap-2">
-                    <input
+                    <input id="ff-dispatchpage-1"
                       type="text"
                       className="flex-1 bg-surface-sunken border border-rmpg-600 text-sm text-rmpg-200 px-3 rounded-sm"
                       style={{ minHeight: 44 }}
@@ -2661,7 +2869,7 @@ export default function DispatchPage() {
                       PSO Details
                       {(selectedCall.pso_attempt_number || 1) >= 1 && (
                         isAdminOrManager ? (
-                          <select
+                          <select id="ff-dispatchpage-2"
                             className="px-1 py-0 text-[9px] font-bold rounded-sm cursor-pointer"
                             style={{ background: '#f59e0b30', border: '1px solid #f59e0b50', color: '#fbbf24', appearance: 'auto' }}
                             value={selectedCall.pso_attempt_number || 1}
@@ -2690,7 +2898,7 @@ export default function DispatchPage() {
                       {selectedCall.pso_requestor_phone && <div><span className="text-rmpg-400">Phone:</span> {formatPhoneDisplay(selectedCall.pso_requestor_phone)}</div>}
                       {selectedCall.pso_billing_code && <div><span className="text-rmpg-400">Billing:</span> {selectedCall.pso_billing_code}</div>}
                       {selectedCall.pso_authorization && <div><span className="text-rmpg-400">Auth:</span> {selectedCall.pso_authorization}</div>}
-                      {selectedCall.disposition && <div><span className="text-rmpg-400">Disposition:</span> {formatDispositionCode(selectedCall.disposition)}</div>}
+                      {selectedCall.disposition && <div><span className="text-rmpg-400">Disposition:</span> <span title={humanizeDisposition(selectedCall.disposition)}>{selectedCall.disposition}</span></div>}
                     </div>
 
                     {/* Serve Queue Integration — Gold Status Panel */}
@@ -3064,7 +3272,7 @@ export default function DispatchPage() {
           )}
           <div className="relative flex items-center" style={{ minWidth: '100px', maxWidth: '170px' }}>
             <Search className="absolute left-2 w-3 h-3 text-[#545454] pointer-events-none" />
-            <input
+            <input id="ff-dispatchpage-3"
               type="text"
               placeholder="Search calls, address, district (SL1, Herriman)…"
               value={searchQuery}
@@ -3561,7 +3769,7 @@ export default function DispatchPage() {
                   {/* Case Number — editable by admin/manager */}
                   {(selectedCall.case_number || isAdminOrManager) && (
                     editingTimestamp === 'case_number' ? (
-                      <input
+                      <input id="ff-dispatchpage-4"
                         type="text"
                         className="input-dark text-[10px] font-mono font-bold px-1.5 py-0.5 w-[160px]"
                         defaultValue={selectedCall.case_number || ''}
@@ -3609,7 +3817,7 @@ export default function DispatchPage() {
                   {/* Incident Number — editable by admin/manager */}
                   {(selectedCall.incident_number || isAdminOrManager) && (
                     editingTimestamp === 'incident_number' ? (
-                      <input
+                      <input id="ff-dispatchpage-5"
                         type="text"
                         className="input-dark text-[10px] font-mono font-bold px-1.5 py-0.5 w-[160px]"
                         defaultValue={(selectedCall as any).incident_number || ''}
@@ -3941,10 +4149,10 @@ export default function DispatchPage() {
                         <RotateCcw style={{ width: 10, height: 10 }} /> Restore
                       </button>
                     )}
-                    {/* Delete — available on any call */}
-                    {!isEditing && (
-                      <button type="button" onClick={() => setDeleteCallTarget(selectedCall)} className="toolbar-btn text-red-400 hover:text-red-300" title="Delete this call permanently">
-                        <Trash2 style={{ width: 10, height: 10 }} /> Delete
+                    {/* Remove — soft-delete (archive); senior roles only */}
+                    {!isEditing && canDeleteCall && (
+                      <button type="button" onClick={() => setDeleteCallTarget(selectedCall)} className="toolbar-btn text-red-400 hover:text-red-300" title="Remove this call from the board (archived, admin-recoverable)">
+                        <Trash2 style={{ width: 10, height: 10 }} /> Remove
                       </button>
                     )}
                   </div>
@@ -4079,7 +4287,7 @@ export default function DispatchPage() {
                     <div>
                       <label className="field-label">Type:</label>
                       {isEditing ? (
-                        <select className="select-dark text-xs mt-0.5" value={editData.incident_type} onChange={(e) => updateEditField('incident_type', e.target.value)}>
+                        <select id="ff-dispatchpage-6" className="select-dark text-xs mt-0.5" value={editData.incident_type} onChange={(e) => updateEditField('incident_type', e.target.value)}>
                           {Object.entries(INCIDENT_TYPE_CATEGORIES).map(([cat, types]) => (
                             <optgroup key={cat} label={cat}>{types.map((t) => (<option key={t.value} value={t.value}>{t.label}</option>))}</optgroup>
                           ))}
@@ -4097,6 +4305,10 @@ export default function DispatchPage() {
                           value={editData.location}
                           onChange={(val) => updateEditField('location', val)}
                           onSelect={async (addr: ParsedAddress) => {
+                            // Parse Building/Suite/Floor from the typed text (still
+                            // in editData.location) before it's replaced — the
+                            // geocoder strips sub-address tokens.
+                            const parts = parseLocationParts(editData.location || addr.formatted);
                             updateEditField('location', addr.formatted);
                             if (addr.latitude != null) {
                               // Location changed → recompute and OVERWRITE every
@@ -4113,8 +4325,43 @@ export default function DispatchPage() {
                                 beat_id: details.beat_id || prev.beat_id,
                                 dispatch_code: details.dispatch_code || prev.dispatch_code,
                                 cross_street: details.cross_street || prev.cross_street,
+                                // Bldg/Suite/Floor: fill-if-empty, never clobber.
+                                location_building: prev.location_building || parts.building,
+                                location_floor: prev.location_floor || parts.floor,
+                                location_room: prev.location_room || parts.suite,
+                              }));
+                            } else {
+                              setEditData(prev => ({
+                                ...prev,
+                                location_building: prev.location_building || parts.building,
+                                location_floor: prev.location_floor || parts.floor,
+                                location_room: prev.location_room || parts.suite,
                               }));
                             }
+                          }}
+                          // Typed an address without picking a suggestion →
+                          // forward-geocode the freehand text and fill the same
+                          // derived geo fields, so manual entries still get
+                          // cross-street + section/zone/beat. Bldg/Suite parse
+                          // from the text even when the geocode misses.
+                          onResolveTyped={async (text) => {
+                            const parts = parseLocationParts(text);
+                            const details = await resolveFromText(text);
+                            setEditData(prev => ({
+                              ...prev,
+                              location_building: prev.location_building || parts.building,
+                              location_floor: prev.location_floor || parts.floor,
+                              location_room: prev.location_room || parts.suite,
+                              ...(details ? {
+                                latitude: details.latitude ?? prev.latitude,
+                                longitude: details.longitude ?? prev.longitude,
+                                sector_id: details.sector_id || prev.sector_id,
+                                zone_id: details.zone_id || prev.zone_id,
+                                beat_id: details.beat_id || prev.beat_id,
+                                dispatch_code: details.dispatch_code || prev.dispatch_code,
+                                cross_street: details.cross_street || prev.cross_street,
+                              } : {}),
+                            }));
                           }}
                         />
                       ) : (
@@ -4145,7 +4392,7 @@ export default function DispatchPage() {
                       <label className="field-label">Description:</label>
                       {isEditing ? (
                         <>
-                          <textarea className="textarea-dark text-xs mt-0.5" rows={3} value={editData.description} onChange={(e) => updateEditField('description', e.target.value)} />
+                          <textarea id="ff-dispatchpage-7" className="textarea-dark text-xs mt-0.5" rows={3} value={editData.description} onChange={(e) => updateEditField('description', e.target.value)} />
                           <NarrativeAssist
                             notes={editData.description || ''}
                             incidentType={editData.incident_type || selectedCall.incident_type}
@@ -4162,7 +4409,7 @@ export default function DispatchPage() {
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                           <div>
                             <label className="field-label">Source:</label>
-                            <select className="select-dark text-xs mt-0.5" value={editData.source} onChange={(e) => updateEditField('source', e.target.value)}>
+                            <select id="ff-dispatchpage-8" className="select-dark text-xs mt-0.5" value={editData.source} onChange={(e) => updateEditField('source', e.target.value)}>
                               <option value="phone">Phone</option><option value="radio">Radio</option><option value="walk_in">Walk-In</option>
                               <option value="alarm">Alarm</option><option value="patrol">Patrol</option><option value="online">Online</option>
                               <option value="dispatch">Dispatch</option><option value="other">Other</option>
@@ -4170,7 +4417,7 @@ export default function DispatchPage() {
                           </div>
                           <div>
                             <label className="field-label">Priority:</label>
-                            <select className="select-dark text-xs mt-0.5" value={editData.priority} onChange={(e) => updateEditField('priority', e.target.value)}>
+                            <select id="ff-dispatchpage-9" className="select-dark text-xs mt-0.5" value={editData.priority} onChange={(e) => updateEditField('priority', e.target.value)}>
                               <option value="P1">P1 - Emergency</option><option value="P2">P2 - Urgent</option>
                               <option value="P3">P3 - Routine</option><option value="P4">P4 - Scheduled</option>
                             </select>
@@ -4179,7 +4426,7 @@ export default function DispatchPage() {
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                           <div>
                             <label className="field-label">Client:</label>
-                            <select className="select-dark text-xs mt-0.5" value={editData.client_id || ''} onChange={(e) => updateEditField('client_id', e.target.value)}>
+                            <select id="ff-dispatchpage-10" className="select-dark text-xs mt-0.5" value={editData.client_id || ''} onChange={(e) => updateEditField('client_id', e.target.value)}>
                               <option value="">— No Client —</option>
                               {clientsList.map((c) => (
                                 <option key={c.id} value={c.id}>{c.name}</option>
@@ -4188,7 +4435,7 @@ export default function DispatchPage() {
                           </div>
                           <div>
                             <label className="field-label">Property:</label>
-                            <select className="select-dark text-xs mt-0.5" value={editData.property_id || ''} onChange={(e) => updateEditField('property_id', e.target.value)}>
+                            <select id="ff-dispatchpage-11" className="select-dark text-xs mt-0.5" value={editData.property_id || ''} onChange={(e) => updateEditField('property_id', e.target.value)}>
                               <option value="">— No Property —</option>
                               {propertiesList.map((p) => (
                                 <option key={p.id} value={p.id}>{p.name}</option>
@@ -4198,7 +4445,7 @@ export default function DispatchPage() {
                         </div>
                         <div>
                           <label className="field-label">Disposition:</label>
-                          <select
+                          <select id="ff-dispatchpage-12"
                             className="select-dark text-xs mt-0.5"
                             value={editData.disposition || ''}
                             onChange={(e) => updateEditField('disposition', e.target.value)}
@@ -4211,8 +4458,11 @@ export default function DispatchPage() {
                                 reachable. */}
                             {dispositionGroupsForIncident(selectedCall.incident_type).map((g) => (
                               <optgroup key={g.label} label={g.label}>
+                                {/* Selection shows CODE — Description so the
+                                    dispatcher picks the right code; only the
+                                    code is stored + shown on output surfaces. */}
                                 {g.codes.map((d) => (
-                                  <option key={d.code} value={d.code}>{d.description}</option>
+                                  <option key={d.code} value={d.code}>{d.code} — {d.description}</option>
                                 ))}
                               </optgroup>
                             ))}
@@ -4233,20 +4483,30 @@ export default function DispatchPage() {
                         </div>
                       </>
                     )}
-                    {!isEditing && selectedCall.disposition && (
-                      <div>
-                        <label className="field-label">Disposition:</label>
-                        <p className="text-sm text-rmpg-200">
-                          <span className="inline-block px-2 py-0.5 bg-brand-900/40 text-brand-300 text-[11px] uppercase font-bold border border-brand-600/40 mr-1.5 rounded-sm tracking-wide">
-                            {selectedCall.disposition}
-                          </span>
-                          {(() => {
-                            const match = dispositionCodes.find((d) => d.code === selectedCall.disposition);
-                            return match ? <span className="text-rmpg-300">{match.description}</span> : null;
-                          })()}
-                        </p>
-                      </div>
-                    )}
+                    {!isEditing && selectedCall.disposition && (() => {
+                      // OUTPUT = code only (per the short-code contract). The
+                      // description rides along as a hover tooltip for
+                      // discoverability but is not shown inline. Badge color
+                      // comes from the chart when the code is known.
+                      const match = dispositionCodes.find((d) => d.code === selectedCall.disposition);
+                      const color = (match as any)?.color as string | undefined;
+                      return (
+                        <div>
+                          <label className="field-label">Disposition:</label>
+                          <p className="text-sm text-rmpg-200">
+                            <span
+                              className="inline-block px-2 py-0.5 text-[11px] uppercase font-bold border mr-1.5 rounded-sm tracking-wide"
+                              title={match?.description || selectedCall.disposition || ''}
+                              style={color
+                                ? { color, borderColor: `${color}66`, background: `${color}1a` }
+                                : undefined}
+                            >
+                              {selectedCall.disposition}
+                            </span>
+                          </p>
+                        </div>
+                      );
+                    })()}
                   </div>
 
                   {/* Right Column: Caller, Timeline, Units */}
@@ -4256,8 +4516,8 @@ export default function DispatchPage() {
                       <label className="field-label">Caller:</label>
                       {isEditing ? (
                         <div className="space-y-1 mt-0.5">
-                          <input type="text" className="input-dark text-xs" placeholder="Caller name" value={editData.caller_name} onChange={(e) => updateEditField('caller_name', e.target.value)} />
-                          <input type="text" inputMode="tel" className="input-dark text-xs" placeholder="Caller phone" value={editData.caller_phone} onChange={(e) => updateEditField('caller_phone', formatPhoneInput(e.target.value))} />
+                          <input id="ff-dispatchpage-13" type="text" className="input-dark text-xs" placeholder="Caller name" value={editData.caller_name} onChange={(e) => updateEditField('caller_name', e.target.value)} />
+                          <input id="ff-dispatchpage-14" type="text" inputMode="tel" className="input-dark text-xs" placeholder="Caller phone" value={editData.caller_phone} onChange={(e) => updateEditField('caller_phone', formatPhoneInput(e.target.value))} />
                            <AddressAutocomplete
                              className="input-dark text-xs"
                              placeholder="Caller address"
@@ -4265,7 +4525,7 @@ export default function DispatchPage() {
                              onChange={(value) => updateEditField('caller_address', value)}
                              name="caller_address"
                            />
-                          <select className="select-dark text-xs" value={editData.caller_relationship} onChange={(e) => updateEditField('caller_relationship', e.target.value)}>
+                          <select id="ff-dispatchpage-15" className="select-dark text-xs" value={editData.caller_relationship} onChange={(e) => updateEditField('caller_relationship', e.target.value)}>
                             <option value="">-- Relationship --</option>
                             <option value="employee">Employee</option><option value="victim">Victim</option>
                             <option value="witness">Witness</option><option value="complainant">Complainant</option>
@@ -4315,7 +4575,7 @@ export default function DispatchPage() {
                             <span className="text-[#9ca3af] text-[10px]" style={{ minWidth: '66px' }}>{ts.label}</span>
                             {editingTimestamp === ts.field ? (
                               <div className="flex items-center gap-1">
-                                <input
+                                <input id="ff-dispatchpage-16"
                                   type="datetime-local"
                                   step="1"
                                   className="input-dark text-[10px] font-mono px-1 py-0.5 w-[175px]"
@@ -4440,7 +4700,7 @@ export default function DispatchPage() {
                           {/* Feature 19: Transfer button (only if a unit is assigned) */}
                           {(selectedCall.assigned_units || []).length > 0 && (
                             <div className="relative">
-                              <select
+                              <select id="ff-dispatchpage-17"
                                 className="input-dark text-[8px] py-0 px-1"
                                 style={{ maxWidth: 120 }}
                                 defaultValue=""
@@ -4531,11 +4791,11 @@ export default function DispatchPage() {
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-1">
                         <div>
                           <label className="text-[9px] text-brand-gold-500">Starting Mileage <span className="text-red-400">*</span></label>
-                          <input type="number" step="0.1" min="0" className="input-dark text-xs" placeholder="e.g. 45230" value={editData.starting_mileage} onChange={(e) => updateEditField('starting_mileage', e.target.value)} />
+                          <input id="ff-dispatchpage-18" type="number" step="0.1" min="0" className="input-dark text-xs" placeholder="e.g. 45230" value={editData.starting_mileage} onChange={(e) => updateEditField('starting_mileage', e.target.value)} />
                         </div>
                         <div>
                           <label className="text-[9px] text-brand-gold-500">Ending Mileage</label>
-                          <input type="number" step="0.1" min="0" className="input-dark text-xs" placeholder="e.g. 45256" value={editData.ending_mileage} onChange={(e) => updateEditField('ending_mileage', e.target.value)} />
+                          <input id="ff-dispatchpage-19" type="number" step="0.1" min="0" className="input-dark text-xs" placeholder="e.g. 45256" value={editData.ending_mileage} onChange={(e) => updateEditField('ending_mileage', e.target.value)} />
                         </div>
                       </div>
                     ) : (
@@ -4569,15 +4829,15 @@ export default function DispatchPage() {
                       return (
                         <div className="space-y-2 mt-1">
                           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                            <div><label className="text-[9px] text-brand-gold-500">Cross Street</label><input type="text" className="input-dark text-xs" value={editData.cross_street} onChange={(e) => updateEditField('cross_street', e.target.value)} /></div>
-                            <div><label className="text-[9px] text-brand-gold-500">Building</label><input type="text" className="input-dark text-xs" value={editData.location_building} onChange={(e) => updateEditField('location_building', e.target.value)} /></div>
-                            <div><label className="text-[9px] text-brand-gold-500">Floor</label><input type="text" className="input-dark text-xs" value={editData.location_floor} onChange={(e) => updateEditField('location_floor', e.target.value)} /></div>
-                            <div><label className="text-[9px] text-brand-gold-500">Room/Suite</label><input type="text" className="input-dark text-xs" value={editData.location_room} onChange={(e) => updateEditField('location_room', e.target.value)} /></div>
+                            <div><label className="text-[9px] text-brand-gold-500">Cross Street</label><input id="ff-dispatchpage-20" type="text" className="input-dark text-xs" value={editData.cross_street} onChange={(e) => updateEditField('cross_street', e.target.value)} /></div>
+                            <div><label className="text-[9px] text-brand-gold-500">Building</label><input id="ff-dispatchpage-21" type="text" className="input-dark text-xs" value={editData.location_building} onChange={(e) => updateEditField('location_building', e.target.value)} /></div>
+                            <div><label className="text-[9px] text-brand-gold-500">Floor</label><input id="ff-dispatchpage-22" type="text" className="input-dark text-xs" value={editData.location_floor} onChange={(e) => updateEditField('location_floor', e.target.value)} /></div>
+                            <div><label className="text-[9px] text-brand-gold-500">Room/Suite</label><input id="ff-dispatchpage-23" type="text" className="input-dark text-xs" value={editData.location_room} onChange={(e) => updateEditField('location_room', e.target.value)} /></div>
                           </div>
                           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                             <div>
                               <label className="text-[9px] text-brand-gold-500">Section</label>
-                              <select className="input-dark text-xs" value={editData.sector_id} onChange={(e) => {
+                              <select id="ff-dispatchpage-24" className="input-dark text-xs" value={editData.sector_id} onChange={(e) => {
                                 const val = e.target.value;
                                 setEditData(prev => ({ ...prev, sector_id: val, zone_id: '', beat_id: '', dispatch_code: '' }));
                               }}>
@@ -4591,7 +4851,7 @@ export default function DispatchPage() {
                             </div>
                             <div>
                               <label className="text-[9px] text-brand-gold-500">Zone</label>
-                              <select className="input-dark text-xs" value={editData.zone_id} onChange={(e) => {
+                              <select id="ff-dispatchpage-25" className="input-dark text-xs" value={editData.zone_id} onChange={(e) => {
                                 const val = e.target.value;
                                 setEditData(prev => ({ ...prev, zone_id: val, beat_id: '', dispatch_code: '' }));
                               }}>
@@ -4601,7 +4861,7 @@ export default function DispatchPage() {
                             </div>
                             <div>
                               <label className="text-[9px] text-brand-gold-500">Beat</label>
-                              <select className="input-dark text-xs" value={editData.beat_id} disabled={!editData.sector_id} onChange={(e) => {
+                              <select id="ff-dispatchpage-26" className="input-dark text-xs" value={editData.beat_id} disabled={!editData.sector_id} onChange={(e) => {
                                 const beatVal = e.target.value;
                                 if (!beatVal) { setEditData(prev => ({ ...prev, beat_id: '', dispatch_code: '' })); return; }
                                 // Resolve the district for this beat. If a Zone is
@@ -4634,7 +4894,7 @@ export default function DispatchPage() {
                             </div>
                             <div>
                               <label className="text-[9px] text-brand-gold-500">Dispatch Code</label>
-                              <input type="text" className="input-dark text-xs bg-rmpg-800 opacity-80" readOnly value={editData.dispatch_code || ''} />
+                              <input id="ff-dispatchpage-27" type="text" className="input-dark text-xs bg-rmpg-800 opacity-80" readOnly value={editData.dispatch_code || ''} />
                             </div>
                           </div>
                         </div>
@@ -4658,27 +4918,26 @@ export default function DispatchPage() {
                             {selectedCall.dispatch_code}
                           </span>
                         )}
-                        {selectedCall.sector_id && (() => {
-                          const area = getArea(selectedCall.sector_id);
-                          return area ? <span className="text-rmpg-200" title="Dispatch Area — top of the geography hierarchy"><span className="text-rmpg-400">Area:</span> {[area.code, area.name].filter(Boolean).join(' — ')}</span> : null;
-                        })()}
-                        {selectedCall.sector_id && (() => {
-                          // Police format: show the Spillman sector code ("SL1"), not the
-                          // numeric dispatch_sectors.id row key. Fall back to the id only
-                          // if the districts lookup hasn't loaded / has no code.
-                          const code = getSectionCode(selectedCall.sector_id) || selectedCall.sector_id;
-                          const name = sectionLabels.get(String(selectedCall.sector_id)) || '';
-                          return <span className="text-rmpg-200" title="Spillman sector code"><span className="text-rmpg-400">Sec:</span> {[code, name].filter(Boolean).join(' — ')}</span>;
-                        })()}
-                        {selectedCall.zone_id && <span className="text-rmpg-200" title="Zone (within sector)"><span className="text-rmpg-400">Zone:</span> {[zoneLeaf(selectedCall.zone_id), zoneLabels.get(selectedCall.zone_id) || ''].filter(Boolean).join(' — ')}</span>}
-                        {selectedCall.beat_id && (() => {
-                          // Show the leaf beat code (e.g. "C", not "SL1-HER/C") prefixed
-                          // to its name. getBeatLabel falls back to the raw code, so guard
-                          // against an "C — C" echo. Lookups stay keyed by the full code.
-                          const code = beatLeaf(selectedCall.beat_id);
-                          const label = getBeatLabel(selectedCall.zone_id || '', selectedCall.beat_id);
-                          const text = label && label !== selectedCall.beat_id ? `${code} — ${label}` : code;
-                          return <span className="text-rmpg-200" title="Beat (within zone)"><span className="text-rmpg-400">Beat:</span> {text}</span>;
+                        {/* Section/Zone/Beat in SHORT-CODE form (e.g. "SL1/HER/A1")
+                            via the chart-code parser — NO long names. Dispatch shows
+                            short codes only; the full Area›Section›Zone›Beat NAMES are
+                            presented on the Map UI ("What's Here") instead. Hidden
+                            when it would merely echo the dispatch_code badge. */}
+                        {(() => {
+                          const szb = sectionZoneBeatCombined(selectedCall.sector_id, selectedCall.zone_id, selectedCall.beat_id);
+                          if (!szb || szb === selectedCall.dispatch_code) return null;
+                          return (
+                            <span
+                              role="button"
+                              tabIndex={0}
+                              title="Section / Zone / Beat (short code) — click to copy"
+                              onClick={() => { try { navigator.clipboard?.writeText(szb); } catch { /* clipboard unavailable */ } }}
+                              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); try { navigator.clipboard?.writeText(szb); } catch { /* clipboard unavailable */ } } }}
+                              className="cursor-pointer hover:brightness-110 text-[10px] font-bold font-mono text-rmpg-300 bg-rmpg-800/60 border border-rmpg-600/50 px-2 py-0.5 rounded-sm tracking-wider"
+                            >
+                              <span className="text-rmpg-500 mr-1">S/Z/B</span>{szb}
+                            </span>
+                          );
                         })()}
                         {selectedCall.latitude != null && selectedCall.longitude != null && (
                           <span className="text-rmpg-400 font-mono text-[9px] tabular-nums select-all">
@@ -4728,15 +4987,15 @@ export default function DispatchPage() {
                       return (
                       <div className="space-y-2 mt-1">
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                          <div><label className="text-[9px] text-brand-gold-500"># Subjects</label><input type="number" min="0" className="input-dark text-xs" value={editData.num_subjects} onChange={(e) => updateEditField('num_subjects', e.target.value)} /></div>
-                          <div><label className="text-[9px] text-brand-gold-500"># Victims</label><input type="number" min="0" className="input-dark text-xs" value={editData.num_victims} onChange={(e) => updateEditField('num_victims', e.target.value)} /></div>
+                          <div><label className="text-[9px] text-brand-gold-500"># Subjects</label><input id="ff-dispatchpage-28" type="number" min="0" className="input-dark text-xs" value={editData.num_subjects} onChange={(e) => updateEditField('num_subjects', e.target.value)} /></div>
+                          <div><label className="text-[9px] text-brand-gold-500"># Victims</label><input id="ff-dispatchpage-29" type="number" min="0" className="input-dark text-xs" value={editData.num_victims} onChange={(e) => updateEditField('num_victims', e.target.value)} /></div>
                           <div>
                             <label className="text-[9px] text-brand-gold-500">Weapons</label>
-                            <select className="input-dark text-xs" value={weaponsIsOther ? 'Other' : editData.weapons_involved} onChange={(e) => updateEditField('weapons_involved', e.target.value)}>
+                            <select id="ff-dispatchpage-30" className="input-dark text-xs" value={weaponsIsOther ? 'Other' : editData.weapons_involved} onChange={(e) => updateEditField('weapons_involved', e.target.value)}>
                               {WEAPONS_OPTIONS.map(w => <option key={w} value={w}>{w || '— Select —'}</option>)}
                             </select>
                             {(editData.weapons_involved === 'Other' || weaponsIsOther) && (
-                              <input type="text" className="input-dark text-xs mt-1" placeholder="Specify weapon..." value={weaponsIsOther ? editData.weapons_involved : ''} onChange={(e) => updateEditField('weapons_involved', e.target.value || 'Other')} />
+                              <input id="ff-dispatchpage-31" type="text" className="input-dark text-xs mt-1" placeholder="Specify weapon..." value={weaponsIsOther ? editData.weapons_involved : ''} onChange={(e) => updateEditField('weapons_involved', e.target.value || 'Other')} />
                             )}
                           </div>
                         </div>
@@ -4744,7 +5003,7 @@ export default function DispatchPage() {
                         <div>
                           <div className="flex items-center gap-2 mb-1">
                             <label className="text-[9px] text-brand-gold-500">Linked Persons</label>
-                            <select className="input-dark text-[9px] py-0 px-1 w-auto" value={linkPersonRole} onChange={(e) => setLinkPersonRole(e.target.value)}>
+                            <select id="ff-dispatchpage-32" className="input-dark text-[9px] py-0 px-1 w-auto" value={linkPersonRole} onChange={(e) => setLinkPersonRole(e.target.value)}>
                               <option value="suspect">Suspect</option>
                               <option value="victim">Victim</option>
                               <option value="witness">Witness</option>
@@ -4767,7 +5026,7 @@ export default function DispatchPage() {
                             </div>
                           )}
                           <div className="relative" ref={personDropdownRef}>
-                            <input type="text" className="input-dark text-xs" placeholder="Search person records to link..." value={editData.subject_description} onChange={(e) => { updateEditField('subject_description', e.target.value); searchPersons(e.target.value); }} onFocus={() => { if (personSearchResults.length > 0) setShowPersonDropdown(true); }} />
+                            <input id="ff-dispatchpage-33" type="text" className="input-dark text-xs" placeholder="Search person records to link..." value={editData.subject_description} onChange={(e) => { updateEditField('subject_description', e.target.value); searchPersons(e.target.value); }} onFocus={() => { if (personSearchResults.length > 0) setShowPersonDropdown(true); }} />
                             {showPersonDropdown && personSearchResults.length > 0 && (
                               <div className="absolute z-50 left-0 right-0 mt-0.5 max-h-40 overflow-y-auto border border-rmpg-500 bg-rmpg-800 rounded-sm shadow-lg">
                                 {personSearchResults.map((p: any) => (
@@ -4795,7 +5054,7 @@ export default function DispatchPage() {
                         <div>
                           <div className="flex items-center gap-2 mb-1">
                             <label className="text-[9px] text-brand-gold-500">Linked Vehicles</label>
-                            <select className="input-dark text-[9px] py-0 px-1 w-auto" value={linkVehicleRole} onChange={(e) => setLinkVehicleRole(e.target.value)}>
+                            <select id="ff-dispatchpage-34" className="input-dark text-[9px] py-0 px-1 w-auto" value={linkVehicleRole} onChange={(e) => setLinkVehicleRole(e.target.value)}>
                               <option value="suspect_vehicle">Suspect Vehicle</option>
                               <option value="victim_vehicle">Victim Vehicle</option>
                               <option value="witness_vehicle">Witness Vehicle</option>
@@ -4817,7 +5076,7 @@ export default function DispatchPage() {
                             </div>
                           )}
                           <div className="relative" ref={vehicleDropdownRef}>
-                            <input type="text" className="input-dark text-xs" placeholder="Search vehicle records to link..." value={editData.vehicle_description} onChange={(e) => { updateEditField('vehicle_description', e.target.value); searchVehicles(e.target.value); }} onFocus={() => { if (vehicleSearchResults.length > 0) setShowVehicleDropdown(true); }} />
+                            <input id="ff-dispatchpage-35" type="text" className="input-dark text-xs" placeholder="Search vehicle records to link..." value={editData.vehicle_description} onChange={(e) => { updateEditField('vehicle_description', e.target.value); searchVehicles(e.target.value); }} onFocus={() => { if (vehicleSearchResults.length > 0) setShowVehicleDropdown(true); }} />
                             {showVehicleDropdown && vehicleSearchResults.length > 0 && (
                               <div className="absolute z-50 left-0 right-0 mt-0.5 max-h-40 overflow-y-auto border border-rmpg-500 bg-rmpg-800 rounded-sm shadow-lg">
                                 {vehicleSearchResults.map((v: any) => (
@@ -4843,13 +5102,13 @@ export default function DispatchPage() {
                         </div>
                         <div>
                           <label className="text-[9px] text-brand-gold-500">Direction of Travel</label>
-                          <select className="input-dark text-xs" value={(DIRECTION_OPTIONS as readonly string[]).includes(editData.direction_of_travel) ? editData.direction_of_travel : ''} onChange={(e) => updateEditField('direction_of_travel', e.target.value)}>
+                          <select id="ff-dispatchpage-36" className="input-dark text-xs" value={(DIRECTION_OPTIONS as readonly string[]).includes(editData.direction_of_travel) ? editData.direction_of_travel : ''} onChange={(e) => updateEditField('direction_of_travel', e.target.value)}>
                             {DIRECTION_OPTIONS.map(d => <option key={d} value={d}>{d || '— Select —'}</option>)}
                           </select>
                         </div>
                         <div className="flex items-center gap-4 mt-1">
                           <label className="flex items-center gap-1 text-xs text-rmpg-300 cursor-pointer">
-                            <input type="checkbox" checked={editData.injuries_reported} onChange={(e) => updateEditField('injuries_reported', e.target.checked)} className="accent-red-500" />
+                            <input id="ff-dispatchpage-37" type="checkbox" checked={editData.injuries_reported} onChange={(e) => updateEditField('injuries_reported', e.target.checked)} className="accent-red-500" />
                             Injuries
                           </label>
                         </div>
@@ -4914,52 +5173,52 @@ export default function DispatchPage() {
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                           <div>
                             <label className="text-[9px] text-brand-gold-500">Scene Safety</label>
-                            <select className="input-dark text-xs" value={(SCENE_SAFETY_OPTIONS as readonly string[]).includes(editData.scene_safety) ? editData.scene_safety : ''} onChange={(e) => updateEditField('scene_safety', e.target.value)}>
+                            <select id="ff-dispatchpage-38" className="input-dark text-xs" value={(SCENE_SAFETY_OPTIONS as readonly string[]).includes(editData.scene_safety) ? editData.scene_safety : ''} onChange={(e) => updateEditField('scene_safety', e.target.value)}>
                               {SCENE_SAFETY_OPTIONS.map(s => <option key={s} value={s}>{s || '— Select —'}</option>)}
                             </select>
                           </div>
                           <div>
                             <label className="text-[9px] text-brand-gold-500">Weather</label>
-                            <select className="input-dark text-xs" value={(WEATHER_OPTIONS as readonly string[]).includes(editData.weather_conditions) ? editData.weather_conditions : ''} onChange={(e) => updateEditField('weather_conditions', e.target.value)}>
+                            <select id="ff-dispatchpage-39" className="input-dark text-xs" value={(WEATHER_OPTIONS as readonly string[]).includes(editData.weather_conditions) ? editData.weather_conditions : ''} onChange={(e) => updateEditField('weather_conditions', e.target.value)}>
                               {WEATHER_OPTIONS.map(w => <option key={w} value={w}>{w || '— Select —'}</option>)}
                             </select>
                           </div>
                           <div>
                             <label className="text-[9px] text-brand-gold-500">Lighting</label>
-                            <select className="input-dark text-xs" value={(LIGHTING_OPTIONS as readonly string[]).includes(editData.lighting_conditions) ? editData.lighting_conditions : ''} onChange={(e) => updateEditField('lighting_conditions', e.target.value)}>
+                            <select id="ff-dispatchpage-40" className="input-dark text-xs" value={(LIGHTING_OPTIONS as readonly string[]).includes(editData.lighting_conditions) ? editData.lighting_conditions : ''} onChange={(e) => updateEditField('lighting_conditions', e.target.value)}>
                               {LIGHTING_OPTIONS.map(l => <option key={l} value={l}>{l || '— Select —'}</option>)}
                             </select>
                           </div>
                         </div>
                         <div className="flex flex-wrap items-center gap-4">
-                          <label className="flex items-center gap-1 text-xs text-rmpg-300 cursor-pointer"><input type="checkbox" checked={editData.alcohol_involved} onChange={(e) => updateEditField('alcohol_involved', e.target.checked)} className="accent-amber-500" /> Alcohol</label>
-                          <label className="flex items-center gap-1 text-xs text-rmpg-300 cursor-pointer"><input type="checkbox" checked={editData.drugs_involved} onChange={(e) => updateEditField('drugs_involved', e.target.checked)} className="accent-red-500" /> Drugs</label>
-                          <label className="flex items-center gap-1 text-xs text-rmpg-300 cursor-pointer"><input type="checkbox" checked={editData.domestic_violence} onChange={(e) => updateEditField('domestic_violence', e.target.checked)} className="accent-red-500" /> DV</label>
-                          <label className="flex items-center gap-1 text-xs text-rmpg-300 cursor-pointer"><input type="checkbox" checked={editData.supervisor_notified} onChange={(e) => updateEditField('supervisor_notified', e.target.checked)} className="accent-brand-500" /> Supervisor Notified</label>
-                          <label className="flex items-center gap-1 text-xs text-rmpg-300 cursor-pointer"><input type="checkbox" checked={editData.le_notified} onChange={(e) => updateEditField('le_notified', e.target.checked)} className="accent-brand-500" /> LE Notified</label>
+                          <label className="flex items-center gap-1 text-xs text-rmpg-300 cursor-pointer"><input id="ff-dispatchpage-41" type="checkbox" checked={editData.alcohol_involved} onChange={(e) => updateEditField('alcohol_involved', e.target.checked)} className="accent-amber-500" /> Alcohol</label>
+                          <label className="flex items-center gap-1 text-xs text-rmpg-300 cursor-pointer"><input id="ff-dispatchpage-42" type="checkbox" checked={editData.drugs_involved} onChange={(e) => updateEditField('drugs_involved', e.target.checked)} className="accent-red-500" /> Drugs</label>
+                          <label className="flex items-center gap-1 text-xs text-rmpg-300 cursor-pointer"><input id="ff-dispatchpage-43" type="checkbox" checked={editData.domestic_violence} onChange={(e) => updateEditField('domestic_violence', e.target.checked)} className="accent-red-500" /> DV</label>
+                          <label className="flex items-center gap-1 text-xs text-rmpg-300 cursor-pointer"><input id="ff-dispatchpage-44" type="checkbox" checked={editData.supervisor_notified} onChange={(e) => updateEditField('supervisor_notified', e.target.checked)} className="accent-brand-500" /> Supervisor Notified</label>
+                          <label className="flex items-center gap-1 text-xs text-rmpg-300 cursor-pointer"><input id="ff-dispatchpage-45" type="checkbox" checked={editData.le_notified} onChange={(e) => updateEditField('le_notified', e.target.checked)} className="accent-brand-500" /> LE Notified</label>
                         </div>
                         {editData.le_notified && (
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                             <div>
                               <label className="text-[9px] text-brand-gold-500">LE Agency</label>
-                              <select className="input-dark text-xs" value={leIsOther ? 'Other — See Notes' : editData.le_agency} onChange={(e) => updateEditField('le_agency', e.target.value)}>
+                              <select id="ff-dispatchpage-46" className="input-dark text-xs" value={leIsOther ? 'Other — See Notes' : editData.le_agency} onChange={(e) => updateEditField('le_agency', e.target.value)}>
                                 {LE_AGENCY_OPTIONS.map(a => <option key={a} value={a}>{a || '— Select —'}</option>)}
                               </select>
                               {(editData.le_agency === 'Other — See Notes' || leIsOther) && (
-                                <input type="text" className="input-dark text-xs mt-1" placeholder="Specify agency..." value={leIsOther ? editData.le_agency : ''} onChange={(e) => updateEditField('le_agency', e.target.value || 'Other — See Notes')} />
+                                <input id="ff-dispatchpage-47" type="text" className="input-dark text-xs mt-1" placeholder="Specify agency..." value={leIsOther ? editData.le_agency : ''} onChange={(e) => updateEditField('le_agency', e.target.value || 'Other — See Notes')} />
                               )}
                             </div>
-                            <div><label className="text-[9px] text-brand-gold-500">LE Case #</label><input type="text" className="input-dark text-xs" value={editData.le_case_number} onChange={(e) => updateEditField('le_case_number', e.target.value)} /></div>
+                            <div><label className="text-[9px] text-brand-gold-500">LE Case #</label><input id="ff-dispatchpage-48" type="text" className="input-dark text-xs" value={editData.le_case_number} onChange={(e) => updateEditField('le_case_number', e.target.value)} /></div>
                           </div>
                         )}
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                          <div><label className="text-[9px] text-brand-gold-500">Damage Estimate ($)</label><input type="number" min="0" step="0.01" className="input-dark text-xs" value={editData.damage_estimate} onChange={(e) => updateEditField('damage_estimate', e.target.value)} /></div>
-                          <div><label className="text-[9px] text-brand-gold-500">Damage Description</label><input type="text" className="input-dark text-xs" value={editData.damage_description} onChange={(e) => updateEditField('damage_description', e.target.value)} /></div>
+                          <div><label className="text-[9px] text-brand-gold-500">Damage Estimate ($)</label><input id="ff-dispatchpage-49" type="number" min="0" step="0.01" className="input-dark text-xs" value={editData.damage_estimate} onChange={(e) => updateEditField('damage_estimate', e.target.value)} /></div>
+                          <div><label className="text-[9px] text-brand-gold-500">Damage Description</label><input id="ff-dispatchpage-50" type="text" className="input-dark text-xs" value={editData.damage_description} onChange={(e) => updateEditField('damage_description', e.target.value)} /></div>
                         </div>
-                        <div><label className="text-[9px] text-brand-gold-500">Action Taken</label><textarea className="textarea-dark text-xs" rows={2} value={editData.action_taken} onChange={(e) => updateEditField('action_taken', e.target.value)} /></div>
+                        <div><label className="text-[9px] text-brand-gold-500">Action Taken</label><textarea id="ff-dispatchpage-51" className="textarea-dark text-xs" rows={2} value={editData.action_taken} onChange={(e) => updateEditField('action_taken', e.target.value)} /></div>
                         <div>
                           <label className="text-[9px] text-brand-gold-500">Responding Officer</label>
-                          <select className="input-dark text-xs" value={editData.responding_officer} onChange={(e) => updateEditField('responding_officer', e.target.value)}>
+                          <select id="ff-dispatchpage-52" className="input-dark text-xs" value={editData.responding_officer} onChange={(e) => updateEditField('responding_officer', e.target.value)}>
                             <option value="">— Select Officer —</option>
                             {officers.map(o => (
                               <option key={o.id} value={`${o.full_name}${o.badge_number ? ` (#${o.badge_number})` : ''}`}>
@@ -4997,7 +5256,7 @@ export default function DispatchPage() {
                         <Building2 className="w-3 h-3" /> PSO Client Request Details
                         {(selectedCall.pso_attempt_number || 1) >= 1 && (
                           isAdminOrManager && !isEditing ? (
-                            <select
+                            <select id="ff-dispatchpage-53"
                               className="ml-1.5 px-1 py-0 text-[8px] font-bold rounded-sm cursor-pointer"
                               style={{ background: '#f59e0b30', border: '1px solid #f59e0b50', color: '#fbbf24', appearance: 'auto', minWidth: '90px' }}
                               value={selectedCall.pso_attempt_number || 1}
@@ -5080,14 +5339,14 @@ export default function DispatchPage() {
                     {isEditing ? (
                       <div className="space-y-2 mt-1">
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                          <div><label className="text-[9px] text-brand-gold-500">Requestor Name</label><input type="text" className="input-dark text-xs" placeholder="Requestor name" value={editData.pso_requestor_name} onChange={(e) => updateEditField('pso_requestor_name', e.target.value)} /></div>
-                          <div><label className="text-[9px] text-brand-gold-500">Requestor Phone</label><input type="text" inputMode="tel" className="input-dark text-xs" placeholder="Phone number" value={editData.pso_requestor_phone} onChange={(e) => updateEditField('pso_requestor_phone', formatPhoneInput(e.target.value))} /></div>
-                          <div><label className="text-[9px] text-brand-gold-500">Requestor Email</label><input type="text" className="input-dark text-xs" placeholder="Email address" value={editData.pso_requestor_email} onChange={(e) => updateEditField('pso_requestor_email', e.target.value)} /></div>
+                          <div><label className="text-[9px] text-brand-gold-500">Requestor Name</label><input id="ff-dispatchpage-54" type="text" className="input-dark text-xs" placeholder="Requestor name" value={editData.pso_requestor_name} onChange={(e) => updateEditField('pso_requestor_name', e.target.value)} /></div>
+                          <div><label className="text-[9px] text-brand-gold-500">Requestor Phone</label><input id="ff-dispatchpage-55" type="text" inputMode="tel" className="input-dark text-xs" placeholder="Phone number" value={editData.pso_requestor_phone} onChange={(e) => updateEditField('pso_requestor_phone', formatPhoneInput(e.target.value))} /></div>
+                          <div><label className="text-[9px] text-brand-gold-500">Requestor Email</label><input id="ff-dispatchpage-56" type="text" className="input-dark text-xs" placeholder="Email address" value={editData.pso_requestor_email} onChange={(e) => updateEditField('pso_requestor_email', e.target.value)} /></div>
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                           <div>
                             <label className="text-[9px] text-brand-gold-500">Service Type</label>
-                            <select className="input-dark text-xs" value={editData.pso_service_type} onChange={(e) => updateEditField('pso_service_type', e.target.value)}>
+                            <select id="ff-dispatchpage-57" className="input-dark text-xs" value={editData.pso_service_type} onChange={(e) => updateEditField('pso_service_type', e.target.value)}>
                               <option value="">— Select Service Type —</option>
                               <optgroup label="Process Service">
                                 <option value="process_service">Process Service (General)</option>
@@ -5137,11 +5396,11 @@ export default function DispatchPage() {
                               </optgroup>
                             </select>
                           </div>
-                          <div><label className="text-[9px] text-brand-gold-500">Billing Code</label><input type="text" className="input-dark text-xs" placeholder="Billing code" value={editData.pso_billing_code} onChange={(e) => updateEditField('pso_billing_code', e.target.value)} /></div>
-                          <div><label className="text-[9px] text-brand-gold-500">Authorization</label><input type="text" className="input-dark text-xs" placeholder="Authorization #" value={editData.pso_authorization} onChange={(e) => updateEditField('pso_authorization', e.target.value)} /></div>
+                          <div><label className="text-[9px] text-brand-gold-500">Billing Code</label><input id="ff-dispatchpage-58" type="text" className="input-dark text-xs" placeholder="Billing code" value={editData.pso_billing_code} onChange={(e) => updateEditField('pso_billing_code', e.target.value)} /></div>
+                          <div><label className="text-[9px] text-brand-gold-500">Authorization</label><input id="ff-dispatchpage-59" type="text" className="input-dark text-xs" placeholder="Authorization #" value={editData.pso_authorization} onChange={(e) => updateEditField('pso_authorization', e.target.value)} /></div>
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                          <div><label className="text-[9px] text-brand-gold-500">Contract ID</label><input type="text" className="input-dark text-xs" placeholder="Contract ID" value={editData.contract_id} onChange={(e) => updateEditField('contract_id', e.target.value)} /></div>
+                          <div><label className="text-[9px] text-brand-gold-500">Contract ID</label><input id="ff-dispatchpage-60" type="text" className="input-dark text-xs" placeholder="Contract ID" value={editData.contract_id} onChange={(e) => updateEditField('contract_id', e.target.value)} /></div>
                         </div>
                       </div>
                     ) : (
@@ -5275,7 +5534,7 @@ export default function DispatchPage() {
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                           <div>
                             <label className="text-[9px] text-amber-400">Document Type</label>
-                            <select className="input-dark text-xs" value={editData.process_service_type || ''} onChange={(e) => updateEditField('process_service_type', e.target.value)}>
+                            <select id="ff-dispatchpage-61" className="input-dark text-xs" value={editData.process_service_type || ''} onChange={(e) => updateEditField('process_service_type', e.target.value)}>
                               <option value="">— Select Document Type —</option>
                               <optgroup label="Civil Process — General">
                                 <option value="subpoena">Subpoena</option>
@@ -5374,25 +5633,25 @@ export default function DispatchPage() {
                           </div>
                           <div>
                             <label className="text-[9px] text-amber-400">Serve To (Name)</label>
-                            <input type="text" className="input-dark text-xs" placeholder="Person to be served" value={editData.process_served_to || ''} onChange={(e) => updateEditField('process_served_to', e.target.value)} />
+                            <input id="ff-dispatchpage-62" type="text" className="input-dark text-xs" placeholder="Person to be served" value={editData.process_served_to || ''} onChange={(e) => updateEditField('process_served_to', e.target.value)} />
                           </div>
                           <div>
                             <label className="text-[9px] text-amber-400">Attempts</label>
-                            <input type="number" className="input-dark text-xs" min="0" placeholder="0" value={editData.process_attempts ?? 0} onChange={(e) => updateEditField('process_attempts', e.target.value ? parseInt(e.target.value, 10) : 0)} />
+                            <input id="ff-dispatchpage-63" type="number" className="input-dark text-xs" min="0" placeholder="0" value={editData.process_attempts ?? 0} onChange={(e) => updateEditField('process_attempts', e.target.value ? parseInt(e.target.value, 10) : 0)} />
                           </div>
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                           <div className="sm:col-span-1">
                             <label className="text-[9px] text-amber-400">Service Address</label>
-                            <input type="text" className="input-dark text-xs w-full" placeholder="Address for service" value={editData.process_served_address || ''} onChange={(e) => updateEditField('process_served_address', e.target.value)} />
+                            <input id="ff-dispatchpage-64" type="text" className="input-dark text-xs w-full" placeholder="Address for service" value={editData.process_served_address || ''} onChange={(e) => updateEditField('process_served_address', e.target.value)} />
                           </div>
                           <div>
                             <label className="text-[9px] text-amber-400">Served At</label>
-                            <input type="datetime-local" step="1" className="input-dark text-xs" value={editData.process_served_at || ''} onChange={(e) => updateEditField('process_served_at', e.target.value)} />
+                            <input id="ff-dispatchpage-65" type="datetime-local" step="1" className="input-dark text-xs" value={editData.process_served_at || ''} onChange={(e) => updateEditField('process_served_at', e.target.value)} />
                           </div>
                           <div>
                             <label className="text-[9px] text-amber-400">Service Result</label>
-                            <select className="input-dark text-xs" value={editData.process_service_result || ''} onChange={(e) => updateEditField('process_service_result', e.target.value)}>
+                            <select id="ff-dispatchpage-66" className="input-dark text-xs" value={editData.process_service_result || ''} onChange={(e) => updateEditField('process_service_result', e.target.value)}>
                               <option value="">— Pending —</option>
                               <optgroup label="Successful Service">
                                 <option value="served">Personal Service</option>
@@ -5607,7 +5866,7 @@ export default function DispatchPage() {
                   </div>
                   {showAddTimeline && (
                     <div className="flex gap-2 mb-2">
-                      <input type="text" className="input-dark flex-1 text-xs" placeholder="New timeline entry..." spellCheck={true} value={newTimelineText}
+                      <input id="ff-dispatchpage-67" type="text" className="input-dark flex-1 text-xs" placeholder="New timeline entry..." spellCheck={true} value={newTimelineText}
                         onChange={(e) => setNewTimelineText(e.target.value)}
                         onKeyDown={(e) => { if (e.key === 'Enter') handleAddTimeline(); }}
                       />
@@ -5632,7 +5891,7 @@ export default function DispatchPage() {
                           </span>
                           {editingTimelineId === String(entry.id) ? (
                             <div className="flex-1 flex gap-1">
-                              <input type="text" className="input-dark text-xs flex-1" value={editTimelineText}
+                              <input id="ff-dispatchpage-68" type="text" className="input-dark text-xs flex-1" value={editTimelineText}
                                 onChange={(e) => setEditTimelineText(e.target.value)}
                                 onKeyDown={(e) => { if (e.key === 'Enter') handleEditTimeline(String(entry.id)); if (e.key === 'Escape') setEditingTimelineId(null); }}
                                 autoFocus
@@ -5693,7 +5952,7 @@ export default function DispatchPage() {
                         <span className="text-[#d4a017] font-bold whitespace-nowrap text-[10px]">{note.author || 'System'}</span>
                         {editingNoteId === note.id ? (
                           <div className="flex-1 min-w-0 flex flex-col gap-1">
-                            <textarea className="input-dark text-xs w-full" rows={2} value={editingNoteText} onChange={(e) => setEditingNoteText(e.target.value)} autoFocus />
+                            <textarea id="ff-dispatchpage-69" className="input-dark text-xs w-full" rows={2} value={editingNoteText} onChange={(e) => setEditingNoteText(e.target.value)} autoFocus />
                             <div className="flex gap-1">
                               <button type="button" className="toolbar-btn toolbar-btn-primary text-[9px] px-2 py-0.5" onClick={() => handleEditNote(note.id, editingNoteText)}>Save</button>
                               <button type="button" className="toolbar-btn text-[9px] px-2 py-0.5" onClick={() => { setEditingNoteId(null); setEditingNoteText(''); }}>Cancel</button>
@@ -5723,7 +5982,7 @@ export default function DispatchPage() {
                       <span className="text-[8px] text-[#545454] ml-2 font-mono select-none">Shift+Enter to submit</span>
                     </div>
                     <div className="flex gap-2">
-                      <textarea
+                      <textarea id="ff-dispatchpage-70"
                         ref={noteTextareaRef}
                         className="input-dark flex-1 text-xs resize-none"
                         rows={2}
@@ -5746,7 +6005,7 @@ export default function DispatchPage() {
                     {/* Feature 20: Broadcast Note to all assigned units */}
                     {(selectedCall.assigned_units || []).length > 0 && (
                       <div className="flex gap-2 mt-2 pt-2 border-t border-rmpg-700/50">
-                        <input
+                        <input id="ff-dispatchpage-71"
                           type="text"
                           className="input-dark flex-1 text-xs"
                           placeholder="Broadcast to all units on call..."
@@ -5964,7 +6223,7 @@ export default function DispatchPage() {
               }}
               onCreateUnit={() => setShowCreateUnitModal(true)}
               onEditUnit={openEditUnit}
-              onDeleteUnit={(unit) => setDeletingUnit(unit)}
+              onDeleteUnit={isAdminOrManager ? (unit) => setDeletingUnit(unit) : undefined}
               selectedCallId={selectedCall?.id ?? null}
               assignedUnitIds={selectedCall?.assigned_units ?? []}
               onAssignUnit={selectedCall && !['cleared', 'closed', 'cancelled', 'archived'].includes(selectedCall.status) ? handleAssignUnit : undefined}
@@ -6114,10 +6373,14 @@ export default function DispatchPage() {
                 <Copy style={{ width: 12, height: 12 }} /> Duplicate as New
               </button>
             )}
-            <div className="border-t border-rmpg-600 my-1" />
-            <button type="button" className="context-menu-item text-red-400" onClick={() => { setDeleteCallTarget(contextMenu.call); setContextMenu(null); }}>
-              <Trash2 style={{ width: 12, height: 12 }} /> Delete
-            </button>
+            {canDeleteCall && (
+              <>
+                <div className="border-t border-rmpg-600 my-1" />
+                <button type="button" className="context-menu-item text-red-400" onClick={() => { setDeleteCallTarget(contextMenu.call); setContextMenu(null); }}>
+                  <Trash2 style={{ width: 12, height: 12 }} /> Remove
+                </button>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -6262,14 +6525,14 @@ export default function DispatchPage() {
                 <Radio className="w-4 h-4 text-brand-400" />
                 <span id={unitModalTitleId} className="text-sm font-bold text-white tracking-wide">{editingUnit ? 'Edit Dispatch Unit' : 'Create Dispatch Unit'}</span>
               </div>
-              <button type="button" onClick={() => { setShowCreateUnitModal(false); setEditingUnit(null); setNewUnitCallSign(''); setNewUnitOfficerId(''); setNewUnitStatus('available'); }} className="toolbar-btn ml-auto">
+              <button type="button" onClick={() => { setShowCreateUnitModal(false); resetUnitForm(); }} className="toolbar-btn ml-auto">
                 <X style={{ width: 12, height: 12 }} />
               </button>
             </div>
             <div className="p-4 space-y-3">
               <div>
                 <label className="field-label">Call Sign *</label>
-                <input
+                <input id="ff-dispatchpage-72"
                   type="text"
                   className="input-dark text-sm w-full mt-1"
                   placeholder="e.g. PATROL-01, K9-01, SUPER-01"
@@ -6281,7 +6544,7 @@ export default function DispatchPage() {
               </div>
               <div>
                 <label className="field-label">Assigned Officer</label>
-                <select
+                <select id="ff-dispatchpage-73"
                   className="select-dark text-sm w-full mt-1"
                   value={newUnitOfficerId}
                   onChange={(e) => setNewUnitOfficerId(e.target.value)}
@@ -6296,7 +6559,7 @@ export default function DispatchPage() {
               </div>
               <div>
                 <label className="field-label">Status</label>
-                <select
+                <select id="ff-dispatchpage-74"
                   className="select-dark text-sm w-full mt-1"
                   value={newUnitStatus}
                   onChange={(e) => setNewUnitStatus(e.target.value)}
@@ -6307,10 +6570,69 @@ export default function DispatchPage() {
                   {editingUnit && <option value="dispatched">Dispatched</option>}
                   {editingUnit && <option value="enroute">En Route</option>}
                   {editingUnit && <option value="onscene">On Scene</option>}
+                  {editingUnit && <option value="out_of_service">Out of Service</option>}
                 </select>
               </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="field-label">Vehicle</label>
+                  <input id="ff-dispatchpage-unit-vehicle"
+                    type="text"
+                    className="input-dark text-sm w-full mt-1"
+                    placeholder="Unit / plate #"
+                    value={newUnitVehicleId}
+                    onChange={(e) => setNewUnitVehicleId(e.target.value)}
+                  />
+                </div>
+                <div>
+                  <label className="field-label">Default Beat</label>
+                  <input id="ff-dispatchpage-unit-beat"
+                    type="text"
+                    className="input-dark text-sm w-full mt-1"
+                    placeholder="e.g. SL1-HER/C"
+                    value={newUnitBeat}
+                    onChange={(e) => setNewUnitBeat(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div>
+                <label className="field-label">Audio Mode</label>
+                <select id="ff-dispatchpage-unit-audio"
+                  className="select-dark text-sm w-full mt-1"
+                  value={newUnitAudioMode}
+                  onChange={(e) => setNewUnitAudioMode(e.target.value)}
+                >
+                  <option value="audible">Audible</option>
+                  <option value="silent">Silent</option>
+                  <option value="vibrate">Vibrate</option>
+                </select>
+              </div>
+              <div>
+                <label className="field-label">Capabilities</label>
+                <div className="flex flex-wrap gap-1.5 mt-1">
+                  {['K9', 'SWAT', 'Supervisor', 'FTO', 'Traffic', 'Detective', 'Patrol'].map((cap) => {
+                    const active = newUnitCapabilities.includes(cap);
+                    return (
+                      <button type="button"
+                        key={cap}
+                        onClick={() => setNewUnitCapabilities((prev) => active ? prev.filter((x) => x !== cap) : [...prev, cap])}
+                        className="text-[10px] font-bold uppercase px-2 py-1 tracking-wide transition-colors"
+                        style={{
+                          borderRadius: 2,
+                          border: `1px solid ${active ? '#d4a017' : '#2e2e2e'}`,
+                          background: active ? 'rgba(212,160,23,0.15)' : '#0a0a0a',
+                          color: active ? '#d4a017' : '#888888',
+                        }}
+                        aria-pressed={active}
+                      >
+                        {cap}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-600">
-                <button type="button" onClick={() => { setShowCreateUnitModal(false); setEditingUnit(null); setNewUnitCallSign(''); setNewUnitOfficerId(''); setNewUnitStatus('available'); }} className="toolbar-btn">
+                <button type="button" onClick={() => { setShowCreateUnitModal(false); resetUnitForm(); }} className="toolbar-btn">
                   Cancel
                 </button>
                 <button type="button"
@@ -6327,26 +6649,53 @@ export default function DispatchPage() {
         </div>
       )}
 
-      {/* Delete Unit Confirmation */}
-      <ConfirmDialog
-        isOpen={deletingUnit !== null}
-        onClose={() => setDeletingUnit(null)}
-        onConfirm={handleDeleteUnit}
-        title="Delete Dispatch Unit"
-        message={`Are you sure you want to permanently delete unit "${deletingUnit?.call_sign || ''}"? This action cannot be undone.`}
-        confirmLabel="Delete Unit"
-        confirmVariant="danger"
-        isLoading={unitDeleting}
-      />
+      {/* Dispose Unit — Retire (soft) or Delete (permanent). Both server-side
+          force-clear any stale call assignment, so a unit stuck on a call can
+          still be disposed (the plain DELETE refused those). */}
+      {deletingUnit && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" aria-label="Dispose unit" style={{ background: 'rgba(0,0,0,0.65)', WebkitBackdropFilter: 'blur(4px)', backdropFilter: 'blur(4px)' }}>
+          <div className="panel-beveled bg-surface-raised" style={{ width: '420px', border: '1px solid #2a2a2a', boxShadow: '0 12px 40px rgba(0,0,0,0.5)' }}>
+            <div className="panel-title-bar">
+              <div className="flex items-center gap-2">
+                <Trash2 className="w-4 h-4 text-red-400" />
+                <span className="text-sm font-bold text-white tracking-wide">Dispose Unit “{deletingUnit.call_sign}”</span>
+              </div>
+              <button type="button" onClick={() => !unitDeleting && setDeletingUnit(null)} className="toolbar-btn ml-auto" aria-label="Cancel">
+                <X style={{ width: 12, height: 12 }} />
+              </button>
+            </div>
+            <div className="p-4 space-y-3">
+              <p className="text-xs text-rmpg-300 leading-relaxed">
+                {deletingUnit.current_call_id
+                  ? <>This unit is still attached to a call — disposal will <span className="text-[#d4a017]">automatically clear that assignment</span> first.</>
+                  : 'Choose how to dispose of this unit.'}
+              </p>
+              <div className="space-y-2 text-[11px] text-rmpg-400">
+                <div><span className="text-amber-400 font-bold">Retire</span> — mark Out of Service and free it from any call. Keeps the unit + its history; reversible (set it back to Available later).</div>
+                <div><span className="text-red-400 font-bold">Delete</span> — permanently remove the unit row. Cannot be undone.</div>
+              </div>
+              <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-600">
+                <button type="button" onClick={() => setDeletingUnit(null)} disabled={unitDeleting} className="toolbar-btn">Cancel</button>
+                <button type="button" onClick={() => handleDisposeUnit('retire')} disabled={unitDeleting} className="toolbar-btn" style={{ borderColor: '#92710f', color: '#d4a017' }}>
+                  {unitDeleting ? <Loader2 style={{ width: 12, height: 12 }} className="animate-spin" /> : <Archive style={{ width: 12, height: 12 }} />} Retire
+                </button>
+                <button type="button" onClick={() => handleDisposeUnit('delete')} disabled={unitDeleting} className="toolbar-btn toolbar-btn-danger">
+                  {unitDeleting ? <Loader2 style={{ width: 12, height: 12 }} className="animate-spin" /> : <Trash2 style={{ width: 12, height: 12 }} />} Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Delete Call Confirmation */}
       <ConfirmDialog
         isOpen={deleteCallTarget !== null}
         onClose={() => setDeleteCallTarget(null)}
         onConfirm={handleDeleteAnyCall}
-        title="Delete Call"
-        message={`Are you sure you want to permanently delete call "${deleteCallTarget?.call_number || ''}"? This will also free any assigned units. This action cannot be undone.`}
-        confirmLabel="Delete Call"
+        title="Remove Call"
+        message={`Remove call "${deleteCallTarget?.call_number || ''}" from the board? It will be archived and recoverable by an admin. Any assigned units will be freed.`}
+        confirmLabel="Remove Call"
         confirmVariant="danger"
         isLoading={isDeletingCall}
       />
@@ -6647,6 +6996,19 @@ export default function DispatchPage() {
         initialQuery={ncicInitialQuery}
       />
 
+      {/* Mileage prompt on enroute (starting) / onscene (ending). Cancel aborts
+          the transition; Skip proceeds with no reading. */}
+      {mileagePrompt && (
+        <MileagePromptModal
+          mode={mileagePrompt.mode}
+          callNumber={mileagePrompt.callNumber}
+          vehicleId={mileagePrompt.vehicleId}
+          startingMileage={mileagePrompt.startingMileage}
+          onSubmit={handleMileagePromptSubmit}
+          onCancel={() => setMileagePrompt(null)}
+        />
+      )}
+
       {/* Create Person from Dispatch */}
       <PersonFormModal
         isOpen={showCreatePersonModal}
@@ -6741,7 +7103,7 @@ export default function DispatchPage() {
                   {handoffMeta.updated_at && ` at ${safeDateTimeStr(handoffMeta.updated_at)}`}
                 </p>
               )}
-              <textarea
+              <textarea id="ff-dispatchpage-75"
                 value={handoffNotes}
                 onChange={e => setHandoffNotes(e.target.value)}
                 className="input-dark w-full h-48 text-sm resize-none"

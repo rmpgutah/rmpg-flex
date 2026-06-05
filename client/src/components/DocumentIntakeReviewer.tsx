@@ -175,7 +175,7 @@ export default function DocumentIntakeReviewer({ extraction, onReset }: Props) {
                   <div className="text-[9px] text-[#666] font-mono mt-0.5">{f.key}</div>
                 </div>
                 <div className="col-span-7">
-                  <input
+                  <input id="ff-documentintakereviewer-0"
                     type="text"
                     value={edits[f.key] ?? ''}
                     onChange={(e) => setEdits({ ...edits, [f.key]: e.target.value })}

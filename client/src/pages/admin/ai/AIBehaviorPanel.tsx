@@ -181,7 +181,7 @@ export default function AIBehaviorPanel() {
             {/* Rate Limit */}
             <div className="space-y-1">
               <label className="text-xs text-gray-300">Rate Limit (req/min)</label>
-              <input
+              <input id="ff-aibehaviorpanel-0"
                 type="number" min={1} max={100}
                 value={config.rateLimit}
                 onChange={e => update('rateLimit', Math.min(100, Math.max(1, parseInt(e.target.value) || 1)))}
@@ -193,7 +193,7 @@ export default function AIBehaviorPanel() {
             {/* Max Concurrent */}
             <div className="space-y-1">
               <label className="text-xs text-gray-300">Max Concurrent Requests</label>
-              <input
+              <input id="ff-aibehaviorpanel-1"
                 type="number" min={1} max={10}
                 value={config.maxConcurrent}
                 onChange={e => update('maxConcurrent', Math.min(10, Math.max(1, parseInt(e.target.value) || 1)))}
@@ -205,7 +205,7 @@ export default function AIBehaviorPanel() {
             {/* Request Timeout */}
             <div className="space-y-1">
               <label className="text-xs text-gray-300">Request Timeout (seconds)</label>
-              <input
+              <input id="ff-aibehaviorpanel-2"
                 type="number" min={10} max={300}
                 value={config.requestTimeout}
                 onChange={e => update('requestTimeout', Math.min(300, Math.max(10, parseInt(e.target.value) || 10)))}
@@ -236,7 +236,7 @@ export default function AIBehaviorPanel() {
               {config.autoRetry && (
                 <div className="space-y-1 pl-4 border-l-2 border-[#303030]">
                   <label className="text-xs text-gray-300">Retry Count</label>
-                  <input
+                  <input id="ff-aibehaviorpanel-3"
                     type="number" min={1} max={5}
                     value={config.retryCount}
                     onChange={e => update('retryCount', Math.min(5, Math.max(1, parseInt(e.target.value) || 1)))}

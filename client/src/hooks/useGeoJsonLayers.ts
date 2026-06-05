@@ -10,6 +10,7 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
 import { mapboxgl } from '../utils/mapboxLoader';
 import { whenStyleReady } from '../pages/map/utils/safeAddSource';
+import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
 
 // ── Layer Configuration ──────────────────────────────────────
 
@@ -343,11 +344,11 @@ export function useGeoJsonLayers({
       strokeWeight = ASSIGNED_STROKE_WEIGHT;
     }
 
-    if (map.getLayer(fillId)) {
+    if (hasLayer(map, fillId)) {
       map.setPaintProperty(fillId, 'fill-color', fillColor);
       map.setPaintProperty(fillId, 'fill-opacity', fillOpacity);
     }
-    if (map.getLayer(lineId)) {
+    if (hasLayer(map, lineId)) {
       map.setPaintProperty(lineId, 'line-color', strokeColor);
       map.setPaintProperty(lineId, 'line-opacity', strokeOpacity);
       map.setPaintProperty(lineId, 'line-width', strokeWeight);
@@ -364,9 +365,9 @@ export function useGeoJsonLayers({
     if (inFlightLayersRef.current.has(cfg.id)) return;
 
     const sourceId = getLayerSourceId(cfg.id);
-    if (map.getSource(sourceId)) {
+    if (hasSource(map, sourceId)) {
       // Safe check: If layers were somehow removed but source remained, or vice versa, handle it
-      if (!map.getLayer(getFillLayerId(cfg.id)) && !map.getLayer(getLineLayerId(cfg.id))) {
+      if (!hasLayer(map, getFillLayerId(cfg.id)) && !hasLayer(map, getLineLayerId(cfg.id))) {
         // Let it fall through or clean up the source first to re-add safely
         try { map.removeSource(sourceId); } catch { /* ignore */ }
       } else {
@@ -396,7 +397,7 @@ export function useGeoJsonLayers({
       // STYLE readiness — addSource/addLayer throw "Style is not done loading"
       // when the basemap style hasn't finished, even if map.loaded() is true.
       whenStyleReady(map, () => {
-      if (!map.getSource(sourceId)) {
+      if (!hasSource(map, sourceId)) {
         map.addSource(sourceId, {
           type: 'geojson',
           data: geojson as any,
@@ -414,7 +415,7 @@ export function useGeoJsonLayers({
         : cfg.style.strokeColor;
 
       // Add fill layer for polygon features
-      if (!map.getLayer(getFillLayerId(cfg.id))) {
+      if (!hasLayer(map, getFillLayerId(cfg.id))) {
         map.addLayer({
           id: getFillLayerId(cfg.id),
           type: 'fill',
@@ -430,7 +431,7 @@ export function useGeoJsonLayers({
       }
 
       // Add line layer for stroke
-      if (!map.getLayer(getLineLayerId(cfg.id))) {
+      if (!hasLayer(map, getLineLayerId(cfg.id))) {
         map.addLayer({
           id: getLineLayerId(cfg.id),
           type: 'line',
@@ -520,12 +521,12 @@ export function useGeoJsonLayers({
     if (!beatCfg) return;
     const fillId = getFillLayerId('beat');
     const lineId = getLineLayerId('beat');
-    if (!map.getLayer(fillId) && !map.getLayer(lineId)) return;
+    if (!hasLayer(map, fillId) && !hasLayer(map, lineId)) return;
 
     const fillExpr = buildBeatColorExpression(beatStyleLookup, (e) => e.style.fillColor, beatCfg.style.fillColor);
     const lineExpr = buildBeatColorExpression(beatStyleLookup, (e) => e.style.strokeColor, beatCfg.style.strokeColor);
-    try { if (map.getLayer(fillId)) map.setPaintProperty(fillId, 'fill-color', fillExpr as any); } catch {}
-    try { if (map.getLayer(lineId)) map.setPaintProperty(lineId, 'line-color', lineExpr as any); } catch {}
+    try { if (hasLayer(map, fillId)) map.setPaintProperty(fillId, 'fill-color', fillExpr as any); } catch {}
+    try { if (hasLayer(map, lineId)) map.setPaintProperty(lineId, 'line-color', lineExpr as any); } catch {}
   }, [map, beatStyleLookup]);
 
   const ensureLayerLoaded = useCallback(async (layerId: string) => {
@@ -551,8 +552,8 @@ export function useGeoJsonLayers({
       const vis = nowVisible ? 'visible' : 'none';
 
       if (map) {
-        try { if (map.getLayer(fillId)) map.setLayoutProperty(fillId, 'visibility', vis); } catch {}
-        try { if (map.getLayer(lineId)) map.setLayoutProperty(lineId, 'visibility', vis); } catch {}
+        try { if (hasLayer(map, fillId)) map.setLayoutProperty(fillId, 'visibility', vis); } catch {}
+        try { if (hasLayer(map, lineId)) map.setLayoutProperty(lineId, 'visibility', vis); } catch {}
       }
 
       // Show/hide label markers
@@ -597,8 +598,8 @@ export function useGeoJsonLayers({
         const fillId = getFillLayerId(cfg.id);
         const lineId = getLineLayerId(cfg.id);
         const viz = !cfg.minZoom || zoom >= cfg.minZoom ? 'visible' : 'none';
-        try { if (map.getLayer(fillId)) map.setLayoutProperty(fillId, 'visibility', viz); } catch {}
-        try { if (map.getLayer(lineId)) map.setLayoutProperty(lineId, 'visibility', viz); } catch {}
+        try { if (hasLayer(map, fillId)) map.setLayoutProperty(fillId, 'visibility', viz); } catch {}
+        try { if (hasLayer(map, lineId)) map.setLayoutProperty(lineId, 'visibility', viz); } catch {}
       }
     };
     map.on('zoomend', onZoomEnd);

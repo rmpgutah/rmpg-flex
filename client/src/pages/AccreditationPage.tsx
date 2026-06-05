@@ -4,7 +4,9 @@ import PanelTitleBar from '../components/PanelTitleBar';
 import DataTable from '../components/DataTable';
 import StatsCard from '../components/StatsCard';
 import { useToast } from '../components/ToastProvider';
-import { Award, CheckCircle, Clock, FileText, Plus, Pencil, Trash2 } from 'lucide-react';
+import { useMenuActions } from '../utils/contextMenuActions';
+import type { ContextMenuItem } from '../context/ContextMenuContext';
+import { Award, CheckCircle, Clock, FileText, Plus, Pencil, Trash2, Eye } from 'lucide-react';
 
 interface Standard { id: number; standard_number: string; standard_name: string; category: string; description: string; compliance_status: string; last_reviewed: string; next_review: string; notes: string; }
 interface AccStats { standardsTotal: number; standardsCompliant: number; compliancePct: number; nextAssessment: string; }
@@ -22,6 +24,7 @@ export default function AccreditationPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const { addToast } = useToast();
+  const m = useMenuActions();
 
   const fetchData = useCallback(async () => {
     try {
@@ -95,7 +98,20 @@ export default function AccreditationPage() {
         <StatsCard label="NEXT ASSESSMENT" value={stats.nextAssessment || 'N/A'} icon={Clock} />
       </div>
 
-      <DataTable columns={columns} data={standards} emptyMessage="No accreditation standards" onRowClick={openEdit} />
+      <DataTable
+        columns={columns}
+        data={standards}
+        emptyMessage="No accreditation standards"
+        onRowClick={openEdit}
+        enableContextMenu
+        rowContextMenu={(row: Standard): ContextMenuItem[] => [
+          m.action('Open', () => openEdit(row), { icon: <Eye size={12} /> }),
+          m.action('Edit', () => openEdit(row), { icon: <Pencil size={12} /> }),
+          m.separator(),
+          m.copyId(row.id),
+          m.action('Delete', () => setDeleteId(row.id), { danger: true, icon: <Trash2 size={12} /> }),
+        ]}
+      />
 
       {formOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={() => setFormOpen(false)}>
@@ -103,15 +119,15 @@ export default function AccreditationPage() {
             <h3 className="text-sm font-bold text-rmpg-100 mb-4">{editingRecord ? 'Edit Standard' : 'New Standard'}</h3>
             {formError && <div className="text-xs text-red-400 mb-2">{formError}</div>}
             <div className="grid grid-cols-2 gap-3">
-              <div><label className="text-[9px] text-rmpg-400 uppercase font-bold">Standard # *</label><input value={formData.standard_number} onChange={e => setFormData({...formData, standard_number: e.target.value})} className="input-dark w-full mt-1 text-xs" /></div>
-              <div><label className="text-[9px] text-rmpg-400 uppercase font-bold">Name *</label><input value={formData.standard_name} onChange={e => setFormData({...formData, standard_name: e.target.value})} className="input-dark w-full mt-1 text-xs" /></div>
-              <div><label className="text-[9px] text-rmpg-400 uppercase font-bold">Category</label><input value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})} className="input-dark w-full mt-1 text-xs" /></div>
-              <div><label className="text-[9px] text-rmpg-400 uppercase font-bold">Status</label><select value={formData.compliance_status} onChange={e => setFormData({...formData, compliance_status: e.target.value})} className="input-dark w-full mt-1 text-xs"><option value="pending">Pending</option><option value="in_progress">In Progress</option><option value="compliant">Compliant</option><option value="non_compliant">Non-Compliant</option></select></div>
-              <div><label className="text-[9px] text-rmpg-400 uppercase font-bold">Last Reviewed</label><input type="date" value={formData.last_reviewed} onChange={e => setFormData({...formData, last_reviewed: e.target.value})} className="input-dark w-full mt-1 text-xs" /></div>
-              <div><label className="text-[9px] text-rmpg-400 uppercase font-bold">Next Review</label><input type="date" value={formData.next_review} onChange={e => setFormData({...formData, next_review: e.target.value})} className="input-dark w-full mt-1 text-xs" /></div>
+              <div><label className="text-[9px] text-rmpg-400 uppercase font-bold">Standard # *</label><input id="ff-accreditationpage-0" value={formData.standard_number} onChange={e => setFormData({...formData, standard_number: e.target.value})} className="input-dark w-full mt-1 text-xs" /></div>
+              <div><label className="text-[9px] text-rmpg-400 uppercase font-bold">Name *</label><input id="ff-accreditationpage-1" value={formData.standard_name} onChange={e => setFormData({...formData, standard_name: e.target.value})} className="input-dark w-full mt-1 text-xs" /></div>
+              <div><label className="text-[9px] text-rmpg-400 uppercase font-bold">Category</label><input id="ff-accreditationpage-2" value={formData.category} onChange={e => setFormData({...formData, category: e.target.value})} className="input-dark w-full mt-1 text-xs" /></div>
+              <div><label className="text-[9px] text-rmpg-400 uppercase font-bold">Status</label><select id="ff-accreditationpage-3" value={formData.compliance_status} onChange={e => setFormData({...formData, compliance_status: e.target.value})} className="input-dark w-full mt-1 text-xs"><option value="pending">Pending</option><option value="in_progress">In Progress</option><option value="compliant">Compliant</option><option value="non_compliant">Non-Compliant</option></select></div>
+              <div><label className="text-[9px] text-rmpg-400 uppercase font-bold">Last Reviewed</label><input id="ff-accreditationpage-4" type="date" value={formData.last_reviewed} onChange={e => setFormData({...formData, last_reviewed: e.target.value})} className="input-dark w-full mt-1 text-xs" /></div>
+              <div><label className="text-[9px] text-rmpg-400 uppercase font-bold">Next Review</label><input id="ff-accreditationpage-5" type="date" value={formData.next_review} onChange={e => setFormData({...formData, next_review: e.target.value})} className="input-dark w-full mt-1 text-xs" /></div>
             </div>
-            <div className="mt-3"><label className="text-[9px] text-rmpg-400 uppercase font-bold">Description</label><textarea value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} className="input-dark w-full mt-1 text-xs" rows={2} /></div>
-            <div className="mt-3"><label className="text-[9px] text-rmpg-400 uppercase font-bold">Notes</label><textarea value={formData.notes} onChange={e => setFormData({...formData, notes: e.target.value})} className="input-dark w-full mt-1 text-xs" rows={2} /></div>
+            <div className="mt-3"><label className="text-[9px] text-rmpg-400 uppercase font-bold">Description</label><textarea id="ff-accreditationpage-6" value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} className="input-dark w-full mt-1 text-xs" rows={2} /></div>
+            <div className="mt-3"><label className="text-[9px] text-rmpg-400 uppercase font-bold">Notes</label><textarea id="ff-accreditationpage-7" value={formData.notes} onChange={e => setFormData({...formData, notes: e.target.value})} className="input-dark w-full mt-1 text-xs" rows={2} /></div>
             <div className="flex justify-end gap-3 mt-4">
               <button onClick={() => setFormOpen(false)} className="toolbar-btn px-4" style={{ height: 28 }}>Cancel</button>
               <button onClick={handleSave} disabled={formSubmitting || !formData.standard_number || !formData.standard_name} className="toolbar-btn-primary px-4" style={{ height: 28 }}>{formSubmitting ? 'Saving...' : 'Save'}</button>

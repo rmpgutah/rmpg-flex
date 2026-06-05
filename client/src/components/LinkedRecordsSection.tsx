@@ -1,63 +1,18 @@
 import { useState, useEffect, useCallback } from 'react';
-import {
-  Link2,
-  Plus,
-  Trash2,
-  UserCircle,
-  Car,
-  Building2,
-  Package,
-  Loader2,
-  type LucideIcon,
-} from 'lucide-react';
+import { Link2, Plus, Trash2, Loader2 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import type { RecordEntityType } from '../types';
+import {
+  getRecordTypeIcon,
+  getRecordTypeColor,
+  getEntityLabel,
+  humanizeRelationship,
+} from '../utils/recordLinks';
 
-/* ------------------------------------------------------------------ */
-/*  Shared helpers                                                     */
-/* ------------------------------------------------------------------ */
-
-const TYPE_ICON_MAP: Record<string, LucideIcon> = {
-  person: UserCircle,
-  vehicle: Car,
-  property: Building2,
-  evidence: Package,
-};
-
-/** Return the appropriate lucide icon component for a record entity type. */
-export function getRecordTypeIcon(type: string): LucideIcon {
-  return TYPE_ICON_MAP[type] || Package;
-}
-
-const TYPE_COLOR_MAP: Record<string, { text: string; bg: string; border: string }> = {
-  person: {
-    text: 'text-gray-400',
-    bg: 'bg-gray-900/30',
-    border: 'border-gray-700/50',
-  },
-  vehicle: {
-    text: 'text-gray-300',
-    bg: 'bg-[#1f1f1f]',
-    border: 'border-[#2e2e2e]',
-  },
-  property: {
-    text: 'text-green-400',
-    bg: 'bg-green-900/30',
-    border: 'border-green-700/50',
-  },
-  evidence: {
-    text: 'text-purple-400',
-    bg: 'bg-purple-900/30',
-    border: 'border-purple-700/50',
-  },
-};
-
-const DEFAULT_COLOR = { text: 'text-rmpg-400', bg: 'bg-rmpg-800/30', border: 'border-rmpg-600/50' };
-
-/** Return Tailwind class sets for a record entity type badge. */
-export function getRecordTypeColor(type: string) {
-  return TYPE_COLOR_MAP[type] || DEFAULT_COLOR;
-}
+// Re-exported for backward compatibility with prior importers; the canonical
+// home is utils/recordLinks.ts (shared with the link picker so the icon/color
+// vocabulary for all record types can never drift between the two surfaces).
+export { getRecordTypeIcon, getRecordTypeColor };
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -188,16 +143,16 @@ export default function LinkedRecordsSection({ entityType, entityId, onOpenLinkM
                 {/* Label */}
                 <span className="text-rmpg-200 truncate flex-1">{link.linked_label}</span>
 
-                {/* Type badge */}
+                {/* Type badge — Title-cased plain label ("Incident") */}
                 <span
                   className={`text-[9px] px-1.5 py-0.5 font-bold uppercase rounded-sm border ${color.text} ${color.bg} ${color.border}`}
                 >
-                  {link.linked_type}
+                  {getEntityLabel(link.linked_type)}
                 </span>
 
-                {/* Relationship badge */}
+                {/* Relationship badge — plain language ("Evidence Linked") */}
                 <span className="text-[9px] px-1.5 py-0.5 bg-rmpg-700 text-rmpg-300 border border-rmpg-600 rounded-sm">
-                  {link.relationship}
+                  {humanizeRelationship(link.relationship)}
                 </span>
 
                 {/* Delete button */}

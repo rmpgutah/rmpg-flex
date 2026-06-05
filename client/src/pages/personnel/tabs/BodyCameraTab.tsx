@@ -18,6 +18,8 @@ import PrintButton from '../../../components/PrintButton';
 import ExportButton from '../../../components/ExportButton';
 import RmpgLogo from '../../../components/RmpgLogo';
 import { parseTimestamp } from '../../../utils/dateUtils';
+import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
+import { useMenuActions } from '../../../utils/contextMenuActions';
 
 // ── Filters ──────────────────────────────────────────────────
 
@@ -218,6 +220,33 @@ export default function BodyCameraTab({
   const allCamerasSelected = filteredCameras.length > 0 && selectedCameraIds.size === filteredCameras.length;
   const allVideosSelected = filteredVideos.length > 0 && selectedVideoIds.size === filteredVideos.length;
 
+  // ── Right-click context menus ──────────────────────────────
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+
+  const buildCameraMenu = (cam: BodyCamera): ContextMenuItem[] => [
+    ...(onSelectOfficer ? [m.action('Open officer', () => onSelectOfficer(String(cam.officer_id)), { icon: <Camera size={12} /> })] : []),
+    ...(canManage ? [m.action('Edit camera', () => onEditCamera(cam), { icon: <Edit3 size={12} /> })] : []),
+    m.separator(),
+    m.copy('Copy camera ID', cam.camera_id),
+    m.copyId(cam.id),
+    ...(canManage
+      ? [m.separator(), m.action('Delete camera', () => onDeleteCamera(cam.id), { icon: <Trash2 size={12} />, danger: true })]
+      : []),
+  ];
+
+  const buildVideoMenu = (vid: BodyCamVideo): ContextMenuItem[] => [
+    ...(onPlayVideo ? [m.action('Play video', () => onPlayVideo(vid), { icon: <Play size={12} /> })] : []),
+    ...(onSelectOfficer ? [m.action('Open officer', () => onSelectOfficer(String(vid.officer_id)), { icon: <Camera size={12} /> })] : []),
+    m.separator(),
+    m.copy('Copy title', vid.title),
+    ...(vid.case_number ? [m.copy('Copy case #', vid.case_number)] : []),
+    m.copyId(vid.id),
+    ...(canManage && onDeleteVideo
+      ? [m.separator(), m.action('Delete video', () => onDeleteVideo(vid.id), { icon: <Trash2 size={12} />, danger: true })]
+      : []),
+  ];
+
   // ── Render ───────────────────────────────────────────────
 
   // Set document title
@@ -308,7 +337,7 @@ export default function BodyCameraTab({
       <div className="panel-inset p-2 flex items-center gap-2 flex-wrap">
         <div className="relative flex-1 min-w-[180px] max-w-[280px]">
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500 pointer-events-none" />
-          <input
+          <input id="ff-bodycameratab-0"
             type="text"
             value={search}
             onChange={e => setSearch(e.target.value)}
@@ -345,7 +374,7 @@ export default function BodyCameraTab({
             <div className="h-4 w-px bg-rmpg-700" />
             <div className="flex items-center gap-1.5">
               <Clock className="w-3 h-3 text-rmpg-500" />
-              <input
+              <input id="ff-bodycameratab-1"
                 type="date"
                 className="input-dark text-[10px] py-1 px-2 w-[120px] min-h-[28px]"
                 value={videoDateFrom}
@@ -354,7 +383,7 @@ export default function BodyCameraTab({
                 title="Filter from date"
               />
               <span className="text-[9px] text-rmpg-500">to</span>
-              <input
+              <input id="ff-bodycameratab-2"
                 type="date"
                 className="input-dark text-[10px] py-1 px-2 w-[120px] min-h-[28px]"
                 value={videoDateTo}
@@ -430,7 +459,7 @@ export default function BodyCameraTab({
           )}
           {onBulkClassifyVideos && (
             <div className="flex items-center gap-1">
-              <select
+              <select id="ff-bodycameratab-3"
                 value={bulkClassification}
                 onChange={e => setBulkClassification(e.target.value as VideoClassification)}
                 className="select-dark text-[10px] py-1 px-2"
@@ -502,6 +531,7 @@ export default function BodyCameraTab({
                     key={cam.id}
                     className={`cursor-pointer hover:bg-surface-hover ${cam.status === 'lost' ? 'bg-red-900/10' : ''} ${selectedCameraIds.has(cam.id) ? 'bg-brand-900/20' : ''}`}
                     onClick={() => onSelectOfficer?.(String(cam.officer_id))}
+                    onContextMenu={(e) => openMenu(e, buildCameraMenu(cam))}
                   >
                     {canManage && (
                       <td className="text-center" onClick={e => e.stopPropagation()}>
@@ -620,7 +650,7 @@ export default function BodyCameraTab({
                   </tr>
                 ) : (
                   filteredVideos.map(vid => (
-                    <tr key={vid.id} className={`${vid.classification === 'flagged' ? 'bg-red-900/10' : ''} ${selectedVideoIds.has(vid.id) ? 'bg-purple-900/20' : ''}`}>
+                    <tr key={vid.id} className={`${vid.classification === 'flagged' ? 'bg-red-900/10' : ''} ${selectedVideoIds.has(vid.id) ? 'bg-purple-900/20' : ''}`} onContextMenu={(e) => openMenu(e, buildVideoMenu(vid))}>
                       {canManage && (
                         <td className="text-center">
                           <button type="button" onClick={() => toggleVideo(vid.id)} className="p-0.5 hover:text-purple-400 transition-colors">

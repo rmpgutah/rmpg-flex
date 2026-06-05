@@ -31,9 +31,22 @@ export default class ErrorBoundary extends Component<Props, State> {
   componentDidCatch(error: Error, info: React.ErrorInfo) {
     console.error('[ErrorBoundary] Uncaught error:', error, info.componentStack);
 
-    // Auto-reload on stale chunk errors (happens after deploys when cached JS references old chunks)
-    const msg = error.message || '';
-    if (msg.includes('Failed to fetch dynamically imported module') || msg.includes('ChunkLoadError') || msg.includes('Loading chunk')) {
+    // Auto-reload on stale chunk errors (happens after deploys when cached JS
+    // references old chunks). Match the full vocabulary of dynamic-import
+    // failures across engines: Chrome's "Failed to fetch dynamically imported
+    // module", webpack's "ChunkLoadError"/"Loading chunk", the MIME rejection
+    // ("expected a JavaScript-or-Wasm module script" / "Failed to load module
+    // script"), and our own lazyRetry sentinel ("Chunk load failed"). This is
+    // a safety net — lazyRetry normally reloads before the boundary is hit.
+    const msg = (error.message || '').toLowerCase();
+    if (
+      msg.includes('failed to fetch dynamically imported module') ||
+      msg.includes('chunkloaderror') ||
+      msg.includes('loading chunk') ||
+      msg.includes('failed to load module script') ||
+      msg.includes('expected a javascript-or-wasm module') ||
+      msg.includes('chunk load failed')
+    ) {
       const reloadKey = 'rmpg_chunk_reload';
       const lastReload = sessionStorage.getItem(reloadKey);
       // Only auto-reload once per session to prevent infinite loops

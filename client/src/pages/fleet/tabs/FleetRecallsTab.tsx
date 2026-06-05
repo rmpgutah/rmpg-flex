@@ -100,14 +100,14 @@ export default function FleetRecallsTab({ vehicleId }: { vehicleId?: number | st
       {showForm && (
         <div className="panel-inset p-3 space-y-2">
           <div className="grid grid-cols-3 gap-2">
-            <input value={form.recall_number} onChange={e => setForm(f => ({ ...f, recall_number: e.target.value }))} className="input-field text-xs" placeholder="Recall #" />
-            <input value={form.manufacturer} onChange={e => setForm(f => ({ ...f, manufacturer: e.target.value }))} className="input-field text-xs" placeholder="Manufacturer" />
-            <select value={form.severity} onChange={e => setForm(f => ({ ...f, severity: e.target.value }))} className="input-field text-xs">
+            <input id="ff-fleetrecallstab-0" value={form.recall_number} onChange={e => setForm(f => ({ ...f, recall_number: e.target.value }))} className="input-field text-xs" placeholder="Recall #" />
+            <input id="ff-fleetrecallstab-1" value={form.manufacturer} onChange={e => setForm(f => ({ ...f, manufacturer: e.target.value }))} className="input-field text-xs" placeholder="Manufacturer" />
+            <select id="ff-fleetrecallstab-2" value={form.severity} onChange={e => setForm(f => ({ ...f, severity: e.target.value }))} className="input-field text-xs">
               <option value="standard">Standard</option><option value="safety">Safety</option><option value="critical">Critical</option>
             </select>
           </div>
           <RichTextArea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className="input-field w-full text-xs" rows={2} placeholder="Description..." />
-          <input value={form.remedy} onChange={e => setForm(f => ({ ...f, remedy: e.target.value }))} className="input-field w-full text-xs" placeholder="Remedy..." />
+          <input id="ff-fleetrecallstab-3" value={form.remedy} onChange={e => setForm(f => ({ ...f, remedy: e.target.value }))} className="input-field w-full text-xs" placeholder="Remedy..." />
           <div className="flex gap-2">
             <button type="button" onClick={handleSubmit} disabled={submitting || !form.recall_number.trim()} className="toolbar-btn toolbar-btn-success text-[9px] disabled:opacity-50">{submitting ? 'Saving...' : 'Save'}</button>
             <button type="button" onClick={() => setShowForm(false)} disabled={submitting} className="toolbar-btn text-[9px]">Cancel</button>
