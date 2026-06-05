@@ -4,7 +4,7 @@ import { parseTimestamp } from '../../utils/dateUtils';
 import {
   Car, Fuel, ClipboardCheck, Radio, BarChart3, Settings, Wrench, X, Clock, Users,
   Archive, RotateCcw, Trash2, Printer, ChevronDown, Circle, AlertTriangle, AlertOctagon,
-  DollarSign, Pencil, Tag, Video, CreditCard,
+  DollarSign, MapPin, RefreshCw, Pencil, Tag, Video, CreditCard,
 } from 'lucide-react';
 import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
 import { useMenuActions } from '../../utils/contextMenuActions';
