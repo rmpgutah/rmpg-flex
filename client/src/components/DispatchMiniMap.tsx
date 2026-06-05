@@ -9,13 +9,14 @@
 // ============================================================
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Maximize2, MapPin, RefreshCw } from 'lucide-react';
+import { Maximize2, MapPin, RefreshCw, Car } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { initMapbox, mapboxgl, MAPBOX_STYLE_DARK, registerMapInstance, unregisterMapInstance } from '../utils/mapboxLoader';
 import { installWebglContextRecovery, type MapCamera } from '../utils/webglRecovery';
 import { getMapboxAccessToken, getMapboxTokenErrorMessage } from '../utils/mapboxApiKey';
 import { useMapRouting } from '../hooks/useMapRouting';
 import { useGpsTracking } from '../hooks/useGpsTracking';
+import { apiFetch } from '../hooks/useApi';
 import { speak } from '../utils/edgeTTS';
 import ManeuverArrow from './ManeuverArrow';
 import type { CallForService, Unit } from '../types';
@@ -66,6 +67,19 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
   const [recoverNonce, setRecoverNonce] = useState(0);
   const recoverCamRef = useRef<MapCamera | null>(null);
   const webglRecoveryCleanupRef = useRef<(() => void) | null>(null);
+
+  // Always-visible assigned vehicle (independent of dispatch)
+  interface AssignedVehicle {
+    id: number;
+    vehicle_number: string;
+    plate_number: string | null;
+    gps_lat: number | null;
+    gps_lon: number | null;
+    status: string;
+    current_mileage: number | null;
+  }
+  const [assignedVehicle, setAssignedVehicle] = useState<AssignedVehicle | null>(null);
+  const assignedVehicleMarkerRef = useRef<mapboxgl.Marker | null>(null);
 
   // Classify error: auth/config vs connectivity
   const isAuthError = error != null && (error.includes('token') || error.includes('configured'));
@@ -193,6 +207,56 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
       callMarkerRef.current = null;
     }
   }, [loaded, call?.id, call?.latitude, call?.longitude, recoverNonce]);
+
+  // Fetch assigned vehicle — always visible, independent of dispatch
+  useEffect(() => {
+    let cancelled = false;
+    const fetchAssignedVehicle = () => {
+      apiFetch<AssignedVehicle | null>('/dispatch/gps/my-vehicle')
+        .then((v) => {
+          if (cancelled || !v) return;
+          setAssignedVehicle(v);
+        })
+        .catch(() => { /* no assigned vehicle — normal */ });
+    };
+    fetchAssignedVehicle();
+    const interval = setInterval(fetchAssignedVehicle, 60_000); // refresh every 60s
+    return () => { cancelled = true; clearInterval(interval); };
+  }, []);
+
+  // Render assigned vehicle marker on map (always visible)
+  useEffect(() => {
+    if (!loaded || !mapReady || !mapRef.current) return;
+    const map = mapRef.current;
+    const av = assignedVehicle;
+
+    // Remove existing marker if vehicle info changed or GPS lost
+    if (assignedVehicleMarkerRef.current) {
+      assignedVehicleMarkerRef.current.remove();
+      assignedVehicleMarkerRef.current = null;
+    }
+
+    if (!av || av.gps_lat == null || av.gps_lon == null) return;
+
+    const el = document.createElement('div');
+    el.style.cssText =
+      'background:#111827;color:#d4a017;font-size:8px;font-weight:900;' +
+      "padding:2px 4px;border:1.5px solid #d4a017;white-space:nowrap;" +
+      "font-family:'JetBrains Mono',monospace;border-radius:2px;" +
+      'box-shadow:0 0 6px rgba(212,160,23,0.4), 0 2px 6px rgba(0,0,0,0.5);';
+    el.textContent = av.vehicle_number || 'V';
+    const marker = new mapboxgl.Marker({ element: el, anchor: 'bottom' })
+      .setLngLat([av.gps_lon, av.gps_lat])
+      .addTo(map);
+    assignedVehicleMarkerRef.current = marker;
+
+    return () => {
+      if (assignedVehicleMarkerRef.current) {
+        assignedVehicleMarkerRef.current.remove();
+        assignedVehicleMarkerRef.current = null;
+      }
+    };
+  }, [loaded, mapReady, assignedVehicle?.gps_lat, assignedVehicle?.gps_lon, assignedVehicle?.vehicle_number]);
 
   // Assigned-unit markers — keyed by unit id and MOVED in place on each GPS
   // update so the pin glides to its new position instead of being destroyed and
