@@ -2,12 +2,15 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   Navigation, MapPin, Clock, Route, Car, Play, Square, History,
   Gauge, Footprints, AlertTriangle, CheckCircle, Loader2, RefreshCw,
+  Download, FileText,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { useGpsTracking } from '../hooks/useGpsTracking';
 import { useNavTripDetection } from '../hooks/useNavTripDetection';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { useAuth } from '../context/AuthContext';
 import PanelTitleBar from '../components/PanelTitleBar';
+import { generateNavTripReport, generateNavSingleTripReport } from '../utils/navTripPdf';
 import type { NavTrip, NavTripStatus } from '../types';
 
 const STATUS_COLOR: Record<NavTripStatus, string> = {
@@ -54,6 +57,8 @@ function timeAgo(dateStr: string): string {
 export default function NavPage() {
   const isMobile = useIsMobile();
   const gps = useGpsTracking({ upload: true });
+  const { user } = useAuth();
+  const officerName = user ? `${user.first_name} ${user.last_name}`.trim() || user.username : 'Unknown Officer';
   const [tab, setTab] = useState<'current' | 'history'>('current');
 
   // ── Nav detection hook ────────────────────────────────────
@@ -107,6 +112,22 @@ export default function NavPage() {
     endCurrentTrip(gps.latitude, gps.longitude);
   };
 
+  // ── PDF downloads ─────────────────────────────────────────
+  const handleDownloadAllTrips = () => {
+    if (tripHistory.length === 0) return;
+    const periodLabel = `Last ${tripHistory.length} trips`;
+    generateNavTripReport({
+      trips: tripHistory,
+      officerName,
+      vehicleLabel: tripHistory.find(t => t.vehicle_number)?.vehicle_number ?? 'All Vehicles',
+      periodLabel,
+    });
+  };
+
+  const handleDownloadSingleTrip = (trip: NavTrip) => {
+    generateNavSingleTripReport({ trip, officerName });
+  };
+
   const activeTrip = currentTripLocal || (detection.pendingTripId ? currentTrip : null);
 
   return (
@@ -118,7 +139,7 @@ export default function NavPage() {
         <span style={{ color: gps.isTracking ? '#22c55e' : '#ef4444' }}>
           {gps.isTracking ? 'GPS ON' : 'GPS OFF'}
         </span>
-        {gps.latitude && (
+        {gps.latitude && gps.longitude && (
           <span className="text-rmpg-400">
             {gps.latitude.toFixed(5)}, {gps.longitude.toFixed(5)}
           </span>
@@ -167,7 +188,7 @@ export default function NavPage() {
             onRefresh={fetchCurrentTrip}
           />
         ) : (
-          <HistoryPanel trips={tripHistory} loading={loading} onRefresh={fetchHistory} />
+          <HistoryPanel trips={tripHistory} loading={loading} onRefresh={fetchHistory} onDownloadAll={handleDownloadAllTrips} onDownloadTrip={handleDownloadSingleTrip} />
         )}
       </div>
     </div>
@@ -372,7 +393,15 @@ function CurrentTripPanel({
 
 // ── History Panel ───────────────────────────────────────────
 
-function HistoryPanel({ trips, loading, onRefresh }: { trips: NavTrip[]; loading: boolean; onRefresh: () => void }) {
+function HistoryPanel({
+  trips, loading, onRefresh, onDownloadAll, onDownloadTrip,
+}: {
+  trips: NavTrip[];
+  loading: boolean;
+  onRefresh: () => void;
+  onDownloadAll: () => void;
+  onDownloadTrip: (trip: NavTrip) => void;
+}) {
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -385,13 +414,25 @@ function HistoryPanel({ trips, loading, onRefresh }: { trips: NavTrip[]; loading
     <div className="space-y-2">
       <div className="flex items-center justify-between">
         <span className="text-[10px] text-rmpg-500 uppercase">{trips.length} trips</span>
-        <button
-          onClick={onRefresh}
-          className="flex items-center gap-1 text-[10px] transition-colors"
-          style={{ color: '#888888' }}
-        >
-          <RefreshCw size={11} /> Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          {trips.length > 0 && (
+            <button
+              onClick={onDownloadAll}
+              className="flex items-center gap-1 text-[10px] transition-colors px-1.5 py-0.5 border border-subtle rounded-sm"
+              style={{ color: '#d4a017' }}
+              title="Download PDF report of all trips"
+            >
+              <FileText size={11} /> PDF Report
+            </button>
+          )}
+          <button
+            onClick={onRefresh}
+            className="flex items-center gap-1 text-[10px] transition-colors"
+            style={{ color: '#888888' }}
+          >
+            <RefreshCw size={11} /> Refresh
+          </button>
+        </div>
       </div>
 
       {trips.length === 0 ? (
@@ -451,6 +492,19 @@ function HistoryPanel({ trips, loading, onRefresh }: { trips: NavTrip[]; loading
                 {trip.end_lat && ` → ${trip.end_location || `${trip.end_lat.toFixed(4)}, ${trip.end_lng?.toFixed(4)}`}`}
               </span>
             </div>
+
+            {trip.status === 'completed' && (
+              <div className="mt-1.5 flex justify-end">
+                <button
+                  onClick={() => onDownloadTrip(trip)}
+                  className="flex items-center gap-1 text-[9px] font-mono px-1.5 py-0.5 border border-subtle rounded-sm transition-colors hover:border-strong"
+                  style={{ color: '#d4a017' }}
+                  title="Download this trip as a PDF report"
+                >
+                  <Download size={9} /> Download Trip PDF
+                </button>
+              </div>
+            )}
           </div>
         ))
       )}

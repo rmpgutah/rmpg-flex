@@ -388,6 +388,7 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
         const unit = pickUnit(resp);
         if (unit && !cancelled) {
           unitIdRef.current = unit.id;
+          gpsSourceRef.current = unit.gps_source || 'browser';
           setState((prev) => ({
             ...prev,
             unitCallSign: unit.call_sign ?? prev.unitCallSign,
@@ -396,8 +397,6 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
           }));
         } else if (!unit && (resp as Record<string, unknown>)?.take_home === true) {
           setState((prev) => ({ ...prev, hasTakeHome: true }));
-        }
-          gpsSourceRef.current = unit.gps_source || 'browser';
         }
       })
       .catch((err) => {
