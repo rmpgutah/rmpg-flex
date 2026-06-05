@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
+import { requireRole } from '../middleware/auth';
 
 const fleet = new Hono<Env>();
 
@@ -9,6 +10,24 @@ const fleet = new Hono<Env>();
 // concern, not sensitive HR/case data, and dispatch needs read access
 // from MdtPage / DispatchPage to resolve assigned_unit_id → plate.
 const MANAGER_ROLES = new Set(['admin', 'manager', 'supervisor']);
+
+// REGRESSION-GUARD: global write gate. The core POST/PUT/DELETE handlers
+// already inline-check MANAGER_ROLES, but ~40 sub-resource mutation
+// endpoints (fuel logs, maintenance, inspections, insurance, tires,
+// damage, keys, loans, accessories, utilities, budgets, recalls,
+// warranties, archive, assign, etc.) had only authMiddleware and
+// accepted writes from any authenticated user (including client_viewer).
+// This middleware gates all POST/PUT/DELETE/PATCH methods at the router
+// level so no new un-guarded write endpoint can land.
+fleet.use('*', async (c, next) => {
+  if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(c.req.method)) {
+    const user = c.get('user') as { role?: string } | undefined;
+    if (!user?.role || !MANAGER_ROLES.has(user.role)) {
+      return c.json({ error: 'Forbidden — manager+ role required for fleet mutations', code: 'FORBIDDEN' }, 403);
+    }
+  }
+  await next();
+});
 
 // Columns a manager may write via POST/PUT. Anything outside this set
 // is silently dropped — prevents both "no such column" 500s on unknown

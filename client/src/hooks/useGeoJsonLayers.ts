@@ -378,19 +378,19 @@ export function useGeoJsonLayers({
     }
 
     inFlightLayersRef.current.add(cfg.id);
-    try {
-      let geojson = geojsonCacheRef.current[cfg.id];
-      if (!geojson) {
-        try {
-          const resp = await fetch(`/geojson/${cfg.file}`);
-          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-          geojson = await resp.json();
-          geojsonCacheRef.current[cfg.id] = geojson;
-        } catch (err) {
-          console.error(`[GeoJSON] Failed to load ${cfg.file}:`, err);
-          return;
-        }
+    let geojson = geojsonCacheRef.current[cfg.id];
+    if (!geojson) {
+      try {
+        const resp = await fetch(`/geojson/${cfg.file}`);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        geojson = await resp.json();
+        geojsonCacheRef.current[cfg.id] = geojson;
+      } catch (err) {
+        console.error(`[GeoJSON] Failed to load ${cfg.file}:`, err);
+        inFlightLayersRef.current.delete(cfg.id);
+        return;
       }
+    }
 
       // Defensive re-check before each side-effect — a sibling caller could
       // have completed between our fetch starting and finishing. Guard on
@@ -500,13 +500,18 @@ export function useGeoJsonLayers({
       }
       }); // end whenStyleReady
 
+      // REGRESSION-GUARD: in-flight flag cleared INSIDE whenStyleReady (not
+      // in a finally block outside it). whenStyleReady may defer via
+      // map.once('style.load') — clearing the flag before the callback fires
+      // allows a second loadLayer() invocation to enter before the first
+      // callback's addSource/addLayer mutations complete, causing a
+      // "Layer with id '...' already exists" duplicate-layer error.
+      inFlightLayersRef.current.delete(cfg.id);
+
       setLayerStates((prev) => ({
         ...prev,
         [cfg.id]: { ...prev[cfg.id], loaded: true, featureCount: 0 },
-      }));
-    } finally {
-      inFlightLayersRef.current.delete(cfg.id);
-    }
+    }));
   }, [map, popup]);
 
   // Keep the beat layer's paint in sync with beatStyleLookup. The layer's

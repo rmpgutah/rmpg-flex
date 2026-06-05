@@ -11,6 +11,11 @@ import { resolveDistrict } from '../../utils/districtResolver';
 
 const calls = new Hono<Env>();
 
+// REGRESSION-GUARD: role gates on mutation endpoints. Pre-Claude these
+// had only authMiddleware (valid JWT), so any authenticated user including
+// client_viewer could create/update/delete calls and assign units.
+const WRITE_ROLES = ['admin', 'manager', 'supervisor', 'dispatcher'] as const;
+
 // D1 caps a result set at 100 columns. calls_for_service has been pushed to
 // ~100 cols (see memory project-live-d1-schema-patches), so `SELECT c.* +
 // any JOIN columns` exceeds the cap and returns SQLITE_ERROR 7500
@@ -134,7 +139,7 @@ calls.get('/', async (c) => {
 // POST /dispatch/calls - Create call
   const VALID_PRIORITIES = new Set(['P1', 'P2', 'P3', 'P4']);
   const VALID_PRIORITIES_SQL = ['P1', 'P2', 'P3', 'P4'];
-  calls.post('/', async (c) => {
+  calls.post('/', requireRole(...WRITE_ROLES), async (c) => {
     try {
       const db = getDb(c.env);
       const body = await c.req.json<Record<string, unknown>>();
@@ -494,7 +499,7 @@ calls.get('/archive-bulk', async (c) => {
   return c.redirect('/dispatch/calls/archive-bulk', 307);
 });
 
-calls.post('/archive-bulk', async (c) => {
+calls.post('/archive-bulk', requireRole(...WRITE_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
     // Honor the client's { statuses } body (handleBulkArchive sends
@@ -678,7 +683,7 @@ const UPDATABLE_CALL_COLUMNS_EXT = new Set<string>([
 ]);
 
 // PUT /dispatch/calls/:id - Update call
-calls.put('/:id', async (c) => {
+calls.put('/:id', requireRole(...WRITE_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
     const id = c.req.param('id');
@@ -784,7 +789,7 @@ calls.get('/:id/audit-trail', async (c) => {
 });
 
 // DELETE /dispatch/calls/:id
-calls.delete('/:id', async (c) => {
+calls.delete('/:id', requireRole(...WRITE_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
     const id = c.req.param('id');
@@ -808,7 +813,7 @@ calls.delete('/:id', async (c) => {
 });
 
 // POST /dispatch/calls/:id/status - Status transition
-calls.post('/:id/status', async (c) => {
+calls.post('/:id/status', requireRole(...WRITE_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
     const id = c.req.param('id');
@@ -867,7 +872,7 @@ calls.post('/:id/status', async (c) => {
 });
 
 // POST /dispatch/calls/:id/archive
-calls.post('/:id/archive', async (c) => {
+calls.post('/:id/archive', requireRole(...WRITE_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
     const id = c.req.param('id');
@@ -877,7 +882,7 @@ calls.post('/:id/archive', async (c) => {
 });
 
 // POST /dispatch/calls/:id/unarchive
-calls.post('/:id/unarchive', async (c) => {
+calls.post('/:id/unarchive', requireRole(...WRITE_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
     const id = c.req.param('id');
@@ -892,7 +897,7 @@ calls.post('/:id/unarchive', async (c) => {
 // calls_for_service table (migration 0041 adds the column). Status is preserved
 // while held; the queue badges held calls via held_at. The _ext row is created
 // lazily if it doesn't exist yet (mirrors the run_card / PSO ext-write pattern).
-calls.post('/:id/hold', async (c) => {
+calls.post('/:id/hold', requireRole(...WRITE_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
     const id = c.req.param('id');
@@ -911,7 +916,7 @@ calls.post('/:id/hold', async (c) => {
 });
 
 // POST /dispatch/calls/:id/resume — clears the hold flag; status is untouched.
-calls.post('/:id/resume', async (c) => {
+calls.post('/:id/resume', requireRole(...WRITE_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
     const id = c.req.param('id');
@@ -937,10 +942,10 @@ calls.post('/:id/resume', async (c) => {
 // call B's. The dispatcher's view then lists the unit on B but the
 // call-A panel claims no unit is on-scene. Return 409 with the
 // pointer to the unassign endpoint so the client can recover cleanly.
-calls.post('/:id/assign-unit', async (c) => {
+calls.post('/:id/assign-unit', requireRole(...WRITE_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
-    const id = c.req.param('id');
+    const id = c.req.param('id') ?? '';
     const callId = parseInt(id, 10);
     if (!Number.isInteger(callId) || callId <= 0) return c.json({ error: 'Invalid call id' }, 400);
     const body = await c.req.json<{ unit_id: number | string }>();
@@ -1029,10 +1034,10 @@ calls.post('/:id/assign-unit', async (c) => {
 // list view shows the unit as "still on call N" with no assigned
 // call. Same bug as the pre-Claude /:id/assign-unit overwrite (see
 // above). Verified id is the call being unassigned from.
-calls.post('/:id/unassign-unit', async (c) => {
+calls.post('/:id/unassign-unit', requireRole(...WRITE_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
-    const id = c.req.param('id');
+    const id = c.req.param('id') ?? '';
     const callId = parseInt(id, 10);
     if (!Number.isInteger(callId) || callId <= 0) return c.json({ error: 'Invalid call id' }, 400);
     const body = await c.req.json<{ unit_id: number | string }>();
@@ -1067,10 +1072,10 @@ calls.post('/:id/unassign-unit', async (c) => {
 // single-pointer bug from /:id/assign-unit). Validate all unit_ids
 // FIRST, return a single 409 listing the offenders, then apply the
 // writes. All-or-nothing keeps the dispatcher's view consistent.
-calls.post('/:id/dispatch', async (c) => {
+calls.post('/:id/dispatch', requireRole(...WRITE_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
-    const id = c.req.param('id');
+    const id = c.req.param('id') ?? '';
     const callId = parseInt(id, 10);
     if (!Number.isInteger(callId) || callId <= 0) return c.json({ error: 'Invalid call id' }, 400);
     const { unit_ids } = await c.req.json<{ unit_ids: number[] }>();

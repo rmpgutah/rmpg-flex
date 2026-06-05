@@ -295,6 +295,7 @@ personnel.delete('/equipment/:id', async (c) => {
 
 // POST /personnel/equipment/:id/checkout — log a checkout, mark issued.
 personnel.post('/equipment/:id/checkout', async (c) => {
+  const denied = requireManager(c); if (denied) return denied;
   try {
     const db = getDb(c.env);
     const id = c.req.param('id');
@@ -316,6 +317,7 @@ personnel.post('/equipment/:id/checkout', async (c) => {
 
 // POST /personnel/equipment/:id/checkin — log a return, mark returned.
 personnel.post('/equipment/:id/checkin', async (c) => {
+  const denied = requireManager(c); if (denied) return denied;
   try {
     const db = getDb(c.env);
     const id = c.req.param('id');
@@ -1746,6 +1748,7 @@ personnel.get('/fitness/:id', async (c) => {
 
 // POST /api/personnel/fitness/:id — record a fitness score.
 personnel.post('/fitness/:id', async (c) => {
+  const denied = requireManager(c); if (denied) return denied;
   try {
     const db = getDb(c.env);
     const officerId = Number(c.req.param('id'));
@@ -1788,6 +1791,7 @@ personnel.get('/commendations/:id', async (c) => {
 
 // POST /api/personnel/commendations/:id — add a commendation.
 personnel.post('/commendations/:id', async (c) => {
+  const denied = requireManager(c); if (denied) return denied;
   try {
     const db = getDb(c.env);
     const officerId = Number(c.req.param('id'));
