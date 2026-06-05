@@ -1613,6 +1613,17 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
   const ffw = getFullFieldWidth(doc);
   const prio = callPriorityLabel(data.priority);
 
+  // REGRESSION-GUARD: shared gate for process-service call types. Both the
+  // "Process Service Details" block and the "Visit History" table gate on
+  // this predicate; duplicating the includes/equality check at both sites
+  // causes drift (the 2026-06-01 fix added civil_paper_service to one block
+  // but the reviewer had to verify the other manually). A single shared
+  // predicate ensures both blocks stay in lockstep.
+  const isProcessServiceCall =
+    data.incident_type === 'civil_paper_service' ||
+    data.incident_type === 'process_service' ||
+    data.pso_service_type === 'process_service';
+
   // Status-aware lifecycle + rolled-up threat posture, computed once and
   // threaded through the timeline strip, DATE/TIME grid, posture band, and
   // Resolution Details so the whole report reads coherently for OPEN calls.
@@ -2093,11 +2104,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
   // hid the serve-to / result / attempts on every intake CFS. Render whenever
   // there's process data OR the call is a service-type incident.
   {
-    const isServiceCall =
-      data.incident_type === 'civil_paper_service' ||
-      data.incident_type === 'process_service' ||
-      data.pso_service_type === 'process_service';
-    if (isServiceCall || data.process_service_type || data.process_served_to) {
+    if (isProcessServiceCall || data.process_service_type || data.process_served_to) {
       y = checkPageBreak(doc, y, 18, prio);
       const psSec = openAutoSection(doc, 'Process Service Details', y); y = psSec.contentY;
       y = addThreeColumnFields(doc, [
@@ -2466,7 +2473,8 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
   // Visit History Timeline (PSO calls with return visits)
   // Both pso_client_request AND process_service calls accrue visit history on
   // re-dispatch (server attaches it for both — see src/routes/dispatch/calls.ts).
-  if (['pso_client_request', 'process_service', 'civil_paper_service'].includes(String(data.incident_type)) && Array.isArray(data.visit_history) && data.visit_history.length > 0) {
+  // Gate shared with the Process Service Details block above via isProcessServiceCall.
+  if ((isProcessServiceCall || data.incident_type === 'pso_client_request') && Array.isArray(data.visit_history) && data.visit_history.length > 0) {
     y = checkPageBreak(doc, y, 25, prio);
     const sec = openAutoSection(doc, `Visit History -- ${data.visit_history.length} Prior ${data.visit_history.length === 1 ? 'Visit' : 'Visits'}`, y);
     y = sec.sectionY + SPACING.SECTION_HEADER_H;
