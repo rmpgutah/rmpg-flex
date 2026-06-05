@@ -551,7 +551,7 @@
 // v787: nav — drop duty requirement for take-home mileage tracking; embed
 //       Mapbox mini-map with recenter / style toggle / drop-pin in NavPage.
 //       Bump forces clients holding v786 cache to refetch.
-const CACHE_NAME = 'rmpg-flex-v787';
+const CACHE_NAME = 'rmpg-flex-v788';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

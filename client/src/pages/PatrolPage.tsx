@@ -18,6 +18,7 @@ import {
   RotateCcw,
   Copy,
   Map as MapIcon,
+  Wrench,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
@@ -41,6 +42,7 @@ import { useAuth } from '../context/AuthContext';
 import { useFormDraft } from '../hooks/useFormDraft';
 import UnsavedChangesGuard from '../components/UnsavedChangesGuard';
 import FloatingSaveBar from '../components/FloatingSaveBar';
+import MileageAuditTab from './patrol/MileageAuditTab';
 
 // Add Mapbox type for TypeScript
 declare global {
@@ -258,7 +260,7 @@ const PatrolPage: React.FC = () => {
   useEffect(() => { document.title = 'Patrol Tracking \u2014 RMPG Flex'; }, []);
   const checkpointModalTitleId = useId();
   const qrModalTitleId = useId();
-  const [activeTab, setActiveTab] = usePersistedTab('rmpg_patrol_tab', 'checkpoints', ['checkpoints', 'scans', 'compliance', 'map', 'summary'] as const);
+  const [activeTab, setActiveTab] = usePersistedTab('rmpg_patrol_tab', 'checkpoints', ['checkpoints', 'scans', 'compliance', 'map', 'summary', 'mileage'] as const);
   const [checkpoints, setCheckpoints] = useState<Checkpoint[]>([]);
   const [scans, setScans] = useState<Scan[]>([]);
   const [compliance, setCompliance] = useState<Compliance[]>([]);
@@ -681,6 +683,7 @@ const PatrolPage: React.FC = () => {
     { id: 'compliance' as const, label: 'Compliance', icon: CheckCircle },
     { id: 'map' as const, label: 'Map', icon: MapIcon },
     { id: 'summary' as const, label: 'Shift Summary', icon: CheckCircle },
+    { id: 'mileage' as const, label: 'Mileage Audit', icon: Wrench },
   ];
 
   return (
@@ -737,7 +740,7 @@ const PatrolPage: React.FC = () => {
         spillman
         tabs={patrolTabs}
         activeTab={activeTab}
-        onTabChange={(id) => setActiveTab(id as 'checkpoints' | 'scans' | 'compliance' | 'map')}
+        onTabChange={(id) => setActiveTab(id as 'checkpoints' | 'scans' | 'compliance' | 'map' | 'summary' | 'mileage')}
       />
 
       {/* Error Banner */}
@@ -1299,6 +1302,13 @@ const PatrolPage: React.FC = () => {
                   No active checkpoints found.
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Mileage Audit Tab */}
+          {activeTab === 'mileage' && (
+            <div className="p-2">
+              <MileageAuditTab />
             </div>
           )}
         </>
