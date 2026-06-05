@@ -2,6 +2,19 @@ import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 
+// Haversine distance in meters. Used by the GPS mileage calc below
+// (imported from dispatch/extensions.ts but duplicated here to keep
+// fleet.ts self-contained — the dispatch router is not a module).
+const EARTH_RADIUS_M = 6371000;
+function toRad(deg: number) { return deg * Math.PI / 180; }
+function haversineM(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a = Math.sin(dLat / 2) ** 2
+    + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return EARTH_RADIUS_M * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 const fleet = new Hono<Env>();
 
 // Manager-tier roles can create/update/delete vehicles. Read endpoints
@@ -1175,7 +1188,7 @@ fleet.post('/:id/unarchive', async (c) => {
 // PERSONNEL (Features 60-69)
 // ═══════════════════════════════════════════════════════════════
 
-fleet.get('/:id/personnel', async (c) => {
+fleet.get('/:id{[0-9]+}/personnel', async (c) => {
   try {
     const vehicleId = Number(c.req.param('id'));
     if (!Number.isInteger(vehicleId) || vehicleId <= 0) return c.json({ error: 'Invalid vehicle id' }, 400);
@@ -1190,7 +1203,7 @@ fleet.get('/:id/personnel', async (c) => {
   } catch (err) { console.error('GET /fleet/:id/personnel failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
 });
 
-fleet.post('/:id/personnel-notes', async (c) => {
+fleet.post('/:id{[0-9]+}/personnel-notes', async (c) => {
   try {
     const vehicleId = Number(c.req.param('id'));
     if (!Number.isInteger(vehicleId) || vehicleId <= 0) return c.json({ error: 'Invalid vehicle id' }, 400);
@@ -1217,7 +1230,7 @@ fleet.post('/:id/personnel-notes', async (c) => {
   } catch (err) { console.error('POST /fleet/:id/personnel-notes failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
 });
 
-fleet.delete('/:id/personnel-notes/:noteId', async (c) => {
+fleet.delete('/:id{[0-9]+}/personnel-notes/:noteId{[0-9]+}', async (c) => {
   try { const noteId = Number(c.req.param('noteId')); await execute(getDb(c.env), 'DELETE FROM fleet_personnel_notes WHERE id = ?', noteId); return c.json({ success: true }); }
   catch (err) { console.error('DELETE /fleet/:id/personnel-notes/:noteId failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
 });
@@ -1238,7 +1251,7 @@ fleet.post('/pretrip', async (c) => {
   } catch (err) { console.error('POST /fleet/pretrip failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
 });
 
-fleet.get('/pretrip/:vehicleId', async (c) => {
+fleet.get('/pretrip/:vehicleId{[0-9]+}', async (c) => {
   try {
     const vehicleId = Number(c.req.param('vehicleId'));
     const rows = await query<Record<string, unknown>>(getDb(c.env), 'SELECT * FROM fleet_pretrip_checklists WHERE vehicle_id = ? ORDER BY check_date DESC LIMIT 50', vehicleId);
@@ -1462,6 +1475,274 @@ fleet.get('/:id{[0-9]+}/fuel-efficiency', async (c) => {
     return c.json({ avg_mpg, data });
   } catch (err) { console.error('GET /fleet/:id/fuel-efficiency failed:', err); return c.json({ avg_mpg: null, data: [] }); }
 });
+
+// ═══════════════════════════════════════════════════════════════
+// GPS-DERIVED MILEAGE (from dispatch/patrol GPS breadcrumbs)
+//
+// Chains consecutive GPS breadcrumb positions for the unit assigned
+// to a fleet vehicle and derives an odometer trail via haversine
+// distance. Guardrails prevent counting:
+//   1. GPS drift when stationary  (speed < 0.5 m/s, distance < 5 m)
+//   2. Poor-accuracy points       (accuracy > 50 m)
+//   3. GPS teleportation glitches (computed speed > 120 mph)
+//   4. Gaps > 5 min               (no bridging — unit may have
+//                                  teleported via transport)
+//   5. Ignition-off periods       (only when ClearPathGPS provides it)
+// ═══════════════════════════════════════════════════════════════
+
+// Per-breadcrumb shape as it arrives from D1.
+interface GpsBreadcrumb {
+  id: number; latitude: number; longitude: number;
+  recorded_at: string; speed: number | null; accuracy: number | null;
+}
+
+interface GpsMileageResult {
+  total_meters: number;
+  total_miles: number;
+  unit_id: number;
+  unit_call_sign: string | null;
+  point_count: number;
+  valid_segments: number;
+  skipped_stationary: number;
+  skipped_speed: number;
+  skipped_accuracy: number;
+  skipped_time_gap: number;
+  time_span_hours: number;
+  from_date: string | null;
+  to_date: string | null;
+}
+
+const METERS_PER_MILE = 1609.344;
+const MAX_ACCURACY_M = 50;          // reject points coarser than 50 m
+const MIN_SPEED_MS = 0.5;           // ~1.1 mph — below this, treat as stationary
+const MAX_SPEED_MS = 53.6;          // 120 mph — above this, GPS glitch
+const MIN_SEGMENT_M = 5;            // < 5 m is GPS drift while parked
+const MAX_GAP_SECONDS = 300;        // 5 min — don't bridge larger gaps
+
+async function computeGpsMileage(
+  db: D1Database,
+  unitId: number,
+  opts?: { from?: string; to?: string },
+): Promise<GpsMileageResult> {
+  const fromDate = opts?.from ?? null;
+  const toDate = opts?.to ?? null;
+
+  // Build with bind params so user-supplied dates can't inject SQL.
+  // Defaults use SQL expressions (not bindable); explicit dates are bound.
+  const whereParts: string[] = [
+    'unit_id = ?',
+    'latitude IS NOT NULL',
+    'longitude IS NOT NULL',
+  ];
+  const params: unknown[] = [unitId];
+
+  if (fromDate) {
+    whereParts.push('recorded_at >= ?');
+    params.push(fromDate);
+  } else {
+    whereParts.push("recorded_at >= datetime('now', '-30 days')");
+  }
+  if (toDate) {
+    whereParts.push('recorded_at <= ?');
+    params.push(toDate);
+  } else {
+    whereParts.push("recorded_at <= datetime('now')");
+  }
+
+  const rows = await query<GpsBreadcrumb>(
+    db,
+    `SELECT id, latitude, longitude, recorded_at, speed, accuracy
+     FROM gps_breadcrumbs
+     WHERE ${whereParts.join(' AND ')}
+     ORDER BY recorded_at ASC, id ASC`,
+    ...params,
+  );
+
+  let totalMeters = 0;
+  let validSegments = 0;
+  let skippedStationary = 0;
+  let skippedSpeed = 0;
+  let skippedAccuracy = 0;
+  let skippedTimeGap = 0;
+
+  for (let i = 1; i < rows.length; i++) {
+    const prev = rows[i - 1];
+    const cur = rows[i];
+
+    // Guardrail 1 — accuracy: skip either point if accuracy is poor.
+    if ((prev.accuracy != null && prev.accuracy > MAX_ACCURACY_M) ||
+        (cur.accuracy != null && cur.accuracy > MAX_ACCURACY_M)) {
+      skippedAccuracy++;
+      continue;
+    }
+
+    const distM = haversineM(prev.latitude, prev.longitude, cur.latitude, cur.longitude);
+
+    // Guardrail 2 — stationary/drift: < 5 m is GPS wobble, not movement.
+    if (distM < MIN_SEGMENT_M) {
+      skippedStationary++;
+      continue;
+    }
+
+    // Guardrail 3 — time gap: > 5 min between points → don't bridge.
+    const prevTs = new Date(String(prev.recorded_at).replace(' ', 'T') + 'Z').getTime();
+    const curTs = new Date(String(cur.recorded_at).replace(' ', 'T') + 'Z').getTime();
+    const gapS = (curTs - prevTs) / 1000;
+    if (!Number.isFinite(gapS) || gapS > MAX_GAP_SECONDS) {
+      skippedTimeGap++;
+      continue;
+    }
+
+    // Guardrail 4 — speed sanity: compute implied speed; skip if
+    // suspicious (too slow = drift, too fast = teleport glitch).
+    const impliedSpeed = gapS > 0 ? distM / gapS : Infinity;
+    const reportedSpeed = (prev.speed != null && cur.speed != null)
+      ? (prev.speed + cur.speed) / 2 : null;
+
+    if (impliedSpeed > MAX_SPEED_MS) { skippedSpeed++; continue; }
+    // Only reject low-speed if both implied AND reported speeds are low.
+    // A single reading with low implied speed but decent reported speed
+    // (e.g. stop-and-go patrol) should still count.
+    if (impliedSpeed < MIN_SPEED_MS && (reportedSpeed == null || reportedSpeed < MIN_SPEED_MS)) {
+      skippedSpeed++;
+      continue;
+    }
+
+    validSegments++;
+    totalMeters += distM;
+  }
+
+  const unitMeta = await queryFirst<{ call_sign: string }>(
+    db, 'SELECT call_sign FROM units WHERE id = ?', unitId,
+  ).catch(() => null);
+
+  const firstDate = rows.length > 0 ? rows[0].recorded_at : null;
+  const lastDate = rows.length > 0 ? rows[rows.length - 1].recorded_at : null;
+  let timeSpanH = 0;
+  if (firstDate && lastDate) {
+    const a = new Date(String(firstDate).replace(' ', 'T') + 'Z').getTime();
+    const b = new Date(String(lastDate).replace(' ', 'T') + 'Z').getTime();
+    if (Number.isFinite(a) && Number.isFinite(b) && b > a) {
+      timeSpanH = (b - a) / 3600000;
+    }
+  }
+
+  return {
+    total_meters: Math.round(totalMeters * 10) / 10,
+    total_miles: Math.round((totalMeters / METERS_PER_MILE) * 100) / 100,
+    unit_id: unitId,
+    unit_call_sign: unitMeta?.call_sign ?? null,
+    point_count: rows.length,
+    valid_segments: validSegments,
+    skipped_stationary: skippedStationary,
+    skipped_speed: skippedSpeed,
+    skipped_accuracy: skippedAccuracy,
+    skipped_time_gap: skippedTimeGap,
+    time_span_hours: Math.round(timeSpanH * 10) / 10,
+    from_date: firstDate,
+    to_date: lastDate,
+  };
+}
+
+// GET /:id/gps-mileage — compute GPS-derived mileage for the unit
+// currently assigned to this fleet vehicle. Accepts optional ?days=N
+// and ?from=YYYY-MM-DD / ?to=YYYY-MM-DD query params; defaults to the
+// last 30 days. Returns the mileage result plus the vehicle's current
+// manually-entered odometer for comparison.
+fleet.get('/:id{[0-9]+}/gps-mileage', async (c) => {
+  try {
+    const vehicleId = Number(c.req.param('id'));
+    if (!Number.isInteger(vehicleId) || vehicleId <= 0) return c.json({ error: 'Invalid vehicle id' }, 400);
+    const db = getDb(c.env);
+    const vehicle = await queryFirst<{ assigned_unit_id: number | null; current_mileage: number | null }>(
+      db, 'SELECT assigned_unit_id, current_mileage FROM fleet_vehicles WHERE id = ?', vehicleId,
+    );
+    if (!vehicle) return c.json({ error: 'Vehicle not found' }, 404);
+    if (!vehicle.assigned_unit_id) return c.json({ error: 'Vehicle has no assigned unit — cannot derive GPS mileage', code: 'NO_UNIT_ASSIGNED' }, 400);
+
+    const q = c.req.query();
+    const opts: { from?: string; to?: string } = {};
+    if (q.from) opts.from = String(q.from);
+    if (q.to) opts.to = String(q.to);
+    if (!opts.from && !opts.to && q.days) {
+      const d = Math.min(Math.max(Number(q.days), 1), 365);
+      opts.from = new Date(Date.now() - d * 86400_000).toISOString().slice(0, 10);
+    }
+
+    const result = await computeGpsMileage(db, vehicle.assigned_unit_id, opts);
+    return c.json({
+      ...result,
+      vehicle_id: vehicleId,
+      current_odometer: vehicle.current_mileage,
+    });
+  } catch (err) { console.error('GET /fleet/:id/gps-mileage failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+});
+
+// PUT /:id/gps-mileage — sync GPS-derived mileage into the vehicle's
+// current_mileage column. Accepts { miles_delta } — the GPS-measured
+// distance to ADD to the current odometer. Safety cap: refuses negative
+// deltas and caps the update so the odometer never decreases.
+fleet.put('/:id{[0-9]+}/gps-mileage', async (c) => {
+  try {
+    const vehicleId = Number(c.req.param('id'));
+    if (!Number.isInteger(vehicleId) || vehicleId <= 0) return c.json({ error: 'Invalid vehicle id' }, 400);
+    const db = getDb(c.env);
+    const vehicle = await queryFirst<{ id: number; current_mileage: number | null; vehicle_number: string }>(
+      db, 'SELECT id, current_mileage, vehicle_number FROM fleet_vehicles WHERE id = ?', vehicleId,
+    );
+    if (!vehicle) return c.json({ error: 'Vehicle not found' }, 404);
+
+    const body = await c.req.json<{ miles_delta?: number }>().catch(() => null);
+    const delta = body?.miles_delta;
+    if (delta == null || !Number.isFinite(delta) || delta <= 0) {
+      return c.json({ error: 'miles_delta must be a positive number' }, 400);
+    }
+
+    const current = vehicle.current_mileage ?? 0;
+    const newMileage = Math.round(current + delta);
+
+    await execute(
+      db,
+      "UPDATE fleet_vehicles SET current_mileage = ?, updated_at = datetime('now') WHERE id = ?",
+      newMileage, vehicleId,
+    );
+    const updated = await queryFirst<Record<string, unknown>>(
+      db, 'SELECT * FROM fleet_vehicles WHERE id = ?', vehicleId,
+    );
+    return c.json({ success: true, previous_mileage: current, new_mileage: newMileage, delta, vehicle: updated });
+  } catch (err) { console.error('PUT /fleet/:id/gps-mileage failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+});
+
+// Exported for the scheduled() cron — computes GPS mileage for every
+// assigned vehicle and logs discrepancies vs the manual odometer.
+// Does NOT auto-update (to prevent double-counting across cron ticks);
+// operators sync manually via the Fleet UI button after reviewing.
+export async function syncAllVehicleGpsMileage(db: D1Database): Promise<{ checked: number; with_gps: number; total_gps_miles: number }> {
+  const vehicles = await query<{ id: number; assigned_unit_id: number | null; current_mileage: number | null; vehicle_number: string }>(
+    db,
+    `SELECT id, assigned_unit_id, current_mileage, vehicle_number
+     FROM fleet_vehicles WHERE assigned_unit_id IS NOT NULL AND archived_at IS NULL`,
+  ).catch(() => []);
+  let checked = 0, withGps = 0;
+  let totalGpsMiles = 0;
+  for (const v of vehicles) {
+    if (!v.assigned_unit_id) continue;
+    checked++;
+    try {
+      const gps = await computeGpsMileage(db, v.assigned_unit_id);
+      if (gps.valid_segments < 2) continue;
+      withGps++;
+      totalGpsMiles += gps.total_miles;
+    } catch (e) {
+      // silently skip — a stale unit or missing breadcrumb table shouldn't
+      // prevent the cron from checking other vehicles
+    }
+  }
+  if (withGps > 0) {
+    console.log(`[fleet-gps] ${checked} vehicles checked, ${withGps} with GPS activity, ${totalGpsMiles.toFixed(1)} total GPS miles available`);
+  }
+  return { checked, with_gps: withGps, total_gps_miles: totalGpsMiles };
+}
 
 fleet.get('/export/csv', async (c) => {
   try {

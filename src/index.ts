@@ -297,5 +297,13 @@ export default {
         .then((r) => { if (r.deleted) console.log(`[radio] purged ${r.deleted} expired recording(s)`); })
         .catch((err) => console.error('Radio retention purge failed:', err)),
     );
+    // Fleet GPS mileage sync — derives odometer from dispatch breadcrumbs
+    // for every assigned vehicle. Own catch so a failure here can't abort
+    // the other scans or crash the cron loop.
+    ctx.waitUntil(
+      syncAllVehicleGpsMileage(env.DB)
+        .then((r) => console.log(`[fleet-gps] checked ${r.checked}, ${r.with_gps} with GPS, ${r.total_gps_miles.toFixed(1)} mi available`))
+        .catch((err) => console.error('Fleet GPS mileage scan failed:', err)),
+    );
   },
 };

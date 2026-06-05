@@ -161,6 +161,39 @@ export default function FleetPage() {
   // ── Feature 16/19/20: Pre-trip, vehicle swaps, cost-per-mile ──
   const [costPerMile, setCostPerMile] = useState<any>(null);
 
+  // ── GPS mileage (from dispatch breadcrumbs) ──────────────────
+  const [gpsMileage, setGpsMileage] = useState<any>(null);
+  const [gpsMileageLoading, setGpsMileageLoading] = useState(false);
+
+  const fetchGpsMileage = useCallback(async (days = 30) => {
+    if (!selectedId) return;
+    setGpsMileageLoading(true);
+    try {
+      const data = await apiFetch<any>(`/fleet/${selectedId}/gps-mileage?days=${days}`);
+      setGpsMileage(data);
+    } catch (err: any) {
+      if (err?.code !== 'NO_UNIT_ASSIGNED') {
+        addToast('Failed to compute GPS mileage', 'error');
+      }
+    } finally { setGpsMileageLoading(false); }
+  }, [selectedId, addToast]);
+
+  const handleSyncGpsMileage = async () => {
+    if (!selectedId || !gpsMileage?.total_miles) return;
+    setGpsMileageLoading(true);
+    try {
+      const resp = await apiFetch<any>(`/fleet/${selectedId}/gps-mileage`, {
+        method: 'PUT',
+        body: JSON.stringify({ miles_delta: gpsMileage.total_miles }),
+      });
+      addToast(`Odometer updated: ${resp.previous_mileage?.toLocaleString()} → ${resp.new_mileage?.toLocaleString()}`, 'success');
+      if (selectedId) fetchDetail(selectedId);
+      setGpsMileage(null);
+    } catch (err: any) {
+      addToast(err?.message || 'Failed to sync mileage', 'error');
+    } finally { setGpsMileageLoading(false); }
+  };
+
   // ── Cost-of-ownership state (Costs tab) ──────────────────────
   const [loans, setLoans] = useState<FleetLoan[]>([]);
   const [insurancePolicies, setInsurancePolicies] = useState<FleetInsurancePolicy[]>([]);
@@ -1441,6 +1474,10 @@ export default function FleetPage() {
               onUnarchiveVehicle={handleUnarchiveVehicle}
               onDeleteVehicle={() => setDeletingVehicleId(selectedId)}
               isArchived={showArchived}
+              gpsMileage={gpsMileage}
+              gpsMileageLoading={gpsMileageLoading}
+              onFetchGpsMileage={fetchGpsMileage}
+              onSyncGpsMileage={handleSyncGpsMileage}
               onClose={() => { setSelectedId(null); setDetail(null); }}
             />
             </>
@@ -1496,6 +1533,29 @@ export default function FleetPage() {
         isDirty={i.isDirty}
         draftRestored={i.wasRestored}
         onDiscardDraft={i.clearDraft}
+      />
+
+      {/* Cost-of-ownership form modal */}
+      <FleetCostFormModal
+        isOpen={costModalOpen}
+        category={costCategory}
+        mode={costMode}
+        initial={costInitial}
+        onSave={handleSaveCost}
+        onClose={() => { setCostModalOpen(false); setEditingCostId(null); }}
+        saving={savingCost}
+      />
+
+      {/* Delete Cost Confirmation */}
+      <ConfirmDialog
+        isOpen={deletingCost !== null}
+        onClose={() => setDeletingCost(null)}
+        onConfirm={confirmDeleteCost}
+        title="Delete Cost Entry"
+        message={`Delete this ${deletingCost?.category} entry? This cannot be undone.`}
+        confirmLabel="Delete"
+        confirmVariant="danger"
+        isLoading={isDeleting}
       />
 
       {/* Delete Vehicle Confirmation */}
