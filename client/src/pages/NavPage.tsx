@@ -1,15 +1,17 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Navigation, MapPin, Clock, Route, Car, Play, Square, History,
   Gauge, Footprints, AlertTriangle, CheckCircle, Loader2, RefreshCw,
-  Download, FileText,
+  Download, FileText, Crosshair, MapPinned, Pin, Trash2, Compass, ExternalLink,
 } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { apiFetch } from '../hooks/useApi';
 import { useGpsTracking } from '../hooks/useGpsTracking';
 import { useNavTripDetection } from '../hooks/useNavTripDetection';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useAuth } from '../context/AuthContext';
 import PanelTitleBar from '../components/PanelTitleBar';
+import NavMapView, { type DroppedPin } from '../components/NavMapView';
 import { generateNavTripReport, generateNavSingleTripReport } from '../utils/navTripPdf';
 import type { NavTrip, NavTripStatus } from '../types';
 
@@ -27,6 +29,8 @@ const STATUS_LABEL: Record<NavTripStatus, string> = {
   cancelled: 'Cancelled',
 };
 
+const PIN_STORAGE_KEY = 'rmpg_nav_dropped_pins';
+
 function formatDuration(seconds?: number): string {
   if (!seconds) return '--';
   const h = Math.floor(seconds / 3600);
@@ -40,7 +44,7 @@ function formatDuration(seconds?: number): string {
 function formatDistance(miles?: number): string {
   if (!miles) return '--';
   if (miles < 0.1) return `${Math.round(miles * 5280)} ft`;
-  return `${miles.toFixed(1)} mi`;
+  return `${miles.toFixed(2)} mi`;
 }
 
 function timeAgo(dateStr: string): string {
@@ -52,6 +56,17 @@ function timeAgo(dateStr: string): string {
   const hrs = Math.floor(mins / 60);
   if (hrs < 24) return `${hrs}h ago`;
   return `${Math.floor(hrs / 24)}d ago`;
+}
+
+function loadPins(): DroppedPin[] {
+  try {
+    const raw = localStorage.getItem(PIN_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch { return []; }
+}
+
+function savePins(pins: DroppedPin[]) {
+  try { localStorage.setItem(PIN_STORAGE_KEY, JSON.stringify(pins.slice(-20))); } catch { /* quota */ }
 }
 
 export default function NavPage() {
@@ -82,8 +97,11 @@ export default function NavPage() {
   const [currentTripLocal, setCurrentTripLocal] = useState<NavTrip | null>(null);
   const [tripHistory, setTripHistory] = useState<NavTrip[]>([]);
   const [loading, setLoading] = useState(false);
+  const [droppedPins, setDroppedPins] = useState<DroppedPin[]>(loadPins);
+  const dropPinHandlerRef = useRef<((pin: DroppedPin) => void) | null>(null);
 
-  // Sync current trip
+  useEffect(() => { savePins(droppedPins); }, [droppedPins]);
+
   useEffect(() => {
     if (currentTrip) setCurrentTripLocal(currentTrip);
   }, [currentTrip]);
@@ -100,17 +118,24 @@ export default function NavPage() {
 
   useEffect(() => { fetchHistory(); }, [fetchHistory]);
 
-  // ── Manual start ──────────────────────────────────────────
+  // ── Manual start / end ────────────────────────────────────
   const handleManualStart = () => {
     if (gps.latitude && gps.longitude) {
       startManualTrip(gps.latitude, gps.longitude, gps.accuracy ?? undefined);
     }
   };
 
-  // ── End trip ──────────────────────────────────────────────
   const handleEndTrip = () => {
     endCurrentTrip(gps.latitude ?? undefined, gps.longitude ?? undefined);
   };
+
+  // ── Drop pin ──────────────────────────────────────────────
+  const handleDropPin = useCallback((pin: DroppedPin) => {
+    setDroppedPins((prev) => [...prev, pin]);
+  }, []);
+  // Keep the ref synced so the always-mounted mini-map's onDropPin always
+  // calls the latest handler.
+  dropPinHandlerRef.current = handleDropPin;
 
   // ── PDF downloads ─────────────────────────────────────────
   const handleDownloadAllTrips = () => {
@@ -119,7 +144,7 @@ export default function NavPage() {
     generateNavTripReport({
       trips: tripHistory,
       officerName,
-      vehicleLabel: tripHistory.find(t => t.vehicle_number)?.vehicle_number ?? 'All Vehicles',
+      vehicleLabel: tripHistory.find((t) => t.vehicle_number)?.vehicle_number ?? 'All Vehicles',
       periodLabel,
     });
   };
@@ -132,7 +157,12 @@ export default function NavPage() {
 
   return (
     <div className="flex flex-col h-full bg-surface-base">
-      <PanelTitleBar title="NAVIGATION" icon={Navigation} statusLed={gps.isTracking ? 'bg-emerald-400' : 'bg-red-400'} ledPulse={gps.isTracking} />
+      <PanelTitleBar
+        title="NAVIGATION"
+        icon={Navigation}
+        statusLed={gps.isTracking ? 'bg-emerald-400' : 'bg-red-400'}
+        ledPulse={gps.isTracking}
+      />
 
       {/* GPS Status Bar */}
       <div className="flex items-center gap-3 px-3 py-1.5 border-b border-subtle text-[10px] font-mono" style={{ background: '#0a0a0a' }}>
@@ -147,19 +177,55 @@ export default function NavPage() {
         {gps.accuracy != null && (
           <span className="text-rmpg-500">±{Math.round(gps.accuracy)}m</span>
         )}
-        {gps.unitCallSign && (
-          <span style={{ color: '#d4a017' }}>{gps.unitCallSign}</span>
-        )}
-        {hasTakeHome && !gps.unitCallSign && (
-          <span style={{ color: '#22c55e' }}>Take-Home Vehicle</span>
-        )}
-        {!gps.unitCallSign && !hasTakeHome && (
-          <span className="text-rmpg-500">No unit assigned — go on-duty to log trips</span>
+        {gps.unitCallSign ? (
+          <span style={{ color: '#d4a017' }}>{gps.unitCallSign} · ON DUTY</span>
+        ) : hasTakeHome ? (
+          <span style={{ color: '#22c55e' }}>TAKE-HOME · TRACKING ACTIVE</span>
+        ) : gps.isTracking ? (
+          <span className="text-rmpg-500">GPS ONLY · Set take-home vehicle to log trips</span>
+        ) : null}
+        <div className="ml-auto flex items-center gap-1.5">
+          <Link
+            to="/navigation"
+            className="flex items-center gap-1 px-1.5 py-0.5 rounded-sm border border-subtle hover:border-strong transition-colors"
+            style={{ color: '#d4a017' }}
+            title="Open full drive view with chase cam and turn-by-turn"
+          >
+            <ExternalLink size={10} /> Drive Mode
+          </Link>
+        </div>
+      </div>
+
+      {/* Always-visible mini-map */}
+      <div className="px-3 pt-2">
+        <NavMapView
+          position={gps.latitude && gps.longitude
+            ? { latitude: gps.latitude, longitude: gps.longitude, accuracy: gps.accuracy }
+            : null}
+          routePoints={activeTrip?.route_points as never}
+          height={isMobile ? 200 : 260}
+          onDropPin={(p) => dropPinHandlerRef.current?.(p)}
+          pins={droppedPins}
+        />
+        {droppedPins.length > 0 && (
+          <div className="flex items-center justify-between mt-1 text-[9px] font-mono">
+            <span style={{ color: '#888' }}>
+              <Pin size={9} className="inline" /> {droppedPins.length} pin{droppedPins.length === 1 ? '' : 's'} on map
+            </span>
+            <button
+              type="button"
+              onClick={() => setDroppedPins([])}
+              className="flex items-center gap-1 hover:underline"
+              style={{ color: '#888' }}
+            >
+              <Trash2 size={9} /> Clear pins
+            </button>
+          </div>
         )}
       </div>
 
       {/* Tab bar */}
-      <div className="flex border-b border-subtle">
+      <div className="flex border-b border-subtle mt-2">
         {(['current', 'history'] as const).map((t) => (
           <button
             key={t}
@@ -188,7 +254,13 @@ export default function NavPage() {
             onRefresh={fetchCurrentTrip}
           />
         ) : (
-          <HistoryPanel trips={tripHistory} loading={loading} onRefresh={fetchHistory} onDownloadAll={handleDownloadAllTrips} onDownloadTrip={handleDownloadSingleTrip} />
+          <HistoryPanel
+            trips={tripHistory}
+            loading={loading}
+            onRefresh={fetchHistory}
+            onDownloadAll={handleDownloadAllTrips}
+            onDownloadTrip={handleDownloadSingleTrip}
+          />
         )}
       </div>
     </div>
@@ -236,23 +308,24 @@ function CurrentTripPanel({
             </span>
           </div>
 
-          {/* Stats row */}
+          {/* Live stats */}
           <div className="grid grid-cols-3 gap-3 mb-3">
             <div className="text-center">
-              <div className="text-[20px] font-mono font-bold" style={{ color: '#e0e0e0' }}>
+              <div className="text-[22px] font-mono font-bold tabular-nums" style={{ color: '#22c55e' }}>
                 {trip.status === 'active' ? formatDuration(elapsed) : '--'}
               </div>
               <div className="text-[9px] text-rmpg-500 uppercase">Duration</div>
             </div>
             <div className="text-center">
-              <div className="text-[20px] font-mono font-bold" style={{ color: '#e0e0e0' }}>
+              <div className="text-[22px] font-mono font-bold tabular-nums" style={{ color: '#d4a017' }}>
                 {formatDistance(trip.distance_miles)}
               </div>
               <div className="text-[9px] text-rmpg-500 uppercase">Distance</div>
             </div>
             <div className="text-center">
-              <div className="text-[20px] font-mono font-bold" style={{ color: '#e0e0e0' }}>
-                {trip.max_speed_mph ? `${Math.round(trip.max_speed_mph)} mph` : '--'}
+              <div className="text-[22px] font-mono font-bold tabular-nums" style={{ color: '#ef4444' }}>
+                {trip.max_speed_mph ? `${Math.round(trip.max_speed_mph)}` : '--'}
+                <span className="text-[10px] ml-0.5" style={{ color: '#888' }}>mph</span>
               </div>
               <div className="text-[9px] text-rmpg-500 uppercase">Max Speed</div>
             </div>
@@ -293,22 +366,31 @@ function CurrentTripPanel({
           </div>
         </div>
 
-        {/* End Trip Button */}
+        {/* End Trip Button — FAB style */}
         <button
           onClick={onEnd}
-          className="w-full py-2 rounded-sm text-[11px] font-semibold uppercase tracking-wider flex items-center justify-center gap-2 transition-colors"
+          className="w-full py-3 rounded-sm text-[12px] font-semibold uppercase tracking-wider flex items-center justify-center gap-2 transition-colors active:scale-[0.98]"
           style={{ background: '#ef4444', color: '#fff' }}
         >
           <Square size={14} /> End Trip
         </button>
 
-        <button
-          onClick={onRefresh}
-          className="w-full py-1.5 rounded-sm text-[10px] flex items-center justify-center gap-1 transition-colors"
-          style={{ background: '#141414', color: '#888888', border: '1px solid #222222' }}
-        >
-          <RefreshCw size={12} /> Refresh
-        </button>
+        <div className="grid grid-cols-2 gap-2">
+          <Link
+            to="/navigation"
+            className="py-2 rounded-sm text-[10px] font-mono uppercase tracking-wider flex items-center justify-center gap-1.5 transition-colors"
+            style={{ background: '#141414', color: '#d4a017', border: '1px solid #222' }}
+          >
+            <Compass size={11} /> Drive Mode
+          </Link>
+          <button
+            onClick={onRefresh}
+            className="py-2 rounded-sm text-[10px] font-mono uppercase tracking-wider flex items-center justify-center gap-1.5 transition-colors"
+            style={{ background: '#141414', color: '#888', border: '1px solid #222' }}
+          >
+            <RefreshCw size={11} /> Refresh
+          </button>
+        </div>
       </div>
     );
   }
@@ -316,7 +398,7 @@ function CurrentTripPanel({
   // No active trip — show start screen
   return (
     <div className="space-y-3">
-      {/* Detection Status */}
+      {/* Status Card */}
       <div className="rounded-sm border border-subtle p-3" style={{ background: '#0a0a0a' }}>
         <div className="flex items-center gap-2 mb-2">
           {gps.isTracking ? (
@@ -339,18 +421,28 @@ function CurrentTripPanel({
               {gps.latitude ? `${gps.latitude.toFixed(5)}, ${gps.longitude?.toFixed(5)}` : 'No fix'}
             </span>
           </div>
+          {gps.speed != null && (
+            <div className="flex justify-between">
+              <span className="text-rmpg-500">Speed</span>
+              <span style={{ color: '#e0e0e0' }}>{Math.round(gps.speed * 2.237)} mph</span>
+            </div>
+          )}
           {detection.loginPosition && (
             <div className="flex justify-between">
-              <span className="text-rmpg-500">Login Location</span>
+              <span className="text-rmpg-500">Login</span>
               <span style={{ color: '#e0e0e0' }}>
                 {detection.loginPosition.lat.toFixed(4)}, {detection.loginPosition.lng.toFixed(4)}
               </span>
             </div>
           )}
           <div className="flex justify-between">
-            <span className="text-rmpg-500">Unit</span>
-            <span style={{ color: gps.unitCallSign ? '#d4a017' : (hasTakeHome ? '#22c55e' : '#ef4444') }}>
-              {gps.unitCallSign || (hasTakeHome ? 'Take-Home Vehicle' : 'Not on duty')}
+            <span className="text-rmpg-500">Vehicle</span>
+            <span style={{ color: gps.unitCallSign ? '#d4a017' : (hasTakeHome ? '#22c55e' : '#888') }}>
+              {gps.unitCallSign
+                ? `${gps.unitCallSign} (on duty)`
+                : hasTakeHome
+                  ? 'Take-home (no duty required)'
+                  : 'Set take-home in profile to track'}
             </span>
           </div>
           <div className="flex justify-between">
@@ -362,14 +454,14 @@ function CurrentTripPanel({
         </div>
       </div>
 
-      {/* Start Trip Button */}
+      {/* Start Trip Button — big and prominent, enabled for take-home */}
       <button
         onClick={onStart}
-        disabled={!gps.latitude}
-        className="w-full py-2 rounded-sm text-[11px] font-semibold uppercase tracking-wider flex items-center justify-center gap-2 transition-colors disabled:opacity-40"
+        disabled={!gps.latitude || (!gps.unitCallSign && !hasTakeHome)}
+        className="w-full py-3 rounded-sm text-[13px] font-semibold uppercase tracking-wider flex items-center justify-center gap-2 transition-colors active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed"
         style={{ background: '#d4a017', color: '#000' }}
       >
-        <Play size={14} /> Start Trip Now
+        <Play size={16} /> Start Trip Now
       </button>
 
       {!gps.isTracking && (
@@ -380,13 +472,47 @@ function CurrentTripPanel({
         </div>
       )}
 
-      <button
-        onClick={onRefresh}
-        className="w-full py-1.5 rounded-sm text-[10px] flex items-center justify-center gap-1 transition-colors"
-        style={{ background: '#141414', color: '#888888', border: '1px solid #222222' }}
-      >
-        <RefreshCw size={12} /> Refresh
-      </button>
+      {!gps.unitCallSign && !hasTakeHome && (
+        <div className="rounded-sm border border-subtle p-2 text-center" style={{ background: '#141414' }}>
+          <p className="text-[10px]" style={{ color: '#888' }}>
+            Set a take-home vehicle on the Shift card to log trips without going on-duty.
+          </p>
+        </div>
+      )}
+
+      {/* Quick actions */}
+      <div className="grid grid-cols-2 gap-2">
+        <Link
+          to="/navigation"
+          className="py-2 rounded-sm text-[10px] font-mono uppercase tracking-wider flex items-center justify-center gap-1.5 transition-colors"
+          style={{ background: '#141414', color: '#d4a017', border: '1px solid #222' }}
+        >
+          <Compass size={11} /> Drive Mode
+        </Link>
+        <button
+          onClick={onRefresh}
+          className="py-2 rounded-sm text-[10px] font-mono uppercase tracking-wider flex items-center justify-center gap-1.5 transition-colors"
+          style={{ background: '#141414', color: '#888', border: '1px solid #222' }}
+        >
+          <RefreshCw size={11} /> Refresh
+        </button>
+      </div>
+
+      {/* Hint card */}
+      <div className="rounded-sm border border-subtle p-2.5" style={{ background: '#0a0a0a' }}>
+        <div className="flex items-center gap-1.5 mb-1.5">
+          <Footprints size={10} style={{ color: '#d4a017' }} />
+          <span className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: '#d4a017' }}>
+            How detection works
+          </span>
+        </div>
+        <ul className="text-[9px] font-mono space-y-0.5" style={{ color: '#888' }}>
+          <li>• Auto-starts when you move &gt;200ft from your login location (10s confirmation)</li>
+          <li>• Use the Start button above for immediate trip logging</li>
+          <li>• Trips are recorded with or without going on-duty (take-home works too)</li>
+          <li>• Use the mini-map above to recenter, switch style, or drop a pin</li>
+        </ul>
+      </div>
     </div>
   );
 }
@@ -470,7 +596,9 @@ function HistoryPanel({
               </div>
               <div>
                 <span className="text-rmpg-500">Max Speed</span>
-                <div style={{ color: '#e0e0e0' }}>{trip.max_speed_mph ? `${Math.round(trip.max_speed_mph)} mph` : '--'}</div>
+                <div style={{ color: '#e0e0e0' }}>
+                  {trip.max_speed_mph ? `${Math.round(trip.max_speed_mph)} mph` : '--'}
+                </div>
               </div>
               <div>
                 <span className="text-rmpg-500">Type</span>
@@ -481,7 +609,9 @@ function HistoryPanel({
             {trip.vehicle_number && (
               <div className="mt-1.5 text-[9px] font-mono flex justify-between">
                 <span className="text-rmpg-500">Vehicle</span>
-                <span style={{ color: '#d4a017' }}>{trip.vehicle_number} — {trip.make} {trip.model}</span>
+                <span style={{ color: '#d4a017' }}>
+                  {trip.vehicle_number} — {trip.make} {trip.model}
+                </span>
               </div>
             )}
 
@@ -494,14 +624,14 @@ function HistoryPanel({
             </div>
 
             {trip.status === 'completed' && (
-              <div className="mt-1.5 flex justify-end">
+              <div className="mt-1.5 flex justify-end gap-1.5">
                 <button
                   onClick={() => onDownloadTrip(trip)}
                   className="flex items-center gap-1 text-[9px] font-mono px-1.5 py-0.5 border border-subtle rounded-sm transition-colors hover:border-strong"
                   style={{ color: '#d4a017' }}
                   title="Download this trip as a PDF report"
                 >
-                  <Download size={9} /> Download Trip PDF
+                  <Download size={9} /> Trip PDF
                 </button>
               </div>
             )}
