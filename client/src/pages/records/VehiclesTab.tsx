@@ -34,7 +34,7 @@ function isActiveStolen(v: Vehicle): boolean {
 // Posture-relevant flags for a vehicle (list ring + detail hero).
 function vehiclePostureFlags(v: Vehicle): Array<string | null | undefined> {
   return [
-    ...v.flags.map((f) => (typeof f === 'object' ? f.type : f)),
+    ...(Array.isArray(v.flags) ? v.flags : []).map((f) => (typeof f === 'object' ? f.type : f)),
     v.hazmat ? 'hazmat' : null,
     isActiveStolen(v) ? 'stolen' : null,
   ];
@@ -239,7 +239,7 @@ export function useVehiclesTab(props: VehiclesTabProps): VehiclesTabState {
   useEffect(() => {
     if (!selectedVehicle) { setVehicleAlerts([]); return; }
     const alerts: RecordAlert[] = [];
-    const flagsLower = selectedVehicle.flags.map(f => (typeof f === 'object' ? f.type : f).toLowerCase());
+    const flagsLower = (Array.isArray(selectedVehicle.flags) ? selectedVehicle.flags : []).map(f => (typeof f === 'object' ? f.type : f).toLowerCase());
     if (flagsLower.some(f => f.includes('stolen'))) {
       alerts.push({ type: 'flag', priority: 'critical', title: 'STOLEN VEHICLE', description: 'Vehicle reported stolen — do not approach alone' });
     }
@@ -677,7 +677,7 @@ export function VehiclesTabList({ state }: { state: VehiclesTabState }) {
                 )}
               </div>
               <div className="flex flex-col items-end gap-1">
-                {v.flags.length > 0 && (
+                {Array.isArray(v.flags) && v.flags.length > 0 && (
                   <div className="flex gap-1">
                     {v.flags.slice(0, 2).map((flag, i) => {
                       const label = typeof flag === 'object' ? (flag.type || 'FLAG') : flag;
@@ -785,7 +785,7 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
           flags={vehiclePosturalFlags}
           tone="gold"
         >
-          {selectedVehicle.flags.map((flag, i) => {
+          {(Array.isArray(selectedVehicle.flags) ? selectedVehicle.flags : []).map((flag, i) => {
             const label = typeof flag === 'object' ? (flag.type || 'FLAG') : flag;
             return <RecordBadge key={`${label}-${i}`} flag={label}>{label}</RecordBadge>;
           })}

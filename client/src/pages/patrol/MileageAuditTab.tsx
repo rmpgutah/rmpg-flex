@@ -191,9 +191,11 @@ export default function MileageAuditTab() {
 
     try {
       const data = await apiFetch<{ anchor: Anchor; rows: ChainRow[] }>(`/patrol/mileage/chain?${chainParams}`);
+      if (!mountedRef.current) return;
       setAnchor(data.anchor || null);
       setRows(data.rows || []);
     } catch (err: any) {
+      if (!mountedRef.current) return;
       setError(err?.message || 'Failed to load chain');
       setRows([]);
     }
@@ -202,13 +204,17 @@ export default function MileageAuditTab() {
       try {
         const auditParams = new URLSearchParams(chainParams);
         const a = await apiFetch<{ rows: AuditRow[] }>(`/patrol/mileage/audit?${auditParams}`);
+        if (!mountedRef.current) return;
         setAudit(a.rows || []);
       } catch {
+        if (!mountedRef.current) return;
         setAudit([]);
       }
     } else {
+      if (!mountedRef.current) return;
       setAudit([]);
     }
+    if (!mountedRef.current) return;
     setLoading(false);
   }, [officerId, unitId, from, to, canFix]);
 
