@@ -29,6 +29,7 @@ import { PdfToolsContainer } from './containers/pdfToolsContainer';
 import { runAllSourceScans } from './utils/warrantSources/runScan';
 import { detectDispatchAnomalies } from './routes/dispatch/anomalies';
 import { getRadioSettings, purgeOldRecordings } from './utils/radioSettings';
+import { syncAllVehicleGpsMileage } from './routes/fleet';
 import { sweepTrips } from './utils/tripStore';
 import type { Bindings, Variables } from './types';
 import { ROUTE_REGISTRY } from './routesConfig';
