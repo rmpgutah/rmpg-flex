@@ -551,14 +551,14 @@
 // v787: nav — drop duty requirement for take-home mileage tracking; embed
 //       Mapbox mini-map with recenter / style toggle / drop-pin in NavPage.
 //       Bump forces clients holding v786 cache to refetch.
-// v789: TOOLBAR_NAV cleanup — Spillman Flex parity merge had introduced
-//       8 duplicate/redundant top-level entries (second MDT, Nav/Mobile/
-//       Navigate standalones, second Overwatch/Training/Connections, Nav
-//       Index tail). Map's children already expose Navigation & Route
-//       Planning and mobile is handled by MobileBottomNav, so the bare
-//       top-level shortcuts are now gone. Bump forces clients holding
-//       v788 cache to refetch the deduped module-bar.
-const CACHE_NAME = 'rmpg-flex-v789';
+// v790: toolbar dropdown visibility — the previous overflow-x-auto fix
+//       made the toolbar a containing block, which (per CSS spec: any
+//       non-visible X-overflow implicitly sets Y-overflow to auto) was
+//       clipping the absolutely-positioned dropdowns. Convert to
+//       position:fixed with viewport coords from a button ref, plus a
+//       scroll/resize listener so the panel tracks the triggering
+//       button. Bump forces clients holding v789 cache to refetch.
+const CACHE_NAME = 'rmpg-flex-v790';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

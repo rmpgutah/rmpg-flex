@@ -547,6 +547,11 @@ export default function Layout() {
 
   // Toolbar nav dropdowns
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
+  // Position of the open toolbar dropdown (viewport coords, so position:fixed
+  // escapes the toolbar's overflow-x-auto containing block). Recomputed on
+  // scroll/resize so the panel follows the triggering button.
+  const toolbarBtnRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const [dropdownRect, setDropdownRect] = useState<{ left: number; top: number; width: number } | null>(null);
   // Close dropdown on route change
   useEffect(() => { setOpenDropdown(null); }, [location.pathname]);
 
@@ -559,6 +564,29 @@ export default function Layout() {
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
+  }, [openDropdown]);
+
+  // Keep the open dropdown glued to its triggering button as the user scrolls
+  // the toolbar (overflow-x-auto) or resizes the window. Without this, the
+  // fixed-position panel would stay parked at the original viewport coords
+  // while the button slides out from under it.
+  useEffect(() => {
+    if (!openDropdown) { setDropdownRect(null); return; }
+    const update = () => {
+      const btn = toolbarBtnRefs.current[openDropdown];
+      if (!btn) return;
+      const r = btn.getBoundingClientRect();
+      setDropdownRect({ left: r.left, top: r.bottom, width: r.width });
+    };
+    update();
+    window.addEventListener('resize', update);
+    // capture:true so we hear the toolbar's own scroll (overflow-x-auto),
+    // not just window scroll.
+    window.addEventListener('scroll', update, true);
+    return () => {
+      window.removeEventListener('resize', update);
+      window.removeEventListener('scroll', update, true);
+    };
   }, [openDropdown]);
 
   // ── F-key page switching ────────────────────────────────────
@@ -1419,6 +1447,7 @@ export default function Layout() {
                 )}
                 <div className="relative">
                   <button
+                    ref={el => { toolbarBtnRefs.current[item.path] = el; }}
                     type="button"
                     onClick={() => {
                       if (hasChildren) {
@@ -1505,14 +1534,22 @@ export default function Layout() {
                   </button>
 
                   {/* Dropdown menu for items with children */}
-                  {/* 10: Toolbar dropdown with stronger shadow + left-edge align fix */}
-                  {hasChildren && isDropdownOpen && (
+                  {/* 10: Toolbar dropdown — position:fixed with viewport coords
+                      captured from the button ref. The toolbar's overflow-x-auto
+                      makes it a containing block (per CSS spec, non-visible X
+                      overflow implicitly sets Y to auto too), which would clip
+                      an absolutely-positioned panel. Fixed positioning escapes
+                      that and lets the panel paint below the toolbar. */}
+                  {hasChildren && isDropdownOpen && dropdownRect && (
                     <div
-                      className="menu-dropdown absolute top-full left-0 z-50 animate-dropdown-appear"
+                      className="menu-dropdown fixed z-50 animate-dropdown-appear"
+                      data-nav-dropdown
                       role="menu"
                       aria-label={`${item.label} submenu`}
                       style={{
-                        minWidth: 210,
+                        left: dropdownRect.left,
+                        top: dropdownRect.top,
+                        minWidth: Math.max(210, dropdownRect.width),
                         borderTop: '2px solid #888888',
                       }}
                     >
