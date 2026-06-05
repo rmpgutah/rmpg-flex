@@ -310,11 +310,42 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
   const [notifications, setNotifications] = useState<any[]>([]);
   const [overdueInspections, setOverdueInspections] = useState<any[]>([]);
 
+  // Combined cost trend (12 months) — enhanced endpoint with fuel + maintenance + recurring
+  const [combinedCostTrend, setCombinedCostTrend] = useState<any[]>([]);
+  // Monthly spend (last 8 months) — per-category breakdown
+  const [monthlySpend, setMonthlySpend] = useState<any[]>([]);
+  // Daily GPS mileage — start-of-shift to end-of-shift
+  const [dailyGpsMileage, setDailyGpsMileage] = useState<any[]>([]);
+  const [dailyGpsLoading, setDailyGpsLoading] = useState(false);
+
   useEffect(() => {
     apiFetch<any>('/fleet/fleet-cost-analytics').then((d: any) => d && setCostAnalytics(d)).catch(() => {});
     apiFetch<any>('/fleet/inspection-stats').then((d: any) => d && setInspectionStats(d)).catch(() => {});
     apiFetch<any>('/fleet/notifications').then((d: any) => d?.notifications && setNotifications(d.notifications)).catch(() => {});
     apiFetch<any>('/fleet/overdue-inspections').then((d: any) => d?.alerts && setOverdueInspections(d.alerts)).catch(() => {});
+  }, []);
+
+  // Fetch combined cost trend (12 months)
+  useEffect(() => {
+    apiFetch<{ combined_cost_trend: any[] }>('/fleet/combined-cost-trend')
+      .then((d) => d?.combined_cost_trend && setCombinedCostTrend(d.combined_cost_trend))
+      .catch(() => {});
+  }, []);
+
+  // Fetch monthly spend (8 months)
+  useEffect(() => {
+    apiFetch<{ monthly_spend: any[] }>('/fleet/monthly-spend?months=8')
+      .then((d) => d?.monthly_spend && setMonthlySpend(d.monthly_spend))
+      .catch(() => {});
+  }, []);
+
+  // Fetch daily GPS mileage (30 days)
+  useEffect(() => {
+    setDailyGpsLoading(true);
+    apiFetch<{ daily_mileage: any[] }>('/fleet/daily-gps-mileage?days=30')
+      .then((d) => d?.daily_mileage && setDailyGpsMileage(d.daily_mileage))
+      .catch(() => {})
+      .finally(() => setDailyGpsLoading(false));
   }, []);
 
 
@@ -840,6 +871,85 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
             <span className="text-rmpg-400">Fuel</span>
           </div>
         </div>
+      </div>
+
+      {/* ROW 7b: Monthly Spend (Last 8 Months) */}
+      {monthlySpend.length > 0 && (
+        <div className="bg-[#141414] border border-[#2b2b2b] rounded-[2px] p-3">
+          <h4 className="text-[9px] text-[#d4a017] uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
+            <DollarSign className="w-3 h-3" /> Monthly Spend (Last 8 Months)
+          </h4>
+          <ResponsiveContainer width="100%" height={200}>
+            <BarChart data={monthlySpend.map((m: any) => ({ ...m, month: m.month.substring(5) }))}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#181818" />
+              <XAxis dataKey="month" tick={{ fill: '#666666', fontSize: 9 }} tickLine={false} axisLine={{ stroke: '#222222' }} />
+              <YAxis tick={{ fill: '#666666', fontSize: 9 }} tickLine={false} axisLine={{ stroke: '#222222' }}
+                tickFormatter={(v) => `$${v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}`} />
+              <Tooltip
+                {...CHART_TOOLTIP_STYLE}
+                formatter={(value: any, name: string) => {
+                  const labels: Record<string, string> = { fuel_cost: 'Fuel', maintenance_cost: 'Maintenance', other_costs: 'Other', loan_payments: 'Loans' };
+                  return [`$${Number(value).toFixed(0)}`, labels[name] || name];
+                }}
+              />
+              <Bar dataKey="fuel_cost" stackId="a" fill="#22c55e" radius={[0,0,0,0]} />
+              <Bar dataKey="maintenance_cost" stackId="a" fill="#888888" radius={[0,0,0,0]} />
+              <Bar dataKey="other_costs" stackId="a" fill="#f59e0b" radius={[0,0,0,0]} />
+              <Bar dataKey="loan_payments" stackId="a" fill="#ef4444" radius={[0,0,0,0]} />
+            </BarChart>
+          </ResponsiveContainer>
+          <div className="flex items-center gap-4 mt-2">
+            <div className="flex items-center gap-1.5 text-[8px]"><div className="w-3 h-1.5 bg-[#22c55e] rounded-[1px]" /><span className="text-rmpg-400">Fuel</span></div>
+            <div className="flex items-center gap-1.5 text-[8px]"><div className="w-3 h-1.5 bg-[#888888] rounded-[1px]" /><span className="text-rmpg-400">Maint</span></div>
+            <div className="flex items-center gap-1.5 text-[8px]"><div className="w-3 h-1.5 bg-[#f59e0b] rounded-[1px]" /><span className="text-rmpg-400">Other</span></div>
+            <div className="flex items-center gap-1.5 text-[8px]"><div className="w-3 h-1.5 bg-[#ef4444] rounded-[1px]" /><span className="text-rmpg-400">Loans</span></div>
+          </div>
+        </div>
+      )}
+
+      {/* ROW 7c: Daily GPS Mileage (Start of Shift → End of Shift) */}
+      <div className="bg-[#141414] border border-[#2b2b2b] rounded-[2px] p-3">
+        <h4 className="text-[9px] text-[#d4a017] uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
+          <Gauge className="w-3 h-3" /> Daily GPS Mileage (Start of Shift — End of Shift)
+        </h4>
+        {dailyGpsLoading ? (
+          <div className="h-[160px] flex items-center justify-center text-[10px] text-rmpg-500">Loading GPS mileage data...</div>
+        ) : dailyGpsMileage.length > 0 ? (
+          <div className="overflow-x-auto max-h-[300px] overflow-y-auto">
+            <table className="w-full text-[10px]">
+              <thead>
+                <tr className="text-rmpg-400 uppercase text-[8px] tracking-wider border-b border-[#2b2b2b] sticky top-0 bg-[#141414]">
+                  <th className="text-left py-1 pr-2">Date</th>
+                  <th className="text-left py-1 pr-2">Vehicle</th>
+                  <th className="text-right py-1 pr-2 font-mono">GPS Miles</th>
+                  <th className="text-right py-1 pr-2 font-mono">Points</th>
+                  <th className="text-left py-1 pr-2">Shift Start</th>
+                  <th className="text-left py-1">Shift End</th>
+                </tr>
+              </thead>
+              <tbody>
+                {dailyGpsMileage.map((d: any, i: number) => {
+                  const startTime = d.shift_start ? d.shift_start.split(' ')[1]?.slice(0, 5) || d.shift_start : '—';
+                  const endTime = d.shift_end ? d.shift_end.split(' ')[1]?.slice(0, 5) || d.shift_end : '—';
+                  return (
+                    <tr key={i} className="border-b border-[#2b2b2b]/50 hover:bg-[#0c0c0c] transition-colors duration-150">
+                      <td className="py-1 pr-2 text-rmpg-200 font-mono">{d.date?.slice(5)}</td>
+                      <td className="py-1 pr-2 text-white font-semibold">#{d.vehicle_number}</td>
+                      <td className="py-1 pr-2 text-right text-[#22c55e] font-mono font-bold tabular-nums">{d.gps_miles?.toFixed(1)} mi</td>
+                      <td className="py-1 pr-2 text-right text-rmpg-500 font-mono tabular-nums">{d.points_count}</td>
+                      <td className="py-1 pr-2 text-rmpg-400 text-[9px]">{startTime}</td>
+                      <td className="py-1 text-rmpg-400 text-[9px]">{endTime}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="h-[160px] flex items-center justify-center text-[10px] text-rmpg-500">
+            No GPS mileage data available — vehicles must have assigned units with active GPS tracking
+          </div>
+        )}
       </div>
 
       {/* ROW 8: Top Maintenance Issues + Vehicle Lifecycle */}
