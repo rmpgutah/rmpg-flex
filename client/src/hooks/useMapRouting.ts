@@ -2,18 +2,21 @@
 // RMPG Flex — useMapRouting Hook
 // Mapbox-powered routing between a unit and a dispatch call.
 // Renders a polyline on the map with ETA and distance, and adds
-// five advanced dispatch-grade routing capabilities:
+// seven advanced dispatch-grade routing capabilities:
 //   1. Live traffic-aware routing (driving-traffic profile)
 //   2. Congestion-colored route line (green→yellow→orange→red)
 //   3. Live route progress + dynamic remaining ETA
 //   4. Off-route detection + automatic re-route
 //   5. Closest-unit-by-drive-time (Mapbox Matrix API)
+//   6. Pause/resume travel calculation (officer control)
+//   7. Coordinate guardrails (bounds, sanity, jump detection)
 // ============================================================
 
 import { useRef, useState, useCallback, useEffect } from 'react';
 import { mapboxgl } from '../utils/mapboxLoader';
 import { getMapboxAccessToken } from '../utils/mapboxApiKey';
 import { whenStyleReady } from '../pages/map/utils/safeAddSource';
+import { useNavTravel } from './useNavTravel';
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -191,6 +194,19 @@ const fmtEta = (sec: number) => {
 const fmtStepDist = (m: number) =>
   m >= 1609 ? `${(m * 0.000621371).toFixed(1)} mi` : `${Math.round(m * 3.28084)} ft`;
 
+// ─── Guardrail constants ────────────────────────────────────
+
+/** Valid latitude range for the US (including AK/HI edge cases). */
+const VALID_LAT_MIN = 18.0;
+const VALID_LAT_MAX = 72.0;
+/** Valid longitude range for the US. */
+const VALID_LNG_MIN = -180.0;
+const VALID_LNG_MAX = -64.0;
+/** Max plausible speed for any road vehicle, mph. Guards against GPS glitches. */
+const MAX_PLAUSIBLE_SPEED_MPH = 150;
+/** Max haversine distance between consecutive origin updates before rejecting, miles. */
+const MAX_POSITION_JUMP_MI = 50;
+
 // ─── Constants ──────────────────────────────────────────────
 
 /** Minimum time between *routine* re-routing queries (ms). */
@@ -238,6 +254,20 @@ const MULTI_LAYER_ID = 'rmpg-multi-route-layer';
 
 // ─── Hook ───────────────────────────────────────────────────
 
+// ─── Coordinate validation guardrail ────────────────────────
+function validateCoordinate(lat: number, lng: number): { valid: boolean; reason?: string } {
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return { valid: false, reason: 'Coordinates must be finite numbers' };
+  }
+  if (lat < VALID_LAT_MIN || lat > VALID_LAT_MAX) {
+    return { valid: false, reason: `Latitude ${lat} outside valid range` };
+  }
+  if (lng < VALID_LNG_MIN || lng > VALID_LNG_MAX) {
+    return { valid: false, reason: `Longitude ${lng} outside valid range` };
+  }
+  return { valid: true };
+}
+
 export function useMapRouting({ map }: UseMapRoutingOptions) {
   const [activeRoute, setActiveRoute] = useState<RouteInfo | null>(null);
   const [routeLoading, setRouteLoading] = useState(false);
@@ -245,6 +275,9 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
   const [offRoute, setOffRoute] = useState(false);
   const [multiStopRoute, setMultiStopRoute] = useState<MultiStopRoute | null>(null);
   const [multiStopLoading, setMultiStopLoading] = useState(false);
+
+  // Travel calculation pause/resume + data retention
+  const { travelState, pauseTravel, resumeTravel, updatePosition } = useNavTravel();
 
   // DOM markers for the numbered stops on the optimized patrol route.
   const multiMarkersRef = useRef<mapboxgl.Marker[]>([]);
@@ -447,6 +480,17 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
       callLat: number,
       callLng: number,
     ) => {
+      // Guardrails: validate both origin and destination coordinates
+      const originCheck = validateCoordinate(unitLat, unitLng);
+      if (!originCheck.valid) {
+        console.warn('[useMapRouting] showRoute rejected — origin:', originCheck.reason);
+        return null;
+      }
+      const destCheck = validateCoordinate(callLat, callLng);
+      if (!destCheck.valid) {
+        console.warn('[useMapRouting] showRoute rejected — destination:', destCheck.reason);
+        return null;
+      }
       metaRef.current = { unitCallSign, callNumber };
       destRef.current = { lat: callLat, lng: callLng };
       return queryRoute({ lat: unitLat, lng: unitLng }, { lat: callLat, lng: callLng });
@@ -510,11 +554,37 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
    *  - Feature 3: recompute progress every fix.
    *  - Feature 4: force an immediate re-route when the unit leaves the
    *    corridor for OFFROUTE_SAMPLES consecutive fixes (bypasses throttle).
+   *  - Feature 6: skip all routing work when travel is paused.
+   *  - Feature 7: coordinate guardrails + jump detection.
    *  - routine throttled re-route (30s + 100m moved) otherwise.
    */
   const updateOrigin = useCallback(
     (newLat: number, newLng: number) => {
+      // Feature 6: bail entirely when travel calculation is paused
+      if (travelState.paused) return;
+
+      // Feature 7: coordinate guardrail — reject out-of-bounds coords
+      const coordCheck = validateCoordinate(newLat, newLng);
+      if (!coordCheck.valid) {
+        console.warn('[useMapRouting] updateOrigin rejected:', coordCheck.reason);
+        return;
+      }
+
       if (!destRef.current || !lastOriginRef.current) return;
+
+      // Feature 7: jump detection — reject teleportation glitches
+      if (lastOriginRef.current) {
+        const jumpMi = haversineMeters(
+          lastOriginRef.current.lat, lastOriginRef.current.lng, newLat, newLng
+        ) * 0.000621371;
+        if (jumpMi > MAX_POSITION_JUMP_MI) {
+          console.warn(`[useMapRouting] updateOrigin rejected: jump of ${jumpMi.toFixed(1)} mi exceeds sanity threshold`);
+          return;
+        }
+      }
+
+      // Track position for travel calculation (distance accumulation, odometer)
+      updatePosition(newLat, newLng);
 
       const progress = updateProgress(newLat, newLng);
 
@@ -541,7 +611,7 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
       if (moved < REROUTE_DISTANCE_THRESHOLD) return;
       queryRoute({ lat: newLat, lng: newLng }, destRef.current);
     },
-    [queryRoute, updateProgress],
+    [queryRoute, updateProgress, travelState.paused, updatePosition],
   );
 
   // ── Feature 5: closest unit by real drive time (Matrix API) ──
@@ -798,5 +868,10 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
     multiStopLoading,
     showMultiStopRoute,
     clearMultiStop,
+    // Pause/resume travel calculation (officer control)
+    travelPaused: travelState.paused,
+    pauseTravel,
+    resumeTravel,
+    travelState,
   };
 }

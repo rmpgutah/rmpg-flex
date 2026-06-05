@@ -205,9 +205,19 @@ audioMode.put('/:id/audio-mode', requireRole(...READ_ROLES), async (c) => {
 // PUT /:id/mileage — CAD "MI" command sets a unit's odometer reading.
 // Neither legacy nor the rewrite implemented this before, so the CAD
 // command 404'd. units.mileage is REAL; we accept a non-negative number.
+//
+// SAFETY GUARDRAILS (2026-06-04):
+//   - Max plausible odometer: 999,999 mi (commercial vehicles rarely exceed this)
+//   - Decreasing check: new mileage must be >= previous (unless admin override)
+//   - Audit log: every admin override is recorded with reason
+//   - Speed sanity: max delta of 500 mi per update (catches fat-finger 45000→4.5)
+const MAX_PLAUSIBLE_MILEAGE = 999999;
+const MAX_MILEAGE_DELTA = 500; // max miles between updates (catches typos)
+
 audioMode.put('/:id/mileage', requireRole(...READ_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
+    const user = c.get('user') as any;
     const unitId = parseInt(c.req.param('id') || '', 10);
     if (!Number.isFinite(unitId) || unitId <= 0) return c.json({ error: 'Invalid unit id', code: 'INVALID_ID' }, 400);
     const body = await c.req.json().catch(() => ({} as any));
@@ -215,13 +225,108 @@ audioMode.put('/:id/mileage', requireRole(...READ_ROLES), async (c) => {
     if (!Number.isFinite(mileage) || mileage < 0) {
       return c.json({ error: 'mileage must be a non-negative number', code: 'INVALID_MILEAGE' }, 400);
     }
-    const unit = await queryFirst<{ id: number }>(db, 'SELECT id FROM units WHERE id = ?', unitId);
+    if (mileage > MAX_PLAUSIBLE_MILEAGE) {
+      return c.json({ error: `mileage exceeds plausible maximum of ${MAX_PLAUSIBLE_MILEAGE.toLocaleString()}`, code: 'MILEAGE_TOO_HIGH' }, 400);
+    }
+    const unit = await queryFirst<{ id: number; mileage: number | null; call_sign: string }>(
+      db, 'SELECT id, mileage, call_sign FROM units WHERE id = ?', unitId);
     if (!unit) return c.json({ error: 'Unit not found', code: 'UNIT_NOT_FOUND' }, 404);
+
+    // Decreasing mileage check: reject unless admin/manager override
+    const isAdmin = ['admin', 'manager'].includes(user.role);
+    const forceOverride = body.force === true && isAdmin;
+    if (unit.mileage != null && mileage < unit.mileage && !forceOverride) {
+      return c.json({
+        error: `Mileage cannot decrease from ${unit.mileage.toFixed(1)} to ${mileage.toFixed(1)}. Use force:true with admin role to override.`,
+        code: 'MILEAGE_DECREASED',
+        previous_mileage: unit.mileage,
+      }, 400);
+    }
+
+    // Speed sanity: reject jumps >500 mi between updates (catches fat-finger)
+    if (unit.mileage != null && Math.abs(mileage - unit.mileage) > MAX_MILEAGE_DELTA) {
+      return c.json({
+        error: `Mileage delta of ${Math.abs(mileage - unit.mileage).toFixed(1)} mi exceeds maximum of ${MAX_MILEAGE_DELTA} mi between updates. If intentional, use force:true with admin role.`,
+        code: 'MILEAGE_DELTA_TOO_LARGE',
+        previous_mileage: unit.mileage,
+      }, 400);
+    }
+
     await execute(db, "UPDATE units SET mileage = ?, updated_at = datetime('now') WHERE id = ?", mileage, unitId);
-    return c.json({ success: true, unit_id: unitId, mileage });
+
+    // Audit-log admin overrides and significant changes
+    if (unit.mileage != null && (forceOverride || Math.abs(mileage - unit.mileage) > 0)) {
+      const userId = c.get('userId') as number | undefined;
+      if (userId != null) {
+        const reason = body.reason || (forceOverride ? 'Admin override' : '');
+        const detail = `${unit.call_sign} mileage ${forceOverride ? 'FORCE ' : ''}updated from ${unit.mileage?.toFixed(1) ?? 'N/A'} → ${mileage.toFixed(1)}${reason ? ` (${reason})` : ''}`;
+        await execute(db,
+          `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, ip_address)
+           VALUES (?, 'mileage_updated', 'unit', ?, ?, ?)`,
+          userId, unitId, detail,
+          c.req.header('CF-Connecting-IP') || 'unknown');
+      }
+    }
+
+    return c.json({ success: true, unit_id: unitId, mileage, previous_mileage: unit.mileage, forced: forceOverride });
   } catch (err) {
     console.error('[dispatch] PUT mileage error', err);
     return c.json({ error: 'Failed to update mileage', code: 'MILEAGE_SET_ERR' }, 500);
+  }
+});
+
+// =====================================================================
+// DEV-12: Current user's assigned vehicle (always-visible Nav marker)
+// GET /api/dispatch/gps/my-vehicle
+// Returns the fleet vehicle linked to the user's unit with GPS data,
+// so the Nav panel can show it without waiting for a dispatch.
+// =====================================================================
+export const myVehicle = new Hono<Env>();
+
+myVehicle.get('/my-vehicle', requireRole(...READ_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const userId = c.get('userId') as number;
+    const unit = await queryFirst<{ id: number; vehicle_id: string | null }>(
+      db, 'SELECT id, vehicle_id FROM units WHERE officer_id = ?', userId);
+    if (!unit) return c.json(null);
+
+    // Prefer matching by fleet_vehicles.assigned_unit_id first (directer link)
+    let vehicle = await queryFirst<{
+      id: number; vehicle_number: string; plate_number: string | null;
+      gps_lat: number | null; gps_lon: number | null; status: string;
+      current_mileage: number | null; make: string | null; model: string | null; year: number | null;
+      assigned_call_sign: string | null;
+    }>(db, `
+      SELECT v.id, v.vehicle_number, v.plate_number, v.gps_lat, v.gps_lon,
+             v.status, v.current_mileage, v.make, v.model, v.year,
+             u.call_sign AS assigned_call_sign
+      FROM fleet_vehicles v
+      LEFT JOIN units u ON u.id = v.assigned_unit_id
+      WHERE v.assigned_unit_id = ?
+      LIMIT 1`, unit.id);
+
+    // Fallback: match by unit.vehicle_id text join
+    if (!vehicle && unit.vehicle_id) {
+      vehicle = await queryFirst<{
+        id: number; vehicle_number: string; plate_number: string | null;
+        gps_lat: number | null; gps_lon: number | null; status: string;
+        current_mileage: number | null; make: string | null; model: string | null; year: number | null;
+        assigned_call_sign: string | null;
+      }>(db, `
+        SELECT v.id, v.vehicle_number, v.plate_number, v.gps_lat, v.gps_lon,
+               v.status, v.current_mileage, v.make, v.model, v.year,
+               u.call_sign AS assigned_call_sign
+        FROM fleet_vehicles v
+        LEFT JOIN units u ON u.id = v.assigned_unit_id
+        WHERE v.vehicle_number = ?
+        LIMIT 1`, unit.vehicle_id);
+    }
+
+    return c.json(vehicle || null);
+  } catch (err) {
+    console.error('[dispatch] my-vehicle error', err);
+    return c.json(null);
   }
 });
 

@@ -4,6 +4,15 @@ import { getDb, query, queryFirst, execute } from '../utils/db';
 
 const fleet = new Hono<Env>();
 
+// ─── Haversine distance (meters) — used by daily-gps-mileage ──
+function haversineMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371000;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLng = ((lng2 - lng1) * Math.PI) / 180;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 // Manager-tier roles can create/update/delete vehicles. Read endpoints
 // are open to any authenticated role — fleet data is a routine-ops
 // concern, not sensitive HR/case data, and dispatch needs read access
@@ -2264,6 +2273,258 @@ fleet.get('/cost-trends', async (c) => {
     const maintMap = new Map(maint.map(r => [r.month, r.cost]));
     return c.json({ cost_trends: rows.map(r => ({ ...r, maintenance: maintMap.get(r.month as string) ?? 0 })) });
   } catch (err) { console.error('GET /fleet/cost-trends failed:', err); return c.json({ cost_trends: [] }); }
+});
+
+// =====================================================================
+// Combined Cost Trend (12 Months) — fuel + maintenance + recurring costs
+// =====================================================================
+fleet.get('/combined-cost-trend', async (c) => {
+  try {
+    const db = getDb(c.env);
+
+    // Fuel by month (last 12 months)
+    const fuelRows = await query<{ month: string; fuel: number; gallons: number }>(db,
+      `SELECT strftime('%Y-%m', fuel_date) as month,
+              COALESCE(SUM(total_cost),0) as fuel,
+              COALESCE(SUM(gallons),0) as gallons
+       FROM fleet_fuel_log
+       WHERE fuel_date >= datetime('now', '-12 months')
+       GROUP BY month ORDER BY month`);
+
+    // Maintenance by month (last 12 months)
+    const maintRows = await query<{ month: string; maintenance: number; count: number }>(db,
+      `SELECT strftime('%Y-%m', COALESCE(performed_at, created_at)) as month,
+              COALESCE(SUM(cost),0) as maintenance,
+              COUNT(*) as count
+       FROM fleet_maintenance
+       WHERE COALESCE(performed_at, created_at) >= datetime('now', '-12 months')
+       GROUP BY month ORDER BY month`);
+
+    // Recurring costs (loans + other costs) by month (last 12 months)
+    const recurringRows = await query<{ month: string; recurring: number }>(db,
+      `SELECT strftime('%Y-%m', COALESCE(incurred_date, created_at)) as month,
+              COALESCE(SUM(amount),0) as recurring
+       FROM fleet_other_costs
+       WHERE COALESCE(incurred_date, created_at) >= datetime('now', '-12 months')
+         AND status = 'active'
+       GROUP BY month
+       UNION ALL
+       SELECT strftime('%Y-%m', COALESCE(start_date, created_at)) as month,
+              COALESCE(SUM(monthly_payment),0) as recurring
+       FROM fleet_loans
+       WHERE COALESCE(start_date, created_at) >= datetime('now', '-12 months')
+         AND status = 'active'
+       GROUP BY month`);
+
+    // Loan payments (monthly payments spread across months)
+    const loanPayments = await query<{ monthly_payment: number; start_date: string; payoff_date: string | null }>(db,
+      `SELECT monthly_payment, start_date, payoff_date
+       FROM fleet_loans WHERE status = 'active' AND monthly_payment > 0`);
+
+    // Merge into unified trend
+    const fuelMap = new Map(fuelRows.map(r => [r.month, { fuel: Number(r.fuel), gallons: Number(r.gallons) }]));
+    const maintMap = new Map(maintRows.map(r => [r.month, Number(r.maintenance)]));
+    const recurringMap = new Map<string, number>();
+    for (const r of recurringRows) {
+      recurringMap.set(r.month, (recurringMap.get(r.month) || 0) + Number(r.recurring));
+    }
+
+    // Add loan payments to each month they cover
+    for (const loan of loanPayments) {
+      const start = new Date(loan.start_date);
+      const end = loan.payoff_date ? new Date(loan.payoff_date) : new Date();
+      const cutoff = new Date();
+      cutoff.setMonth(cutoff.getMonth() - 12);
+      const effectiveStart = start > cutoff ? start : cutoff;
+
+      for (let d = new Date(effectiveStart); d <= end; d.setMonth(d.getMonth() + 1)) {
+        const monthKey = d.toISOString().slice(0, 7);
+        recurringMap.set(monthKey, (recurringMap.get(monthKey) || 0) + Number(loan.monthly_payment));
+      }
+    }
+
+    // Build sorted month list (last 12 months)
+    const months: string[] = [];
+    const now = new Date();
+    for (let i = 11; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      months.push(d.toISOString().slice(0, 7));
+    }
+
+    const combined = months.map(month => {
+      const f = fuelMap.get(month);
+      const m = maintMap.get(month) || 0;
+      const r = recurringMap.get(month) || 0;
+      return {
+        month,
+        fuel_cost: f?.fuel ?? 0,
+        maintenance_cost: m,
+        recurring_cost: Math.round(r * 100) / 100,
+        total_cost: Math.round(((f?.fuel ?? 0) + m + r) * 100) / 100,
+        gallons: f?.gallons ?? 0,
+        vehicle_count: 0, // populated by caller if needed
+      };
+    });
+
+    return c.json({ combined_cost_trend: combined });
+  } catch (err) { console.error('GET /fleet/combined-cost-trend failed:', err); return c.json({ combined_cost_trend: [] }); }
+});
+
+// =====================================================================
+// Monthly Spend (Last N Months) — aggregate spend across all categories
+// =====================================================================
+fleet.get('/monthly-spend', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const months = Math.min(24, Math.max(1, parseInt(c.req.query('months') || '8', 10)));
+
+    const fuelByMonth = await query<{ month: string; fuel: number }>(db,
+      `SELECT strftime('%Y-%m', fuel_date) as month, COALESCE(SUM(total_cost),0) as fuel
+       FROM fleet_fuel_log
+       WHERE fuel_date >= datetime('now', ? || ' months')
+       GROUP BY month ORDER BY month DESC`, `-${months}`);
+
+    const maintByMonth = await query<{ month: string; maintenance: number }>(db,
+      `SELECT strftime('%Y-%m', COALESCE(performed_at, created_at)) as month,
+              COALESCE(SUM(cost),0) as maintenance
+       FROM fleet_maintenance
+       WHERE COALESCE(performed_at, created_at) >= datetime('now', ? || ' months')
+       GROUP BY month ORDER BY month DESC`, `-${months}`);
+
+    const otherByMonth = await query<{ month: string; other: number }>(db,
+      `SELECT strftime('%Y-%m', COALESCE(incurred_date, created_at)) as month,
+              COALESCE(SUM(amount),0) as other
+       FROM fleet_other_costs
+       WHERE COALESCE(incurred_date, created_at) >= datetime('now', ? || ' months')
+         AND status = 'active'
+       GROUP BY month ORDER BY month DESC`, `-${months}`);
+
+    // Active loan payments spread across months
+    const loans = await query<{ monthly_payment: number; start_date: string; payoff_date: string | null }>(db,
+      `SELECT monthly_payment, start_date, payoff_date FROM fleet_loans WHERE status = 'active' AND monthly_payment > 0`);
+
+    // Merge: last N months in order
+    const monthSet = new Set<string>();
+    for (const r of [...fuelByMonth, ...maintByMonth, ...otherByMonth]) monthSet.add(r.month);
+    const sortedMonths = [...monthSet].sort().slice(-months);
+
+    const fuelMap = new Map(fuelByMonth.map(r => [r.month, Number(r.fuel)]));
+    const maintMap = new Map(maintByMonth.map(r => [r.month, Number(r.maintenance)]));
+    const otherMap = new Map(otherByMonth.map(r => [r.month, Number(r.other)]));
+
+    // Spread loan payments across months
+    const loanMap = new Map<string, number>();
+    const cutoff = new Date();
+    cutoff.setMonth(cutoff.getMonth() - months);
+    for (const loan of loans) {
+      const start = new Date(loan.start_date);
+      const end = loan.payoff_date ? new Date(loan.payoff_date) : new Date();
+      const effectiveStart = start > cutoff ? start : cutoff;
+      for (let d = new Date(effectiveStart); d <= end; d.setMonth(d.getMonth() + 1)) {
+        const mk = d.toISOString().slice(0, 7);
+        loanMap.set(mk, (loanMap.get(mk) || 0) + Number(loan.monthly_payment));
+      }
+    }
+
+    const monthly_spend = sortedMonths.map(month => {
+      const fuel = fuelMap.get(month) || 0;
+      const maintenance = maintMap.get(month) || 0;
+      const other = otherMap.get(month) || 0;
+      const loans = loanMap.get(month) || 0;
+      return {
+        month,
+        fuel_cost: Math.round(fuel * 100) / 100,
+        maintenance_cost: Math.round(maintenance * 100) / 100,
+        other_costs: Math.round(other * 100) / 100,
+        loan_payments: Math.round(loans * 100) / 100,
+        total: Math.round((fuel + maintenance + other + loans) * 100) / 100,
+      };
+    });
+
+    return c.json({ monthly_spend });
+  } catch (err) { console.error('GET /fleet/monthly-spend failed:', err); return c.json({ monthly_spend: [] }); }
+});
+
+// =====================================================================
+// Daily GPS Mileage — start-of-shift to end-of-shift distance from GPS
+// =====================================================================
+// Computes daily mileage per vehicle from gps_breadcrumbs by:
+//   1. Fetching all GPS points per vehicle per day within the window
+//   2. Computing haversine distance between consecutive points
+//   3. Returning daily totals with first/last timestamps as "shift bounds"
+// =====================================================================
+fleet.get('/daily-gps-mileage', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const days = Math.min(90, Math.max(1, parseInt(c.req.query('days') || '30', 10)));
+    const vehicleId = parseInt(c.req.query('vehicle_id') || '0', 10);
+
+    // Get vehicle→unit mapping for filtering
+    let vehicleFilter = '';
+    const params: unknown[] = [days];
+    if (vehicleId && vehicleId > 0) {
+      vehicleFilter = `AND v.id = ?`;
+      params.push(vehicleId);
+    }
+
+    // Fetch GPS points grouped by vehicle and day, with unit info
+    const points = await query<{
+      vehicle_id: number; vehicle_number: string; day: string;
+      lat: number; lng: number; recorded_at: string;
+    }>(db, `
+      SELECT v.id AS vehicle_id, v.vehicle_number,
+             date(g.recorded_at) AS day,
+             g.latitude AS lat, g.longitude AS lng,
+             g.recorded_at
+      FROM gps_breadcrumbs g
+      JOIN units u ON u.id = g.unit_id
+      JOIN fleet_vehicles v ON (v.assigned_unit_id = u.id OR v.vehicle_number = u.vehicle_id)
+      WHERE g.recorded_at >= datetime('now', '-' || ? || ' days')
+        ${vehicleFilter}
+        AND g.latitude IS NOT NULL AND g.longitude IS NOT NULL
+        AND v.archived_at IS NULL
+      ORDER BY v.id, g.recorded_at ASC`, ...params);
+
+    if (points.length === 0) return c.json({ daily_mileage: [] });
+
+    // Group by vehicle+day, compute consecutive haversine distances
+    const groups = new Map<string, {
+      vehicle_id: number; vehicle_number: string; day: string;
+      points: { lat: number; lng: number; recorded_at: string }[];
+      totalMeters: number;
+    }>();
+
+    for (const p of points) {
+      const key = `${p.vehicle_id}|${p.day}`;
+      let g = groups.get(key);
+      if (!g) {
+        g = { vehicle_id: p.vehicle_id, vehicle_number: p.vehicle_number, day: p.day, points: [], totalMeters: 0 };
+        groups.set(key, g);
+      }
+      // Haversine from previous point
+      if (g.points.length > 0) {
+        const prev = g.points[g.points.length - 1];
+        g.totalMeters += haversineMeters(prev.lat, prev.lng, p.lat, p.lng);
+      }
+      g.points.push({ lat: p.lat, lng: p.lng, recorded_at: p.recorded_at });
+    }
+
+    // Build response
+    const daily_mileage = [...groups.values()]
+      .filter(g => g.points.length >= 2) // need at least 2 points for meaningful distance
+      .map(g => ({
+        date: g.day,
+        vehicle_id: g.vehicle_id,
+        vehicle_number: g.vehicle_number,
+        gps_miles: Math.round((g.totalMeters / 1609.34) * 10) / 10,
+        points_count: g.points.length,
+        shift_start: g.points[0].recorded_at,
+        shift_end: g.points[g.points.length - 1].recorded_at,
+      }))
+      .sort((a, b) => b.date.localeCompare(a.date) || a.vehicle_number.localeCompare(b.vehicle_number));
+
+    return c.json({ daily_mileage });
+  } catch (err) { console.error('GET /fleet/daily-gps-mileage failed:', err); return c.json({ daily_mileage: [] }); }
 });
 
 fleet.get('/driver-performance', async (c) => {
