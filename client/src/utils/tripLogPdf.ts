@@ -284,7 +284,7 @@ export async function generateTripLogPdf(trips: Trip[], opts: TripLogPdfOptions 
         (t.call_number || '—').toUpperCase(),
         fmtClock(t.start_time).toUpperCase(),
         endLabel,
-        mi.toFixed(1),
+        Number.isFinite(mi) ? mi.toFixed(1) : '—',
         durMin != null ? String(durMin) : '—',
         mileageDelta(t),
         String(tripMaxMph(t)),

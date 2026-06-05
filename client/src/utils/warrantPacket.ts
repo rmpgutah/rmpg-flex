@@ -1,6 +1,37 @@
 import { jsPDF } from 'jspdf';
 import { renderWarrantIntoDoc, type WarrantPdfData } from './recordPdfGenerator';
-import { apiFetch } from '../hooks/useApi';
+
+// Isolated fetch (Pattern E fix, Wave 3.1): the pre-wave-3.1 code used
+// apiFetch from hooks/useApi, which is auth-coupled — on a 401 it
+// attempts a token refresh and on failure does window.location.href =
+// '/login', tearing down the entire SPA mid-PDF-generation. The same
+// bug was fixed in pdfStaticMap.ts (c0f34f20) and pdfImageHelpers.ts
+// (Wave 3.1). Now uses raw fetch + localStorage JWT + 7s timeout.
+const API_BASE = (() => {
+  if (typeof window === 'undefined') return 'https://api.rmpgutah.us';
+  const h = window.location.hostname;
+  if (h === 'localhost') return 'http://localhost:8787';
+  return 'https://api.rmpgutah.us';
+})();
+
+function getToken(): string | null {
+  try { return typeof localStorage !== 'undefined' ? localStorage.getItem('rmpg_token') : null; }
+  catch { return null; }
+}
+
+async function fetchWarrant(id: number): Promise<any> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 7000);
+  try {
+    const headers: Record<string, string> = {};
+    const token = getToken();
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    const res = await fetch(`${API_BASE}/api/warrants/${id}`, { signal: controller.signal, headers });
+    if (!res.ok) return null;
+    return await res.json();
+  } catch { return null; }
+  finally { clearTimeout(timer); }
+}
 
 export async function buildWarrantPacketPdf(
   warrantIds: number[],
@@ -12,8 +43,8 @@ export async function buildWarrantPacketPdf(
     // Isolate each warrant — one failed fetch/render must not void the whole
     // packet; emit an error-stub page and continue.
     try {
-      const res = await apiFetch<any>(`/warrants/${id}`);
-      const raw = (res && typeof res === 'object' && 'data' in res ? res.data : res) || {};
+      const raw = await fetchWarrant(id);
+      if (!raw) throw new Error(`Warrant ${id} not found or fetch failed`);
       const data: WarrantPdfData = {
         ...raw,
         printed_by_name: currentUser?.full_name,

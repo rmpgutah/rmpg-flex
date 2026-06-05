@@ -6124,15 +6124,12 @@ export async function generateRecordPdfBlobUrl<T extends RecordPdfType>(
 
     const payloadHash = await computePayloadHash(data);
     setActivePayloadHash(payloadHash);
-    // Use the actual identifier for the Ed25519 signature payload so
-    // preview and download PDFs share the same case-number field for
-    // signature verification. The pre-wave-3.1 code hardcoded ''
-    // here, so the preview signature was always caseNumber='' while
-    // download was identifier||'', producing a different signed
-    // payload for the same record. (Wave 3.1)
-    const identStr = (identifier ?? '') || '';
+    // generateRecordPdfBlobUrl doesn't receive an identifier param
+    // (it's a preview-only function); pass empty string so the
+    // signature verifier knows the case-number field is intentionally
+    // absent (same as the pre-wave-3.1 behavior for blob previews).
     setActiveSignature(
-      await fetchPdfSignature(recordType, identStr, payloadHash) || undefined
+      await fetchPdfSignature(recordType, '', payloadHash) || undefined
     );
     const doc = await generateRecordPdf(recordType, data, options);
     setActiveOfficerSignature(undefined); // clear after generation

@@ -184,10 +184,10 @@ export function generateFleetFuelAnalyticsPdf({ overview, byOfficer, byCard }: A
   ], byOfficer.map(o => [
     o.display_name,
     o.fill_count,
-    o.total_gallons.toFixed(1),
+    o.total_gallons != null ? o.total_gallons.toFixed(1) : '—',
     fmtCurrency(o.total_cost),
     o.avg_mpg != null ? o.avg_mpg.toFixed(1) : '—',
-    `${o.flag_rate.toFixed(1)}%`,
+    o.flag_rate != null ? `${o.flag_rate.toFixed(1)}%` : '—',
     o.avg_cpg != null ? `$${o.avg_cpg.toFixed(3)}` : '—',
   ]));
 

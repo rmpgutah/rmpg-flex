@@ -239,7 +239,7 @@ export function useNavTripDetection(opts: UseNavTripDetectionOptions) {
   // ── Start trip (POST to server) ───────────────────────────
   const startTrip = useCallback(async (lat: number, lng: number, accuracy?: number | null): Promise<NavTrip | null> => {
     try {
-      const res = await apiFetch<{ success: boolean; trip_id: string; status: string }>('/nav/trip/start', {
+      const res = await apiFetch<{ success: boolean; trip_id: number; status: string }>('/nav/trip/start', {
         method: 'POST',
         body: JSON.stringify({ start_lat: lat, start_lng: lng, start_accuracy: accuracy }),
       });
@@ -257,7 +257,7 @@ export function useNavTripDetection(opts: UseNavTripDetectionOptions) {
     } catch { return null; }
   }, []);
 
-  const confirmTrip = useCallback(async (tripId: string): Promise<NavTrip | null> => {
+  const confirmTrip = useCallback(async (tripId: number): Promise<NavTrip | null> => {
     try {
       await apiFetch(`/nav/trip/${tripId}/confirm`, { method: 'PUT' });
       const res = await apiFetch<{ trip: NavTrip }>(`/nav/trip/${tripId}`);
@@ -265,7 +265,7 @@ export function useNavTripDetection(opts: UseNavTripDetectionOptions) {
     } catch { return null; }
   }, []);
 
-  const cancelTrip = useCallback(async (tripId: string) => {
+  const cancelTrip = useCallback(async (tripId: number) => {
     try { await apiFetch(`/nav/trip/${tripId}/cancel`, { method: 'PUT' }); } catch { /* silent */ }
   }, []);
 

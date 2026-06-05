@@ -2801,12 +2801,16 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
         if (data.pso_72hr_notified === 'overdue') slaStatus = 'OVERDUE';
         else if (data.pso_72hr_notified === 'resolved') slaStatus = 'RESOLVED';
         else if (data.pso_72hr_deadline) {
-          const dlTs = Date.parse(data.pso_72hr_deadline);
+          // parseTimestamp interprets naive server strings as UTC (the app
+          // standard). The pre-wave-3.1 code used Date.parse() which treated
+          // them as local time, skewing the 72hr SLA check by the user's
+          // timezone offset (~6h in Mountain Time). (Wave 3.1)
+          const dlTs = parseTimestamp(data.pso_72hr_deadline).getTime();
           if (!Number.isNaN(dlTs) && dlTs < Date.now()) slaStatus = 'OVERDUE';
         }
         let timeRemaining = '';
         if (data.pso_72hr_deadline) {
-          const dlTs = Date.parse(data.pso_72hr_deadline);
+          const dlTs = parseTimestamp(data.pso_72hr_deadline).getTime();
           if (!Number.isNaN(dlTs)) {
             const diffMs = dlTs - Date.now();
             const absH = Math.floor(Math.abs(diffMs) / 3_600_000);
@@ -2840,8 +2844,8 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
       if (data.dispatched_at || data.onscene_at || data.cleared_at || data.closed_at) {
         const durMin = (from?: string, to?: string): string => {
           if (!from || !to) return '';
-          const a = Date.parse(from);
-          const b = Date.parse(to);
+          const a = parseTimestamp(from).getTime();
+          const b = parseTimestamp(to).getTime();
           if (Number.isNaN(a) || Number.isNaN(b) || b < a) return '';
           const mins = Math.round((b - a) / 60_000);
           const h = Math.floor(mins / 60);

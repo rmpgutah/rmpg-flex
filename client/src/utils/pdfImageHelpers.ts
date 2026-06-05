@@ -75,10 +75,6 @@ const TOKEN_KEY = 'rmpg_token';
 
 // ── Image Fetching ───────────────────────────────────────────
 
-function getAuthToken(): string {
-  return localStorage.getItem(TOKEN_KEY) || '';
-}
-
 /**
  * Fetch a single image by file_id, downscale to max 800px,
  * and return as a base64 data URL ready for jsPDF embedding.
