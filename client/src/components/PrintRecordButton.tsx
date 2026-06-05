@@ -13,6 +13,7 @@ import { downloadRecordPdf, generateRecordPdfBlobUrl, type RecordPdfType } from 
 import { tryV2Dispatch, tryV2DispatchBlobUrl } from '../utils/pdf/v2DispatchAdapter';
 import { fetchEntityImages, fetchImageFromUrl } from '../utils/pdfImageHelpers';
 import { apiFetch } from '../hooks/useApi';
+import { type Trip } from '../hooks/useTrips';
 import { useAuth } from '../context/AuthContext';
 import DocumentViewer from './DocumentViewer';
 import SignaturePad from './SignaturePad';
@@ -83,6 +84,31 @@ export default function PrintRecordButton({
     }
   }, [signatureChecked]);
 
+  /** Fetch fresh record data from the API before generating the PDF, preventing
+   *  stale/truncated data (e.g. from list-view refresh) from reaching the PDF.
+   *  Falls back to the passed-in recordData if the fetch fails. */
+  const fetchFreshRecordData = useCallback(async (data: any): Promise<any> => {
+    if (!entityType || !entityId) return data;
+    try {
+      let endpoint = '';
+      switch (entityType) {
+        case 'call': endpoint = `/dispatch/calls/${entityId}`; break;
+        case 'person': endpoint = `/records/persons/${entityId}`; break;
+        case 'vehicle': endpoint = `/records/vehicles/${entityId}`; break;
+        case 'property': endpoint = `/records/properties/${entityId}`; break;
+        case 'evidence': endpoint = `/records/evidence/${entityId}`; break;
+        default: return data;
+      }
+      const fresh = await apiFetch<any>(endpoint);
+      if (fresh && (fresh.id || fresh.call_number || fresh.first_name)) {
+        return fresh;
+      }
+    } catch (err) {
+      console.warn('[PrintRecordButton] Fresh data fetch failed, using passed-in data:', err);
+    }
+    return data;
+  }, [entityType, entityId]);
+
   /** Merge attachment images and system history into recordData before PDF generation */
   const enrichWithImages = useCallback(async (data: any, signatureOverride?: string | null): Promise<any> => {
     const enriched = { ...data };
@@ -142,19 +168,19 @@ export default function PrintRecordButton({
       try {
         const links = await apiFetch<any[]>(`/records/links?source_type=person&source_id=${data.id}`);
         if (links && links.length > 0) {
-          enriched.linked_vehicles = links.filter((l: any) => l.target_type === 'vehicle').map((l: any) => ({
-            license_plate: l.target_label || l.target_name || '',
-            year: l.target_meta?.year || '',
-            make: l.target_meta?.make || '',
-            model: l.target_meta?.model || '',
-            color: l.target_meta?.color || '',
-            relationship: l.relationship || 'linked',
+          // The API enriches each row with the OTHER side as linked_type /
+          // linked_label (covering links where this record is source OR
+          // target). The vehicle label already reads "Make Model (PLATE)".
+          enriched.linked_vehicles = links.filter((l: any) => l.linked_type === 'vehicle').map((l: any) => ({
+            license_plate: l.linked_label || '',
+            relationship: l.relationship,
           }));
-          enriched.linked_properties = links.filter((l: any) => l.target_type === 'property').map((l: any) => ({
-            name: l.target_label || l.target_name || '',
-            address: l.target_meta?.address || '',
-            relationship: l.relationship || 'linked',
-          }));
+          enriched.linked_properties = links
+            .filter((l: any) => l.linked_type === 'property' || l.linked_type === 'business')
+            .map((l: any) => ({
+              name: l.linked_label || '',
+              relationship: l.relationship,
+            }));
         }
       } catch { /* non-fatal */ }
     }
@@ -178,17 +204,16 @@ export default function PrintRecordButton({
       try {
         const links = await apiFetch<any[]>(`/records/links?source_type=vehicle&source_id=${data.id}`);
         if (Array.isArray(links)) {
-          enriched.linked_persons = links.filter((l: any) => l.target_type === 'person').map((l: any) => ({
-            name: l.target_name || l.name || '',
-            dob: l.target_dob || l.dob,
-            flags: l.target_flags || l.flags,
+          enriched.linked_persons = links.filter((l: any) => l.linked_type === 'person').map((l: any) => ({
+            name: l.linked_label || '',
             relationship: l.relationship,
           }));
-          enriched.linked_properties = links.filter((l: any) => l.target_type === 'property').map((l: any) => ({
-            name: l.target_name || l.name || '',
-            address: l.target_address || l.address,
-            relationship: l.relationship,
-          }));
+          enriched.linked_properties = links
+            .filter((l: any) => l.linked_type === 'property' || l.linked_type === 'business')
+            .map((l: any) => ({
+              name: l.linked_label || '',
+              relationship: l.relationship,
+            }));
         }
       } catch { /* non-fatal — endpoint may be stubbed */ }
     }
@@ -219,18 +244,12 @@ export default function PrintRecordButton({
       try {
         const links = await apiFetch<any[]>(`/records/links?source_type=property&source_id=${data.id}`);
         if (Array.isArray(links)) {
-          enriched.linked_persons = links.filter((l: any) => l.target_type === 'person').map((l: any) => ({
-            name: l.target_name || l.name || '',
-            dob: l.target_dob || l.dob,
-            flags: l.target_flags || l.flags,
+          enriched.linked_persons = links.filter((l: any) => l.linked_type === 'person').map((l: any) => ({
+            name: l.linked_label || '',
             relationship: l.relationship,
           }));
-          enriched.linked_vehicles = links.filter((l: any) => l.target_type === 'vehicle').map((l: any) => ({
-            license_plate: l.target_plate || l.license_plate || '',
-            year: l.target_year || l.year,
-            make: l.target_make || l.make,
-            model: l.target_model || l.model,
-            color: l.target_color || l.color,
+          enriched.linked_vehicles = links.filter((l: any) => l.linked_type === 'vehicle').map((l: any) => ({
+            license_plate: l.linked_label || '',
             relationship: l.relationship,
           }));
         }
@@ -251,6 +270,17 @@ export default function PrintRecordButton({
         }
       } catch (err) {
         console.warn('[PrintRecordButton] Breadcrumb trail fetch failed, proceeding without GPS data:', err);
+      }
+      // Response trip — the logged call_response drive-to-scene leg, rendered
+      // as a one-line audit summary under Mileage in the call PDF.
+      try {
+        const callTrips = await apiFetch<Trip[]>(`/dispatch/trips?call_id=${callId}`);
+        const responseTrip = Array.isArray(callTrips)
+          ? callTrips.find((t) => t.trip_type === 'call_response')
+          : undefined;
+        if (responseTrip) enriched.response_trip = responseTrip;
+      } catch (err) {
+        console.warn('[PrintRecordButton] Response trip fetch failed, proceeding without it:', err);
       }
     }
 
@@ -289,7 +319,8 @@ export default function PrintRecordButton({
     try {
       setLoading(true);
       if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl);
-      const enrichedData = await enrichWithImages(recordData);
+      const freshData = await fetchFreshRecordData(recordData);
+      const enrichedData = await enrichWithImages(freshData);
       const v2BlobUrl = await tryV2DispatchBlobUrl({ recordType, recordData: enrichedData, identifier });
       const blobUrl = v2BlobUrl ?? await generateRecordPdfBlobUrl(recordType, enrichedData);
       setPdfBlobUrl(blobUrl);
@@ -299,7 +330,7 @@ export default function PrintRecordButton({
     } finally {
       setLoading(false);
     }
-  }, [recordType, recordData, identifier, enrichWithImages, pdfBlobUrl]);
+  }, [recordType, recordData, identifier, enrichWithImages, pdfBlobUrl, fetchFreshRecordData]);
 
   /** Mobile Print: Brother PJ-700/800 in-vehicle thermal printer.
    *  Adds +6mm top offset so leading-edge content doesn't get clipped
@@ -320,7 +351,8 @@ export default function PrintRecordButton({
     try {
       setLoading(true);
       if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl);
-      const enrichedData = await enrichWithImages(recordData);
+      const freshData = await fetchFreshRecordData(recordData);
+      const enrichedData = await enrichWithImages(freshData);
       // v2 dispatch path doesn't yet honor printTarget — fall through
       // directly to the legacy generator (which IS mobile-aware) for
       // the blob URL. Citations lose v2 sidecar attestation under
@@ -333,7 +365,7 @@ export default function PrintRecordButton({
     } finally {
       setLoading(false);
     }
-  }, [recordType, recordData, identifier, enrichWithImages, pdfBlobUrl]);
+  }, [recordType, recordData, identifier, enrichWithImages, pdfBlobUrl, fetchFreshRecordData]);
 
   const handlePreview = useCallback(async () => {
     if (!recordData) return;
@@ -341,7 +373,8 @@ export default function PrintRecordButton({
       setLoading(true);
       // Revoke previous blob URL if one exists
       if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl);
-      const enrichedData = await enrichWithImages(recordData);
+      const freshData = await fetchFreshRecordData(recordData);
+      const enrichedData = await enrichWithImages(freshData);
       // v2 sidecar engine handles migrated types (citation today); falls
       // back to the legacy generator for everything else.
       const v2BlobUrl = await tryV2DispatchBlobUrl({ recordType, recordData: enrichedData, identifier });
@@ -353,7 +386,7 @@ export default function PrintRecordButton({
     } finally {
       setLoading(false);
     }
-  }, [recordType, recordData, identifier, pdfBlobUrl, enrichWithImages]);
+  }, [recordType, recordData, identifier, pdfBlobUrl, enrichWithImages, fetchFreshRecordData]);
 
   /** Sign & Export: if user has no saved signature, show the sign pad; otherwise generate with saved sig */
   const handleSignAndExport = useCallback(async () => {
@@ -362,7 +395,8 @@ export default function PrintRecordButton({
       // Already have a signature — generate immediately
       try {
         setLoading(true);
-        const enrichedData = await enrichWithImages(recordData, savedSignature);
+        const freshData = await fetchFreshRecordData(recordData);
+        const enrichedData = await enrichWithImages(freshData, savedSignature);
         const handled = await tryV2Dispatch({ recordType, recordData: enrichedData, identifier });
         if (!handled) await downloadRecordPdf(recordType, enrichedData, identifier);
       } catch (err) {
@@ -374,7 +408,7 @@ export default function PrintRecordButton({
       // No saved signature — open the sign pad modal
       setSignModalOpen(true);
     }
-  }, [recordData, savedSignature, enrichWithImages, recordType, identifier]);
+  }, [recordData, savedSignature, enrichWithImages, recordType, identifier, fetchFreshRecordData]);
 
   /** Called when user signs in the quick-sign modal */
   const handleQuickSign = useCallback(async (dataUrl: string | null) => {
@@ -393,7 +427,8 @@ export default function PrintRecordButton({
     // Generate the PDF with the fresh signature
     try {
       setLoading(true);
-      const enrichedData = await enrichWithImages(recordData, dataUrl);
+      const freshData = await fetchFreshRecordData(recordData);
+      const enrichedData = await enrichWithImages(freshData, dataUrl);
       const handled = await tryV2Dispatch({ recordType, recordData: enrichedData, identifier });
       if (!handled) await downloadRecordPdf(recordType, enrichedData, identifier);
     } catch (err) {
@@ -401,7 +436,7 @@ export default function PrintRecordButton({
     } finally {
       setLoading(false);
     }
-  }, [recordData, enrichWithImages, recordType, identifier]);
+  }, [recordData, enrichWithImages, recordType, identifier, fetchFreshRecordData]);
 
   const handleCloseViewer = useCallback(() => {
     setViewerOpen(false);

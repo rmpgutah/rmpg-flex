@@ -15,6 +15,7 @@
 
 import jsPDF from 'jspdf';
 import { parseTimestamp } from './dateUtils';
+import { humanizeRelationship } from './recordLinks';
 import {
   openAutoSection, closeAutoSection, addFieldPair,
   addStackedSignatures, addTableWithShading, addNarrativeSection,
@@ -257,7 +258,7 @@ export async function generateCaseReport(doc: jsPDF, data: CasePdfData): Promise
       data.linked_persons.map(p => [
         `${p.last_name || ''}, ${p.first_name || ''}`.trim(),
         formatDate(p.date_of_birth),
-        p.relationship || '',
+        humanizeRelationship(p.relationship),
       ]),
     );
   }

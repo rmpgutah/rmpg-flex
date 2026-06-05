@@ -22,6 +22,14 @@ personnel.route('/bodycam-videos', bodycamVideosRouter);
 // but the editable column set is narrower (see SELF_EDITABLE).
 const MANAGER_ROLES = new Set(['admin', 'manager', 'supervisor', 'human_resources']);
 
+// Roles allowed to CREATE/EDIT time entries from the dispatch console. Editing
+// clock_in/clock_out moves total_hours → overtime → payroll, so this is a
+// deliberately scoped authorization set: the operator chose Admin / Manager /
+// Supervisor / Dispatch (dispatcher logs an officer's time on radio request),
+// and human_resources is retained because it already owns payroll/time reads.
+// Every edit is audited in time_entry_edits (who / old / new / reason).
+const TIME_WRITE_ROLES = new Set(['admin', 'manager', 'supervisor', 'human_resources', 'dispatcher']);
+
 // Valid role values for POST /:id/role. Mirrors the role set documented
 // in CLAUDE.md and the legacy users.role column. Adding a role here is
 // the only place that has to change to recognize it for assignment.
@@ -67,16 +75,30 @@ const SELF_EDITABLE: readonly string[] = [
   'profile_image',
 ];
 
-// GET /personnel
+// GET /personnel[?status=&role=]
+// Returns the FULL officer record set the client consumes, not just a thin
+// summary: PersonnelPage feeds each list row straight into the detail panel's
+// Profile tab (it does NOT refetch /personnel/:id), so the list must carry
+// contact/HR/DL fields or the profile view goes blank. unit_call_sign is
+// resolved via a correlated subquery (one unit per officer) to avoid row
+// multiplication. ?status= drives the active/archived split (mapped to
+// users.status active|inactive). Column count (~33) is well under the D1 cap.
 personnel.get('/', async (c) => {
   try {
     const db = getDb(c.env);
     const { status, role } = c.req.query();
-    let sql = 'SELECT id, username, full_name, role, badge_number, phone, email, status FROM users WHERE 1=1';
+    let sql = `SELECT u.id, u.username, u.full_name, u.first_name, u.last_name, u.middle_name,
+                      u.role, u.badge_number, u.phone, u.email, u.status, u.rank, u.department,
+                      u.address, u.city, u.state, u.zip, u.date_of_birth, u.hire_date, u.termination_date,
+                      u.shift_preference, u.dl_number, u.dl_state, u.dl_expiry, u.blood_type, u.allergies,
+                      u.uniform_size, u.emergency_contact_name, u.emergency_contact_phone,
+                      u.emergency_contact_relationship, u.created_at, u.updated_at,
+                      (SELECT call_sign FROM units WHERE officer_id = u.id LIMIT 1) AS unit_call_sign
+               FROM users u WHERE 1=1`;
     const params: unknown[] = [];
-    if (status) { sql += ' AND status = ?'; params.push(status); }
-    if (role) { sql += ' AND role = ?'; params.push(role); }
-    sql += ' ORDER BY full_name';
+    if (status) { sql += ' AND u.status = ?'; params.push(status); }
+    if (role) { sql += ' AND u.role = ?'; params.push(role); }
+    sql += ' ORDER BY u.full_name';
     const rows = await query<Record<string, unknown>>(db, sql, ...params);
     return c.json(rows);
   } catch (err) {
@@ -85,9 +107,232 @@ personnel.get('/', async (c) => {
   }
 });
 
-// GET /personnel/credentials
+// ── Officer credentials (certifications / licenses w/ expiry) ──────
+// Backed by officer_credentials (migration 0076). GET is open to any
+// authenticated user (read-only roster data); writes require manager tier.
+const CREDENTIAL_FIELDS = ['officer_id', 'credential_type', 'credential_number', 'issuing_authority', 'issued_date', 'expiry_date', 'notes'] as const;
+const CREDENTIAL_SELECT = `SELECT oc.*, u.full_name AS officer_name FROM officer_credentials oc LEFT JOIN users u ON u.id = oc.officer_id`;
+
+// GET /personnel/credentials[?officer_id=]
 personnel.get('/credentials', async (c) => {
-  return c.json([]);
+  try {
+    const db = getDb(c.env);
+    const officerId = c.req.query('officer_id');
+    let sql = CREDENTIAL_SELECT;
+    const params: unknown[] = [];
+    if (officerId) { sql += ' WHERE oc.officer_id = ?'; params.push(officerId); }
+    sql += ' ORDER BY (oc.expiry_date IS NULL), oc.expiry_date ASC, oc.id DESC';
+    const rows = await query<Record<string, unknown>>(db, sql, ...params);
+    return c.json(rows);
+  } catch (err) {
+    console.error('GET /personnel/credentials failed:', err);
+    return c.json([]);
+  }
+});
+
+// POST /personnel/credentials
+personnel.post('/credentials', async (c) => {
+  const denied = requireManager(c); if (denied) return denied;
+  try {
+    const db = getDb(c.env);
+    const body = await c.req.json().catch(() => ({} as Record<string, unknown>));
+    if (body.officer_id == null || body.officer_id === '') return c.json({ error: 'officer_id is required' }, 400);
+    const cols = CREDENTIAL_FIELDS.filter((f) => body[f] !== undefined);
+    const res = await execute(
+      db,
+      `INSERT INTO officer_credentials (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`,
+      ...cols.map((f) => body[f]),
+    );
+    const row = await queryFirst<Record<string, unknown>>(db, `${CREDENTIAL_SELECT} WHERE oc.id = ?`, res.meta?.last_row_id);
+    return c.json(row ?? { id: res.meta?.last_row_id }, 201);
+  } catch (err) {
+    console.error('POST /personnel/credentials failed:', err);
+    return c.json({ error: 'Failed to create credential' }, 500);
+  }
+});
+
+// PUT /personnel/credentials/:id
+personnel.put('/credentials/:id', async (c) => {
+  const denied = requireManager(c); if (denied) return denied;
+  try {
+    const db = getDb(c.env);
+    const id = c.req.param('id');
+    const body = await c.req.json().catch(() => ({} as Record<string, unknown>));
+    const cols = CREDENTIAL_FIELDS.filter((f) => f !== 'officer_id' && body[f] !== undefined);
+    if (cols.length === 0) return c.json({ error: 'No updatable fields' }, 400);
+    const setClause = cols.map((f) => `${f} = ?`).join(', ');
+    await execute(
+      db,
+      `UPDATE officer_credentials SET ${setClause}, updated_at = datetime('now','localtime') WHERE id = ?`,
+      ...cols.map((f) => body[f]), id,
+    );
+    const row = await queryFirst<Record<string, unknown>>(db, `${CREDENTIAL_SELECT} WHERE oc.id = ?`, id);
+    return c.json(row ?? { id });
+  } catch (err) {
+    console.error('PUT /personnel/credentials/:id failed:', err);
+    return c.json({ error: 'Failed to update credential' }, 500);
+  }
+});
+
+// DELETE /personnel/credentials/:id
+personnel.delete('/credentials/:id', async (c) => {
+  const denied = requireManager(c); if (denied) return denied;
+  try {
+    await execute(getDb(c.env), 'DELETE FROM officer_credentials WHERE id = ?', c.req.param('id'));
+    return c.json({ success: true });
+  } catch (err) {
+    console.error('DELETE /personnel/credentials/:id failed:', err);
+    return c.json({ error: 'Failed to delete credential' }, 500);
+  }
+});
+
+// ── Officer equipment (issue / return / checkout log) ──────────────
+// Backed by officer_equipment + equipment_checkout_log (both live). GET is
+// open; mutations require manager tier. NOTE: equipment_type/condition/status
+// are CHECK-constrained on live — out-of-list values 500 (handled gracefully).
+const EQUIPMENT_FIELDS = ['equipment_type', 'make', 'model', 'serial_number', 'asset_tag', 'condition', 'status', 'issued_date', 'returned_date', 'notes'] as const;
+const EQUIPMENT_SELECT = `SELECT oe.*, u.full_name AS officer_name FROM officer_equipment oe LEFT JOIN users u ON u.id = oe.officer_id`;
+
+// GET /personnel/equipment[?officer_id=]
+personnel.get('/equipment', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const officerId = c.req.query('officer_id');
+    let sql = EQUIPMENT_SELECT;
+    const params: unknown[] = [];
+    if (officerId) { sql += ' WHERE oe.officer_id = ?'; params.push(officerId); }
+    sql += ' ORDER BY oe.id DESC';
+    return c.json(await query<Record<string, unknown>>(db, sql, ...params));
+  } catch (err) {
+    console.error('GET /personnel/equipment failed:', err);
+    return c.json([]);
+  }
+});
+
+// GET /personnel/equipment-log?days=30 — recent checkout/checkin activity.
+personnel.get('/equipment-log', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const days = Math.max(1, Math.min(365, Math.floor(Number(c.req.query('days')) || 30)));
+    const rows = await query<Record<string, unknown>>(
+      db,
+      `SELECT ecl.*, u.full_name AS officer_name
+       FROM equipment_checkout_log ecl LEFT JOIN users u ON u.id = ecl.officer_id
+       WHERE ecl.created_at >= datetime('now', '-${days} days')
+       ORDER BY ecl.created_at DESC LIMIT 200`);
+    return c.json(rows);
+  } catch (err) {
+    console.error('GET /personnel/equipment-log failed:', err);
+    return c.json([]);
+  }
+});
+
+// GET /personnel/equipment/:id/checkout-log
+personnel.get('/equipment/:id/checkout-log', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(
+      db, 'SELECT * FROM equipment_checkout_log WHERE equipment_id = ? ORDER BY created_at DESC', c.req.param('id'));
+    return c.json(rows);
+  } catch (err) {
+    console.error('GET /personnel/equipment/:id/checkout-log failed:', err);
+    return c.json([]);
+  }
+});
+
+// POST /personnel/:officerId/equipment — issue equipment to an officer.
+personnel.post('/:officerId/equipment', async (c) => {
+  const denied = requireManager(c); if (denied) return denied;
+  try {
+    const db = getDb(c.env);
+    const officerId = c.req.param('officerId');
+    const body = await c.req.json().catch(() => ({} as Record<string, unknown>));
+    if (!body.equipment_type) return c.json({ error: 'equipment_type is required' }, 400);
+    const cols = ['officer_id', ...EQUIPMENT_FIELDS.filter((f) => body[f] !== undefined)];
+    const vals = [officerId, ...EQUIPMENT_FIELDS.filter((f) => body[f] !== undefined).map((f) => body[f])];
+    const res = await execute(
+      db, `INSERT INTO officer_equipment (${cols.join(', ')}) VALUES (${cols.map(() => '?').join(', ')})`, ...vals);
+    const row = await queryFirst<Record<string, unknown>>(db, `${EQUIPMENT_SELECT} WHERE oe.id = ?`, res.meta?.last_row_id);
+    return c.json(row ?? { id: res.meta?.last_row_id }, 201);
+  } catch (err) {
+    console.error('POST /personnel/:officerId/equipment failed:', err);
+    return c.json({ error: 'Failed to create equipment record' }, 500);
+  }
+});
+
+// PUT /personnel/equipment/:id
+personnel.put('/equipment/:id', async (c) => {
+  const denied = requireManager(c); if (denied) return denied;
+  try {
+    const db = getDb(c.env);
+    const id = c.req.param('id');
+    const body = await c.req.json().catch(() => ({} as Record<string, unknown>));
+    const cols = EQUIPMENT_FIELDS.filter((f) => body[f] !== undefined);
+    if (cols.length === 0) return c.json({ error: 'No updatable fields' }, 400);
+    await execute(
+      db,
+      `UPDATE officer_equipment SET ${cols.map((f) => `${f} = ?`).join(', ')}, updated_at = datetime('now','localtime') WHERE id = ?`,
+      ...cols.map((f) => body[f]), id);
+    const row = await queryFirst<Record<string, unknown>>(db, `${EQUIPMENT_SELECT} WHERE oe.id = ?`, id);
+    return c.json(row ?? { id });
+  } catch (err) {
+    console.error('PUT /personnel/equipment/:id failed:', err);
+    return c.json({ error: 'Failed to update equipment record' }, 500);
+  }
+});
+
+// DELETE /personnel/equipment/:id
+personnel.delete('/equipment/:id', async (c) => {
+  const denied = requireManager(c); if (denied) return denied;
+  try {
+    await execute(getDb(c.env), 'DELETE FROM officer_equipment WHERE id = ?', c.req.param('id'));
+    return c.json({ success: true });
+  } catch (err) {
+    console.error('DELETE /personnel/equipment/:id failed:', err);
+    return c.json({ error: 'Failed to delete equipment record' }, 500);
+  }
+});
+
+// POST /personnel/equipment/:id/checkout — log a checkout, mark issued.
+personnel.post('/equipment/:id/checkout', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = c.req.param('id');
+    const actor = c.get('user') as { id: number } | undefined;
+    const eq = await queryFirst<{ officer_id: string; equipment_type: string }>(db, 'SELECT officer_id, equipment_type FROM officer_equipment WHERE id = ?', id);
+    if (!eq) return c.json({ error: 'Equipment not found' }, 404);
+    await execute(
+      db,
+      `INSERT INTO equipment_checkout_log (equipment_id, officer_id, checkout_date, action, equipment_name, checked_by)
+       VALUES (?, ?, datetime('now','localtime'), 'checkout', ?, ?)`,
+      id, eq.officer_id, eq.equipment_type, actor?.id ?? null);
+    await execute(db, "UPDATE officer_equipment SET status = 'issued', updated_at = datetime('now','localtime') WHERE id = ?", id);
+    return c.json({ success: true });
+  } catch (err) {
+    console.error('POST /personnel/equipment/:id/checkout failed:', err);
+    return c.json({ error: 'Failed to check out equipment' }, 500);
+  }
+});
+
+// POST /personnel/equipment/:id/checkin — log a return, mark returned.
+personnel.post('/equipment/:id/checkin', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = c.req.param('id');
+    const actor = c.get('user') as { id: number } | undefined;
+    const eq = await queryFirst<{ officer_id: string; equipment_type: string }>(db, 'SELECT officer_id, equipment_type FROM officer_equipment WHERE id = ?', id);
+    if (!eq) return c.json({ error: 'Equipment not found' }, 404);
+    await execute(
+      db,
+      `INSERT INTO equipment_checkout_log (equipment_id, officer_id, return_date, action, equipment_name, checked_by)
+       VALUES (?, ?, datetime('now','localtime'), 'checkin', ?, ?)`,
+      id, eq.officer_id, eq.equipment_type, actor?.id ?? null);
+    await execute(db, "UPDATE officer_equipment SET status = 'returned', returned_date = datetime('now','localtime'), updated_at = datetime('now','localtime') WHERE id = ?", id);
+    return c.json({ success: true });
+  } catch (err) {
+    console.error('POST /personnel/equipment/:id/checkin failed:', err);
+    return c.json({ error: 'Failed to check in equipment' }, 500);
+  }
 });
 
 // ────────────────────────────────────────────────────────────────
@@ -113,6 +358,31 @@ function requireManager(c: Context<Env>): Response | null {
   if (!actor) return c.json({ error: 'Authentication required' }, 401);
   if (!MANAGER_ROLES.has(actor.role)) return c.json({ error: 'Insufficient permissions' }, 403);
   return null;
+}
+
+function requireTimeWriter(c: Context<Env>): Response | null {
+  const actor = c.get('user') as { id: number; role: string } | undefined;
+  if (!actor) return c.json({ error: 'Authentication required' }, 401);
+  if (!TIME_WRITE_ROLES.has(actor.role)) return c.json({ error: 'Insufficient permissions' }, 403);
+  return null;
+}
+
+// Net worked hours from a clock_in/clock_out pair, less break minutes. Returns
+// null when the entry is still open (no clock_out) or the range is invalid, so
+// total_hours stays NULL until the shift is actually closed. Rounded to 2dp to
+// match the precision the roster + payroll rollups display.
+function computeTotalHours(
+  clockIn: string | null | undefined,
+  clockOut: string | null | undefined,
+  breakMinutes: number,
+): number | null {
+  if (!clockIn || !clockOut) return null;
+  const start = new Date(clockIn).getTime();
+  const end = new Date(clockOut).getTime();
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return null;
+  const grossHours = (end - start) / 3_600_000;
+  const netHours = grossHours - (Number.isFinite(breakMinutes) ? breakMinutes : 0) / 60;
+  return Math.round(Math.max(0, netHours) * 100) / 100;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────
@@ -255,8 +525,12 @@ personnel.get('/schedules', async (c) => {
 });
 
 // ── GET /personnel/time?start_date=...&end_date=...&officer_id=... ─
+// Read gate = WRITE roles (includes dispatcher): a dispatcher can POST/PUT/DELETE
+// time entries, and the client re-fetches this list right after every mutation.
+// Gating the read to MANAGER_ROLES (no dispatcher) 403'd that refresh, so a
+// dispatcher's edit looked half-broken (write OK, table stale + error toast).
 personnel.get('/time', async (c) => {
-  const denied = requireManager(c);
+  const denied = requireTimeWriter(c);
   if (denied) return denied;
 
   try {
@@ -340,6 +614,214 @@ personnel.get('/time', async (c) => {
   } catch (err) {
     console.error('GET /personnel/time failed:', err);
     return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+  }
+});
+
+// ── POST /personnel/time — create a time entry on an officer's behalf ──
+// Dispatch logs an officer's clock-in (and optionally clock-out) on radio
+// request. Creating an entry isn't itself an "edit", so it's recorded as a
+// normal 'active'/'completed' row; subsequent corrections go through PUT and
+// are audited in time_entry_edits.
+personnel.post('/time', async (c) => {
+  const denied = requireTimeWriter(c);
+  if (denied) return denied;
+
+  try {
+    const db = getDb(c.env);
+    const body = await c.req.json<Record<string, unknown>>();
+
+    const officerId = Number(body.officer_id);
+    if (!Number.isFinite(officerId) || officerId <= 0) {
+      return c.json({ error: 'officer_id is required', code: 'MISSING_OFFICER' }, 400);
+    }
+    const clockIn = typeof body.clock_in === 'string' && body.clock_in.trim() ? body.clock_in.trim() : null;
+    if (!clockIn) {
+      return c.json({ error: 'clock_in is required', code: 'MISSING_CLOCK_IN' }, 400);
+    }
+    const clockOut = typeof body.clock_out === 'string' && body.clock_out.trim() ? body.clock_out.trim() : null;
+    const breakMinutes = Number.isFinite(Number(body.break_minutes)) ? Number(body.break_minutes) : 0;
+    const notes = typeof body.notes === 'string' && body.notes.trim() ? body.notes.trim() : null;
+
+    // Reject a non-existent officer up front (FK has no enforcement on D1).
+    const officer = await queryFirst<{ id: number }>(db, 'SELECT id FROM users WHERE id = ?', officerId);
+    if (!officer) return c.json({ error: 'Officer not found', code: 'OFFICER_NOT_FOUND' }, 404);
+
+    const totalHours = computeTotalHours(clockIn, clockOut, breakMinutes);
+    const status = clockOut ? 'completed' : 'active';
+
+    const res = await execute(
+      db,
+      `INSERT INTO time_entries (officer_id, clock_in, clock_out, break_minutes, total_hours, status, notes, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))`,
+      officerId, clockIn, clockOut, breakMinutes, totalHours, status, notes,
+    );
+
+    const newId = res?.meta?.last_row_id;
+    const created = await queryFirst<Record<string, unknown>>(
+      db,
+      `SELECT te.*, u.full_name AS officer_name
+         FROM time_entries te LEFT JOIN users u ON u.id = te.officer_id
+        WHERE te.id = ?`,
+      newId,
+    );
+    return c.json({ ...(created || {}), edits: [] }, 201);
+  } catch (err) {
+    console.error('POST /personnel/time failed:', err);
+    return c.json({ error: 'Failed to create time entry', detail: (err as Error)?.message }, 500);
+  }
+});
+
+// ── PUT /personnel/time/:id — edit an existing time entry ──
+// Each changed field writes a time_entry_edits audit row (who/old/new/reason)
+// and the entry is flagged status='edited'. total_hours is recomputed so the
+// payroll rollup in GET /time stays correct. A `reason` is required because the
+// edit feeds payroll — every correction must be explainable.
+personnel.put('/time/:id', async (c) => {
+  const denied = requireTimeWriter(c);
+  if (denied) return denied;
+
+  try {
+    const db = getDb(c.env);
+    const actor = c.get('user') as { id: number; full_name?: string; username?: string } | undefined;
+    const id = Number(c.req.param('id'));
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid id', code: 'INVALID_ID' }, 400);
+
+    const existing = await queryFirst<{
+      id: number; clock_in: string | null; clock_out: string | null;
+      break_minutes: number | null; notes: string | null; status: string;
+    }>(db, 'SELECT id, clock_in, clock_out, break_minutes, notes, status FROM time_entries WHERE id = ?', id);
+    if (!existing) return c.json({ error: 'Time entry not found', code: 'ENTRY_NOT_FOUND' }, 404);
+
+    const body = await c.req.json<Record<string, unknown>>();
+    const reason = typeof body.reason === 'string' && body.reason.trim() ? body.reason.trim() : null;
+    if (!reason) return c.json({ error: 'A reason for the change is required', code: 'MISSING_REASON' }, 400);
+
+    // Build the change set. Only fields actually present in the body and
+    // actually different from the stored value are touched + audited.
+    type Edit = { edit_type: string; old: string | null; new: string | null };
+    const edits: Edit[] = [];
+
+    const newClockIn = typeof body.clock_in === 'string' && body.clock_in.trim() ? body.clock_in.trim() : existing.clock_in;
+    if (body.clock_in !== undefined && newClockIn !== existing.clock_in) {
+      edits.push({ edit_type: 'clock_in_changed', old: existing.clock_in, new: newClockIn });
+    }
+
+    // clock_out may be cleared (re-open an entry) by sending null/''.
+    const newClockOut = body.clock_out === undefined
+      ? existing.clock_out
+      : (typeof body.clock_out === 'string' && body.clock_out.trim() ? body.clock_out.trim() : null);
+    if (body.clock_out !== undefined && newClockOut !== existing.clock_out) {
+      edits.push({ edit_type: 'clock_out_changed', old: existing.clock_out, new: newClockOut });
+    }
+
+    const existingBreak = Number(existing.break_minutes) || 0;
+    const newBreak = body.break_minutes === undefined
+      ? existingBreak
+      : (Number.isFinite(Number(body.break_minutes)) ? Number(body.break_minutes) : existingBreak);
+    if (body.break_minutes !== undefined && newBreak !== existingBreak) {
+      edits.push({ edit_type: 'break_adjusted', old: String(existingBreak), new: String(newBreak) });
+    }
+
+    const newNotes = body.notes === undefined
+      ? existing.notes
+      : (typeof body.notes === 'string' && body.notes.trim() ? body.notes.trim() : null);
+    if (body.notes !== undefined && newNotes !== existing.notes) {
+      edits.push({ edit_type: 'notes_changed', old: existing.notes, new: newNotes });
+    }
+
+    if (edits.length === 0) {
+      return c.json({ error: 'No changes supplied', code: 'NO_CHANGES' }, 400);
+    }
+
+    const totalHours = computeTotalHours(newClockIn, newClockOut, newBreak);
+    // An edit that CLEARS clock_out re-opens the shift — it's genuinely active
+    // again, so it must not stay 'edited' (the Currently-Active panel filters on
+    // clocked_in/on_break and would hide a live, running shift). The edit is
+    // still fully audited via the time_entry_edits rows + edited_by/edited_at.
+    const newStatus = newClockOut ? 'edited' : 'active';
+
+    await execute(
+      db,
+      `UPDATE time_entries
+          SET clock_in = ?, clock_out = ?, break_minutes = ?, total_hours = ?, notes = ?,
+              status = ?, edit_reason = ?, edited_by = ?, edited_at = datetime('now','localtime')
+        WHERE id = ?`,
+      newClockIn, newClockOut, newBreak, totalHours, newNotes, newStatus, reason, actor?.id ?? null, id,
+    );
+
+    const editorName = actor?.full_name || actor?.username || 'Unknown';
+    for (const e of edits) {
+      await execute(
+        db,
+        `INSERT INTO time_entry_edits (time_entry_id, edited_by, edited_by_name, edit_type, old_value, new_value, reason, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))`,
+        id, actor?.id ?? 0, editorName, e.edit_type, e.old, e.new, reason,
+      );
+    }
+
+    const updated = await queryFirst<Record<string, unknown>>(
+      db,
+      `SELECT te.*, u.full_name AS officer_name
+         FROM time_entries te LEFT JOIN users u ON u.id = te.officer_id
+        WHERE te.id = ?`,
+      id,
+    );
+    const editRows = await query<Record<string, unknown>>(
+      db,
+      `SELECT id, time_entry_id, edited_by, edited_by_name, edit_type, old_value, new_value, reason, created_at
+         FROM time_entry_edits WHERE time_entry_id = ? ORDER BY created_at ASC`,
+      id,
+    );
+    return c.json({ ...(updated || {}), edits: editRows });
+  } catch (err) {
+    console.error('PUT /personnel/time/:id failed:', err);
+    return c.json({ error: 'Failed to update time entry', detail: (err as Error)?.message }, 500);
+  }
+});
+
+// ── DELETE /personnel/time/:id — remove a time entry ──
+// Hard delete (the client confirms "cannot be undone"). The deletion is logged
+// to audit_log rather than time_entry_edits: the latter has ON DELETE CASCADE to
+// time_entries, so an edit-row written here would be wiped by the delete it
+// records. audit_log has no such FK, so the trail survives.
+personnel.delete('/time/:id', async (c) => {
+  const denied = requireTimeWriter(c);
+  if (denied) return denied;
+
+  try {
+    const db = getDb(c.env);
+    const actor = c.get('user') as { id: number; full_name?: string; username?: string } | undefined;
+    const id = Number(c.req.param('id'));
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid id', code: 'INVALID_ID' }, 400);
+
+    const existing = await queryFirst<{
+      id: number; officer_id: number; clock_in: string | null; clock_out: string | null; total_hours: number | null;
+    }>(db, 'SELECT id, officer_id, clock_in, clock_out, total_hours FROM time_entries WHERE id = ?', id);
+    if (!existing) return c.json({ error: 'Time entry not found', code: 'ENTRY_NOT_FOUND' }, 404);
+
+    const body = await c.req.json<{ reason?: string }>().catch(() => ({} as { reason?: string }));
+    const reason = typeof body.reason === 'string' && body.reason.trim() ? body.reason.trim() : 'No reason given';
+
+    await execute(db, 'DELETE FROM time_entries WHERE id = ?', id);
+
+    try {
+      if (actor?.id != null) {
+        await execute(
+          db,
+          `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, created_at)
+           VALUES (?, 'TIME_ENTRY_DELETE', 'time_entry', ?, ?, datetime('now'))`,
+          actor.id, id,
+          `Deleted time entry #${id} (officer ${existing.officer_id}, ${existing.total_hours ?? 0}h) — ${reason}`,
+        );
+      }
+    } catch (auditErr) {
+      console.warn('audit_log insert failed for time-entry delete:', auditErr);
+    }
+
+    return c.json({ message: 'Time entry deleted', id });
+  } catch (err) {
+    console.error('DELETE /personnel/time/:id failed:', err);
+    return c.json({ error: 'Failed to delete time entry', detail: (err as Error)?.message }, 500);
   }
 });
 
@@ -1120,29 +1602,164 @@ personnel.get('/bodycam-videos/redaction-requests', async (c) => {
 // ============================================================
 
 // GET /api/personnel/duty-hours?period=14
-// PersonnelAnalyticsDashboard shows hours-by-officer over a rolling window.
-// No dedicated duty-hours/timeclock table on live D1 yet; derive a minimal
-// shape from unit status changes if any exist, else return zeros. The
-// component reads `entries[]` + `totals` so both keys must be present.
+// Hours-by-officer over a rolling window, aggregated from the live
+// `time_entries` clock-in/out table (clock-on persists there even though the
+// clock UI is on the legacy worker — same shared D1). Overtime is hours beyond
+// a 40h/week pro-rated baseline for the window. The dashboard panel reads
+// `entries[]` + `totals` (+ optional flagged_excessive_hours), so all are sent.
 personnel.get('/duty-hours', async (c) => {
+  const period = Math.max(1, Math.min(366, Math.floor(Number(c.req.query('period')) || 14)));
   try {
     const db = getDb(c.env);
-    const officers = await query<{ id: number; full_name: string; badge_number: string }>(
-      db, "SELECT id, full_name, badge_number FROM users WHERE status = 'active' ORDER BY full_name");
-    const entries = officers.map(o => ({
-      officer_id: o.id,
-      officer_name: o.full_name,
+    const rows = await query<{ officer_id: number; officer_name: string; badge_number: string; total_hours: number; shifts_completed: number }>(
+      db,
+      `SELECT u.id AS officer_id, u.full_name AS officer_name, u.badge_number,
+              ROUND(COALESCE(SUM(te.total_hours), 0), 1) AS total_hours,
+              COUNT(CASE WHEN te.clock_out IS NOT NULL THEN 1 END) AS shifts_completed
+       FROM users u
+       LEFT JOIN time_entries te ON te.officer_id = u.id
+            AND te.clock_in >= datetime('now', '-${period} days')
+       WHERE u.status = 'active'
+       GROUP BY u.id, u.full_name, u.badge_number
+       ORDER BY total_hours DESC, u.full_name`);
+    // OT baseline: 40h/week pro-rated across the window.
+    const otThreshold = (period / 7) * 40;
+    const flagThreshold = (period / 7) * 60; // "excessive" = >60h/week pace
+    const entries = rows.map((o) => ({
+      officer_id: o.officer_id,
+      officer_name: o.officer_name,
       badge_number: o.badge_number,
-      total_hours: 0,
-      shifts_completed: 0,
+      total_hours: o.total_hours,
+      shifts_completed: o.shifts_completed,
+      total_overtime: Math.round(Math.max(0, o.total_hours - otThreshold) * 10) / 10,
     }));
+    const totalHours = Math.round(entries.reduce((s, e) => s + (e.total_hours || 0), 0) * 10) / 10;
+    const flagged = entries
+      .filter((e) => e.total_hours > flagThreshold)
+      .map((e) => ({ officer_id: e.officer_id, officer_name: e.officer_name, total_hours: e.total_hours }));
     return c.json({
       entries,
-      totals: { totalHours: 0, totalOfficers: entries.length },
-      period_days: parseInt(c.req.query('period') || '14', 10),
+      totals: { totalHours, totalOfficers: entries.length },
+      flagged_excessive_hours: flagged,
+      period_days: period,
     });
   } catch (err) {
-    return c.json({ entries: [], totals: { totalHours: 0, totalOfficers: 0 } }, 200);
+    console.error('GET /personnel/duty-hours failed:', err);
+    return c.json({ entries: [], totals: { totalHours: 0, totalOfficers: 0 }, flagged_excessive_hours: [], period_days: period }, 200);
+  }
+});
+
+// ── Officer activity feed ────────────────────────────────────
+// GET /api/personnel/activity/:id?limit=50 — the officer's recent audited
+// actions. Unions the two live activity tables (audit_log + activity_log,
+// identical columns) so the feed is complete regardless of which subsystem
+// wrote the entry. Shapes to the client ActivityEntry contract.
+personnel.get('/activity/:id', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const officerId = Number(c.req.param('id'));
+    if (!Number.isFinite(officerId)) return c.json([]);
+    const limit = Math.min(Math.max(parseInt(c.req.query('limit') || '50', 10) || 50, 1), 200);
+    const rows = await query<Record<string, unknown>>(db, `
+      SELECT id, src, action, details, entity_type, created_at, user_name FROM (
+        SELECT 'audit-' || a.id AS id, 'audit' AS src, a.action, a.details, a.entity_type,
+               a.created_at, u.full_name AS user_name
+          FROM audit_log a LEFT JOIN users u ON u.id = a.user_id
+         WHERE a.user_id = ?
+        UNION ALL
+        SELECT 'act-' || l.id AS id, 'activity' AS src, l.action, l.details, l.entity_type,
+               l.created_at, u.full_name AS user_name
+          FROM activity_log l LEFT JOIN users u ON u.id = l.user_id
+         WHERE l.user_id = ?
+      )
+      ORDER BY created_at DESC, id DESC
+      LIMIT ?
+    `, officerId, officerId, limit);
+    return c.json(rows);
+  } catch (err) {
+    console.error('GET /personnel/activity/:id error:', err);
+    return c.json([], 200);
+  }
+});
+
+// ── Physical fitness tracking ────────────────────────────────
+// GET /api/personnel/fitness/:id — fitness scores, newest first.
+personnel.get('/fitness/:id', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const officerId = Number(c.req.param('id'));
+    if (!Number.isFinite(officerId)) return c.json([]);
+    const rows = await query<Record<string, unknown>>(db, `
+      SELECT id, date, score, run_time, pushups, situps, notes, created_at
+        FROM personnel_fitness WHERE officer_id = ?
+       ORDER BY COALESCE(date, created_at) DESC, id DESC
+    `, officerId);
+    return c.json(rows);
+  } catch (err) {
+    console.error('GET /personnel/fitness/:id error:', err);
+    return c.json([], 200);
+  }
+});
+
+// POST /api/personnel/fitness/:id — record a fitness score.
+personnel.post('/fitness/:id', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const officerId = Number(c.req.param('id'));
+    if (!Number.isFinite(officerId)) return c.json({ error: 'Invalid officer id' }, 400);
+    const recordedBy = c.get('userId') as number | undefined;
+    const b = await c.req.json().catch(() => ({})) as Record<string, unknown>;
+    const num = (v: unknown) => (v === '' || v == null ? null : Number(v));
+    const result = await execute(db, `
+      INSERT INTO personnel_fitness (officer_id, date, score, run_time, pushups, situps, notes, recorded_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `, officerId, b.date ?? null, num(b.score), b.run_time ?? null, num(b.pushups), num(b.situps), b.notes ?? null, recordedBy ?? null);
+    return c.json({ success: true, id: result.meta?.last_row_id }, 201);
+  } catch (err) {
+    console.error('POST /personnel/fitness/:id error:', err);
+    return c.json({ error: 'Failed to record fitness score' }, 500);
+  }
+});
+
+// ── Commendations ────────────────────────────────────────────
+// GET /api/personnel/commendations/:id — commendations, newest first.
+personnel.get('/commendations/:id', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const officerId = Number(c.req.param('id'));
+    if (!Number.isFinite(officerId)) return c.json([]);
+    const rows = await query<Record<string, unknown>>(db, `
+      SELECT cm.id, cm.date, cm.type, cm.description, cm.created_at,
+             u.full_name AS awarded_by_name
+        FROM personnel_commendations cm
+        LEFT JOIN users u ON u.id = cm.awarded_by
+       WHERE cm.officer_id = ?
+       ORDER BY COALESCE(cm.date, cm.created_at) DESC, cm.id DESC
+    `, officerId);
+    return c.json(rows);
+  } catch (err) {
+    console.error('GET /personnel/commendations/:id error:', err);
+    return c.json([], 200);
+  }
+});
+
+// POST /api/personnel/commendations/:id — add a commendation.
+personnel.post('/commendations/:id', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const officerId = Number(c.req.param('id'));
+    if (!Number.isFinite(officerId)) return c.json({ error: 'Invalid officer id' }, 400);
+    const awardedBy = c.get('userId') as number | undefined;
+    const b = await c.req.json().catch(() => ({})) as Record<string, unknown>;
+    if (!b.description || !String(b.description).trim()) return c.json({ error: 'Description is required' }, 400);
+    const result = await execute(db, `
+      INSERT INTO personnel_commendations (officer_id, date, type, description, awarded_by)
+      VALUES (?, ?, ?, ?, ?)
+    `, officerId, b.date ?? null, b.type ?? 'commendation', String(b.description).trim(), awardedBy ?? null);
+    return c.json({ success: true, id: result.meta?.last_row_id }, 201);
+  } catch (err) {
+    console.error('POST /personnel/commendations/:id error:', err);
+    return c.json({ error: 'Failed to add commendation' }, 500);
   }
 });
 

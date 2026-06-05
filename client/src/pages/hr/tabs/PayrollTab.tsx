@@ -6,10 +6,12 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   DollarSign, Calendar, Plus, RefreshCw, Loader2, Users, Clock, ChevronRight,
-  Edit3, Trash2, Check, X, AlertTriangle, Banknote, TrendingUp, FileText, Download,
+  Edit3, Trash2, Check, X, AlertTriangle, Banknote, TrendingUp, FileText, Download, Eye, XCircle,
 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import IconButton from '../../../components/IconButton';
+import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
+import { useMenuActions } from '../../../utils/contextMenuActions';
 import { localToday, parseTimestamp } from '../../../utils/dateUtils';
 import { useFormDraft } from '../../../hooks/useFormDraft';
 import UnsavedChangesGuard from '../../../components/UnsavedChangesGuard';
@@ -151,6 +153,10 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
   }, []);
 
   const isManager = ['admin', 'manager'].includes(userRole);
+
+  // ── Right-click context menu ──
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
 
   // ─── Fetch ────────────────────────────────────────────────
 
@@ -443,6 +449,61 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
     return () => window.removeEventListener('keydown', handler);
   }, []);
 
+  // ─── Context-menu builders (one per sub-tab row) ──────────
+  const buildPeriodMenu = (period: PayPeriod): ContextMenuItem[] => [
+    m.action('Open timesheet', () => { setSelectedPeriod(period); setSubTab('entries'); }, { icon: <Eye size={12} /> }),
+    m.separator(),
+    m.copy('Copy period name', period.name),
+    m.copy('Copy gross total', formatCurrency(period.total_gross)),
+    m.copyId(period.id),
+    ...(isManager && period.status === 'open'
+      ? [
+          m.separator(),
+          m.action('Auto-populate employees', () => handlePopulatePeriod(period.id), { icon: <Users size={12} /> }),
+          m.action('Close period', () => handleClosePeriod(period.id), { icon: <Check size={12} /> }),
+          m.action('Delete period', () => handleDeletePeriod(period.id), { icon: <Trash2 size={12} />, danger: true }),
+        ]
+      : []),
+  ];
+
+  const buildRateMenu = (rate: PayRate): ContextMenuItem[] => [
+    m.copy('Copy employee name', rate.officer_name),
+    m.copy('Copy rate', formatCurrency(rate.rate)),
+    m.copyId(rate.id),
+  ];
+
+  const buildEntryMenu = (entry: PayrollEntry): ContextMenuItem[] => [
+    ...(isManager && entry.status !== 'approved'
+      ? [
+          m.action('Edit hours', () => startEditing(entry), { icon: <Edit3 size={12} /> }),
+          m.action('Approve entry', () => handleApproveEntry(entry.id), { icon: <Check size={12} /> }),
+          m.separator(),
+        ]
+      : []),
+    m.copy('Copy employee name', entry.officer_name),
+    m.copy('Copy gross pay', formatCurrency(entry.gross_pay)),
+    m.copyId(entry.id),
+  ];
+
+  const buildOtMenu = (ot: OvertimeRequest): ContextMenuItem[] => [
+    ...(isManager && ot.status === 'requested'
+      ? [
+          m.action('Approve request', () => handleOtDecision(ot.id, 'approved'), { icon: <Check size={12} /> }),
+          m.action('Deny request', () => handleOtDecision(ot.id, 'denied'), { icon: <XCircle size={12} />, danger: true }),
+          m.separator(),
+        ]
+      : []),
+    m.copy('Copy officer name', ot.officer_name),
+    m.copy('Copy hours', `${ot.hours_requested}h`),
+    m.copyId(ot.id),
+  ];
+
+  const buildLeaveMenu = (lb: LeaveBalance): ContextMenuItem[] => [
+    m.copy('Copy officer name', lb.full_name),
+    ...(lb.badge_number ? [m.copy('Copy badge number', lb.badge_number)] : []),
+    m.copyId(lb.id),
+  ];
+
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Toast */}
@@ -501,22 +562,22 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                 <div>
                   <label className="text-[10px] text-rmpg-400 block mb-1">Name (optional)</label>
-                  <input value={periodForm.name} onChange={e => setPeriodForm(p => ({ ...p, name: e.target.value }))}
+                  <input id="ff-payrolltab-0" value={periodForm.name} onChange={e => setPeriodForm(p => ({ ...p, name: e.target.value }))}
                     className="w-full bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-white" placeholder="e.g. March 1-15" />
                 </div>
                 <div>
                   <label className="text-[10px] text-rmpg-400 block mb-1">Start Date *</label>
-                  <input type="date" value={periodForm.start_date} onChange={e => setPeriodForm(p => ({ ...p, start_date: e.target.value }))}
+                  <input id="ff-payrolltab-1" type="date" value={periodForm.start_date} onChange={e => setPeriodForm(p => ({ ...p, start_date: e.target.value }))}
                     className="w-full bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-white" />
                 </div>
                 <div>
                   <label className="text-[10px] text-rmpg-400 block mb-1">End Date *</label>
-                  <input type="date" value={periodForm.end_date} onChange={e => setPeriodForm(p => ({ ...p, end_date: e.target.value }))}
+                  <input id="ff-payrolltab-2" type="date" value={periodForm.end_date} onChange={e => setPeriodForm(p => ({ ...p, end_date: e.target.value }))}
                     className="w-full bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-white" />
                 </div>
                 <div>
                   <label className="text-[10px] text-rmpg-400 block mb-1">Pay Date *</label>
-                  <input type="date" value={periodForm.pay_date} onChange={e => setPeriodForm(p => ({ ...p, pay_date: e.target.value }))}
+                  <input id="ff-payrolltab-3" type="date" value={periodForm.pay_date} onChange={e => setPeriodForm(p => ({ ...p, pay_date: e.target.value }))}
                     className="w-full bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-white" />
                 </div>
               </div>
@@ -545,6 +606,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                       : 'border-rmpg-700 bg-surface-base hover:border-rmpg-700'
                   }`}
                   onClick={() => { setSelectedPeriod(period); setSubTab('entries'); }}
+                  onContextMenu={(e) => openMenu(e, buildPeriodMenu(period))}
                 >
                   <div className="flex items-center gap-3 px-4 py-3">
                     <div className="flex-shrink-0">
@@ -614,7 +676,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                 <div>
                   <label className="text-[10px] text-rmpg-400 block mb-1">Employee *</label>
-                  <select value={rateForm.user_id} onChange={e => setRateForm(r => ({ ...r, user_id: e.target.value }))}
+                  <select id="ff-payrolltab-4" value={rateForm.user_id} onChange={e => setRateForm(r => ({ ...r, user_id: e.target.value }))}
                     className="w-full bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-white">
                     <option value="">Select employee...</option>
                     {officers.map(o => <option key={o.id} value={o.id}>{o.full_name}</option>)}
@@ -622,7 +684,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                 </div>
                 <div>
                   <label className="text-[10px] text-rmpg-400 block mb-1">Pay Type</label>
-                  <select value={rateForm.pay_type} onChange={e => setRateForm(r => ({ ...r, pay_type: e.target.value }))}
+                  <select id="ff-payrolltab-5" value={rateForm.pay_type} onChange={e => setRateForm(r => ({ ...r, pay_type: e.target.value }))}
                     className="w-full bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-white">
                     <option value="hourly">Hourly</option>
                     <option value="salary">Salary</option>
@@ -631,22 +693,22 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                 </div>
                 <div>
                   <label className="text-[10px] text-rmpg-400 block mb-1">Rate ($/hr) *</label>
-                  <input type="number" step="0.01" value={rateForm.rate} onChange={e => setRateForm(r => ({ ...r, rate: e.target.value }))}
+                  <input id="ff-payrolltab-6" type="number" step="0.01" value={rateForm.rate} onChange={e => setRateForm(r => ({ ...r, rate: e.target.value }))}
                     className="w-full bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-white" placeholder="25.00" />
                 </div>
                 <div>
                   <label className="text-[10px] text-rmpg-400 block mb-1">OT Multiplier</label>
-                  <input type="number" step="0.1" value={rateForm.overtime_rate} onChange={e => setRateForm(r => ({ ...r, overtime_rate: e.target.value }))}
+                  <input id="ff-payrolltab-7" type="number" step="0.1" value={rateForm.overtime_rate} onChange={e => setRateForm(r => ({ ...r, overtime_rate: e.target.value }))}
                     className="w-full bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-white" />
                 </div>
                 <div>
                   <label className="text-[10px] text-rmpg-400 block mb-1">Holiday Multiplier</label>
-                  <input type="number" step="0.1" value={rateForm.holiday_rate} onChange={e => setRateForm(r => ({ ...r, holiday_rate: e.target.value }))}
+                  <input id="ff-payrolltab-8" type="number" step="0.1" value={rateForm.holiday_rate} onChange={e => setRateForm(r => ({ ...r, holiday_rate: e.target.value }))}
                     className="w-full bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-white" />
                 </div>
                 <div>
                   <label className="text-[10px] text-rmpg-400 block mb-1">Effective Date *</label>
-                  <input type="date" value={rateForm.effective_date} onChange={e => setRateForm(r => ({ ...r, effective_date: e.target.value }))}
+                  <input id="ff-payrolltab-9" type="date" value={rateForm.effective_date} onChange={e => setRateForm(r => ({ ...r, effective_date: e.target.value }))}
                     className="w-full bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1.5 text-xs text-white" />
                 </div>
               </div>
@@ -680,7 +742,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                 </thead>
                 <tbody>
                   {rates.map(rate => (
-                    <tr key={rate.id} className="border-b border-rmpg-700/50 hover:bg-brand-500/5">
+                    <tr key={rate.id} onContextMenu={(e) => openMenu(e, buildRateMenu(rate))} className="border-b border-rmpg-700/50 hover:bg-brand-500/5">
                       <td className="px-3 py-2 text-white font-medium">{rate.officer_name}</td>
                       <td className="px-3 py-2">
                         <span className="px-1.5 py-0.5 text-[9px] rounded-sm bg-brand-500/15 text-brand-400 uppercase font-bold">{rate.pay_type}</span>
@@ -708,7 +770,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
             <h3 className="text-sm font-semibold text-white flex items-center gap-2">
               <Clock size={15} className="text-brand-400" /> Timesheet
             </h3>
-            <select value={selectedPeriod?.id ?? ''} onChange={e => {
+            <select id="ff-payrolltab-10" value={selectedPeriod?.id ?? ''} onChange={e => {
               const p = periods.find(pp => pp.id === Number(e.target.value));
               setSelectedPeriod(p || null);
             }} className="bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1 text-xs text-white">
@@ -764,14 +826,14 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                   {entries.map(entry => {
                     const isEditing = editingEntry === entry.id;
                     return (
-                      <tr key={entry.id} className={`border-b border-rmpg-700/50 ${isEditing ? 'bg-brand-500/5' : 'hover:bg-brand-500/5'}`}>
+                      <tr key={entry.id} onContextMenu={(e) => openMenu(e, buildEntryMenu(entry))} className={`border-b border-rmpg-700/50 ${isEditing ? 'bg-brand-500/5' : 'hover:bg-brand-500/5'}`}>
                         <td className="px-2 py-2 text-white font-medium whitespace-nowrap">{entry.officer_name}</td>
                         <td className="px-2 py-2 text-right text-rmpg-300 font-mono">{entry.hourly_rate ? formatCurrency(entry.hourly_rate) : '—'}</td>
                         {isEditing ? (
                           <>
                             {['regular_hours', 'overtime_hours', 'holiday_hours', 'pto_hours', 'sick_hours'].map(field => (
                               <td key={field} className="px-1 py-1">
-                                <input type="number" step="0.5" min="0"
+                                <input id="ff-payrolltab-11" type="number" step="0.5" min="0"
                                   value={editValues[field] ?? 0}
                                   onChange={e => setEditValues(v => ({ ...v, [field]: Number(e.target.value) }))}
                                   className="w-16 bg-surface-sunken border border-brand-500/40 rounded-sm px-1.5 py-0.5 text-xs text-white text-right font-mono" />
@@ -859,15 +921,15 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <div>
                   <label className="text-[9px] text-rmpg-400 uppercase">Date *</label>
-                  <input type="date" value={otForm.requested_date} onChange={e => setOtForm(p => ({ ...p, requested_date: e.target.value }))} className="w-full px-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
+                  <input id="ff-payrolltab-12" type="date" value={otForm.requested_date} onChange={e => setOtForm(p => ({ ...p, requested_date: e.target.value }))} className="w-full px-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
                 </div>
                 <div>
                   <label className="text-[9px] text-rmpg-400 uppercase">Hours *</label>
-                  <input type="number" step="0.5" value={otForm.hours_requested} onChange={e => setOtForm(p => ({ ...p, hours_requested: e.target.value }))} className="w-full px-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
+                  <input id="ff-payrolltab-13" type="number" step="0.5" value={otForm.hours_requested} onChange={e => setOtForm(p => ({ ...p, hours_requested: e.target.value }))} className="w-full px-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
                 </div>
                 <div>
                   <label className="text-[9px] text-rmpg-400 uppercase">Reason</label>
-                  <input value={otForm.reason} onChange={e => setOtForm(p => ({ ...p, reason: e.target.value }))} className="w-full px-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
+                  <input id="ff-payrolltab-14" value={otForm.reason} onChange={e => setOtForm(p => ({ ...p, reason: e.target.value }))} className="w-full px-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none" />
                 </div>
               </div>
               <div className="flex gap-2 pt-1">
@@ -897,7 +959,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                 </thead>
                 <tbody>
                   {otRequests.map(ot => (
-                    <tr key={ot.id} className="border-b border-rmpg-700 hover:bg-surface-base">
+                    <tr key={ot.id} onContextMenu={(e) => openMenu(e, buildOtMenu(ot))} className="border-b border-rmpg-700 hover:bg-surface-base">
                       <td className="px-2 py-1.5 text-white">{ot.officer_name}</td>
                       <td className="px-2 py-1.5 text-rmpg-300">{formatDate(ot.requested_date)}</td>
                       <td className="px-2 py-1.5 text-rmpg-300 font-mono">{ot.hours_requested}h</td>
@@ -972,7 +1034,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                     const accrued = lb.pto_pending + lb.pto_used;
                     const pctUsed = accrued > 0 ? (lb.pto_used / accrued) * 100 : 0;
                     return (
-                      <tr key={lb.id} className="border-b border-rmpg-700/50 hover:bg-surface-raised/30">
+                      <tr key={lb.id} onContextMenu={(e) => openMenu(e, buildLeaveMenu(lb))} className="border-b border-rmpg-700/50 hover:bg-surface-raised/30">
                         <td className="py-2 px-3 text-white font-medium">{lb.full_name}</td>
                         <td className="py-2 px-3 text-rmpg-400 font-mono">{lb.badge_number || '—'}</td>
                         <td className="py-2 px-3 text-right text-rmpg-300">{accrued.toFixed(1)}h</td>

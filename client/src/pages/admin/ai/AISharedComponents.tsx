@@ -129,7 +129,7 @@ export function KeyInput({
     <div className="flex items-center gap-2">
       <label className="text-[10px] text-rmpg-500 w-20 shrink-0">{label}</label>
       <div className="relative flex-1">
-        <input
+        <input id="ff-aisharedcomponents-0"
           type={show ? 'text' : 'password'}
           value={value}
           onChange={e => onChange(e.target.value)}
@@ -152,7 +152,7 @@ export function ModelInput({ value, onChange, placeholder }: { value: string; on
   return (
     <div className="flex items-center gap-2">
       <label className="text-[10px] text-rmpg-500 w-20 shrink-0">Model</label>
-      <input
+      <input id="ff-aisharedcomponents-1"
         type="text"
         value={value}
         onChange={e => onChange(e.target.value)}
@@ -248,7 +248,7 @@ export function ProviderSelect({
   className?: string;
 }) {
   return (
-    <select
+    <select id="ff-aisharedcomponents-2"
       value={value}
       onChange={e => onChange(e.target.value)}
       className={`bg-[#0b0b0b] border border-[#1c1c1c] text-white text-xs rounded px-2 py-1.5 focus:border-brand-500 focus:outline-none ${className}`}

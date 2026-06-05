@@ -4,7 +4,8 @@ import PanelTitleBar from '../components/PanelTitleBar';
 import DataTable from '../components/DataTable';
 import StatsCard from '../components/StatsCard';
 import { useToast } from '../components/ToastProvider';
-import { GraduationCap, BookOpen, Award, Clock, Plus, Pencil, Trash2 } from 'lucide-react';
+import { useMenuActions } from '../utils/contextMenuActions';
+import { GraduationCap, BookOpen, Award, Clock, Plus, Pencil, Trash2, Eye } from 'lucide-react';
 
 export default function TrainingManagementPage() {
   const [courses, setCourses] = useState<Record<string, any>[]>([]);
@@ -14,15 +15,18 @@ export default function TrainingManagementPage() {
   const [formData, setFormData] = useState<Record<string, any>>({});
   const [submitting, setSubmitting] = useState(false);
   const [deleteId, setDeleteId] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const { addToast } = useToast();
+  const m = useMenuActions();
 
   const fetchData = useCallback(async () => {
     try {
+      setError(null);
       const r = await apiFetch<{ data: Record<string, any>[] }>('/training/courses');
       setCourses(r.data || []);
       const s = await apiFetch<{ courses: number; enrollments: number; active_certs: number; expiring_certs: number }>('/training/stats');
       setStats(s);
-    } catch { /* */ }
+    } catch { setError("Failed to load data"); }
   }, []);
 
   useEffect(() => { fetchData().finally(() => setLoading(false)); }, [fetchData]);
@@ -65,35 +69,49 @@ export default function TrainingManagementPage() {
       <PanelTitleBar title="TRAINING MANAGEMENT" icon={GraduationCap}>
         <button onClick={openNew} className="toolbar-btn flex items-center gap-1.5" style={{ height: 28, padding: '0 10px' }}><Plus size={13} /> New Course</button>
       </PanelTitleBar>
+      {error && <div className="border border-red-700/40 bg-red-900/20 text-red-400 text-[11px] px-3 py-2 mb-3" role="alert">{error}</div>}
       <div className="grid grid-cols-4 gap-3">
         <StatsCard icon={BookOpen} label="Courses" value={stats.courses} />
         <StatsCard icon={GraduationCap} label="Enrollments" value={stats.enrollments} />
         <StatsCard icon={Award} label="Active Certs" value={stats.active_certs} />
         <StatsCard icon={Clock} label="Expiring" value={stats.expiring_certs} />
       </div>
-      <DataTable columns={columns} data={courses} emptyMessage="No training courses found" onRowClick={(row) => openEdit(row)} />
+      <DataTable
+        columns={columns}
+        data={courses}
+        emptyMessage="No training courses found"
+        onRowClick={(row) => openEdit(row)}
+        rowContextMenu={(row) => [
+          m.action('Open / edit', () => openEdit(row), { icon: <Eye size={12} /> }),
+          m.separator(),
+          m.copy('Copy course', row.course_name),
+          m.copyId(row.id),
+          m.separator(),
+          m.action('Delete', () => setDeleteId(row.id), { danger: true, icon: <Trash2 size={12} /> }),
+        ]}
+      />
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={() => setEditingRecord(null)}>
           <div className="bg-surface-raised border border-[#333] p-6 max-w-lg w-full" style={{ borderRadius: 2 }} onClick={e => e.stopPropagation()}>
             <h3 className="text-sm font-bold text-white mb-4">{editingRecord ? 'Edit Course' : 'New Course'}</h3>
             <div className="space-y-3">
               <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Course Name <span className="text-red-500">*</span></label>
-                <input className="input-dark mt-1" value={formData.course_name || ''} onChange={e => setFormData({...formData, course_name: e.target.value})} autoFocus /></div>
+                <input id="ff-trainingmanagementpage-0" className="input-dark mt-1" value={formData.course_name || ''} onChange={e => setFormData({...formData, course_name: e.target.value})} autoFocus /></div>
               <div className="grid grid-cols-2 gap-3">
                 <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Code</label>
-                  <input className="input-dark mt-1" value={formData.course_code || ''} onChange={e => setFormData({...formData, course_code: e.target.value})} /></div>
+                  <input id="ff-trainingmanagementpage-1" className="input-dark mt-1" value={formData.course_code || ''} onChange={e => setFormData({...formData, course_code: e.target.value})} /></div>
                 <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Category</label>
-                  <select className="select-dark mt-1" value={formData.category || 'other'} onChange={e => setFormData({...formData, category: e.target.value})}>
+                  <select id="ff-trainingmanagementpage-2" className="select-dark mt-1" value={formData.category || 'other'} onChange={e => setFormData({...formData, category: e.target.value})}>
                     {['firearms','defensive_tactics','legal','first_aid','de_escalation','professionalism','technical','other'].map(c=><option key={c} value={c}>{c}</option>)}
                   </select></div>
               </div>
               <div className="grid grid-cols-3 gap-3">
                 <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Duration (hrs)</label>
-                  <input className="input-dark mt-1" value={formData.duration_hours || ''} onChange={e => setFormData({...formData, duration_hours: e.target.value})} /></div>
+                  <input id="ff-trainingmanagementpage-3" className="input-dark mt-1" value={formData.duration_hours || ''} onChange={e => setFormData({...formData, duration_hours: e.target.value})} /></div>
                 <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Instructor ID</label>
-                  <input className="input-dark mt-1" value={formData.instructor_id || ''} onChange={e => setFormData({...formData, instructor_id: e.target.value})} /></div>
+                  <input id="ff-trainingmanagementpage-4" className="input-dark mt-1" value={formData.instructor_id || ''} onChange={e => setFormData({...formData, instructor_id: e.target.value})} /></div>
                 <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Location</label>
-                  <input className="input-dark mt-1" value={formData.location || ''} onChange={e => setFormData({...formData, location: e.target.value})} /></div>
+                  <input id="ff-trainingmanagementpage-5" className="input-dark mt-1" value={formData.location || ''} onChange={e => setFormData({...formData, location: e.target.value})} /></div>
               </div>
             </div>
             <div className="flex justify-end gap-3 mt-4">

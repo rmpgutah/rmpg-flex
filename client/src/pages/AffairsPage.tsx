@@ -5,7 +5,9 @@ import DataTable from '../components/DataTable';
 import StatsCard from '../components/StatsCard';
 import AffairsFormModal, { AffairsFormData } from '../components/AffairsFormModal';
 import { useToast } from '../components/ToastProvider';
-import { ShieldAlert, FileText, Clock, Flag, Plus, Pencil, Trash2 } from 'lucide-react';
+import { useMenuActions } from '../utils/contextMenuActions';
+import type { ContextMenuItem } from '../context/ContextMenuContext';
+import { ShieldAlert, FileText, Clock, Flag, Plus, Pencil, Trash2, Eye } from 'lucide-react';
 
 interface Complaint {
   id: number; complaint_number: string; complainant_name: string;
@@ -21,15 +23,18 @@ export default function AffairsPage() {
   const [formSubmitting, setFormSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const { addToast } = useToast();
+  const m = useMenuActions();
 
   const fetchData = useCallback(async () => {
     try {
+      setError(null);
       const r = await apiFetch<{ data: Complaint[] }>('/affairs/complaints');
       setComplaints(r.data || []);
       const s = await apiFetch<{ total_complaints: number; open_complaints: number; unresolved_flags: number }>('/affairs/stats');
       setStats(s);
-    } catch { /* */ }
+    } catch { setError("Failed to load data"); }
   }, []);
 
   useEffect(() => { fetchData().finally(() => setLoading(false)); }, [fetchData]);
@@ -83,6 +88,7 @@ export default function AffairsPage() {
   return (
     <div className="p-4 space-y-4">
       <PanelTitleBar title="INTERNAL AFFAIRS" icon={ShieldAlert}>
+      {error && <div className="border border-red-700/40 bg-red-900/20 text-red-400 text-[11px] px-3 py-2 mb-3" role="alert">{error}</div>}
         <button onClick={openNew} className="toolbar-btn flex items-center gap-1.5" style={{ height: 28, padding: '0 10px' }}>
           <Plus size={13} /> New Complaint
         </button>
@@ -92,7 +98,20 @@ export default function AffairsPage() {
         <StatsCard icon={Clock} label="Open Complaints" value={stats.open_complaints} />
         <StatsCard icon={Flag} label="Active Flags" value={stats.unresolved_flags} />
       </div>
-      <DataTable columns={columns} data={complaints} emptyMessage="No complaints found" onRowClick={(row) => openEdit(row)} />
+      <DataTable
+        columns={columns}
+        data={complaints}
+        emptyMessage="No complaints found"
+        onRowClick={(row) => openEdit(row)}
+        enableContextMenu
+        rowContextMenu={(row: Complaint): ContextMenuItem[] => [
+          m.action('Open', () => openEdit(row), { icon: <Eye size={12} /> }),
+          m.action('Edit', () => openEdit(row), { icon: <Pencil size={12} /> }),
+          m.separator(),
+          m.copyId(row.id),
+          m.action('Delete', () => setDeleteId(row.id), { danger: true, icon: <Trash2 size={12} /> }),
+        ]}
+      />
       <AffairsFormModal isOpen={formOpen} onClose={() => { setFormOpen(false); setEditingRecord(undefined); }}
         onSubmit={handleSubmit} isSubmitting={formSubmitting} editingRecord={editingRecord} submitError={formError} />
       {deleteId !== null && (

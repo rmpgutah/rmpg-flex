@@ -267,10 +267,10 @@ export default function PersonnelDetailPanel({
 
   return (
     <div ref={personnelDetailRef} className="flex-1 flex flex-col overflow-hidden min-h-0 h-full" role="region" aria-label={`Details for ${officer.first_name} ${officer.last_name}`}>
-      {/* Consolidated Header — Identity + Status + Controls + Stats */}
+      {/* Consolidated Header — 2 bands: Identity+Status+Actions / Controls+Stats */}
       <div className="panel-beveled mx-2 mt-2 transition-all duration-200">
-        {/* Top: Identity + Actions */}
-        <div className="p-4 flex items-start gap-4">
+        {/* Band 1: Identity + status chips + actions */}
+        <div className="p-3 flex items-start gap-3">
           <OfficerAvatar officer={officer} size="lg" />
           <div className="flex-1 min-w-0">
             <h2 className="text-lg font-bold text-white leading-tight truncate">
@@ -292,6 +292,25 @@ export default function PersonnelDetailPanel({
                 <span className="text-xs text-rmpg-300 font-mono flex items-center gap-1">
                   <Shield className="w-3 h-3" />
                   #{officer.badge_number}
+                </span>
+              )}
+              {/* Status chips — moved up from the old middle band */}
+              <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 text-[9px] font-bold uppercase border ${
+                officer.status === 'on_duty'
+                  ? 'bg-green-900/50 text-green-400 border-green-700/50'
+                  : 'bg-rmpg-700 text-rmpg-400 border-rmpg-600'
+              }`}>
+                <span className={officer.status === 'on_duty' ? 'led-dot led-green' : 'led-dot led-off'} />
+                {officer.status === 'on_duty' ? 'ON DUTY' : 'OFF DUTY'}
+              </span>
+              {isClockedIn && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[9px] font-bold bg-green-900/40 text-green-400 border border-green-700/50">
+                  <Zap className="w-3 h-3" /> CLOCKED IN
+                </span>
+              )}
+              {isOnBreak && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[9px] font-bold bg-amber-900/40 text-amber-400 border border-amber-700/50">
+                  <Coffee className="w-3 h-3" /> ON BREAK
                 </span>
               )}
             </div>
@@ -332,75 +351,58 @@ export default function PersonnelDetailPanel({
           </div>
         </div>
 
-        {/* Status + Clock Controls strip */}
-        <div className="panel-inset px-4 py-1.5 flex items-center gap-2 flex-wrap border-t border-rmpg-700">
-          <span className={`inline-flex items-center gap-1.5 px-2 py-0.5 text-[9px] font-bold uppercase border ${
-            officer.status === 'on_duty'
-              ? 'bg-green-900/50 text-green-400 border-green-700/50'
-              : 'bg-rmpg-700 text-rmpg-400 border-rmpg-600'
-          }`}>
-            <span className={officer.status === 'on_duty' ? 'led-dot led-green' : 'led-dot led-off'} />
-            {officer.status === 'on_duty' ? 'ON DUTY' : 'OFF DUTY'}
-          </span>
-          {isClockedIn && (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[9px] font-bold bg-green-900/40 text-green-400 border border-green-700/50">
-              <Zap className="w-3 h-3" /> CLOCKED IN
-            </span>
-          )}
-          {isOnBreak && (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 text-[9px] font-bold bg-amber-900/40 text-amber-400 border border-amber-700/50">
-              <Coffee className="w-3 h-3" /> ON BREAK
-            </span>
-          )}
-          <span className="toolbar-separator" />
-          {isActive ? (
-            <>
-              {isClockedIn && !isOnBreak && (
-                <button type="button" onClick={() => onStartBreak(officer.id)} className="toolbar-btn text-[9px]">
-                  <Coffee className="w-3 h-3" /> Break
+        {/* Band 2: Clock controls (left) + Quick stats (right) */}
+        <div className="panel-inset px-3 py-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-t border-rmpg-700">
+          {/* Clock controls + duty toggle */}
+          <div className="flex items-center gap-2 flex-wrap">
+            {isActive ? (
+              <>
+                {isClockedIn && !isOnBreak && (
+                  <button type="button" onClick={() => onStartBreak(officer.id)} className="toolbar-btn text-[9px]">
+                    <Coffee className="w-3 h-3" /> Break
+                  </button>
+                )}
+                {isOnBreak && (
+                  <button type="button" onClick={() => onEndBreak(officer.id)} className="toolbar-btn toolbar-btn-success text-[9px]">
+                    <Zap className="w-3 h-3" /> End Break
+                  </button>
+                )}
+                <button type="button" onClick={() => onClockOut(officer.id)} className="toolbar-btn toolbar-btn-danger text-[9px]">
+                  <LogOut className="w-3 h-3" /> Clock Out
                 </button>
-              )}
-              {isOnBreak && (
-                <button type="button" onClick={() => onEndBreak(officer.id)} className="toolbar-btn toolbar-btn-success text-[9px]">
-                  <Zap className="w-3 h-3" /> End Break
-                </button>
-              )}
-              <button type="button" onClick={() => onClockOut(officer.id)} className="toolbar-btn toolbar-btn-danger text-[9px]">
-                <LogOut className="w-3 h-3" /> Clock Out
+              </>
+            ) : (
+              <button type="button" onClick={() => onClockIn(officer.id)} className="toolbar-btn toolbar-btn-success text-[9px]">
+                <LogIn className="w-3 h-3" /> Clock In
               </button>
-            </>
-          ) : (
-            <button type="button" onClick={() => onClockIn(officer.id)} className="toolbar-btn toolbar-btn-success text-[9px]">
-              <LogIn className="w-3 h-3" /> Clock In
-            </button>
-          )}
-          <span className="toolbar-separator" />
-          <DutyToggle officerId={officer.id} currentStatus={officer.status} />
-        </div>
+            )}
+            <DutyToggle officerId={officer.id} currentStatus={officer.status} />
+          </div>
 
-        {/* Quick Stats — bottom of header panel */}
-        <div className="grid grid-cols-5 gap-px bg-rmpg-700 border-t border-rmpg-700">
-          <div className="bg-surface-base p-2 text-center">
-            <p className="text-base font-bold font-mono text-white">{calcYearsOfService(officer.hire_date)}</p>
-            <p className="field-label text-[8px]">Service</p>
-          </div>
-          <div className="bg-surface-base p-2 text-center">
-            <p className="text-base font-bold font-mono text-brand-400">{officerTotalHours.toFixed(1)}</p>
-            <p className="field-label text-[8px]">Hours</p>
-          </div>
-          <div className="bg-surface-base p-2 text-center">
-            <p className={`text-base font-bold font-mono ${officerCreds.some(c => c.status === 'expired') ? 'text-red-400' : hasCredAlert ? 'text-amber-400' : 'text-green-400'}`}>
-              {officerCreds.filter(c => c.status === 'valid').length}/{officerCreds.length}
-            </p>
-            <p className="field-label text-[8px]">Credentials</p>
-          </div>
-          <div className="bg-surface-base p-2 text-center">
-            <p className="text-base font-bold font-mono text-purple-400">{officerSchedules.length}</p>
-            <p className="field-label text-[8px]">Schedules</p>
-          </div>
-          <div className="bg-surface-base p-2 text-center">
-            <p className="text-base font-bold font-mono text-rmpg-200">{deployments.filter(d => d.officer_id === officer.id).length}</p>
-            <p className="field-label text-[8px]">Deploys</p>
+          {/* Quick stats — inline, right-aligned */}
+          <div className="flex items-center gap-3 sm:gap-4">
+            <div className="text-center">
+              <p className="text-sm font-bold font-mono text-white leading-none">{calcYearsOfService(officer.hire_date)}</p>
+              <p className="field-label text-[8px]">Service</p>
+            </div>
+            <div className="text-center">
+              <p className="text-sm font-bold font-mono text-brand-400 leading-none">{officerTotalHours.toFixed(1)}</p>
+              <p className="field-label text-[8px]">Hours</p>
+            </div>
+            <div className="text-center">
+              <p className={`text-sm font-bold font-mono leading-none ${officerCreds.some(c => c.status === 'expired') ? 'text-red-400' : hasCredAlert ? 'text-amber-400' : 'text-green-400'}`}>
+                {officerCreds.filter(c => c.status === 'valid').length}/{officerCreds.length}
+              </p>
+              <p className="field-label text-[8px]">Creds</p>
+            </div>
+            <div className="text-center">
+              <p className="text-sm font-bold font-mono text-purple-400 leading-none">{officerSchedules.length}</p>
+              <p className="field-label text-[8px]">Sched</p>
+            </div>
+            <div className="text-center">
+              <p className="text-sm font-bold font-mono text-rmpg-200 leading-none">{deployments.filter(d => d.officer_id === officer.id).length}</p>
+              <p className="field-label text-[8px]">Deploys</p>
+            </div>
           </div>
         </div>
       </div>

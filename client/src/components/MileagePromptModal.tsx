@@ -26,6 +26,10 @@ export default function MileagePromptModal({
   const handleSubmit = () => {
     const val = parseFloat(mileage);
     if (isNaN(val) || val < 0) return;
+    // An ending reading below the start is a typo — reject it (the inline
+    // warning below explains why the button does nothing). The old preview
+    // clamped the total to Math.max(0,…), which hid the bad value entirely.
+    if (mode === 'ending' && startingMileage != null && val < startingMileage) return;
     onSubmit(val, editVehicleId);
   };
 
@@ -72,7 +76,7 @@ export default function MileagePromptModal({
             <label className="text-[10px] text-brand-gold-500 block mb-1">
               {mode === 'starting' ? 'Odometer Reading (Start)' : 'Odometer Reading (End)'}
             </label>
-            <input
+            <input id="ff-mileagepromptmodal-0"
               ref={inputRef}
               type="number"
               min="0"
@@ -92,7 +96,7 @@ export default function MileagePromptModal({
                 {vehicleId}
               </div>
             ) : (
-              <input
+              <input id="ff-mileagepromptmodal-1"
                 type="text"
                 className="input-dark text-xs w-full"
                 placeholder="Vehicle ID or unit number"
@@ -103,11 +107,17 @@ export default function MileagePromptModal({
           </div>
 
           {mode === 'ending' && startingMileage != null && mileage && !isNaN(parseFloat(mileage)) && (
-            <div className="text-[10px] text-rmpg-400">
-              Total miles: <span className="text-green-400 font-mono font-bold">
-                {Math.max(0, parseFloat(mileage) - startingMileage).toFixed(1)}
-              </span>
-            </div>
+            parseFloat(mileage) < startingMileage ? (
+              <div className="text-[10px] text-red-400">
+                Ending mileage can't be below starting (<span className="font-mono font-bold">{startingMileage.toLocaleString()}</span>).
+              </div>
+            ) : (
+              <div className="text-[10px] text-rmpg-400">
+                Total miles: <span className="text-green-400 font-mono font-bold">
+                  {(parseFloat(mileage) - startingMileage).toFixed(1)}
+                </span>
+              </div>
+            )
           )}
         </div>
 

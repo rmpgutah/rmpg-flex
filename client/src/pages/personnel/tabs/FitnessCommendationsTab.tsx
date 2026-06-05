@@ -3,6 +3,8 @@ import { Activity, Award, Plus, TrendingUp, Star, Loader2 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { useToast } from '../../../components/ToastProvider';
 import { localToday, parseTimestamp } from '../../../utils/dateUtils';
+import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
+import { useMenuActions } from '../../../utils/contextMenuActions';
 
 import RichTextArea from '../../../components/RichTextArea';
 function fmtDate(d: string | null | undefined): string {
@@ -76,6 +78,21 @@ export default function FitnessCommendationsTab({ officerId }: { officerId: stri
     try { await apiFetch<any[]>(`/personnel/commendations/${officerId}`, { method: 'POST', body: JSON.stringify(commForm) }); addToast('Commendation added', 'success'); setShowCommForm(false); setCommForm({ date: localToday(), type: 'commendation', description: '' }); loadCommendations(); } catch { addToast('Failed to add commendation', 'error'); } finally { setSubmittingComm(false); }
   };
 
+  // Right-click context menus
+  const { openMenu } = useContextMenu();
+  const m = useMenuActions();
+  const buildFitnessMenu = (f: FitnessScore): ContextMenuItem[] => [
+    m.copy('Copy date', fmtDate(f.date)),
+    ...(f.score != null ? [m.copy('Copy score', f.score)] : []),
+    ...(f.notes ? [m.copy('Copy notes', f.notes)] : []),
+  ];
+  const buildCommMenu = (c: Commendation): ContextMenuItem[] => [
+    m.copy('Copy type', c.type?.replace(/_/g, ' ')),
+    m.copy('Copy description', c.description),
+    m.separator(),
+    m.copyId(c.id),
+  ];
+
   // Set document title
   useEffect(() => { document.title = 'Personnel - Fitness \u2014 RMPG Flex'; }, []);
 
@@ -91,14 +108,14 @@ export default function FitnessCommendationsTab({ officerId }: { officerId: stri
         {showFitnessForm && (
           <div className="panel-inset p-3 space-y-2 mb-2">
             <div className="grid grid-cols-3 gap-2">
-              <input type="date" value={fitnessForm.date} onChange={e => setFitnessForm(f => ({ ...f, date: e.target.value }))} className="input-field text-xs" />
-              <input type="number" value={fitnessForm.score} onChange={e => setFitnessForm(f => ({ ...f, score: e.target.value }))} className="input-field text-xs" placeholder="Overall Score" />
-              <input value={fitnessForm.run_time} onChange={e => setFitnessForm(f => ({ ...f, run_time: e.target.value }))} className="input-field text-xs" placeholder="Run Time (e.g. 12:30)" />
+              <input id="ff-fitnesscommendationstab-0" type="date" value={fitnessForm.date} onChange={e => setFitnessForm(f => ({ ...f, date: e.target.value }))} className="input-field text-xs" />
+              <input id="ff-fitnesscommendationstab-1" type="number" value={fitnessForm.score} onChange={e => setFitnessForm(f => ({ ...f, score: e.target.value }))} className="input-field text-xs" placeholder="Overall Score" />
+              <input id="ff-fitnesscommendationstab-2" value={fitnessForm.run_time} onChange={e => setFitnessForm(f => ({ ...f, run_time: e.target.value }))} className="input-field text-xs" placeholder="Run Time (e.g. 12:30)" />
             </div>
             <div className="grid grid-cols-3 gap-2">
-              <input type="number" value={fitnessForm.pushups} onChange={e => setFitnessForm(f => ({ ...f, pushups: e.target.value }))} className="input-field text-xs" placeholder="Pushups" />
-              <input type="number" value={fitnessForm.situps} onChange={e => setFitnessForm(f => ({ ...f, situps: e.target.value }))} className="input-field text-xs" placeholder="Situps" />
-              <input value={fitnessForm.notes} onChange={e => setFitnessForm(f => ({ ...f, notes: e.target.value }))} className="input-field text-xs" placeholder="Notes" />
+              <input id="ff-fitnesscommendationstab-3" type="number" value={fitnessForm.pushups} onChange={e => setFitnessForm(f => ({ ...f, pushups: e.target.value }))} className="input-field text-xs" placeholder="Pushups" />
+              <input id="ff-fitnesscommendationstab-4" type="number" value={fitnessForm.situps} onChange={e => setFitnessForm(f => ({ ...f, situps: e.target.value }))} className="input-field text-xs" placeholder="Situps" />
+              <input id="ff-fitnesscommendationstab-5" value={fitnessForm.notes} onChange={e => setFitnessForm(f => ({ ...f, notes: e.target.value }))} className="input-field text-xs" placeholder="Notes" />
             </div>
             <div className="flex gap-2">
               <button type="button" onClick={submitFitness} disabled={submittingFitness} className="toolbar-btn toolbar-btn-success text-[9px] disabled:opacity-40">{submittingFitness ? <><Loader2 className="w-3 h-3 animate-spin" /> Saving...</> : 'Save'}</button>
@@ -110,7 +127,7 @@ export default function FitnessCommendationsTab({ officerId }: { officerId: stri
         {fitness.length > 0 ? (
           <div className="space-y-1">
             {fitness.slice(0, 10).map((f, i) => (
-              <div key={i} className="panel-inset p-2 flex items-center justify-between">
+              <div key={i} className="panel-inset p-2 flex items-center justify-between" onContextMenu={(e) => openMenu(e, buildFitnessMenu(f))}>
                 <div className="flex items-center gap-3">
                   <span className="text-[10px] text-rmpg-400">{fmtDate(f.date)}</span>
                   {f.score && <span className="text-xs font-bold text-white">Score: {f.score}</span>}
@@ -147,8 +164,8 @@ export default function FitnessCommendationsTab({ officerId }: { officerId: stri
         {showCommForm && (
           <div className="panel-inset p-3 space-y-2 mb-2">
             <div className="grid grid-cols-2 gap-2">
-              <input type="date" value={commForm.date} onChange={e => setCommForm(f => ({ ...f, date: e.target.value }))} className="input-field text-xs" />
-              <select value={commForm.type} onChange={e => setCommForm(f => ({ ...f, type: e.target.value }))} className="input-field text-xs">
+              <input id="ff-fitnesscommendationstab-6" type="date" value={commForm.date} onChange={e => setCommForm(f => ({ ...f, date: e.target.value }))} className="input-field text-xs" />
+              <select id="ff-fitnesscommendationstab-7" value={commForm.type} onChange={e => setCommForm(f => ({ ...f, type: e.target.value }))} className="input-field text-xs">
                 <option value="commendation">Commendation</option>
                 <option value="award">Award</option>
                 <option value="medal">Medal</option>
@@ -167,7 +184,7 @@ export default function FitnessCommendationsTab({ officerId }: { officerId: stri
         {commendations.length > 0 ? (
           <div className="space-y-1">
             {commendations.map((c, i) => (
-              <div key={i} className="panel-inset p-2 flex items-start gap-2">
+              <div key={i} className="panel-inset p-2 flex items-start gap-2" onContextMenu={(e) => openMenu(e, buildCommMenu(c))}>
                 <Star className="w-3.5 h-3.5 text-amber-400 mt-0.5 flex-shrink-0" />
                 <div>
                   <div className="flex items-center gap-2">

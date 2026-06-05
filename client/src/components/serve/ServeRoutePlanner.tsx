@@ -4,10 +4,12 @@ import {
   Loader2, Navigation, Clock, DollarSign, Gauge, User,
 } from 'lucide-react';
 import { initMapbox, mapboxgl, MAPBOX_STYLE_DARK } from '../../utils/mapboxLoader';
+import { installWebglContextRecovery } from '../../utils/webglRecovery';
 import { getMapboxAccessToken } from '../../utils/mapboxApiKey';
 import { whenStyleReady } from '../../pages/map/utils/safeAddSource';
 import { apiFetch } from '../../hooks/useApi';
 import type { ServeJob } from '../../types';
+import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../../utils/mapboxSafeLayer';
 
 // ─── Types ──────────────────────────────────────────────────────────────
 
@@ -187,6 +189,9 @@ export default function ServeRoutePlanner({
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<mapboxgl.Marker[]>([]);
+  // WebGL context-loss recovery (rebuilds the map after a GPU context drop).
+  const [routeMapRecoverNonce, setRouteMapRecoverNonce] = useState(0);
+  const routeMapRecoveryCleanupRef = useRef<(() => void) | null>(null);
   const currentLocMarkerRef = useRef<mapboxgl.Marker | null>(null);
   const routeSourceIdRef = useRef<string | null>(null);
 
@@ -267,6 +272,20 @@ export default function ServeRoutePlanner({
       });
       mapRef.current = map;
       setMapReady(true);
+
+      // Rebuild in place if the GPU drops the context. The marker effect
+      // (keyed on mapReady) re-runs and re-fits bounds to the stops.
+      routeMapRecoveryCleanupRef.current = installWebglContextRecovery(map, {
+        label: 'ServeRoutePlanner',
+        onRebuild: () => {
+          if (routeMapRecoveryCleanupRef.current) { routeMapRecoveryCleanupRef.current(); routeMapRecoveryCleanupRef.current = null; }
+          markersRef.current.forEach((m) => { try { m.remove(); } catch { /* gone */ } });
+          markersRef.current = [];
+          if (mapRef.current) { try { mapRef.current.remove(); } catch { /* gone */ } mapRef.current = null; }
+          setMapReady(false);
+          setRouteMapRecoverNonce((n) => n + 1);
+        },
+      });
     };
 
     (async () => {
@@ -281,8 +300,15 @@ export default function ServeRoutePlanner({
       }
     })();
 
-    return () => { cancelled = true; setMapReady(false); };
-  }, [isOpen]);
+    return () => {
+      cancelled = true;
+      setMapReady(false);
+      if (routeMapRecoveryCleanupRef.current) { routeMapRecoveryCleanupRef.current(); routeMapRecoveryCleanupRef.current = null; }
+      markersRef.current.forEach((m) => { try { m.remove(); } catch { /* gone */ } });
+      markersRef.current = [];
+      if (mapRef.current) { try { mapRef.current.remove(); } catch { /* gone */ } mapRef.current = null; }
+    };
+  }, [isOpen, routeMapRecoverNonce]);
 
   // Update markers when stops change
   useEffect(() => {
@@ -345,8 +371,8 @@ export default function ServeRoutePlanner({
     if (!mapRef.current) return;
     const srcId = routeSourceIdRef.current;
     if (srcId) {
-      try { if (mapRef.current.getLayer(srcId)) mapRef.current.removeLayer(srcId); } catch {}
-      try { if (mapRef.current.getSource(srcId)) mapRef.current.removeSource(srcId); } catch {}
+      safeRemoveLayer(mapRef.current, srcId);
+      safeRemoveSource(mapRef.current, srcId);
       routeSourceIdRef.current = null;
     }
   }, []);
@@ -484,7 +510,7 @@ export default function ServeRoutePlanner({
             {officers && officers.length > 0 && (
               <div className="flex items-center gap-1.5 ml-3 pl-3 border-l border-[#2b2b2b]">
                 <User size={12} className="text-rmpg-400" />
-                <select
+                <select id="ff-serverouteplanner-0"
                   value={selectedOfficerId || ''}
                   onChange={e => { setSelectedOfficerId(Number(e.target.value)); setSavedRouteLoaded(false); }}
                   className="px-2 py-0.5 text-[11px] bg-[#0c0c0c] border border-[#2b2b2b] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"

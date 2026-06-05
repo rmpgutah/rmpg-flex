@@ -7,6 +7,77 @@ import { authMiddleware } from '../middleware/auth';
 
 const auth = new Hono<{ Bindings: { DB: D1Database; KV: KVNamespace; JWT_SECRET: string }; Variables: { user: { id: number; username: string; role: string; full_name: string }; userId: number } }>();
 
+// ── Session + token contract (MUST match the legacy `rmpg-flex` Worker) ──────
+// login/refresh fall through the proxy to legacy in normal operation; this
+// rewrite is the hot spare and also serves these directly if the proxy routes
+// them here. A token/session issued here is therefore interchangeable with one
+// issued by legacy. Original: legacy/server-vps/src/routes/auth.ts +
+// middleware/auth.ts.
+//
+// Live `sessions` schema (legacy-owned): session_id (UUID, UNIQUE NOT NULL),
+// user_id, refresh_token_hash (sha256 hex of the refresh JWT, NOT the raw
+// token), is_active (default 1), expires_at, created_at/last_used_at (defaults).
+// There is NO `token` / `refresh_token` / `refresh_expires_at` column — the
+// earlier handlers referenced those and 500'd on every login + refresh.
+const ACCESS_TTL_SECONDS = 15 * 60;            // 15m — legacy config.jwt.accessExpiry
+const REFRESH_TTL_SECONDS = 7 * 24 * 60 * 60;  // 7d  — legacy config.jwt.refreshExpiry
+
+// Live `users` uses must_change_password / totp_enabled — NOT the
+// force_password_change / totp_enrolled names the earlier handlers queried
+// (those columns do not exist on live D1).
+const USER_SELECT =
+  'id, username, full_name, first_name, last_name, email, role, badge_number, phone, avatar_url, status, must_change_password, totp_enabled';
+
+async function sha256Hex(input: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input));
+  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+// Claims carry BOTH userId (camelCase — legacy middleware REQUIRES it, see
+// legacy middleware/auth.ts:51 `if (!decoded.userId ...)`) and user_id (snake —
+// this Worker's middleware reads `user_id ?? userId`), so a token verifies on
+// either Worker. type:'access' keeps it usable as a Bearer (legacy rejects
+// type:'refresh' Bearers). exp is set explicitly: hono/jwt does not add it.
+function tokenClaims(user: any) {
+  return {
+    sub: String(user.id),
+    userId: user.id,
+    user_id: user.id,
+    username: user.username,
+    role: user.role,
+    fullName: user.full_name,
+    full_name: user.full_name,
+  };
+}
+
+function signAccessToken(secret: string, claims: Record<string, unknown>): Promise<string> {
+  const now = Math.floor(Date.now() / 1000);
+  return sign({ ...claims, type: 'access', iat: now, exp: now + ACCESS_TTL_SECONDS }, secret);
+}
+
+// The refresh token is itself a signed JWT (type:'refresh') so a subsequent
+// /refresh routed to legacy can verifyRefreshToken() it. Only its sha256 is
+// stored in sessions.refresh_token_hash.
+function signRefreshToken(secret: string, claims: Record<string, unknown>): Promise<string> {
+  const now = Math.floor(Date.now() / 1000);
+  return sign({ ...claims, type: 'refresh', iat: now, exp: now + REFRESH_TTL_SECONDS }, secret);
+}
+
+// Insert a session row using the live (legacy-owned) schema and return the new
+// session_id. is_active / created_at / last_used_at come from column defaults.
+async function createSession(c: any, db: any, userId: number, refreshToken: string): Promise<string> {
+  const sessionId = uuidv4(); // full dashed UUID → matches live session_id (36 chars)
+  const refreshHash = await sha256Hex(refreshToken);
+  await execute(
+    db,
+    `INSERT INTO sessions (session_id, user_id, refresh_token_hash, ip_address, user_agent, expires_at)
+     VALUES (?, ?, ?, ?, ?, datetime('now', '+7 days'))`,
+    sessionId, userId, refreshHash,
+    c.req.header('cf-connecting-ip') || '', c.req.header('user-agent') || '',
+  );
+  return sessionId;
+}
+
 function userPayload(user: any) {
   const nameParts = (user.full_name || '').split(' ');
   return {
@@ -21,8 +92,8 @@ function userPayload(user: any) {
     phone: user.phone || null,
     avatar_url: user.avatar_url || null,
     status: user.status,
-    must_change_password: !!user.force_password_change,
-    totp_enabled: !!user.totp_enrolled,
+    must_change_password: !!user.must_change_password,
+    totp_enabled: !!user.totp_enabled,
   };
 }
 
@@ -36,9 +107,7 @@ auth.post('/login', async (c) => {
     const db = getDb(c.env);
     const user = await queryFirst<any>(
       db,
-      `SELECT id, username, password_hash, full_name, email, role,
-              badge_number, phone, avatar_url, status, force_password_change, totp_enrolled
-       FROM users WHERE username = ?`,
+      `SELECT ${USER_SELECT}, password_hash FROM users WHERE username = ?`,
       username
     );
 
@@ -53,26 +122,26 @@ auth.post('/login', async (c) => {
       return c.json({ error: 'Invalid username or password', code: 'INVALID_USERNAME_OR_PASSWORD' }, 401);
     }
 
-    const jwtSecret = c.env.JWT_SECRET;
-    const now = Math.floor(Date.now() / 1000);
-    const payload = { sub: String(user.id), user_id: user.id, username: user.username, role: user.role };
+    const secret = c.env.JWT_SECRET;
+    const claims = tokenClaims(user);
+    const refreshToken = await signRefreshToken(secret, claims);
+    const sessionId = await createSession(c, db, user.id, refreshToken);
+    const accessToken = await signAccessToken(secret, { ...claims, sessionId });
 
-    const sessionId = uuidv4().replace(/-/g, '');
-    const accessToken = await sign({ ...payload, sessionId }, jwtSecret);
-    const refreshToken = uuidv4();
-
-    await execute(
-      db,
-      `INSERT INTO sessions (user_id, token, refresh_token, ip_address, user_agent, expires_at, refresh_expires_at)
-       VALUES (?, ?, ?, ?, ?, datetime('now', '+15 minutes'), datetime('now', '+7 days'))`,
-      user.id, accessToken, refreshToken, c.req.header('cf-connecting-ip') || '', c.req.header('user-agent') || ''
-    );
+    // Best-effort login counters — never let a counter error fail the login.
+    try {
+      await execute(
+        db,
+        `UPDATE users SET login_count = COALESCE(login_count, 0) + 1, last_login_at = datetime('now') WHERE id = ?`,
+        user.id,
+      );
+    } catch { /* non-critical */ }
 
     return c.json({
       token: accessToken,
       refreshToken,
       sessionId,
-      expiresIn: 900,
+      expiresIn: ACCESS_TTL_SECONDS,
       lastLoginAt: null,
       lastLoginIp: null,
       user: userPayload(user),
@@ -96,11 +165,17 @@ auth.post('/refresh', async (c) => {
       return c.json({ error: 'Refresh token required' }, 400);
     }
 
+    // The session stores ONLY sha256(refreshToken). Hash the presented token
+    // and look it up — this matches sessions written by legacy (same sha256),
+    // so a session created on either Worker can be refreshed here. The active +
+    // not-expired session row is the authority; we read user_id from it.
     const db = getDb(c.env);
+    const refreshHash = await sha256Hex(refresh_token);
     const session = await queryFirst<any>(
       db,
-      `SELECT id, user_id, token FROM sessions WHERE refresh_token = ? AND refresh_expires_at > datetime('now')`,
-      refresh_token
+      `SELECT id, session_id, user_id FROM sessions
+       WHERE refresh_token_hash = ? AND is_active = 1 AND expires_at > datetime('now')`,
+      refreshHash
     );
     if (!session) {
       return c.json({ error: 'Invalid or expired refresh token' }, 401);
@@ -108,26 +183,38 @@ auth.post('/refresh', async (c) => {
 
     const user = await queryFirst<any>(
       db,
-      `SELECT id, username, full_name, email, role, badge_number, phone, avatar_url, status, force_password_change, totp_enrolled
-       FROM users WHERE id = ? AND status = 'active'`,
+      `SELECT ${USER_SELECT} FROM users WHERE id = ? AND status = 'active'`,
       session.user_id
     );
     if (!user) {
+      // Stale session for a deactivated/removed user — retire it.
+      await execute(db, `UPDATE sessions SET is_active = 0 WHERE id = ?`, session.id);
       return c.json({ error: 'User not found or inactive' }, 401);
     }
 
-    const jwtSecret = c.env.JWT_SECRET;
-    const now = Math.floor(Date.now() / 1000);
-    const payload = { sub: String(user.id), user_id: user.id, username: user.username, role: user.role };
-    const newAccessToken = await sign({ ...payload, sessionId: uuidv4().replace(/-/g, '') }, jwtSecret);
+    const secret = c.env.JWT_SECRET;
+    const claims = tokenClaims(user);
+    // Rotate the refresh token (matches legacy) and re-key the session by its
+    // new hash, so a leaked old refresh token can't be replayed.
+    const newRefreshToken = await signRefreshToken(secret, claims);
+    const newRefreshHash = await sha256Hex(newRefreshToken);
+    const newAccessToken = await signAccessToken(secret, { ...claims, sessionId: session.session_id });
 
-    await execute(db, `UPDATE sessions SET token = ?, expires_at = datetime('now', '+15 minutes') WHERE id = ?`, newAccessToken, session.id);
+    await execute(
+      db,
+      `UPDATE sessions SET refresh_token_hash = ?, last_used_at = datetime('now', 'localtime') WHERE id = ?`,
+      newRefreshHash, session.id,
+    );
 
     return c.json({
       token: newAccessToken,
+      refreshToken: newRefreshToken,
+      sessionId: session.session_id,
+      expiresIn: ACCESS_TTL_SECONDS,
       user: userPayload(user),
     });
   } catch (err) {
+    console.error('Refresh error:', err);
     return c.json({ error: 'Refresh failed' }, 500);
   }
 });
@@ -135,7 +222,21 @@ auth.post('/refresh', async (c) => {
 auth.post('/logout', authMiddleware, async (c) => {
   const userId = c.get('userId');
   const db = getDb(c.env);
-  await execute(db, 'DELETE FROM sessions WHERE user_id = ?', userId);
+  // Soft-deactivate (is_active = 0) like legacy, scoped to the device that's
+  // logging out when it sends a refreshToken / sessionId; otherwise retire all
+  // of this user's sessions. Body is optional — tolerate a missing/empty body.
+  const body = await c.req.json<{ refreshToken?: string; refresh_token?: string; sessionId?: string }>().catch(() => ({} as any));
+  const refreshToken = body.refreshToken ?? body.refresh_token;
+  try {
+    if (refreshToken) {
+      const refreshHash = await sha256Hex(refreshToken);
+      await execute(db, 'UPDATE sessions SET is_active = 0 WHERE refresh_token_hash = ? AND user_id = ?', refreshHash, userId);
+    } else if (body.sessionId) {
+      await execute(db, 'UPDATE sessions SET is_active = 0 WHERE session_id = ? AND user_id = ?', body.sessionId, userId);
+    } else {
+      await execute(db, 'UPDATE sessions SET is_active = 0 WHERE user_id = ?', userId);
+    }
+  } catch { /* logout is best-effort — never block the client from clearing local state */ }
   return c.json({ message: 'Logged out' });
 });
 
@@ -143,8 +244,7 @@ auth.get('/me', authMiddleware, async (c) => {
   const db = getDb(c.env);
   const user = await queryFirst<any>(
     db,
-    `SELECT id, username, full_name, email, role, badge_number, phone, avatar_url, status, force_password_change, totp_enrolled
-     FROM users WHERE id = ?`,
+    `SELECT ${USER_SELECT} FROM users WHERE id = ?`,
     c.get('userId')
   );
   if (!user) return c.json({ error: 'User not found' }, 404);
@@ -171,7 +271,7 @@ auth.put('/password', authMiddleware, async (c) => {
     const newHash = hashSync(new_password, 12);
     await execute(
       db,
-      `UPDATE users SET password_hash = ?, force_password_change = 0, password_changed_at = datetime('now'), updated_at = datetime('now') WHERE id = ?`,
+      `UPDATE users SET password_hash = ?, must_change_password = 0, password_changed_at = datetime('now'), updated_at = datetime('now') WHERE id = ?`,
       newHash, userId
     );
     return c.json({ message: 'Password updated' });
@@ -208,7 +308,7 @@ auth.post('/change-password', authMiddleware, async (c) => {
     const newHash = hashSync(next, 12);
     await execute(
       db,
-      `UPDATE users SET password_hash = ?, force_password_change = 0,
+      `UPDATE users SET password_hash = ?, must_change_password = 0,
                           password_changed_at = datetime('now'),
                           updated_at = datetime('now')
        WHERE id = ?`,
@@ -221,7 +321,7 @@ auth.post('/change-password', authMiddleware, async (c) => {
 });
 
 // POST /auth/login/change-password — forced password change at login.
-// Triggered when the login response carries `force_password_change: 1`.
+// Triggered when the login response carries `must_change_password: true`.
 // The client holds a `tempToken` (the just-issued JWT) and sends only
 // the new password — current password is implicit (just authenticated).
 // Returns a fresh access token + user so the SPA can complete login.
@@ -238,7 +338,7 @@ auth.post('/login/change-password', authMiddleware, async (c) => {
     const newHash = hashSync(next, 12);
     await execute(
       db,
-      `UPDATE users SET password_hash = ?, force_password_change = 0,
+      `UPDATE users SET password_hash = ?, must_change_password = 0,
                           password_changed_at = datetime('now'),
                           updated_at = datetime('now')
        WHERE id = ?`,
@@ -248,30 +348,22 @@ auth.post('/login/change-password', authMiddleware, async (c) => {
     // Re-issue a fresh JWT so the old tempToken can't be reused.
     const user = await queryFirst<any>(
       db,
-      `SELECT id, username, full_name, email, role, badge_number, phone,
-              avatar_url, status, force_password_change, totp_enrolled
-       FROM users WHERE id = ?`,
+      `SELECT ${USER_SELECT} FROM users WHERE id = ?`,
       userId,
     );
     if (!user) return c.json({ error: 'User not found' }, 404);
 
-    const jwtSecret = c.env.JWT_SECRET;
-    const payload = { sub: String(user.id), user_id: user.id, username: user.username, role: user.role };
-    const sessionId = uuidv4().replace(/-/g, '');
-    const accessToken = await sign({ ...payload, sessionId }, jwtSecret);
-    const refreshToken = uuidv4();
-
-    await execute(
-      db,
-      `INSERT INTO sessions (user_id, token, refresh_token, ip_address, user_agent, expires_at, refresh_expires_at)
-       VALUES (?, ?, ?, ?, ?, datetime('now', '+15 minutes'), datetime('now', '+7 days'))`,
-      user.id, accessToken, refreshToken, c.req.header('cf-connecting-ip') || '', c.req.header('user-agent') || '',
-    );
+    const secret = c.env.JWT_SECRET;
+    const claims = tokenClaims(user);
+    const refreshToken = await signRefreshToken(secret, claims);
+    const sessionId = await createSession(c, db, user.id, refreshToken);
+    const accessToken = await signAccessToken(secret, { ...claims, sessionId });
 
     return c.json({
       token: accessToken,
       refreshToken,
       sessionId,
+      expiresIn: ACCESS_TTL_SECONDS,
       user: userPayload(user),
     });
   } catch (err) {
@@ -374,9 +466,7 @@ auth.put('/profile', authMiddleware, async (c) => {
 
     const updated = await queryFirst<any>(
       db,
-      `SELECT id, username, full_name, email, role, badge_number, phone, avatar_url,
-              status, force_password_change, totp_enrolled
-       FROM users WHERE id = ?`,
+      `SELECT ${USER_SELECT} FROM users WHERE id = ?`,
       userId,
     );
 
@@ -386,19 +476,12 @@ auth.put('/profile', authMiddleware, async (c) => {
     // continues uninterrupted under the new username.
     let tokenBundle: Record<string, unknown> = {};
     if (username && username !== existing.username) {
-      const jwtSecret = c.env.JWT_SECRET;
-      const payload = { sub: String(updated.id), user_id: updated.id, username: updated.username, role: updated.role };
-      const sessionId = uuidv4().replace(/-/g, '');
-      const accessToken = await sign({ ...payload, sessionId }, jwtSecret);
-      const refreshToken = uuidv4();
-      await execute(
-        db,
-        `INSERT INTO sessions (user_id, token, refresh_token, ip_address, user_agent, expires_at, refresh_expires_at)
-         VALUES (?, ?, ?, ?, ?, datetime('now', '+15 minutes'), datetime('now', '+7 days'))`,
-        updated.id, accessToken, refreshToken,
-        c.req.header('cf-connecting-ip') || '', c.req.header('user-agent') || '',
-      );
-      tokenBundle = { token: accessToken, refreshToken, sessionId };
+      const secret = c.env.JWT_SECRET;
+      const claims = tokenClaims(updated);
+      const refreshToken = await signRefreshToken(secret, claims);
+      const sessionId = await createSession(c, db, updated.id, refreshToken);
+      const accessToken = await signAccessToken(secret, { ...claims, sessionId });
+      tokenBundle = { token: accessToken, refreshToken, sessionId, expiresIn: ACCESS_TTL_SECONDS };
     }
 
     return c.json({ success: true, user: userPayload(updated), ...tokenBundle });
@@ -408,6 +491,227 @@ auth.put('/profile', authMiddleware, async (c) => {
       return c.json({ error: 'Username already taken', code: 'USERNAME_TAKEN' }, 409);
     }
     return c.json({ error: 'Failed to update profile', detail: msg }, 500);
+  }
+});
+
+// ════════════════════════════════════════════════════════════════
+// Profile photo / sessions / MFA status (UserProfileModal.tsx)
+// ════════════════════════════════════════════════════════════════
+// These four surfaces were added to the client after the legacy `rmpg-flex`
+// bundle froze, so legacy 404s them (live sweep 2026-06-02: profile-image,
+// sessions, totp/status, 2fa/status). They read ONLY columns that exist on
+// live D1 (users.profile_image / .totp_enabled / .totp_backup_codes,
+// sessions.is_active/expires_at), so unlike the login/refresh handlers above
+// they run correctly on the rewrite. Routed to env.API in proxy/index.ts.
+
+// NOTE: GET/PUT /auth/profile-image are defined ONCE, further below (search
+// "own the base64-data-URL contract"). An earlier un-validated duplicate lived
+// here and — because Hono runs the FIRST-registered handler for a duplicate
+// path — shadowed the validating pair, so the data-URL format check + ~1.5MB
+// size cap never ran (any authenticated user could write an unbounded blob to
+// users.profile_image). Removed; the canonical validated handlers below are the
+// only ones now.
+
+// GET /auth/sessions — active login sessions for the current user. The Sessions
+// tab reads session_id / ip_address / user_agent / last_used_at|created_at and
+// does `setSessions(Array.isArray(data) ? data : [])`, so return a bare array.
+auth.get('/sessions', authMiddleware, async (c) => {
+  const db = getDb(c.env);
+  const rows = await query<any>(
+    db,
+    `SELECT session_id, ip_address, user_agent, created_at, last_used_at, expires_at
+       FROM sessions
+      WHERE user_id = ? AND COALESCE(is_active, 1) = 1 AND expires_at > datetime('now')
+      ORDER BY COALESCE(last_used_at, created_at) DESC`,
+    c.get('userId'),
+  );
+  return c.json(rows || []);
+});
+
+// DELETE /auth/sessions/:sessionId — revoke one session (soft: is_active = 0,
+// which the GET filter then hides). Scoped to user_id so a user can only revoke
+// their own sessions. Legacy 404'd this too, so the "Revoke" button was dead.
+auth.delete('/sessions/:sessionId', authMiddleware, async (c) => {
+  const db = getDb(c.env);
+  const sessionId = c.req.param('sessionId');
+  await execute(
+    db,
+    'UPDATE sessions SET is_active = 0 WHERE session_id = ? AND user_id = ?',
+    sessionId,
+    c.get('userId'),
+  );
+  return c.json({ success: true });
+});
+
+// GET /auth/totp/status — TOTP enrollment state. No enroll/verify flow is wired
+// up on the Worker yet (legacy-era MFA was never ported), so this is a read-only
+// honest status sourced from users.totp_enabled. Shape: { enabled, required }.
+auth.get('/totp/status', authMiddleware, async (c) => {
+  const db = getDb(c.env);
+  const row = await queryFirst<{ totp_enabled: number | null }>(
+    db,
+    'SELECT totp_enabled FROM users WHERE id = ?',
+    c.get('userId'),
+  );
+  return c.json({ enabled: !!row?.totp_enabled, required: false });
+});
+
+// GET /auth/2fa/status — two-factor status for the Security tab. The client reads
+// { enabled, backupCodesRemaining }. backupCodesRemaining is the real count from
+// users.totp_backup_codes (JSON array or comma-separated), 0 when un-enrolled.
+auth.get('/2fa/status', authMiddleware, async (c) => {
+  const db = getDb(c.env);
+  const row = await queryFirst<{ totp_enabled: number | null; totp_backup_codes: string | null }>(
+    db,
+    'SELECT totp_enabled, totp_backup_codes FROM users WHERE id = ?',
+    c.get('userId'),
+  );
+  let backupCodesRemaining = 0;
+  if (row?.totp_backup_codes) {
+    try {
+      const parsed = JSON.parse(row.totp_backup_codes);
+      backupCodesRemaining = Array.isArray(parsed) ? parsed.length : 0;
+    } catch {
+      backupCodesRemaining = row.totp_backup_codes.split(',').map((s) => s.trim()).filter(Boolean).length;
+    }
+  }
+  return c.json({ enabled: !!row?.totp_enabled, backupCodesRemaining });
+});
+
+// ════════════════════════════════════════════════════════════════
+// Security Dashboard (SecurityDashboardPage.tsx, route /security-dashboard)
+// ════════════════════════════════════════════════════════════════
+// The /api/auth router is mounted public (login/refresh are open), so we
+// gate just the /security/* subtree with authMiddleware. Backed by the live
+// login_attempts + sessions tables. Every handler is defensive and returns
+// the page's safe empty shape on any error. Legacy had only login-history
+// (a proxy stub) — the rest 404'd (live sweep 2026-06-02).
+auth.use('/security/*', authMiddleware);
+
+// GET /api/auth/security/status
+auth.get('/security/status', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const userId = c.get('userId');
+    const sess = await queryFirst<{ active: number }>(db, "SELECT COUNT(*) AS active FROM sessions WHERE user_id = ? AND COALESCE(is_active,1) = 1 AND expires_at > datetime('now')", userId);
+    const last = await queryFirst<{ created_at: string; ip_address: string | null }>(db, 'SELECT created_at, ip_address FROM sessions WHERE user_id = ? ORDER BY created_at DESC LIMIT 1', userId);
+    return c.json({
+      twoFactorEnabled: false,
+      passwordAge: 0,
+      trustedDevices: 0,
+      activeSessions: sess?.active ?? 0,
+      lastLogin: last?.created_at ?? '',
+      lastLoginIp: last?.ip_address ?? '',
+      accountStatus: 'Active',
+    });
+  } catch {
+    return c.json({ twoFactorEnabled: false, passwordAge: 0, trustedDevices: 0, activeSessions: 0, lastLogin: '', lastLoginIp: '', accountStatus: 'Active' });
+  }
+});
+
+// GET /api/auth/security/recent-threats — recent failed logins.
+auth.get('/security/recent-threats', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(db,
+      "SELECT id, 'failed_login' AS type, username, ip_address AS ip, failure_reason AS reason, created_at AS timestamp FROM login_attempts WHERE COALESCE(success,0) = 0 ORDER BY created_at DESC LIMIT 50");
+    return c.json({ data: rows || [] });
+  } catch {
+    return c.json({ data: [] });
+  }
+});
+
+// GET /api/auth/security/blocked-ips — IPs with repeated failures (>=5/24h).
+auth.get('/security/blocked-ips', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(db,
+      "SELECT ip_address, COUNT(*) AS failed_attempts, MAX(created_at) AS last_attempt FROM login_attempts WHERE COALESCE(success,0) = 0 AND ip_address IS NOT NULL AND created_at >= datetime('now','-1 day') GROUP BY ip_address HAVING COUNT(*) >= 5 ORDER BY failed_attempts DESC LIMIT 100");
+    return c.json({ data: rows || [] });
+  } catch {
+    return c.json({ data: [] });
+  }
+});
+
+// GET /api/auth/security/password-compliance — no password-age tracking on
+// live D1 yet; return empty (page tolerates {data:[]}).
+auth.get('/security/password-compliance', async (c) => c.json({ data: [] }));
+
+// GET /api/auth/security/session-analytics — sessions per day (last 14d).
+auth.get('/security/session-analytics', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<{ day: string; count: number }>(db,
+      "SELECT substr(created_at,1,10) AS day, COUNT(*) AS count FROM sessions WHERE created_at >= datetime('now','-14 days') GROUP BY substr(created_at,1,10) ORDER BY day");
+    const data: Record<string, number> = {};
+    for (const r of rows || []) data[r.day] = r.count;
+    return c.json({ data });
+  } catch {
+    return c.json({ data: {} });
+  }
+});
+
+// GET /api/auth/security/event-timeline?limit= — login successes + failures.
+auth.get('/security/event-timeline', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const limit = Math.min(500, Math.max(1, parseInt(c.req.query('limit') || '100', 10) || 100));
+    const rows = await query<Record<string, unknown>>(db,
+      "SELECT id, CASE WHEN COALESCE(success,0)=1 THEN 'login' ELSE 'failed_login' END AS event, username, ip_address AS ip, failure_reason AS reason, created_at AS timestamp FROM login_attempts ORDER BY created_at DESC LIMIT ?", limit);
+    return c.json({ data: rows || [] });
+  } catch {
+    return c.json({ data: [] });
+  }
+});
+
+// ─── Profile image ────────────────────────────────────────
+// The client stores the avatar as a base64 data URL (resized 256×256 JPEG)
+// in users.profile_image. NOTE: the legacy handler used a different contract
+// — it expected { url } (an http(s) URL) and REJECTED data: URLs with a 400,
+// and only ever exposed avatar_url via /me — which is why uploads silently
+// failed and the topbar avatar never updated. These handlers own the
+// base64-data-URL contract; the proxy routes /api/auth/profile-image here.
+
+// GET /auth/profile-image — return the current user's stored avatar.
+auth.get('/profile-image', authMiddleware, async (c) => {
+  try {
+    const db = getDb(c.env);
+    const userId = c.get('userId');
+    const row = await queryFirst<{ profile_image: string | null }>(
+      db, 'SELECT profile_image FROM users WHERE id = ?', userId,
+    );
+    return c.json({ profile_image: row?.profile_image || null });
+  } catch (err) {
+    console.error('Get profile-image error:', err);
+    return c.json({ error: 'Failed to load profile image', code: 'GET_PROFILE_IMAGE_ERROR' }, 500);
+  }
+});
+
+// PUT /auth/profile-image — save (base64 data URL) or clear (null).
+auth.put('/profile-image', authMiddleware, async (c) => {
+  try {
+    const { profile_image } = await c.req.json<{ profile_image?: string | null }>();
+    if (profile_image !== null && profile_image !== undefined) {
+      if (typeof profile_image !== 'string' || !/^data:image\/(png|jpeg|jpg|webp);base64,/.test(profile_image)) {
+        return c.json({ error: 'profile_image must be a base64 image data URL or null', code: 'INVALID_PROFILE_IMAGE' }, 400);
+      }
+      // Client resizes to 256×256 JPEG (~10–40KB). Cap generously at ~1.5MB
+      // of base64 to reject anything pathological before it hits D1.
+      if (profile_image.length > 1_500_000) {
+        return c.json({ error: 'Image too large — must be under ~1MB', code: 'PROFILE_IMAGE_TOO_LARGE' }, 413);
+      }
+    }
+    const db = getDb(c.env);
+    const userId = c.get('userId');
+    await execute(
+      db,
+      `UPDATE users SET profile_image = ?, updated_at = datetime('now') WHERE id = ?`,
+      profile_image || null, userId,
+    );
+    return c.json({ success: true, profile_image: profile_image || null });
+  } catch (err) {
+    console.error('Save profile-image error:', err);
+    return c.json({ error: 'Failed to save profile image', code: 'SAVE_PROFILE_IMAGE_ERROR' }, 500);
   }
 });
 

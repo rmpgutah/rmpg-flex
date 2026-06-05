@@ -41,12 +41,29 @@ export interface RadioSettings {
    * result back on the radio regardless of this setting.
    */
   ai_auto_open_records: boolean;
+  /**
+   * Dynamic voice delivery — shape the spoken reply's prosody (Aura-2 emphasis
+   * + pacing) to the situation: calm/even on routine traffic, forceful and
+   * emphatic under stress/emergency, with enforcement command weight. Off =
+   * flat, uniform delivery (the prior behavior). Covert-duress is never voiced
+   * urgently regardless (so a nearby suspect isn't tipped off).
+   */
+  voice_dynamics_enabled: boolean;
 
   // ── Recording & Transcription ──
   /** Store R2 audio for incoming transmissions (false = log row only). */
   auto_record: boolean;
   /** Backfill a Whisper transcript when the client didn't send one. */
   auto_transcribe: boolean;
+  /**
+   * Operator-authored vocabulary hint fed to Whisper as the `initial_prompt`
+   * on every transcription — local street names, client/property names,
+   * officer names, agency jargon. It biases recognition toward the words RMPG
+   * units actually say so domain terms aren't misheard ("mileage", not "Maya
+   * list"). '' = the built-in glossary only. Free text, like ai_persona, so a
+   * change in Admin → Radio takes effect on the very next key-up.
+   */
+  stt_vocabulary: string;
   /** Auto-purge transmissions/recordings older than N days (0 = keep forever). */
   recording_retention_days: number;
 
@@ -89,9 +106,11 @@ export const RADIO_SETTING_DEFAULTS: RadioSettings = {
   ai_temperature: 0.3,
   ai_max_reply_chars: 400,
   ai_auto_open_records: true,
+  voice_dynamics_enabled: true,
 
   auto_record: true,
   auto_transcribe: true,
+  stt_vocabulary: '',
   recording_retention_days: 0,
 
   safety_alerts_enabled: true,
@@ -120,18 +139,23 @@ const CATEGORY = 'radio_settings';
 export interface SettingOption { id: string; label: string }
 
 export const RADIO_SETTING_OPTIONS = {
+  // Deepgram Aura-2 English speakers ONLY (@cf/deepgram/aura-2-en). The old
+  // list carried Aura-1 names (stella/perseus/angus/helios) that DON'T exist in
+  // Aura-2 — selecting one errored the premium model and silently dropped the
+  // dispatcher to the robotic melotts fallback. Every id below is a valid
+  // aura-2-en speaker, so the premium voice always engages.
   ai_voice: [
     { id: 'asteria', label: 'Asteria — Female, calm (default)' },
     { id: 'luna', label: 'Luna — Female, warm' },
-    { id: 'stella', label: 'Stella — Female, bright' },
     { id: 'athena', label: 'Athena — Female, mature' },
-    { id: 'hera', label: 'Hera — Female, business' },
+    { id: 'hera', label: 'Hera — Female, professional' },
+    { id: 'cora', label: 'Cora — Female, clear' },
+    { id: 'andromeda', label: 'Andromeda — Female, natural' },
     { id: 'orion', label: 'Orion — Male, approachable' },
     { id: 'arcas', label: 'Arcas — Male, natural' },
-    { id: 'perseus', label: 'Perseus — Male, confident' },
-    { id: 'angus', label: 'Angus — Male, Irish' },
+    { id: 'apollo', label: 'Apollo — Male, confident' },
     { id: 'orpheus', label: 'Orpheus — Male, professional' },
-    { id: 'helios', label: 'Helios — Male, news' },
+    { id: 'atlas', label: 'Atlas — Male, authoritative' },
     { id: 'zeus', label: 'Zeus — Male, deep' },
   ],
   ai_respond_mode: [
@@ -180,6 +204,7 @@ function coerce(key: keyof RadioSettings, raw: string): unknown {
   switch (key) {
     case 'ai_dispatcher_enabled':
     case 'ai_auto_open_records':
+    case 'voice_dynamics_enabled':
     case 'auto_record':
     case 'auto_transcribe':
     case 'notif_enabled_default':
@@ -216,6 +241,9 @@ function coerce(key: keyof RadioSettings, raw: string): unknown {
       return raw.trim() ? raw.trim().slice(0, 32) : def;
     case 'ai_persona':
       return raw.slice(0, 4000);
+    case 'stt_vocabulary':
+      // Capped well under Whisper's prompt budget; the builder trims further.
+      return raw.slice(0, 2000);
     default:
       return raw;
   }

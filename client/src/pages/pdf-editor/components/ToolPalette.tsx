@@ -58,7 +58,7 @@ export default function ToolPalette({ tool, onTool, color, onColor, strokeWidth,
       <div className="h-px bg-[#222222] my-1" />
 
       <div className="flex flex-col gap-1 items-center">
-        <input
+        <input id="ff-toolpalette-0"
           type="color"
           aria-label="Stroke color"
           value={color}
@@ -79,7 +79,7 @@ export default function ToolPalette({ tool, onTool, color, onColor, strokeWidth,
             />
           ))}
         </div>
-        <input
+        <input id="ff-toolpalette-1"
           type="range"
           aria-label="Stroke width"
           min={1}

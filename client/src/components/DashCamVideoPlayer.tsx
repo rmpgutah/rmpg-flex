@@ -125,7 +125,7 @@ export default function DashCamVideoPlayer({ isOpen, onClose, video, apiBase, ge
     const token = (mapboxgl as any)?.accessToken || '';
     if (!token) return;
     fetch(`https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?access_token=${token}&types=address&limit=1`)
-      .then(res => res.json())
+      .then(res => { if (!res.ok) throw new Error(`Geocode HTTP ${res.status}`); return res.json(); })
       .then(data => {
         const feature = data.features?.[0];
         if (feature) {

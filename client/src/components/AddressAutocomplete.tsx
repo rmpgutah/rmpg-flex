@@ -36,6 +36,10 @@ interface AddressAutocompleteProps {
   onChange: (value: string) => void;
   /** Called when user picks a suggestion — provides parsed address components */
   onSelect?: (address: ParsedAddress) => void;
+  /** Called when the operator TYPES an address and leaves the field WITHOUT
+   *  picking a suggestion. Lets callers forward-geocode the freehand text so
+   *  typed addresses still auto-fill cross-street / district, not just picks. */
+  onResolveTyped?: (value: string) => void;
   /** Placeholder text */
   placeholder?: string;
   /** Additional CSS class (added to the input) */
@@ -165,6 +169,7 @@ export default function AddressAutocomplete({
   value,
   onChange,
   onSelect,
+  onResolveTyped,
   placeholder = 'Start typing an address...',
   className = 'input-dark',
   required = false,
@@ -184,6 +189,10 @@ export default function AddressAutocomplete({
   const [useNominatim, setUseNominatim] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const skipNextChangeRef = useRef(false);
+  // True for a brief window right after a suggestion is picked, so the input's
+  // blur handler doesn't ALSO re-resolve the same address.
+  const justSelectedRef = useRef(false);
+  const reqIdRef = useRef(0);
 
   // Fetch Mapbox token on mount + on tab-visible.
   // Previous behavior: token was tried once on mount; if the endpoint
@@ -235,12 +244,14 @@ export default function AddressAutocomplete({
   }, []);
 
   // Geocode query via Mapbox or Nominatim fallback
-  const fetchSuggestions = useCallback(async (query: string) => {
+  const fetchSuggestions = useCallback(async (query: string, reqId?: number) => {
     if (!query || query.length < 3) {
       setSuggestions([]);
       setShowDropdown(false);
       return;
     }
+
+    const isStale = () => reqId != null && reqId !== reqIdRef.current;
 
     try {
       if (useNominatim) {
@@ -254,9 +265,7 @@ export default function AddressAutocomplete({
           source: 'nominatim',
           raw: r,
         }));
-        setSuggestions(mapped);
-        setShowDropdown(mapped.length > 0);
-        setSelectedIdx(-1);
+        if (!isStale()) { setSuggestions(mapped); setShowDropdown(mapped.length > 0); setSelectedIdx(-1); }
         return;
       }
 
@@ -277,11 +286,13 @@ export default function AddressAutocomplete({
 
       const res = await fetch(url);
       if (!res.ok) {
-        setUseNominatim(true);
+        if (!isStale()) setUseNominatim(true);
         return;
       }
 
       const mapData = await res.json();
+      if (isStale()) return;
+
       const features: MapboxFeature[] = mapData.features || [];
 
       const mapped: Suggestion[] = features.map((f: MapboxFeature) => ({
@@ -291,11 +302,9 @@ export default function AddressAutocomplete({
         raw: f,
       }));
 
-      setSuggestions(mapped);
-      setShowDropdown(mapped.length > 0);
-      setSelectedIdx(-1);
+      if (!isStale()) { setSuggestions(mapped); setShowDropdown(mapped.length > 0); setSelectedIdx(-1); }
     } catch {
-      setUseNominatim(true);
+      if (!isStale()) setUseNominatim(true);
     }
   }, [country, addressOnly, useNominatim]);
 
@@ -303,8 +312,9 @@ export default function AddressAutocomplete({
   useEffect(() => {
     if (!tokenReady && !useNominatim) return;
     if (debounceRef.current) clearTimeout(debounceRef.current);
+    const reqId = ++reqIdRef.current;
     debounceRef.current = setTimeout(() => {
-      fetchSuggestions(value);
+      fetchSuggestions(value, reqId);
     }, 300);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [value, tokenReady, useNominatim, fetchSuggestions]);
@@ -314,6 +324,7 @@ export default function AddressAutocomplete({
     setShowDropdown(false);
     setSuggestions([]);
     skipNextChangeRef.current = true;
+    justSelectedRef.current = true;   // suppress the blur-triggered typed-resolve
     onChange(suggestion.place_name);
 
     if (suggestion.source === 'nominatim') {
@@ -373,6 +384,22 @@ export default function AddressAutocomplete({
       }
     }
   }, [onChange, onSelect]);
+
+  // Operator typed an address and tabbed/clicked away WITHOUT picking a
+  // suggestion. Prefer resolving from the best autocomplete match (Mapbox
+  // quality — the server Nominatim geocode is format-sensitive and misses
+  // abbreviated street types). Only fall back to the freehand-text geocode
+  // (onResolveTyped) when there are no suggestions. Deferred so a click on a
+  // suggestion (which blurs the input first) still wins.
+  const handleBlur = useCallback(() => {
+    setTimeout(() => {
+      if (justSelectedRef.current) { justSelectedRef.current = false; return; }
+      const v = (value || '').trim();
+      if (v.length < 5) return;
+      if (suggestions.length > 0) handleSelectSuggestion(suggestions[0]);
+      else if (onResolveTyped) onResolveTyped(v);
+    }, 200);
+  }, [value, suggestions, handleSelectSuggestion, onResolveTyped]);
 
   // Handle input changes (normal typing)
   const handleChange = useCallback(
@@ -444,6 +471,7 @@ export default function AddressAutocomplete({
         value={value}
         onChange={handleChange}
         onKeyDown={handleKeyDown}
+        onBlur={handleBlur}
         required={required}
         autoFocus={autoFocus}
         autoComplete="off"

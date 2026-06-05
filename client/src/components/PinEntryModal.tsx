@@ -252,7 +252,7 @@ export default function PinEntryModal({ isOpen, onClose, onSuccess }: PinEntryMo
                 Employee
               </label>
               <div className="relative">
-                <select
+                <select id="ff-pinentrymodal-0"
                   value={selectedUserId}
                   onChange={handleEmployeeChange}
                   disabled={submitting || loadingEmployees}
@@ -302,7 +302,7 @@ export default function PinEntryModal({ isOpen, onClose, onSuccess }: PinEntryMo
           {!isSelectedAdmin && (
             <div className="flex justify-center gap-2">
               {digits.map((digit, i) => (
-                <input
+                <input id="ff-pinentrymodal-1"
                   key={i}
                   ref={el => { inputRefs.current[i] = el; }}
                   type="text"

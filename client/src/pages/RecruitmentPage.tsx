@@ -4,6 +4,7 @@ import PanelTitleBar from '../components/PanelTitleBar';
 import DataTable from '../components/DataTable';
 import StatsCard from '../components/StatsCard';
 import { useToast } from '../components/ToastProvider';
+import { useMenuActions } from '../utils/contextMenuActions';
 import { UserPlus, Users, CheckCircle, GraduationCap, Clock, Plus, Pencil, Trash2 } from 'lucide-react';
 
 interface Candidate { id: number; candidate_name: string; email: string; phone: string; position: string; stage: string; applied_date: string; notes: string; }
@@ -24,6 +25,7 @@ export default function RecruitmentPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const { addToast } = useToast();
+  const m = useMenuActions();
 
   const fetchData = useCallback(async () => {
     try {
@@ -96,7 +98,19 @@ export default function RecruitmentPage() {
         <StatsCard label="ACADEMY CLASSES" value={String(stats.academyClasses)} icon={GraduationCap} />
       </div>
 
-      <DataTable columns={columns} data={candidates} emptyMessage="No candidates in pipeline" onRowClick={openEdit} />
+      <DataTable
+        columns={columns}
+        data={candidates}
+        emptyMessage="No candidates in pipeline"
+        onRowClick={openEdit}
+        rowContextMenu={(row) => [
+          m.action('Open / Edit', () => openEdit(row), { icon: <Pencil size={12} /> }),
+          m.separator(),
+          m.copy('Copy name', row.candidate_name),
+          m.copyId(row.id),
+          m.action('Delete', () => setDeleteId(row.id), { danger: true, icon: <Trash2 size={12} /> }),
+        ]}
+      />
 
       {formOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={() => setFormOpen(false)}>
@@ -104,14 +118,14 @@ export default function RecruitmentPage() {
             <h3 className="text-sm font-bold text-rmpg-100 mb-4">{editingRecord ? 'Edit Candidate' : 'New Candidate'}</h3>
             {formError && <div className="text-xs text-red-400 mb-2">{formError}</div>}
             <div className="grid grid-cols-2 gap-3">
-              <div><label className="text-[9px] text-rmpg-400 uppercase font-bold">Name *</label><input value={formData.candidate_name} onChange={e => setFormData({...formData, candidate_name: e.target.value})} className="input-dark w-full mt-1 text-xs" /></div>
-              <div><label className="text-[9px] text-rmpg-400 uppercase font-bold">Position</label><input value={formData.position} onChange={e => setFormData({...formData, position: e.target.value})} className="input-dark w-full mt-1 text-xs" /></div>
-              <div><label className="text-[9px] text-rmpg-400 uppercase font-bold">Email</label><input value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} className="input-dark w-full mt-1 text-xs" /></div>
-              <div><label className="text-[9px] text-rmpg-400 uppercase font-bold">Phone</label><input value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} className="input-dark w-full mt-1 text-xs" /></div>
-              <div><label className="text-[9px] text-rmpg-400 uppercase font-bold">Stage</label><select value={formData.stage} onChange={e => setFormData({...formData, stage: e.target.value})} className="input-dark w-full mt-1 text-xs">{STAGES.map(s => <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>)}</select></div>
-              <div><label className="text-[9px] text-rmpg-400 uppercase font-bold">Applied Date</label><input type="date" value={formData.applied_date} onChange={e => setFormData({...formData, applied_date: e.target.value})} className="input-dark w-full mt-1 text-xs" /></div>
+              <div><label className="text-[9px] text-rmpg-400 uppercase font-bold">Name *</label><input id="ff-recruitmentpage-0" value={formData.candidate_name} onChange={e => setFormData({...formData, candidate_name: e.target.value})} className="input-dark w-full mt-1 text-xs" /></div>
+              <div><label className="text-[9px] text-rmpg-400 uppercase font-bold">Position</label><input id="ff-recruitmentpage-1" value={formData.position} onChange={e => setFormData({...formData, position: e.target.value})} className="input-dark w-full mt-1 text-xs" /></div>
+              <div><label className="text-[9px] text-rmpg-400 uppercase font-bold">Email</label><input id="ff-recruitmentpage-2" value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} className="input-dark w-full mt-1 text-xs" /></div>
+              <div><label className="text-[9px] text-rmpg-400 uppercase font-bold">Phone</label><input id="ff-recruitmentpage-3" value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} className="input-dark w-full mt-1 text-xs" /></div>
+              <div><label className="text-[9px] text-rmpg-400 uppercase font-bold">Stage</label><select id="ff-recruitmentpage-4" value={formData.stage} onChange={e => setFormData({...formData, stage: e.target.value})} className="input-dark w-full mt-1 text-xs">{STAGES.map(s => <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>)}</select></div>
+              <div><label className="text-[9px] text-rmpg-400 uppercase font-bold">Applied Date</label><input id="ff-recruitmentpage-5" type="date" value={formData.applied_date} onChange={e => setFormData({...formData, applied_date: e.target.value})} className="input-dark w-full mt-1 text-xs" /></div>
             </div>
-            <div className="mt-3"><label className="text-[9px] text-rmpg-400 uppercase font-bold">Notes</label><textarea value={formData.notes} onChange={e => setFormData({...formData, notes: e.target.value})} className="input-dark w-full mt-1 text-xs" rows={3} /></div>
+            <div className="mt-3"><label className="text-[9px] text-rmpg-400 uppercase font-bold">Notes</label><textarea id="ff-recruitmentpage-6" value={formData.notes} onChange={e => setFormData({...formData, notes: e.target.value})} className="input-dark w-full mt-1 text-xs" rows={3} /></div>
             <div className="flex justify-end gap-3 mt-4">
               <button onClick={() => setFormOpen(false)} className="toolbar-btn px-4" style={{ height: 28 }}>Cancel</button>
               <button onClick={handleSave} disabled={formSubmitting || !formData.candidate_name} className="toolbar-btn-primary px-4" style={{ height: 28 }}>{formSubmitting ? 'Saving...' : 'Save'}</button>

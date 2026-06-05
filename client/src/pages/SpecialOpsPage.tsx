@@ -4,6 +4,7 @@ import PanelTitleBar from '../components/PanelTitleBar';
 import DataTable from '../components/DataTable';
 import StatsCard from '../components/StatsCard';
 import { useToast } from '../components/ToastProvider';
+import { useMenuActions } from '../utils/contextMenuActions';
 import { Swords, Shield, Wrench, AlertTriangle, Plus, Pencil, Trash2 } from 'lucide-react';
 
 interface Callout { id: number; date: string; call_type: string; location: string; resolution: string; duration_minutes: number; team_size: number; notes: string; }
@@ -26,6 +27,7 @@ export default function SpecialOpsPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const { addToast } = useToast();
+  const m = useMenuActions();
 
   const fetchData = useCallback(async () => {
     try {
@@ -126,9 +128,32 @@ export default function SpecialOpsPage() {
       </div>
 
       {tab === 'callouts' ? (
-        <DataTable columns={calloutColumns} data={callouts} emptyMessage="No callouts recorded" onRowClick={openEdit} />
+        <DataTable
+          columns={calloutColumns}
+          data={callouts}
+          emptyMessage="No callouts recorded"
+          onRowClick={openEdit}
+          rowContextMenu={(row) => [
+            m.action('Open / Edit', () => openEdit(row), { icon: <Pencil size={12} /> }),
+            m.separator(),
+            m.copyId(row.id),
+            m.action('Delete', () => setDeleteId(row.id), { danger: true, icon: <Trash2 size={12} /> }),
+          ]}
+        />
       ) : (
-        <DataTable columns={equipmentColumns} data={equipment} emptyMessage="No equipment in inventory" onRowClick={openEdit} />
+        <DataTable
+          columns={equipmentColumns}
+          data={equipment}
+          emptyMessage="No equipment in inventory"
+          onRowClick={openEdit}
+          rowContextMenu={(row) => [
+            m.action('Open / Edit', () => openEdit(row), { icon: <Pencil size={12} /> }),
+            m.separator(),
+            m.copy('Copy serial #', row.serial_number),
+            m.copyId(row.id),
+            m.action('Delete', () => setDeleteId(row.id), { danger: true, icon: <Trash2 size={12} /> }),
+          ]}
+        />
       )}
 
       {formOpen && (
@@ -138,22 +163,22 @@ export default function SpecialOpsPage() {
             {formError && <div className="text-xs text-red-400 mb-2">{formError}</div>}
             {tab === 'callouts' ? (
               <div className="grid grid-cols-2 gap-3">
-                <div><label className="text-[9px] text-rmpg-400 uppercase font-bold">Date</label><input type="datetime-local" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} className="input-dark w-full mt-1 text-xs" /></div>
-                <div><label className="text-[9px] text-rmpg-400 uppercase font-bold">Type *</label><input value={formData.call_type} onChange={e => setFormData({...formData, call_type: e.target.value})} className="input-dark w-full mt-1 text-xs" placeholder="e.g. SWAT, K9, EOD" /></div>
-                <div><label className="text-[9px] text-rmpg-400 uppercase font-bold">Location</label><input value={formData.location} onChange={e => setFormData({...formData, location: e.target.value})} className="input-dark w-full mt-1 text-xs" /></div>
-                <div><label className="text-[9px] text-rmpg-400 uppercase font-bold">Resolution</label><input value={formData.resolution} onChange={e => setFormData({...formData, resolution: e.target.value})} className="input-dark w-full mt-1 text-xs" /></div>
-                <div><label className="text-[9px] text-rmpg-400 uppercase font-bold">Duration (min)</label><input type="number" value={formData.duration_minutes} onChange={e => setFormData({...formData, duration_minutes: parseInt(e.target.value) || 0})} className="input-dark w-full mt-1 text-xs" /></div>
-                <div><label className="text-[9px] text-rmpg-400 uppercase font-bold">Team Size</label><input type="number" value={formData.team_size} onChange={e => setFormData({...formData, team_size: parseInt(e.target.value) || 0})} className="input-dark w-full mt-1 text-xs" /></div>
+                <div><label className="text-[9px] text-rmpg-400 uppercase font-bold">Date</label><input id="ff-specialopspage-0" type="datetime-local" value={formData.date} onChange={e => setFormData({...formData, date: e.target.value})} className="input-dark w-full mt-1 text-xs" /></div>
+                <div><label className="text-[9px] text-rmpg-400 uppercase font-bold">Type *</label><input id="ff-specialopspage-1" value={formData.call_type} onChange={e => setFormData({...formData, call_type: e.target.value})} className="input-dark w-full mt-1 text-xs" placeholder="e.g. SWAT, K9, EOD" /></div>
+                <div><label className="text-[9px] text-rmpg-400 uppercase font-bold">Location</label><input id="ff-specialopspage-2" value={formData.location} onChange={e => setFormData({...formData, location: e.target.value})} className="input-dark w-full mt-1 text-xs" /></div>
+                <div><label className="text-[9px] text-rmpg-400 uppercase font-bold">Resolution</label><input id="ff-specialopspage-3" value={formData.resolution} onChange={e => setFormData({...formData, resolution: e.target.value})} className="input-dark w-full mt-1 text-xs" /></div>
+                <div><label className="text-[9px] text-rmpg-400 uppercase font-bold">Duration (min)</label><input id="ff-specialopspage-4" type="number" value={formData.duration_minutes} onChange={e => setFormData({...formData, duration_minutes: parseInt(e.target.value) || 0})} className="input-dark w-full mt-1 text-xs" /></div>
+                <div><label className="text-[9px] text-rmpg-400 uppercase font-bold">Team Size</label><input id="ff-specialopspage-5" type="number" value={formData.team_size} onChange={e => setFormData({...formData, team_size: parseInt(e.target.value) || 0})} className="input-dark w-full mt-1 text-xs" /></div>
               </div>
             ) : (
               <div className="grid grid-cols-2 gap-3">
-                <div><label className="text-[9px] text-rmpg-400 uppercase font-bold">Type *</label><input value={formData.equipment_type} onChange={e => setFormData({...formData, equipment_type: e.target.value})} className="input-dark w-full mt-1 text-xs" /></div>
-                <div><label className="text-[9px] text-rmpg-400 uppercase font-bold">Serial #</label><input value={formData.serial_number} onChange={e => setFormData({...formData, serial_number: e.target.value})} className="input-dark w-full mt-1 text-xs" /></div>
-                <div><label className="text-[9px] text-rmpg-400 uppercase font-bold">Condition</label><select value={formData.condition} onChange={e => setFormData({...formData, condition: e.target.value})} className="input-dark w-full mt-1 text-xs"><option value="ready">Ready</option><option value="repair">Repair</option><option value="retired">Retired</option><option value="lost">Lost</option></select></div>
-                <div><label className="text-[9px] text-rmpg-400 uppercase font-bold">Assigned To</label><input value={formData.assigned_to} onChange={e => setFormData({...formData, assigned_to: e.target.value})} className="input-dark w-full mt-1 text-xs" /></div>
+                <div><label className="text-[9px] text-rmpg-400 uppercase font-bold">Type *</label><input id="ff-specialopspage-6" value={formData.equipment_type} onChange={e => setFormData({...formData, equipment_type: e.target.value})} className="input-dark w-full mt-1 text-xs" /></div>
+                <div><label className="text-[9px] text-rmpg-400 uppercase font-bold">Serial #</label><input id="ff-specialopspage-7" value={formData.serial_number} onChange={e => setFormData({...formData, serial_number: e.target.value})} className="input-dark w-full mt-1 text-xs" /></div>
+                <div><label className="text-[9px] text-rmpg-400 uppercase font-bold">Condition</label><select id="ff-specialopspage-8" value={formData.condition} onChange={e => setFormData({...formData, condition: e.target.value})} className="input-dark w-full mt-1 text-xs"><option value="ready">Ready</option><option value="repair">Repair</option><option value="retired">Retired</option><option value="lost">Lost</option></select></div>
+                <div><label className="text-[9px] text-rmpg-400 uppercase font-bold">Assigned To</label><input id="ff-specialopspage-9" value={formData.assigned_to} onChange={e => setFormData({...formData, assigned_to: e.target.value})} className="input-dark w-full mt-1 text-xs" /></div>
               </div>
             )}
-            <div className="mt-3"><label className="text-[9px] text-rmpg-400 uppercase font-bold">Notes</label><textarea value={formData.notes || ''} onChange={e => setFormData({...formData, notes: e.target.value})} className="input-dark w-full mt-1 text-xs" rows={3} /></div>
+            <div className="mt-3"><label className="text-[9px] text-rmpg-400 uppercase font-bold">Notes</label><textarea id="ff-specialopspage-10" value={formData.notes || ''} onChange={e => setFormData({...formData, notes: e.target.value})} className="input-dark w-full mt-1 text-xs" rows={3} /></div>
             <div className="flex justify-end gap-3 mt-4">
               <button onClick={() => setFormOpen(false)} className="toolbar-btn px-4" style={{ height: 28 }}>Cancel</button>
               <button onClick={handleSave} disabled={formSubmitting || (tab === 'callouts' ? !formData.call_type : !formData.equipment_type)} className="toolbar-btn-primary px-4" style={{ height: 28 }}>{formSubmitting ? 'Saving...' : 'Save'}</button>

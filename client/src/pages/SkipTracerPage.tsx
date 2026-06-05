@@ -10,10 +10,12 @@ import React, { useState, useCallback, useEffect, useRef } from 'react';
 import {
   Search, User, MapPin, Phone, Mail, Loader2, ChevronRight,
   AlertCircle, ExternalLink, Copy, CheckCircle2, Hash,
-  ChevronLeft, ChevronDown,
+  ChevronLeft, ChevronDown, Eye,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
+import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
+import { useMenuActions } from '../utils/contextMenuActions';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useToast } from '../components/ToastProvider';
@@ -49,6 +51,8 @@ export default function SkipTracerPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
   const { copied, copy } = useCopyToClipboard();
+  const { openMenu } = useContextMenu();
+  const menu = useMenuActions();
 
   // Search state
   const [mode, setMode] = useState<SearchMode>('name');
@@ -176,6 +180,21 @@ export default function SkipTracerPage() {
     }
   };
 
+  // ── Build a skip-trace result row context menu ──
+  const buildResultMenu = (person: any): ContextMenuItem[] => {
+    const name = person.Name || person.name || person.fullName || '';
+    const personId = person['Person ID'] || person.personId || '';
+    const livesIn = person['Lives in'] || person.livesIn || '';
+    return [
+      menu.action('Open result', () => setSelected(person), { icon: <Eye size={12} /> }),
+      ...(personId ? [menu.action('Full details', () => handleGetPersonDetails(personId), { icon: <ExternalLink size={12} /> })] : []),
+      menu.separator(),
+      menu.copy('Copy name', name),
+      ...(personId ? [menu.copyId(personId)] : []),
+      ...(livesIn ? [menu.copy('Copy location', livesIn, <MapPin size={12} />)] : []),
+    ];
+  };
+
   // Extract result items — API returns { PeopleDetails: [...] }
   const resultItems: any[] = results?.PeopleDetails || results?.data || results?.result || (Array.isArray(results) ? results : []);
   const totalRecords: number = results?.Records || resultItems.length;
@@ -245,7 +264,7 @@ export default function SkipTracerPage() {
                   <label className="block text-[9px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">
                     Full Name
                   </label>
-                  <input
+                  <input id="ff-skiptracerpage-0"
                     type="text"
                     value={nameQuery}
                     onChange={(e) => setNameQuery(e.target.value)}
@@ -262,7 +281,7 @@ export default function SkipTracerPage() {
                   <label className="block text-[9px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">
                     Address
                   </label>
-                  <input
+                  <input id="ff-skiptracerpage-1"
                     type="text"
                     value={addressQuery}
                     onChange={(e) => setAddressQuery(e.target.value)}
@@ -279,7 +298,7 @@ export default function SkipTracerPage() {
                   <label className="block text-[9px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">
                     Phone Number
                   </label>
-                  <input
+                  <input id="ff-skiptracerpage-2"
                     type="text"
                     value={phoneQuery}
                     onChange={(e) => setPhoneQuery(e.target.value)}
@@ -296,7 +315,7 @@ export default function SkipTracerPage() {
                   <label className="block text-[9px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">
                     Email Address
                   </label>
-                  <input
+                  <input id="ff-skiptracerpage-3"
                     type="text"
                     value={emailQuery}
                     onChange={(e) => setEmailQuery(e.target.value)}
@@ -397,6 +416,7 @@ export default function SkipTracerPage() {
                   <button type="button"
                     key={idx}
                     onClick={() => setSelected(person)}
+                    onContextMenu={(e) => openMenu(e, buildResultMenu(person))}
                     className={`w-full text-left px-3 py-2 border-b border-rmpg-800 transition-all ${
                       isActive
                         ? 'bg-gray-900/20 border-l-2 border-l-gray-500'

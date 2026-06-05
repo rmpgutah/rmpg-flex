@@ -88,7 +88,7 @@ export default function IncidentPicker({ selectedId, onSelect, visibleLimit = 12
       <div className="px-3 py-2 border-b border-[#222]">
         <div className="relative">
           <Search className="w-3.5 h-3.5 absolute left-2 top-1/2 -translate-y-1/2 text-[#666]" />
-          <input
+          <input id="ff-incidentpicker-0"
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}

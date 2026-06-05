@@ -23,7 +23,14 @@ const reports = new Hono<Env>();
 
 const ANALYTICS_ROLES = ['admin', 'manager', 'supervisor'];
 
-reports.use('*', requireRole(...ANALYTICS_ROLES));
+// All /reports/* routes are org-wide rollups → elevated roles only, EXCEPT
+// /shift-activity/:officerId, which is an officer's own end-of-shift report
+// (an officer must be able to pull it from the MDT). That route authorizes
+// self-or-elevated access inside its own handler.
+reports.use('*', async (c, next) => {
+  if (c.req.path.includes('/shift-activity/')) return next();
+  return requireRole(...ANALYTICS_ROLES)(c, next);
+});
 
 function clampDays(raw: string | undefined, fallback: number): number {
   const n = Number.parseInt(raw ?? '', 10);
@@ -317,5 +324,114 @@ reports.get('/statute-analytics', async (c) => {
 // (arrived_at - dispatched_at) is a Phase 2 port — see the
 // calls_for_service status-timestamp columns. Return [] until then.
 reports.get('/response-times', (c) => c.json([]));
+
+// GET /api/reports/command-center — live ops KPI roll-up for CommandCenterPage.
+// The page reads data.kpis.* UNGUARDED, so kpis must always be a present object.
+// Each metric is computed independently and falls back to 0 on any schema drift,
+// so a single bad column can never 500 the whole block. Legacy had no handler
+// (live sweep 2026-06-02 → 404).
+reports.get('/command-center', async (c) => {
+  const db = getDb(c.env);
+  const one = async (sql: string): Promise<number> => {
+    try { const r = await queryFirst<{ n: number }>(db, sql); return r?.n ?? 0; } catch { return 0; }
+  };
+  const list = async <T = Record<string, unknown>>(sql: string): Promise<T[]> => {
+    try { return (await query<T>(db, sql)) || []; } catch { return []; }
+  };
+
+  const kpis = {
+    calls_today: await one("SELECT COUNT(*) AS n FROM calls_for_service WHERE date(created_at) = date('now','localtime')"),
+    active_calls: await one("SELECT COUNT(*) AS n FROM calls_for_service WHERE COALESCE(status,'') NOT IN ('cleared','closed','cancelled','archived','completed')"),
+    avg_response_min: 0,
+    units_available: await one("SELECT COUNT(*) AS n FROM units WHERE status = 'available'"),
+    units_total: await one('SELECT COUNT(*) AS n FROM units'),
+    active_bolos: await one("SELECT COUNT(*) AS n FROM bolos WHERE status = 'active'"),
+    anomaly_alerts: await one("SELECT COUNT(*) AS n FROM anomaly_alerts WHERE COALESCE(acknowledged, 0) = 0"),
+  };
+
+  const active_calls = await list(
+    "SELECT id, call_number, call_type, priority, status, address, created_at FROM calls_for_service WHERE COALESCE(status,'') NOT IN ('cleared','closed','cancelled','archived','completed') ORDER BY created_at DESC LIMIT 50",
+  );
+  const units = await list('SELECT id, unit_number, status, current_call_number FROM units ORDER BY unit_number LIMIT 200');
+  const calls_by_hour = await list(
+    "SELECT strftime('%H', created_at) AS hour, COUNT(*) AS count FROM calls_for_service WHERE date(created_at) = date('now','localtime') GROUP BY strftime('%H', created_at) ORDER BY hour",
+  );
+  const anomaly_alerts = await list('SELECT * FROM anomaly_alerts WHERE COALESCE(acknowledged, 0) = 0 ORDER BY created_at DESC LIMIT 20');
+
+  return c.json({ kpis, active_calls, units, calls_by_hour, anomaly_alerts });
+});
+
+// GET /api/reports/shift-activity/:officerId?date=YYYY-MM-DD
+// Officer end-of-shift report (MDT "Generate End-of-Shift Report"). Returns the
+// EXACT shape MdtPage consumes: officer, date, calls[], incidents[], scans[],
+// citations[], fieldInterviews[], and a summary of counts. Self-or-elevated
+// access (this route is exempted from the org-wide gate above). All referenced
+// columns verified present on live D1 (calls_for_service, incidents,
+// patrol_scans+patrol_checkpoints, citations, field_interviews all key on
+// officer_id / created_at; field_interviews has subject_first/last_name +
+// contact_reason — NOT subject_name/reason).
+reports.get('/shift-activity/:officerId', async (c) => {
+  const officerId = c.req.param('officerId');
+  const date = c.req.query('date') || new Date().toISOString().slice(0, 10);
+  const actor = c.get('user') as { id: number; role: string } | undefined;
+  const elevated = !!actor && ['admin', 'manager', 'supervisor', 'dispatcher'].includes(actor.role);
+  if (!actor || (!elevated && String(actor.id) !== String(officerId))) {
+    return c.json({ error: 'Forbidden', code: 'NOT_SELF_OR_ELEVATED' }, 403);
+  }
+  try {
+    const db = getDb(c.env);
+    const officer = await queryFirst<Record<string, unknown>>(
+      db, 'SELECT id, full_name, badge_number, email, role FROM users WHERE id = ?', officerId);
+    if (!officer) return c.json({ error: 'Officer not found', code: 'OFFICER_NOT_FOUND' }, 404);
+
+    // Resolve the officer's unit so calls assigned to that unit are attributed.
+    const unit = await queryFirst<{ id: number }>(db, 'SELECT id FROM units WHERE officer_id = ? LIMIT 1', officerId);
+    const unitId = unit?.id != null ? String(unit.id) : ' '; // sentinel that never matches
+
+    const safeList = async <T = Record<string, unknown>>(sql: string, ...params: unknown[]): Promise<T[]> => {
+      try { return (await query<T>(db, sql, ...params)) || []; } catch (e) { console.error('shift-activity sub-query failed:', e); return []; }
+    };
+
+    const calls = await safeList(
+      `SELECT id, call_number, incident_type, priority, status, location_address, created_at
+       FROM calls_for_service
+       WHERE date(created_at) = ?
+         AND (dispatcher_id = ? OR reporting_officer_id = ? OR assigned_unit_ids LIKE ?)
+       ORDER BY created_at ASC LIMIT 1000`, date, officerId, officerId, `%${unitId}%`);
+    const incidents = await safeList(
+      `SELECT id, incident_number, incident_type, priority, status, location_address, narrative, created_at
+       FROM incidents WHERE date(created_at) = ? AND officer_id = ?
+       ORDER BY created_at ASC LIMIT 1000`, date, officerId);
+    const scans = await safeList(
+      `SELECT ps.id, ps.scanned_at, ps.status, pc.name AS checkpoint_name
+       FROM patrol_scans ps LEFT JOIN patrol_checkpoints pc ON pc.id = ps.checkpoint_id
+       WHERE date(ps.scanned_at) = ? AND ps.officer_id = ?
+       ORDER BY ps.scanned_at ASC LIMIT 1000`, date, officerId);
+    const citations = await safeList(
+      `SELECT id, citation_number, violation_description, location, status, created_at
+       FROM citations WHERE date(created_at) = ? AND (officer_id = ? OR issuing_officer_id = ?)
+       ORDER BY created_at ASC LIMIT 1000`, date, officerId, officerId);
+    const fieldInterviews = await safeList(
+      `SELECT id, fi_number,
+              TRIM(COALESCE(subject_first_name,'') || ' ' || COALESCE(subject_last_name,'')) AS subject_name,
+              location, contact_reason, created_at
+       FROM field_interviews WHERE date(created_at) = ? AND officer_id = ?
+       ORDER BY created_at ASC LIMIT 1000`, date, officerId);
+
+    return c.json({
+      officer, date, calls, incidents, scans, citations, fieldInterviews,
+      summary: {
+        totalCalls: calls.length,
+        totalIncidents: incidents.length,
+        totalScans: scans.length,
+        totalCitations: citations.length,
+        totalFieldInterviews: fieldInterviews.length,
+      },
+    });
+  } catch (err) {
+    console.error('GET /reports/shift-activity failed:', err);
+    return c.json({ error: 'Failed to build shift report', code: 'SHIFT_ACTIVITY_ERROR' }, 500);
+  }
+});
 
 export default reports;

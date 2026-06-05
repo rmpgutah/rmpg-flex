@@ -22,16 +22,18 @@ import { useToast } from '../ToastProvider';
 import type { PipelineSummary, PipelineStage } from '../../types';
 
 // ── Types ─────────────────────────────────────────────────
+// Worker /crm/reports/revenue returns accepted-proposal value per month —
+// a single series, NOT an invoiced-vs-paid split (that data doesn't exist).
 interface RevenueRow {
   month: string;
-  invoiced: number;
-  paid: number;
+  total: number;
 }
 
+// Worker /crm/reports/retention returns clients grouped BY STATUS, not a
+// monthly active/inactive time series.
 interface RetentionRow {
-  month: string;
-  active: number;
-  inactive: number;
+  status: string;
+  count: number;
 }
 
 interface LeadSourceROI {
@@ -102,13 +104,26 @@ export default function ReportsTab() {
         apiFetch<RevenueRow[]>('/crm/reports/revenue'),
         apiFetch<{ stages: PipelineSummary[] }>('/crm/reports/pipeline'),
         apiFetch<RetentionRow[]>('/crm/reports/retention'),
-        apiFetch<LeadSourceROI[]>('/crm/reports/lead-source-roi'),
+        apiFetch<Array<{ source: string; leads: number; won: number; pipeline_value: number }>>('/crm/reports/lead-source-roi'),
       ]);
       if (m) setMetrics(m);
-      if (rev) setRevenue(rev);
+      if (rev) setRevenue(Array.isArray(rev) ? rev : []);
       if (pip) setPipeline(Array.isArray(pip) ? pip : pip.stages || []);
-      if (ret) setRetention(ret);
-      if (roi) setLeadSourceROI(roi.sort((a, b) => b.conversion_rate - a.conversion_rate));
+      if (ret) setRetention(Array.isArray(ret) ? ret : []);
+      if (Array.isArray(roi)) {
+        // Worker returns { source, leads, won, pipeline_value } — derive the
+        // table's display fields (conversion = won/leads). Reading row.conversion_rate
+        // raw was undefined → .toFixed(1) crashed the entire CRM Reports tab.
+        const mapped: LeadSourceROI[] = roi.map((r) => ({
+          source: r.source,
+          total: r.leads ?? 0,
+          won: r.won ?? 0,
+          lost: Math.max((r.leads ?? 0) - (r.won ?? 0), 0),
+          conversion_rate: r.leads > 0 ? (r.won / r.leads) * 100 : 0,
+          total_won_value: r.pipeline_value ?? 0,
+        }));
+        setLeadSourceROI(mapped.sort((a, b) => b.conversion_rate - a.conversion_rate));
+      }
     } catch {
       addToast('Failed to load reports', 'error');
     } finally {
@@ -127,9 +142,9 @@ export default function ReportsTab() {
   }
 
   // ── Computed values for charts ───────────────────────
-  const maxRevenue = revenue.length > 0 ? Math.max(...revenue.map(r => Math.max(r.invoiced, r.paid)), 1) : 1;
+  const maxRevenue = revenue.length > 0 ? Math.max(...revenue.map(r => r.total), 1) : 1;
   const pipelineTotal = pipeline.reduce((s, p) => s + p.count, 0);
-  const maxRetention = retention.length > 0 ? Math.max(...retention.map(r => Math.max(r.active, r.inactive)), 1) : 1;
+  const maxRetention = retention.length > 0 ? Math.max(...retention.map(r => r.count), 1) : 1;
 
   return (
     <div className="overflow-y-auto p-3 space-y-4">
@@ -189,22 +204,15 @@ export default function ReportsTab() {
             <DollarSign className="w-3.5 h-3.5" /> Monthly Revenue
           </div>
           <div className="flex items-center gap-3 mb-2 text-[10px]">
-            <div className="flex items-center gap-1"><span className="w-3 h-2 bg-gray-500 rounded-sm" /> Invoiced</div>
-            <div className="flex items-center gap-1"><span className="w-3 h-2 bg-green-500 rounded-sm" /> Paid</div>
+            <div className="flex items-center gap-1"><span className="w-3 h-2 bg-green-500 rounded-sm" /> Accepted proposal value</div>
           </div>
           <div className="space-y-1.5">
             {revenue.map(row => (
               <div key={row.month} className="flex items-center gap-2">
                 <div className="w-16 text-[10px] text-rmpg-400 text-right font-mono shrink-0">{row.month}</div>
-                <div className="flex-1 space-y-0.5">
-                  <div className="flex items-center gap-1">
-                    <div className="h-3 bg-gray-500/70 rounded-sm transition-all" style={{ width: `${(row.invoiced / maxRevenue) * 100}%`, minWidth: row.invoiced > 0 ? '2px' : 0 }} />
-                    <span className="text-[10px] text-rmpg-400 font-mono shrink-0">{formatCurrency(row.invoiced)}</span>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <div className="h-3 bg-green-500/70 rounded-sm transition-all" style={{ width: `${(row.paid / maxRevenue) * 100}%`, minWidth: row.paid > 0 ? '2px' : 0 }} />
-                    <span className="text-[10px] text-rmpg-400 font-mono shrink-0">{formatCurrency(row.paid)}</span>
-                  </div>
+                <div className="flex-1 flex items-center gap-1">
+                  <div className="h-3 bg-green-500/70 rounded-sm transition-all" style={{ width: `${(row.total / maxRevenue) * 100}%`, minWidth: row.total > 0 ? '2px' : 0 }} />
+                  <span className="text-[10px] text-rmpg-400 font-mono shrink-0">{formatCurrency(row.total)}</span>
                 </div>
               </div>
             ))}
@@ -279,9 +287,9 @@ export default function ReportsTab() {
                   <td className="px-2 py-1.5 text-right">
                     <div className="flex items-center justify-end gap-1">
                       <div className="w-12 h-1.5 bg-rmpg-800 rounded-sm overflow-hidden">
-                        <div className="h-full bg-brand-500 rounded-sm" style={{ width: `${Math.min(row.conversion_rate, 100)}%` }} />
+                        <div className="h-full bg-brand-500 rounded-sm" style={{ width: `${Math.min(row.conversion_rate ?? 0, 100)}%` }} />
                       </div>
-                      <span className="text-xs text-rmpg-300 font-mono w-10 text-right">{row.conversion_rate.toFixed(1)}%</span>
+                      <span className="text-xs text-rmpg-300 font-mono w-10 text-right">{(row.conversion_rate ?? 0).toFixed(1)}%</span>
                     </div>
                   </td>
                   <td className="px-2 py-1.5 text-xs text-green-400 text-right font-mono">{formatCurrency(row.total_won_value)}</td>
@@ -298,25 +306,15 @@ export default function ReportsTab() {
       {retention.length > 0 && (
         <div className="panel-beveled p-3">
           <div className="text-[10px] text-rmpg-400 uppercase tracking-wider mb-3 flex items-center gap-1">
-            <Users className="w-3.5 h-3.5" /> Client Retention
-          </div>
-          <div className="flex items-center gap-3 mb-2 text-[10px]">
-            <div className="flex items-center gap-1"><span className="w-3 h-2 bg-green-500 rounded-sm" /> Active</div>
-            <div className="flex items-center gap-1"><span className="w-3 h-2 bg-red-500/60 rounded-sm" /> Inactive</div>
+            <Users className="w-3.5 h-3.5" /> Clients by Status
           </div>
           <div className="space-y-1.5">
             {retention.map(row => (
-              <div key={row.month} className="flex items-center gap-2">
-                <div className="w-16 text-[10px] text-rmpg-400 text-right font-mono shrink-0">{row.month}</div>
-                <div className="flex-1 space-y-0.5">
-                  <div className="flex items-center gap-1">
-                    <div className="h-3 bg-green-500/70 rounded-sm transition-all" style={{ width: `${(row.active / maxRetention) * 100}%`, minWidth: row.active > 0 ? '2px' : 0 }} />
-                    <span className="text-[10px] text-rmpg-400 font-mono shrink-0">{row.active}</span>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    <div className="h-3 bg-red-500/50 rounded-sm transition-all" style={{ width: `${(row.inactive / maxRetention) * 100}%`, minWidth: row.inactive > 0 ? '2px' : 0 }} />
-                    <span className="text-[10px] text-rmpg-400 font-mono shrink-0">{row.inactive}</span>
-                  </div>
+              <div key={row.status} className="flex items-center gap-2">
+                <div className="w-20 text-[10px] text-rmpg-400 text-right font-mono shrink-0">{toDisplayLabel(row.status || 'unknown')}</div>
+                <div className="flex-1 flex items-center gap-1">
+                  <div className="h-3 bg-green-500/70 rounded-sm transition-all" style={{ width: `${(row.count / maxRetention) * 100}%`, minWidth: row.count > 0 ? '2px' : 0 }} />
+                  <span className="text-[10px] text-rmpg-400 font-mono shrink-0">{row.count}</span>
                 </div>
               </div>
             ))}

@@ -95,7 +95,7 @@ export default function SettingsTab({ theme, onTheme, fontScale, onFontScale }: 
           <SettingCheckbox label="Sound on new transmission" checked={soundEnabled} onChange={setSoundEnabled} />
           <SettingRow label="Notification sound">
             <div className="flex items-center gap-2">
-              <select value={notifSound} onChange={(e) => setNotifSound(e.target.value)}
+              <select id="ff-settingstab-0" value={notifSound} onChange={(e) => setNotifSound(e.target.value)}
                 aria-label="Notification sound"
                 className="bg-transparent text-[10px] font-mono outline-none cursor-pointer"
                 style={{ color: 'var(--rt-text)', border: '1px solid var(--rt-border)', padding: '2px 6px' }}>
@@ -113,13 +113,13 @@ export default function SettingsTab({ theme, onTheme, fontScale, onFontScale }: 
             During quiet hours, sounds are suppressed but transmissions still appear in the log.
           </p>
           <SettingRow label="Start">
-            <input type="time" value={quietStart} onChange={(e) => setQuietStart(e.target.value)}
+            <input id="ff-settingstab-1" type="time" value={quietStart} onChange={(e) => setQuietStart(e.target.value)}
               aria-label="Quiet hours start"
               className="bg-transparent text-[10px] font-mono outline-none"
               style={{ color: 'var(--rt-text)', border: '1px solid var(--rt-border)', padding: '2px 6px' }} />
           </SettingRow>
           <SettingRow label="End">
-            <input type="time" value={quietEnd} onChange={(e) => setQuietEnd(e.target.value)}
+            <input id="ff-settingstab-2" type="time" value={quietEnd} onChange={(e) => setQuietEnd(e.target.value)}
               aria-label="Quiet hours end"
               className="bg-transparent text-[10px] font-mono outline-none"
               style={{ color: 'var(--rt-text)', border: '1px solid var(--rt-border)', padding: '2px 6px' }} />

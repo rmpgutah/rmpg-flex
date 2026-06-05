@@ -4,7 +4,9 @@ import PanelTitleBar from '../components/PanelTitleBar';
 import DataTable from '../components/DataTable';
 import StatsCard from '../components/StatsCard';
 import { useToast } from '../components/ToastProvider';
-import { Share2, Building2, FileText, ArrowRightLeft, Plus, Pencil, Trash2 } from 'lucide-react';
+import { useMenuActions } from '../utils/contextMenuActions';
+import type { ContextMenuItem } from '../context/ContextMenuContext';
+import { Share2, Building2, FileText, ArrowRightLeft, Plus, Pencil, Trash2, Eye } from 'lucide-react';
 
 export default function InteragencyPage() {
   const [partners, setPartners] = useState<Record<string, any>[]>([]);
@@ -17,15 +19,18 @@ export default function InteragencyPage() {
   const [formData, setFormData] = useState<Record<string, any>>({});
   const [submitting, setSubmitting] = useState(false);
   const [deleteId, setDeleteId] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const { addToast } = useToast();
+  const m = useMenuActions();
 
   const fetchData = useCallback(async () => {
     try {
+      setError(null);
       const r = await apiFetch<{ data: Record<string, any>[] }>('/interagency/partners');
       setPartners(r.data || []);
       const s = await apiFetch<{ partners: number; active_agreements: number; total_exchanges: number }>('/interagency/stats');
       setStats(s);
-    } catch { /* */ }
+    } catch { setError("Failed to load data"); }
   }, []);
 
   useEffect(() => { fetchData().finally(() => setLoading(false)); }, [fetchData]);
@@ -66,6 +71,7 @@ export default function InteragencyPage() {
   return (
     <div className="p-4 space-y-4">
       <PanelTitleBar title="INTERAGENCY DATA SHARING" icon={Share2}>
+      {error && <div className="border border-red-700/40 bg-red-900/20 text-red-400 text-[11px] px-3 py-2 mb-3" role="alert">{error}</div>}
         <button onClick={openNew} className="toolbar-btn flex items-center gap-1.5" style={{ height: 28, padding: '0 10px' }}><Plus size={13} /> New Partner</button>
       </PanelTitleBar>
       <div className="grid grid-cols-3 gap-3">
@@ -73,30 +79,42 @@ export default function InteragencyPage() {
         <StatsCard icon={FileText} label="Active Agreements" value={stats.active_agreements} />
         <StatsCard icon={ArrowRightLeft} label="Data Exchanges" value={stats.total_exchanges} />
       </div>
-      <DataTable columns={columns} data={partners} emptyMessage="No interagency partners found" onRowClick={(row) => openEdit(row)} />
+      <DataTable
+        columns={columns}
+        data={partners}
+        emptyMessage="No interagency partners found"
+        onRowClick={(row) => openEdit(row)}
+        rowContextMenu={(row): ContextMenuItem[] => [
+          m.action('Open', () => openEdit(row), { icon: <Eye size={12} /> }),
+          m.action('Edit', () => openEdit(row), { icon: <Pencil size={12} /> }),
+          m.separator(),
+          m.copyId(row.id),
+          m.action('Delete', () => setDeleteId(row.id), { danger: true, icon: <Trash2 size={12} /> }),
+        ]}
+      />
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={closeForm}>
           <div className="bg-surface-raised border border-[#333] p-6 max-w-lg w-full" style={{ borderRadius: 2 }} onClick={e => e.stopPropagation()}>
             <h3 className="text-sm font-bold text-white mb-4">{editingRecord ? 'Edit Partner' : 'New Partner'}</h3>
             <div className="space-y-3">
               <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Agency Name <span className="text-red-500">*</span></label>
-                <input className="input-dark mt-1" value={formData.agency_name || ''} onChange={e => setFormData({...formData, agency_name: e.target.value})} autoFocus /></div>
+                <input id="ff-interagencypage-0" className="input-dark mt-1" value={formData.agency_name || ''} onChange={e => setFormData({...formData, agency_name: e.target.value})} autoFocus /></div>
               <div className="grid grid-cols-2 gap-3">
                 <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Type</label>
-                  <input className="input-dark mt-1" value={formData.agency_type || ''} onChange={e => setFormData({...formData, agency_type: e.target.value})} placeholder="e.g. PD, Sheriff" /></div>
+                  <input id="ff-interagencypage-1" className="input-dark mt-1" value={formData.agency_type || ''} onChange={e => setFormData({...formData, agency_type: e.target.value})} placeholder="e.g. PD, Sheriff" /></div>
                 <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Jurisdiction</label>
-                  <input className="input-dark mt-1" value={formData.jurisdiction || ''} onChange={e => setFormData({...formData, jurisdiction: e.target.value})} /></div>
+                  <input id="ff-interagencypage-2" className="input-dark mt-1" value={formData.jurisdiction || ''} onChange={e => setFormData({...formData, jurisdiction: e.target.value})} /></div>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Contact Name</label>
-                  <input className="input-dark mt-1" value={formData.contact_name || ''} onChange={e => setFormData({...formData, contact_name: e.target.value})} /></div>
+                  <input id="ff-interagencypage-3" className="input-dark mt-1" value={formData.contact_name || ''} onChange={e => setFormData({...formData, contact_name: e.target.value})} /></div>
                 <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Contact Email</label>
-                  <input className="input-dark mt-1" value={formData.contact_email || ''} onChange={e => setFormData({...formData, contact_email: e.target.value})} /></div>
+                  <input id="ff-interagencypage-4" className="input-dark mt-1" value={formData.contact_email || ''} onChange={e => setFormData({...formData, contact_email: e.target.value})} /></div>
               </div>
               <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Phone</label>
-                <input className="input-dark mt-1" value={formData.contact_phone || ''} onChange={e => setFormData({...formData, contact_phone: e.target.value})} /></div>
+                <input id="ff-interagencypage-5" className="input-dark mt-1" value={formData.contact_phone || ''} onChange={e => setFormData({...formData, contact_phone: e.target.value})} /></div>
               <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Share Level</label>
-                <select className="select-dark mt-1" value={formData.data_share_level || 'none'} onChange={e => setFormData({...formData, data_share_level: e.target.value})}>
+                <select id="ff-interagencypage-6" className="select-dark mt-1" value={formData.data_share_level || 'none'} onChange={e => setFormData({...formData, data_share_level: e.target.value})}>
                   {['none','basic','partial','full'].map(l=><option key={l} value={l}>{l}</option>)}
                 </select></div>
             </div>

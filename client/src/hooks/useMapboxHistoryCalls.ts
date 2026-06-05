@@ -6,6 +6,7 @@ import { parseTimestamp } from '../utils/dateUtils';
 import type mapboxgl from 'mapbox-gl';
 import { apiFetch } from './useApi';
 import { whenStyleReady } from '../pages/map/utils/safeAddSource';
+import { hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
 
 interface HistoryCall {
   id: number;
@@ -53,10 +54,10 @@ export function useMapboxHistoryCalls(map: mapboxgl.Map | null) {
     visibleRef.current = false;
     try {
       [CIRCLE_LAYER_ID, LABEL_LAYER_ID].forEach((id) => {
-        if (map.getLayer(id)) map.removeLayer(id);
+        safeRemoveLayer(map, id);
       });
       [CIRCLE_SOURCE_ID, LABEL_SOURCE_ID].forEach((id) => {
-        if (map.getSource(id)) map.removeSource(id);
+        safeRemoveSource(map, id);
       });
     } catch { /* ignore */ }
   }, [map]);

@@ -24,6 +24,46 @@ export function isUnincorporatedBeat(props: any): boolean {
   return String(props?.beat_code || '').endsWith('-UNINC');
 }
 
+// Six towns share a city_code with a same-prefix sibling in beat.geojson
+// (Midway/Millcreek both "MI2", etc.). The live DB resolves the clash by giving
+// the SECOND town its own zone, coded "<city_code>-<county_nbr>". The geojson
+// only carries the shared city_code, so we remap by the (unique) city NAME to
+// the real DB zone_code those reparented beats live under. MUST stay in sync
+// with src/utils/geofence.ts (the server geofence) — without this the client
+// map would resolve a Midway click to Millcreek, exactly the bug the server
+// already fixes. (See [[project-geography-geofence-pipeline]].)
+const ZONE_CODE_BY_CITY: Record<string, string> = {
+  Midway: 'MI2-26',     // Wasatch County
+  Marysvale: 'MA2-16',  // Piute County
+  Mona: 'MO2-12',       // Juab County
+  Richfield: 'RI2-21',  // Sevier County
+  Salina: 'SA2-21',     // Sevier County
+  Cleveland: 'CL2-08',  // Emery County
+};
+
+// The geojson city for a county catch-all reads "Salt Lake Co. Unincorp.";
+// the DB zone_name is the terse code form "SLC Unincorporated". Neither is
+// great in a popup, so we compose a readable label.
+//
+// We prefer the geojson `city` over the DB sector_name on purpose: the geojson
+// is the authoritative, per-polygon source of WHICH county a catch-all covers
+// (it's the same file the server geofence ray-casts), whereas dispatch_zones
+// can drift (e.g. the WSH zone was mis-filed under Washington County when the
+// WSH polygon is actually Wasatch). The DB sector_name is the fallback for the
+// rare polygon whose `city` is missing.
+export function unincorporatedZoneName(props: any, sectorName?: string): string {
+  const city = String(props?.city || '').trim();
+  if (city) {
+    const expanded = city
+      .replace(/\bCo\.\s*Unincorp\.?/i, 'County Unincorporated')
+      .replace(/\bUnincorp\.?$/i, 'Unincorporated')
+      .trim();
+    if (expanded) return expanded;
+  }
+  if (sectorName && sectorName.trim()) return `${sectorName.trim()} Unincorporated`;
+  return 'Unincorporated';
+}
+
 /** Best beat feature at a point: incorporated city beat over the UNINC catch-all. */
 export function findBeatAt(features: any[], lng: number, lat: number): any | null {
   if (!Array.isArray(features)) return null;
@@ -84,17 +124,30 @@ export function getTaggedBeats(): Promise<any> {
       }
       const features = (beatJson.features || []).map((f: any) => {
         const p = f.properties || {};
-        const city = p.city_code != null ? String(p.city_code) : '';
-        const info = zoneInfo.get(city) || {};
-        const zone = city || 'UNK';
+        const cityCode = p.city_code != null ? String(p.city_code) : '';
+        // Resolve the DB zone_code the way the server geofence does: honor the
+        // reparented-town override (by city name) before falling back to the
+        // raw geojson city_code. This is what splits Midway from Millcreek and
+        // makes a click resolve to the correct zone instead of its sibling.
+        const zoneCode = (p.city && ZONE_CODE_BY_CITY[String(p.city)]) || cityCode;
+        const info = zoneInfo.get(zoneCode) || {};
+        const uninc = isUnincorporatedBeat(p);
+        // Group/color by the RESOLVED zone code so reparented towns and the
+        // unincorporated catch-alls render (and aggregate in the choropleth) as
+        // their own zone rather than collapsing into a same-coded neighbor.
+        const zone = zoneCode || 'UNK';
         const section = info.sectorId || 'UNASSIGNED';
         const area = info.areaCode || 'UNASSIGNED';
+        const zoneName = uninc
+          ? unincorporatedZoneName(p, info.sectorName)
+          : (info.zoneName || p.city || cityCode || '—');
         return {
           ...f,
           properties: {
             ...p,
+            _uninc: uninc,
             _zone: zone,
-            _zoneName: info.zoneName || p.city || city,
+            _zoneName: zoneName,
             _zoneColor: getCityColor(zone),
             _section: section,
             _sectionName: info.sectorName || (section === 'UNASSIGNED' ? 'Unassigned' : section),

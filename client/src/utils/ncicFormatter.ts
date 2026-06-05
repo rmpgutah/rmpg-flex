@@ -242,8 +242,11 @@ export function formatPersonResponse(
   }
 
   // ── Caution flags
-  const gangReal = person.gang_affiliation && !['none', '0', 'n/a', 'na', ''].includes(person.gang_affiliation.toLowerCase().trim());
-  if (person.caution_flags || person.is_sex_offender || gangReal) {
+  // Sentinel-aware: live text cols store "None"/"0"/"N/A" not NULL, so naive
+  // truthiness on caution_flags/is_sex_offender fires a false CAUTION banner.
+  const isReal = (v: unknown) => v != null && !['none', '0', 'n/a', 'na', 'false', 'no', ''].includes(String(v).toLowerCase().trim());
+  const gangReal = isReal(person.gang_affiliation);
+  if (isReal(person.caution_flags) || isReal(person.is_sex_offender) || gangReal) {
     lines.push('');
     lines.push('  *** CAUTION ***');
     if (person.caution_flags) {
@@ -757,7 +760,7 @@ export function formatCrossReferenceResponse(results: CrossReferenceResults, sea
         lines.push(`  *** ${r.warrants.length} ACTIVE WARRANT(S) ***`);
         for (const w of r.warrants) {
           lines.push(`    OCA/${pad(w.warrant_number, 15)} CHG/${(w.charge_description || w.type || '').toUpperCase()}`);
-          lines.push(`    OFL/${pad(w.offense_level, 3)}  BAL/${w.bail_amount ? `$${Number(w.bail_amount).toLocaleString()}` : 'N/A'}`);
+          lines.push(`    OFL/${pad(w.offense_level, 3)}  BAL/${w.bail_amount && Number.isFinite(Number(w.bail_amount)) ? `$${Number(w.bail_amount).toLocaleString()}` : 'N/A'}`);
         }
       }
       lines.push('');

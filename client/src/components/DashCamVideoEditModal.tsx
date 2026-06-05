@@ -107,7 +107,7 @@ export default function DashCamVideoEditModal({ isOpen, onClose, onSave, video, 
       {/* Title */}
       <div>
         <label className="field-label mb-1 block">Title *</label>
-        <input
+        <input id="ff-dashcamvideoeditmodal-0"
           type="text"
           className="input-dark"
           value={form.title}
@@ -120,7 +120,7 @@ export default function DashCamVideoEditModal({ isOpen, onClose, onSave, video, 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label className="field-label mb-1 block">Classification</label>
-          <select
+          <select id="ff-dashcamvideoeditmodal-1"
             className="select-dark"
             value={form.classification}
             onChange={e => set('classification', e.target.value)}
@@ -132,7 +132,7 @@ export default function DashCamVideoEditModal({ isOpen, onClose, onSave, video, 
         </div>
         <div>
           <label className="field-label mb-1 block">Case Number</label>
-          <input
+          <input id="ff-dashcamvideoeditmodal-2"
             type="text"
             className="input-dark"
             value={form.case_number}
@@ -146,7 +146,7 @@ export default function DashCamVideoEditModal({ isOpen, onClose, onSave, video, 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label className="field-label mb-1 block">Speed (MPH)</label>
-          <input
+          <input id="ff-dashcamvideoeditmodal-3"
             type="number"
             className="input-dark"
             value={form.speed_mph}
@@ -178,7 +178,7 @@ export default function DashCamVideoEditModal({ isOpen, onClose, onSave, video, 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label className="field-label mb-1 block">Latitude</label>
-          <input
+          <input id="ff-dashcamvideoeditmodal-4"
             type="number"
             className="input-dark"
             value={form.latitude}
@@ -189,7 +189,7 @@ export default function DashCamVideoEditModal({ isOpen, onClose, onSave, video, 
         </div>
         <div>
           <label className="field-label mb-1 block">Longitude</label>
-          <input
+          <input id="ff-dashcamvideoeditmodal-5"
             type="number"
             className="input-dark"
             value={form.longitude}

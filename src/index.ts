@@ -21,20 +21,22 @@ import { logger } from 'hono/logger';
 import { secureHeaders } from 'hono/secure-headers';
 import { authMiddleware } from './middleware/auth';
 import { handleWebSocket, sendToUser, broadcastAll } from './routes/ws';
+import { emitAlert } from './utils/alertHub';
 import { WelfareWatchDO } from './durable-objects/WelfareWatchDO';
 import { VoiceHubDO } from './durable-objects/VoiceHubDO';
+import { AlertHubDO } from './durable-objects/AlertHubDO';
 import { PdfToolsContainer } from './containers/pdfToolsContainer';
-import { runUtahWarrantScan } from './utils/utahWarrantPoller';
+import { runAllSourceScans } from './utils/warrantSources/runScan';
 import { detectDispatchAnomalies } from './routes/dispatch/anomalies';
 import { getRadioSettings, purgeOldRecordings } from './utils/radioSettings';
-import { syncAllVehicleGpsMileage } from './routes/fleet';
+import { sweepTrips } from './utils/tripStore';
 import type { Bindings, Variables } from './types';
 import { ROUTE_REGISTRY } from './routesConfig';
 
 // Export Durable Object classes so wrangler can find them at build time.
 // The Container subclass extends DurableObject and is configured by
 // [[containers]] + [[durable_objects.bindings]] in wrangler.toml.
-export { WelfareWatchDO, VoiceHubDO, PdfToolsContainer };
+export { WelfareWatchDO, VoiceHubDO, AlertHubDO, PdfToolsContainer };
 
 // Exported so sub-routers that need to dispatch internal subrequests
 // (e.g. src/routes/offline.ts replaying queued offline writes through
@@ -188,17 +190,39 @@ app.post('/__welfare-fire', async (c) => {
   }
   const { stage, watch } = await c.req.json<{ stage: 'prompt' | 'alert' | 'emergency'; watch: any }>();
   if (stage === 'prompt') {
-    sendToUser(watch.user_id, 'welfare_check', {
+    // Targeted to ONE officer's MDT — deliver via AlertHubDO with a
+    // target_user_id (WelfareCheckModal + the voice hook filter on it). The old
+    // sendToUser was per-isolate-dead, so the welfare-check prompt reached the
+    // officer never; a naive broadcast would pop the takeover on every console.
+    await emitAlert(c.env, 'welfare_check', {
       action: 'welfare_prompt',
+      target_user_id: watch.user_id,
       callSign: watch.call_sign,
       callId: watch.call_id,
       callNumber: watch.call_number,
       message: `Welfare check: ${watch.call_sign || 'unit'}, are you code 4${watch.call_number ? ` on call ${watch.call_number}` : ''}?`,
     });
   } else if (stage === 'alert') {
-    broadcastAll('dispatch_update', { action: 'welfare_alert', user_id: watch.user_id, call_sign: watch.call_sign, at: new Date().toISOString() });
+    // Deliver via AlertHubDO under the DISCRETE 'welfare_alert' type the client's
+    // voice-alert hook subscribes to. The old broadcastAll('dispatch_update',…)
+    // was double-dead: wrong type (client subscribes to 'welfare_alert', not a
+    // dispatch_update action) AND per-isolate (the live /api/ws is on legacy).
+    await emitAlert(c.env, 'welfare_alert', {
+      user_id: watch.user_id, call_sign: watch.call_sign,
+      message: `Officer welfare alert — ${watch.call_sign || 'unit'} has not acknowledged a welfare check.`,
+      at: new Date().toISOString(),
+    });
   } else if (stage === 'emergency') {
-    broadcastAll('dispatch_update', { action: 'welfare_emergency', user_id: watch.user_id, call_sign: watch.call_sign, call_id: watch.call_id, call_number: watch.call_number, triggered_by: 'automated_escalation', at: new Date().toISOString() });
+    // CRITICAL officer-safety: the auto-escalation when an officer goes
+    // unresponsive to welfare checks. Same double-dead bug — route via
+    // AlertHubDO under 'welfare_emergency' so it reaches every dispatcher.
+    await emitAlert(c.env, 'welfare_emergency', {
+      user_id: watch.user_id, call_sign: watch.call_sign,
+      call_id: watch.call_id, call_number: watch.call_number,
+      triggered_by: 'automated_escalation',
+      message: `WELFARE EMERGENCY — ${watch.call_sign || 'unit'} unresponsive${watch.call_number ? ' on ' + watch.call_number : ''}. All units respond.`,
+      at: new Date().toISOString(),
+    });
   }
   return c.json({ success: true });
 });
@@ -224,6 +248,14 @@ export default {
       const id = env.VOICE_HUB.idFromName(room);
       return env.VOICE_HUB.get(id).fetch(request);
     }
+    // Agency-wide officer-safety alert socket → the single global AlertHubDO.
+    // Every client holds one of these (connected straight at api.rmpgutah.us,
+    // bypassing the proxy, same as voice). It's how rewrite-originated panic
+    // broadcasts actually reach dispatchers — see src/durable-objects/AlertHubDO.ts.
+    if (url.pathname === '/api/alerts-ws') {
+      const id = env.ALERT_HUB.idFromName('global');
+      return env.ALERT_HUB.get(id).fetch(request);
+    }
     return app.fetch(request, env, ctx);
   },
 
@@ -233,9 +265,18 @@ export default {
   // Errors are swallowed inside runUtahWarrantScan so one bad run
   // can't crash the cron loop.
   async scheduled(event: ScheduledEvent, env: Bindings, ctx: ExecutionContext): Promise<void> {
+    if (event.cron === '* * * * *') {
+      // Per-minute trip idle/stale sweep — backstop for units that go dark while
+      // stationary (lazy-on-gps-write handles the common case).
+      ctx.waitUntil(
+        sweepTrips(env.DB, env).then((n) => { if (n) console.log(`[trips] sweep closed ${n}`); })
+          .catch((err) => console.error('[trips] sweep failed:', err)),
+      );
+      return;
+    }
     ctx.waitUntil(
-      runUtahWarrantScan(env.DB).catch((err) => {
-        console.error('Utah warrant scheduled scan failed:', err);
+      runAllSourceScans(env.DB).catch((err) => {
+        console.error('Multi-source warrant scheduled scan failed:', err);
       }),
     );
     // Dispatch anomaly detection — populates anomaly_alerts for the

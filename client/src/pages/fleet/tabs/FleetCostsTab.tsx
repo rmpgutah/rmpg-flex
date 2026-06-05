@@ -108,18 +108,8 @@ export default function FleetCostsTab({
   const totalMonthly = toNum(monthly.total) + fuelMonthly + maintMonthly;
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 space-y-3">
-      {/* ── Cost-of-ownership summary ─────────────────────────── */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-        <Stat icon={DollarSign} color="text-gray-400"  label="Lifetime Cost"    value={fmtCurrency(summary?.total_lifetime)} />
-        <Stat icon={Gauge}      color="text-brand-400" label="Cost / Mile"      value={summary?.cost_per_mile != null ? fmtCurrency(summary.cost_per_mile, 3) : '-'} />
-        <Stat icon={Calendar}   color="text-amber-400" label="Monthly Total"    value={fmtCurrency(totalMonthly)} />
-        <Stat icon={TrendingUp} color="text-green-400" label="Annual Proj."     value={fmtCurrency(summary?.projected_annual)} />
-        <Stat icon={Fuel}       color="text-rmpg-400"  label="Fuel / mo."      value={fuelMonthly > 0 ? fmtCurrency(fuelMonthly) : '-'} />
-        <Stat icon={Wrench}     color="text-amber-400"  label="Maint / mo."     value={maintMonthly > 0 ? fmtCurrency(maintMonthly) : '-'} />
-      </div>
-
-      {/* ── Upcoming-renewals alerts strip ─────────────────────── */}
+    <div className="p-4 space-y-3">
+      {/* ── Upcoming-renewals alerts strip (next 60 days) ──────── */}
       {alerts.length > 0 && (
         <div className="panel-beveled bg-surface-sunken overflow-hidden">
           <button type="button"
@@ -343,21 +333,22 @@ function InlineBudgetEditor({ summary, onSaveBudgets }: {
         <div className="flex items-center gap-1 text-[8px] text-rmpg-500 uppercase font-bold tracking-wider">
           <Target className="w-3 h-3 text-brand-400" /> Monthly Budget vs. Actual
         </div>
-        <div className="flex items-center gap-1.5">
-          {editing ? (
-            <>
-              <button type="button" className="toolbar-btn text-[9px]" onClick={cancel} disabled={saving}>
-                <XIcon className="w-3 h-3" /> Cancel
-              </button>
-              <button type="button" className="toolbar-btn toolbar-btn-primary text-[9px]" onClick={saveAll} disabled={saving}>
-                <Check className="w-3 h-3" /> {saving ? 'Saving...' : 'Save All'}
-              </button>
-            </>
-          ) : (
-            <button type="button" className="toolbar-btn toolbar-btn-primary text-[9px] print:hidden" onClick={() => setEditing(true)}>
-              <Pencil className="w-3 h-3" /> Edit Budgets
-            </button>
-          )}
+        <div className="p-4 space-y-2">
+          {BUDGET_CATEGORIES.map((c) => (
+            <div key={c.key} className="flex items-center gap-2">
+              <label className="text-[10px] text-rmpg-400 w-28 uppercase">{c.label}</label>
+              <input id="ff-fleetcoststab-0" type="number" step="0.01" min="0" className="input-dark flex-1 text-[11px] font-mono min-h-[32px]"
+                value={vals[c.key]} onChange={(e) => setVals({ ...vals, [c.key]: e.target.value })} placeholder="0.00" />
+            </div>
+          ))}
+        </div>
+        <div className="flex items-center justify-end gap-2 px-4 py-2 border-t border-rmpg-700">
+          <button type="button" className="toolbar-btn" onClick={onClose} disabled={saving}>
+            <XIcon className="w-3 h-3" /> Cancel
+          </button>
+          <button type="button" className="toolbar-btn toolbar-btn-primary" onClick={submit} disabled={saving}>
+            <Save className="w-3 h-3" /> {saving ? 'Saving...' : 'Save Budgets'}
+          </button>
         </div>
       </div>
 

@@ -1,7 +1,9 @@
 import { Hono } from 'hono';
 import type { Env } from '../../types';
-import { getDb, query, queryFirst } from '../../utils/db';
+import { getDb, query, queryFirst, execute } from '../../utils/db';
 import { resolveDistrict } from '../../utils/districtResolver';
+import { geocodeAddress } from '../geocode';
+import { requireRole } from '../../middleware/auth';
 
 const geography = new Hono<Env>();
 
@@ -72,6 +74,65 @@ geography.get('/codes', async (c) => {
   }
 });
 
+// GET /dispatch/geography/codes/lookup/:code — single dispatch-code lookup for
+// the CAD command bar (cadCommandParser "CODE 10-71"). The client calls this
+// path (the bare /codes handler above doesn't match it), so without this route
+// it routed to env.API and 404'd. Case-insensitive exact match; returns
+// { found:false } (HTTP 200) on a miss so the command bar shows "not found".
+geography.get('/codes/lookup/:code', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const raw = decodeURIComponent(c.req.param('code') || '').trim();
+    if (!raw) return c.json({ found: false });
+    const row = await queryFirst<Record<string, unknown>>(
+      db, 'SELECT * FROM dispatch_codes WHERE UPPER(code) = UPPER(?) AND COALESCE(active, 1) = 1', raw);
+    if (!row) return c.json({ found: false });
+    return c.json({ found: true, ...row });
+  } catch (err) {
+    console.error('GET /dispatch/geography/codes/lookup failed:', err);
+    return c.json({ found: false });
+  }
+});
+
+// GET /dispatch/geography/premise-alerts — active premise alerts by address
+// (usePremiseAlerts.checkAddress), by coordinate proximity (checkCoords), or all
+// active (BolosCard). The premise_alerts CRUD router is mounted at the separate
+// /api/dispatch/premise-alerts path, but the client reads via THIS geography
+// path — which routed to env.API and 404'd (no handler). Serve the read here.
+// Always filtered to active + unexpired. flags is returned as the raw string the
+// client's PremiseAlert type expects.
+geography.get('/premise-alerts', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const address = (c.req.query('address') || '').trim();
+    const lat = Number.parseFloat(c.req.query('lat') ?? '');
+    const lng = Number.parseFloat(c.req.query('lng') ?? '');
+    let where = "WHERE active = 1 AND (expires_at IS NULL OR expires_at >= datetime('now'))";
+    const params: unknown[] = [];
+    if (address.length >= 3) {
+      where += ' AND UPPER(address) LIKE ?';
+      params.push(`%${address.toUpperCase()}%`);
+    } else if (Number.isFinite(lat) && Number.isFinite(lng)) {
+      // ~0.003 deg ≈ 330 m proximity box.
+      where += ' AND latitude BETWEEN ? AND ? AND longitude BETWEEN ? AND ?';
+      params.push(lat - 0.003, lat + 0.003, lng - 0.003, lng + 0.003);
+    }
+    const rows = await query<Record<string, unknown>>(
+      db,
+      `SELECT id, address, latitude, longitude, alert_type, alert_level, title,
+              description, flags, expires_at, active
+       FROM premise_alerts ${where}
+       ORDER BY alert_level = 'critical' DESC, alert_level = 'warning' DESC, created_at DESC
+       LIMIT 50`,
+      ...params,
+    );
+    return c.json(rows);
+  } catch (err) {
+    console.error('GET /dispatch/geography/premise-alerts failed:', err);
+    return c.json([]);
+  }
+});
+
 // GET /dispatch/districts
 geography.get('/districts', async (c) => {
   try {
@@ -128,6 +189,107 @@ geography.get('/districts/identify', async (c) => {
   } catch (err) {
     console.error('GET /dispatch/geography/districts/identify failed:', err);
     return c.json({ found: false, error: 'identify failed' }, 500);
+  }
+});
+
+// GET /dispatch/geography/premise-intel?lat=&lng=&radius=
+// Point-based premise intelligence for the map "What's Here" tool: recent
+// calls + incidents near a clicked location (cross-system map<->dispatch/RMS).
+// Bounding-box filter on lat/lng (indexed), newest first. Best-effort — a
+// query error degrades to empty so the popup still renders geography.
+geography.get('/premise-intel', async (c) => {
+  const lat = Number.parseFloat(c.req.query('lat') ?? '');
+  const lng = Number.parseFloat(c.req.query('lng') ?? '');
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return c.json({ calls: [], incidents: [], callCount: 0, incidentCount: 0 });
+  // ~0.0025deg ≈ 275 m at this latitude.
+  const r = Math.min(0.02, Math.max(0.0008, Number.parseFloat(c.req.query('radius') ?? '0.0025') || 0.0025));
+  const db = getDb(c.env);
+  try {
+    const [calls, incidents] = await Promise.all([
+      query<Record<string, unknown>>(db,
+        `SELECT id, call_number, incident_type, priority, status, location_address, created_at
+         FROM calls_for_service
+         WHERE latitude BETWEEN ? AND ? AND longitude BETWEEN ? AND ?
+         ORDER BY created_at DESC LIMIT 10`,
+        lat - r, lat + r, lng - r, lng + r).catch(() => []),
+      query<Record<string, unknown>>(db,
+        `SELECT id, incident_number, incident_type, status, location_address, created_at
+         FROM incidents
+         WHERE latitude BETWEEN ? AND ? AND longitude BETWEEN ? AND ?
+         ORDER BY created_at DESC LIMIT 10`,
+        lat - r, lat + r, lng - r, lng + r).catch(() => []),
+    ]);
+    return c.json({ calls, incidents, callCount: calls.length, incidentCount: incidents.length });
+  } catch (err) {
+    console.error('GET /dispatch/geography/premise-intel failed:', err);
+    return c.json({ calls: [], incidents: [], callCount: 0, incidentCount: 0 });
+  }
+});
+
+// POST /dispatch/geography/backfill — repeatable geography repair.
+// For every call + incident with an address: geocode if coordinates are
+// missing, then re-run the canonical geofence (incorporated-beat-correct) and
+// write the full Area>Section>Zone>Beat. Idempotent; safe to re-run. Admin-only.
+// This is the systematic version of the one-time data repair (so stale rows can
+// always be re-squared without manual SQL).
+geography.post('/backfill', requireRole('admin', 'manager', 'supervisor'), async (c) => {
+  const db = getDb(c.env);
+  const out = {
+    calls: { scanned: 0, geocoded: 0, geofenced: 0 },
+    incidents: { scanned: 0, geocoded: 0, geofenced: 0 },
+  };
+
+  const coordOf = (latRaw: unknown, lngRaw: unknown): [number | null, number | null] => {
+    const lat = latRaw != null && latRaw !== '' ? Number(latRaw) : null;
+    const lng = lngRaw != null && lngRaw !== '' ? Number(lngRaw) : null;
+    return [Number.isFinite(lat as number) ? (lat as number) : null, Number.isFinite(lng as number) ? (lng as number) : null];
+  };
+
+  try {
+    // ── Calls ──
+    const calls = await query<{ id: number; latitude: unknown; longitude: unknown; location_address: string | null }>(
+      db, `SELECT id, latitude, longitude, location_address FROM calls_for_service WHERE location_address IS NOT NULL AND location_address != ''`);
+    for (const row of calls) {
+      out.calls.scanned++;
+      let [lat, lng] = coordOf(row.latitude, row.longitude);
+      if ((lat == null || lng == null) && row.location_address) {
+        const g = await geocodeAddress(c.env, row.location_address).catch(() => null);
+        if (g) { lat = g.lat; lng = g.lng; out.calls.geocoded++; await execute(db, 'UPDATE calls_for_service SET latitude=?, longitude=? WHERE id=?', lat, lng, row.id); }
+      }
+      if (lat == null || lng == null) continue;
+      const d = await resolveDistrict(c.env, { lat, lng }).catch(() => null);
+      if (!d || !d.beat_id) continue;
+      await execute(db,
+        `UPDATE calls_for_service SET sector_id=?, sector_name=?, zone_id=?, zone_name=?, beat_id=?, beat_name=?, beat_descriptor=?, dispatch_code=?, zone_beat=? WHERE id=?`,
+        d.sector_id, d.sector_name, d.zone_id, d.zone_name, d.beat_id, d.beat_name, d.beat_descriptor, d.dispatch_code, d.zone_beat, row.id);
+      await execute(db, 'INSERT OR IGNORE INTO calls_for_service_ext (id) VALUES (?)', row.id);
+      await execute(db, 'UPDATE calls_for_service_ext SET area_code=?, area_name=? WHERE id=?', d.area_code, d.area_name, row.id);
+      out.calls.geofenced++;
+    }
+
+    // ── Incidents ──
+    const incidents = await query<{ id: number; latitude: unknown; longitude: unknown; location_address: string | null }>(
+      db, `SELECT id, latitude, longitude, location_address FROM incidents WHERE location_address IS NOT NULL AND location_address != ''`);
+    for (const row of incidents) {
+      out.incidents.scanned++;
+      let [lat, lng] = coordOf(row.latitude, row.longitude);
+      if ((lat == null || lng == null) && row.location_address) {
+        const g = await geocodeAddress(c.env, row.location_address).catch(() => null);
+        if (g) { lat = g.lat; lng = g.lng; out.incidents.geocoded++; await execute(db, 'UPDATE incidents SET latitude=?, longitude=? WHERE id=?', lat, lng, row.id); }
+      }
+      if (lat == null || lng == null) continue;
+      const d = await resolveDistrict(c.env, { lat, lng }).catch(() => null);
+      if (!d || !d.beat_id) continue;
+      await execute(db,
+        `UPDATE incidents SET sector_id=?, zone_id=?, beat_id=?, zone_beat=?, area_code=?, area_name=? WHERE id=?`,
+        d.sector_id, d.zone_id, d.beat_id, d.zone_beat, d.area_code, d.area_name, row.id);
+      out.incidents.geofenced++;
+    }
+
+    return c.json({ ok: true, ...out });
+  } catch (err) {
+    console.error('POST /dispatch/geography/backfill failed:', err);
+    return c.json({ ok: false, error: (err as Error)?.message, ...out }, 500);
   }
 });
 

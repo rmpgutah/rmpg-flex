@@ -2,9 +2,11 @@ import { useState, useEffect, useCallback } from 'react';
 import RichTextArea from '../../components/RichTextArea';
 import {
   Car, Plus, Wrench, Search, Gauge, AlertTriangle, CheckCircle, Calendar, Shield,
-  Tag, Radio, Archive, DollarSign, Fuel,
+  Tag, Radio, Archive, DollarSign, Fuel, Eye, Trash2,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
+import { useMenuActions } from '../../utils/contextMenuActions';
 import { parseTimestamp, safeDateStr } from '../../utils/dateUtils';
 import { useLiveSync } from '../../hooks/useLiveSync';
 import { usePersistedTab } from '../../hooks/usePersistedState';
@@ -82,6 +84,10 @@ export default function FleetPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin'; // Admin God Mode — unrestricted access
 
+  // Right-click context menu
+  const { openMenu } = useContextMenu();
+  const cm = useMenuActions();
+
   // Core state
   const [vehicles, setVehicles] = useState<FleetVehicle[]>([]);
   const [selectedId, setSelectedId] = useState<string | number | null>(null);
@@ -91,7 +97,7 @@ export default function FleetPage() {
   const [searchQuery, setSearchQuery] = useState('');
 
   // Tab & modal state
-  const [activeTab, setActiveTab] = usePersistedTab('rmpg_fleet_tab', 'overview' as DetailTab, ['overview', 'fuel', 'costs', 'inspections', 'assignments', 'personnel', 'tires', 'damage', 'recalls', 'analytics'] as const);
+  const [activeTab, setActiveTab] = usePersistedTab('rmpg_fleet_tab', 'overview' as DetailTab, ['overview', 'fuel', 'costs', 'inspections', 'assignments', 'personnel', 'tires', 'damage', 'recalls', 'analytics', 'dashcam', 'fuel_cards'] as const);
   const [modal, setModal] = useState<ModalMode>('none');
   const v = useFormDraft<VehicleFormState>({
     storageKey: 'rmpg_fleet_vehicle_form',
@@ -286,14 +292,19 @@ export default function FleetPage() {
     setAssignments([]);
     setAnalytics(null);
     setPersonnelData(null);
-    setGpsMileage(null);
+    setLoans([]);
+    setInsurancePolicies([]);
+    setAccessories([]);
+    setUtilities([]);
+    setOtherCosts([]);
+    setCostSummary(null);
   }, [selectedId]);
 
   // Lazy-load tab data
   useEffect(() => {
     if (!selectedId) return;
     if (activeTab === 'fuel') fetchFuelLogs(selectedId);
-    if (activeTab === 'costs') { fetchCosts(selectedId); fetchFuelLogs(selectedId); }
+    if (activeTab === 'costs') fetchCosts(selectedId);
     if (activeTab === 'inspections') fetchInspections(selectedId);
     if (activeTab === 'assignments') fetchAssignments(selectedId);
     if (activeTab === 'analytics') fetchVehicleAnalytics();
@@ -1075,6 +1086,23 @@ export default function FleetPage() {
     setModal('none');
   };
 
+  // Right-click menu for a vehicle list row. Acts on the right-clicked row,
+  // not the current selection (Open selects it; Delete opens the confirm).
+  const buildVehicleMenu = (vehicle: FleetVehicle): ContextMenuItem[] => {
+    const label = `${vehicle.vehicle_number}${[vehicle.year, vehicle.make, vehicle.model].filter(Boolean).length ? ' — ' + [vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(' ') : ''}`;
+    return [
+      cm.action('Open vehicle', () => setSelectedId(vehicle.id), { icon: <Eye size={12} /> }),
+      cm.separator(),
+      cm.copy('Copy unit #', vehicle.vehicle_number),
+      ...(vehicle.plate_number ? [cm.copy('Copy plate', vehicle.plate_number, <Tag size={12} />)] : []),
+      ...(vehicle.vin ? [cm.copy('Copy VIN', vehicle.vin)] : []),
+      cm.copyId(vehicle.id),
+      ...(isAdmin && !showArchived
+        ? [cm.separator(), cm.action('Delete', () => setDeletingVehicleId(vehicle.id), { danger: true, icon: <Trash2 size={12} /> })]
+        : []),
+    ];
+  };
+
   return (
     <div className="flex flex-col h-full animate-fade-in bg-surface-base">
       <UnsavedChangesGuard hasUnsavedChanges={isDirtyAny} />
@@ -1222,7 +1250,7 @@ export default function FleetPage() {
         {/* ---- LEFT PANEL: Vehicle List ---- */}
         <div className={`flex flex-col min-h-0 bg-surface-raised ${isMobile ? (selectedId ? 'hidden' : 'w-full') : ''}`} style={isMobile ? undefined : { width: '36%', minWidth: 300, maxWidth: 440 }}>
           <div className="flex items-center gap-2 px-2 py-1.5 border-b border-rmpg-700 bg-surface-base">
-            <select
+            <select id="ff-fleetpage-0"
               className="select-dark text-[10px] py-1 px-2 min-h-[36px]"
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value)}
@@ -1234,7 +1262,7 @@ export default function FleetPage() {
             </select>
             <div className="flex-1 relative">
               <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500 pointer-events-none" aria-hidden="true" />
-              <input
+              <input id="ff-fleetpage-1"
                 className="input-dark w-full text-[10px] py-1 pl-6 pr-2 min-h-[36px] focus:ring-1 focus:ring-brand-500/50 focus:border-brand-600 transition-shadow duration-150"
                 placeholder="Search vehicles..." aria-label="Search fleet vehicles by number, make, model, or plate"
                 value={searchQuery}
@@ -1271,6 +1299,7 @@ export default function FleetPage() {
                   }`}
                   style={isSelected ? { backgroundColor: 'var(--surface-base)', borderLeft: `3px solid ${statusColor}` } : { borderLeft: '3px solid transparent' }}
                   onClick={() => setSelectedId(v.id)}
+                  onContextMenu={(e) => openMenu(e, buildVehicleMenu(v))}
                   aria-selected={isSelected}
                 >
                   <div className="flex items-center gap-2.5">
@@ -1596,7 +1625,7 @@ export default function FleetPage() {
                 { key: 'emergency_equipment_ok', label: 'Emergency Equipment' },
               ].map(item => (
                 <label key={item.key} className="flex items-center gap-3 p-2 bg-surface-base rounded cursor-pointer hover:bg-surface-raised">
-                  <input
+                  <input id="ff-fleetpage-2"
                     type="checkbox"
                     checked={(pretripForm as any)[item.key]}
                     onChange={e => setPretripForm(prev => ({ ...prev, [item.key]: e.target.checked }))}

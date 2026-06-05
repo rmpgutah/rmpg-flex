@@ -73,7 +73,7 @@ export default function FleetOverviewTab({ detail, maintenance, onEditMaintenanc
   }, [detail?.id]);
 
   return (
-    <div className="flex-1 overflow-y-auto p-4 space-y-3">
+    <div className="p-4 space-y-3">
       {/* Vehicle Stats Row */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
         <div className="panel-beveled p-2.5 text-center bg-surface-sunken">

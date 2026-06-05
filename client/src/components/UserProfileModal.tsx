@@ -623,7 +623,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="field-label">First Name <span className="text-red-500">*</span></label>
-                  <input
+                  <input id="ff-userprofilemodal-0"
                     type="text"
                     value={firstName}
                     onChange={e => setFirstName(e.target.value)}
@@ -633,7 +633,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                 </div>
                 <div>
                   <label className="field-label">Last Name <span className="text-red-500">*</span></label>
-                  <input
+                  <input id="ff-userprofilemodal-1"
                     type="text"
                     value={lastName}
                     onChange={e => setLastName(e.target.value)}
@@ -644,7 +644,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
               </div>
               <div>
                 <label className="field-label">Email</label>
-                <input
+                <input id="ff-userprofilemodal-2"
                   type="email"
                   value={email}
                   onChange={e => setEmail(e.target.value)}
@@ -653,7 +653,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
               </div>
               <div>
                 <label className="field-label">Phone</label>
-                <input
+                <input id="ff-userprofilemodal-3"
                   type="tel"
                   value={phone}
                   onChange={e => setPhone(formatPhoneInput(e.target.value))}
@@ -666,7 +666,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2">
                 <div>
                   <label className="field-label">Username *</label>
-                  <input
+                  <input id="ff-userprofilemodal-4"
                     type="text"
                     value={username}
                     onChange={e => setUsername(e.target.value)}
@@ -806,7 +806,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
               <div>
                 <label className="field-label">Current Password</label>
                 <div className="relative">
-                  <input
+                  <input id="ff-userprofilemodal-5"
                     type={showCurrentPw ? 'text' : 'password'}
                     value={currentPassword}
                     onChange={e => setCurrentPassword(e.target.value)}
@@ -825,7 +825,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
               <div>
                 <label className="field-label">New Password</label>
                 <div className="relative">
-                  <input
+                  <input id="ff-userprofilemodal-6"
                     type={showNewPw ? 'text' : 'password'}
                     value={newPassword}
                     onChange={e => setNewPassword(e.target.value)}
@@ -843,7 +843,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
               </div>
               <div>
                 <label className="field-label">Confirm New Password</label>
-                <input
+                <input id="ff-userprofilemodal-7"
                   type="password" autoComplete="new-password"
                   value={confirmPassword}
                   onChange={e => setConfirmPassword(e.target.value)}
@@ -909,7 +909,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                           <span className="text-[11px] text-rmpg-200">{label}</span>
                           <div className="flex items-center gap-3">
                             <label className="flex items-center gap-1 cursor-pointer">
-                              <input
+                              <input id="ff-userprofilemodal-8"
                                 type="checkbox"
                                 checked={!!prefs[`notify_${key}_inapp`]}
                                 onChange={e => setPrefs({ ...prefs, [`notify_${key}_inapp`]: e.target.checked ? 1 : 0 })}
@@ -918,7 +918,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                               <span className="text-[9px]" style={{ color: '#666666' }}>In-App</span>
                             </label>
                             <label className="flex items-center gap-1 cursor-pointer">
-                              <input
+                              <input id="ff-userprofilemodal-9"
                                 type="checkbox"
                                 checked={!!prefs[`notify_${key}_email`]}
                                 onChange={e => setPrefs({ ...prefs, [`notify_${key}_email`]: e.target.checked ? 1 : 0 })}
@@ -937,7 +937,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                     <label className="flex items-center justify-between cursor-pointer">
                       <span className="text-[11px] text-rmpg-200">Enable Notification Sounds</span>
                       <div className="flex items-center gap-2">
-                        <input
+                        <input id="ff-userprofilemodal-10"
                           type="checkbox"
                           checked={localStorage.getItem('rmpg_notification_sounds') !== 'false'}
                           onChange={(e) => {
@@ -960,7 +960,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                     <div className="grid grid-cols-2 gap-2 mt-1.5">
                       <div>
                         <label className="field-label">Start</label>
-                        <input
+                        <input id="ff-userprofilemodal-11"
                           type="time"
                           value={prefs.quiet_hours_start || ''}
                           onChange={e => setPrefs({ ...prefs, quiet_hours_start: e.target.value || null })}
@@ -969,7 +969,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                       </div>
                       <div>
                         <label className="field-label">End</label>
-                        <input
+                        <input id="ff-userprofilemodal-12"
                           type="time"
                           value={prefs.quiet_hours_end || ''}
                           onChange={e => setPrefs({ ...prefs, quiet_hours_end: e.target.value || null })}
@@ -991,7 +991,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                       {/* Feature 32: Dark/Light Theme Toggle */}
                       <div className="flex items-center justify-between">
                         <span className="text-[11px] text-rmpg-200">Theme</span>
-                        <select
+                        <select id="ff-userprofilemodal-13"
                           value={prefs.theme_preference || 'dark'}
                           onChange={e => {
                             const theme = normalizeThemePreference(e.target.value);
@@ -1009,7 +1009,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                       {/* Feature 33: Font Size Adjustment */}
                       <div className="flex items-center justify-between">
                         <span className="text-[11px] text-rmpg-200">Font Size</span>
-                        <select
+                        <select id="ff-userprofilemodal-14"
                           value={prefs.font_size_preference || 'medium'}
                           onChange={e => {
                             const size = e.target.value;
@@ -1027,7 +1027,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                       <div className="flex items-center justify-between">
                         <span className="text-[11px] text-rmpg-200">Font Scale</span>
                         <div className="flex items-center gap-2">
-                          <input
+                          <input id="ff-userprofilemodal-15"
                             type="range"
                             min="0.8"
                             max="1.4"
@@ -1043,7 +1043,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                       </div>
                       <div className="flex items-center justify-between">
                         <span className="text-[11px] text-rmpg-200">Compact Mode</span>
-                        <input
+                        <input id="ff-userprofilemodal-16"
                           type="checkbox"
                           checked={!!prefs.compact_mode}
                           onChange={e => setPrefs({ ...prefs, compact_mode: e.target.checked ? 1 : 0 })}
@@ -1052,7 +1052,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                       </div>
                       <div className="flex items-center justify-between">
                         <span className="text-[11px] text-rmpg-200">Map Labels</span>
-                        <input
+                        <input id="ff-userprofilemodal-17"
                           type="checkbox"
                           checked={!!prefs.show_map_labels}
                           onChange={e => setPrefs({ ...prefs, show_map_labels: e.target.checked ? 1 : 0 })}
@@ -1061,7 +1061,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                       </div>
                       <div className="flex items-center justify-between">
                         <span className="text-[11px] text-rmpg-200">Default Map Style</span>
-                        <select
+                        <select id="ff-userprofilemodal-18"
                           value={prefs.default_map_style}
                           onChange={e => setPrefs({ ...prefs, default_map_style: e.target.value })}
                           className="input-dark text-[10px] py-0.5 px-1 w-24"
@@ -1083,7 +1083,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                     <div className="space-y-2 mt-1.5">
                       <div className="flex items-center justify-between">
                         <span className="text-[11px] text-rmpg-200">Default Sort</span>
-                        <select
+                        <select id="ff-userprofilemodal-19"
                           value={prefs.dispatch_sort}
                           onChange={e => setPrefs({ ...prefs, dispatch_sort: e.target.value })}
                           className="input-dark text-[10px] py-0.5 px-1 w-28"
@@ -1095,7 +1095,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                       </div>
                       <div className="flex items-center justify-between">
                         <span className="text-[11px] text-rmpg-200">Show Cleared Calls</span>
-                        <input
+                        <input id="ff-userprofilemodal-20"
                           type="checkbox"
                           checked={!!prefs.dispatch_show_cleared}
                           onChange={e => setPrefs({ ...prefs, dispatch_show_cleared: e.target.checked ? 1 : 0 })}
@@ -1314,7 +1314,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                   <p className="text-[10px]" style={{ color: '#666666' }}>
                     Enter your password to confirm disabling two-factor authentication.
                   </p>
-                  <input
+                  <input id="ff-userprofilemodal-21"
                     type="password" autoComplete="new-password"
                     value={disablePassword}
                     onChange={e => setDisablePassword(e.target.value)}
@@ -1525,7 +1525,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
 
                       <div>
                         <label className="field-label">Current Password</label>
-                        <input
+                        <input id="ff-userprofilemodal-22"
                           type="password" autoComplete="new-password"
                           value={regenPassword}
                           onChange={e => setRegenPassword(e.target.value)}

@@ -165,8 +165,18 @@ pt.delete('/checkpoints/:id', async (c) => {
   if (denied) return c.json({ error: denied }, 403);
   const id = parseInt(c.req.param('id'), 10);
   if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
-  await execute(getDb(c.env), 'DELETE FROM patrol_checkpoints WHERE id = ?', id);
-  return c.json({ success: true });
+  try {
+    const db = getDb(c.env);
+    // patrol_scans.checkpoint_id is a NOT NULL RESTRICT FK — a checkpoint that
+    // was ever scanned can't be deleted until its scans are removed. Scans are
+    // checkpoint-specific log rows, so purge them with the checkpoint.
+    await execute(db, 'DELETE FROM patrol_scans WHERE checkpoint_id = ?', id);
+    await execute(db, 'DELETE FROM patrol_checkpoints WHERE id = ?', id);
+    return c.json({ success: true });
+  } catch (err) {
+    console.error('[patrol] delete checkpoint failed:', err);
+    return c.json({ error: 'Failed to delete checkpoint', detail: (err as Error)?.message }, 500);
+  }
 });
 
 // POST /checkpoints/:id/archive

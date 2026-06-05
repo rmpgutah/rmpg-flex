@@ -452,7 +452,7 @@ export default function VoiceChannelIndicator() {
             {/* Text input — voice-only in drive mode (no typing while moving) */}
             {!drive.active ? (
               <form onSubmit={handleTextSubmit} className="flex-1 flex items-center min-w-0">
-                <input
+                <input id="ff-voicechannelindicator-0"
                   ref={inputRef}
                   type="text"
                   value={textInput}

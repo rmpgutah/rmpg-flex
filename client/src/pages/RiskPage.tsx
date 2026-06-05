@@ -4,6 +4,7 @@ import PanelTitleBar from '../components/PanelTitleBar';
 import DataTable from '../components/DataTable';
 import StatsCard from '../components/StatsCard';
 import { useToast } from '../components/ToastProvider';
+import { useMenuActions } from '../utils/contextMenuActions';
 import { Shield, AlertTriangle, ClipboardCheck, FileText, Plus, Pencil, Trash2 } from 'lucide-react';
 
 export default function RiskPage() {
@@ -14,15 +15,18 @@ export default function RiskPage() {
   const [formData, setFormData] = useState<Record<string, any>>({});
   const [submitting, setSubmitting] = useState(false);
   const [deleteId, setDeleteId] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const { addToast } = useToast();
+  const m = useMenuActions();
 
   const fetchData = useCallback(async () => {
     try {
+      setError(null);
       const r = await apiFetch<{ data: Record<string, any>[] }>('/risk/assessments');
       setAssessments(r.data || []);
       const s = await apiFetch<{ active_assessments: number; pending_inspections: number; open_claims: number }>('/risk/stats');
       setStats(s);
-    } catch { /* */ }
+    } catch { setError("Failed to load data"); }
   }, []);
 
   useEffect(() => { fetchData().finally(() => setLoading(false)); }, [fetchData]);
@@ -66,31 +70,43 @@ export default function RiskPage() {
       <PanelTitleBar title="RISK MANAGEMENT" icon={Shield}>
         <button onClick={openNew} className="toolbar-btn flex items-center gap-1.5" style={{ height: 28, padding: '0 10px' }}><Plus size={13} /> New Assessment</button>
       </PanelTitleBar>
+      {error && <div className="border border-red-700/40 bg-red-900/20 text-red-400 text-[11px] px-3 py-2 mb-3" role="alert">{error}</div>}
       <div className="grid grid-cols-3 gap-3">
         <StatsCard icon={AlertTriangle} label="Active Assessments" value={stats.active_assessments} />
         <StatsCard icon={ClipboardCheck} label="Pending Inspections" value={stats.pending_inspections} />
         <StatsCard icon={FileText} label="Open Claims" value={stats.open_claims} />
       </div>
-      <DataTable columns={columns} data={assessments} emptyMessage="No risk assessments found" onRowClick={(row) => openEdit(row)} />
+      <DataTable
+        columns={columns}
+        data={assessments}
+        emptyMessage="No risk assessments found"
+        onRowClick={(row) => openEdit(row)}
+        rowContextMenu={(row) => [
+          m.action('Open / Edit', () => openEdit(row), { icon: <Pencil size={12} /> }),
+          m.separator(),
+          m.copyId(row.id),
+          m.action('Delete', () => setDeleteId(row.id), { danger: true, icon: <Trash2 size={12} /> }),
+        ]}
+      />
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={() => setEditingRecord(null)}>
           <div className="bg-surface-raised border border-[#333] p-6 max-w-lg w-full" style={{ borderRadius: 2 }} onClick={e => e.stopPropagation()}>
             <h3 className="text-sm font-bold text-white mb-4">{editingRecord ? 'Edit Assessment' : 'New Assessment'}</h3>
             <div className="space-y-3">
               <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Entity Type <span className="text-red-500">*</span></label>
-                <input className="input-dark mt-1" value={formData.entity_type || ''} onChange={e => setFormData({...formData, entity_type: e.target.value})} autoFocus placeholder="e.g. premise, officer, vehicle" /></div>
+                <input id="ff-riskpage-0" className="input-dark mt-1" value={formData.entity_type || ''} onChange={e => setFormData({...formData, entity_type: e.target.value})} autoFocus placeholder="e.g. premise, officer, vehicle" /></div>
               <div className="grid grid-cols-2 gap-3">
                 <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Risk Level</label>
-                  <select className="select-dark mt-1" value={formData.risk_level || 'low'} onChange={e => setFormData({...formData, risk_level: e.target.value})}>
+                  <select id="ff-riskpage-1" className="select-dark mt-1" value={formData.risk_level || 'low'} onChange={e => setFormData({...formData, risk_level: e.target.value})}>
                     {['low','moderate','high','critical'].map(l=><option key={l} value={l}>{l}</option>)}
                   </select></div>
                 <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Category</label>
-                  <input className="input-dark mt-1" value={formData.risk_category || ''} onChange={e => setFormData({...formData, risk_category: e.target.value})} /></div>
+                  <input id="ff-riskpage-2" className="input-dark mt-1" value={formData.risk_category || ''} onChange={e => setFormData({...formData, risk_category: e.target.value})} /></div>
               </div>
               <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Description <span className="text-red-500">*</span></label>
-                <textarea rows={3} className="input-dark mt-1" value={formData.description || ''} onChange={e => setFormData({...formData, description: e.target.value})} /></div>
+                <textarea id="ff-riskpage-3" rows={3} className="input-dark mt-1" value={formData.description || ''} onChange={e => setFormData({...formData, description: e.target.value})} /></div>
               <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Mitigation Plan</label>
-                <textarea rows={2} className="input-dark mt-1" value={formData.mitigation_plan || ''} onChange={e => setFormData({...formData, mitigation_plan: e.target.value})} /></div>
+                <textarea id="ff-riskpage-4" rows={2} className="input-dark mt-1" value={formData.mitigation_plan || ''} onChange={e => setFormData({...formData, mitigation_plan: e.target.value})} /></div>
             </div>
             <div className="flex justify-end gap-3 mt-4">
               <button onClick={() => setEditingRecord(null)} className="toolbar-btn px-4" style={{ height: 28 }}>Cancel</button>

@@ -100,7 +100,7 @@ export default function TotpCodeInput({ value, onChange, onComplete, disabled, e
     <div>
       <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
         {Array.from({ length: 6 }).map((_, i) => (
-          <input
+          <input id="ff-totpcodeinput-0"
             key={i}
             ref={(el) => { inputRefs.current[i] = el; }}
             type="text"

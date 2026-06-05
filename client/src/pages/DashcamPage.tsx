@@ -199,7 +199,7 @@ export default function DashcamPage() {
                 {tab === 'devices' && (
                   <div className="flex items-center gap-1 bg-[#0a0a0a] border border-[#222] px-2 py-0.5">
                     <Search className="w-3 h-3 text-text-muted" />
-                    <input
+                    <input id="ff-dashcampage-0"
                       className="bg-transparent border-none outline-none text-xs text-text-default w-32"
                       placeholder="Search devices..."
                       value={search}
@@ -328,7 +328,7 @@ export default function DashcamPage() {
                 <div className="grid grid-cols-2 gap-2">
                   <div>
                     <span className="text-text-muted">Label</span>
-                    <input
+                    <input id="ff-dashcampage-1"
                       className="w-full bg-[#0a0a0a] border border-[#222] px-2 py-0.5 text-text-default mt-0.5"
                       value={deviceDetail.label || ''}
                       onChange={e => setDeviceDetail({ ...deviceDetail, label: e.target.value })}
@@ -337,7 +337,7 @@ export default function DashcamPage() {
                   </div>
                   <div>
                     <span className="text-text-muted">Unit ID</span>
-                    <input
+                    <input id="ff-dashcampage-2"
                       className="w-full bg-[#0a0a0a] border border-[#222] px-2 py-0.5 text-text-default mt-0.5"
                       type="number"
                       value={deviceDetail.unit_id || ''}

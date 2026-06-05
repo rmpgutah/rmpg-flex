@@ -5,9 +5,11 @@ import DataTable from '../components/DataTable';
 import StatsCard from '../components/StatsCard';
 import BillingFormModal, { BillingFormData } from '../components/BillingFormModal';
 import { useToast } from '../components/ToastProvider';
+import { useMenuActions } from '../utils/contextMenuActions';
 import { DollarSign, FileText, Clock, Receipt, Plus, Pencil, Trash2 } from 'lucide-react';
 
 export default function BillingPage() {
+  const m = useMenuActions();
   const [invoices, setInvoices] = useState<Record<string, any>[]>([]);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState({ active_contracts: 0, outstanding_invoices: 0, total_outstanding_amount: 0, pending_expenses: 0 });
@@ -16,15 +18,17 @@ export default function BillingPage() {
   const [formSubmitting, setFormSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const { addToast } = useToast();
 
   const fetchData = useCallback(async () => {
     try {
+      setError(null);
       const r = await apiFetch<{ data: Record<string, any>[] }>('/billing/invoices');
       setInvoices(r.data || []);
       const s = await apiFetch<{ active_contracts: number; outstanding_invoices: number; total_outstanding_amount: number; pending_expenses: number }>('/billing/stats');
       setStats(s);
-    } catch { /* */ }
+    } catch { setError("Failed to load data"); }
   }, []);
 
   useEffect(() => { fetchData().finally(() => setLoading(false)); }, [fetchData]);
@@ -80,6 +84,7 @@ export default function BillingPage() {
   return (
     <div className="p-4 space-y-4">
       <PanelTitleBar title="BILLING & FINANCIAL" icon={DollarSign}>
+      {error && <div className="border border-red-700/40 bg-red-900/20 text-red-400 text-[11px] px-3 py-2 mb-3" role="alert">{error}</div>}
         <button onClick={openNew} className="toolbar-btn flex items-center gap-1.5" style={{ height: 28, padding: '0 10px' }}>
           <Plus size={13} /> New Invoice
         </button>
@@ -90,7 +95,18 @@ export default function BillingPage() {
         <StatsCard icon={DollarSign} label="Total Owed" value={`$${(stats.total_outstanding_amount || 0).toLocaleString()}`} />
         <StatsCard icon={Receipt} label="Pending Expenses" value={stats.pending_expenses} />
       </div>
-      <DataTable columns={columns} data={invoices} emptyMessage="No invoices found" onRowClick={(row) => openEdit(row)} />
+      <DataTable
+        columns={columns}
+        data={invoices}
+        emptyMessage="No invoices found"
+        onRowClick={(row) => openEdit(row)}
+        rowContextMenu={(row) => [
+          m.action('Open / Edit', () => openEdit(row), { icon: <Pencil size={12} /> }),
+          m.separator(),
+          m.copyId((row as any).id),
+          m.action('Delete', () => setDeleteId((row as any).id), { danger: true, icon: <Trash2 size={12} /> }),
+        ]}
+      />
       <BillingFormModal isOpen={formOpen} onClose={() => { setFormOpen(false); setEditingRecord(undefined); }}
         onSubmit={handleSubmit} isSubmitting={formSubmitting} editingRecord={editingRecord} submitError={formError} />
       {deleteId !== null && (

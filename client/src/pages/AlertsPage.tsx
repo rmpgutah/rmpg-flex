@@ -4,7 +4,9 @@ import PanelTitleBar from '../components/PanelTitleBar';
 import DataTable from '../components/DataTable';
 import StatsCard from '../components/StatsCard';
 import { useToast } from '../components/ToastProvider';
-import { Megaphone, FileText, Send, CheckCircle, Plus, Pencil, Trash2 } from 'lucide-react';
+import { useMenuActions } from '../utils/contextMenuActions';
+import type { ContextMenuItem } from '../context/ContextMenuContext';
+import { Megaphone, FileText, Send, CheckCircle, Plus, Pencil, Trash2, Eye } from 'lucide-react';
 
 export default function AlertsPage() {
   const [templates, setTemplates] = useState<Record<string, any>[]>([]);
@@ -14,15 +16,18 @@ export default function AlertsPage() {
   const [formData, setFormData] = useState<Record<string, any>>({});
   const [submitting, setSubmitting] = useState(false);
   const [deleteId, setDeleteId] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const { addToast } = useToast();
+  const m = useMenuActions();
 
   const fetchData = useCallback(async () => {
     try {
+      setError(null);
       const r = await apiFetch<{ data: Record<string, any>[] }>('/alerts/templates');
       setTemplates(r.data || []);
       const s = await apiFetch<{ templates: number; batches: number; sent_batches: number }>('/alerts/stats');
       setStats(s);
-    } catch { /* */ }
+    } catch { setError("Failed to load data"); }
   }, []);
 
   useEffect(() => { fetchData().finally(() => setLoading(false)); }, [fetchData]);
@@ -63,6 +68,7 @@ export default function AlertsPage() {
   return (
     <div className="p-4 space-y-4">
       <PanelTitleBar title="MASS NOTIFICATION" icon={Megaphone}>
+      {error && <div className="border border-red-700/40 bg-red-900/20 text-red-400 text-[11px] px-3 py-2 mb-3" role="alert">{error}</div>}
         <button onClick={openNew} className="toolbar-btn flex items-center gap-1.5" style={{ height: 28, padding: '0 10px' }}><Plus size={13} /> New Template</button>
       </PanelTitleBar>
       <div className="grid grid-cols-3 gap-3">
@@ -70,26 +76,39 @@ export default function AlertsPage() {
         <StatsCard icon={Send} label="Batches" value={stats.batches} />
         <StatsCard icon={CheckCircle} label="Sent" value={stats.sent_batches} />
       </div>
-      <DataTable columns={columns} data={templates} emptyMessage="No notification templates" onRowClick={(row) => openEdit(row)} />
+      <DataTable
+        columns={columns}
+        data={templates}
+        emptyMessage="No notification templates"
+        onRowClick={(row) => openEdit(row)}
+        enableContextMenu
+        rowContextMenu={(row: Record<string, any>): ContextMenuItem[] => [
+          m.action('Open', () => openEdit(row), { icon: <Eye size={12} /> }),
+          m.action('Edit', () => openEdit(row), { icon: <Pencil size={12} /> }),
+          m.separator(),
+          m.copyId(row.id),
+          m.action('Delete', () => setDeleteId(row.id), { danger: true, icon: <Trash2 size={12} /> }),
+        ]}
+      />
       {showForm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={() => setEditingRecord(null)}>
           <div className="bg-surface-raised border border-[#333] p-6 max-w-lg w-full" style={{ borderRadius: 2 }} onClick={e => e.stopPropagation()}>
             <h3 className="text-sm font-bold text-white mb-4">{editingRecord ? 'Edit Template' : 'New Template'}</h3>
             <div className="space-y-3">
               <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Name <span className="text-red-500">*</span></label>
-                <input className="input-dark mt-1" value={formData.template_name || ''} onChange={e => setFormData({...formData, template_name: e.target.value})} autoFocus /></div>
+                <input id="ff-alertspage-0" className="input-dark mt-1" value={formData.template_name || ''} onChange={e => setFormData({...formData, template_name: e.target.value})} autoFocus /></div>
               <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Subject</label>
-                <input className="input-dark mt-1" value={formData.subject || ''} onChange={e => setFormData({...formData, subject: e.target.value})} /></div>
+                <input id="ff-alertspage-1" className="input-dark mt-1" value={formData.subject || ''} onChange={e => setFormData({...formData, subject: e.target.value})} /></div>
               <div className="grid grid-cols-2 gap-3">
                 <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Channel</label>
-                  <select className="select-dark mt-1" value={formData.channel || 'email'} onChange={e => setFormData({...formData, channel: e.target.value})}>
+                  <select id="ff-alertspage-2" className="select-dark mt-1" value={formData.channel || 'email'} onChange={e => setFormData({...formData, channel: e.target.value})}>
                     {['email','sms','push','all'].map(c=><option key={c} value={c}>{c}</option>)}
                   </select></div>
                 <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Category</label>
-                  <input className="input-dark mt-1" value={formData.category || ''} onChange={e => setFormData({...formData, category: e.target.value})} /></div>
+                  <input id="ff-alertspage-3" className="input-dark mt-1" value={formData.category || ''} onChange={e => setFormData({...formData, category: e.target.value})} /></div>
               </div>
               <div><label className="text-[10px] text-rmpg-400 uppercase font-semibold">Body <span className="text-red-500">*</span></label>
-                <textarea rows={4} className="input-dark mt-1" value={formData.body || ''} onChange={e => setFormData({...formData, body: e.target.value})} /></div>
+                <textarea id="ff-alertspage-4" rows={4} className="input-dark mt-1" value={formData.body || ''} onChange={e => setFormData({...formData, body: e.target.value})} /></div>
             </div>
             <div className="flex justify-end gap-3 mt-4">
               <button onClick={() => setEditingRecord(null)} className="toolbar-btn px-4" style={{ height: 28 }}>Cancel</button>

@@ -5,7 +5,8 @@ import DataTable from '../components/DataTable';
 import StatsCard from '../components/StatsCard';
 import TaskFormModal, { TaskFormData } from '../components/TaskFormModal';
 import { useToast } from '../components/ToastProvider';
-import { ClipboardList, Clock, AlertTriangle, Plus, Pencil, Trash2 } from 'lucide-react';
+import { useMenuActions } from '../utils/contextMenuActions';
+import { ClipboardList, Clock, AlertTriangle, Plus, Pencil, Trash2, Eye } from 'lucide-react';
 
 interface Task {
   id: number; task_title: string; priority: string; status: string;
@@ -22,6 +23,7 @@ export default function TasksPage() {
   const [formError, setFormError] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const { addToast } = useToast();
+  const m = useMenuActions();
 
   const fetchData = useCallback(async () => {
     try {
@@ -92,7 +94,20 @@ export default function TasksPage() {
         <StatsCard icon={Clock} label="Pending" value={stats.pending} />
         <StatsCard icon={AlertTriangle} label="Overdue" value={stats.overdue} />
       </div>
-      <DataTable columns={columns} data={tasks} emptyMessage="No tasks found" onRowClick={(row) => openEdit(row)} />
+      <DataTable
+        columns={columns}
+        data={tasks}
+        emptyMessage="No tasks found"
+        onRowClick={(row) => openEdit(row)}
+        rowContextMenu={(row) => [
+          m.action('Open / edit', () => openEdit(row), { icon: <Eye size={12} /> }),
+          m.separator(),
+          m.copy('Copy task', row.task_title),
+          m.copyId(row.id),
+          m.separator(),
+          m.action('Delete', () => setDeleteId(row.id), { danger: true, icon: <Trash2 size={12} /> }),
+        ]}
+      />
       <TaskFormModal isOpen={formOpen} onClose={() => { setFormOpen(false); setEditingRecord(undefined); }}
         onSubmit={handleSubmit} isSubmitting={formSubmitting} editingRecord={editingRecord} submitError={formError} />
       {deleteId !== null && (

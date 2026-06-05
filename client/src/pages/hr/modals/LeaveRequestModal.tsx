@@ -137,7 +137,7 @@ export default function LeaveRequestModal({
       {/* Leave Type */}
       <div>
         <label className={labelClass}>Leave Type</label>
-        <select
+        <select id="ff-leaverequestmodal-0"
           value={form.type}
           onChange={e => setForm(f => ({ ...f, type: e.target.value as LeaveType }))}
           className={inputClass}
@@ -152,7 +152,7 @@ export default function LeaveRequestModal({
       <div className="grid grid-cols-2 gap-3">
         <div>
           <label className={labelClass}>Start Date</label>
-          <input
+          <input id="ff-leaverequestmodal-1"
             type="date"
             value={form.start_date}
             onChange={e => setForm(f => ({ ...f, start_date: e.target.value }))}
@@ -162,7 +162,7 @@ export default function LeaveRequestModal({
         </div>
         <div>
           <label className={labelClass}>End Date</label>
-          <input
+          <input id="ff-leaverequestmodal-2"
             type="date"
             value={form.end_date}
             onChange={e => setForm(f => ({ ...f, end_date: e.target.value }))}
@@ -176,7 +176,7 @@ export default function LeaveRequestModal({
       {/* Hours */}
       <div>
         <label className={labelClass}>Hours Requested</label>
-        <input
+        <input id="ff-leaverequestmodal-3"
           type="number"
           value={form.hours_requested}
           onChange={e => {
@@ -206,7 +206,7 @@ export default function LeaveRequestModal({
       {/* Reason */}
       <div>
         <label className={labelClass}>Reason</label>
-        <textarea
+        <textarea id="ff-leaverequestmodal-4"
           value={form.reason}
           onChange={e => setForm(f => ({ ...f, reason: e.target.value }))}
           rows={3}

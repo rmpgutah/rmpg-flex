@@ -57,7 +57,7 @@ billing.get('/contracts', async (c) => {
     if (q('status')) { conditions.push('c.status = ?'); params.push(q('status')); }
     const where = `WHERE ${conditions.join(' AND ')}`;
     const rows = await query<Record<string, unknown>>(db,
-      `SELECT c.*, cl.client_name FROM client_contracts c LEFT JOIN clients cl ON c.client_id = cl.id ${where} ORDER BY c.created_at DESC`, ...params);
+      `SELECT c.*, cl.name AS client_name FROM client_contracts c LEFT JOIN clients cl ON c.client_id = cl.id ${where} ORDER BY c.created_at DESC`, ...params);
     return c.json({ data: rows });
   } catch (err) {
     return c.json({ error: 'Failed to list contracts' }, 500);
@@ -103,7 +103,7 @@ billing.get('/invoices', async (c) => {
     const perPage = 50; const offset = (page - 1) * perPage;
     const count = await queryFirst<{ total: number }>(db, `SELECT COUNT(*) as total FROM invoices i ${where}`, ...params);
     const rows = await query<Record<string, unknown>>(db,
-      `SELECT i.*, cl.client_name FROM invoices i LEFT JOIN clients cl ON i.client_id = cl.id ${where} ORDER BY i.issue_date DESC LIMIT ? OFFSET ?`, ...params, perPage, offset);
+      `SELECT i.*, cl.name AS client_name FROM invoices i LEFT JOIN clients cl ON i.client_id = cl.id ${where} ORDER BY i.issue_date DESC LIMIT ? OFFSET ?`, ...params, perPage, offset);
     const total = count?.total ?? 0;
     return c.json({ data: rows, pagination: { page, per_page: perPage, total, totalPages: Math.ceil(total / perPage) } });
   } catch (err) {
@@ -240,7 +240,7 @@ billing.get('/payments', async (c) => {
     if (clientId) { cond.push('p.client_id = ?'); params.push(clientId); }
     const where = cond.join(' AND ');
     const rows = await query<Record<string, unknown>>(db,
-      `SELECT p.*, i.invoice_number, cl.client_name FROM payments p
+      `SELECT p.*, i.invoice_number, cl.name AS client_name FROM payments p
        LEFT JOIN invoices i ON p.invoice_id = i.id
        LEFT JOIN clients cl ON p.client_id = cl.id
        WHERE ${where} ORDER BY p.payment_date DESC LIMIT 200`, ...params);
@@ -268,7 +268,9 @@ billing.post('/payments', async (c) => {
       const total = await queryFirst<{ amt: number }>(db, 'SELECT COALESCE(SUM(amount),0) as amt FROM payments WHERE invoice_id = ?', b.invoice_id);
       const inv = await queryFirst<{ total_amount: number }>(db, 'SELECT total_amount FROM invoices WHERE id = ?', b.invoice_id);
       let status = 'partial';
-      if (inv && (total?.amt ?? 0) >= inv.total_amount) status = 'paid';
+      // Require a positive invoice total — a draft with total_amount = 0 would
+      // otherwise flip to 'paid' on ANY payment (amt >= 0 is always true).
+      if (inv && inv.total_amount > 0 && (total?.amt ?? 0) >= inv.total_amount) status = 'paid';
       await execute(db, 'UPDATE invoices SET paid_amount = ?, status = ? WHERE id = ?', total?.amt ?? 0, status, b.invoice_id);
     }
     const newId = Number(result.meta.last_row_id);
