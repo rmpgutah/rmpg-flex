@@ -558,7 +558,12 @@
 //       position:fixed with viewport coords from a button ref, plus a
 //       scroll/resize listener so the panel tracks the triggering
 //       button. Bump forces clients holding v789 cache to refetch.
-const CACHE_NAME = 'rmpg-flex-v790';
+// v791: login globe WebGL hardening — the Three.js LoginGlobe was the one GL
+//       surface with no context-loss recovery. Guard renderer creation (a
+//       failed/blocklisted GPU threw synchronously in the effect and could
+//       white-screen the login page) and add webglcontextlost/restored
+//       handlers so a GPU reset no longer renders to a dead context.
+const CACHE_NAME = 'rmpg-flex-v791';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
