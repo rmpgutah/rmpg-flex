@@ -1194,6 +1194,12 @@ export default function DispatchPage() {
       try {
         const res = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}`);
         if (cancelled) return;
+        // CRITICAL FIX: Merge full call data (PSO/process fields from ext table)
+        // into selectedCall. The list endpoint doesn't include these fields due
+        // to the D1 100-column cap, so the detail panel was showing "No PSO
+        // details entered yet" even when data existed.
+        const fullCall = mapDbCall(res);
+        setSelectedCall(fullCall);
         const incidents = res?.related_incidents ?? res?.incidents ?? [];
         setLinkedIncidents(Array.isArray(incidents) ? incidents : []);
         const activity = res?.activity ?? [];
@@ -5025,7 +5031,7 @@ export default function DispatchPage() {
                     <div className="flex items-center justify-between mb-2">
                       <label className="field-label !flex items-center gap-1.5">
                         <Building2 className="w-3 h-3" /> PSO Client Request Details
-                        {(selectedCall.pso_attempt_number || 1) >= 1 && (
+                        {(selectedCall.pso_attempt_number || 1) >= 1 && (selectedCall.pso_requestor_name || selectedCall.pso_service_type) && (
                           isAdminOrManager && !isEditing ? (
                             <select
                               className="ml-1.5 px-1 py-0 text-[8px] font-bold rounded-sm cursor-pointer"
@@ -5234,8 +5240,10 @@ export default function DispatchPage() {
                         ? (() => { try { return JSON.parse(selectedCall.pso_service_windows as string); } catch { return null; } })()
                         : selectedCall.pso_service_windows;
                       const windows = { early_morning: !!w?.early_morning, daytime: !!w?.daytime, evening: !!w?.evening, weekend: !!w?.weekend };
-                      const allMet = windows.early_morning && windows.daytime && windows.evening && windows.weekend;
                       const metCount = [windows.early_morning, windows.daytime, windows.evening, windows.weekend].filter(Boolean).length;
+                      // Only show when at least one window is configured
+                      if (metCount === 0) return null;
+                      const allMet = windows.early_morning && windows.daytime && windows.evening && windows.weekend;
                       return (
                         <div className="mt-2 pt-2 border-t border-rmpg-700">
                           <div className="flex items-center gap-2 mb-1.5">

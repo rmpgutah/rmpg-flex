@@ -7,6 +7,18 @@ import { LIST_VIEW_COLUMNS } from './calls';
 // the list rows the dispatch panel already knows how to render.
 const LIST_VIEW_SELECT = LIST_VIEW_COLUMNS.map(col => `c.${col}`).join(', ');
 
+/** Parse a D1 timestamp ('YYYY-MM-DD HH:MM:SS' UTC, or ISO) to epoch ms.
+ *  Mirrors parseUtcMs in extensions.ts — D1 stores timestamps as UTC naive
+ *  strings; Date.parse treats them as local time unless we append the 'Z'
+ *  suffix. Without this, the aggregate overdue-detection clock skews by the
+ *  worker's runtime timezone (~6h on Cloudflare). */
+function parseUtcMs(ts: string): number {
+  let s = ts.trim();
+  if (s.includes(' ') && !s.includes('T')) s = s.replace(' ', 'T');
+  if (!/[zZ]|[+-]\d\d:?\d\d$/.test(s)) s += 'Z';
+  return Date.parse(s);
+}
+
 const aggregates = new Hono<Env>();
 
 // GET /dispatch/aggregates - Dashboard stats
@@ -99,7 +111,7 @@ aggregates.get('/queue', async (c) => {
     const expectedMinutes: Record<string, number> = { P1: 8, P2: 15, P3: 30, P4: 60 };
     const nowMs = Date.now();
     const enriched = rows.map((r) => {
-      const createdAt = r.created_at ? Date.parse(String(r.created_at)) : null;
+      const createdAt = r.created_at ? parseUtcMs(String(r.created_at)) : null;
       const ageMinutes = createdAt != null && !Number.isNaN(createdAt)
         ? Math.round(((nowMs - createdAt) / 60_000) * 10) / 10
         : null;

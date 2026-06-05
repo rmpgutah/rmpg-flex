@@ -26,7 +26,7 @@
 // anchor fetches are independent).
 // ============================================================
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   AlertTriangle,
   CheckCircle,
@@ -120,6 +120,12 @@ export default function MileageAuditTab() {
   const [audit, setAudit] = useState<AuditRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Guard against setState on unmounted component — the refresh
+  // callback does multiple async apiFetch calls; if the user switches
+  // tabs or navigates between them, setState fires on a dead component.
+  const mountedRef = useRef(true);
+  useEffect(() => { return () => { mountedRef.current = false; }; }, []);
 
   // Reference data (officers, units)
   const [officers, setOfficers] = useState<Array<{ id: number; full_name: string }>>([]);
