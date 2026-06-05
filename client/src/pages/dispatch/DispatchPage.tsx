@@ -4531,7 +4531,37 @@ export default function DispatchPage() {
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-1">
                         <div>
                           <label className="text-[9px] text-brand-gold-500">Starting Mileage <span className="text-red-400">*</span></label>
-                          <input type="number" step="0.1" min="0" className="input-dark text-xs" placeholder="e.g. 45230" value={editData.starting_mileage} onChange={(e) => updateEditField('starting_mileage', e.target.value)} />
+                          <div className="flex gap-1">
+                            <input type="number" step="0.1" min="0" className="input-dark text-xs flex-1" placeholder="e.g. 45230" value={editData.starting_mileage} onChange={(e) => updateEditField('starting_mileage', e.target.value)} />
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                try {
+                                  const unitId = (() => {
+                                    const a = (selectedCall as any)?.assigned_units;
+                                    const id = Array.isArray(a) && a.length > 0 ? a[0] : null;
+                                    return id != null ? Number(id) : null;
+                                  })();
+                                  const params = new URLSearchParams();
+                                  if (user?.id) params.set('officer_id', String(user.id));
+                                  if (unitId) params.set('unit_id', String(unitId));
+                                  const r: any = await apiFetch(`/patrol/mileage/suggest?${params}`);
+                                  if (r?.suggested_mileage != null) {
+                                    updateEditField('starting_mileage', String(r.suggested_mileage));
+                                    addToast?.(`Picked up ${Number(r.suggested_mileage).toLocaleString()} mi from last entry (scope: ${r.source})`, 'success');
+                                  } else {
+                                    addToast?.(r?.message || 'No prior mileage for this scope', 'info');
+                                  }
+                                } catch (err: any) {
+                                  addToast?.(err?.message || 'Mileage suggest failed', 'error');
+                                }
+                              }}
+                              className="toolbar-btn text-[9px] px-1.5"
+                              title="Pick up from the last entered mileage for this officer + unit"
+                            >
+                              ⤴︎ Last
+                            </button>
+                          </div>
                         </div>
                         <div>
                           <label className="text-[9px] text-brand-gold-500">Ending Mileage</label>

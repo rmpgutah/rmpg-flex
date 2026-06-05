@@ -102,6 +102,7 @@ import forensics from './routes/forensics';
 import gangIntel from './routes/gangIntel';
 import hr from './routes/hr';
 import patrol from './routes/patrol';
+import patrolMileage from './routes/patrolMileage';
 import radio from './routes/radio';
 import iped from './routes/iped';
 import serveIntake from './routes/serveIntake';
@@ -289,6 +290,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Offline sync (push/pull + secrets). /sync/push dispatches allowlisted writes through the root app; see src/routes/offline.ts.' },
   { prefix: '/api/patrol', router: patrol, auth: 'required',
     note: 'MVP: checkpoints + scans + breaks + tour verifications; analytics endpoints deferred' },
+  { prefix: '/api/patrol', router: patrolMileage, auth: 'required',
+    note: 'Mileage anchor (auto-pickup) + admin fix/audit chain rewrite + FORM PS-211 trip-log payload' },
   { prefix: '/api/radio', router: radio, auth: 'required',
     note: 'Channels + transmissions (append-only) + per-user recordings + stats' },
   { prefix: '/api/recruitment', router: recruitment, auth: 'required',
