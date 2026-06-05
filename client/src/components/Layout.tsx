@@ -58,7 +58,6 @@ import {
   Share2,
   // Spillman module-bar: distinct per-module glyphs (no more duplicate Shields)
   Siren,
-  ScanEye,
   LifeBuoy,
   Fingerprint,
   ScanSearch,
@@ -78,7 +77,6 @@ import {
   BellRing,
   Award,
   UserPlus,
-  Smartphone,
   Navigation2,
   Sun,
   Moon,
@@ -243,10 +241,6 @@ const TOOLBAR_NAV: NavItem[] = [
     { path: '/command-center', icon: Crosshair, label: 'Command Center' },
   ]},
   { path: '/mdt', icon: Monitor, label: 'MDT', group: 'ops', shortcut: 'F4' },
-  { path: '/mdt', icon: Monitor, label: 'MDT', group: 'ops', shortcut: 'F4' },
-  { path: '/nav', icon: Navigation2, label: 'Nav', group: 'ops' },
-  { path: '/mobile', icon: Smartphone, label: 'Mobile', group: 'ops' },
-  { path: '/navigation', icon: Navigation2, label: 'Navigate', group: 'ops' },
   { path: '/ncic', icon: Terminal, label: 'NCIC', group: 'ops', shortcut: 'F5', children: [
     { path: '/ncic', icon: Terminal, label: 'NCIC Terminal' },
     { path: '/dl-search', icon: CreditCard, label: 'DL Search' },
@@ -330,9 +324,6 @@ const TOOLBAR_NAV: NavItem[] = [
     { path: '/forensic-lab', icon: Microscope, label: 'Forensic Lab' },
     { path: '/iped', icon: Microscope, label: 'IPED Forensics' },
   ]},
-  { path: '/crm', icon: ScanEye, label: 'Overwatch', group: 'analysis' },
-  { path: '/training', icon: GraduationCap, label: 'Training', group: 'analysis' },
-  { path: '/forensics', icon: Network, label: 'Connections', group: 'analysis', adminOnly: true },
   { path: '/jail', icon: Building2, label: 'Jail/IA', group: 'support', children: [
     { path: '/jail', icon: Building2, label: 'Jail Management' },
     { path: '/affairs', icon: ShieldAlert, label: 'Internal Affairs' },
@@ -359,7 +350,6 @@ const TOOLBAR_NAV: NavItem[] = [
   ]},
   { path: '/audit', icon: ScrollText, label: 'Audit', group: 'system', shortcut: 'F11', adminOnly: true },
   { path: '/admin', icon: Settings, label: 'Admin', group: 'system', shortcut: 'F12', adminOnly: true },
-  { path: '/navigation', icon: Navigation2, label: 'Nav Index', group: 'system' },
 ];
 
 // Paths that client_viewer role is NOT allowed to see
