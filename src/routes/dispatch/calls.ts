@@ -132,16 +132,25 @@ calls.get('/', async (c) => {
 });
 
 // POST /dispatch/calls - Create call
-calls.post('/', async (c) => {
-  try {
-    const db = getDb(c.env);
-    const body = await c.req.json<Record<string, unknown>>();
-    const userId = c.get('userId') as number;
+  const VALID_PRIORITIES = new Set(['P1', 'P2', 'P3', 'P4']);
+  const VALID_PRIORITIES_SQL = ['P1', 'P2', 'P3', 'P4'];
+  calls.post('/', async (c) => {
+    try {
+      const db = getDb(c.env);
+      const body = await c.req.json<Record<string, unknown>>();
+      const userId = c.get('userId') as number;
 
-    const { incident_type, priority, location_address } = body;
-    if (!incident_type || !priority || !location_address) {
-      return c.json({ error: 'incident_type, priority, and location_address are required' }, 400);
-    }
+      const { incident_type, priority, location_address } = body;
+      if (!incident_type || !priority || !location_address) {
+        return c.json({ error: 'incident_type, priority, and location_address are required' }, 400);
+      }
+      // REGRESSION-GUARD: validate priority against P1-P4 (SQL CHECK constraint
+      // on calls_for_service.priority enforces this at DB level but a cleaner
+      // 400 saves the round-trip).
+      const normalizedPriority = String(priority).toUpperCase();
+      if (!VALID_PRIORITIES.has(normalizedPriority)) {
+        return c.json({ error: `Invalid priority '${priority}'. Must be P1, P2, P3, or P4.`, code: 'INVALID_PRIORITY' }, 400);
+      }
 
     // ── Run Card application (Spillman parity, DI-1) ──
     // Caller-provided fields always win; the run card fills only

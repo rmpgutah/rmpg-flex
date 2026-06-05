@@ -147,8 +147,6 @@ import {
   unitStatus, bolos as bolosRouter, welfareActive,
   closestUnit, autoAssign, callTimeline, callActions,
 } from './routes/dispatch/extensions';
-// My-vehicle (always-visible Nav marker) — separate export to mount under /gps
-import { myVehicle } from './routes/dispatch/extensions';
 // Business records
 import businessVehicles from './routes/business/vehicles';
 import businessVisits from './routes/business/visits';
@@ -237,8 +235,6 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // Canonical dispatch resources
   { prefix: '/api/dispatch/calls', router: dispatchCalls, auth: 'required' },
   { prefix: '/api/dispatch/units', router: dispatchUnits, auth: 'required' },
-  { prefix: '/api/dispatch/gps', router: myVehicle, auth: 'required',
-    note: 'BEFORE dispatchGps — handles /my-vehicle for always-visible Nav marker' },
   { prefix: '/api/dispatch/gps', router: dispatchGps, auth: 'required' },
   { prefix: '/api/dispatch/trips', router: dispatchTrips, auth: 'required' },
   { prefix: '/api/dispatch/geography', router: dispatchGeography, auth: 'required' },

@@ -3158,4 +3158,64 @@ fleet.get('/monthly-spend', async (c) => {
   }
 });
 
+/** Sync fleet-vehicle odometer from dispatch GPS breadcrumbs for every
+ *  assigned unit. Called by the cron sweep (index.ts:304) to derive
+ *  GPS-estimated mileage for the Fleet Analytics dashboard.
+ *  Returns stats for the cron log line. */
+export async function syncAllVehicleGpsMileage(db: D1Database): Promise<{ checked: number; with_gps: number; total_gps_miles: number }> {
+  const rows = await query<{ unit_id: number; lat: number; lng: number; recorded_at: string; call_sign?: string }>(
+    db,
+    `SELECT b.unit_id, b.latitude AS lat, b.longitude AS lng, b.recorded_at
+     FROM gps_breadcrumbs b
+     JOIN units u ON u.id = b.unit_id
+     WHERE u.vehicle_id IS NOT NULL
+       AND b.recorded_at >= datetime('now', '-24 hours')
+     ORDER BY b.unit_id, b.recorded_at`,
+  );
+
+  // Haversine distance in miles between two coordinate pairs.
+  const haversine = (lat1: number, lng1: number, lat2: number, lng2: number): number => {
+    const R = 3963.0; // Earth radius in miles
+    const toRad = (d: number) => (d * Math.PI) / 180;
+    const dLat = toRad(lat2 - lat1);
+    const dLng = toRad(lng2 - lng1);
+    const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  };
+
+  let totalMiles = 0;
+  let prevUnitId = -1;
+  let prevLat = 0, prevLng = 0;
+  let unitsWithGps = 0;
+
+  for (const r of rows) {
+    if (r.unit_id !== prevUnitId) {
+      prevUnitId = r.unit_id;
+      prevLat = r.lat;
+      prevLng = r.lng;
+      continue; // first point for unit — no delta yet
+    }
+    // Skip implausible jumps (> 200 mi in one beacon — likely GPS glitch).
+    const d = haversine(prevLat, prevLng, r.lat, r.lng);
+    if (d <= 200) totalMiles += d;
+    prevLat = r.lat;
+    prevLng = r.lng;
+  }
+
+  // Count distinct units with GPS data
+  const distinctUnits = new Set(rows.map(r => r.unit_id));
+  unitsWithGps = distinctUnits.size;
+
+  // Also count ALL assigned units (including those w/o GPS in the window)
+  const assigned = await queryFirst<{ cnt: number }>(
+    db, 'SELECT COUNT(*) AS cnt FROM units WHERE vehicle_id IS NOT NULL',
+  );
+
+  return {
+    checked: assigned?.cnt ?? 0,
+    with_gps: unitsWithGps,
+    total_gps_miles: Math.round(totalMiles * 10) / 10,
+  };
+}
+
 export default fleet;

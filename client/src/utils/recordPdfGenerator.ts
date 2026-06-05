@@ -1727,8 +1727,13 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
   //       exist. Benchmarks: P1 ≤5min, P2 ≤10min, P3+ ≤20min. Score
   //       inverts so 100 = on-or-under benchmark, 0 = ≥3× benchmark.
   if (data.dispatched_at && data.onscene_at) {
-    const tDisp = Date.parse(data.dispatched_at);
-    const tArr = Date.parse(data.onscene_at);
+    // parseTimestamp interprets naive server strings as UTC (the app
+    // standard). The pre-wave-3 code used Date.parse which treated
+    // them as local, skewing response-time scores ~6-7h. Fixed in
+    // ecd8e2e4 for the timeline strip (line 1678) but this SLA
+    // gauge block was missed — same bug, same fix. (Wave 3.1)
+    const tDisp = parseTimestamp(data.dispatched_at).getTime();
+    const tArr = parseTimestamp(data.onscene_at).getTime();
     if (isFinite(tDisp) && isFinite(tArr) && tArr >= tDisp) {
       const respMin = (tArr - tDisp) / 60000;
       const prioStr = String(data.priority || '').toUpperCase();
@@ -2511,7 +2516,14 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
 
       // DISPOSITION cell carries responding units / vehicle when present.
       let unitsList: string[] = [];
-      try { unitsList = JSON.parse(visit.assigned_units || '[]'); } catch { /* ignore */ }
+      // Guard revived visit rows from sentinel D1 TEXT-column values
+      // (e.g. "None", "N/A") that JSON.parse happily accepts but
+      // aren't arrays. The commit 1c9ff136 Array.isArray-guarded 30
+      // analogous sites but this one was missed. (Wave 3.1)
+      try {
+        const parsed = JSON.parse(visit.assigned_units || '[]');
+        if (Array.isArray(parsed)) unitsList = parsed;
+      } catch { /* ignore — malformed JSON, treat as empty */ }
       const dispExtras: string[] = [];
       if (unitsList.length > 0) dispExtras.push(unitsList.join(', '));
       if (visit.responding_vehicle_id) dispExtras.push(`Veh ${visit.responding_vehicle_id}`);
@@ -6060,9 +6072,13 @@ export async function downloadRecordPdf<T extends RecordPdfType>(
     const id = identifier || 'record';
     const targetSuffix = options.printTarget === 'mobile' ? '_mobile' : '';
     const filename = `${id}_${recordType}${targetSuffix}.pdf`;
-    // Explicit blob download — works on Safari (doc.save uses window.open which strips filename)
+    // doc.output('blob') already returns a Blob. Wrapping it in
+    // new Blob([blob], ...) creates a double-wrapped blob — the inner
+    // blob's bytes are re-encoded through the outer Blob constructor,
+    // which works in most browsers but is a spec violation. Fixed by
+    // using the original Blob directly. (Wave 3.1)
     const blob = doc.output('blob');
-    const url = URL.createObjectURL(new Blob([blob], { type: 'application/pdf' }));
+    const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
     a.download = filename;
@@ -6108,8 +6124,15 @@ export async function generateRecordPdfBlobUrl<T extends RecordPdfType>(
 
     const payloadHash = await computePayloadHash(data);
     setActivePayloadHash(payloadHash);
+    // Use the actual identifier for the Ed25519 signature payload so
+    // preview and download PDFs share the same case-number field for
+    // signature verification. The pre-wave-3.1 code hardcoded ''
+    // here, so the preview signature was always caseNumber='' while
+    // download was identifier||'', producing a different signed
+    // payload for the same record. (Wave 3.1)
+    const identStr = (identifier ?? '') || '';
     setActiveSignature(
-      await fetchPdfSignature(recordType, '', payloadHash) || undefined
+      await fetchPdfSignature(recordType, identStr, payloadHash) || undefined
     );
     const doc = await generateRecordPdf(recordType, data, options);
     setActiveOfficerSignature(undefined); // clear after generation

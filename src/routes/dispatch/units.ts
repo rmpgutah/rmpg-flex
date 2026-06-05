@@ -109,6 +109,15 @@ units.post('/', async (c) => {
 // to the canonical surface via a 400 with a hint.
 const PUT_DROPPED_COLS = new Set(['id', 'created_at', 'vehicle_id']);
 const PUT_DENIED_FIELDS = new Set(['vehicle_id']);
+// REGRESSION-GUARD: columns that must only be mutated through their
+// dedicated dispatch pathways (assign-unit for current_call_id,
+// personnel sync for officer_id, GPS route for lat/lng, extend for
+// mileage, etc.). A general-purpose PUT must never touch these.
+const PUT_DENIED_SENSITIVE = new Set([
+  'current_call_id', 'current_call_number',
+  'latitude', 'longitude', 'gps_updated_at',
+  'last_status_change', 'updated_at', 'mileage',
+]);
 units.put('/:id', async (c) => {
   try {
     const db = getDb(c.env);
@@ -135,6 +144,7 @@ units.put('/:id', async (c) => {
     for (const [k, v] of Object.entries(body)) {
       if (PUT_DROPPED_COLS.has(k)) continue;
       if (PUT_DENIED_FIELDS.has(k)) continue;
+      if (PUT_DENIED_SENSITIVE.has(k)) continue;
       sets.push(`${k} = ?`);
       params.push(v ?? null);
     }
