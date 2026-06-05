@@ -388,6 +388,7 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
         const unit = pickUnit(resp);
         if (unit && !cancelled) {
           unitIdRef.current = unit.id;
+          gpsSourceRef.current = unit.gps_source || 'browser';
           setState((prev) => ({
             ...prev,
             unitCallSign: unit.call_sign ?? prev.unitCallSign,

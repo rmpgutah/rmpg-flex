@@ -1,8 +1,8 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import RichTextArea from '../../components/RichTextArea';
 import {
   Car, Plus, Wrench, Search, Gauge, AlertTriangle, CheckCircle, Calendar, Shield,
-  Tag, Radio, Archive, DollarSign, Fuel, Eye, Trash2,
+  Tag, Radio, Archive, DollarSign, Fuel, Eye, Trash2, FileText,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { useContextMenu, type ContextMenuItem } from '../../context/ContextMenuContext';
@@ -25,6 +25,7 @@ import FleetDetailPanel, { type DetailTab, type CostSubTab } from './FleetDetail
 import FleetCostFormModal, { type CostCategory, type CostFormState, EMPTY_COST_FORM } from './modals/FleetCostFormModal';
 import type { FleetLoan, FleetInsurancePolicy, FleetAccessory, FleetUtilityCost, FleetOtherCost, FleetCostBudget, FleetCostSummary } from '../../types';
 import FleetAnalyticsTab from './tabs/FleetAnalyticsTab';
+import FleetAnalysisFormsTab from './tabs/FleetAnalysisFormsTab';
 import VehicleFormModal, { type VehicleFormState, EMPTY_VEHICLE_FORM } from './modals/VehicleFormModal';
 import MaintenanceFormModal, { type MaintenanceFormState, EMPTY_MAINT_FORM } from './modals/MaintenanceFormModal';
 import FuelLogModal, { type FuelFormState, EMPTY_FUEL_FORM } from './modals/FuelLogModal';
@@ -96,8 +97,19 @@ export default function FleetPage() {
   const [filterStatus, setFilterStatus] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
+  // Map vehicle.id → display number (e.g. "PS-D19") for PDF report labels
+  const vehicleNumberById = useMemo(() => {
+    const m = new Map<string | number, string>();
+    for (const v of vehicles) {
+      m.set(v.id, v.vehicle_number || `#${v.id}`);
+    }
+    return m;
+  }, [vehicles]);
+
   // Tab & modal state
   const [activeTab, setActiveTab] = usePersistedTab('rmpg_fleet_tab', 'overview' as DetailTab, ['overview', 'fuel', 'costs', 'inspections', 'assignments', 'personnel', 'tires', 'damage', 'recalls', 'analytics', 'dashcam', 'fuel_cards'] as const);
+  // Top-level view mode when no vehicle is selected: dashboard (default) or analysis forms
+  const [viewMode, setViewMode] = useState<'dashboard' | 'analysis'>('dashboard');
   const [modal, setModal] = useState<ModalMode>('none');
   const v = useFormDraft<VehicleFormState>({
     storageKey: 'rmpg_fleet_vehicle_form',
@@ -1407,22 +1419,57 @@ export default function FleetPage() {
         {/* ---- RIGHT PANEL ---- */}
         <div className={`${isMobile ? (selectedId ? 'w-full' : 'hidden') : 'flex-1'} flex flex-col overflow-hidden bg-surface-raised`}>
           {selectedId == null || !detail ? (
-            // Fleet-wide: Maintenance Monitor + Analytics when no vehicle selected
-            <div className="flex-1 min-h-0 overflow-y-auto">
-              <MaintenanceMonitor onSelectVehicle={(id) => { setSelectedId(id); fetchDetail(id); }} />
-              {fleetAnalytics ? (
-                <div className="px-3 pb-3">
-                  <FleetAnalyticsTab analytics={fleetAnalytics} loading={fleetAnalyticsLoading} onPeriodChange={(p) => fetchFleetAnalytics(p)} />
-                </div>
-              ) : (
-                <div className="flex items-center justify-center py-8">
-                  <div className="text-center">
-                    <Car className="w-8 h-8 text-rmpg-600 mx-auto mb-2" />
-                    <p className="text-xs text-rmpg-500">Select a vehicle to view details</p>
-                    <p className="text-[10px] text-rmpg-600 mt-1">{vehicles.length} vehicles in fleet</p>
-                  </div>
-                </div>
-              )}
+            // Fleet-wide: view mode toggle (dashboard vs analysis forms)
+            <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+              <div className="flex border-b border-subtle bg-surface-sunken flex-shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setViewMode('dashboard')}
+                  className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider transition-colors"
+                  style={{
+                    color: viewMode === 'dashboard' ? '#d4a017' : '#888',
+                    borderBottom: viewMode === 'dashboard' ? '2px solid #d4a017' : '2px solid transparent',
+                  }}
+                >
+                  Dashboard
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('analysis')}
+                  className="px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider transition-colors flex items-center gap-1"
+                  style={{
+                    color: viewMode === 'analysis' ? '#d4a017' : '#888',
+                    borderBottom: viewMode === 'analysis' ? '2px solid #d4a017' : '2px solid transparent',
+                  }}
+                >
+                  <FileText size={10} /> Analysis Reports
+                </button>
+              </div>
+              <div className="flex-1 min-h-0 overflow-y-auto">
+                {viewMode === 'dashboard' ? (
+                  <>
+                    <MaintenanceMonitor onSelectVehicle={(id) => { setSelectedId(id); fetchDetail(id); }} />
+                    {fleetAnalytics ? (
+                      <div className="px-3 pb-3">
+                        <FleetAnalyticsTab analytics={fleetAnalytics} loading={fleetAnalyticsLoading} onPeriodChange={(p) => fetchFleetAnalytics(p)} />
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-center py-8">
+                        <div className="text-center">
+                          <Car className="w-8 h-8 text-rmpg-600 mx-auto mb-2" />
+                          <p className="text-xs text-rmpg-500">Select a vehicle to view details</p>
+                          <p className="text-[10px] text-rmpg-600 mt-1">{vehicles.length} vehicles in fleet</p>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <FleetAnalysisFormsTab
+                    vehicles={vehicles}
+                    vehicleNumberById={vehicleNumberById}
+                  />
+                )}
+              </div>
             </div>
           ) : (
             <>
