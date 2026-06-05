@@ -931,8 +931,11 @@ calls.post('/:id/resume', requireRole(...WRITE_ROLES), async (c) => {
     await execute(db, "UPDATE calls_for_service SET updated_at = datetime('now') WHERE id = ?", id);
     // Return the full row with held_at cleared so the client maps it back to the
     // call's real (non-held) status instead of mapping a bare {message} to a blank.
+    // CRITICAL FIX: Return full ext table data (PSO/process fields) so the client
+    // doesn't lose them after a resume operation.
     const row = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
-    return c.json({ ...(row || {}), held_at: null });
+    const ext = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service_ext WHERE id = ?', id);
+    return c.json({ ...(row || {}), ...(ext || {}), held_at: null });
   } catch (err) {
     return c.json({ error: 'Resume failed' }, 500);
   }
@@ -1277,7 +1280,9 @@ calls.post('/:id/redispatch', requireRole('admin', 'manager', 'supervisor', 'dis
 
     const newCall = { ...(newBase || {}), ...(newExt || {}) };
     broadcastAll('dispatch_update', { action: 'call_created', call: newCall });
-    broadcastAll('dispatch_update', { action: 'call_updated', call: { ...parentBase, notes: JSON.stringify(parentNotes) } });
+    // CRITICAL FIX: Include parent ext data in the broadcast so clients don't
+    // lose PSO/process fields when the parent call is updated via WebSocket.
+    broadcastAll('dispatch_update', { action: 'call_updated', call: { ...parentBase, ...(parentExt || {}), notes: JSON.stringify(parentNotes) } });
 
     return c.json({ ...newCall, chain, parent_call_number: parentBase.call_number }, 201);
   } catch (err) {

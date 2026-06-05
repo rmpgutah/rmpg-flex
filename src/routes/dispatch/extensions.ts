@@ -1019,11 +1019,13 @@ const utcNow = () => new Date().toISOString().replace('T', ' ').slice(0, 19);
 // unassign, dispatch, etc.) silently dropped a call's hold + pin in the UI.
 // Merge them back in via a second cheap point-lookup rather than a JOIN, so we
 // never risk the D1 100-column result-set cap on this base table.
+// CRITICAL FIX: Return full ext table data (PSO/process fields) so WebSocket
+// broadcasts and API responses don't lose PSO/process fields after updates.
 async function fetchCallRow(db: D1Database, id: number) {
   const base = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
   if (!base) return base;
-  const ext = await queryFirst<Record<string, unknown>>(db, 'SELECT held_at, pinned FROM calls_for_service_ext WHERE id = ?', id);
-  return { ...base, held_at: ext?.held_at ?? null, pinned: ext?.pinned ?? 0 };
+  const ext = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service_ext WHERE id = ?', id);
+  return { ...base, ...(ext || {}) };
 }
 
 // =====================================================================
