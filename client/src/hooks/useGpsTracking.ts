@@ -42,6 +42,8 @@ export interface GpsState {
   unitCallSign: string | null;
   /** The unit ID assigned to this user (if any) */
   unitId: number | null;
+  /** Whether the user has a take-home vehicle (bypasses unit requirement) */
+  hasTakeHome: boolean;
   /** Whether GPS permission was denied (blocks app usage) */
   permissionDenied: boolean;
   /** Whether we're still waiting for location permission */
@@ -263,6 +265,7 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
     isSupported: typeof navigator !== 'undefined' && 'geolocation' in navigator,
     unitCallSign: null,
     unitId: null,
+    hasTakeHome: false,
     permissionDenied: false,
     permissionPending: false,
     connectionType: getConnectionType(),
@@ -314,11 +317,16 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
   // Fetch the user's assigned unit on mount
   useEffect(() => {
     let cancelled = false;
-    apiFetch<{ id: number; call_sign: string; status: string; gps_source?: string } | null>('/dispatch/gps/my-unit')
+    apiFetch<{ id: number; call_sign: string; status: string; gps_source?: string; take_home?: boolean } | null>('/dispatch/gps/my-unit')
       .then((unit) => {
         if (unit && !cancelled) {
           unitIdRef.current = unit.id;
-          setState((prev) => ({ ...prev, unitCallSign: unit.call_sign, unitId: unit.id }));
+          setState((prev) => ({
+            ...prev,
+            unitCallSign: unit.call_sign,
+            unitId: unit.id,
+            hasTakeHome: unit.take_home === true,
+          }));
           gpsSourceRef.current = unit.gps_source || 'browser';
         }
       })

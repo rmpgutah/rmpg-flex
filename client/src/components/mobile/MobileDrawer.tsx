@@ -61,6 +61,7 @@ const NAV_GROUPS: NavGroup[] = [
       { path: '/dispatch', icon: Radio, label: 'Dispatch' },
       { path: '/map', icon: Map, label: 'Map' },
       { path: '/mdt', icon: Monitor, label: 'MDT' },
+      { path: '/nav', icon: Navigation2, label: 'Nav' },
       { path: '/ncic', icon: Terminal, label: 'NCIC' },
       { path: '/body-cameras', icon: Video, label: 'Body Cameras' },
       { path: '/dash-cameras', icon: Camera, label: 'Dash Cameras' },

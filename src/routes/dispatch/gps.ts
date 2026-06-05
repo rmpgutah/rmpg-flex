@@ -14,28 +14,31 @@ gps.post('/', async (c) => {
     const points = 'points' in body ? body.points : [body];
     if (!points.length) return c.json({ error: 'No points' }, 400);
 
-    // Get user's unit info
+    // Get user's unit info — fall back to take-home vehicle
     const unit = await queryFirst<{ id: number; call_sign: string }>(db,
       'SELECT id, call_sign FROM units WHERE officer_id = ? LIMIT 1', userId);
-
-    if (!unit) return c.json({ error: 'No assigned unit' }, 400);
+    if (!unit) {
+      // Check for take-home vehicle — these users still send breadcrumbs
+      const user = await queryFirst<{ take_home_vehicle_id: number | null }>(db,
+        'SELECT take_home_vehicle_id FROM users WHERE id = ?', userId);
+      if (!user?.take_home_vehicle_id) {
+        return c.json({ error: 'No assigned unit' }, 400);
+      }
+    }
 
     const inserted: number[] = [];
     for (const pt of points) {
       const result = await execute(db,
         `INSERT INTO gps_breadcrumbs (unit_id, officer_id, latitude, longitude, accuracy, heading, speed, call_sign, recorded_at)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
-        unit.id, userId, pt.latitude, pt.longitude, pt.accuracy ?? null, pt.heading ?? null, pt.speed ?? null, unit.call_sign
+        unit?.id ?? null, userId, pt.latitude, pt.longitude, pt.accuracy ?? null, pt.heading ?? null, pt.speed ?? null, unit?.call_sign ?? 'take-home'
       );
       inserted.push(Number(result.meta.last_row_id));
     }
 
-    // Mirror the latest fix onto the unit row. The map filters officer pins by
-    // `u.latitude != null` and closest-unit/anomaly logic reads u.latitude/
-    // longitude/gps_updated_at — breadcrumbs alone never updated the unit, so
-    // pins never plotted and proximity logic saw no position.
+    // Mirror the latest fix onto the unit row (if unit exists).
     const lastPt = points[points.length - 1];
-    if (lastPt && lastPt.latitude != null && lastPt.longitude != null) {
+    if (lastPt && lastPt.latitude != null && lastPt.longitude != null && unit) {
       await execute(db,
         "UPDATE units SET latitude = ?, longitude = ?, gps_updated_at = datetime('now'), updated_at = datetime('now') WHERE id = ?",
         lastPt.latitude, lastPt.longitude, unit.id);
@@ -74,7 +77,25 @@ gps.get('/my-unit', async (c) => {
     const userId = c.get('userId') as number;
     const unit = await queryFirst<Record<string, unknown>>(db,
       'SELECT u.*, usr.full_name as officer_name FROM units u LEFT JOIN users usr ON u.officer_id = usr.id WHERE u.officer_id = ? LIMIT 1', userId);
-    if (!unit) return c.json({ message: 'No unit assigned' }, 404);
+    // Take-home vehicle fallback: officers with a take-home vehicle don't need
+    // a dispatch unit assignment to log trips / send GPS breadcrumbs.
+    if (!unit) {
+      const user = await queryFirst<{ take_home_vehicle_id: number | null }>(db,
+        'SELECT take_home_vehicle_id FROM users WHERE id = ?', userId);
+      if (user?.take_home_vehicle_id) {
+        const veh = await queryFirst<Record<string, unknown>>(db,
+          `SELECT id, vehicle_number, make, model, plate_number, status, current_mileage
+           FROM fleet_vehicles WHERE id = ? AND take_home = 1`, user.take_home_vehicle_id);
+        if (veh) {
+          return c.json({
+            id: null, call_sign: null, status: 'take_home',
+            take_home: true, vehicle: veh,
+            message: 'Take-home vehicle — trip logging available',
+          });
+        }
+      }
+      return c.json({ message: 'No unit assigned' }, 404);
+    }
     return c.json(unit);
   } catch (err) {
     return c.json({ error: 'Failed' }, 500);
