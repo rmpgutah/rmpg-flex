@@ -584,7 +584,7 @@ calls.get('/:id', async (c) => {
       LEFT JOIN clients cl ON cl.id = COALESCE(ck.client_id, p.client_id)
     `, call.property_id ?? null, call.dispatcher_id ?? null, call.client_id ?? null), null);
 
-    const assignedIds = JSON.parse(String(call.assigned_unit_ids || '[]')) as number[];
+    let assignedIds: number[] = []; try { assignedIds = JSON.parse(String(call.assigned_unit_ids || '[]')); if (!Array.isArray(assignedIds)) assignedIds = []; } catch { assignedIds = []; }
     const assignedUnits = assignedIds.length === 0 ? [] : await soft(() => query<Record<string, unknown>>(db, `
       SELECT u.*, usr.full_name as officer_name, usr.badge_number
       FROM units u LEFT JOIN users usr ON u.officer_id = usr.id
@@ -981,7 +981,7 @@ calls.post('/:id/assign-unit', requireRole(...WRITE_ROLES), async (c) => {
         hint: `POST /api/dispatch/calls/${unit.current_call_id}/unassign-unit with { unit_id: ${unit_id} }`,
       }, 409);
     }
-    const assigned = JSON.parse(call.assigned_unit_ids || '[]') as number[];
+    let assigned: number[] = []; try { assigned = JSON.parse(call.assigned_unit_ids || '[]'); if (!Array.isArray(assigned)) assigned = []; } catch { assigned = []; }
     if (!assigned.includes(unit_id)) assigned.push(unit_id);
     await execute(db, 'UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?', JSON.stringify(assigned), id);
     await execute(db, "UPDATE units SET status = 'dispatched', current_call_id = ? WHERE id = ?", callId, unit_id);
@@ -1057,7 +1057,8 @@ calls.post('/:id/unassign-unit', requireRole(...WRITE_ROLES), async (c) => {
     if (!Number.isFinite(unit_id) || unit_id <= 0) return c.json({ error: 'Invalid unit_id' }, 400);
     const call = await queryFirst<{ assigned_unit_ids: string }>(db, 'SELECT assigned_unit_ids FROM calls_for_service WHERE id = ?', id);
     if (!call) return c.json({ error: 'Call not found' }, 404);
-    const assigned = (JSON.parse(call.assigned_unit_ids || '[]') as number[]).filter(u => u !== unit_id);
+    let assigned: number[] = []; try { assigned = JSON.parse(call.assigned_unit_ids || '[]'); if (!Array.isArray(assigned)) assigned = []; } catch { assigned = []; }
+    assigned = assigned.filter(u => u !== unit_id);
     await execute(db, 'UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?', JSON.stringify(assigned), id);
     // Guard: only clear the unit's current_call_id if it actually
     // points at THIS call. Otherwise we'd be yanking the unit off a
@@ -1115,7 +1116,8 @@ calls.post('/:id/dispatch', requireRole(...WRITE_ROLES), async (c) => {
       }, 409);
     }
 
-    const assigned = new Set(JSON.parse(call.assigned_unit_ids || '[]') as number[]);
+    let assignedArr: number[] = []; try { assignedArr = JSON.parse(call.assigned_unit_ids || '[]'); if (!Array.isArray(assignedArr)) assignedArr = []; } catch { assignedArr = []; }
+    const assigned = new Set(assignedArr);
     for (const uid of cleanIds) assigned.add(uid);
 
     await execute(db, "UPDATE calls_for_service SET assigned_unit_ids = ?, status = 'dispatched', dispatched_at = COALESCE(dispatched_at, datetime('now')) WHERE id = ?", JSON.stringify([...assigned]), id);

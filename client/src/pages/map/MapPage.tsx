@@ -2958,7 +2958,7 @@ export default function MapPage() {
         playbackSpeedLabelRef.current = null;
       }
     };
-  }, [isPlaying, playbackUnit, playbackSpeed, mapLoaded]);
+  }, [isPlaying, playbackUnit, playbackSpeed, playbackTrails, mapLoaded]);
 
   // Cleanup playback marker and speed label when playback unit changes or stops
   useEffect(() => {

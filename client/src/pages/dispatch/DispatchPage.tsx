@@ -4354,7 +4354,7 @@ export default function DispatchPage() {
                               </span>
                             )}
                             {ts.showElapsed && ts.value && !editingTimestamp && (() => {
-                              const ageMin = Math.floor((Date.now() - new Date(ts.value).getTime()) / 60000);
+                              const ageMin = Math.floor((Date.now() - parseTimestamp(ts.value).getTime()) / 60000);
                               const ageColor = ageMin > 120 ? '#ef4444' : ageMin > 60 ? '#f97316' : ageMin > 30 ? '#eab308' : '#22c55e';
                               return <span className="text-[9px] font-mono tabular-nums font-bold" style={{ color: ageColor }}>({formatElapsed(ts.value)})</span>;
                             })()}
