@@ -4,7 +4,7 @@ import { parseTimestamp } from '../../utils/dateUtils';
 import {
   Car, Fuel, ClipboardCheck, Radio, BarChart3, Settings, Wrench, X, Clock, Users,
   Archive, RotateCcw, Trash2, Printer, ChevronDown, Circle, AlertTriangle, AlertOctagon,
-  DollarSign,
+  DollarSign, MapPin, RefreshCw,
 } from 'lucide-react';
 import type {
   FleetVehicle, FleetMaintenance, FleetFuelLog, FleetFuelSummary,
@@ -114,6 +114,11 @@ interface Props {
   onUnarchiveVehicle: () => void;
   onDeleteVehicle: () => void;
   isArchived: boolean;
+  // GPS mileage
+  gpsMileage: any;
+  gpsMileageLoading: boolean;
+  onFetchGpsMileage: (days?: number) => void;
+  onSyncGpsMileage: () => void;
   onClose: () => void;
 }
 
@@ -219,6 +224,7 @@ export default function FleetDetailPanel({
   onEditMaintenance, onDeleteMaintenance, onEditInspection, onDeleteInspection,
   onAssignVehicle, onUnassignVehicle, onAddPersonnelNote, onDeletePersonnelNote, onRefreshPersonnel,
   onArchiveVehicle, onUnarchiveVehicle, onDeleteVehicle, isArchived,
+  gpsMileage, gpsMileageLoading, onFetchGpsMileage, onSyncGpsMileage,
   onClose,
 }: Props) {
   const { user } = useAuth();
@@ -285,6 +291,39 @@ export default function FleetDetailPanel({
               }
               return null;
             })()}
+          </div>
+
+          {/* GPS-derived mileage section */}
+          <div className="flex items-center gap-2 mt-2 flex-wrap">
+            <button type="button"
+              className={`toolbar-btn text-[9px] ${gpsMileageLoading ? 'opacity-50' : ''}`}
+              onClick={() => onFetchGpsMileage()}
+              disabled={gpsMileageLoading}
+              title="Compute GPS-derived mileage from dispatch breadcrumbs">
+              <MapPin className="w-3 h-3" />
+              {gpsMileageLoading ? 'Computing...' : gpsMileage ? 'GPS Mileage ▼' : 'Get GPS Mileage'}
+            </button>
+            {gpsMileage && !gpsMileage.error && (
+              <>
+                <span className="text-[9px] text-rmpg-400 font-mono">
+                  <span className="text-green-400 font-bold">{gpsMileage.total_miles?.toFixed(1)}</span> mi
+                  ({gpsMileage.valid_segments} segments, {gpsMileage.time_span_hours?.toFixed(0)}h)
+                </span>
+                {gpsMileage.unit_call_sign && (
+                  <span className="text-[9px] text-rmpg-500 font-mono">via {gpsMileage.unit_call_sign}</span>
+                )}
+                <button type="button"
+                  className="toolbar-btn toolbar-btn-primary text-[9px]"
+                  onClick={onSyncGpsMileage}
+                  disabled={gpsMileageLoading}
+                  title="Add GPS-calculated miles to the vehicle odometer">
+                  <RefreshCw className="w-3 h-3" /> Sync Odo
+                </button>
+              </>
+            )}
+            {gpsMileage?.error && (
+              <span className="text-[9px] text-rmpg-500 italic font-mono">{gpsMileage.error}</span>
+            )}
           </div>
 
           {/* Timestamps row */}
