@@ -12,7 +12,7 @@
 import React, { useState } from 'react';
 import {
   CreditCard, Shield, Wrench, Zap, DollarSign, Calendar, Plus, Pencil, Trash2,
-  AlertTriangle, Gauge, Receipt, TrendingUp, Target, Fuel, Check, X as XIcon,
+  AlertTriangle, Gauge, Receipt, TrendingUp, Target, Fuel, Check, X as XIcon, Save,
 } from 'lucide-react';
 import type {
   FleetLoan, FleetInsurancePolicy, FleetAccessory, FleetUtilityCost,
@@ -343,10 +343,10 @@ function InlineBudgetEditor({ summary, onSaveBudgets }: {
           ))}
         </div>
         <div className="flex items-center justify-end gap-2 px-4 py-2 border-t border-rmpg-700">
-          <button type="button" className="toolbar-btn" onClick={onClose} disabled={saving}>
+          <button type="button" className="toolbar-btn" onClick={cancel} disabled={saving}>
             <XIcon className="w-3 h-3" /> Cancel
           </button>
-          <button type="button" className="toolbar-btn toolbar-btn-primary" onClick={submit} disabled={saving}>
+          <button type="button" className="toolbar-btn toolbar-btn-primary" onClick={saveAll} disabled={saving}>
             <Save className="w-3 h-3" /> {saving ? 'Saving...' : 'Save Budgets'}
           </button>
         </div>
