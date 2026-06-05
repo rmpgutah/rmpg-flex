@@ -35,7 +35,7 @@ function clearState() {
 
 export interface UseNavTripDetectionOptions {
   /** Current GPS position { lat, lng, accuracy } or null */
-  position: { latitude: number; longitude: number; accuracy?: number } | null;
+  position: { latitude: number; longitude: number; accuracy?: number | null } | null;
   /** Whether GPS is tracking (user is logged in) */
   isTracking: boolean;
   /** Whether the nav page is visible / app is in foreground */
@@ -237,7 +237,7 @@ export function useNavTripDetection(opts: UseNavTripDetectionOptions) {
   }, [position, isTracking]);
 
   // ── Start trip (POST to server) ───────────────────────────
-  const startTrip = useCallback(async (lat: number, lng: number, accuracy?: number): Promise<NavTrip | null> => {
+  const startTrip = useCallback(async (lat: number, lng: number, accuracy?: number | null): Promise<NavTrip | null> => {
     try {
       const res = await apiFetch<{ success: boolean; trip_id: string; status: string }>('/nav/trip/start', {
         method: 'POST',
@@ -270,7 +270,7 @@ export function useNavTripDetection(opts: UseNavTripDetectionOptions) {
   }, []);
 
   // ── Manual trip controls ──────────────────────────────────
-  const startManualTrip = useCallback(async (lat: number, lng: number, accuracy?: number) => {
+  const startManualTrip = useCallback(async (lat: number, lng: number, accuracy?: number | null) => {
     const trip = await startTrip(lat, lng, accuracy);
     if (trip) {
       setCurrentTrip(trip);
@@ -281,7 +281,7 @@ export function useNavTripDetection(opts: UseNavTripDetectionOptions) {
     }
   }, [startTrip, onTripStarted]);
 
-  const endCurrentTrip = useCallback(async (endLat?: number, endLng?: number) => {
+  const endCurrentTrip = useCallback(async (endLat?: number | null, endLng?: number | null) => {
     const tripId = detectionRef.current.activeTripId || detectionRef.current.pendingTripId;
     if (!tripId) return;
     try {
