@@ -71,7 +71,7 @@ export default function NavPage() {
     fetchCurrentTrip,
   } = useNavTripDetection({
     position: gps.latitude && gps.longitude
-      ? { latitude: gps.latitude, longitude: gps.longitude, accuracy: gps.accuracy }
+      ? { latitude: gps.latitude, longitude: gps.longitude, accuracy: gps.accuracy ?? undefined }
       : null,
     isTracking: gps.isTracking,
     isForeground: true,
@@ -103,13 +103,13 @@ export default function NavPage() {
   // ── Manual start ──────────────────────────────────────────
   const handleManualStart = () => {
     if (gps.latitude && gps.longitude) {
-      startManualTrip(gps.latitude, gps.longitude, gps.accuracy);
+      startManualTrip(gps.latitude, gps.longitude, gps.accuracy ?? undefined);
     }
   };
 
   // ── End trip ──────────────────────────────────────────────
   const handleEndTrip = () => {
-    endCurrentTrip(gps.latitude, gps.longitude);
+    endCurrentTrip(gps.latitude ?? undefined, gps.longitude ?? undefined);
   };
 
   // ── PDF downloads ─────────────────────────────────────────
