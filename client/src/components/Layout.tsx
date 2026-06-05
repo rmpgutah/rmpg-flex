@@ -1327,7 +1327,7 @@ export default function Layout() {
         />
 
         {/* 19: Operator info with distinct badge highlight */}
-        <div className="flex items-center gap-2 text-[10px] font-mono text-rmpg-400">
+        <div className="flex items-center gap-2 text-[10px] font-mono text-rmpg-400 flex-shrink-0 whitespace-nowrap ml-4">
           <span>
             OPR: <span className="text-rmpg-300">{user?.badge_number ? `#${user.badge_number}` : '---'}</span> {user?.last_name?.toUpperCase() || '---'}, {user?.first_name || '---'} <span className="text-rmpg-500">|</span> <span className="text-brand-400">{toDisplayLabel(user?.role || '---').toUpperCase()}</span>
           </span>
@@ -1339,7 +1339,7 @@ export default function Layout() {
       {/* Square buttons: icon above label, F-key badge, dropdown for children */}
       {/* ============================================================ */}
       <div
-        className="hidden md:flex items-center gap-0 px-1 select-none"
+        className="hidden md:flex items-center gap-0 px-1 select-none overflow-x-auto overflow-y-hidden scrollbar-dark"
         role="toolbar"
         aria-label="Module navigation"
         style={{

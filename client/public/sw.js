@@ -547,7 +547,13 @@
 //       which hosts the integrated ShiftCard) at /mobile + nav entries — it was
 //       orphaned (never routed), so the officer Start/End Shift control with
 //       vehicle picker was previously unreachable.
-const CACHE_NAME = 'rmpg-flex-v785';
+// v786: shell toolbar — restore 4 top-level menus (FILE/VIEW/TOOLS/HELP;
+//       viewMenu + toolsMenu were defined but missing from the menus array),
+//       and make row-2 icon toolbar horizontally scrollable so the rightmost
+//       icons (F4+ MDT/NCIC/Records/Enforce/Personnel/Comms/Reports/Overwatch/
+//       Training/Connections/Jail/Services/Audit/Admin) stop being clipped on
+//       narrow viewports. Bump forces clients holding v785 cache to refetch.
+const CACHE_NAME = 'rmpg-flex-v786';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
