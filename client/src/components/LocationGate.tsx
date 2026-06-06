@@ -71,6 +71,7 @@ export default function LocationGate({ permissionDenied, onRetry, connectionType
             flexShrink: 0,
           }}
           title="Dismiss"
+          aria-label="Dismiss location warning"
         >
           <X size={14} />
         </button>
@@ -106,6 +107,7 @@ export default function LocationGate({ permissionDenied, onRetry, connectionType
             flexShrink: 0,
           }}
           title="Dismiss"
+          aria-label="Dismiss WiFi tracking indicator"
         >
           <X size={12} />
         </button>

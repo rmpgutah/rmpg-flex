@@ -123,6 +123,17 @@ export const DEFAULT_DISPOSITIONS: DispositionDef[] =
 export const DEFAULT_DISPOSITION_CODES: Set<string> =
   new Set(DEFAULT_DISPOSITIONS.map((d) => d.code));
 
+/** Dropdown-friendly human-readable disposition labels (used by edit modals). */
+export const DISPOSITION_OPTIONS = [
+  'Report Taken', 'Arrest Made', 'Citation Issued',
+  'Warning Issued', 'Referred to Other Agency',
+  'Unfounded', 'No Police Action Required',
+  'Gone on Arrival', 'Cancelled by RP',
+  'Cancelled by Dispatch', 'Cancelled by Officer',
+  'Civil Matter', 'Mental Health Hold',
+  'Trespass Warning', 'Mediated', 'Other',
+] as const;
+
 /** code → description lookup (for tooltips / humanizing a stored code). */
 export const DISPOSITION_DESCRIPTION_BY_CODE: Record<string, string> =
   Object.fromEntries(DEFAULT_DISPOSITIONS.map((d) => [d.code, d.description]));

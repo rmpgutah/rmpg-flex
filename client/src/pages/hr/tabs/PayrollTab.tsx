@@ -13,9 +13,7 @@ import IconButton from '../../../components/IconButton';
 import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
 import { useMenuActions } from '../../../utils/contextMenuActions';
 import { localToday, parseTimestamp } from '../../../utils/dateUtils';
-import { useFormDraft } from '../../../hooks/useFormDraft';
-import UnsavedChangesGuard from '../../../components/UnsavedChangesGuard';
-import FloatingSaveBar from '../../../components/FloatingSaveBar';
+import { useToast } from '../../../components/ToastProvider';
 
 // ─── Types ────────────────────────────────────────────────────
 
@@ -106,10 +104,6 @@ function formatDate(d: string): string {
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-interface ToastFn {
-  (message: string, type?: 'success' | 'error' | 'info'): void;
-}
-
 // ─── Component ────────────────────────────────────────────────
 
 export default function PayrollTab({ userRole }: { userRole: string }) {
@@ -120,8 +114,6 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
   const [officers, setOfficers] = useState<Officer[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedPeriod, setSelectedPeriod] = useState<PayPeriod | null>(null);
-  const [toast, setToast] = useState<{ msg: string; type: string } | null>(null);
-
   // ─── Leave Balances ──────────────────────────────────────
   interface LeaveBalance { id: number; full_name: string; badge_number?: string; hire_date?: string; pto_used: number; sick_used: number; pto_pending: number; }
   const [leaveData, setLeaveData] = useState<LeaveBalance[]>([]);
@@ -147,10 +139,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
   // Rate form
   const [rateForm, setRateForm] = useState({ user_id: '', pay_type: 'hourly', rate: '', overtime_rate: '1.5', holiday_rate: '1.5', effective_date: '', notes: '' });
 
-  const addToast = useCallback<ToastFn>((msg, type = 'info') => {
-    setToast({ msg, type: type || 'info' });
-    setTimeout(() => setToast(null), 3000);
-  }, []);
+  const { addToast } = useToast();
 
   const isManager = ['admin', 'manager'].includes(userRole);
 
@@ -506,13 +495,6 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
-      {/* Toast */}
-      {toast && (
-        <div className={`fixed top-4 right-4 z-50 px-4 py-2 rounded-sm text-xs font-medium shadow-lg ${
-          toast.type === 'success' ? 'bg-green-600 text-white' : toast.type === 'error' ? 'bg-red-600 text-white' : 'bg-brand-600 text-white'
-        }`}>{toast.msg}</div>
-      )}
-
       {/* Sub-tab bar */}
       <div className="flex flex-wrap items-center gap-1 px-3 py-1.5 border-b border-rmpg-700 bg-surface-sunken">
         {SUB_TABS.map(t => {
