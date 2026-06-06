@@ -225,7 +225,7 @@ downloads.get('/downloads/check', async (c) => {
       latestVersion: target.version,
       mandatory: false,
       releaseDate: target.releaseDate,
-      downloadUrl: `/downloads/${target.filename}`,
+      downloadUrl: `https://api.rmpgutah.us/downloads/${target.filename}`,
       downloadSize: fmtBytes(target.bytes),
       downloadBytes: target.bytes,
     });

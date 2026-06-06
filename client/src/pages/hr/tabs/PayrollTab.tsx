@@ -833,7 +833,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                           <>
                             {['regular_hours', 'overtime_hours', 'holiday_hours', 'pto_hours', 'sick_hours'].map(field => (
                               <td key={field} className="px-1 py-1">
-                                <input id="ff-payrolltab-11" type="number" step="0.5" min="0"
+                                <input id={`ff-payrolltab-11-${field}`} type="number" step="0.5" min="0"
                                   value={editValues[field] ?? 0}
                                   onChange={e => setEditValues(v => ({ ...v, [field]: Number(e.target.value) }))}
                                   className="w-16 bg-surface-sunken border border-brand-500/40 rounded-sm px-1.5 py-0.5 text-xs text-white text-right font-mono" />

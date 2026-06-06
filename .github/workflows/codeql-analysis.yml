@@ -12,7 +12,7 @@ on:
 jobs:
   analyze:
     name: CodeQL SAST Scan
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     timeout-minutes: 30
 
     permissions:

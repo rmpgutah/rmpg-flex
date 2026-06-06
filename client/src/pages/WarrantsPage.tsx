@@ -2091,7 +2091,7 @@ export default function WarrantsPage() {
                           {w.matches_person ? <span className="text-amber-400" title="Matches our person">★</span> : null}
                         </td>
                         <td>
-                          <span className={`inline-block px-1.5 py-0.5 text-[9px] uppercase font-bold border ${priorityChipClass(priorityBucket(w.priority_score))}`}>
+                          <span title={`Priority score: ${w.priority_score ?? 'N/A'}/100 (${priorityBucket(w.priority_score)})`} className={`inline-block px-1.5 py-0.5 text-[9px] uppercase font-bold border ${priorityChipClass(priorityBucket(w.priority_score))}`}>
                             {priorityBucket(w.priority_score)}
                           </span>
                         </td>

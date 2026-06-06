@@ -92,7 +92,7 @@ const AI_ML_KEYS: ApiKeyConfig[] = [
 const CLOUD_STORAGE_KEYS: ApiKeyConfig[] = [
   { key: 'aws_access_key_id', label: 'AWS Access Key ID', desc: 'S3 storage — evidence files, body camera video, backup archives', pattern: /^AKIA[A-Z0-9]{16}$/, formatHint: 'Starts with AKIA, 20 characters' },
   { key: 'aws_secret_access_key', label: 'AWS Secret Access Key', desc: 'AWS authentication secret (paired with Access Key ID above)' },
-  { key: 'aws_s3_bucket', label: 'AWS S3 Bucket Name', desc: 'Target bucket for evidence uploads and backup storage' },
+  { key: 'aws_s3_bucket', label: 'AWS S3 Bucket Name', desc: 'Target bucket for evidence uploads and backup storage (reserved — uploads currently route through Worker R2 binding)' },
   { key: 'backblaze_key_id', label: 'Backblaze B2 Key ID', desc: 'Free tier: 10GB — low-cost evidence archival, database backups' },
   { key: 'backblaze_app_key', label: 'Backblaze B2 App Key', desc: 'Backblaze authentication (paired with Key ID above)' },
   { key: 'cloudflare_api_key', label: 'Cloudflare', desc: 'Free tier — CDN, DDoS protection, DNS management, R2 object storage' },

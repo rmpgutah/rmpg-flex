@@ -34,8 +34,9 @@ handoff.put('/', async (c) => {
       db, 'SELECT text, updated_by, updated_at FROM shift_handoff WHERE id = 1',
     );
     return c.json({ success: true, ...row });
-  } catch {
-    return c.json({ success: true, text: '', updated_by: null, updated_at: null });
+  } catch (err) {
+    console.error('[shiftHandoff] PUT failed:', err);
+    return c.json({ success: false, error: 'Failed to save shift handoff' }, 500);
   }
 });
 

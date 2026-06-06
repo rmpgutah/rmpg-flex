@@ -479,7 +479,7 @@ function AppRoutes() {
             <Route path="/nav" element={<RouteErrorBoundary><NavPage /></RouteErrorBoundary>} />
             <Route path="/accreditation" element={<RouteErrorBoundary><AccreditationPage /></RouteErrorBoundary>} />
             <Route path="/recruitment" element={<RouteErrorBoundary><RecruitmentPage /></RouteErrorBoundary>} />
-            <Route path="/navigation" element={<RouteErrorBoundary><NavigationPage /></RouteErrorBoundary>} />
+            {/* /navigation rendered OUTSIDE Layout above — full-screen vehicle HUD */}
             {/* 404 within layout */}
             <Route path="*" element={<NotFoundPage />} />
           </Route>

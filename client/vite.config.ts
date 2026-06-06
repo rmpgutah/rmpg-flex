@@ -98,12 +98,28 @@ export default defineConfig({
     port: 5173,
     proxy: {
       '/api': {
-        target: 'http://localhost:3001',
+        target: 'http://localhost:8787',
         changeOrigin: true,
       },
       '/ws': {
-        target: 'ws://localhost:3001',
+        target: 'ws://localhost:8787',
         ws: true,
+      },
+      '/downloads': {
+        target: 'http://localhost:8787',
+        changeOrigin: true,
+      },
+      '/updates': {
+        target: 'http://localhost:8787',
+        changeOrigin: true,
+      },
+      '/download': {
+        target: 'http://localhost:8787',
+        changeOrigin: true,
+      },
+      '/rmpg-seal.png': {
+        target: 'http://localhost:8787',
+        changeOrigin: true,
       },
     },
   },

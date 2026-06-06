@@ -83,7 +83,7 @@ export default class ErrorBoundary extends Component<Props, State> {
   };
 
   handleDismiss = () => {
-    this.setState({ hasError: false, error: null, showDetails: false });
+    this.setState({ hasError: false, error: null, componentStack: null, showDetails: false });
   };
 
   render() {

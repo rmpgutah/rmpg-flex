@@ -3425,8 +3425,8 @@ export interface MniPersonDetail {
 }
 
 export interface GeographyTree {
-  areas: (DispatchArea & { sections: (DispatchSection & { zones: (DispatchZone & { beats: DispatchBeat[] })[] })[] })[];
-  unassigned_sections: (DispatchSection & { zones: (DispatchZone & { beats: DispatchBeat[] })[] })[];
+  areas: (DispatchArea & { sectors: (DispatchSection & { zones: (DispatchZone & { beats: DispatchBeat[] })[] })[] })[];
+  unassigned_sectors: (DispatchSection & { zones: (DispatchZone & { beats: DispatchBeat[] })[] })[];
 }
 
 // --- Integration Hub ---

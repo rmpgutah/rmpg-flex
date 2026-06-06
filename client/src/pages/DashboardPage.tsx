@@ -674,7 +674,7 @@ export default function DashboardPage() {
           icon={Clock}
           label="Avg Response"
           value={stats.avg_response_time_minutes ? `${stats.avg_response_time_minutes}m` : 'N/A'}
-          accent="blue"
+          accent="gold"
           trendValue={stats.avg_response_time_minutes ? 'within target' : 'no data'}
           trendColor={stats.avg_response_time_minutes ? 'green' : 'gray'}
           trend={stats.avg_response_time_minutes ? 'down' : 'flat'}
