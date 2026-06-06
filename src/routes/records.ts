@@ -712,13 +712,14 @@ records.post('/businesses', async (c) => {
          latitude, longitude, phone, email, notes,
          dba_name, ein, license_number, website,
          owner_name, owner_phone, contact_name, contact_phone, contact_email,
-         industry, employee_count, annual_revenue, status, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+         industry, employee_count, annual_revenue, status, is_active, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
       body.client_id || 1, body.name, body.address || '', body.city || null, body.state || null, body.zip || null,
       body.business_type, body.latitude || null, body.longitude || null, body.phone || null, body.email || null, body.notes || null,
       body.dba_name || null, body.ein || null, body.license_number || null, body.website || null,
       body.owner_name || null, body.owner_phone || null, body.contact_name || null, body.contact_phone || null, body.contact_email || null,
-      body.industry || null, body.employee_count || null, body.annual_revenue || null, body.status || 'active');
+      body.industry || null, body.employee_count || null, body.annual_revenue || null, body.status || 'active',
+      body.is_active ?? 1);
     const created = await queryFirst(db, 'SELECT * FROM properties WHERE id = ?', Number(result.meta.last_row_id));
     return c.json(created, 201);
   } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
@@ -854,6 +855,7 @@ records.post('/evidence', async (c) => {
     if (body.type != null && body.evidence_type == null) body.evidence_type = body.type;
     delete body.type;
     if (!body.evidence_type || !body.description) return c.json({ error: 'evidence_type and description required' }, 400);
+    if (body.incident_id == null) return c.json({ error: 'incident_id required (use /incidents/:id/evidence for linked creation)' }, 400);
     const user = c.get('user') as { id: number } | undefined;
     const cols: string[] = [];
     const vals: string[] = [];

@@ -28,13 +28,13 @@ properties.post('/', async (c) => {
     const body = await c.req.json<Record<string, unknown>>();
     if (!body.name || !body.address) return c.json({ error: 'name and address required' }, 400);
     const result = await execute(db,
-      `INSERT INTO properties (client_id, name, address, property_type, latitude, longitude, gate_code, alarm_code, emergency_contact, post_orders, hazard_notes, city, state, zip, notes, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+      `INSERT INTO properties (client_id, name, address, property_type, latitude, longitude, gate_code, alarm_code, emergency_contact, post_orders, hazard_notes, city, state, zip, notes, is_active, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
       body.client_id ?? 1, body.name, body.address, body.property_type || null,
       body.latitude || null, body.longitude || null, body.gate_code || null,
       body.alarm_code || null, body.emergency_contact || null, body.post_orders || null,
       body.hazard_notes || null, body.city || null, body.state || null, body.zip || null,
-      body.notes || null);
+      body.notes || null, body.is_active ?? 1);
     const created = await queryFirst(db, 'SELECT * FROM properties WHERE id = ?', Number(result.meta.last_row_id));
     return c.json(created, 201);
   } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
