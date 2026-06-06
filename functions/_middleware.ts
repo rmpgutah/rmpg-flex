@@ -1,15 +1,22 @@
 // Cloudflare Pages middleware that runs before every response.
-// Used to override the Content-Security-Policy that the Pages
-// dashboard / project settings is injecting. The dashboard CSP
-// was missing https://api.rmpgutah.us in connect-src, blocking
-// every cross-origin call to the API subdomain (warrants refresh,
-// dispatch state, etc.). _headers and <meta> CSPs were both being
-// overridden by whatever wrote the dashboard CSP.
 //
-// This middleware runs after the static asset is fetched and
-// rewrites the header before it ships to the browser. Cloudflare
-// runs Pages Functions AFTER static asset handling, so headers
-// set here win over both the _headers file and dashboard config.
+// NOTE: Cloudflare's response header ordering is:
+//   Application (this middleware) → _headers file → Cloudflare Dashboard
+// Each step OVERWRITES headers with the same name from the previous step.
+// This means Dashboard-set Content-Security-Policy wins over this
+// middleware AND _headers. This middleware can only handle the static
+// asset + _headers response; it CANNOT override Dashboard headers.
+//
+// If CSP-connected requests to api.rmpgutah.us are blocked, the fix is
+// to remove the Content-Security-Policy header from the Cloudflare
+// Dashboard (Pages project → Settings → Custom Headers). After removal,
+// this middleware and the <meta> tag CSP will be the only sources.
+//
+// What this middleware CAN do:
+// 1. Remove the Dashboard's Content-Security-Policy-Report-Only header
+//    (reduces console noise from report-only violations).
+// 2. Set a comprehensive Content-Security-Policy that applies when the
+//    Dashboard does NOT have a conflicting header (e.g., preview branches).
 
 interface Env {}
 

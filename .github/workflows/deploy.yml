@@ -88,6 +88,13 @@ jobs:
       - name: Build client
         run: cd client && npm run build
 
+      # Copy Pages Functions into the deployment directory so wrangler picks
+      # them up. In wrangler v4 there is no --functions flag; functions must
+      # be inside the output directory or at the project root. Copying makes
+      # the dependency explicit and avoids root-directory ambiguity.
+      - name: Stage Pages Functions
+        run: cp -r functions/ client/dist/functions/
+
       - name: Deploy client to Pages
         uses: cloudflare/wrangler-action@v4
         with:
