@@ -491,13 +491,8 @@ const STUBS: StubRule[] = [
     body: { sources: 0, states_covered: 0, active_warrants: 0, state_status: {}, state_sources: {}, state_warrants: {} },
     reason: 'no national coverage data source; NationalWarrantSearchPage tolerates zeros',
   },
-  // TrainingDocsPage: expects a BARE top-level array (setDocuments(data || [])).
-  {
-    match: /^\/api\/company-documents(\?.*)?$/,
-    methods: ['GET'],
-    body: [],
-    reason: 'no company_documents table; TrainingDocsPage tolerates empty array',
-  },
+  // TrainingDocsPage: company-documents now ported to rewrite (PR #1038).
+  // Stub removed — requests route to env.API via API_ROUTES below.
 
   //
   // History:
@@ -1324,6 +1319,15 @@ const API_ROUTES: RouteRule[] = [
   // (the base /evidence list + writes deliberately stay on legacy, since the
   // rewrite's evidence POST/PUT reference columns absent from the live table).
   { kind: 'regex', value: /^\/api\/records\/evidence\/(stats|locations)(\?.*)?$/, methods: ['GET'] },
+  // ── File uploads (PR #1038) ──
+  // Entire /api/uploads namespace ported from legacy Express (multer + disk)
+  // to R2-backed Hono handler. All methods (GET/POST/PUT/DELETE) now live
+  // on the rewrite. Legacy had disk-based storage; rewrite uses UPLOADS R2.
+  { kind: 'prefix', value: '/api/uploads' },
+  // ── Company documents (PR #1038) ──
+  // TrainingDocsPage CRUD + CSV export. Migration 0078 creates the
+  // company_documents table. Replaces the empty-array stub that was here.
+  { kind: 'prefix', value: '/api/company-documents' },
 ];
 
 function matches(rule: RouteRule, pathname: string, method: string): boolean {

@@ -52,10 +52,6 @@ interface VoiceEnv {
   DB: D1Database;
   UPLOADS: R2Bucket;
   KV: KVNamespace;
-  // R2 geofence (beat.geojson) — used when the dispatcher CREATES a call
-  // from the radio and backfills sector/zone/beat. DOs share the Worker's
-  // bindings at runtime; declared here so runAction's enrichment is typed.
-  MAP_DATA: R2Bucket;
   JWT_SECRET: string;
   // Workers AI — powers the AI dispatcher (Whisper transcription,
   // Llama 4 Scout reasoning + data-entry + OCR, Aura-2 reply synthesis).
