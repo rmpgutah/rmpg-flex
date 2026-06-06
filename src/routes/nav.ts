@@ -83,6 +83,7 @@ nav.get('/trip/current', async (c) => {
     }
     return c.json({ trip });
   } catch (err) {
+    console.error('[nav] GET /trip/current failed:', err);
     return c.json({ error: 'Failed to fetch current trip' }, 500);
   }
 });
@@ -144,6 +145,7 @@ nav.post('/trip/start', async (c) => {
     const tripId = Number(result.meta.last_row_id);
     return c.json({ success: true, trip_id: tripId, status: 'pending' }, 201);
   } catch (err) {
+    console.error('[nav] POST /trip/start failed:', err);
     return c.json({ error: 'Failed to start trip' }, 500);
   }
 });
@@ -168,6 +170,7 @@ nav.put('/trip/:id/confirm', async (c) => {
 
     return c.json({ success: true, status: 'active' });
   } catch (err) {
+    console.error('[nav] PUT /trip/:id/confirm failed:', err);
     return c.json({ error: 'Failed to confirm trip' }, 500);
   }
 });
@@ -213,6 +216,7 @@ nav.put('/trip/:id/update', async (c) => {
 
     return c.json({ success: true, point_count: trimmed.length, distance_miles: Math.round(distance * 100) / 100 });
   } catch (err) {
+    console.error('[nav] PUT /trip/:id/update failed:', err);
     return c.json({ error: 'Failed to update trip' }, 500);
   }
 });
@@ -264,6 +268,7 @@ nav.put('/trip/:id/end', async (c) => {
 
     return c.json({ success: true, distance_miles: Math.round(finalDistance * 100) / 100, duration_seconds: durationSec });
   } catch (err) {
+    console.error('[nav] PUT /trip/:id/end failed:', err);
     return c.json({ error: 'Failed to end trip' }, 500);
   }
 });
@@ -288,6 +293,7 @@ nav.put('/trip/:id/cancel', async (c) => {
 
     return c.json({ success: true });
   } catch (err) {
+    console.error('[nav] PUT /trip/:id/cancel failed:', err);
     return c.json({ error: 'Failed to cancel trip' }, 500);
   }
 });
@@ -325,6 +331,7 @@ nav.get('/trip/history', async (c) => {
       ...params, limit, offset);
     return c.json({ trips: rows });
   } catch (err) {
+    console.error('[nav] GET /trip/history failed:', err);
     return c.json({ error: 'Failed to fetch trip history' }, 500);
   }
 });
@@ -351,23 +358,25 @@ nav.get('/trip/:id', async (c) => {
     }
     return c.json({ trip });
   } catch (err) {
+    console.error('[nav] GET /trip/:id failed:', err);
     return c.json({ error: 'Failed to fetch trip' }, 500);
   }
 });
 
-// ── GET /nav/vehicle-take-home — check if user has a take-home vehicle
-nav.get('/vehicle-take-home', async (c) => {
+// ── GET /nav/trip/check-take-home — whether user has a take-home vehicle
+nav.get('/trip/check-take-home', async (c) => {
   try {
     const db = getDb(c.env);
     const userId = c.get('userId') as number;
-    const user = await queryFirst<{ take_home_vehicle_id: number | null }>(db,
-      'SELECT take_home_vehicle_id FROM users WHERE id = ?', userId);
-    if (!user?.take_home_vehicle_id) return c.json({ has_take_home: false });
-    const veh = await queryFirst<Record<string, unknown>>(db,
-      `SELECT id, vehicle_number, make, model, plate_number, status, current_mileage
-       FROM fleet_vehicles WHERE id = ? AND take_home = 1`, user.take_home_vehicle_id);
-    return c.json({ has_take_home: true, vehicle: veh || null });
+
+    const user = await queryFirst<{ has_take_home: number; take_home_vehicle_id: number | null }>(
+      db, 'SELECT has_take_home, take_home_vehicle_id FROM users WHERE id = ?', userId);
+
+    const hasTakeHome = user?.has_take_home === 1 && user?.take_home_vehicle_id != null;
+
+    return c.json({ take_home: !!hasTakeHome, vehicle_id: user?.take_home_vehicle_id ?? null });
   } catch (err) {
+    console.error('[nav] GET /trip/check-take-home failed:', err);
     return c.json({ error: 'Failed to check take-home status' }, 500);
   }
 });
