@@ -1,104 +1,138 @@
 import { Hono } from 'hono';
 import type { Env } from '../../types';
-import { getDb, query, queryFirst, execute } from '../../utils/db';
+import { getDb, query, queryFirst, execute, executeBatch } from '../../utils/db';
+import { emitAlert } from '../../utils/alertHub';
+import { applyTripEvent, type ApplyArgs } from '../../utils/tripStore';
+import { type IncomingFix } from '../../utils/tripTelemetry';
+import type { TripEvent } from '../../utils/tripEngine';
 
 const gps = new Hono<Env>();
 
-// POST /dispatch/gps - Submit GPS breadcrumb
-/**
- * Normalize a client-supplied breadcrumb to the {latitude, longitude, ...}
- * shape gps.ts inserts into gps_breadcrumbs. The React client uses
- * `{lat, lng, ...}` (matches the QueuedPoint type in useGpsTracking.ts
- * and is what the local storage failover queue persists), while the
- * Hono route was originally typed as `{latitude, longitude, ...}`. The
- * mismatch caused every POST to 500 with "NOT NULL constraint failed:
- * gps_breadcrumbs.latitude" because `pt.latitude` came back undefined.
- * Accept either key so the contract is forgiving across clients
- * (Toughbook Electron, browser mobile, desktop WiFi) without a
- * coordinate-system rename churn across the bundle.
- */
-function normalizePoint(raw: Record<string, unknown>): {
-  latitude: number; longitude: number; accuracy: number | null; heading: number | null; speed: number | null;
-} {
-  const lat = typeof raw.latitude === 'number' ? raw.latitude
-    : typeof raw.lat === 'number' ? raw.lat
-    : NaN;
-  const lng = typeof raw.longitude === 'number' ? raw.longitude
-    : typeof raw.lng === 'number' ? raw.lng
-    : NaN;
+// Normalize a GPS point from either client format ({ lat, lng }) or
+// server-previous format ({ latitude, longitude }). Returns normalized
+// { latitude, longitude, ... } so the rest of the handler only sees one shape.
+function norm(pt: Record<string, unknown>): { latitude: number; longitude: number; accuracy?: number; heading?: number; speed?: number; timestamp?: string; source?: string } {
+  const lat = Number(pt.lat ?? pt.latitude);
+  const lng = Number(pt.lng ?? pt.longitude);
   return {
     latitude: lat,
     longitude: lng,
-    accuracy: typeof raw.accuracy === 'number' ? raw.accuracy : null,
-    heading: typeof raw.heading === 'number' ? raw.heading : null,
-    speed: typeof raw.speed === 'number' ? raw.speed : null,
+    accuracy: pt.accuracy != null ? Number(pt.accuracy) : undefined,
+    heading: pt.heading != null ? Number(pt.heading) : undefined,
+    speed: pt.speed != null ? Number(pt.speed) : undefined,
+    timestamp: typeof pt.timestamp === 'string' ? pt.timestamp : undefined,
+    source: typeof pt.source === 'string' ? pt.source : undefined,
   };
 }
 
-export { normalizePoint as _normalizePointForTest };
+// POST /dispatch/gps - Submit GPS breadcrumb batch.
+// Accepts { points: [ { lat, lng, accuracy, heading, speed, timestamp, source } ] }
+// or single-point legacy { latitude, longitude, ... }.
+
+// Re-export norm so the test suite can lock the lat/lng ↔ latitude/longitude
+// contract. The bug this prevents: pre-7a716969, the route inserted
+// `pt.latitude` directly, so any client sending `{lat, lng, ...}` (the React
+// useGpsTracking QueuedPoint shape and the localStorage failover queue
+// shape) 500'd with "NOT NULL constraint failed: gps_breadcrumbs.latitude".
+export { norm as _normalizePointForTest };
 
 gps.post('/', async (c) => {
   try {
     const db = getDb(c.env);
     const userId = c.get('userId') as number;
-    const body = await c.req.json<
-      | { latitude?: number; longitude?: number; lat?: number; lng?: number; accuracy?: number; heading?: number; speed?: number }
-      | { points: Array<Record<string, unknown>> }
-    >();
+    const body = await c.req.json<Record<string, unknown>>();
 
-    const rawPoints = 'points' in body ? body.points : [body as Record<string, unknown>];
-    if (!rawPoints.length) return c.json({ error: 'No points' }, 400);
+    const rawPoints: Record<string, unknown>[] = Array.isArray(body.points) ? body.points : [body];
+    if (rawPoints.length === 0) return c.json({ error: 'No points' }, 400);
 
-    const points = rawPoints.map(normalizePoint);
-    const bad = points.findIndex((p) => !Number.isFinite(p.latitude) || !Number.isFinite(p.longitude));
-    if (bad >= 0) {
-      return c.json({ error: `Invalid coordinates at index ${bad}` }, 400);
-    }
-
-    // Get user's unit info
-    const unit = await queryFirst<{ id: number; call_sign: string }>(db,
-      'SELECT id, call_sign FROM units WHERE officer_id = ? LIMIT 1', userId);
-
-    if (!unit) return c.json({ error: 'No assigned unit' }, 400);
-
-    const inserted: number[] = [];
-    for (const pt of points) {
-      const result = await execute(db,
-        `INSERT INTO gps_breadcrumbs (unit_id, officer_id, latitude, longitude, accuracy, heading, speed, call_sign, recorded_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
-        unit.id, userId, pt.latitude, pt.longitude, pt.accuracy ?? null, pt.heading ?? null, pt.speed ?? null, unit.call_sign
-      );
-      inserted.push(Number(result.meta.last_row_id));
-    }
-
-    // Mirror the latest fix onto the unit row. The map filters officer pins by
-    // `u.latitude != null` and closest-unit/anomaly logic reads u.latitude/
-    // longitude/gps_updated_at — breadcrumbs alone never updated the unit, so
-    // pins never plotted and proximity logic saw no position.
+    const points = rawPoints.map(norm);
     const lastPt = points[points.length - 1];
-    if (lastPt && lastPt.latitude != null && lastPt.longitude != null) {
+
+    // Unit identity: officer → units row. Take-home officers (has_take_home = 1
+    // on the user) bypass the unit requirement and return a sentinel so the
+    // client gets unitId = null but the breadcrumbs still persist.
+    const userRow = await queryFirst<{ has_take_home: number }>(db,
+      'SELECT has_take_home FROM users WHERE id = ?', userId);
+    const isTakeHome = userRow?.has_take_home === 1;
+
+    const unit = await queryFirst<{ id: number; call_sign: string; status: string; gps_source: string | null; vehicle_id: string | null }>(db,
+      'SELECT id, call_sign, status, gps_source, vehicle_id FROM units WHERE officer_id = ? LIMIT 1', userId);
+
+    if (!unit && !isTakeHome) return c.json({ error: 'No assigned unit' }, 400);
+
+    const unitId = unit?.id ?? null;
+    const callSign = unit?.call_sign ?? (isTakeHome ? 'take-home' : null);
+
+    // Batch-insert breadcrumbs — single D1 round-trip instead of N.
+    const stmts = points.map((pt) => ({
+      sql: `INSERT INTO gps_breadcrumbs (unit_id, officer_id, latitude, longitude, accuracy, heading, speed, call_sign, recorded_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+      bindings: [unitId, userId, pt.latitude, pt.longitude, pt.accuracy ?? null, pt.heading ?? null, pt.speed ?? null, callSign],
+    }));
+    const results = await executeBatch(db, stmts);
+    const inserted = results.map((r) => Number(r.meta.last_row_id)).filter(Boolean);
+
+    // Mirror latest fix onto units row, including heading + speed so the
+    // NavigationPage map turning arrow and speed label work.
+    if (lastPt && lastPt.latitude != null && lastPt.longitude != null && unitId) {
       await execute(db,
-        "UPDATE units SET latitude = ?, longitude = ?, gps_updated_at = datetime('now'), updated_at = datetime('now') WHERE id = ?",
-        lastPt.latitude, lastPt.longitude, unit.id);
+        `UPDATE units SET latitude = ?, longitude = ?, gps_heading = ?, gps_speed = ?,
+           gps_updated_at = datetime('now'), updated_at = datetime('now') WHERE id = ?`,
+        lastPt.latitude, lastPt.longitude,
+        lastPt.heading ?? null, lastPt.speed ?? null,
+        unitId);
     }
 
+    // Trip engine: feed every fix through applyTripEvent so the pure engine
+    // creates/closes unit_trips rows. The cron sweep closes orphaned trips;
+    // live GPS writes are what OPEN and append them.
+    if (unitId) {
+      for (const pt of points) {
+        const ts = pt.timestamp ? Date.parse(pt.timestamp.replace(' ', 'T') + 'Z') : Date.now();
+        if (!isNaN(ts) && pt.latitude != null && pt.longitude != null) {
+          const fix: IncomingFix = { lat: pt.latitude, lng: pt.longitude, speed: pt.speed ?? null, heading: pt.heading ?? null, ts };
+          const event: TripEvent = { kind: 'gps', fix };
+          try {
+            await applyTripEvent({
+              db, env: c.env, unitId,
+              officerId: userId,
+              vehicleId: unit?.vehicle_id ? Number(unit.vehicle_id) || null : null,
+              event,
+              ctx: {
+                now: Date.now(),
+                curLat: pt.latitude, curLng: pt.longitude,
+                prevLat: pt.latitude, prevLng: pt.longitude,
+              },
+            });
+          } catch { /* trip engine is non-fatal — never break GPS write */ }
+        }
+      }
+    }
+
+    // Live fan-out so the dispatch map updates in real-time (no 20s poll lag).
+    try {
+      await emitAlert(c.env, 'unit_position', {
+        unit_id: unitId,
+        call_sign: callSign,
+        latitude: lastPt?.latitude ?? null,
+        longitude: lastPt?.longitude ?? null,
+        heading: lastPt?.heading ?? null,
+        speed: lastPt?.speed ?? null,
+        at: new Date().toISOString(),
+      });
+    } catch { /* non-fatal */ }
+
+    // Echo the resolved unit back so the client's useGpsTracking can populate
+    // unitId/callSign without a separate GET /dispatch/gps/my-unit (which can
+    // be shadowed by edge stubs returning {unit:null}).
     return c.json({
       inserted: inserted.length,
-      // Echo the unit so the client's `pickUnit(result)` (useGpsTracking.ts
-      // sendBatch) can populate unitId/call_sign from the write path. The
-      // canonical GET /dispatch/gps/my-unit read can be shadowed by the
-      // rmpg-premise-stub edge worker returning a hollow {unit:null}; the
-      // POST echo is never stubbed, so this is what actually feeds the
-      // NAVIGATE/Trips UI.
-      unit: { id: unit.id, call_sign: unit.call_sign },
+      accepted: points.length,
+      unit: unit ? { id: unit.id, call_sign: unit.call_sign, status: unit.status, gps_source: unit.gps_source } : null,
+      ...(isTakeHome ? { take_home: true } : {}),
     }, 201);
   } catch (err) {
-    // Log the underlying D1/SQL message — without this every batch send failure
-    // showed up in `wrangler tail` as a bare "GPS update failed" with no way
-    // to tell NOT NULL violations from auth gaps from transient D1 locks.
-    // The shape mirrors the global onError in src/index.ts so log filters
-    // (e.g. searching for "Unhandled in POST /api/dispatch/gps") work.
-    console.error('GPS breadcrumb write failed (userId=' + c.get('userId') + '):', err);
+    console.error('[gps] POST failed:', err);
     return c.json({ error: 'GPS update failed' }, 500);
   }
 });
@@ -119,6 +153,7 @@ gps.get('/current', async (c) => {
     `);
     return c.json(rows);
   } catch (err) {
+    console.error('[gps] GET /current failed:', err);
     return c.json({ error: 'Failed to get GPS' }, 500);
   }
 });
@@ -151,6 +186,7 @@ gps.get('/my-unit', async (c) => {
     if (!unit) return c.json(null, 200);
     return c.json(unit);
   } catch (err) {
+    console.error('[gps] GET /my-unit failed:', err);
     return c.json({ error: 'Failed' }, 500);
   }
 });
@@ -191,7 +227,7 @@ gps.get('/my-vehicle', async (c) => {
     vehicle = await queryFirst<Record<string, unknown>>(
       db,
       `SELECT v.*, g.latitude AS gps_latitude, g.longitude AS gps_longitude,
-              g.heading AS gps_heading, g.speed_mph AS gps_speed, g.recorded_at AS gps_updated_at
+              g.heading AS gps_heading, g.speed AS gps_speed, g.recorded_at AS gps_updated_at
        FROM fleet_vehicles v
        LEFT JOIN gps_breadcrumbs g ON g.id = (
          SELECT id FROM gps_breadcrumbs
@@ -205,7 +241,7 @@ gps.get('/my-vehicle', async (c) => {
       vehicle = await queryFirst<Record<string, unknown>>(
         db,
         `SELECT v.*, g.latitude AS gps_latitude, g.longitude AS gps_longitude,
-                g.heading AS gps_heading, g.speed_mph AS gps_speed, g.recorded_at AS gps_updated_at
+                g.heading AS gps_heading, g.speed AS gps_speed, g.recorded_at AS gps_updated_at
          FROM fleet_vehicles v
          LEFT JOIN gps_breadcrumbs g ON g.id = (
            SELECT id FROM gps_breadcrumbs
@@ -222,6 +258,7 @@ gps.get('/my-vehicle', async (c) => {
       vehicle: vehicle || null,
     });
   } catch (err) {
+    console.error('[gps] GET /my-vehicle failed:', err);
     return c.json({ error: 'Failed' }, 500);
   }
 });
