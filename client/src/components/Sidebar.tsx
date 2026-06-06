@@ -227,6 +227,7 @@ export default function Sidebar({ isAdmin, isContractManager }: SidebarProps) {
                     color: active ? '#ffffff' : '#888888',
                     borderLeft: active ? '3px solid #888888' : '3px solid transparent',
                   }}
+                  aria-label={item.label}
                   title={collapsed ? item.label : undefined}
                 >
                   <Icon
