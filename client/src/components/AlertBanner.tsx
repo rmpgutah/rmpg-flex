@@ -91,6 +91,7 @@ export default function AlertBanner({ alerts, onDismiss }: AlertBannerProps) {
                 className="flex-shrink-0 p-1 hover:bg-white/10 transition-colors"
                 style={{ border: 'none', background: 'transparent', borderRadius: 0 }}
                 title="Dismiss alert"
+                aria-label="Dismiss alert"
               >
                 <X
                   className="w-3.5 h-3.5"

@@ -268,4 +268,6 @@ function DataTable<T>({
   );
 }
 
-export default React.memo(DataTable) as typeof DataTable;
+const MemoizedDataTable = React.memo(DataTable) as typeof DataTable;
+export { MemoizedDataTable as DataTable };
+export default MemoizedDataTable;

@@ -72,6 +72,9 @@ export function useNavTripDetection(opts: UseNavTripDetectionOptions) {
   const detectionRef = useRef(detection);
   detectionRef.current = detection;
 
+  const isStartingRef = useRef(false);
+  const positionRef = useRef<{ latitude: number; longitude: number } | null>(null);
+
   // ── Persist state ─────────────────────────────────────────
   useEffect(() => { saveState(detection); }, [detection]);
 
@@ -91,6 +94,12 @@ export function useNavTripDetection(opts: UseNavTripDetectionOptions) {
   }, []);
 
   useEffect(() => { fetchCurrentTrip(); }, [fetchCurrentTrip, isForeground]);
+
+  useEffect(() => {
+    if (position) {
+      positionRef.current = { latitude: position.latitude, longitude: position.longitude };
+    }
+  }, [position]);
 
   // ── Check for take-home vehicle ───────────────────────────
   const [hasTakeHome, setHasTakeHome] = useState(false);
@@ -186,24 +195,29 @@ export function useNavTripDetection(opts: UseNavTripDetectionOptions) {
             next.bufferPosition = { lat: latitude, lng: longitude };
 
             // Auto-start trip if we have a pending one or need to create
-            if (next.pendingTripId) {
-              confirmTrip(next.pendingTripId)
-                .then((trip) => {
-                  if (!trip) return;
-                  setCurrentTrip(trip);
-                  onTripStarted?.(trip);
-                  setDetection((p) => ({ ...p, activeTripId: trip.id, pendingTripId: null }));
-                })
-                .catch(() => {});
-            } else {
-              startTrip(latitude, longitude, accuracy)
-                .then((trip) => {
-                  if (!trip) return;
-                  setCurrentTrip(trip);
-                  onTripStarted?.(trip);
-                  setDetection((p) => ({ ...p, pendingTripId: trip.id }));
-                })
-                .catch(() => {});
+            if (!isStartingRef.current) {
+              isStartingRef.current = true;
+              if (next.pendingTripId) {
+                confirmTrip(next.pendingTripId)
+                  .then((trip) => {
+                    if (!trip) return;
+                    setCurrentTrip(trip);
+                    onTripStarted?.(trip);
+                    setDetection((p) => ({ ...p, activeTripId: trip.id, pendingTripId: null }));
+                  })
+                  .catch(() => {})
+                  .finally(() => { isStartingRef.current = false; });
+              } else {
+                startTrip(latitude, longitude, accuracy)
+                  .then((trip) => {
+                    if (!trip) return;
+                    setCurrentTrip(trip);
+                    onTripStarted?.(trip);
+                    setDetection((p) => ({ ...p, pendingTripId: trip.id }));
+                  })
+                  .catch(() => {})
+                  .finally(() => { isStartingRef.current = false; });
+              }
             }
           }
 
@@ -304,9 +318,10 @@ export function useNavTripDetection(opts: UseNavTripDetectionOptions) {
   useEffect(() => {
     if (!detection.activeTripId || !position || !isTracking) return;
     const interval = setInterval(() => {
+      const pos = positionRef.current ?? position;
       const pt = {
-        lat: position.latitude,
-        lng: position.longitude,
+        lat: pos.latitude,
+        lng: pos.longitude,
         ts: new Date().toISOString(),
         speed: undefined as number | undefined,
         heading: undefined as number | undefined,
@@ -329,7 +344,8 @@ export function useNavTripDetection(opts: UseNavTripDetectionOptions) {
     if (!detection.lastMovementAt) return;
     const check = setInterval(() => {
       if (Date.now() - (detectionRef.current.lastMovementAt ?? 0) > 300_000) {
-        endCurrentTrip(position.latitude, position.longitude);
+        const pos = positionRef.current ?? position;
+        endCurrentTrip(pos.latitude, pos.longitude);
       }
     }, 30_000);
     return () => clearInterval(check);
