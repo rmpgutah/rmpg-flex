@@ -134,6 +134,11 @@ stubs.get('/messages/priority-stats', async (c) => {
   }
 });
 
+// ── Stats dashboard (mounted at /api/stats) — used by ModuleDirectoryPage badges ──
+stubs.get('/dashboard', (c) => c.json({
+  open_cases: 0, pending_serve: 0, active_warrants: 0,
+}));
+
 // ── Weather (mounted at /api/weather) — uses /current to avoid GET / collision ──
 stubs.get('/current', (c) => c.json({ temperature: 72, conditions: 'Clear', icon: 'clear-day' }));
 
