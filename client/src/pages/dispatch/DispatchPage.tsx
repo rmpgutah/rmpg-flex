@@ -2041,20 +2041,6 @@ export default function DispatchPage() {
   useEffect(() => { startEditingRef.current = startEditing; }, [startEditing]);
   const cancelEditingRef = useRef(cancelEditing);
   useEffect(() => { cancelEditingRef.current = cancelEditing; }, [cancelEditing]);
-  useEffect(() => {
-    const checkAutoArchive = () => {
-      const now = Date.now();
-      const fiveMinMs = 5 * 60 * 1000;
-      calls.filter(c => ['cleared'].includes(c.status) && c.cleared_at).forEach(c => {
-        const clearedTime = parseTimestamp(c.cleared_at).getTime();
-        if (now - clearedTime > fiveMinMs) {
-          handleArchiveRef.current(c.id).catch(() => {});
-        }
-      });
-    };
-    const interval = setInterval(checkAutoArchive, 60000); // Check every minute
-    return () => clearInterval(interval);
-  }, [calls]);
 
   // ── Dispatch alarm interval — check overdue calls every 5s ──
   const alarmPlayedRef = useRef<Set<string>>(new Set());
