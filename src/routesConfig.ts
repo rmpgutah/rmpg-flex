@@ -396,6 +396,10 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // /search + per-person detail is a follow-up; only the dashboard
   // tile-count endpoint is implemented today.
   { prefix: '/api/offender-registry', router: offenderRegistry, auth: 'required' },
+  // Client calls /api/sex-offender-registry (SexOffenderRegistryPage), but the
+  // registry mount is /api/offender-registry. Mount at both so the client SPA
+  // doesn't fall through to the legacy proxy (returning 500).
+  { prefix: '/api/sex-offender-registry', router: offenderRegistry, auth: 'required' },
 
   // ── Bare /api mounts (router owns sub-paths) ───────────────
   // Each entry here mounts at the bare /api prefix so the router can

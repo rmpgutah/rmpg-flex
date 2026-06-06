@@ -125,7 +125,12 @@ gps.post('/', async (c) => {
     }, 201);
   } catch (err) {
     console.error('[gps] POST failed:', err);
-    return c.json({ error: 'GPS update failed' }, 500);
+    const detail = err instanceof Error ? err.message : String(err);
+    if (err && typeof err === 'object' && 'code' in err) {
+      const code = (err as any).code;
+      console.error('[gps] D1 error code:', code);
+    }
+    return c.json({ error: 'GPS update failed', detail }, 500);
   }
 });
 

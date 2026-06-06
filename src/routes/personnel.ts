@@ -1504,6 +1504,67 @@ personnel.get('/training', async (c) => {
   }
 });
 
+// POST /api/personnel/training — create a training record.
+personnel.post('/training', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const b = await c.req.json<Record<string, unknown>>();
+    if (!b.course_name || !b.officer_id) return c.json({ error: 'course_name and officer_id required' }, 400);
+    const r = await execute(db,
+      `INSERT INTO training_records (officer_id, course_name, category, provider, completed_date, expiry_date, score, hours, certificate_number, status, notes)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      b.officer_id, b.course_name, b.category ?? null, b.provider ?? null,
+      b.completed_date ?? null, b.expiry_date ?? null,
+      b.score != null ? Number(b.score) : null,
+      b.hours != null ? Number(b.hours) : null,
+      b.certificate_number ?? null, b.status ?? 'completed', b.notes ?? null);
+    return c.json({ success: true, id: r.meta.last_row_id }, 201);
+  } catch (err) {
+    console.error('POST /personnel/training error:', err);
+    return c.json({ error: 'Failed to create training record' }, 500);
+  }
+});
+
+// PUT /api/personnel/training/:id — update a training record.
+personnel.put('/training/:id', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = c.req.param('id');
+    const b = await c.req.json<Record<string, unknown>>();
+    const existing = await queryFirst(db, 'SELECT id FROM training_records WHERE id = ?', id);
+    if (!existing) return c.json({ error: 'Training record not found' }, 404);
+    await execute(db,
+      `UPDATE training_records SET officer_id=?, course_name=?, category=?, provider=?,
+         completed_date=?, expiry_date=?, score=?, hours=?, certificate_number=?, status=?, notes=?,
+         updated_at=datetime('now')
+       WHERE id=?`,
+      b.officer_id, b.course_name, b.category ?? null, b.provider ?? null,
+      b.completed_date ?? null, b.expiry_date ?? null,
+      b.score != null ? Number(b.score) : null,
+      b.hours != null ? Number(b.hours) : null,
+      b.certificate_number ?? null, b.status ?? 'completed', b.notes ?? null, id);
+    return c.json({ success: true });
+  } catch (err) {
+    console.error('PUT /personnel/training error:', err);
+    return c.json({ error: 'Failed to update training record' }, 500);
+  }
+});
+
+// DELETE /api/personnel/training/:id — delete a training record.
+personnel.delete('/training/:id', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = c.req.param('id');
+    const existing = await queryFirst(db, 'SELECT id FROM training_records WHERE id = ?', id);
+    if (!existing) return c.json({ error: 'Training record not found' }, 404);
+    await execute(db, 'DELETE FROM training_records WHERE id = ?', id);
+    return c.json({ success: true });
+  } catch (err) {
+    console.error('DELETE /personnel/training error:', err);
+    return c.json({ error: 'Failed to delete training record' }, 500);
+  }
+});
+
 // GET /api/personnel/training-requirements — courses + cadence config.
 personnel.get('/training-requirements', async (c) => {
   try {
