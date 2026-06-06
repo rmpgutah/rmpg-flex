@@ -454,6 +454,7 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // of the stubs' /bolos/{active,check,stats}, so nothing is shadowed.
   { prefix: '/api/comms/bolos', router: bolosRouter, auth: 'required' },
   { prefix: '/api/comms', router: stubs, auth: 'required' },
+  { prefix: '/api/stats', router: stubs, auth: 'required' },
   { prefix: '/api/weather', router: stubs, auth: 'required' },
   { prefix: '/api/email', router: stubs, auth: 'required' },
   { prefix: '/api/integrations', router: stubs, auth: 'required' },

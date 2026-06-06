@@ -333,6 +333,10 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
   const watchIdRef = useRef<number | null>(null);
   const batchIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const permWatchRef = useRef<PermissionStatus | null>(null);
+  /** Whether geolocation permission is known to be denied — prevents heartbeat
+   *  from endlessly restarting watchPosition when it will never succeed. */
+  const permissionDeniedRef = useRef(false);
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
   /** Timestamp of last received position callback — used by heartbeat */
   const lastCallbackTimeRef = useRef<number>(Date.now());
@@ -675,6 +679,10 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
       clearTimeout(retryTimeoutRef.current);
       retryTimeoutRef.current = null;
     }
+    if (permWatchRef.current !== null) {
+      permWatchRef.current.onchange = null;
+      permWatchRef.current = null;
+    }
     if (heartbeatRef.current !== null) {
       clearInterval(heartbeatRef.current);
       heartbeatRef.current = null;
@@ -881,6 +889,9 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
       (position) => {
         const { latitude, longitude, accuracy, heading, speed } = position.coords;
 
+        // Any position callback means permission is granted — clear the denied flag
+        // so the heartbeat can restart watchPosition if it goes stale again.
+        permissionDeniedRef.current = false;
         // Update heartbeat timestamp — proves watchPosition is still delivering
         lastCallbackTimeRef.current = Date.now();
         // Reset restart counter on successful callback
@@ -994,6 +1005,7 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
           case err.PERMISSION_DENIED:
             msg = 'Location permission denied. You MUST enable location access to use RMPG Flex.';
             denied = true;
+            permissionDeniedRef.current = true;
             break;
           case err.POSITION_UNAVAILABLE:
             msg = 'Location unavailable. Check GPS/location services.';
@@ -1013,32 +1025,60 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
           permissionPending: false,
         }));
 
-        // If denied, probe every 30 seconds in case user re-grants permission
-        // (non-recursive — just a probe, not a full restart cascade)
+        // Fallback: poll with getCurrentPosition (used when Permissions API
+        // is unavailable or query fails).
+        const fallbackProbePermission = () => {
+          if (!mountedRef.current) return;
+          retryTimeoutRef.current = setTimeout(() => {
+            if (!mountedRef.current) return;
+            navigator.geolocation.getCurrentPosition(
+              () => {
+                if (!mountedRef.current) return;
+                permissionDeniedRef.current = false;
+                cleanupTracking(false);
+                startTracking();
+              },
+              () => {
+                if (!mountedRef.current) return;
+                fallbackProbePermission();
+              },
+              { timeout: 5000 }
+            );
+          }, 30000);
+        };
+
+        // If denied, watch for permission changes via Permissions API (no user
+        // gesture needed, unlike getCurrentPosition which triggers violations
+        // when called from timers). Fall back to timer-based getCurrentPosition
+        // probing on browsers without Permissions API support.
         if (denied) {
           if (retryTimeoutRef.current) clearTimeout(retryTimeoutRef.current);
-          const probePermission = () => {
-            // Guard against orphaned timers firing after unmount
-            if (!mountedRef.current) return;
-            retryTimeoutRef.current = setTimeout(() => {
+          const permApi = (navigator as any).permissions;
+          if (permApi?.query) {
+            permApi.query({ name: 'geolocation' }).then((permStatus: PermissionStatus) => {
               if (!mountedRef.current) return;
-              navigator.geolocation.getCurrentPosition(
-                () => {
-                  if (!mountedRef.current) return;
-                  // Permission restored — restart tracking (once)
+              permWatchRef.current = permStatus;
+              permStatus.onchange = () => {
+                if (!mountedRef.current) {
+                  permStatus.onchange = null;
+                  return;
+                }
+                if (permStatus.state === 'granted') {
+                  permStatus.onchange = null;
+                  permWatchRef.current = null;
+                  permissionDeniedRef.current = false;
                   cleanupTracking(false);
                   startTracking();
-                },
-                () => {
-                  if (!mountedRef.current) return;
-                  // Still denied — schedule another probe (not recursive startTracking)
-                  probePermission();
-                },
-                { timeout: 5000 }
-              );
-            }, 30000);
-          };
-          probePermission();
+                }
+              };
+            }).catch(() => {
+              // Permissions API query failed — fall back to timer-based probe
+              fallbackProbePermission();
+            });
+          } else {
+            // No Permissions API — fall back to timer polling
+            fallbackProbePermission();
+          }
         }
       },
       {
@@ -1084,6 +1124,13 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
       const backoffFactor = Math.min(2 ** overshoot, MAX_HEARTBEAT_BACKOFF_FACTOR);
       const threshold = baseThreshold * backoffFactor;
       if (staleDuration >= threshold && watchIdRef.current !== null) {
+        // If permission is known to be denied, don't restart — the Permissions
+        // API watcher or fallback probe will re-enable when the user re-grants
+        // access. Without this guard the heartbeat triggers an endless restart
+        // loop that floods the console with violations and DevTools errors.
+        if (permissionDeniedRef.current) {
+          return;
+        }
         // Throttle log noise: warn while still in the aggressive phase, then
         // drop to debug so a perpetually-stale console doesn't flood the log.
         const log = heartbeatRestartCountRef.current >= MAX_HEARTBEAT_RESTARTS ? console.debug : console.warn;
