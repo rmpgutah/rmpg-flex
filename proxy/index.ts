@@ -1115,6 +1115,16 @@ const API_ROUTES: RouteRule[] = [
   // rewrite handler could regress a working page even on the shared DB. Route
   // them only after confirming those pages actually error on legacy.
   { kind: 'prefix', value: '/api/narcotics' },
+  // /api/nav[/*] — Navigation trip logging + take-home vehicle check
+  // (src/routes/nav.ts). The entire /api/nav/* namespace is on the rewrite;
+  // legacy never had it, so requests fall through to env.LEGACY and 404
+  // (NavPage "No current trip" / 404 toast on /nav/trip/current + /nav/trip/history
+  // + /nav/vehicle-take-home). The rewrite mounts at /api/nav in routesConfig.ts
+  // with full GET/POST/PUT handlers for trip lifecycle. Note this is distinct
+  // from /api/dispatch/trips (a sibling that lives under /api/dispatch and
+  // routes dispatch-side trip stats); both namespaces reach the same DB but
+  // the proxy rule is per-prefix so each gets its own line.
+  { kind: 'prefix', value: '/api/nav' },
   { kind: 'prefix', value: '/api/nibrs' },
   { kind: 'prefix', value: '/api/patrol' },
   { kind: 'prefix', value: '/api/recruitment' },

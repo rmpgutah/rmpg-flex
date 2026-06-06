@@ -5,14 +5,55 @@ import { getDb, query, queryFirst, execute } from '../../utils/db';
 const gps = new Hono<Env>();
 
 // POST /dispatch/gps - Submit GPS breadcrumb
+/**
+ * Normalize a client-supplied breadcrumb to the {latitude, longitude, ...}
+ * shape gps.ts inserts into gps_breadcrumbs. The React client uses
+ * `{lat, lng, ...}` (matches the QueuedPoint type in useGpsTracking.ts
+ * and is what the local storage failover queue persists), while the
+ * Hono route was originally typed as `{latitude, longitude, ...}`. The
+ * mismatch caused every POST to 500 with "NOT NULL constraint failed:
+ * gps_breadcrumbs.latitude" because `pt.latitude` came back undefined.
+ * Accept either key so the contract is forgiving across clients
+ * (Toughbook Electron, browser mobile, desktop WiFi) without a
+ * coordinate-system rename churn across the bundle.
+ */
+function normalizePoint(raw: Record<string, unknown>): {
+  latitude: number; longitude: number; accuracy: number | null; heading: number | null; speed: number | null;
+} {
+  const lat = typeof raw.latitude === 'number' ? raw.latitude
+    : typeof raw.lat === 'number' ? raw.lat
+    : NaN;
+  const lng = typeof raw.longitude === 'number' ? raw.longitude
+    : typeof raw.lng === 'number' ? raw.lng
+    : NaN;
+  return {
+    latitude: lat,
+    longitude: lng,
+    accuracy: typeof raw.accuracy === 'number' ? raw.accuracy : null,
+    heading: typeof raw.heading === 'number' ? raw.heading : null,
+    speed: typeof raw.speed === 'number' ? raw.speed : null,
+  };
+}
+
+export { normalizePoint as _normalizePointForTest };
+
 gps.post('/', async (c) => {
   try {
     const db = getDb(c.env);
     const userId = c.get('userId') as number;
-    const body = await c.req.json<{ latitude: number; longitude: number; accuracy?: number; heading?: number; speed?: number } | { points: Array<{ latitude: number; longitude: number; accuracy?: number; heading?: number; speed?: number }> }>();
+    const body = await c.req.json<
+      | { latitude?: number; longitude?: number; lat?: number; lng?: number; accuracy?: number; heading?: number; speed?: number }
+      | { points: Array<Record<string, unknown>> }
+    >();
 
-    const points = 'points' in body ? body.points : [body];
-    if (!points.length) return c.json({ error: 'No points' }, 400);
+    const rawPoints = 'points' in body ? body.points : [body as Record<string, unknown>];
+    if (!rawPoints.length) return c.json({ error: 'No points' }, 400);
+
+    const points = rawPoints.map(normalizePoint);
+    const bad = points.findIndex((p) => !Number.isFinite(p.latitude) || !Number.isFinite(p.longitude));
+    if (bad >= 0) {
+      return c.json({ error: `Invalid coordinates at index ${bad}` }, 400);
+    }
 
     // Get user's unit info
     const unit = await queryFirst<{ id: number; call_sign: string }>(db,
@@ -41,8 +82,23 @@ gps.post('/', async (c) => {
         lastPt.latitude, lastPt.longitude, unit.id);
     }
 
-    return c.json({ inserted: inserted.length }, 201);
+    return c.json({
+      inserted: inserted.length,
+      // Echo the unit so the client's `pickUnit(result)` (useGpsTracking.ts
+      // sendBatch) can populate unitId/call_sign from the write path. The
+      // canonical GET /dispatch/gps/my-unit read can be shadowed by the
+      // rmpg-premise-stub edge worker returning a hollow {unit:null}; the
+      // POST echo is never stubbed, so this is what actually feeds the
+      // NAVIGATE/Trips UI.
+      unit: { id: unit.id, call_sign: unit.call_sign },
+    }, 201);
   } catch (err) {
+    // Log the underlying D1/SQL message — without this every batch send failure
+    // showed up in `wrangler tail` as a bare "GPS update failed" with no way
+    // to tell NOT NULL violations from auth gaps from transient D1 locks.
+    // The shape mirrors the global onError in src/index.ts so log filters
+    // (e.g. searching for "Unhandled in POST /api/dispatch/gps") work.
+    console.error('GPS breadcrumb write failed (userId=' + c.get('userId') + '):', err);
     return c.json({ error: 'GPS update failed' }, 500);
   }
 });
