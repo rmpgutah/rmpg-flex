@@ -3,7 +3,7 @@ import type { Env } from '../../types';
 import { getDb, query, queryFirst, execute, executeBatch } from '../../utils/db';
 import { emitAlert } from '../../utils/alertHub';
 import { applyTripEvent, type ApplyArgs } from '../../utils/tripStore';
-import { haversineM, type IncomingFix } from '../../utils/tripTelemetry';
+import { type IncomingFix } from '../../utils/tripTelemetry';
 import type { TripEvent } from '../../utils/tripEngine';
 
 const gps = new Hono<Env>();
