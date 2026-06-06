@@ -100,7 +100,7 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy client/dist --functions functions --project-name=rmpg-flex --branch=main --commit-dirty=true
+          command: pages deploy client/dist --project-name=rmpg-flex --branch=main --commit-dirty=true
 
       # Deploy the routing proxy (rmpg-api-proxy) LAST. It dispatches
       # rmpgutah.us/api/* to the rewrite (env.API = rmpg-flex-api) or legacy
