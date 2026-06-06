@@ -28,6 +28,14 @@ function norm(pt: Record<string, unknown>): { latitude: number; longitude: numbe
 // POST /dispatch/gps - Submit GPS breadcrumb batch.
 // Accepts { points: [ { lat, lng, accuracy, heading, speed, timestamp, source } ] }
 // or single-point legacy { latitude, longitude, ... }.
+
+// Re-export norm so the test suite can lock the lat/lng ↔ latitude/longitude
+// contract. The bug this prevents: pre-7a716969, the route inserted
+// `pt.latitude` directly, so any client sending `{lat, lng, ...}` (the React
+// useGpsTracking QueuedPoint shape and the localStorage failover queue
+// shape) 500'd with "NOT NULL constraint failed: gps_breadcrumbs.latitude".
+export { norm as _normalizePointForTest };
+
 gps.post('/', async (c) => {
   try {
     const db = getDb(c.env);

@@ -159,6 +159,8 @@ import downloads from './routes/downloads';
 import narcotics from './routes/narcotics';
 import nav from './routes/nav';
 import offenderRegistry from './routes/offenderRegistry';
+import uploads from './routes/uploads';
+import companyDocuments from './routes/companyDocuments';
 
 // Permissive Router alias — `Hono<any>` accepts every router shape
 // the existing route files happen to declare. Some routes use the
@@ -400,6 +402,19 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // registry mount is /api/offender-registry. Mount at both so the client SPA
   // doesn't fall through to the legacy proxy (returning 500).
   { prefix: '/api/sex-offender-registry', router: offenderRegistry, auth: 'required' },
+
+  // ── File uploads (attachments) ──────────────────────────────
+  // General-purpose file upload/download. R2-backed (UPLOADS bucket);
+  // replaces legacy disk-based multer handler. Supports HMAC-signed
+  // access tokens for session-independent file URLs (img/iframe/a tags).
+  { prefix: '/api/uploads', router: uploads, auth: 'required',
+    note: 'File attachments: POST multipart, GET inline/download/thumbnail, DELETE, entity listing, HMAC signing' },
+
+  // ── Company documents (training docs library) ───────────────
+  // TrainingDocsPage CRUD + CSV export. Backed by company_documents
+  // table (migration 0078). Ported from legacy Express handler.
+  { prefix: '/api/company-documents', router: companyDocuments, auth: 'required',
+    note: 'Agency document library: list/create/update/delete + CSV export for TrainingDocsPage' },
 
   // ── Bare /api mounts (router owns sub-paths) ───────────────
   // Each entry here mounts at the bare /api prefix so the router can
