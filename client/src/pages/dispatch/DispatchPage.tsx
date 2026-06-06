@@ -1276,11 +1276,6 @@ export default function DispatchPage() {
     if (signalFilter === 'signaled' && !knownSignalCodes.has(call.incident_type)) return false;
     if (signalFilter === 'unsignaled' && knownSignalCodes.has(call.incident_type)) return false;
     return true;
-  }).filter((call) => {
-    // Show cleared calls in 'all' tab if user preference is enabled
-    if (filterTab === 'all' && userPrefs?.dispatch_show_cleared) return true;
-    if (filterTab === 'all' && ['cleared', 'closed', 'cancelled'].includes(call.status)) return false;
-    return true;
   }).sort((a, b) => {
     // Archive tab: sort by call number ascending (001, 002, 003...)
     if (filterTab === 'archived') {
@@ -2090,8 +2085,7 @@ export default function DispatchPage() {
     const pending = calls.filter((c) => c.status === 'pending').length;
     const active = calls.filter((c) => ['dispatched', 'enroute', 'onscene', 'on_hold'].includes(c.status)).length;
     const cleared = calls.filter((c) => ['cleared', 'closed', 'cancelled'].includes(c.status)).length;
-    // ALL count: if user hides cleared calls, exclude them from the count to match the visible list
-    const allCount = userPrefs?.dispatch_show_cleared ? calls.length : calls.length - cleared;
+    const allCount = calls.length;
     const myId = user?.id != null ? String(user.id) : null;
     const mine = myId ? calls.filter((c) => String((c as any).dispatcher_id ?? (c as any).created_by ?? '') === myId).length : 0;
     return {
@@ -2103,7 +2097,7 @@ export default function DispatchPage() {
       serve: calls.filter((c) => PSO_INCIDENT_TYPES.includes(c.incident_type)).length,
       mine,
     };
-  }, [calls, archivedCalls, userPrefs?.dispatch_show_cleared, user?.id]);
+  }, [calls, archivedCalls, user?.id]);
 
   if (isLoading) {
     return (
@@ -3637,7 +3631,19 @@ export default function DispatchPage() {
                           }
                           if (e.key === 'Escape') setEditingTimestamp(null);
                         }}
-                        onBlur={() => setEditingTimestamp(null)}
+                        onBlur={async (e) => {
+                          const val = e.target.value.trim();
+                          if (val !== ((selectedCall as any).incident_number || '')) {
+                            try {
+                              const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}`, { method: 'PUT', body: JSON.stringify({ case_number: val || null }) });
+                              const updated = mapDbCall(result);
+                              setCalls(prev => prev.map(c => c.id === updated.id ? updated : c));
+                              setSelectedCall(updated);
+                              addToast(val ? `Linked to incident ${val}` : 'Incident link cleared', 'success');
+                            } catch { /* silent on blur */ }
+                          }
+                          setEditingTimestamp(null);
+                        }}
                       />
                     ) : selectedCall.incident_number ? (
                       <span
