@@ -91,8 +91,14 @@ calls.get('/', async (c) => {
     if (archived === 'true') where += " AND c.status = 'archived'";
     else if (archived !== 'all') where += " AND c.status != 'archived'";
 
-    if (active === 'true' || (!status && !archived)) {
+    // Only filter to active statuses when explicitly requested via active=true
+    // or when no filters are specified AND status is not explicitly provided.
+    // This allows the frontend to see cleared/closed/cancelled calls in the "All" tab.
+    if (active === 'true') {
       where = "WHERE c.status IN ('dispatched','enroute','onscene','pending','open')";
+      // Re-apply archived filter since we replaced the WHERE clause
+      if (archived === 'true') where += " AND c.status = 'archived'";
+      else if (archived !== 'all') where += " AND c.status != 'archived'";
     }
 
     const pageNum = Math.max(1, parseInt(page || '1', 10));
