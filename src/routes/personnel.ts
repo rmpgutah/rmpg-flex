@@ -1513,11 +1513,11 @@ personnel.post('/training', async (c) => {
     const r = await execute(db,
       `INSERT INTO training_records (officer_id, course_name, category, provider, completed_date, expiry_date, score, hours, certificate_number, status, notes)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      b.officer_id, b.course_name, b.category ?? null, b.provider ?? null,
+      b.officer_id, b.course_name, b.category || 'other', b.provider ?? null,
       b.completed_date ?? null, b.expiry_date ?? null,
       b.score != null ? Number(b.score) : null,
-      b.hours != null ? Number(b.hours) : null,
-      b.certificate_number ?? null, b.status ?? 'completed', b.notes ?? null);
+      b.hours != null ? Number(b.hours) : 0,
+      b.certificate_number ?? null, b.status || 'scheduled', b.notes ?? null);
     return c.json({ success: true, id: r.meta.last_row_id }, 201);
   } catch (err) {
     console.error('POST /personnel/training error:', err);
@@ -1538,11 +1538,11 @@ personnel.put('/training/:id', async (c) => {
          completed_date=?, expiry_date=?, score=?, hours=?, certificate_number=?, status=?, notes=?,
          updated_at=datetime('now')
        WHERE id=?`,
-      b.officer_id, b.course_name, b.category ?? null, b.provider ?? null,
+      b.officer_id, b.course_name, b.category || 'other', b.provider ?? null,
       b.completed_date ?? null, b.expiry_date ?? null,
       b.score != null ? Number(b.score) : null,
-      b.hours != null ? Number(b.hours) : null,
-      b.certificate_number ?? null, b.status ?? 'completed', b.notes ?? null, id);
+      b.hours != null ? Number(b.hours) : 0,
+      b.certificate_number ?? null, b.status || 'scheduled', b.notes ?? null, id);
     return c.json({ success: true });
   } catch (err) {
     console.error('PUT /personnel/training error:', err);
