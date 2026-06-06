@@ -30,15 +30,28 @@ async function authedRequest(db: D1Database, path: string, init?: RequestInit, r
   // Sign a real JWT for the fake user. The in-router authMiddleware
   // (shiftPlans mounts at bare /api so it carries its own) will
   // verify the token, look up the user, and inject `c.var.user`.
+  // For routers without their own authMiddleware (citations, records,
+  // properties), we inject the user via app.use('*') below so route
+  // handlers can read c.get('user').
   const token = await sign(
     { user_id: TEST_USER.id, role, exp: Math.floor(Date.now() / 1000) + 3600 },
     TEST_JWT_SECRET,
   );
 
   const app = new Hono<Env>();
+  // Pre-empt route handlers that call c.get('user') before any
+  // in-router authMiddleware runs (e.g. citations, records, properties
+  // don't carry their own — they rely on the global app.use loop in
+  // src/index.ts which we don't mount in tests).
+  app.use('*', async (c, next) => {
+    c.set('user', { ...TEST_USER, role });
+    await next();
+  });
+  // Mount more-specific paths first so Hono's trie picks them over
+  // the catch-all /api/records (records router swallows everything).
   app.route('/api/citations', citations);
+  app.route('/api/records/properties', properties);
   app.route('/api/records', records);
-  app.route('/api/records', properties);
   app.route('/api', shiftPlans);
   return app.request(
     path,
@@ -70,7 +83,7 @@ describe('NOT NULL regression tests', () => {
       { match: /COALESCE\(MAX\(violation_number\)/, rows: [{ max_num: 0 }] },
       { match: /SELECT id, username, role, full_name, status FROM users/, rows: [{ id: 1, username: 'tester', role: 'admin', full_name: 'Test Officer', status: 'active' }] },
     ]);
-    const res = await authedRequest(rec.db, ('/api/citations/42/violations', jsonReq({ violation_description: 'Speed 15 over' }));
+    const res = await authedRequest(rec.db, '/api/citations/42/violations', jsonReq({ violation_description: 'Speed 15 over' }));
     expect(res.status).toBe(201);
     const write = rec.calls.find((c) => /INSERT INTO citation_violations/.test(c.sql))!;
     expect(write).toBeDefined();
@@ -84,7 +97,7 @@ describe('NOT NULL regression tests', () => {
     const rec = recordingDb([
       { match: /SELECT id, username, role, full_name, status FROM users/, rows: [{ id: 1, username: 'tester', role: 'admin', full_name: 'Test Officer', status: 'active' }] },
     ]);
-    const res = await authedRequest(rec.db, ('/api/records/properties', jsonReq({ name: '123 Main', address: '123 Main St' }));
+    const res = await authedRequest(rec.db, '/api/records/properties', jsonReq({ name: '123 Main', address: '123 Main St' }));
     expect(res.status).toBe(201);
     const write = rec.calls.find((c) => /INSERT INTO properties/.test(c.sql))!;
     expect(write).toBeDefined();
@@ -98,7 +111,7 @@ describe('NOT NULL regression tests', () => {
     const rec = recordingDb([
       { match: /SELECT id, username, role, full_name, status FROM users/, rows: [{ id: 1, username: 'tester', role: 'admin', full_name: 'Test Officer', status: 'active' }] },
     ]);
-    const res = await authedRequest(rec.db, ('/api/records/businesses', jsonReq({ name: 'Acme Inc', business_type: 'retail' }));
+    const res = await authedRequest(rec.db, '/api/records/businesses', jsonReq({ name: 'Acme Inc', business_type: 'retail' }));
     expect(res.status).toBe(201);
     const write = rec.calls.find((c) => /INSERT INTO properties/.test(c.sql))!;
     expect(write).toBeDefined();
@@ -112,21 +125,22 @@ describe('NOT NULL regression tests', () => {
     const rec = recordingDb([
       { match: /SELECT id, username, role, full_name, status FROM users/, rows: [{ id: 1, username: 'tester', role: 'admin', full_name: 'Test Officer', status: 'active' }] },
     ]);
-    const res = await authedRequest(rec.db, ('/api/shift-plans/shift-swaps', jsonReq({ shift_date: '2026-06-07' }));
+    const res = await authedRequest(rec.db, '/api/shift-swaps', jsonReq({ shift_date: '2026-06-07' }));
     expect(res.status).toBe(201);
     const write = rec.calls.find((c) => /INSERT INTO shift_swap_requests/.test(c.sql))!;
     expect(write).toBeDefined();
+    // Server should have supplied created_at in the column list AND a
+    // non-null default in VALUES (datetime('now','localtime') literal —
+    // not a bound ? parameter, so we just assert the SQL has both).
     expect(write.sql).toMatch(/created_at/);
-    const idx = colIdx(write.sql, 'created_at');
-    expect(idx).toBeGreaterThanOrEqual(0);
-    expect(write.args[idx]).toBeTruthy();
+    expect(write.sql).toMatch(/datetime\('now'.*\)/);
   });
 
   it('POST /api/records/evidence rejects without incident_id', async () => {
     const rec = recordingDb([
       { match: /SELECT id, username, role, full_name, status FROM users/, rows: [{ id: 1, username: 'tester', role: 'admin', full_name: 'Test Officer', status: 'active' }] },
     ]);
-    const res = await authedRequest(rec.db, ('/api/records/evidence', jsonReq({ evidence_type: 'photo', description: 'A photo' }));
+    const res = await authedRequest(rec.db, '/api/records/evidence', jsonReq({ evidence_type: 'photo', description: 'A photo' }));
     expect(res.status).toBe(400);
     const body = (await res.json()) as { error: string };
     expect(body.error).toMatch(/incident_id/);
