@@ -483,4 +483,158 @@ pt.get('/verifications', async (c) => {
   return c.json(await query(getDb(c.env), sql, ...args));
 });
 
+// ============================================================
+// Analytics / log-generation endpoints — added 2026-06-06.
+// PatrolPage calls /log/generate, /optimize-route, /time-tracking,
+// /coverage-heatmap, /efficiency on the analytics tab. Without
+// these the page renders no data and the console 404-floods.
+// Lightweight stubs backed by real aggregations against the
+// patrol_* tables — the data is real, the response shape is
+// minimal so the client renders empty-tile gracefully if a
+// table is empty (patrol_checkpoints / patrol_scans).
+// ============================================================
+
+pt.get('/log/generate', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const officerId = c.req.query('officer_id');
+    const start = c.req.query('start') || new Date(Date.now() - 7 * 86400e3).toISOString().slice(0, 10);
+    const end = c.req.query('end') || new Date().toISOString().slice(0, 10);
+    const args: any[] = [start, end];
+    let officerFilter = '';
+    if (officerId) { officerFilter = ' AND officer_id = ?'; args.push(parseInt(officerId, 10)); }
+    const rows = await query<any>(
+      db,
+      `SELECT date(scan_time) AS day,
+              COUNT(*) AS total_scans,
+              SUM(CASE WHEN status = 'on_time' THEN 1 ELSE 0 END) AS on_time_scans,
+              COUNT(DISTINCT checkpoint_id) AS unique_checkpoints
+         FROM patrol_scans
+        WHERE date(scan_time) BETWEEN ? AND ?${officerFilter}
+        GROUP BY date(scan_time)
+        ORDER BY day`,
+      ...args,
+    );
+    return c.json({ start, end, days: rows });
+  } catch (err) {
+    console.error('GET /patrol/log/generate failed:', err);
+    return c.json({ days: [] });
+  }
+});
+
+pt.get('/optimize-route', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const officerId = c.req.query('officer_id');
+    const args: any[] = [];
+    let filter = 'WHERE is_active = 1';
+    if (officerId) { filter += ' AND assigned_officer_id = ?'; args.push(parseInt(officerId, 10)); }
+    const checkpoints = await query<any>(
+      db,
+      `SELECT id, name, latitude, longitude, priority, scan_frequency_minutes
+         FROM patrol_checkpoints
+         ${filter}
+         ORDER BY priority DESC, name
+         LIMIT 100`,
+      ...args,
+    );
+    // Naive route: order by priority DESC, then by checkpoint name.
+    // Real TSP solver is a Phase 2 feature; for now we return the
+    // priority-sorted list as the "optimized" path.
+    return c.json({
+      officer_id: officerId ? parseInt(officerId, 10) : null,
+      checkpoints,
+      suggested_order: checkpoints.map((cp: any) => cp.id),
+      distance_estimate_meters: 0,
+      optimized_at: new Date().toISOString(),
+    });
+  } catch (err) {
+    console.error('GET /patrol/optimize-route failed:', err);
+    return c.json({ checkpoints: [], suggested_order: [] });
+  }
+});
+
+pt.get('/time-tracking', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const officerId = c.req.query('officer_id');
+    const days = Math.min(parseInt(c.req.query('days') || '7', 10) || 7, 90);
+    const args: any[] = [days];
+    let officerFilter = '';
+    if (officerId) { officerFilter = ' AND officer_id = ?'; args.push(parseInt(officerId, 10)); }
+    const rows = await query<any>(
+      db,
+      `SELECT date(scan_time) AS day,
+              SUM(CASE WHEN status = 'on_time' THEN 1 ELSE 0 END) AS on_time_scans,
+              SUM(CASE WHEN status = 'late' THEN 1 ELSE 0 END) AS late_scans,
+              SUM(CASE WHEN status = 'missed' THEN 1 ELSE 0 END) AS missed_scans
+         FROM patrol_scans
+        WHERE scan_time >= datetime('now', ? || ' days')${officerFilter}
+        GROUP BY date(scan_time)
+        ORDER BY day`,
+      ...args,
+    );
+    return c.json({ days, summary: rows });
+  } catch (err) {
+    console.error('GET /patrol/time-tracking failed:', err);
+    return c.json({ days: 0, summary: [] });
+  }
+});
+
+pt.get('/coverage-heatmap', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const days = Math.min(parseInt(c.req.query('days') || '7', 10) || 7, 90);
+    // 24x7 grid of scan counts — used by PatrolPage's coverage card.
+    const rows = await query<any>(
+      db,
+      `SELECT CAST(strftime('%H', scan_time) AS INTEGER) AS hour,
+              CAST(strftime('%w', scan_time) AS INTEGER) AS dow,
+              COUNT(*) AS count
+         FROM patrol_scans
+        WHERE scan_time >= datetime('now', ? || ' days')
+        GROUP BY hour, dow
+        ORDER BY dow, hour`,
+      -days,
+    );
+    return c.json({ days, cells: rows });
+  } catch (err) {
+    console.error('GET /patrol/coverage-heatmap failed:', err);
+    return c.json({ days: 0, cells: [] });
+  }
+});
+
+pt.get('/efficiency', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const officerId = c.req.query('officer_id');
+    const days = Math.min(parseInt(c.req.query('days') || '7', 10) || 7, 90);
+    const args: any[] = [-days];
+    let filter = '';
+    if (officerId) { filter = ' AND s.officer_id = ?'; args.push(parseInt(officerId, 10)); }
+    const row = await queryFirst<any>(
+      db,
+      `SELECT COUNT(*) AS total_scans,
+              SUM(CASE WHEN s.status = 'on_time' THEN 1 ELSE 0 END) AS on_time_scans,
+              COUNT(DISTINCT s.checkpoint_id) AS unique_checkpoints,
+              COUNT(DISTINCT s.officer_id) AS active_officers
+         FROM patrol_scans s
+        WHERE s.scan_time >= datetime('now', ? || ' days')${filter}`,
+      ...args,
+    );
+    return c.json({
+      days,
+      officer_id: officerId ? parseInt(officerId, 10) : null,
+      total_scans: row?.total_scans ?? 0,
+      on_time_scans: row?.on_time_scans ?? 0,
+      unique_checkpoints: row?.unique_checkpoints ?? 0,
+      active_officers: row?.active_officers ?? 0,
+      efficiency_pct: row?.total_scans ? Math.round(((row.on_time_scans ?? 0) / row.total_scans) * 100) : 0,
+    });
+  } catch (err) {
+    console.error('GET /patrol/efficiency failed:', err);
+    return c.json({ days: 0, total_scans: 0, on_time_scans: 0, efficiency_pct: 0 });
+  }
+});
+
 export default pt;
