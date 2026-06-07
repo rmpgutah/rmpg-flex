@@ -126,6 +126,7 @@ import reports from './routes/reports';
 import statutes from './routes/statutes';
 import specialOps from './routes/specialOps';
 import victimServices from './routes/victimServices';
+import integrations from './routes/integrations';
 import stubs from './routes/stubs';
 // Dispatch domain
 import dispatchCalls from './routes/dispatch/calls';
@@ -328,6 +329,12 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Recruitment & hiring: applicant pipeline, testing, oral boards, onboarding workflow' },
   { prefix: '/api/serve', router: serve, auth: 'required',
     note: 'Officer-facing serve workflow (shares tables with /api/serve-intake)' },
+  // Alias — ServePage calls /api/process-server/* but the handlers live
+  // in src/routes/serve.ts (mounted at /api/serve). Mounting the same
+  // router at /api/process-server means a single source of truth for
+  // the queue + stats + route + attempt endpoints.
+  { prefix: '/api/process-server', router: serve, auth: 'required',
+    note: 'Alias of /api/serve for the ServePage URL contract (legacy /api/process-server/* proxy) — same router instance' },
   { prefix: '/api/special-ops', router: specialOps, auth: 'required',
     note: 'Special operations: SWAT callouts, tactical planning, equipment inventory' },
   { prefix: '/api/settings', router: settings, auth: 'required',
@@ -457,7 +464,9 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/stats', router: stubs, auth: 'required' },
   { prefix: '/api/weather', router: stubs, auth: 'required' },
   { prefix: '/api/email', router: stubs, auth: 'required' },
-  { prefix: '/api/integrations', router: stubs, auth: 'required' },
+  // Real integrations router (rmpgutahps + integration_api_keys CRUD +
+  // request log) — must be mounted BEFORE the stubs catch-all below.
+  { prefix: '/api/integrations', router: integrations, auth: 'required' },
   { prefix: '/api/dispatch/stats', router: stubs, auth: 'required' },
   { prefix: '/api/dispatch/shift-handoff', router: dispatchShiftHandoff, auth: 'required' },
 ];

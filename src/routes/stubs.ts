@@ -148,8 +148,15 @@ stubs.get('/unread-count', (c) => c.json({ count: 0 }));
 // ── Integrations (mounted at /api/integrations) ──
 stubs.get('/google-maps/client-key', (c) => c.json({}));
 
-// ── Dispatch stubs (mounted at /api/dispatch/stats + /api/dispatch/shift-handoff) ──
-stubs.get('/stats', (c) => c.json({ total_calls: 0, active_calls: 0, units_online: 0 }));
+// ── Dispatch stubs (mounted at /api/dispatch/stats) ──
+// `stubs` is mounted at the EXACT prefix '/api/dispatch/stats', so '/' here
+// matches /api/dispatch/stats (the bare mount point). Using '/stats' would
+// have mapped to /api/dispatch/stats/stats — bug fixed 2026-06-06.
+stubs.get('/', (c) => c.json({ total_calls: 0, active_calls: 0, units_online: 0 }));
+
+// shift-handoff stubs below are dead code: that prefix is owned by the real
+// router mounted at /api/dispatch/shift-handoff. Kept for reference but
+// harmless — those routes never reach this router.
 stubs.get('/shift-handoff', (c) => c.json({ handoff: null }));
 stubs.put('/shift-handoff', async (c) => {
   try {

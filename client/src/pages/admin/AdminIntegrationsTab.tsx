@@ -178,7 +178,11 @@ function ApiKeyPanel({ title, icon, keys: keyConfigs }: { title: string; icon: R
   const [errors, setErrors] = useState<Record<string, string | null>>({});
 
   useEffect(() => {
-    // Check which keys are configured
+    // Check which keys are configured — single bulk request, no N+1.
+    // Fixed 2026-06-06: the previous fallback path fired one request per key
+    // (50+ keys × N panels) on every mount when the bulk endpoint 404'd.
+    // The Worker now has /api/admin/third-party-keys (real handler) so the
+    // bulk path always succeeds and the per-key fallback is dead code.
     (async () => {
       try {
         const data = await apiFetch<Array<{ config_key: string; has_value: boolean }>>('/admin/third-party-keys');
@@ -186,13 +190,9 @@ function ApiKeyPanel({ title, icon, keys: keyConfigs }: { title: string; icon: R
         for (const item of data) map[item.config_key] = item.has_value;
         setConfigured(map);
       } catch {
-        // Endpoint may not exist yet — check individually
-        for (const { key } of keyConfigs) {
-          try {
-            const resp = await apiFetch<{ configured: boolean }>(`/admin/third-party-keys/${key}`);
-            setConfigured(prev => ({ ...prev, [key]: resp.configured }));
-          } catch { /* silent */ }
-        }
+        // Bulk endpoint unreachable — leave all keys in default "not set" state.
+        // The per-key N+1 fallback has been removed; on a broken bulk endpoint
+        // the page simply shows "Not Set" everywhere until the API recovers.
       }
     })();
   }, []);
@@ -257,18 +257,22 @@ function ApiKeyPanel({ title, icon, keys: keyConfigs }: { title: string; icon: R
               )}
             </div>
             <div className="flex items-center gap-2">
-              <div className="relative flex-1">
-                <input id="ff-adminintegrationstab-0"
+              <form
+                onSubmit={(e) => { e.preventDefault(); handleSave(key); }}
+                className="relative flex-1 flex items-center"
+              >
+                <input id={`ff-adminintegrationstab-${key}`}
                   type={showKey[key] ? 'text' : 'password'}
                   value={values[key] || ''}
                   onChange={e => setValues(prev => ({ ...prev, [key]: e.target.value }))}
                   placeholder={configured[key] ? '••••••••••••••••••••' : 'Paste API key here...'}
                   className="w-full px-3 py-2 pr-8 bg-[#141414] border border-[#2b2b2b] rounded-sm text-xs text-white font-mono placeholder-[#525252] focus:outline-none focus:border-brand-500"
                 />
-                <button type="button" onClick={() => setShowKey(prev => ({ ...prev, [key]: !prev[key] }))} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-600 hover:text-rmpg-400">
+                <button type="button" onClick={() => setShowKey(prev => ({ ...prev, [key]: !showKey[key] }))} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-600 hover:text-rmpg-400">
                   {showKey[key] ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                 </button>
-              </div>
+                <input type="submit" hidden />
+              </form>
               <button
                 type="button"
                 onClick={() => handleSave(key)}
@@ -564,7 +568,10 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
                 API Key {svcConfigured && svcKeyPreview && <span className="text-rmpg-600 ml-1">(current: {svcKeyPreview})</span>}
               </label>
               <div className="flex items-center gap-2">
-                <div className="flex items-center gap-1.5 flex-1 px-3 py-2 bg-[#0c0c0c] border border-[#2b2b2b] rounded-sm">
+                <form
+                  onSubmit={(e) => { e.preventDefault(); handleSaveSvc(); }}
+                  className="flex items-center gap-1.5 flex-1 px-3 py-2 bg-[#0c0c0c] border border-[#2b2b2b] rounded-sm"
+                >
                   <Key className="w-3.5 h-3.5 text-rmpg-500" />
                   <input id="ff-adminintegrationstab-2"
                     type={showSvcKey ? 'text' : 'password'}
@@ -580,7 +587,8 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
                   >
                     {showSvcKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                   </button>
-                </div>
+                  <input type="submit" hidden />
+                </form>
                 <button type="button"
                   onClick={handleSaveSvc}
                   disabled={savingSvc || !svcApiKey.trim()}

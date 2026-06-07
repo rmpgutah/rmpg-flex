@@ -25,10 +25,12 @@ const ANALYTICS_ROLES = ['admin', 'manager', 'supervisor'];
 
 // All /reports/* routes are org-wide rollups → elevated roles only, EXCEPT
 // /shift-activity/:officerId, which is an officer's own end-of-shift report
-// (an officer must be able to pull it from the MDT). That route authorizes
-// self-or-elevated access inside its own handler.
+// (an officer must be able to pull it from the MDT), and /dashboard, which
+// is the top-level tile rollup that every authenticated user sees on the
+// homepage. Those routes authorize self-or-open inside their own handler.
 reports.use('*', async (c, next) => {
   if (c.req.path.includes('/shift-activity/')) return next();
+  if (c.req.path.endsWith('/dashboard')) return next();
   return requireRole(...ANALYTICS_ROLES)(c, next);
 });
 
@@ -431,6 +433,40 @@ reports.get('/shift-activity/:officerId', async (c) => {
   } catch (err) {
     console.error('GET /reports/shift-activity failed:', err);
     return c.json({ error: 'Failed to build shift report', code: 'SHIFT_ACTIVITY_ERROR' }, 500);
+  }
+});
+
+// GET /api/reports/dashboard — top-level tiles for the DashboardPage +
+// ReportsPage overview. Single round-trip per tile; cheap reads (counts +
+// most-recent row), all from indexed columns. Open to any authenticated
+// user since these are summary counts, not officer-level data.
+reports.get('/dashboard', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const [callsOpen, callsToday, unitsOnDuty, incidentsOpen, bolosActive, warrantsActive, citations7d, arrests7d] = await Promise.all([
+      queryFirst<{ n: number }>(db, `SELECT COUNT(*) AS n FROM calls_for_service WHERE status NOT IN ('closed', 'cleared', 'cancelled')`),
+      queryFirst<{ n: number }>(db, `SELECT COUNT(*) AS n FROM calls_for_service WHERE date(received_at) = date('now','localtime')`),
+      queryFirst<{ n: number }>(db, `SELECT COUNT(*) AS n FROM units WHERE status = 'on_duty'`),
+      queryFirst<{ n: number }>(db, `SELECT COUNT(*) AS n FROM incidents WHERE status NOT IN ('approved', 'closed', 'rejected')`),
+      queryFirst<{ n: number }>(db, `SELECT COUNT(*) AS n FROM bolos WHERE status = 'active'`),
+      queryFirst<{ n: number }>(db, `SELECT COUNT(*) AS n FROM warrants WHERE status = 'active'`),
+      queryFirst<{ n: number }>(db, `SELECT COUNT(*) AS n FROM citations WHERE date(created_at) >= date('now','localtime','-7 days')`),
+      queryFirst<{ n: number }>(db, `SELECT COUNT(*) AS n FROM arrests WHERE date(created_at) >= date('now','localtime','-7 days')`),
+    ]);
+    return c.json({
+      openCalls: callsOpen?.n ?? 0,
+      callsToday: callsToday?.n ?? 0,
+      unitsOnDuty: unitsOnDuty?.n ?? 0,
+      openIncidents: incidentsOpen?.n ?? 0,
+      activeBolos: bolosActive?.n ?? 0,
+      activeWarrants: warrantsActive?.n ?? 0,
+      citationsLast7d: citations7d?.n ?? 0,
+      arrestsLast7d: arrests7d?.n ?? 0,
+      generated_at: new Date().toISOString(),
+    });
+  } catch (err) {
+    console.error('GET /reports/dashboard failed:', err);
+    return c.json({ error: 'Failed to build dashboard', code: 'DASHBOARD_ERROR' }, 500);
   }
 });
 

@@ -541,3 +541,176 @@ admin.put('/maintenance-mode', async (c) => {
     return c.json({ error: 'Failed to update maintenance mode', detail: String(err) }, 500);
   }
 });
+
+// ============================================================
+// Third-party API keys (AdminIntegrationsTab) — added 2026-06-06.
+// Stored plaintext in system_config (the Mapbox / third-party stack is
+// not encrypted at rest — see comment in AdminIntegrationsTab.tsx).
+// The legacy /api/admin/third-party-keys endpoints were never ported
+// to the Worker, so the AdminPage fired 1 + N 404s per mount. Real
+// handlers below + client-side N+1 removal (see commit) eliminate both.
+// ============================================================
+
+const ALLOWED_THIRD_PARTY_KEYS = new Set<string>([
+  'lead_gen_rapidapi_key', 'dl_ocr_rapidapi_key', 'plate_check_rapidapi_key',
+  'google_cloud_vision_key', 'google_cloud_speech_key', 'google_generative_language_key',
+  'mapbox_api_key', 'mapbox_access_token', 'mapbox_username', 'mapbox_style_url',
+  'ncic_api_key', 'utah_dps_api_key', 'utah_courts_api_key', 'fbi_wanted_api_key',
+  'dea_api_key', 'usms_api_key', 'atf_api_key', 'interpol_api_key',
+  'nsopw_api_key', 'ofac_api_key',
+  'openweathermap_api_key', 'nominatim_api_key', 'opencage_api_key',
+  'ipinfo_api_key', 'virustotal_api_key', 'abuseipdb_api_key', 'shodan_api_key',
+  'have_i_been_pwned_key', 'censys_api_key', 'hunter_io_api_key', 'numverify_api_key',
+  'abstract_api_key', 'whoisxml_api_key', 'urlscan_api_key', 'emailrep_api_key',
+  'twilio_api_key', 'twilio_account_sid', 'sendgrid_api_key', 'pushover_api_key',
+  'ntfy_topic_key', 'slack_webhook_url', 'discord_webhook_url', 'telegram_bot_token',
+  'openai_api_key', 'anthropic_api_key', 'replicate_api_key', 'huggingface_api_key',
+  'deepgram_api_key', 'assemblyai_api_key',
+  'aws_access_key_id', 'aws_secret_access_key', 'aws_s3_bucket',
+  'backblaze_key_id', 'backblaze_app_key', 'cloudflare_api_key', 'wasabi_access_key',
+  'openmeteo_api_key', 'clearpath_gps_api_key', 'microbilt_client_id', 'microbilt_client_secret',
+  'nhtsa_api_key', 'fcc_api_key', 'here_api_key', 'what3words_api_key',
+  'plaid_api_key', 'clearbit_api_key', 'pipl_api_key', 'towerdata_api_key',
+  'plate_recognizer_api_key', 'roboflow_api_key', 'carjam_api_key', 'spokeo_api_key',
+  'traccar_webhook_token', 'traccar_url', 'traccar_email', 'traccar_password',
+  'traccar_enabled', 'traccar_poll_interval',
+]);
+
+// GET /api/admin/third-party-keys — bulk list: which keys are configured.
+// Powers the AdminPage N+1 cleanup — client now reads this once and
+// indexes by config_key in-memory.
+admin.get('/third-party-keys', async (c) => {
+  try {
+    const db = getDb(c.env);
+    // Single query — fetch all rows we care about at once, then map.
+    const rows = await query<{ config_key: string; config_value: string }>(
+      db, `SELECT config_key, config_value FROM system_config WHERE is_active = 1 AND config_key IN (${Array.from(ALLOWED_THIRD_PARTY_KEYS, () => '?').join(',')})`,
+      ...ALLOWED_THIRD_PARTY_KEYS,
+    );
+    const present = new Set(rows.map((r) => r.config_key));
+    const result = Array.from(ALLOWED_THIRD_PARTY_KEYS).map((config_key) => ({
+      config_key,
+      has_value: present.has(config_key),
+    }));
+    return c.json(result);
+  } catch (err) {
+    console.error('[Admin] Third-party keys list failed:', err);
+    return c.json({ error: 'Failed to list keys' }, 500);
+  }
+});
+
+// GET /api/admin/third-party-keys/:key — single-key check. Kept for
+// the per-key endpoint the client previously used in fallback mode.
+admin.get('/third-party-keys/:key', async (c) => {
+  const key = c.req.param('key');
+  if (!ALLOWED_THIRD_PARTY_KEYS.has(key)) return c.json({ error: 'Unknown key' }, 400);
+  try {
+    const db = getDb(c.env);
+    const row = await queryFirst<{ config_value: string }>(
+      db, `SELECT config_value FROM system_config WHERE config_key = ? AND is_active = 1 LIMIT 1`, key,
+    );
+    return c.json({ configured: !!row?.config_value });
+  } catch {
+    return c.json({ configured: false });
+  }
+});
+
+// PUT /api/admin/third-party-keys — save a single key. Body: { key, value }.
+admin.put('/third-party-keys', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  try {
+    const body = await c.req.json<{ key?: string; value?: string }>();
+    const key = typeof body.key === 'string' ? body.key.trim() : '';
+    const value = typeof body.value === 'string' ? body.value.trim() : '';
+    if (!key || !value) return c.json({ error: 'key and value are required' }, 400);
+    if (!ALLOWED_THIRD_PARTY_KEYS.has(key)) return c.json({ error: 'Unknown key' }, 400);
+    const db = getDb(c.env);
+    const existing = await queryFirst<{ id: number }>(
+      db, `SELECT id FROM system_config WHERE config_key = ? LIMIT 1`, key,
+    );
+    if (existing) {
+      await execute(
+        db,
+        `UPDATE system_config SET config_value = ?, is_active = 1, updated_at = datetime('now','localtime') WHERE config_key = ?`,
+        value, key,
+      );
+    } else {
+      await execute(
+        db,
+        `INSERT INTO system_config (config_key, config_value, category, is_active, created_at, updated_at)
+         VALUES (?, ?, 'integrations', 1, datetime('now','localtime'), datetime('now','localtime'))`,
+        key, value,
+      );
+    }
+    return c.json({ success: true, message: `${key} saved` });
+  } catch (err) {
+    console.error('[Admin] Third-party key save failed:', err);
+    return c.json({ error: 'Failed to save key' }, 500);
+  }
+});
+
+// DELETE /api/admin/third-party-keys — clear a single key. Body: { key }.
+admin.delete('/third-party-keys', async (c) => {
+  const denied = requireRole(c, 'admin', 'manager');
+  if (denied) return c.json({ error: denied, code: 'FORBIDDEN' }, 403);
+  try {
+    const body = await c.req.json<{ key?: string }>();
+    const key = typeof body.key === 'string' ? body.key.trim() : '';
+    if (!key || !ALLOWED_THIRD_PARTY_KEYS.has(key)) return c.json({ error: 'Unknown key' }, 400);
+    const db = getDb(c.env);
+    await execute(
+      db,
+      `UPDATE system_config SET config_value = '', is_active = 0, updated_at = datetime('now','localtime') WHERE config_key = ?`,
+      key,
+    );
+    return c.json({ success: true, message: `${key} cleared` });
+  } catch (err) {
+    console.error('[Admin] Third-party key clear failed:', err);
+    return c.json({ error: 'Failed to clear key' }, 500);
+  }
+});
+
+// ============================================================
+// Users (read-only) — added 2026-06-06.
+// Required by AdminGodModeTab, AdminTrainingTab, AdminUsersTab, and
+// PatrolPage's MileageAuditTab. The previous 404 flooded the admin page.
+// ============================================================
+
+admin.get('/users', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const role = c.req.query('role');
+    const limit = Math.min(parseInt(c.req.query('limit') || '500', 10) || 500, 1000);
+    const sql = role
+      ? 'SELECT id, username, full_name, role, status, badge_number, call_sign, email, created_at, last_login_at FROM users WHERE role = ? AND status = \'active\' ORDER BY full_name LIMIT ?'
+      : 'SELECT id, username, full_name, role, status, badge_number, call_sign, email, created_at, last_login_at FROM users WHERE status = \'active\' ORDER BY full_name LIMIT ?';
+    const params = role ? [role, limit] : [limit];
+    const rows = await query<Record<string, unknown>>(db, sql, ...params);
+    return c.json(rows);
+  } catch (err) {
+    console.error('[Admin] List users failed:', err);
+    return c.json({ error: 'Failed to list users' }, 500);
+  }
+});
+
+// GET /api/admin/users/presence — minimal presence snapshot for the
+// God Mode page. Reuses the users table + a sub-query against sessions.
+admin.get('/users/presence', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(
+      db,
+      `SELECT u.id, u.full_name, u.role, u.call_sign, u.status,
+              (SELECT MAX(last_seen_at) FROM sessions s WHERE s.user_id = u.id AND s.is_active = 1) AS last_seen_at
+         FROM users u
+        WHERE u.status = 'active'
+        ORDER BY u.full_name
+        LIMIT 500`,
+    );
+    return c.json({ users: rows });
+  } catch (err) {
+    console.error('[Admin] Users presence failed:', err);
+    return c.json({ error: 'Failed to load presence' }, 500);
+  }
+});

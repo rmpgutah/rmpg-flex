@@ -1603,4 +1603,69 @@ records.delete('/links/:id', async (c) => {
   }
 });
 
+// ============================================================
+// Bulk GET endpoints used by the SYNC layer + GlobalSearch.
+// Added 2026-06-06 — the offline router's pull handlers call
+// /api/records/persons and /api/records/vehicles on every sync;
+// without these the SYNC fails and the offline cache stays empty.
+// ============================================================
+
+const PERSONS_BULK_COLUMNS = `id, first_name, middle_name, last_name, alias_nickname, dob, ssn_last4, dl_number, dl_state,
+  phone, phone_secondary, email, address, city, state, zip, height_feet, height_inches, weight, race, sex, build,
+  complexion, hair_color, hair_length, hair_style, facial_hair, eye_color, glasses, scars, tattoos, piercings,
+  is_sex_offender, is_veteran, occupation, employer, photo, caution_flags, notes, status,
+  created_at, updated_at, archived_at`;
+
+const VEHICLES_BULK_COLUMNS = `id, vin, license_plate, plate_state, make, model, year, color, body_style, vehicle_type,
+  owner_name, owner_phone, owner_address, registered_to, insurance_company, insurance_policy, insurance_expires,
+  is_stolen, bolo_active, notes, status, created_at, updated_at, archived_at`;
+
+// GET /records/persons?search=...&limit=...
+// Bulk list for SYNC. search is a soft LIKE across name + alias + phone + email.
+records.get('/persons', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const search = c.req.query('search') || '';
+    const limit = Math.min(parseInt(c.req.query('limit') || '500', 10) || 500, 2000);
+    const wheres: string[] = ["archived_at IS NULL"];
+    const params: unknown[] = [];
+    if (search) {
+      wheres.push(`(first_name LIKE ? OR last_name LIKE ? OR alias_nickname LIKE ? OR phone LIKE ? OR email LIKE ? OR dl_number LIKE ?)`);
+      const like = `%${search}%`;
+      params.push(like, like, like, like, like, like);
+    }
+    const sql = `SELECT ${PERSONS_BULK_COLUMNS} FROM persons WHERE ${wheres.join(' AND ')} ORDER BY last_name, first_name LIMIT ?`;
+    params.push(limit);
+    const rows = await query<Record<string, unknown>>(db, sql, ...params);
+    return c.json(rows);
+  } catch (err) {
+    console.error('GET /records/persons failed:', err);
+    return c.json({ error: 'Failed to list persons' }, 500);
+  }
+});
+
+// GET /records/vehicles?search=...&limit=...
+// Bulk list for SYNC. search is a soft LIKE across plate + VIN + make/model + owner.
+records.get('/vehicles', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const search = c.req.query('search') || '';
+    const limit = Math.min(parseInt(c.req.query('limit') || '500', 10) || 500, 2000);
+    const wheres: string[] = ["archived_at IS NULL"];
+    const params: unknown[] = [];
+    if (search) {
+      wheres.push(`(license_plate LIKE ? OR vin LIKE ? OR make LIKE ? OR model LIKE ? OR owner_name LIKE ? OR registered_to LIKE ?)`);
+      const like = `%${search}%`;
+      params.push(like, like, like, like, like, like);
+    }
+    const sql = `SELECT ${VEHICLES_BULK_COLUMNS} FROM vehicles WHERE ${wheres.join(' AND ')} ORDER BY updated_at DESC LIMIT ?`;
+    params.push(limit);
+    const rows = await query<Record<string, unknown>>(db, sql, ...params);
+    return c.json(rows);
+  } catch (err) {
+    console.error('GET /records/vehicles failed:', err);
+    return c.json({ error: 'Failed to list vehicles' }, 500);
+  }
+});
+
 export default records;
