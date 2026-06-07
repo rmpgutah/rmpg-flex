@@ -657,6 +657,103 @@ const STUBS: StubRule[] = [
     body: { token: null, style: null, default_center: null, default_zoom: null },
     reason: 'no mapbox-config surface; Settings tab tolerates empty object',
   },
+  // ── 2026-06-07 round 2 — paths that fell through to env.LEGACY / env.API ──
+  // First deploy round missed a handful of high-traffic endpoints. Each of
+  // these was either:
+  //   (a) routed to env.API (which has authMiddleware mounted at /api/* and
+  //       401s the polling calls) and would 200 only with a JWT, OR
+  //   (b) routed to env.LEGACY which doesn't implement them and 404s.
+  // Both surface as 4xx in the browser; stubbing them lets the page render
+  // its empty state. Real handlers can land later on the rewrite.
+  //
+  // Dispatch top-level stats — polled every 30s by the dispatch layout.
+  {
+    match: /^\/api\/dispatch\/stats(\?.*)?$/,
+    methods: ['GET'],
+    body: { data: null, total_units: 0, available: 0, on_call: 0, off_duty: 0, generated_at: null },
+    reason: 'no /api/dispatch/stats in rewrite; polled every 30s by dispatch layout',
+  },
+  // Reports dashboard — the main /reports page mount fires this.
+  {
+    match: /^\/api\/reports\/dashboard(\?.*)?$/,
+    methods: ['GET'],
+    body: { data: null, summary: null, cards: [], alerts: [], generated_at: null },
+    reason: 'no /api/reports/dashboard in rewrite; ReportsPage + DashboardPage mount',
+  },
+  // Process server — the ServePage / ServeSkipTracePanel. Legacy doesn't
+  // implement these endpoints on live D1 (process_server migration
+  // partial). ServePage tolerates empty list / null error.
+  {
+    match: /^\/api\/process-server(\?.*)?$/,
+    methods: ['GET'],
+    body: { data: [], jobs: [], total: 0 },
+    reason: 'no process_server handler; ServePage tolerates empty list',
+  },
+  {
+    match: /^\/api\/process-server\/stats\/summary(\?.*)?$/,
+    methods: ['GET'],
+    body: { total: 0, attempted: 0, served: 0, skipped: 0, pending: 0, by_day: [] },
+    reason: 'no process-server summary; ServePage tolerates zeros',
+  },
+  {
+    match: /^\/api\/process-server\/routes\/\d{4}-\d{2}-\d{2}(\?.*)?$/,
+    methods: ['GET'],
+    body: { data: [], routes: [], date: null, officer_id: null },
+    reason: 'no process-server routes; ServePage tolerates empty',
+  },
+  {
+    match: /^\/api\/process-server\/[^/]+\/skip-trace(\?.*)?$/,
+    methods: ['GET', 'POST'],
+    body: { data: null, results: [], skip_trace: null, sources: [] },
+    reason: 'no process-server skip-trace; ServeSkipTracePanel tolerates empty',
+  },
+  {
+    match: /^\/api\/process-server\/[^/]+\/attempt(\?.*)?$/,
+    methods: ['GET', 'POST'],
+    body: { data: null, attempt: null, status: null, attempted_at: null },
+    reason: 'no process-server attempt; ServePage modal tolerates null',
+  },
+  {
+    match: /^\/api\/process-server\/export\/csv(\?.*)?$/,
+    methods: ['GET'],
+    body: { url: null, count: 0, message: 'export stubbed' },
+    reason: 'no process-server export; ExportButton tolerates null url',
+  },
+  // Patrol — PatrolPage action buttons (log generate, optimize route,
+  // time tracking, trip log PDF). Legacy implements none of these.
+  {
+    match: /^\/api\/patrol\/log\/generate(\?.*)?$/,
+    methods: ['POST', 'GET'],
+    body: { success: true, log: null, entries: [], generated_at: null, message: 'patrol log generation is stubbed' },
+    reason: 'no patrol log generation; PatrolPage tolerates success',
+  },
+  {
+    match: /^\/api\/patrol\/optimize-route(\?.*)?$/,
+    methods: ['POST', 'GET'],
+    body: { success: true, route: [], waypoints: [], distance_m: 0, duration_s: 0, message: 'route optimization is stubbed' },
+    reason: 'no route optimization; PatrolPage tolerates empty route',
+  },
+  {
+    match: /^\/api\/patrol\/time-tracking(\?.*)?$/,
+    methods: ['GET', 'POST'],
+    body: { data: null, entries: [], total_hours: 0, by_officer: [] },
+    reason: 'no patrol time-tracking; PatrolPage tolerates empty',
+  },
+  {
+    match: /^\/api\/patrol\/trip-log\/generate(\?.*)?$/,
+    methods: ['GET'],
+    body: { url: null, entries: [], total_miles: 0, message: 'trip log generation is stubbed' },
+    reason: 'no trip-log generation; MileageAuditTab tolerates null url',
+  },
+  // Admin — officer list for the patrol assignment picker. Legacy has a
+  // partial handler; the rewrite doesn't yet. Empty list lets the
+  // PatrolPage render the dropdown without an error toast.
+  {
+    match: /^\/api\/admin\/users(\?.*)?$/,
+    methods: ['GET'],
+    body: { data: [], users: [], total: 0 },
+    reason: 'no admin users list in rewrite; PatrolPage tolerates empty',
+  },
 
   //
   // History:
