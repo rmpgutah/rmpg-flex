@@ -754,6 +754,318 @@ const STUBS: StubRule[] = [
     body: { data: [], users: [], total: 0 },
     reason: 'no admin users list in rewrite; PatrolPage tolerates empty',
   },
+  // ── 2026-06-07 round 3 — admin sub-paths that 4xx in browser ──
+  // Verified by greping src/routes/<file>.ts for each path string. None
+  // matched. Both legacy and rewrite return 4xx; stub so admin pages
+  // render empty state.
+  {
+    match: /^\/api\/admin\/audit\/export(\?.*)?$/,
+    methods: ['GET', 'POST'],
+    body: { url: null, count: 0, message: 'audit export stubbed' },
+    reason: 'no /admin/audit/export; AdminPage tolerates null url',
+  },
+  {
+    match: /^\/api\/admin\/export\/full(\?.*)?$/,
+    methods: ['GET', 'POST'],
+    body: { url: null, count: 0, message: 'full export stubbed' },
+    reason: 'no /admin/export/full; AdminPage tolerates null url',
+  },
+  {
+    match: /^\/api\/admin\/health\/client-error(\?.*)?$/,
+    methods: ['GET', 'POST'],
+    body: { data: [], errors: [], total: 0 },
+    reason: 'no /admin/health/client-error; AdminPage tolerates empty',
+  },
+  {
+    match: /^\/api\/admin\/shift-plans\/export\/csv(\?.*)?$/,
+    methods: ['GET'],
+    body: { url: null, count: 0, message: 'shift-plans export stubbed' },
+    reason: 'no /admin/shift-plans/export; AdminPage tolerates null url',
+  },
+  {
+    match: /^\/api\/admin\/system-settings(\?.*)?$/,
+    methods: ['GET'],
+    body: { settings: {}, version: null, last_updated: null },
+    reason: 'no /admin/system-settings; AdminPage tolerates empty object',
+  },
+  // ── 2026-06-07 round 3 — auth sub-paths (2FA, forgot, reset, webauthn, sign-urls) ──
+  // Verified: auth.ts has /login, /me, /logout, /refresh, /password, /change-password,
+  // /login/change-password, /2fa/status, /security/*, /profile, /profile-image,
+  // /sessions, /totp/status. NO /2fa/setup, /forgot-password/*, /reset-password/*,
+  // /sign-urls, /webauthn/*, /login/verify-{2fa,backup-code}. Stub the unhandled
+  // ones. Most are 404s only when the user actively clicks the feature
+  // (forgot-password link, 2FA setup, etc.) — the page still loads.
+  {
+    match: /^\/api\/auth\/2fa\/setup(\?.*)?$/,
+    methods: ['POST', 'GET'],
+    body: { success: true, secret: null, qr_url: null, message: '2FA setup is not yet ported to the rewrite' },
+    reason: 'no /auth/2fa/setup in rewrite; Settings tolerates null',
+  },
+  {
+    match: /^\/api\/auth\/2fa\/setup\/verify(\?.*)?$/,
+    methods: ['POST'],
+    body: { success: false, error: '2FA setup is not yet ported', backup_codes: [] },
+    reason: 'no /auth/2fa/setup/verify in rewrite',
+  },
+  {
+    match: /^\/api\/auth\/forgot-password(\?.*)?$/,
+    methods: ['POST'],
+    body: { success: true, message: 'If that email exists, a reset link has been sent' },
+    reason: 'no /auth/forgot-password in rewrite; form is a no-op',
+  },
+  {
+    match: /^\/api\/auth\/forgot-password\/reset(\?.*)?$/,
+    methods: ['POST'],
+    body: { success: false, error: 'password reset is not yet ported' },
+    reason: 'no /auth/forgot-password/reset in rewrite',
+  },
+  {
+    match: /^\/api\/auth\/forgot-password\/verify(\?.*)?$/,
+    methods: ['POST'],
+    body: { success: false, error: 'password reset is not yet ported' },
+    reason: 'no /auth/forgot-password/verify in rewrite',
+  },
+  {
+    match: /^\/api\/auth\/login\/verify-2fa(\?.*)?$/,
+    methods: ['POST'],
+    body: { success: false, error: '2FA login is not yet ported', token: null },
+    reason: 'no /auth/login/verify-2fa in rewrite; form fails loudly',
+  },
+  {
+    match: /^\/api\/auth\/login\/verify-backup-code(\?.*)?$/,
+    methods: ['POST'],
+    body: { success: false, error: 'backup code login is not yet ported', token: null },
+    reason: 'no /auth/login/verify-backup-code in rewrite',
+  },
+  {
+    match: /^\/api\/auth\/reset-password(\?.*)?$/,
+    methods: ['POST'],
+    body: { success: false, error: 'password reset is not yet ported' },
+    reason: 'no /auth/reset-password in rewrite',
+  },
+  {
+    match: /^\/api\/auth\/reset-password\/validate(\?.*)?$/,
+    methods: ['GET', 'POST'],
+    body: { valid: false, error: 'password reset is not yet ported' },
+    reason: 'no /auth/reset-password/validate in rewrite',
+  },
+  {
+    match: /^\/api\/auth\/sign-urls(\?.*)?$/,
+    methods: ['POST'],
+    body: { urls: {}, message: 'sign-urls is not yet ported' },
+    reason: 'no /auth/sign-urls in rewrite; R2 upload falls back to legacy',
+  },
+  // WebAuthn — proxy already stubs /credentials + /status. Add the OPTIONS
+  // + verify endpoints. These are no-op stubs since the rewrite doesn't
+  // implement WebAuthn; the user's security settings page renders empty.
+  {
+    match: /^\/api\/auth\/webauthn\/(authenticate-options|authenticate-verify|register-options|register-verify)(\?.*)?$/,
+    methods: ['POST', 'GET'],
+    body: { success: false, error: 'WebAuthn is not yet ported', options: null, credential: null },
+    reason: 'no /auth/webauthn/* in rewrite; security settings show disabled',
+  },
+  // ── 2026-06-07 round 3 — personnel sub-paths not in rewrite ──
+  // personnel.ts has /training, /training-requirements, /training-completion,
+  // /training-alerts, /training-materials, /duty-hours, /schedules, /time,
+  // /deployments, /coverage-gaps, /equipment. NO /cert-expiration-warnings,
+  // /export/csv, /time-entries (legacy /personnel/time-entries is a different
+  // route, was on rmpg-flex-api not legacy).
+  {
+    match: /^\/api\/personnel\/cert-expiration-warnings(\?.*)?$/,
+    methods: ['GET'],
+    body: { data: [], warnings: [], total: 0 },
+    reason: 'no /personnel/cert-expiration-warnings; PersonnelPage tolerates empty',
+  },
+  {
+    match: /^\/api\/personnel\/export\/csv(\?.*)?$/,
+    methods: ['GET'],
+    body: { url: null, count: 0, message: 'personnel export stubbed' },
+    reason: 'no /personnel/export/csv; ExportButton tolerates null url',
+  },
+  {
+    match: /^\/api\/personnel\/time-entries(\?.*)?$/,
+    methods: ['GET'],
+    body: { data: [], entries: [], total: 0 },
+    reason: 'no /personnel/time-entries; PayrollTab tolerates empty',
+  },
+  // ── 2026-06-07 round 3 — exports & CSV endpoints ──
+  // Each shape matches what ExportButton + ReportsPage read. Verified no
+  // handler in the corresponding src/routes/<area>.ts.
+  {
+    match: /^\/api\/code-enforcement\/export\/csv(\?.*)?$/,
+    methods: ['GET'],
+    body: { url: null, count: 0, message: 'code-enforcement export stubbed' },
+    reason: 'no code-enforcement file; ExportButton tolerates null url',
+  },
+  {
+    match: /^\/api\/comms\/export\/csv(\?.*)?$/,
+    methods: ['GET'],
+    body: { url: null, count: 0, message: 'comms export stubbed' },
+    reason: 'no /comms/export/csv; CommsPage tolerates null url',
+  },
+  {
+    match: /^\/api\/dar\/export\/csv(\?.*)?$/,
+    methods: ['GET'],
+    body: { url: null, count: 0, message: 'dar export stubbed' },
+    reason: 'no dar file; DarPage tolerates null url',
+  },
+  {
+    match: /^\/api\/forensic-lab\/export\/csv(\?.*)?$/,
+    methods: ['GET'],
+    body: { url: null, count: 0, message: 'forensic-lab export stubbed' },
+    reason: 'no forensic-lab file; ForensicsPage tolerates null url',
+  },
+  {
+    match: /^\/api\/offender-registry\/export\/csv(\?.*)?$/,
+    methods: ['GET'],
+    body: { url: null, count: 0, message: 'offender-registry export stubbed' },
+    reason: 'no /offender-registry/export; RegistryPage tolerates null url',
+  },
+  {
+    match: /^\/api\/sex-offender-registry\/export\/csv(\?.*)?$/,
+    methods: ['GET'],
+    body: { url: null, count: 0, message: 'sex-offender-registry export stubbed' },
+    reason: 'no /sex-offender-registry/export; tolerates null url',
+  },
+  {
+    match: /^\/api\/skiptracer\/export\/csv(\?.*)?$/,
+    methods: ['GET'],
+    body: { url: null, count: 0, message: 'skiptracer export stubbed' },
+    reason: 'no /skiptracer/export/csv in rewrite; tolerates null url',
+  },
+  {
+    match: /^\/api\/skiptracer-v2\/dossiers\/\d+\/pdf(\?.*)?$/,
+    methods: ['GET'],
+    body: { url: null, message: 'dossier PDF generation stubbed' },
+    reason: 'no /skiptracer-v2/dossiers/:id/pdf; SkiptracerPage tolerates null',
+  },
+  // ── 2026-06-07 round 3 — feature surfaces with no rewrite handler ──
+  {
+    match: /^\/api\/diagnostics\/ui-trap(\?.*)?$/,
+    methods: ['POST'],
+    body: { received: true, message: 'diagnostics stub' },
+    reason: 'no diagnostics file; client posts here for error tracking',
+  },
+  {
+    match: /^\/api\/dl-records\/ocr-scan(\?.*)?$/,
+    methods: ['POST'],
+    body: { success: false, error: 'OCR scan is not yet ported', fields: {} },
+    reason: 'no /dl-records/ocr-scan in rewrite; DlPage tolerates error',
+  },
+  {
+    match: /^\/api\/downloads\/info(\?.*)?$/,
+    methods: ['GET'],
+    body: { data: null, version: null, last_check: null, message: 'downloads info stubbed' },
+    reason: 'no /downloads/info; downloads page tolerates null',
+  },
+  {
+    match: /^\/api\/evidence$/,
+    methods: ['GET'],
+    body: { data: [], items: [], total: 0 },
+    reason: 'no evidence router; EvidencePage tolerates empty',
+  },
+  // Firecrawl — no file in src/routes/; everything is a stub.
+  {
+    match: /^\/api\/firecrawl-tools\/[^/]+\/upload(\?.*)?$/,
+    methods: ['POST'],
+    body: { success: false, error: 'firecrawl-tools is not yet ported', job_id: null },
+    reason: 'no firecrawl-tools in rewrite; UploadButton tolerates error',
+  },
+  // Email — no router; stubs below tolerate the empty/error shape.
+  {
+    match: /^\/api\/email\/image-proxy(\?.*)?$/,
+    methods: ['GET'],
+    body: { url: null, message: 'email image-proxy stubbed' },
+    reason: 'no /email/image-proxy; EmailPage tolerates null',
+  },
+  {
+    match: /^\/api\/email\/messages\/\d+\/attachments\/\d+(\?.*)?$/,
+    methods: ['GET'],
+    body: { url: null, data: null, message: 'attachment stubbed' },
+    reason: 'no /email/messages/:id/attachments/:id; tolerates null',
+  },
+  {
+    match: /^\/api\/email\/oauth\/authorize(\?.*)?$/,
+    methods: ['GET', 'POST'],
+    body: { url: null, success: false, error: 'email OAuth not yet ported' },
+    reason: 'no /email/oauth/authorize; Settings shows disconnected',
+  },
+  {
+    match: /^\/api\/email\/rules(\?.*)?$/,
+    methods: ['GET'],
+    body: { data: [], rules: [], total: 0 },
+    reason: 'no /email/rules; EmailRulesPage tolerates empty',
+  },
+  {
+    match: /^\/api\/email\/rules\/\d+(\?.*)?$/,
+    methods: ['GET', 'PUT', 'DELETE'],
+    body: { data: null, rule: null },
+    reason: 'no /email/rules/:id; EmailRulesPage tolerates null',
+  },
+  {
+    match: /^\/api\/email\/rules\/test-match(\?.*)?$/,
+    methods: ['POST'],
+    body: { matches: false, score: 0, message: 'test-match stubbed' },
+    reason: 'no /email/rules/test-match; tolerates no-match',
+  },
+  {
+    match: /^\/api\/email\/status(\?.*)?$/,
+    methods: ['GET'],
+    body: { connected: false, last_sync: null, message: 'email status stubbed' },
+    reason: 'no /email/status; Settings shows disconnected',
+  },
+  // Mobile / CFS — no file in src/routes/.
+  {
+    match: /^\/api\/mobile\/cfs\/\d+\/(auth|challenge|narrative|pso|status)(\?.*)?$/,
+    methods: ['GET', 'POST'],
+    body: { data: null, items: [], message: 'mobile endpoint stubbed' },
+    reason: 'no /mobile/cfs/*; MobilePage tolerates empty',
+  },
+  // PDF — pdfTools.ts has /encrypt only; pdf-artifacts + pdf-engine/email
+  // aren't implemented.
+  {
+    match: /^\/api\/pdf-artifacts(\?.*)?$/,
+    methods: ['GET'],
+    body: { data: [], artifacts: [], total: 0 },
+    reason: 'no /pdf-artifacts; tolerates empty',
+  },
+  {
+    match: /^\/api\/pdf-engine\/email(\?.*)?$/,
+    methods: ['POST'],
+    body: { success: false, error: 'pdf-engine email is not yet ported' },
+    reason: 'no /pdf-engine/email; tolerates error',
+  },
+  // Sex offender registry — only /stats in rewrite. The :id list endpoint
+  // is on legacy (rmpg-flex). Stub the export + :id so the page doesn't
+  // spam the console on every navigation.
+  {
+    match: /^\/api\/sex-offender-registry\/\d+(\?.*)?$/,
+    methods: ['GET'],
+    body: { data: null, registry: null, items: [] },
+    reason: 'no /sex-offender-registry/:id; tolerates null',
+  },
+  // Updates — no router. Stub so the update banner doesn't poll-spam.
+  {
+    match: /^\/api\/updates\/check(\?.*)?$/,
+    methods: ['GET'],
+    body: { update_available: false, version: null, release_notes: null },
+    reason: 'no /updates/check; update banner tolerates false',
+  },
+  // Voice persona — voice.ts has /voice/*; persona is a separate sub-path.
+  {
+    match: /^\/api\/voice-persona(\?.*)?$/,
+    methods: ['GET'],
+    body: { data: null, persona: null, voices: [] },
+    reason: 'no /voice-persona in rewrite; SettingsPage tolerates null',
+  },
+  // Warrants — warrants.ts has /utah-search, /scraped/*, /national-coverage
+  // (stubbed), but not /national-search.
+  {
+    match: /^\/api\/warrants\/national-search(\?.*)?$/,
+    methods: ['GET', 'POST'],
+    body: { data: [], results: [], total: 0, message: 'national-search stubbed' },
+    reason: 'no /warrants/national-search; WarrantsPage tolerates empty',
+  },
 
   //
   // History:
