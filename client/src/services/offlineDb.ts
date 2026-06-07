@@ -600,13 +600,61 @@ let autoIncrementCounters: Record<string, number> = {};
 
 // ─── Public API ──────────────────────────────────────────────
 
+// IndexedDB errors that mean "the on-disk schema is incompatible with
+// what this build expects" — recoverable by deleting the DB and
+// recreating from scratch. The user loses any locally-cached records
+// (calls, units, time entries, etc.) that hadn't yet been pushed, but
+// those are replayed from the server on the next pull-sync anyway.
+const SCHEMA_RECOVERY_ERRORS = new Set([
+  'VersionError',
+  'ConstraintError',
+  'InvalidStateError',
+  'NotFoundError',
+]);
+
 export async function initOfflineDb(): Promise<IDBPDatabase<RmpgOfflineDB>> {
   if (db) return db;
 
-  db = await openDB<RmpgOfflineDB>(DB_NAME, DB_VERSION, {
-    upgrade(database, oldVersion) {
-      // ── V1 → Original stores ────────────────────────────
-      if (oldVersion < 1) {
+  try {
+    db = await openDB<RmpgOfflineDB>(DB_NAME, DB_VERSION, {
+      upgrade(database, oldVersion) {
+        runUpgrades(database, oldVersion);
+      },
+    });
+    return db;
+  } catch (err) {
+    const name = (err as { name?: string })?.name || '';
+    if (!SCHEMA_RECOVERY_ERRORS.has(name)) throw err;
+    console.warn(
+      `[offlineDb] open failed with ${name}; deleting ${DB_NAME} and retrying with a fresh schema.`,
+      err,
+    );
+    // Close the half-open connection (idb may have left db set on a failed open).
+    if (db) {
+      try { db.close(); } catch { /* noop */ }
+      db = null;
+    }
+    await new Promise<void>((resolve, reject) => {
+      const del = indexedDB.deleteDatabase(DB_NAME);
+      del.onsuccess = () => resolve();
+      del.onerror = () => reject(del.error);
+      del.onblocked = () => resolve();
+    });
+    db = await openDB<RmpgOfflineDB>(DB_NAME, DB_VERSION, {
+      upgrade(database, oldVersion) {
+        runUpgrades(database, oldVersion);
+      },
+    });
+    return db;
+  }
+}
+
+function runUpgrades(
+  database: IDBPDatabase<RmpgOfflineDB>,
+  oldVersion: number,
+) {
+  // ── V1 → Original stores ────────────────────────────
+  if (oldVersion < 1) {
       // ── Mirror Tables (10) ──────────────────────────────
       const usersStore = database.createObjectStore('users', { keyPath: 'id' });
       usersStore.createIndex('by-username', 'username', { unique: true });
@@ -748,10 +796,6 @@ export async function initOfflineDb(): Promise<IDBPDatabase<RmpgOfflineDB>> {
         warStore.createIndex('by-person', 'subject_person_id');
         warStore.createIndex('by-status', 'status');
       } // end v2
-    },
-  });
-
-  return db;
 }
 
 export function getOfflineDb(): IDBPDatabase<RmpgOfflineDB> {
