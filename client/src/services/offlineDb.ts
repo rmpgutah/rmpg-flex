@@ -978,7 +978,20 @@ export async function getByIndex(tableName: StoreName, indexName: string, value:
   const tx = database.transaction(tableName, 'readonly');
   const store = tx.objectStore(tableName);
   const idx = (store as any).index(indexName);
-  return idx.getAll(value);
+  // IDBIndex.getAll(undefined) / .getAll(NaN) throws DataError ("The
+  // parameter is not a valid key") in Chromium and WebKit. Guard so
+  // callers passing an unset optional don't crash the whole sync cycle.
+  if (value === undefined || (typeof value === 'number' && Number.isNaN(value))) {
+    return idx.getAll();
+  }
+  try {
+    return await idx.getAll(value);
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'DataError') {
+      return idx.getAll();
+    }
+    throw err;
+  }
 }
 
 export async function countStore(tableName: StoreName): Promise<number> {
