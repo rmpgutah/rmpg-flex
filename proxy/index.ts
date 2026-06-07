@@ -495,6 +495,267 @@ const STUBS: StubRule[] = [
   // Stub removed — requests route to env.API via API_ROUTES below.
 
   //
+  // ── 2026-06-07 post-deploy sweep — pages still polling 404'd paths ───
+  // After the 2026-06-06 deploy that restored the proxy as the dispatcher
+  // for rmpgutah.us/api/*, a fresh logged-in sweep showed the SPA still
+  // polling 23 paths the proxy hadn't been told how to route. Neither
+  // the rewrite nor legacy has handlers for any of these today, so they
+  // fall through to the default 404. Empty-shape stubs let the consuming
+  // page render its "no data" state instead of the prior session's
+  // repeated 404/500 noise. Each shape matches what the consuming
+  // component reads (verified by reading the page source) so the page
+  // renders cleanly.
+  //
+  // DashboardPage sub-tab cards (ReportsPage + DashboardPage). All
+  // optional-chained on the page side, so a small object / null is safe.
+  {
+    match: /^\/api\/reports\/officer-activity(\?.*)?$/,
+    methods: ['GET'],
+    body: { data: [], generated_at: null, period: null },
+    reason: 'no officer-activity aggregation; DashboardPage reads ?.data',
+  },
+  {
+    match: /^\/api\/reports\/shift-comparison(\?.*)?$/,
+    methods: ['GET'],
+    body: { data: null, periods: [] },
+    reason: 'no shift-comparison backend; DashboardPage tolerates null',
+  },
+  {
+    match: /^\/api\/reports\/clearance-rate(\?.*)?$/,
+    methods: ['GET'],
+    body: { data: null, rate: null, by_type: [] },
+    reason: 'no clearance-rate backend; DashboardPage tolerates null',
+  },
+  {
+    match: /^\/api\/reports\/patrol-coverage(\?.*)?$/,
+    methods: ['GET'],
+    body: { data: null, beats: [], hours: [] },
+    reason: 'no patrol-coverage backend; DashboardPage tolerates null',
+  },
+  {
+    match: /^\/api\/reports\/evidence-pending(\?.*)?$/,
+    methods: ['GET'],
+    body: { data: null, total: 0, items: [] },
+    reason: 'no evidence-pending backend; DashboardPage tolerates null',
+  },
+  {
+    match: /^\/api\/reports\/upcoming-court(\?.*)?$/,
+    methods: ['GET'],
+    body: { data: null, items: [] },
+    reason: 'no upcoming-court backend; DashboardPage tolerates null',
+  },
+  {
+    match: /^\/api\/reports\/overdue-reports(\?.*)?$/,
+    methods: ['GET'],
+    body: { data: null, items: [], total: 0 },
+    reason: 'no overdue-reports backend; DashboardPage tolerates null',
+  },
+  // ReportsPage tabs
+  {
+    match: /^\/api\/reports\/daily-briefing(\?.*)?$/,
+    methods: ['GET'],
+    body: null,
+    reason: 'no daily-briefing backend; ReportsPage "Today" tab tolerates null',
+  },
+  {
+    match: /^\/api\/reports\/weekly-digest(\?.*)?$/,
+    methods: ['GET'],
+    body: null,
+    reason: 'no weekly-digest backend; ReportsPage "Week" tab tolerates null',
+  },
+  {
+    match: /^\/api\/reports\/patrol-tracking(\?.*)?$/,
+    methods: ['GET'],
+    body: { data: [], total: 0, breadcrumbs: [] },
+    reason: 'no patrol-tracking backend; ReportsPage + MapPage tolerates empty',
+  },
+  {
+    match: /^\/api\/reports\/command-staff(\?.*)?$/,
+    methods: ['GET'],
+    body: { data: null, period: null, generated_at: null },
+    reason: 'no command-staff backend; useShiftBriefing tolerates null data',
+  },
+  {
+    match: /^\/api\/reports\/shift-scorecard(\?.*)?$/,
+    methods: ['GET'],
+    body: { data: null, officer_id: null, shift_date: null, score: 0, items: [] },
+    reason: 'no shift-scorecard backend; ShiftScorecard tolerates null data',
+  },
+  // Custom Report Builder POST. Returns success so the Save button
+  // doesn't 404; the real save handler can land later.
+  {
+    match: /^\/api\/reports\/custom(\?.*)?$/,
+    methods: ['POST'],
+    body: { success: true, id: null, message: 'Custom report save is stubbed' },
+    reason: 'no custom-report persistence; CustomReportBuilder tolerates success',
+  },
+  {
+    match: /^\/api\/reports\/shift-notes(\?.*)?$/,
+    methods: ['POST'],
+    body: { success: true, id: null, message: 'Shift notes save is stubbed' },
+    reason: 'no shift-notes persistence; RadialMenu/ShiftHandoff tolerates success',
+  },
+  // Dispatch geo/heatmap surfaces — no aggregation table or rewrite handler.
+  {
+    match: /^\/api\/dispatch\/heatmap(\?.*)?$/,
+    methods: ['GET'],
+    body: { data: [], points: [], total: 0, generated_at: null },
+    reason: 'no dispatch heatmap aggregation; DispatchPage tolerates empty',
+  },
+  {
+    match: /^\/api\/dispatch\/heatmap\/types(\?.*)?$/,
+    methods: ['GET'],
+    body: { data: [], types: [] },
+    reason: 'no dispatch heatmap-types backend; tolerates empty',
+  },
+  {
+    match: /^\/api\/dispatch\/gps\/trails(\?.*)?$/,
+    methods: ['GET'],
+    body: { data: [], trails: [], units: [] },
+    reason: 'no gps-trail aggregation; MapPage tolerates empty',
+  },
+  // Weather — page reads ?.current / ?.forecast optional-chained, null is safe.
+  {
+    match: /^\/api\/weather(\?.*)?$/,
+    methods: ['GET'],
+    body: { current: null, forecast: [], location: null, updated_at: null },
+    reason: 'no weather backend; page tolerates null current',
+  },
+  // Auth signature surface — PIN/biometric on the MDT. Page reads
+  // ?.signature optional-chained, null is safe.
+  {
+    match: /^\/api\/auth\/signature(\?.*)?$/,
+    methods: ['GET'],
+    body: { signature: null, signed_at: null, public_key: null },
+    reason: 'no signature surface; MDT tolerates null signature',
+  },
+  // Comms messaging — the broadcast channel is the live surface; this
+  // sub-path is a polling endpoint the rewrite doesn't implement.
+  {
+    match: /^\/api\/comms\/messages(\?.*)?$/,
+    methods: ['GET'],
+    body: { data: [], messages: [], total: 0 },
+    reason: 'no /comms/messages sub-path in rewrite; CommsPage tolerates empty',
+  },
+  // Admin surface stubs. Empty objects / arrays so the Settings tab
+  // renders its empty state instead of 404'ing on every keystroke.
+  {
+    match: /^\/api\/admin\/shift-plans(\?.*)?$/,
+    methods: ['GET'],
+    body: { data: [], plans: [], total: 0 },
+    reason: 'no admin shift-plans sub-handler; AdminPage tolerates empty',
+  },
+  {
+    match: /^\/api\/admin\/map-config(\?.*)?$/,
+    methods: ['GET'],
+    body: { style: null, sources: {}, layers: {}, center: null, zoom: null },
+    reason: 'no map-config surface; Settings tab tolerates empty object',
+  },
+  {
+    match: /^\/api\/admin\/mapbox-config(\?.*)?$/,
+    methods: ['GET'],
+    body: { token: null, style: null, default_center: null, default_zoom: null },
+    reason: 'no mapbox-config surface; Settings tab tolerates empty object',
+  },
+  // ── 2026-06-07 round 2 — paths that fell through to env.LEGACY / env.API ──
+  // First deploy round missed a handful of high-traffic endpoints. Each of
+  // these was either:
+  //   (a) routed to env.API (which has authMiddleware mounted at /api/* and
+  //       401s the polling calls) and would 200 only with a JWT, OR
+  //   (b) routed to env.LEGACY which doesn't implement them and 404s.
+  // Both surface as 4xx in the browser; stubbing them lets the page render
+  // its empty state. Real handlers can land later on the rewrite.
+  //
+  // Dispatch top-level stats — polled every 30s by the dispatch layout.
+  {
+    match: /^\/api\/dispatch\/stats(\?.*)?$/,
+    methods: ['GET'],
+    body: { data: null, total_units: 0, available: 0, on_call: 0, off_duty: 0, generated_at: null },
+    reason: 'no /api/dispatch/stats in rewrite; polled every 30s by dispatch layout',
+  },
+  // Reports dashboard — the main /reports page mount fires this.
+  {
+    match: /^\/api\/reports\/dashboard(\?.*)?$/,
+    methods: ['GET'],
+    body: { data: null, summary: null, cards: [], alerts: [], generated_at: null },
+    reason: 'no /api/reports/dashboard in rewrite; ReportsPage + DashboardPage mount',
+  },
+  // Process server — the ServePage / ServeSkipTracePanel. Legacy doesn't
+  // implement these endpoints on live D1 (process_server migration
+  // partial). ServePage tolerates empty list / null error.
+  {
+    match: /^\/api\/process-server(\?.*)?$/,
+    methods: ['GET'],
+    body: { data: [], jobs: [], total: 0 },
+    reason: 'no process_server handler; ServePage tolerates empty list',
+  },
+  {
+    match: /^\/api\/process-server\/stats\/summary(\?.*)?$/,
+    methods: ['GET'],
+    body: { total: 0, attempted: 0, served: 0, skipped: 0, pending: 0, by_day: [] },
+    reason: 'no process-server summary; ServePage tolerates zeros',
+  },
+  {
+    match: /^\/api\/process-server\/routes\/\d{4}-\d{2}-\d{2}(\?.*)?$/,
+    methods: ['GET'],
+    body: { data: [], routes: [], date: null, officer_id: null },
+    reason: 'no process-server routes; ServePage tolerates empty',
+  },
+  {
+    match: /^\/api\/process-server\/[^/]+\/skip-trace(\?.*)?$/,
+    methods: ['GET', 'POST'],
+    body: { data: null, results: [], skip_trace: null, sources: [] },
+    reason: 'no process-server skip-trace; ServeSkipTracePanel tolerates empty',
+  },
+  {
+    match: /^\/api\/process-server\/[^/]+\/attempt(\?.*)?$/,
+    methods: ['GET', 'POST'],
+    body: { data: null, attempt: null, status: null, attempted_at: null },
+    reason: 'no process-server attempt; ServePage modal tolerates null',
+  },
+  {
+    match: /^\/api\/process-server\/export\/csv(\?.*)?$/,
+    methods: ['GET'],
+    body: { url: null, count: 0, message: 'export stubbed' },
+    reason: 'no process-server export; ExportButton tolerates null url',
+  },
+  // Patrol — PatrolPage action buttons (log generate, optimize route,
+  // time tracking, trip log PDF). Legacy implements none of these.
+  {
+    match: /^\/api\/patrol\/log\/generate(\?.*)?$/,
+    methods: ['POST', 'GET'],
+    body: { success: true, log: null, entries: [], generated_at: null, message: 'patrol log generation is stubbed' },
+    reason: 'no patrol log generation; PatrolPage tolerates success',
+  },
+  {
+    match: /^\/api\/patrol\/optimize-route(\?.*)?$/,
+    methods: ['POST', 'GET'],
+    body: { success: true, route: [], waypoints: [], distance_m: 0, duration_s: 0, message: 'route optimization is stubbed' },
+    reason: 'no route optimization; PatrolPage tolerates empty route',
+  },
+  {
+    match: /^\/api\/patrol\/time-tracking(\?.*)?$/,
+    methods: ['GET', 'POST'],
+    body: { data: null, entries: [], total_hours: 0, by_officer: [] },
+    reason: 'no patrol time-tracking; PatrolPage tolerates empty',
+  },
+  {
+    match: /^\/api\/patrol\/trip-log\/generate(\?.*)?$/,
+    methods: ['GET'],
+    body: { url: null, entries: [], total_miles: 0, message: 'trip log generation is stubbed' },
+    reason: 'no trip-log generation; MileageAuditTab tolerates null url',
+  },
+  // Admin — officer list for the patrol assignment picker. Legacy has a
+  // partial handler; the rewrite doesn't yet. Empty list lets the
+  // PatrolPage render the dropdown without an error toast.
+  {
+    match: /^\/api\/admin\/users(\?.*)?$/,
+    methods: ['GET'],
+    body: { data: [], users: [], total: 0 },
+    reason: 'no admin users list in rewrite; PatrolPage tolerates empty',
+  },
+
+  //
   // History:
   //   2026-05-24: Added stub for /api/statutes/search after live D1
   //   was found missing the utah_statutes table. Removed the same day

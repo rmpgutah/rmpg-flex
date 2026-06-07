@@ -196,10 +196,18 @@ export async function hasActiveSession(): Promise<{
   if (!userId) return { active: false, expiresAt: null };
 
   const now = new Date().toISOString();
+  const userIdNum = parseInt(userId, 10);
+  // parseInt on a non-numeric userId (e.g. an email, UUID, or empty string)
+  // returns NaN, and the IDB compound-key index throws DataError because
+  // NaN is not a valid IDB key. Skip the index lookup entirely if userId
+  // is unparseable — caller will see `active: false` and re-prompt.
+  if (!Number.isFinite(userIdNum)) {
+    return { active: false, expiresAt: null };
+  }
   const sessions = await db.getAllFromIndex(
     'pin_sessions',
     'by-user-active',
-    [parseInt(userId, 10), 1]
+    [userIdNum, 1]
   );
 
   const validSession = sessions.find(s => s.expires_at > now);
