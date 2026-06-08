@@ -1,6 +1,9 @@
 import { PDFDocument, StandardFonts, rgb, degrees } from 'pdf-lib';
 import { RmpgPdfBuilder } from '../../lib/rmpg-pdf-engine';
 import { Annotation, BatesConfig, EditorState, PageMeta, WatermarkConfig, DEFAULT_RENDER_SCALE } from './types';
+import { normalizeUploadResponse } from './uploadResponse';
+
+export { normalizeUploadResponse } from './uploadResponse';
 
 // Save pipeline.
 //
@@ -392,7 +395,41 @@ export async function extractPagesAsBytes(state: EditorState, pageNumbers: numbe
 }
 
 /**
+ * POST with exponential-backoff retry for transient failures. Returns the first
+ * non-retryable response (success or hard error); the caller inspects `res.ok`.
+ * A thrown network error after the last attempt propagates to the caller.
+ */
+async function postWithRetry(
+  url: string,
+  init: RequestInit,
+  opts: { attempts?: number; baseDelayMs?: number } = {},
+): Promise<Response> {
+  const attempts = opts.attempts ?? 3;
+  const baseDelay = opts.baseDelayMs ?? 400;
+  const retriableStatus = (s: number) => s === 408 || s === 429 || (s >= 500 && s <= 599);
+  let lastErr: unknown;
+  for (let i = 0; i < attempts; i++) {
+    try {
+      const res = await fetch(url, init);
+      if (res.ok || !retriableStatus(res.status) || i === attempts - 1) return res;
+    } catch (err) {
+      lastErr = err;
+      if (i === attempts - 1) throw err;
+    }
+    await new Promise((r) => setTimeout(r, baseDelay * 2 ** i));
+  }
+  // Unreachable in practice, but satisfies the type checker.
+  if (lastErr) throw lastErr;
+  return fetch(url, init);
+}
+
+/**
  * Save the edited PDF directly into the Documents store via /api/uploads.
+ *
+ * Folder placement is sent both as `folder_id` (for forward-compat) and as the
+ * canonical `entity_type=document_folder` / `entity_id` pair the Worker route
+ * actually reads, so the saved file lands in the originating folder rather than
+ * the unfiled root.
  */
 export async function saveToDocuments(state: EditorState, opts: { folderId?: number | null; suffix?: string } = {}): Promise<{ fileId: string; original_name: string }> {
   const bytes = await buildPdfFromEditorState(state);
@@ -402,19 +439,27 @@ export async function saveToDocuments(state: EditorState, opts: { folderId?: num
   const form = new FormData();
   form.append('files', file);
   const folderId = opts.folderId ?? state.sourceFolderId ?? null;
-  if (folderId != null) form.append('folder_id', String(folderId));
+  if (folderId != null) {
+    form.append('folder_id', String(folderId));
+    form.append('entity_type', 'document_folder');
+    form.append('entity_id', String(folderId));
+  }
 
   const token = localStorage.getItem('rmpg_token');
   const headers: Record<string, string> = {};
   if (token) headers['Authorization'] = `Bearer ${token}`;
-  const res = await fetch('/api/uploads', { method: 'POST', headers, body: form });
+
+  // Retry transient edge/network failures (network error, 408/429/5xx) with
+  // exponential backoff. Auth/validation errors (4xx other than 408/429) fail
+  // fast — retrying a 400 won't help. FormData can be re-sent as-is.
+  const res = await postWithRetry('/api/uploads', { method: 'POST', headers, body: form });
   if (!res.ok) {
     const text = await res.text().catch(() => '');
     throw new Error(`Upload failed: ${res.status} ${text.slice(0, 200)}`);
   }
-  const data = await res.json() as { files: Array<{ file_id: string; original_name: string }> };
-  if (!data.files || data.files.length === 0) throw new Error('Upload did not return file');
-  return { fileId: data.files[0].file_id, original_name: data.files[0].original_name };
+  const files = normalizeUploadResponse(await res.json().catch(() => null));
+  if (files.length === 0) throw new Error('Upload did not return file');
+  return { fileId: files[0].file_id, original_name: files[0].original_name };
 }
 
 // ────────────────────────────────────────────────────────────────────────────
