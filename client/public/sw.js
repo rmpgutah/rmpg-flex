@@ -288,12 +288,7 @@
 //       formatted incident types (toDisplayLabel). Map <-> Dispatch/RMS
 // v792: Cross-integration audit fix — NAV/FLEET/PERSONNEL/DISPATCH mileage
 //       guardrails + vehicle-id back-links (Claude ed5d0e99 + d3001d25).
-// v809: Remove offline sync system (IndexedDB store, PIN auth, sync queue,
-//       connectivity monitor, offline router). SW asset caching remains.
-// v810: Fix connection flicker — 5s grace period before showing OFFLINE,
-//       20s pong timeout (cellular hand-offs), linear backoff capped at 10s,
-//       stable connect() callback (token changes don't tear down sockets).
-const CACHE_NAME = 'rmpg-flex-v810';
+const CACHE_NAME = 'rmpg-flex-v801';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
