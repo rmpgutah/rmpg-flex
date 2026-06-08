@@ -488,8 +488,9 @@ export default function DispatchPage() {
       fetchCallPersons(callId);
     } catch (err: any) {
       console.error('Link person error:', err);
+      addToast(err?.message || 'Failed to link person', 'error');
     }
-  }, [fetchCallPersons]);
+  }, [fetchCallPersons, addToast]);
 
   const unlinkPersonFromCall = useCallback(async (callId: string | number, linkId: string | number) => {
     try {
@@ -497,8 +498,10 @@ export default function DispatchPage() {
       setCallPersons(prev => prev.filter(p => p.id !== linkId));
     } catch (err: any) {
       console.error('Unlink person error:', err);
+      addToast(err?.message || 'Failed to unlink person', 'error');
+      fetchCallPersons(callId);
     }
-  }, []);
+  }, [addToast, fetchCallPersons]);
 
   const linkVehicleToCall = useCallback(async (callId: string | number, vehicleId: string | number, role: string) => {
     try {
@@ -508,8 +511,9 @@ export default function DispatchPage() {
       fetchCallVehicles(callId);
     } catch (err: any) {
       console.error('Link vehicle error:', err);
+      addToast(err?.message || 'Failed to link vehicle', 'error');
     }
-  }, [fetchCallVehicles]);
+  }, [fetchCallVehicles, addToast]);
 
   const unlinkVehicleFromCall = useCallback(async (callId: string | number, linkId: string | number) => {
     try {
@@ -517,8 +521,10 @@ export default function DispatchPage() {
       setCallVehicles(prev => prev.filter(v => v.id !== linkId));
     } catch (err: any) {
       console.error('Unlink vehicle error:', err);
+      addToast(err?.message || 'Failed to unlink vehicle', 'error');
+      fetchCallVehicles(callId);
     }
-  }, []);
+  }, [addToast, fetchCallVehicles]);
 
   // Create-from-dispatch: uses the fused /quick-add endpoints so the server
   // runs duplicate detection BEFORE creating a new persons / vehicles_records

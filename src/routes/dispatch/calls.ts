@@ -1215,7 +1215,7 @@ calls.post('/:id/redispatch', requireRole('admin', 'manager', 'supervisor', 'dis
     if (!['pso_client_request', 'process_service'].includes(String(parentBase.incident_type))) {
       return c.json({ error: 'Re-dispatch is only available for PSO Client Request and Process Service calls', code: 'REDISPATCH_TYPE_INVALID' }, 400);
     }
-    if (!['cleared', 'closed', 'cancelled', 'on_hold', 'archived'].includes(String(parentBase.status))) {
+    if (!['cleared', 'closed', 'cancelled', 'archived'].includes(String(parentBase.status))) {
       return c.json({ error: 'Call must be cleared, closed, cancelled, on hold, or archived to re-dispatch', code: 'CALL_MUST_BE_INACTIVE' }, 400);
     }
 

@@ -465,4 +465,42 @@ reports.get('/dashboard', async (c) => {
   });
 });
 
+// GET /dashboard — main Dashboard KPI tiles. Client expects DashboardApiResponse shape.
+reports.get('/dashboard', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const [calls, unitsOn, totalUnits, pending, bolos, avgResp, byPriority, byStatus, byHour, officers] = await Promise.all([
+      queryFirst<{ n: number }>(db, "SELECT COUNT(*) AS n FROM calls_for_service WHERE status NOT IN ('cleared','closed','cancelled')"),
+      queryFirst<{ n: number }>(db, "SELECT COUNT(*) AS n FROM units WHERE status NOT IN ('off_duty','out_of_service')"),
+      queryFirst<{ n: number }>(db, 'SELECT COUNT(*) AS n FROM units'),
+      queryFirst<{ n: number }>(db, "SELECT COUNT(*) AS n FROM incidents WHERE status IN ('draft','submitted','under_review')"),
+      queryFirst<{ n: number }>(db, "SELECT COUNT(*) AS n FROM bolos WHERE status = 'active'"),
+      queryFirst<{ avg: number | null }>(db, "SELECT ROUND(AVG(response_time_sec) / 60.0, 1) AS avg FROM calls_for_service WHERE response_time_sec IS NOT NULL AND created_at >= datetime('now','-24 hours')"),
+      query<{ priority: string; count: number }>(db, "SELECT priority, COUNT(*) AS count FROM calls_for_service WHERE status NOT IN ('cleared','closed','cancelled') GROUP BY priority"),
+      query<{ status: string; count: number }>(db, "SELECT status, COUNT(*) AS count FROM calls_for_service GROUP BY status"),
+      query<{ hour: string; count: number }>(db, "SELECT strftime('%H', created_at) AS hour, COUNT(*) AS count FROM calls_for_service WHERE created_at >= datetime('now','-24 hours') GROUP BY hour ORDER BY hour"),
+      query<Record<string, unknown>>(db, "SELECT u.id, usr.full_name FROM units u LEFT JOIN users usr ON u.officer_id = usr.id WHERE u.status NOT IN ('off_duty','out_of_service')"),
+    ]);
+    const todayCalls = await queryFirst<{ n: number }>(db, "SELECT COUNT(*) AS n FROM calls_for_service WHERE created_at >= datetime('now','start of day')");
+    return c.json({
+      activeCalls: calls?.n ?? 0,
+      todayCalls: todayCalls?.n ?? 0,
+      unitsOnDuty: unitsOn?.n ?? 0,
+      totalUnits: totalUnits?.n ?? 0,
+      pendingReports: pending?.n ?? 0,
+      activeBolos: bolos?.n ?? 0,
+      unreadMessages: 0,
+      avgResponseMinutes: avgResp?.avg ?? null,
+      callsByPriority: byPriority,
+      callsByStatus: byStatus,
+      recentActivity: [],
+      officersOnDuty: officers,
+      callsByHour: byHour,
+    });
+  } catch (err) {
+    console.error('[reports] GET /dashboard failed:', err);
+    return c.json({ activeCalls: 0, todayCalls: 0, unitsOnDuty: 0, totalUnits: 0, pendingReports: 0, activeBolos: 0, unreadMessages: 0, avgResponseMinutes: null, callsByPriority: [], callsByStatus: [], recentActivity: [], officersOnDuty: [], callsByHour: [] });
+  }
+});
+
 export default reports;

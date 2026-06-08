@@ -34,12 +34,13 @@ interface WebSocketContextType {
 
 const WebSocketContext = createContext<WebSocketContextType | undefined>(undefined);
 
-const WS_RECONNECT_DELAY = 3000;
-const WS_MAX_RECONNECT_DELAY = 30000;
-const WS_CONNECT_TIMEOUT = 10000; // 10s — if WS hasn't opened by then, close and retry
-const WS_MAX_RETRIES = 50;        // stop retrying after 50 consecutive failures (~25min at max backoff)
+const WS_RECONNECT_DELAY = 2000;
+const WS_MAX_RECONNECT_DELAY = 10000;
+const WS_CONNECT_TIMEOUT = 15000; // 15s — cellular can be slow
+const WS_MAX_RETRIES = 100;       // keep trying for the full shift
 const WS_HEARTBEAT_INTERVAL = 30000; // 30s ping interval
-const WS_PONG_TIMEOUT = 10000;       // 10s to receive pong before considering connection dead
+const WS_PONG_TIMEOUT = 20000;       // 20s — generous for cellular hand-offs
+const WS_OFFLINE_GRACE_MS = 5000; // delay before showing OFFLINE in status bar
 
 // dispatch_update action discriminators that carry a unit (not a call). These
 // get re-fanned to the legacy 'unit_update' channel (see onmessage) so the map,
@@ -111,17 +112,33 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   const retryCountRef = useRef(0);
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const pongTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const offlineGraceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [connectionLost, setConnectionLost] = useState(false);
 
+  // Stable refs so connect/connectAlerts don't recreate on token changes
+  const tokenRef = useRef(token);
+  tokenRef.current = token;
+  const authRef = useRef(isAuthenticated);
+  authRef.current = isAuthenticated;
+
+  const markConnected = useCallback(() => {
+    if (offlineGraceRef.current) { clearTimeout(offlineGraceRef.current); offlineGraceRef.current = null; }
+    setIsConnected(true);
+    setConnectionLost(false);
+  }, []);
+
+  const markDisconnected = useCallback(() => {
+    if (offlineGraceRef.current) return;
+    offlineGraceRef.current = setTimeout(() => {
+      offlineGraceRef.current = null;
+      if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+        setIsConnected(false);
+      }
+    }, WS_OFFLINE_GRACE_MS);
+  }, []);
+
   // ── Second socket: the agency-wide Alert Hub ──────────────────────────
-  // The main socket above talks to /api/ws on the LEGACY worker. Rewrite-
-  // originated officer-safety events (panic, backup) can't reach it — they
-  // ride this dedicated socket to AlertHubDO on the rewrite worker, connected
-  // DIRECTLY at api.rmpgutah.us (like voice), bypassing the zone proxy. Its
-  // messages feed the SAME subscribe bus, so every existing
-  // subscribe('panic_alert') / subscribe('dispatch_update') consumer works
-  // unchanged. See src/durable-objects/AlertHubDO.ts.
   const alertsRef = useRef<WebSocket | null>(null);
   const alertsReconnectRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const alertsDelayRef = useRef(WS_RECONNECT_DELAY);
@@ -157,16 +174,13 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const connect = useCallback(() => {
-    if (!isAuthenticated || !token) return;
+    if (!authRef.current || !tokenRef.current) return;
 
-    // Clear any pending reconnect to prevent dual connections
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current);
       reconnectTimeoutRef.current = null;
     }
 
-    // Clean up existing connection — null out handlers BEFORE closing
-    // to prevent the old onclose from clobbering wsRef or scheduling stale reconnects
     if (wsRef.current) {
       const old = wsRef.current;
       old.onclose = null;
@@ -177,33 +191,27 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
       wsRef.current = null;
     }
 
-    // Don't retry if we've exceeded max retries — wait for visibility change to reset
     if (retryCountRef.current >= WS_MAX_RETRIES) {
       devWarn(`[WS] Max retries (${WS_MAX_RETRIES}) reached — waiting for tab focus to retry`);
+      setConnectionLost(true);
       return;
     }
 
     try {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const host = window.location.host;
-      // Message-based auth: connect without URL token, then send authenticate
-      // frame on open. URL-token auth was deprecated 2026-04-15 to prevent JWT
-      // leakage via server logs, browser history, and referrer headers.
       const ws = new WebSocket(`${protocol}//${host}/api/ws`);
 
-      // Connection timeout — if the socket hasn't opened in 10s, kill it and retry.
-      // Without this, a stalled TCP handshake can hang the socket indefinitely.
       connectTimeoutRef.current = setTimeout(() => {
         if (ws.readyState !== WebSocket.OPEN) {
           devWarn('[WS] Connection timeout — closing stalled socket');
-          ws.onclose = null; // prevent the regular onclose from also scheduling a reconnect
+          ws.onclose = null;
           ws.close();
           wsRef.current = null;
-          setIsConnected(false);
+          markDisconnected();
           retryCountRef.current++;
-          // Schedule reconnect with backoff
           reconnectTimeoutRef.current = setTimeout(() => {
-            reconnectDelayRef.current = Math.min(reconnectDelayRef.current * 1.5, WS_MAX_RECONNECT_DELAY);
+            reconnectDelayRef.current = Math.min(reconnectDelayRef.current + 2000, WS_MAX_RECONNECT_DELAY);
             connect();
           }, reconnectDelayRef.current);
         }
@@ -214,31 +222,26 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
           clearTimeout(connectTimeoutRef.current);
           connectTimeoutRef.current = null;
         }
-        setIsConnected(true);
-        setConnectionLost(false);
+        markConnected();
         reconnectDelayRef.current = WS_RECONNECT_DELAY;
-        retryCountRef.current = 0; // reset on successful connection
+        retryCountRef.current = 0;
 
-        // Message-based authentication: send the JWT as the first frame.
-        // Server expects { type: 'authenticate', token } and will close the
-        // socket after a short timeout if this doesn't arrive.
         try {
-          ws.send(JSON.stringify({ type: 'authenticate', token }));
+          ws.send(JSON.stringify({ type: 'authenticate', token: tokenRef.current }));
         } catch (err) {
           devWarn('[WS] Failed to send auth frame:', err);
         }
 
-        // Start heartbeat ping/pong
         if (heartbeatRef.current) clearInterval(heartbeatRef.current);
         heartbeatRef.current = setInterval(() => {
           if (ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify({ type: 'ping' }));
-            // Clear any previous pong timeout before setting a new one
             if (pongTimeoutRef.current) clearTimeout(pongTimeoutRef.current);
-            // If no pong within 10s, connection is dead — close and reconnect
             pongTimeoutRef.current = setTimeout(() => {
-              devWarn('[WS] Pong timeout — closing dead connection');
-              ws.close();
+              if (wsRef.current === ws) {
+                devWarn('[WS] Pong timeout — closing dead connection');
+                ws.close();
+              }
             }, WS_PONG_TIMEOUT);
           }
         }, WS_HEARTBEAT_INTERVAL);
@@ -248,7 +251,6 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
         try {
           const message: WSMessage = JSON.parse(event.data);
 
-          // Handle pong — clear the dead-connection timeout
           if (message.type === 'pong') {
             if (pongTimeoutRef.current) {
               clearTimeout(pongTimeoutRef.current);
@@ -257,21 +259,16 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
             return;
           }
 
-          // Handle authentication responses internally
           if (message.type === 'authenticated') {
             devLog('[WS] Authenticated successfully');
             return;
           }
           if (message.type === 'auth_error') {
             devWarn('[WS] Authentication failed:', (message as any).message);
-            // Reconnect will use fresh token
             ws.close();
             return;
           }
 
-          // Dispatcher Brain fan-in + high-priority chime + legacy unit_update
-          // bridge + type-keyed subscriber dispatch — shared with the alert
-          // socket so an event over either path behaves identically.
           fanInMessage(message);
         } catch (err) {
           console.error('WebSocket message parse error:', err);
@@ -279,31 +276,27 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
       };
 
       ws.onclose = () => {
-        // Only handle if this is still the active WebSocket
         if (wsRef.current !== ws) return;
 
         if (connectTimeoutRef.current) {
           clearTimeout(connectTimeoutRef.current);
           connectTimeoutRef.current = null;
         }
-        // Clean up heartbeat
         if (heartbeatRef.current) { clearInterval(heartbeatRef.current); heartbeatRef.current = null; }
         if (pongTimeoutRef.current) { clearTimeout(pongTimeoutRef.current); pongTimeoutRef.current = null; }
 
-        setIsConnected(false);
         wsRef.current = null;
         retryCountRef.current++;
+        markDisconnected();
 
-        // Signal permanent connection loss after max retries
         if (retryCountRef.current >= WS_MAX_RETRIES) {
           setConnectionLost(true);
         }
 
-        // Auto-reconnect with backoff
-        if (isAuthenticated) {
+        if (authRef.current) {
           reconnectTimeoutRef.current = setTimeout(() => {
             reconnectDelayRef.current = Math.min(
-              reconnectDelayRef.current * 1.5,
+              reconnectDelayRef.current + 2000,
               WS_MAX_RECONNECT_DELAY
             );
             connect();
@@ -311,23 +304,21 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
         }
       };
 
-      ws.onerror = () => {
-        // Error will trigger onclose which handles reconnection
-      };
+      ws.onerror = () => {};
 
       wsRef.current = ws;
     } catch (err) {
       console.warn('[WebSocket] Connection creation failed:', err);
-      setIsConnected(false);
+      markDisconnected();
     }
-  }, [isAuthenticated, token, fanInMessage]);
+  }, [fanInMessage, markConnected, markDisconnected]);
 
   // Connect the agency-wide Alert Hub socket (rewrite worker, direct). Kept
   // deliberately lean vs. the main socket: no UI connection state, light
   // reconnect, a 30s keepalive ping so Cloudflare doesn't idle-close it. All
   // inbound frames flow through the shared fanInMessage bus.
   const connectAlerts = useCallback(() => {
-    if (!isAuthenticated || !token) return;
+    if (!authRef.current || !tokenRef.current) return;
     if (alertsReconnectRef.current) { clearTimeout(alertsReconnectRef.current); alertsReconnectRef.current = null; }
     if (alertsRef.current) {
       const old = alertsRef.current;
@@ -338,13 +329,13 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
     try {
       const host = window.location.hostname;
       const base = (host === 'localhost' || host === '127.0.0.1')
-        ? `ws://${host}:8787`        // wrangler dev
-        : 'wss://api.rmpgutah.us';   // rewrite worker, direct (CSP allows wss: + api.rmpgutah.us)
+        ? `ws://${host}:8787`
+        : 'wss://api.rmpgutah.us';
       const ws = new WebSocket(`${base}/api/alerts-ws`);
 
       ws.onopen = () => {
         alertsDelayRef.current = WS_RECONNECT_DELAY;
-        try { ws.send(JSON.stringify({ type: 'authenticate', token })); } catch { /* retried on reconnect */ }
+        try { ws.send(JSON.stringify({ type: 'authenticate', token: tokenRef.current })); } catch { /* retried on reconnect */ }
         if (alertsHeartbeatRef.current) clearInterval(alertsHeartbeatRef.current);
         alertsHeartbeatRef.current = setInterval(() => {
           if (ws.readyState === WebSocket.OPEN) {
@@ -357,7 +348,6 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
         try {
           const message: WSMessage = JSON.parse(event.data);
           const t = message.type as string;
-          // Internal frames the hub speaks — not for the subscribe bus.
           if (t === 'pong' || t === 'alerts_ready') return;
           if (t === 'alerts_auth_error') { ws.close(); return; }
           fanInMessage(message);
@@ -370,76 +360,78 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
         if (alertsRef.current !== ws) return;
         if (alertsHeartbeatRef.current) { clearInterval(alertsHeartbeatRef.current); alertsHeartbeatRef.current = null; }
         alertsRef.current = null;
-        // OFFICER-SAFETY: never hard-cap this socket. It carries agency-wide panic
-        // replays + warrant alerts, so it must keep trying to recover for the
-        // entire shift. An earlier WS_MAX_RETRIES cap here could permanently
-        // deafen the panic channel on an always-foreground console (the exact
-        // device that needs it) after a sustained outage, with no UI signal. The
-        // exponential backoff (≤30s) keeps a dead-token re-auth loop benign, and
-        // it self-heals when the token refreshes (connectAlerts re-creates on its
-        // token dep). The online/visibility handlers collapse the backoff for
-        // instant recovery.
-        if (isAuthenticated) {
+        if (authRef.current) {
           alertsReconnectRef.current = setTimeout(() => {
-            alertsDelayRef.current = Math.min(alertsDelayRef.current * 1.5, WS_MAX_RECONNECT_DELAY);
+            alertsDelayRef.current = Math.min(alertsDelayRef.current + 2000, WS_MAX_RECONNECT_DELAY);
             connectAlerts();
           }, alertsDelayRef.current);
         }
       };
 
-      ws.onerror = () => { /* onclose handles reconnect */ };
+      ws.onerror = () => {};
       alertsRef.current = ws;
     } catch (err) {
       console.warn('[AlertWS] Connection creation failed:', err);
     }
-  }, [isAuthenticated, token, fanInMessage]);
+  }, [fanInMessage]);
 
+  // Connect on login, tear down on logout. Token is read from ref so refreshes
+  // don't cause a full reconnect cycle (which was a guaranteed OFFLINE flash).
   useEffect(() => {
+    if (!isAuthenticated) return;
     connect();
     connectAlerts();
 
-    // When tab becomes visible again, reset retry count and reconnect immediately
-    // Patrol officers often switch between apps — instant reconnect on return is critical
+    return () => {
+      if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
+      if (connectTimeoutRef.current) clearTimeout(connectTimeoutRef.current);
+      if (heartbeatRef.current) clearInterval(heartbeatRef.current);
+      if (pongTimeoutRef.current) clearTimeout(pongTimeoutRef.current);
+      if (offlineGraceRef.current) clearTimeout(offlineGraceRef.current);
+      if (wsRef.current) { wsRef.current.onclose = null; wsRef.current.close(); wsRef.current = null; }
+      if (alertsReconnectRef.current) clearTimeout(alertsReconnectRef.current);
+      if (alertsHeartbeatRef.current) clearInterval(alertsHeartbeatRef.current);
+      if (alertsRef.current) { alertsRef.current.onclose = null; alertsRef.current.close(); alertsRef.current = null; }
+      setIsConnected(false);
+    };
+    // token intentionally omitted — read via tokenRef so refreshes don't
+    // tear down + reconnect (which causes an OFFLINE flash every ~15min)
+  }, [isAuthenticated, connect, connectAlerts]);
+
+  // Visibility + online recovery — separate effect so it doesn't tear down sockets
+  useEffect(() => {
     const handleVisibility = () => {
-      if (document.visibilityState === 'visible' && isAuthenticated) {
-        if (!wsRef.current) {
+      if (document.visibilityState === 'visible' && authRef.current) {
+        if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
           retryCountRef.current = 0;
           reconnectDelayRef.current = WS_RECONNECT_DELAY;
           connect();
         }
-        if (!alertsRef.current) {
+        if (!alertsRef.current || alertsRef.current.readyState !== WebSocket.OPEN) {
           alertsDelayRef.current = WS_RECONNECT_DELAY;
           connectAlerts();
         }
       }
     };
-    document.addEventListener('visibilitychange', handleVisibility);
-
-    // Network restored (cellular hand-off / WiFi reconnect): collapse both
-    // sockets' backoff and reconnect immediately. Critical for the panic socket,
-    // which otherwise waits out the ≤30s backoff — and 'online' fires even when
-    // the tab never lost focus (an always-foreground MDT/console never gets a
-    // visibilitychange).
     const handleOnline = () => {
-      if (!isAuthenticated) return;
-      if (!wsRef.current) { retryCountRef.current = 0; reconnectDelayRef.current = WS_RECONNECT_DELAY; connect(); }
-      if (!alertsRef.current) { alertsDelayRef.current = WS_RECONNECT_DELAY; connectAlerts(); }
+      if (!authRef.current) return;
+      if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+        retryCountRef.current = 0;
+        reconnectDelayRef.current = WS_RECONNECT_DELAY;
+        connect();
+      }
+      if (!alertsRef.current || alertsRef.current.readyState !== WebSocket.OPEN) {
+        alertsDelayRef.current = WS_RECONNECT_DELAY;
+        connectAlerts();
+      }
     };
+    document.addEventListener('visibilitychange', handleVisibility);
     window.addEventListener('online', handleOnline);
-
     return () => {
       document.removeEventListener('visibilitychange', handleVisibility);
       window.removeEventListener('online', handleOnline);
-      if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
-      if (connectTimeoutRef.current) clearTimeout(connectTimeoutRef.current);
-      if (heartbeatRef.current) clearInterval(heartbeatRef.current);
-      if (pongTimeoutRef.current) clearTimeout(pongTimeoutRef.current);
-      if (wsRef.current) wsRef.current.close();
-      if (alertsReconnectRef.current) clearTimeout(alertsReconnectRef.current);
-      if (alertsHeartbeatRef.current) clearInterval(alertsHeartbeatRef.current);
-      if (alertsRef.current) alertsRef.current.close();
     };
-  }, [connect, connectAlerts, isAuthenticated]);
+  }, [connect, connectAlerts]);
 
   const subscribe = useCallback((type: WSMessageType, handler: MessageHandler) => {
     if (!subscribersRef.current.has(type)) {

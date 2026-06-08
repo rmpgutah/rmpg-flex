@@ -10,6 +10,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Plus, Star, VolumeX, Archive, ChevronRight, Radio } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { useAuth } from '../../../context/AuthContext';
+import { useToast } from '../../../components/ToastProvider';
 import { ls } from '../helpers';
 import { SectionHeader, MiniToggle, ToolbarBtn } from '../components';
 import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
@@ -25,6 +26,7 @@ interface Props {
 
 export default function ChannelsTab({ selectedChannelId, onSelectChannel }: Props) {
   const { user } = useAuth();
+  const { addToast } = useToast();
   const canManage = MANAGE_ROLES.has(user?.role || '');
   const { openMenu } = useContextMenu();
   const m = useMenuActions();
@@ -67,7 +69,7 @@ export default function ChannelsTab({ selectedChannelId, onSelectChannel }: Prop
       await apiFetch('/radio/channels', { method: 'POST', body: JSON.stringify({ name, description: newDesc.trim() || null }) });
       setNewName(''); setNewDesc(''); setCreating(false);
       load();
-    } catch (err) { console.error('[radio] create channel', err); }
+    } catch (err: any) { console.error('[radio] create channel', err); addToast(err?.message || 'Failed to create channel', 'error'); }
   };
 
   const archive = async (id: number) => {
@@ -75,7 +77,7 @@ export default function ChannelsTab({ selectedChannelId, onSelectChannel }: Prop
     try {
       await apiFetch(`/radio/channels/${id}`, { method: 'DELETE' });
       load();
-    } catch (err) { console.error('[radio] archive', err); }
+    } catch (err: any) { console.error('[radio] archive', err); addToast(err?.message || 'Failed to archive channel', 'error'); }
   };
 
   const buildChannelMenu = (c: RadioChannel): ContextMenuItem[] => {
