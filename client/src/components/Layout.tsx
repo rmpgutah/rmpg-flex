@@ -92,7 +92,7 @@ import { useAuth } from '../context/AuthContext';
 import PttController from './PttController';
 import { initSettingsSync } from '../utils/settingsSync';
 import { useWebSocket } from '../context/WebSocketContext';
-import { apiFetch, OfflineUnauthorizedError, authedImageUrl } from '../hooks/useApi';
+import { apiFetch, authedImageUrl } from '../hooks/useApi';
 import { useGpsTracking } from '../hooks/useGpsTracking';
 import { usePresence } from '../hooks/usePresence';
 import RmpgLogo from './RmpgLogo';
@@ -107,8 +107,6 @@ import UserProfileModal from './UserProfileModal';
 import DispatcherTranscript from './DispatcherTranscript';
 import UpdateBanner from './UpdateBanner';
 import CommandPalette from './CommandPalette';
-import OfflineStatusBar from './OfflineStatusBar';
-import PinEntryModal from './PinEntryModal';
 import ForcePasswordChangeModal from './ForcePasswordChangeModal';
 import Force2FASetupModal from './Force2FASetupModal';
 import MobileHeader from './mobile/MobileHeader';
@@ -432,21 +430,6 @@ export default function Layout() {
       navigate(navHistoryRef.current[navIndexRef.current]);
     }
   }, [navigate]);
-
-  // ── Offline PIN Modal (global catch for OfflineUnauthorizedError) ──
-  const [offlinePinModalOpen, setOfflinePinModalOpen] = useState(false);
-
-  useEffect(() => {
-    // Listen for unhandled OfflineUnauthorizedError rejections
-    const handler = (event: PromiseRejectionEvent) => {
-      if (event.reason instanceof OfflineUnauthorizedError) {
-        event.preventDefault(); // suppress console error
-        setOfflinePinModalOpen(true);
-      }
-    };
-    window.addEventListener('unhandledrejection', handler);
-    return () => window.removeEventListener('unhandledrejection', handler);
-  }, []);
 
   // ── Mandatory Name Setup ──────────────────────────────────
   // If user has no first_name or last_name, force a one-time setup prompt.
@@ -901,9 +884,6 @@ export default function Layout() {
     <div className="flex flex-col text-white overflow-hidden" style={{ background: 'var(--surface-base)', height: '100dvh' }}>
       {/* Auto-Update Banner (Electron only) */}
       {isElectron && <UpdateBanner />}
-
-      {/* Offline Status Bar (shows when offline or syncing — Electron and browser) */}
-      <OfflineStatusBar />
 
       {/* Dispatch severity alert banners (panic, BOLO, pursuit, etc.) */}
       <DispatchAlertBanner alerts={dispatchAlerts} onDismiss={dismissDispatchAlert} onDismissAll={dismissAllDispatchAlerts} />
@@ -1671,12 +1651,6 @@ export default function Layout() {
         isOpen={profileModalOpen}
         onClose={() => setProfileModalOpen(false)}
         initialTab={profileModalTab}
-      />
-
-      {/* Offline PIN Entry Modal — triggered globally when an offline write needs authorization */}
-      <PinEntryModal
-        isOpen={offlinePinModalOpen}
-        onClose={() => setOfflinePinModalOpen(false)}
       />
 
       {/* Force Password Change Modal — blocks UI until password changed */}

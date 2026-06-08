@@ -54,7 +54,7 @@ export function mapUser(row: any): OfficerWithStatus {
     unit_call_sign: row.unit_call_sign || row.unit?.call_sign || undefined,
     created_at: row.created_at || '',
     updated_at: row.updated_at || '',
-    status: isActive ? 'on_duty' : 'off_duty',
+    status: isActive && row.unit_status !== 'off_duty' ? 'on_duty' : 'off_duty',
   };
 }
 

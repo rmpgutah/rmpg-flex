@@ -35,8 +35,6 @@
 // Net effect: the worker's single-use rotation can no longer produce a
 // race-loss logout, in one tab or across many.
 
-import { isLikelyOnline } from '../services/connectivityMonitor';
-
 const TOKEN_KEY = 'rmpg_token';
 const REFRESH_TOKEN_KEY = 'rmpg_refresh_token';
 const SESSION_ID_KEY = 'rmpg_session_id';
@@ -118,12 +116,24 @@ function clearAuth(): void {
  * are conservative). Mirrors the old useApi/AuthContext offline guards.
  */
 async function shouldLogoutOnAuthFailure(): Promise<boolean> {
-  if (!isLikelyOnline()) return false;
+  if (!navigator.onLine) return false;
   if (electron?.getOfflineState) {
     try {
       const state = await electron.getOfflineState();
       if (!state.isOnline) return false;
     } catch { /* fall through — treat as online */ }
+  }
+  // Double-check: can we actually reach the server? navigator.onLine only
+  // checks for a local NIC — it says true even when cellular has no route.
+  // A quick HEAD to /api/health avoids logging out on a false-online blip.
+  try {
+    const ac = new AbortController();
+    const t = setTimeout(() => ac.abort(), 5000);
+    const probe = await fetch('/api/health', { method: 'HEAD', signal: ac.signal });
+    clearTimeout(t);
+    if (!probe.ok && probe.status >= 500) return false;
+  } catch {
+    return false;
   }
   return true;
 }

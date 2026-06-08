@@ -70,10 +70,13 @@ nav.get('/trip/current', async (c) => {
     const userId = c.get('userId') as number;
     const trip = await queryFirst<Record<string, unknown>>(db,
       `SELECT ntl.*, fv.vehicle_number, fv.make, fv.model, fv.plate_number,
-              u.call_sign as unit_call_sign
+              u.call_sign as unit_call_sign,
+              cfs.call_number, cfs.incident_type as call_type,
+              cfs.priority as call_priority, cfs.location_address as call_location
        FROM nav_trip_log ntl
        LEFT JOIN fleet_vehicles fv ON ntl.vehicle_id = fv.id
        LEFT JOIN units u ON ntl.unit_id = u.id
+       LEFT JOIN calls_for_service cfs ON ntl.call_id = cfs.id
        WHERE ntl.officer_id = ? AND ntl.status IN ('pending','active')
        ORDER BY ntl.start_time DESC LIMIT 1`,
       userId);
@@ -131,13 +134,21 @@ nav.post('/trip/start', async (c) => {
       if (veh) vehicleId = veh.id;
     }
 
+    // Auto-detect active dispatch call from the unit
+    let callId: number | null = null;
+    if (unitId) {
+      const activeCall = await queryFirst<{ current_call_id: number | null }>(db,
+        'SELECT current_call_id FROM units WHERE id = ?', unitId);
+      if (activeCall?.current_call_id) callId = activeCall.current_call_id;
+    }
+
     const result = await execute(db,
       `INSERT INTO nav_trip_log
-       (officer_id, vehicle_id, unit_id, start_lat, start_lng, start_accuracy,
+       (officer_id, vehicle_id, unit_id, call_id, start_lat, start_lng, start_accuracy,
         start_location, start_time, status, detected_by, purpose, device_type, route_points)
-       VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'), 'pending', 'auto',
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'), 'pending', 'auto',
                ?, ?, '[]')`,
-      userId, vehicleId, unitId,
+      userId, vehicleId, unitId, callId,
       body.start_lat, body.start_lng, body.start_accuracy ?? null,
       body.start_location ?? null,
       body.purpose ?? 'patrol', body.device_type ?? null);
@@ -315,16 +326,19 @@ nav.get('/trip/history', async (c) => {
     }
 
     const rows = await query<Record<string, unknown>>(db,
-      `SELECT ntl.id, ntl.vehicle_id, ntl.unit_id, ntl.start_lat, ntl.start_lng,
+      `SELECT ntl.id, ntl.vehicle_id, ntl.unit_id, ntl.call_id,
+              ntl.start_lat, ntl.start_lng,
               ntl.start_location, ntl.start_time, ntl.end_lat, ntl.end_lng,
               ntl.end_location, ntl.end_time, ntl.distance_miles, ntl.max_speed_mph,
               ntl.duration_seconds, ntl.status, ntl.detected_by, ntl.purpose,
               ntl.device_type, ntl.notes, ntl.created_at,
               fv.vehicle_number, fv.make, fv.model, fv.plate_number,
-              u.call_sign as unit_call_sign
+              u.call_sign as unit_call_sign,
+              cfs.call_number, cfs.incident_type as call_type
        FROM nav_trip_log ntl
        LEFT JOIN fleet_vehicles fv ON ntl.vehicle_id = fv.id
        LEFT JOIN units u ON ntl.unit_id = u.id
+       LEFT JOIN calls_for_service cfs ON ntl.call_id = cfs.id
        ${whereClause}
        ORDER BY ntl.start_time DESC
        LIMIT ? OFFSET ?`,
@@ -346,10 +360,13 @@ nav.get('/trip/:id', async (c) => {
 
     const trip = await queryFirst<Record<string, unknown>>(db,
       `SELECT ntl.*, fv.vehicle_number, fv.make, fv.model, fv.plate_number,
-              u.call_sign as unit_call_sign
+              u.call_sign as unit_call_sign,
+              cfs.call_number, cfs.incident_type as call_type,
+              cfs.priority as call_priority, cfs.location_address as call_location
        FROM nav_trip_log ntl
        LEFT JOIN fleet_vehicles fv ON ntl.vehicle_id = fv.id
        LEFT JOIN units u ON ntl.unit_id = u.id
+       LEFT JOIN calls_for_service cfs ON ntl.call_id = cfs.id
        WHERE ntl.id = ? AND ntl.officer_id = ?`,
       tripId, userId);
     if (!trip) return c.json({ error: 'Trip not found' }, 404);
