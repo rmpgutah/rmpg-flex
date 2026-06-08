@@ -2076,9 +2076,10 @@ export default function DispatchPage() {
     const active = calls.filter((c) => ['dispatched', 'enroute', 'onscene'].includes(c.status)).length;
     const hold = calls.filter((c) => c.status === 'on_hold').length;
     const cleared = calls.filter((c) => ['cleared', 'closed', 'cancelled'].includes(c.status)).length;
-    const allCount = calls.length;
-    const myId = user?.id != null ? String(user.id) : null;
-    const mine = myId ? calls.filter((c) => String((c as any).dispatcher_id ?? (c as any).created_by ?? '') === myId).length : 0;
+    // Queue tab = everything still open (mirrors the filteredCalls 'queue'
+    // predicate at line ~1243). This definition was dropped in a prior
+    // squash-merge, leaving `queue` undefined and breaking client typecheck.
+    const queue = calls.filter((c) => !['cleared', 'closed', 'cancelled'].includes(c.status)).length;
     return {
       queue,
       pending,

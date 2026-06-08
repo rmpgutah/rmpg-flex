@@ -613,7 +613,19 @@ export interface CallPdfData {
   closed_at?: string;
   created_by?: string;
   // Notes / Narrative
-  notes?: { id: string; author: string; content: string; created_at: string }[];
+  // Body arrives as `content` (this interface's original shape) OR `text`
+  // (live CallNote from dispatchMappers); timestamp as `created_at` OR
+  // `timestamp`. All optional/coalesced at render time — see Notes section.
+  notes?: {
+    id: string;
+    author: string;
+    content?: string;
+    text?: string;
+    body?: string;
+    narrative?: string;
+    created_at?: string;
+    timestamp?: string;
+  }[];
   narrative?: string;
   // OPR identifier
   dispatcher_name?: string;
@@ -2753,9 +2765,17 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
         : !isSystemTag ? [90, 90, 90]
         : [70, 70, 70];
 
+      // Same field drift as the body: timestamp arrives as `created_at`
+      // (interface) or `timestamp` (live CallNote). Coalesce so the header
+      // strip doesn't render an empty/Invalid date.
+      const noteTs =
+        (n as { created_at?: string; timestamp?: string }).created_at ||
+        (n as { timestamp?: string }).timestamp ||
+        '';
+
       // Initial entry header strip (top of this note).
       y = drawEntryHeaderStrip(
-        y, ni + 1, noteCount, fmtTimestamp(n.created_at).toUpperCase(),
+        y, ni + 1, noteCount, fmtTimestamp(noteTs).toUpperCase(),
         entryType, tagBg, officerSuffix, false,
       );
 
@@ -2768,13 +2788,24 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       doc.setDrawColor(...COLOR.TEXT_PRIMARY);
       const onEntryPageBreak = (newY: number): number => {
         return drawEntryHeaderStrip(
-          newY, ni + 1, noteCount, fmtTimestamp(n.created_at).toUpperCase(),
+          newY, ni + 1, noteCount, fmtTimestamp(noteTs).toUpperCase(),
           entryType, tagBg, '', true,  // continued=true; suppress officer suffix
         );
       };
+      // Note body field drift: the CallPdfData interface declares `content`,
+      // but live CallNote objects (from dispatchMappers) carry the body in
+      // `text`. Older/system notes may also use `body`/`narrative`. Coalesce
+      // across all of them so the entry body never renders blank when only
+      // the header (author/timestamp) resolves. (2026-06-08)
+      const noteBody =
+        (n as { content?: string; text?: string; body?: string; narrative?: string }).content ||
+        (n as { text?: string }).text ||
+        (n as { body?: string }).body ||
+        (n as { narrative?: string }).narrative ||
+        '';
       const bodyEndY = addFormattedText(
         doc,
-        (n.content || '').toUpperCase(),
+        noteBody.toUpperCase(),
         lx + bodyIndent,
         y,
         ffw - bodyIndent,
