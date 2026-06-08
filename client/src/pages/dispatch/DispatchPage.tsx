@@ -733,16 +733,18 @@ export default function DispatchPage() {
       const mappedUnits = (Array.isArray(unitsRes) ? unitsRes : []).map(mapDbUnit);
       setCalls(mappedCalls);
       setUnits(mappedUnits);
-      // If we had a selected call, merge list-level fields into it rather
-      // than replacing — the list endpoint omits ext-table fields (PSO,
-      // process service, subject details) due to the D1 100-column cap.
-      // A full replace zeroed those fields, making call details "disappear."
+      // Merge list-level fields into selectedCall rather than replacing —
+      // the list endpoint omits ext-table fields (PSO, process service,
+      // subject details) due to the D1 100-column cap.
       setSelectedCall((prev) => {
         if (!prev) return mappedCalls[0] || null;
         const found = callsRaw.find((r: any) => String(r.id) === prev.id);
         if (found) return mergeCallUpdate(prev, found);
-        if (isEditingRef.current) return prev;
-        return mappedCalls[0] || null;
+        // Call not in the active list — it may be archived, cleared, or
+        // transiently missing. Keep current selection; never auto-substitute
+        // a different call which would flash the detail panel and lose the
+        // user's context (especially mid-edit or while viewing an archived call).
+        return prev;
       });
     } catch (err: any) {
       if (err?.name === 'AbortError') {
@@ -1643,6 +1645,7 @@ export default function DispatchPage() {
       const apply = (c: typeof selectedCall) =>
         looksLikeFullRow ? mergeCallUpdate(c!, result) : ({ ...c, [field]: value || null } as typeof c);
       setCalls(prev => prev.map(c => (c.id === callId ? apply(c) : c)));
+      setArchivedCalls(prev => prev.map(c => (c.id === callId ? apply(c) : c)));
       setSelectedCall(prev => (prev && prev.id === callId ? apply(prev) : prev));
       addToast(`Timeline updated: ${field.replace(/_at$/, '').replace(/_/g, ' ')}`, 'success');
     } catch (err) {
