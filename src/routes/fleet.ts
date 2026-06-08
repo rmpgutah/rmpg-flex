@@ -3074,14 +3074,14 @@ fleet.get('/combined-cost-trend', async (c) => {
 
     const recurring = await queryFn<{ month: string; total_cost: number }>(`
       SELECT strftime('%Y-%m', COALESCE(date, created_at)) AS month,
-             COALESCE(SUM(cost ?? 0), 0) AS total_cost
+             COALESCE(SUM(cost), 0) AS total_cost
       FROM fleet_recurring_costs
       WHERE COALESCE(date, created_at) >= datetime('now', '-${months} months')
       GROUP BY month ORDER BY month`);
 
     const loans = await queryFn<{ month: string; total_cost: number }>(`
       SELECT strftime('%Y-%m', COALESCE(date, created_at)) AS month,
-             COALESCE(SUM(payment_amount ?? 0), 0) AS total_cost
+             COALESCE(SUM(payment_amount), 0) AS total_cost
       FROM fleet_loans
       WHERE COALESCE(date, created_at) >= datetime('now', '-${months} months')
       GROUP BY month ORDER BY month`);
@@ -3139,14 +3139,14 @@ fleet.get('/monthly-spend', async (c) => {
 
     const recurring = await queryFn<{ month: string; amount: number }>(`
       SELECT strftime('%Y-%m', COALESCE(date, created_at)) AS month,
-             COALESCE(SUM(cost ?? 0), 0) AS amount
+             COALESCE(SUM(cost), 0) AS amount
       FROM fleet_recurring_costs
       WHERE COALESCE(date, created_at) >= datetime('now', '-${months} months')
       GROUP BY month ORDER BY month`).catch(() => []);
 
     const loans = await queryFn<{ month: string; amount: number }>(`
       SELECT strftime('%Y-%m', COALESCE(date, created_at)) AS month,
-             COALESCE(SUM(payment_amount ?? 0), 0) AS amount
+             COALESCE(SUM(payment_amount), 0) AS amount
       FROM fleet_loans
       WHERE COALESCE(date, created_at) >= datetime('now', '-${months} months')
       GROUP BY month ORDER BY month`).catch(() => []);
