@@ -31,7 +31,6 @@ import TripsDrawer from './navigation/TripsDrawer';
 import { buildMovementReport } from './navigation/vehicleTelemetry';
 import { useGpsTracking } from '../hooks/useGpsTracking';
 import { useMapRouting, snapToRoute } from '../hooks/useMapRouting';
-import { navigateTo } from '../utils/organicMapsNav';
 import { playTone } from '../utils/dispatchTones';
 import { useMap3D } from './map/hooks/useMap3D';
 import { mapboxgl, initMapbox, MAPBOX_STYLE_DARK } from '../utils/mapboxLoader';
@@ -831,9 +830,15 @@ export default function NavigationPage() {
     setDestLabel(null);
     routedCallRef.current = null;
   };
-  const openExternalNav = () => {
-    const d = destCoordsRef.current;
-    if (d) navigateTo(d.lat, d.lng, destLabel || activeRoute?.callNumber || 'Destination').catch(() => {});
+  const refitRoute = () => {
+    const geom = routeGeom;
+    if (!geom?.coords?.length || !mapInstanceRef.current) return;
+    const coords = geom.coords;
+    const bounds = coords.reduce(
+      (b, [lng, lat]) => { b[0][0] = Math.min(b[0][0], lng); b[0][1] = Math.min(b[0][1], lat); b[1][0] = Math.max(b[1][0], lng); b[1][1] = Math.max(b[1][1], lat); return b; },
+      [[Infinity, Infinity], [-Infinity, -Infinity]] as [[number, number], [number, number]],
+    );
+    mapInstanceRef.current.fitBounds(bounds, { padding: 60, maxZoom: 16 });
   };
 
   // Tick once a second so session-duration + the clock re-render even when parked.
@@ -1807,7 +1812,7 @@ export default function NavigationPage() {
               <div className="text-[10px] text-rmpg-500 uppercase truncate">to {destLabel || activeRoute.callNumber}</div>
             </div>
             <div className="flex flex-col gap-1 shrink-0">
-              <button onClick={openExternalNav} title="Open in external navigation" aria-label="Open in external navigation"
+              <button onClick={refitRoute} title="Fit route on map" aria-label="Fit route on map"
                 className="p-1 border border-rmpg-700 text-rmpg-300 hover:text-white hover:border-brand-500" style={{ borderRadius: 2 }}>
                 <Navigation2 className="w-3.5 h-3.5" />
               </button>
