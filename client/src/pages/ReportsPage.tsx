@@ -848,7 +848,7 @@ export default function ReportsPage() {
         if (dashboard) setDashboardData(dashboard);
         if (incidents) setIncidentsData(incidents);
         if (responseTimes) setResponseTimesData(responseTimes);
-        if (officers) setOfficerActivity(officers);
+        if (Array.isArray(officers)) setOfficerActivity(officers);
 
         // Upgrade: Fetch comparison data and schedules in background
         apiFetch<any>('/reports/comparison?period=week')

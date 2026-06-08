@@ -1384,7 +1384,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                     <tr key={d.call_sign} className="border-b border-[#2b2b2b]/50 hover:bg-[#0c0c0c] transition-colors duration-150">
                       <td className="py-1.5 pr-3 text-rmpg-300 truncate max-w-[120px]">{d.officer_name}</td>
                       <td className="py-1.5 pr-2 font-mono font-bold text-white">{d.call_sign}</td>
-                      <td className="py-1.5 px-2 text-right font-mono tabular-nums text-rmpg-300">{d.total_miles.toLocaleString()}</td>
+                      <td className="py-1.5 px-2 text-right font-mono tabular-nums text-rmpg-300">{(d.total_miles ?? 0).toLocaleString()}</td>
                       <td className="py-1.5 px-2 text-right font-mono tabular-nums text-rmpg-300">{d.total_hours}</td>
                       <td className="py-1.5 px-2 text-right font-mono tabular-nums text-rmpg-300">
                         <span className="inline-flex items-center gap-1">

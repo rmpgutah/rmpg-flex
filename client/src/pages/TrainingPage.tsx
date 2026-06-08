@@ -97,7 +97,7 @@ export default function TrainingPage() {
       const [recs, reqs, users] = await Promise.all([
         apiFetch<TrainingRecord[]>('/personnel/training'),
         apiFetch<TrainingRequirement[]>('/personnel/training-requirements'),
-        apiFetch<Officer[]>('/admin/users'),
+        apiFetch<Officer[]>('/personnel').catch(() => [] as Officer[]),
       ]);
       if (!mountedRef.current) return;
       setRecords(recs || []);

@@ -880,16 +880,16 @@ export default function CitationsPage() {
           <Hash size={10} /> {stats.total} Total
         </span>
         <span className="inline-flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold uppercase border panel-beveled bg-gray-900/30 text-gray-300 border-gray-700/50">
-          <FileWarning size={10} /> {stats.by_status.issued || 0} Issued
+          <FileWarning size={10} /> {stats.by_status?.issued || 0} Issued
         </span>
         <span className="inline-flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold uppercase border panel-beveled bg-green-900/30 text-green-300 border-green-700/50">
-          <Check size={10} /> {stats.by_status.paid || 0} Paid
+          <Check size={10} /> {stats.by_status?.paid || 0} Paid
         </span>
         <span className="inline-flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold uppercase border panel-beveled bg-amber-900/30 text-amber-300 border-amber-700/50">
-          <AlertTriangle size={10} /> {stats.by_status.contested || 0} Contested
+          <AlertTriangle size={10} /> {stats.by_status?.contested || 0} Contested
         </span>
         <span className="inline-flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold uppercase border panel-beveled bg-red-900/30 text-red-300 border-red-700/50">
-          <Scale size={10} /> {stats.by_status.warrant_issued || 0} Warrant
+          <Scale size={10} /> {stats.by_status?.warrant_issued || 0} Warrant
         </span>
         <span className="ml-auto inline-flex items-center gap-1.5 px-2 py-1 text-[10px] font-bold uppercase border panel-beveled bg-green-900/20 text-green-400 border-green-700/40">
           <DollarSign size={10} /> Collected: {formatCurrency(stats.fines_collected)}
