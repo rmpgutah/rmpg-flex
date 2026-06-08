@@ -1193,7 +1193,14 @@ fleet.get('/cost-per-mile/:id', async (c) => {
     const totalMiles = fuel?.total_distance ?? 0;
     const fuelCostPerMile = totalMiles > 0 ? (fuel?.total_cost ?? 0) / totalMiles : 0;
     const maintCostPerMile = totalMiles > 0 ? (maint?.total_cost ?? 0) / totalMiles : 0;
-    return c.json({ fuel_cost_per_mile: Math.round(fuelCostPerMile * 100) / 100, maintenance_cost_per_mile: Math.round(maintCostPerMile * 100) / 100, total_cost_per_mile: Math.round((fuelCostPerMile + maintCostPerMile) * 100) / 100, total_miles: totalMiles, total_fuel_cost: fuel?.total_cost ?? 0, total_maintenance_cost: maint?.total_cost ?? 0, total_gallons: fuel?.total_gallons ?? 0 });
+    const totalCost = (fuel?.total_cost ?? 0) + (maint?.total_cost ?? 0);
+    const costPerMile = Math.round((fuelCostPerMile + maintCostPerMile) * 100) / 100;
+    // vehicle_number, total_cost and cost_per_mile are the exact keys the Cost
+    // Analysis modal (FleetPage) reads for its title, "Total Cost" and "Cost/Mile"
+    // tiles. They were never returned, so the title was blank, Total Cost rendered
+    // an empty "$" and Cost/Mile always showed "N/A". Returned as aliases here.
+    const veh = await queryFirst<{ vehicle_number: string }>(db, 'SELECT vehicle_number FROM fleet_vehicles WHERE id = ?', vehicleId);
+    return c.json({ vehicle_number: veh?.vehicle_number ?? '', fuel_cost_per_mile: Math.round(fuelCostPerMile * 100) / 100, maintenance_cost_per_mile: Math.round(maintCostPerMile * 100) / 100, total_cost_per_mile: costPerMile, cost_per_mile: costPerMile, total_miles: totalMiles, total_fuel_cost: fuel?.total_cost ?? 0, total_maintenance_cost: maint?.total_cost ?? 0, total_cost: Math.round(totalCost * 100) / 100, total_gallons: fuel?.total_gallons ?? 0 });
   } catch (err) { console.error('GET /fleet/cost-per-mile/:id failed:', err); return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
 });
 
