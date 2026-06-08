@@ -102,13 +102,13 @@
   },
   "dependencies": {
     "better-sqlite3": "^12.9.0",
-    "electron-updater": "^6.8.3",
+    "electron-updater": "^6.8.9",
     "serialport": "^13.0.0"
   },
   "devDependencies": {
     "@electron/rebuild": "^4.0.4",
     "electron": "^40.10.2",
-    "electron-builder": "^26.0.0"
+    "electron-builder": "^26.15.2"
   },
   "overrides": {
     "@xmldom/xmldom": "0.8.13",

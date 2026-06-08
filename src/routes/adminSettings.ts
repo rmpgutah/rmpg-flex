@@ -54,6 +54,8 @@ adminSettings.get('/:key', async (c) => {
 // PUT /api/admin/settings/:key — update a single setting
 adminSettings.put('/:key', async (c) => {
   try {
+    const actor = (c as any).var?.user;
+    if (!actor || !['admin', 'manager'].includes(actor.role)) return c.json({ error: 'Admin or manager required' }, 403);
     const db = getDb(c.env);
     const key = c.req.param('key');
     const body = await c.req.json<{ value: string | number | boolean }>();
@@ -73,6 +75,8 @@ adminSettings.put('/:key', async (c) => {
 // PUT /api/admin/settings — batch update multiple settings
 adminSettings.put('/', async (c) => {
   try {
+    const actor = (c as any).var?.user;
+    if (!actor || !['admin', 'manager'].includes(actor.role)) return c.json({ error: 'Admin or manager required' }, 403);
     const db = getDb(c.env);
     const body = await c.req.json<Record<string, string | number | boolean>>();
     if (!body || Object.keys(body).length === 0) return c.json({ error: 'No settings provided' }, 400);
@@ -89,6 +93,8 @@ adminSettings.put('/', async (c) => {
 // POST /api/admin/settings/reset — reset all settings to defaults
 adminSettings.post('/reset', async (c) => {
   try {
+    const actor = (c as any).var?.user;
+    if (!actor || !['admin', 'manager'].includes(actor.role)) return c.json({ error: 'Admin or manager required' }, 403);
     const db = getDb(c.env);
     await execute(db, 'UPDATE system_settings SET value = NULL, updated_at = datetime(\'now\')');
     return c.json({ success: true, message: 'All settings reset to defaults' });

@@ -310,7 +310,7 @@ export function useShiftPlanning() {
     const plan = plansRef.current.find((p) => p.id === planId);
     if (!plan) return;
     try {
-      await apiFetch('/admin/shift-plans', {
+      await apiFetch('/shift-plans', {
         method: 'POST',
         body: JSON.stringify(plan),
       });
@@ -322,7 +322,7 @@ export function useShiftPlanning() {
 
   const loadPlansFromServer = useCallback(async () => {
     try {
-      const data = await apiFetch('/admin/shift-plans') as ShiftPlan[];
+      const data = await apiFetch('/shift-plans') as ShiftPlan[];
       if (Array.isArray(data) && data.length > 0) {
         setPlans((prev) => {
           // Merge server plans with local (server wins on conflict)

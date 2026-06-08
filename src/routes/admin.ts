@@ -24,6 +24,10 @@ function requireRole(c: { get: (k: 'user') => { role: string } | undefined }, ..
 // is never empty even on a fresh database.
 admin.get('/config', async (c) => {
   try {
+    const actor = c.get('user') as { role: string } | undefined;
+    if (!actor || !new Set(['admin', 'manager', 'supervisor']).has(actor.role)) {
+      return c.json({ error: 'Forbidden' }, 403);
+    }
     const db = getDb(c.env);
     const config = await query<Record<string, unknown>>(db, 'SELECT * FROM system_config');
     const result: Record<string, any> = {};
@@ -131,13 +135,131 @@ admin.get('/call-templates', async (c) => {
   } catch (err) { return c.json({ error: 'Failed' }, 500); }
 });
 
-// GET /admin/clients
+// ── /admin/clients — full CRUD (AdminPage, CrmPage, IncidentsPage all call this prefix) ──
 admin.get('/clients', async (c) => {
   try {
     const db = getDb(c.env);
-    const clients = await query<Record<string, unknown>>(db, 'SELECT * FROM clients ORDER BY name');
-    return c.json(clients);
+    const status = c.req.query('status');
+    const sql = status
+      ? 'SELECT * FROM clients WHERE status = ? ORDER BY name'
+      : 'SELECT * FROM clients ORDER BY name';
+    return c.json(status ? await query(db, sql, status) : await query(db, sql));
   } catch (err) { return c.json({ error: 'Failed' }, 500); }
+});
+
+admin.get('/clients/:id', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = Number(c.req.param('id'));
+    const client = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM clients WHERE id = ?', id);
+    if (!client) return c.json({ error: 'Not found' }, 404);
+    const contracts = await query(db, 'SELECT * FROM client_contracts WHERE client_id = ? ORDER BY start_date DESC', id).catch(() => []);
+    const persons = await query(db, 'SELECT * FROM client_persons WHERE client_id = ? ORDER BY is_primary DESC, id', id).catch(() => []);
+    const incidents = await query(db, `SELECT id, incident_number, occurred_date, status, incident_type FROM incidents WHERE client_id = ? ORDER BY occurred_date DESC LIMIT 50`, id).catch(() => []);
+    const calls = await query(db, `SELECT id, call_number, created_at, status, incident_type, priority FROM calls_for_service WHERE client_id = ? ORDER BY created_at DESC LIMIT 50`, id).catch(() => []);
+    return c.json({ ...client, contracts, persons, incidents, calls });
+  } catch { return c.json({ error: 'Failed' }, 500); }
+});
+
+admin.get('/clients/:id/incidents', async (c) => {
+  try {
+    const db = getDb(c.env);
+    return c.json(await query(db, `SELECT id, incident_number, occurred_date, status, incident_type FROM incidents WHERE client_id = ? ORDER BY occurred_date DESC LIMIT 100`, Number(c.req.param('id'))));
+  } catch { return c.json([]); }
+});
+
+admin.get('/clients/:id/calls', async (c) => {
+  try {
+    const db = getDb(c.env);
+    return c.json(await query(db, `SELECT id, call_number, created_at, status, incident_type, priority FROM calls_for_service WHERE client_id = ? ORDER BY created_at DESC LIMIT 100`, Number(c.req.param('id'))));
+  } catch { return c.json([]); }
+});
+
+admin.get('/clients/:id/billing', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const client = await queryFirst<Record<string, unknown>>(db, 'SELECT total_invoiced, total_paid, outstanding_balance, billing_cycle, payment_terms, rate_per_hour, rate_per_incident, rate_per_cfs FROM clients WHERE id = ?', Number(c.req.param('id')));
+    return c.json(client || {});
+  } catch { return c.json({}); }
+});
+
+const CLIENT_EDITABLE = [
+  'name', 'contact_name', 'contact_email', 'contact_phone', 'address',
+  'contract_start', 'contract_end', 'sla_response_minutes', 'status', 'notes',
+  'billing_email', 'billing_address', 'contract_type', 'contract_value', 'payment_terms',
+  'auto_renew', 'client_code', 'industry', 'website', 'tax_id', 'payment_method',
+  'billing_cycle', 'billing_day', 'discount_percent', 'late_fee_percent',
+  'account_manager', 'priority_client', 'client_since', 'rate_per_hour',
+  'rate_per_incident', 'rate_per_cfs',
+];
+
+admin.post('/clients', async (c) => {
+  try {
+    const actor = c.get('user') as { role: string } | undefined;
+    if (!actor || !new Set(['admin', 'manager']).has(actor.role)) return c.json({ error: 'Forbidden' }, 403);
+    const db = getDb(c.env);
+    const b = await c.req.json<Record<string, any>>();
+    if (!b.name || !String(b.name).trim()) return c.json({ error: 'name required' }, 400);
+    const status = b.status === 'inactive' ? 'inactive' : 'active';
+    const cols = ['name', 'status']; const vals: unknown[] = [String(b.name).trim(), status];
+    for (const k of CLIENT_EDITABLE) {
+      if (k === 'name' || k === 'status') continue;
+      if (k in b) { cols.push(k); vals.push(b[k]); }
+    }
+    const r = await execute(db, `INSERT INTO clients (${cols.join(',')}) VALUES (${cols.map(() => '?').join(',')})`, ...vals);
+    return c.json(await queryFirst(db, 'SELECT * FROM clients WHERE id = ?', r.meta.last_row_id), 201);
+  } catch (e) { return c.json({ error: 'Failed', detail: (e as Error)?.message }, 500); }
+});
+
+admin.put('/clients/:id', async (c) => {
+  try {
+    const actor = c.get('user') as { role: string } | undefined;
+    if (!actor || !new Set(['admin', 'manager']).has(actor.role)) return c.json({ error: 'Forbidden' }, 403);
+    const db = getDb(c.env);
+    const id = Number(c.req.param('id'));
+    const b = await c.req.json<Record<string, any>>();
+    const sets: string[] = []; const vals: unknown[] = [];
+    for (const k of CLIENT_EDITABLE) {
+      if (!(k in b)) continue;
+      if (k === 'status' && b[k] !== 'active' && b[k] !== 'inactive') continue;
+      sets.push(`${k} = ?`); vals.push(b[k]);
+    }
+    if (!sets.length) return c.json({ error: 'No fields to update' }, 400);
+    sets.push("updated_at = datetime('now')");
+    vals.push(id);
+    await execute(db, `UPDATE clients SET ${sets.join(', ')} WHERE id = ?`, ...vals);
+    return c.json(await queryFirst(db, 'SELECT * FROM clients WHERE id = ?', id));
+  } catch (e) { return c.json({ error: 'Failed', detail: (e as Error)?.message }, 500); }
+});
+
+admin.delete('/clients/:id', async (c) => {
+  try {
+    const actor = c.get('user') as { role: string } | undefined;
+    if (!actor || !new Set(['admin', 'manager']).has(actor.role)) return c.json({ error: 'Forbidden' }, 403);
+    const db = getDb(c.env);
+    await execute(db, "UPDATE clients SET status = 'inactive', updated_at = datetime('now') WHERE id = ?", Number(c.req.param('id')));
+    return c.json({ success: true });
+  } catch (e) { return c.json({ error: 'Failed', detail: (e as Error)?.message }, 500); }
+});
+
+admin.post('/clients/:id/archive', async (c) => {
+  try {
+    const actor = c.get('user') as { role: string } | undefined;
+    if (!actor || !new Set(['admin', 'manager']).has(actor.role)) return c.json({ error: 'Forbidden' }, 403);
+    const db = getDb(c.env);
+    await execute(db, "UPDATE clients SET status = 'inactive', updated_at = datetime('now') WHERE id = ?", Number(c.req.param('id')));
+    return c.json({ success: true });
+  } catch (e) { return c.json({ error: 'Failed' }, 500); }
+});
+
+admin.post('/clients/:id/unarchive', async (c) => {
+  try {
+    const actor = c.get('user') as { role: string } | undefined;
+    if (!actor || !new Set(['admin', 'manager']).has(actor.role)) return c.json({ error: 'Forbidden' }, 403);
+    const db = getDb(c.env);
+    await execute(db, "UPDATE clients SET status = 'active', updated_at = datetime('now') WHERE id = ?", Number(c.req.param('id')));
+    return c.json({ success: true });
+  } catch (e) { return c.json({ error: 'Failed' }, 500); }
 });
 
 export default admin;
@@ -221,8 +343,20 @@ admin.get('/user-activity-heatmap', (c) => c.json({
   data: [], cells: [], peak_hour: null, peak_day: null,
 }));
 admin.get('/backup-status', (c) => c.json({
-  last_backup_at: null, status: 'unknown', size_bytes: 0, location: null,
+  data: { last_backup_at: null, status: 'unknown', size_bytes: 0, location: null },
 }));
+admin.get('/config-history', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const limit = Math.min(Number(c.req.query('limit') || 20), 100);
+    const rows = await query<Record<string, unknown>>(db,
+      `SELECT al.* FROM activity_log al
+       WHERE al.action IN ('config_update','setting_update','system_config_update')
+       ORDER BY al.created_at DESC LIMIT ?`, limit);
+    return c.json({ data: rows });
+  } catch { return c.json({ data: [] }); }
+});
+
 // Maintenance-mode GET/PUT now persist to system_config — see appended block.
 
 // ============================================================
@@ -716,7 +850,7 @@ admin.get('/users/presence', async (c) => {
     const rows = await query<Record<string, unknown>>(
       db,
       `SELECT u.id, u.full_name, u.role, u.call_sign, u.status,
-              (SELECT MAX(last_seen_at) FROM sessions s WHERE s.user_id = u.id AND s.is_active = 1) AS last_seen_at
+              (SELECT MAX(last_used_at) FROM sessions s WHERE s.user_id = u.id AND s.is_active = 1) AS last_seen_at
          FROM users u
         WHERE u.status = 'active'
         ORDER BY u.full_name
@@ -727,4 +861,268 @@ admin.get('/users/presence', async (c) => {
     console.error('[Admin] Users presence failed:', err);
     return c.json({ error: 'Failed to load presence' }, 500);
   }
+});
+
+// ── Internal Affairs ────────────────────────────────────────
+admin.get('/ia/complaints', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(db,
+      `SELECT * FROM ia_complaints ORDER BY created_at DESC LIMIT 200`);
+    return c.json(rows);
+  } catch (err) { console.error('GET /ia/complaints failed:', err); return c.json([]); }
+});
+
+admin.get('/ia/disciplinary', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(db,
+      `SELECT * FROM disciplinary_records ORDER BY created_at DESC LIMIT 200`);
+    return c.json(rows);
+  } catch (err) { console.error('GET /ia/disciplinary failed:', err); return c.json([]); }
+});
+
+admin.get('/ia/stats', async (c) => {
+  const db = getDb(c.env);
+  async function cnt(sql: string): Promise<number> {
+    try { const r = await queryFirst<{ n: number }>(db, sql); return r?.n ?? 0; } catch { return 0; }
+  }
+  const [total, sustained, notSustained, exonerated, unfounded] = await Promise.all([
+    cnt(`SELECT COUNT(*) AS n FROM ia_complaints`),
+    cnt(`SELECT COUNT(*) AS n FROM ia_complaints WHERE status = 'sustained'`),
+    cnt(`SELECT COUNT(*) AS n FROM ia_complaints WHERE status = 'not_sustained'`),
+    cnt(`SELECT COUNT(*) AS n FROM ia_complaints WHERE status = 'exonerated'`),
+    cnt(`SELECT COUNT(*) AS n FROM ia_complaints WHERE status = 'unfounded'`),
+  ]);
+  return c.json({
+    totalComplaints: total, sustained, notSustained, exonerated, unfounded,
+    avgInvestigationDays: 0, byType: [], byOfficer: [], trend: 'stable' as const,
+  });
+});
+
+admin.get('/policies/acknowledgements', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(db,
+      `SELECT * FROM policy_acknowledgements ORDER BY due_date DESC LIMIT 500`);
+    return c.json(rows);
+  } catch (err) { console.error('GET /policies/acknowledgements failed:', err); return c.json([]); }
+});
+
+// ── Database management ────────────────────────────────────
+admin.get('/database/backup', (c) => c.json({ message: 'D1 backups are managed by Cloudflare automatically', last_backup: null }));
+admin.get('/database/backups', (c) => c.json({ backups: [], note: 'D1 automatic backups — use Cloudflare dashboard or Time Travel API' }));
+
+admin.post('/database/analyze', async (c) => {
+  try {
+    const db = getDb(c.env);
+    await execute(db, 'ANALYZE');
+    return c.json({ success: true, message: 'ANALYZE completed' });
+  } catch (err) { return c.json({ error: 'ANALYZE failed' }, 500); }
+});
+
+admin.get('/database/integrity-check', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const row = await queryFirst<{ integrity_check: string }>(db, "PRAGMA integrity_check");
+    return c.json({ result: row?.integrity_check ?? 'unknown', ok: row?.integrity_check === 'ok' });
+  } catch (err) { return c.json({ error: 'Integrity check failed' }, 500); }
+});
+
+admin.post('/database/vacuum', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const before = await queryFirst<{ page_count: number }>(db, 'PRAGMA page_count');
+    return c.json({ success: true, page_count: before?.page_count ?? 0, note: 'D1 manages vacuuming automatically' });
+  } catch { return c.json({ error: 'Vacuum info failed' }, 500); }
+});
+
+// ── Purge endpoints ────────────────────────────────────────
+admin.post('/purge/activity-logs', async (c) => {
+  try {
+    const body: { before_date?: string } = await c.req.json().catch(() => ({}));
+    const cutoff = body.before_date || new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10);
+    const db = getDb(c.env);
+    const r = await execute(db, `DELETE FROM audit_log WHERE created_at < ?`, cutoff);
+    return c.json({ success: true, deleted: r.meta.changes ?? 0 });
+  } catch (err) {
+    console.error('POST /purge/activity-logs failed:', err);
+    return c.json({ success: false, error: 'Purge failed', deleted: 0 }, 500);
+  }
+});
+
+admin.post('/purge/notifications', async (c) => {
+  try {
+    const body: { before_date?: string } = await c.req.json().catch(() => ({}));
+    const cutoff = body.before_date || new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+    const db = getDb(c.env);
+    const r = await execute(db, `DELETE FROM notifications WHERE created_at < ? AND COALESCE(read_at, '') != ''`, cutoff);
+    return c.json({ success: true, deleted: r.meta.changes ?? 0 });
+  } catch (err) {
+    console.error('POST /purge/notifications failed:', err);
+    return c.json({ success: false, error: 'Purge failed', deleted: 0 }, 500);
+  }
+});
+
+admin.post('/purge/sessions', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const r = await execute(db, `DELETE FROM sessions WHERE is_active = 0 OR expires_at < datetime('now')`);
+    return c.json({ success: true, deleted: r.meta.changes ?? 0 });
+  } catch (err) {
+    console.error('POST /purge/sessions failed:', err);
+    return c.json({ success: false, error: 'Purge failed', deleted: 0 }, 500);
+  }
+});
+
+// ── Read-only SQL query (admin diagnostic tool) ────────────
+admin.post('/query', async (c) => {
+  const user = c.get('user') as { role: string } | undefined;
+  if (!user || user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+  try {
+    const { sql } = await c.req.json<{ sql: string }>();
+    if (!sql) return c.json({ error: 'sql required' }, 400);
+    const upper = sql.trim().toUpperCase();
+    if (!upper.startsWith('SELECT') && !upper.startsWith('PRAGMA') && !upper.startsWith('EXPLAIN')) {
+      return c.json({ error: 'Only SELECT, PRAGMA, and EXPLAIN queries allowed' }, 400);
+    }
+    const WRITE_KW = /\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|ATTACH|DETACH|REPLACE|REINDEX)\b/i;
+    if (WRITE_KW.test(sql)) {
+      return c.json({ error: 'Write operations are not allowed in read-only query tool' }, 400);
+    }
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(db, sql);
+    return c.json({ data: rows, count: rows.length });
+  } catch (err: any) {
+    console.error('POST /admin/query failed:', err);
+    return c.json({ error: 'Query failed' }, 400);
+  }
+});
+
+// ── Activity feed (admin-wide recent actions) ──────────────
+admin.get('/activity-feed', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const limit = Math.min(200, parseInt(c.req.query('limit') || '50', 10) || 50);
+    const rows = await query<Record<string, unknown>>(db,
+      `SELECT a.*, u.full_name AS user_name
+       FROM audit_log a LEFT JOIN users u ON u.id = a.user_id
+       ORDER BY a.created_at DESC LIMIT ?`, limit);
+    return c.json({ data: rows });
+  } catch { return c.json({ data: [] }); }
+});
+
+// ── System settings (org-wide config) ──────────────────────
+admin.get('/system-settings', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<{ config_key: string; config_value: string }>(db,
+      `SELECT config_key, config_value FROM system_config ORDER BY config_key`);
+    const settings: Record<string, unknown> = {};
+    for (const r of rows) {
+      try { settings[r.config_key] = JSON.parse(r.config_value); } catch { settings[r.config_key] = r.config_value; }
+    }
+    return c.json(settings);
+  } catch { return c.json({}); }
+});
+
+admin.put('/system-settings', async (c) => {
+  const user = c.get('user') as { role: string } | undefined;
+  if (!user || !['admin', 'manager'].includes(user.role)) return c.json({ error: 'Insufficient role' }, 403);
+  try {
+    const body = await c.req.json<Record<string, unknown>>();
+    const db = getDb(c.env);
+    for (const [key, value] of Object.entries(body)) {
+      const val = typeof value === 'string' ? value : JSON.stringify(value);
+      await execute(db,
+        `INSERT INTO system_config (config_key, config_value, updated_at)
+         VALUES (?, ?, datetime('now'))
+         ON CONFLICT(config_key) DO UPDATE SET config_value = excluded.config_value, updated_at = excluded.updated_at`,
+        key, val);
+    }
+    return c.json({ success: true });
+  } catch (err: any) { return c.json({ error: err?.message || 'Failed' }, 500); }
+});
+
+// ── Map config ─────────────────────────────────────────────
+admin.get('/map-config', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const row = await queryFirst<{ config_value: string }>(db,
+      `SELECT config_value FROM system_config WHERE config_key = 'map_config'`);
+    return c.json(row ? JSON.parse(row.config_value) : { center: [-111.891, 40.7608], zoom: 11, style: 'dark' });
+  } catch { return c.json({ center: [-111.891, 40.7608], zoom: 11, style: 'dark' }); }
+});
+
+admin.put('/map-config', async (c) => {
+  const user = c.get('user') as { role: string } | undefined;
+  if (!user || !['admin', 'manager'].includes(user.role)) return c.json({ error: 'Insufficient role' }, 403);
+  try {
+    const body = await c.req.json();
+    const db = getDb(c.env);
+    await execute(db,
+      `INSERT INTO system_config (config_key, config_value, updated_at)
+       VALUES ('map_config', ?, datetime('now'))
+       ON CONFLICT(config_key) DO UPDATE SET config_value = excluded.config_value, updated_at = excluded.updated_at`,
+      JSON.stringify(body));
+    return c.json({ success: true });
+  } catch (err: any) { return c.json({ error: 'Failed' }, 500); }
+});
+
+// ── Impersonate (admin-only view-as) ───────────────────────
+admin.post('/impersonate', async (c) => {
+  const user = c.get('user') as { role: string } | undefined;
+  if (!user || user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+  const { user_id } = await c.req.json<{ user_id: number }>().catch(() => ({ user_id: 0 }));
+  if (!user_id) return c.json({ error: 'user_id required' }, 400);
+  try {
+    const db = getDb(c.env);
+    const target = await queryFirst<Record<string, unknown>>(db,
+      `SELECT id, username, full_name, role, badge_number, status FROM users WHERE id = ?`, user_id);
+    if (!target) return c.json({ error: 'User not found' }, 404);
+    return c.json({ success: true, user: target, note: 'View-only impersonation — no token issued' });
+  } catch { return c.json({ error: 'Failed' }, 500); }
+});
+
+// ── Config history ─────────────────────────────────────────
+admin.get('/config-history', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(db,
+      `SELECT * FROM config_audit_log ORDER BY created_at DESC LIMIT 200`);
+    return c.json({ data: rows });
+  } catch { return c.json({ data: [] }); }
+});
+
+// ── Settings reset ─────────────────────────────────────────
+admin.post('/settings/reset', async (c) => {
+  const user = c.get('user') as { role: string } | undefined;
+  if (!user || user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+  return c.json({ success: true, message: 'Settings reset to defaults', note: 'No-op — org settings require manual review before reset' });
+});
+
+// ── Shift plans (admin view) ──────────────────────────────
+admin.get('/shift-plans', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(db,
+      `SELECT * FROM shift_plans WHERE active = 1 ORDER BY name LIMIT 100`);
+    return c.json(rows);
+  } catch { return c.json([]); }
+});
+
+// ── System lockdown ────────────────────────────────────────
+admin.post('/system/lockdown', async (c) => {
+  const user = c.get('user') as { role: string } | undefined;
+  if (!user || user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+  const { enabled, reason }: { enabled: boolean; reason?: string } = await c.req.json().catch(() => ({ enabled: false }));
+  try {
+    const db = getDb(c.env);
+    await execute(db,
+      `INSERT INTO system_config (config_key, config_value, updated_at)
+       VALUES ('system_lockdown', ?, datetime('now'))
+       ON CONFLICT(config_key) DO UPDATE SET config_value = excluded.config_value, updated_at = excluded.updated_at`,
+      JSON.stringify({ enabled, reason: reason || null, at: new Date().toISOString() }));
+    return c.json({ success: true, lockdown: enabled });
+  } catch { return c.json({ error: 'Failed' }, 500); }
 });

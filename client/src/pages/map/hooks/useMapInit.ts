@@ -68,10 +68,6 @@ export function useMapInit(mapStyle: MapStyleId): UseMapInitResult {
       if (!mapRef.current || authFailed || cancelled) return;
       if (mapInstanceRef.current) { setMapLoaded(true); return; }
 
-      // Clear any leftover DOM from a prior map instance or React strict-mode
-      // double-mount — Mapbox warns "container element should be empty" and its
-      // internal mouse handlers produce NaN LngLat errors when stale children
-      // interfere with the projection matrix initialisation.
       while (mapRef.current.firstChild) {
         mapRef.current.removeChild(mapRef.current.firstChild);
       }

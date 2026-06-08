@@ -89,15 +89,15 @@ const fmtDate = (iso: string | null | undefined): string => {
 };
 
 const TRIP_LOG_COLUMNS: TableColumn[] = [
-  { key: 'type',         header: 'Type',         ratio: 0.6 },
-  { key: 'call_number',  header: 'Call #',       ratio: 0.9 },
-  { key: 'start',        header: 'Start',        ratio: 0.6 },
-  { key: 'end',          header: 'End',          ratio: 0.6 },
-  { key: 'distance_mi',  header: 'Dist (mi)',    ratio: 0.6 },
-  { key: 'duration_min', header: 'Dur (m)',      ratio: 0.5 },
-  { key: 'mileage',      header: 'Mileage',      ratio: 1.4 },
-  { key: 'max_mph',      header: 'Max MPH',      ratio: 0.6 },
-  { key: 'harsh',        header: 'Harsh (A/B/C)',ratio: 1.0 },
+  { key: 'type',         header: 'Type',          ratio: 0.7 },
+  { key: 'call_number',  header: 'Call #',        ratio: 0.9 },
+  { key: 'start',        header: 'Start',         ratio: 0.5 },
+  { key: 'end',          header: 'End',            ratio: 0.5 },
+  { key: 'distance_mi',  header: 'Dist (mi)',     ratio: 0.6 },
+  { key: 'duration_min', header: 'Dur (m)',        ratio: 0.5 },
+  { key: 'mileage',      header: 'Mileage',       ratio: 1.6 },
+  { key: 'max_mph',      header: 'Max MPH',       ratio: 0.6 },
+  { key: 'harsh',        header: 'Harsh (A/B/C)', ratio: 0.9 },
 ];
 
 export const tripLogSchema: FormSchema<TripLogData> = {
@@ -179,7 +179,7 @@ export const tripLogSchema: FormSchema<TripLogData> = {
             distance_mi: fmtMin(r.distance_mi),
             duration_min: fmtMin(r.duration_min),
             mileage: r.mileage_from != null && r.mileage_to != null
-              ? `${fmtMi(r.mileage_from)}→${fmtMi(r.mileage_to)}`
+              ? `${fmtMi(r.mileage_from)}-${fmtMi(r.mileage_to)}`
               : '—',
             max_mph: fmtMph(r.max_mph),
             harsh: fmtHarsh(r.harsh),

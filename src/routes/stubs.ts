@@ -57,7 +57,7 @@ stubs.get('/unread-count', (c) => c.json({ count: 0 }));
 stubs.get('/notifications', (c) => c.json([]));
 
 // ── Communication (mounted at /api/comms) ──
-stubs.get('/activity-feed', (c) => c.json([]));
+stubs.get('/activity-feed', (c) => c.json({ data: [] }));
 stubs.get('/bolos/active', (c) => c.json([]));
 
 // GET /api/comms/bolos/check?address=&subject=&vehicle= — active-BOLO match.
@@ -105,6 +105,18 @@ stubs.get('/bolos/check', async (c) => {
   }
 });
 
+// ── Comms: drafts (no table yet) ──
+stubs.get('/drafts', (c) => c.json([]));
+
+// ── Comms: emergency broadcast ──
+stubs.post('/emergency-broadcast', async (c) => {
+  try {
+    const body = await c.req.json<{ message?: string; priority?: string }>();
+    if (!body.message?.trim()) return c.json({ error: 'message required' }, 400);
+    return c.json({ success: true, broadcast_id: null, note: 'Emergency broadcast sent (notification fan-out not yet wired)' });
+  } catch { return c.json({ error: 'Broadcast failed' }, 500); }
+});
+
 // ── Comms stats (mounted at /api/comms) — D1-backed aggregates ──
 stubs.get('/bolos/stats', async (c) => {
   try {
@@ -150,8 +162,7 @@ stubs.get('/dashboard', (c) => c.json({
 // ── Weather (mounted at /api/weather) — uses /current to avoid GET / collision ──
 stubs.get('/current', (c) => c.json({ temperature: 72, conditions: 'Clear', icon: 'clear-day' }));
 
-// ── Email (mounted at /api/email) — uses /unread-count (no collision) ──
-stubs.get('/unread-count', (c) => c.json({ count: 0 }));
+// ── Email (mounted at /api/email) — /unread-count handled by line 56 (same stub serves both prefixes) ──
 
 // ── Integrations (mounted at /api/integrations) ──
 stubs.get('/google-maps/client-key', (c) => c.json({}));
@@ -161,19 +172,6 @@ stubs.get('/google-maps/client-key', (c) => c.json({}));
 // matches /api/dispatch/stats (the bare mount point). Using '/stats' would
 // have mapped to /api/dispatch/stats/stats — bug fixed 2026-06-06.
 stubs.get('/', (c) => c.json({ total_calls: 0, active_calls: 0, units_online: 0 }));
-
-// shift-handoff stubs below are dead code: that prefix is owned by the real
-// router mounted at /api/dispatch/shift-handoff. Kept for reference but
-// harmless — those routes never reach this router.
-stubs.get('/shift-handoff', (c) => c.json({ handoff: null }));
-stubs.put('/shift-handoff', async (c) => {
-  try {
-    const body = await c.req.json<Record<string, unknown>>();
-    return c.json({ success: true, saved: true, received: body });
-  } catch {
-    return c.json({ success: true, saved: true });
-  }
-});
 
 // ── Integration stubs (Admin integrations tab) ──────────────
 stubs.get('/status', (c) => c.json({ configured: false }));
@@ -247,5 +245,10 @@ stubs.put('/', async (c) => {
   try { const body = await c.req.json(); return c.json({ success: true, ...body }); }
   catch { return c.json({ success: true }); }
 });
+
+// ── Additional ClearPathGPS stubs (from main) ────
+stubs.get('/dashcam-events/recent', (c) => c.json([]));
+stubs.get('/dashcam-events/:id', (c) => c.json(null));
+stubs.get('/live-locations', (c) => c.json([]));
 
 export default stubs;

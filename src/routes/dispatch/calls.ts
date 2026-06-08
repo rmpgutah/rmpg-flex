@@ -1215,7 +1215,7 @@ calls.post('/:id/redispatch', requireRole('admin', 'manager', 'supervisor', 'dis
     if (!['pso_client_request', 'process_service'].includes(String(parentBase.incident_type))) {
       return c.json({ error: 'Re-dispatch is only available for PSO Client Request and Process Service calls', code: 'REDISPATCH_TYPE_INVALID' }, 400);
     }
-    if (!['cleared', 'closed', 'cancelled', 'on_hold', 'archived'].includes(String(parentBase.status))) {
+    if (!['cleared', 'closed', 'cancelled', 'archived'].includes(String(parentBase.status))) {
       return c.json({ error: 'Call must be cleared, closed, cancelled, on hold, or archived to re-dispatch', code: 'CALL_MUST_BE_INACTIVE' }, 400);
     }
 
@@ -1368,6 +1368,33 @@ calls.post('/:id/undo-redispatch', requireRole('admin', 'manager', 'supervisor',
   } catch (err) {
     console.error('Undo redispatch error:', err);
     return c.json({ error: `Failed to undo return visit: ${(err as Error)?.message || 'unknown'}`, code: 'UNDO_REDISPATCH_ERROR' }, 500);
+  }
+});
+
+// ── POST /dispatch/calls/bulk-reassign ──────────────────────
+calls.post('/bulk-reassign', requireRole(...WRITE_ROLES), async (c) => {
+  try {
+    const body = await c.req.json<{ call_ids: number[]; unit_id: number }>();
+    if (!Array.isArray(body.call_ids) || !body.call_ids.length || !body.unit_id) {
+      return c.json({ error: 'call_ids (array) and unit_id required' }, 400);
+    }
+    const db = getDb(c.env);
+    const unit = await queryFirst<{ id: number; unit_number: string }>(db,
+      'SELECT id, unit_number FROM units WHERE id = ?', body.unit_id);
+    if (!unit) return c.json({ error: 'Unit not found' }, 404);
+    let updated = 0;
+    for (const callId of body.call_ids.slice(0, 50)) {
+      try {
+        await execute(db,
+          `UPDATE calls_for_service SET assigned_unit_ids = ?, updated_at = datetime('now','localtime') WHERE id = ?`,
+          JSON.stringify([body.unit_id]), callId);
+        updated++;
+      } catch { /* skip individual failures */ }
+    }
+    broadcastAll('dispatch_update', { action: 'bulk_reassign', unit_id: body.unit_id, call_ids: body.call_ids });
+    return c.json({ success: true, updated, total: body.call_ids.length });
+  } catch (err) {
+    return c.json({ error: 'Bulk reassign failed' }, 500);
   }
 });
 

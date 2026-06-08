@@ -812,4 +812,105 @@ forensics.get('/export/csv', async (c) => {
   }
 });
 
+// ── QC / reporting / planning endpoints (ForensicLabPage reads these) ──
+
+forensics.get('/turnaround-times', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(db,
+      `SELECT case_type,
+              COUNT(*) AS total,
+              ROUND(AVG(CAST((julianday(COALESCE(completed_at, datetime('now'))) - julianday(created_at)) AS REAL)), 1) AS avg_days,
+              MIN(CAST((julianday(COALESCE(completed_at, datetime('now'))) - julianday(created_at)) AS REAL)) AS min_days,
+              MAX(CAST((julianday(COALESCE(completed_at, datetime('now'))) - julianday(created_at)) AS REAL)) AS max_days
+       FROM forensic_cases WHERE archived_at IS NULL
+       GROUP BY case_type ORDER BY avg_days DESC`);
+    return c.json({ data: rows });
+  } catch { return c.json({ data: [] }); }
+});
+
+forensics.get('/metrics/backlog', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(db,
+      `SELECT case_type, priority, COUNT(*) AS count
+       FROM forensic_cases WHERE status NOT IN ('completed','cancelled') AND archived_at IS NULL
+       GROUP BY case_type, priority ORDER BY priority, case_type`);
+    return c.json({ data: rows });
+  } catch { return c.json({ data: [] }); }
+});
+
+forensics.get('/:id/qc-history', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = Number(c.req.param('id'));
+    const rows = await query<Record<string, unknown>>(db,
+      `SELECT * FROM activity_log WHERE entity_type = 'forensic_case' AND entity_id = ? AND action LIKE '%qc%' ORDER BY created_at DESC LIMIT 50`, id);
+    return c.json({ data: rows });
+  } catch { return c.json({ data: [] }); }
+});
+
+forensics.get('/analysis-templates', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(db,
+      'SELECT * FROM forensic_analysis_templates WHERE active = 1 ORDER BY case_type, name');
+    return c.json({ data: rows });
+  } catch { return c.json({ data: [] }); }
+});
+
+forensics.post('/:id/qc-check', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = Number(c.req.param('id'));
+    const body = await c.req.json<Record<string, unknown>>();
+    const userId = c.get('userId') as number;
+    const fc = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM forensic_cases WHERE id = ?', id);
+    if (!fc) return c.json({ error: 'Case not found' }, 404);
+    await execute(db,
+      `INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
+       VALUES (?, 'qc_check', 'forensic_case', ?, ?, datetime('now'))`,
+      userId, id, JSON.stringify({ result: body.result || 'pass', notes: body.notes || '' }));
+    return c.json({ success: true });
+  } catch { return c.json({ error: 'QC check failed' }, 500); }
+});
+
+forensics.get('/queue/priority', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(db,
+      `SELECT * FROM forensic_cases
+       WHERE status NOT IN ('completed','cancelled') AND archived_at IS NULL
+       ORDER BY CASE priority WHEN 'critical' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 ELSE 4 END, created_at
+       LIMIT 50`);
+    return c.json({ data: rows });
+  } catch { return c.json({ data: [] }); }
+});
+
+forensics.get('/templates/report', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(db,
+      'SELECT * FROM forensic_report_templates WHERE active = 1 ORDER BY name');
+    return c.json({ data: rows });
+  } catch { return c.json({ data: [] }); }
+});
+
+forensics.get('/capacity/planning', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const active = await queryFirst<{ count: number }>(db,
+      "SELECT COUNT(*) AS count FROM forensic_cases WHERE status NOT IN ('completed','cancelled') AND archived_at IS NULL");
+    const avgPerWeek = await queryFirst<{ avg: number }>(db,
+      `SELECT ROUND(COUNT(*) / MAX(1, (julianday('now') - julianday(MIN(created_at))) / 7.0), 1) AS avg
+       FROM forensic_cases WHERE created_at >= datetime('now', '-90 days')`);
+    return c.json({
+      data: {
+        active_cases: active?.count ?? 0,
+        avg_new_per_week: avgPerWeek?.avg ?? 0,
+      },
+    });
+  } catch { return c.json({ data: { active_cases: 0, avg_new_per_week: 0 } }); }
+});
+
 export default forensics;

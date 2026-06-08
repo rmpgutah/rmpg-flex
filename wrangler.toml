@@ -96,36 +96,26 @@ bucket_name = "rmpg-flex-uploads"
 binding = "DOWNLOADS"
 bucket_name = "rmpg-flex-downloads"
 
-# ─── Cloudflare Containers ─────────────────────────────────
-# PDF Tools sidecar (qpdf + pdftotext + ocrmypdf). The Worker
-# can't shell out to native binaries — this container holds
-# them and the Worker proxies via
-#   getContainer(env.PDF_TOOLS, "shared").fetch(req)
-# See containers/pdf-tools/ for the Dockerfile + FastAPI server.
+# ─── PDF Tools Container (DISABLED) ───────────────────────
+# The PdfToolsContainer sidecar is intentionally OFF in prod.
+# Serve-intake OCR uses browser pdfjs (born-digital) + Workers AI
+# Vision (scanned images) instead. The [[containers]] block was
+# removed because it caused every Cloudflare Workers Builds deploy
+# to fail with "already an application with the name
+# rmpg-flex-api-pdftoolscontainer deployed that is associated with
+# a different durable object namespace". GitHub Actions deploy.yml
+# used --containers-rollout=none to work around this, but Workers
+# Builds has no equivalent flag.
 #
-# instance_type = "basic" → 1/4 vCPU, 1 GiB RAM, 4 GB disk.
-# "lite" (default, 256 MiB) is too tight for Tesseract on
-# multi-page PDFs. Bump to "standard-1" (4 GiB) if OCR
-# throughput is a bottleneck.
-#
-# Docker is required at deploy time — GitHub Actions runners
-# have Docker; local dry-runs need Docker Desktop running OR
-# pass --containers-rollout=none to skip the container build.
-[[containers]]
-class_name = "PdfToolsContainer"
-image = "./containers/pdf-tools/Dockerfile"
-max_instances = 3
-instance_type = "basic"
+# The DO binding + migration tag MUST stay — removing the migration
+# tag breaks the prefix chain (v1-pdftools → v2-voicehub → v3-alerthub),
+# and the binding is referenced in src/types.ts + route handlers
+# (calls are guarded by try/catch so they degrade gracefully).
 
 [[durable_objects.bindings]]
 name = "PDF_TOOLS"
 class_name = "PdfToolsContainer"
 
-# new_sqlite_classes is required for container-enabled DOs
-# even though we don't actually use the storage — the Container
-# base class extends DurableObject and needs SQLite-backed
-# state for lifecycle bookkeeping (sleepAfter timer, etc).
-# Tag is namespaced so it doesn't collide with v1 above.
 [[migrations]]
 tag = "v1-pdftools"
 new_sqlite_classes = ["PdfToolsContainer"]

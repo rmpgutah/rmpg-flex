@@ -653,4 +653,51 @@ ct.put('/events/:id/bail', async (c) => {
   return c.json({ success: true });
 });
 
+// ── GET /dashboard — court overview tiles ──────────────────
+ct.get('/dashboard', async (c) => {
+  const db = getDb(c.env);
+  const safe = async (sql: string): Promise<number> => {
+    try { const r = await queryFirst<{ n: number }>(db, sql); return r?.n ?? 0; } catch { return 0; }
+  };
+  const [total, scheduled, upcoming7d, completedThisMonth, noShows, continuances] = await Promise.all([
+    safe('SELECT COUNT(*) AS n FROM court_events'),
+    safe("SELECT COUNT(*) AS n FROM court_events WHERE status = 'scheduled'"),
+    safe(`SELECT COUNT(*) AS n FROM court_events WHERE event_date BETWEEN date('now','localtime') AND date('now','localtime','+7 days') AND status NOT IN ('cancelled','completed')`),
+    safe(`SELECT COUNT(*) AS n FROM court_events WHERE status = 'completed' AND substr(event_date,1,7) = substr(date('now','localtime'),1,7)`),
+    safe("SELECT COUNT(*) AS n FROM court_events WHERE status = 'no_show'"),
+    safe("SELECT COUNT(*) AS n FROM court_events WHERE status = 'continued'"),
+  ]);
+  return c.json({ total, scheduled, upcoming7d, completedThisMonth, noShows, continuances });
+});
+
+// ── GET /appearances — officer court appearance schedule ────
+ct.get('/appearances', async (c) => {
+  const officerId = c.req.query('officer_id');
+  const from = c.req.query('from') || new Date().toISOString().slice(0, 10);
+  const to = c.req.query('to') || new Date(Date.now() + 90 * 86400000).toISOString().slice(0, 10);
+  try {
+    const db = getDb(c.env);
+    const where = officerId
+      ? `WHERE event_date BETWEEN ? AND ? AND officers_required LIKE ? AND status NOT IN ('cancelled')`
+      : `WHERE event_date BETWEEN ? AND ? AND status NOT IN ('cancelled')`;
+    const params = officerId ? [from, to, `%${officerId}%`] : [from, to];
+    const rows = await query<any>(db,
+      `SELECT id, event_number, event_type, status, event_date, event_time,
+              court_name, courtroom, defendant_name, officers_required
+       FROM court_events ${where}
+       ORDER BY event_date ASC, event_time ASC LIMIT 500`, ...params);
+    return c.json(rows);
+  } catch { return c.json([]); }
+});
+
+// ── GET /discovery — discovery tracking (stub, no table yet) ─
+ct.get('/discovery', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(db,
+      `SELECT * FROM court_discovery ORDER BY due_date ASC LIMIT 200`);
+    return c.json(rows);
+  } catch { return c.json([]); }
+});
+
 export default ct;

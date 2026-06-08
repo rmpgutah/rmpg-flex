@@ -234,8 +234,8 @@ uploads.post('/', async (c) => {
   try {
     const db = getDb(c.env);
     const auth = await resolveAuth(c);
-    const userId = auth?.userId || (c.get('userId') as number | undefined);
-    if (!userId) return c.json({ error: 'Authentication required' }, 401);
+    if (!auth || !auth.userId) return c.json({ error: 'Authentication required' }, 401);
+    const userId = auth.userId;
 
     const formData = await c.req.formData();
     const rawFiles = formData.getAll('files');
@@ -343,10 +343,16 @@ uploads.delete('/:fileId', async (c) => {
     const auth = await resolveAuth(c);
     if (!auth || auth.username === 'signed-access') return c.json({ error: 'Authentication required' }, 401);
     const db = getDb(c.env);
-    const userId = auth?.userId ?? (c.get('userId') as number | undefined);
+    const userId = auth.userId;
     const fileId = c.req.param('fileId');
     const att = await queryFirst<any>(db, 'SELECT * FROM attachments WHERE file_id = ?', fileId);
     if (!att) return c.json({ error: 'File not found', code: 'FILE_NOT_FOUND' }, 404);
+
+    const user = c.get('user') as { id: number; role: string } | undefined;
+    const ADMIN_ROLES = new Set(['admin', 'manager', 'supervisor']);
+    if (att.uploaded_by !== userId && !ADMIN_ROLES.has(user?.role ?? '')) {
+      return c.json({ error: 'Not authorized to delete this file', code: 'FORBIDDEN' }, 403);
+    }
 
     try { await c.env.UPLOADS.delete(att.file_path); } catch { /* non-fatal */ }
 
