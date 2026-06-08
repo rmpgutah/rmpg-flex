@@ -980,12 +980,18 @@ calls.post('/:id/assign-unit', requireRole(...WRITE_ROLES), async (c) => {
       db, 'SELECT id, current_call_id, call_sign FROM units WHERE id = ?', unit_id);
     if (!unit) return c.json({ error: `Unit ${unit_id} does not exist`, code: 'UNIT_NOT_FOUND' }, 404);
     if (unit.current_call_id != null && unit.current_call_id !== callId) {
-      return c.json({
-        error: `Unit ${unit.call_sign ?? unit_id} is already committed to call ${unit.current_call_id} — unassign first`,
-        code: 'UNIT_ON_OTHER_CALL',
-        current_call_id: unit.current_call_id,
-        hint: `POST /api/dispatch/calls/${unit.current_call_id}/unassign-unit with { unit_id: ${unit_id} }`,
-      }, 409);
+      // Auto-unassign from old call so dispatchers can reassign in one step.
+      try {
+        const oldCall = await queryFirst<{ assigned_unit_ids: string }>(
+          db, 'SELECT assigned_unit_ids FROM calls_for_service WHERE id = ?', unit.current_call_id);
+        if (oldCall) {
+          let oldAssigned: number[] = [];
+          try { oldAssigned = JSON.parse(oldCall.assigned_unit_ids || '[]'); } catch { /* */ }
+          oldAssigned = oldAssigned.filter((u) => u !== unit_id);
+          await execute(db, 'UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?',
+            JSON.stringify(oldAssigned), unit.current_call_id);
+        }
+      } catch { /* best-effort — proceed with assignment even if old-call cleanup fails */ }
     }
     let assigned: number[] = []; try { assigned = JSON.parse(call.assigned_unit_ids || '[]'); if (!Array.isArray(assigned)) assigned = []; } catch { assigned = []; }
     if (!assigned.includes(unit_id)) assigned.push(unit_id);
