@@ -164,7 +164,15 @@ units.put('/:id', async (c) => {
     await execute(db, `UPDATE units SET ${sets.join(', ')} WHERE id = ?`, ...params);
     const updated = await queryFirst(db, 'SELECT * FROM units WHERE id = ?', id);
     return c.json(updated);
-  } catch (err) {
+  } catch (err: any) {
+    console.error('PUT /dispatch/units/:id failed:', err);
+    if (err?.message?.includes('CHECK constraint')) {
+      return c.json({ error: 'Invalid value for a constrained field (status, etc.)', code: 'CHECK_CONSTRAINT' }, 400);
+    }
+    if (err?.message?.includes('no such column')) {
+      console.error('PUT /dispatch/units/:id column mismatch:', err.message);
+      return c.json({ error: 'Update failed: schema mismatch', code: 'COLUMN_MISSING' }, 500);
+    }
     return c.json({ error: 'Failed to update unit' }, 500);
   }
 });

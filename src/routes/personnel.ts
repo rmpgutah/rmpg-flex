@@ -241,6 +241,32 @@ personnel.get('/equipment/:id/checkout-log', async (c) => {
   }
 });
 
+// POST /personnel/equipment/:id/checkin — check in (return) equipment.
+personnel.post('/equipment/:id/checkin', async (c) => {
+  const denied = requireManager(c); if (denied) return denied;
+  try {
+    const db = getDb(c.env);
+    const id = c.req.param('id');
+    const item = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM officer_equipment WHERE id = ?', id);
+    if (!item) return c.json({ error: 'Equipment not found' }, 404);
+    const body: { condition?: string; notes?: string } = await c.req.json().catch(() => ({}));
+    await execute(db,
+      `UPDATE officer_equipment SET status = 'returned', returned_date = date('now'), condition = COALESCE(?, condition), notes = COALESCE(?, notes) WHERE id = ?`,
+      body.condition ?? null, body.notes ?? null, id);
+    try {
+      const user = c.get('user') as Record<string, unknown> | undefined;
+      await execute(db,
+        `INSERT INTO equipment_checkout_log (equipment_id, officer_id, action, performed_by, notes, created_at) VALUES (?, ?, 'checkin', ?, ?, datetime('now'))`,
+        id, item.officer_id, user?.id ?? null, body.notes ?? null);
+    } catch { /* log table may not exist */ }
+    const updated = await queryFirst<Record<string, unknown>>(db, `${EQUIPMENT_SELECT} WHERE oe.id = ?`, id);
+    return c.json(updated);
+  } catch (err) {
+    console.error('POST /personnel/equipment/:id/checkin failed:', err);
+    return c.json({ error: 'Failed to check in equipment' }, 500);
+  }
+});
+
 // POST /personnel/:officerId/equipment — issue equipment to an officer.
 personnel.post('/:officerId/equipment', async (c) => {
   const denied = requireManager(c); if (denied) return denied;
