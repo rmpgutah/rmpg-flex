@@ -77,13 +77,11 @@ adminSettings.put('/', async (c) => {
     const body = await c.req.json<Record<string, string | number | boolean>>();
     if (!body || Object.keys(body).length === 0) return c.json({ error: 'No settings provided' }, 400);
 
-    const stmt = db.prepare(
-      'UPDATE system_settings SET value = ?, updated_at = datetime(\'now\') WHERE key = ?');
-    const batch: Promise<unknown>[] = [];
-    for (const [key, value] of Object.entries(body)) {
-      batch.push(stmt.bind(String(value), key).run());
-    }
-    await Promise.all(batch);
+    const stmts = Object.entries(body).map(([key, value]) =>
+      db.prepare('UPDATE system_settings SET value = ?, updated_at = datetime(\'now\') WHERE key = ?')
+        .bind(String(value), key)
+    );
+    await db.batch(stmts);
     return c.json({ success: true, updated: Object.keys(body).length });
   } catch (err) { return c.json({ error: 'Failed to update settings' }, 500); }
 });

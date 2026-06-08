@@ -1458,6 +1458,7 @@ const API_ROUTES: RouteRule[] = [
   // /evidence handler in src/routes/records.ts, so the prefix sent every
   // GET to a 404. Removed 2026-05-26 so it falls through to legacy, which
   // has the full handler and a populated evidence table on live D1.
+  { kind: 'prefix', value: '/api/records/client-persons' },
   { kind: 'prefix', value: '/api/records/businesses' },
   { kind: 'prefix', value: '/api/records/reports/approval-queue' },
   // Audit — entire namespace lives in src/routes/audit.ts (logs, stats,

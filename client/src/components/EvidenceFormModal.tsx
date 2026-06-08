@@ -134,7 +134,7 @@ export default function EvidenceFormModal({ isOpen, onClose, incidentId, onCreat
       clearAllErrors();
     } else if (editingEvidence) {
       const initial: EvidenceFormData = {
-        evidence_type: editingEvidence.type || 'physical',
+        evidence_type: editingEvidence.evidence_type || editingEvidence.type || 'physical',
         category: editingEvidence.category || '',
         description: editingEvidence.description || '',
         storage_location: editingEvidence.storage_location || '',

@@ -44,6 +44,14 @@ stubs.put('/preferences', async (c) => {
   return c.json({ success: true, preferences: row ? { ...PREF_DEFAULTS, ...row } : PREF_DEFAULTS });
 });
 
+stubs.post('/preferences/reset', async (c) => {
+  const userId = c.get('userId') as number | undefined;
+  if (userId == null) return c.json({ error: 'unauthorized' }, 401);
+  await c.env.DB.prepare('DELETE FROM user_preferences WHERE user_id = ?')
+    .bind(userId).run();
+  return c.json({ success: true, preferences: { ...PREF_DEFAULTS } });
+});
+
 // ── Notifications (mounted at /api/notifications) ──
 stubs.get('/unread-count', (c) => c.json({ count: 0 }));
 stubs.get('/notifications', (c) => c.json([]));
