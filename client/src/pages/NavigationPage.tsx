@@ -1265,11 +1265,9 @@ export default function NavigationPage() {
     const moved = prev ? haversineMeters(prev.lat, prev.lng, lat, lng) : Infinity;
     if (prev && moved < 40 && now - prev.t < 20000) return;
     geoRef.current = { lat, lng, t: now };
-    let cancelled = false;
     apiFetch<{ address: string | null }>(`/geocode/reverse?lat=${lat.toFixed(6)}&lng=${lng.toFixed(6)}`)
-      .then((r) => { if (!cancelled) setCurrentStreet(r?.address || null); })
+      .then((r) => { setCurrentStreet(r?.address || null); })
       .catch(() => { /* keep last known street */ });
-    return () => { cancelled = true; };
   }, [gps.latitude, gps.longitude]);
 
   const sessionMs = startRef.current ? Date.now() - startRef.current : 0;
