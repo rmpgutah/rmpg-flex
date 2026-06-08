@@ -51,8 +51,8 @@ trips.get('/:id', async (c) => {
     if (!trip) return c.json({ error: 'Not found' }, 404);
     const points = await query<Record<string, unknown>>(db,
       `SELECT latitude AS lat, longitude AS lng, accuracy, heading, speed, recorded_at AS time
-       FROM gps_breadcrumbs WHERE unit_id = ? AND recorded_at >= ? ${trip.end_time ? 'AND recorded_at <= ?' : ''} ORDER BY recorded_at ASC`,
-      trip.unit_id, trip.start_time, ...(trip.end_time ? [trip.end_time] : []));
+       FROM gps_breadcrumbs WHERE trip_id = ? ORDER BY recorded_at ASC`,
+      trip.id);
     return c.json({ ...trip, points });
   } catch (e) {
     return c.json({ error: 'Failed to load trip' }, 500);

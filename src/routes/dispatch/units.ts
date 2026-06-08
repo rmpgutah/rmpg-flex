@@ -107,16 +107,13 @@ units.post('/', async (c) => {
 // (integer id stored in a TEXT column, breaking the NAV read path).
 // If a client insists on sending vehicle_id we coerce + redirect them
 // to the canonical surface via a 400 with a hint.
-const PUT_DROPPED_COLS = new Set(['id', 'created_at', 'vehicle_id']);
-const PUT_DENIED_FIELDS = new Set(['vehicle_id']);
-// REGRESSION-GUARD: columns that must only be mutated through their
-// dedicated dispatch pathways (assign-unit for current_call_id,
-// personnel sync for officer_id, GPS route for lat/lng, extend for
-// mileage, etc.). A general-purpose PUT must never touch these.
-const PUT_DENIED_SENSITIVE = new Set([
-  'current_call_id', 'current_call_number',
-  'latitude', 'longitude', 'gps_updated_at',
-  'last_status_change', 'updated_at', 'mileage',
+// Allowlist — only these columns may be written via PUT.
+// vehicle_id, current_call_id, lat/lng, mileage etc. are mutated
+// through their dedicated dispatch pathways, not a general PUT.
+const UNIT_WRITABLE_COLUMNS = new Set([
+  'call_sign', 'officer_id', 'status', 'capabilities',
+  'audio_mode', 'emergency_active', 'emergency_call_id', 'emergency_since',
+  'gps_heading', 'gps_speed',
 ]);
 units.put('/:id', async (c) => {
   try {
@@ -142,9 +139,7 @@ units.put('/:id', async (c) => {
     const sets: string[] = [];
     const params: unknown[] = [];
     for (const [k, v] of Object.entries(body)) {
-      if (PUT_DROPPED_COLS.has(k)) continue;
-      if (PUT_DENIED_FIELDS.has(k)) continue;
-      if (PUT_DENIED_SENSITIVE.has(k)) continue;
+      if (!UNIT_WRITABLE_COLUMNS.has(k)) continue;
       sets.push(`${k} = ?`);
       params.push(v ?? null);
     }

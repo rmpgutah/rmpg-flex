@@ -268,4 +268,49 @@ gps.get('/my-vehicle', async (c) => {
   }
 });
 
+// GET /dispatch/gps/dwell-times — units that have been stationary for a while.
+gps.get('/dwell-times', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(db,
+      `SELECT u.id AS unit_id, u.call_sign, u.latitude, u.longitude, u.status,
+              u.gps_updated_at,
+              CAST((julianday('now') - julianday(COALESCE(u.gps_updated_at, u.updated_at))) * 1440 AS INTEGER) AS dwell_minutes
+       FROM units u
+       WHERE u.status NOT IN ('off_duty','out_of_service')
+         AND u.latitude IS NOT NULL
+         AND (julianday('now') - julianday(COALESCE(u.gps_updated_at, u.updated_at))) * 1440 > 5
+       ORDER BY dwell_minutes DESC LIMIT 50`);
+    return c.json(rows);
+  } catch (err) { return c.json([]); }
+});
+
+// GET /dispatch/gps/speed-zones — recent high-speed events by zone.
+gps.get('/speed-zones', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(db,
+      `SELECT g.unit_id, u.call_sign, g.speed, g.latitude, g.longitude, g.recorded_at
+       FROM gps_breadcrumbs g
+       JOIN units u ON u.id = g.unit_id
+       WHERE g.speed > 45 AND g.recorded_at >= datetime('now', '-4 hours')
+       ORDER BY g.speed DESC LIMIT 100`);
+    return c.json(rows);
+  } catch (err) { return c.json([]); }
+});
+
+// GET /dispatch/gps/units-with-trails — units that have recent breadcrumb data.
+gps.get('/units-with-trails', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(db,
+      `SELECT DISTINCT g.unit_id AS id, u.call_sign
+       FROM gps_breadcrumbs g
+       JOIN units u ON u.id = g.unit_id
+       WHERE g.recorded_at >= datetime('now', '-8 hours')
+       ORDER BY u.call_sign`);
+    return c.json(rows);
+  } catch (err) { return c.json([]); }
+});
+
 export default gps;

@@ -288,7 +288,7 @@
 //       formatted incident types (toDisplayLabel). Map <-> Dispatch/RMS
 // v792: Cross-integration audit fix — NAV/FLEET/PERSONNEL/DISPATCH mileage
 //       guardrails + vehicle-id back-links (Claude ed5d0e99 + d3001d25).
-const CACHE_NAME = 'rmpg-flex-v799';
+const CACHE_NAME = 'rmpg-flex-v800';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
