@@ -367,7 +367,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setToken(null);
             setUser(null);
           }
+        } else if (res.status >= 500) {
+          // Server error (502/503 during deploy or cellular blip) — keep the
+          // session alive and let scheduled refresh recover. Logging out on a
+          // transient 5xx drops officers mid-shift.
+          console.warn(`[Auth] /me returned ${res.status} — keeping session, will retry`);
+          if (user) scheduleRefresh(token);
         } else {
+          // 403 or other definitive rejection — clear auth
           clearTokens();
           setToken(null);
           setUser(null);
@@ -376,32 +383,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         console.warn('[Auth] Initial auth check failed:', err);
         if (gen !== generationRef.current) return; // stale
 
-        // Background revalidation of an already-rendered (optimistic) user hit a
-        // network/timeout error — NOT a token rejection. Keep the user signed in;
-        // the scheduled refresh and the next authenticated data fetch will
-        // revalidate. A false logout here would punish flaky cellular, which is
-        // exactly when this path fires. The token is still enforced server-side
-        // on every request, so nothing unauthorized is exposed.
-        if (optimisticBoot) {
+        // Network/timeout error — NOT a token rejection. Keep the user signed
+        // in; the scheduled refresh will recover when connectivity returns.
+        // A false logout here would drop officers mid-shift on flaky cellular.
+        if (token && localStorage.getItem(TOKEN_KEY)) {
           scheduleRefresh(token);
           setIsLoading(false);
           return;
         }
 
-        // API not available — attempt offline auth via Electron local cache
-        const lastUsername = localStorage.getItem(LAST_USERNAME_KEY);
-        if (electron?.getCachedUser && lastUsername) {
-          try {
-            const cachedUser = await electron.getCachedUser(lastUsername);
-            if (cachedUser) {
-              setUser(cachedUser);
-              return; // loaded from local DB — skip mock
-            }
-          } catch (err) { console.warn('[Auth] Cached user fetch failed:', err); /* fall through to mock */ }
-        }
-
-        // Fallback mock user for pure-browser development ONLY
-        if (import.meta.env.DEV) {
+        // No token in storage — genuinely logged out
+        if (!import.meta.env.DEV) {
+          setToken(null);
+          setUser(null);
+        } else {
           setUser({
             id: 'dev-1',
             username: 'dispatcher',
@@ -414,11 +409,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           });
-        } else {
-          // In production, clear auth state if server is unreachable
-          clearTokens();
-          setToken(null);
-          setUser(null);
         }
       } finally {
         if (gen === generationRef.current) {

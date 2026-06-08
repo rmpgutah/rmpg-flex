@@ -83,7 +83,7 @@ citations.get('/stats', async (c) => {
       db,
       `SELECT COUNT(*) as count FROM citations WHERE violation_date >= date('now', '-30 days')`,
     ))?.count ?? 0;
-    return c.json({ total, byStatus, byType, last7, last30 });
+    return c.json({ data: { total, byStatus, byType, last7, last30 } });
   } catch (err) {
     return c.json({ error: 'Failed to get citation stats', code: 'STATS_ERROR' }, 500);
   }

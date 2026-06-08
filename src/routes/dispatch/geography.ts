@@ -336,7 +336,8 @@ geography.get('/zone-allocation', async (c) => {
       `SELECT dz.id AS zone_id, dz.zone_code, dz.zone_name,
               COUNT(u.id) AS unit_count
        FROM dispatch_zones dz
-       LEFT JOIN units u ON u.zone_id = dz.id AND u.status NOT IN ('off_duty','out_of_service')
+       LEFT JOIN dispatch_beats db2 ON db2.zone_id = dz.id
+       LEFT JOIN units u ON u.assigned_beat = db2.beat_code AND u.status NOT IN ('off_duty','out_of_service')
        WHERE dz.active = 1
        GROUP BY dz.id ORDER BY dz.zone_code`);
     return c.json(rows);

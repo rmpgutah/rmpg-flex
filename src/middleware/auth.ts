@@ -46,6 +46,16 @@ export async function authMiddleware(c: Context, next: Next) {
   }
 
   if (!token) {
+    // HMAC-signed file access: <img>/<video> tags can't send Authorization
+    // headers, so uploads routes issue HMAC sig+exp query params instead.
+    // Let the route handler's own resolveAuth() verify the signature.
+    const sig = c.req.query('sig');
+    const exp = c.req.query('exp');
+    const path = new URL(c.req.url).pathname;
+    if (sig && exp && path.includes('/uploads/')) {
+      await next();
+      return;
+    }
     return c.json({ error: 'Authentication required' }, 401);
   }
 

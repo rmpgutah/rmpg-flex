@@ -118,7 +118,7 @@ import shiftPlans from './routes/shiftPlans';
 import court from './routes/court';
 import dlRecords from './routes/dlRecords';
 import serve from './routes/serve';
-import processServer from './routes/processServer';
+
 import settings from './routes/settings';
 import adminSettings from './routes/adminSettings';
 import recruitment from './routes/recruitment';
@@ -343,8 +343,6 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Utah law book (search/toc/chapter/section) over utah_statutes. Cutover from legacy /statutes/search — same {data:[]} contract, richer fields. Needs the matching proxy rule routing /api/statutes/* to env.API.' },
   { prefix: '/api/serve-intake', router: serveIntake, auth: 'required',
     note: 'Upload + OCR (Tesseract container) + Workers-AI field extraction; commits to serve_queue + serve_intake_documents' },
-  { prefix: '/api/process-server', router: processServer, auth: 'required',
-    note: 'Ported subset (deadlines + success-rates) the ServePage calls; rest of /process-server stays on legacy via proxy. Only proxy-routed paths reach this router.' },
   { prefix: '/api/ocr', router: ocr, auth: 'required',
     note: 'Alias of /api/serve-intake/scan-document — the client URL the OCR preview path already calls' },
   { prefix: '/api/skiptracer', router: skiptracer, auth: 'required',
@@ -414,8 +412,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // General-purpose file upload/download. R2-backed (UPLOADS bucket);
   // replaces legacy disk-based multer handler. Supports HMAC-signed
   // access tokens for session-independent file URLs (img/iframe/a tags).
-  { prefix: '/api/uploads', router: uploads, auth: 'required',
-    note: 'File attachments: POST multipart, GET inline/download/thumbnail, DELETE, entity listing, HMAC signing' },
+  { prefix: '/api/uploads', router: uploads, auth: 'public',
+    note: 'File attachments: auth is PUBLIC at the middleware level because thumbnail/download routes accept HMAC-signed URLs (no JWT); each handler calls resolveAuth() internally' },
 
   // ── Company documents (training docs library) ───────────────
   // TrainingDocsPage CRUD + CSV export. Backed by company_documents
