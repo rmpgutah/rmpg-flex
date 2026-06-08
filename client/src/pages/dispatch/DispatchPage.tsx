@@ -294,6 +294,7 @@ export default function DispatchPage() {
   const noteTextareaRef = useRef<HTMLTextAreaElement>(null);
   const [onSceneElapsed, setOnSceneElapsed] = useState('');
   const [isLoading, setIsLoading] = useState(true);
+  const [isDetailLoading, setIsDetailLoading] = useState(false);
   // Quick Dispatch templates
   const [templates, setTemplates] = useState<any[]>([]);
   const [showTemplateDropdown, setShowTemplateDropdown] = useState(false);
@@ -1192,6 +1193,7 @@ export default function DispatchPage() {
     setNewNote('');
     setNewTimelineText('');
     setShowAddTimeline(false);
+    setIsDetailLoading(true);
     (async () => {
       try {
         const res = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}`);
@@ -1222,6 +1224,7 @@ export default function DispatchPage() {
       } else {
         if (!cancelled) setServeLink(null);
       }
+      if (!cancelled) setIsDetailLoading(false);
     })();
     return () => { cancelled = true; };
   }, [selectedCall?.id]);
@@ -4735,24 +4738,19 @@ export default function DispatchPage() {
                         stolen) into one officer-safety read so a unit sees the
                         danger before responding. */}
                     {(() => {
-                      const p = callPosture(selectedCall, callPersons, callVehicles);
+                      const p = callPosture(selectedCall);
                       if (p.level === 'clear') return null;
                       const t = BADGE_TONES[p.tone];
-                      const linked = [
-                        callPersons.length ? `${callPersons.length} subject${callPersons.length === 1 ? '' : 's'}` : '',
-                        callVehicles.length ? `${callVehicles.length} vehicle${callVehicles.length === 1 ? '' : 's'}` : '',
-                      ].filter(Boolean).join(' · ');
                       return (
                         <div
                           className={`flex items-center gap-2 px-2 py-1 mb-2 rounded-[2px] ${p.pulse ? 'animate-led-pulse' : ''}`}
                           style={{ color: t.text, background: t.bg, border: `1px solid ${t.border}`, boxShadow: p.level === 'critical' ? `0 0 8px ${t.glow}` : undefined }}
-                          title="Aggregate officer-safety posture from this call + its linked subjects/vehicles"
+                          title="Officer-safety posture from this call's own threat flags"
                         >
                           <Shield className="w-3.5 h-3.5 flex-shrink-0" />
                           <span className="text-[10px] font-bold uppercase tracking-wider">
                             {p.label}{p.level === 'critical' ? ' — EXERCISE CAUTION' : ''}
                           </span>
-                          {linked && <span className="text-[9px] opacity-80 ml-auto whitespace-nowrap">{linked} linked</span>}
                         </div>
                       );
                     })()}
@@ -5225,7 +5223,7 @@ export default function DispatchPage() {
                             </div>
                           );
                         })()}
-                        {!selectedCall.pso_requestor_name && !selectedCall.pso_service_type && selectedCall.incident_type === 'pso_client_request' && (
+                        {!isDetailLoading && !selectedCall.pso_requestor_name && !selectedCall.pso_service_type && selectedCall.incident_type === 'pso_client_request' && (
                           <span className="text-rmpg-500 italic text-xs">No PSO details entered yet</span>
                         )}
                       </div>
@@ -5491,7 +5489,7 @@ export default function DispatchPage() {
                         {selectedCall.process_served_to && <span className="text-rmpg-200"><span className="text-rmpg-400">Serve To:</span> {selectedCall.process_served_to}</span>}
                         {selectedCall.process_served_address && <span className="text-rmpg-200"><span className="text-rmpg-400">Address:</span> {selectedCall.process_served_address}</span>}
                         {selectedCall.process_served_at && <span className="text-rmpg-200"><span className="text-rmpg-400">Served At:</span> {selectedCall.process_served_at}</span>}
-                        {!selectedCall.process_service_type && !selectedCall.process_served_to && (
+                        {!isDetailLoading && !selectedCall.process_service_type && !selectedCall.process_served_to && (
                           <span className="text-rmpg-500 italic">No process service details entered yet</span>
                         )}
                       </div>

@@ -2139,7 +2139,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
   y = checkPageBreak(doc, y, 18, prio);
   { const sec = openAutoSection(doc, 'Incident Location', y); y = sec.contentY;
     // Row 1: Address (full width)
-    y = addFieldPair(doc, 'Address', data.location || '', lx, y, ffw);
+    y = addFieldPair(doc, 'Address', data.location || (data as any).location_address || '', lx, y, ffw);
     // Row 2: Latitude | Longitude | Cross Street (3 columns)
     y = addThreeColumnFields(doc, [
       { label: 'Latitude', value: data.latitude != null ? String(data.latitude) : '' },
@@ -2293,7 +2293,9 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
           y = maxUY;
         }
       } else if (Array.isArray(data.assigned_units) && data.assigned_units.length > 0) {
-        y = addFieldPair(doc, 'Assigned Units', data.assigned_units.join(', '), lx, y, ffw);
+        const unitLabels = data.assigned_units.map((u: any) =>
+          typeof u === 'object' ? (u.call_sign || u.name || String(u.id || '')) : String(u));
+        y = addFieldPair(doc, 'Assigned Units', unitLabels.join(', '), lx, y, ffw);
       }
       y = closeAutoSection(doc, uSec.sectionY, y, undefined, uSec.sectionPage);
     }
