@@ -398,4 +398,26 @@ nav.get('/trip/check-take-home', async (c) => {
   }
 });
 
+// ── GET /nav/vehicle-take-home — take-home status (client contract) ──
+// The client (useNavTripDetection) calls this path and reads `has_take_home`.
+// It is the same data as /trip/check-take-home but under the path + key the
+// client expects; without it the request 404s and take-home officers (no unit)
+// can never start a trip. The proxy routes the whole /api/nav/* prefix here.
+nav.get('/vehicle-take-home', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const userId = c.get('userId') as number;
+
+    const user = await queryFirst<{ has_take_home: number; take_home_vehicle_id: number | null }>(
+      db, 'SELECT has_take_home, take_home_vehicle_id FROM users WHERE id = ?', userId);
+
+    const hasTakeHome = user?.has_take_home === 1 && user?.take_home_vehicle_id != null;
+
+    return c.json({ has_take_home: hasTakeHome, vehicle_id: user?.take_home_vehicle_id ?? null });
+  } catch (err) {
+    console.error('[nav] GET /vehicle-take-home failed:', err);
+    return c.json({ error: 'Failed to check take-home status' }, 500);
+  }
+});
+
 export default nav;

@@ -86,7 +86,13 @@ export default function NavPage() {
     fetchCurrentTrip,
   } = useNavTripDetection({
     position: gps.latitude && gps.longitude
-      ? { latitude: gps.latitude, longitude: gps.longitude, accuracy: gps.accuracy ?? undefined }
+      ? {
+          latitude: gps.latitude,
+          longitude: gps.longitude,
+          accuracy: gps.accuracy ?? undefined,
+          speed: gps.speed,
+          heading: gps.headingSmoothed ?? gps.heading,
+        }
       : null,
     isTracking: gps.isTracking,
     isForeground: true,

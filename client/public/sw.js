@@ -291,7 +291,13 @@
 // v809: Toughbook GPS — detect by hardware presence (u-blox COM port is
 //       definitive regardless of WMI manufacturer string) + retry internal-GPS
 //       detection through cold-boot port enumeration delay (no more silent WiFi).
-const CACHE_NAME = 'rmpg-flex-v809';
+// v810: Nav trip recording — fix interval-reset bug that silently dropped ALL
+//       live movement data (route-update + auto-end intervals were re-created on
+//       every GPS fix so they never fired); read fix from a ref, bind only to
+//       trip id + tracking. Forward speed/heading so max-speed populates. Add
+//       missing GET /nav/vehicle-take-home endpoint (client 404'd → take-home
+//       officers couldn't start trips).
+const CACHE_NAME = 'rmpg-flex-v810';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

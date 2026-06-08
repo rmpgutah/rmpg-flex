@@ -34,8 +34,16 @@ function clearState() {
 }
 
 export interface UseNavTripDetectionOptions {
-  /** Current GPS position { lat, lng, accuracy } or null */
-  position: { latitude: number; longitude: number; accuracy?: number | null } | null;
+  /** Current GPS position { lat, lng, accuracy } or null.
+   *  speed (m/s) and heading (deg) are optional — when supplied they ride along
+   *  on the live route breadcrumbs so the trip's max-speed populates. */
+  position: {
+    latitude: number;
+    longitude: number;
+    accuracy?: number | null;
+    speed?: number | null;
+    heading?: number | null;
+  } | null;
   /** Whether GPS is tracking (user is logged in) */
   isTracking: boolean;
   /** Whether the nav page is visible / app is in foreground */
@@ -73,7 +81,18 @@ export function useNavTripDetection(opts: UseNavTripDetectionOptions) {
   detectionRef.current = detection;
 
   const isStartingRef = useRef(false);
-  const positionRef = useRef<{ latitude: number; longitude: number } | null>(null);
+  // Latest position kept in a ref so the interval-driven uploaders below can read
+  // the current fix WITHOUT listing `position` in their dependency arrays. The
+  // `position` prop is a fresh object literal every GPS fix (~1/sec), so binding
+  // an interval effect to it would tear down + recreate the interval every second
+  // and it would never live long enough to fire (the bug that silently dropped
+  // all live trip movement data). speed (m/s) / heading ride along for max-speed.
+  const positionRef = useRef<{
+    latitude: number;
+    longitude: number;
+    speed?: number | null;
+    heading?: number | null;
+  } | null>(null);
 
   // ── Persist state ─────────────────────────────────────────
   useEffect(() => { saveState(detection); }, [detection]);
@@ -97,7 +116,12 @@ export function useNavTripDetection(opts: UseNavTripDetectionOptions) {
 
   useEffect(() => {
     if (position) {
-      positionRef.current = { latitude: position.latitude, longitude: position.longitude };
+      positionRef.current = {
+        latitude: position.latitude,
+        longitude: position.longitude,
+        speed: position.speed ?? null,
+        heading: position.heading ?? null,
+      };
     }
   }, [position]);
 
@@ -315,41 +339,57 @@ export function useNavTripDetection(opts: UseNavTripDetectionOptions) {
   }, [onTripEnded]);
 
   // ── Periodic route updates for active trip ────────────────
+  // NOTE: `position` is deliberately NOT in the dependency array. It changes
+  // ~1/sec (a new object literal per GPS fix), and including it would clear +
+  // recreate this 15s interval on every fix so it could never fire — which is
+  // exactly why live trip movement data was never being recorded. We read the
+  // latest fix from positionRef inside the tick instead. The interval is bound
+  // only to the trip id + tracking flag, both of which change rarely.
+  const activeTripId = detection.activeTripId;
   useEffect(() => {
-    if (!detection.activeTripId || !position || !isTracking) return;
+    if (!activeTripId || !isTracking) return;
     const interval = setInterval(() => {
-      const pos = positionRef.current ?? position;
+      const pos = positionRef.current;
+      if (!pos) return; // no fix yet — skip this tick, try again in 15s
+      // route_points carry speed in MPH (matches the server's max_speed_mph math);
+      // gps speed is m/s, so convert. Heading passes through as-is (degrees).
+      const speedMph = pos.speed != null ? pos.speed * 2.23694 : undefined;
       const pt = {
         lat: pos.latitude,
         lng: pos.longitude,
         ts: new Date().toISOString(),
-        speed: undefined as number | undefined,
-        heading: undefined as number | undefined,
+        speed: speedMph,
+        heading: pos.heading ?? undefined,
       };
-      apiFetch(`/nav/trip/${detection.activeTripId}/update`, {
+      apiFetch(`/nav/trip/${activeTripId}/update`, {
         method: 'PUT',
         body: JSON.stringify({
           route_points: [pt],
           current_lat: pt.lat,
           current_lng: pt.lng,
+          current_speed: speedMph,
         }),
       }).catch(() => {});
     }, 15_000); // every 15 seconds
     return () => clearInterval(interval);
-  }, [detection.activeTripId, position, isTracking]);
+  }, [activeTripId, isTracking]);
 
   // ── Auto-end trip when user goes stationary for >5 minutes ──
+  // Same fix as the route-update interval: bind only to the trip id + tracking
+  // flag (read fix + lastMovementAt from refs), never to `position`, or the 30s
+  // interval is reset every GPS fix and the 5-minute stationary check never runs.
   useEffect(() => {
-    if (!detection.activeTripId || !position || !isTracking) return;
-    if (!detection.lastMovementAt) return;
+    if (!activeTripId || !isTracking) return;
     const check = setInterval(() => {
-      if (Date.now() - (detectionRef.current.lastMovementAt ?? 0) > 300_000) {
-        const pos = positionRef.current ?? position;
-        endCurrentTrip(pos.latitude, pos.longitude);
+      const lastMovement = detectionRef.current.lastMovementAt;
+      if (!lastMovement) return;
+      if (Date.now() - lastMovement > 300_000) {
+        const pos = positionRef.current;
+        endCurrentTrip(pos?.latitude ?? null, pos?.longitude ?? null);
       }
     }, 30_000);
     return () => clearInterval(check);
-  }, [detection.activeTripId, detection.lastMovementAt, position, isTracking, endCurrentTrip]);
+  }, [activeTripId, isTracking, endCurrentTrip]);
 
   // ── Update lastMovementAt when position changes significantly ──
   const lastPosRef = useRef<{ lat: number; lng: number } | null>(null);
