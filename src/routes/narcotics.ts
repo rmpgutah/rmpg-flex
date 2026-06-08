@@ -22,7 +22,7 @@ narcotics.put('/cases/:id', async (c) => {
 });
 
 narcotics.delete('/cases/:id', async (c) => {
-  try { const db = getDb(c.env); const id = c.req.param('id'); await execute(db, 'DELETE FROM narcotics_cases WHERE id=?', id); return c.json({ success: true }); }
+  try { const actor = c.get('user') as { role: string } | undefined; if (!actor || !new Set(['admin', 'manager', 'supervisor']).has(actor.role)) return c.json({ error: 'Forbidden' }, 403); const db = getDb(c.env); const id = c.req.param('id'); await execute(db, 'DELETE FROM narcotics_cases WHERE id=?', id); return c.json({ success: true }); }
   catch (err) { return c.json({ error: 'Failed to delete narcotics case', detail: (err as Error)?.message }, 500); }
 });
 

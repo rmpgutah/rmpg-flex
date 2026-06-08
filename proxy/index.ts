@@ -106,14 +106,8 @@ const STUBS: StubRule[] = [
   //
   // (2026-05-29 audit) skiptracer /status + /stats stubs removed — real
   // handlers in src/routes/skiptracer.ts (microbilt_searches + skiptracer_dossiers).
-  // IPED forensics surface — no /api/iped mount in new worker.
-  // ForensicsPage polls the status sub-path on mount.
-  {
-    match: /^\/api\/iped\/status$/,
-    methods: ['GET'],
-    body: { configured: false, last_sync: null },
-    reason: 'no /api/iped mount in new worker',
-  },
+  // IPED /status stub REMOVED 2026-06-07: iped.ts GET /status now serves
+  // real data; routed to env.API via the /api/iped/ prefix in API_ROUTES.
   // /api/iped/hash-sets stub REMOVED 2026-06-01: iped.ts GET /hash-sets now
   // serves real rows from forensic_hash_sets (returns { sets:[...] }) and is
   // routed to env.API. The stub was shadowing it → page showed no hash sets.
@@ -263,13 +257,8 @@ const STUBS: StubRule[] = [
     body: [],
     reason: 'no sex_offender_registry table; expiring-registrations tolerates empty list',
   },
-  // ── Dispatch GPS speed zones (Map page may poll) ────────────────────
-  {
-    match: /^\/api\/dispatch\/gps\/speed-zones(\?.*)?$/,
-    methods: ['GET'],
-    body: [],
-    reason: 'no speed_zones table on live D1; map page tolerates empty array',
-  },
+  // speed-zones stub REMOVED 2026-06-07: gps.ts GET /speed-zones is a real handler;
+  // routed to env.API via the new regex rule in API_ROUTES below.
   // ── Trespass orders → violations sub-tab ────────────────────────────
   // TrespassPage detail view opens this when a card is clicked. Empty
   // list = "no violations on file" — a valid UX state.
@@ -360,13 +349,7 @@ const STUBS: StubRule[] = [
     body: { total: 0, this_week: 0, pending_charges: 0, last_arrest_at: null },
     reason: 'AdminPage Arrests tile — separate from /arrests/recent; new worker has /recent only',
   },
-  // ── IPED download/info (admin tile, separate from /iped/status) ─────
-  {
-    match: /^\/api\/iped\/download\/info(\?.*)?$/,
-    methods: ['GET'],
-    body: { available: false, version: null, size_bytes: 0, last_updated: null },
-    reason: 'IPED download metadata endpoint; admin tile tolerates "not available"',
-  },
+  // IPED /download/info stub REMOVED 2026-06-07: covered by /api/iped/ prefix route.
   // ── Admin → Database utilities (POST integrity-check + vacuum) ──────
   // These are admin-only db maintenance buttons. The legacy worker
   // doesn't implement them and the new worker has no admin/database
@@ -840,12 +823,7 @@ const STUBS: StubRule[] = [
     body: { success: false, error: 'OCR scan is not yet ported', fields: {} },
     reason: 'no /dl-records/ocr-scan in rewrite; DlPage tolerates error',
   },
-  {
-    match: /^\/api\/downloads\/info(\?.*)?$/,
-    methods: ['GET'],
-    body: { data: null, version: null, last_check: null, message: 'downloads info stubbed' },
-    reason: 'no /downloads/info; downloads page tolerates null',
-  },
+  // /downloads/info stub REMOVED 2026-06-07: downloads.ts has real handler.
   {
     match: /^\/api\/evidence$/,
     methods: ['GET'],
@@ -1093,12 +1071,9 @@ const API_ROUTES: RouteRule[] = [
   //   GET  /api/dispatch/gps/my-unit   (caller's own unit row)
   // The bare path is POST-only (the rewrite has no GET '/' handler) and the
   // GET sub-paths are anchored to (current|my-unit). This deliberately does
-  // NOT match /api/dispatch/gps/speed-zones or /api/dispatch/gps/zone-speed-stats
-  // (both are STUBbed above and have no rewrite handler — routing them to
-  // env.API would 404). STUBS are evaluated before API_ROUTES, so those two are
-  // already short-circuited, but the tight anchors keep this rule honest.
+  // speed-zones and zone-speed-stats now have real handlers in gps.ts.
   { kind: 'regex', value: /^\/api\/dispatch\/gps\/?(\?.*)?$/, methods: ['POST'] },
-  { kind: 'regex', value: /^\/api\/dispatch\/gps\/(current|my-unit)(\?.*)?$/, methods: ['GET'] },
+  { kind: 'regex', value: /^\/api\/dispatch\/gps\/(current|my-unit|speed-zones|zone-speed-stats)(\?.*)?$/, methods: ['GET'] },
 
   // /api/dispatch/heatmap/enforcement — enforcement-activity clusters for the
   // Map "Enforcement" overlay (src/routes/dispatch/aggregates.ts). Legacy has
@@ -1400,11 +1375,7 @@ const API_ROUTES: RouteRule[] = [
   // system_settings table on live D1 (428 rows, rich schema). Legacy never
   // had this surface, so without this rule requests fall through to
   // env.LEGACY and 500, producing the "Failed to load settings" screen on
-  // AdminSettingsTab. This route already exists in the DEPLOYED proxy but
-  // was missing from this repo file — committing it here prevents the next
-  // deploy-from-main from reverting the deployed fix. Covers /settings,
-  // /settings/values, /settings/reset, and /settings/:key.
-  { kind: 'prefix', value: '/api/admin/settings' },
+  // /api/admin/settings duplicate removed — already listed above (~line 1352).
   // AdminHealthTab observability — currently stubs in the new
   // Worker (src/routes/admin.ts). Listed individually rather than
   // a broad /api/admin prefix because most /api/admin/* still
@@ -1420,7 +1391,7 @@ const API_ROUTES: RouteRule[] = [
   { kind: 'prefix', value: '/api/admin/user-activity-heatmap' },
   { kind: 'prefix', value: '/api/admin/backup-status' },
   { kind: 'prefix', value: '/api/admin/maintenance-mode' },
-  { kind: 'prefix', value: '/api/admin/notification-rules' },
+  // /api/admin/notification-rules duplicate removed — already listed above (~line 1355).
   // Auth security history
   { kind: 'prefix', value: '/api/auth/security/login-history' },
   // Auth: profile photo + active sessions + MFA status — handlers in
@@ -1586,6 +1557,7 @@ const API_ROUTES: RouteRule[] = [
   { kind: 'prefix', value: '/api/community' },
   { kind: 'prefix', value: '/api/crisis' },
   { kind: 'prefix', value: '/api/field-interviews' },
+  { kind: 'prefix', value: '/api/downloads' },
   { kind: 'prefix', value: '/api/forensics' },
   { kind: 'prefix', value: '/api/gang-intel' },
   { kind: 'prefix', value: '/api/interagency' },
@@ -1689,11 +1661,7 @@ const API_ROUTES: RouteRule[] = [
   // ── Audit subsystem ──
   // Live D1 `audit_log` had only id+created_at columns (an unused stump)
   // until the audit-rewrite PR added user_id/action/entity_type/entity_id/
-  // details/ip_address and pointed /src/ writes at the consolidated table.
-  // Legacy never had a working audit handler — its routes return empties
-  // against the stump schema. Routing the whole namespace at env.API is
-  // the only path that lets AuditLogPage render real data.
-  { kind: 'prefix', value: '/api/audit' },
+  // /api/audit duplicate removed — already listed above (~line 1345).
 
   // ── Radio subsystem (PR #661) ──
   // The new worker is the only handler. Legacy has no /api/radio/*

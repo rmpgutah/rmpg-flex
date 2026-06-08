@@ -161,19 +161,6 @@ stubs.get('/google-maps/client-key', (c) => c.json({}));
 // have mapped to /api/dispatch/stats/stats — bug fixed 2026-06-06.
 stubs.get('/', (c) => c.json({ total_calls: 0, active_calls: 0, units_online: 0 }));
 
-// shift-handoff stubs below are dead code: that prefix is owned by the real
-// router mounted at /api/dispatch/shift-handoff. Kept for reference but
-// harmless — those routes never reach this router.
-stubs.get('/shift-handoff', (c) => c.json({ handoff: null }));
-stubs.put('/shift-handoff', async (c) => {
-  try {
-    const body = await c.req.json<Record<string, unknown>>();
-    return c.json({ success: true, saved: true, received: body });
-  } catch {
-    return c.json({ success: true, saved: true });
-  }
-});
-
 // ── Integration stubs (Admin integrations tab) ──────────────
 stubs.get('/status', (c) => c.json({ configured: false }));
 stubs.get('/sources', (c) => c.json([]));

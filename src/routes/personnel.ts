@@ -1779,6 +1779,8 @@ personnel.put('/training/:id', async (c) => {
 // DELETE /api/personnel/training/:id — delete a training record.
 personnel.delete('/training/:id', async (c) => {
   try {
+    const actor = c.get('user') as { id: number; role: string } | undefined;
+    if (!actor || !MANAGER_ROLES.has(actor.role)) return c.json({ error: 'Forbidden' }, 403);
     const db = getDb(c.env);
     const id = c.req.param('id');
     const existing = await queryFirst(db, 'SELECT id FROM training_records WHERE id = ?', id);

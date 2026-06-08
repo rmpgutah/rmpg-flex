@@ -24,6 +24,10 @@ function requireRole(c: { get: (k: 'user') => { role: string } | undefined }, ..
 // is never empty even on a fresh database.
 admin.get('/config', async (c) => {
   try {
+    const actor = c.get('user') as { role: string } | undefined;
+    if (!actor || !new Set(['admin', 'manager', 'supervisor']).has(actor.role)) {
+      return c.json({ error: 'Forbidden' }, 403);
+    }
     const db = getDb(c.env);
     const config = await query<Record<string, unknown>>(db, 'SELECT * FROM system_config');
     const result: Record<string, any> = {};
@@ -191,6 +195,8 @@ const CLIENT_EDITABLE = [
 
 admin.post('/clients', async (c) => {
   try {
+    const actor = c.get('user') as { role: string } | undefined;
+    if (!actor || !new Set(['admin', 'manager']).has(actor.role)) return c.json({ error: 'Forbidden' }, 403);
     const db = getDb(c.env);
     const b = await c.req.json<Record<string, any>>();
     if (!b.name || !String(b.name).trim()) return c.json({ error: 'name required' }, 400);
@@ -207,6 +213,8 @@ admin.post('/clients', async (c) => {
 
 admin.put('/clients/:id', async (c) => {
   try {
+    const actor = c.get('user') as { role: string } | undefined;
+    if (!actor || !new Set(['admin', 'manager']).has(actor.role)) return c.json({ error: 'Forbidden' }, 403);
     const db = getDb(c.env);
     const id = Number(c.req.param('id'));
     const b = await c.req.json<Record<string, any>>();
@@ -226,6 +234,8 @@ admin.put('/clients/:id', async (c) => {
 
 admin.delete('/clients/:id', async (c) => {
   try {
+    const actor = c.get('user') as { role: string } | undefined;
+    if (!actor || !new Set(['admin', 'manager']).has(actor.role)) return c.json({ error: 'Forbidden' }, 403);
     const db = getDb(c.env);
     await execute(db, "UPDATE clients SET status = 'inactive', updated_at = datetime('now') WHERE id = ?", Number(c.req.param('id')));
     return c.json({ success: true });
@@ -234,6 +244,8 @@ admin.delete('/clients/:id', async (c) => {
 
 admin.post('/clients/:id/archive', async (c) => {
   try {
+    const actor = c.get('user') as { role: string } | undefined;
+    if (!actor || !new Set(['admin', 'manager']).has(actor.role)) return c.json({ error: 'Forbidden' }, 403);
     const db = getDb(c.env);
     await execute(db, "UPDATE clients SET status = 'inactive', updated_at = datetime('now') WHERE id = ?", Number(c.req.param('id')));
     return c.json({ success: true });
@@ -242,6 +254,8 @@ admin.post('/clients/:id/archive', async (c) => {
 
 admin.post('/clients/:id/unarchive', async (c) => {
   try {
+    const actor = c.get('user') as { role: string } | undefined;
+    if (!actor || !new Set(['admin', 'manager']).has(actor.role)) return c.json({ error: 'Forbidden' }, 403);
     const db = getDb(c.env);
     await execute(db, "UPDATE clients SET status = 'active', updated_at = datetime('now') WHERE id = ?", Number(c.req.param('id')));
     return c.json({ success: true });
