@@ -437,32 +437,50 @@ reports.get('/shift-activity/:officerId', async (c) => {
 });
 
 // GET /api/reports/dashboard — top-level tiles for the DashboardPage +
-// ReportsPage overview. Single round-trip per tile; cheap reads (counts +
-// most-recent row), all from indexed columns. Open to any authenticated
-// user since these are summary counts, not officer-level data.
+// ReportsPage overview. Response shape matches DashboardApiResponse in
+// client/src/pages/DashboardPage.tsx.
 reports.get('/dashboard', async (c) => {
   try {
     const db = getDb(c.env);
-    const [callsOpen, callsToday, unitsOnDuty, incidentsOpen, bolosActive, warrantsActive, citations7d, arrests7d] = await Promise.all([
+    const [
+      activeCalls, todayCalls, unitsOnDuty, totalUnits,
+      pendingReports, activeBolos,
+      callsByPriority, callsByStatus, callsByHour,
+      officersOnDuty,
+    ] = await Promise.all([
       queryFirst<{ n: number }>(db, `SELECT COUNT(*) AS n FROM calls_for_service WHERE status NOT IN ('closed', 'cleared', 'cancelled')`),
       queryFirst<{ n: number }>(db, `SELECT COUNT(*) AS n FROM calls_for_service WHERE date(received_at) = date('now','localtime')`),
       queryFirst<{ n: number }>(db, `SELECT COUNT(*) AS n FROM units WHERE status = 'on_duty'`),
+      queryFirst<{ n: number }>(db, `SELECT COUNT(*) AS n FROM units`),
       queryFirst<{ n: number }>(db, `SELECT COUNT(*) AS n FROM incidents WHERE status NOT IN ('approved', 'closed', 'rejected')`),
       queryFirst<{ n: number }>(db, `SELECT COUNT(*) AS n FROM bolos WHERE status = 'active'`),
-      queryFirst<{ n: number }>(db, `SELECT COUNT(*) AS n FROM warrants WHERE status = 'active'`),
-      queryFirst<{ n: number }>(db, `SELECT COUNT(*) AS n FROM citations WHERE date(created_at) >= date('now','localtime','-7 days')`),
-      queryFirst<{ n: number }>(db, `SELECT COUNT(*) AS n FROM arrests WHERE date(created_at) >= date('now','localtime','-7 days')`),
+      query<{ priority: string; count: number }>(db,
+        `SELECT COALESCE(priority,'P4') AS priority, COUNT(*) AS count FROM calls_for_service WHERE status NOT IN ('closed','cleared','cancelled') GROUP BY priority ORDER BY priority`),
+      query<{ status: string; count: number }>(db,
+        `SELECT status, COUNT(*) AS count FROM calls_for_service WHERE date(received_at) = date('now','localtime') GROUP BY status ORDER BY count DESC`),
+      query<{ hour: string; count: number }>(db,
+        `SELECT CAST(strftime('%H', received_at) AS TEXT) AS hour, COUNT(*) AS count FROM calls_for_service WHERE date(received_at) = date('now','localtime') GROUP BY hour ORDER BY hour`),
+      query<{ id: number; full_name: string; badge_number: string }>(db,
+        `SELECT u.id, u.full_name, u.badge_number FROM users u JOIN units un ON un.officer_id = u.id WHERE un.status = 'on_duty' LIMIT 50`),
     ]);
+
+    const avgResp = await queryFirst<{ avg_minutes: number }>(db,
+      `SELECT AVG((julianday(COALESCE(dispatched_at, updated_at)) - julianday(received_at)) * 1440) AS avg_minutes FROM calls_for_service WHERE date(received_at) = date('now','localtime') AND dispatched_at IS NOT NULL`);
+
     return c.json({
-      openCalls: callsOpen?.n ?? 0,
-      callsToday: callsToday?.n ?? 0,
+      activeCalls: activeCalls?.n ?? 0,
+      todayCalls: todayCalls?.n ?? 0,
       unitsOnDuty: unitsOnDuty?.n ?? 0,
-      openIncidents: incidentsOpen?.n ?? 0,
-      activeBolos: bolosActive?.n ?? 0,
-      activeWarrants: warrantsActive?.n ?? 0,
-      citationsLast7d: citations7d?.n ?? 0,
-      arrestsLast7d: arrests7d?.n ?? 0,
-      generated_at: new Date().toISOString(),
+      totalUnits: totalUnits?.n ?? 0,
+      pendingReports: pendingReports?.n ?? 0,
+      activeBolos: activeBolos?.n ?? 0,
+      unreadMessages: 0,
+      avgResponseMinutes: avgResp?.avg_minutes != null ? Math.round(avgResp.avg_minutes * 10) / 10 : null,
+      callsByPriority: callsByPriority ?? [],
+      callsByStatus: callsByStatus ?? [],
+      recentActivity: [],
+      officersOnDuty: officersOnDuty ?? [],
+      callsByHour: callsByHour ?? [],
     });
   } catch (err) {
     console.error('GET /reports/dashboard failed:', err);
