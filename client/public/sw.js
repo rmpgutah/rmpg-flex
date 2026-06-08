@@ -301,7 +301,13 @@
 //       shell (read-only GPS) drives detection on EVERY page incl. the Drive
 //       Mode HUD, not just /nav. NavPage now consumes the shared context instead
 //       of running its own detector + duplicate uploader.
-const CACHE_NAME = 'rmpg-flex-v811';
+// v812: Fix "trips not logging" poison-pill — a trip left open (app close / lost
+//       signal) stayed 'active' forever and the single-active-trip guard 409'd
+//       every new trip. Server now auto-closes stale active trips (>10min no
+//       update) in /trip/current + /trip/start; client clears stale ids + re-arms
+//       when the server reports no current trip; the 3-min auto-detect window now
+//       re-arms (rolling departure detection) instead of dying after login.
+const CACHE_NAME = 'rmpg-flex-v812';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

@@ -63,11 +63,37 @@ function routeDistance(points: RoutePoint[]): number {
   return dist;
 }
 
+/** Auto-finalize abandoned active trips for an officer.
+ *
+ *  A live trip updates every ~15s while the app is open, so an active row whose
+ *  last update is older than STALE_ACTIVE_MIN minutes was left open by an app
+ *  close / lost signal / crash — never legitimately in progress. Without this,
+ *  the single-active-trip guard in /trip/start 409s forever and the officer can
+ *  never log another trip (poison-pill state). We end the trip at its last known
+ *  activity (updated_at) so distance/duration stay accurate. Idempotent + cheap;
+ *  safe to call at the top of the read + start paths. */
+const STALE_ACTIVE_MIN = 10;
+async function closeStaleActiveTrips(db: ReturnType<typeof getDb>, userId: number): Promise<void> {
+  await execute(db,
+    `UPDATE nav_trip_log
+     SET status = 'completed',
+         end_time = COALESCE(updated_at, start_time),
+         duration_seconds = CAST((julianday(COALESCE(updated_at, start_time)) - julianday(start_time)) * 86400 AS INTEGER),
+         notes = COALESCE(notes, '') || ' [auto-closed: stale active trip — no update in ${STALE_ACTIVE_MIN}+ min]',
+         updated_at = datetime('now','localtime')
+     WHERE officer_id = ? AND status = 'active'
+       AND COALESCE(updated_at, start_time) < datetime('now','localtime','-${STALE_ACTIVE_MIN} minutes')`,
+    userId);
+}
+
 // ── GET /nav/trip/current — active/pending trip for this user ─
 nav.get('/trip/current', async (c) => {
   try {
     const db = getDb(c.env);
     const userId = c.get('userId') as number;
+    // Reap any abandoned active trip first so the client stops seeing it as the
+    // current trip (which would skip detection + block new trips via /start's 409).
+    await closeStaleActiveTrips(db, userId);
     const trip = await queryFirst<Record<string, unknown>>(db,
       `SELECT ntl.*, fv.vehicle_number, fv.make, fv.model, fv.plate_number,
               u.call_sign as unit_call_sign,
@@ -102,12 +128,17 @@ nav.post('/trip/start', async (c) => {
       return c.json({ error: 'start_lat and start_lng required' }, 400);
     }
 
+    // Reap abandoned active trips so a trip left open by a prior session can't
+    // permanently 409-block new trips below.
+    await closeStaleActiveTrips(db, userId);
+
     // Cancel any existing pending trips for this user
     await execute(db,
       `UPDATE nav_trip_log SET status = 'cancelled', updated_at = datetime('now','localtime')
        WHERE officer_id = ? AND status = 'pending'`, userId);
 
-    // Prevent duplicate active trips
+    // Prevent duplicate active trips (a genuinely fresh active trip still blocks —
+    // you're already on one; stale ones were just auto-closed above)
     const existing = await queryFirst<{ id: number }>(db,
       `SELECT id FROM nav_trip_log WHERE officer_id = ? AND status = 'active' LIMIT 1`, userId);
     if (existing) {

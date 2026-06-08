@@ -105,9 +105,30 @@ export function useNavTripDetection(opts: UseNavTripDetectionOptions) {
         setCurrentTrip(res.trip);
         setDetection((prev) => ({
           ...prev,
-          activeTripId: res.trip!.status === 'active' ? res.trip!.id : prev.activeTripId,
-          pendingTripId: res.trip!.status === 'pending' ? res.trip!.id : prev.pendingTripId,
+          activeTripId: res.trip!.status === 'active' ? res.trip!.id : null,
+          pendingTripId: res.trip!.status === 'pending' ? res.trip!.id : null,
         }));
+      } else {
+        // Server has NO active/pending trip. If our persisted state still points
+        // at one (e.g. the server auto-closed a stale active trip from a prior
+        // session, or a trip ended elsewhere), clear the stale ids and re-arm
+        // detection — otherwise activeTripId stays set forever and the detector
+        // skips, so the officer can never log another trip. (Self-heal for the
+        // poison-pill state where one abandoned trip bricked all future ones.)
+        setCurrentTrip(null);
+        setDetection((prev) => (prev.activeTripId || prev.pendingTripId)
+          ? {
+              ...prev,
+              activeTripId: null,
+              pendingTripId: null,
+              movementConfirmed: false,
+              loginPosition: null,
+              loginTime: null,
+              windowStartTime: null,
+              windowStartPosition: null,
+              windowMovementDetected: false,
+            }
+          : prev);
       }
     } catch { /* silent */ }
   }, []);
@@ -155,13 +176,26 @@ export function useNavTripDetection(opts: UseNavTripDetectionOptions) {
       // Already confirmed movement — skip detection
       if (next.movementConfirmed || next.activeTripId) return next;
 
-      // Past detection window (3 min) — stop trying
+      // Past detection window (3 min) with no departure detected. The officer
+      // has been parked here; RE-ARM the window against the current position
+      // instead of going dead for the whole session. Without this, auto-detection
+      // only ever works in the first 3 min after the app gets a fix — an officer
+      // who sits a while before driving (the common take-home case) would never
+      // auto-log a trip. Re-anchoring makes it a rolling "departed from where I
+      // was sitting" detector. (Only reached when NOT already on a trip — the
+      // movementConfirmed/activeTripId guard above returns first.)
       if (next.loginTime && now - next.loginTime > DETECTION_WINDOW_MS) {
-        // Cancel any pending trip if no movement confirmed
         if (next.pendingTripId && !next.movementConfirmed) {
           cancelTrip(next.pendingTripId);
           next.pendingTripId = null;
         }
+        next.loginPosition = { lat: latitude, lng: longitude, accuracy: accuracy ?? 0 };
+        next.loginTime = now;
+        next.bufferStartTime = now;
+        next.bufferPosition = { lat: latitude, lng: longitude };
+        next.windowStartTime = null;
+        next.windowStartPosition = null;
+        next.windowMovementDetected = false;
         return next;
       }
 
