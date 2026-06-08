@@ -9986,3 +9986,29 @@ td.sparkline-cell {
 .rmpg-pop-row span { color: #777777; text-transform: uppercase; letter-spacing: 0.04em; font-size: 8px; flex-shrink: 0; }
 .rmpg-pop-row b { color: #cfcfcf; font-weight: 600; text-align: right; word-break: break-word; }
 .rmpg-pop-rel { padding: 5px 9px; font-size: 9px; font-weight: 700; color: #d4a017; background: rgba(212,160,23,0.07); border-top: 1px solid var(--border-subtle, #1a1a1a); text-align: center; }
+
+/* ── Document Writer (TipTap) ── */
+.writer-content .tiptap { color: #111; font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; font-size: 12px; line-height: 1.7; }
+.writer-content .tiptap:focus { outline: none; }
+.writer-content .tiptap p { margin: 0 0 8px; }
+.writer-content .tiptap h1 { font-size: 20px; font-weight: 700; margin: 16px 0 8px; color: #000; }
+.writer-content .tiptap h2 { font-size: 16px; font-weight: 600; margin: 14px 0 6px; color: #111; }
+.writer-content .tiptap h3 { font-size: 13px; font-weight: 600; margin: 12px 0 4px; color: #222; }
+.writer-content .tiptap h4 { font-size: 12px; font-weight: 600; margin: 10px 0 4px; color: #333; }
+.writer-content .tiptap ul, .writer-content .tiptap ol { padding-left: 24px; margin: 4px 0; }
+.writer-content .tiptap li { margin: 2px 0; }
+.writer-content .tiptap blockquote { border-left: 3px solid #d4a017; margin: 8px 0; padding: 4px 12px; color: #444; }
+.writer-content .tiptap hr { border: none; border-top: 1px solid #ccc; margin: 16px 0; }
+.writer-content .tiptap table { border-collapse: collapse; width: 100%; margin: 8px 0; }
+.writer-content .tiptap td, .writer-content .tiptap th { border: 1px solid #333; padding: 6px 8px; vertical-align: top; }
+.writer-content .tiptap th { background: #f5f5f5; font-weight: 600; }
+.writer-content .tiptap img { max-width: 100%; height: auto; border-radius: 2px; }
+.writer-content .tiptap code { background: #f0f0f0; padding: 1px 4px; border-radius: 2px; font-size: 11px; }
+.writer-content .tiptap mark { background: #fff3b0; padding: 1px 2px; }
+.writer-content .tiptap a { color: #1a73e8; text-decoration: underline; }
+.writer-content .tiptap ul[data-type="taskList"] { list-style: none; padding-left: 4px; }
+.writer-content .tiptap ul[data-type="taskList"] li { display: flex; align-items: flex-start; gap: 6px; }
+.writer-content .tiptap ul[data-type="taskList"] li label { margin-top: 2px; }
+.writer-content .tiptap .is-empty::before { content: attr(data-placeholder); color: #999; pointer-events: none; float: left; height: 0; }
+.writer-content .tiptap .selectedCell { background: rgba(26,115,232,0.1); }
+.writer-content .tiptap .column-resize-handle { position: absolute; right: -2px; top: 0; bottom: 0; width: 4px; background: #1a73e8; cursor: col-resize; }
