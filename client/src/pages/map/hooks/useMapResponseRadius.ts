@@ -133,8 +133,10 @@ export function useMapResponseRadius(
       throttleTimerRef.current = setTimeout(() => { throttleTimerRef.current = null; }, 100);
 
       const rect = map.getCanvas().getBoundingClientRect();
+      if (!rect.width || !rect.height) return;
       const point: [number, number] = [e.clientX - rect.left, e.clientY - rect.top];
       const lngLat = map.unproject(point);
+      if (!Number.isFinite(lngLat.lng) || !Number.isFinite(lngLat.lat)) return;
 
       const source = getSourceSafe<mapboxgl.GeoJSONSource>(map, cursorSourceId);
       if (source) {

@@ -247,11 +247,11 @@ export function printWithLightMaps(): void {
 // Fetches Mapbox access token from the server API.
 // ============================================================
 
-let _serverConfigPromise: Promise<{ mapbox_access_token?: string }> | null = null;
+let _serverConfigPromise: Promise<{ accessToken?: string }> | null = null;
 let _fetchFailCount = 0;
 const MAX_FETCH_RETRIES = 3;
 
-export async function fetchMapboxConfig(): Promise<{ mapbox_access_token?: string }> {
+export async function fetchMapboxConfig(): Promise<{ accessToken?: string }> {
   if (_serverConfigPromise) return _serverConfigPromise;
   if (_fetchFailCount >= MAX_FETCH_RETRIES) return {};
 
@@ -263,7 +263,7 @@ export async function fetchMapboxConfig(): Promise<{ mapbox_access_token?: strin
         return {};
       }
       const base = import.meta.env.VITE_API_BASE_URL || '';
-      const res = await fetch(`${base}/api/admin/mapbox-config`, {
+      const res = await fetch(`${base}/api/integrations/mapbox/client-token`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) {
@@ -284,8 +284,10 @@ export async function fetchMapboxConfig(): Promise<{ mapbox_access_token?: strin
 }
 
 export async function resolveMapboxAccessToken(): Promise<string> {
+  const buildTimeToken = (import.meta.env.VITE_MAPBOX_ACCESS_TOKEN as string || '').trim();
+  if (buildTimeToken) return buildTimeToken;
   const cfg = await fetchMapboxConfig();
-  return cfg.mapbox_access_token || import.meta.env.VITE_MAPBOX_ACCESS_TOKEN || '';
+  return cfg.accessToken || '';
 }
 
 export function clearMapboxConfigCache(): void {

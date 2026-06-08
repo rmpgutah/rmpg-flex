@@ -3,8 +3,7 @@ import mapboxgl from 'mapbox-gl';
 import { devLog, devWarn } from '../../../utils/devLog';
 import { injectKeyframes } from '../utils/mapMarkerBuilders';
 import type { MapStyleId } from '../utils/mapConstants';
-
-const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN || '';
+import { resolveMapboxAccessToken } from '../../../utils/mapboxLoader';
 
 const STYLE_MAP: Record<MapStyleId, string> = {
   dark: 'mapbox://styles/mapbox/dark-v11',
@@ -65,17 +64,11 @@ export function useMapInit(mapStyle: MapStyleId): UseMapInitResult {
     const MAX_RETRIES = 8;
     const RETRY_DELAYS = [2000, 4000, 8000, 12000, 16000, 20000, 25000, 30000];
 
-    function initMap() {
+    function initMap(token: string) {
       if (!mapRef.current || authFailed || cancelled) return;
       if (mapInstanceRef.current) { setMapLoaded(true); return; }
 
-      if (!MAPBOX_TOKEN) {
-        authFailed = true;
-        setMapError('Mapbox access token is not configured.\n\nSet VITE_MAPBOX_ACCESS_TOKEN in your .env file.');
-        return;
-      }
-
-      mapboxgl.accessToken = MAPBOX_TOKEN;
+      mapboxgl.accessToken = token;
 
       const map = new mapboxgl.Map({
         container: mapRef.current,
@@ -118,7 +111,7 @@ export function useMapInit(mapStyle: MapStyleId): UseMapInitResult {
       });
     }
 
-    function attemptLoad(attempt: number) {
+    async function attemptLoad(attempt: number) {
       if (cancelled) return;
 
       if (typeof navigator !== 'undefined' && !navigator.onLine) {
@@ -134,18 +127,18 @@ export function useMapInit(mapStyle: MapStyleId): UseMapInitResult {
         return;
       }
 
-      if (!MAPBOX_TOKEN) {
-        if (attempt < MAX_RETRIES) {
-          const delay = RETRY_DELAYS[attempt] || 30000;
-          setTimeout(() => attemptLoad(attempt + 1), delay);
-        } else {
-          setMapError('Failed to load map — no Mapbox access token configured.');
-        }
-        return;
-      }
-
       try {
-        initMap();
+        const token = await resolveMapboxAccessToken();
+        if (!token) {
+          if (attempt < MAX_RETRIES) {
+            const delay = RETRY_DELAYS[attempt] || 30000;
+            setTimeout(() => attemptLoad(attempt + 1), delay);
+          } else {
+            setMapError('Failed to load map — no Mapbox access token configured.');
+          }
+          return;
+        }
+        initMap(token);
       } catch (err: any) {
         if (cancelled) return;
         const errMsg = err?.message || String(err);
