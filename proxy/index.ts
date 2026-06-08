@@ -1782,11 +1782,8 @@ const API_ROUTES: RouteRule[] = [
   { kind: 'prefix', value: '/api/notifications' },
   // Use-of-force reports (useOfForce.ts) — new rewrite handler; legacy 500'd.
   { kind: 'prefix', value: '/api/use-of-force' },
-  // ONLY /api/invoices/stats → env.API (the path that 500'd on legacy). The
-  // rest of /api/invoices/* (list, :id, create, status, payments, line-items)
-  // is full CRUD the LEGACY worker owns and works — must stay on legacy or the
-  // whole InvoicesPage breaks. Scoped regex, not a prefix.
-  { kind: 'regex', value: /^\/api\/invoices\/stats(\?.*)?$/, methods: ['GET'] },
+  // /api/invoices — full prefix to rewrite (legacy 404s on list + stats).
+  { kind: 'prefix', value: '/api/invoices' },
   // Document folders — documentFolders.ts serves /folders; legacy 404'd.
   // Scoped to /folders only so the rest of /api/documents stays on legacy
   // (the rewrite has no document file-list handler).
@@ -1809,6 +1806,35 @@ const API_ROUTES: RouteRule[] = [
   // TrainingDocsPage CRUD + CSV export. Migration 0078 creates the
   // company_documents table. Replaces the empty-array stub that was here.
   { kind: 'prefix', value: '/api/company-documents' },
+  // ── ClearPathGPS integration stubs ──
+  { kind: 'prefix', value: '/api/clearpathgps' },
+  // ── Forensic lab (alias for /api/forensics) ──
+  { kind: 'prefix', value: '/api/forensic-lab' },
+
+  // ── 2026-06-08 404 elimination sweep ──────────────────────────────
+  // Client-called prefixes with no handler on either backend. Routed to
+  // env.API where the stubs router returns safe empty shapes. Without
+  // these, requests fall through to env.LEGACY which also has no handler.
+  { kind: 'prefix', value: '/api/cfs' },
+  { kind: 'prefix', value: '/api/code-enforcement' },
+  { kind: 'prefix', value: '/api/dar' },
+  { kind: 'prefix', value: '/api/diagnostics' },
+  { kind: 'prefix', value: '/api/firecrawl-tools' },
+  { kind: 'prefix', value: '/api/mobile' },
+  { kind: 'prefix', value: '/api/pdf-artifacts' },
+  { kind: 'prefix', value: '/api/pdf-engine' },
+  { kind: 'prefix', value: '/api/updates' },
+  { kind: 'prefix', value: '/api/voice-persona' },
+
+  // ── Prefixes with rewrite handlers but no proxy route ─────────────
+  // These have real handlers in routesConfig.ts but were falling through
+  // to legacy because the proxy never routed them.
+  { kind: 'prefix', value: '/api/cases' },
+  { kind: 'prefix', value: '/api/citations' },
+  { kind: 'prefix', value: '/api/court' },
+  { kind: 'prefix', value: '/api/trespass-orders' },
+  { kind: 'prefix', value: '/api/weather' },
+  { kind: 'prefix', value: '/api/email' },
 ];
 
 function matches(rule: RouteRule, pathname: string, method: string): boolean {

@@ -816,12 +816,21 @@ admin.get('/users', async (c) => {
     const db = getDb(c.env);
     const role = c.req.query('role');
     const limit = Math.min(parseInt(c.req.query('limit') || '500', 10) || 500, 1000);
-    const cols = 'id, username, full_name, role, status, badge_number, call_sign, email, created_at';
-    const sql = role
-      ? `SELECT ${cols} FROM users WHERE role = ? AND status = 'active' ORDER BY full_name LIMIT ?`
-      : `SELECT ${cols} FROM users WHERE status = 'active' ORDER BY full_name LIMIT ?`;
-    const params = role ? [role, limit] : [limit];
-    const rows = await query<Record<string, unknown>>(db, sql, ...params);
+    const cols = 'id, username, full_name, role, badge_number, call_sign, email, created_at';
+    let rows: Record<string, unknown>[];
+    try {
+      const sql = role
+        ? `SELECT ${cols}, status FROM users WHERE role = ? AND status = 'active' ORDER BY full_name LIMIT ?`
+        : `SELECT ${cols}, status FROM users WHERE status = 'active' ORDER BY full_name LIMIT ?`;
+      const params = role ? [role, limit] : [limit];
+      rows = await query<Record<string, unknown>>(db, sql, ...params);
+    } catch {
+      const sql = role
+        ? `SELECT ${cols} FROM users WHERE role = ? ORDER BY full_name LIMIT ?`
+        : `SELECT ${cols} FROM users ORDER BY full_name LIMIT ?`;
+      const params = role ? [role, limit] : [limit];
+      rows = await query<Record<string, unknown>>(db, sql, ...params);
+    }
     return c.json(rows);
   } catch (err) {
     console.error('[Admin] List users failed:', err);

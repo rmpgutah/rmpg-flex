@@ -148,8 +148,8 @@ export default function FleetInspectionsTab({ inspections, onNewInspection, onEd
                         {formatMilitary(insp.inspection_date)}
                       </span>
                       <span>Inspector: {insp.inspector_name}</span>
-                      {insp.mileage != null && (
-                        <span className="flex items-center gap-0.5"><Gauge className="w-2.5 h-2.5" />{insp.mileage.toLocaleString()} mi</span>
+                      {insp.mileage != null && Number.isFinite(Number(insp.mileage)) && (
+                        <span className="flex items-center gap-0.5"><Gauge className="w-2.5 h-2.5" />{Number(insp.mileage).toLocaleString()} mi</span>
                       )}
                     </div>
                   </div>

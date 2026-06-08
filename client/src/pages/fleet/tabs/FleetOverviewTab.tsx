@@ -444,9 +444,9 @@ export default function FleetOverviewTab({ detail, maintenance, onEditMaintenanc
                           </span>
                         </div>
                         <div className="flex items-center gap-3">
-                          {m.mileage_at_service != null && (
+                          {m.mileage_at_service != null && Number.isFinite(Number(m.mileage_at_service)) && (
                             <span className="text-[9px] text-rmpg-400 flex items-center gap-0.5">
-                              <Gauge className="w-2.5 h-2.5" />{m.mileage_at_service.toLocaleString()} mi
+                              <Gauge className="w-2.5 h-2.5" />{Number(m.mileage_at_service).toLocaleString()} mi
                             </span>
                           )}
                           {m.cost != null && (
