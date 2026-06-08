@@ -21,7 +21,7 @@ import CustomStampsGallery, { StampPick } from './components/CustomStampsGallery
 import MiniMap from './components/MiniMap';
 import AnnotationContextMenu from './components/AnnotationContextMenu';
 import { Annotation, BatesConfig, DocumentMeta, EditorState, EditorPreferences, DEFAULT_PREFERENCES, PageCrop, PageMeta, RecentFile, StampLabel, Tool, WatermarkConfig, DEFAULT_RENDER_SCALE } from './types';
-import { buildPdfFromEditorState, extractPagesAsBytes, mergePdfFiles, saveToDocuments } from './save';
+import { buildPdfFromEditorState, extractPagesAsBytes, mergePdfFiles, normalizeUploadResponse, saveToDocuments } from './save';
 import { authedImageUrl } from '../../hooks/useApi';
 import { parseTimestamp } from '../../utils/dateUtils';
 
@@ -737,21 +737,45 @@ export default function PdfEditorPage() {
         const file = new File([encrypted as BlobPart], `${base}-encrypted.pdf`, { type: 'application/pdf' });
         const form = new FormData();
         form.append('files', file);
-        if (savable.sourceFolderId != null) form.append('folder_id', String(savable.sourceFolderId));
+        if (savable.sourceFolderId != null) {
+          form.append('folder_id', String(savable.sourceFolderId));
+          form.append('entity_type', 'document_folder');
+          form.append('entity_id', String(savable.sourceFolderId));
+        }
         const token = localStorage.getItem('rmpg_token');
         const headers: Record<string, string> = {};
         if (token) headers['Authorization'] = `Bearer ${token}`;
         const res = await fetch('/api/uploads', { method: 'POST', headers, body: form });
         if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
-        const data = await res.json();
-        setSavedNotice(`Saved encrypted PDF as “${data.files?.[0]?.original_name}” in Documents.`);
+        const uploaded = normalizeUploadResponse(await res.json().catch(() => null));
+        if (uploaded.length === 0) throw new Error('Upload did not return file');
+        setSavedNotice(`Saved encrypted PDF as “${uploaded[0].original_name}” in Documents.`);
       } else {
         const result = await saveToDocuments(savable, { folderId: savable.sourceFolderId });
         setSavedNotice(`Saved as “${result.original_name}” in Documents.`);
       }
       setTimeout(() => setSavedNotice(null), 8000);
     } catch (err) {
-      setError(`Save to Documents failed: ${err instanceof Error ? err.message : 'unknown'}`);
+      // Never lose the user's edits: if the upload endpoint is down or returns
+      // an unexpected shape, fall back to a local download of the same bytes so
+      // the work survives and can be re-filed manually.
+      const reason = err instanceof Error ? err.message : 'unknown';
+      try {
+        const { state: savable } = buildSavableState();
+        let outBytes = await buildPdfFromEditorState(savable);
+        outBytes = await maybeEncrypt(outBytes);
+        const blob = new Blob([outBytes as BlobPart], { type: 'application/pdf' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        const base = fileName.replace(/\.pdf$/i, '') || 'document';
+        a.href = url;
+        a.download = `${base}${encryption ? '-encrypted' : '-edited'}.pdf`;
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 1500);
+        setError(`Save to Documents failed (${reason}) — downloaded a local copy instead so your edits aren't lost.`);
+      } catch {
+        setError(`Save to Documents failed: ${reason}`);
+      }
     } finally {
       setSaving(false);
     }

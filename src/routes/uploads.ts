@@ -253,6 +253,15 @@ uploads.post('/', async (c) => {
     const entityIdRaw = formData.get('entity_id') ? String(formData.get('entity_id')) : null;
     const entityId = entityIdRaw ? parseInt(entityIdRaw, 10) : null;
 
+    // Direct folder placement: callers (PDF editor, document writer, Documents
+    // page) may pass `folder_id` to file the upload straight into a
+    // document_folders row via attachments.folder_id, avoiding a second
+    // move-file round-trip. Also accept entity_type=document_folder as an alias.
+    const folderIdRaw = formData.get('folder_id')
+      ? String(formData.get('folder_id'))
+      : (entityType === 'document_folder' && entityIdRaw ? entityIdRaw : null);
+    const folderId = folderIdRaw && /^\d+$/.test(folderIdRaw) ? parseInt(folderIdRaw, 10) : null;
+
     const results: any[] = [];
 
     for (const file of files) {
@@ -286,6 +295,16 @@ uploads.post('/', async (c) => {
         entityId,
         userId,
       );
+
+      if (folderId != null) {
+        // Best-effort: file the attachment into the requested folder. Guarded so
+        // a missing/invalid folder never fails the whole upload.
+        try {
+          await execute(db, 'UPDATE attachments SET folder_id = ? WHERE file_id = ?', folderId, fileId);
+        } catch (e) {
+          console.warn('Upload: folder placement failed for', fileId, e);
+        }
+      }
 
       const row = await queryFirst<any>(db, 'SELECT * FROM attachments WHERE file_id = ?', fileId);
       if (row) results.push(row);

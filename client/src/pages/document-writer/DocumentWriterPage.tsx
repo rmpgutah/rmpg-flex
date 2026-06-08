@@ -87,8 +87,11 @@ export default function DocumentWriterPage() {
       if (token) headers['Authorization'] = `Bearer ${token}`;
       const res = await fetch('/api/uploads', { method: 'POST', headers, body: formData });
       if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
-      const data = await res.json() as { files?: Array<{ file_id: string }> };
-      const fileId = data.files?.[0]?.file_id;
+      const data = await res.json().catch(() => null) as unknown;
+      // /api/uploads returns a bare array of records; tolerate the legacy
+      // `{ files: [...] }` envelope too.
+      const rec: any = Array.isArray(data) ? data[0] : (data as any)?.files?.[0] ?? (data as any)?.file;
+      const fileId = rec?.file_id ?? rec?.fileId ?? rec?.id;
       if (fileId) setDocumentId(fileId);
       setSavedNotice(`Saved to Documents as "${title}"`);
       setTimeout(() => setSavedNotice(null), 4000);
