@@ -15,7 +15,6 @@ import {
   Link2,
   Shield,
   GraduationCap,
-  WifiOff,
   DatabaseZap,
   Navigation,
   Fingerprint,
@@ -51,7 +50,6 @@ import AdminNotifRulesTab from './admin/AdminNotifRulesTab';
 import AdminServeManagerTab from './admin/AdminServeManagerTab';
 import AdminSessionsTab from './admin/AdminSessionsTab';
 import AdminTrainingTab from './admin/AdminTrainingTab';
-import AdminOfflineTab from './admin/AdminOfflineTab';
 import AdminMicrobiltTab from './admin/AdminMicrobiltTab';
 import AdminClearPathGpsTab from './admin/AdminClearPathGpsTab';
 import AdminArrestsTab from './admin/AdminArrestsTab';
@@ -228,7 +226,7 @@ function mapAuditRow(row: AuditRow): AuditEntry {
 // Constants
 // ============================================================
 
-type TabId = 'users' | 'clients' | 'system' | 'settings' | 'audit' | 'health' | 'announcements' | 'departments' | 'notif_rules' | 'servemanager' | 'microbilt' | 'clearpathgps' | 'arrests' | 'warrant_scrapers' | 'skiptracer_v2' | 'sessions' | 'training' | 'offline' | 'email' | 'iped' | 'integrations' | 'ai_settings' | 'godmode' | 'map_settings' | 'radio';
+type TabId = 'users' | 'clients' | 'system' | 'settings' | 'audit' | 'health' | 'announcements' | 'departments' | 'notif_rules' | 'servemanager' | 'microbilt' | 'clearpathgps' | 'arrests' | 'warrant_scrapers' | 'skiptracer_v2' | 'sessions' | 'training' | 'email' | 'iped' | 'integrations' | 'ai_settings' | 'godmode' | 'map_settings' | 'radio';
 
 const LS_ADMIN_TAB = 'rmpg_admin_tab';
 
@@ -242,7 +240,7 @@ export default function AdminPage() {
   const clientEditPendingRef = useRef(false);
 
   // Restore active tab from URL ?tab= param or localStorage (default: 'users')
-  const VALID_TABS = ['users', 'clients', 'system', 'settings', 'audit', 'health', 'announcements', 'departments', 'notif_rules', 'servemanager', 'microbilt', 'clearpathgps', 'arrests', 'warrant_scrapers', 'skiptracer_v2', 'sessions', 'training', 'offline', 'email', 'iped', 'integrations', 'ai_settings', 'godmode', 'map_settings', 'radio'];
+  const VALID_TABS = ['users', 'clients', 'system', 'settings', 'audit', 'health', 'announcements', 'departments', 'notif_rules', 'servemanager', 'microbilt', 'clearpathgps', 'arrests', 'warrant_scrapers', 'skiptracer_v2', 'sessions', 'training', 'email', 'iped', 'integrations', 'ai_settings', 'godmode', 'map_settings', 'radio'];
   const [activeTab, setActiveTabState] = useState<TabId>(() => {
     try {
       // URL ?tab= param takes priority (used by Help → Training link)
@@ -657,7 +655,6 @@ export default function AdminPage() {
         { id: 'health', label: 'System Health', icon: Activity },
         // 'branding' (Branding & Reports) consolidated into System Config → Branding & Reports sub-tab (2026-06-02)
         // 'retention' (Data Retention) removed 2026-06-02 — destructive auto-purge was never built; backend stayed a stub.
-        { id: 'offline', label: 'Offline Mode', icon: WifiOff },
       ],
     },
     {
@@ -993,14 +990,6 @@ export default function AdminPage() {
 
         {activeTab === 'training' && (
           <AdminTrainingTab
-            LoadingSpinner={LoadingSpinner}
-            error={error}
-            setError={setError}
-          />
-        )}
-
-        {activeTab === 'offline' && (
-          <AdminOfflineTab
             LoadingSpinner={LoadingSpinner}
             error={error}
             setError={setError}

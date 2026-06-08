@@ -145,7 +145,7 @@ function PersonnelPrintMenu({ officer, credentials, training, equipment, bodyCam
 }
 
 // ── On-Duty Toggle Component ──────────────────────────────────
-function DutyToggle({ officerId, currentStatus }: { officerId: string; currentStatus: string }) {
+function DutyToggle({ officerId, currentStatus, onToggled }: { officerId: string; currentStatus: string; onToggled?: () => void }) {
   const [toggling, setToggling] = useState(false);
   const isOnDuty = currentStatus === 'on_duty';
 
@@ -157,6 +157,7 @@ function DutyToggle({ officerId, currentStatus }: { officerId: string; currentSt
       } else {
         await apiFetch('/dispatch/duty/start', { method: 'POST', body: JSON.stringify({ officer_id: officerId }) });
       }
+      onToggled?.();
     } catch (err: any) {
       if (err?.code === 'NEEDS_VEHICLE' || err?.code === 'NO_UNIT') {
         const units = await apiFetch<any[]>('/dispatch/units').catch(() => []);
@@ -166,6 +167,7 @@ function DutyToggle({ officerId, currentStatus }: { officerId: string; currentSt
             method: 'PUT',
             body: JSON.stringify({ status: isOnDuty ? 'off_duty' : 'available' }),
           });
+          onToggled?.();
         }
       } else {
         console.error('Duty toggle failed:', err);
@@ -173,7 +175,7 @@ function DutyToggle({ officerId, currentStatus }: { officerId: string; currentSt
     } finally {
       setToggling(false);
     }
-  }, [officerId, isOnDuty]);
+  }, [officerId, isOnDuty, onToggled]);
 
   return (
     <button type="button"
@@ -239,6 +241,7 @@ interface Props {
   onClockOut: (officerId: string) => void;
   onStartBreak: (officerId: string) => void;
   onEndBreak: (officerId: string) => void;
+  onDutyToggle?: () => void;
   onEditTimeEntry: (entry: TimeEntry) => void;
   onDeleteTimeEntry: (entryId: string) => void;
   onClose: () => void;
@@ -259,7 +262,7 @@ export default function PersonnelDetailPanel({
   onAddDeployment,
   onEditOfficer, onDeleteOfficer,
   onArchiveOfficer, onUnarchiveOfficer, isArchived,
-  onClockIn, onClockOut, onStartBreak, onEndBreak, onEditTimeEntry, onDeleteTimeEntry,
+  onClockIn, onClockOut, onStartBreak, onEndBreak, onDutyToggle, onEditTimeEntry, onDeleteTimeEntry,
   onClose,
 }: Props) {
   const officerCreds = credentials.filter(c => c.officer_id === officer.id);
@@ -383,7 +386,7 @@ export default function PersonnelDetailPanel({
                 <LogIn className="w-3 h-3" /> Clock In
               </button>
             )}
-            <DutyToggle officerId={officer.id} currentStatus={officer.status} />
+            <DutyToggle officerId={officer.id} currentStatus={officer.status} onToggled={onDutyToggle} />
           </div>
 
           {/* Quick stats — inline, right-aligned */}

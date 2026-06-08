@@ -93,7 +93,8 @@ personnel.get('/', async (c) => {
                       u.shift_preference, u.dl_number, u.dl_state, u.dl_expiry, u.blood_type, u.allergies,
                       u.uniform_size, u.emergency_contact_name, u.emergency_contact_phone,
                       u.emergency_contact_relationship, u.created_at, u.updated_at,
-                      (SELECT call_sign FROM units WHERE officer_id = u.id LIMIT 1) AS unit_call_sign
+                      (SELECT call_sign FROM units WHERE officer_id = u.id LIMIT 1) AS unit_call_sign,
+                      (SELECT status FROM units WHERE officer_id = u.id LIMIT 1) AS unit_status
                FROM users u WHERE 1=1`;
     const params: unknown[] = [];
     if (status) { sql += ' AND u.status = ?'; params.push(status); }
@@ -527,6 +528,8 @@ personnel.get('/schedules', async (c) => {
 });
 
 // POST /personnel/schedules — create a new shift plan.
+// Accepts EITHER the bulk shape {name, date, assignments:[...]} (shift_plans model)
+// OR the per-officer shape {officer_id, shift_date, start_time, end_time} from the client modal.
 personnel.post('/schedules', async (c) => {
   const denied = requireManager(c);
   if (denied) return denied;
@@ -534,14 +537,32 @@ personnel.post('/schedules', async (c) => {
     const db = getDb(c.env);
     const body = await c.req.json<Record<string, unknown>>();
     const user = c.get('user') as { id: number } | undefined;
-    if (!body.name || !body.date) return c.json({ error: 'name and date required' }, 400);
     const id = body.id || crypto.randomUUID();
-    await execute(db,
-      `INSERT INTO shift_plans (id, name, date, shift_type, assignments, status, created_by, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'), datetime('now','localtime'))`,
-      id, body.name, body.date, body.shift_type || 'day',
-      typeof body.assignments === 'string' ? body.assignments : JSON.stringify(body.assignments || []),
-      body.status || 'draft', user?.id ?? null);
+
+    if (body.officer_id && body.shift_date) {
+      const assignment = {
+        officer_id: body.officer_id,
+        start_time: body.start_time || '18:00',
+        end_time: body.end_time || '06:00',
+        property_id: body.property_id ?? null,
+      };
+      await execute(db,
+        `INSERT INTO shift_plans (id, name, date, shift_type, assignments, status, created_by, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'), datetime('now','localtime'))`,
+        id, body.notes || 'Shift', body.shift_date, body.shift_type || 'custom',
+        JSON.stringify([assignment]),
+        'active', user?.id ?? null);
+    } else if (body.name && body.date) {
+      await execute(db,
+        `INSERT INTO shift_plans (id, name, date, shift_type, assignments, status, created_by, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'), datetime('now','localtime'))`,
+        id, body.name, body.date, body.shift_type || 'day',
+        typeof body.assignments === 'string' ? body.assignments : JSON.stringify(body.assignments || []),
+        body.status || 'draft', user?.id ?? null);
+    } else {
+      return c.json({ error: 'officer_id + shift_date or name + date required' }, 400);
+    }
+
     const created = await queryFirst(db, 'SELECT * FROM shift_plans WHERE id = ?', id);
     return c.json(created, 201);
   } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
