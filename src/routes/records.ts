@@ -84,7 +84,7 @@ records.put('/properties/:id', async (c) => {
 // are coerced to 0/1 integers.
 const PERSON_WRITABLE_COLUMNS = new Set([
   'first_name', 'last_name', 'middle_name', 'alias_nickname', 'suffix',
-  'dob', 'gender', 'sex', 'race', 'nationality', 'aliases',
+  'dob', 'gender', 'race', 'nationality', 'aliases',
   'height', 'height_feet', 'height_inches', 'weight',
   'build', 'complexion', 'hair_color', 'hair_length', 'hair_style',
   'eye_color', 'facial_hair', 'glasses', 'shoe_size',
@@ -179,7 +179,7 @@ records.get('/persons/export', async (c) => {
     const { archived } = c.req.query();
     let sql = 'SELECT * FROM persons';
     if (archived !== 'true') {
-      sql += " WHERE (flags IS NULL OR flags = '[]' OR NOT EXISTS (SELECT 1 FROM json_each(flags) WHERE json_each.value->>'$.type' = 'archived'))";
+      sql += " WHERE (flags IS NULL OR flags = '[]' OR flags NOT LIKE '%archived%')";
     }
     sql += ' ORDER BY last_name, first_name LIMIT 50000';
     const rows = await query<Record<string, unknown>>(db, sql);
@@ -887,7 +887,7 @@ records.get('/evidence', async (c) => {
     if (status) { sql += ' AND e.status = ?'; params.push(status); }
     sql += ' ORDER BY e.created_at DESC LIMIT 500';
     const rows = await query<Record<string, unknown>>(db, sql, ...params);
-    return c.json(rows);
+    return c.json({ data: rows, pagination: { total: rows.length, limit: 500 } });
   } catch (err) { return c.json({ error: 'Failed' }, 500); }
 });
 
@@ -1737,14 +1737,14 @@ records.delete('/links/:id', async (c) => {
 // ============================================================
 
 const PERSONS_BULK_COLUMNS = `id, first_name, middle_name, last_name, alias_nickname, dob, ssn_last4, dl_number, dl_state,
-  phone, phone_secondary, email, address, city, state, zip, height_feet, height_inches, weight, race, sex, build,
-  complexion, hair_color, hair_length, hair_style, facial_hair, eye_color, glasses, scars, tattoos, piercings,
-  is_sex_offender, is_veteran, occupation, employer, photo, caution_flags, notes, status,
-  created_at, updated_at, archived_at`;
+  phone, phone_secondary, email, address, city, state, zip, height_feet, height_inches, weight, race, gender, build,
+  complexion, hair_color, hair_length, hair_style, facial_hair, eye_color, glasses, scars_marks_tattoos,
+  is_sex_offender, is_veteran, occupation, employer, photo, caution_flags, flags, notes,
+  created_at, updated_at`;
 
-const VEHICLES_BULK_COLUMNS = `id, vin, license_plate, plate_state, make, model, year, color, body_style, vehicle_type,
-  owner_name, owner_phone, owner_address, registered_to, insurance_company, insurance_policy, insurance_expires,
-  is_stolen, bolo_active, notes, status, created_at, updated_at, archived_at`;
+const VEHICLES_BULK_COLUMNS = `id, vin, plate_number, state, make, model, year, color, body_style,
+  owner_name, owner_phone, owner_address, owner_person_id, registered_owner, insurance_company, insurance_policy, insurance_expiry,
+  is_stolen, stolen_status, flags, notes, created_at, updated_at`;
 
 // GET /records/persons?search=...&limit=...
 // Bulk list for SYNC. search is a soft LIKE across name + alias + phone + email.
@@ -1756,9 +1756,9 @@ records.get('/persons', async (c) => {
     const limit = Math.min(parseInt(c.req.query('limit') || '500', 10) || 500, 2000);
     const wheres: string[] = [];
     if (archived === 'true') {
-      wheres.push("EXISTS (SELECT 1 FROM json_each(flags) WHERE json_each.value->>'$.type' = 'archived')");
+      wheres.push("flags LIKE '%archived%'");
     } else if (archived !== 'all') {
-      wheres.push("(flags IS NULL OR flags = '[]' OR NOT EXISTS (SELECT 1 FROM json_each(flags) WHERE json_each.value->>'$.type' = 'archived'))");
+      wheres.push("(flags IS NULL OR flags = '[]' OR flags NOT LIKE '%archived%')");
     }
     const params: unknown[] = [];
     if (search) {
@@ -1787,13 +1787,13 @@ records.get('/vehicles', async (c) => {
     const limit = Math.min(parseInt(c.req.query('limit') || '500', 10) || 500, 2000);
     const wheres: string[] = [];
     if (archived === 'true') {
-      wheres.push("EXISTS (SELECT 1 FROM json_each(flags) WHERE json_each.value->>'$.type' = 'archived')");
+      wheres.push("flags LIKE '%archived%'");
     } else if (archived !== 'all') {
-      wheres.push("(flags IS NULL OR flags = '[]' OR NOT EXISTS (SELECT 1 FROM json_each(flags) WHERE json_each.value->>'$.type' = 'archived'))");
+      wheres.push("(flags IS NULL OR flags = '[]' OR flags NOT LIKE '%archived%')");
     }
     const params: unknown[] = [];
     if (search) {
-      wheres.push(`(license_plate LIKE ? OR vin LIKE ? OR make LIKE ? OR model LIKE ? OR owner_name LIKE ? OR registered_to LIKE ?)`);
+      wheres.push(`(plate_number LIKE ? OR vin LIKE ? OR make LIKE ? OR model LIKE ? OR owner_name LIKE ? OR registered_owner LIKE ?)`);
       const like = `%${search}%`;
       params.push(like, like, like, like, like, like);
     }
