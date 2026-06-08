@@ -715,4 +715,64 @@ auth.put('/profile-image', authMiddleware, async (c) => {
   }
 });
 
+// ── Signature (UserProfileModal) ──────────────────────────
+auth.get('/signature', authMiddleware, async (c) => {
+  try {
+    const db = getDb(c.env);
+    const row = await queryFirst<{ signature: string | null }>(db,
+      'SELECT signature FROM users WHERE id = ?', c.get('userId'));
+    return c.json({ signature: row?.signature || null });
+  } catch { return c.json({ signature: null }); }
+});
+
+auth.put('/signature', authMiddleware, async (c) => {
+  try {
+    const { signature } = await c.req.json<{ signature?: string | null }>();
+    if (signature && typeof signature === 'string' && signature.length > 500_000) {
+      return c.json({ error: 'Signature too large' }, 413);
+    }
+    const db = getDb(c.env);
+    await execute(db,
+      `UPDATE users SET signature = ?, updated_at = datetime('now') WHERE id = ?`,
+      signature || null, c.get('userId'));
+    return c.json({ success: true });
+  } catch { return c.json({ error: 'Failed to save signature' }, 500); }
+});
+
+// ── 2FA / TOTP stubs (not yet ported from legacy) ─────────
+auth.post('/2fa/backup-codes/regenerate', authMiddleware, async (c) => {
+  return c.json({ error: 'Two-factor authentication setup is not yet available on this platform', code: 'MFA_NOT_PORTED' }, 501);
+});
+
+auth.post('/totp/setup', authMiddleware, async (c) => {
+  return c.json({ error: 'TOTP enrollment is not yet available on this platform', code: 'MFA_NOT_PORTED' }, 501);
+});
+
+auth.post('/totp/verify-setup', authMiddleware, async (c) => {
+  return c.json({ error: 'TOTP verification is not yet available on this platform', code: 'MFA_NOT_PORTED' }, 501);
+});
+
+auth.post('/totp/disable', authMiddleware, async (c) => {
+  return c.json({ error: 'TOTP management is not yet available on this platform', code: 'MFA_NOT_PORTED' }, 501);
+});
+
+// ── WebAuthn status ────────────────────────────────────────
+auth.get('/webauthn/status', authMiddleware, async (c) => {
+  return c.json({ enabled: false, credentials: [], supported: false });
+});
+
+// ── Security: unblock IP ───────────────────────────────────
+auth.post('/security/unblock-ip', async (c) => {
+  const user = c.get('user') as { role: string } | undefined;
+  if (!user || !['admin', 'manager'].includes(user.role)) return c.json({ error: 'Insufficient role' }, 403);
+  try {
+    const { ip } = await c.req.json<{ ip: string }>();
+    if (!ip) return c.json({ error: 'ip required' }, 400);
+    const db = getDb(c.env);
+    const r = await execute(db,
+      `DELETE FROM login_attempts WHERE ip_address = ? AND COALESCE(success, 0) = 0`, ip);
+    return c.json({ success: true, cleared: r.meta.changes ?? 0 });
+  } catch { return c.json({ error: 'Failed to unblock IP' }, 500); }
+});
+
 export default auth;

@@ -414,8 +414,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // General-purpose file upload/download. R2-backed (UPLOADS bucket);
   // replaces legacy disk-based multer handler. Supports HMAC-signed
   // access tokens for session-independent file URLs (img/iframe/a tags).
-  { prefix: '/api/uploads', router: uploads, auth: 'required',
-    note: 'File attachments: POST multipart, GET inline/download/thumbnail, DELETE, entity listing, HMAC signing' },
+  { prefix: '/api/uploads', router: uploads, auth: 'public',
+    note: 'File attachments: auth is PUBLIC at the middleware level because thumbnail/download routes accept HMAC-signed URLs (no JWT); each handler calls resolveAuth() internally' },
 
   // ── Company documents (training docs library) ───────────────
   // TrainingDocsPage CRUD + CSV export. Backed by company_documents

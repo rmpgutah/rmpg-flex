@@ -1371,4 +1371,31 @@ calls.post('/:id/undo-redispatch', requireRole('admin', 'manager', 'supervisor',
   }
 });
 
+// ── POST /dispatch/calls/bulk-reassign ──────────────────────
+calls.post('/bulk-reassign', async (c) => {
+  try {
+    const body = await c.req.json<{ call_ids: number[]; unit_id: number }>();
+    if (!Array.isArray(body.call_ids) || !body.call_ids.length || !body.unit_id) {
+      return c.json({ error: 'call_ids (array) and unit_id required' }, 400);
+    }
+    const db = getDb(c.env);
+    const unit = await queryFirst<{ id: number; unit_number: string }>(db,
+      'SELECT id, unit_number FROM units WHERE id = ?', body.unit_id);
+    if (!unit) return c.json({ error: 'Unit not found' }, 404);
+    let updated = 0;
+    for (const callId of body.call_ids.slice(0, 50)) {
+      try {
+        await execute(db,
+          `UPDATE calls_for_service SET assigned_unit_ids = ?, updated_at = datetime('now','localtime') WHERE id = ?`,
+          JSON.stringify([body.unit_id]), callId);
+        updated++;
+      } catch { /* skip individual failures */ }
+    }
+    broadcastAll('dispatch_update', { action: 'bulk_reassign', unit_id: body.unit_id, call_ids: body.call_ids });
+    return c.json({ success: true, updated, total: body.call_ids.length });
+  } catch (err) {
+    return c.json({ error: 'Bulk reassign failed' }, 500);
+  }
+});
+
 export default calls;

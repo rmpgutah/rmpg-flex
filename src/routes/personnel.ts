@@ -240,6 +240,32 @@ personnel.get('/equipment/:id/checkout-log', async (c) => {
   }
 });
 
+// POST /personnel/equipment/:id/checkin — check in (return) equipment.
+personnel.post('/equipment/:id/checkin', async (c) => {
+  const denied = requireManager(c); if (denied) return denied;
+  try {
+    const db = getDb(c.env);
+    const id = c.req.param('id');
+    const item = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM officer_equipment WHERE id = ?', id);
+    if (!item) return c.json({ error: 'Equipment not found' }, 404);
+    const body: { condition?: string; notes?: string } = await c.req.json().catch(() => ({}));
+    await execute(db,
+      `UPDATE officer_equipment SET status = 'returned', returned_date = date('now'), condition = COALESCE(?, condition), notes = COALESCE(?, notes) WHERE id = ?`,
+      body.condition ?? null, body.notes ?? null, id);
+    try {
+      const user = c.get('user') as Record<string, unknown> | undefined;
+      await execute(db,
+        `INSERT INTO equipment_checkout_log (equipment_id, officer_id, action, performed_by, notes, created_at) VALUES (?, ?, 'checkin', ?, ?, datetime('now'))`,
+        id, item.officer_id, user?.id ?? null, body.notes ?? null);
+    } catch { /* log table may not exist */ }
+    const updated = await queryFirst<Record<string, unknown>>(db, `${EQUIPMENT_SELECT} WHERE oe.id = ?`, id);
+    return c.json(updated);
+  } catch (err) {
+    console.error('POST /personnel/equipment/:id/checkin failed:', err);
+    return c.json({ error: 'Failed to check in equipment' }, 500);
+  }
+});
+
 // POST /personnel/:officerId/equipment — issue equipment to an officer.
 personnel.post('/:officerId/equipment', async (c) => {
   const denied = requireManager(c); if (denied) return denied;
@@ -1990,6 +2016,70 @@ personnel.post('/commendations/:id', async (c) => {
     console.error('POST /personnel/commendations/:id error:', err);
     return c.json({ error: 'Failed to add commendation' }, 500);
   }
+});
+
+// ── Calendar / shifts ──────────────────────────────────────
+personnel.get('/calendar/shifts', async (c) => {
+  const from = c.req.query('from') || new Date().toISOString().slice(0, 10);
+  const to = c.req.query('to') || new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10);
+  try {
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(db,
+      `SELECT sp.*, u.full_name, u.badge_number
+       FROM shift_plans sp LEFT JOIN users u ON u.id = sp.officer_id
+       WHERE sp.shift_date BETWEEN ? AND ? AND sp.active = 1
+       ORDER BY sp.shift_date, sp.start_time LIMIT 2000`, from, to);
+    return c.json(rows);
+  } catch { return c.json([]); }
+});
+
+// ── Daily summary ──────────────────────────────────────────
+personnel.get('/daily-summary', async (c) => {
+  const date = c.req.query('date') || new Date().toISOString().slice(0, 10);
+  const db = getDb(c.env);
+  const safe = async (sql: string, ...p: unknown[]): Promise<number> => {
+    try { const r = await queryFirst<{ n: number }>(db, sql, ...p); return r?.n ?? 0; } catch { return 0; }
+  };
+  const [onDuty, clockedIn, onLeave, totalActive] = await Promise.all([
+    safe("SELECT COUNT(*) AS n FROM units WHERE status IN ('available','on_patrol','busy','en_route','on_scene')"),
+    safe("SELECT COUNT(*) AS n FROM time_entries WHERE date(clock_in) = ? AND clock_out IS NULL", date),
+    safe("SELECT COUNT(*) AS n FROM leave_requests WHERE status = 'approved' AND ? BETWEEN start_date AND end_date", date),
+    safe("SELECT COUNT(*) AS n FROM users WHERE status = 'active' AND role IN ('officer','supervisor','manager','admin')"),
+  ]);
+  return c.json({ date, onDuty, clockedIn, onLeave, totalActive });
+});
+
+// ── Roster ─────────────────────────────────────────────────
+personnel.get('/roster', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(db,
+      `SELECT u.id, u.full_name, u.badge_number, u.role, u.status, u.email, u.phone,
+              u.call_sign, u.hire_date,
+              un.unit_number, un.status AS unit_status
+       FROM users u
+       LEFT JOIN units un ON un.officer_id = u.id
+       WHERE u.status = 'active' AND u.role IN ('officer','supervisor','manager','admin','dispatcher')
+       ORDER BY u.full_name LIMIT 500`);
+    return c.json(rows);
+  } catch { return c.json([]); }
+});
+
+// ── Certification expiration warnings ──────────────────────
+personnel.get('/cert-expiration-warnings', async (c) => {
+  const days = parseInt(c.req.query('days') || '60', 10);
+  try {
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(db,
+      `SELECT tc.*, u.full_name, u.badge_number
+       FROM training_certifications tc
+       JOIN users u ON u.id = tc.user_id
+       WHERE tc.expiration_date IS NOT NULL
+         AND tc.expiration_date <= date('now','localtime','+'||?||' days')
+         AND tc.expiration_date >= date('now','localtime','-30 days')
+       ORDER BY tc.expiration_date ASC LIMIT 200`, days);
+    return c.json(rows);
+  } catch { return c.json([]); }
 });
 
 export default personnel;

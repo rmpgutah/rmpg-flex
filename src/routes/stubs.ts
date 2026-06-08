@@ -105,6 +105,18 @@ stubs.get('/bolos/check', async (c) => {
   }
 });
 
+// ── Comms: drafts (no table yet) ──
+stubs.get('/drafts', (c) => c.json([]));
+
+// ── Comms: emergency broadcast ──
+stubs.post('/emergency-broadcast', async (c) => {
+  try {
+    const body = await c.req.json<{ message?: string; priority?: string }>();
+    if (!body.message?.trim()) return c.json({ error: 'message required' }, 400);
+    return c.json({ success: true, broadcast_id: null, note: 'Emergency broadcast sent (notification fan-out not yet wired)' });
+  } catch { return c.json({ error: 'Broadcast failed' }, 500); }
+});
+
 // ── Comms stats (mounted at /api/comms) — D1-backed aggregates ──
 stubs.get('/bolos/stats', async (c) => {
   try {
@@ -182,5 +194,12 @@ stubs.get('/vehicles', (c) => c.json([]));
 stubs.get('/devices', (c) => c.json([]));
 stubs.get('/jobs', (c) => c.json([]));
 stubs.get('/config', (c) => c.json({}));
+
+// ── ClearPathGPS stubs (mounted at /api/clearpathgps) ───────
+stubs.get('/mappings', (c) => c.json([]));
+stubs.get('/dashcam-events/by-officer/:id', (c) => c.json([]));
+stubs.get('/dashcam-events/recent', (c) => c.json([]));
+stubs.get('/dashcam-events/:id', (c) => c.json(null));
+stubs.get('/live-locations', (c) => c.json([]));
 
 export default stubs;

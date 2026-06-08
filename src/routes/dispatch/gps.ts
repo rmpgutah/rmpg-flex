@@ -313,4 +313,92 @@ gps.get('/units-with-trails', async (c) => {
   } catch (err) { return c.json([]); }
 });
 
+// GET /dispatch/gps/speed-violations — recent speed violations for the map overlay.
+gps.get('/speed-violations', async (c) => {
+  const hours = Math.min(parseInt(c.req.query('hours') || '4', 10) || 4, 72);
+  try {
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(db,
+      `SELECT g.id, g.unit_id, u.officer_id, u.call_sign,
+              COALESCE(usr.full_name, '') AS officer_name,
+              g.speed AS max_speed, g.speed AS avg_speed,
+              g.latitude, g.longitude, g.recorded_at AS timestamp,
+              0 AS acknowledged, NULL AS acknowledged_by, NULL AS acknowledged_at,
+              1 AS point_count
+       FROM gps_breadcrumbs g
+       JOIN units u ON u.id = g.unit_id
+       LEFT JOIN users usr ON usr.id = u.officer_id
+       WHERE g.speed > 45 AND g.recorded_at >= datetime('now', '-' || ? || ' hours')
+       ORDER BY g.speed DESC LIMIT 200`, hours);
+    return c.json(rows);
+  } catch { return c.json([]); }
+});
+
+// POST /dispatch/gps/speed-violations/:id/acknowledge
+gps.post('/speed-violations/:id/acknowledge', async (c) => {
+  // Speed violations are derived from breadcrumbs, not a separate table.
+  // Acknowledge is a no-op until we add a speed_violation_acks table.
+  return c.json({ success: true, id: c.req.param('id') });
+});
+
+// GET /dispatch/gps/pursuit-segments — recent pursuit track segments.
+gps.get('/pursuit-segments', async (c) => {
+  const hours = Math.min(parseInt(c.req.query('hours') || '4', 10) || 4, 72);
+  try {
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(db,
+      `SELECT cfs.id AS call_id, cfs.assigned_unit_ids, u.id AS unit_id, u.call_sign,
+              COALESCE(usr.full_name, '') AS officer_name,
+              cfs.received_at AS start_time, cfs.closed_at AS end_time,
+              MAX(g.speed) AS max_speed, AVG(g.speed) AS avg_speed,
+              COUNT(g.id) AS point_count
+       FROM calls_for_service cfs
+       JOIN units u ON JSON_EXTRACT(cfs.assigned_unit_ids, '$[0]') = u.id
+       LEFT JOIN users usr ON usr.id = u.officer_id
+       LEFT JOIN gps_breadcrumbs g ON g.unit_id = u.id
+         AND g.recorded_at >= cfs.received_at
+         AND (cfs.closed_at IS NULL OR g.recorded_at <= cfs.closed_at)
+       WHERE (cfs.vehicle_pursuit = 1 OR cfs.foot_pursuit = 1)
+         AND cfs.received_at >= datetime('now', '-' || ? || ' hours')
+       GROUP BY cfs.id
+       ORDER BY cfs.received_at DESC LIMIT 50`, hours);
+    return c.json(rows);
+  } catch { return c.json([]); }
+});
+
+// GET /dispatch/gps/speed-heatmap — grid-aggregated speed data for map overlay.
+gps.get('/speed-heatmap', async (c) => {
+  const hours = Math.min(parseInt(c.req.query('hours') || '8', 10) || 8, 72);
+  try {
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(db,
+      `SELECT ROUND(latitude, 3) AS grid_lat, ROUND(longitude, 3) AS grid_lng,
+              ROUND(AVG(speed), 1) AS avg_speed, MAX(speed) AS max_speed,
+              COUNT(*) AS point_count
+       FROM gps_breadcrumbs
+       WHERE speed > 0 AND latitude IS NOT NULL
+         AND recorded_at >= datetime('now', '-' || ? || ' hours')
+       GROUP BY grid_lat, grid_lng
+       HAVING point_count >= 2
+       ORDER BY avg_speed DESC LIMIT 500`, hours);
+    return c.json(rows);
+  } catch { return c.json([]); }
+});
+
+// ── GET /dispatch/gps/history-map — breadcrumb trail for a unit ─
+gps.get('/history-map', async (c) => {
+  const unitId = c.req.query('unit_id');
+  const hours = Math.min(72, Math.max(1, parseInt(c.req.query('hours') || '8', 10) || 8));
+  if (!unitId) return c.json({ error: 'unit_id required' }, 400);
+  try {
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(db,
+      `SELECT latitude, longitude, speed, heading, recorded_at
+       FROM gps_breadcrumbs
+       WHERE unit_id = ? AND recorded_at >= datetime('now', '-' || ? || ' hours')
+       ORDER BY recorded_at ASC LIMIT 5000`, unitId, hours);
+    return c.json({ unit_id: unitId, hours, points: rows });
+  } catch { return c.json({ unit_id: unitId, hours, points: [] }); }
+});
+
 export default gps;

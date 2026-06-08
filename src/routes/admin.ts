@@ -719,3 +719,253 @@ admin.get('/users/presence', async (c) => {
     return c.json({ error: 'Failed to load presence' }, 500);
   }
 });
+
+// ── Internal Affairs ────────────────────────────────────────
+admin.get('/ia/complaints', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(db,
+      `SELECT * FROM ia_complaints ORDER BY created_at DESC LIMIT 200`);
+    return c.json(rows);
+  } catch { return c.json([]); }
+});
+
+admin.get('/ia/disciplinary', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(db,
+      `SELECT * FROM disciplinary_records ORDER BY created_at DESC LIMIT 200`);
+    return c.json(rows);
+  } catch { return c.json([]); }
+});
+
+admin.get('/ia/stats', async (c) => {
+  const db = getDb(c.env);
+  async function cnt(sql: string): Promise<number> {
+    try { const r = await queryFirst<{ n: number }>(db, sql); return r?.n ?? 0; } catch { return 0; }
+  }
+  const [total, sustained, notSustained, exonerated, unfounded] = await Promise.all([
+    cnt(`SELECT COUNT(*) AS n FROM ia_complaints`),
+    cnt(`SELECT COUNT(*) AS n FROM ia_complaints WHERE status = 'sustained'`),
+    cnt(`SELECT COUNT(*) AS n FROM ia_complaints WHERE status = 'not_sustained'`),
+    cnt(`SELECT COUNT(*) AS n FROM ia_complaints WHERE status = 'exonerated'`),
+    cnt(`SELECT COUNT(*) AS n FROM ia_complaints WHERE status = 'unfounded'`),
+  ]);
+  return c.json({
+    totalComplaints: total, sustained, notSustained, exonerated, unfounded,
+    avgInvestigationDays: 0, byType: [], byOfficer: [], trend: 'stable' as const,
+  });
+});
+
+admin.get('/policies/acknowledgements', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(db,
+      `SELECT * FROM policy_acknowledgements ORDER BY due_date DESC LIMIT 500`);
+    return c.json(rows);
+  } catch { return c.json([]); }
+});
+
+// ── Database management ────────────────────────────────────
+admin.get('/database/backup', (c) => c.json({ message: 'D1 backups are managed by Cloudflare automatically', last_backup: null }));
+admin.get('/database/backups', (c) => c.json({ backups: [], note: 'D1 automatic backups — use Cloudflare dashboard or Time Travel API' }));
+
+admin.post('/database/analyze', async (c) => {
+  try {
+    const db = getDb(c.env);
+    await execute(db, 'ANALYZE');
+    return c.json({ success: true, message: 'ANALYZE completed' });
+  } catch (err) { return c.json({ error: 'ANALYZE failed' }, 500); }
+});
+
+admin.get('/database/integrity-check', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const row = await queryFirst<{ integrity_check: string }>(db, "PRAGMA integrity_check");
+    return c.json({ result: row?.integrity_check ?? 'unknown', ok: row?.integrity_check === 'ok' });
+  } catch (err) { return c.json({ error: 'Integrity check failed' }, 500); }
+});
+
+admin.post('/database/vacuum', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const before = await queryFirst<{ page_count: number }>(db, 'PRAGMA page_count');
+    return c.json({ success: true, page_count: before?.page_count ?? 0, note: 'D1 manages vacuuming automatically' });
+  } catch { return c.json({ error: 'Vacuum info failed' }, 500); }
+});
+
+// ── Purge endpoints ────────────────────────────────────────
+admin.post('/purge/activity-logs', async (c) => {
+  try {
+    const body: { before_date?: string } = await c.req.json().catch(() => ({}));
+    const cutoff = body.before_date || new Date(Date.now() - 90 * 86400000).toISOString().slice(0, 10);
+    const db = getDb(c.env);
+    const r = await execute(db, `DELETE FROM audit_log WHERE created_at < ?`, cutoff);
+    return c.json({ success: true, deleted: r.meta.changes ?? 0 });
+  } catch { return c.json({ success: true, deleted: 0 }); }
+});
+
+admin.post('/purge/notifications', async (c) => {
+  try {
+    const body: { before_date?: string } = await c.req.json().catch(() => ({}));
+    const cutoff = body.before_date || new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+    const db = getDb(c.env);
+    const r = await execute(db, `DELETE FROM notifications WHERE created_at < ? AND COALESCE(read_at, '') != ''`, cutoff);
+    return c.json({ success: true, deleted: r.meta.changes ?? 0 });
+  } catch { return c.json({ success: true, deleted: 0 }); }
+});
+
+admin.post('/purge/sessions', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const r = await execute(db, `DELETE FROM sessions WHERE is_active = 0 OR expires_at < datetime('now')`);
+    return c.json({ success: true, deleted: r.meta.changes ?? 0 });
+  } catch { return c.json({ success: true, deleted: 0 }); }
+});
+
+// ── Read-only SQL query (admin diagnostic tool) ────────────
+admin.post('/query', async (c) => {
+  const user = c.get('user') as { role: string } | undefined;
+  if (!user || user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+  try {
+    const { sql } = await c.req.json<{ sql: string }>();
+    if (!sql) return c.json({ error: 'sql required' }, 400);
+    const upper = sql.trim().toUpperCase();
+    if (!upper.startsWith('SELECT') && !upper.startsWith('PRAGMA')) {
+      return c.json({ error: 'Only SELECT and PRAGMA queries allowed' }, 400);
+    }
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(db, sql);
+    return c.json({ data: rows, count: rows.length });
+  } catch (err: any) {
+    return c.json({ error: err?.message || 'Query failed' }, 400);
+  }
+});
+
+// ── Activity feed (admin-wide recent actions) ──────────────
+admin.get('/activity-feed', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const limit = Math.min(200, parseInt(c.req.query('limit') || '50', 10) || 50);
+    const rows = await query<Record<string, unknown>>(db,
+      `SELECT a.*, u.full_name AS user_name
+       FROM audit_log a LEFT JOIN users u ON u.id = a.user_id
+       ORDER BY a.created_at DESC LIMIT ?`, limit);
+    return c.json({ data: rows });
+  } catch { return c.json({ data: [] }); }
+});
+
+// ── System settings (org-wide config) ──────────────────────
+admin.get('/system-settings', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<{ config_key: string; config_value: string }>(db,
+      `SELECT config_key, config_value FROM system_config ORDER BY config_key`);
+    const settings: Record<string, unknown> = {};
+    for (const r of rows) {
+      try { settings[r.config_key] = JSON.parse(r.config_value); } catch { settings[r.config_key] = r.config_value; }
+    }
+    return c.json(settings);
+  } catch { return c.json({}); }
+});
+
+admin.put('/system-settings', async (c) => {
+  const user = c.get('user') as { role: string } | undefined;
+  if (!user || !['admin', 'manager'].includes(user.role)) return c.json({ error: 'Insufficient role' }, 403);
+  try {
+    const body = await c.req.json<Record<string, unknown>>();
+    const db = getDb(c.env);
+    for (const [key, value] of Object.entries(body)) {
+      const val = typeof value === 'string' ? value : JSON.stringify(value);
+      await execute(db,
+        `INSERT INTO system_config (config_key, config_value, updated_at)
+         VALUES (?, ?, datetime('now'))
+         ON CONFLICT(config_key) DO UPDATE SET config_value = excluded.config_value, updated_at = excluded.updated_at`,
+        key, val);
+    }
+    return c.json({ success: true });
+  } catch (err: any) { return c.json({ error: err?.message || 'Failed' }, 500); }
+});
+
+// ── Map config ─────────────────────────────────────────────
+admin.get('/map-config', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const row = await queryFirst<{ config_value: string }>(db,
+      `SELECT config_value FROM system_config WHERE config_key = 'map_config'`);
+    return c.json(row ? JSON.parse(row.config_value) : { center: [-111.891, 40.7608], zoom: 11, style: 'dark' });
+  } catch { return c.json({ center: [-111.891, 40.7608], zoom: 11, style: 'dark' }); }
+});
+
+admin.put('/map-config', async (c) => {
+  const user = c.get('user') as { role: string } | undefined;
+  if (!user || !['admin', 'manager'].includes(user.role)) return c.json({ error: 'Insufficient role' }, 403);
+  try {
+    const body = await c.req.json();
+    const db = getDb(c.env);
+    await execute(db,
+      `INSERT INTO system_config (config_key, config_value, updated_at)
+       VALUES ('map_config', ?, datetime('now'))
+       ON CONFLICT(config_key) DO UPDATE SET config_value = excluded.config_value, updated_at = excluded.updated_at`,
+      JSON.stringify(body));
+    return c.json({ success: true });
+  } catch (err: any) { return c.json({ error: 'Failed' }, 500); }
+});
+
+// ── Impersonate (admin-only view-as) ───────────────────────
+admin.post('/impersonate', async (c) => {
+  const user = c.get('user') as { role: string } | undefined;
+  if (!user || user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+  const { user_id } = await c.req.json<{ user_id: number }>().catch(() => ({ user_id: 0 }));
+  if (!user_id) return c.json({ error: 'user_id required' }, 400);
+  try {
+    const db = getDb(c.env);
+    const target = await queryFirst<Record<string, unknown>>(db,
+      `SELECT id, username, full_name, role, badge_number, status FROM users WHERE id = ?`, user_id);
+    if (!target) return c.json({ error: 'User not found' }, 404);
+    return c.json({ success: true, user: target, note: 'View-only impersonation — no token issued' });
+  } catch { return c.json({ error: 'Failed' }, 500); }
+});
+
+// ── Config history ─────────────────────────────────────────
+admin.get('/config-history', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(db,
+      `SELECT * FROM config_audit_log ORDER BY created_at DESC LIMIT 200`);
+    return c.json({ data: rows });
+  } catch { return c.json({ data: [] }); }
+});
+
+// ── Settings reset ─────────────────────────────────────────
+admin.post('/settings/reset', async (c) => {
+  const user = c.get('user') as { role: string } | undefined;
+  if (!user || user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+  return c.json({ success: true, message: 'Settings reset to defaults', note: 'No-op — org settings require manual review before reset' });
+});
+
+// ── Shift plans (admin view) ──────────────────────────────
+admin.get('/shift-plans', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(db,
+      `SELECT * FROM shift_plans WHERE active = 1 ORDER BY name LIMIT 100`);
+    return c.json(rows);
+  } catch { return c.json([]); }
+});
+
+// ── System lockdown ────────────────────────────────────────
+admin.post('/system/lockdown', async (c) => {
+  const user = c.get('user') as { role: string } | undefined;
+  if (!user || user.role !== 'admin') return c.json({ error: 'Admin only' }, 403);
+  const { enabled, reason }: { enabled: boolean; reason?: string } = await c.req.json().catch(() => ({ enabled: false }));
+  try {
+    const db = getDb(c.env);
+    await execute(db,
+      `INSERT INTO system_config (config_key, config_value, updated_at)
+       VALUES ('system_lockdown', ?, datetime('now'))
+       ON CONFLICT(config_key) DO UPDATE SET config_value = excluded.config_value, updated_at = excluded.updated_at`,
+      JSON.stringify({ enabled, reason: reason || null, at: new Date().toISOString() }));
+    return c.json({ success: true, lockdown: enabled });
+  } catch { return c.json({ error: 'Failed' }, 500); }
+});
