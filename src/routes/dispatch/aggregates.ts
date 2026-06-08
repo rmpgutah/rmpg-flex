@@ -362,4 +362,42 @@ aggregates.get('/analysis/summary', async (c) => {
   }
 });
 
+// GET /dispatch/heatmap/types — distinct incident types with counts for the heatmap layer picker.
+aggregates.get('/heatmap/types', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<{ incident_type: string; count: number }>(db,
+      `SELECT incident_type, COUNT(*) AS count
+       FROM calls_for_service
+       WHERE incident_type IS NOT NULL AND incident_type != ''
+         AND created_at >= datetime('now', '-90 days')
+       GROUP BY incident_type
+       ORDER BY count DESC LIMIT 50`);
+    return c.json(rows);
+  } catch (err) { return c.json([]); }
+});
+
+// GET /dispatch/stats/dashboard — shift briefing dashboard stats.
+aggregates.get('/stats/dashboard', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const [calls, units, priority] = await Promise.all([
+      queryFirst<Record<string, unknown>>(db,
+        `SELECT COUNT(*) AS total,
+                SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) AS active,
+                SUM(CASE WHEN status = 'closed' THEN 1 ELSE 0 END) AS closed
+         FROM calls_for_service WHERE created_at >= datetime('now', '-24 hours')`),
+      queryFirst<Record<string, unknown>>(db,
+        `SELECT COUNT(*) AS total,
+                SUM(CASE WHEN status NOT IN ('off_duty','out_of_service') THEN 1 ELSE 0 END) AS on_duty
+         FROM units`),
+      queryFirst<Record<string, unknown>>(db,
+        `SELECT COUNT(*) AS p1_count
+         FROM calls_for_service
+         WHERE priority = 1 AND status = 'active'`),
+    ]);
+    return c.json({ calls: calls || {}, units: units || {}, priority: priority || {} });
+  } catch (err) { return c.json({ calls: {}, units: {}, priority: {} }); }
+});
+
 export default aggregates;

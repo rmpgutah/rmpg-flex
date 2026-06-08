@@ -1487,9 +1487,11 @@ callActions.post('/:id/transfer', requireRole(...WRITE_ROLES), async (c) => {
     if (!units.includes(toUnitId)) units.push(toUnitId);
 
     const now = utcNow();
-    await execute(db, 'UPDATE calls_for_service SET assigned_unit_ids = ?, updated_at = ? WHERE id = ?', JSON.stringify(units), now, id);
-    await execute(db, `UPDATE units SET status = 'available', current_call_id = NULL, last_status_change = ? WHERE id = ?`, now, fromUnitId);
-    await execute(db, `UPDATE units SET status = 'dispatched', current_call_id = ?, last_status_change = ? WHERE id = ?`, id, now, toUnitId);
+    await db.batch([
+      db.prepare('UPDATE calls_for_service SET assigned_unit_ids = ?, updated_at = ? WHERE id = ?').bind(JSON.stringify(units), now, id),
+      db.prepare(`UPDATE units SET status = 'available', current_call_id = NULL, last_status_change = ? WHERE id = ?`).bind(now, fromUnitId),
+      db.prepare(`UPDATE units SET status = 'dispatched', current_call_id = ?, last_status_change = ? WHERE id = ?`).bind(id, now, toUnitId),
+    ]);
 
     if (userId != null) {
       await execute(db,

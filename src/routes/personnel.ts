@@ -526,6 +526,67 @@ personnel.get('/schedules', async (c) => {
   }
 });
 
+// POST /personnel/schedules — create a new shift plan.
+personnel.post('/schedules', async (c) => {
+  const denied = requireManager(c);
+  if (denied) return denied;
+  try {
+    const db = getDb(c.env);
+    const body = await c.req.json<Record<string, unknown>>();
+    const user = c.get('user') as { id: number } | undefined;
+    if (!body.name || !body.date) return c.json({ error: 'name and date required' }, 400);
+    const id = body.id || crypto.randomUUID();
+    await execute(db,
+      `INSERT INTO shift_plans (id, name, date, shift_type, assignments, status, created_by, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'), datetime('now','localtime'))`,
+      id, body.name, body.date, body.shift_type || 'day',
+      typeof body.assignments === 'string' ? body.assignments : JSON.stringify(body.assignments || []),
+      body.status || 'draft', user?.id ?? null);
+    const created = await queryFirst(db, 'SELECT * FROM shift_plans WHERE id = ?', id);
+    return c.json(created, 201);
+  } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+});
+
+// PUT /personnel/schedules/:id — update a shift plan.
+personnel.put('/schedules/:id', async (c) => {
+  const denied = requireManager(c);
+  if (denied) return denied;
+  try {
+    const db = getDb(c.env);
+    const id = c.req.param('id');
+    const existing = await queryFirst<{ id: string }>(db, 'SELECT id FROM shift_plans WHERE id = ?', id);
+    if (!existing) return c.json({ error: 'Schedule not found' }, 404);
+    const body = await c.req.json<Record<string, unknown>>();
+    const writable = new Set(['name', 'date', 'shift_type', 'assignments', 'status']);
+    const cols: string[] = ["updated_at = datetime('now','localtime')"]; const params: unknown[] = [];
+    for (const [key, val] of Object.entries(body)) {
+      if (writable.has(key)) {
+        cols.push(`${key} = ?`);
+        params.push(key === 'assignments' && typeof val !== 'string' ? JSON.stringify(val) : val ?? null);
+      }
+    }
+    if (cols.length === 1) return c.json({ message: 'No changes' });
+    params.push(id);
+    await execute(db, `UPDATE shift_plans SET ${cols.join(', ')} WHERE id = ?`, ...params);
+    const updated = await queryFirst(db, 'SELECT * FROM shift_plans WHERE id = ?', id);
+    return c.json(updated);
+  } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+});
+
+// DELETE /personnel/schedules/:id
+personnel.delete('/schedules/:id', async (c) => {
+  const denied = requireManager(c);
+  if (denied) return denied;
+  try {
+    const db = getDb(c.env);
+    const id = c.req.param('id');
+    const existing = await queryFirst<{ id: string }>(db, 'SELECT id FROM shift_plans WHERE id = ?', id);
+    if (!existing) return c.json({ error: 'Schedule not found' }, 404);
+    await execute(db, 'DELETE FROM shift_plans WHERE id = ?', id);
+    return c.json({ ok: true, id });
+  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+});
+
 // ── GET /personnel/time?start_date=...&end_date=...&officer_id=... ─
 // Read gate = WRITE roles (includes dispatcher): a dispatcher can POST/PUT/DELETE
 // time entries, and the client re-fetches this list right after every mutation.
@@ -873,6 +934,66 @@ personnel.get('/deployments', async (c) => {
     console.error('GET /personnel/deployments failed:', err);
     return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
   }
+});
+
+const DEPLOYMENT_WRITABLE = new Set([
+  'officer_id', 'property_id', 'position', 'start_date', 'end_date',
+  'status', 'hours_per_week', 'notes',
+]);
+
+// POST /personnel/deployments
+personnel.post('/deployments', async (c) => {
+  const denied = requireManager(c);
+  if (denied) return denied;
+  try {
+    const db = getDb(c.env);
+    const body = await c.req.json<Record<string, unknown>>();
+    if (!body.officer_id || !body.property_id) return c.json({ error: 'officer_id and property_id required' }, 400);
+    const cols: string[] = ['created_at', 'updated_at']; const vals: unknown[] = [];
+    const ph: string[] = ["datetime('now','localtime')", "datetime('now','localtime')"];
+    for (const [key, val] of Object.entries(body)) {
+      if (DEPLOYMENT_WRITABLE.has(key)) { cols.push(key); vals.push(val ?? null); ph.push('?'); }
+    }
+    const result = await execute(db, `INSERT INTO deployments (${cols.join(', ')}) VALUES (${ph.join(', ')})`, ...vals);
+    const created = await queryFirst(db, 'SELECT * FROM deployments WHERE id = ?', Number(result.meta.last_row_id));
+    return c.json(created, 201);
+  } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+});
+
+// PUT /personnel/deployments/:id
+personnel.put('/deployments/:id', async (c) => {
+  const denied = requireManager(c);
+  if (denied) return denied;
+  try {
+    const db = getDb(c.env);
+    const id = c.req.param('id');
+    const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM deployments WHERE id = ?', id);
+    if (!existing) return c.json({ error: 'Deployment not found' }, 404);
+    const body = await c.req.json<Record<string, unknown>>();
+    const cols: string[] = ["updated_at = datetime('now','localtime')"]; const params: unknown[] = [];
+    for (const [key, val] of Object.entries(body)) {
+      if (DEPLOYMENT_WRITABLE.has(key)) { cols.push(`${key} = ?`); params.push(val ?? null); }
+    }
+    if (cols.length === 1) return c.json({ message: 'No changes' });
+    params.push(id);
+    await execute(db, `UPDATE deployments SET ${cols.join(', ')} WHERE id = ?`, ...params);
+    const updated = await queryFirst(db, 'SELECT * FROM deployments WHERE id = ?', id);
+    return c.json(updated);
+  } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+});
+
+// DELETE /personnel/deployments/:id
+personnel.delete('/deployments/:id', async (c) => {
+  const denied = requireManager(c);
+  if (denied) return denied;
+  try {
+    const db = getDb(c.env);
+    const id = c.req.param('id');
+    const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM deployments WHERE id = ?', id);
+    if (!existing) return c.json({ error: 'Deployment not found' }, 404);
+    await execute(db, 'DELETE FROM deployments WHERE id = ?', id);
+    return c.json({ ok: true, id: Number(id) });
+  } catch (err) { return c.json({ error: 'Failed' }, 500); }
 });
 
 // ── GET /personnel/coverage-gaps?date=YYYY-MM-DD ──────────────────

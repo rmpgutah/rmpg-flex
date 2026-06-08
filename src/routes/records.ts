@@ -10,17 +10,69 @@ const records = new Hono<Env>();
 records.get('/properties', async (c) => {
   try {
     const db = getDb(c.env);
-    const { search, client_id } = c.req.query();
+    const { search, client_id, archived } = c.req.query();
     let sql = 'SELECT * FROM properties';
     const params: unknown[] = [];
     const wheres: string[] = [];
     if (search) { wheres.push("(name LIKE ? OR address LIKE ?)"); params.push(`%${search}%`, `%${search}%`); }
     if (client_id) { wheres.push('client_id = ?'); params.push(client_id); }
+    if (archived === 'true') wheres.push('archived_at IS NOT NULL');
+    else if (archived !== 'all') wheres.push('(archived_at IS NULL)');
     if (wheres.length) sql += ' WHERE ' + wheres.join(' AND ');
     sql += ' ORDER BY name LIMIT 500';
     const rows = await query<Record<string, unknown>>(db, sql, ...params);
     return c.json(rows);
   } catch (err) { return c.json({ error: 'Failed' }, 500); }
+});
+
+const PROPERTY_WRITABLE_COLUMNS = new Set([
+  'name', 'address', 'city', 'state', 'zip', 'client_id', 'property_type',
+  'gate_code', 'alarm_code', 'emergency_contact', 'post_orders', 'hazard_notes',
+  'access_instructions', 'latitude', 'longitude', 'is_active', 'notes',
+  'business_type', 'structure_type', 'occupancy_status', 'year_built',
+  'square_footage', 'number_of_stories', 'security_features',
+  'key_holder_name', 'key_holder_phone', 'key_holder_relationship',
+  'owner_name', 'owner_phone', 'last_inspection_date', 'inspection_status',
+  'alarm_company', 'alarm_account', 'alarm_system', 'camera_system',
+  'parking_info', 'roof_access', 'utility_shutoffs', 'known_hazards',
+  'contact_email', 'secondary_contact_name', 'secondary_contact_phone',
+  'patrol_frequency', 'opening_hours', 'closing_hours',
+]);
+
+// POST /records/properties
+records.post('/properties', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const body = await c.req.json<Record<string, unknown>>();
+    if (!body.name) return c.json({ error: 'name is required' }, 400);
+    const cols: string[] = ['created_at']; const vals: unknown[] = [];
+    const placeholders: string[] = ["datetime('now')"];
+    for (const [key, val] of Object.entries(body)) {
+      if (PROPERTY_WRITABLE_COLUMNS.has(key)) { cols.push(key); vals.push(val ?? null); placeholders.push('?'); }
+    }
+    const result = await execute(db, `INSERT INTO properties (${cols.join(', ')}) VALUES (${placeholders.join(', ')})`, ...vals);
+    const created = await queryFirst(db, 'SELECT * FROM properties WHERE id = ?', Number(result.meta.last_row_id));
+    return c.json(created, 201);
+  } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+});
+
+// PUT /records/properties/:id
+records.put('/properties/:id', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = c.req.param('id');
+    const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM properties WHERE id = ?', id);
+    if (!existing) return c.json({ error: 'Property not found' }, 404);
+    const body = await c.req.json<Record<string, unknown>>();
+    const cols: string[] = []; const params: unknown[] = [];
+    for (const [key, val] of Object.entries(body)) {
+      if (PROPERTY_WRITABLE_COLUMNS.has(key)) { cols.push(`${key} = ?`); params.push(val ?? null); }
+    }
+    if (cols.length === 0) return c.json({ message: 'No changes' });
+    await execute(db, `UPDATE properties SET ${cols.join(', ')} WHERE id = ?`, ...params, id);
+    const updated = await queryFirst(db, 'SELECT * FROM properties WHERE id = ?', id);
+    return c.json(updated);
+  } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
 });
 
 // All writable columns on the persons table, sourced from the legacy
@@ -424,6 +476,43 @@ records.post('/persons/:id/criminal-history', async (c) => {
   } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
 });
 
+const CRIMINAL_HISTORY_WRITABLE = new Set([
+  'record_type', 'offense', 'offense_level', 'statute', 'case_number',
+  'agency', 'jurisdiction', 'offense_date', 'disposition', 'disposition_date',
+  'sentence', 'source', 'notes',
+]);
+
+// PUT /records/criminal-history/:id
+records.put('/criminal-history/:id', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = c.req.param('id');
+    const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM criminal_history WHERE id = ?', id);
+    if (!existing) return c.json({ error: 'Record not found' }, 404);
+    const body = await c.req.json<Record<string, unknown>>();
+    const cols: string[] = []; const params: unknown[] = [];
+    for (const [key, val] of Object.entries(body)) {
+      if (CRIMINAL_HISTORY_WRITABLE.has(key)) { cols.push(`${key} = ?`); params.push(val ?? null); }
+    }
+    if (cols.length === 0) return c.json({ message: 'No changes' });
+    await execute(db, `UPDATE criminal_history SET ${cols.join(', ')} WHERE id = ?`, ...params, id);
+    const updated = await queryFirst(db, 'SELECT * FROM criminal_history WHERE id = ?', id);
+    return c.json(updated);
+  } catch (err) { return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500); }
+});
+
+// DELETE /records/criminal-history/:id
+records.delete('/criminal-history/:id', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = c.req.param('id');
+    const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM criminal_history WHERE id = ?', id);
+    if (!existing) return c.json({ error: 'Record not found' }, 404);
+    await execute(db, 'DELETE FROM criminal_history WHERE id = ?', id);
+    return c.json({ ok: true, id: Number(id) });
+  } catch (err) { return c.json({ error: 'Failed' }, 500); }
+});
+
 // GET /records/persons/:id/incidents — incidents involving this person.
 records.get('/persons/:id/incidents', async (c) => {
   try {
@@ -442,6 +531,43 @@ records.get('/persons/:id/clients', async (c) => {
     const rows = await query<Record<string, unknown>>(db, 'SELECT cpl.*, cl.name as client_name FROM client_person_links cpl LEFT JOIN clients cl ON cpl.client_id = cl.id WHERE cpl.person_id = ? ORDER BY cpl.created_at DESC LIMIT 100', id);
     return c.json(rows);
   } catch (err) { return c.json([]); }
+});
+
+// GET /records/clients/:clientId/persons — persons linked to a client.
+records.get('/clients/:clientId/persons', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const clientId = c.req.param('clientId');
+    const rows = await query<Record<string, unknown>>(db,
+      'SELECT cpl.*, p.first_name, p.last_name, p.full_name FROM client_person_links cpl LEFT JOIN persons p ON cpl.person_id = p.id WHERE cpl.client_id = ? ORDER BY cpl.created_at DESC LIMIT 100', clientId);
+    return c.json(rows);
+  } catch (err) { return c.json([]); }
+});
+
+// POST /records/client-persons — create a client-person link.
+records.post('/client-persons', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const body = await c.req.json<{ person_id?: number; client_id?: number; relationship?: string }>();
+    if (!body.person_id || !body.client_id) return c.json({ error: 'person_id and client_id required' }, 400);
+    const result = await db.prepare(
+      "INSERT INTO client_person_links (person_id, client_id, relationship, created_at) VALUES (?, ?, ?, datetime('now'))")
+      .bind(body.person_id, body.client_id, body.relationship || null)
+      .run();
+    return c.json({ success: true, id: result.meta?.last_row_id });
+  } catch (err) { return c.json({ error: 'Failed to create link' }, 500); }
+});
+
+// DELETE /records/client-persons/:linkId — remove a client-person link.
+records.delete('/client-persons/:linkId', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const linkId = c.req.param('linkId');
+    const existing = await queryFirst<Record<string, unknown>>(db, 'SELECT id FROM client_person_links WHERE id = ?', linkId);
+    if (!existing) return c.json({ error: 'Link not found' }, 404);
+    await execute(db, 'DELETE FROM client_person_links WHERE id = ?', linkId);
+    return c.json({ success: true });
+  } catch (err) { return c.json({ error: 'Failed to delete link' }, 500); }
 });
 
 // All writable columns on vehicles_records sourced from legacy addCol() calls.
@@ -855,7 +981,7 @@ records.post('/evidence', async (c) => {
     if (body.type != null && body.evidence_type == null) body.evidence_type = body.type;
     delete body.type;
     if (!body.evidence_type || !body.description) return c.json({ error: 'evidence_type and description required' }, 400);
-    if (body.incident_id == null) return c.json({ error: 'incident_id required (use /incidents/:id/evidence for linked creation)' }, 400);
+    // incident_id is optional — standalone evidence (e.g. found property) has no linked incident.
     const user = c.get('user') as { id: number } | undefined;
     const cols: string[] = [];
     const vals: string[] = [];
@@ -1626,25 +1752,25 @@ records.get('/persons', async (c) => {
   try {
     const db = getDb(c.env);
     const search = c.req.query('search') || '';
+    const archived = c.req.query('archived');
     const limit = Math.min(parseInt(c.req.query('limit') || '500', 10) || 500, 2000);
     const wheres: string[] = [];
+    if (archived === 'true') {
+      wheres.push("EXISTS (SELECT 1 FROM json_each(flags) WHERE json_each.value->>'$.type' = 'archived')");
+    } else if (archived !== 'all') {
+      wheres.push("(flags IS NULL OR flags = '[]' OR NOT EXISTS (SELECT 1 FROM json_each(flags) WHERE json_each.value->>'$.type' = 'archived'))");
+    }
     const params: unknown[] = [];
     if (search) {
       wheres.push(`(first_name LIKE ? OR last_name LIKE ? OR alias_nickname LIKE ? OR phone LIKE ? OR email LIKE ? OR dl_number LIKE ?)`);
       const like = `%${search}%`;
       params.push(like, like, like, like, like, like);
     }
-    const whereClause = wheres.length ? `WHERE ${wheres.join(' AND ')}` : '';
-    const sql = `SELECT ${PERSONS_BULK_COLUMNS} FROM persons ${whereClause} ORDER BY last_name, first_name LIMIT ?`;
+    const whereClause = wheres.length ? ' WHERE ' + wheres.join(' AND ') : '';
+    const sql = `SELECT ${PERSONS_BULK_COLUMNS} FROM persons${whereClause} ORDER BY last_name, first_name LIMIT ?`;
     params.push(limit);
-    let rows: Record<string, unknown>[];
-    try {
-      rows = await query<Record<string, unknown>>(db, sql, ...params);
-    } catch {
-      const safeCols = PERSONS_BULK_COLUMNS.replace(/,\s*archived_at/, '');
-      rows = await query<Record<string, unknown>>(db, `SELECT ${safeCols} FROM persons ${whereClause} ORDER BY last_name, first_name LIMIT ?`, ...params);
-    }
-    return c.json(rows);
+    const rows = await query<Record<string, unknown>>(db, sql, ...params);
+    return c.json({ data: rows, pagination: { total: rows.length, limit } });
   } catch (err) {
     console.error('GET /records/persons failed:', err);
     return c.json({ error: 'Failed to list persons' }, 500);
@@ -1657,25 +1783,25 @@ records.get('/vehicles', async (c) => {
   try {
     const db = getDb(c.env);
     const search = c.req.query('search') || '';
+    const archived = c.req.query('archived');
     const limit = Math.min(parseInt(c.req.query('limit') || '500', 10) || 500, 2000);
     const wheres: string[] = [];
+    if (archived === 'true') {
+      wheres.push("EXISTS (SELECT 1 FROM json_each(flags) WHERE json_each.value->>'$.type' = 'archived')");
+    } else if (archived !== 'all') {
+      wheres.push("(flags IS NULL OR flags = '[]' OR NOT EXISTS (SELECT 1 FROM json_each(flags) WHERE json_each.value->>'$.type' = 'archived'))");
+    }
     const params: unknown[] = [];
     if (search) {
       wheres.push(`(license_plate LIKE ? OR vin LIKE ? OR make LIKE ? OR model LIKE ? OR owner_name LIKE ? OR registered_to LIKE ?)`);
       const like = `%${search}%`;
       params.push(like, like, like, like, like, like);
     }
-    const whereClause = wheres.length ? `WHERE ${wheres.join(' AND ')}` : '';
-    const sql = `SELECT ${VEHICLES_BULK_COLUMNS} FROM vehicles ${whereClause} ORDER BY updated_at DESC LIMIT ?`;
+    const whereClause = wheres.length ? ' WHERE ' + wheres.join(' AND ') : '';
+    const sql = `SELECT ${VEHICLES_BULK_COLUMNS} FROM vehicles_records${whereClause} ORDER BY updated_at DESC LIMIT ?`;
     params.push(limit);
-    let rows: Record<string, unknown>[];
-    try {
-      rows = await query<Record<string, unknown>>(db, sql, ...params);
-    } catch {
-      const safeCols = VEHICLES_BULK_COLUMNS.replace(/,\s*archived_at/, '');
-      rows = await query<Record<string, unknown>>(db, `SELECT ${safeCols} FROM vehicles ${whereClause} ORDER BY updated_at DESC LIMIT ?`, ...params);
-    }
-    return c.json(rows);
+    const rows = await query<Record<string, unknown>>(db, sql, ...params);
+    return c.json({ data: rows, pagination: { total: rows.length, limit } });
   } catch (err) {
     console.error('GET /records/vehicles failed:', err);
     return c.json({ error: 'Failed to list vehicles' }, 500);

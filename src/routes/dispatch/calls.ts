@@ -912,9 +912,11 @@ calls.post('/:id/hold', requireRole(...WRITE_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
     const id = c.req.param('id');
-    await execute(db, 'INSERT OR IGNORE INTO calls_for_service_ext (id) VALUES (?)', id);
-    await execute(db, "UPDATE calls_for_service_ext SET held_at = datetime('now') WHERE id = ?", id);
-    await execute(db, "UPDATE calls_for_service SET updated_at = datetime('now') WHERE id = ?", id);
+    await db.batch([
+      db.prepare('INSERT OR IGNORE INTO calls_for_service_ext (id) VALUES (?)').bind(id),
+      db.prepare("UPDATE calls_for_service_ext SET held_at = datetime('now') WHERE id = ?").bind(id),
+      db.prepare("UPDATE calls_for_service SET updated_at = datetime('now') WHERE id = ?").bind(id),
+    ]);
     // Return the full row (not a bare {message}) incl. held_at so the client can
     // map it back to a real call object — mapDbCall derives the synthetic
     // 'on_hold' status from held_at. Returning {message} blanked the call card.
@@ -933,8 +935,10 @@ calls.post('/:id/resume', requireRole(...WRITE_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
     const id = c.req.param('id');
-    await execute(db, 'UPDATE calls_for_service_ext SET held_at = NULL WHERE id = ?', id);
-    await execute(db, "UPDATE calls_for_service SET updated_at = datetime('now') WHERE id = ?", id);
+    await db.batch([
+      db.prepare('UPDATE calls_for_service_ext SET held_at = NULL WHERE id = ?').bind(id),
+      db.prepare("UPDATE calls_for_service SET updated_at = datetime('now') WHERE id = ?").bind(id),
+    ]);
     // Return the full row with held_at cleared so the client maps it back to the
     // call's real (non-held) status instead of mapping a bare {message} to a blank.
     // CRITICAL FIX: Return full ext table data (PSO/process fields) so the client
@@ -995,8 +999,10 @@ calls.post('/:id/assign-unit', requireRole(...WRITE_ROLES), async (c) => {
     }
     let assigned: number[] = []; try { assigned = JSON.parse(call.assigned_unit_ids || '[]'); if (!Array.isArray(assigned)) assigned = []; } catch { assigned = []; }
     if (!assigned.includes(unit_id)) assigned.push(unit_id);
-    await execute(db, 'UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?', JSON.stringify(assigned), id);
-    await execute(db, "UPDATE units SET status = 'dispatched', current_call_id = ? WHERE id = ?", callId, unit_id);
+    await db.batch([
+      db.prepare('UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?').bind(JSON.stringify(assigned), id),
+      db.prepare("UPDATE units SET status = 'dispatched', current_call_id = ? WHERE id = ?").bind(callId, unit_id),
+    ]);
 
     // ── Premise auto-push (Spillman parity, DI-3) ──
     // Look up premise_alerts within 50m of the call's GPS, push to the
@@ -1071,15 +1077,12 @@ calls.post('/:id/unassign-unit', requireRole(...WRITE_ROLES), async (c) => {
     if (!call) return c.json({ error: 'Call not found' }, 404);
     let assigned: number[] = []; try { assigned = JSON.parse(call.assigned_unit_ids || '[]'); if (!Array.isArray(assigned)) assigned = []; } catch { assigned = []; }
     assigned = assigned.filter(u => u !== unit_id);
-    await execute(db, 'UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?', JSON.stringify(assigned), id);
-    // Guard: only clear the unit's current_call_id if it actually
-    // points at THIS call. Otherwise we'd be yanking the unit off a
-    // different call it was reassigned to (the unassign on call N-1
-    // should not unhook it from call N).
-    await execute(db,
-      `UPDATE units SET status = 'available', current_call_id = NULL, last_status_change = datetime('now')
-        WHERE id = ? AND current_call_id = ?`,
-      unit_id, callId);
+    await db.batch([
+      db.prepare('UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?').bind(JSON.stringify(assigned), id),
+      db.prepare(
+        `UPDATE units SET status = 'available', current_call_id = NULL, last_status_change = datetime('now')
+         WHERE id = ? AND current_call_id = ?`).bind(unit_id, callId),
+    ]);
     // Return the full updated call row — the client (handleUnassignUnit) runs it
     // through mapDbCall() and replaces the selected call; a bare {message}
     // corrupts the call to a blank-id object. Mirrors /assign-unit.

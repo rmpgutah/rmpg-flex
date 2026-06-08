@@ -49,6 +49,7 @@ import {
 } from '../utils/serveIntakeExtract';
 import { commitIntake, type CommitResult } from '../utils/serveIntakeRecords';
 import { emitAlert } from '../utils/alertHub';
+import { LIST_VIEW_COLUMNS } from './dispatch/calls';
 
 const si = new Hono<Env>();
 
@@ -564,7 +565,7 @@ si.post('/upload', async (c) => {
   // the next 20s poll. Best-effort — never blocks the response.
   if (commit.call_id) {
     try {
-      const newCall = await queryFirst(db, 'SELECT * FROM calls_for_service WHERE id = ?', commit.call_id);
+      const newCall = await queryFirst(db, `SELECT ${LIST_VIEW_COLUMNS.join(', ')} FROM calls_for_service WHERE id = ?`, commit.call_id);
       if (newCall) await emitAlert(c.env, 'dispatch_update', { action: 'call_created', call: newCall });
     } catch (err) { console.warn('[serveIntake] call_created broadcast skipped (non-fatal):', err); }
   }
@@ -708,7 +709,7 @@ si.post('/intake', async (c) => {
   // every dispatch console immediately (best-effort).
   if (commit.call_id) {
     try {
-      const newCall = await queryFirst(getDb(c.env), 'SELECT * FROM calls_for_service WHERE id = ?', commit.call_id);
+      const newCall = await queryFirst(getDb(c.env), `SELECT ${LIST_VIEW_COLUMNS.join(', ')} FROM calls_for_service WHERE id = ?`, commit.call_id);
       if (newCall) await emitAlert(c.env, 'dispatch_update', { action: 'call_created', call: newCall });
     } catch (err) { console.warn('[serveIntake] call_created broadcast skipped (non-fatal):', err); }
   }

@@ -667,6 +667,7 @@ export interface Evidence {
   incident_id?: string;
   incident_number?: string;
   type: string;
+  evidence_type?: string;
   description: string;
   location_found: string;
   collected_by: string;
