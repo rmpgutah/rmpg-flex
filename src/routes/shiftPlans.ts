@@ -477,7 +477,7 @@ sp.get('/staffing-levels', async (c) => {
   const minimums: Record<string, number> = {
     day: parseInt(c.req.query('min_day') || '2', 10),
     swing: parseInt(c.req.query('min_swing') || '2', 10),
-    grave: parseInt(c.req.query('min_grave') || '1', 10),
+    graveyard: parseInt(c.req.query('min_grave') || '1', 10),
   };
   const plans = await query<any>(getDb(c.env), 'SELECT * FROM shift_plans WHERE date = ? ORDER BY shift_type', targetDate);
   const levels: any[] = [];

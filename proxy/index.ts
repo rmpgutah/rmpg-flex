@@ -122,24 +122,9 @@ const STUBS: StubRule[] = [
   // shift_plans/time_entries/deployments/system_config) and reports
   // /incidents-summary, /crime-trends, /beat-activity, /citation-revenue
   // (real handlers in reports.ts; columns verified on live D1).
-  // /reports/schedules, /templates stubs KEPT below (no handler yet —
-  // return [] from a placeholder). The /statute-analytics stub was REMOVED
-  // 2026-06-01: reports.ts GET /statute-analytics now serves it (aggregates
-  // over citations + utah_statutes, wrapped in try/catch) and is routed to
-  // env.API via API_ROUTES — the stub was shadowing it and forcing the
-  // Statute Analytics page permanently empty.
-  {
-    match: /^\/api\/reports\/schedules(\?.*)?$/,
-    methods: ['GET'],
-    body: [],
-    reason: 'no /schedules in stubs router',
-  },
-  {
-    match: /^\/api\/reports\/templates(\?.*)?$/,
-    methods: ['GET'],
-    body: [],
-    reason: 'no /templates in stubs router',
-  },
+  // /reports/schedules + /templates stubs REMOVED 2026-06-07: reports.ts has
+  // real GET /schedules and GET /templates handlers. These stubs were
+  // shadowing them and forcing those tabs permanently empty.
   // ── Surfaces flagged in 2026-05-27 second-pass console log ────
   // (PR #667 was still open / unmerged when the user opened these pages.
   //  Adding now so they degrade quietly post-merge.)
@@ -1653,7 +1638,7 @@ const API_ROUTES: RouteRule[] = [
   { kind: 'prefix', value: '/api/reports/schedules' },
   { kind: 'prefix', value: '/api/reports/templates' },
   { kind: 'prefix', value: '/api/reports/statute-analytics' },
-  { kind: 'prefix', value: '/api/reports/crime-analysis' },
+  // /api/reports/crime-analysis removed — no rewrite handler; proxy stub serves it.
   // /api/reports/dashboard — 8-tile rollup. Rewrite handler in
   // src/routes/reports.ts (GET /dashboard, whitelisted from the
   // requireRole(analytics) middleware). Was stubbed in proxy 2026-06-07;

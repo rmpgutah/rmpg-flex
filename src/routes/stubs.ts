@@ -57,7 +57,7 @@ stubs.get('/unread-count', (c) => c.json({ count: 0 }));
 stubs.get('/notifications', (c) => c.json([]));
 
 // ── Communication (mounted at /api/comms) ──
-stubs.get('/activity-feed', (c) => c.json([]));
+stubs.get('/activity-feed', (c) => c.json({ data: [] }));
 stubs.get('/bolos/active', (c) => c.json([]));
 
 // GET /api/comms/bolos/check?address=&subject=&vehicle= — active-BOLO match.
@@ -150,8 +150,7 @@ stubs.get('/dashboard', (c) => c.json({
 // ── Weather (mounted at /api/weather) — uses /current to avoid GET / collision ──
 stubs.get('/current', (c) => c.json({ temperature: 72, conditions: 'Clear', icon: 'clear-day' }));
 
-// ── Email (mounted at /api/email) — uses /unread-count (no collision) ──
-stubs.get('/unread-count', (c) => c.json({ count: 0 }));
+// ── Email (mounted at /api/email) — /unread-count handled by line 56 (same stub serves both prefixes) ──
 
 // ── Integrations (mounted at /api/integrations) ──
 stubs.get('/google-maps/client-key', (c) => c.json({}));

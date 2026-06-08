@@ -1212,9 +1212,9 @@ fleet.get('/:id{[0-9]+}/maintenance-costs', async (c) => {
   try {
     const vehicleId = Number(c.req.param('id'));
     const db = getDb(c.env);
-    const totals = await queryFirst<{ total_cost: number; total_labor_cost: number }>(
+    const totals = await queryFirst<{ total_cost: number }>(
       db,
-      'SELECT COALESCE(SUM(cost),0) AS total_cost, COALESCE(SUM(labor_cost),0) AS total_labor_cost FROM fleet_maintenance WHERE vehicle_id = ?',
+      'SELECT COALESCE(SUM(cost),0) AS total_cost FROM fleet_maintenance WHERE vehicle_id = ?',
       vehicleId,
     );
     // Parts cost comes from the line-item table when present; degrade to 0.
@@ -1233,7 +1233,7 @@ fleet.get('/:id{[0-9]+}/maintenance-costs', async (c) => {
     );
     return c.json({
       total_cost: totals?.total_cost ?? 0,
-      total_labor_cost: totals?.total_labor_cost ?? 0,
+      total_labor_cost: 0,
       total_parts_cost: parts?.total_parts_cost ?? 0,
       by_type: byType,
     });
@@ -2308,7 +2308,15 @@ fleet.get('/emissions', async (c) => {
 fleet.get('/fleet-lifecycle', async (c) => {
   try {
     const db = getDb(c.env);
-    const vehicles = await query<Record<string, unknown>>(db, `SELECT v.*, COALESCE(SUM(m.cost),0) as lifetime_maintenance, COALESCE(SUM(f.total_cost),0) as lifetime_fuel, (COALESCE(SUM(m.cost),0) + COALESCE(SUM(f.total_cost),0)) as total_cost_of_ownership FROM fleet_vehicles v LEFT JOIN fleet_maintenance m ON m.vehicle_id = v.id LEFT JOIN fleet_fuel_log f ON f.vehicle_id = v.id GROUP BY v.id ORDER BY v.year, v.vehicle_number`);
+    const vehicles = await query<Record<string, unknown>>(db,
+      `SELECT v.*,
+              COALESCE(mc.total, 0) AS lifetime_maintenance,
+              COALESCE(fc.total, 0) AS lifetime_fuel,
+              (COALESCE(mc.total, 0) + COALESCE(fc.total, 0)) AS total_cost_of_ownership
+       FROM fleet_vehicles v
+       LEFT JOIN (SELECT vehicle_id, SUM(cost) AS total FROM fleet_maintenance GROUP BY vehicle_id) mc ON mc.vehicle_id = v.id
+       LEFT JOIN (SELECT vehicle_id, SUM(total_cost) AS total FROM fleet_fuel_log GROUP BY vehicle_id) fc ON fc.vehicle_id = v.id
+       ORDER BY v.year, v.vehicle_number`);
     return c.json(vehicles);
   } catch (err) { console.error('GET /fleet/fleet-lifecycle failed:', err); return c.json([]); }
 });
@@ -2934,7 +2942,7 @@ fleet.post('/procurement/orders', async (c) => { try { const db = getDb(c.env); 
 fleet.get('/procurement/orders/:id/bids', async (c) => { try { const orderId = Number(c.req.param('id')); const rows = await query<Record<string, unknown>>(getDb(c.env), 'SELECT * FROM fleet_vendor_bids WHERE procurement_order_id = ? ORDER BY bid_amount', orderId); return c.json(rows); } catch (err) { return c.json([]); } });
 fleet.post('/procurement/orders/:id/bids', async (c) => { try { const orderId = Number(c.req.param('id')); const db = getDb(c.env); const body = await c.req.json<Record<string, unknown>>(); const r = await execute(db, 'INSERT INTO fleet_vendor_bids (procurement_order_id, vendor, bid_amount, delivery_days, warranty_details, notes) VALUES (?,?,?,?,?,?)', orderId, body.vendor, body.bid_amount ?? null, body.delivery_days ?? null, body.warranty_details ?? null, body.notes ?? null); return c.json({ success: true, id: r.meta.last_row_id }, 201); } catch (err) { return c.json({ error: 'Failed' }, 500); } });
 fleet.put('/procurement/bids/:id/select', async (c) => { try { const bidId = Number(c.req.param('id')); const db = getDb(c.env); const bid = await queryFirst<{ procurement_order_id: number }>(db, 'SELECT procurement_order_id FROM fleet_vendor_bids WHERE id = ?', bidId); if (!bid) return c.json({ error: 'Not found' }, 404); await execute(db, 'UPDATE fleet_vendor_bids SET selected = 0 WHERE procurement_order_id = ?', bid.procurement_order_id); await execute(db, 'UPDATE fleet_vendor_bids SET selected = 1 WHERE id = ?', bidId); return c.json({ success: true }); } catch (err) { return c.json({ error: 'Failed' }, 500); } });
-fleet.get('/procurement/acquisition-cost-analysis', async (c) => { try { const db = getDb(c.env); const rows = await query<Record<string, unknown>>(db, `SELECT make, model, COUNT(*) as count, ROUND(AVG(COALESCE(cost, 0) + COALESCE(maint_cost, 0) + COALESCE(fuel_cost, 0)),0) as avg_lifetime_cost FROM (SELECT v.make, v.model, COALESCE(SUM(m.cost),0) as maint_cost, COALESCE(SUM(f.total_cost),0) as fuel_cost FROM fleet_vehicles v LEFT JOIN fleet_maintenance m ON m.vehicle_id = v.id LEFT JOIN fleet_fuel_log f ON f.vehicle_id = v.id GROUP BY v.id) GROUP BY make, model HAVING count >= 1 ORDER BY avg_lifetime_cost`); return c.json(rows); } catch (err) { return c.json([]); } });
+fleet.get('/procurement/acquisition-cost-analysis', async (c) => { try { const db = getDb(c.env); const rows = await query<Record<string, unknown>>(db, `SELECT make, model, COUNT(*) as count, ROUND(AVG(COALESCE(v.cost, 0) + COALESCE(mc.total, 0) + COALESCE(fc.total, 0)),0) as avg_lifetime_cost FROM fleet_vehicles v LEFT JOIN (SELECT vehicle_id, SUM(cost) AS total FROM fleet_maintenance GROUP BY vehicle_id) mc ON mc.vehicle_id = v.id LEFT JOIN (SELECT vehicle_id, SUM(total_cost) AS total FROM fleet_fuel_log GROUP BY vehicle_id) fc ON fc.vehicle_id = v.id GROUP BY make, model HAVING count >= 1 ORDER BY avg_lifetime_cost`); return c.json(rows); } catch (err) { return c.json([]); } });
 fleet.get('/procurement/standardization', async (c) => { try { const db = getDb(c.env); const byMake = await query<Record<string, unknown>>(db, `SELECT make, COUNT(*) as count, ROUND(COUNT(*)*100.0/(SELECT COUNT(*) FROM fleet_vehicles WHERE archived_at IS NULL),0) as pct FROM fleet_vehicles WHERE archived_at IS NULL GROUP BY make ORDER BY count DESC`); return c.json({ by_make: byMake, recommendation: (byMake[0] as any)?.pct > 70 ? 'Fleet is well standardized' : 'Consider standardizing on fewer makes for parts/commonality savings' }); } catch (err) { return c.json({}); } });
 fleet.get('/procurement/delivery-timeline', async (c) => { try { const rows = await query<Record<string, unknown>>(getDb(c.env), `SELECT po.*, s.name as spec_name, CASE WHEN po.actual_delivery IS NOT NULL THEN ROUND(julianday(po.actual_delivery) - julianday(po.order_date),0) ELSE ROUND(julianday('now') - julianday(po.order_date),0) END as days_elapsed FROM fleet_procurement_orders po LEFT JOIN fleet_vehicle_specs s ON s.id = po.spec_id WHERE po.status != 'delivered' ORDER BY po.order_date`); return c.json(rows); } catch (err) { return c.json([]); } });
 

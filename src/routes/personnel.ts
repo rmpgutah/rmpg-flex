@@ -1806,7 +1806,7 @@ personnel.get('/training-requirements', async (c) => {
 // POST /api/personnel/training-requirements — admin creates a course requirement.
 personnel.post('/training-requirements', async (c) => {
   try {
-    const actor = (c as any).var?.user;
+    const actor = c.get('user') as { id: number; role: string } | undefined;
     if (!actor || !MANAGER_ROLES.has(actor.role)) return c.json({ error: 'Insufficient permissions' }, 403);
     const db = getDb(c.env);
     const b = await c.req.json<Record<string, unknown>>();
@@ -1829,7 +1829,7 @@ personnel.post('/training-requirements', async (c) => {
 // PUT /api/personnel/training-requirements/:id
 personnel.put('/training-requirements/:id', async (c) => {
   try {
-    const actor = (c as any).var?.user;
+    const actor = c.get('user') as { id: number; role: string } | undefined;
     if (!actor || !MANAGER_ROLES.has(actor.role)) return c.json({ error: 'Insufficient permissions' }, 403);
     const db = getDb(c.env);
     const id = c.req.param('id');
@@ -1858,7 +1858,7 @@ personnel.put('/training-requirements/:id', async (c) => {
 // DELETE /api/personnel/training-requirements/:id
 personnel.delete('/training-requirements/:id', async (c) => {
   try {
-    const actor = (c as any).var?.user;
+    const actor = c.get('user') as { id: number; role: string } | undefined;
     if (!actor || !MANAGER_ROLES.has(actor.role)) return c.json({ error: 'Insufficient permissions' }, 403);
     const db = getDb(c.env);
     const id = c.req.param('id');
@@ -2251,7 +2251,7 @@ personnel.get('/:id/fleet-summary', async (c) => {
         ORDER BY fa.assigned_at DESC LIMIT 20`, officerId),
       queryFirst<Record<string, unknown>>(db, `
         SELECT COUNT(*) as fuel_entries,
-          SUM(ff.cost) as total_fuel_cost,
+          SUM(ff.total_cost) as total_fuel_cost,
           SUM(ff.gallons) as total_gallons,
           AVG(ff.cost_per_gallon) as avg_cost_per_gallon
         FROM fleet_fuel_log ff
@@ -2260,7 +2260,7 @@ personnel.get('/:id/fleet-summary', async (c) => {
         WHERE u.officer_id = ?`, officerId),
       query<Record<string, unknown>>(db, `
         SELECT fm.id, fm.vehicle_id, fm.service_type, fm.description,
-          fm.cost, COALESCE(fm.performed_at, fm.service_date) as date, fm.vendor, fm.mileage_at_service,
+          fm.cost, fm.performed_at as date, fm.vendor, fm.mileage_at_service,
           fv.vehicle_number
         FROM fleet_maintenance fm
         JOIN fleet_vehicles fv ON fm.vehicle_id = fv.id

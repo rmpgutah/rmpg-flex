@@ -539,7 +539,7 @@ records.get('/clients/:clientId/persons', async (c) => {
     const db = getDb(c.env);
     const clientId = c.req.param('clientId');
     const rows = await query<Record<string, unknown>>(db,
-      'SELECT cpl.*, p.first_name, p.last_name, p.full_name FROM client_person_links cpl LEFT JOIN persons p ON cpl.person_id = p.id WHERE cpl.client_id = ? ORDER BY cpl.created_at DESC LIMIT 100', clientId);
+      `SELECT cpl.*, p.first_name, p.last_name, (p.first_name || ' ' || p.last_name) AS full_name FROM client_person_links cpl LEFT JOIN persons p ON cpl.person_id = p.id WHERE cpl.client_id = ? ORDER BY cpl.created_at DESC LIMIT 100`, clientId);
     return c.json(rows);
   } catch (err) { return c.json([]); }
 });
@@ -840,7 +840,7 @@ records.post('/businesses', async (c) => {
          owner_name, owner_phone, contact_name, contact_phone, contact_email,
          industry, employee_count, annual_revenue, status, is_active, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
-      body.client_id || 1, body.name, body.address || '', body.city || null, body.state || null, body.zip || null,
+      body.client_id || null, body.name, body.address || '', body.city || null, body.state || null, body.zip || null,
       body.business_type, body.latitude || null, body.longitude || null, body.phone || null, body.email || null, body.notes || null,
       body.dba_name || null, body.ein || null, body.license_number || null, body.website || null,
       body.owner_name || null, body.owner_phone || null, body.contact_name || null, body.contact_phone || null, body.contact_email || null,
