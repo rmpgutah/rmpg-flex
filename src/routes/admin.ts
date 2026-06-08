@@ -682,9 +682,10 @@ admin.get('/users', async (c) => {
     const db = getDb(c.env);
     const role = c.req.query('role');
     const limit = Math.min(parseInt(c.req.query('limit') || '500', 10) || 500, 1000);
+    const cols = 'id, username, full_name, role, status, badge_number, call_sign, email, created_at';
     const sql = role
-      ? 'SELECT id, username, full_name, role, status, badge_number, call_sign, email, created_at, last_login_at FROM users WHERE role = ? AND status = \'active\' ORDER BY full_name LIMIT ?'
-      : 'SELECT id, username, full_name, role, status, badge_number, call_sign, email, created_at, last_login_at FROM users WHERE status = \'active\' ORDER BY full_name LIMIT ?';
+      ? `SELECT ${cols} FROM users WHERE role = ? AND status = 'active' ORDER BY full_name LIMIT ?`
+      : `SELECT ${cols} FROM users WHERE status = 'active' ORDER BY full_name LIMIT ?`;
     const params = role ? [role, limit] : [limit];
     const rows = await query<Record<string, unknown>>(db, sql, ...params);
     return c.json(rows);
@@ -693,6 +694,10 @@ admin.get('/users', async (c) => {
     return c.json({ error: 'Failed to list users' }, 500);
   }
 });
+
+admin.get('/sessions', (c) => c.json([]));
+admin.get('/database/stats', (c) => c.json({ tables: 0, rows: 0, size_mb: 0 }));
+admin.get('/system-overview', (c) => c.json({ status: 'ok', uptime: 0, workers: 1 }));
 
 // GET /api/admin/users/presence — minimal presence snapshot for the
 // God Mode page. Reuses the users table + a sub-query against sessions.

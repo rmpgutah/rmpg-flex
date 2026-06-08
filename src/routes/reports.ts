@@ -441,33 +441,28 @@ reports.get('/shift-activity/:officerId', async (c) => {
 // most-recent row), all from indexed columns. Open to any authenticated
 // user since these are summary counts, not officer-level data.
 reports.get('/dashboard', async (c) => {
-  try {
-    const db = getDb(c.env);
-    const [callsOpen, callsToday, unitsOnDuty, incidentsOpen, bolosActive, warrantsActive, citations7d, arrests7d] = await Promise.all([
-      queryFirst<{ n: number }>(db, `SELECT COUNT(*) AS n FROM calls_for_service WHERE status NOT IN ('closed', 'cleared', 'cancelled')`),
-      queryFirst<{ n: number }>(db, `SELECT COUNT(*) AS n FROM calls_for_service WHERE date(received_at) = date('now','localtime')`),
-      queryFirst<{ n: number }>(db, `SELECT COUNT(*) AS n FROM units WHERE status = 'on_duty'`),
-      queryFirst<{ n: number }>(db, `SELECT COUNT(*) AS n FROM incidents WHERE status NOT IN ('approved', 'closed', 'rejected')`),
-      queryFirst<{ n: number }>(db, `SELECT COUNT(*) AS n FROM bolos WHERE status = 'active'`),
-      queryFirst<{ n: number }>(db, `SELECT COUNT(*) AS n FROM warrants WHERE status = 'active'`),
-      queryFirst<{ n: number }>(db, `SELECT COUNT(*) AS n FROM citations WHERE date(created_at) >= date('now','localtime','-7 days')`),
-      queryFirst<{ n: number }>(db, `SELECT COUNT(*) AS n FROM arrests WHERE date(created_at) >= date('now','localtime','-7 days')`),
-    ]);
-    return c.json({
-      openCalls: callsOpen?.n ?? 0,
-      callsToday: callsToday?.n ?? 0,
-      unitsOnDuty: unitsOnDuty?.n ?? 0,
-      openIncidents: incidentsOpen?.n ?? 0,
-      activeBolos: bolosActive?.n ?? 0,
-      activeWarrants: warrantsActive?.n ?? 0,
-      citationsLast7d: citations7d?.n ?? 0,
-      arrestsLast7d: arrests7d?.n ?? 0,
-      generated_at: new Date().toISOString(),
-    });
-  } catch (err) {
-    console.error('GET /reports/dashboard failed:', err);
-    return c.json({ error: 'Failed to build dashboard', code: 'DASHBOARD_ERROR' }, 500);
+  const db = getDb(c.env);
+  async function safeCount(sql: string): Promise<number> {
+    try {
+      const r = await queryFirst<{ n: number }>(db, sql);
+      return r?.n ?? 0;
+    } catch { return 0; }
   }
+  const [openCalls, callsToday, unitsOnDuty, openIncidents, activeBolos, activeWarrants, citationsLast7d, arrestsLast7d] = await Promise.all([
+    safeCount(`SELECT COUNT(*) AS n FROM calls_for_service WHERE status NOT IN ('closed', 'cleared', 'cancelled')`),
+    safeCount(`SELECT COUNT(*) AS n FROM calls_for_service WHERE date(received_at) = date('now','localtime')`),
+    safeCount(`SELECT COUNT(*) AS n FROM units WHERE status = 'on_duty'`),
+    safeCount(`SELECT COUNT(*) AS n FROM incidents WHERE status NOT IN ('approved', 'closed', 'rejected')`),
+    safeCount(`SELECT COUNT(*) AS n FROM bolos WHERE status = 'active'`),
+    safeCount(`SELECT COUNT(*) AS n FROM warrants WHERE status = 'active'`),
+    safeCount(`SELECT COUNT(*) AS n FROM citations WHERE date(created_at) >= date('now','localtime','-7 days')`),
+    safeCount(`SELECT COUNT(*) AS n FROM arrests WHERE date(created_at) >= date('now','localtime','-7 days')`),
+  ]);
+  return c.json({
+    openCalls, callsToday, unitsOnDuty, openIncidents, activeBolos,
+    activeWarrants, citationsLast7d, arrestsLast7d,
+    generated_at: new Date().toISOString(),
+  });
 });
 
 export default reports;

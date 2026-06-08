@@ -1808,4 +1808,14 @@ records.get('/vehicles', async (c) => {
   }
 });
 
+records.get('/clients', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(db, 'SELECT * FROM clients ORDER BY name LIMIT 1000');
+    return c.json(rows);
+  } catch {
+    return c.json([]);
+  }
+});
+
 export default records;

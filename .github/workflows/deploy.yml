@@ -87,6 +87,8 @@ jobs:
 
       - name: Build client
         run: cd client && npm run build
+        env:
+          VITE_MAPBOX_ACCESS_TOKEN: ${{ secrets.VITE_MAPBOX_ACCESS_TOKEN }}
 
       # Copy Pages Functions into the deployment directory so wrangler picks
       # them up. In wrangler v4 there is no --functions flag; functions must
