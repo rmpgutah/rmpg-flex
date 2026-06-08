@@ -12,14 +12,15 @@
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 
-mapboxgl.accessToken = '';
+mapboxgl.accessToken =
+  (import.meta.env.VITE_MAPBOX_ACCESS_TOKEN as string || '').trim();
 
 // NOTE: PMTiles is NOT read client-side via addProtocol — Mapbox GL JS (unlike
 // MapLibre) has no addProtocol. The statewide overlays are served as native
 // XYZ vector tiles by the Worker (/api/tiles/<name>/{z}/{x}/{y}.mvt), which
 // extracts them from the PMTiles archives in R2. See useVectorTileLayers.
 
-let _mapboxInitialized = false;
+let _mapboxInitialized = !!mapboxgl.accessToken;
 
 export function initMapbox(accessToken: string): void {
   if (_mapboxInitialized) return;

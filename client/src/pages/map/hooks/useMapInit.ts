@@ -68,6 +68,14 @@ export function useMapInit(mapStyle: MapStyleId): UseMapInitResult {
       if (!mapRef.current || authFailed || cancelled) return;
       if (mapInstanceRef.current) { setMapLoaded(true); return; }
 
+      // Clear any leftover DOM from a prior map instance or React strict-mode
+      // double-mount — Mapbox warns "container element should be empty" and its
+      // internal mouse handlers produce NaN LngLat errors when stale children
+      // interfere with the projection matrix initialisation.
+      while (mapRef.current.firstChild) {
+        mapRef.current.removeChild(mapRef.current.firstChild);
+      }
+
       mapboxgl.accessToken = token;
 
       const map = new mapboxgl.Map({
@@ -95,7 +103,15 @@ export function useMapInit(mapStyle: MapStyleId): UseMapInitResult {
       useAdvancedMarkersRef.current = false;
       devLog('[MapPage] Using Mapbox markers');
 
+      // Block pointer events until Mapbox's internal transform/projection is
+      // ready (the 'load' event). Without this, mouseover/mousemove handlers
+      // inside Mapbox GL JS call map.unproject() before the matrix is set,
+      // producing "Invalid LngLat object: (NaN, NaN)" errors.
+      const canvas = map.getCanvas();
+      if (canvas) canvas.style.pointerEvents = 'none';
+
       map.on('load', () => {
+        if (canvas) canvas.style.pointerEvents = '';
         if (!authFailed) setMapLoaded(true);
       });
 
