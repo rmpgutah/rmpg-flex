@@ -469,4 +469,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/integrations', router: integrations, auth: 'required' },
   { prefix: '/api/dispatch/stats', router: stubs, auth: 'required' },
   { prefix: '/api/dispatch/shift-handoff', router: dispatchShiftHandoff, auth: 'required' },
+  { prefix: '/api/clearpathgps', router: stubs, auth: 'required' },
+  { prefix: '/api/microbilt', router: stubs, auth: 'required' },
+  { prefix: '/api/servemanager', router: stubs, auth: 'required' },
+  { prefix: '/api/skiptracer-v2', router: stubs, auth: 'required' },
 ];

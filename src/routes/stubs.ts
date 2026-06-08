@@ -167,4 +167,12 @@ stubs.put('/shift-handoff', async (c) => {
   }
 });
 
+// ── Integration stubs (Admin integrations tab) ──────────────
+stubs.get('/status', (c) => c.json({ configured: false }));
+stubs.get('/sources', (c) => c.json([]));
+stubs.get('/vehicles', (c) => c.json([]));
+stubs.get('/devices', (c) => c.json([]));
+stubs.get('/jobs', (c) => c.json([]));
+stubs.get('/config', (c) => c.json({}));
+
 export default stubs;
