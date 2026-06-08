@@ -243,39 +243,10 @@ units.put('/:id/status', async (c) => {
   }
 });
 
-// POST /dispatch/calls/:callId/assign-unit
-//
-// CROSS-INTEGRATION GUARD (Claude Opus 4.8): unit.current_call_id is a
-// single-pointer column. Reassigning a unit to a SECOND call without
-// unassigning it from the first leaves call A's assigned_unit_ids JSON
-// still containing the unit while unit.current_call_id points at
-// call B — the dispatcher's call list shows the unit on B but call A's
-// detail panel shows it on a unit that's "actually" elsewhere. Guard
-// with a 409 when the unit is currently committed to a different call.
-units.post('/assign-unit', async (c) => {
-  try {
-    const db = getDb(c.env);
-    const { call_id, unit_id } = await c.req.json<{ call_id: number; unit_id: number }>();
-    if (!Number.isFinite(call_id) || call_id <= 0) return c.json({ error: 'Invalid call_id' }, 400);
-    if (!Number.isFinite(unit_id) || unit_id <= 0) return c.json({ error: 'Invalid unit_id' }, 400);
-    const call = await queryFirst<{ assigned_unit_ids: string }>(db, 'SELECT assigned_unit_ids FROM calls_for_service WHERE id = ?', call_id);
-    if (!call) return c.json({ error: 'Call not found' }, 404);
-    const unit = await queryFirst<{ id: number; current_call_id: number | null; call_sign: string | null }>(
-      db, 'SELECT id, current_call_id, call_sign FROM units WHERE id = ?', unit_id);
-    if (!unit) return c.json({ error: 'Unit not found', code: 'UNIT_NOT_FOUND' }, 404);
-    if (unit.current_call_id != null && unit.current_call_id !== call_id) {
-      return c.json({
-        error: `Unit ${unit.call_sign ?? unit_id} is already committed to call ${unit.current_call_id} — unassign first`,
-        code: 'UNIT_ON_OTHER_CALL',
-        current_call_id: unit.current_call_id,
-      }, 409);
-    }
-    const assigned = new Set(JSON.parse(call.assigned_unit_ids || '[]') as number[]);
-    assigned.add(unit_id);
-    await execute(db, 'UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?', JSON.stringify([...assigned]), call_id);
-    await execute(db, "UPDATE units SET status = 'dispatched', current_call_id = ? WHERE id = ?", call_id, unit_id);
-    return c.json({ message: 'Unit assigned', unit_id, call_id });
-  } catch (err) { return c.json({ error: 'Assign failed' }, 500); }
-});
+// NOTE: the unit-assignment handler lives at POST /dispatch/calls/:id/assign-unit
+// (src/routes/dispatch/calls.ts) — that is the path the client and proxy use. A
+// duplicate POST /dispatch/units/assign-unit handler previously sat here with a
+// weaker guard and a misleading comment; it had no client caller and no proxy
+// route (dead code) and was removed to avoid confusion over which one is live.
 
 export default units;

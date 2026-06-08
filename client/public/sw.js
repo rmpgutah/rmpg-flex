@@ -312,7 +312,19 @@
 //       → …), pegging the main thread so ALL clicks/Link buttons failed app-wide.
 //       Memoize position in NavTripProvider + key the detection effect on
 //       primitive lat/lng so a setDetection re-render can't re-fire it.
-const CACHE_NAME = 'rmpg-flex-v813';
+// v814: Integration audit (Fleet/Dispatch/Nav). (1) AUTO-detected trips never set
+//       activeTripId (startTrip already confirms → active), so the route-update +
+//       auto-end intervals — both guarded on activeTripId — recorded ZERO live
+//       breadcrumbs for auto trips; only manual trips worked. (2) Adopted active
+//       trips now seed lastMovementAt so they can auto-end. (3) Dispatch map
+//       instant unit-glide was dead: AlertHubDO delivers a flat {latitude,
+//       longitude} frame but MapPage only read data.lat/data.unit.* → units moved
+//       only on the ~7s poll; now reads latitude/longitude too. (4) Shared
+//       Toughbook NMEA reader is ref-counted so a read-only/extra tracker
+//       unmounting no longer strands the unit on WiFi. (5) Manual trips now log
+//       detected_by='manual'. (Server: nav trip-end duration tz fix; breadcrumb
+//       trip_id stamped for replay.)
+const CACHE_NAME = 'rmpg-flex-v814';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

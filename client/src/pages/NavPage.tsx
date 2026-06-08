@@ -97,7 +97,12 @@ export default function NavPage() {
   useEffect(() => { savePins(droppedPins); }, [droppedPins]);
 
   useEffect(() => {
-    if (currentTrip) setCurrentTripLocal(currentTrip);
+    // Mirror the context trip into local state in BOTH directions. The old
+    // `if (currentTrip)` guard copied a started trip down but never cleared on
+    // end — so when a trip ended (currentTrip → null) currentTripLocal kept the
+    // stale trip and `activeTrip` (line below) still rendered the End controls
+    // until a full page reload.
+    setCurrentTripLocal(currentTrip);
   }, [currentTrip]);
 
   // ── Fetch history ─────────────────────────────────────────

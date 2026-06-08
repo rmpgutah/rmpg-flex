@@ -270,6 +270,17 @@ const IS_ELECTRON = typeof window !== 'undefined' && !!(window as any).electron?
 const IS_WINDOWS_ELECTRON =
   IS_ELECTRON && (window as any).electron?.platform === 'win32';
 
+// The Toughbook internal NMEA reader is a SINGLE shared resource in the Electron
+// main process whose fixes are broadcast to every renderer. Multiple
+// useGpsTracking instances now coexist (the app-wide NavTripProvider's read-only
+// tracker + Layout's uploader + MapPage's tracker), and each one's unmount used
+// to call electron.stopInternalGps() — which destroys that shared reader for the
+// instances still mounted. Navigating Layout↔Drive-HUD (or away from /map) thus
+// stranded a Toughbook on WiFi triangulation, directly undoing the "use hardware
+// GPS" fix. Ref-count starts/stops at the module level so only the LAST live
+// instance actually stops the reader (i.e. real app teardown).
+let internalGpsRefCount = 0;
+
 /** Normalize an assigned-unit payload into a real unit or null.
  *
  *  Two response sources feed this: GET /dispatch/gps/my-unit (the canonical
@@ -818,6 +829,9 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
     let unsubError: (() => void) | null = null;
     let cancelled = false;
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    // Did THIS instance increment the shared ref count? Guards against a
+    // double-decrement if cleanup runs without a successful start.
+    let thisInstanceStarted = false;
 
     // The internal u-blox COM port often isn't enumerable the instant the app
     // launches — on a cold boot or resume the GPS driver can take 10-30s to
@@ -871,6 +885,7 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
         }
         console.debug('[useGpsTracking] Internal GPS active on', detected.portPath, '— hardware GPS is now primary');
         useInternalGpsRef.current = true;
+        if (!thisInstanceStarted) { thisInstanceStarted = true; internalGpsRefCount++; }
         setIsTracking(true);
         setState((prev) => ({ ...prev, permissionPending: false, permissionDenied: false }));
         startSubscriptions();
@@ -891,8 +906,14 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
       if (retryTimer) clearTimeout(retryTimer);
       if (unsubUpdate) unsubUpdate();
       if (unsubError) unsubError();
-      if (useInternalGpsRef.current && electron?.stopInternalGps) {
-        electron.stopInternalGps().catch(() => { /* shutting down */ });
+      // Only the LAST instance using the shared reader stops it. A read-only
+      // tracker (NavTripProvider) or a page-scoped one (MapPage) unmounting must
+      // not tear NMEA out from under the instances still mounted.
+      if (thisInstanceStarted) {
+        internalGpsRefCount = Math.max(0, internalGpsRefCount - 1);
+        if (internalGpsRefCount === 0 && electron?.stopInternalGps) {
+          electron.stopInternalGps().catch(() => { /* shutting down */ });
+        }
       }
     };
   }, [ingestPosition]);

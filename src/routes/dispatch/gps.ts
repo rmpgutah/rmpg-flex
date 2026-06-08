@@ -117,6 +117,29 @@ gps.post('/', async (c) => {
           } catch { /* trip engine is non-fatal — never break GPS write */ }
         }
       }
+
+      // Stamp this batch's breadcrumbs with the unit's active trip so trip replay
+      // (GET /dispatch/trips/:id → SELECT ... WHERE trip_id = ?) can reconstruct
+      // the path. The breadcrumb INSERT above can't know the trip id (the engine
+      // may OPEN the trip on the first fix of this very batch), so we back-fill
+      // after applyTripEvent has run — loadActive now reflects the open trip.
+      // gps_breadcrumbs.trip_id was otherwise never written, so every replay
+      // returned an empty track. Best-effort + non-fatal (only stamps rows still
+      // NULL, so a later batch can't reassign an earlier trip's breadcrumbs).
+      if (inserted.length) {
+        try {
+          const activeTrip = await queryFirst<{ id: number }>(db,
+            `SELECT id FROM unit_trips WHERE unit_id = ? AND status = 'active'
+             ORDER BY start_time DESC LIMIT 1`, unitId);
+          if (activeTrip?.id) {
+            const placeholders = inserted.map(() => '?').join(',');
+            await execute(db,
+              `UPDATE gps_breadcrumbs SET trip_id = ?
+               WHERE id IN (${placeholders}) AND trip_id IS NULL`,
+              activeTrip.id, ...inserted);
+          }
+        } catch { /* non-fatal — replay degrades, GPS write still succeeds */ }
+      }
     }
 
     // Live fan-out so the dispatch map updates in real-time (no 20s poll lag).

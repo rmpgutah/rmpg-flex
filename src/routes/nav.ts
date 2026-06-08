@@ -21,6 +21,7 @@ interface TripStartBody {
   vehicle_id?: number;
   purpose?: string;
   device_type?: string;
+  detected_by?: string; // 'auto' (movement detector) | 'manual' (officer Start button)
 }
 
 interface TripUpdateBody {
@@ -173,15 +174,20 @@ nav.post('/trip/start', async (c) => {
       if (activeCall?.current_call_id) callId = activeCall.current_call_id;
     }
 
+    // Honor the caller's origin so trip history can distinguish a movement-
+    // detected trip from one the officer started by hand. The endpoint is shared
+    // by both flows, so it previously hardcoded 'auto' and every manual trip was
+    // mislabeled. Default to 'auto' for any non-'manual' value.
+    const detectedBy = body.detected_by === 'manual' ? 'manual' : 'auto';
     const result = await execute(db,
       `INSERT INTO nav_trip_log
        (officer_id, vehicle_id, unit_id, call_id, start_lat, start_lng, start_accuracy,
         start_location, start_time, status, detected_by, purpose, device_type, route_points)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'), 'pending', 'auto',
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'), 'pending', ?,
                ?, ?, '[]')`,
       userId, vehicleId, unitId, callId,
       body.start_lat, body.start_lng, body.start_accuracy ?? null,
-      body.start_location ?? null,
+      body.start_location ?? null, detectedBy,
       body.purpose ?? 'patrol', body.device_type ?? null);
 
     const tripId = Number(result.meta.last_row_id);
@@ -286,10 +292,17 @@ nav.put('/trip/:id/end', async (c) => {
       finalDistance = routeDistance(body.route_points);
     }
 
-    // Duration
-    const startTime = new Date(trip.start_time.replace(' ', 'T') + (trip.start_time.includes('Z') ? '' : 'Z'));
-    const endTime = new Date();
-    const durationSec = Math.round((endTime.getTime() - startTime.getTime()) / 1000);
+    // Duration. start_time is stored as datetime('now','localtime') — a NAIVE
+    // America/Denver wall-clock string with no zone. The old code appended 'Z'
+    // and diffed against `new Date()` (true UTC), so every trip's duration was
+    // inflated by the Denver UTC offset (~6-7h). Compute it in SQL instead:
+    // both julianday('now','localtime') and julianday(start_time) are in the same
+    // Denver frame, so the offset cancels. (closeStaleActiveTrips already does
+    // this correctly; this brings the manual/stationary end path in line.)
+    const durRow = await queryFirst<{ dur: number }>(db,
+      `SELECT CAST((julianday('now','localtime') - julianday(start_time)) * 86400 AS INTEGER) AS dur
+       FROM nav_trip_log WHERE id = ?`, tripId);
+    const durationSec = Math.max(0, durRow?.dur ?? 0);
 
     await execute(db,
       `UPDATE nav_trip_log

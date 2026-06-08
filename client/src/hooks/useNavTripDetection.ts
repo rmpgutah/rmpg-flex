@@ -107,6 +107,14 @@ export function useNavTripDetection(opts: UseNavTripDetectionOptions) {
           ...prev,
           activeTripId: res.trip!.status === 'active' ? res.trip!.id : null,
           pendingTripId: res.trip!.status === 'pending' ? res.trip!.id : null,
+          // Seed lastMovementAt when ADOPTING an active trip from the server (app
+          // reopened mid-trip). The auto-end interval bails on `!lastMovementAt`,
+          // so without a baseline an adopted trip could only ever auto-end after
+          // the next significant move — park immediately after reopening and it
+          // would hang active until the server's stale reaper caught it.
+          lastMovementAt: res.trip!.status === 'active'
+            ? (prev.lastMovementAt ?? Date.now())
+            : prev.lastMovementAt,
         }));
       } else {
         // Server has NO active/pending trip. If our persisted state still points
@@ -271,7 +279,16 @@ export function useNavTripDetection(opts: UseNavTripDetectionOptions) {
                     if (!trip) return;
                     setCurrentTrip(trip);
                     onTripStarted?.(trip);
-                    setDetection((p) => ({ ...p, pendingTripId: trip.id }));
+                    // startTrip() POSTs /start AND PUTs /confirm, so the returned
+                    // trip is already 'active' — record it as activeTripId, NOT
+                    // pendingTripId. The route-update + auto-end intervals both
+                    // guard `if (!activeTripId) return`, so leaving this as a
+                    // pending id meant every AUTO-detected trip recorded zero live
+                    // breadcrumbs and never auto-ended (only manual trips, which set
+                    // activeTripId directly, worked). Seed lastMovementAt so the
+                    // 5-min stationary auto-end has a baseline. Mirrors the
+                    // confirmTrip branch above.
+                    setDetection((p) => ({ ...p, activeTripId: trip.id, pendingTripId: null, lastMovementAt: Date.now() }));
                   })
                   .catch(() => {})
                   .finally(() => { isStartingRef.current = false; });
@@ -317,11 +334,11 @@ export function useNavTripDetection(opts: UseNavTripDetectionOptions) {
   }, [position?.latitude, position?.longitude, isTracking]);
 
   // ── Start trip (POST to server) ───────────────────────────
-  const startTrip = useCallback(async (lat: number, lng: number, accuracy?: number | null): Promise<NavTrip | null> => {
+  const startTrip = useCallback(async (lat: number, lng: number, accuracy?: number | null, detectedBy: 'auto' | 'manual' = 'auto'): Promise<NavTrip | null> => {
     try {
       const res = await apiFetch<{ success: boolean; trip_id: number; status: string }>('/nav/trip/start', {
         method: 'POST',
-        body: JSON.stringify({ start_lat: lat, start_lng: lng, start_accuracy: accuracy }),
+        body: JSON.stringify({ start_lat: lat, start_lng: lng, start_accuracy: accuracy, detected_by: detectedBy }),
       });
       if (res?.trip_id) {
         // Immediately confirm it since we detected real movement
@@ -351,7 +368,7 @@ export function useNavTripDetection(opts: UseNavTripDetectionOptions) {
 
   // ── Manual trip controls ──────────────────────────────────
   const startManualTrip = useCallback(async (lat: number, lng: number, accuracy?: number | null) => {
-    const trip = await startTrip(lat, lng, accuracy);
+    const trip = await startTrip(lat, lng, accuracy, 'manual');
     if (trip) {
       setCurrentTrip(trip);
       setDetection((prev) => ({

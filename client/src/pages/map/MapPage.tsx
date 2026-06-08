@@ -1152,8 +1152,14 @@ export default function MapPage() {
       const data = msg.data || msg;
       const unitId = data.unit_id ?? data.unit?.id;
       if (unitId == null) return;
-      const lat = data.lat ?? data.unit?.latitude;
-      const lng = data.lng ?? data.unit?.longitude;
+      // gps.ts emits via emitAlert('unit_position', { latitude, longitude, ... }),
+      // and AlertHubDO flattens it to a top-level frame { type, unit_id, latitude,
+      // longitude, heading, speed, ... } — there is NO `data` wrapper and NO
+      // lat/lng keys. Reading only data.lat/data.lng (or data.unit.*) resolved to
+      // undefined on every fix, so this whole instant-glide path was dead and units
+      // only moved on the ~7s poll. Accept latitude/longitude (the real keys) too.
+      const lat = data.lat ?? data.latitude ?? data.unit?.latitude;
+      const lng = data.lng ?? data.longitude ?? data.unit?.longitude;
       if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
       const heading = data.heading ?? data.unit?.gps_heading ?? null;
       const speed = data.speed ?? data.unit?.gps_speed ?? null;

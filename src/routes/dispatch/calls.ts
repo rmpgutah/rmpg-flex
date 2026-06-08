@@ -5,7 +5,8 @@ import { v4 as uuidv4 } from 'uuid';
 import { getDb, query, queryFirst, execute } from '../../utils/db';
 import { authMiddleware, requireRole } from '../../middleware/auth';
 import { applyRunCard } from '../runCards';
-import { sendToUser, broadcastAll } from '../ws';
+import { sendToUser } from '../ws';
+import { emitAlert } from '../../utils/alertHub';
 import { geocodeAddress } from '../geocode';
 import { resolveDistrict } from '../../utils/districtResolver';
 
@@ -384,7 +385,7 @@ calls.get('/', async (c) => {
 
       // Broadcast to every connected dispatcher so rosters re-render
       // without a manual refresh. Matches the legacy POST behavior.
-      broadcastAll('dispatch_update', { action: 'call_created', call });
+      await emitAlert(c.env, 'dispatch_update', { action: 'call_created', call });
 
       return c.json({ ...call, runCard: rcResult.card }, 201);
     } catch (sqlErr: any) {
@@ -876,7 +877,12 @@ calls.post('/:id/status', requireRole(...WRITE_ROLES), async (c) => {
     // PSO/process fields after a status change — the detail panel then shows
     // "No PSO details entered yet" even when data exists.
     const ext = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service_ext WHERE id = ?', id);
-    return c.json({ ...(updated || {}), ...(ext || {}) });
+    const merged = { ...(updated || {}), ...(ext || {}) };
+    // Fan the transition to every console via AlertHubDO. Previously this handler
+    // emitted NO broadcast at all, so dispatched→enroute→onscene→cleared changes
+    // only surfaced on the next adaptive poll — the unit board lagged reality.
+    await emitAlert(c.env, 'dispatch_update', { action: 'call_updated', call: merged });
+    return c.json(merged);
   } catch (err) {
     return c.json({ error: 'Failed to update status' }, 500);
   }
@@ -1296,10 +1302,10 @@ calls.post('/:id/redispatch', requireRole('admin', 'manager', 'supervisor', 'dis
     `, rootCallId, rootCallId);
 
     const newCall = { ...(newBase || {}), ...(newExt || {}) };
-    broadcastAll('dispatch_update', { action: 'call_created', call: newCall });
+    await emitAlert(c.env, 'dispatch_update', { action: 'call_created', call: newCall });
     // CRITICAL FIX: Include parent ext data in the broadcast so clients don't
     // lose PSO/process fields when the parent call is updated via WebSocket.
-    broadcastAll('dispatch_update', { action: 'call_updated', call: { ...parentBase, ...(parentExt || {}), notes: JSON.stringify(parentNotes) } });
+    await emitAlert(c.env, 'dispatch_update', { action: 'call_updated', call: { ...parentBase, ...(parentExt || {}), notes: JSON.stringify(parentNotes) } });
 
     return c.json({ ...newCall, chain, parent_call_number: parentBase.call_number }, 201);
   } catch (err) {
@@ -1361,8 +1367,8 @@ calls.post('/:id/undo-redispatch', requireRole('admin', 'manager', 'supervisor',
     const updatedBase = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', parentId);
     const updatedExt = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service_ext WHERE id = ?', parentId);
     const updated = { ...(updatedBase || {}), ...(updatedExt || {}) };
-    broadcastAll('dispatch_update', { action: 'call_deleted', call: { id: childId, call_number: childBase.call_number } });
-    broadcastAll('dispatch_update', { action: 'call_updated', call: updated });
+    await emitAlert(c.env, 'dispatch_update', { action: 'call_deleted', call: { id: childId, call_number: childBase.call_number } });
+    await emitAlert(c.env, 'dispatch_update', { action: 'call_updated', call: updated });
 
     return c.json({ success: true, parent: updated, deleted_call: childBase.call_number });
   } catch (err) {
@@ -1391,7 +1397,7 @@ calls.post('/bulk-reassign', requireRole(...WRITE_ROLES), async (c) => {
         updated++;
       } catch { /* skip individual failures */ }
     }
-    broadcastAll('dispatch_update', { action: 'bulk_reassign', unit_id: body.unit_id, call_ids: body.call_ids });
+    await emitAlert(c.env, 'dispatch_update', { action: 'bulk_reassign', unit_id: body.unit_id, call_ids: body.call_ids });
     return c.json({ success: true, updated, total: body.call_ids.length });
   } catch (err) {
     return c.json({ error: 'Bulk reassign failed' }, 500);
