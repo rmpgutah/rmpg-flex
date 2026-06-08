@@ -26,13 +26,7 @@ export function drawSectionHeader(doc: jsPDF, layout: LayoutEngine, title: strin
   doc.setTextColor(0, 0, 0);
   doc.text(title.toUpperCase(), layout.leftX, y);
 
-  // Thin rule across the full content width, just below the text baseline
-  const ruleY = y + 1.5;
-  doc.setDrawColor(0, 0, 0);
-  doc.setLineWidth(RULE_WEIGHTS.sectionRule);
-  doc.line(layout.leftX, ruleY, layout.rightX, ruleY);
-
-  layout.advance(SPACING.sectionGap + 4); // baseline + rule + gap
+  layout.advance(3);
 }
 
 /** Called by renderer after a section's fields have been drawn. */

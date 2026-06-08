@@ -1,21 +1,7 @@
 import { useState, useCallback } from 'react';
-import { isOfflineDbReady } from '../services/offlineDb';
-import { handle as browserOfflineHandle, isOfflineCapableEndpoint } from '../services/offlineRouter';
-import { hasActiveSession } from '../services/offlinePin';
-import { isLikelyOnline } from '../services/connectivityMonitor';
 import { uploadWithProgress } from '../utils/uploadWithProgress';
 import type { UploadProgress } from '../utils/uploadWithProgress';
 import { refreshAccessToken } from '../utils/tokenRefresh';
-
-// ─── Offline Error Classes ───────────────────────────────────
-// Thrown when an offline write is attempted without PIN authorization.
-// UI components catch this to trigger the PIN entry modal.
-export class OfflineUnauthorizedError extends Error {
-  constructor(message = 'Offline write requires PIN authorization') {
-    super(message);
-    this.name = 'OfflineUnauthorizedError';
-  }
-}
 
 // ─── Request Timeout ─────────────────────────────────────────
 // Default 60s — generous for flaky cellular but bounded so officers
@@ -85,21 +71,6 @@ export async function fetchWithTimeout(
   }
 }
 
-// ─── Offline-capable endpoint detection ──────────────────────
-const OFFLINE_GET_PREFIXES = [
-  '/api/dispatch/calls', '/api/dispatch/units', '/api/incidents',
-  '/api/records/persons', '/api/records/vehicles', '/api/auth/me',
-  '/api/personnel/time',
-];
-const OFFLINE_WRITE_PREFIXES = [
-  '/api/dispatch/calls', '/api/dispatch/units/', '/api/dispatch/gps',
-  '/api/incidents', '/api/personnel/time',
-];
-
-function isOfflineCapable(method: string, path: string): boolean {
-  const prefixes = method === 'GET' ? OFFLINE_GET_PREFIXES : OFFLINE_WRITE_PREFIXES;
-  return prefixes.some(p => path.startsWith(p));
-}
 
 // Access window.electron safely (only present in Electron desktop app)
 const electron = typeof window !== 'undefined' ? (window as any).electron : null;
@@ -359,77 +330,6 @@ export async function apiFetch<T>(
   // never trips the shift-length idle logout while data is still flowing.
   if (typeof window !== 'undefined') {
     try { window.dispatchEvent(new Event('rmpg:activity')); } catch { /* SSR / no-DOM */ }
-  }
-
-  // ─── Offline interception (Electron desktop only) ──────
-  if (electron?.localApi && electron?.getOfflineState) {
-    try {
-      const offlineState = await electron.getOfflineState();
-
-      // Tiebreaker: Electron's connectivityMonitor uses 3-consecutive-probe
-      // confirmation with an initial state of false. On flaky cellular, those
-      // probes rarely succeed back-to-back, so Electron can stay isOnline=false
-      // even when the browser-side is reaching the server fine. Field officers
-      // were seeing OfflineUnauthorizedError thrown for every GPS batch send
-      // despite the status bar showing CONNECTED. If the browser side says
-      // we can probably reach the server, skip the offline routing entirely
-      // and let the normal fetch happen — if it fails, the regular network-
-      // error path will surface it.
-      if (!offlineState.isOnline && !isLikelyOnline() && isOfflineCapable(method, url)) {
-        // Write operations require PIN authorization (admin always authorized)
-        if (method !== 'GET' && !offlineState.isLocalAuthorized) {
-          throw new OfflineUnauthorizedError();
-        }
-
-        // Route through local SQLite via IPC
-        const body = options?.body ? JSON.parse(options.body as string) : undefined;
-        const result = await electron.localApi(method, url, body);
-
-        if (result.status >= 400) {
-          throw new Error(result.error || `Offline request failed: ${result.status}`);
-        }
-
-        return result.data as T;
-      }
-    } catch (err) {
-      // Re-throw OfflineUnauthorizedError (for PIN modal trigger)
-      if (err instanceof OfflineUnauthorizedError) throw err;
-      // For other errors during offline check, fall through to normal fetch
-    }
-  }
-
-  // ─── Browser offline interception ──────────────────────
-  // Use the connectivity monitor's authoritative state instead of
-  // `navigator.onLine` directly. Past bug: if navigator lied `false` while
-  // the server was actually reachable, every write was routed to the
-  // IndexedDB offline router (surfacing as OfflineUnauthorizedError →
-  // unexpected PIN modal) until navigator happened to flip itself true.
-  if (!isLikelyOnline() && isOfflineDbReady() && isOfflineCapableEndpoint(method, url)) {
-    try {
-      const session = await hasActiveSession();
-      // Write operations require PIN authorization (admin always authorized)
-      if (method !== 'GET' && !session.active) {
-        throw new OfflineUnauthorizedError();
-      }
-
-      const body = options?.body ? JSON.parse(options.body as string) : undefined;
-      const result = await browserOfflineHandle(method, url, body);
-
-      if (result.status >= 400) {
-        throw new Error(result.error || `Offline request failed: ${result.status}`);
-      }
-
-      return result.data as T;
-    } catch (err) {
-      if (err instanceof OfflineUnauthorizedError) throw err;
-      // If truly offline and offline router failed, surface the error
-      // rather than silently falling through to a guaranteed network failure
-      if (!isLikelyOnline()) {
-        console.warn('[OFFLINE] Browser offline router failed:', err);
-        throw new Error('Offline data unavailable for this request');
-      }
-      // Fall through to normal fetch for non-offline errors
-    }
   }
 
   // ─── Normal online fetch path ──────────────────────────

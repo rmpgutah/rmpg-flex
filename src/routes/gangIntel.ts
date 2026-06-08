@@ -41,6 +41,8 @@ gangIntel.put('/:id', async (c) => {
 
 gangIntel.delete('/:id', async (c) => {
   try {
+  const actor = c.get('user') as { role: string } | undefined;
+  if (!actor || !new Set(['admin', 'manager', 'supervisor']).has(actor.role)) return c.json({ error: 'Forbidden' }, 403);
   const db = getDb(c.env);
   const id = c.req.param('id');
   await execute(db, 'DELETE FROM gang_intel_members WHERE id=?', id);
@@ -85,6 +87,8 @@ gangIntel.put('/gangs/:id', async (c) => {
 
 gangIntel.delete('/gangs/:id', async (c) => {
   try {
+  const actor = c.get('user') as { role: string } | undefined;
+  if (!actor || !new Set(['admin', 'manager', 'supervisor']).has(actor.role)) return c.json({ error: 'Forbidden' }, 403);
   const db = getDb(c.env);
   const id = c.req.param('id');
   await execute(db, 'DELETE FROM gang_intel_gangs WHERE id=?', id);

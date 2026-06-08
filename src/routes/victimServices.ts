@@ -43,6 +43,8 @@ victimServices.put('/victims/:id', async (c) => {
 
 victimServices.delete('/victims/:id', async (c) => {
   try {
+  const actor = c.get('user') as { role: string } | undefined;
+  if (!actor || !new Set(['admin', 'manager']).has(actor.role)) return c.json({ error: 'Forbidden' }, 403);
   const db = getDb(c.env);
   const id = c.req.param('id');
   await execute(db, 'DELETE FROM victim_services_records WHERE id=?', id);
