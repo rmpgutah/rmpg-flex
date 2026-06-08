@@ -139,7 +139,7 @@ describe('NOT NULL regression tests', () => {
   it('POST /api/records/evidence accepts without incident_id (standalone evidence)', async () => {
     const rec = recordingDb([
       { match: /SELECT id, username, role, full_name, status FROM users/, rows: [{ id: 1, username: 'tester', role: 'admin', full_name: 'Test Officer', status: 'active' }] },
-      { match: /INSERT INTO evidence/, rows: [], meta: { last_row_id: 99 } },
+      { match: /INSERT INTO evidence/, rows: [] },
     ]);
     const res = await authedRequest(rec.db, '/api/records/evidence', jsonReq({ evidence_type: 'photo', description: 'A photo' }));
     expect(res.status).toBe(201);
