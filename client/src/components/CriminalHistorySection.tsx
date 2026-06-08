@@ -10,6 +10,7 @@ import {
   Plus, Trash2, Pencil, ChevronDown, ChevronRight, Loader2, Save, X, Gavel,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
+import { useToast } from './ToastProvider';
 import { toDisplayLabel } from '../utils/formatters';
 
 // ── Types ──────────────────────────────────────────
@@ -114,6 +115,7 @@ const EMPTY_FORM = {
 // ── Component ──────────────────────────────────────
 
 export default function CriminalHistorySection({ personId, personName }: CriminalHistorySectionProps) {
+  const { addToast } = useToast();
   const [records, setRecords] = useState<CriminalRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState(true);
@@ -180,8 +182,9 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
     try {
       await apiFetch(`/records/criminal-history/${id}`, { method: 'DELETE' });
       await fetchRecords();
-    } catch (err) {
+    } catch (err: any) {
       console.error('Delete criminal history failed:', err);
+      addToast(err?.message || 'Failed to delete criminal history', 'error');
     }
   };
 

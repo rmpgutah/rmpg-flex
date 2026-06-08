@@ -331,6 +331,18 @@ admin.get('/user-activity-heatmap', (c) => c.json({
 admin.get('/backup-status', (c) => c.json({
   data: { last_backup_at: null, status: 'unknown', size_bytes: 0, location: null },
 }));
+admin.get('/config-history', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const limit = Math.min(Number(c.req.query('limit') || 20), 100);
+    const rows = await query<Record<string, unknown>>(db,
+      `SELECT al.* FROM activity_log al
+       WHERE al.action IN ('config_update','setting_update','system_config_update')
+       ORDER BY al.created_at DESC LIMIT ?`, limit);
+    return c.json({ data: rows });
+  } catch { return c.json({ data: [] }); }
+});
+
 // Maintenance-mode GET/PUT now persist to system_config — see appended block.
 
 // ============================================================

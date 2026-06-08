@@ -10,6 +10,7 @@ import {
   Link2,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
+import { useToast } from './ToastProvider';
 
 // ── Types ──────────────────────────────────────────
 
@@ -65,6 +66,7 @@ interface PersonClientLinksProps {
 }
 
 export function PersonClientLinks({ personId, personName }: PersonClientLinksProps) {
+  const { addToast } = useToast();
   const [links, setLinks] = useState<ClientPersonLink[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -89,6 +91,7 @@ export function PersonClientLinks({ personId, personName }: PersonClientLinksPro
       fetchLinks();
     } catch (err) {
       console.error('Failed to remove link:', err);
+      addToast((err as any)?.message || 'Failed to remove link', 'error');
     }
   };
 
@@ -167,6 +170,7 @@ interface ClientPersonLinksProps {
 }
 
 export function ClientPersonLinks({ clientId, clientName }: ClientPersonLinksProps) {
+  const { addToast } = useToast();
   const [links, setLinks] = useState<ClientPersonLink[]>([]);
   const [loading, setLoading] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -191,6 +195,7 @@ export function ClientPersonLinks({ clientId, clientName }: ClientPersonLinksPro
       fetchLinks();
     } catch (err) {
       console.error('Failed to remove link:', err);
+      addToast((err as any)?.message || 'Failed to remove link', 'error');
     }
   };
 
