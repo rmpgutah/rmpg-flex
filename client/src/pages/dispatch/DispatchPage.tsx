@@ -52,7 +52,7 @@ import { useIsMobile } from '../../hooks/useIsMobile';
 import { useScreenWakeLock } from '../../hooks/useScreenWakeLock';
 import MobileCardList from '../../components/mobile/MobileCardList';
 import MobileDetailView from '../../components/mobile/MobileDetailView';
-import { mapDbCall, mapDbUnit } from './utils/dispatchMappers';
+import { mapDbCall, mergeCallUpdate, mapDbUnit } from './utils/dispatchMappers';
 import { applyCallPdfAutofill } from './utils/callPdfAutofill';
 import {
   formatTime, formatElapsed, formatActivityDetails, type FilterTab,
@@ -733,19 +733,18 @@ export default function DispatchPage() {
       const mappedUnits = (Array.isArray(unitsRes) ? unitsRes : []).map(mapDbUnit);
       setCalls(mappedCalls);
       setUnits(mappedUnits);
-      // If we had a selected call, update its reference
+      // Merge list-level fields into selectedCall rather than replacing —
+      // the list endpoint omits ext-table fields (PSO, process service,
+      // subject details) due to the D1 100-column cap.
       setSelectedCall((prev) => {
         if (!prev) return mappedCalls[0] || null;
-        const found = mappedCalls.find((c: CallForService) => c.id === prev.id);
-        if (found) return found;
-        // Call disappeared from the active list (transient: e.g. WS race,
-        // backend filter hiccup, brief archive-and-unarchive). Don't auto-
-        // substitute a different call when the user is mid-edit — that
-        // change would flip selectedCall.id, fire the cleanup useEffect,
-        // and kill their edit form mid-keystroke. Keep current call until
-        // they explicitly navigate away.
-        if (isEditingRef.current) return prev;
-        return mappedCalls[0] || null;
+        const found = callsRaw.find((r: any) => String(r.id) === prev.id);
+        if (found) return mergeCallUpdate(prev, found);
+        // Call not in the active list — it may be archived, cleared, or
+        // transiently missing. Keep current selection; never auto-substitute
+        // a different call which would flash the detail panel and lose the
+        // user's context (especially mid-edit or while viewing an archived call).
+        return prev;
       });
     } catch (err: any) {
       if (err?.name === 'AbortError') {
@@ -947,8 +946,6 @@ export default function DispatchPage() {
         }
       } else if (data.action === 'call_updated' && data.call) {
         const mapped = mapDbCall(data.call);
-        // Detect priority escalation before updating state. Read from the ref —
-        // the plain `calls` here would be the stale mount-time snapshot.
         const prevCall = callsRef.current.find((c: any) => c.id === mapped.id);
         if (prevCall && prevCall.priority !== mapped.priority) {
           const priorities = ['P1', 'P2', 'P3', 'P4'];
@@ -956,9 +953,8 @@ export default function DispatchPage() {
             announceEscalation(mapped.call_number, prevCall.priority, mapped.priority);
           }
         }
-        setCalls((prev) => prev.map((c) => (c.id === mapped.id ? mapped : c)));
-        // Update selected call if it's the one being viewed
-        setSelectedCall((prev) => (prev?.id === mapped.id ? mapped : prev));
+        setCalls((prev) => prev.map((c) => (c.id === mapped.id ? mergeCallUpdate(c, data.call) : c)));
+        setSelectedCall((prev) => (prev?.id === mapped.id ? mergeCallUpdate(prev, data.call) : prev));
         // Voice alert: announce update if notes were added
         if (data.update_type === 'note_added') {
           // Check for @mentions in the note text
@@ -972,8 +968,8 @@ export default function DispatchPage() {
         }
       } else if (data.action === 'call_status_changed' && data.call) {
         const mapped = mapDbCall(data.call);
-        setCalls((prev) => prev.map((c) => (c.id === mapped.id ? mapped : c)));
-        setSelectedCall((prev) => (prev?.id === mapped.id ? mapped : prev));
+        setCalls((prev) => prev.map((c) => (c.id === mapped.id ? mergeCallUpdate(c, data.call) : c)));
+        setSelectedCall((prev) => (prev?.id === mapped.id ? mergeCallUpdate(prev, data.call) : prev));
         // Voice alert: announce dispatch event when call dispatched
         if (mapped.status === 'dispatched') {
           announceDispatchEvent(mapped);
@@ -1647,8 +1643,9 @@ export default function DispatchPage() {
       // the DB write already succeeded (or the catch below fires).
       const looksLikeFullRow = result && (result.incident_type || result.call_number);
       const apply = (c: typeof selectedCall) =>
-        looksLikeFullRow ? mapDbCall(result) : ({ ...c, [field]: value || null } as typeof c);
+        looksLikeFullRow ? mergeCallUpdate(c!, result) : ({ ...c, [field]: value || null } as typeof c);
       setCalls(prev => prev.map(c => (c.id === callId ? apply(c) : c)));
+      setArchivedCalls(prev => prev.map(c => (c.id === callId ? apply(c) : c)));
       setSelectedCall(prev => (prev && prev.id === callId ? apply(prev) : prev));
       addToast(`Timeline updated: ${field.replace(/_at$/, '').replace(/_/g, ' ')}`, 'success');
     } catch (err) {
@@ -1893,7 +1890,7 @@ export default function DispatchPage() {
         method: 'PUT',
         body: JSON.stringify(body),
       });
-      const updatedCall = mapDbCall(result);
+      const updatedCall = mergeCallUpdate(selectedCall, result);
       setCalls((prev) => prev.map((c) => c.id === selectedCall.id ? updatedCall : c));
       setSelectedCall(updatedCall);
       setIsEditing(false);
@@ -3561,7 +3558,7 @@ export default function DispatchPage() {
                             const val = (e.target as HTMLInputElement).value.trim();
                             try {
                               const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}`, { method: 'PUT', body: JSON.stringify({ case_number: val || null }) });
-                              const updated = mapDbCall(result);
+                              const updated = mergeCallUpdate(selectedCall, result);
                               setCalls(prev => prev.map(c => c.id === updated.id ? updated : c));
                               setSelectedCall(updated);
                               addToast(val ? `Case number set to ${val}` : 'Case number cleared', 'success');
@@ -3576,7 +3573,7 @@ export default function DispatchPage() {
                           if (val !== (selectedCall.case_number || '')) {
                             try {
                               const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}`, { method: 'PUT', body: JSON.stringify({ case_number: val || null }) });
-                              const updated = mapDbCall(result);
+                              const updated = mergeCallUpdate(selectedCall, result);
                               setCalls(prev => prev.map(c => c.id === updated.id ? updated : c));
                               setSelectedCall(updated);
                             } catch { /* silent on blur */ }
@@ -3608,7 +3605,7 @@ export default function DispatchPage() {
                             const val = (e.target as HTMLInputElement).value.trim();
                             try {
                               const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}`, { method: 'PUT', body: JSON.stringify({ case_number: val || null }) });
-                              const updated = mapDbCall(result);
+                              const updated = mergeCallUpdate(selectedCall, result);
                               setCalls(prev => prev.map(c => c.id === updated.id ? updated : c));
                               setSelectedCall(updated);
                               addToast(val ? `Linked to incident ${val}` : 'Incident link cleared', 'success');
@@ -3622,7 +3619,7 @@ export default function DispatchPage() {
                           if (val !== ((selectedCall as any).incident_number || '')) {
                             try {
                               const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}`, { method: 'PUT', body: JSON.stringify({ case_number: val || null }) });
-                              const updated = mapDbCall(result);
+                              const updated = mergeCallUpdate(selectedCall, result);
                               setCalls(prev => prev.map(c => c.id === updated.id ? updated : c));
                               setSelectedCall(updated);
                               addToast(val ? `Linked to incident ${val}` : 'Incident link cleared', 'success');
