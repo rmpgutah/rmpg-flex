@@ -1992,4 +1992,120 @@ personnel.post('/commendations/:id', async (c) => {
   }
 });
 
+// ── GET /personnel/:id/dispatch-stats — officer's dispatch activity summary
+personnel.get('/:id/dispatch-stats', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const officerId = Number(c.req.param('id'));
+    if (!Number.isFinite(officerId) || officerId <= 0) return c.json({ error: 'Invalid officer id' }, 400);
+
+    const [callStats, unitInfo, recentCalls, tripStats] = await Promise.all([
+      queryFirst<Record<string, unknown>>(db, `
+        SELECT COUNT(*) as total_calls,
+          SUM(CASE WHEN priority = 1 THEN 1 ELSE 0 END) as priority1_calls,
+          SUM(CASE WHEN priority = 2 THEN 1 ELSE 0 END) as priority2_calls,
+          SUM(CASE WHEN status = 'closed' THEN 1 ELSE 0 END) as closed_calls,
+          SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as active_calls,
+          AVG(CASE WHEN starting_mileage IS NOT NULL AND ending_mileage IS NOT NULL
+               THEN ending_mileage - starting_mileage END) as avg_call_miles
+        FROM calls_for_service
+        WHERE reporting_officer_id = ?`, officerId),
+      queryFirst<Record<string, unknown>>(db, `
+        SELECT u.id as unit_id, u.call_sign, u.status as unit_status,
+          u.vehicle_id, u.current_call_id,
+          fv.vehicle_number, fv.make as vehicle_make, fv.model as vehicle_model
+        FROM units u
+        LEFT JOIN fleet_vehicles fv ON fv.assigned_unit_id = u.id
+        WHERE u.officer_id = ?`, officerId),
+      query<Record<string, unknown>>(db, `
+        SELECT id, call_number, incident_type, priority, status,
+          location_address, created_at
+        FROM calls_for_service
+        WHERE reporting_officer_id = ?
+        ORDER BY created_at DESC LIMIT 10`, officerId),
+      queryFirst<Record<string, unknown>>(db, `
+        SELECT COUNT(*) as total_trips,
+          SUM(distance_miles) as total_miles,
+          AVG(distance_miles) as avg_trip_miles,
+          AVG(max_speed_mph) as avg_max_speed,
+          SUM(duration_seconds) as total_drive_seconds
+        FROM nav_trip_log
+        WHERE officer_id = ? AND status = 'completed'`, officerId),
+    ]);
+
+    return c.json({
+      officer_id: officerId,
+      calls: callStats,
+      current_unit: unitInfo,
+      recent_calls: recentCalls,
+      trips: tripStats,
+    });
+  } catch (err) {
+    console.error('GET /personnel/:id/dispatch-stats error:', err);
+    return c.json({ error: 'Failed to fetch dispatch stats' }, 500);
+  }
+});
+
+// ── GET /personnel/:id/fleet-summary — officer's vehicle history + usage
+personnel.get('/:id/fleet-summary', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const officerId = Number(c.req.param('id'));
+    if (!Number.isFinite(officerId) || officerId <= 0) return c.json({ error: 'Invalid officer id' }, 400);
+
+    const [currentVehicle, assignmentHistory, fuelUsage, maintenanceEvents] = await Promise.all([
+      queryFirst<Record<string, unknown>>(db, `
+        SELECT fv.id, fv.vehicle_number, fv.make, fv.model, fv.year,
+          fv.plate_number, fv.status, fv.current_mileage,
+          fv.next_service_date, fv.next_service_mileage,
+          fv.insurance_expiry, fv.registration_expiry,
+          fa.assigned_at
+        FROM units u
+        JOIN fleet_vehicles fv ON fv.assigned_unit_id = u.id
+        LEFT JOIN fleet_assignments fa ON fa.vehicle_id = fv.id
+          AND fa.unit_id = u.id AND fa.unassigned_at IS NULL
+        WHERE u.officer_id = ?
+        LIMIT 1`, officerId),
+      query<Record<string, unknown>>(db, `
+        SELECT fa.vehicle_id, fa.assigned_at, fa.unassigned_at, fa.mileage_at_assign,
+          fa.mileage_at_unassign,
+          fv.vehicle_number, fv.make, fv.model
+        FROM fleet_assignments fa
+        JOIN units u ON fa.unit_id = u.id
+        JOIN fleet_vehicles fv ON fa.vehicle_id = fv.id
+        WHERE u.officer_id = ?
+        ORDER BY fa.assigned_at DESC LIMIT 20`, officerId),
+      queryFirst<Record<string, unknown>>(db, `
+        SELECT COUNT(*) as fuel_entries,
+          SUM(ff.cost) as total_fuel_cost,
+          SUM(ff.gallons) as total_gallons,
+          AVG(ff.cost_per_gallon) as avg_cost_per_gallon
+        FROM fleet_fuel ff
+        JOIN fleet_vehicles fv ON ff.vehicle_id = fv.id
+        JOIN units u ON fv.assigned_unit_id = u.id
+        WHERE u.officer_id = ?`, officerId),
+      query<Record<string, unknown>>(db, `
+        SELECT fm.id, fm.vehicle_id, fm.service_type, fm.description,
+          fm.cost, fm.date, fm.vendor, fm.mileage_at_service,
+          fv.vehicle_number
+        FROM fleet_maintenance fm
+        JOIN fleet_vehicles fv ON fm.vehicle_id = fv.id
+        JOIN units u ON fv.assigned_unit_id = u.id
+        WHERE u.officer_id = ?
+        ORDER BY fm.date DESC LIMIT 10`, officerId),
+    ]);
+
+    return c.json({
+      officer_id: officerId,
+      current_vehicle: currentVehicle,
+      assignment_history: assignmentHistory,
+      fuel: fuelUsage,
+      recent_maintenance: maintenanceEvents,
+    });
+  } catch (err) {
+    console.error('GET /personnel/:id/fleet-summary error:', err);
+    return c.json({ error: 'Failed to fetch fleet summary' }, 500);
+  }
+});
+
 export default personnel;

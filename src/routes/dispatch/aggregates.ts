@@ -400,4 +400,108 @@ aggregates.get('/stats/dashboard', async (c) => {
   } catch (err) { return c.json({ calls: {}, units: {}, priority: {} }); }
 });
 
+// ── GET /dispatch/aggregates/integration-dashboard — cross-system operational picture
+aggregates.get('/integration-dashboard', async (c) => {
+  try {
+    const db = getDb(c.env);
+
+    const [
+      callSummary, unitSummary, fleetSummary,
+      personnelSummary, navSummary, fleetAlerts
+    ] = await Promise.all([
+      // Dispatch: active/pending/closed calls in last 24h
+      queryFirst<Record<string, unknown>>(db, `
+        SELECT COUNT(*) as total_24h,
+          SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as active,
+          SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending,
+          SUM(CASE WHEN status = 'closed' THEN 1 ELSE 0 END) as closed,
+          SUM(CASE WHEN priority = 1 THEN 1 ELSE 0 END) as priority1,
+          SUM(CASE WHEN priority = 2 THEN 1 ELSE 0 END) as priority2,
+          AVG(CASE WHEN starting_mileage IS NOT NULL AND ending_mileage IS NOT NULL
+               THEN ending_mileage - starting_mileage END) as avg_call_miles
+        FROM calls_for_service
+        WHERE created_at >= datetime('now', '-24 hours')`),
+
+      // Units: on-duty / dispatched / available breakdown + vehicle assignment rate
+      queryFirst<Record<string, unknown>>(db, `
+        SELECT COUNT(*) as total_units,
+          SUM(CASE WHEN status NOT IN ('off_duty','out_of_service') THEN 1 ELSE 0 END) as on_duty,
+          SUM(CASE WHEN status = 'dispatched' THEN 1 ELSE 0 END) as dispatched,
+          SUM(CASE WHEN status = 'available' THEN 1 ELSE 0 END) as available,
+          SUM(CASE WHEN current_call_id IS NOT NULL THEN 1 ELSE 0 END) as on_call,
+          SUM(CASE WHEN vehicle_id IS NOT NULL AND vehicle_id != '' THEN 1 ELSE 0 END) as with_vehicle
+        FROM units`),
+
+      // Fleet: vehicle status breakdown + overdue maintenance/expiry counts
+      queryFirst<Record<string, unknown>>(db, `
+        SELECT COUNT(*) as total_vehicles,
+          SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as active,
+          SUM(CASE WHEN status = 'maintenance' THEN 1 ELSE 0 END) as in_maintenance,
+          SUM(CASE WHEN status = 'out_of_service' THEN 1 ELSE 0 END) as out_of_service,
+          SUM(CASE WHEN assigned_unit_id IS NOT NULL THEN 1 ELSE 0 END) as assigned,
+          SUM(CASE WHEN next_service_date IS NOT NULL
+               AND date(next_service_date) < date('now') THEN 1 ELSE 0 END) as service_overdue,
+          SUM(CASE WHEN insurance_expiry IS NOT NULL
+               AND date(insurance_expiry) < date('now') THEN 1 ELSE 0 END) as insurance_expired,
+          SUM(CASE WHEN registration_expiry IS NOT NULL
+               AND date(registration_expiry) < date('now') THEN 1 ELSE 0 END) as registration_expired
+        FROM fleet_vehicles`),
+
+      // Personnel: on-duty officers + clocked-in count
+      queryFirst<Record<string, unknown>>(db, `
+        SELECT COUNT(*) as total_officers,
+          SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as active_status,
+          (SELECT COUNT(*) FROM time_entries WHERE clock_out IS NULL) as clocked_in,
+          (SELECT COUNT(DISTINCT officer_id) FROM units
+            WHERE status NOT IN ('off_duty','out_of_service')) as on_duty_units
+        FROM users WHERE role IN ('officer','supervisor','admin','manager','dispatcher')`),
+
+      // Navigation: active trips + today's completed trips/miles
+      queryFirst<Record<string, unknown>>(db, `
+        SELECT
+          (SELECT COUNT(*) FROM nav_trip_log WHERE status = 'active') as active_trips,
+          SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) as completed_today,
+          SUM(CASE WHEN status = 'completed' THEN distance_miles ELSE 0 END) as miles_today,
+          AVG(CASE WHEN status = 'completed' THEN max_speed_mph END) as avg_max_speed_today
+        FROM nav_trip_log
+        WHERE date(start_time) = date('now', 'localtime')`),
+
+      // Fleet alerts: vehicles needing attention
+      query<Record<string, unknown>>(db, `
+        SELECT fv.id, fv.vehicle_number, fv.make, fv.model, fv.status,
+          fv.next_service_date, fv.insurance_expiry, fv.registration_expiry,
+          u.call_sign as assigned_unit,
+          CASE
+            WHEN date(fv.insurance_expiry) < date('now') THEN 'insurance_expired'
+            WHEN date(fv.registration_expiry) < date('now') THEN 'registration_expired'
+            WHEN date(fv.next_service_date) < date('now') THEN 'service_overdue'
+            WHEN fv.next_service_mileage IS NOT NULL AND fv.current_mileage IS NOT NULL
+                 AND fv.current_mileage >= fv.next_service_mileage THEN 'mileage_overdue'
+            ELSE 'service_due_soon'
+          END as alert_type
+        FROM fleet_vehicles fv
+        LEFT JOIN units u ON fv.assigned_unit_id = u.id
+        WHERE date(fv.next_service_date) <= date('now', '+7 days')
+          OR date(fv.insurance_expiry) < date('now')
+          OR date(fv.registration_expiry) < date('now')
+          OR (fv.next_service_mileage IS NOT NULL AND fv.current_mileage IS NOT NULL
+              AND fv.current_mileage >= fv.next_service_mileage)
+        ORDER BY alert_type
+        LIMIT 20`),
+    ]);
+
+    return c.json({
+      timestamp: new Date().toISOString(),
+      dispatch: callSummary,
+      units: unitSummary,
+      fleet: { summary: fleetSummary, alerts: fleetAlerts },
+      personnel: personnelSummary,
+      navigation: navSummary,
+    });
+  } catch (err) {
+    console.error('GET /dispatch/aggregates/integration-dashboard error:', err);
+    return c.json({ error: 'Failed to build integration dashboard' }, 500);
+  }
+});
+
 export default aggregates;

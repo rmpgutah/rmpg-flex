@@ -3237,4 +3237,128 @@ export async function syncAllVehicleGpsMileage(db: D1Database): Promise<{ checke
   };
 }
 
+// ── GET /fleet/:id/call-history — calls this vehicle responded to
+fleet.get('/:id/call-history', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const vehicleId = Number(c.req.param('id'));
+    if (!Number.isFinite(vehicleId) || vehicleId <= 0) return c.json({ error: 'Invalid vehicle id' }, 400);
+    const limit = Math.min(Number(c.req.query('limit')) || 50, 200);
+    const offset = Number(c.req.query('offset')) || 0;
+
+    const vehicle = await queryFirst<{ vehicle_number: string }>(
+      db, 'SELECT vehicle_number FROM fleet_vehicles WHERE id = ?', vehicleId);
+    if (!vehicle) return c.json({ error: 'Vehicle not found' }, 404);
+
+    const calls = await query<Record<string, unknown>>(db, `
+      SELECT cv.call_id, cv.role, cv.dispatched_at, cv.arrived_at, cv.cleared_at,
+        cv.starting_mileage, cv.ending_mileage,
+        cfs.call_number, cfs.incident_type, cfs.priority, cfs.status,
+        cfs.location_address, cfs.created_at as call_created
+      FROM call_vehicles cv
+      JOIN calls_for_service cfs ON cv.call_id = cfs.id
+      WHERE cv.vehicle_id = ?
+      ORDER BY cv.dispatched_at DESC
+      LIMIT ? OFFSET ?`, vehicleId, limit, offset);
+
+    const tripHistory = await query<Record<string, unknown>>(db, `
+      SELECT ntl.id, ntl.start_time, ntl.end_time, ntl.distance_miles,
+        ntl.max_speed_mph, ntl.duration_seconds, ntl.purpose, ntl.status,
+        cfs.call_number, cfs.incident_type as call_type
+      FROM nav_trip_log ntl
+      LEFT JOIN calls_for_service cfs ON ntl.call_id = cfs.id
+      WHERE ntl.vehicle_id = ?
+      ORDER BY ntl.start_time DESC
+      LIMIT ? OFFSET ?`, vehicleId, limit, offset);
+
+    return c.json({ vehicle_id: vehicleId, vehicle_number: vehicle.vehicle_number, calls, trips: tripHistory });
+  } catch (err) {
+    console.error('GET /fleet/:id/call-history error:', err);
+    return c.json({ error: 'Failed to fetch call history' }, 500);
+  }
+});
+
+// ── GET /fleet/:id/readiness — operational readiness score
+fleet.get('/:id/readiness', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const vehicleId = Number(c.req.param('id'));
+    if (!Number.isFinite(vehicleId) || vehicleId <= 0) return c.json({ error: 'Invalid vehicle id' }, 400);
+
+    const vehicle = await queryFirst<Record<string, unknown>>(db, `
+      SELECT fv.*, u.call_sign as assigned_unit, u.officer_id,
+        usr.full_name as officer_name
+      FROM fleet_vehicles fv
+      LEFT JOIN units u ON fv.assigned_unit_id = u.id
+      LEFT JOIN users usr ON u.officer_id = usr.id
+      WHERE fv.id = ?`, vehicleId);
+    if (!vehicle) return c.json({ error: 'Vehicle not found' }, 404);
+
+    const [lastInspection, openRecalls, recentMaint, fuelEfficiency] = await Promise.all([
+      queryFirst<Record<string, unknown>>(db, `
+        SELECT id, date, inspector_name, status, next_inspection_date
+        FROM fleet_inspections
+        WHERE vehicle_id = ? ORDER BY date DESC LIMIT 1`, vehicleId),
+      queryFirst<{ cnt: number }>(db, `
+        SELECT COUNT(*) as cnt FROM fleet_recalls
+        WHERE vehicle_id = ? AND status != 'completed'`, vehicleId),
+      queryFirst<Record<string, unknown>>(db, `
+        SELECT COUNT(*) as count_90d,
+          SUM(cost) as cost_90d
+        FROM fleet_maintenance
+        WHERE vehicle_id = ? AND date >= date('now', '-90 days')`, vehicleId),
+      queryFirst<Record<string, unknown>>(db, `
+        SELECT AVG(ff.gallons) as avg_gallons,
+          AVG(ff.cost) as avg_cost,
+          COUNT(*) as fuel_entries
+        FROM fleet_fuel ff
+        WHERE ff.vehicle_id = ? AND ff.date >= date('now', '-90 days')`, vehicleId),
+    ]);
+
+    const flags: string[] = [];
+    let score = 100;
+
+    if (vehicle.status === 'out_of_service') { score -= 50; flags.push('out_of_service'); }
+    if (vehicle.status === 'maintenance') { score -= 30; flags.push('in_maintenance'); }
+
+    if (vehicle.next_service_date && new Date(vehicle.next_service_date as string) < new Date()) {
+      score -= 20; flags.push('service_overdue');
+    } else if (vehicle.next_service_date && new Date(vehicle.next_service_date as string) <= new Date(Date.now() + 7 * 86400000)) {
+      score -= 5; flags.push('service_due_soon');
+    }
+
+    if (vehicle.next_service_mileage && vehicle.current_mileage &&
+        Number(vehicle.current_mileage) >= Number(vehicle.next_service_mileage)) {
+      score -= 15; flags.push('mileage_overdue');
+    }
+
+    if (vehicle.insurance_expiry && new Date(vehicle.insurance_expiry as string) < new Date()) {
+      score -= 25; flags.push('insurance_expired');
+    }
+    if (vehicle.registration_expiry && new Date(vehicle.registration_expiry as string) < new Date()) {
+      score -= 25; flags.push('registration_expired');
+    }
+
+    if ((openRecalls?.cnt ?? 0) > 0) { score -= 10; flags.push('open_recalls'); }
+
+    score = Math.max(0, score);
+
+    return c.json({
+      vehicle_id: vehicleId,
+      vehicle_number: vehicle.vehicle_number,
+      readiness_score: score,
+      readiness_grade: score >= 90 ? 'A' : score >= 75 ? 'B' : score >= 60 ? 'C' : score >= 40 ? 'D' : 'F',
+      flags,
+      vehicle,
+      last_inspection: lastInspection,
+      open_recalls: openRecalls?.cnt ?? 0,
+      recent_maintenance: recentMaint,
+      fuel_efficiency: fuelEfficiency,
+    });
+  } catch (err) {
+    console.error('GET /fleet/:id/readiness error:', err);
+    return c.json({ error: 'Failed to compute readiness' }, 500);
+  }
+});
+
 export default fleet;
