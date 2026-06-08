@@ -281,7 +281,7 @@ export default function DispatchPage() {
   const unitsRef = useRef<Unit[]>([]);
   useEffect(() => { unitsRef.current = units; }, [units]);
   const [selectedCall, setSelectedCall] = useState<CallForService | null>(null);
-  const [filterTab, setFilterTab] = usePersistedTab('rmpg_dispatch_tab', 'all' as FilterTab, ['all', 'pending', 'active', 'cleared', 'archived', 'serve', 'mine'] as const);
+  const [filterTab, setFilterTab] = usePersistedTab('rmpg_dispatch_tab', 'queue' as FilterTab, ['queue', 'pending', 'active', 'hold', 'serve', 'cleared', 'archived'] as const);
   const [showNewCallModal, setShowNewCallModal] = useState(false);
   const [showQuickPsoModal, setShowQuickPsoModal] = useState(false);
   // Status-bar clock is rendered via the self-ticking <LiveClock/> component
@@ -1240,17 +1240,14 @@ export default function DispatchPage() {
 
   const filteredCalls = useMemo(() => (filterTab === 'archived' ? archivedCalls : calls).filter((call) => {
     switch (filterTab) {
+      case 'queue': return !['cleared', 'closed', 'cancelled'].includes(call.status);
       case 'pending': return call.status === 'pending';
-      case 'active': return ['dispatched', 'enroute', 'onscene', 'on_hold'].includes(call.status);
+      case 'active': return ['dispatched', 'enroute', 'onscene'].includes(call.status);
+      case 'hold': return call.status === 'on_hold';
+      case 'serve': return PSO_INCIDENT_TYPES.includes(call.incident_type);
       case 'cleared': return ['cleared', 'closed', 'cancelled'].includes(call.status);
-      case 'archived': return true; // archivedCalls already filtered
-      case 'serve': return PSO_INCIDENT_TYPES.includes(call.incident_type); // Show ALL PSO calls (active + cleared/on_hold for return visits)
-      case 'mine': {
-        const myId = user?.id != null ? String(user.id) : null;
-        if (!myId) return false;
-        return String((call as any).dispatcher_id ?? (call as any).created_by ?? '') === myId;
-      }
-      default: return true; // `calls` already excludes archived from backend
+      case 'archived': return true;
+      default: return true;
     }
   }).filter((call) => {
     if (!searchQuery.trim()) return true;
@@ -1439,13 +1436,14 @@ export default function DispatchPage() {
         return;
       }
 
-      // 1-6: Filter tabs
-      if (e.key === '1') { setFilterTab('all'); return; }
+      // 1-7: Filter tabs (standard LE lifecycle order)
+      if (e.key === '1') { setFilterTab('queue'); return; }
       if (e.key === '2') { setFilterTab('pending'); return; }
       if (e.key === '3') { setFilterTab('active'); return; }
-      if (e.key === '4') { setFilterTab('cleared'); return; }
-      if (e.key === '5') { setFilterTab('archived'); return; }
-      if (e.key === '6') { setFilterTab('serve'); return; }
+      if (e.key === '4') { setFilterTab('hold'); return; }
+      if (e.key === '5') { setFilterTab('serve'); return; }
+      if (e.key === '6') { setFilterTab('cleared'); return; }
+      if (e.key === '7') { setFilterTab('archived'); return; }
 
       // Arrow keys: navigate call list
       if (e.key === 'ArrowDown' || e.key === 'j') {
@@ -2075,19 +2073,20 @@ export default function DispatchPage() {
 
   const tabCounts = useMemo(() => {
     const pending = calls.filter((c) => c.status === 'pending').length;
-    const active = calls.filter((c) => ['dispatched', 'enroute', 'onscene', 'on_hold'].includes(c.status)).length;
+    const active = calls.filter((c) => ['dispatched', 'enroute', 'onscene'].includes(c.status)).length;
+    const hold = calls.filter((c) => c.status === 'on_hold').length;
     const cleared = calls.filter((c) => ['cleared', 'closed', 'cancelled'].includes(c.status)).length;
     const allCount = calls.length;
     const myId = user?.id != null ? String(user.id) : null;
     const mine = myId ? calls.filter((c) => String((c as any).dispatcher_id ?? (c as any).created_by ?? '') === myId).length : 0;
     return {
-      all: allCount,
+      queue,
       pending,
       active,
+      hold,
       cleared,
       archived: archivedCalls.length,
       serve: calls.filter((c) => PSO_INCIDENT_TYPES.includes(c.incident_type)).length,
-      mine,
     };
   }, [calls, archivedCalls, user?.id]);
 
@@ -2117,9 +2116,10 @@ export default function DispatchPage() {
         {/* Filter pill tabs — min 44px touch targets */}
         <div className="mobile-pill-tabs" style={{ gap: 6, padding: '8px 12px' }}>
           {([
-            { id: 'all', label: 'All', count: tabCounts.all },
+            { id: 'queue', label: 'Queue', count: tabCounts.queue },
             { id: 'pending', label: 'Pending', count: tabCounts.pending },
             { id: 'active', label: 'Active', count: tabCounts.active },
+            { id: 'hold', label: 'Hold', count: tabCounts.hold },
             { id: 'serve', label: 'Serve', count: tabCounts.serve },
             { id: 'cleared', label: 'Cleared', count: tabCounts.cleared },
           ] as const).map((tab) => (
@@ -3160,10 +3160,10 @@ export default function DispatchPage() {
         <TabBar
           spillman
           tabs={[
-            { id: 'all', label: 'All', count: tabCounts.all },
-            { id: 'mine', label: 'Mine', count: tabCounts.mine },
+            { id: 'queue', label: 'Queue', count: tabCounts.queue },
             { id: 'pending', label: 'Pending', count: tabCounts.pending },
             { id: 'active', label: 'Active', count: tabCounts.active },
+            { id: 'hold', label: 'Hold', count: tabCounts.hold },
             { id: 'serve', label: 'Serve', count: tabCounts.serve },
             { id: 'cleared', label: 'Cleared', count: tabCounts.cleared },
             { id: 'archived', label: 'Archive', count: tabCounts.archived },
@@ -3172,88 +3172,104 @@ export default function DispatchPage() {
           onTabChange={(id) => setFilterTab(id as FilterTab)}
         />
 
-        {/* Dispatch Stats Strip */}
-        <div className="px-3 py-1.5 border-b border-[#2b2b2b] flex items-center gap-3 flex-wrap text-[9px] font-mono flex-shrink-0 tabular-nums" style={{ background: '#050505' }}>
+        {/* Operational Status Strip — consolidated single row */}
+        <div className="px-3 py-1 border-b border-[#2b2b2b] flex items-center gap-2.5 flex-wrap text-[9px] font-mono flex-shrink-0 tabular-nums" style={{ background: '#050505' }}>
           {(() => {
-            const activeCalls = calls.filter(c => ['dispatched', 'enroute', 'onscene', 'pending', 'on_hold'].includes(c.status));
-            const p1Count = activeCalls.filter(c => c.priority === 'P1').length;
-            const p2Count = activeCalls.filter(c => c.priority === 'P2').length;
-            const pendingCount = calls.filter(c => c.status === 'pending').length;
+            const workingCalls = calls.filter(c => !['cleared', 'closed', 'cancelled'].includes(c.status));
+            const p1Count = workingCalls.filter(c => c.priority === 'P1').length;
+            const p2Count = workingCalls.filter(c => c.priority === 'P2').length;
+            // Stacked calls
+            const stackedLocations = new Map<string, number>();
+            workingCalls.forEach(c => {
+              if (c.location) {
+                const loc = c.location.toLowerCase().trim();
+                stackedLocations.set(loc, (stackedLocations.get(loc) || 0) + 1);
+              }
+            });
+            const stacked = [...stackedLocations.entries()].filter(([, count]) => count > 1);
+            // Oldest pending
+            const pendingCalls = calls.filter(c => c.status === 'pending');
+            const oldestPending = pendingCalls.length > 0
+              ? Math.round((Date.now() - Math.min(...pendingCalls.map(c => parseTimestamp(c.created_at).getTime()))) / 60000)
+              : null;
+            // Today stats
+            const todayCalls = calls.filter(c => {
+              if (!c.created_at) return false;
+              const d = parseTimestamp(c.created_at);
+              return d.toDateString() === new Date().toDateString();
+            });
+            const clearedToday = todayCalls.filter(c => ['cleared', 'closed', 'archived'].includes(c.status)).length;
+            // Avg response
+            const responseTimes = todayCalls
+              .filter(c => c.onscene_at && c.created_at)
+              .map(c => (parseTimestamp(c.onscene_at).getTime() - parseTimestamp(c.created_at).getTime()) / 60000)
+              .filter(m => m > 0 && m < 480);
+            const avgResponse = responseTimes.length > 0 ? Math.round(responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length) : null;
+
             return (
               <>
+                {/* P1 alert — pulsing red */}
                 {p1Count > 0 && (
                   <span className="flex items-center gap-1 px-1.5 py-0.5 font-bold animate-pulse" style={{ background: 'rgba(220,38,38,0.2)', border: '1px solid rgba(220,38,38,0.4)', color: '#f87171', boxShadow: '0 0 6px rgba(220,38,38,0.3)' }}>
                     <span className="w-1.5 h-1.5 rounded-full bg-red-500" style={{ boxShadow: '0 0 4px #ef4444' }} />
                     P1: {p1Count}
                   </span>
                 )}
-                <span className="text-rmpg-400">P2: <strong className="text-amber-400">{p2Count}</strong></span>
-                <span className="text-rmpg-400">Pending: <strong className="text-gray-400">{pendingCount}</strong></span>
-                <span className="text-rmpg-400">Active: <strong className="text-green-400">{tabCounts.active}</strong></span>
-                {/* Stacked calls indicator */}
-                {(() => {
-                  const stackedLocations = new Map<string, number>();
-                  calls.filter(c => ['pending', 'dispatched', 'enroute', 'onscene', 'on_hold'].includes(c.status)).forEach(c => {
-                    if (c.location) {
-                      const loc = c.location.toLowerCase().trim();
-                      stackedLocations.set(loc, (stackedLocations.get(loc) || 0) + 1);
-                    }
-                  });
-                  const stacked = [...stackedLocations.entries()].filter(([, count]) => count > 1);
-                  if (stacked.length > 0) {
-                    return (
-                      <span className="flex items-center gap-1 px-1.5 py-0.5 font-bold text-[9px] rounded-sm" style={{ background: 'rgba(168,85,247,0.15)', color: '#c084fc', border: '1px solid rgba(168,85,247,0.3)' }} title={`${stacked.length} location(s) with multiple active calls`}>
-                        <Link className="w-2.5 h-2.5" /> STACKED: {stacked.length}
-                      </span>
-                    );
-                  }
-                  return null;
-                })()}
-                {/* Busiest district — active-call load concentration. Full
-                    per-section breakdown on hover. */}
-                {districtLoad.length > 0 && (() => {
-                  const [topSection] = districtLoad[0];
-                  const active = searchQuery.trim() === topSection;
-                  return (
-                    <button
-                      type="button"
-                      onClick={() => setSearchQuery(active ? '' : topSection)}
-                      className="flex items-center gap-1 px-1.5 py-0.5 font-bold text-[9px] rounded-sm hover:brightness-125 transition-all"
-                      style={{ background: active ? 'rgba(212,160,23,0.3)' : 'rgba(212,160,23,0.12)', color: '#d4a017', border: '1px solid rgba(212,160,23,0.3)' }}
-                      title={`Active calls by district — ${districtLoad.map(([k, n]) => `${k}: ${n}`).join(' · ')}\nClick to ${active ? 'clear' : 'filter to'} ${topSection}`}
-                    >
-                      <MapPin className="w-2.5 h-2.5" /> {topSection}: {districtLoad[0][1]}
-                    </button>
-                  );
-                })()}
-                {/* Feature 4: Unit availability counter — extended breakdown */}
-                <span className="flex items-center gap-2 text-[#888888]" title={`${unitAvailability.available} available · ${unitAvailability.enroute} enroute/dispatched · ${unitAvailability.onscene} on-scene · ${unitAvailability.oos} out-of-service`}>
+                {p2Count > 0 && <span className="text-amber-400 font-bold">P2: {p2Count}</span>}
+                {/* Unit availability */}
+                <span className="flex items-center gap-1.5 text-[#888888]" title={`${unitAvailability.available} available · ${unitAvailability.enroute} enroute · ${unitAvailability.onscene} on-scene · ${unitAvailability.oos} OOS`}>
                   <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: unitAvailability.available > 0 ? '#22c55e' : '#ef4444', boxShadow: `0 0 4px ${unitAvailability.available > 0 ? '#22c55e80' : '#ef444480'}` }} />
                   <span style={{ color: unitAvailability.available > 0 ? '#4ade80' : '#f87171' }}><strong>{unitAvailability.available}</strong> AVAIL</span>
                   {unitAvailability.enroute > 0 && <span className="text-amber-400"><strong>{unitAvailability.enroute}</strong> ENR</span>}
                   {unitAvailability.onscene > 0 && <span className="text-purple-400"><strong>{unitAvailability.onscene}</strong> OS</span>}
                   {unitAvailability.oos > 0 && <span className="text-rmpg-500"><strong>{unitAvailability.oos}</strong> OOS</span>}
                 </span>
-                {/* Sort mode toggle — cycle priority → time → status */}
+                {/* Stacked calls */}
+                {stacked.length > 0 && (
+                  <span className="flex items-center gap-1 px-1.5 py-0.5 font-bold text-[9px]" style={{ background: 'rgba(168,85,247,0.15)', color: '#c084fc', border: '1px solid rgba(168,85,247,0.3)' }} title={`${stacked.length} location(s) with multiple active calls`}>
+                    <Link className="w-2.5 h-2.5" /> STACKED: {stacked.length}
+                  </span>
+                )}
+                {/* Busiest district */}
+                {districtLoad.length > 0 && (() => {
+                  const [topSection] = districtLoad[0];
+                  const isFiltered = searchQuery.trim() === topSection;
+                  return (
+                    <button type="button" onClick={() => setSearchQuery(isFiltered ? '' : topSection)}
+                      className="flex items-center gap-1 px-1.5 py-0.5 font-bold text-[9px] hover:brightness-125 transition-all"
+                      style={{ background: isFiltered ? 'rgba(212,160,23,0.3)' : 'rgba(212,160,23,0.12)', color: '#d4a017', border: '1px solid rgba(212,160,23,0.3)' }}
+                      title={`Active calls by district — ${districtLoad.map(([k, n]) => `${k}: ${n}`).join(' · ')}`}
+                    >
+                      <MapPin className="w-2.5 h-2.5" /> {topSection}: {districtLoad[0][1]}
+                    </button>
+                  );
+                })()}
+                {/* Oldest pending wait time */}
+                {oldestPending !== null && oldestPending > 0 && (
+                  <span className={`flex items-center gap-1 px-1.5 py-0.5 border ${oldestPending <= 5 ? 'text-rmpg-400 border-rmpg-700/40' : oldestPending <= 15 ? 'text-amber-400 border-amber-700/40 bg-amber-900/10 animate-pulse' : 'text-red-400 border-red-700/40 bg-red-900/20 animate-pulse'}`}>
+                    WAIT: <strong>{oldestPending}m</strong>
+                  </span>
+                )}
+                {/* Avg response */}
+                {avgResponse !== null && (
+                  <span className={`flex items-center gap-1 px-1.5 py-0.5 border ${avgResponse <= 8 ? 'text-green-400 border-green-700/40 bg-green-900/20' : avgResponse <= 15 ? 'text-amber-400 border-amber-700/40 bg-amber-900/20' : 'text-red-400 border-red-700/40 bg-red-900/20'}`}>
+                    RESP: <strong>{avgResponse}m</strong>
+                  </span>
+                )}
+                {/* Sort toggle */}
                 {(() => {
                   const current = (userPrefs?.dispatch_sort || localSort || 'priority') as 'priority' | 'time' | 'status' | 'geo';
                   const next: Record<string, 'priority' | 'time' | 'status' | 'geo'> = { priority: 'time', time: 'status', status: 'geo', geo: 'priority' };
                   const labels: Record<string, string> = { priority: 'PRI', time: 'NEW', status: 'STA', geo: 'GEO' };
-                  const titles: Record<string, string> = { priority: 'priority', time: 'newest', status: 'status', geo: 'district (section › zone › beat)' };
+                  const titles: Record<string, string> = { priority: 'priority', time: 'newest', status: 'status', geo: 'district' };
                   return (
-                    <button
-                      type="button"
-                      title={`Sort: ${titles[current]} (click to cycle)`}
+                    <button type="button" title={`Sort: ${titles[current]} (click to cycle)`}
                       onClick={() => {
                         const target = next[current];
-                        // Persist locally (backend pref is stubbed) so it survives reloads.
                         setLocalSort(target);
                         localStorage.setItem('rmpg_dispatch_sort', target);
-                        // Best-effort server persist for when /user/preferences is real.
-                        apiFetch('/user/preferences', {
-                          method: 'PUT',
-                          body: JSON.stringify({ dispatch_sort: target }),
-                        }).then(() => reloadPrefs()).catch(() => { /* stubbed today; local state already applied */ });
+                        apiFetch('/user/preferences', { method: 'PUT', body: JSON.stringify({ dispatch_sort: target }) })
+                          .then(() => reloadPrefs()).catch(() => {});
                       }}
                       className="flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold border border-rmpg-700/50 hover:brightness-125 transition-all"
                       style={{ background: '#0d0d0d', color: '#d4a017' }}
@@ -3262,129 +3278,51 @@ export default function DispatchPage() {
                     </button>
                   );
                 })()}
-                {/* Activity sparkline — calls created per 5-min over last hour */}
-                {(() => {
-                  const buckets = new Array(12).fill(0);
-                  const now = Date.now();
-                  calls.forEach(c => {
-                    if (!c.created_at) return;
-                    const t = parseTimestamp(c.created_at).getTime();
-                    const ageMin = (now - t) / 60000;
-                    if (ageMin < 0 || ageMin > 60) return;
-                    const idx = Math.min(11, Math.floor(ageMin / 5));
-                    buckets[11 - idx]++;
-                  });
-                  const max = Math.max(1, ...buckets);
-                  const total = buckets.reduce((a, b) => a + b, 0);
-                  return (
-                    <span className="flex items-center gap-1 text-rmpg-500" title={`Calls created per 5-min bucket over last hour (total: ${total})`}>
-                      <span className="text-[8px] text-rmpg-600">1HR</span>
-                      <svg width="60" height="14" viewBox="0 0 60 14" style={{ display: 'block' }}>
-                        {buckets.map((v, i) => {
-                          const h = Math.max(1, Math.round((v / max) * 12));
-                          return <rect key={i} x={i * 5} y={14 - h} width={4} height={h} fill={v > 0 ? '#d4a017' : '#2b2b2b'} />;
-                        })}
-                      </svg>
-                      <strong className="text-rmpg-300">{total}</strong>
-                    </span>
-                  );
-                })()}
-                <span className="text-rmpg-500 ml-auto">
-                  {filteredCalls.length} calls
-                </span>
+                {/* Right: today + priority filters + call count */}
+                <div className="ml-auto flex items-center gap-1.5">
+                  <span className="text-rmpg-400">
+                    <span className="text-[8px] text-rmpg-600">TODAY</span> <strong className="text-white">{todayCalls.length}</strong>/<strong className="text-green-400">{clearedToday}</strong>
+                  </span>
+                  <span className="text-rmpg-700">|</span>
+                  {(['P1', 'P2', 'P3', 'P4'] as const).map(p => {
+                    const count = workingCalls.filter(c => c.priority === p).length;
+                    const active = priorityFilter === p;
+                    const colors: Record<string, string> = {
+                      P1: `bg-red-900/${active ? '60' : '40'} text-red-400 border-red-700/${active ? '60' : '50'}`,
+                      P2: `bg-amber-900/${active ? '60' : '40'} text-amber-400 border-amber-700/${active ? '60' : '50'}`,
+                      P3: `bg-gray-900/${active ? '60' : '40'} text-gray-400 border-gray-700/${active ? '60' : '50'}`,
+                      P4: `bg-green-900/${active ? '60' : '40'} text-green-400 border-green-700/${active ? '60' : '50'}`,
+                    };
+                    return (
+                      <button key={p} type="button" onClick={() => setPriorityFilter(active ? null : p)}
+                        className={`px-1.5 py-0.5 text-[8px] font-bold border cursor-pointer hover:brightness-125 transition-all ${colors[p]} ${count > 0 ? '' : 'opacity-30'}`}
+                        title={`${active ? 'Clear' : 'Filter to'} ${p}`}
+                      >
+                        {p}:{count}
+                      </button>
+                    );
+                  })}
+                  {(['signaled', 'unsignaled'] as const).map(mode => {
+                    const active = signalFilter === mode;
+                    const count = mode === 'signaled'
+                      ? workingCalls.filter(c => knownSignalCodes.has(c.incident_type)).length
+                      : workingCalls.filter(c => !knownSignalCodes.has(c.incident_type)).length;
+                    return (
+                      <button key={mode} type="button" onClick={() => setSignalFilter(active ? null : mode)}
+                        className={`px-1.5 py-0.5 text-[8px] font-bold border cursor-pointer hover:brightness-125 transition-all ${active ? 'bg-purple-900/60 text-purple-300 border-purple-700/60' : 'bg-purple-900/30 text-purple-400/70 border-purple-700/40'} ${count > 0 ? '' : 'opacity-30'}`}
+                        title={active ? 'Clear signal filter' : `Show only ${mode === 'signaled' ? 'signaled' : 'unsignaled'} calls`}
+                      >
+                        {mode === 'signaled' ? '✓' : '✗'}SIG:{count}
+                      </button>
+                    );
+                  })}
+                  <span className="text-rmpg-700">|</span>
+                  <span className="text-rmpg-500">{filteredCalls.length} calls</span>
+                </div>
               </>
             );
           })()}
         </div>
-
-        {/* Operational Intelligence Strip — response times + shift throughput + priority filter */}
-        {(() => {
-          const todayCalls = calls.filter(c => {
-            if (!c.created_at) return false;
-            const d = parseTimestamp(c.created_at);
-            const now = new Date();
-            return d.toDateString() === now.toDateString();
-          });
-          const clearedToday = todayCalls.filter(c => ['cleared', 'closed', 'archived'].includes(c.status)).length;
-          // Avg response time (created → onscene) for calls with onscene_at today
-          const responseTimes = todayCalls
-            .filter(c => c.onscene_at && c.created_at)
-            .map(c => (parseTimestamp(c.onscene_at).getTime() - parseTimestamp(c.created_at).getTime()) / 60000)
-            .filter(m => m > 0 && m < 480);
-          const avgResponse = responseTimes.length > 0 ? Math.round(responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length) : null;
-          // Oldest pending call age
-          const pendingCalls = calls.filter(c => c.status === 'pending');
-          const oldestPending = pendingCalls.length > 0
-            ? Math.round((Date.now() - Math.min(...pendingCalls.map(c => parseTimestamp(c.created_at).getTime()))) / 60000)
-            : null;
-
-          return (
-            <div className="px-3 py-1 border-b border-[#2b2b2b] flex items-center gap-3 flex-wrap text-[9px] font-mono flex-shrink-0" style={{ background: '#080808' }}>
-              {/* Shift throughput */}
-              <span className="text-rmpg-400 flex items-center gap-1">
-                <span className="text-[8px] text-rmpg-600">TODAY</span>
-                <strong className="text-white">{todayCalls.length}</strong> calls
-                <span className="text-rmpg-600">·</span>
-                <strong className="text-green-400">{clearedToday}</strong> cleared
-              </span>
-              {/* Avg response */}
-              {avgResponse !== null && (
-                <span className={`flex items-center gap-1 px-1.5 py-0.5 border ${avgResponse <= 8 ? 'text-green-400 border-green-700/40 bg-green-900/20' : avgResponse <= 15 ? 'text-amber-400 border-amber-700/40 bg-amber-900/20' : 'text-red-400 border-red-700/40 bg-red-900/20'}`}>
-                  AVG RESPONSE: <strong>{avgResponse}m</strong>
-                </span>
-              )}
-              {/* Oldest pending */}
-              {oldestPending !== null && oldestPending > 0 && (
-                <span className={`flex items-center gap-1 px-1.5 py-0.5 border ${oldestPending <= 5 ? 'text-rmpg-400 border-rmpg-700/40' : oldestPending <= 15 ? 'text-amber-400 border-amber-700/40 bg-amber-900/10 animate-pulse' : 'text-red-400 border-red-700/40 bg-red-900/20 animate-pulse'}`}>
-                  OLDEST WAIT: <strong>{oldestPending}m</strong>
-                </span>
-              )}
-              {/* Priority quick filters — clickable to toggle filter */}
-              <div className="ml-auto flex items-center gap-0.5">
-                <span className="text-[8px] text-rmpg-600 mr-1">PRIORITY</span>
-                {(['P1', 'P2', 'P3', 'P4'] as const).map(p => {
-                  const count = calls.filter(c => c.priority === p && !['cleared', 'closed', 'archived', 'cancelled'].includes(c.status)).length;
-                  const active = priorityFilter === p;
-                  const colors: Record<string, string> = {
-                    P1: `bg-red-900/${active ? '60' : '40'} text-red-400 border-red-700/${active ? '60' : '50'}`,
-                    P2: `bg-amber-900/${active ? '60' : '40'} text-amber-400 border-amber-700/${active ? '60' : '50'}`,
-                    P3: `bg-gray-900/${active ? '60' : '40'} text-gray-400 border-gray-700/${active ? '60' : '50'}`,
-                    P4: `bg-green-900/${active ? '60' : '40'} text-green-400 border-green-700/${active ? '60' : '50'}`,
-                  };
-                  return (
-                    <button
-                      key={p}
-                      type="button"
-                      onClick={() => setPriorityFilter(active ? null : p)}
-                      className={`px-1.5 py-0.5 text-[8px] font-bold border cursor-pointer hover:brightness-125 transition-all ${colors[p]} ${count > 0 ? '' : 'opacity-30'}`}
-                      title={`${active ? 'Clear' : 'Filter to'} ${p} calls`}
-                    >
-                      {p}:{count}
-                    </button>
-                  );
-                })}
-                {/* Signal filter toggle */}
-                {(['signaled', 'unsignaled'] as const).map(mode => {
-                  const active = signalFilter === mode;
-                  const count = mode === 'signaled'
-                    ? calls.filter(c => knownSignalCodes.has(c.incident_type) && !['cleared', 'closed', 'archived', 'cancelled'].includes(c.status)).length
-                    : calls.filter(c => !knownSignalCodes.has(c.incident_type) && !['cleared', 'closed', 'archived', 'cancelled'].includes(c.status)).length;
-                  return (
-                    <button
-                      key={mode}
-                      type="button"
-                      onClick={() => setSignalFilter(active ? null : mode)}
-                      className={`px-1.5 py-0.5 text-[8px] font-bold border cursor-pointer hover:brightness-125 transition-all ${active ? 'bg-purple-900/60 text-purple-300 border-purple-700/60' : 'bg-purple-900/30 text-purple-400/70 border-purple-700/40'} ${count > 0 ? '' : 'opacity-30'}`}
-                      title={active ? 'Clear signal filter' : `Show only ${mode === 'signaled' ? 'calls with a signal code' : 'calls missing a signal code'}`}
-                    >
-                      {mode === 'signaled' ? '✓' : '✗'}SIG:{count}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          );
-        })()}
 
         {/* Feature 9: Call Type Statistics Bar — clickable to toggle filter */}
         {callTypeStats.length > 0 && (
@@ -3475,12 +3413,13 @@ export default function DispatchPage() {
                   <button type="button" onClick={() => { setPriorityFilter(null); setTypeFilter(null); setSignalFilter(null); }} className="underline hover:text-rmpg-300 transition-colors">Clear filters</button>
                 ) : filterTab === 'pending' ? 'All pending calls have been dispatched' :
                  filterTab === 'active' ? 'No units are currently on active calls' :
+                 filterTab === 'hold' ? 'No calls on hold' :
                  filterTab === 'cleared' ? 'No cleared calls to review' :
                  filterTab === 'archived' ? 'No archived calls found' :
-                 filterTab === 'serve' ? 'No PSO client requests in queue' :
+                 filterTab === 'serve' ? 'No process service requests in queue' :
                  'Press N to create a new call'}
               </p>
-              {filterTab === 'all' && (
+              {filterTab === 'queue' && (
                 <button type="button"
                   onClick={() => { setTemplateInitialData(undefined); setShowNewCallModal(true); }}
                   className="mt-4 toolbar-btn toolbar-btn-primary text-[10px]"
