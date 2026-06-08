@@ -22,6 +22,8 @@ import MiniMap from './components/MiniMap';
 import AnnotationContextMenu from './components/AnnotationContextMenu';
 import { Annotation, BatesConfig, DocumentMeta, EditorState, EditorPreferences, DEFAULT_PREFERENCES, PageCrop, PageMeta, RecentFile, StampLabel, Tool, WatermarkConfig, DEFAULT_RENDER_SCALE } from './types';
 import { buildPdfFromEditorState, extractPagesAsBytes, mergePdfFiles, normalizeUploadResponse, saveToDocuments } from './save';
+import { alignAnnotations, distributeAnnotations, matchSize, type AlignMode, type DistributeMode, type MatchSizeMode } from './annotationOps';
+import AlignmentBar from './components/AlignmentBar';
 import { authedImageUrl } from '../../hooks/useApi';
 import { parseTimestamp } from '../../utils/dateUtils';
 
@@ -396,6 +398,17 @@ export default function PdfEditorPage() {
     const ids = new Set<string>();
     for (const a of state.annotations) if (a.page === activePage) ids.add(a.id);
     setSelectedIds(ids);
+  };
+
+  // ─── Align / distribute / match-size (multi-select arrangement) ─
+  const applyAlign = (mode: AlignMode) =>
+    mutate({ annotations: alignAnnotations(state.annotations, selectedIds, mode) });
+  const applyDistribute = (mode: DistributeMode) =>
+    mutate({ annotations: distributeAnnotations(state.annotations, selectedIds, mode) });
+  const applyMatchSize = (mode: MatchSizeMode) => {
+    const anchor = activeId ?? [...selectedIds].pop();
+    if (!anchor) return;
+    mutate({ annotations: matchSize(state.annotations, selectedIds, anchor, mode) });
   };
 
   // ─── Layer visibility ─────────────────────────────────────────
@@ -1078,6 +1091,9 @@ export default function PdfEditorPage() {
             className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><Settings className="w-3 h-3" /></button>
           {selectedIds.size > 0 && (
             <span className="text-[#d4a017]">{selectedIds.size} selected</span>
+          )}
+          {selectedIds.size >= 2 && (
+            <AlignmentBar count={selectedIds.size} onAlign={applyAlign} onDistribute={applyDistribute} onMatchSize={applyMatchSize} />
           )}
         </div>
       )}
