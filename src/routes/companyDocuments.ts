@@ -173,6 +173,8 @@ companyDocuments.put('/:id', async (c) => {
 
 companyDocuments.delete('/:id', async (c) => {
   try {
+    const actor = c.get('user') as { role: string } | undefined;
+    if (!actor || !new Set(['admin', 'manager']).has(actor.role)) return c.json({ error: 'Forbidden' }, 403);
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id'), 10);
     const existing = await queryFirst<any>(db, 'SELECT * FROM company_documents WHERE id = ?', id);

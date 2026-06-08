@@ -12,6 +12,7 @@ import {
   FileText, ChevronRight, RefreshCw,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../components/ToastProvider';
 import IconButton from '../components/IconButton';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
@@ -62,6 +63,7 @@ interface Officer {
 // ── Main Component ─────────────────────────────────────────
 export default function TrainingPage() {
   const { user } = useAuth();
+  const { addToast } = useToast();
   const isAdmin = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'supervisor';
   const isGodMode = user?.role === 'admin'; // Admin God Mode — unrestricted access
   const [activeTab, setActiveTab] = useState<Tab>('dashboard');
@@ -158,8 +160,9 @@ export default function TrainingPage() {
       setShowRecordModal(false);
       setEditRecord(null);
       fetchData();
-    } catch (err) {
+    } catch (err: any) {
       console.error('Save record error:', err);
+      addToast(err?.message || 'Failed to save training record', 'error');
     }
   };
 
@@ -168,8 +171,9 @@ export default function TrainingPage() {
     try {
       await apiFetch(`/personnel/training/${id}`, { method: 'DELETE' });
       fetchData();
-    } catch (err) {
+    } catch (err: any) {
       console.error('Delete record error:', err);
+      addToast(err?.message || 'Failed to delete record', 'error');
     }
   };
 
@@ -184,8 +188,9 @@ export default function TrainingPage() {
       setShowRequirementModal(false);
       setEditRequirement(null);
       fetchData();
-    } catch (err) {
+    } catch (err: any) {
       console.error('Save requirement error:', err);
+      addToast(err?.message || 'Failed to save requirement', 'error');
     }
   };
 
@@ -194,8 +199,9 @@ export default function TrainingPage() {
     try {
       await apiFetch(`/personnel/training-requirements/${id}`, { method: 'DELETE' });
       fetchData();
-    } catch (err) {
+    } catch (err: any) {
       console.error('Delete requirement error:', err);
+      addToast(err?.message || 'Failed to delete requirement', 'error');
     }
   };
 

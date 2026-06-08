@@ -8,6 +8,31 @@ import type { CallForService, Unit, CallNote } from '../../../types';
 /**
  * Map a raw calls_for_service DB row to a CallForService frontend object.
  */
+/**
+ * Merge a partial call update into an existing CallForService, preserving
+ * fields the update source doesn't carry (e.g. ext-table PSO/process fields
+ * absent from the list endpoint or WS broadcasts). Only keys present in the
+ * raw source row overwrite; absent keys keep the prior value.
+ */
+export function mergeCallUpdate(prev: CallForService, rawRow: any): CallForService {
+  const incoming = mapDbCall(rawRow);
+  const sourceKeys = new Set(Object.keys(rawRow || {}));
+  const merged = { ...prev };
+  for (const key of Object.keys(incoming) as (keyof CallForService)[]) {
+    if (sourceKeys.has(key) || sourceKeys.has(fieldSourceMap[key] ?? '')) {
+      (merged as any)[key] = incoming[key];
+    }
+  }
+  if (sourceKeys.has('status')) merged.status = incoming.status;
+  if (sourceKeys.has('updated_at')) merged.updated_at = incoming.updated_at;
+  return merged;
+}
+
+const fieldSourceMap: Record<string, string> = {
+  location: 'location_address',
+  created_by: 'dispatcher_name',
+};
+
 export function mapDbCall(row: any): CallForService {
   // Notes: backend stores as single string; we parse or wrap
   let notes: CallNote[] = [];

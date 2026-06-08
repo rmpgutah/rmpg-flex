@@ -121,6 +121,7 @@ export default function FileAttachments({
   const [dragOver, setDragOver] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; name: string } | null>(null);
   const [previewAttachment, setPreviewAttachment] = useState<Attachment | null>(null);
+  const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState<UploadProgress | null>(null);
   const [currentFileIndex, setCurrentFileIndex] = useState(0);
   const [totalUploadFiles, setTotalUploadFiles] = useState(0);
@@ -209,11 +210,21 @@ export default function FileAttachments({
     }
   };
 
-  const openPreview = (attachment: Attachment) => {
-    if (attachment.mime_type.startsWith('image/') || attachment.mime_type === 'application/pdf') {
+  const openPreview = async (attachment: Attachment) => {
+    if (attachment.mime_type.startsWith('image/')) {
       setPreviewAttachment(attachment);
+    } else if (attachment.mime_type === 'application/pdf') {
+      setPreviewAttachment(attachment);
+      setPdfBlobUrl(null);
+      try {
+        const url = authUrl(`/api/uploads/${attachment.file_id}`, attachment.access_sig, attachment.access_exp);
+        const res = await fetch(url);
+        if (res.ok) {
+          const blob = await res.blob();
+          setPdfBlobUrl(URL.createObjectURL(blob));
+        }
+      } catch { /* iframe will show empty */ }
     } else {
-      // Direct download for non-previewable files
       window.open(authUrl(`/api/uploads/${attachment.file_id}/download`, attachment.access_sig, attachment.access_exp), '_blank', 'noopener,noreferrer');
     }
   };
@@ -423,7 +434,7 @@ export default function FileAttachments({
           aria-modal="true"
           aria-label={`Preview: ${previewAttachment.original_name}`}
           className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-8 animate-fade-in"
-          onClick={() => setPreviewAttachment(null)}
+          onClick={() => { if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl); setPdfBlobUrl(null); setPreviewAttachment(null); }}
           style={{ touchAction: 'manipulation' }}
         >
           <div className="relative max-w-4xl max-h-full" onClick={(e) => e.stopPropagation()}>
@@ -440,7 +451,7 @@ export default function FileAttachments({
                   <Download className="w-4 h-4" />
                 </a>
                 <button type="button"
-                  onClick={() => setPreviewAttachment(null)}
+                  onClick={() => { if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl); setPdfBlobUrl(null); setPreviewAttachment(null); }}
                   className="p-2 sm:p-1 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center hover:bg-rmpg-700 text-rmpg-200 hover:text-white transition-colors"
                   style={{ touchAction: 'manipulation' }}
                   aria-label="Close"
@@ -450,12 +461,17 @@ export default function FileAttachments({
               </div>
             </div>
             {previewAttachment.mime_type === 'application/pdf' ? (
-              <iframe
-                src={authUrl(`/api/uploads/${previewAttachment.file_id}`, previewAttachment.access_sig, previewAttachment.access_exp)}
-                className="w-[800px] h-[600px] bg-white"
-                title="PDF Preview"
-                sandbox="allow-same-origin"
-              />
+              pdfBlobUrl ? (
+                <iframe
+                  src={pdfBlobUrl}
+                  className="w-[800px] h-[600px] bg-white"
+                  title="PDF Preview"
+                />
+              ) : (
+                <div className="w-[800px] h-[600px] bg-white flex items-center justify-center">
+                  <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
+                </div>
+              )
             ) : (
               <img
                 src={authUrl(`/api/uploads/${previewAttachment.file_id}`, previewAttachment.access_sig, previewAttachment.access_exp)}
