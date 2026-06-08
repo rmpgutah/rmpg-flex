@@ -24,6 +24,10 @@ function requireRole(c: { get: (k: 'user') => { role: string } | undefined }, ..
 // is never empty even on a fresh database.
 admin.get('/config', async (c) => {
   try {
+    const actor = c.get('user') as { role: string } | undefined;
+    if (!actor || !new Set(['admin', 'manager', 'supervisor']).has(actor.role)) {
+      return c.json({ error: 'Forbidden' }, 403);
+    }
     const db = getDb(c.env);
     const config = await query<Record<string, unknown>>(db, 'SELECT * FROM system_config');
     const result: Record<string, any> = {};
@@ -131,13 +135,131 @@ admin.get('/call-templates', async (c) => {
   } catch (err) { return c.json({ error: 'Failed' }, 500); }
 });
 
-// GET /admin/clients
+// ── /admin/clients — full CRUD (AdminPage, CrmPage, IncidentsPage all call this prefix) ──
 admin.get('/clients', async (c) => {
   try {
     const db = getDb(c.env);
-    const clients = await query<Record<string, unknown>>(db, 'SELECT * FROM clients ORDER BY name');
-    return c.json(clients);
+    const status = c.req.query('status');
+    const sql = status
+      ? 'SELECT * FROM clients WHERE status = ? ORDER BY name'
+      : 'SELECT * FROM clients ORDER BY name';
+    return c.json(status ? await query(db, sql, status) : await query(db, sql));
   } catch (err) { return c.json({ error: 'Failed' }, 500); }
+});
+
+admin.get('/clients/:id', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = Number(c.req.param('id'));
+    const client = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM clients WHERE id = ?', id);
+    if (!client) return c.json({ error: 'Not found' }, 404);
+    const contracts = await query(db, 'SELECT * FROM client_contracts WHERE client_id = ? ORDER BY start_date DESC', id).catch(() => []);
+    const persons = await query(db, 'SELECT * FROM client_persons WHERE client_id = ? ORDER BY is_primary DESC, id', id).catch(() => []);
+    const incidents = await query(db, `SELECT id, incident_number, occurred_date, status, incident_type FROM incidents WHERE client_id = ? ORDER BY occurred_date DESC LIMIT 50`, id).catch(() => []);
+    const calls = await query(db, `SELECT id, call_number, created_at, status, incident_type, priority FROM calls_for_service WHERE client_id = ? ORDER BY created_at DESC LIMIT 50`, id).catch(() => []);
+    return c.json({ ...client, contracts, persons, incidents, calls });
+  } catch { return c.json({ error: 'Failed' }, 500); }
+});
+
+admin.get('/clients/:id/incidents', async (c) => {
+  try {
+    const db = getDb(c.env);
+    return c.json(await query(db, `SELECT id, incident_number, occurred_date, status, incident_type FROM incidents WHERE client_id = ? ORDER BY occurred_date DESC LIMIT 100`, Number(c.req.param('id'))));
+  } catch { return c.json([]); }
+});
+
+admin.get('/clients/:id/calls', async (c) => {
+  try {
+    const db = getDb(c.env);
+    return c.json(await query(db, `SELECT id, call_number, created_at, status, incident_type, priority FROM calls_for_service WHERE client_id = ? ORDER BY created_at DESC LIMIT 100`, Number(c.req.param('id'))));
+  } catch { return c.json([]); }
+});
+
+admin.get('/clients/:id/billing', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const client = await queryFirst<Record<string, unknown>>(db, 'SELECT total_invoiced, total_paid, outstanding_balance, billing_cycle, payment_terms, rate_per_hour, rate_per_incident, rate_per_cfs FROM clients WHERE id = ?', Number(c.req.param('id')));
+    return c.json(client || {});
+  } catch { return c.json({}); }
+});
+
+const CLIENT_EDITABLE = [
+  'name', 'contact_name', 'contact_email', 'contact_phone', 'address',
+  'contract_start', 'contract_end', 'sla_response_minutes', 'status', 'notes',
+  'billing_email', 'billing_address', 'contract_type', 'contract_value', 'payment_terms',
+  'auto_renew', 'client_code', 'industry', 'website', 'tax_id', 'payment_method',
+  'billing_cycle', 'billing_day', 'discount_percent', 'late_fee_percent',
+  'account_manager', 'priority_client', 'client_since', 'rate_per_hour',
+  'rate_per_incident', 'rate_per_cfs',
+];
+
+admin.post('/clients', async (c) => {
+  try {
+    const actor = c.get('user') as { role: string } | undefined;
+    if (!actor || !new Set(['admin', 'manager']).has(actor.role)) return c.json({ error: 'Forbidden' }, 403);
+    const db = getDb(c.env);
+    const b = await c.req.json<Record<string, any>>();
+    if (!b.name || !String(b.name).trim()) return c.json({ error: 'name required' }, 400);
+    const status = b.status === 'inactive' ? 'inactive' : 'active';
+    const cols = ['name', 'status']; const vals: unknown[] = [String(b.name).trim(), status];
+    for (const k of CLIENT_EDITABLE) {
+      if (k === 'name' || k === 'status') continue;
+      if (k in b) { cols.push(k); vals.push(b[k]); }
+    }
+    const r = await execute(db, `INSERT INTO clients (${cols.join(',')}) VALUES (${cols.map(() => '?').join(',')})`, ...vals);
+    return c.json(await queryFirst(db, 'SELECT * FROM clients WHERE id = ?', r.meta.last_row_id), 201);
+  } catch (e) { return c.json({ error: 'Failed', detail: (e as Error)?.message }, 500); }
+});
+
+admin.put('/clients/:id', async (c) => {
+  try {
+    const actor = c.get('user') as { role: string } | undefined;
+    if (!actor || !new Set(['admin', 'manager']).has(actor.role)) return c.json({ error: 'Forbidden' }, 403);
+    const db = getDb(c.env);
+    const id = Number(c.req.param('id'));
+    const b = await c.req.json<Record<string, any>>();
+    const sets: string[] = []; const vals: unknown[] = [];
+    for (const k of CLIENT_EDITABLE) {
+      if (!(k in b)) continue;
+      if (k === 'status' && b[k] !== 'active' && b[k] !== 'inactive') continue;
+      sets.push(`${k} = ?`); vals.push(b[k]);
+    }
+    if (!sets.length) return c.json({ error: 'No fields to update' }, 400);
+    sets.push("updated_at = datetime('now')");
+    vals.push(id);
+    await execute(db, `UPDATE clients SET ${sets.join(', ')} WHERE id = ?`, ...vals);
+    return c.json(await queryFirst(db, 'SELECT * FROM clients WHERE id = ?', id));
+  } catch (e) { return c.json({ error: 'Failed', detail: (e as Error)?.message }, 500); }
+});
+
+admin.delete('/clients/:id', async (c) => {
+  try {
+    const actor = c.get('user') as { role: string } | undefined;
+    if (!actor || !new Set(['admin', 'manager']).has(actor.role)) return c.json({ error: 'Forbidden' }, 403);
+    const db = getDb(c.env);
+    await execute(db, "UPDATE clients SET status = 'inactive', updated_at = datetime('now') WHERE id = ?", Number(c.req.param('id')));
+    return c.json({ success: true });
+  } catch (e) { return c.json({ error: 'Failed', detail: (e as Error)?.message }, 500); }
+});
+
+admin.post('/clients/:id/archive', async (c) => {
+  try {
+    const actor = c.get('user') as { role: string } | undefined;
+    if (!actor || !new Set(['admin', 'manager']).has(actor.role)) return c.json({ error: 'Forbidden' }, 403);
+    const db = getDb(c.env);
+    await execute(db, "UPDATE clients SET status = 'inactive', updated_at = datetime('now') WHERE id = ?", Number(c.req.param('id')));
+    return c.json({ success: true });
+  } catch (e) { return c.json({ error: 'Failed' }, 500); }
+});
+
+admin.post('/clients/:id/unarchive', async (c) => {
+  try {
+    const actor = c.get('user') as { role: string } | undefined;
+    if (!actor || !new Set(['admin', 'manager']).has(actor.role)) return c.json({ error: 'Forbidden' }, 403);
+    const db = getDb(c.env);
+    await execute(db, "UPDATE clients SET status = 'active', updated_at = datetime('now') WHERE id = ?", Number(c.req.param('id')));
+    return c.json({ success: true });
+  } catch (e) { return c.json({ error: 'Failed' }, 500); }
 });
 
 export default admin;
@@ -221,8 +343,20 @@ admin.get('/user-activity-heatmap', (c) => c.json({
   data: [], cells: [], peak_hour: null, peak_day: null,
 }));
 admin.get('/backup-status', (c) => c.json({
-  last_backup_at: null, status: 'unknown', size_bytes: 0, location: null,
+  data: { last_backup_at: null, status: 'unknown', size_bytes: 0, location: null },
 }));
+admin.get('/config-history', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const limit = Math.min(Number(c.req.query('limit') || 20), 100);
+    const rows = await query<Record<string, unknown>>(db,
+      `SELECT al.* FROM activity_log al
+       WHERE al.action IN ('config_update','setting_update','system_config_update')
+       ORDER BY al.created_at DESC LIMIT ?`, limit);
+    return c.json({ data: rows });
+  } catch { return c.json({ data: [] }); }
+});
+
 // Maintenance-mode GET/PUT now persist to system_config — see appended block.
 
 // ============================================================
@@ -707,7 +841,7 @@ admin.get('/users/presence', async (c) => {
     const rows = await query<Record<string, unknown>>(
       db,
       `SELECT u.id, u.full_name, u.role, u.call_sign, u.status,
-              (SELECT MAX(last_seen_at) FROM sessions s WHERE s.user_id = u.id AND s.is_active = 1) AS last_seen_at
+              (SELECT MAX(last_used_at) FROM sessions s WHERE s.user_id = u.id AND s.is_active = 1) AS last_seen_at
          FROM users u
         WHERE u.status = 'active'
         ORDER BY u.full_name

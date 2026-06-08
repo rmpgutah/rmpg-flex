@@ -345,6 +345,12 @@ uploads.delete('/:fileId', async (c) => {
     const att = await queryFirst<any>(db, 'SELECT * FROM attachments WHERE file_id = ?', fileId);
     if (!att) return c.json({ error: 'File not found', code: 'FILE_NOT_FOUND' }, 404);
 
+    const user = c.get('user') as { id: number; role: string } | undefined;
+    const ADMIN_ROLES = new Set(['admin', 'manager', 'supervisor']);
+    if (att.uploaded_by !== userId && !ADMIN_ROLES.has(user?.role ?? '')) {
+      return c.json({ error: 'Not authorized to delete this file', code: 'FORBIDDEN' }, 403);
+    }
+
     try { await c.env.UPLOADS.delete(att.file_path); } catch { /* non-fatal */ }
 
     await execute(db, 'DELETE FROM attachments WHERE file_id = ?', fileId);

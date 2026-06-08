@@ -118,7 +118,7 @@ import shiftPlans from './routes/shiftPlans';
 import court from './routes/court';
 import dlRecords from './routes/dlRecords';
 import serve from './routes/serve';
-import processServer from './routes/processServer';
+
 import settings from './routes/settings';
 import adminSettings from './routes/adminSettings';
 import recruitment from './routes/recruitment';
@@ -343,8 +343,6 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Utah law book (search/toc/chapter/section) over utah_statutes. Cutover from legacy /statutes/search — same {data:[]} contract, richer fields. Needs the matching proxy rule routing /api/statutes/* to env.API.' },
   { prefix: '/api/serve-intake', router: serveIntake, auth: 'required',
     note: 'Upload + OCR (Tesseract container) + Workers-AI field extraction; commits to serve_queue + serve_intake_documents' },
-  { prefix: '/api/process-server', router: processServer, auth: 'required',
-    note: 'Ported subset (deadlines + success-rates) the ServePage calls; rest of /process-server stays on legacy via proxy. Only proxy-routed paths reach this router.' },
   { prefix: '/api/ocr', router: ocr, auth: 'required',
     note: 'Alias of /api/serve-intake/scan-document — the client URL the OCR preview path already calls' },
   { prefix: '/api/skiptracer', router: skiptracer, auth: 'required',

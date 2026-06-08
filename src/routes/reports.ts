@@ -465,148 +465,42 @@ reports.get('/dashboard', async (c) => {
   });
 });
 
-// GET /reports/officer-activity — per-officer activity summary.
-reports.get('/officer-activity', async (c) => {
-  const db = getDb(c.env);
-  const start = c.req.query('start_date') || new Date(Date.now() - 14 * 86400000).toISOString().slice(0, 10);
-  const end = c.req.query('end_date') || new Date().toISOString().slice(0, 10);
-  try {
-    const rows = await query<Record<string, unknown>>(db,
-      `SELECT u.id AS officer_id, u.full_name, u.badge_number,
-              COALESCE(inc.cnt, 0) AS incidents_written,
-              COALESCE(calls.cnt, 0) AS calls_responded,
-              COALESCE(te.hours, 0) AS total_hours
-       FROM users u
-       LEFT JOIN (SELECT reporting_officer_id AS oid, COUNT(*) AS cnt FROM incidents WHERE date(created_at) BETWEEN ? AND ? GROUP BY oid) inc ON inc.oid = u.id
-       LEFT JOIN (SELECT officer_id AS oid, COUNT(DISTINCT call_id) AS cnt FROM call_officer_links WHERE date(created_at) BETWEEN ? AND ? GROUP BY oid) calls ON calls.oid = u.id
-       LEFT JOIN (SELECT officer_id AS oid, ROUND(SUM((julianday(COALESCE(clock_out, datetime('now'))) - julianday(clock_in)) * 24), 1) AS hours FROM time_entries WHERE date(clock_in) BETWEEN ? AND ? GROUP BY oid) te ON te.oid = u.id
-       WHERE u.role IN ('officer','supervisor','manager','admin') AND u.status = 'active'
-       ORDER BY u.full_name`,
-      start, end, start, end, start, end);
-    return c.json(rows);
-  } catch {
-    // Fallback if join tables don't exist yet
-    try {
-      const users = await query<Record<string, unknown>>(db,
-        `SELECT id AS officer_id, full_name, badge_number, 0 AS incidents_written, 0 AS calls_responded, 0 AS total_hours
-         FROM users WHERE role IN ('officer','supervisor','manager','admin') AND status = 'active' ORDER BY full_name`);
-      return c.json(users);
-    } catch { return c.json([]); }
-  }
-});
-
-// ── POST /reports/shift-notes — save end-of-shift notes ────
-reports.post('/shift-notes', async (c) => {
-  const user = c.get('user') as { id: number } | undefined;
-  if (!user) return c.json({ error: 'Unauthenticated' }, 401);
-  try {
-    const body = await c.req.json<{ content?: string; category?: string; date?: string }>();
-    if (!body.content?.trim()) return c.json({ error: 'content required' }, 400);
-    const db = getDb(c.env);
-    const r = await db.prepare(
-      `INSERT INTO shift_notes (officer_id, content, category, shift_date, created_at)
-       VALUES (?, ?, ?, ?, datetime('now','localtime'))`)
-      .bind(user.id, body.content.trim(), body.category || 'general', body.date || new Date().toISOString().slice(0, 10))
-      .run();
-    return c.json({ success: true, id: r.meta.last_row_id }, 201);
-  } catch { return c.json({ success: true, id: null, note: 'shift_notes table may not exist yet' }); }
-});
-
-reports.get('/shift-notes', async (c) => {
+// GET /dashboard — main Dashboard KPI tiles. Client expects DashboardApiResponse shape.
+reports.get('/dashboard', async (c) => {
   try {
     const db = getDb(c.env);
-    const date = c.req.query('date') || new Date().toISOString().slice(0, 10);
-    const rows = await query<Record<string, unknown>>(db,
-      `SELECT sn.*, u.full_name FROM shift_notes sn
-       LEFT JOIN users u ON u.id = sn.officer_id
-       WHERE sn.shift_date = ? ORDER BY sn.created_at DESC LIMIT 200`, date);
-    return c.json(rows);
-  } catch { return c.json([]); }
-});
-
-// ── GET /reports/comparison — period-over-period comparison ─
-reports.get('/comparison', async (c) => {
-  const db = getDb(c.env);
-  const days = clampDays(c.req.query('days'), 30);
-  const safe = async (sql: string, ...p: unknown[]): Promise<number> => {
-    try { const r = await queryFirst<{ n: number }>(db, sql, ...p); return r?.n ?? 0; } catch { return 0; }
-  };
-  const since1 = `-${days} days`;
-  const since2 = `-${days * 2} days`;
-  const [curCalls, prevCalls, curIncidents, prevIncidents, curCitations, prevCitations] = await Promise.all([
-    safe(`SELECT COUNT(*) AS n FROM calls_for_service WHERE created_at >= datetime('now', ?)`, since1),
-    safe(`SELECT COUNT(*) AS n FROM calls_for_service WHERE created_at >= datetime('now', ?) AND created_at < datetime('now', ?)`, since2, since1),
-    safe(`SELECT COUNT(*) AS n FROM incidents WHERE created_at >= datetime('now', ?)`, since1),
-    safe(`SELECT COUNT(*) AS n FROM incidents WHERE created_at >= datetime('now', ?) AND created_at < datetime('now', ?)`, since2, since1),
-    safe(`SELECT COUNT(*) AS n FROM citations WHERE created_at >= datetime('now', ?)`, since1),
-    safe(`SELECT COUNT(*) AS n FROM citations WHERE created_at >= datetime('now', ?) AND created_at < datetime('now', ?)`, since2, since1),
-  ]);
-  const pctChange = (cur: number, prev: number) => prev === 0 ? (cur > 0 ? 100 : 0) : Math.round(((cur - prev) / prev) * 100);
-  return c.json({
-    days,
-    current: { calls: curCalls, incidents: curIncidents, citations: curCitations },
-    previous: { calls: prevCalls, incidents: prevIncidents, citations: prevCitations },
-    change: {
-      calls: pctChange(curCalls, prevCalls),
-      incidents: pctChange(curIncidents, prevIncidents),
-      citations: pctChange(curCitations, prevCitations),
-    },
-  });
-});
-
-// ── GET /reports/export — CSV export of report data ─────────
-reports.get('/export', async (c) => {
-  const db = getDb(c.env);
-  const type = c.req.query('type') || 'calls';
-  const days = clampDays(c.req.query('days'), 30);
-  const since = `-${days} days`;
-  try {
-    let rows: Record<string, unknown>[] = [];
-    if (type === 'calls') {
-      rows = await query(db, `SELECT call_number, incident_type, priority, status, location_address, created_at FROM calls_for_service WHERE created_at >= datetime('now', ?) ORDER BY created_at DESC LIMIT 10000`, since);
-    } else if (type === 'incidents') {
-      rows = await query(db, `SELECT incident_number, incident_type, priority, status, location_address, created_at FROM incidents WHERE created_at >= datetime('now', ?) ORDER BY created_at DESC LIMIT 10000`, since);
-    } else if (type === 'citations') {
-      rows = await query(db, `SELECT citation_number, violation_description, violator_name, location, status, created_at FROM citations WHERE created_at >= datetime('now', ?) ORDER BY created_at DESC LIMIT 10000`, since);
-    }
-    if (!rows.length) return c.json({ error: 'No data' }, 404);
-    const headers = Object.keys(rows[0]);
-    const csvLines = [headers.join(',')];
-    for (const r of rows) {
-      csvLines.push(headers.map(h => {
-        const v = String(r[h] ?? '');
-        return v.includes(',') || v.includes('"') ? `"${v.replace(/"/g, '""')}"` : v;
-      }).join(','));
-    }
-    return c.newResponse(csvLines.join('\n'), 200, {
-      'Content-Type': 'text/csv',
-      'Content-Disposition': `attachment; filename=${type}_report.csv`,
+    const [calls, unitsOn, totalUnits, pending, bolos, avgResp, byPriority, byStatus, byHour, officers] = await Promise.all([
+      queryFirst<{ n: number }>(db, "SELECT COUNT(*) AS n FROM calls_for_service WHERE status NOT IN ('cleared','closed','cancelled')"),
+      queryFirst<{ n: number }>(db, "SELECT COUNT(*) AS n FROM units WHERE status NOT IN ('off_duty','out_of_service')"),
+      queryFirst<{ n: number }>(db, 'SELECT COUNT(*) AS n FROM units'),
+      queryFirst<{ n: number }>(db, "SELECT COUNT(*) AS n FROM incidents WHERE status IN ('draft','submitted','under_review')"),
+      queryFirst<{ n: number }>(db, "SELECT COUNT(*) AS n FROM bolos WHERE status = 'active'"),
+      queryFirst<{ avg: number | null }>(db, "SELECT ROUND(AVG(response_time_sec) / 60.0, 1) AS avg FROM calls_for_service WHERE response_time_sec IS NOT NULL AND created_at >= datetime('now','-24 hours')"),
+      query<{ priority: string; count: number }>(db, "SELECT priority, COUNT(*) AS count FROM calls_for_service WHERE status NOT IN ('cleared','closed','cancelled') GROUP BY priority"),
+      query<{ status: string; count: number }>(db, "SELECT status, COUNT(*) AS count FROM calls_for_service GROUP BY status"),
+      query<{ hour: string; count: number }>(db, "SELECT strftime('%H', created_at) AS hour, COUNT(*) AS count FROM calls_for_service WHERE created_at >= datetime('now','-24 hours') GROUP BY hour ORDER BY hour"),
+      query<Record<string, unknown>>(db, "SELECT u.id, usr.full_name FROM units u LEFT JOIN users usr ON u.officer_id = usr.id WHERE u.status NOT IN ('off_duty','out_of_service')"),
+    ]);
+    const todayCalls = await queryFirst<{ n: number }>(db, "SELECT COUNT(*) AS n FROM calls_for_service WHERE created_at >= datetime('now','start of day')");
+    return c.json({
+      activeCalls: calls?.n ?? 0,
+      todayCalls: todayCalls?.n ?? 0,
+      unitsOnDuty: unitsOn?.n ?? 0,
+      totalUnits: totalUnits?.n ?? 0,
+      pendingReports: pending?.n ?? 0,
+      activeBolos: bolos?.n ?? 0,
+      unreadMessages: 0,
+      avgResponseMinutes: avgResp?.avg ?? null,
+      callsByPriority: byPriority,
+      callsByStatus: byStatus,
+      recentActivity: [],
+      officersOnDuty: officers,
+      callsByHour: byHour,
     });
-  } catch { return c.json({ error: 'Export failed' }, 500); }
-});
-
-// ── GET /reports/kpi-summary — executive KPI roll-up ────────
-reports.get('/kpi-summary', async (c) => {
-  const db = getDb(c.env);
-  const safe = async (sql: string): Promise<number> => {
-    try { const r = await queryFirst<{ n: number }>(db, sql); return r?.n ?? 0; } catch { return 0; }
-  };
-  const [callsToday, callsWeek, callsMonth, openIncidents, openCases,
-         activeWarrants, activeBolos, personnelOnDuty] = await Promise.all([
-    safe(`SELECT COUNT(*) AS n FROM calls_for_service WHERE date(created_at) = date('now','localtime')`),
-    safe(`SELECT COUNT(*) AS n FROM calls_for_service WHERE created_at >= datetime('now','localtime','-7 days')`),
-    safe(`SELECT COUNT(*) AS n FROM calls_for_service WHERE created_at >= datetime('now','localtime','-30 days')`),
-    safe(`SELECT COUNT(*) AS n FROM incidents WHERE status NOT IN ('approved','closed','rejected')`),
-    safe(`SELECT COUNT(*) AS n FROM cases WHERE status NOT IN ('closed','dismissed')`),
-    safe(`SELECT COUNT(*) AS n FROM warrants WHERE status = 'active'`),
-    safe(`SELECT COUNT(*) AS n FROM bolos WHERE status = 'active'`),
-    safe(`SELECT COUNT(*) AS n FROM units WHERE status IN ('available','on_patrol','busy','en_route','on_scene')`),
-  ]);
-  return c.json({
-    callsToday, callsWeek, callsMonth, openIncidents, openCases,
-    activeWarrants, activeBolos, personnelOnDuty,
-    generated_at: new Date().toISOString(),
-  });
+  } catch (err) {
+    console.error('[reports] GET /dashboard failed:', err);
+    return c.json({ activeCalls: 0, todayCalls: 0, unitsOnDuty: 0, totalUnits: 0, pendingReports: 0, activeBolos: 0, unreadMessages: 0, avgResponseMinutes: null, callsByPriority: [], callsByStatus: [], recentActivity: [], officersOnDuty: [], callsByHour: [] });
+  }
 });
 
 export default reports;

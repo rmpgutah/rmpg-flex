@@ -63,6 +63,16 @@ gps.post('/', async (c) => {
     const unitId = unit?.id ?? null;
     const callSign = unit?.call_sign ?? (isTakeHome ? 'take-home' : null);
 
+    // Resolve the fleet_vehicles.id for trip logging. units.vehicle_id is a
+    // TEXT string (vehicle_number), NOT an integer FK — Number("PS-D19") = NaN.
+    // The authoritative link is fleet_vehicles.assigned_unit_id → units.id.
+    let resolvedVehicleId: number | null = null;
+    if (unitId) {
+      const fv = await queryFirst<{ id: number }>(db,
+        'SELECT id FROM fleet_vehicles WHERE assigned_unit_id = ? LIMIT 1', unitId);
+      resolvedVehicleId = fv?.id ?? null;
+    }
+
     // Batch-insert breadcrumbs — single D1 round-trip instead of N.
     const stmts = points.map((pt) => ({
       sql: `INSERT INTO gps_breadcrumbs (unit_id, officer_id, latitude, longitude, accuracy, heading, speed, call_sign, recorded_at)
@@ -96,7 +106,7 @@ gps.post('/', async (c) => {
             await applyTripEvent({
               db, env: c.env, unitId,
               officerId: userId,
-              vehicleId: unit?.vehicle_id ? Number(unit.vehicle_id) || null : null,
+              vehicleId: resolvedVehicleId,
               event,
               ctx: {
                 now: Date.now(),

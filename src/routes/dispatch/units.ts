@@ -22,10 +22,25 @@ units.get('/', async (c) => {
     const rows = await query<Record<string, unknown>>(db, `
       SELECT u.*, usr.full_name as officer_name, usr.badge_number,
         c.call_number as current_call_number, c.incident_type as current_call_type,
-        c.priority as current_call_priority, c.location_address as current_call_location
+        c.priority as current_call_priority, c.location_address as current_call_location,
+        fv.id as fleet_vehicle_id, fv.vehicle_number, fv.make as vehicle_make,
+        fv.model as vehicle_model, fv.status as vehicle_status,
+        fv.current_mileage, fv.next_service_mileage, fv.next_service_date,
+        fv.insurance_expiry, fv.registration_expiry,
+        CASE
+          WHEN fv.id IS NULL THEN NULL
+          WHEN fv.next_service_date IS NOT NULL AND date(fv.next_service_date) < date('now') THEN 'overdue'
+          WHEN fv.next_service_mileage IS NOT NULL AND fv.current_mileage IS NOT NULL
+               AND fv.current_mileage >= fv.next_service_mileage THEN 'overdue'
+          WHEN fv.next_service_date IS NOT NULL AND date(fv.next_service_date) <= date('now', '+7 days') THEN 'due_soon'
+          WHEN fv.next_service_mileage IS NOT NULL AND fv.current_mileage IS NOT NULL
+               AND (fv.next_service_mileage - fv.current_mileage) < 500 THEN 'due_soon'
+          ELSE 'ok'
+        END as maintenance_status
       FROM units u
       LEFT JOIN users usr ON u.officer_id = usr.id
       LEFT JOIN calls_for_service c ON u.current_call_id = c.id
+      LEFT JOIN fleet_vehicles fv ON fv.assigned_unit_id = u.id
       ORDER BY u.call_sign
     `);
     return c.json(rows);
@@ -206,6 +221,25 @@ units.delete('/:id', requireRole('admin', 'manager'), async (c) => {
     return c.json({ message: 'Unit deleted', id });
   } catch (err) {
     return c.json({ error: 'Failed to delete unit' }, 500);
+  }
+});
+
+// PUT /dispatch/units/:id/status — thin convenience route for status-only updates.
+// Multiple client surfaces (MdtPage, UnitStatusCard, voiceCommandExecutor,
+// cadCommandParser) call this path rather than the general PUT /:id.
+units.put('/:id/status', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = c.req.param('id');
+    const existing = await queryFirst(db, 'SELECT id FROM units WHERE id = ?', id);
+    if (!existing) return c.json({ error: 'Unit not found' }, 404);
+    const body = await c.req.json<Record<string, unknown>>();
+    if (!body.status || typeof body.status !== 'string') return c.json({ error: 'status is required' }, 400);
+    await execute(db, `UPDATE units SET status = ?, last_status_change = datetime('now'), updated_at = datetime('now') WHERE id = ?`, body.status, id);
+    const updated = await queryFirst(db, 'SELECT * FROM units WHERE id = ?', id);
+    return c.json(updated);
+  } catch (err) {
+    return c.json({ error: 'Failed to update unit status' }, 500);
   }
 });
 
