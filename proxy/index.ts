@@ -657,104 +657,6 @@ const STUBS: StubRule[] = [
     body: { token: null, style: null, default_center: null, default_zoom: null },
     reason: 'no mapbox-config surface; Settings tab tolerates empty object',
   },
-  // ── 2026-06-07 round 2 — paths that fell through to env.LEGACY / env.API ──
-  // First deploy round missed a handful of high-traffic endpoints. Each of
-  // these was either:
-  //   (a) routed to env.API (which has authMiddleware mounted at /api/* and
-  //       401s the polling calls) and would 200 only with a JWT, OR
-  //   (b) routed to env.LEGACY which doesn't implement them and 404s.
-  // Both surface as 4xx in the browser; stubbing them lets the page render
-  // its empty state. Real handlers can land later on the rewrite.
-  //
-  // Dispatch top-level stats — polled every 30s by the dispatch layout.
-  {
-    match: /^\/api\/dispatch\/stats(\?.*)?$/,
-    methods: ['GET'],
-    body: { data: null, total_units: 0, available: 0, on_call: 0, off_duty: 0, generated_at: null },
-    reason: 'no /api/dispatch/stats in rewrite; polled every 30s by dispatch layout',
-  },
-  // Reports dashboard — the main /reports page mount fires this.
-  {
-    match: /^\/api\/reports\/dashboard(\?.*)?$/,
-    methods: ['GET'],
-    body: { data: null, summary: null, cards: [], alerts: [], generated_at: null },
-    reason: 'no /api/reports/dashboard in rewrite; ReportsPage + DashboardPage mount',
-  },
-  // Process server — the ServePage / ServeSkipTracePanel. Legacy doesn't
-  // implement these endpoints on live D1 (process_server migration
-  // partial). ServePage tolerates empty list / null error.
-  {
-    match: /^\/api\/process-server(\?.*)?$/,
-    methods: ['GET'],
-    body: { data: [], jobs: [], total: 0 },
-    reason: 'no process_server handler; ServePage tolerates empty list',
-  },
-  {
-    match: /^\/api\/process-server\/stats\/summary(\?.*)?$/,
-    methods: ['GET'],
-    body: { total: 0, attempted: 0, served: 0, skipped: 0, pending: 0, by_day: [] },
-    reason: 'no process-server summary; ServePage tolerates zeros',
-  },
-  {
-    match: /^\/api\/process-server\/routes\/\d{4}-\d{2}-\d{2}(\?.*)?$/,
-    methods: ['GET'],
-    body: { data: [], routes: [], date: null, officer_id: null },
-    reason: 'no process-server routes; ServePage tolerates empty',
-  },
-  {
-    match: /^\/api\/process-server\/[^/]+\/skip-trace(\?.*)?$/,
-    methods: ['GET', 'POST'],
-    body: { data: null, results: [], skip_trace: null, sources: [] },
-    reason: 'no process-server skip-trace; ServeSkipTracePanel tolerates empty',
-  },
-  {
-    match: /^\/api\/process-server\/[^/]+\/attempt(\?.*)?$/,
-    methods: ['GET', 'POST'],
-    body: { data: null, attempt: null, status: null, attempted_at: null },
-    reason: 'no process-server attempt; ServePage modal tolerates null',
-  },
-  {
-    match: /^\/api\/process-server\/export\/csv(\?.*)?$/,
-    methods: ['GET'],
-    body: { url: null, count: 0, message: 'export stubbed' },
-    reason: 'no process-server export; ExportButton tolerates null url',
-  },
-  // Patrol — PatrolPage action buttons (log generate, optimize route,
-  // time tracking, trip log PDF). Legacy implements none of these.
-  {
-    match: /^\/api\/patrol\/log\/generate(\?.*)?$/,
-    methods: ['POST', 'GET'],
-    body: { success: true, log: null, entries: [], generated_at: null, message: 'patrol log generation is stubbed' },
-    reason: 'no patrol log generation; PatrolPage tolerates success',
-  },
-  {
-    match: /^\/api\/patrol\/optimize-route(\?.*)?$/,
-    methods: ['POST', 'GET'],
-    body: { success: true, route: [], waypoints: [], distance_m: 0, duration_s: 0, message: 'route optimization is stubbed' },
-    reason: 'no route optimization; PatrolPage tolerates empty route',
-  },
-  {
-    match: /^\/api\/patrol\/time-tracking(\?.*)?$/,
-    methods: ['GET', 'POST'],
-    body: { data: null, entries: [], total_hours: 0, by_officer: [] },
-    reason: 'no patrol time-tracking; PatrolPage tolerates empty',
-  },
-  {
-    match: /^\/api\/patrol\/trip-log\/generate(\?.*)?$/,
-    methods: ['GET'],
-    body: { url: null, entries: [], total_miles: 0, message: 'trip log generation is stubbed' },
-    reason: 'no trip-log generation; MileageAuditTab tolerates null url',
-  },
-  // Admin — officer list for the patrol assignment picker. Legacy has a
-  // partial handler; the rewrite doesn't yet. Empty list lets the
-  // PatrolPage render the dropdown without an error toast.
-  {
-    match: /^\/api\/admin\/users(\?.*)?$/,
-    methods: ['GET'],
-    body: { data: [], users: [], total: 0 },
-    reason: 'no admin users list in rewrite; PatrolPage tolerates empty',
-  },
-
   //
   // History:
   //   2026-05-24: Added stub for /api/statutes/search after live D1
@@ -1007,10 +909,24 @@ const API_ROUTES: RouteRule[] = [
   // it, so every run-card read/write fell through to env.LEGACY.
   { kind: 'prefix', value: '/api/dispatch/run-cards' },
 
+  // /api/dispatch/stats — top-level dispatch stats rollup. Rewrite handler
+  // in src/routes/stubs.ts (bare-mount GET '/' — polled every 30s by the
+  // dispatch layout). Was stubbed in proxy 2026-06-07; that stub was removed
+  // once the real handler landed.
+  { kind: 'prefix', value: '/api/dispatch/stats', methods: ['GET'] },
+
   // ── Records search (rewrite has all three; legacy is missing /search
   // and /vehicles/search and returns empty `[]` instead) ──
   { kind: 'prefix', value: '/api/records/persons/search' },
   { kind: 'prefix', value: '/api/records/vehicles/search' },
+  // /api/records/persons (bare, GET) + /api/records/vehicles (bare, GET) —
+  // bulk record lists for the SYNC layer (RecordsPage tab loads, PinRecord
+  // autocompletes). Rewrite handlers in src/routes/records.ts. Were falling
+  // through to env.LEGACY (no handler) → 404. Regex anchored to bare path
+  // with optional query string so it can't shadow /persons/:id, /persons/search,
+  // /vehicles/:id, /vehicles/search, or /vehicles/stolen-check.
+  { kind: 'regex', value: /^\/api\/records\/persons(\?.*)?$/, methods: ['GET'] },
+  { kind: 'regex', value: /^\/api\/records\/vehicles(\?.*)?$/, methods: ['GET'] },
   // POST /api/records/vehicles/stolen-check — NCIC-style stolen-vehicle check.
   // The handler exists in src/routes/records.ts but was never routed, so the
   // path fell through to env.LEGACY which has no handler → 404 (VehiclesTab +
@@ -1193,6 +1109,20 @@ const API_ROUTES: RouteRule[] = [
   { kind: 'prefix', value: '/api/admin/backup-status' },
   { kind: 'prefix', value: '/api/admin/maintenance-mode' },
   { kind: 'prefix', value: '/api/admin/notification-rules' },
+  // /api/admin/third-party-keys[/...] — admin key vault (GET list, GET :key,
+  // PUT, DELETE). Rewrite handlers in src/routes/admin.ts over the
+  // system_config allowlist (~60 keys). Was never routed, so the Admin
+  // Integrations tab's bulk GET 404'd and the page fell back to per-key
+  // fetch (N+1). Prefix covers /third-party-keys and /third-party-keys/:key.
+  { kind: 'prefix', value: '/api/admin/third-party-keys' },
+  // /api/admin/users[/...] — officer list (GET /users, /users/presence)
+  // for the PatrolPage assignment picker. Rewrite handler in
+  // src/routes/admin.ts. Was stubbed in proxy 2026-06-07; that stub was
+  // removed once the real handler landed. Prefix covers /users and
+  // /users/presence. Sibling /api/admin/users-activity-summary already has
+  // its own explicit rule above; /api/admin/users- would not match /users$
+  // here so there's no overlap.
+  { kind: 'prefix', value: '/api/admin/users' },
   // Auth security history
   { kind: 'prefix', value: '/api/auth/security/login-history' },
   // Auth: profile photo + active sessions + MFA status — handlers in
@@ -1392,6 +1322,14 @@ const API_ROUTES: RouteRule[] = [
   { kind: 'prefix', value: '/api/special-ops' },
   { kind: 'prefix', value: '/api/tasks' },
   { kind: 'prefix', value: '/api/training' },
+  // /api/integrations/* — the real integrations router (src/routes/integrations.ts)
+  // owns the rmpgutahps service config pair + the integration_api_keys table CRUD
+  // + the request log query. Legacy never had this surface — requests fell through
+  // to env.LEGACY and 404'd, so the Admin Integrations tab could not read or write
+  // keys. Note: /api/integrations/mapbox/client-token is served by the geocode
+  // router (mounted at /api/geocode with a cross-mount note) — both reach the
+  // same Worker, so this prefix captures it too.
+  { kind: 'prefix', value: '/api/integrations' },
   // /api/voice/* HTTP endpoints (POST /dialogue, POST /read-aloud) are NEW
   // rewrite handlers in src/routes/voice.ts — legacy 404s on them. The TRAILING
   // SLASH is load-bearing: it routes /api/voice/dialogue + /api/voice/read-aloud
@@ -1412,6 +1350,11 @@ const API_ROUTES: RouteRule[] = [
   { kind: 'prefix', value: '/api/reports/templates' },
   { kind: 'prefix', value: '/api/reports/statute-analytics' },
   { kind: 'prefix', value: '/api/reports/crime-analysis' },
+  // /api/reports/dashboard — 8-tile rollup. Rewrite handler in
+  // src/routes/reports.ts (GET /dashboard, whitelisted from the
+  // requireRole(analytics) middleware). Was stubbed in proxy 2026-06-07;
+  // that stub was removed once the real handler landed.
+  { kind: 'prefix', value: '/api/reports/dashboard', methods: ['GET'] },
   // /api/reports/shift-activity/:officerId → env.API (rewrite reports.ts).
   // Officer end-of-shift report (MDT). Use [^/]+ for the id segment — the
   // client sends localStorage rmpg_user_id, which may be non-numeric.
@@ -1511,6 +1454,16 @@ const API_ROUTES: RouteRule[] = [
   // /api/process-server (list, attempts, affidavit, …) stays on legacy.
   { kind: 'regex', value: /^\/api\/process-server\/deadlines$/, methods: ['GET'] },
   { kind: 'regex', value: /^\/api\/process-server\/success-rates(\?|$)/, methods: ['GET'] },
+  // /api/process-server/* — ServePage + ServeSkipTracePanel. The rewrite
+  // mounts both the full `serve` router (officer-facing workflow) and the
+  // `processServer` subset (deadlines + success-rates) at this prefix
+  // (see src/routesConfig.ts:330-347), so all GETs + POSTs for jobs, stats,
+  // routes, attempts, skip-trace, CSV export, and CRUD reach the rewrite
+  // instead of falling through to env.LEGACY. The two more-specific
+  // /deadlines + /success-rates regex rules above still win on those exact
+  // paths. Stubs that were short-circuiting these paths (added 2026-06-07
+  // round 2) are now removed; the real handlers run.
+  { kind: 'prefix', value: '/api/process-server' },
   // /api/ocr/scan-document is the alias URL the ServeIntakePage client
   // already calls for its in-page image preview path. The handler is
   // src/routes/ocr.ts (delegates to the same extraction utility as
