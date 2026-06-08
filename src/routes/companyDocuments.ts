@@ -25,7 +25,7 @@ companyDocuments.get('/', async (c) => {
        ORDER BY d.sort_order ASC, d.created_at DESC`,
       ...params,
     );
-    return c.json({ data: docs });
+    return c.json(docs);
   } catch (err) {
     console.error('List company documents error:', err);
     return c.json({ error: 'Failed to list documents', code: 'DOCS_LIST_ERROR' }, 500);

@@ -307,6 +307,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Full fleet management: vehicles, fuel, maintenance, inspections, assignments, personnel, insurance, registration, tires, damage, recalls, parts, warranties, depreciation, accidents, keys, service providers, fuel cards, budgets, replacement plan, pretrip checklists, cost-per-mile, CSV export, analytics, map overlay, dashcam, utilization, emissions, lifecycle, scorecard. All sub-resource CRUD ported from legacy (May 2026).' },
   { prefix: '/api/forensics', router: forensics, auth: 'required',
     note: 'MVP: cases + exhibits + analyses + activity log; hash sets / reports / cross-links deferred' },
+  { prefix: '/api/forensic-lab', router: forensics, auth: 'required',
+    note: 'Alias for /api/forensics — client ForensicLabPage uses this path' },
   { prefix: '/api/gang-intel', router: gangIntel, auth: 'required',
     note: 'Gang intelligence: members, gangs, graffiti records, injunctions, activity mapping' },
   { prefix: '/api/hr', router: hr, auth: 'required',
@@ -414,8 +416,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // General-purpose file upload/download. R2-backed (UPLOADS bucket);
   // replaces legacy disk-based multer handler. Supports HMAC-signed
   // access tokens for session-independent file URLs (img/iframe/a tags).
-  { prefix: '/api/uploads', router: uploads, auth: 'required',
-    note: 'File attachments: POST multipart, GET inline/download/thumbnail, DELETE, entity listing, HMAC signing' },
+  { prefix: '/api/uploads', router: uploads, auth: 'public',
+    note: 'File attachments: POST multipart, GET inline/download/thumbnail, DELETE, entity listing, HMAC signing. Auth is public because GET routes use HMAC sig/exp params (no Bearer token) — each handler calls resolveAuth() internally.' },
 
   // ── Company documents (training docs library) ───────────────
   // TrainingDocsPage CRUD + CSV export. Backed by company_documents
@@ -473,4 +475,19 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/microbilt', router: stubs, auth: 'required' },
   { prefix: '/api/servemanager', router: stubs, auth: 'required' },
   { prefix: '/api/skiptracer-v2', router: stubs, auth: 'required' },
+
+  // ── Additional stub mounts (404 elimination sweep 2026-06-08) ──────
+  // Each of these is called by the client SPA but has no real handler on
+  // either the rewrite or legacy worker. Mounting stubs so pages render
+  // their empty/error state instead of 404ing.
+  { prefix: '/api/cfs', router: stubs, auth: 'required' },
+  { prefix: '/api/code-enforcement', router: stubs, auth: 'required' },
+  { prefix: '/api/dar', router: stubs, auth: 'required' },
+  { prefix: '/api/diagnostics', router: stubs, auth: 'public' },
+  { prefix: '/api/firecrawl-tools', router: stubs, auth: 'required' },
+  { prefix: '/api/mobile', router: stubs, auth: 'public' },
+  { prefix: '/api/pdf-artifacts', router: stubs, auth: 'required' },
+  { prefix: '/api/pdf-engine', router: stubs, auth: 'required' },
+  { prefix: '/api/updates', router: stubs, auth: 'public' },
+  { prefix: '/api/voice-persona', router: stubs, auth: 'required' },
 ];

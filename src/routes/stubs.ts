@@ -183,4 +183,69 @@ stubs.get('/devices', (c) => c.json([]));
 stubs.get('/jobs', (c) => c.json([]));
 stubs.get('/config', (c) => c.json({}));
 
+// ── ClearPathGPS stubs (mounted at /api/clearpathgps) ───────
+stubs.get('/mappings', (c) => c.json([]));
+stubs.get('/dashcam-events', (c) => c.json([]));
+stubs.get('/dashcam-events/by-officer/:id', (c) => c.json([]));
+stubs.get('/dashcam-events/export', (c) => c.json([]));
+stubs.get('/credentials', (c) => c.json({ configured: false }));
+stubs.get('/settings', (c) => c.json({}));
+stubs.get('/media-settings', (c) => c.json({}));
+stubs.get('/media-status', (c) => c.json({ syncing: false }));
+stubs.post('/test-connection', (c) => c.json({ success: false, error: 'ClearPathGPS not configured' }));
+stubs.post('/configure', (c) => c.json({ success: true }));
+stubs.post('/enable', (c) => c.json({ success: true }));
+stubs.post('/sync', (c) => c.json({ success: true }));
+stubs.post('/media-sync-now', (c) => c.json({ success: true }));
+stubs.post('/test', (c) => c.json({ success: false, error: 'ClearPathGPS not configured' }));
+stubs.post('/discover-accounts', (c) => c.json([]));
+
+// ── Code Enforcement (mounted at /api/code-enforcement) ────
+stubs.get('/export/csv', (c) => {
+  c.header('Content-Type', 'text/csv');
+  c.header('Content-Disposition', 'attachment; filename="code_violations_export.csv"');
+  return c.body('');
+});
+
+// ── DAR export (mounted at /api/dar) ────
+stubs.get('/export/csv', (c) => {
+  c.header('Content-Type', 'text/csv');
+  c.header('Content-Disposition', 'attachment; filename="daily_activity_reports_export.csv"');
+  return c.body('');
+});
+
+// ── Diagnostics (mounted at /api/diagnostics) ────
+stubs.post('/ui-trap', async (c) => {
+  return c.json({ received: true });
+});
+
+// ── Firecrawl tools (mounted at /api/firecrawl-tools) ────
+stubs.post('/pdf-inspect/upload', async (c) => c.json({ pages: 0, text: '', error: 'Firecrawl not configured' }));
+stubs.post('/doc-extract/upload', async (c) => c.json({ fields: {}, error: 'Firecrawl not configured' }));
+stubs.post('/pdf-manipulate/upload', async (c) => c.json({ error: 'Firecrawl not configured' }));
+
+// ── Mobile CFS (mounted at /api/mobile) ────
+stubs.get('/cfs/:callId/challenge', (c) => c.json({ valid: false }));
+stubs.post('/cfs/:callId/auth', async (c) => c.json({ authenticated: false }, 401));
+stubs.get('/cfs/:callId/status', (c) => c.json({ status: 'unknown' }));
+
+// ── CFS QR token (mounted at /api/cfs) ────
+stubs.post('/:id/qr-token', async (c) => c.json({ token: null, error: 'QR token generation not available' }));
+
+// ── PDF artifacts (mounted at /api/pdf-artifacts) ────
+stubs.post('/', async (c) => c.json({ id: null, error: 'PDF artifact storage not configured' }, 501));
+
+// ── PDF engine email (mounted at /api/pdf-engine) ────
+stubs.post('/email', async (c) => c.json({ sent: false, error: 'Email delivery not configured' }, 501));
+
+// ── Android update checker (mounted at /api/updates) ────
+stubs.get('/check', (c) => c.json({ updateAvailable: false, currentVersion: c.req.query('currentVersion') || '0.0.0' }));
+
+// ── Voice persona (mounted at /api/voice-persona) ────
+stubs.get('/', (c) => c.json({ persona: null }));
+stubs.put('/', async (c) => {
+  try { const body = await c.req.json(); return c.json({ success: true, ...body }); }
+  catch { return c.json({ success: true }); }
+});
+
 export default stubs;

@@ -109,6 +109,8 @@ async function resolveAuth(c: any): Promise<{ userId: number; username: string; 
 
 uploads.get('/entity/:type/:id', async (c) => {
   try {
+    const auth = await resolveAuth(c);
+    if (!auth) return c.json({ error: 'Authentication required' }, 401);
     const db = getDb(c.env);
     const type = c.req.param('type');
     const id = parseInt(c.req.param('id'), 10);
@@ -137,6 +139,8 @@ uploads.get('/entity/:type/:id', async (c) => {
 
 uploads.get('/sign/:fileId', async (c) => {
   try {
+    const auth = await resolveAuth(c);
+    if (!auth) return c.json({ error: 'Authentication required' }, 401);
     const db = getDb(c.env);
     const fileId = c.req.param('fileId');
     const att = await queryFirst<{ file_id: string }>(db, 'SELECT file_id FROM attachments WHERE file_id = ?', fileId);
@@ -169,6 +173,7 @@ uploads.get('/:fileId/thumbnail', async (c) => {
     c.header('Content-Type', att.mime_type);
     c.header('Content-Disposition', `inline; filename="${att.original_name}"`);
     c.header('Cache-Control', 'private, max-age=600');
+    c.header('X-Content-Type-Options', 'nosniff');
     return c.body(data);
   } catch (err) {
     console.error('Thumbnail error:', err);
@@ -216,6 +221,8 @@ uploads.get('/:fileId', async (c) => {
     c.header('Content-Type', att.mime_type);
     c.header('Content-Disposition', `inline; filename="${att.original_name}"`);
     c.header('Cache-Control', 'private, max-age=300');
+    c.header('X-Content-Type-Options', 'nosniff');
+    c.header('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'");
     return c.body(data);
   } catch (err) {
     console.error('Download error:', err);
@@ -226,7 +233,8 @@ uploads.get('/:fileId', async (c) => {
 uploads.post('/', async (c) => {
   try {
     const db = getDb(c.env);
-    const userId = c.get('userId') as number | undefined;
+    const auth = await resolveAuth(c);
+    const userId = auth?.userId || (c.get('userId') as number | undefined);
     if (!userId) return c.json({ error: 'Authentication required' }, 401);
 
     const formData = await c.req.formData();
@@ -303,6 +311,8 @@ uploads.post('/', async (c) => {
 
 uploads.put('/:fileId/link', async (c) => {
   try {
+    const auth = await resolveAuth(c);
+    if (!auth || auth.username === 'signed-access') return c.json({ error: 'Authentication required' }, 401);
     const db = getDb(c.env);
     const fileId = c.req.param('fileId');
     const body = await c.req.json();
@@ -330,8 +340,10 @@ uploads.put('/:fileId/link', async (c) => {
 
 uploads.delete('/:fileId', async (c) => {
   try {
+    const auth = await resolveAuth(c);
+    if (!auth || auth.username === 'signed-access') return c.json({ error: 'Authentication required' }, 401);
     const db = getDb(c.env);
-    const userId = c.get('userId') as number | undefined;
+    const userId = auth?.userId ?? (c.get('userId') as number | undefined);
     const fileId = c.req.param('fileId');
     const att = await queryFirst<any>(db, 'SELECT * FROM attachments WHERE file_id = ?', fileId);
     if (!att) return c.json({ error: 'File not found', code: 'FILE_NOT_FOUND' }, 404);
