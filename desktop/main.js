@@ -2198,16 +2198,26 @@ async function detectToughbook() {
     const mfgIsPanasonic = mfg.includes('panasonic');
     const modelLooksFz55 = mdlNorm.includes('fz55');
 
-    // Detect by HARDWARE PRESENCE, not just the model string: enumerate serial
-    // ports up front and treat any Panasonic machine exposing a u-blox/GNSS COM
-    // port as a GPS-equipped Toughbook even when its model code doesn't parse as
-    // FZ-55. A Panasonic CF-33 with no GPS module finds no port → still excluded
-    // (preserves the original intent of keeping non-GPS Panasonic gear on
-    // navigator.geolocation), so this only ever ADDS correctly-detected units.
-    const portPath = mfgIsPanasonic ? await findGpsPort() : null;
-    const isToughbook = mfgIsPanasonic && (modelLooksFz55 || portPath != null);
+    // Detect by HARDWARE PRESENCE, not just the model string. We ALWAYS
+    // enumerate serial ports — the WMI manufacturer string is unreliable (some
+    // FZ-55 SKUs report a blank or OEM manufacturer, and the PowerShell probe
+    // above can degrade), so gating port discovery on `mfgIsPanasonic` silently
+    // hid a present u-blox module and dropped the unit to WiFi triangulation.
+    //
+    // A u-blox VID (score 100) or a GNSS-named bridge (score 70) is hardware-
+    // definitive — no consumer non-GPS machine exposes one — so it qualifies on
+    // its own regardless of the manufacturer string. A weak name-only match
+    // (score 50, e.g. a bare USB-serial adapter with "gps" in its label) is
+    // trusted only on a confirmed Panasonic host, preserving the original intent
+    // of keeping unrelated serial ports on non-Panasonic gear from being grabbed.
+    const gpsPort = await findGpsPort();          // { path, score } | null
+    const portPath = gpsPort?.path ?? null;
+    const portIsDefinitive = (gpsPort?.score ?? 0) >= 70;
+    const isToughbook =
+      portIsDefinitive ||
+      (mfgIsPanasonic && (modelLooksFz55 || portPath != null));
 
-    console.log(`[INTERNAL-GPS] Detect: mfg="${manufacturer}" model="${model}" panasonic=${mfgIsPanasonic} fz55=${modelLooksFz55} port=${portPath || 'none'} -> toughbook=${isToughbook}`);
+    console.log(`[INTERNAL-GPS] Detect: mfg="${manufacturer}" model="${model}" panasonic=${mfgIsPanasonic} fz55=${modelLooksFz55} port=${portPath || 'none'} score=${gpsPort?.score ?? 0} definitive=${portIsDefinitive} -> toughbook=${isToughbook}`);
     return { isToughbook, manufacturer, model, portPath };
   } catch (err) {
     console.warn('[INTERNAL-GPS] Detection failed:', err.message);

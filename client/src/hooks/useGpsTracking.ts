@@ -805,7 +805,10 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
 
   // ─── Toughbook internal GPS subscription ─────────────────
   // Detect on mount; if it's a Toughbook with a live COM port, start the
-  // native NMEA reader and bypass navigator.geolocation entirely.
+  // native NMEA reader. Internal NMEA is PRIMARY; navigator.geolocation keeps
+  // running in parallel as the SECONDARY fallback (started by startTracking),
+  // so there is never a GPS outage while we probe — the only cost of a retry
+  // is re-enumerating COM ports.
   useEffect(() => {
     if (!IS_WINDOWS_ELECTRON) return;
     const electron = (window as any).electron;
@@ -814,50 +817,78 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
     let unsubUpdate: (() => void) | null = null;
     let unsubError: (() => void) | null = null;
     let cancelled = false;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
 
-    (async () => {
+    // The internal u-blox COM port often isn't enumerable the instant the app
+    // launches — on a cold boot or resume the GPS driver can take 10-30s to
+    // register the virtual serial port. A one-shot detect-on-mount therefore
+    // saw isToughbook=false and stranded the unit on WiFi triangulation for the
+    // ENTIRE session (until app restart). Retry on a fixed cadence until the
+    // port appears, capped so non-Toughbook machines don't poll forever.
+    const RETRY_DELAY_MS = 6000;
+    const MAX_DETECT_ATTEMPTS = 10; // ~60s window — covers cold-boot port enumeration
+
+    const startSubscriptions = () => {
+      unsubUpdate = electron.onInternalGpsUpdate((pos: any) => {
+        ingestPosition({
+          latitude: pos.latitude,
+          longitude: pos.longitude,
+          accuracy: pos.accuracy ?? null,
+          heading: pos.heading ?? null,
+          speed: pos.speed ?? null,
+          sourceHint: 'gps',
+          fromInternalGps: true,
+        });
+      });
+      unsubError = electron.onInternalGpsError((err: any) => {
+        console.warn('[useGpsTracking] Internal GPS error:', err?.message);
+        setState((prev) => ({ ...prev, error: `Internal GPS: ${err?.message || 'unknown error'}` }));
+      });
+    };
+
+    const attemptDetect = async (attempt: number) => {
+      if (cancelled || useInternalGpsRef.current) return;
       try {
         const detected = await electron.detectInternalGps();
-        if (cancelled) return;
+        if (cancelled || useInternalGpsRef.current) return;
         if (!detected?.isToughbook || !detected?.portPath) {
-          console.debug('[useGpsTracking] Not a Toughbook or no GPS port — using navigator.geolocation');
+          if (attempt + 1 < MAX_DETECT_ATTEMPTS) {
+            console.debug(`[useGpsTracking] No internal GPS yet (attempt ${attempt + 1}/${MAX_DETECT_ATTEMPTS}) — retrying in ${RETRY_DELAY_MS / 1000}s; navigator.geolocation continues`);
+            retryTimer = setTimeout(() => attemptDetect(attempt + 1), RETRY_DELAY_MS);
+          } else {
+            console.debug('[useGpsTracking] No Toughbook internal GPS after retries — staying on navigator.geolocation');
+          }
           return;
         }
         const result = await electron.startInternalGps({ portPath: detected.portPath });
-        if (cancelled) return;
+        if (cancelled || useInternalGpsRef.current) return;
         if (!result?.ok) {
-          console.warn('[useGpsTracking] Internal GPS failed to start, falling back to navigator.geolocation:', result?.error);
+          console.warn('[useGpsTracking] Internal GPS failed to start, will retry:', result?.error);
+          if (attempt + 1 < MAX_DETECT_ATTEMPTS) {
+            retryTimer = setTimeout(() => attemptDetect(attempt + 1), RETRY_DELAY_MS);
+          }
           return;
         }
-        console.debug('[useGpsTracking] Internal GPS active on', detected.portPath, '— navigator.geolocation disabled');
+        console.debug('[useGpsTracking] Internal GPS active on', detected.portPath, '— hardware GPS is now primary');
         useInternalGpsRef.current = true;
         setIsTracking(true);
         setState((prev) => ({ ...prev, permissionPending: false, permissionDenied: false }));
-
-        unsubUpdate = electron.onInternalGpsUpdate((pos: any) => {
-          ingestPosition({
-            latitude: pos.latitude,
-            longitude: pos.longitude,
-            accuracy: pos.accuracy ?? null,
-            heading: pos.heading ?? null,
-            speed: pos.speed ?? null,
-            sourceHint: 'gps',
-            fromInternalGps: true,
-          });
-        });
-        unsubError = electron.onInternalGpsError((err: any) => {
-          console.warn('[useGpsTracking] Internal GPS error:', err?.message);
-          setState((prev) => ({ ...prev, error: `Internal GPS: ${err?.message || 'unknown error'}` }));
-        });
-        // No need to start the batch interval here — startTracking() runs
-        // in parallel (browser fallback path) and owns the batch send timer.
+        startSubscriptions();
+        // No batch interval here — startTracking() (browser fallback path) runs
+        // in parallel and owns the batch send timer.
       } catch (err) {
         console.warn('[useGpsTracking] Internal GPS detection error:', err);
+        if (!cancelled && attempt + 1 < MAX_DETECT_ATTEMPTS) {
+          retryTimer = setTimeout(() => attemptDetect(attempt + 1), RETRY_DELAY_MS);
+        }
       }
-    })();
+    };
+
+    attemptDetect(0);
 
     return () => {
       cancelled = true;
+      if (retryTimer) clearTimeout(retryTimer);
       if (unsubUpdate) unsubUpdate();
       if (unsubError) unsubError();
       if (useInternalGpsRef.current && electron?.stopInternalGps) {

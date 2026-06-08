@@ -288,7 +288,10 @@
 //       formatted incident types (toDisplayLabel). Map <-> Dispatch/RMS
 // v792: Cross-integration audit fix — NAV/FLEET/PERSONNEL/DISPATCH mileage
 //       guardrails + vehicle-id back-links (Claude ed5d0e99 + d3001d25).
-const CACHE_NAME = 'rmpg-flex-v808';
+// v809: Toughbook GPS — detect by hardware presence (u-blox COM port is
+//       definitive regardless of WMI manufacturer string) + retry internal-GPS
+//       detection through cold-boot port enumeration delay (no more silent WiFi).
+const CACHE_NAME = 'rmpg-flex-v809';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
