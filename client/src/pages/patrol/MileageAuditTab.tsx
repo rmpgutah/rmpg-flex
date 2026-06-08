@@ -147,8 +147,8 @@ export default function MileageAuditTab() {
   useEffect(() => {
     (async () => {
       try {
-        const u = await apiFetch<any[]>('/admin/users?role=officer&limit=500');
-        setOfficers((u || []).map((r: any) => ({ id: r.id, full_name: r.full_name || r.username })));
+        const u = await apiFetch<any[]>('/personnel?role=officer');
+        setOfficers((Array.isArray(u) ? u : []).map((r: any) => ({ id: r.id, full_name: r.full_name || r.username })));
       } catch {
         // Non-fatal — officer dropdown just stays empty.
       }
