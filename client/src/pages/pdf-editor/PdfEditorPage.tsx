@@ -89,6 +89,20 @@ export default function PdfEditorPage() {
   // Documents without giving the operator the full editing surface by default.
   const viewOnly = searchParams.get('view') === '1';
   const [bytes, setBytes] = useState<Uint8Array | null>(null);
+  // The PDF parsed ONCE and shared with every PageCanvas. Without this, each
+  // page re-opens and re-parses the whole document (an N-page PDF parsed N
+  // times), which is what produced the multi-second main-thread render stalls.
+  // A ref mirrors the state so we can destroy the previous document
+  // synchronously when a new file is opened or the editor unmounts.
+  const [doc, setDoc] = useState<RmpgPdfDocument | null>(null);
+  const docRef = useRef<RmpgPdfDocument | null>(null);
+  const setSharedDoc = useCallback((next: RmpgPdfDocument | null) => {
+    const prev = docRef.current;
+    docRef.current = next;
+    setDoc(next);
+    if (prev && prev !== next) prev.destroy().catch(() => { /* already gone */ });
+  }, []);
+  useEffect(() => () => { docRef.current?.destroy().catch(() => {}); }, []);
   const [fileName, setFileName] = useState('');
   const [savedNotice, setSavedNotice] = useState<string | null>(null);
   const [history, dispatch] = useReducer(reducer, { past: [], present: EMPTY_STATE, future: [] });
@@ -171,13 +185,22 @@ export default function PdfEditorPage() {
       }
       const pages: PageMeta[] = [];
       const pageOrder: number[] = [];
-      for (let i = 1; i <= pdf.numPages; i++) {
-        const p = await pdf.getPage(i);
-        const v = p.getViewport({ scale: DEFAULT_RENDER_SCALE });
-        pages.push({ originalIndex: i, width: v.width, height: v.height, rotation: 0, crop: null });
-        pageOrder.push(i);
+      try {
+        for (let i = 1; i <= pdf.numPages; i++) {
+          const p = await pdf.getPage(i);
+          const v = p.getViewport({ scale: DEFAULT_RENDER_SCALE });
+          pages.push({ originalIndex: i, width: v.width, height: v.height, rotation: 0, crop: null });
+          pageOrder.push(i);
+        }
+      } catch (pageErr) {
+        // Don't leak the half-read document if viewport collection fails.
+        try { await pdf.destroy(); } catch { /* ignore */ }
+        throw pageErr;
       }
       setBytes(arr);
+      // Keep the parsed document alive and share it with the page canvases
+      // (and destroy any previously-open document this replaces).
+      setSharedDoc(pdf);
       setFileName(name);
       dispatch({ type: 'reset', next: { pageOrder, pages, annotations: [], bates: null, watermark: null, meta: { title: name.replace(/\.pdf$/i, '') }, sourceFileId, sourceFolderId } });
       setActivePage(1);
@@ -1132,6 +1155,7 @@ export default function PdfEditorPage() {
               <PageCanvas
                 key={`page-${idx}-${original}`}
                 pdfBytes={bytes}
+                doc={doc}
                 originalPageNumber={original}
                 visualPageNumber={idx + 1}
                 pageMeta={state.pages[idx]}

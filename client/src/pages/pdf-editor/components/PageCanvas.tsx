@@ -1,9 +1,15 @@
 import { useEffect, useRef, useState, cloneElement } from 'react';
-import { openAndRenderPage } from '../../../lib/rmpg-pdf-engine';
+import { openAndRenderPage, RmpgPdfDocument } from '../../../lib/rmpg-pdf-engine';
 import { Annotation, PageCrop, PageMeta, Point, StampLabel, Tool, DEFAULT_RENDER_SCALE } from '../types';
 
 interface Props {
   pdfBytes: Uint8Array | null;
+  /** Shared, already-parsed document opened once by the parent. When present,
+   *  the page renders from it instead of re-opening the whole PDF per page
+   *  (an N-page doc otherwise parses itself N times). The parent owns the
+   *  lifecycle — this component never destroys a shared doc. Falls back to a
+   *  per-page open when absent (standalone use) or when forcePdfjs is set. */
+  doc?: RmpgPdfDocument | null;
   originalPageNumber: number;     // 0 = inserted blank
   visualPageNumber: number;       // 1-indexed in current order
   pageMeta: PageMeta;
@@ -44,7 +50,7 @@ const HANDLE_POSITIONS: Array<{ id: ResizeHandle; cx: 0 | 0.5 | 1; cy: 0 | 0.5 |
 ];
 
 export default function PageCanvas(props: Props) {
-  const { pdfBytes, originalPageNumber, visualPageNumber, pageMeta, zoom, tool, color, strokeWidth, pendingImage, pendingStamp, annotations, activeId, onSelectAnnotation, onAddAnnotation, onUpdateAnnotation, onSetCrop, onAnnotationContextMenu, forcePdfjs } = props;
+  const { pdfBytes, doc, originalPageNumber, visualPageNumber, pageMeta, zoom, tool, color, strokeWidth, pendingImage, pendingStamp, annotations, activeId, onSelectAnnotation, onAddAnnotation, onUpdateAnnotation, onSetCrop, onAnnotationContextMenu, forcePdfjs } = props;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
   const textLayerRef = useRef<HTMLDivElement>(null);
@@ -68,29 +74,47 @@ export default function PageCanvas(props: Props) {
   // until the user double-clicks (closes/finishes) or hits Escape (cancels).
   const [polyDraft, setPolyDraft] = useState<{ tool: 'polygon' | 'polyline'; vertices: Point[]; cursor: Point } | null>(null);
 
-  // Render PDF page on mount + when bytes change.
+  // Render PDF page on mount + when bytes/doc change.
   useEffect(() => {
-    if (!pdfBytes || originalPageNumber === 0) return;
+    if (originalPageNumber === 0) return;
+    // Use the parent's shared document when available so an N-page PDF is
+    // parsed once instead of once per page. The forcePdfjs diagnostic toggle
+    // deliberately bypasses the shared doc and re-opens this page on its own,
+    // so operators can still force the compatibility engine per-document.
+    const sharedDoc = (!forcePdfjs && doc) ? doc : null;
+    if (!sharedDoc && !pdfBytes) return;
     let cancelled = false;
     (async () => {
+      // `pdf` is the document we render from. When we open our own (no shared
+      // doc) we must destroy it; a shared doc is owned by the parent and must
+      // NOT be destroyed here.
+      let pdf: RmpgPdfDocument | null = null;
+      let ownsDoc = false;
       try {
         const canvas = canvasRef.current;
         if (!canvas) return;
         setRenderError(null);
-        // openAndRenderPage tries the auto dispatcher first and retries with
-        // PDF.js if anything fails during render — defense in depth so a
-        // native renderer gap can't leave the page silently blank.
-        const pdf = await openAndRenderPage(pdfBytes, {
-          pageNumber: originalPageNumber,
-          scale: DEFAULT_RENDER_SCALE,
-          canvas,
-          forcePdfjs,
-        });
+        if (sharedDoc) {
+          pdf = sharedDoc;
+          const page0 = await pdf.getPage(originalPageNumber);
+          await page0.render({ scale: DEFAULT_RENDER_SCALE, canvas });
+        } else {
+          // openAndRenderPage tries the auto dispatcher first and retries with
+          // PDF.js if anything fails during render — defense in depth so a
+          // native renderer gap can't leave the page silently blank.
+          pdf = await openAndRenderPage(pdfBytes!, {
+            pageNumber: originalPageNumber,
+            scale: DEFAULT_RENDER_SCALE,
+            canvas,
+            forcePdfjs,
+          });
+          ownsDoc = true;
+        }
         // safeRender now throws on failure; it never returns null. The dead
         // null-branch that produced the misleading "Both engines failed"
         // generic was removed v467. Real errors land in the outer catch
         // below and become the overlay text.
-        if (cancelled) { await pdf.destroy(); return; }
+        if (cancelled) { if (ownsDoc) await pdf.destroy(); return; }
         const page = await pdf.getPage(originalPageNumber);
         const viewport = page.getViewport({ scale: DEFAULT_RENDER_SCALE });
 
@@ -128,8 +152,9 @@ export default function PageCanvas(props: Props) {
             // Image-only / scanned PDFs have no text content. That's expected.
           }
         }
-        // Free the document — viewport sizes are already locked into the page record.
-        try { await pdf.destroy(); } catch { /* ignore */ }
+        // Free the document only if we opened it ourselves — a shared doc is
+        // owned by the parent. Viewport sizes are already locked into the page.
+        if (ownsDoc) { try { await pdf.destroy(); } catch { /* ignore */ } }
       } catch (err) {
         // Surface the FULL error (name + message + page + size) so the
         // overlay actually tells the user what's wrong without DevTools.
@@ -141,7 +166,7 @@ export default function PageCanvas(props: Props) {
       }
     })();
     return () => { cancelled = true; };
-  }, [pdfBytes, originalPageNumber]);
+  }, [pdfBytes, doc, originalPageNumber, forcePdfjs]);
 
   const localCoords = (e: React.MouseEvent | React.PointerEvent): Point => {
     const r = overlayRef.current?.getBoundingClientRect();
