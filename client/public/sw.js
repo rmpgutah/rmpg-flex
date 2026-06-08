@@ -297,7 +297,11 @@
 //       trip id + tracking. Forward speed/heading so max-speed populates. Add
 //       missing GET /nav/vehicle-take-home endpoint (client 404'd → take-home
 //       officers couldn't start trips).
-const CACHE_NAME = 'rmpg-flex-v810';
+// v811: Nav trip detection lifted app-wide — one NavTripProvider at the route
+//       shell (read-only GPS) drives detection on EVERY page incl. the Drive
+//       Mode HUD, not just /nav. NavPage now consumes the shared context instead
+//       of running its own detector + duplicate uploader.
+const CACHE_NAME = 'rmpg-flex-v811';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

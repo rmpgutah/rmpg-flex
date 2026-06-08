@@ -1,8 +1,9 @@
 import React, { lazy, Suspense } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { WebSocketProvider } from './context/WebSocketContext';
 import { UserPreferencesProvider } from './context/UserPreferencesContext';
+import { NavTripProvider } from './context/NavTripContext';
 import { ToastProvider } from './components/ToastProvider';
 import { ContextMenuProvider } from './context/ContextMenuContext';
 import { GlobalSearch } from './components/GlobalSearch';
@@ -379,19 +380,28 @@ function AppRoutes() {
           <Route path="/detached/incident/:id" element={<ProtectedRoute><RouteErrorBoundary><IncidentDetailWindow /></RouteErrorBoundary></ProtectedRoute>} />
           <Route path="/detached/record/:type/:id" element={<ProtectedRoute><RouteErrorBoundary><RecordDetailWindow /></RouteErrorBoundary></ProtectedRoute>} />
 
-          {/* Full-screen in-vehicle drive HUD — intentionally OUTSIDE <Layout> so it
-              renders edge-to-edge with no top toolbar/chrome (kiosk-style). The
-              page's own header has a Close button back to /map. */}
-          <Route path="/navigation" element={<ProtectedRoute><RouteErrorBoundary><NavigationPage /></RouteErrorBoundary></ProtectedRoute>} />
-
-          {/* Protected routes with Layout */}
+          {/* Authenticated app shell. The pathless parent route hosts ONE
+              app-wide NavTripProvider so vehicle trip detection + live movement
+              recording runs no matter which page is open — including the
+              full-screen Drive Mode HUD (/navigation), which renders OUTSIDE
+              <Layout>. ProtectedRoute sits at the parent so the provider's GPS
+              tracker only mounts for authenticated officers. */}
           <Route
             element={
               <ProtectedRoute>
-                <Layout />
+                <NavTripProvider>
+                  <Outlet />
+                </NavTripProvider>
               </ProtectedRoute>
             }
           >
+            {/* Full-screen in-vehicle drive HUD — intentionally OUTSIDE <Layout> so it
+                renders edge-to-edge with no top toolbar/chrome (kiosk-style). The
+                page's own header has a Close button back to /map. */}
+            <Route path="/navigation" element={<RouteErrorBoundary><NavigationPage /></RouteErrorBoundary>} />
+
+            {/* Protected routes with Layout */}
+            <Route element={<Layout />}>
             <Route path="/" element={window.location.hostname === 'crm.rmpgutah.us' ? <Navigate to="/crm" replace /> : <DashboardPage />} />
             <Route path="/dispatch" element={<RouteErrorBoundary><DispatchPage /></RouteErrorBoundary>} />
             <Route path="/map" element={<RouteErrorBoundary><MapPage /></RouteErrorBoundary>} />
@@ -486,6 +496,7 @@ function AppRoutes() {
             {/* /navigation rendered OUTSIDE Layout above — full-screen vehicle HUD */}
             {/* 404 within layout */}
             <Route path="*" element={<NotFoundPage />} />
+            </Route>
           </Route>
 
           {/* Catch-all outside layout */}

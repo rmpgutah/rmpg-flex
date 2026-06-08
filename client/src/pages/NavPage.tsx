@@ -6,8 +6,7 @@ import {
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { apiFetch } from '../hooks/useApi';
-import { useGpsTracking } from '../hooks/useGpsTracking';
-import { useNavTripDetection } from '../hooks/useNavTripDetection';
+import { useNavTrip, type NavTripContextValue } from '../context/NavTripContext';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useAuth } from '../context/AuthContext';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -71,34 +70,23 @@ function savePins(pins: DroppedPin[]) {
 
 export default function NavPage() {
   const isMobile = useIsMobile();
-  const gps = useGpsTracking({ upload: true });
   const { user } = useAuth();
   const officerName = user ? `${user.first_name} ${user.last_name}`.trim() || user.username : 'Unknown Officer';
   const [tab, setTab] = useState<'current' | 'history'>('current');
 
-  // ── Nav detection hook ────────────────────────────────────
-  const {
-    detection,
-    currentTrip,
-    hasTakeHome,
-    startManualTrip,
-    endCurrentTrip,
-    fetchCurrentTrip,
-  } = useNavTripDetection({
-    position: gps.latitude && gps.longitude
-      ? {
-          latitude: gps.latitude,
-          longitude: gps.longitude,
-          accuracy: gps.accuracy ?? undefined,
-          speed: gps.speed,
-          heading: gps.headingSmoothed ?? gps.heading,
-        }
-      : null,
-    isTracking: gps.isTracking,
-    isForeground: true,
-    onTripStarted: (trip) => setCurrentTripLocal(trip),
-    onTripEnded: () => fetchHistory(),
-  });
+  // ── App-wide trip detector (NavTripProvider) ──────────────
+  // NavPage no longer runs its own detector/uploader — detection lives once at
+  // the app shell so trips record on every page (incl. Drive Mode). NavPage just
+  // renders the shared state. navTrip is non-null in practice (NavPage always
+  // renders under the provider); the fallbacks keep TS + isolated renders safe.
+  const navTrip = useNavTrip();
+  const gps = navTrip?.gps;
+  const detection = navTrip?.detection;
+  const currentTrip = navTrip?.currentTrip ?? null;
+  const hasTakeHome = navTrip?.hasTakeHome ?? false;
+  const startManualTrip = navTrip?.startManualTrip;
+  const endCurrentTrip = navTrip?.endCurrentTrip;
+  const fetchCurrentTrip = navTrip?.fetchCurrentTrip;
 
   const [currentTripLocal, setCurrentTripLocal] = useState<NavTrip | null>(null);
   const [tripHistory, setTripHistory] = useState<NavTrip[]>([]);
@@ -124,15 +112,26 @@ export default function NavPage() {
 
   useEffect(() => { fetchHistory(); }, [fetchHistory]);
 
+  // Refresh history whenever an in-progress trip finishes. The detector now
+  // lives in the provider (no per-page onTripEnded callback), so we react to the
+  // shared currentTrip transitioning from active/pending → cleared instead.
+  const prevTripIdRef = useRef<number | null>(null);
+  useEffect(() => {
+    const prevId = prevTripIdRef.current;
+    const curId = currentTrip?.id ?? null;
+    if (prevId != null && curId == null) fetchHistory();
+    prevTripIdRef.current = curId;
+  }, [currentTrip, fetchHistory]);
+
   // ── Manual start / end ────────────────────────────────────
   const handleManualStart = () => {
-    if (gps.latitude && gps.longitude) {
-      startManualTrip(gps.latitude, gps.longitude, gps.accuracy ?? undefined);
+    if (gps?.latitude && gps?.longitude) {
+      startManualTrip?.(gps.latitude, gps.longitude, gps.accuracy ?? undefined);
     }
   };
 
   const handleEndTrip = () => {
-    endCurrentTrip(gps.latitude ?? undefined, gps.longitude ?? undefined);
+    endCurrentTrip?.(gps?.latitude ?? undefined, gps?.longitude ?? undefined);
   };
 
   // ── Drop pin ──────────────────────────────────────────────
@@ -158,6 +157,18 @@ export default function NavPage() {
   const handleDownloadSingleTrip = (trip: NavTrip) => {
     generateNavSingleTripReport({ trip, officerName });
   };
+
+  // NavPage always renders under <NavTripProvider> (App route shell). If the
+  // context is somehow absent, fail soft with a tiny notice rather than crash.
+  if (!navTrip || !gps || !detection) {
+    return (
+      <div className="flex items-center justify-center h-full bg-surface-base">
+        <span className="text-[11px] font-mono" style={{ color: '#888' }}>
+          Navigation tracker unavailable.
+        </span>
+      </div>
+    );
+  }
 
   const activeTrip = currentTripLocal || (detection.pendingTripId ? currentTrip : null);
 
@@ -257,7 +268,7 @@ export default function NavPage() {
             hasTakeHome={hasTakeHome}
             onStart={handleManualStart}
             onEnd={handleEndTrip}
-            onRefresh={fetchCurrentTrip}
+            onRefresh={() => fetchCurrentTrip?.()}
           />
         ) : (
           <HistoryPanel
@@ -279,8 +290,8 @@ function CurrentTripPanel({
   trip, detection, gps, hasTakeHome, onStart, onEnd, onRefresh,
 }: {
   trip: NavTrip | null;
-  detection: ReturnType<typeof useNavTripDetection>['detection'];
-  gps: ReturnType<typeof useGpsTracking>;
+  detection: NavTripContextValue['detection'];
+  gps: NavTripContextValue['gps'];
   hasTakeHome: boolean;
   onStart: () => void;
   onEnd: () => void;
