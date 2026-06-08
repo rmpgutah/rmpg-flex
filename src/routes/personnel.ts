@@ -1803,6 +1803,75 @@ personnel.get('/training-requirements', async (c) => {
   }
 });
 
+// POST /api/personnel/training-requirements — admin creates a course requirement.
+personnel.post('/training-requirements', async (c) => {
+  try {
+    const actor = (c as any).var?.user;
+    if (!actor || !MANAGER_ROLES.has(actor.role)) return c.json({ error: 'Insufficient permissions' }, 403);
+    const db = getDb(c.env);
+    const b = await c.req.json<Record<string, unknown>>();
+    if (!b.course_name) return c.json({ error: 'course_name is required' }, 400);
+    const r = await execute(db,
+      `INSERT INTO training_requirements (course_name, category, required_for_roles, renewal_period_months, minimum_hours, is_mandatory, description, is_active)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      b.course_name, b.category || 'other',
+      typeof b.required_for_roles === 'string' ? b.required_for_roles : JSON.stringify(b.required_for_roles || ['officer']),
+      b.renewal_period_months ?? 12, b.minimum_hours ?? 1, b.is_mandatory ?? 1,
+      b.description || null, b.is_active ?? 1);
+    const row = await queryFirst(db, 'SELECT * FROM training_requirements WHERE id = ?', Number(r.meta.last_row_id));
+    return c.json(row, 201);
+  } catch (err) {
+    console.error('POST /personnel/training-requirements error:', err);
+    return c.json({ error: 'Failed to create training requirement' }, 500);
+  }
+});
+
+// PUT /api/personnel/training-requirements/:id
+personnel.put('/training-requirements/:id', async (c) => {
+  try {
+    const actor = (c as any).var?.user;
+    if (!actor || !MANAGER_ROLES.has(actor.role)) return c.json({ error: 'Insufficient permissions' }, 403);
+    const db = getDb(c.env);
+    const id = c.req.param('id');
+    const existing = await queryFirst(db, 'SELECT id FROM training_requirements WHERE id = ?', id);
+    if (!existing) return c.json({ error: 'Requirement not found' }, 404);
+    const b = await c.req.json<Record<string, unknown>>();
+    const sets: string[] = [];
+    const params: unknown[] = [];
+    for (const [k, v] of Object.entries(b)) {
+      if (['course_name', 'category', 'required_for_roles', 'renewal_period_months', 'minimum_hours', 'is_mandatory', 'description', 'is_active'].includes(k)) {
+        sets.push(`${k} = ?`);
+        params.push(k === 'required_for_roles' && typeof v !== 'string' ? JSON.stringify(v) : v ?? null);
+      }
+    }
+    if (!sets.length) return c.json({ message: 'No changes' });
+    params.push(id);
+    await execute(db, `UPDATE training_requirements SET ${sets.join(', ')} WHERE id = ?`, ...params);
+    const row = await queryFirst(db, 'SELECT * FROM training_requirements WHERE id = ?', id);
+    return c.json(row);
+  } catch (err) {
+    console.error('PUT /personnel/training-requirements/:id error:', err);
+    return c.json({ error: 'Failed to update training requirement' }, 500);
+  }
+});
+
+// DELETE /api/personnel/training-requirements/:id
+personnel.delete('/training-requirements/:id', async (c) => {
+  try {
+    const actor = (c as any).var?.user;
+    if (!actor || !MANAGER_ROLES.has(actor.role)) return c.json({ error: 'Insufficient permissions' }, 403);
+    const db = getDb(c.env);
+    const id = c.req.param('id');
+    const existing = await queryFirst(db, 'SELECT id FROM training_requirements WHERE id = ?', id);
+    if (!existing) return c.json({ error: 'Requirement not found' }, 404);
+    await execute(db, 'DELETE FROM training_requirements WHERE id = ?', id);
+    return c.json({ message: 'Deleted', id: Number(id) });
+  } catch (err) {
+    console.error('DELETE /personnel/training-requirements/:id error:', err);
+    return c.json({ error: 'Failed to delete training requirement' }, 500);
+  }
+});
+
 // GET /api/personnel/training-completion — per-officer rollup of completion
 // status against requirements. Lightweight implementation: joins every
 // active officer with every requirement and reports the most-recent record
