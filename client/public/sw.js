@@ -307,7 +307,12 @@
 //       update) in /trip/current + /trip/start; client clears stale ids + re-arms
 //       when the server reports no current trip; the 3-min auto-detect window now
 //       re-arms (rolling departure detection) instead of dying after login.
-const CACHE_NAME = 'rmpg-flex-v812';
+// v813: HOTFIX — app-wide trip detector caused an infinite render loop (fresh
+//       position object each render → detection effect → setDetection → re-render
+//       → …), pegging the main thread so ALL clicks/Link buttons failed app-wide.
+//       Memoize position in NavTripProvider + key the detection effect on
+//       primitive lat/lng so a setDetection re-render can't re-fire it.
+const CACHE_NAME = 'rmpg-flex-v813';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

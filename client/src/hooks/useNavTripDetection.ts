@@ -306,7 +306,15 @@ export function useNavTripDetection(opts: UseNavTripDetectionOptions) {
 
       return next;
     });
-  }, [position, isTracking]);
+    // Depend on the primitive coordinates, NOT the `position` object. This effect
+    // always calls setDetection, which re-renders the consumer; if we depended on
+    // the object ref and the caller rebuilt it each render, the re-render would
+    // re-fire this effect → setDetection → re-render → infinite loop. Keying on
+    // lat/lng means a setDetection-driven re-render with unchanged coordinates
+    // does NOT re-run this effect. (The provider also memoizes position, but this
+    // makes the hook safe for any caller.)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [position?.latitude, position?.longitude, isTracking]);
 
   // ── Start trip (POST to server) ───────────────────────────
   const startTrip = useCallback(async (lat: number, lng: number, accuracy?: number | null): Promise<NavTrip | null> => {

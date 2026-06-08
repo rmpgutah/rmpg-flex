@@ -15,7 +15,7 @@
 // the same `rmpg_nav_detection` localStorage key + double-POSTing /trip/start.
 // ============================================================
 
-import { createContext, useContext, type ReactNode } from 'react';
+import { createContext, useContext, useMemo, type ReactNode } from 'react';
 import { useGpsTracking } from '../hooks/useGpsTracking';
 import { useNavTripDetection } from '../hooks/useNavTripDetection';
 
@@ -34,8 +34,16 @@ export function NavTripProvider({ children }: { children: ReactNode }) {
   // the breadcrumb POSTs. We only consume the live fix to drive trip detection.
   const gps = useGpsTracking({ upload: false });
 
-  const trip = useNavTripDetection({
-    position: gps.latitude != null && gps.longitude != null
+  // CRITICAL: memoize the position object on the underlying GPS primitives.
+  // useNavTripDetection's movement-detection effect depends on this object and
+  // ALWAYS calls setDetection when it runs. If we passed a fresh object literal
+  // every render, that setDetection would re-render the provider, produce a new
+  // position ref, re-fire the effect, setDetection again… an infinite render
+  // loop that pegs the main thread and makes the whole app (every click/Link)
+  // unresponsive. Memoizing means the ref only changes when the GPS fix actually
+  // changes, so a setDetection-driven re-render does NOT re-fire the effect.
+  const position = useMemo(
+    () => (gps.latitude != null && gps.longitude != null
       ? {
           latitude: gps.latitude,
           longitude: gps.longitude,
@@ -43,7 +51,12 @@ export function NavTripProvider({ children }: { children: ReactNode }) {
           speed: gps.speed,
           heading: gps.headingSmoothed ?? gps.heading,
         }
-      : null,
+      : null),
+    [gps.latitude, gps.longitude, gps.accuracy, gps.speed, gps.headingSmoothed, gps.heading],
+  );
+
+  const trip = useNavTripDetection({
+    position,
     isTracking: gps.isTracking,
     // App-wide detector — always treat as foreground; the GPS hook already
     // pauses/restarts the underlying watch on tab visibility changes.
