@@ -128,6 +128,7 @@ import specialOps from './routes/specialOps';
 import victimServices from './routes/victimServices';
 import integrations from './routes/integrations';
 import stubs from './routes/stubs';
+import weather from './routes/weather';
 // Dispatch domain
 import dispatchCalls from './routes/dispatch/calls';
 import dispatchUnits from './routes/dispatch/units';
@@ -460,7 +461,7 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/comms/bolos', router: bolosRouter, auth: 'required' },
   { prefix: '/api/comms', router: stubs, auth: 'required' },
   { prefix: '/api/stats', router: stubs, auth: 'required' },
-  { prefix: '/api/weather', router: stubs, auth: 'required' },
+  { prefix: '/api/weather', router: weather, auth: 'required' },
   { prefix: '/api/email', router: stubs, auth: 'required' },
   // Real integrations router (rmpgutahps + integration_api_keys CRUD +
   // request log) — must be mounted BEFORE the stubs catch-all below.
