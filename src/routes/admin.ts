@@ -727,7 +727,7 @@ admin.get('/ia/complaints', async (c) => {
     const rows = await query<Record<string, unknown>>(db,
       `SELECT * FROM ia_complaints ORDER BY created_at DESC LIMIT 200`);
     return c.json(rows);
-  } catch { return c.json([]); }
+  } catch (err) { console.error('GET /ia/complaints failed:', err); return c.json([]); }
 });
 
 admin.get('/ia/disciplinary', async (c) => {
@@ -736,7 +736,7 @@ admin.get('/ia/disciplinary', async (c) => {
     const rows = await query<Record<string, unknown>>(db,
       `SELECT * FROM disciplinary_records ORDER BY created_at DESC LIMIT 200`);
     return c.json(rows);
-  } catch { return c.json([]); }
+  } catch (err) { console.error('GET /ia/disciplinary failed:', err); return c.json([]); }
 });
 
 admin.get('/ia/stats', async (c) => {
@@ -763,7 +763,7 @@ admin.get('/policies/acknowledgements', async (c) => {
     const rows = await query<Record<string, unknown>>(db,
       `SELECT * FROM policy_acknowledgements ORDER BY due_date DESC LIMIT 500`);
     return c.json(rows);
-  } catch { return c.json([]); }
+  } catch (err) { console.error('GET /policies/acknowledgements failed:', err); return c.json([]); }
 });
 
 // ── Database management ────────────────────────────────────
@@ -802,7 +802,10 @@ admin.post('/purge/activity-logs', async (c) => {
     const db = getDb(c.env);
     const r = await execute(db, `DELETE FROM audit_log WHERE created_at < ?`, cutoff);
     return c.json({ success: true, deleted: r.meta.changes ?? 0 });
-  } catch { return c.json({ success: true, deleted: 0 }); }
+  } catch (err) {
+    console.error('POST /purge/activity-logs failed:', err);
+    return c.json({ success: false, error: 'Purge failed', deleted: 0 }, 500);
+  }
 });
 
 admin.post('/purge/notifications', async (c) => {
@@ -812,7 +815,10 @@ admin.post('/purge/notifications', async (c) => {
     const db = getDb(c.env);
     const r = await execute(db, `DELETE FROM notifications WHERE created_at < ? AND COALESCE(read_at, '') != ''`, cutoff);
     return c.json({ success: true, deleted: r.meta.changes ?? 0 });
-  } catch { return c.json({ success: true, deleted: 0 }); }
+  } catch (err) {
+    console.error('POST /purge/notifications failed:', err);
+    return c.json({ success: false, error: 'Purge failed', deleted: 0 }, 500);
+  }
 });
 
 admin.post('/purge/sessions', async (c) => {
@@ -820,7 +826,10 @@ admin.post('/purge/sessions', async (c) => {
     const db = getDb(c.env);
     const r = await execute(db, `DELETE FROM sessions WHERE is_active = 0 OR expires_at < datetime('now')`);
     return c.json({ success: true, deleted: r.meta.changes ?? 0 });
-  } catch { return c.json({ success: true, deleted: 0 }); }
+  } catch (err) {
+    console.error('POST /purge/sessions failed:', err);
+    return c.json({ success: false, error: 'Purge failed', deleted: 0 }, 500);
+  }
 });
 
 // ── Read-only SQL query (admin diagnostic tool) ────────────
@@ -831,14 +840,19 @@ admin.post('/query', async (c) => {
     const { sql } = await c.req.json<{ sql: string }>();
     if (!sql) return c.json({ error: 'sql required' }, 400);
     const upper = sql.trim().toUpperCase();
-    if (!upper.startsWith('SELECT') && !upper.startsWith('PRAGMA')) {
-      return c.json({ error: 'Only SELECT and PRAGMA queries allowed' }, 400);
+    if (!upper.startsWith('SELECT') && !upper.startsWith('PRAGMA') && !upper.startsWith('EXPLAIN')) {
+      return c.json({ error: 'Only SELECT, PRAGMA, and EXPLAIN queries allowed' }, 400);
+    }
+    const WRITE_KW = /\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|ATTACH|DETACH|REPLACE|REINDEX)\b/i;
+    if (WRITE_KW.test(sql)) {
+      return c.json({ error: 'Write operations are not allowed in read-only query tool' }, 400);
     }
     const db = getDb(c.env);
     const rows = await query<Record<string, unknown>>(db, sql);
     return c.json({ data: rows, count: rows.length });
   } catch (err: any) {
-    return c.json({ error: err?.message || 'Query failed' }, 400);
+    console.error('POST /admin/query failed:', err);
+    return c.json({ error: 'Query failed' }, 400);
   }
 });
 

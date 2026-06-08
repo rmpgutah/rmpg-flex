@@ -308,6 +308,8 @@ uploads.post('/', async (c) => {
 
 uploads.put('/:fileId/link', async (c) => {
   try {
+    const auth = await resolveAuth(c);
+    if (!auth) return c.json({ error: 'Authentication required' }, 401);
     const db = getDb(c.env);
     const fileId = c.req.param('fileId');
     const body = await c.req.json();

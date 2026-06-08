@@ -719,9 +719,9 @@ auth.put('/profile-image', authMiddleware, async (c) => {
 auth.get('/signature', authMiddleware, async (c) => {
   try {
     const db = getDb(c.env);
-    const row = await queryFirst<{ signature: string | null }>(db,
-      'SELECT signature FROM users WHERE id = ?', c.get('userId'));
-    return c.json({ signature: row?.signature || null });
+    const row = await queryFirst<{ digital_signature: string | null }>(db,
+      'SELECT digital_signature FROM users WHERE id = ?', c.get('userId'));
+    return c.json({ signature: row?.digital_signature || null });
   } catch { return c.json({ signature: null }); }
 });
 
@@ -733,7 +733,7 @@ auth.put('/signature', authMiddleware, async (c) => {
     }
     const db = getDb(c.env);
     await execute(db,
-      `UPDATE users SET signature = ?, updated_at = datetime('now') WHERE id = ?`,
+      `UPDATE users SET digital_signature = ?, updated_at = datetime('now') WHERE id = ?`,
       signature || null, c.get('userId'));
     return c.json({ success: true });
   } catch { return c.json({ error: 'Failed to save signature' }, 500); }
@@ -762,7 +762,7 @@ auth.get('/webauthn/status', authMiddleware, async (c) => {
 });
 
 // ── Security: unblock IP ───────────────────────────────────
-auth.post('/security/unblock-ip', async (c) => {
+auth.post('/security/unblock-ip', authMiddleware, async (c) => {
   const user = c.get('user') as { role: string } | undefined;
   if (!user || !['admin', 'manager'].includes(user.role)) return c.json({ error: 'Insufficient role' }, 403);
   try {

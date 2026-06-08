@@ -155,7 +155,8 @@ units.put('/:id', async (c) => {
       return c.json({ error: 'Invalid value for a constrained field (status, etc.)', code: 'CHECK_CONSTRAINT' }, 400);
     }
     if (err?.message?.includes('no such column')) {
-      return c.json({ error: `Column mismatch: ${err.message}`, code: 'COLUMN_MISSING' }, 500);
+      console.error('PUT /dispatch/units/:id column mismatch:', err.message);
+      return c.json({ error: 'Update failed: schema mismatch', code: 'COLUMN_MISSING' }, 500);
     }
     return c.json({ error: 'Failed to update unit' }, 500);
   }

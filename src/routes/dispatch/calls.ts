@@ -1372,7 +1372,7 @@ calls.post('/:id/undo-redispatch', requireRole('admin', 'manager', 'supervisor',
 });
 
 // ── POST /dispatch/calls/bulk-reassign ──────────────────────
-calls.post('/bulk-reassign', async (c) => {
+calls.post('/bulk-reassign', requireRole(...WRITE_ROLES), async (c) => {
   try {
     const body = await c.req.json<{ call_ids: number[]; unit_id: number }>();
     if (!Array.isArray(body.call_ids) || !body.call_ids.length || !body.unit_id) {
