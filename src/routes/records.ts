@@ -1627,16 +1627,23 @@ records.get('/persons', async (c) => {
     const db = getDb(c.env);
     const search = c.req.query('search') || '';
     const limit = Math.min(parseInt(c.req.query('limit') || '500', 10) || 500, 2000);
-    const wheres: string[] = ["archived_at IS NULL"];
+    const wheres: string[] = [];
     const params: unknown[] = [];
     if (search) {
       wheres.push(`(first_name LIKE ? OR last_name LIKE ? OR alias_nickname LIKE ? OR phone LIKE ? OR email LIKE ? OR dl_number LIKE ?)`);
       const like = `%${search}%`;
       params.push(like, like, like, like, like, like);
     }
-    const sql = `SELECT ${PERSONS_BULK_COLUMNS} FROM persons WHERE ${wheres.join(' AND ')} ORDER BY last_name, first_name LIMIT ?`;
+    const whereClause = wheres.length ? `WHERE ${wheres.join(' AND ')}` : '';
+    const sql = `SELECT ${PERSONS_BULK_COLUMNS} FROM persons ${whereClause} ORDER BY last_name, first_name LIMIT ?`;
     params.push(limit);
-    const rows = await query<Record<string, unknown>>(db, sql, ...params);
+    let rows: Record<string, unknown>[];
+    try {
+      rows = await query<Record<string, unknown>>(db, sql, ...params);
+    } catch {
+      const safeCols = PERSONS_BULK_COLUMNS.replace(/,\s*archived_at/, '');
+      rows = await query<Record<string, unknown>>(db, `SELECT ${safeCols} FROM persons ${whereClause} ORDER BY last_name, first_name LIMIT ?`, ...params);
+    }
     return c.json(rows);
   } catch (err) {
     console.error('GET /records/persons failed:', err);
@@ -1651,20 +1658,37 @@ records.get('/vehicles', async (c) => {
     const db = getDb(c.env);
     const search = c.req.query('search') || '';
     const limit = Math.min(parseInt(c.req.query('limit') || '500', 10) || 500, 2000);
-    const wheres: string[] = ["archived_at IS NULL"];
+    const wheres: string[] = [];
     const params: unknown[] = [];
     if (search) {
       wheres.push(`(license_plate LIKE ? OR vin LIKE ? OR make LIKE ? OR model LIKE ? OR owner_name LIKE ? OR registered_to LIKE ?)`);
       const like = `%${search}%`;
       params.push(like, like, like, like, like, like);
     }
-    const sql = `SELECT ${VEHICLES_BULK_COLUMNS} FROM vehicles WHERE ${wheres.join(' AND ')} ORDER BY updated_at DESC LIMIT ?`;
+    const whereClause = wheres.length ? `WHERE ${wheres.join(' AND ')}` : '';
+    const sql = `SELECT ${VEHICLES_BULK_COLUMNS} FROM vehicles ${whereClause} ORDER BY updated_at DESC LIMIT ?`;
     params.push(limit);
-    const rows = await query<Record<string, unknown>>(db, sql, ...params);
+    let rows: Record<string, unknown>[];
+    try {
+      rows = await query<Record<string, unknown>>(db, sql, ...params);
+    } catch {
+      const safeCols = VEHICLES_BULK_COLUMNS.replace(/,\s*archived_at/, '');
+      rows = await query<Record<string, unknown>>(db, `SELECT ${safeCols} FROM vehicles ${whereClause} ORDER BY updated_at DESC LIMIT ?`, ...params);
+    }
     return c.json(rows);
   } catch (err) {
     console.error('GET /records/vehicles failed:', err);
     return c.json({ error: 'Failed to list vehicles' }, 500);
+  }
+});
+
+records.get('/clients', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(db, 'SELECT * FROM clients ORDER BY name LIMIT 1000');
+    return c.json(rows);
+  } catch {
+    return c.json([]);
   }
 });
 
