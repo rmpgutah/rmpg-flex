@@ -209,7 +209,7 @@ export default function FleetFuelTab({
         <div className="panel-beveled p-2.5 text-center bg-surface-sunken">
           <DollarSign className="w-3.5 h-3.5 mx-auto text-green-400 mb-1" />
           <div className="text-sm font-bold font-mono tabular-nums text-green-400">
-            ${summary ? summary.total_cost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-'}
+            ${summary?.total_cost != null ? summary.total_cost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-'}
           </div>
           <div className="text-[7px] text-rmpg-500 uppercase">Total Cost</div>
         </div>

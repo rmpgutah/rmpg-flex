@@ -3245,6 +3245,40 @@ export async function syncAllVehicleGpsMileage(db: D1Database): Promise<{ checke
   };
 }
 
+// ── Top-level list endpoints (FleetAnalysisFormsTab) ──────
+fleet.get('/maintenance', async (c) => {
+  try {
+    const rows = await query<Record<string, unknown>>(getDb(c.env),
+      'SELECT * FROM fleet_maintenance ORDER BY performed_at DESC LIMIT 500');
+    return c.json(rows);
+  } catch { return c.json([]); }
+});
+
+fleet.get('/inspections', async (c) => {
+  try {
+    const rows = await query<Record<string, unknown>>(getDb(c.env),
+      'SELECT * FROM fleet_inspections ORDER BY inspection_date DESC LIMIT 500');
+    return c.json(rows);
+  } catch { return c.json([]); }
+});
+
+fleet.get('/fuel-logs', async (c) => {
+  try {
+    const rows = await query<Record<string, unknown>>(getDb(c.env),
+      'SELECT * FROM fleet_fuel_log ORDER BY fuel_date DESC LIMIT 500');
+    return c.json(rows);
+  } catch { return c.json([]); }
+});
+
+fleet.get('/assignments', async (c) => {
+  try {
+    const rows = await query<Record<string, unknown>>(getDb(c.env),
+      'SELECT * FROM fleet_assignments ORDER BY assigned_at DESC LIMIT 500');
+    return c.json(rows);
+  } catch { return c.json([]); }
+});
+
+
 // ── GET /fleet/:id/call-history — calls this vehicle responded to
 fleet.get('/:id/call-history', async (c) => {
   try {

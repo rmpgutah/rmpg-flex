@@ -49,4 +49,22 @@ invoices.get('/stats', async (c) => {
   }
 });
 
+// GET /api/invoices — paginated list for InvoicesPage
+invoices.get('/', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const tbl = await queryFirst<{ n: number }>(db, "SELECT COUNT(*) AS n FROM sqlite_master WHERE type='table' AND name='invoices'");
+    if (!tbl?.n) return c.json({ data: [], total: 0 });
+    const page = Math.max(1, parseInt(c.req.query('page') || '1', 10));
+    const limit = Math.min(parseInt(c.req.query('limit') || '50', 10), 200);
+    const offset = (page - 1) * limit;
+    const total = await queryFirst<{ cnt: number }>(db, 'SELECT COUNT(*) AS cnt FROM invoices');
+    const rows = await query<Record<string, unknown>>(db,
+      'SELECT * FROM invoices ORDER BY created_at DESC LIMIT ? OFFSET ?', limit, offset);
+    return c.json({ data: rows, total: total?.cnt ?? 0, page, limit });
+  } catch {
+    return c.json({ data: [], total: 0 });
+  }
+});
+
 export default invoices;

@@ -128,6 +128,7 @@ import specialOps from './routes/specialOps';
 import victimServices from './routes/victimServices';
 import integrations from './routes/integrations';
 import stubs from './routes/stubs';
+import weather from './routes/weather';
 // Dispatch domain
 import dispatchCalls from './routes/dispatch/calls';
 import dispatchUnits from './routes/dispatch/units';
@@ -307,6 +308,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Full fleet management: vehicles, fuel, maintenance, inspections, assignments, personnel, insurance, registration, tires, damage, recalls, parts, warranties, depreciation, accidents, keys, service providers, fuel cards, budgets, replacement plan, pretrip checklists, cost-per-mile, CSV export, analytics, map overlay, dashcam, utilization, emissions, lifecycle, scorecard. All sub-resource CRUD ported from legacy (May 2026).' },
   { prefix: '/api/forensics', router: forensics, auth: 'required',
     note: 'MVP: cases + exhibits + analyses + activity log; hash sets / reports / cross-links deferred' },
+  { prefix: '/api/forensic-lab', router: forensics, auth: 'required',
+    note: 'Alias for /api/forensics — client ForensicLabPage uses this path' },
   { prefix: '/api/gang-intel', router: gangIntel, auth: 'required',
     note: 'Gang intelligence: members, gangs, graffiti records, injunctions, activity mapping' },
   { prefix: '/api/hr', router: hr, auth: 'required',
@@ -460,7 +463,7 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/comms/bolos', router: bolosRouter, auth: 'required' },
   { prefix: '/api/comms', router: stubs, auth: 'required' },
   { prefix: '/api/stats', router: stubs, auth: 'required' },
-  { prefix: '/api/weather', router: stubs, auth: 'required' },
+  { prefix: '/api/weather', router: weather, auth: 'required' },
   { prefix: '/api/email', router: stubs, auth: 'required' },
   // Real integrations router (rmpgutahps + integration_api_keys CRUD +
   // request log) — must be mounted BEFORE the stubs catch-all below.
@@ -471,4 +474,19 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/microbilt', router: stubs, auth: 'required' },
   { prefix: '/api/servemanager', router: stubs, auth: 'required' },
   { prefix: '/api/skiptracer-v2', router: stubs, auth: 'required' },
+
+  // ── Additional stub mounts (404 elimination sweep 2026-06-08) ──────
+  // Each of these is called by the client SPA but has no real handler on
+  // either the rewrite or legacy worker. Mounting stubs so pages render
+  // their empty/error state instead of 404ing.
+  { prefix: '/api/cfs', router: stubs, auth: 'required' },
+  { prefix: '/api/code-enforcement', router: stubs, auth: 'required' },
+  { prefix: '/api/dar', router: stubs, auth: 'required' },
+  { prefix: '/api/diagnostics', router: stubs, auth: 'public' },
+  { prefix: '/api/firecrawl-tools', router: stubs, auth: 'required' },
+  { prefix: '/api/mobile', router: stubs, auth: 'public' },
+  { prefix: '/api/pdf-artifacts', router: stubs, auth: 'required' },
+  { prefix: '/api/pdf-engine', router: stubs, auth: 'required' },
+  { prefix: '/api/updates', router: stubs, auth: 'public' },
+  { prefix: '/api/voice-persona', router: stubs, auth: 'required' },
 ];

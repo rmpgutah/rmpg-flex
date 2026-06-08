@@ -327,6 +327,32 @@ reports.get('/statute-analytics', async (c) => {
 // calls_for_service status-timestamp columns. Return [] until then.
 reports.get('/response-times', (c) => c.json([]));
 
+reports.get('/officer-activity', async (c) => {
+  const db = getDb(c.env);
+  try {
+    const rows = await query<Record<string, unknown>>(db, `
+      SELECT u.officer_id, usr.full_name, usr.badge_number,
+        (SELECT COUNT(*) FROM incidents i WHERE i.reporting_officer_id = u.officer_id) AS incidents_written,
+        (SELECT COUNT(*) FROM calls_for_service c WHERE c.primary_unit = CAST(u.id AS TEXT) OR c.assigned_units LIKE '%' || CAST(u.id AS TEXT) || '%') AS calls_responded,
+        0 AS total_hours
+      FROM units u
+      LEFT JOIN users usr ON u.officer_id = usr.id
+      WHERE u.officer_id IS NOT NULL
+      ORDER BY usr.full_name
+    `);
+    return c.json(rows.map(r => ({
+      officer_id: r.officer_id ?? 0,
+      full_name: r.full_name ?? 'Unknown',
+      badge_number: r.badge_number ?? '',
+      incidents_written: r.incidents_written ?? 0,
+      calls_responded: r.calls_responded ?? 0,
+      total_hours: r.total_hours ?? 0,
+    })));
+  } catch {
+    return c.json([]);
+  }
+});
+
 // GET /api/reports/command-center — live ops KPI roll-up for CommandCenterPage.
 // The page reads data.kpis.* UNGUARDED, so kpis must always be a present object.
 // Each metric is computed independently and falls back to 0 on any schema drift,
@@ -388,7 +414,7 @@ reports.get('/shift-activity/:officerId', async (c) => {
 
     // Resolve the officer's unit so calls assigned to that unit are attributed.
     const unit = await queryFirst<{ id: number }>(db, 'SELECT id FROM units WHERE officer_id = ? LIMIT 1', officerId);
-    const unitId = unit?.id != null ? String(unit.id) : ' '; // sentinel that never matches
+    const unitId = unit?.id != null ? String(unit.id) : ''; // sentinel that never matches
 
     const safeList = async <T = Record<string, unknown>>(sql: string, ...params: unknown[]): Promise<T[]> => {
       try { return (await query<T>(db, sql, ...params)) || []; } catch (e) { console.error('shift-activity sub-query failed:', e); return []; }
@@ -437,34 +463,6 @@ reports.get('/shift-activity/:officerId', async (c) => {
 });
 
 // GET /api/reports/dashboard — top-level tiles for the DashboardPage +
-// ReportsPage overview. Single round-trip per tile; cheap reads (counts +
-// most-recent row), all from indexed columns. Open to any authenticated
-// user since these are summary counts, not officer-level data.
-reports.get('/dashboard', async (c) => {
-  const db = getDb(c.env);
-  async function safeCount(sql: string): Promise<number> {
-    try {
-      const r = await queryFirst<{ n: number }>(db, sql);
-      return r?.n ?? 0;
-    } catch { return 0; }
-  }
-  const [openCalls, callsToday, unitsOnDuty, openIncidents, activeBolos, activeWarrants, citationsLast7d, arrestsLast7d] = await Promise.all([
-    safeCount(`SELECT COUNT(*) AS n FROM calls_for_service WHERE status NOT IN ('closed', 'cleared', 'cancelled')`),
-    safeCount(`SELECT COUNT(*) AS n FROM calls_for_service WHERE date(received_at) = date('now','localtime')`),
-    safeCount(`SELECT COUNT(*) AS n FROM units WHERE status = 'on_duty'`),
-    safeCount(`SELECT COUNT(*) AS n FROM incidents WHERE status NOT IN ('approved', 'closed', 'rejected')`),
-    safeCount(`SELECT COUNT(*) AS n FROM bolos WHERE status = 'active'`),
-    safeCount(`SELECT COUNT(*) AS n FROM warrants WHERE status = 'active'`),
-    safeCount(`SELECT COUNT(*) AS n FROM citations WHERE date(created_at) >= date('now','localtime','-7 days')`),
-    safeCount(`SELECT COUNT(*) AS n FROM arrests WHERE date(created_at) >= date('now','localtime','-7 days')`),
-  ]);
-  return c.json({
-    openCalls, callsToday, unitsOnDuty, openIncidents, activeBolos,
-    activeWarrants, citationsLast7d, arrestsLast7d,
-    generated_at: new Date().toISOString(),
-  });
-});
-
 // GET /dashboard — main Dashboard KPI tiles. Client expects DashboardApiResponse shape.
 reports.get('/dashboard', async (c) => {
   try {

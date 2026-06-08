@@ -855,7 +855,7 @@ export default function ReportsPage() {
           .then(data => { if (!cancelled && data) setComparisonData(data); })
           .catch(() => { /* optional */ });
         apiFetch<{ data: any[] }>('/reports/schedules')
-          .then(data => { if (!cancelled && data?.data) setReportSchedules(data.data); })
+          .then(data => { if (!cancelled && Array.isArray(data?.data)) setReportSchedules(data.data); })
           .catch(() => { /* optional */ });
       } catch (err) {
         if (cancelled) return;
