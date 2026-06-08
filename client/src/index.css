@@ -1211,12 +1211,12 @@ body.fx-noise::after {
     border-left-color: var(--surface-sunken);
     border-bottom-color: var(--border-strong);
     border-right-color: var(--border-strong);
-    caret-color: var(--brand-blue);
+    caret-color: var(--brand-gold);
     transition: border-color 0.1s;
   }
   .textarea-dark:focus {
-    border-color: var(--brand-blue);
-    box-shadow: 0 0 0 1px rgba(156, 164, 173, 0.35);
+    border-color: var(--brand-gold);
+    box-shadow: 0 0 0 1px rgba(212, 160, 23, 0.55), 0 0 8px rgba(212, 160, 23, 0.22);
   }
 
   /* --- Button Styles (Blocky / Raised) --- Motorola Blue primary */
@@ -1230,30 +1230,30 @@ body.fx-noise::after {
   }
 
   .btn-secondary {
-    @apply inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold uppercase tracking-wide shadow-sm transition-colors focus:outline-none;
+    @apply inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold uppercase tracking-wide shadow-sm transition-colors focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed;
     background: #222222;
     border: 1px solid #2e2e2e;
     color: #cccccc;
   }
-  .btn-secondary:hover {
+  .btn-secondary:hover:not(:disabled) {
     background: #2e2e2e;
   }
 
   .btn-danger {
-    @apply inline-flex items-center gap-1.5 px-3 py-1.5 text-white text-xs font-bold uppercase tracking-wide shadow-sm transition-colors focus:outline-none;
+    @apply inline-flex items-center gap-1.5 px-3 py-1.5 text-white text-xs font-bold uppercase tracking-wide shadow-sm transition-colors focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed;
     background: #991b1b;
     border: 1px solid #dc2626;
   }
-  .btn-danger:hover {
+  .btn-danger:hover:not(:disabled) {
     background: #dc2626;
   }
 
   .btn-success {
-    @apply inline-flex items-center gap-1.5 px-3 py-1.5 text-white text-xs font-bold uppercase tracking-wide shadow-sm transition-colors focus:outline-none;
+    @apply inline-flex items-center gap-1.5 px-3 py-1.5 text-white text-xs font-bold uppercase tracking-wide shadow-sm transition-colors focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed;
     background: #047857;
     border: 1px solid #059669;
   }
-  .btn-success:hover {
+  .btn-success:hover:not(:disabled) {
     background: #059669;
   }
 
@@ -1263,6 +1263,24 @@ body.fx-noise::after {
 
   .btn-xs {
     @apply px-1.5 py-0.5 text-[9px];
+  }
+
+  .btn-gold {
+    @apply inline-flex items-center gap-1.5 px-3 py-1.5 text-black text-xs font-bold uppercase tracking-wide shadow-sm transition-colors focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed;
+    background: var(--brand-gold);
+    border: 1px solid #b8880f;
+  }
+  .btn-gold:hover:not(:disabled) {
+    background: #e8b820;
+  }
+
+  button.p-0\.5,
+  a.p-0\.5 {
+    min-width: 28px;
+    min-height: 28px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
   }
 
   /* ============================================================
@@ -1368,13 +1386,25 @@ body.fx-noise::after {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 12px;
-    height: 12px;
+    width: 20px;
+    height: 20px;
+    padding: 4px;
     border: 1px solid transparent;
     cursor: pointer;
     flex-shrink: 0;
     transition: filter 0.1s, border-color 0.1s;
+    box-sizing: border-box;
   }
+  .window-chrome-btn::after {
+    content: '';
+    display: block;
+    width: 12px;
+    height: 12px;
+    border-radius: 2px;
+  }
+  .window-chrome-btn.window-chrome-close::after { background: var(--window-chrome-close); }
+  .window-chrome-btn.window-chrome-minimize::after { background: var(--window-chrome-minimize); }
+  .window-chrome-btn.window-chrome-maximize::after { background: var(--window-chrome-maximize); }
   .window-chrome-btn:hover {
     filter: brightness(1.4);
   }
@@ -1382,15 +1412,12 @@ body.fx-noise::after {
     filter: brightness(0.8);
   }
   .window-chrome-close {
-    background: var(--window-chrome-close);
     border-color: rgba(239, 68, 68, 0.6);
   }
   .window-chrome-minimize {
-    background: var(--window-chrome-minimize);
     border-color: rgba(212, 160, 23, 0.6);
   }
   .window-chrome-maximize {
-    background: var(--window-chrome-maximize);
     border-color: rgba(34, 197, 94, 0.6);
   }
 
@@ -1524,7 +1551,6 @@ body.fx-noise::after {
   .toolbar-btn:disabled {
     opacity: 0.45;
     cursor: not-allowed;
-    pointer-events: none;
   }
 
   .toolbar-btn-primary {
@@ -1536,7 +1562,7 @@ body.fx-noise::after {
   }
 
   .toolbar-btn-primary:hover {
-    background: var(--surface-raised);
+    background: #aaaaaa;
   }
 
   .toolbar-btn-danger {
@@ -2116,6 +2142,7 @@ body.fx-noise::after {
   .btn-secondary,
   .btn-danger,
   .btn-success,
+  .btn-gold,
   .toolbar-btn-primary,
   .toolbar-btn-danger,
   .toolbar-btn-success {
@@ -2135,6 +2162,13 @@ body.fx-noise::after {
     min-height: 36px;
     padding: 4px 10px;
     font-size: 11px;
+  }
+
+  button.p-0\.5,
+  a.p-0\.5 {
+    min-width: 44px;
+    min-height: 44px;
+    padding: 6px;
   }
 
   /* ── FORM INPUTS ────────────────────────────────────────
@@ -9952,3 +9986,29 @@ td.sparkline-cell {
 .rmpg-pop-row span { color: #777777; text-transform: uppercase; letter-spacing: 0.04em; font-size: 8px; flex-shrink: 0; }
 .rmpg-pop-row b { color: #cfcfcf; font-weight: 600; text-align: right; word-break: break-word; }
 .rmpg-pop-rel { padding: 5px 9px; font-size: 9px; font-weight: 700; color: #d4a017; background: rgba(212,160,23,0.07); border-top: 1px solid var(--border-subtle, #1a1a1a); text-align: center; }
+
+/* ── Document Writer (TipTap) ── */
+.writer-content .tiptap { color: #111; font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; font-size: 12px; line-height: 1.7; }
+.writer-content .tiptap:focus { outline: none; }
+.writer-content .tiptap p { margin: 0 0 8px; }
+.writer-content .tiptap h1 { font-size: 20px; font-weight: 700; margin: 16px 0 8px; color: #000; }
+.writer-content .tiptap h2 { font-size: 16px; font-weight: 600; margin: 14px 0 6px; color: #111; }
+.writer-content .tiptap h3 { font-size: 13px; font-weight: 600; margin: 12px 0 4px; color: #222; }
+.writer-content .tiptap h4 { font-size: 12px; font-weight: 600; margin: 10px 0 4px; color: #333; }
+.writer-content .tiptap ul, .writer-content .tiptap ol { padding-left: 24px; margin: 4px 0; }
+.writer-content .tiptap li { margin: 2px 0; }
+.writer-content .tiptap blockquote { border-left: 3px solid #d4a017; margin: 8px 0; padding: 4px 12px; color: #444; }
+.writer-content .tiptap hr { border: none; border-top: 1px solid #ccc; margin: 16px 0; }
+.writer-content .tiptap table { border-collapse: collapse; width: 100%; margin: 8px 0; }
+.writer-content .tiptap td, .writer-content .tiptap th { border: 1px solid #333; padding: 6px 8px; vertical-align: top; }
+.writer-content .tiptap th { background: #f5f5f5; font-weight: 600; }
+.writer-content .tiptap img { max-width: 100%; height: auto; border-radius: 2px; }
+.writer-content .tiptap code { background: #f0f0f0; padding: 1px 4px; border-radius: 2px; font-size: 11px; }
+.writer-content .tiptap mark { background: #fff3b0; padding: 1px 2px; }
+.writer-content .tiptap a { color: #1a73e8; text-decoration: underline; }
+.writer-content .tiptap ul[data-type="taskList"] { list-style: none; padding-left: 4px; }
+.writer-content .tiptap ul[data-type="taskList"] li { display: flex; align-items: flex-start; gap: 6px; }
+.writer-content .tiptap ul[data-type="taskList"] li label { margin-top: 2px; }
+.writer-content .tiptap .is-empty::before { content: attr(data-placeholder); color: #999; pointer-events: none; float: left; height: 0; }
+.writer-content .tiptap .selectedCell { background: rgba(26,115,232,0.1); }
+.writer-content .tiptap .column-resize-handle { position: absolute; right: -2px; top: 0; bottom: 0; width: 4px; background: #1a73e8; cursor: col-resize; }

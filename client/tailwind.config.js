@@ -20,7 +20,7 @@ export default {
       xl: '2px',
       '2xl': '2px',
       '3xl': '2px',
-      full: '2px',
+      full: '9999px',
     },
     screens: {
       'xs': '475px',

@@ -83,7 +83,7 @@ citations.get('/stats', async (c) => {
       db,
       `SELECT COUNT(*) as count FROM citations WHERE violation_date >= date('now', '-30 days')`,
     ))?.count ?? 0;
-    return c.json({ total, byStatus, byType, last7, last30 });
+    return c.json({ data: { total, byStatus, byType, last7, last30 } });
   } catch (err) {
     return c.json({ error: 'Failed to get citation stats', code: 'STATS_ERROR' }, 500);
   }
@@ -546,8 +546,8 @@ citations.post('/:id/violations', async (c) => {
     if (isNaN(id)) return c.json({ error: 'Invalid ID', code: 'INVALID_ID' }, 400);
     const b = await c.req.json<{
       violation_number?: number; statute_id?: number; statute_citation?: string;
-      violation_description?: string; offense_level?: string; fine_amount?: number;
-      speed_recorded?: number; speed_limit?: number; notes?: string;
+      violation_code?: string; violation_description?: string; offense_level?: string;
+      fine_amount?: number; speed_recorded?: number; speed_limit?: number; notes?: string;
     }>();
     if (!b.violation_description?.trim()) {
       return c.json({ error: 'violation_description required', code: 'MISSING_DESCRIPTION' }, 400);
@@ -566,10 +566,11 @@ citations.post('/:id/violations', async (c) => {
       db,
       `INSERT INTO citation_violations (
          citation_id, violation_number, statute_id, statute_citation,
-         violation_description, offense_level, fine_amount,
+         violation_code, violation_description, offense_level, fine_amount,
          speed_recorded, speed_limit, notes
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       id, violationNumber, b.statute_id ?? null, b.statute_citation ?? null,
+      b.violation_code ?? b.statute_citation ?? `VIO-${violationNumber}`,
       b.violation_description, b.offense_level ?? 'infraction', b.fine_amount ?? 0,
       b.speed_recorded ?? null, b.speed_limit ?? null, b.notes ?? null,
     );

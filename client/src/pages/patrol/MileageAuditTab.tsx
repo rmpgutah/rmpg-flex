@@ -26,7 +26,7 @@
 // anchor fetches are independent).
 // ============================================================
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   AlertTriangle,
   CheckCircle,
@@ -121,6 +121,12 @@ export default function MileageAuditTab() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Guard against setState on unmounted component — the refresh
+  // callback does multiple async apiFetch calls; if the user switches
+  // tabs or navigates between them, setState fires on a dead component.
+  const mountedRef = useRef(true);
+  useEffect(() => { return () => { mountedRef.current = false; }; }, []);
+
   // Reference data (officers, units)
   const [officers, setOfficers] = useState<Array<{ id: number; full_name: string }>>([]);
   const [units, setUnits] = useState<Array<{ id: number; call_sign: string; officer_id: number | null }>>([]);
@@ -141,8 +147,8 @@ export default function MileageAuditTab() {
   useEffect(() => {
     (async () => {
       try {
-        const u = await apiFetch<any[]>('/admin/users?role=officer&limit=500');
-        setOfficers((u || []).map((r: any) => ({ id: r.id, full_name: r.full_name || r.username })));
+        const u = await apiFetch<any[]>('/personnel?role=officer');
+        setOfficers((Array.isArray(u) ? u : []).map((r: any) => ({ id: r.id, full_name: r.full_name || r.username })));
       } catch {
         // Non-fatal — officer dropdown just stays empty.
       }
@@ -185,9 +191,11 @@ export default function MileageAuditTab() {
 
     try {
       const data = await apiFetch<{ anchor: Anchor; rows: ChainRow[] }>(`/patrol/mileage/chain?${chainParams}`);
+      if (!mountedRef.current) return;
       setAnchor(data.anchor || null);
       setRows(data.rows || []);
     } catch (err: any) {
+      if (!mountedRef.current) return;
       setError(err?.message || 'Failed to load chain');
       setRows([]);
     }
@@ -196,13 +204,17 @@ export default function MileageAuditTab() {
       try {
         const auditParams = new URLSearchParams(chainParams);
         const a = await apiFetch<{ rows: AuditRow[] }>(`/patrol/mileage/audit?${auditParams}`);
+        if (!mountedRef.current) return;
         setAudit(a.rows || []);
       } catch {
+        if (!mountedRef.current) return;
         setAudit([]);
       }
     } else {
+      if (!mountedRef.current) return;
       setAudit([]);
     }
+    if (!mountedRef.current) return;
     setLoading(false);
   }, [officerId, unitId, from, to, canFix]);
 

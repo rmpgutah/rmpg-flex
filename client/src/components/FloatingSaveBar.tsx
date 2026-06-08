@@ -23,6 +23,8 @@ export default function FloatingSaveBar({
   onSaveRef.current = onSave;
   const onCancelRef = useRef(onCancel);
   onCancelRef.current = onCancel;
+  const isSavingRef = useRef(isSaving);
+  isSavingRef.current = isSaving;
 
   // Ctrl+S keyboard shortcut to save, Escape to cancel
   useEffect(() => {
@@ -30,16 +32,16 @@ export default function FloatingSaveBar({
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === 's') {
         e.preventDefault();
-        if (!isSaving) onSaveRef.current();
+        if (!isSavingRef.current) onSaveRef.current();
       }
       if (e.key === 'Escape') {
         e.preventDefault();
-        if (!isSaving) onCancelRef.current();
+        if (!isSavingRef.current) onCancelRef.current();
       }
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [visible, isSaving]);
+  }, [visible]);
 
   if (!visible) return null;
 

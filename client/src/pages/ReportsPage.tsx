@@ -848,14 +848,14 @@ export default function ReportsPage() {
         if (dashboard) setDashboardData(dashboard);
         if (incidents) setIncidentsData(incidents);
         if (responseTimes) setResponseTimesData(responseTimes);
-        if (officers) setOfficerActivity(officers);
+        if (Array.isArray(officers)) setOfficerActivity(officers);
 
         // Upgrade: Fetch comparison data and schedules in background
         apiFetch<any>('/reports/comparison?period=week')
           .then(data => { if (!cancelled && data) setComparisonData(data); })
           .catch(() => { /* optional */ });
         apiFetch<{ data: any[] }>('/reports/schedules')
-          .then(data => { if (!cancelled && data?.data) setReportSchedules(data.data); })
+          .then(data => { if (!cancelled && Array.isArray(data?.data)) setReportSchedules(data.data); })
           .catch(() => { /* optional */ });
       } catch (err) {
         if (cancelled) return;

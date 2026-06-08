@@ -398,8 +398,8 @@ sp.post('/shift-swaps', async (c) => {
     db,
     `INSERT INTO shift_swap_requests (
        requester_id, requester_name, target_id, target_name, plan_id,
-       shift_date, original_shift, requested_shift, reason, status
-     ) VALUES (?,?,?,?,?, ?,?,?,?,'pending')`,
+       shift_date, original_shift, requested_shift, reason, status, created_at
+     ) VALUES (?,?,?,?,?, ?,?,?,?,'pending', datetime('now','localtime'))`,
     user.id, user.full_name ?? null, body.target_id ?? null, targetName,
     body.plan_id ?? null, body.shift_date, body.original_shift ?? null,
     body.requested_shift ?? null, body.reason ?? null,
@@ -477,7 +477,7 @@ sp.get('/staffing-levels', async (c) => {
   const minimums: Record<string, number> = {
     day: parseInt(c.req.query('min_day') || '2', 10),
     swing: parseInt(c.req.query('min_swing') || '2', 10),
-    grave: parseInt(c.req.query('min_grave') || '1', 10),
+    graveyard: parseInt(c.req.query('min_grave') || '1', 10),
   };
   const plans = await query<any>(getDb(c.env), 'SELECT * FROM shift_plans WHERE date = ? ORDER BY shift_type', targetDate);
   const levels: any[] = [];

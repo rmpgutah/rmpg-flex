@@ -60,7 +60,7 @@ export default function AdminTrainingTab({ LoadingSpinner, error, setError }: Pr
       // Fetch training records + requirements and compute compliance
       const [records, users] = await Promise.all([
         apiFetch<any[]>('/admin/training'),
-        apiFetch<any[]>('/admin/users'),
+        apiFetch<any[]>('/personnel').catch(() => []),
       ]);
 
       // asArray() — endpoints may return {} from a stub instead of [].

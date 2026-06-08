@@ -15,6 +15,7 @@ import { fetchEntityImages, fetchImageFromUrl } from '../utils/pdfImageHelpers';
 import { apiFetch } from '../hooks/useApi';
 import { type Trip } from '../hooks/useTrips';
 import { useAuth } from '../context/AuthContext';
+import { mapDbCall } from '../pages/dispatch/utils/dispatchMappers';
 import DocumentViewer from './DocumentViewer';
 import SignaturePad from './SignaturePad';
 
@@ -101,7 +102,23 @@ export default function PrintRecordButton({
       }
       const fresh = await apiFetch<any>(endpoint);
       if (fresh && (fresh.id || fresh.call_number || fresh.first_name)) {
-        return fresh;
+        const mapped = entityType === 'call' ? mapDbCall(fresh) : fresh;
+        const enrichmentKeys = ['assigned_units_detail', 'linked_persons', 'linked_vehicles',
+          'attachment_images', 'breadcrumb_trail', 'response_trip'];
+        const enrichments: Record<string, any> = {};
+        for (const k of enrichmentKeys) {
+          if (data[k] !== undefined) enrichments[k] = data[k];
+        }
+        if (!enrichments.assigned_units_detail && Array.isArray(fresh.assigned_units)
+            && fresh.assigned_units.length > 0 && typeof fresh.assigned_units[0] === 'object') {
+          enrichments.assigned_units_detail = fresh.assigned_units.map((u: any) => ({
+            call_sign: u.call_sign || String(u.id || ''),
+            officer_name: u.officer_name || '',
+            badge_number: u.badge_number || '',
+            status: u.status || '',
+          }));
+        }
+        return { ...mapped, ...enrichments };
       }
     } catch (err) {
       console.warn('[PrintRecordButton] Fresh data fetch failed, using passed-in data:', err);

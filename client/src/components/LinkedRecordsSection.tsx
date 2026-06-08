@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Link2, Plus, Trash2, Loader2 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
+import { useToast } from './ToastProvider';
 import type { RecordEntityType } from '../types';
 import {
   getRecordTypeIcon,
@@ -46,6 +47,7 @@ interface Props {
 /* ------------------------------------------------------------------ */
 
 export default function LinkedRecordsSection({ entityType, entityId, onOpenLinkModal }: Props) {
+  const { addToast } = useToast();
   const [links, setLinks] = useState<EnrichedLink[]>([]);
   const [loading, setLoading] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -78,6 +80,7 @@ export default function LinkedRecordsSection({ entityType, entityId, onOpenLinkM
         await fetchLinks();
       } catch (err) {
         console.error('Failed to delete link:', err);
+        addToast((err as any)?.message || 'Failed to delete link', 'error');
       } finally {
         setDeletingId(null);
       }

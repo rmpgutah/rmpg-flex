@@ -14,6 +14,7 @@
 
 import jsPDF from 'jspdf';
 import type { NavTrip } from '../types';
+import { parseTimestamp } from './dateUtils';
 
 interface Args {
   trips: NavTrip[];
@@ -39,8 +40,13 @@ function fmt(n: number | null | undefined, digits = 1, prefix = ''): string {
 
 function fmtDate(iso: string | null | undefined): string {
   if (!iso) return '';
-  const d = new Date(iso.replace(' ', 'T'));
-  if (isNaN(d.getTime())) return iso;
+  // parseTimestamp interprets naive server strings as UTC (the app standard).
+  // The pre-wave-3.1 code used new Date(iso.replace(' ', 'T')) which treated
+  // UTC values as local time, skewing all trip timestamps by the user's
+  // timezone offset (~6h in Mountain Time). (Wave 3.1)
+  const ts = parseTimestamp(iso);
+  if (!ts || isNaN(ts.getTime())) return iso;
+  const d = ts;
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
@@ -354,7 +360,7 @@ export function generateNavTripReport({ trips, officerName, vehicleLabel, period
     const statusColor = STATUS_COLOR[trip.status] || [0, 0, 0];
     doc.setTextColor(statusColor[0], statusColor[1], statusColor[2]);
     doc.setFont('helvetica', 'bold');
-    doc.text(trip.status.toUpperCase(), colStatus, y);
+    doc.text((trip.status || '').toUpperCase(), colStatus, y);
     doc.setFont('helvetica', 'normal');
     doc.setTextColor(0, 0, 0);
     doc.text(trip.detected_by === 'auto' ? 'AUTO' : 'MANUAL', colMode, y);
@@ -446,7 +452,7 @@ export function generateNavSingleTripReport({
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(10);
   doc.text(`Trip ID: ${trip.id}`, marginX, y);
-  doc.text(`Status: ${trip.status.toUpperCase()}`, marginX + 200, y);
+  doc.text(`Status: ${(trip.status || '').toUpperCase()}`, marginX + 200, y);
   doc.text(`Mode: ${trip.detected_by === 'auto' ? 'AUTO-DETECTED' : 'MANUAL'}`, marginX + 350, y);
   y += 18;
 
@@ -560,8 +566,8 @@ export function generateNavSingleTripReport({
       const p = sample[i];
       doc.text(String(i + 1), cIdx, y);
       doc.text(fmtDate(p.ts), cTime, y);
-      doc.text(p.lat.toFixed(5), cLat, y);
-      doc.text(p.lng.toFixed(5), cLng, y);
+      doc.text(p.lat != null ? p.lat.toFixed(5) : '—', cLat, y);
+      doc.text(p.lng != null ? p.lng.toFixed(5) : '—', cLng, y);
       if (p.speed != null) {
         // speed is m/s; convert to mph
         const mph = p.speed * 2.2369;

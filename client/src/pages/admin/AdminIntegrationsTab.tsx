@@ -92,7 +92,7 @@ const AI_ML_KEYS: ApiKeyConfig[] = [
 const CLOUD_STORAGE_KEYS: ApiKeyConfig[] = [
   { key: 'aws_access_key_id', label: 'AWS Access Key ID', desc: 'S3 storage — evidence files, body camera video, backup archives', pattern: /^AKIA[A-Z0-9]{16}$/, formatHint: 'Starts with AKIA, 20 characters' },
   { key: 'aws_secret_access_key', label: 'AWS Secret Access Key', desc: 'AWS authentication secret (paired with Access Key ID above)' },
-  { key: 'aws_s3_bucket', label: 'AWS S3 Bucket Name', desc: 'Target bucket for evidence uploads and backup storage' },
+  { key: 'aws_s3_bucket', label: 'AWS S3 Bucket Name', desc: 'Target bucket for evidence uploads and backup storage (reserved — uploads currently route through Worker R2 binding)' },
   { key: 'backblaze_key_id', label: 'Backblaze B2 Key ID', desc: 'Free tier: 10GB — low-cost evidence archival, database backups' },
   { key: 'backblaze_app_key', label: 'Backblaze B2 App Key', desc: 'Backblaze authentication (paired with Key ID above)' },
   { key: 'cloudflare_api_key', label: 'Cloudflare', desc: 'Free tier — CDN, DDoS protection, DNS management, R2 object storage' },
@@ -178,7 +178,11 @@ function ApiKeyPanel({ title, icon, keys: keyConfigs }: { title: string; icon: R
   const [errors, setErrors] = useState<Record<string, string | null>>({});
 
   useEffect(() => {
-    // Check which keys are configured
+    // Check which keys are configured — single bulk request, no N+1.
+    // Fixed 2026-06-06: the previous fallback path fired one request per key
+    // (50+ keys × N panels) on every mount when the bulk endpoint 404'd.
+    // The Worker now has /api/admin/third-party-keys (real handler) so the
+    // bulk path always succeeds and the per-key fallback is dead code.
     (async () => {
       try {
         const data = await apiFetch<Array<{ config_key: string; has_value: boolean }>>('/admin/third-party-keys');
@@ -186,13 +190,9 @@ function ApiKeyPanel({ title, icon, keys: keyConfigs }: { title: string; icon: R
         for (const item of data) map[item.config_key] = item.has_value;
         setConfigured(map);
       } catch {
-        // Endpoint may not exist yet — check individually
-        for (const { key } of keyConfigs) {
-          try {
-            const resp = await apiFetch<{ configured: boolean }>(`/admin/third-party-keys/${key}`);
-            setConfigured(prev => ({ ...prev, [key]: resp.configured }));
-          } catch { /* silent */ }
-        }
+        // Bulk endpoint unreachable — leave all keys in default "not set" state.
+        // The per-key N+1 fallback has been removed; on a broken bulk endpoint
+        // the page simply shows "Not Set" everywhere until the API recovers.
       }
     })();
   }, []);
@@ -257,18 +257,22 @@ function ApiKeyPanel({ title, icon, keys: keyConfigs }: { title: string; icon: R
               )}
             </div>
             <div className="flex items-center gap-2">
-              <div className="relative flex-1">
-                <input id="ff-adminintegrationstab-0"
+              <form
+                onSubmit={(e) => { e.preventDefault(); handleSave(key); }}
+                className="relative flex-1 flex items-center"
+              >
+                <input id={`ff-adminintegrationstab-${key}`}
                   type={showKey[key] ? 'text' : 'password'}
                   value={values[key] || ''}
                   onChange={e => setValues(prev => ({ ...prev, [key]: e.target.value }))}
                   placeholder={configured[key] ? '••••••••••••••••••••' : 'Paste API key here...'}
                   className="w-full px-3 py-2 pr-8 bg-[#141414] border border-[#2b2b2b] rounded-sm text-xs text-white font-mono placeholder-[#525252] focus:outline-none focus:border-brand-500"
                 />
-                <button type="button" onClick={() => setShowKey(prev => ({ ...prev, [key]: !prev[key] }))} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-600 hover:text-rmpg-400">
+                <button type="button" onClick={() => setShowKey(prev => ({ ...prev, [key]: !showKey[key] }))} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-600 hover:text-rmpg-400">
                   {showKey[key] ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                 </button>
-              </div>
+                <input type="submit" hidden />
+              </form>
               <button
                 type="button"
                 onClick={() => handleSave(key)}
@@ -564,7 +568,10 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
                 API Key {svcConfigured && svcKeyPreview && <span className="text-rmpg-600 ml-1">(current: {svcKeyPreview})</span>}
               </label>
               <div className="flex items-center gap-2">
-                <div className="flex items-center gap-1.5 flex-1 px-3 py-2 bg-[#0c0c0c] border border-[#2b2b2b] rounded-sm">
+                <form
+                  onSubmit={(e) => { e.preventDefault(); handleSaveSvc(); }}
+                  className="flex items-center gap-1.5 flex-1 px-3 py-2 bg-[#0c0c0c] border border-[#2b2b2b] rounded-sm"
+                >
                   <Key className="w-3.5 h-3.5 text-rmpg-500" />
                   <input id="ff-adminintegrationstab-2"
                     type={showSvcKey ? 'text' : 'password'}
@@ -580,7 +587,8 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
                   >
                     {showSvcKey ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                   </button>
-                </div>
+                  <input type="submit" hidden />
+                </form>
                 <button type="button"
                   onClick={handleSaveSvc}
                   disabled={savingSvc || !svcApiKey.trim()}

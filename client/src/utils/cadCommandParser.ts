@@ -268,7 +268,11 @@ export async function executeCommand(
       }
 
       try {
-        await apiFetch(`/dispatch/units/${unit.id}/mileage`, {
+        // Claude Opus 4.8 (d3001d25): the mileage endpoint now validates
+        // guardrails (ceiling 999k, decreasing, delta sanity). Non-2xx
+        // responses carry a code + hint in the body; extract the message
+        // so the CAD command output shows the specific guardrail tripped.
+        const res = await apiFetch<{ error?: string; code?: string; previous?: number; delta?: number; override_available?: boolean }>(`/dispatch/units/${unit.id}/mileage`, {
           method: 'PUT',
           body: JSON.stringify({ mileage: mileageVal }),
         });
@@ -278,7 +282,21 @@ export async function executeCommand(
           action: { type: 'set_mileage', callSign: unit.call_sign, mileageType, value: mileageVal },
         };
       } catch (err: any) {
-        return { success: false, message: `Failed: ${err.message}`, action: { type: 'none' } };
+        const body = typeof err.body === 'object' && err.body
+          ? err.body as { error?: string; code?: string; previous?: number; delta?: number; override_available?: boolean }
+          : null;
+        const code = body?.code || '';
+        const detail = body?.error || err.message || 'Unknown error';
+        if (code === 'MILEAGE_CEILING') {
+          return { success: false, message: `Mileage ${mileageVal.toLocaleString()} exceeds max — check your entry`, action: { type: 'none' } };
+        }
+        if (code === 'MILEAGE_DECREASING') {
+          return { success: false, message: `Mileage ${mileageVal} < previous ${body?.previous} — not decreasing`, action: { type: 'none' } };
+        }
+        if (code === 'MILEAGE_DELTA_SANITY') {
+          return { success: false, message: `Mileage jump of ${body?.delta ?? mileageVal} mi too large — verify`, action: { type: 'none' } };
+        }
+        return { success: false, message: `Failed: ${detail}`, action: { type: 'none' } };
       }
     }
 

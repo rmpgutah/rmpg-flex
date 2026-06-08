@@ -123,6 +123,8 @@ iped.get('/status', async (c) => {
 // PUT /config — merge a partial config patch (toggles send one field).
 iped.put('/config', async (c) => {
   try {
+    const actor = c.get('user') as { role: string } | undefined;
+    if (!actor || actor.role !== 'admin') return c.json({ error: 'Forbidden' }, 403);
     const db = getDb(c.env);
     const patch = await c.req.json<Partial<IpedConfig>>();
     const current = await loadIpedConfig(db);
@@ -142,6 +144,8 @@ iped.put('/config', async (c) => {
 // DELETE /config — clear the recorded deployment back to defaults.
 iped.delete('/config', async (c) => {
   try {
+    const actor = c.get('user') as { role: string } | undefined;
+    if (!actor || actor.role !== 'admin') return c.json({ error: 'Forbidden' }, 403);
     const db = getDb(c.env);
     await execute(db, `DELETE FROM system_config WHERE config_key = ?`, IPED_CONFIG_KEY);
     return c.json({ success: true });
@@ -205,6 +209,8 @@ iped.post('/test-api', async (c) => {
 // DELETE /hash-sets/:name — remove a loaded hash set by name.
 iped.delete('/hash-sets/:name', async (c) => {
   try {
+    const actor = c.get('user') as { role: string } | undefined;
+    if (!actor || actor.role !== 'admin') return c.json({ error: 'Forbidden' }, 403);
     const db = getDb(c.env);
     const name = decodeURIComponent(c.req.param('name'));
     await execute(db, `DELETE FROM forensic_hash_sets WHERE name = ?`, name);

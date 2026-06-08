@@ -1,6 +1,7 @@
 import jsPDF from 'jspdf';
 import { LayoutEngine } from './layout';
-import { Primitives, ROW_HEIGHT } from './primitives';
+import { Primitives } from './primitives';
+import { SPACING } from './style';
 import { drawDefaultHeader } from './header';
 import { drawDefaultFooter } from './footer';
 import { makeRenderContext, drawSectionHeader, closeSection } from './context';
@@ -108,7 +109,8 @@ export function renderSectionFields<T>(
 function renderLabeledRow<T>(
   prims: Primitives, layout: LayoutEngine, fields: LabeledField<T>[], data: T, cols: number,
 ): void {
-  layout.pageBreakIfNeeded(ROW_HEIGHT);
+  const rowH = SPACING.fieldRowHeight;
+  layout.pageBreakIfNeeded(rowH);
   const totalW = layout.rightX - layout.leftX;
   const colW = totalW / cols;
   const startY = layout.cursorY;
@@ -117,7 +119,7 @@ function renderLabeledRow<T>(
     prims.labeledField(f, data, layout.leftX + i * colW, colW - 2);
   });
   layout.setCursor(startY);
-  layout.advance(ROW_HEIGHT);
+  layout.advance(rowH);
 }
 
 function isCallback<T>(s: unknown): s is RenderCallback<T> {

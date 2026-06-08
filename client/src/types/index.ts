@@ -667,6 +667,7 @@ export interface Evidence {
   incident_id?: string;
   incident_number?: string;
   type: string;
+  evidence_type?: string;
   description: string;
   location_found: string;
   collected_by: string;
@@ -3425,8 +3426,8 @@ export interface MniPersonDetail {
 }
 
 export interface GeographyTree {
-  areas: (DispatchArea & { sections: (DispatchSection & { zones: (DispatchZone & { beats: DispatchBeat[] })[] })[] })[];
-  unassigned_sections: (DispatchSection & { zones: (DispatchZone & { beats: DispatchBeat[] })[] })[];
+  areas: (DispatchArea & { sectors: (DispatchSection & { zones: (DispatchZone & { beats: DispatchBeat[] })[] })[] })[];
+  unassigned_sectors: (DispatchSection & { zones: (DispatchZone & { beats: DispatchBeat[] })[] })[];
 }
 
 // --- Integration Hub ---
@@ -3496,10 +3497,10 @@ export interface NavRoutePoint {
 }
 
 export interface NavTrip {
-  id: string;
-  officer_id: string;
-  vehicle_id?: string;
-  unit_id?: string;
+  id: number;
+  officer_id: number;
+  vehicle_id?: number;
+  unit_id?: number;
   start_lat: number;
   start_lng: number;
   start_accuracy?: number;
@@ -3532,8 +3533,8 @@ export interface NavTripDetectionState {
   loginPosition: { lat: number; lng: number; accuracy: number } | null;
   loginTime: number | null;
   movementConfirmed: boolean;
-  pendingTripId: string | null;
-  activeTripId: string | null;
+  pendingTripId: number | null;
+  activeTripId: number | null;
   lastMovementAt: number | null;
   stationarySince: number | null;
   bufferStartTime: number | null;

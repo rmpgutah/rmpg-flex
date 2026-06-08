@@ -867,6 +867,17 @@ export default function PersonnelPage() {
   // Clock In / Out Handlers
   // ----------------------------------------------------------
 
+  const handleDutyToggle = async () => {
+    try {
+      const [usersRaw, timeRaw] = await Promise.all([
+        apiFetch<any[]>('/personnel'),
+        apiFetch<any[]>('/personnel/time'),
+      ]);
+      setOfficers((Array.isArray(usersRaw) ? usersRaw : []).map(mapUser));
+      setTimeEntries(asArray(timeRaw).map(mapTimeEntry));
+    } catch { /* best-effort refresh */ }
+  };
+
   const handleClockIn = async (officerId: string) => {
     try {
       await apiFetch('/personnel/time/clock-in', { method: 'POST', body: JSON.stringify({ officer_id: officerId }) });
@@ -1150,6 +1161,7 @@ export default function PersonnelPage() {
       onClockOut={handleClockOut}
       onStartBreak={handleStartBreak}
       onEndBreak={handleEndBreak}
+      onDutyToggle={handleDutyToggle}
       onEditTimeEntry={openEditTimeEntry}
       onDeleteTimeEntry={handleDeleteTimeEntry}
       onClose={() => setSelectedOfficer(null)}

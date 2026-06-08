@@ -118,7 +118,7 @@ import shiftPlans from './routes/shiftPlans';
 import court from './routes/court';
 import dlRecords from './routes/dlRecords';
 import serve from './routes/serve';
-import processServer from './routes/processServer';
+
 import settings from './routes/settings';
 import adminSettings from './routes/adminSettings';
 import recruitment from './routes/recruitment';
@@ -126,7 +126,9 @@ import reports from './routes/reports';
 import statutes from './routes/statutes';
 import specialOps from './routes/specialOps';
 import victimServices from './routes/victimServices';
+import integrations from './routes/integrations';
 import stubs from './routes/stubs';
+import weather from './routes/weather';
 // Dispatch domain
 import dispatchCalls from './routes/dispatch/calls';
 import dispatchUnits from './routes/dispatch/units';
@@ -147,8 +149,6 @@ import {
   unitStatus, bolos as bolosRouter, welfareActive,
   closestUnit, autoAssign, callTimeline, callActions,
 } from './routes/dispatch/extensions';
-// My-vehicle (always-visible Nav marker) — separate export to mount under /gps
-import { myVehicle } from './routes/dispatch/extensions';
 // Business records
 import businessVehicles from './routes/business/vehicles';
 import businessVisits from './routes/business/visits';
@@ -161,6 +161,8 @@ import downloads from './routes/downloads';
 import narcotics from './routes/narcotics';
 import nav from './routes/nav';
 import offenderRegistry from './routes/offenderRegistry';
+import uploads from './routes/uploads';
+import companyDocuments from './routes/companyDocuments';
 
 // Permissive Router alias — `Hono<any>` accepts every router shape
 // the existing route files happen to declare. Some routes use the
@@ -237,8 +239,6 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // Canonical dispatch resources
   { prefix: '/api/dispatch/calls', router: dispatchCalls, auth: 'required' },
   { prefix: '/api/dispatch/units', router: dispatchUnits, auth: 'required' },
-  { prefix: '/api/dispatch/gps', router: myVehicle, auth: 'required',
-    note: 'BEFORE dispatchGps — handles /my-vehicle for always-visible Nav marker' },
   { prefix: '/api/dispatch/gps', router: dispatchGps, auth: 'required' },
   { prefix: '/api/dispatch/trips', router: dispatchTrips, auth: 'required' },
   { prefix: '/api/dispatch/geography', router: dispatchGeography, auth: 'required' },
@@ -308,6 +308,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Full fleet management: vehicles, fuel, maintenance, inspections, assignments, personnel, insurance, registration, tires, damage, recalls, parts, warranties, depreciation, accidents, keys, service providers, fuel cards, budgets, replacement plan, pretrip checklists, cost-per-mile, CSV export, analytics, map overlay, dashcam, utilization, emissions, lifecycle, scorecard. All sub-resource CRUD ported from legacy (May 2026).' },
   { prefix: '/api/forensics', router: forensics, auth: 'required',
     note: 'MVP: cases + exhibits + analyses + activity log; hash sets / reports / cross-links deferred' },
+  { prefix: '/api/forensic-lab', router: forensics, auth: 'required',
+    note: 'Alias for /api/forensics — client ForensicLabPage uses this path' },
   { prefix: '/api/gang-intel', router: gangIntel, auth: 'required',
     note: 'Gang intelligence: members, gangs, graffiti records, injunctions, activity mapping' },
   { prefix: '/api/hr', router: hr, auth: 'required',
@@ -330,6 +332,12 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Recruitment & hiring: applicant pipeline, testing, oral boards, onboarding workflow' },
   { prefix: '/api/serve', router: serve, auth: 'required',
     note: 'Officer-facing serve workflow (shares tables with /api/serve-intake)' },
+  // Alias — ServePage calls /api/process-server/* but the handlers live
+  // in src/routes/serve.ts (mounted at /api/serve). Mounting the same
+  // router at /api/process-server means a single source of truth for
+  // the queue + stats + route + attempt endpoints.
+  { prefix: '/api/process-server', router: serve, auth: 'required',
+    note: 'Alias of /api/serve for the ServePage URL contract (legacy /api/process-server/* proxy) — same router instance' },
   { prefix: '/api/special-ops', router: specialOps, auth: 'required',
     note: 'Special operations: SWAT callouts, tactical planning, equipment inventory' },
   { prefix: '/api/settings', router: settings, auth: 'required',
@@ -338,8 +346,6 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Utah law book (search/toc/chapter/section) over utah_statutes. Cutover from legacy /statutes/search — same {data:[]} contract, richer fields. Needs the matching proxy rule routing /api/statutes/* to env.API.' },
   { prefix: '/api/serve-intake', router: serveIntake, auth: 'required',
     note: 'Upload + OCR (Tesseract container) + Workers-AI field extraction; commits to serve_queue + serve_intake_documents' },
-  { prefix: '/api/process-server', router: processServer, auth: 'required',
-    note: 'Ported subset (deadlines + success-rates) the ServePage calls; rest of /process-server stays on legacy via proxy. Only proxy-routed paths reach this router.' },
   { prefix: '/api/ocr', router: ocr, auth: 'required',
     note: 'Alias of /api/serve-intake/scan-document — the client URL the OCR preview path already calls' },
   { prefix: '/api/skiptracer', router: skiptracer, auth: 'required',
@@ -400,6 +406,23 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // /search + per-person detail is a follow-up; only the dashboard
   // tile-count endpoint is implemented today.
   { prefix: '/api/offender-registry', router: offenderRegistry, auth: 'required' },
+  // Client calls /api/sex-offender-registry (SexOffenderRegistryPage), but the
+  // registry mount is /api/offender-registry. Mount at both so the client SPA
+  // doesn't fall through to the legacy proxy (returning 500).
+  { prefix: '/api/sex-offender-registry', router: offenderRegistry, auth: 'required' },
+
+  // ── File uploads (attachments) ──────────────────────────────
+  // General-purpose file upload/download. R2-backed (UPLOADS bucket);
+  // replaces legacy disk-based multer handler. Supports HMAC-signed
+  // access tokens for session-independent file URLs (img/iframe/a tags).
+  { prefix: '/api/uploads', router: uploads, auth: 'public',
+    note: 'File attachments: auth is PUBLIC at the middleware level because thumbnail/download routes accept HMAC-signed URLs (no JWT); each handler calls resolveAuth() internally' },
+
+  // ── Company documents (training docs library) ───────────────
+  // TrainingDocsPage CRUD + CSV export. Backed by company_documents
+  // table (migration 0078). Ported from legacy Express handler.
+  { prefix: '/api/company-documents', router: companyDocuments, auth: 'required',
+    note: 'Agency document library: list/create/update/delete + CSV export for TrainingDocsPage' },
 
   // ── Bare /api mounts (router owns sub-paths) ───────────────
   // Each entry here mounts at the bare /api prefix so the router can
@@ -439,9 +462,31 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // of the stubs' /bolos/{active,check,stats}, so nothing is shadowed.
   { prefix: '/api/comms/bolos', router: bolosRouter, auth: 'required' },
   { prefix: '/api/comms', router: stubs, auth: 'required' },
-  { prefix: '/api/weather', router: stubs, auth: 'required' },
+  { prefix: '/api/stats', router: stubs, auth: 'required' },
+  { prefix: '/api/weather', router: weather, auth: 'required' },
   { prefix: '/api/email', router: stubs, auth: 'required' },
-  { prefix: '/api/integrations', router: stubs, auth: 'required' },
+  // Real integrations router (rmpgutahps + integration_api_keys CRUD +
+  // request log) — must be mounted BEFORE the stubs catch-all below.
+  { prefix: '/api/integrations', router: integrations, auth: 'required' },
   { prefix: '/api/dispatch/stats', router: stubs, auth: 'required' },
   { prefix: '/api/dispatch/shift-handoff', router: dispatchShiftHandoff, auth: 'required' },
+  { prefix: '/api/clearpathgps', router: stubs, auth: 'required' },
+  { prefix: '/api/microbilt', router: stubs, auth: 'required' },
+  { prefix: '/api/servemanager', router: stubs, auth: 'required' },
+  { prefix: '/api/skiptracer-v2', router: stubs, auth: 'required' },
+
+  // ── Additional stub mounts (404 elimination sweep 2026-06-08) ──────
+  // Each of these is called by the client SPA but has no real handler on
+  // either the rewrite or legacy worker. Mounting stubs so pages render
+  // their empty/error state instead of 404ing.
+  { prefix: '/api/cfs', router: stubs, auth: 'required' },
+  { prefix: '/api/code-enforcement', router: stubs, auth: 'required' },
+  { prefix: '/api/dar', router: stubs, auth: 'required' },
+  { prefix: '/api/diagnostics', router: stubs, auth: 'public' },
+  { prefix: '/api/firecrawl-tools', router: stubs, auth: 'required' },
+  { prefix: '/api/mobile', router: stubs, auth: 'public' },
+  { prefix: '/api/pdf-artifacts', router: stubs, auth: 'required' },
+  { prefix: '/api/pdf-engine', router: stubs, auth: 'required' },
+  { prefix: '/api/updates', router: stubs, auth: 'public' },
+  { prefix: '/api/voice-persona', router: stubs, auth: 'required' },
 ];

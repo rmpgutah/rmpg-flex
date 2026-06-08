@@ -649,7 +649,7 @@ export async function generateServiceLog(data: ServiceLogData): Promise<jsPDF> {
     const fy3 = addFieldPair(doc, '6. Failed', String(failed), lx, y, hfw);
     const fy4 = addFieldPair(doc, '7. Pending', String(pending), rx, y, hfw);
     y = Math.max(fy3, fy4);
-    y = addFieldPair(doc, '8. Miles Driven', data.totalMileage.toFixed(1), lx, y, hfw);
+    y = addFieldPair(doc, '8. Miles Driven', data.totalMileage != null ? data.totalMileage.toFixed(1) : '0', lx, y, hfw);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
@@ -702,8 +702,11 @@ export async function generateServiceLog(data: ServiceLogData): Promise<jsPDF> {
     const sec = openAutoSection(doc, 'Route Efficiency', y);
     y = sec.contentY;
     const rowY = y;
-    addFieldPair(doc, 'Planned Mileage', data.routeEfficiency.planned.toFixed(1), lx, rowY, hfw);
-    y = addFieldPair(doc, 'Actual Mileage', data.routeEfficiency.actual.toFixed(1), rx, rowY, hfw);
+    // Guard individual numeric members of routeEfficiency — the parent
+    // object may be present but .planned/.actual can be null from sparse
+    // data. .toFixed() on null throws TypeError. (Wave 3.1)
+    addFieldPair(doc, 'Planned Mileage', data.routeEfficiency.planned != null ? data.routeEfficiency.planned.toFixed(1) : '0', lx, rowY, hfw);
+    y = addFieldPair(doc, 'Actual Mileage', data.routeEfficiency.actual != null ? data.routeEfficiency.actual.toFixed(1) : '0', rx, rowY, hfw);
     y += SPACING.SM;
 
     const efficiency = data.routeEfficiency.planned > 0

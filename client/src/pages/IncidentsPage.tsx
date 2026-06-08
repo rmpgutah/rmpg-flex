@@ -453,7 +453,8 @@ export default function IncidentsPage() {
       setDetailVehicles(detail.linked_vehicles || []);
       setDetailEvidence(detail.evidence || []);
       setSelectedIncident((prev) => prev ? { ...prev, call_type: detail.call_type, call_created_at: detail.call_created_at } as any : prev);
-    } catch {
+    } catch (err) {
+      console.error('[IncidentsPage] Failed to load incident detail:', err);
       setDetailPersons([]);
       setDetailVehicles([]);
       setDetailEvidence([]);

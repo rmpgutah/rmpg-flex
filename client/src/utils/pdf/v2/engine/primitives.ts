@@ -72,7 +72,7 @@ export class Primitives {
     // Form-fill underline beneath the value spanning the field width.
     this.doc.setDrawColor(0, 0, 0);
     this.doc.setLineWidth(RULE_WEIGHTS.fieldUnderline);
-    this.doc.line(x, y + 5, x + width, y + 5);
+    this.doc.line(x, y + 5.5, x + width, y + 5.5);
 
     if (!positioned) this.layout.advance(SPACING.fieldRowHeight);
   }
@@ -142,21 +142,27 @@ export class Primitives {
   table<T>(spec: TableField<T>, data: T): void {
     const rows = spec.accessor(data) ?? [];
 
-    // Section label (above table)
+    // Section label (above table) — skip if empty
     this.layout.pageBreakIfNeeded(4 + 6 + 6);
-    this.doc.setFont('helvetica', 'bold');
-    this.doc.setFontSize(LABEL_FONT_SIZE);
-    this.doc.setTextColor(0, 0, 0);
-    this.doc.text(spec.label.toUpperCase(), this.layout.leftX, this.layout.cursorY);
-    this.layout.advance(4);
+    if (spec.label) {
+      this.doc.setFont('helvetica', 'bold');
+      this.doc.setFontSize(LABEL_FONT_SIZE);
+      this.doc.setTextColor(0, 0, 0);
+      this.doc.text(spec.label.toUpperCase(), this.layout.leftX, this.layout.cursorY);
+      this.layout.advance(4);
+    }
 
     const tableWidth = this.layout.rightX - this.layout.leftX;
-    const totalUnits = spec.columns.reduce((sum, c) => sum + widthUnits(c.width ?? 'full'), 0);
+    const hasRatios = spec.columns.some(c => c.ratio != null);
+    const totalUnits = hasRatios
+      ? spec.columns.reduce((sum, c) => sum + (c.ratio ?? 1), 0)
+      : spec.columns.reduce((sum, c) => sum + widthUnits(c.width ?? 'full'), 0);
     let x = this.layout.leftX;
     const colStarts: number[] = [];
     const colWidths: number[] = [];
     for (const c of spec.columns) {
-      const w = (widthUnits(c.width ?? 'full') / totalUnits) * tableWidth;
+      const units = hasRatios ? (c.ratio ?? 1) : widthUnits(c.width ?? 'full');
+      const w = (units / totalUnits) * tableWidth;
       colStarts.push(x);
       colWidths.push(w);
       x += w;

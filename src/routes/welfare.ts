@@ -6,14 +6,14 @@
 //   POST /api/dispatch/welfare/prompt/:userId   dispatcher manual prompt
 // ============================================================
 import { Hono } from 'hono';
-import type { Env } from '../types';
+import type { Env, Bindings } from '../types';
 import { getDb, queryFirst, execute } from '../utils/db';
 import { requireRole } from '../middleware/auth';
 import { sendToUser } from './ws';
 import { emitAlert } from '../utils/alertHub';
 
 // Helper: get the WelfareWatchDO stub for a given officer
-function getDO(env: any, userId: number) {
+function getDO(env: Bindings, userId: number) {
   const id = env.WELFARE_WATCH.idFromName(`u-${userId}`);
   return env.WELFARE_WATCH.get(id);
 }

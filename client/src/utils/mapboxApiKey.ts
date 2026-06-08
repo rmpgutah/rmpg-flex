@@ -4,7 +4,7 @@ let cachedMapboxToken: string | null = ((import.meta as any).env?.VITE_MAPBOX_AC
 let inflightMapboxToken: Promise<string> | null = null;
 
 const MISSING_TOKEN_MESSAGE =
-  'Mapbox access token not configured on the server. Add MAPBOX_ACCESS_TOKEN to server/.env.';
+  'Mapbox access token not configured. Set VITE_MAPBOX_ACCESS_TOKEN in client/.env or Cloudflare Pages environment variables.';
 
 export function getCachedMapboxAccessToken(): string {
   return cachedMapboxToken || '';

@@ -70,10 +70,13 @@ nav.get('/trip/current', async (c) => {
     const userId = c.get('userId') as number;
     const trip = await queryFirst<Record<string, unknown>>(db,
       `SELECT ntl.*, fv.vehicle_number, fv.make, fv.model, fv.plate_number,
-              u.call_sign as unit_call_sign
+              u.call_sign as unit_call_sign,
+              cfs.call_number, cfs.incident_type as call_type,
+              cfs.priority as call_priority, cfs.location_address as call_location
        FROM nav_trip_log ntl
        LEFT JOIN fleet_vehicles fv ON ntl.vehicle_id = fv.id
        LEFT JOIN units u ON ntl.unit_id = u.id
+       LEFT JOIN calls_for_service cfs ON ntl.call_id = cfs.id
        WHERE ntl.officer_id = ? AND ntl.status IN ('pending','active')
        ORDER BY ntl.start_time DESC LIMIT 1`,
       userId);
@@ -83,6 +86,7 @@ nav.get('/trip/current', async (c) => {
     }
     return c.json({ trip });
   } catch (err) {
+    console.error('[nav] GET /trip/current failed:', err);
     return c.json({ error: 'Failed to fetch current trip' }, 500);
   }
 });
@@ -130,13 +134,21 @@ nav.post('/trip/start', async (c) => {
       if (veh) vehicleId = veh.id;
     }
 
+    // Auto-detect active dispatch call from the unit
+    let callId: number | null = null;
+    if (unitId) {
+      const activeCall = await queryFirst<{ current_call_id: number | null }>(db,
+        'SELECT current_call_id FROM units WHERE id = ?', unitId);
+      if (activeCall?.current_call_id) callId = activeCall.current_call_id;
+    }
+
     const result = await execute(db,
       `INSERT INTO nav_trip_log
-       (officer_id, vehicle_id, unit_id, start_lat, start_lng, start_accuracy,
+       (officer_id, vehicle_id, unit_id, call_id, start_lat, start_lng, start_accuracy,
         start_location, start_time, status, detected_by, purpose, device_type, route_points)
-       VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'), 'pending', 'auto',
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'), 'pending', 'auto',
                ?, ?, '[]')`,
-      userId, vehicleId, unitId,
+      userId, vehicleId, unitId, callId,
       body.start_lat, body.start_lng, body.start_accuracy ?? null,
       body.start_location ?? null,
       body.purpose ?? 'patrol', body.device_type ?? null);
@@ -144,6 +156,7 @@ nav.post('/trip/start', async (c) => {
     const tripId = Number(result.meta.last_row_id);
     return c.json({ success: true, trip_id: tripId, status: 'pending' }, 201);
   } catch (err) {
+    console.error('[nav] POST /trip/start failed:', err);
     return c.json({ error: 'Failed to start trip' }, 500);
   }
 });
@@ -168,6 +181,7 @@ nav.put('/trip/:id/confirm', async (c) => {
 
     return c.json({ success: true, status: 'active' });
   } catch (err) {
+    console.error('[nav] PUT /trip/:id/confirm failed:', err);
     return c.json({ error: 'Failed to confirm trip' }, 500);
   }
 });
@@ -213,6 +227,7 @@ nav.put('/trip/:id/update', async (c) => {
 
     return c.json({ success: true, point_count: trimmed.length, distance_miles: Math.round(distance * 100) / 100 });
   } catch (err) {
+    console.error('[nav] PUT /trip/:id/update failed:', err);
     return c.json({ error: 'Failed to update trip' }, 500);
   }
 });
@@ -264,6 +279,7 @@ nav.put('/trip/:id/end', async (c) => {
 
     return c.json({ success: true, distance_miles: Math.round(finalDistance * 100) / 100, duration_seconds: durationSec });
   } catch (err) {
+    console.error('[nav] PUT /trip/:id/end failed:', err);
     return c.json({ error: 'Failed to end trip' }, 500);
   }
 });
@@ -288,6 +304,7 @@ nav.put('/trip/:id/cancel', async (c) => {
 
     return c.json({ success: true });
   } catch (err) {
+    console.error('[nav] PUT /trip/:id/cancel failed:', err);
     return c.json({ error: 'Failed to cancel trip' }, 500);
   }
 });
@@ -309,22 +326,26 @@ nav.get('/trip/history', async (c) => {
     }
 
     const rows = await query<Record<string, unknown>>(db,
-      `SELECT ntl.id, ntl.vehicle_id, ntl.unit_id, ntl.start_lat, ntl.start_lng,
+      `SELECT ntl.id, ntl.vehicle_id, ntl.unit_id, ntl.call_id,
+              ntl.start_lat, ntl.start_lng,
               ntl.start_location, ntl.start_time, ntl.end_lat, ntl.end_lng,
               ntl.end_location, ntl.end_time, ntl.distance_miles, ntl.max_speed_mph,
               ntl.duration_seconds, ntl.status, ntl.detected_by, ntl.purpose,
               ntl.device_type, ntl.notes, ntl.created_at,
               fv.vehicle_number, fv.make, fv.model, fv.plate_number,
-              u.call_sign as unit_call_sign
+              u.call_sign as unit_call_sign,
+              cfs.call_number, cfs.incident_type as call_type
        FROM nav_trip_log ntl
        LEFT JOIN fleet_vehicles fv ON ntl.vehicle_id = fv.id
        LEFT JOIN units u ON ntl.unit_id = u.id
+       LEFT JOIN calls_for_service cfs ON ntl.call_id = cfs.id
        ${whereClause}
        ORDER BY ntl.start_time DESC
        LIMIT ? OFFSET ?`,
       ...params, limit, offset);
     return c.json({ trips: rows });
   } catch (err) {
+    console.error('[nav] GET /trip/history failed:', err);
     return c.json({ error: 'Failed to fetch trip history' }, 500);
   }
 });
@@ -339,10 +360,13 @@ nav.get('/trip/:id', async (c) => {
 
     const trip = await queryFirst<Record<string, unknown>>(db,
       `SELECT ntl.*, fv.vehicle_number, fv.make, fv.model, fv.plate_number,
-              u.call_sign as unit_call_sign
+              u.call_sign as unit_call_sign,
+              cfs.call_number, cfs.incident_type as call_type,
+              cfs.priority as call_priority, cfs.location_address as call_location
        FROM nav_trip_log ntl
        LEFT JOIN fleet_vehicles fv ON ntl.vehicle_id = fv.id
        LEFT JOIN units u ON ntl.unit_id = u.id
+       LEFT JOIN calls_for_service cfs ON ntl.call_id = cfs.id
        WHERE ntl.id = ? AND ntl.officer_id = ?`,
       tripId, userId);
     if (!trip) return c.json({ error: 'Trip not found' }, 404);
@@ -351,23 +375,25 @@ nav.get('/trip/:id', async (c) => {
     }
     return c.json({ trip });
   } catch (err) {
+    console.error('[nav] GET /trip/:id failed:', err);
     return c.json({ error: 'Failed to fetch trip' }, 500);
   }
 });
 
-// ── GET /nav/vehicle-take-home — check if user has a take-home vehicle
-nav.get('/vehicle-take-home', async (c) => {
+// ── GET /nav/trip/check-take-home — whether user has a take-home vehicle
+nav.get('/trip/check-take-home', async (c) => {
   try {
     const db = getDb(c.env);
     const userId = c.get('userId') as number;
-    const user = await queryFirst<{ take_home_vehicle_id: number | null }>(db,
-      'SELECT take_home_vehicle_id FROM users WHERE id = ?', userId);
-    if (!user?.take_home_vehicle_id) return c.json({ has_take_home: false });
-    const veh = await queryFirst<Record<string, unknown>>(db,
-      `SELECT id, vehicle_number, make, model, plate_number, status, current_mileage
-       FROM fleet_vehicles WHERE id = ? AND take_home = 1`, user.take_home_vehicle_id);
-    return c.json({ has_take_home: true, vehicle: veh || null });
+
+    const user = await queryFirst<{ has_take_home: number; take_home_vehicle_id: number | null }>(
+      db, 'SELECT has_take_home, take_home_vehicle_id FROM users WHERE id = ?', userId);
+
+    const hasTakeHome = user?.has_take_home === 1 && user?.take_home_vehicle_id != null;
+
+    return c.json({ take_home: !!hasTakeHome, vehicle_id: user?.take_home_vehicle_id ?? null });
   } catch (err) {
+    console.error('[nav] GET /trip/check-take-home failed:', err);
     return c.json({ error: 'Failed to check take-home status' }, 500);
   }
 });

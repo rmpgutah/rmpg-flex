@@ -8,11 +8,25 @@ type Call = {
   call_number: string;
   incident_type: string;
   location: string;
-  pso_service_type: string | null;
-  contract_id: string | null;
   status: string;
   priority: string;
   created_at: string;
+  // PSO Client Request fields
+  pso_service_type: string | null;
+  pso_requestor_name: string | null;
+  pso_requestor_phone: string | null;
+  pso_requestor_email: string | null;
+  pso_billing_code: string | null;
+  pso_authorization: string | null;
+  pso_attempt_number: number | null;
+  contract_id: string | null;
+  // Process Service fields
+  process_service_type: string | null;
+  process_served_to: string | null;
+  process_served_address: string | null;
+  process_attempts: number | null;
+  process_served_at: string | null;
+  process_service_result: string | null;
 };
 
 type MobileAuthState = {

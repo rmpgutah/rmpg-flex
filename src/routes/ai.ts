@@ -75,6 +75,8 @@ ai.get('/activity', (c) => c.json([] as Array<{
   status: string; prompt_preview: string; created_at: string;
 }>));
 
+ai.get('/dev-chat/history', (c) => c.json([]));
+
 // ─── POST /ai/suggest-units ─────────────────────────────────
 // Body: { callId } (server fetches fresh-GPS units) OR { call, units }.
 // Returns LLM-picked suggestions + the deterministic candidate ranking.

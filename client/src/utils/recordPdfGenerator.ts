@@ -1613,6 +1613,17 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
   const ffw = getFullFieldWidth(doc);
   const prio = callPriorityLabel(data.priority);
 
+  // REGRESSION-GUARD: shared gate for process-service call types. Both the
+  // "Process Service Details" block and the "Visit History" table gate on
+  // this predicate; duplicating the includes/equality check at both sites
+  // causes drift (the 2026-06-01 fix added civil_paper_service to one block
+  // but the reviewer had to verify the other manually). A single shared
+  // predicate ensures both blocks stay in lockstep.
+  const isProcessServiceCall =
+    data.incident_type === 'civil_paper_service' ||
+    data.incident_type === 'process_service' ||
+    data.pso_service_type === 'process_service';
+
   // Status-aware lifecycle + rolled-up threat posture, computed once and
   // threaded through the timeline strip, DATE/TIME grid, posture band, and
   // Resolution Details so the whole report reads coherently for OPEN calls.
@@ -1716,8 +1727,13 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
   //       exist. Benchmarks: P1 ≤5min, P2 ≤10min, P3+ ≤20min. Score
   //       inverts so 100 = on-or-under benchmark, 0 = ≥3× benchmark.
   if (data.dispatched_at && data.onscene_at) {
-    const tDisp = Date.parse(data.dispatched_at);
-    const tArr = Date.parse(data.onscene_at);
+    // parseTimestamp interprets naive server strings as UTC (the app
+    // standard). The pre-wave-3 code used Date.parse which treated
+    // them as local, skewing response-time scores ~6-7h. Fixed in
+    // ecd8e2e4 for the timeline strip (line 1678) but this SLA
+    // gauge block was missed — same bug, same fix. (Wave 3.1)
+    const tDisp = parseTimestamp(data.dispatched_at).getTime();
+    const tArr = parseTimestamp(data.onscene_at).getTime();
     if (isFinite(tDisp) && isFinite(tArr) && tArr >= tDisp) {
       const respMin = (tArr - tDisp) / 60000;
       const prioStr = String(data.priority || '').toUpperCase();
@@ -2093,11 +2109,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
   // hid the serve-to / result / attempts on every intake CFS. Render whenever
   // there's process data OR the call is a service-type incident.
   {
-    const isServiceCall =
-      data.incident_type === 'civil_paper_service' ||
-      data.incident_type === 'process_service' ||
-      data.pso_service_type === 'process_service';
-    if (isServiceCall || data.process_service_type || data.process_served_to) {
+    if (isProcessServiceCall || data.process_service_type || data.process_served_to) {
       y = checkPageBreak(doc, y, 18, prio);
       const psSec = openAutoSection(doc, 'Process Service Details', y); y = psSec.contentY;
       y = addThreeColumnFields(doc, [
@@ -2127,7 +2139,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
   y = checkPageBreak(doc, y, 18, prio);
   { const sec = openAutoSection(doc, 'Incident Location', y); y = sec.contentY;
     // Row 1: Address (full width)
-    y = addFieldPair(doc, 'Address', data.location || '', lx, y, ffw);
+    y = addFieldPair(doc, 'Address', data.location || (data as any).location_address || '', lx, y, ffw);
     // Row 2: Latitude | Longitude | Cross Street (3 columns)
     y = addThreeColumnFields(doc, [
       { label: 'Latitude', value: data.latitude != null ? String(data.latitude) : '' },
@@ -2281,7 +2293,9 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
           y = maxUY;
         }
       } else if (Array.isArray(data.assigned_units) && data.assigned_units.length > 0) {
-        y = addFieldPair(doc, 'Assigned Units', data.assigned_units.join(', '), lx, y, ffw);
+        const unitLabels = data.assigned_units.map((u: any) =>
+          typeof u === 'object' ? (u.call_sign || u.name || String(u.id || '')) : String(u));
+        y = addFieldPair(doc, 'Assigned Units', unitLabels.join(', '), lx, y, ffw);
       }
       y = closeAutoSection(doc, uSec.sectionY, y, undefined, uSec.sectionPage);
     }
@@ -2466,7 +2480,8 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
   // Visit History Timeline (PSO calls with return visits)
   // Both pso_client_request AND process_service calls accrue visit history on
   // re-dispatch (server attaches it for both — see src/routes/dispatch/calls.ts).
-  if (['pso_client_request', 'process_service', 'civil_paper_service'].includes(String(data.incident_type)) && Array.isArray(data.visit_history) && data.visit_history.length > 0) {
+  // Gate shared with the Process Service Details block above via isProcessServiceCall.
+  if ((isProcessServiceCall || data.incident_type === 'pso_client_request') && Array.isArray(data.visit_history) && data.visit_history.length > 0) {
     y = checkPageBreak(doc, y, 25, prio);
     const sec = openAutoSection(doc, `Visit History -- ${data.visit_history.length} Prior ${data.visit_history.length === 1 ? 'Visit' : 'Visits'}`, y);
     y = sec.sectionY + SPACING.SECTION_HEADER_H;
@@ -2503,7 +2518,14 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
 
       // DISPOSITION cell carries responding units / vehicle when present.
       let unitsList: string[] = [];
-      try { unitsList = JSON.parse(visit.assigned_units || '[]'); } catch { /* ignore */ }
+      // Guard revived visit rows from sentinel D1 TEXT-column values
+      // (e.g. "None", "N/A") that JSON.parse happily accepts but
+      // aren't arrays. The commit 1c9ff136 Array.isArray-guarded 30
+      // analogous sites but this one was missed. (Wave 3.1)
+      try {
+        const parsed = JSON.parse(visit.assigned_units || '[]');
+        if (Array.isArray(parsed)) unitsList = parsed;
+      } catch { /* ignore — malformed JSON, treat as empty */ }
       const dispExtras: string[] = [];
       if (unitsList.length > 0) dispExtras.push(unitsList.join(', '));
       if (visit.responding_vehicle_id) dispExtras.push(`Veh ${visit.responding_vehicle_id}`);
@@ -6052,9 +6074,13 @@ export async function downloadRecordPdf<T extends RecordPdfType>(
     const id = identifier || 'record';
     const targetSuffix = options.printTarget === 'mobile' ? '_mobile' : '';
     const filename = `${id}_${recordType}${targetSuffix}.pdf`;
-    // Explicit blob download — works on Safari (doc.save uses window.open which strips filename)
+    // doc.output('blob') already returns a Blob. Wrapping it in
+    // new Blob([blob], ...) creates a double-wrapped blob — the inner
+    // blob's bytes are re-encoded through the outer Blob constructor,
+    // which works in most browsers but is a spec violation. Fixed by
+    // using the original Blob directly. (Wave 3.1)
     const blob = doc.output('blob');
-    const url = URL.createObjectURL(new Blob([blob], { type: 'application/pdf' }));
+    const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
     a.download = filename;
@@ -6100,6 +6126,10 @@ export async function generateRecordPdfBlobUrl<T extends RecordPdfType>(
 
     const payloadHash = await computePayloadHash(data);
     setActivePayloadHash(payloadHash);
+    // generateRecordPdfBlobUrl doesn't receive an identifier param
+    // (it's a preview-only function); pass empty string so the
+    // signature verifier knows the case-number field is intentionally
+    // absent (same as the pre-wave-3.1 behavior for blob previews).
     setActiveSignature(
       await fetchPdfSignature(recordType, '', payloadHash) || undefined
     );

@@ -109,7 +109,7 @@ export default function AdminGodModeTab() {
         apiFetch<DbStats>('/admin/database/stats').catch(() => null),
         apiFetch<SystemOverview>('/admin/system-overview').catch(() => null),
         apiFetch<Backup[]>('/admin/database/backups').catch(() => []),
-        apiFetch<any[]>('/admin/users').catch(() => []),
+        apiFetch<any[]>('/personnel').catch(() => []),
       ]);
       if (stats) setDbStats(stats);
       if (overview) setSystemOverview(overview);

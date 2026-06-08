@@ -27,15 +27,17 @@ handoff.put('/', async (c) => {
     const body: any = await c.req.json().catch(() => ({}));
     const text = typeof (body as any)?.text === 'string' ? (body as any).text : '';
     await execute(db,
-      `UPDATE shift_handoff SET text = ?, updated_by = ?, updated_at = datetime('now') WHERE id = 1`,
+      `INSERT INTO shift_handoff (id, text, updated_by, updated_at) VALUES (1, ?, ?, datetime('now'))
+       ON CONFLICT(id) DO UPDATE SET text = excluded.text, updated_by = excluded.updated_by, updated_at = excluded.updated_at`,
       text, userId ?? null,
     );
     const row = await queryFirst<{ text: string; updated_by: number | null; updated_at: string }>(
       db, 'SELECT text, updated_by, updated_at FROM shift_handoff WHERE id = 1',
     );
     return c.json({ success: true, ...row });
-  } catch {
-    return c.json({ success: true, text: '', updated_by: null, updated_at: null });
+  } catch (err) {
+    console.error('[shiftHandoff] PUT failed:', err);
+    return c.json({ success: false, error: 'Failed to save shift handoff' }, 500);
   }
 });
 

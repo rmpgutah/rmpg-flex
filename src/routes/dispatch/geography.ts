@@ -293,4 +293,55 @@ geography.post('/backfill', requireRole('admin', 'manager', 'supervisor'), async
   }
 });
 
+// ── Geography CRUD (areas/sectors/zones/beats) ──────────────────
+
+const GEO_TABLES: Record<string, { table: string; parentCol?: string; codeCol: string; nameCol: string }> = {
+  areas:   { table: 'dispatch_areas',   codeCol: 'area_code',   nameCol: 'area_name' },
+  sectors: { table: 'dispatch_sectors', codeCol: 'sector_code', nameCol: 'sector_name', parentCol: 'area_id' },
+  zones:   { table: 'dispatch_zones',   codeCol: 'zone_code',   nameCol: 'zone_name',   parentCol: 'sector_id' },
+  beats:   { table: 'dispatch_beats',   codeCol: 'beat_code',   nameCol: 'beat_name',   parentCol: 'zone_id' },
+};
+
+for (const [path, meta] of Object.entries(GEO_TABLES)) {
+  geography.post(`/${path}`, requireRole('admin', 'manager', 'supervisor'), async (c) => {
+    try {
+      const db = getDb(c.env);
+      const body = await c.req.json<Record<string, unknown>>();
+      if (!body[meta.codeCol] || !body[meta.nameCol]) return c.json({ error: `${meta.codeCol} and ${meta.nameCol} required` }, 400);
+      if (meta.parentCol && !body[meta.parentCol]) return c.json({ error: `${meta.parentCol} required` }, 400);
+      const cols = [meta.codeCol, meta.nameCol, 'active', "datetime('now')"];
+      const vals: unknown[] = [body[meta.codeCol], body[meta.nameCol], 1];
+      const ph = ['?', '?', '?', "datetime('now')"];
+      if (meta.parentCol) { cols.splice(2, 0, meta.parentCol); vals.splice(2, 0, body[meta.parentCol]); ph.splice(2, 0, '?'); }
+      const result = await execute(db, `INSERT INTO ${meta.table} (${cols.join(', ')}, created_at) VALUES (${ph.join(', ')})`, ...vals);
+      return c.json({ success: true, id: result.meta.last_row_id }, 201);
+    } catch (err) { return c.json({ error: 'Failed to create' }, 500); }
+  });
+
+  geography.delete(`/${path}/:id`, requireRole('admin', 'manager', 'supervisor'), async (c) => {
+    try {
+      const db = getDb(c.env);
+      const id = c.req.param('id');
+      await execute(db, `DELETE FROM ${meta.table} WHERE id = ?`, id);
+      return c.json({ success: true });
+    } catch (err) { return c.json({ error: 'Failed to delete' }, 500); }
+  });
+}
+
+// GET /dispatch/geography/zone-allocation — per-zone unit counts for patrol balancing.
+geography.get('/zone-allocation', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(db,
+      `SELECT dz.id AS zone_id, dz.zone_code, dz.zone_name,
+              COUNT(u.id) AS unit_count
+       FROM dispatch_zones dz
+       LEFT JOIN dispatch_beats db2 ON db2.zone_id = dz.id
+       LEFT JOIN units u ON u.assigned_beat = db2.beat_code AND u.status NOT IN ('off_duty','out_of_service')
+       WHERE dz.active = 1
+       GROUP BY dz.id ORDER BY dz.zone_code`);
+    return c.json(rows);
+  } catch (err) { return c.json([]); }
+});
+
 export default geography;

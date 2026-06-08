@@ -78,7 +78,25 @@ app.get('/updates/latest-mac.yml', async (c) => serveUpdatesYaml(c.env.DOWNLOADS
 
 // ─── Global middleware ───────────────────────────────────────
 app.use('*', logger());
-app.use('*', secureHeaders());
+app.use('*', secureHeaders({
+  contentSecurityPolicy: {
+    defaultSrc: ["'self'"],
+    scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", 'blob:', 'https://api.mapbox.com', 'https://js.arcgis.com', 'https://*.arcgis.com', 'https://static.cloudflareinsights.com'],
+    styleSrc: ["'self'", "'unsafe-inline'", 'https://unpkg.com', 'https://api.mapbox.com', 'https://js.arcgis.com', 'https://*.arcgis.com'],
+    imgSrc: ["'self'", 'data:', 'blob:', 'https:', 'http:'],
+    fontSrc: ["'self'", 'data:', 'https://*.gstatic.com', 'https://js.arcgis.com', 'https://*.arcgis.com'],
+    connectSrc: ["'self'", 'ws:', 'wss:', 'https://api.rmpgutah.us', 'https://*.rmpgutah.us', 'https://api.mapbox.com', 'https://events.mapbox.com', 'https://*.arcgis.com', 'https://*.arcgisonline.com', 'https://api.open-meteo.com', 'https://basemaps.cartocdn.com', 'https://*.basemaps.cartocdn.com', 'https://*.cartocdn.com', 'https://nominatim.openstreetmap.org', 'https://api.fbi.gov', 'https://photon.komoot.io', 'https://static.cloudflareinsights.com'],
+    frameSrc: ["'self'", 'blob:', 'https://*.arcgis.com'],
+    mediaSrc: ["'self'", 'blob:', 'data:'],
+    workerSrc: ["'self'", 'blob:'],
+    childSrc: ["'self'", 'blob:'],
+    manifestSrc: ["'self'"],
+    frameAncestors: ["'self'"],
+    baseUri: ["'self'"],
+    formAction: ["'self'"],
+    objectSrc: ["'none'"],
+  },
+}));
 app.use('*', cors({
   origin: (origin: string, c: any) => {
     const allowedOrigins = (c.env.CORS_ORIGINS || 'https://rmpgutah.us').split(',').map((s: string) => s.trim());

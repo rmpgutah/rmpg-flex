@@ -382,7 +382,7 @@ export default function FleetPage() {
     try {
       const q = period ? `?period=${period}` : '';
       const data = await apiFetch<FleetAnalytics>(`/fleet/analytics${q}`);
-      setFleetAnalytics(data);
+      if (data && typeof data === 'object') setFleetAnalytics(data);
     } catch { /* silent - fleet analytics is optional */ }
     finally { setFleetAnalyticsLoading(false); }
   };
