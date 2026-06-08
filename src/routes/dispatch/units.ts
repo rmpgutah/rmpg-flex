@@ -216,6 +216,25 @@ units.delete('/:id', requireRole('admin', 'manager'), async (c) => {
   }
 });
 
+// PUT /dispatch/units/:id/status — thin convenience route for status-only updates.
+// Multiple client surfaces (MdtPage, UnitStatusCard, voiceCommandExecutor,
+// cadCommandParser) call this path rather than the general PUT /:id.
+units.put('/:id/status', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = c.req.param('id');
+    const existing = await queryFirst(db, 'SELECT id FROM units WHERE id = ?', id);
+    if (!existing) return c.json({ error: 'Unit not found' }, 404);
+    const body = await c.req.json<Record<string, unknown>>();
+    if (!body.status || typeof body.status !== 'string') return c.json({ error: 'status is required' }, 400);
+    await execute(db, `UPDATE units SET status = ?, last_status_change = datetime('now'), updated_at = datetime('now') WHERE id = ?`, body.status, id);
+    const updated = await queryFirst(db, 'SELECT * FROM units WHERE id = ?', id);
+    return c.json(updated);
+  } catch (err) {
+    return c.json({ error: 'Failed to update unit status' }, 500);
+  }
+});
+
 // POST /dispatch/calls/:callId/assign-unit
 //
 // CROSS-INTEGRATION GUARD (Claude Opus 4.8): unit.current_call_id is a

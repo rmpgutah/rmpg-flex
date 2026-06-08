@@ -152,17 +152,24 @@ function DutyToggle({ officerId, currentStatus }: { officerId: string; currentSt
   const handleToggle = useCallback(async () => {
     setToggling(true);
     try {
-      // Find the officer's dispatch unit and toggle status
-      const units = await apiFetch<any[]>('/dispatch/units');
-      const myUnit = (units || []).find((u: any) => String(u.user_id) === String(officerId));
-      if (myUnit) {
-        await apiFetch(`/dispatch/units/${myUnit.id}/status`, {
-          method: 'PUT',
-          body: JSON.stringify({ status: isOnDuty ? 'off_duty' : 'available' }),
-        });
+      if (isOnDuty) {
+        await apiFetch('/dispatch/duty/end', { method: 'POST', body: JSON.stringify({ officer_id: officerId }) });
+      } else {
+        await apiFetch('/dispatch/duty/start', { method: 'POST', body: JSON.stringify({ officer_id: officerId }) });
       }
-    } catch (err) {
-      console.error('Duty toggle failed:', err);
+    } catch (err: any) {
+      if (err?.code === 'NEEDS_VEHICLE' || err?.code === 'NO_UNIT') {
+        const units = await apiFetch<any[]>('/dispatch/units').catch(() => []);
+        const myUnit = (units || []).find((u: any) => String(u.officer_id) === String(officerId));
+        if (myUnit) {
+          await apiFetch(`/dispatch/units/${myUnit.id}`, {
+            method: 'PUT',
+            body: JSON.stringify({ status: isOnDuty ? 'off_duty' : 'available' }),
+          });
+        }
+      } else {
+        console.error('Duty toggle failed:', err);
+      }
     } finally {
       setToggling(false);
     }

@@ -680,6 +680,111 @@ personnel.get('/time', async (c) => {
   }
 });
 
+// ── POST /personnel/time/clock-in — officer self-service or dispatch-initiated clock in
+personnel.post('/time/clock-in', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
+    const selfId = c.get('userId') as number | undefined;
+    const officerId = Number(body.officer_id) || selfId;
+    if (!officerId || !Number.isFinite(officerId)) return c.json({ error: 'officer_id required' }, 400);
+
+    const existing = await queryFirst<{ id: number }>(db,
+      `SELECT id FROM time_entries WHERE officer_id = ? AND clock_out IS NULL ORDER BY clock_in DESC LIMIT 1`, officerId);
+    if (existing) return c.json({ error: 'Already clocked in', entry_id: existing.id }, 409);
+
+    const stamp = new Date().toISOString().replace(/\.\d{3}Z$/, '+00:00');
+    const result = await execute(db,
+      `INSERT INTO time_entries (officer_id, clock_in, status, created_at) VALUES (?, ?, 'active', datetime('now','localtime'))`,
+      officerId, stamp);
+    const entry = await queryFirst(db, 'SELECT * FROM time_entries WHERE id = ?', Number(result.meta.last_row_id));
+    return c.json(entry, 201);
+  } catch (err) {
+    console.error('POST /personnel/time/clock-in failed:', err);
+    return c.json({ error: 'Clock in failed', detail: (err as Error)?.message }, 500);
+  }
+});
+
+// ── POST /personnel/time/clock-out — close the officer's active time entry
+personnel.post('/time/clock-out', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
+    const selfId = c.get('userId') as number | undefined;
+    const officerId = Number(body.officer_id) || selfId;
+    if (!officerId || !Number.isFinite(officerId)) return c.json({ error: 'officer_id required' }, 400);
+
+    const entry = await queryFirst<{ id: number; clock_in: string; break_minutes: number }>(db,
+      `SELECT id, clock_in, break_minutes FROM time_entries WHERE officer_id = ? AND clock_out IS NULL ORDER BY clock_in DESC LIMIT 1`, officerId);
+    if (!entry) return c.json({ error: 'No active clock-in found' }, 404);
+
+    const stamp = new Date().toISOString().replace(/\.\d{3}Z$/, '+00:00');
+    const a = new Date(entry.clock_in).getTime();
+    const b = new Date(stamp).getTime();
+    const hrs = Number.isFinite(a) && Number.isFinite(b) && b > a
+      ? Math.round(((b - a) / 3_600_000 - (entry.break_minutes || 0) / 60) * 100) / 100
+      : 0;
+
+    await execute(db, `UPDATE time_entries SET clock_out = ?, total_hours = ?, status = 'completed' WHERE id = ?`, stamp, hrs, entry.id);
+    const updated = await queryFirst(db, 'SELECT * FROM time_entries WHERE id = ?', entry.id);
+    return c.json(updated);
+  } catch (err) {
+    console.error('POST /personnel/time/clock-out failed:', err);
+    return c.json({ error: 'Clock out failed', detail: (err as Error)?.message }, 500);
+  }
+});
+
+// ── POST /personnel/time/start-break — mark break start on the active entry
+personnel.post('/time/start-break', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
+    const selfId = c.get('userId') as number | undefined;
+    const officerId = Number(body.officer_id) || selfId;
+    if (!officerId || !Number.isFinite(officerId)) return c.json({ error: 'officer_id required' }, 400);
+
+    const entry = await queryFirst<{ id: number; status: string }>(db,
+      `SELECT id, status FROM time_entries WHERE officer_id = ? AND clock_out IS NULL ORDER BY clock_in DESC LIMIT 1`, officerId);
+    if (!entry) return c.json({ error: 'No active clock-in found' }, 404);
+    if (entry.status === 'on_break') return c.json({ error: 'Already on break' }, 409);
+
+    await execute(db, `UPDATE time_entries SET status = 'on_break', break_start = datetime('now','localtime') WHERE id = ?`, entry.id);
+    const updated = await queryFirst(db, 'SELECT * FROM time_entries WHERE id = ?', entry.id);
+    return c.json(updated);
+  } catch (err) {
+    console.error('POST /personnel/time/start-break failed:', err);
+    return c.json({ error: 'Start break failed', detail: (err as Error)?.message }, 500);
+  }
+});
+
+// ── POST /personnel/time/end-break — close break, accumulate break_minutes
+personnel.post('/time/end-break', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
+    const selfId = c.get('userId') as number | undefined;
+    const officerId = Number(body.officer_id) || selfId;
+    if (!officerId || !Number.isFinite(officerId)) return c.json({ error: 'officer_id required' }, 400);
+
+    const entry = await queryFirst<{ id: number; break_start: string | null; break_minutes: number }>(db,
+      `SELECT id, break_start, break_minutes FROM time_entries WHERE officer_id = ? AND clock_out IS NULL ORDER BY clock_in DESC LIMIT 1`, officerId);
+    if (!entry) return c.json({ error: 'No active clock-in found' }, 404);
+    if (!entry.break_start) return c.json({ error: 'Not on break' }, 409);
+
+    const breakStart = new Date(entry.break_start).getTime();
+    const now = Date.now();
+    const addedMinutes = Number.isFinite(breakStart) ? Math.round((now - breakStart) / 60000) : 0;
+    const totalBreak = (entry.break_minutes || 0) + addedMinutes;
+
+    await execute(db, `UPDATE time_entries SET status = 'active', break_start = NULL, break_minutes = ? WHERE id = ?`, totalBreak, entry.id);
+    const updated = await queryFirst(db, 'SELECT * FROM time_entries WHERE id = ?', entry.id);
+    return c.json(updated);
+  } catch (err) {
+    console.error('POST /personnel/time/end-break failed:', err);
+    return c.json({ error: 'End break failed', detail: (err as Error)?.message }, 500);
+  }
+});
+
 // ── POST /personnel/time — create a time entry on an officer's behalf ──
 // Dispatch logs an officer's clock-in (and optionally clock-out) on radio
 // request. Creating an entry isn't itself an "edit", so it's recorded as a
@@ -2080,19 +2185,19 @@ personnel.get('/:id/fleet-summary', async (c) => {
           SUM(ff.cost) as total_fuel_cost,
           SUM(ff.gallons) as total_gallons,
           AVG(ff.cost_per_gallon) as avg_cost_per_gallon
-        FROM fleet_fuel ff
+        FROM fleet_fuel_log ff
         JOIN fleet_vehicles fv ON ff.vehicle_id = fv.id
         JOIN units u ON fv.assigned_unit_id = u.id
         WHERE u.officer_id = ?`, officerId),
       query<Record<string, unknown>>(db, `
         SELECT fm.id, fm.vehicle_id, fm.service_type, fm.description,
-          fm.cost, fm.date, fm.vendor, fm.mileage_at_service,
+          fm.cost, COALESCE(fm.performed_at, fm.service_date) as date, fm.vendor, fm.mileage_at_service,
           fv.vehicle_number
         FROM fleet_maintenance fm
         JOIN fleet_vehicles fv ON fm.vehicle_id = fv.id
         JOIN units u ON fv.assigned_unit_id = u.id
         WHERE u.officer_id = ?
-        ORDER BY fm.date DESC LIMIT 10`, officerId),
+        ORDER BY date DESC LIMIT 10`, officerId),
     ]);
 
     return c.json({

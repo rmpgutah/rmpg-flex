@@ -1469,23 +1469,14 @@ const API_ROUTES: RouteRule[] = [
   // env.API (and 404s there), matching prior behavior. The legacy worker
   // never implemented /api/iped/* so falling through wouldn't help.
   { kind: 'prefix', value: '/api/iped/' },
-  // Personnel sub-paths — GET ports of the four roster/time/deployment
-  // surfaces (PR replacing the PR #667 stubs). Scoped to GET so the
-  // existing POST/PUT/DELETE on /schedules, /time, /deployments still
-  // fall through to legacy until the rewrite has matching write
-  // handlers. /coverage-gaps is read-only by nature but listed under
-  // the same GET filter for consistency.
-  { kind: 'prefix', value: '/api/personnel/schedules', methods: ['GET'] },
-  // GET /api/personnel/time[/...] (roster/payroll read) → rewrite.
-  { kind: 'prefix', value: '/api/personnel/time', methods: ['GET'] },
-  // POST /api/personnel/time (create) + PUT /api/personnel/time/:id (edit) →
-  // rewrite (src/routes/personnel.ts over time_entries + time_entry_edits).
-  // Dispatch creates/corrects officer time on radio request. These are anchored
-  // EXACTLY so the sibling clock-in/clock-out POSTs (handled only by legacy via
-  // the mobile ShiftCard) keep falling through to env.LEGACY — a broad prefix
-  // would have hijacked them to the rewrite, which has no clock-in/out handler.
-  { kind: 'regex', value: /^\/api\/personnel\/time\/?$/, methods: ['POST'] },
-  { kind: 'regex', value: /^\/api\/personnel\/time\/\d+$/, methods: ['PUT', 'DELETE'] },
+  // Personnel sub-paths — roster/time/deployment/schedules.
+  // The rewrite now has full CRUD for schedules (shift_plans) and time entries
+  // INCLUDING clock-in/out and break endpoints (POST /time/clock-in, /clock-out,
+  // /start-break, /end-break). Route ALL /schedules and /time traffic to rewrite.
+  { kind: 'prefix', value: '/api/personnel/schedules' },
+  // ALL /api/personnel/time/* → rewrite (clock-in, clock-out, start-break,
+  // end-break, GET list, POST create, PUT edit, DELETE).
+  { kind: 'prefix', value: '/api/personnel/time' },
   { kind: 'prefix', value: '/api/personnel/deployments', methods: ['GET'] },
   { kind: 'prefix', value: '/api/personnel/coverage-gaps', methods: ['GET'] },
   { kind: 'prefix', value: '/api/personnel/body-cameras' },

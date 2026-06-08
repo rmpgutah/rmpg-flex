@@ -3296,9 +3296,9 @@ fleet.get('/:id/readiness', async (c) => {
 
     const [lastInspection, openRecalls, recentMaint, fuelEfficiency] = await Promise.all([
       queryFirst<Record<string, unknown>>(db, `
-        SELECT id, date, inspector_name, status, next_inspection_date
+        SELECT id, inspection_date, inspector, overall_result
         FROM fleet_inspections
-        WHERE vehicle_id = ? ORDER BY date DESC LIMIT 1`, vehicleId),
+        WHERE vehicle_id = ? ORDER BY inspection_date DESC LIMIT 1`, vehicleId),
       queryFirst<{ cnt: number }>(db, `
         SELECT COUNT(*) as cnt FROM fleet_recalls
         WHERE vehicle_id = ? AND status != 'completed'`, vehicleId),
@@ -3306,13 +3306,13 @@ fleet.get('/:id/readiness', async (c) => {
         SELECT COUNT(*) as count_90d,
           SUM(cost) as cost_90d
         FROM fleet_maintenance
-        WHERE vehicle_id = ? AND date >= date('now', '-90 days')`, vehicleId),
+        WHERE vehicle_id = ? AND COALESCE(performed_at, service_date) >= date('now', '-90 days')`, vehicleId),
       queryFirst<Record<string, unknown>>(db, `
         SELECT AVG(ff.gallons) as avg_gallons,
-          AVG(ff.cost) as avg_cost,
+          AVG(ff.total_cost) as avg_cost,
           COUNT(*) as fuel_entries
-        FROM fleet_fuel ff
-        WHERE ff.vehicle_id = ? AND ff.date >= date('now', '-90 days')`, vehicleId),
+        FROM fleet_fuel_log ff
+        WHERE ff.vehicle_id = ? AND ff.fuel_date >= date('now', '-90 days')`, vehicleId),
     ]);
 
     const flags: string[] = [];
