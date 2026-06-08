@@ -239,24 +239,11 @@ export function useDispatchCallActions(args: UseDispatchCallActionsArgs) {
 
       if (createIncident) {
         try {
-          const token = localStorage.getItem('rmpg_token');
-          const incRes = await fetch(`/api/dispatch/calls/${callId}/generate-incident`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'X-Requested-With': 'XMLHttpRequest',
-              ...(token ? { Authorization: `Bearer ${token}` } : {}),
-            },
-          });
-          if (incRes.ok) {
-            navigate('/incidents');
-          } else {
-            const errData = await incRes.json().catch(() => ({}));
-            addToast(errData.error || 'Failed to create incident report', 'error');
-          }
-        } catch (err) {
+          await apiFetch(`/dispatch/calls/${callId}/generate-incident`, { method: 'POST' });
+          navigate('/incidents');
+        } catch (err: any) {
           console.error('Failed to promote call to incident:', err);
-          addToast('Failed to create incident report from call', 'error');
+          addToast(err?.error || err?.message || 'Failed to create incident report', 'error');
         }
       }
     } catch (err: any) {
@@ -328,33 +315,20 @@ export function useDispatchCallActions(args: UseDispatchCallActionsArgs) {
     if (!selectedCall) return;
     setIsGenerating(true);
     try {
-      // Direct fetch (not apiFetch) to preserve full error response.
-      const token = localStorage.getItem('rmpg_token');
-      const res = await fetch(`/api/dispatch/calls/${selectedCall.id}/generate-incident`, {
+      const incident = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}/generate-incident`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Requested-With': 'XMLHttpRequest',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
       });
-
-      if (res.status === 409) {
+      addToast(`Incident ${incident.incident_number || ''} created`, 'success');
+      navigate('/incidents');
+    } catch (err: any) {
+      const msg = err?.message || '';
+      if (msg.includes('already exists')) {
         addToast('An incident report already exists for this call', 'info');
         navigate('/incidents');
         return;
       }
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error || errData.message || `Request failed with status ${res.status}`);
-      }
-
-      const incident = await res.json();
-      addToast(`Incident ${incident.incident_number || ''} created`, 'success');
-      navigate('/incidents');
-    } catch (err: any) {
       console.error('Failed to generate incident:', err);
-      addToast(err?.message || 'Failed to generate incident report', 'error');
+      addToast(msg || 'Failed to generate incident report', 'error');
     } finally {
       setIsGenerating(false);
     }
