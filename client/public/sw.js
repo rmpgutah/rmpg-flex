@@ -461,7 +461,12 @@
 //   word/phrase frequency, version diff), formatting brush, case transforms,
 //   table-from-CSV, Utah Code citation insert, page-count estimate, letterhead
 //   + page-border styles, custom save-as-template surfaced in the chooser.
-const CACHE_NAME = 'rmpg-flex-v841';
+// v842: Email — fix broken images in the message viewer. The body renders in a
+//   blob: URL iframe, but proxyEmailImages rewrote <img> srcs to a RELATIVE
+//   "/api/email/image-proxy?..." which doesn't resolve against a blob: document's
+//   base, so every external image 404'd to a broken-image icon. Qualify the proxy
+//   URL with window.location.origin so it resolves to the real same-origin path.
+const CACHE_NAME = 'rmpg-flex-v842';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

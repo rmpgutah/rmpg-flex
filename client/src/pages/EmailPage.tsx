@@ -668,7 +668,12 @@ function proxyEmailImages(html: string): string {
     (_match, before, url, after) => {
       // Skip data: URLs and already-proxied URLs
       if (url.startsWith('data:') || url.includes('/api/email/image-proxy')) return _match;
-      const proxyUrl = `/api/email/image-proxy?url=${encodeURIComponent(url)}&token=${encodeURIComponent(token)}`;
+      // ABSOLUTE url (origin-qualified) is required: the body renders inside a
+      // blob: URL iframe, and a relative "/api/..." src does NOT resolve against
+      // the parent page origin there — it resolves against the opaque blob: URL
+      // and the request never reaches the server, so every external image showed
+      // as a broken-image icon. Qualifying with window.location.origin fixes it.
+      const proxyUrl = `${window.location.origin}/api/email/image-proxy?url=${encodeURIComponent(url)}&token=${encodeURIComponent(token)}`;
       return `${before}${proxyUrl}${after}`;
     }
   );
