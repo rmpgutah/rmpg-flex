@@ -1,8 +1,9 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   Navigation, MapPin, Clock, Route, Car, Play, Square, History,
   Gauge, Footprints, AlertTriangle, CheckCircle, Loader2, RefreshCw,
   Download, FileText, Crosshair, MapPinned, Pin, Trash2, Compass, ExternalLink,
+  Settings, Satellite, WifiOff,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { apiFetch } from '../hooks/useApi';
@@ -13,6 +14,11 @@ import PanelTitleBar from '../components/PanelTitleBar';
 import NavMapView, { type DroppedPin } from '../components/NavMapView';
 import { generateNavTripReport, generateNavSingleTripReport } from '../utils/navTripPdf';
 import type { NavTrip, NavTripStatus } from '../types';
+import NavSettingsPanel, {
+  type NavPrefs,
+  loadNavPrefs,
+  saveNavPrefs,
+} from './navigation/NavSettingsPanel';
 
 const STATUS_COLOR: Record<NavTripStatus, string> = {
   pending: '#f59e0b',
@@ -68,6 +74,56 @@ function savePins(pins: DroppedPin[]) {
   try { localStorage.setItem(PIN_STORAGE_KEY, JSON.stringify(pins.slice(-20))); } catch { /* quota */ }
 }
 
+// #90 Reduced-motion / low-power: gate page-level pulse animations.
+function usePrefersReducedMotion(): boolean {
+  const [reduced, setReduced] = useState(() => {
+    try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; }
+  });
+  useEffect(() => {
+    try {
+      const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+      const fn = () => setReduced(mq.matches);
+      mq.addEventListener?.('change', fn);
+      return () => mq.removeEventListener?.('change', fn);
+    } catch { return undefined; }
+  }, []);
+  return reduced;
+}
+
+// #75 Fix-freshness model: tracks the wall-clock age of the last accepted fix
+// plus navigator.onLine, producing a chip status of fresh / stale / offline.
+type FixFreshness = 'fresh' | 'stale' | 'offline';
+
+function useFixFreshness(hasFix: boolean, lat?: number | null, lng?: number | null): FixFreshness {
+  const lastFixRef = useRef<number>(0);
+  const [, force] = useState(0);
+
+  // Mark a new accepted fix whenever the coordinate pair changes.
+  useEffect(() => {
+    if (hasFix && lat != null && lng != null) lastFixRef.current = Date.now();
+  }, [hasFix, lat, lng]);
+
+  // 1s tick drives the staleness re-evaluation (existing force() pattern).
+  useEffect(() => {
+    const id = setInterval(() => force((n) => n + 1), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const online = (() => { try { return navigator.onLine; } catch { return true; } })();
+  const age = lastFixRef.current ? Date.now() - lastFixRef.current : Infinity;
+  if (!online || age > 60_000) return 'offline';
+  if (age > 10_000) return 'stale';
+  return 'fresh';
+}
+
+// #77 ETA helpers — format a remaining-seconds countdown + arrival clock.
+function fmtCountdown(seconds: number): string {
+  if (!isFinite(seconds) || seconds < 0) return '--:--';
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
 export default function NavPage() {
   const isMobile = useIsMobile();
   const { user } = useAuth();
@@ -93,6 +149,35 @@ export default function NavPage() {
   const [loading, setLoading] = useState(false);
   const [droppedPins, setDroppedPins] = useState<DroppedPin[]>(loadPins);
   const dropPinHandlerRef = useRef<((pin: DroppedPin) => void) | null>(null);
+
+  // #71/#81/#84/#93 Persisted nav prefs + settings popover open-state.
+  const [prefs, setPrefs] = useState<NavPrefs>(loadNavPrefs);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const setPref = useCallback(<K extends keyof NavPrefs>(key: K, value: NavPrefs[K]) => {
+    setPrefs((prev) => {
+      const next = { ...prev, [key]: value };
+      saveNavPrefs(next);
+      return next;
+    });
+  }, []);
+
+  // #84 Layer toggles read/write prefs.layers so on/off survives reload.
+  const toggleLayer = useCallback((key: keyof NavPrefs['layers']) => {
+    setPrefs((prev) => {
+      const next = { ...prev, layers: { ...prev.layers, [key]: !prev.layers[key] } };
+      saveNavPrefs(next);
+      return next;
+    });
+  }, []);
+
+  // #90 reduced-motion gate for page-level pulse animations.
+  const reducedMotion = usePrefersReducedMotion();
+  const pulseClass = reducedMotion ? '' : 'animate-pulse';
+
+  // #74/#75 GPS fix presence + freshness. Hooks must run before any early
+  // return, so we read gps optionally here (gps is non-null in practice).
+  const hasFix = !!(gps?.latitude && gps?.longitude);
+  const freshness = useFixFreshness(hasFix, gps?.latitude, gps?.longitude);
 
   useEffect(() => { savePins(droppedPins); }, [droppedPins]);
 
@@ -178,7 +263,23 @@ export default function NavPage() {
   const activeTrip = currentTripLocal || (detection.pendingTripId ? currentTrip : null);
 
   return (
-    <div className="flex flex-col h-full bg-surface-base">
+    <div className="flex flex-col h-full bg-surface-base relative">
+      {/* #76 Brightness/dim overlay for night driving — non-interactive, above
+          map content, below interactive chrome (chrome is z-[1000]+). */}
+      {prefs.brightness < 1 && (
+        <div
+          aria-hidden
+          style={{
+            position: 'absolute',
+            inset: 0,
+            background: '#000',
+            opacity: (1 - prefs.brightness) * 0.6,
+            pointerEvents: 'none',
+            zIndex: 50,
+          }}
+        />
+      )}
+
       <PanelTitleBar
         title="NAVIGATION"
         icon={Navigation}
@@ -207,6 +308,41 @@ export default function NavPage() {
           <span className="text-rmpg-500">GPS ONLY · Set take-home vehicle to log trips</span>
         ) : null}
         <div className="ml-auto flex items-center gap-1.5">
+          {/* #75 Offline / stale-fix status chip */}
+          {(() => {
+            const map = {
+              fresh: { label: 'LIVE', color: '#22c55e', border: '#1a3a1a', Icon: Satellite },
+              stale: { label: 'STALE', color: '#f59e0b', border: '#3a2e0a', Icon: Satellite },
+              offline: { label: 'OFFLINE', color: '#ef4444', border: '#3a1a1a', Icon: WifiOff },
+            } as const;
+            const m = map[freshness];
+            return (
+              <span
+                className="flex items-center gap-1 px-1.5 py-0.5 rounded-sm border"
+                style={{ color: m.color, borderColor: m.border }}
+                title={`GPS fix freshness: ${freshness}`}
+              >
+                <m.Icon size={10} className={freshness === 'fresh' && !reducedMotion ? 'animate-pulse' : ''} /> {m.label}
+              </span>
+            );
+          })()}
+          {/* #81 Gear / settings */}
+          <button
+            type="button"
+            aria-label="Navigation settings"
+            aria-expanded={settingsOpen}
+            onClick={() => setSettingsOpen((o) => !o)}
+            className="flex items-center justify-center rounded-sm border transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#d4a017]"
+            style={{
+              width: 24, height: 22,
+              borderColor: settingsOpen ? '#d4a017' : '#222',
+              color: settingsOpen ? '#d4a017' : '#888',
+              background: settingsOpen ? 'rgba(212,160,23,0.10)' : 'transparent',
+            }}
+            title="Navigation settings"
+          >
+            <Settings size={12} />
+          </button>
           <Link
             to="/navigation"
             className="flex items-center gap-1 px-1.5 py-0.5 rounded-sm border border-subtle hover:border-strong transition-colors"
@@ -244,6 +380,38 @@ export default function NavPage() {
             </button>
           </div>
         )}
+
+        {/* #84 Layer-toggle active-state visual sync — reads/writes prefs.layers
+            so persisted layers reflect correctly after reload (gold-filled =
+            active). These mirror the Drive-Mode layer set on this surface. */}
+        <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+          {([
+            ['crime', 'Crime'],
+            ['crash', 'Crash'],
+            ['trail', 'Trail'],
+            ['alerts', 'Alerts'],
+          ] as const).map(([key, label]) => {
+            const active = prefs.layers[key];
+            return (
+              <button
+                key={key}
+                type="button"
+                aria-pressed={active}
+                aria-label={`Toggle ${label} layer`}
+                onClick={() => toggleLayer(key)}
+                className="px-2 py-0.5 text-[9px] font-mono uppercase tracking-wider rounded-sm border transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#d4a017]"
+                style={{
+                  minHeight: 22,
+                  borderColor: active ? '#d4a017' : '#222',
+                  background: active ? '#d4a017' : 'transparent',
+                  color: active ? '#000' : '#888',
+                }}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* Tab bar */}
@@ -271,6 +439,8 @@ export default function NavPage() {
             detection={detection}
             gps={gps}
             hasTakeHome={hasTakeHome}
+            prefs={prefs}
+            reducedMotion={reducedMotion}
             onStart={handleManualStart}
             onEnd={handleEndTrip}
             onRefresh={() => fetchCurrentTrip?.()}
@@ -285,6 +455,45 @@ export default function NavPage() {
           />
         )}
       </div>
+
+      {/* #74 Acquiring-GPS / no-fix full-screen empty state — shown until the
+          first fix arrives, distinct from a hard map/track error. */}
+      {!hasFix && (
+        <div
+          className="absolute inset-0 z-[60] flex flex-col items-center justify-center gap-3 px-6 text-center"
+          style={{ background: 'rgba(5,5,5,0.92)', backdropFilter: 'blur(2px)' }}
+        >
+          <Satellite size={36} className={pulseClass} style={{ color: '#d4a017' }} />
+          <div className="text-[13px] font-semibold uppercase tracking-wider" style={{ color: '#d4a017' }}>
+            Acquiring GPS fix…
+          </div>
+          <div className="flex items-center gap-2 text-[10px] font-mono">
+            <span
+              className="px-1.5 py-0.5 rounded-sm border"
+              style={{ color: '#888', borderColor: '#222' }}
+            >
+              {gps.unitCallSign ? 'ON-DUTY GPS' : hasTakeHome ? 'TAKE-HOME GPS' : 'BROWSER GPS'}
+            </span>
+            {gps.accuracy != null && (
+              <span style={{ color: '#888' }}>±{Math.round(gps.accuracy)}m</span>
+            )}
+          </div>
+          <p className="text-[10px] font-mono max-w-xs" style={{ color: '#888' }}>
+            {gps.isTracking
+              ? 'Waiting for the first satellite fix. Stay near a clear sky view.'
+              : 'Enable location services for this device to start tracking.'}
+          </p>
+        </div>
+      )}
+
+      {/* #71/#81 Master settings popover (bottom sheet) */}
+      {settingsOpen && (
+        <NavSettingsPanel
+          prefs={prefs}
+          setPref={setPref}
+          onClose={() => setSettingsOpen(false)}
+        />
+      )}
     </div>
   );
 }
@@ -292,17 +501,20 @@ export default function NavPage() {
 // ── Current Trip Panel ──────────────────────────────────────
 
 function CurrentTripPanel({
-  trip, detection, gps, hasTakeHome, onStart, onEnd, onRefresh,
+  trip, detection, gps, hasTakeHome, prefs, reducedMotion, onStart, onEnd, onRefresh,
 }: {
   trip: NavTrip | null;
   detection: NavTripContextValue['detection'];
   gps: NavTripContextValue['gps'];
   hasTakeHome: boolean;
+  prefs: NavPrefs;
+  reducedMotion: boolean;
   onStart: () => void;
   onEnd: () => void;
   onRefresh: () => void;
 }) {
   const [elapsed, setElapsed] = useState(0);
+  const pulseClass = reducedMotion ? '' : 'animate-pulse';
 
   useEffect(() => {
     if (!trip || trip.status !== 'active') return;
@@ -313,6 +525,22 @@ function CurrentTripPanel({
     return () => clearInterval(interval);
   }, [trip]);
 
+  // #77 ETA / arrival readout: derive a live MM:SS countdown when the active
+  // trip carries a remaining-ETA estimate, coloring gold→amber→red as it
+  // shrinks, with the arrival clock shown in the user's clock pref.
+  const etaSeconds = (trip as unknown as { remaining_eta_seconds?: number })?.remaining_eta_seconds;
+  const etaView = useMemo(() => {
+    if (etaSeconds == null || !isFinite(etaSeconds)) return null;
+    const arrival = new Date(Date.now() + etaSeconds * 1000);
+    const clock = arrival.toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: prefs.clock === '12h',
+    });
+    const color = etaSeconds <= 60 ? '#ef4444' : etaSeconds <= 300 ? '#f59e0b' : '#d4a017';
+    return { countdown: fmtCountdown(etaSeconds), clock, color };
+  }, [etaSeconds, prefs.clock]);
+
   if (trip && (trip.status === 'active' || trip.status === 'pending')) {
     return (
       <div className="space-y-3">
@@ -320,7 +548,7 @@ function CurrentTripPanel({
         <div className="rounded-sm border border-subtle p-3" style={{ background: trip.status === 'active' ? '#0a2a0a' : '#1a1a0a' }}>
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full animate-pulse" style={{ background: STATUS_COLOR[trip.status] }} />
+              <div className={`w-2 h-2 rounded-full ${pulseClass}`} style={{ background: STATUS_COLOR[trip.status] }} />
               <span className="text-[11px] font-semibold uppercase" style={{ color: '#d4a017' }}>
                 {STATUS_LABEL[trip.status]} TRIP
               </span>
@@ -352,6 +580,26 @@ function CurrentTripPanel({
               <div className="text-[9px] text-rmpg-500 uppercase">Max Speed</div>
             </div>
           </div>
+
+          {/* #77 ETA / arrival readout — live countdown + late band. Only
+              rendered when the active trip carries a remaining-ETA estimate. */}
+          {etaView && (
+            <div
+              className="flex items-center justify-between mb-3 px-2 py-1.5 rounded-sm border"
+              style={{ borderColor: '#222', background: '#050505' }}
+            >
+              <div className="flex items-center gap-1.5">
+                <Clock size={11} style={{ color: etaView.color }} />
+                <span className="text-[16px] font-mono font-bold tabular-nums" style={{ color: etaView.color }}>
+                  {etaView.countdown}
+                </span>
+                <span className="text-[9px] uppercase" style={{ color: '#888' }}>to arrival</span>
+              </div>
+              <span className="text-[11px] font-mono tabular-nums" style={{ color: '#e0e0e0' }}>
+                ETA {etaView.clock}
+              </span>
+            </div>
+          )}
 
           {/* Trip details */}
           <div className="space-y-1 text-[10px] font-mono">

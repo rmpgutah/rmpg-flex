@@ -362,12 +362,14 @@
 //       affirmative success cue; users reported "nothing happened" even
 //       though the DB writes had landed and the connection-status pill had
 //       quietly moved from "Not Configured" → "Not Authorized".
-// v826: Admin Email — shadowed /api/email/status fix. The stubs router
-//       was mounted at /api/email BEFORE the real email router, so the
+// v826: Navigation 100-update batch — large additive enhancement of the Drive
+//       Mode HUD + /nav trip tab.
+// v827: Admin Email — shadowed /api/email/status fix. The stubs router was
+//       mounted at /api/email BEFORE the real email router, so the
 //       integrations-tab `/status` stub (returns {configured: false}) was
-//       intercepting /api/email/status and falsely rendering the
-//       "Email Not Configured" splash even when creds were saved.
-const CACHE_NAME = 'rmpg-flex-v826';
+//       intercepting /api/email/status and falsely rendering the "Email Not
+//       Configured" splash even when creds were saved.
+const CACHE_NAME = 'rmpg-flex-v827';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
