@@ -14,6 +14,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../../types';
 import { getDb, query, queryFirst, execute } from '../../utils/db';
+import { canonicalUnitIdsJson } from './unitIds';
 import { emitAlert } from '../../utils/alertHub';
 import { evaluateNotificationRules } from '../notificationEngine';
 
@@ -163,7 +164,7 @@ panic.post('/panic', async (c) => {
         );
         await execute(
           db, `UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?`,
-          JSON.stringify([unit.id]), callId,
+          canonicalUnitIdsJson([unit.id]), callId,
         );
       }
     } catch (err) {

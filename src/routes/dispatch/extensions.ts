@@ -23,6 +23,7 @@ import { getDb, query, queryFirst, execute } from '../../utils/db';
 import { requireRole } from '../../middleware/auth';
 import { broadcastAll } from '../ws';
 import { geocodeAddress } from '../geocode';
+import { parseUnitIds, canonicalUnitIdsJson } from './unitIds';
 
 const READ_ROLES  = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher'];
 const WRITE_ROLES = ['admin', 'manager', 'supervisor', 'dispatcher'];
@@ -1156,7 +1157,7 @@ autoAssign.post('/:id/auto-assign', requireRole(...WRITE_ROLES), async (c) => {
     const minMiles = minMeters / 1609.34;
     const nearestGpsAge = gpsAgeSeconds(nearest.gps_updated_at, nowMs);
 
-    const currentUnits = safeJson<number[]>(call.assigned_unit_ids, []);
+    const currentUnits = parseUnitIds(call.assigned_unit_ids);
     if (!currentUnits.includes(Number(nearest.id))) currentUnits.push(Number(nearest.id));
 
     const now = utcNow();
@@ -1167,7 +1168,7 @@ autoAssign.post('/:id/auto-assign', requireRole(...WRITE_ROLES), async (c) => {
           assigned_unit_ids = ?,
           dispatched_at = COALESCE(dispatched_at, ?)
       WHERE id = ?
-    `, JSON.stringify(currentUnits), now, call.id);
+    `, canonicalUnitIdsJson(currentUnits), now, call.id);
 
     await execute(db, `
       UPDATE units SET status = 'dispatched', current_call_id = ?, last_status_change = ? WHERE id = ?
@@ -1483,12 +1484,12 @@ callActions.post('/:id/transfer', requireRole(...WRITE_ROLES), async (c) => {
     const toUnit = await queryFirst<{ id: number; call_sign: string }>(db, 'SELECT id, call_sign FROM units WHERE id = ?', toUnitId);
     if (!fromUnit || !toUnit) return c.json({ error: 'Unit not found', code: 'UNIT_NOT_FOUND' }, 404);
 
-    let units = safeJson<number[]>(call.assigned_unit_ids, []).filter((u) => u !== fromUnitId);
-    if (!units.includes(toUnitId)) units.push(toUnitId);
+    const units = parseUnitIds(call.assigned_unit_ids).filter((u) => u !== Number(fromUnitId));
+    if (!units.includes(Number(toUnitId))) units.push(Number(toUnitId));
 
     const now = utcNow();
     await db.batch([
-      db.prepare('UPDATE calls_for_service SET assigned_unit_ids = ?, updated_at = ? WHERE id = ?').bind(JSON.stringify(units), now, id),
+      db.prepare('UPDATE calls_for_service SET assigned_unit_ids = ?, updated_at = ? WHERE id = ?').bind(canonicalUnitIdsJson(units), now, id),
       db.prepare(`UPDATE units SET status = 'available', current_call_id = NULL, last_status_change = ? WHERE id = ?`).bind(now, fromUnitId),
       db.prepare(`UPDATE units SET status = 'dispatched', current_call_id = ?, last_status_change = ? WHERE id = ?`).bind(id, now, toUnitId),
     ]);
