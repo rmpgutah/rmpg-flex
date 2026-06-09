@@ -79,12 +79,11 @@ const STUBS: StubRule[] = [
   // API_ROUTES, so leaving them shadowed the real handlers and the pages
   // showed empty data instead of real rows (e.g. Audit's login-failure rate).
   // ── Other dashboard polls ─────────────────────────────────────
-  {
-    match: /^\/api\/reports\/crime-analysis(\?.*)?$/,
-    methods: ['GET'],
-    body: { totals: {}, by_type: [], by_day: [], by_hour: [], by_property: [], generated_at: null },
-    reason: 'no crime-analysis report yet',
-  },
+  // /api/reports/crime-analysis stub REMOVED 2026-06-09 — the rewrite now has
+  // a real handler (reports.ts GET /crime-analysis + /export) returning the
+  // CrimeAnalysisPage's {data:{topOffenses,hotspots,...}} contract. The stub's
+  // flat shape never matched the client, so the page rendered a permanent
+  // "No data available". Routed via API_ROUTES below.
   // /api/records/vehicles/:id/history — PrintRecordButton + VehiclesTab
   // both fetch this when opening a vehicle detail / running a printout.
   // Empty array degrades cleanly to "no prior history".
@@ -1588,7 +1587,9 @@ const API_ROUTES: RouteRule[] = [
   { kind: 'prefix', value: '/api/reports/schedules' },
   { kind: 'prefix', value: '/api/reports/templates' },
   { kind: 'prefix', value: '/api/reports/statute-analytics' },
-  // /api/reports/crime-analysis removed — no rewrite handler; proxy stub serves it.
+  // /api/reports/crime-analysis (+ /export) — real ILP handler in the rewrite
+  // (reports.ts) as of 2026-06-09; the old proxy stub is gone.
+  { kind: 'prefix', value: '/api/reports/crime-analysis' },
   // /api/reports/dashboard — 8-tile rollup. Rewrite handler in
   // src/routes/reports.ts (GET /dashboard, whitelisted from the
   // requireRole(analytics) middleware). Was stubbed in proxy 2026-06-07;

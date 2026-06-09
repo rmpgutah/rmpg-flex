@@ -140,20 +140,23 @@ export default function CrimeAnalysisPage() {
   useEffect(() => { document.title = 'Crime Analysis \u2014 RMPG Flex'; }, []);
 
 
-  if (!data) {
-    return (
-      <div className="h-full flex items-center justify-center">
-        <div className="text-xs text-rmpg-500">No data available</div>
-      </div>
-    );
-  }
-  if (loading) {
+  // Loading FIRST — on mount data is null AND loading is true; checking !data
+  // first used to flash (and, when the endpoint was stubbed, permanently show)
+  // "No data available" instead of the spinner.
+  if (loading && !data) {
     return (
       <div className="h-full flex items-center justify-center">
         <div className="text-center">
           <Loader2 className="w-8 h-8 animate-spin text-rmpg-500 mx-auto mb-2" role="status" aria-label="Loading" />
           <div className="text-xs text-rmpg-500">Loading crime analysis...</div>
         </div>
+      </div>
+    );
+  }
+  if (!data) {
+    return (
+      <div className="h-full flex items-center justify-center">
+        <div className="text-xs text-rmpg-500">No data available</div>
       </div>
     );
   }

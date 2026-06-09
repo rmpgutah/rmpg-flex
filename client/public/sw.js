@@ -505,7 +505,20 @@
 //   mail-merge from a CFS call, heuristic proofreader (click-to-fix), track-
 //   changes/suggestion mode, reversible redaction mark, section word-count goals,
 //   document minimap, inline phrase autocomplete, editor appearance settings.
-const CACHE_NAME = 'rmpg-flex-v849';
+// v850: live-sweep fixes (full 90-route browser sweep of prod). (1) Crime
+//   Analysis page was a permanent "No data available" — the endpoint was only
+//   ever a proxy stub with a mismatched shape; real /api/reports/crime-analysis
+//   (+ CSV export) now ships on the rewrite with the page's exact contract,
+//   and the page shows its spinner during load (loading was checked AFTER
+//   !data, so the spinner never appeared). (2) Dashboard 8-tile rollup was
+//   serving the all-zeros catch fallback in prod: /reports/dashboard queried
+//   response_time_sec (live column is response_time_seconds) → "no such
+//   column" rejected the whole Promise.all; fixed + response minutes now fall
+//   back to onscene_at−created_at when the column is NULL (all live rows).
+//   (3) Radio LiveTab: transient TX-poll failures (e.g. a tick racing the
+//   15-min token refresh) logged a scary error every 5s; now warn once per
+//   failure streak, error only if it persists.
+const CACHE_NAME = 'rmpg-flex-v850';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
