@@ -20,7 +20,23 @@ export interface JwtPayload {
   [key: string]: unknown;
 }
 
+// Paths that MUST stay public no matter where authMiddleware is invoked from.
+// OAuth providers (Microsoft Identity) redirect the user's BROWSER straight to
+// the callback with ?code=&state=, carrying NO Authorization header or app
+// cookie — so auth-gating it 401s every consent ("Authentication required").
+// The callback authenticates via the CSRF `state` token instead. We bypass auth
+// here (the single chokepoint) rather than relying only on per-router skips,
+// which proved fragile (the email router's own skip + the registry's public
+// flag weren't enough in prod). Matched by suffix so it holds regardless of the
+// router's mount prefix.
+function isPublicAuthBypass(pathname: string): boolean {
+  return pathname === '/api/email/oauth/callback' || pathname.endsWith('/oauth/callback');
+}
+
 export async function authMiddleware(c: Context, next: Next) {
+  if (isPublicAuthBypass(new URL(c.req.url).pathname)) {
+    return next();
+  }
   const authHeader = c.req.header('Authorization');
   const cookieToken = getCookie(c, 'access_token');
   let token: string | undefined;
