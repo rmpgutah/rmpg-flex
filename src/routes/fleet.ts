@@ -3059,6 +3059,107 @@ fleet.get('/daily-gps-mileage', async (c) => {
   }
 });
 
+// ── GET /:id/gps-mileage — per-vehicle GPS odometer estimate ──────
+// Drives the FleetDetailPanel "Sync odometer from GPS" panel (fetchGpsMileage).
+// Same haversine method as /daily-gps-mileage, scoped to ONE vehicle's assigned
+// unit over the last `?days=` window. Returns the keys the panel reads:
+//   { total_miles, valid_segments, time_span_hours, unit_call_sign }
+// 400 + code:'NO_UNIT_ASSIGNED' when the vehicle has no unit — the client
+// special-cases this code and suppresses the error toast. Was never implemented
+// (404), so the panel never populated and odometer sync always failed.
+fleet.get('/:id/gps-mileage', async (c) => {
+  try {
+    const vehicleId = Number(c.req.param('id'));
+    if (!Number.isFinite(vehicleId)) return c.json({ error: 'Invalid vehicle id' }, 400);
+    const db = getDb(c.env);
+    const days = Math.min(90, Math.max(1, parseInt(c.req.query('days') || '30', 10)));
+
+    const veh = await queryFirst<{ assigned_unit_id: number | null }>(db,
+      'SELECT assigned_unit_id FROM fleet_vehicles WHERE id = ?', vehicleId);
+    if (!veh) return c.json({ error: 'Vehicle not found', code: 'VEHICLE_NOT_FOUND' }, 404);
+    if (veh.assigned_unit_id == null) {
+      return c.json({ error: 'Vehicle has no assigned unit — GPS mileage needs a unit to attribute breadcrumbs to', code: 'NO_UNIT_ASSIGNED' }, 400);
+    }
+    const unit = await queryFirst<{ call_sign: string | null }>(db,
+      'SELECT call_sign FROM units WHERE id = ?', veh.assigned_unit_id);
+
+    const rows = await query<{ latitude: number; longitude: number; recorded_at: string }>(db, `
+      SELECT latitude, longitude, recorded_at
+      FROM gps_breadcrumbs
+      WHERE unit_id = ? AND recorded_at >= datetime('now', ?)
+      ORDER BY recorded_at, id
+    `, veh.assigned_unit_id, `-${days} days`);
+
+    const toDeg = (v: number) => v * Math.PI / 180;
+    const haversineMeters = (lat1: number, lng1: number, lat2: number, lng2: number) => {
+      const R = 6371000;
+      const dLat = toDeg(lat2 - lat1);
+      const dLng = toDeg(lng2 - lng1);
+      const a = Math.sin(dLat / 2) ** 2 +
+        Math.cos(toDeg(lat1)) * Math.cos(toDeg(lat2)) * Math.sin(dLng / 2) ** 2;
+      return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    };
+
+    // Sum haversine over consecutive points; a gap > 5 min is treated as a
+    // separate trip (no straight-line bridge), matching /daily-gps-mileage.
+    let totalMeters = 0;
+    let validSegments = 0;
+    let prev: { lat: number; lng: number; ts: string } | null = null;
+    for (const r of rows) {
+      if (prev) {
+        const gapMs = new Date(r.recorded_at).getTime() - new Date(prev.ts).getTime();
+        if (gapMs > 0 && gapMs <= 5 * 60_000) {
+          const m = haversineMeters(prev.lat, prev.lng, r.latitude, r.longitude);
+          if (m > 0) { totalMeters += m; validSegments++; }
+        }
+      }
+      prev = { lat: r.latitude, lng: r.longitude, ts: r.recorded_at };
+    }
+
+    const timeSpanHours = rows.length >= 2
+      ? Math.max(0, (new Date(rows[rows.length - 1].recorded_at).getTime() - new Date(rows[0].recorded_at).getTime()) / 3_600_000)
+      : 0;
+
+    return c.json({
+      total_miles: Math.round((totalMeters / 1609.34) * 100) / 100,
+      valid_segments: validSegments,
+      time_span_hours: Math.round(timeSpanHours * 10) / 10,
+      unit_call_sign: unit?.call_sign ?? null,
+    });
+  } catch (err) {
+    console.error('GET /fleet/:id/gps-mileage failed:', err);
+    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+  }
+});
+
+// ── PUT /:id/gps-mileage — apply a GPS-derived delta to the odometer ──
+// Body: { miles_delta }. Adds the delta to fleet_vehicles.current_mileage and
+// returns { previous_mileage, new_mileage } for the client's success toast
+// (handleSyncGpsMileage). Was never implemented (404) so "Sync odometer from
+// GPS" always failed. Delta is clamped non-negative — odometers only move up.
+fleet.put('/:id/gps-mileage', async (c) => {
+  try {
+    const vehicleId = Number(c.req.param('id'));
+    if (!Number.isFinite(vehicleId)) return c.json({ error: 'Invalid vehicle id' }, 400);
+    const db = getDb(c.env);
+    const body = await c.req.json<{ miles_delta?: number }>();
+    const delta = Number(body.miles_delta);
+    if (!Number.isFinite(delta) || delta < 0) {
+      return c.json({ error: 'miles_delta must be a non-negative number', code: 'INVALID_DELTA' }, 400);
+    }
+    const veh = await queryFirst<{ current_mileage: number | null }>(db,
+      'SELECT current_mileage FROM fleet_vehicles WHERE id = ?', vehicleId);
+    if (!veh) return c.json({ error: 'Vehicle not found', code: 'VEHICLE_NOT_FOUND' }, 404);
+    const previous = Math.round(veh.current_mileage ?? 0);
+    const next = Math.round(previous + delta);
+    await execute(db, "UPDATE fleet_vehicles SET current_mileage = ?, updated_at = datetime('now') WHERE id = ?", next, vehicleId);
+    return c.json({ previous_mileage: previous, new_mileage: next });
+  } catch (err) {
+    console.error('PUT /fleet/:id/gps-mileage failed:', err);
+    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+  }
+});
+
 // ── GET /combined-cost-trend ──────────────────────────────────
 // Merges fuel + maintenance + recurring costs + loans into a
 // single monthly time series (last 12 months). FleetAnalyticsTab

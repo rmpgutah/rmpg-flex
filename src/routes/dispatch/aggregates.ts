@@ -504,4 +504,59 @@ aggregates.get('/integration-dashboard', async (c) => {
   }
 });
 
+// ── GET /history-map — historical CALL locations for the Map overlay ──
+// Backs the "Historical Calls" map overlay (client useMapboxHistoryCalls +
+// useMapCallHistory): a flat array of past calls with coordinates so the map
+// renders color-coded dots by priority + age.
+//
+// ⚠️ Distinct from /dispatch/gps/history-map, which is a per-UNIT GPS breadcrumb
+// TRAIL (needs unit_id, returns { points }). These two same-named endpoints are
+// different features. The client was calling the bare /dispatch/history-map
+// path, which NO worker served (the gps handler is mounted under /dispatch/gps)
+// — so the historical-call overlay silently returned nothing and was always
+// empty. This is the missing handler.
+//
+// Filters (all optional CSV): status, types (incident_type), priority. days +
+// limit are clamped. Read-only and fully defensive — degrades to [] on any
+// schema drift so the map overlay never throws.
+aggregates.get('/history-map', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const days = Math.min(365, Math.max(1, parseInt(c.req.query('days') || '30', 10) || 30));
+    const limit = Math.min(10000, Math.max(1, parseInt(c.req.query('limit') || '5000', 10) || 5000));
+    const csv = (q?: string) => (q ? q.split(',').map((s) => s.trim()).filter(Boolean) : []);
+    const statuses = csv(c.req.query('status'));
+    const types = csv(c.req.query('types'));
+    const priorities = csv(c.req.query('priority'));
+
+    const where: string[] = ['latitude IS NOT NULL', 'longitude IS NOT NULL', "created_at >= datetime('now', ?)"];
+    const params: unknown[] = [`-${days} days`];
+    const addIn = (col: string, vals: string[]) => {
+      where.push(`${col} IN (${vals.map(() => '?').join(',')})`);
+      params.push(...vals);
+    };
+    if (statuses.length) addIn('status', statuses);
+    if (types.length) addIn('incident_type', types);
+    if (priorities.length) addIn('priority', priorities);
+
+    const rows = await query<Record<string, unknown>>(db, `
+      SELECT id, call_number, incident_type, priority, status, disposition,
+             location_address, latitude, longitude, created_at, cleared_at,
+             description, source,
+             assigned_unit_ids AS assigned_units,
+             CASE WHEN response_time_seconds IS NOT NULL
+                  THEN CAST(response_time_seconds / 60 AS INTEGER) END AS response_time_min
+      FROM calls_for_service
+      WHERE ${where.join(' AND ')}
+      ORDER BY created_at DESC
+      LIMIT ?
+    `, ...params, limit);
+
+    return c.json(rows);
+  } catch (err) {
+    console.error('GET /dispatch/history-map failed:', err);
+    return c.json([]);
+  }
+});
+
 export default aggregates;

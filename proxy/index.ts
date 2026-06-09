@@ -1075,6 +1075,16 @@ const API_ROUTES: RouteRule[] = [
   { kind: 'regex', value: /^\/api\/dispatch\/gps\/?(\?.*)?$/, methods: ['POST'] },
   { kind: 'regex', value: /^\/api\/dispatch\/gps\/(current|my-unit|speed-zones|zone-speed-stats)(\?.*)?$/, methods: ['GET'] },
 
+  // /api/dispatch/history-map — historical CALL locations for the Map overlay
+  // (useMapboxHistoryCalls / useMapCallHistory). The client calls this bare
+  // path, but legacy mounts its only `history-map` handler under /dispatch/gps
+  // (a per-UNIT breadcrumb trail, a DIFFERENT feature), so the bare path fell
+  // through and 404'd — the historical-call overlay was always empty. The
+  // rewrite now serves the real calls-history aggregate (aggregates.ts), fully
+  // defensive (degrades to []). Route the bare path to env.API. The gps trail
+  // path (/dispatch/gps/history-map) deliberately stays on legacy above.
+  { kind: 'regex', value: /^\/api\/dispatch\/history-map(\?.*)?$/, methods: ['GET'] },
+
   // /api/dispatch/heatmap/enforcement — enforcement-activity clusters for the
   // Map "Enforcement" overlay (src/routes/dispatch/aggregates.ts). Legacy has
   // NO handler for it, so it fell through to env.LEGACY and 404'd (console
