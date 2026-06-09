@@ -9,7 +9,7 @@ import RichTextArea from '../components/RichTextArea';
 import {
   Plus, RefreshCw, MapPin, BarChart3, List, Map as MapIcon, Briefcase, Calendar,
   Route, Navigation, Loader2, CheckCircle, Circle, Eye, Pencil, ClipboardCheck,
-  Search as SearchIcon, AlertTriangle,
+  Search as SearchIcon, AlertTriangle, FileWarning,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { useContextMenu, type ContextMenuItem } from '../context/ContextMenuContext';
@@ -170,6 +170,60 @@ export default function ServePage() {
       const data = await apiFetch<any>(`/process-server/${jobId}/affidavit`);
       setAffidavitData(data);
     } catch { /* ignore */ }
+  };
+
+  // ── Notice of Attempt to Serve (unsuccessful-attempt notice) ──
+  // Builds the professional notice from the job's real serve_attempts and opens
+  // the rendered PDF. Distinct from the Affidavit of Non-Service: this is an
+  // unsworn notice to leave at the address / send to the recipient or client.
+  const handleNoticeOfAttempt = async (jobId: number) => {
+    try {
+      // GET /:id returns the job row + its serve_attempts (joined w/ officer).
+      const job = await apiFetch<ServeJob & { attempts?: any[] }>(`/process-server/${jobId}`);
+      const fullAddress = [job.recipient_address, job.recipient_city, job.recipient_state, job.recipient_zip]
+        .filter(Boolean).join(', ');
+      // Only unsuccessful attempts belong on a Notice of Attempt.
+      const attempts = (job.attempts || [])
+        .filter((a) => (a.result || '').toLowerCase() !== 'served')
+        .map((a, i) => {
+          const at = a.attempt_at ? new Date(a.attempt_at) : null;
+          return {
+            number: a.attempt_number ?? i + 1,
+            date: at ? at.toLocaleDateString() : '',
+            time: at ? at.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '',
+            result: a.result || 'other',
+            notes: a.notes || '',
+            gpsLat: a.latitude ?? null,
+            gpsLng: a.longitude ?? null,
+          };
+        });
+      if (attempts.length === 0) {
+        setFetchError('No unsuccessful attempts recorded yet — log a failed attempt before generating a Notice of Attempt.');
+        return;
+      }
+      const { generateNoticeOfAttempt } = await import('../utils/servePdfGenerator');
+      const pdf = await generateNoticeOfAttempt({
+        noticeDate: new Date().toLocaleDateString(),
+        caseNumber: job.case_number || 'N/A',
+        courtName: job.court_name || 'N/A',
+        jurisdiction: job.jurisdiction || 'Salt Lake County, Utah',
+        serverName: user?.full_name || user?.username || 'Process Server',
+        serverBadge: user?.badge_number || '',
+        serverCompany: 'Rocky Mountain Protective Group',
+        recipientName: job.recipient_name,
+        recipientAddress: fullAddress || (job.recipient_address || 'N/A'),
+        documentType: job.document_type,
+        clientName: job.client_name || undefined,
+        attorneyName: job.attorney_name || undefined,
+        attempts,
+        nextAttemptNote: job.status === 'failed' ? undefined : 'A further attempt may be made; contact our office to arrange service.',
+      });
+      // Open in a new tab so the server can print/leave the notice immediately.
+      pdf.output('dataurlnewwindow', { filename: `Notice-of-Attempt-${job.case_number || job.id}.pdf` });
+    } catch (err) {
+      console.error('[serve] Notice of Attempt generation failed:', err);
+      setFetchError('Could not generate the Notice of Attempt — please try again.');
+    }
   };
 
   const handleLoadDeadlines = async () => {
@@ -708,6 +762,7 @@ export default function ServePage() {
       m.action('Open / expand', () => setExpandedJobId(prev => prev === job.id ? null : job.id), { icon: <Eye size={12} /> }),
       m.action('Edit job', () => openEdit(job.id), { icon: <Pencil size={12} /> }),
       ...(isClosed ? [] : [m.action('Log attempt', () => setAttemptJob(job), { icon: <ClipboardCheck size={12} /> })]),
+      ...(job.attempt_count > 0 ? [m.action('Notice of Attempt to Serve', () => handleNoticeOfAttempt(job.id), { icon: <FileWarning size={12} /> })] : []),
       m.action('Skip trace', () => setSkipTraceJob(job), { icon: <SearchIcon size={12} /> }),
       m.separator(),
       m.copy('Copy recipient', job.recipient_name),

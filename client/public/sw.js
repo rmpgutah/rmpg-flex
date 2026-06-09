@@ -360,7 +360,15 @@
 //       officer badge, date stamp, RMPG seal). Output saves to the shared custom
 //       stamp library or drops straight onto the page (resize/rotate/opacity via
 //       the existing image-annotation path).
-const CACHE_NAME = 'rmpg-flex-v818';
+// v819: Process Server — "Notice of Attempt to Serve" form. New
+//       generateNoticeOfAttempt() in servePdfGenerator.ts produces a professional,
+//       unsworn notice documenting unsuccessful service attempt(s) (recipient,
+//       case, attempt record, notice statement + contact-for-service, server
+//       signature — no notary/perjury clause, distinct from the Affidavit of
+//       Non-Service). Wired into the ServePage job context menu ("Notice of
+//       Attempt to Serve", shown once a job has ≥1 attempt) — builds from the
+//       job's real serve_attempts and opens the rendered PDF to print/leave.
+const CACHE_NAME = 'rmpg-flex-v819';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
