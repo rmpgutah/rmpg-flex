@@ -1176,26 +1176,88 @@ email.post('/rules/test-match', async (c) => {
   return c.json({ matches });
 });
 
+// Legacy link shape consumed by EmailPage's <EmailIncidentLinks>:
+//   { id, email_graph_id, incident_id, call_id, warrant_id, person_id,
+//     link_type, notes, linked_by, created_at }
+// New shape (normalized): entity_type/entity_id/entity_ref/source.
+// Adapter maps the canonical row → legacy view: entity_type='cfs'
+// populates call_id (cfs IS a calls_for_service row), 'incident'/'warrant'/
+// 'person' map directly. 'plate' and other types stay in entity_ref only.
+interface LinkRow {
+  id: number;
+  message_graph_id: string;
+  entity_type: string;
+  entity_id: number | null;
+  entity_ref: string | null;
+  source: string;
+  link_type: string | null;
+  notes: string | null;
+  created_at: string;
+  created_by: number | null;
+}
+
+function toLegacyLink(r: LinkRow): Record<string, unknown> {
+  const out: Record<string, unknown> = {
+    id: r.id,
+    email_graph_id: r.message_graph_id,
+    incident_id: null,
+    call_id: null,
+    warrant_id: null,
+    person_id: null,
+    plate_ref: null,
+    link_type: r.link_type || (r.source === 'autolinker' ? 'autolinker' : 'related'),
+    notes: r.notes,
+    linked_by: r.created_by,
+    created_at: r.created_at,
+    entity_type: r.entity_type,
+    entity_id: r.entity_id,
+    entity_ref: r.entity_ref,
+    source: r.source,
+  };
+  switch (r.entity_type) {
+    case 'cfs':      out.call_id = r.entity_id; break;
+    case 'call':     out.call_id = r.entity_id; break;
+    case 'incident': out.incident_id = r.entity_id; break;
+    case 'warrant':  out.warrant_id = r.entity_id; break;
+    case 'person':   out.person_id = r.entity_id; break;
+    case 'plate':    out.plate_ref = r.entity_ref; break;
+  }
+  return out;
+}
+
 // ─── Links for a single message (autolinker output) ─────────────
+// Returns the LEGACY array shape (top-level array) to stay compatible
+// with the existing EmailPage <EmailIncidentLinks> component.
 email.get('/links/:graphId', async (c) => {
   const graphId = c.req.param('graphId');
   const userId = c.get('userId');
-  const rows = await query(
+  const rows = await query<LinkRow>(
     c.env.DB,
-    'SELECT id, entity_type, entity_id, entity_ref, source, created_at FROM email_links WHERE message_graph_id = ? AND owner_user_id = ? ORDER BY id DESC',
+    `SELECT id, message_graph_id, entity_type, entity_id, entity_ref, source,
+            link_type, notes, created_at, created_by
+       FROM email_links
+      WHERE message_graph_id = ? AND owner_user_id = ?
+      ORDER BY id DESC`,
     graphId, userId,
   );
-  return c.json({ links: rows });
+  return c.json(rows.map(toLegacyLink));
 });
 
-// Reverse lookup — every email linked to a CFS / incident, for record pages.
+// Reverse lookup — emails linked to a record (CFS / incident / warrant /
+// person). Accepts legacy aliases on :type ('call' → 'cfs'). Joins
+// email_messages so the consumer can render subject/from/date without
+// a second roundtrip.
 email.get('/links/by-entity/:type/:id', async (c) => {
-  const type = c.req.param('type');
+  const raw = c.req.param('type');
+  const type = raw === 'call' ? 'cfs' : raw;
   const id = parseInt(c.req.param('id'), 10);
   const userId = c.get('userId');
-  const rows = await query(
+  const rows = await query<LinkRow & {
+    subject: string | null; from_address: string | null; from_name: string | null; received_at: string | null;
+  }>(
     c.env.DB,
-    `SELECT l.id, l.message_graph_id, l.entity_ref, l.created_at,
+    `SELECT l.id, l.message_graph_id, l.entity_type, l.entity_id, l.entity_ref,
+            l.source, l.link_type, l.notes, l.created_at, l.created_by,
             m.subject, m.from_address, m.from_name, m.received_at
        FROM email_links l
        LEFT JOIN email_messages m ON m.graph_id = l.message_graph_id AND m.owner_user_id = l.owner_user_id
@@ -1203,19 +1265,55 @@ email.get('/links/by-entity/:type/:id', async (c) => {
       ORDER BY l.id DESC`,
     type, id, userId,
   );
-  return c.json({ links: rows });
+  return c.json({
+    links: rows.map((r) => ({
+      ...toLegacyLink(r),
+      subject: r.subject,
+      from_address: r.from_address,
+      from_name: r.from_name,
+      received_at: r.received_at,
+    })),
+  });
 });
 
-// Manual link (officer ties an email to a record from the EmailPage UI).
+// Manual link — accepts BOTH:
+//   Legacy (EmailIncidentLinks): { emailGraphId, incidentId|callId|warrantId|personId, linkType, notes }
+//   Canonical:                   { messageGraphId, entityType, entityId, entityRef, notes, linkType }
 email.post('/link', async (c) => {
   const userId = c.get('userId');
-  const body = await c.req.json().catch(() => ({})) as { messageGraphId?: string; entityType?: string; entityId?: number; entityRef?: string };
-  if (!body.messageGraphId || !body.entityType) return c.json({ error: 'messageGraphId and entityType required' }, 400);
+  const body = await c.req.json().catch(() => ({})) as Record<string, unknown>;
+
+  const graphId = (body.messageGraphId || body.emailGraphId) as string | undefined;
+  if (!graphId) return c.json({ error: 'messageGraphId/emailGraphId required' }, 400);
+
+  let entityType = body.entityType as string | undefined;
+  let entityId = (body.entityId as number | undefined) ?? null;
+  let entityRef = (body.entityRef as string | undefined) ?? null;
+
+  // Legacy discrete columns → normalized.
+  if (!entityType) {
+    if (body.incidentId) { entityType = 'incident'; entityId = body.incidentId as number; }
+    else if (body.callId) { entityType = 'cfs'; entityId = body.callId as number; }
+    else if (body.warrantId) { entityType = 'warrant'; entityId = body.warrantId as number; }
+    else if (body.personId) { entityType = 'person'; entityId = body.personId as number; }
+  }
+  if (!entityType) return c.json({ error: 'entityType (or one of incidentId/callId/warrantId/personId) required' }, 400);
+
+  // If only an id was given for cfs, populate entity_ref with call_number for
+  // human-readable display in record-page reverse lookups.
+  if (entityType === 'cfs' && entityId && !entityRef) {
+    const row = await queryFirst<{ call_number: string }>(c.env.DB, 'SELECT call_number FROM calls_for_service WHERE id = ?', entityId);
+    if (row?.call_number) entityRef = row.call_number;
+  }
+
+  const linkType = (body.linkType as string | undefined) || null;
+  const notes = (body.notes as string | undefined) || null;
+
   try {
     const r = await execute(
       c.env.DB,
-      "INSERT INTO email_links (message_graph_id, owner_user_id, entity_type, entity_id, entity_ref, source, created_by) VALUES (?, ?, ?, ?, ?, 'manual', ?)",
-      body.messageGraphId, userId, body.entityType, body.entityId ?? null, body.entityRef ?? null, userId,
+      "INSERT INTO email_links (message_graph_id, owner_user_id, entity_type, entity_id, entity_ref, source, link_type, notes, created_by) VALUES (?, ?, ?, ?, ?, 'manual', ?, ?, ?)",
+      graphId, userId, entityType, entityId, entityRef, linkType, notes, userId,
     );
     return c.json({ id: r.meta.last_row_id, success: true });
   } catch (err: unknown) {
