@@ -482,7 +482,10 @@
 //       Fix: DocumentTemplate.category unions both taxonomies; TemplateChooser
 //       restored to last known-good (all templates preserved); FeaturesPanel
 //       import restored.
-const CACHE_NAME = 'rmpg-flex-v845';
+// v846: mobile card layouts on /patrol — Checkpoints + Scan Log + Shift Summary
+//   toolbar wrapping. Wide tables behind overflow-x-auto are unusable on a phone;
+//   cards stack key info + 44pt-tap-target action rows on a single touch surface.
+const CACHE_NAME = 'rmpg-flex-v846';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

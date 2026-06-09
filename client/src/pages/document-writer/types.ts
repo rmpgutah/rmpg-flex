@@ -18,7 +18,16 @@ export interface DocumentTemplate {
   // templates from either lineage type-check without forcing a reconciliation.
   category: TemplateCategory
     | 'traffic' | 'warrant' | 'consent' | 'medical' | 'crash' | 'bolo' | 'missing'
-    | 'booking' | 'k9' | 'pursuit' | 'scene' | 'custody' | 'interview' | 'civil' | 'repo' | 'welfare' | 'compliance' | 'parking' | 'property';
+    | 'booking' | 'k9' | 'pursuit' | 'scene' | 'custody' | 'interview' | 'civil' | 'repo' | 'welfare' | 'compliance' | 'parking' | 'property'
+    // Security-industry categories used by templates/categories/security.ts
+    // (DAR, post orders, access events, client-facing reports, patrol logs).
+    | 'sec-access' | 'sec-client' | 'sec-post' | 'sec-dar' | 'sec-patrol'
+    // Legal-industry categories used by templates/categories/legal.ts.
+    | 'legal-court' | 'legal-warrant' | 'legal-affidavit' | 'legal-discovery'
+    // Law-enforcement subcategories used by templates/categories/law-enforcement.ts.
+    | 'le-dv' | 'le-investigation' | 'le-juvenile' | 'le-missing' | 'le-property' | 'le-pursuit' | 'le-traffic'
+    // HR-industry categories used by templates/categories/hr.ts.
+    | 'hr-discipline' | 'hr-employee' | 'hr-leave' | 'hr-training';
   description: string;
   content: string; // HTML content with {{placeholder}} tokens
   fields: TemplateField[];
