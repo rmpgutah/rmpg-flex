@@ -357,7 +357,12 @@
 //       leaving controlled state empty and the form falsely "required").
 //       Inputs now carry refs + onPaste/onBlur handlers and handleSaveCredentials
 //       falls back to the live DOM value when state is empty.
-const CACHE_NAME = 'rmpg-flex-v824';
+// v825: Admin Email — explicit "Credentials saved" green banner after a
+//       successful Save. The previous flow cleared the inputs but gave no
+//       affirmative success cue; users reported "nothing happened" even
+//       though the DB writes had landed and the connection-status pill had
+//       quietly moved from "Not Configured" → "Not Authorized".
+const CACHE_NAME = 'rmpg-flex-v825';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
