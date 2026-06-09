@@ -54,6 +54,9 @@ import { tripLogSchema, type TripLogData } from '../../utils/pdf/v2/forms/tripLo
 
 type ChainRow = {
   id: number;
+  // 'call' for calls_for_service rows; 'unit_trip' for standalone PATROL
+  // movement merged in from unit_trips (no-call odometer continuity).
+  source?: 'call' | 'unit_trip';
   call_number: string | null;
   incident_type: string | null;
   status: string | null;
@@ -600,13 +603,19 @@ export default function MileageAuditTab() {
                   const isOpen = openFixRowId === row.id;
                   return (
                     <React.Fragment key={row.id}>
-                      <tr className={row.ending_mileage_corrected || row.starting_mileage_corrected ? 'bg-amber-950/20' : ''}>
+                      <tr className={
+                        row.ending_mileage_corrected || row.starting_mileage_corrected
+                          ? 'bg-amber-950/20'
+                          : row.source === 'unit_trip'
+                            ? 'bg-surface-sunken'
+                            : ''
+                      }>
                         <td className="font-mono text-[10px] text-rmpg-300">
                           {cleared ? `${safeDateStr(cleared)} ${safeTimeStr(cleared)}` : '—'}
                         </td>
                         <td>
                           <div className="flex items-center gap-1">
-                            <span className="font-mono text-rmpg-100 text-[11px]">
+                            <span className={`font-mono text-[11px] ${row.source === 'unit_trip' ? 'text-[#d4a017]' : 'text-rmpg-100'}`}>
                               {row.call_number || `#${row.id}`}
                             </span>
                             {(row.ending_mileage_corrected || row.starting_mileage_corrected) && (
@@ -626,7 +635,10 @@ export default function MileageAuditTab() {
                           {distance} mi
                         </td>
                         <td className="print:hidden">
-                          {canFix ? (
+                          {/* unit_trip rows are read-only here — /mileage/fix
+                              targets calls_for_service. Patrol-trip mileage
+                              corrections are made through the trip's own UI. */}
+                          {canFix && row.source !== 'unit_trip' ? (
                             <button
                               type="button"
                               onClick={() => isOpen ? cancelFix() : openFix(row)}
@@ -637,7 +649,9 @@ export default function MileageAuditTab() {
                               {isOpen ? 'Cancel' : 'Fix'}
                             </button>
                           ) : (
-                            <span className="text-[10px] text-rmpg-500">—</span>
+                            <span className="text-[10px] text-rmpg-500" title={row.source === 'unit_trip' ? 'Patrol trip (read-only in audit)' : ''}>
+                              {row.source === 'unit_trip' ? 'PATROL' : '—'}
+                            </span>
                           )}
                         </td>
                       </tr>

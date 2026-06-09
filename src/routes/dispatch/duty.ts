@@ -46,6 +46,32 @@ function hoursBetween(inIso: string, outIso: string, breakMin = 0): number {
   return Math.round(((b - a) / 3_600_000 - breakMin / 60) * 100) / 100;
 }
 
+// Server-side odometer guardrail. Mirrors MileagePromptModal's policy so a
+// scripted client (or a tampered modal) can't write nonsense to payroll:
+//   - present, finite, > 0
+//   - ≤ 999,999 (the modal's same ceiling — past that is almost certainly a
+//     stray digit, not a real reading)
+//   - if a previous reading is supplied (end-of-shift case), the new value
+//     must be ≥ previous unless the caller passed an override_reason. We
+//     log the reason; the audit row is the time_entry update itself.
+// Returns either the validated number or a 409-shaped error payload that the
+// handler returns directly so the client can route to the modal.
+function validateMileage(raw: unknown, previous: number | null, overrideReason: string | null):
+  | { ok: true; value: number }
+  | { ok: false; code: 'NEEDS_MILEAGE' | 'MILEAGE_TOO_HIGH' | 'MILEAGE_DECREASING'; message: string; previous?: number } {
+  const v = typeof raw === 'number' ? raw : Number(raw);
+  if (!Number.isFinite(v) || v <= 0) {
+    return { ok: false, code: 'NEEDS_MILEAGE', message: 'Odometer reading is required to start/end a shift.' };
+  }
+  if (v > 999_999) {
+    return { ok: false, code: 'MILEAGE_TOO_HIGH', message: `Mileage ${v} exceeds the 999,999 ceiling — likely a typo.` };
+  }
+  if (previous != null && v < previous && !overrideReason) {
+    return { ok: false, code: 'MILEAGE_DECREASING', message: `Reading ${v} is below the last recorded ${previous}. Manager override required.`, previous };
+  }
+  return { ok: true, value: Math.round(v * 10) / 10 };
+}
+
 // Whose shift this request acts on: self by default; another officer only for
 // dispatch-tier roles passing officer_id.
 function resolveOfficerId(c: any, requested?: unknown): number | null {
@@ -168,16 +194,36 @@ duty.post('/start', async (c) => {
       }
     }
 
+    // Starting odometer — required (the modal collects it; the server is the
+    // last line of defense). Look up the vehicle's last known ending mileage
+    // so we can flag obviously-decreasing entries.
+    const lastEnding = await queryFirst<{ m: number | null }>(db,
+      `SELECT ending_mileage AS m FROM time_entries WHERE vehicle_id = ? AND ending_mileage IS NOT NULL ORDER BY clock_out DESC LIMIT 1`, vehicle.id);
+    const startCheck = validateMileage(body.starting_mileage, lastEnding?.m ?? null, typeof body.override_reason === 'string' ? body.override_reason : null);
+    if (!startCheck.ok) {
+      return c.json({ error: startCheck.message, code: startCheck.code, previous_mileage: lastEnding?.m ?? null }, 409);
+    }
+    const startingMileage = startCheck.value;
+
+    // Per-shift QR token — random uuid embedded in the ShiftCard QR. The
+    // /m/shift/:token mobile page treats it as the bearer credential for this
+    // shift's inspection writes (auto-invalidated when clock_out is set).
+    const qrToken = crypto.randomUUID();
+
     // 1) Clock in — reuse an already-open entry rather than double-punching.
     let entry = await openEntry(db, officerId);
     if (!entry) {
       const res = await execute(db,
-        `INSERT INTO time_entries (officer_id, clock_in, status, unit_id, vehicle_id, created_at)
-         VALUES (?, ?, 'active', ?, ?, datetime('now','localtime'))`,
-        officerId, nowStamp(), unit.id, vehicle.id);
+        `INSERT INTO time_entries (officer_id, clock_in, status, unit_id, vehicle_id, starting_mileage, qr_token, created_at)
+         VALUES (?, ?, 'active', ?, ?, ?, ?, datetime('now','localtime'))`,
+        officerId, nowStamp(), unit.id, vehicle.id, startingMileage, qrToken);
       entry = await queryFirst(db, `SELECT * FROM time_entries WHERE id = ?`, Number(res.meta.last_row_id));
     } else {
-      await execute(db, `UPDATE time_entries SET unit_id = ?, vehicle_id = ? WHERE id = ?`, unit.id, vehicle.id, entry.id);
+      // Re-open path: rotate the token so a stale QR from a prior open entry
+      // can't be reused. Same shift, fresh QR for the inspection page.
+      await execute(db,
+        `UPDATE time_entries SET unit_id = ?, vehicle_id = ?, starting_mileage = COALESCE(starting_mileage, ?), qr_token = ? WHERE id = ?`,
+        unit.id, vehicle.id, startingMileage, qrToken, entry.id);
     }
 
     // 2) Unit in service, claimed by this officer, linked to the car
@@ -209,12 +255,24 @@ duty.post('/end', async (c) => {
 
     const unit = body.unit_id != null ? await unitById(db, Number(body.unit_id)) : await officerUnit(db, officerId);
 
-    // 1) Clock out the open entry.
+    // 1) Clock out the open entry — ending odometer is required.
     const entry = await openEntry(db, officerId);
     if (entry) {
+      // Validate ending mileage against THIS shift's starting reading (not the
+      // vehicle's prior shift) — the officer must end ≥ where they started.
+      const startMi: number | null = typeof entry.starting_mileage === 'number' ? entry.starting_mileage : null;
+      const endCheck = validateMileage(body.ending_mileage, startMi, typeof body.override_reason === 'string' ? body.override_reason : null);
+      if (!endCheck.ok) {
+        return c.json({ error: endCheck.message, code: endCheck.code, previous_mileage: startMi, starting_mileage: startMi }, 409);
+      }
+      const endingMileage = endCheck.value;
+      const totalMiles = startMi != null ? Math.max(0, Math.round((endingMileage - startMi) * 10) / 10) : null;
+
       const stamp = nowStamp();
       const hrs = hoursBetween(entry.clock_in, stamp, Number(entry.break_minutes) || 0);
-      await execute(db, `UPDATE time_entries SET clock_out = ?, total_hours = ?, status = 'completed' WHERE id = ?`, stamp, hrs, entry.id);
+      await execute(db,
+        `UPDATE time_entries SET clock_out = ?, total_hours = ?, ending_mileage = ?, total_miles = ?, status = 'completed' WHERE id = ?`,
+        stamp, hrs, endingMileage, totalMiles, entry.id);
     }
 
     // 2) Take the unit off duty + release its vehicle back to the pool.

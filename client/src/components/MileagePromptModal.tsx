@@ -3,6 +3,7 @@ import { X, ShieldAlert, AlertTriangle } from 'lucide-react';
 
 interface MileagePromptModalProps {
   mode: 'starting' | 'ending';
+  /** Context label in the header (e.g. a call number, or "SHIFT START"). */
   callNumber: string;
   vehicleId: string;
   startingMileage?: number | null;
@@ -10,6 +11,10 @@ interface MileagePromptModalProps {
   previousMileage?: number | null;
   /** Whether the current user has admin/manager/supervisor role — enables override */
   isManager?: boolean;
+  /** Submit-button label override. Defaults to "Go En Route"/"Go On Scene" (call-status flow). */
+  submitLabel?: string;
+  /** Hide the "Skip — No Mileage" affordance. Used by the shift lifecycle, where mileage is strictly required. */
+  hideSkip?: boolean;
   onSubmit: (mileage: number, vehicleId: string, overrideReason?: string) => void;
   onCancel: () => void;
 }
@@ -31,6 +36,7 @@ interface MileagePromptModalProps {
 export default function MileagePromptModal({
   mode, callNumber, vehicleId, startingMileage,
   previousMileage, isManager = false,
+  submitLabel, hideSkip = false,
   onSubmit, onCancel,
 }: MileagePromptModalProps) {
   const [mileage, setMileage] = useState('');
@@ -218,9 +224,11 @@ export default function MileagePromptModal({
           className="flex flex-col sm:flex-row justify-end gap-2 px-4 py-3 border-t"
           style={{ borderColor: 'var(--color-rmpg-600, #373737)', touchAction: 'manipulation' }}
         >
-          <button type="button" onClick={handleSkip} className="toolbar-btn text-xs px-4 py-2 min-h-[44px] sm:min-h-0 text-amber-400 hover:text-amber-300 order-2 sm:order-1">
-            Skip — No Mileage
-          </button>
+          {!hideSkip && (
+            <button type="button" onClick={handleSkip} className="toolbar-btn text-xs px-4 py-2 min-h-[44px] sm:min-h-0 text-amber-400 hover:text-amber-300 order-2 sm:order-1">
+              Skip — No Mileage
+            </button>
+          )}
           <div className="flex gap-2 order-1 sm:order-2">
             <button type="button" onClick={onCancel} className="toolbar-btn text-xs px-4 py-2 min-h-[44px] sm:min-h-0 flex-1 sm:flex-none">Cancel</button>
             <button type="button"
@@ -228,7 +236,7 @@ export default function MileagePromptModal({
               disabled={!mileage || isNaN(parseFloat(mileage))}
               className="toolbar-btn toolbar-btn-primary text-xs px-4 py-2 min-h-[44px] sm:min-h-0 flex-1 sm:flex-none"
             >
-              {mode === 'starting' ? 'Go En Route' : 'Go On Scene'}
+              {submitLabel ?? (mode === 'starting' ? 'Go En Route' : 'Go On Scene')}
             </button>
           </div>
         </div>

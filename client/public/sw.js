@@ -387,7 +387,7 @@
 //       was 401ing the redirect ("Authentication required"). Now the
 //       middleware skips that exact path while still gating every other
 //       route in the router.
-const CACHE_NAME = 'rmpg-flex-v830';
+const CACHE_NAME = 'rmpg-flex-v831';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
