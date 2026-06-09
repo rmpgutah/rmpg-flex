@@ -117,13 +117,25 @@ folders.get('/folders', async (c) => {
            ORDER BY f.name DESC`,
         );
 
+    // Files for the current folder. At the ROOT (no parent_id) we list UNFILED
+    // documents — attachments with no folder AND no entity binding. Previously
+    // this returned [], so anything saved without a folder_id (Document Writer
+    // opened without ?folderId, or a blank-PDF / PDF-editor save with no source
+    // folder) was written to D1 + R2 but never appeared anywhere in the browser —
+    // the document looked "lost" even though it saved. The `entity_type IS NULL`
+    // guard keeps entity-bound attachments (evidence, person/ID images, call and
+    // company documents) OUT of the Documents root — those belong to their record,
+    // not the file browser.
     const files = parentId
       ? await query<Record<string, unknown>>(
           db,
           'SELECT * FROM attachments WHERE folder_id = ? ORDER BY original_name',
           parentId,
         )
-      : [];
+      : await query<Record<string, unknown>>(
+          db,
+          'SELECT * FROM attachments WHERE folder_id IS NULL AND entity_type IS NULL ORDER BY created_at DESC, id DESC',
+        );
 
     // Breadcrumb walk, bounded — protects against a corrupted
     // parent_id cycle creating an infinite loop on the Worker.
