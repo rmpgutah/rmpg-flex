@@ -116,6 +116,48 @@ const PERSON_WRITABLE_COLUMNS = new Set([
   'voice_description', 'religion', 'dietary_restrictions',
 ]);
 
+// Overflow columns. `persons` is at the D1 100-column SELECT-result cap, so these
+// newer demographic fields live in the 1:1 `persons_ext` table (migration 0081),
+// NOT on `persons` — adding them to `persons` would push `SELECT * FROM persons`
+// past 100 cols ("too many columns in result set") and trip the column-cap CI
+// guard. These keys are still in PERSON_WRITABLE_COLUMNS (they're valid input);
+// the write loops below route them to persons_ext instead of persons, and reads
+// merge them back via mergePersonExt(). Same pattern as calls_for_service_ext.
+const PERSON_EXT_COLUMNS = new Set([
+  'suffix', 'nationality', 'voice_description', 'religion', 'dietary_restrictions',
+]);
+const PERSON_EXT_SELECT = [...PERSON_EXT_COLUMNS].join(', ');
+
+/** Upsert the overflow fields present in `body` into persons_ext (1:1 on
+ *  person_id). No-op when the body carries none of them. */
+async function writePersonExt(
+  db: ReturnType<typeof getDb>, personId: number | string, body: Record<string, unknown>,
+): Promise<void> {
+  const cols: string[] = [];
+  const vals: unknown[] = [];
+  for (const k of PERSON_EXT_COLUMNS) {
+    if (Object.prototype.hasOwnProperty.call(body, k)) { cols.push(k); vals.push(body[k] ?? null); }
+  }
+  if (cols.length === 0) return;
+  const placeholders = cols.map(() => '?').join(', ');
+  const setClause = cols.map((c) => `${c} = excluded.${c}`).join(', ');
+  await execute(db,
+    `INSERT INTO persons_ext (person_id, ${cols.join(', ')}) VALUES (?, ${placeholders})
+     ON CONFLICT(person_id) DO UPDATE SET ${setClause}`,
+    personId, ...vals);
+}
+
+/** Merge a person's persons_ext overflow fields onto the base row so callers see
+ *  one flat object. Returns the row unchanged when it has no ext row yet. */
+async function mergePersonExt(
+  db: ReturnType<typeof getDb>, person: Record<string, unknown> | null,
+): Promise<Record<string, unknown> | null> {
+  if (!person || person.id == null) return person;
+  const ext = await queryFirst<Record<string, unknown>>(db,
+    `SELECT ${PERSON_EXT_SELECT} FROM persons_ext WHERE person_id = ?`, person.id as number);
+  return ext ? { ...person, ...ext } : person;
+}
+
 // POST /records/persons
 records.post('/persons', async (c) => {
   try {
@@ -133,6 +175,8 @@ records.post('/persons', async (c) => {
 
     for (const [key, val] of Object.entries(body)) {
       if (key === 'dob' || key === 'created_at' || key === 'updated_at') continue;
+      // Overflow fields go to persons_ext (below), not the base persons INSERT.
+      if (PERSON_EXT_COLUMNS.has(key)) continue;
       if (PERSON_WRITABLE_COLUMNS.has(key)) {
         cols.push(key);
         vals.push('?');
@@ -147,7 +191,9 @@ records.post('/persons', async (c) => {
 
     const result = await execute(db,
       `INSERT INTO persons (${cols.join(', ')}) VALUES (${vals.join(', ')})`, ...params);
-    const person = await queryFirst(db, 'SELECT * FROM persons WHERE id = ?', Number(result.meta.last_row_id));
+    const newId = Number(result.meta.last_row_id);
+    await writePersonExt(db, newId, body);
+    const person = await mergePersonExt(db, await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM persons WHERE id = ?', newId));
     return c.json(person, 201);
   } catch (err) {
     console.error('POST /records/persons failed:', err);
@@ -273,7 +319,7 @@ records.get('/persons/:id', async (c) => {
   try {
     const db = getDb(c.env);
     const id = c.req.param('id');
-    const person = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM persons WHERE id = ?', id);
+    const person = await mergePersonExt(db, await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM persons WHERE id = ?', id));
     if (!person) return c.json({ error: 'Person not found' }, 404);
     return c.json(person);
   } catch (err) {
@@ -295,8 +341,11 @@ records.put('/persons/:id', async (c) => {
     const cols: string[] = [];
     const params: unknown[] = [];
 
+    let touchesExt = false;
     for (const [key, val] of Object.entries(body)) {
       if (key === 'id' || key === 'created_at' || key === 'updated_at') continue;
+      // Overflow fields are upserted into persons_ext (below), not persons.
+      if (PERSON_EXT_COLUMNS.has(key)) { touchesExt = true; continue; }
       if (PERSON_WRITABLE_COLUMNS.has(key)) {
         cols.push(`${key} = ?`);
         // Coerce boolean-ish fields to integer
@@ -308,10 +357,14 @@ records.put('/persons/:id', async (c) => {
       }
     }
 
-    if (cols.length === 0) return c.json({ message: 'No changes' });
+    if (cols.length === 0 && !touchesExt) return c.json({ message: 'No changes' });
 
-    const result = await execute(db, `UPDATE persons SET ${cols.join(', ')} WHERE id = ?`, ...params, id);
-    const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM persons WHERE id = ?', id);
+    // Base columns (skip the UPDATE entirely if this edit only touched ext fields).
+    if (cols.length > 0) {
+      await execute(db, `UPDATE persons SET ${cols.join(', ')} WHERE id = ?`, ...params, id);
+    }
+    await writePersonExt(db, id, body);
+    const updated = await mergePersonExt(db, await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM persons WHERE id = ?', id));
     return c.json(updated);
   } catch (err) {
     console.error('PUT /records/persons/:id failed:', err);
