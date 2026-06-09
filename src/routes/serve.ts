@@ -262,8 +262,15 @@ sv.get('/', async (c) => {
     where.push('(recipient_name LIKE ? OR case_number LIKE ? OR recipient_address LIKE ?)');
     args.push(`%${search}%`, `%${search}%`, `%${search}%`);
   }
-  const sql = `SELECT q.*, u.full_name AS officer_name
-    FROM serve_queue q LEFT JOIN users u ON u.id = q.officer_id
+  // call_id is re-emitted AFTER q.* so the CASE wins on duplicate column
+  // names: serve_queue rows can reference hard-deleted calls (pre-soft-
+  // delete era) and ServePage fetches /dispatch/calls/:id for every
+  // non-null call_id — a dead ref produced a guaranteed 404 per render.
+  const sql = `SELECT q.*, u.full_name AS officer_name,
+      CASE WHEN cfs.id IS NULL THEN NULL ELSE q.call_id END AS call_id
+    FROM serve_queue q
+    LEFT JOIN users u ON u.id = q.officer_id
+    LEFT JOIN calls_for_service cfs ON cfs.id = q.call_id
     ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
     ORDER BY
       CASE q.priority WHEN 'urgent' THEN 1 WHEN 'rush' THEN 2 WHEN 'normal' THEN 3 ELSE 4 END,

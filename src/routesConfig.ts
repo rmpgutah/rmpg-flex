@@ -128,6 +128,7 @@ import specialOps from './routes/specialOps';
 import victimServices from './routes/victimServices';
 import integrations from './routes/integrations';
 import stubs from './routes/stubs';
+import codeEnforcement from './routes/codeEnforcement';
 import weather from './routes/weather';
 // Dispatch domain
 import dispatchCalls from './routes/dispatch/calls';
@@ -498,7 +499,9 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // either the rewrite or legacy worker. Mounting stubs so pages render
   // their empty/error state instead of 404ing.
   { prefix: '/api/cfs', router: stubs, auth: 'required' },
-  { prefix: '/api/code-enforcement', router: stubs, auth: 'required' },
+  // Code enforcement graduated from stubs to a real D1-backed router
+  // (code_violations + vehicle_tows tables) — 2026-06-09 404 sweep.
+  { prefix: '/api/code-enforcement', router: codeEnforcement, auth: 'required' },
   { prefix: '/api/dar', router: stubs, auth: 'required' },
   { prefix: '/api/diagnostics', router: stubs, auth: 'public' },
   { prefix: '/api/firecrawl-tools', router: stubs, auth: 'required' },

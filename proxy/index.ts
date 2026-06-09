@@ -742,12 +742,8 @@ const STUBS: StubRule[] = [
   // ── 2026-06-07 round 3 — exports & CSV endpoints ──
   // Each shape matches what ExportButton + ReportsPage read. Verified no
   // handler in the corresponding src/routes/<area>.ts.
-  {
-    match: /^\/api\/code-enforcement\/export\/csv(\?.*)?$/,
-    methods: ['GET'],
-    body: { url: null, count: 0, message: 'code-enforcement export stubbed' },
-    reason: 'no code-enforcement file; ExportButton tolerates null url',
-  },
+  // (code-enforcement export stub removed 2026-06-09 — real handler now in
+  // src/routes/codeEnforcement.ts; /api/code-enforcement routes to env.API.)
   {
     match: /^\/api\/comms\/export\/csv(\?.*)?$/,
     methods: ['GET'],
@@ -766,12 +762,8 @@ const STUBS: StubRule[] = [
     body: { url: null, count: 0, message: 'forensic-lab export stubbed' },
     reason: 'no forensic-lab file; ForensicsPage tolerates null url',
   },
-  {
-    match: /^\/api\/offender-registry\/export\/csv(\?.*)?$/,
-    methods: ['GET'],
-    body: { url: null, count: 0, message: 'offender-registry export stubbed' },
-    reason: 'no /offender-registry/export; RegistryPage tolerates null url',
-  },
+  // (offender-registry export stub removed 2026-06-09 — real handler now in
+  // src/routes/offenderRegistry.ts; /api/offender-registry routes to env.API.)
   {
     match: /^\/api\/sex-offender-registry\/export\/csv(\?.*)?$/,
     methods: ['GET'],
@@ -1457,8 +1449,10 @@ const API_ROUTES: RouteRule[] = [
   { kind: 'prefix', value: '/api/admin/shift-swaps' },
   // HR leave — handler in src/routes/hr.ts (balances + list + CRUD).
   { kind: 'prefix', value: '/api/hr/leave' },
-  // Offender registry stats — handler in src/routes/offenderRegistry.ts.
-  { kind: 'prefix', value: '/api/offender-registry/stats' },
+  // Offender registry — full CRUD + risk-score + contacts + export in
+  // src/routes/offenderRegistry.ts (widened from /stats-only, 2026-06-09
+  // 404 sweep: root list/POST, /:id/clear, /:id/risk-score, /:id/contacts).
+  { kind: 'prefix', value: '/api/offender-registry' },
   // Arrests — handlers in src/routes/arrests.ts (manual booking subset,
   // /recent, /search, /export/csv, /:id/cross-links). Legacy doesn't
   // implement /recent so the page 500'd on first paint.

@@ -131,15 +131,18 @@ cases.get('/', async (c) => {
     const conditions: string[] = ['1=1'];
     const params: unknown[] = [];
 
-    if (q('status')) { conditions.push('status = ?'); params.push(q('status')); }
-    if (q('priority')) { conditions.push('priority = ?'); params.push(q('priority')); }
-    if (q('case_type')) { conditions.push('case_type = ?'); params.push(q('case_type')); }
-    if (q('lead_investigator_id')) { conditions.push('lead_investigator_id = ?'); params.push(q('lead_investigator_id')); }
-    if (q('archived') === 'true') conditions.push('archived_at IS NOT NULL');
-    else conditions.push('archived_at IS NULL');
+    // All conditions are c.-qualified: the list query LEFT JOINs users,
+    // which shares column names with cases (status, archived_at, …) —
+    // unqualified refs threw "ambiguous column name" and 500'd the list.
+    if (q('status')) { conditions.push('c.status = ?'); params.push(q('status')); }
+    if (q('priority')) { conditions.push('c.priority = ?'); params.push(q('priority')); }
+    if (q('case_type')) { conditions.push('c.case_type = ?'); params.push(q('case_type')); }
+    if (q('lead_investigator_id')) { conditions.push('c.lead_investigator_id = ?'); params.push(q('lead_investigator_id')); }
+    if (q('archived') === 'true') conditions.push('c.archived_at IS NOT NULL');
+    else conditions.push('c.archived_at IS NULL');
     const search = q('search');
     if (search) {
-      conditions.push('(case_number LIKE ? OR title LIKE ? OR summary LIKE ?)');
+      conditions.push('(c.case_number LIKE ? OR c.title LIKE ? OR c.summary LIKE ?)');
       const s = `%${search}%`;
       params.push(s, s, s);
     }
@@ -150,7 +153,7 @@ cases.get('/', async (c) => {
     const offset = (pageNum - 1) * perPage;
 
     const countRow = await queryFirst<{ total: number }>(
-      db, `SELECT COUNT(*) as total FROM cases ${where}`, ...params,
+      db, `SELECT COUNT(*) as total FROM cases c ${where}`, ...params,
     );
     const rows = await query<Record<string, unknown>>(
       db,
