@@ -375,9 +375,13 @@
 // v827: Nav wiring audit — wired GPX + CSV trip-track export onto NavPage trip
 //       history (gpxExport/navCsvExport/navUnits), and PRUNED 23 orphaned
 //       (built-but-never-wired) nav hooks/utils from the v826 batch that
-//       duplicated already-wired hud/ or inline logic. Net: every remaining nav
-//       module is wired. (Pruned modules recoverable from git history if wanted.)
-const CACHE_NAME = 'rmpg-flex-v827';
+//       duplicated already-wired hud/ or inline logic.
+// v828: Admin Email — shadowed /api/email/status fix. The stubs router was
+//       mounted at /api/email BEFORE the real email router, so the
+//       integrations-tab `/status` stub (returns {configured: false}) was
+//       intercepting /api/email/status and falsely rendering the "Email Not
+//       Configured" splash even when creds were saved.
+const CACHE_NAME = 'rmpg-flex-v828';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

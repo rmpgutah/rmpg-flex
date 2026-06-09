@@ -465,7 +465,12 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/comms', router: stubs, auth: 'required' },
   { prefix: '/api/stats', router: stubs, auth: 'required' },
   { prefix: '/api/weather', router: weather, auth: 'required' },
-  { prefix: '/api/email', router: stubs, auth: 'required' },
+  // NB: do NOT re-mount stubs at /api/email here. The full email router
+  // (line ~497 below) supersedes everything stubs ever served on this
+  // prefix. Mounting stubs first would let the integrations-tab `/status`
+  // stub (returns {configured: false}) intercept /api/email/status BEFORE
+  // the real handler, falsely showing "Email Not Configured" to every
+  // user even when credentials are saved.
   // Real integrations router (rmpgutahps + integration_api_keys CRUD +
   // request log) — must be mounted BEFORE the stubs catch-all below.
   { prefix: '/api/integrations', router: integrations, auth: 'required' },
