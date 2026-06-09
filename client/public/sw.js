@@ -476,7 +476,11 @@
 //   lat/lng fix no longer poisons the ATOMIC breadcrumb batch (one NaN used to
 //   roll back & 500 the whole batch → client re-queued the poisoned batch forever,
 //   blocking every good fix); bad points are dropped, good ones persist.
-const CACHE_NAME = 'rmpg-flex-v843';
+// v844: Document Writer — restore the missing TEMPLATES grid + search/filter/
+//   star state in TemplateChooser.tsx (left half-built after PR #1094), wire
+//   DocumentTemplate.category to the TemplateCategory union so the extended
+//   le-*/sec-*/hr-*/legal-* categories typecheck, import FeaturesPanel.
+const CACHE_NAME = 'rmpg-flex-v844';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

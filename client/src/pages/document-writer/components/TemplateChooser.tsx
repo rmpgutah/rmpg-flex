@@ -1,15 +1,23 @@
-import { useState } from 'react';
-import { FileText, FileCheck, Shield, FilePlus, Package, Mail, File, Bookmark, Trash2 } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import type { ReactNode } from 'react';
+import {
+  FileText, FileCheck, Shield, FilePlus, Package, Mail, File, Bookmark, Trash2,
+  Search, Car, Heart, Users, ClipboardList, Building2, Lock, Briefcase,
+  Gavel, ScrollText, Scale, Star,
+} from 'lucide-react';
 import { TEMPLATES } from '../templates';
 import { listSavedTemplates, deleteTemplate, type SavedTemplate } from '../docActions';
-import type { DocumentTemplate } from '../types';
+import type { DocumentTemplate, TemplateCategory } from '../types';
 import PanelTitleBar from '../../../components/PanelTitleBar';
 
 interface Props {
   onSelect: (template: DocumentTemplate, values: Record<string, string>) => void;
 }
 
-const CATEGORY_ICONS: Record<TemplateCategory, React.ReactNode> = {
+// Lookup table for the small chip icon shown on each template card. Falls back
+// to the generic `File` glyph for any category that isn't explicitly listed
+// (e.g. the back-compat single-word labels — 'traffic', 'warrant', etc.).
+const CATEGORY_ICONS: Partial<Record<TemplateCategory, ReactNode>> = {
   incident: <FileText className="w-5 h-5" />,
   arrest: <FileCheck className="w-5 h-5" />,
   'use-of-force': <Shield className="w-5 h-5" />,
@@ -40,6 +48,31 @@ const CATEGORY_ICONS: Record<TemplateCategory, React.ReactNode> = {
   'legal-discovery': <Scale className="w-5 h-5" />,
 };
 
+// Filter chips. `match(cat)` decides if a template's category belongs to the
+// chip's set — kept lambda-based so a chip can span multiple raw categories
+// (e.g. "Law Enforcement" covers every le-* and the old single-word LE labels).
+const GROUPS: { id: string; label: string; match: (cat: string) => boolean }[] = [
+  { id: 'all',          label: 'All',              match: () => true },
+  { id: 'starred',      label: '★ Starred',        match: () => false }, // count uses starred set directly
+  { id: 'le',           label: 'Law Enforcement',  match: (c) => c.startsWith('le-') || ['incident','arrest','use-of-force','traffic','warrant','consent','crash','bolo','missing','booking','k9','pursuit','scene','custody','interview','welfare'].includes(c) },
+  { id: 'security',     label: 'Security',         match: (c) => c.startsWith('sec-') },
+  { id: 'hr',           label: 'HR',               match: (c) => c.startsWith('hr-') },
+  { id: 'legal',        label: 'Legal / Court',    match: (c) => c.startsWith('legal-') },
+  { id: 'evidence',     label: 'Evidence',         match: (c) => c === 'evidence' || c === 'property' },
+  { id: 'civil',        label: 'Civil',            match: (c) => c === 'civil' || c === 'repo' || c === 'compliance' || c === 'parking' },
+  { id: 'memo',         label: 'Memo / Letter',    match: (c) => c === 'memo' || c === 'letter' },
+  { id: 'general',      label: 'General',          match: (c) => c === 'general' || c === 'supplemental' },
+];
+
+const STARRED_KEY = 'rmpg_writer_starred_templates';
+function loadStarred(): Set<string> {
+  try { return new Set<string>(JSON.parse(localStorage.getItem(STARRED_KEY) || '[]')); }
+  catch { return new Set(); }
+}
+function saveStarred(set: Set<string>): void {
+  try { localStorage.setItem(STARRED_KEY, JSON.stringify([...set])); } catch { /* noop */ }
+}
+
 /** Wrap a localStorage saved-template into the DocumentTemplate shape the page
  *  expects (no fields — its HTML is inserted verbatim). */
 function asTemplate(saved: SavedTemplate): DocumentTemplate {
@@ -50,6 +83,9 @@ export default function TemplateChooser({ onSelect }: Props) {
   const [selected, setSelected] = useState<DocumentTemplate | null>(null);
   const [values, setValues] = useState<Record<string, string>>({});
   const [custom, setCustom] = useState<SavedTemplate[]>(() => listSavedTemplates());
+  const [query, setQuery] = useState('');
+  const [group, setGroup] = useState<string>('all');
+  const [starred, setStarred] = useState<Set<string>>(() => loadStarred());
 
   const handleUse = () => {
     if (!selected) return;
@@ -61,6 +97,37 @@ export default function TemplateChooser({ onSelect }: Props) {
     deleteTemplate(name);
     setCustom(listSavedTemplates());
   };
+
+  const toggleStar = (id: string) => {
+    setStarred((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      saveStarred(next);
+      return next;
+    });
+  };
+
+  // Filtered template grid: chip → text query → starred override. Memoized so
+  // typing in the search box doesn't re-walk all 200+ templates per keystroke.
+  const filtered = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    let pool = TEMPLATES;
+    if (group === 'starred') {
+      pool = pool.filter((t) => starred.has(t.id));
+    } else if (group !== 'all') {
+      const g = GROUPS.find((x) => x.id === group);
+      if (g) pool = pool.filter((t) => g.match(t.category));
+    }
+    if (!needle) return pool;
+    return pool.filter((t) => {
+      if (t.name.toLowerCase().includes(needle)) return true;
+      if (t.description.toLowerCase().includes(needle)) return true;
+      if (t.category.toLowerCase().includes(needle)) return true;
+      if (t.tags?.some((tag) => tag.toLowerCase().includes(needle))) return true;
+      if (t.statutes?.some((s) => s.toLowerCase().includes(needle))) return true;
+      return false;
+    });
+  }, [query, group, starred]);
 
   if (selected) {
     return (
@@ -123,7 +190,11 @@ export default function TemplateChooser({ onSelect }: Props) {
         </div>
         <div className="flex flex-wrap gap-1.5">
           {GROUPS.map(g => {
-            const count = g.id === 'starred' ? starred.size : TEMPLATES.filter(t => g.match(t.category)).length;
+            const count = g.id === 'starred'
+              ? starred.size
+              : g.id === 'all'
+                ? TEMPLATES.length
+                : TEMPLATES.filter(t => g.match(t.category)).length;
             const active = group === g.id;
             return (
               <button
@@ -161,6 +232,47 @@ export default function TemplateChooser({ onSelect }: Props) {
             ))}
           </div>
         </>
+      )}
+
+      {/* Stock templates grid — filtered by search query + selected group chip. */}
+      <p className="text-[11px] text-rmpg-400 font-medium uppercase tracking-wide mt-6 mb-2">
+        Templates ({filtered.length})
+      </p>
+      {filtered.length === 0 ? (
+        <div className="p-6 text-center text-rmpg-600 text-xs border border-dashed border-[#222] rounded-[2px]">
+          No templates match this filter.
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+          {filtered.map((t) => {
+            const isStarred = starred.has(t.id);
+            return (
+              <div
+                key={t.id}
+                className="relative flex flex-col items-center gap-2 p-4 bg-[#0d0d0d] border border-[#222] rounded-[2px] hover:border-[#d4a017]/40 hover:bg-[#141414] transition-colors text-center group"
+              >
+                <button
+                  type="button"
+                  onClick={() => setSelected(t)}
+                  className="flex flex-col items-center gap-2 w-full text-rmpg-500 group-hover:text-[#d4a017] transition-colors"
+                >
+                  {CATEGORY_ICONS[t.category as TemplateCategory] || <File className="w-5 h-5" />}
+                  <span className="text-[11px] font-medium text-rmpg-300 group-hover:text-rmpg-100 break-words">{t.name}</span>
+                  <span className="text-[9px] text-rmpg-600 uppercase tracking-wider">{t.category}</span>
+                </button>
+                <button
+                  type="button"
+                  aria-label={isStarred ? `Unstar template ${t.name}` : `Star template ${t.name}`}
+                  title={isStarred ? 'Unstar' : 'Star'}
+                  onClick={() => toggleStar(t.id)}
+                  className={`absolute top-1 right-1 p-1 transition-colors ${isStarred ? 'text-[#d4a017]' : 'text-rmpg-600 opacity-0 group-hover:opacity-100 hover:text-[#d4a017]'}`}
+                >
+                  <Star className="w-3 h-3" fill={isStarred ? '#d4a017' : 'none'} />
+                </button>
+              </div>
+            );
+          })}
+        </div>
       )}
     </div>
   );

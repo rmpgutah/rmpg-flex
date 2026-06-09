@@ -12,9 +12,13 @@ export type TemplateCategory =
 export interface DocumentTemplate {
   id: string;
   name: string;
-  category: 'incident' | 'arrest' | 'use-of-force' | 'supplemental' | 'evidence' | 'memo' | 'letter' | 'general'
+  // Accepts the wide-format law-enforcement / private-security / HR / legal
+  // category set used by templates/categories/*.ts, plus the original
+  // single-word labels kept for back-compat with older templates/index.ts entries.
+  category: TemplateCategory
     | 'traffic' | 'warrant' | 'consent' | 'medical' | 'crash' | 'bolo' | 'missing'
-    | 'booking' | 'k9' | 'pursuit' | 'scene' | 'custody' | 'interview' | 'civil' | 'repo' | 'welfare' | 'compliance' | 'parking' | 'property';
+    | 'booking' | 'k9' | 'pursuit' | 'scene' | 'custody' | 'interview' | 'civil'
+    | 'repo' | 'welfare' | 'compliance' | 'parking' | 'property';
   description: string;
   content: string; // HTML content with {{placeholder}} tokens
   fields: TemplateField[];

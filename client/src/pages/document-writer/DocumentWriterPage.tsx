@@ -27,6 +27,7 @@ import FindReplacePanel from './components/FindReplacePanel';
 import OutlinePane from './components/OutlinePane';
 import CommentsSidebar, { type DocComment } from './components/CommentsSidebar';
 import StatusBar from './components/StatusBar';
+import FeaturesPanel from './components/FeaturesPanel';
 import SnapshotsPanel from './components/SnapshotsPanel';
 import AnalysisPanel from './components/AnalysisPanel';
 import DocPropertiesDialog from './components/DocPropertiesDialog';
