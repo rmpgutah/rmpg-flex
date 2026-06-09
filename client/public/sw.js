@@ -497,7 +497,15 @@
 // v848: /field-camera mobile camera portal — live viewfinder + HUD; capture
 //   composites timestamp/officer/unit/GPS into a bottom data band + translucent
 //   RMPG watermark bottom-right, uploads stamped JPEG to /api/field-photos (R2).
-const CACHE_NAME = 'rmpg-flex-v848';
+// v849: PDF + Document Writer feature wave 5 (~21 more features).
+//   PDF Editor: annotation search/filter, rotate annotation, measurement
+//   calibration + polygon area, redaction options (black-bar/white-out + reason),
+//   sticky-note categories, insert pages from another PDF at a position, editor
+//   chrome light/dark, annotation style presets, shortcut help. Document Writer:
+//   mail-merge from a CFS call, heuristic proofreader (click-to-fix), track-
+//   changes/suggestion mode, reversible redaction mark, section word-count goals,
+//   document minimap, inline phrase autocomplete, editor appearance settings.
+const CACHE_NAME = 'rmpg-flex-v849';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

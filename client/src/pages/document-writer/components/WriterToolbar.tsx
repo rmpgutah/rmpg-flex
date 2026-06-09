@@ -10,6 +10,8 @@ import {
   Paintbrush, Gauge, CaseSensitive, Scale, Sheet,
   Keyboard, FileSignature, ArrowDownUp, FileStack, Copy, Layers,
   ChevronsUp, ChevronsDown, TextSelect, FileCode2,
+  Merge, SpellCheck2, ListChecks, GitPullRequestArrow, Map as MapIcon,
+  Sliders, SquareSlash, Lightbulb, Wrench,
 } from 'lucide-react';
 import ToolbarMenu, { MenuRow, MenuButton } from './ToolbarMenu';
 import {
@@ -74,6 +76,18 @@ export interface WriterExtActions {
   /** Server-autosave indicator: idle | saving | saved | error. */
   serverSaveState: 'idle' | 'saving' | 'saved' | 'error';
   flash: (msg: string) => void;
+  // New features (this wave)
+  onToggleMerge: () => void;
+  onToggleProofread: () => void;
+  onToggleSections: () => void;
+  onToggleTrackChanges: () => void;
+  onToggleMinimap: () => void;
+  onOpenAppearance: () => void;
+  onToggleRedaction: () => void;
+  onToggleSuggestMode: () => void;
+  suggestMode: boolean;
+  onToggleAutocomplete: () => void;
+  autocompleteOn: boolean;
 }
 
 interface Props {
@@ -565,6 +579,22 @@ export default function WriterToolbar({
           <select className={`${selCls} w-full`} value={ext.language} onChange={(e) => ext.setLanguage(e.target.value)}>
             {[['en', 'English'], ['es', 'Spanish'], ['fr', 'French'], ['de', 'German']].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
           </select>
+        </ToolbarMenu>
+
+        {/* Assist menu — mail-merge, proofread, sections, track changes,
+            minimap, redaction, autocomplete, appearance (this wave). */}
+        <ToolbarMenu label="Assist" icon={Wrench} width={240}>
+          <MenuButton onClick={ext.onToggleMerge}><span className="flex items-center gap-1"><Merge className="w-3 h-3" /> Mail-merge from CFS call…</span></MenuButton>
+          <MenuButton onClick={ext.onToggleProofread}><span className="flex items-center gap-1"><SpellCheck2 className="w-3 h-3" /> Proofread (click-to-fix)</span></MenuButton>
+          <MenuButton onClick={ext.onToggleSections}><span className="flex items-center gap-1"><ListChecks className="w-3 h-3" /> Section word counts &amp; goals</span></MenuButton>
+          <MenuButton onClick={ext.onToggleTrackChanges}><span className="flex items-center gap-1"><GitPullRequestArrow className="w-3 h-3" /> Track changes…</span></MenuButton>
+          <MenuButton active={ext.suggestMode} onClick={ext.onToggleSuggestMode}>Suggestion mode: {ext.suggestMode ? 'On' : 'Off'}</MenuButton>
+          <MenuButton onClick={ext.onToggleMinimap}><span className="flex items-center gap-1"><MapIcon className="w-3 h-3" /> Document minimap</span></MenuButton>
+          <div className="text-[10px] text-rmpg-500 pt-1">Selection</div>
+          <MenuButton onClick={ext.onToggleRedaction}><span className="flex items-center gap-1"><SquareSlash className="w-3 h-3" /> Redact / un-redact selection</span></MenuButton>
+          <div className="text-[10px] text-rmpg-500 pt-1">Writing environment</div>
+          <MenuButton active={ext.autocompleteOn} onClick={ext.onToggleAutocomplete}><span className="flex items-center gap-1"><Lightbulb className="w-3 h-3" /> Phrase autocomplete: {ext.autocompleteOn ? 'On' : 'Off'}</span></MenuButton>
+          <MenuButton onClick={ext.onOpenAppearance}><span className="flex items-center gap-1"><Sliders className="w-3 h-3" /> Editor appearance…</span></MenuButton>
         </ToolbarMenu>
 
         {/* View menu — zoom + reading/fullscreen (features 178–185, 50) */}

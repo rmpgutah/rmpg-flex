@@ -32,6 +32,7 @@ export type Tool =
   | 'check'
   | 'cross'
   | 'measure'
+  | 'measureArea'
   | 'formText'
   | 'formCheck';
 
@@ -129,9 +130,15 @@ export interface StrikethroughAnnotation extends AnnotationBase {
 export interface RedactAnnotation extends AnnotationBase {
   type: 'redact';
   // visual-flatten redaction. Caveat: pdf-lib can't strip the original content
-  // stream beneath the box, but we render an opaque black rectangle into the
+  // stream beneath the box, but we render an opaque rectangle into the
   // saved page content. For maximum-sensitivity redaction, post-process with
   // a print-to-PDF round trip. UI warns the user about this.
+  /** Bar fill style: 'black' (default, opaque black bar) or 'white' (white-out
+   *  — paints an opaque white rectangle so the area reads as blank). */
+  redactStyle?: 'black' | 'white';
+  /** Optional exemption / reason label printed centered over the bar
+   *  (e.g. "(b)(6)", "GRAMA 63G-2-302"). Drawn in contrasting ink. */
+  reason?: string;
 }
 
 export interface RectAnnotation extends AnnotationBase {
@@ -163,6 +170,10 @@ export interface PolygonAnnotation extends AnnotationBase {
   /** When true, the path closes back to the first vertex (filled polygon).
    *  When false, render as a polyline (open path). */
   closed: boolean;
+  /** When set, this is an AREA-measurement polygon — its computed area (e.g.
+   *  "12.4 sq ft") is drawn at the centroid. Set by the area-measure tool and
+   *  computed against the active MeasureCalibration. */
+  areaLabel?: string;
 }
 
 export interface CloudAnnotation extends AnnotationBase {
@@ -202,7 +213,26 @@ export interface StickyNoteAnnotation extends AnnotationBase {
   text: string;
   authorName?: string;
   createdAt?: string;
+  /** Categorisation tag (e.g. "Action", "Question", "Approved"). Drives the
+   *  default note paper color + a small corner glyph. Surfaced in the
+   *  Annotations panel filter. */
+  category?: StickyCategory;
 }
+
+/** Sticky-note categories — each maps to a paper color + a marker glyph in
+ *  STICKY_CATEGORIES (defined below). */
+export type StickyCategory = 'general' | 'action' | 'question' | 'important' | 'approved' | 'rejected';
+
+/** Category → {label, paper color, ink color, marker glyph}. Used by the sticky
+ *  renderer and the category picker. Spillman-neutral palette (muted, no neon). */
+export const STICKY_CATEGORIES: Record<StickyCategory, { label: string; paper: string; ink: string; glyph: string }> = {
+  general:   { label: 'General',   paper: '#fff7c2', ink: '#0a0a0a', glyph: '•' },
+  action:    { label: 'Action',    paper: '#ffe0b0', ink: '#0a0a0a', glyph: '▸' },
+  question:  { label: 'Question',  paper: '#cfe3ff', ink: '#0a0a0a', glyph: '?' },
+  important: { label: 'Important', paper: '#ffc9c9', ink: '#0a0a0a', glyph: '!' },
+  approved:  { label: 'Approved',  paper: '#c9e7cf', ink: '#0a0a0a', glyph: '✓' },
+  rejected:  { label: 'Rejected',  paper: '#e6c9c9', ink: '#7a1c1c', glyph: '✕' },
+};
 
 /** Fillable AcroForm field placed by the Form-Field tool. Written into the
  *  saved PDF as a real interactive widget via pdf-lib's form API (the editor
@@ -369,6 +399,32 @@ export interface EditorState {
 
 export const DEFAULT_RENDER_SCALE = 1.5;
 
+/** Real-world measurement scale. The measure + area tools convert on-page PDF
+ *  points into `unit` using `realPerPdfPoint` (how many real-world units one
+ *  PDF point represents). Established by drawing a reference line of a known
+ *  real length via the calibration dialog. null = uncalibrated (raw in/pt). */
+export interface MeasureCalibration {
+  /** Real-world units per single PDF point. */
+  realPerPdfPoint: number;
+  /** Unit label shown in measurement annotations, e.g. "ft", "m", "in". */
+  unit: string;
+  /** Human description of the reference, e.g. "1.00 in on page = 10 ft". */
+  note?: string;
+}
+
+/** A saved annotation default ("favorite") — a named bundle of style props the
+ *  operator can re-apply with one click. Persisted to localStorage. */
+export interface AnnotationPreset {
+  id: string;
+  name: string;
+  color: string;
+  strokeWidth: number;
+  opacity: number;
+  strokeStyle?: 'solid' | 'dashed' | 'dotted';
+  fontFamily?: 'helvetica' | 'times' | 'courier';
+  fontSize?: number;
+}
+
 // View / interaction preferences — persisted to localStorage by the editor.
 export interface EditorPreferences {
   viewMode: 'single' | 'continuous' | 'two-up';
@@ -387,6 +443,14 @@ export interface EditorPreferences {
   thumbnailSize: 'small' | 'large';
   /** When true, the editor zooms to fit page width as soon as a PDF loads. */
   fitWidthOnLoad: boolean;
+  /** Editor chrome theme — 'dark' (default Spillman pure-black) or 'light'
+   *  (high-contrast light chrome for bright rooms). Affects ONLY the editor's
+   *  surrounding UI, never the rendered PDF page. */
+  chromeTheme: 'dark' | 'light';
+  /** Saved annotation default presets ("favorites"). */
+  annotationPresets: AnnotationPreset[];
+  /** Active real-world measurement calibration — null when uncalibrated. */
+  calibration: MeasureCalibration | null;
 }
 
 export const DEFAULT_PREFERENCES: EditorPreferences = {
@@ -404,6 +468,9 @@ export const DEFAULT_PREFERENCES: EditorPreferences = {
   showGrid: false,
   thumbnailSize: 'small',
   fitWidthOnLoad: true,
+  chromeTheme: 'dark',
+  annotationPresets: [],
+  calibration: null,
 };
 
 // Recent-files entry for the in-app launcher.

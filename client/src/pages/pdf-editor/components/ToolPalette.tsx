@@ -1,4 +1,4 @@
-import { MousePointer2, Hand, Type, Highlighter, Underline, Strikethrough, Square, Circle, Minus, MoveUpRight, Pencil, PenTool, Image as ImageIcon, Stamp, EyeOff, Link2, Crop, QrCode, StickyNote, Calendar, Pentagon, Spline, Cloud, Check, X, Ruler, TextCursorInput, SquareCheck } from 'lucide-react';
+import { MousePointer2, Hand, Type, Highlighter, Underline, Strikethrough, Square, Circle, Minus, MoveUpRight, Pencil, PenTool, Image as ImageIcon, Stamp, EyeOff, Link2, Crop, QrCode, StickyNote, Calendar, Pentagon, Spline, Cloud, Check, X, Ruler, TextCursorInput, SquareCheck, Shapes } from 'lucide-react';
 import IconButton from '../../../components/IconButton';
 import { Tool } from '../types';
 
@@ -38,6 +38,7 @@ const TOOLS: { id: Tool; icon: typeof MousePointer2; label: string }[] = [
   { id: 'check', icon: Check, label: 'Checkmark (click to place)' },
   { id: 'cross', icon: X, label: 'Cross / X (click to place)' },
   { id: 'measure', icon: Ruler, label: 'Measure distance (drag two points)' },
+  { id: 'measureArea', icon: Shapes, label: 'Measure area (click vertices, double-click to close)' },
   { id: 'formText', icon: TextCursorInput, label: 'Form field — fillable text box (drag)' },
   { id: 'formCheck', icon: SquareCheck, label: 'Form field — checkbox (drag)' },
 ];

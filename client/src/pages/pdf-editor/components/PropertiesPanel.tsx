@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { Lock, LockOpen, MessageSquare, Trash2 } from 'lucide-react';
-import { Annotation, AnnotationReply, BatesConfig, DocumentMeta, PageNumbersConfig, WatermarkConfig, StampLabel } from '../types';
+import { Lock, LockOpen, MessageSquare, RotateCw, Trash2 } from 'lucide-react';
+import { Annotation, AnnotationReply, BatesConfig, DocumentMeta, PageNumbersConfig, WatermarkConfig, StampLabel, StickyCategory, STICKY_CATEGORIES } from '../types';
 import { safeDateTimeStr } from '../../../utils/dateUtils';
 
 const STAMPS: StampLabel[] = ['CONFIDENTIAL', 'EVIDENCE', 'COPY', 'ORIGINAL', 'DRAFT', 'APPROVED', 'VOID', 'FILED', 'RECEIVED'];
@@ -121,6 +121,12 @@ function AnnotationProps({ ann, onChange, onDelete }: { ann: Annotation; onChang
           Show border around box
         </label>
       )}
+      {ann.type === 'sticky' && (
+        <StickyCategoryPicker ann={ann} onChange={onChange} />
+      )}
+      {ann.type === 'redact' && (
+        <RedactOptions ann={ann} onChange={onChange} />
+      )}
       {(ann.type === 'sticky' || ann.type === 'text') && (
         <RepliesEditor ann={ann} onChange={onChange} />
       )}
@@ -183,9 +189,88 @@ function AnnotationProps({ ann, onChange, onDelete }: { ann: Annotation; onChang
           <div className="text-[9px] text-rmpg-600">Saved as an interactive AcroForm widget — use "Save interactive PDF".</div>
         </>
       )}
+      {supportsRotation(ann) && (
+        <>
+          <label className={labelCls}>Rotation {Math.round(ann.rotation ?? 0)}°</label>
+          <div className="flex items-center gap-1">
+            <input id="ff-propertiespanel-rot" type="range" min={-180} max={180} step={1} value={ann.rotation ?? 0}
+              onChange={e => onChange({ ...ann, rotation: parseInt(e.target.value, 10) })} className="flex-1 accent-[#d4a017]" />
+            <button type="button" onClick={() => onChange({ ...ann, rotation: snap90(ann.rotation ?? 0) })}
+              title="Rotate 90° clockwise" aria-label="Rotate 90 degrees clockwise"
+              className="p-1 rounded-sm border border-[#222] text-rmpg-400 hover:text-white"><RotateCw className="w-3 h-3" /></button>
+            <button type="button" onClick={() => onChange({ ...ann, rotation: 0 })}
+              className="px-1.5 py-1 text-[9px] rounded-sm border border-[#222] text-rmpg-400 hover:text-white" title="Reset rotation">0°</button>
+          </div>
+        </>
+      )}
       <label className={labelCls}>Opacity</label>
       <input id="ff-propertiespanel-5" type="range" min={0.1} max={1} step={0.05} value={ann.opacity ?? 1} onChange={e => onChange({ ...ann, opacity: parseFloat(e.target.value) })} className="w-full accent-[#d4a017]" />
       <button type="button" onClick={onDelete} className="w-full px-2 py-1 text-xs text-red-300 border border-red-900/40 hover:bg-red-900/20 rounded-sm">Delete annotation</button>
+    </div>
+  );
+}
+
+/** Box-like annotations support a visual rotation. Free-path geometry (pen,
+ *  polygon, line) is excluded — rotating those would fight the path coords. */
+function supportsRotation(ann: Annotation): boolean {
+  return ann.type === 'text' || ann.type === 'stamp' || ann.type === 'image'
+    || ann.type === 'signature' || ann.type === 'rect' || ann.type === 'ellipse'
+    || ann.type === 'sticky' || ann.type === 'redact' || ann.type === 'highlight';
+}
+
+/** Add 90° clockwise, normalised into the (-180, 180] range used by the slider. */
+function snap90(deg: number): number {
+  let r = (Math.round(deg / 90) * 90 + 90) % 360;
+  if (r > 180) r -= 360;
+  if (r <= -180) r += 360;
+  return r;
+}
+
+/** Sticky-note category picker. Sets the category + its paper/ink colors so the
+ *  note immediately reflects the category palette. */
+function StickyCategoryPicker({ ann, onChange }: { ann: Annotation; onChange: (a: Annotation) => void }) {
+  if (ann.type !== 'sticky') return null;
+  const current = ann.category ?? 'general';
+  return (
+    <div className="pt-1">
+      <label className={labelCls}>Category</label>
+      <div className="grid grid-cols-3 gap-1">
+        {(Object.keys(STICKY_CATEGORIES) as StickyCategory[]).map(key => {
+          const meta = STICKY_CATEGORIES[key];
+          const active = current === key;
+          return (
+            <button key={key} type="button"
+              onClick={() => onChange({ ...ann, category: key, fillColor: meta.paper, color: meta.ink })}
+              title={meta.label}
+              className={`px-1 py-1 text-[9px] rounded-sm border inline-flex items-center gap-1 ${active ? 'border-[#d4a017] text-white' : 'border-[#222] text-rmpg-400 hover:text-white'}`}>
+              <span className="w-2.5 h-2.5 rounded-sm border border-[#333] flex-shrink-0" style={{ background: meta.paper }} />
+              <span className="truncate">{meta.label}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/** Redaction bar options — black bar vs white-out + an optional exemption /
+ *  reason label printed over the bar. */
+function RedactOptions({ ann, onChange }: { ann: Annotation; onChange: (a: Annotation) => void }) {
+  if (ann.type !== 'redact') return null;
+  const style = ann.redactStyle ?? 'black';
+  return (
+    <div className="pt-1 space-y-1.5">
+      <label className={labelCls}>Bar style</label>
+      <div className="flex gap-1">
+        <button type="button" onClick={() => onChange({ ...ann, redactStyle: 'black' })}
+          className={`flex-1 px-2 py-1 text-[10px] rounded-sm border ${style === 'black' ? 'bg-[#d4a017]/20 text-[#d4a017] border-[#d4a017]' : 'border-[#222] text-rmpg-400'}`}>Black bar</button>
+        <button type="button" onClick={() => onChange({ ...ann, redactStyle: 'white' })}
+          className={`flex-1 px-2 py-1 text-[10px] rounded-sm border ${style === 'white' ? 'bg-[#d4a017]/20 text-[#d4a017] border-[#d4a017]' : 'border-[#222] text-rmpg-400'}`}>White-out</button>
+      </div>
+      <label className={labelCls}>Reason / exemption (optional)</label>
+      <input id="ff-propertiespanel-redactreason" value={ann.reason ?? ''} onChange={e => onChange({ ...ann, reason: e.target.value || undefined })}
+        placeholder="e.g. (b)(6) · GRAMA 63G-2-302" className={inputCls} />
+      <div className="text-[9px] text-rmpg-600">Printed centered over the bar in the saved PDF.</div>
     </div>
   );
 }

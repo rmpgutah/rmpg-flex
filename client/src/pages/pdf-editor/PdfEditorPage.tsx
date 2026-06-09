@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { FileText, AlertTriangle, CheckCircle2, Search, Settings, Keyboard, Layers, Printer, Download, Upload as UploadIcon, Map as MapIcon, FileOutput, EyeOff, Heading, Bookmark as BookmarkIcon, FilePlus2, FileText as FileTextIcon, ChevronsLeft, ChevronsRight, Image as ImageDownIcon, Crop as CropIcon, RotateCw as RotateCwIcon, Scissors, Wrench, GitCompare, FileSignature, ClipboardList, Copy as CopyIcon, LayoutGrid, Grid2x2, Hash, Grid3x3, Layers2, MessageSquare, Square } from 'lucide-react';
+import { FileText, AlertTriangle, CheckCircle2, Search, Settings, Keyboard, Layers, Printer, Download, Upload as UploadIcon, Map as MapIcon, FileOutput, EyeOff, Heading, Bookmark as BookmarkIcon, FilePlus2, FileText as FileTextIcon, ChevronsLeft, ChevronsRight, Image as ImageDownIcon, Crop as CropIcon, RotateCw as RotateCwIcon, Scissors, Wrench, GitCompare, FileSignature, ClipboardList, Copy as CopyIcon, LayoutGrid, Grid2x2, Hash, Grid3x3, Layers2, MessageSquare, Square, Ruler, FileInput, Sun, Moon, Star } from 'lucide-react';
 import { open as openPdf, RmpgPdfDocument, subscribeDiagnostics, diagnosticsSummary, getDiagnostics } from '../../lib/rmpg-pdf-engine';
 import { exportAnnotationsAsCsv, exportAnnotationsAsMarkdown, exportAnnotationsAsXfdf, downloadText } from './exporters';
 import { useAuth } from '../../context/AuthContext';
@@ -27,8 +27,10 @@ import HeaderFooterDialog from './components/HeaderFooterDialog';
 import RedactPatternDialog from './components/RedactPatternDialog';
 import InsertPageDialog from './components/InsertPageDialog';
 import BookmarksPanel from './components/BookmarksPanel';
-import { Annotation, BatesConfig, Bookmark, DocumentMeta, EditorState, EditorPreferences, HeaderFooterConfig, DEFAULT_PREFERENCES, PageCrop, PageLabelRule, PageMeta, PageNumbersConfig, RecentFile, StampLabel, Tool, WatermarkConfig, DEFAULT_RENDER_SCALE } from './types';
-import { appendPdfBytes, blankTemplatePageBytes, buildAnnotationReportPdf, buildInteractivePdf, buildNUpPdf, buildPdfFromEditorState, comparePageDiff, deskewPageBytes, extractAllText, extractPagesAsBytes, findRedactionBoxes, grayscalePageBytes, imageToPdfPageBytes, mergePdfFiles, normalizeUploadResponse, optimizePdf, PAGE_SIZE_PRESETS, resizePages, saveToDocuments, splitEveryN, splitPdf } from './save';
+import { Annotation, AnnotationPreset, BatesConfig, Bookmark, DocumentMeta, EditorState, EditorPreferences, HeaderFooterConfig, MeasureCalibration, DEFAULT_PREFERENCES, PageCrop, PageLabelRule, PageMeta, PageNumbersConfig, RecentFile, StampLabel, StickyCategory, STICKY_CATEGORIES, Tool, WatermarkConfig, DEFAULT_RENDER_SCALE } from './types';
+import { appendPdfBytes, blankTemplatePageBytes, buildAnnotationReportPdf, buildInteractivePdf, buildNUpPdf, buildPdfFromEditorState, comparePageDiff, deskewPageBytes, extractAllText, extractPagesAsBytes, findRedactionBoxes, grayscalePageBytes, imageToPdfPageBytes, insertPdfBytesAt, mergePdfFiles, normalizeUploadResponse, optimizePdf, PAGE_SIZE_PRESETS, resizePages, saveToDocuments, splitEveryN, splitPdf } from './save';
+import CalibrationDialog from './components/CalibrationDialog';
+import InsertFromPdfDialog from './components/InsertFromPdfDialog';
 import PdfToolsDialog from './components/PdfToolsDialog';
 import CompareDialog from './components/CompareDialog';
 import PageOrganizer from './components/PageOrganizer';
@@ -163,6 +165,10 @@ export default function PdfEditorPage() {
   const [organizerOpen, setOrganizerOpen] = useState(false); // full-page organizer grid
   const [nUpOpen, setNUpOpen] = useState(false);         // N-up imposition export
   const [labelsOpen, setLabelsOpen] = useState(false);   // custom page-label rules
+  const [calibrationOpen, setCalibrationOpen] = useState(false); // measurement scale
+  const [insertPdfOpen, setInsertPdfOpen] = useState(false);     // insert another PDF at a position
+  // Default category applied to new sticky notes (toolbar dropdown).
+  const [stickyCategory, setStickyCategory] = useState<StickyCategory>('general');
   const [showBookmarks, setShowBookmarks] = useState(false);
   // Batch-page multi-select (thumbnail rail). When non-empty, batch-rotate and
   // crop-all act on this set instead of the single active page.
@@ -446,6 +452,19 @@ export default function PdfEditorPage() {
   };
   const bringForward = (id: string) => adjustZ(id, +1);
   const sendBackward = (id: string) => adjustZ(id, -1);
+
+  // Rotate a single annotation by +90° (clockwise on screen). Normalised into
+  // the (-180, 180] range used by the rotation slider.
+  const rotateAnnotation90 = (id: string) => {
+    const idx = state.annotations.findIndex(a => a.id === id);
+    if (idx === -1) return;
+    const cur = state.annotations[idx];
+    let r = (Math.round((cur.rotation ?? 0) / 90) * 90 + 90) % 360;
+    if (r > 180) r -= 360;
+    const next = [...state.annotations];
+    next[idx] = { ...cur, rotation: r } as Annotation;
+    mutate({ annotations: next });
+  };
 
   const copySelected = () => {
     const ids = selectedIds.size > 0 ? selectedIds : (activeId ? new Set([activeId]) : new Set<string>());
@@ -952,6 +971,64 @@ export default function PdfEditorPage() {
     if (!f.name.toLowerCase().endsWith('.pdf')) { setError('Please choose a PDF to append.'); return; }
     const extra = new Uint8Array(await f.arrayBuffer());
     await appendBytesAndReopen(extra, `Appended ${f.name}`);
+  };
+
+  // Insert another PDF's pages at a chosen 1-indexed position (before that page).
+  // Flattens the current editor state to bytes first, then splices and re-opens.
+  const handleInsertFromPdf = async (file: File, position: number) => {
+    if (!bytes) return;
+    if (!file.name.toLowerCase().endsWith('.pdf')) { setError('Please choose a PDF to insert.'); return; }
+    setSaving(true);
+    try {
+      const { state: savable } = buildSavableState();
+      const baseBytes = await buildPdfFromEditorState(savable);
+      const extra = new Uint8Array(await file.arrayBuffer());
+      const combined = await insertPdfBytesAt(baseBytes, extra, position);
+      const base = fileName.replace(/\.pdf$/i, '') || 'document';
+      await openBytes(combined, `${base}.pdf`, state.sourceFileId ?? null, state.sourceFolderId ?? null);
+      pushToast(`Inserted ${file.name} before page ${position}`, 'ok');
+      setInsertPdfOpen(false);
+    } catch (err) {
+      setError(`Insert PDF failed: ${err instanceof Error ? err.message : 'unknown'}`);
+    } finally { setSaving(false); }
+  };
+
+  // ─── Annotation presets ("favorites") ────────────────────────
+  // Save the current toolbar color/stroke (+ a default opacity) as a named
+  // preset; apply a preset by pushing its style onto the active toolbar so the
+  // next-drawn annotation inherits it (and re-style the selected annotation).
+  const saveCurrentAsPreset = () => {
+    const name = window.prompt('Name this style preset:', `Preset ${prefs.annotationPresets.length + 1}`);
+    if (!name) return;
+    const preset: AnnotationPreset = {
+      id: Math.random().toString(36).slice(2, 10),
+      name: name.trim(),
+      color, strokeWidth, opacity: 1, strokeStyle: 'solid',
+    };
+    setPrefs({ ...prefs, annotationPresets: [...prefs.annotationPresets, preset].slice(0, 12) });
+    pushToast(`Saved style "${preset.name}"`, 'ok');
+  };
+  const applyPreset = (preset: AnnotationPreset) => {
+    setColor(preset.color);
+    setStrokeWidth(preset.strokeWidth);
+    // Re-style the currently-selected annotation too, if any.
+    if (activeId) {
+      const idx = state.annotations.findIndex(a => a.id === activeId);
+      if (idx !== -1) {
+        const next = [...state.annotations];
+        next[idx] = { ...next[idx], color: preset.color, strokeWidth: preset.strokeWidth, opacity: preset.opacity, strokeStyle: preset.strokeStyle } as Annotation;
+        mutate({ annotations: next });
+      }
+    }
+    pushToast(`Applied "${preset.name}"`, 'ok');
+  };
+  const deletePreset = (id: string) =>
+    setPrefs({ ...prefs, annotationPresets: prefs.annotationPresets.filter(p => p.id !== id) });
+
+  // Apply / clear the real-world measurement calibration (persisted in prefs).
+  const applyCalibration = (cal: MeasureCalibration | null) => {
+    setPrefs({ ...prefs, calibration: cal });
+    pushToast(cal ? `Calibrated: ${cal.note ?? `${cal.unit}`}` : 'Cleared calibration', cal ? 'ok' : 'info');
   };
 
   // Insert an image as a brand-new full page (appended at the end).
@@ -1603,8 +1680,33 @@ export default function PdfEditorPage() {
     setSearchParams(next, { replace: true });
   };
 
+  const lightChrome = prefs.chromeTheme === 'light';
+
   return (
-    <div className="p-3 flex flex-col h-[calc(100vh-140px)] min-h-[600px]">
+    <div className={`p-3 flex flex-col h-[calc(100vh-140px)] min-h-[600px] ${lightChrome ? 'rmpg-pdf-light-chrome rounded-[2px]' : ''}`}>
+      {/* Light chrome theme — recolors ONLY the editor's surrounding panels
+          (toolbars, rails, panels). The rendered PDF pages (.bg-white) are
+          explicitly excluded so document fidelity is never affected. Scoped to
+          this subtree so it can't leak into the rest of the app. */}
+      {lightChrome && (
+        <style>{`
+          .rmpg-pdf-light-chrome { background:#ececed; color:#1a1a1a; }
+          .rmpg-pdf-light-chrome .bg-\\[\\#0d0d0d\\],
+          .rmpg-pdf-light-chrome .bg-\\[\\#141414\\],
+          .rmpg-pdf-light-chrome .bg-\\[\\#0a0a0a\\] { background:#f6f6f7 !important; }
+          .rmpg-pdf-light-chrome .bg-\\[\\#050505\\] { background:#d9d9dc !important; }
+          .rmpg-pdf-light-chrome .border-\\[\\#222\\],
+          .rmpg-pdf-light-chrome .border-\\[\\#222222\\],
+          .rmpg-pdf-light-chrome .border-\\[\\#1a1a1a\\] { border-color:#c2c2c6 !important; }
+          .rmpg-pdf-light-chrome .text-rmpg-200,
+          .rmpg-pdf-light-chrome .text-rmpg-300,
+          .rmpg-pdf-light-chrome .text-rmpg-400 { color:#2a2a2a !important; }
+          .rmpg-pdf-light-chrome .text-rmpg-500,
+          .rmpg-pdf-light-chrome .text-rmpg-600 { color:#6a6a6a !important; }
+          /* Keep the PDF page surface pure white regardless of chrome theme. */
+          .rmpg-pdf-light-chrome .bg-white { background:#ffffff !important; }
+        `}</style>
+      )}
       <PanelTitleBar title={viewOnly ? 'PDF VIEWER' : 'PDF EDITOR'} icon={FileText} />
 
       <input id="ff-pdfeditorpage-0" ref={fileInputRef} type="file" accept="application/pdf,.pdf" className="hidden" onChange={handleOpenChange} />
@@ -1670,6 +1772,9 @@ export default function PdfEditorPage() {
         onApply={(rules) => { mutate({ pageLabels: rules }); pushToast(rules.length ? `Applied ${rules.length} page-label rule(s)` : 'Cleared page labels', rules.length ? 'ok' : 'info'); }}
       />
       <PreferencesDialog open={prefsOpen} prefs={prefs} onChange={setPrefs} onClose={() => setPrefsOpen(false)} />
+      <CalibrationDialog open={calibrationOpen} value={prefs.calibration} onClose={() => setCalibrationOpen(false)} onApply={applyCalibration} />
+      <InsertFromPdfDialog open={insertPdfOpen} pageCount={state.pageOrder.length} activePage={activePage} busy={saving}
+        onClose={() => setInsertPdfOpen(false)} onInsert={handleInsertFromPdf} />
       {/* Toast queue — bottom-right floating stack */}
       {toasts.length > 0 && (
         <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-1.5">
@@ -1709,6 +1814,7 @@ export default function PdfEditorPage() {
         onToggleLock={() => contextMenu && toggleLock(contextMenu.annotationId)}
         onBringForward={() => contextMenu && bringForward(contextMenu.annotationId)}
         onSendBackward={() => contextMenu && sendBackward(contextMenu.annotationId)}
+        onRotate90={() => contextMenu && rotateAnnotation90(contextMenu.annotationId)}
         onAssignLayer={(layer) => {
           if (!contextMenu) return;
           const idx = state.annotations.findIndex(a => a.id === contextMenu.annotationId);
@@ -1843,6 +1949,11 @@ export default function PdfEditorPage() {
             className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><UploadIcon className="w-3 h-3" /> Append PDF</button>
           <button type="button" onClick={() => setInsertPageOpen(true)} title="Insert a blank / lined / grid / image page"
             className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><FilePlus2 className="w-3 h-3" /> Insert page</button>
+          <button type="button" onClick={() => setInsertPdfOpen(true)} title="Insert the pages of another PDF at a chosen position"
+            className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><FileInput className="w-3 h-3" /> Insert PDF</button>
+          <button type="button" onClick={() => setCalibrationOpen(true)}
+            title="Set a real-world measurement scale for the measure / area tools"
+            className={`px-2 py-0.5 rounded-sm inline-flex items-center gap-1 ${prefs.calibration ? 'bg-[#d4a017]/20 text-[#d4a017]' : 'hover:bg-rmpg-700/40'}`}><Ruler className="w-3 h-3" /> Calibrate{prefs.calibration ? ` (${prefs.calibration.unit})` : ''}</button>
           <button type="button" onClick={() => setRedactOpen(true)} title="Search & redact SSN / phone / email by pattern"
             className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><EyeOff className="w-3 h-3" /> Redact pattern</button>
           <button type="button" onClick={() => setHeaderFooterOpen(true)}
@@ -1876,6 +1987,32 @@ export default function PdfEditorPage() {
             className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><Square className="w-3 h-3" /> Border</button>
           <button type="button" onClick={addReplyToActive} title="Add a reply to the selected sticky note / text annotation"
             className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><MessageSquare className="w-3 h-3" /> Reply</button>
+          <label className="inline-flex items-center gap-1 px-1" title="Category applied to new sticky notes">
+            <span className="text-[9px] uppercase tracking-wider text-rmpg-500">Note</span>
+            <select id="ff-pdfeditorpage-stickycat" value={stickyCategory} onChange={e => setStickyCategory(e.target.value as StickyCategory)}
+              className="bg-[#0a0a0a] border border-[#222] text-[10px] text-rmpg-200 px-1 py-0.5 rounded-sm">
+              {(Object.keys(STICKY_CATEGORIES) as StickyCategory[]).map(k => (
+                <option key={k} value={k}>{STICKY_CATEGORIES[k].label}</option>
+              ))}
+            </select>
+          </label>
+          <button type="button" onClick={saveCurrentAsPreset} title="Save the current color + stroke as a reusable style preset"
+            className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><Star className="w-3 h-3" /> Save style</button>
+          {prefs.annotationPresets.length > 0 && (
+            <span className="inline-flex items-center gap-0.5">
+              {prefs.annotationPresets.map(ps => (
+                <span key={ps.id} className="inline-flex items-center group">
+                  <button type="button" onClick={() => applyPreset(ps)} title={`Apply "${ps.name}" (${ps.color}, ${ps.strokeWidth}px)`}
+                    className="px-1.5 py-0.5 rounded-sm border border-[#222] hover:border-[#d4a017] inline-flex items-center gap-1">
+                    <span className="w-2.5 h-2.5 rounded-sm border border-[#333]" style={{ background: ps.color }} />
+                    <span className="text-[9px] max-w-[70px] truncate">{ps.name}</span>
+                  </button>
+                  <button type="button" onClick={() => deletePreset(ps.id)} aria-label={`Delete preset ${ps.name}`} title="Delete preset"
+                    className="text-rmpg-600 hover:text-red-400 text-[10px] px-0.5">×</button>
+                </span>
+              ))}
+            </span>
+          )}
           <button type="button" onClick={() => setPrefs({ ...prefs, showGrid: !prefs.showGrid })}
             title="Toggle the grid overlay"
             className={`px-2 py-0.5 rounded-sm inline-flex items-center gap-1 ${prefs.showGrid ? 'bg-[#d4a017]/20 text-[#d4a017]' : 'hover:bg-rmpg-700/40'}`}><Grid3x3 className="w-3 h-3" /> Grid</button>
@@ -1918,6 +2055,12 @@ export default function PdfEditorPage() {
             className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm">Fit page</button>
           <button type="button" onClick={fitWidth} title="Fit width (2)"
             className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm">Fit width</button>
+          <button type="button" onClick={() => setPrefs({ ...prefs, chromeTheme: prefs.chromeTheme === 'light' ? 'dark' : 'light' })}
+            title={prefs.chromeTheme === 'light' ? 'Switch editor chrome to dark' : 'Switch editor chrome to light (page stays white)'}
+            className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1">
+            {prefs.chromeTheme === 'light' ? <Moon className="w-3 h-3" /> : <Sun className="w-3 h-3" />}
+            {prefs.chromeTheme === 'light' ? 'Dark' : 'Light'}
+          </button>
           <button type="button" onClick={() => setShortcutsOpen(true)} title="Keyboard shortcuts (?)"
             className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><Keyboard className="w-3 h-3" /> ?</button>
           <button type="button" onClick={() => setPrefsOpen(true)} title="Editor preferences"
@@ -2026,6 +2169,8 @@ export default function PdfEditorPage() {
                 forcePdfjs={forcePdfjs}
                 snapToGrid={prefs.snapToGrid}
                 gridSize={prefs.gridSize}
+                calibration={prefs.calibration}
+                stickyCategory={stickyCategory}
               />
             ))}
           </div>

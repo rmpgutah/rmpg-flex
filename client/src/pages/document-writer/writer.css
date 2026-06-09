@@ -19,8 +19,14 @@
   color: inherit;
   font-family: var(--writer-font, "Times New Roman", Times, serif);
   font-size: var(--writer-size, 12pt);
-  line-height: 1.5;
+  line-height: var(--writer-line-height, 1.5);
   min-height: 100%;
+}
+
+/* Editor appearance: optional writing measure (max content width) applied to
+ * the editing canvas only — never to print (see @media print). */
+.writer-content .ProseMirror > * {
+  max-width: var(--writer-measure, none);
 }
 
 .writer-content .ProseMirror > * + * { margin-top: 0.6em; }
@@ -247,6 +253,31 @@
 .writer-content .ProseMirror .doc-embed { margin: 0.6em 0; }
 .writer-content .ProseMirror .doc-audio { margin: 0.4em 0; }
 
+/* Reversible redaction mark — solid black bar that hides the underlying text on
+ * screen AND in print. (Distinct from the destructive █-block redaction tool.) */
+.writer-content .ProseMirror .doc-redacted,
+.doc-redacted {
+  background: #000 !important;
+  color: #000 !important;
+  border-radius: 2px;
+  padding: 0 2px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+.writer-content .ProseMirror .doc-redacted::selection { color: #000; }
+
+/* Track-changes (suggestion) marks. */
+.writer-content .ProseMirror .doc-suggest-ins {
+  color: #1f8f4e;
+  text-decoration: underline;
+  text-decoration-color: rgba(31, 143, 78, 0.7);
+}
+.writer-content .ProseMirror .doc-suggest-del {
+  color: #c0392b;
+  text-decoration: line-through;
+  text-decoration-color: rgba(192, 57, 43, 0.8);
+}
+
 /* Print / PDF — ALWAYS black text on white, regardless of editor theme. */
 @media print {
   .writer-page {
@@ -258,4 +289,15 @@
   .writer-content .ProseMirror a { color: #000; }
   .doc-page-break::after,
   .doc-section-break::after { display: none; }
+  /* Writing measure is a drafting aid only — full width in print. */
+  .writer-content .ProseMirror > * { max-width: none !important; }
+  /* Redaction bars must print solid black (force background printing). */
+  .doc-redacted {
+    background: #000 !important;
+    color: #000 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  /* Track-changes coloring carries into print so a reviewer can mark up a copy. */
+  .doc-suggest-del { text-decoration: line-through; }
 }

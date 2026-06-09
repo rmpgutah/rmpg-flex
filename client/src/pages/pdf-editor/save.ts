@@ -90,6 +90,16 @@ async function drawAnnotation(ctx: PageContext, ann: Annotation): Promise<void> 
   const color = hexToRgb(ann.color, [0, 0, 0]);
   const fillColor = hexToRgb(ann.fillColor ?? ann.color, [0, 0, 0]);
 
+  // Optional per-annotation visual rotation (degrees, clockwise on screen).
+  // Applied as an extra CTM about the annotation's center, layered on top of any
+  // page-rotation ctm. Guarded so rotation===0/undefined leaves the emitted
+  // stream byte-identical to before (no extra cm operators are written).
+  const annRot = ann.rotation ?? 0;
+  // Screen "clockwise" is negative in PDF user space (y-up), so negate.
+  const annRad = (-annRot * Math.PI) / 180;
+  const annCenterCx = px + pw / 2;
+  const annCenterCy = py - ph / 2;
+
   // Every shape draws through this wrapper: saveState → (rotation CTM) → body →
   // restoreState. Centralizing the q/cm/Q here keeps each case self-contained
   // and guarantees the un-rotated path (ctm null) is byte-identical to before.
@@ -97,6 +107,13 @@ async function drawAnnotation(ctx: PageContext, ann: Annotation): Promise<void> 
     builder.drawOnPage(pageIdx, (csb, useFont) => {
       csb.saveState();
       if (ctm) csb.transform(ctm[0], ctm[1], ctm[2], ctm[3], ctm[4], ctm[5]);
+      if (annRot) {
+        // Rotate about (cx, cy): translate→rotate→translate-back as one CTM.
+        const c = Math.cos(annRad), s = Math.sin(annRad);
+        const tx = annCenterCx - (c * annCenterCx - s * annCenterCy);
+        const ty = annCenterCy - (s * annCenterCx + c * annCenterCy);
+        csb.transform(c, s, -s, c, tx, ty);
+      }
       fn(csb, useFont);
       csb.restoreState();
     });
@@ -155,9 +172,24 @@ async function drawAnnotation(ctx: PageContext, ann: Annotation): Promise<void> 
       return;
     }
     case 'redact': {
-      draw((csb) => {
-        csb.setFillRgb(0, 0, 0);
+      const whiteOut = ann.redactStyle === 'white';
+      draw((csb, useFont) => {
+        if (whiteOut) csb.setFillRgb(1, 1, 1);
+        else csb.setFillRgb(0, 0, 0);
         csb.fillRect(px, py - ph, pw, ph);
+        // Optional exemption / reason label centered over the bar, drawn in the
+        // contrasting ink so it reads on either bar style.
+        if (ann.reason && ann.reason.trim()) {
+          const label = ann.reason.trim();
+          const fontSize = Math.max(6, Math.min(ph * 0.55, 11));
+          const resName = useFont('Helvetica');
+          if (whiteOut) csb.setFillRgb(0, 0, 0);
+          else csb.setFillRgb(1, 1, 1);
+          const approxW = label.length * fontSize * 0.5;
+          const tx = px + Math.max(1, (pw - approxW) / 2);
+          const ty = py - ph / 2 - fontSize / 2.6;
+          csb.drawText(label, tx, ty, resName, fontSize);
+        }
       });
       return;
     }
@@ -255,6 +287,17 @@ async function drawAnnotation(ctx: PageContext, ann: Annotation): Promise<void> 
           csb.stroke();
         }
       });
+      // Area-measurement label drawn at the polygon centroid (PDF space).
+      if (ann.areaLabel && ann.areaLabel.trim() && ann.points.length >= 3) {
+        const cxs = ann.points.reduce((s, v) => s + (px + v.x / scale), 0) / ann.points.length;
+        const cys = ann.points.reduce((s, v) => s + (py - v.y / scale), 0) / ann.points.length;
+        draw((csb, useFont) => {
+          const resName = useFont('Helvetica');
+          csb.setFillRgb(color[0], color[1], color[2]);
+          const approxW = ann.areaLabel!.length * 8 * 0.5;
+          csb.drawText(ann.areaLabel!, cxs - approxW / 2, cys, resName, 8);
+        });
+      }
       return;
     }
     case 'cloud': {
@@ -851,6 +894,33 @@ export async function appendPdfBytes(base: Uint8Array, extra: Uint8Array): Promi
   const copied = await out.copyPages(src, src.getPageIndices());
   for (const p of copied) out.addPage(p);
   out.setProducer('RMPG PDF Engine v1.0 — append via pdf-lib');
+  out.setModificationDate(new Date());
+  return out.save();
+}
+
+/**
+ * Insert all pages of `extra` (raw PDF bytes) into `base` BEFORE the visual
+ * page at `position` (1-indexed; position > pageCount appends at the end,
+ * position <= 1 prepends). Returns a fresh combined byte buffer; the editor
+ * re-opens the result so page/annotation state rebuilds cleanly. The caller
+ * flattens the base document's annotations into `base` first when needed.
+ */
+export async function insertPdfBytesAt(base: Uint8Array, extra: Uint8Array, position: number): Promise<Uint8Array> {
+  const out = await PDFDocument.load(base);
+  const src = await PDFDocument.load(extra);
+  const baseCount = out.getPageCount();
+  // Clamp to a 0-based insertion index in [0, baseCount].
+  const at = Math.max(0, Math.min(baseCount, Math.floor(position) - 1));
+  const copied = await out.copyPages(src, src.getPageIndices());
+  // insertPage shifts subsequent pages down; inserting sequentially keeps the
+  // copied pages in order at the target index.
+  let cursor = at;
+  for (const p of copied) {
+    if (cursor >= out.getPageCount()) out.addPage(p);
+    else out.insertPage(cursor, p);
+    cursor++;
+  }
+  out.setProducer('RMPG PDF Engine v1.0 — insert via pdf-lib');
   out.setModificationDate(new Date());
   return out.save();
 }

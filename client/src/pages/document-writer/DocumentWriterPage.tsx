@@ -33,6 +33,13 @@ import DocPropertiesDialog from './components/DocPropertiesDialog';
 import FeaturesPanel from './components/FeaturesPanel';
 import ShortcutsHelp from './components/ShortcutsHelp';
 import RecentDocsPanel from './components/RecentDocsPanel';
+import MergePanel from './components/MergePanel';
+import ProofreadPanel from './components/ProofreadPanel';
+import SectionsPanel from './components/SectionsPanel';
+import TrackChangesPanel from './components/TrackChangesPanel';
+import Minimap from './components/Minimap';
+import Autocomplete from './components/Autocomplete';
+import AppearanceDialog from './components/AppearanceDialog';
 import { captureFormat, applyFormat, type CapturedFormat } from './docActions';
 import {
   insertOfficerSignatureBlock, buildStandaloneHtml, duplicateTitle,
@@ -47,6 +54,9 @@ import FindReplace from './extensions/findReplace';
 import ListStyles from './extensions/listStyles';
 import { Embed, Audio } from './extensions/mediaNodes';
 import Comment from './extensions/comment';
+import Redaction from './extensions/redaction';
+import Suggestion from './extensions/suggestion';
+import { loadAppearance, saveAppearance, applyAppearance, type EditorAppearance } from './appearance';
 import { htmlToMarkdown, htmlToPlainText, htmlToRtf, downloadFile, copyRich, copyText } from './exporters';
 import { writeDraft, readDraft, clearDraft, saveSnapshot } from './autosave';
 import { PAGE_SIZES, DEFAULT_DOC_SETTINGS, type DocumentTemplate, type DocSettings, type WriterTheme } from './types';
@@ -95,6 +105,18 @@ export default function DocumentWriterPage() {
   const [showRecent, setShowRecent] = useState(false);
   const [recentTick, setRecentTick] = useState(0); // force RecentDocsPanel re-read after delete
   const [serverSaveState, setServerSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  // New feature state (this wave): mail-merge, proofread, sections, track
+  // changes, minimap, autocomplete, appearance.
+  const [showMerge, setShowMerge] = useState(false);
+  const [showProofread, setShowProofread] = useState(false);
+  const [showSections, setShowSections] = useState(false);
+  const [showTrackChanges, setShowTrackChanges] = useState(false);
+  const [showMinimap, setShowMinimap] = useState(false);
+  const [showAppearance, setShowAppearance] = useState(false);
+  const [suggestMode, setSuggestMode] = useState(false);
+  const [autocompleteOn, setAutocompleteOn] = useState(() => localStorage.getItem('rmpg_writer_autocomplete') !== 'off');
+  const [appearance, setAppearance] = useState<EditorAppearance>(loadAppearance);
+  const pageRef = useRef<HTMLDivElement>(null);
   const documentIdRef = useRef<string | null>(null);
   const recentIdRef = useRef<string>(`doc-${new Date().toISOString()}`);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -115,7 +137,7 @@ export default function DocumentWriterPage() {
       TaskList, TaskItem.configure({ nested: true }),
       SuperscriptExt, SubscriptExt,
       TextStyleExtras, BlockStyle, PageBreak, SectionBreak,
-      FindReplace, ListStyles, Embed, Audio, Comment,
+      FindReplace, ListStyles, Embed, Audio, Comment, Redaction, Suggestion,
     ],
     editorProps: {
       attributes: {
@@ -425,6 +447,45 @@ export default function DocumentWriterPage() {
     ra.speak(text);
   }, [editor]);
 
+  // Redact the current selection (reversible black-bar mark, distinct from the
+  // destructive █-block redaction tool in the Tools panel).
+  const handleToggleRedaction = useCallback(() => {
+    if (!editor) return;
+    const { from, to } = editor.state.selection;
+    if (from === to) { flashError('Select the text to redact (or un-redact) first.'); return; }
+    editor.chain().focus().toggleRedaction().run();
+  }, [editor, flashError]);
+
+  // Toggle suggestion (track-changes) mode. While on, typed text is wrapped in
+  // the insertion mark so it shows as a tracked change.
+  const handleToggleSuggestMode = useCallback(() => {
+    setSuggestMode((on) => {
+      const next = !on;
+      if (editor) {
+        if (next) editor.chain().focus().setMark('suggestion', { change: 'ins' }).run();
+        else editor.chain().focus().unsetMark('suggestion').run();
+      }
+      return next;
+    });
+  }, [editor]);
+
+  // Apply + persist editor appearance whenever it changes (or the page mounts).
+  const handleAppearanceChange = useCallback((next: EditorAppearance) => {
+    setAppearance(next);
+    saveAppearance(next);
+    applyAppearance(pageRef.current, next);
+  }, []);
+
+  // Toggle inline phrase autocomplete (persisted).
+  const handleToggleAutocomplete = useCallback(() => {
+    setAutocompleteOn((on) => {
+      const next = !on;
+      localStorage.setItem('rmpg_writer_autocomplete', next ? 'on' : 'off');
+      flashNotice(`Phrase autocomplete ${next ? 'on' : 'off'}.`);
+      return next;
+    });
+  }, [flashNotice]);
+
   // Export the editor's document JSON (round-trippable, lossless vs HTML).
   const handleExportJson = useCallback(() => {
     if (!editor) return;
@@ -575,6 +636,25 @@ export default function DocumentWriterPage() {
   // Stop any in-progress read-aloud when the writer unmounts.
   useEffect(() => () => { readAloudRef.current?.stop(); }, []);
 
+  // Apply persisted editor appearance to the page element once it's mounted in
+  // edit mode (and re-apply if the appearance object changes).
+  useEffect(() => {
+    if (mode === 'edit') applyAppearance(pageRef.current, appearance);
+  }, [mode, appearance]);
+
+  // Keep the suggestion (insertion) mark active as the user moves the caret
+  // while suggestion mode is on, so newly typed text stays tracked.
+  useEffect(() => {
+    if (mode !== 'edit' || !editor || !suggestMode) return;
+    const reArm = () => {
+      if (!editor.isActive('suggestion')) {
+        editor.commands.setMark('suggestion', { change: 'ins' });
+      }
+    };
+    editor.on('selectionUpdate', reArm);
+    return () => { editor.off('selectionUpdate', reArm); };
+  }, [mode, editor, suggestMode]);
+
   if (mode === 'choose') {
     return <div className="p-3 h-[calc(100vh-140px)] overflow-auto"><TemplateChooser onSelect={handleTemplateSelect} /></div>;
   }
@@ -653,6 +733,18 @@ export default function DocumentWriterPage() {
               onToggleRecent: () => setShowRecent((v) => !v),
               serverSaveState,
               flash: (m: string) => flashNotice(m),
+              // This wave's new features
+              onToggleMerge: () => setShowMerge((v) => !v),
+              onToggleProofread: () => setShowProofread((v) => !v),
+              onToggleSections: () => setShowSections((v) => !v),
+              onToggleTrackChanges: () => setShowTrackChanges((v) => !v),
+              onToggleMinimap: () => setShowMinimap((v) => !v),
+              onOpenAppearance: () => setShowAppearance(true),
+              onToggleRedaction: handleToggleRedaction,
+              onToggleSuggestMode: handleToggleSuggestMode,
+              suggestMode,
+              onToggleAutocomplete: handleToggleAutocomplete,
+              autocompleteOn,
             }}
           />
         </div>
@@ -665,14 +757,16 @@ export default function DocumentWriterPage() {
       <div className="flex-1 mt-3 overflow-auto bg-[#050505] border border-[#1a1a1a] rounded-[2px] flex gap-2 p-2 relative">
         {showOutline && !focusMode && editor && <OutlinePane editor={editor} onClose={() => setShowOutline(false)} />}
 
-        <div className="flex-1 overflow-auto flex justify-center relative">
+        <div className="writer-scroll flex-1 overflow-auto flex justify-center relative">
           {findMode && editor && <FindReplacePanel editor={editor} mode={findMode} onClose={() => setFindMode(null)} />}
+          {editor && <Autocomplete editor={editor} enabled={autocompleteOn && !reading} />}
           <div style={{ transform: `scale(${zoom})`, transformOrigin: 'top center' }}>
             <div
+              ref={pageRef}
               className={`writer-page my-3 md:my-6 shadow-2xl shadow-black/50 ${docSettings.pageBorder ? `has-page-border border-${docSettings.pageBorderStyle || 'thin'}` : ''}`}
               style={{
                 width: reading ? Math.min(pageW, 760) : pageW, minHeight: pageH,
-                background: pageBg, color: textColor,
+                background: theme === 'dark' ? pageBg : (appearance.paperTint || pageBg), color: textColor,
                 paddingTop: m.top, paddingRight: m.right, paddingBottom: m.bottom, paddingLeft: m.left,
                 backgroundImage: docSettings.backgroundImage ? `url(${docSettings.backgroundImage})` : undefined,
                 backgroundSize: 'cover',
@@ -706,6 +800,22 @@ export default function DocumentWriterPage() {
         {showComments && !focusMode && editor && <CommentsSidebar editor={editor} comments={comments} setComments={setComments} author={author} onClose={() => setShowComments(false)} />}
 
         {showFeatures && <FeaturesPanel editor={editor} onClose={() => setShowFeatures(false)} caseUrl={typeof window !== 'undefined' ? window.location.href : undefined} />}
+
+        {showMerge && !focusMode && editor && (
+          <MergePanel editor={editor} officer={{ name: author, badge: user?.badge_number, rank: user?.rank, department: user?.department }}
+            onClose={() => setShowMerge(false)} flash={(msg) => flashNotice(msg)} />
+        )}
+
+        {showProofread && !focusMode && editor && <ProofreadPanel editor={editor} onClose={() => setShowProofread(false)} flash={(msg) => flashNotice(msg)} />}
+
+        {showSections && !focusMode && editor && <SectionsPanel editor={editor} onClose={() => setShowSections(false)} />}
+
+        {showTrackChanges && !focusMode && editor && (
+          <TrackChangesPanel editor={editor} suggestMode={suggestMode} onToggleMode={handleToggleSuggestMode}
+            onClose={() => setShowTrackChanges(false)} flash={(msg) => flashNotice(msg)} />
+        )}
+
+        {showMinimap && !focusMode && editor && <Minimap editor={editor} scrollSelector=".writer-scroll" onClose={() => setShowMinimap(false)} />}
 
         {showRecent && !focusMode && (
           <RecentDocsPanel
@@ -761,6 +871,10 @@ export default function DocumentWriterPage() {
           }}
           onClose={() => setShowProperties(false)}
         />
+      )}
+
+      {showAppearance && (
+        <AppearanceDialog value={appearance} onChange={handleAppearanceChange} onClose={() => setShowAppearance(false)} />
       )}
     </div>
   );

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, cloneElement } from 'react';
 import { openAndRenderPage, RmpgPdfDocument } from '../../../lib/rmpg-pdf-engine';
-import { Annotation, PageCrop, PageMeta, Point, StampLabel, Tool, DEFAULT_RENDER_SCALE } from '../types';
+import { Annotation, MeasureCalibration, PageCrop, PageMeta, Point, StampLabel, StickyCategory, STICKY_CATEGORIES, Tool, DEFAULT_RENDER_SCALE } from '../types';
 
 interface Props {
   pdfBytes: Uint8Array | null;
@@ -37,6 +37,11 @@ interface Props {
   snapToGrid?: boolean;
   /** Grid step in PDF points (converted to screen px internally). */
   gridSize?: number;
+  /** Active real-world measurement calibration. When set, the measure + area
+   *  tools report calibrated distances/areas instead of raw inches/points. */
+  calibration?: MeasureCalibration | null;
+  /** Default category applied to sticky notes created on this page. */
+  stickyCategory?: StickyCategory;
 }
 
 function uid(): string { return Math.random().toString(36).slice(2, 10); }
@@ -58,7 +63,7 @@ const HANDLE_POSITIONS: Array<{ id: ResizeHandle; cx: 0 | 0.5 | 1; cy: 0 | 0.5 |
 ];
 
 export default function PageCanvas(props: Props) {
-  const { pdfBytes, doc, originalPageNumber, visualPageNumber, pageMeta, zoom, tool, color, strokeWidth, pendingImage, pendingStamp, annotations, activeId, onSelectAnnotation, onAddAnnotation, onUpdateAnnotation, onUpdateAnnotationLive, onTransformStart, onSetCrop, onAnnotationContextMenu, forcePdfjs, snapToGrid, gridSize } = props;
+  const { pdfBytes, doc, originalPageNumber, visualPageNumber, pageMeta, zoom, tool, color, strokeWidth, pendingImage, pendingStamp, annotations, activeId, onSelectAnnotation, onAddAnnotation, onUpdateAnnotation, onUpdateAnnotationLive, onTransformStart, onSetCrop, onAnnotationContextMenu, forcePdfjs, snapToGrid, gridSize, calibration, stickyCategory } = props;
   // Snap a value (screen px at render scale) to the configured grid. The grid
   // is defined in PDF points, so step = gridSize * DEFAULT_RENDER_SCALE px.
   const snap = (v: number): number => {
@@ -102,7 +107,27 @@ export default function PageCanvas(props: Props) {
   const [renderError, setRenderError] = useState<string | null>(null);
   // Polygon / polyline draft — captured vertices in absolute page coords
   // until the user double-clicks (closes/finishes) or hits Escape (cancels).
-  const [polyDraft, setPolyDraft] = useState<{ tool: 'polygon' | 'polyline'; vertices: Point[]; cursor: Point } | null>(null);
+  const [polyDraft, setPolyDraft] = useState<{ tool: 'polygon' | 'polyline' | 'measureArea'; vertices: Point[]; cursor: Point } | null>(null);
+
+  // Compute a calibrated (or raw) area label for a closed polygon given its
+  // absolute-page-pixel vertices. Uses the shoelace formula in PDF points, then
+  // scales by the active real-world calibration when present.
+  const areaLabelFor = (verts: Point[]): string => {
+    let acc = 0;
+    for (let i = 0; i < verts.length; i++) {
+      const a = verts[i], b = verts[(i + 1) % verts.length];
+      acc += a.x * b.y - b.x * a.y;
+    }
+    const areaPx = Math.abs(acc) / 2;
+    // px → PDF points: divide each axis by render scale → divide area by scale².
+    const areaPt = areaPx / (DEFAULT_RENDER_SCALE * DEFAULT_RENDER_SCALE);
+    if (calibration && calibration.realPerPdfPoint > 0) {
+      const real = areaPt * calibration.realPerPdfPoint * calibration.realPerPdfPoint;
+      return `${real.toFixed(2)} sq ${calibration.unit}`;
+    }
+    const sqIn = areaPt / (72 * 72);
+    return sqIn >= 0.01 ? `${sqIn.toFixed(2)} sq in` : `${areaPt.toFixed(0)} sq pt`;
+  };
 
   // Render PDF page on mount + when bytes/doc change.
   useEffect(() => {
@@ -225,7 +250,9 @@ export default function PageCanvas(props: Props) {
     if (tool === 'sticky') {
       const text = window.prompt('Sticky note:', '');
       if (!text) return;
-      onAddAnnotation({ id: uid(), type: 'sticky', page: visualPageNumber, x: p.x, y: p.y, w: 180, h: 60, text, color: '#0a0a0a', fillColor: '#fff7c2', createdAt: new Date().toISOString() });
+      const cat = stickyCategory ?? 'general';
+      const meta = STICKY_CATEGORIES[cat];
+      onAddAnnotation({ id: uid(), type: 'sticky', page: visualPageNumber, x: p.x, y: p.y, w: 180, h: 60, text, color: meta.ink, fillColor: meta.paper, category: cat, createdAt: new Date().toISOString() });
       return;
     }
     if (tool === 'datestamp') {
@@ -271,7 +298,7 @@ export default function PageCanvas(props: Props) {
       (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
       return;
     }
-    if (tool === 'polygon' || tool === 'polyline') {
+    if (tool === 'polygon' || tool === 'polyline' || tool === 'measureArea') {
       // Each click adds a vertex; double-click closes (handled in onDoubleClick
       // below). Escape clears the draft via the orchestrator's keyboard handler.
       setPolyDraft(prev => prev && prev.tool === tool
@@ -362,13 +389,18 @@ export default function PageCanvas(props: Props) {
         onAddAnnotation({ id: uid(), type: 'line', page: visualPageNumber, x: start.x, y: start.y, w: current.x - start.x, h: current.y - start.y, color, strokeWidth: sw, arrow: t === 'arrow' });
       } else if (t === 'measure' && (Math.abs(current.x - start.x) > 2 || Math.abs(current.y - start.y) > 2)) {
         // Distance between the two clicked points. Pixels → PDF points (÷ render
-        // scale) → inches (÷ 72). Labelled dimension line with end ticks.
+        // scale). When a real-world calibration is active, report calibrated
+        // units; otherwise fall back to inches / points.
         const distPx = Math.hypot(current.x - start.x, current.y - start.y);
         const pts = distPx / DEFAULT_RENDER_SCALE;
-        const inches = pts / 72;
-        const label = inches >= 1
-          ? `${inches.toFixed(2)} in (${pts.toFixed(0)} pt)`
-          : `${pts.toFixed(0)} pt`;
+        let label: string;
+        if (calibration && calibration.realPerPdfPoint > 0) {
+          const real = pts * calibration.realPerPdfPoint;
+          label = `${real.toFixed(2)} ${calibration.unit}`;
+        } else {
+          const inches = pts / 72;
+          label = inches >= 1 ? `${inches.toFixed(2)} in (${pts.toFixed(0)} pt)` : `${pts.toFixed(0)} pt`;
+        }
         onAddAnnotation({ id: uid(), type: 'line', page: visualPageNumber, x: start.x, y: start.y, w: current.x - start.x, h: current.y - start.y, color, strokeWidth: sw, measureLabel: label });
       } else if (t === 'link' && w > 4 && h > 4) {
         const url = window.prompt('Hyperlink URL (e.g. https://...):', 'https://');
@@ -448,11 +480,13 @@ export default function PageCanvas(props: Props) {
           const minX = Math.min(...xs), minY = Math.min(...ys);
           const maxX = Math.max(...xs), maxY = Math.max(...ys);
           const points = polyDraft.vertices.map(v => ({ x: v.x - minX, y: v.y - minY }));
+          const isArea = polyDraft.tool === 'measureArea';
           onAddAnnotation({
             id: uid(), type: 'polygon', page: visualPageNumber,
             x: minX, y: minY, w: maxX - minX || 1, h: maxY - minY || 1,
-            points, closed: polyDraft.tool === 'polygon',
+            points, closed: isArea ? true : polyDraft.tool === 'polygon',
             color, strokeWidth,
+            ...(isArea && polyDraft.vertices.length >= 3 ? { areaLabel: areaLabelFor(polyDraft.vertices) } : {}),
           });
           setPolyDraft(null);
         }}
@@ -511,11 +545,11 @@ export default function PageCanvas(props: Props) {
               <path
                 d={polyDraft.vertices.map((v, i) => `${i === 0 ? 'M' : 'L'} ${v.x * zoom} ${v.y * zoom}`).join(' ')
                     + ` L ${polyDraft.cursor.x * zoom} ${polyDraft.cursor.y * zoom}`
-                    + (polyDraft.tool === 'polygon' ? ' Z' : '')}
+                    + (polyDraft.tool === 'polygon' || polyDraft.tool === 'measureArea' ? ' Z' : '')}
                 stroke={color}
                 strokeWidth={strokeWidth * zoom}
                 strokeDasharray={`${4 * zoom} ${3 * zoom}`}
-                fill={polyDraft.tool === 'polygon' ? 'rgba(212, 160, 23, 0.06)' : 'none'}
+                fill={polyDraft.tool === 'polygon' || polyDraft.tool === 'measureArea' ? 'rgba(212, 160, 23, 0.06)' : 'none'}
               />
               {polyDraft.vertices.map((v, i) => (
                 <circle key={i} cx={v.x * zoom} cy={v.y * zoom} r={3} fill="#d4a017" stroke="#000" strokeWidth={0.5} />
@@ -574,6 +608,10 @@ function AnnotationView({ ann, zoom, selected, onPointerDown, onResizeStart, sho
     height: ann.h * zoom,
     opacity: ann.opacity ?? 1,
     outline: selected ? '2px solid #d4a017' : 'none',
+    // Per-annotation visual rotation (degrees, clockwise). Rotates about the
+    // box center so it matches the save-time CTM. Omitted when 0 so unrotated
+    // annotations keep their existing transform-free style.
+    ...(ann.rotation ? { transform: `rotate(${ann.rotation}deg)`, transformOrigin: 'center center' } : {}),
   };
 
   // Renders the 8 resize grips on top of the selected annotation. Each grip
@@ -631,7 +669,18 @@ function AnnotationView({ ann, zoom, selected, onPointerDown, onResizeStart, sho
       </div>
     );
   } else if (ann.type === 'redact') {
-    inner = <div onPointerDown={onPointerDown} style={{ ...baseStyle, background: '#000' }} />;
+    const whiteOut = ann.redactStyle === 'white';
+    inner = (
+      <div onPointerDown={onPointerDown}
+        title={ann.reason ? `Redaction — ${ann.reason}` : 'Redaction'}
+        style={{ ...baseStyle, background: whiteOut ? '#fff' : '#000', border: whiteOut ? '1px solid #888' : undefined, display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+        {ann.reason && (
+          <span style={{ color: whiteOut ? '#000' : '#fff', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: Math.max(7, Math.min(ann.h * zoom * 0.5, 11)), letterSpacing: '0.02em', whiteSpace: 'nowrap', userSelect: 'none', padding: '0 2px' }}>
+            {ann.reason}
+          </span>
+        )}
+      </div>
+    );
   } else if (ann.type === 'rect') {
     const bs = ann.strokeStyle === 'dashed' ? 'dashed' : ann.strokeStyle === 'dotted' ? 'dotted' : 'solid';
     inner = <div onPointerDown={onPointerDown} style={{ ...baseStyle, border: `${(ann.strokeWidth ?? 1.5) * zoom}px ${bs} ${ann.color ?? '#0a0a0a'}`, background: ann.fillColor ?? 'transparent' }} />;
@@ -671,7 +720,12 @@ function AnnotationView({ ann, zoom, selected, onPointerDown, onResizeStart, sho
     inner = (
       <svg onPointerDown={onPointerDown} style={{ ...baseStyle, overflow: 'visible' }}>
         <path d={d} stroke={ann.color ?? '#0a0a0a'} strokeWidth={(ann.strokeWidth ?? 1.5) * zoom}
-          fill={ann.closed && ann.fillColor ? ann.fillColor : 'none'} strokeLinejoin="round" />
+          fill={ann.closed && (ann.fillColor || ann.areaLabel) ? (ann.fillColor ?? 'rgba(212,160,23,0.08)') : 'none'} strokeLinejoin="round" />
+        {ann.areaLabel && (
+          <text x={ann.w * zoom / 2} y={ann.h * zoom / 2} fill={ann.color ?? '#0a0a0a'} fontSize={9 * zoom}
+            textAnchor="middle" dominantBaseline="middle"
+            style={{ paintOrder: 'stroke', stroke: '#ffffff', strokeWidth: 2 * zoom }}>{ann.areaLabel}</text>
+        )}
       </svg>
     );
   } else if (ann.type === 'cloud') {
@@ -720,9 +774,15 @@ function AnnotationView({ ann, zoom, selected, onPointerDown, onResizeStart, sho
   } else if (ann.type === 'image' || ann.type === 'signature') {
     inner = <img onPointerDown={onPointerDown} src={ann.imageData} alt="" style={{ ...baseStyle, objectFit: 'contain' }} />;
   } else if (ann.type === 'sticky') {
+    const cat = ann.category ? STICKY_CATEGORIES[ann.category] : null;
+    const paper = ann.fillColor ?? cat?.paper ?? '#fff7c2';
+    const ink = ann.color ?? cat?.ink ?? '#0a0a0a';
     inner = (
-      <div onPointerDown={onPointerDown} title={ann.text}
-        style={{ ...baseStyle, background: ann.fillColor ?? '#fff7c2', color: ann.color ?? '#0a0a0a', border: '1px solid #d4a017', boxShadow: '2px 2px 0 rgba(0,0,0,0.25)', padding: '4px 6px', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: Math.max(10, ann.h * zoom * 0.18), userSelect: 'none', overflow: 'hidden' }}>
+      <div onPointerDown={onPointerDown} title={cat ? `${cat.label}: ${ann.text}` : ann.text}
+        style={{ ...baseStyle, background: paper, color: ink, border: '1px solid #d4a017', boxShadow: '2px 2px 0 rgba(0,0,0,0.25)', padding: '4px 6px', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: Math.max(10, ann.h * zoom * 0.18), userSelect: 'none', overflow: 'hidden' }}>
+        {cat && (
+          <span aria-hidden="true" style={{ position: 'absolute', top: 1, right: 3, fontWeight: 700, fontSize: Math.max(9, ann.h * zoom * 0.16), color: ink, opacity: 0.7 }}>{cat.glyph}</span>
+        )}
         {ann.text}
       </div>
     );

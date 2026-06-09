@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { Copy, Lock, Unlock, Trash2, ArrowUp, ArrowDown, Layers as LayerIcon, MousePointer2 } from 'lucide-react';
+import { Copy, Lock, Unlock, Trash2, ArrowUp, ArrowDown, Layers as LayerIcon, MousePointer2, RotateCw } from 'lucide-react';
 import { Annotation } from '../types';
 
 // Right-click context menu for annotations. Lives at a fixed (clientX, clientY)
@@ -17,8 +17,12 @@ interface Props {
   onToggleLock: () => void;
   onBringForward: () => void;
   onSendBackward: () => void;
+  onRotate90: () => void;
   onAssignLayer: (layer: string) => void;
 }
+
+// Annotation kinds that support visual rotation (matches PropertiesPanel).
+const ROTATABLE = new Set(['text', 'stamp', 'image', 'signature', 'rect', 'ellipse', 'sticky', 'redact', 'highlight']);
 
 const QUICK_LAYERS = ['Markup', 'Redaction', 'Sign-off', 'Review'];
 
@@ -64,6 +68,11 @@ export default function AnnotationContextMenu(p: Props) {
       <button type="button" onClick={() => { p.onSendBackward(); p.onClose(); }} className={itemCls}>
         <ArrowDown className="w-3 h-3" /> Send backward
       </button>
+      {ROTATABLE.has(ann.type) && (
+        <button type="button" onClick={() => { p.onRotate90(); p.onClose(); }} className={itemCls}>
+          <RotateCw className="w-3 h-3" /> Rotate 90°
+        </button>
+      )}
       <div className="border-t border-[#222] my-0.5" />
       <div className="px-2 py-0.5 text-[9px] uppercase tracking-wider text-rmpg-500 inline-flex items-center gap-1">
         <LayerIcon className="w-3 h-3" /> Assign layer
