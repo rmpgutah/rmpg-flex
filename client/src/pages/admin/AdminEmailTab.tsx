@@ -35,6 +35,11 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
   const [tenantId, setTenantId] = useState('');
   const [showSecret, setShowSecret] = useState(false);
   const [saving, setSaving] = useState(false);
+  // Explicit success signal so the operator gets unambiguous feedback after
+  // Save. The form clearing is too subtle; users were reporting "nothing
+  // happened" because they didn't notice the connection-status pill move
+  // from "Not Configured" → "Not Authorized".
+  const [saveSuccess, setSaveSuccess] = useState(false);
 
   // Password-manager autofill races React: Chrome/Safari can populate the
   // DOM value without firing a synthetic onChange, so controlled state
@@ -133,6 +138,7 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
 
     setSaving(true);
     setError(null);
+    setSaveSuccess(false);
     try {
       await apiFetch('/email/admin/credentials', {
         method: 'PUT',
@@ -140,7 +146,11 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
         body: JSON.stringify({ clientId: cid, clientSecret: csec, tenantId: tid }),
       });
       setClientId(''); setClientSecret(''); setTenantId('');
+      setSaveSuccess(true);
       await fetchStatus();
+      // Auto-dismiss after 8s; the persistent "Authorization Required"
+      // panel below carries the long-lived state cue.
+      setTimeout(() => setSaveSuccess(false), 8000);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -273,6 +283,16 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
           <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
           {error}
           <button type="button" onClick={() => setError(null)} className="ml-auto text-red-400/60 hover:text-red-400">&times;</button>
+        </div>
+      )}
+
+      {saveSuccess && (
+        <div className="flex items-center gap-2 px-3 py-2 text-xs rounded-sm bg-green-500/10 border border-green-500/30 text-green-400">
+          <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0" />
+          <span>
+            Credentials saved. Click <strong>Authorize with Microsoft</strong> below to complete setup.
+          </span>
+          <button type="button" onClick={() => setSaveSuccess(false)} className="ml-auto text-green-400/60 hover:text-green-400">&times;</button>
         </div>
       )}
 
