@@ -368,7 +368,12 @@
 //       Non-Service). Wired into the ServePage job context menu ("Notice of
 //       Attempt to Serve", shown once a job has ≥1 attempt) — builds from the
 //       job's real serve_attempts and opens the rendered PDF to print/leave.
-const CACHE_NAME = 'rmpg-flex-v819';
+// v820: PDF editor — underline + strikethrough text-markup tools. New 'underline'
+//       and 'strikethrough' annotation types (drag-create like highlight); render
+//       as a thin rule on the box bottom edge / through the middle; flattened in
+//       both the native rmpg-pdf-engine builder and the pdf-lib fallback. Added to
+//       the ToolPalette + Annotations panel labels.
+const CACHE_NAME = 'rmpg-flex-v820';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

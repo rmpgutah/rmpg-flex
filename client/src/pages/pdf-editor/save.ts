@@ -87,6 +87,20 @@ async function drawAnnotation(ctx: PageContext, ann: Annotation): Promise<void> 
       });
       return;
     }
+    case 'underline':
+    case 'strikethrough': {
+      // Thin filled rule using the markup color. Underline sits on the box's
+      // bottom edge; strikethrough runs through the vertical center.
+      const th = Math.max(0.5, stroke);
+      const ruleY = ann.type === 'underline' ? py - ph : py - ph / 2 - th / 2;
+      builder.drawOnPage(pageIdx, (csb) => {
+        csb.saveState();
+        csb.setFillRgb(color[0], color[1], color[2]);
+        csb.fillRect(px, ruleY, pw, th);
+        csb.restoreState();
+      });
+      return;
+    }
     case 'redact': {
       builder.drawOnPage(pageIdx, (csb) => {
         csb.saveState();
@@ -505,6 +519,10 @@ async function buildPdfFromEditorStateViaPdfLib(state: EditorState): Promise<Uin
         page.drawText(a.text, { x: px, y: py - a.fontSize, size: a.fontSize, font: a.bold ? helvBold : helv, color: rgb(c[0], c[1], c[2]) });
       } else if (a.type === 'highlight') {
         page.drawRectangle({ x: px, y: py - ph, width: pw, height: ph, color: rgb(0.6, 0.6, 0.6), opacity: 0.3 });
+      } else if (a.type === 'underline' || a.type === 'strikethrough') {
+        const th = Math.max(0.5, a.strokeWidth ?? 1.5);
+        const ruleY = a.type === 'underline' ? py - ph : py - ph / 2 - th / 2;
+        page.drawRectangle({ x: px, y: ruleY, width: pw, height: th, color: rgb(c[0], c[1], c[2]) });
       } else if (a.type === 'redact') {
         page.drawRectangle({ x: px, y: py - ph, width: pw, height: ph, color: rgb(0, 0, 0) });
       } else if (a.type === 'rect') {

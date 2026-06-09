@@ -311,6 +311,8 @@ export default function PageCanvas(props: Props) {
         if (t === 'rect') onAddAnnotation({ id: uid(), type: 'rect', page: visualPageNumber, x, y, w, h, color, strokeWidth: sw });
         else if (t === 'ellipse') onAddAnnotation({ id: uid(), type: 'ellipse', page: visualPageNumber, x, y, w, h, color, strokeWidth: sw });
         else if (t === 'highlight') onAddAnnotation({ id: uid(), type: 'highlight', page: visualPageNumber, x, y, w, h, fillColor: '#999999' });
+        else if (t === 'underline') onAddAnnotation({ id: uid(), type: 'underline', page: visualPageNumber, x, y, w, h, color, strokeWidth: sw });
+        else if (t === 'strikethrough') onAddAnnotation({ id: uid(), type: 'strikethrough', page: visualPageNumber, x, y, w, h, color, strokeWidth: sw });
         else if (t === 'redact') onAddAnnotation({ id: uid(), type: 'redact', page: visualPageNumber, x, y, w, h });
       } else if ((t === 'line' || t === 'arrow') && (Math.abs(current.x - start.x) > 2 || Math.abs(current.y - start.y) > 2)) {
         onAddAnnotation({ id: uid(), type: 'line', page: visualPageNumber, x: start.x, y: start.y, w: current.x - start.x, h: current.y - start.y, color, strokeWidth: sw, arrow: t === 'arrow' });
@@ -552,6 +554,18 @@ function AnnotationView({ ann, zoom, selected, onPointerDown, onResizeStart, sho
     );
   } else if (ann.type === 'highlight') {
     inner = <div onPointerDown={onPointerDown} style={{ ...baseStyle, background: ann.fillColor ?? '#999999', opacity: (ann.opacity ?? 1) * 0.35 }} />;
+  } else if (ann.type === 'underline') {
+    inner = (
+      <div onPointerDown={onPointerDown} style={{ ...baseStyle, opacity: ann.opacity ?? 1 }}>
+        <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: Math.max(1, (ann.strokeWidth ?? 2) * zoom), background: ann.color ?? '#0a0a0a' }} />
+      </div>
+    );
+  } else if (ann.type === 'strikethrough') {
+    inner = (
+      <div onPointerDown={onPointerDown} style={{ ...baseStyle, opacity: ann.opacity ?? 1 }}>
+        <div style={{ position: 'absolute', left: 0, right: 0, top: '50%', transform: 'translateY(-50%)', height: Math.max(1, (ann.strokeWidth ?? 2) * zoom), background: ann.color ?? '#0a0a0a' }} />
+      </div>
+    );
   } else if (ann.type === 'redact') {
     inner = <div onPointerDown={onPointerDown} style={{ ...baseStyle, background: '#000' }} />;
   } else if (ann.type === 'rect') {
@@ -642,6 +656,8 @@ function DrawingPreview({ drawing, zoom, color, strokeWidth }: { drawing: { tool
   if (tool === 'rect') return <div style={{ ...style, border: `${strokeWidth * zoom}px dashed ${color}` }} />;
   if (tool === 'ellipse') return <div style={{ ...style, border: `${strokeWidth * zoom}px dashed ${color}`, borderRadius: '50%' }} />;
   if (tool === 'highlight') return <div style={{ ...style, background: '#999999', opacity: 0.25 }} />;
+  if (tool === 'underline') return <div style={{ ...style, borderBottom: `${Math.max(1, strokeWidth * zoom)}px solid ${color}` }} />;
+  if (tool === 'strikethrough') return <div style={{ ...style }}><div style={{ position: 'absolute', left: 0, right: 0, top: '50%', transform: 'translateY(-50%)', height: Math.max(1, strokeWidth * zoom), background: color }} /></div>;
   if (tool === 'redact') return <div style={{ ...style, background: '#000', opacity: 0.7 }} />;
   if (tool === 'line' || tool === 'arrow') {
     const sx = (start.x - x) * zoom; const sy = (start.y - y) * zoom;

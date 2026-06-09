@@ -1,4 +1,4 @@
-import { MousePointer2, Hand, Type, Highlighter, Square, Circle, Minus, MoveUpRight, Pencil, PenTool, Image as ImageIcon, Stamp, EyeOff, Link2, Crop, QrCode, StickyNote, Calendar, Pentagon, Spline } from 'lucide-react';
+import { MousePointer2, Hand, Type, Highlighter, Underline, Strikethrough, Square, Circle, Minus, MoveUpRight, Pencil, PenTool, Image as ImageIcon, Stamp, EyeOff, Link2, Crop, QrCode, StickyNote, Calendar, Pentagon, Spline } from 'lucide-react';
 import IconButton from '../../../components/IconButton';
 import { Tool } from '../types';
 
@@ -16,6 +16,8 @@ const TOOLS: { id: Tool; icon: typeof MousePointer2; label: string }[] = [
   { id: 'hand', icon: Hand, label: 'Pan' },
   { id: 'text', icon: Type, label: 'Text' },
   { id: 'highlight', icon: Highlighter, label: 'Highlight' },
+  { id: 'underline', icon: Underline, label: 'Underline' },
+  { id: 'strikethrough', icon: Strikethrough, label: 'Strikethrough' },
   { id: 'redact', icon: EyeOff, label: 'Redact (visual)' },
   { id: 'rect', icon: Square, label: 'Rectangle' },
   { id: 'ellipse', icon: Circle, label: 'Ellipse' },
