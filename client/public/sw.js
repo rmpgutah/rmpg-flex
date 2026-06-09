@@ -480,7 +480,10 @@
 //   star state in TemplateChooser.tsx (left half-built after PR #1094), wire
 //   DocumentTemplate.category to the TemplateCategory union so the extended
 //   le-*/sec-*/hr-*/legal-* categories typecheck, import FeaturesPanel.
-const CACHE_NAME = 'rmpg-flex-v844';
+// v845: Document Writer — 150 new actions (docActions2.ts) + tabbed Ctrl+/
+//   command palette (Recent / All / Case / Insert / Paragraph / Table / List /
+//   Callout / Decorative / Math / References / Police / Utility).
+const CACHE_NAME = 'rmpg-flex-v845';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
