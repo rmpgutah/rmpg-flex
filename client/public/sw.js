@@ -408,7 +408,14 @@
 //       Warrants card uses the live count; Document Writer clears draft on save
 //       + leak-proof print; NavPage null-coord guards; speed-limit badge clears
 //       off untagged roads; Personnel edit no longer blanks employee_id/notes.
-const CACHE_NAME = 'rmpg-flex-v834';
+// v835: iPad nav-shell flip — Layout now uses useIsMobile(1024) so iPad portrait
+//       + small landscape (<1024) get the TOUCH shell (mobile header/drawer/
+//       bottom-nav) instead of the mouse-oriented desktop F-key toolbars, which
+//       only ever covered <768 before (iPads got the cramped desktop layout).
+//       The two desktop F-key toolbars switch md:flex -> lg:flex so they show
+//       only at >=1024, matching the JS boundary (no double-render at 768-1023).
+//       Large landscape iPads + desktops (>=1024) keep the F-key layout.
+const CACHE_NAME = 'rmpg-flex-v835';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

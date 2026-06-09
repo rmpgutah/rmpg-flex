@@ -740,7 +740,7 @@ export default function Layout() {
 
   // Mobile menu & responsive detection
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const isMobile = useIsMobile();
+  const isMobile = useIsMobile(1024); // iPad portrait + small landscape get the touch shell (lg breakpoint)
 
   // Close mobile menu on route change
   useEffect(() => { setMobileMenuOpen(false); }, [location.pathname]);
@@ -1317,7 +1317,7 @@ export default function Layout() {
       {/* TOOLBAR ROW 1 — Menu Bar (Spillman Flex style) HIDDEN ON MOBILE */}
       {/* ============================================================ */}
         <div
-          className="hidden md:flex items-center justify-between px-2"
+          className="hidden lg:flex items-center justify-between px-2"
           style={{
             height: '22px',
             background: 'linear-gradient(180deg, var(--desktop-shell-raised-start) 0%, var(--desktop-shell-start) 100%)',
@@ -1349,7 +1349,7 @@ export default function Layout() {
       {/* Square buttons: icon above label, F-key badge, dropdown for children */}
       {/* ============================================================ */}
       <div
-        className="hidden md:flex items-center gap-0 px-1 select-none overflow-x-auto overflow-y-hidden scrollbar-dark"
+        className="hidden lg:flex items-center gap-0 px-1 select-none overflow-x-auto overflow-y-hidden scrollbar-dark"
         role="toolbar"
         aria-label="Module navigation"
         style={{
