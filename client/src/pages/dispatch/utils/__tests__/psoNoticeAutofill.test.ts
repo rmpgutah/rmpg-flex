@@ -69,11 +69,47 @@ describe('buildNoticeOfCommunicationFromCall', () => {
     expect(d.nextWindow).toBe('Tomorrow 0800-1000');
   });
 
-  it('defaults service type and uses prior attempt number 1 when absent', () => {
+  it('uses a service-accurate default (not "Protective Services") and attempt 1 when absent', () => {
     const d = buildNoticeOfCommunicationFromCall(
       { ...failedPsoCall, pso_service_type: undefined, pso_attempt_number: undefined }, ctx,
     );
-    expect(d.serviceType).toBe('Protective Services');
+    expect(d.serviceType).toBe('Client-Requested Service');
     expect(d.attempts[0].number).toBe(1);
+  });
+
+  it('derives service type from the client industry when pso_service_type is blank', () => {
+    const d = buildNoticeOfCommunicationFromCall(
+      { ...failedPsoCall, pso_service_type: undefined, client_industry: 'Process Service' } as CallForService,
+      ctx,
+    );
+    expect(d.serviceType).toBe('Process Service');
+  });
+
+  it('derives "Process Service" from a PS disposition when no industry is set', () => {
+    const d = buildNoticeOfCommunicationFromCall(
+      { ...failedPsoCall, pso_service_type: undefined, disposition: 'PS Non-Service' }, ctx,
+    );
+    expect(d.serviceType).toBe('Process Service');
+    // "PS Non-Service" maps to a client-readable result, not the raw code.
+    expect(d.attempts[0].result).toBe('PS Non-Service');
+  });
+
+  it('addresses the contracting client record (name + contact + phone + address)', () => {
+    const d = buildNoticeOfCommunicationFromCall(
+      {
+        ...failedPsoCall,
+        caller_name: 'Michael Currie', // call-level caller is an individual contact
+        client_name: 'ICU Investigations, LLC.',
+        client_contact_name: 'Michael Currie',
+        client_phone: '(435) 462-1200',
+        client_address: '250 N. Red Cliffs Drive #4B-275, Saint George, UT 84790',
+      } as CallForService,
+      ctx,
+    );
+    // Addressee is the COMPANY (client record), not the individual caller.
+    expect(d.clientName).toBe('ICU Investigations, LLC.');
+    expect(d.clientContact).toBe('Michael Currie');
+    expect(d.clientPhone).toBe('(435) 462-1200');
+    expect(d.clientAddress).toContain('Red Cliffs');
   });
 });

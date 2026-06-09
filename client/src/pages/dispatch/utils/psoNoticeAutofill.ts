@@ -56,6 +56,23 @@ function lastNoteText(notes: CallForService['notes']): string {
   return (last && typeof last.text === 'string') ? last.text : '';
 }
 
+/**
+ * Derive a client-facing service type. The pso_service_type column is unused in
+ * practice (always null), so fall back to the contracting client's industry
+ * (e.g. "Process Service") and then to the disposition shape. Avoids the old
+ * generic "Protective Services" label, which was wrong for the process-service
+ * work these calls actually represent.
+ */
+function deriveServiceType(industry?: unknown, disposition?: string): string | undefined {
+  const ind = typeof industry === 'string' ? industry.trim() : '';
+  if (ind && !['', 'other', 'n/a', 'none'].includes(ind.toLowerCase())) return ind;
+  const disp = (disposition || '').trim().toLowerCase();
+  // "PS Served" / "PS Non-Service" / "PS No Access" … and anything mentioning
+  // serve/service all indicate process service.
+  if (/^ps\b/.test(disp) || /serv/.test(disp)) return 'Process Service';
+  return undefined;
+}
+
 /** Split a stored 'YYYY-MM-DD HH:MM:SS' (or ISO) timestamp into date + time. */
 function splitStamp(ts?: string): { date: string; time: string } {
   if (!ts) return { date: '', time: '' };
@@ -76,10 +93,17 @@ export function buildNoticeOfCommunicationFromCall(
   const filled = applyCallPdfAutofill(call);
   const c = filled as unknown as Record<string, unknown>;
 
+  // Addressee = the contracting CLIENT record (authoritative), then the
+  // requestor block, then the call-level caller (which is sometimes an
+  // individual contact rather than the company). Phone/address likewise prefer
+  // the client record over the inconsistent call-level caller block.
   const clientName =
-    filled.pso_requestor_name || filled.client_name || filled.caller_name || 'Contracting Client';
-  const clientPhone = filled.pso_requestor_phone || filled.caller_phone || undefined;
-  const clientAddress = filled.caller_address || (c.client_address as string | undefined) || undefined;
+    filled.client_name || filled.pso_requestor_name || filled.caller_name || 'Contracting Client';
+  const clientContact = (c.client_contact_name as string | undefined) || undefined;
+  const clientPhone =
+    (c.client_phone as string | undefined) || filled.pso_requestor_phone || filled.caller_phone || undefined;
+  const clientAddress =
+    (c.client_address as string | undefined) || filled.caller_address || undefined;
 
   // The failed call IS the unsuccessful attempt. Represent it as one row.
   const stamp = splitStamp(filled.cleared_at || filled.closed_at || filled.created_at);
@@ -99,9 +123,12 @@ export function buildNoticeOfCommunicationFromCall(
     noticeDate,
     callNumber: filled.call_number || '',
     clientName,
+    clientContact,
     clientAddress,
     clientPhone,
-    serviceType: filled.pso_service_type || 'Protective Services',
+    serviceType: filled.pso_service_type
+      || deriveServiceType(c.client_industry, filled.disposition)
+      || 'Client-Requested Service',
     serviceAddress: filled.location || clientAddress || 'Address on file',
     requestedWindow: formatWindow(filled.pso_service_windows),
     authorization: filled.pso_authorization || undefined,

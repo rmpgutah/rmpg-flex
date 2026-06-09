@@ -57,6 +57,8 @@ export interface NoticeOfCommunicationData {
   callNumber: string;
   /** Contracting client / requestor (the party the notice is addressed to). */
   clientName: string;
+  /** Contact person at the contracting client (Attn line), if known. */
+  clientContact?: string;
   clientAddress?: string;
   clientPhone?: string;
   /** Type of protective service requested (welfare check, property check, …). */
@@ -83,10 +85,12 @@ export interface NoticeOfCommunicationData {
 
 /** Human label for a PSO attempt disposition code/value. */
 export function psoResultLabel(result: string): string {
-  switch ((result || '').toLowerCase()) {
+  switch ((result || '').trim().toLowerCase()) {
     case 'no_contact':
-    case 'no_answer': return 'No contact at location';
-    case 'no_access': return 'Unable to access premises';
+    case 'no_answer':
+    case 'negative contact': return 'No contact at location';
+    case 'no_access':
+    case 'ps no access': return 'Unable to access premises';
     case 'refused': return 'Access / service refused';
     case 'wrong_address': return 'Incorrect / bad address';
     case 'gtn':
@@ -95,6 +99,18 @@ export function psoResultLabel(result: string): string {
     case 'utl': return 'Unable to locate';
     case 'cancelled': return 'Cancelled by client';
     case 'completed': return 'Completed';
+    // Process-service dispositions stored verbatim on the call ("PS Served",
+    // "PS Non-Service", "PS Unknown", "PS Attempted") — map to client-readable
+    // text instead of surfacing the raw code.
+    case 'ps served':
+    case 'served': return 'Served / completed';
+    case 'ps non-service':
+    case 'ps non service':
+    case 'non-service': return 'Unable to complete service';
+    case 'ps attempted':
+    case 'attempted': return 'Attempted — not completed';
+    case 'ps unknown':
+    case 'unknown': return 'Outcome pending';
     case 'other': return 'Other (see notes)';
     default: return result ? sanitizePdfText(result).replace(/_/g, ' ') : 'Service not completed';
   }
@@ -141,7 +157,10 @@ export async function generateNoticeOfCommunication(data: NoticeOfCommunicationD
   // ── Client / addressee ──
   y = checkPageBreak(doc, y, 18);
   { const sec = openAutoSection(doc, 'Contracting Client', y); y = sec.contentY;
-    y = addFieldPair(doc, '1. Client / Requestor', data.clientName, lx, y, ffw);
+    const addressee = data.clientContact && data.clientContact.trim() && data.clientContact !== data.clientName
+      ? `${data.clientName}  •  Attn: ${data.clientContact}`
+      : data.clientName;
+    y = addFieldPair(doc, '1. Client / Requestor', addressee, lx, y, ffw);
     if (data.clientAddress) y = addFieldPair(doc, '2. Client Address', data.clientAddress, lx, y, ffw);
     {
       const a = addFieldPair(doc, '3. Client Phone', data.clientPhone || 'On file', lx, y, hfw);
@@ -202,9 +221,10 @@ export async function generateNoticeOfCommunication(data: NoticeOfCommunicationD
     const windowNote = data.nextWindow
       ? ` and a follow-up attempt is scheduled for ${data.nextWindow}.`
       : ' and a follow-up attempt has been scheduled.';
+    const svc = (data.serviceType || 'requested').trim().toLowerCase();
     const noticeText =
-      'This notice confirms that Rocky Mountain Protective Group attempted to fulfill the protective-' +
-      `services request identified above on behalf of ${data.clientName || 'the contracting client'}. As ` +
+      `This notice confirms that Rocky Mountain Protective Group attempted to fulfill the ${svc} request ` +
+      `identified above on behalf of ${data.clientName || 'the contracting client'}. As ` +
       'detailed in the record of attempt(s) above, the requested service could not be completed at the time ' +
       `of the attempt. ${rescheduled}${windowNote} ` +
       `To confirm access, adjust the service window, or provide additional instructions, please contact our ` +

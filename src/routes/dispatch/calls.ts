@@ -122,7 +122,9 @@ calls.get('/', async (c) => {
     const rows = await query<Record<string, unknown>>(db, `
       SELECT ${LIST_VIEW_SELECT},
         p.name as property_name, u.full_name as dispatcher_name,
-        cl.name as client_name, cfe.held_at,
+        cl.name as client_name, cl.contact_name as client_contact_name,
+        cl.contact_phone as client_phone, cl.address as client_address,
+        cl.industry as client_industry, cfe.held_at,
         COALESCE(cfe.pinned, 0) as pinned
       FROM calls_for_service c
       LEFT JOIN properties p ON c.property_id = p.id
@@ -587,7 +589,9 @@ calls.get('/:id', async (c) => {
     const joined = await soft(() => queryFirst<Record<string, unknown>>(db, `
       SELECT p.name AS property_name, p.address AS property_address,
         p.gate_code, p.alarm_code, p.emergency_contact, p.post_orders, p.hazard_notes,
-        u.full_name AS dispatcher_name, cl.name AS client_name
+        u.full_name AS dispatcher_name, cl.name AS client_name,
+        cl.contact_name AS client_contact_name, cl.contact_phone AS client_phone,
+        cl.address AS client_address, cl.industry AS client_industry
       FROM (SELECT ? AS property_id, ? AS dispatcher_id, ? AS client_id) ck
       LEFT JOIN properties p ON p.id = ck.property_id
       LEFT JOIN users u ON u.id = ck.dispatcher_id

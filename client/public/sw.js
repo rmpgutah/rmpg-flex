@@ -426,7 +426,15 @@
 //       pointer-move (snapshot-on-first-move + live no-history updates); (2) the
 //       Bates/Watermark/Document-properties toolbar buttons (previously dead
 //       no-ops) now surface the document-level PropertiesPanel sections.
-const CACHE_NAME = 'rmpg-flex-v837';
+// v838: PSO Notice of Communication data fixes — addressee now uses the
+//       contracting CLIENT record (company + Attn: contact + client phone/
+//       address) instead of the inconsistent call-level caller; Service Type
+//       derives from the client industry / PS disposition ("Process Service")
+//       instead of generic "Protective Services"; attempt RESULT maps the raw
+//       "PS *"/"Negative Contact" dispositions to client-readable text; notice
+//       body wording is service-type-accurate. Backed by a clients JOIN that
+//       now surfaces contact_name/contact_phone/address/industry.
+const CACHE_NAME = 'rmpg-flex-v838';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
