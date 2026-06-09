@@ -32,7 +32,6 @@ import FeaturesPanel from './components/FeaturesPanel';
 import SnapshotsPanel from './components/SnapshotsPanel';
 import AnalysisPanel from './components/AnalysisPanel';
 import DocPropertiesDialog from './components/DocPropertiesDialog';
-import FeaturesPanel from './components/FeaturesPanel';
 import ShortcutsHelp from './components/ShortcutsHelp';
 import RecentDocsPanel from './components/RecentDocsPanel';
 import MergePanel from './components/MergePanel';
