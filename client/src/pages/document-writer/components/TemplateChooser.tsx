@@ -9,7 +9,7 @@ interface Props {
   onSelect: (template: DocumentTemplate, values: Record<string, string>) => void;
 }
 
-const CATEGORY_ICONS: Record<string, React.ReactNode> = {
+const CATEGORY_ICONS: Record<TemplateCategory, React.ReactNode> = {
   incident: <FileText className="w-5 h-5" />,
   arrest: <FileCheck className="w-5 h-5" />,
   'use-of-force': <Shield className="w-5 h-5" />,
@@ -18,6 +18,26 @@ const CATEGORY_ICONS: Record<string, React.ReactNode> = {
   memo: <Mail className="w-5 h-5" />,
   letter: <Mail className="w-5 h-5" />,
   general: <File className="w-5 h-5" />,
+  'le-traffic': <Car className="w-5 h-5" />,
+  'le-dv': <Heart className="w-5 h-5" />,
+  'le-juvenile': <Users className="w-5 h-5" />,
+  'le-investigation': <Search className="w-5 h-5" />,
+  'le-pursuit': <Shield className="w-5 h-5" />,
+  'le-property': <Package className="w-5 h-5" />,
+  'le-missing': <Users className="w-5 h-5" />,
+  'sec-post': <ClipboardList className="w-5 h-5" />,
+  'sec-dar': <ClipboardList className="w-5 h-5" />,
+  'sec-client': <Building2 className="w-5 h-5" />,
+  'sec-access': <Lock className="w-5 h-5" />,
+  'sec-patrol': <Shield className="w-5 h-5" />,
+  'hr-employee': <Briefcase className="w-5 h-5" />,
+  'hr-discipline': <Briefcase className="w-5 h-5" />,
+  'hr-training': <Briefcase className="w-5 h-5" />,
+  'hr-leave': <Briefcase className="w-5 h-5" />,
+  'legal-court': <Gavel className="w-5 h-5" />,
+  'legal-warrant': <ScrollText className="w-5 h-5" />,
+  'legal-affidavit': <ScrollText className="w-5 h-5" />,
+  'legal-discovery': <Scale className="w-5 h-5" />,
 };
 
 /** Wrap a localStorage saved-template into the DocumentTemplate shape the page
@@ -46,7 +66,10 @@ export default function TemplateChooser({ onSelect }: Props) {
     return (
       <div className="p-3 md:p-6 max-w-2xl mx-auto">
         <PanelTitleBar title={selected.name.toUpperCase()} icon={FileText} />
-        <p className="text-xs text-rmpg-500 mt-2 mb-4">{selected.description}</p>
+        <p className="text-xs text-rmpg-500 mt-2 mb-2">{selected.description}</p>
+        {selected.statutes && selected.statutes.length > 0 && (
+          <p className="text-[10px] text-[#d4a017] mb-4"><strong>Utah Code:</strong> {selected.statutes.join(' · ')}</p>
+        )}
 
         {selected.fields.length > 0 && (
           <div className="space-y-3 mb-6">
@@ -61,9 +84,7 @@ export default function TemplateChooser({ onSelect }: Props) {
                   placeholder={f.source === 'cad' ? `Auto-fill from CAD (${f.cadPath})` : 'Enter value...'}
                   className="w-full md:flex-1 bg-[#0a0a0a] border border-[#222] rounded-[2px] px-2.5 py-1.5 text-xs text-rmpg-200 placeholder-rmpg-600 focus:border-[#d4a017]/50 focus:outline-none min-h-[44px] md:min-h-0"
                 />
-                {f.source === 'cad' && (
-                  <span className="text-[9px] text-[#d4a017]/60 font-mono">CAD</span>
-                )}
+                {f.source === 'cad' && <span className="text-[9px] text-[#d4a017]/60 font-mono">CAD</span>}
               </div>
             ))}
           </div>
@@ -86,23 +107,36 @@ export default function TemplateChooser({ onSelect }: Props) {
   return (
     <div className="p-3 md:p-6">
       <PanelTitleBar title="NEW DOCUMENT" icon={FileText} />
-      <p className="text-xs text-rmpg-500 mt-2 mb-6">Choose a template or start with a blank document.</p>
+      <p className="text-xs text-rmpg-500 mt-2 mb-4">{TEMPLATES.length} templates available. Filter by category, search, or star your favorites.</p>
 
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-        {TEMPLATES.map(t => (
-          <button
-            key={t.id}
-            type="button"
-            onClick={() => setSelected(t)}
-            className="flex flex-col items-center gap-2 p-4 bg-[#0d0d0d] border border-[#222] rounded-[2px] hover:border-[#d4a017]/40 hover:bg-[#141414] transition-colors text-center group"
-          >
-            <div className="text-rmpg-500 group-hover:text-[#d4a017] transition-colors">
-              {CATEGORY_ICONS[t.category] || <File className="w-5 h-5" />}
-            </div>
-            <span className="text-[11px] font-medium text-rmpg-300 group-hover:text-rmpg-100">{t.name}</span>
-            <span className="text-[9px] text-rmpg-600 leading-tight">{t.description}</span>
-          </button>
-        ))}
+      {/* Search + tabs */}
+      <div className="flex flex-col gap-3 mb-4">
+        <div className="relative">
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-rmpg-500" />
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search templates (name, tag, statute, category)..."
+            className="w-full bg-[#0a0a0a] border border-[#222] rounded-[2px] pl-8 pr-3 py-2 text-xs text-rmpg-200 placeholder-rmpg-600 focus:border-[#d4a017]/50 focus:outline-none"
+          />
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {GROUPS.map(g => {
+            const count = g.id === 'starred' ? starred.size : TEMPLATES.filter(t => g.match(t.category)).length;
+            const active = group === g.id;
+            return (
+              <button
+                key={g.id}
+                type="button"
+                onClick={() => setGroup(g.id)}
+                className={`px-3 py-1 text-[11px] rounded-[2px] border transition-colors ${active ? 'bg-[#d4a017]/15 border-[#d4a017]/40 text-[#d4a017]' : 'bg-[#0d0d0d] border-[#222] text-rmpg-400 hover:text-rmpg-200 hover:border-[#333]'}`}
+              >
+                {g.label} <span className="text-rmpg-600 ml-1">{count}</span>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {custom.length > 0 && (
