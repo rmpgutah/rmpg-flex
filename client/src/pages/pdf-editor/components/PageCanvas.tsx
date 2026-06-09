@@ -246,6 +246,12 @@ export default function PageCanvas(props: Props) {
       onAddAnnotation({ id: uid(), type: 'stamp', page: visualPageNumber, x: p.x, y: p.y, w, h, label: pendingStamp ?? 'CONFIDENTIAL', color: '#555555' });
       return;
     }
+    if (tool === 'check' || tool === 'cross') {
+      // Click-to-place a fixed-size glyph centered on the click point.
+      const size = 24;
+      onAddAnnotation({ id: uid(), type: tool, page: visualPageNumber, x: p.x - size / 2, y: p.y - size / 2, w: size, h: size, color, strokeWidth });
+      return;
+    }
     if (tool === 'pen') {
       setDrawing({ tool: 'pen', start: p, current: p, pen: [{ x: 0, y: 0 }] });
       (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
@@ -334,6 +340,7 @@ export default function PageCanvas(props: Props) {
         else if (t === 'underline') onAddAnnotation({ id: uid(), type: 'underline', page: visualPageNumber, x, y, w, h, color, strokeWidth: sw });
         else if (t === 'strikethrough') onAddAnnotation({ id: uid(), type: 'strikethrough', page: visualPageNumber, x, y, w, h, color, strokeWidth: sw });
         else if (t === 'redact') onAddAnnotation({ id: uid(), type: 'redact', page: visualPageNumber, x, y, w, h });
+        else if (t === 'cloud') onAddAnnotation({ id: uid(), type: 'cloud', page: visualPageNumber, x, y, w, h, color, strokeWidth: sw, scallopSize: 10 });
       } else if ((t === 'line' || t === 'arrow') && (Math.abs(current.x - start.x) > 2 || Math.abs(current.y - start.y) > 2)) {
         onAddAnnotation({ id: uid(), type: 'line', page: visualPageNumber, x: start.x, y: start.y, w: current.x - start.x, h: current.y - start.y, color, strokeWidth: sw, arrow: t === 'arrow' });
       } else if (t === 'link' && w > 4 && h > 4) {
@@ -615,6 +622,49 @@ function AnnotationView({ ann, zoom, selected, onPointerDown, onResizeStart, sho
           fill={ann.closed && ann.fillColor ? ann.fillColor : 'none'} strokeLinejoin="round" />
       </svg>
     );
+  } else if (ann.type === 'cloud') {
+    // Revision cloud — SVG path of outward bulges around the box edges.
+    const W = ann.w * zoom, H = ann.h * zoom;
+    const bump = Math.max(4, (ann.scallopSize ?? 10) * zoom);
+    const edge = (ax: number, ay: number, bx: number, by: number) => {
+      const dx = bx - ax, dy = by - ay; const len = Math.hypot(dx, dy) || 1;
+      const n = Math.max(1, Math.round(len / (bump * 2)));
+      const ux = dx / len, uy = dy / len; const nx = -uy, ny = ux;
+      let d = ''; let cx = ax, cy = ay;
+      for (let i = 0; i < n; i++) {
+        const seg = len / n;
+        const mx = cx + ux * (seg / 2) + nx * bump;
+        const my = cy + uy * (seg / 2) + ny * bump;
+        const ex = ax + ux * seg * (i + 1), ey = ay + uy * seg * (i + 1);
+        d += ` Q ${mx} ${my} ${ex} ${ey}`;
+        cx = ex; cy = ey;
+      }
+      return d;
+    };
+    const path = `M 0 0${edge(0, 0, W, 0)}${edge(W, 0, W, H)}${edge(W, H, 0, H)}${edge(0, H, 0, 0)}`;
+    inner = (
+      <svg onPointerDown={onPointerDown} style={{ ...baseStyle, overflow: 'visible' }}>
+        <path d={path} stroke={ann.color ?? '#0a0a0a'} strokeWidth={(ann.strokeWidth ?? 1.5) * zoom} fill={ann.fillColor ?? 'none'} strokeLinejoin="round" />
+      </svg>
+    );
+  } else if (ann.type === 'check') {
+    const W = ann.w * zoom, H = ann.h * zoom;
+    inner = (
+      <svg onPointerDown={onPointerDown} style={{ ...baseStyle, overflow: 'visible' }}>
+        <path d={`M ${W * 0.15} ${H * 0.55} L ${W * 0.4} ${H * 0.82} L ${W * 0.85} ${H * 0.15}`}
+          stroke={ann.color ?? '#0a0a0a'} strokeWidth={Math.max((ann.strokeWidth ?? 2) * zoom, H * 0.12)}
+          fill="none" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+    );
+  } else if (ann.type === 'cross') {
+    const W = ann.w * zoom, H = ann.h * zoom;
+    const lw = Math.max((ann.strokeWidth ?? 2) * zoom, H * 0.12);
+    inner = (
+      <svg onPointerDown={onPointerDown} style={{ ...baseStyle, overflow: 'visible' }}>
+        <line x1={W * 0.18} y1={H * 0.18} x2={W * 0.82} y2={H * 0.82} stroke={ann.color ?? '#0a0a0a'} strokeWidth={lw} strokeLinecap="round" />
+        <line x1={W * 0.82} y1={H * 0.18} x2={W * 0.18} y2={H * 0.82} stroke={ann.color ?? '#0a0a0a'} strokeWidth={lw} strokeLinecap="round" />
+      </svg>
+    );
   } else if (ann.type === 'image' || ann.type === 'signature') {
     inner = <img onPointerDown={onPointerDown} src={ann.imageData} alt="" style={{ ...baseStyle, objectFit: 'contain' }} />;
   } else if (ann.type === 'sticky') {
@@ -679,6 +729,7 @@ function DrawingPreview({ drawing, zoom, color, strokeWidth }: { drawing: { tool
   if (tool === 'underline') return <div style={{ ...style, borderBottom: `${Math.max(1, strokeWidth * zoom)}px solid ${color}` }} />;
   if (tool === 'strikethrough') return <div style={{ ...style }}><div style={{ position: 'absolute', left: 0, right: 0, top: '50%', transform: 'translateY(-50%)', height: Math.max(1, strokeWidth * zoom), background: color }} /></div>;
   if (tool === 'redact') return <div style={{ ...style, background: '#000', opacity: 0.7 }} />;
+  if (tool === 'cloud') return <div style={{ ...style, border: `${strokeWidth * zoom}px dashed ${color}`, borderRadius: 8 }} />;
   if (tool === 'line' || tool === 'arrow') {
     const sx = (start.x - x) * zoom; const sy = (start.y - y) * zoom;
     const ex = (current.x - x) * zoom; const ey = (current.y - y) * zoom;

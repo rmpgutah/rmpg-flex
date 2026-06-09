@@ -1,4 +1,4 @@
-import { MousePointer2, Hand, Type, Highlighter, Underline, Strikethrough, Square, Circle, Minus, MoveUpRight, Pencil, PenTool, Image as ImageIcon, Stamp, EyeOff, Link2, Crop, QrCode, StickyNote, Calendar, Pentagon, Spline } from 'lucide-react';
+import { MousePointer2, Hand, Type, Highlighter, Underline, Strikethrough, Square, Circle, Minus, MoveUpRight, Pencil, PenTool, Image as ImageIcon, Stamp, EyeOff, Link2, Crop, QrCode, StickyNote, Calendar, Pentagon, Spline, Cloud, Check, X } from 'lucide-react';
 import IconButton from '../../../components/IconButton';
 import { Tool } from '../types';
 
@@ -34,9 +34,14 @@ const TOOLS: { id: Tool; icon: typeof MousePointer2; label: string }[] = [
   { id: 'datestamp', icon: Calendar, label: 'Date stamp (today)' },
   { id: 'polygon', icon: Pentagon, label: 'Polygon (click vertices, double-click to close)' },
   { id: 'polyline', icon: Spline, label: 'Polyline (click vertices, double-click or Esc to finish)' },
+  { id: 'cloud', icon: Cloud, label: 'Revision cloud (drag a rectangle)' },
+  { id: 'check', icon: Check, label: 'Checkmark (click to place)' },
+  { id: 'cross', icon: X, label: 'Cross / X (click to place)' },
 ];
 
-const PRESETS = ['#0a0a0a', '#333333', '#555555', '#777777', '#999999', '#bbbbbb', '#ffffff'];
+// Quick-pick annotation colors. Neutral grays + a few muted accents that read
+// well on white pages (no bright blue — Spillman palette rule).
+const PRESETS = ['#0a0a0a', '#333333', '#555555', '#777777', '#999999', '#bbbbbb', '#ffffff', '#d4a017', '#8a1c1c', '#1c5a2e'];
 
 export default function ToolPalette({ tool, onTool, color, onColor, strokeWidth, onStrokeWidth }: Props) {
   return (

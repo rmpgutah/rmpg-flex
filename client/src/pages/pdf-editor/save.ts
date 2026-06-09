@@ -1,7 +1,7 @@
 import { PDFDocument, StandardFonts, rgb, degrees, pushGraphicsState, popGraphicsState, concatTransformationMatrix } from 'pdf-lib';
 import { normRotation, rotationGeometry } from './rotationGeometry';
 import { RmpgPdfBuilder } from '../../lib/rmpg-pdf-engine';
-import { Annotation, BatesConfig, EditorState, PageMeta, WatermarkConfig, DEFAULT_RENDER_SCALE } from './types';
+import { Annotation, BatesConfig, EditorState, PageMeta, PageNumbersConfig, WatermarkConfig, DEFAULT_RENDER_SCALE } from './types';
 import { normalizeUploadResponse } from './uploadResponse';
 
 export { normalizeUploadResponse } from './uploadResponse';
@@ -196,6 +196,66 @@ async function drawAnnotation(ctx: PageContext, ann: Annotation): Promise<void> 
       });
       return;
     }
+    case 'cloud': {
+      // Revision-cloud: scalloped (bumpy) rectangle border. Approximate the
+      // scallops with a series of short line segments bulging outward along
+      // each edge — good enough for a printed markup cloud without bezier
+      // support in the CSB. Falls back to a plain rect if the box is tiny.
+      draw((csb) => {
+        csb.setStrokeRgb(color[0], color[1], color[2]);
+        csb.setLineWidth(stroke);
+        const x0 = px, y0 = py - ph, x1 = px + pw, y1 = py;
+        const bump = Math.max(4, (ann.scallopSize ?? 10) / scale);
+        const edge = (ax: number, ay: number, bx: number, by: number) => {
+          const dx = bx - ax, dy = by - ay;
+          const len = Math.hypot(dx, dy) || 1;
+          const n = Math.max(1, Math.round(len / (bump * 2)));
+          const ux = dx / len, uy = dy / len;       // along-edge unit
+          const nx = -uy, ny = ux;                  // outward normal
+          let cx = ax, cy = ay;
+          csb.moveTo(cx, cy);
+          for (let i = 0; i < n; i++) {
+            const seg = len / n;
+            const mx = cx + ux * (seg / 2) + nx * bump;
+            const my = cy + uy * (seg / 2) + ny * bump;
+            const ex = ax + ux * seg * (i + 1);
+            const ey = ay + uy * seg * (i + 1);
+            csb.lineTo(mx, my);
+            csb.lineTo(ex, ey);
+            cx = ex; cy = ey;
+          }
+          csb.stroke();
+        };
+        // Four edges, clockwise.
+        edge(x0, y1, x1, y1); // top
+        edge(x1, y1, x1, y0); // right
+        edge(x1, y0, x0, y0); // bottom
+        edge(x0, y0, x0, y1); // left
+      });
+      return;
+    }
+    case 'check': {
+      // Checkmark glyph — two strokes forming a ✓ inside the box.
+      draw((csb) => {
+        csb.setStrokeRgb(color[0], color[1], color[2]);
+        csb.setLineWidth(Math.max(stroke, ph * 0.12));
+        const bx = px, top = py, bot = py - ph;
+        csb.drawLine(bx + pw * 0.15, top - ph * 0.55, bx + pw * 0.4, bot + ph * 0.18);
+        csb.drawLine(bx + pw * 0.4, bot + ph * 0.18, bx + pw * 0.85, top - ph * 0.15);
+      });
+      return;
+    }
+    case 'cross': {
+      // Cross / X glyph — two diagonals inside the box.
+      draw((csb) => {
+        csb.setStrokeRgb(color[0], color[1], color[2]);
+        csb.setLineWidth(Math.max(stroke, ph * 0.12));
+        const top = py, bot = py - ph;
+        csb.drawLine(px + pw * 0.18, top - ph * 0.18, px + pw * 0.82, bot + ph * 0.18);
+        csb.drawLine(px + pw * 0.82, top - ph * 0.18, px + pw * 0.18, bot + ph * 0.18);
+      });
+      return;
+    }
     case 'image':
     case 'signature': {
       const img = await RmpgPdfBuilder.dataUrlToJpeg(ann.imageData);
@@ -252,6 +312,26 @@ function applyBates(builder: RmpgPdfBuilder, pageIdx: number, mediaBox: [number,
   else if (cfg.position === 'tr') { x = w - margin - approxW; y = h - margin - cfg.fontSize; }
   else if (cfg.position === 'bl') { x = margin; y = margin; }
   else { x = w - margin - approxW; y = margin; }
+  builder.drawOnPage(pageIdx, (csb, useFont) => {
+    const resName = useFont('Helvetica');
+    csb.saveState();
+    csb.setFillRgb(0.3, 0.3, 0.3);
+    csb.drawText(text, x, y, resName, cfg.fontSize);
+    csb.restoreState();
+  });
+}
+
+function applyPageNumbers(builder: RmpgPdfBuilder, pageIdx: number, mediaBox: [number, number, number, number], cfg: PageNumbersConfig, n: number, total: number): void {
+  const text = (cfg.format || 'Page {n} of {total}')
+    .replace(/\{n\}/g, String(n))
+    .replace(/\{total\}/g, String(total));
+  const w = mediaBox[2] - mediaBox[0];
+  const margin = 18;
+  const approxW = text.length * cfg.fontSize * 0.5;
+  let x = margin;
+  if (cfg.position === 'bc') x = (w - approxW) / 2;
+  else if (cfg.position === 'br') x = w - margin - approxW;
+  const y = margin;
   builder.drawOnPage(pageIdx, (csb, useFont) => {
     const resName = useFont('Helvetica');
     csb.saveState();
@@ -341,6 +421,9 @@ export async function buildPdfFromEditorState(state: EditorState): Promise<Uint8
     }
     if (state.bates) {
       applyBates(builder, visualIdx, pageMediaBox, state.bates, state.bates.startNumber + visualIdx);
+    }
+    if (state.pageNumbers) {
+      applyPageNumbers(builder, visualIdx, pageMediaBox, state.pageNumbers, visualIdx + 1, state.pages.length);
     }
   }
 
@@ -537,6 +620,18 @@ async function buildPdfFromEditorStateViaPdfLib(state: EditorState): Promise<Uin
         page.drawRectangle({ x: px, y: py - ph, width: pw, height: ph, borderColor: rgb(c[0], c[1], c[2]), borderWidth: a.strokeWidth ?? 1.5 });
       } else if (a.type === 'line') {
         page.drawLine({ start: { x: px, y: py }, end: { x: px + pw, y: py - ph }, thickness: a.strokeWidth ?? 1.5, color: rgb(c[0], c[1], c[2]) });
+      } else if (a.type === 'check') {
+        const lw = Math.max(a.strokeWidth ?? 1.5, ph * 0.12);
+        const top = py, bot = py - ph;
+        page.drawLine({ start: { x: px + pw * 0.15, y: top - ph * 0.55 }, end: { x: px + pw * 0.4, y: bot + ph * 0.18 }, thickness: lw, color: rgb(c[0], c[1], c[2]) });
+        page.drawLine({ start: { x: px + pw * 0.4, y: bot + ph * 0.18 }, end: { x: px + pw * 0.85, y: top - ph * 0.15 }, thickness: lw, color: rgb(c[0], c[1], c[2]) });
+      } else if (a.type === 'cross') {
+        const lw = Math.max(a.strokeWidth ?? 1.5, ph * 0.12);
+        const top = py, bot = py - ph;
+        page.drawLine({ start: { x: px + pw * 0.18, y: top - ph * 0.18 }, end: { x: px + pw * 0.82, y: bot + ph * 0.18 }, thickness: lw, color: rgb(c[0], c[1], c[2]) });
+        page.drawLine({ start: { x: px + pw * 0.82, y: top - ph * 0.18 }, end: { x: px + pw * 0.18, y: bot + ph * 0.18 }, thickness: lw, color: rgb(c[0], c[1], c[2]) });
+      } else if (a.type === 'cloud') {
+        page.drawRectangle({ x: px, y: py - ph, width: pw, height: ph, borderColor: rgb(c[0], c[1], c[2]), borderWidth: a.strokeWidth ?? 1.5 });
       } else if (a.type === 'image' || a.type === 'signature') {
         try {
           const isPng = a.imageData.startsWith('data:image/png');
@@ -547,6 +642,18 @@ async function buildPdfFromEditorStateViaPdfLib(state: EditorState): Promise<Uin
       }
     }
     if (fbGeo.ctm && ann.length) page.pushOperators(popGraphicsState());
+    if (state.pageNumbers) {
+      const cfg = state.pageNumbers;
+      const text = (cfg.format || 'Page {n} of {total}')
+        .replace(/\{n\}/g, String(visualIdx + 1))
+        .replace(/\{total\}/g, String(copied.length));
+      const pw2 = page.getWidth();
+      const approxW = text.length * cfg.fontSize * 0.5;
+      let nx = 18;
+      if (cfg.position === 'bc') nx = (pw2 - approxW) / 2;
+      else if (cfg.position === 'br') nx = pw2 - 18 - approxW;
+      page.drawText(text, { x: nx, y: 18, size: cfg.fontSize, font: helv, color: rgb(0.3, 0.3, 0.3) });
+    }
   }
   if (state.meta.title) out.setTitle(state.meta.title);
   if (state.meta.author) out.setAuthor(state.meta.author);

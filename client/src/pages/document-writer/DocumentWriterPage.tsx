@@ -26,6 +26,7 @@ import TemplateChooser from './components/TemplateChooser';
 import FindReplacePanel from './components/FindReplacePanel';
 import OutlinePane from './components/OutlinePane';
 import CommentsSidebar, { type DocComment } from './components/CommentsSidebar';
+import StatusBar from './components/StatusBar';
 import { populateTemplate } from './templates';
 import TextStyleExtras from './extensions/textStyleExtras';
 import BlockStyle, { PageBreak, SectionBreak } from './extensions/customBlocks';
@@ -39,7 +40,7 @@ import { PAGE_SIZES, DEFAULT_DOC_SETTINGS, type DocumentTemplate, type DocSettin
 import './writer.css';
 
 const THEME_KEY = 'rmpg_writer_theme';
-type ViewMode = 'normal' | 'reading' | 'fullscreen';
+type ViewMode = 'normal' | 'reading' | 'fullscreen' | 'focus';
 
 function initialTheme(): WriterTheme {
   const saved = localStorage.getItem(THEME_KEY);
@@ -293,6 +294,8 @@ export default function DocumentWriterPage() {
   useEffect(() => {
     if (mode !== 'edit' || !editor) return;
     const onKey = (e: KeyboardEvent) => {
+      // Esc leaves any distraction-free view (focus / reading / fullscreen).
+      if (e.key === 'Escape') { setViewMode('normal'); return; }
       const mod = e.ctrlKey || e.metaKey;
       if (!mod) return;
       const k = e.key.toLowerCase();
@@ -324,14 +327,15 @@ export default function DocumentWriterPage() {
   const m = docSettings.page.margins;
   const reading = viewMode === 'reading';
   const fullscreen = viewMode === 'fullscreen';
+  const focusMode = viewMode === 'focus';
   const contentClasses = ['writer-content',
     docSettings.columns === 2 ? 'cols-2' : docSettings.columns === 3 ? 'cols-3' : '',
     docSettings.lineNumbers ? 'line-numbers' : '', docSettings.widowControl ? 'widow-control' : '',
   ].filter(Boolean).join(' ');
 
   return (
-    <div className={`p-3 flex flex-col h-[calc(100vh-140px)] ${fullscreen ? 'fixed inset-0 z-[60] bg-[#050505] h-screen' : ''}`}>
-      {!reading && <PanelTitleBar title="DOCUMENT WRITER" icon={FileText} />}
+    <div className={`p-3 flex flex-col h-[calc(100vh-140px)] ${fullscreen || focusMode ? 'fixed inset-0 z-[60] bg-[#050505] h-screen' : ''}`}>
+      {!reading && !focusMode && <PanelTitleBar title="DOCUMENT WRITER" icon={FileText} />}
 
       <input ref={imageInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageFile} />
       <input ref={bgImageInputRef} type="file" accept="image/*" className="hidden" onChange={handleBgImageFile} />
@@ -376,12 +380,12 @@ export default function DocumentWriterPage() {
         </div>
       )}
 
-      {docSettings.showRuler && !reading && (
+      {docSettings.showRuler && !reading && !focusMode && (
         <div className="mt-2 flex justify-center"><div className="writer-ruler" style={{ width: pageW }} /></div>
       )}
 
       <div className="flex-1 mt-3 overflow-auto bg-[#050505] border border-[#1a1a1a] rounded-[2px] flex gap-2 p-2 relative">
-        {showOutline && editor && <OutlinePane editor={editor} onClose={() => setShowOutline(false)} />}
+        {showOutline && !focusMode && editor && <OutlinePane editor={editor} onClose={() => setShowOutline(false)} />}
 
         <div className="flex-1 overflow-auto flex justify-center relative">
           {findMode && editor && <FindReplacePanel editor={editor} mode={findMode} onClose={() => setFindMode(null)} />}
@@ -411,20 +415,22 @@ export default function DocumentWriterPage() {
           </div>
         </div>
 
-        {showComments && editor && <CommentsSidebar editor={editor} comments={comments} setComments={setComments} author={author} onClose={() => setShowComments(false)} />}
+        {showComments && !focusMode && editor && <CommentsSidebar editor={editor} comments={comments} setComments={setComments} author={author} onClose={() => setShowComments(false)} />}
 
         {/* Zoom controls + reading-mode exit */}
         <div className="absolute bottom-2 right-3 flex items-center gap-1 bg-[#0d0d0d]/90 border border-[#222] rounded-[2px] px-1.5 py-1">
           <button type="button" title="Zoom out (Ctrl+-)" onClick={() => setZoom((z) => Math.max(0.5, z - 0.1))} className="text-rmpg-400 hover:text-rmpg-100"><ZoomOut className="w-3.5 h-3.5" /></button>
           <span className="text-[10px] text-rmpg-400 w-9 text-center tabular-nums">{Math.round(zoom * 100)}%</span>
           <button type="button" title="Zoom in (Ctrl+=)" onClick={() => setZoom((z) => Math.min(2, z + 0.1))} className="text-rmpg-400 hover:text-rmpg-100"><ZoomIn className="w-3.5 h-3.5" /></button>
-          {(reading || fullscreen) && (
-            <button type="button" title="Exit" onClick={() => setViewMode('normal')} className="ml-1 text-rmpg-400 hover:text-rmpg-100"><X className="w-3.5 h-3.5" /></button>
+          {(reading || fullscreen || focusMode) && (
+            <button type="button" title="Exit (Esc)" onClick={() => setViewMode('normal')} className="ml-1 text-rmpg-400 hover:text-rmpg-100"><X className="w-3.5 h-3.5" /></button>
           )}
         </div>
       </div>
 
-      {!reading && (
+      {!reading && !focusMode && editor && <StatusBar editor={editor} />}
+
+      {!reading && !focusMode && (
         <div className="mt-1.5 flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5 text-[9px] text-rmpg-600 px-1">
           <span>{docSettings.page.size.toUpperCase()} • {docSettings.page.orientation} • {theme} mode{autoSavedAt ? ` • autosaved ${new Date(autoSavedAt).toLocaleTimeString()}` : ''}</span>
           <span className={documentId ? 'text-green-500/70' : ''}>{documentId ? `Saved • ID: ${documentId.slice(0, 8)}` : 'Unsaved'}</span>

@@ -568,6 +568,291 @@ export const TEMPLATES: DocumentTemplate[] = [
 </tr></table>`,
   },
   {
+    id: 'incident-narrative',
+    name: 'Incident Narrative',
+    category: 'incident',
+    description: 'Free-form chronological narrative (first-person) for an incident',
+    fields: [
+      { key: 'case_number', label: 'Case Number', source: 'cad', cadPath: 'call.call_number' },
+      { key: 'incident_date', label: 'Incident Date/Time', source: 'cad', cadPath: 'call.received_at' },
+      { key: 'location', label: 'Location', source: 'cad', cadPath: 'call.address' },
+      { key: 'reporting_officer', label: 'Reporting Officer', source: 'user' },
+      { key: 'badge_number', label: 'Badge Number', source: 'user' },
+      { key: 'offense', label: 'Nature of Incident', source: 'cad', cadPath: 'call.call_type' },
+    ],
+    content: `${AGENCY_HEADER}
+<h1 style="text-align:center;font-size:18px;">INCIDENT NARRATIVE</h1>
+<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
+  <tr>
+    <td style="border:1px solid #333;padding:6px;width:50%;"><strong>Case #:</strong> {{case_number}}</td>
+    <td style="border:1px solid #333;padding:6px;"><strong>Date/Time:</strong> {{incident_date}}</td>
+  </tr>
+  <tr>
+    <td style="border:1px solid #333;padding:6px;"><strong>Location:</strong> {{location}}</td>
+    <td style="border:1px solid #333;padding:6px;"><strong>Nature:</strong> {{offense}}</td>
+  </tr>
+  <tr>
+    <td colspan="2" style="border:1px solid #333;padding:6px;"><strong>Reporting Officer:</strong> {{reporting_officer}} (Badge #{{badge_number}})</td>
+  </tr>
+</table>
+<h2 style="font-size:14px;border-bottom:1px solid #333;">SYNOPSIS</h2>
+<p><em>One-sentence summary of what occurred.</em></p>
+<p>&nbsp;</p>
+<h2 style="font-size:14px;border-bottom:1px solid #333;">NARRATIVE</h2>
+<p>On {{incident_date}}, I, {{reporting_officer}} (Badge #{{badge_number}}), was dispatched to {{location}} in reference to {{offense}}.</p>
+<p>Upon arrival, I observed&hellip;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<h2 style="font-size:14px;border-bottom:1px solid #333;">ACTIONS TAKEN</h2>
+<p>&nbsp;</p>
+<h2 style="font-size:14px;border-bottom:1px solid #333;">DISPOSITION</h2>
+<p>&nbsp;</p>
+<div style="margin-top:48px;">
+  <table style="width:100%;border:none;">
+    <tr>
+      <td style="width:60%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td>
+      <td style="width:10%;">&nbsp;</td>
+      <td style="width:30%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td>
+    </tr>
+    <tr>
+      <td style="font-size:10px;color:#666;">Officer Signature</td>
+      <td>&nbsp;</td>
+      <td style="font-size:10px;color:#666;">Date</td>
+    </tr>
+  </table>
+</div>`,
+  },
+  {
+    id: 'witness-statement',
+    name: 'Witness Statement',
+    category: 'incident',
+    description: 'Voluntary witness statement with affirmation and signature',
+    fields: [
+      { key: 'case_number', label: 'Case Number', source: 'cad', cadPath: 'call.call_number' },
+      { key: 'witness_name', label: 'Witness Name', source: 'manual' },
+      { key: 'witness_dob', label: 'Witness DOB', source: 'manual' },
+      { key: 'witness_contact', label: 'Phone / Address', source: 'manual' },
+      { key: 'statement_date', label: 'Date of Statement', source: 'manual' },
+      { key: 'taking_officer', label: 'Statement Taken By', source: 'user' },
+    ],
+    content: `${AGENCY_HEADER}
+<h1 style="text-align:center;font-size:18px;">VOLUNTARY WITNESS STATEMENT</h1>
+<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
+  <tr>
+    <td style="border:1px solid #333;padding:6px;width:50%;"><strong>Case #:</strong> {{case_number}}</td>
+    <td style="border:1px solid #333;padding:6px;"><strong>Date:</strong> {{statement_date}}</td>
+  </tr>
+  <tr>
+    <td style="border:1px solid #333;padding:6px;"><strong>Witness:</strong> {{witness_name}}</td>
+    <td style="border:1px solid #333;padding:6px;"><strong>DOB:</strong> {{witness_dob}}</td>
+  </tr>
+  <tr>
+    <td colspan="2" style="border:1px solid #333;padding:6px;"><strong>Contact:</strong> {{witness_contact}}</td>
+  </tr>
+  <tr>
+    <td colspan="2" style="border:1px solid #333;padding:6px;"><strong>Statement taken by:</strong> {{taking_officer}}</td>
+  </tr>
+</table>
+<h2 style="font-size:14px;border-bottom:1px solid #333;">STATEMENT</h2>
+<p><em>In your own words, describe what you saw, heard, or experienced. Include dates, times, and locations where possible.</em></p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<p>&nbsp;</p>
+<h2 style="font-size:14px;border-bottom:1px solid #333;">AFFIRMATION</h2>
+<p>I, {{witness_name}}, affirm that the above statement is true and correct to the best of my knowledge. I understand that providing false information to law enforcement may be a criminal offense.</p>
+<div style="margin-top:40px;">
+  <table style="width:100%;border:none;">
+    <tr>
+      <td style="width:60%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td>
+      <td style="width:10%;">&nbsp;</td>
+      <td style="width:30%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td>
+    </tr>
+    <tr>
+      <td style="font-size:10px;color:#666;">Witness Signature</td>
+      <td>&nbsp;</td>
+      <td style="font-size:10px;color:#666;">Date / Time</td>
+    </tr>
+    <tr>
+      <td style="width:60%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td>
+      <td style="width:10%;">&nbsp;</td>
+      <td style="width:30%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td>
+    </tr>
+    <tr>
+      <td style="font-size:10px;color:#666;">Officer / Witness to Signature</td>
+      <td>&nbsp;</td>
+      <td style="font-size:10px;color:#666;">Date</td>
+    </tr>
+  </table>
+</div>`,
+  },
+  {
+    id: 'field-interview',
+    name: 'Field Interview',
+    category: 'incident',
+    description: 'Field interview / contact card (FI) with subject and basis for contact',
+    fields: [
+      { key: 'fi_number', label: 'FI Number', source: 'manual' },
+      { key: 'contact_date', label: 'Contact Date/Time', source: 'manual' },
+      { key: 'location', label: 'Location', source: 'cad', cadPath: 'call.address' },
+      { key: 'subject_name', label: 'Subject Name', source: 'manual' },
+      { key: 'subject_dob', label: 'Subject DOB', source: 'manual' },
+      { key: 'officer', label: 'Officer', source: 'user' },
+      { key: 'badge_number', label: 'Badge Number', source: 'user' },
+    ],
+    content: `${AGENCY_HEADER}
+<h1 style="text-align:center;font-size:18px;">FIELD INTERVIEW CARD</h1>
+<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
+  <tr>
+    <td style="border:1px solid #333;padding:6px;width:50%;"><strong>FI #:</strong> {{fi_number}}</td>
+    <td style="border:1px solid #333;padding:6px;"><strong>Date/Time:</strong> {{contact_date}}</td>
+  </tr>
+  <tr>
+    <td colspan="2" style="border:1px solid #333;padding:6px;"><strong>Location:</strong> {{location}}</td>
+  </tr>
+  <tr>
+    <td style="border:1px solid #333;padding:6px;"><strong>Officer:</strong> {{officer}}</td>
+    <td style="border:1px solid #333;padding:6px;"><strong>Badge #:</strong> {{badge_number}}</td>
+  </tr>
+</table>
+<h2 style="font-size:14px;border-bottom:1px solid #333;">SUBJECT</h2>
+<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
+  <tr>
+    <td style="border:1px solid #333;padding:6px;width:50%;"><strong>Name:</strong> {{subject_name}}</td>
+    <td style="border:1px solid #333;padding:6px;"><strong>DOB:</strong> {{subject_dob}}</td>
+  </tr>
+  <tr>
+    <td style="border:1px solid #333;padding:6px;"><strong>Race/Sex:</strong></td>
+    <td style="border:1px solid #333;padding:6px;"><strong>Height/Weight:</strong></td>
+  </tr>
+  <tr>
+    <td style="border:1px solid #333;padding:6px;"><strong>Clothing:</strong></td>
+    <td style="border:1px solid #333;padding:6px;"><strong>SMT (scars/marks/tattoos):</strong></td>
+  </tr>
+  <tr>
+    <td style="border:1px solid #333;padding:6px;"><strong>Vehicle (if any):</strong></td>
+    <td style="border:1px solid #333;padding:6px;"><strong>Plate:</strong></td>
+  </tr>
+</table>
+<h2 style="font-size:14px;border-bottom:1px solid #333;">BASIS FOR CONTACT</h2>
+<p>☐ Consensual encounter &nbsp; ☐ Reasonable suspicion &nbsp; ☐ Suspicious activity &nbsp; ☐ Other</p>
+<p>&nbsp;</p>
+<h2 style="font-size:14px;border-bottom:1px solid #333;">NOTES</h2>
+<p>&nbsp;</p>
+<p>&nbsp;</p>`,
+  },
+  {
+    id: 'daily-activity-log',
+    name: 'Daily Activity Log',
+    category: 'supplemental',
+    description: 'Shift activity log — chronological entries, calls, and mileage',
+    fields: [
+      { key: 'officer', label: 'Officer', source: 'user' },
+      { key: 'badge_number', label: 'Badge Number', source: 'user' },
+      { key: 'log_date', label: 'Date', source: 'manual' },
+      { key: 'shift', label: 'Shift', source: 'manual' },
+      { key: 'unit', label: 'Unit / Vehicle', source: 'manual' },
+    ],
+    content: `${AGENCY_HEADER}
+<h1 style="text-align:center;font-size:18px;">DAILY ACTIVITY LOG</h1>
+<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
+  <tr>
+    <td style="border:1px solid #333;padding:6px;"><strong>Officer:</strong> {{officer}} (#{{badge_number}})</td>
+    <td style="border:1px solid #333;padding:6px;"><strong>Date:</strong> {{log_date}}</td>
+  </tr>
+  <tr>
+    <td style="border:1px solid #333;padding:6px;"><strong>Shift:</strong> {{shift}}</td>
+    <td style="border:1px solid #333;padding:6px;"><strong>Unit:</strong> {{unit}}</td>
+  </tr>
+</table>
+<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
+  <tr style="background:#1a1a1a;">
+    <th style="border:1px solid #333;padding:6px;text-align:left;width:90px;">Time</th>
+    <th style="border:1px solid #333;padding:6px;text-align:left;width:90px;">Call / Type</th>
+    <th style="border:1px solid #333;padding:6px;text-align:left;">Activity / Location</th>
+    <th style="border:1px solid #333;padding:6px;text-align:left;width:70px;">Disp.</th>
+  </tr>
+  <tr><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td></tr>
+  <tr><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td></tr>
+  <tr><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td></tr>
+</table>
+<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
+  <tr>
+    <td style="border:1px solid #333;padding:6px;width:50%;"><strong>Beginning Mileage:</strong></td>
+    <td style="border:1px solid #333;padding:6px;"><strong>Ending Mileage:</strong></td>
+  </tr>
+  <tr>
+    <td style="border:1px solid #333;padding:6px;"><strong>Total Miles:</strong></td>
+    <td style="border:1px solid #333;padding:6px;"><strong>Total Calls:</strong></td>
+  </tr>
+</table>
+<h2 style="font-size:14px;border-bottom:1px solid #333;">END-OF-SHIFT NOTES</h2>
+<p>&nbsp;</p>`,
+  },
+  {
+    id: 'trespass-warning',
+    name: 'Trespass Warning',
+    category: 'incident',
+    description: 'Formal trespass / no-trespass warning notice with subject acknowledgment',
+    fields: [
+      { key: 'case_number', label: 'Case Number', source: 'cad', cadPath: 'call.call_number' },
+      { key: 'warn_date', label: 'Date/Time Issued', source: 'manual' },
+      { key: 'property', label: 'Property / Address', source: 'cad', cadPath: 'call.address' },
+      { key: 'subject_name', label: 'Subject Name', source: 'manual' },
+      { key: 'subject_dob', label: 'Subject DOB', source: 'manual' },
+      { key: 'officer', label: 'Issuing Officer', source: 'user' },
+      { key: 'badge_number', label: 'Badge Number', source: 'user' },
+    ],
+    content: `${AGENCY_HEADER}
+<h1 style="text-align:center;font-size:18px;">TRESPASS WARNING NOTICE</h1>
+<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
+  <tr>
+    <td style="border:1px solid #333;padding:6px;width:50%;"><strong>Case #:</strong> {{case_number}}</td>
+    <td style="border:1px solid #333;padding:6px;"><strong>Date/Time:</strong> {{warn_date}}</td>
+  </tr>
+  <tr>
+    <td colspan="2" style="border:1px solid #333;padding:6px;"><strong>Property:</strong> {{property}}</td>
+  </tr>
+  <tr>
+    <td style="border:1px solid #333;padding:6px;"><strong>Subject:</strong> {{subject_name}}</td>
+    <td style="border:1px solid #333;padding:6px;"><strong>DOB:</strong> {{subject_dob}}</td>
+  </tr>
+  <tr>
+    <td style="border:1px solid #333;padding:6px;"><strong>Issuing Officer:</strong> {{officer}}</td>
+    <td style="border:1px solid #333;padding:6px;"><strong>Badge #:</strong> {{badge_number}}</td>
+  </tr>
+</table>
+<h2 style="font-size:14px;border-bottom:1px solid #333;">NOTICE</h2>
+<p>You, {{subject_name}}, are hereby formally warned that you are no longer permitted on the property described above. This warning is issued on behalf of the property owner or authorized agent. Returning to this property may result in your arrest for criminal trespass pursuant to applicable Utah Code.</p>
+<p><strong>This warning remains in effect until rescinded by the property owner/agent or by court order.</strong></p>
+<h2 style="font-size:14px;border-bottom:1px solid #333;">ACKNOWLEDGMENT</h2>
+<p>☐ Subject acknowledged and signed &nbsp;&nbsp; ☐ Subject refused to sign &nbsp;&nbsp; ☐ Subject not present (served by other means)</p>
+<div style="margin-top:40px;">
+  <table style="width:100%;border:none;">
+    <tr>
+      <td style="width:60%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td>
+      <td style="width:10%;">&nbsp;</td>
+      <td style="width:30%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td>
+    </tr>
+    <tr>
+      <td style="font-size:10px;color:#666;">Subject Signature</td>
+      <td>&nbsp;</td>
+      <td style="font-size:10px;color:#666;">Date / Time</td>
+    </tr>
+    <tr>
+      <td style="width:60%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td>
+      <td style="width:10%;">&nbsp;</td>
+      <td style="width:30%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td>
+    </tr>
+    <tr>
+      <td style="font-size:10px;color:#666;">Issuing Officer Signature</td>
+      <td>&nbsp;</td>
+      <td style="font-size:10px;color:#666;">Date</td>
+    </tr>
+  </table>
+</div>`,
+  },
+  {
     id: 'blank',
     name: 'Blank Document',
     category: 'general',

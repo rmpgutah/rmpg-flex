@@ -122,6 +122,27 @@ export function insertTabStop(editor: Editor): void {
   editor.chain().focus().insertContent('<span data-tab style="display:inline-block; width:0.5in"></span>').run();
 }
 
+/** Insert the current date, time, or combined date-time as literal text at the
+ *  cursor. Uses America/Denver-friendly locale formatting via the browser. */
+export function insertDateTime(editor: Editor, kind: 'date' | 'time' | 'datetime'): void {
+  const now = new Date();
+  let out: string;
+  if (kind === 'date') out = now.toLocaleDateString();
+  else if (kind === 'time') out = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  else out = `${now.toLocaleDateString()} ${now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+  editor.chain().focus().insertContent(esc(out)).run();
+}
+
+/** Insert an auto-numbered section heading. The number is derived from how many
+ *  H2 headings already exist so consecutive inserts read 1., 2., 3., … (feature
+ *  18 — section heading shortcuts). */
+export function insertSectionHeading(editor: Editor, level: 1 | 2 | 3 = 2): void {
+  const existing = collectHeadings(editor).filter((h) => h.level === level && /^\d+[.)]/.test(h.text.trim())).length;
+  const n = existing + 1;
+  const label = window.prompt('Section title:', 'Section') || 'Section';
+  editor.chain().focus().insertContent(`<h${level}>${n}. ${esc(label)}</h${level}><p></p>`).run();
+}
+
 export interface DocStats {
   words: number;
   characters: number;
@@ -130,6 +151,7 @@ export interface DocStats {
   paragraphs: number;
   pages: number;
   readingMinutes: number;
+  avgWordsPerSentence: number;
 }
 
 /** Compute live document statistics (feature 50). */
@@ -149,6 +171,7 @@ export function computeStats(editor: Editor): DocStats {
     paragraphs,
     pages: Math.max(1, Math.ceil(words / 500)),
     readingMinutes: Math.max(1, Math.round(words / 200)),
+    avgWordsPerSentence: sentences > 0 ? Math.round((words / sentences) * 10) / 10 : 0,
   };
 }
 

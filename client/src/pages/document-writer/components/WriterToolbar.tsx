@@ -5,12 +5,13 @@ import {
   Undo2, Redo2, Heading1, Heading2, Heading3, Minus, Quote, Code, Superscript,
   Subscript, RemoveFormatting, CheckSquare, Link2, Printer, Download, Save, FileText,
   Type, Pilcrow, LayoutPanelTop, PlusSquare, Sun, Moon, BarChart3, BookTemplate,
-  Baseline, PaintBucket, Search, MessageSquare, Eye, FileDown, Grid3x3,
+  Baseline, PaintBucket, Search, MessageSquare, Eye, FileDown, Grid3x3, Focus,
 } from 'lucide-react';
 import ToolbarMenu, { MenuRow, MenuButton } from './ToolbarMenu';
 import {
   insertTableOfContents, insertFootnote, insertEndnote, insertBookmark,
   insertCrossReference, insertCoverPage, insertField, insertMarginNote, insertTabStop,
+  insertDateTime, insertSectionHeading,
   computeStats, listSavedTemplates, saveTemplate, deleteTemplate,
 } from '../docActions';
 import { FONT_FAMILIES, FONT_SIZES, type DocSettings, type WriterTheme } from '../types';
@@ -31,8 +32,8 @@ export interface WriterExtActions {
   onInsertEmbed: (kind: 'video' | 'audio' | 'iframe') => void;
   zoom: number;
   setZoom: (updater: (z: number) => number) => void;
-  viewMode: 'normal' | 'reading' | 'fullscreen';
-  setViewMode: (m: 'normal' | 'reading' | 'fullscreen') => void;
+  viewMode: 'normal' | 'reading' | 'fullscreen' | 'focus';
+  setViewMode: (m: 'normal' | 'reading' | 'fullscreen' | 'focus') => void;
   language: string;
   setLanguage: (l: string) => void;
   autoSavedAt: string | null;
@@ -97,6 +98,13 @@ export default function WriterToolbar({
           placeholder="Untitled Document"
           className="flex-1 min-w-[140px] bg-transparent border-none text-sm text-rmpg-100 font-semibold focus:outline-none placeholder-rmpg-600"
         />
+        <button type="button" onClick={() => ext.setViewMode(ext.viewMode === 'focus' ? 'normal' : 'focus')}
+          title="Focus / Zen mode — hide panels and chrome for distraction-free writing"
+          className={`flex items-center gap-1 px-2 py-1 text-[10px] border rounded-[2px] ${
+            ext.viewMode === 'focus' ? 'bg-[#d4a017]/20 border-[#d4a017]/40 text-[#d4a017]' : 'bg-[#141414] border-[#222] text-rmpg-300 hover:bg-[#1a1a1a]'
+          }`}>
+          <Focus className="w-3 h-3" />Focus
+        </button>
         <button type="button" onClick={onToggleTheme} title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
           className="flex items-center gap-1 px-2 py-1 text-[10px] bg-[#141414] border border-[#222] text-rmpg-300 rounded-[2px] hover:bg-[#1a1a1a]">
           {theme === 'dark' ? <Sun className="w-3 h-3" /> : <Moon className="w-3 h-3" />}
@@ -283,6 +291,10 @@ export default function WriterToolbar({
           <MenuButton onClick={() => insertField(editor, 'page')}>Page-number field</MenuButton>
           <MenuButton onClick={() => insertField(editor, 'date')}>Date field</MenuButton>
           <MenuButton onClick={() => insertField(editor, 'author', author)}>Author field</MenuButton>
+          <MenuButton onClick={() => insertDateTime(editor, 'date')}>Current date (text)</MenuButton>
+          <MenuButton onClick={() => insertDateTime(editor, 'time')}>Current time (text)</MenuButton>
+          <MenuButton onClick={() => insertDateTime(editor, 'datetime')}>Current date &amp; time (text)</MenuButton>
+          <MenuButton onClick={() => insertSectionHeading(editor, 2)}>Numbered section heading…</MenuButton>
           <MenuButton onClick={() => ext.onInsertEmbed('video')}>Video embed (YouTube/Vimeo)</MenuButton>
           <MenuButton onClick={() => ext.onInsertEmbed('audio')}>Audio player</MenuButton>
           <MenuButton onClick={() => ext.onInsertEmbed('iframe')}>Embed / iframe</MenuButton>
@@ -362,6 +374,7 @@ export default function WriterToolbar({
           <MenuButton onClick={() => ext.setZoom(() => 0.75)}>Fit width (75%)</MenuButton>
           <MenuButton onClick={() => ext.setZoom(() => 0.6)}>Fit page (60%)</MenuButton>
           <MenuButton active={ext.viewMode === 'reading'} onClick={() => ext.setViewMode(ext.viewMode === 'reading' ? 'normal' : 'reading')}>Reading mode</MenuButton>
+          <MenuButton active={ext.viewMode === 'focus'} onClick={() => ext.setViewMode(ext.viewMode === 'focus' ? 'normal' : 'focus')}>Focus / Zen mode</MenuButton>
           <MenuButton active={ext.viewMode === 'fullscreen'} onClick={() => ext.setViewMode(ext.viewMode === 'fullscreen' ? 'normal' : 'fullscreen')}>Full screen</MenuButton>
           <MenuButton onClick={ext.onToggleOutline}>Navigation / outline</MenuButton>
         </ToolbarMenu>
@@ -448,6 +461,7 @@ export default function WriterToolbar({
           <MenuRow label="Sentences"><span className="text-[11px] text-rmpg-100">{stats.sentences}</span></MenuRow>
           <MenuRow label="Paragraphs"><span className="text-[11px] text-rmpg-100">{stats.paragraphs}</span></MenuRow>
           <MenuRow label="Pages (est.)"><span className="text-[11px] text-rmpg-100">{stats.pages}</span></MenuRow>
+          <MenuRow label="Avg words/sentence"><span className="text-[11px] text-rmpg-100">{stats.avgWordsPerSentence}</span></MenuRow>
           <MenuRow label="Reading time"><span className="text-[11px] text-rmpg-100">{stats.readingMinutes} min</span></MenuRow>
         </ToolbarMenu>
       </div>

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Trash2, RotateCw, ArrowUp, ArrowDown, FilePlus2, FileOutput, Crop } from 'lucide-react';
+import { Trash2, RotateCw, ArrowUp, ArrowDown, FilePlus2, FileOutput, Crop, Copy, Maximize2, Minimize2 } from 'lucide-react';
 import { open as openPdf, BackendUnsupportedError } from '../../../lib/rmpg-pdf-engine';
 import IconButton from '../../../components/IconButton';
 import { PageMeta } from '../types';
@@ -16,14 +16,22 @@ interface Props {
   onInsertBlank: (afterVisualIdx: number) => void;
   onExtract?: (visualIdx: number) => void;
   onClearCrop?: (visualIdx: number) => void;
+  onDuplicate?: (visualIdx: number) => void;
   /** Reorder via drag-and-drop. Caller maintains the actual page-order state. */
   onReorder?: (fromIdx: number, toIdx: number) => void;
+  /** Rail size — 'large' widens thumbnails for detailed inspection. */
+  size?: 'small' | 'large';
+  onToggleSize?: () => void;
 }
 
-export default function ThumbnailSidebar({ pdfBytes, pages, pageOrder, activePage, onJumpTo, onMove, onRotate, onDelete, onInsertBlank, onExtract, onClearCrop, onReorder }: Props) {
+export default function ThumbnailSidebar({ pdfBytes, pages, pageOrder, activePage, onJumpTo, onMove, onRotate, onDelete, onInsertBlank, onExtract, onClearCrop, onDuplicate, onReorder, size = 'small', onToggleSize }: Props) {
   const refs = useRef<Map<number, HTMLCanvasElement>>(new Map());
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [dropIdx, setDropIdx] = useState<number | null>(null);
+  const large = size === 'large';
+  // Render thumbnails at a higher scale when the rail is enlarged so the bigger
+  // canvas isn't just an upscaled blurry bitmap.
+  const thumbScale = large ? 0.34 : 0.18;
 
   useEffect(() => {
     if (!pdfBytes || pageOrder.length === 0) return;
@@ -50,7 +58,7 @@ export default function ThumbnailSidebar({ pdfBytes, pages, pageOrder, activePag
           if (!canvas) continue;
           try {
             const page = await pdf.getPage(original);
-            await page.render({ scale: 0.18, canvas });
+            await page.render({ scale: thumbScale, canvas });
           } catch (renderErr) {
             if (usingFallback) continue; // PDF.js already failed, give up on this thumb
             console.warn(`[thumbnails] native render failed on page ${original}, switching to PDF.js`, renderErr);
@@ -60,7 +68,7 @@ export default function ThumbnailSidebar({ pdfBytes, pages, pageOrder, activePag
             // Retry just this page on the new backend.
             try {
               const page = await pdf.getPage(original);
-              await page.render({ scale: 0.18, canvas });
+              await page.render({ scale: thumbScale, canvas });
             } catch { /* PDF.js can't either */ }
           }
         }
@@ -69,11 +77,20 @@ export default function ThumbnailSidebar({ pdfBytes, pages, pageOrder, activePag
       }
     })();
     return () => { cancelled = true; };
-  }, [pdfBytes, pageOrder]);
+  }, [pdfBytes, pageOrder, thumbScale]);
 
   return (
-    <div className="bg-[#0d0d0d] border border-[#222222] rounded-[2px] w-[140px] overflow-y-auto flex-shrink-0 p-1.5 space-y-2">
-      <div className="text-[9px] text-rmpg-500 uppercase tracking-wider px-1 pt-1">Pages</div>
+    <div className={`bg-[#0d0d0d] border border-[#222222] rounded-[2px] ${large ? 'w-[210px]' : 'w-[140px]'} overflow-y-auto flex-shrink-0 p-1.5 space-y-2`}>
+      <div className="flex items-center justify-between px-1 pt-1">
+        <div className="text-[9px] text-rmpg-500 uppercase tracking-wider">Pages</div>
+        {onToggleSize && (
+          <IconButton onClick={onToggleSize} aria-label={large ? 'Smaller thumbnails' : 'Larger thumbnails'}
+            title={large ? 'Smaller thumbnails' : 'Larger thumbnails'}
+            className="p-0.5 text-rmpg-400 hover:text-white">
+            {large ? <Minimize2 className="w-3 h-3" /> : <Maximize2 className="w-3 h-3" />}
+          </IconButton>
+        )}
+      </div>
       {pageOrder.map((_original, idx) => {
         const pageNumber = idx + 1;
         const meta = pages[idx];
@@ -137,6 +154,10 @@ export default function ThumbnailSidebar({ pdfBytes, pages, pageOrder, activePag
                 className="p-0.5 text-rmpg-400 hover:text-white"><RotateCw className="w-3 h-3" /></IconButton>
               <IconButton onClick={() => onInsertBlank(idx)} aria-label="Insert blank after" title="Insert blank after"
                 className="p-0.5 text-rmpg-400 hover:text-white"><FilePlus2 className="w-3 h-3" /></IconButton>
+              {onDuplicate && (
+                <IconButton onClick={() => onDuplicate(idx)} aria-label="Duplicate page" title="Duplicate this page"
+                  className="p-0.5 text-rmpg-400 hover:text-white"><Copy className="w-3 h-3" /></IconButton>
+              )}
               {onExtract && (
                 <IconButton onClick={() => onExtract(idx)} aria-label="Extract page" title="Extract page to new PDF"
                   className="p-0.5 text-rmpg-400 hover:text-white"><FileOutput className="w-3 h-3" /></IconButton>

@@ -28,7 +28,9 @@ export type Tool =
   | 'eyedropper'
   | 'polygon'
   | 'polyline'
-  | 'cloud';
+  | 'cloud'
+  | 'check'
+  | 'cross';
 
 export type StampLabel =
   | 'CONFIDENTIAL'
@@ -139,6 +141,16 @@ export interface CloudAnnotation extends AnnotationBase {
   scallopSize?: number;
 }
 
+/** Checkmark (✓) glyph — drawn as two strokes inside the bounding box. */
+export interface CheckAnnotation extends AnnotationBase {
+  type: 'check';
+}
+
+/** Cross / X (✗) glyph — drawn as two diagonal strokes inside the box. */
+export interface CrossAnnotation extends AnnotationBase {
+  type: 'cross';
+}
+
 export interface ImageAnnotation extends AnnotationBase {
   type: 'image' | 'signature';
   imageData: string;        // data: URL (png/jpeg)
@@ -177,7 +189,9 @@ export type Annotation =
   | LinkAnnotation
   | StickyNoteAnnotation
   | PolygonAnnotation
-  | CloudAnnotation;
+  | CloudAnnotation
+  | CheckAnnotation
+  | CrossAnnotation;
 
 /** Per-page crop rectangle in screen-pixel coordinates at DEFAULT_RENDER_SCALE.
  *  Applied via pdf-lib setMediaBox at save time. */
@@ -211,6 +225,17 @@ export interface BatesConfig {
   fontSize: number;
 }
 
+/** Simple page-number footer — "Page N of M". Distinct from Bates numbering:
+ *  no prefix/padding, always sequential 1..pageCount, centered footer position
+ *  options. Stamped at save time alongside (and independent of) Bates. */
+export interface PageNumbersConfig {
+  /** Footer placement. */
+  position: 'bl' | 'bc' | 'br';
+  fontSize: number;
+  /** Template — {n} = current page, {total} = page count. */
+  format: string;           // e.g. "Page {n} of {total}"
+}
+
 export interface WatermarkConfig {
   text: string;
   opacity: number;          // 0..1
@@ -235,6 +260,8 @@ export interface EditorState {
   annotations: Annotation[];
   bates: BatesConfig | null;
   watermark: WatermarkConfig | null;
+  /** Simple "Page N of M" footer — null when disabled. */
+  pageNumbers?: PageNumbersConfig | null;
   meta: DocumentMeta;
   /** Source file in the Documents store, when the editor was opened from there. */
   sourceFileId?: string | null;
@@ -257,6 +284,10 @@ export interface EditorPreferences {
   colorBlindPalette: boolean;  // use a CB-friendly default color set
   showRulers: boolean;
   showGrid: boolean;
+  /** Page-thumbnail rail size. */
+  thumbnailSize: 'small' | 'large';
+  /** When true, the editor zooms to fit page width as soon as a PDF loads. */
+  fitWidthOnLoad: boolean;
 }
 
 export const DEFAULT_PREFERENCES: EditorPreferences = {
@@ -272,6 +303,8 @@ export const DEFAULT_PREFERENCES: EditorPreferences = {
   colorBlindPalette: false,
   showRulers: false,
   showGrid: false,
+  thumbnailSize: 'small',
+  fitWidthOnLoad: true,
 };
 
 // Recent-files entry for the in-app launcher.

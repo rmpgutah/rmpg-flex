@@ -434,7 +434,15 @@
 //       "PS *"/"Negative Contact" dispositions to client-readable text; notice
 //       body wording is service-type-accurate. Backed by a clients JOIN that
 //       now surfaces contact_name/contact_phone/address/industry.
-const CACHE_NAME = 'rmpg-flex-v838';
+// v839: PDF system + Document Writer feature wave 1 (~27 new features).
+//   PDF Editor: rotate-all/reverse/duplicate pages, export page-range dialog,
+//   fit-page/width zoom presets, "Page N of M" footer, checkmark/cross/cloud
+//   annotations, color presets, lock/unlock, select-all/clear-page, more
+//   shortcuts, thumbnail-size toggle, download-flattened, fit-width-on-load.
+//   Document Writer: 5 new police templates, insert time/date-time, numbered
+//   section headings, Focus/Zen mode, live word/char/sentence status bar,
+//   avg-words/sentence stat.
+const CACHE_NAME = 'rmpg-flex-v839';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
