@@ -139,6 +139,7 @@ import dispatchGeography from './routes/dispatch/geography';
 import dispatchAggregates from './routes/dispatch/aggregates';
 import dispatchPremiseHistory from './routes/dispatch/premiseHistory';
 import dispatchPanic from './routes/dispatch/panic';
+import email from './routes/email';
 import dispatchAnomalies from './routes/dispatch/anomalies';
 import dispatchCallLinks from './routes/dispatch/callLinks';
 import dispatchShiftHandoff from './routes/dispatch/shiftHandoff';
@@ -489,4 +490,9 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/pdf-engine', router: stubs, auth: 'required' },
   { prefix: '/api/updates', router: stubs, auth: 'public' },
   { prefix: '/api/voice-persona', router: stubs, auth: 'required' },
+
+  // Microsoft 365 email integration. Mount as 'public' so the OAuth
+  // callback (which Microsoft redirects to without a JWT) is reachable;
+  // every other route inside the router applies authMiddleware itself.
+  { prefix: '/api/email', router: email, auth: 'public' },
 ];

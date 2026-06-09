@@ -327,7 +327,7 @@
 // v815: patrol MileageAuditTab backfill-missing-mileage (client change shipped
 //       in 1529d651 without a SW bump — v814 was already live, so bump to
 //       invalidate the stale cached bundle).
-const CACHE_NAME = 'rmpg-flex-v815';
+const CACHE_NAME = 'rmpg-flex-v816';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
