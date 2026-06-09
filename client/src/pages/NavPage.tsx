@@ -13,12 +13,37 @@ import { useAuth } from '../context/AuthContext';
 import PanelTitleBar from '../components/PanelTitleBar';
 import NavMapView, { type DroppedPin } from '../components/NavMapView';
 import { generateNavTripReport, generateNavSingleTripReport } from '../utils/navTripPdf';
+import { trackToGpx, downloadGpx } from '../utils/gpxExport';
+import { sessionToCsv, downloadCsv, type NavSample } from '../utils/navCsvExport';
 import type { NavTrip, NavTripStatus } from '../types';
 import NavSettingsPanel, {
   type NavPrefs,
   loadNavPrefs,
   saveNavPrefs,
 } from './navigation/NavSettingsPanel';
+
+// Export a completed trip's breadcrumb track to GPX 1.1 (mapping / evidence) or
+// CSV (spreadsheets). route_points carry { lat, lng, ts?, speed?, heading? }.
+function tripFileStamp(trip: NavTrip): string {
+  return `${(trip.start_time || '').replace(/[: ]/g, '-').slice(0, 16) || 'trip'}-${trip.id}`;
+}
+function exportTripGpx(trip: NavTrip): void {
+  const pts = Array.isArray(trip.route_points) ? (trip.route_points as any[]) : [];
+  if (pts.length === 0) return;
+  const xml = trackToGpx(
+    pts.map((p) => ({ lat: p.lat, lng: p.lng, t: p.ts, speed: p.speed })),
+    { name: `RMPG Trip ${trip.id}`, unit: trip.unit_call_sign || trip.vehicle_number || undefined },
+  );
+  downloadGpx(`rmpg-trip-${tripFileStamp(trip)}.gpx`, xml);
+}
+function exportTripCsv(trip: NavTrip): void {
+  const pts = Array.isArray(trip.route_points) ? (trip.route_points as any[]) : [];
+  if (pts.length === 0) return;
+  const samples: NavSample[] = pts.map((p) => ({
+    t: p.ts, lat: p.lat, lng: p.lng, speed: p.speed, heading: p.heading,
+  }));
+  downloadCsv(`rmpg-trip-${tripFileStamp(trip)}.csv`, sessionToCsv(samples, 'imperial'));
+}
 
 const STATUS_COLOR: Record<NavTripStatus, string> = {
   pending: '#f59e0b',
@@ -903,6 +928,26 @@ function HistoryPanel({
                 >
                   <Download size={9} /> Trip PDF
                 </button>
+                {Array.isArray(trip.route_points) && trip.route_points.length > 0 && (
+                  <>
+                    <button
+                      onClick={() => exportTripGpx(trip)}
+                      className="flex items-center gap-1 text-[9px] font-mono px-1.5 py-0.5 border border-subtle rounded-sm transition-colors hover:border-strong"
+                      style={{ color: '#888' }}
+                      title="Export this trip's GPS track as GPX (for mapping / evidence)"
+                    >
+                      <Download size={9} /> GPX
+                    </button>
+                    <button
+                      onClick={() => exportTripCsv(trip)}
+                      className="flex items-center gap-1 text-[9px] font-mono px-1.5 py-0.5 border border-subtle rounded-sm transition-colors hover:border-strong"
+                      style={{ color: '#888' }}
+                      title="Export this trip's GPS samples as CSV (timestamp, lat, lng, speed, heading)"
+                    >
+                      <Download size={9} /> CSV
+                    </button>
+                  </>
+                )}
               </div>
             )}
           </div>

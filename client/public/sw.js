@@ -363,13 +363,25 @@
 //       though the DB writes had landed and the connection-status pill had
 //       quietly moved from "Not Configured" → "Not Authorized".
 // v826: Navigation 100-update batch — large additive enhancement of the Drive
-//       Mode HUD + /nav trip tab.
-// v827: Admin Email — shadowed /api/email/status fix. The stubs router was
+//       Mode HUD + /nav trip tab. New nav hooks (prefs/session/waypoints/recent-
+//       destinations/auto-theme/driving-score/fix-freshness/proximity-alerts/
+//       hotkeys/wake-lock/low-power/speed-limit), nav utils (unit+time formatters,
+//       GPX/CSV export, heading/coord/eta/geo/theme/trail helpers, volume-scaled
+//       tones), a HUD instruments module + NavSettingsPanel, and NavMapView helper
+//       extraction. Built via a 5-lane parallel workflow (disjoint files), then
+//       verified (typecheck + 793 tests). Fixed a real latent bug: proximity-alert
+//       cooldown wrongly suppressed the FIRST tone near clock-epoch (lastToneAt
+//       init 0 -> -Infinity).
+// v827: Nav wiring audit — wired GPX + CSV trip-track export onto NavPage trip
+//       history (gpxExport/navCsvExport/navUnits), and PRUNED 23 orphaned
+//       (built-but-never-wired) nav hooks/utils from the v826 batch that
+//       duplicated already-wired hud/ or inline logic.
+// v828: Admin Email — shadowed /api/email/status fix. The stubs router was
 //       mounted at /api/email BEFORE the real email router, so the
 //       integrations-tab `/status` stub (returns {configured: false}) was
 //       intercepting /api/email/status and falsely rendering the "Email Not
 //       Configured" splash even when creds were saved.
-const CACHE_NAME = 'rmpg-flex-v827';
+const CACHE_NAME = 'rmpg-flex-v828';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
