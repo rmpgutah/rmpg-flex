@@ -1225,15 +1225,15 @@ const PatrolPage: React.FC = () => {
                         <span className="text-rmpg-400">Completion</span>
                         <span className="text-white font-mono">{efficiency.completion_rate}%</span>
                       </div>
-                      <div className="h-2 bg-rmpg-700 rounded-full overflow-hidden">
-                        <div className="h-full bg-brand-500 rounded-full" style={{ width: `${Math.min(efficiency.completion_rate, 100)}%` }} />
+                      <div className="h-2 bg-rmpg-700 overflow-hidden">
+                        <div className="h-full bg-brand-500" style={{ width: `${Math.min(efficiency.completion_rate, 100)}%` }} />
                       </div>
                       <div className="flex justify-between text-xs">
                         <span className="text-rmpg-400">On-Time Rate</span>
                         <span className="text-white font-mono">{efficiency.on_time_rate}%</span>
                       </div>
-                      <div className="h-2 bg-rmpg-700 rounded-full overflow-hidden">
-                        <div className="h-full bg-green-500 rounded-full" style={{ width: `${Math.min(efficiency.on_time_rate, 100)}%` }} />
+                      <div className="h-2 bg-rmpg-700 overflow-hidden">
+                        <div className="h-full bg-green-500" style={{ width: `${Math.min(efficiency.on_time_rate, 100)}%` }} />
                       </div>
                     </div>
                   </div>

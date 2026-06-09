@@ -384,7 +384,7 @@
 //       (buildNoticeOfCommunicationFromCall / openNoticeOfCommunication, reuses
 //       applyCallPdfAutofill). "Notice of Comm" button on cleared PSO calls in the
 //       DispatchPage detail (desktop + mobile) opens the autofilled PDF to print/send.
-const CACHE_NAME = 'rmpg-flex-v824';
+const CACHE_NAME = 'rmpg-flex-v825';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
