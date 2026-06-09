@@ -42,6 +42,7 @@ import LinkPersonModal from '../components/LinkPersonModal';
 import LinkVehicleModal from '../components/LinkVehicleModal';
 import EvidenceFormModal from '../components/EvidenceFormModal';
 import CollapsibleSection from '../components/CollapsibleSection';
+import LinkedEmailsSection from '../components/LinkedEmailsSection';
 import SupplementFormModal from '../components/SupplementFormModal';
 import type { SupplementFormData } from '../components/SupplementFormModal';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -2169,6 +2170,9 @@ export default function IncidentsPage() {
             readOnly={!isGodMode && !isAdmin && !['draft', 'returned', 'submitted', 'approved'].includes(selectedIncident.status)}
           />
         </CollapsibleSection>
+
+        {/* Linked Emails (autolinker + manual) */}
+        <LinkedEmailsSection entityType="incident" entityId={selectedIncident.id} />
       </div>
 
       {/* Sticky Action Bar */}

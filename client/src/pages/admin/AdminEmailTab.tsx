@@ -80,18 +80,45 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
 
   // ─── Handlers ───
 
+  // Azure AD GUID: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+  // tenantId may also be 'common', 'organizations', or 'consumers'.
+  const AZURE_GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const SPECIAL_TENANTS = new Set(['common', 'organizations', 'consumers']);
+
   const handleSaveCredentials = async () => {
-    if (!clientId || !clientSecret || !tenantId) {
-      setError('All three Azure AD fields are required');
+    // Trim to defend against trailing-space paste — a frequent Azure copy-paste foot-gun.
+    const cid = clientId.trim();
+    const csec = clientSecret.trim();
+    const tid = tenantId.trim();
+
+    if (!cid || !csec || !tid) {
+      setError('All three Azure AD fields are required.');
       return;
     }
+    if (!AZURE_GUID.test(cid)) {
+      setError('Application (Client) ID must be a GUID like xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx. Copy it from Azure Portal → App registrations → Overview.');
+      return;
+    }
+    if (!AZURE_GUID.test(tid) && !SPECIAL_TENANTS.has(tid.toLowerCase())) {
+      setError('Directory (Tenant) ID must be a GUID, or one of: common, organizations, consumers. Copy it from Azure Portal → App registrations → Overview.');
+      return;
+    }
+    if (AZURE_GUID.test(csec)) {
+      setError('That looks like the Client Secret ID (a GUID). Paste the Secret VALUE instead — Azure shows it only once, right after you create the secret.');
+      return;
+    }
+    if (csec.length < 20) {
+      setError('Client Secret looks too short. Paste the full secret VALUE from Azure (typically 40+ characters).');
+      return;
+    }
+
     setSaving(true);
     setError(null);
     try {
       await apiFetch('/email/admin/credentials', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ clientId, clientSecret, tenantId }),
+        body: JSON.stringify({ clientId: cid, clientSecret: csec, tenantId: tid }),
       });
       setClientId(''); setClientSecret(''); setTenantId('');
       await fetchStatus();
@@ -295,24 +322,44 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
 
         <div className="grid grid-cols-1 gap-2">
           <div>
-            <label className="block text-[10px] text-rmpg-400 mb-0.5">Application (Client) ID</label>
+            <div className="flex items-center justify-between mb-0.5">
+              <label className="block text-[10px] text-rmpg-400">Application (Client) ID</label>
+              {clientId.trim() && (
+                AZURE_GUID.test(clientId.trim())
+                  ? <span className="text-[9px] text-green-400">✓ valid GUID</span>
+                  : <span className="text-[9px] text-red-400">✗ not a GUID</span>
+              )}
+            </div>
             <input id="ff-adminemailtab-0"
               type="text"
               value={clientId}
               onChange={e => setClientId(e.target.value)}
               placeholder={status?.configured ? '••••••••••••••••' : 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'}
-              className="input-dark w-full text-xs font-mono min-h-[36px]"
+              className={`input-dark w-full text-xs font-mono min-h-[36px] ${clientId.trim() && !AZURE_GUID.test(clientId.trim()) ? 'border-red-500/60' : ''}`}
+              spellCheck={false}
+              autoComplete="off"
             />
           </div>
           <div>
-            <label className="block text-[10px] text-rmpg-400 mb-0.5">Client Secret</label>
+            <div className="flex items-center justify-between mb-0.5">
+              <label className="block text-[10px] text-rmpg-400">Client Secret <span className="text-rmpg-600">(the VALUE, not the ID)</span></label>
+              {clientSecret.trim() && (
+                AZURE_GUID.test(clientSecret.trim())
+                  ? <span className="text-[9px] text-red-400">✗ looks like the Secret ID — paste the VALUE</span>
+                  : clientSecret.trim().length < 20
+                    ? <span className="text-[9px] text-amber-400">⚠ unusually short</span>
+                    : <span className="text-[9px] text-green-400">✓ looks ok</span>
+              )}
+            </div>
             <div className="relative">
               <input id="ff-adminemailtab-1"
                 type={showSecret ? 'text' : 'password'}
                 value={clientSecret}
                 onChange={e => setClientSecret(e.target.value)}
-                placeholder={status?.configured ? '••••••••••••••••' : 'Enter client secret'}
-                className="input-dark w-full text-xs font-mono pr-8 min-h-[36px]"
+                placeholder={status?.configured ? '••••••••••••••••' : 'Enter client secret VALUE'}
+                className={`input-dark w-full text-xs font-mono pr-8 min-h-[36px] ${clientSecret.trim() && (AZURE_GUID.test(clientSecret.trim()) || clientSecret.trim().length < 20) ? 'border-red-500/60' : ''}`}
+                spellCheck={false}
+                autoComplete="off"
               />
               <button type="button" onClick={() => setShowSecret(!showSecret)}
                 className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-white">
@@ -321,13 +368,22 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
             </div>
           </div>
           <div>
-            <label className="block text-[10px] text-rmpg-400 mb-0.5">Directory (Tenant) ID</label>
+            <div className="flex items-center justify-between mb-0.5">
+              <label className="block text-[10px] text-rmpg-400">Directory (Tenant) ID</label>
+              {tenantId.trim() && (
+                (AZURE_GUID.test(tenantId.trim()) || SPECIAL_TENANTS.has(tenantId.trim().toLowerCase()))
+                  ? <span className="text-[9px] text-green-400">✓ valid</span>
+                  : <span className="text-[9px] text-red-400">✗ not a GUID</span>
+              )}
+            </div>
             <input id="ff-adminemailtab-2"
               type="text"
               value={tenantId}
               onChange={e => setTenantId(e.target.value)}
               placeholder={status?.configured ? '••••••••••••••••' : 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'}
-              className="input-dark w-full text-xs font-mono min-h-[36px]"
+              className={`input-dark w-full text-xs font-mono min-h-[36px] ${tenantId.trim() && !AZURE_GUID.test(tenantId.trim()) && !SPECIAL_TENANTS.has(tenantId.trim().toLowerCase()) ? 'border-red-500/60' : ''}`}
+              spellCheck={false}
+              autoComplete="off"
             />
           </div>
         </div>

@@ -1,0 +1,1367 @@
+// /api/email — Microsoft 365 (Graph) integration.
+//
+// Phase 1 (this PR): admin configuration only.
+//   GET    /status                       — connection status (JWT)
+//   PUT    /admin/credentials            — save Azure clientId/clientSecret/tenantId
+//   DELETE /admin/credentials            — clear creds + cached tokens
+//   GET    /admin/oauth/authorize        — return Microsoft login URL
+//   GET    /oauth/callback               — Microsoft redirect, exchanges code → tokens (PUBLIC)
+//   POST   /admin/test-connection        — hit Graph /me with stored tokens
+//   PUT    /admin/enable                 — toggle enabled + pollInterval
+//   PUT    /admin/smtp-settings          — store SMTP app password (kept for parity; Workers can't open SMTP)
+//   POST   /admin/sync-now               — Phase 2 stub
+//
+// Phase 2+ (next PR): /messages list/get, attachments, inline image proxy,
+// Graph send (replaces SMTP — Workers can't open raw TCP), rules engine,
+// autolinker, cron poller.
+//
+// Storage: legacy's `system_config` table with category='integrations'.
+// Secrets (client_secret, access_token, refresh_token, smtp_password) are
+// AES-GCM encrypted via src/utils/emailCrypto.ts before being written.
+
+import { Hono } from 'hono';
+import { authMiddleware, requireRole } from '../middleware/auth';
+import { getDb, queryFirst, query, execute } from '../utils/db';
+import { encryptSecret, decryptSecret } from '../utils/emailCrypto';
+import type { Bindings, Variables } from '../types';
+
+const email = new Hono<{ Bindings: Bindings; Variables: Variables }>();
+
+// ───────── Config-key namespace (matches legacy CONFIG_KEYS exactly) ─────────
+const K = {
+  clientId: 'ms_email_client_id',
+  clientSecret: 'ms_email_client_secret',
+  tenantId: 'ms_email_tenant_id',
+  accessToken: 'ms_email_access_token',
+  refreshToken: 'ms_email_refresh_token',
+  tokenExpiresAt: 'ms_email_token_expires_at',
+  enabled: 'ms_email_enabled',
+  pollInterval: 'ms_email_poll_interval',
+  mailbox: 'ms_email_mailbox',
+  smtpFallback: 'ms_email_smtp_fallback',
+  smtpPassword: 'ms_email_smtp_password',
+  lastSync: 'ms_email_last_sync',
+  oauthState: 'ms_email_oauth_state',
+  oauthInitiator: 'ms_email_oauth_initiator',
+} as const;
+
+const GRAPH_SCOPES = [
+  'https://graph.microsoft.com/Mail.ReadWrite',
+  'https://graph.microsoft.com/Mail.Send',
+  'https://graph.microsoft.com/MailboxSettings.ReadWrite',
+  'offline_access',
+];
+
+// ───────── system_config helpers (category='integrations') ─────────
+async function getCfg(db: D1Database, key: string): Promise<string | null> {
+  const row = await queryFirst<{ config_value: string }>(
+    db,
+    "SELECT config_value FROM system_config WHERE config_key = ? AND category = 'integrations' AND is_active = 1 LIMIT 1",
+    key,
+  );
+  return row?.config_value ?? null;
+}
+
+async function getCfgDecrypted(env: Bindings, key: string): Promise<string | null> {
+  const v = await getCfg(env.DB, key);
+  if (!v) return null;
+  try {
+    return await decryptSecret(env, v);
+  } catch {
+    return null;
+  }
+}
+
+async function setCfg(db: D1Database, key: string, value: string): Promise<void> {
+  // delete + insert mirrors legacy's idempotent write
+  await execute(
+    db,
+    "DELETE FROM system_config WHERE config_key = ? AND category = 'integrations'",
+    key,
+  );
+  await execute(
+    db,
+    "INSERT INTO system_config (config_key, config_value, category, sort_order, is_active, created_at, updated_at) VALUES (?, ?, 'integrations', 0, 1, datetime('now','localtime'), datetime('now','localtime'))",
+    key,
+    value,
+  );
+}
+
+async function setCfgEncrypted(env: Bindings, key: string, value: string): Promise<void> {
+  const enc = await encryptSecret(env, value);
+  await setCfg(env.DB, key, enc);
+}
+
+async function delCfg(db: D1Database, key: string): Promise<void> {
+  await execute(
+    db,
+    "DELETE FROM system_config WHERE config_key = ? AND category = 'integrations'",
+    key,
+  );
+}
+
+// ───────── Status shape consumed by AdminEmailTab ─────────
+async function getStatus(env: Bindings) {
+  const db = env.DB;
+  const [clientId, tenantId, enabled, pollInterval, mailbox, refreshToken, smtpFallback, lastSync] = await Promise.all([
+    getCfg(db, K.clientId),
+    getCfg(db, K.tenantId),
+    getCfg(db, K.enabled),
+    getCfg(db, K.pollInterval),
+    getCfg(db, K.mailbox),
+    getCfg(db, K.refreshToken),
+    getCfg(db, K.smtpFallback),
+    getCfg(db, K.lastSync),
+  ]);
+  const clientSecret = await getCfg(db, K.clientSecret);
+  const configured = !!(clientId && clientSecret && tenantId);
+  const authorized = !!refreshToken;
+  let cachedMessages = 0;
+  try {
+    const row = await queryFirst<{ c: number }>(db, 'SELECT COUNT(*) AS c FROM email_cache');
+    cachedMessages = row?.c ?? 0;
+  } catch { /* table may not exist yet — phase 2 */ }
+  return {
+    configured,
+    enabled: enabled === 'true',
+    authorized,
+    mailbox: mailbox || null,
+    lastSync: lastSync || null,
+    pollInterval: pollInterval ? parseInt(pollInterval, 10) : 300,
+    smtpFallback: smtpFallback === 'true',
+    cachedMessages,
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// PUBLIC: OAuth callback — Microsoft redirects here with ?code&state.
+// MUST be declared BEFORE the auth middleware below.
+// ═══════════════════════════════════════════════════════════════════
+email.get('/oauth/callback', async (c) => {
+  const url = new URL(c.req.url);
+  const code = url.searchParams.get('code');
+  const state = url.searchParams.get('state');
+  const oauthErr = url.searchParams.get('error');
+  if (oauthErr) return c.redirect(`/admin?tab=email&status=error&message=${encodeURIComponent(oauthErr)}`);
+  if (!code || !state) return c.redirect('/admin?tab=email&status=error&message=Missing+code+or+state');
+
+  // Verify CSRF state token
+  const stored = await getCfg(c.env.DB, K.oauthState);
+  if (!stored || stored !== state) {
+    return c.redirect('/admin?tab=email&status=error&message=Invalid+state');
+  }
+  await delCfg(c.env.DB, K.oauthState);
+
+  const clientId = await getCfgDecrypted(c.env, K.clientId);
+  const clientSecret = await getCfgDecrypted(c.env, K.clientSecret);
+  const tenantId = await getCfgDecrypted(c.env, K.tenantId);
+  if (!clientId || !clientSecret || !tenantId) {
+    return c.redirect('/admin?tab=email&status=error&message=Credentials+missing');
+  }
+
+  const redirectUri = `https://${url.host}/api/email/oauth/callback`;
+  const body = new URLSearchParams({
+    client_id: clientId,
+    client_secret: clientSecret,
+    code,
+    redirect_uri: redirectUri,
+    grant_type: 'authorization_code',
+    scope: GRAPH_SCOPES.join(' '),
+  });
+
+  try {
+    const res = await fetch(`https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: body.toString(),
+      signal: AbortSignal.timeout(15_000),
+    });
+    const data = await res.json() as Record<string, unknown>;
+    if (!res.ok) {
+      const msg = String(data.error_description || data.error || 'Token exchange failed');
+      return c.redirect(`/admin?tab=email&status=error&message=${encodeURIComponent(msg)}`);
+    }
+
+    await setCfgEncrypted(c.env, K.accessToken, String(data.access_token));
+    if (data.refresh_token) {
+      await setCfgEncrypted(c.env, K.refreshToken, String(data.refresh_token));
+    }
+    const expiresIn = Number(data.expires_in) || 3600;
+    await setCfg(c.env.DB, K.tokenExpiresAt, String(Date.now() + expiresIn * 1000));
+
+    // Decode the JWT's middle segment to recover the mailbox UPN
+    let mailbox = '';
+    try {
+      const parts = String(data.access_token).split('.');
+      if (parts.length >= 2) {
+        const pad = parts[1].length % 4 === 0 ? '' : '='.repeat(4 - (parts[1].length % 4));
+        const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/') + pad));
+        mailbox = payload.upn || payload.preferred_username || payload.unique_name || '';
+      }
+    } catch { /* best-effort */ }
+    if (mailbox) await setCfg(c.env.DB, K.mailbox, mailbox);
+
+    if ((await getCfg(c.env.DB, K.enabled)) !== 'true') {
+      await setCfg(c.env.DB, K.enabled, 'true');
+    }
+    return c.redirect('/admin?tab=email&status=authorized');
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Token exchange failed';
+    return c.redirect(`/admin?tab=email&status=error&message=${encodeURIComponent(msg)}`);
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// Everything below requires a valid JWT.
+// ═══════════════════════════════════════════════════════════════════
+email.use('*', authMiddleware);
+
+email.get('/status', async (c) => c.json(await getStatus(c.env)));
+
+// ──────── Admin endpoints (admin role only) ────────
+// Azure AD GUID shape — clientId and tenantId are always
+// xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx (32 hex + 4 dashes).
+// tenantId may also be 'common', 'organizations', or 'consumers' for
+// public Microsoft endpoints, but in a single-tenant RMPG deploy it
+// should be a GUID. Anything else is paste error.
+const AZURE_GUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const SPECIAL_TENANTS = new Set(['common', 'organizations', 'consumers']);
+
+email.put('/admin/credentials', requireRole('admin'), async (c) => {
+  const body = await c.req.json().catch(() => ({})) as { clientId?: string; clientSecret?: string; tenantId?: string };
+  const clientId = body.clientId?.trim();
+  const clientSecret = body.clientSecret?.trim();
+  const tenantId = body.tenantId?.trim();
+  if (!clientId || !clientSecret || !tenantId) {
+    return c.json({ error: 'All three Azure AD fields are required.', code: 'ALL_THREE_AZURE_AD' }, 400);
+  }
+  if (!AZURE_GUID_RE.test(clientId)) {
+    return c.json({
+      error: 'Application (Client) ID must be a GUID like xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx. Copy it from Azure Portal → App registrations → Overview.',
+      code: 'CLIENT_ID_NOT_GUID',
+    }, 400);
+  }
+  if (!AZURE_GUID_RE.test(tenantId) && !SPECIAL_TENANTS.has(tenantId.toLowerCase())) {
+    return c.json({
+      error: 'Directory (Tenant) ID must be a GUID, or one of: common, organizations, consumers. Copy it from Azure Portal → App registrations → Overview.',
+      code: 'TENANT_ID_NOT_GUID',
+    }, 400);
+  }
+  // Client secret VALUE is a short opaque string (~40 chars, includes
+  // ~/_-). Reject the common mistake of pasting the secret ID (a GUID).
+  if (AZURE_GUID_RE.test(clientSecret)) {
+    return c.json({
+      error: 'You pasted the Client Secret ID (a GUID). Paste the Secret VALUE instead — Azure shows it only once, right after you create the secret.',
+      code: 'CLIENT_SECRET_LOOKS_LIKE_ID',
+    }, 400);
+  }
+  if (clientSecret.length < 20) {
+    return c.json({
+      error: 'Client Secret looks too short. Paste the full secret VALUE from Azure (typically 40+ characters).',
+      code: 'CLIENT_SECRET_TOO_SHORT',
+    }, 400);
+  }
+  await setCfgEncrypted(c.env, K.clientId, clientId);
+  await setCfgEncrypted(c.env, K.clientSecret, clientSecret);
+  await setCfgEncrypted(c.env, K.tenantId, tenantId);
+  // Saving fresh creds invalidates any cached tokens
+  await delCfg(c.env.DB, K.accessToken);
+  await delCfg(c.env.DB, K.refreshToken);
+  await delCfg(c.env.DB, K.tokenExpiresAt);
+  await delCfg(c.env.DB, K.mailbox);
+  return c.json({ success: true });
+});
+
+email.delete('/admin/credentials', requireRole('admin'), async (c) => {
+  for (const key of Object.values(K)) {
+    await delCfg(c.env.DB, key);
+  }
+  try { await execute(c.env.DB, 'DELETE FROM email_cache'); } catch { /* phase 2 */ }
+  return c.json({ success: true });
+});
+
+email.get('/admin/oauth/authorize', requireRole('admin'), async (c) => {
+  const clientId = await getCfgDecrypted(c.env, K.clientId);
+  const tenantId = await getCfgDecrypted(c.env, K.tenantId);
+  if (!clientId || !tenantId) {
+    return c.json({ error: 'Azure AD credentials not configured yet', code: 'NOT_CONFIGURED' }, 400);
+  }
+  // CSRF state — stored in system_config so the callback (which has no
+  // session) can verify it. Single-use; deleted on callback.
+  const stateBytes = crypto.getRandomValues(new Uint8Array(32));
+  let state = '';
+  for (const b of stateBytes) state += b.toString(16).padStart(2, '0');
+  await setCfg(c.env.DB, K.oauthState, state);
+
+  const userId = c.get('userId');
+  if (userId) await setCfg(c.env.DB, K.oauthInitiator, String(userId));
+
+  const host = new URL(c.req.url).host;
+  const redirectUri = `https://${host}/api/email/oauth/callback`;
+  const params = new URLSearchParams({
+    client_id: clientId,
+    response_type: 'code',
+    redirect_uri: redirectUri,
+    scope: GRAPH_SCOPES.join(' '),
+    state,
+    prompt: 'consent',
+  });
+  const url = `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/authorize?${params.toString()}`;
+  return c.json({ url });
+});
+
+// Ensure a valid access token — refresh via direct POST if expired/near-expiry.
+async function ensureValidToken(env: Bindings): Promise<string> {
+  const accessToken = await getCfgDecrypted(env, K.accessToken);
+  const expiresAtStr = await getCfg(env.DB, K.tokenExpiresAt);
+  const expiresAt = expiresAtStr ? parseInt(expiresAtStr, 10) : 0;
+  if (accessToken && expiresAt && Date.now() < expiresAt - 300_000) {
+    return accessToken;
+  }
+  const refreshToken = await getCfgDecrypted(env, K.refreshToken);
+  if (!refreshToken) throw new Error('Microsoft re-authorization required — no refresh token');
+
+  const clientId = await getCfgDecrypted(env, K.clientId);
+  const clientSecret = await getCfgDecrypted(env, K.clientSecret);
+  const tenantId = await getCfgDecrypted(env, K.tenantId);
+  if (!clientId || !clientSecret || !tenantId) {
+    throw new Error('Azure AD credentials not configured');
+  }
+
+  const body = new URLSearchParams({
+    client_id: clientId,
+    client_secret: clientSecret,
+    refresh_token: refreshToken,
+    grant_type: 'refresh_token',
+    scope: GRAPH_SCOPES.join(' '),
+  });
+  const res = await fetch(`https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: body.toString(),
+    signal: AbortSignal.timeout(15_000),
+  });
+  const data = await res.json() as Record<string, unknown>;
+  if (!res.ok) {
+    throw new Error(String(data.error_description || data.error || 'Token refresh failed'));
+  }
+  await setCfgEncrypted(env, K.accessToken, String(data.access_token));
+  if (data.refresh_token) await setCfgEncrypted(env, K.refreshToken, String(data.refresh_token));
+  const expiresIn = Number(data.expires_in) || 3600;
+  await setCfg(env.DB, K.tokenExpiresAt, String(Date.now() + expiresIn * 1000));
+  return String(data.access_token);
+}
+
+email.post('/admin/test-connection', requireRole('admin'), async (c) => {
+  let graphResult: { success: boolean; mailbox?: string; error?: string };
+  try {
+    const token = await ensureValidToken(c.env);
+    const res = await fetch('https://graph.microsoft.com/v1.0/me?$select=mail,displayName,userPrincipalName', {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new Error(`Graph /me ${res.status}: ${text.slice(0, 200)}`);
+    }
+    const me = await res.json() as { mail?: string; userPrincipalName?: string };
+    const mailbox = me.mail || me.userPrincipalName || 'unknown';
+    if (mailbox && mailbox !== 'unknown') await setCfg(c.env.DB, K.mailbox, mailbox);
+    graphResult = { success: true, mailbox };
+  } catch (err: unknown) {
+    graphResult = { success: false, error: err instanceof Error ? err.message : 'Connection failed' };
+  }
+
+  // SMTP not implementable on Workers (no raw TCP) — report disabled.
+  const smtpFallback = await getCfg(c.env.DB, K.smtpFallback);
+  const smtpResult = smtpFallback === 'true'
+    ? { success: false, error: 'SMTP fallback not supported on Cloudflare Workers — use Graph send (Phase 2)' }
+    : { success: false, error: 'SMTP fallback disabled' };
+
+  return c.json({ graph: graphResult, smtp: smtpResult });
+});
+
+email.put('/admin/enable', requireRole('admin'), async (c) => {
+  const body = await c.req.json().catch(() => ({})) as { enabled?: boolean; pollInterval?: number };
+  if (body.enabled !== undefined) {
+    await setCfg(c.env.DB, K.enabled, String(!!body.enabled));
+  }
+  if (body.pollInterval !== undefined) {
+    const seconds = Math.max(60, Math.min(600, parseInt(String(body.pollInterval), 10) || 300));
+    await setCfg(c.env.DB, K.pollInterval, String(seconds));
+  }
+  return c.json({ success: true, ...(await getStatus(c.env)) });
+});
+
+email.put('/admin/smtp-settings', requireRole('admin'), async (c) => {
+  const body = await c.req.json().catch(() => ({})) as { enabled?: boolean; password?: string };
+  if (body.enabled !== undefined) {
+    await setCfg(c.env.DB, K.smtpFallback, String(!!body.enabled));
+  }
+  if (body.password) {
+    await setCfgEncrypted(c.env, K.smtpPassword, body.password);
+  }
+  return c.json({ success: true });
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// Phase 2 — Inbox read / send via Microsoft Graph
+//
+// All routes call Graph live with the tenant access token. We do not
+// cache message bodies on Workers (no benefit on the request path; the
+// authorized user has one mailbox, latency is dominated by Graph).
+// Phase 3 will add a `email_messages` table + cron poller for offline
+// + rule-engine support.
+// ═══════════════════════════════════════════════════════════════════
+
+async function graphFetch(env: Bindings, path: string, init: RequestInit = {}): Promise<Response> {
+  const token = await ensureValidToken(env);
+  const headers = new Headers(init.headers as HeadersInit | undefined);
+  headers.set('Authorization', `Bearer ${token}`);
+  if (init.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
+  return fetch(`https://graph.microsoft.com/v1.0${path}`, {
+    ...init,
+    headers,
+    signal: AbortSignal.timeout(20_000),
+  });
+}
+
+// Graph message → client EmailMessage shape (camelCase, matches client/src/types/index.ts)
+function mapMessage(m: Record<string, unknown>): Record<string, unknown> {
+  const from = m.from as { emailAddress?: { address?: string; name?: string } } | undefined;
+  const mapAddrs = (arr: unknown): Array<{ email: string; name?: string }> =>
+    Array.isArray(arr)
+      ? arr.map((r) => {
+          const ea = (r as { emailAddress?: { address?: string; name?: string } }).emailAddress;
+          return { email: ea?.address || '', name: ea?.name };
+        })
+      : [];
+  const flag = m.flag as { flagStatus?: string } | undefined;
+  return {
+    id: m.id,
+    conversationId: m.conversationId,
+    subject: m.subject || '(No subject)',
+    fromAddress: from?.emailAddress?.address || '',
+    fromName: from?.emailAddress?.name || '',
+    toAddresses: mapAddrs(m.toRecipients),
+    ccAddresses: mapAddrs(m.ccRecipients),
+    bodyPreview: m.bodyPreview || '',
+    hasAttachments: !!m.hasAttachments,
+    isRead: m.isRead !== false,
+    isFlagged: flag?.flagStatus === 'flagged',
+    importance: (m.importance as string) || 'normal',
+    receivedAt: m.receivedDateTime,
+    sentAt: m.sentDateTime,
+  };
+}
+
+// Rewrite cid:XXX image refs in HTML body so the browser fetches them
+// through our proxy (which carries the Bearer token, the browser doesn't).
+function rewriteCidImages(html: string, messageId: string, attachments: Array<{ id: string; contentId?: string; isInline?: boolean }>): string {
+  if (!html || !attachments.length) return html;
+  const byCid = new Map<string, string>();
+  for (const a of attachments) {
+    if (a.contentId) byCid.set(a.contentId.toLowerCase(), a.id);
+  }
+  if (!byCid.size) return html;
+  return html.replace(/src=("|')cid:([^"'<>]+)\1/gi, (match, q, cid) => {
+    const aid = byCid.get(String(cid).toLowerCase());
+    if (!aid) return match;
+    return `src=${q}/api/email/messages/${encodeURIComponent(messageId)}/attachments/${encodeURIComponent(aid)}?inline=1${q}`;
+  });
+}
+
+// ─── Folders ──────────────────────────────────────────────────────
+email.get('/folders', async (c) => {
+  try {
+    const res = await graphFetch(c.env, '/me/mailFolders?$select=id,displayName,parentFolderId,totalItemCount,unreadItemCount,childFolderCount&$top=50');
+    if (!res.ok) return c.json([]);
+    const data = await res.json() as { value?: unknown[] };
+    return c.json(data.value || []);
+  } catch {
+    return c.json([]);
+  }
+});
+
+email.get('/folders/:id/children', async (c) => {
+  const id = c.req.param('id');
+  try {
+    const res = await graphFetch(c.env, `/me/mailFolders/${encodeURIComponent(id)}/childFolders?$select=id,displayName,parentFolderId,totalItemCount,unreadItemCount,childFolderCount&$top=50`);
+    if (!res.ok) return c.json([]);
+    const data = await res.json() as { value?: unknown[] };
+    return c.json(data.value || []);
+  } catch {
+    return c.json([]);
+  }
+});
+
+// ─── Unread count ────────────────────────────────────────────────
+email.get('/unread-count', async (c) => {
+  try {
+    const res = await graphFetch(c.env, '/me/mailFolders/inbox?$select=unreadItemCount');
+    if (!res.ok) return c.json({ count: 0 });
+    const data = await res.json() as { unreadItemCount?: number };
+    return c.json({ count: data.unreadItemCount || 0 });
+  } catch {
+    return c.json({ count: 0 });
+  }
+});
+
+// ─── Message list ────────────────────────────────────────────────
+email.get('/messages', async (c) => {
+  const folder = c.req.query('folder') || 'inbox';
+  // Accept Graph-native (top/skip) AND client pagination (page/per_page).
+  const perPage = Math.max(1, Math.min(100, parseInt(c.req.query('per_page') || c.req.query('top') || '25', 10) || 25));
+  const page = Math.max(1, parseInt(c.req.query('page') || '1', 10) || 1);
+  const skip = c.req.query('skip') ? Math.max(0, parseInt(c.req.query('skip') || '0', 10)) : (page - 1) * perPage;
+  const search = c.req.query('search') || c.req.query('q') || '';
+  const select = 'id,conversationId,subject,from,toRecipients,ccRecipients,bodyPreview,hasAttachments,isRead,flag,importance,receivedDateTime,sentDateTime';
+  const params = new URLSearchParams();
+  params.set('$select', select);
+  params.set('$orderby', 'receivedDateTime desc');
+  params.set('$top', String(perPage));
+  if (skip > 0) params.set('$skip', String(skip));
+  if (search) params.set('$search', `"${search.replace(/"/g, '\\"')}"`);
+  try {
+    const res = await graphFetch(
+      c.env,
+      `/me/mailFolders/${encodeURIComponent(folder)}/messages?${params.toString()}`,
+    );
+    if (!res.ok) return c.json({ messages: [], hasMore: false });
+    const data = await res.json() as { value?: Record<string, unknown>[] };
+    const messages = (data.value || []).map(mapMessage);
+    return c.json({ messages, hasMore: messages.length === perPage });
+  } catch {
+    return c.json({ messages: [], hasMore: false });
+  }
+});
+
+// ─── Single message (full body, with CID image rewriting) ────────
+email.get('/messages/:id', async (c) => {
+  const id = c.req.param('id');
+  try {
+    const [msgRes, attsRes] = await Promise.all([
+      graphFetch(c.env, `/me/messages/${encodeURIComponent(id)}?$select=id,conversationId,subject,from,toRecipients,ccRecipients,bodyPreview,body,hasAttachments,isRead,flag,importance,receivedDateTime,sentDateTime`),
+      graphFetch(c.env, `/me/messages/${encodeURIComponent(id)}/attachments?$select=id,name,contentType,size,isInline,contentId`),
+    ]);
+    if (!msgRes.ok) return c.json({ error: 'Message not found' }, msgRes.status as 404 | 500);
+    const m = await msgRes.json() as Record<string, unknown>;
+    const atts = attsRes.ok ? ((await attsRes.json() as { value?: Array<{ id: string; contentId?: string; isInline?: boolean }> }).value || []) : [];
+    const out = mapMessage(m) as Record<string, unknown>;
+    const body = m.body as { contentType?: string; content?: string } | undefined;
+    let bodyHtml = body?.content || '';
+    if (body?.contentType?.toLowerCase() === 'html') {
+      bodyHtml = rewriteCidImages(bodyHtml, id, atts);
+    }
+    out.bodyHtml = bodyHtml;
+    return c.json(out);
+  } catch (err: unknown) {
+    return c.json({ error: err instanceof Error ? err.message : 'Failed' }, 502);
+  }
+});
+
+// ─── Attachments list ────────────────────────────────────────────
+email.get('/messages/:id/attachments', async (c) => {
+  const id = c.req.param('id');
+  try {
+    const res = await graphFetch(c.env, `/me/messages/${encodeURIComponent(id)}/attachments?$select=id,name,contentType,size,isInline,contentId`);
+    if (!res.ok) return c.json([]);
+    const data = await res.json() as { value?: Array<Record<string, unknown>> };
+    const atts = (data.value || []).map((a) => ({
+      id: a.id,
+      name: a.name,
+      contentType: a.contentType,
+      size: a.size || 0,
+      isInline: !!a.isInline,
+      contentId: a.contentId,
+    }));
+    return c.json(atts);
+  } catch {
+    return c.json([]);
+  }
+});
+
+// ─── Attachment binary proxy (Bearer kept server-side) ──────────
+// Decodes Graph's base64 contentBytes and streams the raw bytes back.
+// ?inline=1 → Content-Disposition: inline (used by rewritten <img>);
+// otherwise attachment;filename=...
+email.get('/messages/:id/attachments/:aid', async (c) => {
+  const id = c.req.param('id');
+  const aid = c.req.param('aid');
+  const inline = c.req.query('inline') === '1';
+  try {
+    const res = await graphFetch(c.env, `/me/messages/${encodeURIComponent(id)}/attachments/${encodeURIComponent(aid)}`);
+    if (!res.ok) return c.json({ error: 'Attachment not found' }, 404);
+    const a = await res.json() as { name?: string; contentType?: string; contentBytes?: string };
+    if (!a.contentBytes) return c.json({ error: 'Empty attachment' }, 404);
+    const bin = atob(a.contentBytes);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    const safeName = (a.name || 'attachment').replace(/[\r\n"]/g, '_');
+    return new Response(bytes, {
+      headers: {
+        'Content-Type': a.contentType || 'application/octet-stream',
+        'Content-Length': String(bytes.length),
+        'Content-Disposition': inline ? `inline; filename="${safeName}"` : `attachment; filename="${safeName}"`,
+        'Cache-Control': 'private, max-age=300',
+      },
+    });
+  } catch (err: unknown) {
+    return c.json({ error: err instanceof Error ? err.message : 'Failed' }, 502);
+  }
+});
+
+// ─── Remote-image proxy (privacy: client IP never hits sender's CDN) ─
+// Whitelist HTTPS only; bounded size; pass-through Content-Type. EmailPage
+// rewrites <img src> through this when "load remote images" is enabled.
+email.get('/image-proxy', async (c) => {
+  const raw = c.req.query('url');
+  if (!raw) return c.json({ error: 'url required' }, 400);
+  let url: URL;
+  try { url = new URL(raw); } catch { return c.json({ error: 'bad url' }, 400); }
+  if (url.protocol !== 'https:') return c.json({ error: 'https only' }, 400);
+  try {
+    const res = await fetch(url.toString(), {
+      headers: { Accept: 'image/*' },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) return c.json({ error: `upstream ${res.status}` }, 502);
+    const ct = res.headers.get('Content-Type') || 'application/octet-stream';
+    if (!ct.startsWith('image/')) return c.json({ error: 'not an image' }, 415);
+    const len = res.headers.get('Content-Length');
+    if (len && parseInt(len, 10) > 8 * 1024 * 1024) return c.json({ error: 'too large' }, 413);
+    return new Response(res.body, {
+      headers: {
+        'Content-Type': ct,
+        'Cache-Control': 'private, max-age=3600',
+        'X-Content-Type-Options': 'nosniff',
+      },
+    });
+  } catch (err: unknown) {
+    return c.json({ error: err instanceof Error ? err.message : 'Failed' }, 502);
+  }
+});
+
+// ─── Mark read / flag / move / delete ───────────────────────────
+email.patch('/messages/:id', async (c) => {
+  const id = c.req.param('id');
+  const body = await c.req.json().catch(() => ({})) as { isRead?: boolean; isFlagged?: boolean };
+  const patch: Record<string, unknown> = {};
+  if (body.isRead !== undefined) patch.isRead = !!body.isRead;
+  if (body.isFlagged !== undefined) patch.flag = { flagStatus: body.isFlagged ? 'flagged' : 'notFlagged' };
+  if (!Object.keys(patch).length) return c.json({ success: false, error: 'No fields to update' }, 400);
+  try {
+    const res = await graphFetch(c.env, `/me/messages/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+    });
+    if (!res.ok) return c.json({ success: false, error: `Graph ${res.status}` }, 502);
+    return c.json({ success: true });
+  } catch (err: unknown) {
+    return c.json({ success: false, error: err instanceof Error ? err.message : 'Failed' }, 502);
+  }
+});
+
+email.post('/messages/:id/move', async (c) => {
+  const id = c.req.param('id');
+  const body = await c.req.json().catch(() => ({})) as { folderId?: string };
+  if (!body.folderId) return c.json({ error: 'folderId required' }, 400);
+  try {
+    const res = await graphFetch(c.env, `/me/messages/${encodeURIComponent(id)}/move`, {
+      method: 'POST',
+      body: JSON.stringify({ destinationId: body.folderId }),
+    });
+    if (!res.ok) return c.json({ success: false, error: `Graph ${res.status}` }, 502);
+    return c.json({ success: true });
+  } catch (err: unknown) {
+    return c.json({ success: false, error: err instanceof Error ? err.message : 'Failed' }, 502);
+  }
+});
+
+email.delete('/messages/:id', async (c) => {
+  const id = c.req.param('id');
+  try {
+    const res = await graphFetch(c.env, `/me/messages/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    if (!res.ok && res.status !== 404) return c.json({ success: false, error: `Graph ${res.status}` }, 502);
+    return c.json({ success: true });
+  } catch (err: unknown) {
+    return c.json({ success: false, error: err instanceof Error ? err.message : 'Failed' }, 502);
+  }
+});
+
+// ─── Send / reply / forward (Graph — replaces SMTP) ──────────────
+function parseAddrList(raw: string): Array<{ emailAddress: { address: string } }> {
+  return (raw || '')
+    .split(/[,;]/)
+    .map((s) => s.trim())
+    .filter((s) => s && /@/.test(s))
+    .map((address) => ({ emailAddress: { address } }));
+}
+
+email.post('/send', async (c) => {
+  const userId = c.get('userId');
+  const body = await c.req.json().catch(() => ({})) as {
+    to?: string; cc?: string; bcc?: string; subject?: string; body?: string; isHtml?: boolean;
+  };
+  const toRecipients = parseAddrList(body.to || '');
+  if (!toRecipients.length) return c.json({ error: 'At least one recipient required' }, 400);
+
+  const payload = {
+    message: {
+      subject: body.subject || '(no subject)',
+      body: {
+        contentType: body.isHtml === false ? 'Text' : 'HTML',
+        content: body.body || '',
+      },
+      toRecipients,
+      ccRecipients: parseAddrList(body.cc || ''),
+      bccRecipients: parseAddrList(body.bcc || ''),
+    },
+    saveToSentItems: true,
+  };
+
+  // Durable outbox: enqueue first, then attempt synchronous send. If the
+  // sync send succeeds we mark sent in the same response; if it fails the
+  // cron drains it later. Either way the operator's "send" click is
+  // never lost to a transient Graph hiccup.
+  const queued = await execute(
+    c.env.DB,
+    "INSERT INTO email_outbox (owner_user_id, payload, status) VALUES (?, ?, 'pending')",
+    userId, JSON.stringify(payload),
+  );
+  const outboxId = queued.meta.last_row_id as number;
+
+  try {
+    const res = await graphFetch(c.env, '/me/sendMail', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      const err = `Graph ${res.status}: ${text.slice(0, 200)}`;
+      await execute(
+        c.env.DB,
+        "UPDATE email_outbox SET attempts = 1, last_error = ?, next_attempt_at = datetime('now','localtime','+1 minute') WHERE id = ?",
+        err, outboxId,
+      );
+      // 202 — queued for retry, not a hard failure
+      return c.json({ success: false, queued: true, outboxId, error: err }, 202);
+    }
+    await execute(
+      c.env.DB,
+      "UPDATE email_outbox SET status = 'sent', sent_at = datetime('now','localtime') WHERE id = ?",
+      outboxId,
+    );
+    return c.json({ success: true, outboxId });
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : 'Failed';
+    await execute(
+      c.env.DB,
+      "UPDATE email_outbox SET attempts = 1, last_error = ?, next_attempt_at = datetime('now','localtime','+1 minute') WHERE id = ?",
+      msg, outboxId,
+    );
+    return c.json({ success: false, queued: true, outboxId, error: msg }, 202);
+  }
+});
+
+// Outbox introspection for the EmailPage compose UI ("3 messages queued for retry")
+email.get('/outbox', async (c) => {
+  const userId = c.get('userId');
+  const rows = await query(
+    c.env.DB,
+    "SELECT id, attempts, last_error, next_attempt_at, status, created_at, sent_at FROM email_outbox WHERE owner_user_id = ? AND status != 'sent' ORDER BY id DESC LIMIT 50",
+    userId,
+  );
+  return c.json({ outbox: rows });
+});
+
+// Cron-drained: pop up-to-N pending rows whose next_attempt_at has
+// passed, attempt Graph send, exponential-backoff on failure (1m → 5m
+// → 30m → fail after 5 attempts). Exported for src/index.ts.
+export async function drainEmailOutbox(env: Bindings): Promise<{ sent: number; failed: number; deferred: number }> {
+  const refresh = await getCfgDecrypted(env, K.refreshToken);
+  if (!refresh) return { sent: 0, failed: 0, deferred: 0 };
+
+  const rows = await query<{ id: number; payload: string; attempts: number }>(
+    env.DB,
+    "SELECT id, payload, attempts FROM email_outbox WHERE status = 'pending' AND next_attempt_at <= datetime('now','localtime') ORDER BY id ASC LIMIT 10",
+  );
+  let sent = 0, failed = 0, deferred = 0;
+  const BACKOFFS = ['+1 minute', '+5 minutes', '+30 minutes', '+2 hours', '+6 hours'];
+  for (const r of rows) {
+    try {
+      const res = await graphFetch(env, '/me/sendMail', { method: 'POST', body: r.payload });
+      if (res.ok) {
+        await execute(env.DB, "UPDATE email_outbox SET status = 'sent', sent_at = datetime('now','localtime') WHERE id = ?", r.id);
+        sent++;
+        continue;
+      }
+      const text = await res.text().catch(() => '');
+      const attempts = r.attempts + 1;
+      const err = `Graph ${res.status}: ${text.slice(0, 200)}`;
+      if (attempts >= BACKOFFS.length) {
+        await execute(env.DB, "UPDATE email_outbox SET status = 'failed', attempts = ?, last_error = ? WHERE id = ?", attempts, err, r.id);
+        failed++;
+      } else {
+        await execute(
+          env.DB,
+          `UPDATE email_outbox SET attempts = ?, last_error = ?, next_attempt_at = datetime('now','localtime','${BACKOFFS[attempts]}') WHERE id = ?`,
+          attempts, err, r.id,
+        );
+        deferred++;
+      }
+    } catch (err: unknown) {
+      const attempts = r.attempts + 1;
+      const msg = err instanceof Error ? err.message : 'send failed';
+      if (attempts >= BACKOFFS.length) {
+        await execute(env.DB, "UPDATE email_outbox SET status = 'failed', attempts = ?, last_error = ? WHERE id = ?", attempts, msg, r.id);
+        failed++;
+      } else {
+        await execute(
+          env.DB,
+          `UPDATE email_outbox SET attempts = ?, last_error = ?, next_attempt_at = datetime('now','localtime','${BACKOFFS[attempts]}') WHERE id = ?`,
+          attempts, msg, r.id,
+        );
+        deferred++;
+      }
+    }
+  }
+  return { sent, failed, deferred };
+}
+
+email.post('/messages/:id/reply', async (c) => {
+  const id = c.req.param('id');
+  const body = await c.req.json().catch(() => ({})) as { body?: string; comment?: string };
+  try {
+    const res = await graphFetch(c.env, `/me/messages/${encodeURIComponent(id)}/reply`, {
+      method: 'POST',
+      body: JSON.stringify({ comment: body.body || body.comment || '' }),
+    });
+    if (!res.ok) return c.json({ success: false, error: `Graph ${res.status}` }, 502);
+    return c.json({ success: true });
+  } catch (err: unknown) {
+    return c.json({ success: false, error: err instanceof Error ? err.message : 'Failed' }, 502);
+  }
+});
+
+// ─── Per-user signature (stored in system_config) ───────────────
+email.get('/signature', async (c) => {
+  const userId = c.get('userId');
+  const row = await queryFirst<{ config_value: string }>(
+    c.env.DB,
+    "SELECT config_value FROM system_config WHERE config_key = ? AND category = 'email' LIMIT 1",
+    `email_signature_${userId}`,
+  );
+  return c.json({ signature: row?.config_value || '' });
+});
+
+email.put('/signature', async (c) => {
+  const userId = c.get('userId');
+  const body = await c.req.json().catch(() => ({})) as { signature?: string };
+  const sig = (body.signature || '').slice(0, 5000);
+  const key = `email_signature_${userId}`;
+  await execute(c.env.DB, "DELETE FROM system_config WHERE config_key = ? AND category = 'email'", key);
+  if (sig.trim()) {
+    await execute(
+      c.env.DB,
+      "INSERT INTO system_config (config_key, config_value, category, sort_order, is_active, created_at, updated_at) VALUES (?, ?, 'email', 0, 1, datetime('now','localtime'), datetime('now','localtime'))",
+      key,
+      sig,
+    );
+  }
+  return c.json({ success: true });
+});
+
+// ─── sync-now (real: counts inbox, stamps lastSync) ──────────────
+email.post('/admin/sync-now', requireRole('admin'), async (c) => {
+  try {
+    const res = await graphFetch(c.env, '/me/mailFolders/inbox?$select=totalItemCount,unreadItemCount');
+    if (!res.ok) {
+      return c.json({ success: false, synced: 0, error: `Graph ${res.status}` }, 502);
+    }
+    const data = await res.json() as { totalItemCount?: number; unreadItemCount?: number };
+    const now = new Date().toISOString();
+    await setCfg(c.env.DB, K.lastSync, now);
+    return c.json({
+      success: true,
+      synced: data.totalItemCount || 0,
+      unread: data.unreadItemCount || 0,
+      lastSync: now,
+    });
+  } catch (err: unknown) {
+    return c.json({ success: false, error: err instanceof Error ? err.message : 'Failed' }, 502);
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// Phase 3 — Rules engine, autolinker, cron poller
+// ═══════════════════════════════════════════════════════════════════
+
+interface RuleConditions {
+  from?: string;          // case-insensitive substring by default
+  subject?: string;       // case-insensitive substring by default
+  hasAttachment?: 0 | 1;
+  regex?: boolean;        // power-user toggle — treat from/subject as regex
+}
+interface RuleActions {
+  markRead?: 1;
+  flag?: 1;
+  moveFolder?: string;    // Graph folder id (e.g. 'archive', 'deleteditems', or a custom id)
+  categories?: string[];  // tags merged into email_messages.categories
+}
+interface RuleRow {
+  id: number;
+  owner_user_id: number;
+  name: string;
+  is_active: number;
+  conditions: string;
+  actions: string;
+}
+
+function safeRe(src: string): RegExp | null {
+  try { return new RegExp(src, 'i'); } catch { return null; }
+}
+
+function matchRule(cond: RuleConditions, m: {
+  from_address?: string | null; subject?: string | null; has_attachments?: number;
+}): boolean {
+  if (cond.from) {
+    const f = (m.from_address || '').toLowerCase();
+    if (cond.regex) {
+      const re = safeRe(cond.from);
+      if (!re || !re.test(m.from_address || '')) return false;
+    } else if (!f.includes(cond.from.toLowerCase())) return false;
+  }
+  if (cond.subject) {
+    if (cond.regex) {
+      const re = safeRe(cond.subject);
+      if (!re || !re.test(m.subject || '')) return false;
+    } else {
+      const s = (m.subject || '').toLowerCase();
+      if (!s.includes(cond.subject.toLowerCase())) return false;
+    }
+  }
+  if (cond.hasAttachment !== undefined) {
+    if (!!(m.has_attachments) !== !!cond.hasAttachment) return false;
+  }
+  return true;
+}
+
+// Autolinker — scan body + subject for CFS numbers and Utah plates.
+// CFS pattern: CFS##-##### (live: CFS26-00056).
+// Plate pattern: Utah standard 3-digit + 3-letter (123ABC), 3-letter +
+// 3-digit (ABC123), or 6-7 alnum personalized (RMPG1). To avoid false
+// positives from acronyms (FBI, NYPD, USA), we only link plates that
+// exist in vehicles_records.plate_number — the regex is the candidate
+// generator, the DB is the gate.
+const CFS_RE = /\bCFS\d{2}-\d{5}\b/gi;
+const PLATE_CANDIDATES_RE = /\b(?:[A-Z]{1,3}\d{3,4}|\d{3,4}[A-Z]{1,3}|[A-Z0-9]{6,7})\b/g;
+
+async function runAutolinker(
+  db: D1Database,
+  ownerUserId: number,
+  msg: { graph_id: string; subject?: string | null; body_preview?: string | null; body_html?: string | null },
+): Promise<number> {
+  const hay = `${msg.subject || ''}\n${msg.body_preview || ''}\n${msg.body_html || ''}`;
+  const seen = new Set<string>();
+  let linked = 0;
+
+  // CFS — pattern is unambiguous, link without DB confirmation.
+  for (const match of hay.matchAll(CFS_RE)) {
+    const ref = match[0].toUpperCase();
+    if (seen.has(`cfs:${ref}`)) continue;
+    seen.add(`cfs:${ref}`);
+    const row = await queryFirst<{ id: number }>(db, 'SELECT id FROM calls_for_service WHERE call_number = ? LIMIT 1', ref);
+    if (!row) continue;
+    try {
+      await execute(
+        db,
+        "INSERT OR IGNORE INTO email_links (message_graph_id, owner_user_id, entity_type, entity_id, entity_ref, source) VALUES (?, ?, 'cfs', ?, ?, 'autolinker')",
+        msg.graph_id, ownerUserId, row.id, ref,
+      );
+      linked++;
+    } catch { /* best-effort */ }
+  }
+
+  // Plates — generate candidates, dedupe, batch-check against vehicles_records.
+  // The DB lookup is the false-positive filter; without it "MAY2025" or "PDF123"
+  // would link as plates.
+  const candidates = new Set<string>();
+  for (const match of hay.toUpperCase().matchAll(PLATE_CANDIDATES_RE)) {
+    const tok = match[0];
+    if (tok.length < 5 || tok.length > 7) continue;
+    candidates.add(tok);
+  }
+  if (candidates.size) {
+    const cands = [...candidates];
+    const placeholders = cands.map(() => '?').join(',');
+    const hits = await query<{ id: number; plate_number: string }>(
+      db,
+      `SELECT id, plate_number FROM vehicles_records WHERE plate_number IN (${placeholders}) LIMIT 50`,
+      ...cands,
+    );
+    for (const v of hits) {
+      const ref = (v.plate_number || '').toUpperCase();
+      if (!ref || seen.has(`plate:${ref}`)) continue;
+      seen.add(`plate:${ref}`);
+      try {
+        await execute(
+          db,
+          "INSERT OR IGNORE INTO email_links (message_graph_id, owner_user_id, entity_type, entity_id, entity_ref, source) VALUES (?, ?, 'plate', ?, ?, 'autolinker')",
+          msg.graph_id, ownerUserId, v.id, ref,
+        );
+        linked++;
+      } catch { /* best-effort */ }
+    }
+  }
+  return linked;
+}
+
+// One pull cycle: list inbox newer than lastSync, upsert into email_messages,
+// evaluate active rules, run autolinker, optionally apply Graph-side actions.
+// Throttled by the caller via lastSync timestamp.
+export async function runEmailPoll(env: Bindings, ctx?: ExecutionContext): Promise<{ scanned: number; upserted: number; ruleHits: number; linked: number; skipped: boolean; error?: string }> {
+  const refresh = await getCfgDecrypted(env, K.refreshToken);
+  if (!refresh) return { scanned: 0, upserted: 0, ruleHits: 0, linked: 0, skipped: true };
+  const enabled = await getCfg(env.DB, K.enabled);
+  if (enabled !== 'true') return { scanned: 0, upserted: 0, ruleHits: 0, linked: 0, skipped: true };
+
+  const initiator = await getCfg(env.DB, K.oauthInitiator);
+  const ownerUserId = initiator ? parseInt(initiator, 10) : 0;
+  if (!ownerUserId) return { scanned: 0, upserted: 0, ruleHits: 0, linked: 0, skipped: true, error: 'no oauthInitiator' };
+
+  try {
+    const res = await graphFetch(
+      env,
+      `/me/mailFolders/inbox/messages?$select=id,conversationId,subject,from,toRecipients,ccRecipients,bodyPreview,hasAttachments,isRead,flag,importance,receivedDateTime,sentDateTime&$orderby=receivedDateTime desc&$top=50`,
+    );
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      return { scanned: 0, upserted: 0, ruleHits: 0, linked: 0, skipped: false, error: `Graph ${res.status}: ${text.slice(0, 150)}` };
+    }
+    const data = await res.json() as { value?: Array<Record<string, unknown>> };
+    const items = data.value || [];
+
+    const rules = await query<RuleRow>(
+      env.DB,
+      'SELECT id, owner_user_id, name, is_active, conditions, actions FROM email_rules WHERE is_active = 1 AND (owner_user_id IS NULL OR owner_user_id = ?)',
+      ownerUserId,
+    );
+
+    let upserted = 0;
+    let ruleHits = 0;
+    let linked = 0;
+
+    for (const raw of items) {
+      const from = raw.from as { emailAddress?: { address?: string; name?: string } } | undefined;
+      const flag = raw.flag as { flagStatus?: string } | undefined;
+      const m = {
+        graph_id: String(raw.id),
+        conversation_id: raw.conversationId as string | undefined,
+        subject: (raw.subject as string) || null,
+        from_address: from?.emailAddress?.address || null,
+        from_name: from?.emailAddress?.name || null,
+        to_addresses: JSON.stringify(raw.toRecipients || []),
+        cc_addresses: JSON.stringify(raw.ccRecipients || []),
+        body_preview: (raw.bodyPreview as string) || null,
+        has_attachments: raw.hasAttachments ? 1 : 0,
+        is_read: raw.isRead === false ? 0 : 1,
+        is_flagged: flag?.flagStatus === 'flagged' ? 1 : 0,
+        importance: (raw.importance as string) || 'normal',
+        received_at: raw.receivedDateTime as string | undefined,
+        sent_at: raw.sentDateTime as string | undefined,
+      };
+
+      // Evaluate rules, build categories + Graph patches.
+      const cats = new Set<string>();
+      let toMarkRead = false;
+      let toFlag = false;
+      let toMove: string | undefined;
+      for (const r of rules) {
+        let cond: RuleConditions; let acts: RuleActions;
+        try { cond = JSON.parse(r.conditions); acts = JSON.parse(r.actions); }
+        catch { continue; }
+        if (!matchRule(cond, m)) continue;
+        ruleHits++;
+        if (acts.markRead) toMarkRead = true;
+        if (acts.flag) toFlag = true;
+        if (acts.moveFolder) toMove = acts.moveFolder;
+        for (const t of acts.categories || []) cats.add(t);
+      }
+
+      const categories = cats.size ? JSON.stringify([...cats]) : null;
+
+      try {
+        await execute(
+          env.DB,
+          `INSERT INTO email_messages
+            (owner_user_id, graph_id, conversation_id, folder_id, subject, from_address, from_name, to_addresses, cc_addresses, body_preview, has_attachments, is_read, is_flagged, importance, categories, received_at, sent_at)
+           VALUES (?, ?, ?, 'inbox', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(owner_user_id, graph_id) DO UPDATE SET
+             is_read = excluded.is_read,
+             is_flagged = excluded.is_flagged,
+             categories = COALESCE(excluded.categories, email_messages.categories),
+             body_preview = excluded.body_preview`,
+          ownerUserId, m.graph_id, m.conversation_id ?? null, m.subject, m.from_address, m.from_name,
+          m.to_addresses, m.cc_addresses, m.body_preview, m.has_attachments, m.is_read, m.is_flagged,
+          m.importance, categories, m.received_at ?? null, m.sent_at ?? null,
+        );
+        upserted++;
+      } catch { /* upsert best-effort */ }
+
+      // Apply Graph-side side effects (move/markRead/flag). Fire-and-forget
+      // so a single failure can't stall the poll loop.
+      if (toMarkRead || toFlag || toMove) {
+        const patch: Record<string, unknown> = {};
+        if (toMarkRead) patch.isRead = true;
+        if (toFlag) patch.flag = { flagStatus: 'flagged' };
+        const p = Object.keys(patch).length
+          ? graphFetch(env, `/me/messages/${encodeURIComponent(m.graph_id)}`, { method: 'PATCH', body: JSON.stringify(patch) }).catch(() => null)
+          : Promise.resolve(null);
+        const mv = toMove
+          ? graphFetch(env, `/me/messages/${encodeURIComponent(m.graph_id)}/move`, { method: 'POST', body: JSON.stringify({ destinationId: toMove }) }).catch(() => null)
+          : Promise.resolve(null);
+        if (ctx) ctx.waitUntil(Promise.all([p, mv]));
+      }
+
+      // Autolinker — only on rows we just inserted (cheap dedup via INSERT OR IGNORE).
+      try { linked += await runAutolinker(env.DB, ownerUserId, m); } catch { /* best-effort */ }
+    }
+
+    await setCfg(env.DB, K.lastSync, new Date().toISOString());
+    return { scanned: items.length, upserted, ruleHits, linked, skipped: false };
+  } catch (err: unknown) {
+    return { scanned: 0, upserted: 0, ruleHits: 0, linked: 0, skipped: false, error: err instanceof Error ? err.message : 'poll failed' };
+  }
+}
+
+// ─── Rules CRUD ─────────────────────────────────────────────────
+email.get('/rules', async (c) => {
+  const userId = c.get('userId');
+  const rows = await query<RuleRow>(
+    c.env.DB,
+    'SELECT id, owner_user_id, name, is_active, conditions, actions FROM email_rules WHERE owner_user_id IS NULL OR owner_user_id = ? ORDER BY id DESC',
+    userId,
+  );
+  return c.json({
+    rules: rows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      isActive: !!r.is_active,
+      conditions: safeParse(r.conditions),
+      actions: safeParse(r.actions),
+    })),
+    total: rows.length,
+  });
+});
+
+function safeParse(s: string): unknown {
+  try { return JSON.parse(s); } catch { return {}; }
+}
+
+email.post('/rules', async (c) => {
+  const userId = c.get('userId');
+  const body = await c.req.json().catch(() => ({})) as { name?: string; conditions?: RuleConditions; actions?: RuleActions; isActive?: boolean };
+  if (!body.name || !body.conditions || !body.actions) {
+    return c.json({ error: 'name, conditions and actions are required' }, 400);
+  }
+  const r = await execute(
+    c.env.DB,
+    'INSERT INTO email_rules (name, conditions, actions, is_active, owner_user_id) VALUES (?, ?, ?, ?, ?)',
+    body.name, JSON.stringify(body.conditions), JSON.stringify(body.actions),
+    body.isActive === false ? 0 : 1, userId,
+  );
+  return c.json({ id: r.meta.last_row_id, success: true });
+});
+
+email.put('/rules/:id', async (c) => {
+  const id = parseInt(c.req.param('id'), 10);
+  const userId = c.get('userId');
+  const body = await c.req.json().catch(() => ({})) as { name?: string; conditions?: RuleConditions; actions?: RuleActions; isActive?: boolean };
+  const sets: string[] = [];
+  const vals: unknown[] = [];
+  if (body.name !== undefined) { sets.push('name = ?'); vals.push(body.name); }
+  if (body.conditions !== undefined) { sets.push('conditions = ?'); vals.push(JSON.stringify(body.conditions)); }
+  if (body.actions !== undefined) { sets.push('actions = ?'); vals.push(JSON.stringify(body.actions)); }
+  if (body.isActive !== undefined) { sets.push('is_active = ?'); vals.push(body.isActive ? 1 : 0); }
+  if (!sets.length) return c.json({ success: true });
+  sets.push("updated_at = datetime('now','localtime')");
+  vals.push(id, userId);
+  await execute(c.env.DB, `UPDATE email_rules SET ${sets.join(', ')} WHERE id = ? AND (owner_user_id IS NULL OR owner_user_id = ?)`, ...vals);
+  return c.json({ success: true });
+});
+
+email.delete('/rules/:id', async (c) => {
+  const id = parseInt(c.req.param('id'), 10);
+  const userId = c.get('userId');
+  await execute(c.env.DB, 'DELETE FROM email_rules WHERE id = ? AND (owner_user_id IS NULL OR owner_user_id = ?)', id, userId);
+  return c.json({ success: true });
+});
+
+email.post('/rules/test-match', async (c) => {
+  const body = await c.req.json().catch(() => ({})) as {
+    conditions?: RuleConditions;
+    sample?: { from?: string; subject?: string; hasAttachment?: boolean };
+  };
+  if (!body.conditions || !body.sample) return c.json({ error: 'conditions and sample required' }, 400);
+  const matches = matchRule(body.conditions, {
+    from_address: body.sample.from,
+    subject: body.sample.subject,
+    has_attachments: body.sample.hasAttachment ? 1 : 0,
+  });
+  return c.json({ matches });
+});
+
+// Legacy link shape consumed by EmailPage's <EmailIncidentLinks>:
+//   { id, email_graph_id, incident_id, call_id, warrant_id, person_id,
+//     link_type, notes, linked_by, created_at }
+// New shape (normalized): entity_type/entity_id/entity_ref/source.
+// Adapter maps the canonical row → legacy view: entity_type='cfs'
+// populates call_id (cfs IS a calls_for_service row), 'incident'/'warrant'/
+// 'person' map directly. 'plate' and other types stay in entity_ref only.
+interface LinkRow {
+  id: number;
+  message_graph_id: string;
+  entity_type: string;
+  entity_id: number | null;
+  entity_ref: string | null;
+  source: string;
+  link_type: string | null;
+  notes: string | null;
+  created_at: string;
+  created_by: number | null;
+}
+
+function toLegacyLink(r: LinkRow): Record<string, unknown> {
+  const out: Record<string, unknown> = {
+    id: r.id,
+    email_graph_id: r.message_graph_id,
+    incident_id: null,
+    call_id: null,
+    warrant_id: null,
+    person_id: null,
+    plate_ref: null,
+    link_type: r.link_type || (r.source === 'autolinker' ? 'autolinker' : 'related'),
+    notes: r.notes,
+    linked_by: r.created_by,
+    created_at: r.created_at,
+    entity_type: r.entity_type,
+    entity_id: r.entity_id,
+    entity_ref: r.entity_ref,
+    source: r.source,
+  };
+  switch (r.entity_type) {
+    case 'cfs':      out.call_id = r.entity_id; break;
+    case 'call':     out.call_id = r.entity_id; break;
+    case 'incident': out.incident_id = r.entity_id; break;
+    case 'warrant':  out.warrant_id = r.entity_id; break;
+    case 'person':   out.person_id = r.entity_id; break;
+    case 'plate':    out.plate_ref = r.entity_ref; break;
+  }
+  return out;
+}
+
+// ─── Links for a single message (autolinker output) ─────────────
+// Returns the LEGACY array shape (top-level array) to stay compatible
+// with the existing EmailPage <EmailIncidentLinks> component.
+email.get('/links/:graphId', async (c) => {
+  const graphId = c.req.param('graphId');
+  const userId = c.get('userId');
+  const rows = await query<LinkRow>(
+    c.env.DB,
+    `SELECT id, message_graph_id, entity_type, entity_id, entity_ref, source,
+            link_type, notes, created_at, created_by
+       FROM email_links
+      WHERE message_graph_id = ? AND owner_user_id = ?
+      ORDER BY id DESC`,
+    graphId, userId,
+  );
+  return c.json(rows.map(toLegacyLink));
+});
+
+// Reverse lookup — emails linked to a record (CFS / incident / warrant /
+// person). Accepts legacy aliases on :type ('call' → 'cfs'). Joins
+// email_messages so the consumer can render subject/from/date without
+// a second roundtrip.
+email.get('/links/by-entity/:type/:id', async (c) => {
+  const raw = c.req.param('type');
+  const type = raw === 'call' ? 'cfs' : raw;
+  const id = parseInt(c.req.param('id'), 10);
+  const userId = c.get('userId');
+  const rows = await query<LinkRow & {
+    subject: string | null; from_address: string | null; from_name: string | null; received_at: string | null;
+  }>(
+    c.env.DB,
+    `SELECT l.id, l.message_graph_id, l.entity_type, l.entity_id, l.entity_ref,
+            l.source, l.link_type, l.notes, l.created_at, l.created_by,
+            m.subject, m.from_address, m.from_name, m.received_at
+       FROM email_links l
+       LEFT JOIN email_messages m ON m.graph_id = l.message_graph_id AND m.owner_user_id = l.owner_user_id
+      WHERE l.entity_type = ? AND l.entity_id = ? AND l.owner_user_id = ?
+      ORDER BY l.id DESC`,
+    type, id, userId,
+  );
+  return c.json({
+    links: rows.map((r) => ({
+      ...toLegacyLink(r),
+      subject: r.subject,
+      from_address: r.from_address,
+      from_name: r.from_name,
+      received_at: r.received_at,
+    })),
+  });
+});
+
+// Manual link — accepts BOTH:
+//   Legacy (EmailIncidentLinks): { emailGraphId, incidentId|callId|warrantId|personId, linkType, notes }
+//   Canonical:                   { messageGraphId, entityType, entityId, entityRef, notes, linkType }
+email.post('/link', async (c) => {
+  const userId = c.get('userId');
+  const body = await c.req.json().catch(() => ({})) as Record<string, unknown>;
+
+  const graphId = (body.messageGraphId || body.emailGraphId) as string | undefined;
+  if (!graphId) return c.json({ error: 'messageGraphId/emailGraphId required' }, 400);
+
+  let entityType = body.entityType as string | undefined;
+  let entityId = (body.entityId as number | undefined) ?? null;
+  let entityRef = (body.entityRef as string | undefined) ?? null;
+
+  // Legacy discrete columns → normalized.
+  if (!entityType) {
+    if (body.incidentId) { entityType = 'incident'; entityId = body.incidentId as number; }
+    else if (body.callId) { entityType = 'cfs'; entityId = body.callId as number; }
+    else if (body.warrantId) { entityType = 'warrant'; entityId = body.warrantId as number; }
+    else if (body.personId) { entityType = 'person'; entityId = body.personId as number; }
+  }
+  if (!entityType) return c.json({ error: 'entityType (or one of incidentId/callId/warrantId/personId) required' }, 400);
+
+  // If only an id was given for cfs, populate entity_ref with call_number for
+  // human-readable display in record-page reverse lookups.
+  if (entityType === 'cfs' && entityId && !entityRef) {
+    const row = await queryFirst<{ call_number: string }>(c.env.DB, 'SELECT call_number FROM calls_for_service WHERE id = ?', entityId);
+    if (row?.call_number) entityRef = row.call_number;
+  }
+
+  const linkType = (body.linkType as string | undefined) || null;
+  const notes = (body.notes as string | undefined) || null;
+
+  try {
+    const r = await execute(
+      c.env.DB,
+      "INSERT INTO email_links (message_graph_id, owner_user_id, entity_type, entity_id, entity_ref, source, link_type, notes, created_by) VALUES (?, ?, ?, ?, ?, 'manual', ?, ?, ?)",
+      graphId, userId, entityType, entityId, entityRef, linkType, notes, userId,
+    );
+    return c.json({ id: r.meta.last_row_id, success: true });
+  } catch (err: unknown) {
+    return c.json({ success: false, error: err instanceof Error ? err.message : 'failed' }, 500);
+  }
+});
+
+email.delete('/link/:id', async (c) => {
+  const id = parseInt(c.req.param('id'), 10);
+  const userId = c.get('userId');
+  await execute(c.env.DB, 'DELETE FROM email_links WHERE id = ? AND owner_user_id = ?', id, userId);
+  return c.json({ success: true });
+});
+
+export default email;
