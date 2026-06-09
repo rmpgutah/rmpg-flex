@@ -586,33 +586,171 @@ pt.get('/optimize-route', async (c) => {
   try {
     const db = getDb(c.env);
     const officerId = c.req.query('officer_id');
+    const propertyId = c.req.query('property_id');
+    // Optional starting position (officer's current GPS). When omitted, the
+    // first checkpoint is used as the starting node — the route still
+    // optimises pairwise distances, just with an arbitrary anchor.
+    const startLat = parseFloat(c.req.query('start_lat') || '');
+    const startLng = parseFloat(c.req.query('start_lng') || '');
+    const hasStart = Number.isFinite(startLat) && Number.isFinite(startLng);
+
+    const where: string[] = ['is_active = 1', 'latitude IS NOT NULL', 'longitude IS NOT NULL'];
     const args: any[] = [];
-    let filter = 'WHERE is_active = 1';
-    if (officerId) { filter += ' AND assigned_officer_id = ?'; args.push(parseInt(officerId, 10)); }
-    const checkpoints = await query<any>(
+    if (officerId) { where.push('assigned_officer_id = ?'); args.push(parseInt(officerId, 10)); }
+    if (propertyId) { where.push('property_id = ?'); args.push(parseInt(propertyId, 10)); }
+    const checkpoints = await query<{
+      id: number; name: string; latitude: number; longitude: number; property_id: number | null;
+    }>(
       db,
-      `SELECT id, name, latitude, longitude, priority, scan_frequency_minutes
+      `SELECT id, name, latitude, longitude, property_id
          FROM patrol_checkpoints
-         ${filter}
-         ORDER BY priority DESC, name
+         WHERE ${where.join(' AND ')}
+         ORDER BY property_id, sequence_order, id
          LIMIT 100`,
       ...args,
     );
-    // Naive route: order by priority DESC, then by checkpoint name.
-    // Real TSP solver is a Phase 2 feature; for now we return the
-    // priority-sorted list as the "optimized" path.
+
+    if (checkpoints.length === 0) {
+      return c.json({
+        officer_id: officerId ? parseInt(officerId, 10) : null,
+        checkpoints: [],
+        optimized_order: [],
+        suggested_order: [],
+        total_distance_km: 0,
+        total_distance_meters: 0,
+        optimized_at: new Date().toISOString(),
+      });
+    }
+    if (checkpoints.length === 1) {
+      const only = checkpoints[0];
+      const d = hasStart ? haversineKm(startLat, startLng, only.latitude, only.longitude) : 0;
+      return c.json({
+        officer_id: officerId ? parseInt(officerId, 10) : null,
+        checkpoints,
+        optimized_order: [{ ...only, distance_from_previous_km: round2(d) }],
+        suggested_order: [only.id],
+        total_distance_km: round2(d),
+        total_distance_meters: Math.round(d * 1000),
+        optimized_at: new Date().toISOString(),
+      });
+    }
+
+    // ── Pairwise distance matrix (Haversine, km) ──
+    // Index 0 is the starting node (officer GPS or first checkpoint); 1..N
+    // are the real checkpoints. For O(N²) memory at N≤100 this is ~80KB —
+    // fine in a Worker.
+    type Node = { lat: number; lng: number; cp?: typeof checkpoints[number] };
+    const nodes: Node[] = [];
+    if (hasStart) nodes.push({ lat: startLat, lng: startLng });
+    for (const cp of checkpoints) nodes.push({ lat: cp.latitude, lng: cp.longitude, cp });
+    const N = nodes.length;
+    const dist: number[][] = Array.from({ length: N }, () => new Array(N).fill(0));
+    for (let i = 0; i < N; i++) {
+      for (let j = i + 1; j < N; j++) {
+        const d = haversineKm(nodes[i].lat, nodes[i].lng, nodes[j].lat, nodes[j].lng);
+        dist[i][j] = d; dist[j][i] = d;
+      }
+    }
+
+    // ── Nearest-neighbor seed ──
+    // Always start at node 0 (the anchor) and never revisit. NN is O(N²);
+    // for our N≤100 this is microseconds.
+    const tour: number[] = [0];
+    const visited = new Uint8Array(N);
+    visited[0] = 1;
+    for (let step = 1; step < N; step++) {
+      const last = tour[tour.length - 1];
+      let best = -1; let bestD = Infinity;
+      for (let j = 0; j < N; j++) {
+        if (visited[j]) continue;
+        if (dist[last][j] < bestD) { bestD = dist[last][j]; best = j; }
+      }
+      if (best === -1) break;
+      visited[best] = 1;
+      tour.push(best);
+    }
+
+    // ── 2-opt improvement ──
+    // Classic edge-swap loop: while any swap (i,k) improves the tour cost,
+    // accept it and restart. We DO NOT close the loop back to node 0 — this
+    // is an open path (officer ends at the last checkpoint, not back at
+    // their starting position). 2-opt converges quickly for N≤100; cap at
+    // a few iterations as a runtime safety net.
+    const tourCost = (t: number[]) => {
+      let s = 0;
+      for (let i = 0; i < t.length - 1; i++) s += dist[t[i]][t[i + 1]];
+      return s;
+    };
+    let improved = true;
+    let safetyIters = 0;
+    const maxIters = 200; // bounded — practical convergence is well under this
+    while (improved && safetyIters++ < maxIters) {
+      improved = false;
+      for (let i = 1; i < tour.length - 1; i++) {
+        for (let k = i + 1; k < tour.length; k++) {
+          // Reverse tour[i..k] and see if total cost drops.
+          const a = tour[i - 1], b = tour[i], cN = tour[k];
+          const dNext = k + 1 < tour.length ? tour[k + 1] : -1;
+          const before = dist[a][b] + (dNext >= 0 ? dist[cN][dNext] : 0);
+          const after = dist[a][cN] + (dNext >= 0 ? dist[b][dNext] : 0);
+          if (after + 1e-9 < before) {
+            // Reverse in place
+            let lo = i, hi = k;
+            while (lo < hi) { const tmp = tour[lo]; tour[lo] = tour[hi]; tour[hi] = tmp; lo++; hi--; }
+            improved = true;
+          }
+        }
+      }
+    }
+
+    // ── Build response ──
+    let total = 0;
+    const optimized_order = [];
+    for (let i = 0; i < tour.length; i++) {
+      const node = nodes[tour[i]];
+      if (!node.cp) continue; // skip the synthetic start node
+      const prev = i > 0 ? dist[tour[i - 1]][tour[i]] : 0;
+      total += prev;
+      optimized_order.push({
+        id: node.cp.id,
+        name: node.cp.name,
+        latitude: node.cp.latitude,
+        longitude: node.cp.longitude,
+        property_id: node.cp.property_id,
+        distance_from_previous_km: round2(prev),
+      });
+    }
+
     return c.json({
       officer_id: officerId ? parseInt(officerId, 10) : null,
+      start: hasStart ? { latitude: startLat, longitude: startLng } : null,
       checkpoints,
-      suggested_order: checkpoints.map((cp: any) => cp.id),
-      distance_estimate_meters: 0,
+      optimized_order,
+      // Backwards-compatible alias the older client field expected.
+      suggested_order: optimized_order.map(o => o.id),
+      total_distance_km: round2(total),
+      total_distance_meters: Math.round(total * 1000),
+      algorithm: '2-opt over nearest-neighbor seed',
+      iterations: safetyIters,
       optimized_at: new Date().toISOString(),
     });
   } catch (err) {
     console.error('GET /patrol/optimize-route failed:', err);
-    return c.json({ checkpoints: [], suggested_order: [] });
+    return c.json({ error: 'optimization failed', detail: (err as Error)?.message, checkpoints: [], optimized_order: [], suggested_order: [], total_distance_km: 0 }, 500);
   }
 });
+
+// Haversine distance (kilometres) between two WGS84 points.
+function haversineKm(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 6371; // earth radius km
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLng = toRad(lng2 - lng1);
+  const a = Math.sin(dLat / 2) ** 2 +
+            Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.asin(Math.min(1, Math.sqrt(a)));
+}
+function round2(n: number): number { return Math.round(n * 100) / 100; }
 
 pt.get('/time-tracking', async (c) => {
   try {
