@@ -424,8 +424,9 @@ reports.get('/shift-activity/:officerId', async (c) => {
       `SELECT id, call_number, incident_type, priority, status, location_address, created_at
        FROM calls_for_service
        WHERE date(created_at) = ?
-         AND (dispatcher_id = ? OR reporting_officer_id = ? OR assigned_unit_ids LIKE ?)
-       ORDER BY created_at ASC LIMIT 1000`, date, officerId, officerId, `%${unitId}%`);
+         AND (dispatcher_id = ? OR reporting_officer_id = ?
+              OR (SELECT COUNT(*) FROM json_each(assigned_unit_ids) WHERE CAST(value AS TEXT) = ?) > 0)
+       ORDER BY created_at ASC LIMIT 1000`, date, officerId, officerId, String(unitId));
     const incidents = await safeList(
       `SELECT id, incident_number, incident_type, priority, status, location_address, narrative, created_at
        FROM incidents WHERE date(created_at) = ? AND officer_id = ?

@@ -180,16 +180,21 @@ pm.get('/mileage/chain', async (c) => {
     // Build a "this is the relevant set of units" filter. When the
     // caller specifies an officer+unit we look at exactly that unit;
     // officer-only is "any unit driven by this officer"; unit-only
-    // is "any officer on this unit". The JSON1 LIKE on assigned_unit_ids
-    // is a D1-safe way to filter "contains the unit id" without
-    // opening the array (no json_each needed; keeps the query short).
+    // is "any officer on this unit". We match the unit id as a JSON array
+    // element via json_each + CAST (see the per-clause note below) — exact and
+    // robust to the mixed ["1"]/[1] storage shapes.
     const params: unknown[] = [];
     const joins: string[] = [];
     const where: string[] = ["c.starting_mileage IS NOT NULL OR c.ending_mileage IS NOT NULL"];
     if (Number.isFinite(officerId) && Number.isFinite(unitId)) {
       joins.push('INNER JOIN units u ON u.id = ? AND u.officer_id = ?');
       params.push(unitId, officerId);
-      where.push("c.assigned_unit_ids LIKE '%' || ? || '%'");
+      // Match the unit id as a real JSON array element. A bare
+      // LIKE '%'||?||'%' substring match over-matches (unit 1 also hits 10/11/
+      // 21/100…) AND a typed `value = ?` under-matches (assigned_unit_ids is
+      // stored as both ["1"] and [1]; 1 = '1' is false in SQLite). json_each +
+      // CAST(value AS TEXT) is exact and shape-agnostic.
+      where.push("(SELECT COUNT(*) FROM json_each(c.assigned_unit_ids) WHERE CAST(value AS TEXT) = ?) > 0");
       params.push(String(unitId));
     } else if (Number.isFinite(officerId)) {
       joins.push('INNER JOIN units u ON u.officer_id = ?');
@@ -197,7 +202,12 @@ pm.get('/mileage/chain', async (c) => {
     } else if (Number.isFinite(unitId)) {
       joins.push('INNER JOIN units u ON u.id = ?');
       params.push(unitId);
-      where.push("c.assigned_unit_ids LIKE '%' || ? || '%'");
+      // Match the unit id as a real JSON array element. A bare
+      // LIKE '%'||?||'%' substring match over-matches (unit 1 also hits 10/11/
+      // 21/100…) AND a typed `value = ?` under-matches (assigned_unit_ids is
+      // stored as both ["1"] and [1]; 1 = '1' is false in SQLite). json_each +
+      // CAST(value AS TEXT) is exact and shape-agnostic.
+      where.push("(SELECT COUNT(*) FROM json_each(c.assigned_unit_ids) WHERE CAST(value AS TEXT) = ?) > 0");
       params.push(String(unitId));
     }
     if (from) { where.push('COALESCE(c.cleared_at, c.closed_at, c.created_at) >= ?'); params.push(from); }
@@ -408,10 +418,14 @@ pm.post('/mileage/fix', async (c) => {
             AND (starting_mileage IS NOT NULL OR ending_mileage IS NOT NULL)
             AND COALESCE(cleared_at, closed_at, created_at) > ?
             AND (
-              (SELECT COUNT(*) FROM json_each(assigned_unit_ids) WHERE value = ?) > 0
+              -- assigned_unit_ids is stored inconsistently as ["1"] (text) AND [1]
+              -- (int). json_each.value keeps the JSON storage class, and in SQLite
+              -- 1 = '1' is FALSE, so a bare value=? comparison silently dropped
+              -- calls stored in the other shape. CAST to TEXT to match both.
+              (SELECT COUNT(*) FROM json_each(assigned_unit_ids) WHERE CAST(value AS TEXT) = ?) > 0
               OR (
                 SELECT u.officer_id FROM units u
-                 WHERE u.id = (SELECT value FROM json_each(assigned_unit_ids) LIMIT 1)
+                 WHERE u.id = (SELECT CAST(value AS INTEGER) FROM json_each(assigned_unit_ids) LIMIT 1)
               ) = ?
             )
           ORDER BY COALESCE(cleared_at, closed_at, created_at) ASC
@@ -599,7 +613,9 @@ pm.get('/trip-log/generate', async (c) => {
     if (Number.isFinite(officerId) && Number.isFinite(unitId)) {
       joins.push('INNER JOIN units u ON u.id = ? AND u.officer_id = ?');
       params.push(unitId, officerId);
-      where.push("(SELECT COUNT(*) FROM json_each(c.assigned_unit_ids) WHERE value = ?) > 0");
+      // CAST(value AS TEXT): assigned_unit_ids is stored as both ["1"] and [1];
+      // a bare `value = ?` (text param) misses the integer-shaped rows in SQLite.
+      where.push("(SELECT COUNT(*) FROM json_each(c.assigned_unit_ids) WHERE CAST(value AS TEXT) = ?) > 0");
       params.push(String(unitId));
     } else if (Number.isFinite(officerId)) {
       joins.push('INNER JOIN units u ON u.officer_id = ?');
@@ -607,7 +623,9 @@ pm.get('/trip-log/generate', async (c) => {
     } else if (Number.isFinite(unitId)) {
       joins.push('INNER JOIN units u ON u.id = ?');
       params.push(unitId);
-      where.push("(SELECT COUNT(*) FROM json_each(c.assigned_unit_ids) WHERE value = ?) > 0");
+      // CAST(value AS TEXT): assigned_unit_ids is stored as both ["1"] and [1];
+      // a bare `value = ?` (text param) misses the integer-shaped rows in SQLite.
+      where.push("(SELECT COUNT(*) FROM json_each(c.assigned_unit_ids) WHERE CAST(value AS TEXT) = ?) > 0");
       params.push(String(unitId));
     }
 
