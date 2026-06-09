@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Mail, Key, Eye, EyeOff, Loader2, CheckCircle2, XCircle,
   Trash2, AlertTriangle, ToggleLeft, ToggleRight, RefreshCw,
@@ -35,6 +35,15 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
   const [tenantId, setTenantId] = useState('');
   const [showSecret, setShowSecret] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  // Password-manager autofill races React: Chrome/Safari can populate the
+  // DOM value without firing a synthetic onChange, so controlled state
+  // stays empty and the form appears "blank" even though the inputs are
+  // visibly filled. Keep refs so handleSaveCredentials can fall back to
+  // the live DOM value when state is empty.
+  const clientIdRef = useRef<HTMLInputElement>(null);
+  const clientSecretRef = useRef<HTMLInputElement>(null);
+  const tenantIdRef = useRef<HTMLInputElement>(null);
 
   // SMTP form
   const [smtpPassword, setSmtpPassword] = useState('');
@@ -86,10 +95,20 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
   const SPECIAL_TENANTS = new Set(['common', 'organizations', 'consumers']);
 
   const handleSaveCredentials = async () => {
+    // Fall back to the live DOM value when controlled state is empty —
+    // catches password-manager autofill that bypasses React's onChange.
+    const liveCid = clientIdRef.current?.value ?? '';
+    const liveCsec = clientSecretRef.current?.value ?? '';
+    const liveTid = tenantIdRef.current?.value ?? '';
+    // Re-sync state if the DOM has a value the controlled input missed.
+    if (!clientId && liveCid) setClientId(liveCid);
+    if (!clientSecret && liveCsec) setClientSecret(liveCsec);
+    if (!tenantId && liveTid) setTenantId(liveTid);
+
     // Trim to defend against trailing-space paste — a frequent Azure copy-paste foot-gun.
-    const cid = clientId.trim();
-    const csec = clientSecret.trim();
-    const tid = tenantId.trim();
+    const cid = (clientId || liveCid).trim();
+    const csec = (clientSecret || liveCsec).trim();
+    const tid = (tenantId || liveTid).trim();
 
     if (!cid || !csec || !tid) {
       setError('All three Azure AD fields are required.');
@@ -331,9 +350,17 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
               )}
             </div>
             <input id="ff-adminemailtab-0"
+              ref={clientIdRef}
               type="text"
               value={clientId}
               onChange={e => setClientId(e.target.value)}
+              onPaste={e => {
+                // Capture pasted text directly — defends against React's
+                // controlled-input race when paste triggers autofill heuristics.
+                const text = e.clipboardData.getData('text');
+                if (text) setTimeout(() => setClientId(text.trim()), 0);
+              }}
+              onBlur={e => { if (e.target.value !== clientId) setClientId(e.target.value); }}
               placeholder={status?.configured ? '••••••••••••••••' : 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'}
               className={`input-dark w-full text-xs font-mono min-h-[36px] ${clientId.trim() && !AZURE_GUID.test(clientId.trim()) ? 'border-red-500/60' : ''}`}
               spellCheck={false}
@@ -353,9 +380,15 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
             </div>
             <div className="relative">
               <input id="ff-adminemailtab-1"
+                ref={clientSecretRef}
                 type={showSecret ? 'text' : 'password'}
                 value={clientSecret}
                 onChange={e => setClientSecret(e.target.value)}
+                onPaste={e => {
+                  const text = e.clipboardData.getData('text');
+                  if (text) setTimeout(() => setClientSecret(text.trim()), 0);
+                }}
+                onBlur={e => { if (e.target.value !== clientSecret) setClientSecret(e.target.value); }}
                 placeholder={status?.configured ? '••••••••••••••••' : 'Enter client secret VALUE'}
                 className={`input-dark w-full text-xs font-mono pr-8 min-h-[36px] ${clientSecret.trim() && (AZURE_GUID.test(clientSecret.trim()) || clientSecret.trim().length < 20) ? 'border-red-500/60' : ''}`}
                 spellCheck={false}
@@ -377,9 +410,15 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
               )}
             </div>
             <input id="ff-adminemailtab-2"
+              ref={tenantIdRef}
               type="text"
               value={tenantId}
               onChange={e => setTenantId(e.target.value)}
+              onPaste={e => {
+                const text = e.clipboardData.getData('text');
+                if (text) setTimeout(() => setTenantId(text.trim()), 0);
+              }}
+              onBlur={e => { if (e.target.value !== tenantId) setTenantId(e.target.value); }}
               placeholder={status?.configured ? '••••••••••••••••' : 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'}
               className={`input-dark w-full text-xs font-mono min-h-[36px] ${tenantId.trim() && !AZURE_GUID.test(tenantId.trim()) && !SPECIAL_TENANTS.has(tenantId.trim().toLowerCase()) ? 'border-red-500/60' : ''}`}
               spellCheck={false}

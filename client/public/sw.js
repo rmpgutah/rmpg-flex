@@ -352,7 +352,12 @@
 //       LinkedEmailsSection on Incidents/Warrants). Azure AD input validation
 //       (GUID shape + Secret-VALUE-not-ID check). See PR #1081 for the full
 //       phase-by-phase commit log.
-const CACHE_NAME = 'rmpg-flex-v823';
+// v824: Admin Email — defend Save Credentials against password-manager autofill
+//       races (Chrome/Safari fill the DOM without firing React's onChange,
+//       leaving controlled state empty and the form falsely "required").
+//       Inputs now carry refs + onPaste/onBlur handlers and handleSaveCredentials
+//       falls back to the live DOM value when state is empty.
+const CACHE_NAME = 'rmpg-flex-v824';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
