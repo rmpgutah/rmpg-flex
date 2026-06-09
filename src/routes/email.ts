@@ -46,10 +46,11 @@ const K = {
 } as const;
 
 const GRAPH_SCOPES = [
-  'https://graph.microsoft.com/Mail.ReadWrite',
+  'https://graph.microsoft.com/Mail.ReadWrite', // implies Mail.Read
   'https://graph.microsoft.com/Mail.Send',
   'https://graph.microsoft.com/MailboxSettings.ReadWrite',
-  'offline_access',
+  'https://graph.microsoft.com/User.Read', // /me profile — used by test-connection
+  'offline_access', // required for a refresh_token
 ];
 
 // ───────── system_config helpers (category='integrations') ─────────
