@@ -368,10 +368,395 @@ email.put('/admin/smtp-settings', requireRole('admin'), async (c) => {
   return c.json({ success: true });
 });
 
-// Phase 2 stub — returns a friendly "not yet" instead of 404 so the tab
-// doesn't error after Authorize. Will be replaced by real Graph sync.
+// ═══════════════════════════════════════════════════════════════════
+// Phase 2 — Inbox read / send via Microsoft Graph
+//
+// All routes call Graph live with the tenant access token. We do not
+// cache message bodies on Workers (no benefit on the request path; the
+// authorized user has one mailbox, latency is dominated by Graph).
+// Phase 3 will add a `email_messages` table + cron poller for offline
+// + rule-engine support.
+// ═══════════════════════════════════════════════════════════════════
+
+async function graphFetch(env: Bindings, path: string, init: RequestInit = {}): Promise<Response> {
+  const token = await ensureValidToken(env);
+  const headers = new Headers(init.headers as HeadersInit | undefined);
+  headers.set('Authorization', `Bearer ${token}`);
+  if (init.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
+  return fetch(`https://graph.microsoft.com/v1.0${path}`, {
+    ...init,
+    headers,
+    signal: AbortSignal.timeout(20_000),
+  });
+}
+
+// Graph message → client EmailMessage shape (camelCase, matches client/src/types/index.ts)
+function mapMessage(m: Record<string, unknown>): Record<string, unknown> {
+  const from = m.from as { emailAddress?: { address?: string; name?: string } } | undefined;
+  const mapAddrs = (arr: unknown): Array<{ email: string; name?: string }> =>
+    Array.isArray(arr)
+      ? arr.map((r) => {
+          const ea = (r as { emailAddress?: { address?: string; name?: string } }).emailAddress;
+          return { email: ea?.address || '', name: ea?.name };
+        })
+      : [];
+  const flag = m.flag as { flagStatus?: string } | undefined;
+  return {
+    id: m.id,
+    conversationId: m.conversationId,
+    subject: m.subject || '(No subject)',
+    fromAddress: from?.emailAddress?.address || '',
+    fromName: from?.emailAddress?.name || '',
+    toAddresses: mapAddrs(m.toRecipients),
+    ccAddresses: mapAddrs(m.ccRecipients),
+    bodyPreview: m.bodyPreview || '',
+    hasAttachments: !!m.hasAttachments,
+    isRead: m.isRead !== false,
+    isFlagged: flag?.flagStatus === 'flagged',
+    importance: (m.importance as string) || 'normal',
+    receivedAt: m.receivedDateTime,
+    sentAt: m.sentDateTime,
+  };
+}
+
+// Rewrite cid:XXX image refs in HTML body so the browser fetches them
+// through our proxy (which carries the Bearer token, the browser doesn't).
+function rewriteCidImages(html: string, messageId: string, attachments: Array<{ id: string; contentId?: string; isInline?: boolean }>): string {
+  if (!html || !attachments.length) return html;
+  const byCid = new Map<string, string>();
+  for (const a of attachments) {
+    if (a.contentId) byCid.set(a.contentId.toLowerCase(), a.id);
+  }
+  if (!byCid.size) return html;
+  return html.replace(/src=("|')cid:([^"'<>]+)\1/gi, (match, q, cid) => {
+    const aid = byCid.get(String(cid).toLowerCase());
+    if (!aid) return match;
+    return `src=${q}/api/email/messages/${encodeURIComponent(messageId)}/attachments/${encodeURIComponent(aid)}?inline=1${q}`;
+  });
+}
+
+// ─── Folders ──────────────────────────────────────────────────────
+email.get('/folders', async (c) => {
+  try {
+    const res = await graphFetch(c.env, '/me/mailFolders?$select=id,displayName,parentFolderId,totalItemCount,unreadItemCount,childFolderCount&$top=50');
+    if (!res.ok) return c.json([]);
+    const data = await res.json() as { value?: unknown[] };
+    return c.json(data.value || []);
+  } catch {
+    return c.json([]);
+  }
+});
+
+email.get('/folders/:id/children', async (c) => {
+  const id = c.req.param('id');
+  try {
+    const res = await graphFetch(c.env, `/me/mailFolders/${encodeURIComponent(id)}/childFolders?$select=id,displayName,parentFolderId,totalItemCount,unreadItemCount,childFolderCount&$top=50`);
+    if (!res.ok) return c.json([]);
+    const data = await res.json() as { value?: unknown[] };
+    return c.json(data.value || []);
+  } catch {
+    return c.json([]);
+  }
+});
+
+// ─── Unread count ────────────────────────────────────────────────
+email.get('/unread-count', async (c) => {
+  try {
+    const res = await graphFetch(c.env, '/me/mailFolders/inbox?$select=unreadItemCount');
+    if (!res.ok) return c.json({ count: 0 });
+    const data = await res.json() as { unreadItemCount?: number };
+    return c.json({ count: data.unreadItemCount || 0 });
+  } catch {
+    return c.json({ count: 0 });
+  }
+});
+
+// ─── Message list ────────────────────────────────────────────────
+email.get('/messages', async (c) => {
+  const folder = c.req.query('folder') || 'inbox';
+  // Accept Graph-native (top/skip) AND client pagination (page/per_page).
+  const perPage = Math.max(1, Math.min(100, parseInt(c.req.query('per_page') || c.req.query('top') || '25', 10) || 25));
+  const page = Math.max(1, parseInt(c.req.query('page') || '1', 10) || 1);
+  const skip = c.req.query('skip') ? Math.max(0, parseInt(c.req.query('skip') || '0', 10)) : (page - 1) * perPage;
+  const search = c.req.query('search') || c.req.query('q') || '';
+  const select = 'id,conversationId,subject,from,toRecipients,ccRecipients,bodyPreview,hasAttachments,isRead,flag,importance,receivedDateTime,sentDateTime';
+  const params = new URLSearchParams();
+  params.set('$select', select);
+  params.set('$orderby', 'receivedDateTime desc');
+  params.set('$top', String(perPage));
+  if (skip > 0) params.set('$skip', String(skip));
+  if (search) params.set('$search', `"${search.replace(/"/g, '\\"')}"`);
+  try {
+    const res = await graphFetch(
+      c.env,
+      `/me/mailFolders/${encodeURIComponent(folder)}/messages?${params.toString()}`,
+    );
+    if (!res.ok) return c.json({ messages: [], hasMore: false });
+    const data = await res.json() as { value?: Record<string, unknown>[] };
+    const messages = (data.value || []).map(mapMessage);
+    return c.json({ messages, hasMore: messages.length === perPage });
+  } catch {
+    return c.json({ messages: [], hasMore: false });
+  }
+});
+
+// ─── Single message (full body, with CID image rewriting) ────────
+email.get('/messages/:id', async (c) => {
+  const id = c.req.param('id');
+  try {
+    const [msgRes, attsRes] = await Promise.all([
+      graphFetch(c.env, `/me/messages/${encodeURIComponent(id)}?$select=id,conversationId,subject,from,toRecipients,ccRecipients,bodyPreview,body,hasAttachments,isRead,flag,importance,receivedDateTime,sentDateTime`),
+      graphFetch(c.env, `/me/messages/${encodeURIComponent(id)}/attachments?$select=id,name,contentType,size,isInline,contentId`),
+    ]);
+    if (!msgRes.ok) return c.json({ error: 'Message not found' }, msgRes.status as 404 | 500);
+    const m = await msgRes.json() as Record<string, unknown>;
+    const atts = attsRes.ok ? ((await attsRes.json() as { value?: Array<{ id: string; contentId?: string; isInline?: boolean }> }).value || []) : [];
+    const out = mapMessage(m) as Record<string, unknown>;
+    const body = m.body as { contentType?: string; content?: string } | undefined;
+    let bodyHtml = body?.content || '';
+    if (body?.contentType?.toLowerCase() === 'html') {
+      bodyHtml = rewriteCidImages(bodyHtml, id, atts);
+    }
+    out.bodyHtml = bodyHtml;
+    return c.json(out);
+  } catch (err: unknown) {
+    return c.json({ error: err instanceof Error ? err.message : 'Failed' }, 502);
+  }
+});
+
+// ─── Attachments list ────────────────────────────────────────────
+email.get('/messages/:id/attachments', async (c) => {
+  const id = c.req.param('id');
+  try {
+    const res = await graphFetch(c.env, `/me/messages/${encodeURIComponent(id)}/attachments?$select=id,name,contentType,size,isInline,contentId`);
+    if (!res.ok) return c.json([]);
+    const data = await res.json() as { value?: Array<Record<string, unknown>> };
+    const atts = (data.value || []).map((a) => ({
+      id: a.id,
+      name: a.name,
+      contentType: a.contentType,
+      size: a.size || 0,
+      isInline: !!a.isInline,
+      contentId: a.contentId,
+    }));
+    return c.json(atts);
+  } catch {
+    return c.json([]);
+  }
+});
+
+// ─── Attachment binary proxy (Bearer kept server-side) ──────────
+// Decodes Graph's base64 contentBytes and streams the raw bytes back.
+// ?inline=1 → Content-Disposition: inline (used by rewritten <img>);
+// otherwise attachment;filename=...
+email.get('/messages/:id/attachments/:aid', async (c) => {
+  const id = c.req.param('id');
+  const aid = c.req.param('aid');
+  const inline = c.req.query('inline') === '1';
+  try {
+    const res = await graphFetch(c.env, `/me/messages/${encodeURIComponent(id)}/attachments/${encodeURIComponent(aid)}`);
+    if (!res.ok) return c.json({ error: 'Attachment not found' }, 404);
+    const a = await res.json() as { name?: string; contentType?: string; contentBytes?: string };
+    if (!a.contentBytes) return c.json({ error: 'Empty attachment' }, 404);
+    const bin = atob(a.contentBytes);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    const safeName = (a.name || 'attachment').replace(/[\r\n"]/g, '_');
+    return new Response(bytes, {
+      headers: {
+        'Content-Type': a.contentType || 'application/octet-stream',
+        'Content-Length': String(bytes.length),
+        'Content-Disposition': inline ? `inline; filename="${safeName}"` : `attachment; filename="${safeName}"`,
+        'Cache-Control': 'private, max-age=300',
+      },
+    });
+  } catch (err: unknown) {
+    return c.json({ error: err instanceof Error ? err.message : 'Failed' }, 502);
+  }
+});
+
+// ─── Remote-image proxy (privacy: client IP never hits sender's CDN) ─
+// Whitelist HTTPS only; bounded size; pass-through Content-Type. EmailPage
+// rewrites <img src> through this when "load remote images" is enabled.
+email.get('/image-proxy', async (c) => {
+  const raw = c.req.query('url');
+  if (!raw) return c.json({ error: 'url required' }, 400);
+  let url: URL;
+  try { url = new URL(raw); } catch { return c.json({ error: 'bad url' }, 400); }
+  if (url.protocol !== 'https:') return c.json({ error: 'https only' }, 400);
+  try {
+    const res = await fetch(url.toString(), {
+      headers: { Accept: 'image/*' },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) return c.json({ error: `upstream ${res.status}` }, 502);
+    const ct = res.headers.get('Content-Type') || 'application/octet-stream';
+    if (!ct.startsWith('image/')) return c.json({ error: 'not an image' }, 415);
+    const len = res.headers.get('Content-Length');
+    if (len && parseInt(len, 10) > 8 * 1024 * 1024) return c.json({ error: 'too large' }, 413);
+    return new Response(res.body, {
+      headers: {
+        'Content-Type': ct,
+        'Cache-Control': 'private, max-age=3600',
+        'X-Content-Type-Options': 'nosniff',
+      },
+    });
+  } catch (err: unknown) {
+    return c.json({ error: err instanceof Error ? err.message : 'Failed' }, 502);
+  }
+});
+
+// ─── Mark read / flag / move / delete ───────────────────────────
+email.patch('/messages/:id', async (c) => {
+  const id = c.req.param('id');
+  const body = await c.req.json().catch(() => ({})) as { isRead?: boolean; isFlagged?: boolean };
+  const patch: Record<string, unknown> = {};
+  if (body.isRead !== undefined) patch.isRead = !!body.isRead;
+  if (body.isFlagged !== undefined) patch.flag = { flagStatus: body.isFlagged ? 'flagged' : 'notFlagged' };
+  if (!Object.keys(patch).length) return c.json({ success: false, error: 'No fields to update' }, 400);
+  try {
+    const res = await graphFetch(c.env, `/me/messages/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      body: JSON.stringify(patch),
+    });
+    if (!res.ok) return c.json({ success: false, error: `Graph ${res.status}` }, 502);
+    return c.json({ success: true });
+  } catch (err: unknown) {
+    return c.json({ success: false, error: err instanceof Error ? err.message : 'Failed' }, 502);
+  }
+});
+
+email.post('/messages/:id/move', async (c) => {
+  const id = c.req.param('id');
+  const body = await c.req.json().catch(() => ({})) as { folderId?: string };
+  if (!body.folderId) return c.json({ error: 'folderId required' }, 400);
+  try {
+    const res = await graphFetch(c.env, `/me/messages/${encodeURIComponent(id)}/move`, {
+      method: 'POST',
+      body: JSON.stringify({ destinationId: body.folderId }),
+    });
+    if (!res.ok) return c.json({ success: false, error: `Graph ${res.status}` }, 502);
+    return c.json({ success: true });
+  } catch (err: unknown) {
+    return c.json({ success: false, error: err instanceof Error ? err.message : 'Failed' }, 502);
+  }
+});
+
+email.delete('/messages/:id', async (c) => {
+  const id = c.req.param('id');
+  try {
+    const res = await graphFetch(c.env, `/me/messages/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    if (!res.ok && res.status !== 404) return c.json({ success: false, error: `Graph ${res.status}` }, 502);
+    return c.json({ success: true });
+  } catch (err: unknown) {
+    return c.json({ success: false, error: err instanceof Error ? err.message : 'Failed' }, 502);
+  }
+});
+
+// ─── Send / reply / forward (Graph — replaces SMTP) ──────────────
+function parseAddrList(raw: string): Array<{ emailAddress: { address: string } }> {
+  return (raw || '')
+    .split(/[,;]/)
+    .map((s) => s.trim())
+    .filter((s) => s && /@/.test(s))
+    .map((address) => ({ emailAddress: { address } }));
+}
+
+email.post('/send', async (c) => {
+  const body = await c.req.json().catch(() => ({})) as {
+    to?: string; cc?: string; bcc?: string; subject?: string; body?: string; isHtml?: boolean;
+  };
+  const toRecipients = parseAddrList(body.to || '');
+  if (!toRecipients.length) return c.json({ error: 'At least one recipient required' }, 400);
+  try {
+    const res = await graphFetch(c.env, '/me/sendMail', {
+      method: 'POST',
+      body: JSON.stringify({
+        message: {
+          subject: body.subject || '(no subject)',
+          body: {
+            contentType: body.isHtml === false ? 'Text' : 'HTML',
+            content: body.body || '',
+          },
+          toRecipients,
+          ccRecipients: parseAddrList(body.cc || ''),
+          bccRecipients: parseAddrList(body.bcc || ''),
+        },
+        saveToSentItems: true,
+      }),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      return c.json({ success: false, error: `Graph ${res.status}: ${text.slice(0, 200)}` }, 502);
+    }
+    return c.json({ success: true });
+  } catch (err: unknown) {
+    return c.json({ success: false, error: err instanceof Error ? err.message : 'Failed' }, 502);
+  }
+});
+
+email.post('/messages/:id/reply', async (c) => {
+  const id = c.req.param('id');
+  const body = await c.req.json().catch(() => ({})) as { body?: string; comment?: string };
+  try {
+    const res = await graphFetch(c.env, `/me/messages/${encodeURIComponent(id)}/reply`, {
+      method: 'POST',
+      body: JSON.stringify({ comment: body.body || body.comment || '' }),
+    });
+    if (!res.ok) return c.json({ success: false, error: `Graph ${res.status}` }, 502);
+    return c.json({ success: true });
+  } catch (err: unknown) {
+    return c.json({ success: false, error: err instanceof Error ? err.message : 'Failed' }, 502);
+  }
+});
+
+// ─── Per-user signature (stored in system_config) ───────────────
+email.get('/signature', async (c) => {
+  const userId = c.get('userId');
+  const row = await queryFirst<{ config_value: string }>(
+    c.env.DB,
+    "SELECT config_value FROM system_config WHERE config_key = ? AND category = 'email' LIMIT 1",
+    `email_signature_${userId}`,
+  );
+  return c.json({ signature: row?.config_value || '' });
+});
+
+email.put('/signature', async (c) => {
+  const userId = c.get('userId');
+  const body = await c.req.json().catch(() => ({})) as { signature?: string };
+  const sig = (body.signature || '').slice(0, 5000);
+  const key = `email_signature_${userId}`;
+  await execute(c.env.DB, "DELETE FROM system_config WHERE config_key = ? AND category = 'email'", key);
+  if (sig.trim()) {
+    await execute(
+      c.env.DB,
+      "INSERT INTO system_config (config_key, config_value, category, sort_order, is_active, created_at, updated_at) VALUES (?, ?, 'email', 0, 1, datetime('now','localtime'), datetime('now','localtime'))",
+      key,
+      sig,
+    );
+  }
+  return c.json({ success: true });
+});
+
+// ─── sync-now (real: counts inbox, stamps lastSync) ──────────────
 email.post('/admin/sync-now', requireRole('admin'), async (c) => {
-  return c.json({ success: false, synced: 0, message: 'Inbox sync ships in Phase 2 — admin connection is configured.' });
+  try {
+    const res = await graphFetch(c.env, '/me/mailFolders/inbox?$select=totalItemCount,unreadItemCount');
+    if (!res.ok) {
+      return c.json({ success: false, synced: 0, error: `Graph ${res.status}` }, 502);
+    }
+    const data = await res.json() as { totalItemCount?: number; unreadItemCount?: number };
+    const now = new Date().toISOString();
+    await setCfg(c.env.DB, K.lastSync, now);
+    return c.json({
+      success: true,
+      synced: data.totalItemCount || 0,
+      unread: data.unreadItemCount || 0,
+      lastSync: now,
+    });
+  } catch (err: unknown) {
+    return c.json({ success: false, error: err instanceof Error ? err.message : 'Failed' }, 502);
+  }
 });
 
 export default email;

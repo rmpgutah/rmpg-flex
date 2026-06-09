@@ -841,18 +841,8 @@ const STUBS: StubRule[] = [
   // /api/email/* (see src/routes/email.ts). Stubs kept ONLY for Phase 2+
   // endpoints (messages, attachments, image proxy, rules). /status,
   // /admin/*, and /oauth/* are real handlers — do NOT re-stub them.
-  {
-    match: /^\/api\/email\/image-proxy(\?.*)?$/,
-    methods: ['GET'],
-    body: { url: null, message: 'email image-proxy stubbed (Phase 2)' },
-    reason: 'Phase 2 — EmailPage tolerates null',
-  },
-  {
-    match: /^\/api\/email\/messages\/\d+\/attachments\/\d+(\?.*)?$/,
-    methods: ['GET'],
-    body: { url: null, data: null, message: 'attachment stubbed (Phase 2)' },
-    reason: 'Phase 2 — tolerates null',
-  },
+  // Phase 2 LIVE — image-proxy and attachment binary proxy now have real
+  // handlers in src/routes/email.ts. Stubs removed.
   {
     match: /^\/api\/email\/rules(\?.*)?$/,
     methods: ['GET'],
