@@ -1,5 +1,7 @@
-import { Lock, LockOpen } from 'lucide-react';
-import { Annotation, BatesConfig, DocumentMeta, PageNumbersConfig, WatermarkConfig, StampLabel } from '../types';
+import { useState } from 'react';
+import { Lock, LockOpen, MessageSquare, Trash2 } from 'lucide-react';
+import { Annotation, AnnotationReply, BatesConfig, DocumentMeta, PageNumbersConfig, WatermarkConfig, StampLabel } from '../types';
+import { safeDateTimeStr } from '../../../utils/dateUtils';
 
 const STAMPS: StampLabel[] = ['CONFIDENTIAL', 'EVIDENCE', 'COPY', 'ORIGINAL', 'DRAFT', 'APPROVED', 'VOID', 'FILED', 'RECEIVED'];
 
@@ -105,6 +107,23 @@ function AnnotationProps({ ann, onChange, onDelete }: { ann: Annotation; onChang
           </div>
         </>
       )}
+      {ann.type === 'text' && (
+        <>
+          <label className={labelCls}>Hyperlink (optional)</label>
+          <input id="ff-propertiespanel-url" value={ann.url ?? ''} onChange={e => onChange({ ...ann, url: e.target.value || undefined })}
+            placeholder="https://…  ·  mailto:…  ·  #page=3" className={inputCls} />
+          <div className="text-[9px] text-rmpg-600">Makes the text a clickable link in the saved interactive PDF.</div>
+        </>
+      )}
+      {(ann.type === 'text' || ann.type === 'highlight') && (
+        <label className="flex items-center gap-2 text-[10px] text-rmpg-300 pt-1">
+          <input id="ff-propertiespanel-border" type="checkbox" checked={ann.showBorder ?? false} onChange={e => onChange({ ...ann, showBorder: e.target.checked })} />
+          Show border around box
+        </label>
+      )}
+      {(ann.type === 'sticky' || ann.type === 'text') && (
+        <RepliesEditor ann={ann} onChange={onChange} />
+      )}
       {ann.type === 'stamp' && (
         <>
           <label className={labelCls}>Stamp</label>
@@ -167,6 +186,54 @@ function AnnotationProps({ ann, onChange, onDelete }: { ann: Annotation; onChang
       <label className={labelCls}>Opacity</label>
       <input id="ff-propertiespanel-5" type="range" min={0.1} max={1} step={0.05} value={ann.opacity ?? 1} onChange={e => onChange({ ...ann, opacity: parseFloat(e.target.value) })} className="w-full accent-[#d4a017]" />
       <button type="button" onClick={onDelete} className="w-full px-2 py-1 text-xs text-red-300 border border-red-900/40 hover:bg-red-900/20 rounded-sm">Delete annotation</button>
+    </div>
+  );
+}
+
+/** Threaded reply editor for sticky-note / text annotations. Replies carry an
+ *  author + timestamp and flow through to exports + the annotation report. */
+function RepliesEditor({ ann, onChange }: { ann: Annotation; onChange: (a: Annotation) => void }) {
+  const [text, setText] = useState('');
+  const replies = ann.replies ?? [];
+  const addReply = () => {
+    const t = text.trim();
+    if (!t) return;
+    const reply: AnnotationReply = {
+      id: Math.random().toString(36).slice(2, 10),
+      author: ann.authorName ?? 'me',
+      text: t,
+      createdAt: new Date().toISOString(),
+    };
+    onChange({ ...ann, replies: [...replies, reply] });
+    setText('');
+  };
+  const removeReply = (id: string) => onChange({ ...ann, replies: replies.filter(r => r.id !== id) });
+  return (
+    <div className="pt-1">
+      <div className="text-[9px] uppercase tracking-wider text-rmpg-500 mb-1 inline-flex items-center gap-1">
+        <MessageSquare className="w-3 h-3" /> Discussion ({replies.length})
+      </div>
+      <div className="space-y-1 mb-1.5 max-h-40 overflow-y-auto">
+        {replies.length === 0 && <div className="text-[9px] text-rmpg-600 italic">No replies yet.</div>}
+        {replies.map(r => (
+          <div key={r.id} className="border border-[#1a1a1a] rounded-sm px-1.5 py-1 bg-[#0a0a0a]">
+            <div className="flex items-center justify-between">
+              <span className="text-[9px] text-[#d4a017] font-semibold">{r.author}</span>
+              <button type="button" onClick={() => removeReply(r.id)} aria-label="Delete reply" title="Delete reply"
+                className="text-rmpg-500 hover:text-red-400"><Trash2 className="w-3 h-3" /></button>
+            </div>
+            <div className="text-[10px] text-rmpg-200 break-words">{r.text}</div>
+            <div className="text-[8px] text-rmpg-600">{safeDateTimeStr(r.createdAt)}</div>
+          </div>
+        ))}
+      </div>
+      <div className="flex gap-1">
+        <input id="ff-propertiespanel-reply" value={text} onChange={e => setText(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addReply(); } }}
+          placeholder="Reply…" className={inputCls} />
+        <button type="button" onClick={addReply} disabled={!text.trim()}
+          className="px-2 py-1 text-[10px] rounded-sm border border-[#222] text-rmpg-300 hover:text-white disabled:opacity-30">Post</button>
+      </div>
     </div>
   );
 }
@@ -266,7 +333,15 @@ function PageNumbersEditor({ cfg, onChange }: { cfg: PageNumbersConfig | null; o
             </select>
             <input id="ff-propertiespanel-pn3" type="number" min={6} max={24} value={cfg.fontSize} onChange={e => onChange({ ...cfg, fontSize: parseInt(e.target.value, 10) || 9 })} placeholder="Size" className={inputCls} />
           </div>
-          <div className="text-[9px] text-rmpg-600">Tokens: {'{n}'} = page number, {'{total}'} = page count.</div>
+          <label className={labelCls}>Number style ({'{n}'})</label>
+          <select id="ff-propertiespanel-pn4" value={cfg.style ?? 'decimal'} onChange={e => onChange({ ...cfg, style: e.target.value as PageNumbersConfig['style'] })} className={inputCls}>
+            <option value="decimal">1, 2, 3</option>
+            <option value="roman">i, ii, iii</option>
+            <option value="Roman">I, II, III</option>
+            <option value="alpha">a, b, c</option>
+            <option value="Alpha">A, B, C</option>
+          </select>
+          <div className="text-[9px] text-rmpg-600">Tokens: {'{n}'} = page number, {'{total}'} = count, {'{label}'} = custom page label.</div>
         </div>
       )}
     </>

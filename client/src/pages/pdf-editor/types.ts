@@ -79,6 +79,23 @@ export interface AnnotationBase {
   createdAt?: string;
   /** Workflow status — useful for review-cycle docs. */
   status?: 'open' | 'in-review' | 'resolved';
+  /** Draw a thin border around the annotation's bounding box. Used by
+   *  highlights and text boxes (Acrobat "Border" toggle). When set, a 1px
+   *  rule in `color` (or gold) is drawn around the box on screen + in the
+   *  saved PDF. */
+  showBorder?: boolean;
+  /** Threaded discussion replies attached to this annotation (sticky notes +
+   *  text). Each reply carries an author + timestamp, surfaced in the
+   *  Annotations panel and the annotation-report PDF. */
+  replies?: AnnotationReply[];
+}
+
+/** One reply in an annotation's discussion thread. */
+export interface AnnotationReply {
+  id: string;
+  author: string;
+  text: string;
+  createdAt: string;       // ISO timestamp
 }
 
 export interface TextAnnotation extends AnnotationBase {
@@ -89,6 +106,10 @@ export interface TextAnnotation extends AnnotationBase {
   italic?: boolean;
   /** Font family for text annotations: helvetica (default), times, courier. */
   fontFamily?: 'helvetica' | 'times' | 'courier';
+  /** Optional hyperlink target. When set, the text annotation becomes a
+   *  clickable link (rendered as a real /Link annot in the interactive save
+   *  path; underlined + tinted on screen). */
+  url?: string;
 }
 
 export interface HighlightAnnotation extends AnnotationBase {
@@ -235,6 +256,10 @@ export interface PageMeta {
   rotation: 0 | 90 | 180 | 270;
   /** Crop rectangle in screen-pixel coordinates; null = full page. */
   crop?: PageCrop | null;
+  /** Manual deskew angle in degrees (positive = clockwise). Applied to the
+   *  rendered page content at save time only — separate from the 90°-step
+   *  `rotation` above. Used to straighten scans that came in slightly tilted. */
+  deskew?: number;
 }
 
 export interface CustomStamp {
@@ -260,6 +285,23 @@ export interface PageNumbersConfig {
   fontSize: number;
   /** Template — {n} = current page, {total} = page count. */
   format: string;           // e.g. "Page {n} of {total}"
+  /** Numbering style for the {n} token:
+   *  'decimal' (1,2,3 — default), 'roman' (i,ii,iii), 'Roman' (I,II,III),
+   *  'alpha' (a,b,c), 'Alpha' (A,B,C). {total} always stays decimal. */
+  style?: 'decimal' | 'roman' | 'Roman' | 'alpha' | 'Alpha';
+}
+
+/** A custom page-label rule: pages in the (1-indexed visual) range
+ *  [from, to] are numbered with `style`, prefixed by `prefix`, starting the
+ *  count at `start`. Used by the footer's {label} token. Rules are applied in
+ *  array order; later rules win on overlap. */
+export interface PageLabelRule {
+  id: string;
+  from: number;
+  to: number;
+  prefix: string;
+  style: 'decimal' | 'roman' | 'Roman' | 'alpha' | 'Alpha';
+  start: number;
 }
 
 export interface WatermarkConfig {
@@ -316,6 +358,9 @@ export interface EditorState {
   pageNumbers?: PageNumbersConfig | null;
   /** Custom header/footer text bands — null when disabled. */
   headerFooter?: HeaderFooterConfig | null;
+  /** Custom page-label rules — drive the {label} token in the page-number
+   *  footer. Empty / undefined = plain sequential numbering. */
+  pageLabels?: PageLabelRule[];
   meta: DocumentMeta;
   /** Source file in the Documents store, when the editor was opened from there. */
   sourceFileId?: string | null;

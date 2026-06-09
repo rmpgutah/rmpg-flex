@@ -8,6 +8,8 @@ import {
   Baseline, PaintBucket, Search, MessageSquare, Eye, FileDown, Grid3x3, Focus,
   Quote as QuoteIcon, Omega, Volume2, VolumeX, Camera, Info, ListTree,
   Paintbrush, Gauge, CaseSensitive, Scale, Sheet,
+  Keyboard, FileSignature, ArrowDownUp, FileStack, Copy, Layers,
+  ChevronsUp, ChevronsDown, TextSelect, FileCode2,
 } from 'lucide-react';
 import ToolbarMenu, { MenuRow, MenuButton } from './ToolbarMenu';
 import {
@@ -20,6 +22,11 @@ import {
   computeStats, listSavedTemplates, saveTemplate, deleteTemplate,
 } from '../docActions';
 import { snippetsByCategory, type Snippet } from '../snippets';
+import {
+  insertOfficerSignatureBlock, textToList, listToText, sortList, sortTableRows,
+  sectionBlocksByGroup, insertSectionBlock, selectAll, goToTop, goToBottom,
+  type SortMode, type SectionBlock,
+} from '../docTools';
 import { FONT_FAMILIES, FONT_SIZES, type DocSettings, type WriterTheme } from '../types';
 
 /** Page-level actions/state the toolbar drives (find/replace, comments, view,
@@ -57,6 +64,16 @@ export interface WriterExtActions {
   onTransform: (mode: 'upper' | 'lower' | 'title' | 'sentence') => void;
   onInsertCsv: () => void;
   onInsertStatute: () => void;
+  // This wave
+  onShortcuts: () => void;
+  onOfficerSignature: () => void;
+  onExportStandaloneHtml: () => void;
+  onDuplicate: () => void;
+  onSaveDraftNow: () => void;
+  onToggleRecent: () => void;
+  /** Server-autosave indicator: idle | saving | saved | error. */
+  serverSaveState: 'idle' | 'saving' | 'saved' | 'error';
+  flash: (msg: string) => void;
 }
 
 interface Props {
@@ -105,6 +122,23 @@ export default function WriterToolbar({
   const inTable = editor.isActive('table');
   const snippetGroups = snippetsByCategory();
   const insertSnippet = (s: Snippet) => editor.chain().focus().insertContent(s.html).run();
+  const sectionGroups = sectionBlocksByGroup();
+  const addSection = (b: SectionBlock) => insertSectionBlock(editor, b);
+  const doTextToList = (ordered: boolean) => {
+    const n = textToList(editor, ordered);
+    ext.flash(n ? `Converted ${n} line(s) to a list.` : 'Select two or more lines of text first.');
+  };
+  const doListToText = () => {
+    if (!listToText(editor)) ext.flash('Place the cursor inside a list first.');
+  };
+  const doSortList = (mode: SortMode) => {
+    const n = sortList(editor, mode);
+    ext.flash(n ? `Sorted ${n} list items.` : 'Place the cursor in a list with 2+ items first.');
+  };
+  const doSortTable = (mode: SortMode) => {
+    const n = sortTableRows(editor, mode);
+    ext.flash(n ? `Sorted ${n} table rows by the first column.` : 'Place the cursor in a table with 2+ body rows first.');
+  };
   const setBlock = (attrs: Record<string, string | null>) => editor.chain().focus().setBlockStyle(attrs).run();
   const setPage = (patch: Partial<DocSettings['page']>) => setDocSettings((s) => ({ ...s, page: { ...s.page, ...patch } }));
   const setMargin = (side: keyof DocSettings['page']['margins'], v: number) =>
@@ -145,6 +179,21 @@ export default function WriterToolbar({
           {theme === 'dark' ? <Sun className="w-3 h-3" /> : <Moon className="w-3 h-3" />}
           {theme === 'dark' ? 'Light' : 'Dark'}
         </button>
+        <button type="button" onClick={ext.onShortcuts} title="Keyboard shortcuts (press ?)" aria-label="Keyboard shortcuts"
+          className="flex items-center gap-1 px-2 py-1 text-[10px] bg-[#141414] border border-[#222] text-rmpg-300 rounded-[2px] hover:bg-[#1a1a1a]">
+          <Keyboard className="w-3 h-3" />?
+        </button>
+        {/* Server-autosave indicator (appears once a server document id exists) */}
+        {ext.serverSaveState !== 'idle' && (
+          <span title="Autosave to Documents server"
+            className={`text-[9px] px-1.5 py-1 rounded-[2px] border ${
+              ext.serverSaveState === 'saving' ? 'text-rmpg-400 border-[#222] bg-[#141414]'
+              : ext.serverSaveState === 'saved' ? 'text-green-400/80 border-green-700/30 bg-green-900/10'
+              : 'text-red-400/80 border-red-700/30 bg-red-900/10'
+            }`}>
+            {ext.serverSaveState === 'saving' ? 'Syncing…' : ext.serverSaveState === 'saved' ? 'Synced' : 'Sync failed'}
+          </span>
+        )}
         <button type="button" onClick={onSave} disabled={saving}
           className="flex items-center gap-1 px-2.5 py-1 text-[10px] font-medium bg-[#d4a017]/10 border border-[#d4a017]/30 text-[#d4a017] rounded-[2px] hover:bg-[#d4a017]/20 disabled:opacity-50">
           <Save className="w-3 h-3" />{saving ? 'Saving...' : 'Save'}
@@ -301,10 +350,16 @@ export default function WriterToolbar({
 
         {/* Styles menu (headings, title/subtitle, custom styles 37/48) */}
         <ToolbarMenu label="Styles" icon={Heading1} width={210}>
-          <MenuButton active={editor.isActive('paragraph')} onClick={() => editor.chain().focus().setParagraph().run()}>Normal text</MenuButton>
-          {[1, 2, 3, 4].map((lvl) => (
-            <MenuButton key={lvl} active={editor.isActive('heading', { level: lvl })} onClick={() => editor.chain().focus().toggleHeading({ level: lvl as 1 | 2 | 3 | 4 }).run()}>Heading {lvl}</MenuButton>
+          <div className="text-[10px] text-rmpg-500 pb-0.5">Paragraph presets</div>
+          {/* Quick presets: apply a block type to the current paragraph in one click. */}
+          <MenuButton active={editor.isActive('paragraph')} onClick={() => editor.chain().focus().setParagraph().run()}>Normal</MenuButton>
+          {[1, 2, 3].map((lvl) => (
+            <MenuButton key={lvl} active={editor.isActive('heading', { level: lvl })} onClick={() => editor.chain().focus().setHeading({ level: lvl as 1 | 2 | 3 }).run()}>Heading {lvl}</MenuButton>
           ))}
+          <MenuButton active={editor.isActive('heading', { level: 4 })} onClick={() => editor.chain().focus().toggleHeading({ level: 4 }).run()}>Heading 4</MenuButton>
+          <MenuButton active={editor.isActive('blockquote')} onClick={() => editor.chain().focus().toggleBlockquote().run()}>Quote</MenuButton>
+          <MenuButton onClick={() => editor.chain().focus().setParagraph().insertContent('<ol class="style-legal-list"><li></li></ol>').run()}>Legal-numbered list</MenuButton>
+          <div className="text-[10px] text-rmpg-500 pt-1 pb-0.5">Document styles</div>
           <MenuButton onClick={() => editor.chain().focus().insertContent('<p class="doc-title">Document Title</p>').run()}>Title style</MenuButton>
           <MenuButton onClick={() => editor.chain().focus().insertContent('<p class="doc-subtitle">Subtitle</p>').run()}>Subtitle style</MenuButton>
           <MenuButton onClick={() => editor.chain().focus().insertContent('<p class="style-legal">Legal-style paragraph (double-spaced)</p>').run()}>Legal style</MenuButton>
@@ -331,6 +386,7 @@ export default function WriterToolbar({
           <MenuButton onClick={() => insertTableOfContents(editor)}>Table of contents (top)</MenuButton>
           <MenuButton onClick={() => insertTableOfContentsAtCursor(editor)}>Table of contents (at cursor)</MenuButton>
           <MenuButton onClick={() => { const r = window.prompt('Signature line label (e.g. Officer, Witness):', 'Officer'); if (r) insertSignatureLine(editor, r); }}>Signature line…</MenuButton>
+          <MenuButton onClick={ext.onOfficerSignature}><span className="flex items-center gap-1"><FileSignature className="w-3 h-3" /> Officer signature block (auto-fill)</span></MenuButton>
           <MenuButton onClick={() => insertFillableField(editor)}>Fillable blank [____]</MenuButton>
           <MenuButton onClick={() => insertFootnote(editor)}>Footnote</MenuButton>
           <MenuButton onClick={() => insertEndnote(editor)}>Endnote</MenuButton>
@@ -407,6 +463,48 @@ export default function WriterToolbar({
             <span className="flex items-center gap-1"><ListTree className="w-3 h-3" /> Auto-number headings (1, 1.1…)</span>
           </MenuButton>
           <MenuButton onClick={() => { const n = clearOutlineNumbering(editor); window.alert(n ? `Cleared numbering from ${n} headings.` : 'No numbered headings found.'); }}>Clear heading numbering</MenuButton>
+          <div className="text-[10px] text-rmpg-500 pt-1">Editor navigation</div>
+          <MenuButton onClick={() => selectAll(editor)}><span className="flex items-center gap-1"><TextSelect className="w-3 h-3" /> Select all</span></MenuButton>
+          <MenuButton onClick={() => goToTop(editor)}><span className="flex items-center gap-1"><ChevronsUp className="w-3 h-3" /> Go to top</span></MenuButton>
+          <MenuButton onClick={() => goToBottom(editor)}><span className="flex items-center gap-1"><ChevronsDown className="w-3 h-3" /> Go to bottom</span></MenuButton>
+        </ToolbarMenu>
+
+        {/* Convert: text <-> list conversions */}
+        <ToolbarMenu label="Convert" icon={ListTree} width={220}>
+          <MenuButton onClick={() => doTextToList(false)}>Selected lines → bullet list</MenuButton>
+          <MenuButton onClick={() => doTextToList(true)}>Selected lines → numbered list</MenuButton>
+          <MenuButton onClick={doListToText}>List → plain paragraphs</MenuButton>
+          <div className="text-[9px] text-rmpg-600 px-2 pt-1 leading-snug">Select multiple lines for text→list; click inside a list for list→text.</div>
+        </ToolbarMenu>
+
+        {/* Sort: list items / table rows */}
+        <ToolbarMenu label="Sort" icon={ArrowDownUp} width={220}>
+          <div className="text-[10px] text-rmpg-500 pb-0.5">List items</div>
+          <MenuButton onClick={() => doSortList('asc')}>A → Z</MenuButton>
+          <MenuButton onClick={() => doSortList('desc')}>Z → A</MenuButton>
+          <MenuButton onClick={() => doSortList('numAsc')}>Numeric ↑</MenuButton>
+          <MenuButton onClick={() => doSortList('numDesc')}>Numeric ↓</MenuButton>
+          <div className="text-[10px] text-rmpg-500 pt-1 pb-0.5">Table rows (by 1st column)</div>
+          <MenuButton onClick={() => doSortTable('asc')}>A → Z</MenuButton>
+          <MenuButton onClick={() => doSortTable('desc')}>Z → A</MenuButton>
+          <MenuButton onClick={() => doSortTable('numAsc')}>Numeric ↑</MenuButton>
+          <MenuButton onClick={() => doSortTable('numDesc')}>Numeric ↓</MenuButton>
+        </ToolbarMenu>
+
+        {/* Sections: reusable multi-paragraph report blocks */}
+        <ToolbarMenu label="Sections" icon={Layers} width={240}>
+          {(close) => (
+            <>
+              {Object.entries(sectionGroups).map(([group, items]) => (
+                <div key={group} className="space-y-0.5">
+                  <div className="text-[10px] text-rmpg-500 uppercase tracking-wide pt-1">{group}</div>
+                  {items.map((b) => (
+                    <MenuButton key={b.id} onClick={() => { addSection(b); close(); }}>{b.label}</MenuButton>
+                  ))}
+                </div>
+              ))}
+            </>
+          )}
         </ToolbarMenu>
 
         {/* Table operations (features 51–70) */}
@@ -483,7 +581,8 @@ export default function WriterToolbar({
         {/* Export menu (features 126–140) */}
         <ToolbarMenu label="Export" icon={FileDown} width={200}>
           <MenuButton onClick={onExportPdf}>PDF (print)</MenuButton>
-          <MenuButton onClick={() => ext.onExport('html')}>HTML</MenuButton>
+          <MenuButton onClick={() => ext.onExport('html')}>HTML (raw fragment)</MenuButton>
+          <MenuButton onClick={ext.onExportStandaloneHtml}><span className="flex items-center gap-1"><FileCode2 className="w-3 h-3" /> HTML (styled standalone)</span></MenuButton>
           <MenuButton onClick={() => ext.onExport('md')}>Markdown</MenuButton>
           <MenuButton onClick={() => ext.onExport('txt')}>Plain text</MenuButton>
           <MenuButton onClick={() => ext.onExport('rtf')}>RTF (Word)</MenuButton>
@@ -563,6 +662,13 @@ export default function WriterToolbar({
               ))}
             </>
           )}
+        </ToolbarMenu>
+
+        {/* Document menu — duplicate, recent docs, manual draft save */}
+        <ToolbarMenu label="Doc" icon={FileStack} width={220}>
+          <MenuButton onClick={ext.onSaveDraftNow}><span className="flex items-center gap-1"><Save className="w-3 h-3" /> Save draft now (local)</span></MenuButton>
+          <MenuButton onClick={ext.onDuplicate}><span className="flex items-center gap-1"><Copy className="w-3 h-3" /> Duplicate / New from current</span></MenuButton>
+          <MenuButton onClick={ext.onToggleRecent}><span className="flex items-center gap-1"><FileStack className="w-3 h-3" /> Recent documents…</span></MenuButton>
         </ToolbarMenu>
 
         {/* Statistics (50) */}

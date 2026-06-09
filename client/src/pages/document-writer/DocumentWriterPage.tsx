@@ -31,7 +31,13 @@ import SnapshotsPanel from './components/SnapshotsPanel';
 import AnalysisPanel from './components/AnalysisPanel';
 import DocPropertiesDialog from './components/DocPropertiesDialog';
 import FeaturesPanel from './components/FeaturesPanel';
+import ShortcutsHelp from './components/ShortcutsHelp';
+import RecentDocsPanel from './components/RecentDocsPanel';
 import { captureFormat, applyFormat, type CapturedFormat } from './docActions';
+import {
+  insertOfficerSignatureBlock, buildStandaloneHtml, duplicateTitle,
+  touchRecentDoc, type RecentDoc,
+} from './docTools';
 import { insertCsvTable, insertStatuteReference, transformSelection, type CaseTransform } from './analysis';
 import { ReadAloud, textToRead, ttsSupported } from './tts';
 import { populateTemplate } from './templates';
@@ -85,6 +91,12 @@ export default function DocumentWriterPage() {
   const [showProperties, setShowProperties] = useState(false);
   const [readingAloud, setReadingAloud] = useState(false);
   const [brush, setBrush] = useState<CapturedFormat | null>(null);
+  const [showShortcuts, setShowShortcuts] = useState(false);
+  const [showRecent, setShowRecent] = useState(false);
+  const [recentTick, setRecentTick] = useState(0); // force RecentDocsPanel re-read after delete
+  const [serverSaveState, setServerSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+  const documentIdRef = useRef<string | null>(null);
+  const recentIdRef = useRef<string>(`doc-${new Date().toISOString()}`);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const bgImageInputRef = useRef<HTMLInputElement>(null);
   const jsonInputRef = useRef<HTMLInputElement>(null);
@@ -303,6 +315,64 @@ export default function DocumentWriterPage() {
     setErrorNotice(msg); setTimeout(() => setErrorNotice(null), ms);
   }, []);
 
+  // Keep a ref of the current server document id so the debounced autosave
+  // effect can read it without resetting on every id change.
+  useEffect(() => { documentIdRef.current = documentId; }, [documentId]);
+
+  // Insert an officer signature block auto-filled from the logged-in user
+  // (name / badge / rank / department + today's date).
+  const handleOfficerSignature = useCallback(() => {
+    if (!editor) return;
+    insertOfficerSignatureBlock(editor, {
+      name: author,
+      badge: user?.badge_number,
+      rank: user?.rank,
+      department: user?.department,
+    });
+  }, [editor, author, user]);
+
+  // Export a complete, self-contained styled HTML file (distinct from the raw
+  // editor-fragment HTML export).
+  const handleExportStandaloneHtml = useCallback(() => {
+    if (!editor) return;
+    const html = buildStandaloneHtml({
+      title: docSettings.properties.title || title,
+      bodyHtml: editor.getHTML(),
+      author,
+      letterhead: docSettings.letterhead,
+    });
+    const safe = title.replace(/[^a-zA-Z0-9\s-]/g, '').trim() || 'document';
+    downloadFile(`${safe}.html`, html, 'text/html');
+  }, [editor, title, author, docSettings.properties.title, docSettings.letterhead]);
+
+  // "New from current" — duplicate the document into a fresh, unsaved copy.
+  const handleDuplicate = useCallback(() => {
+    if (!editor) return;
+    setTitle((t) => duplicateTitle(t));
+    setDocumentId(null);
+    recentIdRef.current = `doc-${new Date().toISOString()}`;
+    flashNotice('Duplicated — this is now a new, unsaved copy. Save to store it separately.', 4000);
+  }, [editor, flashNotice]);
+
+  // Manual "save draft now" (local autosave) with an immediate indicator.
+  const handleSaveDraftNow = useCallback(() => {
+    if (!editor) return;
+    const at = writeDraft(title, editor.getHTML());
+    if (at) { setAutoSavedAt(at); flashNotice('Draft saved locally.'); }
+    else flashError('Could not save the local draft (storage full?).');
+  }, [editor, title, flashNotice, flashError]);
+
+  // Open a recent document back into the editor.
+  const handleOpenRecent = useCallback((doc: RecentDoc) => {
+    if (!editor) return;
+    editor.commands.setContent(doc.html);
+    setTitle(doc.title);
+    setDocumentId(doc.documentId ?? null);
+    recentIdRef.current = doc.id;
+    setShowRecent(false);
+    flashNotice(`Opened "${doc.title}".`);
+  }, [editor, flashNotice]);
+
   // Formatting brush: capture marks from the current selection, then apply them
   // to the next selection (a real format painter, not a CSS hack).
   const handleBrush = useCallback(() => {
@@ -410,6 +480,55 @@ export default function DocumentWriterPage() {
     if (d && d.html && d.html.length > 40) setRecovery({ title: d.title, html: d.html });
   }, [mode]);
 
+  // Debounced server autosave: once the document has been saved to the server at
+  // least once (so a documentId exists), keep it in sync ~4s after edits stop by
+  // re-uploading the HTML to /api/uploads. Reuses the same endpoint as Save.
+  useEffect(() => {
+    if (mode !== 'edit' || !editor) return;
+    let timer: number | undefined;
+    const schedule = () => {
+      if (!documentIdRef.current) return; // only auto-sync documents already saved to the server
+      window.clearTimeout(timer);
+      timer = window.setTimeout(async () => {
+        setServerSaveState('saving');
+        try {
+          const safeName = title.replace(/[^a-zA-Z0-9\s-]/g, '').trim() || 'Untitled Document';
+          const blob = new Blob([editor.getHTML()], { type: 'text/html' });
+          const formData = new FormData();
+          formData.append('files', new File([blob], `${safeName}.html`, { type: 'text/html' }));
+          const folderId = searchParams.get('folderId');
+          if (folderId) formData.append('folder_id', folderId);
+          const token = localStorage.getItem('rmpg_token');
+          const headers: Record<string, string> = {};
+          if (token) headers['Authorization'] = `Bearer ${token}`;
+          const res = await fetch('/api/uploads', { method: 'POST', headers, body: formData });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          setServerSaveState('saved');
+        } catch (err) {
+          console.warn('[document-writer] server autosave failed:', err);
+          setServerSaveState('error');
+        }
+      }, 4000);
+    };
+    editor.on('update', schedule);
+    return () => { editor.off('update', schedule); window.clearTimeout(timer); };
+  }, [mode, editor, title, searchParams]);
+
+  // Track the document in the local "recent documents" history (debounced).
+  useEffect(() => {
+    if (mode !== 'edit' || !editor) return;
+    let timer: number | undefined;
+    const track = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => {
+        touchRecentDoc({ id: recentIdRef.current, title, html: editor.getHTML(), documentId: documentIdRef.current ?? undefined });
+      }, 5000);
+    };
+    track(); // record on entry
+    editor.on('update', track);
+    return () => { editor.off('update', track); window.clearTimeout(timer); };
+  }, [mode, editor, title]);
+
   // On mobile, auto-fit the page width to the viewport so the (fixed-px) page
   // doesn't require horizontal scrolling. Desktop keeps zoom at its default.
   useEffect(() => {
@@ -424,12 +543,21 @@ export default function DocumentWriterPage() {
   useEffect(() => {
     if (mode !== 'edit' || !editor) return;
     const onKey = (e: KeyboardEvent) => {
-      // Esc leaves any distraction-free view (focus / reading / fullscreen).
-      if (e.key === 'Escape') { setViewMode('normal'); return; }
+      // Esc leaves any distraction-free view (focus / reading / fullscreen) and
+      // closes the shortcuts sheet.
+      if (e.key === 'Escape') { setShowShortcuts(false); setViewMode('normal'); return; }
+      // "?" (Shift+/) toggles the shortcuts cheat-sheet — but not while typing in
+      // the editor or a form field.
+      if (e.key === '?' && !e.ctrlKey && !e.metaKey) {
+        const el = e.target as HTMLElement | null;
+        const typing = !!el && (el.isContentEditable || el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT');
+        if (!typing) { e.preventDefault(); setShowShortcuts((v) => !v); return; }
+      }
       const mod = e.ctrlKey || e.metaKey;
       if (!mod) return;
       const k = e.key.toLowerCase();
-      if (k === 's') { e.preventDefault(); handleSave(); }
+      if (k === 's' && e.shiftKey) { e.preventDefault(); handleSaveDraftNow(); }
+      else if (k === 's') { e.preventDefault(); handleSave(); }
       else if (k === 'f') { e.preventDefault(); setFindMode('find'); }
       else if (k === 'h') { e.preventDefault(); setFindMode('replace'); }
       else if (k === 'k') { e.preventDefault(); const url = window.prompt('URL:'); if (url) editor.chain().focus().setLink({ href: url }).run(); }
@@ -442,7 +570,7 @@ export default function DocumentWriterPage() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [mode, editor, handleSave]);
+  }, [mode, editor, handleSave, handleSaveDraftNow]);
 
   // Stop any in-progress read-aloud when the writer unmounts.
   useEffect(() => () => { readAloudRef.current?.stop(); }, []);
@@ -517,6 +645,14 @@ export default function DocumentWriterPage() {
               onBrush: handleBrush, brushActive: !!brush,
               onTransform: handleTransform,
               onInsertCsv: handleInsertCsv, onInsertStatute: handleInsertStatute,
+              onShortcuts: () => setShowShortcuts(true),
+              onOfficerSignature: handleOfficerSignature,
+              onExportStandaloneHtml: handleExportStandaloneHtml,
+              onDuplicate: handleDuplicate,
+              onSaveDraftNow: handleSaveDraftNow,
+              onToggleRecent: () => setShowRecent((v) => !v),
+              serverSaveState,
+              flash: (m: string) => flashNotice(m),
             }}
           />
         </div>
@@ -571,6 +707,15 @@ export default function DocumentWriterPage() {
 
         {showFeatures && <FeaturesPanel editor={editor} onClose={() => setShowFeatures(false)} caseUrl={typeof window !== 'undefined' ? window.location.href : undefined} />}
 
+        {showRecent && !focusMode && (
+          <RecentDocsPanel
+            key={recentTick}
+            onClose={() => setShowRecent(false)}
+            onOpen={handleOpenRecent}
+            onChange={() => setRecentTick((t) => t + 1)}
+          />
+        )}
+
         {!showFeatures && (
           <button
             type="button"
@@ -602,6 +747,8 @@ export default function DocumentWriterPage() {
           <span>{author}</span>
         </div>
       )}
+
+      {showShortcuts && <ShortcutsHelp onClose={() => setShowShortcuts(false)} />}
 
       {showProperties && (
         <DocPropertiesDialog

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { FileText, AlertTriangle, CheckCircle2, Search, Settings, Keyboard, Layers, Printer, Download, Upload as UploadIcon, Map as MapIcon, FileOutput, EyeOff, Heading, Bookmark as BookmarkIcon, FilePlus2, FileText as FileTextIcon, ChevronsLeft, ChevronsRight, Image as ImageDownIcon, Crop as CropIcon, RotateCw as RotateCwIcon, Scissors, Wrench, GitCompare, FileSignature, ClipboardList, Copy as CopyIcon } from 'lucide-react';
+import { FileText, AlertTriangle, CheckCircle2, Search, Settings, Keyboard, Layers, Printer, Download, Upload as UploadIcon, Map as MapIcon, FileOutput, EyeOff, Heading, Bookmark as BookmarkIcon, FilePlus2, FileText as FileTextIcon, ChevronsLeft, ChevronsRight, Image as ImageDownIcon, Crop as CropIcon, RotateCw as RotateCwIcon, Scissors, Wrench, GitCompare, FileSignature, ClipboardList, Copy as CopyIcon, LayoutGrid, Grid2x2, Hash, Grid3x3, Layers2, MessageSquare, Square } from 'lucide-react';
 import { open as openPdf, RmpgPdfDocument, subscribeDiagnostics, diagnosticsSummary, getDiagnostics } from '../../lib/rmpg-pdf-engine';
 import { exportAnnotationsAsCsv, exportAnnotationsAsMarkdown, exportAnnotationsAsXfdf, downloadText } from './exporters';
 import { useAuth } from '../../context/AuthContext';
@@ -27,11 +27,14 @@ import HeaderFooterDialog from './components/HeaderFooterDialog';
 import RedactPatternDialog from './components/RedactPatternDialog';
 import InsertPageDialog from './components/InsertPageDialog';
 import BookmarksPanel from './components/BookmarksPanel';
-import { Annotation, BatesConfig, Bookmark, DocumentMeta, EditorState, EditorPreferences, HeaderFooterConfig, DEFAULT_PREFERENCES, PageCrop, PageMeta, PageNumbersConfig, RecentFile, StampLabel, Tool, WatermarkConfig, DEFAULT_RENDER_SCALE } from './types';
-import { appendPdfBytes, blankTemplatePageBytes, buildAnnotationReportPdf, buildInteractivePdf, buildPdfFromEditorState, comparePageDiff, extractAllText, extractPagesAsBytes, findRedactionBoxes, grayscalePageBytes, imageToPdfPageBytes, mergePdfFiles, normalizeUploadResponse, optimizePdf, PAGE_SIZE_PRESETS, resizePages, saveToDocuments, splitEveryN, splitPdf } from './save';
+import { Annotation, BatesConfig, Bookmark, DocumentMeta, EditorState, EditorPreferences, HeaderFooterConfig, DEFAULT_PREFERENCES, PageCrop, PageLabelRule, PageMeta, PageNumbersConfig, RecentFile, StampLabel, Tool, WatermarkConfig, DEFAULT_RENDER_SCALE } from './types';
+import { appendPdfBytes, blankTemplatePageBytes, buildAnnotationReportPdf, buildInteractivePdf, buildNUpPdf, buildPdfFromEditorState, comparePageDiff, deskewPageBytes, extractAllText, extractPagesAsBytes, findRedactionBoxes, grayscalePageBytes, imageToPdfPageBytes, mergePdfFiles, normalizeUploadResponse, optimizePdf, PAGE_SIZE_PRESETS, resizePages, saveToDocuments, splitEveryN, splitPdf } from './save';
 import PdfToolsDialog from './components/PdfToolsDialog';
 import CompareDialog from './components/CompareDialog';
-import { alignAnnotations, distributeAnnotations, matchSize, type AlignMode, type DistributeMode, type MatchSizeMode } from './annotationOps';
+import PageOrganizer from './components/PageOrganizer';
+import NUpDialog from './components/NUpDialog';
+import PageLabelsDialog from './components/PageLabelsDialog';
+import { alignAnnotations, applyAnnotationToAllPages, distributeAnnotations, matchSize, type AlignMode, type DistributeMode, type MatchSizeMode } from './annotationOps';
 import AlignmentBar from './components/AlignmentBar';
 import { authedImageUrl } from '../../hooks/useApi';
 import { parseTimestamp } from '../../utils/dateUtils';
@@ -54,6 +57,7 @@ interface MutableState {
   watermark: WatermarkConfig | null;
   pageNumbers: PageNumbersConfig | null;
   headerFooter: HeaderFooterConfig | null;
+  pageLabels: PageLabelRule[];
   bookmarks: Bookmark[];
   meta: DocumentMeta;
   sourceFileId?: string | null;
@@ -89,7 +93,7 @@ function reducer(h: History, a: Action): History {
   }
 }
 
-const EMPTY_STATE: MutableState = { pageOrder: [], pages: [], annotations: [], bates: null, watermark: null, pageNumbers: null, headerFooter: null, bookmarks: [], meta: {}, sourceFileId: null, sourceFolderId: null };
+const EMPTY_STATE: MutableState = { pageOrder: [], pages: [], annotations: [], bates: null, watermark: null, pageNumbers: null, headerFooter: null, pageLabels: [], bookmarks: [], meta: {}, sourceFileId: null, sourceFolderId: null };
 
 export default function PdfEditorPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -156,6 +160,9 @@ export default function PdfEditorPage() {
   const [insertPageOpen, setInsertPageOpen] = useState(false);
   const [toolsOpen, setToolsOpen] = useState(false);     // split / optimize / page-size / grayscale
   const [compareOpen, setCompareOpen] = useState(false); // two-PDF compare
+  const [organizerOpen, setOrganizerOpen] = useState(false); // full-page organizer grid
+  const [nUpOpen, setNUpOpen] = useState(false);         // N-up imposition export
+  const [labelsOpen, setLabelsOpen] = useState(false);   // custom page-label rules
   const [showBookmarks, setShowBookmarks] = useState(false);
   // Batch-page multi-select (thumbnail rail). When non-empty, batch-rotate and
   // crop-all act on this set instead of the single active page.
@@ -240,7 +247,7 @@ export default function PdfEditorPage() {
       // (and destroy any previously-open document this replaces).
       setSharedDoc(pdf);
       setFileName(name);
-      dispatch({ type: 'reset', next: { pageOrder, pages, annotations: [], bates: null, watermark: null, pageNumbers: null, headerFooter: null, bookmarks: [], meta: { title: name.replace(/\.pdf$/i, '') }, sourceFileId, sourceFolderId } });
+      dispatch({ type: 'reset', next: { pageOrder, pages, annotations: [], bates: null, watermark: null, pageNumbers: null, headerFooter: null, pageLabels: [], bookmarks: [], meta: { title: name.replace(/\.pdf$/i, '') }, sourceFileId, sourceFolderId } });
       setActivePage(1);
       setActiveId(null);
     } catch (e) {
@@ -778,7 +785,7 @@ export default function PdfEditorPage() {
         bytes, fileName,
         pageOrder: state.pageOrder, pages: state.pages,
         annotations: state.annotations, bates: state.bates,
-        watermark: state.watermark, pageNumbers: state.pageNumbers, headerFooter: state.headerFooter, meta: state.meta,
+        watermark: state.watermark, pageNumbers: state.pageNumbers, headerFooter: state.headerFooter, pageLabels: state.pageLabels, meta: state.meta,
         sourceFileId: state.sourceFileId, sourceFolderId: state.sourceFolderId,
       };
       const out = await extractPagesAsBytes(fullState, [visualIdx + 1]);
@@ -831,7 +838,7 @@ export default function PdfEditorPage() {
       bytes: bytes!, fileName,
       pageOrder: state.pageOrder, pages: state.pages,
       annotations: state.annotations, bates: state.bates,
-      watermark: state.watermark, pageNumbers: state.pageNumbers, headerFooter: state.headerFooter, meta: state.meta,
+      watermark: state.watermark, pageNumbers: state.pageNumbers, headerFooter: state.headerFooter, pageLabels: state.pageLabels, meta: state.meta,
       sourceFileId: state.sourceFileId, sourceFolderId: state.sourceFolderId,
     };
     const hadBlanks = state.pageOrder.some(p => p === 0);
@@ -1051,6 +1058,163 @@ export default function PdfEditorPage() {
     pushToast(`Applied crop to all ${pages.length} pages`, 'ok');
   };
 
+  // ─── Wave-4: page organizer bulk ops (rotate / delete many pages) ──
+  // Rotate a set of visual indices 90° (dir = +1 CW / -1 CCW) in one history step.
+  const bulkRotatePages = (indices: number[], dir: 1 | -1) => {
+    const set = new Set(indices);
+    const pages = state.pages.map((p, i) =>
+      set.has(i) ? { ...p, rotation: (((p.rotation + dir * 90) % 360 + 360) % 360) as PageMeta['rotation'] } : p);
+    mutate({ pages });
+    pushToast(`Rotated ${indices.length} page(s)`, 'ok');
+  };
+
+  // Delete a set of visual indices in one history step. Annotations + bookmarks
+  // are re-pointed by counting how many deleted pages precede each survivor.
+  const bulkDeletePages = (indices: number[]) => {
+    const drop = new Set(indices);
+    if (drop.size >= state.pageOrder.length) { setError('Cannot delete every page.'); return; }
+    const order = state.pageOrder.filter((_, i) => !drop.has(i));
+    const pages = state.pages.filter((_, i) => !drop.has(i));
+    // old visual page (1-indexed) → new visual page, or 0 if dropped.
+    const remap = new Map<number, number>();
+    let newIdx = 0;
+    for (let i = 0; i < state.pageOrder.length; i++) {
+      if (drop.has(i)) { remap.set(i + 1, 0); continue; }
+      newIdx++; remap.set(i + 1, newIdx);
+    }
+    const annotations = state.annotations
+      .filter(a => (remap.get(a.page) ?? 0) > 0)
+      .map(a => ({ ...a, page: remap.get(a.page)! }));
+    const bookmarks = state.bookmarks
+      .filter(b => (remap.get(b.page) ?? 0) > 0)
+      .map(b => ({ ...b, page: remap.get(b.page)! }));
+    mutate({ pageOrder: order, pages, annotations, bookmarks });
+    setSelectedPages(new Set());
+    pushToast(`Deleted ${drop.size} page(s)`, 'ok');
+  };
+
+  // ─── Wave-4: N-up imposition export (2-up / 4-up) ──
+  const handleNUp = async (up: 2 | 4, size: 'Letter' | 'A4') => {
+    if (!bytes) return;
+    setSaving(true);
+    try {
+      const { state: savable } = buildSavableState();
+      const flat = await buildPdfFromEditorState(savable);
+      const out = await buildNUpPdf(flat, up, PAGE_SIZE_PRESETS[size] as [number, number]);
+      const base = fileName.replace(/\.pdf$/i, '') || 'document';
+      downloadBytes(out, `${base}-${up}up.pdf`);
+      pushToast(`Exported ${up}-up PDF`, 'ok');
+      setNUpOpen(false);
+    } catch (err) {
+      setError(`N-up export failed: ${err instanceof Error ? err.message : 'unknown'}`);
+    } finally { setSaving(false); }
+  };
+
+  // ─── Wave-4: deskew the current page by a manual angle ──
+  const handleDeskew = async () => {
+    if (!bytes) return;
+    const original = state.pageOrder[activePage - 1];
+    if (!original || original <= 0) { pushToast('Cannot deskew a blank page', 'warn'); return; }
+    const raw = window.prompt('Deskew angle in degrees (positive = clockwise tilt to correct, e.g. 1.5 or -2):', '0');
+    if (raw == null) return;
+    const angle = parseFloat(raw);
+    if (Number.isNaN(angle) || angle === 0) { pushToast('Enter a non-zero angle', 'warn'); return; }
+    setSaving(true);
+    try {
+      const pageBytes = await deskewPageBytes(bytes, original, angle);
+      await appendBytesAndReopen(pageBytes, `Added deskewed (${angle}°) copy of page ${activePage}`);
+    } catch (err) {
+      setError(`Deskew failed: ${err instanceof Error ? err.message : 'unknown'}`);
+    } finally { setSaving(false); }
+  };
+
+  // ─── Wave-4: replicate the selected annotation onto every page ──
+  const applyAnnotationEverywhere = () => {
+    if (!activeId) { pushToast('Select an annotation first', 'warn'); return; }
+    const next = applyAnnotationToAllPages(
+      state.annotations, activeId, state.pageOrder.length,
+      () => Math.random().toString(36).slice(2, 10),
+    );
+    const added = next.length - state.annotations.length;
+    if (added <= 0) { pushToast('Nothing to apply (single-page document?)', 'info'); return; }
+    mutate({ annotations: next });
+    pushToast(`Applied annotation to ${added} more page(s)`, 'ok');
+  };
+
+  // ─── Wave-4: toggle the bounding-border on the selected highlight/text ──
+  const toggleAnnotationBorder = () => {
+    if (!activeId) { pushToast('Select a highlight or text box first', 'warn'); return; }
+    const idx = state.annotations.findIndex(a => a.id === activeId);
+    if (idx === -1) return;
+    const cur = state.annotations[idx];
+    if (cur.type !== 'highlight' && cur.type !== 'text') { pushToast('Border applies to highlights and text boxes', 'info'); return; }
+    const next = [...state.annotations];
+    next[idx] = { ...cur, showBorder: !cur.showBorder } as Annotation;
+    mutate({ annotations: next });
+    pushToast(next[idx].showBorder ? 'Border on' : 'Border off', 'ok');
+  };
+
+  // ─── Wave-4: add a reply to the selected sticky note / text annotation ──
+  const addReplyToActive = () => {
+    if (!activeId) { pushToast('Select a sticky note or text annotation', 'warn'); return; }
+    const idx = state.annotations.findIndex(a => a.id === activeId);
+    if (idx === -1) return;
+    const cur = state.annotations[idx];
+    if (cur.type !== 'sticky' && cur.type !== 'text') { pushToast('Replies attach to sticky notes / text', 'info'); return; }
+    const text = window.prompt('Reply:', '');
+    if (!text) return;
+    const reply = {
+      id: Math.random().toString(36).slice(2, 10),
+      author: user?.full_name ?? user?.username ?? 'unknown',
+      text,
+      createdAt: new Date().toISOString(),
+    };
+    const next = [...state.annotations];
+    next[idx] = { ...cur, replies: [...(cur.replies ?? []), reply] } as Annotation;
+    mutate({ annotations: next });
+    pushToast(`Reply added (${(next[idx].replies?.length ?? 0)} total)`, 'ok');
+  };
+
+  // ─── Wave-4: export the current page's crop region (or whole page) as PNG ──
+  const handleExportCroppedRegion = async () => {
+    if (!bytes) return;
+    const visualIdx = activePage - 1;
+    const original = state.pageOrder[visualIdx];
+    if (!original || original <= 0) { pushToast('Cannot export a blank page', 'warn'); return; }
+    const crop = state.pages[visualIdx]?.crop;
+    setSaving(true);
+    try {
+      const { openAndRenderPage } = await import('../../lib/rmpg-pdf-engine');
+      const full = document.createElement('canvas');
+      const pdf = await openAndRenderPage(bytes, { pageNumber: original, scale: 2, canvas: full });
+      await pdf.destroy().catch(() => { /* gone */ });
+      // Crop box is stored at DEFAULT_RENDER_SCALE; the render here is scale 2,
+      // so convert from render-scale px to scale-2 px.
+      const k = 2 / DEFAULT_RENDER_SCALE;
+      let outCanvas = full;
+      if (crop) {
+        const sx = Math.max(0, Math.round(crop.x * k));
+        const sy = Math.max(0, Math.round(crop.y * k));
+        const sw = Math.min(full.width - sx, Math.round(crop.w * k));
+        const sh = Math.min(full.height - sy, Math.round(crop.h * k));
+        if (sw > 0 && sh > 0) {
+          const c = document.createElement('canvas');
+          c.width = sw; c.height = sh;
+          c.getContext('2d')!.drawImage(full, sx, sy, sw, sh, 0, 0, sw, sh);
+          outCanvas = c;
+        }
+      }
+      const dataUrl = outCanvas.toDataURL('image/png');
+      const a = document.createElement('a');
+      const base = fileName.replace(/\.pdf$/i, '') || 'document';
+      a.href = dataUrl; a.download = `${base}-page-${activePage}${crop ? '-region' : ''}.png`;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      pushToast(crop ? `Exported cropped region of page ${activePage}` : `Exported page ${activePage} (no crop set — full page)`, crop ? 'ok' : 'info');
+    } catch (err) {
+      setError(`Region export failed: ${err instanceof Error ? err.message : 'unknown'}`);
+    } finally { setSaving(false); }
+  };
+
   // ─── Wave-3: split / optimize / page-size / grayscale / report / interactive ──
   const downloadBytes = (b: Uint8Array, name: string) => {
     const blob = new Blob([b as BlobPart], { type: 'application/pdf' });
@@ -1064,18 +1228,20 @@ export default function PdfEditorPage() {
   // Save an INTERACTIVE PDF (real AcroForm fields, clickable /Link annots, and a
   // /Outlines bookmark tree). Routed through pdf-lib since the native writer
   // doesn't emit interactive objects yet.
-  const saveInteractive = async () => {
+  const saveInteractive = async (flattenForm = false) => {
     if (!bytes) return;
     setSaving(true);
     try {
       const { state: savable } = buildSavableState();
       const outline = state.bookmarks.map(b => ({ title: b.title, page: b.page }));
-      const out = await buildInteractivePdf(savable, { outline });
+      const out = await buildInteractivePdf(savable, { outline, flattenForm });
       const base = fileName.replace(/\.pdf$/i, '') || 'document';
-      downloadBytes(out, `${base}-interactive.pdf`);
+      downloadBytes(out, `${base}-${flattenForm ? 'flattened-form' : 'interactive'}.pdf`);
       const fieldCount = state.annotations.filter(a => a.type === 'formText' || a.type === 'formCheck').length;
-      const linkCount = state.annotations.filter(a => a.type === 'link').length;
-      pushToast(`Saved interactive PDF — ${fieldCount} field(s), ${linkCount} link(s), ${outline.length} bookmark(s)`, 'ok');
+      const linkCount = state.annotations.filter(a => a.type === 'link' || (a.type === 'text' && (a as { url?: string }).url)).length;
+      pushToast(flattenForm
+        ? `Saved flattened-form PDF — ${fieldCount} field(s) baked in`
+        : `Saved interactive PDF — ${fieldCount} field(s), ${linkCount} link(s), ${outline.length} bookmark(s)`, 'ok');
     } catch (err) {
       setError(`Interactive save failed: ${err instanceof Error ? err.message : 'unknown'}`);
     } finally { setSaving(false); }
@@ -1408,8 +1574,12 @@ export default function PdfEditorPage() {
   };
 
   const jumpToPage = (idx: number) => {
+    const clamped = Math.max(0, Math.min(state.pageOrder.length - 1, idx));
+    // Single-page view renders only the active page, so scrollIntoView has no
+    // target — drive activePage directly. Continuous / two-up scroll as before.
+    if (prefs.viewMode === 'single') { setActivePage(clamped + 1); return; }
     const root = scrollerRef.current; if (!root) return;
-    const target = root.querySelector(`[data-page-number="${idx + 1}"]`) as HTMLElement | null;
+    const target = root.querySelector(`[data-page-number="${clamped + 1}"]`) as HTMLElement | null;
     if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
@@ -1474,6 +1644,30 @@ export default function PdfEditorPage() {
         onClose={() => setCompareOpen(false)}
         pageCount={state.pageOrder.length}
         onCompare={runCompare}
+      />
+      <PageOrganizer
+        open={organizerOpen}
+        pdfBytes={bytes}
+        pages={state.pages}
+        pageOrder={state.pageOrder}
+        onClose={() => setOrganizerOpen(false)}
+        onReorder={reorderPages}
+        onBulkRotate={bulkRotatePages}
+        onBulkDelete={bulkDeletePages}
+      />
+      <NUpDialog
+        open={nUpOpen}
+        busy={saving}
+        pageCount={state.pageOrder.length}
+        onClose={() => setNUpOpen(false)}
+        onExport={handleNUp}
+      />
+      <PageLabelsDialog
+        open={labelsOpen}
+        pageCount={state.pageOrder.length}
+        rules={state.pageLabels}
+        onClose={() => setLabelsOpen(false)}
+        onApply={(rules) => { mutate({ pageLabels: rules }); pushToast(rules.length ? `Applied ${rules.length} page-label rule(s)` : 'Cleared page labels', rules.length ? 'ok' : 'info'); }}
       />
       <PreferencesDialog open={prefsOpen} prefs={prefs} onChange={setPrefs} onClose={() => setPrefsOpen(false)} />
       {/* Toast queue — bottom-right floating stack */}
@@ -1665,8 +1859,33 @@ export default function PdfEditorPage() {
             className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><CropIcon className="w-3 h-3" /> Crop all</button>
           <button type="button" onClick={() => setToolsOpen(true)} title="Split / optimize / resize pages / grayscale"
             className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><Wrench className="w-3 h-3" /> Tools</button>
-          <button type="button" onClick={saveInteractive} title="Save an interactive PDF: form fields, clickable links, bookmark outline"
+          <button type="button" onClick={() => setOrganizerOpen(true)} title="Page organizer — large grid: drag to reorder, multi-select, bulk rotate/delete"
+            className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><LayoutGrid className="w-3 h-3" /> Organize</button>
+          <button type="button" onClick={() => setNUpOpen(true)} title="N-up export — combine 2 or 4 pages per sheet"
+            className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><Grid2x2 className="w-3 h-3" /> N-up</button>
+          <button type="button" onClick={() => setLabelsOpen(true)}
+            title="Custom page labels (roman / alpha / prefixed ranges) — use {label} in the footer"
+            className={`px-2 py-0.5 rounded-sm inline-flex items-center gap-1 ${state.pageLabels.length > 0 ? 'bg-[#d4a017]/20 text-[#d4a017]' : 'hover:bg-rmpg-700/40'}`}><Hash className="w-3 h-3" /> Labels{state.pageLabels.length > 0 ? ` (${state.pageLabels.length})` : ''}</button>
+          <button type="button" onClick={handleDeskew} title="Deskew (straighten) the current page by a manual angle"
+            className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><RotateCwIcon className="w-3 h-3" /> Deskew</button>
+          <button type="button" onClick={handleExportCroppedRegion} title="Export the current page's crop region (or full page) as PNG"
+            className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><CropIcon className="w-3 h-3" /> Region PNG</button>
+          <button type="button" onClick={applyAnnotationEverywhere} title="Apply the selected annotation to every page (stamp across the document)"
+            className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><Layers2 className="w-3 h-3" /> To all pages</button>
+          <button type="button" onClick={toggleAnnotationBorder} title="Toggle a border around the selected highlight / text box"
+            className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><Square className="w-3 h-3" /> Border</button>
+          <button type="button" onClick={addReplyToActive} title="Add a reply to the selected sticky note / text annotation"
+            className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><MessageSquare className="w-3 h-3" /> Reply</button>
+          <button type="button" onClick={() => setPrefs({ ...prefs, showGrid: !prefs.showGrid })}
+            title="Toggle the grid overlay"
+            className={`px-2 py-0.5 rounded-sm inline-flex items-center gap-1 ${prefs.showGrid ? 'bg-[#d4a017]/20 text-[#d4a017]' : 'hover:bg-rmpg-700/40'}`}><Grid3x3 className="w-3 h-3" /> Grid</button>
+          <button type="button" onClick={() => setPrefs({ ...prefs, snapToGrid: !prefs.snapToGrid })}
+            title="Snap annotation placement to the grid"
+            className={`px-2 py-0.5 rounded-sm inline-flex items-center gap-1 ${prefs.snapToGrid ? 'bg-[#d4a017]/20 text-[#d4a017]' : 'hover:bg-rmpg-700/40'}`}>Snap</button>
+          <button type="button" onClick={() => saveInteractive(false)} title="Save an interactive PDF: form fields, clickable links, bookmark outline"
             className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><FileSignature className="w-3 h-3" /> Interactive</button>
+          <button type="button" onClick={() => saveInteractive(true)} title="Save a flattened-form PDF: field values baked in, form locked (for filing)"
+            className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><FileSignature className="w-3 h-3" /> Flatten form</button>
           <button type="button" onClick={() => handleSplit({ kind: 'atSelected' })} title="Split at the page(s) selected in the rail"
             className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><Scissors className="w-3 h-3" /> Split{selectedPages.size > 0 ? ` (${selectedPages.size})` : ''}</button>
           <button type="button" onClick={() => setCompareOpen(true)} title="Compare against another PDF (page pixel-diff)"
@@ -1764,8 +1983,24 @@ export default function PdfEditorPage() {
             </div>
           )}
 
-          <div ref={scrollerRef} onScroll={onScroll} className="flex-1 overflow-auto bg-[#050505] border border-[#222222] rounded-[2px] p-4 space-y-4">
-            {state.pageOrder.map((original, idx) => (
+          <div ref={scrollerRef} onScroll={onScroll}
+            className={`flex-1 overflow-auto bg-[#050505] border border-[#222222] rounded-[2px] p-4 relative ${
+              prefs.viewMode === 'two-up' ? 'flex flex-row flex-wrap justify-center gap-4 content-start'
+              : prefs.viewMode === 'single' ? 'flex flex-col items-center'
+              : 'space-y-4'
+            }`}>
+            {/* Grid overlay — visual placement aid when prefs.showGrid is on. */}
+            {prefs.showGrid && (
+              <div className="pointer-events-none absolute inset-0 z-0" aria-hidden="true"
+                style={{
+                  backgroundImage: `linear-gradient(to right, rgba(212,160,23,0.10) 1px, transparent 1px), linear-gradient(to bottom, rgba(212,160,23,0.10) 1px, transparent 1px)`,
+                  backgroundSize: `${Math.max(4, prefs.gridSize) * DEFAULT_RENDER_SCALE * zoom}px ${Math.max(4, prefs.gridSize) * DEFAULT_RENDER_SCALE * zoom}px`,
+                }} />
+            )}
+            {state.pageOrder
+              .map((original, idx) => ({ original, idx }))
+              .filter(({ idx }) => prefs.viewMode !== 'single' || idx + 1 === activePage)
+              .map(({ original, idx }) => (
               <PageCanvas
                 key={`page-${idx}-${original}`}
                 pdfBytes={bytes}
@@ -1789,6 +2024,8 @@ export default function PdfEditorPage() {
                 onSetCrop={setPageCrop}
                 onAnnotationContextMenu={(id, x, y) => setContextMenu({ annotationId: id, x, y })}
                 forcePdfjs={forcePdfjs}
+                snapToGrid={prefs.snapToGrid}
+                gridSize={prefs.gridSize}
               />
             ))}
           </div>

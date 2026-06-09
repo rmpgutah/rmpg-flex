@@ -485,7 +485,16 @@
 // v846: mobile card layouts on /patrol — Checkpoints + Scan Log + Shift Summary
 //   toolbar wrapping. Wide tables behind overflow-x-auto are unusable on a phone;
 //   cards stack key info + 44pt-tap-target action rows on a single touch surface.
-const CACHE_NAME = 'rmpg-flex-v846';
+// v847: PDF + Document Writer feature wave 4 (~27 more features).
+//   PDF Editor: page organizer (drag-reorder grid), single/continuous/2-up view
+//   modes, annotation reply threads, N-up export, page-number styles, flatten-
+//   form, text-annotation hyperlinks, deskew, page labels, snap-to-grid + grid,
+//   apply-annotation-to-all-pages, region-to-PNG, annotation border toggle.
+//   Document Writer: debounced server autosave, shortcuts cheatsheet, paragraph-
+//   style presets, text<->list conversions, list/table row sort, auto-filled
+//   officer signature block, recent documents, standalone styled HTML export,
+//   reusable section blocks, duplicate document, nav helpers, manual save-draft.
+const CACHE_NAME = 'rmpg-flex-v847';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
