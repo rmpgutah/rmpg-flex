@@ -268,6 +268,12 @@ export interface CallForService {
   hazard_notes?: string;
   client_id?: string;
   client_name?: string;
+  /** Contracting-client record fields (from the clients JOIN) — authoritative
+   *  addressee + service-type source for the PSO Notice of Communication. */
+  client_contact_name?: string;
+  client_phone?: string;
+  client_address?: string;
+  client_industry?: string;
   description: string;
   source: CallSource;
   assigned_units: string[];

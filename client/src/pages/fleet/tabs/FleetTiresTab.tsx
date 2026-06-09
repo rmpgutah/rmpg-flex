@@ -141,6 +141,7 @@ export default function FleetTiresTab({ vehicleId }: { vehicleId: number | strin
 
       {/* Table view */}
       {tires.length > 0 && (
+        <div className="overflow-x-auto">
         <table className="w-full text-[10px]">
           <thead>
             <tr className="text-rmpg-400 border-b border-rmpg-700">
@@ -165,6 +166,7 @@ export default function FleetTiresTab({ vehicleId }: { vehicleId: number | strin
             ))}
           </tbody>
         </table>
+        </div>
       )}
     </div>
   );

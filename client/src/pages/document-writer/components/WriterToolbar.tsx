@@ -5,14 +5,21 @@ import {
   Undo2, Redo2, Heading1, Heading2, Heading3, Minus, Quote, Code, Superscript,
   Subscript, RemoveFormatting, CheckSquare, Link2, Printer, Download, Save, FileText,
   Type, Pilcrow, LayoutPanelTop, PlusSquare, Sun, Moon, BarChart3, BookTemplate,
-  Baseline, PaintBucket, Search, MessageSquare, Eye, FileDown, Grid3x3,
+  Baseline, PaintBucket, Search, MessageSquare, Eye, FileDown, Grid3x3, Focus,
+  Quote as QuoteIcon, Omega, Volume2, VolumeX, Camera, Info, ListTree,
+  Paintbrush, Gauge, CaseSensitive, Scale, Sheet,
 } from 'lucide-react';
 import ToolbarMenu, { MenuRow, MenuButton } from './ToolbarMenu';
 import {
   insertTableOfContents, insertFootnote, insertEndnote, insertBookmark,
   insertCrossReference, insertCoverPage, insertField, insertMarginNote, insertTabStop,
+  insertDateTime, insertSectionHeading,
+  insertTableOfContentsAtCursor, insertSignatureLine, insertFillableField,
+  insertSpecialChar, applySmartQuotes, applyOutlineNumbering, clearOutlineNumbering,
+  SPECIAL_CHARS,
   computeStats, listSavedTemplates, saveTemplate, deleteTemplate,
 } from '../docActions';
+import { snippetsByCategory, type Snippet } from '../snippets';
 import { FONT_FAMILIES, FONT_SIZES, type DocSettings, type WriterTheme } from '../types';
 
 /** Page-level actions/state the toolbar drives (find/replace, comments, view,
@@ -31,11 +38,25 @@ export interface WriterExtActions {
   onInsertEmbed: (kind: 'video' | 'audio' | 'iframe') => void;
   zoom: number;
   setZoom: (updater: (z: number) => number) => void;
-  viewMode: 'normal' | 'reading' | 'fullscreen';
-  setViewMode: (m: 'normal' | 'reading' | 'fullscreen') => void;
+  viewMode: 'normal' | 'reading' | 'fullscreen' | 'focus';
+  setViewMode: (m: 'normal' | 'reading' | 'fullscreen' | 'focus') => void;
   language: string;
   setLanguage: (l: string) => void;
   autoSavedAt: string | null;
+  // Wave-2 actions
+  onToggleSnapshots: () => void;
+  onOpenProperties: () => void;
+  onReadAloud: () => void;
+  readingAloud: boolean;
+  onExportJson: () => void;
+  onImportJson: () => void;
+  // Wave-3 actions
+  onToggleAnalysis: () => void;
+  onBrush: () => void;
+  brushActive: boolean;
+  onTransform: (mode: 'upper' | 'lower' | 'title' | 'sentence') => void;
+  onInsertCsv: () => void;
+  onInsertStatute: () => void;
 }
 
 interface Props {
@@ -82,6 +103,8 @@ export default function WriterToolbar({
 
   const stats = computeStats(editor);
   const inTable = editor.isActive('table');
+  const snippetGroups = snippetsByCategory();
+  const insertSnippet = (s: Snippet) => editor.chain().focus().insertContent(s.html).run();
   const setBlock = (attrs: Record<string, string | null>) => editor.chain().focus().setBlockStyle(attrs).run();
   const setPage = (patch: Partial<DocSettings['page']>) => setDocSettings((s) => ({ ...s, page: { ...s.page, ...patch } }));
   const setMargin = (side: keyof DocSettings['page']['margins'], v: number) =>
@@ -90,13 +113,33 @@ export default function WriterToolbar({
   return (
     <div className="bg-[#0d0d0d] border border-[#222] rounded-[2px] p-1.5">
       {/* Title row */}
-      <div className="flex items-center gap-2 mb-1.5 pb-1.5 border-b border-[#1a1a1a]">
-        <FileText className="w-4 h-4 text-[#d4a017]" />
+      <div className="flex flex-wrap items-center gap-2 mb-1.5 pb-1.5 border-b border-[#1a1a1a]">
+        <FileText className="w-4 h-4 text-[#d4a017] flex-shrink-0" />
         <input
           type="text" value={title} onChange={(e) => onTitleChange(e.target.value)}
           placeholder="Untitled Document"
-          className="flex-1 bg-transparent border-none text-sm text-rmpg-100 font-semibold focus:outline-none placeholder-rmpg-600"
+          className="flex-1 min-w-[140px] bg-transparent border-none text-sm text-rmpg-100 font-semibold focus:outline-none placeholder-rmpg-600"
         />
+        <button type="button" onClick={ext.onReadAloud}
+          title={ext.readingAloud ? 'Stop reading aloud' : 'Read document (or selection) aloud'}
+          className={`flex items-center gap-1 px-2 py-1 text-[10px] border rounded-[2px] ${
+            ext.readingAloud ? 'bg-[#d4a017]/20 border-[#d4a017]/40 text-[#d4a017]' : 'bg-[#141414] border-[#222] text-rmpg-300 hover:bg-[#1a1a1a]'
+          }`}>
+          {ext.readingAloud ? <VolumeX className="w-3 h-3" /> : <Volume2 className="w-3 h-3" />}
+          {ext.readingAloud ? 'Stop' : 'Read'}
+        </button>
+        <button type="button" onClick={ext.onOpenProperties}
+          title="Document properties (title, author, subject, keywords)"
+          className="flex items-center gap-1 px-2 py-1 text-[10px] bg-[#141414] border border-[#222] text-rmpg-300 rounded-[2px] hover:bg-[#1a1a1a]">
+          <Info className="w-3 h-3" />Props
+        </button>
+        <button type="button" onClick={() => ext.setViewMode(ext.viewMode === 'focus' ? 'normal' : 'focus')}
+          title="Focus / Zen mode — hide panels and chrome for distraction-free writing"
+          className={`flex items-center gap-1 px-2 py-1 text-[10px] border rounded-[2px] ${
+            ext.viewMode === 'focus' ? 'bg-[#d4a017]/20 border-[#d4a017]/40 text-[#d4a017]' : 'bg-[#141414] border-[#222] text-rmpg-300 hover:bg-[#1a1a1a]'
+          }`}>
+          <Focus className="w-3 h-3" />Focus
+        </button>
         <button type="button" onClick={onToggleTheme} title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
           className="flex items-center gap-1 px-2 py-1 text-[10px] bg-[#141414] border border-[#222] text-rmpg-300 rounded-[2px] hover:bg-[#1a1a1a]">
           {theme === 'dark' ? <Sun className="w-3 h-3" /> : <Moon className="w-3 h-3" />}
@@ -153,6 +196,7 @@ export default function WriterToolbar({
         <ToolBtn title="Superscript" active={editor.isActive('superscript')} onClick={() => editor.chain().focus().toggleSuperscript().run()}><Superscript className="w-3.5 h-3.5" /></ToolBtn>
         <ToolBtn title="Subscript" active={editor.isActive('subscript')} onClick={() => editor.chain().focus().toggleSubscript().run()}><Subscript className="w-3.5 h-3.5" /></ToolBtn>
         <ToolBtn title="Inline code" active={editor.isActive('code')} onClick={() => editor.chain().focus().toggleCode().run()}><Code className="w-3.5 h-3.5" /></ToolBtn>
+        <ToolBtn title={ext.brushActive ? 'Format brush armed — select target text and click to apply' : 'Format brush — capture formatting from the selection, then apply to the next'} active={ext.brushActive} onClick={ext.onBrush}><Paintbrush className="w-3.5 h-3.5" /></ToolBtn>
 
         {/* Advanced text menu (8–15) */}
         <ToolbarMenu label="Text" icon={Type} width={250}>
@@ -187,6 +231,15 @@ export default function WriterToolbar({
           <MenuButton onClick={() => editor.chain().focus().clearNodes().unsetAllMarks().run()}>
             <span className="flex items-center gap-1"><RemoveFormatting className="w-3 h-3" /> Clear all formatting</span>
           </MenuButton>
+        </ToolbarMenu>
+
+        {/* Case transforms (wave 3) — operate on the current selection */}
+        <ToolbarMenu label="Case" icon={CaseSensitive} width={180}>
+          <MenuButton onClick={() => ext.onTransform('upper')}>UPPERCASE</MenuButton>
+          <MenuButton onClick={() => ext.onTransform('lower')}>lowercase</MenuButton>
+          <MenuButton onClick={() => ext.onTransform('title')}>Title Case</MenuButton>
+          <MenuButton onClick={() => ext.onTransform('sentence')}>Sentence case</MenuButton>
+          <div className="text-[9px] text-rmpg-600 px-2 pt-1 leading-snug">Select text first, then choose a case.</div>
         </ToolbarMenu>
         <Divider />
 
@@ -269,11 +322,16 @@ export default function WriterToolbar({
         {/* Insert menu (tables/images/links/breaks/references 20,21,38,43–47) */}
         <ToolbarMenu label="Insert" icon={PlusSquare} width={230}>
           <MenuButton onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}><span className="flex items-center gap-1"><TableIcon className="w-3 h-3" /> Table</span></MenuButton>
+          <MenuButton onClick={ext.onInsertCsv}><span className="flex items-center gap-1"><Sheet className="w-3 h-3" /> Table from CSV/TSV…</span></MenuButton>
+          <MenuButton onClick={ext.onInsertStatute}><span className="flex items-center gap-1"><Scale className="w-3 h-3" /> Utah Code citation…</span></MenuButton>
           <MenuButton onClick={onInsertImage}><span className="flex items-center gap-1"><ImageIcon className="w-3 h-3" /> Image</span></MenuButton>
           <MenuButton onClick={() => { const url = window.prompt('URL:'); if (url) editor.chain().focus().setLink({ href: url }).run(); }}><span className="flex items-center gap-1"><Link2 className="w-3 h-3" /> Link</span></MenuButton>
           <MenuButton onClick={() => editor.chain().focus().setPageBreak().run()}>Page break</MenuButton>
           <MenuButton onClick={() => editor.chain().focus().setSectionBreak().run()}>Section break</MenuButton>
-          <MenuButton onClick={() => insertTableOfContents(editor)}>Table of contents</MenuButton>
+          <MenuButton onClick={() => insertTableOfContents(editor)}>Table of contents (top)</MenuButton>
+          <MenuButton onClick={() => insertTableOfContentsAtCursor(editor)}>Table of contents (at cursor)</MenuButton>
+          <MenuButton onClick={() => { const r = window.prompt('Signature line label (e.g. Officer, Witness):', 'Officer'); if (r) insertSignatureLine(editor, r); }}>Signature line…</MenuButton>
+          <MenuButton onClick={() => insertFillableField(editor)}>Fillable blank [____]</MenuButton>
           <MenuButton onClick={() => insertFootnote(editor)}>Footnote</MenuButton>
           <MenuButton onClick={() => insertEndnote(editor)}>Endnote</MenuButton>
           <MenuButton onClick={() => insertCrossReference(editor)}>Cross-reference</MenuButton>
@@ -283,11 +341,54 @@ export default function WriterToolbar({
           <MenuButton onClick={() => insertField(editor, 'page')}>Page-number field</MenuButton>
           <MenuButton onClick={() => insertField(editor, 'date')}>Date field</MenuButton>
           <MenuButton onClick={() => insertField(editor, 'author', author)}>Author field</MenuButton>
+          <MenuButton onClick={() => insertDateTime(editor, 'date')}>Current date (text)</MenuButton>
+          <MenuButton onClick={() => insertDateTime(editor, 'time')}>Current time (text)</MenuButton>
+          <MenuButton onClick={() => insertDateTime(editor, 'datetime')}>Current date &amp; time (text)</MenuButton>
+          <MenuButton onClick={() => insertSectionHeading(editor, 2)}>Numbered section heading…</MenuButton>
           <MenuButton onClick={() => ext.onInsertEmbed('video')}>Video embed (YouTube/Vimeo)</MenuButton>
           <MenuButton onClick={() => ext.onInsertEmbed('audio')}>Audio player</MenuButton>
           <MenuButton onClick={() => ext.onInsertEmbed('iframe')}>Embed / iframe</MenuButton>
           <MenuButton onClick={() => { const url = window.prompt('Image URL:'); if (url) editor.chain().focus().setImage({ src: url }).run(); }}>Image from URL</MenuButton>
           <MenuButton onClick={() => editor.chain().focus().toggleCodeBlock().run()}>Code block</MenuButton>
+        </ToolbarMenu>
+
+        {/* Snippets — common reusable boilerplate inserted at the cursor */}
+        <ToolbarMenu label="Snippets" icon={QuoteIcon} width={250}>
+          {(close) => (
+            <>
+              {Object.entries(snippetGroups).map(([group, items]) => (
+                <div key={group} className="space-y-0.5">
+                  <div className="text-[10px] text-rmpg-500 uppercase tracking-wide pt-1">{group}</div>
+                  {items.map((s) => (
+                    <MenuButton key={s.id} onClick={() => { insertSnippet(s); close(); }}>{s.label}</MenuButton>
+                  ))}
+                </div>
+              ))}
+            </>
+          )}
+        </ToolbarMenu>
+
+        {/* Special characters / symbol picker */}
+        <ToolbarMenu label="Symbols" icon={Omega} width={250}>
+          {(close) => (
+            <>
+              {SPECIAL_CHARS.map((grp) => (
+                <div key={grp.group}>
+                  <div className="text-[10px] text-rmpg-500 uppercase tracking-wide pt-1 pb-0.5">{grp.group}</div>
+                  <div className="flex flex-wrap gap-0.5">
+                    {grp.chars.map((ch) => (
+                      <button key={ch} type="button" title={ch}
+                        onClick={() => { insertSpecialChar(editor, ch); }}
+                        className="w-7 h-7 flex items-center justify-center text-[14px] text-rmpg-100 bg-[#141414] border border-[#222] rounded-[2px] hover:bg-[#d4a017]/20 hover:text-[#d4a017]">
+                        {ch}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+              <div className="pt-1"><MenuButton onClick={close}>Close</MenuButton></div>
+            </>
+          )}
         </ToolbarMenu>
 
         {/* Edit menu — find/replace + clipboard (features 1–9, 21, 26–30) */}
@@ -298,6 +399,14 @@ export default function WriterToolbar({
           <MenuButton onClick={() => ext.onCopyAs('plain')}>Copy as plain text</MenuButton>
           <MenuButton onClick={() => ext.onCopyAs('html')}>Copy as HTML</MenuButton>
           <MenuButton onClick={() => ext.onCopyAs('md')}>Copy as Markdown</MenuButton>
+          <div className="text-[10px] text-rmpg-500 pt-1">Auto-format</div>
+          <MenuButton onClick={() => { const n = applySmartQuotes(editor); window.alert(n ? `Smart quotes applied (${n} text blocks updated).` : 'Nothing to convert.'); }}>
+            <span className="flex items-center gap-1"><QuoteIcon className="w-3 h-3" /> Smart quotes &amp; em-dashes</span>
+          </MenuButton>
+          <MenuButton onClick={() => { const n = applyOutlineNumbering(editor); window.alert(n ? `Outline numbering applied to ${n} headings.` : 'No headings to number.'); }}>
+            <span className="flex items-center gap-1"><ListTree className="w-3 h-3" /> Auto-number headings (1, 1.1…)</span>
+          </MenuButton>
+          <MenuButton onClick={() => { const n = clearOutlineNumbering(editor); window.alert(n ? `Cleared numbering from ${n} headings.` : 'No numbered headings found.'); }}>Clear heading numbering</MenuButton>
         </ToolbarMenu>
 
         {/* Table operations (features 51–70) */}
@@ -348,7 +457,11 @@ export default function WriterToolbar({
         <ToolbarMenu label="Review" icon={MessageSquare} width={210}>
           <MenuButton onClick={ext.onAddComment}>Add comment to selection</MenuButton>
           <MenuButton onClick={ext.onToggleComments}>Toggle comments panel</MenuButton>
-          <MenuButton onClick={ext.onSnapshot}>Save version snapshot</MenuButton>
+          <MenuButton onClick={ext.onToggleAnalysis}><span className="flex items-center gap-1"><Gauge className="w-3 h-3" /> Analysis (readability/style/words/diff)</span></MenuButton>
+          <MenuButton active={ext.brushActive} onClick={ext.onBrush}><span className="flex items-center gap-1"><Paintbrush className="w-3 h-3" /> Format brush {ext.brushActive ? '(armed)' : ''}</span></MenuButton>
+          <MenuButton onClick={ext.onSnapshot}>Quick save version snapshot</MenuButton>
+          <MenuButton onClick={ext.onToggleSnapshots}><span className="flex items-center gap-1"><Camera className="w-3 h-3" /> Snapshots panel…</span></MenuButton>
+          <MenuButton onClick={ext.onOpenProperties}><span className="flex items-center gap-1"><Info className="w-3 h-3" /> Document properties…</span></MenuButton>
           <MenuButton onClick={ext.onToggleOutline}>Toggle outline pane</MenuButton>
           <div className="text-[10px] text-rmpg-500 pt-1">Document language</div>
           <select className={`${selCls} w-full`} value={ext.language} onChange={(e) => ext.setLanguage(e.target.value)}>
@@ -362,6 +475,7 @@ export default function WriterToolbar({
           <MenuButton onClick={() => ext.setZoom(() => 0.75)}>Fit width (75%)</MenuButton>
           <MenuButton onClick={() => ext.setZoom(() => 0.6)}>Fit page (60%)</MenuButton>
           <MenuButton active={ext.viewMode === 'reading'} onClick={() => ext.setViewMode(ext.viewMode === 'reading' ? 'normal' : 'reading')}>Reading mode</MenuButton>
+          <MenuButton active={ext.viewMode === 'focus'} onClick={() => ext.setViewMode(ext.viewMode === 'focus' ? 'normal' : 'focus')}>Focus / Zen mode</MenuButton>
           <MenuButton active={ext.viewMode === 'fullscreen'} onClick={() => ext.setViewMode(ext.viewMode === 'fullscreen' ? 'normal' : 'fullscreen')}>Full screen</MenuButton>
           <MenuButton onClick={ext.onToggleOutline}>Navigation / outline</MenuButton>
         </ToolbarMenu>
@@ -374,6 +488,9 @@ export default function WriterToolbar({
           <MenuButton onClick={() => ext.onExport('txt')}>Plain text</MenuButton>
           <MenuButton onClick={() => ext.onExport('rtf')}>RTF (Word)</MenuButton>
           <MenuButton onClick={ext.onEmail}>Email document…</MenuButton>
+          <div className="text-[10px] text-rmpg-500 pt-1">Editor document (JSON)</div>
+          <MenuButton onClick={ext.onExportJson}>Export as JSON…</MenuButton>
+          <MenuButton onClick={ext.onImportJson}>Import from JSON…</MenuButton>
         </ToolbarMenu>
 
         {/* Design / layout menu (31–36, 40–42) */}
@@ -416,6 +533,14 @@ export default function WriterToolbar({
             <input className={`${selCls} w-28`} placeholder="text" value={docSettings.watermark.text} onChange={(e) => setDocSettings((s) => ({ ...s, watermark: { ...s.watermark, text: e.target.value } }))} />
           </MenuRow>
           <MenuButton active={docSettings.pageBorder} onClick={() => setDocSettings((s) => ({ ...s, pageBorder: !s.pageBorder }))}>Page border: {docSettings.pageBorder ? 'On' : 'Off'}</MenuButton>
+          {docSettings.pageBorder && (
+            <MenuRow label="Border style">
+              <select className={selCls} value={docSettings.pageBorderStyle || 'thin'} onChange={(e) => setDocSettings((s) => ({ ...s, pageBorderStyle: e.target.value as DocSettings['pageBorderStyle'] }))}>
+                {[['thin', 'Thin'], ['thick', 'Thick'], ['double', 'Double'], ['gold', 'Gold']].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              </select>
+            </MenuRow>
+          )}
+          <MenuButton active={!!docSettings.letterhead} onClick={() => setDocSettings((s) => ({ ...s, letterhead: !s.letterhead }))}>Letterhead band (print): {docSettings.letterhead ? 'On' : 'Off'}</MenuButton>
           <MenuRow label="Background">
             <input type="color" value={docSettings.background} onChange={(e) => setDocSettings((s) => ({ ...s, background: e.target.value }))} />
           </MenuRow>
@@ -448,6 +573,7 @@ export default function WriterToolbar({
           <MenuRow label="Sentences"><span className="text-[11px] text-rmpg-100">{stats.sentences}</span></MenuRow>
           <MenuRow label="Paragraphs"><span className="text-[11px] text-rmpg-100">{stats.paragraphs}</span></MenuRow>
           <MenuRow label="Pages (est.)"><span className="text-[11px] text-rmpg-100">{stats.pages}</span></MenuRow>
+          <MenuRow label="Avg words/sentence"><span className="text-[11px] text-rmpg-100">{stats.avgWordsPerSentence}</span></MenuRow>
           <MenuRow label="Reading time"><span className="text-[11px] text-rmpg-100">{stats.readingMinutes} min</span></MenuRow>
         </ToolbarMenu>
       </div>

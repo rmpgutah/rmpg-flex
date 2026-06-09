@@ -255,7 +255,7 @@ export default function FleetDetailPanel({
     <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
       {/* Detail header */}
       <div
-        className="flex-shrink-0 px-4 py-3 border-b border-rmpg-700 flex items-start justify-between bg-surface-sunken transition-colors duration-200"
+        className="flex-shrink-0 px-4 py-3 border-b border-rmpg-700 flex flex-col gap-2 md:flex-row md:items-start md:justify-between md:gap-0 bg-surface-sunken transition-colors duration-200"
         onContextMenu={(e) => openMenu(e, buildVehicleMenu())}
       >
         <div>
@@ -362,7 +362,7 @@ export default function FleetDetailPanel({
         </div>
 
         {/* Action buttons */}
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 flex-wrap">
           <FleetPrintMenu detail={detail} fuelLogs={fuelLogs} maintenance={maintenance} fuelSummary={fuelSummary} />
           {!isArchived && (
             <>

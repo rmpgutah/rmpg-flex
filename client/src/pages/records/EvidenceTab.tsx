@@ -468,7 +468,7 @@ function DigitalForensicsSection({ evidenceId }: { evidenceId: string }) {
                   </span>
                 ) : null}
               </div>
-              <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-[9px]">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-0.5 text-[9px]">
                 {h.md5 && (
                   <div className="flex items-center gap-1">
                     <span className="text-rmpg-500 w-12 shrink-0">MD5:</span>

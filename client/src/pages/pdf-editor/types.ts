@@ -28,7 +28,12 @@ export type Tool =
   | 'eyedropper'
   | 'polygon'
   | 'polyline'
-  | 'cloud';
+  | 'cloud'
+  | 'check'
+  | 'cross'
+  | 'measure'
+  | 'formText'
+  | 'formCheck';
 
 export type StampLabel =
   | 'CONFIDENTIAL'
@@ -82,6 +87,8 @@ export interface TextAnnotation extends AnnotationBase {
   fontSize: number;
   bold?: boolean;
   italic?: boolean;
+  /** Font family for text annotations: helvetica (default), times, courier. */
+  fontFamily?: 'helvetica' | 'times' | 'courier';
 }
 
 export interface HighlightAnnotation extends AnnotationBase {
@@ -117,6 +124,10 @@ export interface EllipseAnnotation extends AnnotationBase {
 export interface LineAnnotation extends AnnotationBase {
   type: 'line';
   arrow?: boolean;          // when true, render with an arrowhead at (x+w, y+h)
+  /** When set, this line is a measurement dimension line — its label (the
+   *  computed distance, e.g. "3.42 in") is drawn at the midpoint with tick
+   *  marks at each end. Set by the Measure tool. */
+  measureLabel?: string;
 }
 
 export interface PenAnnotation extends AnnotationBase {
@@ -137,6 +148,16 @@ export interface CloudAnnotation extends AnnotationBase {
   type: 'cloud';
   /** Number of scallops along each edge — controls cloud "fluffiness". */
   scallopSize?: number;
+}
+
+/** Checkmark (✓) glyph — drawn as two strokes inside the bounding box. */
+export interface CheckAnnotation extends AnnotationBase {
+  type: 'check';
+}
+
+/** Cross / X (✗) glyph — drawn as two diagonal strokes inside the box. */
+export interface CrossAnnotation extends AnnotationBase {
+  type: 'cross';
 }
 
 export interface ImageAnnotation extends AnnotationBase {
@@ -162,6 +183,22 @@ export interface StickyNoteAnnotation extends AnnotationBase {
   createdAt?: string;
 }
 
+/** Fillable AcroForm field placed by the Form-Field tool. Written into the
+ *  saved PDF as a real interactive widget via pdf-lib's form API (the editor
+ *  routes any document containing form fields through the pdf-lib save path).
+ *  In-app it renders as a labeled placeholder box so the operator sees where
+ *  the field will land. */
+export interface FormFieldAnnotation extends AnnotationBase {
+  type: 'formText' | 'formCheck';
+  /** Unique field name written into the AcroForm (e.g. "officer_name"). */
+  fieldName: string;
+  /** Default value: text for formText, checked-state for formCheck. */
+  defaultValue?: string;
+  defaultChecked?: boolean;
+  /** Placeholder/label shown in-app (not necessarily written to the PDF). */
+  label?: string;
+}
+
 export type Annotation =
   | TextAnnotation
   | HighlightAnnotation
@@ -177,7 +214,10 @@ export type Annotation =
   | LinkAnnotation
   | StickyNoteAnnotation
   | PolygonAnnotation
-  | CloudAnnotation;
+  | CloudAnnotation
+  | CheckAnnotation
+  | CrossAnnotation
+  | FormFieldAnnotation;
 
 /** Per-page crop rectangle in screen-pixel coordinates at DEFAULT_RENDER_SCALE.
  *  Applied via pdf-lib setMediaBox at save time. */
@@ -211,11 +251,48 @@ export interface BatesConfig {
   fontSize: number;
 }
 
+/** Simple page-number footer — "Page N of M". Distinct from Bates numbering:
+ *  no prefix/padding, always sequential 1..pageCount, centered footer position
+ *  options. Stamped at save time alongside (and independent of) Bates. */
+export interface PageNumbersConfig {
+  /** Footer placement. */
+  position: 'bl' | 'bc' | 'br';
+  fontSize: number;
+  /** Template — {n} = current page, {total} = page count. */
+  format: string;           // e.g. "Page {n} of {total}"
+}
+
 export interface WatermarkConfig {
   text: string;
   opacity: number;          // 0..1
   fontSize: number;
   rotation: number;         // degrees
+  /** Placement style. 'diagonal' (default) draws one centered, rotated stamp.
+   *  'tiled' repeats the text across the whole page in a grid. */
+  mode?: 'diagonal' | 'tiled';
+  /** Optional image watermark (data: URL). When set, the image is drawn
+   *  centered instead of / in addition to the text. */
+  imageData?: string;
+}
+
+/** Header / footer text stamped on every page, distinct from the simple
+ *  "Page N of M" footer. Three slots per band (left/center/right). Supports
+ *  the {n}/{total} tokens like page numbers. */
+export interface HeaderFooterConfig {
+  headerLeft?: string;
+  headerCenter?: string;
+  headerRight?: string;
+  footerLeft?: string;
+  footerCenter?: string;
+  footerRight?: string;
+  fontSize: number;
+}
+
+/** Named in-app bookmark pointing at a page (1-indexed visual order). */
+export interface Bookmark {
+  id: string;
+  title: string;
+  page: number;
 }
 
 export interface DocumentMeta {
@@ -235,6 +312,10 @@ export interface EditorState {
   annotations: Annotation[];
   bates: BatesConfig | null;
   watermark: WatermarkConfig | null;
+  /** Simple "Page N of M" footer — null when disabled. */
+  pageNumbers?: PageNumbersConfig | null;
+  /** Custom header/footer text bands — null when disabled. */
+  headerFooter?: HeaderFooterConfig | null;
   meta: DocumentMeta;
   /** Source file in the Documents store, when the editor was opened from there. */
   sourceFileId?: string | null;
@@ -257,6 +338,10 @@ export interface EditorPreferences {
   colorBlindPalette: boolean;  // use a CB-friendly default color set
   showRulers: boolean;
   showGrid: boolean;
+  /** Page-thumbnail rail size. */
+  thumbnailSize: 'small' | 'large';
+  /** When true, the editor zooms to fit page width as soon as a PDF loads. */
+  fitWidthOnLoad: boolean;
 }
 
 export const DEFAULT_PREFERENCES: EditorPreferences = {
@@ -272,6 +357,8 @@ export const DEFAULT_PREFERENCES: EditorPreferences = {
   colorBlindPalette: false,
   showRulers: false,
   showGrid: false,
+  thumbnailSize: 'small',
+  fitWidthOnLoad: true,
 };
 
 // Recent-files entry for the in-app launcher.

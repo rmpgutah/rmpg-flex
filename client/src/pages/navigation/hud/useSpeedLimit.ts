@@ -72,8 +72,13 @@ export function useSpeedLimit(lat: number | null, lng: number | null): SpeedLimi
         if (cancelled) return;
         const el = Array.isArray(json?.elements) ? json.elements.find((e: any) => e?.tags?.maxspeed != null) : null;
         const mph = el ? parseMaxspeed(el.tags.maxspeed) : null;
-        if (mph != null) setLimitMph(mph);
-      } catch { /* offline / blocked / aborted — keep last known, hide badge */ }
+        // Set unconditionally on a SUCCESSFUL query — including null. Driving
+        // from a road with a posted limit onto one without must clear the badge;
+        // the old `if (mph != null)` left the previous road's limit showing (and
+        // red-lining) indefinitely. The catch below still preserves the last
+        // known value on a network error/abort.
+        setLimitMph(mph);
+      } catch { /* offline / blocked / aborted — keep last known */ }
       finally { window.clearTimeout(to); }
     })();
     return () => { cancelled = true; window.clearTimeout(to); ctrl.abort(); };

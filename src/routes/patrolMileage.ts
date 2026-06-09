@@ -227,6 +227,58 @@ pm.get('/mileage/chain', async (c) => {
     `;
     const rows = await query<Record<string, unknown>>(db, sql, ...params);
 
+    // ── Pull standalone PATROL trips (no-call movement) ──────
+    // The call-side chain only captures mileage tied to a CFS row. Officers
+    // also drive patrol routes that never get dispatched (welfare passes,
+    // property checks between calls, station-to-zone repositioning) — those
+    // closed PATROL trips live in unit_trips with their own start/end
+    // mileage. Without them the chain has gaps and the running odometer
+    // drifts every shift. We merge those rows in with a synthetic shape
+    // (call_number 'PATROL-<id>', incident_type 'PATROL') so the audit UI
+    // and trip-log PDF can render them inline with real calls.
+    const tripWhere: string[] = ["t.status = 'closed'", "t.trip_type = 'patrol'"];
+    const tripParams: unknown[] = [];
+    if (Number.isFinite(officerId)) { tripWhere.push('t.officer_id = ?'); tripParams.push(officerId); }
+    if (Number.isFinite(unitId)) { tripWhere.push('t.unit_id = ?'); tripParams.push(unitId); }
+    if (from) { tripWhere.push('COALESCE(t.end_time, t.start_time) >= ?'); tripParams.push(from); }
+    if (to)   { tripWhere.push('COALESCE(t.end_time, t.start_time) <= ?'); tripParams.push(to); }
+    const tripRows = await query<{
+      id: number; unit_id: number | null; officer_id: number | null; vehicle_id: number | null;
+      start_time: string | null; end_time: string | null;
+      start_mileage: number | null; end_mileage: number | null;
+      distance_m: number | null; duration_s: number | null;
+    }>(db, `
+      SELECT t.id, t.unit_id, t.officer_id, t.vehicle_id,
+             t.start_time, t.end_time,
+             t.start_mileage, t.end_mileage,
+             t.distance_m, t.duration_s
+        FROM unit_trips t
+       WHERE ${tripWhere.join(' AND ')}
+         AND (t.start_mileage IS NOT NULL OR t.end_mileage IS NOT NULL)
+       ORDER BY COALESCE(t.end_time, t.start_time) ASC
+       LIMIT 1000
+    `, ...tripParams);
+    const patrolRows: Record<string, unknown>[] = tripRows.map(t => ({
+      id: t.id,
+      source: 'unit_trip',
+      call_number: `PATROL-${t.id}`,
+      incident_type: 'PATROL',
+      priority: null,
+      status: 'closed',
+      assigned_unit_ids: t.unit_id != null ? JSON.stringify([t.unit_id]) : null,
+      unit_call_signs: null,
+      dispatched_at: t.start_time,
+      enroute_at: t.start_time,
+      onscene_at: t.start_time,
+      cleared_at: t.end_time,
+      closed_at: t.end_time,
+      starting_mileage: t.start_mileage,
+      ending_mileage: t.end_mileage,
+      responding_vehicle_id: t.vehicle_id,
+      distance_m: t.distance_m,
+      duration_s: t.duration_s,
+    }));
+
     // Annotate each row with the latest mileage_audit correction
     // touching this row, so the UI can badge corrected rows.
     const annotated: Array<Record<string, unknown>> = [];
@@ -245,12 +297,32 @@ pm.get('/mileage/chain', async (c) => {
       const lastFix = audits[0] ?? null;
       annotated.push({
         ...r,
+        source: 'call',
         starting_mileage_corrected: !!(lastFix && lastFix.field === 'starting_mileage'),
         ending_mileage_corrected: !!(lastFix && lastFix.field === 'ending_mileage'),
         last_fix: lastFix,
         audit_count: audits.length,
       });
     }
+
+    // Merge patrol trips into the chain, sorted by end timestamp so the UI
+    // sees one continuous timeline of mileage-bearing events. Patrol rows
+    // carry source='unit_trip' so the client can render them distinctly
+    // (gold-on-dark per the Spillman convention vs CFS's neutral row).
+    for (const p of patrolRows) {
+      annotated.push({
+        ...p,
+        starting_mileage_corrected: false,
+        ending_mileage_corrected: false,
+        last_fix: null,
+        audit_count: 0,
+      });
+    }
+    annotated.sort((a, b) => {
+      const aT = String(a.cleared_at || a.closed_at || a.dispatched_at || '');
+      const bT = String(b.cleared_at || b.closed_at || b.dispatched_at || '');
+      return aT.localeCompare(bT);
+    });
 
     // Return the anchor too (so the UI can show the current baseline
     // next to the chain).
@@ -531,6 +603,40 @@ pm.post('/mileage/fix', async (c) => {
       ],
     });
 
+    // ── Fleet odometer write-through ────────────────────────
+    // When the corrected/backfilled field is the call's ending_mileage AND
+    // the call was assigned to a specific fleet vehicle, push the new value
+    // through to fleet_vehicles.current_mileage. MAX() semantics — never
+    // lower the odometer (a corrected past trip can't outrank a more recent
+    // reading on the same vehicle). Audited separately so the fleet history
+    // shows the source. Best-effort: any vehicle resolution miss is a no-op,
+    // not a failure — the call-level fix already succeeded.
+    if (body.field === 'ending_mileage') {
+      const veh = await queryFirst<{ vehicle_id: number | null }>(
+        db,
+        'SELECT responding_vehicle_id AS vehicle_id FROM calls_for_service WHERE id = ?',
+        body.entry_id,
+      );
+      const vehicleId = veh?.vehicle_id;
+      if (vehicleId != null && Number.isFinite(vehicleId)) {
+        batch.push({
+          sql: `UPDATE fleet_vehicles
+                   SET current_mileage = MAX(COALESCE(current_mileage, 0), ?)
+                 WHERE id = ?`,
+          bindings: [after, vehicleId],
+        });
+        batch.push({
+          sql: `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, created_at)
+                VALUES (?, 'FLEET_ODOMETER_SYNC', 'fleet_vehicle', ?, ?, datetime('now'))`,
+          bindings: [
+            user.id, vehicleId,
+            `Odometer write-through from mileage fix on call ${existing.call_number || body.entry_id}: ` +
+            `proposed ${after} mi (current MAX-merged) — ${reason}`,
+          ],
+        });
+      }
+    }
+
     await db.batch(batch.map(s => {
       const stmt = db.prepare(s.sql);
       return s.bindings?.length ? stmt.bind(...s.bindings) : stmt;
@@ -703,6 +809,45 @@ pm.get('/trip-log/generate', async (c) => {
        LIMIT 500
     `, ...navParams);
 
+    // unit_trips also tracks PATROL movement, with start/end odometer stamps
+    // that nav_trip_log lacks. Pull the closed PATROL rows in this window so
+    // we can attach mileage_from/mileage_to to patrol log entries when their
+    // time spans line up. Indexed by (officer_id||unit_id, start_time) for
+    // quick lookup.
+    const utWhere: string[] = ["status = 'closed'", "trip_type = 'patrol'", 'date(start_time) >= date(?)', 'date(start_time) <= date(?)'];
+    const utParams: unknown[] = [from, to];
+    if (Number.isFinite(officerId)) { utWhere.push('officer_id = ?'); utParams.push(officerId); }
+    else if (Number.isFinite(unitId)) { utWhere.push('unit_id = ?'); utParams.push(unitId); }
+    const unitTrips = await query<{ start_time: string | null; end_time: string | null; start_mileage: number | null; end_mileage: number | null }>(db, `
+      SELECT start_time, end_time, start_mileage, end_mileage
+        FROM unit_trips
+       WHERE ${utWhere.join(' AND ')}
+       ORDER BY start_time ASC
+       LIMIT 1000
+    `, ...utParams);
+    // Pair a nav_trip_log row with the unit_trips row whose start_time is
+    // within ±2 minutes — the two systems segment differently but converge
+    // on the same real trip. We mark each unit_trips row as consumed so a
+    // late row doesn't double-attach.
+    const consumed = new Uint8Array(unitTrips.length);
+    const findMileagePair = (navStart: string): { from: number | null; to: number | null } => {
+      const target = new Date(navStart.replace(' ', 'T') + (/[zZ]|[+-]\d{2}:?\d{2}$/.test(navStart) ? '' : 'Z')).getTime();
+      let bestIdx = -1; let bestDt = Infinity;
+      for (let i = 0; i < unitTrips.length; i++) {
+        if (consumed[i]) continue;
+        const utStart = unitTrips[i].start_time;
+        if (!utStart) continue;
+        const t = new Date(String(utStart).replace(' ', 'T') + (/[zZ]|[+-]\d{2}:?\d{2}$/.test(String(utStart)) ? '' : 'Z')).getTime();
+        const dt = Math.abs(t - target);
+        if (dt < bestDt) { bestDt = dt; bestIdx = i; }
+      }
+      if (bestIdx >= 0 && bestDt <= 120_000) {
+        consumed[bestIdx] = 1;
+        return { from: unitTrips[bestIdx].start_mileage, to: unitTrips[bestIdx].end_mileage };
+      }
+      return { from: null, to: null };
+    };
+
     for (const t of navTrips) {
       const start = (t.start_time as string);
       const end = (t.end_time as string) || start;
@@ -719,6 +864,7 @@ pm.get('/trip-log/generate', async (c) => {
       const duration = t.duration_seconds != null
         ? Math.round(Number(t.duration_seconds) / 60)
         : Math.max(0, Math.round((new Date(end.replace(' ', 'T') + 'Z').getTime() - new Date(start.replace(' ', 'T') + 'Z').getTime()) / 60000));
+      const mileage = findMileagePair(start);
       patrolRows.push({
         type: 'PATROL',
         call_id: null,
@@ -727,10 +873,38 @@ pm.get('/trip-log/generate', async (c) => {
         end,
         distance_mi: round1(distance),
         duration_min: Math.max(0, duration),
-        mileage_from: null,
-        mileage_to: null,
+        mileage_from: mileage.from,
+        mileage_to: mileage.to,
         max_mph: Math.round(maxMph),
         harsh: stats.harsh,
+      });
+    }
+
+    // Any unit_trips PATROL rows that didn't pair with a nav_trip_log entry
+    // (the dispatch trip system tracked the drive, nav didn't) still belong
+    // in the report so mileage continuity isn't broken.
+    for (let i = 0; i < unitTrips.length; i++) {
+      if (consumed[i]) continue;
+      const ut = unitTrips[i];
+      if (!ut.start_time || (ut.start_mileage == null && ut.end_mileage == null)) continue;
+      const start = ut.start_time;
+      const end = ut.end_time || start;
+      const distance = ut.start_mileage != null && ut.end_mileage != null
+        ? Math.max(0, Number(ut.end_mileage) - Number(ut.start_mileage))
+        : 0;
+      const duration = Math.max(0, Math.round((new Date(end.replace(' ', 'T') + 'Z').getTime() - new Date(start.replace(' ', 'T') + 'Z').getTime()) / 60000));
+      patrolRows.push({
+        type: 'PATROL',
+        call_id: null,
+        call_number: null,
+        start,
+        end,
+        distance_mi: round1(distance),
+        duration_min: duration,
+        mileage_from: ut.start_mileage,
+        mileage_to: ut.end_mileage,
+        max_mph: 0,
+        harsh: { a: 0, b: 0, c: 0 },
       });
     }
 

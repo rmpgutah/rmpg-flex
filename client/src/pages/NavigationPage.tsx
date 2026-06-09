@@ -51,6 +51,7 @@ import { mapboxgl, initMapbox, MAPBOX_STYLE_DARK } from '../utils/mapboxLoader';
 import { installWebglContextRecovery, type MapCamera } from '../utils/webglRecovery';
 import { getMapboxAccessToken } from '../utils/mapboxApiKey';
 import { apiFetch } from '../hooks/useApi';
+import { useIsMobile } from '../hooks/useIsMobile';
 import { compassCardinal } from '../utils/locationImagery';
 import { getSourceSafe, hasLayer, hasSource, safeRemoveLayer, safeRemoveSource } from '../utils/mapboxSafeLayer';
 import ModuleDirectoryPage from './ModuleDirectoryPage';
@@ -435,6 +436,7 @@ function ContactRow({ id, sub, color, bearing, distMi, heading, threat }: {
 
 export default function NavigationPage() {
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
   const gps = useGpsTracking({ capture: true });
   const [viewMode, setViewMode] = useState<'drive' | 'modules'>('drive');
 
@@ -1774,9 +1776,10 @@ export default function NavigationPage() {
         <div className="absolute bottom-0 right-0 border-b-2 border-r-2 border-brand-500/40" style={{ width: 16, height: 16 }} />
       </div>
 
-      {/* Header bar */}
+      {/* Header bar — on mobile the long tool row scrolls horizontally instead
+          of squashing, so every control stays a real tap target in-vehicle. */}
       <div
-        className="absolute top-0 inset-x-0 flex items-center gap-2 px-3 py-2 backdrop-blur-md border-b border-rmpg-800 z-20"
+        className={`absolute top-0 inset-x-0 flex items-center gap-2 px-3 py-2 backdrop-blur-md border-b border-rmpg-800 z-20 ${isMobile ? 'overflow-x-auto whitespace-nowrap [&>*]:shrink-0' : ''}`}
         style={{ background: 'linear-gradient(180deg, rgba(10,10,10,0.92) 0%, rgba(10,10,10,0.78) 100%)' }}
       >
         <div className="absolute bottom-0 inset-x-0 h-px pointer-events-none" style={{ background: 'linear-gradient(90deg, transparent 5%, rgba(212,160,23,0.4) 30%, #d4a017 50%, rgba(212,160,23,0.4) 70%, transparent 95%)' }} />
@@ -2024,7 +2027,10 @@ export default function NavigationPage() {
       )}
 
       {/* 3D chase-cam inset (corner) — a steep-pitch, tighter 3D view of the
-          block ahead, mirroring the device position + heading. */}
+          block ahead, mirroring the device position + heading. Hidden on mobile:
+          it eats too much of a narrow in-vehicle screen (and GPU) — the main
+          follow-me map already covers the block ahead. */}
+      {!isMobile && (
       <div className="absolute z-20" style={{ top: sideTop, right: 8, width: 196, height: 148 }}>
         <div className="relative w-full h-full panel-beveled border border-rmpg-600 overflow-hidden shadow-xl" style={{ borderRadius: 2 }}>
           <div ref={insetContainerRef} className="absolute inset-0" />
@@ -2039,10 +2045,16 @@ export default function NavigationPage() {
           )}
         </div>
       </div>
+      )}
 
-      {/* Salt Lake County crime OVERVIEW (top-right, under the 3D inset) */}
+      {/* Salt Lake County crime OVERVIEW (top-right, under the 3D inset). On
+          mobile the 3D inset is hidden, so this slots up to the panel top and
+          narrows to leave the follow-me map readable between the side panels. */}
       {crimeOn && crimeCounts.total > 0 && (
-        <div className="absolute z-20 panel-beveled bg-surface-deep/92 backdrop-blur-md border border-rmpg-600 shadow-xl" style={{ top: sideTop + 156, right: 8, width: 190, borderRadius: 2 }}>
+        <div
+          className="absolute z-20 panel-beveled bg-surface-deep/92 backdrop-blur-md border border-rmpg-600 shadow-xl"
+          style={{ top: isMobile ? sideTop : sideTop + 156, right: 8, width: isMobile ? 150 : 190, maxWidth: '44vw', borderRadius: 2 }}
+        >
           <div className="relative flex items-center gap-1 px-2 py-1 border-b border-rmpg-700">
             <div className="absolute bottom-0 inset-x-0 h-px" style={{ background: 'linear-gradient(90deg, transparent, rgba(212,160,23,0.5))' }} />
             <Flame className="w-3 h-3" style={{ color: '#f59e0b' }} />
@@ -2130,7 +2142,7 @@ export default function NavigationPage() {
           (point where the contact is vs where the unit is facing), threat
           coloring, and a pulsing P1/P2 threat tally. */}
       {(callContacts.length > 0 || unitContacts.length > 0) && (
-        <div className="absolute z-20" style={{ top: sideTop, left: 8, width: 200 }}>
+        <div className="absolute z-20" style={{ top: sideTop, left: 8, width: isMobile ? 150 : 200, maxWidth: '44vw' }}>
           <div className="panel-beveled bg-surface-deep/92 backdrop-blur-md border border-rmpg-600 shadow-xl overflow-hidden" style={{ borderRadius: 2 }}>
             <div className="relative flex items-center gap-1.5 px-2 py-1 border-b border-rmpg-700">
               <div className="absolute bottom-0 inset-x-0 h-px" style={{ background: 'linear-gradient(90deg, rgba(212,160,23,0.5), transparent)' }} />
@@ -2247,7 +2259,7 @@ export default function NavigationPage() {
           <div className="px-3 pt-1.5 pb-1 border-b border-rmpg-800/70">
             <HeadingTape heading={dir} />
           </div>
-          <div className="flex items-stretch px-2 py-2">
+          <div className={`flex items-stretch px-2 py-2 ${isMobile ? 'overflow-x-auto' : ''}`}>
             {/* Bay 1 — ring speed gauge (#29/#33/#48/#51/#52/#57/#59/#65/#69) */}
             <div className="flex flex-col items-center justify-center px-1">
               <HudSpeedGauge
@@ -2347,8 +2359,10 @@ export default function NavigationPage() {
             <div className="w-px self-stretch my-1 bg-gradient-to-b from-transparent via-rmpg-700 to-transparent" />
 
             {/* Bay 5 — live readouts + session stats as instrument tiles
-                 (#35/#36/#37/#38/#39/#49/#55/#56/#60/#67/#70) */}
-            <div className="flex-1 min-w-0 self-center pl-3 pr-1">
+                 (#35/#36/#37/#38/#39/#49/#55/#56/#60/#67/#70). On mobile the bay
+                 row scrolls, so pin a min width here to keep the stat grid legible
+                 instead of letting flex-1 collapse it to nothing. */}
+            <div className="flex-1 min-w-0 self-center pl-3 pr-1" style={isMobile ? { minWidth: 300 } : undefined}>
               {/* #50 — prominent current-street readout tile + #31 dual-distance */}
               <div className="mb-1.5 flex items-stretch gap-1.5">
                 <div

@@ -206,7 +206,7 @@ export default function TripsDrawer({ unitId, open, onClose }: Props) {
           // loading the breadcrumb points for this trip
           <div
             className="absolute z-30 panel-beveled bg-surface-deep/95 backdrop-blur-md border border-rmpg-600 shadow-2xl flex items-center justify-center"
-            style={{ top: 44, bottom: 8, right: 8, width: 360, borderRadius: 2 }}
+            style={{ top: 44, bottom: 8, right: 8, width: 360, maxWidth: 'calc(100vw - 16px)', borderRadius: 2 }}
           >
             <div className="flex items-center gap-2 text-[11px] text-rmpg-500">
               <Loader2 className="w-4 h-4 animate-spin" /> Loading trip replay…
@@ -230,7 +230,7 @@ export default function TripsDrawer({ unitId, open, onClose }: Props) {
   return (
     <div
       className="absolute z-30 panel-beveled bg-surface-deep/95 backdrop-blur-md border border-rmpg-600 shadow-2xl flex flex-col"
-      style={{ top: 44, bottom: 8, right: 8, width: 360, borderRadius: 2 }}
+      style={{ top: 44, bottom: 8, right: 8, width: 360, maxWidth: 'calc(100vw - 16px)', borderRadius: 2 }}
     >
       {/* header */}
       <div className="relative flex items-center gap-2 px-3 py-2 border-b border-rmpg-700 shrink-0">

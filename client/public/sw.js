@@ -387,7 +387,81 @@
 //       was 401ing the redirect ("Authentication required"). Now the
 //       middleware skips that exact path while still gating every other
 //       route in the router.
-const CACHE_NAME = 'rmpg-flex-v830';
+// v832: mobile responsiveness pass — Reports, Document Writer, Fleet, PDF
+//       Editor, Navigation/Drive Mode, Records & Personnel tabs made
+//       touch-friendly (responsive stacking, overflow-x tables, viewport-fit
+//       modals/drawers, 44px tap targets). Client-only; bump to invalidate.
+// v833: Mobile/tablet responsive audit (complements v832). Global <=1024px CSS
+//       safety net (index.css EOF): replaced-element overflow guard (excl Mapbox
+//       canvas), 44px touch targets for the iPad band (768-1024, pointer:coarse,
+//       min-height only), readable text floor + iOS size-adjust lock, and dialog/
+//       modal max-width so overlays never exceed the viewport — desktop dense
+//       theme untouched. Page fixes: stat-card grids (Reports/Billing/QA/Training/
+//       Assets/Community/Dashcam/CommandCenter) stack 2-col on phone; Security
+//       login/threat tables get horizontal scroll; Invoices table panel both-axis-
+//       scroll (keeps sticky header); Dispatch handoff modal max-w-[95vw].
+//       Manifest: orientation -> any, dead /units shortcut -> /map. useIsMobile
+//       re-checks on orientationchange.
+// v834: functional-audit fixes — Reports date-range now drives the data (was
+//       ignored); Reports CSV export quoting + correct incidents shape (was
+//       crashing/empty); schedules panel shape tolerance; Dashboard Active
+//       Warrants card uses the live count; Document Writer clears draft on save
+//       + leak-proof print; NavPage null-coord guards; speed-limit badge clears
+//       off untagged roads; Personnel edit no longer blanks employee_id/notes.
+// v835: iPad nav-shell flip — Layout now uses useIsMobile(1024) so iPad portrait
+//       + small landscape (<1024) get the TOUCH shell (mobile header/drawer/
+//       bottom-nav) instead of the mouse-oriented desktop F-key toolbars, which
+//       only ever covered <768 before (iPads got the cramped desktop layout).
+//       The two desktop F-key toolbars switch md:flex -> lg:flex so they show
+//       only at >=1024, matching the JS boundary (no double-render at 768-1023).
+//       Large landscape iPads + desktops (>=1024) keep the F-key layout.
+// v836: PDF Editor — annotations on ROTATED pages now save at the correct
+//       position. drawAnnotation draws in the displayed frame under a /Rotate-
+//       inverse CTM (new ContentStreamBuilder.transform + rotationGeometry);
+//       both native + pdf-lib save paths fixed. Redactions/signatures on rotated
+//       evidence pages were landing in the wrong place. Geometry unit-tested +
+//       visually verified (rot 0/90/270). Un-rotated path byte-identical.
+// v837: PDF Editor polish — (1) dragging/resizing an annotation now creates ONE
+//       undo step instead of flooding history with a frame-by-frame entry per
+//       pointer-move (snapshot-on-first-move + live no-history updates); (2) the
+//       Bates/Watermark/Document-properties toolbar buttons (previously dead
+//       no-ops) now surface the document-level PropertiesPanel sections.
+// v838: PSO Notice of Communication data fixes — addressee now uses the
+//       contracting CLIENT record (company + Attn: contact + client phone/
+//       address) instead of the inconsistent call-level caller; Service Type
+//       derives from the client industry / PS disposition ("Process Service")
+//       instead of generic "Protective Services"; attempt RESULT maps the raw
+//       "PS *"/"Negative Contact" dispositions to client-readable text; notice
+//       body wording is service-type-accurate. Backed by a clients JOIN that
+//       now surfaces contact_name/contact_phone/address/industry.
+// v839: PDF system + Document Writer feature wave 1 (~27 new features).
+//   PDF Editor: rotate-all/reverse/duplicate pages, export page-range dialog,
+//   fit-page/width zoom presets, "Page N of M" footer, checkmark/cross/cloud
+//   annotations, color presets, lock/unlock, select-all/clear-page, more
+//   shortcuts, thumbnail-size toggle, download-flattened, fit-width-on-load.
+//   Document Writer: 5 new police templates, insert time/date-time, numbered
+//   section headings, Focus/Zen mode, live word/char/sentence status bar,
+//   avg-words/sentence stat.
+// v840: PDF system + Document Writer feature wave 2 (~28 more features).
+//   PDF Editor: append/merge PDF, insert image-as-page, blank/lined/grid page
+//   templates, search-and-redact by pattern (SSN/phone/email/regex), image +
+//   tiled watermark, custom header/footer, measure tool, annotation font/opacity
+//   controls, extract-text, batch-rotate selected pages, crop-all, bookmarks
+//   panel, go first/last, export page as PNG. Document Writer: 12 more police
+//   templates, snippets library, table-of-contents, doc properties, signature
+//   line, version snapshots, smart quotes, read-aloud TTS, JSON export/import,
+//   outline numbering, fillable fields, character map, word goal.
+// v841: PDF system + Document Writer feature wave 3 (~25 more features).
+//   PDF Editor: AcroForm form fields, real /Link annotations + /Outlines tree on
+//   save, split into multiple files, optimize/compress, line styles (dashed/
+//   dotted) via new engine setLineDash op, set page size, per-thumbnail rotate
+//   CCW, grayscale/invert page, annotation summary report PDF, save-a-copy,
+//   two-PDF visual compare (pixel diff). Document Writer: 15 more police
+//   templates, Analysis panel (Flesch readability, style/passive-voice checks,
+//   word/phrase frequency, version diff), formatting brush, case transforms,
+//   table-from-CSV, Utah Code citation insert, page-count estimate, letterhead
+//   + page-border styles, custom save-as-template surfaced in the chooser.
+const CACHE_NAME = 'rmpg-flex-v841';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

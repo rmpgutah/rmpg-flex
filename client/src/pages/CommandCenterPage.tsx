@@ -99,7 +99,7 @@ export default function CommandCenterPage() {
       </div>
 
       {/* Main Grid */}
-      <div className="flex-1 grid grid-cols-5 gap-1 p-1 min-h-0">
+      <div className="flex-1 grid grid-cols-2 md:grid-cols-5 gap-1 p-1 min-h-0">
         {/* LEFT: KPIs + Chart (3 cols) */}
         <div className="col-span-3 flex flex-col gap-1 min-h-0">
           {/* KPI Strip */}

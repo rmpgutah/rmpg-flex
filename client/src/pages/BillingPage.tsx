@@ -89,7 +89,7 @@ export default function BillingPage() {
           <Plus size={13} /> New Invoice
         </button>
       </PanelTitleBar>
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <StatsCard icon={FileText} label="Active Contracts" value={stats.active_contracts} />
         <StatsCard icon={Clock} label="Outstanding" value={stats.outstanding_invoices} />
         <StatsCard icon={DollarSign} label="Total Owed" value={`$${(stats.total_outstanding_amount || 0).toLocaleString()}`} />

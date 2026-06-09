@@ -1600,6 +1600,10 @@ const API_ROUTES: RouteRule[] = [
   // in-service↔off-duty, and assigns/releases the fleet vehicle in one atomic
   // action — it lives on the rewrite because that's where fleet management is.
   { kind: 'prefix', value: '/api/dispatch/duty' },
+  // Vehicle inspection (QR-token-authed). /api/inspections/by-token/:token/...
+  // resolves the shift via time_entries.qr_token and writes inspection rows +
+  // R2 photos. PUBLIC — token IS the credential. Rewrite-only.
+  { kind: 'prefix', value: '/api/inspections' },
   // /api/dispatch/shift-handoff — shift handoff notes. Rewrite-only handler
   // (shiftHandoff.ts) backed by a real table (migration 0077). Previously a
   // stub that acknowledged writes but never persisted.

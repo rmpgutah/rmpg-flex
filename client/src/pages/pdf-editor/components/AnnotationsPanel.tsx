@@ -26,6 +26,10 @@ const TYPE_LABELS: Record<Annotation['type'], string> = {
   stamp: 'Stamp', link: 'Link', sticky: 'Sticky note',
   polygon: 'Polygon',
   cloud: 'Cloud',
+  check: 'Checkmark',
+  cross: 'Cross / X',
+  formText: 'Form field',
+  formCheck: 'Form checkbox',
 };
 
 function summarize(a: Annotation): string {

@@ -89,6 +89,13 @@ export function mapDbCall(row: any): CallForService {
     hazard_notes: row.hazard_notes || undefined,
     client_id: row.client_id ? String(row.client_id) : undefined,
     client_name: row.client_name || undefined,
+    // Authoritative contracting-client fields (from the clients JOIN) — used by
+    // the PSO Notice of Communication so the addressee + service type come from
+    // the client record rather than the (inconsistent) call-level caller block.
+    client_contact_name: row.client_contact_name || undefined,
+    client_phone: row.client_phone || undefined,
+    client_address: row.client_address || undefined,
+    client_industry: row.client_industry || undefined,
     description: row.description || '',
     source: row.source || 'phone',
     assigned_units: assignedUnits,

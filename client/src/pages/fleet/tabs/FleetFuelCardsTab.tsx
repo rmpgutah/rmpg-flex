@@ -124,6 +124,7 @@ export default function FleetFuelCardsTab() {
       {loading ? (
         <div className="flex items-center justify-center gap-2 text-rmpg-400 py-4 text-xs"><Loader2 className="w-4 h-4 animate-spin" role="status" aria-label="Loading" /> Loading fuel cards...</div>
       ) : (
+        <div className="overflow-x-auto">
         <table className="w-full text-[10px]">
           <thead>
             <tr className="text-rmpg-400 border-b border-rmpg-700">
@@ -157,6 +158,7 @@ export default function FleetFuelCardsTab() {
             ))}
           </tbody>
         </table>
+        </div>
       )}
     </div>
   );

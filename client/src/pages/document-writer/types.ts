@@ -12,7 +12,9 @@ export type TemplateCategory =
 export interface DocumentTemplate {
   id: string;
   name: string;
-  category: TemplateCategory;
+  category: 'incident' | 'arrest' | 'use-of-force' | 'supplemental' | 'evidence' | 'memo' | 'letter' | 'general'
+    | 'traffic' | 'warrant' | 'consent' | 'medical' | 'crash' | 'bolo' | 'missing'
+    | 'booking' | 'k9' | 'pursuit' | 'scene' | 'custody' | 'interview' | 'civil' | 'repo' | 'welfare' | 'compliance' | 'parking' | 'property';
   description: string;
   content: string; // HTML content with {{placeholder}} tokens
   fields: TemplateField[];
@@ -81,10 +83,27 @@ export interface DocSettings {
   footer: { enabled: boolean; text: string; showDate: boolean; showAuthor: boolean };
   watermark: { text: string; opacity: number };
   pageBorder: boolean;
+  pageBorderStyle?: 'thin' | 'thick' | 'double' | 'gold'; // border appearance (print + screen)
+  letterhead?: boolean;   // draw the agency letterhead band at the top of every printed page
   lineNumbers: boolean;
   widowControl: boolean; // CSS orphans/widows on every paragraph
   showRuler: boolean;    // horizontal margin-guide ruler above the page
+  properties: DocProperties; // metadata: title/author/subject/keywords
 }
+
+/** Document metadata edited in the Properties dialog and embedded into exports
+ *  (printed/PDF <head> + an HTML comment so the document round-trips). */
+export interface DocProperties {
+  title: string;
+  author: string;
+  subject: string;
+  keywords: string;
+  category: string;
+}
+
+export const DEFAULT_DOC_PROPERTIES: DocProperties = {
+  title: '', author: '', subject: '', keywords: '', category: '',
+};
 
 export const DEFAULT_DOC_SETTINGS: DocSettings = {
   page: DEFAULT_PAGE_SETUP,
@@ -95,9 +114,12 @@ export const DEFAULT_DOC_SETTINGS: DocSettings = {
   footer: { enabled: false, text: '', showDate: true, showAuthor: true },
   watermark: { text: '', opacity: 0.12 },
   pageBorder: false,
+  pageBorderStyle: 'thin',
+  letterhead: false,
   lineNumbers: false,
   widowControl: false,
   showRuler: false,
+  properties: { title: '', author: '', subject: '', keywords: '', category: '' },
 };
 
 /** Curated font stack for the font-family selector (15 families). */
