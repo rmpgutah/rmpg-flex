@@ -21,7 +21,7 @@
 
 import { Hono } from 'hono';
 import { authMiddleware, requireRole } from '../middleware/auth';
-import { getDb, queryFirst, execute } from '../utils/db';
+import { getDb, queryFirst, query, execute } from '../utils/db';
 import { encryptSecret, decryptSecret } from '../utils/emailCrypto';
 import type { Bindings, Variables } from '../types';
 
@@ -757,6 +757,328 @@ email.post('/admin/sync-now', requireRole('admin'), async (c) => {
   } catch (err: unknown) {
     return c.json({ success: false, error: err instanceof Error ? err.message : 'Failed' }, 502);
   }
+});
+
+// ═══════════════════════════════════════════════════════════════════
+// Phase 3 — Rules engine, autolinker, cron poller
+// ═══════════════════════════════════════════════════════════════════
+
+interface RuleConditions {
+  from?: string;          // case-insensitive substring (NOT regex — safer with user input)
+  subject?: string;       // case-insensitive substring
+  hasAttachment?: 0 | 1;
+}
+interface RuleActions {
+  markRead?: 1;
+  flag?: 1;
+  moveFolder?: string;    // Graph folder id (e.g. 'archive', 'deleteditems', or a custom id)
+  categories?: string[];  // tags merged into email_messages.categories
+}
+interface RuleRow {
+  id: number;
+  owner_user_id: number;
+  name: string;
+  is_active: number;
+  conditions: string;
+  actions: string;
+}
+
+function matchRule(cond: RuleConditions, m: {
+  from_address?: string | null; subject?: string | null; has_attachments?: number;
+}): boolean {
+  if (cond.from) {
+    const f = (m.from_address || '').toLowerCase();
+    if (!f.includes(cond.from.toLowerCase())) return false;
+  }
+  if (cond.subject) {
+    const s = (m.subject || '').toLowerCase();
+    if (!s.includes(cond.subject.toLowerCase())) return false;
+  }
+  if (cond.hasAttachment !== undefined) {
+    if (!!(m.has_attachments) !== !!cond.hasAttachment) return false;
+  }
+  return true;
+}
+
+// Autolinker — scan body + subject for CFS numbers and license plates.
+// CFS pattern: CFS##-##### (live: CFS26-00056). Plates are deferred to a
+// later iteration — Utah plate format isn't a stable enough regex without
+// false positives from words like "MAY" or "JAN".
+const CFS_RE = /\bCFS\d{2}-\d{5}\b/gi;
+
+async function runAutolinker(
+  db: D1Database,
+  ownerUserId: number,
+  msg: { graph_id: string; subject?: string | null; body_preview?: string | null; body_html?: string | null },
+): Promise<number> {
+  const hay = `${msg.subject || ''}\n${msg.body_preview || ''}\n${msg.body_html || ''}`;
+  const seen = new Set<string>();
+  let linked = 0;
+  for (const match of hay.matchAll(CFS_RE)) {
+    const ref = match[0].toUpperCase();
+    if (seen.has(ref)) continue;
+    seen.add(ref);
+    const row = await queryFirst<{ id: number }>(db, 'SELECT id FROM calls_for_service WHERE call_number = ? LIMIT 1', ref);
+    if (!row) continue;
+    try {
+      await execute(
+        db,
+        "INSERT OR IGNORE INTO email_links (message_graph_id, owner_user_id, entity_type, entity_id, entity_ref, source) VALUES (?, ?, 'cfs', ?, ?, 'autolinker')",
+        msg.graph_id, ownerUserId, row.id, ref,
+      );
+      linked++;
+    } catch { /* uniqueness or insert error — best effort */ }
+  }
+  return linked;
+}
+
+// One pull cycle: list inbox newer than lastSync, upsert into email_messages,
+// evaluate active rules, run autolinker, optionally apply Graph-side actions.
+// Throttled by the caller via lastSync timestamp.
+export async function runEmailPoll(env: Bindings, ctx?: ExecutionContext): Promise<{ scanned: number; upserted: number; ruleHits: number; linked: number; skipped: boolean; error?: string }> {
+  const refresh = await getCfgDecrypted(env, K.refreshToken);
+  if (!refresh) return { scanned: 0, upserted: 0, ruleHits: 0, linked: 0, skipped: true };
+  const enabled = await getCfg(env.DB, K.enabled);
+  if (enabled !== 'true') return { scanned: 0, upserted: 0, ruleHits: 0, linked: 0, skipped: true };
+
+  const initiator = await getCfg(env.DB, K.oauthInitiator);
+  const ownerUserId = initiator ? parseInt(initiator, 10) : 0;
+  if (!ownerUserId) return { scanned: 0, upserted: 0, ruleHits: 0, linked: 0, skipped: true, error: 'no oauthInitiator' };
+
+  try {
+    const res = await graphFetch(
+      env,
+      `/me/mailFolders/inbox/messages?$select=id,conversationId,subject,from,toRecipients,ccRecipients,bodyPreview,hasAttachments,isRead,flag,importance,receivedDateTime,sentDateTime&$orderby=receivedDateTime desc&$top=50`,
+    );
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      return { scanned: 0, upserted: 0, ruleHits: 0, linked: 0, skipped: false, error: `Graph ${res.status}: ${text.slice(0, 150)}` };
+    }
+    const data = await res.json() as { value?: Array<Record<string, unknown>> };
+    const items = data.value || [];
+
+    const rules = await query<RuleRow>(
+      env.DB,
+      'SELECT id, owner_user_id, name, is_active, conditions, actions FROM email_rules WHERE is_active = 1 AND (owner_user_id IS NULL OR owner_user_id = ?)',
+      ownerUserId,
+    );
+
+    let upserted = 0;
+    let ruleHits = 0;
+    let linked = 0;
+
+    for (const raw of items) {
+      const from = raw.from as { emailAddress?: { address?: string; name?: string } } | undefined;
+      const flag = raw.flag as { flagStatus?: string } | undefined;
+      const m = {
+        graph_id: String(raw.id),
+        conversation_id: raw.conversationId as string | undefined,
+        subject: (raw.subject as string) || null,
+        from_address: from?.emailAddress?.address || null,
+        from_name: from?.emailAddress?.name || null,
+        to_addresses: JSON.stringify(raw.toRecipients || []),
+        cc_addresses: JSON.stringify(raw.ccRecipients || []),
+        body_preview: (raw.bodyPreview as string) || null,
+        has_attachments: raw.hasAttachments ? 1 : 0,
+        is_read: raw.isRead === false ? 0 : 1,
+        is_flagged: flag?.flagStatus === 'flagged' ? 1 : 0,
+        importance: (raw.importance as string) || 'normal',
+        received_at: raw.receivedDateTime as string | undefined,
+        sent_at: raw.sentDateTime as string | undefined,
+      };
+
+      // Evaluate rules, build categories + Graph patches.
+      const cats = new Set<string>();
+      let toMarkRead = false;
+      let toFlag = false;
+      let toMove: string | undefined;
+      for (const r of rules) {
+        let cond: RuleConditions; let acts: RuleActions;
+        try { cond = JSON.parse(r.conditions); acts = JSON.parse(r.actions); }
+        catch { continue; }
+        if (!matchRule(cond, m)) continue;
+        ruleHits++;
+        if (acts.markRead) toMarkRead = true;
+        if (acts.flag) toFlag = true;
+        if (acts.moveFolder) toMove = acts.moveFolder;
+        for (const t of acts.categories || []) cats.add(t);
+      }
+
+      const categories = cats.size ? JSON.stringify([...cats]) : null;
+
+      try {
+        await execute(
+          env.DB,
+          `INSERT INTO email_messages
+            (owner_user_id, graph_id, conversation_id, folder_id, subject, from_address, from_name, to_addresses, cc_addresses, body_preview, has_attachments, is_read, is_flagged, importance, categories, received_at, sent_at)
+           VALUES (?, ?, ?, 'inbox', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+           ON CONFLICT(owner_user_id, graph_id) DO UPDATE SET
+             is_read = excluded.is_read,
+             is_flagged = excluded.is_flagged,
+             categories = COALESCE(excluded.categories, email_messages.categories),
+             body_preview = excluded.body_preview`,
+          ownerUserId, m.graph_id, m.conversation_id ?? null, m.subject, m.from_address, m.from_name,
+          m.to_addresses, m.cc_addresses, m.body_preview, m.has_attachments, m.is_read, m.is_flagged,
+          m.importance, categories, m.received_at ?? null, m.sent_at ?? null,
+        );
+        upserted++;
+      } catch { /* upsert best-effort */ }
+
+      // Apply Graph-side side effects (move/markRead/flag). Fire-and-forget
+      // so a single failure can't stall the poll loop.
+      if (toMarkRead || toFlag || toMove) {
+        const patch: Record<string, unknown> = {};
+        if (toMarkRead) patch.isRead = true;
+        if (toFlag) patch.flag = { flagStatus: 'flagged' };
+        const p = Object.keys(patch).length
+          ? graphFetch(env, `/me/messages/${encodeURIComponent(m.graph_id)}`, { method: 'PATCH', body: JSON.stringify(patch) }).catch(() => null)
+          : Promise.resolve(null);
+        const mv = toMove
+          ? graphFetch(env, `/me/messages/${encodeURIComponent(m.graph_id)}/move`, { method: 'POST', body: JSON.stringify({ destinationId: toMove }) }).catch(() => null)
+          : Promise.resolve(null);
+        if (ctx) ctx.waitUntil(Promise.all([p, mv]));
+      }
+
+      // Autolinker — only on rows we just inserted (cheap dedup via INSERT OR IGNORE).
+      try { linked += await runAutolinker(env.DB, ownerUserId, m); } catch { /* best-effort */ }
+    }
+
+    await setCfg(env.DB, K.lastSync, new Date().toISOString());
+    return { scanned: items.length, upserted, ruleHits, linked, skipped: false };
+  } catch (err: unknown) {
+    return { scanned: 0, upserted: 0, ruleHits: 0, linked: 0, skipped: false, error: err instanceof Error ? err.message : 'poll failed' };
+  }
+}
+
+// ─── Rules CRUD ─────────────────────────────────────────────────
+email.get('/rules', async (c) => {
+  const userId = c.get('userId');
+  const rows = await query<RuleRow>(
+    c.env.DB,
+    'SELECT id, owner_user_id, name, is_active, conditions, actions FROM email_rules WHERE owner_user_id IS NULL OR owner_user_id = ? ORDER BY id DESC',
+    userId,
+  );
+  return c.json({
+    rules: rows.map((r) => ({
+      id: r.id,
+      name: r.name,
+      isActive: !!r.is_active,
+      conditions: safeParse(r.conditions),
+      actions: safeParse(r.actions),
+    })),
+    total: rows.length,
+  });
+});
+
+function safeParse(s: string): unknown {
+  try { return JSON.parse(s); } catch { return {}; }
+}
+
+email.post('/rules', async (c) => {
+  const userId = c.get('userId');
+  const body = await c.req.json().catch(() => ({})) as { name?: string; conditions?: RuleConditions; actions?: RuleActions; isActive?: boolean };
+  if (!body.name || !body.conditions || !body.actions) {
+    return c.json({ error: 'name, conditions and actions are required' }, 400);
+  }
+  const r = await execute(
+    c.env.DB,
+    'INSERT INTO email_rules (name, conditions, actions, is_active, owner_user_id) VALUES (?, ?, ?, ?, ?)',
+    body.name, JSON.stringify(body.conditions), JSON.stringify(body.actions),
+    body.isActive === false ? 0 : 1, userId,
+  );
+  return c.json({ id: r.meta.last_row_id, success: true });
+});
+
+email.put('/rules/:id', async (c) => {
+  const id = parseInt(c.req.param('id'), 10);
+  const userId = c.get('userId');
+  const body = await c.req.json().catch(() => ({})) as { name?: string; conditions?: RuleConditions; actions?: RuleActions; isActive?: boolean };
+  const sets: string[] = [];
+  const vals: unknown[] = [];
+  if (body.name !== undefined) { sets.push('name = ?'); vals.push(body.name); }
+  if (body.conditions !== undefined) { sets.push('conditions = ?'); vals.push(JSON.stringify(body.conditions)); }
+  if (body.actions !== undefined) { sets.push('actions = ?'); vals.push(JSON.stringify(body.actions)); }
+  if (body.isActive !== undefined) { sets.push('is_active = ?'); vals.push(body.isActive ? 1 : 0); }
+  if (!sets.length) return c.json({ success: true });
+  sets.push("updated_at = datetime('now','localtime')");
+  vals.push(id, userId);
+  await execute(c.env.DB, `UPDATE email_rules SET ${sets.join(', ')} WHERE id = ? AND (owner_user_id IS NULL OR owner_user_id = ?)`, ...vals);
+  return c.json({ success: true });
+});
+
+email.delete('/rules/:id', async (c) => {
+  const id = parseInt(c.req.param('id'), 10);
+  const userId = c.get('userId');
+  await execute(c.env.DB, 'DELETE FROM email_rules WHERE id = ? AND (owner_user_id IS NULL OR owner_user_id = ?)', id, userId);
+  return c.json({ success: true });
+});
+
+email.post('/rules/test-match', async (c) => {
+  const body = await c.req.json().catch(() => ({})) as {
+    conditions?: RuleConditions;
+    sample?: { from?: string; subject?: string; hasAttachment?: boolean };
+  };
+  if (!body.conditions || !body.sample) return c.json({ error: 'conditions and sample required' }, 400);
+  const matches = matchRule(body.conditions, {
+    from_address: body.sample.from,
+    subject: body.sample.subject,
+    has_attachments: body.sample.hasAttachment ? 1 : 0,
+  });
+  return c.json({ matches });
+});
+
+// ─── Links for a single message (autolinker output) ─────────────
+email.get('/links/:graphId', async (c) => {
+  const graphId = c.req.param('graphId');
+  const userId = c.get('userId');
+  const rows = await query(
+    c.env.DB,
+    'SELECT id, entity_type, entity_id, entity_ref, source, created_at FROM email_links WHERE message_graph_id = ? AND owner_user_id = ? ORDER BY id DESC',
+    graphId, userId,
+  );
+  return c.json({ links: rows });
+});
+
+// Reverse lookup — every email linked to a CFS / incident, for record pages.
+email.get('/links/by-entity/:type/:id', async (c) => {
+  const type = c.req.param('type');
+  const id = parseInt(c.req.param('id'), 10);
+  const userId = c.get('userId');
+  const rows = await query(
+    c.env.DB,
+    `SELECT l.id, l.message_graph_id, l.entity_ref, l.created_at,
+            m.subject, m.from_address, m.from_name, m.received_at
+       FROM email_links l
+       LEFT JOIN email_messages m ON m.graph_id = l.message_graph_id AND m.owner_user_id = l.owner_user_id
+      WHERE l.entity_type = ? AND l.entity_id = ? AND l.owner_user_id = ?
+      ORDER BY l.id DESC`,
+    type, id, userId,
+  );
+  return c.json({ links: rows });
+});
+
+// Manual link (officer ties an email to a record from the EmailPage UI).
+email.post('/link', async (c) => {
+  const userId = c.get('userId');
+  const body = await c.req.json().catch(() => ({})) as { messageGraphId?: string; entityType?: string; entityId?: number; entityRef?: string };
+  if (!body.messageGraphId || !body.entityType) return c.json({ error: 'messageGraphId and entityType required' }, 400);
+  try {
+    const r = await execute(
+      c.env.DB,
+      "INSERT INTO email_links (message_graph_id, owner_user_id, entity_type, entity_id, entity_ref, source, created_by) VALUES (?, ?, ?, ?, ?, 'manual', ?)",
+      body.messageGraphId, userId, body.entityType, body.entityId ?? null, body.entityRef ?? null, userId,
+    );
+    return c.json({ id: r.meta.last_row_id, success: true });
+  } catch (err: unknown) {
+    return c.json({ success: false, error: err instanceof Error ? err.message : 'failed' }, 500);
+  }
+});
+
+email.delete('/link/:id', async (c) => {
+  const id = parseInt(c.req.param('id'), 10);
+  const userId = c.get('userId');
+  await execute(c.env.DB, 'DELETE FROM email_links WHERE id = ? AND owner_user_id = ?', id, userId);
+  return c.json({ success: true });
 });
 
 export default email;

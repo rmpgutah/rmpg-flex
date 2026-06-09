@@ -843,24 +843,8 @@ const STUBS: StubRule[] = [
   // /admin/*, and /oauth/* are real handlers — do NOT re-stub them.
   // Phase 2 LIVE — image-proxy and attachment binary proxy now have real
   // handlers in src/routes/email.ts. Stubs removed.
-  {
-    match: /^\/api\/email\/rules(\?.*)?$/,
-    methods: ['GET'],
-    body: { data: [], rules: [], total: 0 },
-    reason: 'Phase 3 — EmailRulesPage tolerates empty',
-  },
-  {
-    match: /^\/api\/email\/rules\/\d+(\?.*)?$/,
-    methods: ['GET', 'PUT', 'DELETE'],
-    body: { data: null, rule: null },
-    reason: 'Phase 3 — EmailRulesPage tolerates null',
-  },
-  {
-    match: /^\/api\/email\/rules\/test-match(\?.*)?$/,
-    methods: ['POST'],
-    body: { matches: false, score: 0, message: 'test-match stubbed (Phase 3)' },
-    reason: 'Phase 3 — tolerates no-match',
-  },
+  // Phase 3 LIVE — rules CRUD + test-match now have real handlers in
+  // src/routes/email.ts. Stubs removed.
   // Mobile / CFS — no file in src/routes/.
   {
     match: /^\/api\/mobile\/cfs\/\d+\/(auth|challenge|narrative|pso|status)(\?.*)?$/,
