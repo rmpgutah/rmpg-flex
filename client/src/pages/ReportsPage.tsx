@@ -990,6 +990,72 @@ export default function ReportsPage() {
         </button>
       </PanelTitleBar>}
 
+      {/* Mobile control bar — desktop hides this and uses the PanelTitleBar above */}
+      {isMobile && (
+        <div className="panel-beveled bg-surface-base p-3 space-y-2">
+          <div className="flex items-center gap-2">
+            <BarChart3 className="w-4 h-4 text-brand-400 flex-shrink-0" />
+            <h1 className="text-xs font-bold tracking-wider uppercase text-rmpg-100 flex-1">Reports & Analytics</h1>
+          </div>
+          <div className="flex items-center gap-2">
+            <Calendar className="w-3.5 h-3.5 text-rmpg-300 flex-shrink-0" />
+            <select
+              className="select-dark text-xs flex-1 min-h-[44px]"
+              value={dateRange}
+              onChange={(e) => setDateRange(e.target.value)}
+              disabled={loading}
+              aria-label="Date range"
+            >
+              <option value="today">Today</option>
+              <option value="last_7_days">Last 7 Days</option>
+              <option value="last_14_days">Last 14 Days</option>
+              <option value="last_30_days">Last 30 Days</option>
+              <option value="this_month">This Month</option>
+              <option value="last_month">Last Month</option>
+              <option value="this_quarter">This Quarter</option>
+              <option value="custom">Custom Range</option>
+            </select>
+          </div>
+          {dateRange === 'custom' && (
+            <div className="flex items-center gap-2">
+              <input
+                type="date"
+                className="input-dark text-xs px-2 font-mono w-full min-h-[44px]"
+                value={customStartDate}
+                onChange={(e) => setCustomStartDate(e.target.value)}
+                style={{ colorScheme: 'dark' }}
+                aria-label="Start date"
+              />
+              <span className="text-rmpg-400 text-[10px] uppercase font-bold tracking-wide flex-shrink-0">to</span>
+              <input
+                type="date"
+                className="input-dark text-xs px-2 font-mono w-full min-h-[44px]"
+                value={customEndDate}
+                onChange={(e) => setCustomEndDate(e.target.value)}
+                style={{ colorScheme: 'dark' }}
+                aria-label="End date"
+              />
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-2">
+            <button type="button"
+              className="toolbar-btn justify-center min-h-[44px]"
+              onClick={() => navigate('/reports/custom')}
+            >
+              <Database className="w-3.5 h-3.5" /> Builder
+            </button>
+            <button type="button"
+              className="toolbar-btn justify-center min-h-[44px]"
+              onClick={handleExport}
+              disabled={loading || !incidentsData}
+              style={{ opacity: (loading || !incidentsData) ? 0.4 : 1 }}
+            >
+              <Download className="w-3.5 h-3.5" /> Export
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Error Banner */}
       {error && (
         <div className="bg-red-900/30 border border-red-700/50 text-red-300 px-3 py-2 text-xs flex items-center gap-2 rounded-sm">
@@ -1312,6 +1378,7 @@ export default function ReportsPage() {
 // ── Patrol Tracking Report Card ──────────────────────────
 function PatrolTrackingCard() {
   const { addToast } = useToast();
+  const isMobile = useIsMobile();
   const [mode, setMode] = useState<'hours' | 'range'>('hours');
   const [hours, setHours] = useState(8);
   const [startDate, setStartDate] = useState('');
@@ -1477,7 +1544,7 @@ function PatrolTrackingCard() {
         <button type="button"
           onClick={handleGenerate}
           disabled={generating}
-          className="toolbar-btn-primary text-[10px] px-4 py-1.5 flex items-center gap-1.5 ml-auto"
+          className={`toolbar-btn-primary text-[10px] px-4 py-1.5 flex items-center justify-center gap-1.5 ${isMobile ? 'w-full min-h-[44px]' : 'ml-auto'}`}
         >
           {generating ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <FileText className="w-3 h-3" />}
           {generating ? 'Generating...' : 'Export PDF'}
@@ -1486,7 +1553,7 @@ function PatrolTrackingCard() {
 
       {/* Preview stats */}
       {preview && (
-        <div className="mt-2 flex items-center gap-4 text-[9px] text-rmpg-400 font-mono border-t border-rmpg-700/50 pt-2">
+        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[9px] text-rmpg-400 font-mono border-t border-rmpg-700/50 pt-2">
           <span>Units: <strong className="text-white">{preview.totalUnits}</strong></span>
           <span>Points: <strong className="text-white">{preview.totalPoints}</strong></span>
           <span>Miles: <strong className="text-brand-400">{preview.totalMiles}</strong></span>

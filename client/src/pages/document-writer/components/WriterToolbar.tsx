@@ -90,12 +90,12 @@ export default function WriterToolbar({
   return (
     <div className="bg-[#0d0d0d] border border-[#222] rounded-[2px] p-1.5">
       {/* Title row */}
-      <div className="flex items-center gap-2 mb-1.5 pb-1.5 border-b border-[#1a1a1a]">
-        <FileText className="w-4 h-4 text-[#d4a017]" />
+      <div className="flex flex-wrap items-center gap-2 mb-1.5 pb-1.5 border-b border-[#1a1a1a]">
+        <FileText className="w-4 h-4 text-[#d4a017] flex-shrink-0" />
         <input
           type="text" value={title} onChange={(e) => onTitleChange(e.target.value)}
           placeholder="Untitled Document"
-          className="flex-1 bg-transparent border-none text-sm text-rmpg-100 font-semibold focus:outline-none placeholder-rmpg-600"
+          className="flex-1 min-w-[140px] bg-transparent border-none text-sm text-rmpg-100 font-semibold focus:outline-none placeholder-rmpg-600"
         />
         <button type="button" onClick={onToggleTheme} title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
           className="flex items-center gap-1 px-2 py-1 text-[10px] bg-[#141414] border border-[#222] text-rmpg-300 rounded-[2px] hover:bg-[#1a1a1a]">

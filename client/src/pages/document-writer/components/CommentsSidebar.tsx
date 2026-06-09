@@ -68,7 +68,7 @@ export default function CommentsSidebar({
   const resolved = comments.filter((c) => c.resolved);
 
   return (
-    <div className="w-64 shrink-0 bg-[#0d0d0d] border border-[#222] rounded-[2px] p-2 overflow-auto space-y-2">
+    <div className="w-48 sm:w-64 shrink-0 bg-[#0d0d0d] border border-[#222] rounded-[2px] p-2 overflow-auto space-y-2">
       <div className="flex items-center justify-between">
         <span className="text-[10px] font-semibold text-rmpg-300 uppercase tracking-wide">Comments ({active.length})</span>
         <button type="button" onClick={onClose} className="text-[10px] text-rmpg-500 hover:text-rmpg-200">✕</button>

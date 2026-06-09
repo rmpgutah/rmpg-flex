@@ -46,8 +46,8 @@ export default function ToolbarMenu({
       </button>
       {open && (
         <div
-          className="absolute z-50 mt-1 bg-[#0d0d0d] border border-[#2e2e2e] rounded-[2px] shadow-2xl shadow-black/60 p-2 space-y-1.5"
-          style={{ width }}
+          className="absolute left-0 z-50 mt-1 bg-[#0d0d0d] border border-[#2e2e2e] rounded-[2px] shadow-2xl shadow-black/60 p-2 space-y-1.5"
+          style={{ width, maxWidth: 'calc(100vw - 1rem)' }}
         >
           {typeof children === 'function' ? children(close) : children}
         </div>

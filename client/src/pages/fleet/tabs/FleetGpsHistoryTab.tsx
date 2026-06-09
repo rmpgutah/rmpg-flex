@@ -153,6 +153,7 @@ export default function FleetGpsHistoryTab({ vehicleId }: Props) {
             <Loader2 className="w-5 h-5 text-rmpg-400 animate-spin" />
           </div>
         ) : subTab === 'breadcrumbs' ? (
+          <div className="overflow-x-auto">
           <table className="w-full text-[10px]">
             <thead>
               <tr className="text-rmpg-400 uppercase text-left" style={{ background: '#050505' }}>
@@ -192,7 +193,9 @@ export default function FleetGpsHistoryTab({ vehicleId }: Props) {
               )}
             </tbody>
           </table>
+          </div>
         ) : (
+          <div className="overflow-x-auto">
           <table className="w-full text-[10px]">
             <thead>
               <tr className="text-rmpg-400 uppercase text-left" style={{ background: '#050505' }}>
@@ -234,6 +237,7 @@ export default function FleetGpsHistoryTab({ vehicleId }: Props) {
               )}
             </tbody>
           </table>
+          </div>
         )}
       </div>
     </div>

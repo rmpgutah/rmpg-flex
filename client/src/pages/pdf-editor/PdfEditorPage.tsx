@@ -4,6 +4,7 @@ import { FileText, AlertTriangle, CheckCircle2, Search, Settings, Keyboard, Laye
 import { open as openPdf, RmpgPdfDocument, subscribeDiagnostics, diagnosticsSummary, getDiagnostics } from '../../lib/rmpg-pdf-engine';
 import { exportAnnotationsAsCsv, exportAnnotationsAsMarkdown, exportAnnotationsAsXfdf, downloadText } from './exporters';
 import { useAuth } from '../../context/AuthContext';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import PanelTitleBar from '../../components/PanelTitleBar';
 import EditorToolbar from './components/EditorToolbar';
 import ToolPalette from './components/ToolPalette';
@@ -78,6 +79,12 @@ export default function PdfEditorPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const isMobile = useIsMobile();
+  // On mobile the canvas needs the full width, so the tool palette and page
+  // thumbnail rail collapse to off-canvas drawers toggled from the action
+  // strip. Desktop (>=768px) keeps them always-docked (these flags are ignored).
+  const [mobileToolsOpen, setMobileToolsOpen] = useState(false);
+  const [mobileThumbsOpen, setMobileThumbsOpen] = useState(false);
   // Lightweight toast queue for action feedback. Kept in state instead of a
   // separate provider — only used inside the editor and dies with the page.
   const [toasts, setToasts] = useState<Array<{ id: string; text: string; kind: 'info' | 'ok' | 'warn' }>>([]);
@@ -1079,7 +1086,19 @@ export default function PdfEditorPage() {
           prefs / JSON I/O / print. These are kept out of the main EditorToolbar
           so that toolbar stays tight; quick actions live just below it. */}
       {hasDocument && !viewOnly && (
-        <div className="flex items-center gap-1 bg-[#0d0d0d] border border-[#222] rounded-[2px] px-2 py-1 mb-2 text-[10px] text-rmpg-300">
+        <div className={`flex items-center gap-1 bg-[#0d0d0d] border border-[#222] rounded-[2px] px-2 py-1 mb-2 text-[10px] text-rmpg-300 ${isMobile ? 'flex-wrap overflow-x-auto' : ''}`}>
+          {isMobile && (
+            <>
+              <button type="button" onClick={() => setMobileToolsOpen(v => !v)} title="Toggle tools"
+                className={`px-2 py-1 min-h-[36px] rounded-sm inline-flex items-center gap-1 ${mobileToolsOpen ? 'bg-[#d4a017]/20 text-[#d4a017]' : 'hover:bg-rmpg-700/40'}`}>
+                <Settings className="w-3 h-3" /> Tools
+              </button>
+              <button type="button" onClick={() => setMobileThumbsOpen(v => !v)} title="Toggle pages"
+                className={`px-2 py-1 min-h-[36px] rounded-sm inline-flex items-center gap-1 ${mobileThumbsOpen ? 'bg-[#d4a017]/20 text-[#d4a017]' : 'hover:bg-rmpg-700/40'}`}>
+                <Layers className="w-3 h-3" /> Pages
+              </button>
+            </>
+          )}
           <button type="button" onClick={() => setFindOpen(true)} title="Find in document (Ctrl+F)"
             className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><Search className="w-3 h-3" /> Find</button>
           <button type="button" onClick={() => setPrefs({ ...prefs, showAnnotationsPanel: !prefs.showAnnotationsPanel })}
@@ -1142,25 +1161,42 @@ export default function PdfEditorPage() {
       )}
 
       {hasDocument && (
-        <div className="flex-1 flex gap-2 min-h-0">
-          {!viewOnly && (
-            <ToolPalette tool={tool} onTool={setTool} color={color} onColor={setColor} strokeWidth={strokeWidth} onStrokeWidth={setStrokeWidth} />
+        <div className="flex-1 flex gap-2 min-h-0 relative">
+          {/* Tool palette: docked on desktop; an off-canvas drawer on mobile so
+              the canvas keeps the full width. */}
+          {!viewOnly && (!isMobile || mobileToolsOpen) && (
+            <div className={isMobile ? 'absolute left-0 top-0 bottom-0 z-30 bg-[#0a0a0a] border-r border-[#222] shadow-xl' : 'contents'}>
+              <ToolPalette tool={tool} onTool={setTool} color={color} onColor={setColor} strokeWidth={strokeWidth} onStrokeWidth={setStrokeWidth} />
+              {isMobile && (
+                <button type="button" onClick={() => setMobileToolsOpen(false)} aria-label="Close tools"
+                  className="absolute top-1 right-1 w-7 h-7 flex items-center justify-center text-rmpg-400 hover:text-white">×</button>
+              )}
+            </div>
           )}
 
-          <ThumbnailSidebar
-            pdfBytes={bytes}
-            pages={state.pages}
-            pageOrder={state.pageOrder}
-            activePage={activePage}
-            onJumpTo={jumpToPage}
-            onMove={movePage}
-            onRotate={rotatePage}
-            onDelete={deletePage}
-            onInsertBlank={insertBlank}
-            onExtract={extractPage}
-            onClearCrop={(idx) => setPageCrop(idx, null)}
-            onReorder={reorderPages}
-          />
+          {/* Page thumbnail rail: docked on desktop; drawer on mobile. */}
+          {(!isMobile || mobileThumbsOpen) && (
+            <div className={isMobile ? 'absolute left-0 top-0 bottom-0 z-30 bg-[#0a0a0a] border-r border-[#222] shadow-xl overflow-y-auto' : 'contents'}>
+              <ThumbnailSidebar
+                pdfBytes={bytes}
+                pages={state.pages}
+                pageOrder={state.pageOrder}
+                activePage={activePage}
+                onJumpTo={(idx) => { jumpToPage(idx); if (isMobile) setMobileThumbsOpen(false); }}
+                onMove={movePage}
+                onRotate={rotatePage}
+                onDelete={deletePage}
+                onInsertBlank={insertBlank}
+                onExtract={extractPage}
+                onClearCrop={(idx) => setPageCrop(idx, null)}
+                onReorder={reorderPages}
+              />
+              {isMobile && (
+                <button type="button" onClick={() => setMobileThumbsOpen(false)} aria-label="Close pages"
+                  className="absolute top-1 right-1 w-7 h-7 flex items-center justify-center text-rmpg-400 hover:text-white">×</button>
+              )}
+            </div>
+          )}
 
           <div ref={scrollerRef} onScroll={onScroll} className="flex-1 overflow-auto bg-[#050505] border border-[#222222] rounded-[2px] p-4 space-y-4">
             {state.pageOrder.map((original, idx) => (
@@ -1189,7 +1225,7 @@ export default function PdfEditorPage() {
             ))}
           </div>
 
-          {!viewOnly && prefs.showAnnotationsPanel && (
+          {!viewOnly && !isMobile && prefs.showAnnotationsPanel && (
             <AnnotationsPanel
               annotations={state.annotations}
               activeIds={selectedIds.size > 0 ? selectedIds : new Set(activeId ? [activeId] : [])}
@@ -1203,7 +1239,7 @@ export default function PdfEditorPage() {
               onToggleLayer={toggleLayer}
             />
           )}
-          {!viewOnly && (
+          {!viewOnly && !isMobile && (
             <PropertiesPanel
               annotation={annotation}
               onChange={(a) => updateAnnotation(a.id, a)}

@@ -661,10 +661,11 @@ function CurrentTripPanel({
           </div>
         </div>
 
-        {/* End Trip Button — FAB style */}
+        {/* End Trip Button — FAB style. min-h-[48px] keeps it a confident
+            in-vehicle touch target on tablets/phones. */}
         <button
           onClick={onEnd}
-          className="w-full py-3 rounded-sm text-[12px] font-semibold uppercase tracking-wider flex items-center justify-center gap-2 transition-colors active:scale-[0.98]"
+          className="w-full py-3 max-md:min-h-[48px] rounded-sm text-[12px] font-semibold uppercase tracking-wider flex items-center justify-center gap-2 transition-colors active:scale-[0.98]"
           style={{ background: '#ef4444', color: '#fff' }}
         >
           <Square size={14} /> End Trip
@@ -673,14 +674,14 @@ function CurrentTripPanel({
         <div className="grid grid-cols-2 gap-2">
           <Link
             to="/navigation"
-            className="py-2 rounded-sm text-[10px] font-mono uppercase tracking-wider flex items-center justify-center gap-1.5 transition-colors"
+            className="py-2 max-md:min-h-[44px] rounded-sm text-[10px] font-mono uppercase tracking-wider flex items-center justify-center gap-1.5 transition-colors"
             style={{ background: '#141414', color: '#d4a017', border: '1px solid #222' }}
           >
             <Compass size={11} /> Drive Mode
           </Link>
           <button
             onClick={onRefresh}
-            className="py-2 rounded-sm text-[10px] font-mono uppercase tracking-wider flex items-center justify-center gap-1.5 transition-colors"
+            className="py-2 max-md:min-h-[44px] rounded-sm text-[10px] font-mono uppercase tracking-wider flex items-center justify-center gap-1.5 transition-colors"
             style={{ background: '#141414', color: '#888', border: '1px solid #222' }}
           >
             <RefreshCw size={11} /> Refresh
@@ -749,11 +750,12 @@ function CurrentTripPanel({
         </div>
       </div>
 
-      {/* Start Trip Button — big and prominent, enabled for take-home */}
+      {/* Start Trip Button — big and prominent, enabled for take-home.
+          min-h-[48px] = comfortable in-vehicle touch target. */}
       <button
         onClick={onStart}
         disabled={!gps.latitude || (!gps.unitCallSign && !hasTakeHome)}
-        className="w-full py-3 rounded-sm text-[13px] font-semibold uppercase tracking-wider flex items-center justify-center gap-2 transition-colors active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed"
+        className="w-full py-3 max-md:min-h-[48px] rounded-sm text-[13px] font-semibold uppercase tracking-wider flex items-center justify-center gap-2 transition-colors active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed"
         style={{ background: '#d4a017', color: '#000' }}
       >
         <Play size={16} /> Start Trip Now

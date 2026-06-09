@@ -19,6 +19,7 @@ import SuperscriptExt from '@tiptap/extension-superscript';
 import SubscriptExt from '@tiptap/extension-subscript';
 import { FileText, ZoomIn, ZoomOut, X } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import PanelTitleBar from '../../components/PanelTitleBar';
 import WriterToolbar from './components/WriterToolbar';
 import TemplateChooser from './components/TemplateChooser';
@@ -50,6 +51,7 @@ function initialTheme(): WriterTheme {
 export default function DocumentWriterPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const isMobile = useIsMobile();
   const { user } = useAuth();
   const author = user?.full_name || user?.username || 'Unknown author';
   const [mode, setMode] = useState<'choose' | 'edit'>('choose');
@@ -266,6 +268,16 @@ export default function DocumentWriterPage() {
     if (d && d.html && d.html.length > 40) setRecovery({ title: d.title, html: d.html });
   }, [mode]);
 
+  // On mobile, auto-fit the page width to the viewport so the (fixed-px) page
+  // doesn't require horizontal scrolling. Desktop keeps zoom at its default.
+  useEffect(() => {
+    if (mode !== 'edit' || !isMobile) return;
+    const d = PAGE_SIZES[docSettings.page.size];
+    const w = docSettings.page.orientation === 'landscape' ? d.height : d.width;
+    const avail = window.innerWidth - 32; // account for container padding/gutters
+    if (w > avail) setZoom(Math.max(0.4, Math.round((avail / w) * 20) / 20));
+  }, [mode, isMobile, docSettings.page.size, docSettings.page.orientation]);
+
   // Keyboard shortcuts (features 41–50).
   useEffect(() => {
     if (mode !== 'edit' || !editor) return;
@@ -364,7 +376,7 @@ export default function DocumentWriterPage() {
           {findMode && editor && <FindReplacePanel editor={editor} mode={findMode} onClose={() => setFindMode(null)} />}
           <div style={{ transform: `scale(${zoom})`, transformOrigin: 'top center' }}>
             <div
-              className={`writer-page my-6 shadow-2xl shadow-black/50 ${docSettings.pageBorder ? 'has-page-border' : ''}`}
+              className={`writer-page my-3 md:my-6 shadow-2xl shadow-black/50 ${docSettings.pageBorder ? 'has-page-border' : ''}`}
               style={{
                 width: reading ? Math.min(pageW, 760) : pageW, minHeight: pageH,
                 background: pageBg, color: textColor,
@@ -402,7 +414,7 @@ export default function DocumentWriterPage() {
       </div>
 
       {!reading && (
-        <div className="mt-1.5 flex items-center justify-between text-[9px] text-rmpg-600 px-1">
+        <div className="mt-1.5 flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5 text-[9px] text-rmpg-600 px-1">
           <span>{docSettings.page.size.toUpperCase()} • {docSettings.page.orientation} • {theme} mode{autoSavedAt ? ` • autosaved ${new Date(autoSavedAt).toLocaleTimeString()}` : ''}</span>
           <span className={documentId ? 'text-green-500/70' : ''}>{documentId ? `Saved • ID: ${documentId.slice(0, 8)}` : 'Unsaved'}</span>
           <span>{author}</span>

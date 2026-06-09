@@ -848,7 +848,7 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
       {duplicateWarning && duplicateWarning.length > 0 && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center" onClick={handleCancelDuplicate}>
           <div className="absolute inset-0 bg-black/60" />
-          <div className="relative w-full max-w-md mx-4 bg-surface-base border border-rmpg-600 shadow-md" onClick={e => e.stopPropagation()}>
+          <div className="relative w-full max-w-[95vw] md:max-w-md mx-4 max-h-[90vh] overflow-y-auto bg-surface-base border border-rmpg-600 shadow-md" onClick={e => e.stopPropagation()}>
             <div className="flex items-center gap-2 px-4 py-2 border-b border-rmpg-600" style={{ background: 'linear-gradient(180deg, #1a1a1a 0%, #0a0a0a 100%)' }}>
               <AlertTriangle className="w-4 h-4 text-amber-400" />
               <h2 className="text-xs font-bold text-white uppercase tracking-wider">Possible Duplicates Found</h2>

@@ -387,7 +387,11 @@
 //       was 401ing the redirect ("Authentication required"). Now the
 //       middleware skips that exact path while still gating every other
 //       route in the router.
-const CACHE_NAME = 'rmpg-flex-v831';
+// v832: mobile responsiveness pass — Reports, Document Writer, Fleet, PDF
+//       Editor, Navigation/Drive Mode, Records & Personnel tabs made
+//       touch-friendly (responsive stacking, overflow-x tables, viewport-fit
+//       modals/drawers, 44px tap targets). Client-only; bump to invalidate.
+const CACHE_NAME = 'rmpg-flex-v832';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

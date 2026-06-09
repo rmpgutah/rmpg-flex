@@ -29,7 +29,7 @@ interface Props {
 export default function EditorToolbar(p: Props) {
   const btn = 'p-1.5 rounded-sm text-rmpg-300 hover:text-white hover:bg-rmpg-700/60 transition-colors disabled:opacity-30 disabled:hover:bg-transparent';
   return (
-    <div className="flex items-center gap-1 bg-[#141414] border border-[#222222] rounded-[2px] px-2 py-1.5 flex-shrink-0">
+    <div className="flex items-center gap-1 bg-[#141414] border border-[#222222] rounded-[2px] px-2 py-1.5 flex-shrink-0 flex-wrap md:flex-nowrap">
       <IconButton onClick={p.onOpen} aria-label="Open PDF" title="Open PDF" className={btn}><Upload className="w-4 h-4" /></IconButton>
       <IconButton onClick={p.onMerge} aria-label="Merge PDFs" title="Merge multiple PDFs into one" className={btn}><Combine className="w-4 h-4" /></IconButton>
       <span className="text-xs text-rmpg-400 truncate max-w-[260px] px-2" title={p.fileName}>{p.fileName || 'No document open'}</span>

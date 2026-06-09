@@ -18,7 +18,7 @@ export default function OutlinePane({ editor, onClose }: { editor: Editor; onClo
   // Heading-hierarchy validation: a jump of more than one level is a gap.
   let prevLevel = 0;
   return (
-    <div className="w-56 shrink-0 bg-[#0d0d0d] border border-[#222] rounded-[2px] p-2 overflow-auto">
+    <div className="w-40 sm:w-56 shrink-0 bg-[#0d0d0d] border border-[#222] rounded-[2px] p-2 overflow-auto">
       <div className="flex items-center justify-between mb-1.5">
         <span className="text-[10px] font-semibold text-rmpg-300 uppercase tracking-wide">Outline</span>
         <button type="button" onClick={onClose} className="text-[10px] text-rmpg-500 hover:text-rmpg-200">✕</button>
