@@ -324,7 +324,10 @@
 //       unmounting no longer strands the unit on WiFi. (5) Manual trips now log
 //       detected_by='manual'. (Server: nav trip-end duration tz fix; breadcrumb
 //       trip_id stamped for replay.)
-const CACHE_NAME = 'rmpg-flex-v814';
+// v815: patrol MileageAuditTab backfill-missing-mileage (client change shipped
+//       in 1529d651 without a SW bump — v814 was already live, so bump to
+//       invalidate the stale cached bundle).
+const CACHE_NAME = 'rmpg-flex-v815';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
