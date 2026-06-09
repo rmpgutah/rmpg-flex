@@ -546,7 +546,18 @@
 //   viewer (live artifact: attachments #56). New openPdfDocument() opens the
 //   real PDF bytes (File-wrapped blob → window.open, download fallback when
 //   popup-blocked). Generator verified healthy (smoke tests + pdftoppm render).
-const CACHE_NAME = 'rmpg-flex-v853';
+// v854: Account Security page fixes + real TOTP 2FA. (1) "undefined
+//   remaining" backup codes — /api/auth/security/status now returns the
+//   client's SecurityStatus shape (totpEnabled/backupCodesRemaining/...);
+//   active-session count now only counts sessions used in the last 7 days.
+//   (2) TOTP enrollment is REAL: RFC 6238 in the Worker (WebCrypto, AES-GCM
+//   secret at rest, 10 hashed single-use backup codes), login gate +
+//   /login/verify-2fa + /login/verify-backup-code, password-confirmed
+//   disable + backup-code regenerate. QR rendered client-side from
+//   otpauthUrl (qrcode pkg); setup surfaces capture backup codes from the
+//   verify response (previously rendered an empty list). Sessions cron
+//   purge added.
+const CACHE_NAME = 'rmpg-flex-v854';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

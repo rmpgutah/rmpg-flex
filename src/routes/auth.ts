@@ -1,9 +1,14 @@
 import { Hono } from 'hono';
-import { sign } from 'hono/jwt';
+import { sign, verify as verifyJwt } from 'hono/jwt';
 import { compareSync, hashSync } from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 import { getDb, queryFirst, query, execute } from '../utils/db';
 import { authMiddleware } from '../middleware/auth';
+import {
+  generateTotpSecret, verifyTotpCode, buildOtpauthUrl,
+  encryptTotpSecret, decryptTotpSecret,
+  generateBackupCodes, hashBackupCode,
+} from '../utils/totp';
 
 const auth = new Hono<{ Bindings: { DB: D1Database; KV: KVNamespace; JWT_SECRET: string }; Variables: { user: { id: number; username: string; role: string; full_name: string }; userId: number } }>();
 
@@ -123,6 +128,30 @@ auth.post('/login', async (c) => {
     }
 
     const secret = c.env.JWT_SECRET;
+
+    // ── Two-factor gate ───────────────────────────────────────
+    // When the account has TOTP enabled (and isn't exempt), do NOT issue
+    // tokens or create a session yet — return the client's pending-2FA
+    // contract ({ requires2FA, tempToken }; AuthContext.login switches the
+    // form to the code step). The tempToken is a 5-minute purpose-bound JWT
+    // that /login/verify-2fa and /login/verify-backup-code exchange for real
+    // tokens after the second factor checks out.
+    const exempt = await queryFirst<{ totp_exempt: number | null }>(
+      db, 'SELECT totp_exempt FROM users WHERE id = ?', user.id).catch(() => null);
+    if (user.totp_enabled && !exempt?.totp_exempt) {
+      const now = Math.floor(Date.now() / 1000);
+      const tempToken = await sign(
+        { sub: String(user.id), userId: user.id, username: user.username, type: '2fa_pending', iat: now, exp: now + 300 },
+        secret,
+      );
+      return c.json({
+        requires2FA: true,
+        tempToken,
+        methods: { totp: true, webauthn: false },
+        requiresPasswordChange: !!user.must_change_password,
+      });
+    }
+
     const claims = tokenClaims(user);
     const refreshToken = await signRefreshToken(secret, claims);
     const sessionId = await createSession(c, db, user.id, refreshToken);
@@ -149,6 +178,119 @@ auth.post('/login', async (c) => {
   } catch (err: any) {
     console.error('Login error:', err);
     return c.json({ error: 'Failed to login', code: 'LOGIN_ERROR' }, 500);
+  }
+});
+
+// ── Login second factor ─────────────────────────────────────
+// Exchange a pending-2FA tempToken (issued by /login when totp_enabled) +
+// a valid second factor for real tokens. Response shape mirrors /login's
+// success branch exactly (AuthContext.verify2FALogin stores it identically).
+
+async function resolve2faPending(c: any, db: any): Promise<{ user: any } | { error: Response }> {
+  const body = (await c.req.json().catch(() => ({}))) as { tempToken?: string; code?: string };
+  const tempToken = body.tempToken
+    || (c.req.header('Authorization') || '').replace(/^Bearer\s+/i, '');
+  if (!tempToken) {
+    return { error: c.json({ error: 'Verification session expired. Please sign in again.', code: 'MFA_EXPIRED' }, 401) };
+  }
+  let payload: any;
+  try {
+    payload = await verifyJwt(tempToken, c.env.JWT_SECRET, 'HS256');
+  } catch {
+    return { error: c.json({ error: 'Verification session expired. Please sign in again.', code: 'MFA_EXPIRED' }, 401) };
+  }
+  if (payload?.type !== '2fa_pending' || payload?.userId == null) {
+    return { error: c.json({ error: 'Verification session expired. Please sign in again.', code: 'MFA_EXPIRED' }, 401) };
+  }
+  const user = await queryFirst<any>(
+    db,
+    `SELECT ${USER_SELECT}, totp_secret_enc, totp_backup_codes FROM users WHERE id = ? AND status = 'active'`,
+    payload.userId,
+  );
+  if (!user) {
+    return { error: c.json({ error: 'User not found or inactive', code: 'USER_INACTIVE' }, 401) };
+  }
+  return { user };
+}
+
+async function issueLoginTokens(c: any, db: any, user: any) {
+  const secret = c.env.JWT_SECRET;
+  const claims = tokenClaims(user);
+  const refreshToken = await signRefreshToken(secret, claims);
+  const sessionId = await createSession(c, db, user.id, refreshToken);
+  const accessToken = await signAccessToken(secret, { ...claims, sessionId });
+  try {
+    await execute(
+      db,
+      `UPDATE users SET login_count = COALESCE(login_count, 0) + 1, last_login_at = datetime('now') WHERE id = ?`,
+      user.id,
+    );
+  } catch { /* non-fatal */ }
+  return c.json({
+    token: accessToken,
+    refreshToken,
+    sessionId,
+    expiresIn: ACCESS_TTL_SECONDS,
+    lastLoginAt: null,
+    lastLoginIp: null,
+    user: userPayload(user),
+  });
+}
+
+// POST /auth/login/verify-2fa — { tempToken, code } → full login tokens.
+auth.post('/login/verify-2fa', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const resolved = await resolve2faPending(c, db);
+    if ('error' in resolved) return resolved.error;
+    const { user } = resolved;
+    const { code } = await c.req.json<{ code?: string }>().catch(() => ({} as any));
+
+    if (!user.totp_secret_enc) {
+      return c.json({ error: 'Two-factor configuration missing. Contact your administrator.', code: 'TOTP_DECRYPT_ERROR' }, 500);
+    }
+    const secretB32 = await decryptTotpSecret(user.totp_secret_enc, c.env.JWT_SECRET);
+    if (!secretB32) {
+      // VPS-era blob encrypted with the lost key — surfaced distinctly so an
+      // admin knows to re-enroll rather than retry codes.
+      return c.json({ error: 'Authentication configuration error. Contact your administrator.', code: 'TOTP_DECRYPT_ERROR' }, 500);
+    }
+    if (!(await verifyTotpCode(secretB32, code || ''))) {
+      return c.json({ error: 'Invalid verification code. Wait for a new code and try again.', code: 'INVALID_CODE' }, 401);
+    }
+    return await issueLoginTokens(c, db, user);
+  } catch (err) {
+    console.error('verify-2fa failed:', err);
+    return c.json({ error: 'Verification failed', code: 'VERIFY_2FA_ERROR' }, 500);
+  }
+});
+
+// POST /auth/login/verify-backup-code — { tempToken, code } → full login
+// tokens; the matched backup code is consumed (single use).
+auth.post('/login/verify-backup-code', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const resolved = await resolve2faPending(c, db);
+    if ('error' in resolved) return resolved.error;
+    const { user } = resolved;
+    const { code } = await c.req.json<{ code?: string }>().catch(() => ({} as any));
+
+    let hashes: string[] = [];
+    try {
+      const parsed = JSON.parse(user.totp_backup_codes || '[]');
+      if (Array.isArray(parsed)) hashes = parsed.map(String);
+    } catch { /* treat as none */ }
+    const candidate = await hashBackupCode(code || '');
+    const idx = hashes.indexOf(candidate);
+    if (idx === -1) {
+      return c.json({ error: 'Invalid backup code.', code: 'INVALID_BACKUP_CODE' }, 401);
+    }
+    hashes.splice(idx, 1); // single use
+    await execute(db, 'UPDATE users SET totp_backup_codes = ? WHERE id = ?', JSON.stringify(hashes), user.id);
+    return await issueLoginTokens(c, db, user);
+  } catch (err) {
+    console.error('verify-backup-code failed:', err);
+    return c.json({ error: 'Verification failed', code: 'VERIFY_BACKUP_ERROR' }, 500);
   }
 });
 
@@ -593,19 +735,53 @@ auth.get('/security/status', async (c) => {
   try {
     const db = getDb(c.env);
     const userId = c.get('userId');
-    const sess = await queryFirst<{ active: number }>(db, "SELECT COUNT(*) AS active FROM sessions WHERE user_id = ? AND COALESCE(is_active,1) = 1 AND expires_at > datetime('now')", userId);
+    // Sessions that can still authenticate: active flag + unexpired AND used
+    // within the last 7 days (a session's refresh chain dies silently when a
+    // device stops using it; counting week-old idle rows inflated the number
+    // to 40-70 "active sessions" and read as a compromise indicator).
+    const sess = await queryFirst<{ active: number }>(db,
+      `SELECT COUNT(*) AS active FROM sessions
+        WHERE user_id = ? AND COALESCE(is_active,1) = 1 AND expires_at > datetime('now')
+          AND COALESCE(last_used_at, created_at) > datetime('now','-7 days')`,
+      userId);
     const last = await queryFirst<{ created_at: string; ip_address: string | null }>(db, 'SELECT created_at, ip_address FROM sessions WHERE user_id = ? ORDER BY created_at DESC LIMIT 1', userId);
+    // 2FA + backup-code state — SecurityStatusCard reads totpEnabled /
+    // totpSetupRequired / backupCodesRemaining (it rendered
+    // "undefined remaining" while these fields were missing).
+    const me = await queryFirst<{ totp_enabled: number | null; totp_backup_codes: string | null; must_change_password: number | null }>(
+      db, 'SELECT totp_enabled, totp_backup_codes, must_change_password FROM users WHERE id = ?', userId);
+    let backupCodesRemaining = 0;
+    if (me?.totp_backup_codes) {
+      try {
+        const parsed = JSON.parse(me.totp_backup_codes);
+        backupCodesRemaining = Array.isArray(parsed) ? parsed.length : 0;
+      } catch {
+        backupCodesRemaining = me.totp_backup_codes.split(',').map((x) => x.trim()).filter(Boolean).length;
+      }
+    }
+    const totpEnabled = !!me?.totp_enabled;
     return c.json({
-      twoFactorEnabled: false,
-      passwordAge: 0,
-      trustedDevices: 0,
+      // SecurityStatus shape (client/src/types SecurityStatus)
+      totpEnabled,
+      totpSetupRequired: false,
+      backupCodesRemaining,
       activeSessions: sess?.active ?? 0,
+      trustedDevices: 0,
+      passwordExpiresAt: null,
+      passwordExpiringSoon: false,
+      passwordExpired: false,
+      passwordChangedAt: null,
+      forcePasswordChange: !!me?.must_change_password,
+      unreadSecurityNotifications: 0,
+      // legacy keys kept for any older consumers
+      twoFactorEnabled: totpEnabled,
+      passwordAge: 0,
       lastLogin: last?.created_at ?? '',
       lastLoginIp: last?.ip_address ?? '',
       accountStatus: 'Active',
     });
   } catch {
-    return c.json({ twoFactorEnabled: false, passwordAge: 0, trustedDevices: 0, activeSessions: 0, lastLogin: '', lastLoginIp: '', accountStatus: 'Active' });
+    return c.json({ totpEnabled: false, totpSetupRequired: false, backupCodesRemaining: 0, activeSessions: 0, trustedDevices: 0, passwordExpiresAt: null, passwordExpiringSoon: false, passwordExpired: false, passwordChangedAt: null, forcePasswordChange: false, unreadSecurityNotifications: 0, twoFactorEnabled: false, passwordAge: 0, lastLogin: '', lastLoginIp: '', accountStatus: 'Active' });
   }
 });
 
@@ -740,20 +916,119 @@ auth.put('/signature', authMiddleware, async (c) => {
 });
 
 // ── 2FA / TOTP stubs (not yet ported from legacy) ─────────
-auth.post('/2fa/backup-codes/regenerate', authMiddleware, async (c) => {
-  return c.json({ error: 'Two-factor authentication setup is not yet available on this platform', code: 'MFA_NOT_PORTED' }, 501);
-});
+// ── TOTP enrollment (real — replaces the MFA_NOT_PORTED 501 stubs) ──
+// Two client surfaces share these flows with slightly different field names:
+//   UserProfileModal:        POST /totp/setup → { qrCodeDataUrl?, otpauthUrl,
+//                            manualKey }; /totp/verify-setup { code } →
+//                            { backupCodes }; /totp/disable { password }.
+//   TwoFactorSetupWizard:    POST /2fa/setup → { qrCodeDataUri?, otpauthUrl,
+//                            manualKey }; /2fa/setup/verify { token } →
+//                            { backupCodes }.
+// The QR image is rendered CLIENT-side from otpauthUrl (qrcode npm pkg is
+// already in the client bundle) — generating a PNG in the Worker would mean
+// vendoring a QR encoder for no gain.
 
-auth.post('/totp/setup', authMiddleware, async (c) => {
-  return c.json({ error: 'TOTP enrollment is not yet available on this platform', code: 'MFA_NOT_PORTED' }, 501);
-});
+async function startTotpSetup(c: any) {
+  const db = getDb(c.env);
+  const userId = c.get('userId');
+  const me = await queryFirst<{ username: string; totp_enabled: number | null }>(
+    db, 'SELECT username, totp_enabled FROM users WHERE id = ?', userId);
+  if (!me) return c.json({ error: 'User not found' }, 404);
+  if (me.totp_enabled) {
+    return c.json({ error: 'Two-factor authentication is already enabled. Disable it before re-enrolling.', code: 'ALREADY_ENABLED' }, 400);
+  }
+  const secret = generateTotpSecret();
+  await execute(db, 'UPDATE users SET totp_pending_secret = ? WHERE id = ?', secret, userId);
+  const otpauthUrl = buildOtpauthUrl(secret, me.username);
+  // manualKey grouped in 4s for typing into an authenticator by hand.
+  const manualKey = secret.replace(/(.{4})/g, '$1 ').trim();
+  return c.json({ otpauthUrl, manualKey, secret, qrCodeDataUrl: null, qrCodeDataUri: null });
+}
 
-auth.post('/totp/verify-setup', authMiddleware, async (c) => {
-  return c.json({ error: 'TOTP verification is not yet available on this platform', code: 'MFA_NOT_PORTED' }, 501);
-});
+async function verifyTotpSetup(c: any) {
+  const db = getDb(c.env);
+  const userId = c.get('userId');
+  const body = (await c.req.json().catch(() => ({}))) as { code?: string; token?: string };
+  const code = body.code ?? body.token ?? '';
+  const me = await queryFirst<{ totp_pending_secret: string | null }>(
+    db, 'SELECT totp_pending_secret FROM users WHERE id = ?', userId);
+  if (!me?.totp_pending_secret) {
+    return c.json({ error: 'No pending 2FA setup — start setup first.', code: 'NO_PENDING_SETUP' }, 400);
+  }
+  if (!(await verifyTotpCode(me.totp_pending_secret, code))) {
+    return c.json({ error: 'Invalid verification code. Wait for a new code and try again.', code: 'INVALID_CODE' }, 400);
+  }
+  const enc = await encryptTotpSecret(me.totp_pending_secret, c.env.JWT_SECRET);
+  const codes = generateBackupCodes(10);
+  const hashes = await Promise.all(codes.map(hashBackupCode));
+  await execute(db,
+    `UPDATE users SET totp_enabled = 1, totp_secret_enc = ?, totp_pending_secret = NULL,
+            totp_backup_codes = ? WHERE id = ?`,
+    enc, JSON.stringify(hashes), userId);
+  try {
+    await execute(db,
+      `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, created_at)
+       VALUES (?, 'totp_enabled', 'user', ?, 'Two-factor authentication enabled', datetime('now'))`,
+      userId, userId);
+  } catch { /* non-fatal */ }
+  return c.json({ success: true, backupCodes: codes });
+}
 
+auth.post('/totp/setup', authMiddleware, startTotpSetup);
+auth.post('/2fa/setup', authMiddleware, startTotpSetup);
+auth.post('/totp/verify-setup', authMiddleware, verifyTotpSetup);
+auth.post('/2fa/setup/verify', authMiddleware, verifyTotpSetup);
+
+// POST /totp/disable { password } — password-confirmed disable.
 auth.post('/totp/disable', authMiddleware, async (c) => {
-  return c.json({ error: 'TOTP management is not yet available on this platform', code: 'MFA_NOT_PORTED' }, 501);
+  try {
+    const db = getDb(c.env);
+    const userId = c.get('userId');
+    const { password } = await c.req.json<{ password?: string }>().catch(() => ({} as any));
+    const me = await queryFirst<{ password_hash: string }>(
+      db, 'SELECT password_hash FROM users WHERE id = ?', userId);
+    if (!me || !password || !compareSync(password, me.password_hash)) {
+      return c.json({ error: 'Incorrect password', code: 'INVALID_PASSWORD' }, 401);
+    }
+    await execute(db,
+      `UPDATE users SET totp_enabled = 0, totp_secret_enc = NULL,
+              totp_pending_secret = NULL, totp_backup_codes = NULL WHERE id = ?`,
+      userId);
+    try {
+      await execute(db,
+        `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, created_at)
+         VALUES (?, 'totp_disabled', 'user', ?, 'Two-factor authentication disabled', datetime('now'))`,
+        userId, userId);
+    } catch { /* non-fatal */ }
+    return c.json({ success: true });
+  } catch (err) {
+    console.error('totp/disable failed:', err);
+    return c.json({ error: 'Failed to disable 2FA' }, 500);
+  }
+});
+
+// POST /2fa/backup-codes/regenerate { password } → fresh set of 10 codes.
+auth.post('/2fa/backup-codes/regenerate', authMiddleware, async (c) => {
+  try {
+    const db = getDb(c.env);
+    const userId = c.get('userId');
+    const { password } = await c.req.json<{ password?: string }>().catch(() => ({} as any));
+    const me = await queryFirst<{ password_hash: string; totp_enabled: number | null }>(
+      db, 'SELECT password_hash, totp_enabled FROM users WHERE id = ?', userId);
+    if (!me || !password || !compareSync(password, me.password_hash)) {
+      return c.json({ error: 'Incorrect password', code: 'INVALID_PASSWORD' }, 401);
+    }
+    if (!me.totp_enabled) {
+      return c.json({ error: 'Two-factor authentication is not enabled.', code: 'NOT_ENABLED' }, 400);
+    }
+    const codes = generateBackupCodes(10);
+    const hashes = await Promise.all(codes.map(hashBackupCode));
+    await execute(db, 'UPDATE users SET totp_backup_codes = ? WHERE id = ?', JSON.stringify(hashes), userId);
+    return c.json({ success: true, backupCodes: codes });
+  } catch (err) {
+    console.error('backup-codes/regenerate failed:', err);
+    return c.json({ error: 'Failed to regenerate backup codes' }, 500);
+  }
 });
 
 // ── WebAuthn status ────────────────────────────────────────

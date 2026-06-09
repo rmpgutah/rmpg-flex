@@ -452,7 +452,14 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
     setSecurityMsg(null);
     try {
       const data = await apiFetch<any>('/auth/totp/setup', { method: 'POST' });
-      setQrDataUrl(data.qrCodeDataUrl);
+      // The Worker returns otpauthUrl (it doesn't render images); generate
+      // the QR client-side with the bundled `qrcode` package.
+      let qr = data.qrCodeDataUrl as string | null;
+      if (!qr && data.otpauthUrl) {
+        const QRCode = (await import('qrcode')).default;
+        qr = await QRCode.toDataURL(data.otpauthUrl, { margin: 1, width: 220 });
+      }
+      setQrDataUrl(qr || '');
       setBackupCodes(data.backupCodes || []);
       setSetupStep('qr');
     } catch (err: any) {
@@ -466,10 +473,13 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
     setSecurityBusy(true);
     setSecurityMsg(null);
     try {
-      await apiFetch<any>('/auth/totp/verify-setup', {
+      const verifyRes = await apiFetch<any>('/auth/totp/verify-setup', {
         method: 'POST',
         body: JSON.stringify({ code }),
       });
+      // Backup codes are minted at VERIFY time (single reveal) — without
+      // capturing them here the "backups" step rendered an empty list.
+      if (Array.isArray(verifyRes?.backupCodes)) setBackupCodes(verifyRes.backupCodes);
       setSetupStep('backups');
       setTotpStatus(prev => prev ? { ...prev, enabled: true } : { enabled: true, required: false });
       setSecurityMsg({ type: 'success', text: 'Two-factor authentication enabled successfully.' });

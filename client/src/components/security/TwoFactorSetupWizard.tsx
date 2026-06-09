@@ -38,7 +38,13 @@ export default function TwoFactorSetupWizard({ onComplete, onCancel }: Props) {
         throw new Error(data.error || 'Setup failed');
       }
       const data = await res.json();
-      setQrDataUri(data.qrCodeDataUri);
+      let qr = data.qrCodeDataUri as string | null;
+      if (!qr && data.otpauthUrl) {
+        // Worker returns otpauthUrl; render the QR locally (qrcode pkg).
+        const QRCode = (await import('qrcode')).default;
+        qr = await QRCode.toDataURL(data.otpauthUrl, { margin: 1, width: 220 });
+      }
+      setQrDataUri(qr || '');
       setManualKey(data.manualKey);
       setStep('scan');
     } catch (err: any) {

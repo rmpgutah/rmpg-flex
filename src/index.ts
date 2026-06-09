@@ -359,5 +359,16 @@ export default {
         .then((r) => console.log(`[fleet-gps] checked ${r.checked}, ${r.with_gps} with GPS, ${r.total_gps_miles.toFixed(1)} mi available`))
         .catch((err) => console.error('Fleet GPS mileage scan failed:', err)),
     );
+    // Sessions hygiene — purge rows that can never authenticate again
+    // (expired > 1 day ago, or revoked > 7 days ago). Live D1 had 617 rows
+    // with only ~44 usable; dead rows inflated the Security page's session
+    // analytics and slow every sessions scan a little more each week.
+    ctx.waitUntil(
+      env.DB.prepare(
+        "DELETE FROM sessions WHERE expires_at <= datetime('now','-1 day') OR (is_active = 0 AND created_at <= datetime('now','-7 days'))"
+      ).run()
+        .then((r) => { const n = r?.meta?.changes ?? 0; if (n) console.log(`[sessions] purged ${n} dead session row(s)`); })
+        .catch((err) => console.error('Sessions purge failed:', err)),
+    );
   },
 };

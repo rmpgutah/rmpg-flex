@@ -665,18 +665,10 @@ const STUBS: StubRule[] = [
   // /sign-urls, /webauthn/*, /login/verify-{2fa,backup-code}. Stub the unhandled
   // ones. Most are 404s only when the user actively clicks the feature
   // (forgot-password link, 2FA setup, etc.) — the page still loads.
-  {
-    match: /^\/api\/auth\/2fa\/setup(\?.*)?$/,
-    methods: ['POST', 'GET'],
-    body: { success: true, secret: null, qr_url: null, message: '2FA setup is not yet ported to the rewrite' },
-    reason: 'no /auth/2fa/setup in rewrite; Settings tolerates null',
-  },
-  {
-    match: /^\/api\/auth\/2fa\/setup\/verify(\?.*)?$/,
-    methods: ['POST'],
-    body: { success: false, error: '2FA setup is not yet ported', backup_codes: [] },
-    reason: 'no /auth/2fa/setup/verify in rewrite',
-  },
+  // 2fa/setup + 2fa/setup/verify stubs REMOVED 2026-06-09 — real TOTP
+  // enrollment now lives in the rewrite (src/routes/auth.ts; RFC 6238 via
+  // WebCrypto, AES-GCM secret at rest, hashed single-use backup codes).
+  // Routed to env.API in API_ROUTES below.
   {
     match: /^\/api\/auth\/forgot-password(\?.*)?$/,
     methods: ['POST'],
@@ -695,18 +687,9 @@ const STUBS: StubRule[] = [
     body: { success: false, error: 'password reset is not yet ported' },
     reason: 'no /auth/forgot-password/verify in rewrite',
   },
-  {
-    match: /^\/api\/auth\/login\/verify-2fa(\?.*)?$/,
-    methods: ['POST'],
-    body: { success: false, error: '2FA login is not yet ported', token: null },
-    reason: 'no /auth/login/verify-2fa in rewrite; form fails loudly',
-  },
-  {
-    match: /^\/api\/auth\/login\/verify-backup-code(\?.*)?$/,
-    methods: ['POST'],
-    body: { success: false, error: 'backup code login is not yet ported', token: null },
-    reason: 'no /auth/login/verify-backup-code in rewrite',
-  },
+  // login/verify-2fa + login/verify-backup-code stubs REMOVED 2026-06-09 —
+  // the rewrite implements the full pending-2FA login exchange (tempToken →
+  // tokens). Routed to env.API with the /api/auth/login prefix below.
   {
     match: /^\/api\/auth\/reset-password(\?.*)?$/,
     methods: ['POST'],
@@ -1387,6 +1370,20 @@ const API_ROUTES: RouteRule[] = [
   // The /sessions prefix also carries DELETE /sessions/:id (the "Revoke" button).
   { kind: 'prefix', value: '/api/auth/profile-image' },
   { kind: 'prefix', value: '/api/auth/sessions' },
+  // ── Login + two-factor subtree → rewrite (2026-06-09) ──────
+  // /api/auth/login prefix covers /login, /login/verify-2fa,
+  // /login/verify-backup-code, and /login/change-password — ALL of which
+  // exist in the rewrite (src/routes/auth.ts). The rewrite's login is the
+  // SAME code lineage as the deployed legacy login (token claims, session
+  // row contract, bcrypt compare verified identical via
+  // workers_get_worker_code), so tokens/sessions stay interchangeable —
+  // and it adds the TOTP gate (requires2FA + tempToken) that legacy lacks.
+  { kind: 'prefix', value: '/api/auth/login' },
+  { kind: 'prefix', value: '/api/auth/totp/setup' },
+  { kind: 'prefix', value: '/api/auth/totp/verify-setup' },
+  { kind: 'prefix', value: '/api/auth/totp/disable' },
+  { kind: 'prefix', value: '/api/auth/2fa/setup' },
+  { kind: 'prefix', value: '/api/auth/2fa/backup-codes' },
   { kind: 'prefix', value: '/api/auth/totp/status' },
   { kind: 'prefix', value: '/api/auth/2fa/status' },
   // Offline-cache sync engine (browser IndexedDB) — entire namespace

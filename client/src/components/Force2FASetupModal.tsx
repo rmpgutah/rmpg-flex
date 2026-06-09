@@ -32,7 +32,13 @@ export default function Force2FASetupModal() {
     setError('');
     try {
       const data = await apiFetch<any>('/auth/totp/setup', { method: 'POST' });
-      setQrDataUrl(data.qrCodeDataUrl);
+      let qr = data.qrCodeDataUrl as string | null;
+      if (!qr && data.otpauthUrl) {
+        // Worker returns otpauthUrl; render the QR locally (qrcode pkg).
+        const QRCode = (await import('qrcode')).default;
+        qr = await QRCode.toDataURL(data.otpauthUrl, { margin: 1, width: 220 });
+      }
+      setQrDataUrl(qr || '');
       setBackupCodes(data.backupCodes || []);
       setStep('qr');
     } catch (err: any) {
@@ -46,10 +52,11 @@ export default function Force2FASetupModal() {
     setBusy(true);
     setError('');
     try {
-      await apiFetch<any>('/auth/totp/verify-setup', {
+      const verifyRes = await apiFetch<any>('/auth/totp/verify-setup', {
         method: 'POST',
         body: JSON.stringify({ code }),
       });
+      if (Array.isArray((verifyRes as any)?.backupCodes)) setBackupCodes((verifyRes as any).backupCodes);
       setStep('backups');
     } catch (err: any) {
       setError(err?.message || 'Invalid verification code');
