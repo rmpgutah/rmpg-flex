@@ -27,6 +27,8 @@ import FindReplacePanel from './components/FindReplacePanel';
 import OutlinePane from './components/OutlinePane';
 import CommentsSidebar, { type DocComment } from './components/CommentsSidebar';
 import StatusBar from './components/StatusBar';
+import CommandPalette from './components/CommandPalette';
+import FeaturesPanel from './components/FeaturesPanel';
 import SnapshotsPanel from './components/SnapshotsPanel';
 import AnalysisPanel from './components/AnalysisPanel';
 import DocPropertiesDialog from './components/DocPropertiesDialog';
@@ -99,6 +101,20 @@ export default function DocumentWriterPage() {
   const [showSnapshots, setShowSnapshots] = useState(false);
   const [showAnalysis, setShowAnalysis] = useState(false);
   const [showProperties, setShowProperties] = useState(false);
+  const [showPalette, setShowPalette] = useState(false);
+
+  // Ctrl+/ (or Cmd+/) opens the command palette. Captured globally so it works
+  // regardless of where focus sits in the editor surface.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === '/') {
+        e.preventDefault();
+        setShowPalette((v) => !v);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
   const [readingAloud, setReadingAloud] = useState(false);
   const [brush, setBrush] = useState<CapturedFormat | null>(null);
   const [showShortcuts, setShowShortcuts] = useState(false);
