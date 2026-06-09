@@ -54,6 +54,7 @@ import MobileCardList from '../../components/mobile/MobileCardList';
 import MobileDetailView from '../../components/mobile/MobileDetailView';
 import { mapDbCall, mergeCallUpdate, mapDbUnit } from './utils/dispatchMappers';
 import { applyCallPdfAutofill } from './utils/callPdfAutofill';
+import { openNoticeOfCommunication } from './utils/psoNoticeAutofill';
 import {
   formatTime, formatElapsed, formatActivityDetails, type FilterTab,
 } from './utils/dispatchFormatters';
@@ -261,6 +262,28 @@ export default function DispatchPage() {
   const { addToast } = useToast();
   const { subscribe } = useWebSocket();
   const isMobile = useIsMobile();
+
+  // Generate + open the PSO "Notice of Communication" for a failed client-request
+  // attempt that is being re-dispatched. Autofills from the failed call; the
+  // re-dispatch call number + next window ride along when known.
+  const openPsoNotice = useCallback(async (
+    failedCall: CallForService,
+    extra?: { redispatchCallNumber?: string; nextWindow?: string },
+  ) => {
+    try {
+      const officerName = user
+        ? (`${user.first_name || ''} ${user.last_name || ''}`.trim() || user.username)
+        : 'RMPG Dispatch';
+      await openNoticeOfCommunication(failedCall, {
+        officerName,
+        officerBadge: (user as any)?.badge_number || '',
+        redispatchCallNumber: extra?.redispatchCallNumber,
+        nextWindow: extra?.nextWindow,
+      });
+    } catch (err: any) {
+      addToast(`Notice of Communication failed: ${err?.message || 'Unknown error'}`, 'error');
+    }
+  }, [user, addToast]);
   const { prefs: userPrefs, reload: reloadPrefs } = useUserPreferences();
   const { districts, sections, sectionLabels, getSectionCode, getArea, zoneLabels, zonesForSection, beatsForZone, beatsForSection, districtForSectionBeat, getBeatLabel } = useDistrictOptions();
   const { resolve: resolveAddress } = useAddressAutofill();
@@ -2929,6 +2952,18 @@ export default function DispatchPage() {
                       </button>
                     )}
 
+                    {/* Notice of Communication (mobile) — PSO failed attempt → re-dispatch */}
+                    {selectedCall.incident_type === 'pso_client_request' && ['cleared', 'closed', 'cancelled', 'on_hold', 'archived'].includes(selectedCall.status) && (
+                      <button type="button"
+                        className="w-full mt-2 py-2.5 px-4 text-sm font-semibold rounded-sm"
+                        style={{ background: '#3b82f625', border: '1px solid #3b82f650', color: '#60a5fa' }}
+                        onClick={() => openPsoNotice(selectedCall)}
+                      >
+                        <FileText style={{ width: 14, height: 14, display: 'inline', marginRight: 6 }} />
+                        Notice of Communication
+                      </button>
+                    )}
+
                     {/* Undo Return Visit button (mobile) — only on pending child calls */}
                     {(selectedCall as any).parent_call_id && selectedCall.status === 'pending' && (
                       <button type="button"
@@ -3750,6 +3785,19 @@ export default function DispatchPage() {
                         title="Schedule a return visit — creates a new linked call"
                       >
                         <RotateCcw style={{ width: 10, height: 10 }} /> Return Visit
+                      </button>
+                    )}
+                    {/* Notice of Communication — PSO client requests with a failed attempt
+                        being re-dispatched. Autofills from this call (client, service,
+                        attempt) into a printable client notice. */}
+                    {!isEditing && selectedCall.incident_type === 'pso_client_request' && ['cleared', 'closed', 'cancelled', 'on_hold', 'archived'].includes(selectedCall.status) && (
+                      <button type="button"
+                        className="toolbar-btn"
+                        style={{ background: '#3b82f625', borderColor: '#3b82f650', color: '#60a5fa' }}
+                        onClick={() => openPsoNotice(selectedCall)}
+                        title="Generate an autofilled Notice of Communication for the client (unsuccessful attempt → re-dispatch)"
+                      >
+                        <FileText style={{ width: 10, height: 10 }} /> Notice of Comm
                       </button>
                     )}
                     {/* Undo Return Visit — only on pending child calls */}

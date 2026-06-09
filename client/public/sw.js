@@ -378,7 +378,13 @@
 //       Communications (Radio/Comms Log, Telephone/Message Log, BOLO Broadcast).
 //       New 'service' + 'communications' categories on the Training Docs blank-
 //       forms board; multi-column log-grid helper.
-const CACHE_NAME = 'rmpg-flex-v821';
+// v822: PSO Notice of Communication — autofilled client notice (FORM PS-114) for an
+//       unsuccessful PSO Client Request being re-dispatched after a failed attempt.
+//       New psoNoticePdfGenerator (generateNoticeOfCommunication) + dispatch mapper
+//       (buildNoticeOfCommunicationFromCall / openNoticeOfCommunication, reuses
+//       applyCallPdfAutofill). "Notice of Comm" button on cleared PSO calls in the
+//       DispatchPage detail (desktop + mobile) opens the autofilled PDF to print/send.
+const CACHE_NAME = 'rmpg-flex-v822';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
