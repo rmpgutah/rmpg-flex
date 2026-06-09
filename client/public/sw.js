@@ -352,7 +352,15 @@
 //       (Ctrl+F/H/K/1-3, zoom); 8 new templates (patrol/investigation/training/
 //       letter/minutes/proposal/invoice/contract); native spellcheck + ARIA +
 //       document language.
-const CACHE_NAME = 'rmpg-flex-v817';
+// v818: PDF editor — Stamp Studio. New StampStudio modal (toolbar Sparkles +
+//       "Create / cut-out" in the stamps gallery): canvas background removal
+//       (luminance threshold + soft-edge band, before/after on a transparency
+//       checkerboard → transparent PNG) and parameterised stamp templates
+//       (notary seal, approval/denied/pending, COPY/ORIGINAL/DRAFT/etc text,
+//       officer badge, date stamp, RMPG seal). Output saves to the shared custom
+//       stamp library or drops straight onto the page (resize/rotate/opacity via
+//       the existing image-annotation path).
+const CACHE_NAME = 'rmpg-flex-v818';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

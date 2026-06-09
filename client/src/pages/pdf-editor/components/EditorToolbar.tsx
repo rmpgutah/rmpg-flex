@@ -1,4 +1,4 @@
-import { Upload, Save, FilePlus, Combine, FileText, Settings2, Undo2, Redo2, ZoomIn, ZoomOut, Maximize2, Stamp, FolderUp, Lock, LockOpen } from 'lucide-react';
+import { Upload, Save, FilePlus, Combine, FileText, Settings2, Undo2, Redo2, ZoomIn, ZoomOut, Maximize2, Stamp, FolderUp, Lock, LockOpen, Sparkles } from 'lucide-react';
 import IconButton from '../../../components/IconButton';
 
 interface Props {
@@ -18,6 +18,7 @@ interface Props {
   onMetadata: () => void;
   onBates: () => void;
   onWatermark: () => void;
+  onStampStudio?: () => void;
   onSaveToDocuments?: () => void;
   onEncrypt?: () => void;
   encryptionActive?: boolean;
@@ -50,6 +51,9 @@ export default function EditorToolbar(p: Props) {
 
       <div className="w-px h-5 bg-[#222222] mx-1" />
 
+      {p.onStampStudio && (
+        <IconButton onClick={p.onStampStudio} aria-label="Stamp Studio" title="Stamp Studio — create stamps & remove backgrounds" className={btn}><Sparkles className="w-4 h-4" /></IconButton>
+      )}
       <IconButton onClick={p.onBates} aria-label="Bates numbering" title="Bates numbering" className={btn} disabled={!p.hasDocument}><Stamp className="w-4 h-4" /></IconButton>
       <IconButton onClick={p.onWatermark} aria-label="Watermark" title="Watermark" className={btn} disabled={!p.hasDocument}><FileText className="w-4 h-4" /></IconButton>
       <IconButton onClick={p.onMetadata} aria-label="Document properties" title="Document properties" className={btn} disabled={!p.hasDocument}><Settings2 className="w-4 h-4" /></IconButton>
