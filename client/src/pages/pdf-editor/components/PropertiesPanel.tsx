@@ -83,11 +83,25 @@ function AnnotationProps({ ann, onChange, onDelete }: { ann: Annotation; onChang
         <>
           <label className={labelCls}>Text</label>
           <textarea id="ff-propertiespanel-0" value={ann.text} onChange={e => onChange({ ...ann, text: e.target.value })} rows={3} className={inputCls} />
-          <label className={labelCls}>Font size</label>
-          <input id="ff-propertiespanel-1" type="number" min={6} max={96} value={ann.fontSize} onChange={e => onChange({ ...ann, fontSize: Math.max(6, parseInt(e.target.value, 10) || 14) })} className={inputCls} />
           <div className="flex gap-1">
-            <button type="button" onClick={() => onChange({ ...ann, bold: !ann.bold })} className={`flex-1 px-2 py-1 text-xs rounded-sm border ${ann.bold ? 'bg-[#d4a017]/20 text-[#d4a017] border-[#d4a017]' : 'border-[#222] text-rmpg-400'}`}>Bold</button>
-            <button type="button" onClick={() => onChange({ ...ann, italic: !ann.italic })} className={`flex-1 px-2 py-1 text-xs rounded-sm border ${ann.italic ? 'bg-[#d4a017]/20 text-[#d4a017] border-[#d4a017]' : 'border-[#222] text-rmpg-400'}`}>Italic</button>
+            <div className="flex-1">
+              <label className={labelCls}>Font size</label>
+              <input id="ff-propertiespanel-1" type="number" min={6} max={96} value={ann.fontSize} onChange={e => onChange({ ...ann, fontSize: Math.max(6, parseInt(e.target.value, 10) || 14) })} className={inputCls} />
+            </div>
+            <div className="flex-1">
+              <label className={labelCls}>Font</label>
+              <select id="ff-propertiespanel-font" value={ann.fontFamily ?? 'helvetica'} onChange={e => onChange({ ...ann, fontFamily: e.target.value as 'helvetica' | 'times' | 'courier' })} className={inputCls}>
+                <option value="helvetica">Helvetica</option>
+                <option value="times">Times</option>
+                <option value="courier">Courier</option>
+              </select>
+            </div>
+          </div>
+          <div className="flex gap-1">
+            <button type="button" onClick={() => onChange({ ...ann, fontSize: Math.max(6, ann.fontSize - 2) })} className="px-2 py-1 text-xs rounded-sm border border-[#222] text-rmpg-400 hover:text-white" title="Decrease font size">A−</button>
+            <button type="button" onClick={() => onChange({ ...ann, fontSize: Math.min(96, ann.fontSize + 2) })} className="px-2 py-1 text-xs rounded-sm border border-[#222] text-rmpg-400 hover:text-white" title="Increase font size">A+</button>
+            <button type="button" onClick={() => onChange({ ...ann, bold: !ann.bold })} className={`flex-1 px-2 py-1 text-xs rounded-sm border font-bold ${ann.bold ? 'bg-[#d4a017]/20 text-[#d4a017] border-[#d4a017]' : 'border-[#222] text-rmpg-400'}`}>B</button>
+            <button type="button" onClick={() => onChange({ ...ann, italic: !ann.italic })} className={`flex-1 px-2 py-1 text-xs rounded-sm border italic ${ann.italic ? 'bg-[#d4a017]/20 text-[#d4a017] border-[#d4a017]' : 'border-[#222] text-rmpg-400'}`}>I</button>
           </div>
         </>
       )}
@@ -166,12 +180,35 @@ function WatermarkEditor({ wm, onChange }: { wm: WatermarkConfig | null; onChang
       {enabled && wm && (
         <div className="space-y-1.5 pl-1 mt-1">
           <input id="ff-propertiespanel-12" value={wm.text} onChange={e => onChange({ ...wm, text: e.target.value })} placeholder="Watermark text" className={inputCls} />
+          <label className={labelCls}>Placement</label>
+          <div className="flex gap-1">
+            <button type="button" onClick={() => onChange({ ...wm, mode: 'diagonal' })} className={`flex-1 px-2 py-1 text-[10px] rounded-sm border ${(wm.mode ?? 'diagonal') === 'diagonal' ? 'bg-[#d4a017]/20 text-[#d4a017] border-[#d4a017]' : 'border-[#222] text-rmpg-400'}`}>Diagonal</button>
+            <button type="button" onClick={() => onChange({ ...wm, mode: 'tiled' })} className={`flex-1 px-2 py-1 text-[10px] rounded-sm border ${wm.mode === 'tiled' ? 'bg-[#d4a017]/20 text-[#d4a017] border-[#d4a017]' : 'border-[#222] text-rmpg-400'}`}>Tiled</button>
+          </div>
           <label className={labelCls}>Opacity</label>
           <input id="ff-propertiespanel-13" type="range" min={0.05} max={0.5} step={0.05} value={wm.opacity} onChange={e => onChange({ ...wm, opacity: parseFloat(e.target.value) })} className="w-full accent-[#d4a017]" />
           <label className={labelCls}>Size {wm.fontSize}pt</label>
           <input id="ff-propertiespanel-14" type="range" min={24} max={160} value={wm.fontSize} onChange={e => onChange({ ...wm, fontSize: parseInt(e.target.value, 10) })} className="w-full accent-[#d4a017]" />
           <label className={labelCls}>Rotation {wm.rotation}°</label>
           <input id="ff-propertiespanel-15" type="range" min={-90} max={90} value={wm.rotation} onChange={e => onChange({ ...wm, rotation: parseInt(e.target.value, 10) })} className="w-full accent-[#d4a017]" />
+          <label className={labelCls}>Image watermark (optional)</label>
+          {wm.imageData ? (
+            <div className="flex items-center gap-1">
+              <img src={wm.imageData} alt="watermark" className="h-8 w-8 object-contain bg-white/5 border border-[#222] rounded-sm" />
+              <button type="button" onClick={() => onChange({ ...wm, imageData: undefined })} className="text-[10px] text-red-300 hover:text-red-200">Remove</button>
+            </div>
+          ) : (
+            <label className="block text-[10px] text-rmpg-400 border border-[#222] rounded-sm px-2 py-1 cursor-pointer hover:text-white text-center">
+              Choose image…
+              <input type="file" accept="image/png,image/jpeg" className="hidden" onChange={e => {
+                const f = e.target.files?.[0]; e.target.value = '';
+                if (!f) return;
+                const r = new FileReader();
+                r.onload = () => onChange({ ...wm, imageData: r.result as string });
+                r.readAsDataURL(f);
+              }} />
+            </label>
+          )}
         </div>
       )}
     </>

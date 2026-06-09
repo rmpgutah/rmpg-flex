@@ -1,7 +1,7 @@
 import { PDFDocument, StandardFonts, rgb, degrees, pushGraphicsState, popGraphicsState, concatTransformationMatrix } from 'pdf-lib';
 import { normRotation, rotationGeometry } from './rotationGeometry';
-import { RmpgPdfBuilder } from '../../lib/rmpg-pdf-engine';
-import { Annotation, BatesConfig, EditorState, PageMeta, PageNumbersConfig, WatermarkConfig, DEFAULT_RENDER_SCALE } from './types';
+import { RmpgPdfBuilder, open as openEnginePdf } from '../../lib/rmpg-pdf-engine';
+import { Annotation, BatesConfig, EditorState, HeaderFooterConfig, PageMeta, PageNumbersConfig, WatermarkConfig, DEFAULT_RENDER_SCALE } from './types';
 import { normalizeUploadResponse } from './uploadResponse';
 
 export { normalizeUploadResponse } from './uploadResponse';
@@ -25,7 +25,19 @@ const FONT_MAP: Record<string, 'Helvetica' | 'HelveticaBold' | 'HelveticaOblique
   helv: 'Helvetica',
   helvBold: 'HelveticaBold',
   helvItalic: 'HelveticaOblique',
+  times: 'TimesRoman',
+  timesBold: 'TimesBold',
+  timesItalic: 'TimesItalic',
+  courier: 'Courier',
+  courierBold: 'CourierBold',
 };
+
+/** Pick the writer font key for a text annotation, honoring family + bold/italic. */
+function textFontKey(family: 'helvetica' | 'times' | 'courier' | undefined, bold?: boolean, italic?: boolean): keyof typeof FONT_MAP {
+  if (family === 'times') return bold ? 'timesBold' : italic ? 'timesItalic' : 'times';
+  if (family === 'courier') return bold ? 'courierBold' : 'courier';
+  return bold ? 'helvBold' : italic ? 'helvItalic' : 'helv';
+}
 
 function hexToRgb(hex: string | undefined, fallback: [number, number, number] = [0, 0, 0]): [number, number, number] {
   if (!hex) return fallback;
@@ -85,7 +97,7 @@ async function drawAnnotation(ctx: PageContext, ann: Annotation): Promise<void> 
 
   switch (ann.type) {
     case 'text': {
-      const fontKey: keyof typeof FONT_MAP = ann.bold ? 'helvBold' : ann.italic ? 'helvItalic' : 'helv';
+      const fontKey = textFontKey(ann.fontFamily, ann.bold, ann.italic);
       const fontName = FONT_MAP[fontKey];
       draw((csb, useFont) => {
         const resName = useFont(fontName);
@@ -151,16 +163,33 @@ async function drawAnnotation(ctx: PageContext, ann: Annotation): Promise<void> 
         csb.setStrokeRgb(color[0], color[1], color[2]);
         csb.setLineWidth(stroke);
         csb.drawLine(x1, y1, x2, y2);
+        const dx = x2 - x1, dy = y2 - y1;
+        const len = Math.hypot(dx, dy) || 1;
+        const ux = dx / len, uy = dy / len;
         if (ann.arrow) {
-          const dx = x2 - x1, dy = y2 - y1;
-          const len = Math.hypot(dx, dy) || 1;
-          const ux = dx / len, uy = dy / len;
           const head = 12, wide = 6;
           const bx = x2 - ux * head, by = y2 - uy * head;
           csb.drawLine(x2, y2, bx + (-uy) * wide, by + ux * wide);
           csb.drawLine(x2, y2, bx - (-uy) * wide, by - ux * wide);
         }
+        // Measurement dimension line: perpendicular tick marks at both ends
+        // plus the distance label drawn at the midpoint.
+        if (ann.measureLabel) {
+          const nx = -uy, ny = ux;       // perpendicular unit
+          const tick = 5;
+          csb.drawLine(x1 + nx * tick, y1 + ny * tick, x1 - nx * tick, y1 - ny * tick);
+          csb.drawLine(x2 + nx * tick, y2 + ny * tick, x2 - nx * tick, y2 - ny * tick);
+        }
       });
+      if (ann.measureLabel) {
+        draw((csb, useFont) => {
+          const resName = useFont('Helvetica');
+          csb.setFillRgb(color[0], color[1], color[2]);
+          const mx = (x1 + x2) / 2;
+          const my = (y1 + y2) / 2 + 4;
+          csb.drawText(ann.measureLabel!, mx, my, resName, 8);
+        });
+      }
       return;
     }
     case 'pen': {
@@ -341,11 +370,47 @@ function applyPageNumbers(builder: RmpgPdfBuilder, pageIdx: number, mediaBox: [n
   });
 }
 
-function applyWatermark(builder: RmpgPdfBuilder, pageIdx: number, mediaBox: [number, number, number, number], wm: WatermarkConfig): void {
+async function applyWatermark(builder: RmpgPdfBuilder, pageIdx: number, mediaBox: [number, number, number, number], wm: WatermarkConfig): Promise<void> {
   const w = mediaBox[2] - mediaBox[0];
   const h = mediaBox[3] - mediaBox[1];
-  // We don't yet emit ExtGState for true alpha — render as a muted gray text
-  // at the rotation angle. Acceptable for "DRAFT / CONFIDENTIAL" stripes.
+  const muted: [number, number, number] = [0.55, 0.55, 0.55];
+
+  // Image watermark — draw the bitmap centered, scaled to ~40% of page width.
+  if (wm.imageData) {
+    try {
+      const img = await RmpgPdfBuilder.dataUrlToJpeg(wm.imageData);
+      const name = builder.embedJpeg(pageIdx, img.bytes, img.width, img.height);
+      const targetW = w * 0.4;
+      const targetH = targetW * (img.height / img.width);
+      builder.drawOnPage(pageIdx, (csb) => {
+        csb.saveState();
+        csb.drawImage(name, (w - targetW) / 2, (h - targetH) / 2, targetW, targetH);
+        csb.restoreState();
+      });
+    } catch { /* image embed failed — fall through to text if any */ }
+    if (!wm.text.trim()) return;
+  }
+
+  // Tiled mode: repeat the text in an upright grid across the whole page.
+  if (wm.mode === 'tiled' && wm.text.trim()) {
+    const stepX = Math.max(120, wm.text.length * wm.fontSize * 0.6 + 60);
+    const stepY = Math.max(80, wm.fontSize * 2.2);
+    builder.drawOnPage(pageIdx, (csb, useFont) => {
+      const resName = useFont('HelveticaBold');
+      csb.saveState();
+      csb.setFillRgb(muted[0], muted[1], muted[2]);
+      for (let ty = stepY; ty < h; ty += stepY) {
+        for (let tx = 10; tx < w; tx += stepX) {
+          csb.drawText(wm.text, tx, ty, resName, wm.fontSize);
+        }
+      }
+      csb.restoreState();
+    });
+    return;
+  }
+
+  if (!wm.text.trim()) return;
+  // Diagonal (default): one centered, rotation-angled stamp.
   const cx = w / 2;
   const cy = h / 2;
   const rad = (wm.rotation * Math.PI) / 180;
@@ -354,16 +419,43 @@ function applyWatermark(builder: RmpgPdfBuilder, pageIdx: number, mediaBox: [num
   builder.drawOnPage(pageIdx, (csb, useFont) => {
     const resName = useFont('HelveticaBold');
     csb.saveState();
-    // Apply a transform: cm a b c d e f
-    // We can build it via raw operator append since CSB doesn't expose `cm` directly.
-    // Use an ad-hoc moveTo + drawText positioned at (cx, cy) via translate.
-    // (CSB doesn't expose `cm` — emulate by computing where text origin lands.)
     const approxW = wm.text.length * wm.fontSize * 0.55;
     const tx = cx - cos * (approxW / 2) + sin * (wm.fontSize / 2);
     const ty = cy - sin * (approxW / 2) - cos * (wm.fontSize / 2);
-    const muted: [number, number, number] = [0.55, 0.55, 0.55];
     csb.setFillRgb(muted[0], muted[1], muted[2]);
     csb.drawText(wm.text, tx, ty, resName, wm.fontSize);
+    csb.restoreState();
+  });
+}
+
+/** Stamp custom header/footer text bands on a page (3 slots each band). */
+function applyHeaderFooter(builder: RmpgPdfBuilder, pageIdx: number, mediaBox: [number, number, number, number], cfg: HeaderFooterConfig, n: number, total: number): void {
+  const w = mediaBox[2] - mediaBox[0];
+  const h = mediaBox[3] - mediaBox[1];
+  const margin = 18;
+  const fs = cfg.fontSize;
+  const sub = (s: string | undefined) =>
+    (s ?? '').replace(/\{n\}/g, String(n)).replace(/\{total\}/g, String(total));
+  const slots: Array<{ text: string; align: 'l' | 'c' | 'r'; y: number }> = [
+    { text: sub(cfg.headerLeft), align: 'l', y: h - margin - fs },
+    { text: sub(cfg.headerCenter), align: 'c', y: h - margin - fs },
+    { text: sub(cfg.headerRight), align: 'r', y: h - margin - fs },
+    { text: sub(cfg.footerLeft), align: 'l', y: margin },
+    { text: sub(cfg.footerCenter), align: 'c', y: margin },
+    { text: sub(cfg.footerRight), align: 'r', y: margin },
+  ];
+  builder.drawOnPage(pageIdx, (csb, useFont) => {
+    const resName = useFont('Helvetica');
+    csb.saveState();
+    csb.setFillRgb(0.3, 0.3, 0.3);
+    for (const s of slots) {
+      if (!s.text) continue;
+      const approxW = s.text.length * fs * 0.5;
+      let x = margin;
+      if (s.align === 'c') x = (w - approxW) / 2;
+      else if (s.align === 'r') x = w - margin - approxW;
+      csb.drawText(s.text, x, s.y, resName, fs);
+    }
     csb.restoreState();
   });
 }
@@ -416,14 +508,17 @@ export async function buildPdfFromEditorState(state: EditorState): Promise<Uint8
     const pageAnns = state.annotations.filter(a => a.page === visualIdx + 1);
     for (const ann of pageAnns) await drawAnnotation(ctx, ann);
 
-    if (state.watermark && state.watermark.text.trim()) {
-      applyWatermark(builder, visualIdx, pageMediaBox, state.watermark);
+    if (state.watermark && (state.watermark.text.trim() || state.watermark.imageData)) {
+      await applyWatermark(builder, visualIdx, pageMediaBox, state.watermark);
     }
     if (state.bates) {
       applyBates(builder, visualIdx, pageMediaBox, state.bates, state.bates.startNumber + visualIdx);
     }
     if (state.pageNumbers) {
       applyPageNumbers(builder, visualIdx, pageMediaBox, state.pageNumbers, visualIdx + 1, state.pages.length);
+    }
+    if (state.headerFooter) {
+      applyHeaderFooter(builder, visualIdx, pageMediaBox, state.headerFooter, visualIdx + 1, state.pages.length);
     }
   }
 
@@ -572,6 +667,8 @@ async function buildPdfFromEditorStateViaPdfLib(state: EditorState): Promise<Uin
   const out = await PDFDocument.create();
   const helv = await out.embedFont(StandardFonts.Helvetica);
   const helvBold = await out.embedFont(StandardFonts.HelveticaBold);
+  const times = await out.embedFont(StandardFonts.TimesRoman);
+  const courier = await out.embedFont(StandardFonts.Courier);
   const sourceIndices = state.pageOrder.filter(p => p > 0).map(i => i - 1);
   if (sourceIndices.length === 0) throw new Error('No source pages to copy');
   const copied = await out.copyPages(src, sourceIndices);
@@ -607,7 +704,8 @@ async function buildPdfFromEditorStateViaPdfLib(state: EditorState): Promise<Uin
       const py = pageH - (a.y / DEFAULT_RENDER_SCALE);
       const c = hexToRgb(a.color);
       if (a.type === 'text') {
-        page.drawText(a.text, { x: px, y: py - a.fontSize, size: a.fontSize, font: a.bold ? helvBold : helv, color: rgb(c[0], c[1], c[2]) });
+        const fbFont = a.fontFamily === 'times' ? times : a.fontFamily === 'courier' ? courier : (a.bold ? helvBold : helv);
+        page.drawText(a.text, { x: px, y: py - a.fontSize, size: a.fontSize, font: fbFont, color: rgb(c[0], c[1], c[2]) });
       } else if (a.type === 'highlight') {
         page.drawRectangle({ x: px, y: py - ph, width: pw, height: ph, color: rgb(0.6, 0.6, 0.6), opacity: 0.3 });
       } else if (a.type === 'underline' || a.type === 'strikethrough') {
@@ -654,6 +752,31 @@ async function buildPdfFromEditorStateViaPdfLib(state: EditorState): Promise<Uin
       else if (cfg.position === 'br') nx = pw2 - 18 - approxW;
       page.drawText(text, { x: nx, y: 18, size: cfg.fontSize, font: helv, color: rgb(0.3, 0.3, 0.3) });
     }
+    if (state.headerFooter) {
+      const hf = state.headerFooter;
+      const pw2 = page.getWidth();
+      const ph2 = page.getHeight();
+      const margin = 18;
+      const fs = hf.fontSize;
+      const sub = (s: string | undefined) => (s ?? '')
+        .replace(/\{n\}/g, String(visualIdx + 1)).replace(/\{total\}/g, String(copied.length));
+      const slots: Array<{ text: string; align: 'l' | 'c' | 'r'; y: number }> = [
+        { text: sub(hf.headerLeft), align: 'l', y: ph2 - margin - fs },
+        { text: sub(hf.headerCenter), align: 'c', y: ph2 - margin - fs },
+        { text: sub(hf.headerRight), align: 'r', y: ph2 - margin - fs },
+        { text: sub(hf.footerLeft), align: 'l', y: margin },
+        { text: sub(hf.footerCenter), align: 'c', y: margin },
+        { text: sub(hf.footerRight), align: 'r', y: margin },
+      ];
+      for (const s of slots) {
+        if (!s.text) continue;
+        const approxW = s.text.length * fs * 0.5;
+        let x = margin;
+        if (s.align === 'c') x = (pw2 - approxW) / 2;
+        else if (s.align === 'r') x = pw2 - margin - approxW;
+        page.drawText(s.text, { x, y: s.y, size: fs, font: helv, color: rgb(0.3, 0.3, 0.3) });
+      }
+    }
   }
   if (state.meta.title) out.setTitle(state.meta.title);
   if (state.meta.author) out.setAuthor(state.meta.author);
@@ -680,4 +803,135 @@ export async function mergePdfFiles(files: File[]): Promise<Uint8Array> {
   merged.setProducer('RMPG PDF Engine v1.0 — merge transitional via pdf-lib');
   merged.setCreationDate(new Date());
   return merged.save();
+}
+
+/**
+ * Append the pages of `extra` (raw PDF bytes) to `base`, returning a fresh
+ * combined byte buffer. The editor re-opens the result so all downstream
+ * page/annotation state is rebuilt cleanly — annotations on the base document
+ * are flattened into the bytes first by the caller when needed.
+ */
+export async function appendPdfBytes(base: Uint8Array, extra: Uint8Array): Promise<Uint8Array> {
+  const out = await PDFDocument.load(base);
+  const src = await PDFDocument.load(extra);
+  const copied = await out.copyPages(src, src.getPageIndices());
+  for (const p of copied) out.addPage(p);
+  out.setProducer('RMPG PDF Engine v1.0 — append via pdf-lib');
+  out.setModificationDate(new Date());
+  return out.save();
+}
+
+/**
+ * Build a single-page PDF whose page IS the given image, sized to US Letter
+ * with the image scaled to fit (preserving aspect ratio, centered). Returns
+ * bytes; the caller appends or opens them.
+ */
+export async function imageToPdfPageBytes(dataUrl: string): Promise<Uint8Array> {
+  const out = await PDFDocument.create();
+  const comma = dataUrl.indexOf(',');
+  const bytes = Uint8Array.from(atob(dataUrl.slice(comma + 1)), c => c.charCodeAt(0));
+  const isPng = /^data:image\/png/i.test(dataUrl);
+  const img = isPng ? await out.embedPng(bytes) : await out.embedJpg(bytes);
+  // US Letter portrait.
+  const PW = 612, PH = 792, margin = 36;
+  const page = out.addPage([PW, PH]);
+  const availW = PW - margin * 2, availH = PH - margin * 2;
+  const scale = Math.min(availW / img.width, availH / img.height, 1);
+  const w = img.width * scale, h = img.height * scale;
+  page.drawImage(img, { x: (PW - w) / 2, y: (PH - h) / 2, width: w, height: h });
+  out.setProducer('RMPG PDF Engine v1.0 — image page');
+  return out.save();
+}
+
+/**
+ * Build a single blank page (US Letter) with an optional lined or grid
+ * background drawn into the content stream. Returns bytes.
+ */
+export async function blankTemplatePageBytes(template: 'blank' | 'lined' | 'grid'): Promise<Uint8Array> {
+  const out = await PDFDocument.create();
+  const PW = 612, PH = 792;
+  const page = out.addPage([PW, PH]);
+  const line = rgb(0.78, 0.78, 0.82);
+  if (template === 'lined') {
+    const margin = 48;
+    for (let y = margin; y < PH - margin; y += 28) {
+      page.drawLine({ start: { x: margin, y }, end: { x: PW - margin, y }, thickness: 0.5, color: line });
+    }
+  } else if (template === 'grid') {
+    const step = 24;
+    for (let x = step; x < PW; x += step) page.drawLine({ start: { x, y: 0 }, end: { x, y: PH }, thickness: 0.4, color: line });
+    for (let y = step; y < PH; y += step) page.drawLine({ start: { x: 0, y }, end: { x: PW, y }, thickness: 0.4, color: line });
+  }
+  out.setProducer('RMPG PDF Engine v1.0 — blank template');
+  return out.save();
+}
+
+/**
+ * Extract all selectable text from a PDF, page by page, via the engine's
+ * pdfjs text layer. Returns a plain-text string with page separators.
+ */
+export async function extractAllText(bytes: Uint8Array): Promise<string> {
+  const pdf = await openEnginePdf(bytes, { backend: 'pdfjs' });
+  try {
+    const out: string[] = [];
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const items = await page.getTextContent();
+      out.push(`──── Page ${i} ────`);
+      out.push(items.map(it => it.str).join(' ').replace(/\s+\n/g, '\n').trim());
+      out.push('');
+    }
+    return out.join('\n');
+  } finally {
+    await pdf.destroy().catch(() => { /* already gone */ });
+  }
+}
+
+/**
+ * Find regex matches in the document's text and return redaction rectangles
+ * (in editor screen-pixel space at DEFAULT_RENDER_SCALE) for each match. Used
+ * by the search-and-redact dialog. Page is 1-indexed visual order.
+ */
+export interface RedactBox { page: number; x: number; y: number; w: number; h: number; text: string; }
+export async function findRedactionBoxes(
+  bytes: Uint8Array,
+  pageOrder: number[],
+  regex: RegExp,
+): Promise<RedactBox[]> {
+  const pdf = await openEnginePdf(bytes, { backend: 'pdfjs' });
+  const scale = DEFAULT_RENDER_SCALE;
+  const boxes: RedactBox[] = [];
+  try {
+    for (let visualIdx = 0; visualIdx < pageOrder.length; visualIdx++) {
+      const original = pageOrder[visualIdx];
+      if (!original || original <= 0) continue; // inserted blank
+      const page = await pdf.getPage(original);
+      const vp = page.getViewport({ scale: 1 });
+      const pageH = vp.height;
+      const items = await page.getTextContent();
+      for (const it of items) {
+        if (!it.str) continue;
+        regex.lastIndex = 0;
+        if (!regex.test(it.str)) continue;
+        // transform = [a,b,c,d,e,f]; e,f is the text origin (baseline, bottom-up).
+        const [, , , , e, f] = it.transform;
+        const wPts = it.width || it.str.length * (it.height || 8) * 0.5;
+        const hPts = it.height || 10;
+        // Convert PDF user-space (bottom-up) → screen px (top-down) at scale.
+        const sx = e * scale;
+        const sy = (pageH - f - hPts) * scale;
+        boxes.push({
+          page: visualIdx + 1,
+          x: sx,
+          y: sy,
+          w: wPts * scale,
+          h: hPts * scale * 1.25,
+          text: it.str,
+        });
+      }
+    }
+    return boxes;
+  } finally {
+    await pdf.destroy().catch(() => { /* already gone */ });
+  }
 }

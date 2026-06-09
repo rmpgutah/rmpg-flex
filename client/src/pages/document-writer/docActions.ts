@@ -193,3 +193,156 @@ export function saveTemplate(name: string, html: string): void {
 export function deleteTemplate(name: string): void {
   localStorage.setItem(TPL_KEY, JSON.stringify(listSavedTemplates().filter((t) => t.name !== name)));
 }
+
+// ── Wave-2 additions ──────────────────────────────────────────────────────
+
+/** Build a Table of Contents from the document's headings and insert it at the
+ *  current cursor position (companion to insertTableOfContents which forces top). */
+export function insertTableOfContentsAtCursor(editor: Editor): void {
+  const headings = collectHeadings(editor).filter((h) => h.text.trim());
+  if (headings.length === 0) {
+    window.alert('Add some headings (H1–H4) first — the table of contents is built from them.');
+    return;
+  }
+  const rows = headings
+    .map((h) => `<p style="margin:2px 0; padding-left:${(h.level - 1) * 18}px">${esc(h.text)}</p>`)
+    .join('');
+  const toc = `<h2>Table of Contents</h2>${rows}<hr>`;
+  editor.chain().focus().insertContent(toc).run();
+}
+
+/** Insert a formatted signature block (line + name + date) at the cursor.
+ *  `role` labels the signer (e.g. "Officer", "Witness"). */
+export function insertSignatureLine(editor: Editor, role: string, name?: string): void {
+  const block =
+    `<table data-signature-block="1" style="width:100%;border:none;margin-top:40px;">` +
+    `<tr>` +
+    `<td style="width:60%;border-bottom:1px solid #333;padding-top:32px;">${name ? esc(name) : '&nbsp;'}</td>` +
+    `<td style="width:10%;">&nbsp;</td>` +
+    `<td style="width:30%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td>` +
+    `</tr>` +
+    `<tr>` +
+    `<td style="font-size:10px;color:#666;">${esc(role)} Signature</td>` +
+    `<td>&nbsp;</td>` +
+    `<td style="font-size:10px;color:#666;">Date</td>` +
+    `</tr>` +
+    `</table>`;
+  editor.chain().focus().insertContent(block).run();
+}
+
+/** Insert a styled fillable blank ("[________]") at the cursor for forms. */
+export function insertFillableField(editor: Editor, width = 120): void {
+  editor.chain().focus().insertContent(
+    `<span data-fillable="1" style="display:inline-block;min-width:${width}px;` +
+    `border-bottom:1px solid #555;">&nbsp;</span>`,
+  ).run();
+}
+
+/** Special characters grouped for the character-map picker. */
+export const SPECIAL_CHARS: { group: string; chars: string[] }[] = [
+  { group: 'Legal', chars: ['§', '¶', '©', '®', '™', '†', '‡', '№', '✓', '✗', '☐', '☑', '★'] },
+  { group: 'Punctuation', chars: ['•', '–', '—', '…', '‹', '›', '«', '»', '“', '”', '‘', '’', '·'] },
+  { group: 'Math / Units', chars: ['°', '±', '×', '÷', '½', '¼', '¾', '⅓', '≈', '≤', '≥', '≠', '′', '″'] },
+  { group: 'Arrows', chars: ['→', '←', '↑', '↓', '↔', '⇒', '⇐', '⤷', '➤', '⌖'] },
+  { group: 'Currency', chars: ['$', '¢', '£', '€', '¥'] },
+];
+
+/** Insert a single special character at the cursor. */
+export function insertSpecialChar(editor: Editor, char: string): void {
+  editor.chain().focus().insertContent(char).run();
+}
+
+/** Apply smart-quote / em-dash typography to the ENTIRE document, in place.
+ *  Walks each text node so inline formatting and structure are preserved (no
+ *  innerHTML round-trip). Returns the number of substitutions made. */
+export function applySmartQuotes(editor: Editor): number {
+  const { state, view } = editor;
+  // Collect all text-node edits first, then apply them in REVERSE document order
+  // so each replacement can't shift the positions of the ones still to come.
+  const edits: { from: number; to: number; text: string }[] = [];
+  state.doc.descendants((node, pos) => {
+    if (!node.isText || !node.text) return;
+    const original = node.text;
+    let s = original;
+    // Double quotes: opening after whitespace/start/open-bracket, else closing.
+    s = s.replace(/(^|[\s([{<])"/g, '$1“').replace(/"/g, '”');
+    // Single quotes / apostrophes.
+    s = s.replace(/(^|[\s([{<])'/g, '$1‘').replace(/'/g, '’');
+    // Dashes + ellipsis.
+    s = s.replace(/--/g, '—').replace(/\.\.\./g, '…');
+    if (s !== original) edits.push({ from: pos, to: pos + original.length, text: s });
+  });
+  if (edits.length === 0) return 0;
+  let tr = state.tr;
+  for (const e of edits.reverse()) tr = tr.insertText(e.text, e.from, e.to);
+  view.dispatch(tr);
+  return edits.length;
+}
+
+/** Apply sequential outline numbering (1, 1.1, 1.1.1 …) to every heading in the
+ *  document, in place, based on heading level. Strips any prior auto-number
+ *  prefix first so it's idempotent. Returns headings numbered. */
+export function applyOutlineNumbering(editor: Editor): number {
+  const { state, view } = editor;
+  const counters = [0, 0, 0, 0]; // h1..h4
+  // Compute numbering FORWARD (counters depend on order), collect edits, apply
+  // them in REVERSE so position math stays correct across length changes.
+  const targets: { pos: number; level: number; text: string }[] = [];
+  state.doc.descendants((node, pos) => {
+    if (node.type.name === 'heading') {
+      targets.push({ pos, level: node.attrs.level as number, text: node.textContent });
+    }
+  });
+  const edits: { from: number; to: number; text: string }[] = [];
+  for (const t of targets) {
+    const lvl = Math.min(Math.max(t.level, 1), 4);
+    counters[lvl - 1] += 1;
+    for (let i = lvl; i < 4; i++) counters[i] = 0;
+    const prefix = counters.slice(0, lvl).join('.');
+    // Strip an existing "1.2.3 " or "1. " auto-prefix so re-runs stay idempotent.
+    const stripped = t.text.replace(/^\s*\d+(?:\.\d+)*\.?\s+/, '');
+    const start = t.pos + 1; // heading text starts one position after the node
+    if (t.text.length > 0) edits.push({ from: start, to: start + t.text.length, text: `${prefix} ${stripped}` });
+    else edits.push({ from: start, to: start, text: `${prefix} ` });
+  }
+  if (edits.length === 0) return 0;
+  let tr = state.tr;
+  for (const e of edits.reverse()) tr = tr.insertText(e.text, e.from, e.to);
+  view.dispatch(tr);
+  return edits.length;
+}
+
+/** Remove auto outline numbering prefixes from all headings. */
+export function clearOutlineNumbering(editor: Editor): number {
+  const { state, view } = editor;
+  const edits: { from: number; to: number; text: string }[] = [];
+  state.doc.descendants((node, pos) => {
+    if (node.type.name !== 'heading') return;
+    const text = node.textContent;
+    const stripped = text.replace(/^\s*\d+(?:\.\d+)*\.?\s+/, '');
+    if (stripped !== text) {
+      const start = pos + 1;
+      edits.push({ from: start, to: start + text.length, text: stripped });
+    }
+  });
+  if (edits.length === 0) return 0;
+  let tr = state.tr;
+  for (const e of edits.reverse()) tr = tr.insertText(e.text, e.from, e.to);
+  view.dispatch(tr);
+  return edits.length;
+}
+
+// ── Word-goal persistence ──
+const GOAL_KEY = 'rmpg_writer_word_goal';
+
+export function getWordGoal(): number {
+  const v = Number(localStorage.getItem(GOAL_KEY) || '0');
+  return Number.isFinite(v) && v > 0 ? v : 0;
+}
+
+export function setWordGoal(goal: number): void {
+  try {
+    if (goal > 0) localStorage.setItem(GOAL_KEY, String(Math.round(goal)));
+    else localStorage.removeItem(GOAL_KEY);
+  } catch { /* noop */ }
+}

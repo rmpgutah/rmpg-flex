@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { FileText, AlertTriangle, CheckCircle2, Search, Settings, Keyboard, Layers, Printer, Download, Upload as UploadIcon, Map as MapIcon, FileOutput } from 'lucide-react';
+import { FileText, AlertTriangle, CheckCircle2, Search, Settings, Keyboard, Layers, Printer, Download, Upload as UploadIcon, Map as MapIcon, FileOutput, EyeOff, Heading, Bookmark as BookmarkIcon, FilePlus2, FileText as FileTextIcon, ChevronsLeft, ChevronsRight, Image as ImageDownIcon, Crop as CropIcon, RotateCw as RotateCwIcon } from 'lucide-react';
 import { open as openPdf, RmpgPdfDocument, subscribeDiagnostics, diagnosticsSummary, getDiagnostics } from '../../lib/rmpg-pdf-engine';
 import { exportAnnotationsAsCsv, exportAnnotationsAsMarkdown, exportAnnotationsAsXfdf, downloadText } from './exporters';
 import { useAuth } from '../../context/AuthContext';
@@ -23,8 +23,12 @@ import StampStudio from './components/StampStudio';
 import MiniMap from './components/MiniMap';
 import AnnotationContextMenu from './components/AnnotationContextMenu';
 import ExportRangeDialog from './components/ExportRangeDialog';
-import { Annotation, BatesConfig, DocumentMeta, EditorState, EditorPreferences, DEFAULT_PREFERENCES, PageCrop, PageMeta, PageNumbersConfig, RecentFile, StampLabel, Tool, WatermarkConfig, DEFAULT_RENDER_SCALE } from './types';
-import { buildPdfFromEditorState, extractPagesAsBytes, mergePdfFiles, normalizeUploadResponse, saveToDocuments } from './save';
+import HeaderFooterDialog from './components/HeaderFooterDialog';
+import RedactPatternDialog from './components/RedactPatternDialog';
+import InsertPageDialog from './components/InsertPageDialog';
+import BookmarksPanel from './components/BookmarksPanel';
+import { Annotation, BatesConfig, Bookmark, DocumentMeta, EditorState, EditorPreferences, HeaderFooterConfig, DEFAULT_PREFERENCES, PageCrop, PageMeta, PageNumbersConfig, RecentFile, StampLabel, Tool, WatermarkConfig, DEFAULT_RENDER_SCALE } from './types';
+import { appendPdfBytes, blankTemplatePageBytes, buildPdfFromEditorState, extractAllText, extractPagesAsBytes, findRedactionBoxes, imageToPdfPageBytes, mergePdfFiles, normalizeUploadResponse, saveToDocuments } from './save';
 import { alignAnnotations, distributeAnnotations, matchSize, type AlignMode, type DistributeMode, type MatchSizeMode } from './annotationOps';
 import AlignmentBar from './components/AlignmentBar';
 import { authedImageUrl } from '../../hooks/useApi';
@@ -47,6 +51,8 @@ interface MutableState {
   bates: BatesConfig | null;
   watermark: WatermarkConfig | null;
   pageNumbers: PageNumbersConfig | null;
+  headerFooter: HeaderFooterConfig | null;
+  bookmarks: Bookmark[];
   meta: DocumentMeta;
   sourceFileId?: string | null;
   sourceFolderId?: number | null;
@@ -81,7 +87,7 @@ function reducer(h: History, a: Action): History {
   }
 }
 
-const EMPTY_STATE: MutableState = { pageOrder: [], pages: [], annotations: [], bates: null, watermark: null, pageNumbers: null, meta: {}, sourceFileId: null, sourceFolderId: null };
+const EMPTY_STATE: MutableState = { pageOrder: [], pages: [], annotations: [], bates: null, watermark: null, pageNumbers: null, headerFooter: null, bookmarks: [], meta: {}, sourceFileId: null, sourceFolderId: null };
 
 export default function PdfEditorPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -142,6 +148,14 @@ export default function PdfEditorPage() {
   const [stampsOpen, setStampsOpen] = useState(false);
   const [studioOpen, setStudioOpen] = useState(false);
   const [rangeOpen, setRangeOpen] = useState(false);
+  const [headerFooterOpen, setHeaderFooterOpen] = useState(false);
+  const [redactOpen, setRedactOpen] = useState(false);
+  const [redactScanning, setRedactScanning] = useState(false);
+  const [insertPageOpen, setInsertPageOpen] = useState(false);
+  const [showBookmarks, setShowBookmarks] = useState(false);
+  // Batch-page multi-select (thumbnail rail). When non-empty, batch-rotate and
+  // crop-all act on this set instead of the single active page.
+  const [selectedPages, setSelectedPages] = useState<Set<number>>(new Set());
   const [showMiniMap, setShowMiniMap] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; annotationId: string } | null>(null);
   /** Diagnostic toggle: force every page render through PDF.js. The
@@ -172,6 +186,8 @@ export default function PdfEditorPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mergeInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const appendInputRef = useRef<HTMLInputElement>(null);   // append another PDF
+  const pageImageInputRef = useRef<HTMLInputElement>(null); // image → new page
   const scrollerRef = useRef<HTMLDivElement>(null);
 
   const mutate = useCallback((patch: Partial<MutableState>) => {
@@ -220,7 +236,7 @@ export default function PdfEditorPage() {
       // (and destroy any previously-open document this replaces).
       setSharedDoc(pdf);
       setFileName(name);
-      dispatch({ type: 'reset', next: { pageOrder, pages, annotations: [], bates: null, watermark: null, pageNumbers: null, meta: { title: name.replace(/\.pdf$/i, '') }, sourceFileId, sourceFolderId } });
+      dispatch({ type: 'reset', next: { pageOrder, pages, annotations: [], bates: null, watermark: null, pageNumbers: null, headerFooter: null, bookmarks: [], meta: { title: name.replace(/\.pdf$/i, '') }, sourceFileId, sourceFolderId } });
       setActivePage(1);
       setActiveId(null);
     } catch (e) {
@@ -694,7 +710,8 @@ export default function PdfEditorPage() {
     const order = [...state.pageOrder].reverse();
     const pages = [...state.pages].reverse();
     const annotations = state.annotations.map(a => ({ ...a, page: n + 1 - a.page }));
-    mutate({ pageOrder: order, pages, annotations });
+    const bookmarks = state.bookmarks.map(b => ({ ...b, page: n + 1 - b.page }));
+    mutate({ pageOrder: order, pages, annotations, bookmarks });
     pushToast('Reversed page order', 'ok');
   };
 
@@ -723,7 +740,12 @@ export default function PdfEditorPage() {
     const annotations = state.annotations
       .filter(a => a.page !== idx + 1)
       .map(a => a.page > idx + 1 ? { ...a, page: a.page - 1 } : a);
-    mutate({ pageOrder: order, pages, annotations });
+    // Drop bookmarks pointing at the removed page; shift later ones down.
+    const bookmarks = state.bookmarks
+      .filter(b => b.page !== idx + 1)
+      .map(b => b.page > idx + 1 ? { ...b, page: b.page - 1 } : b);
+    mutate({ pageOrder: order, pages, annotations, bookmarks });
+    setSelectedPages(new Set());
   };
   const insertBlank = (afterIdx: number) => {
     // Use the dimensions of the page we're inserting after.
@@ -752,7 +774,7 @@ export default function PdfEditorPage() {
         bytes, fileName,
         pageOrder: state.pageOrder, pages: state.pages,
         annotations: state.annotations, bates: state.bates,
-        watermark: state.watermark, pageNumbers: state.pageNumbers, meta: state.meta,
+        watermark: state.watermark, pageNumbers: state.pageNumbers, headerFooter: state.headerFooter, meta: state.meta,
         sourceFileId: state.sourceFileId, sourceFolderId: state.sourceFolderId,
       };
       const out = await extractPagesAsBytes(fullState, [visualIdx + 1]);
@@ -805,7 +827,7 @@ export default function PdfEditorPage() {
       bytes: bytes!, fileName,
       pageOrder: state.pageOrder, pages: state.pages,
       annotations: state.annotations, bates: state.bates,
-      watermark: state.watermark, pageNumbers: state.pageNumbers, meta: state.meta,
+      watermark: state.watermark, pageNumbers: state.pageNumbers, headerFooter: state.headerFooter, meta: state.meta,
       sourceFileId: state.sourceFileId, sourceFolderId: state.sourceFolderId,
     };
     const hadBlanks = state.pageOrder.some(p => p === 0);
@@ -890,6 +912,158 @@ export default function PdfEditorPage() {
     } catch (err) {
       setError(`Range export failed: ${err instanceof Error ? err.message : 'unknown'}`);
     } finally { setSaving(false); setRangeOpen(false); }
+  };
+
+  // ─── Append / insert-page operations ─────────────────────────
+  // All of these flatten the CURRENT editor state to bytes (baking in existing
+  // annotations + page order), append the new page bytes, and re-open the
+  // combined PDF. Re-opening rebuilds page/annotation state cleanly and keeps
+  // the canvas/render math untouched.
+  const appendBytesAndReopen = async (extraBytes: Uint8Array, label: string) => {
+    if (!bytes) return;
+    setSaving(true);
+    try {
+      const { state: savable } = buildSavableState();
+      const baseBytes = await buildPdfFromEditorState(savable);
+      const combined = await appendPdfBytes(baseBytes, extraBytes);
+      const base = fileName.replace(/\.pdf$/i, '') || 'document';
+      await openBytes(combined, `${base}.pdf`, state.sourceFileId ?? null, state.sourceFolderId ?? null);
+      pushToast(label, 'ok');
+    } catch (err) {
+      setError(`${label} failed: ${err instanceof Error ? err.message : 'unknown'}`);
+    } finally { setSaving(false); }
+  };
+
+  // Append another PDF's pages to the end of this document.
+  const handleAppendPdf = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0]; e.target.value = '';
+    if (!f) return;
+    if (!f.name.toLowerCase().endsWith('.pdf')) { setError('Please choose a PDF to append.'); return; }
+    const extra = new Uint8Array(await f.arrayBuffer());
+    await appendBytesAndReopen(extra, `Appended ${f.name}`);
+  };
+
+  // Insert an image as a brand-new full page (appended at the end).
+  const handlePageImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0]; e.target.value = '';
+    if (!f) return;
+    const reader = new FileReader();
+    reader.onload = async () => {
+      try {
+        const pageBytes = await imageToPdfPageBytes(reader.result as string);
+        await appendBytesAndReopen(pageBytes, `Added image page from ${f.name}`);
+      } catch (err) { setError(`Image page failed: ${err instanceof Error ? err.message : 'unknown'}`); }
+    };
+    reader.readAsDataURL(f);
+  };
+
+  // Insert a blank/lined/grid template page at the end.
+  const handleInsertTemplate = async (template: 'blank' | 'lined' | 'grid') => {
+    try {
+      const pageBytes = await blankTemplatePageBytes(template);
+      await appendBytesAndReopen(pageBytes, `Inserted ${template} page`);
+    } catch (err) { setError(`Insert page failed: ${err instanceof Error ? err.message : 'unknown'}`); }
+  };
+
+  // ─── Search-and-redact by pattern ────────────────────────────
+  const runRedactScan = async (regex: RegExp) => {
+    if (!bytes) return;
+    setRedactScanning(true);
+    try {
+      const boxes = await findRedactionBoxes(bytes, state.pageOrder, regex);
+      if (boxes.length === 0) { pushToast('No matches found to redact', 'warn'); setRedactOpen(false); return; }
+      const newAnns: Annotation[] = boxes.map(b => ({
+        id: Math.random().toString(36).slice(2, 10),
+        type: 'redact', page: b.page, x: b.x, y: b.y, w: b.w, h: b.h,
+        note: `auto-redact: ${b.text}`, layer: 'Redaction',
+        createdAt: new Date().toISOString(), status: 'open',
+      }));
+      mutate({ annotations: [...state.annotations, ...newAnns] });
+      pushToast(`Added ${boxes.length} redaction box(es)`, 'ok');
+      setRedactOpen(false);
+    } catch (err) {
+      setError(`Redaction scan failed: ${err instanceof Error ? err.message : 'unknown'}`);
+    } finally { setRedactScanning(false); }
+  };
+
+  // ─── Extract all text to a .txt download ─────────────────────
+  const handleExtractText = async () => {
+    if (!bytes) return;
+    setSaving(true);
+    try {
+      const text = await extractAllText(bytes);
+      const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const base = fileName.replace(/\.pdf$/i, '') || 'document';
+      a.href = url; a.download = `${base}-text.txt`;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1500);
+      pushToast('Extracted document text', 'ok');
+    } catch (err) {
+      setError(`Text extraction failed: ${err instanceof Error ? err.message : 'unknown'}`);
+    } finally { setSaving(false); }
+  };
+
+  // ─── Export current page as PNG ──────────────────────────────
+  const handleExportPng = async () => {
+    if (!bytes) return;
+    const visualIdx = activePage - 1;
+    const original = state.pageOrder[visualIdx];
+    if (!original || original <= 0) { pushToast('Cannot export a blank page as PNG', 'warn'); return; }
+    setSaving(true);
+    try {
+      const { openAndRenderPage } = await import('../../lib/rmpg-pdf-engine');
+      const canvas = document.createElement('canvas');
+      const pdf = await openAndRenderPage(bytes, { pageNumber: original, scale: 2, canvas });
+      await pdf.destroy().catch(() => { /* already gone */ });
+      const dataUrl = canvas.toDataURL('image/png');
+      const a = document.createElement('a');
+      const base = fileName.replace(/\.pdf$/i, '') || 'document';
+      a.href = dataUrl; a.download = `${base}-page-${activePage}.png`;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      pushToast(`Exported page ${activePage} as PNG`, 'ok');
+    } catch (err) {
+      setError(`PNG export failed: ${err instanceof Error ? err.message : 'unknown'}`);
+    } finally { setSaving(false); }
+  };
+
+  // ─── Batch rotate selected pages ─────────────────────────────
+  const batchRotateSelected = () => {
+    const targets = selectedPages.size > 0 ? selectedPages : new Set([activePage - 1]);
+    const pages = state.pages.map((p, i) =>
+      targets.has(i) ? { ...p, rotation: ((p.rotation + 90) % 360) as PageMeta['rotation'] } : p);
+    mutate({ pages });
+    pushToast(`Rotated ${targets.size} page(s) 90°`, 'ok');
+  };
+
+  // ─── Crop all pages to the active page's crop box ────────────
+  const cropAllToActive = () => {
+    const visualIdx = activePage - 1;
+    const crop = state.pages[visualIdx]?.crop;
+    if (!crop) { pushToast('Set a crop on the current page first (Crop tool)', 'warn'); return; }
+    const pages = state.pages.map(p => ({ ...p, crop: { ...crop } }));
+    mutate({ pages });
+    pushToast(`Applied crop to all ${pages.length} pages`, 'ok');
+  };
+
+  // ─── Bookmarks ───────────────────────────────────────────────
+  const addBookmark = (title: string, page: number) =>
+    mutate({ bookmarks: [...state.bookmarks, { id: Math.random().toString(36).slice(2, 10), title, page }] });
+  const deleteBookmark = (id: string) =>
+    mutate({ bookmarks: state.bookmarks.filter(b => b.id !== id) });
+
+  // ─── Page navigation: first / last ───────────────────────────
+  const goFirstPage = () => jumpToPage(0);
+  const goLastPage = () => jumpToPage(state.pageOrder.length - 1);
+
+  // Toggle a page in the batch-select set (thumbnail rail Shift/Ctrl-click).
+  const togglePageSelect = (visualIdx: number) => {
+    setSelectedPages(prev => {
+      const next = new Set(prev);
+      if (next.has(visualIdx)) next.delete(visualIdx); else next.add(visualIdx);
+      return next;
+    });
   };
 
   // Save edited copy back into the Documents store as a new file. If
@@ -1109,12 +1283,19 @@ export default function PdfEditorPage() {
       <input id="ff-pdfeditorpage-2" ref={imageInputRef} type="file" accept="image/png,image/jpeg" className="hidden" onChange={handleImageChange} />
       <input id="ff-pdfeditorpage-3" ref={jsonInputRef} type="file" accept="application/json" className="hidden"
         onChange={(e) => { const f = e.target.files?.[0]; if (f) importJson(f); e.target.value = ''; }} />
+      <input id="ff-pdfeditorpage-append" ref={appendInputRef} type="file" accept="application/pdf,.pdf" className="hidden" onChange={handleAppendPdf} />
+      <input id="ff-pdfeditorpage-pageimg" ref={pageImageInputRef} type="file" accept="image/png,image/jpeg" className="hidden" onChange={handlePageImage} />
 
       {/* Find / Shortcuts / Preferences dialogs */}
       <FindDialog open={findOpen} onClose={() => setFindOpen(false)} currentPage={activePage}
         onJumpTo={(page) => jumpToPage(page - 1)} />
       <KeyboardShortcutsDialog open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
       <ExportRangeDialog open={rangeOpen} pageCount={state.pageOrder.length} onClose={() => setRangeOpen(false)} onExport={exportPageRange} />
+      <HeaderFooterDialog open={headerFooterOpen} value={state.headerFooter} onClose={() => setHeaderFooterOpen(false)}
+        onApply={(cfg) => { mutate({ headerFooter: cfg }); pushToast(cfg ? 'Header/footer applied to all pages' : 'Header/footer removed', cfg ? 'ok' : 'info'); }} />
+      <RedactPatternDialog open={redactOpen} scanning={redactScanning} onClose={() => setRedactOpen(false)} onRun={runRedactScan} />
+      <InsertPageDialog open={insertPageOpen} onClose={() => setInsertPageOpen(false)}
+        onTemplate={handleInsertTemplate} onPickImage={() => pageImageInputRef.current?.click()} />
       <PreferencesDialog open={prefsOpen} prefs={prefs} onChange={setPrefs} onClose={() => setPrefsOpen(false)} />
       {/* Toast queue — bottom-right floating stack */}
       {toasts.length > 0 && (
@@ -1285,6 +1466,31 @@ export default function PdfEditorPage() {
             className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><UploadIcon className="w-3 h-3" /> Import</button>
           <button type="button" onClick={() => setRangeOpen(true)} title="Export a page range (X–Y) as a new PDF"
             className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><FileOutput className="w-3 h-3" /> Range</button>
+          <button type="button" onClick={() => appendInputRef.current?.click()} title="Append another PDF's pages to the end of this document"
+            className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><UploadIcon className="w-3 h-3" /> Append PDF</button>
+          <button type="button" onClick={() => setInsertPageOpen(true)} title="Insert a blank / lined / grid / image page"
+            className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><FilePlus2 className="w-3 h-3" /> Insert page</button>
+          <button type="button" onClick={() => setRedactOpen(true)} title="Search & redact SSN / phone / email by pattern"
+            className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><EyeOff className="w-3 h-3" /> Redact pattern</button>
+          <button type="button" onClick={() => setHeaderFooterOpen(true)}
+            title="Custom header & footer text"
+            className={`px-2 py-0.5 rounded-sm inline-flex items-center gap-1 ${state.headerFooter ? 'bg-[#d4a017]/20 text-[#d4a017]' : 'hover:bg-rmpg-700/40'}`}><Heading className="w-3 h-3" /> Header/Footer</button>
+          <button type="button" onClick={handleExtractText} title="Extract all document text to a .txt download"
+            className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><FileTextIcon className="w-3 h-3" /> Text</button>
+          <button type="button" onClick={handleExportPng} title="Export the current page as a PNG image"
+            className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><ImageDownIcon className="w-3 h-3" /> PNG</button>
+          <button type="button" onClick={batchRotateSelected}
+            title={selectedPages.size > 0 ? `Rotate ${selectedPages.size} selected page(s) 90°` : 'Rotate the current page 90° (select pages in the rail to batch-rotate)'}
+            className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><RotateCwIcon className="w-3 h-3" /> Rotate{selectedPages.size > 0 ? ` (${selectedPages.size})` : ''}</button>
+          <button type="button" onClick={cropAllToActive} title="Apply the current page's crop box to every page"
+            className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><CropIcon className="w-3 h-3" /> Crop all</button>
+          <button type="button" onClick={() => setShowBookmarks(v => !v)}
+            title="Toggle bookmarks panel"
+            className={`px-2 py-0.5 rounded-sm inline-flex items-center gap-1 ${showBookmarks ? 'bg-[#d4a017]/20 text-[#d4a017]' : 'hover:bg-rmpg-700/40'}`}><BookmarkIcon className="w-3 h-3" /> Bookmarks ({state.bookmarks.length})</button>
+          <button type="button" onClick={goFirstPage} title="Go to first page (Home)"
+            className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center"><ChevronsLeft className="w-3.5 h-3.5" /></button>
+          <button type="button" onClick={goLastPage} title="Go to last page (End)"
+            className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center"><ChevronsRight className="w-3.5 h-3.5" /></button>
           <button type="button" onClick={selectAllOnPage} title="Select all annotations on this page (Ctrl+A)"
             className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm">Select all</button>
           <button type="button" onClick={clearAllOnPage} title="Delete all annotations on this page"
@@ -1356,6 +1562,8 @@ export default function PdfEditorPage() {
                 onReorder={reorderPages}
                 size={prefs.thumbnailSize}
                 onToggleSize={() => setPrefs({ ...prefs, thumbnailSize: prefs.thumbnailSize === 'large' ? 'small' : 'large' })}
+                selectedPages={selectedPages}
+                onTogglePageSelect={togglePageSelect}
               />
               {isMobile && (
                 <button type="button" onClick={() => setMobileThumbsOpen(false)} aria-label="Close pages"
@@ -1393,6 +1601,17 @@ export default function PdfEditorPage() {
             ))}
           </div>
 
+          {!viewOnly && !isMobile && showBookmarks && (
+            <BookmarksPanel
+              bookmarks={state.bookmarks}
+              activePage={activePage}
+              pageCount={state.pageOrder.length}
+              onAdd={addBookmark}
+              onDelete={deleteBookmark}
+              onJump={(p) => jumpToPage(p - 1)}
+              onClose={() => setShowBookmarks(false)}
+            />
+          )}
           {!viewOnly && !isMobile && prefs.showAnnotationsPanel && (
             <AnnotationsPanel
               annotations={state.annotations}

@@ -30,7 +30,8 @@ export type Tool =
   | 'polyline'
   | 'cloud'
   | 'check'
-  | 'cross';
+  | 'cross'
+  | 'measure';
 
 export type StampLabel =
   | 'CONFIDENTIAL'
@@ -84,6 +85,8 @@ export interface TextAnnotation extends AnnotationBase {
   fontSize: number;
   bold?: boolean;
   italic?: boolean;
+  /** Font family for text annotations: helvetica (default), times, courier. */
+  fontFamily?: 'helvetica' | 'times' | 'courier';
 }
 
 export interface HighlightAnnotation extends AnnotationBase {
@@ -119,6 +122,10 @@ export interface EllipseAnnotation extends AnnotationBase {
 export interface LineAnnotation extends AnnotationBase {
   type: 'line';
   arrow?: boolean;          // when true, render with an arrowhead at (x+w, y+h)
+  /** When set, this line is a measurement dimension line — its label (the
+   *  computed distance, e.g. "3.42 in") is drawn at the midpoint with tick
+   *  marks at each end. Set by the Measure tool. */
+  measureLabel?: string;
 }
 
 export interface PenAnnotation extends AnnotationBase {
@@ -241,6 +248,32 @@ export interface WatermarkConfig {
   opacity: number;          // 0..1
   fontSize: number;
   rotation: number;         // degrees
+  /** Placement style. 'diagonal' (default) draws one centered, rotated stamp.
+   *  'tiled' repeats the text across the whole page in a grid. */
+  mode?: 'diagonal' | 'tiled';
+  /** Optional image watermark (data: URL). When set, the image is drawn
+   *  centered instead of / in addition to the text. */
+  imageData?: string;
+}
+
+/** Header / footer text stamped on every page, distinct from the simple
+ *  "Page N of M" footer. Three slots per band (left/center/right). Supports
+ *  the {n}/{total} tokens like page numbers. */
+export interface HeaderFooterConfig {
+  headerLeft?: string;
+  headerCenter?: string;
+  headerRight?: string;
+  footerLeft?: string;
+  footerCenter?: string;
+  footerRight?: string;
+  fontSize: number;
+}
+
+/** Named in-app bookmark pointing at a page (1-indexed visual order). */
+export interface Bookmark {
+  id: string;
+  title: string;
+  page: number;
 }
 
 export interface DocumentMeta {
@@ -262,6 +295,8 @@ export interface EditorState {
   watermark: WatermarkConfig | null;
   /** Simple "Page N of M" footer — null when disabled. */
   pageNumbers?: PageNumbersConfig | null;
+  /** Custom header/footer text bands — null when disabled. */
+  headerFooter?: HeaderFooterConfig | null;
   meta: DocumentMeta;
   /** Source file in the Documents store, when the editor was opened from there. */
   sourceFileId?: string | null;

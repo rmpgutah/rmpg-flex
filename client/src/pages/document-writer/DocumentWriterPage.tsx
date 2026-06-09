@@ -27,6 +27,9 @@ import FindReplacePanel from './components/FindReplacePanel';
 import OutlinePane from './components/OutlinePane';
 import CommentsSidebar, { type DocComment } from './components/CommentsSidebar';
 import StatusBar from './components/StatusBar';
+import SnapshotsPanel from './components/SnapshotsPanel';
+import DocPropertiesDialog from './components/DocPropertiesDialog';
+import { ReadAloud, textToRead, ttsSupported } from './tts';
 import { populateTemplate } from './templates';
 import TextStyleExtras from './extensions/textStyleExtras';
 import BlockStyle, { PageBreak, SectionBreak } from './extensions/customBlocks';
@@ -72,8 +75,14 @@ export default function DocumentWriterPage() {
   const [autoSavedAt, setAutoSavedAt] = useState<string | null>(null);
   const [recovery, setRecovery] = useState<{ title: string; html: string } | null>(null);
   const [language, setLanguage] = useState('en');
+  const [showSnapshots, setShowSnapshots] = useState(false);
+  const [showProperties, setShowProperties] = useState(false);
+  const [readingAloud, setReadingAloud] = useState(false);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const bgImageInputRef = useRef<HTMLInputElement>(null);
+  const jsonInputRef = useRef<HTMLInputElement>(null);
+  const readAloudRef = useRef<ReadAloud | null>(null);
+  if (!readAloudRef.current) readAloudRef.current = new ReadAloud(setReadingAloud);
 
   const editor = useEditor({
     extensions: [
@@ -166,8 +175,14 @@ export default function DocumentWriterPage() {
     const doc = printFrame.contentDocument;
     if (!doc) { document.body.removeChild(printFrame); return; }
     doc.open();
+    const p = docSettings.properties;
+    const metaTags = [
+      p.author ? `<meta name="author" content="${escapeHtml(p.author)}">` : '',
+      p.subject ? `<meta name="subject" content="${escapeHtml(p.subject)}">` : '',
+      p.keywords ? `<meta name="keywords" content="${escapeHtml(p.keywords)}">` : '',
+    ].join('');
     doc.write([
-      '<!DOCTYPE html><html lang="', language, '"><head><title>', escapeHtml(title), '</title><style>',
+      '<!DOCTYPE html><html lang="', language, '"><head><title>', escapeHtml(p.title || title), '</title>', metaTags, '<style>',
       `@page{size:${cssSize};margin:${m.top}px ${m.right}px ${m.bottom}px ${m.left}px;@bottom-right{content:counter(page)}}`,
       'body{font-family:"Times New Roman",Times,serif;font-size:12pt;line-height:1.5;color:#000;background:#fff}',
       `.body-cols{column-count:${columns};column-gap:24px}`,
@@ -265,6 +280,57 @@ export default function DocumentWriterPage() {
     if (name) saveSnapshot(name, title, editor.getHTML());
   }, [editor, title]);
 
+  // Read aloud (TTS): toggles between speaking the selection/document and stop.
+  const handleReadAloud = useCallback(() => {
+    if (!editor) return;
+    const ra = readAloudRef.current!;
+    if (ra.speaking) { ra.stop(); return; }
+    if (!ttsSupported()) { setErrorNotice('Read-aloud is not supported in this browser.'); setTimeout(() => setErrorNotice(null), 3000); return; }
+    const text = textToRead(editor);
+    if (!text) { setErrorNotice('Nothing to read.'); setTimeout(() => setErrorNotice(null), 3000); return; }
+    ra.speak(text);
+  }, [editor]);
+
+  // Export the editor's document JSON (round-trippable, lossless vs HTML).
+  const handleExportJson = useCallback(() => {
+    if (!editor) return;
+    const payload = {
+      kind: 'rmpg-flex-document',
+      version: 1,
+      title,
+      properties: docSettings.properties,
+      settings: docSettings,
+      doc: editor.getJSON(),
+      exportedAt: new Date().toISOString(),
+    };
+    const safe = title.replace(/[^a-zA-Z0-9\s-]/g, '').trim() || 'document';
+    downloadFile(`${safe}.rmpgdoc.json`, JSON.stringify(payload, null, 2), 'application/json');
+  }, [editor, title, docSettings]);
+
+  const handleImportJson = useCallback(() => jsonInputRef.current?.click(), []);
+  const handleJsonFile = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]; e.target.value = '';
+    if (!file || !editor) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const data = JSON.parse(reader.result as string);
+        const content = data?.doc ?? data; // accept a bare TipTap JSON doc too
+        editor.commands.setContent(content);
+        if (typeof data?.title === 'string') setTitle(data.title);
+        if (data?.settings) setDocSettings((s) => ({ ...s, ...data.settings }));
+        else if (data?.properties) setDocSettings((s) => ({ ...s, properties: { ...s.properties, ...data.properties } }));
+        setSavedNotice('Document imported from JSON.');
+        setTimeout(() => setSavedNotice(null), 3000);
+      } catch (err) {
+        console.error('[document-writer] JSON import failed:', err);
+        setErrorNotice('Could not read that file — expected a document JSON export.');
+        setTimeout(() => setErrorNotice(null), 4000);
+      }
+    };
+    reader.readAsText(file);
+  }, [editor]);
+
   // Autosave every 30s + on unload. Recovery offered on mount.
   useEffect(() => {
     if (mode !== 'edit' || !editor) return;
@@ -314,6 +380,9 @@ export default function DocumentWriterPage() {
     return () => window.removeEventListener('keydown', onKey);
   }, [mode, editor, handleSave]);
 
+  // Stop any in-progress read-aloud when the writer unmounts.
+  useEffect(() => () => { readAloudRef.current?.stop(); }, []);
+
   if (mode === 'choose') {
     return <div className="p-3 h-[calc(100vh-140px)] overflow-auto"><TemplateChooser onSelect={handleTemplateSelect} /></div>;
   }
@@ -339,6 +408,7 @@ export default function DocumentWriterPage() {
 
       <input ref={imageInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageFile} />
       <input ref={bgImageInputRef} type="file" accept="image/*" className="hidden" onChange={handleBgImageFile} />
+      <input ref={jsonInputRef} type="file" accept="application/json,.json" className="hidden" onChange={handleJsonFile} />
 
       {recovery && (
         <div className="bg-amber-900/20 border border-amber-700/40 text-amber-200 text-[11px] px-3 py-1.5 rounded-[2px] mt-2 flex items-center gap-2">
@@ -375,6 +445,10 @@ export default function DocumentWriterPage() {
               onExport: handleExport, onEmail: handleEmailDoc, onPastePlain: handlePastePlain, onCopyAs: handleCopyAs,
               onInsertEmbed: handleInsertEmbed, zoom, setZoom, viewMode, setViewMode,
               language, setLanguage, autoSavedAt,
+              onToggleSnapshots: () => setShowSnapshots((v) => !v),
+              onOpenProperties: () => setShowProperties(true),
+              onReadAloud: handleReadAloud, readingAloud,
+              onExportJson: handleExportJson, onImportJson: handleImportJson,
             }}
           />
         </div>
@@ -415,6 +489,8 @@ export default function DocumentWriterPage() {
           </div>
         </div>
 
+        {showSnapshots && !focusMode && editor && <SnapshotsPanel editor={editor} title={title} onClose={() => setShowSnapshots(false)} onRestore={() => { setRecovery(null); }} />}
+
         {showComments && !focusMode && editor && <CommentsSidebar editor={editor} comments={comments} setComments={setComments} author={author} onClose={() => setShowComments(false)} />}
 
         {/* Zoom controls + reading-mode exit */}
@@ -436,6 +512,19 @@ export default function DocumentWriterPage() {
           <span className={documentId ? 'text-green-500/70' : ''}>{documentId ? `Saved • ID: ${documentId.slice(0, 8)}` : 'Unsaved'}</span>
           <span>{author}</span>
         </div>
+      )}
+
+      {showProperties && (
+        <DocPropertiesDialog
+          value={docSettings.properties}
+          defaultAuthor={author}
+          editor={editor}
+          onSave={(props) => {
+            setDocSettings((s) => ({ ...s, properties: props }));
+            if (props.title && props.title !== title) setTitle(props.title);
+          }}
+          onClose={() => setShowProperties(false)}
+        />
       )}
     </div>
   );

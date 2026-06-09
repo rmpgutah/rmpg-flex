@@ -1,4 +1,4 @@
-import { MousePointer2, Hand, Type, Highlighter, Underline, Strikethrough, Square, Circle, Minus, MoveUpRight, Pencil, PenTool, Image as ImageIcon, Stamp, EyeOff, Link2, Crop, QrCode, StickyNote, Calendar, Pentagon, Spline, Cloud, Check, X } from 'lucide-react';
+import { MousePointer2, Hand, Type, Highlighter, Underline, Strikethrough, Square, Circle, Minus, MoveUpRight, Pencil, PenTool, Image as ImageIcon, Stamp, EyeOff, Link2, Crop, QrCode, StickyNote, Calendar, Pentagon, Spline, Cloud, Check, X, Ruler } from 'lucide-react';
 import IconButton from '../../../components/IconButton';
 import { Tool } from '../types';
 
@@ -37,6 +37,7 @@ const TOOLS: { id: Tool; icon: typeof MousePointer2; label: string }[] = [
   { id: 'cloud', icon: Cloud, label: 'Revision cloud (drag a rectangle)' },
   { id: 'check', icon: Check, label: 'Checkmark (click to place)' },
   { id: 'cross', icon: X, label: 'Cross / X (click to place)' },
+  { id: 'measure', icon: Ruler, label: 'Measure distance (drag two points)' },
 ];
 
 // Quick-pick annotation colors. Neutral grays + a few muted accents that read

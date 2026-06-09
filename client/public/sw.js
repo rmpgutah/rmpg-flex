@@ -442,7 +442,16 @@
 //   Document Writer: 5 new police templates, insert time/date-time, numbered
 //   section headings, Focus/Zen mode, live word/char/sentence status bar,
 //   avg-words/sentence stat.
-const CACHE_NAME = 'rmpg-flex-v839';
+// v840: PDF system + Document Writer feature wave 2 (~28 more features).
+//   PDF Editor: append/merge PDF, insert image-as-page, blank/lined/grid page
+//   templates, search-and-redact by pattern (SSN/phone/email/regex), image +
+//   tiled watermark, custom header/footer, measure tool, annotation font/opacity
+//   controls, extract-text, batch-rotate selected pages, crop-all, bookmarks
+//   panel, go first/last, export page as PNG. Document Writer: 12 more police
+//   templates, snippets library, table-of-contents, doc properties, signature
+//   line, version snapshots, smart quotes, read-aloud TTS, JSON export/import,
+//   outline numbering, fillable fields, character map, word goal.
+const CACHE_NAME = 'rmpg-flex-v840';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

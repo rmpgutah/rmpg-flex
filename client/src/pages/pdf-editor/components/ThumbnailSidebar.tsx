@@ -22,9 +22,13 @@ interface Props {
   /** Rail size — 'large' widens thumbnails for detailed inspection. */
   size?: 'small' | 'large';
   onToggleSize?: () => void;
+  /** Batch-select set (visual indices). When provided, a checkbox overlay lets
+   *  the user pick pages for batch rotate / crop-all. */
+  selectedPages?: Set<number>;
+  onTogglePageSelect?: (visualIdx: number) => void;
 }
 
-export default function ThumbnailSidebar({ pdfBytes, pages, pageOrder, activePage, onJumpTo, onMove, onRotate, onDelete, onInsertBlank, onExtract, onClearCrop, onDuplicate, onReorder, size = 'small', onToggleSize }: Props) {
+export default function ThumbnailSidebar({ pdfBytes, pages, pageOrder, activePage, onJumpTo, onMove, onRotate, onDelete, onInsertBlank, onExtract, onClearCrop, onDuplicate, onReorder, size = 'small', onToggleSize, selectedPages, onTogglePageSelect }: Props) {
   const refs = useRef<Map<number, HTMLCanvasElement>>(new Map());
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [dropIdx, setDropIdx] = useState<number | null>(null);
@@ -97,6 +101,7 @@ export default function ThumbnailSidebar({ pdfBytes, pages, pageOrder, activePag
         const active = pageNumber === activePage;
         const isDragSource = dragIdx === idx;
         const isDropTarget = dropIdx === idx && dragIdx !== idx;
+        const batchSelected = selectedPages?.has(idx) ?? false;
         return (
           <div key={`thumb-${idx}`}
             draggable={!!onReorder}
@@ -121,10 +126,20 @@ export default function ThumbnailSidebar({ pdfBytes, pages, pageOrder, activePag
               setDropIdx(null);
             }}
             onDragEnd={() => { setDragIdx(null); setDropIdx(null); }}
-            className={`group rounded-sm border ${
+            className={`group relative rounded-sm border ${
               isDropTarget ? 'border-[#d4a017] border-dashed bg-[#d4a017]/10' :
+              batchSelected ? 'border-[#d4a017] ring-1 ring-[#d4a017]' :
               active ? 'border-[#d4a017]' : 'border-[#222]'
             } bg-black p-1 ${isDragSource ? 'opacity-40' : ''} ${onReorder ? 'cursor-grab active:cursor-grabbing' : ''}`}>
+
+            {onTogglePageSelect && (
+              <button type="button" onClick={(e) => { e.stopPropagation(); onTogglePageSelect(idx); }}
+                aria-label={batchSelected ? `Deselect page ${pageNumber}` : `Select page ${pageNumber} for batch ops`}
+                title="Select for batch rotate / crop-all"
+                className={`absolute top-1.5 left-1.5 z-10 w-4 h-4 rounded-sm border flex items-center justify-center text-[9px] ${batchSelected ? 'bg-[#d4a017] border-[#d4a017] text-black' : 'bg-black/70 border-[#444] text-transparent'}`}>
+                ✓
+              </button>
+            )}
 
             <button
               type="button"

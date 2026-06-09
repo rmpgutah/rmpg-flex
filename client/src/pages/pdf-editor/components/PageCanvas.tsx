@@ -343,6 +343,16 @@ export default function PageCanvas(props: Props) {
         else if (t === 'cloud') onAddAnnotation({ id: uid(), type: 'cloud', page: visualPageNumber, x, y, w, h, color, strokeWidth: sw, scallopSize: 10 });
       } else if ((t === 'line' || t === 'arrow') && (Math.abs(current.x - start.x) > 2 || Math.abs(current.y - start.y) > 2)) {
         onAddAnnotation({ id: uid(), type: 'line', page: visualPageNumber, x: start.x, y: start.y, w: current.x - start.x, h: current.y - start.y, color, strokeWidth: sw, arrow: t === 'arrow' });
+      } else if (t === 'measure' && (Math.abs(current.x - start.x) > 2 || Math.abs(current.y - start.y) > 2)) {
+        // Distance between the two clicked points. Pixels → PDF points (÷ render
+        // scale) → inches (÷ 72). Labelled dimension line with end ticks.
+        const distPx = Math.hypot(current.x - start.x, current.y - start.y);
+        const pts = distPx / DEFAULT_RENDER_SCALE;
+        const inches = pts / 72;
+        const label = inches >= 1
+          ? `${inches.toFixed(2)} in (${pts.toFixed(0)} pt)`
+          : `${pts.toFixed(0)} pt`;
+        onAddAnnotation({ id: uid(), type: 'line', page: visualPageNumber, x: start.x, y: start.y, w: current.x - start.x, h: current.y - start.y, color, strokeWidth: sw, measureLabel: label });
       } else if (t === 'link' && w > 4 && h > 4) {
         const url = window.prompt('Hyperlink URL (e.g. https://...):', 'https://');
         if (url && /^(https?:|mailto:|tel:)/i.test(url)) {
@@ -600,10 +610,21 @@ function AnnotationView({ ann, zoom, selected, onPointerDown, onResizeStart, sho
   } else if (ann.type === 'ellipse') {
     inner = <div onPointerDown={onPointerDown} style={{ ...baseStyle, border: `${(ann.strokeWidth ?? 1.5) * zoom}px solid ${ann.color ?? '#0a0a0a'}`, background: ann.fillColor ?? 'transparent', borderRadius: '50%' }} />;
   } else if (ann.type === 'line') {
+    const lx = ann.w * zoom, ly = ann.h * zoom;
+    const len = Math.hypot(lx, ly) || 1;
+    const nx = -ly / len, ny = lx / len; // perpendicular unit
+    const tick = 5 * zoom;
     inner = (
       <svg onPointerDown={onPointerDown} style={{ ...baseStyle, overflow: 'visible' }}>
-        <line x1={0} y1={0} x2={ann.w * zoom} y2={ann.h * zoom} stroke={ann.color ?? '#0a0a0a'} strokeWidth={(ann.strokeWidth ?? 1.5) * zoom} />
-        {ann.arrow && <ArrowHead x={ann.w * zoom} y={ann.h * zoom} dx={ann.w} dy={ann.h} color={ann.color ?? '#0a0a0a'} zoom={zoom} stroke={ann.strokeWidth ?? 1.5} />}
+        <line x1={0} y1={0} x2={lx} y2={ly} stroke={ann.color ?? '#0a0a0a'} strokeWidth={(ann.strokeWidth ?? 1.5) * zoom} />
+        {ann.arrow && <ArrowHead x={lx} y={ly} dx={ann.w} dy={ann.h} color={ann.color ?? '#0a0a0a'} zoom={zoom} stroke={ann.strokeWidth ?? 1.5} />}
+        {ann.measureLabel && (
+          <>
+            <line x1={nx * tick} y1={ny * tick} x2={-nx * tick} y2={-ny * tick} stroke={ann.color ?? '#0a0a0a'} strokeWidth={(ann.strokeWidth ?? 1.5) * zoom} />
+            <line x1={lx + nx * tick} y1={ly + ny * tick} x2={lx - nx * tick} y2={ly - ny * tick} stroke={ann.color ?? '#0a0a0a'} strokeWidth={(ann.strokeWidth ?? 1.5) * zoom} />
+            <text x={lx / 2} y={ly / 2 - 4 * zoom} fill={ann.color ?? '#0a0a0a'} fontSize={9 * zoom} textAnchor="middle" style={{ paintOrder: 'stroke', stroke: '#ffffff', strokeWidth: 2 * zoom }}>{ann.measureLabel}</text>
+          </>
+        )}
       </svg>
     );
   } else if (ann.type === 'pen') {
@@ -730,10 +751,21 @@ function DrawingPreview({ drawing, zoom, color, strokeWidth }: { drawing: { tool
   if (tool === 'strikethrough') return <div style={{ ...style }}><div style={{ position: 'absolute', left: 0, right: 0, top: '50%', transform: 'translateY(-50%)', height: Math.max(1, strokeWidth * zoom), background: color }} /></div>;
   if (tool === 'redact') return <div style={{ ...style, background: '#000', opacity: 0.7 }} />;
   if (tool === 'cloud') return <div style={{ ...style, border: `${strokeWidth * zoom}px dashed ${color}`, borderRadius: 8 }} />;
-  if (tool === 'line' || tool === 'arrow') {
+  if (tool === 'line' || tool === 'arrow' || tool === 'measure') {
     const sx = (start.x - x) * zoom; const sy = (start.y - y) * zoom;
     const ex = (current.x - x) * zoom; const ey = (current.y - y) * zoom;
-    return <svg style={{ ...style, overflow: 'visible' }}><line x1={sx} y1={sy} x2={ex} y2={ey} stroke={color} strokeWidth={strokeWidth * zoom} strokeDasharray="4 3" /></svg>;
+    const distPx = Math.hypot(current.x - start.x, current.y - start.y);
+    const pts = distPx / DEFAULT_RENDER_SCALE; const inches = pts / 72;
+    const liveLabel = inches >= 1 ? `${inches.toFixed(2)} in` : `${pts.toFixed(0)} pt`;
+    return (
+      <svg style={{ ...style, overflow: 'visible' }}>
+        <line x1={sx} y1={sy} x2={ex} y2={ey} stroke={color} strokeWidth={strokeWidth * zoom} strokeDasharray="4 3" />
+        {tool === 'measure' && (
+          <text x={(sx + ex) / 2} y={(sy + ey) / 2 - 4} fill={color} fontSize={10 * zoom} textAnchor="middle"
+            style={{ paintOrder: 'stroke', stroke: '#fff', strokeWidth: 2 }}>{liveLabel}</text>
+        )}
+      </svg>
+    );
   }
   if (tool === 'pen' && pen) {
     const d = pen.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x * zoom} ${p.y * zoom}`).join(' ');
