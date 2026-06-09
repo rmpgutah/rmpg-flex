@@ -372,6 +372,15 @@ const PatrolPage: React.FC = () => {
         await loadScans();
       } else if (activeTab === 'compliance') {
         await loadCompliance();
+      } else if (activeTab === 'map') {
+        // Map needs both checkpoints + scans to render markers/routes;
+        // without this it inherits whatever the previously-active tab left
+        // in state (often empty on a fresh landing).
+        await Promise.all([loadCheckpoints(), loadScans()]);
+      } else if (activeTab === 'summary') {
+        // Shift Summary tab previously required a manual "Load Summary" click
+        // before any data appeared.
+        await Promise.all([loadShiftSummary(), loadEfficiency()]);
       }
     } catch (err: any) {
       if (!options?.silent) {
@@ -554,12 +563,22 @@ const PatrolPage: React.FC = () => {
     ]),
   ];
 
-  // ── Build a scan-log row context menu (read-only log → copy actions) ──
+  // ── Build a scan-log row context menu ──
+  // Read-only log row, but several useful jumps: hop to the checkpoint on the
+  // Map tab (filtered), open the checkpoint editor, copy coords. The Map tab
+  // auto-loads on entry now, so `?focus=<id>` will land with markers present.
   const buildScanMenu = (scan: Scan): ContextMenuItem[] => [
     m.copy('Copy checkpoint', scan.checkpoint_name),
     m.copy('Copy officer', scan.officer_name),
     m.copy('Copy property', scan.property_name),
+    m.copyCoords(scan.latitude ?? undefined, scan.longitude ?? undefined),
     m.copyId(scan.id),
+    m.separator(),
+    m.action('View on Map', () => setActiveTab('map'), { icon: <MapIcon size={12} /> }),
+    m.action('Edit checkpoint', () => {
+      const cp = checkpoints.find((c) => c.id === scan.checkpoint_id);
+      if (cp) handleEditCheckpoint(cp);
+    }, { icon: <Pencil size={12} />, disabled: !checkpoints.some((c) => c.id === scan.checkpoint_id) }),
   ];
 
   const getStatusColor = (status: string) => {
@@ -1216,15 +1235,15 @@ const PatrolPage: React.FC = () => {
                         <span className="text-rmpg-400">Completion</span>
                         <span className="text-white font-mono">{efficiency.completion_rate}%</span>
                       </div>
-                      <div className="h-2 bg-rmpg-700 rounded-full overflow-hidden">
-                        <div className="h-full bg-brand-500 rounded-full" style={{ width: `${Math.min(efficiency.completion_rate, 100)}%` }} />
+                      <div className="h-2 bg-rmpg-700 overflow-hidden">
+                        <div className="h-full bg-brand-500" style={{ width: `${Math.min(efficiency.completion_rate, 100)}%` }} />
                       </div>
                       <div className="flex justify-between text-xs">
                         <span className="text-rmpg-400">On-Time Rate</span>
                         <span className="text-white font-mono">{efficiency.on_time_rate}%</span>
                       </div>
-                      <div className="h-2 bg-rmpg-700 rounded-full overflow-hidden">
-                        <div className="h-full bg-green-500 rounded-full" style={{ width: `${Math.min(efficiency.on_time_rate, 100)}%` }} />
+                      <div className="h-2 bg-rmpg-700 overflow-hidden">
+                        <div className="h-full bg-green-500" style={{ width: `${Math.min(efficiency.on_time_rate, 100)}%` }} />
                       </div>
                     </div>
                   </div>

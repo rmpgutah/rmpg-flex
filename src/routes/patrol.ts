@@ -127,7 +127,10 @@ pt.post('/checkpoints', async (c) => {
      ) VALUES (?,?,?,?,?, ?,?,?,?,?, ?,?)`,
     body.property_id, body.assigned_officer_id ?? null, body.name, body.description ?? null,
     body.location_description ?? null, body.special_instructions ?? null,
-    body.latitude ?? null, body.longitude ?? null, body.qr_code ?? null,
+    body.latitude ?? null, body.longitude ?? null,
+    // Auto-generate a QR code when the client omits one — otherwise the
+    // "Show QR" button on a freshly-created checkpoint has nothing to render.
+    body.qr_code ?? `CP-${crypto.randomUUID().slice(0, 12).toUpperCase()}`,
     body.sequence_order ?? 0, body.scan_required_interval_minutes ?? 60,
     body.is_active === false ? 0 : 1,
   );
@@ -232,8 +235,17 @@ pt.post('/scan', async (c) => {
   );
   let status = 'on_time';
   if (last?.scanned_at) {
-    const lastMs = new Date(last.scanned_at.replace(' ', 'T')).getTime();
-    const minutesSince = (Date.now() - lastMs) / 60000;
+    // patrol_scans.scanned_at is written via datetime('now','localtime') →
+    // America/Denver wall-clock. Workers run in UTC, so parsing as JS Date
+    // treats the stored time as UTC and skews ~6–7h, false-marking many
+    // scans as "late". Compute minutes-since in SQL where both sides are
+    // localtime — no timezone juggling needed.
+    const sinceRow = await queryFirst<{ mins: number }>(
+      db,
+      `SELECT (julianday('now','localtime') - julianday(?)) * 1440 AS mins`,
+      last.scanned_at,
+    );
+    const minutesSince = Number(sinceRow?.mins ?? 0);
     if (minutesSince > cp.scan_required_interval_minutes * 1.5) status = 'late';
   }
   if (body.status && SCAN_STATUSES.has(body.status)) status = body.status; // explicit override
@@ -260,8 +272,11 @@ pt.get('/scans', async (c) => {
   if (officerId) { where.push('s.officer_id = ?'); args.push(parseInt(officerId, 10)); }
   if (checkpointId) { where.push('s.checkpoint_id = ?'); args.push(parseInt(checkpointId, 10)); }
   if (propertyId) { where.push('cp.property_id = ?'); args.push(parseInt(propertyId, 10)); }
-  if (from) { where.push('s.scanned_at >= ?'); args.push(from); }
-  if (to) { where.push('s.scanned_at <= ?'); args.push(to); }
+  // datetime-local inputs emit 'YYYY-MM-DDTHH:MM' but scanned_at is stored
+  // 'YYYY-MM-DD HH:MM:SS' — a lexicographic compare with the 'T' separator
+  // under-matches. Normalise both bounds to a space.
+  if (from) { where.push('s.scanned_at >= ?'); args.push(String(from).replace('T', ' ')); }
+  if (to) { where.push('s.scanned_at <= ?'); args.push(String(to).replace('T', ' ')); }
   const sql = `
     SELECT s.*, cp.name AS checkpoint_name, cp.property_id, u.full_name AS officer_name
       FROM patrol_scans s
@@ -270,6 +285,48 @@ pt.get('/scans', async (c) => {
      ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
      ORDER BY s.scanned_at DESC LIMIT 500`;
   return c.json(await query(getDb(c.env), sql, ...args));
+});
+
+// GET /scans/export?format=csv — same filters as /scans, returns CSV.
+// The PatrolPage "Export CSV" toolbar button hits this; without it the
+// download silently 404'd.
+pt.get('/scans/export', async (c) => {
+  const officerId = c.req.query('officer_id');
+  const checkpointId = c.req.query('checkpoint_id');
+  const propertyId = c.req.query('property_id');
+  const from = c.req.query('from');
+  const to = c.req.query('to');
+  const where: string[] = [];
+  const args: any[] = [];
+  if (officerId) { where.push('s.officer_id = ?'); args.push(parseInt(officerId, 10)); }
+  if (checkpointId) { where.push('s.checkpoint_id = ?'); args.push(parseInt(checkpointId, 10)); }
+  if (propertyId) { where.push('cp.property_id = ?'); args.push(parseInt(propertyId, 10)); }
+  if (from) { where.push('s.scanned_at >= ?'); args.push(String(from).replace('T', ' ')); }
+  if (to) { where.push('s.scanned_at <= ?'); args.push(String(to).replace('T', ' ')); }
+  const rows = await query<any>(getDb(c.env), `
+    SELECT s.id, s.scanned_at, cp.name AS checkpoint, p.name AS property,
+           u.full_name AS officer, s.status, s.latitude, s.longitude, s.notes
+      FROM patrol_scans s
+      LEFT JOIN patrol_checkpoints cp ON cp.id = s.checkpoint_id
+      LEFT JOIN properties p ON p.id = cp.property_id
+      LEFT JOIN users u ON u.id = s.officer_id
+     ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
+     ORDER BY s.scanned_at DESC LIMIT 5000`, ...args);
+  const esc = (v: any) => {
+    if (v == null) return '';
+    const s = String(v);
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const header = 'id,scanned_at,checkpoint,property,officer,status,latitude,longitude,notes';
+  const body = rows.map((r: any) =>
+    [r.id, r.scanned_at, r.checkpoint, r.property, r.officer, r.status, r.latitude, r.longitude, r.notes].map(esc).join(',')
+  ).join('\n');
+  return new Response(`${header}\n${body}\n`, {
+    headers: {
+      'Content-Type': 'text/csv; charset=utf-8',
+      'Content-Disposition': `attachment; filename="patrol-scans-${new Date().toISOString().slice(0, 10)}.csv"`,
+    },
+  });
 });
 
 // GET /compliance — per-property scan rate over a window
@@ -329,7 +386,10 @@ pt.get('/shift-summary', async (c) => {
   const db = getDb(c.env);
   const scans = await query<any>(
     db,
-    `SELECT s.*, cp.name AS checkpoint_name FROM patrol_scans s
+    // cp.property_id is needed for the properties_visited derivation below.
+    // patrol_scans has no property_id of its own; it lives on patrol_checkpoints.
+    `SELECT s.*, cp.name AS checkpoint_name, cp.property_id AS property_id
+       FROM patrol_scans s
        LEFT JOIN patrol_checkpoints cp ON cp.id = s.checkpoint_id
        WHERE s.officer_id = ? AND date(s.scanned_at) = ?
        ORDER BY s.scanned_at ASC`,

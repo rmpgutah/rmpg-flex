@@ -416,7 +416,10 @@ pm.post('/mileage/fix', async (c) => {
            FROM calls_for_service
           WHERE id != ?
             AND (starting_mileage IS NOT NULL OR ending_mileage IS NOT NULL)
-            AND COALESCE(cleared_at, closed_at, created_at) > ?
+            -- '>=' (not '>') so a sibling call that shares the anchor's
+            -- exact cleared_at (common on bulk-close) is still cascaded;
+            -- the id-mismatch guard above prevents the anchor self-matching.
+            AND COALESCE(cleared_at, closed_at, created_at) >= ?
             AND (
               -- assigned_unit_ids is stored inconsistently as ["1"] (text) AND [1]
               -- (int). json_each.value keeps the JSON storage class, and in SQLite
