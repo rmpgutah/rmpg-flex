@@ -381,7 +381,13 @@
 //       integrations-tab `/status` stub (returns {configured: false}) was
 //       intercepting /api/email/status and falsely rendering the "Email Not
 //       Configured" splash even when creds were saved.
-const CACHE_NAME = 'rmpg-flex-v828';
+// v829: Admin Email — OAuth callback unauth fix. Microsoft redirects the
+//       user's browser directly to /api/email/oauth/callback with code+state
+//       and no Authorization header; the router's `use('*', authMiddleware)`
+//       was 401ing the redirect ("Authentication required"). Now the
+//       middleware skips that exact path while still gating every other
+//       route in the router.
+const CACHE_NAME = 'rmpg-flex-v829';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
