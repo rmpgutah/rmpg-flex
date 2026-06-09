@@ -1,4 +1,8 @@
 import type { DocumentTemplate } from '../types';
+import { LE_TEMPLATES } from './categories/law-enforcement';
+import { SEC_TEMPLATES } from './categories/security';
+import { HR_TEMPLATES } from './categories/hr';
+import { LEGAL_TEMPLATES } from './categories/legal';
 
 const AGENCY_HEADER = `
 <div style="text-align:center;margin-bottom:24px;">
@@ -576,6 +580,9 @@ export const TEMPLATES: DocumentTemplate[] = [
     content: `${AGENCY_HEADER}<p>&nbsp;</p>`,
   },
 ];
+
+// Append 105 new category templates (LE 40 + Security 25 + HR 20 + Legal 20).
+TEMPLATES.push(...LE_TEMPLATES, ...SEC_TEMPLATES, ...HR_TEMPLATES, ...LEGAL_TEMPLATES);
 
 export function getTemplate(id: string): DocumentTemplate | undefined {
   return TEMPLATES.find(t => t.id === id);

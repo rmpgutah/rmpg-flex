@@ -17,7 +17,7 @@ import TaskList from '@tiptap/extension-task-list';
 import TaskItem from '@tiptap/extension-task-item';
 import SuperscriptExt from '@tiptap/extension-superscript';
 import SubscriptExt from '@tiptap/extension-subscript';
-import { FileText, ZoomIn, ZoomOut, X } from 'lucide-react';
+import { FileText, ZoomIn, ZoomOut, X, Sparkles } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import PanelTitleBar from '../../components/PanelTitleBar';
 import WriterToolbar from './components/WriterToolbar';
@@ -25,6 +25,7 @@ import TemplateChooser from './components/TemplateChooser';
 import FindReplacePanel from './components/FindReplacePanel';
 import OutlinePane from './components/OutlinePane';
 import CommentsSidebar, { type DocComment } from './components/CommentsSidebar';
+import FeaturesPanel from './components/FeaturesPanel';
 import { populateTemplate } from './templates';
 import TextStyleExtras from './extensions/textStyleExtras';
 import BlockStyle, { PageBreak, SectionBreak } from './extensions/customBlocks';
@@ -65,6 +66,7 @@ export default function DocumentWriterPage() {
   const [findMode, setFindMode] = useState<'find' | 'replace' | null>(null);
   const [showOutline, setShowOutline] = useState(false);
   const [showComments, setShowComments] = useState(false);
+  const [showFeatures, setShowFeatures] = useState(false);
   const [comments, setComments] = useState<DocComment[]>([]);
   const [autoSavedAt, setAutoSavedAt] = useState<string | null>(null);
   const [recovery, setRecovery] = useState<{ title: string; html: string } | null>(null);
@@ -389,6 +391,19 @@ export default function DocumentWriterPage() {
         </div>
 
         {showComments && editor && <CommentsSidebar editor={editor} comments={comments} setComments={setComments} author={author} onClose={() => setShowComments(false)} />}
+
+        {showFeatures && <FeaturesPanel editor={editor} onClose={() => setShowFeatures(false)} caseUrl={typeof window !== 'undefined' ? window.location.href : undefined} />}
+
+        {!showFeatures && (
+          <button
+            type="button"
+            title="Open Tools, Snippets, Statutes, Persons, CFS, and more (140+ snippets, 25+ insert tools)"
+            onClick={() => setShowFeatures(true)}
+            className="absolute top-3 right-3 flex items-center gap-1.5 px-2.5 py-1.5 text-[10px] font-medium bg-[#0d0d0d] border border-[#d4a017]/30 text-[#d4a017] rounded-[2px] hover:bg-[#d4a017]/10"
+          >
+            <Sparkles className="w-3 h-3" /> Tools
+          </button>
+        )}
 
         {/* Zoom controls + reading-mode exit */}
         <div className="absolute bottom-2 right-3 flex items-center gap-1 bg-[#0d0d0d]/90 border border-[#222] rounded-[2px] px-1.5 py-1">

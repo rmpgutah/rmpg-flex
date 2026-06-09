@@ -1,10 +1,25 @@
+export type TemplateCategory =
+  | 'incident' | 'arrest' | 'use-of-force' | 'supplemental' | 'evidence' | 'memo' | 'letter' | 'general'
+  // Utah law enforcement specialty reports
+  | 'le-traffic' | 'le-dv' | 'le-juvenile' | 'le-investigation' | 'le-pursuit' | 'le-property' | 'le-missing'
+  // Private security
+  | 'sec-post' | 'sec-dar' | 'sec-client' | 'sec-access' | 'sec-patrol'
+  // HR / admin
+  | 'hr-employee' | 'hr-discipline' | 'hr-training' | 'hr-leave'
+  // Legal / court
+  | 'legal-court' | 'legal-warrant' | 'legal-affidavit' | 'legal-discovery';
+
 export interface DocumentTemplate {
   id: string;
   name: string;
-  category: 'incident' | 'arrest' | 'use-of-force' | 'supplemental' | 'evidence' | 'memo' | 'letter' | 'general';
+  category: TemplateCategory;
   description: string;
   content: string; // HTML content with {{placeholder}} tokens
   fields: TemplateField[];
+  /** Optional tags for search ("dv", "domestic", "victim") */
+  tags?: string[];
+  /** Optional Utah statute references shown as a banner */
+  statutes?: string[];
 }
 
 export interface TemplateField {
