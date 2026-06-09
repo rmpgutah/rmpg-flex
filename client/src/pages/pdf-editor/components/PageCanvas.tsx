@@ -359,6 +359,13 @@ export default function PageCanvas(props: Props) {
           const text = window.prompt('Link label (visible in PDF):', url) || url;
           onAddAnnotation({ id: uid(), type: 'link', page: visualPageNumber, x, y, w, h, url, text });
         }
+      } else if (t === 'formText' && w > 8 && h > 8) {
+        const fieldName = window.prompt('Form field name (e.g. officer_name):', `field_${Date.now().toString(36)}`) || `field_${Date.now().toString(36)}`;
+        onAddAnnotation({ id: uid(), type: 'formText', page: visualPageNumber, x, y, w, h, fieldName, label: fieldName });
+      } else if (t === 'formCheck' && w > 8 && h > 8) {
+        const fieldName = window.prompt('Checkbox field name (e.g. agree):', `check_${Date.now().toString(36)}`) || `check_${Date.now().toString(36)}`;
+        const side = Math.min(w, h);
+        onAddAnnotation({ id: uid(), type: 'formCheck', page: visualPageNumber, x, y, w: side, h: side, fieldName, label: fieldName });
       } else if (t === 'crop' && w > 8 && h > 8) {
         onSetCrop?.(visualPageNumber - 1, { x, y, w, h });
       }
@@ -606,17 +613,21 @@ function AnnotationView({ ann, zoom, selected, onPointerDown, onResizeStart, sho
   } else if (ann.type === 'redact') {
     inner = <div onPointerDown={onPointerDown} style={{ ...baseStyle, background: '#000' }} />;
   } else if (ann.type === 'rect') {
-    inner = <div onPointerDown={onPointerDown} style={{ ...baseStyle, border: `${(ann.strokeWidth ?? 1.5) * zoom}px solid ${ann.color ?? '#0a0a0a'}`, background: ann.fillColor ?? 'transparent' }} />;
+    const bs = ann.strokeStyle === 'dashed' ? 'dashed' : ann.strokeStyle === 'dotted' ? 'dotted' : 'solid';
+    inner = <div onPointerDown={onPointerDown} style={{ ...baseStyle, border: `${(ann.strokeWidth ?? 1.5) * zoom}px ${bs} ${ann.color ?? '#0a0a0a'}`, background: ann.fillColor ?? 'transparent' }} />;
   } else if (ann.type === 'ellipse') {
-    inner = <div onPointerDown={onPointerDown} style={{ ...baseStyle, border: `${(ann.strokeWidth ?? 1.5) * zoom}px solid ${ann.color ?? '#0a0a0a'}`, background: ann.fillColor ?? 'transparent', borderRadius: '50%' }} />;
+    const bs = ann.strokeStyle === 'dashed' ? 'dashed' : ann.strokeStyle === 'dotted' ? 'dotted' : 'solid';
+    inner = <div onPointerDown={onPointerDown} style={{ ...baseStyle, border: `${(ann.strokeWidth ?? 1.5) * zoom}px ${bs} ${ann.color ?? '#0a0a0a'}`, background: ann.fillColor ?? 'transparent', borderRadius: '50%' }} />;
   } else if (ann.type === 'line') {
     const lx = ann.w * zoom, ly = ann.h * zoom;
     const len = Math.hypot(lx, ly) || 1;
     const nx = -ly / len, ny = lx / len; // perpendicular unit
     const tick = 5 * zoom;
+    const sw0 = (ann.strokeWidth ?? 1.5) * zoom;
+    const dash = ann.strokeStyle === 'dashed' ? `${sw0 * 4} ${sw0 * 3}` : ann.strokeStyle === 'dotted' ? `${sw0} ${sw0 * 2}` : undefined;
     inner = (
       <svg onPointerDown={onPointerDown} style={{ ...baseStyle, overflow: 'visible' }}>
-        <line x1={0} y1={0} x2={lx} y2={ly} stroke={ann.color ?? '#0a0a0a'} strokeWidth={(ann.strokeWidth ?? 1.5) * zoom} />
+        <line x1={0} y1={0} x2={lx} y2={ly} stroke={ann.color ?? '#0a0a0a'} strokeWidth={(ann.strokeWidth ?? 1.5) * zoom} strokeDasharray={dash} />
         {ann.arrow && <ArrowHead x={lx} y={ly} dx={ann.w} dy={ann.h} color={ann.color ?? '#0a0a0a'} zoom={zoom} stroke={ann.strokeWidth ?? 1.5} />}
         {ann.measureLabel && (
           <>
@@ -709,6 +720,21 @@ function AnnotationView({ ann, zoom, selected, onPointerDown, onResizeStart, sho
         {String(ann.label).toUpperCase()}
       </div>
     );
+  } else if (ann.type === 'formText') {
+    inner = (
+      <div onPointerDown={onPointerDown} title={`Form field: ${ann.fieldName}`}
+        style={{ ...baseStyle, border: '1px solid #6b6b6b', background: 'rgba(212,160,23,0.06)', display: 'flex', alignItems: 'center', padding: '0 4px', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: Math.max(8, ann.h * zoom * 0.4), color: '#888', userSelect: 'none', overflow: 'hidden' }}>
+        {ann.defaultValue || ann.label || ann.fieldName}
+      </div>
+    );
+  } else if (ann.type === 'formCheck') {
+    const s = Math.min(ann.w, ann.h) * zoom;
+    inner = (
+      <div onPointerDown={onPointerDown} title={`Checkbox: ${ann.fieldName}`}
+        style={{ ...baseStyle, width: s, height: s, border: '1px solid #6b6b6b', background: 'rgba(212,160,23,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#d4a017', fontSize: s * 0.7, userSelect: 'none' }}>
+        {ann.defaultChecked ? '✓' : ''}
+      </div>
+    );
   }
 
   // Inject onContextMenu onto whatever root element the type-specific branch
@@ -750,6 +776,7 @@ function DrawingPreview({ drawing, zoom, color, strokeWidth }: { drawing: { tool
   if (tool === 'underline') return <div style={{ ...style, borderBottom: `${Math.max(1, strokeWidth * zoom)}px solid ${color}` }} />;
   if (tool === 'strikethrough') return <div style={{ ...style }}><div style={{ position: 'absolute', left: 0, right: 0, top: '50%', transform: 'translateY(-50%)', height: Math.max(1, strokeWidth * zoom), background: color }} /></div>;
   if (tool === 'redact') return <div style={{ ...style, background: '#000', opacity: 0.7 }} />;
+  if (tool === 'formText' || tool === 'formCheck') return <div style={{ ...style, border: '1px dashed #6b6b6b', background: 'rgba(212,160,23,0.1)' }} />;
   if (tool === 'cloud') return <div style={{ ...style, border: `${strokeWidth * zoom}px dashed ${color}`, borderRadius: 8 }} />;
   if (tool === 'line' || tool === 'arrow' || tool === 'measure') {
     const sx = (start.x - x) * zoom; const sy = (start.y - y) * zoom;

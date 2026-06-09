@@ -28,6 +28,8 @@ const TYPE_LABELS: Record<Annotation['type'], string> = {
   cloud: 'Cloud',
   check: 'Checkmark',
   cross: 'Cross / X',
+  formText: 'Form field',
+  formCheck: 'Form checkbox',
 };
 
 function summarize(a: Annotation): string {

@@ -34,6 +34,13 @@ export class ContentStreamBuilder {
   }
   /** Set line width. */
   setLineWidth(w: number): this { this.parts.push(`${fmt(w)} w`); return this; }
+  /** Set the line dash pattern via the `d` operator. Pass an empty array to
+   *  reset to a solid line. Phase defaults to 0. */
+  setLineDash(pattern: number[], phase = 0): this {
+    const arr = pattern.map(fmt).join(' ');
+    this.parts.push(`[${arr}] ${fmt(phase)} d`);
+    return this;
+  }
   /** Set fill opacity via an inline ExtGState — caller must provide a registered name. */
   setExtGState(name: string): this { this.parts.push(`/${name} gs`); return this; }
 

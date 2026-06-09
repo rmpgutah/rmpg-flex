@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { FileText, AlertTriangle, CheckCircle2, Search, Settings, Keyboard, Layers, Printer, Download, Upload as UploadIcon, Map as MapIcon, FileOutput, EyeOff, Heading, Bookmark as BookmarkIcon, FilePlus2, FileText as FileTextIcon, ChevronsLeft, ChevronsRight, Image as ImageDownIcon, Crop as CropIcon, RotateCw as RotateCwIcon } from 'lucide-react';
+import { FileText, AlertTriangle, CheckCircle2, Search, Settings, Keyboard, Layers, Printer, Download, Upload as UploadIcon, Map as MapIcon, FileOutput, EyeOff, Heading, Bookmark as BookmarkIcon, FilePlus2, FileText as FileTextIcon, ChevronsLeft, ChevronsRight, Image as ImageDownIcon, Crop as CropIcon, RotateCw as RotateCwIcon, Scissors, Wrench, GitCompare, FileSignature, ClipboardList, Copy as CopyIcon } from 'lucide-react';
 import { open as openPdf, RmpgPdfDocument, subscribeDiagnostics, diagnosticsSummary, getDiagnostics } from '../../lib/rmpg-pdf-engine';
 import { exportAnnotationsAsCsv, exportAnnotationsAsMarkdown, exportAnnotationsAsXfdf, downloadText } from './exporters';
 import { useAuth } from '../../context/AuthContext';
@@ -28,7 +28,9 @@ import RedactPatternDialog from './components/RedactPatternDialog';
 import InsertPageDialog from './components/InsertPageDialog';
 import BookmarksPanel from './components/BookmarksPanel';
 import { Annotation, BatesConfig, Bookmark, DocumentMeta, EditorState, EditorPreferences, HeaderFooterConfig, DEFAULT_PREFERENCES, PageCrop, PageMeta, PageNumbersConfig, RecentFile, StampLabel, Tool, WatermarkConfig, DEFAULT_RENDER_SCALE } from './types';
-import { appendPdfBytes, blankTemplatePageBytes, buildPdfFromEditorState, extractAllText, extractPagesAsBytes, findRedactionBoxes, imageToPdfPageBytes, mergePdfFiles, normalizeUploadResponse, saveToDocuments } from './save';
+import { appendPdfBytes, blankTemplatePageBytes, buildAnnotationReportPdf, buildInteractivePdf, buildPdfFromEditorState, comparePageDiff, extractAllText, extractPagesAsBytes, findRedactionBoxes, grayscalePageBytes, imageToPdfPageBytes, mergePdfFiles, normalizeUploadResponse, optimizePdf, PAGE_SIZE_PRESETS, resizePages, saveToDocuments, splitEveryN, splitPdf } from './save';
+import PdfToolsDialog from './components/PdfToolsDialog';
+import CompareDialog from './components/CompareDialog';
 import { alignAnnotations, distributeAnnotations, matchSize, type AlignMode, type DistributeMode, type MatchSizeMode } from './annotationOps';
 import AlignmentBar from './components/AlignmentBar';
 import { authedImageUrl } from '../../hooks/useApi';
@@ -152,6 +154,8 @@ export default function PdfEditorPage() {
   const [redactOpen, setRedactOpen] = useState(false);
   const [redactScanning, setRedactScanning] = useState(false);
   const [insertPageOpen, setInsertPageOpen] = useState(false);
+  const [toolsOpen, setToolsOpen] = useState(false);     // split / optimize / page-size / grayscale
+  const [compareOpen, setCompareOpen] = useState(false); // two-PDF compare
   const [showBookmarks, setShowBookmarks] = useState(false);
   // Batch-page multi-select (thumbnail rail). When non-empty, batch-rotate and
   // crop-all act on this set instead of the single active page.
@@ -1047,6 +1051,161 @@ export default function PdfEditorPage() {
     pushToast(`Applied crop to all ${pages.length} pages`, 'ok');
   };
 
+  // ─── Wave-3: split / optimize / page-size / grayscale / report / interactive ──
+  const downloadBytes = (b: Uint8Array, name: string) => {
+    const blob = new Blob([b as BlobPart], { type: 'application/pdf' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = name;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1500);
+  };
+
+  // Save an INTERACTIVE PDF (real AcroForm fields, clickable /Link annots, and a
+  // /Outlines bookmark tree). Routed through pdf-lib since the native writer
+  // doesn't emit interactive objects yet.
+  const saveInteractive = async () => {
+    if (!bytes) return;
+    setSaving(true);
+    try {
+      const { state: savable } = buildSavableState();
+      const outline = state.bookmarks.map(b => ({ title: b.title, page: b.page }));
+      const out = await buildInteractivePdf(savable, { outline });
+      const base = fileName.replace(/\.pdf$/i, '') || 'document';
+      downloadBytes(out, `${base}-interactive.pdf`);
+      const fieldCount = state.annotations.filter(a => a.type === 'formText' || a.type === 'formCheck').length;
+      const linkCount = state.annotations.filter(a => a.type === 'link').length;
+      pushToast(`Saved interactive PDF — ${fieldCount} field(s), ${linkCount} link(s), ${outline.length} bookmark(s)`, 'ok');
+    } catch (err) {
+      setError(`Interactive save failed: ${err instanceof Error ? err.message : 'unknown'}`);
+    } finally { setSaving(false); }
+  };
+
+  // Split: every N pages, or at the currently batch-selected page boundaries.
+  const handleSplit = async (mode: { kind: 'everyN'; n: number } | { kind: 'atSelected' }) => {
+    if (!bytes) return;
+    setSaving(true);
+    try {
+      const { state: savable } = buildSavableState();
+      let parts;
+      if (mode.kind === 'everyN') {
+        parts = await splitEveryN(savable, Math.max(1, mode.n));
+      } else {
+        const breaks = [...selectedPages].map(i => i + 1).filter(p => p >= 2);
+        if (breaks.length === 0) { pushToast('Select page(s) in the rail to mark split points first', 'warn'); setSaving(false); return; }
+        parts = await splitPdf(savable, breaks);
+      }
+      if (parts.length <= 1) { pushToast('Nothing to split — produced a single part', 'warn'); setSaving(false); return; }
+      // Download each part sequentially with a small stagger so the browser
+      // doesn't drop concurrent download prompts.
+      for (let i = 0; i < parts.length; i++) {
+        downloadBytes(parts[i].bytes, parts[i].name);
+        await new Promise(r => setTimeout(r, 350));
+      }
+      pushToast(`Split into ${parts.length} file(s)`, 'ok');
+      setToolsOpen(false);
+    } catch (err) {
+      setError(`Split failed: ${err instanceof Error ? err.message : 'unknown'}`);
+    } finally { setSaving(false); }
+  };
+
+  // Optimize / compress the flattened document; report before/after sizes.
+  const handleOptimize = async () => {
+    if (!bytes) return;
+    setSaving(true);
+    try {
+      const { state: savable } = buildSavableState();
+      const flat = await buildPdfFromEditorState(savable);
+      const { bytes: opt, before, after } = await optimizePdf(flat);
+      const base = fileName.replace(/\.pdf$/i, '') || 'document';
+      downloadBytes(opt, `${base}-optimized.pdf`);
+      const pct = before > 0 ? Math.round((1 - after / before) * 100) : 0;
+      const kb = (n: number) => `${(n / 1024).toFixed(0)} KB`;
+      pushToast(after < before ? `Optimized: ${kb(before)} → ${kb(after)} (−${pct}%)` : `Already optimal (${kb(before)})`, after < before ? 'ok' : 'info');
+      setToolsOpen(false);
+    } catch (err) {
+      setError(`Optimize failed: ${err instanceof Error ? err.message : 'unknown'}`);
+    } finally { setSaving(false); }
+  };
+
+  // Resize pages to a standard size. targetAll=false → only batch-selected pages.
+  const handleResizePages = async (sizeName: keyof typeof PAGE_SIZE_PRESETS, targetAll: boolean) => {
+    if (!bytes) return;
+    setSaving(true);
+    try {
+      const { state: savable } = buildSavableState();
+      const flat = await buildPdfFromEditorState(savable);
+      const targets = targetAll ? new Set<number>() : new Set([...selectedPages].map(i => i + 1));
+      if (!targetAll && targets.size === 0) { pushToast('Select page(s) in the rail first, or choose "all"', 'warn'); setSaving(false); return; }
+      const out = await resizePages(flat, PAGE_SIZE_PRESETS[sizeName], targets);
+      const base = fileName.replace(/\.pdf$/i, '') || 'document';
+      await openBytes(out, `${base}.pdf`, state.sourceFileId ?? null, state.sourceFolderId ?? null);
+      pushToast(`Resized ${targetAll ? 'all pages' : `${targets.size} page(s)`} to ${sizeName}`, 'ok');
+      setToolsOpen(false);
+    } catch (err) {
+      setError(`Resize failed: ${err instanceof Error ? err.message : 'unknown'}`);
+    } finally { setSaving(false); }
+  };
+
+  // Grayscale (or invert) the current page → appended as a new image page.
+  const handleGrayscale = async (invert: boolean) => {
+    if (!bytes) return;
+    const original = state.pageOrder[activePage - 1];
+    if (!original || original <= 0) { pushToast('Cannot process a blank page', 'warn'); setSaving(false); return; }
+    setSaving(true);
+    try {
+      const pageBytes = await grayscalePageBytes(bytes, original, invert);
+      await appendBytesAndReopen(pageBytes, `Added ${invert ? 'inverted' : 'grayscale'} copy of page ${activePage}`);
+      setToolsOpen(false);
+    } catch (err) {
+      setError(`${invert ? 'Invert' : 'Grayscale'} failed: ${err instanceof Error ? err.message : 'unknown'}`);
+    } finally { setSaving(false); }
+  };
+
+  // Annotation summary → printable PDF report.
+  const handleAnnotationReport = async () => {
+    if (state.annotations.length === 0) { pushToast('No annotations to report', 'warn'); return; }
+    setSaving(true);
+    try {
+      const out = await buildAnnotationReportPdf(state.annotations, fileName, state.meta.title);
+      const base = fileName.replace(/\.pdf$/i, '') || 'document';
+      downloadBytes(out, `${base}-annotation-report.pdf`);
+      pushToast(`Generated report of ${state.annotations.length} annotation(s)`, 'ok');
+    } catch (err) {
+      setError(`Report failed: ${err instanceof Error ? err.message : 'unknown'}`);
+    } finally { setSaving(false); }
+  };
+
+  // "Save a copy" — duplicate the whole document (flattened) to a new download.
+  const handleSaveCopy = async () => {
+    if (!bytes) return;
+    setSaving(true);
+    try {
+      const { state: savable } = buildSavableState();
+      const out = await buildPdfFromEditorState(savable);
+      const base = fileName.replace(/\.pdf$/i, '') || 'document';
+      downloadBytes(out, `${base}-copy.pdf`);
+      pushToast('Saved a copy', 'ok');
+    } catch (err) {
+      setError(`Save a copy failed: ${err instanceof Error ? err.message : 'unknown'}`);
+    } finally { setSaving(false); }
+  };
+
+  // Compare against a second PDF — pixel diff per page.
+  const runCompare = useCallback(async (otherBytes: Uint8Array, pageNumber: number) => {
+    if (!bytes) throw new Error('No document loaded');
+    return comparePageDiff(bytes, otherBytes, pageNumber);
+  }, [bytes]);
+
+  // Per-thumbnail rotate counter-clockwise (the rail's built-in button is CW).
+  const rotatePageCcw = (idx: number) => {
+    const pages = [...state.pages];
+    const cur = pages[idx];
+    if (!cur) return;
+    pages[idx] = { ...cur, rotation: (((cur.rotation - 90) % 360 + 360) % 360) as PageMeta['rotation'] };
+    mutate({ pages });
+  };
+
   // ─── Bookmarks ───────────────────────────────────────────────
   const addBookmark = (title: string, page: number) =>
     mutate({ bookmarks: [...state.bookmarks, { id: Math.random().toString(36).slice(2, 10), title, page }] });
@@ -1296,6 +1455,26 @@ export default function PdfEditorPage() {
       <RedactPatternDialog open={redactOpen} scanning={redactScanning} onClose={() => setRedactOpen(false)} onRun={runRedactScan} />
       <InsertPageDialog open={insertPageOpen} onClose={() => setInsertPageOpen(false)}
         onTemplate={handleInsertTemplate} onPickImage={() => pageImageInputRef.current?.click()} />
+      <PdfToolsDialog
+        open={toolsOpen}
+        onClose={() => setToolsOpen(false)}
+        pageCount={state.pageOrder.length}
+        selectedCount={selectedPages.size}
+        activePage={activePage}
+        busy={saving}
+        onSplitEveryN={(n) => handleSplit({ kind: 'everyN', n })}
+        onSplitAtSelected={() => handleSplit({ kind: 'atSelected' })}
+        onOptimize={handleOptimize}
+        onResize={handleResizePages}
+        onGrayscale={() => handleGrayscale(false)}
+        onInvert={() => handleGrayscale(true)}
+      />
+      <CompareDialog
+        open={compareOpen}
+        onClose={() => setCompareOpen(false)}
+        pageCount={state.pageOrder.length}
+        onCompare={runCompare}
+      />
       <PreferencesDialog open={prefsOpen} prefs={prefs} onChange={setPrefs} onClose={() => setPrefsOpen(false)} />
       {/* Toast queue — bottom-right floating stack */}
       {toasts.length > 0 && (
@@ -1484,6 +1663,18 @@ export default function PdfEditorPage() {
             className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><RotateCwIcon className="w-3 h-3" /> Rotate{selectedPages.size > 0 ? ` (${selectedPages.size})` : ''}</button>
           <button type="button" onClick={cropAllToActive} title="Apply the current page's crop box to every page"
             className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><CropIcon className="w-3 h-3" /> Crop all</button>
+          <button type="button" onClick={() => setToolsOpen(true)} title="Split / optimize / resize pages / grayscale"
+            className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><Wrench className="w-3 h-3" /> Tools</button>
+          <button type="button" onClick={saveInteractive} title="Save an interactive PDF: form fields, clickable links, bookmark outline"
+            className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><FileSignature className="w-3 h-3" /> Interactive</button>
+          <button type="button" onClick={() => handleSplit({ kind: 'atSelected' })} title="Split at the page(s) selected in the rail"
+            className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><Scissors className="w-3 h-3" /> Split{selectedPages.size > 0 ? ` (${selectedPages.size})` : ''}</button>
+          <button type="button" onClick={() => setCompareOpen(true)} title="Compare against another PDF (page pixel-diff)"
+            className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><GitCompare className="w-3 h-3" /> Compare</button>
+          <button type="button" onClick={handleAnnotationReport} title="Generate a printable annotation summary PDF"
+            className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><ClipboardList className="w-3 h-3" /> Report</button>
+          <button type="button" onClick={handleSaveCopy} title="Save a flattened copy of the document"
+            className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><CopyIcon className="w-3 h-3" /> Save copy</button>
           <button type="button" onClick={() => setShowBookmarks(v => !v)}
             title="Toggle bookmarks panel"
             className={`px-2 py-0.5 rounded-sm inline-flex items-center gap-1 ${showBookmarks ? 'bg-[#d4a017]/20 text-[#d4a017]' : 'hover:bg-rmpg-700/40'}`}><BookmarkIcon className="w-3 h-3" /> Bookmarks ({state.bookmarks.length})</button>
@@ -1554,6 +1745,7 @@ export default function PdfEditorPage() {
                 onJumpTo={(idx) => { jumpToPage(idx); if (isMobile) setMobileThumbsOpen(false); }}
                 onMove={movePage}
                 onRotate={rotatePage}
+                onRotateCcw={rotatePageCcw}
                 onDelete={deletePage}
                 onInsertBlank={insertBlank}
                 onExtract={extractPage}

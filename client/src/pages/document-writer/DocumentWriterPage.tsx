@@ -28,7 +28,10 @@ import OutlinePane from './components/OutlinePane';
 import CommentsSidebar, { type DocComment } from './components/CommentsSidebar';
 import StatusBar from './components/StatusBar';
 import SnapshotsPanel from './components/SnapshotsPanel';
+import AnalysisPanel from './components/AnalysisPanel';
 import DocPropertiesDialog from './components/DocPropertiesDialog';
+import { captureFormat, applyFormat, type CapturedFormat } from './docActions';
+import { insertCsvTable, insertStatuteReference, transformSelection, type CaseTransform } from './analysis';
 import { ReadAloud, textToRead, ttsSupported } from './tts';
 import { populateTemplate } from './templates';
 import TextStyleExtras from './extensions/textStyleExtras';
@@ -76,8 +79,10 @@ export default function DocumentWriterPage() {
   const [recovery, setRecovery] = useState<{ title: string; html: string } | null>(null);
   const [language, setLanguage] = useState('en');
   const [showSnapshots, setShowSnapshots] = useState(false);
+  const [showAnalysis, setShowAnalysis] = useState(false);
   const [showProperties, setShowProperties] = useState(false);
   const [readingAloud, setReadingAloud] = useState(false);
+  const [brush, setBrush] = useState<CapturedFormat | null>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
   const bgImageInputRef = useRef<HTMLInputElement>(null);
   const jsonInputRef = useRef<HTMLInputElement>(null);
@@ -169,6 +174,12 @@ export default function DocumentWriterPage() {
     const footerParts = [footer.text ? escapeHtml(footer.text) : '', footer.showDate ? new Date().toLocaleDateString() : '', footer.showAuthor ? escapeHtml(author) : ''].filter(Boolean).join(' • ');
     const footerHtml = footer.enabled ? `<div class="rf">${footerParts}</div>` : '';
     const watermarkHtml = watermark.text ? `<div class="wm" style="opacity:${watermark.opacity}">${escapeHtml(watermark.text)}</div>` : '';
+    const letterheadHtml = docSettings.letterhead
+      ? `<div class="rlh"><div class="rlh-name">ROCKY MOUNTAIN PROTECTIVE GROUP</div><div class="rlh-sub">Law Enforcement &amp; Private Security Services — Salt Lake City, Utah</div></div>`
+      : '';
+    const borderCss = docSettings.pageBorder
+      ? ({ thin: '@page{border:1px solid #000}', thick: '@page{border:3px solid #000}', double: '@page{border:4px double #000}', gold: '@page{border:3px solid #d4a017}' }[docSettings.pageBorderStyle || 'thin'])
+      : '';
     const printFrame = document.createElement('iframe');
     printFrame.style.cssText = `position:fixed;left:-9999px;width:${dim.width}px;height:${dim.height}px`;
     document.body.appendChild(printFrame);
@@ -184,7 +195,10 @@ export default function DocumentWriterPage() {
     doc.write([
       '<!DOCTYPE html><html lang="', language, '"><head><title>', escapeHtml(p.title || title), '</title>', metaTags, '<style>',
       `@page{size:${cssSize};margin:${m.top}px ${m.right}px ${m.bottom}px ${m.left}px;@bottom-right{content:counter(page)}}`,
+      borderCss,
       'body{font-family:"Times New Roman",Times,serif;font-size:12pt;line-height:1.5;color:#000;background:#fff}',
+      '.rlh{text-align:center;border-bottom:2px solid #d4a017;padding-bottom:6px;margin-bottom:14px}',
+      '.rlh-name{font-size:15pt;font-weight:700;letter-spacing:0.03em}.rlh-sub{font-size:9pt;color:#444}',
       `.body-cols{column-count:${columns};column-gap:24px}`,
       'h1{font-size:1.9em}h2{font-size:1.5em}h3{font-size:1.25em}h4{font-size:1.1em}p{margin:0 0 0.5em}a{color:#000}',
       'table{border-collapse:collapse;width:100%}td,th{border:1px solid #333;padding:6px}img{max-width:100%}',
@@ -195,7 +209,7 @@ export default function DocumentWriterPage() {
       '.rf{position:fixed;bottom:0;left:0;right:0;font-size:9pt;border-top:1px solid #999;padding-top:3px;text-align:center}',
       '.wm{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;font-size:90px;font-weight:800;transform:rotate(-32deg);color:#000;z-index:-1}',
       'span[data-field="page"]::after{content:counter(page)}.doc-comment{background:none}',
-      '</style></head><body>', watermarkHtml, headerHtml, '<div class="body-cols">', html, '</div>', footerHtml, '</body></html>',
+      '</style></head><body>', watermarkHtml, headerHtml, letterheadHtml, '<div class="body-cols">', html, '</div>', footerHtml, '</body></html>',
     ].join(''));
     doc.close();
     // Always schedule iframe removal, even if focus()/print() throws (popup
@@ -279,6 +293,54 @@ export default function DocumentWriterPage() {
     const name = window.prompt('Snapshot name:', `${title} — ${new Date().toLocaleString()}`);
     if (name) saveSnapshot(name, title, editor.getHTML());
   }, [editor, title]);
+
+  const flashNotice = useCallback((msg: string, ms = 3000) => {
+    setSavedNotice(msg); setTimeout(() => setSavedNotice(null), ms);
+  }, []);
+  const flashError = useCallback((msg: string, ms = 3000) => {
+    setErrorNotice(msg); setTimeout(() => setErrorNotice(null), ms);
+  }, []);
+
+  // Formatting brush: capture marks from the current selection, then apply them
+  // to the next selection (a real format painter, not a CSS hack).
+  const handleBrush = useCallback(() => {
+    if (!editor) return;
+    if (brush) {
+      const ok = applyFormat(editor, brush);
+      if (!ok) { flashError('Select the text to paint the format onto, then click the brush.'); return; }
+      setBrush(null);
+      return;
+    }
+    const captured = captureFormat(editor);
+    if (!captured) { flashError('Place the cursor in (or select) formatted text first, then click the brush.'); return; }
+    setBrush(captured);
+    flashNotice('Format captured — select target text and click the brush again to apply.', 5000);
+  }, [editor, brush, flashError, flashNotice]);
+
+  // Case transforms on the selection (UPPER / lower / Title / Sentence).
+  const handleTransform = useCallback((mode: CaseTransform) => {
+    if (!editor) return;
+    if (!transformSelection(editor, mode)) flashError('Select some text first.');
+  }, [editor, flashError]);
+
+  // Insert a table parsed from pasted CSV / TSV.
+  const handleInsertCsv = useCallback(() => {
+    if (!editor) return;
+    const csv = window.prompt('Paste CSV or tab-separated rows (first row becomes the header):');
+    if (!csv || !csv.trim()) return;
+    const res = insertCsvTable(editor, csv, true);
+    if (res) flashNotice(`Inserted a ${res.rows}×${res.cols} table from CSV.`);
+    else flashError('Could not parse that as CSV.');
+  }, [editor, flashNotice, flashError]);
+
+  // Insert a formatted Utah Code statute citation.
+  const handleInsertStatute = useCallback(() => {
+    if (!editor) return;
+    const section = window.prompt('Utah Code section (e.g. 76-6-206 or 41-6a-502):');
+    if (!section || !section.trim()) return;
+    const label = window.prompt('Optional short label (e.g. Criminal Trespass) — leave blank to skip:') || undefined;
+    insertStatuteReference(editor, section, label && label.trim() ? label.trim() : undefined);
+  }, [editor]);
 
   // Read aloud (TTS): toggles between speaking the selection/document and stop.
   const handleReadAloud = useCallback(() => {
@@ -449,6 +511,10 @@ export default function DocumentWriterPage() {
               onOpenProperties: () => setShowProperties(true),
               onReadAloud: handleReadAloud, readingAloud,
               onExportJson: handleExportJson, onImportJson: handleImportJson,
+              onToggleAnalysis: () => setShowAnalysis((v) => !v),
+              onBrush: handleBrush, brushActive: !!brush,
+              onTransform: handleTransform,
+              onInsertCsv: handleInsertCsv, onInsertStatute: handleInsertStatute,
             }}
           />
         </div>
@@ -465,7 +531,7 @@ export default function DocumentWriterPage() {
           {findMode && editor && <FindReplacePanel editor={editor} mode={findMode} onClose={() => setFindMode(null)} />}
           <div style={{ transform: `scale(${zoom})`, transformOrigin: 'top center' }}>
             <div
-              className={`writer-page my-3 md:my-6 shadow-2xl shadow-black/50 ${docSettings.pageBorder ? 'has-page-border' : ''}`}
+              className={`writer-page my-3 md:my-6 shadow-2xl shadow-black/50 ${docSettings.pageBorder ? `has-page-border border-${docSettings.pageBorderStyle || 'thin'}` : ''}`}
               style={{
                 width: reading ? Math.min(pageW, 760) : pageW, minHeight: pageH,
                 background: pageBg, color: textColor,
@@ -475,6 +541,12 @@ export default function DocumentWriterPage() {
               }}
             >
               {docSettings.watermark.text && <div className="doc-watermark" style={{ opacity: docSettings.watermark.opacity, color: textColor }}>{docSettings.watermark.text}</div>}
+              {docSettings.letterhead && (
+                <div className="writer-letterhead">
+                  <div className="lh-name">ROCKY MOUNTAIN PROTECTIVE GROUP</div>
+                  <div className="lh-sub">Law Enforcement &amp; Private Security Services — Salt Lake City, Utah</div>
+                </div>
+              )}
               {docSettings.header.enabled && (
                 <div className="doc-running-header"><span>{docSettings.header.text}</span>{docSettings.header.showPageNumber && <span>Page 1</span>}</div>
               )}
@@ -490,6 +562,8 @@ export default function DocumentWriterPage() {
         </div>
 
         {showSnapshots && !focusMode && editor && <SnapshotsPanel editor={editor} title={title} onClose={() => setShowSnapshots(false)} onRestore={() => { setRecovery(null); }} />}
+
+        {showAnalysis && !focusMode && editor && <AnalysisPanel editor={editor} onClose={() => setShowAnalysis(false)} />}
 
         {showComments && !focusMode && editor && <CommentsSidebar editor={editor} comments={comments} setComments={setComments} author={author} onClose={() => setShowComments(false)} />}
 

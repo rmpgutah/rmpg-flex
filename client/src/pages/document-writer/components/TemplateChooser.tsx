@@ -1,6 +1,7 @@
 import { useState } from 'react';
-import { FileText, FileCheck, Shield, FilePlus, Package, Mail, File } from 'lucide-react';
+import { FileText, FileCheck, Shield, FilePlus, Package, Mail, File, Bookmark, Trash2 } from 'lucide-react';
 import { TEMPLATES } from '../templates';
+import { listSavedTemplates, deleteTemplate, type SavedTemplate } from '../docActions';
 import type { DocumentTemplate } from '../types';
 import PanelTitleBar from '../../../components/PanelTitleBar';
 
@@ -19,13 +20,26 @@ const CATEGORY_ICONS: Record<string, React.ReactNode> = {
   general: <File className="w-5 h-5" />,
 };
 
+/** Wrap a localStorage saved-template into the DocumentTemplate shape the page
+ *  expects (no fields — its HTML is inserted verbatim). */
+function asTemplate(saved: SavedTemplate): DocumentTemplate {
+  return { id: `custom-${saved.name}`, name: saved.name, category: 'general', description: 'Saved custom template', content: saved.html, fields: [] };
+}
+
 export default function TemplateChooser({ onSelect }: Props) {
   const [selected, setSelected] = useState<DocumentTemplate | null>(null);
   const [values, setValues] = useState<Record<string, string>>({});
+  const [custom, setCustom] = useState<SavedTemplate[]>(() => listSavedTemplates());
 
   const handleUse = () => {
     if (!selected) return;
     onSelect(selected, values);
+  };
+
+  const handleDeleteCustom = (name: string) => {
+    if (!window.confirm(`Delete saved template "${name}"?`)) return;
+    deleteTemplate(name);
+    setCustom(listSavedTemplates());
   };
 
   if (selected) {
@@ -90,6 +104,30 @@ export default function TemplateChooser({ onSelect }: Props) {
           </button>
         ))}
       </div>
+
+      {custom.length > 0 && (
+        <>
+          <p className="text-[11px] text-rmpg-400 font-medium uppercase tracking-wide mt-6 mb-2 flex items-center gap-1.5">
+            <Bookmark className="w-3.5 h-3.5 text-[#d4a017]" /> My Saved Templates
+          </p>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+            {custom.map((t) => (
+              <div key={t.name} className="relative flex flex-col items-center gap-2 p-4 bg-[#0d0d0d] border border-[#222] rounded-[2px] hover:border-[#d4a017]/40 hover:bg-[#141414] transition-colors text-center group">
+                <button type="button" onClick={() => setSelected(asTemplate(t))} className="flex flex-col items-center gap-2 w-full">
+                  <Bookmark className="w-5 h-5 text-rmpg-500 group-hover:text-[#d4a017] transition-colors" />
+                  <span className="text-[11px] font-medium text-rmpg-300 group-hover:text-rmpg-100 break-words">{t.name}</span>
+                  <span className="text-[9px] text-rmpg-600 leading-tight">Saved {new Date(t.savedAt).toLocaleDateString()}</span>
+                </button>
+                <button type="button" aria-label={`Delete template ${t.name}`} title="Delete saved template"
+                  onClick={() => handleDeleteCustom(t.name)}
+                  className="absolute top-1 right-1 p-1 text-rmpg-600 hover:text-red-400 opacity-0 group-hover:opacity-100">
+                  <Trash2 className="w-3 h-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }

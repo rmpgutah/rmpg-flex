@@ -223,6 +223,15 @@
 
 /* Page border / frame (feature 40) */
 .writer-page.has-page-border { outline: 2px solid #555; outline-offset: -18px; }
+.writer-page.border-thin { outline: 1px solid #777; outline-offset: -18px; }
+.writer-page.border-thick { outline: 3px solid #777; outline-offset: -18px; }
+.writer-page.border-double { outline: 4px double #888; outline-offset: -18px; }
+.writer-page.border-gold { outline: 3px solid #d4a017; outline-offset: -18px; }
+
+/* Letterhead band (wave 3) — on-screen preview of the printed letterhead */
+.writer-page .writer-letterhead { text-align: center; border-bottom: 2px solid #d4a017; padding-bottom: 6px; margin-bottom: 14px; }
+.writer-page .writer-letterhead .lh-name { font-size: 15px; font-weight: 700; letter-spacing: 0.03em; }
+.writer-page .writer-letterhead .lh-sub { font-size: 10px; opacity: 0.7; }
 
 /* Find & Replace match highlights (features 1–10) */
 .writer-content .ProseMirror .search-match { background: rgba(212, 160, 23, 0.32); border-radius: 2px; }

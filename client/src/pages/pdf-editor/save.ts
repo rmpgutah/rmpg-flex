@@ -1,4 +1,4 @@
-import { PDFDocument, StandardFonts, rgb, degrees, pushGraphicsState, popGraphicsState, concatTransformationMatrix } from 'pdf-lib';
+import { PDFDocument, StandardFonts, rgb, degrees, pushGraphicsState, popGraphicsState, concatTransformationMatrix, PDFName, PDFArray, PDFDict, PDFString, PDFNumber, PageSizes } from 'pdf-lib';
 import { normRotation, rotationGeometry } from './rotationGeometry';
 import { RmpgPdfBuilder, open as openEnginePdf } from '../../lib/rmpg-pdf-engine';
 import { Annotation, BatesConfig, EditorState, HeaderFooterConfig, PageMeta, PageNumbersConfig, WatermarkConfig, DEFAULT_RENDER_SCALE } from './types';
@@ -139,6 +139,8 @@ async function drawAnnotation(ctx: PageContext, ann: Annotation): Promise<void> 
       draw((csb) => {
         csb.setStrokeRgb(color[0], color[1], color[2]);
         csb.setLineWidth(stroke);
+        if (ann.strokeStyle === 'dashed') csb.setLineDash([stroke * 4, stroke * 3]);
+        else if (ann.strokeStyle === 'dotted') csb.setLineDash([stroke, stroke * 2]);
         if (ann.fillColor) {
           csb.setFillRgb(fillColor[0], fillColor[1], fillColor[2]);
         }
@@ -150,6 +152,8 @@ async function drawAnnotation(ctx: PageContext, ann: Annotation): Promise<void> 
       draw((csb) => {
         csb.setStrokeRgb(color[0], color[1], color[2]);
         csb.setLineWidth(stroke);
+        if (ann.strokeStyle === 'dashed') csb.setLineDash([stroke * 4, stroke * 3]);
+        else if (ann.strokeStyle === 'dotted') csb.setLineDash([stroke, stroke * 2]);
         csb.drawEllipse(px + pw / 2, py - ph / 2, pw / 2, ph / 2, false);
       });
       return;
@@ -162,6 +166,8 @@ async function drawAnnotation(ctx: PageContext, ann: Annotation): Promise<void> 
       draw((csb) => {
         csb.setStrokeRgb(color[0], color[1], color[2]);
         csb.setLineWidth(stroke);
+        if (ann.strokeStyle === 'dashed') csb.setLineDash([stroke * 4, stroke * 3]);
+        else if (ann.strokeStyle === 'dotted') csb.setLineDash([stroke, stroke * 2]);
         csb.drawLine(x1, y1, x2, y2);
         const dx = x2 - x1, dy = y2 - y1;
         const len = Math.hypot(dx, dy) || 1;
@@ -934,4 +940,431 @@ export async function findRedactionBoxes(
   } finally {
     await pdf.destroy().catch(() => { /* already gone */ });
   }
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// WAVE-3 ADDITIONS — all pdf-lib based. These run independently of the native
+// writer save path and never touch the canvas / rotation CTM math above.
+// ────────────────────────────────────────────────────────────────────────────
+
+/** Convert an editor annotation box (screen px, top-down) → a pdf-lib page rect
+ *  (points, bottom-up). Returns x/y of the lower-left corner plus w/h. */
+function annRectOnPage(a: Annotation, pageHeightPts: number): { x: number; y: number; w: number; h: number } {
+  const scale = DEFAULT_RENDER_SCALE;
+  const x = a.x / scale;
+  const w = a.w / scale;
+  const h = a.h / scale;
+  const y = pageHeightPts - a.y / scale - h;
+  return { x, y, w, h };
+}
+
+/**
+ * Build a savable PDF through pdf-lib that ALSO writes real interactive
+ * features the native writer doesn't emit:
+ *   - AcroForm text fields + checkboxes (formText / formCheck annotations)
+ *   - clickable /Link annotations (URL links and intra-document GoTo links)
+ *   - a /Outlines bookmark tree from the editor's in-app bookmarks
+ *
+ * This is the "interactive save" path, invoked when the document contains form
+ * fields, link annotations, or the user explicitly requests interactive output.
+ */
+export async function buildInteractivePdf(
+  state: EditorState,
+  opts: { outline?: Array<{ title: string; page: number }> } = {},
+): Promise<Uint8Array> {
+  if (!state.bytes) throw new Error('No source PDF loaded');
+  const src = await PDFDocument.load(state.bytes);
+  const out = await PDFDocument.create();
+  const helv = await out.embedFont(StandardFonts.Helvetica);
+  const helvBold = await out.embedFont(StandardFonts.HelveticaBold);
+  const times = await out.embedFont(StandardFonts.TimesRoman);
+  const courier = await out.embedFont(StandardFonts.Courier);
+
+  const sourceIndices = state.pageOrder.filter(p => p > 0).map(i => i - 1);
+  if (sourceIndices.length === 0) throw new Error('No source pages to copy');
+  const copied = await out.copyPages(src, sourceIndices);
+  const form = out.getForm();
+
+  for (let visualIdx = 0; visualIdx < copied.length; visualIdx++) {
+    const page = copied[visualIdx];
+    out.addPage(page);
+    const meta = state.pages[visualIdx];
+    if (meta?.rotation) page.setRotation(degrees((page.getRotation().angle + meta.rotation) % 360));
+    const pageH = page.getHeight();
+    const anns = state.annotations.filter(a => a.page === visualIdx + 1);
+
+    // 1) Visual (non-interactive) annotations — same drawing rules as the
+    //    fallback path so the page still LOOKS right through this path too.
+    for (const a of anns) {
+      const r = annRectOnPage(a, pageH);
+      const c = hexToRgb(a.color);
+      if (a.type === 'text') {
+        const fbFont = a.fontFamily === 'times' ? times : a.fontFamily === 'courier' ? courier : (a.bold ? helvBold : helv);
+        page.drawText(a.text, { x: r.x, y: r.y + r.h - a.fontSize, size: a.fontSize, font: fbFont, color: rgb(c[0], c[1], c[2]) });
+      } else if (a.type === 'highlight') {
+        page.drawRectangle({ x: r.x, y: r.y, width: r.w, height: r.h, color: rgb(0.6, 0.6, 0.6), opacity: 0.3 });
+      } else if (a.type === 'redact') {
+        page.drawRectangle({ x: r.x, y: r.y, width: r.w, height: r.h, color: rgb(0, 0, 0) });
+      } else if (a.type === 'rect') {
+        const dash = a.strokeStyle === 'dashed' ? [6, 4] : a.strokeStyle === 'dotted' ? [1, 3] : undefined;
+        page.drawRectangle({ x: r.x, y: r.y, width: r.w, height: r.h, borderColor: rgb(c[0], c[1], c[2]), borderWidth: a.strokeWidth ?? 1.5, borderDashArray: dash });
+      } else if (a.type === 'line') {
+        const dash = a.strokeStyle === 'dashed' ? [6, 4] : a.strokeStyle === 'dotted' ? [1, 3] : undefined;
+        page.drawLine({ start: { x: r.x, y: r.y + r.h }, end: { x: r.x + r.w, y: r.y }, thickness: a.strokeWidth ?? 1.5, color: rgb(c[0], c[1], c[2]), dashArray: dash });
+      } else if (a.type === 'image' || a.type === 'signature') {
+        try {
+          const isPng = a.imageData.startsWith('data:image/png');
+          const raw = Uint8Array.from(atob(a.imageData.split(',')[1]), ch => ch.charCodeAt(0));
+          const img = isPng ? await out.embedPng(raw) : await out.embedJpg(raw);
+          page.drawImage(img, { x: r.x, y: r.y, width: r.w, height: r.h });
+        } catch { /* skip embed failure */ }
+      }
+    }
+
+    // 2) Interactive AcroForm fields.
+    let fieldSeq = 0;
+    for (const a of anns) {
+      if (a.type !== 'formText' && a.type !== 'formCheck') continue;
+      const r = annRectOnPage(a, pageH);
+      const base = (a.fieldName && a.fieldName.trim()) || `field_p${visualIdx + 1}_${fieldSeq++}`;
+      try {
+        if (a.type === 'formText') {
+          const tf = form.createTextField(uniqueFieldName(form, base));
+          if (a.defaultValue) tf.setText(a.defaultValue);
+          tf.addToPage(page, { x: r.x, y: r.y, width: r.w, height: r.h, borderWidth: 1, borderColor: rgb(0.55, 0.55, 0.55) });
+        } else {
+          const side = Math.min(r.w, r.h);
+          const cb = form.createCheckBox(uniqueFieldName(form, base));
+          cb.addToPage(page, { x: r.x, y: r.y, width: side, height: side, borderWidth: 1, borderColor: rgb(0.55, 0.55, 0.55) });
+          if (a.defaultChecked) cb.check();
+        }
+      } catch (err) {
+        console.warn('[pdf-editor] form field create failed', base, err);
+      }
+    }
+
+    // 3) Real /Link annotations (URL + intra-doc GoTo).
+    for (const a of anns) {
+      if (a.type !== 'link') continue;
+      const r = annRectOnPage(a, pageH);
+      page.drawText(a.text, { x: r.x + 2, y: r.y + 2, size: Math.max(8, r.h * 0.6), font: helv, color: rgb(0, 0.27, 0.55) });
+      const annot = makeLinkAnnotation(out, [r.x, r.y, r.x + r.w, r.y + r.h], a.url, copied);
+      addAnnotToPage(out, page, annot);
+    }
+  }
+
+  // 4) Outline / bookmark tree.
+  const outline = opts.outline ?? [];
+  if (outline.length > 0) buildOutline(out, outline, copied);
+
+  if (state.meta.title) out.setTitle(state.meta.title);
+  if (state.meta.author) out.setAuthor(state.meta.author);
+  out.setProducer('RMPG PDF Engine v1.0 — interactive (pdf-lib)');
+  out.setModificationDate(new Date());
+  return out.save();
+}
+
+/** Disambiguate field names so two widgets never collide (pdf-lib throws). */
+function uniqueFieldName(form: ReturnType<PDFDocument['getForm']>, base: string): string {
+  let name = base.replace(/[^\w.-]/g, '_');
+  const exists = (nm: string) => { try { form.getField(nm); return true; } catch { return false; } };
+  let n = 1;
+  while (exists(name)) name = `${base.replace(/[^\w.-]/g, '_')}_${n++}`;
+  return name;
+}
+
+/** Construct a /Link annotation dict — URL (URI action) or, when the target is
+ *  "#page=N", an intra-document GoTo. */
+function makeLinkAnnotation(out: PDFDocument, rect: [number, number, number, number], url: string, pages: any[]): PDFDict {
+  const ctx = out.context;
+  const pageMatch = /^#page=(\d+)$/i.exec(url.trim());
+  if (pageMatch) {
+    const idx = Math.max(0, Math.min(pages.length - 1, parseInt(pageMatch[1], 10) - 1));
+    const target = pages[idx];
+    return ctx.obj({
+      Type: 'Annot',
+      Subtype: 'Link',
+      Rect: rect,
+      Border: [0, 0, 0],
+      Dest: [target.ref, PDFName.of('Fit')],
+    }) as PDFDict;
+  }
+  return ctx.obj({
+    Type: 'Annot',
+    Subtype: 'Link',
+    Rect: rect,
+    Border: [0, 0, 0],
+    A: { Type: 'Action', S: 'URI', URI: PDFString.of(url) },
+  }) as PDFDict;
+}
+
+/** Append an annotation dict to a page's /Annots array (creating it if absent). */
+function addAnnotToPage(out: PDFDocument, page: ReturnType<PDFDocument['getPage']>, annot: PDFDict): void {
+  const ref = out.context.register(annot);
+  const existing = page.node.lookup(PDFName.of('Annots'));
+  if (existing instanceof PDFArray) existing.push(ref);
+  else page.node.set(PDFName.of('Annots'), out.context.obj([ref]));
+}
+
+/** Build a flat /Outlines tree (all items top-level) from the editor's
+ *  bookmarks. Each item GoTo-links to its page top. */
+function buildOutline(out: PDFDocument, items: Array<{ title: string; page: number }>, pages: any[]): void {
+  const ctx = out.context;
+  const outlinesDict = ctx.obj({ Type: 'Outlines' }) as PDFDict;
+  const outlinesRef = ctx.register(outlinesDict);
+  const itemDicts: PDFDict[] = [];
+  const itemRefs: any[] = [];
+  for (const it of items) {
+    const idx = Math.max(0, Math.min(pages.length - 1, it.page - 1));
+    const target = pages[idx];
+    const d = ctx.obj({
+      Title: PDFString.of(it.title || `Page ${it.page}`),
+      Parent: outlinesRef,
+      Dest: [target.ref, PDFName.of('Fit')],
+    }) as PDFDict;
+    itemDicts.push(d);
+    itemRefs.push(ctx.register(d));
+  }
+  for (let i = 0; i < itemDicts.length; i++) {
+    if (i > 0) itemDicts[i].set(PDFName.of('Prev'), itemRefs[i - 1]);
+    if (i < itemDicts.length - 1) itemDicts[i].set(PDFName.of('Next'), itemRefs[i + 1]);
+  }
+  if (itemRefs.length > 0) {
+    outlinesDict.set(PDFName.of('First'), itemRefs[0]);
+    outlinesDict.set(PDFName.of('Last'), itemRefs[itemRefs.length - 1]);
+    outlinesDict.set(PDFName.of('Count'), PDFNumber.of(itemRefs.length));
+  }
+  out.catalog.set(PDFName.of('Outlines'), outlinesRef);
+}
+
+/**
+ * Split the document into multiple PDFs. `breakpoints` is the 1-indexed visual
+ * page where each NEW part starts (deduped, sorted). Returns one entry per part.
+ */
+export async function splitPdf(
+  state: EditorState,
+  breakpoints: number[],
+): Promise<Array<{ name: string; bytes: Uint8Array }>> {
+  if (!state.bytes) throw new Error('No source PDF loaded');
+  const total = state.pageOrder.length;
+  const starts = Array.from(new Set([1, ...breakpoints.filter(b => b >= 2 && b <= total)])).sort((a, b) => a - b);
+  const ranges: Array<[number, number]> = [];
+  for (let i = 0; i < starts.length; i++) {
+    const lo = starts[i];
+    const hi = i + 1 < starts.length ? starts[i + 1] - 1 : total;
+    ranges.push([lo, hi]);
+  }
+  const base = state.fileName.replace(/\.pdf$/i, '') || 'document';
+  const parts: Array<{ name: string; bytes: Uint8Array }> = [];
+  for (let i = 0; i < ranges.length; i++) {
+    const [lo, hi] = ranges[i];
+    const nums: number[] = [];
+    for (let n = lo; n <= hi; n++) nums.push(n);
+    const bytes = await extractPagesAsBytes(state, nums);
+    parts.push({ name: `${base}-part-${i + 1}-pages-${lo}-${hi}.pdf`, bytes });
+  }
+  return parts;
+}
+
+/** Split every N pages. Convenience wrapper around splitPdf. */
+export async function splitEveryN(state: EditorState, n: number): Promise<Array<{ name: string; bytes: Uint8Array }>> {
+  const total = state.pageOrder.length;
+  const breaks: number[] = [];
+  for (let p = n + 1; p <= total; p += n) breaks.push(p);
+  return splitPdf(state, breaks);
+}
+
+/**
+ * Re-save through pdf-lib with object streams enabled to shrink output. Returns
+ * the new bytes plus before/after sizes. Keeps the optimized copy only if it
+ * actually got smaller; otherwise returns the original unchanged.
+ */
+export async function optimizePdf(bytes: Uint8Array): Promise<{ bytes: Uint8Array; before: number; after: number }> {
+  const before = bytes.byteLength;
+  try {
+    const doc = await PDFDocument.load(bytes);
+    doc.setProducer('RMPG PDF Engine v1.0 — optimized');
+    const outBytes = await doc.save({ useObjectStreams: true });
+    if (outBytes.byteLength < before) return { bytes: outBytes, before, after: outBytes.byteLength };
+    return { bytes, before, after: before };
+  } catch (err) {
+    console.warn('[pdf-editor] optimize failed — returning original', err);
+    return { bytes, before, after: before };
+  }
+}
+
+/** Standard page-size presets (points). */
+export const PAGE_SIZE_PRESETS: Record<string, [number, number]> = {
+  Letter: PageSizes.Letter as [number, number],
+  Legal: PageSizes.Legal as [number, number],
+  A4: PageSizes.A4 as [number, number],
+  Tabloid: PageSizes.Tabloid as [number, number],
+};
+
+/**
+ * Resize pages to a target size by scaling content to fit + setting a new
+ * MediaBox. Operates on FLATTENED bytes (annotations baked in). `targetPages`
+ * is a set of 1-indexed visual page numbers; empty = all pages.
+ */
+export async function resizePages(
+  flattenedBytes: Uint8Array,
+  size: [number, number],
+  targetPages: Set<number>,
+): Promise<Uint8Array> {
+  const doc = await PDFDocument.load(flattenedBytes);
+  const pages = doc.getPages();
+  const [tw, th] = size;
+  for (let i = 0; i < pages.length; i++) {
+    if (targetPages.size > 0 && !targetPages.has(i + 1)) continue;
+    const page = pages[i];
+    const { width: ow, height: oh } = page.getSize();
+    const scale = Math.min(tw / ow, th / oh);
+    page.scaleContent(scale, scale);
+    const sw = ow * scale, sh = oh * scale;
+    page.translateContent((tw - sw) / 2, (th - sh) / 2);
+    page.setSize(tw, th);
+  }
+  doc.setProducer('RMPG PDF Engine v1.0 — resized');
+  return doc.save();
+}
+
+/**
+ * Grayscale (or invert) a single page: render via the engine to a canvas,
+ * desaturate every pixel, embed the result as a full-page image in a fresh
+ * single-page PDF. `original` is the 1-indexed ORIGINAL source page number.
+ */
+export async function grayscalePageBytes(
+  bytes: Uint8Array,
+  original: number,
+  invert = false,
+): Promise<Uint8Array> {
+  const { openAndRenderPage } = await import('../../lib/rmpg-pdf-engine');
+  const canvas = document.createElement('canvas');
+  const pdf = await openAndRenderPage(bytes, { pageNumber: original, scale: 2, canvas });
+  await pdf.destroy().catch(() => { /* gone */ });
+  const ctx = canvas.getContext('2d');
+  if (!ctx) throw new Error('Canvas 2D context unavailable');
+  const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const d = img.data;
+  for (let i = 0; i < d.length; i += 4) {
+    let lum = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+    if (invert) lum = 255 - lum;
+    d[i] = d[i + 1] = d[i + 2] = lum;
+  }
+  ctx.putImageData(img, 0, 0);
+  return imageToPdfPageBytes(canvas.toDataURL('image/jpeg', 0.92));
+}
+
+/**
+ * Generate a printable PDF report listing every annotation, grouped by page.
+ * Pure pdf-lib — a fresh letter-size document.
+ */
+export async function buildAnnotationReportPdf(
+  annotations: Annotation[],
+  fileName: string,
+  title?: string,
+): Promise<Uint8Array> {
+  const doc = await PDFDocument.create();
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+  const PW = 612, PH = 792, margin = 48;
+  let page = doc.addPage([PW, PH]);
+  let y = PH - margin;
+  const gold = rgb(0.831, 0.627, 0.090);
+  const gray = rgb(0.3, 0.3, 0.3);
+  const dark = rgb(0.1, 0.1, 0.1);
+
+  const ensureSpace = (lines = 1) => {
+    if (y - lines * 14 < margin) { page = doc.addPage([PW, PH]); y = PH - margin; }
+  };
+  const summary = (a: Annotation): string => {
+    if (a.type === 'text') return a.text;
+    if (a.type === 'sticky') return a.text;
+    if (a.type === 'stamp') return String(a.label);
+    if (a.type === 'link') return `${a.text} -> ${a.url}`;
+    if (a.type === 'formText' || a.type === 'formCheck') return `[${a.type}] ${a.fieldName ?? ''}`;
+    if (a.type === 'redact') return '[redacted region]';
+    return `[${a.type}]`;
+  };
+
+  page.drawText('Annotation Summary', { x: margin, y, size: 18, font: bold, color: dark }); y -= 24;
+  page.drawText(`Document: ${(title ?? fileName).slice(0, 80)}`, { x: margin, y, size: 10, font, color: gray }); y -= 14;
+  page.drawText(`Generated: ${new Date().toLocaleString()}`, { x: margin, y, size: 10, font, color: gray }); y -= 14;
+  page.drawText(`Total annotations: ${annotations.length}`, { x: margin, y, size: 10, font, color: gray }); y -= 10;
+  page.drawLine({ start: { x: margin, y }, end: { x: PW - margin, y }, thickness: 0.75, color: gold }); y -= 18;
+
+  const byPage = new Map<number, Annotation[]>();
+  for (const a of annotations) { const l = byPage.get(a.page) ?? []; l.push(a); byPage.set(a.page, l); }
+  for (const p of [...byPage.keys()].sort((a, b) => a - b)) {
+    ensureSpace(2);
+    page.drawText(`Page ${p}`, { x: margin, y, size: 12, font: bold, color: gold }); y -= 16;
+    for (const a of byPage.get(p)!) {
+      ensureSpace(2);
+      const m: string[] = [];
+      if (a.authorName) m.push(a.authorName);
+      if (a.status) m.push(a.status);
+      if (a.layer) m.push(`layer:${a.layer}`);
+      page.drawText(`• ${a.type.toUpperCase()}${m.length ? `  (${m.join(' · ')})` : ''}`, { x: margin + 6, y, size: 9, font: bold, color: dark }); y -= 12;
+      const body = summary(a).slice(0, 110);
+      if (body) { page.drawText(body, { x: margin + 16, y, size: 9, font, color: gray }); y -= 12; }
+      if (a.note) { ensureSpace(1); page.drawText(`note: ${a.note.slice(0, 100)}`, { x: margin + 16, y, size: 8, font, color: gray }); y -= 11; }
+      y -= 2;
+    }
+    y -= 6;
+  }
+  doc.setTitle(`${title ?? fileName} — Annotation Report`);
+  doc.setProducer('RMPG PDF Engine v1.0 — annotation report');
+  return doc.save();
+}
+
+/**
+ * Per-page pixel-difference between two PDFs. Renders page `n` of each via the
+ * engine, compares pixels, returns a gold-highlighted diff overlay data-URL +
+ * the fraction of changed pixels, plus both source page images.
+ */
+export async function comparePageDiff(
+  bytesA: Uint8Array,
+  bytesB: Uint8Array,
+  pageNumber: number,
+  scale = 1.5,
+): Promise<{ diffUrl: string; changed: number; aUrl: string; bUrl: string }> {
+  const { openAndRenderPage } = await import('../../lib/rmpg-pdf-engine');
+  const cA = document.createElement('canvas');
+  const cB = document.createElement('canvas');
+  const pA = await openAndRenderPage(bytesA, { pageNumber, scale, canvas: cA });
+  await pA.destroy().catch(() => {});
+  const pB = await openAndRenderPage(bytesB, { pageNumber, scale, canvas: cB });
+  await pB.destroy().catch(() => {});
+  const W = Math.max(cA.width, cB.width);
+  const H = Math.max(cA.height, cB.height);
+  const mk = () => { const c = document.createElement('canvas'); c.width = W; c.height = H; return c; };
+  const norm = (srcCanvas: HTMLCanvasElement) => {
+    const c = mk(); const ctx = c.getContext('2d')!;
+    ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, W, H);
+    ctx.drawImage(srcCanvas, 0, 0);
+    return ctx.getImageData(0, 0, W, H);
+  };
+  const ia = norm(cA), ib = norm(cB);
+  const diff = mk(); const dctx = diff.getContext('2d')!;
+  const res = dctx.createImageData(W, H);
+  let changed = 0;
+  const totalPx = W * H;
+  for (let i = 0; i < ia.data.length; i += 4) {
+    const delta = Math.abs(ia.data[i] - ib.data[i]) + Math.abs(ia.data[i + 1] - ib.data[i + 1]) + Math.abs(ia.data[i + 2] - ib.data[i + 2]);
+    if (delta > 40) {
+      changed++;
+      res.data[i] = 0xd4; res.data[i + 1] = 0xa0; res.data[i + 2] = 0x17; res.data[i + 3] = 255;
+    } else {
+      const lum = 0.299 * ib.data[i] + 0.587 * ib.data[i + 1] + 0.114 * ib.data[i + 2];
+      const dim = 200 + (lum / 255) * 55;
+      res.data[i] = res.data[i + 1] = res.data[i + 2] = dim; res.data[i + 3] = 255;
+    }
+  }
+  dctx.putImageData(res, 0, 0);
+  return {
+    diffUrl: diff.toDataURL('image/png'),
+    changed: totalPx > 0 ? changed / totalPx : 0,
+    aUrl: cA.toDataURL('image/png'),
+    bUrl: cB.toDataURL('image/png'),
+  };
 }

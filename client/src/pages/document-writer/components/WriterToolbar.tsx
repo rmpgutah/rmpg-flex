@@ -7,6 +7,7 @@ import {
   Type, Pilcrow, LayoutPanelTop, PlusSquare, Sun, Moon, BarChart3, BookTemplate,
   Baseline, PaintBucket, Search, MessageSquare, Eye, FileDown, Grid3x3, Focus,
   Quote as QuoteIcon, Omega, Volume2, VolumeX, Camera, Info, ListTree,
+  Paintbrush, Gauge, CaseSensitive, Scale, Sheet,
 } from 'lucide-react';
 import ToolbarMenu, { MenuRow, MenuButton } from './ToolbarMenu';
 import {
@@ -49,6 +50,13 @@ export interface WriterExtActions {
   readingAloud: boolean;
   onExportJson: () => void;
   onImportJson: () => void;
+  // Wave-3 actions
+  onToggleAnalysis: () => void;
+  onBrush: () => void;
+  brushActive: boolean;
+  onTransform: (mode: 'upper' | 'lower' | 'title' | 'sentence') => void;
+  onInsertCsv: () => void;
+  onInsertStatute: () => void;
 }
 
 interface Props {
@@ -188,6 +196,7 @@ export default function WriterToolbar({
         <ToolBtn title="Superscript" active={editor.isActive('superscript')} onClick={() => editor.chain().focus().toggleSuperscript().run()}><Superscript className="w-3.5 h-3.5" /></ToolBtn>
         <ToolBtn title="Subscript" active={editor.isActive('subscript')} onClick={() => editor.chain().focus().toggleSubscript().run()}><Subscript className="w-3.5 h-3.5" /></ToolBtn>
         <ToolBtn title="Inline code" active={editor.isActive('code')} onClick={() => editor.chain().focus().toggleCode().run()}><Code className="w-3.5 h-3.5" /></ToolBtn>
+        <ToolBtn title={ext.brushActive ? 'Format brush armed — select target text and click to apply' : 'Format brush — capture formatting from the selection, then apply to the next'} active={ext.brushActive} onClick={ext.onBrush}><Paintbrush className="w-3.5 h-3.5" /></ToolBtn>
 
         {/* Advanced text menu (8–15) */}
         <ToolbarMenu label="Text" icon={Type} width={250}>
@@ -222,6 +231,15 @@ export default function WriterToolbar({
           <MenuButton onClick={() => editor.chain().focus().clearNodes().unsetAllMarks().run()}>
             <span className="flex items-center gap-1"><RemoveFormatting className="w-3 h-3" /> Clear all formatting</span>
           </MenuButton>
+        </ToolbarMenu>
+
+        {/* Case transforms (wave 3) — operate on the current selection */}
+        <ToolbarMenu label="Case" icon={CaseSensitive} width={180}>
+          <MenuButton onClick={() => ext.onTransform('upper')}>UPPERCASE</MenuButton>
+          <MenuButton onClick={() => ext.onTransform('lower')}>lowercase</MenuButton>
+          <MenuButton onClick={() => ext.onTransform('title')}>Title Case</MenuButton>
+          <MenuButton onClick={() => ext.onTransform('sentence')}>Sentence case</MenuButton>
+          <div className="text-[9px] text-rmpg-600 px-2 pt-1 leading-snug">Select text first, then choose a case.</div>
         </ToolbarMenu>
         <Divider />
 
@@ -304,6 +322,8 @@ export default function WriterToolbar({
         {/* Insert menu (tables/images/links/breaks/references 20,21,38,43–47) */}
         <ToolbarMenu label="Insert" icon={PlusSquare} width={230}>
           <MenuButton onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}><span className="flex items-center gap-1"><TableIcon className="w-3 h-3" /> Table</span></MenuButton>
+          <MenuButton onClick={ext.onInsertCsv}><span className="flex items-center gap-1"><Sheet className="w-3 h-3" /> Table from CSV/TSV…</span></MenuButton>
+          <MenuButton onClick={ext.onInsertStatute}><span className="flex items-center gap-1"><Scale className="w-3 h-3" /> Utah Code citation…</span></MenuButton>
           <MenuButton onClick={onInsertImage}><span className="flex items-center gap-1"><ImageIcon className="w-3 h-3" /> Image</span></MenuButton>
           <MenuButton onClick={() => { const url = window.prompt('URL:'); if (url) editor.chain().focus().setLink({ href: url }).run(); }}><span className="flex items-center gap-1"><Link2 className="w-3 h-3" /> Link</span></MenuButton>
           <MenuButton onClick={() => editor.chain().focus().setPageBreak().run()}>Page break</MenuButton>
@@ -437,6 +457,8 @@ export default function WriterToolbar({
         <ToolbarMenu label="Review" icon={MessageSquare} width={210}>
           <MenuButton onClick={ext.onAddComment}>Add comment to selection</MenuButton>
           <MenuButton onClick={ext.onToggleComments}>Toggle comments panel</MenuButton>
+          <MenuButton onClick={ext.onToggleAnalysis}><span className="flex items-center gap-1"><Gauge className="w-3 h-3" /> Analysis (readability/style/words/diff)</span></MenuButton>
+          <MenuButton active={ext.brushActive} onClick={ext.onBrush}><span className="flex items-center gap-1"><Paintbrush className="w-3 h-3" /> Format brush {ext.brushActive ? '(armed)' : ''}</span></MenuButton>
           <MenuButton onClick={ext.onSnapshot}>Quick save version snapshot</MenuButton>
           <MenuButton onClick={ext.onToggleSnapshots}><span className="flex items-center gap-1"><Camera className="w-3 h-3" /> Snapshots panel…</span></MenuButton>
           <MenuButton onClick={ext.onOpenProperties}><span className="flex items-center gap-1"><Info className="w-3 h-3" /> Document properties…</span></MenuButton>
@@ -511,6 +533,14 @@ export default function WriterToolbar({
             <input className={`${selCls} w-28`} placeholder="text" value={docSettings.watermark.text} onChange={(e) => setDocSettings((s) => ({ ...s, watermark: { ...s.watermark, text: e.target.value } }))} />
           </MenuRow>
           <MenuButton active={docSettings.pageBorder} onClick={() => setDocSettings((s) => ({ ...s, pageBorder: !s.pageBorder }))}>Page border: {docSettings.pageBorder ? 'On' : 'Off'}</MenuButton>
+          {docSettings.pageBorder && (
+            <MenuRow label="Border style">
+              <select className={selCls} value={docSettings.pageBorderStyle || 'thin'} onChange={(e) => setDocSettings((s) => ({ ...s, pageBorderStyle: e.target.value as DocSettings['pageBorderStyle'] }))}>
+                {[['thin', 'Thin'], ['thick', 'Thick'], ['double', 'Double'], ['gold', 'Gold']].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              </select>
+            </MenuRow>
+          )}
+          <MenuButton active={!!docSettings.letterhead} onClick={() => setDocSettings((s) => ({ ...s, letterhead: !s.letterhead }))}>Letterhead band (print): {docSettings.letterhead ? 'On' : 'Off'}</MenuButton>
           <MenuRow label="Background">
             <input type="color" value={docSettings.background} onChange={(e) => setDocSettings((s) => ({ ...s, background: e.target.value }))} />
           </MenuRow>

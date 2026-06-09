@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Trash2, RotateCw, ArrowUp, ArrowDown, FilePlus2, FileOutput, Crop, Copy, Maximize2, Minimize2 } from 'lucide-react';
+import { Trash2, RotateCw, RotateCcw, ArrowUp, ArrowDown, FilePlus2, FileOutput, Crop, Copy, Maximize2, Minimize2 } from 'lucide-react';
 import { open as openPdf, BackendUnsupportedError } from '../../../lib/rmpg-pdf-engine';
 import IconButton from '../../../components/IconButton';
 import { PageMeta } from '../types';
@@ -12,6 +12,8 @@ interface Props {
   onJumpTo: (visualIdx: number) => void;
   onMove: (visualIdx: number, direction: -1 | 1) => void;
   onRotate: (visualIdx: number) => void;
+  /** Rotate counter-clockwise (the built-in onRotate is clockwise). */
+  onRotateCcw?: (visualIdx: number) => void;
   onDelete: (visualIdx: number) => void;
   onInsertBlank: (afterVisualIdx: number) => void;
   onExtract?: (visualIdx: number) => void;
@@ -28,7 +30,7 @@ interface Props {
   onTogglePageSelect?: (visualIdx: number) => void;
 }
 
-export default function ThumbnailSidebar({ pdfBytes, pages, pageOrder, activePage, onJumpTo, onMove, onRotate, onDelete, onInsertBlank, onExtract, onClearCrop, onDuplicate, onReorder, size = 'small', onToggleSize, selectedPages, onTogglePageSelect }: Props) {
+export default function ThumbnailSidebar({ pdfBytes, pages, pageOrder, activePage, onJumpTo, onMove, onRotate, onRotateCcw, onDelete, onInsertBlank, onExtract, onClearCrop, onDuplicate, onReorder, size = 'small', onToggleSize, selectedPages, onTogglePageSelect }: Props) {
   const refs = useRef<Map<number, HTMLCanvasElement>>(new Map());
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [dropIdx, setDropIdx] = useState<number | null>(null);
@@ -165,7 +167,11 @@ export default function ThumbnailSidebar({ pdfBytes, pages, pageOrder, activePag
                 className="p-0.5 text-rmpg-400 hover:text-white disabled:opacity-30"><ArrowUp className="w-3 h-3" /></IconButton>
               <IconButton onClick={() => onMove(idx, 1)} aria-label="Move down" title="Move down" disabled={idx === pageOrder.length - 1}
                 className="p-0.5 text-rmpg-400 hover:text-white disabled:opacity-30"><ArrowDown className="w-3 h-3" /></IconButton>
-              <IconButton onClick={() => onRotate(idx)} aria-label="Rotate 90°" title="Rotate 90°"
+              {onRotateCcw && (
+                <IconButton onClick={() => onRotateCcw(idx)} aria-label="Rotate 90° counter-clockwise" title="Rotate 90° counter-clockwise"
+                  className="p-0.5 text-rmpg-400 hover:text-white"><RotateCcw className="w-3 h-3" /></IconButton>
+              )}
+              <IconButton onClick={() => onRotate(idx)} aria-label="Rotate 90° clockwise" title="Rotate 90° clockwise"
                 className="p-0.5 text-rmpg-400 hover:text-white"><RotateCw className="w-3 h-3" /></IconButton>
               <IconButton onClick={() => onInsertBlank(idx)} aria-label="Insert blank after" title="Insert blank after"
                 className="p-0.5 text-rmpg-400 hover:text-white"><FilePlus2 className="w-3 h-3" /></IconButton>

@@ -451,7 +451,17 @@
 //   templates, snippets library, table-of-contents, doc properties, signature
 //   line, version snapshots, smart quotes, read-aloud TTS, JSON export/import,
 //   outline numbering, fillable fields, character map, word goal.
-const CACHE_NAME = 'rmpg-flex-v840';
+// v841: PDF system + Document Writer feature wave 3 (~25 more features).
+//   PDF Editor: AcroForm form fields, real /Link annotations + /Outlines tree on
+//   save, split into multiple files, optimize/compress, line styles (dashed/
+//   dotted) via new engine setLineDash op, set page size, per-thumbnail rotate
+//   CCW, grayscale/invert page, annotation summary report PDF, save-a-copy,
+//   two-PDF visual compare (pixel diff). Document Writer: 15 more police
+//   templates, Analysis panel (Flesch readability, style/passive-voice checks,
+//   word/phrase frequency, version diff), formatting brush, case transforms,
+//   table-from-CSV, Utah Code citation insert, page-count estimate, letterhead
+//   + page-border styles, custom save-as-template surfaced in the chooser.
+const CACHE_NAME = 'rmpg-flex-v841';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

@@ -332,6 +332,51 @@ export function clearOutlineNumbering(editor: Editor): number {
   return edits.length;
 }
 
+// ── Formatting brush (capture marks from a selection, reapply to next) ──
+
+export interface CapturedFormat {
+  /** Stored mark name → attributes, e.g. { bold:{}, textStyle:{color:'#f00'} }. */
+  marks: Record<string, Record<string, unknown>>;
+}
+
+/** Capture the active inline marks at the current selection so they can be
+ *  re-applied elsewhere (the "format painter" / brush). Returns null if there's
+ *  no selection or no marks to copy. */
+export function captureFormat(editor: Editor): CapturedFormat | null {
+  const { from, to, empty } = editor.state.selection;
+  // Look at the first character of the selection (or the cursor's stored marks).
+  const $pos = editor.state.doc.resolve(Math.min(from + 1, editor.state.doc.content.size));
+  const nodeMarks = empty
+    ? (editor.state.storedMarks || $pos.marks())
+    : ($pos.marks());
+  const markable = ['bold', 'italic', 'underline', 'strike', 'code', 'superscript', 'subscript', 'highlight', 'textStyle', 'link'];
+  const marks: Record<string, Record<string, unknown>> = {};
+  for (const m of nodeMarks) {
+    if (markable.includes(m.type.name)) marks[m.type.name] = { ...m.attrs };
+  }
+  // Also scan the whole selection for marks that may not be on the first char.
+  if (!empty) {
+    editor.state.doc.nodesBetween(from, to, (node) => {
+      node.marks.forEach((m) => {
+        if (markable.includes(m.type.name) && !marks[m.type.name]) marks[m.type.name] = { ...m.attrs };
+      });
+    });
+  }
+  return Object.keys(marks).length ? { marks } : null;
+}
+
+/** Apply a previously captured format to the current selection. Clears existing
+ *  marks first so the brush replaces rather than stacks. Returns true on apply. */
+export function applyFormat(editor: Editor, fmt: CapturedFormat): boolean {
+  const { from, to } = editor.state.selection;
+  if (from === to) return false;
+  let chain = editor.chain().focus().unsetAllMarks();
+  for (const [name, attrs] of Object.entries(fmt.marks)) {
+    chain = chain.setMark(name, attrs);
+  }
+  return chain.run();
+}
+
 // ── Word-goal persistence ──
 const GOAL_KEY = 'rmpg_writer_word_goal';
 

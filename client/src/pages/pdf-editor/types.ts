@@ -31,7 +31,9 @@ export type Tool =
   | 'cloud'
   | 'check'
   | 'cross'
-  | 'measure';
+  | 'measure'
+  | 'formText'
+  | 'formCheck';
 
 export type StampLabel =
   | 'CONFIDENTIAL'
@@ -181,6 +183,22 @@ export interface StickyNoteAnnotation extends AnnotationBase {
   createdAt?: string;
 }
 
+/** Fillable AcroForm field placed by the Form-Field tool. Written into the
+ *  saved PDF as a real interactive widget via pdf-lib's form API (the editor
+ *  routes any document containing form fields through the pdf-lib save path).
+ *  In-app it renders as a labeled placeholder box so the operator sees where
+ *  the field will land. */
+export interface FormFieldAnnotation extends AnnotationBase {
+  type: 'formText' | 'formCheck';
+  /** Unique field name written into the AcroForm (e.g. "officer_name"). */
+  fieldName: string;
+  /** Default value: text for formText, checked-state for formCheck. */
+  defaultValue?: string;
+  defaultChecked?: boolean;
+  /** Placeholder/label shown in-app (not necessarily written to the PDF). */
+  label?: string;
+}
+
 export type Annotation =
   | TextAnnotation
   | HighlightAnnotation
@@ -198,7 +216,8 @@ export type Annotation =
   | PolygonAnnotation
   | CloudAnnotation
   | CheckAnnotation
-  | CrossAnnotation;
+  | CrossAnnotation
+  | FormFieldAnnotation;
 
 /** Per-page crop rectangle in screen-pixel coordinates at DEFAULT_RENDER_SCALE.
  *  Applied via pdf-lib setMediaBox at save time. */

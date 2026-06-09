@@ -1254,6 +1254,466 @@ export const TEMPLATES: DocumentTemplate[] = [
   <tr><td style="font-size:10px;color:#666;">Officer Signature</td><td>&nbsp;</td><td style="font-size:10px;color:#666;">Date</td></tr>
 </table></div>`,
   },
+  // ── Wave-3 templates ──────────────────────────────────────────────────────
+  {
+    id: 'booking-sheet',
+    name: 'Booking Sheet',
+    category: 'booking',
+    description: 'Arrestee booking/intake sheet with property, medical, and charges',
+    fields: [
+      { key: 'booking_no', label: 'Booking #', source: 'manual' },
+      { key: 'case_number', label: 'Case Number', source: 'cad', cadPath: 'call.call_number' },
+      { key: 'arrestee_name', label: 'Arrestee Name', source: 'manual' },
+      { key: 'arrestee_dob', label: 'DOB', source: 'manual' },
+      { key: 'booking_officer', label: 'Booking Officer', source: 'user' },
+      { key: 'booking_date', label: 'Booking Date/Time', source: 'manual' },
+    ],
+    content: `${AGENCY_HEADER}
+<h1 style="text-align:center;font-size:18px;">BOOKING SHEET</h1>
+<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
+  <tr><td style="border:1px solid #333;padding:6px;width:50%;"><strong>Booking #:</strong> {{booking_no}}</td><td style="border:1px solid #333;padding:6px;"><strong>Case #:</strong> {{case_number}}</td></tr>
+  <tr><td style="border:1px solid #333;padding:6px;"><strong>Arrestee:</strong> {{arrestee_name}}</td><td style="border:1px solid #333;padding:6px;"><strong>DOB:</strong> {{arrestee_dob}}</td></tr>
+  <tr><td style="border:1px solid #333;padding:6px;"><strong>Booking Officer:</strong> {{booking_officer}}</td><td style="border:1px solid #333;padding:6px;"><strong>Date/Time:</strong> {{booking_date}}</td></tr>
+</table>
+<h2 style="font-size:14px;border-bottom:1px solid #333;">PHYSICAL DESCRIPTION</h2>
+<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
+  <tr><td style="border:1px solid #333;padding:6px;"><strong>Sex:</strong></td><td style="border:1px solid #333;padding:6px;"><strong>Race:</strong></td><td style="border:1px solid #333;padding:6px;"><strong>Height:</strong></td><td style="border:1px solid #333;padding:6px;"><strong>Weight:</strong></td></tr>
+  <tr><td style="border:1px solid #333;padding:6px;"><strong>Hair:</strong></td><td style="border:1px solid #333;padding:6px;"><strong>Eyes:</strong></td><td style="border:1px solid #333;padding:6px;" colspan="2"><strong>SMT:</strong></td></tr>
+</table>
+<h2 style="font-size:14px;border-bottom:1px solid #333;">CHARGES</h2>
+<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
+  <tr style="background:#1a1a1a;"><th style="border:1px solid #333;padding:6px;text-align:left;">Statute</th><th style="border:1px solid #333;padding:6px;text-align:left;">Charge</th><th style="border:1px solid #333;padding:6px;text-align:left;">Class</th><th style="border:1px solid #333;padding:6px;text-align:left;">Bail</th></tr>
+  <tr><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td></tr>
+</table>
+<h2 style="font-size:14px;border-bottom:1px solid #333;">MEDICAL SCREENING</h2>
+<p>☐ Medical conditions reported &nbsp; ☐ Current medications &nbsp; ☐ Suicide risk screen completed &nbsp; ☐ Under influence</p>
+<p>Notes: &nbsp;</p>
+<h2 style="font-size:14px;border-bottom:1px solid #333;">PERSONAL PROPERTY INVENTORY</h2>
+<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
+  <tr style="background:#1a1a1a;"><th style="border:1px solid #333;padding:6px;text-align:left;">Item</th><th style="border:1px solid #333;padding:6px;text-align:left;">Description</th><th style="border:1px solid #333;padding:6px;text-align:left;">Disposition</th></tr>
+  <tr><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td></tr>
+</table>
+<div style="margin-top:40px;"><table style="width:100%;border:none;">
+  <tr><td style="width:60%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td><td style="width:10%;">&nbsp;</td><td style="width:30%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td></tr>
+  <tr><td style="font-size:10px;color:#666;">Booking Officer Signature</td><td>&nbsp;</td><td style="font-size:10px;color:#666;">Date</td></tr>
+</table></div>`,
+  },
+  {
+    id: 'property-inventory',
+    name: 'Property Inventory',
+    category: 'property',
+    description: 'Inventory of property taken into custody or safekeeping',
+    fields: [
+      { key: 'case_number', label: 'Case Number', source: 'cad', cadPath: 'call.call_number' },
+      { key: 'owner_name', label: 'Owner / Subject', source: 'manual' },
+      { key: 'officer', label: 'Inventorying Officer', source: 'user' },
+      { key: 'date', label: 'Date', source: 'manual' },
+      { key: 'location', label: 'Location', source: 'cad', cadPath: 'call.address' },
+    ],
+    content: `${AGENCY_HEADER}
+<h1 style="text-align:center;font-size:18px;">PROPERTY INVENTORY</h1>
+<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
+  <tr><td style="border:1px solid #333;padding:6px;width:50%;"><strong>Case #:</strong> {{case_number}}</td><td style="border:1px solid #333;padding:6px;"><strong>Date:</strong> {{date}}</td></tr>
+  <tr><td style="border:1px solid #333;padding:6px;"><strong>Owner / Subject:</strong> {{owner_name}}</td><td style="border:1px solid #333;padding:6px;"><strong>Officer:</strong> {{officer}}</td></tr>
+  <tr><td colspan="2" style="border:1px solid #333;padding:6px;"><strong>Location:</strong> {{location}}</td></tr>
+</table>
+<p>Reason for inventory: ☐ Safekeeping &nbsp; ☐ Found property &nbsp; ☐ Evidence &nbsp; ☐ Vehicle inventory &nbsp; ☐ Other</p>
+<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
+  <tr style="background:#1a1a1a;"><th style="border:1px solid #333;padding:6px;text-align:left;">Item #</th><th style="border:1px solid #333;padding:6px;text-align:left;">Description</th><th style="border:1px solid #333;padding:6px;text-align:left;">Qty</th><th style="border:1px solid #333;padding:6px;text-align:left;">Est. Value</th><th style="border:1px solid #333;padding:6px;text-align:left;">Condition</th></tr>
+  <tr><td style="border:1px solid #333;padding:6px;">1</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td></tr>
+  <tr><td style="border:1px solid #333;padding:6px;">2</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td></tr>
+</table>
+<div style="margin-top:40px;"><table style="width:100%;border:none;">
+  <tr><td style="width:60%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td><td style="width:10%;">&nbsp;</td><td style="width:30%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td></tr>
+  <tr><td style="font-size:10px;color:#666;">Officer Signature</td><td>&nbsp;</td><td style="font-size:10px;color:#666;">Date</td></tr>
+</table></div>`,
+  },
+  {
+    id: 'k9-deployment',
+    name: 'K9 Deployment Report',
+    category: 'k9',
+    description: 'Canine deployment documentation — search, track, apprehension',
+    fields: [
+      { key: 'case_number', label: 'Case Number', source: 'cad', cadPath: 'call.call_number' },
+      { key: 'handler', label: 'K9 Handler', source: 'user' },
+      { key: 'k9_name', label: 'K9 Name', source: 'manual' },
+      { key: 'date', label: 'Deployment Date/Time', source: 'manual' },
+      { key: 'location', label: 'Location', source: 'cad', cadPath: 'call.address' },
+    ],
+    content: `${AGENCY_HEADER}
+<h1 style="text-align:center;font-size:18px;">K9 DEPLOYMENT REPORT</h1>
+<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
+  <tr><td style="border:1px solid #333;padding:6px;width:50%;"><strong>Case #:</strong> {{case_number}}</td><td style="border:1px solid #333;padding:6px;"><strong>Date/Time:</strong> {{date}}</td></tr>
+  <tr><td style="border:1px solid #333;padding:6px;"><strong>Handler:</strong> {{handler}}</td><td style="border:1px solid #333;padding:6px;"><strong>K9:</strong> {{k9_name}}</td></tr>
+  <tr><td colspan="2" style="border:1px solid #333;padding:6px;"><strong>Location:</strong> {{location}}</td></tr>
+</table>
+<h2 style="font-size:14px;border-bottom:1px solid #333;">DEPLOYMENT TYPE</h2>
+<p>☐ Article/evidence search &nbsp; ☐ Narcotics detection &nbsp; ☐ Explosives detection &nbsp; ☐ Tracking/trailing &nbsp; ☐ Building search &nbsp; ☐ Apprehension</p>
+<h2 style="font-size:14px;border-bottom:1px solid #333;">WARNING / ANNOUNCEMENT</h2>
+<p>☐ K9 warning announcement given prior to deployment &nbsp; Time: ________</p>
+<p>Announcement wording / number of times given: &nbsp;</p>
+<h2 style="font-size:14px;border-bottom:1px solid #333;">NARRATIVE</h2>
+<p>&nbsp;</p><p>&nbsp;</p>
+<h2 style="font-size:14px;border-bottom:1px solid #333;">RESULT</h2>
+<p>☐ Apprehension &nbsp; ☐ Find/alert &nbsp; ☐ Negative &nbsp; ☐ Bite (document injuries below)</p>
+<p>Injuries / medical treatment: &nbsp;</p>
+<div style="margin-top:40px;"><table style="width:100%;border:none;">
+  <tr><td style="width:60%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td><td style="width:10%;">&nbsp;</td><td style="width:30%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td></tr>
+  <tr><td style="font-size:10px;color:#666;">Handler Signature</td><td>&nbsp;</td><td style="font-size:10px;color:#666;">Date</td></tr>
+</table></div>`,
+  },
+  {
+    id: 'pursuit-report',
+    name: 'Pursuit Report',
+    category: 'pursuit',
+    description: 'Vehicle pursuit documentation with justification and outcome',
+    fields: [
+      { key: 'case_number', label: 'Case Number', source: 'cad', cadPath: 'call.call_number' },
+      { key: 'officer', label: 'Primary Officer', source: 'user' },
+      { key: 'date', label: 'Date/Time', source: 'manual' },
+      { key: 'start_location', label: 'Start Location', source: 'manual' },
+    ],
+    content: `${AGENCY_HEADER}
+<h1 style="text-align:center;font-size:18px;color:#c0392b;">VEHICLE PURSUIT REPORT</h1>
+<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
+  <tr><td style="border:1px solid #333;padding:6px;width:50%;"><strong>Case #:</strong> {{case_number}}</td><td style="border:1px solid #333;padding:6px;"><strong>Date/Time:</strong> {{date}}</td></tr>
+  <tr><td style="border:1px solid #333;padding:6px;"><strong>Primary Officer:</strong> {{officer}}</td><td style="border:1px solid #333;padding:6px;"><strong>Start Location:</strong> {{start_location}}</td></tr>
+</table>
+<h2 style="font-size:14px;border-bottom:1px solid #333;">JUSTIFICATION FOR PURSUIT</h2>
+<p>Originating offense: &nbsp;</p>
+<p>☐ Felony &nbsp; ☐ Violent crime &nbsp; ☐ DUI &nbsp; ☐ Traffic offense &nbsp; ☐ Other</p>
+<h2 style="font-size:14px;border-bottom:1px solid #333;">PURSUIT DETAILS</h2>
+<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
+  <tr><td style="border:1px solid #333;padding:6px;"><strong>Start time:</strong></td><td style="border:1px solid #333;padding:6px;"><strong>End time:</strong></td><td style="border:1px solid #333;padding:6px;"><strong>Duration:</strong></td></tr>
+  <tr><td style="border:1px solid #333;padding:6px;"><strong>Max speed:</strong></td><td style="border:1px solid #333;padding:6px;"><strong>Distance:</strong></td><td style="border:1px solid #333;padding:6px;"><strong>Road/weather:</strong></td></tr>
+  <tr><td style="border:1px solid #333;padding:6px;" colspan="3"><strong>Suspect vehicle (make/model/color/plate):</strong></td></tr>
+</table>
+<h2 style="font-size:14px;border-bottom:1px solid #333;">SUPERVISOR NOTIFICATION</h2>
+<p>☐ Supervisor notified &nbsp; Time: ________ &nbsp; ☐ Pursuit authorized &nbsp; ☐ Pursuit terminated by supervisor</p>
+<h2 style="font-size:14px;border-bottom:1px solid #333;">NARRATIVE</h2>
+<p>&nbsp;</p><p>&nbsp;</p>
+<h2 style="font-size:14px;border-bottom:1px solid #333;">OUTCOME</h2>
+<p>☐ Suspect in custody &nbsp; ☐ Pursuit terminated &nbsp; ☐ Collision &nbsp; ☐ Suspect eluded</p>
+<p>Injuries / property damage: &nbsp;</p>
+<div style="margin-top:40px;"><table style="width:100%;border:none;">
+  <tr><td style="width:60%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td><td style="width:10%;">&nbsp;</td><td style="width:30%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td></tr>
+  <tr><td style="font-size:10px;color:#666;">Officer Signature</td><td>&nbsp;</td><td style="font-size:10px;color:#666;">Date</td></tr>
+  <tr><td style="width:60%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td><td style="width:10%;">&nbsp;</td><td style="width:30%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td></tr>
+  <tr><td style="font-size:10px;color:#666;">Supervisor Signature</td><td>&nbsp;</td><td style="font-size:10px;color:#666;">Date</td></tr>
+</table></div>`,
+  },
+  {
+    id: 'crime-scene-log',
+    name: 'Crime Scene Log',
+    category: 'scene',
+    description: 'Entry/exit log and scene security record for a crime scene',
+    fields: [
+      { key: 'case_number', label: 'Case Number', source: 'cad', cadPath: 'call.call_number' },
+      { key: 'location', label: 'Scene Location', source: 'cad', cadPath: 'call.address' },
+      { key: 'officer', label: 'Log Officer', source: 'user' },
+      { key: 'date', label: 'Date', source: 'manual' },
+    ],
+    content: `${AGENCY_HEADER}
+<h1 style="text-align:center;font-size:18px;">CRIME SCENE ENTRY LOG</h1>
+<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
+  <tr><td style="border:1px solid #333;padding:6px;width:50%;"><strong>Case #:</strong> {{case_number}}</td><td style="border:1px solid #333;padding:6px;"><strong>Date:</strong> {{date}}</td></tr>
+  <tr><td style="border:1px solid #333;padding:6px;"><strong>Scene Location:</strong> {{location}}</td><td style="border:1px solid #333;padding:6px;"><strong>Log Officer:</strong> {{officer}}</td></tr>
+  <tr><td style="border:1px solid #333;padding:6px;"><strong>Scene secured at:</strong></td><td style="border:1px solid #333;padding:6px;"><strong>Released at:</strong></td></tr>
+</table>
+<h2 style="font-size:14px;border-bottom:1px solid #333;">PERSONNEL ENTRY/EXIT LOG</h2>
+<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
+  <tr style="background:#1a1a1a;"><th style="border:1px solid #333;padding:6px;text-align:left;">Name / Agency</th><th style="border:1px solid #333;padding:6px;text-align:left;">Purpose</th><th style="border:1px solid #333;padding:6px;text-align:left;">Time In</th><th style="border:1px solid #333;padding:6px;text-align:left;">Time Out</th></tr>
+  <tr><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td></tr>
+  <tr><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td></tr>
+  <tr><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td></tr>
+</table>
+<p style="font-size:10px;color:#888;"><em>Every person who enters the inner perimeter must be logged. The integrity of this log may be challenged in court.</em></p>`,
+  },
+  {
+    id: 'chain-of-custody',
+    name: 'Chain of Custody',
+    category: 'custody',
+    description: 'Standalone chain-of-custody transfer record for a single item',
+    fields: [
+      { key: 'case_number', label: 'Case Number', source: 'cad', cadPath: 'call.call_number' },
+      { key: 'item_no', label: 'Item / Evidence #', source: 'manual' },
+      { key: 'description', label: 'Item Description', source: 'manual' },
+      { key: 'officer', label: 'Collecting Officer', source: 'user' },
+    ],
+    content: `${AGENCY_HEADER}
+<h1 style="text-align:center;font-size:18px;">CHAIN OF CUSTODY</h1>
+<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
+  <tr><td style="border:1px solid #333;padding:6px;width:50%;"><strong>Case #:</strong> {{case_number}}</td><td style="border:1px solid #333;padding:6px;"><strong>Item #:</strong> {{item_no}}</td></tr>
+  <tr><td colspan="2" style="border:1px solid #333;padding:6px;"><strong>Description:</strong> {{description}}</td></tr>
+  <tr><td colspan="2" style="border:1px solid #333;padding:6px;"><strong>Collected by:</strong> {{officer}}</td></tr>
+</table>
+<h2 style="font-size:14px;border-bottom:1px solid #333;">CUSTODY TRANSFERS</h2>
+<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
+  <tr style="background:#1a1a1a;"><th style="border:1px solid #333;padding:6px;text-align:left;">Date/Time</th><th style="border:1px solid #333;padding:6px;text-align:left;">Released By</th><th style="border:1px solid #333;padding:6px;text-align:left;">Received By</th><th style="border:1px solid #333;padding:6px;text-align:left;">Reason</th></tr>
+  <tr><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td></tr>
+  <tr><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td></tr>
+  <tr><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td></tr>
+</table>
+<p style="font-size:10px;color:#888;"><em>An unbroken chain of custody must be maintained from collection through final disposition.</em></p>`,
+  },
+  {
+    id: 'interview-transcript',
+    name: 'Interview Transcript',
+    category: 'interview',
+    description: 'Recorded-interview transcript with speaker labels and timestamps',
+    fields: [
+      { key: 'case_number', label: 'Case Number', source: 'cad', cadPath: 'call.call_number' },
+      { key: 'interviewee', label: 'Interviewee', source: 'manual' },
+      { key: 'interviewer', label: 'Interviewer', source: 'user' },
+      { key: 'date', label: 'Date/Time', source: 'manual' },
+      { key: 'location', label: 'Location', source: 'manual' },
+    ],
+    content: `${AGENCY_HEADER}
+<h1 style="text-align:center;font-size:18px;">INTERVIEW TRANSCRIPT</h1>
+<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
+  <tr><td style="border:1px solid #333;padding:6px;width:50%;"><strong>Case #:</strong> {{case_number}}</td><td style="border:1px solid #333;padding:6px;"><strong>Date/Time:</strong> {{date}}</td></tr>
+  <tr><td style="border:1px solid #333;padding:6px;"><strong>Interviewee:</strong> {{interviewee}}</td><td style="border:1px solid #333;padding:6px;"><strong>Interviewer:</strong> {{interviewer}}</td></tr>
+  <tr><td colspan="2" style="border:1px solid #333;padding:6px;"><strong>Location:</strong> {{location}}</td></tr>
+</table>
+<p>☐ Recorded (audio) &nbsp; ☐ Recorded (video) &nbsp; ☐ Miranda advised prior &nbsp; Recording reference: ________</p>
+<h2 style="font-size:14px;border-bottom:1px solid #333;">TRANSCRIPT</h2>
+<p>[00:00] <strong>{{interviewer}}:</strong> &nbsp;</p>
+<p>[00:00] <strong>{{interviewee}}:</strong> &nbsp;</p>
+<p>&nbsp;</p>
+<p style="font-size:10px;color:#888;"><em>Transcript prepared from recording; certified accurate to the best of the transcriber's ability.</em></p>
+<div style="margin-top:40px;"><table style="width:100%;border:none;">
+  <tr><td style="width:60%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td><td style="width:10%;">&nbsp;</td><td style="width:30%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td></tr>
+  <tr><td style="font-size:10px;color:#666;">Transcribed By</td><td>&nbsp;</td><td style="font-size:10px;color:#666;">Date</td></tr>
+</table></div>`,
+  },
+  {
+    id: 'civil-standby',
+    name: 'Civil Standby Report',
+    category: 'civil',
+    description: 'Keep-the-peace civil standby (property/child exchange) documentation',
+    fields: [
+      { key: 'case_number', label: 'Case Number', source: 'cad', cadPath: 'call.call_number' },
+      { key: 'requestor', label: 'Requesting Party', source: 'manual' },
+      { key: 'other_party', label: 'Other Party', source: 'manual' },
+      { key: 'officer', label: 'Officer', source: 'user' },
+      { key: 'date', label: 'Date/Time', source: 'manual' },
+      { key: 'location', label: 'Location', source: 'cad', cadPath: 'call.address' },
+    ],
+    content: `${AGENCY_HEADER}
+<h1 style="text-align:center;font-size:18px;">CIVIL STANDBY REPORT</h1>
+<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
+  <tr><td style="border:1px solid #333;padding:6px;width:50%;"><strong>Case #:</strong> {{case_number}}</td><td style="border:1px solid #333;padding:6px;"><strong>Date/Time:</strong> {{date}}</td></tr>
+  <tr><td style="border:1px solid #333;padding:6px;"><strong>Requesting Party:</strong> {{requestor}}</td><td style="border:1px solid #333;padding:6px;"><strong>Other Party:</strong> {{other_party}}</td></tr>
+  <tr><td colspan="2" style="border:1px solid #333;padding:6px;"><strong>Location:</strong> {{location}}</td></tr>
+  <tr><td colspan="2" style="border:1px solid #333;padding:6px;"><strong>Officer:</strong> {{officer}}</td></tr>
+</table>
+<h2 style="font-size:14px;border-bottom:1px solid #333;">PURPOSE</h2>
+<p>☐ Retrieval of personal property &nbsp; ☐ Child custody exchange &nbsp; ☐ Eviction/lockout &nbsp; ☐ Other</p>
+<p>Court order present: ☐ Yes ☐ No &nbsp; Order #: ________</p>
+<h2 style="font-size:14px;border-bottom:1px solid #333;">NARRATIVE</h2>
+<p>Officers stood by to keep the peace only and took no position on the underlying civil dispute.</p>
+<p>&nbsp;</p>
+<h2 style="font-size:14px;border-bottom:1px solid #333;">OUTCOME</h2>
+<p>☐ Completed peacefully &nbsp; ☐ Property exchanged &nbsp; ☐ Parties advised of civil remedies &nbsp; ☐ Enforcement action taken</p>
+<div style="margin-top:40px;"><table style="width:100%;border:none;">
+  <tr><td style="width:60%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td><td style="width:10%;">&nbsp;</td><td style="width:30%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td></tr>
+  <tr><td style="font-size:10px;color:#666;">Officer Signature</td><td>&nbsp;</td><td style="font-size:10px;color:#666;">Date</td></tr>
+</table></div>`,
+  },
+  {
+    id: 'repossession-standby',
+    name: 'Repossession Standby',
+    category: 'repo',
+    description: 'Standby for a lawful vehicle/property repossession',
+    fields: [
+      { key: 'case_number', label: 'Case Number', source: 'cad', cadPath: 'call.call_number' },
+      { key: 'agent', label: 'Repossession Agent', source: 'manual' },
+      { key: 'debtor', label: 'Debtor / Owner', source: 'manual' },
+      { key: 'officer', label: 'Officer', source: 'user' },
+      { key: 'date', label: 'Date/Time', source: 'manual' },
+      { key: 'location', label: 'Location', source: 'cad', cadPath: 'call.address' },
+    ],
+    content: `${AGENCY_HEADER}
+<h1 style="text-align:center;font-size:18px;">REPOSSESSION STANDBY REPORT</h1>
+<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
+  <tr><td style="border:1px solid #333;padding:6px;width:50%;"><strong>Case #:</strong> {{case_number}}</td><td style="border:1px solid #333;padding:6px;"><strong>Date/Time:</strong> {{date}}</td></tr>
+  <tr><td style="border:1px solid #333;padding:6px;"><strong>Repo Agent:</strong> {{agent}}</td><td style="border:1px solid #333;padding:6px;"><strong>Debtor / Owner:</strong> {{debtor}}</td></tr>
+  <tr><td colspan="2" style="border:1px solid #333;padding:6px;"><strong>Location:</strong> {{location}}</td></tr>
+  <tr><td colspan="2" style="border:1px solid #333;padding:6px;"><strong>Officer:</strong> {{officer}}</td></tr>
+</table>
+<h2 style="font-size:14px;border-bottom:1px solid #333;">PROPERTY REPOSSESSED</h2>
+<p>Description (make/model/VIN/plate): &nbsp;</p>
+<p>Repo agent license / company: &nbsp;</p>
+<h2 style="font-size:14px;border-bottom:1px solid #333;">NARRATIVE</h2>
+<p>Officers were present solely to preserve the peace during a lawful self-help repossession and did not assist in the seizure of property.</p>
+<p>&nbsp;</p>
+<h2 style="font-size:14px;border-bottom:1px solid #333;">OUTCOME</h2>
+<p>☐ Repossession completed &nbsp; ☐ Breach of peace — repossession ceased &nbsp; ☐ Parties separated &nbsp; ☐ No action</p>
+<div style="margin-top:40px;"><table style="width:100%;border:none;">
+  <tr><td style="width:60%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td><td style="width:10%;">&nbsp;</td><td style="width:30%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td></tr>
+  <tr><td style="font-size:10px;color:#666;">Officer Signature</td><td>&nbsp;</td><td style="font-size:10px;color:#666;">Date</td></tr>
+</table></div>`,
+  },
+  {
+    id: 'welfare-check',
+    name: 'Welfare Check Report',
+    category: 'welfare',
+    description: 'Welfare/wellness check disposition and findings',
+    fields: [
+      { key: 'case_number', label: 'Case Number', source: 'cad', cadPath: 'call.call_number' },
+      { key: 'subject_name', label: 'Subject', source: 'manual' },
+      { key: 'requestor', label: 'Requested By', source: 'manual' },
+      { key: 'officer', label: 'Officer', source: 'user' },
+      { key: 'date', label: 'Date/Time', source: 'manual' },
+      { key: 'location', label: 'Location', source: 'cad', cadPath: 'call.address' },
+    ],
+    content: `${AGENCY_HEADER}
+<h1 style="text-align:center;font-size:18px;">WELFARE CHECK REPORT</h1>
+<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
+  <tr><td style="border:1px solid #333;padding:6px;width:50%;"><strong>Case #:</strong> {{case_number}}</td><td style="border:1px solid #333;padding:6px;"><strong>Date/Time:</strong> {{date}}</td></tr>
+  <tr><td style="border:1px solid #333;padding:6px;"><strong>Subject:</strong> {{subject_name}}</td><td style="border:1px solid #333;padding:6px;"><strong>Requested by:</strong> {{requestor}}</td></tr>
+  <tr><td colspan="2" style="border:1px solid #333;padding:6px;"><strong>Location:</strong> {{location}}</td></tr>
+  <tr><td colspan="2" style="border:1px solid #333;padding:6px;"><strong>Officer:</strong> {{officer}}</td></tr>
+</table>
+<h2 style="font-size:14px;border-bottom:1px solid #333;">REASON FOR CHECK</h2>
+<p>&nbsp;</p>
+<h2 style="font-size:14px;border-bottom:1px solid #333;">FINDINGS</h2>
+<p>☐ Subject contacted, appears well &nbsp; ☐ Medical aid rendered (EMS) &nbsp; ☐ Mental-health crisis &nbsp; ☐ Subject not located &nbsp; ☐ Deceased (notify investigations)</p>
+<p>&nbsp;</p>
+<h2 style="font-size:14px;border-bottom:1px solid #333;">DISPOSITION</h2>
+<p>☐ No further action &nbsp; ☐ Referred to services &nbsp; ☐ Transported &nbsp; ☐ Protective custody</p>
+<div style="margin-top:40px;"><table style="width:100%;border:none;">
+  <tr><td style="width:60%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td><td style="width:10%;">&nbsp;</td><td style="width:30%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td></tr>
+  <tr><td style="font-size:10px;color:#666;">Officer Signature</td><td>&nbsp;</td><td style="font-size:10px;color:#666;">Date</td></tr>
+</table></div>`,
+  },
+  {
+    id: 'use-of-force-supplement',
+    name: 'Use-of-Force Supplement',
+    category: 'use-of-force',
+    description: 'Witness-officer / secondary supplement to a use-of-force incident',
+    fields: [
+      { key: 'case_number', label: 'Primary Case Number', source: 'manual' },
+      { key: 'officer', label: 'Supplementing Officer', source: 'user' },
+      { key: 'badge_number', label: 'Badge Number', source: 'user' },
+      { key: 'date', label: 'Date', source: 'manual' },
+    ],
+    content: `${AGENCY_HEADER}
+<h1 style="text-align:center;font-size:18px;color:#c0392b;">USE-OF-FORCE SUPPLEMENT</h1>
+<p style="text-align:center;font-size:10px;color:#888;">Attach to the primary Use of Force Report.</p>
+<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
+  <tr><td style="border:1px solid #333;padding:6px;width:50%;"><strong>Primary Case #:</strong> {{case_number}}</td><td style="border:1px solid #333;padding:6px;"><strong>Date:</strong> {{date}}</td></tr>
+  <tr><td colspan="2" style="border:1px solid #333;padding:6px;"><strong>Supplementing Officer:</strong> {{officer}} (Badge #{{badge_number}})</td></tr>
+</table>
+<h2 style="font-size:14px;border-bottom:1px solid #333;">ROLE IN INCIDENT</h2>
+<p>☐ Used force &nbsp; ☐ Witnessed force &nbsp; ☐ Arrived after &nbsp; ☐ Supervisor</p>
+<h2 style="font-size:14px;border-bottom:1px solid #333;">FORCE USED BY THIS OFFICER (if any)</h2>
+<p>☐ Physical control &nbsp; ☐ OC &nbsp; ☐ CEW &nbsp; ☐ Baton &nbsp; ☐ Firearm &nbsp; ☐ None</p>
+<h2 style="font-size:14px;border-bottom:1px solid #333;">OBSERVATIONS / NARRATIVE</h2>
+<p>&nbsp;</p><p>&nbsp;</p>
+<div style="margin-top:40px;"><table style="width:100%;border:none;">
+  <tr><td style="width:60%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td><td style="width:10%;">&nbsp;</td><td style="width:30%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td></tr>
+  <tr><td style="font-size:10px;color:#666;">Officer Signature</td><td>&nbsp;</td><td style="font-size:10px;color:#666;">Date</td></tr>
+</table></div>`,
+  },
+  {
+    id: 'impound-inventory',
+    name: 'Impound Inventory',
+    category: 'property',
+    description: 'Vehicle impound inventory (contents + condition) per agency policy',
+    fields: [
+      { key: 'case_number', label: 'Case Number', source: 'cad', cadPath: 'call.call_number' },
+      { key: 'plate', label: 'Plate / VIN', source: 'manual' },
+      { key: 'vehicle', label: 'Vehicle (Year/Make/Model)', source: 'manual' },
+      { key: 'officer', label: 'Officer', source: 'user' },
+      { key: 'date', label: 'Date/Time', source: 'manual' },
+      { key: 'tow_company', label: 'Tow Company', source: 'manual' },
+    ],
+    content: `${AGENCY_HEADER}
+<h1 style="text-align:center;font-size:18px;">IMPOUND INVENTORY</h1>
+<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
+  <tr><td style="border:1px solid #333;padding:6px;width:50%;"><strong>Case #:</strong> {{case_number}}</td><td style="border:1px solid #333;padding:6px;"><strong>Date/Time:</strong> {{date}}</td></tr>
+  <tr><td style="border:1px solid #333;padding:6px;"><strong>Vehicle:</strong> {{vehicle}}</td><td style="border:1px solid #333;padding:6px;"><strong>Plate / VIN:</strong> {{plate}}</td></tr>
+  <tr><td style="border:1px solid #333;padding:6px;"><strong>Officer:</strong> {{officer}}</td><td style="border:1px solid #333;padding:6px;"><strong>Tow Company:</strong> {{tow_company}}</td></tr>
+</table>
+<h2 style="font-size:14px;border-bottom:1px solid #333;">VEHICLE CONDITION</h2>
+<p>Damage noted (diagram/describe): &nbsp;</p>
+<p>Odometer: ________ &nbsp; Fuel: ________ &nbsp; Keys: ☐ Yes ☐ No</p>
+<h2 style="font-size:14px;border-bottom:1px solid #333;">CONTENTS INVENTORY</h2>
+<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
+  <tr style="background:#1a1a1a;"><th style="border:1px solid #333;padding:6px;text-align:left;">Location</th><th style="border:1px solid #333;padding:6px;text-align:left;">Item</th><th style="border:1px solid #333;padding:6px;text-align:left;">Notes</th></tr>
+  <tr><td style="border:1px solid #333;padding:6px;">Passenger compartment</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td></tr>
+  <tr><td style="border:1px solid #333;padding:6px;">Trunk</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td></tr>
+  <tr><td style="border:1px solid #333;padding:6px;">Glove box / console</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td></tr>
+</table>
+<p style="font-size:10px;color:#888;"><em>Inventory conducted pursuant to standardized agency impound policy, not for investigative purposes.</em></p>
+<div style="margin-top:40px;"><table style="width:100%;border:none;">
+  <tr><td style="width:60%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td><td style="width:10%;">&nbsp;</td><td style="width:30%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td></tr>
+  <tr><td style="font-size:10px;color:#666;">Officer Signature</td><td>&nbsp;</td><td style="font-size:10px;color:#666;">Date</td></tr>
+</table></div>`,
+  },
+  {
+    id: 'alcohol-tobacco-compliance',
+    name: 'Tobacco/Alcohol Compliance',
+    category: 'compliance',
+    description: 'Compliance-check report for tobacco/alcohol sales to minors',
+    fields: [
+      { key: 'case_number', label: 'Case / Op Number', source: 'manual' },
+      { key: 'business', label: 'Business Name', source: 'manual' },
+      { key: 'business_address', label: 'Business Address', source: 'manual' },
+      { key: 'officer', label: 'Officer', source: 'user' },
+      { key: 'date', label: 'Date/Time', source: 'manual' },
+    ],
+    content: `${AGENCY_HEADER}
+<h1 style="text-align:center;font-size:18px;">COMPLIANCE CHECK REPORT</h1>
+<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
+  <tr><td style="border:1px solid #333;padding:6px;width:50%;"><strong>Case / Op #:</strong> {{case_number}}</td><td style="border:1px solid #333;padding:6px;"><strong>Date/Time:</strong> {{date}}</td></tr>
+  <tr><td style="border:1px solid #333;padding:6px;"><strong>Business:</strong> {{business}}</td><td style="border:1px solid #333;padding:6px;"><strong>Officer:</strong> {{officer}}</td></tr>
+  <tr><td colspan="2" style="border:1px solid #333;padding:6px;"><strong>Address:</strong> {{business_address}}</td></tr>
+</table>
+<h2 style="font-size:14px;border-bottom:1px solid #333;">CHECK TYPE</h2>
+<p>☐ Tobacco / vapor &nbsp; ☐ Alcohol &nbsp; ☐ Both</p>
+<h2 style="font-size:14px;border-bottom:1px solid #333;">DECOY / OPERATIVE</h2>
+<p>Decoy age: ________ &nbsp; ID shown: ☐ Yes ☐ No &nbsp; Clerk asked for ID: ☐ Yes ☐ No</p>
+<h2 style="font-size:14px;border-bottom:1px solid #333;">RESULT</h2>
+<p>☐ PASS — sale refused &nbsp; ☐ FAIL — sale completed to minor</p>
+<p>Clerk name / DOB (if cited): &nbsp;</p>
+<p>Citation #: ________ &nbsp; Statute: ________</p>
+<h2 style="font-size:14px;border-bottom:1px solid #333;">NARRATIVE</h2>
+<p>&nbsp;</p>
+<div style="margin-top:40px;"><table style="width:100%;border:none;">
+  <tr><td style="width:60%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td><td style="width:10%;">&nbsp;</td><td style="width:30%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td></tr>
+  <tr><td style="font-size:10px;color:#666;">Officer Signature</td><td>&nbsp;</td><td style="font-size:10px;color:#666;">Date</td></tr>
+</table></div>`,
+  },
+  {
+    id: 'parking-enforcement',
+    name: 'Parking Enforcement',
+    category: 'parking',
+    description: 'Parking citation / enforcement action record',
+    fields: [
+      { key: 'citation_no', label: 'Citation #', source: 'manual' },
+      { key: 'plate', label: 'Plate', source: 'manual' },
+      { key: 'vehicle', label: 'Vehicle', source: 'manual' },
+      { key: 'officer', label: 'Officer', source: 'user' },
+      { key: 'date', label: 'Date/Time', source: 'manual' },
+      { key: 'location', label: 'Location', source: 'cad', cadPath: 'call.address' },
+    ],
+    content: `${AGENCY_HEADER}
+<h1 style="text-align:center;font-size:18px;">PARKING ENFORCEMENT</h1>
+<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
+  <tr><td style="border:1px solid #333;padding:6px;width:50%;"><strong>Citation #:</strong> {{citation_no}}</td><td style="border:1px solid #333;padding:6px;"><strong>Date/Time:</strong> {{date}}</td></tr>
+  <tr><td style="border:1px solid #333;padding:6px;"><strong>Vehicle:</strong> {{vehicle}}</td><td style="border:1px solid #333;padding:6px;"><strong>Plate:</strong> {{plate}}</td></tr>
+  <tr><td colspan="2" style="border:1px solid #333;padding:6px;"><strong>Location:</strong> {{location}}</td></tr>
+  <tr><td colspan="2" style="border:1px solid #333;padding:6px;"><strong>Officer:</strong> {{officer}}</td></tr>
+</table>
+<h2 style="font-size:14px;border-bottom:1px solid #333;">VIOLATION</h2>
+<p>☐ Fire lane &nbsp; ☐ Handicap &nbsp; ☐ No parking zone &nbsp; ☐ Expired meter &nbsp; ☐ Blocking driveway &nbsp; ☐ Time limit &nbsp; ☐ Other</p>
+<p>Ordinance / statute: ________ &nbsp; Fine: $________</p>
+<h2 style="font-size:14px;border-bottom:1px solid #333;">ACTION TAKEN</h2>
+<p>☐ Citation issued &nbsp; ☐ Warning &nbsp; ☐ Towed (see impound) &nbsp; ☐ Booted</p>
+<p>Notes: &nbsp;</p>`,
+  },
   {
     id: 'blank',
     name: 'Blank Document',

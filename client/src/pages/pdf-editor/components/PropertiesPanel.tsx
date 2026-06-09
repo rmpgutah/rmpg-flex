@@ -133,6 +133,37 @@ function AnnotationProps({ ann, onChange, onDelete }: { ann: Annotation; onChang
           <input id="ff-propertiespanel-4" type="number" min={1} max={20} value={ann.strokeWidth ?? 1.5} onChange={e => onChange({ ...ann, strokeWidth: Math.max(1, parseFloat(e.target.value) || 1) })} className={inputCls} />
         </>
       )}
+      {(ann.type === 'rect' || ann.type === 'ellipse' || ann.type === 'line') && (
+        <>
+          <label className={labelCls}>Line style</label>
+          <div className="flex gap-1">
+            {(['solid', 'dashed', 'dotted'] as const).map(s => (
+              <button key={s} type="button" onClick={() => onChange({ ...ann, strokeStyle: s })}
+                className={`flex-1 px-2 py-1 text-[10px] capitalize rounded-sm border ${(ann.strokeStyle ?? 'solid') === s ? 'bg-[#d4a017]/20 text-[#d4a017] border-[#d4a017]' : 'border-[#222] text-rmpg-400'}`}>
+                {s}
+              </button>
+            ))}
+          </div>
+        </>
+      )}
+      {(ann.type === 'formText' || ann.type === 'formCheck') && (
+        <>
+          <label className={labelCls}>Field name</label>
+          <input id="ff-propertiespanel-ff0" value={ann.fieldName} onChange={e => onChange({ ...ann, fieldName: e.target.value })} placeholder="field_name" className={inputCls} />
+          {ann.type === 'formText' ? (
+            <>
+              <label className={labelCls}>Default value</label>
+              <input id="ff-propertiespanel-ff1" value={ann.defaultValue ?? ''} onChange={e => onChange({ ...ann, defaultValue: e.target.value })} placeholder="(empty)" className={inputCls} />
+            </>
+          ) : (
+            <label className="flex items-center gap-2 text-[10px] text-rmpg-300 pt-1">
+              <input id="ff-propertiespanel-ff2" type="checkbox" checked={ann.defaultChecked ?? false} onChange={e => onChange({ ...ann, defaultChecked: e.target.checked })} />
+              Checked by default
+            </label>
+          )}
+          <div className="text-[9px] text-rmpg-600">Saved as an interactive AcroForm widget — use "Save interactive PDF".</div>
+        </>
+      )}
       <label className={labelCls}>Opacity</label>
       <input id="ff-propertiespanel-5" type="range" min={0.1} max={1} step={0.05} value={ann.opacity ?? 1} onChange={e => onChange({ ...ann, opacity: parseFloat(e.target.value) })} className="w-full accent-[#d4a017]" />
       <button type="button" onClick={onDelete} className="w-full px-2 py-1 text-xs text-red-300 border border-red-900/40 hover:bg-red-900/20 rounded-sm">Delete annotation</button>
