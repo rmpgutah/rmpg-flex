@@ -214,7 +214,20 @@ email.get('/oauth/callback', async (c) => {
 // ═══════════════════════════════════════════════════════════════════
 // Everything below requires a valid JWT.
 // ═══════════════════════════════════════════════════════════════════
-email.use('*', authMiddleware);
+// All routes require JWT EXCEPT /oauth/callback — Microsoft redirects
+// the user's browser directly to it with ?code=...&state=..., so the
+// request carries no Authorization header / no rmpg cookies. Auth-gating
+// it would 401 every consent attempt. Hono's `email.use('*', mw)` runs
+// the middleware on every matched route regardless of registration
+// order, so we can't just register the callback first — we must
+// explicitly skip auth on that path here.
+email.use('*', async (c, next) => {
+  const pathname = new URL(c.req.url).pathname;
+  if (pathname === '/api/email/oauth/callback' || pathname.endsWith('/oauth/callback')) {
+    return next();
+  }
+  return authMiddleware(c, next);
+});
 
 email.get('/status', async (c) => c.json(await getStatus(c.env)));
 
