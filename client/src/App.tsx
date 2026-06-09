@@ -146,6 +146,7 @@ const DocumentWriterPage = lazyRetry(() => import('./pages/document-writer'));
 const ForgotPasswordPage = lazyRetry(() => import('./pages/ForgotPasswordPage'));
 const ReconConnectPage = lazyRetry(() => import('./pages/ReconConnectPage'));
 const ResetPasswordPage = lazyRetry(() => import('./pages/ResetPasswordPage'));
+const MobileShiftPage = lazyRetry(() => import('./pages/MobileShiftPage'));
 
 
 /** Branded loading splash — matches login page design language */
@@ -375,6 +376,9 @@ function AppRoutes() {
           />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
+          {/* QR-token-authed mobile vehicle inspection. Opened by scanning the
+              per-shift QR on the ShiftCard; the :token IS the credential. */}
+          <Route path="/m/shift/:token" element={<MobileShiftPage />} />
 
           {/* Detached windows — no Layout wrapper */}
           <Route path="/detached/incident/:id" element={<ProtectedRoute><RouteErrorBoundary><IncidentDetailWindow /></RouteErrorBoundary></ProtectedRoute>} />

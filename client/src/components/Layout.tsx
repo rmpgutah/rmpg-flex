@@ -363,7 +363,19 @@ const CONTRACT_MANAGER_BLOCKED_PATHS = new Set([
 ]);
 
 export default function Layout() {
-  const { user, logout, refreshUser } = useAuth();
+  const { user, logout, signOut, refreshUser } = useAuth();
+  // `logout` is still exported for forced flows (password change). The
+  // user-facing Sign Out button uses `signOut`, which gates on shift state.
+  void logout;
+  const handleSignOutClick = useCallback(async () => {
+    setProfileDropdownOpen(false);
+    const result = await signOut();
+    if (!result.ok) {
+      // Shift gate blocked sign-out. Surface via alert() so the operator
+      // can't miss it; the End Shift flow lives on the ShiftCard.
+      try { window.alert(result.message); } catch { /* noop */ }
+    }
+  }, [signOut]);
   const { isConnected, subscribe } = useWebSocket();
   const location = useLocation();
   const navigate = useNavigate();
@@ -1270,7 +1282,7 @@ export default function Layout() {
                   <div className="menu-separator" />
 
                   {/* 9: Sign Out button with red hover bg for destructive emphasis */}
-                  <button type="button" role="menuitem" onClick={() => { setProfileDropdownOpen(false); logout(); }} className="menu-item w-full transition-colors duration-150 hover:bg-red-900/20 focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none">
+                  <button type="button" role="menuitem" onClick={handleSignOutClick} className="menu-item w-full transition-colors duration-150 hover:bg-red-900/20 focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none">
                     <span className="menu-item-icon"><LogOut style={{ width: 12, height: 12, color: '#ef4444' }} /></span>
                     <span className="menu-item-label" style={{ color: '#ef4444' }}>Sign Out</span>
                   </button>
