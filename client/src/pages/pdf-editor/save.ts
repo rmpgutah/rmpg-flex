@@ -1,4 +1,5 @@
-import { PDFDocument, StandardFonts, rgb, degrees } from 'pdf-lib';
+import { PDFDocument, StandardFonts, rgb, degrees, pushGraphicsState, popGraphicsState, concatTransformationMatrix } from 'pdf-lib';
+import { normRotation, rotationGeometry } from './rotationGeometry';
 import { RmpgPdfBuilder } from '../../lib/rmpg-pdf-engine';
 import { Annotation, BatesConfig, EditorState, PageMeta, WatermarkConfig, DEFAULT_RENDER_SCALE } from './types';
 import { normalizeUploadResponse } from './uploadResponse';
@@ -42,7 +43,10 @@ interface PageContext {
   builder: RmpgPdfBuilder;
   pageIdx: number;
   pageMeta: PageMeta;
+  /** UNROTATED content height (points). */
   pageHeightPdf: number;
+  /** UNROTATED content width (points). */
+  pageWidthPdf: number;
 }
 
 /** Convert a screen-pixel y coordinate (top-down) to PDF user-space y (bottom-up). */
@@ -51,8 +55,14 @@ function screenToPdfY(screenY: number, pageHeightPdf: number, scale: number): nu
 }
 
 async function drawAnnotation(ctx: PageContext, ann: Annotation): Promise<void> {
-  const { builder, pageIdx, pageHeightPdf } = ctx;
+  const { builder, pageIdx } = ctx;
   const scale = DEFAULT_RENDER_SCALE;
+  // Page rotation: draw in the DISPLAYED frame (y-flip by the displayed height)
+  // under a CTM that pre-compensates for /Rotate, so annotations land where the
+  // user placed them on the rotated page. R=0 → ctm null → identical to before.
+  const R = normRotation(ctx.pageMeta.rotation);
+  const { dispH, ctm } = rotationGeometry(R, ctx.pageWidthPdf, ctx.pageHeightPdf);
+  const pageHeightPdf = dispH;
   const px = ann.x / scale;
   const pw = ann.w / scale;
   const ph = ann.h / scale;
@@ -62,16 +72,25 @@ async function drawAnnotation(ctx: PageContext, ann: Annotation): Promise<void> 
   const color = hexToRgb(ann.color, [0, 0, 0]);
   const fillColor = hexToRgb(ann.fillColor ?? ann.color, [0, 0, 0]);
 
+  // Every shape draws through this wrapper: saveState → (rotation CTM) → body →
+  // restoreState. Centralizing the q/cm/Q here keeps each case self-contained
+  // and guarantees the un-rotated path (ctm null) is byte-identical to before.
+  const draw = (fn: Parameters<typeof builder.drawOnPage>[1]) =>
+    builder.drawOnPage(pageIdx, (csb, useFont) => {
+      csb.saveState();
+      if (ctm) csb.transform(ctm[0], ctm[1], ctm[2], ctm[3], ctm[4], ctm[5]);
+      fn(csb, useFont);
+      csb.restoreState();
+    });
+
   switch (ann.type) {
     case 'text': {
       const fontKey: keyof typeof FONT_MAP = ann.bold ? 'helvBold' : ann.italic ? 'helvItalic' : 'helv';
       const fontName = FONT_MAP[fontKey];
-      builder.drawOnPage(pageIdx, (csb, useFont) => {
+      draw((csb, useFont) => {
         const resName = useFont(fontName);
-        csb.saveState();
         csb.setFillRgb(color[0], color[1], color[2]);
         csb.drawText(ann.text, px, py - ann.fontSize, resName, ann.fontSize);
-        csb.restoreState();
       });
       return;
     }
@@ -79,11 +98,9 @@ async function drawAnnotation(ctx: PageContext, ann: Annotation): Promise<void> 
       // Highlight rendered as a neutral gray overlay — no color splash.
       // Without ExtGState we can't do true alpha; use a light gray fill.
       const fc = hexToRgb(ann.fillColor ?? '#999999', [0.6, 0.6, 0.6]);
-      builder.drawOnPage(pageIdx, (csb) => {
-        csb.saveState();
+      draw((csb) => {
         csb.setFillRgb(fc[0], fc[1], fc[2]);
         csb.fillRect(px, py - ph, pw, ph);
-        csb.restoreState();
       });
       return;
     }
@@ -93,43 +110,35 @@ async function drawAnnotation(ctx: PageContext, ann: Annotation): Promise<void> 
       // bottom edge; strikethrough runs through the vertical center.
       const th = Math.max(0.5, stroke);
       const ruleY = ann.type === 'underline' ? py - ph : py - ph / 2 - th / 2;
-      builder.drawOnPage(pageIdx, (csb) => {
-        csb.saveState();
+      draw((csb) => {
         csb.setFillRgb(color[0], color[1], color[2]);
         csb.fillRect(px, ruleY, pw, th);
-        csb.restoreState();
       });
       return;
     }
     case 'redact': {
-      builder.drawOnPage(pageIdx, (csb) => {
-        csb.saveState();
+      draw((csb) => {
         csb.setFillRgb(0, 0, 0);
         csb.fillRect(px, py - ph, pw, ph);
-        csb.restoreState();
       });
       return;
     }
     case 'rect': {
-      builder.drawOnPage(pageIdx, (csb) => {
-        csb.saveState();
+      draw((csb) => {
         csb.setStrokeRgb(color[0], color[1], color[2]);
         csb.setLineWidth(stroke);
         if (ann.fillColor) {
           csb.setFillRgb(fillColor[0], fillColor[1], fillColor[2]);
         }
         csb.strokeRect(px, py - ph, pw, ph);
-        csb.restoreState();
       });
       return;
     }
     case 'ellipse': {
-      builder.drawOnPage(pageIdx, (csb) => {
-        csb.saveState();
+      draw((csb) => {
         csb.setStrokeRgb(color[0], color[1], color[2]);
         csb.setLineWidth(stroke);
         csb.drawEllipse(px + pw / 2, py - ph / 2, pw / 2, ph / 2, false);
-        csb.restoreState();
       });
       return;
     }
@@ -138,8 +147,7 @@ async function drawAnnotation(ctx: PageContext, ann: Annotation): Promise<void> 
       const y1 = py;
       const x2 = px + pw;
       const y2 = py - ph;
-      builder.drawOnPage(pageIdx, (csb) => {
-        csb.saveState();
+      draw((csb) => {
         csb.setStrokeRgb(color[0], color[1], color[2]);
         csb.setLineWidth(stroke);
         csb.drawLine(x1, y1, x2, y2);
@@ -152,14 +160,12 @@ async function drawAnnotation(ctx: PageContext, ann: Annotation): Promise<void> 
           csb.drawLine(x2, y2, bx + (-uy) * wide, by + ux * wide);
           csb.drawLine(x2, y2, bx - (-uy) * wide, by - ux * wide);
         }
-        csb.restoreState();
       });
       return;
     }
     case 'pen': {
       if (ann.points.length < 2) return;
-      builder.drawOnPage(pageIdx, (csb) => {
-        csb.saveState();
+      draw((csb) => {
         csb.setStrokeRgb(color[0], color[1], color[2]);
         csb.setLineWidth(stroke);
         for (let i = 1; i < ann.points.length; i++) {
@@ -167,14 +173,12 @@ async function drawAnnotation(ctx: PageContext, ann: Annotation): Promise<void> 
           const b = ann.points[i];
           csb.drawLine(px + a.x / scale, py - a.y / scale, px + b.x / scale, py - b.y / scale);
         }
-        csb.restoreState();
       });
       return;
     }
     case 'polygon': {
       if (ann.points.length < 2) return;
-      builder.drawOnPage(pageIdx, (csb) => {
-        csb.saveState();
+      draw((csb) => {
         csb.setStrokeRgb(color[0], color[1], color[2]);
         csb.setLineWidth(stroke);
         const v0 = ann.points[0];
@@ -189,7 +193,6 @@ async function drawAnnotation(ctx: PageContext, ann: Annotation): Promise<void> 
         } else {
           csb.stroke();
         }
-        csb.restoreState();
       });
       return;
     }
@@ -197,7 +200,7 @@ async function drawAnnotation(ctx: PageContext, ann: Annotation): Promise<void> 
     case 'signature': {
       const img = await RmpgPdfBuilder.dataUrlToJpeg(ann.imageData);
       const name = builder.embedJpeg(pageIdx, img.bytes, img.width, img.height);
-      builder.drawOnPage(pageIdx, (csb) => {
+      draw((csb) => {
         csb.drawImage(name, px, py - ph, pw, ph);
       });
       return;
@@ -206,9 +209,8 @@ async function drawAnnotation(ctx: PageContext, ann: Annotation): Promise<void> 
       const stampColor: [number, number, number] = [0.45, 0.45, 0.45]; // Neutral gray stamp — no red splash
       const text = String(ann.label).toUpperCase();
       const fontSize = Math.max(10, ph * 0.45);
-      builder.drawOnPage(pageIdx, (csb, useFont) => {
+      draw((csb, useFont) => {
         const resName = useFont('HelveticaBold');
-        csb.saveState();
         csb.setStrokeRgb(stampColor[0], stampColor[1], stampColor[2]);
         csb.setLineWidth(2.5);
         csb.strokeRect(px, py - ph, pw, ph);
@@ -218,7 +220,6 @@ async function drawAnnotation(ctx: PageContext, ann: Annotation): Promise<void> 
         const tx = px + (pw - approxW) / 2;
         const ty = py - ph / 2 - fontSize / 2.6;
         csb.drawText(text, tx, ty, resName, fontSize);
-        csb.restoreState();
       });
       return;
     }
@@ -227,15 +228,13 @@ async function drawAnnotation(ctx: PageContext, ann: Annotation): Promise<void> 
       // /Annot Link dicts (TODO — covers ~30 lines of object construction).
       // Visible underlined text is the v1 fallback.
       const fontSize = Math.max(10, ph * 0.6);
-      builder.drawOnPage(pageIdx, (csb, useFont) => {
+      draw((csb, useFont) => {
         const resName = useFont('Helvetica');
-        csb.saveState();
         csb.setFillRgb(0, 0.27, 0.55);
         csb.drawText(ann.text, px + 2, py - ph + 4, resName, fontSize);
         csb.setStrokeRgb(0, 0.27, 0.55);
         csb.setLineWidth(0.6);
         csb.drawLine(px, py - ph + 2, px + pw, py - ph + 2);
-        csb.restoreState();
       });
       return;
     }
@@ -322,6 +321,7 @@ export async function buildPdfFromEditorState(state: EditorState): Promise<Uint8
 
     const pageMediaBox = inferMediaBox(meta);
     const pageHeightPdf = pageMediaBox[3] - pageMediaBox[1];
+    const pageWidthPdf = pageMediaBox[2] - pageMediaBox[0];
 
     if (meta.crop) {
       const scale = DEFAULT_RENDER_SCALE;
@@ -332,7 +332,7 @@ export async function buildPdfFromEditorState(state: EditorState): Promise<Uint8
       builder.setCropBox(visualIdx, cx, cy, cw, ch);
     }
 
-    const ctx: PageContext = { builder, pageIdx: visualIdx, pageMeta: meta, pageHeightPdf };
+    const ctx: PageContext = { builder, pageIdx: visualIdx, pageMeta: meta, pageHeightPdf, pageWidthPdf };
     const pageAnns = state.annotations.filter(a => a.page === visualIdx + 1);
     for (const ann of pageAnns) await drawAnnotation(ctx, ann);
 
@@ -507,8 +507,16 @@ async function buildPdfFromEditorStateViaPdfLib(state: EditorState): Promise<Uin
       const cy = pageH - (meta.crop.y / scale) - ch;
       page.setCropBox(cx, cy, cw, ch);
     }
-    const pageH = page.getHeight();
+    // Same rotation handling as the native path: draw in the displayed frame
+    // (y-flip by the displayed height) under a CTM that pre-compensates for the
+    // page /Rotate. ctm null for un-rotated pages → identical to before.
+    const fbGeo = rotationGeometry(normRotation(meta?.rotation), page.getWidth(), page.getHeight());
+    const pageH = fbGeo.dispH;
     const ann = state.annotations.filter(a => a.page === visualIdx + 1);
+    if (fbGeo.ctm && ann.length) {
+      page.pushOperators(pushGraphicsState(), concatTransformationMatrix(
+        fbGeo.ctm[0], fbGeo.ctm[1], fbGeo.ctm[2], fbGeo.ctm[3], fbGeo.ctm[4], fbGeo.ctm[5]));
+    }
     for (const a of ann) {
       const px = a.x / DEFAULT_RENDER_SCALE;
       const pw = a.w / DEFAULT_RENDER_SCALE;
@@ -538,6 +546,7 @@ async function buildPdfFromEditorStateViaPdfLib(state: EditorState): Promise<Uin
         } catch (err) { console.warn('[fallback] image embed failed', err); }
       }
     }
+    if (fbGeo.ctm && ann.length) page.pushOperators(popGraphicsState());
   }
   if (state.meta.title) out.setTitle(state.meta.title);
   if (state.meta.author) out.setAuthor(state.meta.author);

@@ -415,7 +415,13 @@
 //       The two desktop F-key toolbars switch md:flex -> lg:flex so they show
 //       only at >=1024, matching the JS boundary (no double-render at 768-1023).
 //       Large landscape iPads + desktops (>=1024) keep the F-key layout.
-const CACHE_NAME = 'rmpg-flex-v835';
+// v836: PDF Editor — annotations on ROTATED pages now save at the correct
+//       position. drawAnnotation draws in the displayed frame under a /Rotate-
+//       inverse CTM (new ContentStreamBuilder.transform + rotationGeometry);
+//       both native + pdf-lib save paths fixed. Redactions/signatures on rotated
+//       evidence pages were landing in the wrong place. Geometry unit-tested +
+//       visually verified (rot 0/90/270). Un-rotated path byte-identical.
+const CACHE_NAME = 'rmpg-flex-v836';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
