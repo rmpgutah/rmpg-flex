@@ -421,7 +421,12 @@
 //       both native + pdf-lib save paths fixed. Redactions/signatures on rotated
 //       evidence pages were landing in the wrong place. Geometry unit-tested +
 //       visually verified (rot 0/90/270). Un-rotated path byte-identical.
-const CACHE_NAME = 'rmpg-flex-v836';
+// v837: PDF Editor polish — (1) dragging/resizing an annotation now creates ONE
+//       undo step instead of flooding history with a frame-by-frame entry per
+//       pointer-move (snapshot-on-first-move + live no-history updates); (2) the
+//       Bates/Watermark/Document-properties toolbar buttons (previously dead
+//       no-ops) now surface the document-level PropertiesPanel sections.
+const CACHE_NAME = 'rmpg-flex-v837';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

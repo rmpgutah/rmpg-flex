@@ -59,6 +59,7 @@ interface History {
 type Action =
   | { type: 'replace'; next: MutableState }
   | { type: 'mutate'; next: MutableState }   // pushes onto history
+  | { type: 'snapshot' }                     // push current present to history, present unchanged
   | { type: 'undo' }
   | { type: 'redo' }
   | { type: 'reset'; next: MutableState };
@@ -67,6 +68,11 @@ function reducer(h: History, a: Action): History {
   switch (a.type) {
     case 'replace': return { ...h, present: a.next };
     case 'mutate': return { past: [...h.past, h.present].slice(-50), present: a.next, future: [] };
+    // Snapshot the pre-gesture state into history ONCE, then let live drag/resize
+    // moves use 'replace' (no history). Without this, every pointer-move frame of
+    // a drag pushed an undo entry — one drag exhausted the 50-step history and
+    // Undo only nudged the annotation back a frame at a time.
+    case 'snapshot': return { ...h, past: [...h.past, h.present].slice(-50), future: [] };
     case 'undo': return h.past.length === 0 ? h : { past: h.past.slice(0, -1), present: h.past[h.past.length - 1], future: [h.present, ...h.future] };
     case 'redo': return h.future.length === 0 ? h : { past: [...h.past, h.present], present: h.future[0], future: h.future.slice(1) };
     case 'reset': return { past: [], present: a.next, future: [] };
@@ -349,6 +355,19 @@ export default function PdfEditorPage() {
     next[idx] = { ...cur, ...patch } as Annotation;
     mutate({ annotations: next });
   }, [state.annotations, mutate]);
+
+  // Live (non-history) annotation update for in-progress drag/resize. PageCanvas
+  // calls transformStart() once on the first move of a gesture (which snapshots
+  // the pre-gesture state into history), then streams updateAnnotationLive for
+  // every subsequent move. Net effect: one undo step per drag, not per frame.
+  const updateAnnotationLive = useCallback((id: string, patch: Partial<Annotation>) => {
+    const idx = state.annotations.findIndex(a => a.id === id);
+    if (idx === -1) return;
+    const next = [...state.annotations];
+    next[idx] = { ...next[idx], ...patch } as Annotation;
+    dispatch({ type: 'replace', next: { ...state, annotations: next } });
+  }, [state]);
+  const transformStart = useCallback(() => dispatch({ type: 'snapshot' }), []);
 
   const deleteActive = () => {
     if (selectedIds.size > 0) {
@@ -1043,9 +1062,9 @@ export default function PdfEditorPage() {
           onZoomIn={() => setZoom(z => Math.min(3, z + 0.1))}
           onZoomOut={() => setZoom(z => Math.max(0.3, z - 0.1))}
           onZoomReset={() => setZoom(1)}
-          onMetadata={() => {}}
-          onBates={() => {}}
-          onWatermark={() => {}}
+          onMetadata={() => { setActiveId(null); setSelectedIds(new Set()); if (isMobile) pushToast('Document properties are in the desktop side panel', 'info'); }}
+          onBates={() => { setActiveId(null); setSelectedIds(new Set()); if (isMobile) pushToast('Bates numbering is in the desktop side panel', 'info'); }}
+          onWatermark={() => { setActiveId(null); setSelectedIds(new Set()); if (isMobile) pushToast('Watermark settings are in the desktop side panel', 'info'); }}
           onStampStudio={() => setStudioOpen(true)}
           onEncrypt={() => setEncryptionOpen(true)}
           encryptionActive={!!encryption}
@@ -1218,6 +1237,8 @@ export default function PdfEditorPage() {
                 onSelectAnnotation={setActiveId}
                 onAddAnnotation={addAnnotation}
                 onUpdateAnnotation={updateAnnotation}
+                onUpdateAnnotationLive={updateAnnotationLive}
+                onTransformStart={transformStart}
                 onSetCrop={setPageCrop}
                 onAnnotationContextMenu={(id, x, y) => setContextMenu({ annotationId: id, x, y })}
                 forcePdfjs={forcePdfjs}

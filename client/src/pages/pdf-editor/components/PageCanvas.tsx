@@ -24,6 +24,10 @@ interface Props {
   onSelectAnnotation: (id: string | null) => void;
   onAddAnnotation: (a: Annotation) => void;
   onUpdateAnnotation: (id: string, patch: Partial<Annotation>) => void;
+  /** Live (no-history) update during an in-progress drag/resize. */
+  onUpdateAnnotationLive?: (id: string, patch: Partial<Annotation>) => void;
+  /** Snapshot the pre-gesture state into history once, on the first move. */
+  onTransformStart?: () => void;
   onSetCrop?: (visualIdx: number, crop: PageCrop | null) => void;
   onAnnotationContextMenu?: (id: string, x: number, y: number) => void;
   /** When true, skip the native engine and render via PDF.js directly.
@@ -50,7 +54,21 @@ const HANDLE_POSITIONS: Array<{ id: ResizeHandle; cx: 0 | 0.5 | 1; cy: 0 | 0.5 |
 ];
 
 export default function PageCanvas(props: Props) {
-  const { pdfBytes, doc, originalPageNumber, visualPageNumber, pageMeta, zoom, tool, color, strokeWidth, pendingImage, pendingStamp, annotations, activeId, onSelectAnnotation, onAddAnnotation, onUpdateAnnotation, onSetCrop, onAnnotationContextMenu, forcePdfjs } = props;
+  const { pdfBytes, doc, originalPageNumber, visualPageNumber, pageMeta, zoom, tool, color, strokeWidth, pendingImage, pendingStamp, annotations, activeId, onSelectAnnotation, onAddAnnotation, onUpdateAnnotation, onUpdateAnnotationLive, onTransformStart, onSetCrop, onAnnotationContextMenu, forcePdfjs } = props;
+  // Tracks whether the current drag/resize gesture has already snapshotted the
+  // pre-gesture state into history (so we do it exactly once, on the first move).
+  const gestureSnapshotRef = useRef(false);
+  // Apply a drag/resize move: snapshot-once into history, then stream live
+  // (no-history) updates. Falls back to the history-recording path if the live
+  // props aren't provided.
+  const applyTransformMove = (id: string, patch: Partial<Annotation>) => {
+    if (onUpdateAnnotationLive && onTransformStart) {
+      if (!gestureSnapshotRef.current) { onTransformStart(); gestureSnapshotRef.current = true; }
+      onUpdateAnnotationLive(id, patch);
+    } else {
+      onUpdateAnnotation(id, patch);
+    }
+  };
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
   const textLayerRef = useRef<HTMLDivElement>(null);
@@ -283,17 +301,19 @@ export default function PageCanvas(props: Props) {
         if (h === 'nw' || h === 'n' || h === 'ne') newY = resize.originY + resize.originH - MIN;
         newH = MIN;
       }
-      onUpdateAnnotation(resize.id, { x: newX, y: newY, w: newW, h: newH });
+      applyTransformMove(resize.id, { x: newX, y: newY, w: newW, h: newH });
       return;
     }
     if (drag) {
       const ann = annotations.find(a => a.id === drag.id);
       if (!ann) return;
-      onUpdateAnnotation(drag.id, { x: p.x - drag.offsetX, y: p.y - drag.offsetY });
+      applyTransformMove(drag.id, { x: p.x - drag.offsetX, y: p.y - drag.offsetY });
     }
   };
 
   const onPointerUp = () => {
+    // Gesture finished — the next drag/resize starts a fresh history snapshot.
+    gestureSnapshotRef.current = false;
     if (drawing) {
       const { tool: t, start, current, pen } = drawing;
       const x = Math.min(start.x, current.x);
