@@ -31,7 +31,7 @@ import { detectDispatchAnomalies } from './routes/dispatch/anomalies';
 import { getRadioSettings, purgeOldRecordings } from './utils/radioSettings';
 import { syncAllVehicleGpsMileage } from './routes/fleet';
 import { sweepTrips } from './utils/tripStore';
-import { runEmailPoll } from './routes/email';
+import { runEmailPoll, drainEmailOutbox } from './routes/email';
 import type { Bindings, Variables } from './types';
 import { ROUTE_REGISTRY } from './routesConfig';
 
@@ -318,6 +318,13 @@ export default {
       ctx.waitUntil(
         maybeRunEmailPoll(env, ctx)
           .catch((err) => console.error('[email-poll] failed:', err)),
+      );
+      // Email outbox drain — retries Graph /me/sendMail for queued sends
+      // whose backoff window has elapsed. Self-throttled by next_attempt_at.
+      ctx.waitUntil(
+        drainEmailOutbox(env)
+          .then((r) => { if (r.sent || r.failed) console.log(`[email-outbox] sent=${r.sent} failed=${r.failed} deferred=${r.deferred}`); })
+          .catch((err) => console.error('[email-outbox] failed:', err)),
       );
       return;
     }

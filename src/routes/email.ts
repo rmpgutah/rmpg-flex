@@ -663,37 +663,135 @@ function parseAddrList(raw: string): Array<{ emailAddress: { address: string } }
 }
 
 email.post('/send', async (c) => {
+  const userId = c.get('userId');
   const body = await c.req.json().catch(() => ({})) as {
     to?: string; cc?: string; bcc?: string; subject?: string; body?: string; isHtml?: boolean;
   };
   const toRecipients = parseAddrList(body.to || '');
   if (!toRecipients.length) return c.json({ error: 'At least one recipient required' }, 400);
+
+  const payload = {
+    message: {
+      subject: body.subject || '(no subject)',
+      body: {
+        contentType: body.isHtml === false ? 'Text' : 'HTML',
+        content: body.body || '',
+      },
+      toRecipients,
+      ccRecipients: parseAddrList(body.cc || ''),
+      bccRecipients: parseAddrList(body.bcc || ''),
+    },
+    saveToSentItems: true,
+  };
+
+  // Durable outbox: enqueue first, then attempt synchronous send. If the
+  // sync send succeeds we mark sent in the same response; if it fails the
+  // cron drains it later. Either way the operator's "send" click is
+  // never lost to a transient Graph hiccup.
+  const queued = await execute(
+    c.env.DB,
+    "INSERT INTO email_outbox (owner_user_id, payload, status) VALUES (?, ?, 'pending')",
+    userId, JSON.stringify(payload),
+  );
+  const outboxId = queued.meta.last_row_id as number;
+
   try {
     const res = await graphFetch(c.env, '/me/sendMail', {
       method: 'POST',
-      body: JSON.stringify({
-        message: {
-          subject: body.subject || '(no subject)',
-          body: {
-            contentType: body.isHtml === false ? 'Text' : 'HTML',
-            content: body.body || '',
-          },
-          toRecipients,
-          ccRecipients: parseAddrList(body.cc || ''),
-          bccRecipients: parseAddrList(body.bcc || ''),
-        },
-        saveToSentItems: true,
-      }),
+      body: JSON.stringify(payload),
     });
     if (!res.ok) {
       const text = await res.text().catch(() => '');
-      return c.json({ success: false, error: `Graph ${res.status}: ${text.slice(0, 200)}` }, 502);
+      const err = `Graph ${res.status}: ${text.slice(0, 200)}`;
+      await execute(
+        c.env.DB,
+        "UPDATE email_outbox SET attempts = 1, last_error = ?, next_attempt_at = datetime('now','localtime','+1 minute') WHERE id = ?",
+        err, outboxId,
+      );
+      // 202 — queued for retry, not a hard failure
+      return c.json({ success: false, queued: true, outboxId, error: err }, 202);
     }
-    return c.json({ success: true });
+    await execute(
+      c.env.DB,
+      "UPDATE email_outbox SET status = 'sent', sent_at = datetime('now','localtime') WHERE id = ?",
+      outboxId,
+    );
+    return c.json({ success: true, outboxId });
   } catch (err: unknown) {
-    return c.json({ success: false, error: err instanceof Error ? err.message : 'Failed' }, 502);
+    const msg = err instanceof Error ? err.message : 'Failed';
+    await execute(
+      c.env.DB,
+      "UPDATE email_outbox SET attempts = 1, last_error = ?, next_attempt_at = datetime('now','localtime','+1 minute') WHERE id = ?",
+      msg, outboxId,
+    );
+    return c.json({ success: false, queued: true, outboxId, error: msg }, 202);
   }
 });
+
+// Outbox introspection for the EmailPage compose UI ("3 messages queued for retry")
+email.get('/outbox', async (c) => {
+  const userId = c.get('userId');
+  const rows = await query(
+    c.env.DB,
+    "SELECT id, attempts, last_error, next_attempt_at, status, created_at, sent_at FROM email_outbox WHERE owner_user_id = ? AND status != 'sent' ORDER BY id DESC LIMIT 50",
+    userId,
+  );
+  return c.json({ outbox: rows });
+});
+
+// Cron-drained: pop up-to-N pending rows whose next_attempt_at has
+// passed, attempt Graph send, exponential-backoff on failure (1m → 5m
+// → 30m → fail after 5 attempts). Exported for src/index.ts.
+export async function drainEmailOutbox(env: Bindings): Promise<{ sent: number; failed: number; deferred: number }> {
+  const refresh = await getCfgDecrypted(env, K.refreshToken);
+  if (!refresh) return { sent: 0, failed: 0, deferred: 0 };
+
+  const rows = await query<{ id: number; payload: string; attempts: number }>(
+    env.DB,
+    "SELECT id, payload, attempts FROM email_outbox WHERE status = 'pending' AND next_attempt_at <= datetime('now','localtime') ORDER BY id ASC LIMIT 10",
+  );
+  let sent = 0, failed = 0, deferred = 0;
+  const BACKOFFS = ['+1 minute', '+5 minutes', '+30 minutes', '+2 hours', '+6 hours'];
+  for (const r of rows) {
+    try {
+      const res = await graphFetch(env, '/me/sendMail', { method: 'POST', body: r.payload });
+      if (res.ok) {
+        await execute(env.DB, "UPDATE email_outbox SET status = 'sent', sent_at = datetime('now','localtime') WHERE id = ?", r.id);
+        sent++;
+        continue;
+      }
+      const text = await res.text().catch(() => '');
+      const attempts = r.attempts + 1;
+      const err = `Graph ${res.status}: ${text.slice(0, 200)}`;
+      if (attempts >= BACKOFFS.length) {
+        await execute(env.DB, "UPDATE email_outbox SET status = 'failed', attempts = ?, last_error = ? WHERE id = ?", attempts, err, r.id);
+        failed++;
+      } else {
+        await execute(
+          env.DB,
+          `UPDATE email_outbox SET attempts = ?, last_error = ?, next_attempt_at = datetime('now','localtime','${BACKOFFS[attempts]}') WHERE id = ?`,
+          attempts, err, r.id,
+        );
+        deferred++;
+      }
+    } catch (err: unknown) {
+      const attempts = r.attempts + 1;
+      const msg = err instanceof Error ? err.message : 'send failed';
+      if (attempts >= BACKOFFS.length) {
+        await execute(env.DB, "UPDATE email_outbox SET status = 'failed', attempts = ?, last_error = ? WHERE id = ?", attempts, msg, r.id);
+        failed++;
+      } else {
+        await execute(
+          env.DB,
+          `UPDATE email_outbox SET attempts = ?, last_error = ?, next_attempt_at = datetime('now','localtime','${BACKOFFS[attempts]}') WHERE id = ?`,
+          attempts, msg, r.id,
+        );
+        deferred++;
+      }
+    }
+  }
+  return { sent, failed, deferred };
+}
 
 email.post('/messages/:id/reply', async (c) => {
   const id = c.req.param('id');
@@ -764,9 +862,10 @@ email.post('/admin/sync-now', requireRole('admin'), async (c) => {
 // ═══════════════════════════════════════════════════════════════════
 
 interface RuleConditions {
-  from?: string;          // case-insensitive substring (NOT regex — safer with user input)
-  subject?: string;       // case-insensitive substring
+  from?: string;          // case-insensitive substring by default
+  subject?: string;       // case-insensitive substring by default
   hasAttachment?: 0 | 1;
+  regex?: boolean;        // power-user toggle — treat from/subject as regex
 }
 interface RuleActions {
   markRead?: 1;
@@ -783,16 +882,28 @@ interface RuleRow {
   actions: string;
 }
 
+function safeRe(src: string): RegExp | null {
+  try { return new RegExp(src, 'i'); } catch { return null; }
+}
+
 function matchRule(cond: RuleConditions, m: {
   from_address?: string | null; subject?: string | null; has_attachments?: number;
 }): boolean {
   if (cond.from) {
     const f = (m.from_address || '').toLowerCase();
-    if (!f.includes(cond.from.toLowerCase())) return false;
+    if (cond.regex) {
+      const re = safeRe(cond.from);
+      if (!re || !re.test(m.from_address || '')) return false;
+    } else if (!f.includes(cond.from.toLowerCase())) return false;
   }
   if (cond.subject) {
-    const s = (m.subject || '').toLowerCase();
-    if (!s.includes(cond.subject.toLowerCase())) return false;
+    if (cond.regex) {
+      const re = safeRe(cond.subject);
+      if (!re || !re.test(m.subject || '')) return false;
+    } else {
+      const s = (m.subject || '').toLowerCase();
+      if (!s.includes(cond.subject.toLowerCase())) return false;
+    }
   }
   if (cond.hasAttachment !== undefined) {
     if (!!(m.has_attachments) !== !!cond.hasAttachment) return false;
@@ -800,11 +911,15 @@ function matchRule(cond: RuleConditions, m: {
   return true;
 }
 
-// Autolinker — scan body + subject for CFS numbers and license plates.
-// CFS pattern: CFS##-##### (live: CFS26-00056). Plates are deferred to a
-// later iteration — Utah plate format isn't a stable enough regex without
-// false positives from words like "MAY" or "JAN".
+// Autolinker — scan body + subject for CFS numbers and Utah plates.
+// CFS pattern: CFS##-##### (live: CFS26-00056).
+// Plate pattern: Utah standard 3-digit + 3-letter (123ABC), 3-letter +
+// 3-digit (ABC123), or 6-7 alnum personalized (RMPG1). To avoid false
+// positives from acronyms (FBI, NYPD, USA), we only link plates that
+// exist in vehicles_records.plate_number — the regex is the candidate
+// generator, the DB is the gate.
 const CFS_RE = /\bCFS\d{2}-\d{5}\b/gi;
+const PLATE_CANDIDATES_RE = /\b(?:[A-Z]{1,3}\d{3,4}|\d{3,4}[A-Z]{1,3}|[A-Z0-9]{6,7})\b/g;
 
 async function runAutolinker(
   db: D1Database,
@@ -814,10 +929,12 @@ async function runAutolinker(
   const hay = `${msg.subject || ''}\n${msg.body_preview || ''}\n${msg.body_html || ''}`;
   const seen = new Set<string>();
   let linked = 0;
+
+  // CFS — pattern is unambiguous, link without DB confirmation.
   for (const match of hay.matchAll(CFS_RE)) {
     const ref = match[0].toUpperCase();
-    if (seen.has(ref)) continue;
-    seen.add(ref);
+    if (seen.has(`cfs:${ref}`)) continue;
+    seen.add(`cfs:${ref}`);
     const row = await queryFirst<{ id: number }>(db, 'SELECT id FROM calls_for_service WHERE call_number = ? LIMIT 1', ref);
     if (!row) continue;
     try {
@@ -827,7 +944,39 @@ async function runAutolinker(
         msg.graph_id, ownerUserId, row.id, ref,
       );
       linked++;
-    } catch { /* uniqueness or insert error — best effort */ }
+    } catch { /* best-effort */ }
+  }
+
+  // Plates — generate candidates, dedupe, batch-check against vehicles_records.
+  // The DB lookup is the false-positive filter; without it "MAY2025" or "PDF123"
+  // would link as plates.
+  const candidates = new Set<string>();
+  for (const match of hay.toUpperCase().matchAll(PLATE_CANDIDATES_RE)) {
+    const tok = match[0];
+    if (tok.length < 5 || tok.length > 7) continue;
+    candidates.add(tok);
+  }
+  if (candidates.size) {
+    const cands = [...candidates];
+    const placeholders = cands.map(() => '?').join(',');
+    const hits = await query<{ id: number; plate_number: string }>(
+      db,
+      `SELECT id, plate_number FROM vehicles_records WHERE plate_number IN (${placeholders}) LIMIT 50`,
+      ...cands,
+    );
+    for (const v of hits) {
+      const ref = (v.plate_number || '').toUpperCase();
+      if (!ref || seen.has(`plate:${ref}`)) continue;
+      seen.add(`plate:${ref}`);
+      try {
+        await execute(
+          db,
+          "INSERT OR IGNORE INTO email_links (message_graph_id, owner_user_id, entity_type, entity_id, entity_ref, source) VALUES (?, ?, 'plate', ?, ?, 'autolinker')",
+          msg.graph_id, ownerUserId, v.id, ref,
+        );
+        linked++;
+      } catch { /* best-effort */ }
+    }
   }
   return linked;
 }
