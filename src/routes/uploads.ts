@@ -13,6 +13,11 @@ const ALLOWED_MIME = new Set([
   'application/vnd.ms-excel',
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   'text/plain', 'text/csv',
+  // Document Writer saves rich documents as .html (see client/src/pages/
+  // document-writer). The route was built to accept those uploads (folder_id
+  // handling below) but this allowlist omitted the MIME, so every save 400'd
+  // ("File type text/html is not allowed") and the page stayed "Unsaved".
+  'text/html',
   'video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/webm', 'video/x-matroska',
   'audio/mpeg', 'audio/wav', 'audio/ogg',
 ]);

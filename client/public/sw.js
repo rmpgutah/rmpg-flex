@@ -327,7 +327,20 @@
 // v815: patrol MileageAuditTab backfill-missing-mileage (client change shipped
 //       in 1529d651 without a SW bump — v814 was already live, so bump to
 //       invalidate the stale cached bundle).
-const CACHE_NAME = 'rmpg-flex-v815';
+// v816: Document Writer overhaul. (1) SAVE FIX: documents are saved as text/html
+//       to /api/uploads, but that MIME was missing from the uploads allowlist so
+//       every save 400'd and the page stayed "Unsaved" (server: add text/html;
+//       client: surface the error instead of swallowing it). (2) Dark/Light theme
+//       (auto by clock + toggle) — replaces the unreadable prose-invert-on-white
+//       text with theme-driven color:inherit; print/PDF always black-on-white.
+//       (3) 50 formatting/design features (font family/size, color/highlight,
+//       super/sub, small/all caps, letter spacing, line height, shadow, drop cap,
+//       weight, opacity; paragraph spacing/indents/columns/breaks/borders/shading/
+//       line numbers/direction/vertical align; page size/orientation/margins,
+//       headers/footers, watermark, TOC, cover page, footnotes/endnotes, cross-
+//       refs, bookmarks, backgrounds, templates, statistics) via custom TipTap
+//       extensions — no new npm deps.
+const CACHE_NAME = 'rmpg-flex-v816';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
