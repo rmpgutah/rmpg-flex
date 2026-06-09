@@ -97,25 +97,42 @@ gps.post('/', async (c) => {
     // creates/closes unit_trips rows. The cron sweep closes orphaned trips;
     // live GPS writes are what OPEN and append them.
     if (unitId) {
+      // prev = the PREVIOUS fix in this batch (null on the first). Threading it
+      // lets the engine's distance-from-prev open check actually see movement;
+      // the old code passed prev == cur, so that check was always 0 and opens
+      // relied solely on speed.
+      let prevLat: number | null = null;
+      let prevLng: number | null = null;
       for (const pt of points) {
-        const ts = pt.timestamp ? Date.parse(pt.timestamp.replace(' ', 'T') + 'Z') : Date.now();
-        if (!isNaN(ts) && pt.latitude != null && pt.longitude != null) {
-          const fix: IncomingFix = { lat: pt.latitude, lng: pt.longitude, speed: pt.speed ?? null, heading: pt.heading ?? null, ts };
-          const event: TripEvent = { kind: 'gps', fix };
-          try {
-            await applyTripEvent({
-              db, env: c.env, unitId,
-              officerId: userId,
-              vehicleId: resolvedVehicleId,
-              event,
-              ctx: {
-                now: Date.now(),
-                curLat: pt.latitude, curLng: pt.longitude,
-                prevLat: pt.latitude, prevLng: pt.longitude,
-              },
-            });
-          } catch { /* trip engine is non-fatal — never break GPS write */ }
-        }
+        if (pt.latitude == null || pt.longitude == null) continue;
+        // pt.timestamp is ISO-8601 from the client (new Date().toISOString()).
+        // The old code did `Date.parse(ts.replace(' ','T') + 'Z')` — meant to
+        // force-UTC a SQLite space-format timestamp, but on a real ISO string it
+        // appended a second 'Z' ("…ZZ") → Date.parse returns NaN, and the old
+        // `!isNaN(ts)` guard then SKIPPED EVERY FIX. The trip engine was never
+        // invoked, so no unit_trips (PATROL/RESPONSE) were created even while the
+        // unit drove — breadcrumbs still wrote (they use datetime('now')), which
+        // masked the breakage. Parse directly; fall back to now() if unparseable
+        // so a bad timestamp never silently drops the fix.
+        const parsed = pt.timestamp ? Date.parse(pt.timestamp) : NaN;
+        const ts = Number.isFinite(parsed) ? parsed : Date.now();
+        const fix: IncomingFix = { lat: pt.latitude, lng: pt.longitude, speed: pt.speed ?? null, heading: pt.heading ?? null, ts };
+        const event: TripEvent = { kind: 'gps', fix };
+        try {
+          await applyTripEvent({
+            db, env: c.env, unitId,
+            officerId: userId,
+            vehicleId: resolvedVehicleId,
+            event,
+            ctx: {
+              now: Date.now(),
+              curLat: pt.latitude, curLng: pt.longitude,
+              prevLat, prevLng,
+            },
+          });
+        } catch { /* trip engine is non-fatal — never break GPS write */ }
+        prevLat = pt.latitude;
+        prevLng = pt.longitude;
       }
 
       // Stamp this batch's breadcrumbs with the unit's active trip so trip replay
