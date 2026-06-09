@@ -333,7 +333,7 @@ reports.get('/officer-activity', async (c) => {
     const rows = await query<Record<string, unknown>>(db, `
       SELECT u.officer_id, usr.full_name, usr.badge_number,
         (SELECT COUNT(*) FROM incidents i WHERE i.reporting_officer_id = u.officer_id) AS incidents_written,
-        (SELECT COUNT(*) FROM calls_for_service c WHERE c.primary_unit = CAST(u.id AS TEXT) OR c.assigned_units LIKE '%' || CAST(u.id AS TEXT) || '%') AS calls_responded,
+        (SELECT COUNT(*) FROM calls_for_service c WHERE c.assigned_unit_ids LIKE '%' || CAST(u.id AS TEXT) || '%') AS calls_responded,
         0 AS total_hours
       FROM units u
       LEFT JOIN users usr ON u.officer_id = usr.id

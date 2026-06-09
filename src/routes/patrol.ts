@@ -505,13 +505,13 @@ pt.get('/log/generate', async (c) => {
     if (officerId) { officerFilter = ' AND officer_id = ?'; args.push(parseInt(officerId, 10)); }
     const rows = await query<any>(
       db,
-      `SELECT date(scan_time) AS day,
+      `SELECT date(scanned_at) AS day,
               COUNT(*) AS total_scans,
               SUM(CASE WHEN status = 'on_time' THEN 1 ELSE 0 END) AS on_time_scans,
               COUNT(DISTINCT checkpoint_id) AS unique_checkpoints
          FROM patrol_scans
-        WHERE date(scan_time) BETWEEN ? AND ?${officerFilter}
-        GROUP BY date(scan_time)
+        WHERE date(scanned_at) BETWEEN ? AND ?${officerFilter}
+        GROUP BY date(scanned_at)
         ORDER BY day`,
       ...args,
     );
@@ -564,13 +564,13 @@ pt.get('/time-tracking', async (c) => {
     if (officerId) { officerFilter = ' AND officer_id = ?'; args.push(parseInt(officerId, 10)); }
     const rows = await query<any>(
       db,
-      `SELECT date(scan_time) AS day,
+      `SELECT date(scanned_at) AS day,
               SUM(CASE WHEN status = 'on_time' THEN 1 ELSE 0 END) AS on_time_scans,
               SUM(CASE WHEN status = 'late' THEN 1 ELSE 0 END) AS late_scans,
               SUM(CASE WHEN status = 'missed' THEN 1 ELSE 0 END) AS missed_scans
          FROM patrol_scans
-        WHERE scan_time >= datetime('now', ? || ' days')${officerFilter}
-        GROUP BY date(scan_time)
+        WHERE scanned_at >= datetime('now', ? || ' days')${officerFilter}
+        GROUP BY date(scanned_at)
         ORDER BY day`,
       ...args,
     );
@@ -588,11 +588,11 @@ pt.get('/coverage-heatmap', async (c) => {
     // 24x7 grid of scan counts — used by PatrolPage's coverage card.
     const rows = await query<any>(
       db,
-      `SELECT CAST(strftime('%H', scan_time) AS INTEGER) AS hour,
-              CAST(strftime('%w', scan_time) AS INTEGER) AS dow,
+      `SELECT CAST(strftime('%H', scanned_at) AS INTEGER) AS hour,
+              CAST(strftime('%w', scanned_at) AS INTEGER) AS dow,
               COUNT(*) AS count
          FROM patrol_scans
-        WHERE scan_time >= datetime('now', ? || ' days')
+        WHERE scanned_at >= datetime('now', ? || ' days')
         GROUP BY hour, dow
         ORDER BY dow, hour`,
       -days,
@@ -619,7 +619,7 @@ pt.get('/efficiency', async (c) => {
               COUNT(DISTINCT s.checkpoint_id) AS unique_checkpoints,
               COUNT(DISTINCT s.officer_id) AS active_officers
          FROM patrol_scans s
-        WHERE s.scan_time >= datetime('now', ? || ' days')${filter}`,
+        WHERE s.scanned_at >= datetime('now', ? || ' days')${filter}`,
       ...args,
     );
     return c.json({
