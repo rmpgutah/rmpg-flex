@@ -823,10 +823,10 @@ const PatrolPage: React.FC = () => {
 
       {/* Feature 1: Route Optimization Results */}
       {optimizedRoute && (
-        <div className="mx-3 mt-2 p-2 bg-gray-900/20 border border-gray-700/50 text-xs text-gray-300">
+        <div className="mx-3 mt-2 panel-beveled bg-surface-raised p-2 text-xs text-rmpg-200">
           <div className="flex items-center justify-between mb-1">
-            <span className="font-bold">Optimized Route — {optimizedRoute.optimized_order?.length || 0} checkpoints, {optimizedRoute.total_distance_km} km total</span>
-            <IconButton onClick={() => setOptimizedRoute(null)} className="text-gray-500 hover:text-gray-300" aria-label="Close optimized route"><X className="w-3 h-3" /></IconButton>
+            <span className="font-bold text-[#d4a017] uppercase tracking-wide text-[10px]">Optimized Route — {optimizedRoute.optimized_order?.length || 0} checkpoints, {optimizedRoute.total_distance_km} km total</span>
+            <IconButton onClick={() => setOptimizedRoute(null)} className="text-rmpg-500 hover:text-rmpg-300" aria-label="Close optimized route"><X className="w-3 h-3" /></IconButton>
           </div>
           <div className="space-y-0.5 text-[10px] max-h-32 overflow-y-auto">
             {optimizedRoute.optimized_order?.map((cp: any, i: number) => (
@@ -842,10 +842,10 @@ const PatrolPage: React.FC = () => {
 
       {/* Feature 2: Patrol Log Panel */}
       {patrolLog && (
-        <div className="mx-3 mt-2 p-2 bg-green-900/20 border border-green-700/50 text-xs text-green-300">
+        <div className="mx-3 mt-2 panel-beveled bg-surface-raised p-2 text-xs text-rmpg-200">
           <div className="flex items-center justify-between mb-1">
-            <span className="font-bold">Patrol Log — {patrolLog.officer_name} ({patrolLog.date})</span>
-            <IconButton onClick={() => setPatrolLog(null)} className="text-green-500 hover:text-green-300" aria-label="Close patrol log"><X className="w-3 h-3" /></IconButton>
+            <span className="font-bold text-[#d4a017] uppercase tracking-wide text-[10px]">Patrol Log — {patrolLog.officer_name} ({patrolLog.date})</span>
+            <IconButton onClick={() => setPatrolLog(null)} className="text-rmpg-500 hover:text-rmpg-300" aria-label="Close patrol log"><X className="w-3 h-3" /></IconButton>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px] mb-2">
             <div><span className="text-rmpg-400">Checkpoints:</span> <span className="text-white">{patrolLog.total_checkpoints_scanned}</span></div>
@@ -868,10 +868,10 @@ const PatrolPage: React.FC = () => {
 
       {/* Feature 6: Exception Report Panel */}
       {exceptions && (
-        <div className="mx-3 mt-2 p-2 bg-amber-900/20 border border-amber-700/50 text-xs text-amber-300">
+        <div className="mx-3 mt-2 panel-beveled bg-surface-raised p-2 text-xs text-rmpg-200">
           <div className="flex items-center justify-between mb-1">
-            <span className="font-bold">Exception Report — {exceptions.period_days} days ({exceptions.late_count} late / {exceptions.total_scans} total = {exceptions.late_rate}% late)</span>
-            <IconButton onClick={() => setExceptions(null)} className="text-amber-500 hover:text-amber-300" aria-label="Close exceptions"><X className="w-3 h-3" /></IconButton>
+            <span className="font-bold text-[#d4a017] uppercase tracking-wide text-[10px]">Exception Report — {exceptions.period_days} days ({exceptions.late_count} late / {exceptions.total_scans} total = {exceptions.late_rate}% late)</span>
+            <IconButton onClick={() => setExceptions(null)} className="text-rmpg-500 hover:text-rmpg-300" aria-label="Close exceptions"><X className="w-3 h-3" /></IconButton>
           </div>
           {exceptions.missed_checkpoints?.length > 0 && (
             <div className="mb-1">
@@ -900,10 +900,10 @@ const PatrolPage: React.FC = () => {
 
       {/* Feature 7: Time Tracking Panel */}
       {timeTracking && (
-        <div className="mx-3 mt-2 p-2 bg-purple-900/20 border border-purple-700/50 text-xs text-purple-300">
+        <div className="mx-3 mt-2 panel-beveled bg-surface-raised p-2 text-xs text-rmpg-200">
           <div className="flex items-center justify-between mb-1">
-            <span className="font-bold">Time Tracking — {timeTracking.date}</span>
-            <IconButton onClick={() => setTimeTracking(null)} className="text-purple-500 hover:text-purple-300" aria-label="Close time tracking"><X className="w-3 h-3" /></IconButton>
+            <span className="font-bold text-[#d4a017] uppercase tracking-wide text-[10px]">Time Tracking — {timeTracking.date}</span>
+            <IconButton onClick={() => setTimeTracking(null)} className="text-rmpg-500 hover:text-rmpg-300" aria-label="Close time tracking"><X className="w-3 h-3" /></IconButton>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px] mb-2">
             <div><span className="text-rmpg-400">Total Patrol:</span> <span className="text-white">{timeTracking.total_patrol_minutes} min</span></div>
@@ -1262,55 +1262,42 @@ const PatrolPage: React.FC = () => {
                 return (
                   <div
                     key={item.checkpoint_id}
-                    className={`panel-beveled p-6 border-2 bg-surface-base ${complianceColor}`}
+                    className={`panel-beveled p-3 border bg-surface-raised ${complianceColor}`}
                   >
-                    <div className="flex items-start justify-between mb-4">
-                      <div>
-                        <h3 className="text-lg font-bold text-white mb-1">
+                    <div className="flex items-start justify-between mb-2">
+                      <div className="min-w-0">
+                        <h3 className="text-xs font-bold text-white uppercase tracking-wide truncate">
                           {item.checkpoint_name}
                         </h3>
-                        <p className="text-sm text-rmpg-300">{item.property_name}</p>
+                        <p className="text-[10px] text-rmpg-400 truncate">{item.property_name}</p>
                       </div>
-                      <div className={`text-2xl font-bold font-mono ${complianceColor}`}>
+                      <div className={`text-xl font-bold font-mono ${complianceColor}`}>
                         {item.compliance_rate}%
                       </div>
                     </div>
 
-                    <div className="space-y-3">
+                    <div className="space-y-1 text-[11px]">
                       <div className="flex items-center justify-between">
-                        <span className="text-sm text-rmpg-300">Scans Today:</span>
-                        <span className="text-white font-medium font-mono">{item.scans_today}</span>
+                        <span className="text-rmpg-400">Scans Today</span>
+                        <span className="text-white font-mono">{item.scans_today}</span>
                       </div>
-
                       <div className="flex items-center justify-between">
-                        <span className="text-sm text-rmpg-300">Last Scan:</span>
-                        <span className="text-white font-medium font-mono">
-                          {formatTimeAgo(item.last_scan_time)}
-                        </span>
+                        <span className="text-rmpg-400">Last Scan</span>
+                        <span className="text-white font-mono">{formatTimeAgo(item.last_scan_time)}</span>
                       </div>
-
                       <div className="flex items-center justify-between">
-                        <span className="text-sm text-rmpg-300">Interval:</span>
-                        <span className="text-white font-medium font-mono">
-                          {item.scan_interval_minutes} min
-                        </span>
+                        <span className="text-rmpg-400">Interval</span>
+                        <span className="text-white font-mono">{item.scan_interval_minutes} min</span>
                       </div>
-
-                      <div className="pt-3 border-t border-rmpg-700">
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm text-rmpg-300">Next Due:</span>
-                          {item.next_scan_due ? (
-                            <span
-                              className={`text-sm font-medium ${
-                                overdue ? 'text-red-400' : 'text-green-400'
-                              }`}
-                            >
-                              {overdue ? 'OVERDUE' : formatTimeAgo(item.next_scan_due)}
-                            </span>
-                          ) : (
-                            <span className="text-sm text-rmpg-400">Not scanned yet</span>
-                          )}
-                        </div>
+                      <div className="pt-2 mt-1 border-t border-rmpg-700 flex items-center justify-between">
+                        <span className="text-rmpg-400">Next Due</span>
+                        {item.next_scan_due ? (
+                          <span className={`font-mono ${overdue ? 'text-red-400' : 'text-green-400'}`}>
+                            {overdue ? 'OVERDUE' : formatTimeAgo(item.next_scan_due)}
+                          </span>
+                        ) : (
+                          <span className="text-rmpg-500">Not scanned yet</span>
+                        )}
                       </div>
                     </div>
                   </div>
