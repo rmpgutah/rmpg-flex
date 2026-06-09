@@ -373,7 +373,12 @@
 //       as a thin rule on the box bottom edge / through the middle; flattened in
 //       both the native rmpg-pdf-engine builder and the pdf-lib fallback. Added to
 //       the ToolPalette + Annotations panel labels.
-const CACHE_NAME = 'rmpg-flex-v820';
+// v821: Printable field forms — 6 new blank PDFs for Process Service (Affidavit/
+//       Proof of Service, Service Attempt Log, Return of Non-Service) and
+//       Communications (Radio/Comms Log, Telephone/Message Log, BOLO Broadcast).
+//       New 'service' + 'communications' categories on the Training Docs blank-
+//       forms board; multi-column log-grid helper.
+const CACHE_NAME = 'rmpg-flex-v821';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
