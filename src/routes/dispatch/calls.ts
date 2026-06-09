@@ -529,6 +529,27 @@ calls.post('/archive-bulk', requireRole(...WRITE_ROLES), async (c) => {
       `UPDATE calls_for_service SET status = 'archived', archived_at = datetime('now') WHERE status IN (${placeholders})`,
       ...statuses);
     const archived_count = (result as any)?.meta?.changes ?? 0;
+    // Release every unit whose linked call is now (or already was) terminal —
+    // also heals any strays left over from pre-fix archives.
+    try {
+      const stranded = await query<{ id: number; call_sign: string }>(db,
+        `SELECT u.id, u.call_sign FROM units u
+           JOIN calls_for_service cf ON cf.id = u.current_call_id
+          WHERE cf.status IN ('cleared','closed','cancelled','archived')`);
+      if (stranded.length) {
+        await execute(db,
+          `UPDATE units SET status = 'available', current_call_id = NULL,
+                  last_status_change = datetime('now'), updated_at = datetime('now')
+            WHERE id IN (${stranded.map(() => '?').join(',')})`,
+          ...stranded.map((u) => u.id));
+        for (const u of stranded) {
+          await emitAlert(c.env, 'dispatch_update', {
+            action: 'unit_status_changed',
+            unit: { id: u.id, call_sign: u.call_sign, status: 'available', current_call_id: null, current_call_number: null },
+          });
+        }
+      }
+    } catch (err) { console.warn('[calls] bulk-archive unit release failed (non-fatal):', err); }
     return c.json({ archived_count });
   } catch (err) {
     return c.json({ error: 'Bulk archive failed' }, 500);
@@ -827,6 +848,66 @@ calls.delete('/:id', requireRole(...WRITE_ROLES), async (c) => {
 });
 
 // POST /dispatch/calls/:id/status - Status transition
+// ── Unit/board lockstep ─────────────────────────────────────
+// Keep assigned units in sync with their call's lifecycle. The legacy worker
+// did this inside its status handler; the rewrite port dropped it, which is
+// how units got STUCK on the board: a call could be cleared/closed/cancelled/
+// ARCHIVED while its units stayed 'dispatched' with current_call_id pointing
+// at a dead call forever (live incident: D19 dispatched on archived
+// CFS26-00055 for 30+ hours, board showing AVAIL:0/DISP:1 with no way out).
+//
+// status dispatched/enroute/onscene → units riding the call follow it.
+// status cleared/closed/cancelled/archived → units are RELEASED
+// (available, current_call_id NULL). Always stamps last_status_change so the
+// board's time-in-status dwell timer restarts. Emits one
+// 'unit_status_changed' per affected unit (the client merges partial unit
+// objects). Best-effort: a sync failure never fails the call transition.
+const CALL_ENGAGED_STATUSES = new Set(['dispatched', 'enroute', 'onscene']);
+const CALL_TERMINAL_STATUSES = new Set(['cleared', 'closed', 'cancelled', 'archived']);
+
+async function syncUnitsWithCallStatus(
+  db: D1Database,
+  env: Env['Bindings'],
+  callId: string | number | undefined,
+  status: string,
+): Promise<void> {
+  if (callId == null) return;
+  try {
+    if (CALL_ENGAGED_STATUSES.has(status)) {
+      const affected = await query<{ id: number; call_sign: string }>(
+        db, 'SELECT id, call_sign FROM units WHERE current_call_id = ? AND status != ?', callId, status);
+      if (!affected.length) return;
+      await execute(db,
+        `UPDATE units SET status = ?, last_status_change = datetime('now'), updated_at = datetime('now')
+          WHERE current_call_id = ? AND status != ?`,
+        status, callId, status);
+      for (const u of affected) {
+        await emitAlert(env, 'dispatch_update', {
+          action: 'unit_status_changed',
+          unit: { id: u.id, call_sign: u.call_sign, status, current_call_id: callId },
+        });
+      }
+    } else if (CALL_TERMINAL_STATUSES.has(status)) {
+      const affected = await query<{ id: number; call_sign: string }>(
+        db, 'SELECT id, call_sign FROM units WHERE current_call_id = ?', callId);
+      if (!affected.length) return;
+      await execute(db,
+        `UPDATE units SET status = 'available', current_call_id = NULL,
+                last_status_change = datetime('now'), updated_at = datetime('now')
+          WHERE current_call_id = ?`,
+        callId);
+      for (const u of affected) {
+        await emitAlert(env, 'dispatch_update', {
+          action: 'unit_status_changed',
+          unit: { id: u.id, call_sign: u.call_sign, status: 'available', current_call_id: null, current_call_number: null },
+        });
+      }
+    }
+  } catch (err) {
+    console.warn('[calls] unit/board sync failed (non-fatal):', err);
+  }
+}
+
 calls.post('/:id/status', requireRole(...WRITE_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
@@ -885,6 +966,10 @@ calls.post('/:id/status', requireRole(...WRITE_ROLES), async (c) => {
     // "No PSO details entered yet" even when data exists.
     const ext = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service_ext WHERE id = ?', id);
     const merged = { ...(updated || {}), ...(ext || {}) };
+    // Keep assigned units in lockstep with the call (release on terminal
+    // statuses, follow on engaged ones) — see syncUnitsWithCallStatus.
+    await syncUnitsWithCallStatus(db, c.env, id, status);
+
     // Fan the transition to every console via AlertHubDO. Previously this handler
     // emitted NO broadcast at all, so dispatched→enroute→onscene→cleared changes
     // only surfaced on the next adaptive poll — the unit board lagged reality.
@@ -901,6 +986,9 @@ calls.post('/:id/archive', requireRole(...WRITE_ROLES), async (c) => {
     const db = getDb(c.env);
     const id = c.req.param('id');
     await execute(db, "UPDATE calls_for_service SET status = 'archived', archived_at = datetime('now') WHERE id = ?", id);
+    // Release any units still assigned — archiving without this stranded them
+    // in 'dispatched' on a dead call (the D19/CFS26-00055 incident).
+    await syncUnitsWithCallStatus(db, c.env, id, 'archived');
     return c.json({ message: 'Archived' });
   } catch (err) { return c.json({ error: 'Archive failed' }, 500); }
 });

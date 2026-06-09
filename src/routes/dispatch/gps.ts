@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import type { Env } from '../../types';
 import { getDb, query, queryFirst, execute, executeBatch } from '../../utils/db';
 import { emitAlert } from '../../utils/alertHub';
+import { haversineM } from '../../utils/tripTelemetry';
 import { applyTripEvent, type ApplyArgs } from '../../utils/tripStore';
 import { type IncomingFix } from '../../utils/tripTelemetry';
 import type { TripEvent } from '../../utils/tripEngine';
@@ -71,7 +72,7 @@ gps.post('/', async (c) => {
     const isTakeHome = userRow?.has_take_home === 1;
 
     const unit = await queryFirst<{ id: number; call_sign: string; status: string; gps_source: string | null; vehicle_id: string | null }>(db,
-      'SELECT id, call_sign, status, gps_source, vehicle_id FROM units WHERE officer_id = ? LIMIT 1', userId);
+      'SELECT id, call_sign, status, gps_source, vehicle_id, current_call_id FROM units WHERE officer_id = ? LIMIT 1', userId);
 
     if (!unit && !isTakeHome) return c.json({ error: 'No assigned unit' }, 400);
 
@@ -106,6 +107,53 @@ gps.post('/', async (c) => {
         lastPt.latitude, lastPt.longitude,
         lastPt.heading ?? null, lastPt.speed ?? null,
         unitId);
+    }
+
+    // ── GPS auto status transitions ───────────────────────────
+    // DISPATCHED → ENROUTE when the unit starts moving (≥3 m/s ≈ 7 mph), and
+    // DISPATCHED/ENROUTE → ONSCENE on arrival (within 75 m of the call's
+    // coordinates — comfortably above typical ±35 m fix accuracy). The call
+    // row follows in lockstep (status + COALESCE'd enroute_at/onscene_at
+    // timeline stamps) since the board and call timeline read the call.
+    // Manual transitions always win: we only ever move FORWARD from the
+    // unit's current status, and only while the call itself is still in an
+    // engaged status. Best-effort — never breaks the breadcrumb write.
+    if (unitId && unit && (unit as any).current_call_id != null
+        && lastPt && lastPt.latitude != null && lastPt.longitude != null
+        && (unit.status === 'dispatched' || unit.status === 'enroute')) {
+      try {
+        const callId = (unit as any).current_call_id as number;
+        const call = await queryFirst<{ id: number; status: string; latitude: number | null; longitude: number | null }>(
+          db, 'SELECT id, status, latitude, longitude FROM calls_for_service WHERE id = ?', callId);
+        if (call && ['dispatched', 'enroute', 'onscene'].includes(call.status)) {
+          let next: 'enroute' | 'onscene' | null = null;
+          if (call.latitude != null && call.longitude != null
+              && haversineM(lastPt.latitude, lastPt.longitude, call.latitude, call.longitude) <= 75) {
+            next = 'onscene';
+          } else if (unit.status === 'dispatched'
+              && typeof lastPt.speed === 'number' && lastPt.speed >= 3) {
+            next = 'enroute';
+          }
+          if (next && next !== unit.status) {
+            await execute(db,
+              `UPDATE units SET status = ?, last_status_change = datetime('now'), updated_at = datetime('now') WHERE id = ?`,
+              next, unitId);
+            const timeField = next === 'enroute' ? 'enroute_at' : 'onscene_at';
+            await execute(db,
+              `UPDATE calls_for_service SET status = ?, status_changed_at = datetime('now'),
+                      ${timeField} = COALESCE(${timeField}, datetime('now')), updated_at = datetime('now')
+                WHERE id = ? AND status IN ('dispatched','enroute')`,
+              next, callId);
+            (unit as any).status = next; // echo the fresh status in the response
+            await emitAlert(c.env, 'dispatch_update', {
+              action: 'unit_status_changed',
+              unit: { id: unitId, call_sign: callSign, status: next, current_call_id: callId },
+            });
+          }
+        }
+      } catch (err) {
+        console.warn('[gps] auto status transition failed (non-fatal):', err);
+      }
     }
 
     // Trip engine: feed every fix through applyTripEvent so the pure engine
