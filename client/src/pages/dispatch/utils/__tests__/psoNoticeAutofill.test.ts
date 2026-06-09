@@ -69,11 +69,13 @@ describe('buildNoticeOfCommunicationFromCall', () => {
     expect(d.nextWindow).toBe('Tomorrow 0800-1000');
   });
 
-  it('uses a service-accurate default (not "Protective Services") and attempt 1 when absent', () => {
+  it('falls back to "Legal Documents" (respondent-readable) and attempt 1 when absent', () => {
     const d = buildNoticeOfCommunicationFromCall(
       { ...failedPsoCall, pso_service_type: undefined, pso_attempt_number: undefined }, ctx,
     );
-    expect(d.serviceType).toBe('Client-Requested Service');
+    // The default fills the "DOCUMENTS" field on the respondent copy, so it
+    // must read as a thing being delivered — not an internal service label.
+    expect(d.serviceType).toBe('Legal Documents');
     expect(d.attempts[0].number).toBe(1);
   });
 
