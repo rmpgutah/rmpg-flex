@@ -372,6 +372,15 @@ const PatrolPage: React.FC = () => {
         await loadScans();
       } else if (activeTab === 'compliance') {
         await loadCompliance();
+      } else if (activeTab === 'map') {
+        // Map needs both checkpoints + scans to render markers/routes;
+        // without this it inherits whatever the previously-active tab left
+        // in state (often empty on a fresh landing).
+        await Promise.all([loadCheckpoints(), loadScans()]);
+      } else if (activeTab === 'summary') {
+        // Shift Summary tab previously required a manual "Load Summary" click
+        // before any data appeared.
+        await Promise.all([loadShiftSummary(), loadEfficiency()]);
       }
     } catch (err: any) {
       if (!options?.silent) {
