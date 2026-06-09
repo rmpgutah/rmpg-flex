@@ -1083,6 +1083,23 @@ export default function DispatchPage() {
       }
     });
 
+    // Live unit GPS glide. gps.ts fans every breadcrumb batch out as a FLAT
+    // 'unit_position' frame ({ unit_id, latitude, longitude, ... }) via AlertHubDO
+    // — NOT a 'dispatch_update'/'unit_position_update' action (that branch above
+    // never fired). Without this, the board's unit lat/lng only refreshed on the
+    // ~7s units poll while the map glided live. Mirrors MapPage's handler.
+    const unsubPos = subscribe('unit_position', (msg: any) => {
+      const data = msg.data || msg;
+      const uid = data.unit_id ?? data.unit?.id;
+      if (uid == null) return;
+      const lat = data.latitude ?? data.lat ?? data.unit?.latitude;
+      const lng = data.longitude ?? data.lng ?? data.unit?.longitude;
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+      setUnits((prev) => prev.map((u) => (String(u.id) === String(uid)
+        ? { ...u, latitude: lat, longitude: lng }
+        : u)));
+    });
+
     // Listen for panic alerts — play alarm tone + voice alert, switch to active tab
     const unsubPanic = subscribe('panic_alert', (msg: any) => {
       const data = msg.data || msg;
@@ -1139,7 +1156,7 @@ export default function DispatchPage() {
       }
     });
 
-    return () => { unsubDispatch(); unsubUnit(); unsubPanic(); unsubServeCreated(); unsubServeAttempt(); unsubWarrant(); unsubSpeed(); };
+    return () => { unsubDispatch(); unsubUnit(); unsubPos(); unsubPanic(); unsubServeCreated(); unsubServeAttempt(); unsubWarrant(); unsubSpeed(); };
   }, [subscribe, fetchData, addToast, setFilterTab]);
 
   // On-scene live timer — updates every second when the selected call has onscene_at and is not cleared
@@ -5486,7 +5503,7 @@ export default function DispatchPage() {
                 )}
 
                 {/* ── VISIT HISTORY TIMELINE — PSO calls, Info tab ─── */}
-                {detailTab === 'info' && !isEditing && ['pso_client_request', 'process_service'].includes(String(selectedCall.incident_type)) && selectedCall.visit_history && selectedCall.visit_history.length > 0 && (
+                {detailTab === 'info' && !isEditing && ['pso_client_request', 'process_service'].includes(String(selectedCall.incident_type)) && Array.isArray(selectedCall.visit_history) && selectedCall.visit_history.length > 0 && (
                   <div className="border-t border-[#2b2b2b] pt-3 mb-3">
                     <label className="field-label !flex items-center gap-1.5 mb-2" style={{ color: '#d4a017', fontSize: '9px', letterSpacing: '0.05em' }}>
                       <Clock className="w-3 h-3" /> Visit History
@@ -5498,8 +5515,13 @@ export default function DispatchPage() {
                       {selectedCall.visit_history.map((visit) => {
                         let unitsList: string[] = [];
                         try { unitsList = JSON.parse(visit.assigned_units || '[]'); } catch { /* ignore */ }
-                        const totalMiles = (visit.starting_mileage != null && visit.ending_mileage != null)
-                          ? (visit.ending_mileage - visit.starting_mileage).toFixed(1)
+                        // Coerce + validate: the `!= null` guard alone passes for
+                        // sentinel text ("None"/"0") that this DB stores, and
+                        // (string - string) then renders "NaN mi".
+                        const startMi = Number(visit.starting_mileage);
+                        const endMi = Number(visit.ending_mileage);
+                        const totalMiles = Number.isFinite(startMi) && Number.isFinite(endMi)
+                          ? (endMi - startMi).toFixed(1)
                           : null;
                         return (
                           <div key={visit.id} className="bg-rmpg-800/60 border border-rmpg-600/50 rounded-sm px-2.5 py-2">

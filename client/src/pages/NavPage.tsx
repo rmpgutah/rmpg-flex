@@ -573,9 +573,9 @@ function CurrentTripPanel({
         <div className="rounded-sm border border-subtle p-3" style={{ background: trip.status === 'active' ? '#0a2a0a' : '#1a1a0a' }}>
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
-              <div className={`w-2 h-2 rounded-full ${pulseClass}`} style={{ background: STATUS_COLOR[trip.status] }} />
+              <div className={`w-2 h-2 rounded-full ${pulseClass}`} style={{ background: STATUS_COLOR[trip.status] || '#6b7280' }} />
               <span className="text-[11px] font-semibold uppercase" style={{ color: '#d4a017' }}>
-                {STATUS_LABEL[trip.status]} TRIP
+                {STATUS_LABEL[trip.status] || trip.status} TRIP
               </span>
             </div>
             <span className="text-[10px] text-rmpg-500">
@@ -875,12 +875,12 @@ function HistoryPanel({
           >
             <div className="flex items-center justify-between mb-1.5">
               <div className="flex items-center gap-1.5">
-                <div className="w-1.5 h-1.5 rounded-full" style={{ background: STATUS_COLOR[trip.status] }} />
+                <div className="w-1.5 h-1.5 rounded-full" style={{ background: STATUS_COLOR[trip.status] || '#6b7280' }} />
                 <span className="text-[11px] font-semibold" style={{ color: '#e0e0e0' }}>
                   {formatDistance(trip.distance_miles)}
                 </span>
-                <span className="text-[9px] font-mono" style={{ color: STATUS_COLOR[trip.status] }}>
-                  {STATUS_LABEL[trip.status]}
+                <span className="text-[9px] font-mono" style={{ color: STATUS_COLOR[trip.status] || '#6b7280' }}>
+                  {STATUS_LABEL[trip.status] || trip.status}
                 </span>
               </div>
               <span className="text-[9px] text-rmpg-500">{timeAgo(trip.start_time)}</span>
