@@ -9,6 +9,8 @@ export type Tool =
   | 'hand'
   | 'text'
   | 'highlight'
+  | 'underline'
+  | 'strikethrough'
   | 'redact'
   | 'rect'
   | 'ellipse'
@@ -86,6 +88,16 @@ export interface HighlightAnnotation extends AnnotationBase {
   type: 'highlight';
 }
 
+/** Text-markup underline — a thin rule along the bottom of the dragged box. */
+export interface UnderlineAnnotation extends AnnotationBase {
+  type: 'underline';
+}
+
+/** Text-markup strikethrough — a thin rule through the middle of the box. */
+export interface StrikethroughAnnotation extends AnnotationBase {
+  type: 'strikethrough';
+}
+
 export interface RedactAnnotation extends AnnotationBase {
   type: 'redact';
   // visual-flatten redaction. Caveat: pdf-lib can't strip the original content
@@ -153,6 +165,8 @@ export interface StickyNoteAnnotation extends AnnotationBase {
 export type Annotation =
   | TextAnnotation
   | HighlightAnnotation
+  | UnderlineAnnotation
+  | StrikethroughAnnotation
   | RedactAnnotation
   | RectAnnotation
   | EllipseAnnotation

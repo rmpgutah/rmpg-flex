@@ -406,6 +406,168 @@ export const TEMPLATES: DocumentTemplate[] = [
 <p>&nbsp;</p>`,
   },
   {
+    id: 'patrol-report',
+    name: 'Patrol Report',
+    category: 'supplemental',
+    description: 'Shift patrol summary — areas covered, activity, and observations',
+    fields: [
+      { key: 'officer', label: 'Officer', source: 'user' },
+      { key: 'shift_date', label: 'Shift Date', source: 'manual' },
+      { key: 'shift_hours', label: 'Shift Hours', source: 'manual' },
+      { key: 'vehicle', label: 'Vehicle / Unit', source: 'manual' },
+      { key: 'beat', label: 'Beat / Sector', source: 'manual' },
+    ],
+    content: `${AGENCY_HEADER}
+<h1 style="text-align:center;font-size:18px;">PATROL REPORT</h1>
+<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
+  <tr><td style="border:1px solid #333;padding:6px;"><strong>Officer:</strong> {{officer}}</td><td style="border:1px solid #333;padding:6px;"><strong>Date:</strong> {{shift_date}}</td></tr>
+  <tr><td style="border:1px solid #333;padding:6px;"><strong>Hours:</strong> {{shift_hours}}</td><td style="border:1px solid #333;padding:6px;"><strong>Unit:</strong> {{vehicle}}</td></tr>
+  <tr><td style="border:1px solid #333;padding:6px;" colspan="2"><strong>Beat / Sector:</strong> {{beat}}</td></tr>
+</table>
+<h2 style="font-size:14px;border-bottom:1px solid #333;">AREAS PATROLLED</h2><p>&nbsp;</p>
+<h2 style="font-size:14px;border-bottom:1px solid #333;">ACTIVITY &amp; OBSERVATIONS</h2><p>&nbsp;</p>
+<h2 style="font-size:14px;border-bottom:1px solid #333;">CALLS RESPONDED</h2><p>&nbsp;</p>`,
+  },
+  {
+    id: 'investigation-report',
+    name: 'Investigation Report',
+    category: 'incident',
+    description: 'Follow-up investigation with findings, evidence, and conclusions',
+    fields: [
+      { key: 'case_number', label: 'Case Number', source: 'cad', cadPath: 'call.call_number' },
+      { key: 'investigator', label: 'Investigator', source: 'user' },
+      { key: 'date', label: 'Date', source: 'manual' },
+      { key: 'subject', label: 'Subject of Investigation', source: 'manual' },
+    ],
+    content: `${AGENCY_HEADER}
+<h1 style="text-align:center;font-size:18px;">INVESTIGATION REPORT</h1>
+<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
+  <tr><td style="border:1px solid #333;padding:6px;"><strong>Case #:</strong> {{case_number}}</td><td style="border:1px solid #333;padding:6px;"><strong>Investigator:</strong> {{investigator}}</td></tr>
+  <tr><td style="border:1px solid #333;padding:6px;"><strong>Date:</strong> {{date}}</td><td style="border:1px solid #333;padding:6px;"><strong>Subject:</strong> {{subject}}</td></tr>
+</table>
+<h2 style="font-size:14px;border-bottom:1px solid #333;">SUMMARY</h2><p>&nbsp;</p>
+<h2 style="font-size:14px;border-bottom:1px solid #333;">EVIDENCE</h2><p>&nbsp;</p>
+<h2 style="font-size:14px;border-bottom:1px solid #333;">FINDINGS</h2><p>&nbsp;</p>
+<h2 style="font-size:14px;border-bottom:1px solid #333;">CONCLUSION</h2><p>&nbsp;</p>`,
+  },
+  {
+    id: 'training-record',
+    name: 'Training Record',
+    category: 'general',
+    description: 'Officer training/certification record',
+    fields: [
+      { key: 'officer', label: 'Officer', source: 'user' },
+      { key: 'course', label: 'Course / Topic', source: 'manual' },
+      { key: 'date', label: 'Date Completed', source: 'manual' },
+      { key: 'hours', label: 'Training Hours', source: 'manual' },
+      { key: 'instructor', label: 'Instructor', source: 'manual' },
+    ],
+    content: `${AGENCY_HEADER}
+<h1 style="text-align:center;font-size:18px;">TRAINING RECORD</h1>
+<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
+  <tr><td style="border:1px solid #333;padding:6px;"><strong>Officer:</strong> {{officer}}</td><td style="border:1px solid #333;padding:6px;"><strong>Course:</strong> {{course}}</td></tr>
+  <tr><td style="border:1px solid #333;padding:6px;"><strong>Date:</strong> {{date}}</td><td style="border:1px solid #333;padding:6px;"><strong>Hours:</strong> {{hours}}</td></tr>
+  <tr><td style="border:1px solid #333;padding:6px;" colspan="2"><strong>Instructor:</strong> {{instructor}}</td></tr>
+</table>
+<h2 style="font-size:14px;border-bottom:1px solid #333;">OBJECTIVES COVERED</h2><p>&nbsp;</p>
+<p style="margin-top:40px;">_______________________________<br>Officer Signature</p>`,
+  },
+  {
+    id: 'letter-formal',
+    name: 'Formal Letter',
+    category: 'letter',
+    description: 'Formal business/official letter on agency letterhead',
+    fields: [
+      { key: 'recipient', label: 'Recipient', source: 'manual' },
+      { key: 'address', label: 'Recipient Address', source: 'manual' },
+      { key: 'date', label: 'Date', source: 'manual' },
+      { key: 'sender', label: 'Sender', source: 'user' },
+    ],
+    content: `${AGENCY_HEADER}
+<p>{{date}}</p><p>&nbsp;</p>
+<p>{{recipient}}<br>{{address}}</p><p>&nbsp;</p>
+<p>Dear {{recipient}},</p>
+<p>&nbsp;</p><p>&nbsp;</p>
+<p>Sincerely,</p><p>&nbsp;</p>
+<p>{{sender}}<br>Rocky Mountain Protective Group</p>`,
+  },
+  {
+    id: 'meeting-minutes',
+    name: 'Meeting Minutes',
+    category: 'memo',
+    description: 'Structured meeting minutes with attendees and action items',
+    fields: [
+      { key: 'meeting', label: 'Meeting', source: 'manual' },
+      { key: 'date', label: 'Date', source: 'manual' },
+      { key: 'recorder', label: 'Recorded By', source: 'user' },
+    ],
+    content: `${AGENCY_HEADER}
+<h1 style="text-align:center;font-size:18px;">MEETING MINUTES</h1>
+<p><strong>Meeting:</strong> {{meeting}} &nbsp;&nbsp; <strong>Date:</strong> {{date}} &nbsp;&nbsp; <strong>Recorded by:</strong> {{recorder}}</p>
+<h2 style="font-size:14px;border-bottom:1px solid #333;">ATTENDEES</h2><ul><li>&nbsp;</li></ul>
+<h2 style="font-size:14px;border-bottom:1px solid #333;">DISCUSSION</h2><p>&nbsp;</p>
+<h2 style="font-size:14px;border-bottom:1px solid #333;">ACTION ITEMS</h2><ul data-type="taskList"><li>&nbsp;</li></ul>`,
+  },
+  {
+    id: 'project-proposal',
+    name: 'Project Proposal',
+    category: 'general',
+    description: 'Proposal with objectives, scope, budget, and timeline',
+    fields: [
+      { key: 'title', label: 'Project Title', source: 'manual' },
+      { key: 'author', label: 'Prepared By', source: 'user' },
+      { key: 'date', label: 'Date', source: 'manual' },
+    ],
+    content: `${AGENCY_HEADER}
+<h1 style="text-align:center;font-size:20px;">{{title}}</h1>
+<p style="text-align:center;">Prepared by {{author}} — {{date}}</p>
+<h2 style="font-size:14px;border-bottom:1px solid #333;">OBJECTIVE</h2><p>&nbsp;</p>
+<h2 style="font-size:14px;border-bottom:1px solid #333;">SCOPE</h2><p>&nbsp;</p>
+<h2 style="font-size:14px;border-bottom:1px solid #333;">BUDGET</h2><p>&nbsp;</p>
+<h2 style="font-size:14px;border-bottom:1px solid #333;">TIMELINE</h2><p>&nbsp;</p>`,
+  },
+  {
+    id: 'invoice',
+    name: 'Invoice',
+    category: 'general',
+    description: 'Service invoice with line items and totals',
+    fields: [
+      { key: 'invoice_no', label: 'Invoice #', source: 'manual' },
+      { key: 'bill_to', label: 'Bill To', source: 'manual' },
+      { key: 'date', label: 'Date', source: 'manual' },
+    ],
+    content: `${AGENCY_HEADER}
+<h1 style="text-align:center;font-size:18px;">INVOICE</h1>
+<p><strong>Invoice #:</strong> {{invoice_no}} &nbsp;&nbsp; <strong>Date:</strong> {{date}}</p>
+<p><strong>Bill To:</strong> {{bill_to}}</p>
+<table style="width:100%;border-collapse:collapse;margin:12px 0;">
+  <tr style="background:#1a1a1a;"><th style="border:1px solid #333;padding:6px;text-align:left;">Description</th><th style="border:1px solid #333;padding:6px;">Qty</th><th style="border:1px solid #333;padding:6px;">Rate</th><th style="border:1px solid #333;padding:6px;">Amount</th></tr>
+  <tr><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td></tr>
+  <tr><td colspan="3" style="border:1px solid #333;padding:6px;text-align:right;"><strong>TOTAL</strong></td><td style="border:1px solid #333;padding:6px;">&nbsp;</td></tr>
+</table>`,
+  },
+  {
+    id: 'contract',
+    name: 'Service Contract',
+    category: 'general',
+    description: 'Service agreement with parties, terms, and signatures',
+    fields: [
+      { key: 'party_a', label: 'Party A', source: 'manual' },
+      { key: 'party_b', label: 'Party B', source: 'manual' },
+      { key: 'date', label: 'Effective Date', source: 'manual' },
+    ],
+    content: `${AGENCY_HEADER}
+<h1 style="text-align:center;font-size:18px;">SERVICE AGREEMENT</h1>
+<p>This agreement is entered into on {{date}} between <strong>{{party_a}}</strong> ("Provider") and <strong>{{party_b}}</strong> ("Client").</p>
+<h2 style="font-size:14px;border-bottom:1px solid #333;">1. SCOPE OF SERVICES</h2><p>&nbsp;</p>
+<h2 style="font-size:14px;border-bottom:1px solid #333;">2. TERM</h2><p>&nbsp;</p>
+<h2 style="font-size:14px;border-bottom:1px solid #333;">3. COMPENSATION</h2><p>&nbsp;</p>
+<table style="width:100%;margin-top:40px;"><tr>
+  <td style="width:50%;">_______________________<br>{{party_a}}</td>
+  <td style="width:50%;">_______________________<br>{{party_b}}</td>
+</tr></table>`,
+  },
+  {
     id: 'blank',
     name: 'Blank Document',
     category: 'general',

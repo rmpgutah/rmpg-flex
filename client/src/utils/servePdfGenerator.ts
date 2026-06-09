@@ -85,6 +85,38 @@ export interface AffidavitOfNonServiceData {
   signature?: string;
 }
 
+// A Notice of Attempt to Serve documents one or more UNSUCCESSFUL service
+// attempts. Unlike the Affidavit of Non-Service (sworn + notarized, filed with
+// the court), this is an unsworn professional notice left at the address or sent
+// to the recipient/client — so it carries a notice statement + contact-for-
+// service block instead of a perjury declaration and notary section.
+export interface NoticeOfAttemptData {
+  noticeDate: string;
+  caseNumber: string;
+  courtName: string;
+  jurisdiction: string;
+  serverName: string;
+  serverBadge: string;
+  serverCompany?: string;
+  serverPhone?: string;
+  recipientName: string;
+  recipientAddress: string;
+  documentType: string;
+  clientName?: string;
+  attorneyName?: string;
+  attempts: Array<{
+    number: number;
+    date: string;
+    time: string;
+    result: string;
+    notes: string;
+    gpsLat?: number | null;
+    gpsLng?: number | null;
+  }>;
+  nextAttemptNote?: string;
+  signature?: string;
+}
+
 export interface ServiceLogData {
   officerName: string;
   officerBadge: string;
@@ -579,6 +611,170 @@ export async function generateAffidavitOfNonService(data: AffidavitOfNonServiceD
     barcode: {
       formMetadata: {
         form: 'AFFIDAVIT-NON-SERVICE',
+        caseNumber: data.caseNumber,
+        agency: 'RMPG',
+        agencyOri: 'UT0180100',
+        reportDate: new Date().toISOString().slice(0, 10),
+        officer: data.serverName,
+        badge: data.serverBadge,
+      },
+    },
+  });
+
+  return doc;
+}
+
+// ══════════════════════════════════════════════════════════════
+// Template 2b: Notice of Attempt to Serve (unsuccessful attempt notice)
+// ══════════════════════════════════════════════════════════════
+
+/** Human-readable label for a serve_attempt result/reason code. */
+export function serveResultLabel(result: string): string {
+  switch ((result || '').toLowerCase()) {
+    case 'no_answer': return 'No answer at address';
+    case 'refused': return 'Service refused';
+    case 'wrong_address': return 'Incorrect / bad address';
+    case 'moved': return 'Recipient has moved';
+    case 'served': return 'Served';
+    case 'other': return 'Other (see notes)';
+    default: return result ? result.replace(/_/g, ' ') : 'Unsuccessful';
+  }
+}
+
+export async function generateNoticeOfAttempt(data: NoticeOfAttemptData): Promise<jsPDF> {
+  const branding = await fetchPdfBranding();
+  setActiveBranding(branding);
+  await loadPdfAssets();
+
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
+  setActiveFormKey('');
+  setGenerationTimestamp(new Date().toLocaleString('en-US', {
+    month: 'short', day: 'numeric', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+  }));
+
+  addConfidentialWatermark(doc);
+  // @ts-expect-error jsPDF GState — safety reset after watermark
+  doc.setGState(new doc.GState({ opacity: 1.0 }));
+
+  const lx = getLeftX();
+  const rx = getRightColumnX(doc);
+  const hfw = getHalfFieldWidth(doc);
+  const ffw = getFullFieldWidth(doc);
+
+  setActiveCaseNumber(data.caseNumber);
+  let y = drawNibrsHeader(doc, {
+    stateIdentifier: 'STATE OF UTAH',
+    agencyName: 'ROCKY MOUNTAIN PROTECTIVE GROUP',
+    formTitle: 'NOTICE OF ATTEMPT TO SERVE',
+    caseNumber: data.caseNumber,
+  });
+
+  // ── Notice Date ──
+  y = checkPageBreak(doc, y, 12);
+  y = addFieldPair(doc, 'Notice Date', data.noticeDate, lx, y, hfw);
+
+  // ── Recipient / Service Address ──
+  y = checkPageBreak(doc, y, 15);
+  { const sec = openAutoSection(doc, 'Intended Recipient', y); y = sec.contentY;
+    y = addFieldPair(doc, '1. Recipient Name', data.recipientName, lx, y, ffw);
+    y = addFieldPair(doc, '2. Service Address', data.recipientAddress, lx, y, ffw);
+    y = addFieldPair(doc, '3. Document(s) to Serve', data.documentType, lx, y, ffw);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // ── Case Information ──
+  y = checkPageBreak(doc, y, 15);
+  { const sec = openAutoSection(doc, 'Case Information', y); y = sec.contentY;
+    const fy1 = addFieldPair(doc, '4. Court', data.courtName, lx, y, hfw);
+    const fy2 = addFieldPair(doc, '5. Case Number', data.caseNumber, rx, y, hfw);
+    y = Math.max(fy1, fy2);
+    const gy1 = addFieldPair(doc, '6. Jurisdiction', data.jurisdiction, lx, y, hfw);
+    const gy2 = addFieldPair(doc, '7. Hiring Party', data.attorneyName || data.clientName || 'N/A', rx, y, hfw);
+    y = Math.max(gy1, gy2);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // ── Attempt Record ──
+  y = checkPageBreak(doc, y, 30);
+  {
+    const sec = openAutoSection(doc, 'Record of Attempt(s)', y);
+    y = sec.contentY;
+    const cols = getProportionalColumns(doc, [1, 2, 1.5, 3, 3.5]);
+    const headers = [
+      { label: '#', x: cols[0] },
+      { label: 'DATE', x: cols[1] },
+      { label: 'TIME', x: cols[2] },
+      { label: 'RESULT', x: cols[3] },
+      { label: 'NOTES', x: cols[4] },
+    ];
+    const rows = data.attempts.map(a => [
+      String(a.number),
+      sanitizePdfText(a.date || '').toUpperCase(),
+      sanitizePdfText(a.time || '').toUpperCase(),
+      sanitizePdfText(serveResultLabel(a.result)).toUpperCase(),
+      sanitizePdfText(a.notes || '').toUpperCase(),
+    ]);
+    y = addTableWithShading(doc, headers, rows, y, cols);
+    y += SPACING.SM;
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // ── Notice Statement ──
+  y = checkPageBreak(doc, y, 30);
+  {
+    const sec = openAutoSection(doc, 'Notice', y);
+    y = sec.contentY;
+    const company = data.serverCompany || 'Rocky Mountain Protective Group';
+    const contact = data.serverPhone ? ` at ${data.serverPhone}` : ' at the number on file';
+    const noticeText =
+      `This notice is to inform you that ${company}, a licensed process service agency, has attempted ` +
+      'to personally serve you with the legal document(s) identified above in connection with the ' +
+      'referenced case. As detailed in the record of attempt(s) above, service was unsuccessful. ' +
+      `To avoid further attempts and to arrange service at a time convenient to you, please contact our ` +
+      `office${contact}. Your prompt cooperation is appreciated. This notice does not waive, extend, or ` +
+      'otherwise affect any deadline, right, or obligation arising from the underlying legal matter.';
+    y = addWrappedText(doc, noticeText, lx, y, ffw, FONT.SIZE_FIELD_VALUE);
+    y += SPACING.SM;
+    if (data.nextAttemptNote) {
+      y = addFieldPair(doc, 'Next Attempt', data.nextAttemptNote, lx, y, ffw);
+    }
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // ── Server Signature (unsworn — this is a notice, not an affidavit) ──
+  y = checkPageBreak(doc, y, SPACING.SIGNATURE_BOX_H + SPACING.LG);
+  y = addSignatureBlock(doc, 'Process Server', lx, y, ffw, data.signature ? {
+    signatureImage: data.signature,
+    printedName: data.serverName,
+    badgeNumber: data.serverBadge,
+  } : {
+    printedName: data.serverName,
+    badgeNumber: data.serverBadge,
+  });
+  y += SPACING.SECTION_GAP;
+
+  // ── Footer legal text ──
+  y = checkPageBreak(doc, y, 10);
+  doc.setFont(PDF_VALUE_FONT, 'normal');
+  doc.setFontSize(FONT.SIZE_FOOTER_SECONDARY);
+  doc.setTextColor(...COLOR.TEXT_TERTIARY);
+  doc.text(
+    'Licensed pursuant to Utah Code Title 53 / Utah Rules of Civil Procedure, Rule 4',
+    doc.internal.pageSize.getWidth() / 2, y, { align: 'center' },
+  );
+
+  const totalPages = doc.getNumberOfPages();
+  for (let i = 1; i <= totalPages; i++) {
+    doc.setPage(i);
+    addPageFooter(doc, i, totalPages, 'serve_notice_of_attempt');
+    if (i > 1) addConfidentialWatermark(doc);
+  }
+
+  finalizePoliceReport(doc, {
+    barcode: {
+      formMetadata: {
+        form: 'NOTICE-OF-ATTEMPT',
         caseNumber: data.caseNumber,
         agency: 'RMPG',
         agencyOri: 'UT0180100',

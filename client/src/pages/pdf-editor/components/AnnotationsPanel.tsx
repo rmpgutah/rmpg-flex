@@ -20,7 +20,7 @@ interface Props {
 }
 
 const TYPE_LABELS: Record<Annotation['type'], string> = {
-  text: 'Text', highlight: 'Highlight', redact: 'Redaction',
+  text: 'Text', highlight: 'Highlight', underline: 'Underline', strikethrough: 'Strikethrough', redact: 'Redaction',
   rect: 'Rectangle', ellipse: 'Ellipse', line: 'Line',
   pen: 'Free-hand', signature: 'Signature', image: 'Image',
   stamp: 'Stamp', link: 'Link', sticky: 'Sticky note',

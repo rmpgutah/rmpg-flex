@@ -87,6 +87,33 @@ export async function ensureIntakeFolderPath(
   return caseRow.id;
 }
 
+// ── Helper: the default "Saved Documents" bucket ──────────────
+// The auto-file target for loose documents (Document Writer, blank PDF, and the
+// PDF editor) saved without an explicit folder, so every saved document is
+// preserved + organized in one place instead of landing unfiled. Top-level,
+// org-wide (the Documents browser is shared, not per-user), idempotent.
+export const DEFAULT_DOCS_FOLDER_NAME = 'Saved Documents';
+
+export async function ensureDefaultDocumentsFolder(
+  db: ReturnType<typeof getDb>,
+  userId: number,
+): Promise<number> {
+  const path = `/${DEFAULT_DOCS_FOLDER_NAME}`;
+  let row = await queryFirst<{ id: number }>(
+    db, 'SELECT id FROM document_folders WHERE folder_path = ?', path,
+  );
+  if (!row) {
+    const r = await execute(
+      db,
+      `INSERT INTO document_folders (name, parent_id, folder_path, created_by)
+       VALUES (?, NULL, ?, ?)`,
+      DEFAULT_DOCS_FOLDER_NAME, path, userId,
+    );
+    row = { id: Number(r.meta.last_row_id) };
+  }
+  return row.id;
+}
+
 // GET /api/documents/folders[?parent_id=N]
 // Returns { folders, files, breadcrumbs }. parent_id absent =
 // list root (year) folders, files=[].
@@ -117,13 +144,25 @@ folders.get('/folders', async (c) => {
            ORDER BY f.name DESC`,
         );
 
+    // Files for the current folder. At the ROOT (no parent_id) we list UNFILED
+    // documents — attachments with no folder AND no entity binding. Previously
+    // this returned [], so anything saved without a folder_id (Document Writer
+    // opened without ?folderId, or a blank-PDF / PDF-editor save with no source
+    // folder) was written to D1 + R2 but never appeared anywhere in the browser —
+    // the document looked "lost" even though it saved. The `entity_type IS NULL`
+    // guard keeps entity-bound attachments (evidence, person/ID images, call and
+    // company documents) OUT of the Documents root — those belong to their record,
+    // not the file browser.
     const files = parentId
       ? await query<Record<string, unknown>>(
           db,
           'SELECT * FROM attachments WHERE folder_id = ? ORDER BY original_name',
           parentId,
         )
-      : [];
+      : await query<Record<string, unknown>>(
+          db,
+          'SELECT * FROM attachments WHERE folder_id IS NULL AND entity_type IS NULL ORDER BY created_at DESC, id DESC',
+        );
 
     // Breadcrumb walk, bounded — protects against a corrupted
     // parent_id cycle creating an infinite loop on the Worker.

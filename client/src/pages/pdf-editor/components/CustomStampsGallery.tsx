@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Stamp, X, Upload, Trash2, Check, AlertTriangle } from 'lucide-react';
+import { Stamp, X, Upload, Trash2, Check, AlertTriangle, Sparkles } from 'lucide-react';
 
 // Custom user-uploaded stamps gallery — personal authoring templates
 // (badge stamps, signed stamps with logo, "RMPG / Det. Smith" combo stamps).
@@ -36,6 +36,8 @@ interface Props {
   open: boolean;
   onClose: () => void;
   onPick: (pick: StampPick) => void;
+  /** Open the Stamp Studio (template authoring + background removal). */
+  onCreateNew?: () => void;
 }
 
 // Strict allowlist for the image data: URL we render in <img src>. Custom
@@ -58,11 +60,19 @@ export function loadCustomStamps(): CustomStamp[] {
   } catch { return []; }
 }
 
-function saveCustomStamps(stamps: CustomStamp[]): void {
+export function saveCustomStamps(stamps: CustomStamp[]): void {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(stamps)); } catch { /* quota — surface in UI */ }
 }
 
-export default function CustomStampsGallery({ open, onClose, onPick }: Props) {
+/** Prepend a newly-authored stamp (from the Stamp Studio) to the personal
+ *  library and persist it. Returns the trimmed list (cap 50, same as upload). */
+export function addCustomStamp(stamp: CustomStamp): CustomStamp[] {
+  const next = [stamp, ...loadCustomStamps().filter((s) => s.id !== stamp.id)].slice(0, 50);
+  saveCustomStamps(next);
+  return next;
+}
+
+export default function CustomStampsGallery({ open, onClose, onPick, onCreateNew }: Props) {
   const [stamps, setStamps] = useState<CustomStamp[]>(() => loadCustomStamps());
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -160,10 +170,18 @@ export default function CustomStampsGallery({ open, onClose, onPick }: Props) {
           <div className="text-[9px] uppercase tracking-wider text-[#d4a017] font-semibold">Custom uploads ({stamps.length})</div>
           <input id="ff-customstampsgallery-0" ref={fileInputRef} type="file" accept="image/png,image/jpeg" className="hidden"
             onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUpload(f); e.target.value = ''; }} />
-          <button type="button" onClick={() => fileInputRef.current?.click()}
-            className="btn-secondary inline-flex items-center gap-1 text-[10px]">
-            <Upload className="w-3 h-3" /> Upload PNG / JPEG
-          </button>
+          <div className="flex items-center gap-1.5">
+            {onCreateNew && (
+              <button type="button" onClick={onCreateNew}
+                className="btn-secondary inline-flex items-center gap-1 text-[10px]" title="Create a stamp from a template, or remove an image background">
+                <Sparkles className="w-3 h-3 text-[#d4a017]" /> Create / cut-out
+              </button>
+            )}
+            <button type="button" onClick={() => fileInputRef.current?.click()}
+              className="btn-secondary inline-flex items-center gap-1 text-[10px]">
+              <Upload className="w-3 h-3" /> Upload PNG / JPEG
+            </button>
+          </div>
         </div>
 
         {stamps.length === 0 ? (

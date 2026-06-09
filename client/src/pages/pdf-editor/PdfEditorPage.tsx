@@ -18,6 +18,7 @@ import FindDialog from './components/FindDialog';
 import KeyboardShortcutsDialog from './components/KeyboardShortcutsDialog';
 import PreferencesDialog from './components/PreferencesDialog';
 import CustomStampsGallery, { StampPick } from './components/CustomStampsGallery';
+import StampStudio from './components/StampStudio';
 import MiniMap from './components/MiniMap';
 import AnnotationContextMenu from './components/AnnotationContextMenu';
 import { Annotation, BatesConfig, DocumentMeta, EditorState, EditorPreferences, DEFAULT_PREFERENCES, PageCrop, PageMeta, RecentFile, StampLabel, Tool, WatermarkConfig, DEFAULT_RENDER_SCALE } from './types';
@@ -124,6 +125,7 @@ export default function PdfEditorPage() {
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [prefsOpen, setPrefsOpen] = useState(false);
   const [stampsOpen, setStampsOpen] = useState(false);
+  const [studioOpen, setStudioOpen] = useState(false);
   const [showMiniMap, setShowMiniMap] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; annotationId: string } | null>(null);
   /** Diagnostic toggle: force every page render through PDF.js. The
@@ -973,7 +975,16 @@ export default function PdfEditorPage() {
 
       <CustomStampsGallery open={stampsOpen}
         onClose={() => { setStampsOpen(false); if (tool === 'stamp' && !pendingStamp) setTool('select'); }}
-        onPick={handleStampPick} />
+        onPick={handleStampPick}
+        onCreateNew={() => { setStampsOpen(false); setStudioOpen(true); }} />
+
+      <StampStudio
+        open={studioOpen}
+        onClose={() => { setStudioOpen(false); if (tool === 'stamp' && !pendingStamp) setTool('select'); }}
+        officerName={user ? `${user.first_name ?? ''} ${user.last_name ?? ''}`.trim() || user.username : ''}
+        badgeNumber={typeof (user as { badge_number?: string } | null)?.badge_number === 'string' ? (user as { badge_number?: string }).badge_number : ''}
+        onUse={(dataUrl, name) => { setPendingImage(dataUrl); setPendingStamp(name); setTool('barcode'); }}
+      />
 
       {/* Right-click context menu for annotations */}
       <AnnotationContextMenu
@@ -1028,6 +1039,7 @@ export default function PdfEditorPage() {
           onMetadata={() => {}}
           onBates={() => {}}
           onWatermark={() => {}}
+          onStampStudio={() => setStudioOpen(true)}
           onEncrypt={() => setEncryptionOpen(true)}
           encryptionActive={!!encryption}
           onClearEncryption={() => setEncryption(null)}

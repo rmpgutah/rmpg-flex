@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
@@ -8,64 +8,102 @@ import TableCell from '@tiptap/extension-table-cell';
 import TableHeader from '@tiptap/extension-table-header';
 import ImageExt from '@tiptap/extension-image';
 import TextAlign from '@tiptap/extension-text-align';
-import Underline from '@tiptap/extension-underline';
 import { TextStyle } from '@tiptap/extension-text-style';
 import Color from '@tiptap/extension-color';
 import Highlight from '@tiptap/extension-highlight';
+import FontFamily from '@tiptap/extension-font-family';
 import Placeholder from '@tiptap/extension-placeholder';
 import TaskList from '@tiptap/extension-task-list';
 import TaskItem from '@tiptap/extension-task-item';
 import SuperscriptExt from '@tiptap/extension-superscript';
 import SubscriptExt from '@tiptap/extension-subscript';
-import { FileText } from 'lucide-react';
+import { FileText, ZoomIn, ZoomOut, X } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import PanelTitleBar from '../../components/PanelTitleBar';
 import WriterToolbar from './components/WriterToolbar';
 import TemplateChooser from './components/TemplateChooser';
+import FindReplacePanel from './components/FindReplacePanel';
+import OutlinePane from './components/OutlinePane';
+import CommentsSidebar, { type DocComment } from './components/CommentsSidebar';
 import { populateTemplate } from './templates';
-import type { DocumentTemplate } from './types';
+import TextStyleExtras from './extensions/textStyleExtras';
+import BlockStyle, { PageBreak, SectionBreak } from './extensions/customBlocks';
+import FindReplace from './extensions/findReplace';
+import ListStyles from './extensions/listStyles';
+import { Embed, Audio } from './extensions/mediaNodes';
+import Comment from './extensions/comment';
+import { htmlToMarkdown, htmlToPlainText, htmlToRtf, downloadFile, copyRich, copyText } from './exporters';
+import { writeDraft, readDraft, clearDraft, saveSnapshot } from './autosave';
+import { PAGE_SIZES, DEFAULT_DOC_SETTINGS, type DocumentTemplate, type DocSettings, type WriterTheme } from './types';
+import './writer.css';
+
+const THEME_KEY = 'rmpg_writer_theme';
+type ViewMode = 'normal' | 'reading' | 'fullscreen';
+
+function initialTheme(): WriterTheme {
+  const saved = localStorage.getItem(THEME_KEY);
+  if (saved === 'light' || saved === 'dark') return saved;
+  const hr = new Date().getHours();
+  return hr < 7 || hr >= 19 ? 'dark' : 'light';
+}
 
 export default function DocumentWriterPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const author = user?.full_name || user?.username || 'Unknown author';
   const [mode, setMode] = useState<'choose' | 'edit'>('choose');
   const [title, setTitle] = useState('Untitled Document');
   const [saving, setSaving] = useState(false);
   const [savedNotice, setSavedNotice] = useState<string | null>(null);
+  const [errorNotice, setErrorNotice] = useState<string | null>(null);
   const [documentId, setDocumentId] = useState<string | null>(null);
+  const [theme, setTheme] = useState<WriterTheme>(initialTheme);
+  const [docSettings, setDocSettings] = useState<DocSettings>(DEFAULT_DOC_SETTINGS);
+  const [zoom, setZoom] = useState(1);
+  const [viewMode, setViewMode] = useState<ViewMode>('normal');
+  const [findMode, setFindMode] = useState<'find' | 'replace' | null>(null);
+  const [showOutline, setShowOutline] = useState(false);
+  const [showComments, setShowComments] = useState(false);
+  const [comments, setComments] = useState<DocComment[]>([]);
+  const [autoSavedAt, setAutoSavedAt] = useState<string | null>(null);
+  const [recovery, setRecovery] = useState<{ title: string; html: string } | null>(null);
+  const [language, setLanguage] = useState('en');
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const bgImageInputRef = useRef<HTMLInputElement>(null);
 
   const editor = useEditor({
     extensions: [
       StarterKit.configure({ heading: { levels: [1, 2, 3, 4] } }),
       Table.configure({ resizable: true }),
-      TableRow,
-      TableCell,
-      TableHeader,
-      ImageExt.configure({ inline: true, allowBase64: true }),
+      TableRow, TableCell, TableHeader,
+      ImageExt.configure({ inline: false, allowBase64: true }),
       TextAlign.configure({ types: ['heading', 'paragraph'] }),
-      Underline,
-      TextStyle,
-      Color,
-      Highlight.configure({ multicolor: true }),
+      TextStyle, Color, Highlight.configure({ multicolor: true }), FontFamily,
       Placeholder.configure({ placeholder: 'Start typing...' }),
-      TaskList,
-      TaskItem.configure({ nested: true }),
-      SuperscriptExt,
-      SubscriptExt,
+      TaskList, TaskItem.configure({ nested: true }),
+      SuperscriptExt, SubscriptExt,
+      TextStyleExtras, BlockStyle, PageBreak, SectionBreak,
+      FindReplace, ListStyles, Embed, Audio, Comment,
     ],
     editorProps: {
       attributes: {
-        class: 'prose prose-invert prose-sm max-w-none focus:outline-none min-h-[800px] p-0',
+        class: 'focus:outline-none min-h-[900px]',
+        spellcheck: 'true',
+        role: 'textbox',
+        'aria-multiline': 'true',
+        'aria-label': 'Document editor',
       },
     },
   });
 
+  const toggleTheme = useCallback(() => {
+    setTheme((t) => { const next = t === 'dark' ? 'light' : 'dark'; localStorage.setItem(THEME_KEY, next); return next; });
+  }, []);
+
   const handleTemplateSelect = useCallback((template: DocumentTemplate, values: Record<string, string>) => {
     if (!editor) return;
-    const html = populateTemplate(template, values);
-    editor.commands.setContent(html);
+    editor.commands.setContent(populateTemplate(template, values));
     setTitle(template.name === 'Blank Document' ? 'Untitled Document' : `${template.name} - ${values.case_number || new Date().toLocaleDateString()}`);
     setMode('edit');
   }, [editor]);
@@ -73,23 +111,24 @@ export default function DocumentWriterPage() {
   const handleSave = useCallback(async () => {
     if (!editor) return;
     setSaving(true);
+    setErrorNotice(null);
     try {
       const html = editor.getHTML();
-      const fileName = `${title.replace(/[^a-zA-Z0-9\s-]/g, '')}.html`;
+      const safeName = title.replace(/[^a-zA-Z0-9\s-]/g, '').trim() || 'Untitled Document';
       const blob = new Blob([html], { type: 'text/html' });
       const formData = new FormData();
-      formData.append('files', new File([blob], fileName, { type: 'text/html' }));
+      formData.append('files', new File([blob], `${safeName}.html`, { type: 'text/html' }));
       const folderId = searchParams.get('folderId');
       if (folderId) formData.append('folder_id', folderId);
-
       const token = localStorage.getItem('rmpg_token');
       const headers: Record<string, string> = {};
       if (token) headers['Authorization'] = `Bearer ${token}`;
       const res = await fetch('/api/uploads', { method: 'POST', headers, body: formData });
-      if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
+      if (!res.ok) {
+        const detail = await res.json().catch(() => null) as any;
+        throw new Error(detail?.error || `Save failed (HTTP ${res.status})`);
+      }
       const data = await res.json().catch(() => null) as unknown;
-      // /api/uploads returns a bare array of records; tolerate the legacy
-      // `{ files: [...] }` envelope too.
       const rec: any = Array.isArray(data) ? data[0] : (data as any)?.files?.[0] ?? (data as any)?.file;
       const fileId = rec?.file_id ?? rec?.fileId ?? rec?.id;
       if (fileId) setDocumentId(fileId);
@@ -97,6 +136,7 @@ export default function DocumentWriterPage() {
       setTimeout(() => setSavedNotice(null), 4000);
     } catch (err) {
       console.error('[document-writer] save failed:', err);
+      setErrorNotice(err instanceof Error ? err.message : 'Save failed — please try again.');
     } finally {
       setSaving(false);
     }
@@ -105,104 +145,273 @@ export default function DocumentWriterPage() {
   const handleExportPdf = useCallback(() => {
     if (!editor) return;
     const html = editor.getHTML();
+    const { page, watermark, header, footer, columns } = docSettings;
+    const dim = PAGE_SIZES[page.size];
+    const cssSize = page.orientation === 'landscape' ? `${dim.css} landscape` : dim.css;
+    const m = page.margins;
+    const headerHtml = header.enabled ? `<div class="rh">${escapeHtml(header.text)}${header.showPageNumber ? '<span class="pn"></span>' : ''}</div>` : '';
+    const footerParts = [footer.text ? escapeHtml(footer.text) : '', footer.showDate ? new Date().toLocaleDateString() : '', footer.showAuthor ? escapeHtml(author) : ''].filter(Boolean).join(' • ');
+    const footerHtml = footer.enabled ? `<div class="rf">${footerParts}</div>` : '';
+    const watermarkHtml = watermark.text ? `<div class="wm" style="opacity:${watermark.opacity}">${escapeHtml(watermark.text)}</div>` : '';
     const printFrame = document.createElement('iframe');
-    printFrame.style.position = 'fixed';
-    printFrame.style.left = '-9999px';
-    printFrame.style.width = '816px';
-    printFrame.style.height = '1056px';
+    printFrame.style.cssText = `position:fixed;left:-9999px;width:${dim.width}px;height:${dim.height}px`;
     document.body.appendChild(printFrame);
     const doc = printFrame.contentDocument;
     if (!doc) { document.body.removeChild(printFrame); return; }
     doc.open();
     doc.write([
-      '<!DOCTYPE html><html><head><title>',
-      title,
-      '</title><style>',
-      '@page{size:letter;margin:1in}',
-      'body{font-family:"Segoe UI",system-ui,sans-serif;font-size:12px;line-height:1.6;color:#000}',
-      'h1{font-size:18px}h2{font-size:14px}h3{font-size:12px}',
-      'table{border-collapse:collapse;width:100%}td,th{border:1px solid #333;padding:6px}',
-      'img{max-width:100%}',
-      '</style></head><body>',
-      html,
-      '</body></html>',
+      '<!DOCTYPE html><html lang="', language, '"><head><title>', escapeHtml(title), '</title><style>',
+      `@page{size:${cssSize};margin:${m.top}px ${m.right}px ${m.bottom}px ${m.left}px;@bottom-right{content:counter(page)}}`,
+      'body{font-family:"Times New Roman",Times,serif;font-size:12pt;line-height:1.5;color:#000;background:#fff}',
+      `.body-cols{column-count:${columns};column-gap:24px}`,
+      'h1{font-size:1.9em}h2{font-size:1.5em}h3{font-size:1.25em}h4{font-size:1.1em}p{margin:0 0 0.5em}a{color:#000}',
+      'table{border-collapse:collapse;width:100%}td,th{border:1px solid #333;padding:6px}img{max-width:100%}',
+      'blockquote{border-left:3px solid #000;padding-left:1em;font-style:italic}',
+      'p.drop-cap::first-letter{float:left;font-size:3.4em;line-height:0.8;font-weight:700;padding-right:6px}',
+      '.doc-page-break{break-after:page}.doc-section-break{break-after:column}',
+      '.rh{position:fixed;top:0;left:0;right:0;font-size:9pt;border-bottom:1px solid #999;padding-bottom:3px;display:flex;justify-content:space-between}',
+      '.rf{position:fixed;bottom:0;left:0;right:0;font-size:9pt;border-top:1px solid #999;padding-top:3px;text-align:center}',
+      '.wm{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;font-size:90px;font-weight:800;transform:rotate(-32deg);color:#000;z-index:-1}',
+      'span[data-field="page"]::after{content:counter(page)}.doc-comment{background:none}',
+      '</style></head><body>', watermarkHtml, headerHtml, '<div class="body-cols">', html, '</div>', footerHtml, '</body></html>',
     ].join(''));
     doc.close();
-    setTimeout(() => {
-      printFrame.contentWindow?.print();
-      setTimeout(() => document.body.removeChild(printFrame), 1000);
-    }, 300);
+    setTimeout(() => { printFrame.contentWindow?.focus(); printFrame.contentWindow?.print(); setTimeout(() => document.body.removeChild(printFrame), 1000); }, 300);
+  }, [editor, title, author, docSettings, language]);
+
+  const handleExport = useCallback((format: 'md' | 'txt' | 'rtf' | 'html') => {
+    if (!editor) return;
+    const html = editor.getHTML();
+    const safe = title.replace(/[^a-zA-Z0-9\s-]/g, '').trim() || 'document';
+    if (format === 'md') downloadFile(`${safe}.md`, htmlToMarkdown(html), 'text/markdown');
+    else if (format === 'txt') downloadFile(`${safe}.txt`, htmlToPlainText(html), 'text/plain');
+    else if (format === 'rtf') downloadFile(`${safe}.rtf`, htmlToRtf(html), 'application/rtf');
+    else downloadFile(`${safe}.html`, html, 'text/html');
   }, [editor, title]);
 
-  const handlePrint = useCallback(() => {
-    handleExportPdf();
-  }, [handleExportPdf]);
+  const handleEmailDoc = useCallback(() => {
+    if (!editor) return;
+    const body = encodeURIComponent(htmlToPlainText(editor.getHTML()).slice(0, 1500));
+    window.location.href = `mailto:?subject=${encodeURIComponent(title)}&body=${body}`;
+  }, [editor, title]);
 
-  const handleInsertImage = useCallback(() => {
-    imageInputRef.current?.click();
-  }, []);
-
+  const handleInsertImage = useCallback(() => imageInputRef.current?.click(), []);
   const handleImageFile = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    e.target.value = '';
+    const file = e.target.files?.[0]; e.target.value = '';
     if (!file || !editor) return;
     const reader = new FileReader();
-    reader.onload = () => {
-      editor.chain().focus().setImage({ src: reader.result as string }).run();
-    };
+    reader.onload = () => { editor.chain().focus().setImage({ src: reader.result as string }).run(); };
     reader.readAsDataURL(file);
   }, [editor]);
+  const handleInsertBackgroundImage = useCallback(() => bgImageInputRef.current?.click(), []);
+  const handleBgImageFile = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]; e.target.value = '';
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => setDocSettings((s) => ({ ...s, backgroundImage: reader.result as string }));
+    reader.readAsDataURL(file);
+  }, []);
+
+  const handleAddComment = useCallback(() => {
+    if (!editor) return;
+    const { from, to } = editor.state.selection;
+    if (from === to) { setErrorNotice('Select some text first to comment on it.'); setTimeout(() => setErrorNotice(null), 3000); return; }
+    const text = window.prompt('Comment:');
+    if (!text) return;
+    const id = `c-${new Date().toISOString()}-${comments.length}`;
+    editor.chain().focus().setComment(id).run();
+    setComments((cs) => [...cs, { id, author, text, createdAt: new Date().toLocaleString(), resolved: false, replies: [] }]);
+    setShowComments(true);
+  }, [editor, author, comments.length]);
+
+  const handlePastePlain = useCallback(async () => {
+    if (!editor) return;
+    try { const t = await navigator.clipboard.readText(); editor.chain().focus().insertContent(escapeHtml(t).replace(/\n/g, '<br>')).run(); }
+    catch { setErrorNotice('Clipboard read blocked — use Ctrl+Shift+V.'); setTimeout(() => setErrorNotice(null), 3000); }
+  }, [editor]);
+  const handleCopyAs = useCallback(async (format: 'plain' | 'html' | 'md') => {
+    if (!editor) return;
+    const html = editor.getHTML();
+    if (format === 'html') await copyRich(html);
+    else if (format === 'md') await copyText(htmlToMarkdown(html));
+    else await copyText(htmlToPlainText(html));
+  }, [editor]);
+
+  const handleInsertEmbed = useCallback((kind: 'video' | 'audio' | 'iframe') => {
+    if (!editor) return;
+    const url = window.prompt(kind === 'audio' ? 'Audio URL:' : kind === 'video' ? 'Video URL (YouTube/Vimeo):' : 'Embed URL:');
+    if (!url) return;
+    if (kind === 'audio') editor.chain().focus().setAudio(url).run();
+    else editor.chain().focus().setEmbed(url).run();
+  }, [editor]);
+
+  const handleSnapshot = useCallback(() => {
+    if (!editor) return;
+    const name = window.prompt('Snapshot name:', `${title} — ${new Date().toLocaleString()}`);
+    if (name) saveSnapshot(name, title, editor.getHTML());
+  }, [editor, title]);
+
+  // Autosave every 30s + on unload. Recovery offered on mount.
+  useEffect(() => {
+    if (mode !== 'edit' || !editor) return;
+    const tick = () => { const at = writeDraft(title, editor.getHTML()); if (at) setAutoSavedAt(at); };
+    const id = window.setInterval(tick, 30_000);
+    window.addEventListener('beforeunload', tick);
+    return () => { window.clearInterval(id); window.removeEventListener('beforeunload', tick); };
+  }, [mode, editor, title]);
+
+  useEffect(() => {
+    if (mode !== 'edit') return;
+    const d = readDraft();
+    if (d && d.html && d.html.length > 40) setRecovery({ title: d.title, html: d.html });
+  }, [mode]);
+
+  // Keyboard shortcuts (features 41–50).
+  useEffect(() => {
+    if (mode !== 'edit' || !editor) return;
+    const onKey = (e: KeyboardEvent) => {
+      const mod = e.ctrlKey || e.metaKey;
+      if (!mod) return;
+      const k = e.key.toLowerCase();
+      if (k === 's') { e.preventDefault(); handleSave(); }
+      else if (k === 'f') { e.preventDefault(); setFindMode('find'); }
+      else if (k === 'h') { e.preventDefault(); setFindMode('replace'); }
+      else if (k === 'k') { e.preventDefault(); const url = window.prompt('URL:'); if (url) editor.chain().focus().setLink({ href: url }).run(); }
+      else if (k === '1') { e.preventDefault(); editor.chain().focus().toggleHeading({ level: 1 }).run(); }
+      else if (k === '2') { e.preventDefault(); editor.chain().focus().toggleHeading({ level: 2 }).run(); }
+      else if (k === '3') { e.preventDefault(); editor.chain().focus().toggleHeading({ level: 3 }).run(); }
+      else if (k === '=' || k === '+') { e.preventDefault(); setZoom((z) => Math.min(2, z + 0.1)); }
+      else if (k === '-') { e.preventDefault(); setZoom((z) => Math.max(0.5, z - 0.1)); }
+      else if (k === '0') { e.preventDefault(); setZoom(1); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [mode, editor, handleSave]);
 
   if (mode === 'choose') {
-    return (
-      <div className="p-3 h-[calc(100vh-140px)] overflow-auto">
-        <TemplateChooser onSelect={handleTemplateSelect} />
-      </div>
-    );
+    return <div className="p-3 h-[calc(100vh-140px)] overflow-auto"><TemplateChooser onSelect={handleTemplateSelect} /></div>;
   }
 
+  const dim = PAGE_SIZES[docSettings.page.size];
+  const landscape = docSettings.page.orientation === 'landscape';
+  const pageW = landscape ? dim.height : dim.width;
+  const pageH = landscape ? dim.width : dim.height;
+  const pageBg = theme === 'dark' ? '#1e1e1e' : docSettings.background;
+  const textColor = theme === 'dark' ? '#e8e8e8' : '#111111';
+  const m = docSettings.page.margins;
+  const reading = viewMode === 'reading';
+  const fullscreen = viewMode === 'fullscreen';
+  const contentClasses = ['writer-content',
+    docSettings.columns === 2 ? 'cols-2' : docSettings.columns === 3 ? 'cols-3' : '',
+    docSettings.lineNumbers ? 'line-numbers' : '', docSettings.widowControl ? 'widow-control' : '',
+  ].filter(Boolean).join(' ');
+
   return (
-    <div className="p-3 flex flex-col h-[calc(100vh-140px)]">
-      <PanelTitleBar title="DOCUMENT WRITER" icon={FileText} />
+    <div className={`p-3 flex flex-col h-[calc(100vh-140px)] ${fullscreen ? 'fixed inset-0 z-[60] bg-[#050505] h-screen' : ''}`}>
+      {!reading && <PanelTitleBar title="DOCUMENT WRITER" icon={FileText} />}
 
       <input ref={imageInputRef} type="file" accept="image/*" className="hidden" onChange={handleImageFile} />
+      <input ref={bgImageInputRef} type="file" accept="image/*" className="hidden" onChange={handleBgImageFile} />
 
+      {recovery && (
+        <div className="bg-amber-900/20 border border-amber-700/40 text-amber-200 text-[11px] px-3 py-1.5 rounded-[2px] mt-2 flex items-center gap-2">
+          <span>Recovered an unsaved draft ("{recovery.title}").</span>
+          <button type="button" onClick={() => { editor?.commands.setContent(recovery.html); setTitle(recovery.title); setRecovery(null); }} className="ml-auto text-amber-300 hover:text-white text-[10px] underline">Restore</button>
+          <button type="button" onClick={() => { clearDraft(); setRecovery(null); }} className="text-amber-300/70 hover:text-white text-[10px]">Discard</button>
+        </div>
+      )}
       {savedNotice && (
         <div className="bg-green-900/20 border border-green-700/40 text-green-200 text-[11px] px-3 py-1.5 rounded-[2px] mt-2 flex items-center gap-2">
           <span>{savedNotice}</span>
-          <button type="button" onClick={() => navigate('/documents')} className="ml-auto text-green-300 hover:text-white text-[10px]">
-            Open Documents →
-          </button>
+          <button type="button" onClick={() => navigate('/documents')} className="ml-auto text-green-300 hover:text-white text-[10px]">Open Documents →</button>
+        </div>
+      )}
+      {errorNotice && (
+        <div className="bg-red-900/20 border border-red-700/40 text-red-200 text-[11px] px-3 py-1.5 rounded-[2px] mt-2 flex items-center gap-2">
+          <span>{errorNotice}</span>
+          <button type="button" onClick={() => setErrorNotice(null)} className="ml-auto text-red-300 hover:text-white text-[10px]">Dismiss</button>
         </div>
       )}
 
-      <div className="mt-2">
-        <WriterToolbar
-          editor={editor}
-          onSave={handleSave}
-          onExportPdf={handleExportPdf}
-          onPrint={handlePrint}
-          onInsertImage={handleInsertImage}
-          saving={saving}
-          title={title}
-          onTitleChange={setTitle}
-        />
-      </div>
+      {!reading && (
+        <div className="mt-2">
+          <WriterToolbar
+            editor={editor} docSettings={docSettings} setDocSettings={setDocSettings}
+            theme={theme} onToggleTheme={toggleTheme}
+            onSave={handleSave} onExportPdf={handleExportPdf} onPrint={handleExportPdf}
+            onInsertImage={handleInsertImage} onInsertBackgroundImage={handleInsertBackgroundImage}
+            saving={saving} title={title} author={author} onTitleChange={setTitle}
+            ext={{
+              onFind: () => setFindMode('find'), onReplace: () => setFindMode('replace'),
+              onToggleOutline: () => setShowOutline((v) => !v), onToggleComments: () => setShowComments((v) => !v),
+              onAddComment: handleAddComment, onSnapshot: handleSnapshot,
+              onExport: handleExport, onEmail: handleEmailDoc, onPastePlain: handlePastePlain, onCopyAs: handleCopyAs,
+              onInsertEmbed: handleInsertEmbed, zoom, setZoom, viewMode, setViewMode,
+              language, setLanguage, autoSavedAt,
+            }}
+          />
+        </div>
+      )}
 
-      {/* Editor canvas — styled like a page */}
-      <div className="flex-1 mt-3 overflow-auto bg-[#050505] border border-[#1a1a1a] rounded-[2px] flex justify-center">
-        <div className="w-[816px] min-h-[1056px] bg-white my-6 shadow-2xl shadow-black/50"
-          style={{ padding: '72px' }}>
-          <EditorContent editor={editor} className="writer-content" />
+      {docSettings.showRuler && !reading && (
+        <div className="mt-2 flex justify-center"><div className="writer-ruler" style={{ width: pageW }} /></div>
+      )}
+
+      <div className="flex-1 mt-3 overflow-auto bg-[#050505] border border-[#1a1a1a] rounded-[2px] flex gap-2 p-2 relative">
+        {showOutline && editor && <OutlinePane editor={editor} onClose={() => setShowOutline(false)} />}
+
+        <div className="flex-1 overflow-auto flex justify-center relative">
+          {findMode && editor && <FindReplacePanel editor={editor} mode={findMode} onClose={() => setFindMode(null)} />}
+          <div style={{ transform: `scale(${zoom})`, transformOrigin: 'top center' }}>
+            <div
+              className={`writer-page my-6 shadow-2xl shadow-black/50 ${docSettings.pageBorder ? 'has-page-border' : ''}`}
+              style={{
+                width: reading ? Math.min(pageW, 760) : pageW, minHeight: pageH,
+                background: pageBg, color: textColor,
+                paddingTop: m.top, paddingRight: m.right, paddingBottom: m.bottom, paddingLeft: m.left,
+                backgroundImage: docSettings.backgroundImage ? `url(${docSettings.backgroundImage})` : undefined,
+                backgroundSize: 'cover',
+              }}
+            >
+              {docSettings.watermark.text && <div className="doc-watermark" style={{ opacity: docSettings.watermark.opacity, color: textColor }}>{docSettings.watermark.text}</div>}
+              {docSettings.header.enabled && (
+                <div className="doc-running-header"><span>{docSettings.header.text}</span>{docSettings.header.showPageNumber && <span>Page 1</span>}</div>
+              )}
+              <EditorContent editor={editor} className={contentClasses} />
+              {docSettings.footer.enabled && (
+                <div className="doc-running-footer">
+                  <span>{docSettings.footer.text}</span>
+                  <span>{[docSettings.footer.showDate ? new Date().toLocaleDateString() : '', docSettings.footer.showAuthor ? author : ''].filter(Boolean).join(' • ')}</span>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {showComments && editor && <CommentsSidebar editor={editor} comments={comments} setComments={setComments} author={author} onClose={() => setShowComments(false)} />}
+
+        {/* Zoom controls + reading-mode exit */}
+        <div className="absolute bottom-2 right-3 flex items-center gap-1 bg-[#0d0d0d]/90 border border-[#222] rounded-[2px] px-1.5 py-1">
+          <button type="button" title="Zoom out (Ctrl+-)" onClick={() => setZoom((z) => Math.max(0.5, z - 0.1))} className="text-rmpg-400 hover:text-rmpg-100"><ZoomOut className="w-3.5 h-3.5" /></button>
+          <span className="text-[10px] text-rmpg-400 w-9 text-center tabular-nums">{Math.round(zoom * 100)}%</span>
+          <button type="button" title="Zoom in (Ctrl+=)" onClick={() => setZoom((z) => Math.min(2, z + 0.1))} className="text-rmpg-400 hover:text-rmpg-100"><ZoomIn className="w-3.5 h-3.5" /></button>
+          {(reading || fullscreen) && (
+            <button type="button" title="Exit" onClick={() => setViewMode('normal')} className="ml-1 text-rmpg-400 hover:text-rmpg-100"><X className="w-3.5 h-3.5" /></button>
+          )}
         </div>
       </div>
 
-      {/* Status bar */}
-      <div className="mt-1.5 flex items-center justify-between text-[9px] text-rmpg-600 px-1">
-        <span>{editor?.storage.characterCount?.characters?.() ?? 0} characters</span>
-        <span>{documentId ? `Saved • ID: ${documentId.slice(0, 8)}` : 'Unsaved'}</span>
-        <span>{user?.full_name || user?.username || 'Unknown author'}</span>
-      </div>
+      {!reading && (
+        <div className="mt-1.5 flex items-center justify-between text-[9px] text-rmpg-600 px-1">
+          <span>{docSettings.page.size.toUpperCase()} • {docSettings.page.orientation} • {theme} mode{autoSavedAt ? ` • autosaved ${new Date(autoSavedAt).toLocaleTimeString()}` : ''}</span>
+          <span className={documentId ? 'text-green-500/70' : ''}>{documentId ? `Saved • ID: ${documentId.slice(0, 8)}` : 'Unsaved'}</span>
+          <span>{author}</span>
+        </div>
+      )}
     </div>
   );
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }

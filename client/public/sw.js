@@ -327,7 +327,32 @@
 // v815: patrol MileageAuditTab backfill-missing-mileage (client change shipped
 //       in 1529d651 without a SW bump — v814 was already live, so bump to
 //       invalidate the stale cached bundle).
-const CACHE_NAME = 'rmpg-flex-v822';
+// v816: Document Writer overhaul. (1) SAVE FIX: documents are saved as text/html
+//       to /api/uploads, but that MIME was missing from the uploads allowlist so
+//       every save 400'd and the page stayed "Unsaved" (server: add text/html;
+//       client: surface the error instead of swallowing it). (2) Dark/Light theme
+//       (auto by clock + toggle) — replaces the unreadable prose-invert-on-white
+//       text with theme-driven color:inherit; print/PDF always black-on-white.
+//       (3) 50 formatting/design features (font family/size, color/highlight,
+//       super/sub, small/all caps, letter spacing, line height, shadow, drop cap,
+//       weight, opacity; paragraph spacing/indents/columns/breaks/borders/shading/
+//       line numbers/direction/vertical align; page size/orientation/margins,
+//       headers/footers, watermark, TOC, cover page, footnotes/endnotes, cross-
+//       refs, bookmarks, backgrounds, templates, statistics) via custom TipTap
+//       extensions — no new npm deps.
+// v817: Document Writer — batch of advanced editor features (no new npm deps).
+// v818: PDF editor — Stamp Studio.
+// v819: Process Server — "Notice of Attempt to Serve" form.
+// v820: PDF editor — underline + strikethrough text-markup tools.
+// v821: Printable field forms — 6 new blank PDFs.
+// v822: PSO Notice of Communication — autofilled client notice.
+// v823: Microsoft 365 email integration — full 6-phase pipeline (admin OAuth +
+//       inbox/folders/attachments with CID image rewriting + send via Graph +
+//       rules engine + autolinker (CFS#/plate) + cron poller + outbox retries +
+//       LinkedEmailsSection on Incidents/Warrants). Azure AD input validation
+//       (GUID shape + Secret-VALUE-not-ID check). See PR #1081 for the full
+//       phase-by-phase commit log.
+const CACHE_NAME = 'rmpg-flex-v823';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
