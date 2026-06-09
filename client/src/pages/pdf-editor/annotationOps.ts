@@ -13,6 +13,32 @@
 
 import type { Annotation } from './types';
 
+/**
+ * Replicate a single annotation (identified by `sourceId`) onto every page in
+ * the document, preserving its position/size. Returns the FULL annotation list
+ * with the clones appended (the source page keeps the original; every other
+ * page 1..pageCount gets a fresh-id copy on the same x/y). Useful for stamping
+ * a watermark-style mark, a "DRAFT" stamp, a footer rule, etc. across the doc.
+ *
+ * Pure — no React, no DOM. `genId` is injected so the caller controls id
+ * generation (and so this stays unit-testable).
+ */
+export function applyAnnotationToAllPages(
+  annotations: Annotation[],
+  sourceId: string,
+  pageCount: number,
+  genId: () => string,
+): Annotation[] {
+  const source = annotations.find((a) => a.id === sourceId);
+  if (!source || pageCount <= 0) return annotations;
+  const clones: Annotation[] = [];
+  for (let page = 1; page <= pageCount; page++) {
+    if (page === source.page) continue; // original already lives here
+    clones.push({ ...source, id: genId(), page } as Annotation);
+  }
+  return clones.length > 0 ? [...annotations, ...clones] : annotations;
+}
+
 export type AlignMode = 'left' | 'hcenter' | 'right' | 'top' | 'vcenter' | 'bottom';
 export type DistributeMode = 'horizontal' | 'vertical';
 export type MatchSizeMode = 'width' | 'height' | 'both';

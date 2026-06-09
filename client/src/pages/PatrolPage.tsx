@@ -933,7 +933,88 @@ const PatrolPage: React.FC = () => {
           {/* Checkpoints Tab */}
           {activeTab === 'checkpoints' && (
             <div className="panel-beveled overflow-hidden bg-[var(--surface-base)]">
-              <div className={isMobile ? 'overflow-x-auto' : ''}>
+              {isMobile ? (
+                // Mobile card layout: a 6-column table is unusable on a phone
+                // even with overflow-x-auto (constant horizontal scrolling).
+                // Cards put each checkpoint's key info + a tap-revealed action
+                // row on a single touch-sized surface (44pt minimum per row).
+                <div className="space-y-2 p-2">
+                  {checkpoints.map((checkpoint) => (
+                    <div
+                      key={checkpoint.id}
+                      onContextMenu={(e) => openMenu(e, buildCheckpointMenu(checkpoint))}
+                      className="panel-beveled bg-surface-raised p-3"
+                    >
+                      <div className="flex items-start gap-2 mb-2">
+                        <span className={`led-dot mt-1 ${checkpoint.is_active ? 'led-green' : 'led-off'}`} />
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium text-white truncate">{checkpoint.name}</div>
+                          <div className="text-[10px] text-rmpg-400 truncate">{checkpoint.property_name}</div>
+                        </div>
+                        <span className={`text-[9px] font-bold uppercase ${checkpoint.is_active ? 'text-green-400' : 'text-rmpg-500'}`}>
+                          {checkpoint.is_active ? 'Active' : 'Inactive'}
+                        </span>
+                      </div>
+                      {checkpoint.description && (
+                        <div className="text-[11px] text-rmpg-200 mb-2 line-clamp-2">{checkpoint.description}</div>
+                      )}
+                      <div className="flex items-center justify-between pt-2 border-t border-rmpg-700/50">
+                        <span className="text-[10px] text-rmpg-400 font-mono">
+                          {checkpoint.scan_required_interval_minutes} min interval
+                        </span>
+                        <div className="flex gap-1">
+                          <IconButton
+                            onClick={() => handleShowQr(checkpoint.qr_code)}
+                            className="text-brand-400 p-2"
+                            title="Show QR Code"
+                            aria-label={`Show QR code for ${checkpoint.name}`}
+                          >
+                            <Eye className="w-4 h-4" />
+                          </IconButton>
+                          {!checkpoint.archived_at ? (
+                            <>
+                              <IconButton
+                                onClick={() => handleEditCheckpoint(checkpoint)}
+                                className="text-amber-400 p-2"
+                                title="Edit"
+                                aria-label={`Edit ${checkpoint.name}`}
+                              >
+                                <Pencil className="w-4 h-4" />
+                              </IconButton>
+                              <IconButton
+                                onClick={() => handleArchiveCheckpoint(checkpoint.id)}
+                                className="text-rmpg-400 p-2"
+                                title="Archive"
+                                aria-label={`Archive ${checkpoint.name}`}
+                              >
+                                <Archive className="w-4 h-4" />
+                              </IconButton>
+                              <IconButton
+                                onClick={() => setDeleteConfirmId(checkpoint.id)}
+                                className="text-red-400 p-2"
+                                title="Delete"
+                                aria-label={`Delete ${checkpoint.name}`}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </IconButton>
+                            </>
+                          ) : (
+                            <IconButton
+                              onClick={() => handleUnarchiveCheckpoint(checkpoint.id)}
+                              className="text-green-400 p-2"
+                              title="Unarchive"
+                              aria-label={`Unarchive ${checkpoint.name}`}
+                            >
+                              <RotateCcw className="w-4 h-4" />
+                            </IconButton>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+              <div>
               <table className="table-dark">
                 <thead>
                   <tr>
@@ -1029,6 +1110,7 @@ const PatrolPage: React.FC = () => {
                 </tbody>
               </table>
               </div>
+              )}
               {checkpoints.length === 0 && (
                 <div className="text-center py-12 text-rmpg-300">
                   No checkpoints found. Create one to get started.
@@ -1108,7 +1190,37 @@ const PatrolPage: React.FC = () => {
               </div>
 
               <div className="panel-beveled overflow-hidden bg-[var(--surface-base)]">
-                <div className={isMobile ? 'overflow-x-auto' : ''}>
+                {isMobile ? (
+                  <div className="space-y-2 p-2">
+                    {scans.map((scan) => (
+                      <div
+                        key={scan.id}
+                        onContextMenu={(e) => openMenu(e, buildScanMenu(scan))}
+                        className="panel-beveled bg-surface-raised p-3"
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <div className={`flex items-center gap-2 text-[11px] ${getStatusColor(scan.status)}`}>
+                            {getStatusIcon(scan.status)}
+                            <span className="capitalize font-bold">{scan.status.replace(/_/g, ' ')}</span>
+                          </div>
+                          <span className="text-[10px] text-rmpg-400 font-mono">
+                            {formatDateTime(scan.scanned_at)}
+                          </span>
+                        </div>
+                        <div className="text-sm text-white font-medium truncate">{scan.checkpoint_name}</div>
+                        <div className="text-[10px] text-rmpg-400 flex items-center gap-2 mb-1 truncate">
+                          <span>{scan.property_name}</span>
+                          <span className="text-rmpg-600">·</span>
+                          <span>{scan.officer_name}</span>
+                        </div>
+                        {scan.notes && (
+                          <div className="text-[11px] text-rmpg-200 pt-1 mt-1 border-t border-rmpg-700/50 line-clamp-2">{scan.notes}</div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                <div>
                 <table className="table-dark">
                   <thead>
                     <tr>
@@ -1141,6 +1253,7 @@ const PatrolPage: React.FC = () => {
                   </tbody>
                 </table>
                 </div>
+                )}
                 {scans.length === 0 && (
                   <div className="text-center py-12 text-rmpg-300">
                     No scans found matching the filters.
@@ -1158,14 +1271,14 @@ const PatrolPage: React.FC = () => {
           {/* Feature 11/13/15: Shift Summary Tab */}
           {activeTab === 'summary' && (
             <div className="space-y-4">
-              <div className="flex items-center gap-3 mb-4">
+              <div className="flex flex-wrap items-center gap-2 mb-4">
                 <button type="button" onClick={loadShiftSummary} className="toolbar-btn toolbar-btn-primary print:hidden">
-                  <RefreshCw className="w-3 h-3" /> Load Summary
+                  <RefreshCw className="w-3 h-3" /> {isMobile ? 'Reload' : 'Load Summary'}
                 </button>
                 <button type="button" onClick={loadEfficiency} className="toolbar-btn">
-                  <CheckCircle className="w-3 h-3" /> Efficiency Score
+                  <CheckCircle className="w-3 h-3" /> {isMobile ? 'Efficiency' : 'Efficiency Score'}
                 </button>
-                <div className="ml-auto flex items-center gap-2">
+                <div className={`${isMobile ? 'w-full' : 'ml-auto'} flex items-center gap-2 ${isMobile ? 'justify-end' : ''}`}>
                   {/* Feature 13: Break tracking */}
                   {isOnBreak ? (
                     <button type="button" onClick={endBreak} className="toolbar-btn text-red-400 border-red-700/50">

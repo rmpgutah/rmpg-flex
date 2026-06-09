@@ -476,14 +476,28 @@
 //   lat/lng fix no longer poisons the ATOMIC breadcrumb batch (one NaN used to
 //   roll back & 500 the whole batch → client re-queued the poisoned batch forever,
 //   blocking every good fix); bad points are dropped, good ones persist.
-// v844: Document Writer — restore the missing TEMPLATES grid + search/filter/
-//   star state in TemplateChooser.tsx (left half-built after PR #1094), wire
-//   DocumentTemplate.category to the TemplateCategory union so the extended
-//   le-*/sec-*/hr-*/legal-* categories typecheck, import FeaturesPanel.
-// v845: Document Writer — 150 new actions (docActions2.ts) + tabbed Ctrl+/
-//   command palette (Recent / All / Case / Insert / Paragraph / Table / List /
-//   Callout / Decorative / Math / References / Police / Utility).
-const CACHE_NAME = 'rmpg-flex-v845';
+// v845: UNBLOCK main — PR #1094 (+105 templates) merged broken (132 type errors
+//       → every deploy since Wave 3 failed): a 2nd template taxonomy that didn't
+//       reconcile + an incomplete TemplateChooser rewrite + a dropped import.
+//       Fix: DocumentTemplate.category unions both taxonomies; TemplateChooser
+//       restored to last known-good (all templates preserved); FeaturesPanel
+//       import restored.
+// v846: mobile card layouts on /patrol — Checkpoints + Scan Log + Shift Summary
+//   toolbar wrapping. Wide tables behind overflow-x-auto are unusable on a phone;
+//   cards stack key info + 44pt-tap-target action rows on a single touch surface.
+// v847: PDF + Document Writer feature wave 4 (~27 more features).
+//   PDF Editor: page organizer (drag-reorder grid), single/continuous/2-up view
+//   modes, annotation reply threads, N-up export, page-number styles, flatten-
+//   form, text-annotation hyperlinks, deskew, page labels, snap-to-grid + grid,
+//   apply-annotation-to-all-pages, region-to-PNG, annotation border toggle.
+//   Document Writer: debounced server autosave, shortcuts cheatsheet, paragraph-
+//   style presets, text<->list conversions, list/table row sort, auto-filled
+//   officer signature block, recent documents, standalone styled HTML export,
+//   reusable section blocks, duplicate document, nav helpers, manual save-draft.
+// v848: /field-camera mobile camera portal — live viewfinder + HUD; capture
+//   composites timestamp/officer/unit/GPS into a bottom data band + translucent
+//   RMPG watermark bottom-right, uploads stamped JPEG to /api/field-photos (R2).
+const CACHE_NAME = 'rmpg-flex-v848';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

@@ -33,6 +33,10 @@ interface Props {
   /** When true, skip the native engine and render via PDF.js directly.
    *  Wired to a toolbar toggle so users can recover stuck blank pages. */
   forcePdfjs?: boolean;
+  /** Snap new annotation placements + drags to a grid (in PDF points). */
+  snapToGrid?: boolean;
+  /** Grid step in PDF points (converted to screen px internally). */
+  gridSize?: number;
 }
 
 function uid(): string { return Math.random().toString(36).slice(2, 10); }
@@ -54,7 +58,15 @@ const HANDLE_POSITIONS: Array<{ id: ResizeHandle; cx: 0 | 0.5 | 1; cy: 0 | 0.5 |
 ];
 
 export default function PageCanvas(props: Props) {
-  const { pdfBytes, doc, originalPageNumber, visualPageNumber, pageMeta, zoom, tool, color, strokeWidth, pendingImage, pendingStamp, annotations, activeId, onSelectAnnotation, onAddAnnotation, onUpdateAnnotation, onUpdateAnnotationLive, onTransformStart, onSetCrop, onAnnotationContextMenu, forcePdfjs } = props;
+  const { pdfBytes, doc, originalPageNumber, visualPageNumber, pageMeta, zoom, tool, color, strokeWidth, pendingImage, pendingStamp, annotations, activeId, onSelectAnnotation, onAddAnnotation, onUpdateAnnotation, onUpdateAnnotationLive, onTransformStart, onSetCrop, onAnnotationContextMenu, forcePdfjs, snapToGrid, gridSize } = props;
+  // Snap a value (screen px at render scale) to the configured grid. The grid
+  // is defined in PDF points, so step = gridSize * DEFAULT_RENDER_SCALE px.
+  const snap = (v: number): number => {
+    if (!snapToGrid || !gridSize || gridSize <= 0) return v;
+    const step = gridSize * DEFAULT_RENDER_SCALE;
+    return Math.round(v / step) * step;
+  };
+  const snapPt = (p: Point): Point => ({ x: snap(p.x), y: snap(p.y) });
   // Tracks whether the current drag/resize gesture has already snapshotted the
   // pre-gesture state into history (so we do it exactly once, on the first move).
   const gestureSnapshotRef = useRef(false);
@@ -194,7 +206,9 @@ export default function PageCanvas(props: Props) {
 
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (tool === 'hand') return;
-    const p = localCoords(e);
+    // Snap the placement point to the grid when enabled (affects click-to-place
+    // tools + the start corner of drag-create geometry).
+    const p = tool === 'select' ? localCoords(e) : snapPt(localCoords(e));
 
     // Click on empty area in select mode → deselect.
     if (tool === 'select') {
@@ -271,7 +285,10 @@ export default function PageCanvas(props: Props) {
   };
 
   const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
-    const p = localCoords(e);
+    const rawP = localCoords(e);
+    // Snap while drawing/dragging (not during free resize, where the handle math
+    // already anchors the opposite edge).
+    const p = (drawing || drag) ? snapPt(rawP) : rawP;
     if (polyDraft) {
       setPolyDraft({ ...polyDraft, cursor: p });
       // Don't return here — allow the rest of move to run if needed.
@@ -591,13 +608,16 @@ function AnnotationView({ ann, zoom, selected, onPointerDown, onResizeStart, sho
   let inner: React.ReactNode = null;
 
   if (ann.type === 'text') {
+    const linked = !!ann.url && /^(https?:|mailto:|tel:|#page=)/i.test(ann.url);
     inner = (
-      <div onPointerDown={onPointerDown} style={{ ...baseStyle, color: ann.color ?? '#0a0a0a', fontSize: ann.fontSize * zoom, fontWeight: ann.bold ? 700 : 400, fontStyle: ann.italic ? 'italic' : 'normal', fontFamily: 'Helvetica, Arial, sans-serif', whiteSpace: 'nowrap', userSelect: 'none', padding: 1 }}>
+      <div onPointerDown={onPointerDown}
+        title={linked ? `Link → ${ann.url}` : undefined}
+        style={{ ...baseStyle, color: linked ? '#0046a1' : (ann.color ?? '#0a0a0a'), fontSize: ann.fontSize * zoom, fontWeight: ann.bold ? 700 : 400, fontStyle: ann.italic ? 'italic' : 'normal', fontFamily: 'Helvetica, Arial, sans-serif', whiteSpace: 'nowrap', userSelect: 'none', padding: 1, textDecoration: linked ? 'underline' : undefined, border: ann.showBorder ? `1px solid ${ann.color ?? '#d4a017'}` : undefined }}>
         {ann.text}
       </div>
     );
   } else if (ann.type === 'highlight') {
-    inner = <div onPointerDown={onPointerDown} style={{ ...baseStyle, background: ann.fillColor ?? '#999999', opacity: (ann.opacity ?? 1) * 0.35 }} />;
+    inner = <div onPointerDown={onPointerDown} style={{ ...baseStyle, background: ann.fillColor ?? '#999999', opacity: (ann.opacity ?? 1) * 0.35, border: ann.showBorder ? `1px solid ${ann.color ?? '#d4a017'}` : undefined }} />;
   } else if (ann.type === 'underline') {
     inner = (
       <div onPointerDown={onPointerDown} style={{ ...baseStyle, opacity: ann.opacity ?? 1 }}>

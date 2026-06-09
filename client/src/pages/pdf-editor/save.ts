@@ -1,8 +1,14 @@
 import { PDFDocument, StandardFonts, rgb, degrees, pushGraphicsState, popGraphicsState, concatTransformationMatrix, PDFName, PDFArray, PDFDict, PDFString, PDFNumber, PageSizes } from 'pdf-lib';
 import { normRotation, rotationGeometry } from './rotationGeometry';
 import { RmpgPdfBuilder, open as openEnginePdf } from '../../lib/rmpg-pdf-engine';
-import { Annotation, BatesConfig, EditorState, HeaderFooterConfig, PageMeta, PageNumbersConfig, WatermarkConfig, DEFAULT_RENDER_SCALE } from './types';
+import { Annotation, BatesConfig, EditorState, HeaderFooterConfig, PageLabelRule, PageMeta, PageNumbersConfig, WatermarkConfig, DEFAULT_RENDER_SCALE } from './types';
 import { normalizeUploadResponse } from './uploadResponse';
+import { formatPageNumber, resolvePageLabel } from './pageNumbering';
+
+// Re-export the pure page-number / page-label helpers (defined in
+// pageNumbering.ts so they stay free of the heavy pdf-lib / pdfjs import graph
+// and remain unit-testable in a jsdom env).
+export { formatPageNumber, resolvePageLabel } from './pageNumbering';
 
 export { normalizeUploadResponse } from './uploadResponse';
 
@@ -97,12 +103,26 @@ async function drawAnnotation(ctx: PageContext, ann: Annotation): Promise<void> 
 
   switch (ann.type) {
     case 'text': {
+      const linked = !!ann.url && /^(https?:|mailto:|tel:|#page=)/i.test(ann.url);
       const fontKey = textFontKey(ann.fontFamily, ann.bold, ann.italic);
       const fontName = FONT_MAP[fontKey];
+      const tcol: [number, number, number] = linked ? [0, 0.27, 0.55] : color;
       draw((csb, useFont) => {
         const resName = useFont(fontName);
-        csb.setFillRgb(color[0], color[1], color[2]);
+        csb.setFillRgb(tcol[0], tcol[1], tcol[2]);
         csb.drawText(ann.text, px, py - ann.fontSize, resName, ann.fontSize);
+        if (linked) {
+          csb.setStrokeRgb(tcol[0], tcol[1], tcol[2]);
+          csb.setLineWidth(0.6);
+          csb.drawLine(px, py - ann.fontSize - 1, px + Math.max(pw, ann.text.length * ann.fontSize * 0.5), py - ann.fontSize - 1);
+        }
+        // Optional bounding border (Acrobat "Border" toggle).
+        if (ann.showBorder) {
+          const bc = hexToRgb(ann.color, [0.831, 0.627, 0.090]);
+          csb.setStrokeRgb(bc[0], bc[1], bc[2]);
+          csb.setLineWidth(0.75);
+          csb.strokeRect(px, py - ph, pw || (ann.text.length * ann.fontSize * 0.5), ph || ann.fontSize * 1.3);
+        }
       });
       return;
     }
@@ -113,6 +133,12 @@ async function drawAnnotation(ctx: PageContext, ann: Annotation): Promise<void> 
       draw((csb) => {
         csb.setFillRgb(fc[0], fc[1], fc[2]);
         csb.fillRect(px, py - ph, pw, ph);
+        if (ann.showBorder) {
+          const bc = hexToRgb(ann.color, [0.831, 0.627, 0.090]);
+          csb.setStrokeRgb(bc[0], bc[1], bc[2]);
+          csb.setLineWidth(0.75);
+          csb.strokeRect(px, py - ph, pw, ph);
+        }
       });
       return;
     }
@@ -356,10 +382,11 @@ function applyBates(builder: RmpgPdfBuilder, pageIdx: number, mediaBox: [number,
   });
 }
 
-function applyPageNumbers(builder: RmpgPdfBuilder, pageIdx: number, mediaBox: [number, number, number, number], cfg: PageNumbersConfig, n: number, total: number): void {
+function applyPageNumbers(builder: RmpgPdfBuilder, pageIdx: number, mediaBox: [number, number, number, number], cfg: PageNumbersConfig, n: number, total: number, labels?: PageLabelRule[]): void {
   const text = (cfg.format || 'Page {n} of {total}')
-    .replace(/\{n\}/g, String(n))
-    .replace(/\{total\}/g, String(total));
+    .replace(/\{n\}/g, formatPageNumber(n, cfg.style))
+    .replace(/\{total\}/g, String(total))
+    .replace(/\{label\}/g, resolvePageLabel(labels, n));
   const w = mediaBox[2] - mediaBox[0];
   const margin = 18;
   const approxW = text.length * cfg.fontSize * 0.5;
@@ -521,7 +548,7 @@ export async function buildPdfFromEditorState(state: EditorState): Promise<Uint8
       applyBates(builder, visualIdx, pageMediaBox, state.bates, state.bates.startNumber + visualIdx);
     }
     if (state.pageNumbers) {
-      applyPageNumbers(builder, visualIdx, pageMediaBox, state.pageNumbers, visualIdx + 1, state.pages.length);
+      applyPageNumbers(builder, visualIdx, pageMediaBox, state.pageNumbers, visualIdx + 1, state.pages.length, state.pageLabels);
     }
     if (state.headerFooter) {
       applyHeaderFooter(builder, visualIdx, pageMediaBox, state.headerFooter, visualIdx + 1, state.pages.length);
@@ -749,8 +776,9 @@ async function buildPdfFromEditorStateViaPdfLib(state: EditorState): Promise<Uin
     if (state.pageNumbers) {
       const cfg = state.pageNumbers;
       const text = (cfg.format || 'Page {n} of {total}')
-        .replace(/\{n\}/g, String(visualIdx + 1))
-        .replace(/\{total\}/g, String(copied.length));
+        .replace(/\{n\}/g, formatPageNumber(visualIdx + 1, cfg.style))
+        .replace(/\{total\}/g, String(copied.length))
+        .replace(/\{label\}/g, resolvePageLabel(state.pageLabels, visualIdx + 1));
       const pw2 = page.getWidth();
       const approxW = text.length * cfg.fontSize * 0.5;
       let nx = 18;
@@ -970,7 +998,7 @@ function annRectOnPage(a: Annotation, pageHeightPts: number): { x: number; y: nu
  */
 export async function buildInteractivePdf(
   state: EditorState,
-  opts: { outline?: Array<{ title: string; page: number }> } = {},
+  opts: { outline?: Array<{ title: string; page: number }>; flattenForm?: boolean } = {},
 ): Promise<Uint8Array> {
   if (!state.bytes) throw new Error('No source PDF loaded');
   const src = await PDFDocument.load(state.bytes);
@@ -999,8 +1027,18 @@ export async function buildInteractivePdf(
       const r = annRectOnPage(a, pageH);
       const c = hexToRgb(a.color);
       if (a.type === 'text') {
+        const linked = !!a.url && /^(https?:|mailto:|tel:|#page=)/i.test(a.url);
         const fbFont = a.fontFamily === 'times' ? times : a.fontFamily === 'courier' ? courier : (a.bold ? helvBold : helv);
-        page.drawText(a.text, { x: r.x, y: r.y + r.h - a.fontSize, size: a.fontSize, font: fbFont, color: rgb(c[0], c[1], c[2]) });
+        const tcol = linked ? rgb(0, 0.27, 0.55) : rgb(c[0], c[1], c[2]);
+        const ty = r.y + r.h - a.fontSize;
+        page.drawText(a.text, { x: r.x, y: ty, size: a.fontSize, font: fbFont, color: tcol });
+        if (linked) {
+          // Underline + a real clickable /Link annot over the text box.
+          const tw = fbFont.widthOfTextAtSize(a.text, a.fontSize);
+          page.drawLine({ start: { x: r.x, y: ty - 1 }, end: { x: r.x + tw, y: ty - 1 }, thickness: 0.6, color: tcol });
+          const annot = makeLinkAnnotation(out, [r.x, ty - 2, r.x + tw, ty + a.fontSize], a.url!, copied);
+          addAnnotToPage(out, page, annot);
+        }
       } else if (a.type === 'highlight') {
         page.drawRectangle({ x: r.x, y: r.y, width: r.w, height: r.h, color: rgb(0.6, 0.6, 0.6), opacity: 0.3 });
       } else if (a.type === 'redact') {
@@ -1056,6 +1094,12 @@ export async function buildInteractivePdf(
   // 4) Outline / bookmark tree.
   const outline = opts.outline ?? [];
   if (outline.length > 0) buildOutline(out, outline, copied);
+
+  // 5) Optionally flatten the AcroForm — bakes each field's current value into
+  //    the page content + removes interactivity (locks the form for filing).
+  if (opts.flattenForm) {
+    try { form.flatten(); } catch (err) { console.warn('[pdf-editor] form flatten failed', err); }
+  }
 
   if (state.meta.title) out.setTitle(state.meta.title);
   if (state.meta.author) out.setAuthor(state.meta.author);
@@ -1256,6 +1300,88 @@ export async function grayscalePageBytes(
 }
 
 /**
+ * Deskew (straighten) a single page by a manual angle. Renders the page to a
+ * canvas, rotates the bitmap by `-angleDeg` (so a clockwise-tilted scan comes
+ * back level), and returns a fresh single-page PDF of the corrected image.
+ * `original` is the 1-indexed ORIGINAL source page number. The rotated canvas
+ * is enlarged so no content is clipped, with a white background fill.
+ *
+ * Independent of the editor's 90°-step rotation + CTM math — this is a raster
+ * re-bake (same strategy as grayscalePageBytes), appended as a new page.
+ */
+export async function deskewPageBytes(
+  bytes: Uint8Array,
+  original: number,
+  angleDeg: number,
+): Promise<Uint8Array> {
+  const { openAndRenderPage } = await import('../../lib/rmpg-pdf-engine');
+  const src = document.createElement('canvas');
+  const pdf = await openAndRenderPage(bytes, { pageNumber: original, scale: 2, canvas: src });
+  await pdf.destroy().catch(() => { /* gone */ });
+  const rad = (-angleDeg * Math.PI) / 180; // correct the tilt
+  const cos = Math.abs(Math.cos(rad));
+  const sin = Math.abs(Math.sin(rad));
+  const w = src.width, h = src.height;
+  // Enlarge the output so the rotated page fits without clipping.
+  const outW = Math.ceil(w * cos + h * sin);
+  const outH = Math.ceil(w * sin + h * cos);
+  const out = document.createElement('canvas');
+  out.width = outW; out.height = outH;
+  const ctx = out.getContext('2d');
+  if (!ctx) throw new Error('Canvas 2D context unavailable');
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, outW, outH);
+  ctx.translate(outW / 2, outH / 2);
+  ctx.rotate(rad);
+  ctx.drawImage(src, -w / 2, -h / 2);
+  return imageToPdfPageBytes(out.toDataURL('image/jpeg', 0.92));
+}
+
+/**
+ * N-up imposition: lay out `up` source pages (2 or 4) onto each output page,
+ * preserving aspect ratio with a small gutter. Operates on FLATTENED bytes so
+ * annotations are baked in. Returns a fresh combined PDF. Pure pdf-lib — never
+ * touches the canvas / rotation math.
+ */
+export async function buildNUpPdf(
+  flattenedBytes: Uint8Array,
+  up: 2 | 4,
+  pageSize: [number, number] = PAGE_SIZE_PRESETS.Letter,
+): Promise<Uint8Array> {
+  const src = await PDFDocument.load(flattenedBytes);
+  const out = await PDFDocument.create();
+  const srcCount = src.getPageCount();
+  const embedded = await out.embedPages(src.getPages());
+  // 2-up → 1 col × 2 rows (landscape sheet); 4-up → 2 cols × 2 rows.
+  const [sheetW, sheetH] = up === 2 ? [pageSize[1], pageSize[0]] : pageSize;
+  const cols = up === 2 ? 2 : 2;
+  const rows = up === 2 ? 1 : 2;
+  const gutter = 12;
+  const cellW = (sheetW - gutter * (cols + 1)) / cols;
+  const cellH = (sheetH - gutter * (rows + 1)) / rows;
+  const perSheet = cols * rows;
+  for (let i = 0; i < srcCount; i += perSheet) {
+    const sheet = out.addPage([sheetW, sheetH]);
+    for (let slot = 0; slot < perSheet && i + slot < srcCount; slot++) {
+      const ep = embedded[i + slot];
+      const col = slot % cols;
+      const row = Math.floor(slot / cols);
+      const scale = Math.min(cellW / ep.width, cellH / ep.height);
+      const dw = ep.width * scale, dh = ep.height * scale;
+      // Top-to-bottom reading order (PDF origin is bottom-left).
+      const cellX = gutter + col * (cellW + gutter);
+      const cellYTop = sheetH - gutter - row * (cellH + gutter);
+      const x = cellX + (cellW - dw) / 2;
+      const y = cellYTop - cellH + (cellH - dh) / 2;
+      sheet.drawPage(ep, { x, y, width: dw, height: dh });
+    }
+  }
+  out.setProducer(`RMPG PDF Engine v1.0 — ${up}-up imposition`);
+  out.setModificationDate(new Date());
+  return out.save();
+}
+
+/**
  * Generate a printable PDF report listing every annotation, grouped by page.
  * Pure pdf-lib — a fresh letter-size document.
  */
@@ -1308,6 +1434,10 @@ export async function buildAnnotationReportPdf(
       const body = summary(a).slice(0, 110);
       if (body) { page.drawText(body, { x: margin + 16, y, size: 9, font, color: gray }); y -= 12; }
       if (a.note) { ensureSpace(1); page.drawText(`note: ${a.note.slice(0, 100)}`, { x: margin + 16, y, size: 8, font, color: gray }); y -= 11; }
+      for (const rep of a.replies ?? []) {
+        ensureSpace(1);
+        page.drawText(`↳ ${rep.author}: ${rep.text.slice(0, 90)}`, { x: margin + 22, y, size: 8, font, color: gray }); y -= 11;
+      }
       y -= 2;
     }
     y -= 6;

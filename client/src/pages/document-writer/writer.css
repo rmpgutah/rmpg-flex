@@ -203,6 +203,8 @@
 /* Style-gallery presets (feature 48) */
 .writer-content .ProseMirror .style-legal { font-family: "Times New Roman", serif; font-size: 13pt; line-height: 2; }
 .writer-content .ProseMirror .style-memo { font-family: Arial, sans-serif; font-size: 11pt; line-height: 1.4; }
+/* Legal-numbered list preset — double-spaced, decimal markers */
+.writer-content .ProseMirror ol.style-legal-list { font-family: "Times New Roman", serif; line-height: 2; list-style-type: decimal; padding-left: 2em; }
 
 /* Horizontal ruler / margin guides (feature 26) */
 .writer-ruler {
