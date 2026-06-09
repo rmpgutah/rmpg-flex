@@ -558,7 +558,10 @@ export async function generateAffidavitOfNonService(data: AffidavitOfNonServiceD
   y = checkPageBreak(doc, y, 30);
   {
     const sec = openAutoSection(doc, 'Declaration', y);
-    y = sec.contentY;
+    // addWrappedText draws at the text BASELINE, so the first line's ascender
+    // sits ~2.5mm above contentY — pad past the black header band (matches the
+    // psoNoticePdfGenerator fix, commit 3c0e68f9).
+    y = sec.contentY + 3;
 
     const declarationText =
       'I, the undersigned, being duly sworn, do hereby declare under penalty of perjury that ' +
@@ -724,7 +727,10 @@ export async function generateNoticeOfAttempt(data: NoticeOfAttemptData): Promis
   y = checkPageBreak(doc, y, 30);
   {
     const sec = openAutoSection(doc, 'Notice', y);
-    y = sec.contentY;
+    // addWrappedText draws at the text BASELINE — pad past the black header band
+    // so the first line's ascender doesn't clip (matches the
+    // psoNoticePdfGenerator fix, commit 3c0e68f9).
+    y = sec.contentY + 3;
     const company = data.serverCompany || 'Rocky Mountain Protective Group';
     const contact = data.serverPhone ? ` at ${data.serverPhone}` : ' at the number on file';
     const noticeText =
