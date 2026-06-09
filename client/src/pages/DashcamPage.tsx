@@ -132,7 +132,7 @@ export default function DashcamPage() {
       )}
 
       {status && (
-        <div className="grid grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           <div className="bg-surface-raised border border-[#222] p-3">
             <div className="text-xs text-text-muted flex items-center gap-1">
               <Radio className="w-3 h-3" /> RECEIVER

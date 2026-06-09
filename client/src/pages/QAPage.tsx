@@ -68,7 +68,7 @@ export default function QAPage() {
       <PanelTitleBar title="QUALITY ASSURANCE" icon={CheckCircle}>
         <button onClick={openNew} className="toolbar-btn flex items-center gap-1.5" style={{ height: 28, padding: '0 10px' }}><Plus size={13} /> New Review</button>
       </PanelTitleBar>
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <StatsCard icon={CheckCircle} label="Total Reviews" value={stats.total_reviews} />
         <StatsCard icon={Star} label="Avg Score" value={`${stats.avg_review_score}%`} />
         <StatsCard icon={ThumbsUp} label="Avg Rating" value={`${stats.avg_survey_rating}/5`} />

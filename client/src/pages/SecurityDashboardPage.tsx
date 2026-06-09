@@ -202,8 +202,8 @@ export default function SecurityDashboardPage() {
       )}
 
       {activeTab === 'logins' && (
-        <div className="panel-beveled bg-surface-base">
-          <table className="w-full">
+        <div className="panel-beveled bg-surface-base overflow-x-auto">
+          <table className="w-full min-w-[640px]">
             <thead><tr className="border-b border-rmpg-700">
               {['Status', 'User', 'IP Address', 'User Agent', 'Time', 'Reason'].map(h => (
                 <th key={h} className="text-left text-[9px] text-rmpg-500 uppercase font-semibold px-3 py-[3px]">{h}</th>
@@ -226,8 +226,8 @@ export default function SecurityDashboardPage() {
       )}
 
       {activeTab === 'threats' && isAdmin && (
-        <div className="panel-beveled bg-surface-base">
-          <table className="w-full">
+        <div className="panel-beveled bg-surface-base overflow-x-auto">
+          <table className="w-full min-w-[560px]">
             <thead><tr className="border-b border-rmpg-700">
               {['Severity', 'Type', 'Description', 'IP', 'Time'].map(h => (
                 <th key={h} className="text-left text-[9px] text-rmpg-500 uppercase font-semibold px-3 py-[3px]">{h}</th>

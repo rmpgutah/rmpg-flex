@@ -482,7 +482,7 @@ function WeeklyDigestCard() {
       </div>
       {expanded && digest && (
         <div className="p-4 space-y-3 text-xs">
-          <div className="grid grid-cols-5 gap-2">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
             {[
               { label: 'Calls', value: digest.summary?.totalCalls || 0, color: '#888888' },
               { label: 'Incidents', value: digest.summary?.totalIncidents || 0, color: '#22c55e' },

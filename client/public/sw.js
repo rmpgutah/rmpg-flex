@@ -391,7 +391,18 @@
 //       Editor, Navigation/Drive Mode, Records & Personnel tabs made
 //       touch-friendly (responsive stacking, overflow-x tables, viewport-fit
 //       modals/drawers, 44px tap targets). Client-only; bump to invalidate.
-const CACHE_NAME = 'rmpg-flex-v832';
+// v833: Mobile/tablet responsive audit (complements v832). Global <=1024px CSS
+//       safety net (index.css EOF): replaced-element overflow guard (excl Mapbox
+//       canvas), 44px touch targets for the iPad band (768-1024, pointer:coarse,
+//       min-height only), readable text floor + iOS size-adjust lock, and dialog/
+//       modal max-width so overlays never exceed the viewport — desktop dense
+//       theme untouched. Page fixes: stat-card grids (Reports/Billing/QA/Training/
+//       Assets/Community/Dashcam/CommandCenter) stack 2-col on phone; Security
+//       login/threat tables get horizontal scroll; Invoices table panel both-axis-
+//       scroll (keeps sticky header); Dispatch handoff modal max-w-[95vw].
+//       Manifest: orientation -> any, dead /units shortcut -> /map. useIsMobile
+//       re-checks on orientationchange.
+const CACHE_NAME = 'rmpg-flex-v833';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

@@ -76,7 +76,7 @@ export default function AssetsPage() {
           <Plus size={13} /> New Asset
         </button>
       </PanelTitleBar>
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <StatsCard icon={Package} label="Total Assets" value={stats.totalAssets} />
         <StatsCard icon={Wrench} label="Issued" value={stats.issuedAssets} />
         <StatsCard icon={Crosshair} label="Weapons" value={stats.totalWeapons} />
