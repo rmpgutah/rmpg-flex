@@ -219,11 +219,47 @@ email.use('*', authMiddleware);
 email.get('/status', async (c) => c.json(await getStatus(c.env)));
 
 // ──────── Admin endpoints (admin role only) ────────
+// Azure AD GUID shape — clientId and tenantId are always
+// xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx (32 hex + 4 dashes).
+// tenantId may also be 'common', 'organizations', or 'consumers' for
+// public Microsoft endpoints, but in a single-tenant RMPG deploy it
+// should be a GUID. Anything else is paste error.
+const AZURE_GUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const SPECIAL_TENANTS = new Set(['common', 'organizations', 'consumers']);
+
 email.put('/admin/credentials', requireRole('admin'), async (c) => {
   const body = await c.req.json().catch(() => ({})) as { clientId?: string; clientSecret?: string; tenantId?: string };
-  const { clientId, clientSecret, tenantId } = body;
+  const clientId = body.clientId?.trim();
+  const clientSecret = body.clientSecret?.trim();
+  const tenantId = body.tenantId?.trim();
   if (!clientId || !clientSecret || !tenantId) {
-    return c.json({ error: 'All three Azure AD fields are required', code: 'ALL_THREE_AZURE_AD' }, 400);
+    return c.json({ error: 'All three Azure AD fields are required.', code: 'ALL_THREE_AZURE_AD' }, 400);
+  }
+  if (!AZURE_GUID_RE.test(clientId)) {
+    return c.json({
+      error: 'Application (Client) ID must be a GUID like xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx. Copy it from Azure Portal → App registrations → Overview.',
+      code: 'CLIENT_ID_NOT_GUID',
+    }, 400);
+  }
+  if (!AZURE_GUID_RE.test(tenantId) && !SPECIAL_TENANTS.has(tenantId.toLowerCase())) {
+    return c.json({
+      error: 'Directory (Tenant) ID must be a GUID, or one of: common, organizations, consumers. Copy it from Azure Portal → App registrations → Overview.',
+      code: 'TENANT_ID_NOT_GUID',
+    }, 400);
+  }
+  // Client secret VALUE is a short opaque string (~40 chars, includes
+  // ~/_-). Reject the common mistake of pasting the secret ID (a GUID).
+  if (AZURE_GUID_RE.test(clientSecret)) {
+    return c.json({
+      error: 'You pasted the Client Secret ID (a GUID). Paste the Secret VALUE instead — Azure shows it only once, right after you create the secret.',
+      code: 'CLIENT_SECRET_LOOKS_LIKE_ID',
+    }, 400);
+  }
+  if (clientSecret.length < 20) {
+    return c.json({
+      error: 'Client Secret looks too short. Paste the full secret VALUE from Azure (typically 40+ characters).',
+      code: 'CLIENT_SECRET_TOO_SHORT',
+    }, 400);
   }
   await setCfgEncrypted(c.env, K.clientId, clientId);
   await setCfgEncrypted(c.env, K.clientSecret, clientSecret);
