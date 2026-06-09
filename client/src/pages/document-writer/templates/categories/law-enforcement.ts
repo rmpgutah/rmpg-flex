@@ -2,7 +2,7 @@ import type { DocumentTemplate } from '../../types';
 import {
   AGENCY_HEADER, CONFIDENTIAL, title, section, tbl, row2, row1,
   SIG_BLOCK, DUAL_SIG_BLOCK, statutes, commonFields, caseHeader, narrative,
-  F_CASE, F_INC_DT, F_LOC, F_OFFICER, F_BADGE,
+  F_CASE, F_INC_DT, F_LOC, F_OFFICER, F_BADGE, field,
 } from '../_shared';
 
 // 35 Utah law-enforcement specialty templates.
@@ -25,9 +25,9 @@ export const LE_TEMPLATES: DocumentTemplate[] = [
     ]),
     content: `${AGENCY_HEADER}${title('TRAFFIC STOP REPORT')}${statutes(['76-8-301', '41-6a-401'])}
 ${caseHeader()}
-${tbl(row2('<strong>Driver:</strong> {{driver_name}}', '<strong>DL #:</strong> {{driver_dl}}') +
-      row2('<strong>Plate:</strong> {{vehicle_plate}}', '<strong>Vehicle:</strong> {{vehicle_desc}}') +
-      row2('<strong>Violation:</strong> {{violation}}', '<strong>Outcome:</strong> {{outcome}}'))}
+${tbl(row2(field('Driver', '{{driver_name}}'), field('DL #', '{{driver_dl}}')) +
+      row2(field('Plate', '{{vehicle_plate}}'), field('Vehicle', '{{vehicle_desc}}')) +
+      row2(field('Violation', '{{violation}}'), field('Outcome', '{{outcome}}')))}
 ${section('BASIS FOR STOP')}<p>Probable cause / reasonable suspicion observed:</p><p>&nbsp;</p>
 ${section('DRIVER INTERACTION')}<p>Identification verified ☐ &nbsp; Insurance verified ☐ &nbsp; Registration valid ☐</p><p>&nbsp;</p>
 ${section('PASSENGERS')}<p>&nbsp;</p>
@@ -46,15 +46,15 @@ ${narrative()}${SIG_BLOCK}`,
     ]),
     content: `${AGENCY_HEADER}${title('DUI INVESTIGATION', '#7a2418')}${statutes(['41-6a-502', '41-6a-517'])}
 ${caseHeader()}
-${tbl(row2('<strong>Driver:</strong> {{driver_name}}', '<strong>DOB:</strong> {{driver_dob}}') + row2('<strong>BAC:</strong> {{bac}}', '<strong>Method:</strong>'))}
+${tbl(row2(field('Driver', '{{driver_name}}'), field('DOB', '{{driver_dob}}')) + row2(field('BAC', '{{bac}}'), field('Method', '')))}
 ${section('OBSERVATIONS — DRIVING')}<p>Weaving ☐ Speed ☐ Wide turn ☐ Failure to maintain lane ☐ Other: ____________</p>
 ${section('OBSERVATIONS — PERSON')}<p>Odor of alcohol ☐ &nbsp; Slurred speech ☐ &nbsp; Bloodshot eyes ☐ &nbsp; Unsteady ☐</p>
 ${section('STANDARDIZED FIELD SOBRIETY TESTS')}
-<table style="width:100%;border-collapse:collapse;font-size:11px;">
-<tr style="background:#f0f0f0;"><th style="border:1px solid #333;padding:4px;">Test</th><th style="border:1px solid #333;padding:4px;">Clues</th><th style="border:1px solid #333;padding:4px;">Result</th></tr>
-<tr><td style="border:1px solid #333;padding:4px;">HGN</td><td style="border:1px solid #333;padding:4px;">/6</td><td style="border:1px solid #333;padding:4px;">&nbsp;</td></tr>
-<tr><td style="border:1px solid #333;padding:4px;">Walk &amp; Turn</td><td style="border:1px solid #333;padding:4px;">/8</td><td style="border:1px solid #333;padding:4px;">&nbsp;</td></tr>
-<tr><td style="border:1px solid #333;padding:4px;">One Leg Stand</td><td style="border:1px solid #333;padding:4px;">/4</td><td style="border:1px solid #333;padding:4px;">&nbsp;</td></tr>
+<table>
+<tr><th>Test</th><th>Clues</th><th>Result</th></tr>
+<tr><td>HGN</td><td>/6</td><td>&nbsp;</td></tr>
+<tr><td>Walk &amp; Turn</td><td>/8</td><td>&nbsp;</td></tr>
+<tr><td>One Leg Stand</td><td>/4</td><td>&nbsp;</td></tr>
 </table>
 ${section('CHEMICAL TEST')}<p>Implied consent read ☐ &nbsp;&nbsp; Test: ☐ Breath ☐ Blood ☐ Refused</p>
 ${narrative('Upon contact I observed...')}${SIG_BLOCK}`,
@@ -71,8 +71,8 @@ ${narrative('Upon contact I observed...')}${SIG_BLOCK}`,
       { key: 'court_date', label: 'Court Date', source: 'manual' },
     ]),
     content: `${AGENCY_HEADER}${title('NOTICE TO APPEAR')}${caseHeader()}
-${tbl(row2('<strong>Defendant:</strong> {{defendant}}', '<strong>Charges:</strong> {{charges}}') +
-      row2('<strong>Court:</strong> {{court}}', '<strong>Appear by:</strong> {{court_date}}'))}
+${tbl(row2(field('Defendant', '{{defendant}}'), field('Charges', '{{charges}}')) +
+      row2(field('Court', '{{court}}'), field('Appear by', '{{court_date}}')))}
 ${section('ACKNOWLEDGEMENT')}<p>I promise to appear at the time and place stated above. Failure to appear may result in a warrant for my arrest.</p>${DUAL_SIG_BLOCK}`,
   },
   {
@@ -86,7 +86,7 @@ ${section('ACKNOWLEDGEMENT')}<p>I promise to appear at the time and place stated
       { key: 'weather', label: 'Weather/Roadway', source: 'manual' },
     ]),
     content: `${AGENCY_HEADER}${title('TRAFFIC ACCIDENT REPORT')}${caseHeader()}
-${tbl(row2('<strong>V1 Driver:</strong> {{v1_driver}}', '<strong>V2 Driver:</strong> {{v2_driver}}') + row1('<strong>Weather / Roadway:</strong> {{weather}}'))}
+${tbl(row2(field('V1 Driver', '{{v1_driver}}'), field('V2 Driver', '{{v2_driver}}')) + row1(field('Weather / Roadway', '{{weather}}')))}
 ${section('VEHICLE 1')}<p>Plate / Y/M/M / Damage:</p><p>&nbsp;</p>
 ${section('VEHICLE 2')}<p>&nbsp;</p>
 ${section('INJURIES')}<p>&nbsp;</p>
@@ -104,8 +104,8 @@ ${narrative()}${SIG_BLOCK}`,
       { key: 'tow_reason', label: 'Reason', source: 'manual' },
     ]),
     content: `${AGENCY_HEADER}${title('VEHICLE TOW / IMPOUND')}${caseHeader()}
-${tbl(row2('<strong>Plate:</strong> {{plate}}', '<strong>Tow Co.:</strong> {{tow_company}}') + row1('<strong>Reason:</strong> {{tow_reason}}'))}
-${section('INVENTORY')}<table style="width:100%;border-collapse:collapse;font-size:11px;"><tr style="background:#f0f0f0;"><th style="border:1px solid #333;padding:4px;">Location</th><th style="border:1px solid #333;padding:4px;">Item</th></tr><tr><td style="border:1px solid #333;padding:4px;">&nbsp;</td><td style="border:1px solid #333;padding:4px;">&nbsp;</td></tr></table>
+${tbl(row2(field('Plate', '{{plate}}'), field('Tow Co.', '{{tow_company}}')) + row1(field('Reason', '{{tow_reason}}')))}
+${section('INVENTORY')}<table><tr><th>Location</th><th>Item</th></tr><tr><td>&nbsp;</td><td>&nbsp;</td></tr></table>
 ${section('CONDITION ON RELEASE')}<p>&nbsp;</p>${SIG_BLOCK}`,
   },
 
@@ -122,7 +122,7 @@ ${section('CONDITION ON RELEASE')}<p>&nbsp;</p>${SIG_BLOCK}`,
     ]),
     content: `${AGENCY_HEADER}${title('DOMESTIC VIOLENCE REPORT', '#7a2418')}${statutes(['77-36-2.1 (mandatory arrest)', '77-36-1 (cohabitant)'])}
 ${caseHeader()}
-${tbl(row2('<strong>Victim:</strong> {{victim}}', '<strong>Suspect:</strong> {{suspect}}') + row1('<strong>Cohabitant Relationship:</strong> {{relationship}}'))}
+${tbl(row2(field('Victim', '{{victim}}'), field('Suspect', '{{suspect}}')) + row1(field('Cohabitant Relationship', '{{relationship}}')))}
 ${section('PREDOMINANT AGGRESSOR DETERMINATION')}<p>Comparative injury, defensive wounds, history, prior threats, fear:</p><p>&nbsp;</p>
 ${section('VICTIM STATEMENT')}<p>Victim was Mirandized of right to refuse statement: ☐</p><p>&nbsp;</p>
 ${section('CHILDREN PRESENT')}<p>Names / DOB / observed: ____________________________________________</p>
@@ -177,7 +177,7 @@ ${DUAL_SIG_BLOCK}`,
     ]),
     content: `${AGENCY_HEADER}${title('JUVENILE CONTACT REPORT')}${statutes(['80-6-201', '78A-6-113'])}
 ${caseHeader()}
-${tbl(row2('<strong>Juvenile:</strong> {{juvenile_name}}', '<strong>DOB:</strong> {{juvenile_dob}}') + row1('<strong>Parent/Guardian:</strong> {{parent}}'))}
+${tbl(row2(field('Juvenile', '{{juvenile_name}}'), field('DOB', '{{juvenile_dob}}')) + row1(field('Parent/Guardian', '{{parent}}')))}
 ${section('CIRCUMSTANCES OF CONTACT')}<p>&nbsp;</p>
 ${section('PARENT/GUARDIAN NOTIFICATION')}<p>Notified at: ____________ via ☐ phone ☐ in-person ☐ unable</p>
 ${section('DISPOSITION')}<p>☐ Released to parent ☐ Released to DCFS ☐ Detention ☐ Citation/Referral ☐ Other</p>
@@ -195,7 +195,7 @@ ${narrative()}${SIG_BLOCK}`,
       { key: 'clothing', label: 'Clothing', source: 'manual' },
     ]),
     content: `${AGENCY_HEADER}${title('MISSING JUVENILE REPORT', '#7a2418')}${caseHeader()}
-${tbl(row2('<strong>Juvenile:</strong> {{juvenile_name}}', '<strong>Last seen:</strong> {{last_seen}}') + row1('<strong>Clothing:</strong> {{clothing}}'))}
+${tbl(row2(field('Juvenile', '{{juvenile_name}}'), field('Last seen', '{{last_seen}}')) + row1(field('Clothing', '{{clothing}}')))}
 ${section('AMBER ALERT CRITERIA')}<p>☐ Confirmed abduction ☐ Imminent danger ☐ Sufficient descriptive info ☐ Under 18 — All four required to activate.</p>
 ${section('NCIC ENTRY')}<p>NCIC# ____________ &nbsp; Entered by: ____________ &nbsp; Time: ____________</p>
 ${section('SEARCH AREAS / KNOWN ASSOCIATES')}<p>&nbsp;</p>${narrative()}${SIG_BLOCK}`,
@@ -209,7 +209,7 @@ ${section('SEARCH AREAS / KNOWN ASSOCIATES')}<p>&nbsp;</p>${narrative()}${SIG_BL
       { key: 'student', label: 'Student', source: 'manual' },
     ]),
     content: `${AGENCY_HEADER}${title('SRO INCIDENT REPORT')}${caseHeader()}
-${tbl(row2('<strong>School:</strong> {{school}}', '<strong>Student:</strong> {{student}}'))}
+${tbl(row2(field('School', '{{school}}'), field('Student', '{{student}}')))}
 ${section('CIRCUMSTANCES')}<p>&nbsp;</p>${section('ADMINISTRATION NOTIFIED')}<p>Name / Time: ____________</p>${section('PARENT NOTIFICATION')}<p>&nbsp;</p>${section('OUTCOME')}<p>☐ Discipline only ☐ Citation ☐ Arrest ☐ Welfare check</p>${SIG_BLOCK}`,
   },
 
@@ -302,7 +302,7 @@ ${section('POST-OPS')}<p>Evidence inventory below.</p>${narrative()}${SIG_BLOCK}
     statutes: ['41-6a-212', '53-13-103'],
     fields: commonFields([{ key: 'suspect_vehicle', label: 'Suspect Vehicle', source: 'manual' }, { key: 'duration', label: 'Duration', source: 'manual' }, { key: 'distance', label: 'Distance', source: 'manual' }]),
     content: `${AGENCY_HEADER}${title('VEHICLE PURSUIT REPORT', '#7a2418')}${caseHeader()}
-${tbl(row2('<strong>Suspect Vehicle:</strong> {{suspect_vehicle}}', '<strong>Duration:</strong> {{duration}}') + row2('<strong>Distance:</strong> {{distance}}', '<strong>Top Speed:</strong>'))}
+${tbl(row2(field('Suspect Vehicle', '{{suspect_vehicle}}'), field('Duration', '{{duration}}')) + row2(field('Distance', '{{distance}}'), field('Top Speed', '')))}
 ${section('JUSTIFICATION')}<p>Reasonable suspicion / probable cause for pursuit:</p><p>&nbsp;</p>
 ${section('CONDITIONS')}<p>Weather: ____ Traffic: ____ Road: ____ Pedestrians: ____</p>
 ${section('SUPERVISOR NOTIFICATION')}<p>Notified at ____ &nbsp; Authorized continuation ☐ Terminated ☐</p>
@@ -341,7 +341,7 @@ ${section('CERTIFICATION ON FILE')}<p>Last certification date: ____ &nbsp; Disci
     tags: ['found', 'property', 'lost'],
     fields: commonFields([{ key: 'finder', label: 'Finder', source: 'manual' }, { key: 'item', label: 'Item', source: 'manual' }]),
     content: `${AGENCY_HEADER}${title('FOUND PROPERTY')}${caseHeader()}
-${tbl(row2('<strong>Finder:</strong> {{finder}}', '<strong>Item:</strong> {{item}}'))}
+${tbl(row2(field('Finder', '{{finder}}'), field('Item', '{{item}}')))}
 ${section('LOCATION FOUND')}<p>&nbsp;</p>${section('OWNER NOTIFICATION ATTEMPTS')}<p>&nbsp;</p>${section('STORAGE LOCATION')}<p>&nbsp;</p>${SIG_BLOCK}`,
   },
   {
@@ -352,7 +352,7 @@ ${section('LOCATION FOUND')}<p>&nbsp;</p>${section('OWNER NOTIFICATION ATTEMPTS'
     fields: commonFields([{ key: 'victim', label: 'Victim', source: 'manual' }]),
     content: `${AGENCY_HEADER}${title('STOLEN PROPERTY REPORT')}${caseHeader()}
 <p><strong>Victim:</strong> {{victim}}</p>
-${section('ITEM(S) STOLEN')}<table style="width:100%;border-collapse:collapse;font-size:11px;"><tr style="background:#f0f0f0;"><th style="border:1px solid #333;padding:4px;">Description</th><th style="border:1px solid #333;padding:4px;">Make/Model</th><th style="border:1px solid #333;padding:4px;">Serial #</th><th style="border:1px solid #333;padding:4px;">Value</th></tr><tr><td style="border:1px solid #333;padding:4px;">&nbsp;</td><td style="border:1px solid #333;padding:4px;">&nbsp;</td><td style="border:1px solid #333;padding:4px;">&nbsp;</td><td style="border:1px solid #333;padding:4px;">&nbsp;</td></tr></table>
+${section('ITEM(S) STOLEN')}<table><tr><th>Description</th><th>Make/Model</th><th>Serial #</th><th>Value</th></tr><tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr></table>
 ${section('NCIC ENTRY')}<p>Entered by: ____ &nbsp; NCIC# ____ &nbsp; Time: ____</p>${narrative()}${SIG_BLOCK}`,
   },
   {
@@ -362,7 +362,7 @@ ${section('NCIC ENTRY')}<p>Entered by: ____ &nbsp; NCIC# ____ &nbsp; Time: ____<
     statutes: ['76-6-106'],
     fields: commonFields([{ key: 'victim', label: 'Victim', source: 'manual' }, { key: 'damage_value', label: 'Damage Value $', source: 'manual' }]),
     content: `${AGENCY_HEADER}${title('CRIMINAL MISCHIEF')}${caseHeader()}
-${tbl(row2('<strong>Victim:</strong> {{victim}}', '<strong>Damage Value:</strong> ${{damage_value}}'))}
+${tbl(row2(field('Victim', '{{victim}}'), field('Damage Value', '${{damage_value}}')))}
 ${section('DESCRIPTION OF DAMAGE')}<p>&nbsp;</p>${section('PHOTOS')}<p>&nbsp;</p>${narrative()}${SIG_BLOCK}`,
   },
   {
@@ -371,7 +371,7 @@ ${section('DESCRIPTION OF DAMAGE')}<p>&nbsp;</p>${section('PHOTOS')}<p>&nbsp;</p
     tags: ['burglary', 'b&e'], statutes: ['76-6-202'],
     fields: commonFields([{ key: 'victim', label: 'Victim', source: 'manual' }, { key: 'address', label: 'Address', source: 'manual' }]),
     content: `${AGENCY_HEADER}${title('BURGLARY REPORT')}${caseHeader()}
-${tbl(row2('<strong>Victim:</strong> {{victim}}', '<strong>Address:</strong> {{address}}'))}
+${tbl(row2(field('Victim', '{{victim}}'), field('Address', '{{address}}')))}
 ${section('POINT OF ENTRY')}<p>&nbsp;</p>${section('METHOD')}<p>Pry / Glass / Open / Key / Other:</p>
 ${section('ITEMS TAKEN')}<p>&nbsp;</p>${section('EVIDENCE PROCESSING')}<p>Prints ☐ DNA ☐ Toolmarks ☐ Surveillance ☐</p>${narrative()}${SIG_BLOCK}`,
   },
@@ -394,7 +394,7 @@ ${section('WEAPON')}<p>☐ Firearm ☐ Knife ☐ Implied ☐ Other</p>${section(
     statutes: ['53-10-203'],
     fields: commonFields([{ key: 'name', label: 'Name', source: 'manual' }, { key: 'dob', label: 'DOB', source: 'manual' }, { key: 'last_seen', label: 'Last Seen', source: 'manual' }]),
     content: `${AGENCY_HEADER}${title('MISSING ADULT REPORT')}${caseHeader()}
-${tbl(row2('<strong>Name:</strong> {{name}}', '<strong>DOB:</strong> {{dob}}') + row1('<strong>Last Seen:</strong> {{last_seen}}'))}
+${tbl(row2(field('Name', '{{name}}'), field('DOB', '{{dob}}')) + row1(field('Last Seen', '{{last_seen}}')))}
 ${section('AT-RISK FACTORS')}<p>☐ Medical ☐ Mental health ☐ Suicidal ☐ Dementia ☐ Foul play suspected ☐ Disabled</p>
 ${section('PHYSICAL DESCRIPTION')}<p>Height/Weight/Hair/Eyes/Marks: ____</p>
 ${section('CIRCUMSTANCES')}<p>&nbsp;</p>${section('NCIC ENTRY')}<p>NCIC# ____ Time: ____</p>${narrative()}${SIG_BLOCK}`,
@@ -415,7 +415,7 @@ ${section('LAST SEEN')}<p>&nbsp;</p>${section('VEHICLE')}<p>&nbsp;</p>${section(
     tags: ['welfare', 'check'],
     fields: commonFields([{ key: 'subject', label: 'Subject', source: 'manual' }, { key: 'requestor', label: 'Requestor', source: 'manual' }]),
     content: `${AGENCY_HEADER}${title('WELFARE CHECK')}${caseHeader()}
-${tbl(row2('<strong>Subject:</strong> {{subject}}', '<strong>Requestor:</strong> {{requestor}}'))}
+${tbl(row2(field('Subject', '{{subject}}'), field('Requestor', '{{requestor}}')))}
 ${section('REASON FOR CHECK')}<p>&nbsp;</p>${section('OBSERVATIONS ON ARRIVAL')}<p>&nbsp;</p>${section('CONTACT / ENTRY')}<p>☐ Contact made ☐ Forced entry (exigency) ☐ No answer ☐ Refused contact</p>${section('OUTCOME')}<p>☐ Subject OK ☐ Mental crisis ☐ Medical transport ☐ Deceased</p>${narrative()}${SIG_BLOCK}`,
   },
   {
@@ -471,7 +471,7 @@ ${section('PURPOSE OF SUPPLEMENT')}<p>&nbsp;</p>${narrative()}${SIG_BLOCK}`,
       { key: 'caution', label: 'Caution Notes', source: 'manual' },
     ],
     content: `${AGENCY_HEADER}${title('BOLO — ATTEMPT TO LOCATE', '#7a2418')}
-${tbl(row2('<strong>Subject:</strong> {{subject}}', '<strong>Wanted For:</strong> {{wanted_for}}') + row1('<strong>Caution:</strong> {{caution}}'))}
+${tbl(row2(field('Subject', '{{subject}}'), field('Wanted For', '{{wanted_for}}')) + row1(field('Caution', '{{caution}}')))}
 ${section('DESCRIPTION')}<p>&nbsp;</p>${section('LAST KNOWN AREAS')}<p>&nbsp;</p>${section('CONTACT')}<p>If located, contact: ____________</p>${SIG_BLOCK}`,
   },
   {
@@ -480,7 +480,7 @@ ${section('DESCRIPTION')}<p>&nbsp;</p>${section('LAST KNOWN AREAS')}<p>&nbsp;</p
     tags: ['property', 'release', 'receipt'],
     fields: commonFields([{ key: 'owner', label: 'Owner', source: 'manual' }, { key: 'items', label: 'Items', source: 'manual' }]),
     content: `${AGENCY_HEADER}${title('PROPERTY RELEASE RECEIPT')}${caseHeader()}
-${tbl(row2('<strong>Owner:</strong> {{owner}}', '<strong>Items:</strong> {{items}}'))}
+${tbl(row2(field('Owner', '{{owner}}'), field('Items', '{{items}}')))}
 <p>I acknowledge receipt of the above-described property in good condition.</p>${DUAL_SIG_BLOCK}`,
   },
   {
@@ -489,7 +489,7 @@ ${tbl(row2('<strong>Owner:</strong> {{owner}}', '<strong>Items:</strong> {{items
     tags: ['gang', 'stg', 'intel'],
     fields: commonFields([{ key: 'subject', label: 'Subject', source: 'manual' }, { key: 'affiliation', label: 'Suspected Affiliation', source: 'manual' }]),
     content: `${AGENCY_HEADER}${title('GANG CONTACT')}${CONFIDENTIAL}${caseHeader()}
-${tbl(row2('<strong>Subject:</strong> {{subject}}', '<strong>Suspected Affiliation:</strong> {{affiliation}}'))}
+${tbl(row2(field('Subject', '{{subject}}'), field('Suspected Affiliation', '{{affiliation}}')))}
 ${section('VALIDATION CRITERIA')}<p>☐ Self-admission ☐ Tattoos ☐ Colors ☐ Associates ☐ Documents ☐ Photos ☐ FI by other LE</p>
 ${section('OBSERVATIONS')}<p>&nbsp;</p>${SIG_BLOCK}`,
   },
@@ -509,7 +509,7 @@ ${section('OBSERVATIONS')}<p>&nbsp;</p>${SIG_BLOCK}`,
     statutes: ['77-7-3'],
     fields: commonFields([{ key: 'warrant_no', label: 'Warrant #', source: 'manual' }, { key: 'subject', label: 'Subject', source: 'manual' }]),
     content: `${AGENCY_HEADER}${title('ARREST WARRANT SERVICE')}${caseHeader()}
-${tbl(row2('<strong>Warrant #:</strong> {{warrant_no}}', '<strong>Subject:</strong> {{subject}}'))}
+${tbl(row2(field('Warrant #', '{{warrant_no}}'), field('Subject', '{{subject}}')))}
 ${section('MANNER OF SERVICE')}<p>☐ Knock &amp; announce ☐ Surrounded &amp; called out ☐ Tactical entry ☐ Public contact</p>
 ${section('OUTCOME')}<p>&nbsp;</p>${narrative()}${SIG_BLOCK}`,
   },
@@ -520,7 +520,7 @@ ${section('OUTCOME')}<p>&nbsp;</p>${narrative()}${SIG_BLOCK}`,
     statutes: ['77-23-1', '77-23-210'],
     fields: commonFields([{ key: 'warrant_no', label: 'Warrant #', source: 'manual' }, { key: 'address', label: 'Premises', source: 'manual' }]),
     content: `${AGENCY_HEADER}${title('SEARCH WARRANT EXECUTION')}${caseHeader()}
-${tbl(row2('<strong>Warrant #:</strong> {{warrant_no}}', '<strong>Premises:</strong> {{address}}'))}
+${tbl(row2(field('Warrant #', '{{warrant_no}}'), field('Premises', '{{address}}')))}
 ${section('ENTRY')}<p>☐ Knock &amp; announce (delay ____ sec) ☐ No-knock authorized ☐ Forced entry</p>
 ${section('PERSONS PRESENT')}<p>&nbsp;</p>${section('AREAS SEARCHED')}<p>&nbsp;</p>${section('PROPERTY SEIZED — RETURN ATTACHED')}<p>&nbsp;</p>${SIG_BLOCK}`,
   },

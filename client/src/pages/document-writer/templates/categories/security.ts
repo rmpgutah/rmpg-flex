@@ -1,7 +1,7 @@
 import type { DocumentTemplate } from '../../types';
 import {
   AGENCY_HEADER, CONFIDENTIAL, title, section, tbl, row2, row1,
-  SIG_BLOCK, DUAL_SIG_BLOCK, narrative, F_OFFICER, F_BADGE,
+  SIG_BLOCK, DUAL_SIG_BLOCK, narrative, F_OFFICER, F_BADGE, field,
 } from '../_shared';
 
 // 25 private security / contract client templates.
@@ -17,8 +17,8 @@ export const SEC_TEMPLATES: DocumentTemplate[] = [
       { key: 'date', label: 'Date', source: 'manual' },
     ],
     content: `${AGENCY_HEADER}${title('DAILY ACTIVITY REPORT')}
-${tbl(row2('<strong>Site:</strong> {{site}}', '<strong>Shift:</strong> {{shift}}') + row2('<strong>Officer:</strong> {{officer}}', '<strong>Date:</strong> {{date}}'))}
-${section('SHIFT LOG')}<table style="width:100%;border-collapse:collapse;font-size:11px;"><tr style="background:#f0f0f0;"><th style="border:1px solid #333;padding:4px;width:15%;">Time</th><th style="border:1px solid #333;padding:4px;">Activity</th></tr><tr><td style="border:1px solid #333;padding:4px;">&nbsp;</td><td style="border:1px solid #333;padding:4px;">&nbsp;</td></tr><tr><td style="border:1px solid #333;padding:4px;">&nbsp;</td><td style="border:1px solid #333;padding:4px;">&nbsp;</td></tr><tr><td style="border:1px solid #333;padding:4px;">&nbsp;</td><td style="border:1px solid #333;padding:4px;">&nbsp;</td></tr></table>
+${tbl(row2(field('Site', '{{site}}'), field('Shift', '{{shift}}')) + row2(field('Officer', '{{officer}}'), field('Date', '{{date}}')))}
+${section('SHIFT LOG')}<table><tr><th>Time</th><th>Activity</th></tr><tr><td>&nbsp;</td><td>&nbsp;</td></tr><tr><td>&nbsp;</td><td>&nbsp;</td></tr><tr><td>&nbsp;</td><td>&nbsp;</td></tr></table>
 ${section('PATROLS')}<p>Patrols completed: ____ &nbsp;&nbsp; Tour markers hit: ____</p>
 ${section('OBSERVATIONS')}<p>&nbsp;</p>${section('MAINTENANCE / SAFETY ISSUES')}<p>&nbsp;</p>${SIG_BLOCK}`,
   },
@@ -33,7 +33,7 @@ ${section('OBSERVATIONS')}<p>&nbsp;</p>${section('MAINTENANCE / SAFETY ISSUES')}
       { key: 'officer', label: 'Officer', source: 'user' },
     ],
     content: `${AGENCY_HEADER}${title('INCIDENT REPORT — CLIENT NOTIFICATION')}
-${tbl(row2('<strong>Client:</strong> {{client}}', '<strong>Site:</strong> {{site}}') + row2('<strong>Date/Time:</strong> {{date}}', '<strong>Officer:</strong> {{officer}}'))}
+${tbl(row2(field('Client', '{{client}}'), field('Site', '{{site}}')) + row2(field('Date/Time', '{{date}}'), field('Officer', '{{officer}}')))}
 ${section('SUMMARY')}<p>&nbsp;</p>
 ${section('DETAILS')}<p>&nbsp;</p>
 ${section('ACTIONS TAKEN')}<p>&nbsp;</p>
@@ -50,13 +50,13 @@ ${section('RECOMMENDATIONS')}<p>&nbsp;</p>
       { key: 'version', label: 'Version', source: 'manual' },
     ],
     content: `${AGENCY_HEADER}${title('POST ORDERS')}
-${tbl(row2('<strong>Site:</strong> {{site}}', '<strong>Effective:</strong> {{effective_date}}') + row1('<strong>Version:</strong> {{version}}'))}
+${tbl(row2(field('Site', '{{site}}'), field('Effective', '{{effective_date}}')) + row1(field('Version', '{{version}}')))}
 ${section('1. MISSION')}<p>&nbsp;</p>
 ${section('2. POST HOURS &amp; COVERAGE')}<p>&nbsp;</p>
 ${section('3. UNIFORM &amp; EQUIPMENT')}<p>&nbsp;</p>
 ${section('4. PATROL ROUTE &amp; TOUR MARKERS')}<p>&nbsp;</p>
 ${section('5. ACCESS CONTROL')}<p>&nbsp;</p>
-${section('6. EMERGENCY CONTACTS')}<table style="width:100%;border-collapse:collapse;font-size:11px;"><tr><th style="border:1px solid #333;padding:4px;">Role</th><th style="border:1px solid #333;padding:4px;">Name</th><th style="border:1px solid #333;padding:4px;">Phone</th></tr><tr><td style="border:1px solid #333;padding:4px;">Site Mgr</td><td style="border:1px solid #333;padding:4px;">&nbsp;</td><td style="border:1px solid #333;padding:4px;">&nbsp;</td></tr><tr><td style="border:1px solid #333;padding:4px;">RMPG Dispatch</td><td style="border:1px solid #333;padding:4px;">&nbsp;</td><td style="border:1px solid #333;padding:4px;">&nbsp;</td></tr></table>
+${section('6. EMERGENCY CONTACTS')}<table><tr><th>Role</th><th>Name</th><th>Phone</th></tr><tr><td>Site Mgr</td><td>&nbsp;</td><td>&nbsp;</td></tr><tr><td>RMPG Dispatch</td><td>&nbsp;</td><td>&nbsp;</td></tr></table>
 ${section('7. USE OF FORCE POLICY')}<p>Refer to RMPG UoF policy. Force may only be used in self-defense or defense of others, proportional to the threat.</p>
 ${section('8. REPORTING REQUIREMENTS')}<p>DAR every shift; immediate notification of any incident.</p>${DUAL_SIG_BLOCK}`,
   },
@@ -67,8 +67,8 @@ ${section('8. REPORTING REQUIREMENTS')}<p>DAR every shift; immediate notificatio
     fields: [{ key: 'site', label: 'Site', source: 'manual' }, { key: 'officer', label: 'Officer', source: 'user' }],
     content: `${AGENCY_HEADER}${title('TOUR ROUND SHEET')}
 <p><strong>Site:</strong> {{site}} &nbsp; <strong>Officer:</strong> {{officer}}</p>
-<table style="width:100%;border-collapse:collapse;font-size:11px;"><tr style="background:#f0f0f0;"><th style="border:1px solid #333;padding:4px;">Tour Marker</th><th style="border:1px solid #333;padding:4px;">Pass 1</th><th style="border:1px solid #333;padding:4px;">Pass 2</th><th style="border:1px solid #333;padding:4px;">Pass 3</th><th style="border:1px solid #333;padding:4px;">Pass 4</th></tr>
-${[1,2,3,4,5,6,7,8].map(i => `<tr><td style="border:1px solid #333;padding:4px;">Marker ${i}</td><td style="border:1px solid #333;padding:4px;">&nbsp;</td><td style="border:1px solid #333;padding:4px;">&nbsp;</td><td style="border:1px solid #333;padding:4px;">&nbsp;</td><td style="border:1px solid #333;padding:4px;">&nbsp;</td></tr>`).join('')}</table>${SIG_BLOCK}`,
+<table><tr><th>Tour Marker</th><th>Pass 1</th><th>Pass 2</th><th>Pass 3</th><th>Pass 4</th></tr>
+${[1,2,3,4,5,6,7,8].map(i => `<tr><td>Marker ${i}</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>`).join('')}</table>${SIG_BLOCK}`,
   },
   {
     id: 'sec-access-log', name: 'Access Control Log', category: 'sec-access',
@@ -77,7 +77,7 @@ ${[1,2,3,4,5,6,7,8].map(i => `<tr><td style="border:1px solid #333;padding:4px;"
     fields: [{ key: 'site', label: 'Site', source: 'manual' }, { key: 'date', label: 'Date', source: 'manual' }],
     content: `${AGENCY_HEADER}${title('ACCESS CONTROL LOG')}
 <p><strong>Site:</strong> {{site}} &nbsp; <strong>Date:</strong> {{date}}</p>
-<table style="width:100%;border-collapse:collapse;font-size:10px;"><tr style="background:#f0f0f0;"><th style="border:1px solid #333;padding:3px;">In</th><th style="border:1px solid #333;padding:3px;">Out</th><th style="border:1px solid #333;padding:3px;">Name</th><th style="border:1px solid #333;padding:3px;">Company</th><th style="border:1px solid #333;padding:3px;">Host</th><th style="border:1px solid #333;padding:3px;">Badge#</th><th style="border:1px solid #333;padding:3px;">Notes</th></tr>${Array(10).fill(0).map(()=>`<tr><td style="border:1px solid #333;padding:3px;height:18px;">&nbsp;</td><td style="border:1px solid #333;padding:3px;">&nbsp;</td><td style="border:1px solid #333;padding:3px;">&nbsp;</td><td style="border:1px solid #333;padding:3px;">&nbsp;</td><td style="border:1px solid #333;padding:3px;">&nbsp;</td><td style="border:1px solid #333;padding:3px;">&nbsp;</td><td style="border:1px solid #333;padding:3px;">&nbsp;</td></tr>`).join('')}</table>`,
+<table><tr><th>In</th><th>Out</th><th>Name</th><th>Company</th><th>Host</th><th>Badge#</th><th>Notes</th></tr>${Array(10).fill(0).map(()=>`<tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>`).join('')}</table>`,
   },
   {
     id: 'sec-keylog', name: 'Key / Badge Issue Log', category: 'sec-access',
@@ -85,7 +85,7 @@ ${[1,2,3,4,5,6,7,8].map(i => `<tr><td style="border:1px solid #333;padding:4px;"
     tags: ['key', 'badge', 'issue'],
     fields: [{ key: 'site', label: 'Site', source: 'manual' }],
     content: `${AGENCY_HEADER}${title('KEY / BADGE ISSUE LOG')}<p><strong>Site:</strong> {{site}}</p>
-<table style="width:100%;border-collapse:collapse;font-size:10px;"><tr style="background:#f0f0f0;"><th style="border:1px solid #333;padding:3px;">Issued</th><th style="border:1px solid #333;padding:3px;">To</th><th style="border:1px solid #333;padding:3px;">Item</th><th style="border:1px solid #333;padding:3px;">Returned</th><th style="border:1px solid #333;padding:3px;">By</th></tr>${Array(8).fill(0).map(()=>`<tr><td style="border:1px solid #333;padding:3px;height:18px;">&nbsp;</td><td style="border:1px solid #333;padding:3px;">&nbsp;</td><td style="border:1px solid #333;padding:3px;">&nbsp;</td><td style="border:1px solid #333;padding:3px;">&nbsp;</td><td style="border:1px solid #333;padding:3px;">&nbsp;</td></tr>`).join('')}</table>`,
+<table><tr><th>Issued</th><th>To</th><th>Item</th><th>Returned</th><th>By</th></tr>${Array(8).fill(0).map(()=>`<tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>`).join('')}</table>`,
   },
   {
     id: 'sec-trespass', name: 'Trespass Notice', category: 'sec-access',
@@ -118,7 +118,7 @@ ${section('REASON')}<p>&nbsp;</p>${section('METHOD')}<p>☐ Verbal request ☐ E
     tags: ['breach', 'notification', 'incident'],
     fields: [{ key: 'client', label: 'Client', source: 'manual' }, { key: 'site', label: 'Site', source: 'manual' }, { key: 'date', label: 'Date/Time', source: 'manual' }],
     content: `${AGENCY_HEADER}${title('SECURITY BREACH NOTIFICATION', '#7a2418')}
-${tbl(row2('<strong>Client:</strong> {{client}}', '<strong>Site:</strong> {{site}}') + row1('<strong>Discovered:</strong> {{date}}'))}
+${tbl(row2(field('Client', '{{client}}'), field('Site', '{{site}}')) + row1(field('Discovered', '{{date}}')))}
 ${section('NATURE OF BREACH')}<p>&nbsp;</p>${section('SCOPE')}<p>&nbsp;</p>${section('IMMEDIATE RESPONSE')}<p>&nbsp;</p>${section('RECOMMENDED REMEDIATION')}<p>&nbsp;</p>${SIG_BLOCK}`,
   },
   {
@@ -134,7 +134,7 @@ ${section('NATURE OF FAILURE')}<p>&nbsp;</p>${section('IMPACT TO SECURITY POSTUR
     description: 'Hand-off log between outgoing and incoming officer',
     tags: ['pass-down', 'handoff', 'relief'],
     fields: [{ key: 'site', label: 'Site', source: 'manual' }, { key: 'out', label: 'Outgoing', source: 'manual' }, { key: 'in', label: 'Incoming', source: 'manual' }],
-    content: `${AGENCY_HEADER}${title('SHIFT PASS-DOWN')}${tbl(row2('<strong>Outgoing:</strong> {{out}}', '<strong>Incoming:</strong> {{in}}') + row1('<strong>Site:</strong> {{site}}'))}
+    content: `${AGENCY_HEADER}${title('SHIFT PASS-DOWN')}${tbl(row2(field('Outgoing', '{{out}}'), field('Incoming', '{{in}}')) + row1(field('Site', '{{site}}')))}
 ${section('OPEN ITEMS')}<p>&nbsp;</p>${section('OUTSTANDING ISSUES')}<p>&nbsp;</p>${section('EQUIPMENT STATUS')}<p>&nbsp;</p>${section('SITE CONDITIONS')}<p>&nbsp;</p>${DUAL_SIG_BLOCK}`,
   },
   {
@@ -143,7 +143,7 @@ ${section('OPEN ITEMS')}<p>&nbsp;</p>${section('OUTSTANDING ISSUES')}<p>&nbsp;</
     tags: ['vehicle', 'inspection', 'pre-shift'],
     fields: [{ key: 'vehicle', label: 'Vehicle / Unit #', source: 'manual' }, { key: 'mileage', label: 'Starting Mileage', source: 'manual' }, { key: 'officer', label: 'Officer', source: 'user' }],
     content: `${AGENCY_HEADER}${title('VEHICLE PRE-SHIFT INSPECTION')}
-${tbl(row2('<strong>Vehicle:</strong> {{vehicle}}', '<strong>Mileage:</strong> {{mileage}}') + row1('<strong>Officer:</strong> {{officer}}'))}
+${tbl(row2(field('Vehicle', '{{vehicle}}'), field('Mileage', '{{mileage}}')) + row1(field('Officer', '{{officer}}')))}
 ${section('EXTERIOR')}<p>☐ Tires ☐ Lights ☐ Body damage ☐ Plates ☐ Fluids</p>
 ${section('INTERIOR')}<p>☐ Radio ☐ Light bar ☐ Siren ☐ MDT ☐ First aid ☐ Fire ext.</p>
 ${section('NEW DAMAGE')}<p>&nbsp;</p>${SIG_BLOCK}`,
@@ -172,7 +172,7 @@ ${section('EMS')}<p>Notified at ____ Arrived at ____ &nbsp; Transport: ☐ Y ☐
     tags: ['uof', 'force', 'private'],
     fields: [{ key: 'subject', label: 'Subject', source: 'manual' }, { key: 'officer', label: 'Officer', source: 'user' }, { key: 'site', label: 'Site', source: 'manual' }],
     content: `${AGENCY_HEADER}${title('USE-OF-FORCE — PRIVATE SECURITY', '#7a2418')}${CONFIDENTIAL}
-${tbl(row2('<strong>Subject:</strong> {{subject}}', '<strong>Officer:</strong> {{officer}}') + row1('<strong>Site:</strong> {{site}}'))}
+${tbl(row2(field('Subject', '{{subject}}'), field('Officer', '{{officer}}')) + row1(field('Site', '{{site}}')))}
 ${section('JUSTIFICATION (self-defense / defense of others / citizen&rsquo;s arrest 77-7-3)')}<p>&nbsp;</p>
 ${section('FORCE LEVEL USED')}<p>☐ Presence ☐ Verbal ☐ Soft hands ☐ Hard hands ☐ Intermediate (OC/baton/CEW) ☐ Lethal</p>
 ${section('INJURIES')}<p>Subject: ____ &nbsp; Officer: ____</p>
@@ -208,7 +208,7 @@ ${section('LOCATION ON PREMISES')}<p>&nbsp;</p>${section('CONDITIONS')}<p>Wet �
     description: 'Event security plan — posts, equipment, contingency',
     tags: ['event', 'staffing', 'plan'],
     fields: [{ key: 'event', label: 'Event', source: 'manual' }, { key: 'date', label: 'Date', source: 'manual' }, { key: 'venue', label: 'Venue', source: 'manual' }],
-    content: `${AGENCY_HEADER}${title('SPECIAL EVENT STAFFING PLAN')}${tbl(row2('<strong>Event:</strong> {{event}}', '<strong>Date:</strong> {{date}}') + row1('<strong>Venue:</strong> {{venue}}'))}
+    content: `${AGENCY_HEADER}${title('SPECIAL EVENT STAFFING PLAN')}${tbl(row2(field('Event', '{{event}}'), field('Date', '{{date}}')) + row1(field('Venue', '{{venue}}')))}
 ${section('THREAT ASSESSMENT')}<p>&nbsp;</p>${section('POSTS')}<p>&nbsp;</p>${section('UNIFORM / EQUIPMENT')}<p>&nbsp;</p>${section('COMMS PLAN')}<p>&nbsp;</p>${section('MEDICAL / EVAC')}<p>&nbsp;</p>${section('CONTINGENCIES')}<p>&nbsp;</p>${SIG_BLOCK}`,
   },
   {
@@ -216,7 +216,7 @@ ${section('THREAT ASSESSMENT')}<p>&nbsp;</p>${section('POSTS')}<p>&nbsp;</p>${se
     description: 'Damage to client property — RMPG or third-party caused',
     tags: ['damage', 'client', 'property'],
     fields: [{ key: 'site', label: 'Site', source: 'manual' }, { key: 'description', label: 'Item Damaged', source: 'manual' }],
-    content: `${AGENCY_HEADER}${title('PROPERTY DAMAGE — CLIENT')}${tbl(row2('<strong>Site:</strong> {{site}}', '<strong>Item:</strong> {{description}}'))}
+    content: `${AGENCY_HEADER}${title('PROPERTY DAMAGE — CLIENT')}${tbl(row2(field('Site', '{{site}}'), field('Item', '{{description}}')))}
 ${section('CAUSE')}<p>&nbsp;</p>${section('RESPONSIBLE PARTY')}<p>&nbsp;</p>${section('ESTIMATED COST')}<p>$ ____</p>${section('PHOTOS TAKEN')}<p>☐ Y ☐ N</p>${SIG_BLOCK}`,
   },
   {
@@ -233,7 +233,7 @@ ${section('LOCATION OF DISCOVERY')}<p>&nbsp;</p>${section('SUBJECT RESPONSE')}<p
     tags: ['snow', 'ice', 'winter', 'inspection'],
     fields: [{ key: 'site', label: 'Site', source: 'manual' }, { key: 'officer', label: 'Officer', source: 'user' }],
     content: `${AGENCY_HEADER}${title('WINTER CONDITIONS INSPECTION')}<p><strong>Site:</strong> {{site}} &nbsp; <strong>Officer:</strong> {{officer}}</p>
-<table style="width:100%;border-collapse:collapse;font-size:10px;"><tr style="background:#f0f0f0;"><th style="border:1px solid #333;padding:3px;">Time</th><th style="border:1px solid #333;padding:3px;">Area</th><th style="border:1px solid #333;padding:3px;">Condition</th><th style="border:1px solid #333;padding:3px;">Action Taken</th></tr>${Array(8).fill(0).map(()=>`<tr><td style="border:1px solid #333;padding:3px;height:18px;">&nbsp;</td><td style="border:1px solid #333;padding:3px;">&nbsp;</td><td style="border:1px solid #333;padding:3px;">&nbsp;</td><td style="border:1px solid #333;padding:3px;">&nbsp;</td></tr>`).join('')}</table>`,
+<table><tr><th>Time</th><th>Area</th><th>Condition</th><th>Action Taken</th></tr>${Array(8).fill(0).map(()=>`<tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>`).join('')}</table>`,
   },
   {
     id: 'sec-customer-complaint', name: 'Customer Complaint', category: 'sec-client',
@@ -257,7 +257,7 @@ ${section('DETAILS')}<p>&nbsp;</p>${section('ACTION REQUIRED')}<p>&nbsp;</p>${SI
     description: 'Roll-up of week\'s activity for client',
     tags: ['weekly', 'summary', 'client'],
     fields: [{ key: 'client', label: 'Client', source: 'manual' }, { key: 'site', label: 'Site', source: 'manual' }, { key: 'week', label: 'Week Of', source: 'manual' }],
-    content: `${AGENCY_HEADER}${title('WEEKLY SITE SUMMARY')}${tbl(row2('<strong>Client:</strong> {{client}}', '<strong>Site:</strong> {{site}}') + row1('<strong>Week of:</strong> {{week}}'))}
+    content: `${AGENCY_HEADER}${title('WEEKLY SITE SUMMARY')}${tbl(row2(field('Client', '{{client}}'), field('Site', '{{site}}')) + row1(field('Week of', '{{week}}')))}
 ${section('HOURS COVERED')}<p>&nbsp;</p>${section('INCIDENTS')}<p>&nbsp;</p>${section('TOUR COMPLIANCE')}<p>&nbsp;</p>${section('NOTABLE OBSERVATIONS')}<p>&nbsp;</p>${section('RECOMMENDATIONS')}<p>&nbsp;</p>${SIG_BLOCK}`,
   },
 ];

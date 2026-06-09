@@ -3,15 +3,8 @@ import { LE_TEMPLATES } from './categories/law-enforcement';
 import { SEC_TEMPLATES } from './categories/security';
 import { HR_TEMPLATES } from './categories/hr';
 import { LEGAL_TEMPLATES } from './categories/legal';
+import { AGENCY_HEADER, title, section, field } from './_shared';
 
-const AGENCY_HEADER = `
-<div style="text-align:center;margin-bottom:24px;">
-  <p style="font-size:16px;font-weight:bold;margin:0;">ROCKY MOUNTAIN PROTECTIVE GROUP</p>
-  <p style="font-size:11px;margin:2px 0;color:#666;">Law Enforcement &amp; Private Security Services</p>
-  <p style="font-size:10px;margin:2px 0;color:#888;">Salt Lake City, Utah</p>
-  <hr style="border:none;border-top:2px solid #d4a017;margin:8px 0;" />
-</div>
-`;
 
 export const TEMPLATES: DocumentTemplate[] = [
   {
@@ -30,68 +23,68 @@ export const TEMPLATES: DocumentTemplate[] = [
       { key: 'disposition', label: 'Disposition', source: 'manual' },
     ],
     content: `${AGENCY_HEADER}
-<h1 style="text-align:center;font-size:18px;">INCIDENT REPORT</h1>
+${title('INCIDENT REPORT')}
 
-<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
+<table>
   <tr>
-    <td style="border:1px solid #333;padding:6px;width:50%;"><strong>Case #:</strong> {{case_number}}</td>
-    <td style="border:1px solid #333;padding:6px;width:50%;"><strong>Date of Report:</strong> {{date_of_report}}</td>
+    <td>${field('Case #', '{{case_number}}')}</td>
+    <td>${field('Date of Report', '{{date_of_report}}')}</td>
   </tr>
   <tr>
-    <td style="border:1px solid #333;padding:6px;"><strong>Incident Date/Time:</strong> {{incident_date}}</td>
-    <td style="border:1px solid #333;padding:6px;"><strong>Location:</strong> {{location}}</td>
+    <td>${field('Incident Date/Time', '{{incident_date}}')}</td>
+    <td>${field('Location', '{{location}}')}</td>
   </tr>
   <tr>
-    <td style="border:1px solid #333;padding:6px;"><strong>Reporting Officer:</strong> {{reporting_officer}}</td>
-    <td style="border:1px solid #333;padding:6px;"><strong>Badge #:</strong> {{badge_number}}</td>
+    <td>${field('Reporting Officer', '{{reporting_officer}}')}</td>
+    <td>${field('Badge #', '{{badge_number}}')}</td>
   </tr>
   <tr>
-    <td style="border:1px solid #333;padding:6px;"><strong>Offense:</strong> {{offense}}</td>
-    <td style="border:1px solid #333;padding:6px;"><strong>Disposition:</strong> {{disposition}}</td>
+    <td>${field('Offense', '{{offense}}')}</td>
+    <td>${field('Disposition', '{{disposition}}')}</td>
   </tr>
 </table>
 
-<h2 style="font-size:14px;border-bottom:1px solid #333;">INVOLVED PERSONS</h2>
+${section('INVOLVED PERSONS')}
 <p><em>List all victims, suspects, witnesses, and other involved parties below.</em></p>
-<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
-  <tr style="background:#1a1a1a;">
-    <th style="border:1px solid #333;padding:6px;text-align:left;">Name</th>
-    <th style="border:1px solid #333;padding:6px;text-align:left;">Role</th>
-    <th style="border:1px solid #333;padding:6px;text-align:left;">DOB</th>
-    <th style="border:1px solid #333;padding:6px;text-align:left;">Contact</th>
+<table>
+  <tr>
+    <th>Name</th>
+    <th>Role</th>
+    <th>DOB</th>
+    <th>Contact</th>
   </tr>
   <tr>
-    <td style="border:1px solid #333;padding:6px;">&nbsp;</td>
-    <td style="border:1px solid #333;padding:6px;">&nbsp;</td>
-    <td style="border:1px solid #333;padding:6px;">&nbsp;</td>
-    <td style="border:1px solid #333;padding:6px;">&nbsp;</td>
+    <td>&nbsp;</td>
+    <td>&nbsp;</td>
+    <td>&nbsp;</td>
+    <td>&nbsp;</td>
   </tr>
 </table>
 
-<h2 style="font-size:14px;border-bottom:1px solid #333;">NARRATIVE</h2>
+${section('NARRATIVE')}
 <p>On {{incident_date}}, I, {{reporting_officer}} (Badge #{{badge_number}}), responded to {{location}} regarding a report of {{offense}}.</p>
 <p>&nbsp;</p>
 <p>&nbsp;</p>
 
-<h2 style="font-size:14px;border-bottom:1px solid #333;">EVIDENCE / PROPERTY</h2>
+${section('EVIDENCE / PROPERTY')}
 <p><em>Describe any evidence collected, property seized, or items of evidentiary value.</em></p>
 <p>&nbsp;</p>
 
-<h2 style="font-size:14px;border-bottom:1px solid #333;">DISPOSITION &amp; RECOMMENDATIONS</h2>
+${section('DISPOSITION &amp; RECOMMENDATIONS')}
 <p>Case disposition: {{disposition}}</p>
 <p>&nbsp;</p>
 
 <div style="margin-top:48px;">
-  <table style="width:100%;border:none;">
+  <table>
     <tr>
-      <td style="width:60%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td>
-      <td style="width:10%;">&nbsp;</td>
-      <td style="width:30%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td>
+      <td>&nbsp;</td>
+      <td>&nbsp;</td>
+      <td>&nbsp;</td>
     </tr>
     <tr>
-      <td style="font-size:10px;color:#666;">Officer Signature</td>
+      <td>Officer Signature</td>
       <td>&nbsp;</td>
-      <td style="font-size:10px;color:#666;">Date</td>
+      <td>Date</td>
     </tr>
   </table>
 </div>`,
@@ -112,62 +105,62 @@ export const TEMPLATES: DocumentTemplate[] = [
       { key: 'badge_number', label: 'Badge Number', source: 'user' },
     ],
     content: `${AGENCY_HEADER}
-<h1 style="text-align:center;font-size:18px;">ARREST REPORT</h1>
+${title('ARREST REPORT')}
 
-<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
+<table>
   <tr>
-    <td style="border:1px solid #333;padding:6px;width:50%;"><strong>Case #:</strong> {{case_number}}</td>
-    <td style="border:1px solid #333;padding:6px;"><strong>Arrest Date/Time:</strong> {{arrest_date}}</td>
+    <td>${field('Case #', '{{case_number}}')}</td>
+    <td>${field('Arrest Date/Time', '{{arrest_date}}')}</td>
   </tr>
   <tr>
-    <td style="border:1px solid #333;padding:6px;"><strong>Arrestee:</strong> {{arrestee_name}}</td>
-    <td style="border:1px solid #333;padding:6px;"><strong>DOB:</strong> {{arrestee_dob}}</td>
+    <td>${field('Arrestee', '{{arrestee_name}}')}</td>
+    <td>${field('DOB', '{{arrestee_dob}}')}</td>
   </tr>
   <tr>
-    <td style="border:1px solid #333;padding:6px;"><strong>Location:</strong> {{location}}</td>
-    <td style="border:1px solid #333;padding:6px;"><strong>Charges:</strong> {{charges}}</td>
+    <td>${field('Location', '{{location}}')}</td>
+    <td>${field('Charges', '{{charges}}')}</td>
   </tr>
   <tr>
-    <td style="border:1px solid #333;padding:6px;"><strong>Arresting Officer:</strong> {{arresting_officer}}</td>
-    <td style="border:1px solid #333;padding:6px;"><strong>Badge #:</strong> {{badge_number}}</td>
+    <td>${field('Arresting Officer', '{{arresting_officer}}')}</td>
+    <td>${field('Badge #', '{{badge_number}}')}</td>
   </tr>
 </table>
 
-<h2 style="font-size:14px;border-bottom:1px solid #333;">MIRANDA WARNING</h2>
+${section('MIRANDA WARNING')}
 <p>Miranda rights were read to the arrestee at __________ hours.</p>
 <p>☐ Arrestee invoked right to silence &nbsp;&nbsp; ☐ Arrestee waived rights &nbsp;&nbsp; ☐ Written waiver obtained</p>
 
-<h2 style="font-size:14px;border-bottom:1px solid #333;">PROBABLE CAUSE STATEMENT</h2>
+${section('PROBABLE CAUSE STATEMENT')}
 <p>&nbsp;</p>
 <p>&nbsp;</p>
 
-<h2 style="font-size:14px;border-bottom:1px solid #333;">SEARCH INCIDENT TO ARREST</h2>
+${section('SEARCH INCIDENT TO ARREST')}
 <p><em>Describe items found during search.</em></p>
 <p>&nbsp;</p>
 
-<h2 style="font-size:14px;border-bottom:1px solid #333;">BOOKING INFORMATION</h2>
-<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
+${section('BOOKING INFORMATION')}
+<table>
   <tr>
-    <td style="border:1px solid #333;padding:6px;width:50%;"><strong>Booked at:</strong></td>
-    <td style="border:1px solid #333;padding:6px;"><strong>Booking #:</strong></td>
+    <td>${field('Booked at', '')}</td>
+    <td>${field('Booking #', '')}</td>
   </tr>
   <tr>
-    <td style="border:1px solid #333;padding:6px;"><strong>Bail Amount:</strong></td>
-    <td style="border:1px solid #333;padding:6px;"><strong>Court Date:</strong></td>
+    <td>${field('Bail Amount', '')}</td>
+    <td>${field('Court Date', '')}</td>
   </tr>
 </table>
 
 <div style="margin-top:48px;">
-  <table style="width:100%;border:none;">
+  <table>
     <tr>
-      <td style="width:60%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td>
-      <td style="width:10%;">&nbsp;</td>
-      <td style="width:30%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td>
+      <td>&nbsp;</td>
+      <td>&nbsp;</td>
+      <td>&nbsp;</td>
     </tr>
     <tr>
-      <td style="font-size:10px;color:#666;">Arresting Officer Signature</td>
+      <td>Arresting Officer Signature</td>
       <td>&nbsp;</td>
-      <td style="font-size:10px;color:#666;">Date</td>
+      <td>Date</td>
     </tr>
   </table>
 </div>`,
@@ -186,78 +179,78 @@ export const TEMPLATES: DocumentTemplate[] = [
       { key: 'subject_name', label: 'Subject Name', source: 'manual' },
     ],
     content: `${AGENCY_HEADER}
-<h1 style="text-align:center;font-size:18px;color:#c0392b;">USE OF FORCE REPORT</h1>
+${title('USE OF FORCE REPORT', '#c0392b')}
 <p style="text-align:center;font-size:10px;color:#888;">CONFIDENTIAL — This report is subject to internal review and may be discoverable in litigation.</p>
 
-<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
+<table>
   <tr>
-    <td style="border:1px solid #333;padding:6px;width:50%;"><strong>Case #:</strong> {{case_number}}</td>
-    <td style="border:1px solid #333;padding:6px;"><strong>Date/Time:</strong> {{incident_date}}</td>
+    <td>${field('Case #', '{{case_number}}')}</td>
+    <td>${field('Date/Time', '{{incident_date}}')}</td>
   </tr>
   <tr>
-    <td style="border:1px solid #333;padding:6px;"><strong>Officer:</strong> {{reporting_officer}} (Badge #{{badge_number}})</td>
-    <td style="border:1px solid #333;padding:6px;"><strong>Subject:</strong> {{subject_name}}</td>
+    <td>${field('Officer', '{{reporting_officer}} (Badge #{{badge_number}})')}</td>
+    <td>${field('Subject', '{{subject_name}}')}</td>
   </tr>
   <tr>
-    <td colspan="2" style="border:1px solid #333;padding:6px;"><strong>Location:</strong> {{location}}</td>
+    <td colspan="2">${field('Location', '{{location}}')}</td>
   </tr>
 </table>
 
-<h2 style="font-size:14px;border-bottom:1px solid #333;">TYPE OF FORCE USED</h2>
+${section('TYPE OF FORCE USED')}
 <p>☐ Physical control/takedown &nbsp; ☐ OC spray &nbsp; ☐ Taser/CEW &nbsp; ☐ Baton &nbsp; ☐ K-9 &nbsp; ☐ Firearm (discharge) &nbsp; ☐ Other</p>
 
-<h2 style="font-size:14px;border-bottom:1px solid #333;">SUBJECT RESISTANCE LEVEL</h2>
+${section('SUBJECT RESISTANCE LEVEL')}
 <p>☐ Passive resistance &nbsp; ☐ Active resistance &nbsp; ☐ Aggressive resistance &nbsp; ☐ Deadly force threat</p>
 
-<h2 style="font-size:14px;border-bottom:1px solid #333;">DE-ESCALATION ATTEMPTS</h2>
+${section('DE-ESCALATION ATTEMPTS')}
 <p><em>Describe all de-escalation techniques attempted prior to use of force.</em></p>
 <p>&nbsp;</p>
 
-<h2 style="font-size:14px;border-bottom:1px solid #333;">DETAILED NARRATIVE</h2>
+${section('DETAILED NARRATIVE')}
 <p><em>Provide a detailed, chronological account of the events leading to, during, and after the use of force.</em></p>
 <p>&nbsp;</p>
 <p>&nbsp;</p>
 
-<h2 style="font-size:14px;border-bottom:1px solid #333;">INJURIES</h2>
-<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
+${section('INJURIES')}
+<table>
   <tr>
-    <td style="border:1px solid #333;padding:6px;width:50%;"><strong>Officer injuries:</strong></td>
-    <td style="border:1px solid #333;padding:6px;"><strong>Subject injuries:</strong></td>
+    <td>${field('Officer injuries', '')}</td>
+    <td>${field('Subject injuries', '')}</td>
   </tr>
   <tr>
-    <td style="border:1px solid #333;padding:6px;"><strong>Medical treatment provided:</strong> ☐ Yes ☐ No</td>
-    <td style="border:1px solid #333;padding:6px;"><strong>EMS responded:</strong> ☐ Yes ☐ No</td>
+    <td>${field('Medical treatment provided', '☐ Yes ☐ No')}</td>
+    <td>${field('EMS responded', '☐ Yes ☐ No')}</td>
   </tr>
 </table>
 
-<h2 style="font-size:14px;border-bottom:1px solid #333;">WITNESSES</h2>
+${section('WITNESSES')}
 <p>&nbsp;</p>
 
-<h2 style="font-size:14px;border-bottom:1px solid #333;">BODY CAMERA / DASHCAM</h2>
+${section('BODY CAMERA / DASHCAM')}
 <p>☐ Body camera activated &nbsp; ☐ Dashcam recording &nbsp; ☐ No recording available</p>
 <p>Camera ID / File reference: ________________</p>
 
 <div style="margin-top:48px;">
-  <table style="width:100%;border:none;">
+  <table>
     <tr>
-      <td style="width:60%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td>
-      <td style="width:10%;">&nbsp;</td>
-      <td style="width:30%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td>
-    </tr>
-    <tr>
-      <td style="font-size:10px;color:#666;">Officer Signature</td>
       <td>&nbsp;</td>
-      <td style="font-size:10px;color:#666;">Date</td>
-    </tr>
-    <tr>
-      <td style="width:60%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td>
-      <td style="width:10%;">&nbsp;</td>
-      <td style="width:30%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td>
-    </tr>
-    <tr>
-      <td style="font-size:10px;color:#666;">Supervisor Signature</td>
       <td>&nbsp;</td>
-      <td style="font-size:10px;color:#666;">Date</td>
+      <td>&nbsp;</td>
+    </tr>
+    <tr>
+      <td>Officer Signature</td>
+      <td>&nbsp;</td>
+      <td>Date</td>
+    </tr>
+    <tr>
+      <td>&nbsp;</td>
+      <td>&nbsp;</td>
+      <td>&nbsp;</td>
+    </tr>
+    <tr>
+      <td>Supervisor Signature</td>
+      <td>&nbsp;</td>
+      <td>Date</td>
     </tr>
   </table>
 </div>`,
@@ -275,38 +268,38 @@ export const TEMPLATES: DocumentTemplate[] = [
       { key: 'date_of_report', label: 'Date of Report', source: 'manual' },
     ],
     content: `${AGENCY_HEADER}
-<h1 style="text-align:center;font-size:18px;">SUPPLEMENTAL REPORT</h1>
+${title('SUPPLEMENTAL REPORT')}
 
-<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
+<table>
   <tr>
-    <td style="border:1px solid #333;padding:6px;width:33%;"><strong>Original Case #:</strong> {{case_number}}</td>
-    <td style="border:1px solid #333;padding:6px;width:33%;"><strong>Supplement #:</strong> {{supplement_number}}</td>
-    <td style="border:1px solid #333;padding:6px;width:34%;"><strong>Date:</strong> {{date_of_report}}</td>
+    <td>${field('Original Case #', '{{case_number}}')}</td>
+    <td>${field('Supplement #', '{{supplement_number}}')}</td>
+    <td>${field('Date', '{{date_of_report}}')}</td>
   </tr>
   <tr>
-    <td colspan="2" style="border:1px solid #333;padding:6px;"><strong>Officer:</strong> {{reporting_officer}}</td>
-    <td style="border:1px solid #333;padding:6px;"><strong>Badge #:</strong> {{badge_number}}</td>
+    <td colspan="2">${field('Officer', '{{reporting_officer}}')}</td>
+    <td>${field('Badge #', '{{badge_number}}')}</td>
   </tr>
 </table>
 
-<h2 style="font-size:14px;border-bottom:1px solid #333;">PURPOSE OF SUPPLEMENT</h2>
+${section('PURPOSE OF SUPPLEMENT')}
 <p>☐ Follow-up investigation &nbsp; ☐ Additional witness statement &nbsp; ☐ Evidence update &nbsp; ☐ Status change &nbsp; ☐ Other</p>
 
-<h2 style="font-size:14px;border-bottom:1px solid #333;">NARRATIVE</h2>
+${section('NARRATIVE')}
 <p>&nbsp;</p>
 <p>&nbsp;</p>
 
 <div style="margin-top:48px;">
-  <table style="width:100%;border:none;">
+  <table>
     <tr>
-      <td style="width:60%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td>
-      <td style="width:10%;">&nbsp;</td>
-      <td style="width:30%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td>
+      <td>&nbsp;</td>
+      <td>&nbsp;</td>
+      <td>&nbsp;</td>
     </tr>
     <tr>
-      <td style="font-size:10px;color:#666;">Officer Signature</td>
+      <td>Officer Signature</td>
       <td>&nbsp;</td>
-      <td style="font-size:10px;color:#666;">Date</td>
+      <td>Date</td>
     </tr>
   </table>
 </div>`,
@@ -324,62 +317,62 @@ export const TEMPLATES: DocumentTemplate[] = [
       { key: 'location', label: 'Collection Location', source: 'cad', cadPath: 'call.address' },
     ],
     content: `${AGENCY_HEADER}
-<h1 style="text-align:center;font-size:18px;">EVIDENCE / PROPERTY LOG</h1>
+${title('EVIDENCE / PROPERTY LOG')}
 
-<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
+<table>
   <tr>
-    <td style="border:1px solid #333;padding:6px;width:50%;"><strong>Case #:</strong> {{case_number}}</td>
-    <td style="border:1px solid #333;padding:6px;"><strong>Date Collected:</strong> {{date_collected}}</td>
+    <td>${field('Case #', '{{case_number}}')}</td>
+    <td>${field('Date Collected', '{{date_collected}}')}</td>
   </tr>
   <tr>
-    <td style="border:1px solid #333;padding:6px;"><strong>Collecting Officer:</strong> {{reporting_officer}} (#{{badge_number}})</td>
-    <td style="border:1px solid #333;padding:6px;"><strong>Location:</strong> {{location}}</td>
+    <td>${field('Collecting Officer', '{{reporting_officer}} (#{{badge_number}})')}</td>
+    <td>${field('Location', '{{location}}')}</td>
   </tr>
 </table>
 
-<h2 style="font-size:14px;border-bottom:1px solid #333;">ITEMS</h2>
-<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
-  <tr style="background:#1a1a1a;">
-    <th style="border:1px solid #333;padding:6px;text-align:left;">Item #</th>
-    <th style="border:1px solid #333;padding:6px;text-align:left;">Description</th>
-    <th style="border:1px solid #333;padding:6px;text-align:left;">Where Found</th>
-    <th style="border:1px solid #333;padding:6px;text-align:left;">Category</th>
+${section('ITEMS')}
+<table>
+  <tr>
+    <th>Item #</th>
+    <th>Description</th>
+    <th>Where Found</th>
+    <th>Category</th>
   </tr>
   <tr>
-    <td style="border:1px solid #333;padding:6px;">1</td>
-    <td style="border:1px solid #333;padding:6px;">&nbsp;</td>
-    <td style="border:1px solid #333;padding:6px;">&nbsp;</td>
-    <td style="border:1px solid #333;padding:6px;">&nbsp;</td>
+    <td>1</td>
+    <td>&nbsp;</td>
+    <td>&nbsp;</td>
+    <td>&nbsp;</td>
   </tr>
 </table>
 
-<h2 style="font-size:14px;border-bottom:1px solid #333;">CHAIN OF CUSTODY</h2>
-<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
-  <tr style="background:#1a1a1a;">
-    <th style="border:1px solid #333;padding:6px;text-align:left;">Date/Time</th>
-    <th style="border:1px solid #333;padding:6px;text-align:left;">Released By</th>
-    <th style="border:1px solid #333;padding:6px;text-align:left;">Received By</th>
-    <th style="border:1px solid #333;padding:6px;text-align:left;">Purpose</th>
+${section('CHAIN OF CUSTODY')}
+<table>
+  <tr>
+    <th>Date/Time</th>
+    <th>Released By</th>
+    <th>Received By</th>
+    <th>Purpose</th>
   </tr>
   <tr>
-    <td style="border:1px solid #333;padding:6px;">&nbsp;</td>
-    <td style="border:1px solid #333;padding:6px;">&nbsp;</td>
-    <td style="border:1px solid #333;padding:6px;">&nbsp;</td>
-    <td style="border:1px solid #333;padding:6px;">&nbsp;</td>
+    <td>&nbsp;</td>
+    <td>&nbsp;</td>
+    <td>&nbsp;</td>
+    <td>&nbsp;</td>
   </tr>
 </table>
 
 <div style="margin-top:48px;">
-  <table style="width:100%;border:none;">
+  <table>
     <tr>
-      <td style="width:60%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td>
-      <td style="width:10%;">&nbsp;</td>
-      <td style="width:30%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td>
+      <td>&nbsp;</td>
+      <td>&nbsp;</td>
+      <td>&nbsp;</td>
     </tr>
     <tr>
-      <td style="font-size:10px;color:#666;">Collecting Officer Signature</td>
+      <td>Collecting Officer Signature</td>
       <td>&nbsp;</td>
-      <td style="font-size:10px;color:#666;">Date</td>
+      <td>Date</td>
     </tr>
   </table>
 </div>`,
@@ -396,13 +389,13 @@ export const TEMPLATES: DocumentTemplate[] = [
       { key: 'subject', label: 'Subject', source: 'manual' },
     ],
     content: `${AGENCY_HEADER}
-<h1 style="text-align:center;font-size:18px;">MEMORANDUM</h1>
+${title('MEMORANDUM')}
 
-<table style="width:100%;border:none;margin-bottom:16px;">
-  <tr><td style="padding:4px 0;width:60px;"><strong>TO:</strong></td><td style="padding:4px 0;border-bottom:1px solid #333;">{{to}}</td></tr>
-  <tr><td style="padding:4px 0;"><strong>FROM:</strong></td><td style="padding:4px 0;border-bottom:1px solid #333;">{{from}}</td></tr>
-  <tr><td style="padding:4px 0;"><strong>DATE:</strong></td><td style="padding:4px 0;border-bottom:1px solid #333;">{{date}}</td></tr>
-  <tr><td style="padding:4px 0;"><strong>RE:</strong></td><td style="padding:4px 0;border-bottom:1px solid #333;">{{subject}}</td></tr>
+<table>
+  <tr><td>${field('TO', '')}</td><td>{{to}}</td></tr>
+  <tr><td>${field('FROM', '')}</td><td>{{from}}</td></tr>
+  <tr><td>${field('DATE', '')}</td><td>{{date}}</td></tr>
+  <tr><td>${field('RE', '')}</td><td>{{subject}}</td></tr>
 </table>
 <hr style="border:none;border-top:2px solid #333;margin:16px 0;" />
 
@@ -422,15 +415,15 @@ export const TEMPLATES: DocumentTemplate[] = [
       { key: 'beat', label: 'Beat / Sector', source: 'manual' },
     ],
     content: `${AGENCY_HEADER}
-<h1 style="text-align:center;font-size:18px;">PATROL REPORT</h1>
-<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
-  <tr><td style="border:1px solid #333;padding:6px;"><strong>Officer:</strong> {{officer}}</td><td style="border:1px solid #333;padding:6px;"><strong>Date:</strong> {{shift_date}}</td></tr>
-  <tr><td style="border:1px solid #333;padding:6px;"><strong>Hours:</strong> {{shift_hours}}</td><td style="border:1px solid #333;padding:6px;"><strong>Unit:</strong> {{vehicle}}</td></tr>
-  <tr><td style="border:1px solid #333;padding:6px;" colspan="2"><strong>Beat / Sector:</strong> {{beat}}</td></tr>
+${title('PATROL REPORT')}
+<table>
+  <tr><td>${field('Officer', '{{officer}}')}</td><td>${field('Date', '{{shift_date}}')}</td></tr>
+  <tr><td>${field('Hours', '{{shift_hours}}')}</td><td>${field('Unit', '{{vehicle}}')}</td></tr>
+  <tr><td colspan="2">${field('Beat / Sector', '{{beat}}')}</td></tr>
 </table>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">AREAS PATROLLED</h2><p>&nbsp;</p>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">ACTIVITY &amp; OBSERVATIONS</h2><p>&nbsp;</p>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">CALLS RESPONDED</h2><p>&nbsp;</p>`,
+${section('AREAS PATROLLED')}<p>&nbsp;</p>
+${section('ACTIVITY &amp; OBSERVATIONS')}<p>&nbsp;</p>
+${section('CALLS RESPONDED')}<p>&nbsp;</p>`,
   },
   {
     id: 'investigation-report',
@@ -444,15 +437,15 @@ export const TEMPLATES: DocumentTemplate[] = [
       { key: 'subject', label: 'Subject of Investigation', source: 'manual' },
     ],
     content: `${AGENCY_HEADER}
-<h1 style="text-align:center;font-size:18px;">INVESTIGATION REPORT</h1>
-<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
-  <tr><td style="border:1px solid #333;padding:6px;"><strong>Case #:</strong> {{case_number}}</td><td style="border:1px solid #333;padding:6px;"><strong>Investigator:</strong> {{investigator}}</td></tr>
-  <tr><td style="border:1px solid #333;padding:6px;"><strong>Date:</strong> {{date}}</td><td style="border:1px solid #333;padding:6px;"><strong>Subject:</strong> {{subject}}</td></tr>
+${title('INVESTIGATION REPORT')}
+<table>
+  <tr><td>${field('Case #', '{{case_number}}')}</td><td>${field('Investigator', '{{investigator}}')}</td></tr>
+  <tr><td>${field('Date', '{{date}}')}</td><td>${field('Subject', '{{subject}}')}</td></tr>
 </table>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">SUMMARY</h2><p>&nbsp;</p>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">EVIDENCE</h2><p>&nbsp;</p>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">FINDINGS</h2><p>&nbsp;</p>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">CONCLUSION</h2><p>&nbsp;</p>`,
+${section('SUMMARY')}<p>&nbsp;</p>
+${section('EVIDENCE')}<p>&nbsp;</p>
+${section('FINDINGS')}<p>&nbsp;</p>
+${section('CONCLUSION')}<p>&nbsp;</p>`,
   },
   {
     id: 'training-record',
@@ -467,13 +460,13 @@ export const TEMPLATES: DocumentTemplate[] = [
       { key: 'instructor', label: 'Instructor', source: 'manual' },
     ],
     content: `${AGENCY_HEADER}
-<h1 style="text-align:center;font-size:18px;">TRAINING RECORD</h1>
-<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
-  <tr><td style="border:1px solid #333;padding:6px;"><strong>Officer:</strong> {{officer}}</td><td style="border:1px solid #333;padding:6px;"><strong>Course:</strong> {{course}}</td></tr>
-  <tr><td style="border:1px solid #333;padding:6px;"><strong>Date:</strong> {{date}}</td><td style="border:1px solid #333;padding:6px;"><strong>Hours:</strong> {{hours}}</td></tr>
-  <tr><td style="border:1px solid #333;padding:6px;" colspan="2"><strong>Instructor:</strong> {{instructor}}</td></tr>
+${title('TRAINING RECORD')}
+<table>
+  <tr><td>${field('Officer', '{{officer}}')}</td><td>${field('Course', '{{course}}')}</td></tr>
+  <tr><td>${field('Date', '{{date}}')}</td><td>${field('Hours', '{{hours}}')}</td></tr>
+  <tr><td colspan="2">${field('Instructor', '{{instructor}}')}</td></tr>
 </table>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">OBJECTIVES COVERED</h2><p>&nbsp;</p>
+${section('OBJECTIVES COVERED')}<p>&nbsp;</p>
 <p style="margin-top:40px;">_______________________________<br>Officer Signature</p>`,
   },
   {
@@ -506,11 +499,11 @@ export const TEMPLATES: DocumentTemplate[] = [
       { key: 'recorder', label: 'Recorded By', source: 'user' },
     ],
     content: `${AGENCY_HEADER}
-<h1 style="text-align:center;font-size:18px;">MEETING MINUTES</h1>
+${title('MEETING MINUTES')}
 <p><strong>Meeting:</strong> {{meeting}} &nbsp;&nbsp; <strong>Date:</strong> {{date}} &nbsp;&nbsp; <strong>Recorded by:</strong> {{recorder}}</p>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">ATTENDEES</h2><ul><li>&nbsp;</li></ul>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">DISCUSSION</h2><p>&nbsp;</p>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">ACTION ITEMS</h2><ul data-type="taskList"><li>&nbsp;</li></ul>`,
+${section('ATTENDEES')}<ul><li>&nbsp;</li></ul>
+${section('DISCUSSION')}<p>&nbsp;</p>
+${section('ACTION ITEMS')}<ul data-type="taskList"><li>&nbsp;</li></ul>`,
   },
   {
     id: 'project-proposal',
@@ -523,12 +516,12 @@ export const TEMPLATES: DocumentTemplate[] = [
       { key: 'date', label: 'Date', source: 'manual' },
     ],
     content: `${AGENCY_HEADER}
-<h1 style="text-align:center;font-size:20px;">{{title}}</h1>
+${title('{{title}}')}
 <p style="text-align:center;">Prepared by {{author}} — {{date}}</p>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">OBJECTIVE</h2><p>&nbsp;</p>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">SCOPE</h2><p>&nbsp;</p>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">BUDGET</h2><p>&nbsp;</p>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">TIMELINE</h2><p>&nbsp;</p>`,
+${section('OBJECTIVE')}<p>&nbsp;</p>
+${section('SCOPE')}<p>&nbsp;</p>
+${section('BUDGET')}<p>&nbsp;</p>
+${section('TIMELINE')}<p>&nbsp;</p>`,
   },
   {
     id: 'invoice',
@@ -541,13 +534,13 @@ export const TEMPLATES: DocumentTemplate[] = [
       { key: 'date', label: 'Date', source: 'manual' },
     ],
     content: `${AGENCY_HEADER}
-<h1 style="text-align:center;font-size:18px;">INVOICE</h1>
+${title('INVOICE')}
 <p><strong>Invoice #:</strong> {{invoice_no}} &nbsp;&nbsp; <strong>Date:</strong> {{date}}</p>
 <p><strong>Bill To:</strong> {{bill_to}}</p>
-<table style="width:100%;border-collapse:collapse;margin:12px 0;">
-  <tr style="background:#1a1a1a;"><th style="border:1px solid #333;padding:6px;text-align:left;">Description</th><th style="border:1px solid #333;padding:6px;">Qty</th><th style="border:1px solid #333;padding:6px;">Rate</th><th style="border:1px solid #333;padding:6px;">Amount</th></tr>
-  <tr><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td></tr>
-  <tr><td colspan="3" style="border:1px solid #333;padding:6px;text-align:right;"><strong>TOTAL</strong></td><td style="border:1px solid #333;padding:6px;">&nbsp;</td></tr>
+<table>
+  <tr><th>Description</th><th>Qty</th><th>Rate</th><th>Amount</th></tr>
+  <tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+  <tr><td colspan="3"><strong>TOTAL</strong></td><td>&nbsp;</td></tr>
 </table>`,
   },
   {
@@ -561,14 +554,14 @@ export const TEMPLATES: DocumentTemplate[] = [
       { key: 'date', label: 'Effective Date', source: 'manual' },
     ],
     content: `${AGENCY_HEADER}
-<h1 style="text-align:center;font-size:18px;">SERVICE AGREEMENT</h1>
+${title('SERVICE AGREEMENT')}
 <p>This agreement is entered into on {{date}} between <strong>{{party_a}}</strong> ("Provider") and <strong>{{party_b}}</strong> ("Client").</p>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">1. SCOPE OF SERVICES</h2><p>&nbsp;</p>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">2. TERM</h2><p>&nbsp;</p>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">3. COMPENSATION</h2><p>&nbsp;</p>
-<table style="width:100%;margin-top:40px;"><tr>
-  <td style="width:50%;">_______________________<br>{{party_a}}</td>
-  <td style="width:50%;">_______________________<br>{{party_b}}</td>
+${section('1. SCOPE OF SERVICES')}<p>&nbsp;</p>
+${section('2. TERM')}<p>&nbsp;</p>
+${section('3. COMPENSATION')}<p>&nbsp;</p>
+<table><tr>
+  <td>_______________________<br>{{party_a}}</td>
+  <td>_______________________<br>{{party_b}}</td>
 </tr></table>`,
   },
   {
@@ -585,43 +578,43 @@ export const TEMPLATES: DocumentTemplate[] = [
       { key: 'offense', label: 'Nature of Incident', source: 'cad', cadPath: 'call.call_type' },
     ],
     content: `${AGENCY_HEADER}
-<h1 style="text-align:center;font-size:18px;">INCIDENT NARRATIVE</h1>
-<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
+${title('INCIDENT NARRATIVE')}
+<table>
   <tr>
-    <td style="border:1px solid #333;padding:6px;width:50%;"><strong>Case #:</strong> {{case_number}}</td>
-    <td style="border:1px solid #333;padding:6px;"><strong>Date/Time:</strong> {{incident_date}}</td>
+    <td>${field('Case #', '{{case_number}}')}</td>
+    <td>${field('Date/Time', '{{incident_date}}')}</td>
   </tr>
   <tr>
-    <td style="border:1px solid #333;padding:6px;"><strong>Location:</strong> {{location}}</td>
-    <td style="border:1px solid #333;padding:6px;"><strong>Nature:</strong> {{offense}}</td>
+    <td>${field('Location', '{{location}}')}</td>
+    <td>${field('Nature', '{{offense}}')}</td>
   </tr>
   <tr>
-    <td colspan="2" style="border:1px solid #333;padding:6px;"><strong>Reporting Officer:</strong> {{reporting_officer}} (Badge #{{badge_number}})</td>
+    <td colspan="2">${field('Reporting Officer', '{{reporting_officer}} (Badge #{{badge_number}})')}</td>
   </tr>
 </table>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">SYNOPSIS</h2>
+${section('SYNOPSIS')}
 <p><em>One-sentence summary of what occurred.</em></p>
 <p>&nbsp;</p>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">NARRATIVE</h2>
+${section('NARRATIVE')}
 <p>On {{incident_date}}, I, {{reporting_officer}} (Badge #{{badge_number}}), was dispatched to {{location}} in reference to {{offense}}.</p>
 <p>Upon arrival, I observed&hellip;</p>
 <p>&nbsp;</p>
 <p>&nbsp;</p>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">ACTIONS TAKEN</h2>
+${section('ACTIONS TAKEN')}
 <p>&nbsp;</p>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">DISPOSITION</h2>
+${section('DISPOSITION')}
 <p>&nbsp;</p>
 <div style="margin-top:48px;">
-  <table style="width:100%;border:none;">
+  <table>
     <tr>
-      <td style="width:60%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td>
-      <td style="width:10%;">&nbsp;</td>
-      <td style="width:30%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td>
+      <td>&nbsp;</td>
+      <td>&nbsp;</td>
+      <td>&nbsp;</td>
     </tr>
     <tr>
-      <td style="font-size:10px;color:#666;">Officer Signature</td>
+      <td>Officer Signature</td>
       <td>&nbsp;</td>
-      <td style="font-size:10px;color:#666;">Date</td>
+      <td>Date</td>
     </tr>
   </table>
 </div>`,
@@ -640,52 +633,52 @@ export const TEMPLATES: DocumentTemplate[] = [
       { key: 'taking_officer', label: 'Statement Taken By', source: 'user' },
     ],
     content: `${AGENCY_HEADER}
-<h1 style="text-align:center;font-size:18px;">VOLUNTARY WITNESS STATEMENT</h1>
-<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
+${title('VOLUNTARY WITNESS STATEMENT')}
+<table>
   <tr>
-    <td style="border:1px solid #333;padding:6px;width:50%;"><strong>Case #:</strong> {{case_number}}</td>
-    <td style="border:1px solid #333;padding:6px;"><strong>Date:</strong> {{statement_date}}</td>
+    <td>${field('Case #', '{{case_number}}')}</td>
+    <td>${field('Date', '{{statement_date}}')}</td>
   </tr>
   <tr>
-    <td style="border:1px solid #333;padding:6px;"><strong>Witness:</strong> {{witness_name}}</td>
-    <td style="border:1px solid #333;padding:6px;"><strong>DOB:</strong> {{witness_dob}}</td>
+    <td>${field('Witness', '{{witness_name}}')}</td>
+    <td>${field('DOB', '{{witness_dob}}')}</td>
   </tr>
   <tr>
-    <td colspan="2" style="border:1px solid #333;padding:6px;"><strong>Contact:</strong> {{witness_contact}}</td>
+    <td colspan="2">${field('Contact', '{{witness_contact}}')}</td>
   </tr>
   <tr>
-    <td colspan="2" style="border:1px solid #333;padding:6px;"><strong>Statement taken by:</strong> {{taking_officer}}</td>
+    <td colspan="2">${field('Statement taken by', '{{taking_officer}}')}</td>
   </tr>
 </table>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">STATEMENT</h2>
+${section('STATEMENT')}
 <p><em>In your own words, describe what you saw, heard, or experienced. Include dates, times, and locations where possible.</em></p>
 <p>&nbsp;</p>
 <p>&nbsp;</p>
 <p>&nbsp;</p>
 <p>&nbsp;</p>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">AFFIRMATION</h2>
+${section('AFFIRMATION')}
 <p>I, {{witness_name}}, affirm that the above statement is true and correct to the best of my knowledge. I understand that providing false information to law enforcement may be a criminal offense.</p>
 <div style="margin-top:40px;">
-  <table style="width:100%;border:none;">
+  <table>
     <tr>
-      <td style="width:60%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td>
-      <td style="width:10%;">&nbsp;</td>
-      <td style="width:30%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td>
-    </tr>
-    <tr>
-      <td style="font-size:10px;color:#666;">Witness Signature</td>
       <td>&nbsp;</td>
-      <td style="font-size:10px;color:#666;">Date / Time</td>
-    </tr>
-    <tr>
-      <td style="width:60%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td>
-      <td style="width:10%;">&nbsp;</td>
-      <td style="width:30%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td>
-    </tr>
-    <tr>
-      <td style="font-size:10px;color:#666;">Officer / Witness to Signature</td>
       <td>&nbsp;</td>
-      <td style="font-size:10px;color:#666;">Date</td>
+      <td>&nbsp;</td>
+    </tr>
+    <tr>
+      <td>Witness Signature</td>
+      <td>&nbsp;</td>
+      <td>Date / Time</td>
+    </tr>
+    <tr>
+      <td>&nbsp;</td>
+      <td>&nbsp;</td>
+      <td>&nbsp;</td>
+    </tr>
+    <tr>
+      <td>Officer / Witness to Signature</td>
+      <td>&nbsp;</td>
+      <td>Date</td>
     </tr>
   </table>
 </div>`,
@@ -705,43 +698,43 @@ export const TEMPLATES: DocumentTemplate[] = [
       { key: 'badge_number', label: 'Badge Number', source: 'user' },
     ],
     content: `${AGENCY_HEADER}
-<h1 style="text-align:center;font-size:18px;">FIELD INTERVIEW CARD</h1>
-<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
+${title('FIELD INTERVIEW CARD')}
+<table>
   <tr>
-    <td style="border:1px solid #333;padding:6px;width:50%;"><strong>FI #:</strong> {{fi_number}}</td>
-    <td style="border:1px solid #333;padding:6px;"><strong>Date/Time:</strong> {{contact_date}}</td>
+    <td>${field('FI #', '{{fi_number}}')}</td>
+    <td>${field('Date/Time', '{{contact_date}}')}</td>
   </tr>
   <tr>
-    <td colspan="2" style="border:1px solid #333;padding:6px;"><strong>Location:</strong> {{location}}</td>
+    <td colspan="2">${field('Location', '{{location}}')}</td>
   </tr>
   <tr>
-    <td style="border:1px solid #333;padding:6px;"><strong>Officer:</strong> {{officer}}</td>
-    <td style="border:1px solid #333;padding:6px;"><strong>Badge #:</strong> {{badge_number}}</td>
-  </tr>
-</table>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">SUBJECT</h2>
-<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
-  <tr>
-    <td style="border:1px solid #333;padding:6px;width:50%;"><strong>Name:</strong> {{subject_name}}</td>
-    <td style="border:1px solid #333;padding:6px;"><strong>DOB:</strong> {{subject_dob}}</td>
-  </tr>
-  <tr>
-    <td style="border:1px solid #333;padding:6px;"><strong>Race/Sex:</strong></td>
-    <td style="border:1px solid #333;padding:6px;"><strong>Height/Weight:</strong></td>
-  </tr>
-  <tr>
-    <td style="border:1px solid #333;padding:6px;"><strong>Clothing:</strong></td>
-    <td style="border:1px solid #333;padding:6px;"><strong>SMT (scars/marks/tattoos):</strong></td>
-  </tr>
-  <tr>
-    <td style="border:1px solid #333;padding:6px;"><strong>Vehicle (if any):</strong></td>
-    <td style="border:1px solid #333;padding:6px;"><strong>Plate:</strong></td>
+    <td>${field('Officer', '{{officer}}')}</td>
+    <td>${field('Badge #', '{{badge_number}}')}</td>
   </tr>
 </table>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">BASIS FOR CONTACT</h2>
+${section('SUBJECT')}
+<table>
+  <tr>
+    <td>${field('Name', '{{subject_name}}')}</td>
+    <td>${field('DOB', '{{subject_dob}}')}</td>
+  </tr>
+  <tr>
+    <td>${field('Race/Sex', '')}</td>
+    <td>${field('Height/Weight', '')}</td>
+  </tr>
+  <tr>
+    <td>${field('Clothing', '')}</td>
+    <td>${field('SMT (scars/marks/tattoos)', '')}</td>
+  </tr>
+  <tr>
+    <td>${field('Vehicle (if any)', '')}</td>
+    <td>${field('Plate', '')}</td>
+  </tr>
+</table>
+${section('BASIS FOR CONTACT')}
 <p>☐ Consensual encounter &nbsp; ☐ Reasonable suspicion &nbsp; ☐ Suspicious activity &nbsp; ☐ Other</p>
 <p>&nbsp;</p>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">NOTES</h2>
+${section('NOTES')}
 <p>&nbsp;</p>
 <p>&nbsp;</p>`,
   },
@@ -758,39 +751,39 @@ export const TEMPLATES: DocumentTemplate[] = [
       { key: 'unit', label: 'Unit / Vehicle', source: 'manual' },
     ],
     content: `${AGENCY_HEADER}
-<h1 style="text-align:center;font-size:18px;">DAILY ACTIVITY LOG</h1>
-<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
+${title('DAILY ACTIVITY LOG')}
+<table>
   <tr>
-    <td style="border:1px solid #333;padding:6px;"><strong>Officer:</strong> {{officer}} (#{{badge_number}})</td>
-    <td style="border:1px solid #333;padding:6px;"><strong>Date:</strong> {{log_date}}</td>
+    <td>${field('Officer', '{{officer}} (#{{badge_number}})')}</td>
+    <td>${field('Date', '{{log_date}}')}</td>
   </tr>
   <tr>
-    <td style="border:1px solid #333;padding:6px;"><strong>Shift:</strong> {{shift}}</td>
-    <td style="border:1px solid #333;padding:6px;"><strong>Unit:</strong> {{unit}}</td>
+    <td>${field('Shift', '{{shift}}')}</td>
+    <td>${field('Unit', '{{unit}}')}</td>
   </tr>
 </table>
-<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
-  <tr style="background:#1a1a1a;">
-    <th style="border:1px solid #333;padding:6px;text-align:left;width:90px;">Time</th>
-    <th style="border:1px solid #333;padding:6px;text-align:left;width:90px;">Call / Type</th>
-    <th style="border:1px solid #333;padding:6px;text-align:left;">Activity / Location</th>
-    <th style="border:1px solid #333;padding:6px;text-align:left;width:70px;">Disp.</th>
-  </tr>
-  <tr><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td></tr>
-  <tr><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td></tr>
-  <tr><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td></tr>
-</table>
-<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
+<table>
   <tr>
-    <td style="border:1px solid #333;padding:6px;width:50%;"><strong>Beginning Mileage:</strong></td>
-    <td style="border:1px solid #333;padding:6px;"><strong>Ending Mileage:</strong></td>
+    <th>Time</th>
+    <th>Call / Type</th>
+    <th>Activity / Location</th>
+    <th>Disp.</th>
+  </tr>
+  <tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+  <tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+  <tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+</table>
+<table>
+  <tr>
+    <td>${field('Beginning Mileage', '')}</td>
+    <td>${field('Ending Mileage', '')}</td>
   </tr>
   <tr>
-    <td style="border:1px solid #333;padding:6px;"><strong>Total Miles:</strong></td>
-    <td style="border:1px solid #333;padding:6px;"><strong>Total Calls:</strong></td>
+    <td>${field('Total Miles', '')}</td>
+    <td>${field('Total Calls', '')}</td>
   </tr>
 </table>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">END-OF-SHIFT NOTES</h2>
+${section('END-OF-SHIFT NOTES')}
 <p>&nbsp;</p>`,
   },
   {
@@ -808,50 +801,50 @@ export const TEMPLATES: DocumentTemplate[] = [
       { key: 'badge_number', label: 'Badge Number', source: 'user' },
     ],
     content: `${AGENCY_HEADER}
-<h1 style="text-align:center;font-size:18px;">TRESPASS WARNING NOTICE</h1>
-<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
+${title('TRESPASS WARNING NOTICE')}
+<table>
   <tr>
-    <td style="border:1px solid #333;padding:6px;width:50%;"><strong>Case #:</strong> {{case_number}}</td>
-    <td style="border:1px solid #333;padding:6px;"><strong>Date/Time:</strong> {{warn_date}}</td>
+    <td>${field('Case #', '{{case_number}}')}</td>
+    <td>${field('Date/Time', '{{warn_date}}')}</td>
   </tr>
   <tr>
-    <td colspan="2" style="border:1px solid #333;padding:6px;"><strong>Property:</strong> {{property}}</td>
+    <td colspan="2">${field('Property', '{{property}}')}</td>
   </tr>
   <tr>
-    <td style="border:1px solid #333;padding:6px;"><strong>Subject:</strong> {{subject_name}}</td>
-    <td style="border:1px solid #333;padding:6px;"><strong>DOB:</strong> {{subject_dob}}</td>
+    <td>${field('Subject', '{{subject_name}}')}</td>
+    <td>${field('DOB', '{{subject_dob}}')}</td>
   </tr>
   <tr>
-    <td style="border:1px solid #333;padding:6px;"><strong>Issuing Officer:</strong> {{officer}}</td>
-    <td style="border:1px solid #333;padding:6px;"><strong>Badge #:</strong> {{badge_number}}</td>
+    <td>${field('Issuing Officer', '{{officer}}')}</td>
+    <td>${field('Badge #', '{{badge_number}}')}</td>
   </tr>
 </table>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">NOTICE</h2>
+${section('NOTICE')}
 <p>You, {{subject_name}}, are hereby formally warned that you are no longer permitted on the property described above. This warning is issued on behalf of the property owner or authorized agent. Returning to this property may result in your arrest for criminal trespass pursuant to applicable Utah Code.</p>
 <p><strong>This warning remains in effect until rescinded by the property owner/agent or by court order.</strong></p>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">ACKNOWLEDGMENT</h2>
+${section('ACKNOWLEDGMENT')}
 <p>☐ Subject acknowledged and signed &nbsp;&nbsp; ☐ Subject refused to sign &nbsp;&nbsp; ☐ Subject not present (served by other means)</p>
 <div style="margin-top:40px;">
-  <table style="width:100%;border:none;">
+  <table>
     <tr>
-      <td style="width:60%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td>
-      <td style="width:10%;">&nbsp;</td>
-      <td style="width:30%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td>
-    </tr>
-    <tr>
-      <td style="font-size:10px;color:#666;">Subject Signature</td>
       <td>&nbsp;</td>
-      <td style="font-size:10px;color:#666;">Date / Time</td>
-    </tr>
-    <tr>
-      <td style="width:60%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td>
-      <td style="width:10%;">&nbsp;</td>
-      <td style="width:30%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td>
-    </tr>
-    <tr>
-      <td style="font-size:10px;color:#666;">Issuing Officer Signature</td>
       <td>&nbsp;</td>
-      <td style="font-size:10px;color:#666;">Date</td>
+      <td>&nbsp;</td>
+    </tr>
+    <tr>
+      <td>Subject Signature</td>
+      <td>&nbsp;</td>
+      <td>Date / Time</td>
+    </tr>
+    <tr>
+      <td>&nbsp;</td>
+      <td>&nbsp;</td>
+      <td>&nbsp;</td>
+    </tr>
+    <tr>
+      <td>Issuing Officer Signature</td>
+      <td>&nbsp;</td>
+      <td>Date</td>
     </tr>
   </table>
 </div>`,
@@ -872,31 +865,31 @@ export const TEMPLATES: DocumentTemplate[] = [
       { key: 'badge_number', label: 'Badge Number', source: 'user' },
     ],
     content: `${AGENCY_HEADER}
-<h1 style="text-align:center;font-size:18px;">VEHICLE TOW / IMPOUND REPORT</h1>
-<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
-  <tr><td style="border:1px solid #333;padding:6px;width:50%;"><strong>Case #:</strong> {{case_number}}</td><td style="border:1px solid #333;padding:6px;"><strong>Date/Time:</strong> {{tow_date}}</td></tr>
-  <tr><td colspan="2" style="border:1px solid #333;padding:6px;"><strong>Location:</strong> {{location}}</td></tr>
-  <tr><td style="border:1px solid #333;padding:6px;"><strong>Plate:</strong> {{plate}}</td><td style="border:1px solid #333;padding:6px;"><strong>VIN:</strong> {{vin}}</td></tr>
-  <tr><td colspan="2" style="border:1px solid #333;padding:6px;"><strong>Year/Make/Model:</strong> {{make_model}}</td></tr>
-  <tr><td style="border:1px solid #333;padding:6px;"><strong>Officer:</strong> {{officer}}</td><td style="border:1px solid #333;padding:6px;"><strong>Badge #:</strong> {{badge_number}}</td></tr>
+${title('VEHICLE TOW / IMPOUND REPORT')}
+<table>
+  <tr><td>${field('Case #', '{{case_number}}')}</td><td>${field('Date/Time', '{{tow_date}}')}</td></tr>
+  <tr><td colspan="2">${field('Location', '{{location}}')}</td></tr>
+  <tr><td>${field('Plate', '{{plate}}')}</td><td>${field('VIN', '{{vin}}')}</td></tr>
+  <tr><td colspan="2">${field('Year/Make/Model', '{{make_model}}')}</td></tr>
+  <tr><td>${field('Officer', '{{officer}}')}</td><td>${field('Badge #', '{{badge_number}}')}</td></tr>
 </table>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">REASON FOR TOW</h2>
+${section('REASON FOR TOW')}
 <p>☐ Abandoned &nbsp; ☐ Arrest of operator &nbsp; ☐ Recovered stolen &nbsp; ☐ Traffic hazard &nbsp; ☐ Evidence hold &nbsp; ☐ Other</p>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">TOW COMPANY</h2>
-<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
-  <tr><td style="border:1px solid #333;padding:6px;width:50%;"><strong>Company:</strong></td><td style="border:1px solid #333;padding:6px;"><strong>Driver:</strong></td></tr>
-  <tr><td style="border:1px solid #333;padding:6px;"><strong>Stored At:</strong></td><td style="border:1px solid #333;padding:6px;"><strong>Hold Type:</strong> ☐ Owner release ☐ Police hold</td></tr>
+${section('TOW COMPANY')}
+<table>
+  <tr><td>${field('Company', '')}</td><td>${field('Driver', '')}</td></tr>
+  <tr><td>${field('Stored At', '')}</td><td>${field('Hold Type', '☐ Owner release ☐ Police hold')}</td></tr>
 </table>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">VEHICLE CONDITION &amp; INVENTORY</h2>
+${section('VEHICLE CONDITION &amp; INVENTORY')}
 <p><em>Document pre-existing damage and any property/contents inventoried.</em></p>
-<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
-  <tr style="background:#1a1a1a;"><th style="border:1px solid #333;padding:6px;text-align:left;">Item</th><th style="border:1px solid #333;padding:6px;text-align:left;">Description / Location in Vehicle</th></tr>
-  <tr><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td></tr>
-  <tr><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td></tr>
+<table>
+  <tr><th>Item</th><th>Description / Location in Vehicle</th></tr>
+  <tr><td>&nbsp;</td><td>&nbsp;</td></tr>
+  <tr><td>&nbsp;</td><td>&nbsp;</td></tr>
 </table>
-<div style="margin-top:40px;"><table style="width:100%;border:none;">
-  <tr><td style="width:60%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td><td style="width:10%;">&nbsp;</td><td style="width:30%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td></tr>
-  <tr><td style="font-size:10px;color:#666;">Officer Signature</td><td>&nbsp;</td><td style="font-size:10px;color:#666;">Date</td></tr>
+<div style="margin-top:40px;"><table>
+  <tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+  <tr><td>Officer Signature</td><td>&nbsp;</td><td>Date</td></tr>
 </table></div>`,
   },
   {
@@ -912,25 +905,25 @@ export const TEMPLATES: DocumentTemplate[] = [
       { key: 'badge_number', label: 'Badge Number', source: 'user' },
     ],
     content: `${AGENCY_HEADER}
-<h1 style="text-align:center;font-size:18px;">PROPERTY RECEIPT</h1>
-<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
-  <tr><td style="border:1px solid #333;padding:6px;width:50%;"><strong>Case #:</strong> {{case_number}}</td><td style="border:1px solid #333;padding:6px;"><strong>Date:</strong> {{receipt_date}}</td></tr>
-  <tr><td colspan="2" style="border:1px solid #333;padding:6px;"><strong>Issued To / Taken From:</strong> {{person_name}}</td></tr>
-  <tr><td style="border:1px solid #333;padding:6px;"><strong>Officer:</strong> {{officer}}</td><td style="border:1px solid #333;padding:6px;"><strong>Badge #:</strong> {{badge_number}}</td></tr>
+${title('PROPERTY RECEIPT')}
+<table>
+  <tr><td>${field('Case #', '{{case_number}}')}</td><td>${field('Date', '{{receipt_date}}')}</td></tr>
+  <tr><td colspan="2">${field('Issued To / Taken From', '{{person_name}}')}</td></tr>
+  <tr><td>${field('Officer', '{{officer}}')}</td><td>${field('Badge #', '{{badge_number}}')}</td></tr>
 </table>
 <p>☐ Property <strong>seized / taken into custody</strong> &nbsp;&nbsp; ☐ Property <strong>returned / released</strong></p>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">ITEMS</h2>
-<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
-  <tr style="background:#1a1a1a;"><th style="border:1px solid #333;padding:6px;text-align:left;">#</th><th style="border:1px solid #333;padding:6px;text-align:left;">Description</th><th style="border:1px solid #333;padding:6px;text-align:left;">Qty</th><th style="border:1px solid #333;padding:6px;text-align:left;">Serial / Identifier</th></tr>
-  <tr><td style="border:1px solid #333;padding:6px;">1</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td></tr>
-  <tr><td style="border:1px solid #333;padding:6px;">2</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td></tr>
+${section('ITEMS')}
+<table>
+  <tr><th>#</th><th>Description</th><th>Qty</th><th>Serial / Identifier</th></tr>
+  <tr><td>1</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+  <tr><td>2</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
 </table>
 <p>I acknowledge receipt of the items listed above.</p>
-<div style="margin-top:40px;"><table style="width:100%;border:none;">
-  <tr><td style="width:60%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td><td style="width:10%;">&nbsp;</td><td style="width:30%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td></tr>
-  <tr><td style="font-size:10px;color:#666;">Recipient Signature</td><td>&nbsp;</td><td style="font-size:10px;color:#666;">Date</td></tr>
-  <tr><td style="width:60%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td><td style="width:10%;">&nbsp;</td><td style="width:30%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td></tr>
-  <tr><td style="font-size:10px;color:#666;">Officer Signature</td><td>&nbsp;</td><td style="font-size:10px;color:#666;">Date</td></tr>
+<div style="margin-top:40px;"><table>
+  <tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+  <tr><td>Recipient Signature</td><td>&nbsp;</td><td>Date</td></tr>
+  <tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+  <tr><td>Officer Signature</td><td>&nbsp;</td><td>Date</td></tr>
 </table></div>`,
   },
   {
@@ -949,23 +942,23 @@ export const TEMPLATES: DocumentTemplate[] = [
       { key: 'badge_number', label: 'Badge Number', source: 'user' },
     ],
     content: `${AGENCY_HEADER}
-<h1 style="text-align:center;font-size:18px;">TRAFFIC CITATION NARRATIVE</h1>
-<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
-  <tr><td style="border:1px solid #333;padding:6px;width:50%;"><strong>Citation #:</strong> {{citation_number}}</td><td style="border:1px solid #333;padding:6px;"><strong>Date/Time:</strong> {{stop_date}}</td></tr>
-  <tr><td colspan="2" style="border:1px solid #333;padding:6px;"><strong>Location:</strong> {{location}}</td></tr>
-  <tr><td style="border:1px solid #333;padding:6px;"><strong>Driver:</strong> {{driver_name}}</td><td style="border:1px solid #333;padding:6px;"><strong>Plate:</strong> {{plate}}</td></tr>
-  <tr><td style="border:1px solid #333;padding:6px;"><strong>Violation:</strong> {{violation}}</td><td style="border:1px solid #333;padding:6px;"><strong>Officer:</strong> {{officer}} (#{{badge_number}})</td></tr>
+${title('TRAFFIC CITATION NARRATIVE')}
+<table>
+  <tr><td>${field('Citation #', '{{citation_number}}')}</td><td>${field('Date/Time', '{{stop_date}}')}</td></tr>
+  <tr><td colspan="2">${field('Location', '{{location}}')}</td></tr>
+  <tr><td>${field('Driver', '{{driver_name}}')}</td><td>${field('Plate', '{{plate}}')}</td></tr>
+  <tr><td>${field('Violation', '{{violation}}')}</td><td>${field('Officer', '{{officer}} (#{{badge_number}})')}</td></tr>
 </table>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">REASONABLE SUSPICION FOR STOP</h2>
+${section('REASONABLE SUSPICION FOR STOP')}
 <p>On {{stop_date}}, I, {{officer}} (Badge #{{badge_number}}), observed a vehicle bearing plate {{plate}} at {{location}}.</p>
 <p>&nbsp;</p>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">OBSERVATIONS / VIOLATIONS</h2>
+${section('OBSERVATIONS / VIOLATIONS')}
 <p>&nbsp;</p>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">DISPOSITION</h2>
+${section('DISPOSITION')}
 <p>☐ Citation issued &nbsp; ☐ Written warning &nbsp; ☐ Verbal warning &nbsp; ☐ Arrest &nbsp; ☐ Vehicle towed</p>
-<div style="margin-top:40px;"><table style="width:100%;border:none;">
-  <tr><td style="width:60%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td><td style="width:10%;">&nbsp;</td><td style="width:30%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td></tr>
-  <tr><td style="font-size:10px;color:#666;">Officer Signature</td><td>&nbsp;</td><td style="font-size:10px;color:#666;">Date</td></tr>
+<div style="margin-top:40px;"><table>
+  <tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+  <tr><td>Officer Signature</td><td>&nbsp;</td><td>Date</td></tr>
 </table></div>`,
   },
   {
@@ -982,23 +975,23 @@ export const TEMPLATES: DocumentTemplate[] = [
       { key: 'badge_number', label: 'Badge Number', source: 'user' },
     ],
     content: `${AGENCY_HEADER}
-<h1 style="text-align:center;font-size:20px;color:#c0392b;">⚠ BE ON THE LOOKOUT (BOLO)</h1>
-<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
-  <tr><td style="border:1px solid #333;padding:6px;width:50%;"><strong>BOLO #:</strong> {{bolo_number}}</td><td style="border:1px solid #333;padding:6px;"><strong>Issued:</strong> {{issue_date}}</td></tr>
-  <tr><td style="border:1px solid #333;padding:6px;"><strong>Related Case #:</strong> {{related_case}}</td><td style="border:1px solid #333;padding:6px;"><strong>Issued By:</strong> {{officer}} (#{{badge_number}})</td></tr>
+${title('⚠ BE ON THE LOOKOUT (BOLO)', '#c0392b')}
+<table>
+  <tr><td>${field('BOLO #', '{{bolo_number}}')}</td><td>${field('Issued', '{{issue_date}}')}</td></tr>
+  <tr><td>${field('Related Case #', '{{related_case}}')}</td><td>${field('Issued By', '{{officer}} (#{{badge_number}})')}</td></tr>
 </table>
 <p style="font-size:14px;"><strong>SUBJECT:</strong> {{subject}}</p>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">DESCRIPTION</h2>
-<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
-  <tr><td style="border:1px solid #333;padding:6px;width:50%;"><strong>Name / Aliases:</strong></td><td style="border:1px solid #333;padding:6px;"><strong>DOB / Age:</strong></td></tr>
-  <tr><td style="border:1px solid #333;padding:6px;"><strong>Race / Sex:</strong></td><td style="border:1px solid #333;padding:6px;"><strong>Height / Weight:</strong></td></tr>
-  <tr><td style="border:1px solid #333;padding:6px;"><strong>Clothing:</strong></td><td style="border:1px solid #333;padding:6px;"><strong>SMT:</strong></td></tr>
-  <tr><td style="border:1px solid #333;padding:6px;"><strong>Vehicle / Plate:</strong></td><td style="border:1px solid #333;padding:6px;"><strong>Direction of Travel:</strong></td></tr>
+${section('DESCRIPTION')}
+<table>
+  <tr><td>${field('Name / Aliases', '')}</td><td>${field('DOB / Age', '')}</td></tr>
+  <tr><td>${field('Race / Sex', '')}</td><td>${field('Height / Weight', '')}</td></tr>
+  <tr><td>${field('Clothing', '')}</td><td>${field('SMT', '')}</td></tr>
+  <tr><td>${field('Vehicle / Plate', '')}</td><td>${field('Direction of Travel', '')}</td></tr>
 </table>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">REASON / CAUTION</h2>
+${section('REASON / CAUTION')}
 <p>☐ Wanted &nbsp; ☐ Suspect &nbsp; ☐ Missing &nbsp; ☐ Witness &nbsp; ☐ Armed &amp; dangerous &nbsp; ☐ Approach with caution</p>
 <p>&nbsp;</p>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">IF LOCATED</h2>
+${section('IF LOCATED')}
 <p>Contact {{officer}} (#{{badge_number}}) or Dispatch. Reference BOLO #{{bolo_number}}.</p>`,
   },
   {
@@ -1015,24 +1008,24 @@ export const TEMPLATES: DocumentTemplate[] = [
       { key: 'county', label: 'County', source: 'manual' },
     ],
     content: `${AGENCY_HEADER}
-<h1 style="text-align:center;font-size:18px;">AFFIDAVIT FOR SEARCH WARRANT</h1>
+${title('AFFIDAVIT FOR SEARCH WARRANT')}
 <p style="text-align:center;">STATE OF UTAH, COUNTY OF {{county}}</p>
 <p>I, {{affiant}} (Badge #{{badge_number}}), being first duly sworn, depose and state the following in support of an application for a search warrant:</p>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">1. AFFIANT QUALIFICATIONS</h2>
+${section('1. AFFIANT QUALIFICATIONS')}
 <p>Your affiant is a sworn officer with Rocky Mountain Protective Group and has been so employed for ______ years. Your affiant has training and experience in&hellip;</p>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">2. PLACE / PERSON TO BE SEARCHED</h2>
+${section('2. PLACE / PERSON TO BE SEARCHED')}
 <p>{{premises}}</p>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">3. ITEMS TO BE SEIZED</h2>
+${section('3. ITEMS TO BE SEIZED')}
 <p>{{items}}</p>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">4. STATEMENT OF PROBABLE CAUSE</h2>
+${section('4. STATEMENT OF PROBABLE CAUSE')}
 <p><em>Set forth the facts establishing probable cause, in chronological detail.</em></p>
 <p>&nbsp;</p>
 <p>&nbsp;</p>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">5. CONCLUSION</h2>
+${section('5. CONCLUSION')}
 <p>Based on the foregoing, your affiant has probable cause to believe, and does believe, that the items described above will be found at the place described, and respectfully requests that a search warrant be issued.</p>
-<div style="margin-top:40px;"><table style="width:100%;border:none;">
-  <tr><td style="width:60%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td><td style="width:10%;">&nbsp;</td><td style="width:30%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td></tr>
-  <tr><td style="font-size:10px;color:#666;">Affiant Signature</td><td>&nbsp;</td><td style="font-size:10px;color:#666;">Date</td></tr>
+<div style="margin-top:40px;"><table>
+  <tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+  <tr><td>Affiant Signature</td><td>&nbsp;</td><td>Date</td></tr>
 </table></div>
 <p style="margin-top:24px;">Subscribed and sworn to before me this ______ day of ____________, 20____.</p>
 <p style="margin-top:32px;">_______________________________<br>Judge / Magistrate</p>`,
@@ -1050,17 +1043,17 @@ export const TEMPLATES: DocumentTemplate[] = [
       { key: 'badge_number', label: 'Badge Number', source: 'user' },
     ],
     content: `${AGENCY_HEADER}
-<h1 style="text-align:center;font-size:18px;">CONSENT TO SEARCH</h1>
+${title('CONSENT TO SEARCH')}
 <p><strong>Date/Time:</strong> {{consent_date}}</p>
 <p>I, <strong>{{person_name}}</strong>, having been informed of my constitutional right <u>not</u> to have a search made of the premises, vehicle, or property described below without a search warrant, and of my right to refuse to consent to such a search, hereby authorize {{officer}} (Badge #{{badge_number}}) and any assisting officers of Rocky Mountain Protective Group to conduct a complete search of:</p>
 <p style="border:1px solid #333;padding:8px;margin:12px 0;"><strong>{{location}}</strong></p>
 <p>These officers are authorized by me to take any items they may determine to be related to their investigation. This written permission is being given by me voluntarily and without threats or promises of any kind.</p>
 <p>☐ I have read this form &nbsp;&nbsp; ☐ This form was read to me &nbsp;&nbsp; ☐ I understand my rights</p>
-<div style="margin-top:40px;"><table style="width:100%;border:none;">
-  <tr><td style="width:60%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td><td style="width:10%;">&nbsp;</td><td style="width:30%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td></tr>
-  <tr><td style="font-size:10px;color:#666;">Signature of Person Consenting</td><td>&nbsp;</td><td style="font-size:10px;color:#666;">Date / Time</td></tr>
-  <tr><td style="width:60%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td><td style="width:10%;">&nbsp;</td><td style="width:30%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td></tr>
-  <tr><td style="font-size:10px;color:#666;">Witnessing Officer</td><td>&nbsp;</td><td style="font-size:10px;color:#666;">Date</td></tr>
+<div style="margin-top:40px;"><table>
+  <tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+  <tr><td>Signature of Person Consenting</td><td>&nbsp;</td><td>Date / Time</td></tr>
+  <tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+  <tr><td>Witnessing Officer</td><td>&nbsp;</td><td>Date</td></tr>
 </table></div>`,
   },
   {
@@ -1076,12 +1069,12 @@ export const TEMPLATES: DocumentTemplate[] = [
       { key: 'badge_number', label: 'Badge Number', source: 'user' },
     ],
     content: `${AGENCY_HEADER}
-<h1 style="text-align:center;font-size:18px;">MIRANDA WARNING &amp; WAIVER</h1>
-<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
-  <tr><td style="border:1px solid #333;padding:6px;width:50%;"><strong>Case #:</strong> {{case_number}}</td><td style="border:1px solid #333;padding:6px;"><strong>Date/Time:</strong> {{waiver_date}}</td></tr>
-  <tr><td style="border:1px solid #333;padding:6px;"><strong>Subject:</strong> {{subject_name}}</td><td style="border:1px solid #333;padding:6px;"><strong>Officer:</strong> {{officer}} (#{{badge_number}})</td></tr>
+${title('MIRANDA WARNING &amp; WAIVER')}
+<table>
+  <tr><td>${field('Case #', '{{case_number}}')}</td><td>${field('Date/Time', '{{waiver_date}}')}</td></tr>
+  <tr><td>${field('Subject', '{{subject_name}}')}</td><td>${field('Officer', '{{officer}} (#{{badge_number}})')}</td></tr>
 </table>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">YOUR RIGHTS</h2>
+${section('YOUR RIGHTS')}
 <ol>
   <li>You have the right to remain silent.</li>
   <li>Anything you say can and will be used against you in a court of law.</li>
@@ -1089,14 +1082,14 @@ export const TEMPLATES: DocumentTemplate[] = [
   <li>If you cannot afford to hire a lawyer, one will be appointed to represent you before any questioning if you wish.</li>
   <li>You can decide at any time to exercise these rights and not answer any questions or make any statements.</li>
 </ol>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">WAIVER</h2>
+${section('WAIVER')}
 <p>I have read this statement of my rights, or it has been read to me, and I understand what my rights are. I am willing to make a statement and answer questions. I do not want a lawyer at this time. I understand and know what I am doing. No promises or threats have been made to me and no pressure or coercion of any kind has been used against me.</p>
 <p>☐ Rights read &nbsp;&nbsp; ☐ Subject understands &nbsp;&nbsp; ☐ Subject waives &nbsp;&nbsp; ☐ Subject invokes</p>
-<div style="margin-top:40px;"><table style="width:100%;border:none;">
-  <tr><td style="width:60%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td><td style="width:10%;">&nbsp;</td><td style="width:30%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td></tr>
-  <tr><td style="font-size:10px;color:#666;">Subject Signature</td><td>&nbsp;</td><td style="font-size:10px;color:#666;">Time</td></tr>
-  <tr><td style="width:60%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td><td style="width:10%;">&nbsp;</td><td style="width:30%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td></tr>
-  <tr><td style="font-size:10px;color:#666;">Witnessing Officer</td><td>&nbsp;</td><td style="font-size:10px;color:#666;">Date</td></tr>
+<div style="margin-top:40px;"><table>
+  <tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+  <tr><td>Subject Signature</td><td>&nbsp;</td><td>Time</td></tr>
+  <tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+  <tr><td>Witnessing Officer</td><td>&nbsp;</td><td>Date</td></tr>
 </table></div>`,
   },
   {
@@ -1113,22 +1106,22 @@ export const TEMPLATES: DocumentTemplate[] = [
       { key: 'badge_number', label: 'Badge Number', source: 'user' },
     ],
     content: `${AGENCY_HEADER}
-<h1 style="text-align:center;font-size:18px;">MEDICAL TREATMENT RELEASE / REFUSAL</h1>
-<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
-  <tr><td style="border:1px solid #333;padding:6px;width:50%;"><strong>Case #:</strong> {{case_number}}</td><td style="border:1px solid #333;padding:6px;"><strong>Date/Time:</strong> {{release_date}}</td></tr>
-  <tr><td style="border:1px solid #333;padding:6px;"><strong>Patient:</strong> {{patient_name}}</td><td style="border:1px solid #333;padding:6px;"><strong>Location:</strong> {{location}}</td></tr>
-  <tr><td colspan="2" style="border:1px solid #333;padding:6px;"><strong>Officer:</strong> {{officer}} (#{{badge_number}})</td></tr>
+${title('MEDICAL TREATMENT RELEASE / REFUSAL')}
+<table>
+  <tr><td>${field('Case #', '{{case_number}}')}</td><td>${field('Date/Time', '{{release_date}}')}</td></tr>
+  <tr><td>${field('Patient', '{{patient_name}}')}</td><td>${field('Location', '{{location}}')}</td></tr>
+  <tr><td colspan="2">${field('Officer', '{{officer}} (#{{badge_number}})')}</td></tr>
 </table>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">ACTION</h2>
+${section('ACTION')}
 <p>☐ EMS summoned and patient transported &nbsp;&nbsp; ☐ Patient <strong>REFUSED</strong> medical treatment / transport</p>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">REFUSAL ACKNOWLEDGMENT</h2>
+${section('REFUSAL ACKNOWLEDGMENT')}
 <p>I, {{patient_name}}, have been advised that I may have a medical condition requiring evaluation and that refusing care may result in worsening of my condition, including permanent injury or death. I am refusing medical treatment and/or transport against the advice of emergency personnel and officers. I assume all responsibility and release Rocky Mountain Protective Group, its officers, and EMS from any liability arising from this refusal.</p>
 <p>☐ Patient is alert and oriented (A&amp;Ox4) &nbsp;&nbsp; ☐ Patient appears competent to refuse</p>
-<div style="margin-top:40px;"><table style="width:100%;border:none;">
-  <tr><td style="width:60%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td><td style="width:10%;">&nbsp;</td><td style="width:30%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td></tr>
-  <tr><td style="font-size:10px;color:#666;">Patient Signature</td><td>&nbsp;</td><td style="font-size:10px;color:#666;">Time</td></tr>
-  <tr><td style="width:60%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td><td style="width:10%;">&nbsp;</td><td style="width:30%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td></tr>
-  <tr><td style="font-size:10px;color:#666;">Witnessing Officer</td><td>&nbsp;</td><td style="font-size:10px;color:#666;">Date</td></tr>
+<div style="margin-top:40px;"><table>
+  <tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+  <tr><td>Patient Signature</td><td>&nbsp;</td><td>Time</td></tr>
+  <tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+  <tr><td>Witnessing Officer</td><td>&nbsp;</td><td>Date</td></tr>
 </table></div>`,
   },
   {
@@ -1144,36 +1137,36 @@ export const TEMPLATES: DocumentTemplate[] = [
       { key: 'badge_number', label: 'Badge Number', source: 'user' },
     ],
     content: `${AGENCY_HEADER}
-<h1 style="text-align:center;font-size:18px;">MOTOR VEHICLE CRASH REPORT</h1>
-<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
-  <tr><td style="border:1px solid #333;padding:6px;width:50%;"><strong>Case #:</strong> {{case_number}}</td><td style="border:1px solid #333;padding:6px;"><strong>Date/Time:</strong> {{crash_date}}</td></tr>
-  <tr><td colspan="2" style="border:1px solid #333;padding:6px;"><strong>Location:</strong> {{location}}</td></tr>
-  <tr><td colspan="2" style="border:1px solid #333;padding:6px;"><strong>Officer:</strong> {{officer}} (#{{badge_number}})</td></tr>
-  <tr><td style="border:1px solid #333;padding:6px;"><strong>Weather:</strong></td><td style="border:1px solid #333;padding:6px;"><strong>Road / Light Conditions:</strong></td></tr>
+${title('MOTOR VEHICLE CRASH REPORT')}
+<table>
+  <tr><td>${field('Case #', '{{case_number}}')}</td><td>${field('Date/Time', '{{crash_date}}')}</td></tr>
+  <tr><td colspan="2">${field('Location', '{{location}}')}</td></tr>
+  <tr><td colspan="2">${field('Officer', '{{officer}} (#{{badge_number}})')}</td></tr>
+  <tr><td>${field('Weather', '')}</td><td>${field('Road / Light Conditions', '')}</td></tr>
 </table>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">UNIT 1</h2>
-<table style="width:100%;border-collapse:collapse;margin-bottom:12px;">
-  <tr><td style="border:1px solid #333;padding:6px;width:50%;"><strong>Driver:</strong></td><td style="border:1px solid #333;padding:6px;"><strong>DL #:</strong></td></tr>
-  <tr><td style="border:1px solid #333;padding:6px;"><strong>Year/Make/Model:</strong></td><td style="border:1px solid #333;padding:6px;"><strong>Plate:</strong></td></tr>
-  <tr><td style="border:1px solid #333;padding:6px;"><strong>Insurance:</strong></td><td style="border:1px solid #333;padding:6px;"><strong>Damage:</strong></td></tr>
+${section('UNIT 1')}
+<table>
+  <tr><td>${field('Driver', '')}</td><td>${field('DL #', '')}</td></tr>
+  <tr><td>${field('Year/Make/Model', '')}</td><td>${field('Plate', '')}</td></tr>
+  <tr><td>${field('Insurance', '')}</td><td>${field('Damage', '')}</td></tr>
 </table>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">UNIT 2</h2>
-<table style="width:100%;border-collapse:collapse;margin-bottom:12px;">
-  <tr><td style="border:1px solid #333;padding:6px;width:50%;"><strong>Driver:</strong></td><td style="border:1px solid #333;padding:6px;"><strong>DL #:</strong></td></tr>
-  <tr><td style="border:1px solid #333;padding:6px;"><strong>Year/Make/Model:</strong></td><td style="border:1px solid #333;padding:6px;"><strong>Plate:</strong></td></tr>
-  <tr><td style="border:1px solid #333;padding:6px;"><strong>Insurance:</strong></td><td style="border:1px solid #333;padding:6px;"><strong>Damage:</strong></td></tr>
+${section('UNIT 2')}
+<table>
+  <tr><td>${field('Driver', '')}</td><td>${field('DL #', '')}</td></tr>
+  <tr><td>${field('Year/Make/Model', '')}</td><td>${field('Plate', '')}</td></tr>
+  <tr><td>${field('Insurance', '')}</td><td>${field('Damage', '')}</td></tr>
 </table>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">INJURIES</h2>
+${section('INJURIES')}
 <p>☐ None &nbsp; ☐ Possible &nbsp; ☐ Non-incapacitating &nbsp; ☐ Incapacitating &nbsp; ☐ Fatal &nbsp;&nbsp;|&nbsp;&nbsp; EMS: ☐ Yes ☐ No</p>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">CONTRIBUTING FACTORS</h2>
+${section('CONTRIBUTING FACTORS')}
 <p>☐ Speed &nbsp; ☐ Failure to yield &nbsp; ☐ Following too close &nbsp; ☐ DUI suspected &nbsp; ☐ Distracted &nbsp; ☐ Weather &nbsp; ☐ Other</p>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">DIAGRAM</h2>
+${section('DIAGRAM')}
 <p style="border:1px dashed #555;height:160px;text-align:center;color:#888;padding-top:70px;">Crash diagram area — draw or insert image</p>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">NARRATIVE</h2>
+${section('NARRATIVE')}
 <p>&nbsp;</p><p>&nbsp;</p>
-<div style="margin-top:40px;"><table style="width:100%;border:none;">
-  <tr><td style="width:60%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td><td style="width:10%;">&nbsp;</td><td style="width:30%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td></tr>
-  <tr><td style="font-size:10px;color:#666;">Investigating Officer Signature</td><td>&nbsp;</td><td style="font-size:10px;color:#666;">Date</td></tr>
+<div style="margin-top:40px;"><table>
+  <tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+  <tr><td>Investigating Officer Signature</td><td>&nbsp;</td><td>Date</td></tr>
 </table></div>`,
   },
   {
@@ -1191,28 +1184,28 @@ export const TEMPLATES: DocumentTemplate[] = [
       { key: 'badge_number', label: 'Badge Number', source: 'user' },
     ],
     content: `${AGENCY_HEADER}
-<h1 style="text-align:center;font-size:18px;color:#c0392b;">DOMESTIC VIOLENCE SUPPLEMENT</h1>
+${title('DOMESTIC VIOLENCE SUPPLEMENT', '#c0392b')}
 <p style="text-align:center;font-size:10px;color:#888;">CONFIDENTIAL — Victim information is protected. Handle per agency DV policy.</p>
-<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
-  <tr><td style="border:1px solid #333;padding:6px;width:50%;"><strong>Case #:</strong> {{case_number}}</td><td style="border:1px solid #333;padding:6px;"><strong>Date/Time:</strong> {{incident_date}}</td></tr>
-  <tr><td colspan="2" style="border:1px solid #333;padding:6px;"><strong>Location:</strong> {{location}}</td></tr>
-  <tr><td style="border:1px solid #333;padding:6px;"><strong>Victim:</strong> {{victim_name}}</td><td style="border:1px solid #333;padding:6px;"><strong>Suspect:</strong> {{suspect_name}}</td></tr>
-  <tr><td colspan="2" style="border:1px solid #333;padding:6px;"><strong>Officer:</strong> {{officer}} (#{{badge_number}})</td></tr>
+<table>
+  <tr><td>${field('Case #', '{{case_number}}')}</td><td>${field('Date/Time', '{{incident_date}}')}</td></tr>
+  <tr><td colspan="2">${field('Location', '{{location}}')}</td></tr>
+  <tr><td>${field('Victim', '{{victim_name}}')}</td><td>${field('Suspect', '{{suspect_name}}')}</td></tr>
+  <tr><td colspan="2">${field('Officer', '{{officer}} (#{{badge_number}})')}</td></tr>
 </table>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">RELATIONSHIP</h2>
+${section('RELATIONSHIP')}
 <p>☐ Spouse &nbsp; ☐ Ex-spouse &nbsp; ☐ Cohabitant &nbsp; ☐ Dating &nbsp; ☐ Parent/Child &nbsp; ☐ Shared child &nbsp; ☐ Other family</p>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">PRIMARY AGGRESSOR DETERMINATION</h2>
+${section('PRIMARY AGGRESSOR DETERMINATION')}
 <p><em>Document injuries, history, fear, and relative size/strength used to determine the primary aggressor.</em></p>
 <p>&nbsp;</p>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">LETHALITY / RISK FACTORS</h2>
+${section('LETHALITY / RISK FACTORS')}
 <p>☐ Strangulation &nbsp; ☐ Weapon involved &nbsp; ☐ Threats to kill &nbsp; ☐ Prior DV &nbsp; ☐ Pregnancy &nbsp; ☐ Escalating frequency &nbsp; ☐ Children present</p>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">ACTIONS TAKEN</h2>
+${section('ACTIONS TAKEN')}
 <p>☐ Arrest made &nbsp; ☐ EPO requested &nbsp; ☐ Victim advised of rights &nbsp; ☐ Resources provided &nbsp; ☐ Photos taken &nbsp; ☐ Medical/EMS</p>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">NARRATIVE</h2>
+${section('NARRATIVE')}
 <p>&nbsp;</p><p>&nbsp;</p>
-<div style="margin-top:40px;"><table style="width:100%;border:none;">
-  <tr><td style="width:60%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td><td style="width:10%;">&nbsp;</td><td style="width:30%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td></tr>
-  <tr><td style="font-size:10px;color:#666;">Officer Signature</td><td>&nbsp;</td><td style="font-size:10px;color:#666;">Date</td></tr>
+<div style="margin-top:40px;"><table>
+  <tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+  <tr><td>Officer Signature</td><td>&nbsp;</td><td>Date</td></tr>
 </table></div>`,
   },
   {
@@ -1231,31 +1224,31 @@ export const TEMPLATES: DocumentTemplate[] = [
       { key: 'badge_number', label: 'Badge Number', source: 'user' },
     ],
     content: `${AGENCY_HEADER}
-<h1 style="text-align:center;font-size:18px;">MISSING PERSON REPORT</h1>
-<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
-  <tr><td style="border:1px solid #333;padding:6px;width:50%;"><strong>Case #:</strong> {{case_number}}</td><td style="border:1px solid #333;padding:6px;"><strong>Reported:</strong> {{report_date}}</td></tr>
-  <tr><td style="border:1px solid #333;padding:6px;"><strong>Missing Person:</strong> {{missing_name}}</td><td style="border:1px solid #333;padding:6px;"><strong>DOB/Age:</strong> {{missing_dob}}</td></tr>
-  <tr><td colspan="2" style="border:1px solid #333;padding:6px;"><strong>Last Seen:</strong> {{last_seen}}</td></tr>
-  <tr><td style="border:1px solid #333;padding:6px;"><strong>Reporting Party:</strong> {{reporter}}</td><td style="border:1px solid #333;padding:6px;"><strong>Officer:</strong> {{officer}} (#{{badge_number}})</td></tr>
+${title('MISSING PERSON REPORT')}
+<table>
+  <tr><td>${field('Case #', '{{case_number}}')}</td><td>${field('Reported', '{{report_date}}')}</td></tr>
+  <tr><td>${field('Missing Person', '{{missing_name}}')}</td><td>${field('DOB/Age', '{{missing_dob}}')}</td></tr>
+  <tr><td colspan="2">${field('Last Seen', '{{last_seen}}')}</td></tr>
+  <tr><td>${field('Reporting Party', '{{reporter}}')}</td><td>${field('Officer', '{{officer}} (#{{badge_number}})')}</td></tr>
 </table>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">CLASSIFICATION</h2>
+${section('CLASSIFICATION')}
 <p>☐ Juvenile runaway &nbsp; ☐ Endangered &nbsp; ☐ Involuntary/abduction &nbsp; ☐ Disability &nbsp; ☐ Catastrophe &nbsp; ☐ Adult</p>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">PHYSICAL DESCRIPTION</h2>
-<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
-  <tr><td style="border:1px solid #333;padding:6px;width:50%;"><strong>Race/Sex:</strong></td><td style="border:1px solid #333;padding:6px;"><strong>Height/Weight:</strong></td></tr>
-  <tr><td style="border:1px solid #333;padding:6px;"><strong>Hair/Eyes:</strong></td><td style="border:1px solid #333;padding:6px;"><strong>SMT:</strong></td></tr>
-  <tr><td style="border:1px solid #333;padding:6px;"><strong>Clothing last worn:</strong></td><td style="border:1px solid #333;padding:6px;"><strong>Glasses/Medical needs:</strong></td></tr>
-  <tr><td colspan="2" style="border:1px solid #333;padding:6px;"><strong>Vehicle (if any) / Plate:</strong></td></tr>
+${section('PHYSICAL DESCRIPTION')}
+<table>
+  <tr><td>${field('Race/Sex', '')}</td><td>${field('Height/Weight', '')}</td></tr>
+  <tr><td>${field('Hair/Eyes', '')}</td><td>${field('SMT', '')}</td></tr>
+  <tr><td>${field('Clothing last worn', '')}</td><td>${field('Glasses/Medical needs', '')}</td></tr>
+  <tr><td colspan="2">${field('Vehicle (if any) / Plate', '')}</td></tr>
 </table>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">RISK / MEDICAL</h2>
+${section('RISK / MEDICAL')}
 <p>☐ Requires medication &nbsp; ☐ Suicidal &nbsp; ☐ Cognitive impairment &nbsp; ☐ Foul play suspected &nbsp; ☐ Cold/exposure risk</p>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">ENTERED INTO NCIC</h2>
+${section('ENTERED INTO NCIC')}
 <p>☐ Yes — NCIC #: ____________ &nbsp;&nbsp; ☐ No &nbsp;&nbsp;|&nbsp;&nbsp; ☐ Endangered/Missing alert requested</p>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">NARRATIVE / CIRCUMSTANCES</h2>
+${section('NARRATIVE / CIRCUMSTANCES')}
 <p>&nbsp;</p><p>&nbsp;</p>
-<div style="margin-top:40px;"><table style="width:100%;border:none;">
-  <tr><td style="width:60%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td><td style="width:10%;">&nbsp;</td><td style="width:30%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td></tr>
-  <tr><td style="font-size:10px;color:#666;">Officer Signature</td><td>&nbsp;</td><td style="font-size:10px;color:#666;">Date</td></tr>
+<div style="margin-top:40px;"><table>
+  <tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+  <tr><td>Officer Signature</td><td>&nbsp;</td><td>Date</td></tr>
 </table></div>`,
   },
   // ── Wave-3 templates ──────────────────────────────────────────────────────
@@ -1273,33 +1266,33 @@ export const TEMPLATES: DocumentTemplate[] = [
       { key: 'booking_date', label: 'Booking Date/Time', source: 'manual' },
     ],
     content: `${AGENCY_HEADER}
-<h1 style="text-align:center;font-size:18px;">BOOKING SHEET</h1>
-<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
-  <tr><td style="border:1px solid #333;padding:6px;width:50%;"><strong>Booking #:</strong> {{booking_no}}</td><td style="border:1px solid #333;padding:6px;"><strong>Case #:</strong> {{case_number}}</td></tr>
-  <tr><td style="border:1px solid #333;padding:6px;"><strong>Arrestee:</strong> {{arrestee_name}}</td><td style="border:1px solid #333;padding:6px;"><strong>DOB:</strong> {{arrestee_dob}}</td></tr>
-  <tr><td style="border:1px solid #333;padding:6px;"><strong>Booking Officer:</strong> {{booking_officer}}</td><td style="border:1px solid #333;padding:6px;"><strong>Date/Time:</strong> {{booking_date}}</td></tr>
+${title('BOOKING SHEET')}
+<table>
+  <tr><td>${field('Booking #', '{{booking_no}}')}</td><td>${field('Case #', '{{case_number}}')}</td></tr>
+  <tr><td>${field('Arrestee', '{{arrestee_name}}')}</td><td>${field('DOB', '{{arrestee_dob}}')}</td></tr>
+  <tr><td>${field('Booking Officer', '{{booking_officer}}')}</td><td>${field('Date/Time', '{{booking_date}}')}</td></tr>
 </table>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">PHYSICAL DESCRIPTION</h2>
-<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
-  <tr><td style="border:1px solid #333;padding:6px;"><strong>Sex:</strong></td><td style="border:1px solid #333;padding:6px;"><strong>Race:</strong></td><td style="border:1px solid #333;padding:6px;"><strong>Height:</strong></td><td style="border:1px solid #333;padding:6px;"><strong>Weight:</strong></td></tr>
-  <tr><td style="border:1px solid #333;padding:6px;"><strong>Hair:</strong></td><td style="border:1px solid #333;padding:6px;"><strong>Eyes:</strong></td><td style="border:1px solid #333;padding:6px;" colspan="2"><strong>SMT:</strong></td></tr>
+${section('PHYSICAL DESCRIPTION')}
+<table>
+  <tr><td>${field('Sex', '')}</td><td>${field('Race', '')}</td><td>${field('Height', '')}</td><td>${field('Weight', '')}</td></tr>
+  <tr><td>${field('Hair', '')}</td><td>${field('Eyes', '')}</td><td colspan="2">${field('SMT', '')}</td></tr>
 </table>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">CHARGES</h2>
-<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
-  <tr style="background:#1a1a1a;"><th style="border:1px solid #333;padding:6px;text-align:left;">Statute</th><th style="border:1px solid #333;padding:6px;text-align:left;">Charge</th><th style="border:1px solid #333;padding:6px;text-align:left;">Class</th><th style="border:1px solid #333;padding:6px;text-align:left;">Bail</th></tr>
-  <tr><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td></tr>
+${section('CHARGES')}
+<table>
+  <tr><th>Statute</th><th>Charge</th><th>Class</th><th>Bail</th></tr>
+  <tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
 </table>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">MEDICAL SCREENING</h2>
+${section('MEDICAL SCREENING')}
 <p>☐ Medical conditions reported &nbsp; ☐ Current medications &nbsp; ☐ Suicide risk screen completed &nbsp; ☐ Under influence</p>
 <p>Notes: &nbsp;</p>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">PERSONAL PROPERTY INVENTORY</h2>
-<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
-  <tr style="background:#1a1a1a;"><th style="border:1px solid #333;padding:6px;text-align:left;">Item</th><th style="border:1px solid #333;padding:6px;text-align:left;">Description</th><th style="border:1px solid #333;padding:6px;text-align:left;">Disposition</th></tr>
-  <tr><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td></tr>
+${section('PERSONAL PROPERTY INVENTORY')}
+<table>
+  <tr><th>Item</th><th>Description</th><th>Disposition</th></tr>
+  <tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
 </table>
-<div style="margin-top:40px;"><table style="width:100%;border:none;">
-  <tr><td style="width:60%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td><td style="width:10%;">&nbsp;</td><td style="width:30%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td></tr>
-  <tr><td style="font-size:10px;color:#666;">Booking Officer Signature</td><td>&nbsp;</td><td style="font-size:10px;color:#666;">Date</td></tr>
+<div style="margin-top:40px;"><table>
+  <tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+  <tr><td>Booking Officer Signature</td><td>&nbsp;</td><td>Date</td></tr>
 </table></div>`,
   },
   {
@@ -1315,21 +1308,21 @@ export const TEMPLATES: DocumentTemplate[] = [
       { key: 'location', label: 'Location', source: 'cad', cadPath: 'call.address' },
     ],
     content: `${AGENCY_HEADER}
-<h1 style="text-align:center;font-size:18px;">PROPERTY INVENTORY</h1>
-<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
-  <tr><td style="border:1px solid #333;padding:6px;width:50%;"><strong>Case #:</strong> {{case_number}}</td><td style="border:1px solid #333;padding:6px;"><strong>Date:</strong> {{date}}</td></tr>
-  <tr><td style="border:1px solid #333;padding:6px;"><strong>Owner / Subject:</strong> {{owner_name}}</td><td style="border:1px solid #333;padding:6px;"><strong>Officer:</strong> {{officer}}</td></tr>
-  <tr><td colspan="2" style="border:1px solid #333;padding:6px;"><strong>Location:</strong> {{location}}</td></tr>
+${title('PROPERTY INVENTORY')}
+<table>
+  <tr><td>${field('Case #', '{{case_number}}')}</td><td>${field('Date', '{{date}}')}</td></tr>
+  <tr><td>${field('Owner / Subject', '{{owner_name}}')}</td><td>${field('Officer', '{{officer}}')}</td></tr>
+  <tr><td colspan="2">${field('Location', '{{location}}')}</td></tr>
 </table>
 <p>Reason for inventory: ☐ Safekeeping &nbsp; ☐ Found property &nbsp; ☐ Evidence &nbsp; ☐ Vehicle inventory &nbsp; ☐ Other</p>
-<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
-  <tr style="background:#1a1a1a;"><th style="border:1px solid #333;padding:6px;text-align:left;">Item #</th><th style="border:1px solid #333;padding:6px;text-align:left;">Description</th><th style="border:1px solid #333;padding:6px;text-align:left;">Qty</th><th style="border:1px solid #333;padding:6px;text-align:left;">Est. Value</th><th style="border:1px solid #333;padding:6px;text-align:left;">Condition</th></tr>
-  <tr><td style="border:1px solid #333;padding:6px;">1</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td></tr>
-  <tr><td style="border:1px solid #333;padding:6px;">2</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td></tr>
+<table>
+  <tr><th>Item #</th><th>Description</th><th>Qty</th><th>Est. Value</th><th>Condition</th></tr>
+  <tr><td>1</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+  <tr><td>2</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
 </table>
-<div style="margin-top:40px;"><table style="width:100%;border:none;">
-  <tr><td style="width:60%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td><td style="width:10%;">&nbsp;</td><td style="width:30%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td></tr>
-  <tr><td style="font-size:10px;color:#666;">Officer Signature</td><td>&nbsp;</td><td style="font-size:10px;color:#666;">Date</td></tr>
+<div style="margin-top:40px;"><table>
+  <tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+  <tr><td>Officer Signature</td><td>&nbsp;</td><td>Date</td></tr>
 </table></div>`,
   },
   {
@@ -1345,25 +1338,25 @@ export const TEMPLATES: DocumentTemplate[] = [
       { key: 'location', label: 'Location', source: 'cad', cadPath: 'call.address' },
     ],
     content: `${AGENCY_HEADER}
-<h1 style="text-align:center;font-size:18px;">K9 DEPLOYMENT REPORT</h1>
-<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
-  <tr><td style="border:1px solid #333;padding:6px;width:50%;"><strong>Case #:</strong> {{case_number}}</td><td style="border:1px solid #333;padding:6px;"><strong>Date/Time:</strong> {{date}}</td></tr>
-  <tr><td style="border:1px solid #333;padding:6px;"><strong>Handler:</strong> {{handler}}</td><td style="border:1px solid #333;padding:6px;"><strong>K9:</strong> {{k9_name}}</td></tr>
-  <tr><td colspan="2" style="border:1px solid #333;padding:6px;"><strong>Location:</strong> {{location}}</td></tr>
+${title('K9 DEPLOYMENT REPORT')}
+<table>
+  <tr><td>${field('Case #', '{{case_number}}')}</td><td>${field('Date/Time', '{{date}}')}</td></tr>
+  <tr><td>${field('Handler', '{{handler}}')}</td><td>${field('K9', '{{k9_name}}')}</td></tr>
+  <tr><td colspan="2">${field('Location', '{{location}}')}</td></tr>
 </table>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">DEPLOYMENT TYPE</h2>
+${section('DEPLOYMENT TYPE')}
 <p>☐ Article/evidence search &nbsp; ☐ Narcotics detection &nbsp; ☐ Explosives detection &nbsp; ☐ Tracking/trailing &nbsp; ☐ Building search &nbsp; ☐ Apprehension</p>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">WARNING / ANNOUNCEMENT</h2>
+${section('WARNING / ANNOUNCEMENT')}
 <p>☐ K9 warning announcement given prior to deployment &nbsp; Time: ________</p>
 <p>Announcement wording / number of times given: &nbsp;</p>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">NARRATIVE</h2>
+${section('NARRATIVE')}
 <p>&nbsp;</p><p>&nbsp;</p>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">RESULT</h2>
+${section('RESULT')}
 <p>☐ Apprehension &nbsp; ☐ Find/alert &nbsp; ☐ Negative &nbsp; ☐ Bite (document injuries below)</p>
 <p>Injuries / medical treatment: &nbsp;</p>
-<div style="margin-top:40px;"><table style="width:100%;border:none;">
-  <tr><td style="width:60%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td><td style="width:10%;">&nbsp;</td><td style="width:30%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td></tr>
-  <tr><td style="font-size:10px;color:#666;">Handler Signature</td><td>&nbsp;</td><td style="font-size:10px;color:#666;">Date</td></tr>
+<div style="margin-top:40px;"><table>
+  <tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+  <tr><td>Handler Signature</td><td>&nbsp;</td><td>Date</td></tr>
 </table></div>`,
   },
   {
@@ -1378,32 +1371,32 @@ export const TEMPLATES: DocumentTemplate[] = [
       { key: 'start_location', label: 'Start Location', source: 'manual' },
     ],
     content: `${AGENCY_HEADER}
-<h1 style="text-align:center;font-size:18px;color:#c0392b;">VEHICLE PURSUIT REPORT</h1>
-<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
-  <tr><td style="border:1px solid #333;padding:6px;width:50%;"><strong>Case #:</strong> {{case_number}}</td><td style="border:1px solid #333;padding:6px;"><strong>Date/Time:</strong> {{date}}</td></tr>
-  <tr><td style="border:1px solid #333;padding:6px;"><strong>Primary Officer:</strong> {{officer}}</td><td style="border:1px solid #333;padding:6px;"><strong>Start Location:</strong> {{start_location}}</td></tr>
+${title('VEHICLE PURSUIT REPORT', '#c0392b')}
+<table>
+  <tr><td>${field('Case #', '{{case_number}}')}</td><td>${field('Date/Time', '{{date}}')}</td></tr>
+  <tr><td>${field('Primary Officer', '{{officer}}')}</td><td>${field('Start Location', '{{start_location}}')}</td></tr>
 </table>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">JUSTIFICATION FOR PURSUIT</h2>
+${section('JUSTIFICATION FOR PURSUIT')}
 <p>Originating offense: &nbsp;</p>
 <p>☐ Felony &nbsp; ☐ Violent crime &nbsp; ☐ DUI &nbsp; ☐ Traffic offense &nbsp; ☐ Other</p>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">PURSUIT DETAILS</h2>
-<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
-  <tr><td style="border:1px solid #333;padding:6px;"><strong>Start time:</strong></td><td style="border:1px solid #333;padding:6px;"><strong>End time:</strong></td><td style="border:1px solid #333;padding:6px;"><strong>Duration:</strong></td></tr>
-  <tr><td style="border:1px solid #333;padding:6px;"><strong>Max speed:</strong></td><td style="border:1px solid #333;padding:6px;"><strong>Distance:</strong></td><td style="border:1px solid #333;padding:6px;"><strong>Road/weather:</strong></td></tr>
-  <tr><td style="border:1px solid #333;padding:6px;" colspan="3"><strong>Suspect vehicle (make/model/color/plate):</strong></td></tr>
+${section('PURSUIT DETAILS')}
+<table>
+  <tr><td>${field('Start time', '')}</td><td>${field('End time', '')}</td><td>${field('Duration', '')}</td></tr>
+  <tr><td>${field('Max speed', '')}</td><td>${field('Distance', '')}</td><td>${field('Road/weather', '')}</td></tr>
+  <tr><td colspan="3"><strong>Suspect vehicle (make/model/color/plate):</strong></td></tr>
 </table>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">SUPERVISOR NOTIFICATION</h2>
+${section('SUPERVISOR NOTIFICATION')}
 <p>☐ Supervisor notified &nbsp; Time: ________ &nbsp; ☐ Pursuit authorized &nbsp; ☐ Pursuit terminated by supervisor</p>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">NARRATIVE</h2>
+${section('NARRATIVE')}
 <p>&nbsp;</p><p>&nbsp;</p>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">OUTCOME</h2>
+${section('OUTCOME')}
 <p>☐ Suspect in custody &nbsp; ☐ Pursuit terminated &nbsp; ☐ Collision &nbsp; ☐ Suspect eluded</p>
 <p>Injuries / property damage: &nbsp;</p>
-<div style="margin-top:40px;"><table style="width:100%;border:none;">
-  <tr><td style="width:60%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td><td style="width:10%;">&nbsp;</td><td style="width:30%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td></tr>
-  <tr><td style="font-size:10px;color:#666;">Officer Signature</td><td>&nbsp;</td><td style="font-size:10px;color:#666;">Date</td></tr>
-  <tr><td style="width:60%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td><td style="width:10%;">&nbsp;</td><td style="width:30%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td></tr>
-  <tr><td style="font-size:10px;color:#666;">Supervisor Signature</td><td>&nbsp;</td><td style="font-size:10px;color:#666;">Date</td></tr>
+<div style="margin-top:40px;"><table>
+  <tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+  <tr><td>Officer Signature</td><td>&nbsp;</td><td>Date</td></tr>
+  <tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+  <tr><td>Supervisor Signature</td><td>&nbsp;</td><td>Date</td></tr>
 </table></div>`,
   },
   {
@@ -1418,18 +1411,18 @@ export const TEMPLATES: DocumentTemplate[] = [
       { key: 'date', label: 'Date', source: 'manual' },
     ],
     content: `${AGENCY_HEADER}
-<h1 style="text-align:center;font-size:18px;">CRIME SCENE ENTRY LOG</h1>
-<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
-  <tr><td style="border:1px solid #333;padding:6px;width:50%;"><strong>Case #:</strong> {{case_number}}</td><td style="border:1px solid #333;padding:6px;"><strong>Date:</strong> {{date}}</td></tr>
-  <tr><td style="border:1px solid #333;padding:6px;"><strong>Scene Location:</strong> {{location}}</td><td style="border:1px solid #333;padding:6px;"><strong>Log Officer:</strong> {{officer}}</td></tr>
-  <tr><td style="border:1px solid #333;padding:6px;"><strong>Scene secured at:</strong></td><td style="border:1px solid #333;padding:6px;"><strong>Released at:</strong></td></tr>
+${title('CRIME SCENE ENTRY LOG')}
+<table>
+  <tr><td>${field('Case #', '{{case_number}}')}</td><td>${field('Date', '{{date}}')}</td></tr>
+  <tr><td>${field('Scene Location', '{{location}}')}</td><td>${field('Log Officer', '{{officer}}')}</td></tr>
+  <tr><td>${field('Scene secured at', '')}</td><td>${field('Released at', '')}</td></tr>
 </table>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">PERSONNEL ENTRY/EXIT LOG</h2>
-<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
-  <tr style="background:#1a1a1a;"><th style="border:1px solid #333;padding:6px;text-align:left;">Name / Agency</th><th style="border:1px solid #333;padding:6px;text-align:left;">Purpose</th><th style="border:1px solid #333;padding:6px;text-align:left;">Time In</th><th style="border:1px solid #333;padding:6px;text-align:left;">Time Out</th></tr>
-  <tr><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td></tr>
-  <tr><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td></tr>
-  <tr><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td></tr>
+${section('PERSONNEL ENTRY/EXIT LOG')}
+<table>
+  <tr><th>Name / Agency</th><th>Purpose</th><th>Time In</th><th>Time Out</th></tr>
+  <tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+  <tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+  <tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
 </table>
 <p style="font-size:10px;color:#888;"><em>Every person who enters the inner perimeter must be logged. The integrity of this log may be challenged in court.</em></p>`,
   },
@@ -1445,18 +1438,18 @@ export const TEMPLATES: DocumentTemplate[] = [
       { key: 'officer', label: 'Collecting Officer', source: 'user' },
     ],
     content: `${AGENCY_HEADER}
-<h1 style="text-align:center;font-size:18px;">CHAIN OF CUSTODY</h1>
-<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
-  <tr><td style="border:1px solid #333;padding:6px;width:50%;"><strong>Case #:</strong> {{case_number}}</td><td style="border:1px solid #333;padding:6px;"><strong>Item #:</strong> {{item_no}}</td></tr>
-  <tr><td colspan="2" style="border:1px solid #333;padding:6px;"><strong>Description:</strong> {{description}}</td></tr>
-  <tr><td colspan="2" style="border:1px solid #333;padding:6px;"><strong>Collected by:</strong> {{officer}}</td></tr>
+${title('CHAIN OF CUSTODY')}
+<table>
+  <tr><td>${field('Case #', '{{case_number}}')}</td><td>${field('Item #', '{{item_no}}')}</td></tr>
+  <tr><td colspan="2">${field('Description', '{{description}}')}</td></tr>
+  <tr><td colspan="2">${field('Collected by', '{{officer}}')}</td></tr>
 </table>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">CUSTODY TRANSFERS</h2>
-<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
-  <tr style="background:#1a1a1a;"><th style="border:1px solid #333;padding:6px;text-align:left;">Date/Time</th><th style="border:1px solid #333;padding:6px;text-align:left;">Released By</th><th style="border:1px solid #333;padding:6px;text-align:left;">Received By</th><th style="border:1px solid #333;padding:6px;text-align:left;">Reason</th></tr>
-  <tr><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td></tr>
-  <tr><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td></tr>
-  <tr><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td></tr>
+${section('CUSTODY TRANSFERS')}
+<table>
+  <tr><th>Date/Time</th><th>Released By</th><th>Received By</th><th>Reason</th></tr>
+  <tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+  <tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+  <tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
 </table>
 <p style="font-size:10px;color:#888;"><em>An unbroken chain of custody must be maintained from collection through final disposition.</em></p>`,
   },
@@ -1473,21 +1466,21 @@ export const TEMPLATES: DocumentTemplate[] = [
       { key: 'location', label: 'Location', source: 'manual' },
     ],
     content: `${AGENCY_HEADER}
-<h1 style="text-align:center;font-size:18px;">INTERVIEW TRANSCRIPT</h1>
-<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
-  <tr><td style="border:1px solid #333;padding:6px;width:50%;"><strong>Case #:</strong> {{case_number}}</td><td style="border:1px solid #333;padding:6px;"><strong>Date/Time:</strong> {{date}}</td></tr>
-  <tr><td style="border:1px solid #333;padding:6px;"><strong>Interviewee:</strong> {{interviewee}}</td><td style="border:1px solid #333;padding:6px;"><strong>Interviewer:</strong> {{interviewer}}</td></tr>
-  <tr><td colspan="2" style="border:1px solid #333;padding:6px;"><strong>Location:</strong> {{location}}</td></tr>
+${title('INTERVIEW TRANSCRIPT')}
+<table>
+  <tr><td>${field('Case #', '{{case_number}}')}</td><td>${field('Date/Time', '{{date}}')}</td></tr>
+  <tr><td>${field('Interviewee', '{{interviewee}}')}</td><td>${field('Interviewer', '{{interviewer}}')}</td></tr>
+  <tr><td colspan="2">${field('Location', '{{location}}')}</td></tr>
 </table>
 <p>☐ Recorded (audio) &nbsp; ☐ Recorded (video) &nbsp; ☐ Miranda advised prior &nbsp; Recording reference: ________</p>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">TRANSCRIPT</h2>
+${section('TRANSCRIPT')}
 <p>[00:00] <strong>{{interviewer}}:</strong> &nbsp;</p>
 <p>[00:00] <strong>{{interviewee}}:</strong> &nbsp;</p>
 <p>&nbsp;</p>
 <p style="font-size:10px;color:#888;"><em>Transcript prepared from recording; certified accurate to the best of the transcriber's ability.</em></p>
-<div style="margin-top:40px;"><table style="width:100%;border:none;">
-  <tr><td style="width:60%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td><td style="width:10%;">&nbsp;</td><td style="width:30%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td></tr>
-  <tr><td style="font-size:10px;color:#666;">Transcribed By</td><td>&nbsp;</td><td style="font-size:10px;color:#666;">Date</td></tr>
+<div style="margin-top:40px;"><table>
+  <tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+  <tr><td>Transcribed By</td><td>&nbsp;</td><td>Date</td></tr>
 </table></div>`,
   },
   {
@@ -1504,24 +1497,24 @@ export const TEMPLATES: DocumentTemplate[] = [
       { key: 'location', label: 'Location', source: 'cad', cadPath: 'call.address' },
     ],
     content: `${AGENCY_HEADER}
-<h1 style="text-align:center;font-size:18px;">CIVIL STANDBY REPORT</h1>
-<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
-  <tr><td style="border:1px solid #333;padding:6px;width:50%;"><strong>Case #:</strong> {{case_number}}</td><td style="border:1px solid #333;padding:6px;"><strong>Date/Time:</strong> {{date}}</td></tr>
-  <tr><td style="border:1px solid #333;padding:6px;"><strong>Requesting Party:</strong> {{requestor}}</td><td style="border:1px solid #333;padding:6px;"><strong>Other Party:</strong> {{other_party}}</td></tr>
-  <tr><td colspan="2" style="border:1px solid #333;padding:6px;"><strong>Location:</strong> {{location}}</td></tr>
-  <tr><td colspan="2" style="border:1px solid #333;padding:6px;"><strong>Officer:</strong> {{officer}}</td></tr>
+${title('CIVIL STANDBY REPORT')}
+<table>
+  <tr><td>${field('Case #', '{{case_number}}')}</td><td>${field('Date/Time', '{{date}}')}</td></tr>
+  <tr><td>${field('Requesting Party', '{{requestor}}')}</td><td>${field('Other Party', '{{other_party}}')}</td></tr>
+  <tr><td colspan="2">${field('Location', '{{location}}')}</td></tr>
+  <tr><td colspan="2">${field('Officer', '{{officer}}')}</td></tr>
 </table>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">PURPOSE</h2>
+${section('PURPOSE')}
 <p>☐ Retrieval of personal property &nbsp; ☐ Child custody exchange &nbsp; ☐ Eviction/lockout &nbsp; ☐ Other</p>
 <p>Court order present: ☐ Yes ☐ No &nbsp; Order #: ________</p>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">NARRATIVE</h2>
+${section('NARRATIVE')}
 <p>Officers stood by to keep the peace only and took no position on the underlying civil dispute.</p>
 <p>&nbsp;</p>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">OUTCOME</h2>
+${section('OUTCOME')}
 <p>☐ Completed peacefully &nbsp; ☐ Property exchanged &nbsp; ☐ Parties advised of civil remedies &nbsp; ☐ Enforcement action taken</p>
-<div style="margin-top:40px;"><table style="width:100%;border:none;">
-  <tr><td style="width:60%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td><td style="width:10%;">&nbsp;</td><td style="width:30%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td></tr>
-  <tr><td style="font-size:10px;color:#666;">Officer Signature</td><td>&nbsp;</td><td style="font-size:10px;color:#666;">Date</td></tr>
+<div style="margin-top:40px;"><table>
+  <tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+  <tr><td>Officer Signature</td><td>&nbsp;</td><td>Date</td></tr>
 </table></div>`,
   },
   {
@@ -1538,24 +1531,24 @@ export const TEMPLATES: DocumentTemplate[] = [
       { key: 'location', label: 'Location', source: 'cad', cadPath: 'call.address' },
     ],
     content: `${AGENCY_HEADER}
-<h1 style="text-align:center;font-size:18px;">REPOSSESSION STANDBY REPORT</h1>
-<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
-  <tr><td style="border:1px solid #333;padding:6px;width:50%;"><strong>Case #:</strong> {{case_number}}</td><td style="border:1px solid #333;padding:6px;"><strong>Date/Time:</strong> {{date}}</td></tr>
-  <tr><td style="border:1px solid #333;padding:6px;"><strong>Repo Agent:</strong> {{agent}}</td><td style="border:1px solid #333;padding:6px;"><strong>Debtor / Owner:</strong> {{debtor}}</td></tr>
-  <tr><td colspan="2" style="border:1px solid #333;padding:6px;"><strong>Location:</strong> {{location}}</td></tr>
-  <tr><td colspan="2" style="border:1px solid #333;padding:6px;"><strong>Officer:</strong> {{officer}}</td></tr>
+${title('REPOSSESSION STANDBY REPORT')}
+<table>
+  <tr><td>${field('Case #', '{{case_number}}')}</td><td>${field('Date/Time', '{{date}}')}</td></tr>
+  <tr><td>${field('Repo Agent', '{{agent}}')}</td><td>${field('Debtor / Owner', '{{debtor}}')}</td></tr>
+  <tr><td colspan="2">${field('Location', '{{location}}')}</td></tr>
+  <tr><td colspan="2">${field('Officer', '{{officer}}')}</td></tr>
 </table>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">PROPERTY REPOSSESSED</h2>
+${section('PROPERTY REPOSSESSED')}
 <p>Description (make/model/VIN/plate): &nbsp;</p>
 <p>Repo agent license / company: &nbsp;</p>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">NARRATIVE</h2>
+${section('NARRATIVE')}
 <p>Officers were present solely to preserve the peace during a lawful self-help repossession and did not assist in the seizure of property.</p>
 <p>&nbsp;</p>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">OUTCOME</h2>
+${section('OUTCOME')}
 <p>☐ Repossession completed &nbsp; ☐ Breach of peace — repossession ceased &nbsp; ☐ Parties separated &nbsp; ☐ No action</p>
-<div style="margin-top:40px;"><table style="width:100%;border:none;">
-  <tr><td style="width:60%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td><td style="width:10%;">&nbsp;</td><td style="width:30%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td></tr>
-  <tr><td style="font-size:10px;color:#666;">Officer Signature</td><td>&nbsp;</td><td style="font-size:10px;color:#666;">Date</td></tr>
+<div style="margin-top:40px;"><table>
+  <tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+  <tr><td>Officer Signature</td><td>&nbsp;</td><td>Date</td></tr>
 </table></div>`,
   },
   {
@@ -1572,23 +1565,23 @@ export const TEMPLATES: DocumentTemplate[] = [
       { key: 'location', label: 'Location', source: 'cad', cadPath: 'call.address' },
     ],
     content: `${AGENCY_HEADER}
-<h1 style="text-align:center;font-size:18px;">WELFARE CHECK REPORT</h1>
-<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
-  <tr><td style="border:1px solid #333;padding:6px;width:50%;"><strong>Case #:</strong> {{case_number}}</td><td style="border:1px solid #333;padding:6px;"><strong>Date/Time:</strong> {{date}}</td></tr>
-  <tr><td style="border:1px solid #333;padding:6px;"><strong>Subject:</strong> {{subject_name}}</td><td style="border:1px solid #333;padding:6px;"><strong>Requested by:</strong> {{requestor}}</td></tr>
-  <tr><td colspan="2" style="border:1px solid #333;padding:6px;"><strong>Location:</strong> {{location}}</td></tr>
-  <tr><td colspan="2" style="border:1px solid #333;padding:6px;"><strong>Officer:</strong> {{officer}}</td></tr>
+${title('WELFARE CHECK REPORT')}
+<table>
+  <tr><td>${field('Case #', '{{case_number}}')}</td><td>${field('Date/Time', '{{date}}')}</td></tr>
+  <tr><td>${field('Subject', '{{subject_name}}')}</td><td>${field('Requested by', '{{requestor}}')}</td></tr>
+  <tr><td colspan="2">${field('Location', '{{location}}')}</td></tr>
+  <tr><td colspan="2">${field('Officer', '{{officer}}')}</td></tr>
 </table>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">REASON FOR CHECK</h2>
+${section('REASON FOR CHECK')}
 <p>&nbsp;</p>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">FINDINGS</h2>
+${section('FINDINGS')}
 <p>☐ Subject contacted, appears well &nbsp; ☐ Medical aid rendered (EMS) &nbsp; ☐ Mental-health crisis &nbsp; ☐ Subject not located &nbsp; ☐ Deceased (notify investigations)</p>
 <p>&nbsp;</p>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">DISPOSITION</h2>
+${section('DISPOSITION')}
 <p>☐ No further action &nbsp; ☐ Referred to services &nbsp; ☐ Transported &nbsp; ☐ Protective custody</p>
-<div style="margin-top:40px;"><table style="width:100%;border:none;">
-  <tr><td style="width:60%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td><td style="width:10%;">&nbsp;</td><td style="width:30%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td></tr>
-  <tr><td style="font-size:10px;color:#666;">Officer Signature</td><td>&nbsp;</td><td style="font-size:10px;color:#666;">Date</td></tr>
+<div style="margin-top:40px;"><table>
+  <tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+  <tr><td>Officer Signature</td><td>&nbsp;</td><td>Date</td></tr>
 </table></div>`,
   },
   {
@@ -1603,21 +1596,21 @@ export const TEMPLATES: DocumentTemplate[] = [
       { key: 'date', label: 'Date', source: 'manual' },
     ],
     content: `${AGENCY_HEADER}
-<h1 style="text-align:center;font-size:18px;color:#c0392b;">USE-OF-FORCE SUPPLEMENT</h1>
+${title('USE-OF-FORCE SUPPLEMENT', '#c0392b')}
 <p style="text-align:center;font-size:10px;color:#888;">Attach to the primary Use of Force Report.</p>
-<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
-  <tr><td style="border:1px solid #333;padding:6px;width:50%;"><strong>Primary Case #:</strong> {{case_number}}</td><td style="border:1px solid #333;padding:6px;"><strong>Date:</strong> {{date}}</td></tr>
-  <tr><td colspan="2" style="border:1px solid #333;padding:6px;"><strong>Supplementing Officer:</strong> {{officer}} (Badge #{{badge_number}})</td></tr>
+<table>
+  <tr><td>${field('Primary Case #', '{{case_number}}')}</td><td>${field('Date', '{{date}}')}</td></tr>
+  <tr><td colspan="2">${field('Supplementing Officer', '{{officer}} (Badge #{{badge_number}})')}</td></tr>
 </table>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">ROLE IN INCIDENT</h2>
+${section('ROLE IN INCIDENT')}
 <p>☐ Used force &nbsp; ☐ Witnessed force &nbsp; ☐ Arrived after &nbsp; ☐ Supervisor</p>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">FORCE USED BY THIS OFFICER (if any)</h2>
+${section('FORCE USED BY THIS OFFICER (if any)')}
 <p>☐ Physical control &nbsp; ☐ OC &nbsp; ☐ CEW &nbsp; ☐ Baton &nbsp; ☐ Firearm &nbsp; ☐ None</p>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">OBSERVATIONS / NARRATIVE</h2>
+${section('OBSERVATIONS / NARRATIVE')}
 <p>&nbsp;</p><p>&nbsp;</p>
-<div style="margin-top:40px;"><table style="width:100%;border:none;">
-  <tr><td style="width:60%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td><td style="width:10%;">&nbsp;</td><td style="width:30%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td></tr>
-  <tr><td style="font-size:10px;color:#666;">Officer Signature</td><td>&nbsp;</td><td style="font-size:10px;color:#666;">Date</td></tr>
+<div style="margin-top:40px;"><table>
+  <tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+  <tr><td>Officer Signature</td><td>&nbsp;</td><td>Date</td></tr>
 </table></div>`,
   },
   {
@@ -1634,26 +1627,26 @@ export const TEMPLATES: DocumentTemplate[] = [
       { key: 'tow_company', label: 'Tow Company', source: 'manual' },
     ],
     content: `${AGENCY_HEADER}
-<h1 style="text-align:center;font-size:18px;">IMPOUND INVENTORY</h1>
-<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
-  <tr><td style="border:1px solid #333;padding:6px;width:50%;"><strong>Case #:</strong> {{case_number}}</td><td style="border:1px solid #333;padding:6px;"><strong>Date/Time:</strong> {{date}}</td></tr>
-  <tr><td style="border:1px solid #333;padding:6px;"><strong>Vehicle:</strong> {{vehicle}}</td><td style="border:1px solid #333;padding:6px;"><strong>Plate / VIN:</strong> {{plate}}</td></tr>
-  <tr><td style="border:1px solid #333;padding:6px;"><strong>Officer:</strong> {{officer}}</td><td style="border:1px solid #333;padding:6px;"><strong>Tow Company:</strong> {{tow_company}}</td></tr>
+${title('IMPOUND INVENTORY')}
+<table>
+  <tr><td>${field('Case #', '{{case_number}}')}</td><td>${field('Date/Time', '{{date}}')}</td></tr>
+  <tr><td>${field('Vehicle', '{{vehicle}}')}</td><td>${field('Plate / VIN', '{{plate}}')}</td></tr>
+  <tr><td>${field('Officer', '{{officer}}')}</td><td>${field('Tow Company', '{{tow_company}}')}</td></tr>
 </table>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">VEHICLE CONDITION</h2>
+${section('VEHICLE CONDITION')}
 <p>Damage noted (diagram/describe): &nbsp;</p>
 <p>Odometer: ________ &nbsp; Fuel: ________ &nbsp; Keys: ☐ Yes ☐ No</p>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">CONTENTS INVENTORY</h2>
-<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
-  <tr style="background:#1a1a1a;"><th style="border:1px solid #333;padding:6px;text-align:left;">Location</th><th style="border:1px solid #333;padding:6px;text-align:left;">Item</th><th style="border:1px solid #333;padding:6px;text-align:left;">Notes</th></tr>
-  <tr><td style="border:1px solid #333;padding:6px;">Passenger compartment</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td></tr>
-  <tr><td style="border:1px solid #333;padding:6px;">Trunk</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td></tr>
-  <tr><td style="border:1px solid #333;padding:6px;">Glove box / console</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td><td style="border:1px solid #333;padding:6px;">&nbsp;</td></tr>
+${section('CONTENTS INVENTORY')}
+<table>
+  <tr><th>Location</th><th>Item</th><th>Notes</th></tr>
+  <tr><td>Passenger compartment</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+  <tr><td>Trunk</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+  <tr><td>Glove box / console</td><td>&nbsp;</td><td>&nbsp;</td></tr>
 </table>
 <p style="font-size:10px;color:#888;"><em>Inventory conducted pursuant to standardized agency impound policy, not for investigative purposes.</em></p>
-<div style="margin-top:40px;"><table style="width:100%;border:none;">
-  <tr><td style="width:60%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td><td style="width:10%;">&nbsp;</td><td style="width:30%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td></tr>
-  <tr><td style="font-size:10px;color:#666;">Officer Signature</td><td>&nbsp;</td><td style="font-size:10px;color:#666;">Date</td></tr>
+<div style="margin-top:40px;"><table>
+  <tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+  <tr><td>Officer Signature</td><td>&nbsp;</td><td>Date</td></tr>
 </table></div>`,
   },
   {
@@ -1669,25 +1662,25 @@ export const TEMPLATES: DocumentTemplate[] = [
       { key: 'date', label: 'Date/Time', source: 'manual' },
     ],
     content: `${AGENCY_HEADER}
-<h1 style="text-align:center;font-size:18px;">COMPLIANCE CHECK REPORT</h1>
-<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
-  <tr><td style="border:1px solid #333;padding:6px;width:50%;"><strong>Case / Op #:</strong> {{case_number}}</td><td style="border:1px solid #333;padding:6px;"><strong>Date/Time:</strong> {{date}}</td></tr>
-  <tr><td style="border:1px solid #333;padding:6px;"><strong>Business:</strong> {{business}}</td><td style="border:1px solid #333;padding:6px;"><strong>Officer:</strong> {{officer}}</td></tr>
-  <tr><td colspan="2" style="border:1px solid #333;padding:6px;"><strong>Address:</strong> {{business_address}}</td></tr>
+${title('COMPLIANCE CHECK REPORT')}
+<table>
+  <tr><td>${field('Case / Op #', '{{case_number}}')}</td><td>${field('Date/Time', '{{date}}')}</td></tr>
+  <tr><td>${field('Business', '{{business}}')}</td><td>${field('Officer', '{{officer}}')}</td></tr>
+  <tr><td colspan="2">${field('Address', '{{business_address}}')}</td></tr>
 </table>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">CHECK TYPE</h2>
+${section('CHECK TYPE')}
 <p>☐ Tobacco / vapor &nbsp; ☐ Alcohol &nbsp; ☐ Both</p>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">DECOY / OPERATIVE</h2>
+${section('DECOY / OPERATIVE')}
 <p>Decoy age: ________ &nbsp; ID shown: ☐ Yes ☐ No &nbsp; Clerk asked for ID: ☐ Yes ☐ No</p>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">RESULT</h2>
+${section('RESULT')}
 <p>☐ PASS — sale refused &nbsp; ☐ FAIL — sale completed to minor</p>
 <p>Clerk name / DOB (if cited): &nbsp;</p>
 <p>Citation #: ________ &nbsp; Statute: ________</p>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">NARRATIVE</h2>
+${section('NARRATIVE')}
 <p>&nbsp;</p>
-<div style="margin-top:40px;"><table style="width:100%;border:none;">
-  <tr><td style="width:60%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td><td style="width:10%;">&nbsp;</td><td style="width:30%;border-bottom:1px solid #333;padding-top:32px;">&nbsp;</td></tr>
-  <tr><td style="font-size:10px;color:#666;">Officer Signature</td><td>&nbsp;</td><td style="font-size:10px;color:#666;">Date</td></tr>
+<div style="margin-top:40px;"><table>
+  <tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>
+  <tr><td>Officer Signature</td><td>&nbsp;</td><td>Date</td></tr>
 </table></div>`,
   },
   {
@@ -1704,17 +1697,17 @@ export const TEMPLATES: DocumentTemplate[] = [
       { key: 'location', label: 'Location', source: 'cad', cadPath: 'call.address' },
     ],
     content: `${AGENCY_HEADER}
-<h1 style="text-align:center;font-size:18px;">PARKING ENFORCEMENT</h1>
-<table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
-  <tr><td style="border:1px solid #333;padding:6px;width:50%;"><strong>Citation #:</strong> {{citation_no}}</td><td style="border:1px solid #333;padding:6px;"><strong>Date/Time:</strong> {{date}}</td></tr>
-  <tr><td style="border:1px solid #333;padding:6px;"><strong>Vehicle:</strong> {{vehicle}}</td><td style="border:1px solid #333;padding:6px;"><strong>Plate:</strong> {{plate}}</td></tr>
-  <tr><td colspan="2" style="border:1px solid #333;padding:6px;"><strong>Location:</strong> {{location}}</td></tr>
-  <tr><td colspan="2" style="border:1px solid #333;padding:6px;"><strong>Officer:</strong> {{officer}}</td></tr>
+${title('PARKING ENFORCEMENT')}
+<table>
+  <tr><td>${field('Citation #', '{{citation_no}}')}</td><td>${field('Date/Time', '{{date}}')}</td></tr>
+  <tr><td>${field('Vehicle', '{{vehicle}}')}</td><td>${field('Plate', '{{plate}}')}</td></tr>
+  <tr><td colspan="2">${field('Location', '{{location}}')}</td></tr>
+  <tr><td colspan="2">${field('Officer', '{{officer}}')}</td></tr>
 </table>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">VIOLATION</h2>
+${section('VIOLATION')}
 <p>☐ Fire lane &nbsp; ☐ Handicap &nbsp; ☐ No parking zone &nbsp; ☐ Expired meter &nbsp; ☐ Blocking driveway &nbsp; ☐ Time limit &nbsp; ☐ Other</p>
 <p>Ordinance / statute: ________ &nbsp; Fine: $________</p>
-<h2 style="font-size:14px;border-bottom:1px solid #333;">ACTION TAKEN</h2>
+${section('ACTION TAKEN')}
 <p>☐ Citation issued &nbsp; ☐ Warning &nbsp; ☐ Towed (see impound) &nbsp; ☐ Booted</p>
 <p>Notes: &nbsp;</p>`,
   },

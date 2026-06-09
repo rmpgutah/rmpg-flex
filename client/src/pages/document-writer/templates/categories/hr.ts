@@ -1,5 +1,6 @@
 import type { DocumentTemplate } from '../../types';
-import { AGENCY_HEADER, CONFIDENTIAL, title, section, tbl, row2, row1, SIG_BLOCK, DUAL_SIG_BLOCK } from '../_shared';
+import { AGENCY_HEADER, CONFIDENTIAL, title, section, tbl, row2, row1, SIG_BLOCK, DUAL_SIG_BLOCK , field,
+} from '../_shared';
 
 // 20 HR / administrative templates.
 export const HR_TEMPLATES: DocumentTemplate[] = [
@@ -52,9 +53,9 @@ ${section('NATURE OF ISSUE')}<p>{{issue}}</p>${section('PRIOR DISCUSSIONS / DOCU
     description: '30/60/90 day improvement plan with measurable goals',
     tags: ['pip', 'performance', 'improvement'],
     fields: [{ key: 'employee', label: 'Employee', source: 'manual' }, { key: 'supervisor', label: 'Supervisor', source: 'manual' }, { key: 'duration', label: 'Duration', source: 'manual' }],
-    content: `${AGENCY_HEADER}${title('PERFORMANCE IMPROVEMENT PLAN')}${tbl(row2('<strong>Employee:</strong> {{employee}}', '<strong>Supervisor:</strong> {{supervisor}}') + row1('<strong>Duration:</strong> {{duration}}'))}
+    content: `${AGENCY_HEADER}${title('PERFORMANCE IMPROVEMENT PLAN')}${tbl(row2(field('Employee', '{{employee}}'), field('Supervisor', '{{supervisor}}')) + row1(field('Duration', '{{duration}}')))}
 ${section('AREAS REQUIRING IMPROVEMENT')}<p>&nbsp;</p>
-${section('MEASURABLE GOALS')}<table style="width:100%;border-collapse:collapse;font-size:11px;"><tr style="background:#f0f0f0;"><th style="border:1px solid #333;padding:4px;">Goal</th><th style="border:1px solid #333;padding:4px;">Measurement</th><th style="border:1px solid #333;padding:4px;">Deadline</th></tr><tr><td style="border:1px solid #333;padding:4px;">&nbsp;</td><td style="border:1px solid #333;padding:4px;">&nbsp;</td><td style="border:1px solid #333;padding:4px;">&nbsp;</td></tr><tr><td style="border:1px solid #333;padding:4px;">&nbsp;</td><td style="border:1px solid #333;padding:4px;">&nbsp;</td><td style="border:1px solid #333;padding:4px;">&nbsp;</td></tr></table>
+${section('MEASURABLE GOALS')}<table><tr><th>Goal</th><th>Measurement</th><th>Deadline</th></tr><tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr><tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr></table>
 ${section('SUPPORT &amp; RESOURCES')}<p>&nbsp;</p>${section('CHECK-IN SCHEDULE')}<p>Day 30 / 60 / 90</p>${section('CONSEQUENCES IF NOT MET')}<p>Failure to meet PIP goals may result in termination of employment.</p>${DUAL_SIG_BLOCK}`,
   },
   {
@@ -100,9 +101,9 @@ ${section('REASON FOR LEAVING')}<p>&nbsp;</p>${section('WHAT WORKED WELL')}<p>&n
     description: 'Annual / probationary performance review',
     tags: ['review', 'performance', 'evaluation'],
     fields: [{ key: 'employee', label: 'Employee', source: 'manual' }, { key: 'period', label: 'Review Period', source: 'manual' }, { key: 'reviewer', label: 'Reviewer', source: 'manual' }],
-    content: `${AGENCY_HEADER}${title('PERFORMANCE REVIEW')}${tbl(row2('<strong>Employee:</strong> {{employee}}', '<strong>Period:</strong> {{period}}') + row1('<strong>Reviewer:</strong> {{reviewer}}'))}
-<table style="width:100%;border-collapse:collapse;font-size:11px;"><tr style="background:#f0f0f0;"><th style="border:1px solid #333;padding:4px;">Competency</th><th style="border:1px solid #333;padding:4px;">Rating (1-5)</th><th style="border:1px solid #333;padding:4px;">Comments</th></tr>
-${['Job knowledge','Quality of work','Productivity','Reliability','Communication','Teamwork','Customer service','Safety / policy','Initiative','Leadership'].map(c=>`<tr><td style="border:1px solid #333;padding:4px;">${c}</td><td style="border:1px solid #333;padding:4px;">&nbsp;</td><td style="border:1px solid #333;padding:4px;">&nbsp;</td></tr>`).join('')}</table>
+    content: `${AGENCY_HEADER}${title('PERFORMANCE REVIEW')}${tbl(row2(field('Employee', '{{employee}}'), field('Period', '{{period}}')) + row1(field('Reviewer', '{{reviewer}}')))}
+<table><tr><th>Competency</th><th>Rating (1-5)</th><th>Comments</th></tr>
+${['Job knowledge','Quality of work','Productivity','Reliability','Communication','Teamwork','Customer service','Safety / policy','Initiative','Leadership'].map(c=>`<tr><td>${c}</td><td>&nbsp;</td><td>&nbsp;</td></tr>`).join('')}</table>
 ${section('STRENGTHS')}<p>&nbsp;</p>${section('GOALS FOR NEXT PERIOD')}<p>&nbsp;</p>${section('EMPLOYEE RESPONSE')}<p>&nbsp;</p>${DUAL_SIG_BLOCK}`,
   },
   {
@@ -110,7 +111,7 @@ ${section('STRENGTHS')}<p>&nbsp;</p>${section('GOALS FOR NEXT PERIOD')}<p>&nbsp;
     description: 'Acknowledgment of completing required training',
     tags: ['training', 'acknowledgment'],
     fields: [{ key: 'employee', label: 'Employee', source: 'manual' }, { key: 'course', label: 'Course', source: 'manual' }, { key: 'date', label: 'Completion Date', source: 'manual' }, { key: 'hours', label: 'Hours', source: 'manual' }],
-    content: `${AGENCY_HEADER}${title('TRAINING ACKNOWLEDGMENT')}${tbl(row2('<strong>Employee:</strong> {{employee}}', '<strong>Course:</strong> {{course}}') + row2('<strong>Date:</strong> {{date}}', '<strong>Hours:</strong> {{hours}}'))}
+    content: `${AGENCY_HEADER}${title('TRAINING ACKNOWLEDGMENT')}${tbl(row2(field('Employee', '{{employee}}'), field('Course', '{{course}}')) + row2(field('Date', '{{date}}'), field('Hours', '{{hours}}')))}
 <p>I certify that I attended the above training, understand the content, and agree to apply the material in my duties at RMPG.</p>${DUAL_SIG_BLOCK}`,
   },
   {
@@ -118,15 +119,15 @@ ${section('STRENGTHS')}<p>&nbsp;</p>${section('GOALS FOR NEXT PERIOD')}<p>&nbsp;
     description: 'Attendance roster for a training session',
     tags: ['roster', 'training', 'attendance'],
     fields: [{ key: 'course', label: 'Course', source: 'manual' }, { key: 'date', label: 'Date', source: 'manual' }, { key: 'instructor', label: 'Instructor', source: 'manual' }],
-    content: `${AGENCY_HEADER}${title('TRAINING ROSTER')}${tbl(row2('<strong>Course:</strong> {{course}}', '<strong>Date:</strong> {{date}}') + row1('<strong>Instructor:</strong> {{instructor}}'))}
-<table style="width:100%;border-collapse:collapse;font-size:11px;"><tr style="background:#f0f0f0;"><th style="border:1px solid #333;padding:4px;">Name</th><th style="border:1px solid #333;padding:4px;">Badge#</th><th style="border:1px solid #333;padding:4px;">Signature</th></tr>${Array(15).fill(0).map(()=>`<tr><td style="border:1px solid #333;padding:4px;height:20px;">&nbsp;</td><td style="border:1px solid #333;padding:4px;">&nbsp;</td><td style="border:1px solid #333;padding:4px;">&nbsp;</td></tr>`).join('')}</table>${SIG_BLOCK}`,
+    content: `${AGENCY_HEADER}${title('TRAINING ROSTER')}${tbl(row2(field('Course', '{{course}}'), field('Date', '{{date}}')) + row1(field('Instructor', '{{instructor}}')))}
+<table><tr><th>Name</th><th>Badge#</th><th>Signature</th></tr>${Array(15).fill(0).map(()=>`<tr><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td></tr>`).join('')}</table>${SIG_BLOCK}`,
   },
   {
     id: 'hr-firearm-cert', name: 'Firearms Qualification Record', category: 'hr-training',
     description: 'Quarterly firearm qualification scoring sheet',
     tags: ['firearm', 'qualification', 'training'],
     fields: [{ key: 'employee', label: 'Employee', source: 'manual' }, { key: 'weapon', label: 'Weapon / Serial', source: 'manual' }, { key: 'date', label: 'Date', source: 'manual' }],
-    content: `${AGENCY_HEADER}${title('FIREARMS QUALIFICATION RECORD')}${tbl(row2('<strong>Employee:</strong> {{employee}}', '<strong>Weapon:</strong> {{weapon}}') + row1('<strong>Date:</strong> {{date}}'))}
+    content: `${AGENCY_HEADER}${title('FIREARMS QUALIFICATION RECORD')}${tbl(row2(field('Employee', '{{employee}}'), field('Weapon', '{{weapon}}')) + row1(field('Date', '{{date}}')))}
 ${section('SCORING')}<p>Score: ____ / 250 &nbsp; Required: 175 &nbsp; ☐ PASS ☐ FAIL</p>
 ${section('NOTES')}<p>&nbsp;</p>${DUAL_SIG_BLOCK}`,
   },
@@ -135,7 +136,7 @@ ${section('NOTES')}<p>&nbsp;</p>${DUAL_SIG_BLOCK}`,
     description: 'PTO / sick / unpaid leave request',
     tags: ['leave', 'pto', 'request'],
     fields: [{ key: 'employee', label: 'Employee', source: 'manual' }, { key: 'type', label: 'Leave Type', source: 'manual' }, { key: 'start', label: 'Start', source: 'manual' }, { key: 'end', label: 'End', source: 'manual' }],
-    content: `${AGENCY_HEADER}${title('LEAVE REQUEST')}${tbl(row2('<strong>Employee:</strong> {{employee}}', '<strong>Type:</strong> {{type}}') + row2('<strong>Start:</strong> {{start}}', '<strong>End:</strong> {{end}}'))}
+    content: `${AGENCY_HEADER}${title('LEAVE REQUEST')}${tbl(row2(field('Employee', '{{employee}}'), field('Type', '{{type}}')) + row2(field('Start', '{{start}}'), field('End', '{{end}}')))}
 ${section('REASON')}<p>&nbsp;</p>${section('COVERAGE ARRANGED')}<p>&nbsp;</p>${section('SUPERVISOR DECISION')}<p>☐ Approved ☐ Denied — Reason:</p>${DUAL_SIG_BLOCK}`,
   },
   {
@@ -153,7 +154,7 @@ ${section('JOB RESTORATION')}<p>Employee will be restored to the same or equival
     description: 'On-the-job injury intake for workers&rsquo; comp filing',
     tags: ['injury', 'workers-comp', 'osha'],
     fields: [{ key: 'employee', label: 'Employee', source: 'manual' }, { key: 'date', label: 'Date/Time', source: 'manual' }, { key: 'location', label: 'Location', source: 'manual' }],
-    content: `${AGENCY_HEADER}${title('WORKPLACE INJURY REPORT', '#7a2418')}${tbl(row2('<strong>Employee:</strong> {{employee}}', '<strong>Date/Time:</strong> {{date}}') + row1('<strong>Location:</strong> {{location}}'))}
+    content: `${AGENCY_HEADER}${title('WORKPLACE INJURY REPORT', '#7a2418')}${tbl(row2(field('Employee', '{{employee}}'), field('Date/Time', '{{date}}')) + row1(field('Location', '{{location}}')))}
 ${section('NATURE OF INJURY')}<p>&nbsp;</p>${section('HOW IT OCCURRED')}<p>&nbsp;</p>${section('BODY PART(S)')}<p>&nbsp;</p>${section('MEDICAL CARE SOUGHT')}<p>☐ First aid ☐ Clinic ☐ ER ☐ None</p>${section('WITNESSES')}<p>&nbsp;</p>${section('SUPERVISOR NOTIFIED')}<p>Name / Time: ____</p>${DUAL_SIG_BLOCK}`,
   },
   {
@@ -162,7 +163,7 @@ ${section('NATURE OF INJURY')}<p>&nbsp;</p>${section('HOW IT OCCURRED')}<p>&nbsp
     tags: ['equipment', 'issue', 'receipt'],
     fields: [{ key: 'employee', label: 'Employee', source: 'manual' }],
     content: `${AGENCY_HEADER}${title('EQUIPMENT ISSUE')}<p><strong>Employee:</strong> {{employee}}</p>
-<table style="width:100%;border-collapse:collapse;font-size:11px;"><tr style="background:#f0f0f0;"><th style="border:1px solid #333;padding:4px;">Item</th><th style="border:1px solid #333;padding:4px;">Serial / ID</th><th style="border:1px solid #333;padding:4px;">Condition</th></tr>${['Uniform','Badge','Radio','OC spray','Body camera','Vehicle key','Phone'].map(i=>`<tr><td style="border:1px solid #333;padding:4px;">${i}</td><td style="border:1px solid #333;padding:4px;">&nbsp;</td><td style="border:1px solid #333;padding:4px;">&nbsp;</td></tr>`).join('')}</table>
+<table><tr><th>Item</th><th>Serial / ID</th><th>Condition</th></tr>${['Uniform','Badge','Radio','OC spray','Body camera','Vehicle key','Phone'].map(i=>`<tr><td>${i}</td><td>&nbsp;</td><td>&nbsp;</td></tr>`).join('')}</table>
 <p>I acknowledge receipt of the above items and agree to return them in working condition upon separation. The cost of unreturned or damaged equipment may be deducted from my final pay to the extent permitted by Utah Code §34-28-3.</p>${DUAL_SIG_BLOCK}`,
   },
   {
@@ -187,7 +188,7 @@ ${section('NATURE OF INJURY')}<p>&nbsp;</p>${section('HOW IT OCCURRED')}<p>&nbsp
     description: 'Internal investigation report on employee conduct',
     tags: ['ia', 'internal-affairs', 'investigation'],
     fields: [{ key: 'subject', label: 'Subject Employee', source: 'manual' }, { key: 'investigator', label: 'Investigator', source: 'manual' }, { key: 'complaint_no', label: 'Complaint #', source: 'manual' }],
-    content: `${AGENCY_HEADER}${title('INTERNAL AFFAIRS INVESTIGATION', '#7a2418')}${CONFIDENTIAL}${tbl(row2('<strong>Subject:</strong> {{subject}}', '<strong>Investigator:</strong> {{investigator}}') + row1('<strong>Complaint #:</strong> {{complaint_no}}'))}
+    content: `${AGENCY_HEADER}${title('INTERNAL AFFAIRS INVESTIGATION', '#7a2418')}${CONFIDENTIAL}${tbl(row2(field('Subject', '{{subject}}'), field('Investigator', '{{investigator}}')) + row1(field('Complaint #', '{{complaint_no}}')))}
 ${section('ALLEGATION')}<p>&nbsp;</p>${section('GARRITY/WEINGARTEN NOTICE GIVEN')}<p>☐ Yes — date/time: ____</p>${section('EVIDENCE EXAMINED')}<p>&nbsp;</p>${section('WITNESS INTERVIEWS')}<p>&nbsp;</p>${section('FINDINGS')}<p>☐ Sustained ☐ Not sustained ☐ Unfounded ☐ Exonerated</p>${section('RECOMMENDED ACTION')}<p>&nbsp;</p>${DUAL_SIG_BLOCK}`,
   },
 ];

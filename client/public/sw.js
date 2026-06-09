@@ -526,7 +526,20 @@
 //   captions, vertical spacer, page-setup presets, export/copy selection, custom
 //   spell dictionary, word/char limit indicator, drag-reorder outline sections,
 //   formatting macro recorder, clear-document.
-const CACHE_NAME = 'rmpg-flex-v851';
+// v852: Document Writer template formatting overhaul — citation-form look in
+//   sans-serif across all ~150 templates. ROOT CAUSE of the old plain look:
+//   TipTap's schema silently STRIPPED the templates' <div> wrappers, per-<td>
+//   styles and h2 border-bottoms at insert. _shared.ts rebuilt on a
+//   round-trip-safe vocabulary (span font-family/size/letter-spacing/small-caps,
+//   paragraph shading + full borders, tables, taskList): Arial/Helvetica form
+//   chrome, letterhead w/ gold rule bar, gold-tab section bars, label-over-value
+//   field grids (dense 3-up citation caseHeader), ruled narrative writing areas,
+//   boxed signature rows w/ certification line, notary acknowledgment on
+//   affidavits, statute banners, form footer helper. index.ts's 45 hand-rolled
+//   templates converted to the same system (43 titles, 120 sections, 264 field
+//   cells); 164 '<strong>Label:</strong>' cells in the 4 category files →
+//   field() label-over-value boxes.
+const CACHE_NAME = 'rmpg-flex-v852';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
