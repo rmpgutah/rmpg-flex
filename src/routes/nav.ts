@@ -286,10 +286,20 @@ nav.put('/trip/:id/end', async (c) => {
       return c.json({ error: `Trip is ${trip.status}` }, 400);
     }
 
-    // Calculate final distance
+    // Calculate final distance. The client's end call sends neither
+    // distance_miles nor route_points, so prefer the points already accumulated
+    // on the row by /trip/:id/update — otherwise finalDistance would be 0 and
+    // (with the old `?:null` binding) WIPE the distance /update had computed,
+    // leaving every completed trip at "—" miles. Order of preference:
+    // explicit body distance → body route_points → the trip's stored route_points.
     let finalDistance = body.distance_miles ?? 0;
     if (body.route_points && body.route_points.length > 0) {
       finalDistance = routeDistance(body.route_points);
+    } else if (trip.route_points) {
+      try {
+        const stored = JSON.parse(trip.route_points);
+        if (Array.isArray(stored) && stored.length > 1) finalDistance = routeDistance(stored);
+      } catch { /* keep finalDistance */ }
     }
 
     // Duration. start_time is stored as datetime('now','localtime') — a NAIVE
@@ -308,13 +318,13 @@ nav.put('/trip/:id/end', async (c) => {
       `UPDATE nav_trip_log
        SET status = 'completed', end_lat = ?, end_lng = ?, end_accuracy = ?,
            end_location = ?, end_time = datetime('now','localtime'),
-           distance_miles = ?, max_speed_mph = COALESCE(?, max_speed_mph),
+           distance_miles = COALESCE(NULLIF(?, 0), distance_miles), max_speed_mph = COALESCE(?, max_speed_mph),
            duration_seconds = ?, route_points = COALESCE(?, route_points),
            notes = COALESCE(?, notes), updated_at = datetime('now','localtime')
        WHERE id = ?`,
       body.end_lat ?? null, body.end_lng ?? null, body.end_accuracy ?? null,
       body.end_location ?? null,
-      finalDistance > 0 ? finalDistance : null,
+      finalDistance > 0 ? finalDistance : 0,
       body.max_speed_mph ?? null,
       durationSec > 0 ? durationSec : null,
       body.route_points ? JSON.stringify(body.route_points) : null,

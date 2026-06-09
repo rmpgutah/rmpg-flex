@@ -344,7 +344,7 @@ pm.post('/mileage/fix', async (c) => {
     if (!reason) {
       return c.json({ error: 'reason required (audit trail)', code: 'REASON_REQUIRED' }, 400);
     }
-    const propagate = body.propagate_chain !== false; // default true
+    let propagate = body.propagate_chain !== false; // default true
 
     const db = getDb(c.env);
     const existing = await queryFirst<{ starting_mileage: number | null; ending_mileage: number | null; call_number: string | null; assigned_unit_ids: string | null; cleared_at: string | null; closed_at: string | null; created_at: string }>(
@@ -354,14 +354,22 @@ pm.post('/mileage/fix', async (c) => {
     );
     if (!existing) return c.json({ error: 'Call not found', code: 'NOT_FOUND' }, 404);
     const before = existing[body.field as 'starting_mileage' | 'ending_mileage'];
-    if (before == null) {
-      return c.json({ error: 'Selected call has no mileage stamped on this field; nothing to fix', code: 'NO_VALUE' }, 400);
-    }
     const after = Number(body.after_value);
-    if (after === before) {
+    // A null current value means the call was cleared without a mileage stamp
+    // on this field — the common "officer forgot to enter ending mileage" case.
+    // That's a BACKFILL (set the value for the first time), not a correction.
+    // The old code rejected before==null with NO_VALUE, which made it
+    // impossible to fill in a missing ending mileage at all — even though the
+    // UI offers "New value (was —)" precisely for this. (regression fix)
+    const isBackfill = before == null;
+    if (!isBackfill && after === before) {
       return c.json({ error: 'after_value equals before_value; no change to apply', code: 'NO_DELTA' }, 400);
     }
-    const delta = after - before;
+    // A backfill shifts nothing downstream — there is no prior reading to diff
+    // against — so the chain delta is 0 and we never propagate, regardless of
+    // the client's propagate flag.
+    const delta = isBackfill ? 0 : after - (before as number);
+    if (isBackfill) propagate = false;
 
     // Resolve scope. Explicit scope wins; otherwise derive from the
     // call's primary assigned unit.
@@ -441,24 +449,44 @@ pm.post('/mileage/fix', async (c) => {
         bindings: [r.after, r.id],
       });
     }
-    // Anchor: upsert. The delta accumulates into offset_miles AND
-    // bumps current_mileage so the next /suggest returns the
-    // corrected baseline.
-    batch.push({
-      sql: `INSERT INTO mileage_anchor
-              (scope_type, scope_key, officer_id, unit_id, current_mileage, offset_miles,
-               last_entry_table, last_entry_id, last_entry_at, updated_by)
-            VALUES (?, ?, ?, ?, ?, ?, 'calls_for_service', ?, ?, ?)
-            ON CONFLICT(scope_key) DO UPDATE SET
-              current_mileage = mileage_anchor.current_mileage + excluded.offset_miles,
-              offset_miles = mileage_anchor.offset_miles + excluded.offset_miles,
-              last_entry_table = excluded.last_entry_table,
-              last_entry_id = excluded.last_entry_id,
-              last_entry_at = excluded.last_entry_at,
-              updated_by = excluded.updated_by,
-              updated_at = datetime('now')`,
-      bindings: [scopeType, scopeKey, officerId, unitId, after, delta, body.entry_id, anchorTime, user.id],
-    });
+    // Anchor: upsert. For a CORRECTION the delta accumulates into offset_miles
+    // AND bumps current_mileage so the next /suggest returns the corrected
+    // baseline. For a BACKFILL there is no delta to accumulate — instead we
+    // advance current_mileage to the newly-stamped reading when it's higher
+    // (a fresh ending odometer); MAX() keeps a starting-mileage backfill from
+    // lowering an already-higher baseline, and offset_miles is left untouched.
+    if (isBackfill) {
+      batch.push({
+        sql: `INSERT INTO mileage_anchor
+                (scope_type, scope_key, officer_id, unit_id, current_mileage, offset_miles,
+                 last_entry_table, last_entry_id, last_entry_at, updated_by)
+              VALUES (?, ?, ?, ?, ?, 0, 'calls_for_service', ?, ?, ?)
+              ON CONFLICT(scope_key) DO UPDATE SET
+                current_mileage = MAX(mileage_anchor.current_mileage, excluded.current_mileage),
+                last_entry_table = excluded.last_entry_table,
+                last_entry_id = excluded.last_entry_id,
+                last_entry_at = excluded.last_entry_at,
+                updated_by = excluded.updated_by,
+                updated_at = datetime('now')`,
+        bindings: [scopeType, scopeKey, officerId, unitId, after, body.entry_id, anchorTime, user.id],
+      });
+    } else {
+      batch.push({
+        sql: `INSERT INTO mileage_anchor
+                (scope_type, scope_key, officer_id, unit_id, current_mileage, offset_miles,
+                 last_entry_table, last_entry_id, last_entry_at, updated_by)
+              VALUES (?, ?, ?, ?, ?, ?, 'calls_for_service', ?, ?, ?)
+              ON CONFLICT(scope_key) DO UPDATE SET
+                current_mileage = mileage_anchor.current_mileage + excluded.offset_miles,
+                offset_miles = mileage_anchor.offset_miles + excluded.offset_miles,
+                last_entry_table = excluded.last_entry_table,
+                last_entry_id = excluded.last_entry_id,
+                last_entry_at = excluded.last_entry_at,
+                updated_by = excluded.updated_by,
+                updated_at = datetime('now')`,
+        bindings: [scopeType, scopeKey, officerId, unitId, after, delta, body.entry_id, anchorTime, user.id],
+      });
+    }
     // The cascade above rewrote current rows; the offset still
     // applies to FUTURE entries (officer's next patrol). That is
     // already handled by offset_miles on the anchor row.
@@ -481,7 +509,8 @@ pm.post('/mileage/fix', async (c) => {
             VALUES (?, 'MILEAGE_FIX', 'call', ?, ?, datetime('now'))`,
       bindings: [
         user.id, body.entry_id,
-        `Mileage fix: ${body.call_number || body.entry_id} ${body.field} ${before}→${after} (Δ ${delta >= 0 ? '+' : ''}${delta.toFixed(1)} mi, cascade=${cascadeCount}, scope=${scopeKey}) — ${reason}`,
+        `${isBackfill ? 'Mileage backfill' : 'Mileage fix'}: ${existing.call_number || body.entry_id} ${body.field} ${before == null ? '—' : before}→${after}` +
+        `${isBackfill ? '' : ` (Δ ${delta >= 0 ? '+' : ''}${delta.toFixed(1)} mi, cascade=${cascadeCount})`} scope=${scopeKey} — ${reason}`,
       ],
     });
 
@@ -492,6 +521,7 @@ pm.post('/mileage/fix', async (c) => {
 
     return c.json({
       success: true,
+      is_backfill: isBackfill,
       scope: { scope_type: scopeType, scope_key: scopeKey, officer_id: officerId, unit_id: unitId },
       fix: {
         entry_table: 'calls_for_service',
@@ -626,70 +656,61 @@ pm.get('/trip-log/generate', async (c) => {
       });
     }
 
-    // PATROL rows: gap segments between consecutive RESPONSE rows
-    // (or from window start/end). We collapse to one row per gap
-    // with the breadcrumb-aggregated stats. PATROL rows do NOT
-    // have starting/ending_mileage on a CFS — leave them null and
-    // let the renderer show "—".
+    // PATROL rows: discrete completed trips from nav_trip_log (the trip
+    // detector's real start/stop segmentation).
+    //
+    // The previous implementation derived PATROL rows from breadcrumb GAPS
+    // BETWEEN dispatched-call (CFS) responses. For an officer who just patrols
+    // and is never dispatched to a call there are zero RESPONSE rows, so the
+    // whole report window collapsed into ONE patrol "gap" row spanning from→to
+    // (a nonsensical multi-day duration — e.g. 11520 min over a week) and the
+    // officer's actual discrete trips never appeared ("missing recent trips").
+    // nav_trip_log already holds the real per-trip start/end, so use it. Per-trip
+    // max_mph / harsh / distance are recomputed from the breadcrumbs over each
+    // trip's window (authoritative — nav_trip_log.distance_miles can be null),
+    // falling back to the stored values.
     const patrolRows: TripLogRow[] = [];
-    const windowStart = `${from} 00:00:00`;
-    const windowEnd = `${to} 23:59:59`;
-    const sortedResponseTimes = responseRows
-      .map((r) => ({ start: r.start, end: r.end }))
-      .filter((t) => t.start && t.end)
-      .sort((a, b) => (a.start < b.start ? -1 : 1));
+    const navWhere: string[] = ["status = 'completed'", 'date(start_time) >= date(?)', 'date(start_time) <= date(?)'];
+    const navParams: unknown[] = [from, to];
+    if (Number.isFinite(officerId)) { navWhere.push('officer_id = ?'); navParams.push(officerId); }
+    else if (Number.isFinite(unitId)) { navWhere.push('unit_id = ?'); navParams.push(unitId); }
+    const navTrips = await query<Record<string, unknown>>(db, `
+      SELECT id, start_time, end_time, distance_miles, duration_seconds, max_speed_mph
+        FROM nav_trip_log
+       WHERE ${navWhere.join(' AND ')}
+       ORDER BY start_time ASC
+       LIMIT 500
+    `, ...navParams);
 
-    let cursor = windowStart;
-    for (const seg of sortedResponseTimes) {
-      if (seg.start > cursor) {
-        const stats = await computeBreadcrumbStats(
-          db,
-          Number.isFinite(unitId as number) ? (unitId as number) : null,
-          Number.isFinite(officerId as number) ? (officerId as number) : null,
-          cursor, seg.start,
-        );
-        if (stats.point_count > 0) {
-          patrolRows.push({
-            type: 'PATROL',
-            call_id: null,
-            call_number: null,
-            start: cursor,
-            end: seg.start,
-            distance_mi: round1(stats.distance_miles),
-            duration_min: Math.max(0, Math.round((new Date(seg.start).getTime() - new Date(cursor).getTime()) / 60000)),
-            mileage_from: null,
-            mileage_to: null,
-            max_mph: stats.max_mph,
-            harsh: stats.harsh,
-          });
-        }
-        cursor = seg.end;
-      } else if (seg.end > cursor) {
-        cursor = seg.end;
-      }
-    }
-    if (cursor < windowEnd) {
+    for (const t of navTrips) {
+      const start = (t.start_time as string);
+      const end = (t.end_time as string) || start;
       const stats = await computeBreadcrumbStats(
         db,
         Number.isFinite(unitId as number) ? (unitId as number) : null,
         Number.isFinite(officerId as number) ? (officerId as number) : null,
-        cursor, windowEnd,
+        start, end,
       );
-      if (stats.point_count > 0) {
-        patrolRows.push({
-          type: 'PATROL',
-          call_id: null,
-          call_number: null,
-          start: cursor,
-          end: windowEnd,
-          distance_mi: round1(stats.distance_miles),
-          duration_min: Math.max(0, Math.round((new Date(windowEnd).getTime() - new Date(cursor).getTime()) / 60000)),
-          mileage_from: null,
-          mileage_to: null,
-          max_mph: stats.max_mph,
-          harsh: stats.harsh,
-        });
-      }
+      const storedDist = t.distance_miles != null ? Number(t.distance_miles) : 0;
+      const distance = stats.distance_miles > 0 ? stats.distance_miles : storedDist;
+      const storedMax = t.max_speed_mph != null ? Number(t.max_speed_mph) : 0;
+      const maxMph = Math.max(stats.max_mph, storedMax);
+      const duration = t.duration_seconds != null
+        ? Math.round(Number(t.duration_seconds) / 60)
+        : Math.max(0, Math.round((new Date(end.replace(' ', 'T') + 'Z').getTime() - new Date(start.replace(' ', 'T') + 'Z').getTime()) / 60000));
+      patrolRows.push({
+        type: 'PATROL',
+        call_id: null,
+        call_number: null,
+        start,
+        end,
+        distance_mi: round1(distance),
+        duration_min: Math.max(0, duration),
+        mileage_from: null,
+        mileage_to: null,
+        max_mph: Math.round(maxMph),
+        harsh: stats.harsh,
+      });
     }
 
     // Merge + sort chronologically.
