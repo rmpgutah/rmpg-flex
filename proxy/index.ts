@@ -1532,6 +1532,9 @@ const API_ROUTES: RouteRule[] = [
   { kind: 'prefix', value: '/api/community' },
   { kind: 'prefix', value: '/api/crisis' },
   { kind: 'prefix', value: '/api/field-interviews' },
+  // Field photos — mobile camera portal uploads (src/routes/fieldPhotos.ts).
+  // New rewrite surface; legacy never had it.
+  { kind: 'prefix', value: '/api/field-photos' },
   { kind: 'prefix', value: '/api/downloads' },
   { kind: 'prefix', value: '/api/forensics' },
   { kind: 'prefix', value: '/api/gang-intel' },

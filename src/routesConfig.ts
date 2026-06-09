@@ -155,6 +155,7 @@ import {
 import businessVehicles from './routes/business/vehicles';
 import businessVisits from './routes/business/visits';
 import businessPhotos from './routes/business/photos';
+import fieldPhotos from './routes/fieldPhotos';
 // Howen dashcam integration
 import howen from './routes/howen';
 // Downloads + auto-updates
@@ -405,6 +406,10 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/business-vehicles', router: businessVehicles, auth: 'required' },
   { prefix: '/api/business-visits', router: businessVisits, auth: 'required' },
   { prefix: '/api/business-photos', router: businessPhotos, auth: 'required' },
+
+  // ── Field photos (mobile camera portal /field-camera) ───────
+  // Stamped evidence photos: overlay burned client-side, R2-backed.
+  { prefix: '/api/field-photos', router: fieldPhotos, auth: 'required' },
 
   // ── Howen dashcam integration ──────────────────────────────
   // Device fleet + recent events. See src/routes/howen.ts.

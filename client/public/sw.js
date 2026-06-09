@@ -494,7 +494,10 @@
 //   style presets, text<->list conversions, list/table row sort, auto-filled
 //   officer signature block, recent documents, standalone styled HTML export,
 //   reusable section blocks, duplicate document, nav helpers, manual save-draft.
-const CACHE_NAME = 'rmpg-flex-v847';
+// v848: /field-camera mobile camera portal — live viewfinder + HUD; capture
+//   composites timestamp/officer/unit/GPS into a bottom data band + translucent
+//   RMPG watermark bottom-right, uploads stamped JPEG to /api/field-photos (R2).
+const CACHE_NAME = 'rmpg-flex-v848';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
