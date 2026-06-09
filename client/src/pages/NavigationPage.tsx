@@ -28,6 +28,20 @@ import {
 import MovementReportDrawer from './navigation/MovementReportDrawer';
 import CallHistoryDrawer from './navigation/CallHistoryDrawer';
 import TripsDrawer from './navigation/TripsDrawer';
+// ── Drive-Mode HUD lane (self-contained, drive lane only) ──
+import {
+  HudSpeedGauge, HudCompass, HudStatTile, HudQualityPill, HudNextManeuver,
+  HudExportCluster, HudDrivingScore, HudCollapseToggle, HudSummaryLine,
+  HudMuteToggle, HudMapControls, HudSourceChip, HudArrivedBanner, HudParkedBadge,
+} from './navigation/hud/HudInstruments';
+import { useSpeedLimit } from './navigation/hud/useSpeedLimit';
+import { gpxExport, navCsvExport } from './navigation/hud/trackExport';
+import { playNavTone } from './navigation/hud/navTone';
+import {
+  type SpeedUnit, loadSpeedUnit, saveSpeedUnit, formatSpeed, formatHeading,
+  formatDistanceLong, formatDistanceMi, formatDuration as hudFormatDuration,
+  etaToMinutes, arrivalClockFrom, formatCountdown, truncateLabel,
+} from './navigation/hud/hudUnits';
 import { buildMovementReport } from './navigation/vehicleTelemetry';
 import { useGpsTracking } from '../hooks/useGpsTracking';
 import { useMapRouting, snapToRoute } from '../hooks/useMapRouting';
@@ -534,12 +548,40 @@ export default function NavigationPage() {
   const alertTimerRef = useRef<number | null>(null);
   const [, force] = useState(0);
 
+  // ── Drive-Mode HUD state (drive lane) ──
+  const [speedUnit, setSpeedUnit] = useState<SpeedUnit>(() => loadSpeedUnit());
+  const cycleSpeedUnit = () => setSpeedUnit((u) => { const next: SpeedUnit = u === 'mph' ? 'kmh' : 'mph'; saveSpeedUnit(next); return next; });
+  const [footerCollapsed, setFooterCollapsed] = useState(false); // #45
+  const [hudMuted, setHudMuted] = useState(false);               // #46 transient mute
+  const [followActive, setFollowActive] = useState(true);        // #47 follow-me camera
+  const followActiveRef = useRef(true);
+  useEffect(() => { followActiveRef.current = followActive; }, [followActive]);
+  const [pitched, setPitched] = useState(true);                  // #63 2D/3D
+  const [mapOrientation] = useState<'north-up' | 'heading-up'>('heading-up'); // #34 (map rotates to heading)
+  // #32/#53 — hard-event counters + transient G-ball flash.
+  const hardBrakesRef = useRef(0);
+  const hardAccelsRef = useRef(0);
+  const [, forceEvents] = useState(0);
+  const [gFlash, setGFlash] = useState<null | 'brake' | 'accel'>(null);
+  const gFlashTimer = useRef<number | null>(null);
+  const lastGSignRef = useRef(0);
+  // #54 — distance-since-last-stop leg accumulator.
+  const legDistRef = useRef(0);
+  const stationarySinceRef = useRef<number | null>(null);
+  // #64 — arrived banner transient state.
+  const [arrivedLabel, setArrivedLabel] = useState<string | null>(null);
+  const arrivedFiredRef = useRef<string | null>(null);
+
   const dir = gps.headingSmoothed ?? gps.course ?? gps.heading;
   const mph = gps.speed != null ? Math.round(gps.speed * 2.237) : null;
   // Shown on the gauges: device speed when available, else position-derived.
   const displayMph = mph ?? derivedMph;
   const hasFix = gps.latitude != null && gps.longitude != null;
   const src = SOURCE_META[gps.positionSource] || SOURCE_META.unknown;
+  // #29/#52/#65/#69 — posted speed limit near the live fix (best-effort, drive lane).
+  const { limitMph, buffer: limitBuffer } = useSpeedLimit(gps.latitude, gps.longitude);
+  // #46 — effective tone gate: prefs.alertsOn AND not transiently muted.
+  const tonesOn = alertsOn && !hudMuted;
 
   // ── One-time Mapbox init (defensive — degrade to instruments-only) ──
   useEffect(() => {
@@ -674,7 +716,7 @@ export default function NavigationPage() {
     let effMph = mph;
     if (prev) {
       const d = haversineMeters(prev.lat, prev.lng, gps.latitude, gps.longitude);
-      if (d > 1 && d < 5000) distanceRef.current += d; // ignore jitter + teleports
+      if (d > 1 && d < 5000) { distanceRef.current += d; legDistRef.current += d; } // ignore jitter + teleports (#54 leg accrues with total)
       if (effMph == null && lastPosTimeRef.current != null) {
         const dt = (now - lastPosTimeRef.current) / 1000;
         if (dt > 0.4) { let v = (d / dt) * 2.237; if (v > 120) v = 0; effMph = Math.round(v); }
@@ -695,8 +737,30 @@ export default function NavigationPage() {
         setGForce(g);
         if (g > 0) peakGRef.current.accel = Math.max(peakGRef.current.accel, g);
         else if (g < 0) peakGRef.current.brake = Math.max(peakGRef.current.brake, -g);
+        // #32/#53 — hard-brake / hard-accel events (threshold 0.35 g), edge-
+        // triggered so one event counts once, with a transient amber G-ball flash.
+        const HARD = 0.35;
+        if (g <= -HARD && lastGSignRef.current > -HARD) {
+          hardBrakesRef.current += 1; forceEvents((n) => n + 1);
+          setGFlash('brake');
+          if (gFlashTimer.current) window.clearTimeout(gFlashTimer.current);
+          gFlashTimer.current = window.setTimeout(() => setGFlash(null), 600);
+        } else if (g >= HARD && lastGSignRef.current < HARD) {
+          hardAccelsRef.current += 1; forceEvents((n) => n + 1);
+          setGFlash('accel');
+          if (gFlashTimer.current) window.clearTimeout(gFlashTimer.current);
+          gFlashTimer.current = window.setTimeout(() => setGFlash(null), 600);
+        }
+        lastGSignRef.current = g;
       }
       accelRef.current = { mph: effMph, t: now };
+    }
+    // #54 — reset the leg odometer after >3s stationary (speed ~0).
+    if (effMph != null && effMph <= 1) {
+      if (stationarySinceRef.current == null) stationarySinceRef.current = now;
+      else if (now - stationarySinceRef.current > 3000) legDistRef.current = 0;
+    } else if (effMph != null && effMph > 2) {
+      stationarySinceRef.current = null;
     }
     // Live lateral (cornering) G from turn-rate × speed — mirrors the TRIP
     // report's math but live, so the bottom-bar G-ball shows cornering load
@@ -724,12 +788,16 @@ export default function NavigationPage() {
     const map = mapInstanceRef.current;
     if (map && mapReady) {
       markerRef.current?.setLngLat([gps.longitude, gps.latitude]);
-      map.easeTo({
-        center: [gps.longitude, gps.latitude],
-        bearing: dir ?? map.getBearing(),
-        duration: 800,
-        essential: true,
-      });
+      // #47 — only recenter when follow-me is active; the marker still tracks so
+      // the unit stays visible after the operator pans the map away.
+      if (followActiveRef.current) {
+        map.easeTo({
+          center: [gps.longitude, gps.latitude],
+          bearing: dir ?? map.getBearing(),
+          duration: 800,
+          essential: true,
+        });
+      }
       // Recompute route progress / off-route from the live position.
       updateOrigin(gps.latitude, gps.longitude);
       // Terrain-derived instruments: sample TRUE ground elevation from the 3D
@@ -759,6 +827,39 @@ export default function NavigationPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gps.latitude, gps.longitude, dir, mapReady, insetReady]);
+
+  // ── #47 — disable follow-me when the operator drags the map ──
+  // A user pan should pin the view where they put it; the recenter button (or a
+  // route refit) re-arms follow. Listener bound once the map is up.
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !mapReady) return;
+    const onDragStart = () => setFollowActive(false);
+    map.on('dragstart', onDragStart);
+    return () => { try { map.off('dragstart', onDragStart); } catch { /* map gone */ } };
+  }, [mapReady]);
+
+  // ── #47/#62/#63 — lower-HUD map control handlers (drive lane) ──
+  const recenterMap = () => {
+    setFollowActive(true);
+    const map = mapInstanceRef.current;
+    if (map && gps.latitude != null && gps.longitude != null) {
+      map.easeTo({ center: [gps.longitude, gps.latitude], bearing: dir ?? map.getBearing(), duration: 500, essential: true });
+    }
+  };
+  const zoomMap = (delta: number) => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+    try { map.easeTo({ zoom: Math.max(3, Math.min(20, map.getZoom() + delta)), duration: 250 }); } catch { /* no map */ }
+  };
+  const togglePitch = () => {
+    const map = mapInstanceRef.current;
+    setPitched((p) => {
+      const next = !p;
+      if (map) { try { map.easeTo({ pitch: next ? 55 : 0, duration: 400 }); } catch { /* no map */ } }
+      return next;
+    });
+  };
 
   // ── Auto-route to the unit's assigned call, once the map is ready ──
   const routedCallRef = useRef<number | null>(null);
@@ -1549,12 +1650,57 @@ export default function NavigationPage() {
   }, [destCrowMi, alertsOn]);
 
   useEffect(() => () => { if (alertTimerRef.current) window.clearTimeout(alertTimerRef.current); }, []);
+  useEffect(() => () => { if (gFlashTimer.current) window.clearTimeout(gFlashTimer.current); }, []);
+
+  // #64 — destination-reached confirmation banner. Crosses the same ~800 ft
+  // approach threshold but shows a dismissible "Arrived" card (not just a tone),
+  // once per destination. Re-arms when the destination changes or clears.
+  useEffect(() => {
+    const d = destCoordsRef.current;
+    if (destCrowMi == null || !d) { arrivedFiredRef.current = null; return; }
+    const key = `${d.lat.toFixed(4)},${d.lng.toFixed(4)}`;
+    if (arrivedFiredRef.current !== key && destCrowMi <= 0.15) {
+      arrivedFiredRef.current = key;
+      setArrivedLabel(destLabel || activeRoute?.callNumber || 'destination');
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [destCrowMi]);
 
   const step = useMemo(
     () => pickCurrentStep(activeRoute?.steps, routeProgress?.fraction ?? 0, activeRoute?.distanceMeters ?? 0),
     [activeRoute, routeProgress],
   );
   const StepIcon = step ? maneuverIcon(step.maneuverType, step.modifier) : ArrowUp;
+
+  // ── Drive-Mode HUD derived values (drive lane) ──
+  // Distance remaining to the NEXT maneuver point (#41/#42): how far into the
+  // current step we are vs the step's own length, derived from route progress.
+  const distanceToTurnMeters = useMemo(() => {
+    const steps = activeRoute?.steps;
+    if (!steps || steps.length === 0) return null;
+    const total = activeRoute?.distanceMeters ?? 0;
+    const done = Math.max(0, Math.min(1, routeProgress?.fraction ?? 0)) * total;
+    let acc = 0;
+    for (let i = 0; i < steps.length; i++) {
+      acc += steps[i].distanceMeters;
+      if (acc >= done) return Math.max(0, acc - done);
+    }
+    return null;
+  }, [activeRoute, routeProgress]);
+  // #70 — parked: speed ~0 for >5s (dims non-essential tiles, shows badge).
+  const parkedSinceRef = useRef<number | null>(null);
+  const liveMph = hasFix ? displayMph : null;
+  if (liveMph != null && liveMph <= 1) { if (parkedSinceRef.current == null) parkedSinceRef.current = Date.now(); }
+  else if (liveMph != null && liveMph > 2) parkedSinceRef.current = null;
+  const parked = parkedSinceRef.current != null && Date.now() - parkedSinceRef.current > 5000;
+  // #49 — ETA mirror (countdown + arrival clock) from route progress.
+  const etaMins = etaToMinutes(routeProgress?.remainingEta ?? activeRoute?.eta ?? '');
+  const etaArrival = arrivalClockFrom(etaMins);
+  const etaCountdown = etaMins > 0 ? formatCountdown(etaMins) : null;
+  // #55/#56 — resolved day/night theme + brightness (drive lane reads prefs.brightness
+  // via the alert/brightness model; here we derive night from the local hour as a
+  // self-contained fallback so the footer dims without depending on other lanes).
+  const nightTheme = useMemo(() => { const h = new Date().getHours(); return h >= 19 || h < 6; }, []);
 
   // Measure the live turn-banner height so the corner panels can flow below it.
   // ResizeObserver catches every content change (added steps, off-route row,
@@ -2051,47 +2197,84 @@ export default function NavigationPage() {
         />
       )}
 
+      {/* ── #64 — Destination-reached confirmation (lower HUD overlay) ── */}
+      {arrivedLabel && (
+        <div className="absolute z-40 left-1/2 -translate-x-1/2" style={{ bottom: 210 }}>
+          <HudArrivedBanner label={arrivedLabel} onDismiss={() => setArrivedLabel(null)} />
+        </div>
+      )}
+
       {/* ── Advanced instrument dashboard (bottom) ── */}
-      <div className="absolute bottom-0 inset-x-0 z-20">
+      {/* #68 — safe-area inset padding so controls clear rugged-tablet bezels. */}
+      <div className="absolute bottom-0 inset-x-0 z-20" style={{ paddingBottom: 'env(safe-area-inset-bottom)', paddingLeft: 'env(safe-area-inset-left)', paddingRight: 'env(safe-area-inset-right)' }}>
         {/* Gold accent riser — lifts the instrument panel off the map */}
         <div className="h-px w-full" style={{ background: 'linear-gradient(90deg, transparent 5%, rgba(212,160,23,0.4) 28%, #d4a017 50%, rgba(212,160,23,0.4) 72%, transparent 95%)' }} />
         <div
           className="backdrop-blur-md border-t border-rmpg-800/80"
-          style={{ background: 'linear-gradient(180deg, rgba(10,10,10,0.80) 0%, rgba(8,8,8,0.96) 60%)' }}
+          style={{ background: nightTheme
+            ? 'linear-gradient(180deg, rgba(6,6,6,0.86) 0%, rgba(4,4,4,0.98) 60%)'
+            : 'linear-gradient(180deg, rgba(10,10,10,0.80) 0%, rgba(8,8,8,0.96) 60%)' }}
         >
+          {/* ── #45/#46/#47/#62/#63/#40/#61/#70/#30 — HUD control bar ── */}
+          <div className="flex items-center gap-2 px-3 py-1 border-b border-rmpg-800/70 overflow-x-auto">
+            <HudCollapseToggle collapsed={footerCollapsed} onToggle={() => setFooterCollapsed((v) => !v)} />
+            <HudMapControls
+              followActive={followActive} onRecenter={recenterMap}
+              onZoomIn={() => zoomMap(1)} onZoomOut={() => zoomMap(-1)}
+              pitched={pitched} onTogglePitch={togglePitch}
+            />
+            <HudMuteToggle muted={hudMuted} onToggle={() => setHudMuted((v) => !v)} />
+            <span className="w-px self-stretch bg-rmpg-800 mx-0.5" />
+            <HudQualityPill accuracy={gps.accuracy ?? null} />
+            <HudSourceChip label={src.label} color={src.color} fixTick={trailPtsCount} />
+            {parked && <HudParkedBadge />}
+            <span className="flex-1" />
+            <HudExportCluster pointCount={trailPtsCount} onGpx={() => gpxExport(gps.getCapturedTrack())} onCsv={() => navCsvExport(gps.getCapturedTrack())} />
+          </div>
+
+          {/* #45/#66 — collapsed single-line summary (speed · heading · ETA) */}
+          {footerCollapsed ? (
+            <HudSummaryLine
+              unit={gps.unitCallSign ? `UNIT ${gps.unitCallSign}` : null}
+              street={currentStreet}
+              headingTxt={formatHeading(dir)}
+              speedTxt={formatSpeed(liveMph, speedUnit)}
+              etaTxt={etaCountdown}
+            />
+          ) : (
+          <>
           {/* HUD heading tape */}
           <div className="px-3 pt-1.5 pb-1 border-b border-rmpg-800/70">
             <HeadingTape heading={dir} />
           </div>
           <div className="flex items-stretch px-2 py-2">
-            {/* Bay 1 — ring speed gauge */}
-            <div className="flex items-center justify-center px-1">
-              <SpeedGauge mph={hasFix ? displayMph : null} />
+            {/* Bay 1 — ring speed gauge (#29/#33/#48/#51/#52/#57/#59/#65/#69) */}
+            <div className="flex flex-col items-center justify-center px-1">
+              <HudSpeedGauge
+                mph={hasFix ? displayMph : null}
+                unit={speedUnit}
+                limitMph={limitMph}
+                buffer={limitBuffer}
+                heading={dir}
+                night={nightTheme}
+                onOverLimitTone={() => playNavTone(tonesOn, 4000, 990)}
+              />
+              <button
+                type="button"
+                onClick={cycleSpeedUnit}
+                aria-label="Toggle speed units"
+                title="Toggle mph / km·h"
+                className="mt-0.5 text-[7px] font-bold uppercase tracking-wider text-rmpg-500 hover:text-brand-300 border border-rmpg-800 px-1.5 py-0.5"
+                style={{ borderRadius: 2 }}
+              >
+                {speedUnit === 'mph' ? 'MPH' : 'KM/H'}
+              </button>
             </div>
             <div className="w-px self-stretch my-1 bg-gradient-to-b from-transparent via-rmpg-700 to-transparent" />
 
-            {/* Bay 2 — dual-needle compass: heading (gold) + bearing to call (red) */}
+            {/* Bay 2 — refined dual-needle compass (#34/#43/#44) */}
             <div className="flex items-center justify-center px-3">
-              <div className="relative shrink-0" style={{ width: 84, height: 84 }} title="Heading + bearing to call">
-                <div className="absolute inset-0 rounded-full border-2 border-rmpg-600" style={{ boxShadow: 'inset 0 0 12px rgba(0,0,0,0.65)' }} />
-                <span className="absolute top-0 left-1/2 -translate-x-1/2 text-[8px] text-rmpg-500">N</span>
-                <span className="absolute bottom-0 left-1/2 -translate-x-1/2 text-[8px] text-rmpg-700">S</span>
-                <span className="absolute left-0 top-1/2 -translate-y-1/2 text-[8px] text-rmpg-700">W</span>
-                <span className="absolute right-0 top-1/2 -translate-y-1/2 text-[8px] text-rmpg-700">E</span>
-                {destBearing != null && (
-                  <div className="absolute inset-0 flex items-start justify-center" style={{ transform: `rotate(${destBearing}deg)`, transition: 'transform 0.4s ease-out' }} title="Bearing to assigned call">
-                    <div style={{ width: 0, height: 0, borderLeft: '4px solid transparent', borderRight: '4px solid transparent', borderBottom: '13px solid #ef4444', marginTop: 5 }} />
-                  </div>
-                )}
-                <Navigation2
-                  className="absolute inset-0 m-auto w-9 h-9 text-brand-400"
-                  style={{ transform: `rotate(${dir ?? 0}deg)`, transition: 'transform 0.3s ease-out', filter: dir != null ? 'drop-shadow(0 0 4px rgba(212,160,23,0.5))' : 'none' }}
-                  fill={dir != null ? '#d4a017' : 'none'}
-                />
-                <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 text-[10px] font-bold text-brand-300 bg-surface-deep px-1" style={{ borderRadius: 2 }}>
-                  {dir != null ? `${Math.round(dir)}° ${compassCardinal(dir)}` : '—'}
-                </span>
-              </div>
+              <HudCompass heading={dir} destBearing={destBearing} orientation={mapOrientation} />
             </div>
             <div className="w-px self-stretch my-1 bg-gradient-to-b from-transparent via-rmpg-700 to-transparent" />
 
@@ -2116,7 +2299,13 @@ export default function NavigationPage() {
                 ) : <div className="flex items-center text-[8px] text-rmpg-700" style={{ height: 28 }}>awaiting speed…</div>}
               </div>
               <div className="flex items-center gap-2">
-                <GForceBall longG={gForce} latG={latGLive} peak={peakGRef.current} />
+                {/* #53 — hard-brake/hard-accel transient amber flash on the G-ball */}
+                <div className="relative" style={{ width: 66, height: 66 }}>
+                  <GForceBall longG={gForce} latG={latGLive} peak={peakGRef.current} />
+                  {gFlash && (
+                    <div className="absolute inset-0 pointer-events-none rounded-full" style={{ boxShadow: 'inset 0 0 0 3px #f59e0b, 0 0 10px #f59e0b88', borderRadius: '9999px', animation: 'none' }} aria-hidden="true" />
+                  )}
+                </div>
                 <div className="flex-1 min-w-0 flex flex-col gap-1.5">
                   <div className="leading-none">
                     <div className="flex items-center justify-between text-[7px] uppercase tracking-wider text-rmpg-600">
@@ -2136,32 +2325,95 @@ export default function NavigationPage() {
                   </div>
                 </div>
               </div>
+              {/* #32 — driving-score chip + #41/#42 — next-maneuver mini + micro-bar */}
+              <div className="flex items-stretch gap-1.5">
+                <HudDrivingScore
+                  peakLong={Math.max(peakGRef.current.accel, peakGRef.current.brake)}
+                  peakLat={peakGRef.current.lat}
+                  hardBrakes={hardBrakesRef.current}
+                  hardAccels={hardAccelsRef.current}
+                />
+                {step && (
+                  <HudNextManeuver
+                    maneuverType={step.maneuverType}
+                    modifier={step.modifier}
+                    instruction={step.instruction}
+                    distanceToTurnMeters={distanceToTurnMeters}
+                    stepDistanceMeters={step.distanceMeters}
+                  />
+                )}
+              </div>
             </div>
             <div className="w-px self-stretch my-1 bg-gradient-to-b from-transparent via-rmpg-700 to-transparent" />
 
-            {/* Bay 4 — live readouts + session stats as instrument tiles */}
+            {/* Bay 5 — live readouts + session stats as instrument tiles
+                 (#35/#36/#37/#38/#39/#49/#55/#56/#60/#67/#70) */}
             <div className="flex-1 min-w-0 self-center pl-3 pr-1">
-              <div className="grid grid-cols-3 gap-1.5">
-                <StatTile label="Accuracy" value={gps.accuracy != null ? `${Math.round(gps.accuracy)} m` : '—'} dim={gps.accuracy == null} />
-                <StatTile label="Max" value={`${maxMph} mph`} />
-                <StatTile label="Avg" value={`${Math.round(avgMph)} mph`} />
-                <StatTile label="Course" value={course != null ? `${Math.round(course)}°` : '—'} dim={course == null} />
-                <StatTile label="Distance" value={`${distanceMi.toFixed(2)} mi`} />
-                <StatTile label="Session" value={fmtDuration(sessionMs)} />
-                <StatTile label="Elev" value={elevFt != null ? `${Math.round(elevFt).toLocaleString()} ft` : '—'} dim={elevFt == null} />
-                <StatTile label="Climb" value={`${Math.round(climbFt).toLocaleString()} ft`} accent={climbFt > 0 ? '#22c55e' : undefined} dim={climbFt === 0} />
-                <StatTile label="Bearing" value={destBearing != null ? `${Math.round(destBearing)}°` : '—'} accent={destBearing != null ? '#ef4444' : undefined} dim={destBearing == null} />
-                <StatTile label="To Call" value={destCrowMi != null ? `${destCrowMi.toFixed(1)} mi` : '—'} dim={destCrowMi == null} />
-                <StatTile label="Source" value={src.label} accent={src.color} />
+              {/* #50 — prominent current-street readout tile + #31 dual-distance */}
+              <div className="mb-1.5 flex items-stretch gap-1.5">
+                <div
+                  className={`flex-1 min-w-0 border px-2 py-1 ${nightTheme ? 'border-rmpg-700' : 'border-rmpg-800'}`}
+                  style={{ borderRadius: 2, background: nightTheme ? 'rgba(8,8,8,0.85)' : 'rgba(20,20,20,0.6)' }}
+                  title={currentStreet || undefined}
+                >
+                  <div className={`text-[8px] uppercase tracking-wider leading-none ${nightTheme ? 'text-rmpg-500' : 'text-rmpg-600'}`}>Street</div>
+                  <div className={`font-bold text-[15px] leading-tight mt-0.5 truncate ${nightTheme ? 'text-rmpg-50' : 'text-rmpg-100'}`}>
+                    {truncateLabel(currentStreet, 30) || (hasFix ? 'Locating…' : 'Acquiring fix…')}
+                  </div>
+                </div>
+                {/* #31 — routed-remaining | crow-flies dual distance */}
+                {(routeProgress || destCrowMi != null) && (
+                  <div className="shrink-0 border border-rmpg-800 px-2 py-1" style={{ borderRadius: 2, background: 'rgba(20,20,20,0.6)' }} title="Routed remaining | straight-line">
+                    <div className="text-[8px] uppercase tracking-wider text-rmpg-600 leading-none">Dist rt | crow</div>
+                    <div className="font-mono font-bold text-[13px] leading-tight mt-0.5 tabular-nums text-brand-200">
+                      {routeProgress ? formatDistanceLong(routeProgress.remainingMeters, speedUnit) : '—'}
+                      <span className="text-rmpg-600 mx-1">|</span>
+                      {destCrowMi != null ? formatDistanceMi(destCrowMi, speedUnit) : '—'}
+                    </div>
+                  </div>
+                )}
               </div>
-              <div className="mt-1.5 flex items-center gap-2 text-[9px] font-mono">
+              <div
+                className="grid gap-1.5"
+                style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(86px, 1fr))', opacity: parked ? 0.5 : 1, transition: 'opacity 0.4s' }}
+              >
+                {/* #67 — first tile cycles avg / max / elapsed / distance on long-press */}
+                <HudStatTile night={nightTheme} metrics={[
+                  { key: 'avg', label: 'Avg', value: formatSpeed(avgMph, speedUnit) },
+                  { key: 'max', label: 'Max', value: formatSpeed(maxMph, speedUnit) },
+                  { key: 'elapsed', label: 'Session', value: hudFormatDuration(sessionMs) },
+                  { key: 'distance', label: 'Distance', value: formatDistanceLong(distanceRef.current, speedUnit) },
+                ]} />
+                {/* #35 — current speed */}
+                <HudStatTile night={nightTheme} metrics={[{ key: 'cur', label: 'Speed', value: formatSpeed(liveMph, speedUnit), accent: liveMph != null && liveMph > 55 ? '#f59e0b' : undefined }]} />
+                {/* #36 — max-speed-this-session */}
+                <HudStatTile night={nightTheme} metrics={[{ key: 'maxs', label: 'Max', value: formatSpeed(maxMph, speedUnit) }]} />
+                {/* #37 — elapsed session timer */}
+                <HudStatTile night={nightTheme} metrics={[{ key: 'elapsed', label: 'Elapsed', value: hudFormatDuration(sessionMs) }]} />
+                {/* #38 — total session distance (unit-aware) */}
+                <HudStatTile night={nightTheme} metrics={[{ key: 'dist', label: 'Distance', value: formatDistanceLong(distanceRef.current, speedUnit) }]} />
+                {/* #54 — distance-since-last-stop leg */}
+                <HudStatTile night={nightTheme} metrics={[{ key: 'leg', label: 'Leg', value: formatDistanceLong(legDistRef.current, speedUnit) }]} />
+                {/* #39 — heading cardinal + degrees */}
+                <HudStatTile night={nightTheme} metrics={[{ key: 'hdg', label: 'Heading', value: formatHeading(dir), dim: dir == null }]} />
+                {/* #49 — ETA mirror (arrival clock + countdown) */}
+                <HudStatTile night={nightTheme} metrics={[{ key: 'eta', label: 'ETA', value: etaArrival ? `${etaArrival} · ${etaCountdown}` : '—', accent: etaArrival ? '#22c55e' : undefined, dim: !etaArrival }]} />
+                <HudStatTile night={nightTheme} metrics={[{ key: 'acc', label: 'Accuracy', value: gps.accuracy != null ? `${Math.round(gps.accuracy)} m` : '—', dim: gps.accuracy == null }]} />
+                <HudStatTile night={nightTheme} metrics={[{ key: 'elev', label: 'Elev', value: elevFt != null ? `${Math.round(elevFt).toLocaleString()} ft` : '—', dim: elevFt == null }]} />
+                <HudStatTile night={nightTheme} metrics={[{ key: 'climb', label: 'Climb', value: `${Math.round(climbFt).toLocaleString()} ft`, accent: climbFt > 0 ? '#22c55e' : undefined, dim: climbFt === 0 }]} />
+                <HudStatTile night={nightTheme} metrics={[{ key: 'brg', label: 'Bearing', value: destBearing != null ? `${Math.round(destBearing)}°` : '—', accent: destBearing != null ? '#ef4444' : undefined, dim: destBearing == null }]} />
+                <HudStatTile night={nightTheme} metrics={[{ key: 'src', label: 'Source', value: src.label, accent: src.color }]} />
+              </div>
+              <div className={`mt-1.5 flex items-center gap-2 text-[9px] font-mono ${nightTheme ? 'font-bold' : ''}`}>
                 <MapPin className="w-2.5 h-2.5 text-brand-500 shrink-0" />
-                <span className="truncate text-rmpg-300">{currentStreet || (hasFix ? 'Locating street…' : 'Acquiring fix…')}</span>
+                <span className={`truncate ${nightTheme ? 'text-rmpg-200' : 'text-rmpg-300'}`}>{currentStreet || (hasFix ? 'Locating street…' : 'Acquiring fix…')}</span>
                 <span className="shrink-0 text-rmpg-600">{hasFix ? `${gps.latitude!.toFixed(5)}, ${gps.longitude!.toFixed(5)}` : ''}</span>
                 {gps.unitCallSign && <span className="ml-auto shrink-0 text-brand-300 font-bold">UNIT {gps.unitCallSign}</span>}
               </div>
             </div>
           </div>
+          </>
+          )}
         </div>
       </div>
     </div>

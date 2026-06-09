@@ -362,7 +362,17 @@
 //       affirmative success cue; users reported "nothing happened" even
 //       though the DB writes had landed and the connection-status pill had
 //       quietly moved from "Not Configured" → "Not Authorized".
-const CACHE_NAME = 'rmpg-flex-v825';
+// v826: Navigation 100-update batch — large additive enhancement of the Drive
+//       Mode HUD + /nav trip tab. New nav hooks (prefs/session/waypoints/recent-
+//       destinations/auto-theme/driving-score/fix-freshness/proximity-alerts/
+//       hotkeys/wake-lock/low-power/speed-limit), nav utils (unit+time formatters,
+//       GPX/CSV export, heading/coord/eta/geo/theme/trail helpers, volume-scaled
+//       tones), a HUD instruments module + NavSettingsPanel, and NavMapView helper
+//       extraction. Built via a 5-lane parallel workflow (disjoint files), then
+//       verified (typecheck + 793 tests). Fixed a real latent bug: proximity-alert
+//       cooldown wrongly suppressed the FIRST tone near clock-epoch (lastToneAt
+//       init 0 -> -Infinity).
+const CACHE_NAME = 'rmpg-flex-v826';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
