@@ -63,9 +63,15 @@ interface DashboardData {
 }
 
 interface IncidentsSummaryData {
-  groupBy: string;
-  data: Array<{ group_key: string; count: number }>;
+  days?: number;
   total: number;
+  // The handler returns by_type (NOT a `data`/`group_key` array). Typing it
+  // correctly lets the chart and CSV export read the real shape without an
+  // `as any` cast — and fixes the CSV crash where `.data.forEach` ran on
+  // undefined.
+  by_type: Array<{ type: string; count: number }>;
+  by_status?: Array<{ status: string; count: number }>;
+  by_day?: Array<{ date: string; count: number }>;
 }
 
 interface ResponseTimesData {
@@ -211,23 +217,32 @@ function exportToCSV(
   }
 ) {
   const sections: string[] = [];
+  // Quote every field and double internal quotes. Without this, an officer
+  // name in "Last, First" format (common) injected a stray comma and shifted
+  // every subsequent column in the export.
+  const cell = (v: unknown): string => {
+    const s = v === null || v === undefined ? '' : String(v);
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const row = (...cells: unknown[]): string => cells.map(cell).join(',');
 
   // Summary section
   sections.push('SUMMARY STATISTICS');
-  sections.push('Metric,Value');
-  sections.push(`Total Calls,${stats.totalCalls}`);
-  sections.push(`Incidents Filed,${stats.incidentsFiled}`);
-  sections.push(`Avg Response Time,${stats.avgResponse}`);
-  sections.push(`SLA Met,${stats.slaMet}`);
-  sections.push(`Active Officers,${stats.activeOfficers}`);
+  sections.push(row('Metric', 'Value'));
+  sections.push(row('Total Calls', stats.totalCalls));
+  sections.push(row('Incidents Filed', stats.incidentsFiled));
+  sections.push(row('Avg Response Time', stats.avgResponse));
+  sections.push(row('SLA Met', stats.slaMet));
+  sections.push(row('Active Officers', stats.activeOfficers));
   sections.push('');
 
-  // Incidents by type
-  if (incidentsData) {
+  // Incidents by type — iterate the handler's real `by_type` shape (the old
+  // code read `.data`/`group_key`, which don't exist → empty/crash on export).
+  if (incidentsData?.by_type?.length) {
     sections.push('INCIDENTS BY TYPE');
-    sections.push('Type,Count');
-    incidentsData.data.forEach(item => {
-      sections.push(`${formatGroupKey(item.group_key)},${item.count}`);
+    sections.push(row('Type', 'Count'));
+    incidentsData.by_type.forEach(item => {
+      sections.push(row(formatGroupKey(item.type), item.count));
     });
     sections.push('');
   }
@@ -235,11 +250,12 @@ function exportToCSV(
   // Officer activity
   if (officerActivity.length > 0) {
     sections.push('OFFICER ACTIVITY');
-    sections.push('Officer Name,Badge Number,Calls Responded,Incidents Written,Total Hours');
+    sections.push(row('Officer Name', 'Badge Number', 'Calls Responded', 'Incidents Written', 'Total Hours'));
     officerActivity.forEach(officer => {
-      sections.push(
-        `${officer.full_name},${officer.badge_number},${officer.calls_responded},${officer.incidents_written},${(Number(officer.total_hours) || 0).toFixed(1)}`
-      );
+      sections.push(row(
+        officer.full_name, officer.badge_number, officer.calls_responded,
+        officer.incidents_written, (Number(officer.total_hours) || 0).toFixed(1),
+      ));
     });
   }
 
@@ -831,6 +847,14 @@ export default function ReportsPage() {
         }
         const dateParams = new URLSearchParams({ startDate });
         if (endDate) dateParams.append('endDate', endDate);
+        // The incidents-summary / response-times / officer-activity handlers
+        // honor ONLY `?days=N` — they ignore startDate/endDate. Without this the
+        // range picker did nothing: every selection returned the fixed 30-day
+        // default. Translate the chosen window into an inclusive day count.
+        const startMs = new Date(`${startDate}T00:00:00`).getTime();
+        const endMs = endDate ? new Date(`${endDate}T00:00:00`).getTime() : Date.now();
+        const days = Math.max(1, Math.round((endMs - startMs) / 86_400_000) + 1);
+        dateParams.append('days', String(days));
 
         // Fetch all endpoints in parallel. Each is independently fault-tolerant
         // — /reports/dashboard and /officer-activity fall through to legacy and
@@ -854,8 +878,15 @@ export default function ReportsPage() {
         apiFetch<any>('/reports/comparison?period=week')
           .then(data => { if (!cancelled && data) setComparisonData(data); })
           .catch(() => { /* optional */ });
-        apiFetch<{ data: any[] }>('/reports/schedules')
-          .then(data => { if (!cancelled && Array.isArray(data?.data)) setReportSchedules(data.data); })
+        apiFetch<any>('/reports/schedules')
+          .then(data => {
+            if (cancelled) return;
+            // Tolerate both shapes: the handler returns a bare array, but a
+            // legacy/stub path may wrap it as { data: [...] }. The old code
+            // only accepted the wrapped form, so the panel never populated.
+            const list = Array.isArray(data) ? data : (Array.isArray(data?.data) ? data.data : null);
+            if (list) setReportSchedules(list);
+          })
           .catch(() => { /* optional */ });
       } catch (err) {
         if (cancelled) return;
@@ -885,9 +916,7 @@ export default function ReportsPage() {
   };
 
   // Prepare chart data
-  // Handler returns { by_type: [{ type, count }], ... } — not a `data`/`group_key`
-  // array. Read by_type so the incidents-by-type breakdown chart populates.
-  const incidentsChartData = (Array.isArray((incidentsData as any)?.by_type) ? (incidentsData as any).by_type : []).map((item: any, i: number) => ({
+  const incidentsChartData = (incidentsData?.by_type ?? []).map((item, i) => ({
     name: formatGroupKey(item.type),
     value: item.count,
     fill: PIE_COLORS[i % PIE_COLORS.length],

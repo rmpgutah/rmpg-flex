@@ -134,6 +134,10 @@ export default function DocumentWriterPage() {
       const rec: any = Array.isArray(data) ? data[0] : (data as any)?.files?.[0] ?? (data as any)?.file;
       const fileId = rec?.file_id ?? rec?.fileId ?? rec?.id;
       if (fileId) setDocumentId(fileId);
+      // The work is now persisted to Documents — drop the local autosave draft
+      // so the next visit doesn't show a "Recovered an unsaved draft" banner for
+      // content that was actually saved.
+      clearDraft();
       setSavedNotice(`Saved to Documents as "${title}"`);
       setTimeout(() => setSavedNotice(null), 4000);
     } catch (err) {
@@ -178,7 +182,14 @@ export default function DocumentWriterPage() {
       '</style></head><body>', watermarkHtml, headerHtml, '<div class="body-cols">', html, '</div>', footerHtml, '</body></html>',
     ].join(''));
     doc.close();
-    setTimeout(() => { printFrame.contentWindow?.focus(); printFrame.contentWindow?.print(); setTimeout(() => document.body.removeChild(printFrame), 1000); }, 300);
+    // Always schedule iframe removal, even if focus()/print() throws (popup
+    // blockers / sandboxed contexts) — otherwise each export leaks a hidden
+    // off-screen iframe into the DOM.
+    setTimeout(() => {
+      try { printFrame.contentWindow?.focus(); printFrame.contentWindow?.print(); }
+      catch (err) { console.warn('[document-writer] print failed:', err); }
+      finally { setTimeout(() => { try { document.body.removeChild(printFrame); } catch { /* already gone */ } }, 1000); }
+    }, 300);
   }, [editor, title, author, docSettings, language]);
 
   const handleExport = useCallback((format: 'md' | 'txt' | 'rtf' | 'html') => {

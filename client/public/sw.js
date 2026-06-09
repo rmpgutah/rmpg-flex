@@ -402,7 +402,13 @@
 //       scroll (keeps sticky header); Dispatch handoff modal max-w-[95vw].
 //       Manifest: orientation -> any, dead /units shortcut -> /map. useIsMobile
 //       re-checks on orientationchange.
-const CACHE_NAME = 'rmpg-flex-v833';
+// v834: functional-audit fixes — Reports date-range now drives the data (was
+//       ignored); Reports CSV export quoting + correct incidents shape (was
+//       crashing/empty); schedules panel shape tolerance; Dashboard Active
+//       Warrants card uses the live count; Document Writer clears draft on save
+//       + leak-proof print; NavPage null-coord guards; speed-limit badge clears
+//       off untagged roads; Personnel edit no longer blanks employee_id/notes.
+const CACHE_NAME = 'rmpg-flex-v834';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

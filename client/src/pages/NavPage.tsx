@@ -542,7 +542,7 @@ function CurrentTripPanel({
   const pulseClass = reducedMotion ? '' : 'animate-pulse';
 
   useEffect(() => {
-    if (!trip || trip.status !== 'active') return;
+    if (!trip || trip.status !== 'active' || !trip.start_time) return;
     const start = new Date(trip.start_time.replace(' ', 'T')).getTime();
     const interval = setInterval(() => {
       setElapsed(Math.round((Date.now() - start) / 1000));
@@ -631,7 +631,7 @@ function CurrentTripPanel({
             <div className="flex justify-between">
               <span className="text-rmpg-500">Start</span>
               <span style={{ color: '#e0e0e0' }}>
-                {trip.start_location || `${trip.start_lat.toFixed(4)}, ${trip.start_lng.toFixed(4)}`}
+                {trip.start_location || (trip.start_lat != null ? `${trip.start_lat.toFixed(4)}, ${trip.start_lng?.toFixed(4) ?? ''}` : '—')}
               </span>
             </div>
             <div className="flex justify-between">
@@ -915,7 +915,7 @@ function HistoryPanel({
             <div className="mt-1 text-[9px] font-mono flex justify-between">
               <span className="text-rmpg-500">Route</span>
               <span style={{ color: '#888' }}>
-                {trip.start_location || `${trip.start_lat.toFixed(4)}, ${trip.start_lng.toFixed(4)}`}
+                {trip.start_location || (trip.start_lat != null ? `${trip.start_lat.toFixed(4)}, ${trip.start_lng?.toFixed(4) ?? ''}` : '—')}
                 {trip.end_lat && ` → ${trip.end_location || `${trip.end_lat.toFixed(4)}, ${trip.end_lng?.toFixed(4)}`}`}
               </span>
             </div>

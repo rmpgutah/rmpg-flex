@@ -28,6 +28,12 @@ export function mapUser(row: any): OfficerWithStatus {
     middle_name: row.middle_name || undefined,
     role: row.role || 'officer',
     badge_number: row.badge_number || undefined,
+    // employee_id, notes and full_name were omitted here, so openEditOfficer
+    // pre-filled them blank — and saving the edit could WIPE an officer's
+    // employee_id/notes back to empty. Carry them through from the row.
+    employee_id: row.employee_id || undefined,
+    notes: row.notes || undefined,
+    full_name: row.full_name || `${firstName} ${lastName}`.trim() || undefined,
     phone: row.phone || undefined,
     rank: row.rank || undefined,
     department: row.department || undefined,

@@ -688,7 +688,11 @@ export default function DashboardPage() {
           <div className="flex items-center gap-2">
             <Gavel className="w-4 h-4 text-red-400" />
             <div>
-              <div className="text-lg font-bold font-mono tabular-nums text-white">{stats.active_warrants || 0}</div>
+              {/* Use the live `activeWarrants` count (fetched from /warrants) —
+                  `stats.active_warrants` is never populated by /reports/dashboard
+                  and was permanently 0, contradicting the same metric shown in
+                  the Operational Status panel below. */}
+              <div className="text-lg font-bold font-mono tabular-nums text-white">{activeWarrants || stats.active_warrants || 0}</div>
               <div className="text-[9px] text-rmpg-400 uppercase font-bold">Active Warrants</div>
             </div>
           </div>
