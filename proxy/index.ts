@@ -874,12 +874,8 @@ const STUBS: StubRule[] = [
     body: { matches: false, score: 0, message: 'test-match stubbed' },
     reason: 'no /email/rules/test-match; tolerates no-match',
   },
-  {
-    match: /^\/api\/email\/status(\?.*)?$/,
-    methods: ['GET'],
-    body: { connected: false, last_sync: null, message: 'email status stubbed' },
-    reason: 'no /email/status; Settings shows disconnected',
-  },
+  // /email/status stub removed — real handler in src/routes/email.ts
+  // returns the full EmailStatus shape (configured/enabled/authorized/…).
   // Mobile / CFS — no file in src/routes/.
   {
     match: /^\/api\/mobile\/cfs\/\d+\/(auth|challenge|narrative|pso|status)(\?.*)?$/,

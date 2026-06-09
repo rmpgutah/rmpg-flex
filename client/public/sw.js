@@ -378,7 +378,7 @@
 //       Communications (Radio/Comms Log, Telephone/Message Log, BOLO Broadcast).
 //       New 'service' + 'communications' categories on the Training Docs blank-
 //       forms board; multi-column log-grid helper.
-const CACHE_NAME = 'rmpg-flex-v821';
+const CACHE_NAME = 'rmpg-flex-v826';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

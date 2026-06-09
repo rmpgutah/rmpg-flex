@@ -30,6 +30,8 @@ import { runAllSourceScans } from './utils/warrantSources/runScan';
 import { detectDispatchAnomalies } from './routes/dispatch/anomalies';
 import { getRadioSettings, purgeOldRecordings } from './utils/radioSettings';
 import { syncAllVehicleGpsMileage } from './routes/fleet';
+import { syncEmail } from './utils/emailSync';
+import { processScheduledEmails, applyRulesToRecent } from './utils/emailProcessor';
 import { sweepTrips } from './utils/tripStore';
 import type { Bindings, Variables } from './types';
 import { ROUTE_REGISTRY } from './routesConfig';
@@ -291,6 +293,20 @@ export default {
         sweepTrips(env.DB, env).then((n) => { if (n) console.log(`[trips] sweep closed ${n}`); })
           .catch((err) => console.error('[trips] sweep failed:', err)),
       );
+      // Scheduled email send processor — picks up due rows from scheduled_emails.
+      // Own catch so a Graph outage can't disrupt the trip sweep.
+      ctx.waitUntil(
+        processScheduledEmails(env)
+          .then((r) => { if (r.picked) console.log(`[email-sched] picked=${r.picked} sent=${r.sent} failed=${r.failed} permFail=${r.permanently_failed}`); })
+          .catch((err) => console.error('Scheduled email processor failed:', err)),
+      );
+      // Rules evaluator — applies email_rules to recently-synced messages.
+      // Cheap when nothing has changed (no rules active OR no new messages).
+      ctx.waitUntil(
+        applyRulesToRecent(env)
+          .then((r) => { if (r.matches) console.log(`[email-rules] scanned=${r.messages_scanned} rules=${r.rules_active} matches=${r.matches}`); })
+          .catch((err) => console.error('Email rules evaluator failed:', err)),
+      );
       return;
     }
     ctx.waitUntil(
@@ -323,6 +339,14 @@ export default {
       syncAllVehicleGpsMileage(env.DB)
         .then((r) => console.log(`[fleet-gps] checked ${r.checked}, ${r.with_gps} with GPS, ${r.total_gps_miles.toFixed(1)} mi available`))
         .catch((err) => console.error('Fleet GPS mileage scan failed:', err)),
+    );
+    // Microsoft Graph inbox delta-sync → email_messages. No-op when
+    // the integration is unconfigured/disabled (helper returns ran=false).
+    // Own catch so a Graph outage can't abort the rest of the cron loop.
+    ctx.waitUntil(
+      syncEmail(env)
+        .then((r) => { if (r.ran) console.log(`[email-sync] pages=${r.pages} updated=${r.updated} removed=${r.removed} failed=${r.failed}${r.reason ? ` reason=${r.reason}` : ''}`); })
+        .catch((err) => console.error('Email delta sync failed:', err)),
     );
   },
 };

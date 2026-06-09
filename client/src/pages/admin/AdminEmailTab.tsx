@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import AdminEmailRulesTab from './AdminEmailRulesTab';
+import AdminEmailAuditTab from './AdminEmailAuditTab';
 
 interface Props {
   LoadingSpinner: React.FC;
@@ -25,7 +26,7 @@ interface EmailStatus {
 }
 
 export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props) {
-  const [subTab, setSubTab] = useState<'config' | 'rules'>('config');
+  const [subTab, setSubTab] = useState<'config' | 'rules' | 'audit'>('config');
   const [status, setStatus] = useState<EmailStatus | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -217,9 +218,16 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
         >
           RULES
         </button>
+        <button
+          onClick={() => setSubTab('audit')}
+          className={`px-3 py-1 text-xs ${subTab === 'audit' ? 'text-[#d4a017] border-b-2 border-[#d4a017]' : 'text-gray-400'}`}
+        >
+          AUDIT
+        </button>
       </div>
 
       {subTab === 'rules' && <AdminEmailRulesTab />}
+      {subTab === 'audit' && <AdminEmailAuditTab />}
       {subTab === 'config' && <>
 
       {error && (
