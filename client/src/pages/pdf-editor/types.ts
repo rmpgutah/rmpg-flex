@@ -34,7 +34,10 @@ export type Tool =
   | 'measure'
   | 'measureArea'
   | 'formText'
-  | 'formCheck';
+  | 'formCheck'
+  | 'formDropdown'
+  | 'formRadio'
+  | 'formDate';
 
 export type StampLabel =
   | 'CONFIDENTIAL'
@@ -240,12 +243,17 @@ export const STICKY_CATEGORIES: Record<StickyCategory, { label: string; paper: s
  *  In-app it renders as a labeled placeholder box so the operator sees where
  *  the field will land. */
 export interface FormFieldAnnotation extends AnnotationBase {
-  type: 'formText' | 'formCheck';
-  /** Unique field name written into the AcroForm (e.g. "officer_name"). */
+  type: 'formText' | 'formCheck' | 'formDropdown' | 'formRadio' | 'formDate';
+  /** Unique field name written into the AcroForm (e.g. "officer_name").
+   *  For radio buttons this is the GROUP name shared by every option in the
+   *  group; the selected option is `defaultValue`. */
   fieldName: string;
-  /** Default value: text for formText, checked-state for formCheck. */
+  /** Default value: text for formText/formDate, checked-state for formCheck,
+   *  selected option for formDropdown/formRadio. */
   defaultValue?: string;
   defaultChecked?: boolean;
+  /** Selectable options for formDropdown / formRadio (the choice list). */
+  options?: string[];
   /** Placeholder/label shown in-app (not necessarily written to the PDF). */
   label?: string;
 }
@@ -360,11 +368,16 @@ export interface HeaderFooterConfig {
   fontSize: number;
 }
 
-/** Named in-app bookmark pointing at a page (1-indexed visual order). */
+/** Named in-app bookmark pointing at a page (1-indexed visual order).
+ *  Bookmarks form a one-level hierarchy: a bookmark with `parentId` set is a
+ *  child nested under that parent in the panel and the saved /Outlines tree. */
 export interface Bookmark {
   id: string;
   title: string;
   page: number;
+  /** Parent bookmark id when this is a child (nested) bookmark; undefined =
+   *  top-level. The outline builder reads this to emit a nested tree. */
+  parentId?: string;
 }
 
 export interface DocumentMeta {

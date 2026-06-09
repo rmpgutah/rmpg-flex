@@ -42,6 +42,10 @@ interface Props {
   calibration?: MeasureCalibration | null;
   /** Default category applied to sticky notes created on this page. */
   stickyCategory?: StickyCategory;
+  /** Aspect-ratio lock for the Crop tool (width / height). When > 0 the crop
+   *  drag is constrained to this ratio (1 = square, 4/3, Letter 8.5/11, …).
+   *  0 / undefined = free-form crop. */
+  cropAspect?: number;
 }
 
 function uid(): string { return Math.random().toString(36).slice(2, 10); }
@@ -63,7 +67,7 @@ const HANDLE_POSITIONS: Array<{ id: ResizeHandle; cx: 0 | 0.5 | 1; cy: 0 | 0.5 |
 ];
 
 export default function PageCanvas(props: Props) {
-  const { pdfBytes, doc, originalPageNumber, visualPageNumber, pageMeta, zoom, tool, color, strokeWidth, pendingImage, pendingStamp, annotations, activeId, onSelectAnnotation, onAddAnnotation, onUpdateAnnotation, onUpdateAnnotationLive, onTransformStart, onSetCrop, onAnnotationContextMenu, forcePdfjs, snapToGrid, gridSize, calibration, stickyCategory } = props;
+  const { pdfBytes, doc, originalPageNumber, visualPageNumber, pageMeta, zoom, tool, color, strokeWidth, pendingImage, pendingStamp, annotations, activeId, onSelectAnnotation, onAddAnnotation, onUpdateAnnotation, onUpdateAnnotationLive, onTransformStart, onSetCrop, onAnnotationContextMenu, forcePdfjs, snapToGrid, gridSize, calibration, stickyCategory, cropAspect } = props;
   // Snap a value (screen px at render scale) to the configured grid. The grid
   // is defined in PDF points, so step = gridSize * DEFAULT_RENDER_SCALE px.
   const snap = (v: number): number => {
@@ -324,6 +328,17 @@ export default function PageCanvas(props: Props) {
       if (drawing.tool === 'pen') {
         const rel = { x: p.x - drawing.start.x, y: p.y - drawing.start.y };
         setDrawing({ ...drawing, current: p, pen: [...(drawing.pen ?? []), rel] });
+      } else if (drawing.tool === 'crop' && cropAspect && cropAspect > 0) {
+        // Lock the crop drag to the chosen aspect ratio (w/h). Drive the box
+        // off the dominant axis so dragging in any direction feels natural.
+        const dx = p.x - drawing.start.x;
+        const dy = p.y - drawing.start.y;
+        const sx = dx < 0 ? -1 : 1;
+        const sy = dy < 0 ? -1 : 1;
+        let aw = Math.abs(dx);
+        let ah = Math.abs(dy);
+        if (aw / cropAspect >= ah) ah = aw / cropAspect; else aw = ah * cropAspect;
+        setDrawing({ ...drawing, current: { x: drawing.start.x + sx * aw, y: drawing.start.y + sy * ah } });
       } else {
         setDrawing({ ...drawing, current: p });
       }
@@ -415,6 +430,23 @@ export default function PageCanvas(props: Props) {
         const fieldName = window.prompt('Checkbox field name (e.g. agree):', `check_${Date.now().toString(36)}`) || `check_${Date.now().toString(36)}`;
         const side = Math.min(w, h);
         onAddAnnotation({ id: uid(), type: 'formCheck', page: visualPageNumber, x, y, w: side, h: side, fieldName, label: fieldName });
+      } else if (t === 'formDropdown' && w > 8 && h > 8) {
+        const fieldName = window.prompt('Dropdown field name (e.g. disposition):', `dropdown_${Date.now().toString(36)}`) || `dropdown_${Date.now().toString(36)}`;
+        const optsRaw = window.prompt('Options (comma-separated):', 'Option 1, Option 2, Option 3') || '';
+        const options = optsRaw.split(',').map(s => s.trim()).filter(Boolean);
+        if (options.length > 0) {
+          onAddAnnotation({ id: uid(), type: 'formDropdown', page: visualPageNumber, x, y, w, h, fieldName, label: fieldName, options, defaultValue: options[0] });
+        }
+      } else if (t === 'formRadio' && w > 8 && h > 8) {
+        const fieldName = window.prompt('Radio GROUP name (shared by all options, e.g. priority):', `radio_${Date.now().toString(36)}`) || `radio_${Date.now().toString(36)}`;
+        const optsRaw = window.prompt('Options, top-to-bottom (comma-separated):', 'Yes, No') || '';
+        const options = optsRaw.split(',').map(s => s.trim()).filter(Boolean);
+        if (options.length > 0) {
+          onAddAnnotation({ id: uid(), type: 'formRadio', page: visualPageNumber, x, y, w, h, fieldName, label: fieldName, options, defaultValue: options[0] });
+        }
+      } else if (t === 'formDate' && w > 8 && h > 8) {
+        const fieldName = window.prompt('Date field name (e.g. report_date):', `date_${Date.now().toString(36)}`) || `date_${Date.now().toString(36)}`;
+        onAddAnnotation({ id: uid(), type: 'formDate', page: visualPageNumber, x, y, w, h, fieldName, label: fieldName });
       } else if (t === 'crop' && w > 8 && h > 8) {
         onSetCrop?.(visualPageNumber - 1, { x, y, w, h });
       }
@@ -815,6 +847,36 @@ function AnnotationView({ ann, zoom, selected, onPointerDown, onResizeStart, sho
         {ann.defaultChecked ? '✓' : ''}
       </div>
     );
+  } else if (ann.type === 'formDropdown') {
+    inner = (
+      <div onPointerDown={onPointerDown} title={`Dropdown: ${ann.fieldName} (${(ann.options ?? []).join(', ')})`}
+        style={{ ...baseStyle, border: '1px solid #6b6b6b', background: 'rgba(212,160,23,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 4px', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: Math.max(8, ann.h * zoom * 0.4), color: '#888', userSelect: 'none', overflow: 'hidden' }}>
+        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{ann.defaultValue || ann.label || ann.fieldName}</span>
+        <span aria-hidden="true" style={{ color: '#d4a017' }}>▾</span>
+      </div>
+    );
+  } else if (ann.type === 'formRadio') {
+    // Stack the radio options vertically inside the box (visual preview only).
+    const opts = ann.options ?? [];
+    const fs = Math.max(7, (ann.h * zoom) / Math.max(opts.length, 1) * 0.5);
+    inner = (
+      <div onPointerDown={onPointerDown} title={`Radio group: ${ann.fieldName}`}
+        style={{ ...baseStyle, border: '1px dashed #6b6b6b', background: 'rgba(212,160,23,0.05)', display: 'flex', flexDirection: 'column', justifyContent: 'space-around', padding: '1px 3px', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: fs, color: '#999', userSelect: 'none', overflow: 'hidden' }}>
+        {opts.map((o, i) => (
+          <span key={i} style={{ display: 'flex', alignItems: 'center', gap: 3, whiteSpace: 'nowrap' }}>
+            <span style={{ color: '#d4a017' }}>{ann.defaultValue === o ? '◉' : '○'}</span>{o}
+          </span>
+        ))}
+      </div>
+    );
+  } else if (ann.type === 'formDate') {
+    inner = (
+      <div onPointerDown={onPointerDown} title={`Date field: ${ann.fieldName}`}
+        style={{ ...baseStyle, border: '1px solid #6b6b6b', background: 'rgba(212,160,23,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 4px', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: Math.max(8, ann.h * zoom * 0.4), color: '#888', userSelect: 'none', overflow: 'hidden' }}>
+        <span>{ann.defaultValue || 'MM/DD/YYYY'}</span>
+        <span aria-hidden="true" style={{ color: '#d4a017' }}>📅</span>
+      </div>
+    );
   }
 
   // Inject onContextMenu onto whatever root element the type-specific branch
@@ -856,7 +918,7 @@ function DrawingPreview({ drawing, zoom, color, strokeWidth }: { drawing: { tool
   if (tool === 'underline') return <div style={{ ...style, borderBottom: `${Math.max(1, strokeWidth * zoom)}px solid ${color}` }} />;
   if (tool === 'strikethrough') return <div style={{ ...style }}><div style={{ position: 'absolute', left: 0, right: 0, top: '50%', transform: 'translateY(-50%)', height: Math.max(1, strokeWidth * zoom), background: color }} /></div>;
   if (tool === 'redact') return <div style={{ ...style, background: '#000', opacity: 0.7 }} />;
-  if (tool === 'formText' || tool === 'formCheck') return <div style={{ ...style, border: '1px dashed #6b6b6b', background: 'rgba(212,160,23,0.1)' }} />;
+  if (tool === 'formText' || tool === 'formCheck' || tool === 'formDropdown' || tool === 'formRadio' || tool === 'formDate') return <div style={{ ...style, border: '1px dashed #6b6b6b', background: 'rgba(212,160,23,0.1)' }} />;
   if (tool === 'cloud') return <div style={{ ...style, border: `${strokeWidth * zoom}px dashed ${color}`, borderRadius: 8 }} />;
   if (tool === 'line' || tool === 'arrow' || tool === 'measure') {
     const sx = (start.x - x) * zoom; const sy = (start.y - y) * zoom;

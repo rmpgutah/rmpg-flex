@@ -30,6 +30,9 @@ const TYPE_LABELS: Record<Annotation['type'], string> = {
   cross: 'Cross / X',
   formText: 'Form field',
   formCheck: 'Form checkbox',
+  formDropdown: 'Form dropdown',
+  formRadio: 'Form radio group',
+  formDate: 'Form date field',
 };
 
 function summarize(a: Annotation): string {

@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { Editor } from '@tiptap/react';
-import { X, SpellCheck2, Wand2, Check } from 'lucide-react';
+import { X, SpellCheck2, Wand2, Check, BookPlus, BookMarked, Trash2 } from 'lucide-react';
 import { proofread, applyProofFix, selectProofIssue, type ProofIssue, type ProofKind } from '../proofread';
+import { filterIgnoredIssues, addToDictionary, listDictionary, removeFromDictionary } from '../dictionary';
 
 const KIND_LABEL: Record<ProofKind, string> = {
   'repeated-word': 'Repeat',
@@ -27,6 +28,9 @@ export default function ProofreadPanel({
   editor, onClose, flash,
 }: { editor: Editor; onClose: () => void; flash: (msg: string) => void }) {
   const [version, setVersion] = useState(0);
+  const [dictTick, setDictTick] = useState(0);
+  const [showDict, setShowDict] = useState(false);
+  const [newWord, setNewWord] = useState('');
 
   useEffect(() => {
     const bump = () => setVersion((v) => v + 1);
@@ -34,7 +38,28 @@ export default function ProofreadPanel({
     return () => { editor.off('update', bump); };
   }, [editor]);
 
-  const issues = useMemo(() => proofread(editor.getText()), [editor, version]);
+  // Recompute issues, then drop any whose word lives in the custom dictionary.
+  const issues = useMemo(
+    () => filterIgnoredIssues(proofread(editor.getText())),
+    [editor, version, dictTick],
+  );
+  const dictWords = useMemo(() => listDictionary(), [dictTick, showDict]);
+
+  // Add the flagged word to the ignore list (so it stops being proofed).
+  const ignoreIssue = (iss: ProofIssue) => {
+    const word = (iss.fix && /[A-Za-z]/.test(iss.fix) ? iss.fix : iss.text).trim();
+    if (!word) { flash('Nothing to add.'); return; }
+    const n = addToDictionary(word);
+    setDictTick((t) => t + 1);
+    flash(n ? `Added "${word}" to your dictionary.` : `"${word}" is already in your dictionary.`);
+  };
+  const addTyped = () => {
+    const n = addToDictionary(newWord);
+    setNewWord('');
+    setDictTick((t) => t + 1);
+    flash(n ? `Added ${n} word${n === 1 ? '' : 's'} to your dictionary.` : 'Nothing new to add.');
+  };
+  const dropWord = (w: string) => { removeFromDictionary(w); setDictTick((t) => t + 1); };
 
   const fixOne = (iss: ProofIssue) => {
     if (applyProofFix(editor, iss)) flash('Fixed.');
@@ -46,7 +71,7 @@ export default function ProofreadPanel({
     // passes. Cap iterations to avoid any pathological loop.
     let fixed = 0;
     for (let pass = 0; pass < 200; pass++) {
-      const list = proofread(editor.getText());
+      const list = filterIgnoredIssues(proofread(editor.getText()));
       if (list.length === 0) break;
       if (!applyProofFix(editor, list[0])) break;
       fixed++;
@@ -60,8 +85,48 @@ export default function ProofreadPanel({
         <span className="text-[10px] font-semibold text-rmpg-300 uppercase tracking-wide flex items-center gap-1">
           <SpellCheck2 className="w-3 h-3" /> Proofread
         </span>
-        <button type="button" onClick={onClose} aria-label="Close proofread" className="text-[10px] text-rmpg-500 hover:text-rmpg-200"><X className="w-3.5 h-3.5" /></button>
+        <div className="flex items-center gap-1.5">
+          <button type="button" onClick={() => setShowDict((v) => !v)} aria-label="Custom dictionary"
+            title="Custom dictionary — words the proofreader should ignore"
+            className={`text-[10px] hover:text-rmpg-200 ${showDict ? 'text-[#d4a017]' : 'text-rmpg-500'}`}>
+            <BookMarked className="w-3.5 h-3.5" />
+          </button>
+          <button type="button" onClick={onClose} aria-label="Close proofread" className="text-[10px] text-rmpg-500 hover:text-rmpg-200"><X className="w-3.5 h-3.5" /></button>
+        </div>
       </div>
+
+      {showDict && (
+        <div className="mb-2 border border-[#1a1a1a] rounded-[2px] p-1.5 bg-[#080808]">
+          <div className="text-[9px] uppercase font-semibold text-rmpg-400 mb-1 flex items-center gap-1">
+            <BookMarked className="w-3 h-3" /> Custom dictionary ({dictWords.length})
+          </div>
+          <div className="flex items-center gap-1 mb-1.5">
+            <input
+              value={newWord} onChange={(e) => setNewWord(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addTyped(); } }}
+              placeholder="Add word(s)…" aria-label="Add word to dictionary"
+              className="flex-1 min-w-0 bg-[#141414] border border-[#222] text-rmpg-200 text-[10px] rounded-[2px] px-1.5 py-0.5 focus:outline-none focus:border-[#d4a017]/50"
+            />
+            <button type="button" onClick={addTyped} aria-label="Add to dictionary"
+              className="px-1.5 py-0.5 text-[10px] bg-[#d4a017]/10 border border-[#d4a017]/30 text-[#d4a017] rounded-[2px] hover:bg-[#d4a017]/20 flex items-center gap-0.5">
+              <BookPlus className="w-3 h-3" />Add
+            </button>
+          </div>
+          {dictWords.length === 0
+            ? <div className="text-[9px] text-rmpg-600 italic">No ignored words yet.</div>
+            : (
+              <div className="flex flex-wrap gap-1">
+                {dictWords.map((w) => (
+                  <span key={w} className="inline-flex items-center gap-0.5 text-[10px] text-rmpg-200 bg-[#141414] border border-[#222] rounded-[2px] pl-1.5 pr-0.5 py-0.5">
+                    {w}
+                    <button type="button" onClick={() => dropWord(w)} aria-label={`Remove ${w}`}
+                      className="text-rmpg-500 hover:text-red-400"><Trash2 className="w-2.5 h-2.5" /></button>
+                  </span>
+                ))}
+              </div>
+            )}
+        </div>
+      )}
 
       <div className="flex items-center justify-between mb-2">
         <span className="text-[10px] text-rmpg-400">
@@ -83,6 +148,10 @@ export default function ProofreadPanel({
               <div className="flex items-center gap-1">
                 <button type="button" onClick={() => selectProofIssue(editor, iss)} title="Show in document"
                   className="text-[9px] text-rmpg-500 hover:text-rmpg-200">show</button>
+                {(iss.kind === 'repeated-word' || iss.kind === 'a-an' || iss.kind === 'sentence-cap' || iss.kind === 'lowercase-i') && (
+                  <button type="button" onClick={() => ignoreIssue(iss)} title="Add this word to your dictionary (stop flagging it)"
+                    className="text-[9px] text-rmpg-500 hover:text-rmpg-200">ignore</button>
+                )}
                 <button type="button" onClick={() => fixOne(iss)} title={`Fix → "${iss.fix}"`}
                   className="text-[9px] text-[#d4a017] hover:text-[#e8b830] flex items-center gap-0.5">
                   <Check className="w-2.5 h-2.5" />fix

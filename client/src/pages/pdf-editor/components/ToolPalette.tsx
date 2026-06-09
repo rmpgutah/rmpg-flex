@@ -1,4 +1,4 @@
-import { MousePointer2, Hand, Type, Highlighter, Underline, Strikethrough, Square, Circle, Minus, MoveUpRight, Pencil, PenTool, Image as ImageIcon, Stamp, EyeOff, Link2, Crop, QrCode, StickyNote, Calendar, Pentagon, Spline, Cloud, Check, X, Ruler, TextCursorInput, SquareCheck, Shapes } from 'lucide-react';
+import { MousePointer2, Hand, Type, Highlighter, Underline, Strikethrough, Square, Circle, Minus, MoveUpRight, Pencil, PenTool, Image as ImageIcon, Stamp, EyeOff, Link2, Crop, QrCode, StickyNote, Calendar, Pentagon, Spline, Cloud, Check, X, Ruler, TextCursorInput, SquareCheck, Shapes, ChevronDownSquare, CircleDot, CalendarClock } from 'lucide-react';
 import IconButton from '../../../components/IconButton';
 import { Tool } from '../types';
 
@@ -41,6 +41,9 @@ const TOOLS: { id: Tool; icon: typeof MousePointer2; label: string }[] = [
   { id: 'measureArea', icon: Shapes, label: 'Measure area (click vertices, double-click to close)' },
   { id: 'formText', icon: TextCursorInput, label: 'Form field — fillable text box (drag)' },
   { id: 'formCheck', icon: SquareCheck, label: 'Form field — checkbox (drag)' },
+  { id: 'formDropdown', icon: ChevronDownSquare, label: 'Form field — dropdown / combo box (drag)' },
+  { id: 'formRadio', icon: CircleDot, label: 'Form field — radio button group (drag)' },
+  { id: 'formDate', icon: CalendarClock, label: 'Form field — date field (drag)' },
 ];
 
 // Quick-pick annotation colors. Neutral grays + a few muted accents that read

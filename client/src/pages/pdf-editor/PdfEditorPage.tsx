@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { FileText, AlertTriangle, CheckCircle2, Search, Settings, Keyboard, Layers, Printer, Download, Upload as UploadIcon, Map as MapIcon, FileOutput, EyeOff, Heading, Bookmark as BookmarkIcon, FilePlus2, FileText as FileTextIcon, ChevronsLeft, ChevronsRight, Image as ImageDownIcon, Crop as CropIcon, RotateCw as RotateCwIcon, Scissors, Wrench, GitCompare, FileSignature, ClipboardList, Copy as CopyIcon, LayoutGrid, Grid2x2, Hash, Grid3x3, Layers2, MessageSquare, Square, Ruler, FileInput, Sun, Moon, Star } from 'lucide-react';
+import { FileText, AlertTriangle, CheckCircle2, Search, Settings, Keyboard, Layers, Printer, Download, Upload as UploadIcon, Map as MapIcon, FileOutput, EyeOff, Heading, Bookmark as BookmarkIcon, FilePlus2, FileText as FileTextIcon, ChevronsLeft, ChevronsRight, Image as ImageDownIcon, Crop as CropIcon, RotateCw as RotateCwIcon, Scissors, Wrench, GitCompare, FileSignature, ClipboardList, Copy as CopyIcon, LayoutGrid, Grid2x2, Hash, Grid3x3, Layers2, MessageSquare, Square, Ruler, FileInput, Sun, Moon, Star, Type as TypeIcon, Maximize2, PenLine } from 'lucide-react';
 import { open as openPdf, RmpgPdfDocument, subscribeDiagnostics, diagnosticsSummary, getDiagnostics } from '../../lib/rmpg-pdf-engine';
 import { exportAnnotationsAsCsv, exportAnnotationsAsMarkdown, exportAnnotationsAsXfdf, downloadText } from './exporters';
 import { useAuth } from '../../context/AuthContext';
@@ -12,6 +12,8 @@ import ThumbnailSidebar from './components/ThumbnailSidebar';
 import PageCanvas from './components/PageCanvas';
 import PropertiesPanel from './components/PropertiesPanel';
 import SignaturePad from './components/SignaturePad';
+import TypedSignatureDialog from './components/TypedSignatureDialog';
+import PresentationView from './components/PresentationView';
 import BarcodeDialog from './components/BarcodeDialog';
 import EncryptionDialog, { EncryptionConfig } from './components/EncryptionDialog';
 import AnnotationsPanel from './components/AnnotationsPanel';
@@ -28,7 +30,7 @@ import RedactPatternDialog from './components/RedactPatternDialog';
 import InsertPageDialog from './components/InsertPageDialog';
 import BookmarksPanel from './components/BookmarksPanel';
 import { Annotation, AnnotationPreset, BatesConfig, Bookmark, DocumentMeta, EditorState, EditorPreferences, HeaderFooterConfig, MeasureCalibration, DEFAULT_PREFERENCES, PageCrop, PageLabelRule, PageMeta, PageNumbersConfig, RecentFile, StampLabel, StickyCategory, STICKY_CATEGORIES, Tool, WatermarkConfig, DEFAULT_RENDER_SCALE } from './types';
-import { appendPdfBytes, blankTemplatePageBytes, buildAnnotationReportPdf, buildInteractivePdf, buildNUpPdf, buildPdfFromEditorState, comparePageDiff, deskewPageBytes, extractAllText, extractPagesAsBytes, findRedactionBoxes, grayscalePageBytes, imageToPdfPageBytes, insertPdfBytesAt, mergePdfFiles, normalizeUploadResponse, optimizePdf, PAGE_SIZE_PRESETS, resizePages, saveToDocuments, splitEveryN, splitPdf } from './save';
+import { appendPdfBytes, blankTemplatePageBytes, buildAnnotationReportPdf, buildInteractivePdf, buildNUpPdf, buildPdfFromEditorState, comparePageDiff, deskewPageBytes, extractAllText, extractPagesAsBytes, findRedactionBoxes, grayscalePageBytes, imageToPdfPageBytes, insertPdfBytesAt, mergePdfFiles, normalizeUploadResponse, optimizePdf, PAGE_SIZE_PRESETS, resizePages, saveToDocuments, splitEveryN, splitPdf, type OutlineNode } from './save';
 import CalibrationDialog from './components/CalibrationDialog';
 import InsertFromPdfDialog from './components/InsertFromPdfDialog';
 import PdfToolsDialog from './components/PdfToolsDialog';
@@ -97,6 +99,24 @@ function reducer(h: History, a: Action): History {
 
 const EMPTY_STATE: MutableState = { pageOrder: [], pages: [], annotations: [], bates: null, watermark: null, pageNumbers: null, headerFooter: null, pageLabels: [], bookmarks: [], meta: {}, sourceFileId: null, sourceFolderId: null };
 
+/** Convert the flat bookmark list (each carrying an optional parentId) into a
+ *  nested OutlineNode tree for the saved /Outlines. Top-level bookmarks come
+ *  first; each child is attached under its parent. Orphaned children (parent
+ *  missing) fall back to top-level so nothing is silently dropped. */
+function buildOutlineTree(bookmarks: Bookmark[]): OutlineNode[] {
+  const byId = new Map(bookmarks.map(b => [b.id, b]));
+  const roots: OutlineNode[] = [];
+  const nodeFor = new Map<string, OutlineNode>();
+  for (const b of bookmarks) nodeFor.set(b.id, { title: b.title, page: b.page, children: [] });
+  for (const b of bookmarks) {
+    const node = nodeFor.get(b.id)!;
+    const parent = b.parentId && byId.has(b.parentId) ? nodeFor.get(b.parentId) : undefined;
+    if (parent) parent.children!.push(node);
+    else roots.push(node);
+  }
+  return roots;
+}
+
 export default function PdfEditorPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -147,6 +167,11 @@ export default function PdfEditorPage() {
   const [activePage, setActivePage] = useState(1);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [signatureOpen, setSignatureOpen] = useState(false);
+  // Typed-signature generator (cursive name / initials / quick-sign block).
+  const [typedSigMode, setTypedSigMode] = useState<'signature' | 'initials' | 'quicksign' | null>(null);
+  // When a quick-sign is pending, the next signature placement also drops a
+  // date stamp + initials beside it (sign-off block).
+  const [pendingQuickSign, setPendingQuickSign] = useState<{ dateText: string; initials: string } | null>(null);
   const [barcodeOpen, setBarcodeOpen] = useState(false);
   const [encryptionOpen, setEncryptionOpen] = useState(false);
   const [encryption, setEncryption] = useState<EncryptionConfig | null>(null);
@@ -174,6 +199,13 @@ export default function PdfEditorPage() {
   // crop-all act on this set instead of the single active page.
   const [selectedPages, setSelectedPages] = useState<Set<number>>(new Set());
   const [showMiniMap, setShowMiniMap] = useState(false);
+  // Presentation / full-screen distraction-free page view.
+  const [presentationOpen, setPresentationOpen] = useState(false);
+  // Crop aspect-ratio lock for the Crop tool. 0 = free-form.
+  const [cropAspect, setCropAspect] = useState(0);
+  // PNG export DPI (72 / 150 / 300) — drives the render scale used by the PNG
+  // and Region-PNG exporters (base render is 72 dpi at scale 1).
+  const [pngDpi, setPngDpi] = useState(150);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; annotationId: string } | null>(null);
   /** Diagnostic toggle: force every page render through PDF.js. The
    *  user-facing label is "Use compatibility engine" — exposed in the
@@ -378,10 +410,22 @@ export default function PdfEditorPage() {
       createdAt: a.createdAt ?? new Date().toISOString(),
       status: a.status ?? 'open',
     };
-    mutate({ annotations: [...state.annotations, stamped] });
+    const extra: Annotation[] = [];
+    // Quick-sign: when a signature image lands and a sign-off is pending, drop
+    // today's date and the operator's initials immediately below it, then clear
+    // the pending state and the staged image so the tool resets.
+    if (pendingQuickSign && stamped.type === 'signature') {
+      const author = stamped.authorName;
+      const baseY = stamped.y + stamped.h + 4;
+      extra.push({ id: Math.random().toString(36).slice(2, 10), type: 'text', page: stamped.page, x: stamped.x, y: baseY, w: 0, h: 0, text: pendingQuickSign.dateText, fontSize: 11, color: '#0a0a0a', authorName: author, createdAt: new Date().toISOString(), status: 'open' } as Annotation);
+      extra.push({ id: Math.random().toString(36).slice(2, 10), type: 'text', page: stamped.page, x: stamped.x + stamped.w - 50, y: baseY, w: 0, h: 0, text: pendingQuickSign.initials, fontSize: 11, bold: true, color: '#0a0a0a', authorName: author, createdAt: new Date().toISOString(), status: 'open' } as Annotation);
+      setPendingQuickSign(null);
+      setPendingImage(null);
+    }
+    mutate({ annotations: [...state.annotations, stamped, ...extra] });
     setActiveId(stamped.id);
     if (tool !== 'pen' && tool !== 'highlight' && tool !== 'redact') setTool('select');
-  }, [state.annotations, mutate, tool, user]);
+  }, [state.annotations, mutate, tool, user, pendingQuickSign]);
 
   const updateAnnotation = useCallback((id: string, patch: Partial<Annotation>) => {
     const idx = state.annotations.findIndex(a => a.id === id);
@@ -1103,14 +1147,15 @@ export default function PdfEditorPage() {
     try {
       const { openAndRenderPage } = await import('../../lib/rmpg-pdf-engine');
       const canvas = document.createElement('canvas');
-      const pdf = await openAndRenderPage(bytes, { pageNumber: original, scale: 2, canvas });
+      // Base page render is 72 dpi at scale 1; scale up to the chosen export DPI.
+      const pdf = await openAndRenderPage(bytes, { pageNumber: original, scale: pngDpi / 72, canvas });
       await pdf.destroy().catch(() => { /* already gone */ });
       const dataUrl = canvas.toDataURL('image/png');
       const a = document.createElement('a');
       const base = fileName.replace(/\.pdf$/i, '') || 'document';
-      a.href = dataUrl; a.download = `${base}-page-${activePage}.png`;
+      a.href = dataUrl; a.download = `${base}-page-${activePage}-${pngDpi}dpi.png`;
       document.body.appendChild(a); a.click(); document.body.removeChild(a);
-      pushToast(`Exported page ${activePage} as PNG`, 'ok');
+      pushToast(`Exported page ${activePage} as PNG (${pngDpi} dpi)`, 'ok');
     } catch (err) {
       setError(`PNG export failed: ${err instanceof Error ? err.message : 'unknown'}`);
     } finally { setSaving(false); }
@@ -1263,11 +1308,12 @@ export default function PdfEditorPage() {
     try {
       const { openAndRenderPage } = await import('../../lib/rmpg-pdf-engine');
       const full = document.createElement('canvas');
-      const pdf = await openAndRenderPage(bytes, { pageNumber: original, scale: 2, canvas: full });
+      const renderScale = pngDpi / 72;
+      const pdf = await openAndRenderPage(bytes, { pageNumber: original, scale: renderScale, canvas: full });
       await pdf.destroy().catch(() => { /* gone */ });
-      // Crop box is stored at DEFAULT_RENDER_SCALE; the render here is scale 2,
-      // so convert from render-scale px to scale-2 px.
-      const k = 2 / DEFAULT_RENDER_SCALE;
+      // Crop box is stored at DEFAULT_RENDER_SCALE; convert from render-scale px
+      // to the export-render px so the crop window maps correctly at any DPI.
+      const k = renderScale / DEFAULT_RENDER_SCALE;
       let outCanvas = full;
       if (crop) {
         const sx = Math.max(0, Math.round(crop.x * k));
@@ -1310,15 +1356,15 @@ export default function PdfEditorPage() {
     setSaving(true);
     try {
       const { state: savable } = buildSavableState();
-      const outline = state.bookmarks.map(b => ({ title: b.title, page: b.page }));
+      const outline = buildOutlineTree(state.bookmarks);
       const out = await buildInteractivePdf(savable, { outline, flattenForm });
       const base = fileName.replace(/\.pdf$/i, '') || 'document';
       downloadBytes(out, `${base}-${flattenForm ? 'flattened-form' : 'interactive'}.pdf`);
-      const fieldCount = state.annotations.filter(a => a.type === 'formText' || a.type === 'formCheck').length;
+      const fieldCount = state.annotations.filter(a => a.type === 'formText' || a.type === 'formCheck' || a.type === 'formDropdown' || a.type === 'formRadio' || a.type === 'formDate').length;
       const linkCount = state.annotations.filter(a => a.type === 'link' || (a.type === 'text' && (a as { url?: string }).url)).length;
       pushToast(flattenForm
         ? `Saved flattened-form PDF — ${fieldCount} field(s) baked in`
-        : `Saved interactive PDF — ${fieldCount} field(s), ${linkCount} link(s), ${outline.length} bookmark(s)`, 'ok');
+        : `Saved interactive PDF — ${fieldCount} field(s), ${linkCount} link(s), ${state.bookmarks.length} bookmark(s)`, 'ok');
     } catch (err) {
       setError(`Interactive save failed: ${err instanceof Error ? err.message : 'unknown'}`);
     } finally { setSaving(false); }
@@ -1449,11 +1495,12 @@ export default function PdfEditorPage() {
     mutate({ pages });
   };
 
-  // ─── Bookmarks ───────────────────────────────────────────────
-  const addBookmark = (title: string, page: number) =>
-    mutate({ bookmarks: [...state.bookmarks, { id: Math.random().toString(36).slice(2, 10), title, page }] });
+  // ─── Bookmarks (one-level nesting via parentId) ──────────────
+  const addBookmark = (title: string, page: number, parentId?: string) =>
+    mutate({ bookmarks: [...state.bookmarks, { id: Math.random().toString(36).slice(2, 10), title, page, parentId }] });
+  // Deleting a parent re-parents its children to top-level so they aren't lost.
   const deleteBookmark = (id: string) =>
-    mutate({ bookmarks: state.bookmarks.filter(b => b.id !== id) });
+    mutate({ bookmarks: state.bookmarks.filter(b => b.id !== id).map(b => b.parentId === id ? { ...b, parentId: undefined } : b) });
 
   // ─── Page navigation: first / last ───────────────────────────
   const goFirstPage = () => jumpToPage(0);
@@ -1963,11 +2010,32 @@ export default function PdfEditorPage() {
             className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><FileTextIcon className="w-3 h-3" /> Text</button>
           <button type="button" onClick={handleExportPng} title="Export the current page as a PNG image"
             className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><ImageDownIcon className="w-3 h-3" /> PNG</button>
+          <label className="inline-flex items-center gap-1 px-1" title="PNG export resolution">
+            <span className="text-[9px] uppercase tracking-wider text-rmpg-500">DPI</span>
+            <select id="ff-pdfeditorpage-pngdpi" value={pngDpi} onChange={e => setPngDpi(parseInt(e.target.value, 10))}
+              className="bg-[#0a0a0a] border border-[#222] text-[10px] text-rmpg-200 px-1 py-0.5 rounded-sm">
+              <option value={72}>72</option>
+              <option value={150}>150</option>
+              <option value={300}>300</option>
+            </select>
+          </label>
           <button type="button" onClick={batchRotateSelected}
             title={selectedPages.size > 0 ? `Rotate ${selectedPages.size} selected page(s) 90°` : 'Rotate the current page 90° (select pages in the rail to batch-rotate)'}
             className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><RotateCwIcon className="w-3 h-3" /> Rotate{selectedPages.size > 0 ? ` (${selectedPages.size})` : ''}</button>
           <button type="button" onClick={cropAllToActive} title="Apply the current page's crop box to every page"
             className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><CropIcon className="w-3 h-3" /> Crop all</button>
+          <label className="inline-flex items-center gap-1 px-1" title="Lock the Crop tool to a fixed aspect ratio">
+            <span className="text-[9px] uppercase tracking-wider text-rmpg-500">Crop AR</span>
+            <select id="ff-pdfeditorpage-cropar" value={cropAspect} onChange={e => setCropAspect(parseFloat(e.target.value))}
+              className={`bg-[#0a0a0a] border text-[10px] px-1 py-0.5 rounded-sm ${cropAspect > 0 ? 'border-[#d4a017] text-[#d4a017]' : 'border-[#222] text-rmpg-200'}`}>
+              <option value={0}>Free</option>
+              <option value={1}>1:1</option>
+              <option value={4 / 3}>4:3</option>
+              <option value={3 / 2}>3:2</option>
+              <option value={16 / 9}>16:9</option>
+              <option value={8.5 / 11}>Letter (8.5×11)</option>
+            </select>
+          </label>
           <button type="button" onClick={() => setToolsOpen(true)} title="Split / optimize / resize pages / grayscale"
             className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><Wrench className="w-3 h-3" /> Tools</button>
           <button type="button" onClick={() => setOrganizerOpen(true)} title="Page organizer — large grid: drag to reorder, multi-select, bulk rotate/delete"
@@ -1987,6 +2055,12 @@ export default function PdfEditorPage() {
             className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><Square className="w-3 h-3" /> Border</button>
           <button type="button" onClick={addReplyToActive} title="Add a reply to the selected sticky note / text annotation"
             className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><MessageSquare className="w-3 h-3" /> Reply</button>
+          <button type="button" onClick={() => setTypedSigMode('signature')} title="Type a signature in a cursive font, then click the page to place it"
+            className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><TypeIcon className="w-3 h-3" /> Type sig</button>
+          <button type="button" onClick={() => setTypedSigMode('initials')} title="Type your initials as a placeable cursive mark"
+            className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><PenLine className="w-3 h-3" /> Initials</button>
+          <button type="button" onClick={() => setTypedSigMode('quicksign')} title="Quick-sign: place signature + today's date + initials together"
+            className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><FileSignature className="w-3 h-3" /> Quick-sign</button>
           <label className="inline-flex items-center gap-1 px-1" title="Category applied to new sticky notes">
             <span className="text-[9px] uppercase tracking-wider text-rmpg-500">Note</span>
             <select id="ff-pdfeditorpage-stickycat" value={stickyCategory} onChange={e => setStickyCategory(e.target.value as StickyCategory)}
@@ -2055,6 +2129,8 @@ export default function PdfEditorPage() {
             className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm">Fit page</button>
           <button type="button" onClick={fitWidth} title="Fit width (2)"
             className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm">Fit width</button>
+          <button type="button" onClick={() => setPresentationOpen(true)} title="Presentation — full-screen, distraction-free page view"
+            className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><Maximize2 className="w-3 h-3" /> Present</button>
           <button type="button" onClick={() => setPrefs({ ...prefs, chromeTheme: prefs.chromeTheme === 'light' ? 'dark' : 'light' })}
             title={prefs.chromeTheme === 'light' ? 'Switch editor chrome to dark' : 'Switch editor chrome to light (page stays white)'}
             className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1">
@@ -2171,6 +2247,7 @@ export default function PdfEditorPage() {
                 gridSize={prefs.gridSize}
                 calibration={prefs.calibration}
                 stickyCategory={stickyCategory}
+                cropAspect={cropAspect}
               />
             ))}
           </div>
@@ -2229,6 +2306,23 @@ export default function PdfEditorPage() {
         onConfirm={(dataUrl) => { setPendingImage(dataUrl); setTool('signature'); }}
       />
 
+      <TypedSignatureDialog
+        open={typedSigMode !== null}
+        mode={typedSigMode ?? 'signature'}
+        defaultName={user?.full_name ?? user?.username ?? ''}
+        onClose={() => { const wasQuick = typedSigMode === 'quicksign'; setTypedSigMode(null); if (!pendingImage && !wasQuick) setTool('select'); }}
+        onConfirm={(r) => {
+          setPendingImage(r.dataUrl);
+          if (r.quickSign) {
+            setPendingQuickSign(r.quickSign);
+            pushToast('Click the page to drop your signature, date & initials', 'info');
+          } else {
+            pushToast('Click the page to place your signature', 'info');
+          }
+          setTool('signature');
+        }}
+      />
+
       <BarcodeDialog
         open={barcodeOpen}
         onClose={() => { setBarcodeOpen(false); if (!pendingImage) setTool('select'); }}
@@ -2239,6 +2333,17 @@ export default function PdfEditorPage() {
         open={encryptionOpen}
         onClose={() => setEncryptionOpen(false)}
         onConfirm={(cfg) => setEncryption(cfg)}
+      />
+
+      <PresentationView
+        open={presentationOpen}
+        bytes={bytes}
+        pageOrder={state.pageOrder}
+        startPage={activePage}
+        fileName={fileName}
+        forcePdfjs={forcePdfjs}
+        onClose={() => setPresentationOpen(false)}
+        onPageChange={(p) => setActivePage(p)}
       />
     </div>
   );

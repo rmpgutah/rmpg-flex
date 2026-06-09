@@ -12,6 +12,8 @@ import {
   ChevronsUp, ChevronsDown, TextSelect, FileCode2,
   Merge, SpellCheck2, ListChecks, GitPullRequestArrow, Map as MapIcon,
   Sliders, SquareSlash, Lightbulb, Wrench,
+  Captions, StretchVertical, FileOutput, Gauge as GaugeIcon,
+  MoveVertical, Repeat, Sparkles, Trash2,
 } from 'lucide-react';
 import ToolbarMenu, { MenuRow, MenuButton } from './ToolbarMenu';
 import {
@@ -30,6 +32,7 @@ import {
   type SortMode, type SectionBlock,
 } from '../docTools';
 import { FONT_FAMILIES, FONT_SIZES, type DocSettings, type WriterTheme } from '../types';
+import { PAGE_PRESETS, isActivePreset } from '../docFeatures';
 
 /** Page-level actions/state the toolbar drives (find/replace, comments, view,
  *  export, clipboard, media) — bundled to keep the prop list manageable. */
@@ -88,6 +91,18 @@ export interface WriterExtActions {
   suggestMode: boolean;
   onToggleAutocomplete: () => void;
   autocompleteOn: boolean;
+  // Final wave: captions, spacer, page presets, export-selection, clear,
+  // word-limit, outline-reorder, macro recorder.
+  onInsertCaption: (kind: 'Figure' | 'Table' | 'Exhibit') => void;
+  onInsertSpacer: () => void;
+  onApplyPagePreset: (presetId: string) => void;
+  onExportSelection: (target: 'clipboard' | 'file') => void;
+  onClearDocument: () => void;
+  onToggleWordLimit: () => void;
+  onConfigureWordLimit: () => void;
+  wordLimitOn: boolean;
+  onToggleReorder: () => void;
+  onToggleMacro: () => void;
 }
 
 interface Props {
@@ -595,6 +610,38 @@ export default function WriterToolbar({
           <div className="text-[10px] text-rmpg-500 pt-1">Writing environment</div>
           <MenuButton active={ext.autocompleteOn} onClick={ext.onToggleAutocomplete}><span className="flex items-center gap-1"><Lightbulb className="w-3 h-3" /> Phrase autocomplete: {ext.autocompleteOn ? 'On' : 'Off'}</span></MenuButton>
           <MenuButton onClick={ext.onOpenAppearance}><span className="flex items-center gap-1"><Sliders className="w-3 h-3" /> Editor appearance…</span></MenuButton>
+        </ToolbarMenu>
+
+        {/* More tools — captions, spacer, page presets, export-selection,
+            word-limit, section reorder, macro, clear (final wave). */}
+        <ToolbarMenu label="More" icon={Sparkles} width={250}>
+          {(close) => (
+            <>
+              <div className="text-[10px] text-rmpg-500 pb-0.5">Insert</div>
+              <MenuButton onClick={() => { ext.onInsertCaption('Figure'); close(); }}><span className="flex items-center gap-1"><Captions className="w-3 h-3" /> Numbered figure caption</span></MenuButton>
+              <MenuButton onClick={() => { ext.onInsertCaption('Table'); close(); }}><span className="flex items-center gap-1"><Captions className="w-3 h-3" /> Numbered table caption</span></MenuButton>
+              <MenuButton onClick={() => { ext.onInsertCaption('Exhibit'); close(); }}><span className="flex items-center gap-1"><Captions className="w-3 h-3" /> Lettered exhibit caption</span></MenuButton>
+              <MenuButton onClick={() => { ext.onInsertSpacer(); close(); }}><span className="flex items-center gap-1"><StretchVertical className="w-3 h-3" /> Vertical spacer…</span></MenuButton>
+
+              <div className="text-[10px] text-rmpg-500 pt-1 pb-0.5">Page setup presets</div>
+              {PAGE_PRESETS.map((p) => (
+                <MenuButton key={p.id} active={isActivePreset(docSettings, p)} onClick={() => ext.onApplyPagePreset(p.id)}>{p.label}</MenuButton>
+              ))}
+
+              <div className="text-[10px] text-rmpg-500 pt-1 pb-0.5">Selection</div>
+              <MenuButton onClick={() => { ext.onExportSelection('clipboard'); close(); }}><span className="flex items-center gap-1"><FileOutput className="w-3 h-3" /> Copy selection (rich)</span></MenuButton>
+              <MenuButton onClick={() => { ext.onExportSelection('file'); close(); }}><span className="flex items-center gap-1"><FileOutput className="w-3 h-3" /> Export selection → .html</span></MenuButton>
+
+              <div className="text-[10px] text-rmpg-500 pt-1 pb-0.5">Writing aids</div>
+              <MenuButton active={ext.wordLimitOn} onClick={ext.onToggleWordLimit}><span className="flex items-center gap-1"><GaugeIcon className="w-3 h-3" /> Word / char limit: {ext.wordLimitOn ? 'On' : 'Off'}</span></MenuButton>
+              <MenuButton onClick={() => { ext.onConfigureWordLimit(); }}>Set limit target…</MenuButton>
+              <MenuButton onClick={ext.onToggleReorder}><span className="flex items-center gap-1"><MoveVertical className="w-3 h-3" /> Reorder sections…</span></MenuButton>
+              <MenuButton onClick={ext.onToggleMacro}><span className="flex items-center gap-1"><Repeat className="w-3 h-3" /> Formatting macro…</span></MenuButton>
+
+              <div className="text-[10px] text-rmpg-500 pt-1 pb-0.5">Document</div>
+              <MenuButton onClick={() => { ext.onClearDocument(); close(); }}><span className="flex items-center gap-1 text-red-400/90"><Trash2 className="w-3 h-3" /> Clear document…</span></MenuButton>
+            </>
+          )}
         </ToolbarMenu>
 
         {/* View menu — zoom + reading/fullscreen (features 178–185, 50) */}

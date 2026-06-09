@@ -1066,9 +1066,13 @@ function annRectOnPage(a: Annotation, pageHeightPts: number): { x: number; y: nu
  * This is the "interactive save" path, invoked when the document contains form
  * fields, link annotations, or the user explicitly requests interactive output.
  */
+/** One node in a (possibly nested) bookmark outline. `children` holds nested
+ *  bookmarks rendered one level below this one in the saved /Outlines tree. */
+export interface OutlineNode { title: string; page: number; children?: OutlineNode[]; }
+
 export async function buildInteractivePdf(
   state: EditorState,
-  opts: { outline?: Array<{ title: string; page: number }>; flattenForm?: boolean } = {},
+  opts: { outline?: OutlineNode[]; flattenForm?: boolean } = {},
 ): Promise<Uint8Array> {
   if (!state.bytes) throw new Error('No source PDF loaded');
   const src = await PDFDocument.load(state.bytes);
@@ -1132,7 +1136,7 @@ export async function buildInteractivePdf(
     // 2) Interactive AcroForm fields.
     let fieldSeq = 0;
     for (const a of anns) {
-      if (a.type !== 'formText' && a.type !== 'formCheck') continue;
+      if (a.type !== 'formText' && a.type !== 'formCheck' && a.type !== 'formDropdown' && a.type !== 'formRadio' && a.type !== 'formDate') continue;
       const r = annRectOnPage(a, pageH);
       const base = (a.fieldName && a.fieldName.trim()) || `field_p${visualIdx + 1}_${fieldSeq++}`;
       try {
@@ -1140,6 +1144,32 @@ export async function buildInteractivePdf(
           const tf = form.createTextField(uniqueFieldName(form, base));
           if (a.defaultValue) tf.setText(a.defaultValue);
           tf.addToPage(page, { x: r.x, y: r.y, width: r.w, height: r.h, borderWidth: 1, borderColor: rgb(0.55, 0.55, 0.55) });
+        } else if (a.type === 'formDate') {
+          // A date field is a plain text widget pre-filled with the default (or
+          // today's date) — keeps tooling-compatibility without a JS format
+          // action (which Acrobat-only viewers honour anyway).
+          const tf = form.createTextField(uniqueFieldName(form, base));
+          const val = a.defaultValue || new Date().toLocaleDateString('en-US');
+          tf.setText(val);
+          tf.addToPage(page, { x: r.x, y: r.y, width: r.w, height: r.h, borderWidth: 1, borderColor: rgb(0.55, 0.55, 0.55) });
+        } else if (a.type === 'formDropdown') {
+          const opts = (a.options && a.options.length > 0) ? a.options : ['Option 1'];
+          const dd = form.createDropdown(uniqueFieldName(form, base));
+          dd.setOptions(opts);
+          if (a.defaultValue && opts.includes(a.defaultValue)) dd.select(a.defaultValue);
+          dd.addToPage(page, { x: r.x, y: r.y, width: r.w, height: r.h, borderWidth: 1, borderColor: rgb(0.55, 0.55, 0.55) });
+        } else if (a.type === 'formRadio') {
+          const opts = (a.options && a.options.length > 0) ? a.options : ['Yes', 'No'];
+          const rg = form.createRadioGroup(uniqueFieldName(form, base));
+          // Stack the option widgets top-to-bottom inside the box. PDF y grows
+          // upward, so the first option sits at the top of the rect.
+          const rowH = r.h / opts.length;
+          const side = Math.min(rowH * 0.7, r.w * 0.7, 18);
+          for (let oi = 0; oi < opts.length; oi++) {
+            const oy = r.y + r.h - (oi + 1) * rowH + (rowH - side) / 2;
+            rg.addOptionToPage(opts[oi], page, { x: r.x + 2, y: oy, width: side, height: side, borderWidth: 1, borderColor: rgb(0.55, 0.55, 0.55) });
+          }
+          if (a.defaultValue && opts.includes(a.defaultValue)) { try { rg.select(a.defaultValue); } catch { /* ignore */ } }
         } else {
           const side = Math.min(r.w, r.h);
           const cb = form.createCheckBox(uniqueFieldName(form, base));
@@ -1220,33 +1250,57 @@ function addAnnotToPage(out: PDFDocument, page: ReturnType<PDFDocument['getPage'
   else page.node.set(PDFName.of('Annots'), out.context.obj([ref]));
 }
 
-/** Build a flat /Outlines tree (all items top-level) from the editor's
- *  bookmarks. Each item GoTo-links to its page top. */
-function buildOutline(out: PDFDocument, items: Array<{ title: string; page: number }>, pages: any[]): void {
+/** Build a /Outlines tree (supporting one or more levels of nesting) from the
+ *  editor's bookmarks. Each item GoTo-links to its page top; children are
+ *  emitted one level below their parent with the correct First/Last/Count and
+ *  sibling Prev/Next chain. */
+function buildOutline(out: PDFDocument, items: OutlineNode[], pages: any[]): void {
   const ctx = out.context;
   const outlinesDict = ctx.obj({ Type: 'Outlines' }) as PDFDict;
   const outlinesRef = ctx.register(outlinesDict);
-  const itemDicts: PDFDict[] = [];
-  const itemRefs: any[] = [];
-  for (const it of items) {
-    const idx = Math.max(0, Math.min(pages.length - 1, it.page - 1));
-    const target = pages[idx];
-    const d = ctx.obj({
-      Title: PDFString.of(it.title || `Page ${it.page}`),
-      Parent: outlinesRef,
-      Dest: [target.ref, PDFName.of('Fit')],
-    }) as PDFDict;
-    itemDicts.push(d);
-    itemRefs.push(ctx.register(d));
-  }
-  for (let i = 0; i < itemDicts.length; i++) {
-    if (i > 0) itemDicts[i].set(PDFName.of('Prev'), itemRefs[i - 1]);
-    if (i < itemDicts.length - 1) itemDicts[i].set(PDFName.of('Next'), itemRefs[i + 1]);
-  }
-  if (itemRefs.length > 0) {
-    outlinesDict.set(PDFName.of('First'), itemRefs[0]);
-    outlinesDict.set(PDFName.of('Last'), itemRefs[itemRefs.length - 1]);
-    outlinesDict.set(PDFName.of('Count'), PDFNumber.of(itemRefs.length));
+
+  // Recursively register a sibling list under `parentRef`. Returns the refs of
+  // the direct children (so the parent can set First/Last) and the cumulative
+  // count of descendants (open-item count for the parent's /Count).
+  const buildLevel = (nodes: OutlineNode[], parentRef: any): { refs: any[]; total: number } => {
+    const dicts: PDFDict[] = [];
+    const refs: any[] = [];
+    let total = 0;
+    for (const it of nodes) {
+      const idx = Math.max(0, Math.min(pages.length - 1, it.page - 1));
+      const target = pages[idx];
+      const d = ctx.obj({
+        Title: PDFString.of(it.title || `Page ${it.page}`),
+        Parent: parentRef,
+        Dest: [target.ref, PDFName.of('Fit')],
+      }) as PDFDict;
+      const ref = ctx.register(d);
+      dicts.push(d);
+      refs.push(ref);
+      total += 1;
+      const kids = it.children ?? [];
+      if (kids.length > 0) {
+        const sub = buildLevel(kids, ref);
+        if (sub.refs.length > 0) {
+          d.set(PDFName.of('First'), sub.refs[0]);
+          d.set(PDFName.of('Last'), sub.refs[sub.refs.length - 1]);
+          d.set(PDFName.of('Count'), PDFNumber.of(sub.total));
+          total += sub.total;
+        }
+      }
+    }
+    for (let i = 0; i < dicts.length; i++) {
+      if (i > 0) dicts[i].set(PDFName.of('Prev'), refs[i - 1]);
+      if (i < dicts.length - 1) dicts[i].set(PDFName.of('Next'), refs[i + 1]);
+    }
+    return { refs, total };
+  };
+
+  const top = buildLevel(items, outlinesRef);
+  if (top.refs.length > 0) {
+    outlinesDict.set(PDFName.of('First'), top.refs[0]);
+    outlinesDict.set(PDFName.of('Last'), top.refs[top.refs.length - 1]);
+    outlinesDict.set(PDFName.of('Count'), PDFNumber.of(top.total));
   }
   out.catalog.set(PDFName.of('Outlines'), outlinesRef);
 }

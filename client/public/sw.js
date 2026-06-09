@@ -518,7 +518,15 @@
 //   (3) Radio LiveTab: transient TX-poll failures (e.g. a tick racing the
 //   15-min token refresh) logged a scary error every 5s; now warn once per
 //   failure streak, error only if it persists.
-const CACHE_NAME = 'rmpg-flex-v850';
+// v851: PDF + Document Writer feature wave 6 (~18 more — closing toward 150).
+//   PDF Editor: typed signature + initials + quick-sign, AcroForm dropdown/radio/
+//   date fields, crop aspect-ratio presets, PNG export DPI (72/150/300), nested
+//   bookmarks (/Outlines tree), presentation/full-screen view. Document Writer:
+//   floating selection bubble toolbar, auto-numbered figure/table/exhibit
+//   captions, vertical spacer, page-setup presets, export/copy selection, custom
+//   spell dictionary, word/char limit indicator, drag-reorder outline sections,
+//   formatting macro recorder, clear-document.
+const CACHE_NAME = 'rmpg-flex-v851';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

@@ -41,6 +41,14 @@ import TrackChangesPanel from './components/TrackChangesPanel';
 import Minimap from './components/Minimap';
 import Autocomplete from './components/Autocomplete';
 import AppearanceDialog from './components/AppearanceDialog';
+import SelectionToolbar from './components/SelectionToolbar';
+import WordLimitBar from './components/WordLimitBar';
+import OutlineReorder from './components/OutlineReorder';
+import MacroRecorder from './components/MacroRecorder';
+import {
+  insertNumberedCaption, insertSpacer, PAGE_PRESETS, applyPagePreset,
+  getSelectionExport, clearDocument, type CaptionKind,
+} from './docFeatures';
 import { captureFormat, applyFormat, type CapturedFormat } from './docActions';
 import {
   insertOfficerSignatureBlock, buildStandaloneHtml, duplicateTitle,
@@ -131,6 +139,16 @@ export default function DocumentWriterPage() {
   const [suggestMode, setSuggestMode] = useState(false);
   const [autocompleteOn, setAutocompleteOn] = useState(() => localStorage.getItem('rmpg_writer_autocomplete') !== 'off');
   const [appearance, setAppearance] = useState<EditorAppearance>(loadAppearance);
+  // Final wave: word-limit indicator, section reorder, macro recorder.
+  const [showReorder, setShowReorder] = useState(false);
+  const [showMacro, setShowMacro] = useState(false);
+  const [wordLimitOn, setWordLimitOn] = useState(false);
+  const [wordLimitMode, setWordLimitMode] = useState<'words' | 'characters'>(() =>
+    (localStorage.getItem('rmpg_writer_limit_mode') as 'words' | 'characters') || 'words');
+  const [wordLimit, setWordLimit] = useState<number>(() => {
+    const n = Number(localStorage.getItem('rmpg_writer_limit_value'));
+    return Number.isFinite(n) && n > 0 ? n : 500;
+  });
   const pageRef = useRef<HTMLDivElement>(null);
   const documentIdRef = useRef<string | null>(null);
   const recentIdRef = useRef<string>(`doc-${new Date().toISOString()}`);
@@ -260,6 +278,8 @@ export default function DocumentWriterPage() {
       '.rf{position:fixed;bottom:0;left:0;right:0;font-size:9pt;border-top:1px solid #999;padding-top:3px;text-align:center}',
       '.wm{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;font-size:90px;font-weight:800;transform:rotate(-32deg);color:#000;z-index:-1}',
       'span[data-field="page"]::after{content:counter(page)}.doc-comment{background:none}',
+      '.doc-caption{font-size:0.85em;text-align:center;margin:4px 0 12px}.doc-caption strong{font-weight:700}',
+      '.doc-spacer{display:block;outline:none}',
       '</style></head><body>', watermarkHtml, headerHtml, letterheadHtml, '<div class="body-cols">', html, '</div>', footerHtml, '</body></html>',
     ].join(''));
     doc.close();
@@ -500,6 +520,80 @@ export default function DocumentWriterPage() {
       return next;
     });
   }, [flashNotice]);
+
+  // ── Final-wave handlers ───────────────────────────────────────────────────
+
+  // Insert an auto-numbered caption (Figure 1 / Table 2 / Exhibit A…).
+  const handleInsertCaption = useCallback((kind: CaptionKind) => {
+    if (!editor) return;
+    const text = window.prompt(`${kind} caption text (optional):`) ?? '';
+    const label = insertNumberedCaption(editor, kind, text);
+    flashNotice(`Inserted ${kind} ${label}.`);
+  }, [editor, flashNotice]);
+
+  // Insert a fixed-height vertical spacer block.
+  const handleInsertSpacer = useCallback(() => {
+    if (!editor) return;
+    const raw = window.prompt('Spacer height in pixels (2–600):', '24');
+    if (raw === null) return;
+    const px = parseInt(raw, 10);
+    if (!Number.isFinite(px) || px <= 0) { flashError('Enter a number of pixels.'); return; }
+    insertSpacer(editor, px);
+    flashNotice(`Inserted a ${Math.max(2, Math.min(600, px))}px spacer.`);
+  }, [editor, flashNotice, flashError]);
+
+  // One-click page-setup preset.
+  const handleApplyPagePreset = useCallback((presetId: string) => {
+    const preset = PAGE_PRESETS.find((p) => p.id === presetId);
+    if (!preset) return;
+    setDocSettings((s) => applyPagePreset(s, preset));
+    flashNotice(`Page set to ${preset.label}.`);
+  }, [flashNotice]);
+
+  // Export / copy the current selection only.
+  const handleExportSelection = useCallback(async (target: 'clipboard' | 'file') => {
+    if (!editor) return;
+    const sel = getSelectionExport(editor);
+    if (!sel) { flashError('Select some text first.'); return; }
+    if (target === 'file') {
+      const safe = title.replace(/[^a-zA-Z0-9\s-]/g, '').trim() || 'selection';
+      downloadFile(`${safe} - selection.html`, buildStandaloneHtml({ title: `${title} (selection)`, bodyHtml: sel.html, author }), 'text/html');
+      flashNotice('Exported the selection as HTML.');
+    } else {
+      try { await copyRich(sel.html); flashNotice('Copied the selection (rich text).'); }
+      catch { flashError('Clipboard write blocked.'); }
+    }
+  }, [editor, title, author, flashNotice, flashError]);
+
+  // Clear the document back to a blank page (with confirm).
+  const handleClearDocument = useCallback(() => {
+    if (!editor) return;
+    if (!window.confirm('Clear the entire document? This replaces all content with a blank page. (Undo with Ctrl+Z.)')) return;
+    clearDocument(editor);
+    flashNotice('Document cleared.');
+  }, [editor, flashNotice]);
+
+  // Toggle the word/character limit indicator.
+  const handleToggleWordLimit = useCallback(() => {
+    setWordLimitOn((on) => { const next = !on; flashNotice(`Word/char limit indicator ${next ? 'on' : 'off'}.`); return next; });
+  }, [flashNotice]);
+
+  // Configure the word/character limit target + mode.
+  const handleConfigureWordLimit = useCallback(() => {
+    const modeRaw = window.prompt('Limit by "words" or "characters"?', wordLimitMode);
+    if (modeRaw === null) return;
+    const mode = modeRaw.trim().toLowerCase().startsWith('c') ? 'characters' : 'words';
+    const valRaw = window.prompt(`Limit target (${mode}):`, String(wordLimit));
+    if (valRaw === null) return;
+    const val = parseInt(valRaw, 10);
+    if (!Number.isFinite(val) || val <= 0) { flashError('Enter a positive number.'); return; }
+    setWordLimitMode(mode);
+    setWordLimit(val);
+    setWordLimitOn(true);
+    localStorage.setItem('rmpg_writer_limit_mode', mode);
+    localStorage.setItem('rmpg_writer_limit_value', String(val));
+    flashNotice(`Limit set to ${val} ${mode}.`);
+  }, [wordLimitMode, wordLimit, flashNotice, flashError]);
 
   // Export the editor's document JSON (round-trippable, lossless vs HTML).
   const handleExportJson = useCallback(() => {
@@ -760,9 +854,24 @@ export default function DocumentWriterPage() {
               suggestMode,
               onToggleAutocomplete: handleToggleAutocomplete,
               autocompleteOn,
+              // Final wave
+              onInsertCaption: handleInsertCaption,
+              onInsertSpacer: handleInsertSpacer,
+              onApplyPagePreset: handleApplyPagePreset,
+              onExportSelection: handleExportSelection,
+              onClearDocument: handleClearDocument,
+              onToggleWordLimit: handleToggleWordLimit,
+              onConfigureWordLimit: handleConfigureWordLimit,
+              wordLimitOn,
+              onToggleReorder: () => setShowReorder((v) => !v),
+              onToggleMacro: () => setShowMacro((v) => !v),
             }}
           />
         </div>
+      )}
+
+      {wordLimitOn && !reading && editor && (
+        <WordLimitBar editor={editor} mode={wordLimitMode} limit={wordLimit} onClose={() => setWordLimitOn(false)} />
       )}
 
       {docSettings.showRuler && !reading && !focusMode && (
@@ -775,6 +884,7 @@ export default function DocumentWriterPage() {
         <div className="writer-scroll flex-1 overflow-auto flex justify-center relative">
           {findMode && editor && <FindReplacePanel editor={editor} mode={findMode} onClose={() => setFindMode(null)} />}
           {editor && <Autocomplete editor={editor} enabled={autocompleteOn && !reading} />}
+          {editor && !reading && <SelectionToolbar editor={editor} onComment={handleAddComment} />}
           <div style={{ transform: `scale(${zoom})`, transformOrigin: 'top center' }}>
             <div
               ref={pageRef}
@@ -831,6 +941,10 @@ export default function DocumentWriterPage() {
         )}
 
         {showMinimap && !focusMode && editor && <Minimap editor={editor} scrollSelector=".writer-scroll" onClose={() => setShowMinimap(false)} />}
+
+        {showReorder && !focusMode && editor && <OutlineReorder editor={editor} onClose={() => setShowReorder(false)} flash={(msg) => flashNotice(msg)} />}
+
+        {showMacro && !focusMode && editor && <MacroRecorder editor={editor} onClose={() => setShowMacro(false)} flash={(msg) => flashNotice(msg)} />}
 
         {showRecent && !focusMode && (
           <RecentDocsPanel

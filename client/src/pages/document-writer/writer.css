@@ -278,6 +278,26 @@
   text-decoration-color: rgba(192, 57, 43, 0.8);
 }
 
+/* Auto-numbered figure / table / exhibit captions. */
+.writer-content .ProseMirror .doc-caption {
+  font-size: 0.85em;
+  text-align: center;
+  color: inherit;
+  opacity: 0.92;
+  margin: 4px 0 12px;
+}
+.writer-content .ProseMirror .doc-caption strong { font-weight: 700; }
+
+/* Vertical spacer block — a real fixed-height gap that survives export. The
+ * dashed outline is an editing aid only and is removed in print (below). */
+.writer-content .ProseMirror .doc-spacer {
+  display: block;
+  outline: 1px dashed rgba(212, 160, 23, 0.35);
+  outline-offset: -1px;
+  border-radius: 2px;
+  user-select: none;
+}
+
 /* Print / PDF — ALWAYS black text on white, regardless of editor theme. */
 @media print {
   .writer-page {
@@ -300,4 +320,6 @@
   }
   /* Track-changes coloring carries into print so a reviewer can mark up a copy. */
   .doc-suggest-del { text-decoration: line-through; }
+  /* Spacer outline is an editing aid only — invisible in print/PDF. */
+  .doc-spacer { outline: none !important; }
 }
