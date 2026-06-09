@@ -12,7 +12,11 @@ export type TemplateCategory =
 export interface DocumentTemplate {
   id: string;
   name: string;
-  category: 'incident' | 'arrest' | 'use-of-force' | 'supplemental' | 'evidence' | 'memo' | 'letter' | 'general'
+  // Accepts BOTH template taxonomies that landed in parallel: this session's
+  // feature-wave categories (traffic/medical/bolo/scene/repo/…) AND the
+  // TemplateCategory set from PR #1094 (le-*/sec-*/hr-*/legal-*). Unioned so
+  // templates from either lineage type-check without forcing a reconciliation.
+  category: TemplateCategory
     | 'traffic' | 'warrant' | 'consent' | 'medical' | 'crash' | 'bolo' | 'missing'
     | 'booking' | 'k9' | 'pursuit' | 'scene' | 'custody' | 'interview' | 'civil' | 'repo' | 'welfare' | 'compliance' | 'parking' | 'property';
   description: string;

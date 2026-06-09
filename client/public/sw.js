@@ -476,7 +476,13 @@
 //   lat/lng fix no longer poisons the ATOMIC breadcrumb batch (one NaN used to
 //   roll back & 500 the whole batch → client re-queued the poisoned batch forever,
 //   blocking every good fix); bad points are dropped, good ones persist.
-const CACHE_NAME = 'rmpg-flex-v844';
+// v845: UNBLOCK main — PR #1094 (+105 templates) merged broken (132 type errors
+//       → every deploy since Wave 3 failed): a 2nd template taxonomy that didn't
+//       reconcile + an incomplete TemplateChooser rewrite + a dropped import.
+//       Fix: DocumentTemplate.category unions both taxonomies; TemplateChooser
+//       restored to last known-good (all templates preserved); FeaturesPanel
+//       import restored.
+const CACHE_NAME = 'rmpg-flex-v845';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

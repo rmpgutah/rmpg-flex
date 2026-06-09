@@ -30,6 +30,7 @@ import StatusBar from './components/StatusBar';
 import SnapshotsPanel from './components/SnapshotsPanel';
 import AnalysisPanel from './components/AnalysisPanel';
 import DocPropertiesDialog from './components/DocPropertiesDialog';
+import FeaturesPanel from './components/FeaturesPanel';
 import { captureFormat, applyFormat, type CapturedFormat } from './docActions';
 import { insertCsvTable, insertStatuteReference, transformSelection, type CaseTransform } from './analysis';
 import { ReadAloud, textToRead, ttsSupported } from './tts';
