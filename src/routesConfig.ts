@@ -133,6 +133,7 @@ import weather from './routes/weather';
 import dispatchCalls from './routes/dispatch/calls';
 import dispatchUnits from './routes/dispatch/units';
 import dispatchDuty from './routes/dispatch/duty';
+import inspections from './routes/inspections';
 import dispatchGps from './routes/dispatch/gps';
 import dispatchTrips from './routes/dispatch/trips';
 import dispatchGeography from './routes/dispatch/geography';
@@ -202,6 +203,12 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/map-data', router: mapData, auth: 'public' },
   { prefix: '/api/tiles', router: tiles, auth: 'public' },
   { prefix: '/api/geo', router: geo, auth: 'public' },
+
+  // Per-shift QR-token-authed vehicle inspection page (/m/shift/<token>). The
+  // token IS the credential — no JWT required because the page is meant for
+  // a personal phone scanning a QR shown on the desktop/MDT ShiftCard.
+  { prefix: '/api/inspections', router: inspections, auth: 'public',
+    note: 'Token-authed: resolves the open time_entry whose qr_token matches' },
 
   // Crime layers for the NAVIGATE tactical map (SLC public data proxy + our
   // own CFS). Auth-gated like the rest of the app; /local reads our DB.
