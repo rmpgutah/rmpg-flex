@@ -372,7 +372,12 @@
 //       verified (typecheck + 793 tests). Fixed a real latent bug: proximity-alert
 //       cooldown wrongly suppressed the FIRST tone near clock-epoch (lastToneAt
 //       init 0 -> -Infinity).
-const CACHE_NAME = 'rmpg-flex-v826';
+// v827: Nav wiring audit — wired GPX + CSV trip-track export onto NavPage trip
+//       history (gpxExport/navCsvExport/navUnits), and PRUNED 23 orphaned
+//       (built-but-never-wired) nav hooks/utils from the v826 batch that
+//       duplicated already-wired hud/ or inline logic. Net: every remaining nav
+//       module is wired. (Pruned modules recoverable from git history if wanted.)
+const CACHE_NAME = 'rmpg-flex-v827';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
