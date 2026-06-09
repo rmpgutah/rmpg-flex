@@ -49,6 +49,7 @@ import { safeDateStr, safeTimeStr, parseTimestamp } from '../../utils/dateUtils'
 import IconButton from '../../components/IconButton';
 import { useToast } from '../../components/ToastProvider';
 import { useAuth } from '../../context/AuthContext';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import { renderPdfV2, downloadPdfV2 } from '../../utils/pdf/v2';
 import { tripLogSchema, type TripLogData } from '../../utils/pdf/v2/forms/tripLog';
 
@@ -106,6 +107,7 @@ export default function MileageAuditTab() {
   const { addToast } = useToast();
   const { user } = useAuth();
   const canFix = isFixable(user);
+  const isMobile = useIsMobile();
 
   // Scope pickers default to the logged-in officer + their assigned unit.
   // User.id is a string (UUID-ish) in our auth model; the API accepts
@@ -581,6 +583,84 @@ export default function MileageAuditTab() {
           </div>
         ) : rows.length === 0 ? (
           <div className="px-3 py-4 text-[11px] text-rmpg-400 italic">No mileage entries in this window.</div>
+        ) : isMobile ? (
+          // Mobile: render the chain as cards. A 6-column wide table
+          // with inline fix forms is impossible on a phone; cards stack
+          // the key fields vertically and tap-toggle the fix form.
+          <div className="space-y-2 p-2">
+            {rows.map((row) => {
+              const sm = row.starting_mileage;
+              const em = row.ending_mileage;
+              const distance = (sm != null && em != null) ? (em - sm).toFixed(1) : '—';
+              const cleared = row.cleared_at || row.closed_at;
+              const isOpen = openFixRowId === row.id;
+              const corrected = row.ending_mileage_corrected || row.starting_mileage_corrected;
+              const isTrip = row.source === 'unit_trip';
+              return (
+                <div
+                  key={row.id}
+                  className={`panel-beveled p-2 ${
+                    corrected ? 'bg-amber-950/20' : isTrip ? 'bg-surface-sunken' : 'bg-surface-raised'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center gap-1 min-w-0">
+                      <span className={`font-mono text-[12px] truncate ${isTrip ? 'text-[#d4a017]' : 'text-rmpg-100'}`}>
+                        {row.call_number || `#${row.id}`}
+                      </span>
+                      {corrected && (
+                        <span title="Corrected" className="text-amber-400 flex-shrink-0">
+                          <Pencil className="w-2.5 h-2.5" />
+                        </span>
+                      )}
+                    </div>
+                    <span className="font-mono text-[10px] text-rmpg-400 flex-shrink-0 ml-2">
+                      {cleared ? `${safeDateStr(cleared)} ${safeTimeStr(cleared)}` : '—'}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between gap-2 text-[10px] uppercase text-rmpg-400 mb-1">
+                    <span className="truncate">{row.incident_type || '—'}</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-mono text-[11px] tabular-nums text-rmpg-100">
+                      {sm != null ? Number(sm).toLocaleString() : '—'}
+                      <span className="text-rmpg-500 mx-1">→</span>
+                      {em != null ? Number(em).toLocaleString() : '—'}
+                    </span>
+                    <span className="font-mono text-[11px] tabular-nums text-brand-400">{distance} mi</span>
+                  </div>
+                  <div className="mt-2 pt-1 border-t border-rmpg-700/50 flex justify-end print:hidden">
+                    {canFix && !isTrip ? (
+                      <button
+                        type="button"
+                        onClick={() => isOpen ? cancelFix() : openFix(row)}
+                        className="toolbar-btn text-[10px]"
+                        aria-label={isOpen ? 'Close fix form' : 'Open fix form'}
+                      >
+                        {isOpen ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                        {isOpen ? 'Cancel' : 'Fix'}
+                      </button>
+                    ) : (
+                      <span className="text-[10px] text-rmpg-500">
+                        {isTrip ? 'PATROL · read-only' : '—'}
+                      </span>
+                    )}
+                  </div>
+                  {isOpen && (
+                    <div className="mt-2 pt-2 border-t border-rmpg-700/50">
+                      {/* renderFixForm returns a <tr>; on mobile we wrap
+                          it in a table so the rendered cells still lay out
+                          (the form is intricate; rewriting it for cards
+                          would risk drift from the desktop behavior). */}
+                      <table className="table-dark w-full">
+                        <tbody>{renderFixForm(row)}</tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="table-dark">
@@ -676,6 +756,47 @@ export default function MileageAuditTab() {
           {audit.length === 0 ? (
             <div className="px-3 py-3 text-[11px] text-rmpg-400 italic">
               No admin fixes recorded for this scope in this window.
+            </div>
+          ) : isMobile ? (
+            // Mobile: card per audit entry. A 9-column table is unreadable
+            // on a phone. Group by visual hierarchy — admin + when in the
+            // header, entry/field on the second line, mileage delta and
+            // cascade on the third, reason in a paragraph beneath.
+            <div className="space-y-2 p-2">
+              {audit.map((a) => (
+                <div key={a.id} className="panel-beveled bg-surface-raised p-2">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[11px] text-rmpg-200 truncate">
+                      {a.created_by_name || `user #${a.created_by}`}
+                    </span>
+                    <span className="font-mono text-[10px] text-rmpg-400 flex-shrink-0 ml-2">
+                      {safeDateStr(a.created_at)} {safeTimeStr(a.created_at)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between gap-2 text-[10px] text-rmpg-300 mb-1">
+                    <span className="font-mono truncate">
+                      {a.entry_table === 'calls_for_service' ? `CFS #${a.entry_id}` : `${a.entry_table} #${a.entry_id}`}
+                    </span>
+                    <span className="font-mono uppercase">{a.field}</span>
+                  </div>
+                  <div className="flex items-center justify-between gap-2 mb-1">
+                    <span className="font-mono text-[11px] tabular-nums text-rmpg-200">
+                      {a.before_value == null ? '—' : Number(a.before_value).toLocaleString()}
+                      <span className="text-rmpg-500 mx-1">→</span>
+                      {a.after_value == null ? '—' : Number(a.after_value).toLocaleString()}
+                    </span>
+                    <span className={`font-mono text-[11px] tabular-nums font-bold ${a.delta >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                      {a.delta >= 0 ? '+' : ''}{a.delta.toFixed(1)}
+                    </span>
+                  </div>
+                  {a.cascade_count > 0 && (
+                    <div className="text-[10px] text-amber-300 mb-1">Cascade: {a.cascade_count} row(s)</div>
+                  )}
+                  <div className="text-[11px] text-rmpg-200 pt-1 border-t border-rmpg-700/50">
+                    {a.reason || <span className="text-rmpg-500 italic">(no reason)</span>}
+                  </div>
+                </div>
+              ))}
             </div>
           ) : (
             <div className="overflow-x-auto">
