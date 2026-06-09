@@ -394,7 +394,7 @@ aggregates.get('/stats/dashboard', async (c) => {
       queryFirst<Record<string, unknown>>(db,
         `SELECT COUNT(*) AS p1_count
          FROM calls_for_service
-         WHERE priority = 1 AND status = 'active'`),
+         WHERE priority = 'P1' AND status = 'active'`),
     ]);
     return c.json({ calls: calls || {}, units: units || {}, priority: priority || {} });
   } catch (err) { return c.json({ calls: {}, units: {}, priority: {} }); }
@@ -415,8 +415,8 @@ aggregates.get('/integration-dashboard', async (c) => {
           SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as active,
           SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending,
           SUM(CASE WHEN status = 'closed' THEN 1 ELSE 0 END) as closed,
-          SUM(CASE WHEN priority = 1 THEN 1 ELSE 0 END) as priority1,
-          SUM(CASE WHEN priority = 2 THEN 1 ELSE 0 END) as priority2,
+          SUM(CASE WHEN priority = 'P1' THEN 1 ELSE 0 END) as priority1,
+          SUM(CASE WHEN priority = 'P2' THEN 1 ELSE 0 END) as priority2,
           AVG(CASE WHEN starting_mileage IS NOT NULL AND ending_mileage IS NOT NULL
                THEN ending_mileage - starting_mileage END) as avg_call_miles
         FROM calls_for_service
