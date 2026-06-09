@@ -92,9 +92,10 @@ describe('generateNoticeOfCommunication', () => {
     expect(doc.getNumberOfPages()).toBeGreaterThanOrEqual(1);
 
     const bytes = doc.output('arraybuffer');
-    // A populated one-page notice is tens of KB (fonts + content streams).
+    // The plain court-style notice uses the core Times font (no embedded
+    // font/logo assets), so a populated render is ~8 KB.
     // A blank/failed render collapses to a few KB — fail loudly if so.
-    expect(bytes.byteLength).toBeGreaterThan(10_000);
+    expect(bytes.byteLength).toBeGreaterThan(4_000);
 
     // Valid PDF magic header — guards the corrupted-bytes failure mode.
     const head = new TextDecoder().decode(new Uint8Array(bytes.slice(0, 5)));
@@ -108,7 +109,7 @@ describe('generateNoticeOfCommunication', () => {
     });
     const doc = await generateNoticeOfCommunication(data);
     const bytes = doc.output('arraybuffer');
-    expect(bytes.byteLength).toBeGreaterThan(10_000);
+    expect(bytes.byteLength).toBeGreaterThan(4_000);
   });
 });
 
