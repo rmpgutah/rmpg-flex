@@ -531,6 +531,40 @@ pm.post('/mileage/fix', async (c) => {
       ],
     });
 
+    // ── Fleet odometer write-through ────────────────────────
+    // When the corrected/backfilled field is the call's ending_mileage AND
+    // the call was assigned to a specific fleet vehicle, push the new value
+    // through to fleet_vehicles.current_mileage. MAX() semantics — never
+    // lower the odometer (a corrected past trip can't outrank a more recent
+    // reading on the same vehicle). Audited separately so the fleet history
+    // shows the source. Best-effort: any vehicle resolution miss is a no-op,
+    // not a failure — the call-level fix already succeeded.
+    if (body.field === 'ending_mileage') {
+      const veh = await queryFirst<{ vehicle_id: number | null }>(
+        db,
+        'SELECT responding_vehicle_id AS vehicle_id FROM calls_for_service WHERE id = ?',
+        body.entry_id,
+      );
+      const vehicleId = veh?.vehicle_id;
+      if (vehicleId != null && Number.isFinite(vehicleId)) {
+        batch.push({
+          sql: `UPDATE fleet_vehicles
+                   SET current_mileage = MAX(COALESCE(current_mileage, 0), ?)
+                 WHERE id = ?`,
+          bindings: [after, vehicleId],
+        });
+        batch.push({
+          sql: `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, created_at)
+                VALUES (?, 'FLEET_ODOMETER_SYNC', 'fleet_vehicle', ?, ?, datetime('now'))`,
+          bindings: [
+            user.id, vehicleId,
+            `Odometer write-through from mileage fix on call ${existing.call_number || body.entry_id}: ` +
+            `proposed ${after} mi (current MAX-merged) — ${reason}`,
+          ],
+        });
+      }
+    }
+
     await db.batch(batch.map(s => {
       const stmt = db.prepare(s.sql);
       return s.bindings?.length ? stmt.bind(...s.bindings) : stmt;
