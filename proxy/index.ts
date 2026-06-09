@@ -1038,6 +1038,16 @@ const API_ROUTES: RouteRule[] = [
   // speed-zones and zone-speed-stats now have real handlers in gps.ts.
   { kind: 'regex', value: /^\/api\/dispatch\/gps\/?(\?.*)?$/, methods: ['POST'] },
   { kind: 'regex', value: /^\/api\/dispatch\/gps\/(current|my-unit|speed-zones|zone-speed-stats)(\?.*)?$/, methods: ['GET'] },
+  // The OTHER gps.ts GET reads (my-vehicle, dwell-times, units-with-trails,
+  // speed-violations[/:id/acknowledge], pursuit-segments, speed-heatmap) are
+  // deliberately NOT routed here and DELIBERATELY fall to env.LEGACY. Verified
+  // 2026-06-09 by reading the deployed `rmpg-flex` bundle: legacy carries
+  // BYTE-IDENTICAL handlers for all of them (same SQL, same defensive catch→[],
+  // same live D1), so the fall-through serves correct data. They were only
+  // routed to env.API for the POST write + the two time-sensitive reads (current/
+  // my-unit) above, where the legacy bug (Denver-as-UTC gps_updated_at, no
+  // heading/speed) actually mattered. Do NOT "fix" the unrouted reads — that is a
+  // no-op cutover with added risk. (history-map handled by the next rule.)
 
   // /api/dispatch/history-map — historical CALL locations for the Map overlay
   // (useMapboxHistoryCalls / useMapCallHistory). The client calls this bare
