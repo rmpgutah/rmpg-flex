@@ -246,7 +246,7 @@ export default function MileageAuditTab() {
     }
     setFixSubmitting(true);
     try {
-      const result = await apiFetch<{ fix: { before: number; after: number; delta: number }; cascade: { count: number } }>('/patrol/mileage/fix', {
+      const result = await apiFetch<{ is_backfill?: boolean; fix: { before: number | null; after: number; delta: number }; cascade: { count: number } }>('/patrol/mileage/fix', {
         method: 'POST',
         body: JSON.stringify({
           entry_table: 'calls_for_service',
@@ -261,8 +261,11 @@ export default function MileageAuditTab() {
           propagate_chain: fixPropagate,
         }),
       });
+      const beforeStr = result.fix.before == null ? '—' : Number(result.fix.before).toLocaleString();
       addToast(
-        `Fix applied: ${result.fix.before}→${result.fix.after} (Δ ${result.fix.delta >= 0 ? '+' : ''}${result.fix.delta.toFixed(1)} mi)` +
+        (result.is_backfill ? 'Mileage set' : 'Fix applied') +
+        `: ${beforeStr} → ${Number(result.fix.after).toLocaleString()} mi` +
+        (result.is_backfill ? '' : ` (Δ ${result.fix.delta >= 0 ? '+' : ''}${result.fix.delta.toFixed(1)} mi)`) +
         (result.cascade.count > 0 ? ` — ${result.cascade.count} row(s) rewritten` : ''),
         'success',
       );
@@ -304,8 +307,11 @@ export default function MileageAuditTab() {
 
   const renderFixForm = (row: ChainRow) => {
     const original = row[fixField as 'starting_mileage' | 'ending_mileage'];
+    // A null original means we're backfilling a never-stamped value, not
+    // correcting one — there is no delta to propagate down the chain.
+    const isBackfill = original == null;
     const previewDelta = (parseFloat(fixAfter) || 0) - (Number(original) || 0);
-    const willRewrite = fixPropagate && previewDelta !== 0;
+    const willRewrite = !isBackfill && fixPropagate && previewDelta !== 0;
     return (
       <tr className="bg-amber-950/20">
         <td colSpan={6} className="px-3 py-2">
@@ -346,15 +352,20 @@ export default function MileageAuditTab() {
               />
             </div>
             <div className="sm:col-span-2 flex items-center gap-3">
-              <label className="flex items-center gap-1.5 text-[10px] text-rmpg-200">
+              <label className={`flex items-center gap-1.5 text-[10px] ${isBackfill ? 'text-rmpg-500' : 'text-rmpg-200'}`}>
                 <input
                   type="checkbox"
-                  checked={fixPropagate}
+                  checked={fixPropagate && !isBackfill}
+                  disabled={isBackfill}
                   onChange={(e) => setFixPropagate(e.target.checked)}
                 />
                 Rewrite subsequent rows in this scope by the same delta
               </label>
-              {willRewrite && (
+              {isBackfill ? (
+                <span className="text-[10px] text-rmpg-400 italic">
+                  Backfilling a missing value — no chain rewrite.
+                </span>
+              ) : willRewrite && (
                 <span className="text-[10px] font-mono text-amber-300">
                   Δ {previewDelta >= 0 ? '+' : ''}{previewDelta.toFixed(1)} mi will propagate
                 </span>
