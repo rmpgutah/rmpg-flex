@@ -837,49 +837,14 @@ const STUBS: StubRule[] = [
     body: { success: false, error: 'firecrawl-tools is not yet ported', job_id: null },
     reason: 'no firecrawl-tools in rewrite; UploadButton tolerates error',
   },
-  // Email — no router; stubs below tolerate the empty/error shape.
-  {
-    match: /^\/api\/email\/image-proxy(\?.*)?$/,
-    methods: ['GET'],
-    body: { url: null, message: 'email image-proxy stubbed' },
-    reason: 'no /email/image-proxy; EmailPage tolerates null',
-  },
-  {
-    match: /^\/api\/email\/messages\/\d+\/attachments\/\d+(\?.*)?$/,
-    methods: ['GET'],
-    body: { url: null, data: null, message: 'attachment stubbed' },
-    reason: 'no /email/messages/:id/attachments/:id; tolerates null',
-  },
-  {
-    match: /^\/api\/email\/oauth\/authorize(\?.*)?$/,
-    methods: ['GET', 'POST'],
-    body: { url: null, success: false, error: 'email OAuth not yet ported' },
-    reason: 'no /email/oauth/authorize; Settings shows disconnected',
-  },
-  {
-    match: /^\/api\/email\/rules(\?.*)?$/,
-    methods: ['GET'],
-    body: { data: [], rules: [], total: 0 },
-    reason: 'no /email/rules; EmailRulesPage tolerates empty',
-  },
-  {
-    match: /^\/api\/email\/rules\/\d+(\?.*)?$/,
-    methods: ['GET', 'PUT', 'DELETE'],
-    body: { data: null, rule: null },
-    reason: 'no /email/rules/:id; EmailRulesPage tolerates null',
-  },
-  {
-    match: /^\/api\/email\/rules\/test-match(\?.*)?$/,
-    methods: ['POST'],
-    body: { matches: false, score: 0, message: 'test-match stubbed' },
-    reason: 'no /email/rules/test-match; tolerates no-match',
-  },
-  {
-    match: /^\/api\/email\/status(\?.*)?$/,
-    methods: ['GET'],
-    body: { connected: false, last_sync: null, message: 'email status stubbed' },
-    reason: 'no /email/status; Settings shows disconnected',
-  },
+  // Email — Phase 1 (admin connection) handlers live on env.API at
+  // /api/email/* (see src/routes/email.ts). Stubs kept ONLY for Phase 2+
+  // endpoints (messages, attachments, image proxy, rules). /status,
+  // /admin/*, and /oauth/* are real handlers — do NOT re-stub them.
+  // Phase 2 LIVE — image-proxy and attachment binary proxy now have real
+  // handlers in src/routes/email.ts. Stubs removed.
+  // Phase 3 LIVE — rules CRUD + test-match now have real handlers in
+  // src/routes/email.ts. Stubs removed.
   // Mobile / CFS — no file in src/routes/.
   {
     match: /^\/api\/mobile\/cfs\/\d+\/(auth|challenge|narrative|pso|status)(\?.*)?$/,

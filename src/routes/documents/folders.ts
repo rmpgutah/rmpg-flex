@@ -87,6 +87,33 @@ export async function ensureIntakeFolderPath(
   return caseRow.id;
 }
 
+// ── Helper: the default "Saved Documents" bucket ──────────────
+// The auto-file target for loose documents (Document Writer, blank PDF, and the
+// PDF editor) saved without an explicit folder, so every saved document is
+// preserved + organized in one place instead of landing unfiled. Top-level,
+// org-wide (the Documents browser is shared, not per-user), idempotent.
+export const DEFAULT_DOCS_FOLDER_NAME = 'Saved Documents';
+
+export async function ensureDefaultDocumentsFolder(
+  db: ReturnType<typeof getDb>,
+  userId: number,
+): Promise<number> {
+  const path = `/${DEFAULT_DOCS_FOLDER_NAME}`;
+  let row = await queryFirst<{ id: number }>(
+    db, 'SELECT id FROM document_folders WHERE folder_path = ?', path,
+  );
+  if (!row) {
+    const r = await execute(
+      db,
+      `INSERT INTO document_folders (name, parent_id, folder_path, created_by)
+       VALUES (?, NULL, ?, ?)`,
+      DEFAULT_DOCS_FOLDER_NAME, path, userId,
+    );
+    row = { id: Number(r.meta.last_row_id) };
+  }
+  return row.id;
+}
+
 // GET /api/documents/folders[?parent_id=N]
 // Returns { folders, files, breadcrumbs }. parent_id absent =
 // list root (year) folders, files=[].

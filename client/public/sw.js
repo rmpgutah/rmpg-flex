@@ -340,51 +340,48 @@
 //       headers/footers, watermark, TOC, cover page, footnotes/endnotes, cross-
 //       refs, bookmarks, backgrounds, templates, statistics) via custom TipTap
 //       extensions — no new npm deps.
-// v817: Document Writer — batch of advanced editor features (no new npm deps):
-//       Find & Replace (case/word/regex/in-selection, highlight all, next/prev,
-//       replace/replace-all, search history) via a ProseMirror decoration plugin;
-//       autosave every 30s + crash recovery + named version snapshots; full table
-//       ops (row/col/merge/split/header/cell-shading); list styles (bullet/number
-//       types, marker color, start, indent/outdent); media embeds (YouTube/Vimeo/
-//       audio/iframe); comments (add/reply/resolve/delete + sidebar); outline pane
-//       w/ heading-hierarchy check; zoom + reading/full-screen modes; export
-//       Markdown/TXT/RTF/HTML + email; copy-as / paste-plain; keyboard shortcuts
-//       (Ctrl+F/H/K/1-3, zoom); 8 new templates (patrol/investigation/training/
-//       letter/minutes/proposal/invoice/contract); native spellcheck + ARIA +
-//       document language.
-// v818: PDF editor — Stamp Studio. New StampStudio modal (toolbar Sparkles +
-//       "Create / cut-out" in the stamps gallery): canvas background removal
-//       (luminance threshold + soft-edge band, before/after on a transparency
-//       checkerboard → transparent PNG) and parameterised stamp templates
-//       (notary seal, approval/denied/pending, COPY/ORIGINAL/DRAFT/etc text,
-//       officer badge, date stamp, RMPG seal). Output saves to the shared custom
-//       stamp library or drops straight onto the page (resize/rotate/opacity via
-//       the existing image-annotation path).
-// v819: Process Server — "Notice of Attempt to Serve" form. New
-//       generateNoticeOfAttempt() in servePdfGenerator.ts produces a professional,
-//       unsworn notice documenting unsuccessful service attempt(s) (recipient,
-//       case, attempt record, notice statement + contact-for-service, server
-//       signature — no notary/perjury clause, distinct from the Affidavit of
-//       Non-Service). Wired into the ServePage job context menu ("Notice of
-//       Attempt to Serve", shown once a job has ≥1 attempt) — builds from the
-//       job's real serve_attempts and opens the rendered PDF to print/leave.
-// v820: PDF editor — underline + strikethrough text-markup tools. New 'underline'
-//       and 'strikethrough' annotation types (drag-create like highlight); render
-//       as a thin rule on the box bottom edge / through the middle; flattened in
-//       both the native rmpg-pdf-engine builder and the pdf-lib fallback. Added to
-//       the ToolPalette + Annotations panel labels.
-// v821: Printable field forms — 6 new blank PDFs for Process Service (Affidavit/
-//       Proof of Service, Service Attempt Log, Return of Non-Service) and
-//       Communications (Radio/Comms Log, Telephone/Message Log, BOLO Broadcast).
-//       New 'service' + 'communications' categories on the Training Docs blank-
-//       forms board; multi-column log-grid helper.
-// v822: PSO Notice of Communication — autofilled client notice (FORM PS-114) for an
-//       unsuccessful PSO Client Request being re-dispatched after a failed attempt.
-//       New psoNoticePdfGenerator (generateNoticeOfCommunication) + dispatch mapper
-//       (buildNoticeOfCommunicationFromCall / openNoticeOfCommunication, reuses
-//       applyCallPdfAutofill). "Notice of Comm" button on cleared PSO calls in the
-//       DispatchPage detail (desktop + mobile) opens the autofilled PDF to print/send.
-const CACHE_NAME = 'rmpg-flex-v826';
+// v817: Document Writer — batch of advanced editor features (no new npm deps).
+// v818: PDF editor — Stamp Studio.
+// v819: Process Server — "Notice of Attempt to Serve" form.
+// v820: PDF editor — underline + strikethrough text-markup tools.
+// v821: Printable field forms — 6 new blank PDFs.
+// v822: PSO Notice of Communication — autofilled client notice.
+// v823: Microsoft 365 email integration — full 6-phase pipeline (admin OAuth +
+//       inbox/folders/attachments with CID image rewriting + send via Graph +
+//       rules engine + autolinker (CFS#/plate) + cron poller + outbox retries +
+//       LinkedEmailsSection on Incidents/Warrants). Azure AD input validation
+//       (GUID shape + Secret-VALUE-not-ID check). See PR #1081 for the full
+//       phase-by-phase commit log.
+// v824: Admin Email — defend Save Credentials against password-manager autofill
+//       races (Chrome/Safari fill the DOM without firing React's onChange,
+//       leaving controlled state empty and the form falsely "required").
+//       Inputs now carry refs + onPaste/onBlur handlers and handleSaveCredentials
+//       falls back to the live DOM value when state is empty.
+// v825: Admin Email — explicit "Credentials saved" green banner after a
+//       successful Save. The previous flow cleared the inputs but gave no
+//       affirmative success cue; users reported "nothing happened" even
+//       though the DB writes had landed and the connection-status pill had
+//       quietly moved from "Not Configured" → "Not Authorized".
+// v826: Navigation 100-update batch — large additive enhancement of the Drive
+//       Mode HUD + /nav trip tab. New nav hooks (prefs/session/waypoints/recent-
+//       destinations/auto-theme/driving-score/fix-freshness/proximity-alerts/
+//       hotkeys/wake-lock/low-power/speed-limit), nav utils (unit+time formatters,
+//       GPX/CSV export, heading/coord/eta/geo/theme/trail helpers, volume-scaled
+//       tones), a HUD instruments module + NavSettingsPanel, and NavMapView helper
+//       extraction. Built via a 5-lane parallel workflow (disjoint files), then
+//       verified (typecheck + 793 tests). Fixed a real latent bug: proximity-alert
+//       cooldown wrongly suppressed the FIRST tone near clock-epoch (lastToneAt
+//       init 0 -> -Infinity).
+// v827: Nav wiring audit — wired GPX + CSV trip-track export onto NavPage trip
+//       history (gpxExport/navCsvExport/navUnits), and PRUNED 23 orphaned
+//       (built-but-never-wired) nav hooks/utils from the v826 batch that
+//       duplicated already-wired hud/ or inline logic.
+// v828: Admin Email — shadowed /api/email/status fix. The stubs router was
+//       mounted at /api/email BEFORE the real email router, so the
+//       integrations-tab `/status` stub (returns {configured: false}) was
+//       intercepting /api/email/status and falsely rendering the "Email Not
+//       Configured" splash even when creds were saved.
+const CACHE_NAME = 'rmpg-flex-v828';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

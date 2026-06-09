@@ -31,6 +31,7 @@ import { detectDispatchAnomalies } from './routes/dispatch/anomalies';
 import { getRadioSettings, purgeOldRecordings } from './utils/radioSettings';
 import { syncAllVehicleGpsMileage } from './routes/fleet';
 import { sweepTrips } from './utils/tripStore';
+import { runEmailPoll, drainEmailOutbox } from './routes/email';
 import type { Bindings, Variables } from './types';
 import { ROUTE_REGISTRY } from './routesConfig';
 
@@ -246,6 +247,27 @@ app.post('/__welfare-fire', async (c) => {
   return c.json({ success: true });
 });
 
+// Throttled email poll. Per-minute cron, but only actually pulls when
+// (now - lastSync) >= pollInterval. Default pollInterval is 300s so the
+// default cadence is every 5 minutes — same as the admin tab's UI default.
+async function maybeRunEmailPoll(env: Bindings, ctx: ExecutionContext): Promise<void> {
+  const db = env.DB;
+  const [enabled, lastSyncStr, pollIntervalStr] = await Promise.all([
+    db.prepare("SELECT config_value FROM system_config WHERE config_key = 'ms_email_enabled' AND category = 'integrations' AND is_active = 1").first<{ config_value: string }>(),
+    db.prepare("SELECT config_value FROM system_config WHERE config_key = 'ms_email_last_sync' AND category = 'integrations' AND is_active = 1").first<{ config_value: string }>(),
+    db.prepare("SELECT config_value FROM system_config WHERE config_key = 'ms_email_poll_interval' AND category = 'integrations' AND is_active = 1").first<{ config_value: string }>(),
+  ]);
+  if (enabled?.config_value !== 'true') return;
+  const pollInterval = pollIntervalStr ? parseInt(pollIntervalStr.config_value, 10) : 300;
+  if (lastSyncStr?.config_value) {
+    const last = Date.parse(lastSyncStr.config_value);
+    if (Number.isFinite(last) && Date.now() - last < pollInterval * 1000) return;
+  }
+  const r = await runEmailPoll(env, ctx);
+  if (r.error) console.error(`[email-poll] ${r.error}`);
+  else if (!r.skipped) console.log(`[email-poll] scanned=${r.scanned} upserted=${r.upserted} ruleHits=${r.ruleHits} linked=${r.linked}`);
+}
+
 // ─── Worker export ───────────────────────────────────────────
 export default {
   async fetch(request: Request, env: Bindings, ctx: ExecutionContext): Promise<Response> {
@@ -290,6 +312,19 @@ export default {
       ctx.waitUntil(
         sweepTrips(env.DB, env).then((n) => { if (n) console.log(`[trips] sweep closed ${n}`); })
           .catch((err) => console.error('[trips] sweep failed:', err)),
+      );
+      // Email poll — throttled internally by ms_email_last_sync vs
+      // ms_email_poll_interval. No-op when not configured.
+      ctx.waitUntil(
+        maybeRunEmailPoll(env, ctx)
+          .catch((err) => console.error('[email-poll] failed:', err)),
+      );
+      // Email outbox drain — retries Graph /me/sendMail for queued sends
+      // whose backoff window has elapsed. Self-throttled by next_attempt_at.
+      ctx.waitUntil(
+        drainEmailOutbox(env)
+          .then((r) => { if (r.sent || r.failed) console.log(`[email-outbox] sent=${r.sent} failed=${r.failed} deferred=${r.deferred}`); })
+          .catch((err) => console.error('[email-outbox] failed:', err)),
       );
       return;
     }

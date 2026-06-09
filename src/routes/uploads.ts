@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { jwtVerify } from 'jose';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
+import { ensureDefaultDocumentsFolder } from './documents/folders';
 
 const uploads = new Hono<Env>();
 
@@ -267,6 +268,22 @@ uploads.post('/', async (c) => {
       : (entityType === 'document_folder' && entityIdRaw ? entityIdRaw : null);
     const folderId = folderIdRaw && /^\d+$/.test(folderIdRaw) ? parseInt(folderIdRaw, 10) : null;
 
+    // Loose documents — no explicit folder AND no entity binding (Document
+    // Writer, blank PDF, PDF editor saved without a source folder) — auto-file
+    // into the default "Saved Documents" bucket so every saved document is
+    // preserved + organized instead of landing unfiled and invisible. Entity
+    // attachments (evidence, person/ID images, call/company docs — entityType set)
+    // and explicitly-foldered uploads are untouched. Best-effort: if the folder
+    // can't be resolved, the upload still succeeds (just unfiled).
+    let effectiveFolderId = folderId;
+    if (effectiveFolderId == null && entityType == null) {
+      try {
+        effectiveFolderId = await ensureDefaultDocumentsFolder(db, userId);
+      } catch (e) {
+        console.warn('[uploads] default documents folder resolve failed', e);
+      }
+    }
+
     const results: any[] = [];
 
     for (const file of files) {
@@ -301,11 +318,11 @@ uploads.post('/', async (c) => {
         userId,
       );
 
-      if (folderId != null) {
-        // Best-effort: file the attachment into the requested folder. Guarded so
-        // a missing/invalid folder never fails the whole upload.
+      if (effectiveFolderId != null) {
+        // Best-effort: file the attachment into the requested (or default) folder.
+        // Guarded so a missing/invalid folder never fails the whole upload.
         try {
-          await execute(db, 'UPDATE attachments SET folder_id = ? WHERE file_id = ?', folderId, fileId);
+          await execute(db, 'UPDATE attachments SET folder_id = ? WHERE file_id = ?', effectiveFolderId, fileId);
         } catch (e) {
           console.warn('Upload: folder placement failed for', fileId, e);
         }

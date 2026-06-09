@@ -139,6 +139,7 @@ import dispatchGeography from './routes/dispatch/geography';
 import dispatchAggregates from './routes/dispatch/aggregates';
 import dispatchPremiseHistory from './routes/dispatch/premiseHistory';
 import dispatchPanic from './routes/dispatch/panic';
+import email from './routes/email';
 import dispatchAnomalies from './routes/dispatch/anomalies';
 import dispatchCallLinks from './routes/dispatch/callLinks';
 import dispatchShiftHandoff from './routes/dispatch/shiftHandoff';
@@ -464,7 +465,12 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/comms', router: stubs, auth: 'required' },
   { prefix: '/api/stats', router: stubs, auth: 'required' },
   { prefix: '/api/weather', router: weather, auth: 'required' },
-  { prefix: '/api/email', router: stubs, auth: 'required' },
+  // NB: do NOT re-mount stubs at /api/email here. The full email router
+  // (line ~497 below) supersedes everything stubs ever served on this
+  // prefix. Mounting stubs first would let the integrations-tab `/status`
+  // stub (returns {configured: false}) intercept /api/email/status BEFORE
+  // the real handler, falsely showing "Email Not Configured" to every
+  // user even when credentials are saved.
   // Real integrations router (rmpgutahps + integration_api_keys CRUD +
   // request log) — must be mounted BEFORE the stubs catch-all below.
   { prefix: '/api/integrations', router: integrations, auth: 'required' },
@@ -489,4 +495,9 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/pdf-engine', router: stubs, auth: 'required' },
   { prefix: '/api/updates', router: stubs, auth: 'public' },
   { prefix: '/api/voice-persona', router: stubs, auth: 'required' },
+
+  // Microsoft 365 email integration. Mount as 'public' so the OAuth
+  // callback (which Microsoft redirects to without a JWT) is reachable;
+  // every other route inside the router applies authMiddleware itself.
+  { prefix: '/api/email', router: email, auth: 'public' },
 ];
