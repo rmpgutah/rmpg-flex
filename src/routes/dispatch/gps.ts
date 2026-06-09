@@ -45,7 +45,22 @@ gps.post('/', async (c) => {
     const rawPoints: Record<string, unknown>[] = Array.isArray(body.points) ? body.points : [body];
     if (rawPoints.length === 0) return c.json({ error: 'No points' }, 400);
 
-    const points = rawPoints.map(norm);
+    // Drop points with a non-finite lat/lng BEFORE building the batch. A NaN
+    // coordinate binds and fails the NOT NULL/typing check, and because
+    // executeBatch is an ATOMIC db.batch() the whole batch would roll back and
+    // 500 — so the client re-queues the same poisoned batch forever and every
+    // GOOD fix in it is blocked indefinitely (silent loss). Drop only the bad
+    // point so the good ones still persist.
+    const normalized = rawPoints.map(norm);
+    const points = normalized.filter((pt) => Number.isFinite(pt.latitude) && Number.isFinite(pt.longitude));
+    if (points.length !== normalized.length) {
+      console.warn(`[gps] dropped ${normalized.length - points.length} fix(es) with non-finite coords`);
+    }
+    if (points.length === 0) {
+      // Every point was invalid — succeed with 0 stored so the client clears
+      // these unrecoverable fixes instead of re-queuing garbage forever.
+      return c.json({ inserted: 0, accepted: 0, dropped: normalized.length }, 200);
+    }
     const lastPt = points[points.length - 1];
 
     // Unit identity: officer → units row. Take-home officers (has_take_home = 1

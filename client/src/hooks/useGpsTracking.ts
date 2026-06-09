@@ -208,7 +208,11 @@ function computeBearing(lat1: number, lng1: number, lat2: number, lng2: number):
 
 // ─── localStorage GPS Failover Queue ─────────────────────
 const LS_GPS_QUEUE_KEY = 'rmpg_gps_failover_queue';
-const LS_MAX_QUEUED_POINTS = 100;
+// Accountability requirement: never silently drop fixes over a normal field
+// outage. At the ~5s accepted cadence, 2000 fixes ≈ 2.8 h offline (was 100 ≈
+// 8 min). ~2000 × ~120 B JSON ≈ 240 KB, well within the 5 MB localStorage budget.
+// (A truly unbounded buffer would need IndexedDB — tracked as a follow-up.)
+const LS_MAX_QUEUED_POINTS = 2000;
 
 function loadFailoverQueue(): QueuedPoint[] {
   try {
@@ -223,6 +227,12 @@ function loadFailoverQueue(): QueuedPoint[] {
 
 function saveFailoverQueue(points: QueuedPoint[]): void {
   try {
+    // Overflow drops the OLDEST fixes (keep newest). Surface it rather than
+    // dropping silently, so a sustained outage that exceeds the buffer is
+    // visible in logs instead of being invisible data loss.
+    if (points.length > LS_MAX_QUEUED_POINTS) {
+      console.warn(`[gps] failover queue overflow — dropping ${points.length - LS_MAX_QUEUED_POINTS} oldest fix(es) (buffer cap ${LS_MAX_QUEUED_POINTS})`);
+    }
     localStorage.setItem(LS_GPS_QUEUE_KEY, JSON.stringify(points.slice(-LS_MAX_QUEUED_POINTS)));
   } catch {
     // localStorage full or unavailable — degrade gracefully
@@ -1282,6 +1292,42 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, [isTracking, startTracking]);
+
+  // ─── Durable flush on background / page close ───────────────
+  // On a real tab close, hard refresh, or the OS backgrounding the app, React's
+  // unmount cleanup is unreliable and the in-memory upload queue (up to one 5s
+  // interval of fixes) would be silently lost. `pagehide` fires reliably; persist
+  // the in-memory queue into the localStorage failover queue (synchronous, so it
+  // completes before the page is frozen/killed). Those fixes then upload on the
+  // next session. We persist (not beacon-send) to avoid duplicate breadcrumbs —
+  // the server has no fix-level dedup, so a beacon that partially succeeds plus
+  // the failover re-send would double-write and inflate trip distance. Dedupe
+  // against the existing failover so a tab-switch → resume can't double-queue
+  // (sendBatch also dedupes failover+queue on resume). Accountability: the fix is
+  // durably stored either way — never dropped.
+  useEffect(() => {
+    const persistQueue = () => {
+      try {
+        const pending = queueRef.current;
+        if (!pending.length) return;
+        const seen = new Set<string>();
+        const merged = [...loadFailoverQueue(), ...pending].filter((p) => {
+          const k = `${p.timestamp}|${p.lat}|${p.lng}`;
+          if (seen.has(k)) return false;
+          seen.add(k);
+          return true;
+        });
+        saveFailoverQueue(merged);
+      } catch { /* never block unload */ }
+    };
+    const onVisHidden = () => { if (document.visibilityState === 'hidden') persistQueue(); };
+    window.addEventListener('pagehide', persistQueue);
+    document.addEventListener('visibilitychange', onVisHidden);
+    return () => {
+      window.removeEventListener('pagehide', persistQueue);
+      document.removeEventListener('visibilitychange', onVisHidden);
+    };
+  }, []);
 
   // ─── Network change listener ────────────────────────────────
   // When the device switches between WiFi ↔ cellular (e.g., entering/leaving

@@ -466,7 +466,17 @@
 //   "/api/email/image-proxy?..." which doesn't resolve against a blob: document's
 //   base, so every external image 404'd to a broken-image icon. Qualify the proxy
 //   URL with window.location.origin so it resolves to the real same-origin path.
-const CACHE_NAME = 'rmpg-flex-v842';
+// v843: GPS reliability (accountability — never silently drop a fix). Three
+//   loss-points closed: (1) durable flush on pagehide/visibility-hidden — the
+//   in-memory upload queue (up to one 5s interval of fixes) is persisted to the
+//   localStorage failover queue on tab close / OS backgrounding, where React's
+//   unmount cleanup is unreliable; deduped so a tab-switch can't double-queue.
+//   (2) failover buffer cap raised 100→2000 fixes (~8 min → ~2.8 h offline) and
+//   overflow now logs instead of dropping silently. (3) Server-side: a non-finite
+//   lat/lng fix no longer poisons the ATOMIC breadcrumb batch (one NaN used to
+//   roll back & 500 the whole batch → client re-queued the poisoned batch forever,
+//   blocking every good fix); bad points are dropped, good ones persist.
+const CACHE_NAME = 'rmpg-flex-v843';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
