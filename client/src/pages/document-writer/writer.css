@@ -224,6 +224,18 @@
 /* Page border / frame (feature 40) */
 .writer-page.has-page-border { outline: 2px solid #555; outline-offset: -18px; }
 
+/* Find & Replace match highlights (features 1–10) */
+.writer-content .ProseMirror .search-match { background: rgba(212, 160, 23, 0.32); border-radius: 2px; }
+.writer-content .ProseMirror .search-current { background: #d4a017; color: #000; }
+
+/* Comment-marked text (features 101–110) */
+.writer-content .ProseMirror .doc-comment { background: rgba(56, 189, 248, 0.18); border-bottom: 2px solid rgba(56, 189, 248, 0.6); cursor: pointer; }
+.writer-content .ProseMirror .doc-comment[data-resolved="true"] { background: none; border-bottom: 1px dotted rgba(128, 128, 128, 0.5); }
+
+/* Embedded media (features 80–82) */
+.writer-content .ProseMirror .doc-embed { margin: 0.6em 0; }
+.writer-content .ProseMirror .doc-audio { margin: 0.4em 0; }
+
 /* Print / PDF — ALWAYS black text on white, regardless of editor theme. */
 @media print {
   .writer-page {

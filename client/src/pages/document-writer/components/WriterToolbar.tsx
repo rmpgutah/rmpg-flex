@@ -5,7 +5,7 @@ import {
   Undo2, Redo2, Heading1, Heading2, Heading3, Minus, Quote, Code, Superscript,
   Subscript, RemoveFormatting, CheckSquare, Link2, Printer, Download, Save, FileText,
   Type, Pilcrow, LayoutPanelTop, PlusSquare, Sun, Moon, BarChart3, BookTemplate,
-  Baseline, PaintBucket,
+  Baseline, PaintBucket, Search, MessageSquare, Eye, FileDown, Grid3x3,
 } from 'lucide-react';
 import ToolbarMenu, { MenuRow, MenuButton } from './ToolbarMenu';
 import {
@@ -14,6 +14,29 @@ import {
   computeStats, listSavedTemplates, saveTemplate, deleteTemplate,
 } from '../docActions';
 import { FONT_FAMILIES, FONT_SIZES, type DocSettings, type WriterTheme } from '../types';
+
+/** Page-level actions/state the toolbar drives (find/replace, comments, view,
+ *  export, clipboard, media) — bundled to keep the prop list manageable. */
+export interface WriterExtActions {
+  onFind: () => void;
+  onReplace: () => void;
+  onToggleOutline: () => void;
+  onToggleComments: () => void;
+  onAddComment: () => void;
+  onSnapshot: () => void;
+  onExport: (format: 'md' | 'txt' | 'rtf' | 'html') => void;
+  onEmail: () => void;
+  onPastePlain: () => void;
+  onCopyAs: (format: 'plain' | 'html' | 'md') => void;
+  onInsertEmbed: (kind: 'video' | 'audio' | 'iframe') => void;
+  zoom: number;
+  setZoom: (updater: (z: number) => number) => void;
+  viewMode: 'normal' | 'reading' | 'fullscreen';
+  setViewMode: (m: 'normal' | 'reading' | 'fullscreen') => void;
+  language: string;
+  setLanguage: (l: string) => void;
+  autoSavedAt: string | null;
+}
 
 interface Props {
   editor: Editor | null;
@@ -30,6 +53,7 @@ interface Props {
   title: string;
   author: string;
   onTitleChange: (title: string) => void;
+  ext: WriterExtActions;
 }
 
 function ToolBtn({ active, disabled, onClick, children, title }: {
@@ -52,11 +76,12 @@ const selCls = 'bg-[#141414] border border-[#222] text-rmpg-200 text-[10px] roun
 export default function WriterToolbar({
   editor, docSettings, setDocSettings, theme, onToggleTheme,
   onSave, onExportPdf, onPrint, onInsertImage, onInsertBackgroundImage,
-  saving, title, author, onTitleChange,
+  saving, title, author, onTitleChange, ext,
 }: Props) {
   if (!editor) return null;
 
   const stats = computeStats(editor);
+  const inTable = editor.isActive('table');
   const setBlock = (attrs: Record<string, string | null>) => editor.chain().focus().setBlockStyle(attrs).run();
   const setPage = (patch: Partial<DocSettings['page']>) => setDocSettings((s) => ({ ...s, page: { ...s.page, ...patch } }));
   const setMargin = (side: keyof DocSettings['page']['margins'], v: number) =>
@@ -258,6 +283,97 @@ export default function WriterToolbar({
           <MenuButton onClick={() => insertField(editor, 'page')}>Page-number field</MenuButton>
           <MenuButton onClick={() => insertField(editor, 'date')}>Date field</MenuButton>
           <MenuButton onClick={() => insertField(editor, 'author', author)}>Author field</MenuButton>
+          <MenuButton onClick={() => ext.onInsertEmbed('video')}>Video embed (YouTube/Vimeo)</MenuButton>
+          <MenuButton onClick={() => ext.onInsertEmbed('audio')}>Audio player</MenuButton>
+          <MenuButton onClick={() => ext.onInsertEmbed('iframe')}>Embed / iframe</MenuButton>
+          <MenuButton onClick={() => { const url = window.prompt('Image URL:'); if (url) editor.chain().focus().setImage({ src: url }).run(); }}>Image from URL</MenuButton>
+          <MenuButton onClick={() => editor.chain().focus().toggleCodeBlock().run()}>Code block</MenuButton>
+        </ToolbarMenu>
+
+        {/* Edit menu — find/replace + clipboard (features 1–9, 21, 26–30) */}
+        <ToolbarMenu label="Edit" icon={Search} width={210}>
+          <MenuButton onClick={ext.onFind}>Find… (Ctrl+F)</MenuButton>
+          <MenuButton onClick={ext.onReplace}>Find &amp; Replace… (Ctrl+H)</MenuButton>
+          <MenuButton onClick={ext.onPastePlain}>Paste as plain text</MenuButton>
+          <MenuButton onClick={() => ext.onCopyAs('plain')}>Copy as plain text</MenuButton>
+          <MenuButton onClick={() => ext.onCopyAs('html')}>Copy as HTML</MenuButton>
+          <MenuButton onClick={() => ext.onCopyAs('md')}>Copy as Markdown</MenuButton>
+        </ToolbarMenu>
+
+        {/* Table operations (features 51–70) */}
+        <ToolbarMenu label="Table" icon={Grid3x3} width={210}>
+          <MenuButton onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}>Insert 3×3 table</MenuButton>
+          {inTable ? (
+            <>
+              <MenuButton onClick={() => editor.chain().focus().addRowBefore().run()}>Row above</MenuButton>
+              <MenuButton onClick={() => editor.chain().focus().addRowAfter().run()}>Row below</MenuButton>
+              <MenuButton onClick={() => editor.chain().focus().addColumnBefore().run()}>Column left</MenuButton>
+              <MenuButton onClick={() => editor.chain().focus().addColumnAfter().run()}>Column right</MenuButton>
+              <MenuButton onClick={() => editor.chain().focus().deleteRow().run()}>Delete row</MenuButton>
+              <MenuButton onClick={() => editor.chain().focus().deleteColumn().run()}>Delete column</MenuButton>
+              <MenuButton onClick={() => editor.chain().focus().mergeCells().run()}>Merge cells</MenuButton>
+              <MenuButton onClick={() => editor.chain().focus().splitCell().run()}>Split cell</MenuButton>
+              <MenuButton onClick={() => editor.chain().focus().toggleHeaderRow().run()}>Toggle header row</MenuButton>
+              <MenuButton onClick={() => editor.chain().focus().toggleHeaderColumn().run()}>Toggle header column</MenuButton>
+              <MenuRow label="Cell shading"><input type="color" onChange={(e) => editor.chain().focus().setCellAttribute('backgroundColor', e.target.value).run()} /></MenuRow>
+              <MenuButton onClick={() => editor.chain().focus().deleteTable().run()}>Delete table</MenuButton>
+            </>
+          ) : <div className="text-[10px] text-rmpg-600 italic px-2">Click inside a table for row/column tools.</div>}
+        </ToolbarMenu>
+
+        {/* List styles (features 86–97) */}
+        <ToolbarMenu label="Lists" icon={ListOrdered} width={220}>
+          <MenuButton active={editor.isActive('bulletList')} onClick={() => editor.chain().focus().toggleBulletList().run()}>Bullet list</MenuButton>
+          <MenuButton active={editor.isActive('orderedList')} onClick={() => editor.chain().focus().toggleOrderedList().run()}>Numbered list</MenuButton>
+          <MenuButton active={editor.isActive('taskList')} onClick={() => editor.chain().focus().toggleTaskList().run()}>Checklist</MenuButton>
+          <MenuButton onClick={() => editor.chain().focus().sinkListItem('listItem').run()}>Indent (nest)</MenuButton>
+          <MenuButton onClick={() => editor.chain().focus().liftListItem('listItem').run()}>Outdent</MenuButton>
+          <MenuRow label="Bullet style">
+            <select className={selCls} defaultValue="" onChange={(e) => editor.chain().focus().setListStyleType(e.target.value).run()}>
+              {['disc', 'circle', 'square', 'none'].map((v) => <option key={v} value={v}>{v}</option>)}
+            </select>
+          </MenuRow>
+          <MenuRow label="Number style">
+            <select className={selCls} defaultValue="" onChange={(e) => editor.chain().focus().setListStyleType(e.target.value).run()}>
+              {['decimal', 'lower-alpha', 'upper-alpha', 'lower-roman', 'upper-roman'].map((v) => <option key={v} value={v}>{v}</option>)}
+            </select>
+          </MenuRow>
+          <MenuRow label="Marker color"><input type="color" onChange={(e) => editor.chain().focus().setListMarkerColor(e.target.value).run()} /></MenuRow>
+          <MenuRow label="Start at">
+            <input type="number" min={1} className={`${selCls} w-14`} defaultValue={1} onChange={(e) => editor.chain().focus().setListStart(Number(e.target.value) || 1).run()} />
+          </MenuRow>
+        </ToolbarMenu>
+
+        {/* Review menu — comments + snapshots (features 101–110, 14, 17) */}
+        <ToolbarMenu label="Review" icon={MessageSquare} width={210}>
+          <MenuButton onClick={ext.onAddComment}>Add comment to selection</MenuButton>
+          <MenuButton onClick={ext.onToggleComments}>Toggle comments panel</MenuButton>
+          <MenuButton onClick={ext.onSnapshot}>Save version snapshot</MenuButton>
+          <MenuButton onClick={ext.onToggleOutline}>Toggle outline pane</MenuButton>
+          <div className="text-[10px] text-rmpg-500 pt-1">Document language</div>
+          <select className={`${selCls} w-full`} value={ext.language} onChange={(e) => ext.setLanguage(e.target.value)}>
+            {[['en', 'English'], ['es', 'Spanish'], ['fr', 'French'], ['de', 'German']].map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+          </select>
+        </ToolbarMenu>
+
+        {/* View menu — zoom + reading/fullscreen (features 178–185, 50) */}
+        <ToolbarMenu label="View" icon={Eye} width={200}>
+          <MenuButton onClick={() => ext.setZoom(() => 1)}>Zoom 100%</MenuButton>
+          <MenuButton onClick={() => ext.setZoom(() => 0.75)}>Fit width (75%)</MenuButton>
+          <MenuButton onClick={() => ext.setZoom(() => 0.6)}>Fit page (60%)</MenuButton>
+          <MenuButton active={ext.viewMode === 'reading'} onClick={() => ext.setViewMode(ext.viewMode === 'reading' ? 'normal' : 'reading')}>Reading mode</MenuButton>
+          <MenuButton active={ext.viewMode === 'fullscreen'} onClick={() => ext.setViewMode(ext.viewMode === 'fullscreen' ? 'normal' : 'fullscreen')}>Full screen</MenuButton>
+          <MenuButton onClick={ext.onToggleOutline}>Navigation / outline</MenuButton>
+        </ToolbarMenu>
+
+        {/* Export menu (features 126–140) */}
+        <ToolbarMenu label="Export" icon={FileDown} width={200}>
+          <MenuButton onClick={onExportPdf}>PDF (print)</MenuButton>
+          <MenuButton onClick={() => ext.onExport('html')}>HTML</MenuButton>
+          <MenuButton onClick={() => ext.onExport('md')}>Markdown</MenuButton>
+          <MenuButton onClick={() => ext.onExport('txt')}>Plain text</MenuButton>
+          <MenuButton onClick={() => ext.onExport('rtf')}>RTF (Word)</MenuButton>
+          <MenuButton onClick={ext.onEmail}>Email document…</MenuButton>
         </ToolbarMenu>
 
         {/* Design / layout menu (31–36, 40–42) */}

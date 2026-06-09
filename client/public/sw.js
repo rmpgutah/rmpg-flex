@@ -340,7 +340,19 @@
 //       headers/footers, watermark, TOC, cover page, footnotes/endnotes, cross-
 //       refs, bookmarks, backgrounds, templates, statistics) via custom TipTap
 //       extensions — no new npm deps.
-const CACHE_NAME = 'rmpg-flex-v816';
+// v817: Document Writer — batch of advanced editor features (no new npm deps):
+//       Find & Replace (case/word/regex/in-selection, highlight all, next/prev,
+//       replace/replace-all, search history) via a ProseMirror decoration plugin;
+//       autosave every 30s + crash recovery + named version snapshots; full table
+//       ops (row/col/merge/split/header/cell-shading); list styles (bullet/number
+//       types, marker color, start, indent/outdent); media embeds (YouTube/Vimeo/
+//       audio/iframe); comments (add/reply/resolve/delete + sidebar); outline pane
+//       w/ heading-hierarchy check; zoom + reading/full-screen modes; export
+//       Markdown/TXT/RTF/HTML + email; copy-as / paste-plain; keyboard shortcuts
+//       (Ctrl+F/H/K/1-3, zoom); 8 new templates (patrol/investigation/training/
+//       letter/minutes/proposal/invoice/contract); native spellcheck + ARIA +
+//       document language.
+const CACHE_NAME = 'rmpg-flex-v817';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
