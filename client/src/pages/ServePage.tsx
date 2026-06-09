@@ -218,8 +218,12 @@ export default function ServePage() {
         attempts,
         nextAttemptNote: job.status === 'failed' ? undefined : 'A further attempt may be made; contact our office to arrange service.',
       });
-      // Open in a new tab so the server can print/leave the notice immediately.
-      pdf.output('dataurlnewwindow', { filename: `Notice-of-Attempt-${job.case_number || job.id}.pdf` });
+      // Open the REAL PDF bytes in a new tab so the server can print/leave the
+      // notice immediately. (dataurlnewwindow opened an HTML wrapper around a
+      // session-bound blob URL — saving that wrapper produced a blank
+      // "PDF"; see openPdfDocument.ts.)
+      const { openPdfDocument } = await import('../utils/openPdfDocument');
+      openPdfDocument(pdf, `Notice-of-Attempt-${job.case_number || job.id}.pdf`);
     } catch (err) {
       console.error('[serve] Notice of Attempt generation failed:', err);
       setFetchError('Could not generate the Notice of Attempt — please try again.');

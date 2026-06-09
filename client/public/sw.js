@@ -539,7 +539,14 @@
 //   templates converted to the same system (43 titles, 120 sections, 264 field
 //   cells); 164 '<strong>Label:</strong>' cells in the 4 category files →
 //   field() label-over-value boxes.
-const CACHE_NAME = 'rmpg-flex-v852';
+// v853: Fix blank "Notice of Communication" PDFs (and serve Notice of
+//   Attempt). jsPDF's dataurlnewwindow opened an HTML wrapper page whose
+//   iframe pointed at a SESSION-BOUND blob URL — anything saved/uploaded from
+//   that window was a ~240-byte HTML shell that rendered blank in every PDF
+//   viewer (live artifact: attachments #56). New openPdfDocument() opens the
+//   real PDF bytes (File-wrapped blob → window.open, download fallback when
+//   popup-blocked). Generator verified healthy (smoke tests + pdftoppm render).
+const CACHE_NAME = 'rmpg-flex-v853';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

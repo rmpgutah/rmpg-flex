@@ -147,12 +147,17 @@ export function buildNoticeOfCommunicationFromCall(
 /**
  * Build + render + open the Notice of Communication for a failed PSO call.
  * Lazy-imports the generator so jsPDF stays out of the dispatch bundle.
- * Opens in a new window via jsPDF's dataurlnewwindow (same pattern as the
- * serve Notice of Attempt). Throws on failure so callers can toast.
+ * Opens the REAL PDF bytes in a new tab (openPdfDocument) — the old
+ * dataurlnewwindow path opened an HTML wrapper around a session-bound blob
+ * URL, and anything saved from that wrapper was a ~240-byte HTML shell that
+ * rendered as a blank page in every PDF viewer (the
+ * "Notice-of-Communication-CFS26-00055.pdf is blank" incident).
+ * Throws on failure so callers can toast.
  */
 export async function openNoticeOfCommunication(call: CallForService, ctx: PsoNoticeContext): Promise<void> {
   const data = buildNoticeOfCommunicationFromCall(call, ctx);
   const { generateNoticeOfCommunication } = await import('../../../utils/psoNoticePdfGenerator');
   const doc = await generateNoticeOfCommunication(data);
-  doc.output('dataurlnewwindow', { filename: `Notice-of-Communication-${data.callNumber || 'PSO'}.pdf` });
+  const { openPdfDocument } = await import('../../../utils/openPdfDocument');
+  openPdfDocument(doc, `Notice-of-Communication-${data.callNumber || 'PSO'}.pdf`);
 }
