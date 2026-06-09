@@ -563,12 +563,22 @@ const PatrolPage: React.FC = () => {
     ]),
   ];
 
-  // ── Build a scan-log row context menu (read-only log → copy actions) ──
+  // ── Build a scan-log row context menu ──
+  // Read-only log row, but several useful jumps: hop to the checkpoint on the
+  // Map tab (filtered), open the checkpoint editor, copy coords. The Map tab
+  // auto-loads on entry now, so `?focus=<id>` will land with markers present.
   const buildScanMenu = (scan: Scan): ContextMenuItem[] => [
     m.copy('Copy checkpoint', scan.checkpoint_name),
     m.copy('Copy officer', scan.officer_name),
     m.copy('Copy property', scan.property_name),
+    m.copyCoords(scan.latitude ?? undefined, scan.longitude ?? undefined),
     m.copyId(scan.id),
+    m.separator(),
+    m.action('View on Map', () => setActiveTab('map'), { icon: <MapIcon size={12} /> }),
+    m.action('Edit checkpoint', () => {
+      const cp = checkpoints.find((c) => c.id === scan.checkpoint_id);
+      if (cp) handleEditCheckpoint(cp);
+    }, { icon: <Pencil size={12} />, disabled: !checkpoints.some((c) => c.id === scan.checkpoint_id) }),
   ];
 
   const getStatusColor = (status: string) => {
