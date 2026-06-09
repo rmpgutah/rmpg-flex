@@ -412,16 +412,144 @@ gps.get('/speed-zones', async (c) => {
   } catch (err) { return c.json([]); }
 });
 
-// GET /dispatch/gps/units-with-trails — units that have recent breadcrumb data.
+// ── Breadcrumb trail aggregation (Map "Breadcrumbs" layer + replay panel) ──
+// Three client surfaces, three contracts (all in client/src/pages/map/):
+//   MapPage breadcrumbs layer:  GET /trails?hours=N         → Trail[]
+//   GpsBreadcrumbPanel replay:  GET /history?unit_id&from&to → HistoryTrail
+//   GpsBreadcrumbPanel picker:  GET /units-with-trails       → UnitOption[]
+// /trails was only ever a proxy STUB ({trails:[]}) and /history 404'd on
+// BOTH workers — the entire breadcrumbs UI shipped against endpoints that
+// never existed, so the layer rendered nothing despite 60k+ live rows.
+
+type TrailPointRow = {
+  lat: number; lng: number; accuracy: number | null; heading: number | null;
+  speed: number | null; status: string | null; call_number: string | null;
+  call_type: string | null; time: string; road_name: string | null;
+  intersection: string | null;
+};
+
+const TRAIL_POINT_SELECT = `g.latitude AS lat, g.longitude AS lng, g.accuracy, g.heading, g.speed,
+       COALESCE(g.unit_status, '') AS status,
+       COALESCE(g.call_number, g.current_call_number) AS call_number,
+       COALESCE(g.call_type, g.current_call_type) AS call_type,
+       g.recorded_at AS time, g.road_name, g.nearest_intersection AS intersection`;
+
+/** Evenly downsample to ≤cap points, always keeping the first + last. */
+function downsample<T>(points: T[], cap: number): T[] {
+  if (points.length <= cap) return points;
+  const out: T[] = [];
+  const step = (points.length - 1) / (cap - 1);
+  for (let i = 0; i < cap; i++) out.push(points[Math.round(i * step)]);
+  return out;
+}
+
+// GET /dispatch/gps/trails?hours=N[&unit_id=] — live per-unit breadcrumb
+// trails for the map layer. Bare ARRAY (the client Array.isArray-checks the
+// response). Points come back oldest→newest (the renderer fades by index).
+gps.get('/trails', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const hoursRaw = Number.parseInt(c.req.query('hours') ?? '8', 10);
+    const hours = Number.isFinite(hoursRaw) ? Math.min(Math.max(hoursRaw, 1), 24) : 8;
+    const unitFilter = c.req.query('unit_id');
+    const unitSql = unitFilter ? ' AND g.unit_id = ?' : '';
+    const binds: unknown[] = [`-${hours} hours`];
+    if (unitFilter) binds.push(unitFilter);
+    // 24h at the ~2s accepted cadence can be ~40k rows; cap the scan and
+    // downsample per unit so the map payload stays drawable.
+    const rows = await query<TrailPointRow & { unit_id: number; call_sign: string | null; officer_name: string | null; badge_number: string | null }>(db,
+      `SELECT g.unit_id, g.call_sign, g.officer_name, g.badge_number, ${TRAIL_POINT_SELECT}
+         FROM gps_breadcrumbs g
+        WHERE g.recorded_at >= datetime('now', ?)${unitSql}
+          AND g.latitude IS NOT NULL AND g.longitude IS NOT NULL
+        ORDER BY g.unit_id, g.recorded_at ASC
+        LIMIT 50000`, ...binds);
+    const byUnit = new Map<number, { unit_id: number; call_sign: string; officer_name: string; badge_number: string; points: TrailPointRow[] }>();
+    for (const r of rows) {
+      let t = byUnit.get(r.unit_id);
+      if (!t) {
+        t = {
+          unit_id: r.unit_id,
+          call_sign: r.call_sign || `Unit ${r.unit_id}`,
+          officer_name: r.officer_name || '',
+          badge_number: r.badge_number || '',
+          points: [],
+        };
+        byUnit.set(r.unit_id, t);
+      }
+      // Prefer the freshest non-empty identity fields (older rows may predate them).
+      if (r.call_sign) t.call_sign = r.call_sign;
+      if (r.officer_name) t.officer_name = r.officer_name;
+      if (r.badge_number) t.badge_number = r.badge_number;
+      t.points.push({
+        lat: r.lat, lng: r.lng, accuracy: r.accuracy, heading: r.heading, speed: r.speed,
+        status: r.status, call_number: r.call_number, call_type: r.call_type,
+        time: r.time, road_name: r.road_name, intersection: r.intersection,
+      });
+    }
+    const trails = [...byUnit.values()].map((t) => ({ ...t, points: downsample(t.points, 1200) }));
+    return c.json(trails);
+  } catch (err) {
+    console.error('[gps] GET /trails failed:', err);
+    return c.json([]);
+  }
+});
+
+// GET /dispatch/gps/history?unit_id&from&to — historical trail for the
+// replay panel. from/to are 'YYYY-MM-DD HH:MM:SS' local-style strings; the
+// breadcrumb recorded_at is UTC SQLite text, so we compare lexically — the
+// client sends a full datetime range and tolerates edge drift.
+gps.get('/history', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const unitId = c.req.query('unit_id');
+    const from = c.req.query('from');
+    const to = c.req.query('to');
+    if (!unitId || !from || !to) return c.json({ error: 'unit_id, from, to are required' }, 400);
+    const rows = await query<TrailPointRow>(db,
+      `SELECT ${TRAIL_POINT_SELECT}
+         FROM gps_breadcrumbs g
+        WHERE g.unit_id = ? AND g.recorded_at >= ? AND g.recorded_at <= ?
+          AND g.latitude IS NOT NULL AND g.longitude IS NOT NULL
+        ORDER BY g.recorded_at ASC
+        LIMIT 50000`, unitId, from, to);
+    const meta = await queryFirst<{ call_sign: string | null; officer_name: string | null; badge_number: string | null }>(db,
+      `SELECT call_sign, officer_name, badge_number FROM gps_breadcrumbs
+        WHERE unit_id = ? AND call_sign IS NOT NULL ORDER BY recorded_at DESC LIMIT 1`, unitId);
+    return c.json({
+      unit_id: Number(unitId),
+      call_sign: meta?.call_sign || `Unit ${unitId}`,
+      officer_name: meta?.officer_name || '',
+      badge_number: meta?.badge_number || '',
+      total_raw: rows.length,
+      points: downsample(rows, 4000),
+    });
+  } catch (err) {
+    console.error('[gps] GET /history failed:', err);
+    return c.json({ error: 'Failed to load GPS history' }, 500);
+  }
+});
+
+// GET /dispatch/gps/units-with-trails — units that have breadcrumb data.
+// Returns the replay panel's UnitOption contract: { unit_id, call_sign,
+// officer_name, badge_number, earliest, latest, point_count }. The previous
+// shape ({ id, call_sign }) left unit_id undefined in the picker, so the
+// replay query always fired with unit_id=undefined and found nothing.
+// Window: 30 days (the panel replays history, not just the live shift).
 gps.get('/units-with-trails', async (c) => {
   try {
     const db = getDb(c.env);
     const rows = await query<Record<string, unknown>>(db,
-      `SELECT DISTINCT g.unit_id AS id, u.call_sign
-       FROM gps_breadcrumbs g
-       JOIN units u ON u.id = g.unit_id
-       WHERE g.recorded_at >= datetime('now', '-8 hours')
-       ORDER BY u.call_sign`);
+      `SELECT g.unit_id, COALESCE(u.call_sign, MAX(g.call_sign), 'Unit ' || g.unit_id) AS call_sign,
+              COALESCE(MAX(g.officer_name), '') AS officer_name,
+              COALESCE(MAX(g.badge_number), '') AS badge_number,
+              MIN(g.recorded_at) AS earliest, MAX(g.recorded_at) AS latest,
+              COUNT(*) AS point_count
+         FROM gps_breadcrumbs g
+         LEFT JOIN units u ON u.id = g.unit_id
+        WHERE g.recorded_at >= datetime('now', '-30 days') AND g.unit_id IS NOT NULL
+        GROUP BY g.unit_id
+        ORDER BY call_sign`);
     return c.json(rows);
   } catch (err) { return c.json([]); }
 });

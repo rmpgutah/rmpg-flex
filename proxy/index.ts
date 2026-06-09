@@ -575,12 +575,10 @@ const STUBS: StubRule[] = [
     body: { data: [], types: [] },
     reason: 'no dispatch heatmap-types backend; tolerates empty',
   },
-  {
-    match: /^\/api\/dispatch\/gps\/trails(\?.*)?$/,
-    methods: ['GET'],
-    body: { data: [], trails: [], units: [] },
-    reason: 'no gps-trail aggregation; MapPage tolerates empty',
-  },
+  // /api/dispatch/gps/trails stub REMOVED 2026-06-09 — real per-unit trail
+  // aggregation now lives in the rewrite (gps.ts GET /trails). The stub's
+  // empty {trails:[]} shape is why the Map's Breadcrumbs layer rendered
+  // nothing despite 60k+ live breadcrumb rows. Routed in API_ROUTES below.
   // Weather — page reads ?.current / ?.forecast optional-chained, null is safe.
   {
     match: /^\/api\/weather(\?.*)?$/,
@@ -1021,6 +1019,12 @@ const API_ROUTES: RouteRule[] = [
   // speed-zones and zone-speed-stats now have real handlers in gps.ts.
   { kind: 'regex', value: /^\/api\/dispatch\/gps\/?(\?.*)?$/, methods: ['POST'] },
   { kind: 'regex', value: /^\/api\/dispatch\/gps\/(current|my-unit|speed-zones|zone-speed-stats)(\?.*)?$/, methods: ['GET'] },
+  // Breadcrumb trail UI (2026-06-09): /trails was a proxy stub and /history
+  // 404'd on BOTH workers — the Map breadcrumbs layer + replay panel never
+  // had a backend. units-with-trails moves here too: the legacy copy returns
+  // { id } where the panel reads { unit_id, officer_name, earliest, ... },
+  // so its picker queried unit_id=undefined.
+  { kind: 'regex', value: /^\/api\/dispatch\/gps\/(trails|history|units-with-trails)(\?.*)?$/, methods: ['GET'] },
   // The OTHER gps.ts GET reads (my-vehicle, dwell-times, units-with-trails,
   // speed-violations[/:id/acknowledge], pursuit-segments, speed-heatmap) are
   // deliberately NOT routed here and DELIBERATELY fall to env.LEGACY. Verified
