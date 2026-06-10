@@ -58,6 +58,12 @@ export const AGENCY_HEADER = `
 <p style="text-align:center;line-height:1.15;margin-top:1px;margin-bottom:4px;"><span style="${SERIF}font-size:8.5px;letter-spacing:0.04em;color:${CAP};">Salt Lake City, Utah &nbsp;&middot;&nbsp; rmpgutah.us</span></p>
 <hr>`;
 
+// Letter body — formal correspondence is set a step larger than form text
+// (12.5px Times ≈ 12pt court pleading body) so printed letters read like a
+// filed document, not a form. Inline span style (textStyle) survives the
+// schema; pair with line-height on the <p> for pleading-style spacing.
+export const LETTER_BODY = `${SERIF}font-size:12.5px;`;
+
 export const CONFIDENTIAL = `<p style="text-align:center;margin-top:6px;"><span style="${SERIF}font-size:8px;letter-spacing:0.18em;text-transform:uppercase;color:${CAP};">Confidential &middot; Law Enforcement Sensitive &middot; Internal Use Only</span></p>`;
 
 /** Centered document title — tracked caps under the letterhead rule, the way a

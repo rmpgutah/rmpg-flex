@@ -3,7 +3,7 @@ import { LE_TEMPLATES } from './categories/law-enforcement';
 import { SEC_TEMPLATES } from './categories/security';
 import { HR_TEMPLATES } from './categories/hr';
 import { LEGAL_TEMPLATES } from './categories/legal';
-import { AGENCY_HEADER, title, section, field } from './_shared';
+import { AGENCY_HEADER, LETTER_BODY, title, section, field } from './_shared';
 
 
 export const TEMPLATES: DocumentTemplate[] = [
@@ -478,15 +478,22 @@ ${section('OBJECTIVES COVERED')}<p>&nbsp;</p>
       { key: 'recipient', label: 'Recipient', source: 'manual' },
       { key: 'address', label: 'Recipient Address', source: 'manual' },
       { key: 'date', label: 'Date', source: 'manual' },
+      { key: 're', label: 'RE / Subject', source: 'manual' },
       { key: 'sender', label: 'Sender', source: 'user' },
     ],
     content: `${AGENCY_HEADER}
-<p>{{date}}</p><p>&nbsp;</p>
-<p>{{recipient}}<br>{{address}}</p><p>&nbsp;</p>
-<p>Dear {{recipient}},</p>
-<p>&nbsp;</p><p>&nbsp;</p>
-<p>Sincerely,</p><p>&nbsp;</p>
-<p>{{sender}}<br>Rocky Mountain Protective Group</p>`,
+<p style="margin-top:18px;"><span style="${LETTER_BODY}">{{date}}</span></p>
+<p style="margin-top:18px;margin-bottom:0;"><span style="${LETTER_BODY}">{{recipient}}<br>{{address}}</span></p>
+<p style="margin-top:18px;"><span style="${LETTER_BODY}"><strong>RE:&nbsp;&nbsp;{{re}}</strong></span></p>
+<p style="margin-top:18px;"><span style="${LETTER_BODY}">Dear {{recipient}}:</span></p>
+<p style="margin-top:14px;line-height:1.6;"><span style="${LETTER_BODY}">&nbsp;</span></p>
+<p style="line-height:1.6;"><span style="${LETTER_BODY}">&nbsp;</span></p>
+<p style="line-height:1.6;"><span style="${LETTER_BODY}">&nbsp;</span></p>
+<p style="margin-top:22px;margin-bottom:0;"><span style="${LETTER_BODY}">Sincerely,</span></p>
+<p style="margin-top:0;margin-bottom:0;"><span style="${LETTER_BODY}">&nbsp;</span></p>
+<p style="margin-top:0;margin-bottom:0;"><span style="${LETTER_BODY}">&nbsp;</span></p>
+<p style="margin-top:0;margin-bottom:0;"><span style="${LETTER_BODY}">_______________________________</span></p>
+<p style="margin-top:2px;"><span style="${LETTER_BODY}">{{sender}}<br>Rocky Mountain Protective Group<br>Salt Lake City, Utah</span></p>`,
   },
   {
     id: 'meeting-minutes',
