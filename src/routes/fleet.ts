@@ -2692,11 +2692,33 @@ fleet.get('/fleet-cost-analytics', async (c) => {
   } catch (err) { console.error('GET /fleet/fleet-cost-analytics failed:', err); return c.json({}); }
 });
 
+// "Fuel Cards — Monthly Spend" table. CONTRACT (FuelAnalyticsPage by-card
+// rows + PDF): { card_id, card_number, provider, vehicle_number, vehicle_make,
+// vehicle_model, spent, monthly_limit, pct_of_limit, spend_status }. The old
+// shape (total_cost/total_gallons/transaction_count) matched none of those
+// keys, so every column rendered blank. `spent` is CURRENT-MONTH spend on the
+// card's assigned vehicle; monthly_limit maps to fleet_fuel_cards.credit_limit;
+// spend_status thresholds: >=100% 'over', >=80% 'watch', else 'ok'.
 fleet.get('/fuel/analytics/by-card', async (c) => {
   try {
     const db = getDb(c.env);
-    const rows = await query<Record<string, unknown>>(db, `SELECT fc.card_number, fc.provider, COALESCE(SUM(f.total_cost),0) as total_cost, COALESCE(SUM(f.gallons),0) as total_gallons, COUNT(f.id) as transaction_count FROM fleet_fuel_cards fc LEFT JOIN fleet_fuel_log f ON f.vehicle_id = fc.assigned_vehicle_id GROUP BY fc.id ORDER BY total_cost DESC`);
-    return c.json({ data: rows });
+    const rows = await query<Record<string, unknown>>(db, `
+      SELECT fc.id AS card_id, fc.card_number, fc.provider,
+             fv.vehicle_number, fv.make AS vehicle_make, fv.model AS vehicle_model,
+             COALESCE(SUM(CASE WHEN f.fuel_date >= datetime('now','start of month') THEN f.total_cost END), 0) AS spent,
+             fc.credit_limit AS monthly_limit
+      FROM fleet_fuel_cards fc
+      LEFT JOIN fleet_vehicles fv ON fv.id = fc.assigned_vehicle_id
+      LEFT JOIN fleet_fuel_log f ON f.vehicle_id = fc.assigned_vehicle_id
+      WHERE COALESCE(fc.status, 'active') != 'cancelled'
+      GROUP BY fc.id ORDER BY spent DESC`);
+    const data = rows.map((r) => {
+      const spent = Number(r.spent) || 0;
+      const limit = r.monthly_limit != null && Number(r.monthly_limit) > 0 ? Number(r.monthly_limit) : null;
+      const pct = limit != null ? Math.round((spent / limit) * 100) : null;
+      return { ...r, monthly_limit: limit, pct_of_limit: pct, spend_status: pct == null ? 'ok' : pct >= 100 ? 'over' : pct >= 80 ? 'watch' : 'ok' };
+    });
+    return c.json({ data });
   } catch (err) { console.error('GET /fleet/fuel/analytics/by-card failed:', err); return c.json({ data: [] }); }
 });
 

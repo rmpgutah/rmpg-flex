@@ -1012,6 +1012,39 @@ admin.get('/activity-feed', async (c) => {
   } catch { return c.json({ data: [] }); }
 });
 
+// ── Client-error telemetry (ErrorBoundary crash reports) ────
+// ErrorBoundary POSTs { message, stack, componentStack, url, timestamp } on
+// every client-side crash. A proxy stub swallowed these with a fake 200 since
+// the boundary shipped — zero reports were ever stored. Backed by
+// client_errors (migration 0088, exists on live D1).
+admin.post('/health/client-error', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const b = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
+    const userId = (c.get('user') as { id: number } | undefined)?.id ?? null;
+    const s = (v: unknown, max: number) => (typeof v === 'string' ? v.slice(0, max) : null);
+    await execute(db,
+      `INSERT INTO client_errors (user_id, message, stack, component_stack, url, client_timestamp)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      userId, s(b.message, 2000), s(b.stack, 10000), s(b.componentStack, 10000), s(b.url, 1000), s(b.timestamp, 64));
+    return c.json({ success: true });
+  } catch {
+    // Telemetry must never throw back at a crashing client.
+    return c.json({ success: false });
+  }
+});
+
+admin.get('/health/client-error', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const limit = Math.min(200, Math.max(1, parseInt(c.req.query('limit') || '50', 10) || 50));
+    const rows = await query<Record<string, unknown>>(db,
+      `SELECT ce.*, u.full_name FROM client_errors ce LEFT JOIN users u ON u.id = ce.user_id
+       ORDER BY ce.created_at DESC LIMIT ?`, limit);
+    return c.json({ data: rows, errors: rows, total: rows.length });
+  } catch { return c.json({ data: [], errors: [], total: 0 }); }
+});
+
 // ── System settings (org-wide config) ──────────────────────
 admin.get('/system-settings', async (c) => {
   try {
@@ -1034,10 +1067,13 @@ admin.put('/system-settings', async (c) => {
     const db = getDb(c.env);
     for (const [key, value] of Object.entries(body)) {
       const val = typeof value === 'string' ? value : JSON.stringify(value);
+      // Live system_config's UNIQUE index is COMPOSITE (config_key, config_value)
+      // — no unique index on config_key alone, so ON CONFLICT(config_key) throws
+      // on live D1 ("does not match any UNIQUE constraint"). DELETE+INSERT
+      // collapses any multi-row history for the key to the single new value.
+      await execute(db, `DELETE FROM system_config WHERE config_key = ?`, key);
       await execute(db,
-        `INSERT INTO system_config (config_key, config_value, updated_at)
-         VALUES (?, ?, datetime('now'))
-         ON CONFLICT(config_key) DO UPDATE SET config_value = excluded.config_value, updated_at = excluded.updated_at`,
+        `INSERT INTO system_config (config_key, config_value, updated_at) VALUES (?, ?, datetime('now'))`,
         key, val);
     }
     return c.json({ success: true });
@@ -1060,10 +1096,12 @@ admin.put('/map-config', async (c) => {
   try {
     const body = await c.req.json();
     const db = getDb(c.env);
+    // Same composite-unique-index trap as system-settings above: DELETE+INSERT,
+    // never ON CONFLICT(config_key).
+    await execute(db, `DELETE FROM system_config WHERE config_key = 'map_config'`);
     await execute(db,
       `INSERT INTO system_config (config_key, config_value, updated_at)
-       VALUES ('map_config', ?, datetime('now'))
-       ON CONFLICT(config_key) DO UPDATE SET config_value = excluded.config_value, updated_at = excluded.updated_at`,
+       VALUES ('map_config', ?, datetime('now'))`,
       JSON.stringify(body));
     return c.json({ success: true });
   } catch (err: any) { return c.json({ error: 'Failed' }, 500); }

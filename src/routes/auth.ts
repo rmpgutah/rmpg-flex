@@ -809,6 +809,49 @@ auth.get('/security/blocked-ips', async (c) => {
   }
 });
 
+// GET /api/auth/security/login-history?limit=&offset= — real history from the
+// live login_attempts table (this path was proxy-stubbed empty for months).
+// UNION SHAPE for two consumers:
+//   • LoginHistoryTable (ProfilePage) reads entries + total — the CALLER's own
+//     attempts, paginated. live table has no user_agent/device_fingerprint
+//     columns, so those return '' (the device parser tolerates empty).
+//   • SecurityDashboardPage reads data — org-wide recent attempts for
+//     admin/manager/supervisor, else the caller's own.
+auth.get('/security/login-history', async (c) => {
+  const empty = { entries: [], total: 0, data: [], pagination: { total: 0, totalPages: 0, page: 1, limit: 15 } };
+  try {
+    const db = getDb(c.env);
+    const limit = Math.min(100, Math.max(1, parseInt(c.req.query('limit') || '15', 10) || 15));
+    const offset = Math.max(0, parseInt(c.req.query('offset') || '0', 10) || 0);
+    const userId = c.get('userId') as number;
+    const me = await queryFirst<{ username: string; role: string }>(db, 'SELECT username, role FROM users WHERE id = ?', userId);
+    if (!me) return c.json(empty);
+
+    const mine = await query<Record<string, unknown>>(db,
+      `SELECT id, ip_address, '' AS user_agent, '' AS device_fingerprint,
+              COALESCE(success,0) AS success, failure_reason, created_at
+       FROM login_attempts WHERE username = ? ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+      me.username, limit, offset);
+    const total = (await queryFirst<{ c: number }>(db,
+      'SELECT COUNT(*) AS c FROM login_attempts WHERE username = ?', me.username))?.c ?? 0;
+
+    const orgWide = ['admin', 'manager', 'supervisor'].includes(me.role);
+    const data = await query<Record<string, unknown>>(db,
+      `SELECT la.id, u.id AS user_id, la.ip_address, '' AS user_agent,
+              COALESCE(la.success,0) AS success, la.failure_reason AS reason,
+              la.created_at, COALESCE(u.full_name, la.username) AS full_name
+       FROM login_attempts la LEFT JOIN users u ON u.username = la.username
+       ${orgWide ? '' : 'WHERE la.username = ?'}
+       ORDER BY la.created_at DESC LIMIT 50`,
+      ...(orgWide ? [] : [me.username]));
+
+    return c.json({
+      entries: mine, total, data,
+      pagination: { total, totalPages: Math.max(1, Math.ceil(total / limit)), page: Math.floor(offset / limit) + 1, limit },
+    });
+  } catch { return c.json(empty); }
+});
+
 // GET /api/auth/security/password-compliance — no password-age tracking on
 // live D1 yet; return empty (page tolerates {data:[]}).
 auth.get('/security/password-compliance', async (c) => c.json({ data: [] }));
