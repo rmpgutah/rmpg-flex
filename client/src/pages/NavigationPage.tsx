@@ -58,6 +58,29 @@ import ModuleDirectoryPage from './ModuleDirectoryPage';
 
 // ─── Helpers ────────────────────────────────────────────────
 
+/** Drive ⇆ Modules segmented toggle. Reflects the active mode (the old
+ *  version hardcoded Drive as active) and is rendered in BOTH views so the
+ *  Modules screen can always switch back to the follow-me Drive map. */
+function NavViewToggle({ mode, onMode }: { mode: 'drive' | 'modules'; onMode: (m: 'drive' | 'modules') => void }) {
+  const btn = (active: boolean) =>
+    `text-[8px] font-bold uppercase px-1.5 py-0.5 transition-colors ${active ? 'text-brand-400' : 'text-rmpg-500 hover:text-rmpg-300'}`;
+  const box = (active: boolean) => ({
+    border: active ? '1px solid rgba(212,160,23,0.5)' : '1px solid transparent',
+    background: active ? 'rgba(212,160,23,0.12)' : 'transparent',
+    borderRadius: 2,
+  });
+  return (
+    <div className="flex items-center gap-0.5">
+      <button type="button" onClick={() => onMode('drive')} aria-pressed={mode === 'drive'} className={btn(mode === 'drive')} style={box(mode === 'drive')}>
+        <Navigation2 className="w-2.5 h-2.5 inline-block -mt-0.5 mr-0.5" />Drive
+      </button>
+      <button type="button" onClick={() => onMode('modules')} aria-pressed={mode === 'modules'} className={btn(mode === 'modules')} style={box(mode === 'modules')}>
+        <Grid3X3 className="w-2.5 h-2.5 inline-block -mt-0.5 mr-0.5" />Modules
+      </button>
+    </div>
+  );
+}
+
 function maneuverIcon(type: string, modifier?: string): LucideIcon {
   if (type === 'arrive') return Flag;
   if (type === 'depart') return Navigation2;
@@ -1755,7 +1778,19 @@ export default function NavigationPage() {
 
   return viewMode === 'modules' ? (
     <div className="fixed inset-0 bg-surface-deep overflow-hidden" style={{ zIndex: 40 }}>
-      <ModuleDirectoryPage />
+      {/* Drive/Modules toggle stays available here so the MODULES view is never
+          a one-way trip — tap Drive to return to the follow-me map. */}
+      <div
+        className="absolute top-0 inset-x-0 flex items-center gap-2 px-3 py-2 backdrop-blur-md border-b border-rmpg-800 z-30"
+        style={{ background: 'linear-gradient(180deg, rgba(10,10,10,0.92) 0%, rgba(10,10,10,0.78) 100%)' }}
+      >
+        <Navigation2 className="w-4 h-4 text-brand-400" />
+        <span className="text-[11px] font-bold uppercase tracking-widest text-rmpg-100">Navigation</span>
+        <div className="ml-2"><NavViewToggle mode={viewMode} onMode={setViewMode} /></div>
+      </div>
+      <div className="absolute inset-x-0 bottom-0 overflow-y-auto" style={{ top: 44 }}>
+        <ModuleDirectoryPage />
+      </div>
     </div>
   ) : (
     <div ref={rootRef} className="fixed inset-0 bg-surface-deep overflow-hidden">
@@ -1785,25 +1820,7 @@ export default function NavigationPage() {
         <div className="absolute bottom-0 inset-x-0 h-px pointer-events-none" style={{ background: 'linear-gradient(90deg, transparent 5%, rgba(212,160,23,0.4) 30%, #d4a017 50%, rgba(212,160,23,0.4) 70%, transparent 95%)' }} />
         <Navigation2 className="w-4 h-4 text-brand-400" style={{ filter: 'drop-shadow(0 0 3px rgba(212,160,23,0.5))' }} />
         <span className="text-[11px] font-bold uppercase tracking-widest text-rmpg-100">Navigation</span>
-        <div className="flex items-center gap-0.5 ml-2">
-          <button
-            type="button"
-            onClick={() => setViewMode('drive')}
-            className="text-[8px] font-bold uppercase px-1.5 py-0.5 text-brand-400"
-            style={{ border: '1px solid rgba(212,160,23,0.3)', background: 'rgba(212,160,23,0.1)' }}
-          >
-            Drive
-          </button>
-          <button
-            type="button"
-            onClick={() => setViewMode('modules')}
-            className="text-[8px] font-bold uppercase px-1.5 py-0.5 text-rmpg-500 hover:text-rmpg-300 transition-colors"
-            style={{ border: '1px solid transparent' }}
-          >
-            <Grid3X3 className="w-2.5 h-2.5 inline-block -mt-0.5 mr-0.5" />
-            Modules
-          </button>
-        </div>
+        <div className="ml-2"><NavViewToggle mode={viewMode} onMode={setViewMode} /></div>
         <span className="flex-1" />
         <span className="font-mono text-[11px] text-rmpg-300 tabular-nums">{clock}</span>
         <span className="flex items-center gap-1 text-[10px] font-bold uppercase" style={{ color: src.color }}>

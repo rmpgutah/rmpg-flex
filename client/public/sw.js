@@ -557,7 +557,7 @@
 //   otpauthUrl (qrcode pkg); setup surfaces capture backup codes from the
 //   verify response (previously rendered an empty list). Sessions cron
 //   purge added.
-const CACHE_NAME = 'rmpg-flex-v861';
+const CACHE_NAME = 'rmpg-flex-v862';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
