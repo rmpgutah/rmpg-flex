@@ -25,6 +25,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
+import { verifySignedResource } from '../utils/signedAccess';
 import {
   ocrImage,
   ocrExtractStructured,
@@ -217,6 +218,16 @@ rt.delete('/transmissions/:id', async (c) => {
 rt.get('/transmissions/:id/audio', async (c) => {
   const id = parseInt(c.req.param('id'), 10);
   if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+
+  // authMiddleware passes GET media paths through when the request carries
+  // sig/exp instead of a token — in that case no `user` is set and WE are
+  // the verification point. A JWT-authenticated request has `user` set.
+  if (!c.get('user')) {
+    const signedOk = await verifySignedResource(c.env.JWT_SECRET, 'radio', String(id), {
+      sig: c.req.query('sig'), exp: c.req.query('exp'), nonce: c.req.query('nonce'),
+    });
+    if (!signedOk) return c.json({ error: 'Authentication required' }, 401);
+  }
   const key = `radio-audio/${id}.webm`;
 
   const rangeHeader = c.req.header('Range');

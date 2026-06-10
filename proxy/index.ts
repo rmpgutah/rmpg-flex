@@ -658,12 +658,9 @@ const STUBS: StubRule[] = [
     body: { valid: false, error: 'password reset is not yet ported' },
     reason: 'no /auth/reset-password/validate in rewrite',
   },
-  {
-    match: /^\/api\/auth\/sign-urls(\?.*)?$/,
-    methods: ['POST'],
-    body: { urls: {}, message: 'sign-urls is not yet ported' },
-    reason: 'no /auth/sign-urls in rewrite; R2 upload falls back to legacy',
-  },
+  // sign-urls stub REMOVED 2026-06-10: the rewrite now implements
+  // POST /api/auth/sign-urls (per-resource HMAC media signatures) —
+  // routed to env.API via the prefix rule below.
   // WebAuthn — proxy already stubs /credentials + /status. Add the OPTIONS
   // + verify endpoints. These are no-op stubs since the rewrite doesn't
   // implement WebAuthn; the user's security settings page renders empty.
@@ -1338,6 +1335,9 @@ const API_ROUTES: RouteRule[] = [
   // was stubbed null in this proxy for months while PUT fell through to a
   // worker that saved it: signatures were being stored but never displayed.
   { kind: 'prefix', value: '/api/auth/signature' },
+  // Signed media URLs (sig/exp/nonce for <video>/<audio> tags) — rewrite-only
+  // endpoint (src/routes/auth.ts POST /sign-urls); legacy never had it.
+  { kind: 'prefix', value: '/api/auth/sign-urls' },
   // Offline-cache sync engine (browser IndexedDB) — entire namespace
   // lives on the new Worker: /sync/pull, /sync/push, /secrets,
   // /my-secret, /secrets/generate. Legacy never implemented any of
