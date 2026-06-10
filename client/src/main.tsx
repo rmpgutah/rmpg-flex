@@ -25,7 +25,13 @@ initUiClickSounds();
 // Decode the sampled console sounds up front so the first click/chime/login
 // plays the actual asset instead of the synth fallback (decode works while
 // the AudioContext is still gesture-suspended; playback resumes on gesture).
+// Beyond the UI five, warm the high-traffic dispatch library tones; the
+// rest of the library lazy-loads on first play (synth covers that play).
 preloadSoundAssets();
+preloadSoundAssets([
+  'info', 'chirp', 'double_chirp', 'error', 'caution', 'warning',
+  'alert', 'alarm', 'descending', 'p1_alert', 'key_up', 'key_out', 'data_chirp',
+]);
 // Ctrl+Alt+D fail-safe diagnostic — captures UI trap state when the
 // app freezes (clicks/typing dead). Installed at the document level
 // so it fires even if React/focus traps are stuck.

@@ -130,4 +130,95 @@ console.log('Rendering Spillman-style console sounds →', outDir);
   writeWav(path.join(outDir, 'login.wav'), s);
 }
 
+// ============================================================
+// Full Spillman/Motorola console library (dispatchTones.ts).
+// Profile data mirrors PROFILES in client/src/utils/dispatchTones.ts
+// (keep in sync — the synth fallback there is canonical; the WAVs
+// rendered here are the sampled voice played first).
+// Steps: [freq, start, dur] (+ glideTo / noise flags below).
+// ============================================================
+
+/** Sustained console tone — 10ms linear edges (no decay), optional glide. */
+function steadyTone(out, { at, dur, f0, f1 = f0, gain, type = 'sine', detune = 0 }) {
+  const start = Math.floor(at * SR);
+  const len = Math.floor(dur * SR);
+  let phase = 0, phase2 = 0;
+  const edge = Math.min(0.01, dur / 4);
+  for (let i = 0; i < len && start + i < out.length; i++) {
+    const t = i / SR;
+    const f = f0 + (f1 - f0) * (t / dur); // linear glide, matches WebAudio linearRamp
+    phase += (2 * Math.PI * f) / SR;
+    let s = type === 'square' ? Math.tanh(Math.sin(phase) * 5)
+      : type === 'sawtooth' ? Math.tanh((((phase / Math.PI) % 2) - 1) * 2.5)
+      : Math.sin(phase);
+    if (detune) { phase2 += (2 * Math.PI * f * (1 + detune)) / SR; s = s * 0.8 + Math.sin(phase2) * 0.25; }
+    const env = t < edge ? t / edge : t > dur - edge ? (dur - t) / edge : 1;
+    out[start + i] += s * gain * env;
+  }
+}
+
+/** Band-passed white noise (squelch "kssht" / static hiss). */
+function bandNoise(out, { at, dur, center, gain }) {
+  const start = Math.floor(at * SR);
+  const len = Math.floor(dur * SR);
+  // simple biquad bandpass, Q≈0.7
+  const w0 = 2 * Math.PI * center / SR, alpha = Math.sin(w0) / (2 * 0.7);
+  const b0 = alpha, b2 = -alpha, a0 = 1 + alpha, a1 = -2 * Math.cos(w0), a2 = 1 - alpha;
+  let x1 = 0, x2 = 0, y1 = 0, y2 = 0;
+  const edge = Math.min(0.01, dur / 4);
+  for (let i = 0; i < len && start + i < out.length; i++) {
+    const t = i / SR;
+    const x = Math.random() * 2 - 1;
+    const y = (b0 * x + b2 * x2 - a1 * y1 - a2 * y2) / a0;
+    x2 = x1; x1 = x; y2 = y1; y1 = y;
+    const env = t < edge ? t / edge : t > dur - edge ? (dur - t) / edge : 1;
+    out[start + i] += y * gain * env;
+  }
+}
+
+// step: [freq, start, dur, glideTo?] — strings 'n' suffix = noise center freq
+const LIBRARY = {
+  info:            { type: 'sine', steps: [[1000, 0, 0.05]] },
+  caution:         { type: 'sine', steps: [[853, 0, 0.33], [960, 0.35, 0.33]] },
+  warning:         { type: 'sine', steps: [[1050, 0, 0.15], [1450, 0.17, 0.15], [1050, 0.34, 0.15], [1450, 0.51, 0.15], [1050, 0.68, 0.15], [1450, 0.85, 0.15]] },
+  error:           { type: 'square', steps: [[440, 0, 0.12], [349, 0.15, 0.12]] },
+  alert:           { type: 'sine', steps: [[880, 0, 0.08], [1047, 0.11, 0.08], [1319, 0.22, 0.10]] },
+  alarm:           { type: 'sine', steps: [[800, 0, 0.09], [1000, 0.10, 0.09], [800, 0.20, 0.09], [1000, 0.30, 0.09], [800, 0.40, 0.09], [1000, 0.50, 0.09], [800, 0.60, 0.09], [1000, 0.70, 0.09]] },
+  chirp:           { type: 'sine', steps: [[800, 0, 0.03], [1200, 0.03, 0.03]] },
+  double_chirp:    { type: 'sine', steps: [[800, 0, 0.03], [1200, 0.03, 0.03], [800, 0.14, 0.03], [1200, 0.17, 0.03]] },
+  descending:      { type: 'sine', steps: [[1047, 0, 0.08], [880, 0.10, 0.08], [698, 0.20, 0.10]] },
+  p1_alert:        { type: 'sine', steps: [[1200, 0, 0.10], [800, 0.12, 0.10], [1200, 0.24, 0.10], [800, 0.40, 0.10], [1200, 0.52, 0.10], [800, 0.64, 0.10]] },
+  panic_continuous:{ type: 'sine', steps: Array.from({ length: 24 }, (_, i) => [i % 2 ? 1100 : 800, i * 0.10, 0.09]) },
+  key_up:          { type: 'sine', steps: [[760, 0, 0.045, 913], [913, 0.045, 0.11]] },
+  key_out:         { type: 'sine', steps: [[900, 0, 0.06], [650, 0.07, 0.07]] },
+  radio_grant:     { type: 'sine', steps: [[600, 0, 0.08, 1200]] },
+  radio_deny:      { type: 'sawtooth', steps: [[310, 0, 0.25]] },
+  quick_call_2:    { type: 'sine', steps: [[947, 0, 0.4], [1153, 0.42, 0.4]] },
+  talk_permit_low: { type: 'sine', steps: [[560, 0, 0.045, 660], [660, 0.045, 0.12]] },
+  call_alert:      { type: 'sine', steps: [[1000, 0, 0.08], [1000, 0.16, 0.08], [1000, 0.32, 0.08], [1000, 0.48, 0.08]] },
+  knox_alert:      { type: 'sine', steps: [[1200, 0, 0.07], [900, 0.08, 0.07], [1200, 0.16, 0.07], [900, 0.24, 0.07], [1200, 0.32, 0.07], [900, 0.40, 0.07]] },
+  squelch_tail:    { type: 'sine', steps: [['1800n', 0, 0.12]] },
+  static_burst:    { type: 'sine', steps: [['1500n', 0, 0.32]] },
+  boop:            { type: 'sine', steps: [[480, 0, 0.12]] },
+  dispatch_bell:   { type: 'sine', steps: [[1318, 0, 0.16], [988, 0.14, 0.22]] },
+  data_chirp:      { type: 'sine', steps: [[1500, 0, 0.05, 2200]] },
+  emergency_three: { type: 'sine', steps: [[800, 0, 0.09], [1100, 0.10, 0.09], [800, 0.20, 0.09], [1100, 0.30, 0.09], [800, 0.40, 0.09], [1100, 0.50, 0.09]] },
+};
+
+console.log('Rendering Spillman/Motorola dispatch tone library…');
+for (const [id, profile] of Object.entries(LIBRARY)) {
+  const total = Math.max(...profile.steps.map((s) => s[1] + s[2]));
+  const s = make(total + 0.06);
+  for (const [freq, at, dur, glideTo] of profile.steps) {
+    if (typeof freq === 'string' && freq.endsWith('n')) {
+      bandNoise(s, { at, dur, center: parseFloat(freq), gain: 0.8 });
+    } else {
+      // Sustained tones get a whisper of detune for sampled width;
+      // sub-100ms pips stay surgically clean like the real console.
+      steadyTone(s, { at, dur, f0: freq, f1: glideTo ?? freq, gain: 0.8, type: profile.type, detune: dur >= 0.15 ? 0.0035 : 0 });
+    }
+  }
+  writeWav(path.join(outDir, `${id}.wav`), s);
+}
+
 console.log('Done.');

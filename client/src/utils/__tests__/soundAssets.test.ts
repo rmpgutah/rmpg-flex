@@ -13,12 +13,13 @@ function mockAudioContext(decodeOk = true) {
       decodeAudioData: decodeOk
         ? vi.fn().mockResolvedValue({ duration: 0.1 })
         : vi.fn().mockRejectedValue(new Error('bad data')),
+      currentTime: 0,
       createBufferSource: vi.fn(() => {
-        const src = { buffer: null, connect: vi.fn(), start: vi.fn() };
+        const src = { buffer: null, connect: vi.fn(), start: vi.fn(), stop: vi.fn() };
         sources.push(src);
         return src;
       }),
-      createGain: vi.fn(() => ({ gain: { value: 0 }, connect: vi.fn() })),
+      createGain: vi.fn(() => ({ gain: { value: 0, setValueAtTime: vi.fn() }, connect: vi.fn() })),
     };
   });
   (window as any).AudioContext = ctor;
@@ -73,6 +74,21 @@ describe('soundAssets', () => {
     expect((global.fetch as any).mock.calls.map((c: any[]) => c[0]).sort()).toEqual([
       '/sounds/click.wav', '/sounds/delete.wav', '/sounds/login.wav', '/sounds/submit.wav', '/sounds/update.wav',
     ]);
+  });
+
+  it('startSoundAsset returns a working stop handle once decoded', async () => {
+    const { sources } = mockAudioContext();
+    global.fetch = vi.fn().mockResolvedValue({ ok: true, arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)) }) as any;
+    const m = await loadModule();
+
+    expect(m.startSoundAsset('alarm', 0.32)).toBeNull(); // not decoded yet → synth fallback
+    await flush(); await flush();
+
+    const handle = m.startSoundAsset('alarm', 0.32);
+    expect(handle).not.toBeNull();
+    expect(sources[0].start).toHaveBeenCalled();
+    handle!.stop();
+    expect(sources[0].stop).toHaveBeenCalled();
   });
 
   it('never throws when fetch or WebAudio are unavailable', async () => {
