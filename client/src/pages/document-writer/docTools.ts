@@ -308,7 +308,7 @@ export function buildStandaloneHtml(opts: {
   const { title, bodyHtml, author, letterhead } = opts;
   const lh = letterhead
     ? `<div class="lh"><div class="lh-name">ROCKY MOUNTAIN PROTECTIVE GROUP</div>` +
-      `<div class="lh-sub">Law Enforcement &amp; Private Security Services — Salt Lake City, Utah</div></div>`
+      `<div class="lh-sub">Private Security &amp; Process Service — Salt Lake City, Utah</div></div>`
     : '';
   const meta = author ? `<meta name="author" content="${esc(author)}">` : '';
   return [

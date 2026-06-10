@@ -176,7 +176,7 @@ ${tbl(row2(field('Subject', '{{subject}}'), field('Officer', '{{officer}}')) + r
 ${section('JUSTIFICATION (self-defense / defense of others / citizen&rsquo;s arrest 77-7-3)')}<p>&nbsp;</p>
 ${section('FORCE LEVEL USED')}<p>☐ Presence ☐ Verbal ☐ Soft hands ☐ Hard hands ☐ Intermediate (OC/baton/CEW) ☐ Lethal</p>
 ${section('INJURIES')}<p>Subject: ____ &nbsp; Officer: ____</p>
-${section('LAW ENFORCEMENT RESPONSE')}<p>SLCPD notified ☐ &nbsp; Case # ____</p>${narrative()}${SIG_BLOCK}`,
+${section('POLICE RESPONSE')}<p>SLCPD notified ☐ &nbsp; Case # ____</p>${narrative()}${SIG_BLOCK}`,
   },
   {
     id: 'sec-fire-alarm', name: 'Fire Alarm Activation', category: 'sec-patrol',
