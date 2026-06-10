@@ -8,7 +8,7 @@ import jsPDF from 'jspdf';
 import QRCode from 'qrcode';
 import { isPast, isWithinDays, parseTimestamp } from './dateUtils';
 import { hasValue, toNum } from './sentinel';
-import { sectionZoneBeatCombined } from './dispatchCodeParts';
+import { zsbComposite } from './dispatchCodeParts';
 import { humanizeRelationship } from './recordLinks';
 import {
   addConfidentialWatermark, openAutoSection, closeAutoSection, addFieldPair,
@@ -384,10 +384,9 @@ function drawDistrictBar(
   // PSO Client Request Details section where it belongs.
   // Dispatch printouts present the SHORT CODE only (e.g. "SLA-A2") — the full
   // Area / Section / Zone / Beat names are presented on the Map UI, not on
-  // dispatch call surfaces. Prefer the stored dispatch_code / zone_beat; fall
-  // back to the composite leaf code only if neither is set.
-  const shortCode = data.dispatch_code || data.zone_beat
-    || sectionZoneBeatCombined(data.sector_id, data.zone_id, data.beat_id) || '';
+  // dispatch call surfaces. Geography fields drive the canonical SEC/ZONE/BEAT
+  // composite; the stored dispatch_code / zone_beat is only a fallback.
+  const shortCode = zsbComposite({ zoneId: data.zone_id, beatId: data.beat_id, dispatchCode: data.dispatch_code || data.zone_beat });
   const distFields: { label: string; value: string }[] = [];
   if (shortCode) distFields.push({ label: 'DISPATCH CODE', value: shortCode });
   if (distFields.length === 0) return barY; // safety: nothing to draw
@@ -1828,7 +1827,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       { label: 'Status', value: displayStatus(data.status || '') },
       { label: 'Source', value: formatEnumValue(data.source) },
       { label: 'Disposition', value: formatEnumValue(data.disposition) },
-      { label: 'Dispatch Code', value: data.dispatch_code || data.zone_beat || sectionZoneBeatCombined(data.sector_id, data.zone_id, data.beat_id) || '' },
+      { label: 'Dispatch Code', value: zsbComposite({ zoneId: data.zone_id, beatId: data.beat_id, dispatchCode: data.dispatch_code || data.zone_beat }) },
       { label: 'Case Number', value: normalizeCaseNumber(data.case_number) },
       { label: 'Incident Number', value: data.incident_number || '' },
     ], y);
@@ -5831,8 +5830,7 @@ async function generateCitationReport(doc: jsPDF, data: CitationPdfData) {
   if (data.sector_id || data.zone_id || data.beat_id || data.dispatch_code) {
     y = checkPageBreak(doc, y, 10, prio);
     const sec = openAutoSection(doc, 'Location / Geography', y); y = sec.contentY;
-    const code = data.dispatch_code || data.zone_beat
-      || sectionZoneBeatCombined(data.sector_id, data.zone_id, data.beat_id) || '';
+    const code = zsbComposite({ zoneId: data.zone_id, beatId: data.beat_id, dispatchCode: data.dispatch_code || data.zone_beat });
     y = addFieldPair(doc, 'Dispatch Code', code, lx, y, ffw);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }

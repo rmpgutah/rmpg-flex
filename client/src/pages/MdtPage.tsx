@@ -20,6 +20,7 @@ import { formatIncidentType } from '../utils/caseNumbers';
 import { formatTimer, getStatusElapsed, isActiveStatus } from '../utils/dispatchTimers';
 import { mapDbCall } from './dispatch/utils/dispatchMappers';
 import StatusBadge from '../components/StatusBadge';
+import ZsbBadge from '../components/ZsbBadge';
 import PremiseHistory from '../components/PremiseHistory';
 import NcicQueryPanel from '../components/NcicQueryPanel';
 import PremiseAlertModal from '../components/PremiseAlertModal';
@@ -976,6 +977,7 @@ export default function MdtPage() {
                   {selectedCall.cross_street && (
                     <div className="text-[9px] text-rmpg-400 ml-4">X-Street: {selectedCall.cross_street}</div>
                   )}
+                  <div className="ml-4 mt-1"><ZsbBadge zoneId={selectedCall.zone_id} beatId={selectedCall.beat_id} dispatchCode={selectedCall.dispatch_code} /></div>
                 </div>
 
                 {/* Description */}
