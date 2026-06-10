@@ -60,6 +60,7 @@ import { ReadAloud, textToRead, ttsSupported } from './tts';
 import { populateTemplate } from './templates';
 import TextStyleExtras from './extensions/textStyleExtras';
 import BlockStyle, { PageBreak, SectionBreak } from './extensions/customBlocks';
+import TableFormatting from './extensions/tableFormatting';
 import FindReplace from './extensions/findReplace';
 import ListStyles from './extensions/listStyles';
 import { Embed, Audio } from './extensions/mediaNodes';
@@ -163,7 +164,7 @@ export default function DocumentWriterPage() {
     extensions: [
       StarterKit.configure({ heading: { levels: [1, 2, 3, 4] } }),
       Table.configure({ resizable: true }),
-      TableRow, TableCell, TableHeader,
+      TableRow, TableCell, TableHeader, TableFormatting,
       ImageExt.configure({ inline: false, allowBase64: true }),
       TextAlign.configure({ types: ['heading', 'paragraph'] }),
       TextStyle, Color, Highlight.configure({ multicolor: true }), FontFamily,
