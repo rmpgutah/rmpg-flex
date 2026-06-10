@@ -23,6 +23,7 @@ import { authMiddleware, readOnlyRoleGuard } from './middleware/auth';
 import { handleWebSocket, sendToUser, broadcastAll } from './routes/ws';
 import { emitAlert } from './utils/alertHub';
 import { WelfareWatchDO } from './durable-objects/WelfareWatchDO';
+import { doCallbackToken, timingSafeEqual } from './utils/signedAccess';
 import { VoiceHubDO } from './durable-objects/VoiceHubDO';
 import { AlertHubDO } from './durable-objects/AlertHubDO';
 import { PdfToolsContainer } from './containers/pdfToolsContainer';
@@ -206,11 +207,14 @@ for (const m of ROUTE_REGISTRY) {
 // ─── Internal: WelfareWatchDO → Worker callback ──────────────
 // The DO's alarm() can't call sendToUser/broadcastAll directly
 // (those live in the Worker module's per-isolate state). Instead
-// it posts to /__welfare-fire authenticated by X-DO-Secret == JWT_SECRET.
-// Lives outside ROUTE_REGISTRY because it's an internal callback,
-// not an API endpoint.
+// it posts to /__welfare-fire authenticated by X-DO-Secret, a value
+// DERIVED from JWT_SECRET (doCallbackToken) — never the signing key
+// itself — compared constant-time. Lives outside ROUTE_REGISTRY because
+// it's an internal callback, not an API endpoint.
 app.post('/__welfare-fire', async (c) => {
-  if (c.req.header('X-DO-Secret') !== c.env.JWT_SECRET) {
+  const provided = c.req.header('X-DO-Secret') || '';
+  const expected = await doCallbackToken(c.env.JWT_SECRET);
+  if (!timingSafeEqual(provided, expected)) {
     return c.json({ error: 'forbidden' }, 403);
   }
   const { stage, watch } = await c.req.json<{ stage: 'prompt' | 'alert' | 'emergency'; watch: any }>();

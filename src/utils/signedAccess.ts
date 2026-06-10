@@ -48,6 +48,22 @@ export async function signResource(
   return { sig, exp, nonce };
 }
 
+// Derived shared secret for internal DO→Worker callbacks (/__welfare-fire).
+// Sending the raw JWT_SECRET in a header meant any leak of that header value
+// (logging, debugging, proxy capture) handed out the JWT-signing key itself.
+// The derived value authorizes ONLY the callback — it can't sign tokens.
+export async function doCallbackToken(secret: string): Promise<string> {
+  return hmacHex(secret, 'rmpg-do-callback:v1');
+}
+
+// Constant-time string equality (hex/ascii inputs).
+export function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
 export async function verifySignedResource(
   secret: string,
   type: string,
