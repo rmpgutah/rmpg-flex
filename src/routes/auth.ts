@@ -6,6 +6,14 @@ import { getDb, queryFirst, query, execute } from '../utils/db';
 import { authMiddleware } from '../middleware/auth';
 import { signResource, type SignedResourceParams } from '../utils/signedAccess';
 import {
+  generateRegistrationOptions, verifyRegistrationResponse,
+  generateAuthenticationOptions, verifyAuthenticationResponse,
+} from '@simplewebauthn/server';
+import type {
+  AuthenticatorTransportFuture, RegistrationResponseJSON, AuthenticationResponseJSON,
+} from '@simplewebauthn/server';
+import { isoBase64URL } from '@simplewebauthn/server/helpers';
+import {
   generateTotpSecret, verifyTotpCode, buildOtpauthUrl,
   encryptTotpSecret, decryptTotpSecret,
   generateBackupCodes, hashBackupCode,
@@ -145,10 +153,18 @@ auth.post('/login', async (c) => {
         { sub: String(user.id), userId: user.id, username: user.username, type: '2fa_pending', iat: now, exp: now + 300 },
         secret,
       );
+      // Offer the security-key path when the account has registered keys
+      // (table may be absent on local DBs pre-0090 — treat as none).
+      let webauthnCount = 0;
+      try {
+        const r = await queryFirst<{ n: number }>(
+          db, 'SELECT COUNT(*) AS n FROM webauthn_credentials WHERE user_id = ?', user.id);
+        webauthnCount = r?.n ?? 0;
+      } catch { /* table absent */ }
       return c.json({
         requires2FA: true,
         tempToken,
-        methods: { totp: true, webauthn: false },
+        methods: { totp: true, webauthn: webauthnCount > 0 },
         requiresPasswordChange: !!user.must_change_password,
       });
     }
@@ -1108,9 +1124,324 @@ auth.post('/2fa/backup-codes/regenerate', authMiddleware, async (c) => {
   }
 });
 
-// ── WebAuthn status ────────────────────────────────────────
+// ════════════════════════════════════════════════════════════
+// WebAuthn / Security keys (YubiKey, Touch ID, Windows Hello)
+// ════════════════════════════════════════════════════════════
+// Port of legacy/server-vps/src/routes/webauthn.ts onto Workers:
+// @simplewebauthn/server v13 (pure WebCrypto — Workers-compatible),
+// challenges in KV (5-min TTL) instead of the legacy in-memory Map,
+// credentials in `webauthn_credentials` (migration 0090; also created
+// directly on live D1). Client: SecurityKeyManager.tsx (registration)
+// + AuthContext.verifyWebAuthn (2FA login) — contracts unchanged.
+
+const WEBAUTHN_CHALLENGE_PREFIX = 'webauthn-challenge:';
+const WEBAUTHN_CHALLENGE_TTL = 300; // 5 min, matches legacy
+const WEBAUTHN_RP_NAME = 'RMPG Flex';
+
+// rpID/origin: prod is rmpgutah.us (rpID covers www.); local dev is the
+// Vite server on localhost. Derived from the request Origin header so a
+// registration made from www. and a login from the apex both verify.
+function webauthnRp(c: any): { rpID: string; origins: string[] } {
+  const origin = c.req.header('Origin') || '';
+  if (/^http:\/\/localhost(:\d+)?$/.test(origin)) {
+    return { rpID: 'localhost', origins: [origin] };
+  }
+  return { rpID: 'rmpgutah.us', origins: ['https://rmpgutah.us', 'https://www.rmpgutah.us'] };
+}
+
+function parseWebauthnTransports(json: string | null): AuthenticatorTransportFuture[] | undefined {
+  if (!json) return undefined;
+  try {
+    const arr = JSON.parse(json) as AuthenticatorTransportFuture[];
+    return arr.length > 0 ? arr : undefined;
+  } catch { return undefined; }
+}
+
+async function getWebauthnCredentials(db: any, userId: number): Promise<Array<{
+  id: number; credential_id: string; public_key: string; counter: number;
+  transports: string | null; name: string; device_type: string;
+  backed_up: number; created_at: string; last_used_at: string | null;
+}>> {
+  try {
+    return await query(db,
+      `SELECT id, credential_id, public_key, counter, transports, name,
+              device_type, backed_up, created_at, last_used_at
+         FROM webauthn_credentials WHERE user_id = ?`, userId);
+  } catch { return []; } // table may be absent on local DBs pre-0090
+}
+
+// Resolve the acting user for the registration-side endpoints.
+const webauthnUserId = (c: any): number => Number(c.get('userId'));
+
+// ── GET /webauthn/status ─────────────────────────────────────
 auth.get('/webauthn/status', authMiddleware, async (c) => {
-  return c.json({ enabled: false, credentials: [], supported: false });
+  try {
+    const creds = await getWebauthnCredentials(getDb(c.env), webauthnUserId(c));
+    return c.json({ enabled: creds.length > 0, credentialCount: creds.length, supported: true });
+  } catch (err) {
+    console.error('webauthn/status failed:', err);
+    return c.json({ enabled: false, credentialCount: 0, supported: true });
+  }
+});
+
+// ── GET /webauthn/credentials ────────────────────────────────
+auth.get('/webauthn/credentials', authMiddleware, async (c) => {
+  try {
+    const creds = await getWebauthnCredentials(getDb(c.env), webauthnUserId(c));
+    return c.json(creds.map((cr) => ({
+      id: cr.id,
+      name: cr.name,
+      deviceType: cr.device_type,
+      backedUp: !!cr.backed_up,
+      transports: parseWebauthnTransports(cr.transports) || [],
+      createdAt: cr.created_at,
+      lastUsedAt: cr.last_used_at,
+    })));
+  } catch (err) {
+    console.error('webauthn/credentials failed:', err);
+    return c.json({ error: 'Failed to list security keys', code: 'WEBAUTHN_LIST_ERROR' }, 500);
+  }
+});
+
+// ── POST /webauthn/register-options ──────────────────────────
+auth.post('/webauthn/register-options', authMiddleware, async (c) => {
+  try {
+    const db = getDb(c.env);
+    const userId = webauthnUserId(c);
+    const user = await queryFirst<{ id: number; username: string; full_name: string | null }>(
+      db, 'SELECT id, username, full_name FROM users WHERE id = ?', userId);
+    if (!user) return c.json({ error: 'User not found', code: 'USER_NOT_FOUND' }, 404);
+
+    const existing = await getWebauthnCredentials(db, userId);
+    const { rpID } = webauthnRp(c);
+    const options = await generateRegistrationOptions({
+      rpName: WEBAUTHN_RP_NAME,
+      rpID,
+      userName: user.username,
+      userDisplayName: user.full_name || user.username,
+      attestationType: 'none',
+      excludeCredentials: existing.map((cr) => ({
+        id: cr.credential_id,
+        transports: parseWebauthnTransports(cr.transports),
+      })),
+      authenticatorSelection: {
+        residentKey: 'preferred',
+        userVerification: 'preferred',
+      },
+    });
+
+    const idBytes = crypto.getRandomValues(new Uint8Array(16));
+    const challengeId = Array.from(idBytes).map((b) => b.toString(16).padStart(2, '0')).join('');
+    await c.env.KV.put(
+      `${WEBAUTHN_CHALLENGE_PREFIX}${challengeId}`,
+      JSON.stringify({ challenge: options.challenge, userId }),
+      { expirationTtl: WEBAUTHN_CHALLENGE_TTL },
+    );
+    return c.json({ options, challengeId });
+  } catch (err) {
+    console.error('webauthn/register-options failed:', err);
+    return c.json({ error: 'Failed to start security key registration', code: 'WEBAUTHN_REGISTEROPTIONS_ERROR' }, 500);
+  }
+});
+
+// ── POST /webauthn/register-verify ───────────────────────────
+auth.post('/webauthn/register-verify', authMiddleware, async (c) => {
+  try {
+    const body = await c.req.json<{
+      challengeId?: string; response?: RegistrationResponseJSON; name?: string;
+    }>().catch(() => null);
+    if (!body?.challengeId || !body.response) {
+      return c.json({ error: 'Missing challengeId or response', code: 'MISSING_CHALLENGEID_OR_RESPONSE' }, 400);
+    }
+    if (typeof body.challengeId !== 'string' || body.challengeId.length > 64 || !/^[a-f0-9]+$/.test(body.challengeId)) {
+      return c.json({ error: 'Invalid challengeId format', code: 'INVALID_CHALLENGEID_FORMAT' }, 400);
+    }
+    if (body.name != null && (typeof body.name !== 'string' || body.name.length > 100)) {
+      return c.json({ error: 'Security key name must be 100 characters or less', code: 'SECURITY_KEY_NAME_TOO_LONG' }, 400);
+    }
+
+    const key = `${WEBAUTHN_CHALLENGE_PREFIX}${body.challengeId}`;
+    const storedRaw = await c.env.KV.get(key);
+    if (!storedRaw) return c.json({ error: 'Challenge expired. Please try again.', code: 'CHALLENGE_EXPIRED' }, 400);
+    const stored = JSON.parse(storedRaw) as { challenge: string; userId: number };
+    const userId = webauthnUserId(c);
+    if (stored.userId !== userId) return c.json({ error: 'Challenge mismatch', code: 'CHALLENGE_MISMATCH' }, 403);
+
+    const { rpID, origins } = webauthnRp(c);
+    const verification = await verifyRegistrationResponse({
+      response: body.response,
+      expectedChallenge: stored.challenge,
+      expectedOrigin: origins,
+      expectedRPID: rpID,
+      requireUserVerification: false, // UV is 'preferred' — some keys skip it
+    });
+    await c.env.KV.delete(key).catch(() => undefined);
+
+    if (!verification.verified || !verification.registrationInfo) {
+      return c.json({ error: 'Verification failed. Please try again.', code: 'VERIFICATION_FAILED' }, 400);
+    }
+    const { credential, credentialDeviceType, credentialBackedUp } = verification.registrationInfo;
+
+    const db = getDb(c.env);
+    const credName = body.name?.trim() || 'Security Key';
+    const result = await execute(db, `
+      INSERT INTO webauthn_credentials
+        (user_id, credential_id, public_key, counter, device_type, backed_up, transports, name, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))
+    `,
+      userId,
+      credential.id, // Base64URLString already
+      isoBase64URL.fromBuffer(credential.publicKey),
+      credential.counter,
+      credentialDeviceType,
+      credentialBackedUp ? 1 : 0,
+      credential.transports && credential.transports.length > 0 ? JSON.stringify(credential.transports) : null,
+      credName,
+    );
+
+    // A security key counts as 2FA enabled (matches legacy behavior).
+    await execute(db, 'UPDATE users SET totp_enabled = 1 WHERE id = ?', userId).catch(() => undefined);
+
+    return c.json({
+      success: true,
+      credential: {
+        id: result.meta?.last_row_id ?? 0,
+        name: credName,
+        deviceType: credentialDeviceType,
+        backedUp: credentialBackedUp,
+      },
+    });
+  } catch (err) {
+    console.error('webauthn/register-verify failed:', err);
+    return c.json({ error: 'Failed to register security key', code: 'WEBAUTHN_REGISTERVERIFY_ERROR' }, 500);
+  }
+});
+
+// ── DELETE /webauthn/credentials/:id ─────────────────────────
+auth.delete('/webauthn/credentials/:id{[0-9]+}', authMiddleware, async (c) => {
+  try {
+    const db = getDb(c.env);
+    const userId = webauthnUserId(c);
+    const credId = Number(c.req.param('id'));
+    const cred = await queryFirst<{ id: number; name: string }>(
+      db, 'SELECT id, name FROM webauthn_credentials WHERE id = ? AND user_id = ?', credId, userId);
+    if (!cred) return c.json({ error: 'Credential not found', code: 'CREDENTIAL_NOT_FOUND' }, 404);
+    await execute(db, 'DELETE FROM webauthn_credentials WHERE id = ? AND user_id = ?', credId, userId);
+
+    // If no keys remain AND no TOTP secret, drop the 2FA flag (legacy parity).
+    const remaining = await queryFirst<{ n: number }>(
+      db, 'SELECT COUNT(*) AS n FROM webauthn_credentials WHERE user_id = ?', userId);
+    const totp = await queryFirst<{ totp_secret_enc: string | null }>(
+      db, 'SELECT totp_secret_enc FROM users WHERE id = ?', userId).catch(() => null);
+    if ((remaining?.n ?? 0) === 0 && !totp?.totp_secret_enc) {
+      await execute(db, 'UPDATE users SET totp_enabled = 0 WHERE id = ?', userId).catch(() => undefined);
+    }
+    return c.json({ message: 'Security key removed' });
+  } catch (err) {
+    console.error('webauthn delete credential failed:', err);
+    return c.json({ error: 'Failed to remove security key', code: 'WEBAUTHN_DELETE_ERROR' }, 500);
+  }
+});
+
+// ── POST /webauthn/authenticate-options ──────────────────────
+// 2FA step during login — accepts the pending-2FA tempToken in the body
+// (NOT authMiddleware-gated: the user has no session yet).
+auth.post('/webauthn/authenticate-options', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const resolved = await resolve2faPending(c, db);
+    if ('error' in resolved) return resolved.error;
+    const userId = resolved.user.id as number;
+
+    const creds = await getWebauthnCredentials(db, userId);
+    if (creds.length === 0) {
+      return c.json({ error: 'No security keys registered', hasSecurityKeys: false }, 400);
+    }
+    const { rpID } = webauthnRp(c);
+    const options = await generateAuthenticationOptions({
+      rpID,
+      allowCredentials: creds.map((cr) => ({
+        id: cr.credential_id,
+        transports: parseWebauthnTransports(cr.transports),
+      })),
+      userVerification: 'preferred',
+    });
+
+    const idBytes = crypto.getRandomValues(new Uint8Array(16));
+    const challengeId = Array.from(idBytes).map((b) => b.toString(16).padStart(2, '0')).join('');
+    await c.env.KV.put(
+      `${WEBAUTHN_CHALLENGE_PREFIX}${challengeId}`,
+      JSON.stringify({ challenge: options.challenge, userId }),
+      { expirationTtl: WEBAUTHN_CHALLENGE_TTL },
+    );
+    return c.json({ options, challengeId, hasSecurityKeys: true });
+  } catch (err) {
+    console.error('webauthn/authenticate-options failed:', err);
+    return c.json({ error: 'Failed to start security key verification', code: 'WEBAUTHN_AUTHENTICATEOPTIONS_ERROR' }, 500);
+  }
+});
+
+// ── POST /webauthn/authenticate-verify ───────────────────────
+// Completes 2FA via security key → full login tokens (same contract as
+// /login/verify-2fa; AuthContext.verifyWebAuthn consumes it).
+auth.post('/webauthn/authenticate-verify', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const resolved = await resolve2faPending(c, db);
+    if ('error' in resolved) return resolved.error;
+    const { user } = resolved;
+
+    const body = await c.req.json<{
+      challengeId?: string; response?: AuthenticationResponseJSON;
+    }>().catch(() => ({} as any));
+    if (!body?.challengeId || !body.response) {
+      return c.json({ error: 'Missing required fields', code: 'MISSING_REQUIRED_FIELDS' }, 400);
+    }
+    if (typeof body.challengeId !== 'string' || body.challengeId.length > 64 || !/^[a-f0-9]+$/.test(body.challengeId)) {
+      return c.json({ error: 'Invalid challengeId format', code: 'INVALID_CHALLENGEID_FORMAT' }, 400);
+    }
+
+    const key = `${WEBAUTHN_CHALLENGE_PREFIX}${body.challengeId}`;
+    const storedRaw = await c.env.KV.get(key);
+    if (!storedRaw) return c.json({ error: 'Challenge expired. Please try again.', code: 'CHALLENGE_EXPIRED' }, 400);
+    const stored = JSON.parse(storedRaw) as { challenge: string; userId: number };
+    if (stored.userId !== user.id) return c.json({ error: 'Challenge mismatch', code: 'CHALLENGE_MISMATCH' }, 403);
+
+    const cred = await queryFirst<{
+      id: number; credential_id: string; public_key: string; counter: number; transports: string | null;
+    }>(db,
+      'SELECT id, credential_id, public_key, counter, transports FROM webauthn_credentials WHERE credential_id = ? AND user_id = ?',
+      body.response.id, user.id);
+    if (!cred) return c.json({ error: 'Security key not recognized', code: 'SECURITY_KEY_NOT_RECOGNIZED' }, 400);
+
+    const { rpID, origins } = webauthnRp(c);
+    const verification = await verifyAuthenticationResponse({
+      response: body.response,
+      expectedChallenge: stored.challenge,
+      expectedOrigin: origins,
+      expectedRPID: rpID,
+      requireUserVerification: false,
+      credential: {
+        id: cred.credential_id,
+        publicKey: isoBase64URL.toBuffer(cred.public_key),
+        counter: cred.counter,
+        transports: parseWebauthnTransports(cred.transports),
+      },
+    });
+    await c.env.KV.delete(key).catch(() => undefined);
+
+    if (!verification.verified) {
+      return c.json({ error: 'Security key verification failed', code: 'SECURITY_KEY_VERIFICATION_FAILED' }, 401);
+    }
+    await execute(db,
+      `UPDATE webauthn_credentials SET counter = ?, last_used_at = datetime('now','localtime') WHERE id = ?`,
+      verification.authenticationInfo.newCounter, cred.id).catch(() => undefined);
+
+    return await issueLoginTokens(c, db, user);
+  } catch (err) {
+    console.error('webauthn/authenticate-verify failed:', err);
+    return c.json({ error: 'Failed to verify security key', code: 'WEBAUTHN_AUTHENTICATEVERIFY_ERROR' }, 500);
+  }
 });
 
 // ── Security: unblock IP ───────────────────────────────────
