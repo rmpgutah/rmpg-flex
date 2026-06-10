@@ -5,7 +5,7 @@ import { playStartupSound } from '../startupSound';
 
 function mockAudioContext() {
   const node = { connect: vi.fn(), gain: { value: 0, setValueAtTime: vi.fn(), linearRampToValueAtTime: vi.fn(), exponentialRampToValueAtTime: vi.fn() }, frequency: { value: 0 }, type: '', start: vi.fn(), stop: vi.fn() };
-  const ctor = vi.fn().mockImplementation(() => ({
+  const ctor = vi.fn().mockImplementation(function (this: unknown) { return {
     state: 'running',
     currentTime: 0,
     destination: {},
@@ -14,7 +14,7 @@ function mockAudioContext() {
     createGain: vi.fn(() => ({ ...node })),
     createBiquadFilter: vi.fn(() => ({ ...node, type: 'lowpass', frequency: { value: 0 } })),
     createOscillator: vi.fn(() => ({ ...node })),
-  }));
+  }; });
   (window as any).AudioContext = ctor;
   return ctor;
 }
