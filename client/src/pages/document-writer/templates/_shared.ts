@@ -37,28 +37,34 @@ import type { TemplateField } from '../types';
 // Times, but we set it explicitly on chrome spans so headings/captions
 // stay serif even if a writer changes the body font. FontFamily spans
 // survive the schema.
-const SERIF = 'font-family:"Times New Roman", Times, serif;';
+// NOTE: single-quote the family name. The whole string is interpolated into a
+// double-quoted style="…" attribute, so double quotes here would terminate the
+// attribute early and silently drop the font (the letterhead rendered in the
+// editor's sans-serif default until this was fixed).
+const SERIF = "font-family:'Times New Roman', Times, serif;";
 // Neutral caption gray — the one non-inherited color, print-safe on light
 // and dark pages alike.
 const CAP = '#6b6b6b';
 
 
 // ─── Letterhead ─────────────────────────────────────────────
-// Plain centered identification block + a single thin rule. No band, no
-// gold, no logo — just who filed it, the way a law office header reads.
+// Tight, modern-formal identification block: an engraved-style tracked caps
+// name, a small wide-tracked uppercase tagline, and a single hairline rule.
+// Lines sit close together (tight line-height, near-zero margins) so the
+// masthead reads as one compact unit — no band, no gold, no logo.
 export const AGENCY_HEADER = `
-<p style="text-align:center;margin-bottom:1px;"><strong><span style="${SERIF}font-size:15px;letter-spacing:0.04em;">ROCKY MOUNTAIN PROTECTIVE GROUP</span></strong></p>
-<p style="text-align:center;margin-top:0;margin-bottom:1px;"><span style="${SERIF}font-size:9.5px;">Law Enforcement &nbsp;·&nbsp; Private Security &nbsp;·&nbsp; Process Service</span></p>
-<p style="text-align:center;margin-top:0;margin-bottom:6px;"><span style="${SERIF}font-size:9.5px;">Salt Lake City, Utah &nbsp;·&nbsp; rmpgutah.us</span></p>
+<p style="text-align:center;line-height:1.15;margin-top:0;margin-bottom:0;"><strong><span style="${SERIF}font-size:16px;letter-spacing:0.14em;">ROCKY MOUNTAIN PROTECTIVE GROUP</span></strong></p>
+<p style="text-align:center;line-height:1.15;margin-top:3px;margin-bottom:0;"><span style="${SERIF}font-size:8px;letter-spacing:0.28em;text-transform:uppercase;color:${CAP};">Law Enforcement &nbsp;&middot;&nbsp; Private Security &nbsp;&middot;&nbsp; Process Service</span></p>
+<p style="text-align:center;line-height:1.15;margin-top:1px;margin-bottom:4px;"><span style="${SERIF}font-size:8.5px;letter-spacing:0.04em;color:${CAP};">Salt Lake City, Utah &nbsp;&middot;&nbsp; rmpgutah.us</span></p>
 <hr>`;
 
-export const CONFIDENTIAL = `<p style="text-align:center;margin-top:6px;"><span style="${SERIF}font-size:9px;color:${CAP};">CONFIDENTIAL — LAW ENFORCEMENT SENSITIVE — INTERNAL USE ONLY</span></p>`;
+export const CONFIDENTIAL = `<p style="text-align:center;margin-top:6px;"><span style="${SERIF}font-size:8px;letter-spacing:0.18em;text-transform:uppercase;color:${CAP};">Confidential &middot; Law Enforcement Sensitive &middot; Internal Use Only</span></p>`;
 
-/** Centered document title — bold caps under the letterhead rule, the way a
- *  pleading caption reads. Followed by a thin rule for separation. */
+/** Centered document title — tracked caps under the letterhead rule, the way a
+ *  pleading caption reads. Tight rule beneath for separation. */
 export function title(text: string, color?: string): string {
   const c = color ? `color:${color};` : '';
-  return `<h1 style="text-align:center;margin-top:6px;margin-bottom:4px;"><span style="${SERIF}font-size:16px;letter-spacing:0.04em;${c}">${text}</span></h1>
+  return `<h1 style="text-align:center;line-height:1.2;margin-top:4px;margin-bottom:3px;"><span style="${SERIF}font-size:15px;letter-spacing:0.12em;${c}">${text}</span></h1>
 <hr>`;
 }
 
