@@ -875,6 +875,9 @@ export interface TimeEntry {
   break_start?: string;
   break_minutes: number;
   total_hours?: number;
+  starting_mileage?: number;
+  ending_mileage?: number;
+  total_miles?: number;
   status: 'clocked_in' | 'clocked_out' | 'on_break' | 'edited';
   notes?: string;
   created_at: string;

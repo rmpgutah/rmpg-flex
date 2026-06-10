@@ -22,6 +22,7 @@ import { Hono } from 'hono';
 import type { Env } from '../../types';
 import { getDb, query, queryFirst, execute } from '../../utils/db';
 import { emitAlert } from '../../utils/alertHub';
+import { setFleetOdometer } from '../../utils/fleetOdometer';
 
 const duty = new Hono<Env>();
 
@@ -225,6 +226,8 @@ duty.post('/start', async (c) => {
         `UPDATE time_entries SET unit_id = ?, vehicle_id = ?, starting_mileage = COALESCE(starting_mileage, ?), qr_token = ? WHERE id = ?`,
         unit.id, vehicle.id, startingMileage, qrToken, entry.id);
     }
+    // The officer just read the physical odometer — re-anchor the fleet record.
+    await setFleetOdometer(db, vehicle.id, startingMileage);
 
     // 2) Unit in service, claimed by this officer, linked to the car
     //    (units.vehicle_id = the denormalized vehicle_NUMBER string).
@@ -273,6 +276,8 @@ duty.post('/end', async (c) => {
       await execute(db,
         `UPDATE time_entries SET clock_out = ?, total_hours = ?, ending_mileage = ?, total_miles = ?, status = 'completed' WHERE id = ?`,
         stamp, hrs, endingMileage, totalMiles, entry.id);
+      // Shift-end odometer reading is authoritative — sync the fleet vehicle.
+      await setFleetOdometer(db, entry.vehicle_id != null ? Number(entry.vehicle_id) : null, endingMileage);
     }
 
     // 2) Take the unit off duty + release its vehicle back to the pool.
