@@ -10,6 +10,7 @@ import type { CallForService, Unit, CallStatus, CallNote, UnitStatus } from '../
 import { callPosture } from '../../utils/callThreat';
 import { BADGE_TONES } from '../../components/records/recordVisuals';
 import CallCard from '../../components/CallCard';
+import ZsbBadge from '../../components/ZsbBadge';
 import DuplicateCandidatesModal, { DuplicateCandidate } from '../../components/DuplicateCandidatesModal';
 import UnitStatusBoard from '../../components/UnitStatusBoard';
 import DispositionPrompt from '../../components/DispositionPrompt';
@@ -4686,32 +4687,12 @@ export default function DispatchPage() {
                         {selectedCall.location_building && <span className="text-rmpg-200"><span className="text-rmpg-400">Bldg:</span> {selectedCall.location_building}</span>}
                         {selectedCall.location_floor && <span className="text-rmpg-200"><span className="text-rmpg-400">Floor:</span> {selectedCall.location_floor}</span>}
                         {selectedCall.location_room && <span className="text-rmpg-200"><span className="text-rmpg-400">Rm:</span> {selectedCall.location_room}</span>}
-                        {(() => {
-                          // Yellow Z/S/B chart-code badge. Prefer the stored
-                          // dispatch_code, but always render the full printout-form
-                          // composite SEC/ZONE/BEAT (e.g. "SL1/SSL/A1") — derived
-                          // from the geography fields when the stored code is
-                          // missing or partial.
-                          const sec = getSectionCode(selectedCall.sector_id ?? '') || sectionPrefix(selectedCall.zone_id || '');
-                          const zn = zoneLeaf(selectedCall.zone_id || '');
-                          const bt = beatLeaf(selectedCall.beat_id || '');
-                          const composite = [sec, zn, bt].filter(Boolean).join('/');
-                          const code = composite || selectedCall.dispatch_code || '';
-                          if (!code) return null;
-                          return (
-                            <span
-                              role="button"
-                              tabIndex={0}
-                              title="Sector/Zone/Beat chart code — click to copy"
-                              onClick={() => { try { navigator.clipboard?.writeText(code); } catch { /* clipboard unavailable */ } }}
-                              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); try { navigator.clipboard?.writeText(code); } catch { /* clipboard unavailable */ } } }}
-                              className="cursor-pointer hover:brightness-110 text-[10px] font-bold font-mono text-amber-300 bg-amber-900/30 border border-amber-700/40 px-2 py-0.5 rounded-sm tracking-wider tabular-nums"
-                              style={{ textShadow: '0 0 6px rgba(251,191,36,0.15)' }}
-                            >
-                              {code}
-                            </span>
-                          );
-                        })()}
+                        <ZsbBadge
+                          zoneId={selectedCall.zone_id}
+                          beatId={selectedCall.beat_id}
+                          dispatchCode={selectedCall.dispatch_code}
+                          sectionCode={getSectionCode(selectedCall.sector_id ?? '')}
+                        />
                         {selectedCall.sector_id && (() => {
                           const area = getArea(selectedCall.sector_id);
                           return area ? <span className="text-rmpg-200" title="Dispatch Area — top of the geography hierarchy"><span className="text-rmpg-400">Area:</span> {[area.code, area.name].filter(Boolean).join(' — ')}</span> : null;
