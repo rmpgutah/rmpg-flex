@@ -29,7 +29,7 @@ function requireRole(c: any, ...roles: string[]): string | null {
 const REPORT_SELECT = `
   SELECT u.*,
          off.full_name AS officer_name, off.badge_number AS officer_badge,
-         p.first_name AS subject_first_name, p.last_name AS subject_last_name, p.date_of_birth AS subject_dob,
+         p.first_name AS subject_first_name, p.last_name AS subject_last_name, p.dob AS subject_dob,
          i.incident_number, i.incident_type,
          rev.full_name AS reviewer_name
   FROM use_of_force u
