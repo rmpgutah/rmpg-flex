@@ -19,10 +19,11 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import { secureHeaders } from 'hono/secure-headers';
-import { authMiddleware } from './middleware/auth';
+import { authMiddleware, readOnlyRoleGuard } from './middleware/auth';
 import { handleWebSocket, sendToUser, broadcastAll } from './routes/ws';
 import { emitAlert } from './utils/alertHub';
 import { WelfareWatchDO } from './durable-objects/WelfareWatchDO';
+import { doCallbackToken, timingSafeEqual } from './utils/signedAccess';
 import { VoiceHubDO } from './durable-objects/VoiceHubDO';
 import { AlertHubDO } from './durable-objects/AlertHubDO';
 import { PdfToolsContainer } from './containers/pdfToolsContainer';
@@ -30,8 +31,10 @@ import { runAllSourceScans } from './utils/warrantSources/runScan';
 import { detectDispatchAnomalies } from './routes/dispatch/anomalies';
 import { getRadioSettings, purgeOldRecordings } from './utils/radioSettings';
 import { syncAllVehicleGpsMileage } from './routes/fleet';
+import { syncEmail } from './utils/emailSync';
+import { processScheduledEmails, applyRulesToRecent } from './utils/emailProcessor';
 import { sweepTrips } from './utils/tripStore';
-import { runEmailPoll, drainEmailOutbox } from './routes/email';
+import { runEmailPoll, drainEmailOutbox, drainScheduledEmails, resurfaceSnoozedEmails } from './routes/email';
 import type { Bindings, Variables } from './types';
 import { ROUTE_REGISTRY } from './routesConfig';
 
@@ -101,7 +104,8 @@ app.use('*', secureHeaders({
 app.use('*', cors({
   origin: (origin: string, c: any) => {
     const allowedOrigins = (c.env.CORS_ORIGINS || 'https://rmpgutah.us').split(',').map((s: string) => s.trim());
-    if (allowedOrigins.includes('*')) return origin;
+    // No wildcard support: '*' combined with credentials:true would let any
+    // site make authenticated cross-origin calls. Origins must be explicit.
     if (!origin || allowedOrigins.includes(origin)) return origin;
     return allowedOrigins[0];
   },
@@ -188,6 +192,10 @@ for (const m of ROUTE_REGISTRY) {
 for (const prefix of authPrefixes) {
   app.use(prefix, authMiddleware);
   app.use(`${prefix}/*`, authMiddleware);
+  // RBAC floor: read-only roles can't mutate anything on auth-required
+  // prefixes, regardless of whether the handler has its own requireRole.
+  app.use(prefix, readOnlyRoleGuard);
+  app.use(`${prefix}/*`, readOnlyRoleGuard);
 }
 
 // Mount routers in declared order — Hono dispatches in registration
@@ -201,11 +209,14 @@ for (const m of ROUTE_REGISTRY) {
 // ─── Internal: WelfareWatchDO → Worker callback ──────────────
 // The DO's alarm() can't call sendToUser/broadcastAll directly
 // (those live in the Worker module's per-isolate state). Instead
-// it posts to /__welfare-fire authenticated by X-DO-Secret == JWT_SECRET.
-// Lives outside ROUTE_REGISTRY because it's an internal callback,
-// not an API endpoint.
+// it posts to /__welfare-fire authenticated by X-DO-Secret, a value
+// DERIVED from JWT_SECRET (doCallbackToken) — never the signing key
+// itself — compared constant-time. Lives outside ROUTE_REGISTRY because
+// it's an internal callback, not an API endpoint.
 app.post('/__welfare-fire', async (c) => {
-  if (c.req.header('X-DO-Secret') !== c.env.JWT_SECRET) {
+  const provided = c.req.header('X-DO-Secret') || '';
+  const expected = await doCallbackToken(c.env.JWT_SECRET);
+  if (!timingSafeEqual(provided, expected)) {
     return c.json({ error: 'forbidden' }, 403);
   }
   const { stage, watch } = await c.req.json<{ stage: 'prompt' | 'alert' | 'emergency'; watch: any }>();
@@ -325,6 +336,19 @@ export default {
         drainEmailOutbox(env)
           .then((r) => { if (r.sent || r.failed) console.log(`[email-outbox] sent=${r.sent} failed=${r.failed} deferred=${r.deferred}`); })
           .catch((err) => console.error('[email-outbox] failed:', err)),
+      );
+      // Schedule-send queue → enqueues due rows into the durable outbox,
+      // which the drain above then actually sends (uniform retry/backoff).
+      ctx.waitUntil(
+        drainScheduledEmails(env)
+          .then((n) => { if (n) console.log(`[email-scheduled] queued ${n}`); })
+          .catch((err) => console.error('[email-scheduled] failed:', err)),
+      );
+      // Expired snoozes → move back to inbox + mark unread.
+      ctx.waitUntil(
+        resurfaceSnoozedEmails(env)
+          .then((n) => { if (n) console.log(`[email-snooze] resurfaced ${n}`); })
+          .catch((err) => console.error('[email-snooze] failed:', err)),
       );
       return;
     }

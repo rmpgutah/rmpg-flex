@@ -57,6 +57,8 @@ import mapData from './routes/mapData';
 import tiles from './routes/tiles';
 import geo from './routes/geo';
 import admin from './routes/admin';
+import emailRoute from './routes/email';
+import emailOauthCallback from './routes/emailOauthCallback';
 import announcements from './routes/announcements';
 import affairs from './routes/affairs';
 import ai from './routes/ai';
@@ -121,6 +123,7 @@ import serve from './routes/serve';
 
 import settings from './routes/settings';
 import adminSettings from './routes/adminSettings';
+import knowledgeBase from './routes/knowledgeBase';
 import recruitment from './routes/recruitment';
 import reports from './routes/reports';
 import statutes from './routes/statutes';
@@ -259,6 +262,10 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // ── Admin / personnel / presence ───────────────────────────
   { prefix: '/api/admin', router: admin, auth: 'required' },
   { prefix: '/api/admin/settings', router: adminSettings, auth: 'required' },
+  { prefix: '/api/email', router: emailRoute, auth: 'required',
+    note: 'AdminEmailTab credential storage + status. /admin/* writes are role-gated (admin|manager).' },
+  { prefix: '/api/email-oauth', router: emailOauthCallback, auth: 'public',
+    note: 'MUST be public — Microsoft redirects the browser here with no JWT. Token exchange happens server-side using stored client_secret.' },
   { prefix: '/api/announcements', router: announcements, auth: 'required',
     note: 'Officer-facing reader for active/role-scoped broadcasts. Admin CRUD lives under /api/admin/announcements.' },
   { prefix: '/api/ai', router: ai, auth: 'required',
@@ -388,6 +395,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Multi-jurisdiction data sharing: partners, agreements, exchange logs' },
   { prefix: '/api/jail', router: jail, auth: 'required',
     note: 'Jail management: inmates, charges, visitors, property, medical, disciplinary, transports' },
+  { prefix: '/api/knowledge-base', router: knowledgeBase, auth: 'required',
+    note: 'System-wide unified search across all record types by visible identifier/name' },
   { prefix: '/api/qa', router: qa, auth: 'required',
     note: 'Quality Assurance: reviews, criteria, scores, satisfaction surveys' },
   { prefix: '/api/risk', router: risk, auth: 'required',

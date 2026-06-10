@@ -16,6 +16,7 @@ import type { Env } from '../../types';
 import { getDb, query, queryFirst, execute } from '../../utils/db';
 import { canonicalUnitIdsJson } from './unitIds';
 import { emitAlert } from '../../utils/alertHub';
+import { verifySignedResource } from '../../utils/signedAccess';
 import { evaluateNotificationRules } from '../notificationEngine';
 
 const panic = new Hono<Env>();
@@ -334,6 +335,15 @@ panic.post('/panic/:id/false-alarm', async (c) => {
 panic.get('/panic/:id/audio', async (c) => {
   const id = parseInt(c.req.param('id'), 10);
   if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+
+  // authMiddleware passes GET media paths through when the request carries
+  // sig/exp instead of a token — no `user` is set then, so verify here.
+  if (!c.get('user')) {
+    const signedOk = await verifySignedResource(c.env.JWT_SECRET, 'panic', String(id), {
+      sig: c.req.query('sig'), exp: c.req.query('exp'), nonce: c.req.query('nonce'),
+    });
+    if (!signedOk) return c.json({ error: 'Authentication required' }, 401);
+  }
   const key = `panic-audio/${id}.webm`;
 
   const rangeHeader = c.req.header('Range');

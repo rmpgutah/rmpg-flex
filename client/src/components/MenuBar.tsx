@@ -661,6 +661,7 @@ export default function MenuBar({
     label: 'Tools',
     items: [
       { type: 'action', label: 'Global Search', icon: Search, shortcut: 'Ctrl+K', action: onSearch },
+      { type: 'action', label: 'Knowledge Base', icon: BookOpen, action: () => navigate('/knowledge-base') },
       { type: 'action', label: 'NCIC Query Terminal', icon: Terminal, action: () => navigate('/ncic') },
       { type: 'separator' },
       { type: 'action', label: timerEndTime ? `Timer: ${timerRemaining}` : 'Quick Timer', icon: Clock, action: () => {

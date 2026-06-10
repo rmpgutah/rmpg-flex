@@ -19,6 +19,8 @@
 // lose active watches.
 // ============================================================
 
+import { doCallbackToken } from '../utils/signedAccess';
+
 interface WatchState {
   user_id: number;
   call_sign: string | null;
@@ -171,16 +173,16 @@ export class WelfareWatchDO {
     }
   }
 
-  // Calls back into the Worker via an internal RPC. The Worker
-  // listens on /__welfare-fire (auth-gated by JWT_SECRET) and
-  // routes the broadcast/sendToUser side-effects.
+  // Calls back into the Worker via an internal RPC. The Worker listens
+  // on /__welfare-fire, auth-gated by a token DERIVED from JWT_SECRET
+  // (doCallbackToken) — the raw signing key never travels in a header.
   private async notifyWorker(stage: 'prompt' | 'alert' | 'emergency', s: WatchState): Promise<void> {
     try {
       await fetch('https://api.rmpgutah.us/__welfare-fire', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-DO-Secret': this.env.JWT_SECRET,
+          'X-DO-Secret': await doCallbackToken(this.env.JWT_SECRET),
         },
         body: JSON.stringify({ stage, watch: s }),
       });

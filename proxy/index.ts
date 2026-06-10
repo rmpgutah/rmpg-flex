@@ -651,9 +651,18 @@ const STUBS: StubRule[] = [
     body: { valid: false, error: 'password reset is not yet ported' },
     reason: 'no /auth/reset-password/validate in rewrite',
   },
-  // sign-urls stub REMOVED 2026-06-10 — auth.ts now implements POST /sign-urls
-  // (HMAC-signed resource params for header-less media streams; first consumer
-  // is the dashcam video stream). Routed to env.API below.
+  // sign-urls stub REMOVED 2026-06-10: the rewrite now implements
+  // POST /api/auth/sign-urls (per-resource HMAC media signatures) —
+  // routed to env.API via the prefix rule below.
+  // WebAuthn — proxy already stubs /credentials + /status. Add the OPTIONS
+  // + verify endpoints. These are no-op stubs since the rewrite doesn't
+  // implement WebAuthn; the user's security settings page renders empty.
+  {
+    match: /^\/api\/auth\/webauthn\/(authenticate-options|authenticate-verify|register-options|register-verify)(\?.*)?$/,
+    methods: ['POST', 'GET'],
+    body: { success: false, error: 'WebAuthn is not yet ported', options: null, credential: null },
+    reason: 'no /auth/webauthn/* in rewrite; security settings show disabled',
+  },
   // ── 2026-06-07 round 3 — personnel sub-paths not in rewrite ──
   // personnel.ts has /training, /training-requirements, /training-completion,
   // /training-alerts, /training-materials, /duty-hours, /schedules, /time,
@@ -1321,6 +1330,9 @@ const API_ROUTES: RouteRule[] = [
   // was stubbed null in this proxy for months while PUT fell through to a
   // worker that saved it: signatures were being stored but never displayed.
   { kind: 'prefix', value: '/api/auth/signature' },
+  // Signed media URLs (sig/exp/nonce for <video>/<audio> tags) — rewrite-only
+  // endpoint (src/routes/auth.ts POST /sign-urls); legacy never had it.
+  { kind: 'prefix', value: '/api/auth/sign-urls' },
   // Offline-cache sync engine (browser IndexedDB) — entire namespace
   // lives on the new Worker: /sync/pull, /sync/push, /secrets,
   // /my-secret, /secrets/generate. Legacy never implemented any of
@@ -1452,6 +1464,8 @@ const API_ROUTES: RouteRule[] = [
   // present. Route the whole namespaces to env.API.
   { kind: 'prefix', value: '/api/risk' },
   { kind: 'prefix', value: '/api/jail' },
+  // System-wide unified search (rewrite-only handler).
+  { kind: 'prefix', value: '/api/knowledge-base' },
   { kind: 'prefix', value: '/api/qa' },
   { kind: 'prefix', value: '/api/victim-services' },
   // ── Rewrite-only feature namespaces (2026-06-01 audit) ──────────

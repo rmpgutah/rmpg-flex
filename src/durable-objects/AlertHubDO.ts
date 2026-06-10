@@ -93,6 +93,16 @@ export class AlertHubDO {
     (server as any).accept();
     this.conns.set(server, { userId: 0, role: '', authenticated: false });
 
+    // Sockets that never authenticate must not linger — without this, an
+    // attacker can hold unauthenticated connections open indefinitely.
+    setTimeout(() => {
+      const meta = this.conns.get(server);
+      if (meta && !meta.authenticated) {
+        try { (server as any).close(4001, 'Authentication timeout'); } catch { /* already closed */ }
+        this.conns.delete(server);
+      }
+    }, 10_000);
+
     server.addEventListener('message', (ev: MessageEvent) => {
       this.onMessage(server, ev).catch((err) => console.error('[AlertHubDO] msg', err));
     });

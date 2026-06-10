@@ -52,11 +52,33 @@ const CAP = '#6b6b6b';
 // name, a small wide-tracked uppercase tagline, and a single hairline rule.
 // Lines sit close together (tight line-height, near-zero margins) so the
 // masthead reads as one compact unit — no band, no gold, no logo.
-export const AGENCY_HEADER = `
-<p style="text-align:center;line-height:1.15;margin-top:0;margin-bottom:0;"><strong><span style="${SERIF}font-size:16px;letter-spacing:0.14em;">ROCKY MOUNTAIN PROTECTIVE GROUP</span></strong></p>
-<p style="text-align:center;line-height:1.15;margin-top:3px;margin-bottom:0;"><span style="${SERIF}font-size:8px;letter-spacing:0.28em;text-transform:uppercase;color:${CAP};">Law Enforcement &nbsp;&middot;&nbsp; Private Security &nbsp;&middot;&nbsp; Process Service</span></p>
-<p style="text-align:center;line-height:1.15;margin-top:1px;margin-bottom:4px;"><span style="${SERIF}font-size:8.5px;letter-spacing:0.04em;color:${CAP};">Salt Lake City, Utah &nbsp;&middot;&nbsp; rmpgutah.us</span></p>
+export interface HeaderConfig {
+  org_name: string;
+  tagline: string;
+  address: string;
+}
+
+export const DEFAULT_HEADER: HeaderConfig = {
+  org_name: 'ROCKY MOUNTAIN PROTECTIVE GROUP',
+  tagline: 'Private Security &nbsp;&middot;&nbsp; Process Service',
+  address: 'Salt Lake City, Utah &nbsp;&middot;&nbsp; rmpgutah.us',
+};
+
+/** Build the letterhead from a (possibly admin-customized) HeaderConfig.
+ *  An empty tagline/address drops that line entirely. */
+export function buildAgencyHeader(cfg: HeaderConfig): string {
+  const tagline = cfg.tagline?.trim()
+    ? `\n<p style="text-align:center;line-height:1.15;margin-top:3px;margin-bottom:0;"><span style="${SERIF}font-size:8px;letter-spacing:0.28em;text-transform:uppercase;color:${CAP};">${cfg.tagline}</span></p>`
+    : '';
+  const address = cfg.address?.trim()
+    ? `\n<p style="text-align:center;line-height:1.15;margin-top:1px;margin-bottom:4px;"><span style="${SERIF}font-size:8.5px;letter-spacing:0.04em;color:${CAP};">${cfg.address}</span></p>`
+    : '';
+  return `
+<p style="text-align:center;line-height:1.15;margin-top:0;margin-bottom:0;"><strong><span style="${SERIF}font-size:16px;letter-spacing:0.14em;">${cfg.org_name || DEFAULT_HEADER.org_name}</span></strong></p>${tagline}${address}
 <hr>`;
+}
+
+export const AGENCY_HEADER = buildAgencyHeader(DEFAULT_HEADER);
 
 // Letter body — formal correspondence is set a step larger than form text
 // (12.5px Times ≈ 12pt court pleading body) so printed letters read like a
@@ -64,7 +86,7 @@ export const AGENCY_HEADER = `
 // schema; pair with line-height on the <p> for pleading-style spacing.
 export const LETTER_BODY = `${SERIF}font-size:12.5px;`;
 
-export const CONFIDENTIAL = `<p style="text-align:center;margin-top:6px;"><span style="${SERIF}font-size:8px;letter-spacing:0.18em;text-transform:uppercase;color:${CAP};">Confidential &middot; Law Enforcement Sensitive &middot; Internal Use Only</span></p>`;
+export const CONFIDENTIAL = `<p style="text-align:center;margin-top:6px;"><span style="${SERIF}font-size:8px;letter-spacing:0.18em;text-transform:uppercase;color:${CAP};">Confidential &middot; Internal Use Only</span></p>`;
 
 /** Centered document title — tracked caps under the letterhead rule, the way a
  *  pleading caption reads. Tight rule beneath for separation. */

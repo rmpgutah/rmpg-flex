@@ -71,6 +71,8 @@ export interface WriterExtActions {
   onInsertStatute: () => void;
   // This wave
   onShortcuts: () => void;
+  /** Open the searchable command palette (all actions, incl. the 100 Wave-5). */
+  onOpenPalette: () => void;
   onOfficerSignature: () => void;
   onExportStandaloneHtml: () => void;
   onDuplicate: () => void;
@@ -169,6 +171,23 @@ export default function WriterToolbar({
     ext.flash(n ? `Sorted ${n} table rows by the first column.` : 'Place the cursor in a table with 2+ body rows first.');
   };
   const setBlock = (attrs: Record<string, string | null>) => editor.chain().focus().setBlockStyle(attrs).run();
+  // Table spacing/sizing — merge style onto the wrapping table. '' clears.
+  const setTbl = (attr: string, value: string) =>
+    editor.chain().focus().setTableStyle({ [attr]: value || null }).run();
+  // A select whose "custom" option prompts for an explicit px / % value.
+  const onTblSelect = (attr: string, e: React.ChangeEvent<HTMLSelectElement>, unit: '%' | 'px' = 'px') => {
+    const v = e.target.value;
+    e.currentTarget.selectedIndex = 0;
+    if (v === '__clear') { setTbl(attr, ''); return; }
+    if (v === '__custom') {
+      const ans = window.prompt(`Custom value (e.g. ${unit === '%' ? '60%' : '6px'}):`, unit === '%' ? '60%' : '6px');
+      const t = (ans || '').trim();
+      if (t) setTbl(attr, /^[\d.]+$/.test(t) ? `${t}${unit}` : t);
+      return;
+    }
+    setTbl(attr, v);
+  };
+  const setCellVA = (v: string) => editor.chain().focus().setCellAttribute('cellVerticalAlign', v).run();
   const setPage = (patch: Partial<DocSettings['page']>) => setDocSettings((s) => ({ ...s, page: { ...s.page, ...patch } }));
   const setMargin = (side: keyof DocSettings['page']['margins'], v: number) =>
     setDocSettings((s) => ({ ...s, page: { ...s.page, margins: { ...s.page.margins, [side]: v } } }));
@@ -241,6 +260,20 @@ export default function WriterToolbar({
       <div className="flex items-center flex-wrap gap-0.5">
         <ToolBtn title="Undo (Ctrl+Z)" onClick={() => editor.chain().focus().undo().run()} disabled={!editor.can().undo()}><Undo2 className="w-3.5 h-3.5" /></ToolBtn>
         <ToolBtn title="Redo (Ctrl+Y)" onClick={() => editor.chain().focus().redo().run()} disabled={!editor.can().redo()}><Redo2 className="w-3.5 h-3.5" /></ToolBtn>
+        <Divider />
+
+        {/* Command palette — searchable access to every action (incl. the
+            100 Wave-5 features). The single most discoverable entry point. */}
+        <button
+          type="button"
+          onClick={ext.onOpenPalette}
+          title="Commands — search every action (Ctrl+/)"
+          className="flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#d4a017] border border-[#d4a017]/40 hover:border-[#d4a017] hover:bg-[#d4a017]/10 transition-colors"
+          style={{ borderRadius: 2 }}
+        >
+          <Sparkles className="w-3 h-3" /> Commands
+          <span className="text-[8px] text-rmpg-500 font-mono">⌘/</span>
+        </button>
         <Divider />
 
         {/* Font family (1) + size (2) */}
@@ -561,8 +594,8 @@ export default function WriterToolbar({
           )}
         </ToolbarMenu>
 
-        {/* Table operations (features 51–70) */}
-        <ToolbarMenu label="Table" icon={Grid3x3} width={210}>
+        {/* Table operations + spacing/sizing (features 51–70) */}
+        <ToolbarMenu label="Table" icon={Grid3x3} width={250}>
           <MenuButton onClick={() => editor.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run()}>Insert 3×3 table</MenuButton>
           {inTable ? (
             <>
@@ -576,10 +609,76 @@ export default function WriterToolbar({
               <MenuButton onClick={() => editor.chain().focus().splitCell().run()}>Split cell</MenuButton>
               <MenuButton onClick={() => editor.chain().focus().toggleHeaderRow().run()}>Toggle header row</MenuButton>
               <MenuButton onClick={() => editor.chain().focus().toggleHeaderColumn().run()}>Toggle header column</MenuButton>
+
+              <div className="text-[10px] text-rmpg-500 pt-1.5 pb-0.5 border-t border-rmpg-800 mt-1">Spacing</div>
+              <MenuRow label="Side ↔ side (pad)">
+                <select className={selCls} value="" onChange={(e) => onTblSelect('cellPadX', e)}>
+                  <option value="">—</option>
+                  <option value="2px">Tight</option>
+                  <option value="8px">Normal</option>
+                  <option value="14px">Wide</option>
+                  <option value="22px">Extra wide</option>
+                  <option value="__custom">Custom…</option>
+                </select>
+              </MenuRow>
+              <MenuRow label="Top ↕ bottom (pad)">
+                <select className={selCls} value="" onChange={(e) => onTblSelect('cellPadY', e)}>
+                  <option value="">—</option>
+                  <option value="1px">Tight</option>
+                  <option value="4px">Normal</option>
+                  <option value="10px">Comfortable</option>
+                  <option value="16px">Spacious</option>
+                  <option value="__custom">Custom…</option>
+                </select>
+              </MenuRow>
+
+              <div className="text-[10px] text-rmpg-500 pt-1.5 pb-0.5 border-t border-rmpg-800 mt-1">Sizing</div>
+              <MenuRow label="Row height ↕">
+                <select className={selCls} value="" onChange={(e) => onTblSelect('rowHeight', e)}>
+                  <option value="">—</option>
+                  <option value="__clear">Auto</option>
+                  <option value="22px">Short</option>
+                  <option value="32px">Medium</option>
+                  <option value="46px">Tall</option>
+                  <option value="__custom">Custom…</option>
+                </select>
+              </MenuRow>
+              <MenuRow label="Table width ↔">
+                <select className={selCls} value="" onChange={(e) => onTblSelect('tableWidth', e, '%')}>
+                  <option value="">—</option>
+                  <option value="100%">Full</option>
+                  <option value="75%">Three-quarter</option>
+                  <option value="50%">Half</option>
+                  <option value="auto">Auto (fit)</option>
+                  <option value="__custom">Custom…</option>
+                </select>
+              </MenuRow>
+              <div className="text-[9px] text-rmpg-600 italic px-2 pb-0.5">Drag a column edge to resize it.</div>
+
+              <div className="text-[10px] text-rmpg-500 pt-1.5 pb-0.5 border-t border-rmpg-800 mt-1">Format</div>
+              <MenuRow label="Grid lines">
+                <select className={selCls} value="" onChange={(e) => onTblSelect('tableBorder', e)}>
+                  <option value="">—</option>
+                  <option value="0">None</option>
+                  <option value="1px">Hairline</option>
+                  <option value="2px">Medium</option>
+                  <option value="3px">Heavy</option>
+                </select>
+              </MenuRow>
+              <MenuRow label="Cell align ↕">
+                <select className={selCls} value="" onChange={(e) => { const v = e.target.value; e.currentTarget.selectedIndex = 0; if (v) setCellVA(v); }}>
+                  <option value="">—</option>
+                  <option value="top">Top</option>
+                  <option value="middle">Middle</option>
+                  <option value="bottom">Bottom</option>
+                </select>
+              </MenuRow>
               <MenuRow label="Cell shading"><input type="color" onChange={(e) => editor.chain().focus().setCellAttribute('backgroundColor', e.target.value).run()} /></MenuRow>
+              <MenuButton onClick={() => editor.chain().focus().setCellAttribute('backgroundColor', null).run()}>Clear cell shading</MenuButton>
+
               <MenuButton onClick={() => editor.chain().focus().deleteTable().run()}>Delete table</MenuButton>
             </>
-          ) : <div className="text-[10px] text-rmpg-600 italic px-2">Click inside a table for row/column tools.</div>}
+          ) : <div className="text-[10px] text-rmpg-600 italic px-2">Click inside a table for row/column, spacing &amp; sizing tools.</div>}
         </ToolbarMenu>
 
         {/* List styles (features 86–97) */}

@@ -32,6 +32,7 @@ import {
   getActor,
 } from './bodyCameras';
 import { getDb, queryFirst, execute } from '../../utils/db';
+import { verifySignedResource } from '../../utils/signedAccess';
 
 const UPLOAD_KEY_PREFIX = 'bodycam-videos/';
 const UPLOAD_SESSION_PREFIX = 'bodycam-upload:';
@@ -378,13 +379,20 @@ bodycamVideosRouter.delete('/upload-abort/:uploadId', async (c) => {
 // ────────────────────────────────────────────────────────────
 bodycamVideosRouter.get('/:id/stream', async (c) => {
   try {
-    const actor = getActor(c);
-    if (!actor) return c.json({ error: 'Authentication required' }, 401);
-
     const id = Number(c.req.param('id'));
     if (!Number.isInteger(id) || id <= 0) {
       return c.json({ error: 'Invalid id' }, 400);
     }
+
+    // Preferred auth: per-resource HMAC params from POST /auth/sign-urls.
+    // Read scope was enforced at sign time, so a valid signature replaces
+    // both the actor check and the per-officer scope check below.
+    const signedOk = await verifySignedResource(c.env.JWT_SECRET, 'bodycam', String(id), {
+      sig: c.req.query('sig'), exp: c.req.query('exp'), nonce: c.req.query('nonce'),
+    });
+
+    const actor = getActor(c);
+    if (!signedOk && !actor) return c.json({ error: 'Authentication required' }, 401);
 
     const db = getDb(c.env);
     const row = await queryFirst<{
@@ -399,7 +407,7 @@ bodycamVideosRouter.get('/:id/stream', async (c) => {
        WHERE id = ?
     `, id);
     if (!row) return c.json({ error: 'Video not found' }, 404);
-    if (!READ_ALL_ROLES.has(actor.role) && row.officer_id !== actor.id) {
+    if (!signedOk && actor && !READ_ALL_ROLES.has(actor.role) && row.officer_id !== actor.id) {
       return c.json({ error: 'Insufficient permissions' }, 403);
     }
     if (!row.file_path) return c.json({ error: 'No file attached' }, 404);
