@@ -7,7 +7,7 @@ import {
   Settings2, ChevronDown, ChevronRight as ChevronRightIcon, MessageSquare,
   CheckSquare, Square, CheckCircle, EyeOff, FolderPlus, Edit3, Trash,
   PanelLeftClose, PanelLeftOpen, Image, Clock, FileStack, Users, Printer, Bell,
-  BellOff, Link2, CalendarClock, SlidersHorizontal, Shield, Hash, Upload,
+  BellOff, Link2, CalendarClock, SlidersHorizontal, Shield, Hash, Upload, Sun, Moon,
 } from 'lucide-react';
 import { apiFetch, apiFetchBlob } from '../hooks/useApi';
 import { useWebSocket } from '../context/WebSocketContext';
@@ -679,8 +679,34 @@ function proxyEmailImages(html: string): string {
   );
 }
 
-const EmailBodyFrame = React.forwardRef<HTMLIFrameElement, { bodyHtml: string; onLoad?: () => void }>(
-  ({ bodyHtml, onLoad }, ref) => {
+// Reading-pane theme. Most marketing/transactional email is designed for a
+// white canvas — the dark frame inverts nothing, so light-on-light artwork
+// (e.g. white-background hero images) reads badly. Light mode renders the
+// body the way the sender designed it; app chrome stays Spillman black.
+type ReadingTheme = 'dark' | 'light';
+const READING_THEME_KEY = 'email_reading_theme';
+
+function getReadingTheme(): ReadingTheme {
+  try { return localStorage.getItem(READING_THEME_KEY) === 'light' ? 'light' : 'dark'; } catch { return 'dark'; }
+}
+
+const BODY_FRAME_CSS: Record<ReadingTheme, string> = {
+  dark: `
+        body { font-family: Segoe UI, Arial, sans-serif; font-size: 13px; color: #c0d0e0; background: #0c0c0c; margin: 16px; line-height: 1.6; word-wrap: break-word; }
+        a { color: #888888; text-decoration: underline; } a:hover { color: #a0a0a0; } img { max-width: 100%; height: auto; } table { border-collapse: collapse; max-width: 100%; }
+        td, th { padding: 4px 8px; } blockquote { border-left: 3px solid #2b2b2b; margin: 8px 0; padding: 4px 12px; color: #8899aa; }
+        pre { background: #141414; padding: 8px; border-radius: 2px; overflow-x: auto; } hr { border: none; border-top: 1px solid #2b2b2b; margin: 16px 0; }
+  `,
+  light: `
+        body { font-family: Segoe UI, Arial, sans-serif; font-size: 13px; color: #1a1a1a; background: #ffffff; margin: 16px; line-height: 1.6; word-wrap: break-word; }
+        a { color: #555555; text-decoration: underline; } a:hover { color: #1a1a1a; } img { max-width: 100%; height: auto; } table { border-collapse: collapse; max-width: 100%; }
+        td, th { padding: 4px 8px; } blockquote { border-left: 3px solid #d8d8d8; margin: 8px 0; padding: 4px 12px; color: #555; }
+        pre { background: #f4f4f4; padding: 8px; border-radius: 2px; overflow-x: auto; } hr { border: none; border-top: 1px solid #ddd; margin: 16px 0; }
+  `,
+};
+
+const EmailBodyFrame = React.forwardRef<HTMLIFrameElement, { bodyHtml: string; theme?: ReadingTheme; onLoad?: () => void }>(
+  ({ bodyHtml, theme = 'dark', onLoad }, ref) => {
     const [blobUrl, setBlobUrl] = React.useState<string | null>(null);
     React.useEffect(() => {
       // Use a vetted sanitizer instead of regex stripping to avoid incomplete
@@ -688,17 +714,12 @@ const EmailBodyFrame = React.forwardRef<HTMLIFrameElement, { bodyHtml: string; o
       const sanitized = sanitizeHtml(bodyHtml, EMAIL_SANITIZE_OPTIONS);
       // Proxy all external images through our server
       const proxied = proxyEmailImages(sanitized);
-      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><base target="_blank" rel="noopener noreferrer"><style>
-        body { font-family: Segoe UI, Arial, sans-serif; font-size: 13px; color: #c0d0e0; background: #0c0c0c; margin: 16px; line-height: 1.6; word-wrap: break-word; }
-        a { color: #888888; text-decoration: underline; } a:hover { color: #a0a0a0; } img { max-width: 100%; height: auto; } table { border-collapse: collapse; max-width: 100%; }
-        td, th { padding: 4px 8px; } blockquote { border-left: 3px solid #2b2b2b; margin: 8px 0; padding: 4px 12px; color: #8899aa; }
-        pre { background: #141414; padding: 8px; border-radius: 2px; overflow-x: auto; } hr { border: none; border-top: 1px solid #2b2b2b; margin: 16px 0; }
-      </style></head><body>${proxied}</body></html>`;
+      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><base target="_blank" rel="noopener noreferrer"><style>${BODY_FRAME_CSS[theme]}</style></head><body>${proxied}</body></html>`;
       const blob = new Blob([html], { type: 'text/html' });
       const url = URL.createObjectURL(blob);
       setBlobUrl(url);
       return () => URL.revokeObjectURL(url);
-    }, [bodyHtml]);
+    }, [bodyHtml, theme]);
     if (!blobUrl) return null;
     return <iframe ref={ref} src={blobUrl} onLoad={onLoad} sandbox="allow-same-origin allow-popups" className="w-full border-0" style={{ minHeight: 200 }} title="Email body" />;
   }
@@ -1914,6 +1935,14 @@ export default function EmailPage() {
   // Feature 23: Auto-categorization
   const [categorizing, setCategorizing] = useState(false);
 
+  // Reading-pane theme (dark chrome stays; only the email body canvas flips)
+  const [readingTheme, setReadingTheme] = useState<ReadingTheme>(getReadingTheme);
+  const toggleReadingTheme = () => {
+    const next: ReadingTheme = readingTheme === 'dark' ? 'light' : 'dark';
+    setReadingTheme(next);
+    try { localStorage.setItem(READING_THEME_KEY, next); } catch { /* ignore */ }
+  };
+
   // Outlook-parity UI state (snooze / headers / categories / OOF / more menu)
   const [showSnoozeMenu, setShowSnoozeMenu] = useState(false);
   const [showHeadersModal, setShowHeadersModal] = useState(false);
@@ -2993,6 +3022,10 @@ export default function EmailPage() {
                     <CategoryMenu messageId={fullMessage.id} onApplied={() => fetchFullMessage(fullMessage.id)} onClose={() => setShowCategoryMenu(false)} onSnackbar={showSnackbar} />
                   )}
                 </div>
+                <button type="button" onClick={toggleReadingTheme} className="p-1.5 text-rmpg-400 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors"
+                  title={readingTheme === 'dark' ? 'Light reading mode' : 'Dark reading mode'}>
+                  {readingTheme === 'dark' ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
+                </button>
                 <button type="button" onClick={() => fullMessage && printEmail(fullMessage, fullMessage.bodyHtml)} className="p-1.5 text-rmpg-400 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Print"><Printer className="w-3.5 h-3.5" /></button>
                 <div className="relative">
                   <button type="button" onClick={() => setShowMoreMenu(!showMoreMenu)} className="p-1.5 text-rmpg-400 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors" title="More actions"><SlidersHorizontal className="w-3.5 h-3.5" /></button>
@@ -3053,13 +3086,13 @@ export default function EmailPage() {
             </div>
 
             {/* Message Body */}
-            <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
+            <div className={`flex-1 overflow-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent ${readingTheme === 'light' ? 'bg-white' : ''}`}>
               {loadingMessage ? (
                 <div className="flex flex-col items-center justify-center py-12 gap-2"><Loader2 className="w-5 h-5 text-brand-400 animate-spin" role="status" aria-label="Loading" /><span className="text-[10px] text-rmpg-500">Loading data...</span></div>
               ) : fullMessage.bodyHtml ? (
-                <EmailBodyFrame ref={iframeRef} bodyHtml={fullMessage.bodyHtml} onLoad={handleIframeLoad} />
+                <EmailBodyFrame ref={iframeRef} bodyHtml={fullMessage.bodyHtml} theme={readingTheme} onLoad={handleIframeLoad} />
               ) : (
-                <div className="p-4 text-xs text-rmpg-400 whitespace-pre-wrap font-mono">{fullMessage.bodyPreview}</div>
+                <div className={`p-4 text-xs whitespace-pre-wrap font-mono ${readingTheme === 'light' ? 'bg-white text-neutral-800' : 'text-rmpg-400'}`}>{fullMessage.bodyPreview}</div>
               )}
             </div>
 

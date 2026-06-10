@@ -126,6 +126,9 @@ async function getStatus(env: Bindings) {
     configured,
     enabled: enabled === 'true',
     authorized,
+    // EmailPage's enrollment gate reads `enrolled` — the org runs one shared
+    // mailbox, so enrolled == the tenant OAuth grant being in place.
+    enrolled: configured && authorized,
     mailbox: mailbox || null,
     lastSync: lastSync || null,
     pollInterval: pollInterval ? parseInt(pollInterval, 10) : 300,
@@ -547,6 +550,37 @@ email.get('/messages', async (c) => {
     return c.json({ messages, hasMore: messages.length === perPage });
   } catch {
     return c.json({ messages: [], hasMore: false });
+  }
+});
+
+// ─── Cached-message search (search-as-you-type) ──────────────────
+// Searches the D1 email_messages cache (subject/from/preview LIKE).
+// Returns raw snake_case rows — EmailPage maps them to camelCase.
+email.get('/messages/search', async (c) => {
+  const userId = c.get('userId');
+  const q = (c.req.query('q') || '').trim();
+  if (q.length < 2) return c.json({ results: [] });
+  const folder = (c.req.query('folder') || '').trim();
+  const like = `%${q.replace(/[%_]/g, ' ')}%`;
+  try {
+    const params: unknown[] = [userId, like, like, like];
+    let folderClause = '';
+    if (folder && folder !== 'inbox') { folderClause = 'AND folder_id = ?'; params.push(folder); }
+    const rows = await query(
+      c.env.DB,
+      `SELECT graph_id, conversation_id, subject, from_address, from_name, body_preview,
+              has_attachments, is_read, is_flagged, importance, received_at
+         FROM email_messages
+        WHERE owner_user_id = ?
+          AND (subject LIKE ? OR from_address LIKE ? OR body_preview LIKE ?)
+          ${folderClause}
+        ORDER BY received_at DESC
+        LIMIT 50`,
+      ...params,
+    );
+    return c.json({ results: rows });
+  } catch {
+    return c.json({ results: [] });
   }
 });
 
@@ -2221,6 +2255,78 @@ email.get('/people', async (c) => {
   } catch {
     return c.json({ people: [] });
   }
+});
+
+// ─── Non-admin OAuth kickoff (EnrollmentBanner) ──────────────────
+// Same flow as /admin/oauth/authorize but any authenticated user may
+// (re)start consent for the shared org mailbox; creds stay admin-only.
+// Returns { authorizationUrl } (the banner's expected key).
+email.get('/oauth/authorize', async (c) => {
+  const clientId = await getCfgDecrypted(c.env, K.clientId);
+  const tenantId = await getCfgDecrypted(c.env, K.tenantId);
+  if (!clientId || !tenantId) {
+    return c.json({ error: 'Email is not configured yet — ask an administrator to set up Azure AD credentials in Admin → Integrations.', code: 'NOT_CONFIGURED' }, 400);
+  }
+  const stateBytes = crypto.getRandomValues(new Uint8Array(32));
+  let state = '';
+  for (const b of stateBytes) state += b.toString(16).padStart(2, '0');
+  await setCfg(c.env.DB, K.oauthState, state);
+  const userId = c.get('userId');
+  if (userId) await setCfg(c.env.DB, K.oauthInitiator, String(userId));
+  const host = new URL(c.req.url).host;
+  const params = new URLSearchParams({
+    client_id: clientId,
+    response_type: 'code',
+    redirect_uri: `https://${host}/api/email/oauth/callback`,
+    scope: GRAPH_SCOPES.join(' '),
+    state,
+    prompt: 'consent',
+  });
+  const url = `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/authorize?${params.toString()}`;
+  return c.json({ authorizationUrl: url, url });
+});
+
+// ─── Contact autocomplete (compose To/Cc/Bcc) ────────────────────
+// Graph /me/people first (relevance-ranked), padded with distinct
+// senders from the local cache so it works even if Graph is slow/down.
+email.get('/contacts/search', async (c) => {
+  const userId = c.get('userId');
+  const q = (c.req.query('q') || '').trim();
+  if (q.length < 2) return c.json([]);
+  const out: Array<{ email: string; name: string; source: string }> = [];
+  const seen = new Set<string>();
+  try {
+    const params = new URLSearchParams({ $select: 'displayName,scoredEmailAddresses', $top: '8' });
+    params.set('$search', `"${q.replace(/"/g, '')}"`);
+    const res = await graphFetch(c.env, `/me/people?${params.toString()}`);
+    if (res.ok) {
+      const data = await res.json() as { value?: Array<{ displayName?: string; scoredEmailAddresses?: Array<{ address?: string }> }> };
+      for (const p of data.value || []) {
+        const addr = (p.scoredEmailAddresses?.[0]?.address || '').toLowerCase();
+        if (!addr || seen.has(addr)) continue;
+        seen.add(addr);
+        out.push({ email: addr, name: p.displayName || '', source: 'directory' });
+      }
+    }
+  } catch { /* fall through to cache */ }
+  try {
+    const like = `%${q.replace(/[%_]/g, ' ')}%`;
+    const rows = await query<{ from_address: string; from_name: string | null }>(
+      c.env.DB,
+      `SELECT from_address, MAX(from_name) AS from_name FROM email_messages
+        WHERE owner_user_id = ? AND from_address IS NOT NULL
+          AND (from_address LIKE ? OR from_name LIKE ?)
+        GROUP BY from_address LIMIT 8`,
+      userId, like, like,
+    );
+    for (const r of rows) {
+      const addr = (r.from_address || '').toLowerCase();
+      if (!addr || seen.has(addr)) continue;
+      seen.add(addr);
+      out.push({ email: addr, name: r.from_name || '', source: 'recent' });
+    }
+  } catch { /* best-effort */ }
+  return c.json(out.slice(0, 10));
 });
 
 // ─── Mailbox stats (storage panel: counts per well-known folder) ─
