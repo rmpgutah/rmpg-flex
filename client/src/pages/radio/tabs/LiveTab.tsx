@@ -12,6 +12,7 @@ import { FilterChip, SectionHeader, EmptyConsole, Waveform, Sep } from '../compo
 import { useVoiceChannel, type DispatchRecordRef } from '../useVoiceChannel';
 import DispatchRecordPanel from '../../../components/DispatchRecordPanel';
 import { RadioHazePlayer } from '../../../utils/radioProcessor';
+import { getSignedParams, buildSignedQuerySync } from '../../../utils/signedUrls';
 import { useContextMenu, type ContextMenuItem } from '../../../context/ContextMenuContext';
 import { useMenuActions } from '../../../utils/contextMenuActions';
 import type { RadioChannel, RadioTransmission } from '../types';
@@ -304,13 +305,25 @@ function TxRow({ tx }: { tx: RadioTransmission }) {
 }
 
 // Same-origin relative URL so it passes CSP connect-src 'self'; the zone
-// proxy forwards /api/radio/* to the rewrite worker. We fetch the clip via
-// the Web Audio path (not an <audio> element) so it can't set an
-// Authorization header — the JWT rides the ?token= fallback the auth
-// middleware accepts (same trick as bodycam video streams).
+// proxy forwards /api/radio/* to the rewrite worker. The clip is fetched via
+// the Web Audio path (not an <audio> element), so auth rides the query
+// string. LEGACY sync form — embeds the session JWT as ?token=; kept only
+// for synchronous call sites (context-menu download links). Playback paths
+// should use transmissionAudioUrlSigned() below.
 export function transmissionAudioUrl(transmissionId: number): string {
   const token = localStorage.getItem('rmpg_token') || '';
   return `/api/radio/transmissions/${transmissionId}/audio${token ? `?token=${encodeURIComponent(token)}` : ''}`;
+}
+
+// Preferred form: per-resource HMAC params from /api/auth/sign-urls — keeps
+// the session JWT out of URLs (CF tail logs, proxy logs, browser history).
+// Falls back to the legacy ?token= URL if signing fails.
+export async function transmissionAudioUrlSigned(transmissionId: number): Promise<string> {
+  const params = await getSignedParams('radio', transmissionId);
+  if (params) {
+    return `/api/radio/transmissions/${transmissionId}/audio?${buildSignedQuerySync(params)}`;
+  }
+  return transmissionAudioUrl(transmissionId);
 }
 
 // Recorded clips replay through the SAME P25 radio-haze chain as live
@@ -333,8 +346,8 @@ export function AudioPlayButton({ transmissionId }: { transmissionId: number }) 
     }
     const player = playerRef.current ?? (playerRef.current = new RadioHazePlayer());
     setPlaying(true);
-    player
-      .playUrl(transmissionAudioUrl(transmissionId), () => setPlaying(false))
+    transmissionAudioUrlSigned(transmissionId)
+      .then((url) => player.playUrl(url, () => setPlaying(false)))
       .catch((err) => { console.error('[radio] haze playback failed', err); setPlaying(false); });
   };
 

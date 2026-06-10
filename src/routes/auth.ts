@@ -4,6 +4,8 @@ import { compareSync, hashSync } from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 import { getDb, queryFirst, query, execute } from '../utils/db';
 import { authMiddleware } from '../middleware/auth';
+import { rateLimitAllow } from '../utils/rateLimit';
+import { signResource, type SignedResourceParams } from '../utils/signedAccess';
 import {
   generateTotpSecret, verifyTotpCode, buildOtpauthUrl,
   encryptTotpSecret, decryptTotpSecret,
@@ -107,6 +109,20 @@ auth.post('/login', async (c) => {
     const { username, password, deviceFingerprint } = await c.req.json();
     if (!username || !password) {
       return c.json({ error: 'Username and password are required', code: 'USERNAME_AND_PASSWORD_ARE' }, 400);
+    }
+
+    // Brute-force throttle: generous per-IP window (shared NAT at HQ means
+    // many legit users behind one IP) + a tighter per-username window so a
+    // distributed credential-stuffing run still hits a wall. Counts every
+    // attempt, success included — fine at these limits; KV fails open.
+    const ip = c.req.header('CF-Connecting-IP') || c.req.header('x-forwarded-for') || 'unknown';
+    const uname = String(username).toLowerCase().slice(0, 64);
+    const [ipOk, userOk] = await Promise.all([
+      rateLimitAllow(c.env.KV, `login:ip:${ip}`, 30, 300),
+      rateLimitAllow(c.env.KV, `login:user:${uname}`, 10, 300),
+    ]);
+    if (!ipOk || !userOk) {
+      return c.json({ error: 'Too many login attempts. Try again in a few minutes.', code: 'RATE_LIMITED' }, 429);
     }
 
     const db = getDb(c.env);
@@ -536,6 +552,44 @@ auth.get('/password-policy', (c) => {
 
 auth.get('/session-timeout', (c) => {
   return c.json({ idleTimeoutMinutes: 30, maxSessionHours: 12 });
+});
+
+// ── Signed media URLs ────────────────────────────────────────
+// POST /auth/sign-urls — client/src/utils/signedUrls.ts has called this
+// since it shipped; the endpoint never existed, so <video>/<audio> tags
+// fell back to ?token=<full session JWT>. Issues per-resource HMAC params
+// ({ signed: { "type:id": { sig, exp, nonce } } }) the stream handlers
+// verify. Read scope is enforced HERE, at sign time — a signature carries
+// no session, so it must never be issuable for a resource the caller
+// can't already read.
+const SIGNABLE_TYPES = new Set(['bodycam', 'radio', 'panic']);
+const MEDIA_READ_ALL_ROLES = new Set(['admin', 'manager', 'supervisor']); // mirrors bodyCameras.ts READ_ALL_ROLES
+
+auth.post('/sign-urls', authMiddleware, async (c) => {
+  try {
+    const user = c.get('user');
+    if (!user) return c.json({ error: 'Authentication required' }, 401);
+    const body = await c.req.json<{ resources?: Array<{ type?: string; id?: string | number }> }>().catch(() => ({} as any));
+    const resources = Array.isArray(body?.resources) ? body.resources.slice(0, 100) : [];
+    const db = getDb(c.env);
+    const signed: Record<string, SignedResourceParams> = {};
+    for (const r of resources) {
+      const type = String(r?.type ?? '');
+      const id = String(r?.id ?? '');
+      if (!SIGNABLE_TYPES.has(type) || !/^\d{1,12}$/.test(id)) continue;
+      if (type === 'bodycam' && !MEDIA_READ_ALL_ROLES.has(user.role)) {
+        // Officers may only sign their own footage — same scope rule as
+        // the stream handler itself.
+        const row = await queryFirst<{ officer_id: number }>(db, 'SELECT officer_id FROM bodycam_videos WHERE id = ?', id);
+        if (!row || row.officer_id !== user.id) continue;
+      }
+      signed[`${type}:${id}`] = await signResource(c.env.JWT_SECRET, type, id);
+    }
+    return c.json({ signed });
+  } catch (err) {
+    console.error('POST /auth/sign-urls failed:', err);
+    return c.json({ error: 'Failed to sign resources' }, 500);
+  }
 });
 
 // GET /auth/profile — return the current user's editable profile fields.
