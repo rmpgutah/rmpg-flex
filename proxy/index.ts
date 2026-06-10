@@ -658,12 +658,9 @@ const STUBS: StubRule[] = [
     body: { valid: false, error: 'password reset is not yet ported' },
     reason: 'no /auth/reset-password/validate in rewrite',
   },
-  {
-    match: /^\/api\/auth\/sign-urls(\?.*)?$/,
-    methods: ['POST'],
-    body: { urls: {}, message: 'sign-urls is not yet ported' },
-    reason: 'no /auth/sign-urls in rewrite; R2 upload falls back to legacy',
-  },
+  // sign-urls stub REMOVED 2026-06-10 — auth.ts now implements POST /sign-urls
+  // (HMAC-signed resource params for header-less media streams; first consumer
+  // is the dashcam video stream). Routed to env.API below.
   // WebAuthn — proxy already stubs /credentials + /status. Add the OPTIONS
   // + verify endpoints. These are no-op stubs since the rewrite doesn't
   // implement WebAuthn; the user's security settings page renders empty.
@@ -1332,6 +1329,7 @@ const API_ROUTES: RouteRule[] = [
   { kind: 'prefix', value: '/api/auth/2fa/setup' },
   { kind: 'prefix', value: '/api/auth/2fa/backup-codes' },
   { kind: 'prefix', value: '/api/auth/totp/status' },
+  { kind: 'prefix', value: '/api/auth/sign-urls' },
   { kind: 'prefix', value: '/api/auth/2fa/status' },
   // /api/auth/signature GET+PUT (UserProfileModal, PrintRecordButton,
   // IncidentsPage) — auth.ts persists/reads users.digital_signature. The GET

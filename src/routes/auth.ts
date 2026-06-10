@@ -4,6 +4,7 @@ import { compareSync, hashSync } from 'bcryptjs';
 import { v4 as uuidv4 } from 'uuid';
 import { getDb, queryFirst, query, execute } from '../utils/db';
 import { authMiddleware } from '../middleware/auth';
+import { signResource, type SignedResourceParams } from '../utils/signedAccess';
 import {
   generateTotpSecret, verifyTotpCode, buildOtpauthUrl,
   encryptTotpSecret, decryptTotpSecret,
@@ -391,6 +392,39 @@ auth.get('/me', authMiddleware, async (c) => {
   );
   if (!user) return c.json({ error: 'User not found' }, 404);
   return c.json({ user: userPayload(user) });
+});
+
+// ── POST /sign-urls — issue HMAC-signed resource-access params ───────────────
+// Server half of client/src/utils/signedUrls.ts. Body:
+//   { resources: [{ type: 'dashcam', id: '42' }, ...] }
+// Response:
+//   { signed: { 'dashcam:42': { sig, exp, nonce }, ... } }
+// Resource types must be allow-listed here; the matching /stream handler
+// verifies via verifySignedResource() with the same type string.
+const SIGNABLE_TYPES = new Set(['dashcam']);
+const SIGN_BATCH_MAX = 100;
+
+auth.post('/sign-urls', authMiddleware, async (c) => {
+  try {
+    const body = await c.req.json<{ resources?: Array<{ type?: string; id?: string | number }> }>().catch(() => null);
+    if (!body || !Array.isArray(body.resources)) {
+      return c.json({ error: 'resources array is required' }, 400);
+    }
+    if (body.resources.length > SIGN_BATCH_MAX) {
+      return c.json({ error: `Too many resources (max ${SIGN_BATCH_MAX})` }, 400);
+    }
+    const signed: Record<string, SignedResourceParams> = {};
+    for (const r of body.resources) {
+      const type = typeof r?.type === 'string' ? r.type : '';
+      const id = r?.id != null ? String(r.id) : '';
+      if (!SIGNABLE_TYPES.has(type) || !id) continue; // skip unknown types silently — client treats missing keys as unsigned
+      signed[`${type}:${id}`] = await signResource(c.env.JWT_SECRET, type, id);
+    }
+    return c.json({ signed });
+  } catch (err) {
+    console.error('POST /auth/sign-urls failed:', err);
+    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+  }
 });
 
 auth.put('/password', authMiddleware, async (c) => {

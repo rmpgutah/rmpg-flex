@@ -29,6 +29,7 @@ import { useMenuActions } from '../utils/contextMenuActions';
 import { useLiveSync } from '../hooks/useLiveSync';
 import usePersistedState from '../hooks/usePersistedState';
 import { parseTimestamp } from '../utils/dateUtils';
+import { getSignedParams, buildSignedQuerySync } from '../utils/signedUrls';
 
 const PAGE_SIZE = 25;
 
@@ -127,6 +128,19 @@ export default function DashCamerasPage() {
   const [linkingVideo, setLinkingVideo] = useState<DashCamVideo | null>(null);
   const [editSubmitting, setEditSubmitting] = useState(false);
   const [vehicles, setVehicles] = useState<any[]>([]);
+  // Signed stream URL for the inline detail-panel player (replaces ?token=JWT).
+  const [selectedStreamUrl, setSelectedStreamUrl] = useState('');
+  useEffect(() => {
+    const id = selectedVideo?.id;
+    if (!id) { setSelectedStreamUrl(''); return; }
+    let cancelled = false;
+    getSignedParams('dashcam', id).then((params) => {
+      if (cancelled) return;
+      const base = `${apiBase}/fleet/dashcam-videos/${id}/stream`;
+      setSelectedStreamUrl(params ? `${base}?${buildSignedQuerySync(params)}` : '');
+    });
+    return () => { cancelled = true; };
+  }, [selectedVideo?.id]);
   const [units, setUnits] = useState<any[]>([]);
 
   // ── Data Fetching ────────────────────────
@@ -458,7 +472,7 @@ export default function DashCamerasPage() {
           controls autoPlay key={selectedVideo.id}
           className="w-full"
           style={{ maxHeight: '320px' }}
-          src={`${apiBase}/fleet/dashcam-videos/${selectedVideo.id}/stream?token=${encodeURIComponent(localStorage.getItem('rmpg_token') || '')}`}
+          src={selectedStreamUrl}
         />
         {/* Camera channel overlay */}
         {selectedVideo.cpg_channel && (

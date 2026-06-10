@@ -68,7 +68,11 @@ export async function authMiddleware(c: Context, next: Next) {
     const sig = c.req.query('sig');
     const exp = c.req.query('exp');
     const path = new URL(c.req.url).pathname;
-    if (sig && exp && path.includes('/uploads/')) {
+    // Dashcam stream uses signResource/verifySignedResource (signedAccess.ts);
+    // the handler re-verifies the HMAC against the route's own :id, so this
+    // bypass only forwards — it grants nothing by itself.
+    const isSignedStream = /\/dashcam-videos\/\d+\/stream$/.test(path);
+    if (sig && exp && (path.includes('/uploads/') || isSignedStream)) {
       await next();
       return;
     }
