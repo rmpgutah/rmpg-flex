@@ -4,7 +4,8 @@ import type { NavTripDetectionState, NavTrip } from '../types';
 
 const LS_KEY = 'rmpg_nav_detection';
 const DETECTION_WINDOW_MS = 180_000; // 3 minutes after login to detect movement
-const STATIONARY_RADIUS_M = 61; // ~200 ft
+const STATIONARY_RADIUS_M = 61; // ~200 ft — "definitely left the parking spot" signal
+const DEPARTURE_RADIUS_M = 500; // trip auto-starts only once the vehicle is 500m from its anchor
 const WINDOW_CHECK_MS = 10_000; // 10-second window for movement confirmation
 const WIFI_JITTER_M = 30; // ignore sub-30m jumps as WiFi triangulation noise
 
@@ -193,6 +194,21 @@ export function useNavTripDetection(opts: UseNavTripDetectionOptions) {
       // was sitting" detector. (Only reached when NOT already on a trip — the
       // movementConfirmed/activeTripId guard above returns first.)
       if (next.loginTime && now - next.loginTime > DETECTION_WINDOW_MS) {
+        // In-transit guard: if the vehicle has clearly left its parking spot
+        // (>200ft from the anchor) but hasn't crossed the 500m departure radius
+        // yet (slow surface streets, parking-lot creep), do NOT re-anchor — that
+        // would move the trip's start point mid-departure and the recorded trip
+        // would begin at some arbitrary spot instead of the true origin. Extend
+        // the window and keep the original anchor.
+        if (next.loginPosition) {
+          const distFromAnchor = haversineM(
+            next.loginPosition.lat, next.loginPosition.lng, latitude, longitude,
+          );
+          if (distFromAnchor > STATIONARY_RADIUS_M) {
+            next.loginTime = now;
+            return next;
+          }
+        }
         if (next.pendingTripId && !next.movementConfirmed) {
           cancelTrip(next.pendingTripId);
           next.pendingTripId = null;
@@ -227,8 +243,10 @@ export function useNavTripDetection(opts: UseNavTripDetectionOptions) {
           latitude, longitude,
         );
 
-        // Check for movement >200ft from login position
-        if (distFromLogin > STATIONARY_RADIUS_M) {
+        // Trip detection gate: only arm once the vehicle is >500m from the
+        // anchor (login/park) position. The trip itself is recorded FROM the
+        // anchor, not from this 500m boundary — see the auto-start below.
+        if (distFromLogin > DEPARTURE_RADIUS_M) {
           // Start or continue the 10-second confirmation window
           if (!next.windowStartTime) {
             next.windowStartTime = now;
@@ -274,7 +292,14 @@ export function useNavTripDetection(opts: UseNavTripDetectionOptions) {
                   .catch(() => {})
                   .finally(() => { isStartingRef.current = false; });
               } else {
-                startTrip(latitude, longitude, accuracy)
+                // Anchor the trip at the ORIGINAL login/park position, not the
+                // current fix — by the time the 500m departure gate confirms,
+                // the vehicle is already 500m+ down the road. Recording from the
+                // anchor keeps start point + distance true to the real origin.
+                const anchor = next.loginPosition!;
+                const anchorTs = next.loginTime;
+                const confirmFix = { lat: latitude, lng: longitude };
+                startTrip(anchor.lat, anchor.lng, anchor.accuracy)
                   .then((trip) => {
                     if (!trip) return;
                     setCurrentTrip(trip);
@@ -289,6 +314,21 @@ export function useNavTripDetection(opts: UseNavTripDetectionOptions) {
                     // 5-min stationary auto-end has a baseline. Mirrors the
                     // confirmTrip branch above.
                     setDetection((p) => ({ ...p, activeTripId: trip.id, pendingTripId: null, lastMovementAt: Date.now() }));
+                    // Backfill the anchor→confirmation leg into route_points so
+                    // the server's distance math (which only sums route_points —
+                    // it starts at '[]') credits the first 500m instead of
+                    // beginning the polyline at the departure boundary.
+                    apiFetch(`/nav/trip/${trip.id}/update`, {
+                      method: 'PUT',
+                      body: JSON.stringify({
+                        route_points: [
+                          { lat: anchor.lat, lng: anchor.lng, ts: new Date(anchorTs ?? Date.now()).toISOString() },
+                          { lat: confirmFix.lat, lng: confirmFix.lng, ts: new Date().toISOString() },
+                        ],
+                        current_lat: confirmFix.lat,
+                        current_lng: confirmFix.lng,
+                      }),
+                    }).catch(() => {});
                   })
                   .catch(() => {})
                   .finally(() => { isStartingRef.current = false; });

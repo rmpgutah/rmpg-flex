@@ -61,6 +61,7 @@ import { CitationPdfPreview } from '../components/CitationPdfPreview';
 import { formToData } from '../components/citationFormAdapter';
 import { usePersistedPreviewMode } from '../hooks/usePersistedPreviewMode';
 import { Combobox } from '../components/Combobox';
+import { composeAddressUnit } from '../utils/addressUnit';
 
 // ── Types ──────────────────────────────────────────────────
 
@@ -372,6 +373,7 @@ export default function CitationsPage() {
   // Form state
   const [mode, setMode] = useState<'list' | 'create' | 'edit'>('list');
   const [saving, setSaving] = useState(false);
+  const [personAddressUnit, setPersonAddressUnit] = useState('');
   const [saveError, setSaveError] = useState('');
   const [saveSuccess, setSaveSuccess] = useState(false);
   const { errors: formErrors, validate: runValidation, clearAllErrors: clearFormErrors } = useFormValidation();
@@ -778,6 +780,7 @@ export default function CitationsPage() {
         .map(({ id: _id, ...rest }) => rest);
       const payload: any = {
         ...form,
+        person_address: composeAddressUnit(form.person_address, personAddressUnit),
         person_id: form.person_id ? parseInt(form.person_id, 10) : null,
         statute_id: form.statute_id ? parseInt(form.statute_id, 10) : null,
         fine_amount: form.fine_amount ? parseFloat(form.fine_amount) : null,
@@ -1620,7 +1623,8 @@ export default function CitationsPage() {
               </div>
             </div>
 
-             <div>
+             <div className="flex gap-2">
+               <div className="flex-1">
                <label className="field-label">Address</label>
                <AddressAutocomplete
                  value={form.person_address}
@@ -1634,6 +1638,11 @@ export default function CitationsPage() {
                    // Optionally auto-fill city/state/zip if we had separate fields
                  }}
                />
+               </div>
+               <div className="w-24">
+                 <label className="field-label">Apt / Unit</label>
+                 <input id="ff-citationspage-addrunit" type="text" className="input-dark w-full py-2 text-xs min-h-[36px]" value={personAddressUnit} onChange={e => setPersonAddressUnit(e.target.value)} placeholder="4B" />
+               </div>
              </div>
           </div>
         </section>

@@ -73,6 +73,7 @@ function formatDate(d: Date): string {
 const EMPTY_FORM = {
   recipient_name: '',
   recipient_address: '',
+  recipient_address_2: '',
   recipient_city: '',
   recipient_state: 'UT',
   recipient_zip: '',
@@ -180,7 +181,7 @@ export default function ServePage() {
     try {
       // GET /:id returns the job row + its serve_attempts (joined w/ officer).
       const job = await apiFetch<ServeJob & { attempts?: any[] }>(`/process-server/${jobId}`);
-      const fullAddress = [job.recipient_address, job.recipient_city, job.recipient_state, job.recipient_zip]
+      const fullAddress = [job.recipient_address, (job as any).recipient_address_2, job.recipient_city, job.recipient_state, job.recipient_zip]
         .filter(Boolean).join(', ');
       // Only unsuccessful attempts belong on a Notice of Attempt.
       const attempts = (job.attempts || [])
@@ -389,7 +390,7 @@ export default function ServePage() {
       );
     } else if (job.recipient_address) {
       const addr = encodeURIComponent(
-        `${job.recipient_address} ${job.recipient_city || ''} ${job.recipient_state || ''} ${job.recipient_zip || ''}`,
+        `${job.recipient_address} ${(job as any).recipient_address_2 || ''} ${job.recipient_city || ''} ${job.recipient_state || ''} ${job.recipient_zip || ''}`,
       );
       window.open(`https://www.openstreetmap.org/search?query=${addr}`, '_blank', 'noopener,noreferrer');
     }
@@ -460,6 +461,7 @@ export default function ServePage() {
     setFormData({
       recipient_name: job.recipient_name,
       recipient_address: job.recipient_address || '',
+      recipient_address_2: (job as any).recipient_address_2 || '',
       recipient_city: job.recipient_city || '',
       recipient_state: job.recipient_state || 'UT',
       recipient_zip: job.recipient_zip || '',
@@ -689,7 +691,7 @@ export default function ServePage() {
 
       // Popup on click
       el.addEventListener('click', () => {
-        const fullAddr = [job.recipient_address, job.recipient_city, job.recipient_state, job.recipient_zip]
+        const fullAddr = [job.recipient_address, (job as any).recipient_address_2, job.recipient_city, job.recipient_state, job.recipient_zip]
           .filter(Boolean).join(', ');
         if (popupRef.current) {
           popupRef.current.setLngLat(lngLat).setHTML(`
@@ -759,7 +761,7 @@ export default function ServePage() {
 
   // ── Build a serve-job row context menu ──
   const buildJobMenu = (job: ServeJob): ContextMenuItem[] => {
-    const addr = [job.recipient_address, job.recipient_city, job.recipient_state, job.recipient_zip]
+    const addr = [job.recipient_address, (job as any).recipient_address_2, job.recipient_city, job.recipient_state, job.recipient_zip]
       .filter(Boolean).join(', ');
     const isClosed = job.status === 'served' || job.status === 'failed' || job.status === 'archived';
     return [
@@ -1081,6 +1083,7 @@ export default function ServePage() {
                             </div>
                             <div className="text-[10px] text-rmpg-500 truncate">
                               {job.recipient_address || 'No address'}
+                              {(job as any).recipient_address_2 ? `, ${(job as any).recipient_address_2}` : ''}
                               {job.recipient_city ? `, ${job.recipient_city}` : ''}
                             </div>
                           </div>
@@ -1418,7 +1421,8 @@ export default function ServePage() {
 
           {/* Address */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div className="sm:col-span-2">
+            <div className="flex gap-2 sm:col-span-2">
+            <div className="flex-1">
               <label className="block text-[11px] text-rmpg-400 mb-1">Address</label>
               <AddressAutocomplete
                 value={formData.recipient_address}
@@ -1445,6 +1449,17 @@ export default function ServePage() {
                   }));
                 }}
               />
+            </div>
+            <div className="w-28">
+              <label className="block text-[11px] text-rmpg-400 mb-1">Apt / Unit</label>
+              <input
+                type="text"
+                value={formData.recipient_address_2}
+                onChange={e => handleFormChange('recipient_address_2', e.target.value)}
+                placeholder="Apt 4B"
+                className="w-full px-3 py-2 text-sm bg-[#0c0c0c] border border-[#2b2b2b] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
+              />
+            </div>
             </div>
             <div>
               <label className="block text-[11px] text-rmpg-400 mb-1">City</label>

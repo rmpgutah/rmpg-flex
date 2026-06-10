@@ -524,6 +524,8 @@ export interface Person {
   scars_marks_tattoos?: string;
   clothing_description?: string;
   address?: string;
+  address_2?: string;
+  suffix?: string;
   city?: string;
   state?: string;
   zip?: string;

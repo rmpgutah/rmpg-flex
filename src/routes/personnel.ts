@@ -53,7 +53,7 @@ const MANAGER_EDITABLE: readonly string[] = [
   'full_name', 'first_name', 'middle_name', 'last_name',
   'email', 'phone',
   'badge_number', 'rank', 'department', 'assigned_unit_id', 'employee_id',
-  'address', 'city', 'state', 'zip',
+  'address', 'address_2', 'city', 'state', 'zip',
   'date_of_birth',
   'emergency_contact_name', 'emergency_contact_phone', 'emergency_contact_relationship',
   'hire_date', 'termination_date', 'shift_preference',
@@ -69,7 +69,7 @@ const MANAGER_EDITABLE: readonly string[] = [
 // dl_*, certifications, medical) and anything identity-shaping (names, DOB).
 const SELF_EDITABLE: readonly string[] = [
   'phone', 'email',
-  'address', 'city', 'state', 'zip',
+  'address', 'address_2', 'city', 'state', 'zip',
   'emergency_contact_name', 'emergency_contact_phone', 'emergency_contact_relationship',
   'voice_persona', 'voice_rate', 'voice_pitch', 'voice_terseness', 'voice_brain_enabled',
   'theme_preference', 'font_size_preference', 'notification_prefs', 'email_signature',
@@ -90,7 +90,7 @@ personnel.get('/', async (c) => {
     const { status, role } = c.req.query();
     let sql = `SELECT u.id, u.username, u.full_name, u.first_name, u.last_name, u.middle_name,
                       u.role, u.badge_number, u.phone, u.email, u.status, u.rank, u.department,
-                      u.address, u.city, u.state, u.zip, u.date_of_birth, u.hire_date, u.termination_date,
+                      u.address, u.address_2, u.city, u.state, u.zip, u.date_of_birth, u.hire_date, u.termination_date,
                       u.shift_preference, u.dl_number, u.dl_state, u.dl_expiry, u.blood_type, u.allergies,
                       u.uniform_size, u.emergency_contact_name, u.emergency_contact_phone,
                       u.emergency_contact_relationship, u.created_at, u.updated_at,

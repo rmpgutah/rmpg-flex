@@ -23,6 +23,7 @@ export interface UserFormData {
   email: string;
   phone: string;
   address: string;
+  address_2: string;
   city: string;
   state: string;
   zip: string;
@@ -75,6 +76,7 @@ interface UserFormModalProps {
     termination_date?: string;
     shift_preference?: string;
     address?: string;
+    address_2?: string;
     city?: string;
     state?: string;
     zip?: string;
@@ -116,7 +118,7 @@ const UNIFORM_SIZES = ['', 'XS', 'S', 'M', 'L', 'XL', '2XL', '3XL'];
 const EMPTY_FORM: UserFormData = {
   username: '', password: '', full_name: '', role: 'officer', status: 'active',
   first_name: '', last_name: '', middle_name: '', date_of_birth: '',
-  email: '', phone: '', address: '', city: '', state: '', zip: '',
+  email: '', phone: '', address: '', address_2: '', city: '', state: '', zip: '',
   badge_number: '', department: '', rank: '', employee_id: '',
   hire_date: '', termination_date: '', shift_preference: '',
   emergency_contact_name: '', emergency_contact_phone: '', emergency_contact_relationship: '',
@@ -176,6 +178,7 @@ export default function UserFormModal({
           email: editingUser.email || '',
           phone: editingUser.phone || '',
           address: editingUser.address || '',
+          address_2: (editingUser as any).address_2 || '',
           city: editingUser.city || '',
           state: editingUser.state || '',
           zip: editingUser.zip || '',
@@ -394,7 +397,8 @@ export default function UserFormModal({
               <input id="ff-userformmodal-19" type="tel" value={form.phone} onChange={e => set('phone', formatPhoneInput(e.target.value))} placeholder="(801) 555-1234" pattern="[0-9\(\)\-\s+]{7,20}" className={inputCls} />
             </div>
           </div>
-          <div>
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+           <div className="sm:col-span-3">
             <label className={labelCls}>Address</label>
             <AddressAutocomplete
               className={inputCls}
@@ -413,6 +417,11 @@ export default function UserFormModal({
                 }));
               }}
             />
+           </div>
+           <div>
+            <label className={labelCls}>Apt / Unit</label>
+            <input id="ff-userformmodal-addr2" type="text" value={form.address_2} onChange={e => set('address_2', e.target.value)} placeholder="Apt 4B" className={inputCls} />
+           </div>
           </div>
            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
              <div>
