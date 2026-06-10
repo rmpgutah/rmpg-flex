@@ -4,6 +4,14 @@
 // AudioContext / throttle state can't leak between cases.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
+// Force the synth fallback path — the sampled-asset layer is tested
+// separately (it would otherwise create its own AudioContext and
+// fetch WAVs, neither of which exist in jsdom).
+vi.mock('../soundAssets', () => ({
+  playSoundAsset: vi.fn(() => false),
+  preloadSoundAssets: vi.fn(),
+}));
+
 function mockAudioContext() {
   const node = () => ({
     connect: vi.fn(),

@@ -15,12 +15,17 @@ import { bootstrapThemePreference } from './utils/theme';
 import { setupNativeAppShell } from './utils/nativeAppShell';
 import { installUiTrapHotkey } from './utils/uiTrapDiagnostic';
 import { initUiClickSounds } from './utils/uiClickSounds';
+import { preloadSoundAssets } from './utils/soundAssets';
 
 bootstrapThemePreference();
 setupNativeAppShell();
 // Spillman-console key ticks on interactive clicks (document-level,
 // capture phase — works on login page and across all React routes)
 initUiClickSounds();
+// Decode the sampled console sounds up front so the first click/chime/login
+// plays the actual asset instead of the synth fallback (decode works while
+// the AudioContext is still gesture-suspended; playback resumes on gesture).
+preloadSoundAssets();
 // Ctrl+Alt+D fail-safe diagnostic — captures UI trap state when the
 // app freezes (clicks/typing dead). Installed at the document level
 // so it fires even if React/focus traps are stuck.

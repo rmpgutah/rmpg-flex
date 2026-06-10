@@ -557,13 +557,19 @@
 //   otpauthUrl (qrcode pkg); setup surfaces capture backup codes from the
 //   verify response (previously rendered an empty list). Sessions cron
 //   purge added.
-const CACHE_NAME = 'rmpg-flex-v868';
+const CACHE_NAME = 'rmpg-flex-v869';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
   '/manifest.json',
   '/favicon.png',
   '/rmpg flex.png',
+  // Sampled console feedback sounds (soundAssets.ts) — small, offline-critical
+  '/sounds/click.wav',
+  '/sounds/submit.wav',
+  '/sounds/update.wav',
+  '/sounds/delete.wav',
+  '/sounds/login.wav',
 ];
 
 // Evict entries when cache exceeds limit (order not guaranteed)
