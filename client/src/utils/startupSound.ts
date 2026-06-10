@@ -1,22 +1,31 @@
 // ============================================================
-// RMPG Flex — Startup Sound
-// A short synthesized "system online" chime played once after a
-// successful login/2FA, akin to the Windows/macOS startup sound.
-// Synthesized with WebAudio (no asset download, works offline,
-// same approach as dispatchTones.ts). Respects the per-unit
-// silent-dispatch audio mode.
+// RMPG Flex — Startup Sound (Spillman Flex / Motorola console)
+// A terminal-style "sign-on acknowledge" played once after a
+// successful login/2FA: two crisp data blips followed by a low
+// confirmation tone — the public-safety console idiom, not a
+// musical chime. Synthesized with WebAudio (no asset download,
+// works offline, same approach as dispatchTones.ts). Respects
+// the per-unit silent-dispatch audio mode.
 // ============================================================
 import { getLocalAudioMode } from './audioMode';
 
-/** Ascending D-major arpeggio (D4, A4, D5, F#5) — command-console feel. */
-const NOTES = [293.66, 440.0, 587.33, 739.99];
-const NOTE_SPACING = 0.11; // s between note onsets
-const NOTE_LENGTH = 1.1;   // s decay tail per note
+/**
+ * Tone schedule — Motorola-console-style sign-on acknowledge:
+ * two short high "data" blips, then a firm low-mid confirm tone
+ * with a slow release. Square-ish voicing through a lowpass gives
+ * the dry, utilitarian MDT character.
+ */
+const SEQUENCE: Array<{ freq: number; at: number; dur: number; gain: number; type: OscillatorType }> = [
+  { freq: 1318, at: 0.0, dur: 0.07, gain: 0.30, type: 'square' },   // blip 1
+  { freq: 1760, at: 0.11, dur: 0.07, gain: 0.30, type: 'square' },  // blip 2
+  { freq: 523, at: 0.26, dur: 0.55, gain: 0.42, type: 'triangle' }, // confirm
+  { freq: 659, at: 0.26, dur: 0.55, gain: 0.20, type: 'triangle' }, // confirm 5th (subtle)
+];
 
 let lastPlayed = 0;
 
 /**
- * Play the login chime. Safe to call unconditionally:
+ * Play the sign-on tone. Safe to call unconditionally:
  * - no-ops in silent/vibrate audio mode
  * - no-ops if WebAudio is unavailable or blocked (autoplay policy)
  * - debounced so overlapping auth paths can't double-fire
@@ -38,41 +47,37 @@ export function playStartupSound(): void {
 
     const master = ctx.createGain();
     master.gain.value = 0.22;
-    // Gentle lowpass keeps the sines warm rather than glassy
+    // Lowpass tames square-wave harmonics into the dry console timbre
     const filter = ctx.createBiquadFilter();
     filter.type = 'lowpass';
-    filter.frequency.value = 3200;
+    filter.frequency.value = 2600;
     master.connect(filter);
     filter.connect(ctx.destination);
 
     const t0 = ctx.currentTime + 0.02;
-    NOTES.forEach((freq, i) => {
-      const start = t0 + i * NOTE_SPACING;
+    for (const step of SEQUENCE) {
+      const start = t0 + step.at;
       const osc = ctx.createOscillator();
-      osc.type = 'sine';
-      osc.frequency.value = freq;
-      // Slightly detuned second voice for shimmer
-      const osc2 = ctx.createOscillator();
-      osc2.type = 'sine';
-      osc2.frequency.value = freq * 1.003;
+      osc.type = step.type;
+      osc.frequency.value = step.freq;
 
       const env = ctx.createGain();
       env.gain.setValueAtTime(0, start);
-      env.gain.linearRampToValueAtTime(i === NOTES.length - 1 ? 0.5 : 0.32, start + 0.03);
-      env.gain.exponentialRampToValueAtTime(0.0001, start + NOTE_LENGTH);
+      env.gain.linearRampToValueAtTime(step.gain, start + 0.012);
+      // Blips cut hard; the confirm tone releases slowly
+      const release = step.dur > 0.2 ? step.dur : 0.04;
+      env.gain.setValueAtTime(step.gain, start + step.dur - release * 0.9);
+      env.gain.exponentialRampToValueAtTime(0.0001, start + step.dur);
 
       osc.connect(env);
-      osc2.connect(env);
       env.connect(master);
       osc.start(start);
-      osc2.start(start);
-      osc.stop(start + NOTE_LENGTH + 0.05);
-      osc2.stop(start + NOTE_LENGTH + 0.05);
-    });
+      osc.stop(start + step.dur + 0.05);
+    }
 
     // Free the context once the tail has rung out
-    const total = (NOTES.length * NOTE_SPACING + NOTE_LENGTH + 0.3) * 1000;
-    setTimeout(() => { void ctx.close().catch(() => { /* already closed */ }); }, total);
+    const last = SEQUENCE[SEQUENCE.length - 1];
+    setTimeout(() => { void ctx.close().catch(() => { /* already closed */ }); }, (last.at + last.dur + 0.3) * 1000);
   } catch {
     // Audio is a nicety — never let it break the login flow
   }
