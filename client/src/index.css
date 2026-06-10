@@ -10085,3 +10085,19 @@ td.sparkline-cell {
     grid-template-columns: repeat(2, 1fr) !important;
   }
 }
+
+/* F. Hover-revealed controls on touch devices. ~28 places use
+   `opacity-0 group-hover:opacity-100` (attachment download/delete,
+   email row actions, doc panels, dispatch call actions, ...) which
+   makes those controls UNREACHABLE on phones/tablets — touch has no
+   hover. On coarse pointers, anything that would appear on hover is
+   simply always visible. */
+@media (pointer: coarse) {
+  .group-hover\:opacity-100,
+  .hover\:opacity-100 {
+    opacity: 1 !important;
+  }
+  .group-hover\:visible {
+    visibility: visible !important;
+  }
+}
