@@ -23,6 +23,7 @@ interface PropertyFormModalProps {
 export interface PropertyFormData {
   name: string;
   address: string;
+  address_2: string;
   city: string;
   state: string;
   zip: string;
@@ -72,6 +73,7 @@ export interface PropertyFormData {
 const EMPTY_FORM: PropertyFormData = {
   name: '',
   address: '',
+  address_2: '',
   city: '',
   state: 'UT',
   zip: '',
@@ -165,6 +167,7 @@ export default function PropertyFormModal({
         const initial: PropertyFormData = {
           name: editingProperty.name || '',
           address: editingProperty.address || '',
+          address_2: (editingProperty as any).address_2 || '',
           city: editingProperty.city || '',
           state: editingProperty.state || 'UT',
           zip: editingProperty.zip || '',
@@ -268,7 +271,7 @@ export default function PropertyFormModal({
               onChange={handleChange}
             />
           </FormField>
-          <FormField label="Address" required className="sm:col-span-3">
+          <FormField label="Address" required className="sm:col-span-2">
             <AddressAutocomplete
               name="address"
               required
@@ -276,10 +279,12 @@ export default function PropertyFormModal({
               placeholder="Street address"
               value={form.address}
               onChange={(val) => setForm((prev) => ({ ...prev, address: val }))}
+              fillWith="street"
               onSelect={(addr: ParsedAddress) => {
+                // Street line only — city/state/zip have their own fields.
                 setForm((prev) => ({
                   ...prev,
-                  address: addr.formatted || addr.street,
+                  address: addr.street || addr.formatted,
                   city: addr.city || prev.city,
                   state: addr.state || prev.state,
                   zip: addr.zip || prev.zip,
@@ -287,6 +292,16 @@ export default function PropertyFormModal({
                   longitude: (addr.longitude as any) ?? prev.longitude,
                 }));
               }}
+            />
+          </FormField>
+          <FormField label="Suite / Unit">
+            <input
+              name="address_2"
+              type="text"
+              className="input-dark w-full text-xs"
+              placeholder="Ste 200, Bldg C..."
+              value={form.address_2}
+              onChange={handleChange}
             />
           </FormField>
           <FormField label="City">

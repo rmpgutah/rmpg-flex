@@ -17,6 +17,7 @@ import { formatPhoneInput } from '../utils/formatters';
 import StatuteLookup, { type StatuteResult } from './StatuteLookup';
 import { useDistrictOptions, useDistrictIdentify } from '../hooks/useDistrictLookup';
 import Dropdown from './ui/Dropdown';
+import { composeAddressUnit } from '../utils/addressUnit';
 
 interface IncidentFormModalProps {
   isOpen: boolean;
@@ -497,11 +498,14 @@ export default function IncidentFormModal({
     }
   }, [isOpen, editingIncident, defaultType]);
 
+  const [locationUnit, setLocationUnit] = useState('');
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.incident_type) return;
     onSubmit({
       ...formData,
+      location_address: composeAddressUnit(formData.location_address, locationUnit),
       narrative: buildNarrativeForSubmit(formData),
     });
   };
@@ -645,7 +649,8 @@ export default function IncidentFormModal({
           </div>
 
           {/* Location */}
-          <div>
+          <div className="flex gap-3">
+            <div className="flex-1">
             <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Location / Address</label>
             <AddressAutocomplete
               className="input-dark mt-1"
@@ -670,6 +675,11 @@ export default function IncidentFormModal({
               }}
               required
             />
+            </div>
+            <div className="w-28">
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Apt / Unit</label>
+              <input id="ff-incidentformmodal-locunit" type="text" className="input-dark mt-1 w-full" value={locationUnit} onChange={(e) => setLocationUnit(e.target.value)} placeholder="Apt 4B" />
+            </div>
           </div>
 
           {/* Client & Contract */}

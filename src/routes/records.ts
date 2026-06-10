@@ -35,7 +35,7 @@ records.get('/properties', async (c) => {
 });
 
 const PROPERTY_WRITABLE_COLUMNS = new Set([
-  'name', 'address', 'city', 'state', 'zip', 'client_id', 'property_type',
+  'name', 'address', 'address_2', 'city', 'state', 'zip', 'client_id', 'property_type',
   'gate_code', 'alarm_code', 'emergency_contact', 'post_orders', 'hazard_notes',
   'access_instructions', 'latitude', 'longitude', 'is_active', 'notes',
   'business_type', 'structure_type', 'occupancy_status', 'year_built',

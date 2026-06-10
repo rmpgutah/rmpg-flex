@@ -22,6 +22,7 @@ import { useAddressAutofill } from '../hooks/useAddressAutofill';
 import { parseLocationParts } from '../utils/parseLocationParts';
 import { apiFetch } from '../hooks/useApi';
 import Dropdown from './ui/Dropdown';
+import { composeAddressUnit } from '../utils/addressUnit';
 
 interface NewCallModalProps {
   isOpen: boolean;
@@ -355,6 +356,8 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
 
   if (!isOpen) return null;
 
+  const [callerAddressUnit, setCallerAddressUnit] = useState('');
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isSubmitting) return; // Prevent double-submit
@@ -384,6 +387,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
     try {
       await onSubmit({
         ...formData,
+        caller_address: composeAddressUnit(formData.caller_address, callerAddressUnit),
         num_subjects: formData.num_subjects ? Number(formData.num_subjects) : undefined,
         num_victims: formData.num_victims ? Number(formData.num_victims) : undefined,
         damage_estimate: formData.damage_estimate ? Number(formData.damage_estimate) : undefined,
@@ -759,7 +763,8 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
               </div>
             )}
             {mode === 'full' && (
-              <div>
+              <div className="flex gap-2">
+                <div className="flex-1">
                 <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Caller Address</label>
                 <AddressAutocomplete
                   className="input-dark"
@@ -768,6 +773,11 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
                   onChange={(val) => update('caller_address', val)}
                   onSelect={(addr) => update('caller_address', addr.formatted || addr.street)}
                 />
+                </div>
+                <div className="w-24">
+                  <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Apt</label>
+                  <input id="ff-newcallmodal-callerunit" type="text" className="input-dark" value={callerAddressUnit} onChange={(e) => setCallerAddressUnit(e.target.value)} placeholder="4B" />
+                </div>
               </div>
             )}
           </div>
