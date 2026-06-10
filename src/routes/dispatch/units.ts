@@ -161,7 +161,11 @@ units.put('/:id', async (c) => {
     for (const [k, v] of Object.entries(body)) {
       if (!UNIT_WRITABLE_COLUMNS.has(k)) continue;
       sets.push(`${k} = ?`);
-      params.push(v ?? null);
+      // D1 .bind() throws on arrays/objects. The dispatch edit modal sends
+      // `capabilities` as a raw string[] (the POST handler JSON.stringifies it,
+      // this PUT bound it directly) — so EVERY unit-edit save from the dispatch
+      // modal 500'd. Coerce composites to JSON text, matching the column format.
+      params.push(v == null ? null : (typeof v === 'object' ? JSON.stringify(v) : v));
     }
     if (!sets.length) return c.json({ message: 'No changes' });
     if (typeof body.status === 'string') {
@@ -188,6 +192,14 @@ units.put('/:id', async (c) => {
     console.error('PUT /dispatch/units/:id failed:', err);
     if (err?.message?.includes('CHECK constraint')) {
       return c.json({ error: 'Invalid value for a constrained field (status, etc.)', code: 'CHECK_CONSTRAINT' }, 400);
+    }
+    // units.call_sign is UNIQUE NOT NULL — renaming a unit to an existing call
+    // sign is a user-fixable conflict, not a server error.
+    if (err?.message?.includes('UNIQUE constraint')) {
+      return c.json({ error: 'That call sign is already in use by another unit', code: 'CALL_SIGN_TAKEN' }, 409);
+    }
+    if (err?.message?.includes('FOREIGN KEY constraint')) {
+      return c.json({ error: 'officer_id does not reference a valid user', code: 'INVALID_OFFICER' }, 400);
     }
     if (err?.message?.includes('no such column')) {
       console.error('PUT /dispatch/units/:id column mismatch:', err.message);
