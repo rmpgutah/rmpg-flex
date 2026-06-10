@@ -121,6 +121,7 @@ import serve from './routes/serve';
 
 import settings from './routes/settings';
 import adminSettings from './routes/adminSettings';
+import knowledgeBase from './routes/knowledgeBase';
 import recruitment from './routes/recruitment';
 import reports from './routes/reports';
 import statutes from './routes/statutes';
@@ -388,6 +389,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Multi-jurisdiction data sharing: partners, agreements, exchange logs' },
   { prefix: '/api/jail', router: jail, auth: 'required',
     note: 'Jail management: inmates, charges, visitors, property, medical, disciplinary, transports' },
+  { prefix: '/api/knowledge-base', router: knowledgeBase, auth: 'required',
+    note: 'System-wide unified search across all record types by visible identifier/name' },
   { prefix: '/api/qa', router: qa, auth: 'required',
     note: 'Quality Assurance: reviews, criteria, scores, satisfaction surveys' },
   { prefix: '/api/risk', router: risk, auth: 'required',

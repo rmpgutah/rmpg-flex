@@ -1469,6 +1469,8 @@ const API_ROUTES: RouteRule[] = [
   // present. Route the whole namespaces to env.API.
   { kind: 'prefix', value: '/api/risk' },
   { kind: 'prefix', value: '/api/jail' },
+  // System-wide unified search (rewrite-only handler).
+  { kind: 'prefix', value: '/api/knowledge-base' },
   { kind: 'prefix', value: '/api/qa' },
   { kind: 'prefix', value: '/api/victim-services' },
   // ── Rewrite-only feature namespaces (2026-06-01 audit) ──────────
