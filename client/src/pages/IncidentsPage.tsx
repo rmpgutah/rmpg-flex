@@ -70,6 +70,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import WarrantBadge from '../components/WarrantBadge';
 import NarrativeAssist from '../components/dispatch/NarrativeAssist';
 import { humanizePriority, getStatusTooltip, formatAddressDisplay } from '../utils/statusLabels';
+import ZsbBadge from '../components/ZsbBadge';
 
 // ============================================================
 // Backend -> Frontend mapping
@@ -1523,14 +1524,14 @@ export default function IncidentsPage() {
               <div>
                 <label className="field-label">District:</label>
                 <div className="flex items-center gap-2 mt-0.5">
-                  {inc.dispatch_code && (
-                    <span className="text-[10px] font-bold font-mono text-amber-300 bg-amber-900/30 border border-amber-700/40 px-1.5 py-0.5 tracking-wide">
-                      {inc.dispatch_code}
-                    </span>
-                  )}
-                  <span className="text-sm text-rmpg-200">
-                    {[inc.sector_id, inc.zone_id, inc.beat_id].filter(Boolean).join(' / ')}
-                  </span>
+                  {/* Full Z/S/B composite in the gold chart-code badge — derived
+                      from the geography fields (raw ids like "28.0 / SL1-SSL /
+                      SL1-SSL/A1" are internal keys, not display values). */}
+                  <ZsbBadge
+                    zoneId={inc.zone_id}
+                    beatId={inc.beat_id}
+                    dispatchCode={inc.dispatch_code}
+                  />
                 </div>
               </div>
             )}

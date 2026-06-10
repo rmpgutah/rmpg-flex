@@ -50,6 +50,7 @@ export interface PersonFormData {
   scars_marks_tattoos: string;
   clothing_description: string;
   address: string;
+  address_2: string;
   city: string;
   state: string;
   zip: string;
@@ -144,6 +145,7 @@ const EMPTY_FORM: PersonFormData = {
   scars_marks_tattoos: '',
   clothing_description: '',
   address: '',
+  address_2: '',
   city: '',
   state: '',
   zip: '',
@@ -273,6 +275,7 @@ export default function PersonFormModal({
           scars_marks_tattoos: editingPerson.scars_marks_tattoos || '',
           clothing_description: editingPerson.clothing_description || '',
           address: editingPerson.address || '',
+          address_2: (editingPerson as any).address_2 || '',
           city: editingPerson.city || '',
           state: editingPerson.state || '',
           zip: editingPerson.zip || '',
@@ -880,8 +883,10 @@ export default function PersonFormModal({
       {/* ── CONTACT INFO ── */}
       {activeSection === 'contact' && (
         <>
-          <FormField label="Street Address">
-            <AddressAutocomplete
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+           <div className="sm:col-span-3">
+            <FormField label="Street Address">
+             <AddressAutocomplete
               name="address"
               className="input-dark mt-1"
               placeholder="Street address"
@@ -898,8 +903,20 @@ export default function PersonFormModal({
                   zip: addr.zip || prev.zip,
                 }));
               }}
-            />
-          </FormField>
+             />
+            </FormField>
+           </div>
+           <FormField label="Apt / Unit">
+             <input
+               name="address_2"
+               type="text"
+               className="input-dark mt-1 w-full"
+               placeholder="Apt 4B, Unit 12, #305..."
+               value={form.address_2}
+               onChange={(e) => setForm((prev) => ({ ...prev, address_2: e.target.value }))}
+             />
+           </FormField>
+          </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
            <FormField label="City">
              <AddressAutocomplete

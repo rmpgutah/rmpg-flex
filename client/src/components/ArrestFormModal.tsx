@@ -13,6 +13,7 @@ import AddressAutocomplete from './AddressAutocomplete';
 import { localToday } from '../utils/dateUtils';
 
 import RichTextArea from './RichTextArea';
+import { composeAddressUnit } from '../utils/addressUnit';
 // ── Types ─────────────────────────────────────────────────
 
 export interface ArrestFormData {
@@ -167,6 +168,8 @@ export default function ArrestFormModal({
     setForm(prev => ({ ...prev, [name]: value }));
   };
 
+  const [addressUnit, setAddressUnit] = useState('');
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     // Convert charges textarea (one per line) to JSON array before submitting
@@ -176,6 +179,7 @@ export default function ArrestFormModal({
       .filter(l => l.length > 0);
     onSubmit({
       ...form,
+      address: composeAddressUnit(form.address, addressUnit),
       charges: JSON.stringify(chargeLines),
     });
   };
@@ -347,7 +351,8 @@ export default function ArrestFormModal({
           </div>
 
            {/* Address */}
-           <div>
+           <div className="flex gap-3">
+             <div className="flex-1">
              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Address</label>
              <AddressAutocomplete
                value={form.address}
@@ -356,6 +361,11 @@ export default function ArrestFormModal({
                className="input-dark mt-1 w-full"
                name="address"
              />
+             </div>
+             <div className="w-28">
+               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Apt / Unit</label>
+               <input id="ff-arrestformmodal-addrunit" type="text" className="input-dark mt-1 w-full" value={addressUnit} onChange={e => setAddressUnit(e.target.value)} placeholder="Apt 4B" />
+             </div>
            </div>
         </>
       )}

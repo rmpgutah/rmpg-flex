@@ -8,6 +8,7 @@ import AddressAutocomplete from './AddressAutocomplete';
 import { formatPhoneInput } from '../utils/formatters';
 
 import RichTextArea from './RichTextArea';
+import { composeAddressUnit } from '../utils/addressUnit';
 import {
   VEHICLE_BODY_STYLE_OPTIONS, VEHICLE_COLOR_OPTIONS,
   VEHICLE_FUEL_OPTIONS, VEHICLE_TRANSMISSION_OPTIONS,
@@ -255,6 +256,8 @@ export default function VehicleFormModal({
     }
   };
 
+  const [ownerAddressUnit, setOwnerAddressUnit] = useState('');
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     // Validate year if provided
@@ -264,7 +267,7 @@ export default function VehicleFormModal({
     }
     // Validate VIN length if provided
     if (form.vin && form.vin.length !== 17) return;
-    onSubmit(form);
+    onSubmit({ ...form, owner_address: composeAddressUnit(form.owner_address, ownerAddressUnit) });
   };
 
   return (
@@ -495,14 +498,24 @@ export default function VehicleFormModal({
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 mt-3">
               <FormField label="Owner Address">
-                <AddressAutocomplete
-                  name="owner_address"
-                  className="input-dark mt-1"
-                  placeholder="Owner address"
-                  value={form.owner_address}
-                  onChange={(val) => setForm((prev) => ({ ...prev, owner_address: val }))}
-                  onSelect={(addr) => setForm((prev) => ({ ...prev, owner_address: addr.formatted || addr.street }))}
-                />
+                <div className="flex gap-2">
+                  <div className="flex-1">
+                    <AddressAutocomplete
+                      name="owner_address"
+                      className="input-dark mt-1"
+                      placeholder="Owner address"
+                      value={form.owner_address}
+                      onChange={(val) => setForm((prev) => ({ ...prev, owner_address: val }))}
+                      onSelect={(addr) => setForm((prev) => ({ ...prev, owner_address: addr.formatted || addr.street }))}
+                    />
+                  </div>
+                  <input
+                    id="ff-vehicleformmodal-addrunit" type="text"
+                    className="input-dark mt-1 w-20" value={ownerAddressUnit}
+                    onChange={(e) => setOwnerAddressUnit(e.target.value)}
+                    placeholder="Apt #" aria-label="Owner address apartment or unit"
+                  />
+                </div>
               </FormField>
               <FormField label="Owner Phone">
                 <input name="owner_phone" type="tel" className="input-dark mt-1" value={form.owner_phone} onChange={(e) => setForm(prev => ({ ...prev, owner_phone: formatPhoneInput(e.target.value) }))} placeholder="(801) 555-1234" pattern="[0-9\(\)\-\s+]{7,20}" />
