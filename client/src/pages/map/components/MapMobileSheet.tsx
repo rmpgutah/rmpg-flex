@@ -84,7 +84,7 @@ export default function MapMobileSheet({
                 onClick={() => setMobileSheetTab(id)}
                 role="tab"
                 aria-selected={mobileSheetTab === id}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider transition-all duration-150 active:scale-[0.97]"
+                className="flex flex-1 items-center justify-center gap-1.5 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider whitespace-nowrap transition-all duration-150 active:scale-[0.97]"
                 style={{
                   minHeight: 44,
                   color: mobileSheetTab === id ? color : '#666666',
