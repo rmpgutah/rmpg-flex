@@ -943,7 +943,13 @@ export default function PersonnelPage() {
     try {
       await apiFetch(`/personnel/time/${data.id}`, {
         method: 'PUT',
-        body: JSON.stringify({ clock_in: data.clock_in, clock_out: data.clock_out || null, reason: data.reason }),
+        body: JSON.stringify({
+          clock_in: data.clock_in,
+          clock_out: data.clock_out || null,
+          starting_mileage: data.starting_mileage,
+          ending_mileage: data.ending_mileage,
+          reason: data.reason,
+        }),
       });
       setModal('none');
       setEditingTimeEntry(null);

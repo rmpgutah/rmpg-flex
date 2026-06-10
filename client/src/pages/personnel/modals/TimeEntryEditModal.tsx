@@ -9,6 +9,9 @@ export interface TimeEntryEditData {
   id: string;
   clock_in: string;
   clock_out: string;
+  /** Odometer corrections — null clears the reading, undefined leaves it untouched. */
+  starting_mileage: number | null;
+  ending_mileage: number | null;
   reason: string;
 }
 
@@ -35,9 +38,9 @@ export default function TimeEntryEditModal({
     wasRestored,
     clearDraft,
     snapshot,
-  } = useFormDraft<{ clockIn: string; clockOut: string; reason: string }>({
+  } = useFormDraft<{ clockIn: string; clockOut: string; startMi: string; endMi: string; reason: string }>({
     storageKey: 'rmpg_personnel_time_entry_form',
-    defaultValue: { clockIn: '', clockOut: '', reason: '' },
+    defaultValue: { clockIn: '', clockOut: '', startMi: '', endMi: '', reason: '' },
     isActive: isOpen,
   });
 
@@ -46,10 +49,16 @@ export default function TimeEntryEditModal({
       const initialIn = toLocalInput(entry.clock_in);
       const initialOut = toLocalInput(entry.clock_out);
       // Reason is always re-entered per edit — never carry it over.
-      setForm({ clockIn: initialIn, clockOut: initialOut, reason: '' });
+      setForm({
+        clockIn: initialIn,
+        clockOut: initialOut,
+        startMi: entry.starting_mileage != null ? String(entry.starting_mileage) : '',
+        endMi: entry.ending_mileage != null ? String(entry.ending_mileage) : '',
+        reason: '',
+      });
       snapshot();
     } else if (isOpen) {
-      setForm({ clockIn: '', clockOut: '', reason: '' });
+      setForm({ clockIn: '', clockOut: '', startMi: '', endMi: '', reason: '' });
       snapshot();
     }
   }, [isOpen, entry, setForm, snapshot]);
@@ -64,19 +73,31 @@ export default function TimeEntryEditModal({
     return hrs >= 0 ? hrs : null;
   }, [form.clockIn, form.clockOut]);
 
+  const startMiNum = form.startMi.trim() === '' ? null : Number(form.startMi);
+  const endMiNum = form.endMi.trim() === '' ? null : Number(form.endMi);
+  const mileageInvalid =
+    (form.startMi.trim() !== '' && !Number.isFinite(startMiNum as number)) ||
+    (form.endMi.trim() !== '' && !Number.isFinite(endMiNum as number)) ||
+    (startMiNum != null && endMiNum != null && endMiNum < startMiNum);
+  const calculatedMiles = startMiNum != null && endMiNum != null && endMiNum >= startMiNum
+    ? Math.round((endMiNum - startMiNum) * 10) / 10
+    : null;
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!entry) return;
+    if (!entry || mileageInvalid) return;
     // Inputs are Mountain-Time wall-clock; store as UTC (app standard).
     onSubmit({
       id: entry.id,
       clock_in: mtDatetimeLocalToUtc(form.clockIn),
       clock_out: form.clockOut ? mtDatetimeLocalToUtc(form.clockOut) : form.clockOut,
+      starting_mileage: startMiNum,
+      ending_mileage: endMiNum,
       reason: form.reason.trim(),
     });
   };
 
-  const handleClose = () => { setForm({ clockIn: '', clockOut: '', reason: '' }); onClose(); };
+  const handleClose = () => { setForm({ clockIn: '', clockOut: '', startMi: '', endMi: '', reason: '' }); onClose(); };
 
   return (
     <FormModal
@@ -128,6 +149,40 @@ export default function TimeEntryEditModal({
           />
           {!form.clockOut && <p className="text-[9px] text-amber-400 mt-1">Leave blank if still active</p>}
         </div>
+      </div>
+
+      {/* Vehicle odometer — admin correction of the shift's mileage pair.
+          Server audits each change in time_entry_edits and re-anchors the
+          fleet vehicle's current_mileage when this is its latest reading. */}
+      <div className="panel-inset p-3 space-y-3">
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="field-label">Starting Mileage</label>
+            <input id="ff-timeentryeditmodal-mi-start"
+              type="number" step="0.1" min="0" max="999999"
+              value={form.startMi}
+              onChange={e => setForm(f => ({ ...f, startMi: e.target.value }))}
+              placeholder="e.g. 45230"
+              className="input-dark min-h-[36px]"
+            />
+          </div>
+          <div>
+            <label className="field-label">Ending Mileage</label>
+            <input id="ff-timeentryeditmodal-mi-end"
+              type="number" step="0.1" min="0" max="999999"
+              value={form.endMi}
+              onChange={e => setForm(f => ({ ...f, endMi: e.target.value }))}
+              placeholder="e.g. 45256"
+              className="input-dark min-h-[36px]"
+            />
+          </div>
+        </div>
+        {startMiNum != null && endMiNum != null && endMiNum < startMiNum && (
+          <p className="text-[9px] text-red-400">Ending mileage cannot be less than starting mileage.</p>
+        )}
+        {calculatedMiles != null && (
+          <p className="text-[9px] text-rmpg-400">Total: <span className="text-brand-400 font-mono font-bold">{calculatedMiles.toLocaleString()}</span> mi</p>
+        )}
       </div>
 
       {/* Reason — required. Edits move total_hours → payroll, so every change is

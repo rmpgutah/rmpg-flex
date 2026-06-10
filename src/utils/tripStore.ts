@@ -7,6 +7,7 @@ import { query, queryFirst, execute } from './db';
 import { emitAlert } from './alertHub';
 import { decide, type ActiveTrip, type TripEvent, type EngineCtx } from './tripEngine';
 import { accumulate, type TripAgg, type IncomingFix } from './tripTelemetry';
+import { setFleetOdometer, accrueFleetOdometer } from './fleetOdometer';
 
 type DB = D1Database;
 const iso = (epochMs: number) => new Date(epochMs).toISOString().replace('T', ' ').slice(0, 19);
@@ -52,8 +53,8 @@ export async function applyTripEvent(args: ApplyArgs): Promise<void> {
   if (d.close) {
     // Pull what we need to (a) compute duration + avg_speed at close, and
     // (b) decide whether this trip is detector noise worth discarding.
-    const c = await queryFirst<{ start_time: string | null; speed_sum: number; fix_count: number; trip_type: string; distance_m: number | null }>(
-      db, 'SELECT start_time, speed_sum, fix_count, trip_type, distance_m FROM unit_trips WHERE id = ?', d.close.tripId);
+    const c = await queryFirst<{ start_time: string | null; speed_sum: number; fix_count: number; trip_type: string; distance_m: number | null; vehicle_id: number | null }>(
+      db, 'SELECT start_time, speed_sum, fix_count, trip_type, distance_m, vehicle_id FROM unit_trips WHERE id = ?', d.close.tripId);
     const durS = c ? Math.max(0, Math.round((d.close.endTs - (epoch(c.start_time) ?? d.close.endTs)) / 1000)) : null;
     const avg = c && c.fix_count > 0 ? c.speed_sum / c.fix_count : null;
 
@@ -84,6 +85,11 @@ export async function applyTripEvent(args: ApplyArgs): Promise<void> {
          WHERE id=? AND status='active'`,
         iso(d.close.endTs), d.close.endLat, d.close.endLng, d.close.reason, durS, avg,
         ...(setMileage ? [args.endMileage] : []), d.close.tripId);
+      // Roll the trip's GPS-measured distance onto the fleet odometer. An
+      // explicit end_mileage (a real odometer reading) is authoritative and
+      // re-anchors instead of accruing — see fleetOdometer.ts semantics.
+      if (setMileage) await setFleetOdometer(db, c?.vehicle_id ?? args.vehicleId, args.endMileage);
+      else await accrueFleetOdometer(db, c?.vehicle_id ?? args.vehicleId, c?.distance_m ?? null);
       await broadcastTrip(env, db, d.close.tripId, 'closed');
     }
   }

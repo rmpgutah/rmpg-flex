@@ -4,6 +4,7 @@ import { getDb, query, queryFirst, execute, executeBatch } from '../../utils/db'
 import { emitAlert } from '../../utils/alertHub';
 import { haversineM } from '../../utils/tripTelemetry';
 import { applyTripEvent, type ApplyArgs } from '../../utils/tripStore';
+import { setFleetOdometer } from '../../utils/fleetOdometer';
 import { type IncomingFix } from '../../utils/tripTelemetry';
 import type { TripEvent } from '../../utils/tripEngine';
 
@@ -123,8 +124,8 @@ gps.post('/', async (c) => {
         && (unit.status === 'dispatched' || unit.status === 'enroute')) {
       try {
         const callId = (unit as any).current_call_id as number;
-        const call = await queryFirst<{ id: number; status: string; latitude: number | null; longitude: number | null }>(
-          db, 'SELECT id, status, latitude, longitude FROM calls_for_service WHERE id = ?', callId);
+        const call = await queryFirst<{ id: number; status: string; latitude: number | null; longitude: number | null; starting_mileage: number | null; ending_mileage: number | null }>(
+          db, 'SELECT id, status, latitude, longitude, starting_mileage, ending_mileage FROM calls_for_service WHERE id = ?', callId);
         if (call && ['dispatched', 'enroute', 'onscene'].includes(call.status)) {
           let next: 'enroute' | 'onscene' | null = null;
           if (call.latitude != null && call.longitude != null
@@ -145,6 +146,31 @@ gps.post('/', async (c) => {
                 WHERE id = ? AND status IN ('dispatched','enroute')`,
               next, callId);
             (unit as any).status = next; // echo the fresh status in the response
+
+            // Auto-mileage on arrival: if the officer logged a starting odometer
+            // when they went enroute, derive the on-scene reading from actual
+            // vehicle travel (the active trip's GPS-accumulated distance) so the
+            // call's mileage pair fills in without a manual prompt. Only fills a
+            // BLANK ending_mileage — a manually-entered reading always wins.
+            // The fleet odometer follows the same derived reading.
+            if (next === 'onscene' && call.starting_mileage != null && call.ending_mileage == null) {
+              try {
+                const trip = await queryFirst<{ distance_m: number | null }>(db,
+                  `SELECT distance_m FROM unit_trips WHERE unit_id = ? AND status = 'active'
+                   ORDER BY start_time DESC LIMIT 1`, unitId);
+                const miles = trip?.distance_m != null ? trip.distance_m / 1609.344 : null;
+                if (miles != null && miles >= 0.05) {
+                  const arrivalMi = Math.round((Number(call.starting_mileage) + miles) * 10) / 10;
+                  await execute(db,
+                    `UPDATE calls_for_service SET ending_mileage = ?, updated_at = datetime('now')
+                      WHERE id = ? AND ending_mileage IS NULL`, arrivalMi, callId);
+                  await setFleetOdometer(db, resolvedVehicleId, arrivalMi);
+                }
+              } catch (err) {
+                console.warn('[gps] arrival auto-mileage failed (non-fatal):', err);
+              }
+            }
+
             await emitAlert(c.env, 'dispatch_update', {
               action: 'unit_status_changed',
               unit: { id: unitId, call_sign: callSign, status: next, current_call_id: callId },
