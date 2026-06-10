@@ -29,6 +29,7 @@ export interface OfficerFormData {
   phone: string;
   email: string;
   address: string;
+  address_2: string;
   city: string;
   state: string;
   zip: string;
@@ -74,7 +75,7 @@ const EMPTY: OfficerFormData = {
   username: '', password: '', role: 'officer', full_name: '',
   first_name: '', last_name: '', middle_name: '', date_of_birth: '',
   badge_number: '', rank: '', department: '', hire_date: '', shift_preference: '', employee_id: '',
-  phone: '', email: '', address: '', city: '', state: '', zip: '',
+  phone: '', email: '', address: '', address_2: '', city: '', state: '', zip: '',
   emergency_contact_name: '', emergency_contact_phone: '', emergency_contact_relationship: '',
   blood_type: '', allergies: '', uniform_size: '',
   dl_number: '', dl_state: '', dl_expiry: '',
@@ -254,23 +255,31 @@ export default function OfficerFormModal({
             <input id="ff-officerformmodal-16" type="email" value={form.email} onChange={e => set('email', e.target.value)} placeholder="user@rmpgsecurity.com" pattern="[^\s@]+@[^\s@]+\.[^\s@]{2,}" className="input-dark min-h-[36px]" />
           </div>
         </div>
-        <div>
+        <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+          <div className="sm:col-span-3">
           <label className="field-label">Address</label>
           <AddressAutocomplete
             className="input-dark min-h-[36px]"
             placeholder="Street address"
             value={form.address}
             onChange={(val) => set('address', val)}
+            fillWith="street"
             onSelect={(addr: ParsedAddress) => {
+              // Street line only — city/state/zip live in their own fields.
               setForm((prev) => ({
                 ...prev,
-                address: addr.formatted || addr.street,
+                address: addr.street || addr.formatted,
                 city: addr.city || prev.city,
                 state: addr.state || prev.state,
                 zip: addr.zip || prev.zip,
               }));
             }}
           />
+          </div>
+          <div>
+            <label className="field-label">Apt / Unit</label>
+            <input id="ff-officerformmodal-addr2" type="text" value={form.address_2} onChange={e => set('address_2', e.target.value)} placeholder="Apt 4B" className="input-dark min-h-[36px]" />
+          </div>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
           <div>

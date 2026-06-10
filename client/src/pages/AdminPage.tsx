@@ -404,6 +404,7 @@ export default function AdminPage() {
         termination_date: data.termination_date,
         shift_preference: data.shift_preference,
         address: data.address,
+        address_2: data.address_2,
         city: data.city,
         state: data.state,
         zip: data.zip,

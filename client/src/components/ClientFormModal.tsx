@@ -6,6 +6,7 @@ import AddressAutocomplete from './AddressAutocomplete';
 import { formatPhoneInput } from '../utils/formatters';
 
 import RichTextArea from './RichTextArea';
+import { composeAddressUnit } from '../utils/addressUnit';
 export interface ClientFormData {
   name: string;
   client_code: string;
@@ -197,9 +198,16 @@ export default function ClientFormModal({
   const set = (field: keyof ClientFormData, value: string | boolean) =>
     setForm((prev) => ({ ...prev, [field]: value }));
 
+  const [addressUnit, setAddressUnit] = useState('');
+  const [billingUnit, setBillingUnit] = useState('');
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSubmit(form);
+    onSubmit({
+      ...form,
+      address: composeAddressUnit(form.address, addressUnit),
+      billing_address: composeAddressUnit(form.billing_address, billingUnit),
+    });
   };
 
   const isEdit = !!editingClient;
@@ -308,7 +316,8 @@ export default function ClientFormModal({
           </div>
 
           {/* Address */}
-          <div>
+          <div className="flex gap-3">
+            <div className="flex-1">
             <label className="block text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">
               Address
             </label>
@@ -319,6 +328,11 @@ export default function ClientFormModal({
               onSelect={(addr) => set('address', addr.formatted || addr.street)}
               placeholder="145 S State St, SLC, UT 84111"
             />
+            </div>
+            <div className="w-28">
+              <label className="block text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">Ste / Unit</label>
+              <input id="ff-clientformmodal-addrunit" type="text" className="input-dark text-xs w-full" value={addressUnit} onChange={(e) => setAddressUnit(e.target.value)} placeholder="Ste 200" />
+            </div>
           </div>
 
           {/* Notes */}
@@ -364,7 +378,8 @@ export default function ClientFormModal({
               <label className="block text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">Billing Email</label>
               <input id="ff-clientformmodal-7" type="email" className="input-dark text-xs w-full" value={form.billing_email} onChange={(e) => set('billing_email', e.target.value)} placeholder="billing@gateway.com" pattern="[^\s@]+@[^\s@]+\.[^\s@]{2,}" />
             </div>
-            <div>
+            <div className="flex gap-3">
+              <div className="flex-1">
               <label className="block text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">Billing Address</label>
               <AddressAutocomplete
                 className="input-dark text-xs w-full"
@@ -373,6 +388,11 @@ export default function ClientFormModal({
                 onSelect={(addr) => set('billing_address', addr.formatted || addr.street)}
                 placeholder="Same as above or different"
               />
+              </div>
+              <div className="w-24">
+                <label className="block text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">Ste / Unit</label>
+                <input id="ff-clientformmodal-billunit" type="text" className="input-dark text-xs w-full" value={billingUnit} onChange={(e) => setBillingUnit(e.target.value)} placeholder="Ste 200" />
+              </div>
             </div>
           </div>
 

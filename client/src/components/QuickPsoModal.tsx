@@ -7,6 +7,7 @@ import { useDistrictIdentify } from '../hooks/useDistrictLookup';
 
 import RichTextArea from './RichTextArea';
 import { formatPhoneInput } from '../utils/formatters';
+import { composeAddressUnit } from '../utils/addressUnit';
 interface QuickPsoModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -88,14 +89,18 @@ export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFul
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
+  const [locationUnit, setLocationUnit] = useState('');
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isSubmitting) return;
     setIsSubmitting(true);
     try {
+      const composedLocation = composeAddressUnit(formData.location, locationUnit);
       await onSubmit({
         ...formData,
-        location_address: formData.location,
+        location: composedLocation,
+        location_address: composedLocation,
         status: 'pending',
         assigned_units: [],
         notes: [],
@@ -213,7 +218,8 @@ export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFul
           </div>
 
           {/* Location */}
-          <div>
+          <div className="flex gap-3">
+            <div className="flex-1">
             <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Location / Address *</label>
             <AddressAutocomplete
               className="input-dark"
@@ -237,6 +243,11 @@ export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFul
               }}
               required
             />
+            </div>
+            <div className="w-28">
+              <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Apt / Unit</label>
+              <input id="ff-quickpsomodal-locunit" type="text" className="input-dark" value={locationUnit} onChange={(e) => setLocationUnit(e.target.value)} placeholder="Apt 4B" />
+            </div>
           </div>
 
           {/* Priority */}

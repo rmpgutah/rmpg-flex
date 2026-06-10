@@ -301,14 +301,14 @@ sv.post('/', async (c) => {
     getDb(c.env),
     `INSERT INTO serve_queue (
        call_id, sm_job_id, officer_id, serve_date,
-       recipient_name, recipient_person_id, recipient_address, recipient_city,
+       recipient_name, recipient_person_id, recipient_address, recipient_address_2, recipient_city,
        recipient_state, recipient_zip, recipient_lat, recipient_lng, property_id,
        document_type, case_number, court_name, jurisdiction,
        client_name, attorney_name, priority, time_window, deadline,
        max_attempts, service_instructions, notes, status
-     ) VALUES (?,?,?,?, ?,?,?,?, ?,?,?,?,?, ?,?,?,?, ?,?,?,?,?, ?,?,?,?)`,
+     ) VALUES (?,?,?,?, ?,?,?,?,?, ?,?,?,?,?, ?,?,?,?, ?,?,?,?,?, ?,?,?,?)`,
     body.call_id ?? null, body.sm_job_id ?? null, body.officer_id ?? null, body.serve_date ?? null,
-    body.recipient_name ?? null, body.recipient_person_id ?? null, body.recipient_address ?? null, body.recipient_city ?? null,
+    body.recipient_name ?? null, body.recipient_person_id ?? null, body.recipient_address ?? null, body.recipient_address_2 ?? null, body.recipient_city ?? null,
     body.recipient_state ?? null, body.recipient_zip ?? null, lat, lng, body.property_id ?? null,
     body.document_type ?? null, body.case_number ?? null, body.court_name ?? null, body.jurisdiction ?? null,
     body.client_name ?? null, body.attorney_name ?? null, priority, body.time_window ?? null, body.deadline ?? null,
@@ -348,7 +348,7 @@ sv.put('/:id', async (c) => {
   const body = await c.req.json<any>().catch(() => ({}));
   const allowed = [
     'call_id', 'sm_job_id', 'officer_id', 'serve_date',
-    'recipient_name', 'recipient_person_id', 'recipient_address', 'recipient_city',
+    'recipient_name', 'recipient_person_id', 'recipient_address', 'recipient_address_2', 'recipient_city',
     'recipient_state', 'recipient_zip', 'recipient_lat', 'recipient_lng', 'property_id',
     'document_type', 'case_number', 'court_name', 'jurisdiction',
     'client_name', 'attorney_name', 'priority', 'time_window', 'deadline',

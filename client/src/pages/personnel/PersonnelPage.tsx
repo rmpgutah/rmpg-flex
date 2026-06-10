@@ -798,6 +798,7 @@ export default function PersonnelPage() {
       phone: o.phone || '',
       email: o.email || '',
       address: o.address || '',
+      address_2: (o as any).address_2 || '',
       city: o.city || '',
       state: o.state || '',
       zip: o.zip || '',

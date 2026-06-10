@@ -96,6 +96,10 @@ function mapDbPerson(row: Record<string, unknown>): Person {
     scars_marks_tattoos: row.scars_marks_tattoos ? String(row.scars_marks_tattoos) : undefined,
     clothing_description: row.clothing_description ? String(row.clothing_description) : undefined,
     address: row.address ? String(row.address) : undefined,
+    address_2: row.address_2 ? String(row.address_2) : undefined,
+    // suffix lives in persons_ext (merged by the detail GET); dropping it
+    // here made every edit→save wipe it (modal loaded '', PUT nulled it).
+    suffix: row.suffix ? String(row.suffix) : undefined,
     city: row.city ? String(row.city) : undefined,
     state: row.state ? String(row.state) : undefined,
     zip: row.zip ? String(row.zip) : undefined,
