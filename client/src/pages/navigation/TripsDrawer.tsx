@@ -13,8 +13,9 @@
 import { useMemo, useState } from 'react';
 import {
   Route as RouteIcon, X, Loader2, Radio, ChevronRight, Gauge, Clock, MapPin,
-  TrendingUp, TrendingDown, CornerUpRight, Printer,
+  TrendingUp, TrendingDown, CornerUpRight, Printer, Trash2,
 } from 'lucide-react';
+import { apiFetch } from '../../hooks/useApi';
 import MovementReportDrawer from './MovementReportDrawer';
 import { buildMovementReport, type FixPoint } from './vehicleTelemetry';
 import {
@@ -71,7 +72,7 @@ const HARSH_META = [
 // One trip in the timeline. `active` pins it at the top with a live badge.
 // `showUnit` tags the row with its unit number — used in the agency-wide
 // (no unit assigned) view so each trip says which unit ran it.
-function TripRow({ trip, active, showUnit, onOpen }: { trip: Trip; active: boolean; showUnit?: boolean; onOpen: () => void }) {
+function TripRow({ trip, active, showUnit, onOpen, onDelete }: { trip: Trip; active: boolean; showUnit?: boolean; onOpen: () => void; onDelete?: (trip: Trip) => void }) {
   const isResponse = trip.trip_type === 'call_response';
   const accent = isResponse ? '#d4a017' : '#888888';
   const mi = tripMiles(trip);
@@ -84,9 +85,14 @@ function TripRow({ trip, active, showUnit, onOpen }: { trip: Trip; active: boole
   ];
 
   return (
-    <button
+    // div+role (not <button>) so the DELETE control can nest inside —
+    // nested interactive buttons are invalid HTML and break click handling.
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onOpen}
-      className="w-full text-left bg-surface-raised/40 border px-2 py-1.5 hover:border-brand-600 transition-colors"
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(); } }}
+      className="w-full text-left bg-surface-raised/40 border px-2 py-1.5 hover:border-brand-600 transition-colors cursor-pointer group"
       style={{ borderRadius: 2, borderColor: active ? '#d4a01788' : '#222222' }}
     >
       {/* top line: type badge + active pill + date + chevron */}
@@ -114,6 +120,16 @@ function TripRow({ trip, active, showUnit, onOpen }: { trip: Trip; active: boole
           </span>
         )}
         <span className="text-[8px] font-mono text-rmpg-600 shrink-0 ml-auto">{fmtDateShort(trip.start_time)}</span>
+        {!active && onDelete && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onDelete(trip); }}
+            className="shrink-0 text-rmpg-700 hover:text-red-500 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity"
+            aria-label="Delete false trip record"
+            title="Delete false trip record"
+          >
+            <Trash2 className="w-3 h-3" />
+          </button>
+        )}
         <ChevronRight className="w-3 h-3 text-rmpg-600 shrink-0" />
       </div>
 
@@ -140,7 +156,7 @@ function TripRow({ trip, active, showUnit, onOpen }: { trip: Trip; active: boole
           </span>
         )}
       </div>
-    </button>
+    </div>
   );
 }
 
@@ -149,6 +165,25 @@ export default function TripsDrawer({ unitId, open, onClose }: Props) {
   const { getTrip } = useActiveTripsLive();
   const [selectedTripId, setSelectedTripId] = useState<number | null>(null);
   const [exporting, setExporting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  // Delete a falsely-detected trip. Server enforces who may delete (privileged
+  // roles or the trip's own officer) and audits the removal — the client just
+  // confirms intent and refreshes the chain. 403/409 surface as a brief notice.
+  const handleDelete = async (trip: Trip) => {
+    const label = `${tripLabel(trip)} · ${fmtDateShort(trip.start_time)} ${fmtClock(trip.start_time)} · ${tripMiles(trip).toFixed(1)} mi`;
+    if (!window.confirm(`Delete this trip record as FALSE?\n\n${label}\n\nThis removes it from the trip log (the deletion is audited).`)) return;
+    try {
+      setDeleteError(null);
+      await apiFetch(`/dispatch/trips/${trip.id}`, { method: 'DELETE' });
+      if (selectedTripId === trip.id) setSelectedTripId(null);
+      reload();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to delete trip';
+      setDeleteError(msg);
+      setTimeout(() => setDeleteError(null), 5000);
+    }
+  };
 
   const liveTrip = getTrip(unitId);
 
@@ -281,8 +316,11 @@ export default function TripsDrawer({ unitId, open, onClose }: Props) {
             </button>
           </div>
         )}
+        {deleteError && (
+          <div className="text-[9px] text-red-400 px-2 pb-1 text-center" role="alert">{deleteError}</div>
+        )}
         {timeline.map(({ trip, active }) => (
-          <TripRow key={trip.id} trip={trip} active={active} showUnit={unitId == null} onOpen={() => setSelectedTripId(trip.id)} />
+          <TripRow key={trip.id} trip={trip} active={active} showUnit={unitId == null} onOpen={() => setSelectedTripId(trip.id)} onDelete={handleDelete} />
         ))}
       </div>
     </div>
