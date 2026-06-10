@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { uploadWithProgress } from '../utils/uploadWithProgress';
 import type { UploadProgress } from '../utils/uploadWithProgress';
 import { refreshAccessToken } from '../utils/tokenRefresh';
+import { chimeForApiSuccess } from '../utils/actionChimes';
 
 // ─── Request Timeout ─────────────────────────────────────────
 // Default 60s — generous for flaky cellular but bounded so officers
@@ -238,6 +239,7 @@ export function useApi<T = unknown>(options?: UseApiOptions) {
         }
 
         const data = await res.json();
+        chimeForApiSuccess(method, url);
         setState({ data, error: null, isLoading: false });
         return data;
       } catch (err) {
@@ -357,6 +359,7 @@ export async function apiFetch<T>(
         const errData = await retryRes.json().catch(() => ({}));
         throw new Error(errData.error || errData.message || `Request failed with status ${retryRes.status}`);
       }
+      chimeForApiSuccess(method, url);
       return retryRes.json();
     }
     // No new token — redirect already happened or network error
@@ -385,6 +388,7 @@ export async function apiFetch<T>(
     throw error;
   }
 
+  chimeForApiSuccess(method, url);
   return res.json();
 }
 
@@ -444,6 +448,7 @@ export async function apiUploadFiles(
     throw new Error(errData.error || errData.message || `Upload failed with status ${res.status}`);
   }
 
+  chimeForApiSuccess('POST', '/api/uploads');
   return res.json();
 }
 
