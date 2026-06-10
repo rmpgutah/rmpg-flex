@@ -557,12 +557,12 @@ export function insertEvidenceStamp(editor: Editor, itemNum: string): void {
 }
 export function insertConfidentialBanner(editor: Editor): void {
   editor.chain().focus().insertContentAt(0,
-    `<div data-classification="confidential" style="background:#c93030;color:#fff;text-align:center;padding:4px;font-weight:bold;letter-spacing:3px;">CONFIDENTIAL — LAW ENFORCEMENT SENSITIVE</div>`,
+    `<div data-classification="confidential" style="background:#c93030;color:#fff;text-align:center;padding:4px;font-weight:bold;letter-spacing:3px;">CONFIDENTIAL — RESTRICTED</div>`,
   ).run();
 }
 export function insertLawEnforcementOnlyBanner(editor: Editor): void {
   editor.chain().focus().insertContentAt(0,
-    `<div data-classification="leo" style="background:#000;color:#d4a017;text-align:center;padding:4px;font-weight:bold;letter-spacing:3px;border:1px solid #d4a017;">FOR LAW ENFORCEMENT USE ONLY</div>`,
+    `<div data-classification="leo" style="background:#000;color:#d4a017;text-align:center;padding:4px;font-weight:bold;letter-spacing:3px;border:1px solid #d4a017;">FOR OFFICIAL USE ONLY</div>`,
   ).run();
 }
 export function insertCaseNumberHeader(editor: Editor, caseNum: string): void {

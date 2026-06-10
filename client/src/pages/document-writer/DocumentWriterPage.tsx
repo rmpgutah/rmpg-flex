@@ -20,6 +20,7 @@ import SubscriptExt from '@tiptap/extension-subscript';
 import { FileText, ZoomIn, ZoomOut, X, Sparkles } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { useIsMobile } from '../../hooks/useIsMobile';
+import { apiFetch } from '../../hooks/useApi';
 import PanelTitleBar from '../../components/PanelTitleBar';
 import WriterToolbar from './components/WriterToolbar';
 import TemplateChooser from './components/TemplateChooser';
@@ -187,9 +188,26 @@ export default function DocumentWriterPage() {
     setTheme((t) => { const next = t === 'dark' ? 'light' : 'dark'; localStorage.setItem(THEME_KEY, next); return next; });
   }, []);
 
+  // Admin-configurable letterhead (Admin → Settings → documents). Fetched once;
+  // failure just means templates use the built-in default header.
+  const headerCfgRef = useRef<{ org_name?: string; tagline?: string; address?: string } | null>(null);
+  useEffect(() => {
+    apiFetch<Record<string, unknown>>('/admin/settings/values')
+      .then((v) => {
+        if (!v) return;
+        const pick = (k: string) => (typeof v[k] === 'string' || typeof v[k] === 'number') ? String(v[k]) : undefined;
+        headerCfgRef.current = {
+          org_name: pick('doc_header_org_name'),
+          tagline: pick('doc_header_tagline'),
+          address: pick('doc_header_address'),
+        };
+      })
+      .catch(() => { /* default header */ });
+  }, []);
+
   const handleTemplateSelect = useCallback((template: DocumentTemplate, values: Record<string, string>) => {
     if (!editor) return;
-    editor.commands.setContent(populateTemplate(template, values));
+    editor.commands.setContent(populateTemplate(template, values, headerCfgRef.current));
     setTitle(template.name === 'Blank Document' ? 'Untitled Document' : `${template.name} - ${values.case_number || new Date().toLocaleDateString()}`);
     setMode('edit');
   }, [editor]);
