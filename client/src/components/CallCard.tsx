@@ -12,7 +12,7 @@ import { humanizePriority, getStatusTooltip, formatAddressDisplay } from '../uti
 // them as browser-local and skews every elapsed/age calc by the offset.
 import { parseTimestamp } from '../utils/dateUtils';
 import { callPosture } from '../utils/callThreat';
-import { sectionZoneBeatCombined } from '../utils/dispatchCodeParts';
+import { zsbComposite } from './ZsbBadge';
 import { BADGE_TONES } from './records/recordVisuals';
 
 // Feature 15: Call Source Icons
@@ -352,7 +352,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
             // Full Z/S/B composite ("SL1/SSL/A1") derived from geography fields,
             // falling back to the stored dispatch_code — same presentation as
             // the dispatch detail panel's gold badge.
-            const code = sectionZoneBeatCombined('', call.zone_id, call.beat_id) || call.dispatch_code;
+            const code = zsbComposite({ zoneId: call.zone_id, beatId: call.beat_id, dispatchCode: call.dispatch_code });
             if (!code) return null;
             return (
               <span className="text-[10px] font-bold font-mono text-amber-300 bg-amber-900/30 border border-amber-700/40 px-1 py-0" title={`Sector/Zone/Beat: ${code}`}>
