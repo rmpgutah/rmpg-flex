@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import type { User } from '../types';
 import { resetVoiceState } from '../utils/voiceAlerts';
+import { playStartupSound } from '../utils/startupSound';
 import { refreshAccessToken, onAuthEvent } from '../utils/tokenRefresh';
 
 export type LoginStep =
@@ -502,6 +503,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setIsLoading(false);
         scheduleRefresh(data.token);
         setLoginStep('complete');
+        playStartupSound();
       } else {
         const errData = await res.json().catch(() => ({}));
         if (errData.code === 'MFA_EXPIRED' || errData.code === 'VERIFICATION_SESSION_EXPIRED_PLEASE') {
@@ -575,6 +577,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setIsLoading(false);
         scheduleRefresh(data.token);
         setLoginStep('complete');
+        playStartupSound();
       } else {
         const errData = await verifyRes.json().catch(() => ({}));
         const message = errData.error || 'Security key verification failed';
@@ -669,6 +672,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setIsLoading(false);
         scheduleRefresh(data.token);
         setLoginStep('complete');
+        playStartupSound();
 
         // Trigger offline sync to seed local DB (fire-and-forget)
         if (electron?.triggerSync) {
@@ -710,6 +714,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setToken(mockToken);
         setIsLoading(false);
         setLoginStep('complete');
+        playStartupSound();
         return { requires2FA: false, success: true };
       } else {
         const message = err instanceof Error ? err.message : 'Login failed';
@@ -759,6 +764,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setIsLoading(false);
         scheduleRefresh(data.token);
         setLoginStep('complete');
+        playStartupSound();
       } else {
         const errData = await res.json().catch(() => ({}));
         throw new Error(errData.error || 'Invalid backup code');
@@ -895,6 +901,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setIsLoading(false);
       scheduleRefresh(data.token);
       setLoginStep('complete');
+        playStartupSound();
       setTempToken(null);
       setRequiresPasswordChange(false);
     } catch (err: unknown) {
