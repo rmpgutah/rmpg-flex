@@ -1,11 +1,19 @@
 // Shared HTML fragments + field shortcuts for templates.
 // Keep tight — these are composed into ~150 templates.
 //
+// ── HOUSE STYLE: PLAIN COURT DOCUMENT ──────────────────────────
+// These templates are styled like documents a legal office files with a
+// court: clean white paper, black serif (Times) text, centered plain
+// captions, bold-uppercase section headings, simple horizontal rules.
+// NO branded letterhead bars, NO gold, NO dark fills, NO decorative
+// chrome. If you are tempted to add a colored band or accent, don't —
+// a thin black <hr> or a bold heading is the house vocabulary.
+//
 // ⚠️ ROUND-TRIP RULE — the editor's TipTap schema is LOSSY. Anything not
 // whitelisted below is silently STRIPPED the moment a template is inserted
 // (the first generation of templates leaned on <div> wrappers, per-<td>
-// inline styles and h2 border-bottoms — all of which vanished, which is why
-// documents rendered so plain). Only build templates from:
+// inline styles and h2 border-bottoms — all of which vanished). Only build
+// templates from:
 //   • tables (structure only — td/th chrome comes from writer.css)
 //   • h1–h4 / p with: text-align, line-height, margin-top/bottom,
 //     text-indent, full `border` shorthand, background-color (BlockStyle)
@@ -14,42 +22,50 @@
 //   • <strong>/<em>/<s>, <br>, <hr>, lists, blockquote,
 //     <ul data-type="taskList"> interactive checkboxes
 // NO <div>, NO <u> (Underline ext not registered), NO td styles,
-// NO border-bottom-only (only the full `border` shorthand round-trips).
+// NO border-bottom-only (only the full `border` shorthand round-trips, and
+// it draws a full box — for a rule use <hr>).
 //
 // COLOR RULE — the editor has light + dark page themes and print forces
-// black-on-white. Never use near-black or near-white explicit colors:
-// mid-gray #8a8a8a for labels, gold #d4a017 / #b8860b for accents — those
-// read on every surface. Backgrounds are explicit (survive both themes)
-// but browsers may skip them in print, so every filled element also
-// carries a border that keeps its shape without the fill.
+// black-on-white. Body text is the page's inherited near-black. The ONLY
+// non-inherited color used here is a neutral mid-gray (#6b6b6b) for the
+// small field captions, which reads as plain gray on every surface. No
+// brand accents.
 
 import type { TemplateField } from '../types';
 
-// Citation-form chrome is set in compact sans-serif (the editor body default
-// is Times) — FontFamily spans survive the schema.
-const SANS = 'font-family:Arial, Helvetica, sans-serif;';
+// Court documents are set in Times. The editor body default is already
+// Times, but we set it explicitly on chrome spans so headings/captions
+// stay serif even if a writer changes the body font. FontFamily spans
+// survive the schema.
+const SERIF = 'font-family:"Times New Roman", Times, serif;';
+// Neutral caption gray — the one non-inherited color, print-safe on light
+// and dark pages alike.
+const CAP = '#6b6b6b';
 
 
 // ─── Letterhead ─────────────────────────────────────────────
+// Plain centered identification block + a single thin rule. No band, no
+// gold, no logo — just who filed it, the way a law office header reads.
 export const AGENCY_HEADER = `
-<p style="text-align:center;margin-bottom:2px;"><strong><span style="${SANS}font-size:19px;letter-spacing:0.16em;font-variant:small-caps;">Rocky Mountain Protective Group</span></strong></p>
-<p style="text-align:center;margin-top:0;margin-bottom:1px;"><span style="${SANS}font-size:8.5px;letter-spacing:0.28em;color:#8a8a8a;text-transform:uppercase;">Law Enforcement · Private Security · Process Service</span></p>
-<p style="text-align:center;margin-top:0;margin-bottom:0;"><span style="${SANS}font-size:8.5px;color:#8a8a8a;">Salt Lake City, Utah&nbsp;&nbsp;·&nbsp;&nbsp;rmpgutah.us</span></p>
-<p style="background-color:#d4a017;border:1px solid #d4a017;line-height:0.3;margin-top:7px;margin-bottom:16px;"><span style="${SANS}font-size:6px;color:#d4a017;">&nbsp;</span></p>`;
+<p style="text-align:center;margin-bottom:1px;"><strong><span style="${SERIF}font-size:15px;letter-spacing:0.04em;">ROCKY MOUNTAIN PROTECTIVE GROUP</span></strong></p>
+<p style="text-align:center;margin-top:0;margin-bottom:1px;"><span style="${SERIF}font-size:9.5px;">Law Enforcement &nbsp;·&nbsp; Private Security &nbsp;·&nbsp; Process Service</span></p>
+<p style="text-align:center;margin-top:0;margin-bottom:6px;"><span style="${SERIF}font-size:9.5px;">Salt Lake City, Utah &nbsp;·&nbsp; rmpgutah.us</span></p>
+<hr>`;
 
-export const CONFIDENTIAL = `<p style="text-align:center;margin-top:6px;"><span style="${SANS}font-size:8px;letter-spacing:0.24em;color:#8a8a8a;">CONFIDENTIAL — LAW ENFORCEMENT SENSITIVE — INTERNAL USE ONLY</span></p>`;
+export const CONFIDENTIAL = `<p style="text-align:center;margin-top:6px;"><span style="${SERIF}font-size:9px;color:${CAP};">CONFIDENTIAL — LAW ENFORCEMENT SENSITIVE — INTERNAL USE ONLY</span></p>`;
 
-/** Centered document title. Letter-spaced caps under the letterhead rule. */
+/** Centered document title — bold caps under the letterhead rule, the way a
+ *  pleading caption reads. Followed by a thin rule for separation. */
 export function title(text: string, color?: string): string {
   const c = color ? `color:${color};` : '';
-  return `<h1 style="text-align:center;margin-top:2px;margin-bottom:4px;"><span style="${SANS}font-size:16px;letter-spacing:0.20em;${c}">${text}</span></h1>
-<p style="text-align:center;margin-top:0;margin-bottom:12px;"><span style="${SANS}font-size:8px;letter-spacing:0.30em;color:#8a8a8a;">— OFFICIAL DOCUMENT —</span></p>`;
+  return `<h1 style="text-align:center;margin-top:6px;margin-bottom:4px;"><span style="${SERIF}font-size:16px;letter-spacing:0.04em;${c}">${text}</span></h1>
+<hr>`;
 }
 
-/** Section header — filled bar with a gold tab marker. Prints as a bordered
- *  bar even when the browser skips the background fill. */
+/** Section header — plain bold uppercase heading. No fill, no accent tab;
+ *  just a bold caption with breathing room, court-memo style. */
 export function section(label: string): string {
-  return `<p style="background-color:#252c39;border:1px solid #3c4658;margin-top:16px;margin-bottom:8px;line-height:1.5;"><strong><span style="${SANS}color:#d4a017;font-size:10px;letter-spacing:0.14em;">&nbsp;&nbsp;▌&nbsp;${label}</span></strong></p>`;
+  return `<p style="margin-top:15px;margin-bottom:6px;"><strong><span style="${SERIF}font-size:11.5px;letter-spacing:0.06em;">${label.toUpperCase()}</span></strong></p>`;
 }
 
 // ─── Tables (chrome comes from writer.css — keep cells clean) ───
@@ -63,10 +79,10 @@ export function tbl(rows: string): string {
   return `<table>${rows}</table>`;
 }
 
-/** One label-over-value cell body (the classic police-form field look):
- *  tiny letter-spaced gray caption, bold value beneath it. */
+/** One label-over-value cell body: small gray caption, plain value beneath.
+ *  Mixed-case serif — reads like a filled court form field, not a CAD chip. */
 export function field(label: string, value: string): string {
-  return `<p style="margin-bottom:1px;"><span style="${SANS}font-size:7.5px;letter-spacing:0.10em;color:#8a8a8a;">${label.toUpperCase()}</span></p><p style="margin-top:0;"><strong><span style="${SANS}font-size:11.5px;">${value || '&nbsp;'}</span></strong></p>`;
+  return `<p style="margin-bottom:1px;"><span style="${SERIF}font-size:8px;letter-spacing:0.06em;color:${CAP};">${label.toUpperCase()}</span></p><p style="margin-top:0;"><span style="${SERIF}font-size:11.5px;">${value || '&nbsp;'}</span></p>`;
 }
 
 /** Label-over-value form grid. Pass [label, value] pairs; lays them out
@@ -102,41 +118,44 @@ export function checkRow(options: string[]): string {
 }
 
 // ─── Signature blocks ───────────────────────────────────────
+// A signature line in a court document is a plain rule with the signer's
+// identity beneath. The schema strips border-bottom, so the "line" is the
+// printed underscores; the caption sits under it.
 function sigCell(label: string): string {
-  return `<td><p style="margin-bottom:0;"><span style="${SANS}font-size:7.5px;letter-spacing:0.10em;color:#8a8a8a;">${label.toUpperCase()}</span></p><p style="margin-top:24px;margin-bottom:0;"><span style="${SANS}color:#8a8a8a;">✗</span>&nbsp;</p></td>`;
+  return `<td><p style="margin-top:22px;margin-bottom:0;"><span style="${SERIF}">________________________________</span></p><p style="margin-top:0;"><span style="${SERIF}font-size:8px;letter-spacing:0.06em;color:${CAP};">${label.toUpperCase()}</span></p></td>`;
 }
 
-/** Generic signature row — one boxed signing cell per label. */
+/** Generic signature row — one signing cell per label. */
 export function sigRow(labels: string[]): string {
   return `<table><tr>${labels.map(sigCell).join('')}</tr></table>`;
 }
 
 export const SIG_BLOCK = `
-<p style="margin-top:22px;margin-bottom:0;">&nbsp;</p>
+<p style="margin-top:18px;margin-bottom:0;">&nbsp;</p>
 ${sigRow(['Officer Signature', 'Badge #', 'Date'])}
-<p style="margin-top:0;"><span style="${SANS}font-size:8px;color:#8a8a8a;">I certify the foregoing is true and accurate to the best of my knowledge and belief.</span></p>`;
+<p style="margin-top:2px;"><span style="${SERIF}font-size:9px;color:${CAP};">I certify the foregoing is true and accurate to the best of my knowledge and belief.</span></p>`;
 
 export const DUAL_SIG_BLOCK = `
-<p style="margin-top:22px;margin-bottom:0;">&nbsp;</p>
+<p style="margin-top:18px;margin-bottom:0;">&nbsp;</p>
 ${sigRow(['Officer / Employee Signature', 'Date', 'Supervisor Signature', 'Date'])}`;
 
 /** Notary acknowledgment — for affidavits and sworn statements. */
 export const NOTARY_BLOCK = `
 ${section('NOTARY ACKNOWLEDGMENT')}
-<p><span style="${SANS}font-size:11px;">STATE OF UTAH&nbsp;&nbsp;&nbsp;)<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;: ss.<br>COUNTY OF SALT LAKE&nbsp;)</span></p>
-<p><span style="${SANS}font-size:11px;">Subscribed and sworn to (or affirmed) before me on this ____ day of ______________, 20____, by _________________________________, proved to me on the basis of satisfactory evidence to be the person who appeared before me.</span></p>
+<p><span style="${SERIF}font-size:11px;">STATE OF UTAH&nbsp;&nbsp;&nbsp;)<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;: ss.<br>COUNTY OF SALT LAKE&nbsp;)</span></p>
+<p><span style="${SERIF}font-size:11px;">Subscribed and sworn to (or affirmed) before me on this ____ day of ______________, 20____, by _________________________________, proved to me on the basis of satisfactory evidence to be the person who appeared before me.</span></p>
 ${sigRow(['Notary Public Signature', 'Commission No.', 'My Commission Expires'])}`;
 
 /** Form footer — form number, revision, distribution line. */
 export function footer(formNo: string, distribution = 'ORIGINAL — CASE FILE&nbsp;&nbsp;·&nbsp;&nbsp;COPY — RECORDS'): string {
   return `<hr>
-<p style="text-align:center;margin-top:2px;"><span style="${SANS}font-size:7.5px;letter-spacing:0.08em;color:#8a8a8a;">FORM ${formNo}&nbsp;&nbsp;·&nbsp;&nbsp;REV. 06/2026&nbsp;&nbsp;·&nbsp;&nbsp;${distribution}</span></p>`;
+<p style="text-align:center;margin-top:2px;"><span style="${SERIF}font-size:8px;color:${CAP};">Form ${formNo}&nbsp;&nbsp;·&nbsp;&nbsp;Rev. 06/2026&nbsp;&nbsp;·&nbsp;&nbsp;${distribution}</span></p>`;
 }
 
-/** Statute reference banner. */
+/** Statute reference line — plain italic authority cite, no banner/accent. */
 export function statutes(refs: string[]): string {
   if (!refs.length) return '';
-  return `<p style="border:1px solid #d4a017;background-color:#2b2516;margin-top:4px;margin-bottom:10px;"><span style="${SANS}font-size:9px;color:#d4a017;">&nbsp;&nbsp;⚖&nbsp;&nbsp;UTAH CODE:&nbsp;</span><strong><span style="${SANS}font-size:9px;color:#d4a017;">${refs.join(' &nbsp;·&nbsp; ')}</span></strong></p>`;
+  return `<p style="margin-top:4px;margin-bottom:10px;"><strong><span style="${SERIF}font-size:9.5px;">Authority: </span></strong><em><span style="${SERIF}font-size:9.5px;">Utah Code ${refs.join(' · ')}</span></em></p>`;
 }
 
 // ─── Reusable field-set generators ──────────────────────────
@@ -151,8 +170,9 @@ export function commonFields(extra: TemplateField[] = []): TemplateField[] {
   return [F_CASE, F_INC_DT, F_LOC, F_OFFICER, F_BADGE, ...extra];
 }
 
-/** Header info bar — used by ~80% of templates. Citation-style grid:
- *  dense 3-up top row, full-width location bar beneath. */
+/** Header info bar — used by ~80% of templates. Dense 3-up top row, full-width
+ *  location bar beneath. Auto-populated from CAD/user via {{tokens}} that stay
+ *  inline-editable in the writer. */
 export function caseHeader(): string {
   return `<table><tr><td>${field('Case / Call No.', '{{case_number}}')}</td><td>${field('Incident Date / Time', '{{incident_date}}')}</td><td>${field('Reporting Officer / Badge', '{{reporting_officer}}&nbsp;·&nbsp;#{{badge_number}}')}</td></tr><tr><td colspan="3">${field('Location of Occurrence', '{{location}}')}</td></tr></table>`;
 }
@@ -160,7 +180,7 @@ export function caseHeader(): string {
 /** Narrative section: prompt + ruled writing area. */
 export function narrative(opening?: string): string {
   return section('NARRATIVE') +
-    `<p><em><span style="${SANS}font-size:9px;color:#8a8a8a;">Describe events in chronological order. Include who, what, when, where, why, and how. Identify all parties by full name on first reference.</span></em></p>` +
+    `<p><em><span style="${SERIF}font-size:9.5px;color:${CAP};">Describe events in chronological order. Include who, what, when, where, why, and how. Identify all parties by full name on first reference.</span></em></p>` +
     (opening ? `<p>${opening}</p>` : '') +
     linedArea(6);
 }

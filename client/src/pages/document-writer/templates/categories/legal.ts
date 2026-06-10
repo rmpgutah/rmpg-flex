@@ -1,5 +1,5 @@
 import type { DocumentTemplate } from '../../types';
-import { AGENCY_HEADER, CONFIDENTIAL, title, section, tbl, row2, row1, SIG_BLOCK, DUAL_SIG_BLOCK, statutes, narrative , field, NOTARY_BLOCK,
+import { AGENCY_HEADER, CONFIDENTIAL, title, section, tbl, row2, row1, SIG_BLOCK, DUAL_SIG_BLOCK, statutes, narrative , field, NOTARY_BLOCK, linedArea,
 } from '../_shared';
 
 // 20 legal / court templates.
@@ -24,7 +24,7 @@ export const LEGAL_TEMPLATES: DocumentTemplate[] = [
 <li>This affidavit is made in support of charges against <strong>{{defendant}}</strong> for the offense(s) of <strong>{{offense}}</strong>, RMPG Case #{{case_number}}.</li>
 <li>The facts establishing probable cause are as follows:</li>
 </ol>
-<div style="border-left:3px solid #d4a017;padding-left:12px;min-height:160px;">&nbsp;</div>
+${linedArea(8)}
 <p>Based on the foregoing facts, I have probable cause to believe that <strong>{{defendant}}</strong> committed the offense(s) listed above.</p>
 <p>I declare under criminal penalty of the State of Utah that the foregoing is true and correct.</p>${SIG_BLOCK}${NOTARY_BLOCK}
 <p style="font-size:10px;color:#666;margin-top:20px;">Subscribed and sworn before me this ____ day of ______________, ______.</p>

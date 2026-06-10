@@ -254,6 +254,31 @@ export default function WriterToolbar({
           <option value="">Size</option>
           {FONT_SIZES.map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
+        {/* Line spacing — applies to the selection, or the whole document when
+            nothing is selected. Court-document spacing presets + custom. */}
+        <select className={selCls} title="Line spacing — applies to the selected text, or the whole document if nothing is selected"
+          value=""
+          onChange={(e) => {
+            const v = e.target.value;
+            if (!v) return;
+            let lineHeight: string | null = v;
+            if (v === 'custom') {
+              const ans = window.prompt('Line spacing (e.g. 1, 1.15, 1.5, 2, or 2.4):', '1.5');
+              const n = ans ? parseFloat(ans) : NaN;
+              if (!ans || Number.isNaN(n) || n <= 0) return;
+              lineHeight = String(n);
+            }
+            // Empty/collapsed selection → apply to the whole document.
+            if (editor.state.selection.empty) selectAll(editor);
+            setBlock({ lineHeight });
+          }}>
+          <option value="">Spacing</option>
+          <option value="1">Single</option>
+          <option value="1.15">1.15</option>
+          <option value="1.5">1.5</option>
+          <option value="2">Double</option>
+          <option value="custom">Custom…</option>
+        </select>
 
         {/* Text color (3) + highlight (4) */}
         <label className="p-1 cursor-pointer" title="Text color">
