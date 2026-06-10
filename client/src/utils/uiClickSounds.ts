@@ -11,6 +11,7 @@
 //  - 35ms throttle so double-fired synthetic events tick once
 // ============================================================
 import { getLocalAudioMode } from './audioMode';
+import { playSoundAsset } from './soundAssets';
 
 const TOGGLE_KEY = 'rmpg_ui_click_sounds';
 const THROTTLE_MS = 35;
@@ -42,6 +43,9 @@ export function playUiClick(): void {
     const now = Date.now();
     if (now - lastTick < THROTTLE_MS) return;
     lastTick = now;
+
+    // Sampled console click (actual audio asset); synth below is the fallback
+    if (playSoundAsset('click')) return;
 
     const ac = getCtx();
     if (!ac) return;

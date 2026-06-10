@@ -19,6 +19,7 @@
 //  - 400ms throttle for burst mutations (multi-save loops)
 // ============================================================
 import { getLocalAudioMode } from './audioMode';
+import { playSoundAsset } from './soundAssets';
 
 export type ActionChimeKind = 'submit' | 'update' | 'delete';
 
@@ -85,6 +86,9 @@ export function playActionChime(kind: ActionChimeKind): void {
     const now = Date.now();
     if (now - lastChime < THROTTLE_MS) return;
     lastChime = now;
+
+    // Sampled transaction-ACK (actual audio asset); synth below is the fallback
+    if (playSoundAsset(kind)) return;
 
     const ac = getCtx();
     if (!ac) return;

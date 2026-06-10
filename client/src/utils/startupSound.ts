@@ -8,6 +8,7 @@
 // the per-unit silent-dispatch audio mode.
 // ============================================================
 import { getLocalAudioMode } from './audioMode';
+import { playSoundAsset } from './soundAssets';
 
 /**
  * Tone schedule — Motorola-console-style sign-on acknowledge:
@@ -38,6 +39,9 @@ export function playStartupSound(): void {
     const now = Date.now();
     if (now - lastPlayed < 3000) return;
     lastPlayed = now;
+
+    // Sampled sign-on acknowledge (actual audio asset); synth below is the fallback
+    if (playSoundAsset('login')) return;
 
     const Ctx = window.AudioContext || (window as any).webkitAudioContext;
     if (!Ctx) return;

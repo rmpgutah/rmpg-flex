@@ -1,6 +1,14 @@
 // Tests the gates around the login chime — silent mode and debounce.
 // WebAudio itself can't run in jsdom, so AudioContext is mocked.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+// Force the synth fallback path — the sampled-asset layer is tested
+// separately and would otherwise create its own AudioContext here.
+vi.mock('../soundAssets', () => ({
+  playSoundAsset: vi.fn(() => false),
+  preloadSoundAssets: vi.fn(),
+}));
+
 import { playStartupSound } from '../startupSound';
 
 function mockAudioContext() {
