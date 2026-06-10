@@ -34,7 +34,7 @@ const ON_BEHALF_ROLES = new Set(['admin', 'manager', 'supervisor', 'dispatcher']
 // link is fleet_vehicles.assigned_unit_id → units.id; units.vehicle_id is a
 // denormalized display field. (Verified on live data.)
 interface UnitRow { id: number; call_sign: string; officer_id: number | null; status: string; vehicle_id: string | null; current_call_id: number | null; }
-interface VehicleRow { id: number; vehicle_number: string | null; vehicle_name: string | null; make: string | null; model: string | null; status: string; assigned_unit_id: number | null; is_take_home: number | null; }
+interface VehicleRow { id: number; vehicle_number: string | null; vehicle_name: string | null; make: string | null; model: string | null; status: string; assigned_unit_id: number | null; is_take_home: number | null; current_mileage: number | null; }
 
 // ISO timestamp matching the stored time_entries format ("…+00:00", no millis).
 function nowStamp(): string {
@@ -97,7 +97,7 @@ function openEntry(db: any, officerId: number) {
   return queryFirst<Record<string, any>>(db,
     `SELECT * FROM time_entries WHERE officer_id = ? AND clock_out IS NULL ORDER BY clock_in DESC LIMIT 1`, officerId);
 }
-const VEH_COLS = `id, vehicle_number, vehicle_name, make, model, status, assigned_unit_id, is_take_home`;
+const VEH_COLS = `id, vehicle_number, vehicle_name, make, model, status, assigned_unit_id, is_take_home, current_mileage`;
 function vehicleById(db: any, id: number | null | undefined) {
   return id ? queryFirst<VehicleRow>(db, `SELECT ${VEH_COLS} FROM fleet_vehicles WHERE id = ?`, id) : Promise.resolve(null);
 }
@@ -179,8 +179,15 @@ duty.post('/start', async (c) => {
     const officer = await queryFirst<{ full_name: string }>(db, `SELECT full_name FROM users WHERE id = ?`, officerId);
     const officerName = officer?.full_name ?? null;
 
+    // RESUME guard — a second login (new device, expired session, accidental
+    // OFF→ON bounce) while a shift is already open must NOT force the vehicle
+    // report + odometer ritual again. The open entry IS the shift; we just
+    // re-point the unit/links at it below.
+    const existingEntry = await openEntry(db, officerId);
+    const resuming = !!existingEntry;
+
     // Vehicle resolution: explicit pick → take-home → unit's standing car →
-    // prompt the officer with the available list (the approved "else prompt").
+    // the open entry's vehicle (resume) → prompt the officer with the list.
     let vehicle: VehicleRow | null;
     if (body.vehicle_id != null) {
       vehicle = await vehicleById(db, Number(body.vehicle_id));
@@ -189,22 +196,38 @@ duty.post('/start', async (c) => {
       if (vehicle.assigned_unit_id && vehicle.assigned_unit_id !== unit.id) return c.json({ error: 'That vehicle is already assigned to another unit', code: 'VEHICLE_TAKEN' }, 409);
     } else {
       vehicle = await takeHomeVehicle(db, unit.id) || await currentVehicleForUnit(db, unit.id);
+      if (!vehicle && resuming && existingEntry!.vehicle_id != null) {
+        vehicle = await vehicleById(db, Number(existingEntry!.vehicle_id));
+      }
       if (vehicle && vehicle.status !== 'in_service') vehicle = null;
       if (!vehicle) {
         return c.json({ needs_vehicle: true, code: 'NEEDS_VEHICLE', available_vehicles: await availableVehicles(db, unit.id) }, 409);
       }
     }
 
-    // Starting odometer — required (the modal collects it; the server is the
-    // last line of defense). Look up the vehicle's last known ending mileage
-    // so we can flag obviously-decreasing entries.
+    // Starting odometer. Three accepted shapes:
+    //   provided  → validated against the vehicle's last known reading;
+    //   resuming  → not needed (the open entry already holds the shift's
+    //               starting reading — COALESCE below never overwrites it);
+    //   omitted   → defaults to the fleet odometer, which duty readings +
+    //               GPS trip accruals keep current, so a one-tap "Start
+    //               Shift" / MDT 10-8 needs no manual entry at all.
     const lastEnding = await queryFirst<{ m: number | null }>(db,
       `SELECT ending_mileage AS m FROM time_entries WHERE vehicle_id = ? AND ending_mileage IS NOT NULL ORDER BY clock_out DESC LIMIT 1`, vehicle.id);
-    const startCheck = validateMileage(body.starting_mileage, lastEnding?.m ?? null, typeof body.override_reason === 'string' ? body.override_reason : null);
-    if (!startCheck.ok) {
-      return c.json({ error: startCheck.message, code: startCheck.code, previous_mileage: lastEnding?.m ?? null }, 409);
+    let startingMileage: number | null = null;
+    if (body.starting_mileage != null && body.starting_mileage !== '') {
+      const startCheck = validateMileage(body.starting_mileage, lastEnding?.m ?? null, typeof body.override_reason === 'string' ? body.override_reason : null);
+      if (!startCheck.ok) {
+        return c.json({ error: startCheck.message, code: startCheck.code, previous_mileage: lastEnding?.m ?? null }, 409);
+      }
+      startingMileage = startCheck.value;
+    } else if (!resuming) {
+      const odo = vehicle.current_mileage != null ? Number(vehicle.current_mileage) : null;
+      startingMileage = odo != null && Number.isFinite(odo) && odo > 0 ? Math.round(odo * 10) / 10 : (lastEnding?.m ?? null);
+      if (startingMileage == null) {
+        return c.json({ error: 'No odometer history for this vehicle — enter the starting mileage.', code: 'NEEDS_MILEAGE' }, 409);
+      }
     }
-    const startingMileage = startCheck.value;
 
     // Per-shift QR token — random uuid embedded in the ShiftCard QR. The
     // /m/shift/:token mobile page treats it as the bearer credential for this
@@ -212,7 +235,7 @@ duty.post('/start', async (c) => {
     const qrToken = crypto.randomUUID();
 
     // 1) Clock in — reuse an already-open entry rather than double-punching.
-    let entry = await openEntry(db, officerId);
+    let entry = existingEntry;
     if (!entry) {
       const res = await execute(db,
         `INSERT INTO time_entries (officer_id, clock_in, status, unit_id, vehicle_id, starting_mileage, qr_token, created_at)
@@ -226,8 +249,9 @@ duty.post('/start', async (c) => {
         `UPDATE time_entries SET unit_id = ?, vehicle_id = ?, starting_mileage = COALESCE(starting_mileage, ?), qr_token = ? WHERE id = ?`,
         unit.id, vehicle.id, startingMileage, qrToken, entry.id);
     }
-    // The officer just read the physical odometer — re-anchor the fleet record.
-    await setFleetOdometer(db, vehicle.id, startingMileage);
+    // Re-anchor the fleet record when a reading was taken (or odometer-derived
+    // on a fresh shift). On a resume with no reading there's nothing to anchor.
+    if (startingMileage != null) await setFleetOdometer(db, vehicle.id, startingMileage);
 
     // 2) Unit in service, claimed by this officer, linked to the car
     //    (units.vehicle_id = the denormalized vehicle_NUMBER string).
@@ -261,15 +285,29 @@ duty.post('/end', async (c) => {
     // 1) Clock out the open entry — ending odometer is required.
     const entry = await openEntry(db, officerId);
     if (entry) {
-      // Validate ending mileage against THIS shift's starting reading (not the
-      // vehicle's prior shift) — the officer must end ≥ where they started.
+      // Ending odometer. Provided → validated against THIS shift's starting
+      // reading (officer must end ≥ where they started). Omitted → default to
+      // the fleet odometer (kept current all shift by GPS trip accruals), so a
+      // one-tap "End Shift" / MDT OFF closes the books with travel-derived
+      // mileage instead of failing. Never below the shift's starting reading.
       const startMi: number | null = typeof entry.starting_mileage === 'number' ? entry.starting_mileage : null;
-      const endCheck = validateMileage(body.ending_mileage, startMi, typeof body.override_reason === 'string' ? body.override_reason : null);
-      if (!endCheck.ok) {
-        return c.json({ error: endCheck.message, code: endCheck.code, previous_mileage: startMi, starting_mileage: startMi }, 409);
+      let endingMileage: number | null = null;
+      if (body.ending_mileage != null && body.ending_mileage !== '') {
+        const endCheck = validateMileage(body.ending_mileage, startMi, typeof body.override_reason === 'string' ? body.override_reason : null);
+        if (!endCheck.ok) {
+          return c.json({ error: endCheck.message, code: endCheck.code, previous_mileage: startMi, starting_mileage: startMi }, 409);
+        }
+        endingMileage = endCheck.value;
+      } else {
+        const veh = entry.vehicle_id != null ? await vehicleById(db, Number(entry.vehicle_id)) : null;
+        const odo = veh?.current_mileage != null ? Number(veh.current_mileage) : null;
+        if (odo != null && Number.isFinite(odo) && odo > 0) {
+          endingMileage = Math.round(Math.max(odo, startMi ?? 0) * 10) / 10;
+        } else if (startMi != null) {
+          endingMileage = startMi; // no odometer history — close at 0 miles rather than block
+        }
       }
-      const endingMileage = endCheck.value;
-      const totalMiles = startMi != null ? Math.max(0, Math.round((endingMileage - startMi) * 10) / 10) : null;
+      const totalMiles = startMi != null && endingMileage != null ? Math.max(0, Math.round((endingMileage - startMi) * 10) / 10) : null;
 
       const stamp = nowStamp();
       const hrs = hoursBetween(entry.clock_in, stamp, Number(entry.break_minutes) || 0);
