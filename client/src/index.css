@@ -10012,3 +10012,60 @@ td.sparkline-cell {
 .writer-content .tiptap .is-empty::before { content: attr(data-placeholder); color: #999; pointer-events: none; float: left; height: 0; }
 .writer-content .tiptap .selectedCell { background: rgba(26,115,232,0.1); }
 .writer-content .tiptap .column-resize-handle { position: absolute; right: -2px; top: 0; bottom: 0; width: 4px; background: #1a73e8; cursor: col-resize; }
+
+/* ============================================================
+   MOBILE + TABLET RESPONSIVE SAFETY NET (audit 2026-06)
+   Everything below is scoped to <=1024px so the desktop dense
+   "Spillman" theme (9px headers, py-[2px] tables, F-key toolbars)
+   is 100% untouched. Goal: officers on phones AND iPads get
+   readable, tappable, non-overflowing pages on every route.
+   ============================================================ */
+
+/* A. Replaced-element overflow guard — the #1 cause of app-wide
+   horizontal scroll. Caps stray wide media to the container.
+   The Mapbox/MapLibre canvases set their own pixel size, so they
+   are excluded or the map would be squished. */
+@media (max-width: 1024px) {
+  img:not(.no-shrink),
+  svg:not(.no-shrink):not(.mapboxgl-canvas):not(.maplibregl-canvas),
+  video,
+  canvas:not(.mapboxgl-canvas):not(.maplibregl-canvas),
+  iframe:not(.no-shrink),
+  pre {
+    max-width: 100%;
+  }
+}
+
+/* B. Touch targets for the TABLET band (iPad portrait 768-1024,
+   touch only). Phones (<768) already have a 44px rule elsewhere;
+   this fills the iPad gap that previously had none. min-height
+   only (NOT min-width) so dense icon toolbars don't blow out, and
+   in-table action buttons / opt-outs stay compact. */
+@media (min-width: 768px) and (max-width: 1024px) and (pointer: coarse) {
+  button:not(.no-min-touch):not(td button):not(th button),
+  a[role="button"]:not(.no-min-touch),
+  [role="button"]:not(.no-min-touch),
+  select:not(.no-min-touch),
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not(.no-min-touch) {
+    min-height: 44px;
+  }
+}
+
+/* C. Readable text floor + stop iOS auto-zoom on rotate. The
+   existing rules already bump text-[8px]/[9px]/[10px]; this adds
+   the Tailwind .text-micro token and the size-adjust lock. */
+@media (max-width: 1024px) {
+  html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+  .text-micro { font-size: 12px !important; }
+}
+
+/* D. Modals / dialogs / fixed overlays never exceed the viewport.
+   Many use max-w-[NNNpx] that overflows a phone/narrow iPad. The
+   !important is required to beat the Tailwind max-w utility. */
+@media (max-width: 1024px) {
+  [role="dialog"] > div:first-child,
+  [aria-modal="true"] > div:first-child,
+  .modal-panel {
+    max-width: calc(100vw - 16px) !important;
+  }
+}

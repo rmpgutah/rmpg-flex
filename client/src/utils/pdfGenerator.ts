@@ -1322,8 +1322,14 @@ export function addStackedSignatures(
 
 /**
  * Compact single-line footer: accent bar + form info left, confidential center, page right.
+ * `opts.audienceLabel` overrides the default "INTERNAL USE ONLY" tag for
+ * outward-facing documents (e.g. 'RESPONDENT COPY' on the PSO notice);
+ * pass null to omit the tag entirely.
  */
-export function addPageFooter(doc: jsPDF, pageNum: number, totalPages: number, formKey?: string) {
+export function addPageFooter(
+  doc: jsPDF, pageNum: number, totalPages: number, formKey?: string,
+  opts?: { audienceLabel?: string | null },
+) {
   const brand = activeBranding;
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
@@ -1378,7 +1384,8 @@ export function addPageFooter(doc: jsPDF, pageNum: number, totalPages: number, f
   doc.setFont(PDF_VALUE_FONT, 'bold');
   doc.setFontSize(6);
   doc.setTextColor(...COLOR.TEXT_SECONDARY);
-  const leftParts = [formNum, 'INTERNAL USE ONLY'].filter(Boolean);
+  const audience = opts && 'audienceLabel' in opts ? opts.audienceLabel : 'INTERNAL USE ONLY';
+  const leftParts = [formNum, audience].filter(Boolean) as string[];
   doc.text(leftParts.join('  |  '), SAFE_PRINT_EDGE_SIDE, textY);
 
   doc.setFont('helvetica', 'normal');

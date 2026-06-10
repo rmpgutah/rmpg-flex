@@ -372,6 +372,15 @@ const PatrolPage: React.FC = () => {
         await loadScans();
       } else if (activeTab === 'compliance') {
         await loadCompliance();
+      } else if (activeTab === 'map') {
+        // Map needs both checkpoints + scans to render markers/routes;
+        // without this it inherits whatever the previously-active tab left
+        // in state (often empty on a fresh landing).
+        await Promise.all([loadCheckpoints(), loadScans()]);
+      } else if (activeTab === 'summary') {
+        // Shift Summary tab previously required a manual "Load Summary" click
+        // before any data appeared.
+        await Promise.all([loadShiftSummary(), loadEfficiency()]);
       }
     } catch (err: any) {
       if (!options?.silent) {
@@ -554,12 +563,22 @@ const PatrolPage: React.FC = () => {
     ]),
   ];
 
-  // ── Build a scan-log row context menu (read-only log → copy actions) ──
+  // ── Build a scan-log row context menu ──
+  // Read-only log row, but several useful jumps: hop to the checkpoint on the
+  // Map tab (filtered), open the checkpoint editor, copy coords. The Map tab
+  // auto-loads on entry now, so `?focus=<id>` will land with markers present.
   const buildScanMenu = (scan: Scan): ContextMenuItem[] => [
     m.copy('Copy checkpoint', scan.checkpoint_name),
     m.copy('Copy officer', scan.officer_name),
     m.copy('Copy property', scan.property_name),
+    m.copyCoords(scan.latitude ?? undefined, scan.longitude ?? undefined),
     m.copyId(scan.id),
+    m.separator(),
+    m.action('View on Map', () => setActiveTab('map'), { icon: <MapIcon size={12} /> }),
+    m.action('Edit checkpoint', () => {
+      const cp = checkpoints.find((c) => c.id === scan.checkpoint_id);
+      if (cp) handleEditCheckpoint(cp);
+    }, { icon: <Pencil size={12} />, disabled: !checkpoints.some((c) => c.id === scan.checkpoint_id) }),
   ];
 
   const getStatusColor = (status: string) => {
@@ -804,10 +823,10 @@ const PatrolPage: React.FC = () => {
 
       {/* Feature 1: Route Optimization Results */}
       {optimizedRoute && (
-        <div className="mx-3 mt-2 p-2 bg-gray-900/20 border border-gray-700/50 text-xs text-gray-300">
+        <div className="mx-3 mt-2 panel-beveled bg-surface-raised p-2 text-xs text-rmpg-200">
           <div className="flex items-center justify-between mb-1">
-            <span className="font-bold">Optimized Route — {optimizedRoute.optimized_order?.length || 0} checkpoints, {optimizedRoute.total_distance_km} km total</span>
-            <IconButton onClick={() => setOptimizedRoute(null)} className="text-gray-500 hover:text-gray-300" aria-label="Close optimized route"><X className="w-3 h-3" /></IconButton>
+            <span className="font-bold text-[#d4a017] uppercase tracking-wide text-[10px]">Optimized Route — {optimizedRoute.optimized_order?.length || 0} checkpoints, {optimizedRoute.total_distance_km} km total</span>
+            <IconButton onClick={() => setOptimizedRoute(null)} className="text-rmpg-500 hover:text-rmpg-300" aria-label="Close optimized route"><X className="w-3 h-3" /></IconButton>
           </div>
           <div className="space-y-0.5 text-[10px] max-h-32 overflow-y-auto">
             {optimizedRoute.optimized_order?.map((cp: any, i: number) => (
@@ -823,10 +842,10 @@ const PatrolPage: React.FC = () => {
 
       {/* Feature 2: Patrol Log Panel */}
       {patrolLog && (
-        <div className="mx-3 mt-2 p-2 bg-green-900/20 border border-green-700/50 text-xs text-green-300">
+        <div className="mx-3 mt-2 panel-beveled bg-surface-raised p-2 text-xs text-rmpg-200">
           <div className="flex items-center justify-between mb-1">
-            <span className="font-bold">Patrol Log — {patrolLog.officer_name} ({patrolLog.date})</span>
-            <IconButton onClick={() => setPatrolLog(null)} className="text-green-500 hover:text-green-300" aria-label="Close patrol log"><X className="w-3 h-3" /></IconButton>
+            <span className="font-bold text-[#d4a017] uppercase tracking-wide text-[10px]">Patrol Log — {patrolLog.officer_name} ({patrolLog.date})</span>
+            <IconButton onClick={() => setPatrolLog(null)} className="text-rmpg-500 hover:text-rmpg-300" aria-label="Close patrol log"><X className="w-3 h-3" /></IconButton>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px] mb-2">
             <div><span className="text-rmpg-400">Checkpoints:</span> <span className="text-white">{patrolLog.total_checkpoints_scanned}</span></div>
@@ -849,10 +868,10 @@ const PatrolPage: React.FC = () => {
 
       {/* Feature 6: Exception Report Panel */}
       {exceptions && (
-        <div className="mx-3 mt-2 p-2 bg-amber-900/20 border border-amber-700/50 text-xs text-amber-300">
+        <div className="mx-3 mt-2 panel-beveled bg-surface-raised p-2 text-xs text-rmpg-200">
           <div className="flex items-center justify-between mb-1">
-            <span className="font-bold">Exception Report — {exceptions.period_days} days ({exceptions.late_count} late / {exceptions.total_scans} total = {exceptions.late_rate}% late)</span>
-            <IconButton onClick={() => setExceptions(null)} className="text-amber-500 hover:text-amber-300" aria-label="Close exceptions"><X className="w-3 h-3" /></IconButton>
+            <span className="font-bold text-[#d4a017] uppercase tracking-wide text-[10px]">Exception Report — {exceptions.period_days} days ({exceptions.late_count} late / {exceptions.total_scans} total = {exceptions.late_rate}% late)</span>
+            <IconButton onClick={() => setExceptions(null)} className="text-rmpg-500 hover:text-rmpg-300" aria-label="Close exceptions"><X className="w-3 h-3" /></IconButton>
           </div>
           {exceptions.missed_checkpoints?.length > 0 && (
             <div className="mb-1">
@@ -881,10 +900,10 @@ const PatrolPage: React.FC = () => {
 
       {/* Feature 7: Time Tracking Panel */}
       {timeTracking && (
-        <div className="mx-3 mt-2 p-2 bg-purple-900/20 border border-purple-700/50 text-xs text-purple-300">
+        <div className="mx-3 mt-2 panel-beveled bg-surface-raised p-2 text-xs text-rmpg-200">
           <div className="flex items-center justify-between mb-1">
-            <span className="font-bold">Time Tracking — {timeTracking.date}</span>
-            <IconButton onClick={() => setTimeTracking(null)} className="text-purple-500 hover:text-purple-300" aria-label="Close time tracking"><X className="w-3 h-3" /></IconButton>
+            <span className="font-bold text-[#d4a017] uppercase tracking-wide text-[10px]">Time Tracking — {timeTracking.date}</span>
+            <IconButton onClick={() => setTimeTracking(null)} className="text-rmpg-500 hover:text-rmpg-300" aria-label="Close time tracking"><X className="w-3 h-3" /></IconButton>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px] mb-2">
             <div><span className="text-rmpg-400">Total Patrol:</span> <span className="text-white">{timeTracking.total_patrol_minutes} min</span></div>
@@ -914,7 +933,88 @@ const PatrolPage: React.FC = () => {
           {/* Checkpoints Tab */}
           {activeTab === 'checkpoints' && (
             <div className="panel-beveled overflow-hidden bg-[var(--surface-base)]">
-              <div className={isMobile ? 'overflow-x-auto' : ''}>
+              {isMobile ? (
+                // Mobile card layout: a 6-column table is unusable on a phone
+                // even with overflow-x-auto (constant horizontal scrolling).
+                // Cards put each checkpoint's key info + a tap-revealed action
+                // row on a single touch-sized surface (44pt minimum per row).
+                <div className="space-y-2 p-2">
+                  {checkpoints.map((checkpoint) => (
+                    <div
+                      key={checkpoint.id}
+                      onContextMenu={(e) => openMenu(e, buildCheckpointMenu(checkpoint))}
+                      className="panel-beveled bg-surface-raised p-3"
+                    >
+                      <div className="flex items-start gap-2 mb-2">
+                        <span className={`led-dot mt-1 ${checkpoint.is_active ? 'led-green' : 'led-off'}`} />
+                        <div className="flex-1 min-w-0">
+                          <div className="text-sm font-medium text-white truncate">{checkpoint.name}</div>
+                          <div className="text-[10px] text-rmpg-400 truncate">{checkpoint.property_name}</div>
+                        </div>
+                        <span className={`text-[9px] font-bold uppercase ${checkpoint.is_active ? 'text-green-400' : 'text-rmpg-500'}`}>
+                          {checkpoint.is_active ? 'Active' : 'Inactive'}
+                        </span>
+                      </div>
+                      {checkpoint.description && (
+                        <div className="text-[11px] text-rmpg-200 mb-2 line-clamp-2">{checkpoint.description}</div>
+                      )}
+                      <div className="flex items-center justify-between pt-2 border-t border-rmpg-700/50">
+                        <span className="text-[10px] text-rmpg-400 font-mono">
+                          {checkpoint.scan_required_interval_minutes} min interval
+                        </span>
+                        <div className="flex gap-1">
+                          <IconButton
+                            onClick={() => handleShowQr(checkpoint.qr_code)}
+                            className="text-brand-400 p-2"
+                            title="Show QR Code"
+                            aria-label={`Show QR code for ${checkpoint.name}`}
+                          >
+                            <Eye className="w-4 h-4" />
+                          </IconButton>
+                          {!checkpoint.archived_at ? (
+                            <>
+                              <IconButton
+                                onClick={() => handleEditCheckpoint(checkpoint)}
+                                className="text-amber-400 p-2"
+                                title="Edit"
+                                aria-label={`Edit ${checkpoint.name}`}
+                              >
+                                <Pencil className="w-4 h-4" />
+                              </IconButton>
+                              <IconButton
+                                onClick={() => handleArchiveCheckpoint(checkpoint.id)}
+                                className="text-rmpg-400 p-2"
+                                title="Archive"
+                                aria-label={`Archive ${checkpoint.name}`}
+                              >
+                                <Archive className="w-4 h-4" />
+                              </IconButton>
+                              <IconButton
+                                onClick={() => setDeleteConfirmId(checkpoint.id)}
+                                className="text-red-400 p-2"
+                                title="Delete"
+                                aria-label={`Delete ${checkpoint.name}`}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </IconButton>
+                            </>
+                          ) : (
+                            <IconButton
+                              onClick={() => handleUnarchiveCheckpoint(checkpoint.id)}
+                              className="text-green-400 p-2"
+                              title="Unarchive"
+                              aria-label={`Unarchive ${checkpoint.name}`}
+                            >
+                              <RotateCcw className="w-4 h-4" />
+                            </IconButton>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+              <div>
               <table className="table-dark">
                 <thead>
                   <tr>
@@ -1010,6 +1110,7 @@ const PatrolPage: React.FC = () => {
                 </tbody>
               </table>
               </div>
+              )}
               {checkpoints.length === 0 && (
                 <div className="text-center py-12 text-rmpg-300">
                   No checkpoints found. Create one to get started.
@@ -1089,7 +1190,37 @@ const PatrolPage: React.FC = () => {
               </div>
 
               <div className="panel-beveled overflow-hidden bg-[var(--surface-base)]">
-                <div className={isMobile ? 'overflow-x-auto' : ''}>
+                {isMobile ? (
+                  <div className="space-y-2 p-2">
+                    {scans.map((scan) => (
+                      <div
+                        key={scan.id}
+                        onContextMenu={(e) => openMenu(e, buildScanMenu(scan))}
+                        className="panel-beveled bg-surface-raised p-3"
+                      >
+                        <div className="flex items-center justify-between mb-1">
+                          <div className={`flex items-center gap-2 text-[11px] ${getStatusColor(scan.status)}`}>
+                            {getStatusIcon(scan.status)}
+                            <span className="capitalize font-bold">{scan.status.replace(/_/g, ' ')}</span>
+                          </div>
+                          <span className="text-[10px] text-rmpg-400 font-mono">
+                            {formatDateTime(scan.scanned_at)}
+                          </span>
+                        </div>
+                        <div className="text-sm text-white font-medium truncate">{scan.checkpoint_name}</div>
+                        <div className="text-[10px] text-rmpg-400 flex items-center gap-2 mb-1 truncate">
+                          <span>{scan.property_name}</span>
+                          <span className="text-rmpg-600">·</span>
+                          <span>{scan.officer_name}</span>
+                        </div>
+                        {scan.notes && (
+                          <div className="text-[11px] text-rmpg-200 pt-1 mt-1 border-t border-rmpg-700/50 line-clamp-2">{scan.notes}</div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                <div>
                 <table className="table-dark">
                   <thead>
                     <tr>
@@ -1122,6 +1253,7 @@ const PatrolPage: React.FC = () => {
                   </tbody>
                 </table>
                 </div>
+                )}
                 {scans.length === 0 && (
                   <div className="text-center py-12 text-rmpg-300">
                     No scans found matching the filters.
@@ -1139,14 +1271,14 @@ const PatrolPage: React.FC = () => {
           {/* Feature 11/13/15: Shift Summary Tab */}
           {activeTab === 'summary' && (
             <div className="space-y-4">
-              <div className="flex items-center gap-3 mb-4">
+              <div className="flex flex-wrap items-center gap-2 mb-4">
                 <button type="button" onClick={loadShiftSummary} className="toolbar-btn toolbar-btn-primary print:hidden">
-                  <RefreshCw className="w-3 h-3" /> Load Summary
+                  <RefreshCw className="w-3 h-3" /> {isMobile ? 'Reload' : 'Load Summary'}
                 </button>
                 <button type="button" onClick={loadEfficiency} className="toolbar-btn">
-                  <CheckCircle className="w-3 h-3" /> Efficiency Score
+                  <CheckCircle className="w-3 h-3" /> {isMobile ? 'Efficiency' : 'Efficiency Score'}
                 </button>
-                <div className="ml-auto flex items-center gap-2">
+                <div className={`${isMobile ? 'w-full' : 'ml-auto'} flex items-center gap-2 ${isMobile ? 'justify-end' : ''}`}>
                   {/* Feature 13: Break tracking */}
                   {isOnBreak ? (
                     <button type="button" onClick={endBreak} className="toolbar-btn text-red-400 border-red-700/50">
@@ -1216,15 +1348,15 @@ const PatrolPage: React.FC = () => {
                         <span className="text-rmpg-400">Completion</span>
                         <span className="text-white font-mono">{efficiency.completion_rate}%</span>
                       </div>
-                      <div className="h-2 bg-rmpg-700 rounded-full overflow-hidden">
-                        <div className="h-full bg-brand-500 rounded-full" style={{ width: `${Math.min(efficiency.completion_rate, 100)}%` }} />
+                      <div className="h-2 bg-rmpg-700 overflow-hidden">
+                        <div className="h-full bg-brand-500" style={{ width: `${Math.min(efficiency.completion_rate, 100)}%` }} />
                       </div>
                       <div className="flex justify-between text-xs">
                         <span className="text-rmpg-400">On-Time Rate</span>
                         <span className="text-white font-mono">{efficiency.on_time_rate}%</span>
                       </div>
-                      <div className="h-2 bg-rmpg-700 rounded-full overflow-hidden">
-                        <div className="h-full bg-green-500 rounded-full" style={{ width: `${Math.min(efficiency.on_time_rate, 100)}%` }} />
+                      <div className="h-2 bg-rmpg-700 overflow-hidden">
+                        <div className="h-full bg-green-500" style={{ width: `${Math.min(efficiency.on_time_rate, 100)}%` }} />
                       </div>
                     </div>
                   </div>
@@ -1243,55 +1375,42 @@ const PatrolPage: React.FC = () => {
                 return (
                   <div
                     key={item.checkpoint_id}
-                    className={`panel-beveled p-6 border-2 bg-surface-base ${complianceColor}`}
+                    className={`panel-beveled p-3 border bg-surface-raised ${complianceColor}`}
                   >
-                    <div className="flex items-start justify-between mb-4">
-                      <div>
-                        <h3 className="text-lg font-bold text-white mb-1">
+                    <div className="flex items-start justify-between mb-2">
+                      <div className="min-w-0">
+                        <h3 className="text-xs font-bold text-white uppercase tracking-wide truncate">
                           {item.checkpoint_name}
                         </h3>
-                        <p className="text-sm text-rmpg-300">{item.property_name}</p>
+                        <p className="text-[10px] text-rmpg-400 truncate">{item.property_name}</p>
                       </div>
-                      <div className={`text-2xl font-bold font-mono ${complianceColor}`}>
+                      <div className={`text-xl font-bold font-mono ${complianceColor}`}>
                         {item.compliance_rate}%
                       </div>
                     </div>
 
-                    <div className="space-y-3">
+                    <div className="space-y-1 text-[11px]">
                       <div className="flex items-center justify-between">
-                        <span className="text-sm text-rmpg-300">Scans Today:</span>
-                        <span className="text-white font-medium font-mono">{item.scans_today}</span>
+                        <span className="text-rmpg-400">Scans Today</span>
+                        <span className="text-white font-mono">{item.scans_today}</span>
                       </div>
-
                       <div className="flex items-center justify-between">
-                        <span className="text-sm text-rmpg-300">Last Scan:</span>
-                        <span className="text-white font-medium font-mono">
-                          {formatTimeAgo(item.last_scan_time)}
-                        </span>
+                        <span className="text-rmpg-400">Last Scan</span>
+                        <span className="text-white font-mono">{formatTimeAgo(item.last_scan_time)}</span>
                       </div>
-
                       <div className="flex items-center justify-between">
-                        <span className="text-sm text-rmpg-300">Interval:</span>
-                        <span className="text-white font-medium font-mono">
-                          {item.scan_interval_minutes} min
-                        </span>
+                        <span className="text-rmpg-400">Interval</span>
+                        <span className="text-white font-mono">{item.scan_interval_minutes} min</span>
                       </div>
-
-                      <div className="pt-3 border-t border-rmpg-700">
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm text-rmpg-300">Next Due:</span>
-                          {item.next_scan_due ? (
-                            <span
-                              className={`text-sm font-medium ${
-                                overdue ? 'text-red-400' : 'text-green-400'
-                              }`}
-                            >
-                              {overdue ? 'OVERDUE' : formatTimeAgo(item.next_scan_due)}
-                            </span>
-                          ) : (
-                            <span className="text-sm text-rmpg-400">Not scanned yet</span>
-                          )}
-                        </div>
+                      <div className="pt-2 mt-1 border-t border-rmpg-700 flex items-center justify-between">
+                        <span className="text-rmpg-400">Next Due</span>
+                        {item.next_scan_due ? (
+                          <span className={`font-mono ${overdue ? 'text-red-400' : 'text-green-400'}`}>
+                            {overdue ? 'OVERDUE' : formatTimeAgo(item.next_scan_due)}
+                          </span>
+                        ) : (
+                          <span className="text-rmpg-500">Not scanned yet</span>
+                        )}
                       </div>
                     </div>
                   </div>

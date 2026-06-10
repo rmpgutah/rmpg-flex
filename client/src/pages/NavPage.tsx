@@ -1,8 +1,9 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   Navigation, MapPin, Clock, Route, Car, Play, Square, History,
   Gauge, Footprints, AlertTriangle, CheckCircle, Loader2, RefreshCw,
   Download, FileText, Crosshair, MapPinned, Pin, Trash2, Compass, ExternalLink,
+  Settings, Satellite, WifiOff,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { apiFetch } from '../hooks/useApi';
@@ -12,7 +13,37 @@ import { useAuth } from '../context/AuthContext';
 import PanelTitleBar from '../components/PanelTitleBar';
 import NavMapView, { type DroppedPin } from '../components/NavMapView';
 import { generateNavTripReport, generateNavSingleTripReport } from '../utils/navTripPdf';
+import { trackToGpx, downloadGpx } from '../utils/gpxExport';
+import { sessionToCsv, downloadCsv, type NavSample } from '../utils/navCsvExport';
 import type { NavTrip, NavTripStatus } from '../types';
+import NavSettingsPanel, {
+  type NavPrefs,
+  loadNavPrefs,
+  saveNavPrefs,
+} from './navigation/NavSettingsPanel';
+
+// Export a completed trip's breadcrumb track to GPX 1.1 (mapping / evidence) or
+// CSV (spreadsheets). route_points carry { lat, lng, ts?, speed?, heading? }.
+function tripFileStamp(trip: NavTrip): string {
+  return `${(trip.start_time || '').replace(/[: ]/g, '-').slice(0, 16) || 'trip'}-${trip.id}`;
+}
+function exportTripGpx(trip: NavTrip): void {
+  const pts = Array.isArray(trip.route_points) ? (trip.route_points as any[]) : [];
+  if (pts.length === 0) return;
+  const xml = trackToGpx(
+    pts.map((p) => ({ lat: p.lat, lng: p.lng, t: p.ts, speed: p.speed })),
+    { name: `RMPG Trip ${trip.id}`, unit: trip.unit_call_sign || trip.vehicle_number || undefined },
+  );
+  downloadGpx(`rmpg-trip-${tripFileStamp(trip)}.gpx`, xml);
+}
+function exportTripCsv(trip: NavTrip): void {
+  const pts = Array.isArray(trip.route_points) ? (trip.route_points as any[]) : [];
+  if (pts.length === 0) return;
+  const samples: NavSample[] = pts.map((p) => ({
+    t: p.ts, lat: p.lat, lng: p.lng, speed: p.speed, heading: p.heading,
+  }));
+  downloadCsv(`rmpg-trip-${tripFileStamp(trip)}.csv`, sessionToCsv(samples, 'imperial'));
+}
 
 const STATUS_COLOR: Record<NavTripStatus, string> = {
   pending: '#f59e0b',
@@ -68,6 +99,56 @@ function savePins(pins: DroppedPin[]) {
   try { localStorage.setItem(PIN_STORAGE_KEY, JSON.stringify(pins.slice(-20))); } catch { /* quota */ }
 }
 
+// #90 Reduced-motion / low-power: gate page-level pulse animations.
+function usePrefersReducedMotion(): boolean {
+  const [reduced, setReduced] = useState(() => {
+    try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; }
+  });
+  useEffect(() => {
+    try {
+      const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+      const fn = () => setReduced(mq.matches);
+      mq.addEventListener?.('change', fn);
+      return () => mq.removeEventListener?.('change', fn);
+    } catch { return undefined; }
+  }, []);
+  return reduced;
+}
+
+// #75 Fix-freshness model: tracks the wall-clock age of the last accepted fix
+// plus navigator.onLine, producing a chip status of fresh / stale / offline.
+type FixFreshness = 'fresh' | 'stale' | 'offline';
+
+function useFixFreshness(hasFix: boolean, lat?: number | null, lng?: number | null): FixFreshness {
+  const lastFixRef = useRef<number>(0);
+  const [, force] = useState(0);
+
+  // Mark a new accepted fix whenever the coordinate pair changes.
+  useEffect(() => {
+    if (hasFix && lat != null && lng != null) lastFixRef.current = Date.now();
+  }, [hasFix, lat, lng]);
+
+  // 1s tick drives the staleness re-evaluation (existing force() pattern).
+  useEffect(() => {
+    const id = setInterval(() => force((n) => n + 1), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const online = (() => { try { return navigator.onLine; } catch { return true; } })();
+  const age = lastFixRef.current ? Date.now() - lastFixRef.current : Infinity;
+  if (!online || age > 60_000) return 'offline';
+  if (age > 10_000) return 'stale';
+  return 'fresh';
+}
+
+// #77 ETA helpers — format a remaining-seconds countdown + arrival clock.
+function fmtCountdown(seconds: number): string {
+  if (!isFinite(seconds) || seconds < 0) return '--:--';
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
 export default function NavPage() {
   const isMobile = useIsMobile();
   const { user } = useAuth();
@@ -93,6 +174,35 @@ export default function NavPage() {
   const [loading, setLoading] = useState(false);
   const [droppedPins, setDroppedPins] = useState<DroppedPin[]>(loadPins);
   const dropPinHandlerRef = useRef<((pin: DroppedPin) => void) | null>(null);
+
+  // #71/#81/#84/#93 Persisted nav prefs + settings popover open-state.
+  const [prefs, setPrefs] = useState<NavPrefs>(loadNavPrefs);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const setPref = useCallback(<K extends keyof NavPrefs>(key: K, value: NavPrefs[K]) => {
+    setPrefs((prev) => {
+      const next = { ...prev, [key]: value };
+      saveNavPrefs(next);
+      return next;
+    });
+  }, []);
+
+  // #84 Layer toggles read/write prefs.layers so on/off survives reload.
+  const toggleLayer = useCallback((key: keyof NavPrefs['layers']) => {
+    setPrefs((prev) => {
+      const next = { ...prev, layers: { ...prev.layers, [key]: !prev.layers[key] } };
+      saveNavPrefs(next);
+      return next;
+    });
+  }, []);
+
+  // #90 reduced-motion gate for page-level pulse animations.
+  const reducedMotion = usePrefersReducedMotion();
+  const pulseClass = reducedMotion ? '' : 'animate-pulse';
+
+  // #74/#75 GPS fix presence + freshness. Hooks must run before any early
+  // return, so we read gps optionally here (gps is non-null in practice).
+  const hasFix = !!(gps?.latitude && gps?.longitude);
+  const freshness = useFixFreshness(hasFix, gps?.latitude, gps?.longitude);
 
   useEffect(() => { savePins(droppedPins); }, [droppedPins]);
 
@@ -178,7 +288,23 @@ export default function NavPage() {
   const activeTrip = currentTripLocal || (detection.pendingTripId ? currentTrip : null);
 
   return (
-    <div className="flex flex-col h-full bg-surface-base">
+    <div className="flex flex-col h-full bg-surface-base relative">
+      {/* #76 Brightness/dim overlay for night driving — non-interactive, above
+          map content, below interactive chrome (chrome is z-[1000]+). */}
+      {prefs.brightness < 1 && (
+        <div
+          aria-hidden
+          style={{
+            position: 'absolute',
+            inset: 0,
+            background: '#000',
+            opacity: (1 - prefs.brightness) * 0.6,
+            pointerEvents: 'none',
+            zIndex: 50,
+          }}
+        />
+      )}
+
       <PanelTitleBar
         title="NAVIGATION"
         icon={Navigation}
@@ -207,6 +333,41 @@ export default function NavPage() {
           <span className="text-rmpg-500">GPS ONLY · Set take-home vehicle to log trips</span>
         ) : null}
         <div className="ml-auto flex items-center gap-1.5">
+          {/* #75 Offline / stale-fix status chip */}
+          {(() => {
+            const map = {
+              fresh: { label: 'LIVE', color: '#22c55e', border: '#1a3a1a', Icon: Satellite },
+              stale: { label: 'STALE', color: '#f59e0b', border: '#3a2e0a', Icon: Satellite },
+              offline: { label: 'OFFLINE', color: '#ef4444', border: '#3a1a1a', Icon: WifiOff },
+            } as const;
+            const m = map[freshness];
+            return (
+              <span
+                className="flex items-center gap-1 px-1.5 py-0.5 rounded-sm border"
+                style={{ color: m.color, borderColor: m.border }}
+                title={`GPS fix freshness: ${freshness}`}
+              >
+                <m.Icon size={10} className={freshness === 'fresh' && !reducedMotion ? 'animate-pulse' : ''} /> {m.label}
+              </span>
+            );
+          })()}
+          {/* #81 Gear / settings */}
+          <button
+            type="button"
+            aria-label="Navigation settings"
+            aria-expanded={settingsOpen}
+            onClick={() => setSettingsOpen((o) => !o)}
+            className="flex items-center justify-center rounded-sm border transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#d4a017]"
+            style={{
+              width: 24, height: 22,
+              borderColor: settingsOpen ? '#d4a017' : '#222',
+              color: settingsOpen ? '#d4a017' : '#888',
+              background: settingsOpen ? 'rgba(212,160,23,0.10)' : 'transparent',
+            }}
+            title="Navigation settings"
+          >
+            <Settings size={12} />
+          </button>
           <Link
             to="/navigation"
             className="flex items-center gap-1 px-1.5 py-0.5 rounded-sm border border-subtle hover:border-strong transition-colors"
@@ -244,6 +405,38 @@ export default function NavPage() {
             </button>
           </div>
         )}
+
+        {/* #84 Layer-toggle active-state visual sync — reads/writes prefs.layers
+            so persisted layers reflect correctly after reload (gold-filled =
+            active). These mirror the Drive-Mode layer set on this surface. */}
+        <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+          {([
+            ['crime', 'Crime'],
+            ['crash', 'Crash'],
+            ['trail', 'Trail'],
+            ['alerts', 'Alerts'],
+          ] as const).map(([key, label]) => {
+            const active = prefs.layers[key];
+            return (
+              <button
+                key={key}
+                type="button"
+                aria-pressed={active}
+                aria-label={`Toggle ${label} layer`}
+                onClick={() => toggleLayer(key)}
+                className="px-2 py-0.5 text-[9px] font-mono uppercase tracking-wider rounded-sm border transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[#d4a017]"
+                style={{
+                  minHeight: 22,
+                  borderColor: active ? '#d4a017' : '#222',
+                  background: active ? '#d4a017' : 'transparent',
+                  color: active ? '#000' : '#888',
+                }}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* Tab bar */}
@@ -271,6 +464,8 @@ export default function NavPage() {
             detection={detection}
             gps={gps}
             hasTakeHome={hasTakeHome}
+            prefs={prefs}
+            reducedMotion={reducedMotion}
             onStart={handleManualStart}
             onEnd={handleEndTrip}
             onRefresh={() => fetchCurrentTrip?.()}
@@ -285,6 +480,45 @@ export default function NavPage() {
           />
         )}
       </div>
+
+      {/* #74 Acquiring-GPS / no-fix full-screen empty state — shown until the
+          first fix arrives, distinct from a hard map/track error. */}
+      {!hasFix && (
+        <div
+          className="absolute inset-0 z-[60] flex flex-col items-center justify-center gap-3 px-6 text-center"
+          style={{ background: 'rgba(5,5,5,0.92)', backdropFilter: 'blur(2px)' }}
+        >
+          <Satellite size={36} className={pulseClass} style={{ color: '#d4a017' }} />
+          <div className="text-[13px] font-semibold uppercase tracking-wider" style={{ color: '#d4a017' }}>
+            Acquiring GPS fix…
+          </div>
+          <div className="flex items-center gap-2 text-[10px] font-mono">
+            <span
+              className="px-1.5 py-0.5 rounded-sm border"
+              style={{ color: '#888', borderColor: '#222' }}
+            >
+              {gps.unitCallSign ? 'ON-DUTY GPS' : hasTakeHome ? 'TAKE-HOME GPS' : 'BROWSER GPS'}
+            </span>
+            {gps.accuracy != null && (
+              <span style={{ color: '#888' }}>±{Math.round(gps.accuracy)}m</span>
+            )}
+          </div>
+          <p className="text-[10px] font-mono max-w-xs" style={{ color: '#888' }}>
+            {gps.isTracking
+              ? 'Waiting for the first satellite fix. Stay near a clear sky view.'
+              : 'Enable location services for this device to start tracking.'}
+          </p>
+        </div>
+      )}
+
+      {/* #71/#81 Master settings popover (bottom sheet) */}
+      {settingsOpen && (
+        <NavSettingsPanel
+          prefs={prefs}
+          setPref={setPref}
+          onClose={() => setSettingsOpen(false)}
+        />
+      )}
     </div>
   );
 }
@@ -292,26 +526,45 @@ export default function NavPage() {
 // ── Current Trip Panel ──────────────────────────────────────
 
 function CurrentTripPanel({
-  trip, detection, gps, hasTakeHome, onStart, onEnd, onRefresh,
+  trip, detection, gps, hasTakeHome, prefs, reducedMotion, onStart, onEnd, onRefresh,
 }: {
   trip: NavTrip | null;
   detection: NavTripContextValue['detection'];
   gps: NavTripContextValue['gps'];
   hasTakeHome: boolean;
+  prefs: NavPrefs;
+  reducedMotion: boolean;
   onStart: () => void;
   onEnd: () => void;
   onRefresh: () => void;
 }) {
   const [elapsed, setElapsed] = useState(0);
+  const pulseClass = reducedMotion ? '' : 'animate-pulse';
 
   useEffect(() => {
-    if (!trip || trip.status !== 'active') return;
+    if (!trip || trip.status !== 'active' || !trip.start_time) return;
     const start = new Date(trip.start_time.replace(' ', 'T')).getTime();
     const interval = setInterval(() => {
       setElapsed(Math.round((Date.now() - start) / 1000));
     }, 1000);
     return () => clearInterval(interval);
   }, [trip]);
+
+  // #77 ETA / arrival readout: derive a live MM:SS countdown when the active
+  // trip carries a remaining-ETA estimate, coloring gold→amber→red as it
+  // shrinks, with the arrival clock shown in the user's clock pref.
+  const etaSeconds = (trip as unknown as { remaining_eta_seconds?: number })?.remaining_eta_seconds;
+  const etaView = useMemo(() => {
+    if (etaSeconds == null || !isFinite(etaSeconds)) return null;
+    const arrival = new Date(Date.now() + etaSeconds * 1000);
+    const clock = arrival.toLocaleTimeString([], {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: prefs.clock === '12h',
+    });
+    const color = etaSeconds <= 60 ? '#ef4444' : etaSeconds <= 300 ? '#f59e0b' : '#d4a017';
+    return { countdown: fmtCountdown(etaSeconds), clock, color };
+  }, [etaSeconds, prefs.clock]);
 
   if (trip && (trip.status === 'active' || trip.status === 'pending')) {
     return (
@@ -320,9 +573,9 @@ function CurrentTripPanel({
         <div className="rounded-sm border border-subtle p-3" style={{ background: trip.status === 'active' ? '#0a2a0a' : '#1a1a0a' }}>
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full animate-pulse" style={{ background: STATUS_COLOR[trip.status] }} />
+              <div className={`w-2 h-2 rounded-full ${pulseClass}`} style={{ background: STATUS_COLOR[trip.status] || '#6b7280' }} />
               <span className="text-[11px] font-semibold uppercase" style={{ color: '#d4a017' }}>
-                {STATUS_LABEL[trip.status]} TRIP
+                {STATUS_LABEL[trip.status] || trip.status} TRIP
               </span>
             </div>
             <span className="text-[10px] text-rmpg-500">
@@ -353,12 +606,32 @@ function CurrentTripPanel({
             </div>
           </div>
 
+          {/* #77 ETA / arrival readout — live countdown + late band. Only
+              rendered when the active trip carries a remaining-ETA estimate. */}
+          {etaView && (
+            <div
+              className="flex items-center justify-between mb-3 px-2 py-1.5 rounded-sm border"
+              style={{ borderColor: '#222', background: '#050505' }}
+            >
+              <div className="flex items-center gap-1.5">
+                <Clock size={11} style={{ color: etaView.color }} />
+                <span className="text-[16px] font-mono font-bold tabular-nums" style={{ color: etaView.color }}>
+                  {etaView.countdown}
+                </span>
+                <span className="text-[9px] uppercase" style={{ color: '#888' }}>to arrival</span>
+              </div>
+              <span className="text-[11px] font-mono tabular-nums" style={{ color: '#e0e0e0' }}>
+                ETA {etaView.clock}
+              </span>
+            </div>
+          )}
+
           {/* Trip details */}
           <div className="space-y-1 text-[10px] font-mono">
             <div className="flex justify-between">
               <span className="text-rmpg-500">Start</span>
               <span style={{ color: '#e0e0e0' }}>
-                {trip.start_location || `${trip.start_lat.toFixed(4)}, ${trip.start_lng.toFixed(4)}`}
+                {trip.start_location || (trip.start_lat != null ? `${trip.start_lat.toFixed(4)}, ${trip.start_lng?.toFixed(4) ?? ''}` : '—')}
               </span>
             </div>
             <div className="flex justify-between">
@@ -388,10 +661,11 @@ function CurrentTripPanel({
           </div>
         </div>
 
-        {/* End Trip Button — FAB style */}
+        {/* End Trip Button — FAB style. min-h-[48px] keeps it a confident
+            in-vehicle touch target on tablets/phones. */}
         <button
           onClick={onEnd}
-          className="w-full py-3 rounded-sm text-[12px] font-semibold uppercase tracking-wider flex items-center justify-center gap-2 transition-colors active:scale-[0.98]"
+          className="w-full py-3 max-md:min-h-[48px] rounded-sm text-[12px] font-semibold uppercase tracking-wider flex items-center justify-center gap-2 transition-colors active:scale-[0.98]"
           style={{ background: '#ef4444', color: '#fff' }}
         >
           <Square size={14} /> End Trip
@@ -400,14 +674,14 @@ function CurrentTripPanel({
         <div className="grid grid-cols-2 gap-2">
           <Link
             to="/navigation"
-            className="py-2 rounded-sm text-[10px] font-mono uppercase tracking-wider flex items-center justify-center gap-1.5 transition-colors"
+            className="py-2 max-md:min-h-[44px] rounded-sm text-[10px] font-mono uppercase tracking-wider flex items-center justify-center gap-1.5 transition-colors"
             style={{ background: '#141414', color: '#d4a017', border: '1px solid #222' }}
           >
             <Compass size={11} /> Drive Mode
           </Link>
           <button
             onClick={onRefresh}
-            className="py-2 rounded-sm text-[10px] font-mono uppercase tracking-wider flex items-center justify-center gap-1.5 transition-colors"
+            className="py-2 max-md:min-h-[44px] rounded-sm text-[10px] font-mono uppercase tracking-wider flex items-center justify-center gap-1.5 transition-colors"
             style={{ background: '#141414', color: '#888', border: '1px solid #222' }}
           >
             <RefreshCw size={11} /> Refresh
@@ -476,11 +750,12 @@ function CurrentTripPanel({
         </div>
       </div>
 
-      {/* Start Trip Button — big and prominent, enabled for take-home */}
+      {/* Start Trip Button — big and prominent, enabled for take-home.
+          min-h-[48px] = comfortable in-vehicle touch target. */}
       <button
         onClick={onStart}
         disabled={!gps.latitude || (!gps.unitCallSign && !hasTakeHome)}
-        className="w-full py-3 rounded-sm text-[13px] font-semibold uppercase tracking-wider flex items-center justify-center gap-2 transition-colors active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed"
+        className="w-full py-3 max-md:min-h-[48px] rounded-sm text-[13px] font-semibold uppercase tracking-wider flex items-center justify-center gap-2 transition-colors active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed"
         style={{ background: '#d4a017', color: '#000' }}
       >
         <Play size={16} /> Start Trip Now
@@ -600,12 +875,12 @@ function HistoryPanel({
           >
             <div className="flex items-center justify-between mb-1.5">
               <div className="flex items-center gap-1.5">
-                <div className="w-1.5 h-1.5 rounded-full" style={{ background: STATUS_COLOR[trip.status] }} />
+                <div className="w-1.5 h-1.5 rounded-full" style={{ background: STATUS_COLOR[trip.status] || '#6b7280' }} />
                 <span className="text-[11px] font-semibold" style={{ color: '#e0e0e0' }}>
                   {formatDistance(trip.distance_miles)}
                 </span>
-                <span className="text-[9px] font-mono" style={{ color: STATUS_COLOR[trip.status] }}>
-                  {STATUS_LABEL[trip.status]}
+                <span className="text-[9px] font-mono" style={{ color: STATUS_COLOR[trip.status] || '#6b7280' }}>
+                  {STATUS_LABEL[trip.status] || trip.status}
                 </span>
               </div>
               <span className="text-[9px] text-rmpg-500">{timeAgo(trip.start_time)}</span>
@@ -640,7 +915,7 @@ function HistoryPanel({
             <div className="mt-1 text-[9px] font-mono flex justify-between">
               <span className="text-rmpg-500">Route</span>
               <span style={{ color: '#888' }}>
-                {trip.start_location || `${trip.start_lat.toFixed(4)}, ${trip.start_lng.toFixed(4)}`}
+                {trip.start_location || (trip.start_lat != null ? `${trip.start_lat.toFixed(4)}, ${trip.start_lng?.toFixed(4) ?? ''}` : '—')}
                 {trip.end_lat && ` → ${trip.end_location || `${trip.end_lat.toFixed(4)}, ${trip.end_lng?.toFixed(4)}`}`}
               </span>
             </div>
@@ -655,6 +930,26 @@ function HistoryPanel({
                 >
                   <Download size={9} /> Trip PDF
                 </button>
+                {Array.isArray(trip.route_points) && trip.route_points.length > 0 && (
+                  <>
+                    <button
+                      onClick={() => exportTripGpx(trip)}
+                      className="flex items-center gap-1 text-[9px] font-mono px-1.5 py-0.5 border border-subtle rounded-sm transition-colors hover:border-strong"
+                      style={{ color: '#888' }}
+                      title="Export this trip's GPS track as GPX (for mapping / evidence)"
+                    >
+                      <Download size={9} /> GPX
+                    </button>
+                    <button
+                      onClick={() => exportTripCsv(trip)}
+                      className="flex items-center gap-1 text-[9px] font-mono px-1.5 py-0.5 border border-subtle rounded-sm transition-colors hover:border-strong"
+                      style={{ color: '#888' }}
+                      title="Export this trip's GPS samples as CSV (timestamp, lat, lng, speed, heading)"
+                    >
+                      <Download size={9} /> CSV
+                    </button>
+                  </>
+                )}
               </div>
             )}
           </div>

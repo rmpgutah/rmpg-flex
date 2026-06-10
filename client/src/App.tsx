@@ -65,10 +65,12 @@ const FleetPage = lazyRetry(() => import('./pages/fleet'));
 const WarrantsPage = lazyRetry(() => import('./pages/WarrantsPage'));
 const CitationsPage = lazyRetry(() => import('./pages/CitationsPage'));
 const LawBookPage = lazyRetry(() => import('./pages/LawBookPage'));
+const KnowledgeBasePage = lazyRetry(() => import('./pages/KnowledgeBasePage'));
 const FieldInterviewsPage = lazyRetry(() => import('./pages/FieldInterviewsPage'));
 const TrespassOrdersPage = lazyRetry(() => import('./pages/TrespassOrdersPage'));
 const MdtPage = lazyRetry(() => import('./pages/MdtPage'));
 const MobileHomePage = lazyRetry(() => import('./pages/mobile/MobileHomePage'));
+const FieldCameraPage = lazyRetry(() => import('./pages/mobile/FieldCameraPage'));
 const NavigationPage = lazyRetry(() => import('./pages/NavigationPage'));
 const ShiftPlansPage = lazyRetry(() => import('./pages/ShiftPlansPage'));
 const StatuteAnalyticsPage = lazyRetry(() => import('./pages/StatuteAnalyticsPage'));
@@ -146,6 +148,7 @@ const DocumentWriterPage = lazyRetry(() => import('./pages/document-writer'));
 const ForgotPasswordPage = lazyRetry(() => import('./pages/ForgotPasswordPage'));
 const ReconConnectPage = lazyRetry(() => import('./pages/ReconConnectPage'));
 const ResetPasswordPage = lazyRetry(() => import('./pages/ResetPasswordPage'));
+const MobileShiftPage = lazyRetry(() => import('./pages/MobileShiftPage'));
 
 
 /** Branded loading splash — matches login page design language */
@@ -375,6 +378,9 @@ function AppRoutes() {
           />
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
+          {/* QR-token-authed mobile vehicle inspection. Opened by scanning the
+              per-shift QR on the ShiftCard; the :token IS the credential. */}
+          <Route path="/m/shift/:token" element={<MobileShiftPage />} />
 
           {/* Detached windows — no Layout wrapper */}
           <Route path="/detached/incident/:id" element={<ProtectedRoute><RouteErrorBoundary><IncidentDetailWindow /></RouteErrorBoundary></ProtectedRoute>} />
@@ -419,10 +425,12 @@ function AppRoutes() {
             <Route path="/warrants" element={<RouteErrorBoundary><WarrantsPage /></RouteErrorBoundary>} />
             <Route path="/citations" element={<RouteErrorBoundary><CitationsPage /></RouteErrorBoundary>} />
             <Route path="/law-book" element={<RouteErrorBoundary><LawBookPage /></RouteErrorBoundary>} />
+            <Route path="/knowledge-base" element={<RouteErrorBoundary><KnowledgeBasePage /></RouteErrorBoundary>} />
             <Route path="/field-interviews" element={<RouteErrorBoundary><FieldInterviewsPage /></RouteErrorBoundary>} />
             <Route path="/trespass-orders" element={<RouteErrorBoundary><TrespassOrdersPage /></RouteErrorBoundary>} />
             <Route path="/mdt" element={<RouteErrorBoundary><MdtPage /></RouteErrorBoundary>} />
             <Route path="/mobile" element={<RouteErrorBoundary><MobileHomePage /></RouteErrorBoundary>} />
+            <Route path="/field-camera" element={<RouteErrorBoundary><FieldCameraPage /></RouteErrorBoundary>} />
             <Route path="/shift-plans" element={<RouteErrorBoundary><ShiftPlansPage /></RouteErrorBoundary>} />
             <Route path="/statute-analytics" element={<RouteErrorBoundary><StatuteAnalyticsPage /></RouteErrorBoundary>} />
             <Route path="/reports/custom" element={<RouteErrorBoundary><CustomReportBuilder /></RouteErrorBoundary>} />

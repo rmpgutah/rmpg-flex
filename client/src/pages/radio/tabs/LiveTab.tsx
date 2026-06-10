@@ -91,6 +91,10 @@ export default function LiveTab({ selectedChannelId, onSelectChannel }: Props) {
   // does the real OR/negation parse on the returned set.
   useEffect(() => {
     let alive = true;
+    // Transient poll failures (e.g. one tick racing the 15-min token refresh)
+    // self-heal on the next 5s tick — log once per failure STREAK at warn, not
+    // an error per tick, so the console only flags sustained outages.
+    let failStreak = 0;
     const fetchTx = () => {
       const params = new URLSearchParams();
       if (selectedChannelId != null) params.set('channel_id', String(selectedChannelId));
@@ -100,10 +104,16 @@ export default function LiveTab({ selectedChannelId, onSelectChannel }: Props) {
       apiFetch<RadioTransmission[]>(`/radio/transmissions?${params.toString()}`)
         .then((rows) => {
           if (!alive) return;
+          failStreak = 0;
           setTx(rows);
           notifyOnNewTx(rows);
         })
-        .catch((err) => { console.error('[radio] tx fetch', err); });
+        .catch((err) => {
+          if (!alive) return;
+          failStreak += 1;
+          if (failStreak === 1) console.warn('[radio] tx fetch failed (will retry on the next poll):', err);
+          else if (failStreak === 4) console.error('[radio] tx fetch failing repeatedly:', err);
+        });
     };
     fetchTx();
     const t = setInterval(fetchTx, 5000);

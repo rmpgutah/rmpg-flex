@@ -52,7 +52,7 @@ export default function FindReplacePanel({
   );
 
   return (
-    <div className="absolute top-2 right-2 z-40 w-[340px] bg-[#0d0d0d] border border-[#2e2e2e] rounded-[2px] shadow-2xl shadow-black/60 p-2 space-y-1.5">
+    <div className="absolute top-2 left-2 right-2 sm:left-auto z-40 w-auto sm:w-[340px] max-w-[calc(100vw-1rem)] bg-[#0d0d0d] border border-[#2e2e2e] rounded-[2px] shadow-2xl shadow-black/60 p-2 space-y-1.5">
       <div className="flex items-center gap-1">
         <input
           ref={inputRef} list="rmpg-search-history" value={term} onChange={(e) => setTerm(e.target.value)}

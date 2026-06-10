@@ -22,6 +22,7 @@ import { Hono } from 'hono';
 import type { Env } from '../../types';
 import { getDb, query, queryFirst, execute } from '../../utils/db';
 import { emitAlert } from '../../utils/alertHub';
+import { setFleetOdometer } from '../../utils/fleetOdometer';
 
 const duty = new Hono<Env>();
 
@@ -33,7 +34,7 @@ const ON_BEHALF_ROLES = new Set(['admin', 'manager', 'supervisor', 'dispatcher']
 // link is fleet_vehicles.assigned_unit_id → units.id; units.vehicle_id is a
 // denormalized display field. (Verified on live data.)
 interface UnitRow { id: number; call_sign: string; officer_id: number | null; status: string; vehicle_id: string | null; current_call_id: number | null; }
-interface VehicleRow { id: number; vehicle_number: string | null; vehicle_name: string | null; make: string | null; model: string | null; status: string; assigned_unit_id: number | null; is_take_home: number | null; }
+interface VehicleRow { id: number; vehicle_number: string | null; vehicle_name: string | null; make: string | null; model: string | null; status: string; assigned_unit_id: number | null; is_take_home: number | null; current_mileage: number | null; }
 
 // ISO timestamp matching the stored time_entries format ("…+00:00", no millis).
 function nowStamp(): string {
@@ -44,6 +45,32 @@ function hoursBetween(inIso: string, outIso: string, breakMin = 0): number {
   const b = new Date(outIso).getTime();
   if (!Number.isFinite(a) || !Number.isFinite(b) || b <= a) return 0;
   return Math.round(((b - a) / 3_600_000 - breakMin / 60) * 100) / 100;
+}
+
+// Server-side odometer guardrail. Mirrors MileagePromptModal's policy so a
+// scripted client (or a tampered modal) can't write nonsense to payroll:
+//   - present, finite, > 0
+//   - ≤ 999,999 (the modal's same ceiling — past that is almost certainly a
+//     stray digit, not a real reading)
+//   - if a previous reading is supplied (end-of-shift case), the new value
+//     must be ≥ previous unless the caller passed an override_reason. We
+//     log the reason; the audit row is the time_entry update itself.
+// Returns either the validated number or a 409-shaped error payload that the
+// handler returns directly so the client can route to the modal.
+function validateMileage(raw: unknown, previous: number | null, overrideReason: string | null):
+  | { ok: true; value: number }
+  | { ok: false; code: 'NEEDS_MILEAGE' | 'MILEAGE_TOO_HIGH' | 'MILEAGE_DECREASING'; message: string; previous?: number } {
+  const v = typeof raw === 'number' ? raw : Number(raw);
+  if (!Number.isFinite(v) || v <= 0) {
+    return { ok: false, code: 'NEEDS_MILEAGE', message: 'Odometer reading is required to start/end a shift.' };
+  }
+  if (v > 999_999) {
+    return { ok: false, code: 'MILEAGE_TOO_HIGH', message: `Mileage ${v} exceeds the 999,999 ceiling — likely a typo.` };
+  }
+  if (previous != null && v < previous && !overrideReason) {
+    return { ok: false, code: 'MILEAGE_DECREASING', message: `Reading ${v} is below the last recorded ${previous}. Manager override required.`, previous };
+  }
+  return { ok: true, value: Math.round(v * 10) / 10 };
 }
 
 // Whose shift this request acts on: self by default; another officer only for
@@ -70,7 +97,7 @@ function openEntry(db: any, officerId: number) {
   return queryFirst<Record<string, any>>(db,
     `SELECT * FROM time_entries WHERE officer_id = ? AND clock_out IS NULL ORDER BY clock_in DESC LIMIT 1`, officerId);
 }
-const VEH_COLS = `id, vehicle_number, vehicle_name, make, model, status, assigned_unit_id, is_take_home`;
+const VEH_COLS = `id, vehicle_number, vehicle_name, make, model, status, assigned_unit_id, is_take_home, current_mileage`;
 function vehicleById(db: any, id: number | null | undefined) {
   return id ? queryFirst<VehicleRow>(db, `SELECT ${VEH_COLS} FROM fleet_vehicles WHERE id = ?`, id) : Promise.resolve(null);
 }
@@ -152,8 +179,15 @@ duty.post('/start', async (c) => {
     const officer = await queryFirst<{ full_name: string }>(db, `SELECT full_name FROM users WHERE id = ?`, officerId);
     const officerName = officer?.full_name ?? null;
 
+    // RESUME guard — a second login (new device, expired session, accidental
+    // OFF→ON bounce) while a shift is already open must NOT force the vehicle
+    // report + odometer ritual again. The open entry IS the shift; we just
+    // re-point the unit/links at it below.
+    const existingEntry = await openEntry(db, officerId);
+    const resuming = !!existingEntry;
+
     // Vehicle resolution: explicit pick → take-home → unit's standing car →
-    // prompt the officer with the available list (the approved "else prompt").
+    // the open entry's vehicle (resume) → prompt the officer with the list.
     let vehicle: VehicleRow | null;
     if (body.vehicle_id != null) {
       vehicle = await vehicleById(db, Number(body.vehicle_id));
@@ -162,23 +196,62 @@ duty.post('/start', async (c) => {
       if (vehicle.assigned_unit_id && vehicle.assigned_unit_id !== unit.id) return c.json({ error: 'That vehicle is already assigned to another unit', code: 'VEHICLE_TAKEN' }, 409);
     } else {
       vehicle = await takeHomeVehicle(db, unit.id) || await currentVehicleForUnit(db, unit.id);
+      if (!vehicle && resuming && existingEntry!.vehicle_id != null) {
+        vehicle = await vehicleById(db, Number(existingEntry!.vehicle_id));
+      }
       if (vehicle && vehicle.status !== 'in_service') vehicle = null;
       if (!vehicle) {
         return c.json({ needs_vehicle: true, code: 'NEEDS_VEHICLE', available_vehicles: await availableVehicles(db, unit.id) }, 409);
       }
     }
 
+    // Starting odometer. Three accepted shapes:
+    //   provided  → validated against the vehicle's last known reading;
+    //   resuming  → not needed (the open entry already holds the shift's
+    //               starting reading — COALESCE below never overwrites it);
+    //   omitted   → defaults to the fleet odometer, which duty readings +
+    //               GPS trip accruals keep current, so a one-tap "Start
+    //               Shift" / MDT 10-8 needs no manual entry at all.
+    const lastEnding = await queryFirst<{ m: number | null }>(db,
+      `SELECT ending_mileage AS m FROM time_entries WHERE vehicle_id = ? AND ending_mileage IS NOT NULL ORDER BY clock_out DESC LIMIT 1`, vehicle.id);
+    let startingMileage: number | null = null;
+    if (body.starting_mileage != null && body.starting_mileage !== '') {
+      const startCheck = validateMileage(body.starting_mileage, lastEnding?.m ?? null, typeof body.override_reason === 'string' ? body.override_reason : null);
+      if (!startCheck.ok) {
+        return c.json({ error: startCheck.message, code: startCheck.code, previous_mileage: lastEnding?.m ?? null }, 409);
+      }
+      startingMileage = startCheck.value;
+    } else if (!resuming) {
+      const odo = vehicle.current_mileage != null ? Number(vehicle.current_mileage) : null;
+      startingMileage = odo != null && Number.isFinite(odo) && odo > 0 ? Math.round(odo * 10) / 10 : (lastEnding?.m ?? null);
+      if (startingMileage == null) {
+        return c.json({ error: 'No odometer history for this vehicle — enter the starting mileage.', code: 'NEEDS_MILEAGE' }, 409);
+      }
+    }
+
+    // Per-shift QR token — random uuid embedded in the ShiftCard QR. The
+    // /m/shift/:token mobile page treats it as the bearer credential for this
+    // shift's inspection writes (auto-invalidated when clock_out is set).
+    const qrToken = crypto.randomUUID();
+
     // 1) Clock in — reuse an already-open entry rather than double-punching.
-    let entry = await openEntry(db, officerId);
+    let entry = existingEntry;
     if (!entry) {
       const res = await execute(db,
-        `INSERT INTO time_entries (officer_id, clock_in, status, unit_id, vehicle_id, created_at)
-         VALUES (?, ?, 'active', ?, ?, datetime('now','localtime'))`,
-        officerId, nowStamp(), unit.id, vehicle.id);
+        `INSERT INTO time_entries (officer_id, clock_in, status, unit_id, vehicle_id, starting_mileage, qr_token, created_at)
+         VALUES (?, ?, 'active', ?, ?, ?, ?, datetime('now','localtime'))`,
+        officerId, nowStamp(), unit.id, vehicle.id, startingMileage, qrToken);
       entry = await queryFirst(db, `SELECT * FROM time_entries WHERE id = ?`, Number(res.meta.last_row_id));
     } else {
-      await execute(db, `UPDATE time_entries SET unit_id = ?, vehicle_id = ? WHERE id = ?`, unit.id, vehicle.id, entry.id);
+      // Re-open path: rotate the token so a stale QR from a prior open entry
+      // can't be reused. Same shift, fresh QR for the inspection page.
+      await execute(db,
+        `UPDATE time_entries SET unit_id = ?, vehicle_id = ?, starting_mileage = COALESCE(starting_mileage, ?), qr_token = ? WHERE id = ?`,
+        unit.id, vehicle.id, startingMileage, qrToken, entry.id);
     }
+    // Re-anchor the fleet record when a reading was taken (or odometer-derived
+    // on a fresh shift). On a resume with no reading there's nothing to anchor.
+    if (startingMileage != null) await setFleetOdometer(db, vehicle.id, startingMileage);
 
     // 2) Unit in service, claimed by this officer, linked to the car
     //    (units.vehicle_id = the denormalized vehicle_NUMBER string).
@@ -209,12 +282,40 @@ duty.post('/end', async (c) => {
 
     const unit = body.unit_id != null ? await unitById(db, Number(body.unit_id)) : await officerUnit(db, officerId);
 
-    // 1) Clock out the open entry.
+    // 1) Clock out the open entry — ending odometer is required.
     const entry = await openEntry(db, officerId);
     if (entry) {
+      // Ending odometer. Provided → validated against THIS shift's starting
+      // reading (officer must end ≥ where they started). Omitted → default to
+      // the fleet odometer (kept current all shift by GPS trip accruals), so a
+      // one-tap "End Shift" / MDT OFF closes the books with travel-derived
+      // mileage instead of failing. Never below the shift's starting reading.
+      const startMi: number | null = typeof entry.starting_mileage === 'number' ? entry.starting_mileage : null;
+      let endingMileage: number | null = null;
+      if (body.ending_mileage != null && body.ending_mileage !== '') {
+        const endCheck = validateMileage(body.ending_mileage, startMi, typeof body.override_reason === 'string' ? body.override_reason : null);
+        if (!endCheck.ok) {
+          return c.json({ error: endCheck.message, code: endCheck.code, previous_mileage: startMi, starting_mileage: startMi }, 409);
+        }
+        endingMileage = endCheck.value;
+      } else {
+        const veh = entry.vehicle_id != null ? await vehicleById(db, Number(entry.vehicle_id)) : null;
+        const odo = veh?.current_mileage != null ? Number(veh.current_mileage) : null;
+        if (odo != null && Number.isFinite(odo) && odo > 0) {
+          endingMileage = Math.round(Math.max(odo, startMi ?? 0) * 10) / 10;
+        } else if (startMi != null) {
+          endingMileage = startMi; // no odometer history — close at 0 miles rather than block
+        }
+      }
+      const totalMiles = startMi != null && endingMileage != null ? Math.max(0, Math.round((endingMileage - startMi) * 10) / 10) : null;
+
       const stamp = nowStamp();
       const hrs = hoursBetween(entry.clock_in, stamp, Number(entry.break_minutes) || 0);
-      await execute(db, `UPDATE time_entries SET clock_out = ?, total_hours = ?, status = 'completed' WHERE id = ?`, stamp, hrs, entry.id);
+      await execute(db,
+        `UPDATE time_entries SET clock_out = ?, total_hours = ?, ending_mileage = ?, total_miles = ?, status = 'completed' WHERE id = ?`,
+        stamp, hrs, endingMileage, totalMiles, entry.id);
+      // Shift-end odometer reading is authoritative — sync the fleet vehicle.
+      await setFleetOdometer(db, entry.vehicle_id != null ? Number(entry.vehicle_id) : null, endingMileage);
     }
 
     // 2) Take the unit off duty + release its vehicle back to the pool.

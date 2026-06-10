@@ -474,7 +474,12 @@ reports.get('/dashboard', async (c) => {
       queryFirst<{ n: number }>(db, 'SELECT COUNT(*) AS n FROM units'),
       queryFirst<{ n: number }>(db, "SELECT COUNT(*) AS n FROM incidents WHERE status IN ('draft','submitted','under_review')"),
       queryFirst<{ n: number }>(db, "SELECT COUNT(*) AS n FROM bolos WHERE status = 'active'"),
-      queryFirst<{ avg: number | null }>(db, "SELECT ROUND(AVG(response_time_sec) / 60.0, 1) AS avg FROM calls_for_service WHERE response_time_sec IS NOT NULL AND created_at >= datetime('now','-24 hours')"),
+      // Live column is response_time_seconds (NOT _sec — that typo made this
+      // query throw "no such column", which rejected the whole Promise.all and
+      // served every dashboard tile from the all-zeros catch fallback). The
+      // column is also NULL on all current live rows, so fall back to the
+      // onscene_at − created_at delta when it's missing.
+      queryFirst<{ avg: number | null }>(db, "SELECT ROUND(AVG(COALESCE(response_time_seconds / 60.0, (julianday(onscene_at) - julianday(created_at)) * 1440)), 1) AS avg FROM calls_for_service WHERE (response_time_seconds IS NOT NULL OR onscene_at IS NOT NULL) AND created_at >= datetime('now','-24 hours')"),
       query<{ priority: string; count: number }>(db, "SELECT priority, COUNT(*) AS count FROM calls_for_service WHERE status NOT IN ('cleared','closed','cancelled') GROUP BY priority"),
       query<{ status: string; count: number }>(db, "SELECT status, COUNT(*) AS count FROM calls_for_service GROUP BY status"),
       query<{ hour: string; count: number }>(db, "SELECT strftime('%H', created_at) AS hour, COUNT(*) AS count FROM calls_for_service WHERE created_at >= datetime('now','-24 hours') GROUP BY hour ORDER BY hour"),
@@ -499,6 +504,193 @@ reports.get('/dashboard', async (c) => {
   } catch (err) {
     console.error('[reports] GET /dashboard failed:', err);
     return c.json({ activeCalls: 0, todayCalls: 0, unitsOnDuty: 0, totalUnits: 0, pendingReports: 0, activeBolos: 0, unreadMessages: 0, avgResponseMinutes: null, callsByPriority: [], callsByStatus: [], recentActivity: [], officersOnDuty: [], callsByHour: [] });
+  }
+});
+
+// ────────────────────────────────────────────────────────────
+// GET /api/reports/crime-analysis — ILP dashboard (CrimeAnalysisPage)
+//
+// The page shipped fully built but the endpoint was only ever a proxy STUB
+// ("no crime-analysis report yet") whose flat shape didn't match the client
+// contract, so /crime-analysis rendered a permanent "No data available".
+// This is the real handler. Client contract (see CrimeAnalysisPage.tsx):
+//   { data: { topOffenses[], hotspots[], dayOfWeek[], timeOfDay[],
+//             trendData[], clearanceRate{rate}, responseMetrics[],
+//             repeatOffenders[] } }
+//
+// Window: ?days=N (clamped 1–365, default 90) or ?start_date&end_date
+// (YYYY-MM-DD). Everything filters calls_for_service.created_at.
+//
+// Live-schema notes (verified on D1 785de7ae 2026-06-09):
+//   • response_time_seconds is NULL on all rows → derive minutes from
+//     onscene_at − created_at when missing.
+//   • "cleared" = non-empty disposition (free-text codes: RTF, PS Served…).
+//   • priority values are P1–P4 → map to the client's
+//     critical/high/normal/low target buckets.
+// ────────────────────────────────────────────────────────────
+
+/** Build the created_at WHERE clause + binds from ?days / ?start_date&end_date. */
+function crimeWindow(c: { req: { query: (k: string) => string | undefined } }): { where: string; binds: string[] } {
+  const start = c.req.query('start_date');
+  const end = c.req.query('end_date');
+  if (start && end && /^\d{4}-\d{2}-\d{2}$/.test(start) && /^\d{4}-\d{2}-\d{2}$/.test(end)) {
+    // end_date is inclusive — compare against the start of the NEXT day.
+    return { where: "created_at >= ? AND created_at < datetime(?, '+1 day')", binds: [start, end] };
+  }
+  const days = clampDays(c.req.query('days'), 90);
+  return { where: "created_at >= datetime('now', ?)", binds: [`-${days} days`] };
+}
+
+// Shared SELECT expression: response minutes with the timestamp fallback.
+const RESPONSE_MINUTES =
+  'COALESCE(response_time_seconds / 60.0, (julianday(onscene_at) - julianday(created_at)) * 1440)';
+
+async function buildCrimeAnalysis(db: D1Database, where: string, binds: string[]) {
+  const [topOffenses, hotspots, dayOfWeek, timeOfDay, trendData, clearance, responseRaw, repeatOffenders] =
+    await Promise.all([
+      query<{ offense_type: string; count: number }>(
+        db,
+        `SELECT COALESCE(NULLIF(TRIM(incident_type), ''), 'Unknown') AS offense_type, COUNT(*) AS count
+           FROM calls_for_service WHERE ${where}
+          GROUP BY offense_type ORDER BY count DESC LIMIT 15`,
+        ...binds
+      ),
+      query<{ location: string; count: number; lat: number | null; lng: number | null }>(
+        db,
+        `SELECT COALESCE(NULLIF(TRIM(location_address), ''), 'Unknown') AS location, COUNT(*) AS count,
+                AVG(latitude) AS lat, AVG(longitude) AS lng
+           FROM calls_for_service WHERE ${where}
+          GROUP BY location ORDER BY count DESC LIMIT 15`,
+        ...binds
+      ),
+      query<{ day_of_week: number; count: number }>(
+        db,
+        `SELECT CAST(strftime('%w', created_at) AS INTEGER) AS day_of_week, COUNT(*) AS count
+           FROM calls_for_service WHERE ${where}
+          GROUP BY day_of_week ORDER BY day_of_week`,
+        ...binds
+      ),
+      query<{ hour: number; count: number }>(
+        db,
+        `SELECT CAST(strftime('%H', created_at) AS INTEGER) AS hour, COUNT(*) AS count
+           FROM calls_for_service WHERE ${where}
+          GROUP BY hour ORDER BY hour`,
+        ...binds
+      ),
+      query<{ month: string; count: number }>(
+        db,
+        `SELECT strftime('%Y-%m', created_at) AS month, COUNT(*) AS count
+           FROM calls_for_service WHERE ${where}
+          GROUP BY month ORDER BY month`,
+        ...binds
+      ),
+      queryFirst<{ total: number; cleared: number }>(
+        db,
+        `SELECT COUNT(*) AS total,
+                SUM(CASE WHEN disposition IS NOT NULL AND TRIM(disposition) != '' THEN 1 ELSE 0 END) AS cleared
+           FROM calls_for_service WHERE ${where}`,
+        ...binds
+      ),
+      query<{ priority: string; avg_minutes: number | null; call_count: number }>(
+        db,
+        `SELECT priority, ROUND(AVG(${RESPONSE_MINUTES}), 1) AS avg_minutes, COUNT(*) AS call_count
+           FROM calls_for_service
+          WHERE ${where} AND priority IS NOT NULL
+            AND (response_time_seconds IS NOT NULL OR onscene_at IS NOT NULL)
+          GROUP BY priority ORDER BY priority`,
+        ...binds
+      ),
+      // Repeat offenders: distinct calls + incidents a person is linked to
+      // inside the window, 3+ events. Role-filtered to 'involved' — live
+      // call_persons roles also include serve_recipient(_agent) and
+      // incident_persons has witness, none of which are "offenders". UNION
+      // (not UNION ALL) dedupes a person linked to the same event twice.
+      // EVERY created_at in the window clause must be table-qualified —
+      // call_persons has its own created_at, so an unqualified reference is
+      // ambiguous.
+      query<{ name: string; incident_count: number }>(
+        db,
+        `SELECT TRIM(COALESCE(p.first_name, '') || ' ' || COALESCE(p.last_name, '')) AS name,
+                COUNT(*) AS incident_count
+           FROM (
+             SELECT cp.person_id, 'c' || cp.call_id AS evt
+               FROM call_persons cp JOIN calls_for_service cfs ON cfs.id = cp.call_id
+              WHERE cp.role = 'involved' AND ${where.replaceAll('created_at', 'cfs.created_at')}
+             UNION
+             SELECT ip.person_id, 'i' || ip.incident_id
+               FROM incident_persons ip JOIN incidents i ON i.id = ip.incident_id
+              WHERE ip.role = 'involved' AND ${where.replaceAll('created_at', 'i.created_at')}
+           ) ev
+           JOIN persons p ON p.id = ev.person_id
+          GROUP BY ev.person_id HAVING COUNT(*) >= 3
+          ORDER BY incident_count DESC LIMIT 25`,
+        ...binds, ...binds
+      ),
+    ]);
+
+  // P1–P4 → the client's responseTargets/label buckets.
+  const prioLabel: Record<string, string> = { P1: 'critical', P2: 'high', P3: 'normal', P4: 'low' };
+  const responseMetrics = responseRaw.map((m) => ({
+    priority: prioLabel[m.priority] ?? String(m.priority ?? '').toLowerCase(),
+    avg_minutes: m.avg_minutes,
+    call_count: m.call_count,
+  }));
+
+  const total = clearance?.total ?? 0;
+  const cleared = clearance?.cleared ?? 0;
+  return {
+    topOffenses,
+    hotspots,
+    dayOfWeek,
+    timeOfDay,
+    trendData,
+    clearanceRate: { rate: total > 0 ? Math.round((cleared / total) * 100) : 0, cleared, total },
+    responseMetrics,
+    repeatOffenders,
+  };
+}
+
+reports.get('/crime-analysis', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const { where, binds } = crimeWindow(c);
+    const data = await buildCrimeAnalysis(db, where, binds);
+    return c.json({ data });
+  } catch (err) {
+    console.error('[reports] GET /crime-analysis failed:', err);
+    return c.json({ error: 'Failed to build crime analysis', code: 'CRIME_ANALYSIS_ERROR' }, 500);
+  }
+});
+
+// GET /api/reports/crime-analysis/export?format=csv — ExportButton target.
+reports.get('/crime-analysis/export', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const { where, binds } = crimeWindow(c);
+    const d = await buildCrimeAnalysis(db, where, binds);
+    const esc = (v: unknown) => {
+      const s = String(v ?? '');
+      return /[",\n]/.test(s) ? `"${s.replaceAll('"', '""')}"` : s;
+    };
+    const lines: string[] = ['section,name,value'];
+    lines.push(`summary,total_incidents,${d.clearanceRate.total}`);
+    lines.push(`summary,clearance_rate_pct,${d.clearanceRate.rate}`);
+    for (const o of d.topOffenses) lines.push(`top_offenses,${esc(o.offense_type)},${o.count}`);
+    for (const h of d.hotspots) lines.push(`hotspots,${esc(h.location)},${h.count}`);
+    for (const r of d.dayOfWeek) lines.push(`day_of_week,${r.day_of_week},${r.count}`);
+    for (const t of d.timeOfDay) lines.push(`time_of_day,${t.hour},${t.count}`);
+    for (const m of d.trendData) lines.push(`monthly_trend,${m.month},${m.count}`);
+    for (const m of d.responseMetrics) lines.push(`response_avg_minutes,${esc(m.priority)},${m.avg_minutes ?? ''}`);
+    for (const p of d.repeatOffenders) lines.push(`repeat_offenders,${esc(p.name)},${p.incident_count}`);
+    return new Response(lines.join('\n'), {
+      headers: {
+        'Content-Type': 'text/csv; charset=utf-8',
+        'Content-Disposition': 'attachment; filename="crime_analysis.csv"',
+      },
+    });
+  } catch (err) {
+    console.error('[reports] GET /crime-analysis/export failed:', err);
+    return c.json({ error: 'Failed to export crime analysis', code: 'CRIME_ANALYSIS_EXPORT_ERROR' }, 500);
   }
 });
 

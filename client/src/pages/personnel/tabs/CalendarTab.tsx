@@ -94,7 +94,8 @@ export default function CalendarTab() {
       {loading ? (
         <div className="flex items-center justify-center gap-2 text-rmpg-400 py-8 text-xs"><Loader2 className="w-4 h-4 animate-spin" role="status" aria-label="Loading" /> Loading calendar...</div>
       ) : (
-        <div className="border border-rmpg-700">
+        <div className="border border-rmpg-700 overflow-x-auto scrollbar-dark">
+          <div className="min-w-[640px]">
           {/* Day headers */}
           <div className="grid grid-cols-7 border-b border-rmpg-700">
             {DAYS.map(d => (
@@ -130,6 +131,7 @@ export default function CalendarTab() {
               })}
             </div>
           ))}
+          </div>
         </div>
       )}
 

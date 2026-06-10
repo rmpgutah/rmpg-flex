@@ -54,6 +54,7 @@ import MobileCardList from '../../components/mobile/MobileCardList';
 import MobileDetailView from '../../components/mobile/MobileDetailView';
 import { mapDbCall, mergeCallUpdate, mapDbUnit } from './utils/dispatchMappers';
 import { applyCallPdfAutofill } from './utils/callPdfAutofill';
+import { openNoticeOfCommunication } from './utils/psoNoticeAutofill';
 import {
   formatTime, formatElapsed, formatActivityDetails, type FilterTab,
 } from './utils/dispatchFormatters';
@@ -261,6 +262,28 @@ export default function DispatchPage() {
   const { addToast } = useToast();
   const { subscribe } = useWebSocket();
   const isMobile = useIsMobile();
+
+  // Generate + open the PSO "Notice of Communication" for a failed client-request
+  // attempt that is being re-dispatched. Autofills from the failed call; the
+  // re-dispatch call number + next window ride along when known.
+  const openPsoNotice = useCallback(async (
+    failedCall: CallForService,
+    extra?: { redispatchCallNumber?: string; nextWindow?: string },
+  ) => {
+    try {
+      const officerName = user
+        ? (`${user.first_name || ''} ${user.last_name || ''}`.trim() || user.username)
+        : 'RMPG Dispatch';
+      await openNoticeOfCommunication(failedCall, {
+        officerName,
+        officerBadge: (user as any)?.badge_number || '',
+        redispatchCallNumber: extra?.redispatchCallNumber,
+        nextWindow: extra?.nextWindow,
+      });
+    } catch (err: any) {
+      addToast(`Notice of Communication failed: ${err?.message || 'Unknown error'}`, 'error');
+    }
+  }, [user, addToast]);
   const { prefs: userPrefs, reload: reloadPrefs } = useUserPreferences();
   const { districts, sections, sectionLabels, getSectionCode, getArea, zoneLabels, zonesForSection, beatsForZone, beatsForSection, districtForSectionBeat, getBeatLabel } = useDistrictOptions();
   const { resolve: resolveAddress } = useAddressAutofill();
@@ -1060,6 +1083,23 @@ export default function DispatchPage() {
       }
     });
 
+    // Live unit GPS glide. gps.ts fans every breadcrumb batch out as a FLAT
+    // 'unit_position' frame ({ unit_id, latitude, longitude, ... }) via AlertHubDO
+    // — NOT a 'dispatch_update'/'unit_position_update' action (that branch above
+    // never fired). Without this, the board's unit lat/lng only refreshed on the
+    // ~7s units poll while the map glided live. Mirrors MapPage's handler.
+    const unsubPos = subscribe('unit_position', (msg: any) => {
+      const data = msg.data || msg;
+      const uid = data.unit_id ?? data.unit?.id;
+      if (uid == null) return;
+      const lat = data.latitude ?? data.lat ?? data.unit?.latitude;
+      const lng = data.longitude ?? data.lng ?? data.unit?.longitude;
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+      setUnits((prev) => prev.map((u) => (String(u.id) === String(uid)
+        ? { ...u, latitude: lat, longitude: lng }
+        : u)));
+    });
+
     // Listen for panic alerts — play alarm tone + voice alert, switch to active tab
     const unsubPanic = subscribe('panic_alert', (msg: any) => {
       const data = msg.data || msg;
@@ -1116,7 +1156,7 @@ export default function DispatchPage() {
       }
     });
 
-    return () => { unsubDispatch(); unsubUnit(); unsubPanic(); unsubServeCreated(); unsubServeAttempt(); unsubWarrant(); unsubSpeed(); };
+    return () => { unsubDispatch(); unsubUnit(); unsubPos(); unsubPanic(); unsubServeCreated(); unsubServeAttempt(); unsubWarrant(); unsubSpeed(); };
   }, [subscribe, fetchData, addToast, setFilterTab]);
 
   // On-scene live timer — updates every second when the selected call has onscene_at and is not cleared
@@ -2929,6 +2969,18 @@ export default function DispatchPage() {
                       </button>
                     )}
 
+                    {/* Notice of Communication (mobile) — PSO failed attempt → re-dispatch */}
+                    {selectedCall.incident_type === 'pso_client_request' && ['cleared', 'closed', 'cancelled', 'on_hold', 'archived'].includes(selectedCall.status) && (
+                      <button type="button"
+                        className="w-full mt-2 py-2.5 px-4 text-sm font-semibold rounded-sm"
+                        style={{ background: '#3b82f625', border: '1px solid #3b82f650', color: '#60a5fa' }}
+                        onClick={() => openPsoNotice(selectedCall)}
+                      >
+                        <FileText style={{ width: 14, height: 14, display: 'inline', marginRight: 6 }} />
+                        Notice of Communication
+                      </button>
+                    )}
+
                     {/* Undo Return Visit button (mobile) — only on pending child calls */}
                     {(selectedCall as any).parent_call_id && selectedCall.status === 'pending' && (
                       <button type="button"
@@ -3750,6 +3802,19 @@ export default function DispatchPage() {
                         title="Schedule a return visit — creates a new linked call"
                       >
                         <RotateCcw style={{ width: 10, height: 10 }} /> Return Visit
+                      </button>
+                    )}
+                    {/* Notice of Communication — PSO client requests with a failed attempt
+                        being re-dispatched. Autofills from this call (client, service,
+                        attempt) into a printable client notice. */}
+                    {!isEditing && selectedCall.incident_type === 'pso_client_request' && ['cleared', 'closed', 'cancelled', 'on_hold', 'archived'].includes(selectedCall.status) && (
+                      <button type="button"
+                        className="toolbar-btn"
+                        style={{ background: '#3b82f625', borderColor: '#3b82f650', color: '#60a5fa' }}
+                        onClick={() => openPsoNotice(selectedCall)}
+                        title="Generate an autofilled Notice of Communication for the client (unsuccessful attempt → re-dispatch)"
+                      >
+                        <FileText style={{ width: 10, height: 10 }} /> Notice of Comm
                       </button>
                     )}
                     {/* Undo Return Visit — only on pending child calls */}
@@ -5438,7 +5503,7 @@ export default function DispatchPage() {
                 )}
 
                 {/* ── VISIT HISTORY TIMELINE — PSO calls, Info tab ─── */}
-                {detailTab === 'info' && !isEditing && ['pso_client_request', 'process_service'].includes(String(selectedCall.incident_type)) && selectedCall.visit_history && selectedCall.visit_history.length > 0 && (
+                {detailTab === 'info' && !isEditing && ['pso_client_request', 'process_service'].includes(String(selectedCall.incident_type)) && Array.isArray(selectedCall.visit_history) && selectedCall.visit_history.length > 0 && (
                   <div className="border-t border-[#2b2b2b] pt-3 mb-3">
                     <label className="field-label !flex items-center gap-1.5 mb-2" style={{ color: '#d4a017', fontSize: '9px', letterSpacing: '0.05em' }}>
                       <Clock className="w-3 h-3" /> Visit History
@@ -5450,8 +5515,13 @@ export default function DispatchPage() {
                       {selectedCall.visit_history.map((visit) => {
                         let unitsList: string[] = [];
                         try { unitsList = JSON.parse(visit.assigned_units || '[]'); } catch { /* ignore */ }
-                        const totalMiles = (visit.starting_mileage != null && visit.ending_mileage != null)
-                          ? (visit.ending_mileage - visit.starting_mileage).toFixed(1)
+                        // Coerce + validate: the `!= null` guard alone passes for
+                        // sentinel text ("None"/"0") that this DB stores, and
+                        // (string - string) then renders "NaN mi".
+                        const startMi = Number(visit.starting_mileage);
+                        const endMi = Number(visit.ending_mileage);
+                        const totalMiles = Number.isFinite(startMi) && Number.isFinite(endMi)
+                          ? (endMi - startMi).toFixed(1)
                           : null;
                         return (
                           <div key={visit.id} className="bg-rmpg-800/60 border border-rmpg-600/50 rounded-sm px-2.5 py-2">
@@ -6699,7 +6769,7 @@ export default function DispatchPage() {
       {/* Feature 5: Shift Handoff Notes Modal */}
       {showHandoffNotes && (
         <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.65)', WebkitBackdropFilter: 'blur(4px)', backdropFilter: 'blur(4px)' }} onClick={() => setShowHandoffNotes(false)}>
-          <div className="bg-surface-raised w-[500px] max-h-[80vh] flex flex-col rounded-sm" style={{ border: '1px solid #2a2a2a', boxShadow: '0 12px 40px rgba(0,0,0,0.5), 0 0 1px rgba(255,255,255,0.05) inset' }} onClick={e => e.stopPropagation()}>
+          <div className="bg-surface-raised w-[500px] max-w-[95vw] max-h-[80vh] flex flex-col rounded-sm" style={{ border: '1px solid #2a2a2a', boxShadow: '0 12px 40px rgba(0,0,0,0.5), 0 0 1px rgba(255,255,255,0.05) inset' }} onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-3 border-b border-rmpg-600" style={{ background: '#050505' }}>
               <div className="flex items-center gap-2">
                 <Briefcase className="w-4 h-4 text-brand-400" />

@@ -324,7 +324,7 @@ export function BusinessTabList({ state }: { state: BusinessTabState }) {
       {/* Form Modal — simplified inline */}
       {showFormModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="panel-surface w-full max-w-lg mx-4 max-h-[85vh] overflow-y-auto p-4 space-y-3">
+          <div className="panel-surface w-full max-w-[95vw] md:max-w-lg mx-4 max-h-[90vh] overflow-y-auto p-4 space-y-3">
             <h3 className="text-sm font-bold text-white">{editingBusiness ? 'Edit Business' : 'New Business'}</h3>
             <BusinessForm initial={editingBusiness} onSubmit={handleSubmit} onCancel={() => setShowFormModal(false)} submitting={formSubmitting} />
           </div>
@@ -485,7 +485,7 @@ function BusinessForm({ initial, onSubmit, onCancel, submitting }: {
   return (
     <div className="space-y-2.5">
       <FormSection title="Business Information" icon={Briefcase}>
-        <div className="grid grid-cols-2 gap-2.5">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
           <FormField label="Business Name" required><input id="ff-businesstab-1" className="input-dark text-xs w-full" value={form.name} onChange={e => set('name', e.target.value)} /></FormField>
           <FormField label="DBA Name"><input id="ff-businesstab-2" className="input-dark text-xs w-full" value={form.dba_name} onChange={e => set('dba_name', e.target.value)} /></FormField>
           <FormField label="Business Type"><input id="ff-businesstab-3" className="input-dark text-xs w-full" value={form.business_type} onChange={e => set('business_type', e.target.value)} placeholder="LLC, Corp, Sole Prop..." /></FormField>
@@ -495,7 +495,7 @@ function BusinessForm({ initial, onSubmit, onCancel, submitting }: {
       </FormSection>
 
       <FormSection title="Contact & Address" icon={Phone}>
-        <div className="grid grid-cols-6 gap-2.5">
+        <div className="grid grid-cols-1 md:grid-cols-6 gap-2.5">
           <FormField label="Address" className="col-span-6"><input id="ff-businesstab-6" className="input-dark text-xs w-full" value={form.address} onChange={e => set('address', e.target.value)} /></FormField>
           <FormField label="City" className="col-span-3"><input id="ff-businesstab-7" className="input-dark text-xs w-full" value={form.city} onChange={e => set('city', e.target.value)} /></FormField>
           <FormField label="State" className="col-span-1"><input id="ff-businesstab-8" className="input-dark text-xs w-full" value={form.state} onChange={e => set('state', e.target.value)} /></FormField>
@@ -507,7 +507,7 @@ function BusinessForm({ initial, onSubmit, onCancel, submitting }: {
       </FormSection>
 
       <FormSection title="Owner & Key Contact" icon={Users}>
-        <div className="grid grid-cols-2 gap-2.5">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
           <FormField label="Owner Name"><input id="ff-businesstab-13" className="input-dark text-xs w-full" value={form.owner_name} onChange={e => set('owner_name', e.target.value)} /></FormField>
           <FormField label="Owner Phone"><input id="ff-businesstab-14" type="tel" className="input-dark text-xs w-full" value={form.owner_phone} onChange={e => set('owner_phone', formatPhoneInput(e.target.value))} placeholder="(801) 555-1234" /></FormField>
           <FormField label="Contact Name"><input id="ff-businesstab-15" className="input-dark text-xs w-full" value={form.contact_name} onChange={e => set('contact_name', e.target.value)} /></FormField>
@@ -517,7 +517,7 @@ function BusinessForm({ initial, onSubmit, onCancel, submitting }: {
       </FormSection>
 
       <FormSection title="Operations" icon={Briefcase}>
-        <div className="grid grid-cols-3 gap-2.5">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
           <FormField label="Industry"><input id="ff-businesstab-18" className="input-dark text-xs w-full" value={form.industry} onChange={e => set('industry', e.target.value)} /></FormField>
           <FormField label="Employees"><input id="ff-businesstab-19" className="input-dark text-xs w-full" value={form.employee_count} onChange={e => set('employee_count', e.target.value)} /></FormField>
           <FormField label="Annual Revenue"><input id="ff-businesstab-20" className="input-dark text-xs w-full" value={form.annual_revenue} onChange={e => set('annual_revenue', e.target.value)} placeholder="$" /></FormField>

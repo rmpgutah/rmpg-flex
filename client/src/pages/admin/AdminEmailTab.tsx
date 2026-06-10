@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Mail, Key, Eye, EyeOff, Loader2, CheckCircle2, XCircle,
   Trash2, AlertTriangle, ToggleLeft, ToggleRight, RefreshCw,
@@ -36,6 +36,20 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
   const [tenantId, setTenantId] = useState('');
   const [showSecret, setShowSecret] = useState(false);
   const [saving, setSaving] = useState(false);
+  // Explicit success signal so the operator gets unambiguous feedback after
+  // Save. The form clearing is too subtle; users were reporting "nothing
+  // happened" because they didn't notice the connection-status pill move
+  // from "Not Configured" → "Not Authorized".
+  const [saveSuccess, setSaveSuccess] = useState(false);
+
+  // Password-manager autofill races React: Chrome/Safari can populate the
+  // DOM value without firing a synthetic onChange, so controlled state
+  // stays empty and the form appears "blank" even though the inputs are
+  // visibly filled. Keep refs so handleSaveCredentials can fall back to
+  // the live DOM value when state is empty.
+  const clientIdRef = useRef<HTMLInputElement>(null);
+  const clientSecretRef = useRef<HTMLInputElement>(null);
+  const tenantIdRef = useRef<HTMLInputElement>(null);
 
   // SMTP form
   const [smtpPassword, setSmtpPassword] = useState('');
@@ -81,21 +95,63 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
 
   // ─── Handlers ───
 
+  // Azure AD GUID: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+  // tenantId may also be 'common', 'organizations', or 'consumers'.
+  const AZURE_GUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const SPECIAL_TENANTS = new Set(['common', 'organizations', 'consumers']);
+
   const handleSaveCredentials = async () => {
-    if (!clientId || !clientSecret || !tenantId) {
-      setError('All three Azure AD fields are required');
+    // Fall back to the live DOM value when controlled state is empty —
+    // catches password-manager autofill that bypasses React's onChange.
+    const liveCid = clientIdRef.current?.value ?? '';
+    const liveCsec = clientSecretRef.current?.value ?? '';
+    const liveTid = tenantIdRef.current?.value ?? '';
+    // Re-sync state if the DOM has a value the controlled input missed.
+    if (!clientId && liveCid) setClientId(liveCid);
+    if (!clientSecret && liveCsec) setClientSecret(liveCsec);
+    if (!tenantId && liveTid) setTenantId(liveTid);
+
+    // Trim to defend against trailing-space paste — a frequent Azure copy-paste foot-gun.
+    const cid = (clientId || liveCid).trim();
+    const csec = (clientSecret || liveCsec).trim();
+    const tid = (tenantId || liveTid).trim();
+
+    if (!cid || !csec || !tid) {
+      setError('All three Azure AD fields are required.');
       return;
     }
+    if (!AZURE_GUID.test(cid)) {
+      setError('Application (Client) ID must be a GUID like xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx. Copy it from Azure Portal → App registrations → Overview.');
+      return;
+    }
+    if (!AZURE_GUID.test(tid) && !SPECIAL_TENANTS.has(tid.toLowerCase())) {
+      setError('Directory (Tenant) ID must be a GUID, or one of: common, organizations, consumers. Copy it from Azure Portal → App registrations → Overview.');
+      return;
+    }
+    if (AZURE_GUID.test(csec)) {
+      setError('That looks like the Client Secret ID (a GUID). Paste the Secret VALUE instead — Azure shows it only once, right after you create the secret.');
+      return;
+    }
+    if (csec.length < 20) {
+      setError('Client Secret looks too short. Paste the full secret VALUE from Azure (typically 40+ characters).');
+      return;
+    }
+
     setSaving(true);
     setError(null);
+    setSaveSuccess(false);
     try {
       await apiFetch('/email/admin/credentials', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ clientId, clientSecret, tenantId }),
+        body: JSON.stringify({ clientId: cid, clientSecret: csec, tenantId: tid }),
       });
       setClientId(''); setClientSecret(''); setTenantId('');
+      setSaveSuccess(true);
       await fetchStatus();
+      // Auto-dismiss after 8s; the persistent "Authorization Required"
+      // panel below carries the long-lived state cue.
+      setTimeout(() => setSaveSuccess(false), 8000);
     } catch (err: any) {
       setError(err.message);
     } finally {
@@ -238,6 +294,16 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
         </div>
       )}
 
+      {saveSuccess && (
+        <div className="flex items-center gap-2 px-3 py-2 text-xs rounded-sm bg-green-500/10 border border-green-500/30 text-green-400">
+          <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0" />
+          <span>
+            Credentials saved. Click <strong>Authorize with Microsoft</strong> below to complete setup.
+          </span>
+          <button type="button" onClick={() => setSaveSuccess(false)} className="ml-auto text-green-400/60 hover:text-green-400">&times;</button>
+        </div>
+      )}
+
       {/* ─── Connection Status ─── */}
       <div className="panel-beveled p-3 space-y-3">
         <div className="flex items-center justify-between">
@@ -303,24 +369,58 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
 
         <div className="grid grid-cols-1 gap-2">
           <div>
-            <label className="block text-[10px] text-rmpg-400 mb-0.5">Application (Client) ID</label>
+            <div className="flex items-center justify-between mb-0.5">
+              <label className="block text-[10px] text-rmpg-400">Application (Client) ID</label>
+              {clientId.trim() && (
+                AZURE_GUID.test(clientId.trim())
+                  ? <span className="text-[9px] text-green-400">✓ valid GUID</span>
+                  : <span className="text-[9px] text-red-400">✗ not a GUID</span>
+              )}
+            </div>
             <input id="ff-adminemailtab-0"
+              ref={clientIdRef}
               type="text"
               value={clientId}
               onChange={e => setClientId(e.target.value)}
+              onPaste={e => {
+                // Capture pasted text directly — defends against React's
+                // controlled-input race when paste triggers autofill heuristics.
+                const text = e.clipboardData.getData('text');
+                if (text) setTimeout(() => setClientId(text.trim()), 0);
+              }}
+              onBlur={e => { if (e.target.value !== clientId) setClientId(e.target.value); }}
               placeholder={status?.configured ? '••••••••••••••••' : 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'}
-              className="input-dark w-full text-xs font-mono min-h-[36px]"
+              className={`input-dark w-full text-xs font-mono min-h-[36px] ${clientId.trim() && !AZURE_GUID.test(clientId.trim()) ? 'border-red-500/60' : ''}`}
+              spellCheck={false}
+              autoComplete="off"
             />
           </div>
           <div>
-            <label className="block text-[10px] text-rmpg-400 mb-0.5">Client Secret</label>
+            <div className="flex items-center justify-between mb-0.5">
+              <label className="block text-[10px] text-rmpg-400">Client Secret <span className="text-rmpg-600">(the VALUE, not the ID)</span></label>
+              {clientSecret.trim() && (
+                AZURE_GUID.test(clientSecret.trim())
+                  ? <span className="text-[9px] text-red-400">✗ looks like the Secret ID — paste the VALUE</span>
+                  : clientSecret.trim().length < 20
+                    ? <span className="text-[9px] text-amber-400">⚠ unusually short</span>
+                    : <span className="text-[9px] text-green-400">✓ looks ok</span>
+              )}
+            </div>
             <div className="relative">
               <input id="ff-adminemailtab-1"
+                ref={clientSecretRef}
                 type={showSecret ? 'text' : 'password'}
                 value={clientSecret}
                 onChange={e => setClientSecret(e.target.value)}
-                placeholder={status?.configured ? '••••••••••••••••' : 'Enter client secret'}
-                className="input-dark w-full text-xs font-mono pr-8 min-h-[36px]"
+                onPaste={e => {
+                  const text = e.clipboardData.getData('text');
+                  if (text) setTimeout(() => setClientSecret(text.trim()), 0);
+                }}
+                onBlur={e => { if (e.target.value !== clientSecret) setClientSecret(e.target.value); }}
+                placeholder={status?.configured ? '••••••••••••••••' : 'Enter client secret VALUE'}
+                className={`input-dark w-full text-xs font-mono pr-8 min-h-[36px] ${clientSecret.trim() && (AZURE_GUID.test(clientSecret.trim()) || clientSecret.trim().length < 20) ? 'border-red-500/60' : ''}`}
+                spellCheck={false}
+                autoComplete="off"
               />
               <button type="button" onClick={() => setShowSecret(!showSecret)}
                 className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-white">
@@ -329,13 +429,28 @@ export default function AdminEmailTab({ LoadingSpinner, error, setError }: Props
             </div>
           </div>
           <div>
-            <label className="block text-[10px] text-rmpg-400 mb-0.5">Directory (Tenant) ID</label>
+            <div className="flex items-center justify-between mb-0.5">
+              <label className="block text-[10px] text-rmpg-400">Directory (Tenant) ID</label>
+              {tenantId.trim() && (
+                (AZURE_GUID.test(tenantId.trim()) || SPECIAL_TENANTS.has(tenantId.trim().toLowerCase()))
+                  ? <span className="text-[9px] text-green-400">✓ valid</span>
+                  : <span className="text-[9px] text-red-400">✗ not a GUID</span>
+              )}
+            </div>
             <input id="ff-adminemailtab-2"
+              ref={tenantIdRef}
               type="text"
               value={tenantId}
               onChange={e => setTenantId(e.target.value)}
+              onPaste={e => {
+                const text = e.clipboardData.getData('text');
+                if (text) setTimeout(() => setTenantId(text.trim()), 0);
+              }}
+              onBlur={e => { if (e.target.value !== tenantId) setTenantId(e.target.value); }}
               placeholder={status?.configured ? '••••••••••••••••' : 'xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx'}
-              className="input-dark w-full text-xs font-mono min-h-[36px]"
+              className={`input-dark w-full text-xs font-mono min-h-[36px] ${tenantId.trim() && !AZURE_GUID.test(tenantId.trim()) && !SPECIAL_TENANTS.has(tenantId.trim().toLowerCase()) ? 'border-red-500/60' : ''}`}
+              spellCheck={false}
+              autoComplete="off"
             />
           </div>
         </div>

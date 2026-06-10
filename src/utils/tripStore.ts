@@ -7,6 +7,7 @@ import { query, queryFirst, execute } from './db';
 import { emitAlert } from './alertHub';
 import { decide, type ActiveTrip, type TripEvent, type EngineCtx } from './tripEngine';
 import { accumulate, type TripAgg, type IncomingFix } from './tripTelemetry';
+import { setFleetOdometer, accrueFleetOdometer } from './fleetOdometer';
 
 type DB = D1Database;
 const iso = (epochMs: number) => new Date(epochMs).toISOString().replace('T', ' ').slice(0, 19);
@@ -50,18 +51,47 @@ export async function applyTripEvent(args: ApplyArgs): Promise<void> {
   const d = decide(args.event, active, ctx);
 
   if (d.close) {
-    const c = await queryFirst<{ start_time: string | null; speed_sum: number; fix_count: number }>(
-      db, 'SELECT start_time, speed_sum, fix_count FROM unit_trips WHERE id = ?', d.close.tripId);
+    // Pull what we need to (a) compute duration + avg_speed at close, and
+    // (b) decide whether this trip is detector noise worth discarding.
+    const c = await queryFirst<{ start_time: string | null; speed_sum: number; fix_count: number; trip_type: string; distance_m: number | null; vehicle_id: number | null }>(
+      db, 'SELECT start_time, speed_sum, fix_count, trip_type, distance_m, vehicle_id FROM unit_trips WHERE id = ?', d.close.tripId);
     const durS = c ? Math.max(0, Math.round((d.close.endTs - (epoch(c.start_time) ?? d.close.endTs)) / 1000)) : null;
     const avg = c && c.fix_count > 0 ? c.speed_sum / c.fix_count : null;
-    const setMileage = args.endMileage != null && Number.isFinite(args.endMileage);
-    await execute(db,
-      `UPDATE unit_trips SET status='closed', end_time=?, end_lat=?, end_lng=?, close_reason=?,
-         duration_s=?, avg_speed=?${setMileage ? ', end_mileage=?' : ''}, updated_at=datetime('now')
-       WHERE id=? AND status='active'`,
-      iso(d.close.endTs), d.close.endLat, d.close.endLng, d.close.reason, durS, avg,
-      ...(setMileage ? [args.endMileage] : []), d.close.tripId);
-    await broadcastTrip(env, db, d.close.tripId, 'closed');
+
+    // Noise discard: a PATROL trip that accumulated <50m AND <180s is detector
+    // noise (idle-close right after a momentary speed spike, sweep-close on a
+    // single-fix trip). Delete it instead of closing — that's what produced
+    // the "0.0 mi · 0 m" rows that flooded the TRIPS drawer. CALL_RESPONSE
+    // trips are NEVER discarded; a 0-mile dispatch is real audit data.
+    // Idle-timeout / stale closures get checked too because those reasons can
+    // fire on a freshly-opened trip that never accumulated.
+    const isNoise =
+      c &&
+      c.trip_type === 'patrol' &&
+      (c.distance_m == null || c.distance_m < 50) &&
+      (durS == null || durS < 180);
+
+    if (isNoise) {
+      await execute(db, "DELETE FROM unit_trips WHERE id = ? AND status = 'active'", d.close.tripId);
+      // No broadcast: any 'opened' frame we emitted earlier was for a row
+      // that no longer exists. The dispatch badge polls on a rollup, so a
+      // missing trip self-heals on the next refresh — emitting a 'closed'
+      // would mislead the client into rendering the ghost row.
+    } else {
+      const setMileage = args.endMileage != null && Number.isFinite(args.endMileage);
+      await execute(db,
+        `UPDATE unit_trips SET status='closed', end_time=?, end_lat=?, end_lng=?, close_reason=?,
+           duration_s=?, avg_speed=?${setMileage ? ', end_mileage=?' : ''}, updated_at=datetime('now')
+         WHERE id=? AND status='active'`,
+        iso(d.close.endTs), d.close.endLat, d.close.endLng, d.close.reason, durS, avg,
+        ...(setMileage ? [args.endMileage] : []), d.close.tripId);
+      // Roll the trip's GPS-measured distance onto the fleet odometer. An
+      // explicit end_mileage (a real odometer reading) is authoritative and
+      // re-anchors instead of accruing — see fleetOdometer.ts semantics.
+      if (setMileage) await setFleetOdometer(db, c?.vehicle_id ?? args.vehicleId, args.endMileage);
+      else await accrueFleetOdometer(db, c?.vehicle_id ?? args.vehicleId, c?.distance_m ?? null);
+      await broadcastTrip(env, db, d.close.tripId, 'closed');
+    }
   }
 
   if (d.open) {

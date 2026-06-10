@@ -268,6 +268,12 @@ export interface CallForService {
   hazard_notes?: string;
   client_id?: string;
   client_name?: string;
+  /** Contracting-client record fields (from the clients JOIN) — authoritative
+   *  addressee + service-type source for the PSO Notice of Communication. */
+  client_contact_name?: string;
+  client_phone?: string;
+  client_address?: string;
+  client_industry?: string;
   description: string;
   source: CallSource;
   assigned_units: string[];
@@ -869,6 +875,9 @@ export interface TimeEntry {
   break_start?: string;
   break_minutes: number;
   total_hours?: number;
+  starting_mileage?: number;
+  ending_mileage?: number;
+  total_miles?: number;
   status: 'clocked_in' | 'clocked_out' | 'on_break' | 'edited';
   notes?: string;
   created_at: string;

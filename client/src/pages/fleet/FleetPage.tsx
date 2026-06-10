@@ -1162,9 +1162,9 @@ export default function FleetPage() {
         </PanelTitleBar>
 
         {/* Stats Bar — compact inline row */}
-        <div className="px-4 py-2 flex items-center gap-4" role="group" aria-label="Fleet statistics">
+        <div className={`py-2 flex items-center gap-4 ${isMobile ? 'px-2 overflow-x-auto scrollbar-dark' : 'px-4'}`} role="group" aria-label="Fleet statistics">
           {/* Status Gauges */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-shrink-0">
             {VEHICLE_STATUSES.map(({ value, label }) => (
               <button type="button"
                 key={value}
@@ -1653,8 +1653,8 @@ export default function FleetPage() {
 
       {/* Feature 16: Pre-Trip Checklist Modal */}
       {showPretripModal && selectedVehicle && (
-        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={() => setShowPretripModal(false)}>
-          <div className="bg-surface-raised border border-rmpg-600 rounded w-[450px] max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 p-2" role="dialog" aria-modal="true" onClick={() => setShowPretripModal(false)}>
+          <div className="bg-surface-raised border border-rmpg-600 rounded w-[450px] max-w-[95vw] max-h-[90vh] md:max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between p-3 border-b border-rmpg-600">
               <h3 className="text-sm font-bold text-white">Pre-Trip Inspection: {selectedVehicle.vehicle_number}</h3>
               <button type="button" onClick={() => setShowPretripModal(false)} className="text-rmpg-400 hover:text-white text-lg">&times;</button>
@@ -1672,7 +1672,7 @@ export default function FleetPage() {
                 { key: 'interior_ok', label: 'Interior Condition' },
                 { key: 'emergency_equipment_ok', label: 'Emergency Equipment' },
               ].map(item => (
-                <label key={item.key} className="flex items-center gap-3 p-2 bg-surface-base rounded cursor-pointer hover:bg-surface-raised">
+                <label key={item.key} className="flex items-center gap-3 p-2 min-h-[44px] bg-surface-base rounded cursor-pointer hover:bg-surface-raised">
                   <input id="ff-fleetpage-2"
                     type="checkbox"
                     checked={(pretripForm as any)[item.key]}
@@ -1702,7 +1702,7 @@ export default function FleetPage() {
 
       {/* Feature 20: Cost Per Mile Display */}
       {costPerMile && (
-        <div className="fixed bottom-16 right-4 z-40 bg-surface-raised border border-rmpg-600 rounded p-4 w-[300px] shadow-xl">
+        <div className="fixed bottom-16 right-4 left-4 md:left-auto z-40 bg-surface-raised border border-rmpg-600 rounded p-4 w-auto md:w-[300px] shadow-xl">
           <div className="flex items-center justify-between mb-2">
             <h4 className="text-sm font-bold text-white">Cost Analysis: {costPerMile.vehicle_number}</h4>
             <button type="button" onClick={() => setCostPerMile(null)} className="text-rmpg-400 hover:text-white">&times;</button>

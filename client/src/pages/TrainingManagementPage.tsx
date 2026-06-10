@@ -70,7 +70,7 @@ export default function TrainingManagementPage() {
         <button onClick={openNew} className="toolbar-btn flex items-center gap-1.5" style={{ height: 28, padding: '0 10px' }}><Plus size={13} /> New Course</button>
       </PanelTitleBar>
       {error && <div className="border border-red-700/40 bg-red-900/20 text-red-400 text-[11px] px-3 py-2 mb-3" role="alert">{error}</div>}
-      <div className="grid grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <StatsCard icon={BookOpen} label="Courses" value={stats.courses} />
         <StatsCard icon={GraduationCap} label="Enrollments" value={stats.enrollments} />
         <StatsCard icon={Award} label="Active Certs" value={stats.active_certs} />

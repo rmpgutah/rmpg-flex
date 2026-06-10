@@ -33,6 +33,7 @@ import { syncAllVehicleGpsMileage } from './routes/fleet';
 import { syncEmail } from './utils/emailSync';
 import { processScheduledEmails, applyRulesToRecent } from './utils/emailProcessor';
 import { sweepTrips } from './utils/tripStore';
+import { runEmailPoll, drainEmailOutbox, drainScheduledEmails, resurfaceSnoozedEmails } from './routes/email';
 import type { Bindings, Variables } from './types';
 import { ROUTE_REGISTRY } from './routesConfig';
 
@@ -248,6 +249,27 @@ app.post('/__welfare-fire', async (c) => {
   return c.json({ success: true });
 });
 
+// Throttled email poll. Per-minute cron, but only actually pulls when
+// (now - lastSync) >= pollInterval. Default pollInterval is 300s so the
+// default cadence is every 5 minutes — same as the admin tab's UI default.
+async function maybeRunEmailPoll(env: Bindings, ctx: ExecutionContext): Promise<void> {
+  const db = env.DB;
+  const [enabled, lastSyncStr, pollIntervalStr] = await Promise.all([
+    db.prepare("SELECT config_value FROM system_config WHERE config_key = 'ms_email_enabled' AND category = 'integrations' AND is_active = 1").first<{ config_value: string }>(),
+    db.prepare("SELECT config_value FROM system_config WHERE config_key = 'ms_email_last_sync' AND category = 'integrations' AND is_active = 1").first<{ config_value: string }>(),
+    db.prepare("SELECT config_value FROM system_config WHERE config_key = 'ms_email_poll_interval' AND category = 'integrations' AND is_active = 1").first<{ config_value: string }>(),
+  ]);
+  if (enabled?.config_value !== 'true') return;
+  const pollInterval = pollIntervalStr ? parseInt(pollIntervalStr.config_value, 10) : 300;
+  if (lastSyncStr?.config_value) {
+    const last = Date.parse(lastSyncStr.config_value);
+    if (Number.isFinite(last) && Date.now() - last < pollInterval * 1000) return;
+  }
+  const r = await runEmailPoll(env, ctx);
+  if (r.error) console.error(`[email-poll] ${r.error}`);
+  else if (!r.skipped) console.log(`[email-poll] scanned=${r.scanned} upserted=${r.upserted} ruleHits=${r.ruleHits} linked=${r.linked}`);
+}
+
 // ─── Worker export ───────────────────────────────────────────
 export default {
   async fetch(request: Request, env: Bindings, ctx: ExecutionContext): Promise<Response> {
@@ -293,19 +315,31 @@ export default {
         sweepTrips(env.DB, env).then((n) => { if (n) console.log(`[trips] sweep closed ${n}`); })
           .catch((err) => console.error('[trips] sweep failed:', err)),
       );
-      // Scheduled email send processor — picks up due rows from scheduled_emails.
-      // Own catch so a Graph outage can't disrupt the trip sweep.
+      // Email poll — throttled internally by ms_email_last_sync vs
+      // ms_email_poll_interval. No-op when not configured.
       ctx.waitUntil(
-        processScheduledEmails(env)
-          .then((r) => { if (r.picked) console.log(`[email-sched] picked=${r.picked} sent=${r.sent} failed=${r.failed} permFail=${r.permanently_failed}`); })
-          .catch((err) => console.error('Scheduled email processor failed:', err)),
+        maybeRunEmailPoll(env, ctx)
+          .catch((err) => console.error('[email-poll] failed:', err)),
       );
-      // Rules evaluator — applies email_rules to recently-synced messages.
-      // Cheap when nothing has changed (no rules active OR no new messages).
+      // Email outbox drain — retries Graph /me/sendMail for queued sends
+      // whose backoff window has elapsed. Self-throttled by next_attempt_at.
       ctx.waitUntil(
-        applyRulesToRecent(env)
-          .then((r) => { if (r.matches) console.log(`[email-rules] scanned=${r.messages_scanned} rules=${r.rules_active} matches=${r.matches}`); })
-          .catch((err) => console.error('Email rules evaluator failed:', err)),
+        drainEmailOutbox(env)
+          .then((r) => { if (r.sent || r.failed) console.log(`[email-outbox] sent=${r.sent} failed=${r.failed} deferred=${r.deferred}`); })
+          .catch((err) => console.error('[email-outbox] failed:', err)),
+      );
+      // Schedule-send queue → enqueues due rows into the durable outbox,
+      // which the drain above then actually sends (uniform retry/backoff).
+      ctx.waitUntil(
+        drainScheduledEmails(env)
+          .then((n) => { if (n) console.log(`[email-scheduled] queued ${n}`); })
+          .catch((err) => console.error('[email-scheduled] failed:', err)),
+      );
+      // Expired snoozes → move back to inbox + mark unread.
+      ctx.waitUntil(
+        resurfaceSnoozedEmails(env)
+          .then((n) => { if (n) console.log(`[email-snooze] resurfaced ${n}`); })
+          .catch((err) => console.error('[email-snooze] failed:', err)),
       );
       return;
     }
@@ -340,13 +374,16 @@ export default {
         .then((r) => console.log(`[fleet-gps] checked ${r.checked}, ${r.with_gps} with GPS, ${r.total_gps_miles.toFixed(1)} mi available`))
         .catch((err) => console.error('Fleet GPS mileage scan failed:', err)),
     );
-    // Microsoft Graph inbox delta-sync → email_messages. No-op when
-    // the integration is unconfigured/disabled (helper returns ran=false).
-    // Own catch so a Graph outage can't abort the rest of the cron loop.
+    // Sessions hygiene — purge rows that can never authenticate again
+    // (expired > 1 day ago, or revoked > 7 days ago). Live D1 had 617 rows
+    // with only ~44 usable; dead rows inflated the Security page's session
+    // analytics and slow every sessions scan a little more each week.
     ctx.waitUntil(
-      syncEmail(env)
-        .then((r) => { if (r.ran) console.log(`[email-sync] pages=${r.pages} updated=${r.updated} removed=${r.removed} failed=${r.failed}${r.reason ? ` reason=${r.reason}` : ''}`); })
-        .catch((err) => console.error('Email delta sync failed:', err)),
+      env.DB.prepare(
+        "DELETE FROM sessions WHERE expires_at <= datetime('now','-1 day') OR (is_active = 0 AND created_at <= datetime('now','-7 days'))"
+      ).run()
+        .then((r) => { const n = r?.meta?.changes ?? 0; if (n) console.log(`[sessions] purged ${n} dead session row(s)`); })
+        .catch((err) => console.error('Sessions purge failed:', err)),
     );
   },
 };

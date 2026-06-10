@@ -19,8 +19,14 @@
   color: inherit;
   font-family: var(--writer-font, "Times New Roman", Times, serif);
   font-size: var(--writer-size, 12pt);
-  line-height: 1.5;
+  line-height: var(--writer-line-height, 1.5);
   min-height: 100%;
+}
+
+/* Editor appearance: optional writing measure (max content width) applied to
+ * the editing canvas only — never to print (see @media print). */
+.writer-content .ProseMirror > * {
+  max-width: var(--writer-measure, none);
 }
 
 .writer-content .ProseMirror > * + * { margin-top: 0.6em; }
@@ -65,8 +71,14 @@
 }
 .writer-content .ProseMirror td,
 .writer-content .ProseMirror th {
+  /* Spacing + sizing are driven by CSS custom properties set on the parent
+   * <table> (TableFormatting extension); these defaults match the prior look.
+   * --rmpg-cell-px = side-to-side padding, --rmpg-cell-py = top-to-bottom
+   * padding, --rmpg-row-h = row height, --rmpg-tbl-border = grid line weight. */
   border: 1px solid rgba(128, 128, 128, 0.6);
-  padding: 4px 8px;
+  border-width: var(--rmpg-tbl-border, 1px);
+  padding: var(--rmpg-cell-py, 4px) var(--rmpg-cell-px, 8px);
+  height: var(--rmpg-row-h, auto);
   vertical-align: top;
 }
 .writer-content .ProseMirror th { background: rgba(128, 128, 128, 0.16); font-weight: 700; }
@@ -203,6 +215,8 @@
 /* Style-gallery presets (feature 48) */
 .writer-content .ProseMirror .style-legal { font-family: "Times New Roman", serif; font-size: 13pt; line-height: 2; }
 .writer-content .ProseMirror .style-memo { font-family: Arial, sans-serif; font-size: 11pt; line-height: 1.4; }
+/* Legal-numbered list preset — double-spaced, decimal markers */
+.writer-content .ProseMirror ol.style-legal-list { font-family: "Times New Roman", serif; line-height: 2; list-style-type: decimal; padding-left: 2em; }
 
 /* Horizontal ruler / margin guides (feature 26) */
 .writer-ruler {
@@ -223,6 +237,15 @@
 
 /* Page border / frame (feature 40) */
 .writer-page.has-page-border { outline: 2px solid #555; outline-offset: -18px; }
+.writer-page.border-thin { outline: 1px solid #777; outline-offset: -18px; }
+.writer-page.border-thick { outline: 3px solid #777; outline-offset: -18px; }
+.writer-page.border-double { outline: 4px double #888; outline-offset: -18px; }
+.writer-page.border-gold { outline: 3px solid #d4a017; outline-offset: -18px; }
+
+/* Letterhead band (wave 3) — on-screen preview of the printed letterhead */
+.writer-page .writer-letterhead { text-align: center; border-bottom: 2px solid #d4a017; padding-bottom: 6px; margin-bottom: 14px; }
+.writer-page .writer-letterhead .lh-name { font-size: 15px; font-weight: 700; letter-spacing: 0.03em; }
+.writer-page .writer-letterhead .lh-sub { font-size: 10px; opacity: 0.7; }
 
 /* Find & Replace match highlights (features 1–10) */
 .writer-content .ProseMirror .search-match { background: rgba(212, 160, 23, 0.32); border-radius: 2px; }
@@ -236,6 +259,51 @@
 .writer-content .ProseMirror .doc-embed { margin: 0.6em 0; }
 .writer-content .ProseMirror .doc-audio { margin: 0.4em 0; }
 
+/* Reversible redaction mark — solid black bar that hides the underlying text on
+ * screen AND in print. (Distinct from the destructive █-block redaction tool.) */
+.writer-content .ProseMirror .doc-redacted,
+.doc-redacted {
+  background: #000 !important;
+  color: #000 !important;
+  border-radius: 2px;
+  padding: 0 2px;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+.writer-content .ProseMirror .doc-redacted::selection { color: #000; }
+
+/* Track-changes (suggestion) marks. */
+.writer-content .ProseMirror .doc-suggest-ins {
+  color: #1f8f4e;
+  text-decoration: underline;
+  text-decoration-color: rgba(31, 143, 78, 0.7);
+}
+.writer-content .ProseMirror .doc-suggest-del {
+  color: #c0392b;
+  text-decoration: line-through;
+  text-decoration-color: rgba(192, 57, 43, 0.8);
+}
+
+/* Auto-numbered figure / table / exhibit captions. */
+.writer-content .ProseMirror .doc-caption {
+  font-size: 0.85em;
+  text-align: center;
+  color: inherit;
+  opacity: 0.92;
+  margin: 4px 0 12px;
+}
+.writer-content .ProseMirror .doc-caption strong { font-weight: 700; }
+
+/* Vertical spacer block — a real fixed-height gap that survives export. The
+ * dashed outline is an editing aid only and is removed in print (below). */
+.writer-content .ProseMirror .doc-spacer {
+  display: block;
+  outline: 1px dashed rgba(212, 160, 23, 0.35);
+  outline-offset: -1px;
+  border-radius: 2px;
+  user-select: none;
+}
+
 /* Print / PDF — ALWAYS black text on white, regardless of editor theme. */
 @media print {
   .writer-page {
@@ -247,4 +315,17 @@
   .writer-content .ProseMirror a { color: #000; }
   .doc-page-break::after,
   .doc-section-break::after { display: none; }
+  /* Writing measure is a drafting aid only — full width in print. */
+  .writer-content .ProseMirror > * { max-width: none !important; }
+  /* Redaction bars must print solid black (force background printing). */
+  .doc-redacted {
+    background: #000 !important;
+    color: #000 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  /* Track-changes coloring carries into print so a reviewer can mark up a copy. */
+  .doc-suggest-del { text-decoration: line-through; }
+  /* Spacer outline is an editing aid only — invisible in print/PDF. */
+  .doc-spacer { outline: none !important; }
 }

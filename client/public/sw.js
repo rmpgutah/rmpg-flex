@@ -340,45 +340,224 @@
 //       headers/footers, watermark, TOC, cover page, footnotes/endnotes, cross-
 //       refs, bookmarks, backgrounds, templates, statistics) via custom TipTap
 //       extensions — no new npm deps.
-// v817: Document Writer — batch of advanced editor features (no new npm deps):
-//       Find & Replace (case/word/regex/in-selection, highlight all, next/prev,
-//       replace/replace-all, search history) via a ProseMirror decoration plugin;
-//       autosave every 30s + crash recovery + named version snapshots; full table
-//       ops (row/col/merge/split/header/cell-shading); list styles (bullet/number
-//       types, marker color, start, indent/outdent); media embeds (YouTube/Vimeo/
-//       audio/iframe); comments (add/reply/resolve/delete + sidebar); outline pane
-//       w/ heading-hierarchy check; zoom + reading/full-screen modes; export
-//       Markdown/TXT/RTF/HTML + email; copy-as / paste-plain; keyboard shortcuts
-//       (Ctrl+F/H/K/1-3, zoom); 8 new templates (patrol/investigation/training/
-//       letter/minutes/proposal/invoice/contract); native spellcheck + ARIA +
-//       document language.
-// v818: PDF editor — Stamp Studio. New StampStudio modal (toolbar Sparkles +
-//       "Create / cut-out" in the stamps gallery): canvas background removal
-//       (luminance threshold + soft-edge band, before/after on a transparency
-//       checkerboard → transparent PNG) and parameterised stamp templates
-//       (notary seal, approval/denied/pending, COPY/ORIGINAL/DRAFT/etc text,
-//       officer badge, date stamp, RMPG seal). Output saves to the shared custom
-//       stamp library or drops straight onto the page (resize/rotate/opacity via
-//       the existing image-annotation path).
-// v819: Process Server — "Notice of Attempt to Serve" form. New
-//       generateNoticeOfAttempt() in servePdfGenerator.ts produces a professional,
-//       unsworn notice documenting unsuccessful service attempt(s) (recipient,
-//       case, attempt record, notice statement + contact-for-service, server
-//       signature — no notary/perjury clause, distinct from the Affidavit of
-//       Non-Service). Wired into the ServePage job context menu ("Notice of
-//       Attempt to Serve", shown once a job has ≥1 attempt) — builds from the
-//       job's real serve_attempts and opens the rendered PDF to print/leave.
-// v820: PDF editor — underline + strikethrough text-markup tools. New 'underline'
-//       and 'strikethrough' annotation types (drag-create like highlight); render
-//       as a thin rule on the box bottom edge / through the middle; flattened in
-//       both the native rmpg-pdf-engine builder and the pdf-lib fallback. Added to
-//       the ToolPalette + Annotations panel labels.
-// v821: Printable field forms — 6 new blank PDFs for Process Service (Affidavit/
-//       Proof of Service, Service Attempt Log, Return of Non-Service) and
-//       Communications (Radio/Comms Log, Telephone/Message Log, BOLO Broadcast).
-//       New 'service' + 'communications' categories on the Training Docs blank-
-//       forms board; multi-column log-grid helper.
-const CACHE_NAME = 'rmpg-flex-v826';
+// v817: Document Writer — batch of advanced editor features (no new npm deps).
+// v818: PDF editor — Stamp Studio.
+// v819: Process Server — "Notice of Attempt to Serve" form.
+// v820: PDF editor — underline + strikethrough text-markup tools.
+// v821: Printable field forms — 6 new blank PDFs.
+// v822: PSO Notice of Communication — autofilled client notice.
+// v823: Microsoft 365 email integration — full 6-phase pipeline (admin OAuth +
+//       inbox/folders/attachments with CID image rewriting + send via Graph +
+//       rules engine + autolinker (CFS#/plate) + cron poller + outbox retries +
+//       LinkedEmailsSection on Incidents/Warrants). Azure AD input validation
+//       (GUID shape + Secret-VALUE-not-ID check). See PR #1081 for the full
+//       phase-by-phase commit log.
+// v824: Admin Email — defend Save Credentials against password-manager autofill
+//       races (Chrome/Safari fill the DOM without firing React's onChange,
+//       leaving controlled state empty and the form falsely "required").
+//       Inputs now carry refs + onPaste/onBlur handlers and handleSaveCredentials
+//       falls back to the live DOM value when state is empty.
+// v825: Admin Email — explicit "Credentials saved" green banner after a
+//       successful Save. The previous flow cleared the inputs but gave no
+//       affirmative success cue; users reported "nothing happened" even
+//       though the DB writes had landed and the connection-status pill had
+//       quietly moved from "Not Configured" → "Not Authorized".
+// v826: Navigation 100-update batch — large additive enhancement of the Drive
+//       Mode HUD + /nav trip tab. New nav hooks (prefs/session/waypoints/recent-
+//       destinations/auto-theme/driving-score/fix-freshness/proximity-alerts/
+//       hotkeys/wake-lock/low-power/speed-limit), nav utils (unit+time formatters,
+//       GPX/CSV export, heading/coord/eta/geo/theme/trail helpers, volume-scaled
+//       tones), a HUD instruments module + NavSettingsPanel, and NavMapView helper
+//       extraction. Built via a 5-lane parallel workflow (disjoint files), then
+//       verified (typecheck + 793 tests). Fixed a real latent bug: proximity-alert
+//       cooldown wrongly suppressed the FIRST tone near clock-epoch (lastToneAt
+//       init 0 -> -Infinity).
+// v827: Nav wiring audit — wired GPX + CSV trip-track export onto NavPage trip
+//       history (gpxExport/navCsvExport/navUnits), and PRUNED 23 orphaned
+//       (built-but-never-wired) nav hooks/utils from the v826 batch that
+//       duplicated already-wired hud/ or inline logic.
+// v828: Admin Email — shadowed /api/email/status fix. The stubs router was
+//       mounted at /api/email BEFORE the real email router, so the
+//       integrations-tab `/status` stub (returns {configured: false}) was
+//       intercepting /api/email/status and falsely rendering the "Email Not
+//       Configured" splash even when creds were saved.
+// v829: Admin Email — OAuth callback unauth fix. Microsoft redirects the
+//       user's browser directly to /api/email/oauth/callback with code+state
+//       and no Authorization header; the router's `use('*', authMiddleware)`
+//       was 401ing the redirect ("Authentication required"). Now the
+//       middleware skips that exact path while still gating every other
+//       route in the router.
+// v832: mobile responsiveness pass — Reports, Document Writer, Fleet, PDF
+//       Editor, Navigation/Drive Mode, Records & Personnel tabs made
+//       touch-friendly (responsive stacking, overflow-x tables, viewport-fit
+//       modals/drawers, 44px tap targets). Client-only; bump to invalidate.
+// v833: Mobile/tablet responsive audit (complements v832). Global <=1024px CSS
+//       safety net (index.css EOF): replaced-element overflow guard (excl Mapbox
+//       canvas), 44px touch targets for the iPad band (768-1024, pointer:coarse,
+//       min-height only), readable text floor + iOS size-adjust lock, and dialog/
+//       modal max-width so overlays never exceed the viewport — desktop dense
+//       theme untouched. Page fixes: stat-card grids (Reports/Billing/QA/Training/
+//       Assets/Community/Dashcam/CommandCenter) stack 2-col on phone; Security
+//       login/threat tables get horizontal scroll; Invoices table panel both-axis-
+//       scroll (keeps sticky header); Dispatch handoff modal max-w-[95vw].
+//       Manifest: orientation -> any, dead /units shortcut -> /map. useIsMobile
+//       re-checks on orientationchange.
+// v834: functional-audit fixes — Reports date-range now drives the data (was
+//       ignored); Reports CSV export quoting + correct incidents shape (was
+//       crashing/empty); schedules panel shape tolerance; Dashboard Active
+//       Warrants card uses the live count; Document Writer clears draft on save
+//       + leak-proof print; NavPage null-coord guards; speed-limit badge clears
+//       off untagged roads; Personnel edit no longer blanks employee_id/notes.
+// v835: iPad nav-shell flip — Layout now uses useIsMobile(1024) so iPad portrait
+//       + small landscape (<1024) get the TOUCH shell (mobile header/drawer/
+//       bottom-nav) instead of the mouse-oriented desktop F-key toolbars, which
+//       only ever covered <768 before (iPads got the cramped desktop layout).
+//       The two desktop F-key toolbars switch md:flex -> lg:flex so they show
+//       only at >=1024, matching the JS boundary (no double-render at 768-1023).
+//       Large landscape iPads + desktops (>=1024) keep the F-key layout.
+// v836: PDF Editor — annotations on ROTATED pages now save at the correct
+//       position. drawAnnotation draws in the displayed frame under a /Rotate-
+//       inverse CTM (new ContentStreamBuilder.transform + rotationGeometry);
+//       both native + pdf-lib save paths fixed. Redactions/signatures on rotated
+//       evidence pages were landing in the wrong place. Geometry unit-tested +
+//       visually verified (rot 0/90/270). Un-rotated path byte-identical.
+// v837: PDF Editor polish — (1) dragging/resizing an annotation now creates ONE
+//       undo step instead of flooding history with a frame-by-frame entry per
+//       pointer-move (snapshot-on-first-move + live no-history updates); (2) the
+//       Bates/Watermark/Document-properties toolbar buttons (previously dead
+//       no-ops) now surface the document-level PropertiesPanel sections.
+// v838: PSO Notice of Communication data fixes — addressee now uses the
+//       contracting CLIENT record (company + Attn: contact + client phone/
+//       address) instead of the inconsistent call-level caller; Service Type
+//       derives from the client industry / PS disposition ("Process Service")
+//       instead of generic "Protective Services"; attempt RESULT maps the raw
+//       "PS *"/"Negative Contact" dispositions to client-readable text; notice
+//       body wording is service-type-accurate. Backed by a clients JOIN that
+//       now surfaces contact_name/contact_phone/address/industry.
+// v839: PDF system + Document Writer feature wave 1 (~27 new features).
+//   PDF Editor: rotate-all/reverse/duplicate pages, export page-range dialog,
+//   fit-page/width zoom presets, "Page N of M" footer, checkmark/cross/cloud
+//   annotations, color presets, lock/unlock, select-all/clear-page, more
+//   shortcuts, thumbnail-size toggle, download-flattened, fit-width-on-load.
+//   Document Writer: 5 new police templates, insert time/date-time, numbered
+//   section headings, Focus/Zen mode, live word/char/sentence status bar,
+//   avg-words/sentence stat.
+// v840: PDF system + Document Writer feature wave 2 (~28 more features).
+//   PDF Editor: append/merge PDF, insert image-as-page, blank/lined/grid page
+//   templates, search-and-redact by pattern (SSN/phone/email/regex), image +
+//   tiled watermark, custom header/footer, measure tool, annotation font/opacity
+//   controls, extract-text, batch-rotate selected pages, crop-all, bookmarks
+//   panel, go first/last, export page as PNG. Document Writer: 12 more police
+//   templates, snippets library, table-of-contents, doc properties, signature
+//   line, version snapshots, smart quotes, read-aloud TTS, JSON export/import,
+//   outline numbering, fillable fields, character map, word goal.
+// v841: PDF system + Document Writer feature wave 3 (~25 more features).
+//   PDF Editor: AcroForm form fields, real /Link annotations + /Outlines tree on
+//   save, split into multiple files, optimize/compress, line styles (dashed/
+//   dotted) via new engine setLineDash op, set page size, per-thumbnail rotate
+//   CCW, grayscale/invert page, annotation summary report PDF, save-a-copy,
+//   two-PDF visual compare (pixel diff). Document Writer: 15 more police
+//   templates, Analysis panel (Flesch readability, style/passive-voice checks,
+//   word/phrase frequency, version diff), formatting brush, case transforms,
+//   table-from-CSV, Utah Code citation insert, page-count estimate, letterhead
+//   + page-border styles, custom save-as-template surfaced in the chooser.
+// v842: Email — fix broken images in the message viewer. The body renders in a
+//   blob: URL iframe, but proxyEmailImages rewrote <img> srcs to a RELATIVE
+//   "/api/email/image-proxy?..." which doesn't resolve against a blob: document's
+//   base, so every external image 404'd to a broken-image icon. Qualify the proxy
+//   URL with window.location.origin so it resolves to the real same-origin path.
+// v843: GPS reliability (accountability — never silently drop a fix). Three
+//   loss-points closed: (1) durable flush on pagehide/visibility-hidden — the
+//   in-memory upload queue (up to one 5s interval of fixes) is persisted to the
+//   localStorage failover queue on tab close / OS backgrounding, where React's
+//   unmount cleanup is unreliable; deduped so a tab-switch can't double-queue.
+//   (2) failover buffer cap raised 100→2000 fixes (~8 min → ~2.8 h offline) and
+//   overflow now logs instead of dropping silently. (3) Server-side: a non-finite
+//   lat/lng fix no longer poisons the ATOMIC breadcrumb batch (one NaN used to
+//   roll back & 500 the whole batch → client re-queued the poisoned batch forever,
+//   blocking every good fix); bad points are dropped, good ones persist.
+// v845: UNBLOCK main — PR #1094 (+105 templates) merged broken (132 type errors
+//       → every deploy since Wave 3 failed): a 2nd template taxonomy that didn't
+//       reconcile + an incomplete TemplateChooser rewrite + a dropped import.
+//       Fix: DocumentTemplate.category unions both taxonomies; TemplateChooser
+//       restored to last known-good (all templates preserved); FeaturesPanel
+//       import restored.
+// v846: mobile card layouts on /patrol — Checkpoints + Scan Log + Shift Summary
+//   toolbar wrapping. Wide tables behind overflow-x-auto are unusable on a phone;
+//   cards stack key info + 44pt-tap-target action rows on a single touch surface.
+// v847: PDF + Document Writer feature wave 4 (~27 more features).
+//   PDF Editor: page organizer (drag-reorder grid), single/continuous/2-up view
+//   modes, annotation reply threads, N-up export, page-number styles, flatten-
+//   form, text-annotation hyperlinks, deskew, page labels, snap-to-grid + grid,
+//   apply-annotation-to-all-pages, region-to-PNG, annotation border toggle.
+//   Document Writer: debounced server autosave, shortcuts cheatsheet, paragraph-
+//   style presets, text<->list conversions, list/table row sort, auto-filled
+//   officer signature block, recent documents, standalone styled HTML export,
+//   reusable section blocks, duplicate document, nav helpers, manual save-draft.
+// v848: /field-camera mobile camera portal — live viewfinder + HUD; capture
+//   composites timestamp/officer/unit/GPS into a bottom data band + translucent
+//   RMPG watermark bottom-right, uploads stamped JPEG to /api/field-photos (R2).
+// v849: PDF + Document Writer feature wave 5 (~21 more features).
+//   PDF Editor: annotation search/filter, rotate annotation, measurement
+//   calibration + polygon area, redaction options (black-bar/white-out + reason),
+//   sticky-note categories, insert pages from another PDF at a position, editor
+//   chrome light/dark, annotation style presets, shortcut help. Document Writer:
+//   mail-merge from a CFS call, heuristic proofreader (click-to-fix), track-
+//   changes/suggestion mode, reversible redaction mark, section word-count goals,
+//   document minimap, inline phrase autocomplete, editor appearance settings.
+// v850: live-sweep fixes (full 90-route browser sweep of prod). (1) Crime
+//   Analysis page was a permanent "No data available" — the endpoint was only
+//   ever a proxy stub with a mismatched shape; real /api/reports/crime-analysis
+//   (+ CSV export) now ships on the rewrite with the page's exact contract,
+//   and the page shows its spinner during load (loading was checked AFTER
+//   !data, so the spinner never appeared). (2) Dashboard 8-tile rollup was
+//   serving the all-zeros catch fallback in prod: /reports/dashboard queried
+//   response_time_sec (live column is response_time_seconds) → "no such
+//   column" rejected the whole Promise.all; fixed + response minutes now fall
+//   back to onscene_at−created_at when the column is NULL (all live rows).
+//   (3) Radio LiveTab: transient TX-poll failures (e.g. a tick racing the
+//   15-min token refresh) logged a scary error every 5s; now warn once per
+//   failure streak, error only if it persists.
+// v851: PDF + Document Writer feature wave 6 (~18 more — closing toward 150).
+//   PDF Editor: typed signature + initials + quick-sign, AcroForm dropdown/radio/
+//   date fields, crop aspect-ratio presets, PNG export DPI (72/150/300), nested
+//   bookmarks (/Outlines tree), presentation/full-screen view. Document Writer:
+//   floating selection bubble toolbar, auto-numbered figure/table/exhibit
+//   captions, vertical spacer, page-setup presets, export/copy selection, custom
+//   spell dictionary, word/char limit indicator, drag-reorder outline sections,
+//   formatting macro recorder, clear-document.
+// v852: Document Writer template formatting overhaul — citation-form look in
+//   sans-serif across all ~150 templates. ROOT CAUSE of the old plain look:
+//   TipTap's schema silently STRIPPED the templates' <div> wrappers, per-<td>
+//   styles and h2 border-bottoms at insert. _shared.ts rebuilt on a
+//   round-trip-safe vocabulary (span font-family/size/letter-spacing/small-caps,
+//   paragraph shading + full borders, tables, taskList): Arial/Helvetica form
+//   chrome, letterhead w/ gold rule bar, gold-tab section bars, label-over-value
+//   field grids (dense 3-up citation caseHeader), ruled narrative writing areas,
+//   boxed signature rows w/ certification line, notary acknowledgment on
+//   affidavits, statute banners, form footer helper. index.ts's 45 hand-rolled
+//   templates converted to the same system (43 titles, 120 sections, 264 field
+//   cells); 164 '<strong>Label:</strong>' cells in the 4 category files →
+//   field() label-over-value boxes.
+// v853: Fix blank "Notice of Communication" PDFs (and serve Notice of
+//   Attempt). jsPDF's dataurlnewwindow opened an HTML wrapper page whose
+//   iframe pointed at a SESSION-BOUND blob URL — anything saved/uploaded from
+//   that window was a ~240-byte HTML shell that rendered blank in every PDF
+//   viewer (live artifact: attachments #56). New openPdfDocument() opens the
+//   real PDF bytes (File-wrapped blob → window.open, download fallback when
+//   popup-blocked). Generator verified healthy (smoke tests + pdftoppm render).
+// v854: Account Security page fixes + real TOTP 2FA. (1) "undefined
+//   remaining" backup codes — /api/auth/security/status now returns the
+//   client's SecurityStatus shape (totpEnabled/backupCodesRemaining/...);
+//   active-session count now only counts sessions used in the last 7 days.
+//   (2) TOTP enrollment is REAL: RFC 6238 in the Worker (WebCrypto, AES-GCM
+//   secret at rest, 10 hashed single-use backup codes), login gate +
+//   /login/verify-2fa + /login/verify-backup-code, password-confirmed
+//   disable + backup-code regenerate. QR rendered client-side from
+//   otpauthUrl (qrcode pkg); setup surfaces capture backup codes from the
+//   verify response (previously rendered an empty list). Sessions cron
+//   purge added.
+const CACHE_NAME = 'rmpg-flex-v867';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

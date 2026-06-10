@@ -544,7 +544,7 @@ export default function InvoicesPage() {
   // ── Create form panel ────────────────────────────────────
 
   const CreatePanel = () => (
-    <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent p-4 space-y-4">
+    <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent p-4 space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-bold text-white flex items-center gap-2">
           <Plus size={14} className="text-brand-400" /> New Invoice
@@ -655,7 +655,7 @@ export default function InvoicesPage() {
     const statusActions = getStatusActions(inv);
 
     return (
-      <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent p-4 space-y-4">
+      <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent p-4 space-y-4">
         {/* Header */}
         <div className="flex items-start justify-between">
           <div>
@@ -1073,7 +1073,7 @@ export default function InvoicesPage() {
             </div>
 
             {/* List */}
-            <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
+            <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
               {loading ? (
                 <div className="flex items-center justify-center gap-2 h-32"><Loader2 size={20} className="animate-spin text-brand-400" /><span className="text-xs text-rmpg-400">Loading invoices...</span></div>
               ) : error ? (
@@ -1204,7 +1204,7 @@ export default function InvoicesPage() {
       <div className="flex-1 flex overflow-hidden">
         {/* Left: invoice list */}
         <div className="flex flex-col min-h-0 w-[55%] border-r border-[#2b2b2b] overflow-hidden">
-          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
+          <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
             {loading ? (
               <div className="flex items-center justify-center gap-2 h-32"><Loader2 size={20} className="animate-spin text-brand-400" /><span className="text-xs text-rmpg-400">Loading invoices...</span></div>
             ) : invoices.length === 0 ? (

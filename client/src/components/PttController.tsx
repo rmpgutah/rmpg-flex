@@ -13,7 +13,7 @@
 // resolution, and an always-visible on-air HUD.
 // ============================================================
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Radio, Mic, MicOff, RadioTower } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -22,6 +22,15 @@ import { useVoiceChannel, type DispatchRecordRef } from '../pages/radio/useVoice
 import DispatchRecordPanel from './DispatchRecordPanel';
 import type { RadioChannel } from '../pages/radio/types';
 import { getPttPrefs, keyCodeLabel, PTT_PREFS_EVENT, type PttPreferences } from '../utils/pttPreferences';
+
+// Keyboard-keycap chip — renders the PTT key (e.g. "Backspace") as a small
+// button-like cap so the binding reads as a command, not prose.
+const keycapStyle: CSSProperties = {
+  display: 'inline-block', padding: '0 4px', minWidth: 8, borderRadius: 3,
+  border: '1px solid #4a4a4a', borderBottomWidth: 2, background: '#2a2a2a',
+  color: '#e0e0e0', fontSize: 8.5, fontWeight: 700, lineHeight: '13px',
+  fontFamily: "'JetBrains Mono', monospace", whiteSpace: 'nowrap',
+};
 
 export default function PttController() {
   const { user } = useAuth();
@@ -36,6 +45,19 @@ export default function PttController() {
   // shown as a floating card over whatever page they're on (the operator
   // console handles its own panel). null = none open.
   const [fieldRecord, setFieldRecord] = useState<DispatchRecordRef | null>(null);
+  // Collapsed HUD = a small pill (dot + icon only) so it never covers page
+  // controls. Persisted per-browser. PTT and the keyboard key keep working
+  // while collapsed — only the text label is hidden.
+  const [collapsed, setCollapsed] = useState<boolean>(() => {
+    try { return localStorage.getItem('rmpg-ptt-hud-collapsed') === '1'; } catch { return false; }
+  });
+  const toggleCollapsed = useCallback(() => {
+    setCollapsed((c) => {
+      const next = !c;
+      try { localStorage.setItem('rmpg-ptt-hud-collapsed', next ? '1' : '0'); } catch { /* ignore */ }
+      return next;
+    });
+  }, []);
 
   // Inject the HUD's keyframes once (self-contained — no global CSS dep).
   useEffect(() => {
@@ -96,9 +118,26 @@ export default function PttController() {
   keyCodeRef.current = prefs.keyCode;
   enabledRef.current = active && resolvedChannelId != null;
 
+  // Whether a key event should be left alone for text editing rather than
+  // stolen for PTT. Critical when the PTT key is a destructive editing key
+  // like Backspace — we must NEVER swallow it while the user is writing.
+  // We consult BOTH the event target and the actually-focused element (some
+  // widgets dispatch from a wrapper while an editable child holds focus), and
+  // catch ARIA textboxes + any contenteditable region, not just raw inputs.
   const isTypingTarget = (el: EventTarget | null): boolean => {
-    const t = el as HTMLElement | null;
-    return !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
+    const candidates: Array<HTMLElement | null> = [el as HTMLElement | null];
+    if (typeof document !== 'undefined') candidates.push(document.activeElement as HTMLElement | null);
+    for (const t of candidates) {
+      if (!t || typeof t.tagName !== 'string') continue;
+      if (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT') return true;
+      if (t.isContentEditable) return true;
+      const role = t.getAttribute?.('role');
+      if (role === 'textbox' || role === 'searchbox' || role === 'combobox') return true;
+      // Focus may sit on a node nested inside an editable surface (e.g. the
+      // Document Writer's ProseMirror) — treat the whole region as typing.
+      if (t.closest?.('input, textarea, select, [role="textbox"], [contenteditable]:not([contenteditable="false"])')) return true;
+    }
+    return false;
   };
 
   // Bind global key listeners once.
@@ -159,35 +198,65 @@ export default function PttController() {
     <div
       role="status"
       aria-live="polite"
-      onMouseDown={holdDown}
-      onMouseUp={holdUp}
-      onMouseLeave={holdUp}
-      onTouchStart={(e) => { e.preventDefault(); holdDown(); }}
-      onTouchEnd={(e) => { e.preventDefault(); holdUp(); }}
-      title={`Hold ${keyCodeLabel(prefs.keyCode)} (or click-hold) to transmit on ${channelName}`}
       style={{
         position: 'fixed', right: 12, bottom: 30, zIndex: 9000,
-        display: 'flex', alignItems: 'center', gap: 8,
-        padding: '5px 10px', background: bg, border: `1px solid ${border}`,
-        borderRadius: 2, cursor: 'pointer', userSelect: 'none',
+        display: 'flex', alignItems: 'stretch', gap: 0,
+        background: bg, border: `1px solid ${border}`,
+        borderRadius: 2, userSelect: 'none',
         boxShadow: '0 2px 8px rgba(0,0,0,0.5)',
         fontFamily: "'JetBrains Mono', monospace",
         animation: voice.transmitting ? 'rmpg-ptt-pulse 1s ease-in-out infinite' : undefined,
       }}
     >
-      <span
+      {/* Press-to-talk zone — click/touch-hold to transmit (alternative to the key). */}
+      <div
+        onMouseDown={holdDown}
+        onMouseUp={holdUp}
+        onMouseLeave={holdUp}
+        onTouchStart={(e) => { e.preventDefault(); holdDown(); }}
+        onTouchEnd={(e) => { e.preventDefault(); holdUp(); }}
+        title={`Hold ${keyCodeLabel(prefs.keyCode)} (or click-hold) to transmit on ${channelName}`}
         style={{
-          width: 8, height: 8, borderRadius: 1, background: dot, flexShrink: 0,
-          animation: (voice.transmitting || voice.activeSpeaker) ? 'rmpg-ptt-blink 0.8s ease-in-out infinite' : undefined,
+          display: 'flex', alignItems: 'center', gap: 8,
+          padding: '5px 10px', cursor: 'pointer',
         }}
-      />
-      <Icon style={{ width: 13, height: 13, color: dot }} aria-hidden />
-      <span style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.2 }}>
-        <span style={{ fontSize: 10, fontWeight: 900, letterSpacing: '0.04em', color: '#fff' }}>{label}</span>
-        <span style={{ fontSize: 8, color: '#888' }}>
-          {channelName} · {voice.members} on · {keyCodeLabel(prefs.keyCode)} = PTT
-        </span>
-      </span>
+      >
+        <span
+          style={{
+            width: 8, height: 8, borderRadius: 1, background: dot, flexShrink: 0,
+            animation: (voice.transmitting || voice.activeSpeaker) ? 'rmpg-ptt-blink 0.8s ease-in-out infinite' : undefined,
+          }}
+        />
+        <Icon style={{ width: 13, height: 13, color: dot }} aria-hidden />
+        {collapsed ? (
+          <kbd style={keycapStyle}>{keyCodeLabel(prefs.keyCode)}</kbd>
+        ) : (
+          <span style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.3 }}>
+            <span style={{ fontSize: 10, fontWeight: 900, letterSpacing: '0.04em', color: '#fff' }}>{label}</span>
+            <span style={{ fontSize: 8, color: '#888', display: 'flex', alignItems: 'center', gap: 4, marginTop: 1 }}>
+              {channelName} · {voice.members} on ·
+              <kbd style={keycapStyle}>{keyCodeLabel(prefs.keyCode)}</kbd>
+              PTT
+            </span>
+          </span>
+        )}
+      </div>
+      {/* Minimize / expand — separate from the press zone so it never keys the mic. */}
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); toggleCollapsed(); }}
+        onMouseDown={(e) => e.stopPropagation()}
+        onTouchStart={(e) => e.stopPropagation()}
+        aria-label={collapsed ? 'Expand radio status' : 'Minimize radio status'}
+        title={collapsed ? 'Expand radio status' : 'Minimize — tuck the radio status out of the way'}
+        style={{
+          flexShrink: 0, width: 16, border: 'none', borderLeft: `1px solid ${border}`,
+          background: 'transparent', color: '#888', cursor: 'pointer',
+          fontSize: 11, lineHeight: 1, padding: 0,
+        }}
+      >
+        {collapsed ? '‹' : '›'}
+      </button>
     </div>
     </>
   );

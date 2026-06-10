@@ -198,12 +198,10 @@ stubs.post('/media-sync-now', (c) => c.json({ success: true }));
 stubs.post('/test', (c) => c.json({ success: false, error: 'ClearPathGPS not configured' }));
 stubs.post('/discover-accounts', (c) => c.json([]));
 
-// ── Code Enforcement (mounted at /api/code-enforcement) ────
-stubs.get('/export/csv', (c) => {
-  c.header('Content-Type', 'text/csv');
-  c.header('Content-Disposition', 'attachment; filename="code_violations_export.csv"');
-  return c.body('');
-});
+// ── Code Enforcement: moved to src/routes/codeEnforcement.ts ──
+// (the former '/export/csv' stub here also shadowed the DAR export
+// below — Hono first-match meant /api/dar/export/csv answered with
+// the code_violations filename)
 
 // ── DAR export (mounted at /api/dar) ────
 stubs.get('/export/csv', (c) => {

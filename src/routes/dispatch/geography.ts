@@ -326,6 +326,34 @@ for (const [path, meta] of Object.entries(GEO_TABLES)) {
       return c.json({ success: true });
     } catch (err) { return c.json({ error: 'Failed to delete' }, 500); }
   });
+
+  // PUT /:id — edit a geography row. This handler was MISSING: the Geography
+  // editor saves via PUT /dispatch/geography/{tier}s/{id}, but only POST (create)
+  // and DELETE existed, so every edit 404'd ("Save failed: ... status 404").
+  // Body keys are allowlisted against the table's REAL columns (PRAGMA) so it is
+  // injection-safe and tolerant of each tier's different field set + live schema
+  // drift. `meta.table` is a hardcoded constant, not user input, so interpolating
+  // it into the PRAGMA/UPDATE is safe.
+  geography.put(`/${path}/:id`, requireRole('admin', 'manager', 'supervisor'), async (c) => {
+    try {
+      const db = getDb(c.env);
+      const id = c.req.param('id');
+      const body = await c.req.json<Record<string, unknown>>();
+      const colsInfo = await query<{ name: string }>(db, `PRAGMA table_info(${meta.table})`);
+      const valid = new Set(colsInfo.map((r) => r.name));
+      const sets: string[] = [];
+      const vals: unknown[] = [];
+      for (const [k, v] of Object.entries(body)) {
+        if (k === 'id' || k === 'created_at' || k === 'updated_at') continue;
+        if (valid.has(k)) { sets.push(`${k} = ?`); vals.push(v); }
+      }
+      if (sets.length === 0) return c.json({ error: 'No updatable fields' }, 400);
+      if (valid.has('updated_at')) sets.push("updated_at = datetime('now')");
+      vals.push(id);
+      await execute(db, `UPDATE ${meta.table} SET ${sets.join(', ')} WHERE id = ?`, ...vals);
+      return c.json({ success: true });
+    } catch (err) { return c.json({ error: 'Failed to update' }, 500); }
+  });
 }
 
 // GET /dispatch/geography/zone-allocation — per-zone unit counts for patrol balancing.

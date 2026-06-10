@@ -144,7 +144,7 @@ export default function CredentialsTab({ credentials, onAddCredential, onEditCre
             <h3 className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider mb-2 flex items-center gap-1.5">
               <ShieldAlert className="w-3 h-3 text-amber-400" /> Expiration Timeline
             </h3>
-            <div className="grid grid-cols-4 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
               <div className="text-center p-1.5 bg-red-900/20 rounded border border-red-800/30">
                 <div className="text-sm font-bold font-mono text-red-400">{expired.length}</div>
                 <div className="text-[7px] text-rmpg-500 uppercase">Expired</div>

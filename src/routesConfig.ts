@@ -123,6 +123,7 @@ import serve from './routes/serve';
 
 import settings from './routes/settings';
 import adminSettings from './routes/adminSettings';
+import knowledgeBase from './routes/knowledgeBase';
 import recruitment from './routes/recruitment';
 import reports from './routes/reports';
 import statutes from './routes/statutes';
@@ -130,17 +131,20 @@ import specialOps from './routes/specialOps';
 import victimServices from './routes/victimServices';
 import integrations from './routes/integrations';
 import stubs from './routes/stubs';
+import codeEnforcement from './routes/codeEnforcement';
 import weather from './routes/weather';
 // Dispatch domain
 import dispatchCalls from './routes/dispatch/calls';
 import dispatchUnits from './routes/dispatch/units';
 import dispatchDuty from './routes/dispatch/duty';
+import inspections from './routes/inspections';
 import dispatchGps from './routes/dispatch/gps';
 import dispatchTrips from './routes/dispatch/trips';
 import dispatchGeography from './routes/dispatch/geography';
 import dispatchAggregates from './routes/dispatch/aggregates';
 import dispatchPremiseHistory from './routes/dispatch/premiseHistory';
 import dispatchPanic from './routes/dispatch/panic';
+import email from './routes/email';
 import dispatchAnomalies from './routes/dispatch/anomalies';
 import dispatchCallLinks from './routes/dispatch/callLinks';
 import dispatchShiftHandoff from './routes/dispatch/shiftHandoff';
@@ -155,6 +159,7 @@ import {
 import businessVehicles from './routes/business/vehicles';
 import businessVisits from './routes/business/visits';
 import businessPhotos from './routes/business/photos';
+import fieldPhotos from './routes/fieldPhotos';
 // Howen dashcam integration
 import howen from './routes/howen';
 // Downloads + auto-updates
@@ -203,6 +208,12 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/map-data', router: mapData, auth: 'public' },
   { prefix: '/api/tiles', router: tiles, auth: 'public' },
   { prefix: '/api/geo', router: geo, auth: 'public' },
+
+  // Per-shift QR-token-authed vehicle inspection page (/m/shift/<token>). The
+  // token IS the credential — no JWT required because the page is meant for
+  // a personal phone scanning a QR shown on the desktop/MDT ShiftCard.
+  { prefix: '/api/inspections', router: inspections, auth: 'public',
+    note: 'Token-authed: resolves the open time_entry whose qr_token matches' },
 
   // Crime layers for the NAVIGATE tactical map (SLC public data proxy + our
   // own CFS). Auth-gated like the rest of the app; /local reads our DB.
@@ -384,6 +395,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Multi-jurisdiction data sharing: partners, agreements, exchange logs' },
   { prefix: '/api/jail', router: jail, auth: 'required',
     note: 'Jail management: inmates, charges, visitors, property, medical, disciplinary, transports' },
+  { prefix: '/api/knowledge-base', router: knowledgeBase, auth: 'required',
+    note: 'System-wide unified search across all record types by visible identifier/name' },
   { prefix: '/api/qa', router: qa, auth: 'required',
     note: 'Quality Assurance: reviews, criteria, scores, satisfaction surveys' },
   { prefix: '/api/risk', router: risk, auth: 'required',
@@ -403,6 +416,10 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/business-vehicles', router: businessVehicles, auth: 'required' },
   { prefix: '/api/business-visits', router: businessVisits, auth: 'required' },
   { prefix: '/api/business-photos', router: businessPhotos, auth: 'required' },
+
+  // ── Field photos (mobile camera portal /field-camera) ───────
+  // Stamped evidence photos: overlay burned client-side, R2-backed.
+  { prefix: '/api/field-photos', router: fieldPhotos, auth: 'required' },
 
   // ── Howen dashcam integration ──────────────────────────────
   // Device fleet + recent events. See src/routes/howen.ts.
@@ -470,7 +487,12 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/comms', router: stubs, auth: 'required' },
   { prefix: '/api/stats', router: stubs, auth: 'required' },
   { prefix: '/api/weather', router: weather, auth: 'required' },
-  { prefix: '/api/email', router: stubs, auth: 'required' },
+  // NB: do NOT re-mount stubs at /api/email here. The full email router
+  // (line ~497 below) supersedes everything stubs ever served on this
+  // prefix. Mounting stubs first would let the integrations-tab `/status`
+  // stub (returns {configured: false}) intercept /api/email/status BEFORE
+  // the real handler, falsely showing "Email Not Configured" to every
+  // user even when credentials are saved.
   // Real integrations router (rmpgutahps + integration_api_keys CRUD +
   // request log) — must be mounted BEFORE the stubs catch-all below.
   { prefix: '/api/integrations', router: integrations, auth: 'required' },
@@ -486,7 +508,9 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // either the rewrite or legacy worker. Mounting stubs so pages render
   // their empty/error state instead of 404ing.
   { prefix: '/api/cfs', router: stubs, auth: 'required' },
-  { prefix: '/api/code-enforcement', router: stubs, auth: 'required' },
+  // Code enforcement graduated from stubs to a real D1-backed router
+  // (code_violations + vehicle_tows tables) — 2026-06-09 404 sweep.
+  { prefix: '/api/code-enforcement', router: codeEnforcement, auth: 'required' },
   { prefix: '/api/dar', router: stubs, auth: 'required' },
   { prefix: '/api/diagnostics', router: stubs, auth: 'public' },
   { prefix: '/api/firecrawl-tools', router: stubs, auth: 'required' },
@@ -495,4 +519,9 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/pdf-engine', router: stubs, auth: 'required' },
   { prefix: '/api/updates', router: stubs, auth: 'public' },
   { prefix: '/api/voice-persona', router: stubs, auth: 'required' },
+
+  // Microsoft 365 email integration. Mount as 'public' so the OAuth
+  // callback (which Microsoft redirects to without a JWT) is reachable;
+  // every other route inside the router applies authMiddleware itself.
+  { prefix: '/api/email', router: email, auth: 'public' },
 ];

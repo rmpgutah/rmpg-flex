@@ -63,9 +63,15 @@ interface DashboardData {
 }
 
 interface IncidentsSummaryData {
-  groupBy: string;
-  data: Array<{ group_key: string; count: number }>;
+  days?: number;
   total: number;
+  // The handler returns by_type (NOT a `data`/`group_key` array). Typing it
+  // correctly lets the chart and CSV export read the real shape without an
+  // `as any` cast — and fixes the CSV crash where `.data.forEach` ran on
+  // undefined.
+  by_type: Array<{ type: string; count: number }>;
+  by_status?: Array<{ status: string; count: number }>;
+  by_day?: Array<{ date: string; count: number }>;
 }
 
 interface ResponseTimesData {
@@ -211,23 +217,32 @@ function exportToCSV(
   }
 ) {
   const sections: string[] = [];
+  // Quote every field and double internal quotes. Without this, an officer
+  // name in "Last, First" format (common) injected a stray comma and shifted
+  // every subsequent column in the export.
+  const cell = (v: unknown): string => {
+    const s = v === null || v === undefined ? '' : String(v);
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  const row = (...cells: unknown[]): string => cells.map(cell).join(',');
 
   // Summary section
   sections.push('SUMMARY STATISTICS');
-  sections.push('Metric,Value');
-  sections.push(`Total Calls,${stats.totalCalls}`);
-  sections.push(`Incidents Filed,${stats.incidentsFiled}`);
-  sections.push(`Avg Response Time,${stats.avgResponse}`);
-  sections.push(`SLA Met,${stats.slaMet}`);
-  sections.push(`Active Officers,${stats.activeOfficers}`);
+  sections.push(row('Metric', 'Value'));
+  sections.push(row('Total Calls', stats.totalCalls));
+  sections.push(row('Incidents Filed', stats.incidentsFiled));
+  sections.push(row('Avg Response Time', stats.avgResponse));
+  sections.push(row('SLA Met', stats.slaMet));
+  sections.push(row('Active Officers', stats.activeOfficers));
   sections.push('');
 
-  // Incidents by type
-  if (incidentsData) {
+  // Incidents by type — iterate the handler's real `by_type` shape (the old
+  // code read `.data`/`group_key`, which don't exist → empty/crash on export).
+  if (incidentsData?.by_type?.length) {
     sections.push('INCIDENTS BY TYPE');
-    sections.push('Type,Count');
-    incidentsData.data.forEach(item => {
-      sections.push(`${formatGroupKey(item.group_key)},${item.count}`);
+    sections.push(row('Type', 'Count'));
+    incidentsData.by_type.forEach(item => {
+      sections.push(row(formatGroupKey(item.type), item.count));
     });
     sections.push('');
   }
@@ -235,11 +250,12 @@ function exportToCSV(
   // Officer activity
   if (officerActivity.length > 0) {
     sections.push('OFFICER ACTIVITY');
-    sections.push('Officer Name,Badge Number,Calls Responded,Incidents Written,Total Hours');
+    sections.push(row('Officer Name', 'Badge Number', 'Calls Responded', 'Incidents Written', 'Total Hours'));
     officerActivity.forEach(officer => {
-      sections.push(
-        `${officer.full_name},${officer.badge_number},${officer.calls_responded},${officer.incidents_written},${(Number(officer.total_hours) || 0).toFixed(1)}`
-      );
+      sections.push(row(
+        officer.full_name, officer.badge_number, officer.calls_responded,
+        officer.incidents_written, (Number(officer.total_hours) || 0).toFixed(1),
+      ));
     });
   }
 
@@ -482,7 +498,7 @@ function WeeklyDigestCard() {
       </div>
       {expanded && digest && (
         <div className="p-4 space-y-3 text-xs">
-          <div className="grid grid-cols-5 gap-2">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
             {[
               { label: 'Calls', value: digest.summary?.totalCalls || 0, color: '#888888' },
               { label: 'Incidents', value: digest.summary?.totalIncidents || 0, color: '#22c55e' },
@@ -831,6 +847,14 @@ export default function ReportsPage() {
         }
         const dateParams = new URLSearchParams({ startDate });
         if (endDate) dateParams.append('endDate', endDate);
+        // The incidents-summary / response-times / officer-activity handlers
+        // honor ONLY `?days=N` — they ignore startDate/endDate. Without this the
+        // range picker did nothing: every selection returned the fixed 30-day
+        // default. Translate the chosen window into an inclusive day count.
+        const startMs = new Date(`${startDate}T00:00:00`).getTime();
+        const endMs = endDate ? new Date(`${endDate}T00:00:00`).getTime() : Date.now();
+        const days = Math.max(1, Math.round((endMs - startMs) / 86_400_000) + 1);
+        dateParams.append('days', String(days));
 
         // Fetch all endpoints in parallel. Each is independently fault-tolerant
         // — /reports/dashboard and /officer-activity fall through to legacy and
@@ -854,8 +878,15 @@ export default function ReportsPage() {
         apiFetch<any>('/reports/comparison?period=week')
           .then(data => { if (!cancelled && data) setComparisonData(data); })
           .catch(() => { /* optional */ });
-        apiFetch<{ data: any[] }>('/reports/schedules')
-          .then(data => { if (!cancelled && Array.isArray(data?.data)) setReportSchedules(data.data); })
+        apiFetch<any>('/reports/schedules')
+          .then(data => {
+            if (cancelled) return;
+            // Tolerate both shapes: the handler returns a bare array, but a
+            // legacy/stub path may wrap it as { data: [...] }. The old code
+            // only accepted the wrapped form, so the panel never populated.
+            const list = Array.isArray(data) ? data : (Array.isArray(data?.data) ? data.data : null);
+            if (list) setReportSchedules(list);
+          })
           .catch(() => { /* optional */ });
       } catch (err) {
         if (cancelled) return;
@@ -885,9 +916,7 @@ export default function ReportsPage() {
   };
 
   // Prepare chart data
-  // Handler returns { by_type: [{ type, count }], ... } — not a `data`/`group_key`
-  // array. Read by_type so the incidents-by-type breakdown chart populates.
-  const incidentsChartData = (Array.isArray((incidentsData as any)?.by_type) ? (incidentsData as any).by_type : []).map((item: any, i: number) => ({
+  const incidentsChartData = (incidentsData?.by_type ?? []).map((item, i) => ({
     name: formatGroupKey(item.type),
     value: item.count,
     fill: PIE_COLORS[i % PIE_COLORS.length],
@@ -989,6 +1018,72 @@ export default function ReportsPage() {
           <Download className="w-3.5 h-3.5" /> Export
         </button>
       </PanelTitleBar>}
+
+      {/* Mobile control bar — desktop hides this and uses the PanelTitleBar above */}
+      {isMobile && (
+        <div className="panel-beveled bg-surface-base p-3 space-y-2">
+          <div className="flex items-center gap-2">
+            <BarChart3 className="w-4 h-4 text-brand-400 flex-shrink-0" />
+            <h1 className="text-xs font-bold tracking-wider uppercase text-rmpg-100 flex-1">Reports & Analytics</h1>
+          </div>
+          <div className="flex items-center gap-2">
+            <Calendar className="w-3.5 h-3.5 text-rmpg-300 flex-shrink-0" />
+            <select
+              className="select-dark text-xs flex-1 min-h-[44px]"
+              value={dateRange}
+              onChange={(e) => setDateRange(e.target.value)}
+              disabled={loading}
+              aria-label="Date range"
+            >
+              <option value="today">Today</option>
+              <option value="last_7_days">Last 7 Days</option>
+              <option value="last_14_days">Last 14 Days</option>
+              <option value="last_30_days">Last 30 Days</option>
+              <option value="this_month">This Month</option>
+              <option value="last_month">Last Month</option>
+              <option value="this_quarter">This Quarter</option>
+              <option value="custom">Custom Range</option>
+            </select>
+          </div>
+          {dateRange === 'custom' && (
+            <div className="flex items-center gap-2">
+              <input
+                type="date"
+                className="input-dark text-xs px-2 font-mono w-full min-h-[44px]"
+                value={customStartDate}
+                onChange={(e) => setCustomStartDate(e.target.value)}
+                style={{ colorScheme: 'dark' }}
+                aria-label="Start date"
+              />
+              <span className="text-rmpg-400 text-[10px] uppercase font-bold tracking-wide flex-shrink-0">to</span>
+              <input
+                type="date"
+                className="input-dark text-xs px-2 font-mono w-full min-h-[44px]"
+                value={customEndDate}
+                onChange={(e) => setCustomEndDate(e.target.value)}
+                style={{ colorScheme: 'dark' }}
+                aria-label="End date"
+              />
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-2">
+            <button type="button"
+              className="toolbar-btn justify-center min-h-[44px]"
+              onClick={() => navigate('/reports/custom')}
+            >
+              <Database className="w-3.5 h-3.5" /> Builder
+            </button>
+            <button type="button"
+              className="toolbar-btn justify-center min-h-[44px]"
+              onClick={handleExport}
+              disabled={loading || !incidentsData}
+              style={{ opacity: (loading || !incidentsData) ? 0.4 : 1 }}
+            >
+              <Download className="w-3.5 h-3.5" /> Export
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Error Banner */}
       {error && (
@@ -1312,6 +1407,7 @@ export default function ReportsPage() {
 // ── Patrol Tracking Report Card ──────────────────────────
 function PatrolTrackingCard() {
   const { addToast } = useToast();
+  const isMobile = useIsMobile();
   const [mode, setMode] = useState<'hours' | 'range'>('hours');
   const [hours, setHours] = useState(8);
   const [startDate, setStartDate] = useState('');
@@ -1477,7 +1573,7 @@ function PatrolTrackingCard() {
         <button type="button"
           onClick={handleGenerate}
           disabled={generating}
-          className="toolbar-btn-primary text-[10px] px-4 py-1.5 flex items-center gap-1.5 ml-auto"
+          className={`toolbar-btn-primary text-[10px] px-4 py-1.5 flex items-center justify-center gap-1.5 ${isMobile ? 'w-full min-h-[44px]' : 'ml-auto'}`}
         >
           {generating ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <FileText className="w-3 h-3" />}
           {generating ? 'Generating...' : 'Export PDF'}
@@ -1486,7 +1582,7 @@ function PatrolTrackingCard() {
 
       {/* Preview stats */}
       {preview && (
-        <div className="mt-2 flex items-center gap-4 text-[9px] text-rmpg-400 font-mono border-t border-rmpg-700/50 pt-2">
+        <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[9px] text-rmpg-400 font-mono border-t border-rmpg-700/50 pt-2">
           <span>Units: <strong className="text-white">{preview.totalUnits}</strong></span>
           <span>Points: <strong className="text-white">{preview.totalPoints}</strong></span>
           <span>Miles: <strong className="text-brand-400">{preview.totalMiles}</strong></span>

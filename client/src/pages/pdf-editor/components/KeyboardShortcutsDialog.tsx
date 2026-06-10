@@ -30,6 +30,13 @@ const SHORTCUTS: Array<[string, string]> = [
   ['A', 'Arrow'],
   ['P', 'Free-hand pen'],
   ['N', 'Sticky note'],
+  ['C', 'Revision cloud'],
+  ['X', 'Cross / X mark'],
+  ['Shift + R', 'Rotate current page 90°'],
+  ['Shift + Alt + R', 'Rotate all pages 90°'],
+  ['Ctrl/⌘ + ] / [', 'Increase / decrease stroke width'],
+  ['Ctrl/⌘ + G', 'Go to page…'],
+  ['Arrow keys', 'Nudge selected annotation (Shift = ×10)'],
   ['?', 'Show this dialog'],
 ];
 

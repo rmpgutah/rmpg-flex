@@ -841,15 +841,65 @@ records.get('/vehicles/bolo-check', async (c) => {
   } catch (err) { return c.json({ matches: [], count: 0 }); }
 });
 
-// POST /records/vehicles/stolen-check — placeholder for NCIC stolen vehicle check.
+// POST /records/vehicles/stolen-check — local stolen-vehicle check.
+// HISTORY: this was a hardcoded `{stolen:false}` that never queried anything —
+// an officer-safety FALSE CLEAR on vehicles locally flagged Stolen (2026-06-10
+// audit). Now checks (1) vehicles_records.stolen_status (same predicate as the
+// client's isActiveStolen badge) + ncic_entry_number, and (2) active BOLOs
+// matching the plate. Source is labeled honestly: this is LOCAL RECORDS ONLY,
+// not a live NCIC query — a CLEAR here never clears a real NCIC hit.
 records.post('/vehicles/stolen-check', async (c) => {
   try {
+    const db = getDb(c.env);
     const body = await c.req.json<Record<string, unknown>>().catch(() => ({} as Record<string, unknown>));
-    const plate = typeof body.plate === 'string' ? body.plate : null;
-    const vin = typeof body.vin === 'string' ? body.vin : null;
+    // Accept both `plate` and `plate_number` (DlSearchPage sends the latter).
+    const plate = typeof body.plate === 'string' && body.plate.trim() ? body.plate.trim().toUpperCase()
+      : typeof body.plate_number === 'string' && body.plate_number.trim() ? body.plate_number.trim().toUpperCase() : null;
+    const vin = typeof body.vin === 'string' && body.vin.trim() ? body.vin.trim().toUpperCase() : null;
     const state = typeof body.state === 'string' ? body.state : null;
-    return c.json({ checked: true, stolen: false, source: 'local', plate, vin, state });
-  } catch (err) { return c.json({ checked: true, stolen: false, source: 'local' }); }
+    if (!plate && !vin) {
+      return c.json({ checked: false, stolen: false, source: 'local records', message: 'No plate or VIN provided' }, 400);
+    }
+
+    // 1. Local vehicle record flagged stolen?
+    const where: string[] = [];
+    const params: unknown[] = [];
+    if (plate) { where.push('UPPER(plate_number) = ?'); params.push(plate); }
+    if (vin) { where.push('UPPER(vin) = ?'); params.push(vin); }
+    const rec = await queryFirst<{ id: number; stolen_status: string | null; ncic_entry_number: string | null; make: string | null; model: string | null }>(
+      db,
+      `SELECT id, stolen_status, ncic_entry_number, make, model FROM vehicles_records WHERE ${where.join(' OR ')} LIMIT 1`,
+      ...params);
+    const localStolen = (rec?.stolen_status || '').trim().toLowerCase() === 'stolen';
+
+    // 2. Active BOLO mentioning the plate?
+    let boloMatches: Record<string, unknown>[] = [];
+    if (plate) {
+      try {
+        const like = `%${plate}%`;
+        boloMatches = await query<Record<string, unknown>>(db,
+          "SELECT id, bolo_number, title, priority FROM bolos WHERE status = 'active' AND (UPPER(vehicle_description) LIKE ? OR UPPER(description) LIKE ?) ORDER BY priority ASC LIMIT 5",
+          like, like);
+      } catch { boloMatches = []; }
+    }
+
+    const stolen = localStolen || boloMatches.length > 0;
+    const message = localStolen
+      ? `Vehicle flagged STOLEN in local records${rec?.ncic_entry_number ? ` (NCIC entry ${rec.ncic_entry_number})` : ''}`
+      : boloMatches.length > 0
+        ? `Active BOLO match: ${boloMatches.map((m) => m.bolo_number || m.title).filter(Boolean).join(', ')}`
+        : 'No stolen flag in local records or active BOLOs — NOT a live NCIC check';
+    return c.json({
+      checked: true, stolen, source: 'local records + BOLO', message,
+      plate, vin, state,
+      record_id: rec?.id ?? null,
+      ncic_entry_number: rec?.ncic_entry_number ?? null,
+      bolo_matches: boloMatches,
+    });
+  } catch (err) {
+    // Fail HONESTLY — an error must read as "couldn't check", never as CLEAR.
+    return c.json({ checked: false, stolen: false, source: 'local records', message: 'Stolen check failed — treat as UNVERIFIED, not clear', detail: (err as Error)?.message }, 500);
+  }
 });
 
 // GET /records/vehicles/alerts/expired-registration — check registration expiry.

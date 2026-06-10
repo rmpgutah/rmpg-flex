@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../../types';
 import { getDb, query, queryFirst, execute } from '../../utils/db';
+import { emitAlert } from '../../utils/alertHub';
 import { requireRole } from '../../middleware/auth';
 
 const units = new Hono<Env>();
@@ -127,6 +128,10 @@ units.post('/', async (c) => {
 // through their dedicated dispatch pathways, not a general PUT.
 const UNIT_WRITABLE_COLUMNS = new Set([
   'call_sign', 'officer_id', 'status', 'capabilities',
+  // assigned_beat was missing here — the dispatcher edit modal sends it on
+  // every save (useDispatchUnitActions.handleSaveUnit) and the value was
+  // silently dropped, so beat assignments never persisted via edit.
+  'assigned_beat',
   'audio_mode', 'emergency_active', 'emergency_call_id', 'emergency_since',
   'gps_heading', 'gps_speed',
 ]);
@@ -156,18 +161,45 @@ units.put('/:id', async (c) => {
     for (const [k, v] of Object.entries(body)) {
       if (!UNIT_WRITABLE_COLUMNS.has(k)) continue;
       sets.push(`${k} = ?`);
-      params.push(v ?? null);
+      // D1 .bind() throws on arrays/objects. The dispatch edit modal sends
+      // `capabilities` as a raw string[] (the POST handler JSON.stringifies it,
+      // this PUT bound it directly) — so EVERY unit-edit save from the dispatch
+      // modal 500'd. Coerce composites to JSON text, matching the column format.
+      params.push(v == null ? null : (typeof v === 'object' ? JSON.stringify(v) : v));
     }
     if (!sets.length) return c.json({ message: 'No changes' });
+    if (typeof body.status === 'string') {
+      // Status is changing → restart the board's time-in-status dwell timer.
+      // Without this, a manual edit kept the OLD last_status_change and the
+      // dwell column showed days-old times after a fix.
+      sets.push("last_status_change = datetime('now')");
+      // Moving to a disengaged status detaches the unit from its call —
+      // otherwise the stale current_call_id kept the unit pinned to a dead
+      // call (and DELETE refused with UNIT_ON_CALL).
+      if (['available', 'off_duty', 'out_of_service'].includes(body.status)) {
+        sets.push('current_call_id = NULL');
+      }
+    }
     sets.push("updated_at = datetime('now')");
     params.push(id);
     await execute(db, `UPDATE units SET ${sets.join(', ')} WHERE id = ?`, ...params);
     const updated = await queryFirst(db, 'SELECT * FROM units WHERE id = ?', id);
+    try {
+      await emitAlert(c.env, 'dispatch_update', { action: 'unit_updated', unit: updated });
+    } catch { /* non-fatal */ }
     return c.json(updated);
   } catch (err: any) {
     console.error('PUT /dispatch/units/:id failed:', err);
     if (err?.message?.includes('CHECK constraint')) {
       return c.json({ error: 'Invalid value for a constrained field (status, etc.)', code: 'CHECK_CONSTRAINT' }, 400);
+    }
+    // units.call_sign is UNIQUE NOT NULL — renaming a unit to an existing call
+    // sign is a user-fixable conflict, not a server error.
+    if (err?.message?.includes('UNIQUE constraint')) {
+      return c.json({ error: 'That call sign is already in use by another unit', code: 'CALL_SIGN_TAKEN' }, 409);
+    }
+    if (err?.message?.includes('FOREIGN KEY constraint')) {
+      return c.json({ error: 'officer_id does not reference a valid user', code: 'INVALID_OFFICER' }, 400);
     }
     if (err?.message?.includes('no such column')) {
       console.error('PUT /dispatch/units/:id column mismatch:', err.message);
@@ -235,8 +267,13 @@ units.put('/:id/status', async (c) => {
     if (!existing) return c.json({ error: 'Unit not found' }, 404);
     const body = await c.req.json<Record<string, unknown>>();
     if (!body.status || typeof body.status !== 'string') return c.json({ error: 'status is required' }, 400);
-    await execute(db, `UPDATE units SET status = ?, last_status_change = datetime('now'), updated_at = datetime('now') WHERE id = ?`, body.status, id);
+    const detach = ['available', 'off_duty', 'out_of_service'].includes(body.status)
+      ? ', current_call_id = NULL' : '';
+    await execute(db, `UPDATE units SET status = ?, last_status_change = datetime('now'), updated_at = datetime('now')${detach} WHERE id = ?`, body.status, id);
     const updated = await queryFirst(db, 'SELECT * FROM units WHERE id = ?', id);
+    try {
+      await emitAlert(c.env, 'dispatch_update', { action: 'unit_status_changed', unit: updated });
+    } catch { /* non-fatal */ }
     return c.json(updated);
   } catch (err) {
     return c.json({ error: 'Failed to update unit status' }, 500);

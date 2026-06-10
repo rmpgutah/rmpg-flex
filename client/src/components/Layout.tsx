@@ -363,7 +363,19 @@ const CONTRACT_MANAGER_BLOCKED_PATHS = new Set([
 ]);
 
 export default function Layout() {
-  const { user, logout, refreshUser } = useAuth();
+  const { user, logout, signOut, refreshUser } = useAuth();
+  // `logout` is still exported for forced flows (password change). The
+  // user-facing Sign Out button uses `signOut`, which gates on shift state.
+  void logout;
+  const handleSignOutClick = useCallback(async () => {
+    setProfileDropdownOpen(false);
+    const result = await signOut();
+    if (!result.ok) {
+      // Shift gate blocked sign-out. Surface via alert() so the operator
+      // can't miss it; the End Shift flow lives on the ShiftCard.
+      try { window.alert(result.message); } catch { /* noop */ }
+    }
+  }, [signOut]);
   const { isConnected, subscribe } = useWebSocket();
   const location = useLocation();
   const navigate = useNavigate();
@@ -728,7 +740,7 @@ export default function Layout() {
 
   // Mobile menu & responsive detection
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const isMobile = useIsMobile();
+  const isMobile = useIsMobile(1024); // iPad portrait + small landscape get the touch shell (lg breakpoint)
 
   // Close mobile menu on route change
   useEffect(() => { setMobileMenuOpen(false); }, [location.pathname]);
@@ -1270,7 +1282,7 @@ export default function Layout() {
                   <div className="menu-separator" />
 
                   {/* 9: Sign Out button with red hover bg for destructive emphasis */}
-                  <button type="button" role="menuitem" onClick={() => { setProfileDropdownOpen(false); logout(); }} className="menu-item w-full transition-colors duration-150 hover:bg-red-900/20 focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none">
+                  <button type="button" role="menuitem" onClick={handleSignOutClick} className="menu-item w-full transition-colors duration-150 hover:bg-red-900/20 focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none">
                     <span className="menu-item-icon"><LogOut style={{ width: 12, height: 12, color: '#ef4444' }} /></span>
                     <span className="menu-item-label" style={{ color: '#ef4444' }}>Sign Out</span>
                   </button>
@@ -1305,7 +1317,7 @@ export default function Layout() {
       {/* TOOLBAR ROW 1 — Menu Bar (Spillman Flex style) HIDDEN ON MOBILE */}
       {/* ============================================================ */}
         <div
-          className="hidden md:flex items-center justify-between px-2"
+          className="hidden lg:flex items-center justify-between px-2"
           style={{
             height: '22px',
             background: 'linear-gradient(180deg, var(--desktop-shell-raised-start) 0%, var(--desktop-shell-start) 100%)',
@@ -1337,7 +1349,7 @@ export default function Layout() {
       {/* Square buttons: icon above label, F-key badge, dropdown for children */}
       {/* ============================================================ */}
       <div
-        className="hidden md:flex items-center gap-0 px-1 select-none overflow-x-auto overflow-y-hidden scrollbar-dark"
+        className="hidden lg:flex items-center gap-0 px-1 select-none overflow-x-auto overflow-y-hidden scrollbar-dark"
         role="toolbar"
         aria-label="Module navigation"
         style={{

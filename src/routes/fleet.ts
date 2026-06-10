@@ -353,6 +353,191 @@ fleet.get('/dashcam-videos', async (c) => {
   }
 });
 
+// ════════════════════════════════════════════════════════════════════════
+// DASHCAM VIDEO detail / edit / delete / neighbors / burn / links (F2 audit
+// follow-up). These were all 404 — the detail page (/dash-cameras/:id), the
+// list-page row actions, and the link modal were fully built client-side with
+// no backend. dashcam_videos exists on live D1; dashcam_video_links was created
+// (migration 0086). Every handler degrades on a missing table rather than 500,
+// matching the list handler above. ALL routes are registered BEFORE the bare
+// vehicle `/:id` routes by file position, and use the static `dashcam-videos`
+// segment so Hono never confuses them with the numeric `:id` vehicle routes.
+const DC_CLASSIFICATIONS = ['routine', 'evidence', 'flagged', 'restricted'];
+const DC_LINK_ENTITIES = ['call', 'incident', 'case', 'warrant', 'citation'];
+
+// GET /dashcam-videos/:id — full detail with vehicle/unit/officer joins + links.
+fleet.get('/dashcam-videos/:id{[0-9]+}', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = Number(c.req.param('id'));
+    const video = await queryFirst<Record<string, unknown>>(db, `
+      SELECT v.*,
+             fv.vehicle_number, fv.year AS vehicle_year, fv.make AS vehicle_make,
+             fv.model AS vehicle_model, fv.color AS vehicle_color,
+             fv.plate_number AS vehicle_plate, fv.plate_state AS vehicle_plate_state,
+             u.call_sign AS unit_call_sign, u.status AS unit_status,
+             usr.full_name AS officer_name, usr.badge_number AS officer_badge, usr.rank AS officer_rank
+      FROM dashcam_videos v
+      LEFT JOIN fleet_vehicles fv ON fv.id = v.vehicle_id
+      LEFT JOIN units u ON u.id = v.unit_id
+      LEFT JOIN users usr ON usr.id = u.officer_id
+      WHERE v.id = ?`, id);
+    if (!video) return c.json({ error: 'Video not found', code: 'NOT_FOUND' }, 404);
+    // Links, with call-type links enriched with the call fields the Incident panel reads.
+    let links: Record<string, unknown>[] = [];
+    try {
+      links = await query<Record<string, unknown>>(db, `
+        SELECT l.id, l.video_id, l.entity_type, l.entity_id, l.linked_by, l.notes, l.created_at,
+               cfs.priority, cfs.incident_type, cfs.status, cfs.disposition
+        FROM dashcam_video_links l
+        LEFT JOIN calls_for_service cfs ON l.entity_type = 'call' AND cfs.id = l.entity_id
+        WHERE l.video_id = ? ORDER BY l.created_at DESC`, id);
+    } catch { links = []; }
+    return c.json({ ...video, links });
+  } catch (err) {
+    console.error('GET /fleet/dashcam-videos/:id failed:', err);
+    return c.json({ error: 'Video not found', code: 'NOT_FOUND' }, 404);
+  }
+});
+
+// GET /dashcam-videos/:id/neighbors — prev (newer) / next (older) ids in the
+// list's recorded_at DESC, id DESC ordering, for the detail-page nav arrows.
+fleet.get('/dashcam-videos/:id{[0-9]+}/neighbors', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = Number(c.req.param('id'));
+    const cur = await queryFirst<{ recorded_at: string | null }>(db, 'SELECT recorded_at FROM dashcam_videos WHERE id = ?', id);
+    if (!cur) return c.json({});
+    const ra = cur.recorded_at ?? '';
+    // prev = the row just ABOVE current in DESC order (newer); next = just below (older).
+    const prev = await queryFirst<{ id: number }>(db,
+      `SELECT id FROM dashcam_videos WHERE (COALESCE(recorded_at,''), id) > (?, ?) ORDER BY COALESCE(recorded_at,'') ASC, id ASC LIMIT 1`, ra, id);
+    const next = await queryFirst<{ id: number }>(db,
+      `SELECT id FROM dashcam_videos WHERE (COALESCE(recorded_at,''), id) < (?, ?) ORDER BY COALESCE(recorded_at,'') DESC, id DESC LIMIT 1`, ra, id);
+    return c.json({ prev: prev?.id, next: next?.id });
+  } catch { return c.json({}); }
+});
+
+// PUT /dashcam-videos/:id — accepts a PARTIAL body. Quick-classify sends only
+// { classification }; the full edit modal sends title/case_number/notes/address
+// plus speed_mph/latitude/longitude as STRINGS (coerced to numbers here).
+fleet.put('/dashcam-videos/:id{[0-9]+}', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = Number(c.req.param('id'));
+    const body = await c.req.json<Record<string, unknown>>();
+    const sets: string[] = [];
+    const binds: unknown[] = [];
+    const num = (v: unknown) => { if (v == null || v === '') return null; const n = Number(v); return Number.isFinite(n) ? n : null; };
+    const textCols = ['title', 'case_number', 'address', 'notes'] as const;
+    for (const col of textCols) {
+      if (col in body) { sets.push(`${col} = ?`); binds.push(body[col] == null ? null : String(body[col])); }
+    }
+    if ('classification' in body) {
+      const cls = String(body.classification);
+      if (!DC_CLASSIFICATIONS.includes(cls)) return c.json({ error: 'Invalid classification', code: 'INVALID_CLASSIFICATION' }, 400);
+      sets.push('classification = ?'); binds.push(cls);
+    }
+    for (const col of ['speed_mph', 'latitude', 'longitude'] as const) {
+      if (col in body) { sets.push(`${col} = ?`); binds.push(num(body[col])); }
+    }
+    if (!sets.length) return c.json({ error: 'No updatable fields provided' }, 400);
+    sets.push(`updated_at = datetime('now','localtime')`);
+    binds.push(id);
+    const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM dashcam_videos WHERE id = ?', id);
+    if (!existing) return c.json({ error: 'Video not found', code: 'NOT_FOUND' }, 404);
+    await execute(db, `UPDATE dashcam_videos SET ${sets.join(', ')} WHERE id = ?`, ...binds);
+    const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM dashcam_videos WHERE id = ?', id);
+    return c.json(updated ?? { success: true });
+  } catch (err) {
+    console.error('PUT /fleet/dashcam-videos/:id failed:', err);
+    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+  }
+});
+
+// DELETE /dashcam-videos/:id — hard delete (UI labels it "permanently"). Gated
+// to admin/manager; also clears the video's links so none are orphaned.
+fleet.delete('/dashcam-videos/:id{[0-9]+}', requireRole('admin', 'manager'), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = Number(c.req.param('id'));
+    const existing = await queryFirst<{ id: number }>(db, 'SELECT id FROM dashcam_videos WHERE id = ?', id);
+    if (!existing) return c.json({ error: 'Video not found', code: 'NOT_FOUND' }, 404);
+    try { await execute(db, 'DELETE FROM dashcam_video_links WHERE video_id = ?', id); } catch { /* links table may be absent */ }
+    await execute(db, 'DELETE FROM dashcam_videos WHERE id = ?', id);
+    return c.json({ success: true });
+  } catch (err) {
+    console.error('DELETE /fleet/dashcam-videos/:id failed:', err);
+    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+  }
+});
+
+// POST /dashcam-videos/:id/burn — queue a HUD/redaction burn. Marks the row
+// 'pending' (the client disables the button while pending/processing and polls
+// for it to flip). The actual transcode is an external/async job (out of scope).
+fleet.post('/dashcam-videos/:id{[0-9]+}/burn', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = Number(c.req.param('id'));
+    const existing = await queryFirst<{ burn_status: string | null }>(db, 'SELECT burn_status FROM dashcam_videos WHERE id = ?', id);
+    if (!existing) return c.json({ error: 'Video not found', code: 'NOT_FOUND' }, 404);
+    if (existing.burn_status === 'pending' || existing.burn_status === 'processing') {
+      return c.json({ success: true, burn_status: existing.burn_status, already_queued: true });
+    }
+    await execute(db, `UPDATE dashcam_videos SET burn_status = 'pending', updated_at = datetime('now','localtime') WHERE id = ?`, id);
+    return c.json({ success: true, burn_status: 'pending' });
+  } catch (err) {
+    console.error('POST /fleet/dashcam-videos/:id/burn failed:', err);
+    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+  }
+});
+
+// GET /dashcam-videos/:id/links — bare array of links for the link modal.
+fleet.get('/dashcam-videos/:id{[0-9]+}/links', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = Number(c.req.param('id'));
+    const rows = await query<Record<string, unknown>>(db,
+      'SELECT id, video_id, entity_type, entity_id, linked_by, notes, created_at FROM dashcam_video_links WHERE video_id = ? ORDER BY created_at DESC', id);
+    return c.json(rows);
+  } catch { return c.json([]); }
+});
+
+// POST /dashcam-videos/:id/links — link a video to a call/incident/case/warrant/citation.
+fleet.post('/dashcam-videos/:id{[0-9]+}/links', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = Number(c.req.param('id'));
+    const body = await c.req.json<{ entity_type?: string; entity_id?: number; notes?: string }>();
+    const entityType = String(body.entity_type ?? '');
+    const entityId = Number(body.entity_id);
+    if (!DC_LINK_ENTITIES.includes(entityType)) return c.json({ error: 'Invalid entity_type', code: 'INVALID_ENTITY_TYPE' }, 400);
+    if (!Number.isFinite(entityId) || entityId < 1) return c.json({ error: 'Invalid entity_id', code: 'INVALID_ENTITY_ID' }, 400);
+    const linkedBy = (c.get('user') as { full_name?: string } | undefined)?.full_name ?? 'Unknown';
+    const r = await execute(db,
+      `INSERT INTO dashcam_video_links (video_id, entity_type, entity_id, linked_by, notes) VALUES (?, ?, ?, ?, ?)`,
+      id, entityType, entityId, linkedBy, body.notes ?? null);
+    return c.json({ success: true, id: r.meta.last_row_id }, 201);
+  } catch (err) {
+    console.error('POST /fleet/dashcam-videos/:id/links failed:', err);
+    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+  }
+});
+
+// DELETE /dashcam-videos/:id/links/:linkId — remove a single link.
+fleet.delete('/dashcam-videos/:id{[0-9]+}/links/:linkId{[0-9]+}', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = Number(c.req.param('id'));
+    const linkId = Number(c.req.param('linkId'));
+    await execute(db, 'DELETE FROM dashcam_video_links WHERE id = ? AND video_id = ?', linkId, id);
+    return c.json({ success: true });
+  } catch (err) {
+    console.error('DELETE /fleet/dashcam-videos/:id/links/:linkId failed:', err);
+    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+  }
+});
+
 // ─────────────────────────────────────────────────────────
 // GET /map — lightweight fleet feed for the live Map overlay.
 // MUST be declared BEFORE GET /:id, which would otherwise capture "map"
@@ -2507,12 +2692,147 @@ fleet.get('/fleet-cost-analytics', async (c) => {
   } catch (err) { console.error('GET /fleet/fleet-cost-analytics failed:', err); return c.json({}); }
 });
 
+// "Fuel Cards — Monthly Spend" table. CONTRACT (FuelAnalyticsPage by-card
+// rows + PDF): { card_id, card_number, provider, vehicle_number, vehicle_make,
+// vehicle_model, spent, monthly_limit, pct_of_limit, spend_status }. The old
+// shape (total_cost/total_gallons/transaction_count) matched none of those
+// keys, so every column rendered blank. `spent` is CURRENT-MONTH spend on the
+// card's assigned vehicle; monthly_limit maps to fleet_fuel_cards.credit_limit;
+// spend_status thresholds: >=100% 'over', >=80% 'watch', else 'ok'.
 fleet.get('/fuel/analytics/by-card', async (c) => {
   try {
     const db = getDb(c.env);
-    const rows = await query<Record<string, unknown>>(db, `SELECT fc.card_number, fc.provider, COALESCE(SUM(f.total_cost),0) as total_cost, COALESCE(SUM(f.gallons),0) as total_gallons, COUNT(f.id) as transaction_count FROM fleet_fuel_cards fc LEFT JOIN fleet_fuel_log f ON f.vehicle_id = fc.assigned_vehicle_id GROUP BY fc.id ORDER BY total_cost DESC`);
-    return c.json({ data: rows });
+    const rows = await query<Record<string, unknown>>(db, `
+      SELECT fc.id AS card_id, fc.card_number, fc.provider,
+             fv.vehicle_number, fv.make AS vehicle_make, fv.model AS vehicle_model,
+             COALESCE(SUM(CASE WHEN f.fuel_date >= datetime('now','start of month') THEN f.total_cost END), 0) AS spent,
+             fc.credit_limit AS monthly_limit
+      FROM fleet_fuel_cards fc
+      LEFT JOIN fleet_vehicles fv ON fv.id = fc.assigned_vehicle_id
+      LEFT JOIN fleet_fuel_log f ON f.vehicle_id = fc.assigned_vehicle_id
+      WHERE COALESCE(fc.status, 'active') != 'cancelled'
+      GROUP BY fc.id ORDER BY spent DESC`);
+    const data = rows.map((r) => {
+      const spent = Number(r.spent) || 0;
+      const limit = r.monthly_limit != null && Number(r.monthly_limit) > 0 ? Number(r.monthly_limit) : null;
+      const pct = limit != null ? Math.round((spent / limit) * 100) : null;
+      return { ...r, monthly_limit: limit, pct_of_limit: pct, spend_status: pct == null ? 'ok' : pct >= 100 ? 'over' : pct >= 80 ? 'watch' : 'ok' };
+    });
+    return c.json({ data });
   } catch (err) { console.error('GET /fleet/fuel/analytics/by-card failed:', err); return c.json({ data: [] }); }
+});
+
+// ════════════════════════════════════════════════════════════════════════
+// FUEL ANALYTICS — overview + by-officer (F2 audit follow-up). FuelAnalyticsPage
+// uses Promise.allSettled, but the overview render does NOT guard `totals`
+// (object) or `monthly_trend` (array) — so a 200 MUST include both. The PDF
+// reads totals.flag_rate.toFixed(1) + overview.days/since unguarded.
+// ════════════════════════════════════════════════════════════════════════
+
+// FLAG RULE — fleet_fuel_log has NO stored "flagged" column, so we derive it.
+// A fill is flagged (needs review) when ANY threshold below trips. These are
+// the one piece of real business judgment here — tune them to RMPG's fleet:
+//   • effective cost-per-gallon outside a plausible band (data-entry / fraud)
+//   • a single fill larger than a typical cruiser tank (possible off-vehicle fill)
+//   • implausibly low MPG (excessive consumption / possible siphoning)
+//   • a fill with gallons but no recorded cost (data quality)
+// flag_rate = flagged_fills / total_fills * 100 (a percentage); the UI ambers
+// it above 10. effective cpg falls back to total_cost/gallons when the per-gallon
+// price wasn't recorded.
+const CPG_MIN = 1.5;        // $/gal floor — below this is almost certainly bad data
+const CPG_MAX = 7.0;        // $/gal ceiling
+const GALLONS_MAX = 40;     // a Tahoe/Explorer PPV tank is ~24-28 gal
+const MPG_MIN = 5;          // below this (and > 0) is suspicious for a road fill
+const EFF_CPG = `COALESCE(f.cost_per_gallon, CASE WHEN f.gallons > 0 THEN f.total_cost * 1.0 / f.gallons END)`;
+const FLAG_EXPR = `(CASE WHEN
+    (${EFF_CPG} IS NOT NULL AND (${EFF_CPG} < ${CPG_MIN} OR ${EFF_CPG} > ${CPG_MAX}))
+    OR (f.gallons IS NOT NULL AND f.gallons > ${GALLONS_MAX})
+    OR (f.mpg IS NOT NULL AND f.mpg > 0 AND f.mpg < ${MPG_MIN})
+    OR (f.gallons > 0 AND (f.total_cost IS NULL OR f.total_cost = 0))
+  THEN 1 ELSE 0 END)`;
+
+fleet.get('/fuel/analytics/overview', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const days = Math.min(365, Math.max(1, parseInt(c.req.query('days') || '90', 10) || 90));
+    const sinceMod = `-${days} days`;
+    const since = (await queryFirst<{ since: string }>(db, `SELECT date('now', ?) AS since`, sinceMod))?.since ?? '';
+
+    const totals = (await queryFirst<Record<string, unknown>>(db, `
+      SELECT COUNT(*) AS fill_count,
+             COALESCE(SUM(f.gallons), 0) AS total_gallons,
+             COALESCE(SUM(f.total_cost), 0) AS total_cost,
+             ROUND(AVG(${EFF_CPG}), 3) AS avg_cpg,
+             COALESCE(ROUND(100.0 * SUM(${FLAG_EXPR}) / NULLIF(COUNT(*), 0), 1), 0) AS flag_rate
+      FROM fleet_fuel_log f WHERE f.fuel_date >= date('now', ?)`, sinceMod))
+      ?? { fill_count: 0, total_gallons: 0, total_cost: 0, avg_cpg: null, flag_rate: 0 };
+
+    const monthly_trend = await query<Record<string, unknown>>(db, `
+      SELECT strftime('%Y-%m', f.fuel_date) AS month,
+             COALESCE(SUM(f.total_cost), 0) AS cost,
+             COALESCE(SUM(f.gallons), 0) AS gallons,
+             COUNT(*) AS fills
+      FROM fleet_fuel_log f WHERE f.fuel_date >= date('now', ?)
+      GROUP BY month ORDER BY month`, sinceMod);
+
+    const vehicles = await query<Record<string, unknown>>(db, `
+      SELECT fv.id, fv.vehicle_number, fv.year, fv.make, fv.model,
+             COUNT(f.id) AS fill_count,
+             COALESCE(SUM(f.gallons), 0) AS total_gallons,
+             COALESCE(SUM(f.total_cost), 0) AS total_cost,
+             ROUND(AVG(NULLIF(f.mpg, 0)), 1) AS avg_mpg,
+             COALESCE(ROUND(100.0 * SUM(${FLAG_EXPR}) / NULLIF(COUNT(f.id), 0), 1), 0) AS flag_rate
+      FROM fleet_fuel_log f JOIN fleet_vehicles fv ON fv.id = f.vehicle_id
+      WHERE f.fuel_date >= date('now', ?)
+      GROUP BY fv.id HAVING fill_count > 0 ORDER BY total_cost DESC`, sinceMod);
+
+    const top_stations = await query<Record<string, unknown>>(db, `
+      SELECT f.station,
+             COUNT(*) AS fill_count,
+             COALESCE(SUM(f.total_cost), 0) AS total_spent,
+             ROUND(AVG(${EFF_CPG}), 3) AS avg_cpg
+      FROM fleet_fuel_log f
+      WHERE f.fuel_date >= date('now', ?) AND f.station IS NOT NULL AND f.station != ''
+      GROUP BY f.station ORDER BY total_spent DESC LIMIT 10`, sinceMod);
+
+    const flagged_leaderboard = await query<Record<string, unknown>>(db, `
+      SELECT fv.id, fv.vehicle_number, fv.make, fv.model,
+             SUM(${FLAG_EXPR}) AS flagged_count
+      FROM fleet_fuel_log f JOIN fleet_vehicles fv ON fv.id = f.vehicle_id
+      WHERE f.fuel_date >= date('now', ?)
+      GROUP BY fv.id HAVING flagged_count > 0 ORDER BY flagged_count DESC LIMIT 10`, sinceMod);
+
+    return c.json({ days, since, totals, monthly_trend, vehicles, top_stations, flagged_leaderboard });
+  } catch (err) {
+    console.error('GET /fleet/fuel/analytics/overview failed:', err);
+    // Return a SHAPE-COMPLETE empty payload — the page renders totals/monthly_trend
+    // without null-guards, so degrade to zeros rather than 500.
+    return c.json({ days: 0, since: '', totals: { fill_count: 0, total_gallons: 0, total_cost: 0, avg_cpg: null, flag_rate: 0 }, monthly_trend: [], vehicles: [], top_stations: [], flagged_leaderboard: [] });
+  }
+});
+
+fleet.get('/fuel/analytics/by-officer', async (c) => {
+  try {
+    const db = getDb(c.env);
+    // Client sends ?since=YYYY-MM-DD (computed as now - days). Default 90d.
+    const since = c.req.query('since') || (await queryFirst<{ d: string }>(db, `SELECT date('now', '-90 days') AS d`))?.d || '1970-01-01';
+    // fleet_fuel_log has driver_name (free text), not an officer FK. Group by the
+    // name, resolve officer_id via a name match to users (null when unknown).
+    const rows = await query<Record<string, unknown>>(db, `
+      SELECT COALESCE(NULLIF(f.driver_name, ''), '(no driver recorded)') AS display_name,
+             MAX(u.id) AS officer_id,
+             COUNT(*) AS fill_count,
+             COALESCE(SUM(f.gallons), 0) AS total_gallons,
+             COALESCE(SUM(f.total_cost), 0) AS total_cost,
+             ROUND(AVG(NULLIF(f.mpg, 0)), 1) AS avg_mpg,
+             COALESCE(ROUND(100.0 * SUM(${FLAG_EXPR}) / NULLIF(COUNT(*), 0), 1), 0) AS flag_rate,
+             ROUND(AVG(${EFF_CPG}), 3) AS avg_cpg
+      FROM fleet_fuel_log f
+      LEFT JOIN users u ON u.full_name = f.driver_name AND f.driver_name IS NOT NULL AND f.driver_name != ''
+      WHERE f.fuel_date >= ?
+      GROUP BY display_name ORDER BY total_cost DESC`, since);
+    return c.json({ data: rows });
+  } catch (err) { console.error('GET /fleet/fuel/analytics/by-officer failed:', err); return c.json({ data: [] }); }
 });
 
 // POST /fuel/import/preview — parse an uploaded CSV into reviewable rows.

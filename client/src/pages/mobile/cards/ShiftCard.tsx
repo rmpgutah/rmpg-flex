@@ -1,7 +1,13 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import QRCode from 'qrcode';
 import { parseTimestamp } from '../../../utils/dateUtils';
 import { apiFetch } from '../../../hooks/useApi';
 import { useWebSocket } from '../../../context/WebSocketContext';
+import { useAuth } from '../../../context/AuthContext';
+import MileagePromptModal from '../../../components/MileagePromptModal';
+
+// Roles that can use the manager-override path in the mileage modal.
+const MANAGER_ROLES = new Set(['admin', 'manager', 'supervisor']);
 
 // Integrated officer shift control — clock-on + on-duty + fleet vehicle in one
 // "Start/End Shift" action, backed by the rewrite's /api/dispatch/duty API:
@@ -23,7 +29,7 @@ interface DutyVehicle {
 }
 interface DutyState {
   on_shift: boolean;
-  time_entry: { clock_in: string } | null;
+  time_entry: { clock_in: string; qr_token?: string | null } | null;
   unit: { id: number; call_sign: string } | null;
   vehicle: DutyVehicle | null;
   take_home_vehicle: DutyVehicle | null;
@@ -43,12 +49,20 @@ function vehicleLabel(v: DutyVehicle | null | undefined): string {
 
 export default function ShiftCard() {
   const { subscribe } = useWebSocket();
+  const { user } = useAuth();
+  const isManager = MANAGER_ROLES.has(String((user as any)?.role ?? '').toLowerCase());
 
   const [state, setState] = useState<DutyState | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [picking, setPicking] = useState(false);
+  // Mileage prompt — non-null when the modal is open. Carries the vehicle
+  // chosen at the picker (for /start) and the previous reading for guardrails.
+  const [mileagePrompt, setMileagePrompt] = useState<
+    | { mode: 'starting'; vehicleId: number; vehicleLabel: string; previous: number | null }
+    | { mode: 'ending'; vehicleLabel: string; previous: number | null }
+    | null>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const fetchState = useCallback(async () => {
@@ -81,25 +95,48 @@ export default function ShiftCard() {
     return () => { unsub(); if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [subscribe, fetchState]);
 
-  const startShift = useCallback(async (vehicleId?: number) => {
-    if (busy) return;
+  // Open the starting-mileage modal for a resolved vehicle. The actual
+  // /dispatch/duty/start call happens in submitStartingMileage below — the
+  // server requires the odometer reading so we can't POST until it's in hand.
+  const promptStartingMileage = useCallback((v: DutyVehicle) => {
+    setPicking(false);
+    setError(null);
+    setMileagePrompt({
+      mode: 'starting',
+      vehicleId: v.id,
+      vehicleLabel: vehicleLabel(v),
+      // Server returns previous_mileage on a 409 retry; on first open we don't
+      // have it yet — guardrails will still ceiling/positive-check.
+      previous: null,
+    });
+  }, []);
+
+  const submitStartingMileage = useCallback(async (mileage: number, _vid: string, overrideReason?: string) => {
+    if (busy || !mileagePrompt || mileagePrompt.mode !== 'starting') return;
     setBusy(true);
     setError(null);
     try {
       await apiFetch('/dispatch/duty/start', {
         method: 'POST',
-        body: JSON.stringify(vehicleId ? { vehicle_id: vehicleId } : {}),
+        body: JSON.stringify({
+          vehicle_id: mileagePrompt.vehicleId,
+          // 0 = the modal's Skip affordance — omit the reading and let the
+          // server default to the fleet odometer (kept current by duty
+          // readings + GPS trip accruals).
+          ...(mileage > 0 ? { starting_mileage: mileage } : {}),
+          ...(overrideReason ? { override_reason: overrideReason } : {}),
+        }),
       });
-      setPicking(false);
+      setMileagePrompt(null);
       await fetchState();
     } catch (e: any) {
-      // Server safety-net: no take-home car resolved → let the officer pick.
-      if (e?.code === 'NEEDS_VEHICLE') {
-        if (Array.isArray(e?.payload?.available_vehicles)) {
-          setState((s) => (s ? { ...s, available_vehicles: e.payload.available_vehicles } : s));
-        }
-        setPicking(true);
+      // Server safety-net for decreasing/too-high — re-open with the previous
+      // reading so the user (or a manager) gets the in-modal warning.
+      if (e?.code === 'MILEAGE_DECREASING' || e?.code === 'MILEAGE_TOO_HIGH') {
+        setMileagePrompt((m) => (m && m.mode === 'starting' ? { ...m, previous: e?.payload?.previous_mileage ?? null } : m));
+        setError(e?.message || 'Mileage rejected');
       } else if (e?.code === 'NO_UNIT') {
+        setMileagePrompt(null);
         setError('No unit assigned — ask dispatch to assign you a unit first.');
       } else {
         setError(e?.message || 'Clock in failed');
@@ -107,30 +144,81 @@ export default function ShiftCard() {
     } finally {
       setBusy(false);
     }
-  }, [busy, fetchState]);
+  }, [busy, mileagePrompt, fetchState]);
 
-  // Decide whether to auto-assign (take-home / standing car) or show the picker.
+  // Decide whether to auto-assign (take-home / standing car) or show the picker,
+  // then route to the starting-mileage modal.
   const onStartClick = useCallback(() => {
     if (!state) return;
     if (!state.unit) { setError('No unit assigned — ask dispatch to assign you a unit first.'); return; }
-    if (state.take_home_vehicle || state.vehicle) { startShift(); return; }
+    const auto = state.take_home_vehicle || state.vehicle;
+    if (auto) { promptStartingMileage(auto); return; }
     if (state.available_vehicles.length > 0) { setPicking(true); return; }
     setError('No in-service vehicle available — see Fleet.');
-  }, [state, startShift]);
+  }, [state, promptStartingMileage]);
 
-  const endShift = useCallback(async () => {
-    if (busy) return;
+  const onEndClick = useCallback(() => {
+    if (!state?.on_shift) return;
+    setError(null);
+    setMileagePrompt({
+      mode: 'ending',
+      vehicleLabel: vehicleLabel(state.vehicle),
+      previous: null,
+    });
+  }, [state]);
+
+  const submitEndingMileage = useCallback(async (mileage: number, _vid: string, overrideReason?: string) => {
+    if (busy || !mileagePrompt || mileagePrompt.mode !== 'ending') return;
     setBusy(true);
     setError(null);
     try {
-      await apiFetch('/dispatch/duty/end', { method: 'POST', body: JSON.stringify({}) });
+      await apiFetch('/dispatch/duty/end', {
+        method: 'POST',
+        body: JSON.stringify({
+          // 0 = Skip — server closes with the GPS-accrued fleet odometer.
+          ...(mileage > 0 ? { ending_mileage: mileage } : {}),
+          ...(overrideReason ? { override_reason: overrideReason } : {}),
+        }),
+      });
+      setMileagePrompt(null);
       await fetchState();
     } catch (e: any) {
-      setError(e?.message || 'Clock out failed');
+      if (e?.code === 'MILEAGE_DECREASING' || e?.code === 'MILEAGE_TOO_HIGH') {
+        setMileagePrompt((m) => (m && m.mode === 'ending' ? { ...m, previous: e?.payload?.previous_mileage ?? e?.payload?.starting_mileage ?? null } : m));
+        setError(e?.message || 'Mileage rejected');
+      } else {
+        setError(e?.message || 'Clock out failed');
+      }
     } finally {
       setBusy(false);
     }
-  }, [busy, fetchState]);
+  }, [busy, mileagePrompt, fetchState]);
+
+  // Derived shift bits — also computed during loading so the QR hooks below
+  // can run unconditionally (Rules of Hooks: same order every render). The
+  // values are only consumed in the post-loading render branch.
+  const isActive = !!state?.on_shift;
+  const qrToken = isActive ? state?.time_entry?.qr_token ?? null : null;
+
+  // QR points at the mobile inspection page. Same origin as the SPA so it
+  // works on whatever host the officer's browser is loaded from (rmpgutah.us
+  // in prod, localhost in dev). The token is the credential — no JWT needed.
+  const qrUrl = useMemo(() => {
+    if (!qrToken) return null;
+    try { return `${window.location.origin}/m/shift/${qrToken}`; } catch { return null; }
+  }, [qrToken]);
+
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!qrUrl) { setQrDataUrl(null); return; }
+    let alive = true;
+    // High error-correction so the QR still scans from across a desk or
+    // through a phone-screen glare angle — paid for in pixel density.
+    QRCode.toDataURL(qrUrl, { errorCorrectionLevel: 'H', margin: 1, width: 220, color: { dark: '#d4a017', light: '#0a0a0a' } })
+      .then((url) => { if (alive) setQrDataUrl(url); })
+      .catch((err) => { console.warn('[ShiftCard] QR render failed', err); if (alive) setQrDataUrl(null); });
+    return () => { alive = false; };
+  }, [qrUrl]);
 
   if (loading) {
     return (
@@ -141,7 +229,6 @@ export default function ShiftCard() {
     );
   }
 
-  const isActive = !!state?.on_shift;
   const hours = hoursSince(state?.time_entry?.clock_in ?? null);
   const unit = state?.unit;
   const vehicle = state?.vehicle;
@@ -181,7 +268,7 @@ export default function ShiftCard() {
           {state && state.available_vehicles.length > 0 ? (
             <div className="flex flex-col gap-1 max-h-[180px] overflow-y-auto">
               {state.available_vehicles.map((v) => (
-                <button key={v.id} type="button" disabled={busy} onClick={() => startShift(v.id)}
+                <button key={v.id} type="button" disabled={busy} onClick={() => promptStartingMileage(v)}
                   className="flex items-center justify-between min-h-[40px] px-2 bg-[#1a1a1a] border border-[#222] text-gray-200 text-xs hover:border-[#d4a017]">
                   <span className="truncate">{vehicleLabel(v)}{v.make ? ` · ${v.make} ${v.model ?? ''}` : ''}</span>
                   {v.is_take_home ? <span className="text-[#d4a017] text-[9px] uppercase shrink-0">Take-home</span> : null}
@@ -198,8 +285,19 @@ export default function ShiftCard() {
         </div>
       )}
 
+      {/* QR — scan with phone to open /m/shift/<token>: pre-shift walkthrough
+          + post-shift review. Token rotates on every Start Shift and dies the
+          instant the shift ends, so a stale screenshot of the QR is harmless. */}
+      {isActive && qrDataUrl && (
+        <div className="mb-3 border border-[#222] bg-[#0d0d0d] p-2 flex flex-col items-center">
+          <div className="text-gray-400 text-[9px] uppercase tracking-widest mb-1">Scan with phone — vehicle walkthrough</div>
+          <img src={qrDataUrl} alt="Shift inspection QR" width={180} height={180} className="block" />
+          <div className="mt-1 text-[9px] text-gray-500 font-mono truncate max-w-full" title={qrUrl ?? ''}>{qrUrl}</div>
+        </div>
+      )}
+
       {isActive ? (
-        <button type="button" disabled={busy} onClick={endShift}
+        <button type="button" disabled={busy} onClick={onEndClick}
           className={['w-full h-11 bg-[#1a1a1a] border border-red-700 text-red-400 text-xs uppercase tracking-widest font-bold', busy ? 'opacity-50' : ''].join(' ')}>
           End Shift
         </button>
@@ -209,6 +307,20 @@ export default function ShiftCard() {
           Start Shift
         </button>
       ) : null}
+
+      {mileagePrompt && (
+        <MileagePromptModal
+          mode={mileagePrompt.mode}
+          callNumber={mileagePrompt.mode === 'starting' ? 'SHIFT START' : 'SHIFT END'}
+          vehicleId={mileagePrompt.vehicleLabel}
+          previousMileage={mileagePrompt.previous}
+          isManager={isManager}
+          submitLabel={mileagePrompt.mode === 'starting' ? 'Start Shift' : 'End Shift'}
+          skipLabel="Skip — Use Vehicle Odometer"
+          onSubmit={mileagePrompt.mode === 'starting' ? submitStartingMileage : submitEndingMileage}
+          onCancel={() => setMileagePrompt(null)}
+        />
+      )}
     </section>
   );
 }

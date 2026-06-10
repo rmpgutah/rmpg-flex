@@ -403,7 +403,10 @@ export async function apiFetchBlob(endpoint: string): Promise<Blob> {
       headers['Authorization'] = `Bearer ${newToken}`;
       res = await fetchWithRetry(url, { headers });
     }
-    if (!res.ok) throw new Error('Session expired. Please log in again.');
+    // Only "Session expired" when it's STILL 401 (refresh failed). A successful
+    // refresh that then hits a 403/500 should surface the real status below, not
+    // a misleading auth message.
+    if (res.status === 401) throw new Error('Session expired. Please log in again.');
   }
 
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
