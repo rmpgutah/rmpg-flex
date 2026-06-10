@@ -98,7 +98,7 @@ const PERSON_WRITABLE_COLUMNS = new Set([
   'build', 'complexion', 'hair_color', 'hair_length', 'hair_style',
   'eye_color', 'facial_hair', 'glasses', 'shoe_size',
   'scars_marks_tattoos', 'clothing_description',
-  'address', 'city', 'state', 'zip', 'phone', 'phone_secondary',
+  'address', 'address_2', 'city', 'state', 'zip', 'phone', 'phone_secondary',
   'home_phone', 'work_phone', 'email', 'email_secondary',
   'dl_number', 'dl_state', 'dl_expiry', 'dl_class',
   'ssn_last4', 'ssn_full',
@@ -134,6 +134,7 @@ const PERSON_WRITABLE_COLUMNS = new Set([
 // merge them back via mergePersonExt(). Same pattern as calls_for_service_ext.
 const PERSON_EXT_COLUMNS = new Set([
   'suffix', 'nationality', 'voice_description', 'religion', 'dietary_restrictions',
+  'address_2', // apartment/unit number (persons at 96 cols — overflow only)
 ]);
 const PERSON_EXT_SELECT = [...PERSON_EXT_COLUMNS].join(', ');
 
