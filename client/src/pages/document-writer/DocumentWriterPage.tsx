@@ -850,6 +850,7 @@ export default function DocumentWriterPage() {
               onReadAloud: handleReadAloud, readingAloud,
               onExportJson: handleExportJson, onImportJson: handleImportJson,
               onToggleAnalysis: () => setShowAnalysis((v) => !v),
+              onOpenPalette: () => setShowPalette(true),
               onBrush: handleBrush, brushActive: !!brush,
               onTransform: handleTransform,
               onInsertCsv: handleInsertCsv, onInsertStatute: handleInsertStatute,

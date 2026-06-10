@@ -10,6 +10,10 @@
 // toolbar piecemeal or invoked from a command palette / slash menu.
 
 import type { Editor } from '@tiptap/react';
+// Wave-5 actions live in their own module; appended to ACTION_REGISTRY below.
+// (docActions3 imports DocAction from here as a TYPE only — erased at runtime,
+// so there is no import cycle.)
+import { WAVE5_ACTIONS } from './docActions3';
 
 const esc = (s: string) =>
   s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -1147,6 +1151,9 @@ export const ACTION_REGISTRY: DocAction[] = [
   { name: 'Margins…',               group: 'Utility',    fn: () => setMargins(promptNum('Top (in):', 1), promptNum('Right (in):', 1), promptNum('Bottom (in):', 1), promptNum('Left (in):', 1)) },
   { name: 'QR code…',               group: 'Utility',    fn: (e) => insertQrCode(e, promptText('Data / URL:')) },
   { name: 'Barcode…',               group: 'Utility',    fn: (e) => insertBarcode(e, promptText('Data:')) },
+  // Wave-5: 100 more features (symbols, wraps/format, police & legal blocks,
+  // productivity fields) — defined in docActions3, surfaced via the palette.
+  ...WAVE5_ACTIONS,
 ];
 
 /** Distinct group names in registry order. Drives palette tabs. */

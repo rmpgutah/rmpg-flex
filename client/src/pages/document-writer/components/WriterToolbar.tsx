@@ -71,6 +71,8 @@ export interface WriterExtActions {
   onInsertStatute: () => void;
   // This wave
   onShortcuts: () => void;
+  /** Open the searchable command palette (all actions, incl. the 100 Wave-5). */
+  onOpenPalette: () => void;
   onOfficerSignature: () => void;
   onExportStandaloneHtml: () => void;
   onDuplicate: () => void;
@@ -258,6 +260,20 @@ export default function WriterToolbar({
       <div className="flex items-center flex-wrap gap-0.5">
         <ToolBtn title="Undo (Ctrl+Z)" onClick={() => editor.chain().focus().undo().run()} disabled={!editor.can().undo()}><Undo2 className="w-3.5 h-3.5" /></ToolBtn>
         <ToolBtn title="Redo (Ctrl+Y)" onClick={() => editor.chain().focus().redo().run()} disabled={!editor.can().redo()}><Redo2 className="w-3.5 h-3.5" /></ToolBtn>
+        <Divider />
+
+        {/* Command palette — searchable access to every action (incl. the
+            100 Wave-5 features). The single most discoverable entry point. */}
+        <button
+          type="button"
+          onClick={ext.onOpenPalette}
+          title="Commands — search every action (Ctrl+/)"
+          className="flex items-center gap-1 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#d4a017] border border-[#d4a017]/40 hover:border-[#d4a017] hover:bg-[#d4a017]/10 transition-colors"
+          style={{ borderRadius: 2 }}
+        >
+          <Sparkles className="w-3 h-3" /> Commands
+          <span className="text-[8px] text-rmpg-500 font-mono">⌘/</span>
+        </button>
         <Divider />
 
         {/* Font family (1) + size (2) */}
