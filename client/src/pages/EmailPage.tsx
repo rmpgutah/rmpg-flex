@@ -9,7 +9,7 @@ import {
   PanelLeftClose, PanelLeftOpen, Image, Clock, FileStack, Users, Printer, Bell,
   BellOff, Link2, CalendarClock, SlidersHorizontal, Shield, Hash, Upload,
 } from 'lucide-react';
-import { apiFetch } from '../hooks/useApi';
+import { apiFetch, apiFetchBlob } from '../hooks/useApi';
 import { useWebSocket } from '../context/WebSocketContext';
 import { useLiveSync } from '../hooks/useLiveSync';
 import type { EmailMessage, EmailFolder, EmailAttachment } from '../types';
@@ -956,6 +956,9 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [draftStatus, setDraftStatus] = useState<string>('');
+  const [importance, setImportance] = useState<'low' | 'normal' | 'high'>('normal');
+  const [readReceipt, setReadReceipt] = useState(false);
+  const [savingDraft, setSavingDraft] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -1085,6 +1088,8 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
         subject,
         body,
         attachments: fileAttachments.length > 0 ? fileAttachments : undefined,
+        importance: importance !== 'normal' ? importance : undefined,
+        requestReadReceipt: readReceipt || undefined,
       };
       if (mode === 'reply' && replyMessage) { endpoint = `/email/messages/${replyMessage.id}/reply`; payload = { body }; }
       else if (mode === 'reply-all' && replyMessage) { endpoint = `/email/messages/${replyMessage.id}/reply-all`; payload = { body }; }
@@ -1226,6 +1231,18 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
             className="flex items-center gap-1 px-2 py-1 text-[9px] text-rmpg-400 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Edit signature">
             <Settings2 className="w-3 h-3" /> Sig
           </button>
+          <select value={importance} onChange={e => setImportance(e.target.value as 'low' | 'normal' | 'high')}
+            className={`input-dark text-[9px] px-1 py-0.5 ${importance === 'high' ? 'text-red-400' : importance === 'low' ? 'text-rmpg-500' : 'text-rmpg-400'}`}
+            title="Importance" aria-label="Importance">
+            <option value="low">! Low</option>
+            <option value="normal">! Normal</option>
+            <option value="high">! High</option>
+          </select>
+          <button type="button" onClick={() => setReadReceipt(!readReceipt)}
+            className={`flex items-center gap-1 px-2 py-1 text-[9px] rounded-sm transition-colors ${readReceipt ? 'text-brand-400 bg-brand-500/10' : 'text-rmpg-400 hover:text-white hover:bg-rmpg-700/50'}`}
+            title="Request a read receipt">
+            <CheckCircle className="w-3 h-3" /> Receipt
+          </button>
         </div>
 
         {/* Body */}
@@ -1292,6 +1309,29 @@ Drag & drop files to attach • Ctrl+Enter to send" />
             <button type="button" onClick={onClose} className="px-3 py-1.5 text-xs text-rmpg-300 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors">
               Discard
             </button>
+            {mode === 'new' && (
+              <button type="button" disabled={savingDraft || (!to.trim() && !subject.trim() && !body.trim())}
+                onClick={async () => {
+                  setSavingDraft(true);
+                  try {
+                    await apiFetch('/email/drafts', {
+                      method: 'POST',
+                      body: JSON.stringify({
+                        to: to.trim() ? to.split(',').map(s => s.trim()) : [],
+                        cc: cc.trim() ? cc.split(',').map(s => s.trim()) : undefined,
+                        bcc: bcc.trim() ? bcc.split(',').map(s => s.trim()) : undefined,
+                        subject, body, importance, attachments: fileAttachments.length ? fileAttachments : undefined,
+                      }),
+                    });
+                    clearDraft();
+                    setDraftStatus('Saved to Drafts folder');
+                  } catch { setError('Failed to save draft to mailbox'); }
+                  finally { setSavingDraft(false); }
+                }}
+                className="px-3 py-1.5 text-xs text-rmpg-300 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors flex items-center gap-1.5 disabled:opacity-40">
+                {savingDraft ? <Loader2 className="w-3.5 h-3.5 animate-spin" role="status" aria-label="Loading" /> : <FileText className="w-3.5 h-3.5" />} Draft
+              </button>
+            )}
             {mode === 'new' && (
               <button type="button" onClick={() => setShowScheduleModal(true)} disabled={sending}
                 className="px-3 py-1.5 text-xs text-rmpg-300 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors flex items-center gap-1.5 disabled:opacity-40">
@@ -1527,6 +1567,256 @@ function groupByConversation(messages: EmailMessage[]): ThreadGroup[] {
 }
 
 // ============================================================
+// Snooze Menu — Outlook-style presets + custom date
+// ============================================================
+
+function toLocalIso(d: Date): string {
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}:00`;
+}
+
+function SnoozeMenu({ onSnooze, onClose }: { onSnooze: (untilIso: string) => void; onClose: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [customDate, setCustomDate] = useState('');
+  const [customTime, setCustomTime] = useState('08:00');
+  useEffect(() => {
+    const handler = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) onClose(); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [onClose]);
+  const presets = [
+    { label: 'Later today (+3 hrs)', get: () => { const d = new Date(); d.setHours(d.getHours() + 3, 0, 0, 0); return d; } },
+    { label: 'This evening (6 PM)', get: () => { const d = new Date(); d.setHours(18, 0, 0, 0); if (d.getTime() < Date.now()) d.setDate(d.getDate() + 1); return d; } },
+    { label: 'Tomorrow 8 AM', get: () => { const d = new Date(); d.setDate(d.getDate() + 1); d.setHours(8, 0, 0, 0); return d; } },
+    { label: 'This weekend (Sat 9 AM)', get: () => { const d = new Date(); d.setDate(d.getDate() + ((6 - d.getDay() + 7) % 7 || 7)); d.setHours(9, 0, 0, 0); return d; } },
+    { label: 'Next week (Mon 8 AM)', get: () => { const d = new Date(); d.setDate(d.getDate() + ((8 - d.getDay()) % 7 || 7)); d.setHours(8, 0, 0, 0); return d; } },
+  ];
+  return (
+    <div ref={ref} className="absolute right-0 top-full mt-1 z-50 w-60 bg-surface-base border border-border-strong rounded-sm shadow-xl py-1">
+      <div className="px-3 py-1.5 text-[10px] text-rmpg-400 font-semibold uppercase tracking-wider border-b border-border-subtle">Snooze until…</div>
+      {presets.map(p => (
+        <button type="button" key={p.label} onClick={() => { onSnooze(toLocalIso(p.get())); onClose(); }}
+          className="w-full text-left px-3 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/15 hover:text-white transition-colors">{p.label}</button>
+      ))}
+      <div className="border-t border-border-subtle mt-1 px-3 py-2 space-y-1.5">
+        <div className="flex items-center gap-1.5">
+          <input type="date" value={customDate} onChange={e => setCustomDate(e.target.value)} min={localToday()}
+            className="input-dark text-[10px] flex-1 min-h-[30px]" aria-label="Snooze date" />
+          <input type="time" value={customTime} onChange={e => setCustomTime(e.target.value)}
+            className="input-dark text-[10px] w-20 min-h-[30px]" aria-label="Snooze time" />
+        </div>
+        <button type="button" disabled={!customDate} onClick={() => { onSnooze(`${customDate}T${customTime}:00`); onClose(); }}
+          className="btn-primary text-[10px] px-2 py-0.5 w-full disabled:opacity-40">Snooze</button>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// Internet Headers Modal (message provenance / spam forensics)
+// ============================================================
+
+function HeadersModal({ messageId, onClose }: { messageId: string; onClose: () => void }) {
+  const [headers, setHeaders] = useState<Array<{ name: string; value: string }>>([]);
+  const [internetMessageId, setInternetMessageId] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [hFilter, setHFilter] = useState('');
+  useEffect(() => {
+    let cancelled = false;
+    apiFetch<{ internetMessageId?: string; headers: Array<{ name: string; value: string }> }>(`/email/messages/${messageId}/headers`)
+      .then(d => { if (!cancelled) { setHeaders(d.headers || []); setInternetMessageId(d.internetMessageId || ''); } })
+      .catch(() => { /* keep empty */ })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [messageId]);
+  const shown = hFilter ? headers.filter(h => `${h.name}: ${h.value}`.toLowerCase().includes(hFilter.toLowerCase())) : headers;
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm" role="dialog" aria-modal="true">
+      <div className="bg-surface-base border border-border-subtle rounded-sm w-[640px] max-w-[95vw] max-h-[80vh] mx-4 flex flex-col">
+        <div className="px-4 py-2 border-b border-border-subtle flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-white flex items-center gap-2"><FileText className="w-4 h-4 text-brand-400" /> Internet Headers</h3>
+          <IconButton onClick={onClose} className="text-rmpg-500 hover:text-white" aria-label="Close" title="Close"><X className="w-4 h-4" /></IconButton>
+        </div>
+        <div className="px-4 py-2 border-b border-border-subtle">
+          <input value={hFilter} onChange={e => setHFilter(e.target.value)} placeholder="Filter headers (e.g. spf, dkim, received)…"
+            className="input-dark w-full text-[10px] px-2 py-1 min-h-[32px]" aria-label="Filter headers" />
+        </div>
+        <div className="flex-1 overflow-y-auto p-4 scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
+          {loading ? <Loader2 className="w-4 h-4 animate-spin text-brand-400 mx-auto" role="status" aria-label="Loading" /> : (
+            <div className="space-y-1 font-mono text-[10px]">
+              {internetMessageId && <div className="text-rmpg-400 break-all"><span className="text-brand-400">Message-ID:</span> {internetMessageId}</div>}
+              {shown.length === 0 && <div className="text-rmpg-500">No headers{hFilter ? ' match the filter' : ' available'}.</div>}
+              {shown.map((h, i) => (
+                <div key={i} className="text-rmpg-400 break-all"><span className="text-brand-400">{h.name}:</span> {h.value}</div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// Automatic Replies (Out of Office) Modal
+// ============================================================
+
+function AutoReplyModal({ onClose, onSnackbar }: { onClose: () => void; onSnackbar: (m: string, t?: 'success' | 'error') => void }) {
+  const [oofStatus, setOofStatus] = useState<'disabled' | 'alwaysEnabled' | 'scheduled'>('disabled');
+  const [message, setMessage] = useState('');
+  const [startAt, setStartAt] = useState('');
+  const [endAt, setEndAt] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    apiFetch<{ status?: string; internalReplyMessage?: string; scheduledStartDateTime?: { dateTime?: string }; scheduledEndDateTime?: { dateTime?: string } }>('/email/settings/auto-reply')
+      .then(d => {
+        if (cancelled) return;
+        if (d.status === 'alwaysEnabled' || d.status === 'scheduled') setOofStatus(d.status);
+        // Graph returns the reply as HTML — strip tags for the textarea.
+        setMessage((d.internalReplyMessage || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim());
+        setStartAt((d.scheduledStartDateTime?.dateTime || '').slice(0, 16));
+        setEndAt((d.scheduledEndDateTime?.dateTime || '').slice(0, 16));
+      })
+      .catch(() => { /* defaults */ })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await apiFetch('/email/settings/auto-reply', {
+        method: 'PUT',
+        body: JSON.stringify({
+          status: oofStatus,
+          internalReplyMessage: message,
+          ...(oofStatus === 'scheduled' && startAt && endAt ? { scheduledStartDateTime: startAt, scheduledEndDateTime: endAt } : {}),
+        }),
+      });
+      onSnackbar(oofStatus === 'disabled' ? 'Automatic replies turned off' : 'Automatic replies saved');
+      onClose();
+    } catch { onSnackbar('Failed to save automatic replies', 'error'); }
+    finally { setSaving(false); }
+  };
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50 backdrop-blur-sm" role="dialog" aria-modal="true">
+      <div className="bg-surface-base border border-border-subtle rounded-sm w-[480px] max-w-[95vw] mx-4">
+        <div className="px-4 py-2 border-b border-border-subtle flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-white flex items-center gap-2"><CalendarClock className="w-4 h-4 text-brand-400" /> Automatic Replies (Out of Office)</h3>
+          <IconButton onClick={onClose} className="text-rmpg-500 hover:text-white" aria-label="Close" title="Close"><X className="w-4 h-4" /></IconButton>
+        </div>
+        {loading ? <div className="p-6 text-center"><Loader2 className="w-4 h-4 animate-spin text-brand-400 mx-auto" role="status" aria-label="Loading" /></div> : (
+          <div className="p-4 space-y-3">
+            <div className="flex items-center gap-2">
+              {(['disabled', 'alwaysEnabled', 'scheduled'] as const).map(s => (
+                <button type="button" key={s} onClick={() => setOofStatus(s)}
+                  className={`text-[10px] px-2 py-1 rounded-sm border transition-colors ${oofStatus === s ? 'bg-brand-500/20 text-brand-400 border-brand-500/40' : 'text-rmpg-400 border-border-subtle hover:text-white'}`}>
+                  {s === 'disabled' ? 'Off' : s === 'alwaysEnabled' ? 'On' : 'Scheduled'}
+                </button>
+              ))}
+            </div>
+            {oofStatus === 'scheduled' && (
+              <div className="flex items-center gap-2">
+                <div className="flex-1">
+                  <label className="text-[9px] text-rmpg-500 block mb-0.5">Starts</label>
+                  <input type="datetime-local" value={startAt} onChange={e => setStartAt(e.target.value)} className="input-dark w-full text-[10px] px-2 py-1 min-h-[36px]" />
+                </div>
+                <div className="flex-1">
+                  <label className="text-[9px] text-rmpg-500 block mb-0.5">Ends</label>
+                  <input type="datetime-local" value={endAt} onChange={e => setEndAt(e.target.value)} className="input-dark w-full text-[10px] px-2 py-1 min-h-[36px]" />
+                </div>
+              </div>
+            )}
+            {oofStatus !== 'disabled' && (
+              <textarea value={message} onChange={e => setMessage(e.target.value)} rows={5}
+                className="input-dark w-full text-xs resize-y" placeholder="I'm out of the office until… For urgent dispatch matters call…" aria-label="Auto-reply message" />
+            )}
+            <div className="flex justify-end gap-2 pt-1">
+              <button type="button" onClick={onClose} className="btn-secondary text-xs px-3 py-1">Cancel</button>
+              <button type="button" onClick={handleSave} disabled={saving} className="btn-primary text-xs px-3 py-1">{saving ? 'Saving…' : 'Save'}</button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
+// Category Assign Menu (Outlook master categories)
+// ============================================================
+
+const CATEGORY_PRESET_COLORS: Record<string, string> = {
+  preset0: '#ef4444', preset1: '#f97316', preset2: '#d4a017', preset3: '#22c55e', preset4: '#10b981',
+  preset5: '#14b8a6', preset6: '#8b5cf6', preset7: '#ec4899', preset8: '#888888', preset9: '#a16207',
+};
+
+function CategoryMenu({ messageId, onApplied, onClose, onSnackbar }: {
+  messageId: string; onApplied: () => void; onClose: () => void; onSnackbar: (m: string, t?: 'success' | 'error') => void;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [cats, setCats] = useState<Array<{ id: string; displayName: string; color: string }>>([]);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [newCat, setNewCat] = useState('');
+  const [loading, setLoading] = useState(true);
+  useEffect(() => {
+    const handler = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) onClose(); };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [onClose]);
+  useEffect(() => {
+    apiFetch<{ categories: Array<{ id: string; displayName: string; color: string }> }>('/email/categories')
+      .then(d => setCats(d.categories || []))
+      .catch(() => { /* empty */ })
+      .finally(() => setLoading(false));
+  }, []);
+  const toggle = (name: string) => setSelected(prev => { const n = new Set(prev); if (n.has(name)) n.delete(name); else n.add(name); return n; });
+  const apply = async () => {
+    try {
+      await apiFetch(`/email/messages/${messageId}/categories`, { method: 'PATCH', body: JSON.stringify({ categories: [...selected] }) });
+      onSnackbar(selected.size ? `Applied ${selected.size} categor${selected.size > 1 ? 'ies' : 'y'}` : 'Categories cleared');
+      onApplied(); onClose();
+    } catch { onSnackbar('Failed to apply categories', 'error'); }
+  };
+  const create = async () => {
+    const name = newCat.trim();
+    if (!name) return;
+    try {
+      await apiFetch('/email/categories', { method: 'POST', body: JSON.stringify({ displayName: name, color: `preset${cats.length % 10}` }) });
+      setCats(prev => [...prev, { id: name, displayName: name, color: `preset${cats.length % 10}` }]);
+      setSelected(prev => new Set(prev).add(name));
+      setNewCat('');
+    } catch { onSnackbar('Failed to create category', 'error'); }
+  };
+  return (
+    <div ref={ref} className="absolute right-0 top-full mt-1 z-50 w-56 bg-surface-base border border-border-strong rounded-sm shadow-xl py-1">
+      <div className="px-3 py-1.5 text-[10px] text-rmpg-400 font-semibold uppercase tracking-wider border-b border-border-subtle">Categorize</div>
+      <div className="max-h-48 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
+        {loading ? <div className="py-3 text-center"><Loader2 className="w-3.5 h-3.5 animate-spin text-brand-400 mx-auto" role="status" aria-label="Loading" /></div> :
+          cats.length === 0 ? <div className="py-3 text-center text-[10px] text-rmpg-600">No categories yet</div> :
+          cats.map(cat => (
+            <button type="button" key={cat.id} onClick={() => toggle(cat.displayName)}
+              className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/15 hover:text-white transition-colors">
+              <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: CATEGORY_PRESET_COLORS[cat.color] || '#888888' }} />
+              <span className="flex-1 text-left truncate">{cat.displayName}</span>
+              {selected.has(cat.displayName) && <CheckCircle className="w-3 h-3 text-brand-400" />}
+            </button>
+          ))}
+      </div>
+      <div className="border-t border-border-subtle px-2 py-1.5 flex items-center gap-1">
+        <input value={newCat} onChange={e => setNewCat(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') create(); }}
+          placeholder="New category…" className="input-dark flex-1 text-[10px] px-2 py-0.5 min-h-[28px]" aria-label="New category name" />
+        <button type="button" onClick={create} className="p-0.5 text-brand-400 hover:text-brand-300" title="Create category"><Plus className="w-3.5 h-3.5" /></button>
+      </div>
+      <div className="border-t border-border-subtle px-2 py-1.5">
+        <button type="button" onClick={apply} className="btn-primary text-[10px] px-2 py-0.5 w-full">Apply</button>
+      </div>
+    </div>
+  );
+}
+
+// ============================================================
 // Main Email Page
 // ============================================================
 
@@ -1623,6 +1913,13 @@ export default function EmailPage() {
 
   // Feature 23: Auto-categorization
   const [categorizing, setCategorizing] = useState(false);
+
+  // Outlook-parity UI state (snooze / headers / categories / OOF / more menu)
+  const [showSnoozeMenu, setShowSnoozeMenu] = useState(false);
+  const [showHeadersModal, setShowHeadersModal] = useState(false);
+  const [showCategoryMenu, setShowCategoryMenu] = useState(false);
+  const [showAutoReply, setShowAutoReply] = useState(false);
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
 
   // Feature 25: Thread view mode
   const [viewMode, setViewMode] = useState<'messages' | 'threads'>('messages');
@@ -1906,12 +2203,18 @@ export default function EmailPage() {
   const toggleSelectId = (id: string) => { setSelectedIds(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; }); };
   const selectAll = () => { setSelectedIds(selectedIds.size === messages.length ? new Set() : new Set(messages.map(m => m.id))); };
 
-  const handleBatchAction = async (action: 'delete' | 'archive' | 'markRead' | 'markUnread') => {
+  const handleBatchAction = async (action: 'delete' | 'archive' | 'markRead' | 'markUnread' | 'flag' | 'junk') => {
     const ids = Array.from(selectedIds);
     if (ids.length === 0) return;
     try {
       await apiFetch('/email/messages/batch', { method: 'POST', body: JSON.stringify({ action, ids }) });
-      if (action === 'delete' || action === 'archive') {
+      if (action === 'flag') {
+        setMessages(prev => prev.map(m => selectedIds.has(m.id) ? { ...m, isFlagged: true } : m));
+        setSelectedIds(new Set());
+        showSnackbar(`Flagged ${ids.length} message${ids.length > 1 ? 's' : ''}`);
+        return;
+      }
+      if (action === 'delete' || action === 'archive' || action === 'junk') {
         if (selectedMessage && selectedIds.has(selectedMessage.id)) {
           const remaining = messages.filter(m => !selectedIds.has(m.id));
           if (remaining.length > 0) handleSelectMessage(remaining[0]); else { setSelectedMessage(null); setFullMessage(null); setMobileView('list'); }
@@ -1922,10 +2225,100 @@ export default function EmailPage() {
         setMessages(prev => prev.map(m => selectedIds.has(m.id) ? { ...m, isRead } : m));
       }
       setSelectedIds(new Set());
-      const label = action === 'delete' ? 'Deleted' : action === 'archive' ? 'Archived' : action === 'markRead' ? 'Marked as read' : 'Marked as unread';
+      const label = action === 'delete' ? 'Deleted' : action === 'archive' ? 'Archived' : action === 'junk' ? 'Moved to Junk' : action === 'markRead' ? 'Marked as read' : 'Marked as unread';
       showSnackbar(`${label} ${ids.length} message${ids.length > 1 ? 's' : ''}`);
       debouncedFolderRefresh();
     } catch { showSnackbar(`Batch ${action} failed`, 'error'); }
+  };
+
+  // ─── Outlook-parity handlers ───
+  const removeFromList = (id: string) => {
+    setMessages(prev => prev.filter(m => m.id !== id));
+    if (selectedMessage?.id === id) { setSelectedMessage(null); setFullMessage(null); setMobileView('list'); }
+  };
+
+  const handleSnooze = async (untilIso: string) => {
+    if (!selectedMessage) return;
+    try {
+      await apiFetch(`/email/messages/${selectedMessage.id}/snooze`, { method: 'POST', body: JSON.stringify({ until: untilIso }) });
+      removeFromList(selectedMessage.id);
+      showSnackbar(`Snoozed until ${parseTimestamp(untilIso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}`);
+      debouncedFolderRefresh();
+    } catch { showSnackbar('Failed to snooze', 'error'); }
+  };
+
+  const handleDownloadEml = async () => {
+    if (!selectedMessage) return;
+    try {
+      const blob = await apiFetchBlob(`/email/messages/${selectedMessage.id}/raw`);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${(selectedMessage.subject || 'message').replace(/[^a-zA-Z0-9 _-]/g, '').slice(0, 60) || 'message'}.eml`;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+      showSnackbar('Message downloaded (.eml)');
+    } catch { showSnackbar('Failed to download message', 'error'); }
+  };
+
+  const handleBlockSender = async () => {
+    if (!selectedMessage) return;
+    if (!window.confirm(`Block ${selectedMessage.fromAddress}? Future mail goes straight to Junk.`)) return;
+    try {
+      await apiFetch('/email/block-sender', {
+        method: 'POST',
+        body: JSON.stringify({ address: selectedMessage.fromAddress, reason: 'blocked', messageId: selectedMessage.id }),
+      });
+      removeFromList(selectedMessage.id);
+      showSnackbar(`Blocked ${selectedMessage.fromAddress}`);
+      debouncedFolderRefresh();
+    } catch { showSnackbar('Failed to block sender', 'error'); }
+  };
+
+  const handleReport = async (kind: 'junk-report' | 'phishing-report') => {
+    if (!selectedMessage) return;
+    try {
+      await apiFetch('/email/block-sender', {
+        method: 'POST',
+        body: JSON.stringify({ address: selectedMessage.fromAddress, reason: kind, messageId: selectedMessage.id }),
+      });
+      removeFromList(selectedMessage.id);
+      showSnackbar(kind === 'phishing-report' ? 'Reported as phishing and blocked' : 'Reported as junk and blocked');
+      debouncedFolderRefresh();
+    } catch { showSnackbar('Failed to report', 'error'); }
+  };
+
+  const handleSweepSender = async () => {
+    if (!selectedMessage) return;
+    if (!window.confirm(`Sweep: archive ALL messages from ${selectedMessage.fromAddress} in this folder?`)) return;
+    try {
+      const r = await apiFetch<{ swept: number }>('/email/sweep', {
+        method: 'POST',
+        body: JSON.stringify({ fromAddress: selectedMessage.fromAddress, folder: selectedFolder, action: 'archive' }),
+      });
+      showSnackbar(`Swept ${r.swept} message${r.swept === 1 ? '' : 's'} to Archive`);
+      fetchMessages(1, selectedFolder, search);
+      debouncedFolderRefresh();
+    } catch { showSnackbar('Sweep failed', 'error'); }
+  };
+
+  const handleToggleFocused = async (focused: boolean) => {
+    if (!selectedMessage) return;
+    try {
+      await apiFetch(`/email/messages/${selectedMessage.id}/focused`, { method: 'PATCH', body: JSON.stringify({ focused }) });
+      showSnackbar(focused ? 'Moved to Focused' : 'Moved to Other');
+    } catch { showSnackbar('Failed to update Focused inbox', 'error'); }
+  };
+
+  const handleEmptyFolder = async () => {
+    const label = selectedFolder === 'deleteditems' ? 'Deleted Items' : 'Junk Email';
+    if (!window.confirm(`Permanently delete everything in ${label}?`)) return;
+    try {
+      const r = await apiFetch<{ deleted: number }>(`/email/folders/${selectedFolder}/empty`, { method: 'POST' });
+      showSnackbar(`Emptied ${label} (${r.deleted} deleted)`);
+      fetchMessages(1, selectedFolder, search);
+      debouncedFolderRefresh();
+    } catch { showSnackbar(`Failed to empty ${label}`, 'error'); }
   };
 
   const handleMarkAllRead = async () => {
@@ -2224,6 +2617,10 @@ export default function EmailPage() {
               {notificationsOn ? <Bell className="w-3 h-3 text-brand-400" /> : <BellOff className="w-3 h-3" />}
               {notificationsOn ? 'Notifications on' : 'Notifications off'}
             </button>
+            <button type="button" onClick={() => setShowAutoReply(true)}
+              className="w-full flex items-center gap-1.5 text-[10px] text-rmpg-500 hover:text-white transition-colors py-0.5">
+              <CalendarClock className="w-3 h-3" /> Automatic replies
+            </button>
             <div className="text-[8px] text-rmpg-600 space-y-0.5 font-mono">
               <div>Ctrl+N New &middot; Ctrl+R Reply</div>
               <div>Ctrl+F Forward &middot; &#x2191;&#x2193; Navigate</div>
@@ -2294,6 +2691,8 @@ export default function EmailPage() {
             <span className="text-[10px] text-brand-400 font-medium">{selectedIds.size} selected</span>
             <div className="flex-1" />
             <button type="button" onClick={() => handleBatchAction('archive')} className="p-1 text-rmpg-400 hover:text-white" title="Archive"><Archive className="w-3.5 h-3.5" /></button>
+            <button type="button" onClick={() => handleBatchAction('flag')} className="p-1 text-rmpg-400 hover:text-yellow-400" title="Flag"><Flag className="w-3.5 h-3.5" /></button>
+            <button type="button" onClick={() => handleBatchAction('junk')} className="p-1 text-rmpg-400 hover:text-amber-400" title="Move to Junk"><AlertTriangle className="w-3.5 h-3.5" /></button>
             <button type="button" onClick={() => handleBatchAction('markRead')} className="p-1 text-rmpg-400 hover:text-white" title="Mark read"><Eye className="w-3.5 h-3.5" /></button>
             <button type="button" onClick={() => handleBatchAction('markUnread')} className="p-1 text-rmpg-400 hover:text-white" title="Mark unread"><EyeOff className="w-3.5 h-3.5" /></button>
             <button type="button" onClick={() => handleBatchAction('delete')} className="p-1 text-rmpg-400 hover:text-red-400" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
@@ -2320,6 +2719,9 @@ export default function EmailPage() {
               </button>
               {unreadCount > 0 && (
                 <IconButton onClick={handleMarkAllRead} className="p-1 text-rmpg-500 hover:text-white rounded-sm" title="Mark all as read" aria-label="Mark all as read"><Eye className="w-3.5 h-3.5" /></IconButton>
+              )}
+              {(selectedFolder === 'deleteditems' || selectedFolder === 'junkemail') && messages.length > 0 && (
+                <IconButton onClick={handleEmptyFolder} className="p-1 text-rmpg-500 hover:text-red-400 rounded-sm" title="Empty folder" aria-label="Empty folder"><Trash className="w-3.5 h-3.5" /></IconButton>
               )}
               <IconButton onClick={handleRefresh} className="p-1 text-rmpg-500 hover:text-white rounded-sm" title="Refresh" aria-label="Refresh">
                 <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
@@ -2581,7 +2983,35 @@ export default function EmailPage() {
                 <button type="button" onClick={() => selectedMessage && handleToggleFlag(selectedMessage)} className="p-1.5 hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Toggle flag">
                   <Flag className={`w-3.5 h-3.5 ${selectedMessage?.isFlagged ? 'text-yellow-400 fill-yellow-400' : 'text-rmpg-400 hover:text-yellow-400'}`} />
                 </button>
+                <div className="relative">
+                  <button type="button" onClick={() => setShowSnoozeMenu(!showSnoozeMenu)} className="p-1.5 text-rmpg-400 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Snooze"><Clock className="w-3.5 h-3.5" /></button>
+                  {showSnoozeMenu && <SnoozeMenu onSnooze={handleSnooze} onClose={() => setShowSnoozeMenu(false)} />}
+                </div>
+                <div className="relative">
+                  <button type="button" onClick={() => setShowCategoryMenu(!showCategoryMenu)} className="p-1.5 text-rmpg-400 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Categorize"><Hash className="w-3.5 h-3.5" /></button>
+                  {showCategoryMenu && fullMessage && (
+                    <CategoryMenu messageId={fullMessage.id} onApplied={() => fetchFullMessage(fullMessage.id)} onClose={() => setShowCategoryMenu(false)} onSnackbar={showSnackbar} />
+                  )}
+                </div>
                 <button type="button" onClick={() => fullMessage && printEmail(fullMessage, fullMessage.bodyHtml)} className="p-1.5 text-rmpg-400 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Print"><Printer className="w-3.5 h-3.5" /></button>
+                <div className="relative">
+                  <button type="button" onClick={() => setShowMoreMenu(!showMoreMenu)} className="p-1.5 text-rmpg-400 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors" title="More actions"><SlidersHorizontal className="w-3.5 h-3.5" /></button>
+                  {showMoreMenu && (
+                    <div className="absolute right-0 top-full mt-1 z-50 min-w-[200px] bg-surface-base border border-border-strong rounded-sm shadow-xl py-1"
+                      onMouseLeave={() => setShowMoreMenu(false)}>
+                      <button type="button" onClick={() => { setShowHeadersModal(true); setShowMoreMenu(false); }} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/15 hover:text-white"><FileText className="w-3 h-3" /> View internet headers</button>
+                      <button type="button" onClick={() => { handleDownloadEml(); setShowMoreMenu(false); }} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/15 hover:text-white"><Download className="w-3 h-3" /> Download as .eml</button>
+                      <div className="border-t border-border-subtle my-1" />
+                      <button type="button" onClick={() => { handleSweepSender(); setShowMoreMenu(false); }} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/15 hover:text-white"><Archive className="w-3 h-3" /> Sweep sender to Archive</button>
+                      <button type="button" onClick={() => { handleToggleFocused(true); setShowMoreMenu(false); }} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/15 hover:text-white"><Eye className="w-3 h-3" /> Move to Focused</button>
+                      <button type="button" onClick={() => { handleToggleFocused(false); setShowMoreMenu(false); }} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-rmpg-300 hover:bg-brand-500/15 hover:text-white"><EyeOff className="w-3 h-3" /> Move to Other</button>
+                      <div className="border-t border-border-subtle my-1" />
+                      <button type="button" onClick={() => { handleReport('junk-report'); setShowMoreMenu(false); }} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-amber-400 hover:bg-amber-500/10"><AlertTriangle className="w-3 h-3" /> Report junk</button>
+                      <button type="button" onClick={() => { handleReport('phishing-report'); setShowMoreMenu(false); }} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-red-400 hover:bg-red-500/10"><Shield className="w-3 h-3" /> Report phishing</button>
+                      <button type="button" onClick={() => { handleBlockSender(); setShowMoreMenu(false); }} className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-red-400 hover:bg-red-500/10"><X className="w-3 h-3" /> Block sender</button>
+                    </div>
+                  )}
+                </div>
                 <button type="button" onClick={() => selectedMessage && handleDelete(selectedMessage)} className="p-1.5 text-rmpg-400 hover:text-red-400 hover:bg-red-900/20 rounded-sm transition-colors" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
               </div>
 
@@ -2676,6 +3106,14 @@ export default function EmailPage() {
           onMove={(folderId) => handleMoveToFolder(folderId, contextMenu.message)}
           onClose={() => setContextMenu(null)}
         />
+      )}
+
+      {/* ─── Outlook-parity modals ─── */}
+      {showHeadersModal && fullMessage && (
+        <HeadersModal messageId={fullMessage.id} onClose={() => setShowHeadersModal(false)} />
+      )}
+      {showAutoReply && (
+        <AutoReplyModal onClose={() => setShowAutoReply(false)} onSnackbar={showSnackbar} />
       )}
 
       {/* ─── Compose Modal ─── */}

@@ -31,7 +31,7 @@ import { detectDispatchAnomalies } from './routes/dispatch/anomalies';
 import { getRadioSettings, purgeOldRecordings } from './utils/radioSettings';
 import { syncAllVehicleGpsMileage } from './routes/fleet';
 import { sweepTrips } from './utils/tripStore';
-import { runEmailPoll, drainEmailOutbox } from './routes/email';
+import { runEmailPoll, drainEmailOutbox, drainScheduledEmails, resurfaceSnoozedEmails } from './routes/email';
 import type { Bindings, Variables } from './types';
 import { ROUTE_REGISTRY } from './routesConfig';
 
@@ -325,6 +325,19 @@ export default {
         drainEmailOutbox(env)
           .then((r) => { if (r.sent || r.failed) console.log(`[email-outbox] sent=${r.sent} failed=${r.failed} deferred=${r.deferred}`); })
           .catch((err) => console.error('[email-outbox] failed:', err)),
+      );
+      // Schedule-send queue → enqueues due rows into the durable outbox,
+      // which the drain above then actually sends (uniform retry/backoff).
+      ctx.waitUntil(
+        drainScheduledEmails(env)
+          .then((n) => { if (n) console.log(`[email-scheduled] queued ${n}`); })
+          .catch((err) => console.error('[email-scheduled] failed:', err)),
+      );
+      // Expired snoozes → move back to inbox + mark unread.
+      ctx.waitUntil(
+        resurfaceSnoozedEmails(env)
+          .then((n) => { if (n) console.log(`[email-snooze] resurfaced ${n}`); })
+          .catch((err) => console.error('[email-snooze] failed:', err)),
       );
       return;
     }
